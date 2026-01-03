@@ -3,5 +3,27 @@
  * Shared types, Result<T,E>, errors, and logger for Nexus Agents
  */
 
-// Placeholder export - will be replaced with actual types in Issue #7
 export const VERSION = '0.0.1';
+
+// Result pattern
+export type { Result } from './result.js';
+export { ok, err, isOk, isErr, map, mapErr, unwrap, unwrapOr } from './result.js';
+
+// Error hierarchy
+export {
+  ErrorCode,
+  NexusError,
+  ValidationError,
+  ConfigError,
+  ModelError,
+  AgentError,
+  WorkflowError,
+  SecurityError,
+  TimeoutError,
+  RateLimitError,
+} from './errors.js';
+export type { SerializedError, NexusErrorOptions } from './errors.js';
+
+// Logger
+export { createLogger, logger, sanitize } from './logger.js';
+export type { LogLevel, LogContext, LogEntry, ILogger } from './logger.js';
