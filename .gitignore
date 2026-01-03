@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+*.tsbuildinfo
+
+# Test coverage
+coverage/
+
+# Environment
+.env
+.env.local
+.env.*.local
+*.local.md
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Turbo
+.turbo/
+
+# Cache
+.cache/
+.eslintcache
+
+# OS
+Thumbs.db
+
+# Secrets (never commit)
+*.pem
+*.key
+credentials.json
+secrets.json
