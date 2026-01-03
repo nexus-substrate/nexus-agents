@@ -11,7 +11,9 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsup src/index.ts --format esm --dts",
     "dev": "tsup src/index.ts --format esm --dts --watch",
@@ -22,7 +24,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@nexus-agents/core": "workspace:*"
+    "@nexus-agents/core": "workspace:*",
+    "zod": "^3.24.0"
   },
   "devDependencies": {
     "tsup": "^8.3.0"
