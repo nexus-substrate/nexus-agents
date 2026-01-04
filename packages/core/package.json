@@ -1,6 +1,6 @@
 {
   "name": "@nexus-agents/core",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "description": "Shared types, Result<T,E>, errors, and logger for Nexus Agents",
   "license": "MIT",
   "type": "module",

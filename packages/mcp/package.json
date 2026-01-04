@@ -1,6 +1,6 @@
 {
   "name": "@nexus-agents/mcp",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "description": "MCP server implementation for Nexus Agents",
   "license": "MIT",
   "type": "module",

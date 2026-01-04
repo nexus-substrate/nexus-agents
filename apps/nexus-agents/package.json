@@ -1,6 +1,6 @@
 {
   "name": "nexus-agents-app",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "description": "Main entry point for Nexus Agents",
   "type": "module",
   "private": true,
