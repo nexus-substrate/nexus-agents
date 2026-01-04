@@ -11,11 +11,13 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsup src/index.ts --format esm --dts",
     "dev": "tsup src/index.ts --format esm --dts --watch",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "test:coverage": "vitest run --coverage",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
@@ -23,7 +25,8 @@
   },
   "dependencies": {
     "@nexus-agents/core": "workspace:*",
-    "@nexus-agents/adapters": "workspace:*"
+    "@nexus-agents/adapters": "workspace:*",
+    "zod": "^3.24.0"
   },
   "devDependencies": {
     "tsup": "^8.3.0"

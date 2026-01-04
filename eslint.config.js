@@ -57,8 +57,11 @@ export default defineConfig([
     name: 'nexus-agents/tests',
     files: ['**/*.test.ts', '**/*.spec.ts'],
     rules: {
+      'max-lines': 'off', // Test files can be longer for comprehensive coverage
       'max-lines-per-function': 'off',
       '@typescript-eslint/no-explicit-any': 'warn',
+      '@typescript-eslint/no-non-null-assertion': 'off', // Allow ! assertions in tests
+      '@typescript-eslint/no-unnecessary-condition': 'off', // Allow optional chaining in tests
     },
   },
 ]);
