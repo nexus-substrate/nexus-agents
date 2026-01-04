@@ -62,6 +62,9 @@ export default defineConfig([
       '@typescript-eslint/no-explicit-any': 'warn',
       '@typescript-eslint/no-non-null-assertion': 'off', // Allow ! assertions in tests
       '@typescript-eslint/no-unnecessary-condition': 'off', // Allow optional chaining in tests
+      '@typescript-eslint/unbound-method': 'off', // Allow mock method assertions
+      '@typescript-eslint/no-unsafe-assignment': 'off', // Allow JSON.parse in tests
+      '@typescript-eslint/no-unsafe-member-access': 'off', // Allow accessing parsed JSON
     },
   },
 ]);

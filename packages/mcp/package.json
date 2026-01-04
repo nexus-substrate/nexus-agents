@@ -24,9 +24,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
     "@nexus-agents/core": "workspace:*",
     "@nexus-agents/agents": "workspace:*",
-    "@nexus-agents/workflows": "workspace:*"
+    "@nexus-agents/workflows": "workspace:*",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "tsup": "^8.3.0"
