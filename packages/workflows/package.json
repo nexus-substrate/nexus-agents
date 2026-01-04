@@ -13,8 +13,17 @@
   },
   "files": [
     "dist",
-    "src/templates"
+    "src/templates",
+    "README.md"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/williamzujkowski/nexus-agents.git",
+    "directory": "packages/workflows"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsup src/index.ts --format esm --dts && cp -r src/templates dist/",
     "dev": "tsup src/index.ts --format esm --dts --watch",
@@ -22,7 +31,8 @@
     "test:coverage": "vitest run --coverage",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
     "@nexus-agents/agents": "workspace:*",
