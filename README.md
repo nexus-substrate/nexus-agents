@@ -42,7 +42,7 @@ pnpm build
 
 ### Current Status
 
-The core packages (adapters, agents, workflows, MCP server) are implemented and tested. The CLI entry point is complete as of v0.5.0.
+The core packages (adapters, agents, workflows, MCP server) are implemented and tested. The CLI starts the MCP server via stdio transport.
 
 ### Programmatic Usage
 
@@ -342,14 +342,15 @@ pnpm test:coverage    # Run tests with coverage
 
 ## Roadmap
 
-| Version    | Status      | Scope                                |
-| ---------- | ----------- | ------------------------------------ |
-| **v0.1.0** | Complete    | Foundation + Core interfaces         |
-| **v0.2.0** | Complete    | All adapters + All experts           |
-| **v0.3.0** | Complete    | Workflow engine                      |
-| **v0.4.0** | Complete    | MCP Server with tools                |
-| **v0.5.0** | Complete    | CLI entry point, memory safety fixes |
-| **v1.0.0** | In Progress | Production hardening, npm publish    |
+| Version    | Status      | Scope                                    |
+| ---------- | ----------- | ---------------------------------------- |
+| **v0.1.0** | Complete    | Foundation + Core interfaces             |
+| **v0.2.0** | Complete    | All adapters + All experts               |
+| **v0.3.0** | Complete    | Workflow engine                          |
+| **v0.4.0** | Complete    | MCP Server with tools                    |
+| **v0.5.0** | Complete    | CLI entry point, memory safety, security |
+| **v0.6.0** | Complete    | Performance optimization, npm prep       |
+| **v1.0.0** | In Progress | npm publish                              |
 
 See [PROJECT_PLAN.md](./PROJECT_PLAN.md) for detailed roadmap and milestones.
 

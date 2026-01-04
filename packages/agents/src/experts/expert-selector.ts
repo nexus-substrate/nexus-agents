@@ -136,6 +136,26 @@ export const SelectionOptionsSchema = z.object({
 // Default Expert Registry
 // ============================================================================
 
+/** Cached default registry singleton for performance optimization. */
+let cachedDefaultRegistry: ExpertRegistry | null = null;
+
+/**
+ * Gets the cached default expert registry, creating it if needed.
+ * This avoids recreating the registry on every call to quickSelect().
+ */
+function getDefaultRegistry(): ExpertRegistry {
+  cachedDefaultRegistry ??= createDefaultRegistry();
+  return cachedDefaultRegistry;
+}
+
+/**
+ * Resets the cached default registry.
+ * Primarily useful for testing to ensure test isolation.
+ */
+export function resetDefaultRegistry(): void {
+  cachedDefaultRegistry = null;
+}
+
 /**
  * Creates a default expert registry with built-in experts.
  */
@@ -436,11 +456,12 @@ export function selectExperts(
 /**
  * Quick selection using default registry.
  * Convenience function for simple use cases.
+ * Uses a cached registry for performance optimization.
  */
 export function quickSelect(
   task: Task,
   options?: SelectionOptions
 ): Result<SelectionResult, SelectionError> {
-  const registry = createDefaultRegistry();
+  const registry = getDefaultRegistry();
   return selectExperts(task, registry, options);
 }

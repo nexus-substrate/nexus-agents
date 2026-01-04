@@ -161,6 +161,11 @@ const CHARS_PER_TOKEN = 4;
  * const canAdd = await manager.canAdd(newContent, 'active');
  * ```
  */
+/**
+ * Type alias for context item categories (excludes 'reserved').
+ */
+type ContextItemCategory = keyof Omit<ContextBudget, 'reserved'>;
+
 export class ContextManager {
   private readonly maxTokens: number;
   private readonly budget: ContextBudget;
@@ -169,6 +174,22 @@ export class ContextManager {
   private readonly warningThreshold: number;
   private readonly items: Map<string, ContextItem> = new Map();
   private cachedStats: ContextStats | null = null;
+
+  /**
+   * Running totals for token counts by category.
+   * Updated incrementally on add/remove operations for O(1) lookups.
+   */
+  private categoryTokenCounts: Map<ContextItemCategory, number> = new Map([
+    ['system', 0],
+    ['task', 0],
+    ['active', 0],
+  ]);
+
+  /**
+   * Running total token count across all categories.
+   * Updated incrementally on add/remove operations for O(1) lookups.
+   */
+  private totalTokenCount: number = 0;
 
   constructor(config: ContextManagerConfig) {
     const validation = ContextManagerConfigSchema.safeParse(config);
@@ -283,9 +304,19 @@ export class ContextManager {
 
   /**
    * Store an item and log the operation.
+   * Updates running token count totals.
    */
   private storeItem(id: string, fullItem: ContextItem): void {
     const existing = this.items.get(id);
+
+    // Update running totals
+    if (existing !== undefined) {
+      // Remove old item's token count from totals
+      this.subtractFromTotals(existing.category, existing.tokenCount);
+    }
+    // Add new item's token count to totals
+    this.addToTotals(fullItem.category, fullItem.tokenCount);
+
     this.items.set(id, fullItem);
     this.invalidateCache();
 
@@ -307,12 +338,18 @@ export class ContextManager {
    * @returns True if item was removed, false if not found
    */
   remove(id: string): boolean {
-    const removed = this.items.delete(id);
-    if (removed) {
-      this.invalidateCache();
-      this.logger.debug('Removed item', { id });
+    const item = this.items.get(id);
+    if (item === undefined) {
+      return false;
     }
-    return removed;
+
+    // Update running totals before removal
+    this.subtractFromTotals(item.category, item.tokenCount);
+
+    this.items.delete(id);
+    this.invalidateCache();
+    this.logger.debug('Removed item', { id });
+    return true;
   }
 
   /**
@@ -501,6 +538,7 @@ export class ContextManager {
    */
   clear(): void {
     this.items.clear();
+    this.resetTokenCounts();
     this.invalidateCache();
     this.logger.info('Context cleared');
   }
@@ -513,13 +551,17 @@ export class ContextManager {
    */
   clearCategory(category: keyof Omit<ContextBudget, 'reserved'>): number {
     let count = 0;
+    let tokensRemoved = 0;
     for (const [id, item] of this.items.entries()) {
       if (item.category === category) {
+        tokensRemoved += item.tokenCount;
         this.items.delete(id);
         count++;
       }
     }
     if (count > 0) {
+      // Update running totals
+      this.subtractFromTotals(category, tokensRemoved);
       this.invalidateCache();
       this.logger.debug('Cleared category', { category, itemsRemoved: count });
     }
@@ -549,26 +591,18 @@ export class ContextManager {
 
   /**
    * Get current token count for a category.
+   * Returns cached value updated on add/remove operations (O(1)).
    */
-  private getCategoryTokenCount(category: keyof Omit<ContextBudget, 'reserved'>): number {
-    let count = 0;
-    for (const item of this.items.values()) {
-      if (item.category === category) {
-        count += item.tokenCount;
-      }
-    }
-    return count;
+  private getCategoryTokenCount(category: ContextItemCategory): number {
+    return this.categoryTokenCounts.get(category) ?? 0;
   }
 
   /**
    * Get total token count across all categories.
+   * Returns cached value updated on add/remove operations (O(1)).
    */
   private getTotalTokenCount(): number {
-    let count = 0;
-    for (const item of this.items.values()) {
-      count += item.tokenCount;
-    }
-    return count;
+    return this.totalTokenCount;
   }
 
   /**
@@ -576,6 +610,34 @@ export class ContextManager {
    */
   private invalidateCache(): void {
     this.cachedStats = null;
+  }
+
+  /**
+   * Add token count to running totals for a category.
+   */
+  private addToTotals(category: ContextItemCategory, tokenCount: number): void {
+    const current = this.categoryTokenCounts.get(category) ?? 0;
+    this.categoryTokenCounts.set(category, current + tokenCount);
+    this.totalTokenCount += tokenCount;
+  }
+
+  /**
+   * Subtract token count from running totals for a category.
+   */
+  private subtractFromTotals(category: ContextItemCategory, tokenCount: number): void {
+    const current = this.categoryTokenCounts.get(category) ?? 0;
+    this.categoryTokenCounts.set(category, Math.max(0, current - tokenCount));
+    this.totalTokenCount = Math.max(0, this.totalTokenCount - tokenCount);
+  }
+
+  /**
+   * Reset all token count totals to zero.
+   */
+  private resetTokenCounts(): void {
+    this.categoryTokenCounts.set('system', 0);
+    this.categoryTokenCounts.set('task', 0);
+    this.categoryTokenCounts.set('active', 0);
+    this.totalTokenCount = 0;
   }
 
   /**

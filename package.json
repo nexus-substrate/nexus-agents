@@ -2,6 +2,7 @@
   "name": "nexus-agents",
   "version": "0.0.1",
   "description": "Multi-agent orchestration MCP server with model diversity and workflow automation",
+  "private": true,
   "type": "module",
   "license": "MIT",
   "author": "William Zujkowski",

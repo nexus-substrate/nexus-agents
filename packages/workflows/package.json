@@ -2,6 +2,7 @@
   "name": "@nexus-agents/workflows",
   "version": "0.0.1",
   "description": "Workflow engine and templates for Nexus Agents",
+  "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

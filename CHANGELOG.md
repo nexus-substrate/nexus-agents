@@ -12,8 +12,30 @@ Phase 6: Production Readiness (v1.0.0)
 ### Planned
 
 - npm publish to registry
-- Performance benchmarking
 - Additional workflow templates
+
+## [0.6.0] - 2026-01-04
+
+Phase 6: Performance and npm Publish Preparation
+
+### Added
+
+- Package README.md files for all 7 packages
+- `license` field (MIT) in all package.json files
+- `private: true` in root package.json to prevent accidental publish
+- `resetDefaultRegistry()` for test isolation in expert-selector
+
+### Changed
+
+- **Performance**: Context token counts now cached (O(1) lookup instead of O(n))
+- **Performance**: Expert registry now cached as singleton (avoids recreation)
+- ARCHITECTURE.md updated to reflect v0.5.0 and Phase 6 status
+
+### Fixed
+
+- SECURITY.md: Corrected ReDoS prevention claim (static patterns, not minimatch)
+- SECURITY.md: Added GitHub Security Advisory link for vulnerability reporting
+- README.md: Clarified CLI only starts MCP server (no subcommands yet)
 
 ## [0.5.0] - 2026-01-04
 
@@ -184,7 +206,8 @@ Phases 0-1: Foundation and Infrastructure
 
 ---
 
-[Unreleased]: https://github.com/williamzujkowski/nexus-agents/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/williamzujkowski/nexus-agents/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/williamzujkowski/nexus-agents/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/williamzujkowski/nexus-agents/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/williamzujkowski/nexus-agents/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/williamzujkowski/nexus-agents/compare/v0.2.0...v0.3.0

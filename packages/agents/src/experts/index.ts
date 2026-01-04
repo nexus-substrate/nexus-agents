@@ -124,6 +124,7 @@ export {
   selectExperts,
   quickSelect,
   createDefaultRegistry,
+  resetDefaultRegistry,
   SelectionError,
   ExpertCollaborationPattern,
   type ExpertCollaborationPatternType,

@@ -2,6 +2,7 @@
   "name": "@nexus-agents/config",
   "version": "0.0.1",
   "description": "Configuration loading and validation for Nexus Agents",
+  "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

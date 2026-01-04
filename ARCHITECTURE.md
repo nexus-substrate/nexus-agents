@@ -1,8 +1,8 @@
 # Nexus Agents Architecture
 
-**Version:** 0.1.0
+**Version:** 0.5.0
 **Last Updated:** 2026-01-03
-**Status:** Phase 0 - Foundation
+**Status:** Phase 6 - Production
 
 ---
 

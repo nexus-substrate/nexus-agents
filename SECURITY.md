@@ -19,7 +19,7 @@ We take security seriously. If you discover a security vulnerability, please fol
 
 ### Do
 
-1. **Email**: Send details to the repository maintainer privately
+1. **GitHub Security Advisory**: Create a private security advisory at https://github.com/williamzujkowski/nexus-agents/security/advisories/new
 2. **Include**:
    - Description of the vulnerability
    - Steps to reproduce
@@ -44,7 +44,7 @@ This project implements these security measures:
 
 - **Input Validation**: All inputs validated with Zod schemas at boundaries
 - **Path Safety**: Path traversal prevention on all file operations
-- **No User RegExp**: Uses minimatch to prevent ReDoS attacks
+- **No User RegExp**: Static regex patterns only, no user-provided regular expressions
 - **Secrets Handling**: Environment variables for API keys, sanitized before logging
 - **Rate Limiting**: Token bucket rate limiting on all public tools
 - **Memory Bounds**: Bounded collections and context pruning
