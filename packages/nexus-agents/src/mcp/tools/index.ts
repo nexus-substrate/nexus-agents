@@ -49,6 +49,18 @@ export {
   type IExpertFactory as IOrchestrateExpertFactory,
 } from './orchestrate.js';
 
+export {
+  registerDelegateToModelTool,
+  DelegateInputSchema,
+  DelegateOutputSchema,
+  MODEL_CAPABILITIES,
+  type DelegateInput,
+  type DelegateOutput,
+  type DelegateDeps,
+  type CapabilityProfile,
+  type PreferredCapability,
+} from './delegate-to-model.js';
+
 /**
  * Options for tool registration.
  */
@@ -117,6 +129,7 @@ export function registerTools(
   // - orchestrate: Task orchestration with TechLead agent
   // - create_expert: Dynamic expert agent creation
   // - run_workflow: Workflow template execution
+  // - delegate_to_model: Capability-matched task routing (Phase 1 CLI integration)
   //
   // Use the exported register functions with appropriate dependencies.
 
@@ -124,7 +137,7 @@ export function registerTools(
   void server;
 
   return {
-    tools: ['orchestrate', 'create_expert', 'run_workflow'],
+    tools: ['orchestrate', 'create_expert', 'run_workflow', 'delegate_to_model'],
     logger,
     rateLimiter,
   };

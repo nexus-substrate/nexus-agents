@@ -30,6 +30,14 @@ export const EXIT_CODES = {
 export type CliCommand = 'server' | 'help' | 'version' | 'config' | 'expert' | 'workflow';
 
 /**
+ * Server mode for nexus-agents.
+ * - server: MCP server only (responds to MCP client calls)
+ * - orchestrator: CLI orchestrator (calls external CLIs)
+ * - mesh: Full bidirectional (both server and orchestrator)
+ */
+export type ServerMode = 'server' | 'orchestrator' | 'mesh';
+
+/**
  * Parsed CLI arguments and command.
  */
 export interface ParsedCliArgs {
@@ -39,6 +47,7 @@ export interface ParsedCliArgs {
     help: boolean;
     version: boolean;
     verbose: boolean;
+    mode: ServerMode;
   };
   positionals: string[];
 }
@@ -63,6 +72,11 @@ const PARSE_ARGS_CONFIG = {
       type: 'boolean' as const,
       default: false,
     },
+    mode: {
+      type: 'string' as const,
+      short: 'm',
+      default: 'server',
+    },
   },
   allowPositionals: true,
   strict: true,
@@ -85,14 +99,20 @@ COMMANDS:
   workflow      Manage workflows (coming soon)
 
 OPTIONS:
-  -h, --help      Show this help message
-  -v, --version   Show version information
-  --verbose       Enable verbose output
+  -h, --help           Show this help message
+  -v, --version        Show version information
+  --verbose            Enable verbose output
+  -m, --mode <mode>    Server mode: server, orchestrator, mesh (default: server)
+                       - server:       MCP server only (for Claude CLI integration)
+                       - orchestrator: CLI orchestrator (calls Gemini/Codex CLIs)
+                       - mesh:         Full bidirectional (both modes)
 
 EXAMPLES:
-  nexus-agents              Start MCP server
-  nexus-agents --help       Show help
-  nexus-agents --version    Show version
+  nexus-agents                  Start MCP server (default mode)
+  nexus-agents --mode=server    Explicit MCP server mode
+  nexus-agents --mode=mesh      Full hybrid mesh mode
+  nexus-agents --help           Show help
+  nexus-agents --version        Show version
 
 For more information, visit: https://github.com/williamzujkowski/nexus-agents
 `.trim();
@@ -111,10 +131,13 @@ export function parseCliArgs(args: string[] = process.argv.slice(2)): ParsedCliA
     args,
   });
 
-  // Extract values - our config specifies defaults, so these are always booleans
-  const { help, version, verbose } = values;
+  // Extract values - our config specifies defaults
+  const { help, version, verbose, mode: modeValue } = values;
 
-  const options = { help, version, verbose };
+  // Validate and coerce mode to ServerMode
+  const mode = isValidServerMode(modeValue) ? modeValue : 'server';
+
+  const options = { help, version, verbose, mode };
 
   // Determine command from flags or first positional
   let command: CliCommand = 'server';
@@ -154,6 +177,17 @@ export function parseCliArgs(args: string[] = process.argv.slice(2)): ParsedCliA
 function isValidCommand(value: string): value is CliCommand {
   const validCommands: CliCommand[] = ['server', 'help', 'version', 'config', 'expert', 'workflow'];
   return validCommands.includes(value as CliCommand);
+}
+
+/**
+ * Checks if a string is a valid server mode.
+ *
+ * @param value - String to check
+ * @returns True if the value is a valid ServerMode
+ */
+function isValidServerMode(value: unknown): value is ServerMode {
+  const validModes: ServerMode[] = ['server', 'orchestrator', 'mesh'];
+  return typeof value === 'string' && validModes.includes(value as ServerMode);
 }
 
 /**
@@ -233,8 +267,9 @@ function setupShutdownHandlers(cleanup: () => Promise<void>, logger: ILogger): v
  * Starts the MCP server with stdio transport.
  *
  * @param verbose - Whether to enable verbose logging
+ * @param mode - Server mode (server, orchestrator, mesh)
  */
-async function startServer(verbose: boolean): Promise<void> {
+async function startServer(verbose: boolean, mode: ServerMode): Promise<void> {
   const logger = createLogger({ component: 'cli' });
 
   if (verbose) {
@@ -243,9 +278,17 @@ async function startServer(verbose: boolean): Promise<void> {
 
   logger.info('Starting Nexus Agents', {
     version: VERSION,
+    mode,
     nodeVersion: process.version,
     platform: process.platform,
   });
+
+  // Log mode-specific behavior
+  if (mode === 'orchestrator') {
+    logger.warn('Orchestrator mode not yet implemented, falling back to server mode');
+  } else if (mode === 'mesh') {
+    logger.warn('Mesh mode not yet implemented, falling back to server mode');
+  }
 
   // Start the MCP server with stdio transport
   const serverResult = await startStdioServer({
@@ -311,7 +354,7 @@ async function main(): Promise<void> {
       break;
 
     case 'server':
-      await startServer(parsedArgs.options.verbose);
+      await startServer(parsedArgs.options.verbose, parsedArgs.options.mode);
       break;
 
     case 'config':

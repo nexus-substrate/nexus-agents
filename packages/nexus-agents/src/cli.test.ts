@@ -19,6 +19,7 @@ describe('CLI Argument Parsing', () => {
         expect(result.options.help).toBe(false);
         expect(result.options.version).toBe(false);
         expect(result.options.verbose).toBe(false);
+        expect(result.options.mode).toBe('server');
         expect(result.positionals).toEqual([]);
       });
 
@@ -80,6 +81,48 @@ describe('CLI Argument Parsing', () => {
         const result = parseCliArgs(['config', '--verbose']);
 
         expect(result.command).toBe('config');
+        expect(result.options.verbose).toBe(true);
+      });
+    });
+
+    describe('mode flag', () => {
+      it('should parse --mode=server flag', () => {
+        const result = parseCliArgs(['--mode=server']);
+
+        expect(result.command).toBe('server');
+        expect(result.options.mode).toBe('server');
+      });
+
+      it('should parse --mode=orchestrator flag', () => {
+        const result = parseCliArgs(['--mode=orchestrator']);
+
+        expect(result.command).toBe('server');
+        expect(result.options.mode).toBe('orchestrator');
+      });
+
+      it('should parse --mode=mesh flag', () => {
+        const result = parseCliArgs(['--mode=mesh']);
+
+        expect(result.command).toBe('server');
+        expect(result.options.mode).toBe('mesh');
+      });
+
+      it('should parse -m short flag', () => {
+        const result = parseCliArgs(['-m', 'orchestrator']);
+
+        expect(result.options.mode).toBe('orchestrator');
+      });
+
+      it('should default to server mode for invalid mode', () => {
+        const result = parseCliArgs(['--mode=invalid']);
+
+        expect(result.options.mode).toBe('server');
+      });
+
+      it('should combine mode with verbose', () => {
+        const result = parseCliArgs(['--mode=mesh', '--verbose']);
+
+        expect(result.options.mode).toBe('mesh');
         expect(result.options.verbose).toBe(true);
       });
     });
@@ -223,6 +266,7 @@ describe('CLI Argument Parsing', () => {
           help: false,
           version: false,
           verbose: false,
+          mode: 'server',
         },
         positionals: [],
       };
@@ -230,6 +274,7 @@ describe('CLI Argument Parsing', () => {
       expect(args.command).toBe('server');
       expect(args.subcommand).toBeUndefined();
       expect(args.options.help).toBe(false);
+      expect(args.options.mode).toBe('server');
     });
 
     it('should allow subcommand to be set', () => {
@@ -240,11 +285,27 @@ describe('CLI Argument Parsing', () => {
           help: false,
           version: false,
           verbose: false,
+          mode: 'server',
         },
         positionals: ['config', 'show'],
       };
 
       expect(args.subcommand).toBe('show');
+    });
+
+    it('should allow mode to be set to different values', () => {
+      const args: ParsedCliArgs = {
+        command: 'server',
+        options: {
+          help: false,
+          version: false,
+          verbose: false,
+          mode: 'mesh',
+        },
+        positionals: [],
+      };
+
+      expect(args.options.mode).toBe('mesh');
     });
   });
 });
