@@ -12,6 +12,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Additional workflow templates
 - CLI subcommands (interactive mode, config management)
 
+## [2.0.0] - 2026-01-04
+
+Package Consolidation Release
+
+### Changed
+
+- **BREAKING**: Consolidated 7 packages into single `nexus-agents` package
+  - Merged: `@nexus-agents/core`, `@nexus-agents/config`, `@nexus-agents/adapters`,
+    `@nexus-agents/agents`, `@nexus-agents/workflows`, `@nexus-agents/mcp`, `@nexus-agents/cli`
+  - All functionality now available from single `nexus-agents` import
+- Import paths changed from `@nexus-agents/*` to `nexus-agents`
+
+### Added
+
+- Unified package structure under `packages/nexus-agents/src/`
+- Single entry point with organized exports by domain
+
+### Benefits
+
+- Simpler installation: one dependency instead of seven
+- No workspace protocol issues for consumers
+- Easier version management
+- Reduced node_modules complexity
+
+### Migration Guide
+
+1. Uninstall old packages:
+
+   ```bash
+   npm uninstall @nexus-agents/core @nexus-agents/config @nexus-agents/adapters \
+     @nexus-agents/agents @nexus-agents/workflows @nexus-agents/mcp @nexus-agents/cli
+   ```
+
+2. Install consolidated package:
+
+   ```bash
+   npm install nexus-agents
+   ```
+
+3. Update imports:
+
+   ```typescript
+   // Before
+   import { Result } from '@nexus-agents/core';
+   import { ClaudeAdapter } from '@nexus-agents/adapters';
+   import { TechLead } from '@nexus-agents/agents';
+
+   // After
+   import { Result, ClaudeAdapter, TechLead } from 'nexus-agents';
+   ```
+
 ## [1.0.0] - 2026-01-04
 
 Phase 6: Production Release
@@ -225,7 +276,8 @@ Phases 0-1: Foundation and Infrastructure
 
 ---
 
-[Unreleased]: https://github.com/williamzujkowski/nexus-agents/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/williamzujkowski/nexus-agents/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/williamzujkowski/nexus-agents/compare/v1.0.0...v2.0.0
 [1.0.0]: https://github.com/williamzujkowski/nexus-agents/compare/v0.6.0...v1.0.0
 [0.6.0]: https://github.com/williamzujkowski/nexus-agents/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/williamzujkowski/nexus-agents/compare/v0.4.0...v0.5.0

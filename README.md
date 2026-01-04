@@ -6,6 +6,7 @@
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D22.0.0-brightgreen)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8+-blue)](https://www.typescriptlang.org)
 [![MCP Protocol](https://img.shields.io/badge/MCP-2025--11--25-purple)](https://modelcontextprotocol.io)
+[![npm version](https://img.shields.io/npm/v/nexus-agents)](https://www.npmjs.com/package/nexus-agents)
 
 ---
 
@@ -27,53 +28,63 @@ Nexus Agents is an MCP (Model Context Protocol) server that coordinates multiple
 ### Installation
 
 ```bash
-# Install globally for CLI usage
-npm install -g @nexus-agents/cli
+# Install the package
+npm install nexus-agents
 
-# Or install specific packages
-npm install @nexus-agents/mcp
-npm install @nexus-agents/agents
-npm install @nexus-agents/adapters
+# Or install globally for CLI usage
+npm install -g nexus-agents
 ```
 
-### Development Setup
+### CLI Usage
+
+Start the MCP server:
 
 ```bash
-# Clone the repository
-git clone https://github.com/williamzujkowski/nexus-agents.git
-cd nexus-agents
+# If installed globally
+nexus-agents
 
-# Install dependencies
-pnpm install
-
-# Build all packages
-pnpm build
+# Or with npx
+npx nexus-agents
 ```
-
-### Current Status
-
-The core packages (adapters, agents, workflows, MCP server) are implemented and tested. The CLI starts the MCP server via stdio transport.
 
 ### Programmatic Usage
 
-The MCP server can be used programmatically:
-
 ```typescript
-import { createMcpServer, startStdioServer } from '@nexus-agents/mcp';
+import {
+  createServer,
+  startStdioServer,
+  TechLead,
+  createClaudeAdapter,
+  ExpertFactory,
+} from 'nexus-agents';
 
-const server = createMcpServer();
-await startStdioServer(server);
+// Start MCP server
+const result = await startStdioServer({
+  name: 'my-server',
+  version: '1.0.0',
+});
+
+// Or use programmatically
+const adapter = createClaudeAdapter({
+  model: 'claude-sonnet-4-20250514',
+});
+const techLead = new TechLead({ adapter });
+
+// Create experts dynamically
+const factory = new ExpertFactory(adapter);
+const codeExpert = factory.create({ type: 'code' });
 ```
 
 ### Claude Desktop Integration
 
-Add to your Claude Desktop configuration:
+Add to your Claude Desktop configuration (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
 
 ```json
 {
   "mcpServers": {
     "nexus-agents": {
-      "command": "nexus-agents",
+      "command": "npx",
+      "args": ["nexus-agents"],
       "env": {
         "ANTHROPIC_API_KEY": "sk-ant-..."
       }
@@ -160,15 +171,16 @@ The server exposes these MCP tools for integration:
 ```
 nexus-agents/
 ├── packages/
-│   ├── core/           # Shared types, Result<T,E>, errors, logger
-│   ├── config/         # Configuration loading and validation
-│   ├── adapters/       # Model adapters (Claude, OpenAI, Gemini, Ollama)
-│   ├── agents/         # Agent framework (TechLead, Experts)
-│   ├── workflows/      # Workflow engine and templates
-│   ├── mcp/            # MCP server and tool definitions
-│   └── cli/            # CLI interface
-└── apps/
-    └── nexus-agents/   # Main entry point
+│   └── nexus-agents/     # Main package (all modules consolidated)
+│       └── src/
+│           ├── core/         # Shared types, Result<T,E>, errors, logger
+│           ├── config/       # Configuration loading and validation
+│           ├── adapters/     # Model adapters (Claude, OpenAI, Gemini, Ollama)
+│           ├── agents/       # Agent framework (TechLead, Experts)
+│           ├── workflows/    # Workflow engine and templates
+│           ├── mcp/          # MCP server and tool definitions
+│           ├── index.ts      # Main exports
+│           └── cli.ts        # CLI entry point
 ```
 
 ### Dependency Flow
@@ -217,64 +229,6 @@ interface IWorkflowEngine {
 
 ## Configuration
 
-### Configuration File
-
-Create `nexus-agents.yaml` in your project root:
-
-```yaml
-# Model configuration
-models:
-  default: claude-sonnet-4-20250514
-  tiers:
-    fast:
-      - claude-3-5-haiku-20241022
-      - gpt-4o-mini
-    balanced:
-      - claude-sonnet-4-20250514
-      - gpt-4o
-    powerful:
-      - claude-opus-4-20250514
-      - o1-pro
-
-# Expert configuration
-experts:
-  # Built-in experts are always available
-  # Add custom experts here
-  custom:
-    rust_expert:
-      prompt: |
-        You are a Rust systems programming expert.
-        Focus on memory safety, ownership, and performance.
-      tier: powerful
-      capabilities:
-        - rust
-        - systems-programming
-        - performance-optimization
-
-    frontend_expert:
-      prompt: |
-        You are a frontend development expert.
-        Specialize in React, TypeScript, and modern CSS.
-      tier: balanced
-      capabilities:
-        - react
-        - typescript
-        - css
-
-# Workflow configuration
-workflows:
-  directory: ./workflows
-  templates:
-    - code-review
-    - security-audit
-    - documentation-check
-
-# Server configuration
-server:
-  transport: stdio
-  logLevel: info
-```
-
 ### Environment Variables
 
 | Variable            | Description                       | Required                              |
@@ -283,24 +237,64 @@ server:
 | `OPENAI_API_KEY`    | OpenAI API key                    | For OpenAI models                     |
 | `GOOGLE_AI_API_KEY` | Google AI API key                 | For Gemini models                     |
 | `OLLAMA_HOST`       | Ollama server URL                 | For Ollama (default: localhost:11434) |
-| `NEXUS_CONFIG_PATH` | Custom config file path           | No                                    |
 | `NEXUS_LOG_LEVEL`   | Log level (debug/info/warn/error) | No                                    |
 
 ---
 
-## Packages
+## API Reference
 
-| Package                                           | Description                                          |
-| ------------------------------------------------- | ---------------------------------------------------- |
-| [`@nexus-agents/core`](./packages/core)           | Shared types, Result<T,E>, errors, structured logger |
-| [`@nexus-agents/config`](./packages/config)       | Configuration loading, Zod validation, hot reload    |
-| [`@nexus-agents/adapters`](./packages/adapters)   | Model adapters with streaming, retry, rate limiting  |
-| [`@nexus-agents/agents`](./packages/agents)       | Agent framework, TechLead, experts, collaboration    |
-| [`@nexus-agents/workflows`](./packages/workflows) | Workflow engine, YAML templates, parallel execution  |
-| [`@nexus-agents/mcp`](./packages/mcp)             | MCP server, tool definitions, stdio transport        |
-| [`@nexus-agents/cli`](./packages/cli)             | CLI interface with MCP server startup                |
+### Adapters
 
-All packages are available on [npm](https://www.npmjs.com/org/nexus-agents).
+```typescript
+import {
+  createClaudeAdapter,
+  createOpenAIAdapter,
+  createGeminiAdapter,
+  createOllamaAdapter,
+  AdapterFactory,
+} from 'nexus-agents';
+
+// Create individual adapters
+const claude = createClaudeAdapter({ model: 'claude-sonnet-4-20250514' });
+const openai = createOpenAIAdapter({ model: 'gpt-4o' });
+const gemini = createGeminiAdapter({ model: 'gemini-1.5-pro' });
+const ollama = createOllamaAdapter({ model: 'llama3:8b' });
+
+// Or use the factory
+const factory = new AdapterFactory();
+const adapter = factory.create({ provider: 'anthropic', model: 'claude-sonnet-4-20250514' });
+```
+
+### Agents
+
+```typescript
+import { TechLead, ExpertFactory, Expert } from 'nexus-agents';
+
+// Create TechLead for orchestration
+const techLead = new TechLead({ adapter });
+
+// Create experts
+const factory = new ExpertFactory(adapter);
+const codeExpert = factory.create({ type: 'code' });
+const securityExpert = factory.create({ type: 'security' });
+```
+
+### MCP Server
+
+```typescript
+import { createServer, startStdioServer, registerTools } from 'nexus-agents';
+
+// Create and start server
+const result = await startStdioServer({
+  name: 'my-server',
+  version: '1.0.0',
+});
+
+if (result.ok) {
+  const { server } = result.value;
+  // Server is running with stdio transport
+}
+```
 
 ---
 
@@ -322,7 +316,7 @@ cd nexus-agents
 # Install dependencies
 pnpm install
 
-# Build all packages
+# Build the package
 pnpm build
 
 # Run tests
@@ -337,7 +331,7 @@ pnpm dev
 ```bash
 # Development
 pnpm dev              # Start dev server with watch mode
-pnpm build            # Build all packages
+pnpm build            # Build the package
 pnpm clean            # Clean build artifacts
 
 # Quality
@@ -347,24 +341,6 @@ pnpm typecheck        # Run TypeScript type checking
 pnpm test             # Run all tests
 pnpm test:coverage    # Run tests with coverage
 ```
-
-> **Note:** The CLI currently starts the MCP server for Claude Desktop integration. Additional CLI subcommands (interactive mode, config management) may be added in future versions.
-
----
-
-## Roadmap
-
-| Version    | Status   | Scope                                    |
-| ---------- | -------- | ---------------------------------------- |
-| **v0.1.0** | Complete | Foundation + Core interfaces             |
-| **v0.2.0** | Complete | All adapters + All experts               |
-| **v0.3.0** | Complete | Workflow engine                          |
-| **v0.4.0** | Complete | MCP Server with tools                    |
-| **v0.5.0** | Complete | CLI entry point, memory safety, security |
-| **v0.6.0** | Complete | Performance optimization, npm prep       |
-| **v1.0.0** | Complete | Production release, npm publish          |
-
-See [PROJECT_PLAN.md](./PROJECT_PLAN.md) for detailed roadmap and milestones.
 
 ---
 
@@ -386,6 +362,7 @@ We welcome contributions! Please see our guidelines:
 - All code must pass linting and type checking
 
 See [CODING_STANDARDS.md](./CODING_STANDARDS.md) for detailed guidelines.
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for contribution workflow.
 
 ### Commit Convention
 

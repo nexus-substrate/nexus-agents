@@ -1,0 +1,72 @@
+{
+  "name": "nexus-agents",
+  "version": "1.0.0",
+  "description": "Multi-agent orchestration MCP server with model diversity and workflow automation",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "nexus-agents": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src/workflows/templates",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/williamzujkowski/nexus-agents.git"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "ai",
+    "agents",
+    "multi-agent",
+    "orchestration",
+    "claude",
+    "openai",
+    "gemini",
+    "ollama",
+    "llm",
+    "workflow"
+  ],
+  "author": "William Zujkowski",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint src/",
+    "lint:fix": "eslint src/ --fix",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "pnpm run build"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.71.2",
+    "@google/genai": "^1.34.0",
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "ollama": "^0.6.3",
+    "openai": "^6.15.0",
+    "uuid": "^13.0.0",
+    "yaml": "^2.8.2",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/uuid": "^11.0.0",
+    "tsup": "^8.3.0"
+  }
+}

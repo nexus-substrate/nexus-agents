@@ -41,35 +41,7 @@ importers:
         specifier: ^3.0.0
         version: 3.2.4(@types/node@22.19.3)(yaml@2.8.2)
 
-  apps/nexus-agents:
-    dependencies:
-      '@nexus-agents/adapters':
-        specifier: workspace:*
-        version: link:../../packages/adapters
-      '@nexus-agents/agents':
-        specifier: workspace:*
-        version: link:../../packages/agents
-      '@nexus-agents/cli':
-        specifier: workspace:*
-        version: link:../../packages/cli
-      '@nexus-agents/config':
-        specifier: workspace:*
-        version: link:../../packages/config
-      '@nexus-agents/core':
-        specifier: workspace:*
-        version: link:../../packages/core
-      '@nexus-agents/mcp':
-        specifier: workspace:*
-        version: link:../../packages/mcp
-      '@nexus-agents/workflows':
-        specifier: workspace:*
-        version: link:../../packages/workflows
-    devDependencies:
-      tsup:
-        specifier: ^8.3.0
-        version: 8.5.1(postcss@8.5.6)(typescript@5.9.3)(yaml@2.8.2)
-
-  packages/adapters:
+  packages/nexus-agents:
     dependencies:
       '@anthropic-ai/sdk':
         specifier: ^0.71.2
@@ -77,104 +49,15 @@ importers:
       '@google/genai':
         specifier: ^1.34.0
         version: 1.34.0(@modelcontextprotocol/sdk@1.25.1(hono@4.11.3)(zod@3.25.76))
-      '@nexus-agents/core':
-        specifier: workspace:*
-        version: link:../core
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.0.0
+        version: 1.25.1(hono@4.11.3)(zod@3.25.76)
       ollama:
         specifier: ^0.6.3
         version: 0.6.3
       openai:
         specifier: ^6.15.0
         version: 6.15.0(ws@8.18.3)(zod@3.25.76)
-      zod:
-        specifier: ^3.24.0
-        version: 3.25.76
-    devDependencies:
-      tsup:
-        specifier: ^8.3.0
-        version: 8.5.1(postcss@8.5.6)(typescript@5.9.3)(yaml@2.8.2)
-
-  packages/agents:
-    dependencies:
-      '@nexus-agents/adapters':
-        specifier: workspace:*
-        version: link:../adapters
-      '@nexus-agents/core':
-        specifier: workspace:*
-        version: link:../core
-      zod:
-        specifier: ^3.24.0
-        version: 3.25.76
-    devDependencies:
-      tsup:
-        specifier: ^8.3.0
-        version: 8.5.1(postcss@8.5.6)(typescript@5.9.3)(yaml@2.8.2)
-
-  packages/cli:
-    dependencies:
-      '@nexus-agents/config':
-        specifier: workspace:*
-        version: link:../config
-      '@nexus-agents/core':
-        specifier: workspace:*
-        version: link:../core
-      '@nexus-agents/mcp':
-        specifier: workspace:*
-        version: link:../mcp
-    devDependencies:
-      tsup:
-        specifier: ^8.3.0
-        version: 8.5.1(postcss@8.5.6)(typescript@5.9.3)(yaml@2.8.2)
-
-  packages/config:
-    dependencies:
-      '@nexus-agents/core':
-        specifier: workspace:*
-        version: link:../core
-      zod:
-        specifier: ^3.24.0
-        version: 3.25.76
-    devDependencies:
-      tsup:
-        specifier: ^8.3.0
-        version: 8.5.1(postcss@8.5.6)(typescript@5.9.3)(yaml@2.8.2)
-
-  packages/core:
-    devDependencies:
-      tsup:
-        specifier: ^8.3.0
-        version: 8.5.1(postcss@8.5.6)(typescript@5.9.3)(yaml@2.8.2)
-
-  packages/mcp:
-    dependencies:
-      '@modelcontextprotocol/sdk':
-        specifier: ^1.0.0
-        version: 1.25.1(hono@4.11.3)(zod@3.25.76)
-      '@nexus-agents/agents':
-        specifier: workspace:*
-        version: link:../agents
-      '@nexus-agents/core':
-        specifier: workspace:*
-        version: link:../core
-      '@nexus-agents/workflows':
-        specifier: workspace:*
-        version: link:../workflows
-      zod:
-        specifier: ^3.23.8
-        version: 3.25.76
-    devDependencies:
-      tsup:
-        specifier: ^8.3.0
-        version: 8.5.1(postcss@8.5.6)(typescript@5.9.3)(yaml@2.8.2)
-
-  packages/workflows:
-    dependencies:
-      '@nexus-agents/agents':
-        specifier: workspace:*
-        version: link:../agents
-      '@nexus-agents/core':
-        specifier: workspace:*
-        version: link:../core
       uuid:
         specifier: ^13.0.0
         version: 13.0.0
