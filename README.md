@@ -24,32 +24,40 @@ Nexus Agents is a production-grade MCP (Model Context Protocol) server that orch
 
 ## Quick Start
 
-### Installation
+### Installation (Development)
+
+> **Note:** This package is not yet published to npm. Use local development setup:
 
 ```bash
-# Install globally
-npm install -g nexus-agents
+# Clone the repository
+git clone https://github.com/williamzujkowski/nexus-agents.git
+cd nexus-agents
 
-# Or use directly with npx
-npx nexus-agents
+# Install dependencies
+pnpm install
+
+# Build all packages
+pnpm build
 ```
 
-### Basic Usage
+### Current Status
 
-```bash
-# Set your API key
-export ANTHROPIC_API_KEY=sk-ant-...
+The core packages (adapters, agents, workflows, MCP server) are fully implemented. The CLI entry point is pending implementation for v1.0.0.
 
-# Start the MCP server
-nexus-agents
+### Programmatic Usage
 
-# Or run in interactive mode
-nexus-agents --interactive
+The MCP server can be used programmatically:
+
+```typescript
+import { createMcpServer, startStdioServer } from '@nexus-agents/mcp';
+
+const server = createMcpServer();
+await startStdioServer(server);
 ```
 
-### Claude Desktop Integration
+### Claude Desktop Integration (Coming in v1.0.0)
 
-Add to your Claude Desktop configuration (`~/.config/claude/claude_desktop_config.json`):
+Once the CLI is implemented, add to your Claude Desktop configuration:
 
 ```json
 {
@@ -129,13 +137,11 @@ steps:
 
 The server exposes these MCP tools for integration:
 
-| Tool            | Description                                   |
-| --------------- | --------------------------------------------- |
-| `orchestrate`   | Analyze task and coordinate expert execution  |
-| `create_expert` | Dynamically create a specialized expert       |
-| `run_workflow`  | Execute a predefined workflow template        |
-| `list_experts`  | List available experts and their capabilities |
-| `get_status`    | Check execution status of running tasks       |
+| Tool            | Description                                  |
+| --------------- | -------------------------------------------- |
+| `orchestrate`   | Analyze task and coordinate expert execution |
+| `create_expert` | Dynamically create a specialized expert      |
+| `run_workflow`  | Execute a predefined workflow template       |
 
 ---
 
@@ -282,7 +288,7 @@ server:
 | [`@nexus-agents/agents`](./packages/agents)       | Agent framework, TechLead, experts, collaboration    | -   |
 | [`@nexus-agents/workflows`](./packages/workflows) | Workflow engine, YAML templates, parallel execution  | -   |
 | [`@nexus-agents/mcp`](./packages/mcp)             | MCP server, tool definitions, stdio transport        | -   |
-| [`@nexus-agents/cli`](./packages/cli)             | CLI interface, interactive mode                      | -   |
+| [`@nexus-agents/cli`](./packages/cli)             | CLI interface (planned for v1.0.0)                   | -   |
 
 ---
 
@@ -328,25 +334,21 @@ pnpm lint:fix         # Fix linting issues
 pnpm typecheck        # Run TypeScript type checking
 pnpm test             # Run all tests
 pnpm test:coverage    # Run tests with coverage
-
-# CLI
-nexus-agents                    # Start MCP server
-nexus-agents --interactive      # REPL mode
-nexus-agents config init        # Generate config file
-nexus-agents expert list        # List available experts
-nexus-agents workflow run <n>   # Execute a workflow
 ```
+
+> **Note:** CLI commands (`nexus-agents`, `nexus-agents --interactive`, etc.) are planned for v1.0.0. Currently, use the packages programmatically or through MCP integration.
 
 ---
 
 ## Roadmap
 
-| Version    | Status      | Scope                              |
-| ---------- | ----------- | ---------------------------------- |
-| **v0.1.0** | In Progress | Claude + Tech Lead + Code Expert   |
-| **v0.2.0** | Planned     | All adapters + All experts         |
-| **v0.3.0** | Planned     | Workflow engine                    |
-| **v1.0.0** | Planned     | Production hardening + npm publish |
+| Version    | Status      | Scope                                  |
+| ---------- | ----------- | -------------------------------------- |
+| **v0.1.0** | Complete    | Foundation + Core interfaces           |
+| **v0.2.0** | Complete    | All adapters + All experts             |
+| **v0.3.0** | Complete    | Workflow engine                        |
+| **v0.4.0** | Complete    | MCP Server with tools                  |
+| **v1.0.0** | In Progress | CLI, production hardening, npm publish |
 
 See [PROJECT_PLAN.md](./PROJECT_PLAN.md) for detailed roadmap and milestones.
 

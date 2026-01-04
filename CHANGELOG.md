@@ -34,6 +34,14 @@ Phase 6: Production Readiness (v1.0.0)
 
 - Updated package.json files across all 7 packages for npm publishing
 
+### Fixed
+
+- README.md: Corrected installation instructions (package not yet on npm)
+- README.md: Removed non-existent CLI commands (planned for v1.0.0)
+- README.md: Removed non-existent MCP tools (`list_experts`, `get_status`)
+- README.md: Updated roadmap to reflect actual progress (v0.1.0-v0.4.0 complete)
+- README.md: Clarified CLI package status as planned for v1.0.0
+
 ## [0.4.0] - 2026-01-04
 
 Phase 5: MCP Server Implementation
