@@ -1,0 +1,84 @@
+# Code Review Workflow Template
+# Automated code review with parallel security analysis
+#
+# Usage:
+#   Provide files to review and optional focus area.
+#   Workflow analyzes code quality, security, and synthesizes findings.
+
+name: code-review
+version: '1.0.0'
+description: |
+  Automated code review workflow that performs comprehensive analysis.
+  Runs code analysis and security review in parallel, then synthesizes
+  findings into actionable recommendations.
+
+inputs:
+  - name: files
+    type: array
+    description: List of file paths to review
+    required: true
+
+  - name: focus
+    type: string
+    description: Review focus area (general, performance, security, maintainability)
+    default: general
+
+  - name: strictness
+    type: string
+    description: Review strictness level (relaxed, normal, strict)
+    default: normal
+
+steps:
+  # Step 1: Analyze code structure and quality
+  - id: analyze
+    agent: code_expert
+    action: analyze_code
+    description: |
+      Performs comprehensive code analysis including:
+      - Code structure and organization
+      - Naming conventions and readability
+      - Design patterns and best practices
+      - Complexity metrics
+    inputs:
+      files: ${{ inputs.files }}
+      focus: ${{ inputs.focus }}
+      strictness: ${{ inputs.strictness }}
+    timeout: 120000
+    retries: 1
+
+  # Step 2: Security review (runs in parallel with analyze)
+  - id: security
+    agent: security_expert
+    action: security_review
+    description: |
+      Performs security-focused code review:
+      - OWASP Top 10 vulnerability check
+      - Input validation analysis
+      - Authentication/authorization review
+      - Secrets detection
+    inputs:
+      files: ${{ inputs.files }}
+      depth: comprehensive
+    parallel: true
+    timeout: 120000
+    retries: 1
+
+  # Step 3: Synthesize reviews into final report
+  - id: synthesize
+    agent: tech_lead
+    action: synthesize_reviews
+    description: |
+      Combines analysis results into actionable recommendations:
+      - Prioritized findings by severity
+      - Specific code change suggestions
+      - Overall code health assessment
+    inputs:
+      analysis: ${{ steps.analyze.output }}
+      security: ${{ steps.security.output }}
+      focus: ${{ inputs.focus }}
+    dependsOn:
+      - analyze
+      - security
+    timeout: 60000
+
+timeout: 300000

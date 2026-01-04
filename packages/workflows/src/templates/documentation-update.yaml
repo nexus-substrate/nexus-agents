@@ -1,0 +1,91 @@
+# Documentation Update Workflow Template
+# Analyze, update, and review documentation
+#
+# Usage:
+#   Provide documentation scope and target.
+#   Workflow analyzes current state, updates docs, and reviews quality.
+
+name: documentation-update
+version: '1.0.0'
+description: |
+  Documentation update workflow for maintaining accurate docs.
+  Analyzes current documentation, identifies gaps, generates updates,
+  and performs quality review.
+
+inputs:
+  - name: scope
+    type: string
+    description: Documentation scope (api, readme, guide, all)
+    required: true
+
+  - name: targetFiles
+    type: array
+    description: Specific files to document (optional, auto-detected if omitted)
+    required: false
+
+  - name: sourceFiles
+    type: array
+    description: Source code files to extract documentation from
+    required: false
+
+  - name: format
+    type: string
+    description: Output format (markdown, jsdoc, typedoc)
+    default: markdown
+
+steps:
+  # Step 1: Analyze current documentation
+  - id: analyze
+    agent: documentation_expert
+    action: analyze_documentation
+    description: |
+      Analyzes existing documentation:
+      - Identifies outdated sections
+      - Finds missing documentation
+      - Checks code-documentation sync
+      - Assesses documentation quality
+    inputs:
+      scope: ${{ inputs.scope }}
+      targetFiles: ${{ inputs.targetFiles }}
+      sourceFiles: ${{ inputs.sourceFiles }}
+    timeout: 120000
+
+  # Step 2: Update documentation
+  - id: update
+    agent: documentation_expert
+    action: update_documentation
+    description: |
+      Updates and generates documentation:
+      - Fixes outdated content
+      - Adds missing sections
+      - Improves clarity and examples
+      - Ensures consistent formatting
+    inputs:
+      analysis: ${{ steps.analyze.output }}
+      scope: ${{ inputs.scope }}
+      format: ${{ inputs.format }}
+      sourceFiles: ${{ inputs.sourceFiles }}
+    dependsOn:
+      - analyze
+    timeout: 180000
+    retries: 1
+
+  # Step 3: Technical review
+  - id: review
+    agent: code_expert
+    action: review_documentation
+    description: |
+      Technical accuracy review:
+      - Verifies code examples work
+      - Checks API signatures match
+      - Validates installation steps
+      - Ensures technical correctness
+    inputs:
+      documentation: ${{ steps.update.output }}
+      sourceFiles: ${{ inputs.sourceFiles }}
+      scope: ${{ inputs.scope }}
+    dependsOn:
+      - update
+    timeout: 90000
+
+timeout: 390000

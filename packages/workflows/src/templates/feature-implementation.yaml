@@ -1,0 +1,124 @@
+# Feature Implementation Workflow Template
+# End-to-end feature development from planning to review
+#
+# Usage:
+#   Provide feature description and optional constraints.
+#   Workflow handles planning, implementation, testing, docs, and review.
+
+name: feature-implementation
+version: '1.0.0'
+description: |
+  Complete feature implementation workflow from design to review.
+  Follows a structured approach: plan, implement, test, document, review.
+  Ensures quality through automated testing and code review.
+
+inputs:
+  - name: feature
+    type: string
+    description: Feature description and requirements
+    required: true
+
+  - name: targetFiles
+    type: array
+    description: Target files to modify or create
+    required: false
+
+  - name: testingStrategy
+    type: string
+    description: Testing approach (unit, integration, e2e, all)
+    default: unit
+
+  - name: generateDocs
+    type: boolean
+    description: Whether to generate documentation
+    default: true
+
+steps:
+  # Step 1: Architecture planning
+  - id: plan
+    agent: architecture_expert
+    action: design_feature
+    description: |
+      Creates implementation plan including:
+      - Component architecture design
+      - Interface definitions
+      - Integration points
+      - Implementation order
+    inputs:
+      feature: ${{ inputs.feature }}
+      targetFiles: ${{ inputs.targetFiles }}
+    timeout: 120000
+
+  # Step 2: Code implementation
+  - id: implement
+    agent: code_expert
+    action: implement_feature
+    description: |
+      Implements the feature following the plan:
+      - Creates/modifies source files
+      - Follows coding standards
+      - Adds inline documentation
+    inputs:
+      plan: ${{ steps.plan.output }}
+      feature: ${{ inputs.feature }}
+      targetFiles: ${{ inputs.targetFiles }}
+    dependsOn:
+      - plan
+    timeout: 180000
+    retries: 2
+
+  # Step 3: Test generation
+  - id: test
+    agent: testing_expert
+    action: generate_tests
+    description: |
+      Generates comprehensive tests:
+      - Unit tests for new functions
+      - Integration tests for interfaces
+      - Edge case coverage
+    inputs:
+      implementation: ${{ steps.implement.output }}
+      strategy: ${{ inputs.testingStrategy }}
+      feature: ${{ inputs.feature }}
+    dependsOn:
+      - implement
+    timeout: 120000
+
+  # Step 4: Documentation (conditional)
+  - id: document
+    agent: documentation_expert
+    action: generate_documentation
+    description: |
+      Creates/updates documentation:
+      - API documentation
+      - Usage examples
+      - README updates
+    inputs:
+      implementation: ${{ steps.implement.output }}
+      tests: ${{ steps.test.output }}
+      feature: ${{ inputs.feature }}
+    dependsOn:
+      - test
+    condition: ${{ inputs.generateDocs == true }}
+    timeout: 90000
+
+  # Step 5: Final code review
+  - id: review
+    agent: code_expert
+    action: review_implementation
+    description: |
+      Final quality review:
+      - Verify plan adherence
+      - Check code quality
+      - Validate test coverage
+      - Confirm documentation accuracy
+    inputs:
+      plan: ${{ steps.plan.output }}
+      implementation: ${{ steps.implement.output }}
+      tests: ${{ steps.test.output }}
+      documentation: ${{ steps.document.output }}
+    dependsOn:
+      - document
+    timeout: 90000
+
+timeout: 600000

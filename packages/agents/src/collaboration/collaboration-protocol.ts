@@ -16,14 +16,12 @@ import {
   createCollaborationSession,
   type CollaborationSessionOptions,
 } from './collaboration-session.js';
-import {
-  extractApproval,
-  extractFeedback,
-  extractVote,
-  createReviewTask,
-  createVotingTask,
-  sleep,
-} from './protocol-helpers.js';
+import { sleep } from './protocol-helpers.js';
+
+// Import and re-export ReviewProtocol and ConsensusProtocol from their dedicated modules
+import { ReviewProtocol } from './review-protocol.js';
+import { ConsensusProtocol } from './consensus-protocol.js';
+export { ReviewProtocol, ConsensusProtocol };
 
 /**
  * Base interface for collaboration protocols.
@@ -264,146 +262,6 @@ export class ParallelProtocol extends BaseProtocol {
         session.submitResult(expertId, result.value);
       } else {
         this.logger.warn('Expert failed in parallel execution', {
-          expertId,
-          error: result.error.message,
-        });
-        session.markExpertFailed(expertId, result.error.message);
-      }
-    }
-
-    return session.finalize();
-  }
-}
-
-/**
- * Review collaboration protocol.
- */
-export class ReviewProtocol extends BaseProtocol {
-  readonly pattern = 'review' as const;
-
-  async execute(
-    config: CollaborationConfig,
-    agents: Map<string, IAgent>
-  ): Promise<Result<CollaborationResult, AgentError>> {
-    const validation = this.validateAgents(config, agents);
-    if (!validation.ok) {
-      return err(validation.error);
-    }
-
-    if (config.experts.length < 2) {
-      return err(new AgentError('Review protocol requires at least 2 experts'));
-    }
-
-    this.cancelled = false;
-    const session = this.createSession();
-
-    const startResult = session.start(config);
-    if (!startResult.ok) {
-      return err(startResult.error);
-    }
-
-    this.logger.info('Starting review protocol', {
-      sessionId: config.sessionId,
-      producerId: config.experts[0],
-      reviewerId: config.experts[1],
-    });
-
-    const producerId = config.experts[0];
-    const reviewerId = config.experts[1];
-
-    if (producerId === undefined || reviewerId === undefined) {
-      return err(new AgentError('Invalid expert configuration'));
-    }
-
-    const producer = agents.get(producerId);
-    const reviewer = agents.get(reviewerId);
-
-    if (producer === undefined || reviewer === undefined) {
-      return err(new AgentError('Required agents not found'));
-    }
-
-    const productionResult = await this.executeAgentTask(producer, config.task);
-    if (!productionResult.ok) {
-      session.cancel(productionResult.error.message);
-      return err(productionResult.error);
-    }
-
-    session.submitResult(producerId, productionResult.value);
-    session.requestReview(producerId, reviewerId, productionResult.value.output);
-
-    const reviewTask = createReviewTask(config.task, productionResult.value.output, producerId);
-
-    const reviewResult = await this.executeAgentTask(reviewer, reviewTask);
-    if (!reviewResult.ok) {
-      session.cancel(reviewResult.error.message);
-      return err(reviewResult.error);
-    }
-
-    session.submitResult(reviewerId, reviewResult.value);
-
-    const reviewOutput = reviewResult.value.output;
-    const approved = extractApproval(reviewOutput);
-    const feedback = extractFeedback(reviewOutput);
-
-    session.submitReview(reviewerId, producerId, approved, feedback);
-
-    return session.finalize();
-  }
-}
-
-/**
- * Consensus collaboration protocol.
- */
-export class ConsensusProtocol extends BaseProtocol {
-  readonly pattern = 'consensus' as const;
-
-  async execute(
-    config: CollaborationConfig,
-    agents: Map<string, IAgent>
-  ): Promise<Result<CollaborationResult, AgentError>> {
-    const validation = this.validateAgents(config, agents);
-    if (!validation.ok) {
-      return err(validation.error);
-    }
-
-    if (config.experts.length < 3) {
-      return err(new AgentError('Consensus protocol requires at least 3 experts'));
-    }
-
-    this.cancelled = false;
-    const session = this.createSession();
-
-    const startResult = session.start(config);
-    if (!startResult.ok) {
-      return err(startResult.error);
-    }
-
-    this.logger.info('Starting consensus protocol', {
-      sessionId: config.sessionId,
-      expertCount: config.experts.length,
-      requireUnanimous: config.requireUnanimous,
-    });
-
-    const votingTask = createVotingTask(config.task);
-
-    const promises = config.experts.map(async (expertId) => {
-      const agent = agents.get(expertId);
-      if (agent === undefined) {
-        return { expertId, result: err(new AgentError(`Agent not found: ${expertId}`)) };
-      }
-      const result = await this.executeAgentTask(agent, votingTask);
-      return { expertId, result };
-    });
-
-    const results = await Promise.all(promises);
-
-    for (const { expertId, result } of results) {
-      if (result.ok) {
-        session.submitResult(expertId, result.value);
-        const vote = extractVote(result.value.output);
-        session.vote(expertId, vote.decision, vote.reasoning);
-      } else {
-        this.logger.warn('Expert failed in consensus voting', {
           expertId,
           error: result.error.message,
         });

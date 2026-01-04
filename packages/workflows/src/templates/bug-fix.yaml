@@ -1,0 +1,109 @@
+# Bug Fix Workflow Template
+# Structured bug diagnosis, fix, and verification
+#
+# Usage:
+#   Provide bug description and affected files.
+#   Workflow diagnoses the issue, implements fix, and verifies.
+
+name: bug-fix
+version: '1.0.0'
+description: |
+  Bug fix workflow for diagnosing, fixing, and verifying bugs.
+  Follows systematic approach: diagnose root cause, implement fix,
+  add regression tests, and verify the solution.
+
+inputs:
+  - name: bugDescription
+    type: string
+    description: Description of the bug and reproduction steps
+    required: true
+
+  - name: affectedFiles
+    type: array
+    description: Files known to be affected by the bug
+    required: false
+
+  - name: severity
+    type: string
+    description: Bug severity (critical, high, medium, low)
+    default: medium
+
+  - name: addRegressionTest
+    type: boolean
+    description: Whether to add regression test
+    default: true
+
+steps:
+  # Step 1: Diagnose the bug
+  - id: diagnose
+    agent: code_expert
+    action: diagnose_bug
+    description: |
+      Analyzes the bug to identify root cause:
+      - Traces code execution path
+      - Identifies faulty logic
+      - Determines scope of impact
+      - Documents reproduction steps
+    inputs:
+      description: ${{ inputs.bugDescription }}
+      affectedFiles: ${{ inputs.affectedFiles }}
+      severity: ${{ inputs.severity }}
+    timeout: 120000
+    retries: 1
+
+  # Step 2: Implement the fix
+  - id: fix
+    agent: code_expert
+    action: implement_fix
+    description: |
+      Implements the bug fix:
+      - Modifies affected code
+      - Ensures minimal change footprint
+      - Preserves existing functionality
+      - Adds defensive coding where needed
+    inputs:
+      diagnosis: ${{ steps.diagnose.output }}
+      affectedFiles: ${{ inputs.affectedFiles }}
+      severity: ${{ inputs.severity }}
+    dependsOn:
+      - diagnose
+    timeout: 120000
+    retries: 2
+
+  # Step 3: Generate regression test
+  - id: test
+    agent: testing_expert
+    action: generate_regression_test
+    description: |
+      Creates regression tests:
+      - Tests that would have caught the bug
+      - Verifies the fix works correctly
+      - Edge cases around the bug
+    inputs:
+      diagnosis: ${{ steps.diagnose.output }}
+      fix: ${{ steps.fix.output }}
+      bugDescription: ${{ inputs.bugDescription }}
+    dependsOn:
+      - fix
+    condition: ${{ inputs.addRegressionTest == true }}
+    timeout: 90000
+
+  # Step 4: Verify the fix
+  - id: verify
+    agent: testing_expert
+    action: verify_fix
+    description: |
+      Verifies the fix is complete:
+      - Runs existing tests
+      - Runs new regression tests
+      - Checks for side effects
+      - Confirms bug is resolved
+    inputs:
+      diagnosis: ${{ steps.diagnose.output }}
+      fix: ${{ steps.fix.output }}
+      tests: ${{ steps.test.output }}
+    dependsOn:
+      - test
+    timeout: 90000
+
+timeout: 420000

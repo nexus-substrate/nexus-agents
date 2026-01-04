@@ -12,10 +12,11 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "src/templates"
   ],
   "scripts": {
-    "build": "tsup src/index.ts --format esm --dts",
+    "build": "tsup src/index.ts --format esm --dts && cp -r src/templates dist/",
     "dev": "tsup src/index.ts --format esm --dts --watch",
     "test": "vitest run --passWithNoTests",
     "test:coverage": "vitest run --coverage",
@@ -24,10 +25,14 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@nexus-agents/agents": "workspace:*",
     "@nexus-agents/core": "workspace:*",
-    "@nexus-agents/agents": "workspace:*"
+    "uuid": "^13.0.0",
+    "yaml": "^2.8.2",
+    "zod": "^3.24.0"
   },
   "devDependencies": {
+    "@types/uuid": "^11.0.0",
     "tsup": "^8.3.0"
   }
 }
