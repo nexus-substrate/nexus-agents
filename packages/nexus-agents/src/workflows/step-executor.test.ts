@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/workflows - Step Executor Tests
+ * nexus-agents/workflows - Step Executor Tests
  *
  * Tests for step execution, input resolution, retries, and conditions.
  */

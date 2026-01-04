@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents - Expert Factory Tests
+ * nexus-agents/agents - Expert Factory Tests
  */
 
 import { describe, it, expect } from 'vitest';

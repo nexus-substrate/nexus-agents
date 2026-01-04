@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/core - Structured Logger
+ * nexus-agents/core - Structured Logger
  *
  * JSON-structured logging with secret sanitization.
  */

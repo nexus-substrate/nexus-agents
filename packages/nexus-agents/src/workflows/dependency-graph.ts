@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/workflows - Dependency Graph
+ * nexus-agents/workflows - Dependency Graph
  *
  * Builds and validates step dependency graphs for workflow definitions.
  * Detects circular dependencies using Kahn's algorithm for topological sort.

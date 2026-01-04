@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/mcp - Create Expert Tool Tests
+ * nexus-agents/mcp - Create Expert Tool Tests
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';

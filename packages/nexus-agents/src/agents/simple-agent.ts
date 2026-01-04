@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents - SimpleAgent
+ * nexus-agents/agents - SimpleAgent
  *
  * A simple concrete agent implementation for testing and basic use cases.
  */

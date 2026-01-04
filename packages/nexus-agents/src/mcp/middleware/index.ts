@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/mcp - Middleware
+ * nexus-agents/mcp - Middleware
  *
  * Common middleware for MCP tool handlers.
  */

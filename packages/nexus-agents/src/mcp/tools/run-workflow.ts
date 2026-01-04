@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/mcp - Run Workflow Tool
+ * nexus-agents/mcp - Run Workflow Tool
  *
  * MCP tool for executing workflow templates with the workflow engine.
  * Supports both built-in templates and custom template paths.

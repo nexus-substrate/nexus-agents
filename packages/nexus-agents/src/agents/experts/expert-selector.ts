@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents - Expert Selector
+ * nexus-agents/agents - Expert Selector
  *
  * Selects the best experts for a task based on capability matching,
  * domain alignment, and scoring algorithms.

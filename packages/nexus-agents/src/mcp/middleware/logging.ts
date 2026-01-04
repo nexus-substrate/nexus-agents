@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/mcp - Logging Middleware
+ * nexus-agents/mcp - Logging Middleware
  *
  * Structured logger context for MCP operations.
  * Provides consistent logging across all MCP tools and handlers.

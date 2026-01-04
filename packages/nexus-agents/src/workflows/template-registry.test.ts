@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/workflows - Template Registry Tests
+ * nexus-agents/workflows - Template Registry Tests
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';

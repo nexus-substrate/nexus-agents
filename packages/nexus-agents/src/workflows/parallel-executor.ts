@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/workflows - Parallel Executor
+ * nexus-agents/workflows - Parallel Executor
  *
  * Executes workflow steps in parallel with concurrency limiting,
  * fail-fast behavior, and cancellation support.

@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents - BaseAgent Tests
+ * nexus-agents/agents - BaseAgent Tests
  */
 
 import { describe, it, expect, vi, type Mock } from 'vitest';

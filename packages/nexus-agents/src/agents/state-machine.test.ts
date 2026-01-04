@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents - Agent State Machine Tests
+ * nexus-agents/agents - Agent State Machine Tests
  *
  * Tests all state transitions, callbacks, error handling, and recovery.
  */

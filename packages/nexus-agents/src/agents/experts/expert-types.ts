@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents - Expert Types and Schemas
+ * nexus-agents/agents - Expert Types and Schemas
  *
  * Shared type definitions and Zod schemas for expert agents.
  * Experts are domain-specialized agents that handle specific task types.

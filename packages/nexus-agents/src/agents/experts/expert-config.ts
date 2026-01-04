@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents - Expert Configuration
+ * nexus-agents/agents - Expert Configuration
  *
  * Configuration schema and types for dynamically creating expert agents.
  * Experts are specialized agents with specific capabilities and prompts.

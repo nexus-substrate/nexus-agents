@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/core - Result Pattern
+ * nexus-agents/core - Result Pattern
  *
  * Type-safe Result pattern for handling fallible operations without exceptions.
  * Inspired by Rust's Result<T, E> type.

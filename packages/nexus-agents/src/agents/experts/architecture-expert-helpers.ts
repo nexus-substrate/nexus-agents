@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents - ArchitectureExpert Helpers
+ * nexus-agents/agents - ArchitectureExpert Helpers
  *
  * Helper functions for the ArchitectureExpert agent including
  * pattern identification and heuristic analysis utilities.

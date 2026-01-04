@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/mcp - MCP Server
+ * nexus-agents/mcp - MCP Server
  *
  * Main MCP server implementation for Nexus Agents orchestration.
  * Provides factory functions to create and start the server with

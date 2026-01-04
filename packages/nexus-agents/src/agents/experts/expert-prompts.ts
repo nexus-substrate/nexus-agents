@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents - Expert System Prompts
+ * nexus-agents/agents - Expert System Prompts
  *
  * System prompts for expert agents.
  */

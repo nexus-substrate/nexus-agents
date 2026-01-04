@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents - SecurityExpert Helpers
+ * nexus-agents/agents - SecurityExpert Helpers
  *
  * Helper functions for the SecurityExpert agent including
  * vulnerability detection and heuristic analysis utilities.

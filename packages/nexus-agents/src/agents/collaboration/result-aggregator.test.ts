@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents - Result Aggregator Tests
+ * nexus-agents/agents - Result Aggregator Tests
  */
 
 import { describe, it, expect, vi } from 'vitest';

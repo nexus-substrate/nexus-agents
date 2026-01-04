@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/adapters - Adapter Factory Tests
+ * nexus-agents/adapters - Adapter Factory Tests
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';

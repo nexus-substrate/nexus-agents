@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/adapters - Streaming Utilities
+ * nexus-agents/adapters - Streaming Utilities
  *
  * AsyncIterator-based streaming utilities for model responses.
  * Provides stream creation, backpressure handling, cancellation support,

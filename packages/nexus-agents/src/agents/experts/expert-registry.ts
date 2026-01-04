@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents - Expert Registry
+ * nexus-agents/agents - Expert Registry
  *
  * Singleton registry for managing expert agents.
  * Provides registration, lookup, and query capabilities.

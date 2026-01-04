@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/workflows - Execution Planner
+ * nexus-agents/workflows - Execution Planner
  *
  * Creates execution plans with phases based on step dependencies.
  * Uses topological sort to group independent steps into concurrent phases.

@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/mcp - Create Expert Tool
+ * nexus-agents/mcp - Create Expert Tool
  *
  * MCP tool for creating expert agents dynamically.
  * Supports built-in expert types: code, architecture, security, documentation, testing.

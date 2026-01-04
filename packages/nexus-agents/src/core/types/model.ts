@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/core - Model Adapter Types
+ * nexus-agents/core - Model Adapter Types
  *
  * Unified interface for all model adapters (Claude, OpenAI, Gemini, Ollama).
  */

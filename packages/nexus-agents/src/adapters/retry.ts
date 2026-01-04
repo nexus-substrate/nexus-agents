@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/adapters - Retry Logic with Exponential Backoff
+ * nexus-agents/adapters - Retry Logic with Exponential Backoff
  *
  * Provides retry functionality for fallible operations with exponential backoff
  * and jitter to prevent thundering herd problems.

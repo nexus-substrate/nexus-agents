@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/adapters - Ollama Model Adapter
+ * nexus-agents/adapters - Ollama Model Adapter
  *
  * Adapter for local Ollama models (llama3, mistral, codellama, etc.).
  * Verified 2026-01-03: ollama@0.6.3 is current stable (Source: npm registry)

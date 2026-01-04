@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents - Task Analyzer
+ * nexus-agents/agents - Task Analyzer
  *
  * Analyzes tasks to extract features for expert matching.
  * Uses keyword extraction and pattern matching to determine domain, complexity,

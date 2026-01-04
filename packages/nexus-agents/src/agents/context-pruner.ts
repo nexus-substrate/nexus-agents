@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents - ContextPruner
+ * nexus-agents/agents - ContextPruner
  *
  * Handles context pruning with priority-based content retention,
  * summarization triggers, and various history pruning strategies.

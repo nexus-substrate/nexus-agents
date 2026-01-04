@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/adapters - Retry Logic Tests
+ * nexus-agents/adapters - Retry Logic Tests
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';

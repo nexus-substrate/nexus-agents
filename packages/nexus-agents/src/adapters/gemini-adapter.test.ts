@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/adapters - Gemini Adapter Tests
+ * nexus-agents/adapters - Gemini Adapter Tests
  *
  * Tests for GeminiAdapter implementation.
  * Uses mocking to test without live API calls.

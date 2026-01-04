@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents - Collaboration Module
+ * nexus-agents/agents - Collaboration Module
  *
  * Expert collaboration protocol for multi-agent orchestration.
  * Supports sequential, parallel, review, and consensus patterns.

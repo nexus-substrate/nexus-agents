@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents - Task Analyzer Keywords
+ * nexus-agents/agents - Task Analyzer Keywords
  *
  * Keyword patterns and constants for task analysis.
  */

@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/adapters - Ollama Adapter Tests
+ * nexus-agents/adapters - Ollama Adapter Tests
  * Uses mocking to test without live API calls.
  */
 

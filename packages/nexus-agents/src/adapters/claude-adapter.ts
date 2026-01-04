@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/adapters - Claude/Anthropic Model Adapter
+ * nexus-agents/adapters - Claude/Anthropic Model Adapter
  *
  * Adapter for Anthropic's Claude models (claude-opus-4, claude-sonnet-4, claude-haiku-3).
  * Implements the IModelAdapter interface with streaming support, rate limiting,

@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents - ArchitectureExpert
+ * nexus-agents/agents - ArchitectureExpert
  *
  * Expert agent specialized in system design, design patterns,
  * and architecture decisions. Uses temperature 0.5 for balanced creativity.

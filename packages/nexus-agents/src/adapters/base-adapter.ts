@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/adapters - Base Adapter
+ * nexus-agents/adapters - Base Adapter
  *
  * Abstract base class that all model adapters extend.
  * Provides common functionality for token counting, logging, error transformation,

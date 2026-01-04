@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents - DocumentationExpert
+ * nexus-agents/agents - DocumentationExpert
  *
  * Expert agent specialized in documentation generation, API documentation,
  * and README creation. Uses temperature 0.4 for clear yet engaging content.

@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/workflows - Execution Context
+ * nexus-agents/workflows - Execution Context
  *
  * Manages execution state and variable resolution for workflow steps.
  * Provides context isolation and result tracking during workflow execution.

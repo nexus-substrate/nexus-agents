@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/mcp
+ * nexus-agents/mcp
  *
  * MCP server implementation for Nexus Agents.
  * Provides tools for orchestrating multi-agent workflows.

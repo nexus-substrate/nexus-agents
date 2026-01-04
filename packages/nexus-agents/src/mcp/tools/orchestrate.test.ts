@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/mcp - Orchestrate Tool Tests
+ * nexus-agents/mcp - Orchestrate Tool Tests
  */
 
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';

@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents - ContextPruner Tests
+ * nexus-agents/agents - ContextPruner Tests
  */
 
 import { describe, it, expect, vi, type Mock } from 'vitest';

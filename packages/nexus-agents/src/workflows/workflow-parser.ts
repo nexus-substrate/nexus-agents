@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/workflows - Workflow Parser
+ * nexus-agents/workflows - Workflow Parser
  *
  * Parses and validates workflow definitions from YAML and JSON formats.
  * Uses Zod schemas for runtime validation at the parsing boundary.

@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents - Expert System
+ * nexus-agents/agents - Expert System
  *
  * Dynamic expert factory and registry for creating specialized agents.
  * Includes task analysis and expert selection algorithms.

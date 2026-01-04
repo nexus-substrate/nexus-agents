@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents - Expert Factory
+ * nexus-agents/agents - Expert Factory
  *
  * Factory for creating expert agents from configuration.
  * Supports both built-in expert types and custom configurations.

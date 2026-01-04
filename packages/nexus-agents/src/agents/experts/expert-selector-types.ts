@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents - Expert Selector Types
+ * nexus-agents/agents - Expert Selector Types
  *
  * Shared types for expert selection to avoid circular dependencies.
  */

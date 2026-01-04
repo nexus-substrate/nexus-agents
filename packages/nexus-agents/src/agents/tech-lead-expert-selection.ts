@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents - TechLead Expert Selection Helpers
+ * nexus-agents/agents - TechLead Expert Selection Helpers
  *
  * Helper functions for selecting and scoring experts for subtask assignment.
  */

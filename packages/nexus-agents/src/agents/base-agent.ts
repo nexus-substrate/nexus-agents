@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents - BaseAgent
+ * nexus-agents/agents - BaseAgent
  *
  * Abstract base class implementing the IAgent interface.
  * Provides common functionality for state management, logging,

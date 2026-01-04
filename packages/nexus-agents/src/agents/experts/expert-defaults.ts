@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents - Default Expert Registry
+ * nexus-agents/agents - Default Expert Registry
  *
  * Default expert definitions for the expert selector.
  */

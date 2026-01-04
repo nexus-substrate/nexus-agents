@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/workflows - Workflow Engine
+ * nexus-agents/workflows - Workflow Engine
  *
  * Main workflow engine implementation that coordinates parsing,
  * execution planning, and step execution.

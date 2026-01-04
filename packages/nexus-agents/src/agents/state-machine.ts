@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents - Agent State Machine
+ * nexus-agents/agents - Agent State Machine
  *
  * Manages agent state transitions with validation, events, and error recovery.
  *

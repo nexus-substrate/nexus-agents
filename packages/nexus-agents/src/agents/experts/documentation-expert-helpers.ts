@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents - DocumentationExpert Helpers
+ * nexus-agents/agents - DocumentationExpert Helpers
  *
  * Helper functions for the DocumentationExpert agent including
  * section generation and heuristic analysis utilities.

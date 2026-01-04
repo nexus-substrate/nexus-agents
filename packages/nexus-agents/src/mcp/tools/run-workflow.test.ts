@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/mcp - Run Workflow Tool Tests
+ * nexus-agents/mcp - Run Workflow Tool Tests
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';

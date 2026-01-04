@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents - Protocol Helpers
+ * nexus-agents/agents - Protocol Helpers
  *
  * Helper functions for collaboration protocol operations.
  * Extracted to keep the main protocol classes under 400 lines.

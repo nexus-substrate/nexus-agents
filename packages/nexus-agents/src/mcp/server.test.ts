@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/mcp - Server Tests
+ * nexus-agents/mcp - Server Tests
  *
  * Tests for MCP server creation and transport connection.
  */

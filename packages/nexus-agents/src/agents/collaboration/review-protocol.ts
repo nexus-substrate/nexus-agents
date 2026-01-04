@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents - Review Collaboration Protocol
+ * nexus-agents/agents - Review Collaboration Protocol
  *
  * Protocol implementation for review collaboration pattern where
  * one expert produces work and another reviews it.

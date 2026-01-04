@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents - Consensus Collaboration Protocol
+ * nexus-agents/agents - Consensus Collaboration Protocol
  *
  * Protocol implementation for consensus-based collaboration pattern where
  * multiple experts vote on decisions.

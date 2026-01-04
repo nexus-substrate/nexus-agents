@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents - Collaboration Session
+ * nexus-agents/agents - Collaboration Session
  *
  * Manages collaboration sessions between multiple experts.
  * Handles session lifecycle, message routing, and result collection.

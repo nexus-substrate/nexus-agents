@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/adapters - Adapter Factory
+ * nexus-agents/adapters - Adapter Factory
  *
  * Registry-based factory for creating model adapters.
  * Provides a centralized way to register and create adapters for different providers.

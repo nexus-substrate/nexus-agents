@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents - TechLead Helper Functions
+ * nexus-agents/agents - TechLead Helper Functions
  *
  * Helper functions for TechLead task analysis, decomposition, and synthesis.
  */

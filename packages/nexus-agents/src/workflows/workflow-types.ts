@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/workflows - Workflow Types
+ * nexus-agents/workflows - Workflow Types
  *
  * Zod schemas for runtime validation of workflow definitions.
  * These schemas validate YAML/JSON workflow templates at parse time.

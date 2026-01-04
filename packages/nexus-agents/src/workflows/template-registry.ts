@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/workflows - Template Registry
+ * nexus-agents/workflows - Template Registry
  *
  * Registry for managing workflow templates (built-in and custom).
  */

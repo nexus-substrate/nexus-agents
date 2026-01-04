@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/adapters - Gemini Type Utilities
+ * nexus-agents/adapters - Gemini Type Utilities
  *
  * Type mappings and helper functions for the Gemini adapter.
  */

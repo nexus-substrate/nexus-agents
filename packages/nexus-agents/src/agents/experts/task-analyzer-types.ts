@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents - Task Analyzer Types
+ * nexus-agents/agents - Task Analyzer Types
  *
  * Type definitions for task analysis.
  */

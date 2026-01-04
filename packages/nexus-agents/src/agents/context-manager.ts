@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents - ContextManager
+ * nexus-agents/agents - ContextManager
  *
  * Manages context window for agents, enforcing token budgets
  * and content priority levels. Integrates with model adapters

@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/core
+ * nexus-agents/core
  * Shared types, Result<T,E>, errors, and logger for Nexus Agents
  */
 

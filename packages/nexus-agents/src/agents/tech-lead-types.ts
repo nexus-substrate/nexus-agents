@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents - TechLead Types and Schemas
+ * nexus-agents/agents - TechLead Types and Schemas
  *
  * Type definitions and Zod schemas for TechLead agent functionality.
  * Includes subtask, expert selection, and synthesis types.

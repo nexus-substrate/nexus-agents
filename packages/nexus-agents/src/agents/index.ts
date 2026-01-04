@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents
+ * nexus-agents/agents
  *
  * Agent framework for Nexus Agents.
  * Provides base classes and implementations for AI agents.

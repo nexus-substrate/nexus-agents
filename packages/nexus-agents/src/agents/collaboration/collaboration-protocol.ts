@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents - Collaboration Protocols
+ * nexus-agents/agents - Collaboration Protocols
  *
  * Protocol implementations for different collaboration patterns:
  * - Sequential: Experts work in order, passing results forward

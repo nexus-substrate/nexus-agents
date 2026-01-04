@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents - Agent Validation Schemas
+ * nexus-agents/agents - Agent Validation Schemas
  *
  * Zod schemas for validating agent-related data structures.
  */

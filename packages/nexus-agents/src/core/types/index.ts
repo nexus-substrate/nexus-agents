@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/core - Type Exports
+ * nexus-agents/core - Type Exports
  */
 
 // Model types

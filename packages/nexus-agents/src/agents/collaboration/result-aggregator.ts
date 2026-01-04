@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents - Result Aggregator
+ * nexus-agents/agents - Result Aggregator
  *
  * Aggregates results from multiple experts into a final output.
  * Handles merging, conflict detection, and quality scoring.

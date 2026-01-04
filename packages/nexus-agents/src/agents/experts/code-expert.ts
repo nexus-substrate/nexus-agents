@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents - CodeExpert
+ * nexus-agents/agents - CodeExpert
  *
  * Expert agent specialized in code generation, refactoring, optimization,
  * and debugging. Uses low temperature (0.2-0.3) for precise code output.

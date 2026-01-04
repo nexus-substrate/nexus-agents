@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents - Collaboration Protocol Tests
+ * nexus-agents/agents - Collaboration Protocol Tests
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';

@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/workflows - Template Types
+ * nexus-agents/workflows - Template Types
  *
  * Type definitions and Zod schemas for workflow templates.
  */

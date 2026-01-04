@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/adapters - Gemini/Google AI Model Adapter
+ * nexus-agents/adapters - Gemini/Google AI Model Adapter
  *
  * Adapter for Google's Gemini models (gemini-2.5-flash, gemini-2.0-flash, gemini-1.5-pro).
  * Implements the IModelAdapter interface with streaming support, tool calling,

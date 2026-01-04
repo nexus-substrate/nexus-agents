@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/config - Configuration Schemas
+ * nexus-agents/config - Configuration Schemas
  *
  * Zod schemas for all configuration types.
  */

@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents - TechLead Task Decomposition Helpers
+ * nexus-agents/agents - TechLead Task Decomposition Helpers
  *
  * Helper functions for decomposing tasks into subtasks based on task type.
  */

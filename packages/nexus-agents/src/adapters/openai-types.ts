@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/adapters - OpenAI Type Helpers
+ * nexus-agents/adapters - OpenAI Type Helpers
  *
  * Type definitions and constants for OpenAI adapter.
  */

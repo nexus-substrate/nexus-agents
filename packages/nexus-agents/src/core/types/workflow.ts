@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/core - Workflow Types
+ * nexus-agents/core - Workflow Types
  *
  * Interface for workflow execution engine.
  */

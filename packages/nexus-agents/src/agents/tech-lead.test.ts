@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents - TechLead Tests
+ * nexus-agents/agents - TechLead Tests
  */
 
 import { describe, it, expect, vi, type Mock } from 'vitest';

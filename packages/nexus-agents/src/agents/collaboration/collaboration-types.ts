@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents - Collaboration Types
+ * nexus-agents/agents - Collaboration Types
  *
  * Type definitions for expert collaboration protocol.
  * Defines patterns for sequential, parallel, review, and consensus collaboration.

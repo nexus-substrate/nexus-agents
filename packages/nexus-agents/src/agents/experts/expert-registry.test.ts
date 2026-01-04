@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents - Expert Registry Tests
+ * nexus-agents/agents - Expert Registry Tests
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';

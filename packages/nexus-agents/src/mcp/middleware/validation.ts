@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/mcp - Validation Middleware
+ * nexus-agents/mcp - Validation Middleware
  *
  * Input validation helper using Zod schemas.
  * All tool inputs must be validated at the boundary.

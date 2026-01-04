@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents - Aggregator Helpers
+ * nexus-agents/agents - Aggregator Helpers
  *
  * Helper functions for result aggregation operations.
  * Extracted to keep the main aggregator class under 400 lines.

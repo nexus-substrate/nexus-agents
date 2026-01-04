@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents - ContextManager Tests
+ * nexus-agents/agents - ContextManager Tests
  */
 
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';

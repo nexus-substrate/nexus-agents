@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/mcp - Orchestrate Tool
+ * nexus-agents/mcp - Orchestrate Tool
  *
  * MCP tool for task orchestration using TechLead agent.
  * Analyzes tasks, coordinates with experts, and returns structured results.

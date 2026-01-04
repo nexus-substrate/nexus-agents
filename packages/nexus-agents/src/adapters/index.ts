@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/adapters
+ * nexus-agents/adapters
  *
  * Model adapters and utilities for Nexus Agents.
  */

@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/core - Error Hierarchy
+ * nexus-agents/core - Error Hierarchy
  *
  * Structured error classes for consistent error handling across the codebase.
  */

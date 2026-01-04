@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents - SecurityExpert
+ * nexus-agents/agents - SecurityExpert
  *
  * Expert agent specialized in security review, vulnerability detection,
  * and security hardening. Uses temperature 0.3 for precise analysis.

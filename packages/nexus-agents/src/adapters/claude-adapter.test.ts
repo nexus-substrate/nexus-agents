@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/adapters - Claude Adapter Tests
+ * nexus-agents/adapters - Claude Adapter Tests
  *
  * Tests for ClaudeAdapter implementation.
  * Uses mocking to test without live API calls.

@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/adapters - Token Bucket Rate Limiter
+ * nexus-agents/adapters - Token Bucket Rate Limiter
  *
  * A rate limiter implementation using the token bucket algorithm.
  * Tokens are added to the bucket at a fixed rate up to a maximum capacity.

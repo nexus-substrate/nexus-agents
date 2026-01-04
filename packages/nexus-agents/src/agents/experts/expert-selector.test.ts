@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents - Expert Selector Tests
+ * nexus-agents/agents - Expert Selector Tests
  *
  * Tests expert matching, scoring, and collaboration detection.
  */

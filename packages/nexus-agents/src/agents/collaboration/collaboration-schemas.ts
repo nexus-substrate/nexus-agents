@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents - Collaboration Schemas
+ * nexus-agents/agents - Collaboration Schemas
  *
  * Zod schemas for collaboration protocol validation.
  */

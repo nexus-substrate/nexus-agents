@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/workflows - Task Queue
+ * nexus-agents/workflows - Task Queue
  *
  * Simple task queue for limiting concurrent task execution.
  * Provides cancellation support via AbortController.

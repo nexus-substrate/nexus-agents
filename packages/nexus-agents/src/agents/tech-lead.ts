@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents - TechLead Agent
+ * nexus-agents/agents - TechLead Agent
  *
  * The TechLead agent is responsible for:
  * - Analyzing incoming tasks for complexity and requirements

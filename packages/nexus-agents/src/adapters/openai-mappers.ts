@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/adapters - OpenAI Message Mappers
+ * nexus-agents/adapters - OpenAI Message Mappers
  *
  * Functions for mapping between Nexus and OpenAI message formats.
  */

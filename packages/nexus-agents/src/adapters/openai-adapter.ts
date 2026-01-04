@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/adapters - OpenAI Model Adapter
+ * nexus-agents/adapters - OpenAI Model Adapter
  *
  * Adapter for OpenAI models (GPT-4o, GPT-4-turbo, GPT-3.5-turbo).
  * Implements the IModelAdapter interface with streaming support, rate limiting,

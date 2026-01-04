@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents - SecurityExpert Tests
+ * nexus-agents/agents - SecurityExpert Tests
  */
 
 import { describe, it, expect, vi } from 'vitest';

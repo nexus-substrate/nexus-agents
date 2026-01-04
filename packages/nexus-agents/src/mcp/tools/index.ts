@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/mcp - Tools
+ * nexus-agents/mcp - Tools
  *
  * MCP tool implementations for the Nexus Agents server.
  *

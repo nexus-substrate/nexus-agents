@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/config
+ * nexus-agents/config
  * Configuration loading and validation for Nexus Agents
  */
 

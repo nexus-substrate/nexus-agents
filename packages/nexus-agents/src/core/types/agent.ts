@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/core - Agent Types
+ * nexus-agents/core - Agent Types
  *
  * Base interface for all agents (TechLead, Experts, dynamic agents).
  */

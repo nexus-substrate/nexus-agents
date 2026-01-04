@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/adapters - Stream Operators
+ * nexus-agents/adapters - Stream Operators
  *
  * Stream transformation operators for AsyncIterables.
  * Provides filter, map, merge, concat, buffer, and other stream operations.

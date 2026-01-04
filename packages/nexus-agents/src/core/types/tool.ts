@@ -1,11 +1,11 @@
 /**
- * @nexus-agents/core - Tool Types
+ * nexus-agents/core - Tool Types
  *
  * Interface for MCP tools (MCP Protocol 2025-11-25).
  */
 
 // Note: Zod types used here are for documentation.
-// Actual validation will be done in @nexus-agents/mcp package.
+// Actual validation will be done in nexus-agents/mcp package.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ZodSchema = { parse: (data: unknown) => any; safeParse: (data: unknown) => any };
 import type { Result } from '../result.js';

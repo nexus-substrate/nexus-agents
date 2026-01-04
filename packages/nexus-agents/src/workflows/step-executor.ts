@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/workflows - Step Executor
+ * nexus-agents/workflows - Step Executor
  *
  * Executes individual workflow steps using agent experts.
  * Handles input resolution, error handling, retries, timeouts, and conditions.

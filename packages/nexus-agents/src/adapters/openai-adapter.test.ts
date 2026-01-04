@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/adapters - OpenAI Adapter Tests
+ * nexus-agents/adapters - OpenAI Adapter Tests
  *
  * Tests for OpenAIAdapter implementation.
  * Uses mocking to test without live API calls.

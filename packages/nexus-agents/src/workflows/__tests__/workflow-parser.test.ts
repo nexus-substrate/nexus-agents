@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/workflows - Workflow Parser Tests
+ * nexus-agents/workflows - Workflow Parser Tests
  *
  * Tests for YAML/JSON parsing, validation, and dependency graph analysis.
  */

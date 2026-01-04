@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/adapters - Base Adapter Tests
+ * nexus-agents/adapters - Base Adapter Tests
  */
 
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';

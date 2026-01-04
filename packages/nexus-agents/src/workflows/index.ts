@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/workflows
+ * nexus-agents/workflows
  *
  * Workflow engine with parallel execution support and built-in templates.
  * Provides YAML/JSON parsing, validation, and dependency graph analysis.

@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents - TestingExpert
+ * nexus-agents/agents - TestingExpert
  *
  * Expert agent specialized in test generation, coverage analysis,
  * and quality assurance. Uses temperature 0.3 for precise test output.

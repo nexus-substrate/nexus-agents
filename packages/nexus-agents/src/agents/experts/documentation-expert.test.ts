@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents - DocumentationExpert Tests
+ * nexus-agents/agents - DocumentationExpert Tests
  */
 
 import { describe, it, expect, vi } from 'vitest';

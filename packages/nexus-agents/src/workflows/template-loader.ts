@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/workflows - Template Loader
+ * nexus-agents/workflows - Template Loader
  *
  * Utilities for loading and parsing YAML workflow templates.
  */

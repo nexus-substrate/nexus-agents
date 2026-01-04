@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents - Session Helpers
+ * nexus-agents/agents - Session Helpers
  *
  * Helper functions for collaboration session operations.
  * Extracted to keep the main session class under 400 lines.

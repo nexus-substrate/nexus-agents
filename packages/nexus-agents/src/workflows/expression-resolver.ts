@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/workflows - Expression Resolver
+ * nexus-agents/workflows - Expression Resolver
  *
  * Parses and resolves ${{ }} template expressions in workflow step inputs.
  * Supports accessing workflow inputs, step outputs, and variables.

@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/mcp - Rate Limiter Middleware
+ * nexus-agents/mcp - Rate Limiter Middleware
  *
  * Token bucket implementation for rate limiting MCP tool calls.
  * Prevents abuse and ensures fair resource usage.

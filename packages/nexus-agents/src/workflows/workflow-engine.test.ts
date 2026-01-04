@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/workflows - Workflow Engine Tests
+ * nexus-agents/workflows - Workflow Engine Tests
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';

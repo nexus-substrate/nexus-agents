@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/workflows - Parallel Executor Tests
+ * nexus-agents/workflows - Parallel Executor Tests
  *
  * Comprehensive tests for parallel execution, concurrency limiting,
  * fail-fast behavior, and cancellation support.

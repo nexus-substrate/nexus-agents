@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents - TestingExpert Helpers
+ * nexus-agents/agents - TestingExpert Helpers
  *
  * Helper functions for the TestingExpert agent including
  * test template generation and heuristic analysis utilities.

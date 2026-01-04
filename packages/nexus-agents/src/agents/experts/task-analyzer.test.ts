@@ -1,5 +1,5 @@
 /**
- * @nexus-agents/agents - Task Analyzer Tests
+ * nexus-agents/agents - Task Analyzer Tests
  *
  * Tests keyword extraction, domain detection, complexity analysis, and effort estimation.
  */
