@@ -485,21 +485,23 @@ const TEMPERATURE_MAP = {
 ```
 nexus-agents/
 ├── packages/
-│   ├── core/           # Types, Result<T,E>, errors, logger
-│   ├── config/         # Configuration, validation
-│   ├── adapters/       # Model adapters (Claude, OpenAI, etc.)
-│   ├── agents/         # Agent framework, TechLead, Experts
-│   ├── workflows/      # Workflow engine, templates
-│   ├── mcp/            # MCP server, tools
-│   └── cli/            # CLI interface
-├── apps/
-│   └── nexus-agents/   # Main entry point
+│   └── nexus-agents/       # Main package (single consolidated package)
+│       ├── src/
+│       │   ├── core/       # Types, Result<T,E>, errors, logger
+│       │   ├── config/     # Configuration, validation
+│       │   ├── adapters/   # Model adapters (Claude, OpenAI, etc.)
+│       │   ├── agents/     # Agent framework, TechLead, Experts
+│       │   ├── workflows/  # Workflow engine, templates
+│       │   ├── mcp/        # MCP server, tools
+│       │   ├── index.ts    # Main exports
+│       │   └── cli.ts      # CLI entry point
+│       └── package.json
 ├── .claude/
-│   ├── rules/          # Modular Claude rules
-│   └── skills/         # Project-specific skills
-├── CLAUDE.md           # This file
-├── CODING_STANDARDS.md # Detailed standards
-└── update_plan.md      # Project plan
+│   ├── rules/              # Modular Claude rules
+│   └── skills/             # Project-specific skills
+├── CLAUDE.md               # This file
+├── CODING_STANDARDS.md     # Detailed standards
+└── pnpm-workspace.yaml
 ```
 
 ---
@@ -580,9 +582,9 @@ When anything fails:
 ## File References
 
 - @CODING_STANDARDS.md - Detailed coding standards
-- @update_plan.md - Project roadmap and phases
-- @packages/core/src/types/index.ts - Core type definitions
-- @packages/mcp/src/tools/ - MCP tool implementations
+- @packages/nexus-agents/src/core/types/index.ts - Core type definitions
+- @packages/nexus-agents/src/mcp/ - MCP server and tool implementations
+- @packages/nexus-agents/src/agents/ - Agent framework
 
 ---
 

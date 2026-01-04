@@ -1,6 +1,6 @@
 # Nexus Agents Architecture
 
-**Version:** 1.0.0
+**Version:** 2.0.0
 **Last Updated:** 2026-01-04
 **Status:** Production Release
 
@@ -24,32 +24,70 @@ Nexus Agents is a multi-agent orchestration MCP server that coordinates AI exper
 ```
 nexus-agents/
 ├── packages/
-│   ├── core/           # Shared types, Result<T,E>, errors, logger
-│   ├── config/         # Configuration loading, validation, Zod schemas
-│   ├── adapters/       # Model adapters (Claude, OpenAI, Gemini, Ollama)
-│   ├── agents/         # Agent framework (TechLead, Experts)
-│   ├── workflows/      # Workflow engine, templates, execution
-│   ├── mcp/            # MCP server, tool definitions
-│   └── cli/            # CLI interface
+│   └── nexus-agents/       # Single consolidated package
+│       └── src/
+│           ├── core/       # Shared types, Result<T,E>, errors, logger
+│           ├── config/     # Configuration loading, validation, Zod schemas
+│           ├── adapters/   # Model adapters (Claude, OpenAI, Gemini, Ollama)
+│           ├── agents/     # Agent framework (TechLead, Experts)
+│           ├── workflows/  # Workflow engine, templates, execution
+│           ├── mcp/        # MCP server, tool definitions
+│           ├── cli/        # CLI interface
+│           └── index.ts    # Public API exports
 └── apps/
-    └── nexus-agents/   # Main entry point
+    └── nexus-agents/       # Main entry point
 ```
 
-### Package Responsibilities
+### Installation
 
-| Package                   | Responsibility                        | Dependencies            |
-| ------------------------- | ------------------------------------- | ----------------------- |
-| `@nexus-agents/core`      | Types, Result pattern, errors, logger | None                    |
-| `@nexus-agents/config`    | Zod schemas, config loading           | core                    |
-| `@nexus-agents/adapters`  | Model API abstractions                | core                    |
-| `@nexus-agents/agents`    | Agent lifecycle, collaboration        | core, adapters          |
-| `@nexus-agents/workflows` | Template parsing, execution           | core, agents            |
-| `@nexus-agents/mcp`       | MCP protocol, tools                   | core, agents, workflows |
-| `@nexus-agents/cli`       | Command-line interface                | core, config, mcp       |
+```bash
+npm install nexus-agents
+```
+
+### Module Responsibilities
+
+| Module      | Responsibility                        | Internal Dependencies   |
+| ----------- | ------------------------------------- | ----------------------- |
+| `core`      | Types, Result pattern, errors, logger | None                    |
+| `config`    | Zod schemas, config loading           | core                    |
+| `adapters`  | Model API abstractions                | core                    |
+| `agents`    | Agent lifecycle, collaboration        | core, adapters          |
+| `workflows` | Template parsing, execution           | core, agents            |
+| `mcp`       | MCP protocol, tools                   | core, agents, workflows |
+| `cli`       | Command-line interface                | core, config, mcp       |
+
+### Imports
+
+All exports are available from the single package entry point:
+
+```typescript
+import {
+  // Core
+  Result,
+  AgentError,
+  logger,
+  // Config
+  loadConfig,
+  ConfigSchema,
+  // Adapters
+  ClaudeAdapter,
+  OpenAIAdapter,
+  // Agents
+  TechLead,
+  Expert,
+  AgentPool,
+  // Workflows
+  WorkflowEngine,
+  WorkflowDefinition,
+  // MCP
+  createMcpServer,
+  registerTools,
+} from 'nexus-agents';
+```
 
 ---
 
-## Dependency Graph
+## Internal Dependency Graph
 
 ```mermaid
 graph TD
@@ -58,14 +96,14 @@ graph TD
         API[Model APIs]
     end
 
-    subgraph "Nexus Agents"
-        MCP[MCP Server]
-        CLI[CLI]
-        WF[Workflows]
-        AG[Agents]
-        AD[Adapters]
-        CFG[Config]
-        CORE[Core]
+    subgraph "nexus-agents package"
+        MCP[mcp/]
+        CLI[cli/]
+        WF[workflows/]
+        AG[agents/]
+        AD[adapters/]
+        CFG[config/]
+        CORE[core/]
     end
 
     CD -->|MCP Protocol| MCP
@@ -87,8 +125,9 @@ graph TD
 
 1. **Core has no dependencies** - It's the foundation layer
 2. **Dependencies flow downward** - Higher layers depend on lower
-3. **No circular dependencies** - Enforced by TypeScript
+3. **No circular dependencies** - Enforced by TypeScript path restrictions
 4. **Interfaces before implementations** - Core defines contracts
+5. **Single package, modular internals** - All modules ship as one npm package
 
 ---
 
@@ -310,6 +349,8 @@ security:
 4. Add to model tiers
 
 ```typescript
+import { IModelAdapter } from 'nexus-agents';
+
 class MyModelAdapter implements IModelAdapter {
   readonly providerId = 'my-provider';
   readonly modelId = 'my-model';
@@ -338,11 +379,18 @@ experts:
 3. Define Zod input schema
 
 ```typescript
+import { ITool } from 'nexus-agents';
+import { z } from 'zod';
+
 const myTool: ITool = {
   name: 'my_tool',
   description: 'Does something useful',
-  inputSchema: z.object({ ... }),
-  execute: async (input) => { ... }
+  inputSchema: z.object({
+    /* ... */
+  }),
+  execute: async (input) => {
+    /* ... */
+  },
 };
 ```
 

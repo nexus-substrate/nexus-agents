@@ -171,16 +171,21 @@ The server exposes these MCP tools for integration:
 ```
 nexus-agents/
 ├── packages/
-│   └── nexus-agents/     # Main package (all modules consolidated)
-│       └── src/
-│           ├── core/         # Shared types, Result<T,E>, errors, logger
-│           ├── config/       # Configuration loading and validation
-│           ├── adapters/     # Model adapters (Claude, OpenAI, Gemini, Ollama)
-│           ├── agents/       # Agent framework (TechLead, Experts)
-│           ├── workflows/    # Workflow engine and templates
-│           ├── mcp/          # MCP server and tool definitions
-│           ├── index.ts      # Main exports
-│           └── cli.ts        # CLI entry point
+│   └── nexus-agents/         # Main package (single consolidated package)
+│       ├── src/
+│       │   ├── core/         # Shared types, Result<T,E>, errors, logger
+│       │   ├── config/       # Configuration loading and validation
+│       │   ├── adapters/     # Model adapters (Claude, OpenAI, Gemini, Ollama)
+│       │   ├── agents/       # Agent framework (TechLead, Experts)
+│       │   ├── workflows/    # Workflow engine and templates
+│       │   ├── mcp/          # MCP server and tool definitions
+│       │   ├── index.ts      # Main exports
+│       │   └── cli.ts        # CLI entry point
+│       └── package.json
+├── .claude/
+│   ├── rules/                # Claude Code rules
+│   └── skills/               # Project-specific skills
+└── pnpm-workspace.yaml
 ```
 
 ### Dependency Flow

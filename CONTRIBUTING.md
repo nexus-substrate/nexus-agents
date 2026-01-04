@@ -298,7 +298,7 @@ pnpm test
 pnpm test:coverage
 
 # Run specific test file
-pnpm test packages/core/src/utils.test.ts
+pnpm test packages/nexus-agents/src/core/__tests__/result.test.ts
 
 # Run in watch mode
 pnpm test --watch
