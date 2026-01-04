@@ -31,6 +31,12 @@ import {
   shouldFinalize,
 } from './session-helpers.js';
 
+/**
+ * Maximum number of event listeners allowed per session.
+ * Prevents memory issues from unbounded listener growth.
+ */
+const MAX_EVENT_LISTENERS = 50;
+
 /** Options for creating a CollaborationSession. */
 export interface CollaborationSessionOptions {
   logger?: ILogger;
@@ -313,6 +319,14 @@ export class CollaborationSession {
   }
 
   addEventListener(listener: (event: SessionEvent) => void): void {
+    if (this.eventListeners.length >= MAX_EVENT_LISTENERS) {
+      throw new AgentError(
+        `Maximum event listener limit (${String(MAX_EVENT_LISTENERS)}) reached`,
+        {
+          context: { currentCount: this.eventListeners.length, limit: MAX_EVENT_LISTENERS },
+        }
+      );
+    }
     this.eventListeners.push(listener);
   }
   removeEventListener(listener: (event: SessionEvent) => void): void {

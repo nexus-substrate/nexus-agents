@@ -1,6 +1,6 @@
 # Contributing to Nexus Agents
 
-Welcome to the Nexus Agents project! We appreciate your interest in contributing to this multi-agent orchestration MCP server. This guide will help you get started with development and understand our contribution process.
+This guide covers development setup, coding standards, and the contribution workflow for Nexus Agents.
 
 ## Code of Conduct
 
@@ -468,7 +468,7 @@ If you discover a security vulnerability, please **do not** create a public issu
 
 ## Recognition
 
-Contributors will be recognized in our release notes. Thank you for helping improve Nexus Agents!
+Contributors are listed in the release notes.
 
 ---
 

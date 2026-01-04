@@ -32,12 +32,14 @@ gh pr merge               # Merge PR
 **All operations use America/New_York (ET) timezone.**
 
 Before any time-sensitive operation:
+
 ```bash
 date '+%Y-%m-%d %H:%M:%S %Z'  # Verify current ET time
 TZ='America/New_York' date    # Force ET if needed
 ```
 
 Use verified ET time for:
+
 - Timestamps in commits and issues
 - Version date checks
 - "Last updated" fields
@@ -48,6 +50,7 @@ Use verified ET time for:
 **Never use deprecated software. Always verify current stable versions.**
 
 Before adding or updating any dependency:
+
 ```bash
 # Check latest stable version and deprecation status
 npm view <package> version
@@ -62,11 +65,61 @@ npx tsc --version  # Should be 5.8+
 ```
 
 **If a dependency is deprecated or outdated:**
+
 1. Find the recommended replacement
 2. Document the migration path
 3. Create a GitHub issue to track
 
-### 3. Research-First Approach
+### 3. Documentation Style: Polite Linus Torvalds
+
+**All documentation and text must follow this style:**
+
+Write like a technically precise, experienced engineer who respects the reader's intelligence. Be direct, honest, and clear. No marketing fluff, no exaggeration, no hand-waving.
+
+**Do:**
+
+- State what something does, precisely
+- Admit limitations and incomplete features honestly
+- Use technical terms correctly
+- Be concise - say it once, say it right
+- Provide working examples that actually work
+- Tell the reader what they need to know, not what sounds impressive
+
+**Do Not:**
+
+- Exaggerate capabilities ("revolutionary", "cutting-edge", "seamless")
+- Claim features exist when they don't
+- Use vague marketing language ("leverage", "empower", "unlock")
+- Hide limitations in fine print
+- Promise what the code can't deliver
+- Pad documentation with filler
+
+**Examples:**
+
+```markdown
+# Bad (marketing speak)
+
+"Nexus Agents revolutionizes AI orchestration with its cutting-edge
+multi-agent framework that seamlessly integrates with your workflow."
+
+# Good (honest and direct)
+
+"Nexus Agents coordinates multiple AI models to handle complex tasks.
+It runs as an MCP server. The CLI is not yet implemented."
+
+# Bad (vague)
+
+"Easily configure your experts with our intuitive YAML format."
+
+# Good (specific)
+
+"Experts are configured in YAML. See the example below.
+The `tier` field accepts: fast, balanced, or powerful."
+```
+
+**The test:** If a developer reads your documentation and tries to use the feature, will it work exactly as described? If not, fix the documentation or fix the code.
+
+### 4. Research-First Approach
 
 Before implementing any feature or making architectural decisions:
 
@@ -89,16 +142,17 @@ Before implementing any feature or making architectural decisions:
 
 I operate as the **lead orchestrator** and delegate work to specialized subagents:
 
-| Subagent Type | Use When | Tools |
-|---------------|----------|-------|
-| `Explore` | Quick codebase searches, read-only analysis | Read, Glob, Grep |
-| `general-purpose` | Complex multi-step tasks | All tools |
-| `researcher` | Deep research, documentation gathering | Web, Read |
-| `coder` | Implementation tasks | Read, Edit, Write, Bash |
-| `reviewer` | Code review, security audit | Read, Grep |
-| `tester` | Test writing, coverage analysis | Read, Edit, Bash |
+| Subagent Type     | Use When                                    | Tools                   |
+| ----------------- | ------------------------------------------- | ----------------------- |
+| `Explore`         | Quick codebase searches, read-only analysis | Read, Glob, Grep        |
+| `general-purpose` | Complex multi-step tasks                    | All tools               |
+| `researcher`      | Deep research, documentation gathering      | Web, Read               |
+| `coder`           | Implementation tasks                        | Read, Edit, Write, Bash |
+| `reviewer`        | Code review, security audit                 | Read, Grep              |
+| `tester`          | Test writing, coverage analysis             | Read, Edit, Bash        |
 
 **Delegation Rules:**
+
 - Spawn subagents for tasks taking >5 tool calls
 - Use `Explore` for any codebase navigation
 - Use parallel subagents for independent tasks
@@ -107,12 +161,14 @@ I operate as the **lead orchestrator** and delegate work to specialized subagent
 ### Context Management
 
 **Preserve context aggressively:**
+
 - Use subagents for exploratory work (keeps main context clean)
 - Summarize large outputs before adding to context
 - Reference files by path rather than inlining large contents
 - Use `/clear` when switching to unrelated tasks
 
 **Context budget allocation:**
+
 - 15% - System instructions and project context
 - 20% - Current task description and requirements
 - 50% - Active working content (code, research)
@@ -125,6 +181,7 @@ I operate as the **lead orchestrator** and delegate work to specialized subagent
 ### When to Use Voting
 
 Major decisions requiring multi-agent consensus:
+
 - Architecture changes
 - New dependencies
 - API design decisions
@@ -139,6 +196,7 @@ Major decisions requiring multi-agent consensus:
    - Document trade-offs
 
 2. **Spawn Voting Agents**
+
    ```
    Agents: Architect, Security, DevEx, AI/ML, PM
    Each agent reviews and votes: APPROVE / DISSENT / ABSTAIN
@@ -164,6 +222,7 @@ Major decisions requiring multi-agent consensus:
 ### Issue Management
 
 **Create issues for:**
+
 - New features (label: `enhancement`)
 - Bugs discovered (label: `bug`)
 - Technical debt (label: `tech-debt`)
@@ -187,12 +246,14 @@ gh issue create \
 ### PR Workflow
 
 **Branch naming:**
+
 - `feat/<issue-number>-short-description`
 - `fix/<issue-number>-short-description`
 - `refactor/<description>`
 - `docs/<description>`
 
 **PR creation:**
+
 ```bash
 # Create branch
 git checkout -b feat/123-add-workflow-engine
@@ -216,6 +277,7 @@ gh pr create \
 ```
 
 **PR merge (after approval):**
+
 ```bash
 # Squash merge to keep history clean
 gh pr merge --squash --delete-branch
@@ -224,6 +286,7 @@ gh pr merge --squash --delete-branch
 ### Automated Tracking
 
 When starting work on a task:
+
 1. Check for existing issue or create one
 2. Reference issue number in commits
 3. Update issue with progress comments
@@ -236,6 +299,7 @@ When starting work on a task:
 ### Pre-Implementation Checklist
 
 Before writing code:
+
 - [ ] Current datetime verified (ET)
 - [ ] Dependencies are current stable versions
 - [ ] No deprecated APIs being used
@@ -246,6 +310,7 @@ Before writing code:
 ### Code Quality Gates
 
 All code must pass:
+
 ```bash
 pnpm lint          # Zero errors, zero warnings
 pnpm typecheck     # Zero type errors
@@ -253,6 +318,7 @@ pnpm test          # All tests pass
 ```
 
 **Hard limits (enforced by ESLint):**
+
 - Files ≤ 400 lines
 - Functions ≤ 50 lines
 - Cyclomatic complexity ≤ 10
@@ -275,6 +341,7 @@ For changes touching multiple modules:
 ### Mandatory Checks
 
 Before any code change:
+
 - [ ] No secrets in code, logs, or outputs
 - [ ] Input validation at all boundaries
 - [ ] Path traversal prevention on file ops
@@ -287,17 +354,18 @@ Before any code change:
 ```typescript
 // NEVER do this
 const apiKey = process.env.API_KEY;
-console.log(`Using key: ${apiKey}`);  // Leaks secret!
+console.log(`Using key: ${apiKey}`); // Leaks secret!
 
 // ALWAYS do this
 const vault = new SecretsVault();
 const apiKey = vault.get('API_KEY');
-logger.info('API key loaded', { keyPresent: !!apiKey });  // Safe
+logger.info('API key loaded', { keyPresent: !!apiKey }); // Safe
 ```
 
 ### Security Issue Response
 
 If security vulnerability found:
+
 1. **Do not commit** the vulnerable code
 2. Create issue with `security` label (no details in public issue)
 3. Implement fix with security review
@@ -475,6 +543,7 @@ nexus-agents/
 ### Q Protocol
 
 Before uncertain actions:
+
 ```
 DOING: [action]
 EXPECT: [outcome]
@@ -483,6 +552,7 @@ IF NO: [fallback]
 ```
 
 After execution:
+
 ```
 RESULT: [what happened]
 MATCHES: yes/no
@@ -492,6 +562,7 @@ THEREFORE: [conclusion]
 ### Failure Response
 
 When anything fails:
+
 1. State what failed with raw error
 2. State theory of cause
 3. Propose ONE next action
@@ -499,6 +570,7 @@ When anything fails:
 5. Wait for confirmation
 
 **Never:**
+
 - Silent retries
 - Best-effort guessing
 - Continuing without addressing failure
@@ -542,7 +614,7 @@ gh pr checks <num>          # Check CI status
 
 ---
 
-*Last updated: 2026-01-03 (ET)*
-*MCP Protocol: 2025-11-25*
-*Node.js: 24.x LTS*
-*TypeScript: 5.8+*
+_Last updated: 2026-01-04 (ET)_
+_MCP Protocol: 2025-11-25_
+_Node.js: 24.x LTS_
+_TypeScript: 5.8+_

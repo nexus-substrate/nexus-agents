@@ -9,38 +9,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Phase 6: Production Readiness (v1.0.0)
 
+### Planned
+
+- npm publish to registry
+- Performance benchmarking
+- Additional workflow templates
+
+## [0.5.0] - 2026-01-04
+
+Phase 6: CLI and Memory Safety
+
 ### Added
 
+- CLI entry point with MCP server startup via stdio transport
+- Graceful shutdown handling for SIGINT/SIGTERM signals
 - SECURITY.md with vulnerability reporting policy and security practices
 - CONTRIBUTING.md with development workflow and coding guidelines
+- CLAUDE.md documentation style guide ("Polite Linus Torvalds" - direct, honest, no fluff)
 - npm publish configuration for all packages:
   - `publishConfig` with public access
   - `repository` field pointing to GitHub
   - `prepublishOnly` scripts for builds
   - `files` arrays including README.md
-- Comprehensive README.md with:
-  - Quick start guide with installation and Claude Desktop integration
-  - Feature overview with multi-agent orchestration details
-  - Architecture documentation with dependency flow
-  - Configuration examples for models, experts, and workflows
-  - Development setup and command reference
 
 ### Security
 
+- Event listener bounds (MAX_EVENT_LISTENERS = 50) in CollaborationSession
+- Execution cleanup (MAX_TRACKED_EXECUTIONS = 1000) in WorkflowEngine
 - Security audit passed (`pnpm audit` - no vulnerabilities)
-- Documentation of security practices in SECURITY.md
 
 ### Changed
 
 - Updated package.json files across all 7 packages for npm publishing
+- Documentation style updated to be direct and accurate
 
 ### Fixed
 
+- Memory leak: Unbounded event listeners in CollaborationSession (#59)
+- Memory leak: Unbounded execution tracking in WorkflowEngine (#60)
 - README.md: Corrected installation instructions (package not yet on npm)
-- README.md: Removed non-existent CLI commands (planned for v1.0.0)
+- README.md: Removed non-existent CLI commands
 - README.md: Removed non-existent MCP tools (`list_experts`, `get_status`)
-- README.md: Updated roadmap to reflect actual progress (v0.1.0-v0.4.0 complete)
-- README.md: Clarified CLI package status as planned for v1.0.0
+- README.md: Updated roadmap to reflect actual progress
+- Documentation: Removed marketing language and exaggerated claims
 
 ## [0.4.0] - 2026-01-04
 
@@ -173,7 +184,8 @@ Phases 0-1: Foundation and Infrastructure
 
 ---
 
-[Unreleased]: https://github.com/williamzujkowski/nexus-agents/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/williamzujkowski/nexus-agents/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/williamzujkowski/nexus-agents/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/williamzujkowski/nexus-agents/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/williamzujkowski/nexus-agents/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/williamzujkowski/nexus-agents/compare/v0.1.0...v0.2.0

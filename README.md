@@ -11,7 +11,7 @@
 
 ## Overview
 
-Nexus Agents is a production-grade MCP (Model Context Protocol) server that orchestrates multiple AI experts to solve complex software development tasks. It provides a unified interface for working with different AI models while enabling sophisticated multi-agent collaboration patterns.
+Nexus Agents is an MCP (Model Context Protocol) server that coordinates multiple AI experts to handle software development tasks. It provides a unified interface for different AI models and enables multi-agent collaboration through a Tech Lead and specialized experts.
 
 ### Key Capabilities
 
@@ -42,7 +42,7 @@ pnpm build
 
 ### Current Status
 
-The core packages (adapters, agents, workflows, MCP server) are fully implemented. The CLI entry point is pending implementation for v1.0.0.
+The core packages (adapters, agents, workflows, MCP server) are implemented and tested. The CLI entry point is complete as of v0.5.0.
 
 ### Programmatic Usage
 
@@ -88,11 +88,11 @@ The Tech Lead agent analyzes incoming tasks and delegates to specialized experts
 | **Documentation Expert** | Technical writing, API docs, code comments             |
 | **Testing Expert**       | Test strategies, coverage analysis, test generation    |
 
-Experts can collaborate on complex tasks, with the Tech Lead synthesizing their outputs into cohesive solutions.
+Experts can collaborate on complex tasks. The Tech Lead combines their outputs into a single response.
 
 ### Model Adapters
 
-Leverage the strengths of different AI models with unified interfaces:
+Use different AI models through unified interfaces:
 
 | Provider   | Models                  | Best For                   |
 | ---------- | ----------------------- | -------------------------- |
@@ -342,13 +342,14 @@ pnpm test:coverage    # Run tests with coverage
 
 ## Roadmap
 
-| Version    | Status      | Scope                                  |
-| ---------- | ----------- | -------------------------------------- |
-| **v0.1.0** | Complete    | Foundation + Core interfaces           |
-| **v0.2.0** | Complete    | All adapters + All experts             |
-| **v0.3.0** | Complete    | Workflow engine                        |
-| **v0.4.0** | Complete    | MCP Server with tools                  |
-| **v1.0.0** | In Progress | CLI, production hardening, npm publish |
+| Version    | Status      | Scope                                |
+| ---------- | ----------- | ------------------------------------ |
+| **v0.1.0** | Complete    | Foundation + Core interfaces         |
+| **v0.2.0** | Complete    | All adapters + All experts           |
+| **v0.3.0** | Complete    | Workflow engine                      |
+| **v0.4.0** | Complete    | MCP Server with tools                |
+| **v0.5.0** | Complete    | CLI entry point, memory safety fixes |
+| **v1.0.0** | In Progress | Production hardening, npm publish    |
 
 See [PROJECT_PLAN.md](./PROJECT_PLAN.md) for detailed roadmap and milestones.
 

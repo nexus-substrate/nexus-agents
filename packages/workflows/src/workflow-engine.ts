@@ -117,6 +117,7 @@ interface ActiveExecution {
 
 const DEFAULT_TIMEOUT_MS = 300000; // 5 minutes
 const DEFAULT_MAX_CONCURRENCY = 5;
+const MAX_TRACKED_EXECUTIONS = 1000;
 
 /**
  * Workflow engine implementation.
@@ -178,6 +179,9 @@ export class WorkflowEngine implements IWorkflowEngine {
     workflow: WorkflowDefinition,
     inputs: Record<string, unknown>
   ): { executionId: string; context: ExecutionContext; startTime: number } {
+    // Clean up old executions before adding new ones
+    this.cleanupOldExecutions();
+
     const executionId = uuidv4();
     const startTime = Date.now();
 
@@ -200,6 +204,35 @@ export class WorkflowEngine implements IWorkflowEngine {
     this.executions.set(executionId, execution);
 
     return { executionId, context, startTime };
+  }
+
+  /**
+   * Remove completed executions to prevent memory leaks.
+   * Removes oldest completed executions first when over the limit.
+   */
+  private cleanupOldExecutions(): void {
+    // Skip cleanup if under limit
+    if (this.executions.size < MAX_TRACKED_EXECUTIONS) {
+      return;
+    }
+
+    // Collect completed executions with their start times
+    const completed: Array<{ id: string; startTime: number }> = [];
+    for (const [id, execution] of this.executions) {
+      if (execution.status.state !== 'running' && execution.status.state !== 'pending') {
+        completed.push({ id, startTime: execution.startTime });
+      }
+    }
+
+    // Sort by start time (oldest first) and remove excess
+    completed.sort((a, b) => a.startTime - b.startTime);
+    const toRemove = Math.max(0, this.executions.size - MAX_TRACKED_EXECUTIONS + 1);
+    for (let i = 0; i < toRemove && i < completed.length; i++) {
+      const entry = completed[i];
+      if (entry !== undefined) {
+        this.executions.delete(entry.id);
+      }
+    }
   }
 
   /**

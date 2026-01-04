@@ -40,7 +40,7 @@ We take security seriously. If you discover a security vulnerability, please fol
 
 ### Code Security
 
-This project follows security-first development practices:
+This project implements these security measures:
 
 - **Input Validation**: All inputs validated with Zod schemas at boundaries
 - **Path Safety**: Path traversal prevention on all file operations
