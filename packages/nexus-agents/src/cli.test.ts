@@ -161,21 +161,22 @@ describe('CLI Argument Parsing', () => {
   });
 
   describe('printHelp', () => {
-    let stdoutSpy: ReturnType<typeof vi.spyOn>;
+    let stdoutWriteMock: ReturnType<typeof vi.fn>;
 
     beforeEach(() => {
-      stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+      stdoutWriteMock = vi.fn().mockReturnValue(true);
+      vi.spyOn(process.stdout, 'write').mockImplementation(stdoutWriteMock);
     });
 
     afterEach(() => {
-      stdoutSpy.mockRestore();
+      vi.restoreAllMocks();
     });
 
     it('should print help text', () => {
       printHelp();
 
-      expect(stdoutSpy).toHaveBeenCalledTimes(1);
-      const output = stdoutSpy.mock.calls[0]?.[0] as string;
+      expect(stdoutWriteMock).toHaveBeenCalledTimes(1);
+      const output = stdoutWriteMock.mock.calls[0]?.[0] as string;
       expect(output).toContain('nexus-agents');
       expect(output).toContain('USAGE:');
       expect(output).toContain('COMMANDS:');
@@ -187,7 +188,7 @@ describe('CLI Argument Parsing', () => {
     it('should mention future commands', () => {
       printHelp();
 
-      const output = stdoutSpy.mock.calls[0]?.[0] as string;
+      const output = stdoutWriteMock.mock.calls[0]?.[0] as string;
       expect(output).toContain('config');
       expect(output).toContain('expert');
       expect(output).toContain('workflow');
@@ -195,21 +196,22 @@ describe('CLI Argument Parsing', () => {
   });
 
   describe('printVersion', () => {
-    let stdoutSpy: ReturnType<typeof vi.spyOn>;
+    let stdoutWriteMock: ReturnType<typeof vi.fn>;
 
     beforeEach(() => {
-      stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+      stdoutWriteMock = vi.fn().mockReturnValue(true);
+      vi.spyOn(process.stdout, 'write').mockImplementation(stdoutWriteMock);
     });
 
     afterEach(() => {
-      stdoutSpy.mockRestore();
+      vi.restoreAllMocks();
     });
 
     it('should print version string', () => {
       printVersion();
 
-      expect(stdoutSpy).toHaveBeenCalledTimes(1);
-      expect(stdoutSpy).toHaveBeenCalledWith(`nexus-agents v${VERSION}\n`);
+      expect(stdoutWriteMock).toHaveBeenCalledTimes(1);
+      expect(stdoutWriteMock).toHaveBeenCalledWith(`nexus-agents v${VERSION}\n`);
     });
   });
 
