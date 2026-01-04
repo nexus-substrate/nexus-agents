@@ -7,12 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Phase 6: Production Readiness (v1.0.0)
-
 ### Planned
 
-- npm publish to registry
 - Additional workflow templates
+- CLI subcommands (interactive mode, config management)
+
+## [1.0.0] - 2026-01-04
+
+Phase 6: Production Release
+
+### Added
+
+- Published all 7 packages to npm registry
+- Complete documentation update for npm availability
+
+### Changed
+
+- README.md updated with npm installation instructions
+- ARCHITECTURE.md updated to v1.0.0
+- SECURITY.md updated with v1.0.x support
+
+### Documentation
+
+- All documentation verified for accuracy
+- Removed "not yet published" notices
+- Updated roadmap to show v1.0.0 complete
 
 ## [0.6.0] - 2026-01-04
 
@@ -206,7 +225,8 @@ Phases 0-1: Foundation and Infrastructure
 
 ---
 
-[Unreleased]: https://github.com/williamzujkowski/nexus-agents/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/williamzujkowski/nexus-agents/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/williamzujkowski/nexus-agents/compare/v0.6.0...v1.0.0
 [0.6.0]: https://github.com/williamzujkowski/nexus-agents/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/williamzujkowski/nexus-agents/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/williamzujkowski/nexus-agents/compare/v0.3.0...v0.4.0

@@ -345,7 +345,7 @@ Before any code change:
 - [ ] No secrets in code, logs, or outputs
 - [ ] Input validation at all boundaries
 - [ ] Path traversal prevention on file ops
-- [ ] No user-provided RegExp (use minimatch)
+- [ ] No user-provided RegExp (use static patterns only)
 - [ ] Rate limiting on public interfaces
 - [ ] Memory bounds on collections
 

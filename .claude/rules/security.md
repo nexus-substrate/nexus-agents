@@ -1,5 +1,5 @@
 ---
-paths: "**/*.ts"
+paths: '**/*.ts'
 ---
 
 # Security Rules
@@ -13,7 +13,7 @@ paths: "**/*.ts"
 ## Input Validation
 
 - Validate ALL inputs at boundaries with Zod
-- No user-provided RegExp (use minimatch)
+- No user-provided RegExp (use static patterns only)
 - Validate paths to prevent traversal
 
 ```typescript

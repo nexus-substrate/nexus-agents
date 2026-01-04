@@ -34,6 +34,7 @@ const now = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' })
 ```
 
 **Rules:**
+
 - Verify current datetime before any time-sensitive operation
 - Record timezone explicitly in logs and outputs
 - If time cannot be determined reliably: prefix with `Verify:` and do not guess
@@ -41,6 +42,7 @@ const now = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' })
 ### 1.2 Version Currency
 
 Before using any dependency, tool, or API:
+
 1. Check the **current stable version** (not latest/beta/rc)
 2. Verify it is **not deprecated**
 3. Document the version check with date
@@ -77,6 +79,7 @@ When making "must/required/best practice" claims, cite primary sources in order:
 ### 2.3 Prohibited Sources
 
 Do NOT cite as justification:
+
 - Blog posts, Medium articles
 - Vendor marketing pages
 - Stack Overflow answers (use for hints only)
@@ -88,17 +91,18 @@ Do NOT cite as justification:
 
 ### 3.1 Hard Limits (Enforced by ESLint)
 
-| Metric | Limit | Rationale |
-|--------|-------|-----------|
-| File length | ≤ 400 lines | Maintainability, review efficiency |
-| Function length | ≤ 50 lines | Single responsibility, testability |
-| Cyclomatic complexity | ≤ 10 | Understandability |
-| Parameters per function | ≤ 5 | Use options object for more |
-| Nesting depth | ≤ 4 levels | Early returns, guard clauses |
+| Metric                  | Limit       | Rationale                          |
+| ----------------------- | ----------- | ---------------------------------- |
+| File length             | ≤ 400 lines | Maintainability, review efficiency |
+| Function length         | ≤ 50 lines  | Single responsibility, testability |
+| Cyclomatic complexity   | ≤ 10        | Understandability                  |
+| Parameters per function | ≤ 5         | Use options object for more        |
+| Nesting depth           | ≤ 4 levels  | Early returns, guard clauses       |
 
 ### 3.2 Splitting Rules
 
 When approaching limits:
+
 1. Extract helper functions by responsibility
 2. Split files by domain/feature
 3. Create new modules at clear boundaries
@@ -123,6 +127,7 @@ class ClaudeAdapter implements IModelAdapter {
 ```
 
 **Boundary Checklist (Required for multi-module changes):**
+
 1. Module responsibilities defined
 2. Interface contracts specified
 3. Dependency direction documented
@@ -155,7 +160,7 @@ class ClaudeAdapter implements IModelAdapter {
 
 ```typescript
 // Use unknown over any
-function parse(input: unknown): Result<Data, ParseError> { }
+function parse(input: unknown): Result<Data, ParseError> {}
 
 // Use Result<T, E> for fallible operations
 type Result<T, E> = { ok: true; value: T } | { ok: false; error: E };
@@ -174,14 +179,14 @@ type Message =
 
 ### 4.3 Naming Conventions
 
-| Type | Convention | Example |
-|------|------------|---------|
-| Interfaces | `I` prefix | `IModelAdapter` |
-| Types | PascalCase | `CompletionRequest` |
-| Functions | camelCase, verb-first | `createAdapter`, `validateInput` |
-| Constants | SCREAMING_SNAKE | `MAX_RETRIES`, `DEFAULT_TIMEOUT` |
-| Files | kebab-case | `model-adapter.ts` |
-| Test files | `.test.ts` suffix | `model-adapter.test.ts` |
+| Type       | Convention            | Example                          |
+| ---------- | --------------------- | -------------------------------- |
+| Interfaces | `I` prefix            | `IModelAdapter`                  |
+| Types      | PascalCase            | `CompletionRequest`              |
+| Functions  | camelCase, verb-first | `createAdapter`, `validateInput` |
+| Constants  | SCREAMING_SNAKE       | `MAX_RETRIES`, `DEFAULT_TIMEOUT` |
+| Files      | kebab-case            | `model-adapter.ts`               |
+| Test files | `.test.ts` suffix     | `model-adapter.test.ts`          |
 
 ---
 
@@ -232,13 +237,13 @@ function validatePath(userPath: string, allowedRoot: string): Result<string, Sec
 }
 
 // No user-provided RegExp (ReDoS prevention)
-import { minimatch } from 'minimatch';
-// Use minimatch instead of new RegExp(userInput)
+// Use static patterns only - never construct regex from user input
+const VALID_PATTERN = /^[a-zA-Z0-9_-]+$/; // Static, safe pattern
 
 // Rate limiting
 const rateLimiter = new TokenBucket({
   capacity: 100,
-  refillRate: 10
+  refillRate: 10,
 });
 ```
 
@@ -276,10 +281,10 @@ interface IAgent {
 // Lead agent spawns 3-5 subagents for parallel work
 // Each subagent needs:
 interface SubagentTask {
-  objective: string;          // Clear goal
-  outputFormat: JSONSchema;   // Expected output structure
-  toolGuidance: string[];     // Which tools to use
-  boundaries: string[];       // What NOT to do
+  objective: string; // Clear goal
+  outputFormat: JSONSchema; // Expected output structure
+  toolGuidance: string[]; // Which tools to use
+  boundaries: string[]; // What NOT to do
 }
 
 // Context isolation - subagents get minimal context
@@ -323,7 +328,6 @@ description: |
 allowed-tools: Read, Bash(npm:*), Edit
 model: claude-sonnet-4
 ---
-
 # Skill Instructions
 
 Clear, actionable instructions under 500 lines.
@@ -394,11 +398,11 @@ const validateInput = (input: unknown): Result<ValidInput, ValidationError> => {
 
 ### 8.1 Coverage Requirements
 
-| Type | Target | Scope |
-|------|--------|-------|
-| Line coverage | ≥ 80% | All packages |
-| Branch coverage | ≥ 75% | All packages |
-| Critical paths | 100% | Security, validation, error handling |
+| Type            | Target | Scope                                |
+| --------------- | ------ | ------------------------------------ |
+| Line coverage   | ≥ 80%  | All packages                         |
+| Branch coverage | ≥ 75%  | All packages                         |
+| Critical paths  | 100%   | Security, validation, error handling |
 
 ### 8.2 Test Structure
 
@@ -415,7 +419,7 @@ describe('tool: orchestrate', () => {
     // Act
     const result = await client.callTool({
       name: 'orchestrate',
-      arguments: { task: 'Review this code' }
+      arguments: { task: 'Review this code' },
     });
 
     // Assert
@@ -521,6 +525,7 @@ THEREFORE: [conclusion and next step]
 ### 11.2 Failure Handling
 
 When anything fails:
+
 1. **State failure** - What failed + raw error
 2. **State theory** - Why you think it failed
 3. **Propose action** - ONE specific next step
@@ -530,6 +535,7 @@ When anything fails:
 ### 11.3 Impact Mapping
 
 Before any change, document:
+
 - What changes
 - What it affects (behavior, API, tests)
 - Migration requirements
@@ -553,7 +559,7 @@ export default defineConfig([
     rules: {
       'max-lines': ['error', { max: 400, skipBlankLines: true, skipComments: true }],
       'max-lines-per-function': ['error', { max: 50, skipBlankLines: true, skipComments: true }],
-      'complexity': ['error', 10],
+      complexity: ['error', 10],
       'max-params': ['error', 5],
       'max-depth': ['error', 4],
       '@typescript-eslint/no-explicit-any': 'error',
@@ -565,4 +571,4 @@ export default defineConfig([
 
 ---
 
-*Standards derived from: MCP Protocol 2025-11-25, TypeScript 5.8 Handbook, Claude Agent SDK, OWASP ASVS 4.0, Node.js Best Practices*
+_Standards derived from: MCP Protocol 2025-11-25, TypeScript 5.8 Handbook, Claude Agent SDK, OWASP ASVS 4.0, Node.js Best Practices_

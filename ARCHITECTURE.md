@@ -1,8 +1,8 @@
 # Nexus Agents Architecture
 
-**Version:** 0.5.0
-**Last Updated:** 2026-01-03
-**Status:** Phase 6 - Production
+**Version:** 1.0.0
+**Last Updated:** 2026-01-04
+**Status:** Production Release
 
 ---
 
@@ -239,13 +239,13 @@ stateDiagram-v2
 
 ### Threat Model
 
-| Threat           | Vector               | Mitigation                         |
-| ---------------- | -------------------- | ---------------------------------- |
-| Path Traversal   | Malicious file paths | Path normalization, directory jail |
-| ReDoS            | Malicious regex      | Use minimatch, no user RegExp      |
-| Secrets Exposure | Logs, errors         | Secrets vault, sanitization        |
-| Token Exhaustion | Unbounded context    | Memory caps, pruning               |
-| Injection        | Malformed prompts    | Input validation, Zod schemas      |
+| Threat           | Vector               | Mitigation                           |
+| ---------------- | -------------------- | ------------------------------------ |
+| Path Traversal   | Malicious file paths | Path normalization, directory jail   |
+| ReDoS            | Malicious regex      | Static patterns only, no user RegExp |
+| Secrets Exposure | Logs, errors         | Secrets vault, sanitization          |
+| Token Exhaustion | Unbounded context    | Memory caps, pruning                 |
+| Injection        | Malformed prompts    | Input validation, Zod schemas        |
 
 ### Security Layers
 
@@ -381,4 +381,4 @@ const myTool: ITool = {
 
 ---
 
-_Architecture documented on 2026-01-03 (ET)_
+_Architecture documented on 2026-01-04 (ET)_

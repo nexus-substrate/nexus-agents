@@ -24,9 +24,19 @@ Nexus Agents is an MCP (Model Context Protocol) server that coordinates multiple
 
 ## Quick Start
 
-### Installation (Development)
+### Installation
 
-> **Note:** This package is not yet published to npm. Use local development setup:
+```bash
+# Install globally for CLI usage
+npm install -g @nexus-agents/cli
+
+# Or install specific packages
+npm install @nexus-agents/mcp
+npm install @nexus-agents/agents
+npm install @nexus-agents/adapters
+```
+
+### Development Setup
 
 ```bash
 # Clone the repository
@@ -280,15 +290,17 @@ server:
 
 ## Packages
 
-| Package                                           | Description                                          | npm |
-| ------------------------------------------------- | ---------------------------------------------------- | --- |
-| [`@nexus-agents/core`](./packages/core)           | Shared types, Result<T,E>, errors, structured logger | -   |
-| [`@nexus-agents/config`](./packages/config)       | Configuration loading, Zod validation, hot reload    | -   |
-| [`@nexus-agents/adapters`](./packages/adapters)   | Model adapters with streaming, retry, rate limiting  | -   |
-| [`@nexus-agents/agents`](./packages/agents)       | Agent framework, TechLead, experts, collaboration    | -   |
-| [`@nexus-agents/workflows`](./packages/workflows) | Workflow engine, YAML templates, parallel execution  | -   |
-| [`@nexus-agents/mcp`](./packages/mcp)             | MCP server, tool definitions, stdio transport        | -   |
-| [`@nexus-agents/cli`](./packages/cli)             | CLI interface with MCP server startup                | -   |
+| Package                                           | Description                                          |
+| ------------------------------------------------- | ---------------------------------------------------- |
+| [`@nexus-agents/core`](./packages/core)           | Shared types, Result<T,E>, errors, structured logger |
+| [`@nexus-agents/config`](./packages/config)       | Configuration loading, Zod validation, hot reload    |
+| [`@nexus-agents/adapters`](./packages/adapters)   | Model adapters with streaming, retry, rate limiting  |
+| [`@nexus-agents/agents`](./packages/agents)       | Agent framework, TechLead, experts, collaboration    |
+| [`@nexus-agents/workflows`](./packages/workflows) | Workflow engine, YAML templates, parallel execution  |
+| [`@nexus-agents/mcp`](./packages/mcp)             | MCP server, tool definitions, stdio transport        |
+| [`@nexus-agents/cli`](./packages/cli)             | CLI interface with MCP server startup                |
+
+All packages are available on [npm](https://www.npmjs.com/org/nexus-agents).
 
 ---
 
@@ -336,21 +348,21 @@ pnpm test             # Run all tests
 pnpm test:coverage    # Run tests with coverage
 ```
 
-> **Note:** CLI commands (`nexus-agents`, `nexus-agents --interactive`, etc.) are planned for v1.0.0. Currently, use the packages programmatically or through MCP integration.
+> **Note:** The CLI currently starts the MCP server for Claude Desktop integration. Additional CLI subcommands (interactive mode, config management) may be added in future versions.
 
 ---
 
 ## Roadmap
 
-| Version    | Status      | Scope                                    |
-| ---------- | ----------- | ---------------------------------------- |
-| **v0.1.0** | Complete    | Foundation + Core interfaces             |
-| **v0.2.0** | Complete    | All adapters + All experts               |
-| **v0.3.0** | Complete    | Workflow engine                          |
-| **v0.4.0** | Complete    | MCP Server with tools                    |
-| **v0.5.0** | Complete    | CLI entry point, memory safety, security |
-| **v0.6.0** | Complete    | Performance optimization, npm prep       |
-| **v1.0.0** | In Progress | npm publish                              |
+| Version    | Status   | Scope                                    |
+| ---------- | -------- | ---------------------------------------- |
+| **v0.1.0** | Complete | Foundation + Core interfaces             |
+| **v0.2.0** | Complete | All adapters + All experts               |
+| **v0.3.0** | Complete | Workflow engine                          |
+| **v0.4.0** | Complete | MCP Server with tools                    |
+| **v0.5.0** | Complete | CLI entry point, memory safety, security |
+| **v0.6.0** | Complete | Performance optimization, npm prep       |
+| **v1.0.0** | Complete | Production release, npm publish          |
 
 See [PROJECT_PLAN.md](./PROJECT_PLAN.md) for detailed roadmap and milestones.
 
