@@ -97,7 +97,7 @@ const ModelCapability = {
 ## Usage Example
 
 ```typescript
-import { type IModelAdapter, type Result, isOk } from '@nexus-agents/core';
+import { type IModelAdapter, type Result, isOk } from 'nexus-agents';
 
 async function generateCode(adapter: IModelAdapter, prompt: string): Promise<string> {
   const result = await adapter.complete({
@@ -128,7 +128,7 @@ async function generateCode(adapter: IModelAdapter, prompt: string): Promise<str
 
 ```typescript
 import { describe, it, expect, vi } from 'vitest';
-import type { IModelAdapter } from '@nexus-agents/core';
+import type { IModelAdapter } from 'nexus-agents';
 
 describe('IModelAdapter', () => {
   it('should complete a request', async () => {

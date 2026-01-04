@@ -147,7 +147,7 @@ timeout: 300000
 ## Usage Example
 
 ```typescript
-import { type IWorkflowEngine, isOk } from '@nexus-agents/core';
+import { type IWorkflowEngine, isOk } from 'nexus-agents';
 
 async function runCodeReview(engine: IWorkflowEngine, files: string[]): Promise<void> {
   // Load template
@@ -204,7 +204,7 @@ async function runCodeReview(engine: IWorkflowEngine, files: string[]): Promise<
 
 ```typescript
 import { describe, it, expect } from 'vitest';
-import type { IWorkflowEngine } from '@nexus-agents/core';
+import type { IWorkflowEngine } from 'nexus-agents';
 
 describe('IWorkflowEngine', () => {
   it('should execute steps in dependency order', async () => {

@@ -38,14 +38,16 @@ Package Consolidation Release
 
 ### Migration Guide
 
-1. Uninstall old packages:
+**Note:** The `@nexus-agents/*` scoped packages were unpublished from npm and no longer exist. Only the consolidated `nexus-agents` package (v2.0.1+) is available.
+
+1. If you previously installed `@nexus-agents/*` packages locally, uninstall them:
 
    ```bash
    npm uninstall @nexus-agents/core @nexus-agents/config @nexus-agents/adapters \
      @nexus-agents/agents @nexus-agents/workflows @nexus-agents/mcp @nexus-agents/cli
    ```
 
-2. Install consolidated package:
+2. Install the consolidated package:
 
    ```bash
    npm install nexus-agents
@@ -54,7 +56,7 @@ Package Consolidation Release
 3. Update imports:
 
    ```typescript
-   // Before
+   // Before (no longer available on npm)
    import { Result } from '@nexus-agents/core';
    import { ClaudeAdapter } from '@nexus-agents/adapters';
    import { TechLead } from '@nexus-agents/agents';

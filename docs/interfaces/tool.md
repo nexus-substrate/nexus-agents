@@ -74,7 +74,7 @@ interface IToolRegistry {
 
 ```typescript
 import { z } from 'zod';
-import { type ITool, type ToolResult, ok, err, ToolError } from '@nexus-agents/core';
+import { type ITool, type ToolResult, ok, err, ToolError } from 'nexus-agents';
 
 const ReadFileSchema = z.object({
   path: z.string().describe('File path to read'),
@@ -193,7 +193,7 @@ const schema = z.object({
 
 ```typescript
 import { describe, it, expect, vi } from 'vitest';
-import type { ITool } from '@nexus-agents/core';
+import type { ITool } from 'nexus-agents';
 
 describe('ITool', () => {
   it('should validate input and execute', async () => {

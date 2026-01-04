@@ -103,7 +103,7 @@ interface TaskResult {
 ## Usage Example
 
 ```typescript
-import { type IAgent, type Task, isOk } from '@nexus-agents/core';
+import { type IAgent, type Task, isOk } from 'nexus-agents';
 
 async function executeWithAgent(agent: IAgent, description: string): Promise<void> {
   // Initialize agent
@@ -151,7 +151,7 @@ Acting --> Idle: complete
 
 ```typescript
 import { describe, it, expect } from 'vitest';
-import type { IAgent } from '@nexus-agents/core';
+import type { IAgent } from 'nexus-agents';
 
 describe('IAgent', () => {
   it('should transition through states correctly', async () => {

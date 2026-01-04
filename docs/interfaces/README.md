@@ -4,13 +4,13 @@ This directory contains detailed documentation for all Nexus Agents interfaces.
 
 ## Interfaces
 
-| Interface                                          | Package            | Description                      |
-| -------------------------------------------------- | ------------------ | -------------------------------- |
-| [IModelAdapter](./model-adapter.md)                | @nexus-agents/core | Unified model provider interface |
-| [IAgent](./agent.md)                               | @nexus-agents/core | Base agent interface             |
-| [IWorkflowEngine](./workflow-engine.md)            | @nexus-agents/core | Workflow execution engine        |
-| [ITool](./tool.md)                                 | @nexus-agents/core | MCP tool interface               |
-| [IToolRegistry](./tool.md#itoolregistry-interface) | @nexus-agents/core | Tool management registry         |
+| Interface                                          | Package      | Description                      |
+| -------------------------------------------------- | ------------ | -------------------------------- |
+| [IModelAdapter](./model-adapter.md)                | nexus-agents | Unified model provider interface |
+| [IAgent](./agent.md)                               | nexus-agents | Base agent interface             |
+| [IWorkflowEngine](./workflow-engine.md)            | nexus-agents | Workflow execution engine        |
+| [ITool](./tool.md)                                 | nexus-agents | MCP tool interface               |
+| [IToolRegistry](./tool.md#itoolregistry-interface) | nexus-agents | Tool management registry         |
 
 ## Design Principles
 
@@ -30,7 +30,7 @@ import {
   type Result,
   ok,
   err,
-} from '@nexus-agents/core';
+} from 'nexus-agents';
 ```
 
 ## See Also
