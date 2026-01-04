@@ -3,7 +3,7 @@
 > Multi-agent orchestration MCP server with model diversity and workflow automation
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Node.js Version](https://img.shields.io/badge/node-%3E%3D24.0.0-brightgreen)](https://nodejs.org)
+[![Node.js Version](https://img.shields.io/badge/node-%3E%3D22.0.0-brightgreen)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8+-blue)](https://www.typescriptlang.org)
 [![MCP Protocol](https://img.shields.io/badge/MCP-2025--11--25-purple)](https://modelcontextprotocol.io)
 
@@ -308,7 +308,7 @@ All packages are available on [npm](https://www.npmjs.com/org/nexus-agents).
 
 ### Prerequisites
 
-- Node.js 24.x LTS
+- Node.js 22.x LTS
 - pnpm 9.x
 - TypeScript 5.8+
 

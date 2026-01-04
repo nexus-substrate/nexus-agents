@@ -58,7 +58,7 @@ npm view <package> deprecated
 npm view <package> time.modified
 
 # Check Node.js LTS
-node --version  # Should be 24.x LTS
+node --version  # Should be 22.x LTS
 
 # Check TypeScript
 npx tsc --version  # Should be 5.8+
@@ -616,5 +616,5 @@ gh pr checks <num>          # Check CI status
 
 _Last updated: 2026-01-04 (ET)_
 _MCP Protocol: 2025-11-25_
-_Node.js: 24.x LTS_
+_Node.js: 22.x LTS_
 _TypeScript: 5.8+_

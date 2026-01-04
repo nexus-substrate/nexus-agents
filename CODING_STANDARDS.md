@@ -444,7 +444,7 @@ describe('tool: orchestrate', () => {
 ### 9.1 Recommended Stack (2026)
 
 ```yaml
-runtime: Node.js 24.x LTS
+runtime: Node.js 22.x LTS
 language: TypeScript 5.8+
 package_manager: pnpm 9.x
 monorepo: Turborepo

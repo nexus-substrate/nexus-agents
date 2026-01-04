@@ -16,7 +16,7 @@ Before you begin, ensure you have the following installed:
 
 | Tool            | Version  | Purpose                 |
 | --------------- | -------- | ----------------------- |
-| Node.js         | 24.x LTS | Runtime environment     |
+| Node.js         | 22.x LTS | Runtime environment     |
 | pnpm            | 9.x      | Package manager         |
 | Git             | Latest   | Version control         |
 | GitHub CLI (gh) | Latest   | Issue and PR management |
@@ -24,7 +24,7 @@ Before you begin, ensure you have the following installed:
 Verify your setup:
 
 ```bash
-node --version    # Should output v24.x.x
+node --version    # Should output v22.x.x
 pnpm --version    # Should output 9.x.x
 git --version     # Any recent version
 gh --version      # Any recent version

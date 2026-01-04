@@ -25,7 +25,7 @@ TZ='America/New_York' date '+%Y-%m-%d %H:%M:%S %Z'
 
 ```bash
 node --version
-# Should be 24.x LTS (current as of 2026)
+# Should be 22.x LTS (current as of 2026)
 ```
 
 ### 3. Check Package Versions
@@ -49,12 +49,12 @@ npm view <package> engines
 
 ### 4. Evaluate Criteria
 
-| Criterion | Pass | Fail |
-|-----------|------|------|
-| Deprecation | Not deprecated | Deprecated |
-| Last update | Within 12 months | Over 12 months |
-| Node version | Compatible with 24.x | Incompatible |
-| Security | No advisories | Has advisories |
+| Criterion    | Pass                 | Fail           |
+| ------------ | -------------------- | -------------- |
+| Deprecation  | Not deprecated       | Deprecated     |
+| Last update  | Within 12 months     | Over 12 months |
+| Node version | Compatible with 22.x | Incompatible   |
+| Security     | No advisories        | Has advisories |
 
 ### 5. Run Security Audit
 
@@ -73,6 +73,7 @@ npm audit
 **Node.js:** [version]
 
 ## Summary
+
 - Total packages: X
 - Up to date: Y
 - Needs update: Z
@@ -81,21 +82,24 @@ npm audit
 ## Details
 
 | Package | Current | Latest | Status | Notes |
-|---------|---------|--------|--------|-------|
-| ... | ... | ... | ... | ... |
+| ------- | ------- | ------ | ------ | ----- |
+| ...     | ...     | ...    | ...    | ...   |
 
 ## Recommendations
+
 [List any required updates or replacements]
 ```
 
 ## Actions
 
 If deprecated package found:
+
 1. Find recommended replacement
 2. Create GitHub issue to track migration
 3. Document migration path
 
 If outdated package found:
+
 1. Check changelog for breaking changes
 2. Create GitHub issue if major update needed
 3. Update if minor/patch
