@@ -217,6 +217,71 @@ Major decisions requiring multi-agent consensus:
 
 ---
 
+## CLI Agent Integration (v2.2.0+)
+
+### Supported CLIs
+
+nexus-agents integrates with three external CLI tools. All use OAuth authentication - nexus-agents handles zero credentials.
+
+| CLI            | Models                          | Auth             | Strengths                       |
+| -------------- | ------------------------------- | ---------------- | ------------------------------- |
+| **Claude CLI** | Opus 4.5, Sonnet 4.5, Haiku 4.5 | OAuth 2.0 / PKCE | Complex reasoning, architecture |
+| **Gemini CLI** | Gemini 2.5/3 Pro, Flash         | OAuth / ADC      | 1M context, multimodal          |
+| **Codex CLI**  | GPT-5.x-codex family            | ChatGPT OAuth    | Fast implementation, tests      |
+
+### Capability Matching
+
+Route tasks to the optimal model based on requirements:
+
+| Task Type               | Primary         | Secondary     | Tertiary     |
+| ----------------------- | --------------- | ------------- | ------------ |
+| Architecture decisions  | Claude Opus     | Claude Sonnet | Gemini Pro   |
+| Complex reasoning       | Claude Opus     | Codex 5.2     | Gemini Pro   |
+| Large codebase analysis | Gemini Pro (1M) | Claude Sonnet | Codex        |
+| Code implementation     | Claude Sonnet   | Codex         | Gemini Flash |
+| Test generation         | Codex           | Claude Haiku  | Gemini Flash |
+| Bulk operations         | Gemini Flash    | Codex Mini    | Claude Haiku |
+
+### CLI Adapter Interface
+
+```typescript
+interface ICliAdapter {
+  readonly name: 'claude' | 'gemini' | 'codex';
+  readonly transport: 'mcp' | 'subprocess';
+  readonly capabilities: CapabilityProfile;
+
+  execute(task: Task): Promise<Result<CliResponse, CliError>>;
+  healthCheck(): Promise<boolean>;
+}
+
+interface CapabilityProfile {
+  reasoning: number; // 0-10: Complex reasoning ability
+  contextWindow: number; // Max tokens
+  codeGeneration: number; // 0-10: Code quality
+  speed: number; // 0-10: Response latency
+  cost: number; // 0-10: Cost efficiency (10 = cheapest)
+}
+```
+
+### Mode Selection
+
+```bash
+nexus-agents                     # Auto-detect mode
+nexus-agents --mode=server       # MCP server for Claude CLI
+nexus-agents --mode=orchestrator # CLI orchestrator mode
+nexus-agents --mode=mesh         # Full hybrid mesh
+```
+
+### Implementation Phases
+
+See `cli-project_plan.md` for full details:
+
+1. **Phase 1 (v2.2.0)**: MCP Server Mode - nexus-agents as MCP tool for Claude CLI
+2. **Phase 2 (v2.3.0)**: CLI Adapters - Subprocess integration for Gemini/Codex
+3. **Phase 3 (v3.0.0)**: Hybrid Mesh - Full bidirectional orchestration
+
+---
+
 ## GitHub Integration
 
 ### Issue Management
