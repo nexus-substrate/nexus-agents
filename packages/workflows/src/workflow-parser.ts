@@ -8,7 +8,7 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import * as yaml from 'yaml';
-import { type Result, ok, err, ParseError } from '@nexus-agents/core';
+import { type Result, ok, err, ParseError, SecurityError } from '@nexus-agents/core';
 import type { WorkflowDefinition, WorkflowStep, InputDefinition } from '@nexus-agents/core';
 import {
   WorkflowDefinitionSchema,
@@ -26,6 +26,27 @@ const MAX_FILE_SIZE_BYTES = 1024 * 1024;
  * Supported workflow file extensions.
  */
 const SUPPORTED_EXTENSIONS = ['.yaml', '.yml', '.json'] as const;
+
+/**
+ * Validates that a file path is within the allowed root directory.
+ * Prevents path traversal attacks (e.g., ../../../etc/passwd).
+ * @param userPath - The user-provided file path
+ * @param allowedRoot - The root directory that paths must be within
+ * @returns Result with validated absolute path or SecurityError
+ */
+function validatePath(userPath: string, allowedRoot: string): Result<string, SecurityError> {
+  const resolvedRoot = path.resolve(allowedRoot);
+  const resolved = path.resolve(allowedRoot, userPath);
+
+  if (!resolved.startsWith(resolvedRoot + path.sep) && resolved !== resolvedRoot) {
+    return err(
+      new SecurityError('Path traversal detected: path escapes allowed root directory', {
+        context: { userPath, allowedRoot: resolvedRoot },
+      })
+    );
+  }
+  return ok(resolved);
+}
 
 /**
  * Parses a YAML string into a WorkflowDefinition.
@@ -173,13 +194,22 @@ function toWorkflowDefinition(data: WorkflowDefinitionOutput): WorkflowDefinitio
 /**
  * Loads and parses a workflow definition from a file.
  * @param filePath - Path to the workflow file
- * @returns Result with WorkflowDefinition or ParseError
+ * @param allowedRoot - Root directory for path validation (defaults to process.cwd())
+ * @returns Result with WorkflowDefinition or ParseError/SecurityError
  */
 export async function loadWorkflowFile(
-  filePath: string
-): Promise<Result<WorkflowDefinition, ParseError>> {
+  filePath: string,
+  allowedRoot: string = process.cwd()
+): Promise<Result<WorkflowDefinition, ParseError | SecurityError>> {
+  // Validate path to prevent path traversal attacks
+  const pathValidation = validatePath(filePath, allowedRoot);
+  if (!pathValidation.ok) {
+    return pathValidation;
+  }
+  const validatedPath = pathValidation.value;
+
   // Validate file extension
-  const ext = path.extname(filePath).toLowerCase();
+  const ext = path.extname(validatedPath).toLowerCase();
   if (!SUPPORTED_EXTENSIONS.includes(ext as (typeof SUPPORTED_EXTENSIONS)[number])) {
     return err(
       new ParseError(
@@ -191,7 +221,7 @@ export async function loadWorkflowFile(
   // Read file with size check
   let content: string;
   try {
-    const stats = await fs.stat(filePath);
+    const stats = await fs.stat(validatedPath);
     if (stats.size > MAX_FILE_SIZE_BYTES) {
       return err(
         new ParseError(
@@ -199,14 +229,14 @@ export async function loadWorkflowFile(
         )
       );
     }
-    content = await fs.readFile(filePath, 'utf-8');
+    content = await fs.readFile(validatedPath, 'utf-8');
   } catch (e) {
     const fsError = e as NodeJS.ErrnoException;
     if (fsError.code === 'ENOENT') {
-      return err(new ParseError(`File not found: ${filePath}`));
+      return err(new ParseError(`File not found: ${validatedPath}`));
     }
     if (fsError.code === 'EACCES') {
-      return err(new ParseError(`Permission denied: ${filePath}`));
+      return err(new ParseError(`Permission denied: ${validatedPath}`));
     }
     return err(new ParseError(`Failed to read file: ${fsError.message}`));
   }

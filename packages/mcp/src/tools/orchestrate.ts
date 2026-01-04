@@ -11,6 +11,7 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Result, ILogger, Task, TaskContext } from '@nexus-agents/core';
 import { ok, err, AgentError, createLogger } from '@nexus-agents/core';
+import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { ExecutionPlan, Expert } from '@nexus-agents/agents';
 import { TechLead } from '@nexus-agents/agents';
 
@@ -82,6 +83,8 @@ export interface OrchestrateDeps {
   techLead?: ITechLead;
   expertFactory?: IExpertFactory;
   logger?: ILogger;
+  /** Optional rate limiter for throttling tool calls */
+  rateLimiter?: RateLimiter;
 }
 
 /**
@@ -263,6 +266,23 @@ const TOOL_SCHEMA = {
  */
 function createOrchestrateHandler(deps: OrchestrateDeps, logger: ILogger) {
   return async (args: unknown) => {
+    // Rate limiting check
+    if (deps.rateLimiter !== undefined) {
+      const acquired = deps.rateLimiter.tryAcquire();
+      if (!acquired) {
+        const state = deps.rateLimiter.getState();
+        return {
+          isError: true,
+          content: [
+            {
+              type: 'text' as const,
+              text: `Rate limit exceeded. Try again in ${String(state.nextTokenMs)}ms.`,
+            },
+          ],
+        };
+      }
+    }
+
     const validated = OrchestrateInputSchema.safeParse(args);
     if (!validated.success) {
       const errorMessage = validated.error.issues

@@ -5,12 +5,12 @@
  */
 
 import { readFile, readdir, stat } from 'node:fs/promises';
-import { join, basename, extname } from 'node:path';
+import { join, basename, extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import type { Result } from '@nexus-agents/core';
-import { ParseError } from '@nexus-agents/core';
+import { ParseError, SecurityError } from '@nexus-agents/core';
 import type { WorkflowDefinition } from '@nexus-agents/core';
 import {
   WorkflowDefinitionSchema,
@@ -27,6 +27,28 @@ import {
 export interface ParsedTemplate {
   definition: WorkflowDefinition;
   metadata: TemplateMetadata;
+}
+
+/**
+ * Validates that a file path is within the allowed root directory.
+ * Prevents path traversal attacks (e.g., ../../../etc/passwd).
+ * @param userPath - The user-provided file path
+ * @param allowedRoot - The root directory that paths must be within
+ * @returns Result with validated absolute path or SecurityError
+ */
+function validatePath(userPath: string, allowedRoot: string): Result<string, SecurityError> {
+  const resolvedRoot = resolve(allowedRoot);
+  const resolved = resolve(allowedRoot, userPath);
+
+  if (!resolved.startsWith(resolvedRoot + sep) && resolved !== resolvedRoot) {
+    return {
+      ok: false,
+      error: new SecurityError('Path traversal detected: path escapes allowed root directory', {
+        context: { userPath, allowedRoot: resolvedRoot },
+      }),
+    };
+  }
+  return { ok: true, value: resolved };
 }
 
 /**
@@ -98,27 +120,39 @@ export function parseTemplateContent(
 /**
  * Load a template from a file path.
  * @param filePath - Path to the YAML template file
- * @returns Result with ParsedTemplate or ParseError
+ * @param allowedRoot - Optional root directory for path validation (skipped if undefined)
+ * @returns Result with ParsedTemplate or ParseError/SecurityError
  */
 export async function loadTemplateFile(
-  filePath: string
-): Promise<Result<ParsedTemplate, ParseError>> {
+  filePath: string,
+  allowedRoot?: string
+): Promise<Result<ParsedTemplate, ParseError | SecurityError>> {
+  // If allowedRoot is provided, validate the path
+  let validatedPath = filePath;
+  if (allowedRoot !== undefined) {
+    const pathValidation = validatePath(filePath, allowedRoot);
+    if (!pathValidation.ok) {
+      return pathValidation;
+    }
+    validatedPath = pathValidation.value;
+  }
+
   try {
-    const content = await readFile(filePath, 'utf-8');
-    const parseResult = parseTemplateContent(content, filePath);
+    const content = await readFile(validatedPath, 'utf-8');
+    const parseResult = parseTemplateContent(content, validatedPath);
 
     if (!parseResult.ok) {
       return parseResult;
     }
 
     const definition = parseResult.value;
-    const templateName = basename(filePath, extname(filePath));
+    const templateName = basename(validatedPath, extname(validatedPath));
     const isBuiltIn = BUILT_IN_TEMPLATES.includes(templateName as BuiltInTemplateName);
 
     const metadata: TemplateMetadata = {
       name: definition.name,
       version: definition.version,
-      path: filePath,
+      path: validatedPath,
       category: isBuiltIn ? TEMPLATE_CATEGORIES[templateName as BuiltInTemplateName] : 'custom',
       keywords: isBuiltIn
         ? TEMPLATE_KEYWORDS[templateName as BuiltInTemplateName]
@@ -134,43 +168,56 @@ export async function loadTemplateFile(
     if (error instanceof Error) {
       return {
         ok: false,
-        error: new ParseError(`Failed to read ${filePath}: ${error.message}`),
+        error: new ParseError(`Failed to read ${validatedPath}: ${error.message}`),
       };
     }
     return {
       ok: false,
-      error: new ParseError(`Unknown error reading ${filePath}`),
+      error: new ParseError(`Unknown error reading ${validatedPath}`),
     };
   }
 }
 
 /**
  * Load all templates from a directory.
+ * Validates each file path to prevent path traversal attacks.
  * @param directoryPath - Path to directory containing YAML templates
- * @returns Array of successfully loaded templates
+ * @returns Array of successfully loaded templates and any errors
  */
 export async function loadTemplatesFromDirectory(
   directoryPath: string
-): Promise<{ templates: ParsedTemplate[]; errors: ParseError[] }> {
+): Promise<{ templates: ParsedTemplate[]; errors: Array<ParseError | SecurityError> }> {
   const templates: ParsedTemplate[] = [];
-  const errors: ParseError[] = [];
+  const errors: Array<ParseError | SecurityError> = [];
 
   try {
-    const stats = await stat(directoryPath);
+    // Resolve the directory path to an absolute path
+    const resolvedDirectory = resolve(directoryPath);
+
+    const stats = await stat(resolvedDirectory);
     if (!stats.isDirectory()) {
-      errors.push(new ParseError(`${directoryPath} is not a directory`));
+      errors.push(new ParseError(`${resolvedDirectory} is not a directory`));
       return { templates, errors };
     }
 
-    const entries = await readdir(directoryPath);
+    const entries = await readdir(resolvedDirectory);
 
     for (const entry of entries) {
       if (!isYamlFile(entry)) {
         continue;
       }
 
-      const filePath = join(directoryPath, entry);
-      const result = await loadTemplateFile(filePath);
+      // Validate the entry path to prevent path traversal
+      // (e.g., if readdir somehow returned "../malicious.yaml")
+      const pathValidation = validatePath(entry, resolvedDirectory);
+      if (!pathValidation.ok) {
+        errors.push(pathValidation.error);
+        continue;
+      }
+
+      const filePath = pathValidation.value;
+      // Pass the resolved directory as allowedRoot to ensure consistent validation
+      const result = await loadTemplateFile(filePath, resolvedDirectory);
 
       if (result.ok) {
         templates.push(result.value);

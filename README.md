@@ -55,9 +55,9 @@ const server = createMcpServer();
 await startStdioServer(server);
 ```
 
-### Claude Desktop Integration (Coming in v1.0.0)
+### Claude Desktop Integration
 
-Once the CLI is implemented, add to your Claude Desktop configuration:
+Add to your Claude Desktop configuration:
 
 ```json
 {
@@ -288,7 +288,7 @@ server:
 | [`@nexus-agents/agents`](./packages/agents)       | Agent framework, TechLead, experts, collaboration    | -   |
 | [`@nexus-agents/workflows`](./packages/workflows) | Workflow engine, YAML templates, parallel execution  | -   |
 | [`@nexus-agents/mcp`](./packages/mcp)             | MCP server, tool definitions, stdio transport        | -   |
-| [`@nexus-agents/cli`](./packages/cli)             | CLI interface (planned for v1.0.0)                   | -   |
+| [`@nexus-agents/cli`](./packages/cli)             | CLI interface with MCP server startup                | -   |
 
 ---
 

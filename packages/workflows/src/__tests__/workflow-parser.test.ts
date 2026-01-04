@@ -285,7 +285,7 @@ steps:
 `
     );
 
-    const result = await loadWorkflowFile(filePath);
+    const result = await loadWorkflowFile(filePath, tempDir);
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.value.name).toBe('file-workflow');
@@ -306,7 +306,7 @@ steps:
 `
     );
 
-    const result = await loadWorkflowFile(filePath);
+    const result = await loadWorkflowFile(filePath, tempDir);
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.value.name).toBe('yml-workflow');
@@ -330,7 +330,7 @@ steps:
       })
     );
 
-    const result = await loadWorkflowFile(filePath);
+    const result = await loadWorkflowFile(filePath, tempDir);
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.value.name).toBe('json-file-workflow');
@@ -341,7 +341,7 @@ steps:
     const filePath = path.join(tempDir, 'workflow.txt');
     await fs.writeFile(filePath, 'content');
 
-    const result = await loadWorkflowFile(filePath);
+    const result = await loadWorkflowFile(filePath, tempDir);
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error.message).toContain('Unsupported file extension');
@@ -349,10 +349,18 @@ steps:
   });
 
   it('should return error for non-existent file', async () => {
-    const result = await loadWorkflowFile('/nonexistent/path/workflow.yaml');
+    const result = await loadWorkflowFile('nonexistent-workflow.yaml', tempDir);
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error.message).toContain('File not found');
+    }
+  });
+
+  it('should return error for path traversal attempt', async () => {
+    const result = await loadWorkflowFile('../../../etc/passwd', tempDir);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toContain('Path traversal detected');
     }
   });
 });

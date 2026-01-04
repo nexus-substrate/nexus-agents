@@ -8,6 +8,7 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger, AgentCapability } from '@nexus-agents/core';
+import type { RateLimiter } from '../middleware/rate-limiter.js';
 import {
   ExpertFactory,
   Expert,
@@ -56,6 +57,8 @@ export interface CreateExpertDeps {
   expertRegistry: Map<string, Expert>;
   /** Optional logger */
   logger?: ILogger;
+  /** Optional rate limiter for throttling tool calls */
+  rateLimiter?: RateLimiter;
 }
 
 /**
@@ -71,6 +74,12 @@ export interface CreateExpertResponse {
   /** Expert status */
   status: 'ready';
 }
+
+/**
+ * Maximum number of experts allowed in the registry.
+ * Prevents unbounded memory growth from expert creation.
+ */
+const MAX_EXPERTS = 100;
 
 /**
  * Maps role to built-in expert type.
@@ -145,6 +154,14 @@ function handleCreateExpert(
 
   const expert = createResult.value;
 
+  // Check registry bounds to prevent unbounded memory growth
+  if (deps.expertRegistry.size >= MAX_EXPERTS) {
+    return {
+      ok: false,
+      error: `Maximum number of experts (${String(MAX_EXPERTS)}) reached. Remove unused experts first.`,
+    };
+  }
+
   // Track in registry
   deps.expertRegistry.set(expert.id, expert);
 
@@ -158,6 +175,64 @@ function handleCreateExpert(
   return { ok: true, value: buildResponse(expert) };
 }
 
+/** MCP tool response type for create_expert */
+type CreateExpertToolResponse = {
+  content: Array<{ type: 'text'; text: string }>;
+  isError?: boolean;
+};
+
+/**
+ * Creates a handler function for the create_expert tool.
+ * @param deps - Tool dependencies
+ * @returns Handler function for the tool
+ */
+function createToolHandler(deps: CreateExpertDeps) {
+  return (args: unknown): CreateExpertToolResponse => {
+    // Rate limiting check
+    if (deps.rateLimiter !== undefined) {
+      const acquired = deps.rateLimiter.tryAcquire();
+      if (!acquired) {
+        const state = deps.rateLimiter.getState();
+        return {
+          isError: true,
+          content: [
+            {
+              type: 'text',
+              text: `Rate limit exceeded. Try again in ${String(state.nextTokenMs)}ms.`,
+            },
+          ],
+        };
+      }
+    }
+
+    // Validate input
+    const validationResult = CreateExpertInputSchema.safeParse(args);
+    if (!validationResult.success) {
+      const errorMessage = validationResult.error.issues
+        .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
+        .join('; ');
+      return {
+        isError: true,
+        content: [{ type: 'text', text: `Validation error: ${errorMessage}` }],
+      };
+    }
+
+    // Execute tool logic
+    const result = handleCreateExpert(deps, validationResult.data);
+
+    if (!result.ok) {
+      return {
+        isError: true,
+        content: [{ type: 'text', text: `Failed to create expert: ${result.error}` }],
+      };
+    }
+
+    return {
+      content: [{ type: 'text', text: JSON.stringify(result.value, null, 2) }],
+    };
+  };
+}
+
 /**
  * Registers the create_expert tool with the MCP server.
  *
@@ -165,50 +240,24 @@ function handleCreateExpert(
  * @param deps - Tool dependencies
  */
 export function registerCreateExpertTool(server: McpServer, deps: CreateExpertDeps): void {
+  const toolSchema = {
+    role: z
+      .enum([
+        'code_expert',
+        'architecture_expert',
+        'security_expert',
+        'documentation_expert',
+        'testing_expert',
+      ])
+      .describe('Expert role to create'),
+    modelPreference: z.string().optional().describe('Preferred model (e.g., claude-sonnet-4)'),
+  };
+
+  const description =
+    'Create a specialized expert agent for code, architecture, security, documentation, or testing tasks';
+
   // eslint-disable-next-line @typescript-eslint/no-deprecated -- Consistent with other tools in codebase
-  server.tool(
-    'create_expert',
-    'Create a specialized expert agent for code, architecture, security, documentation, or testing tasks',
-    {
-      role: z
-        .enum([
-          'code_expert',
-          'architecture_expert',
-          'security_expert',
-          'documentation_expert',
-          'testing_expert',
-        ])
-        .describe('Expert role to create'),
-      modelPreference: z.string().optional().describe('Preferred model (e.g., claude-sonnet-4)'),
-    },
-    (args) => {
-      // Validate input
-      const validationResult = CreateExpertInputSchema.safeParse(args);
-      if (!validationResult.success) {
-        const errorMessage = validationResult.error.issues
-          .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
-          .join('; ');
-        return {
-          isError: true,
-          content: [{ type: 'text' as const, text: `Validation error: ${errorMessage}` }],
-        };
-      }
-
-      // Execute tool logic
-      const result = handleCreateExpert(deps, validationResult.data);
-
-      if (!result.ok) {
-        return {
-          isError: true,
-          content: [{ type: 'text' as const, text: `Failed to create expert: ${result.error}` }],
-        };
-      }
-
-      return {
-        content: [{ type: 'text' as const, text: JSON.stringify(result.value, null, 2) }],
-      };
-    }
-  );
+  server.tool('create_expert', description, toolSchema, createToolHandler(deps));
 }
 
 /**

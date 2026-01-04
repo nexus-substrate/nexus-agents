@@ -9,6 +9,7 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Result } from '@nexus-agents/core';
 import type { IWorkflowEngine, WorkflowDefinition, StepResult, ILogger } from '@nexus-agents/core';
+import type { RateLimiter } from '../middleware/rate-limiter.js';
 import { WorkflowError, ParseError } from '@nexus-agents/core';
 
 /**
@@ -63,6 +64,8 @@ export interface DryRunResult {
 export interface RunWorkflowDeps {
   workflowEngine: IWorkflowEngine;
   logger?: ILogger;
+  /** Optional rate limiter for throttling tool calls */
+  rateLimiter?: RateLimiter;
 }
 
 /**
@@ -402,6 +405,23 @@ export function registerRunWorkflowTool(server: McpServer, deps: RunWorkflowDeps
       inputSchema: toolInputSchema,
     },
     async (args) => {
+      // Rate limiting check
+      if (deps.rateLimiter !== undefined) {
+        const acquired = deps.rateLimiter.tryAcquire();
+        if (!acquired) {
+          const state = deps.rateLimiter.getState();
+          return {
+            isError: true,
+            content: [
+              {
+                type: 'text' as const,
+                text: `Rate limit exceeded. Try again in ${String(state.nextTokenMs)}ms.`,
+              },
+            ],
+          };
+        }
+      }
+
       const validated = RunWorkflowInputSchema.safeParse(args);
       if (!validated.success) {
         const errorMessage = validated.error.errors

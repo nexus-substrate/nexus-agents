@@ -4,8 +4,8 @@
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 1.x.x   | :white_check_mark: |
-| < 1.0   | :x:                |
+| 0.5.x   | :white_check_mark: |
+| < 0.5   | :x:                |
 
 ## Reporting a Vulnerability
 
@@ -45,7 +45,7 @@ This project implements these security measures:
 - **Input Validation**: All inputs validated with Zod schemas at boundaries
 - **Path Safety**: Path traversal prevention on all file operations
 - **No User RegExp**: Uses minimatch to prevent ReDoS attacks
-- **Secrets Management**: Secrets vault pattern, never in logs or errors
+- **Secrets Handling**: Environment variables for API keys, sanitized before logging
 - **Rate Limiting**: Token bucket rate limiting on all public tools
 - **Memory Bounds**: Bounded collections and context pruning
 

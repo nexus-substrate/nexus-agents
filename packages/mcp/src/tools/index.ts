@@ -78,9 +78,12 @@ export interface ToolRegistrationResult {
  * Individual tools require their specific dependencies and should be
  * registered using their respective register functions:
  *
- * - `registerOrchestrateTool(server, { techLead, logger })`
- * - `registerCreateExpertTool(server, { expertFactory, expertRegistry, logger })`
- * - `registerRunWorkflowTool(server, { workflowEngine, logger })`
+ * - `registerOrchestrateTool(server, { techLead, logger, rateLimiter })`
+ * - `registerCreateExpertTool(server, { expertFactory, expertRegistry, logger, rateLimiter })`
+ * - `registerRunWorkflowTool(server, { workflowEngine, logger, rateLimiter })`
+ *
+ * **Important:** Pass the `rateLimiter` from the result to each tool's register
+ * function to enable rate limiting. Without it, tools will not be rate limited.
  *
  * @param server - The MCP server to register tools on
  * @param options - Optional configuration for tool registration
@@ -93,9 +96,10 @@ export interface ToolRegistrationResult {
  *   const { server, logger } = serverResult.value;
  *   const { rateLimiter } = registerTools(server, { logger });
  *
- *   // Register individual tools with their dependencies
- *   registerOrchestrateTool(server, { techLead, logger });
- *   registerCreateExpertTool(server, { expertFactory, expertRegistry, logger });
+ *   // Register individual tools with their dependencies and rate limiter
+ *   registerOrchestrateTool(server, { techLead, logger, rateLimiter });
+ *   registerCreateExpertTool(server, { expertFactory, expertRegistry, logger, rateLimiter });
+ *   registerRunWorkflowTool(server, { workflowEngine, logger, rateLimiter });
  * }
  * ```
  */

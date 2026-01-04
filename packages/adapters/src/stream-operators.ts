@@ -233,23 +233,35 @@ export async function* withTimeout<T>(
         throw new StreamCancelledError('withTimeout aborted');
       }
 
-      const result = await Promise.race([
-        iterator.next(),
-        new Promise<never>((_, reject) => {
-          setTimeout(() => {
-            reject(
-              new TimeoutError(`Stream timed out after ${String(timeoutMs)}ms`, {
-                context: { timeoutMs },
-              })
-            );
-          }, timeoutMs);
-        }),
-      ]);
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
+      try {
+        const result = await Promise.race([
+          iterator.next().then((res) => {
+            if (timeoutId !== undefined) {
+              clearTimeout(timeoutId);
+            }
+            return res;
+          }),
+          new Promise<never>((_, reject) => {
+            timeoutId = setTimeout(() => {
+              reject(
+                new TimeoutError(`Stream timed out after ${String(timeoutMs)}ms`, {
+                  context: { timeoutMs },
+                })
+              );
+            }, timeoutMs);
+          }),
+        ]);
 
-      if (result.done === true) {
-        running = false;
-      } else {
-        yield result.value;
+        if (result.done === true) {
+          running = false;
+        } else {
+          yield result.value;
+        }
+      } finally {
+        if (timeoutId !== undefined) {
+          clearTimeout(timeoutId);
+        }
       }
     }
   } finally {
