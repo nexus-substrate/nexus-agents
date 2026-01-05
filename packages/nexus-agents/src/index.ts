@@ -581,3 +581,48 @@ export {
   type ITechLead,
   type IOrchestrateExpertFactory,
 } from './mcp/index.js';
+
+// ============================================================================
+// CLI Adapters - CLI integration with defensive parsing
+// ============================================================================
+export {
+  // Types
+  type CliName,
+  type CliTransport,
+  type TokenUsage as CliTokenUsage,
+  type CliResponse,
+  type CliError,
+  type CliErrorCode,
+  type VersionStatus,
+  type HealthStatus,
+  type CapacityStatus,
+  type ModelInfo as CliModelInfo,
+  type CapabilityProfile as CliCapabilityProfile,
+  type CliTask,
+  type ExecutionOptions as CliExecutionOptions,
+  type ICliAdapter,
+  type ICliResponseParser,
+  type VersionRequirements,
+  CLI_VERSION_REQUIREMENTS,
+  DEFAULT_CAPABILITIES as CLI_DEFAULT_CAPABILITIES,
+  // Base adapter
+  BaseCliAdapter,
+  SubprocessCliAdapter,
+  // Concrete adapters
+  ClaudeCliAdapter,
+  GeminiCliAdapter,
+  CodexCliAdapter,
+  // Parsers
+  ClaudeResponseParser,
+  type ClaudeCliResponse,
+  GeminiResponseParser,
+  type GeminiCliResponse,
+  CodexResponseParser,
+  type CodexCliResponse,
+  // Factory
+  createCliAdapter,
+  createAllAdapters,
+  isCliAvailable,
+  getAvailableClis,
+  type CliAdapterConfig,
+} from './cli-adapters/index.js';

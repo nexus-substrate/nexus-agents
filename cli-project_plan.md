@@ -1,9 +1,9 @@
 # CLI Integration Project Plan
 
-**Version:** 2.0.0
+**Version:** 2.1.0
 **Created:** 2026-01-04 (ET)
 **Updated:** 2026-01-04 (ET)
-**Status:** Approved via Agent Consensus (Enhanced with Research)
+**Status:** Approved via Agent Consensus (Enhanced with CLI Testing)
 
 ---
 
@@ -161,13 +161,25 @@ server.tool(
 
 ### Phase 2: CLI Adapters (v2.3.0)
 
-**Goal:** Add subprocess adapters for Gemini CLI and Codex CLI
+**Goal:** Add CLI adapters with evergreen architecture for Gemini and Codex
+
+**Research Findings (2026-01-04):**
+
+| CLI    | Version | Transport      | Rationale                                      |
+| ------ | ------- | -------------- | ---------------------------------------------- |
+| Claude | 2.0.76  | MCP Server     | nexus-agents IS the MCP server Claude calls    |
+| Codex  | 0.77.0  | **MCP Client** | Codex supports `mcp-server` mode - most stable |
+| Gemini | 0.22.5  | Subprocess     | No MCP server mode, uses JSON output           |
+
+See: [CLI Integration Architecture Research](./docs/research/cli-integration-architecture.md)
 
 **Scope:**
 
-- [ ] `ICliAdapter` interface for subprocess CLIs
-- [ ] Gemini CLI adapter (`gemini -p --output-format json`)
-- [ ] Codex CLI adapter (`codex exec --json`)
+- [ ] `ICliAdapter` interface with transport abstraction
+- [ ] Codex MCP adapter (`codex mcp-server` - **preferred**)
+- [ ] Gemini subprocess adapter (`gemini <query> -o json`)
+- [ ] Claude subprocess adapter (for outbound orchestration)
+- [ ] Defensive response parsers with version awareness
 - [ ] Capability-based routing logic
 - [ ] Fallback chains for availability
 
@@ -180,9 +192,18 @@ interface ICliAdapter {
   readonly capabilities: CapabilityProfile;
 
   execute(task: Task): Promise<Result<CliResponse, CliError>>;
-  healthCheck(): Promise<boolean>;
+  healthCheck(): Promise<HealthStatus>;
   getModelInfo(): ModelInfo;
-  getCapacity(): Promise<CapacityStatus>; // NEW
+  getCapacity(): Promise<CapacityStatus>;
+  getVersion(): Promise<string>; // NEW: For compatibility checking
+}
+
+// NEW: Health status with version info
+interface HealthStatus {
+  healthy: boolean;
+  version: string;
+  versionStatus: 'supported' | 'outdated' | 'breaking' | 'unsupported';
+  message?: string;
 }
 
 interface CapabilityProfile {
@@ -227,12 +248,79 @@ function selectAdapter(task: Task): ICliAdapter {
 }
 ```
 
+**Transport Strategies:**
+
+```typescript
+// Codex: Use MCP transport (most stable)
+class CodexMcpAdapter implements ICliAdapter {
+  private client: Client;
+  private process: ChildProcess;
+
+  async connect(): Promise<void> {
+    // Spawn Codex as MCP server
+    this.process = spawn('codex', ['mcp-server']);
+    const transport = new StdioClientTransport(this.process.stdin, this.process.stdout);
+    this.client = new Client({ name: 'nexus-agents' });
+    await this.client.connect(transport);
+  }
+
+  async execute(task: Task): Promise<Result<CliResponse, CliError>> {
+    // Use MCP protocol - stable across CLI versions
+    const result = await this.client.callTool({
+      name: 'execute',
+      arguments: { prompt: task.content },
+    });
+    return this.parseResponse(result);
+  }
+}
+
+// Gemini: Use subprocess with defensive parsing
+class GeminiSubprocessAdapter implements ICliAdapter {
+  async execute(task: Task): Promise<Result<CliResponse, CliError>> {
+    const result = await exec('gemini', [task.content, '-o', 'json']);
+    return this.parser.parse(result.stdout);
+  }
+}
+
+// Claude: Use subprocess when nexus-agents orchestrates
+class ClaudeSubprocessAdapter implements ICliAdapter {
+  async execute(task: Task): Promise<Result<CliResponse, CliError>> {
+    const result = await exec('claude', ['-p', '--output-format', 'json', task.content]);
+    return this.parser.parse(result.stdout);
+  }
+}
+```
+
+**Defensive Parsing (Evergreen):**
+
+```typescript
+// Parse only essential fields, ignore unknown fields
+interface CliResponseParser<T> {
+  parse(raw: string): Result<T, ParseError>;
+  extractResponse(raw: string): string | null; // Most stable
+  extractUsage(raw: string): TokenUsage | null; // May not exist
+}
+
+// Example: Graceful degradation
+function parseAnyCliResponse(raw: string): CliResponse {
+  // Try each parser in order, fall back to text
+  for (const parser of [claudeParser, geminiParser, codexParser]) {
+    const result = parser.extractResponse(raw);
+    if (result) return { text: result, source: parser.name };
+  }
+  // Ultimate fallback: return raw text
+  return { text: raw, source: 'unknown', warning: 'Unparsed response' };
+}
+```
+
 **Success Criteria:**
 
 - [ ] All three CLIs can be invoked programmatically
+- [ ] Codex uses MCP transport for stability
 - [ ] Routing selects optimal model for task type
 - [ ] Fallback works when primary model unavailable
 - [ ] OAuth/ADC authentication works without API keys
+- [ ] Parsers degrade gracefully on format changes
 
 ---
 
@@ -761,8 +849,9 @@ const AGENT_TEMPLATES: Record<string, AgentTemplate> = {
 | ------- | ---------- | ---------------------------------------------------------------------------------------- |
 | 1.0.0   | 2026-01-04 | Initial approved plan                                                                    |
 | 2.0.0   | 2026-01-04 | Added Phase 4 (Context Management), claude-flow patterns, token tracking, work balancing |
+| 2.1.0   | 2026-01-04 | CLI testing research: Codex MCP server support, transport strategies, defensive parsing  |
 
 ---
 
 _Approved via agent consensus voting per CLAUDE.md protocol_
-_Enhanced with research from claude-flow and provider documentation_
+_Enhanced with research from claude-flow, provider documentation, and live CLI testing_
