@@ -13,7 +13,13 @@ import { parseArgs } from 'node:util';
 import { startStdioServer, closeServer, registerTools } from './mcp/index.js';
 import { createLogger, type ILogger } from './core/index.js';
 import { VERSION } from './index.js';
-import { doctorCommand, configInitCommand, expertListCommand } from './cli/index.js';
+import {
+  doctorCommand,
+  configInitCommand,
+  expertListCommand,
+  workflowRunCommand,
+  printWorkflowTemplates,
+} from './cli/index.js';
 import type { ExpertListFormat } from './cli/index.js';
 
 /**
@@ -60,6 +66,8 @@ export interface ParsedCliArgs {
     output?: string;
     force: boolean;
     format: string;
+    input?: string;
+    dryRun: boolean;
   };
   positionals: string[];
 }
@@ -102,6 +110,14 @@ const PARSE_ARGS_CONFIG = {
       type: 'string' as const,
       default: 'table',
     },
+    input: {
+      type: 'string' as const,
+      short: 'i',
+    },
+    'dry-run': {
+      type: 'boolean' as const,
+      default: false,
+    },
   },
   allowPositionals: true,
   strict: true,
@@ -118,11 +134,12 @@ USAGE:
   nexus-agents [COMMAND] [SUBCOMMAND] [OPTIONS]
 
 COMMANDS:
-  (default)     Start MCP server with stdio transport
-  doctor        Check CLI installations and health status
-  config init   Generate starter configuration file
-  expert list   List available experts (built-in and custom)
-  workflow      Manage workflows (coming soon)
+  (default)       Start MCP server with stdio transport
+  doctor          Check CLI installations and health status
+  config init     Generate starter configuration file
+  expert list     List available experts (built-in and custom)
+  workflow list   List available workflow templates
+  workflow run    Execute a workflow template
 
 OPTIONS:
   -h, --help           Show this help message
@@ -140,6 +157,10 @@ CONFIG OPTIONS:
 EXPERT OPTIONS:
   --format <fmt>       Output format: table, json, yaml (default: table)
 
+WORKFLOW OPTIONS:
+  -i, --input <json>   Workflow inputs as JSON string or file path
+  --dry-run            Validate workflow without executing
+
 EXAMPLES:
   nexus-agents                  Start MCP server (default mode)
   nexus-agents doctor           Check CLI installations and health
@@ -147,6 +168,9 @@ EXAMPLES:
   nexus-agents config init -o ./config/nexus.yaml
   nexus-agents expert list      List all available experts
   nexus-agents expert list --format json
+  nexus-agents workflow list    List available workflow templates
+  nexus-agents workflow run code-review --dry-run
+  nexus-agents workflow run code-review -i '{"files":["src/main.ts"]}'
   nexus-agents --mode=server    Explicit MCP server mode
   nexus-agents --mode=mesh      Full hybrid mesh mode
   nexus-agents --help           Show help
@@ -184,6 +208,8 @@ function buildOptions(values: {
   output?: string;
   force: boolean;
   format: string;
+  input?: string;
+  'dry-run': boolean;
 }): ParsedCliArgs['options'] {
   const mode = isValidServerMode(values.mode) ? values.mode : 'server';
 
@@ -194,7 +220,9 @@ function buildOptions(values: {
     mode,
     force: values.force,
     format: values.format,
+    dryRun: values['dry-run'],
     ...(values.output !== undefined && { output: values.output }),
+    ...(values.input !== undefined && { input: values.input }),
   };
 }
 
@@ -433,6 +461,35 @@ function handleExpertCommand(args: ParsedCliArgs): void {
 }
 
 /**
+ * Handles the workflow command and its subcommands.
+ */
+async function handleWorkflowCommand(args: ParsedCliArgs): Promise<void> {
+  if (args.subcommand === 'list') {
+    await printWorkflowTemplates();
+    process.exit(EXIT_CODES.SUCCESS);
+  } else if (args.subcommand === 'run') {
+    // Get workflow name from positionals (workflow run <name>)
+    const workflowName = args.positionals[2];
+    if (workflowName === undefined) {
+      process.stdout.write('Error: Workflow name is required.\n');
+      process.stdout.write('Usage: nexus-agents workflow run <name> [options]\n');
+      process.exit(EXIT_CODES.INVALID_ARGS);
+    }
+
+    const exitCode = await workflowRunCommand({
+      name: workflowName,
+      input: args.options.input,
+      dryRun: args.options.dryRun,
+      verbose: args.options.verbose,
+    });
+    process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
+  } else {
+    handleUnimplementedCommand(`workflow ${args.subcommand ?? ''}`);
+    process.exit(EXIT_CODES.SUCCESS);
+  }
+}
+
+/**
  * Dispatches to the appropriate command handler.
  *
  * @param args - Parsed CLI arguments
@@ -468,8 +525,7 @@ async function dispatchCommand(args: ParsedCliArgs): Promise<void> {
       break;
 
     case 'workflow':
-      handleUnimplementedCommand(args.command);
-      process.exit(EXIT_CODES.SUCCESS);
+      await handleWorkflowCommand(args);
       break;
   }
 }

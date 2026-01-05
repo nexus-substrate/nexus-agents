@@ -12,3 +12,12 @@ export type { ConfigInitOptions, ConfigInitResult } from './config-init.js';
 
 export { expertListCommand, runExpertList, printExpertListResult } from './expert-list.js';
 export type { ExpertListOptions, ExpertListResult, ExpertListFormat } from './expert-list.js';
+
+export {
+  workflowRunCommand,
+  runWorkflowRun,
+  printWorkflowRunResult,
+  listWorkflowTemplates,
+  printWorkflowTemplates,
+} from './workflow-run.js';
+export type { WorkflowRunOptions, WorkflowRunResult } from './workflow-run.js';

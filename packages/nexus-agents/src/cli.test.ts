@@ -269,6 +269,7 @@ describe('CLI Argument Parsing', () => {
           mode: 'server',
           force: false,
           format: 'table',
+          dryRun: false,
         },
         positionals: [],
       };
@@ -279,6 +280,7 @@ describe('CLI Argument Parsing', () => {
       expect(args.options.mode).toBe('server');
       expect(args.options.force).toBe(false);
       expect(args.options.format).toBe('table');
+      expect(args.options.dryRun).toBe(false);
     });
 
     it('should allow subcommand to be set', () => {
@@ -292,6 +294,7 @@ describe('CLI Argument Parsing', () => {
           mode: 'server',
           force: false,
           format: 'table',
+          dryRun: false,
         },
         positionals: ['config', 'show'],
       };
@@ -309,6 +312,7 @@ describe('CLI Argument Parsing', () => {
           mode: 'mesh',
           force: false,
           format: 'table',
+          dryRun: false,
         },
         positionals: [],
       };
