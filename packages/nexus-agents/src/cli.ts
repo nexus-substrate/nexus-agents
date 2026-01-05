@@ -13,7 +13,8 @@ import { parseArgs } from 'node:util';
 import { startStdioServer, closeServer, registerTools } from './mcp/index.js';
 import { createLogger, type ILogger } from './core/index.js';
 import { VERSION } from './index.js';
-import { doctorCommand, configInitCommand } from './cli/index.js';
+import { doctorCommand, configInitCommand, expertListCommand } from './cli/index.js';
+import type { ExpertListFormat } from './cli/index.js';
 
 /**
  * Exit codes for the CLI.
@@ -58,6 +59,7 @@ export interface ParsedCliArgs {
     mode: ServerMode;
     output?: string;
     force: boolean;
+    format: string;
   };
   positionals: string[];
 }
@@ -96,6 +98,10 @@ const PARSE_ARGS_CONFIG = {
       short: 'f',
       default: false,
     },
+    format: {
+      type: 'string' as const,
+      default: 'table',
+    },
   },
   allowPositionals: true,
   strict: true,
@@ -115,7 +121,7 @@ COMMANDS:
   (default)     Start MCP server with stdio transport
   doctor        Check CLI installations and health status
   config init   Generate starter configuration file
-  expert        Manage experts (coming soon)
+  expert list   List available experts (built-in and custom)
   workflow      Manage workflows (coming soon)
 
 OPTIONS:
@@ -131,11 +137,16 @@ CONFIG OPTIONS:
   -o, --output <path>  Output path for config init (default: ./nexus-agents.yaml)
   -f, --force          Overwrite existing configuration file
 
+EXPERT OPTIONS:
+  --format <fmt>       Output format: table, json, yaml (default: table)
+
 EXAMPLES:
   nexus-agents                  Start MCP server (default mode)
   nexus-agents doctor           Check CLI installations and health
   nexus-agents config init      Generate configuration file
   nexus-agents config init -o ./config/nexus.yaml
+  nexus-agents expert list      List all available experts
+  nexus-agents expert list --format json
   nexus-agents --mode=server    Explicit MCP server mode
   nexus-agents --mode=mesh      Full hybrid mesh mode
   nexus-agents --help           Show help
@@ -172,6 +183,7 @@ function buildOptions(values: {
   mode: unknown;
   output?: string;
   force: boolean;
+  format: string;
 }): ParsedCliArgs['options'] {
   const mode = isValidServerMode(values.mode) ? values.mode : 'server';
 
@@ -181,6 +193,7 @@ function buildOptions(values: {
     verbose: values.verbose,
     mode,
     force: values.force,
+    format: values.format,
     ...(values.output !== undefined && { output: values.output }),
   };
 }
@@ -399,6 +412,27 @@ async function handleConfigCommand(args: ParsedCliArgs): Promise<void> {
 }
 
 /**
+ * Validates and coerces format to ExpertListFormat.
+ */
+function isValidExpertListFormat(value: string): value is ExpertListFormat {
+  return ['table', 'json', 'yaml'].includes(value);
+}
+
+/**
+ * Handles the expert command and its subcommands.
+ */
+function handleExpertCommand(args: ParsedCliArgs): void {
+  if (args.subcommand === 'list') {
+    const format = isValidExpertListFormat(args.options.format) ? args.options.format : 'table';
+    const exitCode = expertListCommand({ format });
+    process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
+  } else {
+    handleUnimplementedCommand(`expert ${args.subcommand ?? ''}`);
+    process.exit(EXIT_CODES.SUCCESS);
+  }
+}
+
+/**
  * Dispatches to the appropriate command handler.
  *
  * @param args - Parsed CLI arguments
@@ -430,6 +464,9 @@ async function dispatchCommand(args: ParsedCliArgs): Promise<void> {
       break;
 
     case 'expert':
+      handleExpertCommand(args);
+      break;
+
     case 'workflow':
       handleUnimplementedCommand(args.command);
       process.exit(EXIT_CODES.SUCCESS);
