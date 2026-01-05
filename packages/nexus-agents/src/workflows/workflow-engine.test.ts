@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { WorkflowDefinition, StepResult, Result } from '../core/index.js';
+import type { WorkflowDefinition, StepResult, Result, ContextBudget } from '../core/index.js';
 import { ok, err, WorkflowError } from '../core/index.js';
 import { ParseError } from '../core/index.js';
 import {
@@ -12,6 +12,7 @@ import {
   type ExecutionPlan,
   type WorkflowStep,
 } from './workflow-engine.js';
+import { DEFAULT_BUDGET } from '../agents/context-manager.js';
 
 // Mock dependencies
 function createMockDeps(overrides?: Partial<WorkflowEngineDeps>): WorkflowEngineDeps {
@@ -309,6 +310,241 @@ describe('WorkflowEngine', () => {
       const template = engine.getTemplate('unknown');
 
       expect(template).toBeUndefined();
+    });
+  });
+
+  describe('context budget integration', () => {
+    it('should execute workflow without context manager when not configured', async () => {
+      const workflow = { ...sampleWorkflow };
+      mockDeps.createExecutionPlan = vi.fn().mockReturnValue(
+        ok({
+          phases: [{ steps: [workflow.steps[0] as WorkflowStep] }],
+        } as ExecutionPlan)
+      );
+      mockDeps.executePhase = vi
+        .fn()
+        .mockResolvedValue(
+          ok([{ stepId: 'step1', output: 'done', durationMs: 50, status: 'success' }])
+        );
+
+      const result = await engine.execute(workflow, { input1: 'test' });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        // No budget events when context manager is not configured
+        const events = engine.getBudgetEvents(result.value.executionId);
+        expect(events).toHaveLength(0);
+        expect(engine.getContextManager(result.value.executionId)).toBeUndefined();
+      }
+    });
+
+    it('should initialize context manager when configured', async () => {
+      const engineWithContext = new WorkflowEngine(mockDeps, {
+        contextManagerConfig: {
+          maxTokens: 128000,
+        },
+      });
+
+      const workflow = { ...sampleWorkflow };
+      mockDeps.createExecutionPlan = vi.fn().mockReturnValue(
+        ok({
+          phases: [{ steps: [workflow.steps[0] as WorkflowStep] }],
+        } as ExecutionPlan)
+      );
+      mockDeps.executePhase = vi
+        .fn()
+        .mockResolvedValue(
+          ok([{ stepId: 'step1', output: 'done', durationMs: 50, status: 'success' }])
+        );
+
+      const result = await engineWithContext.execute(workflow, { input1: 'test' });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        const contextManager = engineWithContext.getContextManager(result.value.executionId);
+        expect(contextManager).toBeDefined();
+      }
+    });
+
+    it('should apply budget enforcement and log events during execution', async () => {
+      const engineWithContext = new WorkflowEngine(mockDeps, {
+        contextManagerConfig: {
+          maxTokens: 128000,
+        },
+      });
+
+      const workflow = { ...sampleWorkflow };
+      const stepResults: StepResult[] = [
+        { stepId: 'step1', output: 'result1', durationMs: 100, status: 'success' },
+        { stepId: 'step2', output: 'result2', durationMs: 150, status: 'success' },
+      ];
+
+      mockDeps.createExecutionPlan = vi.fn().mockReturnValue(
+        ok({
+          phases: [
+            { steps: [workflow.steps[0] as WorkflowStep] },
+            { steps: [workflow.steps[1] as WorkflowStep] },
+          ],
+        } as ExecutionPlan)
+      );
+      mockDeps.executePhase = vi
+        .fn()
+        .mockResolvedValueOnce(ok([stepResults[0]]))
+        .mockResolvedValueOnce(ok([stepResults[1]]));
+
+      const result = await engineWithContext.execute(workflow, { input1: 'test' });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        const events = engineWithContext.getBudgetEvents(result.value.executionId);
+        expect(events).toHaveLength(2);
+
+        // Check first event
+        expect(events[0]?.stepId).toBe('step1');
+        expect(events[0]?.source).toBe('engine');
+        expect(events[0]?.budget).toEqual(DEFAULT_BUDGET);
+        expect(events[0]?.statsBefore).toBeDefined();
+
+        // Check second event
+        expect(events[1]?.stepId).toBe('step2');
+      }
+    });
+
+    it('should use workflow default budget when specified', async () => {
+      const customBudget: ContextBudget = {
+        system: 0.2,
+        task: 0.25,
+        active: 0.4,
+        reserved: 0.15,
+      };
+
+      const workflowWithBudget: WorkflowDefinition = {
+        ...sampleWorkflow,
+        defaultBudget: customBudget,
+      };
+
+      const engineWithContext = new WorkflowEngine(mockDeps, {
+        contextManagerConfig: {
+          maxTokens: 128000,
+        },
+      });
+
+      mockDeps.createExecutionPlan = vi.fn().mockReturnValue(
+        ok({
+          phases: [{ steps: [workflowWithBudget.steps[0] as WorkflowStep] }],
+        } as ExecutionPlan)
+      );
+      mockDeps.executePhase = vi
+        .fn()
+        .mockResolvedValue(
+          ok([{ stepId: 'step1', output: 'done', durationMs: 50, status: 'success' }])
+        );
+
+      const result = await engineWithContext.execute(workflowWithBudget, { input1: 'test' });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        const events = engineWithContext.getBudgetEvents(result.value.executionId);
+        expect(events).toHaveLength(1);
+        expect(events[0]?.source).toBe('workflow');
+        expect(events[0]?.budget).toEqual(customBudget);
+      }
+    });
+
+    it('should use step-specific budget override when specified', async () => {
+      const stepBudgetOverride = {
+        system: 0.1,
+        active: 0.6,
+      };
+
+      const workflowWithStepBudget: WorkflowDefinition = {
+        ...sampleWorkflow,
+        steps: [
+          {
+            ...sampleWorkflow.steps[0],
+            contextBudget: stepBudgetOverride,
+          } as WorkflowDefinition['steps'][0],
+        ],
+      };
+
+      const engineWithContext = new WorkflowEngine(mockDeps, {
+        contextManagerConfig: {
+          maxTokens: 128000,
+        },
+      });
+
+      mockDeps.createExecutionPlan = vi.fn().mockReturnValue(
+        ok({
+          phases: [{ steps: [workflowWithStepBudget.steps[0] as WorkflowStep] }],
+        } as ExecutionPlan)
+      );
+      mockDeps.executePhase = vi
+        .fn()
+        .mockResolvedValue(
+          ok([{ stepId: 'step1', output: 'done', durationMs: 50, status: 'success' }])
+        );
+
+      const result = await engineWithContext.execute(workflowWithStepBudget, { input1: 'test' });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        const events = engineWithContext.getBudgetEvents(result.value.executionId);
+        expect(events).toHaveLength(1);
+        expect(events[0]?.source).toBe('step');
+        // Step overrides merged with engine defaults
+        expect(events[0]?.budget.system).toBe(0.1);
+        expect(events[0]?.budget.active).toBe(0.6);
+        expect(events[0]?.budget.task).toBe(DEFAULT_BUDGET.task);
+        expect(events[0]?.budget.reserved).toBe(DEFAULT_BUDGET.reserved);
+      }
+    });
+
+    it('should return empty events for unknown execution', () => {
+      const events = engine.getBudgetEvents('unknown-id');
+      expect(events).toHaveLength(0);
+    });
+
+    it('should return undefined context manager for unknown execution', () => {
+      const contextManager = engine.getContextManager('unknown-id');
+      expect(contextManager).toBeUndefined();
+    });
+
+    it('should use engine default budget when workflow has no default', async () => {
+      const customEngineBudget: ContextBudget = {
+        system: 0.1,
+        task: 0.3,
+        active: 0.45,
+        reserved: 0.15,
+      };
+
+      const engineWithCustomBudget = new WorkflowEngine(mockDeps, {
+        contextManagerConfig: {
+          maxTokens: 128000,
+        },
+        defaultBudget: customEngineBudget,
+      });
+
+      const workflow = { ...sampleWorkflow };
+      mockDeps.createExecutionPlan = vi.fn().mockReturnValue(
+        ok({
+          phases: [{ steps: [workflow.steps[0] as WorkflowStep] }],
+        } as ExecutionPlan)
+      );
+      mockDeps.executePhase = vi
+        .fn()
+        .mockResolvedValue(
+          ok([{ stepId: 'step1', output: 'done', durationMs: 50, status: 'success' }])
+        );
+
+      const result = await engineWithCustomBudget.execute(workflow, { input1: 'test' });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        const events = engineWithCustomBudget.getBudgetEvents(result.value.executionId);
+        expect(events).toHaveLength(1);
+        expect(events[0]?.source).toBe('engine');
+        expect(events[0]?.budget).toEqual(customEngineBudget);
+      }
     });
   });
 });

@@ -9,6 +9,25 @@ import type { WorkflowError } from '../errors.js';
 import type { AgentRole } from './agent.js';
 
 /**
+ * Budget allocation for context categories.
+ */
+export interface ContextBudget {
+  /** System instructions and project context (default: 15%) */
+  system: number;
+  /** Current task description and requirements (default: 20%) */
+  task: number;
+  /** Active working content (default: 50%) */
+  active: number;
+  /** Reserved for response generation (default: 15%) */
+  reserved: number;
+}
+
+/**
+ * Partial context budget for step-level overrides.
+ */
+export type PartialContextBudget = Partial<ContextBudget>;
+
+/**
  * Workflow input definition.
  */
 export interface InputDefinition {
@@ -46,6 +65,8 @@ export interface WorkflowStep {
   timeout?: number;
   /** Condition for execution */
   condition?: string;
+  /** Step-specific context budget override (merges with workflow default) */
+  contextBudget?: PartialContextBudget;
 }
 
 /**
@@ -64,6 +85,8 @@ export interface WorkflowDefinition {
   steps: WorkflowStep[];
   /** Global timeout in ms */
   timeout?: number;
+  /** Default context budget for workflow steps (individual steps can override) */
+  defaultBudget?: ContextBudget;
 }
 
 /**

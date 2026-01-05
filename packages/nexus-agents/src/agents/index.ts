@@ -22,6 +22,17 @@ export { SimpleAgent } from './simple-agent.js';
 // TechLead agent
 export { TechLead, createTechLead, type ExecutionPlan } from './tech-lead.js';
 
+// Plan to Workflow conversion
+export {
+  convertPlanToWorkflow,
+  makeConvertible,
+  isConvertible,
+  PlanConversionOptionsSchema,
+  type PlanConversionOptions,
+  type ConvertibleExecutionPlan,
+  type ExecutionPlanData,
+} from './plan-converter.js';
+
 // TechLead types and schemas
 export type {
   SubTask,

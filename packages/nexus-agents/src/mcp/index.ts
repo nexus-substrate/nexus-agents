@@ -40,6 +40,24 @@ export {
   createTimer,
   withLogging,
   type McpLogContext,
+  // Policy firewall
+  type Artifact,
+  type ExecutionMode,
+  type PolicyMode,
+  type PolicyDecision,
+  type PolicyContext,
+  type PolicyRule,
+  type IPolicyFirewall,
+  type PolicyFirewallConfig,
+  type PolicyConfig,
+  PolicyFirewall,
+  PolicyError,
+  PolicyConfigSchema,
+  denyMutationsWithoutModeRule,
+  safePathsRule,
+  createDefaultPolicyFirewall,
+  evaluatePolicy,
+  createPolicyContext,
 } from './middleware/index.js';
 
 // Tools

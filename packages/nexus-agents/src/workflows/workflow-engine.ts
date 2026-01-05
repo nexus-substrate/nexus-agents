@@ -1,12 +1,7 @@
-/**
- * nexus-agents/workflows - Workflow Engine
- *
- * Main workflow engine implementation that coordinates parsing,
- * execution planning, and step execution.
- */
+/** Workflow Engine - Coordinates parsing, execution planning, and step execution. */
 
-import { ok, err } from '../core/index.js';
-import type { Result } from '../core/index.js';
+import { ok, err, createLogger } from '../core/index.js';
+import type { Result, ILogger, ContextBudget } from '../core/index.js';
 import type {
   IWorkflowEngine,
   WorkflowDefinition,
@@ -15,62 +10,58 @@ import type {
   ExecutionStatus,
   StepResult,
 } from '../core/index.js';
-import { WorkflowError } from '../core/index.js';
-import { ParseError } from '../core/index.js';
+import { WorkflowError, ParseError } from '../core/index.js';
 import { v4 as uuidv4 } from 'uuid';
+import {
+  ContextManager,
+  DEFAULT_BUDGET,
+  type ContextManagerConfig,
+} from '../agents/context-manager.js';
+import {
+  applyBudgetEnforcement,
+  copyBudgetEvents,
+  type BudgetEnforcementEvent,
+} from './budget-enforcement.js';
 
-/**
- * Configuration for workflow engine.
- */
+export type { BudgetEnforcementEvent } from './budget-enforcement.js';
+
+/** Configuration for workflow engine. */
 export interface WorkflowEngineConfig {
-  /** Default timeout in ms */
   defaultTimeoutMs?: number;
-  /** Maximum concurrent steps */
   maxConcurrency?: number;
-  /** Template search paths */
   templatePaths?: string[];
+  contextManagerConfig?: Omit<ContextManagerConfig, 'budget'>;
+  defaultBudget?: ContextBudget;
+  logger?: ILogger;
 }
 
-/**
- * Dependencies for workflow engine.
- */
+/** Dependencies for workflow engine. */
 export interface WorkflowEngineDeps {
-  /** Parse workflow from string */
   parseWorkflow: (
     content: string,
     format: 'yaml' | 'json'
   ) => Result<WorkflowDefinition, ParseError>;
-  /** Load workflow from file */
   loadWorkflowFile: (path: string) => Promise<Result<WorkflowDefinition, ParseError>>;
-  /** Create execution plan */
   createExecutionPlan: (workflow: WorkflowDefinition) => Result<ExecutionPlan, WorkflowError>;
-  /** Execute steps in parallel */
   executePhase: (
     steps: WorkflowStep[],
     context: ExecutionContext,
     options: ExecutionOptions
   ) => Promise<Result<StepResult[], WorkflowError>>;
-  /** Get built-in templates */
   getBuiltInTemplates: () => Map<string, WorkflowDefinition>;
 }
 
-/**
- * Execution plan with phases.
- */
+/** Execution plan with phases. */
 export interface ExecutionPlan {
   phases: ExecutionPhase[];
 }
 
-/**
- * Single execution phase (all steps run concurrently).
- */
+/** Single execution phase (all steps run concurrently). */
 export interface ExecutionPhase {
   steps: WorkflowStep[];
 }
 
-/**
- * Workflow step type (re-export for convenience).
- */
+/** Workflow step type. */
 export interface WorkflowStep {
   id: string;
   agent: string;
@@ -81,11 +72,10 @@ export interface WorkflowStep {
   retries?: number;
   timeout?: number;
   condition?: string;
+  contextBudget?: Partial<ContextBudget>;
 }
 
-/**
- * Execution context for workflow.
- */
+/** Execution context for workflow. */
 export interface ExecutionContext {
   workflowId: string;
   executionId: string;
@@ -93,20 +83,18 @@ export interface ExecutionContext {
   stepResults: Map<string, StepResult>;
   variables: Map<string, unknown>;
   abortController: AbortController;
+  contextManager: ContextManager | undefined;
+  budgetEvents: BudgetEnforcementEvent[];
 }
 
-/**
- * Options for phase execution.
- */
+/** Options for phase execution. */
 export interface ExecutionOptions {
   maxConcurrency: number;
   failFast: boolean;
   timeoutMs?: number;
 }
 
-/**
- * Active workflow execution tracking.
- */
+/** Active workflow execution tracking. */
 interface ActiveExecution {
   executionId: string;
   workflowName: string;
@@ -119,22 +107,38 @@ const DEFAULT_TIMEOUT_MS = 300000; // 5 minutes
 const DEFAULT_MAX_CONCURRENCY = 5;
 const MAX_TRACKED_EXECUTIONS = 1000;
 
-/**
- * Workflow engine implementation.
- */
+/** Internal config type with resolved optional fields. */
+interface ResolvedConfig {
+  defaultTimeoutMs: number;
+  maxConcurrency: number;
+  templatePaths: string[];
+  contextManagerConfig: Omit<ContextManagerConfig, 'budget'> | undefined;
+  defaultBudget: ContextBudget;
+}
+
+/** Resolve workflow engine configuration with defaults. */
+function resolveConfig(config?: WorkflowEngineConfig): ResolvedConfig {
+  return {
+    defaultTimeoutMs: config?.defaultTimeoutMs ?? DEFAULT_TIMEOUT_MS,
+    maxConcurrency: config?.maxConcurrency ?? DEFAULT_MAX_CONCURRENCY,
+    templatePaths: config?.templatePaths ?? [],
+    contextManagerConfig: config?.contextManagerConfig,
+    defaultBudget: config?.defaultBudget ?? DEFAULT_BUDGET,
+  };
+}
+
+/** Workflow engine implementation. */
 export class WorkflowEngine implements IWorkflowEngine {
-  private readonly config: Required<WorkflowEngineConfig>;
+  private readonly config: ResolvedConfig;
   private readonly deps: WorkflowEngineDeps;
   private readonly executions: Map<string, ActiveExecution> = new Map();
   private readonly customTemplates: Map<string, WorkflowDefinition> = new Map();
+  private readonly logger: ILogger;
 
   constructor(deps: WorkflowEngineDeps, config?: WorkflowEngineConfig) {
     this.deps = deps;
-    this.config = {
-      defaultTimeoutMs: config?.defaultTimeoutMs ?? DEFAULT_TIMEOUT_MS,
-      maxConcurrency: config?.maxConcurrency ?? DEFAULT_MAX_CONCURRENCY,
-      templatePaths: config?.templatePaths ?? [],
-    };
+    this.logger = config?.logger ?? createLogger({ component: 'WorkflowEngine' });
+    this.config = resolveConfig(config);
   }
 
   /**
@@ -185,6 +189,9 @@ export class WorkflowEngine implements IWorkflowEngine {
     const executionId = uuidv4();
     const startTime = Date.now();
 
+    // Create context manager if configured
+    const contextManager = this.createContextManager(workflow);
+
     const context: ExecutionContext = {
       workflowId: workflow.name,
       executionId,
@@ -192,6 +199,8 @@ export class WorkflowEngine implements IWorkflowEngine {
       stepResults: new Map(),
       variables: new Map(),
       abortController: new AbortController(),
+      contextManager,
+      budgetEvents: [],
     };
 
     const execution: ActiveExecution = {
@@ -203,41 +212,39 @@ export class WorkflowEngine implements IWorkflowEngine {
     };
     this.executions.set(executionId, execution);
 
+    if (contextManager !== undefined) {
+      this.logger.debug('Context manager initialized for workflow execution', {
+        executionId,
+        workflowName: workflow.name,
+        budget: workflow.defaultBudget ?? this.config.defaultBudget,
+      });
+    }
+
     return { executionId, context, startTime };
   }
 
-  /**
-   * Remove completed executions to prevent memory leaks.
-   * Removes oldest completed executions first when over the limit.
-   */
-  private cleanupOldExecutions(): void {
-    // Skip cleanup if under limit
-    if (this.executions.size < MAX_TRACKED_EXECUTIONS) {
-      return;
-    }
+  private createContextManager(workflow: WorkflowDefinition): ContextManager | undefined {
+    if (this.config.contextManagerConfig === undefined) return undefined;
+    const budget = workflow.defaultBudget ?? this.config.defaultBudget;
+    return new ContextManager({ ...this.config.contextManagerConfig, budget, logger: this.logger });
+  }
 
-    // Collect completed executions with their start times
+  private cleanupOldExecutions(): void {
+    if (this.executions.size < MAX_TRACKED_EXECUTIONS) return;
     const completed: Array<{ id: string; startTime: number }> = [];
-    for (const [id, execution] of this.executions) {
-      if (execution.status.state !== 'running' && execution.status.state !== 'pending') {
-        completed.push({ id, startTime: execution.startTime });
+    for (const [id, exec] of this.executions) {
+      if (exec.status.state !== 'running' && exec.status.state !== 'pending') {
+        completed.push({ id, startTime: exec.startTime });
       }
     }
-
-    // Sort by start time (oldest first) and remove excess
     completed.sort((a, b) => a.startTime - b.startTime);
     const toRemove = Math.max(0, this.executions.size - MAX_TRACKED_EXECUTIONS + 1);
     for (let i = 0; i < toRemove && i < completed.length; i++) {
       const entry = completed[i];
-      if (entry !== undefined) {
-        this.executions.delete(entry.id);
-      }
+      if (entry !== undefined) this.executions.delete(entry.id);
     }
   }
 
-  /**
-   * Run the workflow execution.
-   */
   private async runExecution(
     workflow: WorkflowDefinition,
     plan: ExecutionPlan,
@@ -253,7 +260,6 @@ export class WorkflowEngine implements IWorkflowEngine {
       });
       return stepResults;
     }
-
     const result: WorkflowResult = {
       executionId,
       workflowName: workflow.name,
@@ -261,14 +267,10 @@ export class WorkflowEngine implements IWorkflowEngine {
       output: this.buildFinalOutput(stepResults.value),
       totalDurationMs: Date.now() - startTime,
     };
-
     this.updateExecutionStatus(executionId, { state: 'completed', result });
     return ok(result);
   }
 
-  /**
-   * Handle execution errors.
-   */
   private handleExecutionError(
     error: unknown,
     executionId: string,
@@ -279,115 +281,74 @@ export class WorkflowEngine implements IWorkflowEngine {
     return err(new WorkflowError(message, { context: { executionId, workflowName } }));
   }
 
-  /**
-   * Get execution status.
-   */
   getStatus(executionId: string): ExecutionStatus {
-    const execution = this.executions.get(executionId);
-    if (!execution) {
-      return { state: 'failed', error: 'Execution not found' };
-    }
-    return execution.status;
+    const exec = this.executions.get(executionId);
+    return exec ? exec.status : { state: 'failed', error: 'Execution not found' };
   }
 
-  /**
-   * Cancel a running workflow.
-   */
+  getBudgetEvents(executionId: string): BudgetEnforcementEvent[] {
+    const exec = this.executions.get(executionId);
+    return exec ? copyBudgetEvents(exec.context.budgetEvents) : [];
+  }
+
+  getContextManager(executionId: string): ContextManager | undefined {
+    return this.executions.get(executionId)?.context.contextManager;
+  }
+
   cancel(executionId: string): Promise<Result<void, WorkflowError>> {
-    const execution = this.executions.get(executionId);
-    if (execution === undefined) {
+    const exec = this.executions.get(executionId);
+    if (!exec) {
       return Promise.resolve(
-        err(
-          new WorkflowError('Execution not found', {
-            context: { executionId },
-          })
-        )
+        err(new WorkflowError('Execution not found', { context: { executionId } }))
       );
     }
-
-    if (execution.status.state !== 'running' && execution.status.state !== 'pending') {
+    if (exec.status.state !== 'running' && exec.status.state !== 'pending') {
       return Promise.resolve(
         err(
           new WorkflowError('Cannot cancel completed or failed workflow', {
-            context: { executionId, currentState: execution.status.state },
+            context: { executionId, currentState: exec.status.state },
           })
         )
       );
     }
-
-    // Signal cancellation
-    execution.context.abortController.abort();
+    exec.context.abortController.abort();
     this.updateExecutionStatus(executionId, {
       state: 'cancelled',
       cancelledAt: new Date().toISOString(),
     });
-
     return Promise.resolve(ok(undefined));
   }
 
-  /**
-   * List available workflow templates.
-   */
   listTemplates(): Promise<WorkflowTemplate[]> {
     const templates: WorkflowTemplate[] = [];
-
-    // Add built-in templates
     const builtIn = this.deps.getBuiltInTemplates();
     for (const [name, workflow] of builtIn) {
       templates.push(this.createTemplate(workflow, `builtin:${name}`, 'built-in'));
     }
-
-    // Add custom templates
     for (const [name, workflow] of this.customTemplates) {
       templates.push(this.createTemplate(workflow, `custom:${name}`, 'custom'));
     }
-
     return Promise.resolve(templates);
   }
 
-  /**
-   * Create a template entry from a workflow definition.
-   */
   private createTemplate(
     workflow: WorkflowDefinition,
     path: string,
     category: string
   ): WorkflowTemplate {
-    const template: WorkflowTemplate = {
-      name: workflow.name,
-      version: workflow.version,
-      path,
-      category,
-    };
-    if (workflow.description !== undefined) {
-      template.description = workflow.description;
-    }
-    return template;
+    const t: WorkflowTemplate = { name: workflow.name, version: workflow.version, path, category };
+    if (workflow.description !== undefined) t.description = workflow.description;
+    return t;
   }
 
-  /**
-   * Register a custom template.
-   */
   registerTemplate(id: string, workflow: WorkflowDefinition): void {
     this.customTemplates.set(id, workflow);
   }
 
-  /**
-   * Get a template by ID.
-   */
   getTemplate(id: string): WorkflowDefinition | undefined {
-    // Check built-in first
     const builtIn = this.deps.getBuiltInTemplates();
-    if (builtIn.has(id)) {
-      return builtIn.get(id);
-    }
-    // Check custom
-    return this.customTemplates.get(id);
+    return builtIn.get(id) ?? this.customTemplates.get(id);
   }
-
-  // =========================================================================
-  // Private Methods
-  // =========================================================================
 
   private validateInputs(
     workflow: WorkflowDefinition,
@@ -396,10 +357,7 @@ export class WorkflowEngine implements IWorkflowEngine {
     for (const inputDef of workflow.inputs) {
       const value = inputs[inputDef.name];
       const isRequired = inputDef.required === true;
-      const hasValue = value !== undefined;
-      const hasDefault = inputDef.default !== undefined;
-
-      if (isRequired && !hasValue && !hasDefault) {
+      if (isRequired && value === undefined && inputDef.default === undefined) {
         return err(
           new WorkflowError(`Missing required input: ${inputDef.name}`, {
             context: { input: inputDef.name },
@@ -418,76 +376,56 @@ export class WorkflowEngine implements IWorkflowEngine {
     const allResults: StepResult[] = [];
     const totalSteps = plan.phases.reduce((sum, p) => sum + p.steps.length, 0);
     let completedSteps = 0;
-
     for (const phase of plan.phases) {
-      // Check for cancellation
       if (context.abortController.signal.aborted) {
         return err(
-          new WorkflowError('Workflow cancelled', {
-            context: { executionId: context.executionId },
-          })
+          new WorkflowError('Workflow cancelled', { context: { executionId: context.executionId } })
         );
       }
-
-      // Update status
       const currentStep = phase.steps[0]?.id ?? 'unknown';
       this.updateExecutionStatus(context.executionId, {
         state: 'running',
         currentStep,
         progress: completedSteps / totalSteps,
       });
-
-      // Execute phase
+      for (const step of phase.steps) {
+        applyBudgetEnforcement(step, context.contextManager, context.budgetEvents, {
+          engineDefaultBudget: this.config.defaultBudget,
+          workflowDefaultBudget: workflow.defaultBudget,
+          logger: this.logger,
+        });
+      }
       const options: ExecutionOptions = {
         maxConcurrency: this.config.maxConcurrency,
         failFast: true,
         timeoutMs: workflow.timeout ?? this.config.defaultTimeoutMs,
       };
-
       const phaseResult = await this.deps.executePhase(phase.steps, context, options);
-
-      if (!phaseResult.ok) {
-        return phaseResult;
-      }
-
-      // Store results
+      if (!phaseResult.ok) return phaseResult;
       for (const result of phaseResult.value) {
         context.stepResults.set(result.stepId, result);
         allResults.push(result);
       }
-
       completedSteps += phase.steps.length;
     }
-
     return ok(allResults);
   }
 
   private updateExecutionStatus(executionId: string, status: ExecutionStatus): void {
-    const execution = this.executions.get(executionId);
-    if (execution) {
-      execution.status = status;
-    }
+    const exec = this.executions.get(executionId);
+    if (exec) exec.status = status;
   }
 
   private buildFinalOutput(stepResults: StepResult[]): unknown {
-    // Return the output of the last successful step
     const successfulSteps = stepResults.filter((r) => r.status === 'success');
-    if (successfulSteps.length === 0) {
-      return null;
-    }
-    const lastStep = successfulSteps[successfulSteps.length - 1];
-    return lastStep?.output ?? null;
+    return successfulSteps.length === 0
+      ? null
+      : (successfulSteps[successfulSteps.length - 1]?.output ?? null);
   }
 }
 
-/**
- * Create a workflow engine with default dependencies.
- * This is a factory function that should be called after all
- * component modules are implemented.
- */
+/** Create a workflow engine with default dependencies. */
 export function createWorkflowEngine(_config?: WorkflowEngineConfig): IWorkflowEngine {
-  // This will be implemented once all dependencies are available
-  // For now, throw an error indicating dependencies are needed
   throw new Error(
     'createWorkflowEngine requires dependencies. Use WorkflowEngine constructor directly.'
   );

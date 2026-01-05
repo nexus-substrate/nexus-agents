@@ -86,6 +86,24 @@ export const WorkflowConfigSchema = z.object({
 export type WorkflowConfig = z.infer<typeof WorkflowConfigSchema>;
 
 /**
+ * Policy configuration schema.
+ *
+ * Controls authorization behavior for tool operations.
+ * - defaultMode: Whether operations default to read-only or read-write
+ * - policyMode: Whether to enforce denials or just warn (for migration)
+ *
+ * (Source: OWASP ASVS 4.0, Authorization Controls)
+ */
+export const PolicyConfigSchema = z.object({
+  /** Default execution mode for tool operations (default: 'read-only') */
+  defaultMode: z.enum(['read-only', 'read-write']).default('read-only'),
+  /** Policy enforcement mode (default: 'enforce') */
+  policyMode: z.enum(['enforce', 'warn']).default('enforce'),
+});
+
+export type PolicyConfig = z.infer<typeof PolicyConfigSchema>;
+
+/**
  * Security configuration schema.
  */
 export const SecurityConfigSchema = z.object({
@@ -98,6 +116,8 @@ export const SecurityConfigSchema = z.object({
     })
     .default({}),
   secretsFile: z.string().optional(),
+  /** Policy firewall configuration */
+  policy: PolicyConfigSchema.optional(),
 });
 
 export type SecurityConfig = z.infer<typeof SecurityConfigSchema>;
@@ -131,5 +151,17 @@ export const defaultConfig: Partial<AppConfig> = {
     level: 'info',
     format: 'json',
     destination: 'stdout',
+  },
+  security: {
+    allowedPaths: ['./'],
+    blockedPatterns: [],
+    rateLimit: {
+      enabled: true,
+      requestsPerMinute: 60,
+    },
+    policy: {
+      defaultMode: 'read-only',
+      policyMode: 'enforce',
+    },
   },
 };

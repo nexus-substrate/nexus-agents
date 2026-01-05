@@ -6,6 +6,10 @@
  */
 
 import { z } from 'zod';
+import { ContextBudgetSchema } from '../agents/context-manager.js';
+
+// Re-export ContextBudget for consumers
+export type { ContextBudget } from '../agents/context-manager.js';
 
 /**
  * Input types supported in workflow definitions.
@@ -58,6 +62,35 @@ export const AgentRoleSchema = z.enum([
 export type AgentRoleType = z.infer<typeof AgentRoleSchema>;
 
 /**
+ * Schema for partial context budget (allows overriding specific fields).
+ */
+export const PartialContextBudgetSchema = z
+  .object({
+    system: z.number().min(0).max(1).optional(),
+    task: z.number().min(0).max(1).optional(),
+    active: z.number().min(0).max(1).optional(),
+    reserved: z.number().min(0).max(1).optional(),
+  })
+  .refine(
+    (data) => {
+      const total =
+        (data.system ?? 0) + (data.task ?? 0) + (data.active ?? 0) + (data.reserved ?? 0);
+      // Only validate if all fields are provided, or allow partial
+      const hasAllFields =
+        data.system !== undefined &&
+        data.task !== undefined &&
+        data.active !== undefined &&
+        data.reserved !== undefined;
+      return !hasAllFields || total <= 1.0;
+    },
+    {
+      message: 'Complete budget allocations must not exceed 100%',
+    }
+  );
+
+export type PartialContextBudget = z.infer<typeof PartialContextBudgetSchema>;
+
+/**
  * Schema for a single workflow step.
  * Steps are the atomic units of work in a workflow.
  */
@@ -87,6 +120,8 @@ export const WorkflowStepSchema = z
     timeout: z.number().int().positive().optional(),
     /** Condition expression for conditional execution */
     condition: z.string().optional(),
+    /** Step-specific context budget override (merges with workflow default) */
+    contextBudget: PartialContextBudgetSchema.optional(),
   })
   .strict();
 
@@ -121,6 +156,8 @@ export const WorkflowDefinitionSchema = z
     steps: z.array(WorkflowStepSchema).min(1, 'Workflow must have at least one step'),
     /** Global timeout in milliseconds */
     timeout: z.number().int().positive().optional(),
+    /** Default context budget for workflow steps (individual steps can override) */
+    defaultBudget: ContextBudgetSchema.optional(),
   })
   .strict();
 

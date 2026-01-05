@@ -38,6 +38,12 @@ import {
   estimateDuration,
   extractTextContent,
 } from './tech-lead-helpers.js';
+import type { WorkflowDefinition } from '../core/index.js';
+import {
+  convertPlanToWorkflow,
+  type PlanConversionOptions,
+  type ExecutionPlanData,
+} from './plan-converter.js';
 
 /** Default TechLead options. */
 const DEFAULT_OPTIONS: Required<TechLeadOptions> = {
@@ -65,14 +71,38 @@ recommendations[].`;
 
 /**
  * Execution plan output structure.
+ *
+ * The ExecutionPlan represents the TechLead's analysis and decomposition
+ * of a task. It can optionally be converted to a WorkflowDefinition for
+ * replayable, static execution via the WorkflowEngine.
+ *
+ * ExecutionPlan extends ExecutionPlanData (the pure data) with the
+ * asWorkflowDefinition conversion method.
+ *
+ * @see ARCHITECTURE.md for the separation of concerns between TechLead and WorkflowEngine
  */
-export interface ExecutionPlan {
-  taskId: string;
-  analysis: TaskAnalysis;
-  subtasks: SubTask[];
-  assignments: ExpertAssignment[];
-  parallelGroups: string[][];
-  estimatedDuration: number;
+export interface ExecutionPlan extends ExecutionPlanData {
+  /**
+   * Convert this execution plan to a reusable WorkflowDefinition.
+   *
+   * This "crystallizes" the dynamic plan into a static, replayable workflow
+   * that can be executed by WorkflowEngine.
+   *
+   * @param options - Optional conversion configuration
+   * @returns A valid WorkflowDefinition
+   *
+   * @example
+   * ```typescript
+   * const result = await techLead.execute(task);
+   * const plan = result.value.output as ExecutionPlan;
+   * const workflow = plan.asWorkflowDefinition({
+   *   name: 'my-workflow',
+   *   version: '1.0.0',
+   * });
+   * await workflowEngine.execute(workflow, inputs);
+   * ```
+   */
+  asWorkflowDefinition(options?: PlanConversionOptions): WorkflowDefinition;
 }
 
 /**
@@ -272,15 +302,27 @@ export class TechLead extends BaseAgent {
     subtasks: SubTask[],
     assignments: ExpertAssignment[]
   ): ExecutionPlan {
-    return {
+    const parallelGroups = this.techLeadOptions.enableParallelHints
+      ? identifyParallelGroups(subtasks)
+      : [];
+    const estimatedDuration = estimateDuration(subtasks);
+
+    // Create the base plan data
+    const planData = {
       taskId: task.id,
       analysis,
       subtasks,
       assignments,
-      parallelGroups: this.techLeadOptions.enableParallelHints
-        ? identifyParallelGroups(subtasks)
-        : [],
-      estimatedDuration: estimateDuration(subtasks),
+      parallelGroups,
+      estimatedDuration,
+    };
+
+    // Return plan with conversion method attached
+    return {
+      ...planData,
+      asWorkflowDefinition(options?: PlanConversionOptions): WorkflowDefinition {
+        return convertPlanToWorkflow(planData, options);
+      },
     };
   }
 

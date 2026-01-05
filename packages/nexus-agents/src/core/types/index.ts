@@ -47,6 +47,8 @@ export type {
   InputDefinition,
   StepResult,
   ExecutionStatus,
+  ContextBudget,
+  PartialContextBudget,
 } from './workflow.js';
 export { ParseError } from './workflow.js';
 

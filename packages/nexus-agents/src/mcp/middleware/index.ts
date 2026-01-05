@@ -26,3 +26,29 @@ export {
   withLogging,
   type McpLogContext,
 } from './logging.js';
+
+// Policy firewall
+export {
+  // Types
+  type Artifact,
+  type ExecutionMode,
+  type PolicyMode,
+  type PolicyDecision,
+  type PolicyContext,
+  type PolicyRule,
+  type IPolicyFirewall,
+  type PolicyFirewallConfig,
+  type PolicyConfig,
+  // Classes
+  PolicyFirewall,
+  PolicyError,
+  // Schema
+  PolicyConfigSchema,
+  // Default rules
+  denyMutationsWithoutModeRule,
+  safePathsRule,
+  // Factory functions
+  createDefaultPolicyFirewall,
+  evaluatePolicy,
+  createPolicyContext,
+} from './policy.js';
