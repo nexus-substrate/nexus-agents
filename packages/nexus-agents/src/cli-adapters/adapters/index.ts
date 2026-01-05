@@ -9,3 +9,4 @@
 export { ClaudeCliAdapter } from './claude-adapter.js';
 export { GeminiCliAdapter } from './gemini-adapter.js';
 export { CodexCliAdapter } from './codex-adapter.js';
+export { CodexMcpAdapter } from './codex-mcp-adapter.js';

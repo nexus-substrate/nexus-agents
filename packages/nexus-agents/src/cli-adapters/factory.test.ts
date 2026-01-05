@@ -9,6 +9,7 @@ import { createCliAdapter, createAllAdapters } from './factory.js';
 import { ClaudeCliAdapter } from './adapters/claude-adapter.js';
 import { GeminiCliAdapter } from './adapters/gemini-adapter.js';
 import { CodexCliAdapter } from './adapters/codex-adapter.js';
+import { CodexMcpAdapter } from './adapters/codex-mcp-adapter.js';
 
 describe('createCliAdapter', () => {
   it('should create ClaudeCliAdapter for claude', () => {
@@ -27,8 +28,16 @@ describe('createCliAdapter', () => {
     expect(adapter.transport).toBe('subprocess');
   });
 
-  it('should create CodexCliAdapter for codex', () => {
+  it('should create CodexMcpAdapter for codex by default', () => {
     const adapter = createCliAdapter({ cli: 'codex' });
+
+    expect(adapter).toBeInstanceOf(CodexMcpAdapter);
+    expect(adapter.name).toBe('codex');
+    expect(adapter.transport).toBe('mcp');
+  });
+
+  it('should create CodexCliAdapter when subprocess transport specified', () => {
+    const adapter = createCliAdapter({ cli: 'codex', transport: 'subprocess' });
 
     expect(adapter).toBeInstanceOf(CodexCliAdapter);
     expect(adapter.name).toBe('codex');
@@ -85,11 +94,17 @@ describe('createAllAdapters', () => {
     expect(adapters.has('codex')).toBe(true);
   });
 
-  it('should create correct adapter types', () => {
+  it('should create correct adapter types with MCP for codex by default', () => {
     const adapters = createAllAdapters();
 
     expect(adapters.get('claude')).toBeInstanceOf(ClaudeCliAdapter);
     expect(adapters.get('gemini')).toBeInstanceOf(GeminiCliAdapter);
+    expect(adapters.get('codex')).toBeInstanceOf(CodexMcpAdapter);
+  });
+
+  it('should create CodexCliAdapter when subprocess transport specified', () => {
+    const adapters = createAllAdapters(undefined, 'subprocess');
+
     expect(adapters.get('codex')).toBeInstanceOf(CodexCliAdapter);
   });
 
