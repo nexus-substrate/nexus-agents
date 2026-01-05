@@ -13,6 +13,7 @@ import { parseArgs } from 'node:util';
 import { startStdioServer, closeServer, registerTools } from './mcp/index.js';
 import { createLogger, type ILogger } from './core/index.js';
 import { VERSION } from './index.js';
+import { doctorCommand } from './cli/index.js';
 
 /**
  * Exit codes for the CLI.
@@ -27,7 +28,14 @@ export const EXIT_CODES = {
 /**
  * CLI command types that can be executed.
  */
-export type CliCommand = 'server' | 'help' | 'version' | 'config' | 'expert' | 'workflow';
+export type CliCommand =
+  | 'server'
+  | 'help'
+  | 'version'
+  | 'config'
+  | 'expert'
+  | 'workflow'
+  | 'doctor';
 
 /**
  * Server mode for nexus-agents.
@@ -94,6 +102,7 @@ USAGE:
 
 COMMANDS:
   (default)     Start MCP server with stdio transport
+  doctor        Check CLI installations and health status
   config        Manage configuration (coming soon)
   expert        Manage experts (coming soon)
   workflow      Manage workflows (coming soon)
@@ -109,6 +118,7 @@ OPTIONS:
 
 EXAMPLES:
   nexus-agents                  Start MCP server (default mode)
+  nexus-agents doctor           Check CLI installations and health
   nexus-agents --mode=server    Explicit MCP server mode
   nexus-agents --mode=mesh      Full hybrid mesh mode
   nexus-agents --help           Show help
@@ -175,7 +185,15 @@ export function parseCliArgs(args: string[] = process.argv.slice(2)): ParsedCliA
  * @returns True if the value is a valid command
  */
 function isValidCommand(value: string): value is CliCommand {
-  const validCommands: CliCommand[] = ['server', 'help', 'version', 'config', 'expert', 'workflow'];
+  const validCommands: CliCommand[] = [
+    'server',
+    'help',
+    'version',
+    'config',
+    'expert',
+    'workflow',
+    'doctor',
+  ];
   return validCommands.includes(value as CliCommand);
 }
 
@@ -326,23 +344,12 @@ async function startServer(verbose: boolean, mode: ServerMode): Promise<void> {
 }
 
 /**
- * Main entry point for the Nexus Agents CLI.
- * Parses arguments and dispatches to appropriate command handler.
+ * Dispatches to the appropriate command handler.
+ *
+ * @param args - Parsed CLI arguments
  */
-async function main(): Promise<void> {
-  let parsedArgs: ParsedCliArgs;
-
-  try {
-    parsedArgs = parseCliArgs();
-  } catch (error) {
-    // parseArgs throws on invalid arguments
-    const message = error instanceof Error ? error.message : 'Unknown argument parsing error';
-    console.error(`Error: ${message}`);
-    console.error('Run "nexus-agents --help" for usage information.');
-    process.exit(EXIT_CODES.INVALID_ARGS);
-  }
-
-  switch (parsedArgs.command) {
+async function dispatchCommand(args: ParsedCliArgs): Promise<void> {
+  switch (args.command) {
     case 'help':
       printHelp();
       process.exit(EXIT_CODES.SUCCESS);
@@ -354,16 +361,41 @@ async function main(): Promise<void> {
       break;
 
     case 'server':
-      await startServer(parsedArgs.options.verbose, parsedArgs.options.mode);
+      await startServer(args.options.verbose, args.options.mode);
       break;
+
+    case 'doctor': {
+      const exitCode = await doctorCommand();
+      process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
+      break;
+    }
 
     case 'config':
     case 'expert':
     case 'workflow':
-      handleUnimplementedCommand(parsedArgs.command);
+      handleUnimplementedCommand(args.command);
       process.exit(EXIT_CODES.SUCCESS);
       break;
   }
+}
+
+/**
+ * Main entry point for the Nexus Agents CLI.
+ * Parses arguments and dispatches to appropriate command handler.
+ */
+async function main(): Promise<void> {
+  let parsedArgs: ParsedCliArgs;
+
+  try {
+    parsedArgs = parseCliArgs();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown argument parsing error';
+    console.error(`Error: ${message}`);
+    console.error('Run "nexus-agents --help" for usage information.');
+    process.exit(EXIT_CODES.INVALID_ARGS);
+  }
+
+  await dispatchCommand(parsedArgs);
 }
 
 // Run main if this is the entry point
