@@ -37,14 +37,34 @@ npm install -g nexus-agents
 
 ### CLI Usage
 
-Start the MCP server:
-
 ```bash
-# If installed globally
+# Start MCP server (default)
 nexus-agents
 
 # Or with npx
 npx nexus-agents
+
+# Check CLI installations and health
+nexus-agents doctor
+
+# Show help
+nexus-agents --help
+
+# Show version
+nexus-agents --version
+```
+
+#### Server Modes
+
+```bash
+# MCP server only (for Claude CLI integration)
+nexus-agents --mode=server
+
+# CLI orchestrator (calls Gemini/Codex CLIs)
+nexus-agents --mode=orchestrator
+
+# Full hybrid mesh (both modes)
+nexus-agents --mode=mesh
 ```
 
 ### Programmatic Usage
@@ -92,6 +112,77 @@ Add to your Claude Desktop configuration (`~/Library/Application Support/Claude/
   }
 }
 ```
+
+### Claude CLI Integration
+
+Nexus Agents works as an MCP server for Claude CLI (Claude Code). Add to your MCP configuration (`~/.claude/mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "nexus-agents": {
+      "command": "npx",
+      "args": ["nexus-agents"]
+    }
+  }
+}
+```
+
+Once configured, Claude CLI can use nexus-agents tools:
+
+```bash
+# Claude CLI will automatically discover and use nexus-agents tools
+claude "Review this code for security issues"
+# → Uses orchestrate tool to delegate to Security Expert
+
+claude "Create a testing expert for this project"
+# → Uses create_expert tool
+
+claude "Run the code-review workflow"
+# → Uses run_workflow tool
+```
+
+#### Verifying Setup
+
+Run the doctor command to verify your CLI installations:
+
+```bash
+$ nexus-agents doctor
+
+Nexus Agents Doctor
+===================
+
+Checking CLI installations...
+
+✓ Claude CLI
+  Version: 2.0.76 (supported)
+  Auth: OAuth
+  Capacity: 85% remaining
+
+✓ Gemini CLI
+  Version: 0.22.5 (supported)
+  Auth: ADC configured
+
+✓ Codex CLI
+  Version: 0.77.0 (supported)
+  Auth: OAuth
+
+Checking MCP configuration...
+
+✓ MCP Server mode: Ready
+✓ MCP Client mode: Ready (Codex mcp-server)
+
+Summary: All systems operational
+```
+
+#### Troubleshooting
+
+| Issue                 | Solution                                           |
+| --------------------- | -------------------------------------------------- |
+| CLI not found         | Run `nexus-agents doctor` to see install commands  |
+| Authentication failed | Run `<cli> auth login` (e.g., `claude auth login`) |
+| Version outdated      | Run `npm update -g @anthropic-ai/claude-code`      |
+| MCP connection failed | Check `~/.claude/mcp.json` syntax                  |
 
 ---
 
@@ -158,11 +249,12 @@ steps:
 
 The server exposes these MCP tools for integration:
 
-| Tool            | Description                                  |
-| --------------- | -------------------------------------------- |
-| `orchestrate`   | Analyze task and coordinate expert execution |
-| `create_expert` | Dynamically create a specialized expert      |
-| `run_workflow`  | Execute a predefined workflow template       |
+| Tool                | Description                                  |
+| ------------------- | -------------------------------------------- |
+| `orchestrate`       | Analyze task and coordinate expert execution |
+| `create_expert`     | Dynamically create a specialized expert      |
+| `run_workflow`      | Execute a predefined workflow template       |
+| `delegate_to_model` | Route task to optimal model by capability    |
 
 ---
 
