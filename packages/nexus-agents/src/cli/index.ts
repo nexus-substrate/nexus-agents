@@ -21,3 +21,5 @@ export {
   printWorkflowTemplates,
 } from './workflow-run.js';
 export type { WorkflowRunOptions, WorkflowRunResult } from './workflow-run.js';
+
+export { replCommand, startRepl } from './repl.js';

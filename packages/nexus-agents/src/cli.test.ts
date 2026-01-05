@@ -85,6 +85,29 @@ describe('CLI Argument Parsing', () => {
       });
     });
 
+    describe('interactive flag', () => {
+      it('should parse --interactive flag', () => {
+        const result = parseCliArgs(['--interactive']);
+
+        expect(result.command).toBe('server');
+        expect(result.options.interactive).toBe(true);
+      });
+
+      it('should combine interactive with verbose', () => {
+        const result = parseCliArgs(['--interactive', '--verbose']);
+
+        expect(result.command).toBe('server');
+        expect(result.options.interactive).toBe(true);
+        expect(result.options.verbose).toBe(true);
+      });
+
+      it('should default interactive to false', () => {
+        const result = parseCliArgs([]);
+
+        expect(result.options.interactive).toBe(false);
+      });
+    });
+
     describe('mode flag', () => {
       it('should parse --mode=server flag', () => {
         const result = parseCliArgs(['--mode=server']);
@@ -266,6 +289,7 @@ describe('CLI Argument Parsing', () => {
           help: false,
           version: false,
           verbose: false,
+          interactive: false,
           mode: 'server',
           force: false,
           format: 'table',
@@ -281,6 +305,7 @@ describe('CLI Argument Parsing', () => {
       expect(args.options.force).toBe(false);
       expect(args.options.format).toBe('table');
       expect(args.options.dryRun).toBe(false);
+      expect(args.options.interactive).toBe(false);
     });
 
     it('should allow subcommand to be set', () => {
@@ -291,6 +316,7 @@ describe('CLI Argument Parsing', () => {
           help: false,
           version: false,
           verbose: false,
+          interactive: false,
           mode: 'server',
           force: false,
           format: 'table',
@@ -309,6 +335,7 @@ describe('CLI Argument Parsing', () => {
           help: false,
           version: false,
           verbose: false,
+          interactive: false,
           mode: 'mesh',
           force: false,
           format: 'table',

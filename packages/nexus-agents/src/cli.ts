@@ -19,6 +19,7 @@ import {
   expertListCommand,
   workflowRunCommand,
   printWorkflowTemplates,
+  replCommand,
 } from './cli/index.js';
 import type { ExpertListFormat } from './cli/index.js';
 
@@ -62,6 +63,7 @@ export interface ParsedCliArgs {
     help: boolean;
     version: boolean;
     verbose: boolean;
+    interactive: boolean;
     mode: ServerMode;
     output?: string;
     force: boolean;
@@ -89,6 +91,10 @@ const PARSE_ARGS_CONFIG = {
       default: false,
     },
     verbose: {
+      type: 'boolean' as const,
+      default: false,
+    },
+    interactive: {
       type: 'boolean' as const,
       default: false,
     },
@@ -145,6 +151,7 @@ OPTIONS:
   -h, --help           Show this help message
   -v, --version        Show version information
   --verbose            Enable verbose output
+  --interactive        Start interactive REPL mode
   -m, --mode <mode>    Server mode: server, orchestrator, mesh (default: server)
                        - server:       MCP server only (for Claude CLI integration)
                        - orchestrator: CLI orchestrator (calls Gemini/Codex CLIs)
@@ -162,19 +169,14 @@ WORKFLOW OPTIONS:
   --dry-run            Validate workflow without executing
 
 EXAMPLES:
-  nexus-agents                  Start MCP server (default mode)
-  nexus-agents doctor           Check CLI installations and health
-  nexus-agents config init      Generate configuration file
-  nexus-agents config init -o ./config/nexus.yaml
-  nexus-agents expert list      List all available experts
-  nexus-agents expert list --format json
-  nexus-agents workflow list    List available workflow templates
+  nexus-agents                  Start MCP server (default)
+  nexus-agents --interactive    Start interactive REPL
+  nexus-agents doctor           Check CLI health
+  nexus-agents config init      Generate config file
+  nexus-agents expert list      List available experts
+  nexus-agents workflow list    List workflow templates
   nexus-agents workflow run code-review --dry-run
-  nexus-agents workflow run code-review -i '{"files":["src/main.ts"]}'
-  nexus-agents --mode=server    Explicit MCP server mode
   nexus-agents --mode=mesh      Full hybrid mesh mode
-  nexus-agents --help           Show help
-  nexus-agents --version        Show version
 
 For more information, visit: https://github.com/williamzujkowski/nexus-agents
 `.trim();
@@ -204,6 +206,7 @@ function buildOptions(values: {
   help: boolean;
   version: boolean;
   verbose: boolean;
+  interactive: boolean;
   mode: unknown;
   output?: string;
   force: boolean;
@@ -217,6 +220,7 @@ function buildOptions(values: {
     help: values.help,
     version: values.version,
     verbose: values.verbose,
+    interactive: values.interactive,
     mode,
     force: values.force,
     format: values.format,
@@ -490,6 +494,18 @@ async function handleWorkflowCommand(args: ParsedCliArgs): Promise<void> {
 }
 
 /**
+ * Handles the server command (default mode or interactive REPL).
+ */
+async function handleServerCommand(args: ParsedCliArgs): Promise<void> {
+  if (args.options.interactive) {
+    const exitCode = await replCommand({ verbose: args.options.verbose });
+    process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
+  } else {
+    await startServer(args.options.verbose, args.options.mode);
+  }
+}
+
+/**
  * Dispatches to the appropriate command handler.
  *
  * @param args - Parsed CLI arguments
@@ -507,7 +523,7 @@ async function dispatchCommand(args: ParsedCliArgs): Promise<void> {
       break;
 
     case 'server':
-      await startServer(args.options.verbose, args.options.mode);
+      await handleServerCommand(args);
       break;
 
     case 'doctor': {
