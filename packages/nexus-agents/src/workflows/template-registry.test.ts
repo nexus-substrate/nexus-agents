@@ -250,11 +250,12 @@ describe('TemplateRegistry', () => {
       expect(results.some((r) => r.name === 'code-review')).toBe(true);
     });
 
-    it('should return empty for unused categories', () => {
+    it('should return templates in testing category', () => {
       const results = registry.getByCategory('testing');
 
-      // Built-in templates don't include testing category
-      expect(results.length).toBe(0);
+      // test-generation is in the testing category
+      expect(results.length).toBe(1);
+      expect(results.some((r) => r.name === 'test-generation')).toBe(true);
     });
   });
 

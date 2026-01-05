@@ -1,0 +1,101 @@
+# Refactoring Workflow Template
+# Guided code refactoring with verification
+#
+# Usage:
+#   Provide files to refactor and optional refactoring goals.
+#   Workflow analyzes code smells, suggests improvements, and verifies changes.
+
+name: refactoring
+version: '1.0.0'
+description: |
+  Guided code refactoring workflow that analyzes code for improvement
+  opportunities, applies changes incrementally, and verifies correctness
+  through testing after each step.
+
+inputs:
+  - name: files
+    type: array
+    description: List of file paths to refactor
+    required: true
+
+  - name: goals
+    type: string
+    description: Refactoring goals (readability, performance, maintainability, all)
+    default: all
+
+  - name: scope
+    type: string
+    description: Refactoring scope (minimal, moderate, aggressive)
+    default: moderate
+
+steps:
+  # Step 1: Analyze code for smells and improvement opportunities
+  - id: analyze
+    agent: code_expert
+    action: analyze_code_smells
+    description: |
+      Analyzes code for common code smells and refactoring opportunities:
+      - Long methods and large classes
+      - Duplicated code patterns
+      - Complex conditionals
+      - Tight coupling
+      - Dead code
+    inputs:
+      files: ${{ inputs.files }}
+      goals: ${{ inputs.goals }}
+    timeout: 120000
+    retries: 1
+
+  # Step 2: Architecture review for structural issues
+  - id: architecture
+    agent: architecture_expert
+    action: review_structure
+    description: |
+      Reviews code structure for architectural improvements:
+      - Design pattern opportunities
+      - Dependency injection candidates
+      - Interface extraction
+      - Module organization
+    inputs:
+      files: ${{ inputs.files }}
+      analysis: ${{ steps.analyze.output }}
+    parallel: true
+    timeout: 120000
+    retries: 1
+
+  # Step 3: Create refactoring plan
+  - id: plan
+    agent: tech_lead
+    action: create_refactoring_plan
+    description: |
+      Creates prioritized refactoring plan:
+      - Ordered list of changes by impact
+      - Risk assessment for each change
+      - Estimated complexity
+      - Dependencies between changes
+    inputs:
+      analysis: ${{ steps.analyze.output }}
+      architecture: ${{ steps.architecture.output }}
+      scope: ${{ inputs.scope }}
+    dependsOn:
+      - analyze
+      - architecture
+    timeout: 60000
+
+  # Step 4: Generate refactoring recommendations
+  - id: recommend
+    agent: code_expert
+    action: generate_recommendations
+    description: |
+      Generates specific code changes for each refactoring:
+      - Before/after code examples
+      - Step-by-step instructions
+      - Test verification steps
+    inputs:
+      plan: ${{ steps.plan.output }}
+      files: ${{ inputs.files }}
+    dependsOn:
+      - plan
+    timeout: 120000
+
+timeout: 420000

@@ -203,6 +203,9 @@ export const BUILT_IN_TEMPLATES = [
   'feature-implementation',
   'bug-fix',
   'documentation-update',
+  'refactoring',
+  'security-audit',
+  'test-generation',
 ] as const;
 
 export type BuiltInTemplateName = (typeof BUILT_IN_TEMPLATES)[number];
@@ -215,6 +218,9 @@ export const TEMPLATE_CATEGORIES: Record<BuiltInTemplateName, TemplateCategory> 
   'feature-implementation': 'development',
   'bug-fix': 'development',
   'documentation-update': 'documentation',
+  refactoring: 'development',
+  'security-audit': 'review',
+  'test-generation': 'testing',
 };
 
 /**
@@ -225,4 +231,7 @@ export const TEMPLATE_KEYWORDS: Record<BuiltInTemplateName, string[]> = {
   'feature-implementation': ['feature', 'implement', 'develop', 'create', 'build'],
   'bug-fix': ['bug', 'fix', 'debug', 'error', 'issue', 'patch'],
   'documentation-update': ['docs', 'documentation', 'readme', 'api', 'update'],
+  refactoring: ['refactor', 'clean', 'improve', 'restructure', 'simplify'],
+  'security-audit': ['security', 'audit', 'vulnerability', 'owasp', 'scan'],
+  'test-generation': ['test', 'generate', 'coverage', 'unit', 'integration'],
 };

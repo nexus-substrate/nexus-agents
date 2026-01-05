@@ -1,0 +1,129 @@
+# Test Generation Workflow Template
+# Automated test creation and coverage improvement
+#
+# Usage:
+#   Provide files to generate tests for.
+#   Workflow analyzes code, generates tests, and validates quality.
+
+name: test-generation
+version: '1.0.0'
+description: |
+  Automated test generation workflow that analyzes code coverage,
+  generates missing unit tests, creates integration test scaffolding,
+  and validates test quality.
+
+inputs:
+  - name: files
+    type: array
+    description: List of file paths to generate tests for
+    required: true
+
+  - name: testType
+    type: string
+    description: Type of tests to generate (unit, integration, both)
+    default: unit
+
+  - name: framework
+    type: string
+    description: Testing framework (vitest, jest, mocha, auto)
+    default: auto
+
+  - name: coverage
+    type: number
+    description: Target coverage percentage
+    default: 80
+
+steps:
+  # Step 1: Analyze existing test coverage
+  - id: coverage
+    agent: testing_expert
+    action: analyze_coverage
+    description: |
+      Analyzes current test coverage:
+      - Line coverage by file
+      - Branch coverage gaps
+      - Untested functions and methods
+      - Coverage trends
+    inputs:
+      files: ${{ inputs.files }}
+      framework: ${{ inputs.framework }}
+    timeout: 120000
+    retries: 1
+
+  # Step 2: Analyze code structure for testability
+  - id: structure
+    agent: code_expert
+    action: analyze_testability
+    description: |
+      Analyzes code structure for test generation:
+      - Function signatures and dependencies
+      - Input/output types
+      - Side effects and mocks needed
+      - Edge cases to cover
+    inputs:
+      files: ${{ inputs.files }}
+    parallel: true
+    timeout: 120000
+    retries: 1
+
+  # Step 3: Generate unit tests
+  - id: unit_tests
+    agent: testing_expert
+    action: generate_unit_tests
+    description: |
+      Generates unit tests for uncovered code:
+      - Happy path tests
+      - Edge case tests
+      - Error handling tests
+      - Boundary value tests
+    inputs:
+      files: ${{ inputs.files }}
+      coverage: ${{ steps.coverage.output }}
+      structure: ${{ steps.structure.output }}
+      targetCoverage: ${{ inputs.coverage }}
+      framework: ${{ inputs.framework }}
+    dependsOn:
+      - coverage
+      - structure
+    condition: ${{ inputs.testType != 'integration' }}
+    timeout: 180000
+
+  # Step 4: Generate integration tests
+  - id: integration_tests
+    agent: testing_expert
+    action: generate_integration_tests
+    description: |
+      Generates integration test scaffolding:
+      - API endpoint tests
+      - Database interaction tests
+      - Service integration tests
+      - End-to-end scenarios
+    inputs:
+      files: ${{ inputs.files }}
+      structure: ${{ steps.structure.output }}
+      framework: ${{ inputs.framework }}
+    dependsOn:
+      - structure
+    condition: ${{ inputs.testType != 'unit' }}
+    timeout: 180000
+
+  # Step 5: Validate test quality
+  - id: validate
+    agent: testing_expert
+    action: validate_test_quality
+    description: |
+      Validates generated test quality:
+      - Test independence
+      - Assertion quality
+      - Mock appropriateness
+      - Coverage improvement
+    inputs:
+      unitTests: ${{ steps.unit_tests.output }}
+      integrationTests: ${{ steps.integration_tests.output }}
+      originalCoverage: ${{ steps.coverage.output }}
+    dependsOn:
+      - unit_tests
+      - integration_tests
+    timeout: 60000
+
+timeout: 540000

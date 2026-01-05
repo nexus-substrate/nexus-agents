@@ -1,0 +1,129 @@
+# Security Audit Workflow Template
+# Comprehensive security analysis and vulnerability detection
+#
+# Usage:
+#   Provide files or directories to audit.
+#   Workflow performs multi-layer security analysis and generates report.
+
+name: security-audit
+version: '1.0.0'
+description: |
+  Comprehensive security audit workflow that performs OWASP vulnerability
+  scanning, dependency audit, secrets detection, and generates a detailed
+  security report with remediation recommendations.
+
+inputs:
+  - name: files
+    type: array
+    description: List of file paths or directories to audit
+    required: true
+
+  - name: depth
+    type: string
+    description: Audit depth (quick, standard, comprehensive)
+    default: standard
+
+  - name: includeDevDeps
+    type: boolean
+    description: Include development dependencies in audit
+    default: true
+
+steps:
+  # Step 1: OWASP vulnerability scanning
+  - id: owasp
+    agent: security_expert
+    action: owasp_scan
+    description: |
+      Scans for OWASP Top 10 vulnerabilities:
+      - Injection flaws (SQL, NoSQL, OS)
+      - Broken authentication
+      - Sensitive data exposure
+      - XML external entities (XXE)
+      - Broken access control
+      - Security misconfiguration
+      - Cross-site scripting (XSS)
+      - Insecure deserialization
+      - Components with known vulnerabilities
+      - Insufficient logging and monitoring
+    inputs:
+      files: ${{ inputs.files }}
+      depth: ${{ inputs.depth }}
+    timeout: 180000
+    retries: 1
+
+  # Step 2: Secrets detection (runs in parallel)
+  - id: secrets
+    agent: security_expert
+    action: detect_secrets
+    description: |
+      Detects exposed secrets and sensitive data:
+      - API keys and tokens
+      - Passwords and credentials
+      - Private keys and certificates
+      - Connection strings
+      - Environment variables with secrets
+    inputs:
+      files: ${{ inputs.files }}
+    parallel: true
+    timeout: 120000
+    retries: 1
+
+  # Step 3: Dependency audit (runs in parallel)
+  - id: dependencies
+    agent: security_expert
+    action: audit_dependencies
+    description: |
+      Audits project dependencies for known vulnerabilities:
+      - CVE database check
+      - Outdated packages with security issues
+      - Unmaintained dependencies
+      - License compliance issues
+    inputs:
+      files: ${{ inputs.files }}
+      includeDevDeps: ${{ inputs.includeDevDeps }}
+    parallel: true
+    timeout: 120000
+    retries: 1
+
+  # Step 4: Code security patterns analysis
+  - id: patterns
+    agent: security_expert
+    action: analyze_security_patterns
+    description: |
+      Analyzes code for security anti-patterns:
+      - Input validation gaps
+      - Output encoding issues
+      - Authentication flaws
+      - Authorization bypasses
+      - Cryptographic weaknesses
+    inputs:
+      files: ${{ inputs.files }}
+      depth: ${{ inputs.depth }}
+    parallel: true
+    timeout: 120000
+    retries: 1
+
+  # Step 5: Generate security report
+  - id: report
+    agent: tech_lead
+    action: generate_security_report
+    description: |
+      Generates comprehensive security report:
+      - Executive summary
+      - Findings by severity (critical, high, medium, low)
+      - Detailed vulnerability descriptions
+      - Remediation recommendations
+      - Compliance status
+    inputs:
+      owasp: ${{ steps.owasp.output }}
+      secrets: ${{ steps.secrets.output }}
+      dependencies: ${{ steps.dependencies.output }}
+      patterns: ${{ steps.patterns.output }}
+    dependsOn:
+      - owasp
+      - secrets
+      - dependencies
+      - patterns
+    timeout: 60000
+
+timeout: 600000
