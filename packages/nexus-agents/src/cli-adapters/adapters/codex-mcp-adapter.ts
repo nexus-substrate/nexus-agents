@@ -59,10 +59,10 @@ export class CodexMcpAdapter implements ICliAdapter {
 
   private readonly logger: ILogger;
   private readonly model: string;
-  private client?: Client;
-  private mcpTransport?: StdioClientTransport;
+  private client: Client | undefined;
+  private mcpTransport: StdioClientTransport | undefined;
   private connected = false;
-  private cachedVersion?: string;
+  private cachedVersion: string | undefined;
 
   constructor(options?: { model?: string; logger?: ILogger }) {
     this.logger = options?.logger ?? createLogger({ component: 'codex-mcp-adapter' });
@@ -118,8 +118,8 @@ export class CodexMcpAdapter implements ICliAdapter {
       this.logger.info('Codex MCP connection established');
     } catch (error) {
       this.connected = false;
-      const message = error instanceof Error ? error.message : 'Connection failed';
-      this.logger.error('Failed to initialize Codex MCP connection', { error: message });
+      const connectionError = error instanceof Error ? error : new Error('Connection failed');
+      this.logger.error('Failed to initialize Codex MCP connection', connectionError);
       throw error;
     }
   }

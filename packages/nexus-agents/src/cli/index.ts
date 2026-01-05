@@ -6,3 +6,6 @@
 
 export { doctorCommand, runDoctor, printDoctorResults } from './doctor.js';
 export type { DoctorResult, CliCheckResult } from './doctor.js';
+
+export { configInitCommand, runConfigInit, printConfigInitResult } from './config-init.js';
+export type { ConfigInitOptions, ConfigInitResult } from './config-init.js';

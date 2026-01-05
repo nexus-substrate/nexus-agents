@@ -13,7 +13,7 @@ import { parseArgs } from 'node:util';
 import { startStdioServer, closeServer, registerTools } from './mcp/index.js';
 import { createLogger, type ILogger } from './core/index.js';
 import { VERSION } from './index.js';
-import { doctorCommand } from './cli/index.js';
+import { doctorCommand, configInitCommand } from './cli/index.js';
 
 /**
  * Exit codes for the CLI.
@@ -56,6 +56,8 @@ export interface ParsedCliArgs {
     version: boolean;
     verbose: boolean;
     mode: ServerMode;
+    output?: string;
+    force: boolean;
   };
   positionals: string[];
 }
@@ -85,6 +87,15 @@ const PARSE_ARGS_CONFIG = {
       short: 'm',
       default: 'server',
     },
+    output: {
+      type: 'string' as const,
+      short: 'o',
+    },
+    force: {
+      type: 'boolean' as const,
+      short: 'f',
+      default: false,
+    },
   },
   allowPositionals: true,
   strict: true,
@@ -98,12 +109,12 @@ nexus-agents - Multi-agent orchestration MCP server
 
 USAGE:
   nexus-agents [OPTIONS]
-  nexus-agents [COMMAND] [OPTIONS]
+  nexus-agents [COMMAND] [SUBCOMMAND] [OPTIONS]
 
 COMMANDS:
   (default)     Start MCP server with stdio transport
   doctor        Check CLI installations and health status
-  config        Manage configuration (coming soon)
+  config init   Generate starter configuration file
   expert        Manage experts (coming soon)
   workflow      Manage workflows (coming soon)
 
@@ -116,9 +127,15 @@ OPTIONS:
                        - orchestrator: CLI orchestrator (calls Gemini/Codex CLIs)
                        - mesh:         Full bidirectional (both modes)
 
+CONFIG OPTIONS:
+  -o, --output <path>  Output path for config init (default: ./nexus-agents.yaml)
+  -f, --force          Overwrite existing configuration file
+
 EXAMPLES:
   nexus-agents                  Start MCP server (default mode)
   nexus-agents doctor           Check CLI installations and health
+  nexus-agents config init      Generate configuration file
+  nexus-agents config init -o ./config/nexus.yaml
   nexus-agents --mode=server    Explicit MCP server mode
   nexus-agents --mode=mesh      Full hybrid mesh mode
   nexus-agents --help           Show help
@@ -126,6 +143,47 @@ EXAMPLES:
 
 For more information, visit: https://github.com/williamzujkowski/nexus-agents
 `.trim();
+
+/**
+ * Determines the command from parsed options and positionals.
+ */
+function determineCommand(
+  options: { help: boolean; version: boolean },
+  positionals: string[]
+): CliCommand {
+  if (options.help) return 'help';
+  if (options.version) return 'version';
+
+  const firstArg = positionals[0];
+  if (firstArg !== undefined && isValidCommand(firstArg)) {
+    return firstArg;
+  }
+
+  return 'server';
+}
+
+/**
+ * Builds the options object from parsed values.
+ */
+function buildOptions(values: {
+  help: boolean;
+  version: boolean;
+  verbose: boolean;
+  mode: unknown;
+  output?: string;
+  force: boolean;
+}): ParsedCliArgs['options'] {
+  const mode = isValidServerMode(values.mode) ? values.mode : 'server';
+
+  return {
+    help: values.help,
+    version: values.version,
+    verbose: values.verbose,
+    mode,
+    force: values.force,
+    ...(values.output !== undefined && { output: values.output }),
+  };
+}
 
 /**
  * Parses CLI arguments and determines the command to run.
@@ -141,29 +199,9 @@ export function parseCliArgs(args: string[] = process.argv.slice(2)): ParsedCliA
     args,
   });
 
-  // Extract values - our config specifies defaults
-  const { help, version, verbose, mode: modeValue } = values;
+  const options = buildOptions(values);
+  const command = determineCommand(options, positionals);
 
-  // Validate and coerce mode to ServerMode
-  const mode = isValidServerMode(modeValue) ? modeValue : 'server';
-
-  const options = { help, version, verbose, mode };
-
-  // Determine command from flags or first positional
-  let command: CliCommand = 'server';
-
-  if (options.help) {
-    command = 'help';
-  } else if (options.version) {
-    command = 'version';
-  } else if (positionals.length > 0) {
-    const firstArg = positionals[0];
-    if (firstArg !== undefined && isValidCommand(firstArg)) {
-      command = firstArg;
-    }
-  }
-
-  // Build result with proper typing for exactOptionalPropertyTypes
   const result: ParsedCliArgs = {
     command,
     options,
@@ -344,6 +382,23 @@ async function startServer(verbose: boolean, mode: ServerMode): Promise<void> {
 }
 
 /**
+ * Handles the config command and its subcommands.
+ */
+async function handleConfigCommand(args: ParsedCliArgs): Promise<void> {
+  if (args.subcommand === 'init') {
+    const configOpts = {
+      force: args.options.force,
+      ...(args.options.output !== undefined && { output: args.options.output }),
+    };
+    const exitCode = await configInitCommand(configOpts);
+    process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
+  } else {
+    handleUnimplementedCommand(`config ${args.subcommand ?? ''}`);
+    process.exit(EXIT_CODES.SUCCESS);
+  }
+}
+
+/**
  * Dispatches to the appropriate command handler.
  *
  * @param args - Parsed CLI arguments
@@ -371,6 +426,9 @@ async function dispatchCommand(args: ParsedCliArgs): Promise<void> {
     }
 
     case 'config':
+      await handleConfigCommand(args);
+      break;
+
     case 'expert':
     case 'workflow':
       handleUnimplementedCommand(args.command);

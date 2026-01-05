@@ -267,6 +267,7 @@ describe('CLI Argument Parsing', () => {
           version: false,
           verbose: false,
           mode: 'server',
+          force: false,
         },
         positionals: [],
       };
@@ -275,6 +276,7 @@ describe('CLI Argument Parsing', () => {
       expect(args.subcommand).toBeUndefined();
       expect(args.options.help).toBe(false);
       expect(args.options.mode).toBe('server');
+      expect(args.options.force).toBe(false);
     });
 
     it('should allow subcommand to be set', () => {
@@ -286,6 +288,7 @@ describe('CLI Argument Parsing', () => {
           version: false,
           verbose: false,
           mode: 'server',
+          force: false,
         },
         positionals: ['config', 'show'],
       };
@@ -301,6 +304,7 @@ describe('CLI Argument Parsing', () => {
           version: false,
           verbose: false,
           mode: 'mesh',
+          force: false,
         },
         positionals: [],
       };

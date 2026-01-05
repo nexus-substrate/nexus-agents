@@ -147,7 +147,6 @@ function createHealthyResult(
   capacity?: CapacityStatus
 ): CliCheckResult {
   const authenticated = health.healthy;
-  const authMethod = authenticated ? 'OAuth' : undefined;
 
   const result: CliCheckResult = {
     name,
@@ -155,8 +154,8 @@ function createHealthyResult(
     version: health.version,
     versionStatus: health.versionStatus,
     authenticated,
-    authMethod,
-    capacity,
+    ...(authenticated && { authMethod: 'OAuth' }),
+    ...(capacity !== undefined && { capacity }),
   };
 
   // Add optional fields conditionally

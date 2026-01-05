@@ -24,12 +24,16 @@ vi.mock('@modelcontextprotocol/sdk/client/stdio.js', () => ({
 // Mock child_process for version check
 vi.mock('node:child_process', () => ({
   spawn: vi.fn().mockImplementation(() => {
-    const events: Record<string, ((...args: unknown[]) => void)[]> = {};
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    type EventCallback = (...args: any[]) => void;
+    const events: Record<string, EventCallback[]> = {};
+
     return {
       stdout: {
-        on: vi.fn((event: string, cb: (data: Buffer) => void) => {
-          events[`stdout_${event}`] = events[`stdout_${event}`] ?? [];
-          events[`stdout_${event}`].push(cb);
+        on: vi.fn((event: string, cb: EventCallback) => {
+          const key = `stdout_${event}`;
+          events[key] ??= [];
+          events[key].push(cb);
           if (event === 'data') {
             setTimeout(() => {
               cb(Buffer.from('codex version 0.77.0'));
@@ -40,8 +44,8 @@ vi.mock('node:child_process', () => ({
       stderr: {
         on: vi.fn(),
       },
-      on: vi.fn((event: string, cb: (...args: unknown[]) => void) => {
-        events[event] = events[event] ?? [];
+      on: vi.fn((event: string, cb: EventCallback) => {
+        events[event] ??= [];
         events[event].push(cb);
         if (event === 'close') {
           setTimeout(() => {
