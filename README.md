@@ -225,24 +225,38 @@ Define reusable workflows in YAML:
 
 ```yaml
 name: code-review
-description: Comprehensive code review workflow
+version: '1.0.0'
+description: Automated code review workflow
+
+inputs:
+  - name: files
+    type: array
+    description: List of file paths to review
+    required: true
+
 steps:
-  - agent: security_expert
-    action: scan_vulnerabilities
-    output: security_report
+  - id: analyze
+    agent: code_expert
+    action: analyze_code
+    inputs:
+      files: ${{ inputs.files }}
 
-  - agent: code_expert
-    action: review_quality
-    input: ${security_report}
-    output: quality_report
-
-  - agent: testing_expert
-    action: analyze_coverage
+  - id: security
+    agent: security_expert
+    action: security_review
+    inputs:
+      files: ${{ inputs.files }}
     parallel: true
 
-  - agent: documentation_expert
-    action: check_documentation
-    parallel: true
+  - id: synthesize
+    agent: tech_lead
+    action: synthesize_reviews
+    inputs:
+      analysis: ${{ steps.analyze.output }}
+      security: ${{ steps.security.output }}
+    dependsOn:
+      - analyze
+      - security
 ```
 
 ### MCP Tools
@@ -265,12 +279,14 @@ nexus-agents/
 ├── packages/
 │   └── nexus-agents/         # Main package (single consolidated package)
 │       ├── src/
-│       │   ├── core/         # Shared types, Result<T,E>, errors, logger
+│       │   ├── core/         # Shared types, Result<T,E>, errors, logger, trace
 │       │   ├── config/       # Configuration loading and validation
 │       │   ├── adapters/     # Model adapters (Claude, OpenAI, Gemini, Ollama)
 │       │   ├── agents/       # Agent framework (TechLead, Experts)
 │       │   ├── workflows/    # Workflow engine and templates
 │       │   ├── mcp/          # MCP server and tool definitions
+│       │   ├── cli/          # CLI subcommands (doctor, repl, config-init)
+│       │   ├── cli-adapters/ # External CLI adapters (Claude, Gemini, Codex)
 │       │   ├── index.ts      # Main exports
 │       │   └── cli.ts        # CLI entry point
 │       └── package.json

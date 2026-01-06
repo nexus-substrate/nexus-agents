@@ -109,14 +109,14 @@ WorkflowEngine.execute(workflow, inputs)
 +--------------------------------------------------------------------------------+
 |                              MCP Server Layer                                   |
 |  +------------+  +---------------+  +----------------+  +------------------+   |
-|  | orchestrate|  | create_expert |  | run_workflow   |  | collaborate      |   |
+|  | orchestrate|  | create_expert |  | run_workflow   |  | delegate_to_model|   |
 |  +-----+------+  +-------+-------+  +--------+-------+  +--------+---------+   |
 +--------|-----------------|------------------|---------------------|-------------+
          |                 |                  |                     |
          v                 |                  v                     v
 +------------------+       |         +------------------+   +------------------+
-|    TechLead      |       |         | WorkflowEngine   |   | Collaboration    |
-|    (Planner)     |       |         | (Executor)       |   | Protocol         |
+|    TechLead      |       |         | WorkflowEngine   |   |  Model Router    |
+|    (Planner)     |       |         | (Executor)       |   |  (Delegation)    |
 +--------+---------+       |         +--------+---------+   +--------+---------+
          |                 |                  |                     |
          v                 v                  v                     |
@@ -233,7 +233,13 @@ src/
 |   +-- result.ts       # Result<T, E> pattern
 |   +-- errors.ts       # Error hierarchy
 |   +-- logger.ts       # Logging utilities
+|   +-- trace.ts        # Tracing and observability
+|   +-- artifact.ts     # Artifact provenance tracking
 |   +-- types/          # Shared type definitions
+|
++-- config/             # CONFIG LAYER - Depends on core only
+|   +-- schemas.ts      # Configuration Zod schemas
+|   +-- loader.ts       # Config loading utilities
 |
 +-- adapters/           # MODEL LAYER - Depends on core only
 |   +-- base-adapter.ts # Abstract adapter interface
@@ -259,6 +265,20 @@ src/
 +-- mcp/                # MCP LAYER - Depends on all internal layers
 |   +-- server.ts       # MCP server setup
 |   +-- tools/          # Tool implementations
+|   +-- middleware/     # Policy firewall, logging
+|
++-- cli/                # CLI LAYER - CLI subcommand implementations
+|   +-- doctor.ts       # Health check command
+|   +-- repl.ts         # Interactive REPL
+|   +-- config-init.ts  # Config file generation
+|   +-- expert-list.ts  # Expert listing
+|   +-- workflow-run.ts # Workflow execution
+|
++-- cli-adapters/       # CLI ADAPTER LAYER - External CLI integration
+    +-- claude-cli.ts   # Claude CLI adapter
+    +-- gemini-cli.ts   # Gemini CLI adapter
+    +-- codex-cli.ts    # Codex CLI adapter
+    +-- factory.ts      # CLI adapter factory
 ```
 
 ---
