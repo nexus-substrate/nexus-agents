@@ -416,6 +416,14 @@ export async function workflowRunCommand(options: WorkflowRunOptions): Promise<n
     workflow = registry.getById(options.name);
   }
 
-  printWorkflowRunResult(result, { workflow, verbose: options.verbose });
+  // Build options object without undefined values
+  const printOptions: { workflow?: WorkflowDefinition; verbose?: boolean } = {};
+  if (workflow !== undefined) {
+    printOptions.workflow = workflow;
+  }
+  if (options.verbose !== undefined) {
+    printOptions.verbose = options.verbose;
+  }
+  printWorkflowRunResult(result, printOptions);
   return result.success ? 0 : 1;
 }

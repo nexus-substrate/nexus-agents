@@ -21,6 +21,7 @@ import {
   applyBudgetEnforcement,
   copyBudgetEvents,
   type BudgetEnforcementEvent,
+  type BudgetEnforcementConfig,
 } from './budget-enforcement.js';
 
 export type { BudgetEnforcementEvent } from './budget-enforcement.js';
@@ -389,11 +390,14 @@ export class WorkflowEngine implements IWorkflowEngine {
         progress: completedSteps / totalSteps,
       });
       for (const step of phase.steps) {
-        applyBudgetEnforcement(step, context.contextManager, context.budgetEvents, {
+        const budgetConfig: BudgetEnforcementConfig = {
           engineDefaultBudget: this.config.defaultBudget,
-          workflowDefaultBudget: workflow.defaultBudget,
           logger: this.logger,
-        });
+        };
+        if (workflow.defaultBudget !== undefined) {
+          budgetConfig.workflowDefaultBudget = workflow.defaultBudget;
+        }
+        applyBudgetEnforcement(step, context.contextManager, context.budgetEvents, budgetConfig);
       }
       const options: ExecutionOptions = {
         maxConcurrency: this.config.maxConcurrency,

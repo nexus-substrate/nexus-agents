@@ -87,10 +87,23 @@ export {
   ContextPruner,
   PruningStrategy,
   ContextPrunerConfigSchema,
+  SlidingWindowOptionsSchema,
+  HierarchicalOptionsSchema,
+  SemanticOptionsSchema,
   type ContextPrunerConfig,
   type PruneOptions,
   type PruneResult,
+  type SlidingWindowOptions,
+  type HierarchicalOptions,
+  type SemanticOptions,
 } from './context-pruner.js';
+
+// Pruning strategy helpers
+export {
+  extractKeywords,
+  calculateRelevance,
+  createEmptyPruneResult,
+} from './pruning-strategies.js';
 
 // Expert system (dynamic expert factory)
 export {

@@ -763,5 +763,480 @@ describe('PruningStrategy', () => {
     expect(PruningStrategy.LOWEST_PRIORITY).toBe('lowest_priority');
     expect(PruningStrategy.PRIORITY_WEIGHTED_AGE).toBe('priority_weighted_age');
     expect(PruningStrategy.SUMMARIZE).toBe('summarize');
+    expect(PruningStrategy.SLIDING_WINDOW).toBe('sliding_window');
+    expect(PruningStrategy.HIERARCHICAL).toBe('hierarchical');
+    expect(PruningStrategy.SEMANTIC).toBe('semantic');
+  });
+});
+
+describe('ContextPruner - SLIDING_WINDOW strategy', () => {
+  it('should keep recent messages and summarize older ones', async () => {
+    const { manager, pruner, adapter } = createTestSetup({
+      minItemsPerCategory: 0,
+      protectedPriority: ContentPriority.SYSTEM,
+    });
+
+    adapter.setSummaryResponse('Summary of older messages');
+
+    // Add items with sequential timestamps
+    adapter.setTokenCount(100);
+    for (let i = 0; i < 5; i++) {
+      await manager.add({
+        id: `item-${String(i)}`,
+        content: `Message ${String(i)}`,
+        priority: ContentPriority.HISTORY,
+        category: 'active',
+      });
+    }
+
+    const result = await pruner.prune({
+      targetTokens: 200,
+      strategy: PruningStrategy.SLIDING_WINDOW,
+      slidingWindowOptions: {
+        preserveRecentCount: 2,
+        summarizeOlder: true,
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      // Should summarize older items (items 0, 1, 2)
+      expect(result.value.summarizedItems.length).toBe(3);
+      expect(result.value.summaryItem).toBeDefined();
+      expect(adapter.complete).toHaveBeenCalled();
+    }
+  });
+
+  it('should remove older items without summary when summarizeOlder is false', async () => {
+    const { manager, pruner, adapter } = createTestSetup({
+      minItemsPerCategory: 0,
+      protectedPriority: ContentPriority.SYSTEM,
+    });
+
+    adapter.setTokenCount(100);
+    for (let i = 0; i < 5; i++) {
+      await manager.add({
+        id: `item-${String(i)}`,
+        content: `Message ${String(i)}`,
+        priority: ContentPriority.HISTORY,
+        category: 'active',
+      });
+    }
+
+    const result = await pruner.prune({
+      targetTokens: 200,
+      strategy: PruningStrategy.SLIDING_WINDOW,
+      slidingWindowOptions: {
+        preserveRecentCount: 2,
+        summarizeOlder: false,
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.removedItems.length).toBeGreaterThan(0);
+      expect(result.value.summaryItem).toBeUndefined();
+    }
+  });
+
+  it('should return empty result when no items to prune', async () => {
+    const { manager, pruner, adapter } = createTestSetup({
+      minItemsPerCategory: 0,
+      protectedPriority: ContentPriority.SYSTEM,
+    });
+
+    adapter.setTokenCount(100);
+    await manager.add({
+      id: 'item-1',
+      content: 'Single message',
+      priority: ContentPriority.HISTORY,
+      category: 'active',
+    });
+
+    const result = await pruner.prune({
+      targetTokens: 100,
+      strategy: PruningStrategy.SLIDING_WINDOW,
+      slidingWindowOptions: {
+        preserveRecentCount: 5, // More than we have
+        summarizeOlder: true,
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.removedItems).toHaveLength(0);
+      expect(result.value.summarizedItems).toHaveLength(0);
+    }
+  });
+});
+
+describe('ContextPruner - HIERARCHICAL strategy', () => {
+  it('should preserve system prompt and recent messages, summarize middle', async () => {
+    const { manager, pruner, adapter } = createTestSetup({
+      minItemsPerCategory: 0,
+      protectedPriority: ContentPriority.SYSTEM,
+    });
+
+    adapter.setSummaryResponse('Summary of middle section');
+
+    // Add system item
+    adapter.setTokenCount(50);
+    await manager.add({
+      id: 'system-prompt',
+      content: 'You are a helpful assistant',
+      priority: ContentPriority.SYSTEM,
+      category: 'system',
+    });
+
+    // Add regular items
+    adapter.setTokenCount(100);
+    for (let i = 0; i < 6; i++) {
+      await manager.add({
+        id: `msg-${String(i)}`,
+        content: `Message ${String(i)}`,
+        priority: ContentPriority.HISTORY,
+        category: 'active',
+      });
+    }
+
+    const result = await pruner.prune({
+      targetTokens: 200,
+      strategy: PruningStrategy.HIERARCHICAL,
+      hierarchicalOptions: {
+        preserveSystemPrompt: true,
+        preserveRecentCount: 2,
+        summarizeMiddle: true,
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      // Should summarize middle items (msgs 0-3)
+      expect(result.value.summarizedItems.length).toBe(4);
+      expect(result.value.summaryItem).toBeDefined();
+
+      // System prompt should still exist
+      expect(manager.get('system-prompt')).toBeDefined();
+    }
+  });
+
+  it('should remove middle items without summary when summarizeMiddle is false', async () => {
+    const { manager, pruner, adapter } = createTestSetup({
+      minItemsPerCategory: 0,
+      protectedPriority: ContentPriority.SYSTEM,
+    });
+
+    adapter.setTokenCount(100);
+    for (let i = 0; i < 6; i++) {
+      await manager.add({
+        id: `msg-${String(i)}`,
+        content: `Message ${String(i)}`,
+        priority: ContentPriority.HISTORY,
+        category: 'active',
+      });
+    }
+
+    const result = await pruner.prune({
+      targetTokens: 200,
+      strategy: PruningStrategy.HIERARCHICAL,
+      hierarchicalOptions: {
+        preserveSystemPrompt: true,
+        preserveRecentCount: 2,
+        summarizeMiddle: false,
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.removedItems.length).toBeGreaterThan(0);
+      expect(result.value.summaryItem).toBeUndefined();
+    }
+  });
+
+  it('should return empty result when no middle items to prune', async () => {
+    const { manager, pruner, adapter } = createTestSetup({
+      minItemsPerCategory: 0,
+      protectedPriority: ContentPriority.SYSTEM,
+    });
+
+    adapter.setTokenCount(100);
+    await manager.add({
+      id: 'msg-1',
+      content: 'Message 1',
+      priority: ContentPriority.HISTORY,
+      category: 'active',
+    });
+
+    const result = await pruner.prune({
+      targetTokens: 100,
+      strategy: PruningStrategy.HIERARCHICAL,
+      hierarchicalOptions: {
+        preserveRecentCount: 5, // More than we have
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.removedItems).toHaveLength(0);
+      expect(result.value.summarizedItems).toHaveLength(0);
+    }
+  });
+});
+
+describe('ContextPruner - SEMANTIC strategy', () => {
+  it('should keep items relevant to current task', async () => {
+    const { manager, pruner, adapter } = createTestSetup({
+      minItemsPerCategory: 0,
+      protectedPriority: ContentPriority.SYSTEM,
+    });
+
+    adapter.setSummaryResponse('Summary of irrelevant content');
+
+    // Add relevant items
+    adapter.setTokenCount(100);
+    await manager.add({
+      id: 'relevant-1',
+      content: 'TypeScript implementation of the pruning algorithm',
+      priority: ContentPriority.HISTORY,
+      category: 'active',
+    });
+
+    await manager.add({
+      id: 'relevant-2',
+      content: 'Context pruning strategy in TypeScript',
+      priority: ContentPriority.HISTORY,
+      category: 'active',
+    });
+
+    // Add irrelevant items
+    await manager.add({
+      id: 'irrelevant-1',
+      content: 'Recipe for chocolate cake with vanilla frosting',
+      priority: ContentPriority.HISTORY,
+      category: 'active',
+    });
+
+    await manager.add({
+      id: 'irrelevant-2',
+      content: 'Weather forecast for next week in tropical regions',
+      priority: ContentPriority.HISTORY,
+      category: 'active',
+    });
+
+    const result = await pruner.prune({
+      targetTokens: 100,
+      strategy: PruningStrategy.SEMANTIC,
+      semanticOptions: {
+        currentTask: 'Implement TypeScript pruning algorithm',
+        minRelevanceScore: 0.1,
+        topRelevantCount: 2,
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      // Should summarize or remove irrelevant items
+      const prunedIds = [
+        ...result.value.removedItems.map((i) => i.id),
+        ...result.value.summarizedItems.map((i) => i.id),
+      ];
+      // Irrelevant items should be pruned
+      expect(prunedIds.some((id) => id.startsWith('irrelevant'))).toBe(true);
+    }
+  });
+
+  it('should use default relevance when no task provided', async () => {
+    const { manager, pruner, adapter } = createTestSetup({
+      minItemsPerCategory: 0,
+      protectedPriority: ContentPriority.SYSTEM,
+    });
+
+    adapter.setTokenCount(100);
+    for (let i = 0; i < 15; i++) {
+      await manager.add({
+        id: `item-${String(i)}`,
+        content: `Content item number ${String(i)}`,
+        priority: ContentPriority.HISTORY,
+        category: 'active',
+      });
+    }
+
+    const result = await pruner.prune({
+      targetTokens: 500,
+      strategy: PruningStrategy.SEMANTIC,
+      semanticOptions: {
+        // No currentTask provided
+        topRelevantCount: 5,
+        minRelevanceScore: 0.6, // Higher threshold should trigger pruning
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    // Should handle case with no task keywords gracefully
+  });
+
+  it('should remove items without summary when no adapter', async () => {
+    const logger = createMockLogger();
+    const manager = new ContextManager({ maxTokens: 10000 });
+    const pruner = new ContextPruner({
+      contextManager: manager,
+      logger,
+      minItemsPerCategory: 0,
+      protectedPriority: ContentPriority.SYSTEM,
+    });
+
+    for (let i = 0; i < 15; i++) {
+      await manager.add({
+        id: `item-${String(i)}`,
+        content: `Unrelated content ${String(i)}`,
+        priority: ContentPriority.HISTORY,
+        category: 'active',
+      });
+    }
+
+    const result = await pruner.prune({
+      targetTokens: 500,
+      strategy: PruningStrategy.SEMANTIC,
+      semanticOptions: {
+        currentTask: 'TypeScript implementation',
+        topRelevantCount: 5,
+        minRelevanceScore: 0.1,
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      // Should remove items directly without summarization
+      expect(result.value.removedItems.length).toBeGreaterThan(0);
+      expect(result.value.summaryItem).toBeUndefined();
+    }
+  });
+
+  it('should return empty result when all items are relevant', async () => {
+    const { manager, pruner, adapter } = createTestSetup({
+      minItemsPerCategory: 0,
+      protectedPriority: ContentPriority.SYSTEM,
+    });
+
+    adapter.setTokenCount(100);
+    await manager.add({
+      id: 'relevant-1',
+      content: 'TypeScript pruning implementation',
+      priority: ContentPriority.HISTORY,
+      category: 'active',
+    });
+
+    await manager.add({
+      id: 'relevant-2',
+      content: 'Algorithm for TypeScript context pruning',
+      priority: ContentPriority.HISTORY,
+      category: 'active',
+    });
+
+    const result = await pruner.prune({
+      targetTokens: 100,
+      strategy: PruningStrategy.SEMANTIC,
+      semanticOptions: {
+        currentTask: 'TypeScript pruning algorithm',
+        topRelevantCount: 10, // Keep all
+        minRelevanceScore: 0,
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.removedItems).toHaveLength(0);
+      expect(result.value.summarizedItems).toHaveLength(0);
+    }
+  });
+});
+
+describe('ContextPruner - Strategy options validation', () => {
+  it('should use default options when invalid sliding window options provided', async () => {
+    const { manager, pruner, adapter } = createTestSetup({
+      minItemsPerCategory: 0,
+      protectedPriority: ContentPriority.SYSTEM,
+    });
+
+    adapter.setTokenCount(100);
+    for (let i = 0; i < 5; i++) {
+      await manager.add({
+        id: `item-${String(i)}`,
+        content: `Message ${String(i)}`,
+        priority: ContentPriority.HISTORY,
+        category: 'active',
+      });
+    }
+
+    // Should not throw with invalid options
+    const result = await pruner.prune({
+      targetTokens: 200,
+      strategy: PruningStrategy.SLIDING_WINDOW,
+      slidingWindowOptions: {
+        preserveRecentCount: -1, // Invalid, will use default
+      } as unknown as { preserveRecentCount: number; summarizeOlder: boolean },
+    });
+
+    expect(result.ok).toBe(true);
+  });
+
+  it('should use default options when invalid hierarchical options provided', async () => {
+    const { manager, pruner, adapter } = createTestSetup({
+      minItemsPerCategory: 0,
+      protectedPriority: ContentPriority.SYSTEM,
+    });
+
+    adapter.setTokenCount(100);
+    for (let i = 0; i < 5; i++) {
+      await manager.add({
+        id: `item-${String(i)}`,
+        content: `Message ${String(i)}`,
+        priority: ContentPriority.HISTORY,
+        category: 'active',
+      });
+    }
+
+    // Should not throw with invalid options
+    const result = await pruner.prune({
+      targetTokens: 200,
+      strategy: PruningStrategy.HIERARCHICAL,
+      hierarchicalOptions: {
+        preserveRecentCount: -5, // Invalid
+      } as unknown as {
+        preserveSystemPrompt: boolean;
+        preserveRecentCount: number;
+        summarizeMiddle: boolean;
+      },
+    });
+
+    expect(result.ok).toBe(true);
+  });
+
+  it('should use default options when invalid semantic options provided', async () => {
+    const { manager, pruner, adapter } = createTestSetup({
+      minItemsPerCategory: 0,
+      protectedPriority: ContentPriority.SYSTEM,
+    });
+
+    adapter.setTokenCount(100);
+    for (let i = 0; i < 5; i++) {
+      await manager.add({
+        id: `item-${String(i)}`,
+        content: `Message ${String(i)}`,
+        priority: ContentPriority.HISTORY,
+        category: 'active',
+      });
+    }
+
+    // Should not throw with invalid options
+    const result = await pruner.prune({
+      targetTokens: 200,
+      strategy: PruningStrategy.SEMANTIC,
+      semanticOptions: {
+        minRelevanceScore: 2.0, // Invalid (> 1)
+      } as unknown as { currentTask?: string; minRelevanceScore: number; topRelevantCount: number },
+    });
+
+    expect(result.ok).toBe(true);
   });
 });

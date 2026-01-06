@@ -54,3 +54,34 @@ export {
   getAvailableClis,
 } from './factory.js';
 export type { CliAdapterConfig } from './factory.js';
+
+// Circuit Breaker
+export {
+  CliCircuitBreaker,
+  CircuitBreakerRegistry,
+  CircuitError,
+  CircuitErrorCode,
+  DEFAULT_CIRCUIT_BREAKER_CONFIG,
+  mapCliErrorToCategory,
+  createCircuitBreakerRegistryWithMetrics,
+} from './circuit-breaker.js';
+export type {
+  CircuitState,
+  FailureCategory,
+  CircuitBreakerConfig,
+  CircuitBreakerSnapshot,
+  CircuitStateChangeEvent,
+  CircuitStateChangeListener,
+  ICircuitBreaker,
+} from './circuit-breaker.js';
+
+// Task Analyzer (Issue #78)
+export { analyzeTask, summarizeProfile, TaskProfileSchema } from './task-analyzer.js';
+export type { TaskProfile, TaskType } from './task-analyzer.js';
+
+// Task Router (Issue #78)
+export { TaskRouter, createTaskRouter, RoutingError, RouterConfigSchema } from './router.js';
+export type { ITaskRouter, RoutingDecision, RouterConfig } from './router.js';
+
+// Router Scoring Constants (Issue #78)
+export { CAPABILITY_MATRIX, SCORING_WEIGHTS, SCORING_THRESHOLDS } from './router-scoring.js';

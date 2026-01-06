@@ -626,3 +626,17 @@ export {
   getAvailableClis,
   type CliAdapterConfig,
 } from './cli-adapters/index.js';
+
+// ============================================================================
+// Context - Context management and token counting
+// ============================================================================
+export {
+  // Token counter
+  TokenCounter,
+  createTokenCounter,
+  TokenCounterProvider,
+  TokenCountError,
+  type ITokenCounter,
+  type TokenCounterConfig,
+  type TokenCountResult,
+} from './context/index.js';

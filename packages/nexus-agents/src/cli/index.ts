@@ -23,3 +23,12 @@ export {
 export type { WorkflowRunOptions, WorkflowRunResult } from './workflow-run.js';
 
 export { replCommand, startRepl } from './repl.js';
+
+// Mode detection
+export { detectMode, formatModeDetection, isValidServerMode } from './mode-detector.js';
+export type {
+  ServerMode,
+  ModeDetectionResult,
+  DetectionSignals,
+  DetectModeOptions,
+} from './mode-detector.js';

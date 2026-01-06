@@ -104,10 +104,7 @@ describe('expert-list', () => {
       const output = stdoutWriteMock.mock.calls.map((call: unknown[]) => String(call[0])).join('');
 
       // Verify valid JSON
-      let parsed: { builtIn: unknown[]; custom: unknown[] };
-      expect(() => {
-        parsed = JSON.parse(output) as { builtIn: unknown[]; custom: unknown[] };
-      }).not.toThrow();
+      const parsed = JSON.parse(output) as { builtIn: unknown[]; custom: unknown[] };
 
       expect(parsed.builtIn).toBeInstanceOf(Array);
       expect(parsed.custom).toBeInstanceOf(Array);
@@ -171,9 +168,11 @@ describe('expert-list', () => {
 
       const output = stdoutWriteMock.mock.calls.map((call: unknown[]) => String(call[0])).join('');
       const parsed = JSON.parse(output) as { builtIn: Array<{ tier: string }> };
+      const firstBuiltIn = parsed.builtIn[0];
 
-      expect(parsed.builtIn[0].tier).toBeDefined();
-      expect(['balanced', 'powerful'].includes(parsed.builtIn[0].tier)).toBe(true);
+      expect(firstBuiltIn).toBeDefined();
+      expect(firstBuiltIn?.tier).toBeDefined();
+      expect(['balanced', 'powerful'].includes(firstBuiltIn?.tier ?? '')).toBe(true);
     });
 
     it('should include capabilities in JSON', () => {
@@ -183,9 +182,11 @@ describe('expert-list', () => {
 
       const output = stdoutWriteMock.mock.calls.map((call: unknown[]) => String(call[0])).join('');
       const parsed = JSON.parse(output) as { builtIn: Array<{ capabilities: string[] }> };
+      const firstBuiltIn = parsed.builtIn[0];
 
-      expect(parsed.builtIn[0].capabilities).toBeInstanceOf(Array);
-      expect(parsed.builtIn[0].capabilities.length).toBeGreaterThan(0);
+      expect(firstBuiltIn).toBeDefined();
+      expect(firstBuiltIn?.capabilities).toBeInstanceOf(Array);
+      expect((firstBuiltIn?.capabilities ?? []).length).toBeGreaterThan(0);
     });
 
     it('should properly format table borders', () => {

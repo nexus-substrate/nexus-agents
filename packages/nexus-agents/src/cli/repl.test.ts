@@ -11,7 +11,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 // The actual startRepl function requires stdin/stdout which we mock
 
 describe('REPL Module', () => {
-  let stdoutWriteMock: ReturnType<typeof vi.spyOn>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let stdoutWriteMock: ReturnType<typeof vi.spyOn<any, any>>;
 
   beforeEach(() => {
     stdoutWriteMock = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
