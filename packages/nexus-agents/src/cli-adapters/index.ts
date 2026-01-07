@@ -95,3 +95,15 @@ export type {
   CascadeOptions,
   CascadeResult,
 } from './types.js';
+
+// Budget Router (Issue #102)
+export { BudgetRouter, createBudgetRouter } from './budget-router.js';
+export type {
+  IBudgetRouter,
+  BudgetConstraint,
+  SessionBudget,
+  BudgetExceededError,
+  BudgetWarning,
+  BudgetRoutingResult,
+  BudgetRouterOptions,
+} from './types.js';
