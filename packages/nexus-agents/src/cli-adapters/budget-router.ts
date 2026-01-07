@@ -494,34 +494,11 @@ export class BudgetRouter implements IBudgetRouter {
     result: BudgetRoutingResult,
     currentBudget: SessionBudget
   ): BudgetExceededError {
-    // Determine which constraint was exceeded
-    let constraint: 'tokens' | 'cost' | 'latency' = 'tokens';
-    let limit = 0;
-    let current = 0;
-    let suggestion = '';
-
-    if (budget.maxTokens !== undefined && result.estimatedTokens > budget.maxTokens) {
-      constraint = 'tokens';
-      limit = budget.maxTokens;
-      current = result.estimatedTokens;
-      suggestion = 'Reduce task complexity or increase token budget';
-    } else if (budget.maxCostUsd !== undefined && result.estimatedCostUsd > budget.maxCostUsd) {
-      constraint = 'cost';
-      limit = budget.maxCostUsd;
-      current = result.estimatedCostUsd;
-      suggestion = 'Use a cheaper model or increase cost budget';
-    } else if (currentBudget.tokensRemaining < result.estimatedTokens) {
-      constraint = 'tokens';
-      limit = currentBudget.tokenBudget;
-      current = currentBudget.tokensUsed + result.estimatedTokens;
-      suggestion = 'Wait for budget reset or increase session budget';
-    } else if (currentBudget.costRemainingUsd < result.estimatedCostUsd) {
-      constraint = 'cost';
-      limit = currentBudget.costBudgetUsd;
-      current = currentBudget.costSpentUsd + result.estimatedCostUsd;
-      suggestion = 'Wait for budget reset or increase session budget';
-    }
-
+    const { constraint, limit, current, suggestion } = this.determineExceededConstraint(
+      budget,
+      result,
+      currentBudget
+    );
     return {
       code: 'BUDGET_EXCEEDED',
       message: `Budget constraint exceeded: ${constraint}`,
@@ -531,6 +508,48 @@ export class BudgetRouter implements IBudgetRouter {
       limit,
       current,
       suggestion,
+    };
+  }
+
+  private determineExceededConstraint(
+    budget: BudgetConstraint,
+    result: BudgetRoutingResult,
+    currentBudget: SessionBudget
+  ): {
+    constraint: 'tokens' | 'cost' | 'latency';
+    limit: number;
+    current: number;
+    suggestion: string;
+  } {
+    if (budget.maxTokens !== undefined && result.estimatedTokens > budget.maxTokens) {
+      return {
+        constraint: 'tokens',
+        limit: budget.maxTokens,
+        current: result.estimatedTokens,
+        suggestion: 'Reduce task complexity or increase token budget',
+      };
+    }
+    if (budget.maxCostUsd !== undefined && result.estimatedCostUsd > budget.maxCostUsd) {
+      return {
+        constraint: 'cost',
+        limit: budget.maxCostUsd,
+        current: result.estimatedCostUsd,
+        suggestion: 'Use a cheaper model or increase cost budget',
+      };
+    }
+    if (currentBudget.tokensRemaining < result.estimatedTokens) {
+      return {
+        constraint: 'tokens',
+        limit: currentBudget.tokenBudget,
+        current: currentBudget.tokensUsed + result.estimatedTokens,
+        suggestion: 'Wait for budget reset or increase session budget',
+      };
+    }
+    return {
+      constraint: 'cost',
+      limit: currentBudget.costBudgetUsd,
+      current: currentBudget.costSpentUsd + result.estimatedCostUsd,
+      suggestion: 'Wait for budget reset or increase session budget',
     };
   }
 }

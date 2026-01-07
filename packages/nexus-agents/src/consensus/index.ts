@@ -98,3 +98,16 @@ export {
 } from './types.js';
 
 export { VotingProtocol, createVotingProtocol } from './voting-protocol.js';
+
+// Weighted Byzantine voting (Issue #103, arXiv:2511.10400 - CP-WBFT)
+export type {
+  TaskOutcome,
+  WeightedAgentRecord,
+  WeightedConsensusResult,
+  WeightedVotingConfig,
+  IWeightedVoting,
+} from './types.js';
+
+export { DEFAULT_WEIGHTED_VOTING_CONFIG } from './types.js';
+
+export { WeightedVoting, createWeightedVoting } from './weighted-voting.js';
