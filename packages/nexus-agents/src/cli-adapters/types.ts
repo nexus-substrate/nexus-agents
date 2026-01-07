@@ -360,3 +360,54 @@ export const DEFAULT_CAPABILITIES: Record<CliName, CapabilityProfile> = {
     cost: 7,
   },
 } as const;
+
+/**
+ * Confidence estimation result.
+ * (Source: Issue #99 - SATER pattern, arXiv:2510.05164)
+ */
+export interface ConfidenceEstimate {
+  readonly score: number;
+  readonly factors: ConfidenceFactors;
+  readonly shouldEscalate: boolean;
+  readonly reason: string;
+}
+
+export interface ConfidenceFactors {
+  readonly lengthFactor: number;
+  readonly hedgingFactor: number;
+  readonly structureFactor: number;
+  readonly uncertaintyFactor: number;
+}
+
+export interface CascadeOptions {
+  readonly confidenceThreshold?: number;
+  readonly fastModel?: CliName;
+  readonly expensiveModel?: CliName;
+  readonly maxEscalations?: number;
+  readonly cacheResponses?: boolean;
+}
+
+export interface CascadeResult {
+  readonly response: CliResponse;
+  readonly escalated: boolean;
+  readonly escalationCount: number;
+  readonly modelsUsed: readonly CliName[];
+  readonly confidenceHistory: readonly ConfidenceEstimate[];
+  readonly totalCostUsd?: number;
+  readonly totalDurationMs: number;
+}
+
+/**
+ * Confidence-aware cascade router interface.
+ * Routes tasks through fast models first, escalating to expensive models
+ * only when confidence is below threshold.
+ * (Source: Issue #99 - SATER pattern, arXiv:2510.05164)
+ */
+export interface IConfidenceRouter {
+  estimateConfidence(task: CliTask, response: CliResponse): ConfidenceEstimate;
+  shouldEscalate(confidence: ConfidenceEstimate, threshold: number): boolean;
+  executeWithCascade(
+    task: CliTask,
+    options?: CascadeOptions
+  ): Promise<import('../core/index.js').Result<CascadeResult, CliError>>;
+}

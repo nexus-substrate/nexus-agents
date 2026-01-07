@@ -70,3 +70,31 @@ export { generateProposalId } from './helpers.js';
 export type { IConsensusEngine } from './engine.js';
 
 export { ConsensusEngine, ConsensusError, createConsensusEngine } from './engine.js';
+
+// Multi-round voting protocol (Issue #100)
+export type {
+  VotingRoundPhase,
+  VotingRoundStatus,
+  AgentFinding,
+  FindingVote,
+  VotingRound,
+  VotingProtocolConfig,
+  VotingSession,
+  VotingProtocolResult,
+  ConsolidatedFinding,
+  RoundSummary,
+  IVotingProtocol,
+  SycophancyReport,
+  SycophancyIndicator,
+} from './types.js';
+
+export {
+  VotingRoundPhaseSchema,
+  VotingRoundStatusSchema,
+  AgentFindingSchema,
+  FindingVoteSchema,
+  VotingProtocolConfigSchema,
+  DEFAULT_VOTING_PROTOCOL_CONFIG,
+} from './types.js';
+
+export { VotingProtocol, createVotingProtocol } from './voting-protocol.js';

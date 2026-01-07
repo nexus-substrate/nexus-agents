@@ -85,3 +85,13 @@ export type { ITaskRouter, RoutingDecision, RouterConfig } from './router.js';
 
 // Router Scoring Constants (Issue #78)
 export { CAPABILITY_MATRIX, SCORING_WEIGHTS, SCORING_THRESHOLDS } from './router-scoring.js';
+
+// Confidence Router (Issue #99)
+export { ConfidenceRouter, createConfidenceRouter } from './confidence-router.js';
+export type {
+  IConfidenceRouter,
+  ConfidenceEstimate,
+  ConfidenceFactors,
+  CascadeOptions,
+  CascadeResult,
+} from './types.js';
