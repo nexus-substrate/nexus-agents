@@ -55,6 +55,7 @@ export {
   ParallelProtocol,
   ReviewProtocol,
   ConsensusProtocol,
+  SelfRefineProtocol as SelfRefineProtocolBase,
   ProtocolFactory,
   createProtocolFactory,
   type ICollaborationProtocol,
@@ -150,3 +151,12 @@ export {
   type AdaptiveProtocolConfig,
   type SelectionResult,
 } from './adaptive-protocol-selector.js';
+
+// Self-Refine iterative improvement protocol (Source: Issue #126, arxiv:2303.17651)
+export {
+  SelfRefineProtocol,
+  createSelfRefineProtocol,
+  type SelfRefineConfig,
+  type RefinementIteration,
+  type SelfRefineResult,
+} from './self-refine-protocol.js';

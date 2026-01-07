@@ -760,19 +760,20 @@ techniques:
     metrics:
       average_improvement: '20%'
 
-    status: planned
+    status: implemented
     priority: P1
     complexity: low
 
     integration_files:
-      - 'packages/nexus-agents/src/agents/'
+      - 'packages/nexus-agents/src/agents/collaboration/self-refine-protocol.ts'
+      - 'packages/nexus-agents/src/agents/collaboration/self-refine-protocol.test.ts'
 
-    implementation_issue: null
+    implementation_issue: 126
     related_prs: []
 
     notes: |
-      Can be implemented immediately without model fine-tuning.
-      Works best with strong instruction-following models.
+      Implemented as SelfRefineProtocol with configurable iterations and
+      convergence detection. Uses Jaccard similarity for convergence.
 
     dependencies: []
 
@@ -780,6 +781,9 @@ techniques:
       - date: '2026-01-06'
         decision: 'Added to Phase 1 Foundation'
         rationale: 'Low complexity, immediate benefit'
+      - date: '2026-01-07'
+        decision: 'Implemented'
+        rationale: 'Issue #126 - Iterative generate→feedback→refine loop'
 
   reflexion-verbal-rl:
     name: 'Reflexion Verbal Reinforcement Learning'

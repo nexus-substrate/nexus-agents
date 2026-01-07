@@ -23,7 +23,8 @@ import { ReviewProtocol } from './review-protocol.js';
 import { ConsensusProtocol } from './consensus-protocol.js';
 import { ReflexionProtocol } from './reflexion-protocol.js';
 import { AegeanProtocol } from './aegean-protocol.js';
-export { ReviewProtocol, ConsensusProtocol, ReflexionProtocol, AegeanProtocol };
+import { SelfRefineProtocol } from './self-refine-protocol.js';
+export { ReviewProtocol, ConsensusProtocol, ReflexionProtocol, AegeanProtocol, SelfRefineProtocol };
 
 /**
  * Base interface for collaboration protocols.
@@ -299,6 +300,8 @@ export class ProtocolFactory {
         return new ReflexionProtocol(this.options);
       case 'aegean':
         return new AegeanProtocol(this.options);
+      case 'self-refine':
+        return new SelfRefineProtocol(this.options) as unknown as ICollaborationProtocol;
       default: {
         const unknownPattern: never = pattern;
         throw new AgentError(`Unknown protocol pattern: ${unknownPattern as string}`);

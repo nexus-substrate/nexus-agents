@@ -29,6 +29,7 @@ export {
  * - consensus: Voting-based decision making
  * - reflexion: Multi-agent reflexion with persona-based critics (arxiv:2512.20845)
  * - aegean: Byzantine-fault-tolerant consensus (arxiv:2512.20184)
+ * - self-refine: Iterative refinement with self-feedback (arxiv:2303.17651)
  */
 export type CollaborationPattern =
   | 'sequential'
@@ -36,7 +37,8 @@ export type CollaborationPattern =
   | 'review'
   | 'consensus'
   | 'reflexion'
-  | 'aegean';
+  | 'aegean'
+  | 'self-refine';
 
 /**
  * Session status during collaboration lifecycle.
