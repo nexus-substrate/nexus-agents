@@ -135,21 +135,27 @@ export class ErrorMetricsCollector {
    */
   getMetrics(): ErrorMetrics {
     const now = Date.now();
-    return {
+    const base = {
       totalErrors: this.totalErrors,
       errorsByCode: new Map(this.errorsByCode),
       errorsByComponent: new Map(this.errorsByComponent),
-      lastError: this.lastError
-        ? {
-            code: this.lastError.code,
-            component: this.lastError.component,
-            message: this.lastError.message,
-            timestamp: this.lastError.timestamp,
-          }
-        : undefined,
       startedAt: this.startedAt,
       uptimeMs: now - this.startedAt.getTime(),
     };
+
+    // Use spread to conditionally include lastError (satisfies exactOptionalPropertyTypes)
+    if (this.lastError) {
+      return {
+        ...base,
+        lastError: {
+          code: this.lastError.code,
+          component: this.lastError.component,
+          message: this.lastError.message,
+          timestamp: this.lastError.timestamp,
+        },
+      };
+    }
+    return base;
   }
 
   /**

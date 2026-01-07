@@ -127,7 +127,7 @@ Consensus: Phased approach starting with Option A
 **Scope:**
 
 - [x] Existing MCP tools (orchestrate, create_expert, run_workflow)
-- [ ] Add `delegate_to_model` tool for capability-matched routing
+- [x] Add `delegate_to_model` tool for capability-matched routing
 - [ ] Add model capability metadata to tool responses
 - [ ] Document Claude CLI integration in README
 

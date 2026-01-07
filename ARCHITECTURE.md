@@ -81,39 +81,42 @@ All exports are available from the single package entry point:
 ```typescript
 import {
   // Core
-  Result,
+  type Result,
   AgentError,
   logger,
+  NexusError,
   // Config
-  loadConfig,
-  ConfigSchema,
+  defaultConfig,
+  AppConfigSchema,
   // Adapters
   ClaudeAdapter,
   OpenAIAdapter,
-  CapacityMonitor,
+  createClaudeAdapter,
   // Agents
   TechLead,
   Expert,
-  AgentPool,
+  ExpertFactory,
   ContextPruner,
   // Workflows
-  WorkflowEngine,
-  WorkflowDefinition,
+  type WorkflowDefinition,
+  parseWorkflowYaml,
+  loadWorkflowFile,
   // MCP
-  createMcpServer,
+  createServer,
   registerTools,
-  // CLI Adapters (v2.2.0+)
-  TaskRouter,
-  CliCircuitBreaker,
+  startStdioServer,
+  // CLI Adapters
   createCliAdapter,
+  ClaudeCliAdapter,
+  GeminiCliAdapter,
+  CodexCliAdapter,
   // Context Management
   TokenCounter,
-  WorkBalancer,
-  HybridMemoryBackend,
-  // Consensus
-  ConsensusEngine,
-  SimpleMajorityStrategy,
+  ContextManager,
 } from 'nexus-agents';
+
+// Consensus (internal module - not yet in public API)
+// import { createConsensusEngine, WeightedVoting } from './src/consensus/index.js';
 ```
 
 ---
