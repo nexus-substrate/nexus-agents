@@ -27,8 +27,9 @@ export {
  * - parallel: Experts work simultaneously on the same task
  * - review: One expert reviews another's work
  * - consensus: Voting-based decision making
+ * - reflexion: Multi-agent reflexion with persona-based critics (arxiv:2512.20845)
  */
-export type CollaborationPattern = 'sequential' | 'parallel' | 'review' | 'consensus';
+export type CollaborationPattern = 'sequential' | 'parallel' | 'review' | 'consensus' | 'reflexion';
 
 /**
  * Session status during collaboration lifecycle.

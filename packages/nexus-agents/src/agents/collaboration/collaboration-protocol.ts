@@ -18,10 +18,11 @@ import {
 } from './collaboration-session.js';
 import { sleep } from './protocol-helpers.js';
 
-// Import and re-export ReviewProtocol and ConsensusProtocol from their dedicated modules
+// Import and re-export protocol implementations from their dedicated modules
 import { ReviewProtocol } from './review-protocol.js';
 import { ConsensusProtocol } from './consensus-protocol.js';
-export { ReviewProtocol, ConsensusProtocol };
+import { ReflexionProtocol } from './reflexion-protocol.js';
+export { ReviewProtocol, ConsensusProtocol, ReflexionProtocol };
 
 /**
  * Base interface for collaboration protocols.
@@ -293,8 +294,12 @@ export class ProtocolFactory {
         return new ReviewProtocol(this.options);
       case 'consensus':
         return new ConsensusProtocol(this.options);
-      default:
-        throw new AgentError(`Unknown protocol pattern: ${String(pattern)}`);
+      case 'reflexion':
+        return new ReflexionProtocol(this.options);
+      default: {
+        const unknownPattern: never = pattern;
+        throw new AgentError(`Unknown protocol pattern: ${unknownPattern as string}`);
+      }
     }
   }
 

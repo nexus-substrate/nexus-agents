@@ -73,3 +73,30 @@ export {
   type ConflictResolver,
   type QualityScorer,
 } from './result-aggregator.js';
+
+// Multi-Agent Reflexion (MAR) protocol (Source: arxiv:2512.20845)
+export type {
+  Persona,
+  PersonaCritique,
+  DebateResult,
+  ReflexionRound,
+  ReflexionConfig,
+  ReflexionResult,
+} from './reflexion-types.js';
+
+export {
+  PersonaSchema,
+  PersonaCritiqueSchema,
+  DebateResultSchema,
+  ReflexionRoundSchema,
+  ReflexionConfigSchema,
+  ReflexionResultSchema,
+  DEFAULT_CODE_REVIEW_PERSONAS,
+  calculateWeightedSeverity,
+} from './reflexion-types.js';
+
+export {
+  ReflexionProtocol,
+  createReflexionProtocol,
+  type ReflexionProtocolOptions,
+} from './reflexion-protocol.js';

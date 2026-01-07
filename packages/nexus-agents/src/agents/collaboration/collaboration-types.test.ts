@@ -22,6 +22,7 @@ describe('CollaborationPatternSchema', () => {
     expect(CollaborationPatternSchema.safeParse('parallel').success).toBe(true);
     expect(CollaborationPatternSchema.safeParse('review').success).toBe(true);
     expect(CollaborationPatternSchema.safeParse('consensus').success).toBe(true);
+    expect(CollaborationPatternSchema.safeParse('reflexion').success).toBe(true);
   });
 
   it('should reject invalid patterns', () => {

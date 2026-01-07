@@ -9,7 +9,13 @@ import { z } from 'zod';
 /**
  * Zod schema for CollaborationPattern.
  */
-export const CollaborationPatternSchema = z.enum(['sequential', 'parallel', 'review', 'consensus']);
+export const CollaborationPatternSchema = z.enum([
+  'sequential',
+  'parallel',
+  'review',
+  'consensus',
+  'reflexion',
+]);
 
 /**
  * Zod schema for SessionStatus.
@@ -109,6 +115,7 @@ export const DEFAULT_TIMEOUTS = {
   parallel: 3 * 60 * 1000, // 3 minutes
   review: 2 * 60 * 1000, // 2 minutes
   consensus: 5 * 60 * 1000, // 5 minutes
+  reflexion: 10 * 60 * 1000, // 10 minutes (iterative)
 } as const;
 
 /**
@@ -124,4 +131,5 @@ export const MIN_EXPERTS_FOR_PATTERN = {
   parallel: 2,
   review: 2,
   consensus: 3,
+  reflexion: 1, // Single producer with persona-based critics
 } as const;
