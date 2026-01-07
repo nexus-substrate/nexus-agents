@@ -382,7 +382,7 @@ techniques:
       at each stage. Escalate only when agreement threshold not met.
 
     source_papers:
-      - arxiv-2507.00672
+      - arxiv-2410.10347
 
     topic: routing
     tags:
@@ -393,23 +393,32 @@ techniques:
     metrics:
       cost_optimization: 'significant'
 
-    status: not-started
+    status: implemented
     priority: P2
     complexity: medium
 
     integration_files:
-      - 'packages/nexus-agents/src/adapters/'
+      - 'packages/nexus-agents/src/cli-adapters/agreement-cascade-router.ts'
+      - 'packages/nexus-agents/src/cli-adapters/agreement-cascade-router.test.ts'
 
-    implementation_issue: null
+    implementation_issue: 121
     related_prs: []
 
     notes: |
-      Implement cascade executor for multi-model fallback.
+      Implemented AgreementCascadeRouter class with:
+      - Multi-model execution at each cascade stage
+      - Jaccard similarity-based response clustering
+      - Configurable agreement thresholds (default 0.7)
+      - Cost savings tracking for early resolution
+      - 14 comprehensive tests
 
     dependencies:
       - expert-cost-modeling
 
-    decision_history: []
+    decision_history:
+      - date: '2026-01-07'
+        decision: 'Implemented'
+        rationale: 'Commit 36436f1 - feat(cli-adapters): implement agreement-based cascade routing (#121)'
 
   preference-trained-routing:
     name: 'Preference-Trained Router (RouteLLM)'
