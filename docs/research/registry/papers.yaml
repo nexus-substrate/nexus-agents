@@ -1,0 +1,1855 @@
+# registry/papers.yaml
+# Research papers tracked by nexus-agents
+# Schema version for future migrations
+schema_version: '1.0'
+
+papers:
+  # ============================================================================
+  # MULTI-AGENT COORDINATION
+  # ============================================================================
+
+  arxiv-2501.06322:
+    title: 'Multi-Agent Collaboration Mechanisms: A Survey of LLMs'
+    authors: []
+    source: arxiv
+    arxiv_id: '2501.06322'
+    url: 'https://arxiv.org/abs/2501.06322'
+    publication_date: '2025-01'
+    venue: null
+
+    topics:
+      - consensus
+      - orchestration
+    tags:
+      - multi-agent
+      - collaboration
+      - survey
+      - coordination
+
+    reviewed_date: '2026-01-06'
+    reviewed_in: 'multi-agent-coordination.md'
+    summary: |
+      Taxonomy of collaboration types (cooperation, competition, coopetition)
+      and coordination strategies for LLM multi-agent systems.
+
+    key_findings:
+      - 'Three coordination strategies: rule-based, role-based, model-based'
+      - 'Recommend hybrid rule+model coordination'
+
+    relevance: high
+    techniques_extracted:
+      - rule-based-coordination
+      - role-based-protocols
+      - model-based-coordination
+
+    related_issues: []
+    implementation_status: not-started
+
+  arxiv-2505.19591:
+    title: 'Multi-Agent Collaboration via Evolving Orchestration'
+    authors: []
+    source: arxiv
+    arxiv_id: '2505.19591'
+    url: 'https://arxiv.org/abs/2505.19591'
+    publication_date: '2025-05'
+    venue: null
+
+    topics:
+      - orchestration
+    tags:
+      - multi-agent
+      - puppeteer
+      - reinforcement-learning
+      - coordination
+
+    reviewed_date: '2026-01-06'
+    reviewed_in: 'multi-agent-coordination.md'
+    summary: |
+      Puppeteer-style paradigm with RL-trained orchestrator for dynamic
+      agent selection via policy mapping context to agent probabilities.
+
+    key_findings:
+      - 'Dynamic agent selection via policy: a_t ~ pi(S_t, tau)'
+      - 'Emergent behaviors: compaction (hub agents) and cyclicality (recursive critique)'
+      - '15-30% improvement in multi-agent task completion'
+
+    relevance: high
+    techniques_extracted:
+      - rl-orchestrator
+      - dynamic-agent-selection
+
+    related_issues: []
+    implementation_status: not-started
+
+  arxiv-2502.19130:
+    title: 'Voting or Consensus? Decision-Making in Multi-Agent Debate'
+    authors: []
+    source: arxiv
+    arxiv_id: '2502.19130'
+    url: 'https://arxiv.org/abs/2502.19130'
+    publication_date: '2025-02'
+    venue: null
+
+    topics:
+      - consensus
+    tags:
+      - voting
+      - debate
+      - decision-making
+      - multi-agent
+
+    reviewed_date: '2026-01-06'
+    reviewed_in: 'multi-agent-coordination.md'
+    summary: |
+      Empirical comparison of 7 decision protocols for multi-agent systems.
+
+    key_findings:
+      - 'Voting protocols: +13.2% on reasoning tasks'
+      - 'Consensus protocols: +2.8% on knowledge tasks'
+      - 'More discussion rounds before voting reduces performance'
+      - 'All-Agents Drafting (AAD): up to 3.3% gains'
+      - 'Collective Improvement (CI): up to 7.4% gains'
+
+    relevance: high
+    techniques_extracted:
+      - task-aware-protocol-selection
+      - majority-voting
+      - consensus-protocol
+
+    related_issues: []
+    implementation_status: not-started
+
+  arxiv-2507.08616:
+    title: 'AgentsNet'
+    authors: []
+    source: arxiv
+    arxiv_id: '2507.08616'
+    url: 'https://arxiv.org/abs/2507.08616'
+    publication_date: '2025-07'
+    venue: null
+
+    topics:
+      - orchestration
+    tags:
+      - benchmark
+      - multi-agent
+      - coordination
+
+    reviewed_date: '2026-01-06'
+    reviewed_in: 'multi-agent-coordination.md'
+    summary: |
+      Benchmark for 100-agent coordination scenarios.
+
+    key_findings:
+      - 'Benchmark for large-scale agent coordination'
+
+    relevance: medium
+    techniques_extracted: []
+
+    related_issues: []
+    implementation_status: not-started
+
+  # ============================================================================
+  # CONTEXT MANAGEMENT
+  # ============================================================================
+
+  arxiv-2510.00615:
+    title: 'Acon: Optimizing Context Compression'
+    authors: []
+    source: arxiv
+    arxiv_id: '2510.00615'
+    url: 'https://arxiv.org/abs/2510.00615'
+    publication_date: '2025-10'
+    venue: null
+
+    topics:
+      - memory
+    tags:
+      - context-compression
+      - task-specific
+
+    reviewed_date: '2026-01-06'
+    reviewed_in: 'multi-agent-coordination.md'
+    summary: |
+      Task-specific context compression techniques.
+
+    key_findings:
+      - 'Task-specific context compression'
+
+    relevance: medium
+    techniques_extracted:
+      - task-specific-compression
+
+    related_issues: []
+    implementation_status: not-started
+
+  arxiv-2509.09199:
+    title: 'CCF: Context Compression Framework'
+    authors: []
+    source: arxiv
+    arxiv_id: '2509.09199'
+    url: 'https://arxiv.org/abs/2509.09199'
+    publication_date: '2025-09'
+    venue: null
+
+    topics:
+      - memory
+    tags:
+      - context-compression
+      - learned-compression
+
+    reviewed_date: '2026-01-06'
+    reviewed_in: 'multi-agent-coordination.md'
+    summary: |
+      Learned compression modules for context management.
+
+    key_findings:
+      - 'Learned compression modules'
+
+    relevance: medium
+    techniques_extracted:
+      - learned-context-compression
+
+    related_issues: []
+    implementation_status: not-started
+
+  arxiv-2504.19413:
+    title: 'Mem0: Building Production-Ready AI Agents with Scalable Long-Term Memory'
+    authors: ['Mem0 Team']
+    source: arxiv
+    arxiv_id: '2504.19413'
+    url: 'https://arxiv.org/abs/2504.19413'
+    publication_date: '2025-04'
+    venue: null
+
+    topics:
+      - memory
+    tags:
+      - long-term-memory
+      - graph-memory
+      - production
+
+    reviewed_date: '2026-01-06'
+    reviewed_in: 'multi-agent-coordination.md'
+    summary: |
+      Scalable memory architecture achieving 91% latency reduction
+      and 90% token savings with graph-based memory variant.
+
+    key_findings:
+      - '91% lower p95 latency vs full-context'
+      - '90% token cost savings'
+      - '26% improvement in LLM-as-a-Judge metric'
+      - 'Graph-based memory variant: +2% overall performance'
+
+    relevance: high
+    techniques_extracted:
+      - mem0-memory-architecture
+      - graph-based-memory
+
+    related_issues:
+      - 101
+    implementation_status: planned
+
+  arxiv-2507.13334:
+    title: 'Context Engineering Survey'
+    authors: []
+    source: arxiv
+    arxiv_id: '2507.13334'
+    url: 'https://arxiv.org/abs/2507.13334'
+    publication_date: '2025-07'
+    venue: null
+
+    topics:
+      - memory
+    tags:
+      - survey
+      - context-management
+
+    reviewed_date: '2026-01-06'
+    reviewed_in: 'multi-agent-coordination.md'
+    summary: |
+      Taxonomy of context management strategies.
+
+    key_findings:
+      - 'Taxonomy of context management strategies'
+
+    relevance: medium
+    techniques_extracted: []
+
+    related_issues: []
+    implementation_status: not-started
+
+  # ============================================================================
+  # ROUTING
+  # ============================================================================
+
+  arxiv-2406.18665:
+    title: 'RouteLLM: Learning to Route LLMs with Preference Data'
+    authors: []
+    source: conference
+    arxiv_id: '2406.18665'
+    url: 'https://arxiv.org/abs/2406.18665'
+    publication_date: '2025'
+    venue: 'ICLR 2025'
+
+    topics:
+      - routing
+    tags:
+      - preference-data
+      - cost-reduction
+      - transfer-learning
+
+    reviewed_date: '2026-01-06'
+    reviewed_in: 'multi-agent-coordination.md'
+    summary: |
+      Train router on human preference data for dynamic selection
+      between strong/weak LLM.
+
+    key_findings:
+      - '2x cost reduction without quality degradation'
+      - 'Transfer learning: maintains performance when models changed'
+
+    relevance: high
+    techniques_extracted:
+      - preference-trained-routing
+      - complexity-based-routing
+
+    related_issues:
+      - 102
+    implementation_status: planned
+
+  arxiv-2502.16696:
+    title: 'OptiRoute'
+    authors: []
+    source: arxiv
+    arxiv_id: '2502.16696'
+    url: 'https://arxiv.org/abs/2502.16696'
+    publication_date: '2025-02'
+    venue: null
+
+    topics:
+      - routing
+    tags:
+      - knn
+      - hierarchical-filtering
+      - cost-optimization
+
+    reviewed_date: '2026-01-06'
+    reviewed_in: 'multi-agent-coordination.md'
+    summary: |
+      kNN + hierarchical filtering with cost/ethics tradeoffs.
+
+    key_findings:
+      - 'kNN + hierarchical filtering'
+      - 'Cost/ethics tradeoffs'
+
+    relevance: medium
+    techniques_extracted:
+      - knn-routing
+
+    related_issues: []
+    implementation_status: not-started
+
+  arxiv-2502.17282:
+    title: 'Capability Instruction Tuning'
+    authors: []
+    source: arxiv
+    arxiv_id: '2502.17282'
+    url: 'https://arxiv.org/abs/2502.17282'
+    publication_date: '2025-02'
+    venue: null
+
+    topics:
+      - routing
+    tags:
+      - capability
+      - instruction-tuning
+      - model-zoo
+
+    reviewed_date: '2026-01-06'
+    reviewed_in: 'multi-agent-coordination.md'
+    summary: |
+      Achieves 80% GPT-4o coverage with smaller model zoo.
+
+    key_findings:
+      - '80% GPT-4o coverage with smaller model zoo'
+
+    relevance: medium
+    techniques_extracted:
+      - capability-instruction-tuning
+
+    related_issues: []
+    implementation_status: not-started
+
+  arxiv-2509.07571:
+    title: 'MoMA: Towards Generalized Routing'
+    authors: []
+    source: arxiv
+    arxiv_id: '2509.07571'
+    url: 'https://arxiv.org/abs/2509.07571'
+    publication_date: '2025-09'
+    venue: null
+
+    topics:
+      - routing
+    tags:
+      - unified-routing
+      - cost-optimization
+      - topsis
+
+    reviewed_date: '2026-01-06'
+    reviewed_in: 'multi-agent-coordination.md'
+    summary: |
+      Unified LLM + agent routing with TOPSIS algorithm for
+      Pareto frontier (performance vs cost).
+
+    key_findings:
+      - '31.46% cost reduction vs single optimal model'
+      - 'Two-stage routing: Agent vs LLM, then select optimal executor'
+      - 'MoE head with LLM encoder producing M-dimensional performance scores'
+
+    relevance: high
+    techniques_extracted:
+      - topsis-routing
+      - two-stage-routing
+      - moe-routing
+
+    related_issues: []
+    implementation_status: planned
+
+  arxiv-2509.09782:
+    title: 'Cross-Attention Routing'
+    authors: []
+    source: arxiv
+    arxiv_id: '2509.09782'
+    url: 'https://arxiv.org/abs/2509.09782'
+    publication_date: '2025-09'
+    venue: null
+
+    topics:
+      - routing
+    tags:
+      - cross-attention
+      - query-model-matching
+
+    reviewed_date: '2026-01-06'
+    reviewed_in: 'multi-agent-coordination.md'
+    summary: |
+      Single-head cross-attention for query-model matching.
+
+    key_findings:
+      - 'Single-head cross-attention for query-model matching'
+
+    relevance: medium
+    techniques_extracted:
+      - cross-attention-routing
+
+    related_issues: []
+    implementation_status: not-started
+
+  arxiv-2510.05164:
+    title: 'SATER: Dual-Mode Routing with Confidence-Aware Rejection'
+    authors: []
+    source: conference
+    arxiv_id: '2510.05164'
+    url: 'https://arxiv.org/abs/2510.05164'
+    publication_date: '2025'
+    venue: 'EMNLP 2025'
+
+    topics:
+      - routing
+    tags:
+      - confidence-aware
+      - cascade
+      - cost-reduction
+
+    reviewed_date: '2026-01-06'
+    reviewed_in: 'multi-agent-improvements-2025.md'
+    summary: |
+      Dual-mode routing with shortest-response preference optimization
+      and confidence-aware rejection.
+
+    key_findings:
+      - '50%+ cost reduction'
+      - '80%+ cascade latency reduction'
+      - 'Comparable accuracy to full-model inference'
+
+    relevance: high
+    techniques_extracted:
+      - sater-routing
+      - confidence-aware-rejection
+
+    related_issues:
+      - 99
+    implementation_status: planned
+
+  arxiv-2509.06274:
+    title: 'IPR: Intelligent Prompt Routing'
+    authors: []
+    source: arxiv
+    arxiv_id: '2509.06274'
+    url: 'https://arxiv.org/abs/2509.06274'
+    publication_date: '2025-09'
+    venue: null
+
+    topics:
+      - routing
+    tags:
+      - quality-constrained
+      - tolerance-parameter
+      - lightweight
+
+    reviewed_date: '2026-01-06'
+    reviewed_in: 'multi-agent-improvements-2025.md'
+    summary: |
+      Quality-constrained routing with user-controlled tolerance parameter
+      and lightweight estimators.
+
+    key_findings:
+      - '43.9% cost reduction'
+      - 'Quality parity with strongest model'
+      - 'Sub-150ms latency'
+      - 'Trained on 1.5M prompts (IPRBench dataset)'
+
+    relevance: high
+    techniques_extracted:
+      - ipr-quality-estimators
+      - tolerance-routing
+
+    related_issues:
+      - 102
+    implementation_status: planned
+
+  arxiv-2508.21141:
+    title: 'PILOT: Preference-Prior Routing with Budget Constraints'
+    authors: []
+    source: conference
+    arxiv_id: '2508.21141'
+    url: 'https://arxiv.org/abs/2508.21141'
+    publication_date: '2025'
+    venue: 'EMNLP 2025 Findings'
+
+    topics:
+      - routing
+    tags:
+      - contextual-bandit
+      - budget-constraints
+      - linucb
+
+    reviewed_date: '2026-01-06'
+    reviewed_in: 'multi-agent-improvements-2025.md'
+    summary: |
+      Contextual bandit (LinUCB) with preference-prior routing and
+      multi-choice knapsack budget constraints.
+
+    key_findings:
+      - 'Adaptive decision-making without exhaustive inference'
+      - 'Handles diverse budget requirements dynamically'
+
+    relevance: high
+    techniques_extracted:
+      - pilot-budget-routing
+      - linucb-routing
+
+    related_issues:
+      - 102
+    implementation_status: planned
+
+  # ============================================================================
+  # CONSENSUS PROTOCOLS
+  # ============================================================================
+
+  arxiv-2512.20184:
+    title: 'Aegean: Formal Consensus Protocol for Stochastic Reasoning'
+    authors: []
+    source: arxiv
+    arxiv_id: '2512.20184'
+    url: 'https://arxiv.org/abs/2512.20184'
+    publication_date: '2025-12'
+    venue: null
+
+    topics:
+      - consensus
+    tags:
+      - formal-verification
+      - quorum
+      - streaming
+
+    reviewed_date: '2026-01-06'
+    reviewed_in: 'multi-agent-improvements-2025.md'
+    summary: |
+      Formal consensus protocol for stochastic reasoning with
+      incremental quorum detection.
+
+    key_findings:
+      - '1.2x-20x latency reduction'
+      - '4.4x token consumption reduction'
+      - 'Answer quality within 2.5% of baselines'
+
+    relevance: high
+    techniques_extracted:
+      - aegean-consensus
+      - incremental-quorum
+
+    related_issues:
+      - 100
+    implementation_status: planned
+
+  arxiv-2511.10400:
+    title: 'CP-WBFT: Confidence Probe-based Weighted Byzantine Fault Tolerant'
+    authors: []
+    source: arxiv
+    arxiv_id: '2511.10400'
+    url: 'https://arxiv.org/abs/2511.10400'
+    publication_date: '2025-11'
+    venue: null
+
+    topics:
+      - consensus
+    tags:
+      - byzantine
+      - fault-tolerance
+      - confidence-probe
+
+    reviewed_date: '2026-01-06'
+    reviewed_in: 'multi-agent-improvements-2025.md'
+    summary: |
+      Confidence Probe-based Weighted Byzantine Fault Tolerant consensus.
+
+    key_findings:
+      - '85.7% fault rate tolerance'
+      - 'Superior accuracy across network topologies'
+      - 'Strong reliability in reasoning and safety tasks'
+
+    relevance: medium
+    techniques_extracted:
+      - cp-wbft-consensus
+      - confidence-probes
+
+    related_issues:
+      - 103
+    implementation_status: planned
+
+  arxiv-2509.11035:
+    title: 'Free-MAD: Score-Based Decision with Anti-Conformity'
+    authors: []
+    source: arxiv
+    arxiv_id: '2509.11035'
+    url: 'https://arxiv.org/abs/2509.11035'
+    publication_date: '2025-09'
+    venue: null
+
+    topics:
+      - consensus
+    tags:
+      - score-based
+      - anti-conformity
+      - debate
+
+    reviewed_date: '2026-01-06'
+    reviewed_in: 'multi-agent-improvements-2025.md'
+    summary: |
+      Score-based decision with anti-conformity to prevent majority
+      influence on correct answers.
+
+    key_findings:
+      - 'Significant reasoning improvements across 8 benchmarks'
+      - 'Reduced computational costs (single round)'
+      - 'Enhanced robustness against attacks'
+
+    relevance: medium
+    techniques_extracted:
+      - free-mad-scoring
+      - anti-conformity-weighting
+
+    related_issues: []
+    implementation_status: not-started
+
+  arxiv-2512.20845:
+    title: 'MAR: Multi-Agent Reflexion Improves Reasoning Abilities'
+    authors: []
+    source: arxiv
+    arxiv_id: '2512.20845'
+    url: 'https://arxiv.org/abs/2512.20845'
+    publication_date: '2025-12'
+    venue: null
+
+    topics:
+      - consensus
+      - code-generation
+    tags:
+      - reflexion
+      - multi-agent
+      - reasoning
+
+    reviewed_date: '2026-01-06'
+    reviewed_in: 'self-improvement-feedback-loops.md'
+    summary: |
+      Multiple agents reflect and critique each other's outputs.
+
+    key_findings:
+      - 'Cross-agent critique within collaboration spaces'
+      - 'Diverse perspectives on output quality'
+      - 'Consensus through multi-agent evaluation'
+
+    relevance: high
+    techniques_extracted:
+      - multi-agent-reflexion
+      - cross-agent-critique
+
+    related_issues: []
+    implementation_status: planned
+
+  # ============================================================================
+  # CONTEXT OPTIMIZATION (KV Cache)
+  # ============================================================================
+
+  arxiv-2503.18893:
+    title: 'xKV: Cross-Layer SVD for KV-Cache Compression'
+    authors: []
+    source: arxiv
+    arxiv_id: '2503.18893'
+    url: 'https://arxiv.org/abs/2503.18893'
+    publication_date: '2025-03'
+    venue: null
+
+    topics:
+      - memory
+    tags:
+      - kv-cache
+      - compression
+      - svd
+
+    reviewed_date: '2026-01-06'
+    reviewed_in: 'multi-agent-improvements-2025.md'
+    summary: |
+      Cross-layer SVD for KV-cache compression exploiting singular
+      vector alignment.
+
+    key_findings:
+      - '6.8x compression vs state-of-the-art'
+      - '2.7% accuracy improvement'
+      - 'Plug-and-play, no fine-tuning needed'
+
+    relevance: low
+    techniques_extracted: []
+
+    related_issues: []
+    implementation_status: not-started
+
+  arxiv-2501.04987:
+    title: 'TreeKV: Tree-Structured Cache Compression'
+    authors: []
+    source: arxiv
+    arxiv_id: '2501.04987'
+    url: 'https://arxiv.org/abs/2501.04987'
+    publication_date: '2025-01'
+    venue: null
+
+    topics:
+      - memory
+    tags:
+      - kv-cache
+      - tree-structure
+      - compression
+
+    reviewed_date: '2026-01-06'
+    reviewed_in: 'multi-agent-improvements-2025.md'
+    summary: |
+      Tree-structured cache compression with smooth context transitions.
+
+    key_findings:
+      - '16x cache reduction'
+      - 'Best performance with 6% budget on Longbench'
+      - 'Token contributions increase and diverge near sequence end'
+
+    relevance: low
+    techniques_extracted:
+      - tree-kv-compression
+
+    related_issues: []
+    implementation_status: not-started
+
+  arxiv-2511.23271:
+    title: 'BET: Behavior-Equivalent Token'
+    authors: []
+    source: arxiv
+    arxiv_id: '2511.23271'
+    url: 'https://arxiv.org/abs/2511.23271'
+    publication_date: '2025-11'
+    venue: null
+
+    topics:
+      - memory
+    tags:
+      - prompt-compression
+      - behavior-distillation
+
+    reviewed_date: '2026-01-06'
+    reviewed_in: 'multi-agent-improvements-2025.md'
+    summary: |
+      Single-token compression of system prompts via reconstruction
+      and behavior distillation.
+
+    key_findings:
+      - 'Up to 3000x prompt reduction'
+      - 'Preserves downstream behavior'
+      - 'No model internals access required'
+
+    relevance: medium
+    techniques_extracted:
+      - bet-prompt-compression
+
+    related_issues: []
+    implementation_status: not-started
+
+  # ============================================================================
+  # ADAPTIVE MODEL SELECTION
+  # ============================================================================
+
+  arxiv-2512.04695:
+    title: 'TRINITY: Evolved LLM Coordinator'
+    authors: []
+    source: arxiv
+    arxiv_id: '2512.04695'
+    url: 'https://arxiv.org/abs/2512.04695'
+    publication_date: '2025-12'
+    venue: null
+
+    topics:
+      - orchestration
+    tags:
+      - coordinator
+      - thinker-worker-verifier
+      - cma-es
+
+    reviewed_date: '2026-01-06'
+    reviewed_in: 'multi-agent-improvements-2025.md'
+    summary: |
+      Evolved LLM coordinator with Thinker/Worker/Verifier roles
+      using CMA-ES optimization.
+
+    key_findings:
+      - '86.2% on LiveCodeBench'
+      - 'Outperforms individual models'
+      - 'Generalizes to out-of-distribution scenarios'
+      - 'Coordinator: 0.6B model + 10K parameter head'
+
+    relevance: high
+    techniques_extracted:
+      - trinity-roles
+      - cma-es-optimization
+
+    related_issues: []
+    implementation_status: planned
+
+  arxiv-2511.02200:
+    title: 'STRMAC: State-Aware Routing'
+    authors: []
+    source: arxiv
+    arxiv_id: '2511.02200'
+    url: 'https://arxiv.org/abs/2511.02200'
+    publication_date: '2025-11'
+    venue: null
+
+    topics:
+      - routing
+    tags:
+      - state-aware
+      - history-encoding
+      - self-evolving
+
+    reviewed_date: '2026-01-06'
+    reviewed_in: 'multi-agent-improvements-2025.md'
+    summary: |
+      State-aware routing with separate encoding of history and
+      agent knowledge.
+
+    key_findings:
+      - 'Up to 23.8% improvement over baselines'
+      - '90.1% training data reduction via self-evolving generation'
+
+    relevance: medium
+    techniques_extracted:
+      - strmac-state-routing
+      - history-encoding
+
+    related_issues: []
+    implementation_status: not-started
+
+  arxiv-2509.20368:
+    title: 'LATTS: Locally Adaptive Test-Time Scaling'
+    authors: []
+    source: arxiv
+    arxiv_id: '2509.20368'
+    url: 'https://arxiv.org/abs/2509.20368'
+    publication_date: '2025-09'
+    venue: null
+
+    topics:
+      - orchestration
+    tags:
+      - test-time-scaling
+      - verifier
+      - backtrack
+
+    reviewed_date: '2026-01-06'
+    reviewed_in: 'multi-agent-improvements-2025.md'
+    summary: |
+      Locally adaptive test-time scaling with verifier-based
+      acceptance criterion.
+
+    key_findings:
+      - 'Llama-3.2-1B matches Llama-405B performance'
+      - 'Decisions: resample, backtrack, restart, or stop'
+
+    relevance: medium
+    techniques_extracted:
+      - latts-adaptive-compute
+      - verifier-acceptance
+
+    related_issues: []
+    implementation_status: not-started
+
+  # ============================================================================
+  # HYBRID ARCHITECTURES
+  # ============================================================================
+
+  arxiv-2510.04800:
+    title: 'Hybrid Architectures for LLMs'
+    authors: []
+    source: arxiv
+    arxiv_id: '2510.04800'
+    url: 'https://arxiv.org/abs/2510.04800'
+    publication_date: '2025-10'
+    venue: null
+
+    topics:
+      - orchestration
+    tags:
+      - hybrid
+      - transformer
+      - ssm
+
+    reviewed_date: '2026-01-06'
+    reviewed_in: 'multi-agent-coordination.md'
+    summary: |
+      Transformer + SSM hybrid analysis.
+
+    key_findings:
+      - 'Transformer + SSM hybrid analysis'
+
+    relevance: low
+    techniques_extracted: []
+
+    related_issues: []
+    implementation_status: not-started
+
+  arxiv-2410.10039:
+    title: 'Multi-LLM Orchestration Engine'
+    authors: []
+    source: arxiv
+    arxiv_id: '2410.10039'
+    url: 'https://arxiv.org/abs/2410.10039'
+    publication_date: '2024-10'
+    venue: null
+
+    topics:
+      - orchestration
+    tags:
+      - temporal-graph
+      - vector-db
+      - integration
+
+    reviewed_date: '2026-01-06'
+    reviewed_in: 'multi-agent-coordination.md'
+    summary: |
+      Temporal graph + vector DB integration for multi-LLM orchestration.
+
+    key_findings:
+      - 'Temporal graph + vector DB integration'
+
+    relevance: medium
+    techniques_extracted:
+      - temporal-graph-orchestration
+
+    related_issues: []
+    implementation_status: not-started
+
+  arxiv-2512.22402:
+    title: 'Pick and Spin: Efficient Multi-Model Orchestration'
+    authors: []
+    source: arxiv
+    arxiv_id: '2512.22402'
+    url: 'https://arxiv.org/abs/2512.22402'
+    publication_date: '2025-12'
+    venue: null
+
+    topics:
+      - orchestration
+    tags:
+      - kubernetes
+      - helm
+      - scale-to-zero
+
+    reviewed_date: '2026-01-06'
+    reviewed_in: 'multi-agent-coordination.md'
+    summary: |
+      Unified Helm-based deployment with adaptive scale-to-zero
+      automation and hybrid routing module.
+
+    key_findings:
+      - '21.6% higher success rates'
+      - '30% lower latency'
+      - '33% lower GPU cost per query'
+
+    relevance: medium
+    techniques_extracted:
+      - pick-and-spin-deployment
+
+    related_issues: []
+    implementation_status: not-started
+
+  arxiv-2507.00672:
+    title: 'Edge Multi-LLM: Hybrid Routing with Cascade/ABC Patterns'
+    authors: []
+    source: arxiv
+    arxiv_id: '2507.00672'
+    url: 'https://arxiv.org/abs/2507.00672'
+    publication_date: '2025-07'
+    venue: null
+
+    topics:
+      - routing
+    tags:
+      - cascade
+      - agreement-based
+      - edge
+
+    reviewed_date: '2026-01-06'
+    reviewed_in: 'multi-agent-coordination.md'
+    summary: |
+      Hybrid routing with cascade/ABC (Agreement-Based Cascading) patterns.
+
+    key_findings:
+      - 'Cascade of increasingly powerful models'
+      - 'Ensemble agreement at each stage'
+      - 'Escalate only when agreement threshold not met'
+
+    relevance: medium
+    techniques_extracted:
+      - cascade-routing
+      - agreement-based-cascading
+
+    related_issues: []
+    implementation_status: not-started
+
+  # ============================================================================
+  # MEMORY SYSTEMS
+  # ============================================================================
+
+  arxiv-2507.07957:
+    title: 'MIRIX: Six-Type Memory System'
+    authors: []
+    source: arxiv
+    arxiv_id: '2507.07957'
+    url: 'https://arxiv.org/abs/2507.07957'
+    publication_date: '2025-07'
+    venue: null
+
+    topics:
+      - memory
+    tags:
+      - six-type-memory
+      - multimodal
+      - rag
+
+    reviewed_date: '2026-01-06'
+    reviewed_in: 'multi-agent-improvements-2025.md'
+    summary: |
+      Six-type memory system with multi-agent management architecture.
+
+    key_findings:
+      - '35% higher accuracy than RAG on multimodal tasks'
+      - '99.9% storage reduction'
+      - '85.4% accuracy on LOCOMO benchmark'
+      - 'Six types: Core, Episodic, Semantic, Procedural, Resource, Knowledge Vault'
+
+    relevance: high
+    techniques_extracted:
+      - mirix-six-type-memory
+      - active-retrieval
+
+    related_issues:
+      - 101
+    implementation_status: planned
+
+  arxiv-2512.15784:
+    title: 'MobiMem: Post-Deployment Evolution via Memory Modules'
+    authors: []
+    source: arxiv
+    arxiv_id: '2512.15784'
+    url: 'https://arxiv.org/abs/2512.15784'
+    publication_date: '2025-12'
+    venue: null
+
+    topics:
+      - memory
+    tags:
+      - post-deployment
+      - profile
+      - experience
+      - action-memory
+
+    reviewed_date: '2026-01-06'
+    reviewed_in: 'multi-agent-improvements-2025.md'
+    summary: |
+      Post-deployment evolution via Profile, Experience, and Action
+      memory modules.
+
+    key_findings:
+      - '83.1% profile alignment'
+      - '280x faster retrieval than GraphRAG'
+      - '50.3% task success improvement'
+      - 'Three modules: Profile, Experience, Action'
+
+    relevance: high
+    techniques_extracted:
+      - mobimem-evolution
+      - profile-memory
+      - experience-memory
+      - action-memory
+
+    related_issues: []
+    implementation_status: planned
+
+  arxiv-2511.20639:
+    title: 'LatentMAS: Direct Latent Space Collaboration'
+    authors: []
+    source: arxiv
+    arxiv_id: '2511.20639'
+    url: 'https://arxiv.org/abs/2511.20639'
+    publication_date: '2025-11'
+    venue: null
+
+    topics:
+      - orchestration
+    tags:
+      - latent-space
+      - embedding
+      - inter-agent
+
+    reviewed_date: '2026-01-06'
+    reviewed_in: 'multi-agent-improvements-2025.md'
+    summary: |
+      Direct latent space collaboration through hidden state sharing.
+
+    key_findings:
+      - 'Up to 14.6% accuracy improvement'
+      - '70.8%-83.7% output token reduction'
+      - '4x-4.3x faster inference'
+      - 'Requires same-model deployment for embedding compatibility'
+
+    relevance: low
+    techniques_extracted:
+      - latent-space-sharing
+
+    related_issues: []
+    implementation_status: rejected
+
+  # ============================================================================
+  # SELF-IMPROVEMENT FRAMEWORKS
+  # ============================================================================
+
+  arxiv-2303.17651:
+    title: 'Self-Refine: Iterative Refinement with Self-Feedback'
+    authors: ['Madaan, A.', 'et al.']
+    source: arxiv
+    arxiv_id: '2303.17651'
+    url: 'https://arxiv.org/abs/2303.17651'
+    publication_date: '2023-03'
+    venue: null
+
+    topics:
+      - code-generation
+    tags:
+      - self-improvement
+      - iterative
+      - training-free
+
+    reviewed_date: '2026-01-06'
+    reviewed_in: 'self-improvement-feedback-loops.md'
+    summary: |
+      A single LLM acts as generator, feedback provider, and refiner
+      in an iterative loop without any training.
+
+    key_findings:
+      - 'Average 20% improvement across diverse tasks'
+      - 'Can be implemented immediately without model fine-tuning'
+      - 'Works best when model has strong instruction-following capabilities'
+
+    relevance: high
+    techniques_extracted:
+      - self-refine-loop
+
+    related_issues: []
+    implementation_status: planned
+
+  arxiv-2303.11366:
+    title: 'Reflexion: Language Agents with Verbal Reinforcement Learning'
+    authors: ['Shinn, N.', 'et al.']
+    source: conference
+    arxiv_id: '2303.11366'
+    url: 'https://arxiv.org/abs/2303.11366'
+    publication_date: '2023'
+    venue: 'NeurIPS 2023'
+
+    topics:
+      - code-generation
+    tags:
+      - verbal-rl
+      - episodic-memory
+      - reflection
+
+    reviewed_date: '2026-01-06'
+    reviewed_in: 'self-improvement-feedback-loops.md'
+    summary: |
+      Agents maintain an episodic memory of verbal reflections that
+      guide future behavior, converting scalar/binary feedback into
+      semantic gradient signals.
+
+    key_findings:
+      - '+22% on AlfWorld'
+      - '+20% on HotPotQA'
+      - '91% pass@1 on HumanEval (vs 80% GPT-4 baseline)'
+
+    relevance: high
+    techniques_extracted:
+      - reflexion-verbal-rl
+      - reflection-memory
+
+    related_issues: []
+    implementation_status: planned
+
+  arxiv-2310.04406:
+    title: 'LATS: Language Agent Tree Search'
+    authors: ['Zhou, A.', 'et al.']
+    source: conference
+    arxiv_id: '2310.04406'
+    url: 'https://arxiv.org/abs/2310.04406'
+    publication_date: '2024'
+    venue: 'ICML 2024'
+
+    topics:
+      - code-generation
+      - orchestration
+    tags:
+      - mcts
+      - tree-search
+      - planning
+
+    reviewed_date: '2026-01-06'
+    reviewed_in: 'self-improvement-feedback-loops.md'
+    summary: |
+      Combines Monte Carlo Tree Search (MCTS) with LLM-based value
+      functions and self-reflection for systematic exploration.
+
+    key_findings:
+      - '92.7% pass@1 on HumanEval with GPT-4'
+      - 'Comparable to fine-tuned models on WebShop'
+
+    relevance: high
+    techniques_extracted:
+      - lats-tree-search
+      - llm-value-function
+
+    related_issues: []
+    implementation_status: not-started
+
+  arxiv-2410.04444:
+    title: 'Godel Agent: A Self-Referential Agent Framework'
+    authors: ['Yin, X.', 'et al.']
+    source: arxiv
+    arxiv_id: '2410.04444'
+    url: 'https://arxiv.org/abs/2410.04444'
+    publication_date: '2024-10'
+    venue: null
+
+    topics:
+      - code-generation
+    tags:
+      - self-referential
+      - recursive
+      - self-modification
+
+    reviewed_date: '2026-01-06'
+    reviewed_in: 'self-improvement-feedback-loops.md'
+    summary: |
+      Inspired by Godel machines, agents can modify their own logic
+      and behavior through recursive self-improvement, including the
+      code responsible for self-modification.
+
+    key_findings:
+      - 'Agent can rewrite the part of its code responsible for rewriting code'
+      - 'Truly self-referential'
+
+    relevance: medium
+    techniques_extracted:
+      - godel-self-reference
+      - recursive-improvement
+
+    related_issues: []
+    implementation_status: not-started
+
+  arxiv-2504.15228:
+    title: 'SICA: A Self-Improving Coding Agent'
+    authors: ['Robeyns, M.', 'et al.']
+    source: conference
+    arxiv_id: '2504.15228'
+    url: 'https://arxiv.org/abs/2504.15228'
+    publication_date: '2025'
+    venue: 'ICLR 2025 Workshop'
+
+    topics:
+      - code-generation
+    tags:
+      - self-improvement
+      - versioning
+      - observability
+
+    reviewed_date: '2026-01-06'
+    reviewed_in: 'self-improvement-feedback-loops.md'
+    summary: |
+      A unified agent that performs tasks AND improves its own
+      implementation, without separating meta-agent from target-agent.
+
+    key_findings:
+      - 'SWE-Bench Verified: 17% -> 53% accuracy'
+      - 'File editing: 82% -> 94%'
+      - 'Improvements through tool orchestration, not weight updates'
+
+    relevance: high
+    techniques_extracted:
+      - sica-self-improvement
+      - agent-versioning
+
+    related_issues: []
+    implementation_status: planned
+
+  arxiv-2412.17149:
+    title: 'Multi-AI Agent System for Autonomous Optimization'
+    authors: []
+    source: arxiv
+    arxiv_id: '2412.17149'
+    url: 'https://arxiv.org/abs/2412.17149'
+    publication_date: '2024-12'
+    venue: null
+
+    topics:
+      - orchestration
+    tags:
+      - optimization
+      - specialized-agents
+      - feedback-loop
+
+    reviewed_date: '2026-01-06'
+    reviewed_in: 'self-improvement-feedback-loops.md'
+    summary: |
+      Five specialized agents (Refinement, Execution, Evaluation,
+      Modification, Documentation) collaborate via LLM-driven feedback loops.
+
+    key_findings:
+      - 'Maps directly to multi-agent orchestration pattern'
+      - 'Each agent role can be implemented as an Expert'
+
+    relevance: high
+    techniques_extracted:
+      - five-agent-optimization
+
+    related_issues: []
+    implementation_status: not-started
+
+  arxiv-2512.02731:
+    title: 'Self-Improving AI Agents through Self-Play'
+    authors: ['Chojecki']
+    source: arxiv
+    arxiv_id: '2512.02731'
+    url: 'https://arxiv.org/abs/2512.02731'
+    publication_date: '2025-12'
+    venue: null
+
+    topics:
+      - code-generation
+    tags:
+      - self-play
+      - theoretical
+      - gvu-operator
+
+    reviewed_date: '2026-01-06'
+    reviewed_in: 'self-improvement-feedback-loops.md'
+    summary: |
+      Formalizes self-improvement as a Generator-Verifier-Updater (GVU)
+      operator on a parameter manifold, providing theoretical foundations.
+
+    key_findings:
+      - 'Coefficient of self-improvement = Lie derivative of capability functional'
+      - 'Variance Inequality provides stability conditions'
+
+    relevance: medium
+    techniques_extracted:
+      - gvu-operator
+
+    related_issues: []
+    implementation_status: not-started
+
+  # ============================================================================
+  # SKILL LEARNING
+  # ============================================================================
+
+  arxiv-2305.16291:
+    title: 'Voyager: An Open-Ended Embodied Agent with Large Language Models'
+    authors: ['Wang, G.', 'et al.']
+    source: arxiv
+    arxiv_id: '2305.16291'
+    url: 'https://arxiv.org/abs/2305.16291'
+    publication_date: '2023-05'
+    venue: null
+
+    topics:
+      - code-generation
+    tags:
+      - skill-library
+      - lifelong-learning
+      - exploration
+
+    reviewed_date: '2026-01-06'
+    reviewed_in: 'self-improvement-feedback-loops.md'
+    summary: |
+      Lifelong learning agent that builds an ever-growing library of
+      executable code skills through environmental interaction.
+
+    key_findings:
+      - '3.3x more unique items discovered'
+      - '2.3x longer distances traveled'
+      - 'Up to 15.3x faster milestone achievement'
+
+    relevance: high
+    techniques_extracted:
+      - voyager-skill-library
+      - automatic-curriculum
+
+    related_issues: []
+    implementation_status: planned
+
+  arxiv-2410.14735:
+    title: 'CycleQD: Quality-Diversity for Agent Skill Acquisition'
+    authors: []
+    source: arxiv
+    arxiv_id: '2410.14735'
+    url: 'https://arxiv.org/abs/2410.14735'
+    publication_date: '2024-10'
+    venue: null
+
+    topics:
+      - code-generation
+    tags:
+      - quality-diversity
+      - model-merging
+      - svd-mutation
+
+    reviewed_date: '2026-01-06'
+    reviewed_in: 'self-improvement-feedback-loops.md'
+    summary: |
+      Uses Quality-Diversity framework with cyclic task focus, model
+      merging crossover, and SVD-based mutation for skill acquisition.
+
+    key_findings:
+      - 'Multi-skill acquisition without manual balancing'
+      - 'Evolutionary approach to expert generation'
+      - 'Target skills: Coding, OS manipulation, Database queries'
+
+    relevance: medium
+    techniques_extracted:
+      - cycleqd-skill-acquisition
+
+    related_issues: []
+    implementation_status: not-started
+
+  arxiv-2506.04287:
+    title: 'EXIF: Automated Skill Discovery for Language Agents'
+    authors: []
+    source: arxiv
+    arxiv_id: '2506.04287'
+    url: 'https://arxiv.org/abs/2506.04287'
+    publication_date: '2025-06'
+    venue: null
+
+    topics:
+      - code-generation
+    tags:
+      - skill-discovery
+      - exploration
+      - two-agent
+
+    reviewed_date: '2026-01-06'
+    reviewed_in: 'self-improvement-feedback-loops.md'
+    summary: |
+      Exploration-first strategy using two agents (Alice explores,
+      Bob learns) to automatically discover and teach skills.
+
+    key_findings:
+      - 'Use exploration agent to identify useful skill patterns'
+      - 'Feed discovered patterns to skill learning pipeline'
+
+    relevance: medium
+    techniques_extracted:
+      - exif-skill-discovery
+
+    related_issues: []
+    implementation_status: not-started
+
+  arxiv-2406.14596:
+    title: 'ICAL: Continual Learning of Multimodal Agents'
+    authors: []
+    source: arxiv
+    arxiv_id: '2406.14596'
+    url: 'https://arxiv.org/abs/2406.14596'
+    publication_date: '2024-06'
+    venue: null
+
+    topics:
+      - memory
+    tags:
+      - continual-learning
+      - multimodal
+      - trajectory-abstraction
+
+    reviewed_date: '2026-01-06'
+    reviewed_in: 'self-improvement-feedback-loops.md'
+    summary: |
+      Build memory of multimodal experience from suboptimal
+      demonstrations through trajectory abstraction and correction.
+
+    key_findings:
+      - 'Learn from human interactions even when suboptimal'
+      - 'Abstract trajectories into generalizable patterns'
+
+    relevance: medium
+    techniques_extracted:
+      - ical-continual-learning
+      - trajectory-abstraction
+
+    related_issues: []
+    implementation_status: not-started
+
+  # ============================================================================
+  # FEEDBACK MECHANISMS
+  # ============================================================================
+
+  arxiv-2309.00267:
+    title: 'RLAIF vs. RLHF: Scaling Reinforcement Learning with AI Feedback'
+    authors: []
+    source: arxiv
+    arxiv_id: '2309.00267'
+    url: 'https://arxiv.org/abs/2309.00267'
+    publication_date: '2023-09'
+    venue: null
+
+    topics:
+      - code-generation
+    tags:
+      - rlaif
+      - ai-feedback
+      - scaling
+
+    reviewed_date: '2026-01-06'
+    reviewed_in: 'self-improvement-feedback-loops.md'
+    summary: |
+      RLAIF achieves comparable performance to RLHF at 10x lower cost.
+
+    key_findings:
+      - 'RLAIF: 71% vs RLHF: 73% human preference'
+      - 'Self-improvement possible even when AI labeler = policy model'
+      - 'd-RLAIF circumvents reward model training'
+      - '10x cheaper than human annotation'
+
+    relevance: high
+    techniques_extracted:
+      - rlaif
+      - direct-rlaif
+
+    related_issues: []
+    implementation_status: not-started
+
+  arxiv-2212.08073:
+    title: 'Constitutional AI: Harmlessness from AI Feedback'
+    authors: []
+    source: arxiv
+    arxiv_id: '2212.08073'
+    url: 'https://arxiv.org/abs/2212.08073'
+    publication_date: '2022-12'
+    venue: null
+
+    topics:
+      - code-generation
+    tags:
+      - constitutional-ai
+      - self-critique
+      - anthropic
+
+    reviewed_date: '2026-01-06'
+    reviewed_in: 'self-improvement-feedback-loops.md'
+    summary: |
+      Two-phase approach: supervised phase (model critiques and revises)
+      and RL phase (AI judge evaluates against constitution).
+
+    key_findings:
+      - 'Define constitution of principles for agent behavior'
+      - 'Self-critique against explicit criteria'
+      - 'Scales without human labelers'
+
+    relevance: high
+    techniques_extracted:
+      - constitutional-ai
+      - principle-based-critique
+
+    related_issues: []
+    implementation_status: planned
+
+  arxiv-2408.07199:
+    title: 'Agent Q: Advanced Reasoning and Learning for Autonomous AI Agents'
+    authors: []
+    source: arxiv
+    arxiv_id: '2408.07199'
+    url: 'https://arxiv.org/abs/2408.07199'
+    publication_date: '2024-08'
+    venue: null
+
+    topics:
+      - code-generation
+    tags:
+      - mcts
+      - self-critique
+      - dpo
+
+    reviewed_date: '2026-01-06'
+    reviewed_in: 'self-improvement-feedback-loops.md'
+    summary: |
+      Combines guided MCTS with self-critique and DPO for learning
+      from both success and failure trajectories.
+
+    key_findings:
+      - 'Zero-shot 18.6% -> 81.7% success rate (340% relative increase)'
+      - 'Further to 95.4% with online search'
+
+    relevance: high
+    techniques_extracted:
+      - agent-q-mcts
+      - dpo-learning
+
+    related_issues: []
+    implementation_status: not-started
+
+  arxiv-2504.01931:
+    title: 'On the Role of Feedback in Test-Time Scaling of Agentic AI Workflows'
+    authors: []
+    source: arxiv
+    arxiv_id: '2504.01931'
+    url: 'https://arxiv.org/abs/2504.01931'
+    publication_date: '2025-04'
+    venue: null
+
+    topics:
+      - code-generation
+    tags:
+      - test-time
+      - feedback
+      - inference-scaling
+
+    reviewed_date: '2026-01-06'
+    reviewed_in: 'self-improvement-feedback-loops.md'
+    summary: |
+      Feedback mechanisms that enable agents to improve during
+      inference, not just training.
+
+    key_findings:
+      - 'Real-time adaptation without retraining'
+      - 'Environment signals as guidance'
+      - 'Scale capability through inference-time compute'
+
+    relevance: medium
+    techniques_extracted:
+      - test-time-feedback
+
+    related_issues: []
+    implementation_status: not-started
+
+  # ============================================================================
+  # META-LEARNING
+  # ============================================================================
+
+  arxiv-2501.07278:
+    title: 'Lifelong Learning of Large Language Model based Agents: A Roadmap'
+    authors: []
+    source: arxiv
+    arxiv_id: '2501.07278'
+    url: 'https://arxiv.org/abs/2501.07278'
+    publication_date: '2025-01'
+    venue: null
+
+    topics:
+      - memory
+    tags:
+      - lifelong-learning
+      - survey
+      - roadmap
+
+    reviewed_date: '2026-01-06'
+    reviewed_in: 'self-improvement-feedback-loops.md'
+    summary: |
+      Three core modules: Perception (multimodal input), Memory
+      (storing/retrieving evolving knowledge), Action (grounded interactions).
+
+    key_findings:
+      - 'Design agents with explicit memory architecture'
+      - 'Support multimodal inputs'
+      - 'Ground actions in environment feedback'
+
+    relevance: medium
+    techniques_extracted: []
+
+    related_issues: []
+    implementation_status: not-started
+
+  arxiv-2504.14520:
+    title: 'Meta-Thinking in LLMs via Multi-Agent Reinforcement Learning'
+    authors: []
+    source: arxiv
+    arxiv_id: '2504.14520'
+    url: 'https://arxiv.org/abs/2504.14520'
+    publication_date: '2025-04'
+    venue: null
+
+    topics:
+      - orchestration
+    tags:
+      - meta-thinking
+      - multi-agent-rl
+      - self-reflection
+
+    reviewed_date: '2026-01-06'
+    reviewed_in: 'self-improvement-feedback-loops.md'
+    summary: |
+      Develop meta-thinking (self-reflection, assessment, control of
+      thinking processes) through multi-agent RL.
+
+    key_findings:
+      - 'Train meta-cognitive skills across agent ensemble'
+      - 'Self-monitoring and process control'
+
+    relevance: medium
+    techniques_extracted:
+      - meta-thinking
+
+    related_issues: []
+    implementation_status: not-started
+
+  arxiv-2507.17131:
+    title: 'ARIA: Human-in-the-Loop Test-Time Learning'
+    authors: []
+    source: arxiv
+    arxiv_id: '2507.17131'
+    url: 'https://arxiv.org/abs/2507.17131'
+    publication_date: '2025-07'
+    venue: null
+
+    topics:
+      - memory
+    tags:
+      - human-in-the-loop
+      - test-time
+      - knowledge-gaps
+
+    reviewed_date: '2026-01-06'
+    reviewed_in: 'self-improvement-feedback-loops.md'
+    summary: |
+      Agents identify knowledge gaps through self-dialogue, request
+      human guidance, and update timestamped knowledge repository.
+
+    key_findings:
+      - 'Structured uncertainty assessment'
+      - 'Proactive knowledge gap identification'
+      - 'Human-guided knowledge updates with timestamps'
+
+    relevance: medium
+    techniques_extracted:
+      - aria-knowledge-gaps
+
+    related_issues: []
+    implementation_status: not-started
+
+  # ============================================================================
+  # SURVEYS
+  # ============================================================================
+
+  arxiv-2412.17481:
+    title: 'A Survey on LLM-based Multi-Agent System'
+    authors: []
+    source: arxiv
+    arxiv_id: '2412.17481'
+    url: 'https://arxiv.org/abs/2412.17481'
+    publication_date: '2024-12'
+    venue: null
+
+    topics:
+      - orchestration
+    tags:
+      - survey
+      - multi-agent
+      - llm
+
+    reviewed_date: '2026-01-06'
+    reviewed_in: 'self-improvement-feedback-loops.md'
+    summary: |
+      Comprehensive survey on LLM-based multi-agent systems.
+
+    key_findings:
+      - 'Error amplification through agent chains'
+      - 'Propagation of misinformation risks'
+      - 'Context limitations restrict tracking'
+
+    relevance: medium
+    techniques_extracted: []
+
+    related_issues: []
+    implementation_status: not-started
+
+  arxiv-2507.21046:
+    title: 'A Survey of Self-Evolving Agents'
+    authors: []
+    source: arxiv
+    arxiv_id: '2507.21046'
+    url: 'https://arxiv.org/abs/2507.21046'
+    publication_date: '2025-07'
+    venue: null
+
+    topics:
+      - code-generation
+    tags:
+      - survey
+      - self-evolving
+      - agents
+
+    reviewed_date: '2026-01-06'
+    reviewed_in: 'self-improvement-feedback-loops.md'
+    summary: |
+      Survey of self-evolving agent architectures and techniques.
+
+    key_findings:
+      - 'Comprehensive survey of self-evolving approaches'
+
+    relevance: medium
+    techniques_extracted: []
+
+    related_issues: []
+    implementation_status: not-started

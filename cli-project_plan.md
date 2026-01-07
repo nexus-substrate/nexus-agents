@@ -171,7 +171,7 @@ server.tool(
 | Codex  | 0.77.0  | **MCP Client** | Codex supports `mcp-server` mode - most stable |
 | Gemini | 0.22.5  | Subprocess     | No MCP server mode, uses JSON output           |
 
-See: [CLI Integration Architecture Research](./docs/research/cli-integration-architecture.md)
+See: [CLI Integration Architecture Research](./docs/research/_legacy/cli-integration-architecture.md)
 
 **Scope:**
 
@@ -837,10 +837,10 @@ const AGENT_TEMPLATES: Record<string, AgentTemplate> = {
 
 ## References
 
-- [claude-flow Analysis](./docs/research/claude-flow-analysis.md) - Orchestration patterns
-- [Claude Code Research](./docs/research/claude-code-research.md) - Claude CLI details
-- [Gemini CLI Research](./docs/research/gemini-cli-research.md) - Gemini CLI details
-- [Codex CLI Research](./docs/research/openai-codex-cli-research.md) - Codex CLI details
+- [claude-flow Analysis](./docs/research/_legacy/claude-flow-analysis.md) - Orchestration patterns
+- [Claude Code Research](./docs/research/_legacy/claude-code-research.md) - Claude CLI details
+- [Gemini CLI Research](./docs/research/_legacy/gemini-cli-research.md) - Gemini CLI details
+- [Codex CLI Research](./docs/research/_legacy/openai-codex-cli-research.md) - Codex CLI details
 - [Anthropic Context Engineering](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents)
 
 ---

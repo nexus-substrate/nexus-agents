@@ -49,7 +49,7 @@ Build a production-grade multi-agent orchestration MCP server that coordinates A
 
 > **v2.0.0 Update (2026-01-04 ET):** The original 7-package architecture was consolidated into a single `nexus-agents` package for simpler installation and reduced dependency complexity. Internal modularity is preserved via directory structure.
 
-**Current Structure (v2.0.0+):**
+**Current Structure (v2.2.0+):**
 
 ```
 nexus-agents/
@@ -62,7 +62,11 @@ nexus-agents/
 │           ├── agents/     # Agent framework: TechLead, Expert, dynamic creation
 │           ├── workflows/  # Workflow engine, templates, state machine
 │           ├── mcp/        # MCP server, tool definitions, transport
-│           └── cli/        # CLI interface
+│           ├── cli/        # CLI interface
+│           ├── cli-adapters/  # External CLI adapters (Claude, Gemini, Codex)
+│           ├── context/    # Token counting, work balancing, memory
+│           ├── consensus/  # Multi-agent voting, weighted decisions
+│           └── security/   # TimeoutGuard, SecretVault, validation
 └── package.json           # Root workspace config
 ```
 

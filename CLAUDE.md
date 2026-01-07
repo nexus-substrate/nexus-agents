@@ -134,6 +134,75 @@ Before implementing any feature or making architectural decisions:
    - Link to primary sources
    - Note any `Verify:` items
 
+### 5. Research Tracking System
+
+**Always check existing research before starting new research.**
+
+The project maintains a structured research tracking system in `docs/research/`:
+
+```
+docs/research/
+├── RESEARCH_INDEX.md        # Master index (start here)
+├── CONTRIBUTING.md          # How to add research
+├── registry/
+│   ├── papers.yaml          # All papers with metadata
+│   ├── techniques.yaml      # Implementation techniques
+│   └── sources.yaml         # Product docs & other sources
+└── topics/
+    ├── consensus/           # Multi-agent consensus
+    ├── routing/             # Model routing
+    ├── memory/              # Context & memory
+    ├── code-generation/     # Self-improvement
+    ├── cli-tools/           # CLI integration
+    └── orchestration/       # Agent coordination
+```
+
+#### Before Researching
+
+**Always check first to avoid duplicate research:**
+
+```bash
+# Check if paper exists by arXiv ID
+grep -i "arxiv_id.*2501.06322" docs/research/registry/papers.yaml
+
+# Check if technique exists
+grep -i "technique-name" docs/research/registry/techniques.yaml
+
+# Search topic files
+grep -ri "keyword" docs/research/topics/
+```
+
+#### Adding New Research
+
+1. **Add paper to registry** - `docs/research/registry/papers.yaml`
+2. **Update topic README** - Add to appropriate topic in `docs/research/topics/`
+3. **Extract techniques** - If applicable, add to `techniques.yaml`
+4. **Create implementation issue** - For P1/P2 techniques
+
+See `docs/research/CONTRIBUTING.md` for detailed guidelines.
+
+#### Priority Definitions
+
+| Priority | Definition                               |
+| -------- | ---------------------------------------- |
+| **P1**   | High impact, fits current architecture   |
+| **P2**   | Medium impact, moderate changes needed   |
+| **P3**   | Lower impact, significant changes needed |
+| **P4**   | Infrastructure-level, long-term          |
+
+#### Querying Research
+
+```bash
+# Find P1 techniques
+grep -A 20 "priority: P1" docs/research/registry/techniques.yaml
+
+# Find papers by topic
+grep -B 5 -A 10 "topics:" docs/research/registry/papers.yaml | grep -A 10 "consensus"
+
+# Find implemented techniques
+grep -B 10 "status: implemented" docs/research/registry/techniques.yaml
+```
+
 ---
 
 ## Orchestration Model
@@ -681,7 +750,7 @@ gh pr checks <num>          # Check CI status
 
 ---
 
-_Last updated: 2026-01-04 (ET)_
+_Last updated: 2026-01-07 (ET)_
 _MCP Protocol: 2025-11-25_
 _Node.js: 22.x LTS_
 _TypeScript: 5.8+_

@@ -1,0 +1,253 @@
+# registry/sources.yaml
+# Product documentation and non-paper sources
+# Schema version for future migrations
+schema_version: '1.0'
+
+sources:
+  # ============================================================================
+  # CLI TOOLS - CLAUDE
+  # ============================================================================
+
+  claude-code-docs:
+    name: 'Claude Code Documentation'
+    type: product_docs
+    url: 'https://docs.anthropic.com/en/docs/claude-code'
+    vendor: Anthropic
+
+    topics:
+      - cli-tools
+    tags:
+      - claude
+      - mcp
+      - cli
+
+    reviewed_date: '2026-01-04'
+    reviewed_in: 'claude-code-research.md'
+
+    key_info:
+      - 'Models: Opus 4.5, Sonnet 4.5, Haiku 4.5'
+      - 'Full MCP client support'
+      - 'Session resume via --continue/--resume'
+      - 'Hooks system for customization'
+      - 'OAuth 2.0 authentication'
+
+    version_checked: '2.0.76'
+
+  claude-agent-sdk:
+    name: 'Claude Agent SDK'
+    type: product_docs
+    url: 'https://github.com/anthropics/claude-code/tree/main/packages/agent'
+    vendor: Anthropic
+
+    topics:
+      - cli-tools
+      - orchestration
+    tags:
+      - sdk
+      - agent
+      - development
+
+    reviewed_date: '2026-01-04'
+    reviewed_in: 'claude-code-research.md'
+
+    key_info:
+      - 'Build custom agentic applications'
+      - 'Programmatic API for Claude Code'
+      - 'Tool management and orchestration'
+
+    version_checked: '2.0.76'
+
+  # ============================================================================
+  # CLI TOOLS - GEMINI
+  # ============================================================================
+
+  gemini-cli-docs:
+    name: 'Gemini CLI Documentation'
+    type: product_docs
+    url: 'https://github.com/google-gemini/gemini-cli'
+    vendor: Google
+
+    topics:
+      - cli-tools
+    tags:
+      - gemini
+      - cli
+      - google
+
+    reviewed_date: '2026-01-04'
+    reviewed_in: 'gemini-cli-research.md'
+
+    key_info:
+      - 'Model router with automatic selection'
+      - 'OAuth / ADC authentication'
+      - '1M+ token context window'
+      - 'Multimodal support'
+      - 'MCP support (experimental)'
+
+    version_checked: '0.22.5'
+
+  # ============================================================================
+  # CLI TOOLS - CODEX
+  # ============================================================================
+
+  codex-cli-docs:
+    name: 'OpenAI Codex CLI Documentation'
+    type: product_docs
+    url: 'https://github.com/openai/codex'
+    vendor: OpenAI
+
+    topics:
+      - cli-tools
+    tags:
+      - codex
+      - openai
+      - cli
+
+    reviewed_date: '2026-01-04'
+    reviewed_in: 'openai-codex-cli-research.md'
+
+    key_info:
+      - 'codex-mini-latest model'
+      - 'GPT-5 family access'
+      - 'ChatGPT OAuth authentication'
+      - 'MCP server mode'
+      - 'Fast code generation'
+
+    version_checked: '0.77.0'
+
+  # ============================================================================
+  # PROTOCOLS
+  # ============================================================================
+
+  mcp-protocol-spec:
+    name: 'Model Context Protocol Specification'
+    type: specification
+    url: 'https://modelcontextprotocol.io'
+    vendor: Anthropic
+
+    topics:
+      - cli-tools
+      - orchestration
+    tags:
+      - protocol
+      - mcp
+      - standard
+
+    reviewed_date: '2026-01-04'
+    reviewed_in: 'cli-integration-architecture.md'
+
+    key_info:
+      - 'Version 2025-11-25'
+      - 'Transports: stdio, HTTP, SSE'
+      - 'Tool, Resource, Prompt support'
+      - 'JSON-RPC 2.0 based'
+
+    version_checked: '2025-11-25'
+
+  mcp-sdk-typescript:
+    name: 'MCP TypeScript SDK'
+    type: product_docs
+    url: 'https://github.com/modelcontextprotocol/typescript-sdk'
+    vendor: Anthropic
+
+    topics:
+      - cli-tools
+    tags:
+      - sdk
+      - typescript
+      - mcp
+
+    reviewed_date: '2026-01-04'
+    reviewed_in: 'cli-integration-architecture.md'
+
+    key_info:
+      - '@modelcontextprotocol/sdk package'
+      - 'Server and Client implementations'
+      - 'InMemory transport for testing'
+      - 'Zod integration for schemas'
+
+    version_checked: '1.25.2'
+
+  # ============================================================================
+  # FRAMEWORKS
+  # ============================================================================
+
+  claude-flow-project:
+    name: 'Claude-Flow Project Analysis'
+    type: code_analysis
+    url: 'https://github.com/ruvnet/claude-flow'
+    vendor: Community
+
+    topics:
+      - consensus
+      - memory
+      - orchestration
+    tags:
+      - reference
+      - patterns
+      - multi-agent
+
+    reviewed_date: '2026-01-04'
+    reviewed_in: 'claude-flow-analysis.md'
+
+    key_info:
+      - 'Multi-agent swarm architecture'
+      - 'Consensus voting patterns'
+      - 'Memory coordination'
+      - 'Raft consensus implementation'
+      - 'Byzantine fault tolerance patterns'
+
+    version_checked: 'main branch 2026-01'
+
+  # ============================================================================
+  # AI SAFETY
+  # ============================================================================
+
+  anthropic-reward-hacking:
+    name: 'Anthropic: Emergent Misalignment from Reward Hacking'
+    type: research_blog
+    url: 'https://www.anthropic.com/research/emergent-misalignment-reward-hacking'
+    vendor: Anthropic
+
+    topics:
+      - code-generation
+    tags:
+      - safety
+      - reward-hacking
+      - misalignment
+
+    reviewed_date: '2026-01-06'
+    reviewed_in: 'self-improvement-feedback-loops.md'
+
+    key_info:
+      - 'Training on gameable environments amplifies gaming'
+      - 'Models can generalize to rewriting own reward function'
+      - 'SFT on first environments with non-gaming data mitigates'
+      - 'Context-dependent alignment detection recommended'
+
+    version_checked: '2025'
+
+  lilian-weng-reward-hacking:
+    name: 'Lilian Weng: Reward Hacking in Reinforcement Learning'
+    type: research_blog
+    url: 'https://lilianweng.github.io/posts/2024-11-28-reward-hacking/'
+    vendor: Independent
+
+    topics:
+      - code-generation
+    tags:
+      - safety
+      - reward-hacking
+      - rl
+
+    reviewed_date: '2026-01-06'
+    reviewed_in: 'self-improvement-feedback-loops.md'
+
+    key_info:
+      - 'Inoculation prompting mitigation'
+      - 'Reward shaping with clipping'
+      - 'Reward ensembles'
+      - 'Sandboxing evaluation suite'
+      - 'Rich observability logging'
+
+    version_checked: '2024-11-28'

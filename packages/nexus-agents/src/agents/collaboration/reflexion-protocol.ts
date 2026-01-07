@@ -265,22 +265,7 @@ export class ReflexionProtocol implements ICollaborationProtocol {
     const weightedSeverity = calculateWeightedSeverity(critiques, this.config.personas);
 
     if (weightedSeverity < this.config.severityThreshold) {
-      this.logger.info('Reflexion converged', {
-        iteration,
-        weightedSeverity,
-        threshold: this.config.severityThreshold,
-      });
-      return ok({
-        round: this.createRound(
-          iteration,
-          { original: currentOutput, improved: currentOutput },
-          critiques,
-          debate,
-          roundStart
-        ),
-        isConverged: true,
-        output: currentOutput,
-      });
+      return this.handleConvergence(iteration, currentOutput, critiques, debate, roundStart);
     }
 
     const improvedResult = await this.generateImprovedOutput(
@@ -291,7 +276,6 @@ export class ReflexionProtocol implements ICollaborationProtocol {
     );
     if (!improvedResult.ok) return err(improvedResult.error);
 
-    const improvedOutput = improvedResult.value.output;
     this.logger.debug('Completed reflexion iteration', {
       iteration,
       weightedSeverity,
@@ -301,13 +285,38 @@ export class ReflexionProtocol implements ICollaborationProtocol {
     return ok({
       round: this.createRound(
         iteration,
-        { original: currentOutput, improved: improvedOutput },
+        { original: currentOutput, improved: improvedResult.value.output },
         critiques,
         debate,
         roundStart
       ),
       isConverged: false,
-      output: improvedOutput,
+      output: improvedResult.value.output,
+    });
+  }
+
+  /** Handles convergence case in reflexion round. */
+  private handleConvergence(
+    iteration: number,
+    output: unknown,
+    critiques: readonly PersonaCritique[],
+    debate: DebateResult,
+    roundStart: number
+  ): Result<{ round: ReflexionRound; isConverged: boolean; output: unknown }, AgentError> {
+    this.logger.info('Reflexion converged', {
+      iteration,
+      threshold: this.config.severityThreshold,
+    });
+    return ok({
+      round: this.createRound(
+        iteration,
+        { original: output, improved: output },
+        critiques,
+        debate,
+        roundStart
+      ),
+      isConverged: true,
+      output,
     });
   }
 

@@ -1,0 +1,90 @@
+# Model Routing
+
+**Last Updated:** 2026-01-07 (ET)
+**Status:** Active Research
+
+---
+
+## Overview
+
+Research on intelligent routing of tasks to optimal models based on cost, quality, and latency constraints. Covers quality-constrained routing, preference-trained routers, cascade strategies, and multi-criteria optimization.
+
+## Key Papers
+
+| Paper                                               | Key Contribution                                  | Priority | Status      |
+| --------------------------------------------------- | ------------------------------------------------- | -------- | ----------- |
+| [IPR](https://arxiv.org/abs/2509.06274)             | Quality-constrained routing, 43.9% cost reduction | P1       | planned     |
+| [PILOT](https://arxiv.org/abs/2508.21141)           | Budget-constrained LinUCB routing                 | P1       | planned     |
+| [SATER](https://arxiv.org/abs/2510.05164)           | Confidence-aware rejection, 50%+ cost reduction   | P2       | planned     |
+| [MoMA](https://arxiv.org/abs/2509.07571)            | TOPSIS multi-criteria, 31.46% cost reduction      | P2       | planned     |
+| [RouteLLM](https://arxiv.org/abs/2406.18665)        | Preference-trained routing, 2x cost reduction     | P2       | planned     |
+| [Edge Multi-LLM](https://arxiv.org/abs/2507.00672)  | Agreement-based cascading                         | P2       | not-started |
+| [Cross-Attention](https://arxiv.org/abs/2509.09782) | Query-model matching                              | -        | not-started |
+| [OptiRoute](https://arxiv.org/abs/2502.16696)       | kNN + hierarchical filtering                      | -        | not-started |
+
+## Recommended Techniques
+
+### High Priority (P1)
+
+#### IPR Quality-Constrained Routing
+
+- **Source:** [arxiv-2509.06274](https://arxiv.org/abs/2509.06274)
+- **Key Metrics:** 43.9% cost reduction, sub-150ms latency
+- **Integration Point:** `packages/nexus-agents/src/adapters/`, `packages/nexus-agents/src/agents/tech-lead.ts`
+- **GitHub Issue:** #102
+
+Quality-constrained routing with user-controlled tolerance parameter and lightweight estimators. Directly applicable to CLI adapter capability matching.
+
+#### PILOT Budget-Constrained Routing
+
+- **Source:** [arxiv-2508.21141](https://arxiv.org/abs/2508.21141)
+- **Key Metrics:** Adaptive budget handling
+- **Integration Point:** `packages/nexus-agents/src/workflows/execution-planner.ts`
+- **GitHub Issue:** #102
+
+Contextual bandit (LinUCB) with preference-prior routing and multi-choice knapsack budget constraints. Add cost tracking to ContextBudget.
+
+### Medium Priority (P2)
+
+#### SATER Confidence-Aware Routing
+
+- **Source:** [arxiv-2510.05164](https://arxiv.org/abs/2510.05164)
+- **Key Metrics:** 50%+ cost reduction, 80%+ cascade latency reduction
+- **Integration Point:** `packages/nexus-agents/src/agents/experts/expert-selector.ts`
+- **GitHub Issue:** #99
+
+Dual-mode routing with shortest-response preference optimization and confidence-aware rejection.
+
+#### TOPSIS Multi-Criteria Routing
+
+- **Source:** [arxiv-2509.07571](https://arxiv.org/abs/2509.07571)
+- **Key Metrics:** 31.46% cost reduction
+- **Integration Point:** `packages/nexus-agents/src/agents/experts/expert-selector.ts`
+
+Multi-criteria decision algorithm for Pareto-optimal model selection (performance vs cost).
+
+#### Agreement-Based Cascading (ABC)
+
+- **Source:** [arxiv-2507.00672](https://arxiv.org/abs/2507.00672)
+- **Integration Point:** `packages/nexus-agents/src/adapters/`
+
+Cascade of increasingly powerful models with ensemble agreement at each stage. Escalate only when agreement threshold not met.
+
+## Implementation Roadmap
+
+1. **Phase 1 (v2.3.0):** IPR quality estimators, PILOT budget constraints
+2. **Phase 2 (v2.4.0):** TOPSIS scoring, SATER confidence routing
+3. **Phase 3 (v3.0.0):** RouteLLM preference training, cascade routing
+
+## Related Topics
+
+- [CLI Tools](../cli-tools/README.md) - CLI adapter routing
+- [Orchestration](../orchestration/README.md) - Task distribution
+
+## References
+
+- [IPR: Intelligent Prompt Routing](https://arxiv.org/abs/2509.06274)
+- [PILOT: Preference-Prior Routing](https://arxiv.org/abs/2508.21141)
+- [SATER: Dual-Mode Routing](https://arxiv.org/abs/2510.05164)
+- [MoMA: Generalized Routing](https://arxiv.org/abs/2509.07571)
+- [RouteLLM: Learning to Route](https://arxiv.org/abs/2406.18665)

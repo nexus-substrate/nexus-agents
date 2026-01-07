@@ -1,0 +1,952 @@
+# registry/techniques.yaml
+# Implementation techniques extracted from research papers
+# Schema version for future migrations
+schema_version: '1.0'
+
+techniques:
+  # ============================================================================
+  # CONSENSUS PROTOCOLS
+  # ============================================================================
+
+  aegean-consensus:
+    name: 'Aegean Consensus Protocol'
+    description: |
+      Formal consensus protocol for stochastic reasoning with
+      incremental quorum detection. Achieves 1.2x-20x latency
+      reduction and 4.4x token reduction.
+
+    source_papers:
+      - arxiv-2512.20184
+
+    topic: consensus
+    tags:
+      - formal-verification
+      - quorum
+      - streaming
+
+    metrics:
+      latency_reduction: '1.2x-20x'
+      token_reduction: '4.4x'
+      quality_impact: 'within 2.5% of baseline'
+
+    status: planned
+    priority: P1
+    complexity: medium
+
+    integration_files:
+      - 'packages/nexus-agents/src/agents/collaboration/consensus-protocol.ts'
+
+    implementation_issue: 100
+    related_prs: []
+
+    notes: |
+      Direct replacement for current heuristic consensus.
+      Implement early termination when quorum reached.
+
+    dependencies: []
+
+    decision_history:
+      - date: '2026-01-06'
+        decision: 'Added to roadmap Phase 1'
+        rationale: 'High impact, direct replacement for existing module'
+
+  task-aware-protocol-selection:
+    name: 'Task-Type Protocol Selection'
+    description: |
+      Select consensus protocol (voting vs consensus) based on task type.
+      Voting for reasoning tasks (+13.2%), consensus for knowledge tasks.
+
+    source_papers:
+      - arxiv-2502.19130
+
+    topic: consensus
+    tags:
+      - task-classification
+      - protocol-selection
+
+    metrics:
+      reasoning_improvement: '+13.2%'
+      knowledge_improvement: '+2.8%'
+
+    status: planned
+    priority: P1
+    complexity: low
+
+    integration_files:
+      - 'packages/nexus-agents/src/agents/collaboration/consensus-protocol.ts'
+
+    implementation_issue: null
+    related_prs: []
+
+    notes: |
+      Low complexity, high impact. Add task-type classifier to
+      select between majority voting and consensus.
+
+    dependencies: []
+
+    decision_history:
+      - date: '2026-01-06'
+        decision: 'Added to roadmap Phase 1'
+        rationale: 'Low complexity, immediate benefit'
+
+  cp-wbft-consensus:
+    name: 'CP-WBFT Byzantine Fault Tolerant Consensus'
+    description: |
+      Confidence Probe-based Weighted Byzantine Fault Tolerant consensus
+      with 85.7% fault rate tolerance.
+
+    source_papers:
+      - arxiv-2511.10400
+
+    topic: consensus
+    tags:
+      - byzantine
+      - fault-tolerance
+      - weighted
+
+    metrics:
+      fault_tolerance: '85.7%'
+
+    status: planned
+    priority: P2
+    complexity: medium
+
+    integration_files:
+      - 'packages/nexus-agents/src/agents/collaboration/result-aggregator.ts'
+
+    implementation_issue: 103
+    related_prs: []
+
+    notes: |
+      Add Byzantine fault tolerance to expert collaboration.
+      Implement confidence probes for vote weighting.
+
+    dependencies:
+      - aegean-consensus
+
+    decision_history: []
+
+  multi-agent-reflexion:
+    name: 'Multi-Agent Reflexion (MAR)'
+    description: |
+      Multiple agents reflect and critique each other's outputs for
+      improved reasoning through cross-agent evaluation.
+
+    source_papers:
+      - arxiv-2512.20845
+
+    topic: consensus
+    tags:
+      - reflexion
+      - cross-critique
+      - reasoning
+
+    metrics:
+      reasoning_improvement: 'significant across benchmarks'
+
+    status: planned
+    priority: P1
+    complexity: medium
+
+    integration_files:
+      - 'packages/nexus-agents/src/agents/collaboration/collaboration-space.ts'
+      - 'packages/nexus-agents/src/agents/protocols/mar-protocol.ts'
+
+    implementation_issue: null
+    related_prs: []
+
+    notes: |
+      Cross-agent critique within collaboration spaces.
+      Diverse perspectives on output quality.
+      Consensus through multi-agent evaluation.
+
+    dependencies: []
+
+    decision_history:
+      - date: '2026-01-06'
+        decision: 'Added to roadmap Phase 1'
+        rationale: 'High impact on reasoning quality'
+
+  free-mad-scoring:
+    name: 'Free-MAD Anti-Conformity Scoring'
+    description: |
+      Score-based decision with anti-conformity to prevent majority
+      influence on correct answers.
+
+    source_papers:
+      - arxiv-2509.11035
+
+    topic: consensus
+    tags:
+      - anti-conformity
+      - scoring
+      - debate
+
+    metrics:
+      robustness: 'enhanced against attacks'
+
+    status: not-started
+    priority: P2
+    complexity: low
+
+    integration_files:
+      - 'packages/nexus-agents/src/agents/collaboration/consensus-protocol.ts'
+
+    implementation_issue: null
+    related_prs: []
+
+    notes: |
+      Evaluates entire debate trajectory rather than just final round.
+      Useful for review protocols.
+
+    dependencies: []
+
+    decision_history: []
+
+  # ============================================================================
+  # ROUTING
+  # ============================================================================
+
+  topsis-routing:
+    name: 'TOPSIS Multi-Criteria Routing'
+    description: |
+      Multi-criteria decision algorithm for Pareto-optimal
+      model selection (performance vs cost).
+
+    source_papers:
+      - arxiv-2509.07571
+
+    topic: routing
+    tags:
+      - cost-optimization
+      - multi-criteria
+      - pareto
+
+    metrics:
+      cost_reduction: '31.46%'
+
+    status: planned
+    priority: P2
+    complexity: medium
+
+    integration_files:
+      - 'packages/nexus-agents/src/agents/experts/expert-selector.ts'
+
+    implementation_issue: null
+    related_prs: []
+
+    notes: |
+      Requires adding cost/latency to ExpertDefinition first.
+
+    dependencies:
+      - expert-cost-modeling
+
+    decision_history: []
+
+  ipr-quality-estimators:
+    name: 'IPR Quality-Constrained Routing'
+    description: |
+      Quality-constrained routing with user-controlled tolerance
+      parameter and lightweight estimators.
+
+    source_papers:
+      - arxiv-2509.06274
+
+    topic: routing
+    tags:
+      - quality-constrained
+      - lightweight
+      - tolerance
+
+    metrics:
+      cost_reduction: '43.9%'
+      latency: 'sub-150ms'
+
+    status: planned
+    priority: P1
+    complexity: medium
+
+    integration_files:
+      - 'packages/nexus-agents/src/adapters/'
+      - 'packages/nexus-agents/src/agents/tech-lead.ts'
+
+    implementation_issue: 102
+    related_prs: []
+
+    notes: |
+      Directly applicable to CLI adapter capability matching.
+      Add tolerance parameter to WorkflowDefinition.
+
+    dependencies: []
+
+    decision_history:
+      - date: '2026-01-06'
+        decision: 'Added to roadmap Phase 1'
+        rationale: 'High impact, aligns with existing architecture'
+
+  pilot-budget-routing:
+    name: 'PILOT Budget-Constrained Routing'
+    description: |
+      Contextual bandit (LinUCB) with preference-prior routing and
+      multi-choice knapsack budget constraints.
+
+    source_papers:
+      - arxiv-2508.21141
+
+    topic: routing
+    tags:
+      - budget-constraint
+      - contextual-bandit
+      - linucb
+
+    metrics:
+      adaptive: 'handles diverse budget requirements'
+
+    status: planned
+    priority: P1
+    complexity: medium
+
+    integration_files:
+      - 'packages/nexus-agents/src/workflows/execution-planner.ts'
+      - 'packages/nexus-agents/src/core/types/workflow.ts'
+
+    implementation_issue: 102
+    related_prs: []
+
+    notes: |
+      Implement budget-aware routing in execution planner.
+      Add cost tracking to ContextBudget.
+      Enable per-workflow budget constraints.
+
+    dependencies: []
+
+    decision_history:
+      - date: '2026-01-06'
+        decision: 'Added to roadmap Phase 1'
+        rationale: 'High impact, fills gap in current implementation'
+
+  sater-routing:
+    name: 'SATER Confidence-Aware Routing'
+    description: |
+      Dual-mode routing with shortest-response preference optimization
+      and confidence-aware rejection.
+
+    source_papers:
+      - arxiv-2510.05164
+
+    topic: routing
+    tags:
+      - confidence-aware
+      - cascade
+      - shortest-response
+
+    metrics:
+      cost_reduction: '50%+'
+      latency_reduction: '80%+ cascade'
+
+    status: planned
+    priority: P2
+    complexity: high
+
+    integration_files:
+      - 'packages/nexus-agents/src/adapters/'
+      - 'packages/nexus-agents/src/agents/experts/expert-selector.ts'
+
+    implementation_issue: 99
+    related_prs: []
+
+    notes: |
+      Train small classifier to pre-screen tasks.
+      Add confidence-aware rejection to expert selector.
+
+    dependencies: []
+
+    decision_history: []
+
+  cascade-routing:
+    name: 'Agreement-Based Cascading (ABC)'
+    description: |
+      Cascade of increasingly powerful models with ensemble agreement
+      at each stage. Escalate only when agreement threshold not met.
+
+    source_papers:
+      - arxiv-2507.00672
+
+    topic: routing
+    tags:
+      - cascade
+      - ensemble
+      - agreement
+
+    metrics:
+      cost_optimization: 'significant'
+
+    status: not-started
+    priority: P2
+    complexity: medium
+
+    integration_files:
+      - 'packages/nexus-agents/src/adapters/'
+
+    implementation_issue: null
+    related_prs: []
+
+    notes: |
+      Implement cascade executor for multi-model fallback.
+
+    dependencies:
+      - expert-cost-modeling
+
+    decision_history: []
+
+  preference-trained-routing:
+    name: 'Preference-Trained Router (RouteLLM)'
+    description: |
+      Train router on human preference data for dynamic selection
+      between strong/weak LLM. Transfer learning maintains performance.
+
+    source_papers:
+      - arxiv-2406.18665
+
+    topic: routing
+    tags:
+      - preference-data
+      - transfer-learning
+      - dynamic
+
+    metrics:
+      cost_reduction: '2x'
+
+    status: planned
+    priority: P2
+    complexity: high
+
+    integration_files:
+      - 'packages/nexus-agents/src/agents/'
+
+    implementation_issue: null
+    related_prs: []
+
+    notes: |
+      Requires training data collection. Long-term improvement.
+
+    dependencies: []
+
+    decision_history: []
+
+  # ============================================================================
+  # MEMORY SYSTEMS
+  # ============================================================================
+
+  mem0-memory-architecture:
+    name: 'Mem0 Scalable Long-Term Memory'
+    description: |
+      Scalable memory architecture with dynamic extraction of salient
+      information and consolidation across sessions.
+
+    source_papers:
+      - arxiv-2504.19413
+
+    topic: memory
+    tags:
+      - long-term
+      - scalable
+      - production
+
+    metrics:
+      latency_reduction: '91% lower p95'
+      token_savings: '90%'
+      quality_improvement: '26%'
+
+    status: planned
+    priority: P2
+    complexity: high
+
+    integration_files:
+      - 'packages/nexus-agents/src/agents/memory/'
+
+    implementation_issue: 101
+    related_prs: []
+
+    notes: |
+      High complexity but high reward for long-horizon tasks.
+
+    dependencies: []
+
+    decision_history: []
+
+  mirix-six-type-memory:
+    name: 'MIRIX Six-Type Memory System'
+    description: |
+      Six-type memory system: Core, Episodic, Semantic, Procedural,
+      Resource, Knowledge Vault with multi-agent management.
+
+    source_papers:
+      - arxiv-2507.07957
+
+    topic: memory
+    tags:
+      - structured-memory
+      - multimodal
+      - comprehensive
+
+    metrics:
+      accuracy_vs_rag: '+35%'
+      storage_reduction: '99.9%'
+      benchmark_accuracy: '85.4%'
+
+    status: planned
+    priority: P2
+    complexity: high
+
+    integration_files:
+      - 'packages/nexus-agents/src/agents/memory/'
+
+    implementation_issue: 101
+    related_prs: []
+
+    notes: |
+      Comprehensive memory for long-running agents.
+      Active Retrieval aligns with context manager categories.
+
+    dependencies: []
+
+    decision_history:
+      - date: '2026-01-06'
+        decision: 'Added to Phase 3 roadmap'
+        rationale: 'High potential, significant implementation effort'
+
+  mobimem-evolution:
+    name: 'MobiMem Post-Deployment Evolution'
+    description: |
+      Post-deployment evolution via Profile, Experience, and Action
+      memory modules for continuous agent improvement.
+
+    source_papers:
+      - arxiv-2512.15784
+
+    topic: memory
+    tags:
+      - post-deployment
+      - evolution
+      - three-module
+
+    metrics:
+      profile_alignment: '83.1%'
+      retrieval_speed: '280x faster than GraphRAG'
+      task_success_improvement: '50.3%'
+
+    status: planned
+    priority: P2
+    complexity: high
+
+    integration_files:
+      - 'packages/nexus-agents/src/agents/'
+      - 'packages/nexus-agents/src/workflows/'
+
+    implementation_issue: null
+    related_prs: []
+
+    notes: |
+      Enable agent improvement without retraining.
+      Experience Memory applicable to workflow templates.
+      Action Memory caches successful expert interactions.
+
+    dependencies: []
+
+    decision_history: []
+
+  graph-based-memory:
+    name: 'Graph-Based Memory'
+    description: |
+      Graph-based relational structures for entity relationships
+      extracted from context with semantic retrieval.
+
+    source_papers:
+      - arxiv-2504.19413
+
+    topic: memory
+    tags:
+      - graph
+      - relational
+      - semantic
+
+    metrics:
+      performance_improvement: '+2%'
+
+    status: not-started
+    priority: P3
+    complexity: high
+
+    integration_files:
+      - 'packages/nexus-agents/src/agents/memory/'
+
+    implementation_issue: null
+    related_prs: []
+
+    notes: |
+      Extension of Mem0 architecture.
+
+    dependencies:
+      - mem0-memory-architecture
+
+    decision_history: []
+
+  # ============================================================================
+  # ORCHESTRATION
+  # ============================================================================
+
+  trinity-roles:
+    name: 'TRINITY Thinker/Worker/Verifier Roles'
+    description: |
+      Evolved LLM coordinator with Thinker (reasoning), Worker
+      (execution), Verifier (validation) roles using CMA-ES optimization.
+
+    source_papers:
+      - arxiv-2512.04695
+
+    topic: orchestration
+    tags:
+      - role-based
+      - coordinator
+      - evolutionary
+
+    metrics:
+      benchmark_accuracy: '86.2% on LiveCodeBench'
+
+    status: planned
+    priority: P1
+    complexity: medium
+
+    integration_files:
+      - 'packages/nexus-agents/src/agents/tech-lead.ts'
+      - 'packages/nexus-agents/src/agents/experts/expert-types.ts'
+
+    implementation_issue: null
+    related_prs: []
+
+    notes: |
+      Maps directly to TechLead/Expert pattern.
+      Add explicit Verifier role to expert types.
+
+    dependencies: []
+
+    decision_history:
+      - date: '2026-01-06'
+        decision: 'Added to roadmap Phase 2'
+        rationale: 'High impact, architectural alignment'
+
+  rl-orchestrator:
+    name: 'RL-Trained Orchestrator'
+    description: |
+      Dynamic agent selection via RL-trained policy mapping context
+      to agent probabilities.
+
+    source_papers:
+      - arxiv-2505.19591
+
+    topic: orchestration
+    tags:
+      - reinforcement-learning
+      - dynamic-selection
+      - policy
+
+    metrics:
+      task_completion_improvement: '15-30%'
+
+    status: not-started
+    priority: P4
+    complexity: high
+
+    integration_files:
+      - 'packages/nexus-agents/src/agents/'
+
+    implementation_issue: null
+    related_prs: []
+
+    notes: |
+      Requires RL infrastructure. Long-term advanced feature.
+
+    dependencies: []
+
+    decision_history:
+      - date: '2026-01-06'
+        decision: 'Deferred to Phase 3+'
+        rationale: 'Requires significant infrastructure'
+
+  latts-adaptive-compute:
+    name: 'LATTS Adaptive Test-Time Compute'
+    description: |
+      Locally adaptive test-time scaling with verifier-based acceptance
+      criterion. Decisions: resample, backtrack, restart, or stop.
+
+    source_papers:
+      - arxiv-2509.20368
+
+    topic: orchestration
+    tags:
+      - adaptive
+      - test-time
+      - verifier
+
+    metrics:
+      performance_parity: '1B model matches 405B'
+
+    status: not-started
+    priority: P2
+    complexity: high
+
+    integration_files:
+      - 'packages/nexus-agents/src/workflows/step-executor.ts'
+
+    implementation_issue: null
+    related_prs: []
+
+    notes: |
+      Implement adaptive compute in workflow steps.
+      Add backtrack/restart to step executor.
+
+    dependencies: []
+
+    decision_history: []
+
+  # ============================================================================
+  # SELF-IMPROVEMENT
+  # ============================================================================
+
+  self-refine-loop:
+    name: 'Self-Refine Iterative Loop'
+    description: |
+      Single LLM acts as generator, feedback provider, and refiner
+      in an iterative loop without any training.
+
+    source_papers:
+      - arxiv-2303.17651
+
+    topic: code-generation
+    tags:
+      - iterative
+      - training-free
+      - self-feedback
+
+    metrics:
+      average_improvement: '20%'
+
+    status: planned
+    priority: P1
+    complexity: low
+
+    integration_files:
+      - 'packages/nexus-agents/src/agents/'
+
+    implementation_issue: null
+    related_prs: []
+
+    notes: |
+      Can be implemented immediately without model fine-tuning.
+      Works best with strong instruction-following models.
+
+    dependencies: []
+
+    decision_history:
+      - date: '2026-01-06'
+        decision: 'Added to Phase 1 Foundation'
+        rationale: 'Low complexity, immediate benefit'
+
+  reflexion-verbal-rl:
+    name: 'Reflexion Verbal Reinforcement Learning'
+    description: |
+      Agents maintain episodic memory of verbal reflections that
+      guide future behavior, converting feedback into semantic gradients.
+
+    source_papers:
+      - arxiv-2303.11366
+
+    topic: code-generation
+    tags:
+      - verbal-rl
+      - reflection
+      - episodic-memory
+
+    metrics:
+      alfworld_improvement: '+22%'
+      hotpotqa_improvement: '+20%'
+      humaneval_pass1: '91%'
+
+    status: planned
+    priority: P1
+    complexity: medium
+
+    integration_files:
+      - 'packages/nexus-agents/src/agents/memory/'
+
+    implementation_issue: null
+    related_prs: []
+
+    notes: |
+      Store reflections in agent memory module.
+      Use reflections as additional context in subsequent attempts.
+      Particularly effective for sequential decision tasks.
+
+    dependencies: []
+
+    decision_history:
+      - date: '2026-01-06'
+        decision: 'Added to Phase 1 Foundation'
+        rationale: 'High impact on agent performance'
+
+  voyager-skill-library:
+    name: 'Voyager Skill Library Pattern'
+    description: |
+      Ever-growing library of executable code skills built through
+      environmental interaction with automatic curriculum.
+
+    source_papers:
+      - arxiv-2305.16291
+
+    topic: code-generation
+    tags:
+      - skill-library
+      - lifelong-learning
+      - executable
+
+    metrics:
+      discovery_improvement: '3.3x more unique items'
+      speed_improvement: 'up to 15.3x faster milestone'
+
+    status: planned
+    priority: P2
+    complexity: medium
+
+    integration_files:
+      - 'packages/nexus-agents/src/agents/'
+
+    implementation_issue: null
+    related_prs: []
+
+    notes: |
+      Implement skill library as code snippets with metadata.
+      Skills should be temporally extended, interpretable, compositional.
+
+    dependencies: []
+
+    decision_history:
+      - date: '2026-01-06'
+        decision: 'Added to Phase 2 Skill Learning'
+        rationale: 'High impact for code-related tasks'
+
+  sica-self-improvement:
+    name: 'SICA Self-Improving Agent'
+    description: |
+      Unified agent that performs tasks AND improves its own
+      implementation through tool orchestration, not weight updates.
+
+    source_papers:
+      - arxiv-2504.15228
+
+    topic: code-generation
+    tags:
+      - self-improvement
+      - versioning
+      - observability
+
+    metrics:
+      swebench_improvement: '17% -> 53%'
+      file_editing_improvement: '82% -> 94%'
+
+    status: planned
+    priority: P2
+    complexity: high
+
+    integration_files:
+      - 'packages/nexus-agents/src/agents/'
+
+    implementation_issue: null
+    related_prs: []
+
+    notes: |
+      Implement agent versioning with performance tracking.
+      Use best-performing configuration as base for improvements.
+      Prioritize observability for safety.
+
+    dependencies:
+      - self-refine-loop
+
+    decision_history: []
+
+  constitutional-ai:
+    name: 'Constitutional AI Self-Critique'
+    description: |
+      Self-critique against explicit constitutional principles.
+      Two phases: supervised (critique/revise) and RL (judge).
+
+    source_papers:
+      - arxiv-2212.08073
+
+    topic: code-generation
+    tags:
+      - constitutional
+      - self-critique
+      - principles
+
+    metrics:
+      scales: 'without human labelers'
+
+    status: planned
+    priority: P2
+    complexity: medium
+
+    integration_files:
+      - 'packages/nexus-agents/src/agents/'
+
+    implementation_issue: null
+    related_prs: []
+
+    notes: |
+      Define constitution of principles for agent behavior.
+      Self-critique against explicit criteria.
+
+    dependencies: []
+
+    decision_history: []
+
+  # ============================================================================
+  # REJECTED TECHNIQUES
+  # ============================================================================
+
+  latent-space-sharing:
+    name: 'LatentMAS Latent Space Collaboration'
+    description: |
+      Direct collaboration through hidden state sharing between agents.
+
+    source_papers:
+      - arxiv-2511.20639
+
+    topic: orchestration
+    tags:
+      - latent-space
+      - embedding
+      - inter-agent
+
+    metrics:
+      accuracy_improvement: 'up to 14.6%'
+      token_reduction: '70.8%-83.7%'
+
+    status: rejected
+    priority: null
+    complexity: high
+
+    integration_files: []
+    implementation_issue: null
+    related_prs: []
+
+    notes: |
+      Requires same-model deployment for embedding compatibility.
+      Not applicable to hybrid CLI architecture.
+
+    dependencies: []
+
+    decision_history:
+      - date: '2026-01-07'
+        decision: 'Rejected for current architecture'
+        rationale: 'Requires same-model agents; hybrid CLI arch uses different models'
