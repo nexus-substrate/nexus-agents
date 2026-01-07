@@ -19,8 +19,15 @@ export {
   SecurityError,
   TimeoutError,
   RateLimitError,
+  // Agent failure taxonomy (Source: arxiv:2509.25370)
+  AgentErrorCategory,
+  AgentFailureError,
+  MemoryFailureError,
+  ReflectionFailureError,
+  PlanningFailureError,
+  ActionFailureError,
 } from './errors.js';
-export type { SerializedError, NexusErrorOptions } from './errors.js';
+export type { SerializedError, NexusErrorOptions, AgentFailureOptions } from './errors.js';
 
 // Logger
 export { createLogger, logger, sanitize } from './logger.js';

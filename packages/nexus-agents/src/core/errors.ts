@@ -30,6 +30,12 @@ export const ErrorCode = {
   AGENT_NOT_FOUND: 'AGENT_NOT_FOUND',
   AGENT_EXECUTION_FAILED: 'AGENT_EXECUTION_FAILED',
 
+  // Agent failure categories (Source: arxiv:2509.25370 - Where LLM Agents Fail)
+  AGENT_MEMORY_FAILURE: 'AGENT_MEMORY_FAILURE',
+  AGENT_REFLECTION_FAILURE: 'AGENT_REFLECTION_FAILURE',
+  AGENT_PLANNING_FAILURE: 'AGENT_PLANNING_FAILURE',
+  AGENT_ACTION_FAILURE: 'AGENT_ACTION_FAILURE',
+
   // Workflow errors
   WORKFLOW_ERROR: 'WORKFLOW_ERROR',
   WORKFLOW_NOT_FOUND: 'WORKFLOW_NOT_FOUND',
@@ -148,6 +154,143 @@ export class AgentError extends NexusError {
   constructor(message: string, options?: Partial<Omit<NexusErrorOptions, 'code'>>) {
     super(message, { code: ErrorCode.AGENT_ERROR, ...options });
     this.name = 'AgentError';
+  }
+}
+
+/**
+ * Agent failure categories for structured error taxonomy.
+ * (Source: arxiv:2509.25370 - Where LLM Agents Fail)
+ *
+ * These categories enable better failure analysis and targeted improvements:
+ * - MEMORY: Failed to retrieve or store relevant context
+ * - REFLECTION: Failed to properly self-evaluate or verify outputs
+ * - PLANNING: Failed to create valid execution plan
+ * - ACTION: Failed to execute planned action correctly
+ * - SYSTEM: Infrastructure or external system failure
+ */
+export const AgentErrorCategory = {
+  MEMORY: 'memory',
+  REFLECTION: 'reflection',
+  PLANNING: 'planning',
+  ACTION: 'action',
+  SYSTEM: 'system',
+} as const;
+
+export type AgentErrorCategory = (typeof AgentErrorCategory)[keyof typeof AgentErrorCategory];
+
+/**
+ * Options for creating a categorized agent failure error.
+ */
+export interface AgentFailureOptions extends Partial<Omit<NexusErrorOptions, 'code'>> {
+  readonly category: AgentErrorCategory;
+  readonly recoverable?: boolean;
+  readonly retryable?: boolean;
+  readonly suggestedAction?: string;
+}
+
+/**
+ * Maps agent error category to error code.
+ */
+function categoryToErrorCode(category: AgentErrorCategory): ErrorCode {
+  const codeMap: Record<AgentErrorCategory, ErrorCode> = {
+    memory: ErrorCode.AGENT_MEMORY_FAILURE,
+    reflection: ErrorCode.AGENT_REFLECTION_FAILURE,
+    planning: ErrorCode.AGENT_PLANNING_FAILURE,
+    action: ErrorCode.AGENT_ACTION_FAILURE,
+    system: ErrorCode.INTERNAL_ERROR,
+  };
+  return codeMap[category];
+}
+
+/**
+ * Structured agent failure error with category for analysis.
+ * Enables failure pattern detection and targeted improvements.
+ */
+export class AgentFailureError extends NexusError {
+  readonly category: AgentErrorCategory;
+  readonly recoverable: boolean;
+  readonly retryable: boolean;
+  readonly suggestedAction: string | undefined;
+
+  constructor(message: string, options: AgentFailureOptions) {
+    super(message, {
+      code: categoryToErrorCode(options.category),
+      ...(options.cause !== undefined ? { cause: options.cause } : {}),
+      ...(options.context !== undefined ? { context: options.context } : {}),
+    });
+    this.name = 'AgentFailureError';
+    this.category = options.category;
+    this.recoverable = options.recoverable ?? false;
+    this.retryable = options.retryable ?? false;
+    this.suggestedAction = options.suggestedAction;
+  }
+
+  override toJSON(): SerializedError & { category: AgentErrorCategory; recoverable: boolean } {
+    return {
+      ...super.toJSON(),
+      category: this.category,
+      recoverable: this.recoverable,
+    };
+  }
+}
+
+/**
+ * Memory failure: agent failed to retrieve or store context.
+ */
+export class MemoryFailureError extends AgentFailureError {
+  constructor(message: string, options?: Partial<Omit<AgentFailureOptions, 'category'>>) {
+    super(message, {
+      ...options,
+      category: AgentErrorCategory.MEMORY,
+      retryable: options?.retryable ?? true,
+      suggestedAction: options?.suggestedAction ?? 'Verify context availability and retry',
+    });
+    this.name = 'MemoryFailureError';
+  }
+}
+
+/**
+ * Reflection failure: agent failed to self-evaluate or verify outputs.
+ */
+export class ReflectionFailureError extends AgentFailureError {
+  constructor(message: string, options?: Partial<Omit<AgentFailureOptions, 'category'>>) {
+    super(message, {
+      ...options,
+      category: AgentErrorCategory.REFLECTION,
+      retryable: options?.retryable ?? true,
+      suggestedAction: options?.suggestedAction ?? 'Request explicit verification step',
+    });
+    this.name = 'ReflectionFailureError';
+  }
+}
+
+/**
+ * Planning failure: agent failed to create valid execution plan.
+ */
+export class PlanningFailureError extends AgentFailureError {
+  constructor(message: string, options?: Partial<Omit<AgentFailureOptions, 'category'>>) {
+    super(message, {
+      ...options,
+      category: AgentErrorCategory.PLANNING,
+      retryable: options?.retryable ?? true,
+      suggestedAction: options?.suggestedAction ?? 'Simplify task or provide more constraints',
+    });
+    this.name = 'PlanningFailureError';
+  }
+}
+
+/**
+ * Action failure: agent failed to execute planned action correctly.
+ */
+export class ActionFailureError extends AgentFailureError {
+  constructor(message: string, options?: Partial<Omit<AgentFailureOptions, 'category'>>) {
+    super(message, {
+      ...options,
+      category: AgentErrorCategory.ACTION,
+      retryable: options?.retryable ?? true,
+      suggestedAction: options?.suggestedAction ?? 'Retry action or use alternative approach',
+    });
+    this.name = 'ActionFailureError';
   }
 }
 
