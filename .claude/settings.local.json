@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__github__list_issues",
+      "mcp__github__search_issues",
+      "Bash(pnpm test:*)",
+      "Bash(claude:*)",
+      "Bash(gemini --version:*)",
+      "Bash(codex --version:*)",
+      "Bash(timeout 30 claude:*)",
+      "Bash(timeout 30 gemini:*)",
+      "Bash(timeout 30 codex:*)",
+      "Bash(codex --help:*)",
+      "Bash(codex exec:*)",
+      "Bash(timeout 60 codex exec:*)",
+      "Bash(gemini --help:*)",
+      "mcp__github__create_issue"
+    ]
+  }
+}

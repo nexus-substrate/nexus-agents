@@ -1,4 +1,3 @@
-/* eslint-disable max-lines */
 /**
  * Budget-constrained task router implementation.
  * Based on PILOT pattern (arXiv:2508.21141) for cost-efficient task routing.
@@ -8,7 +7,6 @@
  *
  * @module cli-adapters/budget-router
  * (Source: Issue #102, arXiv:2508.21141 - EMNLP 2025)
- * @todo Split into smaller modules (router-core, budget-tracking, warnings)
  */
 
 import type { Result } from '../core/index.js';
@@ -28,6 +26,9 @@ import type {
   ICliAdapter,
 } from './types.js';
 import { DEFAULT_CAPABILITIES } from './types.js';
+import { estimateTokens, estimateCost } from './budget-utils.js';
+import { generateBudgetWarnings } from './budget-warnings.js';
+import { createBudgetExceededError } from './budget-errors.js';
 
 const logger = createLogger({ component: 'budget-router' });
 
@@ -52,34 +53,6 @@ const DEFAULT_OPTIONS: Required<BudgetRouterOptions> = {
   },
   enforceHardLimits: true,
 };
-
-/**
- * Token cost estimates per 1M tokens (USD).
- * Based on public pricing as of 2025-01.
- */
-const TOKEN_COSTS: Record<CliName, { input: number; output: number }> = {
-  claude: { input: 3.0, output: 15.0 },
-  gemini: { input: 0.075, output: 0.3 },
-  codex: { input: 2.5, output: 10.0 },
-};
-
-/**
- * Estimate tokens from task content.
- * Uses rough approximation of 4 characters per token.
- */
-function estimateTokens(content: string): number {
-  return Math.ceil(content.length / 4);
-}
-
-/**
- * Estimate cost for a task based on estimated tokens.
- */
-function estimateCost(model: CliName, inputTokens: number, outputTokens: number): number {
-  const costs = TOKEN_COSTS[model];
-  const inputCost = (inputTokens / 1_000_000) * costs.input;
-  const outputCost = (outputTokens / 1_000_000) * costs.output;
-  return inputCost + outputCost;
-}
 
 /**
  * Budget-constrained task router.
@@ -179,7 +152,6 @@ export class BudgetRouter implements IBudgetRouter {
    */
   checkBudget(task: CliTask, constraint?: BudgetConstraint): BudgetRoutingResult {
     const budget = { ...this.options.defaultConstraints, ...constraint };
-    const warnings: BudgetWarning[] = [];
 
     // Estimate tokens for this task
     const estimatedInputTokens = estimateTokens(task.content);
@@ -197,7 +169,12 @@ export class BudgetRouter implements IBudgetRouter {
     const withinBudget = this.checkConstraints(budget, estimatedTokens, estimatedCostUsd);
 
     // Generate warnings
-    this.generateWarnings(currentBudget, estimatedTokens, estimatedCostUsd, warnings);
+    const warnings = generateBudgetWarnings(
+      currentBudget,
+      estimatedTokens,
+      estimatedCostUsd,
+      this.options.warningThresholds
+    );
 
     // Project budget after task
     const projectedBudget = this.projectBudget(estimatedTokens, estimatedCostUsd);
@@ -223,7 +200,7 @@ export class BudgetRouter implements IBudgetRouter {
 
     if (!result.withinBudget && this.options.enforceHardLimits) {
       const currentBudget = this.getSessionBudget();
-      const error = this.createBudgetExceededError(
+      const error = createBudgetExceededError(
         budget ?? this.options.defaultConstraints,
         result,
         currentBudget
@@ -397,100 +374,6 @@ export class BudgetRouter implements IBudgetRouter {
     return true;
   }
 
-  private generateWarnings(
-    currentBudget: SessionBudget,
-    estimatedTokens: number,
-    estimatedCostUsd: number,
-    warnings: BudgetWarning[]
-  ): void {
-    const rawThresholds = this.options.warningThresholds;
-    const thresholds = {
-      info: rawThresholds.info ?? 50,
-      warning: rawThresholds.warning ?? 75,
-      critical: rawThresholds.critical ?? 90,
-    };
-
-    // Token budget warnings
-    const projectedTokenUtilization =
-      ((currentBudget.tokensUsed + estimatedTokens) / currentBudget.tokenBudget) * 100;
-    this.addTokenWarning(
-      projectedTokenUtilization,
-      thresholds,
-      currentBudget.tokensRemaining - estimatedTokens,
-      warnings
-    );
-
-    // Cost budget warnings
-    const projectedCostUtilization =
-      ((currentBudget.costSpentUsd + estimatedCostUsd) / currentBudget.costBudgetUsd) * 100;
-    this.addCostWarning(
-      projectedCostUtilization,
-      thresholds,
-      currentBudget.costRemainingUsd - estimatedCostUsd,
-      warnings
-    );
-  }
-
-  private addTokenWarning(
-    utilization: number,
-    thresholds: { info: number; warning: number; critical: number },
-    remaining: number,
-    warnings: BudgetWarning[]
-  ): void {
-    const level = this.getWarningLevel(utilization, thresholds);
-    if (level === null) return;
-
-    const pct = String(Math.round(utilization));
-    const message =
-      level === 'critical'
-        ? `Token budget ${pct}% utilized after this task`
-        : level === 'warning'
-          ? `Token budget approaching limit (${pct}%)`
-          : `Token budget ${pct}% utilized`;
-
-    warnings.push({
-      level,
-      message,
-      constraint: 'tokens',
-      utilizationPercent: utilization,
-      estimatedRemaining: remaining,
-    });
-  }
-
-  private addCostWarning(
-    utilization: number,
-    thresholds: { info: number; warning: number; critical: number },
-    remaining: number,
-    warnings: BudgetWarning[]
-  ): void {
-    const level = this.getWarningLevel(utilization, thresholds);
-    if (level === null || level === 'info') return; // Only warning/critical for cost
-
-    const pct = String(Math.round(utilization));
-    const message =
-      level === 'critical'
-        ? `Cost budget ${pct}% utilized after this task`
-        : `Cost budget approaching limit (${pct}%)`;
-
-    warnings.push({
-      level,
-      message,
-      constraint: 'cost',
-      utilizationPercent: utilization,
-      estimatedRemaining: remaining,
-    });
-  }
-
-  private getWarningLevel(
-    utilization: number,
-    thresholds: { info: number; warning: number; critical: number }
-  ): BudgetWarning['level'] | null {
-    if (utilization >= thresholds.critical) return 'critical';
-    if (utilization >= thresholds.warning) return 'warning';
-    if (utilization >= thresholds.info) return 'info';
-    return null;
-  }
-
   private projectBudget(estimatedTokens: number, estimatedCostUsd: number): SessionBudget {
     const current = this.getSessionBudget();
     return {
@@ -503,70 +386,6 @@ export class BudgetRouter implements IBudgetRouter {
         ((current.tokensUsed + estimatedTokens) / current.tokenBudget) * 100,
         ((current.costSpentUsd + estimatedCostUsd) / current.costBudgetUsd) * 100
       ),
-    };
-  }
-
-  private createBudgetExceededError(
-    budget: BudgetConstraint,
-    result: BudgetRoutingResult,
-    currentBudget: SessionBudget
-  ): BudgetExceededError {
-    const { constraint, limit, current, suggestion } = this.determineExceededConstraint(
-      budget,
-      result,
-      currentBudget
-    );
-    return {
-      code: 'BUDGET_EXCEEDED',
-      message: `Budget constraint exceeded: ${constraint}`,
-      cli: 'claude' as CliName,
-      retryable: false,
-      constraint,
-      limit,
-      current,
-      suggestion,
-    };
-  }
-
-  private determineExceededConstraint(
-    budget: BudgetConstraint,
-    result: BudgetRoutingResult,
-    currentBudget: SessionBudget
-  ): {
-    constraint: 'tokens' | 'cost' | 'latency';
-    limit: number;
-    current: number;
-    suggestion: string;
-  } {
-    if (budget.maxTokens !== undefined && result.estimatedTokens > budget.maxTokens) {
-      return {
-        constraint: 'tokens',
-        limit: budget.maxTokens,
-        current: result.estimatedTokens,
-        suggestion: 'Reduce task complexity or increase token budget',
-      };
-    }
-    if (budget.maxCostUsd !== undefined && result.estimatedCostUsd > budget.maxCostUsd) {
-      return {
-        constraint: 'cost',
-        limit: budget.maxCostUsd,
-        current: result.estimatedCostUsd,
-        suggestion: 'Use a cheaper model or increase cost budget',
-      };
-    }
-    if (currentBudget.tokensRemaining < result.estimatedTokens) {
-      return {
-        constraint: 'tokens',
-        limit: currentBudget.tokenBudget,
-        current: currentBudget.tokensUsed + result.estimatedTokens,
-        suggestion: 'Wait for budget reset or increase session budget',
-      };
-    }
-    return {
-      constraint: 'cost',
-      limit: currentBudget.costBudgetUsd,
-      current: currentBudget.costSpentUsd + result.estimatedCostUsd,
-      suggestion: 'Wait for budget reset or increase session budget',
     };
   }
 }

@@ -7,6 +7,35 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { VotingProtocol, createVotingProtocol } from './voting-protocol.js';
 import type { AgentFinding, FindingVote, Vote } from './types.js';
 
+// Helper to submit agreement votes from multiple agents
+async function submitAgreementVotes(
+  protocol: VotingProtocol,
+  sessionId: string,
+  agentIds: string[],
+  findingId: string
+): Promise<void> {
+  for (const agentId of agentIds) {
+    await protocol.voteOnFinding(sessionId, {
+      agentId,
+      findingId,
+      agree: true,
+      reasoning: 'Confirmed',
+    });
+  }
+}
+
+// Helper to submit final votes from all committee members
+async function submitAllFinalVotes(
+  protocol: VotingProtocol,
+  sessionId: string,
+  committee: string[],
+  vote: Vote
+): Promise<void> {
+  for (const agentId of committee) {
+    await protocol.submitFinalVote(sessionId, agentId, vote);
+  }
+}
+
 describe('VotingProtocol', () => {
   let protocol: VotingProtocol;
   const committee = ['agent-1', 'agent-2', 'agent-3'];
@@ -84,7 +113,7 @@ describe('VotingProtocol', () => {
       await protocol.submitFindings(session.id, 'agent-1', findings);
 
       const updatedSession = protocol.getSession(session.id);
-      expect(updatedSession?.rounds[0].findings.size).toBe(1);
+      expect(updatedSession?.rounds[0]?.findings.size).toBe(1);
     });
 
     it('should reject findings from non-committee members', async () => {
@@ -147,7 +176,7 @@ describe('VotingProtocol', () => {
       await protocol.startDeliberationRound(session.id);
 
       const updatedSession = protocol.getSession(session.id);
-      const findingId = Array.from(updatedSession?.rounds[1].findings.keys() ?? [])[0];
+      const findingId = Array.from(updatedSession?.rounds[1]?.findings.keys() ?? [])[0];
 
       const vote: FindingVote = {
         agentId: 'agent-2',
@@ -159,9 +188,9 @@ describe('VotingProtocol', () => {
       await protocol.voteOnFinding(session.id, vote);
 
       const sessionAfterVote = protocol.getSession(session.id);
-      const votes = sessionAfterVote?.rounds[1].findingVotes.get(findingId!);
+      const votes = sessionAfterVote?.rounds[1]?.findingVotes.get(findingId!);
       expect(votes).toHaveLength(1);
-      expect(votes?.[0].agree).toBe(true);
+      expect(votes![0]!.agree).toBe(true);
     });
   });
 
@@ -191,7 +220,7 @@ describe('VotingProtocol', () => {
       await protocol.submitFinalVote(session.id, 'agent-1', vote);
 
       const updatedSession = protocol.getSession(session.id);
-      expect(updatedSession?.rounds[2].finalVotes.has('agent-1')).toBe(true);
+      expect(updatedSession?.rounds[2]?.finalVotes.has('agent-1')).toBe(true);
     });
   });
 
@@ -280,7 +309,7 @@ describe('VotingProtocol', () => {
       const session = protocol.createSession(topic, committee);
       await protocol.startAnalysisRound(session.id);
 
-      // Submit findings from multiple agents
+      // Submit security finding
       await protocol.submitFindings(session.id, 'agent-1', [
         {
           agentId: 'agent-1',
@@ -294,35 +323,24 @@ describe('VotingProtocol', () => {
 
       await protocol.startDeliberationRound(session.id);
 
-      // Get finding ID
+      // Get finding ID and submit agreement votes
       const currentSession = protocol.getSession(session.id);
-      const findingId = Array.from(currentSession?.rounds[1].findings.keys() ?? [])[0];
+      const findingId = Array.from(currentSession?.rounds[1]?.findings.keys() ?? [])[0];
+      await submitAgreementVotes(protocol, session.id, ['agent-2', 'agent-3'], findingId!);
 
-      // All agents agree on finding
-      for (const agentId of ['agent-2', 'agent-3']) {
-        await protocol.voteOnFinding(session.id, {
-          agentId,
-          findingId: findingId!,
-          agree: true,
-          reasoning: 'Confirmed',
-        });
-      }
-
+      // Submit final votes from all committee members
       await protocol.startConsensusRound(session.id);
-
-      for (const agentId of committee) {
-        await protocol.submitFinalVote(session.id, agentId, {
-          decision: 'reject',
-          reasoning: 'Critical security issue',
-          confidence: 0.9,
-        });
-      }
+      await submitAllFinalVotes(protocol, session.id, committee, {
+        decision: 'reject',
+        reasoning: 'Critical security issue',
+        confidence: 0.9,
+      });
 
       const result = await protocol.getResult(session.id);
 
       expect(result?.consolidatedFindings.length).toBe(1);
-      expect(result?.consolidatedFindings[0].agreementRatio).toBe(1);
-      expect(result?.consolidatedFindings[0].severity).toBe('critical');
+      expect(result?.consolidatedFindings[0]?.agreementRatio).toBe(1);
+      expect(result?.consolidatedFindings[0]?.severity).toBe('critical');
     });
   });
 
@@ -400,7 +418,7 @@ describe('VotingProtocol', () => {
 
       // Everyone agrees on everything
       const currentSession = protocol.getSession(session.id);
-      const findingIds = Array.from(currentSession?.rounds[1].findings.keys() ?? []);
+      const findingIds = Array.from(currentSession?.rounds[1]?.findings.keys() ?? []);
 
       for (const findingId of findingIds) {
         for (const agentId of ['agent-2', 'agent-3']) {

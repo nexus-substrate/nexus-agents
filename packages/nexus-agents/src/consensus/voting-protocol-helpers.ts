@@ -137,17 +137,22 @@ export function consolidateFindings(session: VotingSession): ConsolidatedFinding
           ? (mostCommon(severityVotes) ?? finding.severity)
           : finding.severity;
 
-      consolidated.push({
+      const consolidatedFinding: ConsolidatedFinding = {
         id: findingId,
         category: finding.category,
         severity: finalSeverity,
         description: finding.description,
-        location: finding.location,
-        suggestion: finding.suggestion,
         supportingAgents: agreeVotes.map((v) => v.agentId),
         agreementRatio,
         originalFindings: [finding],
-      });
+      };
+      if (finding.location !== undefined) {
+        consolidatedFinding.location = finding.location;
+      }
+      if (finding.suggestion !== undefined) {
+        consolidatedFinding.suggestion = finding.suggestion;
+      }
+      consolidated.push(consolidatedFinding);
     }
   });
 

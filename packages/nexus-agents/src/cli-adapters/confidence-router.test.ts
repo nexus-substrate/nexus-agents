@@ -23,13 +23,27 @@ function createMockAdapter(name: CliName, response: CliResponse): ICliAdapter {
     transport: 'subprocess',
     capabilities: defaultCapabilities,
     execute: vi.fn().mockResolvedValue({ ok: true, value: response }),
-    healthCheck: vi.fn().mockResolvedValue({ ok: true, value: { healthy: true, cli: name } }),
-    getModelInfo: vi
-      .fn()
-      .mockResolvedValue({ ok: true, value: { id: `${name}-model`, name: `${name} Model` } }),
-    checkVersion: vi
-      .fn()
-      .mockResolvedValue({ ok: true, value: { compatible: true, current: '1.0.0' } }),
+    healthCheck: vi.fn().mockResolvedValue({
+      healthy: true,
+      version: '1.0.0',
+      versionStatus: 'supported' as const,
+      lastChecked: new Date(),
+    }),
+    getCapacity: vi.fn().mockResolvedValue({
+      remainingTokens: 100000,
+      remainingRequests: 100,
+      resetTime: new Date(),
+      utilizationPercent: 0,
+      exhausted: false,
+    }),
+    getVersion: vi.fn().mockResolvedValue('1.0.0'),
+    getModelInfo: vi.fn().mockReturnValue({
+      id: `${name}-model`,
+      name: `${name} Model`,
+      contextWindow: 200000,
+    }),
+    initialize: vi.fn().mockResolvedValue(undefined),
+    dispose: vi.fn().mockResolvedValue(undefined),
   };
 }
 
@@ -60,21 +74,21 @@ This function:
 
 You can call it like this: \`helloWorld();\``,
   model: 'gemini-flash',
-  usage: { input: 10, output: 50 },
+  usage: { inputTokens: 10, outputTokens: 50 },
   durationMs: 500,
 };
 
 const lowConfidenceResponse: CliResponse = {
   text: `I think this might work, but I'm not sure. Maybe you could try something like this? It's probably correct, although I'm uncertain about some edge cases. However, there might be alternatives...`,
   model: 'gemini-flash',
-  usage: { input: 10, output: 30 },
+  usage: { inputTokens: 10, outputTokens: 30 },
   durationMs: 300,
 };
 
 const veryShortResponse: CliResponse = {
   text: 'Done.',
   model: 'gemini-flash',
-  usage: { input: 10, output: 2 },
+  usage: { inputTokens: 10, outputTokens: 2 },
   durationMs: 100,
 };
 
@@ -218,7 +232,7 @@ describe('ConfidenceRouter', () => {
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.value.confidenceHistory.length).toBe(2);
-        expect(result.value.confidenceHistory[0].score).toBeLessThan(0.7);
+        expect(result.value.confidenceHistory[0]!.score).toBeLessThan(0.7);
       }
     });
 
@@ -359,7 +373,7 @@ This document outlines a comprehensive distributed system architecture designed 
 ## Conclusion
 This architecture provides a scalable, secure, and performant foundation for high-traffic applications.`,
         model: 'claude',
-        usage: { input: 50, output: 200 },
+        usage: { inputTokens: 50, outputTokens: 200 },
         durationMs: 1000,
       };
       const confidence = router.estimateConfidence(complexTask, longResponse);

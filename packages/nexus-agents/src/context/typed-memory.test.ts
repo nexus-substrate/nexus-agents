@@ -34,7 +34,8 @@ function createMockBackend(): IMemoryBackend {
       const entries: MemoryEntry[] = [];
       storage.forEach((data, key) => {
         const tags = data.metadata.tags ?? [];
-        if (key.includes(query.split(' ')[0]) || tags.some((t) => query.includes(t))) {
+        const firstWord = query.split(' ')[0] ?? '';
+        if (key.includes(firstWord) || tags.some((t) => query.includes(t))) {
           entries.push({
             key,
             value: data.value,
@@ -69,7 +70,7 @@ describe('TypedMemory', () => {
   describe('Core Memory', () => {
     const agentData: CoreMemoryData = {
       agentId: 'agent-1',
-      role: 'researcher',
+      role: 'code_expert',
       name: 'Research Agent',
       constraints: ['no external API calls', 'read-only access'],
       capabilities: ['search', 'analyze', 'summarize'],
@@ -84,7 +85,7 @@ describe('TypedMemory', () => {
       expect(getResult.ok).toBe(true);
       if (getResult.ok) {
         expect(getResult.value?.agentId).toBe('agent-1');
-        expect(getResult.value?.role).toBe('researcher');
+        expect(getResult.value?.role).toBe('code_expert');
       }
     });
 
