@@ -59,3 +59,35 @@ export type {
   ISQLiteDatabase,
   ISQLiteStatement,
 } from './memory-backend.js';
+
+// Typed Memory Architecture (Issue #101)
+export { TypedMemory, createTypedMemory } from './typed-memory.js';
+export { MemoryType, MemoryTypeSchema, DEFAULT_RELEVANCE_CONFIG } from './memory-types.js';
+export { CoreMemoryDataSchema, EpisodeDataSchema, SemanticFactSchema } from './memory-types.js';
+export {
+  ProcedureSchema,
+  ProcedureStepSchema,
+  ResourceReferenceSchema,
+  VaultEntrySchema,
+} from './memory-types.js';
+
+export type {
+  ITypedMemory,
+  ICoreMemory,
+  IEpisodicMemory,
+  ISemanticMemory,
+  IProceduralMemory,
+  IResourceMemory,
+  IKnowledgeVault,
+  TypedMemoryEntry,
+  TypedMemoryStats,
+  TypedMemoryPruneResult,
+  CoreMemoryData,
+  EpisodeData,
+  SemanticFact,
+  Procedure,
+  ProcedureStep,
+  ResourceReference,
+  VaultEntry,
+  RelevanceFilterConfig,
+} from './memory-types.js';
