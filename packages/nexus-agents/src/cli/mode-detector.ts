@@ -4,7 +4,7 @@
  * Automatic detection of nexus-agents invocation mode based on
  * environment variables, TTY state, and explicit flags.
  *
- * (Source: Node.js 24.x TTY documentation)
+ * (Source: Node.js 22.x TTY documentation)
  * (Source: MCP Protocol 2025-11-25 - client detection patterns)
  */
 
@@ -132,7 +132,7 @@ function detectContainer(env: Record<string, string | undefined>): boolean {
 
 /**
  * Checks if a stream is a TTY.
- * (Source: Node.js 24.x TTY documentation)
+ * (Source: Node.js 22.x TTY documentation)
  *
  * @param stream - The stream to check
  * @returns True if the stream is a TTY

@@ -6,7 +6,7 @@
  * Supports commands for server operation, configuration, and expert management.
  *
  * (Source: MCP Protocol 2025-11-25)
- * (Source: Node.js 24.x parseArgs documentation)
+ * (Source: Node.js 22.x parseArgs documentation)
  */
 
 import { parseArgs } from 'node:util';

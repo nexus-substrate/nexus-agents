@@ -53,7 +53,7 @@ export interface ParsedCliArgs {
 
 /**
  * parseArgs configuration for the CLI.
- * (Source: Node.js 24.x util.parseArgs documentation)
+ * (Source: Node.js 22.x util.parseArgs documentation)
  */
 export const PARSE_ARGS_CONFIG = {
   options: {

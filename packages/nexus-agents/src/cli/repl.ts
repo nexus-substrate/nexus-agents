@@ -4,12 +4,12 @@
  * Provides an interactive REPL mode for Nexus Agents.
  *
  * (Source: Issue #64, PROJECT_PLAN.md Section 5.2)
- * (Source: Node.js 24.x readline documentation)
+ * (Source: Node.js 22.x readline documentation)
  */
 
 import * as readline from 'node:readline';
 import { createLogger, type ILogger } from '../core/index.js';
-import { VERSION } from '../index.js';
+import { VERSION } from '../version.js';
 import { printWorkflowTemplates } from './workflow-run.js';
 import { expertListCommand } from './expert-list.js';
 

@@ -2,12 +2,12 @@
  * nexus-agents/cli - CLI Argument Parsing Tests
  *
  * Tests for CLI argument parsing and command routing.
- * (Source: Node.js 24.x util.parseArgs documentation)
+ * (Source: Node.js 22.x util.parseArgs documentation)
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { parseCliArgs, printHelp, printVersion, EXIT_CODES, type ParsedCliArgs } from './cli.js';
-import { VERSION } from './index.js';
+import { VERSION } from './version.js';
 
 describe('CLI Argument Parsing', () => {
   describe('parseCliArgs', () => {

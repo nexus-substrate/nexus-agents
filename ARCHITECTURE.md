@@ -1,7 +1,7 @@
 # Nexus Agents Architecture
 
-**Version:** 2.0.0
-**Last Updated:** 2026-01-04
+**Version:** 2.0.1
+**Last Updated:** 2026-01-06 (ET)
 **Status:** Production Release
 
 ---
@@ -29,10 +29,23 @@ nexus-agents/
 │           ├── core/       # Shared types, Result<T,E>, errors, logger
 │           ├── config/     # Configuration loading, validation, Zod schemas
 │           ├── adapters/   # Model adapters (Claude, OpenAI, Gemini, Ollama)
+│           │               # + Capacity monitor for rate limit tracking
 │           ├── agents/     # Agent framework (TechLead, Experts)
+│           │               # + Context pruner with multiple strategies
 │           ├── workflows/  # Workflow engine, templates, execution
 │           ├── mcp/        # MCP server, tool definitions
-│           ├── cli/        # CLI interface
+│           ├── cli/        # CLI interface + mode detection
+│           ├── cli-adapters/  # External CLI integrations (v2.2.0+)
+│           │               # - Task router with capability matching
+│           │               # - Circuit breaker for fault tolerance
+│           │               # - Claude/Gemini/Codex adapters
+│           ├── context/    # Context management infrastructure
+│           │               # - Token counter (universal)
+│           │               # - Work balancer for parallel tasks
+│           │               # - Hybrid memory backend (SQLite + Markdown)
+│           ├── consensus/  # Multi-agent consensus engine
+│           │               # - Voting strategies (majority, supermajority, unanimous)
+│           │               # - Proof-of-learning weighted voting
 │           └── index.ts    # Public API exports
 └── apps/
     └── nexus-agents/       # Main entry point
@@ -46,15 +59,18 @@ npm install nexus-agents
 
 ### Module Responsibilities
 
-| Module      | Responsibility                        | Internal Dependencies   |
-| ----------- | ------------------------------------- | ----------------------- |
-| `core`      | Types, Result pattern, errors, logger | None                    |
-| `config`    | Zod schemas, config loading           | core                    |
-| `adapters`  | Model API abstractions                | core                    |
-| `agents`    | Agent lifecycle, collaboration        | core, adapters          |
-| `workflows` | Template parsing, execution           | core, agents            |
-| `mcp`       | MCP protocol, tools                   | core, agents, workflows |
-| `cli`       | Command-line interface                | core, config, mcp       |
+| Module         | Responsibility                                 | Internal Dependencies   |
+| -------------- | ---------------------------------------------- | ----------------------- |
+| `core`         | Types, Result pattern, errors, logger          | None                    |
+| `config`       | Zod schemas, config loading                    | core                    |
+| `adapters`     | Model API abstractions, capacity monitoring    | core                    |
+| `agents`       | Agent lifecycle, collaboration, context prune  | core, adapters          |
+| `workflows`    | Template parsing, execution                    | core, agents            |
+| `mcp`          | MCP protocol, tools                            | core, agents, workflows |
+| `cli`          | Command-line interface, mode detection         | core, config, mcp       |
+| `cli-adapters` | External CLI integration (Claude/Gemini/Codex) | core, context           |
+| `context`      | Token counting, work balancing, memory         | core                    |
+| `consensus`    | Multi-agent voting, decision making            | core                    |
 
 ### Imports
 
@@ -72,16 +88,29 @@ import {
   // Adapters
   ClaudeAdapter,
   OpenAIAdapter,
+  CapacityMonitor,
   // Agents
   TechLead,
   Expert,
   AgentPool,
+  ContextPruner,
   // Workflows
   WorkflowEngine,
   WorkflowDefinition,
   // MCP
   createMcpServer,
   registerTools,
+  // CLI Adapters (v2.2.0+)
+  TaskRouter,
+  CliCircuitBreaker,
+  createCliAdapter,
+  // Context Management
+  TokenCounter,
+  WorkBalancer,
+  HybridMemoryBackend,
+  // Consensus
+  ConsensusEngine,
+  SimpleMajorityStrategy,
 } from 'nexus-agents';
 ```
 
@@ -94,6 +123,7 @@ graph TD
     subgraph External
         CD[Claude Desktop]
         API[Model APIs]
+        CLIS[External CLIs]
     end
 
     subgraph "nexus-agents package"
@@ -104,21 +134,32 @@ graph TD
         AD[adapters/]
         CFG[config/]
         CORE[core/]
+        CLIADAPT[cli-adapters/]
+        CTX[context/]
+        CON[consensus/]
     end
 
     CD -->|MCP Protocol| MCP
     CLI --> CFG
     CLI --> MCP
+    CLI --> CLIADAPT
+    CLIADAPT -->|subprocess| CLIS
+    CLIADAPT --> CTX
     MCP --> WF
     MCP --> AG
+    MCP --> CON
     WF --> AG
     AG --> AD
+    AG --> CON
     AD -->|API Calls| API
     AD --> CORE
     AG --> CORE
     WF --> CORE
     CFG --> CORE
     MCP --> CORE
+    CTX --> CORE
+    CON --> CORE
+    CLIADAPT --> CORE
 ```
 
 ### Dependency Direction Rules
@@ -240,6 +281,192 @@ interface IWorkflowEngine {
   getStatus(executionId: string): ExecutionStatus;
   cancel(executionId: string): Promise<Result<void, WorkflowError>>;
   listTemplates(): Promise<WorkflowTemplate[]>;
+}
+```
+
+---
+
+## Phase 2-4 Infrastructure Interfaces
+
+### ITaskRouter (CLI Adapters)
+
+Routes tasks to optimal CLI based on capability matching.
+
+```typescript
+interface ITaskRouter {
+  route(task: CliTask): Promise<Result<RoutingDecision, RoutingError>>;
+  registerAdapter(adapter: ICliAdapter): void;
+  getHealthyAdapters(): ICliAdapter[];
+  updateCapabilities(cli: CliName, profile: CapabilityProfile): void;
+}
+
+interface RoutingDecision {
+  cli: CliName; // 'claude' | 'gemini' | 'codex'
+  model: string; // Specific model to use
+  confidence: number; // 0-1 routing confidence
+  fallbacks: CliName[]; // Ordered fallback options
+  reasoning: string; // Why this CLI was chosen
+}
+```
+
+### ICircuitBreaker (CLI Adapters)
+
+Prevents cascading failures with configurable failure thresholds.
+
+```typescript
+interface ICircuitBreaker {
+  execute<T>(operation: () => Promise<T>): Promise<T>;
+  getState(): CircuitState; // 'closed' | 'open' | 'half_open'
+  recordFailure(category: FailureCategory): void;
+  recordSuccess(): void;
+  reset(): void;
+  getSnapshot(): CircuitBreakerSnapshot;
+}
+```
+
+### ITokenCounter (Context)
+
+Universal token counting across model providers.
+
+```typescript
+interface ITokenCounter {
+  count(text: string): Promise<TokenCountResult>;
+  countMessages(messages: Message[]): Promise<TokenCountResult>;
+  getMaxTokens(): number;
+  getProvider(): TokenCounterProvider;
+}
+
+type TokenCounterProvider = 'tiktoken' | 'anthropic' | 'heuristic';
+```
+
+### ICapacityMonitor (Adapters)
+
+Tracks rate limits across model providers.
+
+```typescript
+interface ICapacityMonitor {
+  updateFromHeaders(provider: string, headers: Headers): void;
+  getCapacity(provider: string): CapacityInfo | null;
+  onLowCapacity(callback: LowCapacityCallback): () => void;
+  setLowCapacityThreshold(threshold: number): void;
+  getTimeUntilReset(provider: string): number | null;
+}
+
+interface CapacityInfo {
+  readonly remainingTokens: number;
+  readonly remainingRequests: number;
+  readonly resetTime: Date | null;
+  readonly utilizationPercent: number;
+}
+```
+
+### IWorkBalancer (Context)
+
+Distributes parallel tasks across available CLIs.
+
+```typescript
+interface IWorkBalancer {
+  balance(tasks: TaskProfile[]): Promise<BalanceResult>;
+  queueTask(task: TaskProfile): void;
+  getQueueDepth(): number;
+  clearQueue(): void;
+}
+
+interface BalanceResult {
+  assignments: Map<string, CliName>;
+  unassigned: string[];
+  reasoning: Record<string, ScoreBreakdown>;
+}
+```
+
+### IMemoryBackend (Context)
+
+Hybrid persistence with SQLite + Markdown export.
+
+```typescript
+interface IMemoryBackend {
+  set<T>(key: string, value: T, metadata?: MemoryMetadata): Promise<void>;
+  get<T>(key: string): Promise<T | undefined>;
+  has(key: string): Promise<boolean>;
+  delete(key: string): Promise<boolean>;
+  clear(): Promise<void>;
+  keys(): AsyncIterable<string>;
+  entries<T>(): AsyncIterable<[string, T]>;
+  size(): Promise<number>;
+}
+
+type MemoryImportance = 'critical' | 'high' | 'medium' | 'low';
+// High-importance memories are also written to Markdown files
+```
+
+### IConsensusEngine (Consensus)
+
+Multi-agent voting with configurable strategies.
+
+```typescript
+interface IConsensusEngine {
+  createProposal(config: ProposalConfig): Promise<Proposal>;
+  submitVote(proposalId: ProposalId, vote: Vote): Promise<void>;
+  getResult(proposalId: ProposalId): Promise<ConsensusResult>;
+  closeProposal(proposalId: ProposalId): Promise<ConsensusResult>;
+}
+
+type ConsensusAlgorithm =
+  | 'simple_majority' // >50%
+  | 'supermajority' // ≥67%
+  | 'unanimous' // 100%
+  | 'proof_of_learning'; // Weighted by agent performance
+
+interface Vote {
+  agentId: string;
+  decision: 'approve' | 'reject' | 'abstain';
+  reasoning: string;
+  confidence: number;
+}
+```
+
+### ContextPruner (Agents)
+
+Manages context window with multiple pruning strategies.
+
+```typescript
+type PruningStrategy =
+  | 'oldest_first' // FIFO removal
+  | 'lowest_priority' // Remove low-priority first
+  | 'priority_weighted_age' // Combined priority + age
+  | 'summarize' // Compress via summarization
+  | 'sliding_window' // Fixed window with overlap
+  | 'hierarchical' // Multi-level summarization
+  | 'semantic'; // Relevance-based retention
+
+interface ContextPrunerConfig {
+  strategy: PruningStrategy;
+  maxTokens: number;
+  reserveTokens: number;
+  summarizationThreshold: number;
+}
+```
+
+### ModeDetector (CLI)
+
+Detects runtime mode based on environment signals.
+
+```typescript
+type ServerMode = 'server' | 'orchestrator' | 'mesh';
+
+interface ModeDetectionResult {
+  readonly mode: ServerMode;
+  readonly source: 'explicit' | 'auto';
+  readonly reason: string;
+  readonly signals: DetectionSignals;
+}
+
+interface DetectionSignals {
+  readonly stdinIsTty: boolean;
+  readonly stdoutIsTty: boolean;
+  readonly mcpClientName: string | undefined;
+  readonly isCI: boolean;
+  readonly isContainer: boolean;
 }
 ```
 
@@ -429,4 +656,4 @@ const myTool: ITool = {
 
 ---
 
-_Architecture documented on 2026-01-04 (ET)_
+_Architecture documented on 2026-01-05 (ET) - Updated for Phase 2-4 infrastructure_

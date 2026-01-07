@@ -232,8 +232,11 @@ export class CodexCliAdapter implements ICliAdapter {
     const model = task.model ?? this.model;
     args.push('-m', model);
 
-    // Add sandbox mode for safety
-    args.push('-s');
+    // Add sandbox mode for safety (read-only by default)
+    args.push('-s', 'read-only');
+
+    // Skip git repo check for standalone prompts
+    args.push('--skip-git-repo-check');
 
     // Add the task content
     args.push(JSON.stringify(task.content));

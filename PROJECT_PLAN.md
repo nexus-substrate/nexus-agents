@@ -63,28 +63,8 @@ nexus-agents/
 │           ├── workflows/  # Workflow engine, templates, state machine
 │           ├── mcp/        # MCP server, tool definitions, transport
 │           └── cli/        # CLI interface
-└── apps/
-    └── nexus-agents/       # Main entry point, composition root
+└── package.json           # Root workspace config
 ```
-
-<details>
-<summary>Original Plan (v1.x - 7 packages)</summary>
-
-```
-nexus-agents/
-├── packages/
-│   ├── core/           # Shared types, Result<T,E>, errors, logger
-│   ├── config/         # Configuration loading, validation, hot reload
-│   ├── adapters/       # Model adapters: Claude, OpenAI, Gemini, Ollama
-│   ├── agents/         # Agent framework: TechLead, Expert, dynamic creation
-│   ├── workflows/      # Workflow engine, templates, state machine
-│   ├── mcp/            # MCP server, tool definitions, transport
-│   └── cli/            # CLI interface, interactive mode
-└── apps/
-    └── nexus-agents/   # Main entry point, composition root
-```
-
-</details>
 
 ### 2.2 Core Interfaces
 

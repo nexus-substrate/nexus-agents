@@ -1,7 +1,7 @@
 # Nexus Agents Architecture
 
-**Version:** 3.0.0
-**Last Updated:** 2026-01-04 (ET)
+**Version:** 2.0.1
+**Last Updated:** 2026-01-06 (ET)
 **Status:** Approved
 
 ---
@@ -275,10 +275,19 @@ src/
 |   +-- workflow-run.ts # Workflow execution
 |
 +-- cli-adapters/       # CLI ADAPTER LAYER - External CLI integration
-    +-- claude-cli.ts   # Claude CLI adapter
-    +-- gemini-cli.ts   # Gemini CLI adapter
-    +-- codex-cli.ts    # Codex CLI adapter
+    +-- types.ts        # CLI adapter type definitions
+    +-- base-adapter.ts # Abstract CLI adapter base class
     +-- factory.ts      # CLI adapter factory
+    +-- router.ts       # Capability-based task routing
+    +-- circuit-breaker.ts # Fault tolerance patterns
+    +-- adapters/       # Concrete adapter implementations
+    |   +-- claude-adapter.ts
+    |   +-- gemini-adapter.ts
+    |   +-- codex-adapter.ts
+    +-- parsers/        # Output parsing per CLI
+        +-- claude-parser.ts
+        +-- gemini-parser.ts
+        +-- codex-parser.ts
 ```
 
 ---
@@ -455,8 +464,7 @@ estimatedDuration   -->          timeout (optional)
 ### Usage Example
 
 ```typescript
-import { TechLead } from 'nexus-agents/agents';
-import { WorkflowEngine } from 'nexus-agents/workflows';
+import { TechLead, WorkflowEngine } from 'nexus-agents';
 
 // Step 1: TechLead creates a dynamic plan
 const techLead = new TechLead({ adapter });
@@ -626,5 +634,5 @@ interface InputDefinition {
 
 ---
 
-_Architecture documented: 2026-01-04 (ET)_
+_Architecture documented: 2026-01-06 (ET)_
 _Reviewed by: TechLead, Architecture Expert, Security Expert_

@@ -6,7 +6,7 @@
  * @module cli-commands
  */
 
-import { VERSION } from './index.js';
+import { VERSION } from './version.js';
 import {
   doctorCommand,
   configInitCommand,

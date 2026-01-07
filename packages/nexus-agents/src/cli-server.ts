@@ -8,7 +8,7 @@
 
 import { startStdioServer, closeServer, registerTools } from './mcp/index.js';
 import { createLogger, type ILogger } from './core/index.js';
-import { VERSION } from './index.js';
+import { VERSION } from './version.js';
 import { detectMode, type ServerMode, type ModeDetectionResult } from './cli/index.js';
 import { EXIT_CODES } from './cli-types.js';
 
