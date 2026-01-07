@@ -7,8 +7,6 @@
  * (Source: MCP Protocol 2025-11-25)
  */
 
-export const VERSION = '0.0.1';
-
 // Server
 export {
   createServer,

@@ -3,8 +3,6 @@
  * Shared types, Result<T,E>, errors, and logger for Nexus Agents
  */
 
-export const VERSION = '0.0.1';
-
 // Result pattern
 export type { Result } from './result.js';
 export { ok, err, isOk, isErr, map, mapErr, unwrap, unwrapOr } from './result.js';

@@ -5,8 +5,6 @@
  * Provides base classes and implementations for AI agents.
  */
 
-export const VERSION = '0.0.1';
-
 // Base agent class and types
 export {
   BaseAgent,

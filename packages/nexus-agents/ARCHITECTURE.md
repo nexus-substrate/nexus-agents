@@ -1,8 +1,11 @@
-# Nexus Agents Architecture
+# Nexus Agents - TechLead vs WorkflowEngine Architecture
 
-**Version:** 2.0.1
-**Last Updated:** 2026-01-06 (ET)
-**Status:** Approved
+**Version:** 2.1.0
+**Last Updated:** 2026-01-07 (ET)
+**Status:** Current
+
+> For the full system architecture, see [/ARCHITECTURE.md](/ARCHITECTURE.md) at the repository root.
+> This document focuses on the separation between dynamic planning (TechLead) and static execution (WorkflowEngine).
 
 ---
 
@@ -21,7 +24,7 @@
 
 ## Overview
 
-Nexus Agents implements a multi-agent orchestration system with clear separation between **planning** and **execution** concerns. The system is designed around two primary coordination mechanisms:
+This document describes the separation between **planning** and **execution** concerns in Nexus Agents:
 
 1. **TechLead (Planner)** - Dynamic task analysis and execution planning
 2. **WorkflowEngine (Executor)** - Static workflow definition execution
@@ -634,5 +637,4 @@ interface InputDefinition {
 
 ---
 
-_Architecture documented: 2026-01-06 (ET)_
-_Reviewed by: TechLead, Architecture Expert, Security Expert_
+_Last updated: 2026-01-07 (ET)_

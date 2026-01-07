@@ -56,36 +56,42 @@ import { exec } from 'node:child_process';
 
 // Helper to mock exec for specific responses
 function mockExecResponse(stdout: string, stderr: string = ''): void {
-  vi.mocked(exec).mockImplementation((cmd: string, _options: unknown, callback?: ExecCallback) => {
-    capturedCommand = cmd;
-    if (callback) {
-      if (cmd.includes('--version')) {
-        callback(null, { stdout: 'claude version 2.0.5', stderr: '' });
-      } else {
-        callback(null, { stdout, stderr });
+  vi.mocked(exec).mockImplementation(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ((cmd: string, _options: unknown, callback?: ExecCallback): any => {
+      capturedCommand = cmd;
+      if (callback) {
+        if (cmd.includes('--version')) {
+          callback(null, { stdout: 'claude version 2.0.5', stderr: '' });
+        } else {
+          callback(null, { stdout, stderr });
+        }
       }
-    }
-    return {
-      stdout: { on: vi.fn() },
-      stderr: { on: vi.fn() },
-      on: vi.fn(),
-    } as ReturnType<typeof exec>;
-  });
+      return {
+        stdout: { on: vi.fn() },
+        stderr: { on: vi.fn() },
+        on: vi.fn(),
+      };
+    }) as typeof exec
+  );
 }
 
 function mockExecError(errorMessage: string): void {
-  vi.mocked(exec).mockImplementation((cmd: string, _options: unknown, callback?: ExecCallback) => {
-    capturedCommand = cmd;
-    if (callback) {
-      const error = new Error(errorMessage);
-      callback(error, { stdout: '', stderr: '' });
-    }
-    return {
-      stdout: { on: vi.fn() },
-      stderr: { on: vi.fn() },
-      on: vi.fn(),
-    } as ReturnType<typeof exec>;
-  });
+  vi.mocked(exec).mockImplementation(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ((cmd: string, _options: unknown, callback?: ExecCallback): any => {
+      capturedCommand = cmd;
+      if (callback) {
+        const error = new Error(errorMessage);
+        callback(error, { stdout: '', stderr: '' });
+      }
+      return {
+        stdout: { on: vi.fn() },
+        stderr: { on: vi.fn() },
+        on: vi.fn(),
+      };
+    }) as typeof exec
+  );
 }
 
 describe('ClaudeCliAdapter', () => {
@@ -118,6 +124,7 @@ describe('ClaudeCliAdapter', () => {
         warn: vi.fn(),
         error: vi.fn(),
         child: vi.fn().mockReturnThis(),
+        setLevel: vi.fn(),
       };
       const adapterWithLogger = new ClaudeCliAdapter({ logger: mockLogger });
       expect(adapterWithLogger).toBeDefined();

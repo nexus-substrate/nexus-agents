@@ -5,8 +5,6 @@
  * Provides YAML/JSON parsing, validation, and dependency graph analysis.
  */
 
-export const VERSION = '0.0.1';
-
 // ============================================================================
 // Workflow Parser (strict validation with Zod)
 // ============================================================================

@@ -96,6 +96,8 @@ This document catalogs recent papers (2024-2026) on multi-agent orchestration, L
 
 **Key Technique:** Weighted Byzantine consensus where agent votes are weighted by historical reliability.
 
+**Note:** Our implementation uses weighted voting with Byzantine behavior detection (pattern analysis for contrarian voting, collusion). This is not classical cryptographic BFT consensus - it provides heuristic protection rather than provable Byzantine fault tolerance.
+
 **Results:**
 
 - 85.7% fault rate tolerance under extreme conditions

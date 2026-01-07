@@ -9,8 +9,6 @@
  * - Proof-of-learning (weighted by agent performance)
  */
 
-export const VERSION = '0.0.1';
-
 // Types and schemas
 export type {
   ConsensusAlgorithm,

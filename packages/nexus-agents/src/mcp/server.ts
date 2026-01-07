@@ -13,8 +13,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 
 import { createLogger, type Result, ok, err, type ILogger } from '../core/index.js';
-
-import { VERSION } from './index.js';
+import { VERSION } from '../version.js';
 
 /**
  * Server configuration options.

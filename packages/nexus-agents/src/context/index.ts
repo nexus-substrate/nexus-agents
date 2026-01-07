@@ -7,8 +7,6 @@
  * (Source: cli-project_plan.md v2.1.0, Phase 4)
  */
 
-export const VERSION = '0.0.1';
-
 // Token counting
 export {
   TokenCounter,

@@ -38,6 +38,7 @@ describe('GeminiCliAdapter', () => {
         warn: vi.fn(),
         error: vi.fn(),
         child: vi.fn().mockReturnThis(),
+        setLevel: vi.fn(),
       };
       const adapterWithLogger = new GeminiCliAdapter({ logger: mockLogger });
       expect(adapterWithLogger).toBeDefined();

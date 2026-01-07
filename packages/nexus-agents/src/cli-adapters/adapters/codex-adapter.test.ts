@@ -94,6 +94,7 @@ describe('CodexCliAdapter (Subprocess)', () => {
         warn: vi.fn(),
         error: vi.fn(),
         child: vi.fn().mockReturnThis(),
+        setLevel: vi.fn(),
       };
       const adapterWithLogger = new CodexCliAdapter({ logger: mockLogger });
       expect(adapterWithLogger).toBeDefined();

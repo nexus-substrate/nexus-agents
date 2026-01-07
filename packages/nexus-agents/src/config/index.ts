@@ -3,8 +3,6 @@
  * Configuration loading and validation for Nexus Agents
  */
 
-export const VERSION = '0.0.1';
-
 // Schemas
 export {
   AppConfigSchema,

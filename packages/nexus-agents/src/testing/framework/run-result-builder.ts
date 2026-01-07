@@ -16,7 +16,7 @@ import type {
   TaskFilter,
   AggregatedMetrics,
 } from './types.js';
-import { VERSION } from '../../core/index.js';
+import { VERSION } from '../../version.js';
 import { computeAggregatedMetrics } from './test-metrics.js';
 
 /**

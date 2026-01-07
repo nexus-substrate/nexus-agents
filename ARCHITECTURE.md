@@ -1,8 +1,8 @@
 # Nexus Agents Architecture
 
-**Version:** 2.1.0
-**Last Updated:** 2026-01-06 (ET)
-**Status:** Production Release
+**Version:** 2.1.1
+**Last Updated:** 2026-01-07 (ET)
+**Status:** Current
 
 ---
 
@@ -35,10 +35,11 @@ nexus-agents/
 │           ├── workflows/  # Workflow engine, templates, execution
 │           ├── mcp/        # MCP server, tool definitions
 │           ├── cli/        # CLI interface + mode detection
-│           ├── cli-adapters/  # External CLI integrations (v2.2.0+)
+│           ├── cli-adapters/  # External CLI integrations
+│           │               # - Subprocess-based CLI execution
 │           │               # - Task router with capability matching
 │           │               # - Circuit breaker for fault tolerance
-│           │               # - Claude/Gemini/Codex adapters
+│           │               # - Claude/Gemini/Codex subprocess adapters
 │           ├── context/    # Context management infrastructure
 │           │               # - Token counter (universal)
 │           │               # - Work balancer for parallel tasks
@@ -47,10 +48,9 @@ nexus-agents/
 │           ├── consensus/  # Multi-agent consensus engine
 │           │               # - Voting strategies (majority, supermajority, unanimous)
 │           │               # - Proof-of-learning weighted voting
-│           │               # - CP-WBFT weighted Byzantine consensus
+│           │               # - Weighted voting with Byzantine pattern detection
 │           └── index.ts    # Public API exports
-└── apps/
-    └── nexus-agents/       # Main entry point
+└── ARCHITECTURE.md         # This file
 ```
 
 ### Installation
@@ -72,7 +72,7 @@ npm install nexus-agents
 | `cli`          | Command-line interface, mode detection         | core, config, mcp       |
 | `cli-adapters` | External CLI integration (Claude/Gemini/Codex) | core, context           |
 | `context`      | Token counting, work balancing, memory         | core                    |
-| `consensus`    | Multi-agent voting, decision making            | core                    |
+| `consensus`    | Multi-agent voting, weighted decisions         | core                    |
 
 ### Imports
 
@@ -292,23 +292,24 @@ interface IWorkflowEngine {
 
 ### ITaskRouter (CLI Adapters)
 
-Routes tasks to optimal CLI based on capability matching.
+Routes tasks to optimal CLI based on capability matching. Uses subprocess transport to invoke external CLI tools.
 
 ```typescript
 interface ITaskRouter {
-  route(task: CliTask): Promise<Result<RoutingDecision, RoutingError>>;
-  registerAdapter(adapter: ICliAdapter): void;
-  getHealthyAdapters(): ICliAdapter[];
-  updateCapabilities(cli: CliName, profile: CapabilityProfile): void;
+  route(task: Task): Promise<Result<ICliAdapter, RoutingError>>;
+  routeWithDetails(task: Task): Promise<Result<RoutingDecision, RoutingError>>;
 }
 
 interface RoutingDecision {
-  cli: CliName; // 'claude' | 'gemini' | 'codex'
-  model: string; // Specific model to use
-  confidence: number; // 0-1 routing confidence
-  fallbacks: CliName[]; // Ordered fallback options
-  reasoning: string; // Why this CLI was chosen
+  readonly adapter: ICliAdapter;
+  readonly confidence: number; // 0-1 routing confidence
+  readonly reason: string; // Why this CLI was chosen
+  readonly alternatives: readonly ICliAdapter[]; // Fallback options
+  readonly decisionTimeMs: number;
 }
+
+type CliName = 'claude' | 'gemini' | 'codex';
+type CliTransport = 'mcp' | 'subprocess'; // Currently subprocess only
 ```
 
 ### ICircuitBreaker (CLI Adapters)
@@ -478,25 +479,32 @@ interface BudgetConstraint {
 
 ### IWeightedVoting (Consensus)
 
-CP-WBFT weighted Byzantine fault-tolerant voting (Issue #103, arXiv:2511.10400).
+Weighted voting inspired by CP-WBFT (Issue #103, arXiv:2511.10400). Agents are weighted by historical performance, with Byzantine behavior detection through pattern analysis.
 
 ```typescript
-interface IWeightedVotingEngine {
-  createSession(config: WeightedVotingConfig): WeightedVotingSession;
-  submitVote(sessionId: string, vote: WeightedVote): WeightedVoteResult;
-  finalizeVoting(sessionId: string): WeightedVotingResult;
-  calculateWeights(participants: WeightedParticipant[]): ParticipantWeights;
-  detectCollusion(votes: readonly WeightedVote[]): CollusionAnalysis;
+interface IWeightedVoting {
+  calculateWeight(agentId: string): number;
+  updatePerformance(agentId: string, outcome: TaskOutcome): void;
+  weightedConsensus(votes: ReadonlyMap<string, Vote>): WeightedConsensusResult;
+  registerAgent(agentId: string): void;
+  getAgentRecord(agentId: string): WeightedAgentRecord | undefined;
+  flagByzantine(agentId: string, reason: string): void;
+  canVote(agentId: string): boolean;
+  recalibrateWeights(): void;
 }
 
-interface WeightedVote {
-  readonly participantId: string;
-  readonly decision: 'approve' | 'reject' | 'abstain';
-  readonly confidence: number; // 0-1
-  readonly reasoning: string;
-  readonly evidence?: string[];
+interface WeightedConsensusResult {
+  readonly decision: 'approve' | 'reject' | 'no_consensus';
+  readonly weightedApproval: number;
+  readonly weightedRejection: number;
+  readonly totalWeight: number;
+  readonly quorumReached: boolean;
+  readonly byzantineDetected: boolean;
+  readonly participatingAgents: readonly string[];
 }
 ```
+
+Note: This is not classical Byzantine Fault Tolerance (BFT) in the cryptographic sense. It uses weighted voting with heuristic detection of adversarial patterns (contrarian voting, collusion).
 
 ### ContextPruner (Agents)
 
@@ -586,7 +594,7 @@ stateDiagram-v2
 | Secrets Exposure   | Logs, errors         | Secrets vault, sanitization               |
 | Token Exhaustion   | Unbounded context    | Memory caps, pruning                      |
 | Injection          | Malformed prompts    | Input validation, Zod schemas             |
-| Byzantine Failures | Malicious agents     | CP-WBFT voting, weighted consensus        |
+| Byzantine Failures | Malicious agents     | Weighted voting with Byzantine detection  |
 
 ### Security Layers
 
@@ -596,7 +604,7 @@ stateDiagram-v2
 4. **Memory Bounds**: Context pruning, history caps
 5. **Path Safety**: Normalized paths, resolved relative to allowed roots
 6. **Timeout Protection**: TimeoutGuard for all async operations (CVE-2026-0621 mitigation)
-7. **Byzantine Fault Tolerance**: Weighted consensus prevents malicious agent influence
+7. **Byzantine Detection**: Weighted voting with pattern detection for malicious behavior
 
 ### Sanitization Pipeline
 
@@ -733,4 +741,5 @@ const myTool: ITool = {
 
 ---
 
-_Architecture documented on 2026-01-06 (ET) - Updated with typed memory, budget routing, weighted voting, and CVE-2026-0621 mitigation_
+_Last updated: 2026-01-07 (ET)_
+_Changes: Clarified Byzantine detection (not classical BFT), updated ITaskRouter and IWeightedVoting interfaces to match implementation_

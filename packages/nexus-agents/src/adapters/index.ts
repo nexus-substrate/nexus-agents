@@ -4,8 +4,6 @@
  * Model adapters and utilities for Nexus Agents.
  */
 
-export const VERSION = '0.0.1';
-
 // Adapter factory
 export {
   AdapterFactory,

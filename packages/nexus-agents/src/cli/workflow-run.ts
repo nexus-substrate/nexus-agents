@@ -15,6 +15,28 @@ import {
   type TemplateMetadata,
 } from '../workflows/index.js';
 import type { WorkflowDefinition, InputDefinition } from '../core/index.js';
+import { SecurityError } from '../core/index.js';
+
+/**
+ * Validates that a file path is within the allowed root directory.
+ * Prevents path traversal attacks (e.g., ../../../etc/passwd).
+ *
+ * @param userPath - The user-provided file path
+ * @param allowedRoot - The root directory that paths must be within
+ * @returns The validated absolute path
+ * @throws SecurityError if path traversal is detected
+ */
+function validateInputPath(userPath: string, allowedRoot: string): string {
+  const resolvedRoot = path.resolve(allowedRoot);
+  const resolved = path.resolve(allowedRoot, userPath);
+
+  if (!resolved.startsWith(resolvedRoot + path.sep) && resolved !== resolvedRoot) {
+    throw new SecurityError('Path traversal detected: input file path escapes allowed directory', {
+      context: { userPath, allowedRoot: resolvedRoot },
+    });
+  }
+  return resolved;
+}
 
 /**
  * ANSI color codes for terminal output.
@@ -63,18 +85,24 @@ type ParsedInputs = Record<string, unknown>;
 
 /**
  * Parses input from string or file path.
+ * Uses path validation to prevent path traversal attacks.
  *
  * @param inputArg - JSON string or file path
  * @returns Parsed inputs object
+ * @throws SecurityError if path traversal is detected
+ * @throws Error if file not found or JSON parse fails
  */
 function parseInputs(inputArg: string): ParsedInputs {
   // Check if it's a file path
   if (inputArg.endsWith('.json') || inputArg.startsWith('./') || inputArg.startsWith('/')) {
-    const resolvedPath = path.resolve(inputArg);
-    if (!fs.existsSync(resolvedPath)) {
+    // Validate path against current working directory to prevent traversal
+    const cwd = process.cwd();
+    const validatedPath = validateInputPath(inputArg, cwd);
+
+    if (!fs.existsSync(validatedPath)) {
       throw new Error(`Input file not found: ${inputArg}`);
     }
-    const content = fs.readFileSync(resolvedPath, 'utf-8');
+    const content = fs.readFileSync(validatedPath, 'utf-8');
     return JSON.parse(content) as ParsedInputs;
   }
 

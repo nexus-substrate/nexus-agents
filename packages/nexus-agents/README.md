@@ -171,7 +171,7 @@ The server exposes these MCP tools for integration:
 ```
 nexus-agents/
 ├── packages/
-│   └── nexus-agents/         # Main package (single consolidated package)
+│   └── nexus-agents/         # Main package
 │       ├── src/
 │       │   ├── core/         # Shared types, Result<T,E>, errors, logger
 │       │   ├── config/       # Configuration loading and validation
@@ -179,6 +179,9 @@ nexus-agents/
 │       │   ├── agents/       # Agent framework (TechLead, Experts)
 │       │   ├── workflows/    # Workflow engine and templates
 │       │   ├── mcp/          # MCP server and tool definitions
+│       │   ├── cli-adapters/ # External CLI integration (Claude/Gemini/Codex CLIs)
+│       │   ├── context/      # Token counting, work balancing, memory
+│       │   ├── consensus/    # Multi-agent voting and decisions
 │       │   ├── index.ts      # Main exports
 │       │   └── cli.ts        # CLI entry point
 │       └── package.json
@@ -187,6 +190,8 @@ nexus-agents/
 │   └── skills/               # Project-specific skills
 └── pnpm-workspace.yaml
 ```
+
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for detailed module descriptions.
 
 ### Dependency Flow
 
