@@ -97,4 +97,14 @@ export {
   type OrchestrateDeps,
   type ITechLead,
   type IOrchestrateExpertFactory,
+  // delegate_to_model tool
+  registerDelegateToModelTool,
+  DelegateInputSchema,
+  DelegateOutputSchema,
+  MODEL_CAPABILITIES,
+  type DelegateInput,
+  type DelegateOutput,
+  type DelegateDeps,
+  type CapabilityProfile,
+  type PreferredCapability,
 } from './tools/index.js';

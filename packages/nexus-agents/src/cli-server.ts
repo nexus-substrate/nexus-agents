@@ -6,7 +6,17 @@
  * @module cli-server
  */
 
-import { startStdioServer, closeServer, registerTools } from './mcp/index.js';
+import {
+  createServer,
+  connectTransport,
+  closeServer,
+  registerTools,
+  registerDelegateToModelTool,
+  registerOrchestrateTool,
+  createMockTechLead,
+} from './mcp/index.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { createLogger, type ILogger } from './core/index.js';
 import { VERSION } from './version.js';
 import { detectMode, type ServerMode, type ModeDetectionResult } from './cli/index.js';
@@ -101,6 +111,30 @@ export function logModeWarnings(logger: ILogger, mode: ServerMode): void {
 }
 
 /**
+ * Registers MCP tools with rate limiting.
+ * Must be called BEFORE connecting to transport.
+ */
+function registerMcpTools(server: McpServer, logger: ILogger): void {
+  const toolInfra = registerTools(server, { logger });
+
+  // Register tools with shared rate limiter
+  registerDelegateToModelTool(server, {
+    logger: toolInfra.logger,
+    rateLimiter: toolInfra.rateLimiter,
+  });
+
+  registerOrchestrateTool(server, {
+    techLead: createMockTechLead(),
+    logger: toolInfra.logger,
+    rateLimiter: toolInfra.rateLimiter,
+  });
+
+  logger.info('Tools registered', {
+    registeredTools: ['delegate_to_model', 'orchestrate'],
+  });
+}
+
+/**
  * Starts the MCP server with stdio transport.
  *
  * @param verbose - Whether to enable verbose logging
@@ -123,24 +157,34 @@ export async function startServer(
   logStartupInfo(logger, detectionResult, verbose);
   logModeWarnings(logger, mode);
 
-  // Start the MCP server with stdio transport
-  const serverResult = await startStdioServer({
+  // Create MCP server (tools must be registered BEFORE connecting)
+  const serverResult = createServer({
     name: 'nexus-agents',
     version: VERSION,
     logger,
   });
 
   if (!serverResult.ok) {
-    logger.error('Failed to start MCP server', new Error(serverResult.error.message));
+    logger.error('Failed to create MCP server', new Error(serverResult.error.message));
     process.exit(EXIT_CODES.SERVER_START_FAILED);
   }
 
   const { server, logger: serverLogger } = serverResult.value;
 
-  // Initialize tool registration infrastructure
-  const toolInfra = registerTools(server, { logger: serverLogger });
+  // Register tools with rate limiting (must happen BEFORE connecting)
+  registerMcpTools(server, serverLogger);
 
-  logger.info('MCP server started successfully', { availableTools: toolInfra.tools });
+  // Connect to transport
+  logger.info('Connecting to stdio transport');
+  const transport = new StdioServerTransport();
+  const connectResult = await connectTransport(server, transport, serverLogger);
+
+  if (!connectResult.ok) {
+    logger.error('Failed to connect MCP server', new Error(connectResult.error.message));
+    process.exit(EXIT_CODES.SERVER_START_FAILED);
+  }
+
+  logger.info('MCP server started successfully');
 
   // Setup graceful shutdown
   setupShutdownHandlers(async () => {
