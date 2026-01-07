@@ -317,13 +317,19 @@ experts:
 
 ## 7. Version Roadmap
 
-| Version    | Codename      | Scope                                 |
-| ---------- | ------------- | ------------------------------------- |
-| **v0.1.0** | Foundation    | Claude + Tech Lead + Code Expert      |
-| **v0.2.0** | Expansion     | All adapters + All experts            |
-| **v0.3.0** | Automation    | Workflow engine                       |
-| **v1.0.0** | Production    | Hardening + npm publish               |
-| **v2.0.0** | Consolidation | Single package architecture (current) |
+| Version    | Codename      | Scope                                  | Status    |
+| ---------- | ------------- | -------------------------------------- | --------- |
+| **v0.1.0** | Foundation    | Claude + Tech Lead + Code Expert       | ✅ Done   |
+| **v0.2.0** | Expansion     | All adapters + All experts             | ✅ Done   |
+| **v0.3.0** | Automation    | Workflow engine                        | ✅ Done   |
+| **v1.0.0** | Production    | Hardening + npm publish                | ✅ Done   |
+| **v2.0.0** | Consolidation | Single package architecture            | ✅ Done   |
+| **v2.1.0** | Research      | Testing framework + CLI adapters       | ✅ Done   |
+| **v2.2.0** | CLI Server    | MCP Server Mode for Claude CLI         | 🔄 Active |
+| **v2.3.0** | Orchestrator  | CLI Adapters (Gemini/Codex subprocess) | 📋 Next   |
+| **v3.0.0** | Hybrid Mesh   | Full bidirectional orchestration       | 📋 Future |
+
+See `cli-project_plan.md` for detailed v2.2.0+ roadmap.
 
 ---
 
@@ -376,25 +382,29 @@ experts:
 
 ---
 
-## 11. Next Steps
+## 11. Current Status
 
-1. **Initialize Repository**
-   - Clone template structure
-   - Set up monorepo with pnpm/turborepo
-   - Configure TypeScript, ESLint, Prettier
+All foundational phases (0-5) are complete. Current work focuses on:
 
-2. **Implement Phase 0**
-   - Create all interface files
-   - Set up CI pipeline
-   - Document architecture in ARCHITECTURE.md
+1. **v2.2.0 - CLI Server Mode** (Active)
+   - MCP server integration with Claude CLI
+   - Task routing based on capability matching
+   - See `cli-project_plan.md` for details
 
-3. **Begin Phase 1**
-   - Implement Claude adapter first
-   - Add integration tests with mocks
+2. **Research Integration**
+   - Agent failure taxonomy (arxiv:2509.25370) - ✅ Implemented
+   - Confidence-weighted consensus (CP-WBFT) - ✅ Implemented
+   - RouteLLM-style task routing - ✅ Implemented
+   - See issue #116 for research tracking
+
+3. **Quality Maintenance**
+   - 2846 tests passing
+   - TypeDoc API documentation
+   - Security hardening ongoing (#115)
 
 ---
 
 _Plan approved by multi-agent consensus on 2026-01-03_
-_Updated for v2.0.0 consolidation on 2026-01-04 (ET)_
+_Updated for v2.2.0 progress on 2026-01-07 (ET)_
 _Original: claude-team-mcp | Rewrite: Nexus Agents_
 _License: MIT (attribution preserved)_
