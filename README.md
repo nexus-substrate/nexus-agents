@@ -206,12 +206,22 @@ Experts can collaborate on complex tasks. The Tech Lead combines their outputs i
 
 Use different AI models through unified interfaces:
 
-| Provider   | Models                  | Best For                   |
-| ---------- | ----------------------- | -------------------------- |
-| **Claude** | Haiku, Sonnet, Opus     | General coding, analysis   |
-| **OpenAI** | GPT-4o, GPT-4o-mini, o1 | Reasoning, code generation |
-| **Gemini** | Pro, Ultra              | Long context, multimodal   |
-| **Ollama** | Llama, CodeLlama, etc.  | Local inference, privacy   |
+| Provider   | Models                         | Best For                   |
+| ---------- | ------------------------------ | -------------------------- |
+| **Claude** | Sonnet 4, Opus 4.5, Haiku 4.5  | General coding, analysis   |
+| **OpenAI** | GPT-4o, o1, Codex              | Reasoning, code generation |
+| **Gemini** | 2.5 Pro, 2.5 Flash             | Long context, multimodal   |
+| **Ollama** | Llama 3, CodeLlama, Qwen, etc. | Local inference, privacy   |
+
+#### CLI Integration (v2.2.0+)
+
+nexus-agents integrates with external CLI tools for orchestration:
+
+| CLI            | Version | Models Available                | Auth  |
+| -------------- | ------- | ------------------------------- | ----- |
+| **Claude CLI** | 2.0.76  | sonnet, opus (aliases)          | OAuth |
+| **Gemini CLI** | 0.22.5  | Model router (auto-selection)   | OAuth |
+| **Codex CLI**  | 0.77.0  | codex-mini-latest, GPT-5 family | OAuth |
 
 Model selection uses semantic classification with tier escalation:
 
