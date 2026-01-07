@@ -1,6 +1,6 @@
 # Nexus Agents Architecture
 
-**Version:** 2.0.1
+**Version:** 2.1.0
 **Last Updated:** 2026-01-06 (ET)
 **Status:** Production Release
 
@@ -43,9 +43,11 @@ nexus-agents/
 │           │               # - Token counter (universal)
 │           │               # - Work balancer for parallel tasks
 │           │               # - Hybrid memory backend (SQLite + Markdown)
+│           │               # - Typed memory (MIRIX-style 6-type system)
 │           ├── consensus/  # Multi-agent consensus engine
 │           │               # - Voting strategies (majority, supermajority, unanimous)
 │           │               # - Proof-of-learning weighted voting
+│           │               # - CP-WBFT weighted Byzantine consensus
 │           └── index.ts    # Public API exports
 └── apps/
     └── nexus-agents/       # Main entry point
@@ -425,6 +427,77 @@ interface Vote {
 }
 ```
 
+### ITypedMemory (Context)
+
+MIRIX-style typed memory with six distinct memory types (Issue #101, arXiv:2507.07957).
+
+```typescript
+interface ITypedMemory {
+  readonly core: ICoreMemory; // Agent identity, constraints
+  readonly episodic: IEpisodicMemory; // Task experiences
+  readonly semantic: ISemanticMemory; // Domain knowledge
+  readonly procedural: IProceduralMemory; // Skills, workflows
+  readonly resource: IResourceMemory; // External references
+  readonly vault: IKnowledgeVault; // Persistent cross-session storage
+
+  queryByType(type: MemoryType, query: string): Promise<Result<TypedMemoryEntry[], MemoryError>>;
+  filterByRelevance(role: AgentRole): Promise<Result<TypedMemoryEntry[], MemoryError>>;
+  getStats(): Promise<Result<TypedMemoryStats, MemoryError>>;
+  pruneExpired(): Promise<Result<TypedMemoryPruneResult, MemoryError>>;
+}
+
+type MemoryType = 'core' | 'episodic' | 'semantic' | 'procedural' | 'resource' | 'vault';
+```
+
+### IBudgetRouter (CLI Adapters)
+
+Budget-constrained task routing with PILOT pattern (Issue #102, arXiv:2508.21141).
+
+```typescript
+interface IBudgetRouter {
+  getSessionBudget(): SessionBudget;
+  updateBudget(usage: { tokens?: number; costUsd?: number }): void;
+  resetBudget(): void;
+  checkBudget(task: CliTask, constraint?: BudgetConstraint): BudgetRoutingResult;
+  routeWithBudget(
+    task: CliTask,
+    budget?: BudgetConstraint
+  ): Promise<Result<BudgetRoutingResult, BudgetExceededError>>;
+  executeWithBudget(
+    task: CliTask,
+    budget?: BudgetConstraint
+  ): Promise<Result<CliResponse & { budgetAfter: SessionBudget }, CliError>>;
+}
+
+interface BudgetConstraint {
+  readonly maxTokens?: number;
+  readonly maxCostUsd?: number;
+  readonly maxLatencyMs?: number;
+}
+```
+
+### IWeightedVoting (Consensus)
+
+CP-WBFT weighted Byzantine fault-tolerant voting (Issue #103, arXiv:2511.10400).
+
+```typescript
+interface IWeightedVotingEngine {
+  createSession(config: WeightedVotingConfig): WeightedVotingSession;
+  submitVote(sessionId: string, vote: WeightedVote): WeightedVoteResult;
+  finalizeVoting(sessionId: string): WeightedVotingResult;
+  calculateWeights(participants: WeightedParticipant[]): ParticipantWeights;
+  detectCollusion(votes: readonly WeightedVote[]): CollusionAnalysis;
+}
+
+interface WeightedVote {
+  readonly participantId: string;
+  readonly decision: 'approve' | 'reject' | 'abstain';
+  readonly confidence: number; // 0-1
+  readonly reasoning: string;
+  readonly evidence?: string[];
+}
+```
+
 ### ContextPruner (Agents)
 
 Manages context window with multiple pruning strategies.
@@ -505,13 +578,15 @@ stateDiagram-v2
 
 ### Threat Model
 
-| Threat           | Vector               | Mitigation                           |
-| ---------------- | -------------------- | ------------------------------------ |
-| Path Traversal   | Malicious file paths | Path normalization, directory jail   |
-| ReDoS            | Malicious regex      | Static patterns only, no user RegExp |
-| Secrets Exposure | Logs, errors         | Secrets vault, sanitization          |
-| Token Exhaustion | Unbounded context    | Memory caps, pruning                 |
-| Injection        | Malformed prompts    | Input validation, Zod schemas        |
+| Threat             | Vector               | Mitigation                                |
+| ------------------ | -------------------- | ----------------------------------------- |
+| Path Traversal     | Malicious file paths | Path normalization, directory jail        |
+| ReDoS              | Malicious regex      | Static patterns only, no user RegExp      |
+| MCP SDK ReDoS      | CVE-2026-0621        | TimeoutGuard, URI validation (Issue #107) |
+| Secrets Exposure   | Logs, errors         | Secrets vault, sanitization               |
+| Token Exhaustion   | Unbounded context    | Memory caps, pruning                      |
+| Injection          | Malformed prompts    | Input validation, Zod schemas             |
+| Byzantine Failures | Malicious agents     | CP-WBFT voting, weighted consensus        |
 
 ### Security Layers
 
@@ -520,6 +595,8 @@ stateDiagram-v2
 3. **Rate Limiting**: Token bucket per tool
 4. **Memory Bounds**: Context pruning, history caps
 5. **Path Safety**: Normalized paths, resolved relative to allowed roots
+6. **Timeout Protection**: TimeoutGuard for all async operations (CVE-2026-0621 mitigation)
+7. **Byzantine Fault Tolerance**: Weighted consensus prevents malicious agent influence
 
 ### Sanitization Pipeline
 
@@ -656,4 +733,4 @@ const myTool: ITool = {
 
 ---
 
-_Architecture documented on 2026-01-05 (ET) - Updated for Phase 2-4 infrastructure_
+_Architecture documented on 2026-01-06 (ET) - Updated with typed memory, budget routing, weighted voting, and CVE-2026-0621 mitigation_
