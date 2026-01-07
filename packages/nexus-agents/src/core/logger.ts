@@ -37,12 +37,33 @@ export interface ILogger {
 
 /** Patterns to sanitize from logs */
 const SECRET_PATTERNS = [
+  // API keys (OpenAI, Anthropic)
   /sk-[a-zA-Z0-9-_]{20,}/g,
+  // Bearer tokens
   /Bearer [a-zA-Z0-9-_.]+/g,
+  // Generic credential patterns
   /password["']?\s*[:=]\s*["']?[^"'\s]+/gi,
   /api[_-]?key["']?\s*[:=]\s*["']?[^"'\s]+/gi,
   /secret["']?\s*[:=]\s*["']?[^"'\s]+/gi,
   /token["']?\s*[:=]\s*["']?[^"'\s]+/gi,
+  // AWS credentials
+  /AKIA[0-9A-Z]{16}/g,
+  /aws_secret_access_key["']?\s*[:=]\s*["']?[^"'\s]+/gi,
+  /aws_session_token["']?\s*[:=]\s*["']?[^"'\s]+/gi,
+  // Azure credentials
+  /AccountKey=[a-zA-Z0-9+/=]+/gi,
+  /SharedAccessSignature=[a-zA-Z0-9%]+/gi,
+  /DefaultEndpointsProtocol=https?;AccountName=[^;]+;AccountKey=[^;]+/gi,
+  // GCP credentials
+  /"private_key":\s*"-----BEGIN[^"]+-----END[^"]+-----"/g,
+  /"private_key_id":\s*"[a-f0-9]+"/gi,
+  // GitHub tokens
+  /ghp_[a-zA-Z0-9]{36}/g,
+  /github_pat_[a-zA-Z0-9_]{22,}/g,
+  /gho_[a-zA-Z0-9]{36}/g,
+  /ghu_[a-zA-Z0-9]{36}/g,
+  /ghs_[a-zA-Z0-9]{36}/g,
+  /ghr_[a-zA-Z0-9]{36}/g,
 ];
 
 const LEVEL_PRIORITY: Record<LogLevel, number> = {

@@ -6,6 +6,11 @@
  *
  * (Source: cli-project_plan.md v2.1.0, Issue #90)
  * (Source: docs/research/cli-integration-architecture.md)
+ *
+ * SECURITY NOTE (shell: true in getVersion):
+ * Uses shell: true only for version check command.
+ * This is acceptable because the command and args are hardcoded constants.
+ * See codex-adapter.ts for detailed security rationale.
  */
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';

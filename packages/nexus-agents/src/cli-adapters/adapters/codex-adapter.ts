@@ -6,6 +6,15 @@
  *
  * (Source: cli-project_plan.md v2.1.0)
  * (Source: docs/research/cli-integration-architecture.md)
+ *
+ * SECURITY NOTE (shell: true):
+ * spawn() uses shell: true to ensure the CLI tool is found via PATH.
+ * This is acceptable because:
+ * 1. The command ('codex') is hardcoded, not user-provided
+ * 2. All arguments are validated and constructed internally
+ * 3. User task content is passed via --print flag with shell escaping
+ * If shell: false is preferred, ensure 'codex' is in PATH or use full path.
+ * See: https://nodejs.org/api/child_process.html#child_processspawncommand-args-options
  */
 
 import { spawn } from 'node:child_process';
