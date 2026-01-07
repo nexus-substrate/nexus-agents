@@ -272,6 +272,30 @@ interface IAgent {
 }
 ```
 
+### ICollaborationProtocol
+
+Collaboration protocols enable multiple agents to work together on complex tasks.
+
+```typescript
+interface ICollaborationProtocol {
+  readonly pattern: CollaborationPattern;
+  execute(
+    config: CollaborationConfig,
+    agents: Map<string, IAgent>
+  ): Promise<Result<CollaborationResult, AgentError>>;
+  cancel(reason: string): void;
+}
+
+type CollaborationPattern =
+  | 'sequential' // Experts work in order, passing results forward
+  | 'parallel' // Experts work simultaneously on the same task
+  | 'review' // One expert reviews another's work
+  | 'consensus' // Voting-based decision making
+  | 'reflexion'; // Multi-Agent Reflexion with persona-based critics (arxiv:2512.20845)
+```
+
+**Reflexion Protocol (MAR):** Uses multiple persona-based critics (devil's advocate, security critic, maintainability critic) to iteratively refine outputs, avoiding "degeneration of thought" from single-agent self-reflection.
+
 ### IWorkflowEngine
 
 Workflow execution engine.

@@ -382,12 +382,12 @@ nexus-agents --mode=mesh        # Full hybrid mesh
 
 **Scope:**
 
-- [ ] Universal token counter (all providers)
-- [ ] Capacity monitoring and alerting
-- [ ] Context pruning strategies
-- [ ] Automatic work balancing
+- [x] Universal token counter (all providers) - `src/context/token-counter.ts`
+- [x] Capacity monitoring and alerting - `src/adapters/capacity-monitor.ts`
+- [x] Context pruning strategies - `src/agents/context-pruner.ts`
+- [x] Automatic work balancing - `src/context/work-balancer.ts`
 - [ ] Usage optimization suggestions
-- [ ] Hybrid memory backend
+- [x] Hybrid memory backend - `src/context/memory-backend.ts`
 
 #### 4.1 Token Counting System
 
