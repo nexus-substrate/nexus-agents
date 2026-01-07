@@ -66,5 +66,9 @@ export type {
   CreateArtifactInput,
 } from './artifact.js';
 
+// Error Metrics
+export { ErrorMetricsCollector, errorMetrics, recordError } from './metrics.js';
+export type { ErrorMetrics, RecordErrorOptions, MetricsExport } from './metrics.js';
+
 // Types
 export * from './types/index.js';
