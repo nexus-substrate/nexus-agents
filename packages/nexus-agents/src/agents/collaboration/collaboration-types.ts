@@ -28,8 +28,15 @@ export {
  * - review: One expert reviews another's work
  * - consensus: Voting-based decision making
  * - reflexion: Multi-agent reflexion with persona-based critics (arxiv:2512.20845)
+ * - aegean: Byzantine-fault-tolerant consensus (arxiv:2512.20184)
  */
-export type CollaborationPattern = 'sequential' | 'parallel' | 'review' | 'consensus' | 'reflexion';
+export type CollaborationPattern =
+  | 'sequential'
+  | 'parallel'
+  | 'review'
+  | 'consensus'
+  | 'reflexion'
+  | 'aegean';
 
 /**
  * Session status during collaboration lifecycle.

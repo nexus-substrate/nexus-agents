@@ -15,6 +15,7 @@ export const CollaborationPatternSchema = z.enum([
   'review',
   'consensus',
   'reflexion',
+  'aegean',
 ]);
 
 /**
@@ -116,6 +117,7 @@ export const DEFAULT_TIMEOUTS = {
   review: 2 * 60 * 1000, // 2 minutes
   consensus: 5 * 60 * 1000, // 5 minutes
   reflexion: 10 * 60 * 1000, // 10 minutes (iterative)
+  aegean: 5 * 60 * 1000, // 5 minutes (Byzantine consensus)
 } as const;
 
 /**
@@ -132,4 +134,5 @@ export const MIN_EXPERTS_FOR_PATTERN = {
   review: 2,
   consensus: 3,
   reflexion: 1, // Single producer with persona-based critics
+  aegean: 3, // Minimum for Byzantine fault tolerance (3f+1 with f=0)
 } as const;

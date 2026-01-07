@@ -22,7 +22,8 @@ import { sleep } from './protocol-helpers.js';
 import { ReviewProtocol } from './review-protocol.js';
 import { ConsensusProtocol } from './consensus-protocol.js';
 import { ReflexionProtocol } from './reflexion-protocol.js';
-export { ReviewProtocol, ConsensusProtocol, ReflexionProtocol };
+import { AegeanProtocol } from './aegean-protocol.js';
+export { ReviewProtocol, ConsensusProtocol, ReflexionProtocol, AegeanProtocol };
 
 /**
  * Base interface for collaboration protocols.
@@ -296,6 +297,8 @@ export class ProtocolFactory {
         return new ConsensusProtocol(this.options);
       case 'reflexion':
         return new ReflexionProtocol(this.options);
+      case 'aegean':
+        return new AegeanProtocol(this.options);
       default: {
         const unknownPattern: never = pattern;
         throw new AgentError(`Unknown protocol pattern: ${unknownPattern as string}`);
