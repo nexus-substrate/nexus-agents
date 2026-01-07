@@ -53,6 +53,8 @@
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
     "typecheck": "tsc --noEmit",
+    "docs": "typedoc",
+    "docs:watch": "typedoc --watch",
     "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
@@ -70,6 +72,7 @@
   "devDependencies": {
     "@types/semver": "^7.7.1",
     "@types/uuid": "^11.0.0",
-    "tsup": "^8.3.0"
+    "tsup": "^8.3.0",
+    "typedoc": "0.28.15"
   }
 }

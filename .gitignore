@@ -30,6 +30,10 @@ pnpm-debug.log*
 # Turbo
 .turbo/
 
+# Generated docs
+docs/api/
+**/docs/api/
+
 # Cache
 .cache/
 .eslintcache

@@ -1,0 +1,24 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": ["src/index.ts"],
+  "out": "docs/api",
+  "name": "nexus-agents",
+  "includeVersion": true,
+  "readme": "README.md",
+  "excludePrivate": true,
+  "excludeProtected": false,
+  "excludeInternal": true,
+  "categorizeByGroup": true,
+  "categoryOrder": ["Core", "Agents", "Workflows", "MCP", "CLI Adapters", "Config", "*"],
+  "navigation": {
+    "includeCategories": true,
+    "includeGroups": true
+  },
+  "sort": ["source-order"],
+  "visibilityFilters": {
+    "protected": true,
+    "@internal": false
+  },
+  "plugin": [],
+  "gitRevision": "main"
+}

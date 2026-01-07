@@ -174,12 +174,12 @@ const schema = z.object({
 
 ## Built-in Tools
 
-| Tool           | Description                  | Input                  |
-| -------------- | ---------------------------- | ---------------------- |
-| `orchestrate`  | Delegate task to expert team | `{ task, context? }`   |
-| `run_workflow` | Execute a workflow template  | `{ template, inputs }` |
-| `list_experts` | List available experts       | `{}`                   |
-| `get_status`   | Get execution status         | `{ executionId }`      |
+| Tool                | Description                  | Input                             |
+| ------------------- | ---------------------------- | --------------------------------- |
+| `orchestrate`       | Delegate task to expert team | `{ task, context? }`              |
+| `create_expert`     | Create a specialized expert  | `{ role, task, options? }`        |
+| `run_workflow`      | Execute a workflow template  | `{ template, inputs }`            |
+| `delegate_to_model` | Route task to optimal model  | `{ task, preferred_capability? }` |
 
 ## Error Handling
 
