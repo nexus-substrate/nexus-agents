@@ -333,7 +333,7 @@ describe('TypedMemory', () => {
     });
 
     it('should filter by relevance to agent role', async () => {
-      const result = await memory.filterByRelevance('researcher');
+      const result = await memory.filterByRelevance('architecture_expert');
       expect(result.ok).toBe(true);
     });
 

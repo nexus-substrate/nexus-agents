@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 /**
  * Budget-constrained task router implementation.
  * Based on PILOT pattern (arXiv:2508.21141) for cost-efficient task routing.
@@ -7,6 +8,7 @@
  *
  * @module cli-adapters/budget-router
  * (Source: Issue #102, arXiv:2508.21141 - EMNLP 2025)
+ * @todo Split into smaller modules (router-core, budget-tracking, warnings)
  */
 
 import type { Result } from '../core/index.js';
@@ -97,7 +99,8 @@ export class BudgetRouter implements IBudgetRouter {
     this.sessionStartedAt = new Date();
 
     // Set up auto-reset timer if configured
-    if (this.options.sessionBudget.resetIntervalMs > 0) {
+    const resetInterval = this.options.sessionBudget.resetIntervalMs ?? 3600000;
+    if (resetInterval > 0) {
       this.scheduleReset();
     }
   }
@@ -106,7 +109,11 @@ export class BudgetRouter implements IBudgetRouter {
    * Get current session budget status.
    */
   getSessionBudget(): SessionBudget {
-    const { tokenBudget, costBudgetUsd, resetIntervalMs } = this.options.sessionBudget;
+    const sessionBudget = this.options.sessionBudget;
+    const tokenBudget = sessionBudget.tokenBudget ?? 1000000;
+    const costBudgetUsd = sessionBudget.costBudgetUsd ?? 10.0;
+    const resetIntervalMs = sessionBudget.resetIntervalMs ?? 3600000;
+
     const tokensRemaining = Math.max(0, tokenBudget - this.tokensUsed);
     const costRemainingUsd = Math.max(0, costBudgetUsd - this.costSpentUsd);
 
@@ -114,11 +121,10 @@ export class BudgetRouter implements IBudgetRouter {
     const costUtilization = costBudgetUsd > 0 ? (this.costSpentUsd / costBudgetUsd) * 100 : 0;
     const utilizationPercent = Math.max(tokenUtilization, costUtilization);
 
-    const interval = resetIntervalMs ?? 0;
     const resetsAt =
-      interval > 0 ? new Date(this.sessionStartedAt.getTime() + interval) : undefined;
+      resetIntervalMs > 0 ? new Date(this.sessionStartedAt.getTime() + resetIntervalMs) : undefined;
 
-    return {
+    const result: SessionBudget = {
       tokenBudget,
       costBudgetUsd,
       tokensUsed: this.tokensUsed,
@@ -127,8 +133,12 @@ export class BudgetRouter implements IBudgetRouter {
       costRemainingUsd,
       utilizationPercent,
       startedAt: this.sessionStartedAt,
-      resetsAt,
     };
+
+    if (resetsAt !== undefined) {
+      return { ...result, resetsAt };
+    }
+    return result;
   }
 
   /**
@@ -158,7 +168,8 @@ export class BudgetRouter implements IBudgetRouter {
     logger.info('Budget reset');
 
     // Reschedule reset timer
-    if (this.options.sessionBudget.resetIntervalMs > 0) {
+    const resetInterval = this.options.sessionBudget.resetIntervalMs ?? 3600000;
+    if (resetInterval > 0) {
       this.scheduleReset();
     }
   }
@@ -324,9 +335,10 @@ export class BudgetRouter implements IBudgetRouter {
     if (this.resetTimer) {
       clearTimeout(this.resetTimer);
     }
+    const resetInterval = this.options.sessionBudget.resetIntervalMs ?? 3600000;
     this.resetTimer = setTimeout(() => {
       this.resetBudget();
-    }, this.options.sessionBudget.resetIntervalMs);
+    }, resetInterval);
   }
 
   private selectAdapterWithinBudget(
@@ -391,7 +403,12 @@ export class BudgetRouter implements IBudgetRouter {
     estimatedCostUsd: number,
     warnings: BudgetWarning[]
   ): void {
-    const thresholds = this.options.warningThresholds;
+    const rawThresholds = this.options.warningThresholds;
+    const thresholds = {
+      info: rawThresholds.info ?? 50,
+      warning: rawThresholds.warning ?? 75,
+      critical: rawThresholds.critical ?? 90,
+    };
 
     // Token budget warnings
     const projectedTokenUtilization =

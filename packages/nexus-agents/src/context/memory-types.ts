@@ -431,11 +431,13 @@ export interface RelevanceFilterConfig {
  */
 export const DEFAULT_RELEVANCE_CONFIG: RelevanceFilterConfig = {
   roleMemoryTypes: {
-    orchestrator: [MemoryType.CORE, MemoryType.EPISODIC, MemoryType.VAULT],
-    researcher: [MemoryType.SEMANTIC, MemoryType.RESOURCE, MemoryType.VAULT],
-    implementer: [MemoryType.PROCEDURAL, MemoryType.RESOURCE, MemoryType.EPISODIC],
-    reviewer: [MemoryType.SEMANTIC, MemoryType.EPISODIC, MemoryType.VAULT],
-    specialist: [MemoryType.SEMANTIC, MemoryType.PROCEDURAL, MemoryType.RESOURCE],
+    tech_lead: [MemoryType.CORE, MemoryType.EPISODIC, MemoryType.VAULT],
+    code_expert: [MemoryType.PROCEDURAL, MemoryType.RESOURCE, MemoryType.EPISODIC],
+    architecture_expert: [MemoryType.SEMANTIC, MemoryType.RESOURCE, MemoryType.VAULT],
+    security_expert: [MemoryType.SEMANTIC, MemoryType.VAULT, MemoryType.PROCEDURAL],
+    documentation_expert: [MemoryType.SEMANTIC, MemoryType.RESOURCE, MemoryType.EPISODIC],
+    testing_expert: [MemoryType.SEMANTIC, MemoryType.EPISODIC, MemoryType.VAULT],
+    custom: [MemoryType.SEMANTIC, MemoryType.PROCEDURAL, MemoryType.RESOURCE],
   },
   minRelevanceScore: 0.5,
   maxEntriesPerType: 10,

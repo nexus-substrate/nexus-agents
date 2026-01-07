@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 /**
  * nexus-agents/context - Typed Memory Implementation
  *
@@ -5,6 +6,7 @@
  *
  * @module context/typed-memory
  * (Source: Issue #101, arXiv:2507.07957 - MIRIX Architecture)
+ * @todo Split into smaller modules (memory-ops, relevance-filter, stats)
  */
 
 import type { Result } from '../core/result.js';

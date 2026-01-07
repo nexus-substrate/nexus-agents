@@ -85,6 +85,7 @@ export type CliErrorCode =
   | 'CONNECTION_ERROR' // MCP connection failed
   | 'EXECUTION_ERROR' // CLI returned error
   | 'UNSUPPORTED_VERSION' // CLI version not supported
+  | 'BUDGET_EXCEEDED' // Budget limit exceeded
   | 'UNKNOWN'; // Unknown error
 
 /**
