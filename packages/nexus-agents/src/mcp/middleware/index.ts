@@ -27,6 +27,18 @@ export {
   type McpLogContext,
 } from './logging.js';
 
+// Timeout guard (CVE-2026-0621 mitigation)
+export {
+  TimeoutGuard,
+  createDefaultTimeoutGuard,
+  UriValidation,
+  type TimeoutGuardConfig,
+  type TimeoutError,
+  type TimeoutErrorCode,
+  type GuardedResult,
+  type ExecuteOptions,
+} from './timeout-guard.js';
+
 // Policy firewall
 export {
   // Types
