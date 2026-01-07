@@ -133,3 +133,20 @@ export {
   createAegeanProtocol,
   type AegeanProtocolOptions,
 } from './aegean-protocol.js';
+
+// Task-Aware Protocol Selection (Source: Issue #125, arxiv:2502.19130)
+export {
+  TaskTypeClassifier,
+  createTaskTypeClassifier,
+  type TaskType,
+  type ClassificationResult,
+  type ClassificationSignal,
+  type TaskTypeClassifierConfig,
+} from './task-type-classifier.js';
+
+export {
+  AdaptiveProtocolSelector,
+  createAdaptiveProtocolSelector,
+  type AdaptiveProtocolConfig,
+  type SelectionResult,
+} from './adaptive-protocol-selector.js';
