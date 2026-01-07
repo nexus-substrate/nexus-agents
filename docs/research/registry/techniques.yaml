@@ -75,19 +75,23 @@ techniques:
       reasoning_improvement: '+13.2%'
       knowledge_improvement: '+2.8%'
 
-    status: planned
+    status: implemented
     priority: P1
     complexity: low
 
     integration_files:
-      - 'packages/nexus-agents/src/agents/collaboration/consensus-protocol.ts'
+      - 'packages/nexus-agents/src/agents/collaboration/task-type-classifier.ts'
+      - 'packages/nexus-agents/src/agents/collaboration/adaptive-protocol-selector.ts'
 
-    implementation_issue: null
+    implementation_issue: 125
     related_prs: []
 
     notes: |
-      Low complexity, high impact. Add task-type classifier to
-      select between majority voting and consensus.
+      Implemented TaskTypeClassifier and AdaptiveProtocolSelector:
+      - Keyword-based task classification (reasoning vs knowledge)
+      - Automatic protocol selection based on task type
+      - Configurable pattern mapping
+      - 31 comprehensive tests
 
     dependencies: []
 
@@ -95,6 +99,9 @@ techniques:
       - date: '2026-01-06'
         decision: 'Added to roadmap Phase 1'
         rationale: 'Low complexity, immediate benefit'
+      - date: '2026-01-07'
+        decision: 'Implemented'
+        rationale: 'Commit 33f1f95 - feat(collaboration): implement task-aware protocol selection (#125)'
 
   cp-wbft-consensus:
     name: 'CP-WBFT Byzantine Fault Tolerant Consensus'
