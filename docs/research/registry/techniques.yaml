@@ -29,19 +29,23 @@ techniques:
       token_reduction: '4.4x'
       quality_impact: 'within 2.5% of baseline'
 
-    status: planned
+    status: implemented
     priority: P1
     complexity: medium
 
     integration_files:
-      - 'packages/nexus-agents/src/agents/collaboration/consensus-protocol.ts'
+      - 'packages/nexus-agents/src/agents/collaboration/aegean-types.ts'
+      - 'packages/nexus-agents/src/agents/collaboration/aegean-protocol.ts'
 
-    implementation_issue: 100
+    implementation_issue: 119
     related_prs: []
 
     notes: |
-      Direct replacement for current heuristic consensus.
-      Implement early termination when quorum reached.
+      Implemented as AegeanProtocol class with:
+      - Leader-based coordination with round-robin selection
+      - Incremental quorum detection for early termination
+      - Byzantine fault tolerance (tolerates f faults out of 3f+1 agents)
+      - Full test coverage (23 tests)
 
     dependencies: []
 
@@ -49,6 +53,9 @@ techniques:
       - date: '2026-01-06'
         decision: 'Added to roadmap Phase 1'
         rationale: 'High impact, direct replacement for existing module'
+      - date: '2026-01-07'
+        decision: 'Implemented'
+        rationale: 'Commit 8bca0fa - feat(collaboration): implement Aegean consensus protocol (#119)'
 
   task-aware-protocol-selection:
     name: 'Task-Type Protocol Selection'
@@ -144,21 +151,23 @@ techniques:
     metrics:
       reasoning_improvement: 'significant across benchmarks'
 
-    status: planned
+    status: implemented
     priority: P1
     complexity: medium
 
     integration_files:
-      - 'packages/nexus-agents/src/agents/collaboration/collaboration-space.ts'
-      - 'packages/nexus-agents/src/agents/protocols/mar-protocol.ts'
+      - 'packages/nexus-agents/src/agents/collaboration/reflexion-types.ts'
+      - 'packages/nexus-agents/src/agents/collaboration/reflexion-protocol.ts'
 
     implementation_issue: null
     related_prs: []
 
     notes: |
-      Cross-agent critique within collaboration spaces.
-      Diverse perspectives on output quality.
-      Consensus through multi-agent evaluation.
+      Implemented as ReflexionProtocol class with:
+      - Persona-based multi-agent debates
+      - Weighted severity scoring
+      - Iterative critique and synthesis rounds
+      - Default code review personas (security, performance, maintainability, correctness)
 
     dependencies: []
 
@@ -166,6 +175,9 @@ techniques:
       - date: '2026-01-06'
         decision: 'Added to roadmap Phase 1'
         rationale: 'High impact on reasoning quality'
+      - date: '2026-01-07'
+        decision: 'Implemented'
+        rationale: 'Commit 133ad09 - feat(collaboration): implement Multi-Agent Reflexion protocol'
 
   free-mad-scoring:
     name: 'Free-MAD Anti-Conformity Scoring'
