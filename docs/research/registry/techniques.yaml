@@ -651,20 +651,26 @@ techniques:
     metrics:
       benchmark_accuracy: '86.2% on LiveCodeBench'
 
-    status: planned
+    status: implemented
     priority: P1
     complexity: medium
 
     integration_files:
-      - 'packages/nexus-agents/src/agents/tech-lead.ts'
-      - 'packages/nexus-agents/src/agents/experts/expert-types.ts'
+      - 'packages/nexus-agents/src/agents/collaboration/trinity-types.ts'
+      - 'packages/nexus-agents/src/agents/collaboration/trinity-coordinator.ts'
+      - 'packages/nexus-agents/src/agents/collaboration/trinity-helpers.ts'
+      - 'packages/nexus-agents/src/core/types/agent.ts'
 
-    implementation_issue: null
+    implementation_issue: 141
     related_prs: []
 
     notes: |
-      Maps directly to TechLead/Expert pattern.
-      Add explicit Verifier role to expert types.
+      Implemented as TrinityCoordinator class with:
+      - Thinker role for problem decomposition and planning
+      - Worker role for task execution
+      - Verifier role for output validation with pass/fail verdict
+      - Iterative refinement loop (max 3 iterations)
+      - 22 comprehensive tests
 
     dependencies: []
 
@@ -672,6 +678,9 @@ techniques:
       - date: '2026-01-06'
         decision: 'Added to roadmap Phase 2'
         rationale: 'High impact, architectural alignment'
+      - date: '2026-01-08'
+        decision: 'Implemented'
+        rationale: 'Commit pending - feat(collaboration): implement TRINITY coordinator (#141)'
 
   rl-orchestrator:
     name: 'RL-Trained Orchestrator'

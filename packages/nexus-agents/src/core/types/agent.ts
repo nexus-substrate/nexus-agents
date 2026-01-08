@@ -22,6 +22,9 @@ export type AgentRole =
   | 'security_expert'
   | 'documentation_expert'
   | 'testing_expert'
+  | 'thinker' // TRINITY: High-level reasoning (arXiv:2512.04695)
+  | 'worker' // TRINITY: Task execution
+  | 'verifier' // TRINITY: Output validation
   | 'custom';
 
 /**

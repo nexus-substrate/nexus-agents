@@ -195,3 +195,34 @@ export {
   type CodeExecutor,
   type SelfDebugExecuteOptions,
 } from './self-debug-protocol.js';
+
+// TRINITY Thinker/Worker/Verifier coordinator (Source: Issue #141, arxiv:2512.04695)
+export type {
+  TrinityRole,
+  TrinityRoleConfig,
+  TrinityPhase,
+  TrinityPhaseResult,
+  ThinkerOutput,
+  WorkerOutput,
+  VerifierOutput,
+  TrinityConfig,
+  TrinityResult,
+} from './trinity-types.js';
+
+export {
+  TRINITY_ROLE_PROMPTS,
+  TRINITY_ROLE_TEMPERATURES,
+  TRINITY_ROLE_MAX_TOKENS,
+  DEFAULT_TRINITY_CONFIG,
+  TrinityRoleSchema,
+  TrinityPhaseSchema,
+  VerifierVerdictSchema,
+  TrinityConfigSchema,
+  TrinityStopReasonSchema,
+} from './trinity-types.js';
+
+export {
+  TrinityCoordinator,
+  createTrinityCoordinator,
+  type TrinityExecuteOptions,
+} from './trinity-coordinator.js';
