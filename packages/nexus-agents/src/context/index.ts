@@ -89,3 +89,22 @@ export type {
   VaultEntry,
   RelevanceFilterConfig,
 } from './memory-types.js';
+
+// Session Memory (Issue #130, arXiv:2303.11366 - Reflexion)
+export {
+  SessionMemory,
+  createSessionMemory,
+  SessionMemoryError,
+  SessionLearningSchema,
+  CompletedTaskSchema,
+  ResolvedErrorSchema,
+  SessionEpisodeSchema,
+} from './session-memory.js';
+
+export type {
+  SessionMemoryConfig,
+  SessionLearning,
+  CompletedTask,
+  ResolvedError,
+  SessionEpisode,
+} from './session-memory.js';
