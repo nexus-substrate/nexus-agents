@@ -132,16 +132,14 @@ export class TrinityCoordinator {
 
     for (let i = 0; i < this.config.maxIterations; i++) {
       if (this.isTimedOut(ctx)) {
-        return ok(
-          this.buildResult({
-            ctx,
-            thinker,
-            worker,
-            verifier,
-            stopReason: 'timeout',
-            iterations: i + 1,
-          })
-        );
+        return this.okResult({
+          ctx,
+          thinker,
+          worker,
+          verifier,
+          stopReason: 'timeout',
+          iterations: i + 1,
+        });
       }
 
       const workResult = await this.runWorker(ctx, thinker, verifier);
@@ -155,16 +153,14 @@ export class TrinityCoordinator {
 
       if (verifier.verdict === 'pass') {
         this.log.info('TRINITY verification passed', { iterations: i + 1 });
-        return ok(
-          this.buildResult({
-            ctx,
-            thinker,
-            worker,
-            verifier,
-            stopReason: 'verified',
-            iterations: i + 1,
-          })
-        );
+        return this.okResult({
+          ctx,
+          thinker,
+          worker,
+          verifier,
+          stopReason: 'verified',
+          iterations: i + 1,
+        });
       }
 
       this.log.info('TRINITY verification failed, iterating', {
@@ -174,16 +170,19 @@ export class TrinityCoordinator {
     }
 
     this.log.warn('TRINITY max iterations reached', { iterations: this.config.maxIterations });
-    return ok(
-      this.buildResult({
-        ctx,
-        thinker,
-        worker,
-        verifier,
-        stopReason: 'max_iterations',
-        iterations: this.config.maxIterations,
-      })
-    );
+    return this.okResult({
+      ctx,
+      thinker,
+      worker,
+      verifier,
+      stopReason: 'max_iterations',
+      iterations: this.config.maxIterations,
+    });
+  }
+
+  /** Build an ok Result with the given parameters. */
+  private okResult(opts: ResultBuildOpts): Result<TrinityResult, AgentError> {
+    return ok(this.buildResult(opts));
   }
 
   private async runThinker(ctx: CoordinationContext): Promise<Result<ThinkerOutput, AgentError>> {

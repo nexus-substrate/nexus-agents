@@ -5,7 +5,15 @@
  * (Source: Issue #131, arXiv:2304.05128)
  */
 
-import type { ParsedError, ErrorExplanation, CodeFix, ErrorPattern } from './self-debug-types.js';
+import type {
+  ParsedError,
+  ErrorExplanation,
+  CodeFix,
+  ErrorPattern,
+  ExecutionResult,
+  DebugIteration,
+  SelfDebugResult,
+} from './self-debug-types.js';
 
 /** Extract group from regex match. */
 export function extractGroup(match: RegExpMatchArray, index?: number): string | undefined {
@@ -110,4 +118,112 @@ export function parseFix(errorId: string, originalCode: string, output: string):
   const extracted = codeMatch?.[1]?.trim();
   const fixedCode = extracted !== undefined && extracted.length > 0 ? extracted : output;
   return { errorId, originalCode, fixedCode, explanation: 'Generated fix', confidence: 0.7 };
+}
+
+/** Apply a code fix to the original code. */
+export function applyFix(code: string, fix: CodeFix): string {
+  const hasLocation = fix.location?.line !== undefined;
+  const hasOriginal = fix.originalCode.length > 0;
+  const hasFixed = fix.fixedCode.length > 0;
+  if (hasLocation && hasOriginal && hasFixed) return code.replace(fix.originalCode, fix.fixedCode);
+  return hasFixed ? fix.fixedCode : code;
+}
+
+/** Options for building iteration record. */
+export interface IterationBuildOpts {
+  readonly iteration: number;
+  readonly code: string;
+  readonly execution: ExecutionResult;
+  readonly errors: ParsedError[];
+  readonly explanations: ErrorExplanation[];
+  readonly fixes: CodeFix[];
+  readonly appliedFix: CodeFix | undefined;
+  readonly startTime: number;
+}
+
+/** Options for building final result. */
+export interface ResultBuildOpts {
+  readonly success: boolean;
+  readonly code: string;
+  readonly execution: ExecutionResult;
+  readonly history: DebugIteration[];
+  readonly errorsFixed: ParsedError[];
+  readonly stopReason: SelfDebugResult['stopReason'];
+}
+
+/** Build a debug iteration record. */
+export function buildIteration(opts: IterationBuildOpts): DebugIteration {
+  return {
+    iteration: opts.iteration,
+    codeSnapshot: opts.code,
+    executionResult: opts.execution,
+    errorsDetected: opts.errors,
+    explanations: opts.explanations,
+    proposedFixes: opts.fixes,
+    appliedFix: opts.appliedFix,
+    durationMs: Date.now() - opts.startTime,
+  };
+}
+
+/** Build the final SelfDebugResult. */
+export function buildResult(opts: ResultBuildOpts): SelfDebugResult {
+  return {
+    success: opts.success,
+    finalCode: opts.code,
+    finalExecution: opts.execution,
+    totalIterations: opts.history.length,
+    totalDurationMs: opts.history.reduce((sum, h) => sum + h.durationMs, 0),
+    errorsFixed: opts.errorsFixed,
+    errorsRemaining: opts.execution.errors,
+    history: opts.history,
+    stopReason: opts.stopReason,
+  };
+}
+
+/** Type for code executor function. */
+export type CodeExecutor = (code: string) => Promise<ExecutionResult>;
+
+/** Execute code with error handling. */
+export async function executeCode(executor: CodeExecutor, code: string): Promise<ExecutionResult> {
+  try {
+    return await executor(code);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { success: false, exitCode: 1, stdout: '', stderr: message, durationMs: 0, errors: [] };
+  }
+}
+
+/** Parse errors from execution result using error patterns. */
+export function parseErrorsFromOutput(
+  result: ExecutionResult,
+  patterns: readonly ErrorPattern[]
+): ParsedError[] {
+  if (result.errors.length > 0) return [...result.errors];
+  const errors: ParsedError[] = [];
+  const output = result.stderr.length > 0 ? result.stderr : result.stdout;
+  let errorId = 0;
+  for (const pattern of patterns) {
+    const matches = output.matchAll(new RegExp(pattern.pattern, 'gm'));
+    for (const match of matches) {
+      errors.push(createParsedError(match, pattern, ++errorId));
+    }
+  }
+  return errors;
+}
+
+/** Create a synthetic error when no pattern matches but execution failed. */
+export function createSyntheticError(execution: ExecutionResult, iterNum: number): ParsedError {
+  const stderr =
+    execution.stderr.length > 0
+      ? execution.stderr
+      : execution.stdout.length > 0
+        ? execution.stdout
+        : 'Unknown error';
+  return {
+    id: `error-synthetic-${String(iterNum)}`,
+    category: 'unknown',
+    severity: 'error',
+    message: stderr.slice(0, 500),
+    rawError: stderr,
+  };
 }

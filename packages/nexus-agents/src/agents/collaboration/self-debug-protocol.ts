@@ -23,19 +23,23 @@ import type {
 } from './self-debug-types.js';
 import { DEFAULT_ERROR_PATTERNS, DEFAULT_SELF_DEBUG_CONFIG } from './self-debug-types.js';
 import {
-  createParsedError,
   buildExplanationPrompt,
   buildFixPrompt,
   parseExplanation,
   parseFix,
+  applyFix,
+  buildIteration,
+  buildResult,
+  executeCode,
+  parseErrorsFromOutput,
+  createSyntheticError,
+  type CodeExecutor,
+  type ResultBuildOpts,
 } from './self-debug-helpers.js';
 
 // =============================================================================
 // Types
 // =============================================================================
-
-/** Executor function that runs code and returns results. */
-export type CodeExecutor = (code: string) => Promise<ExecutionResult>;
 
 /** Options for executing Self-Debug protocol. */
 export interface SelfDebugExecuteOptions {
@@ -70,28 +74,6 @@ interface FixAttemptOptions {
   readonly errors: ParsedError[];
   readonly iterNum: number;
   readonly iterStart: number;
-}
-
-/** Options for building iteration record. */
-interface IterationBuildOpts {
-  readonly iteration: number;
-  readonly code: string;
-  readonly execution: ExecutionResult;
-  readonly errors: ParsedError[];
-  readonly explanations: ErrorExplanation[];
-  readonly fixes: CodeFix[];
-  readonly appliedFix: CodeFix | undefined;
-  readonly startTime: number;
-}
-
-/** Options for building final result. */
-interface ResultBuildOpts {
-  readonly success: boolean;
-  readonly code: string;
-  readonly execution: ExecutionResult;
-  readonly history: DebugIteration[];
-  readonly errorsFixed: ParsedError[];
-  readonly stopReason: SelfDebugResult['stopReason'];
 }
 
 /** Internal result from an iteration. */
@@ -164,10 +146,10 @@ export class SelfDebugProtocol {
     this.cancelFlag = false;
     this.log.info('Starting self-debug protocol', { taskId: options.task.id });
 
-    const initialResult = await this.executeCode(ctx, options.code);
+    const initialResult = await executeCode(ctx.executor, options.code);
     if (initialResult.success) {
       return ok(
-        this.buildResult({
+        buildResult({
           success: true,
           code: options.code,
           execution: initialResult,
@@ -185,69 +167,55 @@ export class SelfDebugProtocol {
     ctx: ExecutionContext,
     initialCode: string
   ): Promise<Result<SelfDebugResult, AgentError>> {
-    const history: DebugIteration[] = [];
-    let currentCode = initialCode;
-    let errorsFixed: ParsedError[] = [];
+    const h: DebugIteration[] = [];
+    let code = initialCode;
+    let fixed: ParsedError[] = [];
 
     for (let i = 0; i < this.config.maxIterations; i++) {
-      if (this.isCancelled()) {
-        return this.handleCancellation(ctx, currentCode, history, errorsFixed);
-      }
-
-      const iterResult = await this.runIteration(ctx, currentCode, i + 1);
-      if (!iterResult.ok) {
-        this.log.warn('Iteration failed', { iteration: i + 1, error: iterResult.error.message });
+      if (this.isCancelled()) return this.handleCancellation(ctx, code, h, fixed);
+      const r = await this.runIteration(ctx, code, i + 1);
+      if (!r.ok) {
+        this.log.warn('Iteration failed', { iteration: i + 1, error: r.error.message });
         continue;
       }
-
-      history.push(iterResult.value.iteration);
-
-      if (this.isCancelled()) {
-        return this.handleCancellation(ctx, iterResult.value.newCode, history, errorsFixed);
+      h.push(r.value.iteration);
+      if (this.isCancelled()) return this.handleCancellation(ctx, r.value.newCode, h, fixed);
+      if (r.value.success) {
+        return this.okResult({
+          success: true,
+          code: r.value.newCode,
+          execution: r.value.execution,
+          history: h,
+          errorsFixed: [...fixed, ...r.value.fixedErrors],
+          stopReason: 'success',
+        });
       }
-
-      if (iterResult.value.success) {
-        const allFixed = [...errorsFixed, ...iterResult.value.fixedErrors];
-        return ok(
-          this.buildResult({
-            success: true,
-            code: iterResult.value.newCode,
-            execution: iterResult.value.execution,
-            history,
-            errorsFixed: allFixed,
-            stopReason: 'success',
-          })
-        );
+      if (!r.value.madeProgress) {
+        return this.okResult({
+          success: false,
+          code,
+          execution: r.value.execution,
+          history: h,
+          errorsFixed: fixed,
+          stopReason: 'no_progress',
+        });
       }
-
-      if (!iterResult.value.madeProgress) {
-        return ok(
-          this.buildResult({
-            success: false,
-            code: currentCode,
-            execution: iterResult.value.execution,
-            history,
-            errorsFixed,
-            stopReason: 'no_progress',
-          })
-        );
-      }
-
-      errorsFixed = [...errorsFixed, ...iterResult.value.fixedErrors];
-      currentCode = iterResult.value.newCode;
+      fixed = [...fixed, ...r.value.fixedErrors];
+      code = r.value.newCode;
     }
+    return this.okResult({
+      success: false,
+      code,
+      execution: await executeCode(ctx.executor, code),
+      history: h,
+      errorsFixed: fixed,
+      stopReason: 'max_iterations',
+    });
+  }
 
-    const finalExec = await this.executeCode(ctx, currentCode);
-    return ok(
-      this.buildResult({
-        success: false,
-        code: currentCode,
-        execution: finalExec,
-        history,
-        errorsFixed,
-        stopReason: 'max_iterations',
-      })
-    );
+  /** Build an ok Result with the given parameters. */
+  private okResult(opts: ResultBuildOpts): Result<SelfDebugResult, AgentError> {
+    return ok(buildResult(opts));
   }
 
   private async handleCancellation(
@@ -256,9 +224,9 @@ export class SelfDebugProtocol {
     history: DebugIteration[],
     errorsFixed: ParsedError[]
   ): Promise<Result<SelfDebugResult, AgentError>> {
-    const finalExec = await this.executeCode(ctx, code);
+    const finalExec = await executeCode(ctx.executor, code);
     return ok(
-      this.buildResult({
+      buildResult({
         success: false,
         code,
         execution: finalExec,
@@ -280,7 +248,7 @@ export class SelfDebugProtocol {
     iterNum: number
   ): Promise<Result<IterationResult, AgentError>> {
     const iterStart = Date.now();
-    const execution = await this.executeCode(ctx, code);
+    const execution = await executeCode(ctx.executor, code);
     const errors = this.getErrors(execution, iterNum);
 
     if (errors.length === 0 && execution.success) {
@@ -290,7 +258,7 @@ export class SelfDebugProtocol {
         execution,
         fixedErrors: [],
         madeProgress: true,
-        iteration: this.buildIteration({
+        iteration: buildIteration({
           iteration: iterNum,
           code,
           execution,
@@ -310,7 +278,7 @@ export class SelfDebugProtocol {
         execution,
         fixedErrors: [],
         madeProgress: false,
-        iteration: this.buildIteration({
+        iteration: buildIteration({
           iteration: iterNum,
           code,
           execution,
@@ -327,24 +295,9 @@ export class SelfDebugProtocol {
   }
 
   private getErrors(execution: ExecutionResult, iterNum: number): ParsedError[] {
-    let errors = this.parseErrors(execution);
-    if (errors.length === 0 && !execution.success) {
-      const stderr =
-        execution.stderr.length > 0
-          ? execution.stderr
-          : execution.stdout.length > 0
-            ? execution.stdout
-            : 'Unknown error';
-      errors = [
-        {
-          id: `error-synthetic-${String(iterNum)}`,
-          category: 'unknown',
-          severity: 'error',
-          message: stderr.slice(0, 500),
-          rawError: stderr,
-        },
-      ];
-    }
+    const errors = this.parseErrors(execution);
+    if (errors.length === 0 && !execution.success)
+      return [createSyntheticError(execution, iterNum)];
     return errors;
   }
 
@@ -362,7 +315,7 @@ export class SelfDebugProtocol {
         execution,
         fixedErrors: [],
         madeProgress: false,
-        iteration: this.buildIteration({
+        iteration: buildIteration({
           iteration: iterNum,
           code,
           execution,
@@ -388,7 +341,7 @@ export class SelfDebugProtocol {
     bestFix: CodeFix
   ): Promise<Result<IterationResult, AgentError>> {
     const { ctx, code, execution, errors, iterNum, iterStart } = opts;
-    const newCode = this.applyFix(code, bestFix);
+    const newCode = applyFix(code, bestFix);
 
     if (this.isCancelled()) {
       return ok({
@@ -397,7 +350,7 @@ export class SelfDebugProtocol {
         execution,
         fixedErrors: [],
         madeProgress: true,
-        iteration: this.buildIteration({
+        iteration: buildIteration({
           iteration: iterNum,
           code,
           execution,
@@ -410,7 +363,7 @@ export class SelfDebugProtocol {
       });
     }
 
-    const newExecution = await this.executeCode(ctx, newCode);
+    const newExecution = await executeCode(ctx.executor, newCode);
     const newErrors = this.parseErrors(newExecution);
     const fixedErrors = errors.filter((e) => !newErrors.some((ne) => ne.message === e.message));
     const madeProgress = newExecution.success || fixedErrors.length > 0 || newCode !== code;
@@ -421,7 +374,7 @@ export class SelfDebugProtocol {
       execution: newExecution,
       fixedErrors,
       madeProgress,
-      iteration: this.buildIteration({
+      iteration: buildIteration({
         iteration: iterNum,
         code,
         execution,
@@ -434,34 +387,8 @@ export class SelfDebugProtocol {
     });
   }
 
-  private async executeCode(ctx: ExecutionContext, code: string): Promise<ExecutionResult> {
-    try {
-      return await ctx.executor(code);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      return {
-        success: false,
-        exitCode: 1,
-        stdout: '',
-        stderr: message,
-        durationMs: 0,
-        errors: [],
-      };
-    }
-  }
-
   parseErrors(result: ExecutionResult): ParsedError[] {
-    if (result.errors.length > 0) return [...result.errors];
-    const errors: ParsedError[] = [];
-    const output = result.stderr.length > 0 ? result.stderr : result.stdout;
-    let errorId = 0;
-    for (const pattern of this.config.errorPatterns) {
-      const matches = output.matchAll(new RegExp(pattern.pattern, 'gm'));
-      for (const match of matches) {
-        errors.push(createParsedError(match, pattern, ++errorId));
-      }
-    }
-    return errors;
+    return parseErrorsFromOutput(result, this.config.errorPatterns);
   }
 
   private async explainErrors(
@@ -500,42 +427,6 @@ export class SelfDebugProtocol {
     };
     const result = await ctx.agent.execute(task);
     return result.ok ? [parseFix(targetError.id, code, String(result.value.output))] : [];
-  }
-
-  private applyFix(code: string, fix: CodeFix): string {
-    const hasLocation = fix.location?.line !== undefined;
-    const hasOriginal = fix.originalCode.length > 0;
-    const hasFixed = fix.fixedCode.length > 0;
-    if (hasLocation && hasOriginal && hasFixed)
-      return code.replace(fix.originalCode, fix.fixedCode);
-    return hasFixed ? fix.fixedCode : code;
-  }
-
-  private buildIteration(opts: IterationBuildOpts): DebugIteration {
-    return {
-      iteration: opts.iteration,
-      codeSnapshot: opts.code,
-      executionResult: opts.execution,
-      errorsDetected: opts.errors,
-      explanations: opts.explanations,
-      proposedFixes: opts.fixes,
-      appliedFix: opts.appliedFix,
-      durationMs: Date.now() - opts.startTime,
-    };
-  }
-
-  private buildResult(opts: ResultBuildOpts): SelfDebugResult {
-    return {
-      success: opts.success,
-      finalCode: opts.code,
-      finalExecution: opts.execution,
-      totalIterations: opts.history.length,
-      totalDurationMs: opts.history.reduce((sum, h) => sum + h.durationMs, 0),
-      errorsFixed: opts.errorsFixed,
-      errorsRemaining: opts.execution.errors,
-      history: opts.history,
-      stopReason: opts.stopReason,
-    };
   }
 }
 
