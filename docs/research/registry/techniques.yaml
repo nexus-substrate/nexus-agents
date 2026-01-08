@@ -814,20 +814,25 @@ techniques:
       hotpotqa_improvement: '+20%'
       humaneval_pass1: '91%'
 
-    status: planned
+    status: implemented
     priority: P1
     complexity: medium
 
     integration_files:
-      - 'packages/nexus-agents/src/agents/memory/'
+      - 'packages/nexus-agents/src/context/session-memory.ts'
+      - 'packages/nexus-agents/src/context/session-memory.test.ts'
 
-    implementation_issue: null
+    implementation_issue: 130
     related_prs: []
 
     notes: |
-      Store reflections in agent memory module.
-      Use reflections as additional context in subsequent attempts.
-      Particularly effective for sequential decision tasks.
+      Implemented as SessionMemory class for cross-session persistence:
+      - Session lifecycle (start/end with automatic episode persistence)
+      - Record learnings, tasks, and resolved errors during sessions
+      - Load relevant learnings on session start (confidence-filtered)
+      - Search learnings by query and retrieve error solutions
+      - JSON-based file storage for human readability
+      - 22 comprehensive tests covering all functionality
 
     dependencies: []
 
@@ -835,6 +840,9 @@ techniques:
       - date: '2026-01-06'
         decision: 'Added to Phase 1 Foundation'
         rationale: 'High impact on agent performance'
+      - date: '2026-01-07'
+        decision: 'Implemented'
+        rationale: 'Issue #130 - Cross-session episodic memory persistence'
 
   voyager-skill-library:
     name: 'Voyager Skill Library Pattern'

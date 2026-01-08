@@ -14,7 +14,7 @@ Research on self-improvement mechanisms for code-generating AI agents, including
 | Paper                                                 | Key Contribution                                    | Priority | Status      |
 | ----------------------------------------------------- | --------------------------------------------------- | -------- | ----------- |
 | [Self-Refine](https://arxiv.org/abs/2303.17651)       | Training-free iterative refinement, 20% improvement | P1       | planned     |
-| [Reflexion](https://arxiv.org/abs/2303.11366)         | Verbal RL with episodic memory, 91% HumanEval       | P1       | planned     |
+| [Reflexion](https://arxiv.org/abs/2303.11366)         | Verbal RL with episodic memory, 91% HumanEval       | P1       | implemented |
 | [Voyager](https://arxiv.org/abs/2305.16291)           | Skill library pattern, 15.3x faster milestones      | P2       | planned     |
 | [SICA](https://arxiv.org/abs/2504.15228)              | Self-improving agent, 17%→53% SWE-Bench             | P2       | planned     |
 | [Constitutional AI](https://arxiv.org/abs/2212.08073) | Principle-based self-critique                       | P2       | planned     |
@@ -34,13 +34,14 @@ Research on self-improvement mechanisms for code-generating AI agents, including
 
 Single LLM acts as generator, feedback provider, and refiner in an iterative loop without any training. Can be implemented immediately with strong instruction-following models.
 
-#### Reflexion Verbal RL
+#### Reflexion Verbal RL ✅
 
 - **Source:** [arxiv-2303.11366](https://arxiv.org/abs/2303.11366)
 - **Key Metrics:** +22% AlfWorld, +20% HotPotQA, 91% HumanEval pass@1
-- **Integration Point:** `packages/nexus-agents/src/agents/memory/`
+- **Integration Point:** `packages/nexus-agents/src/context/session-memory.ts`
+- **Status:** Implemented (#130)
 
-Agents maintain episodic memory of verbal reflections that guide future behavior. Store reflections and use as additional context in subsequent attempts.
+Agents maintain episodic memory of verbal reflections that guide future behavior. Implemented as `SessionMemory` class with cross-session persistence, learning recording, and relevance-based retrieval.
 
 ### Medium Priority (P2)
 
