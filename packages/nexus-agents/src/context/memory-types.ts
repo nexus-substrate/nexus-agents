@@ -438,6 +438,10 @@ export const DEFAULT_RELEVANCE_CONFIG: RelevanceFilterConfig = {
     documentation_expert: [MemoryType.SEMANTIC, MemoryType.RESOURCE, MemoryType.EPISODIC],
     testing_expert: [MemoryType.SEMANTIC, MemoryType.EPISODIC, MemoryType.VAULT],
     custom: [MemoryType.SEMANTIC, MemoryType.PROCEDURAL, MemoryType.RESOURCE],
+    // TRINITY roles (arXiv:2512.04695)
+    thinker: [MemoryType.SEMANTIC, MemoryType.CORE, MemoryType.VAULT],
+    worker: [MemoryType.PROCEDURAL, MemoryType.RESOURCE, MemoryType.EPISODIC],
+    verifier: [MemoryType.SEMANTIC, MemoryType.VAULT, MemoryType.PROCEDURAL],
   },
   minRelevanceScore: 0.5,
   maxEntriesPerType: 10,

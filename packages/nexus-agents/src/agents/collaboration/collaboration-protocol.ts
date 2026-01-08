@@ -302,6 +302,12 @@ export class ProtocolFactory {
         return new AegeanProtocol(this.options);
       case 'self-refine':
         return new SelfRefineProtocol(this.options) as unknown as ICollaborationProtocol;
+      case 'self-debug':
+        // Self-debug is a code repair protocol, not a multi-agent collaboration.
+        // Use createSelfDebugProtocol() from self-debug-protocol.ts instead.
+        throw new AgentError(
+          'self-debug is not a multi-agent protocol. Use createSelfDebugProtocol() directly.'
+        );
       default: {
         const unknownPattern: never = pattern;
         throw new AgentError(`Unknown protocol pattern: ${unknownPattern as string}`);

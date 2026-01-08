@@ -645,6 +645,44 @@ techniques:
 
     decision_history: []
 
+  adaptive-memory:
+    name: 'Adaptive Memory'
+    description: |
+      Priority-based memory retrieval combining recency decay,
+      importance weighting, and context relevance scoring.
+
+    source_papers:
+      - arxiv-2310.08560
+
+    topic: memory
+    tags:
+      - priority
+      - recency-decay
+      - relevance
+
+    metrics:
+      performance_improvement: 'Configurable priority scoring'
+
+    status: implemented
+    priority: P2
+    complexity: medium
+
+    integration_files:
+      - 'packages/nexus-agents/src/context/adaptive-memory.ts'
+      - 'packages/nexus-agents/src/context/adaptive-memory-types.ts'
+      - 'packages/nexus-agents/src/context/adaptive-memory-helpers.ts'
+
+    implementation_issue: 143
+    related_prs: []
+
+    notes: |
+      Complements graph-based-memory with temporal and importance scoring.
+
+    dependencies:
+      - mem0-memory-architecture
+
+    decision_history: []
+
   # ============================================================================
   # ORCHESTRATION
   # ============================================================================

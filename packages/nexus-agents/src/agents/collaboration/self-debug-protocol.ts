@@ -36,6 +36,7 @@ import {
   type CodeExecutor,
   type ResultBuildOpts,
 } from './self-debug-helpers.js';
+export type { CodeExecutor } from './self-debug-helpers.js';
 
 // =============================================================================
 // Types
