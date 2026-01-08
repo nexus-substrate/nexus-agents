@@ -266,10 +266,12 @@ techniques:
     name: 'IPR Quality-Constrained Routing'
     description: |
       Quality-constrained routing with user-controlled tolerance
-      parameter and lightweight estimators.
+      parameter and lightweight estimators. Routes to cheapest
+      model meeting quality threshold.
 
     source_papers:
       - arxiv-2509.06274
+      - arxiv-2406.18510
 
     topic: routing
     tags:
@@ -281,20 +283,24 @@ techniques:
       cost_reduction: '43.9%'
       latency: 'sub-150ms'
 
-    status: planned
+    status: implemented
     priority: P1
     complexity: medium
 
     integration_files:
-      - 'packages/nexus-agents/src/adapters/'
-      - 'packages/nexus-agents/src/agents/tech-lead.ts'
+      - 'packages/nexus-agents/src/adapters/quality-router.ts'
+      - 'packages/nexus-agents/src/adapters/complexity-estimator.ts'
 
-    implementation_issue: 102
-    related_prs: []
+    implementation_issue: 128
+    related_prs:
+      - 134
 
     notes: |
-      Directly applicable to CLI adapter capability matching.
-      Add tolerance parameter to WorkflowDefinition.
+      Implemented as QualityRouter class with TaskComplexityEstimator:
+      - Task complexity estimation (5 factors: length, structure, domain, reasoning, tools)
+      - Quality/cost trade-off optimization for CLI adapters
+      - Sub-150ms routing latency achieved
+      - 22 comprehensive tests
 
     dependencies: []
 
@@ -302,6 +308,9 @@ techniques:
       - date: '2026-01-06'
         decision: 'Added to roadmap Phase 1'
         rationale: 'High impact, aligns with existing architecture'
+      - date: '2026-01-07'
+        decision: 'Implemented'
+        rationale: 'PR #134 merged - feat: implement quality-constrained routing (#128)'
 
   pilot-budget-routing:
     name: 'PILOT Budget-Constrained Routing'

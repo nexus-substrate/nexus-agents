@@ -283,6 +283,34 @@ papers:
   # ROUTING
   # ============================================================================
 
+  arxiv-2406.18510:
+    title: 'RouteLLM: Cost-Quality Routing for LLM Inference'
+    authors: []
+    source: arxiv
+    arxiv_id: '2406.18510'
+    url: 'https://arxiv.org/abs/2406.18510'
+    publication_date: '2024'
+    venue: 'arXiv'
+
+    topics:
+      - routing
+    tags:
+      - quality-constrained
+      - cost-reduction
+      - routing-latency
+
+    reviewed_date: '2026-01-07'
+    reviewed_in: 'quality-router implementation'
+    summary: |
+      Quality-constrained routing to cheapest model meeting
+      quality threshold. Sub-150ms routing latency.
+
+    key_findings:
+      - '2x cost reduction while maintaining quality'
+      - 'Sub-150ms routing latency'
+
+    implementation_status: implemented
+
   arxiv-2406.18665:
     title: 'RouteLLM: Learning to Route LLMs with Preference Data'
     authors: []
