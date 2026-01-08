@@ -54,6 +54,16 @@ export type {
   TracerConfig,
 } from './trace.js';
 
+// Trace Export & Visualization (Issue #132)
+export {
+  exportTraceToFile,
+  exportTraceToString,
+  visualizeTrace,
+  printTrace,
+  generateTraceFilename,
+} from './trace-exporter.js';
+export type { ExportFormat, ExportedTrace, VisualizationOptions } from './trace-exporter.js';
+
 // Artifact provenance
 export {
   ArtifactType,
