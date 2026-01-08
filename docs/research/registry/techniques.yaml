@@ -625,14 +625,16 @@ techniques:
     metrics:
       performance_improvement: '+2%'
 
-    status: not-started
+    status: implemented
     priority: P3
     complexity: high
 
     integration_files:
-      - 'packages/nexus-agents/src/agents/memory/'
+      - 'packages/nexus-agents/src/context/graph-memory.ts'
+      - 'packages/nexus-agents/src/context/graph-memory-types.ts'
+      - 'packages/nexus-agents/src/context/graph-memory-helpers.ts'
 
-    implementation_issue: null
+    implementation_issue: 142
     related_prs: []
 
     notes: |
