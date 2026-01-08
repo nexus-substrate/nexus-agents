@@ -24,6 +24,10 @@ export type { WorkflowRunOptions, WorkflowRunResult } from './workflow-run.js';
 
 export { replCommand, startRepl } from './repl.js';
 
+// Self-evaluation
+export { evaluateCommand, parseOptions } from './self-eval.js';
+export type { EvaluateOptions, EvaluateCommandResult, EvaluationSummary } from './self-eval.js';
+
 // Mode detection
 export { detectMode, formatModeDetection, isValidServerMode } from './mode-detector.js';
 export type {
