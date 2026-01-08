@@ -17,3 +17,19 @@ export {
   type ComponentInventory,
   type ScannerConfig,
 } from './component-scanner.js';
+
+// Evaluation Agents
+export {
+  CodeQualityEvaluator,
+  ArchitectureFitEvaluator,
+  PracticalValueEvaluator,
+  createEvaluators,
+  evaluateComponent,
+  type Recommendation,
+  type MetricSource,
+  type MetricCitation,
+  type EvaluationResult,
+  type EvaluatorRole,
+  type EvaluatorConfig,
+  type EvaluationThresholds,
+} from './evaluation-agents.js';
