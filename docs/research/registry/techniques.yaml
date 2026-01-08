@@ -330,21 +330,29 @@ techniques:
     metrics:
       adaptive: 'handles diverse budget requirements'
 
-    status: planned
-    priority: P1
+    status: partial
+    priority: P2
     complexity: medium
 
     integration_files:
-      - 'packages/nexus-agents/src/workflows/execution-planner.ts'
-      - 'packages/nexus-agents/src/core/types/workflow.ts'
+      - 'packages/nexus-agents/src/cli-adapters/budget-router.ts'
+      - 'packages/nexus-agents/src/cli-adapters/budget-utils.ts'
+      - 'packages/nexus-agents/src/cli-adapters/budget-warnings.ts'
+      - 'packages/nexus-agents/src/cli-adapters/budget-errors.ts'
 
     implementation_issue: 102
     related_prs: []
 
     notes: |
-      Implement budget-aware routing in execution planner.
-      Add cost tracking to ContextBudget.
-      Enable per-workflow budget constraints.
+      Basic budget-constrained routing implemented (issue #102).
+      - Token, cost, and latency budget enforcement
+      - Session budget tracking with auto-reset
+      - Budget warnings at configurable thresholds
+
+      NOT YET implemented (remains P2):
+      - LinUCB contextual bandit for adaptive routing
+      - Preference-prior learning from usage patterns
+      - Multi-choice knapsack optimization
 
     dependencies: []
 
@@ -352,6 +360,12 @@ techniques:
       - date: '2026-01-06'
         decision: 'Added to roadmap Phase 1'
         rationale: 'High impact, fills gap in current implementation'
+      - date: '2026-01-07'
+        decision: 'Basic budget routing implemented'
+        rationale: 'Issue #102 closed - basic budget constraints work'
+      - date: '2026-01-08'
+        decision: 'Downgraded to P2, marked partial'
+        rationale: 'Basic routing works, LinUCB bandit not yet implemented'
 
   sater-routing:
     name: 'SATER Confidence-Aware Routing'
