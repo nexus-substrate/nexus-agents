@@ -1,0 +1,166 @@
+# registry/alignments.yaml
+# Technique alignment tracking for overlap detection
+# Schema version for future migrations
+schema_version: '1.0'
+
+# Alignment categories:
+# - complementary: Techniques work well together
+# - overlapping: Solve same problem differently
+# - conflicting: Contradictory approaches
+# - enhances: New technique improves existing
+# - supersedes: New technique replaces existing
+
+alignments:
+  # ============================================================================
+  # ROUTING TECHNIQUE ALIGNMENTS
+  # ============================================================================
+
+  routing-cascade-quality:
+    techniques:
+      - cascade-routing
+      - ipr-quality-estimators
+    category: complementary
+    relationship: |
+      cascade-routing (ABC) uses multi-model ensemble agreement to determine
+      when to escalate. ipr-quality-estimators routes based on quality/cost
+      trade-offs. These can be combined: use quality-router for initial model
+      selection, then cascade if quality threshold not met.
+    integration_approach: |
+      QualityRouter selects initial model based on complexity.
+      AgreementCascadeRouter escalates on disagreement.
+      Chain: QualityRouter -> AgreementCascadeRouter -> final result
+    status: identified
+    date: '2026-01-07'
+
+  routing-quality-budget:
+    techniques:
+      - ipr-quality-estimators
+      - pilot-budget-routing
+    category: overlapping
+    relationship: |
+      Both address cost optimization but with different constraints:
+      - Quality-routing: minimize cost while meeting quality threshold
+      - Budget-routing: maximize quality within budget constraint
+      These are dual formulations of the same optimization problem.
+    integration_approach: |
+      Could unify into single router with mode selection:
+      - quality_constrained: minimize cost, quality >= threshold
+      - budget_constrained: maximize quality, cost <= budget
+    status: planned
+    date: '2026-01-07'
+
+  routing-sater-cascade:
+    techniques:
+      - sater-routing
+      - cascade-routing
+    category: enhances
+    relationship: |
+      SATER adds confidence-aware rejection to cascade routing.
+      Rather than just ensemble agreement, SATER uses model confidence
+      to decide escalation. Can enhance existing cascade implementation.
+    integration_approach: |
+      Add confidence scoring to AgreementCascadeRouter.
+      Use both agreement threshold AND confidence for escalation.
+    status: identified
+    date: '2026-01-07'
+
+  # ============================================================================
+  # CONSENSUS TECHNIQUE ALIGNMENTS
+  # ============================================================================
+
+  consensus-aegean-reflexion:
+    techniques:
+      - aegean-consensus
+      - multi-agent-reflexion
+    category: complementary
+    relationship: |
+      Aegean provides formal consensus mechanism with quorum detection.
+      Reflexion provides iterative self-critique and refinement loop.
+      Both implemented and used for different purposes:
+      - Aegean: multi-agent agreement on decisions
+      - Reflexion: single-agent reasoning improvement
+    integration_approach: |
+      Already integrated. Can combine: use Aegean for multi-agent
+      decisions, then apply Reflexion for quality improvement.
+    status: implemented
+    date: '2026-01-07'
+
+  consensus-task-protocol:
+    techniques:
+      - task-aware-protocol-selection
+      - aegean-consensus
+    category: complementary
+    relationship: |
+      Task-aware selection chooses between voting vs consensus based
+      on task type (reasoning vs knowledge). Aegean provides the
+      consensus implementation. These are designed to work together.
+    integration_approach: |
+      TaskTypeClassifier -> AdaptiveProtocolSelector ->
+      (VotingProtocol or AegeanConsensus)
+    status: implemented
+    date: '2026-01-07'
+
+  consensus-free-mad:
+    techniques:
+      - free-mad-scoring
+      - aegean-consensus
+    category: enhances
+    relationship: |
+      Free-MAD adds anti-conformity scoring to prevent majority
+      influence on correct answers. Could enhance Aegean's voting
+      by adding score-based decision making.
+    integration_approach: |
+      Add confidence scoring with anti-conformity adjustment
+      to Aegean's position aggregation phase.
+    status: identified
+    date: '2026-01-07'
+
+  # ============================================================================
+  # MEMORY TECHNIQUE ALIGNMENTS
+  # ============================================================================
+
+  memory-reflexion-episodic:
+    techniques:
+      - multi-agent-reflexion
+      - episodic-memory-for-reasoning
+    category: enhances
+    relationship: |
+      Reflexion generates learnings through self-critique.
+      Episodic memory persists learnings across sessions.
+      Together: Reflexion produces insights, episodic memory stores them.
+    integration_approach: |
+      After Reflexion completes, extract learnings and store
+      in episodic memory for future session retrieval.
+    status: planned
+    date: '2026-01-07'
+
+  # ============================================================================
+  # SELF-IMPROVEMENT ALIGNMENTS
+  # ============================================================================
+
+  self-improve-refine-eval:
+    techniques:
+      - self-refine-loop
+      - self-evaluation-protocol
+    category: complementary
+    relationship: |
+      Self-refine provides iterative improvement loop (generate -> feedback -> refine).
+      Self-evaluation provides component assessment for deprecation.
+      Different scopes: self-refine for individual outputs,
+      self-evaluation for codebase components.
+    integration_approach: |
+      Could use self-evaluation to identify components needing
+      refactoring, then apply self-refine to improve them.
+    status: implemented
+    date: '2026-01-07'
+
+# Summary Statistics (auto-updated)
+summary:
+  total_alignments: 8
+  by_category:
+    complementary: 4
+    overlapping: 1
+    enhances: 3
+    conflicting: 0
+    supersedes: 0
+  last_updated: '2026-01-07'

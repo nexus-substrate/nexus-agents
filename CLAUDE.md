@@ -147,7 +147,8 @@ docs/research/
 ├── registry/
 │   ├── papers.yaml          # All papers with metadata
 │   ├── techniques.yaml      # Implementation techniques
-│   └── sources.yaml         # Product docs & other sources
+│   ├── sources.yaml         # Product docs & other sources
+│   └── alignments.yaml      # Technique overlap tracking
 └── topics/
     ├── consensus/           # Multi-agent consensus
     ├── routing/             # Model routing
@@ -170,7 +171,39 @@ grep -i "technique-name" docs/research/registry/techniques.yaml
 
 # Search topic files
 grep -ri "keyword" docs/research/topics/
+
+# Check for implementation overlap in source code
+grep -ri "technique-keyword" packages/nexus-agents/src/
 ```
+
+#### Overlap Checking Protocol
+
+Before implementing a new technique, verify overlap with existing implementations:
+
+1. **Check problem overlap** - Does an existing technique solve the same problem?
+2. **Check enhancement potential** - Can the new technique enhance an existing one?
+3. **Check conflicts** - Are there conflicting approaches that need reconciliation?
+4. **Document findings** - Record overlap analysis in `docs/research/registry/alignments.yaml`
+
+```bash
+# Example: Check if routing techniques overlap
+grep -ri "routing" docs/research/registry/techniques.yaml
+grep -ri "router\|routing" packages/nexus-agents/src/
+
+# Compare technique approaches
+grep -A 30 "technique_id: cascade-routing" docs/research/registry/techniques.yaml
+grep -A 30 "technique_id: quality-routing" docs/research/registry/techniques.yaml
+```
+
+**Alignment Categories:**
+
+| Category        | Description                     |
+| --------------- | ------------------------------- |
+| `complementary` | Techniques work well together   |
+| `overlapping`   | Solve same problem differently  |
+| `conflicting`   | Contradictory approaches        |
+| `enhances`      | New technique improves existing |
+| `supersedes`    | New technique replaces existing |
 
 #### Adding New Research
 
