@@ -298,6 +298,7 @@ describe('DEFAULT_TIMEOUTS', () => {
     expect(DEFAULT_TIMEOUTS.parallel).toBe(3 * 60 * 1000);
     expect(DEFAULT_TIMEOUTS.review).toBe(2 * 60 * 1000);
     expect(DEFAULT_TIMEOUTS.consensus).toBe(5 * 60 * 1000);
+    expect(DEFAULT_TIMEOUTS['self-debug']).toBe(10 * 60 * 1000);
   });
 });
 
@@ -313,5 +314,6 @@ describe('MIN_EXPERTS_FOR_PATTERN', () => {
     expect(MIN_EXPERTS_FOR_PATTERN.parallel).toBe(2);
     expect(MIN_EXPERTS_FOR_PATTERN.review).toBe(2);
     expect(MIN_EXPERTS_FOR_PATTERN.consensus).toBe(3);
+    expect(MIN_EXPERTS_FOR_PATTERN['self-debug']).toBe(1);
   });
 });

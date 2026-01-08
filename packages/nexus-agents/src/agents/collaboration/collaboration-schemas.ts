@@ -17,6 +17,7 @@ export const CollaborationPatternSchema = z.enum([
   'reflexion',
   'aegean',
   'self-refine',
+  'self-debug',
 ]);
 
 /**
@@ -120,6 +121,7 @@ export const DEFAULT_TIMEOUTS = {
   reflexion: 10 * 60 * 1000, // 10 minutes (iterative)
   aegean: 5 * 60 * 1000, // 5 minutes (Byzantine consensus)
   'self-refine': 10 * 60 * 1000, // 10 minutes (iterative refinement)
+  'self-debug': 10 * 60 * 1000, // 10 minutes (iterative code repair)
 } as const;
 
 /**
@@ -138,4 +140,5 @@ export const MIN_EXPERTS_FOR_PATTERN = {
   reflexion: 1, // Single producer with persona-based critics
   aegean: 3, // Minimum for Byzantine fault tolerance (3f+1 with f=0)
   'self-refine': 1, // Single agent iterative refinement (arXiv:2303.17651)
+  'self-debug': 1, // Single agent with execution feedback (arXiv:2304.05128)
 } as const;

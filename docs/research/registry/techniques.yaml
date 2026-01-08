@@ -959,6 +959,60 @@ techniques:
 
     decision_history: []
 
+  self-debug-repair:
+    name: 'Self-Debug Code Repair'
+    description: |
+      Teaching LLMs to self-debug through "rubber duck debugging" where the
+      model explains its own code, identifies errors via execution feedback,
+      and iteratively fixes issues until tests pass.
+
+    source_papers:
+      - arxiv-2304.05128
+
+    topic: code-generation
+    tags:
+      - self-debug
+      - code-repair
+      - execution-feedback
+      - rubber-duck
+
+    metrics:
+      security_reduction: '96% vulnerability reduction with multi-tool feedback'
+      pass_rate_improvement: 'significant across benchmarks'
+
+    status: implemented
+    priority: P3
+    complexity: medium
+
+    integration_files:
+      - 'packages/nexus-agents/src/agents/collaboration/self-debug-types.ts'
+      - 'packages/nexus-agents/src/agents/collaboration/self-debug-protocol.ts'
+      - 'packages/nexus-agents/src/agents/collaboration/self-debug-helpers.ts'
+      - 'packages/nexus-agents/src/agents/collaboration/self-debug-protocol.test.ts'
+
+    implementation_issue: 131
+    related_prs: []
+
+    notes: |
+      Implemented as SelfDebugProtocol class with:
+      - Debug loop: execute → detect_error → explain → fix → verify
+      - Multi-language error parsing (TypeScript, ESLint, Node.js, Python, Go, Rust)
+      - Synthetic error creation for unparseable execution failures
+      - Configurable max iterations and explanation inclusion
+      - Cancellation support for long-running debug sessions
+      - 21 comprehensive tests covering all functionality
+
+    dependencies:
+      - self-refine-loop
+
+    decision_history:
+      - date: '2026-01-07'
+        decision: 'Started implementation'
+        rationale: 'Issue #131 - Automatic error recovery for code generation'
+      - date: '2026-01-08'
+        decision: 'Implemented'
+        rationale: 'Complete with types, protocol, helpers, and 21 tests'
+
   # ============================================================================
   # REJECTED TECHNIQUES
   # ============================================================================

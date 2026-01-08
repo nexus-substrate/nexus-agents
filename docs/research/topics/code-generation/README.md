@@ -13,8 +13,9 @@ Research on self-improvement mechanisms for code-generating AI agents, including
 
 | Paper                                                 | Key Contribution                                    | Priority | Status      |
 | ----------------------------------------------------- | --------------------------------------------------- | -------- | ----------- |
-| [Self-Refine](https://arxiv.org/abs/2303.17651)       | Training-free iterative refinement, 20% improvement | P1       | planned     |
+| [Self-Refine](https://arxiv.org/abs/2303.17651)       | Training-free iterative refinement, 20% improvement | P1       | implemented |
 | [Reflexion](https://arxiv.org/abs/2303.11366)         | Verbal RL with episodic memory, 91% HumanEval       | P1       | implemented |
+| [Self-Debug](https://arxiv.org/abs/2304.05128)        | Rubber duck debugging, 96% vuln reduction           | P3       | in-progress |
 | [Voyager](https://arxiv.org/abs/2305.16291)           | Skill library pattern, 15.3x faster milestones      | P2       | planned     |
 | [SICA](https://arxiv.org/abs/2504.15228)              | Self-improving agent, 17%→53% SWE-Bench             | P2       | planned     |
 | [Constitutional AI](https://arxiv.org/abs/2212.08073) | Principle-based self-critique                       | P2       | planned     |
@@ -26,13 +27,14 @@ Research on self-improvement mechanisms for code-generating AI agents, including
 
 ### High Priority (P1)
 
-#### Self-Refine Iterative Loop
+#### Self-Refine Iterative Loop ✅
 
 - **Source:** [arxiv-2303.17651](https://arxiv.org/abs/2303.17651)
 - **Key Metrics:** Average 20% improvement across tasks
-- **Integration Point:** `packages/nexus-agents/src/agents/`
+- **Integration Point:** `packages/nexus-agents/src/agents/collaboration/self-refine-protocol.ts`
+- **Status:** Implemented (#126)
 
-Single LLM acts as generator, feedback provider, and refiner in an iterative loop without any training. Can be implemented immediately with strong instruction-following models.
+Single LLM acts as generator, feedback provider, and refiner in an iterative loop without any training. Implemented as `SelfRefineProtocol` class with configurable iterations and Jaccard similarity-based convergence detection.
 
 #### Reflexion Verbal RL ✅
 
@@ -67,6 +69,24 @@ Unified agent that performs tasks AND improves its own implementation through to
 - **Integration Point:** `packages/nexus-agents/src/agents/`
 
 Define constitution of principles for agent behavior. Self-critique against explicit criteria scales without human labelers.
+
+### In Progress (P3)
+
+#### Self-Debug Code Repair 🚧
+
+- **Source:** [arxiv-2304.05128](https://arxiv.org/abs/2304.05128)
+- **Key Metrics:** 96% vulnerability reduction with multi-tool feedback
+- **Integration Point:** `packages/nexus-agents/src/agents/collaboration/self-debug-protocol.ts`
+- **Status:** In Progress (#131)
+
+"Rubber duck debugging" approach where the model explains its own code line-by-line, identifies errors via execution feedback, and iteratively fixes issues. Complements Self-Refine with execution-based validation.
+
+**Components:**
+
+- Error Detector: Parse compiler/runtime errors, extract location and type
+- Error Explainer: Generate natural language explanation of error
+- Code Fixer: Generate targeted fix preserving context
+- Verification Loop: Re-run tests, check for regression, limit retries
 
 ## Safety Considerations
 

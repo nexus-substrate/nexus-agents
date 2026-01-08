@@ -160,3 +160,38 @@ export {
   type RefinementIteration,
   type SelfRefineResult,
 } from './self-refine-protocol.js';
+
+// Self-Debug code repair protocol (Source: Issue #131, arxiv:2304.05128)
+export type {
+  ErrorCategory,
+  ErrorSeverity,
+  ErrorLocation,
+  ParsedError,
+  ErrorExplanation,
+  CodeFix,
+  ExecutionResult,
+  DebugIteration,
+  SelfDebugConfig,
+  SelfDebugResult,
+  ErrorPattern,
+} from './self-debug-types.js';
+
+export {
+  ErrorCategorySchema,
+  ErrorSeveritySchema,
+  ErrorLocationSchema,
+  ParsedErrorSchema,
+  ErrorExplanationSchema,
+  CodeFixSchema,
+  ExecutionResultSchema,
+  DebugIterationSchema,
+  DEFAULT_ERROR_PATTERNS,
+  DEFAULT_SELF_DEBUG_CONFIG,
+} from './self-debug-types.js';
+
+export {
+  SelfDebugProtocol,
+  createSelfDebugProtocol,
+  type CodeExecutor,
+  type SelfDebugExecuteOptions,
+} from './self-debug-protocol.js';

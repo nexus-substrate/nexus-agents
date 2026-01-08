@@ -30,6 +30,7 @@ export {
  * - reflexion: Multi-agent reflexion with persona-based critics (arxiv:2512.20845)
  * - aegean: Byzantine-fault-tolerant consensus (arxiv:2512.20184)
  * - self-refine: Iterative refinement with self-feedback (arxiv:2303.17651)
+ * - self-debug: Automatic error detection and repair (arxiv:2304.05128)
  */
 export type CollaborationPattern =
   | 'sequential'
@@ -38,7 +39,8 @@ export type CollaborationPattern =
   | 'consensus'
   | 'reflexion'
   | 'aegean'
-  | 'self-refine';
+  | 'self-refine'
+  | 'self-debug';
 
 /**
  * Session status during collaboration lifecycle.
