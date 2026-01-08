@@ -115,3 +115,24 @@ export {
   GEMINI_MODEL_ALIASES,
   type GeminiAdapterConfig,
 } from './gemini-adapter.js';
+
+// Task complexity estimation (arXiv:2406.18510)
+export {
+  TaskComplexityEstimator,
+  createComplexityEstimator,
+  type ComplexityLevel,
+  type ComplexityEstimate,
+  type ComplexityFactors,
+} from './complexity-estimator.js';
+
+// Quality-constrained routing (arXiv:2406.18510)
+export {
+  QualityRouter,
+  createQualityRouter,
+  type QualityEstimate,
+  type RoutingDecision,
+  type AdapterCandidate,
+  type QualityRouterConfig,
+  type CostModel,
+  type QualityRoutedResult,
+} from './quality-router.js';
