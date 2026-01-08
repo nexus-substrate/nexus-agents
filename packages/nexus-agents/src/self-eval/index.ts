@@ -33,3 +33,15 @@ export {
   type EvaluatorConfig,
   type EvaluationThresholds,
 } from './evaluation-agents.js';
+
+// Aggregation Logic
+export {
+  EvaluationAggregator,
+  createAggregator,
+  aggregateResults,
+  type ComponentCriticality,
+  type AuditEntry,
+  type AggregatedResult,
+  type AggregationConfig,
+  type OutputOptions,
+} from './aggregation-logic.js';
