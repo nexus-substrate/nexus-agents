@@ -89,3 +89,7 @@ export { calculateMetrics } from './metrics.js';
 
 // Engine
 export { SelfDevWorkflowEngine, createSelfDevWorkflowEngine } from './engine.js';
+
+// Clients
+export { createGitHubClient, GhCliGitHubClient, GitHubError } from './github-client.js';
+export { createGitClient, GitCliClient, GitError } from './git-client.js';
