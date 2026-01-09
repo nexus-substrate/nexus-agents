@@ -53,15 +53,17 @@ export const CREATE_TO_INDEX_SQL = `
 
 /** Convert a database row to a GraphEdge. */
 export function rowToEdge(row: GraphEdgeRow): GraphEdge {
-  return {
+  const base = {
     from: row.from_key,
     to: row.to_key,
     type: row.relation_type as RelationType,
     weight: row.weight,
     createdAt: new Date(row.created_at),
-    metadata:
-      row.metadata !== null ? (JSON.parse(row.metadata) as Record<string, unknown>) : undefined,
   };
+  if (row.metadata !== null) {
+    return { ...base, metadata: JSON.parse(row.metadata) as Record<string, unknown> };
+  }
+  return base;
 }
 
 /** Convert a MemoryRow to a MemoryEntry. */
@@ -189,6 +191,19 @@ export function getNextKeys(
   return next;
 }
 
+/** Build a TraversalResult, conditionally including the edge if present. */
+function buildTraversalResult(
+  entry: MemoryEntry,
+  depth: number,
+  path: readonly string[],
+  edge: GraphEdge | undefined
+): TraversalResult {
+  if (edge !== undefined) {
+    return { entry, depth, path, edge };
+  }
+  return { entry, depth, path };
+}
+
 /** Perform BFS traversal. */
 export function bfsTraverse(config: BFSConfig): TraversalResult[] {
   const { db, startKey, opts } = config;
@@ -206,12 +221,7 @@ export function bfsTraverse(config: BFSConfig): TraversalResult[] {
     if (current.depth > 0 || opts.includeStart) {
       const entry = getMemoryEntry(db, current.key);
       if (entry !== undefined) {
-        state.results.push({
-          entry,
-          depth: current.depth,
-          path: current.path,
-          edge: current.edge,
-        });
+        state.results.push(buildTraversalResult(entry, current.depth, current.path, current.edge));
       }
     }
 

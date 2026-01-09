@@ -308,20 +308,21 @@ export function scoreAndSortEntries(
     const entry = memoryRowToEntry(row);
     const priority = calculatePriorityScore({
       entry,
-      query: opts?.query,
       now,
       config,
-      weightOverrides: opts?.weights,
+      ...(opts?.query !== undefined && { query: opts.query }),
+      ...(opts?.weights !== undefined && { weightOverrides: opts.weights }),
     });
     return { entry, priority };
   });
 
-  // Filter
-  const filtered = filterScoredEntries(scored, {
-    minScore: opts?.minScore,
-    importanceFilter: opts?.importanceFilter,
-    tagFilter: opts?.tagFilter,
-  });
+  // Filter - build config with only defined properties
+  const filterConfig: FilterConfig = {
+    ...(opts?.minScore !== undefined && { minScore: opts.minScore }),
+    ...(opts?.importanceFilter !== undefined && { importanceFilter: opts.importanceFilter }),
+    ...(opts?.tagFilter !== undefined && { tagFilter: opts.tagFilter }),
+  };
+  const filtered = filterScoredEntries(scored, filterConfig);
 
   // Sort by score descending
   filtered.sort((a, b) => b.priority.score - a.priority.score);

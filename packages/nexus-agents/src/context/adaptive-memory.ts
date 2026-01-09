@@ -175,9 +175,9 @@ export class AdaptiveMemoryBackend implements IAdaptiveMemory {
       const entry = memoryRowToEntry(row);
       const priority = calculatePriorityScore({
         entry,
-        query,
         now: new Date(),
         config: this.scoringConfig,
+        ...(query !== undefined && { query }),
       });
 
       return Promise.resolve(ok(priority));

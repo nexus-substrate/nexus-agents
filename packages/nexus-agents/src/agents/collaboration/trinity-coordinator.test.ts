@@ -8,12 +8,14 @@ import { TrinityCoordinator, createTrinityCoordinator } from './trinity-coordina
 import type {
   IAgent,
   Task,
+  TaskResult,
   AgentMessage,
   AgentResponse,
   AgentState,
   AgentRole,
+  AgentCapability,
 } from '../../core/index.js';
-import { ok } from '../../core/index.js';
+import { ok, AgentCapability as Cap } from '../../core/index.js';
 
 // =============================================================================
 // Test Helpers
@@ -25,7 +27,8 @@ function createMockAgent(responses: string[]): IAgent {
     id: 'mock-agent',
     role: 'custom' as AgentRole,
     state: 'idle' as AgentState,
-    execute: vi.fn((task: Task): Promise<ReturnType<IAgent['execute']>> => {
+    capabilities: [Cap.TASK_EXECUTION] as readonly AgentCapability[],
+    execute: vi.fn((task: Task) => {
       const response = responses[callIndex] ?? 'Default response';
       callIndex++;
       const result: TaskResult = {
@@ -35,11 +38,11 @@ function createMockAgent(responses: string[]): IAgent {
       };
       return Promise.resolve(ok(result));
     }),
-    handleMessage: vi.fn((_msg: AgentMessage): Promise<ReturnType<IAgent['handleMessage']>> => {
-      const response: AgentResponse = { type: 'text', content: 'ack' };
+    handleMessage: vi.fn((_msg: AgentMessage) => {
+      const response: AgentResponse = { messageId: _msg.id, status: 'completed' };
       return Promise.resolve(ok(response));
     }),
-    initialize: vi.fn(() => Promise.resolve()),
+    initialize: vi.fn(() => Promise.resolve(ok(undefined))),
     cleanup: vi.fn(() => Promise.resolve()),
   };
 }
