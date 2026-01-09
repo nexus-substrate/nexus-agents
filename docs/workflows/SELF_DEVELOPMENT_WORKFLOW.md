@@ -1,6 +1,6 @@
 # Self-Development Meta-Workflow Specification
 
-**Version:** 2.2.0
+**Version:** 2.3.0
 **Status:** COMPLETE (All Implementation Phases Done)
 **Date:** 2026-01-09 (ET)
 **GitHub Issue:** [#144](https://github.com/williamzujkowski/nexus-agents/issues/144)
@@ -1500,6 +1500,142 @@ If soft gate thresholds are exceeded:
 1. PR is created but marked "needs justification"
 2. Justification must be added before merge
 3. Reviewer can approve exception with reasoning
+
+### 7.5 Value-Weighting Framework (WIS v2)
+
+**Dogfooded 2026-01-09:** TRINITY + Reflexion + Consensus (5 agents, 5/5 approve - unanimous).
+
+This framework determines if a proposed improvement is worth the effort investment.
+
+#### Category Weights
+
+| Category           | Weight | Rationale                                          |
+| ------------------ | ------ | -------------------------------------------------- |
+| Security           | 1.5    | Highest priority - security issues compound        |
+| Quality            | 1.2    | Code quality affects all future work               |
+| Performance        | 1.2    | Runtime latency/throughput (not output quality)    |
+| DevEx              | 1.2    | Developer experience improvements compound         |
+| Model Routing      | 1.1    | AI-specific: routing errors impact cost/quality    |
+| Capability         | 1.0    | New features, baseline weight                      |
+| Context Management | 1.0    | AI-specific: token efficiency                      |
+| Coordination       | 0.95   | AI-specific: multi-agent coordination              |
+| Efficiency         | 1.0    | Process/workflow efficiency                        |
+| Error Recovery     | 0.85   | AI-specific: error handling (overhead when unused) |
+| Breaking Change    | 0.75   | Penalty for API-breaking changes                   |
+
+#### Effort Calculation
+
+```
+Effort = (Hours + 6) × (1 + Complexity_Factor + Uncertainty_Factor)
+```
+
+**6-Hour Floor:** Every change requires baseline effort for testing, review, and integration regardless of code size.
+
+**Complexity Factors:**
+
+| Level        | Factor | Definition                                         |
+| ------------ | ------ | -------------------------------------------------- |
+| Simple       | 0.0    | Single file, clear change, no new patterns         |
+| Moderate     | 0.3    | 2-5 files, known patterns, minor interface changes |
+| Complex      | 0.6    | 6+ files, new patterns, interface redesign         |
+| Very Complex | 1.0    | Architectural change, new subsystems               |
+
+**Uncertainty Factors:**
+
+| Level  | Factor | Definition                                 |
+| ------ | ------ | ------------------------------------------ |
+| Low    | 0.0    | Well-understood domain, clear requirements |
+| Medium | 0.2    | Some unknowns, may need iteration          |
+| High   | 0.5    | Novel problem, research required           |
+
+#### Value Calculation
+
+```
+Value = Σ(Weight × Impact) × Reach × Urgency
+```
+
+**Impact Score (per category):** 0-10 scale
+
+- 0: No impact
+- 1-3: Minor improvement
+- 4-6: Moderate improvement
+- 7-9: Significant improvement
+- 10: Transformative
+
+**Reach Multiplier:**
+
+- 0.5: Internal only (dev tooling)
+- 1.0: Single module affected
+- 1.5: Multiple modules affected
+- 2.0: Entire system affected
+
+**Urgency Modifier:**
+
+- 0.8: Nice to have
+- 1.0: Normal priority
+- 1.2: Blocking other work
+- 1.5: Critical path / security issue
+
+#### WIS Ratio and Thresholds
+
+```
+WIS = Value / Effort
+```
+
+| WIS Ratio | Decision | Action                                       |
+| --------- | -------- | -------------------------------------------- |
+| < 0.5     | REJECT   | Do not implement, effort exceeds value       |
+| 0.5 - 0.8 | DEFER    | Valuable but timing not right, revisit later |
+| 0.8 - 1.5 | CONSIDER | Human judgment required, discuss in issue    |
+| 1.5 - 3.0 | APPROVE  | Recommended for implementation               |
+| > 3.0     | EXPEDITE | High priority, implement soon                |
+
+#### Worked Examples
+
+**Example 1: Security fix for path traversal**
+
+```
+Categories: Security (Impact: 9)
+Value = (1.5 × 9) × 1.5 × 1.5 = 30.4
+Effort = (4 + 6) × (1 + 0.0 + 0.0) = 10
+WIS = 30.4 / 10 = 3.04 → EXPEDITE
+```
+
+**Example 2: Add caching to model adapter**
+
+```
+Categories: Performance (Impact: 6), Efficiency (Impact: 4)
+Value = ((1.2 × 6) + (1.0 × 4)) × 1.0 × 1.0 = 11.2
+Effort = (20 + 6) × (1 + 0.3 + 0.2) = 39
+WIS = 11.2 / 39 = 0.29 → REJECT (reconsider scope)
+```
+
+**Example 3: Refactor agent interface (breaking change)**
+
+```
+Categories: Quality (Impact: 7), DevEx (Impact: 6), Breaking (Impact: 8)
+Value = ((1.2 × 7) + (1.2 × 6) + (0.75 × 8)) × 1.5 × 1.0 = 32.4
+Effort = (40 + 6) × (1 + 0.6 + 0.2) = 82.8
+WIS = 32.4 / 82.8 = 0.39 → REJECT (breaking cost too high)
+```
+
+**Example 4: Improve error messages in CLI**
+
+```
+Categories: DevEx (Impact: 5), Quality (Impact: 3)
+Value = ((1.2 × 5) + (1.2 × 3)) × 0.5 × 1.0 = 4.8
+Effort = (8 + 6) × (1 + 0.0 + 0.0) = 14
+WIS = 4.8 / 14 = 0.34 → DEFER (low reach, do during slack time)
+```
+
+#### Quick Estimation (Skip Full WIS)
+
+For changes under 4 hours estimated, use simplified check:
+
+1. Does it fix a bug or security issue? → APPROVE
+2. Does it break existing APIs? → Use full WIS
+3. Does it add tests/docs for existing code? → APPROVE
+4. Is it pure refactoring with no behavior change? → CONSIDER (reviewer discretion)
 
 ---
 
