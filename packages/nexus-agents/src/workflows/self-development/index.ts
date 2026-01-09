@@ -59,3 +59,33 @@ export type {
 
 // Constants
 export { SELF_DEV_PERSONAS, VOTE_THRESHOLDS } from './types.js';
+
+// Interfaces
+export type {
+  SelfDevWorkflowDependencies,
+  IGitClient,
+  IGitHubClient,
+  GitHubIssue,
+  GitHubPR,
+  CreatePROptions,
+  WorkflowEvent,
+  WorkflowEventListener,
+} from './interfaces.js';
+
+// Phase executors (for extension/testing)
+export {
+  executeAnalyze,
+  executeResearch,
+  executePlan,
+  executeRefine,
+  executeVote,
+  executeImplement,
+  executeVerify,
+  executeCommit,
+} from './phase-executors.js';
+
+// Metrics
+export { calculateMetrics } from './metrics.js';
+
+// Engine
+export { SelfDevWorkflowEngine, createSelfDevWorkflowEngine } from './engine.js';
