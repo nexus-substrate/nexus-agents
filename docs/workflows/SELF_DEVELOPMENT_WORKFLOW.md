@@ -1,7 +1,7 @@
 # Self-Development Meta-Workflow Specification
 
-**Version:** 2.1.0
-**Status:** BLOCKED (Prerequisites Required)
+**Version:** 2.1.1
+**Status:** IN PROGRESS (Core Implementation Complete)
 **Date:** 2026-01-08 (ET)
 **GitHub Issue:** [#144](https://github.com/williamzujkowski/nexus-agents/issues/144)
 **Author:** Architecture Agent + Security Review
@@ -1344,24 +1344,37 @@ All components exist in the codebase:
 | SelfRefineProtocol       | `agents/collaboration/self-refine-protocol.ts`       | Implemented |
 | AdaptiveProtocolSelector | `agents/collaboration/adaptive-protocol-selector.ts` | Implemented |
 
-### 7.2 New Components Needed
+### 7.2 New Components Implemented
 
-| Component             | Purpose                    | Priority |
-| --------------------- | -------------------------- | -------- |
-| SelfDevWorkflowEngine | Orchestrates all 9 phases  | P1       |
-| IssueAnalyzer         | GitHub issue analysis      | P1       |
-| PlanPresenter         | Human-readable plan format | P2       |
-| CheckpointManager     | State persistence/recovery | P2       |
-| MetricsCollector      | Observability              | P3       |
+| Component             | Purpose                   | Status      | Location                                        |
+| --------------------- | ------------------------- | ----------- | ----------------------------------------------- |
+| SelfDevWorkflowEngine | Orchestrates all 9 phases | Implemented | `workflows/self-development/engine.ts`          |
+| PhaseExecutors        | Execute each phase        | Implemented | `workflows/self-development/phase-executors.ts` |
+| GitClient             | Git CLI operations        | Implemented | `workflows/self-development/git-client.ts`      |
+| GitHubClient          | GitHub CLI operations     | Implemented | `workflows/self-development/github-client.ts`   |
+| ShellExecutor         | Shell command execution   | Implemented | `workflows/self-development/shell-executor.ts`  |
+| MetricsCalculator     | Workflow metrics          | Implemented | `workflows/self-development/metrics.ts`         |
+| Types & Interfaces    | Type definitions          | Implemented | `workflows/self-development/types.ts`           |
+
+### 7.2.1 Test Coverage
+
+| Test File                | Tests  | Coverage                                   |
+| ------------------------ | ------ | ------------------------------------------ |
+| `engine.test.ts`         | 18     | Engine lifecycle, events, state management |
+| `shell-executor.test.ts` | 12     | Shell execution, verification checks       |
+| `git-client.test.ts`     | 22     | All git operations with mocked CLI         |
+| `github-client.test.ts`  | 14     | All gh operations with mocked CLI          |
+| `metrics.test.ts`        | 23     | Calculation, validation, reporting         |
+| **Total**                | **89** | Self-development module coverage           |
 
 ### 7.3 Implementation Order
 
-1. **Phase 1:** Implement SelfDevWorkflowEngine skeleton
-2. **Phase 2:** Wire up existing protocols
-3. **Phase 3:** Add GitHub integration (gh CLI)
-4. **Phase 4:** Implement human checkpoints
-5. **Phase 5:** Add metrics and observability
-6. **Phase 6:** Testing and hardening
+1. **Phase 1:** Implement SelfDevWorkflowEngine skeleton ✅ COMPLETE
+2. **Phase 2:** Wire up existing protocols ✅ COMPLETE (async executors ready)
+3. **Phase 3:** Add GitHub integration (gh CLI) ✅ COMPLETE
+4. **Phase 4:** Implement human checkpoints 🔄 IN PROGRESS
+5. **Phase 5:** Add metrics and observability ✅ COMPLETE
+6. **Phase 6:** Testing and hardening ✅ COMPLETE (89 tests)
 
 ### 7.4 Improvement Validation (Required)
 
