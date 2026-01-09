@@ -121,7 +121,7 @@ techniques:
     metrics:
       fault_tolerance: '85.7%'
 
-    status: planned
+    status: implemented
     priority: P2
     complexity: medium
 
@@ -132,13 +132,16 @@ techniques:
     related_prs: []
 
     notes: |
-      Add Byzantine fault tolerance to expert collaboration.
-      Implement confidence probes for vote weighting.
+      Implemented weighted Byzantine fault tolerance for expert collaboration.
+      Confidence probes for vote weighting.
 
     dependencies:
       - aegean-consensus
 
-    decision_history: []
+    decision_history:
+      - date: '2026-01-07'
+        decision: 'Implemented'
+        rationale: 'Issue #103 closed'
 
   multi-agent-reflexion:
     name: 'Multi-Agent Reflexion (MAR)'
