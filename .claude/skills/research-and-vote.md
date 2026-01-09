@@ -5,6 +5,7 @@ description: |
   Use when making architectural decisions, choosing dependencies, or
   designing APIs. Triggers on "research", "decide", "vote on", "consensus".
 allowed-tools: Read, Grep, Glob, WebSearch, WebFetch, Task
+context: fork
 ---
 
 # Research and Vote Skill
@@ -18,6 +19,7 @@ Conduct thorough research on a topic and facilitate multi-agent consensus voting
 ### Phase 1: Research
 
 1. **Verify Time Context**
+
    ```bash
    TZ='America/New_York' date  # Record current ET time
    ```
@@ -74,25 +76,32 @@ Conduct thorough research on a topic and facilitate multi-agent consensus voting
 # Decision Record: [Topic]
 
 ## Date
+
 [Current ET date/time]
 
 ## Status
+
 [Approved/Rejected/Needs Revision]
 
 ## Context
+
 [Problem being solved]
 
 ## Research Summary
+
 [Key findings from research phase]
 
 ## Decision
+
 [Final decision made]
 
 ## Voting Record
-| Agent | Vote | Reasoning |
-|-------|------|-----------|
-| Architect | ... | ... |
+
+| Agent     | Vote | Reasoning |
+| --------- | ---- | --------- |
+| Architect | ...  | ...       |
 
 ## Consequences
+
 [What this decision means for the project]
 ```

@@ -57,6 +57,44 @@ sources:
 
     version_checked: '2.0.76'
 
+  claude-skills-standard:
+    name: 'Claude Code Agent Skills (SKILL.md)'
+    type: product_docs
+    url: 'https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/skills'
+    vendor: Anthropic
+
+    topics:
+      - cli-tools
+      - orchestration
+    tags:
+      - skills
+      - claude-code
+      - customization
+      - automation
+
+    reviewed_date: '2026-01-09'
+    reviewed_in: null # Documented inline in this entry
+
+    key_info:
+      - 'SKILL.md format with YAML frontmatter'
+      - 'Required fields: name (64 chars max), description (1024 chars max)'
+      - 'Optional fields: allowed-tools, model, context, agent, hooks, user-invocable'
+      - 'Model-invoked discovery based on description matching'
+      - 'Progressive disclosure pattern for token efficiency'
+      - 'Storage: ~/.claude/skills/ (personal), .claude/skills/ (project)'
+      - 'context: fork runs skill in isolated sub-agent'
+      - 'allowed-tools restricts tool access during skill execution'
+
+    best_practices:
+      - 'Descriptions must include WHAT skill does AND WHEN to use it'
+      - 'Write descriptions in third person (not "I can help")'
+      - 'Keep SKILL.md under 500 lines'
+      - 'Use gerund naming: processing-pdfs, analyzing-spreadsheets'
+      - 'Link to supporting files (one level deep only)'
+      - 'Scripts execute without loading contents (token efficient)'
+
+    version_checked: '2026-01'
+
   # ============================================================================
   # CLI TOOLS - GEMINI
   # ============================================================================
