@@ -184,7 +184,7 @@ export class SelfDevWorkflowEngine implements ISelfDevWorkflowEngine {
     // Run phases 1-6 (through human review)
     const preReview = await this.runPreReviewPhases(executionId, state);
     // Run phases 7-9 (implementation through commit)
-    return this.runPostReviewPhases(executionId, state, preReview);
+    return await this.runPostReviewPhases(executionId, state, preReview);
   }
 
   private async runPreReviewPhases(
@@ -193,27 +193,27 @@ export class SelfDevWorkflowEngine implements ISelfDevWorkflowEngine {
   ): Promise<SelfDevWorkflowResult['outputs']> {
     const outputs: SelfDevWorkflowResult['outputs'] = {};
 
-    const analyzeOut = executeAnalyze(this.deps, state);
+    const analyzeOut = await executeAnalyze(this.deps, state);
     this.createCheckpoint(executionId, 'analyze', analyzeOut);
     this.updatePhase(executionId, 'research');
     (outputs as { analyze: typeof analyzeOut }).analyze = analyzeOut;
 
-    const researchOut = executeResearch(this.deps, state, analyzeOut);
+    const researchOut = await executeResearch(this.deps, state, analyzeOut);
     this.createCheckpoint(executionId, 'research', researchOut);
     this.updatePhase(executionId, 'plan');
     (outputs as { research: typeof researchOut }).research = researchOut;
 
-    const planOut = executePlan(this.deps, state, analyzeOut, researchOut);
+    const planOut = await executePlan(this.deps, state, analyzeOut, researchOut);
     this.createCheckpoint(executionId, 'plan', planOut);
     this.updatePhase(executionId, 'refine');
     (outputs as { plan: typeof planOut }).plan = planOut;
 
-    const refineOut = executeRefine(this.deps, state, planOut);
+    const refineOut = await executeRefine(this.deps, state, planOut);
     this.createCheckpoint(executionId, 'refine', refineOut);
     this.updatePhase(executionId, 'vote');
     (outputs as { refine: typeof refineOut }).refine = refineOut;
 
-    const voteOut = executeVote(this.deps, state, refineOut);
+    const voteOut = await executeVote(this.deps, state, refineOut);
     this.createCheckpoint(executionId, 'vote', voteOut);
     if (voteOut.verdict !== 'APPROVED') {
       throw new Error(`Consensus rejected: ${voteOut.verdict}`);
@@ -232,15 +232,15 @@ export class SelfDevWorkflowEngine implements ISelfDevWorkflowEngine {
     return outputs;
   }
 
-  private runPostReviewPhases(
+  private async runPostReviewPhases(
     executionId: string,
     state: SelfDevWorkflowState,
     outputs: SelfDevWorkflowResult['outputs']
-  ): SelfDevWorkflowResult['outputs'] {
+  ): Promise<SelfDevWorkflowResult['outputs']> {
     const refineOut = outputs.refine;
     if (refineOut === undefined) throw new Error('Refine output missing');
 
-    const implementOut = executeImplement(this.deps, state, refineOut);
+    const implementOut = await executeImplement(this.deps, state, refineOut);
     this.createCheckpoint(executionId, 'implement', implementOut);
     if (!implementOut.success) {
       throw new Error(`Implementation failed: ${implementOut.summary}`);
@@ -248,7 +248,7 @@ export class SelfDevWorkflowEngine implements ISelfDevWorkflowEngine {
     this.updatePhase(executionId, 'verify');
     (outputs as { implement: typeof implementOut }).implement = implementOut;
 
-    const verifyOut = executeVerify(this.deps, state);
+    const verifyOut = await executeVerify(this.deps, state);
     this.createCheckpoint(executionId, 'verify', verifyOut);
     if (!verifyOut.allPassed) {
       throw new Error(`Verification failed: ${verifyOut.failureReport ?? 'Unknown'}`);
@@ -256,7 +256,7 @@ export class SelfDevWorkflowEngine implements ISelfDevWorkflowEngine {
     this.updatePhase(executionId, 'commit');
     (outputs as { verify: typeof verifyOut }).verify = verifyOut;
 
-    const commitOut = executeCommit(this.deps, state, outputs);
+    const commitOut = await executeCommit(this.deps, state, outputs);
     this.createCheckpoint(executionId, 'commit', commitOut);
     (outputs as { commit: typeof commitOut }).commit = commitOut;
 

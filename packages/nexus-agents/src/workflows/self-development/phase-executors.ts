@@ -34,18 +34,23 @@ const logger = createLogger({ component: 'self-dev-phase-executors' });
 /**
  * Execute ANALYZE phase - Issue analysis and prioritization.
  */
-export function executeAnalyze(
-  _deps: SelfDevWorkflowDependencies,
+export async function executeAnalyze(
+  deps: SelfDevWorkflowDependencies,
   _state: SelfDevWorkflowState
-): AnalyzeOutput {
+): Promise<AnalyzeOutput> {
   const startTime = Date.now();
+  // Placeholder: will await GitHub API calls
+  await Promise.resolve();
 
-  // TODO: Implement issue analysis with GitHub API
-  // - Fetch issues with self-development-approved label
-  // - Validate author is authorized
-  // - Score and prioritize issues
-  // - Select highest priority issue
-  logger.info('ANALYZE phase: using placeholder (GitHub integration pending)');
+  // Use GitHub client if available
+  if (deps.githubClient !== undefined) {
+    logger.info('ANALYZE phase: GitHub client available');
+    // TODO: Implement full issue analysis
+    // const issues = await deps.githubClient.listIssues(['self-development-approved']);
+    // ... prioritize and select
+  } else {
+    logger.info('ANALYZE phase: using placeholder (no GitHub client)');
+  }
 
   return {
     prioritizedIssues: [],
@@ -75,15 +80,17 @@ export function executeAnalyze(
 /**
  * Execute RESEARCH phase - Multi-agent research.
  */
-export function executeResearch(
+export async function executeResearch(
   _deps: SelfDevWorkflowDependencies,
   _state: SelfDevWorkflowState,
   _analyze: AnalyzeOutput
-): ResearchOutput {
+): Promise<ResearchOutput> {
   const startTime = Date.now();
+  // Placeholder: will await research agent calls
+  await Promise.resolve();
 
   // TODO: Implement multi-agent research
-  // - Codebase exploration
+  // - Codebase exploration using modelAdapter
   // - Academic paper search
   // - Documentation lookup
   // - Git history analysis
@@ -106,22 +113,27 @@ export function executeResearch(
 /**
  * Execute PLAN phase - TRINITY Thinker/Worker/Verifier planning.
  */
-export function executePlan(
+export async function executePlan(
   deps: SelfDevWorkflowDependencies,
   state: SelfDevWorkflowState,
   analyze: AnalyzeOutput,
   research: ResearchOutput
-): PlanOutput {
+): Promise<PlanOutput> {
   const startTime = Date.now();
+  // Placeholder: will await TRINITY protocol
+  await Promise.resolve();
 
   // Build task description from analysis and research
   const taskDescription = buildPlanTaskDescription(analyze, research);
 
-  // If TrinityCoordinator is available, use it (async not supported in sync interface)
+  // If TrinityCoordinator is available, use it
   if (deps.trinity !== undefined) {
-    logger.info('PLAN phase: TrinityCoordinator available (async execution required)');
-    // Note: TrinityCoordinator.execute() is async - for now return placeholder
-    // Full integration requires making executePlan async
+    logger.info('PLAN phase: TrinityCoordinator available');
+    // TODO: Create agent wrapper and call trinity.execute()
+    // const agent = createSimpleAgent(deps, 'planner', 'thinker');
+    // const task = { id: 'plan', description: taskDescription, context: {} };
+    // const result = await deps.trinity.execute({ task, agent });
+    // if (result.ok) { ... use result.value }
   } else {
     logger.info('PLAN phase: TrinityCoordinator not injected, using placeholder');
   }
@@ -217,18 +229,23 @@ function buildImplementationPlan(
 /**
  * Execute REFINE phase - Multi-persona reflexion critique.
  */
-export function executeRefine(
+export async function executeRefine(
   deps: SelfDevWorkflowDependencies,
   state: SelfDevWorkflowState,
   plan: PlanOutput
-): RefineOutput {
+): Promise<RefineOutput> {
   const startTime = Date.now();
+  // Placeholder: will await Reflexion protocol
+  await Promise.resolve();
 
-  // If ReflexionProtocol is available, use it (async not supported in sync interface)
+  // If ReflexionProtocol is available, use it
   if (deps.reflexion !== undefined) {
-    logger.info('REFINE phase: ReflexionProtocol available (async execution required)');
-    // Note: ReflexionProtocol.execute() is async - for now return placeholder
-    // Full integration requires making executeRefine async
+    logger.info('REFINE phase: ReflexionProtocol available');
+    // TODO: Create agents map and call reflexion.execute()
+    // const agents = new Map<string, IAgent>();
+    // const config = { sessionId: 'refine', task, experts: [...] };
+    // const result = await deps.reflexion.execute(config, agents);
+    // if (result.ok) { ... use result.value }
   } else {
     logger.info('REFINE phase: ReflexionProtocol not injected, using placeholder');
   }
@@ -273,18 +290,22 @@ export function executeRefine(
 /**
  * Execute VOTE phase - Consensus voting.
  */
-export function executeVote(
+export async function executeVote(
   deps: SelfDevWorkflowDependencies,
   state: SelfDevWorkflowState,
   refine: RefineOutput
-): VoteOutput {
+): Promise<VoteOutput> {
   const startTime = Date.now();
+  // Placeholder: will await Consensus protocol
+  await Promise.resolve();
 
-  // If ConsensusProtocol is available, use it (async not supported in sync interface)
+  // If ConsensusProtocol is available, use it
   if (deps.consensus !== undefined) {
-    logger.info('VOTE phase: ConsensusProtocol available (async execution required)');
-    // Note: ConsensusProtocol.execute() is async - for now return placeholder
-    // Full integration requires making executeVote async
+    logger.info('VOTE phase: ConsensusProtocol available');
+    // TODO: Wire up consensus protocol
+    // const config = { sessionId: 'vote', proposal: refine.refinedPlan, ... };
+    // const result = await deps.consensus.execute(config, agents);
+    // if (result.ok) { ... use result.value }
   } else {
     logger.info('VOTE phase: ConsensusProtocol not injected, using placeholder');
   }
@@ -326,23 +347,33 @@ export function executeVote(
 /**
  * Execute IMPLEMENT phase - Self-Debug and Self-Refine code generation.
  */
-export function executeImplement(
+export async function executeImplement(
   deps: SelfDevWorkflowDependencies,
-  state: SelfDevWorkflowState,
+  _state: SelfDevWorkflowState,
   refine: RefineOutput
-): ImplementOutput {
+): Promise<ImplementOutput> {
   const startTime = Date.now();
+  // Placeholder: will await SelfDebug/SelfRefine protocols
+  await Promise.resolve();
 
   // If SelfDebugProtocol is available, use it
   if (deps.selfDebug !== undefined) {
-    logger.info('IMPLEMENT phase: SelfDebugProtocol available (async execution required)');
+    logger.info('IMPLEMENT phase: SelfDebugProtocol available');
+    // TODO: Wire up self-debug protocol
+    // const config = { task, agent, testRunner: ... };
+    // const result = await deps.selfDebug.execute(config);
+    // if (result.ok) { ... use result.value }
   } else {
     logger.info('IMPLEMENT phase: SelfDebugProtocol not injected');
   }
 
   // If SelfRefineProtocol is available, use it
   if (deps.selfRefine !== undefined) {
-    logger.info('IMPLEMENT phase: SelfRefineProtocol available (async execution required)');
+    logger.info('IMPLEMENT phase: SelfRefineProtocol available');
+    // TODO: Wire up self-refine protocol
+    // const config = { task, agent, criticAgent };
+    // const result = await deps.selfRefine.execute(config);
+    // if (result.ok) { ... use result.value }
   } else {
     logger.info('IMPLEMENT phase: SelfRefineProtocol not injected');
   }
@@ -369,13 +400,15 @@ export function executeImplement(
 /**
  * Execute VERIFY phase - Quality verification checks.
  */
-export function executeVerify(
+export async function executeVerify(
   _deps: SelfDevWorkflowDependencies,
   _state: SelfDevWorkflowState
-): VerifyOutput {
+): Promise<VerifyOutput> {
   const startTime = Date.now();
+  // Placeholder: will await shell command execution
+  await Promise.resolve();
 
-  // TODO: Run actual verification commands
+  // TODO: Run actual verification commands via shell
   // - pnpm typecheck
   // - pnpm lint
   // - pnpm test
@@ -402,22 +435,29 @@ export function executeVerify(
 /**
  * Execute COMMIT phase - Branch, commit, and PR creation.
  */
-export function executeCommit(
+export async function executeCommit(
   deps: SelfDevWorkflowDependencies,
   state: SelfDevWorkflowState,
   outputs: SelfDevWorkflowResult['outputs']
-): CommitOutput {
+): Promise<CommitOutput> {
   const startTime = Date.now();
+  // Placeholder: will await Git/GitHub client calls
+  await Promise.resolve();
 
   // Check if Git and GitHub clients are available
   if (deps.gitClient !== undefined) {
-    logger.info('COMMIT phase: Git client available (async execution required)');
+    logger.info('COMMIT phase: Git client available');
+    // TODO: Wire up git client
+    // await deps.gitClient.createBranch(branch);
+    // await deps.gitClient.commit(message);
   } else {
     logger.info('COMMIT phase: Git client not injected');
   }
 
   if (deps.githubClient !== undefined) {
-    logger.info('COMMIT phase: GitHub client available (async execution required)');
+    logger.info('COMMIT phase: GitHub client available');
+    // TODO: Wire up GitHub client
+    // const pr = await deps.githubClient.createPR({ title, body, branch });
   } else {
     logger.info('COMMIT phase: GitHub client not injected');
   }
