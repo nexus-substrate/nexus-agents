@@ -554,13 +554,16 @@ techniques:
     related_prs: []
 
     notes: |
-      Requires relevance review before implementation.
-      Check overlap with A-MEM and existing memory systems.
-      High complexity but high reward for long-horizon tasks.
+      CORE FEATURES ALREADY IMPLEMENTED - Review found high overlap.
+      Issue #156 refocused to benchmarking/optimization work.
+      Missing: performance validation (91% latency, 90% tokens, 26% quality).
 
     dependencies: []
 
-    decision_history: []
+    decision_history:
+      - date: '2026-01-09'
+        decision: 'Reviewed - ENHANCE_EXISTING recommendation'
+        rationale: 'Core features in agentic-memory, adaptive-memory, graph-memory. Need benchmarks.'
 
   mirix-six-type-memory:
     name: 'MIRIX Six-Type Memory System'
@@ -582,20 +585,22 @@ techniques:
       storage_reduction: '99.9%'
       benchmark_accuracy: '85.4%'
 
-    status: planned
+    status: implemented
     priority: P2
     complexity: high
 
     integration_files:
-      - 'packages/nexus-agents/src/agents/memory/'
+      - 'packages/nexus-agents/src/context/typed-memory.ts'
+      - 'packages/nexus-agents/src/context/typed-memory-impl.ts'
+      - 'packages/nexus-agents/src/context/typed-memory-types.ts'
 
     implementation_issue: 157
     related_prs: []
 
     notes: |
-      Requires relevance review before implementation.
-      Check overlap with existing memory categorization systems.
-      Comprehensive memory for long-running agents.
+      ALREADY IMPLEMENTED - All six memory types present in typed-memory.ts.
+      Code explicitly cites arXiv:2507.07957 in comments.
+      Implementation exceeds MIRIX with A-MEM and Voyager integration.
 
     dependencies: []
 
@@ -606,6 +611,9 @@ techniques:
       - date: '2026-01-09'
         decision: 'Created issue #157 with relevance review requirement'
         rationale: 'Overlap with existing A-MEM and Voyager needs evaluation'
+      - date: '2026-01-09'
+        decision: 'Closed #157 - already implemented'
+        rationale: 'Review found all six memory types already in typed-memory.ts'
 
   mobimem-evolution:
     name: 'MobiMem Post-Deployment Evolution'
