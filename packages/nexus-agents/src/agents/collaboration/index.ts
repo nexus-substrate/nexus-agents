@@ -246,3 +246,33 @@ export {
   createFreeMadScorer,
   evaluateWithAntiConformity,
 } from './free-mad-scoring.js';
+
+// Constitutional AI Self-Critique (Source: Issue #147, arxiv:2212.08073)
+export type {
+  Constitution,
+  Principle,
+  PrincipleExample,
+  Violation,
+  ViolationSeverity,
+  CritiqueResult,
+  RevisionIteration,
+  RefinementResult,
+  ConstitutionalCriticConfig,
+} from './constitutional-types.js';
+
+export { DEFAULT_CRITIC_CONFIG } from './constitutional-types.js';
+
+export {
+  ConstitutionalCritic,
+  createConstitutionalCritic,
+  critiqueCode,
+  type CritiqueOptions,
+  type RevisionOptions,
+  type RefinementOptions,
+} from './constitutional-critic.js';
+
+export {
+  CODE_CONSTITUTION,
+  getCriticalPrinciples,
+  getPrinciplesByCategory,
+} from './constitutions/code.js';

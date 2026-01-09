@@ -1108,20 +1108,26 @@ techniques:
     metrics:
       scales: 'without human labelers'
 
-    status: planned
+    status: implemented
     priority: P2
     complexity: medium
 
     integration_files:
       - 'packages/nexus-agents/src/agents/collaboration/constitutional-critic.ts'
       - 'packages/nexus-agents/src/agents/collaboration/constitutional-types.ts'
+      - 'packages/nexus-agents/src/agents/collaboration/constitutions/code.ts'
+      - 'packages/nexus-agents/src/agents/collaboration/constitutional-critic.test.ts'
 
     implementation_issue: 147
     related_prs: []
 
     notes: |
-      Define constitution of principles for agent behavior.
-      Self-critique against explicit criteria.
+      Implemented Constitutional AI self-critique protocol.
+      - ConstitutionalCritic class with critique(), revise(), refineWithConstitution()
+      - CODE_CONSTITUTION with 8 security/quality principles
+      - Pattern-based violation detection with confidence scoring
+      - Iterative refinement loop with convergence detection
+      - 21 tests covering all functionality
       Can integrate with TRINITY verifier role.
 
     dependencies: []
