@@ -252,18 +252,21 @@ techniques:
     complexity: medium
 
     integration_files:
-      - 'packages/nexus-agents/src/agents/experts/expert-selector.ts'
+      - 'packages/nexus-agents/src/cli-adapters/topsis-router.ts'
 
-    implementation_issue: null
+    implementation_issue: 146
     related_prs: []
 
     notes: |
-      Requires adding cost/latency to ExpertDefinition first.
+      Requires adding cost/latency to ModelProfile first.
 
     dependencies:
       - expert-cost-modeling
 
-    decision_history: []
+    decision_history:
+      - date: '2026-01-09'
+        decision: 'Issue created'
+        rationale: 'Created during dogfooding session'
 
   ipr-quality-estimators:
     name: 'IPR Quality-Constrained Routing'
@@ -389,7 +392,7 @@ techniques:
       cost_reduction: '50%+'
       latency_reduction: '80%+ cascade'
 
-    status: planned
+    status: implemented
     priority: P2
     complexity: high
 
@@ -401,12 +404,15 @@ techniques:
     related_prs: []
 
     notes: |
-      Train small classifier to pre-screen tasks.
-      Add confidence-aware rejection to expert selector.
+      Implemented confidence-aware cascade routing.
+      Confidence estimation before model escalation.
 
     dependencies: []
 
-    decision_history: []
+    decision_history:
+      - date: '2026-01-07'
+        decision: 'Implemented'
+        rationale: 'Issue #99 closed'
 
   cascade-routing:
     name: 'Agreement-Based Cascading (ABC)'
@@ -1067,18 +1073,23 @@ techniques:
     complexity: medium
 
     integration_files:
-      - 'packages/nexus-agents/src/agents/'
+      - 'packages/nexus-agents/src/agents/collaboration/constitutional-critic.ts'
+      - 'packages/nexus-agents/src/agents/collaboration/constitutional-types.ts'
 
-    implementation_issue: null
+    implementation_issue: 147
     related_prs: []
 
     notes: |
       Define constitution of principles for agent behavior.
       Self-critique against explicit criteria.
+      Can integrate with TRINITY verifier role.
 
     dependencies: []
 
-    decision_history: []
+    decision_history:
+      - date: '2026-01-09'
+        decision: 'Issue created'
+        rationale: 'Created during dogfooding session'
 
   self-debug-repair:
     name: 'Self-Debug Code Repair'
