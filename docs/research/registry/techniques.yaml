@@ -683,6 +683,61 @@ techniques:
 
     decision_history: []
 
+  amem-agentic-memory:
+    name: 'A-MEM Agentic Memory'
+    description: |
+      Zettelkasten-inspired agentic memory where memories are treated as
+      notes with attributes (keywords, tags, entities, context description).
+      Dynamic linking and evolution detection enables semantic organization.
+
+    source_papers:
+      - arxiv-2502.12110
+
+    topic: memory
+    tags:
+      - agentic-memory
+      - zettelkasten
+      - dynamic-linking
+      - memory-evolution
+      - attribute-extraction
+
+    metrics:
+      semantic_organization: 'Automatic attribute extraction and linking'
+      evolution_detection: 'Refinement, extension, supersession detection'
+
+    status: implemented
+    priority: P1
+    complexity: medium
+
+    integration_files:
+      - 'packages/nexus-agents/src/context/agentic-memory-types.ts'
+      - 'packages/nexus-agents/src/context/agentic-memory-helpers.ts'
+      - 'packages/nexus-agents/src/context/agentic-memory-linking.ts'
+      - 'packages/nexus-agents/src/context/agentic-memory.ts'
+      - 'packages/nexus-agents/src/context/agentic-memory.test.ts'
+
+    implementation_issue: 122
+    related_prs: []
+
+    notes: |
+      Implemented as AgenticMemoryBackend class with:
+      - Automatic attribute extraction (keywords, tags, entities, context)
+      - Dynamic link suggestion based on similarity (60% keyword, 40% entity)
+      - Memory evolution detection (refinement, extension, supersession, contradiction)
+      - PII filtering in entity extraction
+      - Composition with HybridMemoryBackend and GraphMemoryBackend
+      - Phase 1 uses rule-based extraction; Phase 2 will add embeddings
+      - 31 comprehensive tests
+
+    dependencies:
+      - graph-based-memory
+      - adaptive-memory
+
+    decision_history:
+      - date: '2026-01-09'
+        decision: 'Implemented'
+        rationale: 'Issue #122 - A-MEM Agentic Memory implementation'
+
   # ============================================================================
   # ORCHESTRATION
   # ============================================================================

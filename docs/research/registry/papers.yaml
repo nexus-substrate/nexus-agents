@@ -1076,6 +1076,46 @@ papers:
   # MEMORY SYSTEMS
   # ============================================================================
 
+  arxiv-2502.12110:
+    title: 'A-MEM: Agentic Memory for LLM Agents'
+    authors: []
+    source: arxiv
+    arxiv_id: '2502.12110'
+    url: 'https://arxiv.org/abs/2502.12110'
+    publication_date: '2025-02'
+    venue: null
+
+    topics:
+      - memory
+    tags:
+      - agentic-memory
+      - zettelkasten
+      - dynamic-linking
+      - memory-evolution
+
+    reviewed_date: '2026-01-09'
+    reviewed_in: 'Issue #122'
+    summary: |
+      Zettelkasten-inspired agentic memory system where memories are
+      treated as notes with attributes (keywords, tags, entities, context).
+      Dynamic linking and evolution detection enables semantic organization.
+
+    key_findings:
+      - 'Zettelkasten note-taking principles for AI memory'
+      - 'Dynamic link suggestion based on attribute similarity'
+      - 'Memory evolution detection (refinement, extension, supersession)'
+      - 'Attribute extraction for semantic organization'
+
+    relevance: high
+    techniques_extracted:
+      - amem-attribute-extraction
+      - dynamic-link-suggestion
+      - memory-evolution-detection
+
+    related_issues:
+      - 122
+    implementation_status: implemented
+
   arxiv-2507.07957:
     title: 'MIRIX: Six-Type Memory System'
     authors: []
