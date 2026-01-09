@@ -1401,8 +1401,8 @@ papers:
       - sica-self-improvement
       - agent-versioning
 
-    related_issues: []
-    implementation_status: planned
+    related_issues: [151]
+    implementation_status: implemented
 
   arxiv-2412.17149:
     title: 'Multi-AI Agent System for Autonomous Optimization'

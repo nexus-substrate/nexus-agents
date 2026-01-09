@@ -1072,12 +1072,15 @@ techniques:
       swebench_improvement: '17% -> 53%'
       file_editing_improvement: '82% -> 94%'
 
-    status: planned
+    status: implemented
     priority: P2
     complexity: high
 
     integration_files:
-      - 'packages/nexus-agents/src/agents/'
+      - 'packages/nexus-agents/src/agents/self-improving/sica-types.ts'
+      - 'packages/nexus-agents/src/agents/self-improving/sica-version-manager.ts'
+      - 'packages/nexus-agents/src/agents/self-improving/sica-agent.ts'
+      - 'packages/nexus-agents/src/agents/self-improving/index.ts'
 
     implementation_issue: 151
     related_prs: []
