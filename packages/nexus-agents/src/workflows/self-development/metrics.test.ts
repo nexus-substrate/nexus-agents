@@ -48,11 +48,30 @@ function createMockOutputs(): SelfDevWorkflowResult['outputs'] {
     plan: {
       trinityResult: {
         success: true,
-        output: {},
+        finalOutput: 'Mock output',
         iterations: 3,
-        thinkingOutput: { analysis: '', approach: '', verification: '' },
-        executionOutput: { implementation: '', changes: [] },
-        verificationOutput: { review: '', issues: [], approved: true },
+        totalDurationMs: 5000,
+        history: [],
+        stopReason: 'verified' as const,
+        thinkerOutput: {
+          problemAnalysis: 'Test problem',
+          approach: 'Test approach',
+          considerations: [],
+          successCriteria: [],
+        },
+        workerOutput: {
+          implementation: 'Test implementation',
+          stepsCompleted: [],
+          deviations: [],
+          questions: [],
+        },
+        verifierOutput: {
+          verdict: 'pass' as const,
+          correctnessCheck: 'Correct',
+          qualityCheck: 'Good quality',
+          issuesFound: [],
+          recommendations: [],
+        },
       },
       plan: {
         problemAnalysis: 'Test analysis',
@@ -68,11 +87,12 @@ function createMockOutputs(): SelfDevWorkflowResult['outputs'] {
     },
     refine: {
       reflexionResult: {
-        success: true,
-        iterationsUsed: 2,
-        converged: true,
+        rounds: [],
         finalOutput: {},
-        history: [],
+        totalIterations: 2,
+        converged: true,
+        terminationReason: 'converged' as const,
+        totalDurationMs: 3000,
       },
       refinedPlan: {
         problemAnalysis: 'Refined analysis',

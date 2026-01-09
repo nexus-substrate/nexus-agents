@@ -15,15 +15,26 @@ import { ok } from '../../core/index.js';
 function createMockDependencies(): SelfDevWorkflowDependencies {
   return {
     modelAdapter: {
+      providerId: 'mock',
+      modelId: 'mock-model',
+      capabilities: [],
       complete: vi.fn().mockResolvedValue(
         ok({
           content: [{ type: 'text' as const, text: 'Mock response' }],
           usage: { inputTokens: 10, outputTokens: 20, totalTokens: 30 },
           stopReason: 'end_turn' as const,
+          model: 'mock-model',
         })
       ),
-      completeStream: vi.fn(),
-      capabilities: [],
+      stream: vi.fn().mockReturnValue(
+        (async function* (): AsyncGenerator<{ type: 'message_stop' }> {
+          // Yield after a microtask to satisfy @typescript-eslint/require-await
+          await Promise.resolve();
+          yield { type: 'message_stop' as const };
+        })()
+      ),
+      countTokens: vi.fn().mockResolvedValue(100),
+      validateConfig: vi.fn().mockReturnValue({ ok: true, value: undefined }),
     },
   };
 }

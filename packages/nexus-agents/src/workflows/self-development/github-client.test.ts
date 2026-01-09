@@ -21,7 +21,7 @@ vi.mock('node:child_process', () => ({
 function createMockExecFile(
   response: { stdout: string; stderr: string } | null,
   error: Error | null = null
-): typeof childProcess.execFile {
+): ReturnType<typeof vi.fn> {
   return vi
     .fn()
     .mockImplementation(
