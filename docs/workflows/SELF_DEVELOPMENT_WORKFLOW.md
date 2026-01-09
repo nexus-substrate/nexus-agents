@@ -1,6 +1,6 @@
 # Self-Development Meta-Workflow Specification
 
-**Version:** 2.1.2
+**Version:** 2.2.0
 **Status:** COMPLETE (All Implementation Phases Done)
 **Date:** 2026-01-09 (ET)
 **GitHub Issue:** [#144](https://github.com/williamzujkowski/nexus-agents/issues/144)
@@ -1380,27 +1380,73 @@ All components exist in the codebase:
 
 **All self-development changes MUST be validated improvements, not random changes.**
 
-Before executing any code changes, baseline metrics are captured. After execution, the same metrics are measured and compared. Changes that cause regressions are automatically blocked.
+Before executing any code changes, baseline metrics are captured. After execution, the same metrics are measured and compared. Changes that cause unacceptable regressions are automatically blocked.
 
-#### Metrics Captured
+**Validation Protocol:** Dogfooded 2026-01-09 using TRINITY + Reflexion + Consensus (5 agents, 4/5 approve).
 
-| Metric            | Command              | Validation Rule   |
-| ----------------- | -------------------- | ----------------- |
-| Test Coverage     | `pnpm test:coverage` | Must not decrease |
-| Test Count        | `pnpm test`          | Must not decrease |
-| Lint Errors       | `pnpm lint`          | Must not increase |
-| Type Errors       | `pnpm typecheck`     | Must not increase |
-| Bundle Size       | `du -sb dist/`       | Max 5% increase   |
-| Security Findings | `pnpm audit`         | Must not increase |
+#### Tier 1: Hard Gates (PR Cannot Merge)
+
+| Metric                | Command            | Validation Rule                 |
+| --------------------- | ------------------ | ------------------------------- |
+| Tests                 | `pnpm test`        | All pass                        |
+| TypeCheck             | `pnpm typecheck`   | Zero errors                     |
+| Lint                  | `pnpm lint`        | Zero errors (not "no increase") |
+| Security Critical     | `pnpm audit`       | Zero critical/high findings     |
+| Cyclomatic Complexity | ESLint             | ≤10 per function                |
+| Cognitive Complexity  | ESLint             | ≤12 per function                |
+| Circular Dependencies | `madge --circular` | Zero cycles                     |
+
+#### Tier 1b: Tiered Coverage (Module-Specific)
+
+| Module Path                     | Minimum Coverage | Rationale                 |
+| ------------------------------- | ---------------- | ------------------------- |
+| `src/security/**`               | 100%             | Security-critical paths   |
+| `src/mcp/tools/**`              | 100%             | Public interface boundary |
+| `src/agents/**`                 | 85%              | Core orchestration logic  |
+| `src/adapters/**`               | 85%              | Model abstraction layer   |
+| `src/workflows/**`              | 85%              | Business logic            |
+| `src/utils/**`, `src/config/**` | 75%              | Utilities and config      |
+
+#### Tier 2: Soft Gates (Justification Required)
+
+| Metric               | Threshold | When Triggered                  |
+| -------------------- | --------- | ------------------------------- |
+| Coverage Decrease    | > 2%      | Explanation required in PR      |
+| Bundle Size Increase | > 5%      | Justification required          |
+| New Public API       | Any       | GitHub issue reference required |
+
+**Acceptable justifications for coverage decrease:**
+
+- Removed dead code (grep confirms no callers)
+- Consolidated duplicate implementations
+- Refactored to better-tested abstraction
+
+#### Tier 3: Value Tracking (>150 LOC Changes)
+
+Changes exceeding 150 lines of code require:
+
+- GitHub issue reference in commit/PR
+- Issue describes: what changes, why it matters
+- This ensures intentionality for significant work
+
+**Exemptions:** Trivial fixes with clear error context, generated code, test files.
+
+#### Removed Metrics (With Rationale)
+
+| Removed                         | Why                                            |
+| ------------------------------- | ---------------------------------------------- |
+| "Test count must not decrease"  | Meaningless: 1 good test > 10 trivial tests    |
+| "Lint errors must not increase" | Changed to: must be zero                       |
+| Tech debt ratio                 | Undefined; deferred until concrete measurement |
 
 #### Validation Flow
 
 ```
 1. BASELINE: Capture metrics before changes
 2. EXECUTE: Apply code changes in sandbox
-3. MEASURE: Capture metrics after changes
-4. COMPARE: Check against validation thresholds
-5. BLOCK/PROCEED: Regressions block merge, improvements proceed
+3. MEASURE: Capture Tier 1-3 metrics
+4. COMPARE: Hard gates = block, Soft gates = require justification
+5. REPORT: Generate improvement validation report
 ```
 
 #### Improvement Report
@@ -1410,27 +1456,50 @@ Every PR includes an improvement validation report:
 ```markdown
 ## Improvement Validation Report
 
-| Metric        | Before | After | Delta | Status      |
-| ------------- | ------ | ----- | ----- | ----------- |
-| Test Coverage | 82.1%  | 84.2% | +2.1% | ✅ IMPROVED |
-| Test Count    | 312    | 320   | +8    | ✅ IMPROVED |
-| Lint Errors   | 0      | 0     | 0     | ✅ PASS     |
-| Type Errors   | 0      | 0     | 0     | ✅ PASS     |
-| Bundle Size   | 1.2MB  | 1.2MB | 0%    | ✅ PASS     |
-| Security      | 0      | 0     | 0     | ✅ PASS     |
+### Tier 1: Hard Gates
+
+| Gate          | Status                          |
+| ------------- | ------------------------------- |
+| Tests         | ✅ 3352 passing                 |
+| TypeCheck     | ✅ 0 errors                     |
+| Lint          | ✅ 0 errors                     |
+| Security      | ✅ 0 critical/high              |
+| Complexity    | ✅ All functions ≤10 cyclomatic |
+| Circular Deps | ✅ None detected                |
+
+### Tier 1b: Coverage by Module
+
+| Module        | Before | After | Threshold | Status  |
+| ------------- | ------ | ----- | --------- | ------- |
+| security/\*\* | 100%   | 100%  | 100%      | ✅ PASS |
+| agents/\*\*   | 86.2%  | 87.1% | 85%       | ✅ PASS |
+| adapters/\*\* | 85.4%  | 85.4% | 85%       | ✅ PASS |
+
+### Tier 2: Soft Gates
+
+| Metric   | Delta | Status      |
+| -------- | ----- | ----------- |
+| Coverage | +0.9% | ✅ IMPROVED |
+| Bundle   | +1.2% | ✅ PASS     |
 
 **Overall: VALIDATED IMPROVEMENT**
 ```
 
 #### Regression Handling
 
-If regressions are detected:
+If hard gate regressions are detected:
 
 1. Execution halts before PR creation
 2. Detailed regression report is generated
 3. Rollback to checkpoint is automatic
 4. Human is notified of regression details
 5. Issue is flagged for manual resolution
+
+If soft gate thresholds are exceeded:
+
+1. PR is created but marked "needs justification"
+2. Justification must be added before merge
+3. Reviewer can approve exception with reasoning
 
 ---
 
