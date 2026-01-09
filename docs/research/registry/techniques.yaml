@@ -214,7 +214,7 @@ techniques:
     integration_files:
       - 'packages/nexus-agents/src/agents/collaboration/consensus-protocol.ts'
 
-    implementation_issue: null
+    implementation_issue: 152
     related_prs: []
 
     notes: |
@@ -223,7 +223,10 @@ techniques:
 
     dependencies: []
 
-    decision_history: []
+    decision_history:
+      - date: '2026-01-09'
+        decision: 'Issue created'
+        rationale: 'Created during dogfooding session'
 
   # ============================================================================
   # ROUTING
@@ -484,7 +487,7 @@ techniques:
     integration_files:
       - 'packages/nexus-agents/src/agents/'
 
-    implementation_issue: null
+    implementation_issue: 148
     related_prs: []
 
     notes: |
@@ -492,7 +495,10 @@ techniques:
 
     dependencies: []
 
-    decision_history: []
+    decision_history:
+      - date: '2026-01-09'
+        decision: 'Issue created'
+        rationale: 'Created during dogfooding session'
 
   # ============================================================================
   # MEMORY SYSTEMS
@@ -604,7 +610,7 @@ techniques:
       - 'packages/nexus-agents/src/agents/'
       - 'packages/nexus-agents/src/workflows/'
 
-    implementation_issue: null
+    implementation_issue: 149
     related_prs: []
 
     notes: |
@@ -614,7 +620,10 @@ techniques:
 
     dependencies: []
 
-    decision_history: []
+    decision_history:
+      - date: '2026-01-09'
+        decision: 'Issue created'
+        rationale: 'Created during dogfooding session'
 
   graph-based-memory:
     name: 'Graph-Based Memory'
@@ -825,7 +834,7 @@ techniques:
     integration_files:
       - 'packages/nexus-agents/src/agents/'
 
-    implementation_issue: null
+    implementation_issue: 154
     related_prs: []
 
     notes: |
@@ -837,6 +846,9 @@ techniques:
       - date: '2026-01-06'
         decision: 'Deferred to Phase 3+'
         rationale: 'Requires significant infrastructure'
+      - date: '2026-01-09'
+        decision: 'Issue created'
+        rationale: 'Created during dogfooding session'
 
   latts-adaptive-compute:
     name: 'LATTS Adaptive Test-Time Compute'
@@ -863,7 +875,7 @@ techniques:
     integration_files:
       - 'packages/nexus-agents/src/workflows/step-executor.ts'
 
-    implementation_issue: null
+    implementation_issue: 153
     related_prs: []
 
     notes: |
@@ -872,7 +884,10 @@ techniques:
 
     dependencies: []
 
-    decision_history: []
+    decision_history:
+      - date: '2026-01-09'
+        decision: 'Issue created'
+        rationale: 'Created during dogfooding session'
 
   # ============================================================================
   # SELF-IMPROVEMENT
@@ -997,7 +1012,7 @@ techniques:
     integration_files:
       - 'packages/nexus-agents/src/agents/'
 
-    implementation_issue: null
+    implementation_issue: 150
     related_prs: []
 
     notes: |
@@ -1010,6 +1025,9 @@ techniques:
       - date: '2026-01-06'
         decision: 'Added to Phase 2 Skill Learning'
         rationale: 'High impact for code-related tasks'
+      - date: '2026-01-09'
+        decision: 'Issue created'
+        rationale: 'Created during dogfooding session'
 
   sica-self-improvement:
     name: 'SICA Self-Improving Agent'
@@ -1037,7 +1055,7 @@ techniques:
     integration_files:
       - 'packages/nexus-agents/src/agents/'
 
-    implementation_issue: null
+    implementation_issue: 151
     related_prs: []
 
     notes: |
@@ -1048,7 +1066,10 @@ techniques:
     dependencies:
       - self-refine-loop
 
-    decision_history: []
+    decision_history:
+      - date: '2026-01-09'
+        decision: 'Issue created'
+        rationale: 'Created during dogfooding session'
 
   constitutional-ai:
     name: 'Constitutional AI Self-Critique'
