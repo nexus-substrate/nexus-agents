@@ -1024,19 +1024,21 @@ techniques:
       discovery_improvement: '3.3x more unique items'
       speed_improvement: 'up to 15.3x faster milestone'
 
-    status: planned
+    status: implemented
     priority: P2
     complexity: medium
 
     integration_files:
-      - 'packages/nexus-agents/src/agents/'
+      - 'packages/nexus-agents/src/agents/skills/'
 
     implementation_issue: 150
     related_prs: []
 
     notes: |
-      Implement skill library as code snippets with metadata.
-      Skills should be temporally extended, interpretable, compositional.
+      Implemented skill library as code snippets with metadata.
+      Skills are temporally extended, interpretable, compositional.
+      Includes SkillLibrary class with storage, retrieval, metrics tracking.
+      SkillComposer for combining skills to solve complex tasks.
 
     dependencies: []
 
@@ -1047,6 +1049,9 @@ techniques:
       - date: '2026-01-09'
         decision: 'Issue created'
         rationale: 'Created during dogfooding session'
+      - date: '2026-01-09'
+        decision: 'Implementation completed'
+        rationale: 'SkillLibrary and SkillComposer with 40 tests'
 
   sica-self-improvement:
     name: 'SICA Self-Improving Agent'

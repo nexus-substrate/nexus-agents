@@ -1506,8 +1506,9 @@ papers:
       - voyager-skill-library
       - automatic-curriculum
 
-    related_issues: []
-    implementation_status: planned
+    related_issues:
+      - 150
+    implementation_status: partial # voyager-skill-library implemented, automatic-curriculum pending
 
   arxiv-2410.14735:
     title: 'CycleQD: Quality-Diversity for Agent Skill Acquisition'
