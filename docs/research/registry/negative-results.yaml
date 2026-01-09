@@ -1,0 +1,52 @@
+# registry/negative-results.yaml
+# Rejected approaches and their lessons learned
+# Prevents re-researching failed implementations
+# Schema version: 1.0
+#
+# Dogfooded 2026-01-09: Added as part of Research Protocol v2
+
+negative_results:
+  # ============================================================================
+  # ORCHESTRATION - Rejected Approaches
+  # ============================================================================
+
+  latent-space-sharing:
+    name: 'LatentMAS Latent Space Collaboration'
+    paper: arxiv-2511.20639
+    rejection_date: '2026-01-06'
+
+    failure_mode: architecture_incompatible
+    # Modes: architecture_incompatible | metrics_not_reproduced | unacceptable_tradeoffs | superseded
+
+    evidence:
+      - 'Requires same-model deployment for embedding compatibility'
+      - 'nexus-agents uses hybrid CLI architecture with multiple model providers'
+      - 'Hidden state access not available through MCP or CLI interfaces'
+
+    lessons_learned:
+      - 'Techniques requiring model internals do not work with API-based orchestration'
+      - 'Always check if technique requires embedding/latent access before prioritizing'
+      - 'Hybrid architectures need techniques that work at the API level, not model level'
+
+    reopen_conditions:
+      - 'If nexus-agents moves to single-model deployment'
+      - 'If MCP adds hidden state access primitives'
+      - 'If model providers expose embedding layers via API'
+
+    related_techniques:
+      - 'Consider context-window sharing instead (api-level alternative)'
+
+  # ============================================================================
+  # Template for future rejections
+  # ============================================================================
+  # technique-id:
+  #   name: 'Human-readable name'
+  #   paper: arxiv-XXXX.XXXXX
+  #   rejection_date: 'YYYY-MM-DD'
+  #   failure_mode: architecture_incompatible | metrics_not_reproduced | unacceptable_tradeoffs | superseded
+  #   evidence:
+  #     - 'What we observed'
+  #   lessons_learned:
+  #     - 'What we learned'
+  #   reopen_conditions:
+  #     - 'When to revisit'

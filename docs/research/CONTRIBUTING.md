@@ -1,6 +1,6 @@
 # Contributing to Research Documentation
 
-**Last Updated:** 2026-01-07 (ET)
+**Last Updated:** 2026-01-09 (ET)
 
 This guide explains how to add new research papers, techniques, and sources to the nexus-agents research tracking system.
 
@@ -155,19 +155,60 @@ source-id:
 
 ---
 
-## Status Lifecycle
+## Research Protocol v2
+
+**Dogfooded 2026-01-09:** TRINITY + Reflexion + Consensus.
+
+### Status Lifecycle (4 states)
 
 ```
-not-started -> planned -> in-progress -> implemented
-                     \-> rejected (with rationale)
+candidate → reviewed → implemented
+              ↓
+           archived
 ```
 
-When updating status:
+| Status        | Description                              |
+| ------------- | ---------------------------------------- |
+| `candidate`   | Paper found, needs full review           |
+| `reviewed`    | Full read complete, techniques extracted |
+| `implemented` | At least one technique implemented       |
+| `archived`    | Superseded or no longer relevant         |
 
-1. Update `status` field in techniques.yaml
-2. Add entry to `decision_history` if significant
-3. Link `implementation_issue` when work begins
-4. Add `related_prs` when implemented
+### Integration with Self-Development
+
+When the Self-Development workflow runs Phase 2 (RESEARCH):
+
+1. Check `papers.yaml` first before external arXiv search
+2. Reuse existing reviews for related papers
+3. After implementation, update technique status
+
+### Staleness Detection
+
+Use git history instead of manual tracking:
+
+```bash
+# When was this file last updated?
+git log -1 --format="%ar" -- docs/research/registry/papers.yaml
+
+# Find papers not touched in 90+ days
+git log --since="90 days ago" -- docs/research/registry/
+```
+
+### Negative Results Tracking
+
+Document rejected approaches in `registry/negative-results.yaml`:
+
+```yaml
+technique-id:
+  paper: arxiv-XXXX.XXXXX
+  failure_mode: architecture_incompatible | metrics_not_reproduced | unacceptable_tradeoffs
+  lessons_learned:
+    - 'Key insight from failed implementation'
+  reopen_conditions:
+    - 'Condition that would make this worth revisiting'
+```
+
+This prevents re-researching already-rejected approaches.
 
 ---
 
