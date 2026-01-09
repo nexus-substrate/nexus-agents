@@ -226,3 +226,23 @@ export {
   createTrinityCoordinator,
   type TrinityExecuteOptions,
 } from './trinity-coordinator.js';
+
+// Free-MAD Anti-Conformity Scoring (Source: Issue #152, arxiv:2509.11035)
+export type {
+  DebatePosition,
+  AgentTrajectory,
+  RoundSnapshot,
+  AntiConformityScore,
+  DebateTrajectory,
+  FreeMadResult,
+  FreeMadConfig,
+  TrajectoryVote,
+} from './free-mad-types.js';
+
+export { DEFAULT_FREE_MAD_CONFIG } from './free-mad-types.js';
+
+export {
+  FreeMadScorer,
+  createFreeMadScorer,
+  evaluateWithAntiConformity,
+} from './free-mad-scoring.js';

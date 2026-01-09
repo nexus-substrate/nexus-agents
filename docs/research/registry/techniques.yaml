@@ -207,19 +207,26 @@ techniques:
     metrics:
       robustness: 'enhanced against attacks'
 
-    status: not-started
+    status: implemented
     priority: P2
     complexity: low
 
     integration_files:
-      - 'packages/nexus-agents/src/agents/collaboration/consensus-protocol.ts'
+      - 'packages/nexus-agents/src/agents/collaboration/free-mad-types.ts'
+      - 'packages/nexus-agents/src/agents/collaboration/free-mad-scoring.ts'
+      - 'packages/nexus-agents/src/agents/collaboration/free-mad-scoring.test.ts'
 
     implementation_issue: 152
     related_prs: []
 
     notes: |
-      Evaluates entire debate trajectory rather than just final round.
-      Useful for review protocols.
+      Implemented as FreeMadScorer class with:
+      - Debate trajectory tracking across multiple rounds
+      - Anti-conformity scoring with configurable penalty weights
+      - Persistence bonus for minority position maintainers
+      - Conformity detection when agents change to match majority
+      - Integration helpers for existing consensus protocols
+      - 19 comprehensive tests
 
     dependencies: []
 
@@ -227,6 +234,9 @@ techniques:
       - date: '2026-01-09'
         decision: 'Issue created'
         rationale: 'Created during dogfooding session'
+      - date: '2026-01-09'
+        decision: 'Implemented'
+        rationale: 'FreeMadScorer with trajectory evaluation and anti-conformity scoring'
 
   # ============================================================================
   # ROUTING
