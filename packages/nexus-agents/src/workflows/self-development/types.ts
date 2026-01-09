@@ -28,6 +28,8 @@ import type { SelfRefineConfig } from '../../agents/collaboration/self-refine-pr
 export interface SelfDevWorkflowConfig {
   /** GitHub repository in owner/repo format */
   readonly repository: string;
+  /** Working directory for git and shell operations (defaults to cwd) */
+  readonly workingDirectory?: string;
   /** Labels to filter issues by */
   readonly issueLabels?: string[];
   /** Labels to exclude from consideration */

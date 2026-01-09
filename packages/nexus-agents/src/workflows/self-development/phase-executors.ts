@@ -24,6 +24,7 @@ import type {
   ImplementationPlan,
 } from './types.js';
 import { SELF_DEV_PERSONAS } from './types.js';
+import { runAllVerificationChecks } from './shell-executor.js';
 
 const logger = createLogger({ component: 'self-dev-phase-executors' });
 
@@ -401,31 +402,46 @@ export async function executeImplement(
  * Execute VERIFY phase - Quality verification checks.
  */
 export async function executeVerify(
-  _deps: SelfDevWorkflowDependencies,
-  _state: SelfDevWorkflowState
+  deps: SelfDevWorkflowDependencies,
+  state: SelfDevWorkflowState
 ): Promise<VerifyOutput> {
   const startTime = Date.now();
-  // Placeholder: will await shell command execution
-  await Promise.resolve();
+  const cwd = state.config.workingDirectory ?? process.cwd();
 
-  // TODO: Run actual verification commands via shell
-  // - pnpm typecheck
-  // - pnpm lint
-  // - pnpm test
-  // - pnpm build
-  logger.info('VERIFY phase: using placeholder (shell execution pending)');
+  // Run verification commands
+  const checkResults = await runAllVerificationChecks(cwd);
 
-  return {
-    checks: [
-      { name: 'typecheck', command: 'pnpm typecheck', passed: true, durationMs: 0 },
-      { name: 'lint', command: 'pnpm lint', passed: true, durationMs: 0 },
-      { name: 'test', command: 'pnpm test', passed: true, durationMs: 0 },
-      { name: 'build', command: 'pnpm build', passed: true, durationMs: 0 },
-    ],
-    allPassed: true,
-    coverage: 80,
+  // Convert to VerifyCheck format
+  const checks = checkResults.map((r) => ({
+    name: r.name,
+    command: r.command,
+    passed: r.passed,
+    durationMs: r.durationMs,
+    ...(r.output !== undefined && { output: r.output }),
+  }));
+
+  const allPassed = checks.every((c) => c.passed);
+  const failedChecks = checks.filter((c) => !c.passed);
+
+  logger.info('VERIFY phase completed', {
+    allPassed,
+    passedCount: checks.filter((c) => c.passed).length,
+    totalCount: checks.length,
+  });
+
+  const output: VerifyOutput = {
+    checks,
+    allPassed,
+    coverage: 80, // TODO: Extract actual coverage from test output
     durationMs: Date.now() - startTime,
   };
+
+  if (!allPassed && failedChecks.length > 0) {
+    const failedNames = failedChecks.map((c) => c.name).join(', ');
+    return { ...output, failureReport: `Failed checks: ${failedNames}` };
+  }
+
+  return output;
 }
 
 // =============================================================================

@@ -101,3 +101,15 @@ export { SelfDevWorkflowEngine, createSelfDevWorkflowEngine } from './engine.js'
 // Clients
 export { createGitHubClient, GhCliGitHubClient, GitHubError } from './github-client.js';
 export { createGitClient, GitCliClient, GitError } from './git-client.js';
+
+// Shell execution
+export {
+  executeShellCommand,
+  executePnpmScript,
+  runVerificationCheck,
+  runAllVerificationChecks,
+  ShellError,
+  type ShellResult,
+  type ShellOptions,
+  type VerificationCheckResult,
+} from './shell-executor.js';
