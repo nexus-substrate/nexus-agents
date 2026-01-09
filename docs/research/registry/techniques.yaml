@@ -550,10 +550,12 @@ techniques:
     integration_files:
       - 'packages/nexus-agents/src/agents/memory/'
 
-    implementation_issue: 101
+    implementation_issue: 156
     related_prs: []
 
     notes: |
+      Requires relevance review before implementation.
+      Check overlap with A-MEM and existing memory systems.
       High complexity but high reward for long-horizon tasks.
 
     dependencies: []
@@ -587,12 +589,13 @@ techniques:
     integration_files:
       - 'packages/nexus-agents/src/agents/memory/'
 
-    implementation_issue: 101
+    implementation_issue: 157
     related_prs: []
 
     notes: |
+      Requires relevance review before implementation.
+      Check overlap with existing memory categorization systems.
       Comprehensive memory for long-running agents.
-      Active Retrieval aligns with context manager categories.
 
     dependencies: []
 
@@ -600,6 +603,9 @@ techniques:
       - date: '2026-01-06'
         decision: 'Added to Phase 3 roadmap'
         rationale: 'High potential, significant implementation effort'
+      - date: '2026-01-09'
+        decision: 'Created issue #157 with relevance review requirement'
+        rationale: 'Overlap with existing A-MEM and Voyager needs evaluation'
 
   mobimem-evolution:
     name: 'MobiMem Post-Deployment Evolution'
