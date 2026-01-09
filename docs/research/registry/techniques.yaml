@@ -260,18 +260,27 @@ techniques:
     metrics:
       cost_reduction: '31.46%'
 
-    status: planned
+    status: implemented
     priority: P2
     complexity: medium
 
     integration_files:
       - 'packages/nexus-agents/src/cli-adapters/topsis-router.ts'
+      - 'packages/nexus-agents/src/cli-adapters/topsis-types.ts'
+      - 'packages/nexus-agents/src/cli-adapters/topsis-router.test.ts'
 
     implementation_issue: 146
-    related_prs: []
 
     notes: |
-      Requires adding cost/latency to ModelProfile first.
+      Implemented TopsisRouter with:
+      - Vector normalization of decision matrix
+      - Configurable criteria weights (quality, cost, latency)
+      - Positive/negative ideal solution calculation
+      - Closeness score ranking
+      - Cost savings estimation vs highest quality model
+      - 22 comprehensive tests
+
+    related_prs: []
 
     dependencies:
       - expert-cost-modeling

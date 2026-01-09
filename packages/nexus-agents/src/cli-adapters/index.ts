@@ -125,3 +125,19 @@ export type {
   AgreementResult,
   ResponseCluster,
 } from './agreement-cascade-router.js';
+
+// TOPSIS Multi-Criteria Router (Issue #146, arXiv:2509.07571)
+export { TopsisRouter, createTopsisRouter, selectModelWithTopsis } from './topsis-router.js';
+export type { SelectModelOptions } from './topsis-router.js';
+export type {
+  TopsisCredential,
+  TopsisModelProfile,
+  TopsisConfig,
+  TopsisScore,
+  TopsisResult,
+} from './topsis-types.js';
+export {
+  DEFAULT_TOPSIS_CONFIG,
+  DEFAULT_TOPSIS_CRITERIA,
+  DEFAULT_MODEL_PROFILES,
+} from './topsis-types.js';

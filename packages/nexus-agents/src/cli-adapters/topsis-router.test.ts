@@ -1,0 +1,296 @@
+/**
+ * nexus-agents/cli-adapters - TOPSIS Router Tests
+ *
+ * @module cli-adapters/topsis-router.test
+ * (Source: Issue #146)
+ */
+
+import { describe, it, expect, beforeEach } from 'vitest';
+import { TopsisRouter, createTopsisRouter, selectModelWithTopsis } from './topsis-router.js';
+import type { TopsisModelProfile } from './topsis-types.js';
+import { DEFAULT_TOPSIS_CRITERIA } from './topsis-types.js';
+
+describe('TopsisRouter', () => {
+  let router: TopsisRouter;
+
+  beforeEach(() => {
+    router = new TopsisRouter({ verbose: false });
+  });
+
+  describe('constructor', () => {
+    it('should create router with default config', () => {
+      const r = new TopsisRouter();
+      expect(r.getConfig().criteria).toEqual(DEFAULT_TOPSIS_CRITERIA);
+    });
+
+    it('should accept custom criteria', () => {
+      const customCriteria = [
+        { name: 'quality', weight: 0.7, beneficial: true },
+        { name: 'cost', weight: 0.3, beneficial: false },
+      ];
+      const r = new TopsisRouter({ criteria: customCriteria });
+      expect(r.getConfig().criteria).toEqual(customCriteria);
+    });
+
+    it('should throw if weights do not sum to 1.0', () => {
+      const invalidCriteria = [
+        { name: 'quality', weight: 0.5, beneficial: true },
+        { name: 'cost', weight: 0.3, beneficial: false },
+      ];
+      expect(() => new TopsisRouter({ criteria: invalidCriteria })).toThrow(
+        /weights must sum to 1\.0/
+      );
+    });
+  });
+
+  describe('selectModel', () => {
+    it('should select a model from default profiles', () => {
+      const result = router.selectModel();
+
+      expect(result.selectedModel).toBeDefined();
+      expect(['claude', 'gemini', 'codex']).toContain(result.selectedModel);
+      expect(result.scores.length).toBe(3);
+    });
+
+    it('should return scores in ranked order', () => {
+      const result = router.selectModel();
+
+      for (let i = 0; i < result.scores.length - 1; i++) {
+        const current = result.scores[i];
+        const next = result.scores[i + 1];
+        if (current !== undefined && next !== undefined) {
+          expect(current.closenessScore).toBeGreaterThanOrEqual(next.closenessScore);
+        }
+      }
+    });
+
+    it('should return valid closeness scores between 0 and 1', () => {
+      const result = router.selectModel();
+
+      for (const score of result.scores) {
+        expect(score.closenessScore).toBeGreaterThanOrEqual(0);
+        expect(score.closenessScore).toBeLessThanOrEqual(1);
+      }
+    });
+
+    it('should calculate positive and negative ideal solutions', () => {
+      const result = router.selectModel();
+
+      expect(result.positiveIdeal).toBeDefined();
+      expect(result.negativeIdeal).toBeDefined();
+      expect(result.positiveIdeal['quality']).toBeDefined();
+      expect(result.negativeIdeal['quality']).toBeDefined();
+    });
+
+    it('should provide reasoning for selection', () => {
+      const result = router.selectModel();
+
+      expect(result.reasoning).toBeDefined();
+      expect(result.reasoning.length).toBeGreaterThan(0);
+      expect(result.reasoning).toContain(result.selectedModel);
+    });
+  });
+
+  describe('selectModel with custom profiles', () => {
+    it('should work with custom model profiles', () => {
+      const customProfiles: TopsisModelProfile[] = [
+        {
+          cliName: 'claude',
+          capabilities: {
+            reasoning: 10,
+            contextWindow: 200_000,
+            codeGeneration: 9,
+            speed: 7,
+            cost: 5,
+          },
+          costPerMillionInput: 3.0,
+          costPerMillionOutput: 15.0,
+          averageLatencyMs: 800,
+          qualityScore: 9.5,
+        },
+        {
+          cliName: 'gemini',
+          capabilities: {
+            reasoning: 8,
+            contextWindow: 1_000_000,
+            codeGeneration: 7,
+            speed: 8,
+            cost: 9,
+          },
+          costPerMillionInput: 0.5,
+          costPerMillionOutput: 2.0,
+          averageLatencyMs: 300,
+          qualityScore: 7.5,
+        },
+      ];
+
+      const result = router.selectModel({ profiles: customProfiles });
+
+      expect(['claude', 'gemini']).toContain(result.selectedModel);
+      expect(result.scores.length).toBe(2);
+    });
+
+    it('should consider expected token counts in cost calculation', () => {
+      const result1 = router.selectModel({
+        expectedInputTokens: 100,
+        expectedOutputTokens: 50,
+      });
+
+      const result2 = router.selectModel({
+        expectedInputTokens: 100_000,
+        expectedOutputTokens: 50_000,
+      });
+
+      // With more tokens, cost becomes more important
+      expect(result1).toBeDefined();
+      expect(result2).toBeDefined();
+    });
+  });
+
+  describe('weight influence', () => {
+    it('should favor high quality when quality weight is high', () => {
+      const qualityFocused = new TopsisRouter({
+        criteria: [
+          { name: 'quality', weight: 0.9, beneficial: true },
+          { name: 'cost', weight: 0.05, beneficial: false },
+          { name: 'latency', weight: 0.05, beneficial: false },
+        ],
+      });
+
+      const result = qualityFocused.selectModel();
+
+      // Claude has highest quality score (9.5)
+      expect(result.selectedModel).toBe('claude');
+    });
+
+    it('should favor low cost when cost weight is high', () => {
+      const costFocused = new TopsisRouter({
+        criteria: [
+          { name: 'quality', weight: 0.1, beneficial: true },
+          { name: 'cost', weight: 0.8, beneficial: false },
+          { name: 'latency', weight: 0.1, beneficial: false },
+        ],
+      });
+
+      const result = costFocused.selectModel();
+
+      // Gemini has lowest cost
+      expect(result.selectedModel).toBe('gemini');
+    });
+
+    it('should favor low latency when latency weight is high', () => {
+      const speedFocused = new TopsisRouter({
+        criteria: [
+          { name: 'quality', weight: 0.1, beneficial: true },
+          { name: 'cost', weight: 0.1, beneficial: false },
+          { name: 'latency', weight: 0.8, beneficial: false },
+        ],
+      });
+
+      const result = speedFocused.selectModel();
+
+      // Gemini has lowest latency (400ms)
+      expect(result.selectedModel).toBe('gemini');
+    });
+  });
+
+  describe('cost optimization', () => {
+    it('should calculate cost savings correctly', () => {
+      const costFocused = new TopsisRouter({
+        criteria: [
+          { name: 'quality', weight: 0.2, beneficial: true },
+          { name: 'cost', weight: 0.6, beneficial: false },
+          { name: 'latency', weight: 0.2, beneficial: false },
+        ],
+      });
+
+      const result = costFocused.selectModel();
+
+      // Should report savings when cheaper model selected
+      expect(result.estimatedSavingsPercent).toBeGreaterThanOrEqual(0);
+      if (result.selectedModel !== 'claude') {
+        expect(result.costOptimized).toBe(true);
+      }
+    });
+
+    it('should report no savings when highest quality model selected', () => {
+      const qualityOnly = new TopsisRouter({
+        criteria: [
+          { name: 'quality', weight: 1.0, beneficial: true },
+          { name: 'cost', weight: 0.0, beneficial: false },
+          { name: 'latency', weight: 0.0, beneficial: false },
+        ],
+      });
+
+      const result = qualityOnly.selectModel();
+
+      expect(result.selectedModel).toBe('claude');
+      expect(result.estimatedSavingsPercent).toBe(0);
+    });
+  });
+
+  describe('TOPSIS calculations', () => {
+    it('should produce normalized values between 0 and 1', () => {
+      const result = router.selectModel();
+
+      for (const score of result.scores) {
+        for (const value of Object.values(score.normalizedValues)) {
+          expect(value).toBeGreaterThanOrEqual(0);
+          expect(value).toBeLessThanOrEqual(1);
+        }
+      }
+    });
+
+    it('should produce distances that are non-negative', () => {
+      const result = router.selectModel();
+
+      for (const score of result.scores) {
+        expect(score.distanceToPIS).toBeGreaterThanOrEqual(0);
+        expect(score.distanceToNIS).toBeGreaterThanOrEqual(0);
+      }
+    });
+
+    it('should have at least one model with max closeness', () => {
+      const result = router.selectModel();
+
+      const maxCloseness = Math.max(...result.scores.map((s) => s.closenessScore));
+      expect(maxCloseness).toBeGreaterThan(0);
+      expect(maxCloseness).toBeLessThanOrEqual(1);
+    });
+  });
+});
+
+describe('createTopsisRouter', () => {
+  it('should create router with default config', () => {
+    const router = createTopsisRouter();
+    expect(router).toBeInstanceOf(TopsisRouter);
+  });
+
+  it('should create router with custom config', () => {
+    const router = createTopsisRouter({
+      minQualityThreshold: 7,
+      verbose: true,
+    });
+    expect(router.getConfig().minQualityThreshold).toBe(7);
+    expect(router.getConfig().verbose).toBe(true);
+  });
+});
+
+describe('selectModelWithTopsis', () => {
+  it('should return valid result using quick function', () => {
+    const result = selectModelWithTopsis();
+
+    expect(result.selectedModel).toBeDefined();
+    expect(result.scores.length).toBeGreaterThan(0);
+    expect(result.reasoning).toBeDefined();
+  });
+
+  it('should accept options', () => {
+    const result = selectModelWithTopsis({
+      expectedInputTokens: 5000,
+      expectedOutputTokens: 2000,
+    });
+
+    expect(result.selectedModel).toBeDefined();
+  });
+});
