@@ -108,3 +108,57 @@ export type {
   ResolvedError,
   SessionEpisode,
 } from './session-memory.js';
+
+// Graph Memory (Issue #142, arXiv:2308.09687 - MiRIX)
+export { GraphMemoryBackend, createGraphMemory, RelationTypes } from './graph-memory.js';
+
+export type {
+  IGraphMemory,
+  GraphEdge,
+  GraphMemoryConfig,
+  TraversalOptions,
+  TraversalResult,
+  RelationType,
+  AddRelationshipOptions,
+} from './graph-memory.js';
+
+// Adaptive Memory (Issue #143, arXiv:2310.08560)
+export {
+  AdaptiveMemoryBackend,
+  createAdaptiveMemory,
+  DEFAULT_SCORING_CONFIG,
+} from './adaptive-memory.js';
+
+export type {
+  IAdaptiveMemory,
+  AdaptiveMemoryConfig,
+  ScoringConfig,
+  PriorityScore,
+  ScoredMemoryEntry,
+  PriorityRetrievalOptions,
+} from './adaptive-memory.js';
+
+// Agentic Memory (Issue #122, arXiv:2502.12110 - A-MEM)
+export {
+  AgenticMemoryBackend,
+  createAgenticMemory,
+  EntityType,
+  EvolutionType,
+  DEFAULT_EXTRACTION_CONFIG,
+  DEFAULT_LINKING_CONFIG,
+  DEFAULT_AGENTIC_MEMORY_CONFIG,
+} from './agentic-memory.js';
+
+export type {
+  IAgenticMemory,
+  AgenticMemoryConfig,
+  AgenticMemoryEntry,
+  AgenticStoreResult,
+  MemoryAttributes,
+  ExtractionConfig,
+  LinkingConfig,
+  LinkingOptions,
+  LinkSuggestion,
+  EvolutionResult,
+  EntityReference,
+} from './agentic-memory.js';
