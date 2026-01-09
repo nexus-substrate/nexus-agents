@@ -1,6 +1,6 @@
 # Self-Development Meta-Workflow Specification
 
-**Version:** 2.3.0
+**Version:** 2.4.0
 **Status:** COMPLETE (All Implementation Phases Done)
 **Date:** 2026-01-09 (ET)
 **GitHub Issue:** [#144](https://github.com/williamzujkowski/nexus-agents/issues/144)
@@ -194,10 +194,49 @@ interface AnalyzeInput {
    - Risk assessment (security, breaking changes)
 5. Aggregate results and rank by priority score
 
-**Priority Scoring Formula:**
+**Issue Selection Protocol (v2):**
 
-```
-priority = (alignment * 3) + (urgency * 2) + (feasibility * 2) - (risk * 1.5) - (complexity * 0.5)
+Dogfooded 2026-01-09: TRINITY + Reflexion + Consensus.
+
+**Phase 1: Hard Gates (Eligibility)**
+
+| Gate               | Rule                         | Rationale                          |
+| ------------------ | ---------------------------- | ---------------------------------- |
+| dependencies_clear | All blocking issues resolved | Cannot implement blocked work      |
+| feasibility        | >= 2 (scale 1-5)             | Minimum viability threshold        |
+| risk_for_auto      | <= 2 (scale 1-5)             | Autonomous work requires low risk  |
+| security_sensitive | false OR human_approved      | Security changes need human review |
+
+**Phase 2: Queue Router**
+
+| Condition                   | Queue           | Action                          |
+| --------------------------- | --------------- | ------------------------------- |
+| Has `security` label        | Security Review | Human approval required         |
+| Has `breaking-change` label | Human Review    | Supermajority + user approval   |
+| risk >= 3                   | Human Review    | Cannot auto-select              |
+| Otherwise                   | Autonomous      | May proceed with WIS evaluation |
+
+**Phase 3: Priority Score**
+
+Weights sum to 1.0 for debuggability. All factors normalized 0-1.
+
+```typescript
+const WEIGHTS = {
+  alignment: 0.30,      // PROJECT_PLAN.md goal alignment
+  urgency: 0.20,        // Time-sensitive factors
+  feasibility: 0.20,    // Implementation viability
+  learning_value: 0.15, // Capability growth potential
+  recent_context: 0.10, // Efficiency from related work
+  risk_penalty: -0.05,  // Small penalty (already hard-gated)
+} as const;
+
+// Score range: [0.0, 0.95] - higher is better
+priority = Σ(factor[i] × weight[i])
+
+// Example trace for debugging:
+// Issue #42: alignment=0.8 (0.24), urgency=0.6 (0.12),
+//   feasibility=0.9 (0.18), learning=0.5 (0.075),
+//   context=0.3 (0.03), risk=0.2 (-0.01) = 0.645
 ```
 
 **Output:**
