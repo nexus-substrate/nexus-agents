@@ -85,7 +85,15 @@ export {
 } from './phase-executors.js';
 
 // Metrics
-export { calculateMetrics } from './metrics.js';
+export {
+  calculateMetrics,
+  validateMetrics,
+  metricsPassQualityGates,
+  summarizeMetrics,
+  formatMetricsReport,
+  type MetricsValidation,
+  type MetricsSummary,
+} from './metrics.js';
 
 // Engine
 export { SelfDevWorkflowEngine, createSelfDevWorkflowEngine } from './engine.js';
