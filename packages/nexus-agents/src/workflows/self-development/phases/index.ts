@@ -1,0 +1,32 @@
+/**
+ * Phase Executors - Module Exports
+ *
+ * Individual phase execution logic for the self-development workflow.
+ * Each phase is wired to existing protocols: TRINITY, Reflexion, Consensus, etc.
+ *
+ * @module workflows/self-development/phases
+ */
+
+// Shared utilities
+export { createSimpleAgent } from './shared.js';
+
+// Phase 1: ANALYZE
+export { executeAnalyze } from './analyze.js';
+
+// Phase 2: RESEARCH
+export { executeResearch } from './research.js';
+
+// Phase 3: PLAN (TRINITY)
+export { executePlan } from './plan.js';
+
+// Phase 4: REFINE (Reflexion)
+export { executeRefine, findPersonaRole, buildRefinementTask } from './refine.js';
+
+// Phase 5: VOTE (Consensus)
+export { executeVote } from './vote.js';
+
+// Phase 7: IMPLEMENT
+export { executeImplement } from './implement.js';
+
+// Phase 8: VERIFY & Phase 9: COMMIT
+export { executeVerify, executeCommit } from './verify-commit.js';
