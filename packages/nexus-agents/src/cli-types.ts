@@ -28,7 +28,8 @@ export type CliCommand =
   | 'config'
   | 'expert'
   | 'workflow'
-  | 'doctor';
+  | 'doctor'
+  | 'review';
 
 /**
  * Parsed CLI arguments and command.
@@ -123,6 +124,7 @@ COMMANDS:
   expert list     List available experts (built-in and custom)
   workflow list   List available workflow templates
   workflow run    Execute a workflow template
+  review <url>    Review a GitHub pull request (dogfooding)
 
 OPTIONS:
   -h, --help           Show this help message
@@ -145,6 +147,9 @@ WORKFLOW OPTIONS:
   -i, --input <json>   Workflow inputs as JSON string or file path
   --dry-run            Validate workflow without executing
 
+REVIEW OPTIONS:
+  --dry-run            Review without posting to GitHub
+
 EXAMPLES:
   nexus-agents                  Start MCP server (default)
   nexus-agents --interactive    Start interactive REPL
@@ -154,6 +159,8 @@ EXAMPLES:
   nexus-agents workflow list    List workflow templates
   nexus-agents workflow run code-review --dry-run
   nexus-agents --mode=mesh      Full hybrid mesh mode
+  nexus-agents review https://github.com/owner/repo/pull/123
+  nexus-agents review owner/repo#123 --dry-run
 
 For more information, visit: https://github.com/williamzujkowski/nexus-agents
 `.trim();
@@ -173,6 +180,7 @@ export function isValidCommand(value: string): value is CliCommand {
     'expert',
     'workflow',
     'doctor',
+    'review',
   ];
   return validCommands.includes(value as CliCommand);
 }

@@ -36,3 +36,7 @@ export type {
   DetectionSignals,
   DetectModeOptions,
 } from './mode-detector.js';
+
+// PR Review (dogfooding)
+export { reviewCommand } from './review-command.js';
+export type { ReviewCommandOptions } from './review-command.js';
