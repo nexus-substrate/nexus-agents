@@ -44,14 +44,22 @@ jobs:
 
       - name: Run PR review
         id: review
+        # Allow the job to succeed even if review fails (requires API keys)
+        continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Model adapter config (optional - uses defaults if not set)
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
-          # Run review with verbose output
-          pnpm nexus-agents review \
+          # Check if API key is configured
+          if [ -z "$ANTHROPIC_API_KEY" ] && [ -z "$OPENAI_API_KEY" ]; then
+            echo "⚠️ No API keys configured - skipping automated review"
+            echo "Configure ANTHROPIC_API_KEY or OPENAI_API_KEY secrets to enable"
+            exit 0
+          fi
+          # Run review with verbose output using npx to invoke the bin
+          npx nexus-agents review \
             "${{ github.event.pull_request.html_url }}" \
             --verbose
 
