@@ -113,3 +113,27 @@ export {
   type ShellOptions,
   type VerificationCheckResult,
 } from './shell-executor.js';
+
+// Audit trail
+export {
+  AuditTrail,
+  InMemoryAuditStorage,
+  createAuditTrail,
+  type AuditEvent,
+  type AuditSeverity,
+  type AuditCategory,
+  type IAuditStorage,
+} from './audit-trail.js';
+
+// Notifications
+export {
+  NotificationService,
+  ConsoleNotificationHandler,
+  WebhookNotificationHandler,
+  createNotificationService,
+  type Notification,
+  type NotificationSeverity,
+  type NotificationEventType,
+  type INotificationHandler,
+  type WebhookConfig,
+} from './notifications.js';

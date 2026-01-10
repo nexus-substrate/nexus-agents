@@ -1,0 +1,71 @@
+name: Nexus Agents PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review]
+
+# Only run on non-draft PRs
+concurrency:
+  group: nexus-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    name: Multi-Agent Review
+    runs-on: ubuntu-latest
+    # Skip draft PRs and PRs from dependabot
+    if: |
+      github.event.pull_request.draft == false &&
+      github.actor != 'dependabot[bot]'
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build nexus-agents
+        run: pnpm build
+
+      - name: Run PR review
+        id: review
+        # Allow the job to succeed even if review fails (requires API keys)
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Model adapter config (optional - uses defaults if not set)
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          # Check if API key is configured
+          if [ -z "$ANTHROPIC_API_KEY" ] && [ -z "$OPENAI_API_KEY" ]; then
+            echo "⚠️ No API keys configured - skipping automated review"
+            echo "Configure ANTHROPIC_API_KEY or OPENAI_API_KEY secrets to enable"
+            exit 0
+          fi
+          # Run review with verbose output using npx to invoke the bin
+          npx nexus-agents review \
+            "${{ github.event.pull_request.html_url }}" \
+            --verbose
+
+      - name: Review summary
+        if: always()
+        run: |
+          echo "### PR Review Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Review posted to PR #${{ github.event.pull_request.number }}" >> $GITHUB_STEP_SUMMARY

@@ -14,6 +14,7 @@ import {
   workflowRunCommand,
   printWorkflowTemplates,
   replCommand,
+  reviewCommand,
   type ExpertListFormat,
 } from './cli/index.js';
 import { EXIT_CODES, HELP_TEXT, type ParsedCliArgs } from './cli-types.js';
@@ -121,6 +122,29 @@ export async function handleServerCommand(args: ParsedCliArgs): Promise<void> {
 }
 
 /**
+ * Handles the review command for PR review (dogfooding).
+ */
+export async function handleReviewCommand(args: ParsedCliArgs): Promise<void> {
+  // Get PR URL from positionals (review <url>)
+  const prUrl = args.positionals[1];
+  if (prUrl === undefined) {
+    process.stdout.write('Error: PR URL is required.\n');
+    process.stdout.write('Usage: nexus-agents review <url> [options]\n');
+    process.stdout.write('Examples:\n');
+    process.stdout.write('  nexus-agents review https://github.com/owner/repo/pull/123\n');
+    process.stdout.write('  nexus-agents review owner/repo#123 --dry-run\n');
+    process.exit(EXIT_CODES.INVALID_ARGS);
+  }
+
+  const exitCode = await reviewCommand({
+    prUrl,
+    dryRun: args.options.dryRun,
+    verbose: args.options.verbose,
+  });
+  process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
+}
+
+/**
  * Dispatches to the appropriate command handler.
  *
  * @param args - Parsed CLI arguments
@@ -157,6 +181,10 @@ export async function dispatchCommand(args: ParsedCliArgs): Promise<void> {
 
     case 'workflow':
       await handleWorkflowCommand(args);
+      break;
+
+    case 'review':
+      await handleReviewCommand(args);
       break;
   }
 }

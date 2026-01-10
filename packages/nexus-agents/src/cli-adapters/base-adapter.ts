@@ -6,7 +6,7 @@
  * (Source: cli-project_plan.md v2.1.0)
  */
 
-import { exec } from 'node:child_process';
+import { spawn, exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import semver from 'semver';
 
@@ -319,6 +319,7 @@ export abstract class BaseCliAdapter implements ICliAdapter {
 
 /**
  * Base class for subprocess-based CLI adapters.
+ * Used by ClaudeCliAdapter and GeminiCliAdapter.
  */
 export abstract class SubprocessCliAdapter extends BaseCliAdapter {
   readonly transport: CliTransport = 'subprocess';
@@ -331,7 +332,8 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
   protected abstract getCommand(task: CliTask): { command: string; args: string[] };
 
   /**
-   * Executes a task via subprocess.
+   * Executes a task via subprocess using spawn for proper argument handling.
+   * Using spawn avoids shell escaping issues with multi-line content.
    */
   async executeTask(
     task: CliTask,
@@ -340,16 +342,53 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
     const { command, args } = this.getCommand(task);
     const startTime = Date.now();
 
-    try {
-      const { stdout, stderr } = await execAsync(`${command} ${args.join(' ')}`, {
-        timeout: options.timeoutMs,
-        maxBuffer: 10 * 1024 * 1024, // 10MB
+    return new Promise((resolve) => {
+      const child = spawn(command, args, {
+        stdio: ['pipe', 'pipe', 'pipe'],
       });
 
-      return this.handleSubprocessOutput(stdout, stderr, startTime);
-    } catch (error) {
-      return this.handleSubprocessError(error);
-    }
+      let stdout = '';
+      let stderr = '';
+      let resolved = false;
+
+      const resolveOnce = (result: Result<CliResponse, CliError>): void => {
+        if (!resolved) {
+          resolved = true;
+          resolve(result);
+        }
+      };
+
+      child.stdout.on('data', (data: Buffer) => {
+        stdout += data.toString();
+      });
+
+      child.stderr.on('data', (data: Buffer) => {
+        stderr += data.toString();
+      });
+
+      child.on('error', (error: Error) => {
+        resolveOnce(this.handleSubprocessError(error));
+      });
+
+      child.on('close', (code: number | null) => {
+        if (code !== 0 && stdout === '') {
+          const errorMsg = stderr !== '' ? stderr : `Process exited with code ${String(code)}`;
+          resolveOnce(err(this.createError('EXECUTION_ERROR', errorMsg)));
+          return;
+        }
+        resolveOnce(this.handleSubprocessOutput(stdout, stderr, startTime));
+      });
+
+      // Handle timeout
+      const timeoutId = setTimeout(() => {
+        child.kill('SIGTERM');
+        resolveOnce(err(this.createError('TIMEOUT', 'Execution timed out')));
+      }, options.timeoutMs);
+
+      child.on('close', () => {
+        clearTimeout(timeoutId);
+      });
+    });
   }
 
   /**

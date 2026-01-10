@@ -8,6 +8,7 @@
 export {
   AdapterFactory,
   AdapterConfigSchema,
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- Re-exporting deprecated item for consumers
   defaultFactory,
   type AdapterConfig,
   type AdapterCreator,
@@ -136,3 +137,12 @@ export {
   type CostModel,
   type QualityRoutedResult,
 } from './quality-router.js';
+
+// Auto-selecting adapter factory
+export {
+  createAutoAdapter,
+  getAvailableAdapters,
+  type AutoAdapterConfig,
+  type AdapterSelection,
+  type AdapterPriority,
+} from './auto-adapter.js';

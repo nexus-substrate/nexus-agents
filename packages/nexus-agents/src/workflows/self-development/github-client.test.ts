@@ -220,4 +220,138 @@ describe('GhCliGitHubClient', () => {
       await expect(client.addLabels(1, ['bug'])).rejects.toThrow('Failed to add labels');
     });
   });
+
+  describe('mergePR', () => {
+    it('merges PR with default squash method', async () => {
+      vi.mocked(childProcess.execFile).mockImplementation(
+        createMockExecFile({ stdout: '', stderr: '' })
+      );
+
+      await expect(client.mergePR(123)).resolves.not.toThrow();
+    });
+
+    it('merges PR with rebase method', async () => {
+      vi.mocked(childProcess.execFile).mockImplementation(
+        createMockExecFile({ stdout: '', stderr: '' })
+      );
+
+      await expect(client.mergePR(123, { method: 'rebase' })).resolves.not.toThrow();
+    });
+
+    it('merges PR with commit title and delete branch', async () => {
+      vi.mocked(childProcess.execFile).mockImplementation(
+        createMockExecFile({ stdout: '', stderr: '' })
+      );
+
+      await expect(
+        client.mergePR(123, {
+          method: 'squash',
+          commitTitle: 'feat: New feature',
+          deleteBranch: true,
+        })
+      ).resolves.not.toThrow();
+    });
+
+    it('throws GitHubError on merge failure', async () => {
+      vi.mocked(childProcess.execFile).mockImplementation(
+        createMockExecFile(null, new Error('Merge conflict'))
+      );
+
+      await expect(client.mergePR(123)).rejects.toThrow('Failed to merge PR #123');
+    });
+  });
+
+  describe('getPRStatus', () => {
+    it('returns success status when all checks pass', async () => {
+      const mockStatus = {
+        mergeable: 'MERGEABLE',
+        statusCheckRollup: [{ state: 'SUCCESS' }, { state: 'SUCCESS' }],
+        reviewDecision: 'APPROVED',
+      };
+
+      vi.mocked(childProcess.execFile).mockImplementation(
+        createMockExecFile({ stdout: JSON.stringify(mockStatus), stderr: '' })
+      );
+
+      const status = await client.getPRStatus(123);
+
+      expect(status.mergeable).toBe(true);
+      expect(status.checksStatus).toBe('success');
+      expect(status.reviewStatus).toBe('approved');
+    });
+
+    it('returns failure status when any check fails', async () => {
+      const mockStatus = {
+        mergeable: 'MERGEABLE',
+        statusCheckRollup: [{ state: 'SUCCESS' }, { state: 'FAILURE' }],
+        reviewDecision: null,
+      };
+
+      vi.mocked(childProcess.execFile).mockImplementation(
+        createMockExecFile({ stdout: JSON.stringify(mockStatus), stderr: '' })
+      );
+
+      const status = await client.getPRStatus(123);
+
+      expect(status.checksStatus).toBe('failure');
+    });
+
+    it('returns pending status when checks are in progress', async () => {
+      const mockStatus = {
+        mergeable: 'MERGEABLE',
+        statusCheckRollup: [{ state: 'PENDING' }],
+        reviewDecision: null,
+      };
+
+      vi.mocked(childProcess.execFile).mockImplementation(
+        createMockExecFile({ stdout: JSON.stringify(mockStatus), stderr: '' })
+      );
+
+      const status = await client.getPRStatus(123);
+
+      expect(status.checksStatus).toBe('pending');
+    });
+
+    it('returns changes_requested review status', async () => {
+      const mockStatus = {
+        mergeable: 'CONFLICTING',
+        statusCheckRollup: null,
+        reviewDecision: 'CHANGES_REQUESTED',
+      };
+
+      vi.mocked(childProcess.execFile).mockImplementation(
+        createMockExecFile({ stdout: JSON.stringify(mockStatus), stderr: '' })
+      );
+
+      const status = await client.getPRStatus(123);
+
+      expect(status.mergeable).toBe(false);
+      expect(status.reviewStatus).toBe('changes_requested');
+    });
+
+    it('handles null statusCheckRollup', async () => {
+      const mockStatus = {
+        mergeable: 'MERGEABLE',
+        statusCheckRollup: null,
+        reviewDecision: null,
+      };
+
+      vi.mocked(childProcess.execFile).mockImplementation(
+        createMockExecFile({ stdout: JSON.stringify(mockStatus), stderr: '' })
+      );
+
+      const status = await client.getPRStatus(123);
+
+      expect(status.checksStatus).toBe('pending');
+      expect(status.reviewStatus).toBe('pending');
+    });
+
+    it('throws GitHubError on failure', async () => {
+      vi.mocked(childProcess.execFile).mockImplementation(
+        createMockExecFile(null, new Error('Not found'))
+      );
+
+      await expect(client.getPRStatus(999)).rejects.toThrow('Failed to get PR #999 status');
+    });
+  });
 });

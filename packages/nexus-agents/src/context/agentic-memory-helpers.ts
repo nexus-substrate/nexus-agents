@@ -384,3 +384,63 @@ export function searchWithAttributes(
   const rows = stmt.all(sanitized, limit);
   return rows.map((row) => memoryRowToAgenticEntry(row, extractionConfig));
 }
+
+/**
+ * Get a set of attribute values for comparison.
+ */
+export function getAttributeSet(
+  attrs: MemoryAttributes,
+  type: 'keywords' | 'semanticTags' | 'entities'
+): Set<string> {
+  switch (type) {
+    case 'keywords':
+      return new Set(attrs.keywords);
+    case 'semanticTags':
+      return new Set(attrs.semanticTags);
+    case 'entities':
+      return new Set(attrs.entities.map((e) => e.name.toLowerCase()));
+  }
+}
+
+/**
+ * Extract attributes from a memory row's metadata or value.
+ */
+export function getAttributesFromRow(
+  row: MemoryRow,
+  extractionConfig: ExtractionConfig
+): MemoryAttributes {
+  const meta = JSON.parse(row.metadata) as Record<string, unknown>;
+  if (meta.amem !== undefined) {
+    const amem = meta.amem as Record<string, unknown>;
+    return {
+      keywords: amem.keywords as string[],
+      semanticTags: amem.semanticTags as string[],
+      contextDescription: amem.contextDescription as string,
+      entities: amem.entities as MemoryAttributes['entities'],
+      attributesUpdatedAt: new Date(amem.attributesUpdatedAt as number),
+    };
+  }
+  return extractAttributes(JSON.parse(row.value) as unknown, extractionConfig);
+}
+
+/**
+ * Find memories with overlapping attributes.
+ */
+export function findMatchingMemories(
+  rows: MemoryRow[],
+  sourceSet: Set<string>,
+  attributeType: 'keywords' | 'semanticTags' | 'entities',
+  extractionConfig: ExtractionConfig
+): Array<{ entry: AgenticMemoryEntry; overlap: number }> {
+  const matches: Array<{ entry: AgenticMemoryEntry; overlap: number }> = [];
+  for (const row of rows) {
+    const attrs = getAttributesFromRow(row, extractionConfig);
+    const targetSet = getAttributeSet(attrs, attributeType);
+    let overlap = 0;
+    for (const item of sourceSet) if (targetSet.has(item)) overlap++;
+    if (overlap > 0)
+      matches.push({ entry: memoryRowToAgenticEntry(row, extractionConfig), overlap });
+  }
+  matches.sort((a, b) => b.overlap - a.overlap);
+  return matches;
+}

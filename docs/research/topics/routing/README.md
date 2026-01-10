@@ -1,7 +1,7 @@
 # Model Routing
 
-**Last Updated:** 2026-01-07 (ET)
-**Status:** Active Research
+**Last Updated:** 2026-01-10 (ET)
+**Status:** Active Research (Core Routing Implemented)
 
 ---
 
@@ -11,16 +11,23 @@ Research on intelligent routing of tasks to optimal models based on cost, qualit
 
 ## Key Papers
 
-| Paper                                               | Key Contribution                                  | Priority | Status      |
-| --------------------------------------------------- | ------------------------------------------------- | -------- | ----------- |
-| [IPR](https://arxiv.org/abs/2509.06274)             | Quality-constrained routing, 43.9% cost reduction | P1       | planned     |
-| [PILOT](https://arxiv.org/abs/2508.21141)           | Budget-constrained LinUCB routing                 | P1       | planned     |
-| [SATER](https://arxiv.org/abs/2510.05164)           | Confidence-aware rejection, 50%+ cost reduction   | P2       | planned     |
-| [MoMA](https://arxiv.org/abs/2509.07571)            | TOPSIS multi-criteria, 31.46% cost reduction      | P2       | planned     |
-| [RouteLLM](https://arxiv.org/abs/2406.18665)        | Preference-trained routing, 2x cost reduction     | P2       | planned     |
-| [Edge Multi-LLM](https://arxiv.org/abs/2507.00672)  | Agreement-based cascading                         | P2       | not-started |
-| [Cross-Attention](https://arxiv.org/abs/2509.09782) | Query-model matching                              | -        | not-started |
-| [OptiRoute](https://arxiv.org/abs/2502.16696)       | kNN + hierarchical filtering                      | -        | not-started |
+| Paper                                               | Key Contribution                                  | Priority | Status          |
+| --------------------------------------------------- | ------------------------------------------------- | -------- | --------------- |
+| [IPR](https://arxiv.org/abs/2509.06274)             | Quality-constrained routing, 43.9% cost reduction | P1       | partial         |
+| [PILOT](https://arxiv.org/abs/2508.21141)           | Budget-constrained LinUCB routing                 | P1       | **implemented** |
+| [SATER](https://arxiv.org/abs/2510.05164)           | Confidence-aware rejection, 50%+ cost reduction   | P2       | partial         |
+| [MoMA](https://arxiv.org/abs/2509.07571)            | TOPSIS multi-criteria, 31.46% cost reduction      | P2       | **implemented** |
+| [RouteLLM](https://arxiv.org/abs/2406.18665)        | Preference-trained routing, 2x cost reduction     | P2       | planned         |
+| [Edge Multi-LLM](https://arxiv.org/abs/2507.00672)  | Agreement-based cascading                         | P2       | **implemented** |
+| [Cross-Attention](https://arxiv.org/abs/2509.09782) | Query-model matching                              | -        | not-started     |
+| [OptiRoute](https://arxiv.org/abs/2502.16696)       | kNN + hierarchical filtering                      | -        | not-started     |
+
+**Implementation Notes:**
+
+- PILOT: BudgetRouter + LinUCBBandit in `cli-adapters/`
+- MoMA: TopsisRouter in `cli-adapters/topsis-router.ts`
+- Edge Multi-LLM: AgreementCascadeRouter in `cli-adapters/agreement-cascade-router.ts`
+- All unified via CompositeRouter (Epic #164)
 
 ## Recommended Techniques
 
@@ -70,11 +77,23 @@ Multi-criteria decision algorithm for Pareto-optimal model selection (performanc
 
 Cascade of increasingly powerful models with ensemble agreement at each stage. Escalate only when agreement threshold not met.
 
-## Implementation Roadmap
+## Implementation Status
 
-1. **Phase 1 (v2.3.0):** IPR quality estimators, PILOT budget constraints
-2. **Phase 2 (v2.4.0):** TOPSIS scoring, SATER confidence routing
-3. **Phase 3 (v3.0.0):** RouteLLM preference training, cascade routing
+**Completed (v2.2.0 - Epic #164):**
+
+- ✅ CompositeRouter chains Budget→TOPSIS→LinUCB
+- ✅ BudgetRouter with session budget tracking
+- ✅ TopsisRouter for multi-criteria optimization
+- ✅ LinUCBBandit for contextual bandit selection
+- ✅ AgreementCascadeRouter for ensemble agreement
+- ✅ FeedbackIntegration for closed-loop learning
+- ✅ CliDetectionCache for health check caching
+
+**Planned (v2.3.0+):**
+
+- IPR quality estimators (lightweight quality prediction)
+- RouteLLM preference training (requires training data collection)
+- SATER confidence-aware rejection (partial via cascade)
 
 ## Related Topics
 

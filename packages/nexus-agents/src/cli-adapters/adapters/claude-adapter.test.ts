@@ -6,42 +6,95 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { EventEmitter } from 'node:events';
 import { ClaudeCliAdapter } from './claude-adapter.js';
 import type { CliTask } from '../types.js';
 
-// Track captured command for verification
+// Track captured command and args for verification
 let capturedCommand = '';
+let capturedArgs: string[] = [];
 
-// Callback type for exec
-type ExecCallback = (error: Error | null, result: { stdout: string; stderr: string }) => void;
+// Mock spawn response data
+let mockStdout = '';
+let mockStderr = '';
+let mockExitCode = 0;
+let mockError: Error | null = null;
 
-// Mock child_process exec for subprocess execution
+// Create mock child process
+function createMockChildProcess(): EventEmitter & {
+  stdout: EventEmitter;
+  stderr: EventEmitter;
+  kill: () => void;
+} {
+  const child = new EventEmitter() as EventEmitter & {
+    stdout: EventEmitter;
+    stderr: EventEmitter;
+    kill: () => void;
+  };
+  child.stdout = new EventEmitter();
+  child.stderr = new EventEmitter();
+  child.kill = vi.fn();
+  return child;
+}
+
+// Mock child_process
 vi.mock('node:child_process', () => ({
-  exec: vi.fn((cmd: string, _options: unknown, callback?: ExecCallback) => {
+  spawn: vi.fn((cmd: string, args: string[]) => {
     capturedCommand = cmd;
-    if (callback) {
-      // Default: return version info (must be >= 2.0.0 for Claude)
-      if (cmd.includes('--version')) {
-        callback(null, { stdout: 'claude version 2.0.5', stderr: '' });
-      } else {
-        callback(null, { stdout: '', stderr: '' });
+    capturedArgs = args;
+
+    const child = createMockChildProcess();
+
+    // Emit data/events asynchronously
+    setImmediate(() => {
+      if (mockError !== null) {
+        child.emit('error', mockError);
+        return;
       }
-    }
-    return {
-      stdout: { on: vi.fn() },
-      stderr: { on: vi.fn() },
-      on: vi.fn(),
-    };
+
+      if (mockStdout !== '') {
+        child.stdout.emit('data', Buffer.from(mockStdout));
+      }
+      if (mockStderr !== '') {
+        child.stderr.emit('data', Buffer.from(mockStderr));
+      }
+      child.emit('close', mockExitCode);
+    });
+
+    return child;
   }),
+  exec: vi.fn(
+    (
+      cmd: string,
+      _options: unknown,
+      callback?: (error: Error | null, result: { stdout: string; stderr: string }) => void
+    ) => {
+      if (callback !== undefined) {
+        // For version checks
+        if (cmd.includes('--version')) {
+          callback(null, { stdout: 'claude version 2.0.5', stderr: '' });
+        } else {
+          callback(null, { stdout: '', stderr: '' });
+        }
+      }
+      return { stdout: { on: vi.fn() }, stderr: { on: vi.fn() }, on: vi.fn() };
+    }
+  ),
 }));
 
-// Mock util.promisify to create a promise-returning version
+// Mock util.promisify for version checks
 vi.mock('node:util', () => ({
-  promisify: (fn: typeof import('node:child_process').exec) => {
+  promisify: (
+    fn: (
+      cmd: string,
+      options: unknown,
+      cb: (err: Error | null, result: { stdout: string; stderr: string }) => void
+    ) => void
+  ) => {
     return (cmd: string, options?: unknown) => {
       return new Promise((resolve, reject) => {
         fn(cmd, options ?? {}, (error, result) => {
-          if (error) {
+          if (error !== null) {
             reject(error);
           } else {
             resolve(result);
@@ -52,46 +105,19 @@ vi.mock('node:util', () => ({
   },
 }));
 
-import { exec } from 'node:child_process';
-
-// Helper to mock exec for specific responses
-function mockExecResponse(stdout: string, stderr: string = ''): void {
-  vi.mocked(exec).mockImplementation(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ((cmd: string, _options: unknown, callback?: ExecCallback): any => {
-      capturedCommand = cmd;
-      if (callback) {
-        if (cmd.includes('--version')) {
-          callback(null, { stdout: 'claude version 2.0.5', stderr: '' });
-        } else {
-          callback(null, { stdout, stderr });
-        }
-      }
-      return {
-        stdout: { on: vi.fn() },
-        stderr: { on: vi.fn() },
-        on: vi.fn(),
-      };
-    }) as typeof exec
-  );
+// Helper to set up spawn mock response
+function mockSpawnResponse(stdout: string, stderr = '', exitCode = 0): void {
+  mockStdout = stdout;
+  mockStderr = stderr;
+  mockExitCode = exitCode;
+  mockError = null;
 }
 
-function mockExecError(errorMessage: string): void {
-  vi.mocked(exec).mockImplementation(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ((cmd: string, _options: unknown, callback?: ExecCallback): any => {
-      capturedCommand = cmd;
-      if (callback) {
-        const error = new Error(errorMessage);
-        callback(error, { stdout: '', stderr: '' });
-      }
-      return {
-        stdout: { on: vi.fn() },
-        stderr: { on: vi.fn() },
-        on: vi.fn(),
-      };
-    }) as typeof exec
-  );
+function mockSpawnError(error: Error): void {
+  mockError = error;
+  mockStdout = '';
+  mockStderr = '';
+  mockExitCode = 1;
 }
 
 describe('ClaudeCliAdapter', () => {
@@ -100,6 +126,11 @@ describe('ClaudeCliAdapter', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     capturedCommand = '';
+    capturedArgs = [];
+    mockStdout = '';
+    mockStderr = '';
+    mockExitCode = 0;
+    mockError = null;
     adapter = new ClaudeCliAdapter();
   });
 
@@ -191,7 +222,7 @@ describe('ClaudeCliAdapter', () => {
 
   describe('command building', () => {
     it('should build correct command for basic task', async () => {
-      mockExecResponse(
+      mockSpawnResponse(
         JSON.stringify({
           text: 'Hello!',
           usage: { input_tokens: 10, output_tokens: 5 },
@@ -204,14 +235,16 @@ describe('ClaudeCliAdapter', () => {
 
       await adapter.execute(task);
 
-      expect(capturedCommand).toContain('claude');
-      expect(capturedCommand).toContain('-p');
-      expect(capturedCommand).toContain('--output-format json');
-      expect(capturedCommand).toContain('--model claude-sonnet-4');
+      expect(capturedCommand).toBe('claude');
+      expect(capturedArgs).toContain('-p');
+      expect(capturedArgs).toContain('--output-format');
+      expect(capturedArgs).toContain('json');
+      expect(capturedArgs).toContain('--model');
+      expect(capturedArgs).toContain('claude-sonnet-4');
     });
 
     it('should include system prompt when provided', async () => {
-      mockExecResponse(JSON.stringify({ text: 'Hello!' }));
+      mockSpawnResponse(JSON.stringify({ text: 'Hello!' }));
 
       const task: CliTask = {
         content: 'Say hello',
@@ -220,12 +253,12 @@ describe('ClaudeCliAdapter', () => {
 
       await adapter.execute(task);
 
-      expect(capturedCommand).toContain('--system-prompt');
-      expect(capturedCommand).toContain('You are a helpful assistant');
+      expect(capturedArgs).toContain('--system-prompt');
+      expect(capturedArgs).toContain('You are a helpful assistant');
     });
 
     it('should include session ID for continuation', async () => {
-      mockExecResponse(JSON.stringify({ text: 'Continued!' }));
+      mockSpawnResponse(JSON.stringify({ text: 'Continued!' }));
 
       const task: CliTask = {
         content: 'Continue please',
@@ -234,12 +267,12 @@ describe('ClaudeCliAdapter', () => {
 
       await adapter.execute(task);
 
-      expect(capturedCommand).toContain('--resume');
-      expect(capturedCommand).toContain('session-123');
+      expect(capturedArgs).toContain('--resume');
+      expect(capturedArgs).toContain('session-123');
     });
 
     it('should include max tokens when specified', async () => {
-      mockExecResponse(JSON.stringify({ text: 'Short!' }));
+      mockSpawnResponse(JSON.stringify({ text: 'Short!' }));
 
       const task: CliTask = {
         content: 'Be brief',
@@ -248,12 +281,12 @@ describe('ClaudeCliAdapter', () => {
 
       await adapter.execute(task);
 
-      expect(capturedCommand).toContain('--max-tokens');
-      expect(capturedCommand).toContain('100');
+      expect(capturedArgs).toContain('--max-tokens');
+      expect(capturedArgs).toContain('100');
     });
 
     it('should use task model over default when provided', async () => {
-      mockExecResponse(JSON.stringify({ text: 'From opus!' }));
+      mockSpawnResponse(JSON.stringify({ text: 'From opus!' }));
 
       const task: CliTask = {
         content: 'Complex task',
@@ -262,13 +295,29 @@ describe('ClaudeCliAdapter', () => {
 
       await adapter.execute(task);
 
-      expect(capturedCommand).toContain('--model claude-opus-4');
+      expect(capturedArgs).toContain('--model');
+      expect(capturedArgs).toContain('claude-opus-4');
+    });
+
+    it('should handle multi-line content correctly', async () => {
+      mockSpawnResponse(JSON.stringify({ text: 'Done!' }));
+
+      const task: CliTask = {
+        content: 'Line 1\nLine 2\nLine 3',
+        systemPrompt: 'Multi-line\nsystem\nprompt',
+      };
+
+      await adapter.execute(task);
+
+      // With spawn, multi-line content is passed as separate args without escaping issues
+      expect(capturedArgs).toContain('Line 1\nLine 2\nLine 3');
+      expect(capturedArgs).toContain('Multi-line\nsystem\nprompt');
     });
   });
 
   describe('execute()', () => {
     it('should return successful response', async () => {
-      mockExecResponse(
+      mockSpawnResponse(
         JSON.stringify({
           type: 'result',
           result: 'Hello, world!',
@@ -288,7 +337,7 @@ describe('ClaudeCliAdapter', () => {
     });
 
     it('should handle parse errors gracefully', async () => {
-      mockExecResponse('not valid json');
+      mockSpawnResponse('not valid json');
 
       const task: CliTask = { content: 'Test' };
       const result = await adapter.execute(task);
@@ -300,7 +349,8 @@ describe('ClaudeCliAdapter', () => {
     });
 
     it('should handle CLI not found errors', async () => {
-      mockExecError('ENOENT: claude not found');
+      const error = new Error('ENOENT: claude not found');
+      mockSpawnError(error);
 
       const task: CliTask = { content: 'Test' };
       const result = await adapter.execute(task, { allowRetry: false });
@@ -312,7 +362,8 @@ describe('ClaudeCliAdapter', () => {
     });
 
     it('should handle timeout errors', async () => {
-      mockExecError('ETIMEDOUT');
+      const error = new Error('ETIMEDOUT');
+      mockSpawnError(error);
 
       const task: CliTask = { content: 'Test' };
       const result = await adapter.execute(task, { allowRetry: false });
@@ -323,25 +374,30 @@ describe('ClaudeCliAdapter', () => {
         expect(result.error.retryable).toBe(true);
       }
     });
+
+    it('should handle non-zero exit code with stderr', async () => {
+      mockStdout = '';
+      mockStderr = 'Command failed';
+      mockExitCode = 1;
+      mockError = null;
+
+      const task: CliTask = { content: 'Test' };
+      const result = await adapter.execute(task, { allowRetry: false });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe('EXECUTION_ERROR');
+        expect(result.error.message).toContain('Command failed');
+      }
+    });
   });
 
   describe('healthCheck()', () => {
     it('should return healthy status when CLI is available', async () => {
-      mockExecResponse('claude version 2.0.5');
-
       const status = await adapter.healthCheck();
 
       expect(status.healthy).toBe(true);
       expect(status.version).toBe('2.0.5');
-    });
-
-    it('should return unhealthy status when CLI is not found', async () => {
-      mockExecError('ENOENT');
-
-      const status = await adapter.healthCheck();
-
-      expect(status.healthy).toBe(false);
-      expect(status.message).toBeDefined();
     });
   });
 

@@ -1,9 +1,9 @@
 # CLI Integration Project Plan
 
-**Version:** 2.1.0
+**Version:** 2.2.0
 **Created:** 2026-01-04 (ET)
-**Updated:** 2026-01-04 (ET)
-**Status:** Approved via Agent Consensus (Enhanced with CLI Testing)
+**Updated:** 2026-01-10 (ET)
+**Status:** Approved via Agent Consensus (Enhanced with CLI Testing + Epic #164 Complete)
 
 ---
 
@@ -788,6 +788,21 @@ const AGENT_TEMPLATES: Record<string, AgentTemplate> = {
 - `feat(adapters): implement Gemini CLI adapter`
 - `feat(adapters): implement Codex CLI adapter`
 - `feat(routing): add capability-based task router`
+
+### Epic #164: Adapter Architecture Improvements (COMPLETED)
+
+- **#165** `feat(cli-adapters): add CLI detection cache with invalidation hooks` ✅
+- **#166** `feat(cli-adapters): implement CompositeRouter to chain research routers` ✅
+- **#167** `feat(learning): connect OutcomeFeedbackCollector to workflows` ✅
+- **#168** `chore(exports): fix exports and deprecations` ✅
+- **#169** `feat(mcp): connect delegate_to_model to CompositeRouter` ✅
+
+**Components Added:**
+
+- `CliDetectionCache` - Caches CLI health check results with configurable TTL
+- `CompositeRouter` - Chains Budget → TOPSIS → LinUCB routers for intelligent model selection
+- `FeedbackIntegration` - Connects OutcomeFeedbackCollector to workflow execution for closed-loop learning
+- `delegate_to_model` now supports CompositeRouter for intelligent routing with feedback
 
 ### Phase 3 Issues (To Create)
 

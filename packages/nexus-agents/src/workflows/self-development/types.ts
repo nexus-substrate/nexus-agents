@@ -38,6 +38,10 @@ export interface SelfDevWorkflowConfig {
   readonly maxIssues?: number;
   /** Automatically create branch and PR */
   readonly autoCommit?: boolean;
+  /** Automatically merge PR after verification passes */
+  readonly autoMerge?: boolean;
+  /** Merge method for auto-merge (default: squash) */
+  readonly mergeMethod?: 'merge' | 'squash' | 'rebase';
   /** Phase-specific configurations */
   readonly phases?: PhaseConfigs;
 }

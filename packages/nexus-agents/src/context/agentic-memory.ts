@@ -47,6 +47,9 @@ import {
   mergeLinkingConfig,
   memoryRowToAgenticEntry,
   searchWithAttributes,
+  getAttributeSet,
+  getAttributesFromRow,
+  findMatchingMemories,
 } from './agentic-memory-helpers.js';
 
 // Re-export types (type-only exports)
@@ -229,7 +232,7 @@ export class AgenticMemoryBackend implements IAgenticMemory {
       .all(excludeKey);
     return rows.map((row) => ({
       key: row.key,
-      attrs: this.getAttributesFromRow(row),
+      attrs: getAttributesFromRow(row, this.extractionConfig),
       createdAt: new Date(row.created_at),
     }));
   }
@@ -265,25 +268,21 @@ export class AgenticMemoryBackend implements IAgenticMemory {
     try {
       this.ensureInit();
       const db = this.getDb();
-
       const sourceRow = db.prepare<MemoryRow>('SELECT * FROM memories WHERE key = ?').get(key);
-      if (sourceRow === undefined) {
+      if (sourceRow === undefined)
         return Promise.resolve(err(new MemoryError(`Memory not found: ${key}`)));
-      }
 
-      const sourceAttrs = this.getAttributesFromRow(sourceRow);
+      const sourceAttrs = getAttributesFromRow(sourceRow, this.extractionConfig);
       const candidateRows = db
         .prepare<MemoryRow>(
           'SELECT * FROM memories WHERE key != ? ORDER BY accessed_at DESC LIMIT 100'
         )
         .all(key);
-
       const candidates = candidateRows.map((row) => ({
         key: row.key,
-        attrs: this.getAttributesFromRow(row),
+        attrs: getAttributesFromRow(row, this.extractionConfig),
         createdAt: new Date(row.created_at),
       }));
-
       const maxSuggestions = limit ?? this.linkingConfig.maxSuggestions;
       const suggestions = generateLinkSuggestions(
         key,
@@ -292,7 +291,6 @@ export class AgenticMemoryBackend implements IAgenticMemory {
         candidates,
         { ...this.linkingConfig, maxSuggestions }
       );
-
       return Promise.resolve(ok(suggestions));
     } catch (error) {
       const cause = error instanceof Error ? error : new Error(String(error));
@@ -349,25 +347,21 @@ export class AgenticMemoryBackend implements IAgenticMemory {
     try {
       this.ensureInit();
       const db = this.getDb();
-
       const sourceRow = db.prepare<MemoryRow>('SELECT * FROM memories WHERE key = ?').get(key);
-      if (sourceRow === undefined) {
+      if (sourceRow === undefined)
         return Promise.resolve(err(new MemoryError(`Memory not found: ${key}`)));
-      }
 
-      const sourceAttrs = this.getAttributesFromRow(sourceRow);
+      const sourceAttrs = getAttributesFromRow(sourceRow, this.extractionConfig);
       const existingRows = db
         .prepare<MemoryRow>(
           'SELECT * FROM memories WHERE key != ? ORDER BY created_at DESC LIMIT 50'
         )
         .all(key);
-
       const existingMemories = existingRows.map((row) => ({
         key: row.key,
-        attrs: this.getAttributesFromRow(row),
+        attrs: getAttributesFromRow(row, this.extractionConfig),
         createdAt: new Date(row.created_at),
       }));
-
       const evolution = detectEvolution(
         key,
         sourceAttrs,
@@ -419,14 +413,12 @@ export class AgenticMemoryBackend implements IAgenticMemory {
     try {
       this.ensureInit();
       const db = this.getDb();
-
       const sourceRow = db.prepare<MemoryRow>('SELECT * FROM memories WHERE key = ?').get(key);
-      if (sourceRow === undefined) {
+      if (sourceRow === undefined)
         return Promise.resolve(err(new MemoryError(`Memory not found: ${key}`)));
-      }
 
-      const sourceAttrs = this.getAttributesFromRow(sourceRow);
-      const sourceSet = this.getAttributeSet(sourceAttrs, attributeType);
+      const sourceAttrs = getAttributesFromRow(sourceRow, this.extractionConfig);
+      const sourceSet = getAttributeSet(sourceAttrs, attributeType);
       if (sourceSet.size === 0) return Promise.resolve(ok([]));
 
       const allRows = db
@@ -434,8 +426,12 @@ export class AgenticMemoryBackend implements IAgenticMemory {
           'SELECT * FROM memories WHERE key != ? ORDER BY accessed_at DESC LIMIT 200'
         )
         .all(key);
-
-      const matches = this.findMatches(allRows, sourceSet, attributeType);
+      const matches = findMatchingMemories(
+        allRows,
+        sourceSet,
+        attributeType,
+        this.extractionConfig
+      );
       return Promise.resolve(ok(matches.slice(0, limit).map((m) => m.entry)));
     } catch (error) {
       const cause = error instanceof Error ? error : new Error(String(error));
@@ -443,27 +439,6 @@ export class AgenticMemoryBackend implements IAgenticMemory {
         err(new MemoryError('Failed to find by shared attributes', { cause }))
       );
     }
-  }
-
-  private findMatches(
-    rows: MemoryRow[],
-    sourceSet: Set<string>,
-    attributeType: 'keywords' | 'semanticTags' | 'entities'
-  ): Array<{ entry: AgenticMemoryEntry; overlap: number }> {
-    const matches: Array<{ entry: AgenticMemoryEntry; overlap: number }> = [];
-    for (const row of rows) {
-      const attrs = this.getAttributesFromRow(row);
-      const targetSet = this.getAttributeSet(attrs, attributeType);
-      let overlap = 0;
-      for (const item of sourceSet) {
-        if (targetSet.has(item)) overlap++;
-      }
-      if (overlap > 0) {
-        matches.push({ entry: memoryRowToAgenticEntry(row, this.extractionConfig), overlap });
-      }
-    }
-    matches.sort((a, b) => b.overlap - a.overlap);
-    return matches;
   }
 
   // =========================================================================
@@ -501,39 +476,6 @@ export class AgenticMemoryBackend implements IAgenticMemory {
     }
     this.initialized = false;
     this.log.info('AgenticMemoryBackend closed');
-  }
-
-  // =========================================================================
-  // Private Helpers
-  // =========================================================================
-
-  private getAttributesFromRow(row: MemoryRow): MemoryAttributes {
-    const meta = JSON.parse(row.metadata) as Record<string, unknown>;
-    if (meta.amem !== undefined) {
-      const amem = meta.amem as Record<string, unknown>;
-      return {
-        keywords: amem.keywords as string[],
-        semanticTags: amem.semanticTags as string[],
-        contextDescription: amem.contextDescription as string,
-        entities: amem.entities as MemoryAttributes['entities'],
-        attributesUpdatedAt: new Date(amem.attributesUpdatedAt as number),
-      };
-    }
-    return extractAttributes(JSON.parse(row.value) as unknown, this.extractionConfig);
-  }
-
-  private getAttributeSet(
-    attrs: MemoryAttributes,
-    type: 'keywords' | 'semanticTags' | 'entities'
-  ): Set<string> {
-    switch (type) {
-      case 'keywords':
-        return new Set(attrs.keywords);
-      case 'semanticTags':
-        return new Set(attrs.semanticTags);
-      case 'entities':
-        return new Set(attrs.entities.map((e) => e.name.toLowerCase()));
-    }
   }
 }
 

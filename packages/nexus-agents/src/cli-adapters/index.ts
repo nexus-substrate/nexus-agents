@@ -37,6 +37,7 @@ export { BaseCliAdapter, SubprocessCliAdapter } from './base-adapter.js';
 export { ClaudeCliAdapter } from './adapters/claude-adapter.js';
 export { GeminiCliAdapter } from './adapters/gemini-adapter.js';
 export { CodexCliAdapter } from './adapters/codex-adapter.js';
+export { CodexMcpAdapter } from './adapters/codex-mcp-adapter.js';
 
 // Parsers
 export { ClaudeResponseParser } from './parsers/claude-parser.js';
@@ -141,3 +142,35 @@ export {
   DEFAULT_TOPSIS_CRITERIA,
   DEFAULT_MODEL_PROFILES,
 } from './topsis-types.js';
+
+// CLI-to-Model Adapter Bridge
+export { CliToModelAdapter, createCliToModelAdapter } from './cli-to-model-adapter.js';
+
+// CLI Detection Cache (Issue #165)
+export {
+  CliDetectionCache,
+  createCliDetectionCache,
+  DEFAULT_CACHE_CONFIG,
+  CliDetectionCacheConfigSchema,
+} from './cli-detection-cache.js';
+export type {
+  ICliDetectionCache,
+  CliDetectionCacheConfig,
+  CliHealthResult,
+  CacheStats,
+} from './cli-detection-cache.js';
+
+// Composite Router (Issue #166)
+export {
+  CompositeRouter,
+  createCompositeRouter,
+  CompositeRouterConfigSchema,
+  DEFAULT_COMPOSITE_CONFIG,
+  CompositeRoutingError,
+} from './composite-router.js';
+export type {
+  ICompositeRouter,
+  CompositeRouterConfig,
+  CompositeRoutingDecision,
+  CompositeRouterStats,
+} from './composite-router.js';

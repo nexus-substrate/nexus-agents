@@ -350,4 +350,217 @@ describe('delegate_to_model Tool', () => {
       );
     });
   });
+
+  describe('CompositeRouter Integration', () => {
+    let server: McpServer;
+    let client: Client;
+
+    /**
+     * Creates a mock CompositeRouter for testing.
+     */
+    function createMockRouter(
+      shouldSucceed: boolean = true,
+      cliName: 'claude' | 'gemini' | 'codex' = 'claude'
+    ): {
+      route: ReturnType<typeof vi.fn>;
+      recordOutcome: ReturnType<typeof vi.fn>;
+      getStats: ReturnType<typeof vi.fn>;
+    } {
+      return {
+        route: vi.fn().mockResolvedValue(
+          shouldSucceed
+            ? {
+                ok: true,
+                value: {
+                  cliName,
+                  confidence: 0.9,
+                  reason: `Selected ${cliName} via CompositeRouter`,
+                  stagesExecuted: ['task-analysis', 'topsis-ranking', 'linucb-selection'],
+                  decisionTimeMs: 15,
+                  alternatives: cliName === 'claude' ? ['gemini', 'codex'] : ['claude', 'codex'],
+                  topsisScore: 0.85,
+                  ucbScore: 1.5,
+                  taskProfile: {
+                    taskType: 'code_implementation',
+                    contextRequired: 500,
+                    reasoningComplexity: 6,
+                    codeGeneration: true,
+                    multimodal: false,
+                    parallelizable: false,
+                    budgetSensitive: false,
+                  },
+                },
+              }
+            : {
+                ok: false,
+                error: { message: 'Routing failed', stage: 'test' },
+              }
+        ),
+        recordOutcome: vi.fn(),
+        getStats: vi.fn().mockReturnValue({
+          totalDecisions: 0,
+          decisionsPerCli: { claude: 0, gemini: 0, codex: 0 },
+          avgDecisionTimeMs: 0,
+          budgetRejectionRate: 0,
+        }),
+      };
+    }
+
+    /**
+     * Creates a mock FeedbackIntegration for testing.
+     */
+    function createMockFeedback(): {
+      recordRoutingDecision: ReturnType<typeof vi.fn>;
+      recordOutcome: ReturnType<typeof vi.fn>;
+      getStats: ReturnType<typeof vi.fn>;
+      onOutcomeProcessed: ReturnType<typeof vi.fn>;
+      registerCompositeRouter: ReturnType<typeof vi.fn>;
+      reset: ReturnType<typeof vi.fn>;
+      recordStepOutcome: ReturnType<typeof vi.fn>;
+    } {
+      return {
+        recordRoutingDecision: vi.fn().mockReturnValue('test-routing-id'),
+        recordOutcome: vi.fn(),
+        getStats: vi.fn(),
+        onOutcomeProcessed: vi.fn().mockReturnValue(() => {}),
+        registerCompositeRouter: vi.fn(),
+        reset: vi.fn(),
+        recordStepOutcome: vi.fn(),
+      };
+    }
+
+    beforeEach(() => {
+      server = new McpServer({ name: 'test', version: '1.0.0' });
+      client = new Client({ name: 'test-client', version: '1.0.0' });
+    });
+
+    it('should use CompositeRouter when provided', async () => {
+      const mockRouter = createMockRouter(true, 'gemini');
+      const mockLogger = {
+        info: vi.fn(),
+        debug: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        setLevel: vi.fn(),
+        child: vi.fn().mockReturnThis(),
+      };
+
+      registerDelegateToModelTool(server, {
+        logger: mockLogger,
+        router: mockRouter,
+      });
+
+      const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+      await server.connect(serverTransport);
+      await client.connect(clientTransport);
+
+      const result = await client.callTool({
+        name: 'delegate_to_model',
+        arguments: { task: 'Implement a new feature' },
+      });
+
+      expect(result.isError).toBeUndefined();
+      expect(mockRouter.route).toHaveBeenCalled();
+
+      const content = result.content as Array<{ type: string; text: string }>;
+      const output = JSON.parse(content[0]!.text) as DelegateOutput;
+      expect(output.recommended_model).toBe('gemini-pro');
+      expect(output.reasoning).toContain('CompositeRouter');
+    });
+
+    it('should fall back to local selection when router fails', async () => {
+      const mockRouter = createMockRouter(false);
+      const mockLogger = {
+        info: vi.fn(),
+        debug: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        setLevel: vi.fn(),
+        child: vi.fn().mockReturnThis(),
+      };
+
+      registerDelegateToModelTool(server, {
+        logger: mockLogger,
+        router: mockRouter,
+      });
+
+      const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+      await server.connect(serverTransport);
+      await client.connect(clientTransport);
+
+      const result = await client.callTool({
+        name: 'delegate_to_model',
+        arguments: { task: 'Implement a new feature' },
+      });
+
+      expect(result.isError).toBeUndefined();
+      expect(mockRouter.route).toHaveBeenCalled();
+      expect(mockLogger.warn).toHaveBeenCalled();
+
+      // Should still get a valid response from local routing
+      const content = result.content as Array<{ type: string; text: string }>;
+      const output = JSON.parse(content[0]!.text) as DelegateOutput;
+      expect(output.recommended_model).toBeDefined();
+    });
+
+    it('should record routing decision with FeedbackIntegration', async () => {
+      const mockRouter = createMockRouter(true);
+      const mockFeedback = createMockFeedback();
+      const mockLogger = {
+        info: vi.fn(),
+        debug: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        setLevel: vi.fn(),
+        child: vi.fn().mockReturnThis(),
+      };
+
+      registerDelegateToModelTool(server, {
+        logger: mockLogger,
+        router: mockRouter,
+        feedbackIntegration: mockFeedback,
+      });
+
+      const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+      await server.connect(serverTransport);
+      await client.connect(clientTransport);
+
+      await client.callTool({
+        name: 'delegate_to_model',
+        arguments: { task: 'Implement a new feature' },
+      });
+
+      expect(mockFeedback.recordRoutingDecision).toHaveBeenCalled();
+    });
+
+    it('should work without FeedbackIntegration', async () => {
+      const mockRouter = createMockRouter(true);
+      const mockLogger = {
+        info: vi.fn(),
+        debug: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        setLevel: vi.fn(),
+        child: vi.fn().mockReturnThis(),
+      };
+
+      registerDelegateToModelTool(server, {
+        logger: mockLogger,
+        router: mockRouter,
+        // No feedbackIntegration
+      });
+
+      const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+      await server.connect(serverTransport);
+      await client.connect(clientTransport);
+
+      const result = await client.callTool({
+        name: 'delegate_to_model',
+        arguments: { task: 'Implement a new feature' },
+      });
+
+      expect(result.isError).toBeUndefined();
+      expect(mockRouter.route).toHaveBeenCalled();
+    });
+  });
 });
