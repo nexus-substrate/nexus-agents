@@ -51,3 +51,30 @@ export {
   getSwarmObserver,
   setSwarmObserver,
 } from './swarm-observer.js';
+
+// Dashboard Types
+export type {
+  DashboardFormat,
+  DashboardConfig,
+  AgentStatus,
+  GraphEdgeDisplay,
+  GraphSummary,
+  ActivityItem,
+  DashboardSnapshot,
+  DashboardUpdateOptions,
+  IDashboardRenderer,
+  IDashboard,
+} from './dashboard-types.js';
+
+export { DEFAULT_DASHBOARD_CONFIG, DashboardConfigSchema } from './dashboard-types.js';
+
+// Dashboard Renderers
+export {
+  TextDashboardRenderer,
+  JsonDashboardRenderer,
+  CompactDashboardRenderer,
+  createDashboardRenderer,
+} from './dashboard-renderer.js';
+
+// Dashboard
+export { Dashboard, createDashboard } from './dashboard.js';
