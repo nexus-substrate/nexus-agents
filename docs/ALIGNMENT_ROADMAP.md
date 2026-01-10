@@ -1,9 +1,10 @@
 # Nexus-Agents Alignment Roadmap
 
 **Assessment Date:** 2026-01-09 (ET)
-**Last Updated:** 2026-01-10 (ET)
+**Last Updated:** 2026-01-10 18:15 (ET)
 **Protocol Used:** CLAUDE.md Consensus Voting (5 Agents)
 **Goal:** Create the best software development agent swarm possible
+**Phase 1 Status:** 🚧 IN PROGRESS (Issues #163, #171, #173, #174 created)
 
 ---
 
@@ -153,17 +154,25 @@ The following capabilities received positive assessments from multiple agents:
 
 ## Improvement Roadmap with Objective Metrics
 
-### Phase 1: Observability Foundation (Weeks 1-2)
+### Phase 1: Observability Foundation (Weeks 1-2) 🚧 IN PROGRESS
 
 **Goal:** Implement swarm-level observability to enable all subsequent improvements.
 
+**GitHub Issues:**
+
+- #163 - Add workflow execution summary to NotificationService
+- #171 - Add routing effectiveness dashboard to SwarmObserver
+- #173 - Integrate SwarmObserver into MCP server startup
+- #174 - Add LinUCB arm statistics to routing-audit command
+
 #### Improvement 1.1: Agent Interaction Tracing
 
-| Attribute       | Value                                                                          |
-| --------------- | ------------------------------------------------------------------------------ |
-| **Description** | Track all inter-agent messages as a directed graph                             |
-| **Deliverable** | `SwarmObserver` class with `recordInteraction()` and `getCollaborationGraph()` |
-| **Priority**    | P1                                                                             |
+| Attribute        | Value                                                                          |
+| ---------------- | ------------------------------------------------------------------------------ |
+| **Description**  | Track all inter-agent messages as a directed graph                             |
+| **Deliverable**  | `SwarmObserver` class with `recordInteraction()` and `getCollaborationGraph()` |
+| **Priority**     | P1                                                                             |
+| **GitHub Issue** | #173                                                                           |
 
 **Success Metrics:**
 | Metric | Baseline | Target | Measurement Method |
@@ -174,11 +183,12 @@ The following capabilities received positive assessments from multiple agents:
 
 #### Improvement 1.2: Real-Time Execution Dashboard
 
-| Attribute       | Value                                                                   |
-| --------------- | ----------------------------------------------------------------------- |
-| **Description** | Local web UI showing live agent states, message flow, memory operations |
-| **Deliverable** | WebSocket-based dashboard at `localhost:3333/dashboard`                 |
-| **Priority**    | P1                                                                      |
+| Attribute        | Value                                                                   |
+| ---------------- | ----------------------------------------------------------------------- |
+| **Description**  | Local web UI showing live agent states, message flow, memory operations |
+| **Deliverable**  | WebSocket-based dashboard at `localhost:3333/dashboard`                 |
+| **Priority**     | P1                                                                      |
+| **GitHub Issue** | #171                                                                    |
 
 **Success Metrics:**
 | Metric | Baseline | Target | Measurement Method |
@@ -233,13 +243,19 @@ The following capabilities received positive assessments from multiple agents:
 
 **Goal:** nexus-agents develops itself using its own capabilities.
 
+**GitHub Issues:**
+
+- #176 - Enable nexus-review workflow with production testing
+
 #### Improvement 3.1: Automated PR Review
 
-| Attribute       | Value                                                  |
-| --------------- | ------------------------------------------------------ |
-| **Description** | GitHub Action runs nexus-agents to review incoming PRs |
-| **Deliverable** | `.github/workflows/nexus-review.yml`                   |
-| **Priority**    | P1                                                     |
+| Attribute        | Value                                                  |
+| ---------------- | ------------------------------------------------------ |
+| **Description**  | GitHub Action runs nexus-agents to review incoming PRs |
+| **Deliverable**  | `.github/workflows/nexus-review.yml`                   |
+| **Priority**     | P1                                                     |
+| **GitHub Issue** | #176                                                   |
+| **Status**       | 🚧 Workflow exists, needs production testing           |
 
 **Success Metrics:**
 | Metric | Baseline | Target | Measurement Method |
@@ -269,13 +285,18 @@ The following capabilities received positive assessments from multiple agents:
 
 **Goal:** Production-ready security posture.
 
+**GitHub Issues:**
+
+- #175 - Integrate Docker sandbox as default execution backend
+
 #### Improvement 4.1: Execution Sandboxing
 
-| Attribute       | Value                                              |
-| --------------- | -------------------------------------------------- |
-| **Description** | Container-based isolation for agent code execution |
-| **Deliverable** | Docker-based executor with seccomp profiles        |
-| **Priority**    | P1                                                 |
+| Attribute        | Value                                              |
+| ---------------- | -------------------------------------------------- |
+| **Description**  | Container-based isolation for agent code execution |
+| **Deliverable**  | Docker-based executor with seccomp profiles        |
+| **Priority**     | P1                                                 |
+| **GitHub Issue** | #175                                               |
 
 **Success Metrics:**
 | Metric | Baseline | Target | Measurement Method |
@@ -371,11 +392,17 @@ The following capabilities received positive assessments from multiple agents:
 
 ## Immediate Next Actions
 
-1. **Create GitHub Issues** for Phase 1 improvements:
-   - Issue: Implement SwarmObserver with interaction tracing
-   - Issue: Build real-time execution dashboard
+1. ✅ **GitHub Issues Created** (2026-01-10 via Consensus Voting):
+   - #163 - Add workflow execution summary to NotificationService
+   - #171 - Add routing effectiveness dashboard to SwarmObserver
+   - #173 - Integrate SwarmObserver into MCP server startup
+   - #174 - Add LinUCB arm statistics to routing-audit command
+   - #175 - Integrate Docker sandbox as default execution backend
+   - #176 - Enable nexus-review workflow with production testing
 
-2. **Update Tracking Dashboard** (#133) with new metrics columns
+2. **Implement Priority Issues** (Consensus: Observability focus):
+   - Start with #163 (self-development-approved, good first issue)
+   - Then #171 (routing effectiveness dashboard)
 
 3. **Schedule Re-Voting** after Phase 1 completion to measure progress
 

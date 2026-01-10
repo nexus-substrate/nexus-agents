@@ -228,6 +228,98 @@ describe('notifications', () => {
           metadata: { prNumber: 100 },
         });
       });
+
+      describe('executionSummary', () => {
+        const mockSummary = {
+          duration: '5.2min',
+          phases: 'analyze: 0.5min, research: 1.2min',
+          quality: 'Coverage: 95%',
+          iterations: 'TRINITY: 2, Reflexion: 1',
+          vote: '100% approval',
+          humanReview: '30s (1 revision)',
+        };
+
+        it('sends success notification for completed workflow', async () => {
+          await service.executionSummary('exec-001', true, mockSummary);
+
+          expect(mockHandler.notifications[0]).toMatchObject({
+            type: 'execution_summary',
+            severity: 'success',
+            title: 'Execution Summary',
+          });
+          expect(mockHandler.notifications[0]?.message).toContain('Status: COMPLETED');
+          expect(mockHandler.notifications[0]?.message).toContain('Duration: 5.2min');
+          expect(mockHandler.notifications[0]?.metadata).toMatchObject({
+            success: true,
+            summary: mockSummary,
+          });
+        });
+
+        it('sends error notification for failed workflow', async () => {
+          await service.executionSummary('exec-001', false, mockSummary);
+
+          expect(mockHandler.notifications[0]).toMatchObject({
+            type: 'execution_summary',
+            severity: 'error',
+          });
+          expect(mockHandler.notifications[0]?.message).toContain('Status: FAILED');
+        });
+
+        it('includes metrics when provided', async () => {
+          const mockMetrics = {
+            totalDurationMs: 312000,
+            phaseDurations: {
+              analyze: 30000,
+              research: 72000,
+              plan: 90000,
+              refine: 60000,
+              vote: 10000,
+              review: 30000,
+              implement: 15000,
+              verify: 5000,
+              commit: 0,
+            },
+            trinityIterations: 2,
+            reflexionIterations: 1,
+            selfDebugIterations: 0,
+            selfRefineIterations: 0,
+            testCoverage: 95,
+            finalSeverity: 0.23,
+            approvalRate: 1.0,
+            vetoCount: 0,
+            humanReviewTime: 30000,
+            humanRevisions: 1,
+          };
+
+          await service.executionSummary('exec-001', true, mockSummary, mockMetrics);
+
+          expect(mockHandler.notifications[0]?.metadata).toMatchObject({
+            success: true,
+            summary: mockSummary,
+            metrics: mockMetrics,
+          });
+        });
+
+        it('handles N/A values in summary', async () => {
+          const minimalSummary = {
+            duration: '1.0min',
+            phases: 'analyze: 1.0min',
+            quality: 'N/A',
+            iterations: 'none',
+            vote: 'N/A',
+            humanReview: 'N/A',
+          };
+
+          await service.executionSummary('exec-001', true, minimalSummary);
+
+          const message = mockHandler.notifications[0]?.message ?? '';
+          expect(message).toContain('Status: COMPLETED');
+          expect(message).toContain('Duration: 1.0min');
+          // N/A fields should not appear in message
+          expect(message).not.toContain('Quality:');
+          expect(message).not.toContain('Vote:');
+        });
+      });
     });
   });
 
