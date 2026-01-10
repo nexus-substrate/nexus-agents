@@ -35,6 +35,7 @@ import {
   executeCommit,
 } from './phase-executors.js';
 import { calculateMetrics } from './metrics.js';
+import { AuditTrail, createAuditTrail } from './audit-trail.js';
 
 // Re-export interfaces
 export type {
@@ -48,15 +49,11 @@ export type {
   WorkflowEventListener,
 } from './interfaces.js';
 
-/**
- * Self-Development Workflow Engine implementation.
- *
- * Orchestrates the complete self-development workflow from issue analysis
- * through implementation, verification, and PR creation.
- */
+/** Self-Development Workflow Engine - orchestrates the meta-workflow for self-improvement. */
 export class SelfDevWorkflowEngine implements ISelfDevWorkflowEngine {
   private readonly states = new Map<string, SelfDevWorkflowState>();
   private readonly results = new Map<string, SelfDevWorkflowResult>();
+  private readonly auditTrails = new Map<string, AuditTrail>();
   private readonly listeners: WorkflowEventListener[] = [];
   private readonly pendingReviews = new Map<
     string,
@@ -64,6 +61,11 @@ export class SelfDevWorkflowEngine implements ISelfDevWorkflowEngine {
   >();
 
   constructor(private readonly deps: SelfDevWorkflowDependencies) {}
+
+  /** Get audit trail for an execution. */
+  getAuditTrail(executionId: string): AuditTrail | undefined {
+    return this.auditTrails.get(executionId);
+  }
 
   addEventListener(listener: WorkflowEventListener): void {
     this.listeners.push(listener);
@@ -80,6 +82,10 @@ export class SelfDevWorkflowEngine implements ISelfDevWorkflowEngine {
     const executionId = randomUUID();
     const now = new Date().toISOString();
 
+    // Create audit trail for this execution
+    const auditTrail = this.deps.auditTrail ?? createAuditTrail(executionId);
+    this.auditTrails.set(executionId, auditTrail);
+
     const state: SelfDevWorkflowState = {
       executionId,
       config,
@@ -92,7 +98,8 @@ export class SelfDevWorkflowEngine implements ISelfDevWorkflowEngine {
     this.states.set(executionId, state);
     this.emit({ type: 'phase_started', phase: 'analyze', timestamp: now });
 
-    // Start async execution (non-blocking)
+    // Record workflow start and begin async execution
+    void auditTrail.phaseStarted('analyze');
     void this.executeWorkflow(executionId);
 
     return Promise.resolve(state);
@@ -272,6 +279,7 @@ export class SelfDevWorkflowEngine implements ISelfDevWorkflowEngine {
       data: { executionId },
       timestamp: new Date().toISOString(),
     });
+    void this.deps.notifications?.reviewRequired(executionId);
 
     const result = await new Promise<{ decision: HumanDecision; feedback: string | undefined }>(
       (resolve) => {
@@ -286,11 +294,7 @@ export class SelfDevWorkflowEngine implements ISelfDevWorkflowEngine {
       timestamp: new Date().toISOString(),
       durationMs: Date.now() - startTime,
     };
-
-    if (result.feedback !== undefined) {
-      return { ...output, feedback: result.feedback };
-    }
-    return output;
+    return result.feedback !== undefined ? { ...output, feedback: result.feedback } : output;
   }
 
   private completeWorkflow(
@@ -299,8 +303,9 @@ export class SelfDevWorkflowEngine implements ISelfDevWorkflowEngine {
     startTime: number
   ): void {
     const state = this.states.get(executionId);
+    const durationMs = Date.now() - startTime;
     const checkpointCount = state?.checkpoints.filter((c) => c.phase === 'review').length ?? 0;
-    const metrics = calculateMetrics(outputs, Date.now() - startTime, checkpointCount);
+    const metrics = calculateMetrics(outputs, durationMs, checkpointCount);
 
     const successResult: SelfDevWorkflowResult = {
       executionId,
@@ -313,14 +318,21 @@ export class SelfDevWorkflowEngine implements ISelfDevWorkflowEngine {
     this.results.set(executionId, successResult);
     this.updateStatus(executionId, 'completed');
     this.emit({ type: 'workflow_completed', timestamp: new Date().toISOString() });
+
+    void this.auditTrails.get(executionId)?.workflowCompleted(true, durationMs);
+
+    // Send completion notification
+    const prOut = outputs.commit;
+    void this.deps.notifications?.workflowCompleted(executionId, prOut?.prNumber, prOut?.prUrl);
   }
 
   private failWorkflow(executionId: string, error: unknown, startTime: number): void {
     const errorMessage = error instanceof Error ? error.message : String(error);
     const currentPhase = this.getPhase(executionId) ?? 'analyze';
     const state = this.states.get(executionId);
+    const durationMs = Date.now() - startTime;
     const checkpointCount = state?.checkpoints.filter((c) => c.phase === 'review').length ?? 0;
-    const metrics = calculateMetrics({}, Date.now() - startTime, checkpointCount);
+    const metrics = calculateMetrics({}, durationMs, checkpointCount);
 
     const failureResult: SelfDevWorkflowResult = {
       executionId,
@@ -339,6 +351,11 @@ export class SelfDevWorkflowEngine implements ISelfDevWorkflowEngine {
       data: { error: errorMessage },
       timestamp: new Date().toISOString(),
     });
+
+    const audit = this.auditTrails.get(executionId);
+    void audit?.phaseFailed(currentPhase, errorMessage);
+    void audit?.workflowCompleted(false, durationMs);
+    void this.deps.notifications?.workflowFailed(executionId, currentPhase, errorMessage);
   }
 
   private getPhase(executionId: string): WorkflowPhase | undefined {
@@ -349,14 +366,17 @@ export class SelfDevWorkflowEngine implements ISelfDevWorkflowEngine {
     const state = this.states.get(executionId);
     if (state === undefined) return;
 
-    this.emit({
-      type: 'phase_completed',
-      phase: state.currentPhase,
-      timestamp: new Date().toISOString(),
-    });
+    const audit = this.auditTrails.get(executionId);
+    const prevPhase = state.currentPhase;
+
+    this.emit({ type: 'phase_completed', phase: prevPhase, timestamp: new Date().toISOString() });
     const updated: SelfDevWorkflowState = { ...state, currentPhase: phase };
     this.states.set(executionId, updated);
     this.emit({ type: 'phase_started', phase, timestamp: new Date().toISOString() });
+
+    // Record phase transition in audit trail
+    void audit?.phaseCompleted(prevPhase, 0);
+    void audit?.phaseStarted(phase);
   }
 
   private updateStatus(executionId: string, status: SelfDevWorkflowState['status']): void {

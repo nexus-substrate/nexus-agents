@@ -15,6 +15,7 @@ import type {
   SelfDevWorkflowResult,
 } from '../types.js';
 import { runAllVerificationChecks } from '../shell-executor.js';
+import { attemptAutoMerge } from './auto-merge.js';
 
 const logger = createLogger({ component: 'self-dev-phase-verify-commit' });
 
@@ -267,8 +268,46 @@ async function createPullRequest(
   }
 }
 
+interface PRAndMergeContext {
+  deps: SelfDevWorkflowDependencies;
+  state: SelfDevWorkflowState;
+  outputs: SelfDevWorkflowResult['outputs'];
+  branch: string;
+  issueNumber: number;
+  issueTitle: string;
+}
+
+/** Handle PR creation and optional auto-merge after successful git operations. */
+async function handlePRAndMerge(
+  ctx: PRAndMergeContext
+): Promise<{ prNumber: number; prUrl: string; status: 'created' | 'merged' | 'closed' }> {
+  const prResult = await createPullRequest(
+    ctx.deps,
+    ctx.branch,
+    ctx.issueNumber,
+    ctx.issueTitle,
+    ctx.outputs
+  );
+  const prUrl =
+    prResult.prUrl.length > 0
+      ? prResult.prUrl
+      : `https://github.com/${ctx.state.config.repository}/pull/0`;
+
+  const shouldAutoMerge =
+    ctx.state.config.autoMerge === true && ctx.outputs.verify?.allPassed === true;
+  if (!shouldAutoMerge) return { prNumber: prResult.prNumber, prUrl, status: 'created' };
+
+  const mergeResult = await attemptAutoMerge(
+    ctx.deps,
+    prResult.prNumber,
+    ctx.state.config.mergeMethod ?? 'squash',
+    ctx.issueTitle
+  );
+  return { prNumber: prResult.prNumber, prUrl, status: mergeResult.merged ? 'merged' : 'created' };
+}
+
 /**
- * Execute COMMIT phase - Branch, commit, and PR creation.
+ * Execute COMMIT phase - Branch, commit, PR creation, and optional auto-merge.
  */
 export async function executeCommit(
   deps: SelfDevWorkflowDependencies,
@@ -276,30 +315,19 @@ export async function executeCommit(
   outputs: SelfDevWorkflowResult['outputs']
 ): Promise<CommitOutput> {
   const startTime = Date.now();
-
   const issueNumber = outputs.analyze?.selectedIssue.number ?? 0;
   const issueTitle = outputs.analyze?.selectedIssue.title ?? 'self-dev';
   const branch = generateBranchName(issueNumber, issueTitle);
-
   const gitResult = await executeGitOperations(deps, branch, outputs);
 
-  let prNumber = 0;
-  let prUrl = `https://github.com/${state.config.repository}/pull/0`;
-
-  if (gitResult.success) {
-    const prResult = await createPullRequest(deps, branch, issueNumber, issueTitle, outputs);
-    prNumber = prResult.prNumber;
-    if (prResult.prUrl.length > 0) {
-      prUrl = prResult.prUrl;
-    }
-  }
-
-  return {
-    branch,
-    commitSha: gitResult.commitSha,
-    prNumber,
-    prUrl,
-    status: 'created',
-    durationMs: Date.now() - startTime,
+  const defaultPR = {
+    prNumber: 0,
+    prUrl: `https://github.com/${state.config.repository}/pull/0`,
+    status: 'created' as const,
   };
+  const prData = gitResult.success
+    ? await handlePRAndMerge({ deps, state, outputs, branch, issueNumber, issueTitle })
+    : defaultPR;
+
+  return { branch, commitSha: gitResult.commitSha, ...prData, durationMs: Date.now() - startTime };
 }

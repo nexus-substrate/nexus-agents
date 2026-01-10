@@ -11,7 +11,14 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { Result } from '../../core/index.js';
 import { ok, err, createLogger } from '../../core/index.js';
-import type { IGitHubClient, GitHubIssue, GitHubPR, CreatePROptions } from './interfaces.js';
+import type {
+  IGitHubClient,
+  GitHubIssue,
+  GitHubPR,
+  CreatePROptions,
+  MergePROptions,
+  PRStatus,
+} from './interfaces.js';
 
 const execFileAsync = promisify(execFile);
 const logger = createLogger({ component: 'github-client' });
@@ -42,6 +49,13 @@ interface GhIssueJson {
 interface GhPrJson {
   number: number;
   url: string;
+}
+
+/** PR status from gh CLI JSON output. */
+interface GhPrStatusJson {
+  mergeable: string;
+  statusCheckRollup: Array<{ state: string }> | null;
+  reviewDecision: string | null;
 }
 
 /**
@@ -201,6 +215,88 @@ export class GhCliGitHubClient implements IGitHubClient {
         result.error.stderr
       );
     }
+  }
+
+  async mergePR(prNumber: number, options?: MergePROptions): Promise<void> {
+    const method = options?.method ?? 'squash';
+    const args = ['pr', 'merge', String(prNumber), `--${method}`];
+
+    if (options?.commitTitle !== undefined) {
+      args.push('--subject', options.commitTitle);
+    }
+    if (options?.commitMessage !== undefined) {
+      args.push('--body', options.commitMessage);
+    }
+    if (options?.deleteBranch === true) {
+      args.push('--delete-branch');
+    }
+
+    logger.info('Merging PR', { repo: this.repo, prNumber, method });
+    const result = await execGh(args, this.repo);
+
+    if (!result.ok) {
+      throw new GitHubError(
+        `Failed to merge PR #${String(prNumber)}`,
+        result.error.command,
+        result.error.stderr
+      );
+    }
+  }
+
+  async getPRStatus(prNumber: number): Promise<PRStatus> {
+    const args = [
+      'pr',
+      'view',
+      String(prNumber),
+      '--json',
+      'mergeable,statusCheckRollup,reviewDecision',
+    ];
+
+    logger.debug('Getting PR status', { repo: this.repo, prNumber });
+    const result = await execGh(args, this.repo);
+
+    if (!result.ok) {
+      throw new GitHubError(
+        `Failed to get PR #${String(prNumber)} status`,
+        result.error.command,
+        result.error.stderr
+      );
+    }
+
+    const status = JSON.parse(result.value) as GhPrStatusJson;
+    return this.mapPRStatus(status);
+  }
+
+  /**
+   * Map gh CLI PR status to our PRStatus type.
+   */
+  private mapPRStatus(status: GhPrStatusJson): PRStatus {
+    // Map mergeable status
+    const mergeable = status.mergeable === 'MERGEABLE';
+
+    // Map check status from statusCheckRollup
+    let checksStatus: 'pending' | 'success' | 'failure' = 'pending';
+    if (status.statusCheckRollup !== null && status.statusCheckRollup.length > 0) {
+      const hasFailure = status.statusCheckRollup.some((c) => c.state === 'FAILURE');
+      const allSuccess = status.statusCheckRollup.every(
+        (c) => c.state === 'SUCCESS' || c.state === 'NEUTRAL' || c.state === 'SKIPPED'
+      );
+      if (hasFailure) {
+        checksStatus = 'failure';
+      } else if (allSuccess) {
+        checksStatus = 'success';
+      }
+    }
+
+    // Map review status from reviewDecision
+    let reviewStatus: 'approved' | 'pending' | 'changes_requested' = 'pending';
+    if (status.reviewDecision === 'APPROVED') {
+      reviewStatus = 'approved';
+    } else if (status.reviewDecision === 'CHANGES_REQUESTED') {
+      reviewStatus = 'changes_requested';
+    }
+
+    return { mergeable, checksStatus, reviewStatus };
   }
 }
 

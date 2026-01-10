@@ -13,6 +13,8 @@ import type { ConsensusProtocol } from '../../agents/collaboration/collaboration
 import type { SelfDebugProtocol } from '../../agents/collaboration/self-debug-protocol.js';
 import type { SelfRefineProtocol } from '../../agents/collaboration/self-refine-protocol.js';
 import type { WorkflowPhase } from './types.js';
+import type { AuditTrail } from './audit-trail.js';
+import type { NotificationService } from './notifications.js';
 
 /**
  * Dependencies injected into the workflow engine.
@@ -26,6 +28,8 @@ export interface SelfDevWorkflowDependencies {
   readonly selfRefine?: SelfRefineProtocol;
   readonly gitClient?: IGitClient;
   readonly githubClient?: IGitHubClient;
+  readonly auditTrail?: AuditTrail;
+  readonly notifications?: NotificationService;
 }
 
 /**
@@ -50,6 +54,27 @@ export interface IGitHubClient {
   createPR(options: CreatePROptions): Promise<GitHubPR>;
   addComment(issueNumber: number, body: string): Promise<void>;
   addLabels(issueNumber: number, labels: string[]): Promise<void>;
+  mergePR(prNumber: number, options?: MergePROptions): Promise<void>;
+  getPRStatus(prNumber: number): Promise<PRStatus>;
+}
+
+/**
+ * PR merge options.
+ */
+export interface MergePROptions {
+  readonly method?: 'merge' | 'squash' | 'rebase';
+  readonly commitTitle?: string;
+  readonly commitMessage?: string;
+  readonly deleteBranch?: boolean;
+}
+
+/**
+ * PR status for merge eligibility.
+ */
+export interface PRStatus {
+  readonly mergeable: boolean;
+  readonly checksStatus: 'pending' | 'success' | 'failure';
+  readonly reviewStatus: 'approved' | 'pending' | 'changes_requested';
 }
 
 /**

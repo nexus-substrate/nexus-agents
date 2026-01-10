@@ -305,3 +305,14 @@ export function formatMetricsReport(metrics: SelfDevWorkflowMetrics): string {
 
   return lines.join('\n');
 }
+
+// Re-export comparison functions
+export {
+  type BaselineSnapshot,
+  type MetricsComparison,
+  createEmptyBaseline,
+  createBaselineFromChecks,
+  compareMetrics,
+  formatComparisonReport,
+  comparisonPassesQualityGates,
+} from './metrics-comparison.js';
