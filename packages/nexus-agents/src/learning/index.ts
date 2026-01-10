@@ -35,3 +35,16 @@ export {
   createTaskOutcome,
   createOutcomeFeedbackCollector,
 } from './outcome-feedback.js';
+
+// Feedback Integration (Issue #167)
+export {
+  FeedbackIntegration,
+  createFeedbackIntegration,
+  computeOutcomeReward,
+  DEFAULT_FEEDBACK_INTEGRATION_CONFIG,
+} from './feedback-integration.js';
+export type {
+  IFeedbackIntegration,
+  FeedbackIntegrationConfig,
+  RecordOutcomeParams,
+} from './feedback-integration.js';

@@ -2,9 +2,11 @@
  * nexus-agents/cli-adapters - Adapter Factory
  *
  * Factory for creating CLI adapters based on configuration.
+ * Supports optional caching of CLI health check results.
  *
  * (Source: cli-project_plan.md v2.1.0)
  * (Source: Issue #90 - Codex MCP adapter)
+ * (Source: Issue #165 - CLI detection cache)
  */
 
 import type { ICliAdapter, CliName, CliTransport } from './types.js';
@@ -13,6 +15,8 @@ import { GeminiCliAdapter } from './adapters/gemini-adapter.js';
 import { CodexCliAdapter } from './adapters/codex-adapter.js';
 import { CodexMcpAdapter } from './adapters/codex-mcp-adapter.js';
 import type { ILogger } from '../core/index.js';
+import type { ICliDetectionCache } from './cli-detection-cache.js';
+import { CliDetectionCache } from './cli-detection-cache.js';
 
 /**
  * Configuration for creating a CLI adapter.
@@ -107,31 +111,59 @@ export function createAllAdapters(
 
 /**
  * Checks if a CLI is available by running a health check.
+ * Uses cache if provided to avoid repeated subprocess calls.
  *
  * @param cli - CLI name to check
+ * @param cache - Optional cache to use
  * @returns True if CLI is healthy
  */
-export async function isCliAvailable(cli: CliName): Promise<boolean> {
+export async function isCliAvailable(cli: CliName, cache?: ICliDetectionCache): Promise<boolean> {
+  // Check cache first
+  if (cache !== undefined) {
+    const cached = cache.get(cli);
+    if (cached !== undefined) {
+      return cached.healthy;
+    }
+  }
+
   try {
     const adapter = createCliAdapter({ cli });
     const health = await adapter.healthCheck();
+
+    // Store in cache if provided
+    if (cache !== undefined) {
+      cache.set(cli, CliDetectionCache.fromHealthStatus(health));
+    }
+
     return health.healthy;
   } catch {
+    // Store negative result in cache
+    if (cache !== undefined) {
+      cache.set(cli, {
+        healthy: false,
+        version: 'unknown',
+        versionStatus: 'unsupported',
+        checkedAt: new Date(),
+        message: 'Health check failed',
+      });
+    }
     return false;
   }
 }
 
 /**
  * Gets all available CLIs by running health checks.
+ * Uses cache if provided to avoid repeated subprocess calls.
  *
+ * @param cache - Optional cache to use
  * @returns Array of available CLI names
  */
-export async function getAvailableClis(): Promise<CliName[]> {
+export async function getAvailableClis(cache?: ICliDetectionCache): Promise<CliName[]> {
   const clis: CliName[] = ['claude', 'gemini', 'codex'];
   const available: CliName[] = [];
 
   for (const cli of clis) {
-    if (await isCliAvailable(cli)) {
+    if (await isCliAvailable(cli, cache)) {
       available.push(cli);
     }
   }

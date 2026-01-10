@@ -407,6 +407,7 @@ describe('AdapterFactory', () => {
   });
 });
 
+/* eslint-disable @typescript-eslint/no-deprecated -- Testing deprecated functionality */
 describe('defaultFactory', () => {
   beforeEach(() => {
     defaultFactory.clear();
@@ -429,6 +430,7 @@ describe('defaultFactory', () => {
     expect(result.ok).toBe(true);
   });
 });
+/* eslint-enable @typescript-eslint/no-deprecated */
 
 describe('MockAdapter integration', () => {
   let factory: AdapterFactory;

@@ -125,6 +125,7 @@ export {
   // Adapter factory
   AdapterFactory,
   AdapterConfigSchema,
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- Re-exporting deprecated item for consumers
   defaultFactory,
   type AdapterConfig,
   type AdapterCreator,
@@ -612,6 +613,7 @@ export {
   ClaudeCliAdapter,
   GeminiCliAdapter,
   CodexCliAdapter,
+  CodexMcpAdapter,
   // Parsers
   ClaudeResponseParser,
   type ClaudeCliResponse,
@@ -625,6 +627,25 @@ export {
   isCliAvailable,
   getAvailableClis,
   type CliAdapterConfig,
+  // CLI Detection Cache (Issue #165)
+  CliDetectionCache,
+  createCliDetectionCache,
+  DEFAULT_CACHE_CONFIG as CLI_DEFAULT_CACHE_CONFIG,
+  CliDetectionCacheConfigSchema,
+  type ICliDetectionCache,
+  type CliDetectionCacheConfig,
+  type CliHealthResult,
+  type CacheStats as CliCacheStats,
+  // CompositeRouter (Issue #166)
+  CompositeRouter,
+  createCompositeRouter,
+  CompositeRouterConfigSchema,
+  DEFAULT_COMPOSITE_CONFIG as CLI_DEFAULT_COMPOSITE_CONFIG,
+  CompositeRoutingError,
+  type ICompositeRouter,
+  type CompositeRouterConfig,
+  type CompositeRoutingDecision,
+  type CompositeRouterStats,
 } from './cli-adapters/index.js';
 
 // ============================================================================
@@ -640,3 +661,38 @@ export {
   type TokenCounterConfig,
   type TokenCountResult,
 } from './context/index.js';
+
+// ============================================================================
+// Learning - Closed-loop feedback and routing improvement
+// ============================================================================
+export {
+  // Outcome Feedback Types
+  type RouterType,
+  type OutcomeClass,
+  type QualitySignals,
+  type RoutingDecision as FeedbackRoutingDecision,
+  type TaskOutcome,
+  type ComputedReward,
+  type FeedbackLoopStats,
+  type FeedbackCollectorConfig,
+  type IOutcomeFeedback,
+  type OutcomeProcessedCallback,
+  DEFAULT_FEEDBACK_COLLECTOR_CONFIG,
+  FeedbackCollectorConfigSchema,
+  QualitySignalsSchema,
+  RoutingDecisionSchema as FeedbackRoutingDecisionSchema,
+  TaskOutcomeSchema,
+  // Outcome Feedback Collector
+  OutcomeFeedbackCollector,
+  createRoutingDecision,
+  createTaskOutcome,
+  createOutcomeFeedbackCollector,
+  // Feedback Integration (Issue #167)
+  FeedbackIntegration,
+  createFeedbackIntegration,
+  computeOutcomeReward,
+  DEFAULT_FEEDBACK_INTEGRATION_CONFIG,
+  type IFeedbackIntegration,
+  type FeedbackIntegrationConfig,
+  type RecordOutcomeParams,
+} from './learning/index.js';

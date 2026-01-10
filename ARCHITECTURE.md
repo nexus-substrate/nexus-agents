@@ -1,7 +1,7 @@
 # Nexus Agents Architecture
 
-**Version:** 2.1.1
-**Last Updated:** 2026-01-07 (ET)
+**Version:** 2.2.0
+**Last Updated:** 2026-01-10 (ET)
 **Status:** Current
 
 ---
@@ -40,6 +40,10 @@ nexus-agents/
 │           │               # - Task router with capability matching
 │           │               # - Circuit breaker for fault tolerance
 │           │               # - Claude/Gemini/Codex subprocess adapters
+│           │               # - CompositeRouter (chains Budget→TOPSIS→LinUCB)
+│           │               # - CliDetectionCache (health check caching)
+│           ├── learning/      # Feedback and learning infrastructure
+│           │               # - FeedbackIntegration (closed-loop learning)
 │           ├── context/    # Context management infrastructure
 │           │               # - Token counter (universal)
 │           │               # - Work balancer for parallel tasks
@@ -71,6 +75,7 @@ npm install nexus-agents
 | `mcp`          | MCP protocol, tools                            | core, agents, workflows |
 | `cli`          | Command-line interface, mode detection         | core, config, mcp       |
 | `cli-adapters` | External CLI integration (Claude/Gemini/Codex) | core, context           |
+| `learning`     | Feedback collection, outcome tracking          | core, cli-adapters      |
 | `context`      | Token counting, work balancing, memory         | core                    |
 | `consensus`    | Multi-agent voting, weighted decisions         | core                    |
 
@@ -504,6 +509,77 @@ interface BudgetConstraint {
 }
 ```
 
+### ICompositeRouter (CLI Adapters)
+
+Chains multiple routers in sequence (Budget → TOPSIS → LinUCB) for intelligent model selection (Issue #166, Epic #164).
+
+```typescript
+interface ICompositeRouter {
+  route(task: CliTask): Promise<Result<CompositeRoutingDecision, CompositeRoutingError>>;
+  getStats(): CompositeRouterStats;
+  invalidateCaches(): void;
+}
+
+interface CompositeRoutingDecision {
+  readonly cliName: 'claude' | 'gemini' | 'codex';
+  readonly reason: string;
+  readonly confidence: number;
+  readonly topsisScore?: number;
+  readonly linucbExploration?: number;
+  readonly alternatives: readonly ('claude' | 'gemini' | 'codex')[];
+  readonly stagesExecuted: readonly string[];
+}
+```
+
+### ICliDetectionCache (CLI Adapters)
+
+Caches CLI health check results with TTL and invalidation hooks (Issue #165, Epic #164).
+
+```typescript
+interface ICliDetectionCache {
+  get(cliName: CliName): Promise<CliHealthResult | undefined>;
+  set(cliName: CliName, result: CliHealthResult): Promise<void>;
+  invalidate(cliName: CliName): void;
+  invalidateAll(): void;
+  getStats(): CacheStats;
+  onInvalidate(listener: (cliName: CliName) => void): () => void;
+}
+
+interface CliHealthResult {
+  readonly available: boolean;
+  readonly version?: string;
+  readonly checkedAt: number;
+  readonly error?: string;
+}
+```
+
+### IFeedbackIntegration (Learning)
+
+Connects routing decisions to workflow outcomes for closed-loop learning (Issue #167, Epic #164).
+
+```typescript
+interface IFeedbackIntegration {
+  recordRoutingDecision(decision: CompositeRoutingDecision): string;
+  recordOutcome(routingId: string, outcome: TaskOutcome): void;
+  getRoutingStats(cliName: CliName): RoutingOutcomeStats;
+  exportFeedback(): FeedbackExport;
+}
+
+interface TaskOutcome {
+  readonly success: boolean;
+  readonly latencyMs: number;
+  readonly tokensUsed?: number;
+  readonly errorCategory?: string;
+}
+
+interface RoutingOutcomeStats {
+  readonly totalRoutings: number;
+  readonly successRate: number;
+  readonly avgLatencyMs: number;
+  readonly avgTokens: number;
+}
+```
+
 ### IWeightedVoting (Consensus)
 
 Weighted voting inspired by CP-WBFT (Issue #103, arXiv:2511.10400). Agents are weighted by historical performance, with Byzantine behavior detection through pattern analysis.
@@ -768,5 +844,5 @@ const myTool: ITool = {
 
 ---
 
-_Last updated: 2026-01-07 (ET)_
-_Changes: Clarified Byzantine detection (not classical BFT), updated ITaskRouter and IWeightedVoting interfaces to match implementation_
+_Last updated: 2026-01-10 (ET)_
+_Changes: Added Epic #164 components (CompositeRouter, CliDetectionCache, FeedbackIntegration), added learning module_

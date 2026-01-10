@@ -3,9 +3,11 @@
  *
  * MCP tool for capability-matched task routing.
  * Routes tasks to optimal model based on task requirements and available capacity.
+ * Supports intelligent routing via CompositeRouter when available.
  *
  * (Source: MCP Protocol 2025-11-25)
  * (Source: cli-project_plan.md v2.0.0)
+ * (Source: Issue #169, Epic #164)
  */
 
 import { z } from 'zod';
@@ -13,6 +15,12 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger } from '../../core/index.js';
 import { createLogger } from '../../core/index.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
+import type { ICompositeRouter } from '../../cli-adapters/composite-router.js';
+import type { IFeedbackIntegration } from '../../learning/feedback-integration.js';
+import {
+  mapCompositeDecisionToOutput,
+  routeViaCompositeRouter,
+} from './delegate-to-model-router.js';
 
 /**
  * Preferred capability for task routing.
@@ -145,9 +153,13 @@ export type DelegateOutput = z.infer<typeof DelegateOutputSchema>;
  */
 export interface DelegateDeps {
   /** Logger instance */
-  logger?: ILogger;
+  logger?: ILogger | undefined;
   /** Optional rate limiter */
-  rateLimiter?: RateLimiter;
+  rateLimiter?: RateLimiter | undefined;
+  /** Optional CompositeRouter for intelligent routing (Issue #169) */
+  router?: ICompositeRouter | undefined;
+  /** Optional FeedbackIntegration for closed-loop learning (Issue #167) */
+  feedbackIntegration?: IFeedbackIntegration | undefined;
 }
 
 /**
@@ -414,9 +426,14 @@ function buildDelegateOutput(
 
 /**
  * Creates the handler for the delegate_to_model tool.
+ * Uses CompositeRouter when available for intelligent routing.
+ * Falls back to local model selection when router is not provided.
  */
-function createDelegateHandler(deps: DelegateDeps, logger: ILogger): (args: unknown) => ToolResult {
-  return (args: unknown): ToolResult => {
+function createDelegateHandler(
+  deps: DelegateDeps,
+  logger: ILogger
+): (args: unknown) => Promise<ToolResult> {
+  return async (args: unknown): Promise<ToolResult> => {
     const rateLimitError = checkRateLimit(deps.rateLimiter);
     if (rateLimitError) return rateLimitError;
 
@@ -428,11 +445,41 @@ function createDelegateHandler(deps: DelegateDeps, logger: ILogger): (args: unkn
     }
 
     const input = validated.data;
-    logger.info('Analyzing task for model routing', { taskLength: input.task.length });
+    logger.info('Analyzing task for model routing', {
+      taskLength: input.task.length,
+      hasRouter: deps.router !== undefined,
+    });
 
     const requirements = analyzeTask(input.task);
     logger.debug('Task requirements analyzed', { ...requirements });
 
+    // Try CompositeRouter first if available (Issue #169)
+    if (deps.router !== undefined) {
+      const routingResult = await routeViaCompositeRouter(
+        input.task,
+        deps.router,
+        deps.feedbackIntegration,
+        logger
+      );
+
+      if (routingResult !== null) {
+        const output = mapCompositeDecisionToOutput(
+          routingResult.decision,
+          requirements.estimatedTokens
+        );
+        logger.info('Model recommendation via CompositeRouter', {
+          recommendedModel: output.recommended_model,
+          confidence: routingResult.decision.confidence,
+          stages: routingResult.decision.stagesExecuted,
+          routingId: routingResult.routingId,
+        });
+        return successResult(JSON.stringify(output, null, 2));
+      }
+
+      logger.info('Falling back to local model selection');
+    }
+
+    // Fall back to local model selection
     const selection = selectModel(input, requirements);
     const output = buildDelegateOutput(selection, requirements);
 
