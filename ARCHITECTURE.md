@@ -19,6 +19,93 @@ Nexus Agents is a multi-agent orchestration MCP server that coordinates AI exper
 
 ---
 
+## Architectural Direction: Hybrid Architecture
+
+**Decision Date:** 2026-01-11 (ET)
+**Consensus:** 5-0 UNANIMOUS (Architect, Security, DevEx, AI/ML, PM)
+**Status:** Approved, implementation in progress
+
+### Decision
+
+Nexus-agents will adopt a **hybrid architecture** that combines:
+
+1. **MCP Gateway** - External interface for Claude CLI integration
+2. **Internal Event Bus** - Agent-to-agent communication (#182)
+3. **Standalone CLI Mode** - Non-MCP orchestration (#183)
+4. **REST API Gateway** - Enterprise/CI/CD integration (#184)
+
+### Rationale
+
+| Factor                          | MCP-Only | Standalone-Only | Hybrid (Chosen) |
+| ------------------------------- | -------- | --------------- | --------------- |
+| Claude CLI integration          | ✅       | ❌              | ✅              |
+| Peer-to-peer agent coordination | ❌       | ✅              | ✅              |
+| CI/CD integration               | ❌       | ✅              | ✅              |
+| Context efficiency              | ❌       | ✅              | ✅              |
+| MCP ecosystem benefits          | ✅       | ❌              | ✅              |
+
+**Key Findings from Research:**
+
+- MCP protocol routes all agent communication through client (no peer-to-peer)
+- CLI adapters are already 100% standalone-capable (12,054 LOC)
+- Industry pattern: "Deterministic backbone with adaptive intelligence" (CrewAI, Microsoft Agent Framework)
+- Security: Gateway layer enables authentication without MCP spec changes
+
+### Target Architecture (v3.0.0)
+
+```
+┌─────────────────────────────────────────────────────────┐
+│              External Interface Layer                    │
+│  ┌──────────┐  ┌──────────┐  ┌──────────────────────┐   │
+│  │   MCP    │  │   REST   │  │   Standalone CLI     │   │
+│  │ Gateway  │  │   API    │  │   (`nexus-agents`)   │   │
+│  └────┬─────┘  └────┬─────┘  └──────────┬───────────┘   │
+└───────│─────────────│───────────────────│───────────────┘
+        │             │                   │
+        └─────────────┴───────────────────┘
+                      │
+┌─────────────────────▼───────────────────────────────────┐
+│              Internal Orchestration Layer                │
+│  ┌─────────────────────────────────────────────────┐    │
+│  │              Event Bus (#182)                   │    │
+│  │  - Agent-to-agent messaging                     │    │
+│  │  - Consensus voting without client roundtrips   │    │
+│  │  - Parallel expert coordination                 │    │
+│  └───────────────────────┬─────────────────────────┘    │
+│                          │                               │
+│  ┌──────────┐  ┌─────────▼──────┐  ┌───────────────┐    │
+│  │ TechLead │  │  Expert Pool   │  │  Consensus    │    │
+│  │ Router   │  │ (Code,Sec,etc) │  │  Engine       │    │
+│  └──────────┘  └────────────────┘  └───────────────┘    │
+└─────────────────────────────────────────────────────────┘
+                          │
+┌─────────────────────────▼───────────────────────────────┐
+│              Execution Layer                             │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐   │
+│  │ CLI Adapters │  │ Model APIs   │  │  Workflows   │   │
+│  │ (subprocess) │  │ (HTTP)       │  │  (Engine)    │   │
+│  └──────────────┘  └──────────────┘  └──────────────┘   │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Implementation Roadmap
+
+| Phase   | Version | Focus                    | Issues     |
+| ------- | ------- | ------------------------ | ---------- |
+| Current | v2.0.1  | MCP Server Mode (stable) | -          |
+| Phase 1 | v2.2.0  | Event Bus + Internal A2A | #182       |
+| Phase 2 | v2.3.0  | Standalone CLI Mode      | #183       |
+| Phase 3 | v3.0.0  | REST API + Full Hybrid   | #184, #185 |
+
+### Related Issues
+
+- #182: Event bus for agent-to-agent communication (P2)
+- #183: Standalone CLI orchestrator mode (P2)
+- #184: REST API gateway for non-MCP clients (P3)
+- #185: MCP gateway authentication and audit logging (P2)
+
+---
+
 ## Module Structure
 
 ```
