@@ -92,3 +92,19 @@ export {
   createSecureHandler,
   createSecureHandlerFactory,
 } from './secure-handler.js';
+
+// Centralized middleware chain (Issue #189)
+export {
+  // Types
+  type ToolResult as ChainToolResult,
+  type MiddlewareContext,
+  type Middleware,
+  type MiddlewareChainConfig,
+  type MiddlewareSkipConfig,
+  type ToolHandler as ChainToolHandler,
+  type ContextAwareToolHandler,
+  // Functions
+  createMiddlewareChain,
+  withMiddleware,
+  createMiddlewareFactory,
+} from './middleware-chain.js';
