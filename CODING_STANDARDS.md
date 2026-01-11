@@ -1,7 +1,7 @@
 # Nexus Agents - Coding Standards
 
-**Version:** 2.0.0
-**Last Updated:** 2026-01-03
+**Version:** 2.1.0
+**Last Updated:** 2026-01-11 (ET)
 **Status:** Active
 
 ---
@@ -19,6 +19,32 @@
 9. [Dependency Management](#9-dependency-management)
 10. [Quality Gates](#10-quality-gates)
 11. [Execution Protocol](#11-execution-protocol)
+
+---
+
+## Quick Start by Role
+
+| I am a...              | Start here                                                                                       |
+| ---------------------- | ------------------------------------------------------------------------------------------------ |
+| First-time contributor | [Section 10 (Quality Gates)](#10-quality-gates) → [Section 3 (Limits)](#3-code-structure-limits) |
+| CI failure debugger    | [Section 10.1 (Pre-Commit)](#101-pre-commit-must-pass)                                           |
+| AI agent (Claude Code) | Full document - all sections mandatory                                                           |
+| Security reviewer      | [Section 7 (Security)](#7-security-standards) → [Section 5.3](#53-security-requirements)         |
+| MCP tool developer     | [Section 5 (MCP)](#5-mcp-server-standards) → [Section 4 (TypeScript)](#4-typescript-standards)   |
+| Agent developer        | [Section 6 (Agent Standards)](#6-agent--skill-standards)                                         |
+
+### Quick Commands
+
+```bash
+# Run all quality gates (must pass before commit)
+pnpm lint && pnpm typecheck && pnpm test
+
+# Fix common issues
+pnpm lint:fix              # Auto-fix lint errors
+
+# Check what needs fixing
+pnpm lint --format compact | head -20
+```
 
 ---
 

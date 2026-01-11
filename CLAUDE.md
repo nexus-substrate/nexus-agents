@@ -21,7 +21,58 @@ pnpm typecheck            # Type check
 gh issue create           # Create issue
 gh pr create              # Create PR
 gh pr merge               # Merge PR
+
+# Nexus-Agents CLI
+nexus-agents              # Start MCP server (default)
+nexus-agents doctor       # Check CLI health
+nexus-agents config init  # Generate starter config
+nexus-agents expert list  # List available experts
+nexus-agents workflow list # List workflow templates
+nexus-agents workflow run # Execute workflow template
+nexus-agents routing-audit # Debug model routing
+nexus-agents orchestrate  # Standalone task execution
+nexus-agents review <url> # Review GitHub PR
+nexus-agents --help       # Full command list
 ```
+
+---
+
+## Getting Started (5 Minutes)
+
+### For Claude Desktop Users
+
+1. **Install:** `npm install -g nexus-agents`
+2. **Verify:** `nexus-agents doctor`
+3. **Configure Claude Desktop:** Add to `~/.claude/mcp.json`:
+   ```json
+   {
+     "mcpServers": {
+       "nexus-agents": {
+         "command": "nexus-agents",
+         "args": ["--mode=server"]
+       }
+     }
+   }
+   ```
+4. **Test:** Ask Claude "orchestrate: What files are in this project?"
+
+### For Standalone CLI
+
+```bash
+npm install -g nexus-agents
+nexus-agents doctor                    # Verify installation
+nexus-agents orchestrate "Explain closures in JavaScript"
+```
+
+### Mode Selection
+
+| Mode         | Flag                  | Use Case                             |
+| ------------ | --------------------- | ------------------------------------ |
+| Server       | `--mode=server`       | Claude Desktop/MCP clients (default) |
+| Orchestrator | `--mode=orchestrator` | Standalone CLI, CI/CD pipelines      |
+| Mesh         | `--mode=mesh`         | Advanced hybrid deployments          |
+
+Auto-detection works in most cases. Run `nexus-agents --verbose` to see mode selection reasoning.
 
 ---
 
