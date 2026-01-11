@@ -685,6 +685,16 @@ nexus-agents/
 6. Create PR with issue reference
 7. Address review feedback
 8. Merge and close issue
+9. **Update research tracking** (if research-related):
+   - Update `docs/research/registry/techniques.yaml` status → `implemented`
+   - Add `decision_history` entry with commit reference
+   - Update `docs/research/registry/papers.yaml` implementation_status
+   - Update `docs/research/RESEARCH_INDEX.md` Quick Stats if counts changed
+10. **Update documentation** (if significant):
+    - README.md for user-facing changes
+    - ARCHITECTURE.md for architectural changes
+    - CHANGELOG.md entry for release notes
+11. **Run Implementation Complete Checklist** (see below)
 
 ### Bug Fix
 
@@ -704,6 +714,135 @@ nexus-agents/
 4. Run tests after each change
 5. Update documentation
 6. Create PR with rationale
+
+---
+
+## Implementation Complete Checklist
+
+Before marking ANY technique or feature as "implemented", verify ALL of the following:
+
+### Code Requirements
+
+- [ ] Code exists in specified `integration_files`
+- [ ] All functions have explicit return types
+- [ ] No `any` types (use `unknown` instead)
+
+### Quality Gates
+
+- [ ] `pnpm lint` passes with zero errors
+- [ ] `pnpm typecheck` passes
+- [ ] `pnpm test` passes (relevant tests)
+
+### Documentation Updates (if research-related)
+
+- [ ] `docs/research/registry/techniques.yaml`: `status: implemented`, `decision_history` entry
+- [ ] `docs/research/registry/papers.yaml`: `implementation_status` updated
+- [ ] `docs/research/RESEARCH_INDEX.md`: Quick Stats updated if counts changed
+- [ ] Topic README updated: `docs/research/topics/[topic]/README.md`
+
+### GitHub Tracking
+
+- [ ] Implementation issue closed with summary comment
+- [ ] PR merged (if applicable)
+
+**Do NOT mark as implemented if:**
+
+- Code exists but tests fail
+- Implementation is partial
+- Feature is behind a feature flag
+
+---
+
+## System Review Protocol
+
+### Trigger Conditions
+
+Run a System Review when ANY of these occur:
+
+- Open GitHub issues drop below 5
+- An EPIC issue is closed (label: `epic`)
+- 7 days since last review (time-based fallback)
+- Manual request via `/system-review` or team decision
+
+### Review Checklist
+
+**Phase 1: Registry Reconciliation**
+
+```bash
+# Count techniques by status
+grep -c "status: implemented" docs/research/registry/techniques.yaml
+grep -c "status: planned" docs/research/registry/techniques.yaml
+
+# Verify RESEARCH_INDEX.md matches actual counts
+# Check integration_files exist for implemented techniques
+```
+
+**Phase 2: Documentation Sync**
+
+- [ ] ARCHITECTURE.md reflects current phase status
+- [ ] README.md lists current capabilities accurately
+- [ ] CHANGELOG.md has entries for shipped features
+- [ ] PROJECT_PLAN.md phase status is current
+
+**Phase 3: Issue Health**
+
+- [ ] No orphaned issues (referenced but not in GitHub)
+- [ ] No stale issues (no activity > 30 days without `wontfix` label)
+- [ ] Labels are accurate and consistent
+
+**Phase 4: Generate Report**
+
+Create GitHub issue titled "System Review: YYYY-MM-DD" with findings and action items.
+
+---
+
+## Discovered Issue Protocol
+
+When finding issues during work, create a GitHub issue **IMMEDIATELY** to prevent lost work items.
+
+### When to Create Issues
+
+- Bug found in existing code
+- Technical debt identified
+- Missing test coverage discovered
+- Documentation inaccuracy found
+- Performance concern noted
+- Security consideration identified
+- Research opportunity spotted
+
+### Issue Creation Format
+
+**Title Pattern:** `{type}: {brief description}`
+
+| Type         | Label         | Use When                            |
+| ------------ | ------------- | ----------------------------------- |
+| `bug:`       | bug           | Defect in existing functionality    |
+| `tech-debt:` | tech-debt     | Code quality improvement needed     |
+| `docs:`      | documentation | Documentation update needed         |
+| `test:`      | testing       | Test coverage gap                   |
+| `perf:`      | performance   | Performance improvement opportunity |
+| `security:`  | security      | Security consideration              |
+| `research:`  | research      | New research topic to explore       |
+
+**Quick Commands:**
+
+```bash
+# Bug discovered
+gh issue create --title "bug: [description]" --label "bug,discovered"
+
+# Tech debt found
+gh issue create --title "tech-debt: [description]" --label "tech-debt,discovered"
+
+# Documentation issue
+gh issue create --title "docs: [description]" --label "documentation,discovered"
+```
+
+**Priority Labels:** Add `P1`, `P2`, `P3`, or `P4` label based on urgency.
+
+### Rate Limiting
+
+- Maximum 5 auto-created issues per hour to prevent spam
+- Check for duplicates before creating (search last 7 days)
 
 ---
 
@@ -749,6 +888,11 @@ When anything fails:
 ## File References
 
 - @CODING_STANDARDS.md - Detailed coding standards
+- @ARCHITECTURE.md - System architecture and design decisions
+- @docs/ALIGNMENT_ROADMAP.md - Current implementation status and gap analysis
+- @docs/research/RESEARCH_INDEX.md - Research tracking overview
+- @docs/research/CONTRIBUTING.md - Research contribution guidelines
+- @docs/research/registry/techniques.yaml - Technique implementation status
 - @packages/nexus-agents/src/core/types/index.ts - Core type definitions
 - @packages/nexus-agents/src/mcp/ - MCP server and tool implementations
 - @packages/nexus-agents/src/agents/ - Agent framework
@@ -783,7 +927,7 @@ gh pr checks <num>          # Check CI status
 
 ---
 
-_Last updated: 2026-01-07 (ET)_
+_Last updated: 2026-01-11 (ET)_
 _MCP Protocol: 2025-11-25_
 _Node.js: 22.x LTS_
 _TypeScript: 5.8+_

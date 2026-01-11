@@ -1,25 +1,44 @@
 # Contributing to Research Documentation
 
-**Last Updated:** 2026-01-09 (ET)
+**Last Updated:** 2026-01-11 (ET)
 
 This guide explains how to add new research papers, techniques, and sources to the nexus-agents research tracking system.
 
 ---
 
-## Before Adding New Research
+## ⚠️ MANDATORY: Check Registry Before Starting
 
-**Always check first** to avoid duplicate research:
+**You MUST check the registry before starting any new research.** This is not optional guidance—it is a required protocol to prevent duplicate efforts.
+
+### Required Checks
 
 ```bash
-# Check if paper already exists by arXiv ID
-grep -i "arxiv_id.*2501.06322" docs/research/registry/papers.yaml
+# 1. Check if paper already exists by arXiv ID
+grep -i "arxiv_id.*XXXX.XXXXX" docs/research/registry/papers.yaml
 
-# Check if technique exists
+# 2. Check if technique already exists
 grep -i "technique-name" docs/research/registry/techniques.yaml
 
-# Search topic files for keywords
+# 3. Check if technique is already implemented
+grep -B 5 "technique-name" docs/research/registry/techniques.yaml | grep "status:"
+
+# 4. Search topic files for related work
 grep -ri "keyword" docs/research/topics/
+
+# 5. Check for implementation overlap in source code
+grep -ri "technique-keyword" packages/nexus-agents/src/
 ```
+
+### If Found
+
+- **Paper exists:** Read the existing entry, check if it needs updating
+- **Technique exists:** Check its status (implemented/planned/not-started)
+- **Already implemented:** Do NOT re-research; reference existing implementation
+- **Related work found:** Document relationship in `alignments.yaml`
+
+### If Not Found
+
+Proceed with research and document findings per the sections below.
 
 ---
 

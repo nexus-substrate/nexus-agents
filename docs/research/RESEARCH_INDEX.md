@@ -1,6 +1,6 @@
 # Nexus-Agents Research Index
 
-**Generated:** 2026-01-07 (ET)
+**Generated:** 2026-01-11 (ET)
 **Total Papers:** 51 | **Techniques:** 27 | **Topics:** 6
 
 ---
@@ -9,11 +9,13 @@
 
 | Status      | Papers | Techniques |
 | ----------- | ------ | ---------- |
-| Implemented | 0      | 0          |
-| In Progress | 0      | 0          |
-| Planned     | 23     | 18         |
-| Not Started | 27     | 8          |
-| Rejected    | 1      | 1          |
+| Implemented | -      | 21         |
+| In Progress | -      | 0          |
+| Planned     | -      | 3          |
+| Not Started | -      | 2          |
+| Rejected    | -      | 1          |
+
+> **Note:** Paper-level status tracking deprecated. Technique status is source of truth.
 
 ---
 
