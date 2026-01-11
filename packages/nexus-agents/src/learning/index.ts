@@ -48,3 +48,19 @@ export type {
   FeedbackIntegrationConfig,
   RecordOutcomeParams,
 } from './feedback-integration.js';
+
+// Outcome Storage (Issue #188 - SQLite persistence)
+export type {
+  IOutcomeStorage,
+  OutcomeStorageConfig,
+  StoredRoutingDecision,
+  StoredTaskOutcome,
+  StoredReward,
+  StoredModelStats,
+} from './outcome-storage-types.js';
+export {
+  OutcomeStorageError,
+  OutcomeStorageConfigSchema,
+  DEFAULT_OUTCOME_STORAGE_CONFIG,
+} from './outcome-storage-types.js';
+export { SQLiteOutcomeStorage, createOutcomeStorage } from './outcome-storage.js';
