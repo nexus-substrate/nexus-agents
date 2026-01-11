@@ -1,10 +1,10 @@
 # Nexus-Agents Alignment Roadmap
 
 **Assessment Date:** 2026-01-09 (ET)
-**Last Updated:** 2026-01-10 20:58 (ET)
+**Last Updated:** 2026-01-10 21:50 (ET)
 **Protocol Used:** CLAUDE.md Consensus Voting (5 Agents)
 **Goal:** Create the best software development agent swarm possible
-**Phase 1 Status:** 🚧 IN PROGRESS (#163 ✅, #171 ✅, #173 ✅, #174 pending)
+**Phase 1 Status:** ✅ COMPLETE (#163 ✅, #171 ✅, #173 ✅, #170 ✅, #174 ✅)
 
 ---
 
@@ -154,7 +154,7 @@ The following capabilities received positive assessments from multiple agents:
 
 ## Improvement Roadmap with Objective Metrics
 
-### Phase 1: Observability Foundation (Weeks 1-2) 🚧 IN PROGRESS
+### Phase 1: Observability Foundation ✅ COMPLETE
 
 **Goal:** Implement swarm-level observability to enable all subsequent improvements.
 
@@ -163,7 +163,8 @@ The following capabilities received positive assessments from multiple agents:
 - #163 - Add workflow execution summary to NotificationService ✅ Complete
 - #171 - Add routing effectiveness dashboard to SwarmObserver ✅ Complete
 - #173 - Integrate SwarmObserver into MCP server startup ✅ Complete
-- #174 - Add LinUCB arm statistics to routing-audit command
+- #170 - Add routing-audit CLI command ✅ Complete
+- #174 - Add LinUCB arm statistics to routing-audit command ✅ Complete
 
 #### Improvement 1.1: Agent Interaction Tracing ✅
 
@@ -214,6 +215,50 @@ The following capabilities received positive assessments from multiple agents:
 | Routing decisions tracked | 0 | 100% | ✅ All recorded |
 | Model selection visible | No | Yes | ✅ Per-model metrics |
 | Learning progress traceable | No | Yes | ✅ Exploration rate, reward trends |
+
+#### Improvement 1.3: Routing Audit CLI Command ✅
+
+| Attribute        | Value                                                          |
+| ---------------- | -------------------------------------------------------------- |
+| **Description**  | CLI command to debug routing decisions without executing tasks |
+| **Deliverable**  | `nexus-agents routing-audit <task>` with ASCII and JSON output |
+| **Priority**     | P1                                                             |
+| **GitHub Issue** | #170                                                           |
+| **Status**       | ✅ Complete - 12 tests passing                                 |
+
+**Implementation:**
+
+- `routingAuditCommand()` in `cli/routing-audit.ts`
+- Shows task profile analysis (code generation, complexity)
+- Budget filter results (which CLIs pass constraints)
+- TOPSIS ranking with scores (quality, cost, latency)
+- LinUCB selection details (UCB scores, exploration/exploitation)
+- Options: `--format=json`, `--verbose`, `--dry-run`
+
+#### Improvement 1.4: LinUCB Arm Statistics ✅
+
+| Attribute        | Value                                           |
+| ---------------- | ----------------------------------------------- |
+| **Description**  | Detailed bandit statistics for ML debugging     |
+| **Deliverable**  | `--bandit-stats` flag for routing-audit command |
+| **Priority**     | P1                                              |
+| **GitHub Issue** | #174                                            |
+| **Status**       | ✅ Complete - 7 additional tests                |
+
+**Implementation:**
+
+- `getDetailedStats()` and `getExplorationStats()` on LinUCBBandit
+- Feature importance analysis from learned weights
+- Exploration ratio and arm distribution metrics
+- ASCII visualization with progress bars
+- Full JSON export for ML observability
+
+**Success Metrics:**
+| Metric | Baseline | Target | Current |
+|--------|----------|--------|---------|
+| Routing decisions debuggable | No | Yes | ✅ CLI command available |
+| Feature importance visible | No | Yes | ✅ Per-arm analysis |
+| Exploration ratio trackable | No | Yes | ✅ Distribution metrics |
 
 ---
 
@@ -410,23 +455,20 @@ The following capabilities received positive assessments from multiple agents:
 
 ## Immediate Next Actions
 
-1. ✅ **GitHub Issues Created** (2026-01-10 via Consensus Voting):
-   - #163 - Add workflow execution summary to NotificationService ✅ **Complete**
-   - #171 - Add routing effectiveness dashboard ✅ **Complete**
-   - #173 - Integrate SwarmObserver into MCP server startup ✅ **Complete**
-   - #174 - Add LinUCB arm statistics to routing-audit command
-   - #175 - Integrate Docker sandbox as default execution backend
+1. ✅ **Phase 1: Observability Foundation COMPLETE** (2026-01-10):
+   - #163 - Add workflow execution summary to NotificationService ✅
+   - #171 - Add routing effectiveness dashboard ✅
+   - #173 - Integrate SwarmObserver into MCP server startup ✅
+   - #170 - Add routing-audit CLI command ✅
+   - #174 - Add LinUCB arm statistics to routing-audit command ✅
+
+2. **Phase 3 Ready for Implementation:**
    - #176 - Enable nexus-review workflow with production testing
 
-2. ✅ **Priority Issues Implemented** (2026-01-10):
-   - #163 - `NotificationService.executionSummary()` with 4 tests
-   - #171 - `RoutingMetricsCollector` with 20 tests
-   - #173 - SwarmObserver initialized at MCP startup with lifecycle events
+3. **Phase 4 Ready for Implementation:**
+   - #175 - Integrate Docker sandbox as default execution backend
 
-3. **Next Implementation Target:**
-   - #174 - LinUCB arm statistics CLI command (final Phase 1 item)
-
-4. **Schedule Re-Voting** after Phase 1 completion to measure progress
+4. **Schedule Re-Voting** to measure progress (target score: 7.0/10)
 
 ---
 
