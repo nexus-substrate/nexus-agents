@@ -1,8 +1,19 @@
 name: Nexus Agents PR Review
 
+# DISABLED: Automatic PR review triggers removed to reduce API costs.
+# CLI-based review workflow now enforced via verify-review.yml
+# Use: pnpm review <PR#> to review PRs with local CLI tools.
+#
+# (Source: Issue #182, 5-0 consensus vote for CLI-based PR review)
+
 on:
-  pull_request:
-    types: [opened, synchronize, ready_for_review]
+  # Manual trigger only - use as fallback when CLI review is unavailable
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to review'
+        required: true
+        type: number
 
 # Only run on non-draft PRs
 concurrency:

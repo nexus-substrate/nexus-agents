@@ -36,7 +36,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "prepare": "husky",
-    "preinstall": "npx only-allow pnpm"
+    "preinstall": "npx only-allow pnpm",
+    "review": "npx tsx scripts/review-pr.ts"
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.0",
