@@ -78,3 +78,15 @@ export {
 
 // Dashboard
 export { Dashboard, createDashboard } from './dashboard.js';
+
+// Routing Metrics (Issue #171)
+export type {
+  RoutingRecord,
+  OutcomeRecord,
+  ModelMetrics,
+  RoutingMetrics,
+  DashboardConfig as RoutingDashboardConfig,
+  RoutingMetricsConfig,
+} from './routing-metrics.js';
+
+export { RoutingMetricsCollector, createRoutingMetricsCollector } from './routing-metrics.js';

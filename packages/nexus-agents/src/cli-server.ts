@@ -21,6 +21,7 @@ import { createLogger, type ILogger } from './core/index.js';
 import { VERSION } from './version.js';
 import { detectMode, type ServerMode, type ModeDetectionResult } from './cli/index.js';
 import { EXIT_CODES } from './cli-types.js';
+import { getSwarmObserver, SwarmObserver } from './observability/index.js';
 
 /**
  * Sets up graceful shutdown handlers.
@@ -111,6 +112,84 @@ export function logModeWarnings(logger: ILogger, mode: ServerMode): void {
 }
 
 /**
+ * Initializes the global SwarmObserver for interaction tracing.
+ *
+ * @param logger - Logger instance
+ * @returns The initialized SwarmObserver instance
+ */
+function initializeSwarmObserver(logger: ILogger): SwarmObserver {
+  const observer = getSwarmObserver({
+    maxEvents: 10000,
+  });
+
+  logger.info('SwarmObserver initialized for interaction tracing', {
+    maxEvents: 10000,
+  });
+
+  return observer;
+}
+
+/**
+ * Records a server lifecycle event to the SwarmObserver.
+ */
+interface ServerEventContext {
+  readonly traceId: string;
+  readonly startupSpanId: string;
+}
+
+function recordServerStartup(observer: SwarmObserver): ServerEventContext {
+  const traceId = SwarmObserver.generateTraceId();
+  const startupSpanId = SwarmObserver.generateSpanId();
+
+  observer.recordEvent({
+    eventId: `startup-${startupSpanId}`,
+    timestamp: new Date().toISOString(),
+    agentId: 'mcp-server',
+    eventType: 'task_started',
+    traceId,
+    spanId: startupSpanId,
+    payload: {
+      type: 'task',
+      phase: 'started',
+      taskId: traceId,
+      taskDescription: 'MCP server startup',
+    },
+  });
+
+  return { traceId, startupSpanId };
+}
+
+function recordServerShutdown(observer: SwarmObserver, context: ServerEventContext): void {
+  const shutdownSpanId = SwarmObserver.generateSpanId();
+
+  observer.recordEvent({
+    eventId: `shutdown-${shutdownSpanId}`,
+    timestamp: new Date().toISOString(),
+    agentId: 'mcp-server',
+    eventType: 'task_completed',
+    traceId: context.traceId,
+    spanId: shutdownSpanId,
+    parentSpanId: context.startupSpanId,
+    payload: {
+      type: 'task',
+      phase: 'completed',
+      taskId: context.traceId,
+      taskDescription: 'MCP server shutdown',
+      success: true,
+    },
+  });
+}
+
+function logFinalHealthMetrics(observer: SwarmObserver, logger: ILogger): void {
+  const healthMetrics = observer.getHealthMetrics();
+  logger.info('Final swarm health metrics', {
+    activeAgents: healthMetrics.activeAgents,
+    totalAgents: healthMetrics.totalAgents,
+    totalInteractions: healthMetrics.totalInteractions,
+  });
+}
+
+/**
  * Registers MCP tools with rate limiting.
  * Must be called BEFORE connecting to transport.
  */
@@ -171,6 +250,9 @@ export async function startServer(
 
   const { server, logger: serverLogger } = serverResult.value;
 
+  // Initialize SwarmObserver for interaction tracing (Issue #173)
+  const observer = initializeSwarmObserver(serverLogger);
+
   // Register tools with rate limiting (must happen BEFORE connecting)
   registerMcpTools(server, serverLogger);
 
@@ -186,8 +268,14 @@ export async function startServer(
 
   logger.info('MCP server started successfully');
 
-  // Setup graceful shutdown
+  // Record server startup event for observability
+  const eventContext = recordServerStartup(observer);
+
+  // Setup graceful shutdown with observer cleanup
   setupShutdownHandlers(async () => {
+    recordServerShutdown(observer, eventContext);
+    logFinalHealthMetrics(observer, logger);
+
     const closeResult = await closeServer(server, serverLogger);
     if (!closeResult.ok) {
       throw new Error(closeResult.error.message);

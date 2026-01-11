@@ -8,7 +8,8 @@
  */
 
 import { createLogger } from '../../core/index.js';
-import type { WorkflowPhase } from './types.js';
+import type { WorkflowPhase, SelfDevWorkflowMetrics } from './types.js';
+import type { MetricsSummary } from './metrics.js';
 
 const logger = createLogger({ component: 'self-dev-notify' });
 
@@ -27,7 +28,8 @@ export type NotificationEventType =
   | 'phase_completed'
   | 'human_review_required'
   | 'pr_created'
-  | 'pr_merged';
+  | 'pr_merged'
+  | 'execution_summary';
 
 /** Notification payload. */
 export interface Notification {
@@ -230,6 +232,63 @@ export class NotificationService {
       timestamp: new Date().toISOString(),
       executionId,
       metadata: { prNumber },
+    });
+  }
+
+  /**
+   * Notify with a comprehensive execution summary.
+   *
+   * Generates a formatted summary of workflow execution including duration,
+   * phases completed, quality metrics, and final status.
+   *
+   * @param executionId - Unique identifier for the workflow execution
+   * @param success - Whether the workflow completed successfully
+   * @param summary - Metrics summary from summarizeMetrics()
+   * @param metrics - Raw metrics for detailed reporting
+   */
+  async executionSummary(
+    executionId: string,
+    success: boolean,
+    summary: MetricsSummary,
+    metrics?: SelfDevWorkflowMetrics
+  ): Promise<void> {
+    const severity: NotificationSeverity = success ? 'success' : 'error';
+    const status = success ? 'COMPLETED' : 'FAILED';
+
+    // Build formatted message from summary
+    const lines = [
+      `Status: ${status}`,
+      `Duration: ${summary.duration}`,
+      `Phases: ${summary.phases}`,
+    ];
+
+    if (summary.quality !== 'N/A') {
+      lines.push(`Quality: ${summary.quality}`);
+    }
+    if (summary.iterations !== 'none') {
+      lines.push(`Iterations: ${summary.iterations}`);
+    }
+    if (summary.vote !== 'N/A') {
+      lines.push(`Vote: ${summary.vote}`);
+    }
+    if (summary.humanReview !== 'N/A') {
+      lines.push(`Human Review: ${summary.humanReview}`);
+    }
+
+    const message = lines.join(' | ');
+
+    await this.notify({
+      type: 'execution_summary',
+      severity,
+      title: 'Execution Summary',
+      message,
+      timestamp: new Date().toISOString(),
+      executionId,
+      metadata: {
+        success,
+        summary,
+        ...(metrics !== undefined && { metrics }),
+      },
     });
   }
 }
