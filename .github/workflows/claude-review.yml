@@ -1,0 +1,82 @@
+name: Claude Code PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review]
+
+# Only run one review per PR at a time
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    name: Claude Code Review
+    runs-on: ubuntu-latest
+    # Skip draft PRs and dependabot
+    if: |
+      github.event.pull_request.draft == false &&
+      github.actor != 'dependabot[bot]'
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Claude Code Review
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+            PR TITLE: ${{ github.event.pull_request.title }}
+
+            Please review this pull request for the nexus-agents project with focus on:
+
+            1. **Code Quality**
+               - TypeScript best practices and type safety
+               - Result<T,E> pattern usage for error handling
+               - Function and file size limits (50 lines / 400 lines)
+
+            2. **Security**
+               - No secrets or credentials in code
+               - Input validation at boundaries (Zod)
+               - Path traversal prevention
+               - No user-provided RegExp (ReDoS)
+
+            3. **MCP Protocol Compliance**
+               - Tool definitions with proper Zod schemas
+               - Structured content responses
+               - Error handling with isError flag
+
+            4. **Testing**
+               - Adequate test coverage for changes
+               - Proper mocking patterns
+
+            5. **Documentation**
+               - Clear, technical documentation style
+               - No marketing fluff or exaggeration
+
+            Reference: CLAUDE.md and CODING_STANDARDS.md in the repository root.
+
+            Note: The PR branch is already checked out in the current working directory.
+
+            Use `gh pr comment` for top-level summary feedback.
+            Use `mcp__github_inline_comment__create_inline_comment` for specific code issues.
+            Only post GitHub comments - don't submit review text as messages.
+
+          claude_args: |
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Read,Glob,Grep"
+
+      - name: Review summary
+        if: always()
+        run: |
+          echo "### Claude Code Review Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Review posted to PR #${{ github.event.pull_request.number }}" >> $GITHUB_STEP_SUMMARY
