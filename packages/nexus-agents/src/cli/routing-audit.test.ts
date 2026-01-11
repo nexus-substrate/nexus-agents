@@ -4,7 +4,7 @@
  * @module cli/routing-audit.test
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from 'vitest';
 import { auditRouting, routingAuditCommand, type RoutingAuditOptions } from './routing-audit.js';
 
 describe('routing-audit', () => {
@@ -92,11 +92,81 @@ describe('routing-audit', () => {
         result.selectionReason.includes('exploration') ? 'exploration' : 'exploitation'
       );
     });
+
+    it('should not include bandit stats by default', () => {
+      const result = auditRouting({ task: 'Test task' });
+
+      expect(result.banditStats).toBeUndefined();
+    });
+
+    it('should include bandit stats when banditStats option is true', () => {
+      const result = auditRouting({
+        task: 'Test bandit stats',
+        banditStats: true,
+      });
+
+      expect(result.banditStats).toBeDefined();
+      expect(result.banditStats?.detailedArms).toBeDefined();
+      expect(result.banditStats?.detailedArms.length).toBe(3);
+      expect(result.banditStats?.exploration).toBeDefined();
+    });
+
+    it('should include feature importance in bandit stats', () => {
+      const result = auditRouting({
+        task: 'Analyze feature importance',
+        banditStats: true,
+      });
+
+      const stats = result.banditStats;
+      expect(stats).toBeDefined();
+
+      for (const arm of stats!.detailedArms) {
+        expect(arm.featureImportance).toBeDefined();
+        expect(arm.featureImportance.length).toBeGreaterThan(0);
+        for (const fi of arm.featureImportance) {
+          expect(fi.feature).toBeDefined();
+          expect(typeof fi.importance).toBe('number');
+          expect(fi.importance).toBeGreaterThanOrEqual(0);
+        }
+      }
+    });
+
+    it('should include exploration ratio in bandit stats', () => {
+      const result = auditRouting({
+        task: 'Check exploration ratio',
+        banditStats: true,
+      });
+
+      const stats = result.banditStats;
+      expect(stats).toBeDefined();
+      expect(typeof stats!.exploration.explorationRatio).toBe('number');
+      expect(stats!.exploration.explorationRatio).toBeGreaterThanOrEqual(0);
+      expect(stats!.exploration.explorationRatio).toBeLessThanOrEqual(1);
+    });
+
+    it('should include arm distribution in bandit stats', () => {
+      const result = auditRouting({
+        task: 'Check arm distribution',
+        banditStats: true,
+      });
+
+      const stats = result.banditStats;
+      expect(stats).toBeDefined();
+      expect(stats!.exploration.armDistribution.length).toBe(3);
+
+      let totalProportion = 0;
+      for (const arm of stats!.exploration.armDistribution) {
+        expect(arm.name).toBeDefined();
+        expect(typeof arm.proportion).toBe('number');
+        totalProportion += arm.proportion;
+      }
+      expect(totalProportion).toBeCloseTo(1, 5);
+    });
   });
 
   describe('routingAuditCommand', () => {
-    let stdoutSpy: ReturnType<typeof vi.spyOn>;
-    let stderrSpy: ReturnType<typeof vi.spyOn>;
+    let stdoutSpy: MockInstance;
+    let stderrSpy: MockInstance;
 
     beforeEach(() => {
       stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
@@ -110,7 +180,7 @@ describe('routing-audit', () => {
 
     // Helper to get the command output (last call, which is the actual output)
     function getCommandOutput(): string {
-      const calls = stdoutSpy.mock.calls;
+      const calls = stdoutSpy.mock.calls as unknown[][];
       // The command output is the last call (logger outputs come first)
       const lastCall = calls[calls.length - 1];
       return (lastCall?.[0] as string) ?? '';
@@ -170,6 +240,38 @@ describe('routing-audit', () => {
 
       const output = getCommandOutput();
       expect(output).toContain('deterministic');
+    });
+
+    it('should include bandit stats in ASCII output when banditStats is true', () => {
+      routingAuditCommand({
+        task: 'Test bandit stats output',
+        banditStats: true,
+      });
+
+      const output = getCommandOutput();
+      expect(output).toContain('LinUCB Detailed Statistics');
+      expect(output).toContain('Exploration');
+      expect(output).toContain('Arm Distribution');
+      expect(output).toContain('Feature Importance');
+    });
+
+    it('should include bandit stats in JSON output when banditStats is true', () => {
+      routingAuditCommand({
+        task: 'Test bandit stats JSON',
+        banditStats: true,
+        json: true,
+      });
+
+      const output = getCommandOutput();
+      const parsed = JSON.parse(output) as {
+        banditStats: {
+          detailedArms: unknown[];
+          exploration: { explorationRatio: number };
+        };
+      };
+      expect(parsed.banditStats).toBeDefined();
+      expect(parsed.banditStats.detailedArms).toBeDefined();
+      expect(parsed.banditStats.exploration.explorationRatio).toBeDefined();
     });
   });
 });

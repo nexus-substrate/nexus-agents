@@ -31,6 +31,7 @@ export interface RoutingAuditOptions {
   readonly deterministic?: boolean;
   readonly json?: boolean;
   readonly verbose?: boolean;
+  readonly banditStats?: boolean;
 }
 
 /** Budget filter result for a single CLI. */
@@ -49,6 +50,35 @@ export interface LinUCBArmDetail {
   readonly isExploration: boolean;
 }
 
+/** Feature importance for LinUCB. */
+export interface FeatureImportance {
+  readonly feature: string;
+  readonly importance: number;
+}
+
+/** Detailed LinUCB arm statistics. */
+export interface DetailedArmStats {
+  readonly cliName: CliName;
+  readonly pullCount: number;
+  readonly avgReward: number;
+  readonly cumulativeReward: number;
+  readonly learnedWeights: readonly number[];
+  readonly featureImportance: readonly FeatureImportance[];
+}
+
+/** LinUCB exploration statistics. */
+export interface ExplorationStats {
+  readonly totalPulls: number;
+  readonly explorationRatio: number;
+  readonly armDistribution: readonly { name: string; proportion: number }[];
+}
+
+/** Complete bandit statistics (Issue #174). */
+export interface BanditStats {
+  readonly detailedArms: readonly DetailedArmStats[];
+  readonly exploration: ExplorationStats;
+}
+
 /** Complete routing audit result. */
 export interface RoutingAuditResult {
   readonly task: string;
@@ -59,6 +89,7 @@ export interface RoutingAuditResult {
   readonly selectedCli: CliName;
   readonly selectionReason: string;
   readonly isExploration: boolean;
+  readonly banditStats?: BanditStats;
 }
 
 // =============================================================================
@@ -176,10 +207,32 @@ function computeLinUCBDetails(
 }
 
 /**
+ * Computes detailed bandit statistics for ML observability.
+ */
+function computeBanditStats(bandit: LinUCBBandit): BanditStats {
+  const detailedStats = bandit.getDetailedStats();
+  const explorationStats = bandit.getExplorationStats();
+
+  const detailedArms: DetailedArmStats[] = detailedStats.map((s) => ({
+    cliName: s.name as CliName,
+    pullCount: s.pullCount,
+    avgReward: s.avgReward,
+    cumulativeReward: s.cumulativeReward,
+    learnedWeights: s.learnedWeights,
+    featureImportance: s.featureImportance,
+  }));
+
+  return {
+    detailedArms,
+    exploration: explorationStats,
+  };
+}
+
+/**
  * Performs a complete routing audit.
  */
 export function auditRouting(options: RoutingAuditOptions): RoutingAuditResult {
-  const { task, deterministic } = options;
+  const { task, deterministic, banditStats: includeBanditStats } = options;
 
   logger.debug('Starting routing audit', { task: task.slice(0, 50) });
 
@@ -215,7 +268,8 @@ export function auditRouting(options: RoutingAuditOptions): RoutingAuditResult {
     selectionReason = 'LinUCB exploitation (best expected reward)';
   }
 
-  return {
+  // Step 5: Build result (conditionally include bandit stats for Issue #174)
+  const baseResult = {
     task,
     taskProfile,
     budgetResults,
@@ -225,6 +279,12 @@ export function auditRouting(options: RoutingAuditOptions): RoutingAuditResult {
     selectionReason,
     isExploration,
   };
+
+  if (includeBanditStats === true) {
+    return { ...baseResult, banditStats: computeBanditStats(bandit) };
+  }
+
+  return baseResult;
 }
 
 // =============================================================================
@@ -330,6 +390,98 @@ function formatFinalSelection(result: RoutingAuditResult, explain: boolean): str
   return lines;
 }
 
+/**
+ * Formats bandit stats header.
+ */
+function formatBanditStatsHeader(): string[] {
+  return [
+    '',
+    color('╭' + horizontalLine() + '╮', ANSI.yellow),
+    color('│', ANSI.yellow) +
+      color(' LinUCB Detailed Statistics (--bandit-stats)', ANSI.bold).padEnd(BOX_WIDTH + 7) +
+      color('│', ANSI.yellow),
+    color('├' + horizontalLine() + '┤', ANSI.yellow),
+  ];
+}
+
+/**
+ * Formats exploration stats section.
+ */
+function formatExplorationSection(stats: BanditStats): string[] {
+  const lines: string[] = [];
+  const ratio = (stats.exploration.explorationRatio * 100).toFixed(1);
+  const pulls = String(stats.exploration.totalPulls);
+
+  lines.push(
+    color('│', ANSI.yellow) +
+      ` Exploration: ${ratio}% ratio, ${pulls} total pulls`.padEnd(BOX_WIDTH - 2) +
+      color('│', ANSI.yellow)
+  );
+
+  lines.push(
+    color('│', ANSI.yellow) + ' Arm Distribution:'.padEnd(BOX_WIDTH - 2) + color('│', ANSI.yellow)
+  );
+
+  for (const arm of stats.exploration.armDistribution) {
+    const pct = (arm.proportion * 100).toFixed(1);
+    const bar = '█'.repeat(Math.round(arm.proportion * 20));
+    lines.push(
+      color('│', ANSI.yellow) +
+        `   ${arm.name.padEnd(8)} ${pct.padStart(5)}% ${bar}`.padEnd(BOX_WIDTH - 2) +
+        color('│', ANSI.yellow)
+    );
+  }
+
+  lines.push(color('├' + horizontalLine() + '┤', ANSI.yellow));
+  return lines;
+}
+
+/**
+ * Formats feature importance section.
+ */
+function formatFeatureImportanceSection(stats: BanditStats): string[] {
+  const lines: string[] = [];
+
+  lines.push(
+    color('│', ANSI.yellow) +
+      color(' Feature Importance by Arm:', ANSI.bold).padEnd(BOX_WIDTH + 7) +
+      color('│', ANSI.yellow)
+  );
+
+  for (const arm of stats.detailedArms) {
+    lines.push(
+      color('│', ANSI.yellow) +
+        `   ${color(arm.cliName, ANSI.cyan)}:`.padEnd(BOX_WIDTH + 5) +
+        color('│', ANSI.yellow)
+    );
+    const top3 = arm.featureImportance.slice(0, 3);
+    for (const fi of top3) {
+      const pct = (fi.importance * 100).toFixed(1);
+      lines.push(
+        color('│', ANSI.yellow) +
+          `     ${fi.feature.padEnd(18)} ${pct.padStart(5)}%`.padEnd(BOX_WIDTH - 2) +
+          color('│', ANSI.yellow)
+      );
+    }
+  }
+
+  lines.push(color('╰' + horizontalLine() + '╯', ANSI.yellow));
+  return lines;
+}
+
+/**
+ * Formats bandit statistics for detailed ML observability (Issue #174).
+ */
+function formatBanditStats(result: RoutingAuditResult): string[] {
+  if (result.banditStats === undefined) return [];
+
+  return [
+    ...formatBanditStatsHeader(),
+    ...formatExplorationSection(result.banditStats),
+    ...formatFeatureImportanceSection(result.banditStats),
+  ];
+}
+
 function formatAsciiOutput(result: RoutingAuditResult, options: RoutingAuditOptions): string {
   const lines: string[] = [
     ...formatHeader(result),
@@ -338,6 +490,7 @@ function formatAsciiOutput(result: RoutingAuditResult, options: RoutingAuditOpti
     ...formatTopsisRanking(result),
     ...formatLinUCBSelection(result),
     ...formatFinalSelection(result, options.explain === true),
+    ...formatBanditStats(result),
   ];
   return lines.join('\n');
 }

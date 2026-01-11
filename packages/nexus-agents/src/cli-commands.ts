@@ -167,6 +167,7 @@ export function handleRoutingAuditCommand(args: ParsedCliArgs): void {
     deterministic: args.options.dryRun,
     json: args.options.format === 'json',
     verbose: args.options.verbose,
+    banditStats: args.options.banditStats,
   });
   process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
 }

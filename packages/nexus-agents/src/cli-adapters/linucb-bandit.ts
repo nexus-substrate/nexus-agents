@@ -366,6 +366,79 @@ export class LinUCBBandit {
   }
 
   /**
+   * Get detailed statistics for all arms including learned weights.
+   * Useful for debugging and ML observability.
+   */
+  getDetailedStats(): ReadonlyArray<{
+    name: string;
+    pullCount: number;
+    avgReward: number;
+    cumulativeReward: number;
+    learnedWeights: readonly number[];
+    featureImportance: readonly { feature: string; importance: number }[];
+  }> {
+    const featureNames = [
+      'taskComplexity',
+      'contextLength',
+      'isCodeTask',
+      'isReasoningTask',
+      'budgetUtilization',
+      'timePressure',
+    ];
+
+    return this.arms.map((arm, i) => {
+      const AInv = matrixInverse(arm.A);
+      const theta = matVecMul(AInv, arm.b);
+      const absWeights = theta.map(Math.abs);
+      const totalWeight = absWeights.reduce((a, b) => a + b, 0) || 1;
+
+      const featureImportance = featureNames.map((feature, idx) => ({
+        feature,
+        importance: (absWeights[idx] ?? 0) / totalWeight,
+      }));
+
+      featureImportance.sort((a, b) => b.importance - a.importance);
+
+      return {
+        name: this.armNames[i] ?? 'unknown',
+        pullCount: arm.pullCount,
+        avgReward: arm.pullCount > 0 ? arm.cumulativeReward / arm.pullCount : 0,
+        cumulativeReward: arm.cumulativeReward,
+        learnedWeights: theta,
+        featureImportance,
+      };
+    });
+  }
+
+  /**
+   * Get exploration statistics.
+   */
+  getExplorationStats(): {
+    totalPulls: number;
+    explorationRatio: number;
+    armDistribution: ReadonlyArray<{ name: string; proportion: number }>;
+  } {
+    const stats = this.getStats();
+    const totalPulls = stats.reduce((sum, s) => sum + s.pullCount, 0);
+
+    const armDistribution = stats.map((s) => ({
+      name: s.name,
+      proportion: totalPulls > 0 ? s.pullCount / totalPulls : 1 / stats.length,
+    }));
+
+    // Exploration ratio: how evenly distributed pulls are (1 = perfectly even)
+    const evenProportion = 1 / stats.length;
+    const deviation = armDistribution.reduce(
+      (sum, d) => sum + Math.abs(d.proportion - evenProportion),
+      0
+    );
+    const maxDeviation = 2 * (1 - evenProportion);
+    const explorationRatio = maxDeviation > 0 ? 1 - deviation / maxDeviation : 1;
+
+    return { totalPulls, explorationRatio, armDistribution };
+  }
+
+  /**
    * Reset all arm statistics.
    */
   reset(): void {
