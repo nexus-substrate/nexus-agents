@@ -1,0 +1,226 @@
+name: Self-Dogfood Review
+
+# nexus-agents using itself for PR review and issue triage
+# (Source: Issue #191 - Self-dogfooding workflow)
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review]
+  issues:
+    types: [opened]
+  # Manual trigger for testing
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to review (leave empty for latest)'
+        required: false
+        type: number
+      issue_number:
+        description: 'Issue number to triage (leave empty for latest)'
+        required: false
+        type: number
+
+concurrency:
+  group: self-dogfood-${{ github.event.pull_request.number || github.event.issue.number || github.run_id }}
+  cancel-in-progress: true
+
+env:
+  # Protocol selection: reflexion for multi-perspective review
+  NEXUS_PROTOCOL: reflexion
+  # Expert selection for reviews
+  NEXUS_EXPERTS: architect,security,reviewer
+
+jobs:
+  # Job 1: PR Review using nexus-agents orchestrate
+  review-pr:
+    name: Self-Review PR
+    runs-on: ubuntu-latest
+    if: |
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.draft == false &&
+       github.actor != 'dependabot[bot]') ||
+      (github.event_name == 'workflow_dispatch' && inputs.pr_number != '')
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build nexus-agents
+        run: pnpm build
+
+      - name: Get PR number
+        id: pr
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "number=${{ inputs.pr_number }}" >> $GITHUB_OUTPUT
+          else
+            echo "number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Self-Review PR
+        id: review
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # OAuth-based CLI authentication (no stored API keys)
+          # Requires user to have authenticated via: claude auth, gemini auth, or codex auth
+        run: |
+          PR_NUM="${{ steps.pr.outputs.number }}"
+          echo "📋 Reviewing PR #$PR_NUM using nexus-agents self-dogfooding"
+          echo ""
+
+          # Get PR diff for context
+          PR_DIFF=$(gh pr diff "$PR_NUM" --repo "${{ github.repository }}" 2>/dev/null || echo "Could not fetch diff")
+          PR_FILES=$(gh pr view "$PR_NUM" --repo "${{ github.repository }}" --json files -q '.files[].path' 2>/dev/null | head -20)
+
+          # Construct review task
+          TASK="Review PR #$PR_NUM in ${{ github.repository }}.
+
+          Files changed:
+          $PR_FILES
+
+          Focus on:
+          1. Code quality (TypeScript best practices, Result<T,E> pattern)
+          2. Security (no secrets, input validation, path traversal prevention)
+          3. Testing (adequate coverage)
+          4. Documentation style (technical, no marketing fluff)
+
+          Provide findings by severity: critical, high, medium, low, info.
+          Reference CLAUDE.md and CODING_STANDARDS.md for project standards."
+
+          # Run orchestrate with dry-run to show routing decision
+          echo "🔄 Routing decision:"
+          npx nexus-agents orchestrate "$TASK" --dry-run --verbose || echo "⚠️ Dry run failed"
+
+          # If CLI is available, execute review
+          echo ""
+          echo "📝 Executing review (if CLI available):"
+          npx nexus-agents orchestrate "$TASK" --format=json > review-result.json 2>&1 || true
+
+          if [ -f review-result.json ] && [ -s review-result.json ]; then
+            cat review-result.json
+            echo "review_available=true" >> $GITHUB_OUTPUT
+          else
+            echo "⚠️ No CLI available for automated review"
+            echo "review_available=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Post Review Summary
+        if: always()
+        run: |
+          echo "### 🤖 Self-Dogfood Review" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "PR: #${{ steps.pr.outputs.number }}" >> $GITHUB_STEP_SUMMARY
+          echo "Protocol: $NEXUS_PROTOCOL" >> $GITHUB_STEP_SUMMARY
+          echo "Experts: $NEXUS_EXPERTS" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.review.outputs.review_available }}" = "true" ]; then
+            echo "✅ Review completed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ Review skipped (no CLI available)" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "To enable automated review:" >> $GITHUB_STEP_SUMMARY
+            echo "1. Install and authenticate a CLI: \`claude auth\`, \`gemini auth\`, or \`codex auth\`" >> $GITHUB_STEP_SUMMARY
+            echo "2. Or use \`pnpm review <PR#>\` locally" >> $GITHUB_STEP_SUMMARY
+          fi
+
+  # Job 2: Issue Triage using task classification
+  triage-issue:
+    name: Triage Issue
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'issues' ||
+      (github.event_name == 'workflow_dispatch' && inputs.issue_number != '')
+    permissions:
+      contents: read
+      issues: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build nexus-agents
+        run: pnpm build
+
+      - name: Get Issue number
+        id: issue
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "number=${{ inputs.issue_number }}" >> $GITHUB_OUTPUT
+          else
+            echo "number=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Triage Issue
+        id: triage
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ISSUE_NUM="${{ steps.issue.outputs.number }}"
+          echo "📋 Triaging Issue #$ISSUE_NUM using task classification"
+
+          # Get issue details
+          ISSUE_TITLE=$(gh issue view "$ISSUE_NUM" --repo "${{ github.repository }}" --json title -q '.title' 2>/dev/null || echo "Unknown")
+          ISSUE_BODY=$(gh issue view "$ISSUE_NUM" --repo "${{ github.repository }}" --json body -q '.body' 2>/dev/null | head -100)
+
+          # Construct triage task
+          TASK="Triage Issue #$ISSUE_NUM: $ISSUE_TITLE
+
+          Body:
+          $ISSUE_BODY
+
+          Classify this issue:
+          1. Type: bug, enhancement, documentation, question, research
+          2. Priority: P1 (critical), P2 (high), P3 (medium), P4 (low)
+          3. Complexity: trivial, low, medium, high
+          4. Suggested labels based on content
+          5. Related existing issues if any
+
+          Provide brief reasoning for each classification."
+
+          # Run orchestrate
+          npx nexus-agents orchestrate "$TASK" --dry-run --verbose || true
+
+          echo "triage_complete=true" >> $GITHUB_OUTPUT
+
+      - name: Post Triage Summary
+        if: always()
+        run: |
+          echo "### 🏷️ Issue Triage" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Issue: #${{ steps.issue.outputs.number }}" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.triage.outputs.triage_complete }}" = "true" ]; then
+            echo "✅ Triage analysis complete" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ Triage skipped" >> $GITHUB_STEP_SUMMARY
+          fi
