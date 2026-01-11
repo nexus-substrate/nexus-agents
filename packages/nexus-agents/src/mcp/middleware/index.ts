@@ -64,3 +64,31 @@ export {
   evaluatePolicy,
   createPolicyContext,
 } from './policy.js';
+
+// Request context (Issue #185 Phase 1)
+export {
+  // Types
+  type CallerInfo,
+  type RequestContext,
+  type CreateContextOptions,
+  // Functions
+  generateRequestId,
+  generateSessionId,
+  createRequestContext,
+  extractCallerInfo,
+  contextForLogging,
+  isRequestContext,
+} from './request-context.js';
+
+// Secure handler wrapper (Issue #185 Phase 1)
+export {
+  // Types
+  type ToolResult,
+  type ToolHandler,
+  type SecureHandlerConfig,
+  type HandlerContext,
+  type ContextAwareHandler,
+  // Functions
+  createSecureHandler,
+  createSecureHandlerFactory,
+} from './secure-handler.js';

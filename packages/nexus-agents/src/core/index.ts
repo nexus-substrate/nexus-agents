@@ -30,7 +30,7 @@ export {
 export type { SerializedError, NexusErrorOptions, AgentFailureOptions } from './errors.js';
 
 // Logger
-export { createLogger, logger, sanitize } from './logger.js';
+export { createLogger, logger, sanitize, sanitizeDeep } from './logger.js';
 export type { LogLevel, LogContext, LogEntry, ILogger } from './logger.js';
 
 // Tracing

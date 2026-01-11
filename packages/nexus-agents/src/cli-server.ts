@@ -23,6 +23,7 @@ import { detectMode, type ServerMode, type ModeDetectionResult } from './cli/ind
 import { EXIT_CODES } from './cli-types.js';
 import { getSwarmObserver, SwarmObserver } from './observability/index.js';
 import { initializeSandbox, getSandboxMode } from './security/sandbox/index.js';
+import { createDefaultPolicyFirewall } from './mcp/middleware/index.js';
 
 /**
  * Sets up graceful shutdown handlers.
@@ -110,6 +111,44 @@ export function logModeWarnings(logger: ILogger, mode: ServerMode): void {
   } else if (mode === 'mesh') {
     logger.warn('Mesh mode not yet implemented, falling back to server mode');
   }
+}
+
+/**
+ * Logs security configuration at startup.
+ * (Source: Issue #185 Phase 1 - Startup security logging)
+ */
+export function logSecurityConfig(logger: ILogger): void {
+  // Get policy firewall configuration
+  const policyFirewall = createDefaultPolicyFirewall();
+  const policyMode = policyFirewall.getMode();
+  const ruleCount = policyFirewall.getRules().length;
+
+  // Check authentication configuration (from env)
+  const authEnabled = process.env['NEXUS_AUTH_ENABLED'] === 'true';
+  const authMethod = process.env['NEXUS_AUTH_METHOD'] ?? 'none';
+
+  logger.info('Security configuration', {
+    policyMode,
+    policyRuleCount: ruleCount,
+    defaultExecutionMode: 'read-only',
+    authEnabled,
+    authMethod,
+    deepLogSanitization: true,
+    requestIdTracking: true,
+  });
+
+  // Log specific security features
+  if (!authEnabled) {
+    logger.warn('Authentication is disabled. Set NEXUS_AUTH_ENABLED=true to enable.');
+  }
+
+  // Log policy rules in verbose mode
+  logger.debug('Policy firewall rules', {
+    rules: policyFirewall.getRules().map((r) => ({
+      name: r.name,
+      description: r.description,
+    })),
+  });
 }
 
 /**
@@ -261,6 +300,9 @@ export async function startServer(
     executor: sandboxResult.executor.name,
     usedFallback: sandboxResult.usedFallback,
   });
+
+  // Log security configuration at startup (Issue #185)
+  logSecurityConfig(serverLogger);
 
   // Register tools with rate limiting (must happen BEFORE connecting)
   registerMcpTools(server, serverLogger);

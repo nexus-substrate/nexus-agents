@@ -1,9 +1,10 @@
 /**
  * Tests for the logger sanitization patterns.
+ * (Source: Issue #185 Phase 1 - Deep object sanitization)
  */
 
 import { describe, it, expect } from 'vitest';
-import { sanitize } from '../logger.js';
+import { sanitize, sanitizeDeep } from '../logger.js';
 
 describe('Logger sanitize', () => {
   describe('API keys', () => {
@@ -142,6 +143,214 @@ describe('Logger sanitize', () => {
     it('should preserve non-sensitive content', () => {
       expect(sanitize('User logged in successfully')).toBe('User logged in successfully');
       expect(sanitize('Error: connection timeout')).toBe('Error: connection timeout');
+    });
+  });
+});
+
+describe('Logger sanitizeDeep', () => {
+  describe('primitive values', () => {
+    it('should return null unchanged', () => {
+      expect(sanitizeDeep(null)).toBe(null);
+    });
+
+    it('should return undefined unchanged', () => {
+      expect(sanitizeDeep(undefined)).toBe(undefined);
+    });
+
+    it('should return numbers unchanged', () => {
+      expect(sanitizeDeep(42)).toBe(42);
+      expect(sanitizeDeep(3.14)).toBe(3.14);
+    });
+
+    it('should return booleans unchanged', () => {
+      expect(sanitizeDeep(true)).toBe(true);
+      expect(sanitizeDeep(false)).toBe(false);
+    });
+
+    it('should sanitize strings', () => {
+      expect(sanitizeDeep('password=secret')).toBe('[REDACTED]');
+      expect(sanitizeDeep('hello world')).toBe('hello world');
+    });
+  });
+
+  describe('nested objects', () => {
+    it('should sanitize nested string values', () => {
+      const input = {
+        level1: {
+          level2: {
+            value: 'password=secret123',
+          },
+        },
+      };
+      const result = sanitizeDeep(input) as Record<string, unknown>;
+      expect((result['level1'] as Record<string, unknown>)['level2']).toEqual({
+        value: '[REDACTED]',
+      });
+    });
+
+    it('should redact sensitive field names regardless of value', () => {
+      const input = {
+        config: {
+          apiKey: 'not-really-a-secret',
+          password: 'hunter2',
+          token: 'abc123',
+        },
+      };
+      const result = sanitizeDeep(input) as Record<string, unknown>;
+      const config = result['config'] as Record<string, unknown>;
+      expect(config['apiKey']).toBe('[REDACTED]');
+      expect(config['password']).toBe('[REDACTED]');
+      expect(config['token']).toBe('[REDACTED]');
+    });
+
+    it('should preserve non-sensitive fields', () => {
+      const input = {
+        user: {
+          name: 'John',
+          age: 30,
+          active: true,
+        },
+      };
+      const result = sanitizeDeep(input);
+      expect(result).toEqual(input);
+    });
+  });
+
+  describe('arrays', () => {
+    it('should sanitize string elements in arrays', () => {
+      const input = ['password=abc', 'hello', 'api_key=xyz'];
+      const result = sanitizeDeep(input);
+      expect(result).toEqual(['[REDACTED]', 'hello', '[REDACTED]']);
+    });
+
+    it('should sanitize objects within arrays', () => {
+      const input = [{ apiKey: 'secret1' }, { apiKey: 'secret2' }];
+      const result = sanitizeDeep(input) as Array<Record<string, unknown>>;
+      expect(result[0]?.['apiKey']).toBe('[REDACTED]');
+      expect(result[1]?.['apiKey']).toBe('[REDACTED]');
+    });
+  });
+
+  describe('circular references', () => {
+    it('should handle circular references safely', () => {
+      const obj: Record<string, unknown> = { name: 'test' };
+      obj['self'] = obj;
+      const result = sanitizeDeep(obj) as Record<string, unknown>;
+      expect(result['name']).toBe('test');
+      // Circular objects return a marker object
+      expect(result['self']).toEqual({ _circular: '[Circular]' });
+    });
+  });
+
+  describe('sensitive field names (OWASP)', () => {
+    it('should redact all standard credential field names', () => {
+      const input = {
+        password: 'x',
+        passwd: 'x',
+        pwd: 'x',
+        secret: 'x',
+        apikey: 'x',
+        api_key: 'x',
+        token: 'x',
+        accessToken: 'x',
+        refreshToken: 'x',
+        authorization: 'x',
+        credential: 'x',
+        privateKey: 'x',
+        session: 'x',
+        cookie: 'x',
+      };
+      const result = sanitizeDeep(input) as Record<string, unknown>;
+      for (const key of Object.keys(input)) {
+        expect(result[key]).toBe('[REDACTED]');
+      }
+    });
+
+    it('should redact PII field names', () => {
+      const input = {
+        ssn: '123-45-6789',
+        creditcard: '4111111111111111',
+        card_number: '4111111111111111',
+        cvv: '123',
+        pin: '1234',
+      };
+      const result = sanitizeDeep(input) as Record<string, unknown>;
+      for (const key of Object.keys(input)) {
+        expect(result[key]).toBe('[REDACTED]');
+      }
+    });
+  });
+
+  describe('special types', () => {
+    it('should handle functions by returning type description', () => {
+      const fn = (): void => {};
+      expect(sanitizeDeep(fn)).toBe('[function]');
+    });
+
+    it('should handle symbols by returning type description', () => {
+      const sym = Symbol('test');
+      expect(sanitizeDeep(sym)).toBe('[symbol]');
+    });
+  });
+
+  describe('real-world scenarios', () => {
+    it('should sanitize HTTP headers object', () => {
+      const headers = {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer eyJhbGc...',
+        'x-api-key': 'sk-1234567890abcdef1234567890',
+      };
+      const result = sanitizeDeep(headers) as Record<string, unknown>;
+      expect(result['Content-Type']).toBe('application/json');
+      expect(result['Authorization']).toBe('[REDACTED]');
+      expect(result['x-api-key']).toBe('[REDACTED]');
+    });
+
+    it('should sanitize config object with nested credentials', () => {
+      const config = {
+        database: {
+          host: 'localhost',
+          port: 5432,
+          // Note: 'credentials' is a sensitive field name, so entire value is redacted
+          credentials: {
+            username: 'admin',
+            password: 'supersecret',
+          },
+        },
+        api: {
+          baseUrl: 'https://api.example.com',
+          apiKey: 'sk-prod-key-1234567890abcdef12',
+        },
+      };
+      const result = sanitizeDeep(config) as Record<string, unknown>;
+      const db = result['database'] as Record<string, unknown>;
+      // 'credentials' field is fully redacted due to sensitive field name
+      expect(db['credentials']).toBe('[REDACTED]');
+      expect(db['host']).toBe('localhost');
+      expect(db['port']).toBe(5432);
+      const api = result['api'] as Record<string, unknown>;
+      expect(api['baseUrl']).toBe('https://api.example.com');
+      expect(api['apiKey']).toBe('[REDACTED]');
+    });
+
+    it('should sanitize nested objects with non-sensitive parent names', () => {
+      const config = {
+        database: {
+          host: 'localhost',
+          port: 5432,
+          connection: {
+            username: 'admin',
+            password: 'supersecret',
+          },
+        },
+      };
+      const result = sanitizeDeep(config) as Record<string, unknown>;
+      const db = result['database'] as Record<string, unknown>;
+      const conn = db['connection'] as Record<string, unknown>;
+      // 'connection' is not sensitive, so we traverse into it
+      expect(conn['username']).toBe('admin');
+      // 'password' inside is sensitive and redacted
+      expect(conn['password']).toBe('[REDACTED]');
     });
   });
 });
