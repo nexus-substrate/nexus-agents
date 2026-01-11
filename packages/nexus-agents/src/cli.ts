@@ -46,6 +46,27 @@ function determineCommand(
 }
 
 /**
+ * Parses a string to a number if valid.
+ */
+function parseNumericOption(value: string | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  const num = Number(value);
+  return Number.isFinite(num) && num > 0 ? num : undefined;
+}
+
+/**
+ * Validates orchestrate model option.
+ */
+function parseOrchestrateModel(
+  value: string | undefined
+): 'claude' | 'gemini' | 'codex' | undefined {
+  if (value === 'claude' || value === 'gemini' || value === 'codex') {
+    return value;
+  }
+  return undefined;
+}
+
+/**
  * Builds the options object from parsed values.
  * Uses auto-detection for mode when not explicitly provided.
  */
@@ -61,6 +82,9 @@ function buildOptions(values: {
   input?: string;
   'dry-run': boolean;
   'bandit-stats': boolean;
+  model?: string;
+  'max-tokens'?: string;
+  'max-cost-usd'?: string;
 }): ParsedCliArgs['options'] {
   // Check if mode was explicitly provided (not the default value)
   const explicitMode =
@@ -83,6 +107,19 @@ function buildOptions(values: {
     banditStats: values['bandit-stats'],
     ...(values.output !== undefined && { output: values.output }),
     ...(values.input !== undefined && { input: values.input }),
+    // Orchestrate command options - only spread if parsed value is defined
+    ...(() => {
+      const model = parseOrchestrateModel(values.model);
+      return model !== undefined ? { model } : {};
+    })(),
+    ...(() => {
+      const maxTokens = parseNumericOption(values['max-tokens']);
+      return maxTokens !== undefined ? { maxTokens } : {};
+    })(),
+    ...(() => {
+      const maxCostUsd = parseNumericOption(values['max-cost-usd']);
+      return maxCostUsd !== undefined ? { maxCostUsd } : {};
+    })(),
   };
 }
 

@@ -16,6 +16,7 @@ import {
   replCommand,
   reviewCommand,
   routingAuditCommand,
+  orchestrateCommand,
   type ExpertListFormat,
 } from './cli/index.js';
 import { EXIT_CODES, HELP_TEXT, type ParsedCliArgs } from './cli-types.js';
@@ -173,6 +174,53 @@ export function handleRoutingAuditCommand(args: ParsedCliArgs): void {
 }
 
 /**
+ * Validates model option for orchestrate command.
+ */
+function isValidOrchestrateModel(value: string): value is 'claude' | 'gemini' | 'codex' {
+  return ['claude', 'gemini', 'codex'].includes(value);
+}
+
+/**
+ * Handles the orchestrate command for standalone CLI execution.
+ * (Source: Issue #183, 5-0 consensus vote)
+ */
+export async function handleOrchestrateCommand(args: ParsedCliArgs): Promise<void> {
+  // Get task from positionals (orchestrate <task>)
+  const task = args.positionals[1];
+  if (task === undefined) {
+    process.stdout.write('Error: Task description is required.\n');
+    process.stdout.write('Usage: nexus-agents orchestrate <task> [options]\n');
+    process.stdout.write('Examples:\n');
+    process.stdout.write('  nexus-agents orchestrate "Explain this function"\n');
+    process.stdout.write('  nexus-agents orchestrate "Generate tests" --model=claude\n');
+    process.stdout.write('  nexus-agents orchestrate "Refactor code" --dry-run\n');
+    process.exit(EXIT_CODES.INVALID_ARGS);
+  }
+
+  // Parse optional model
+  const model = args.options.model;
+  const validModel = model !== undefined && isValidOrchestrateModel(model) ? model : undefined;
+
+  // Parse format
+  const format = args.options.format === 'json' ? 'json' : 'text';
+
+  // Parse numeric options
+  const maxTokens = args.options.maxTokens;
+  const maxCostUsd = args.options.maxCostUsd;
+
+  const exitCode = await orchestrateCommand({
+    task,
+    model: validModel,
+    format,
+    verbose: args.options.verbose,
+    dryRun: args.options.dryRun,
+    maxTokens,
+    maxCostUsd,
+  });
+  process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
+}
+
+/**
  * Handles synchronous commands that don't require await.
  * Returns true if the command was handled.
  */
@@ -218,6 +266,9 @@ async function handleAsyncCommand(args: ParsedCliArgs): Promise<void> {
       break;
     case 'review':
       await handleReviewCommand(args);
+      break;
+    case 'orchestrate':
+      await handleOrchestrateCommand(args);
       break;
   }
 }

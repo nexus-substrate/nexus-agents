@@ -44,3 +44,8 @@ export type { ReviewCommandOptions } from './review-command.js';
 // Routing Audit (observability)
 export { routingAuditCommand, auditRouting } from './routing-audit.js';
 export type { RoutingAuditOptions, RoutingAuditResult } from './routing-audit.js';
+
+// Orchestrate Command (standalone CLI mode)
+// (Source: Issue #183, 5-0 consensus vote)
+export { orchestrateCommand } from './orchestrate-command.js';
+export type { OrchestrateOptions } from './orchestrate-command.js';

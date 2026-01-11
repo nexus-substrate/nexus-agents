@@ -30,7 +30,8 @@ export type CliCommand =
   | 'workflow'
   | 'doctor'
   | 'review'
-  | 'routing-audit';
+  | 'routing-audit'
+  | 'orchestrate';
 
 /**
  * Parsed CLI arguments and command.
@@ -50,6 +51,10 @@ export interface ParsedCliArgs {
     input?: string;
     dryRun: boolean;
     banditStats: boolean;
+    // Orchestrate command options
+    model?: 'claude' | 'gemini' | 'codex';
+    maxTokens?: number;
+    maxCostUsd?: number;
   };
   positionals: string[];
 }
@@ -108,6 +113,16 @@ export const PARSE_ARGS_CONFIG = {
       type: 'boolean' as const,
       default: false,
     },
+    // Orchestrate command options
+    model: {
+      type: 'string' as const,
+    },
+    'max-tokens': {
+      type: 'string' as const,
+    },
+    'max-cost-usd': {
+      type: 'string' as const,
+    },
   },
   allowPositionals: true,
   strict: true,
@@ -132,6 +147,7 @@ COMMANDS:
   workflow run    Execute a workflow template
   review <url>    Review a GitHub pull request (dogfooding)
   routing-audit   Debug model routing decisions
+  orchestrate     Execute task using CLI tools (standalone mode)
 
 OPTIONS:
   -h, --help           Show this help message
@@ -163,6 +179,13 @@ ROUTING-AUDIT OPTIONS:
   --dry-run            Use deterministic TOPSIS-only selection
   --bandit-stats       Show detailed LinUCB bandit statistics
 
+ORCHESTRATE OPTIONS:
+  --model=<name>       Specific CLI to use: claude, gemini, codex (auto-selects)
+  --format=<fmt>       Output format: text, json (default: text)
+  --dry-run            Show routing decision without executing
+  --max-tokens=<n>     Maximum token budget (default: 100000)
+  --max-cost-usd=<n>   Maximum cost budget in USD (default: 10)
+
 EXAMPLES:
   nexus-agents                  Start MCP server (default)
   nexus-agents --interactive    Start interactive REPL
@@ -176,6 +199,9 @@ EXAMPLES:
   nexus-agents review owner/repo#123 --dry-run
   nexus-agents routing-audit "Implement sorting algorithm"
   nexus-agents routing-audit "Review code" --bandit-stats
+  nexus-agents orchestrate "Explain this function" --model=claude
+  nexus-agents orchestrate "Generate unit tests" --dry-run
+  nexus-agents orchestrate "Refactor for performance" --format=json
 
 For more information, visit: https://github.com/williamzujkowski/nexus-agents
 `.trim();
@@ -197,6 +223,7 @@ export function isValidCommand(value: string): value is CliCommand {
     'doctor',
     'review',
     'routing-audit',
+    'orchestrate',
   ];
   return validCommands.includes(value as CliCommand);
 }
