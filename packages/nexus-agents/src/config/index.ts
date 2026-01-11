@@ -13,6 +13,7 @@ export {
   ExpertDefinitionSchema,
   WorkflowConfigSchema,
   SecurityConfigSchema,
+  SandboxConfigSchema,
   LoggingConfigSchema,
   defaultConfig,
 } from './schemas.js';
@@ -26,5 +27,6 @@ export type {
   ExpertDefinition,
   WorkflowConfig,
   SecurityConfig,
+  SandboxConfig,
   LoggingConfig,
 } from './schemas.js';

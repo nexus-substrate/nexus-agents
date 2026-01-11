@@ -22,6 +22,7 @@ import { VERSION } from './version.js';
 import { detectMode, type ServerMode, type ModeDetectionResult } from './cli/index.js';
 import { EXIT_CODES } from './cli-types.js';
 import { getSwarmObserver, SwarmObserver } from './observability/index.js';
+import { initializeSandbox, getSandboxMode } from './security/sandbox/index.js';
 
 /**
  * Sets up graceful shutdown handlers.
@@ -252,6 +253,14 @@ export async function startServer(
 
   // Initialize SwarmObserver for interaction tracing (Issue #173)
   const observer = initializeSwarmObserver(serverLogger);
+
+  // Initialize sandbox for agent execution isolation (Issue #175)
+  const sandboxResult = await initializeSandbox();
+  serverLogger.info('Sandbox initialized', {
+    mode: getSandboxMode(),
+    executor: sandboxResult.executor.name,
+    usedFallback: sandboxResult.usedFallback,
+  });
 
   // Register tools with rate limiting (must happen BEFORE connecting)
   registerMcpTools(server, serverLogger);

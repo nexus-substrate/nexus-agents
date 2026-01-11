@@ -74,3 +74,14 @@ export type { DockerSandboxConfig } from './docker-sandbox-executor.js';
 // Factory
 export { createSandbox, getRecommendedMode } from './sandbox-factory.js';
 export type { SandboxFactoryOptions, SandboxCreationResult } from './sandbox-factory.js';
+
+// Manager (global singleton)
+export {
+  initializeSandbox,
+  getSandboxExecutor,
+  getSandboxExecutorOrNull,
+  isSandboxInitialized,
+  getSandboxMode,
+  resetSandboxManager,
+} from './sandbox-manager.js';
+export type { SandboxManagerConfig } from './sandbox-manager.js';

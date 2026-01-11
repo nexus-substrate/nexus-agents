@@ -104,6 +104,28 @@ export const PolicyConfigSchema = z.object({
 export type PolicyConfig = z.infer<typeof PolicyConfigSchema>;
 
 /**
+ * Sandbox configuration schema.
+ *
+ * Controls agent execution isolation.
+ * - mode: 'none' (no isolation), 'policy' (allowlist enforcement), 'container' (Docker)
+ * - fallbackToPolicy: Whether to fall back to policy mode if container unavailable
+ *
+ * (Source: Issue #175, ALIGNMENT_ROADMAP Phase 4)
+ */
+export const SandboxConfigSchema = z.object({
+  /** Sandbox execution mode (default: 'policy') */
+  mode: z.enum(['none', 'policy', 'container']).default('policy'),
+  /** Fall back to policy mode if container mode unavailable (default: true) */
+  fallbackToPolicy: z.boolean().default(true),
+  /** Docker image to use in container mode (default: 'node:22-alpine') */
+  dockerImage: z.string().optional(),
+  /** Enable network access in container mode (default: false) */
+  networkEnabled: z.boolean().default(false),
+});
+
+export type SandboxConfig = z.infer<typeof SandboxConfigSchema>;
+
+/**
  * Security configuration schema.
  */
 export const SecurityConfigSchema = z.object({
@@ -118,6 +140,8 @@ export const SecurityConfigSchema = z.object({
   secretsFile: z.string().optional(),
   /** Policy firewall configuration */
   policy: PolicyConfigSchema.optional(),
+  /** Sandbox execution configuration (Issue #175) */
+  sandbox: SandboxConfigSchema.optional(),
 });
 
 export type SecurityConfig = z.infer<typeof SecurityConfigSchema>;
