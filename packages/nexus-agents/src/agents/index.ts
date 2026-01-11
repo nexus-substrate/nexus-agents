@@ -363,3 +363,26 @@ export {
   SicaAgent,
   createSicaAgent,
 } from './self-improving/index.js';
+
+// Observability (SwarmObserver)
+export {
+  // Types and schemas
+  AgentStateSchema,
+  SwarmObserverConfigSchema,
+  ObserverTopics,
+  type AgentState,
+  type TrackedAgent,
+  type RoutingDecision,
+  type TokenUsage,
+  type CostMetrics,
+  type SessionMetrics,
+  type SwarmStats,
+  type SwarmObserverEvent,
+  type SwarmObserverListener,
+  type SwarmObserverConfig,
+  type SwarmObserverOptions,
+  type ISwarmObserver,
+  // Implementation
+  SwarmObserver,
+  createSwarmObserver,
+} from './observability/index.js';

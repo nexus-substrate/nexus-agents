@@ -402,6 +402,23 @@ export {
   type ExpertResult,
   type ConflictResolver,
   type QualityScorer,
+  // Observability (SwarmObserver)
+  AgentStateSchema,
+  SwarmObserverConfigSchema,
+  ObserverTopics,
+  type TrackedAgent,
+  type RoutingDecision,
+  type TokenUsage as SwarmTokenUsage,
+  type CostMetrics,
+  type SessionMetrics,
+  type SwarmStats,
+  type SwarmObserverEvent,
+  type SwarmObserverListener,
+  type SwarmObserverConfig,
+  type SwarmObserverOptions,
+  type ISwarmObserver,
+  SwarmObserver,
+  createSwarmObserver,
 } from './agents/index.js';
 
 // ============================================================================
