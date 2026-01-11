@@ -174,9 +174,99 @@ git commit -m "docs(api): update tool reference documentation"
      --base main
    ```
 
-6. **Address review feedback** and ensure CI passes
+6. **Run CLI-based PR review** (required before merge):
 
-7. **Merge** (maintainers will squash-merge approved PRs)
+   ```bash
+   pnpm review <PR-number>
+   ```
+
+   This uses locally authenticated CLI tools (Claude, Gemini, or Codex) at zero API cost.
+   See [PR Review Workflow](#pr-review-workflow) below for details.
+
+7. **Address review feedback** and ensure CI passes
+
+8. **Merge** (maintainers will squash-merge approved PRs)
+
+---
+
+## PR Review Workflow
+
+All PRs require a CLI-based review before merging. This workflow uses locally authenticated CLI tools at zero API cost.
+
+### Prerequisites
+
+You need at least one of these CLI tools installed and authenticated:
+
+| CLI        | Authentication                  | Best For                      |
+| ---------- | ------------------------------- | ----------------------------- |
+| Claude CLI | OAuth (Claude Max subscription) | Security, architecture review |
+| Gemini CLI | OAuth / ADC                     | Large files (1M context)      |
+| Codex CLI  | ChatGPT OAuth                   | Code quality, test coverage   |
+
+```bash
+# Verify CLI authentication
+claude --version    # Claude CLI
+gemini --version    # Gemini CLI
+codex --version     # Codex CLI
+```
+
+### Running a Review
+
+```bash
+# Basic review (auto-selects best available CLI)
+pnpm review <PR-number>
+
+# Use specific model
+pnpm review 186 --model=claude
+pnpm review 186 --model=gemini
+pnpm review 186 --model=codex
+
+# Preview review without posting (dry run)
+pnpm review 186 --dry-run
+
+# Run review with all available CLIs
+pnpm review 186 --all
+
+# Verbose output
+pnpm review 186 --verbose
+```
+
+### Model Selection Guidance
+
+| Task Type               | Recommended     |
+| ----------------------- | --------------- |
+| Security review         | Claude          |
+| Architecture review     | Claude          |
+| Large codebase (>100KB) | Gemini (1M ctx) |
+| Code quality            | Codex           |
+| Test coverage analysis  | Codex           |
+
+### Review Process
+
+1. Developer creates PR
+2. CI runs (lint, test, build) → must pass
+3. Developer runs `pnpm review <PR#>`
+4. Review posted as PR comment
+5. `cli-reviewed` label added automatically
+6. Branch protection verifies label
+7. Merge enabled
+
+### Stale Reviews
+
+When new commits are pushed to a PR:
+
+- The `cli-reviewed` label is automatically removed
+- A comment is posted requesting re-review
+- Re-run `pnpm review <PR#>` to review updated changes
+
+### Fallback Options
+
+If CLI tools are unavailable, maintainers can:
+
+- Manually trigger GitHub Actions workflow (requires API keys)
+- Manually add the `cli-reviewed` label after human review
+
+See [docs/proposals/cli-pr-review-workflow.md](./docs/proposals/cli-pr-review-workflow.md) for full design rationale.
 
 ---
 
@@ -444,6 +534,7 @@ gh issue create \
 | `research`         | Research tasks requiring investigation    |
 | `documentation`    | Documentation improvements                |
 | `good-first-issue` | Good for newcomers                        |
+| `cli-reviewed`     | PR has been reviewed with CLI tools       |
 
 ---
 

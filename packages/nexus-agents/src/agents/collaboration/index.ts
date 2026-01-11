@@ -276,3 +276,36 @@ export {
   getCriticalPrinciples,
   getPrinciplesByCategory,
 } from './constitutions/code.js';
+
+// Event Bus for agent-to-agent communication (Source: Issue #182, ARCHITECTURE.md Hybrid Architecture)
+export type {
+  SubscriptionId,
+  TopicPattern,
+  DomainEvent,
+  SessionCreatedEvent,
+  SessionStatusChangedEvent,
+  SessionParticipantJoinedEvent,
+  SessionResultSubmittedEvent,
+  SessionFinalizedEvent,
+  MessageSentEvent,
+  MessageReceivedEvent,
+  AgentTaskDelegatedEvent,
+  AgentResultBroadcastEvent,
+  ConsensusVoteRequestedEvent,
+  ConsensusVoteCastEvent,
+  ConsensusReachedEvent,
+  ProtocolStartedEvent,
+  ProtocolIterationEvent,
+  ProtocolCompletedEvent,
+  TypedEvent,
+  EventListener,
+  Subscription,
+  EventFilter,
+  EventBusOptions,
+  EventBusStats,
+  IEventBus,
+} from './event-bus-types.js';
+
+export { EventTopics } from './event-bus-types.js';
+
+export { EventBus, getGlobalEventBus, resetGlobalEventBus, createEvent } from './event-bus.js';

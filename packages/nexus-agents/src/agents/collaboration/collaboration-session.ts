@@ -18,6 +18,15 @@ import type {
   TaskAssignmentMessage,
 } from './collaboration-types.js';
 import { DEFAULT_TIMEOUTS, DEFAULT_MAX_RETRIES } from './collaboration-types.js';
+import type {
+  IEventBus,
+  SessionCreatedEvent,
+  SessionStatusChangedEvent,
+  SessionResultSubmittedEvent,
+  SessionFinalizedEvent,
+  ConsensusVoteCastEvent,
+} from './event-bus-types.js';
+import { createEvent } from './event-bus.js';
 import {
   getSequentialAssignments,
   getParallelAssignments,
@@ -43,6 +52,8 @@ export interface CollaborationSessionOptions {
   onStatusChange?: (status: SessionStatus) => void;
   onMessage?: (message: CollaborationMessage) => void;
   roleResolver?: (expertId: string) => AgentRole;
+  /** Optional event bus for cross-session event publishing */
+  eventBus?: IEventBus;
 }
 
 /** Session event types for callbacks. */
@@ -61,6 +72,7 @@ export class CollaborationSession {
   private readonly onStatusChange: ((status: SessionStatus) => void) | undefined;
   private readonly onMessage: ((message: CollaborationMessage) => void) | undefined;
   private readonly roleResolver: (expertId: string) => AgentRole;
+  private readonly eventBus: IEventBus | undefined;
   private state: SessionState | null = null;
   private timeoutHandle: ReturnType<typeof setTimeout> | null = null;
   private readonly eventListeners: Array<(event: SessionEvent) => void> = [];
@@ -70,6 +82,7 @@ export class CollaborationSession {
     this.onStatusChange = options.onStatusChange;
     this.onMessage = options.onMessage;
     this.roleResolver = options.roleResolver ?? (() => 'custom' as AgentRole);
+    this.eventBus = options.eventBus;
   }
 
   /** Starts a new collaboration session. */
@@ -95,6 +108,13 @@ export class CollaborationSession {
     this.setStatus('in_progress');
     this.startTimeout(config.timeout ?? DEFAULT_TIMEOUTS[config.pattern]);
 
+    // Emit session created event to event bus
+    this.emitBusEvent<SessionCreatedEvent>('session.created', {
+      sessionId: config.sessionId,
+      pattern: config.pattern,
+      experts: config.experts,
+    });
+
     return ok(config.sessionId);
   }
 
@@ -118,6 +138,13 @@ export class CollaborationSession {
 
     this.logMessage({ type: 'result_submission', expertId, result });
     this.emitEvent({ type: 'result_submitted', expertId, result });
+
+    // Emit to event bus for cross-session coordination
+    this.emitBusEvent<SessionResultSubmittedEvent>('session.result_submitted', {
+      expertId,
+      result,
+    });
+
     this.checkProgress();
 
     return ok(undefined);
@@ -204,6 +231,15 @@ export class CollaborationSession {
 
     if (this.state.status !== 'voting') this.setStatus('voting');
     this.emitEvent({ type: 'vote_received', expertId, decision });
+
+    // Emit to event bus for cross-session consensus tracking
+    this.emitBusEvent<ConsensusVoteCastEvent>('consensus.vote_cast', {
+      proposalId: this.state.config.sessionId,
+      voterId: expertId,
+      decision,
+      reasoning,
+    });
+
     this.checkProgress();
 
     return ok(undefined);
@@ -306,6 +342,13 @@ export class CollaborationSession {
     this.state.completedAt = endTime.toISOString();
     this.logger.info('Session finalized', { sessionId: config.sessionId, success, durationMs });
 
+    // Emit session finalized event to event bus
+    this.emitBusEvent<SessionFinalizedEvent>('session.finalized', {
+      success,
+      resultCount: allResults.length,
+      durationMs,
+    });
+
     this.state = null;
     return ok(collaborationResult);
   }
@@ -336,9 +379,16 @@ export class CollaborationSession {
 
   private setStatus(status: SessionStatus): void {
     if (this.state === null) return;
+    const previousStatus = this.state.status;
     this.state.status = status;
     this.onStatusChange?.(status);
     this.emitEvent({ type: 'status_change', status });
+
+    // Emit status change to event bus
+    this.emitBusEvent<SessionStatusChangedEvent>('session.status_changed', {
+      previousStatus,
+      newStatus: status,
+    });
   }
 
   private logMessage(message: CollaborationMessage): void {
@@ -388,6 +438,17 @@ export class CollaborationSession {
         this.logger.error('Event listener error', errorObj, { eventType: event.type });
       }
     }
+  }
+
+  /** Emit an event to the external event bus if configured. */
+  private emitBusEvent<T extends { topic: string; payload: unknown }>(
+    topic: T['topic'],
+    payload: T['payload']
+  ): void {
+    if (this.eventBus === undefined || this.state === null) return;
+
+    const event = createEvent(topic, payload, { sessionId: this.state.config.sessionId });
+    this.eventBus.emit(event);
   }
 }
 

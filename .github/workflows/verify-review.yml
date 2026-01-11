@@ -1,0 +1,89 @@
+# Verify CLI Review Workflow
+#
+# Checks that PRs have been reviewed using CLI tools before merge.
+# Part of the cost-saving initiative to use CLI subscriptions instead of API.
+#
+# (Source: 5-0 consensus vote for CLI-based PR review workflow)
+
+name: Verify CLI Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, labeled, unlabeled]
+  pull_request_review:
+    types: [submitted]
+
+jobs:
+  check-review-label:
+    name: Check CLI Review
+    runs-on: ubuntu-latest
+    # Skip for dependabot and draft PRs
+    if: |
+      github.actor != 'dependabot[bot]' &&
+      github.event.pull_request.draft == false
+
+    steps:
+      - name: Check for cli-reviewed label
+        id: check-label
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number
+            });
+
+            const hasLabel = pr.labels.some(label => label.name === 'cli-reviewed');
+
+            if (!hasLabel) {
+              core.setFailed(`
+              ❌ PR requires CLI review before merge.
+
+              To review this PR:
+              1. Run: pnpm review ${context.payload.pull_request.number}
+              2. Or manually add the 'cli-reviewed' label after review
+
+              Available CLI tools: claude, gemini, codex
+              See: docs/proposals/cli-pr-review-workflow.md
+              `);
+            } else {
+              console.log('✅ PR has been reviewed with CLI tools');
+            }
+
+  # Remove stale label when new commits are pushed
+  remove-stale-label:
+    name: Remove Stale Review Label
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && github.event.action == 'synchronize'
+
+    steps:
+      - name: Remove cli-reviewed label on new commits
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const labels = await github.rest.issues.listLabelsOnIssue({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number
+            });
+
+            const hasLabel = labels.data.some(label => label.name === 'cli-reviewed');
+
+            if (hasLabel) {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.pull_request.number,
+                name: 'cli-reviewed'
+              });
+
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.pull_request.number,
+                body: '🔄 New commits detected. The `cli-reviewed` label has been removed. Please re-run `pnpm review ' + context.payload.pull_request.number + '` to review the updated changes.'
+              });
+
+              console.log('Removed stale cli-reviewed label');
+            }
