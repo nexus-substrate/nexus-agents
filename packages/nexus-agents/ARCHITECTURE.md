@@ -1,7 +1,7 @@
 # Nexus Agents - TechLead vs WorkflowEngine Architecture
 
-**Version:** 2.1.0
-**Last Updated:** 2026-01-07 (ET)
+**Version:** 2.0.1
+**Last Updated:** 2026-01-11 (ET)
 **Status:** Current
 
 > For the full system architecture, see [/ARCHITECTURE.md](/ARCHITECTURE.md) at the repository root.
