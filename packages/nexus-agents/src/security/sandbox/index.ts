@@ -4,7 +4,7 @@
  * Agent execution sandboxing and isolation.
  *
  * @module security/sandbox
- * (Source: Issue #162, Alignment Roadmap Phase 4)
+ * (Source: Issue #162, Issue #175, Alignment Roadmap Phase 4)
  */
 
 // Types
@@ -59,5 +59,29 @@ export {
   getDefaultPolicyForContext,
 } from './default-policies.js';
 
-// Executor
+// Policy-based executor
 export { PolicySandboxExecutor, createSandboxExecutor } from './sandbox-executor.js';
+
+// Docker-based executor
+export {
+  DockerSandboxExecutor,
+  createDockerSandboxExecutor,
+  isDockerAvailable,
+  resetDockerCache,
+} from './docker-sandbox-executor.js';
+export type { DockerSandboxConfig } from './docker-sandbox-executor.js';
+
+// Factory
+export { createSandbox, getRecommendedMode } from './sandbox-factory.js';
+export type { SandboxFactoryOptions, SandboxCreationResult } from './sandbox-factory.js';
+
+// Manager (global singleton)
+export {
+  initializeSandbox,
+  getSandboxExecutor,
+  getSandboxExecutorOrNull,
+  isSandboxInitialized,
+  getSandboxMode,
+  resetSandboxManager,
+} from './sandbox-manager.js';
+export type { SandboxManagerConfig } from './sandbox-manager.js';
