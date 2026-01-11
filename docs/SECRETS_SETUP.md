@@ -1,17 +1,47 @@
 # Repository Secrets Configuration
 
-This guide documents the repository secrets required for nexus-agents workflows.
+This guide documents the repository secrets and GitHub Apps required for nexus-agents workflows.
 
-## Required Secrets for PR Review (Issue #176)
+## GitHub App Integration (Recommended)
 
-The project supports two PR review approaches:
+This repository uses the official **Claude GitHub App** for PR review automation and interactive assistance.
 
-1. **Claude Code Action** (`.github/workflows/claude-review.yml`) - Official Anthropic GitHub Action
-2. **Nexus Agents Review** (`.github/workflows/nexus-review.yml`) - Custom nexus-agents workflow
+### Installed Apps
 
-Both require the `ANTHROPIC_API_KEY` secret.
+| App                                      | Purpose                      | Status       |
+| ---------------------------------------- | ---------------------------- | ------------ |
+| [Claude](https://github.com/apps/claude) | Interactive @claude mentions | ✅ Installed |
+| Claude for GitHub                        | PR review automation         | ✅ Installed |
 
-### Anthropic API Key (Required)
+### Features Enabled
+
+With the GitHub Apps installed, you get:
+
+1. **Automatic PR Review** - Code reviews on every PR open/sync
+2. **Interactive Mode** - Mention `@claude` in any PR comment to:
+   - Ask questions about the code
+   - Request specific fixes
+   - Get explanations of changes
+   - Fix CI errors
+3. **Progress Tracking** - Visual indicators showing Claude's status
+
+### Usage Examples
+
+```markdown
+@claude What does this function do?
+
+@claude Can you add error handling to this PR?
+
+@claude Please explain the changes in src/agents/
+
+@claude Fix the failing test in line 42
+```
+
+## Required Secrets
+
+### ANTHROPIC_API_KEY (Required)
+
+The GitHub Apps handle GitHub authentication, but you still need an Anthropic API key for Claude API access.
 
 1. Go to [console.anthropic.com](https://console.anthropic.com)
 2. Create or retrieve an API key
@@ -21,49 +51,74 @@ Both require the `ANTHROPIC_API_KEY` secret.
    - Name: `ANTHROPIC_API_KEY`
    - Value: Your API key (starts with `sk-ant-`)
 
-### Option 2: OpenAI API Key (Alternative)
+### Alternative: OpenAI API Key
+
+For the nexus-agents custom workflow only:
 
 1. Go to [platform.openai.com](https://platform.openai.com)
 2. Create or retrieve an API key
-3. In your GitHub repository:
-   - Navigate to **Settings** → **Secrets and variables** → **Actions**
-   - Click **New repository secret**
-   - Name: `OPENAI_API_KEY`
-   - Value: Your API key (starts with `sk-`)
+3. Add as repository secret: `OPENAI_API_KEY`
 
-### Verification
+## Workflows
 
-After configuring secrets:
+### Claude Code Assistant (`.github/workflows/claude-review.yml`)
+
+| Job           | Trigger         | Description           |
+| ------------- | --------------- | --------------------- |
+| `auto-review` | PR open/sync    | Automatic code review |
+| `interactive` | @claude mention | Interactive responses |
+
+### Nexus Agents Review (`.github/workflows/nexus-review.yml`)
+
+Custom multi-agent review using nexus-agents orchestration (optional).
+
+## Verification
+
+After configuring:
 
 1. Create a test PR
-2. Check the **Actions** tab
-3. The "Multi-Agent Review" job should run successfully
-4. A review comment should appear on the PR
+2. Check the **Actions** tab for "Claude Auto Review" job
+3. In a PR comment, type `@claude Hello!` to test interactive mode
+4. Claude should respond with a comment
 
-### Cost Estimation
+## Cost Estimation
 
-Average cost per PR review:
+Average cost per interaction:
 
-- Claude Sonnet: ~$0.05-0.15 per review
-- GPT-4: ~$0.10-0.25 per review
-- Claude Haiku: ~$0.01-0.03 per review
+| Action               | Estimated Cost |
+| -------------------- | -------------- |
+| PR Review (Sonnet)   | ~$0.05-0.15    |
+| Interactive Response | ~$0.02-0.10    |
+| Fix Implementation   | ~$0.10-0.30    |
 
-### Troubleshooting
+## Troubleshooting
 
 **Error: "No API keys configured"**
 
-- Verify secret names are exact: `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`
-- Check secret is added to repository, not organization
+- Verify `ANTHROPIC_API_KEY` secret is set correctly
+- Check secret is added to repository (not organization)
+
+**Error: "@claude not responding"**
+
+- Verify the Claude GitHub App is installed on the repo
+- Check the Actions tab for workflow runs
+- Ensure ANTHROPIC_API_KEY is valid
 
 **Error: "Authentication failed"**
 
 - Verify API key is valid and not expired
-- Check billing status on provider dashboard
+- Check billing status on Anthropic dashboard
 
 **Error: Rate limited**
 
-- Wait and retry, or use a different model tier
+- Wait and retry
 - Consider API key with higher rate limits
+
+## References
+
+- [Claude Code Action](https://github.com/anthropics/claude-code-action)
+- [Claude GitHub App](https://github.com/apps/claude)
+- [Claude Code Docs](https://code.claude.com/docs/en/github-actions)
 
 ---
 
