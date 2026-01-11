@@ -124,7 +124,7 @@ interface PolicyCheckOptions {
   toolName: string;
   args: unknown;
   mode: ExecutionMode;
-  allowedPaths?: readonly string[];
+  allowedPaths?: readonly string[] | undefined;
   logger: ILogger;
   requestId: string;
 }
