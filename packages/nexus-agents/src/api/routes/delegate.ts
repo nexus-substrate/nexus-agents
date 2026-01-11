@@ -60,57 +60,58 @@ function buildDelegateResponse(
   };
 }
 
+/** Delegate route schema. */
+const DELEGATE_SCHEMA = {
+  description: 'Delegate a task to the optimal model via routing',
+  tags: ['Routing'],
+  body: {
+    type: 'object',
+    required: ['task'],
+    properties: {
+      task: { type: 'string', minLength: 1, description: 'Task to delegate' },
+      preferredModel: {
+        type: 'string',
+        enum: ['claude', 'gemini', 'codex'],
+        description: 'Preferred model (optional)',
+      },
+      constraints: {
+        type: 'object',
+        properties: {
+          maxTokens: { type: 'number' },
+          maxCostUsd: { type: 'number' },
+          maxLatencyMs: { type: 'number' },
+        },
+      },
+    },
+  },
+  response: {
+    200: {
+      type: 'object',
+      properties: {
+        selectedModel: { type: 'string' },
+        confidence: { type: 'number' },
+        reason: { type: 'string' },
+        alternatives: { type: 'array', items: { type: 'string' } },
+      },
+    },
+    400: {
+      type: 'object',
+      properties: { error: { type: 'object' }, requestId: { type: 'string' } },
+    },
+    500: {
+      type: 'object',
+      properties: { error: { type: 'object' }, requestId: { type: 'string' } },
+    },
+  },
+} as const;
+
 /**
  * Register delegate routes.
  */
 export function registerDelegateRoutes(fastify: FastifyInstance, logger: ILogger): void {
   fastify.post<{ Body: DelegateRequest; Reply: DelegateResponse | ApiError }>(
     '/delegate',
-    {
-      schema: {
-        description: 'Delegate a task to the optimal model via routing',
-        tags: ['Routing'],
-        body: {
-          type: 'object',
-          required: ['task'],
-          properties: {
-            task: { type: 'string', minLength: 1, description: 'Task to delegate' },
-            preferredModel: {
-              type: 'string',
-              enum: ['claude', 'gemini', 'codex'],
-              description: 'Preferred model (optional)',
-            },
-            constraints: {
-              type: 'object',
-              properties: {
-                maxTokens: { type: 'number' },
-                maxCostUsd: { type: 'number' },
-                maxLatencyMs: { type: 'number' },
-              },
-            },
-          },
-        },
-        response: {
-          200: {
-            type: 'object',
-            properties: {
-              selectedModel: { type: 'string' },
-              confidence: { type: 'number' },
-              reason: { type: 'string' },
-              alternatives: { type: 'array', items: { type: 'string' } },
-            },
-          },
-          400: {
-            type: 'object',
-            properties: { error: { type: 'object' }, requestId: { type: 'string' } },
-          },
-          500: {
-            type: 'object',
-            properties: { error: { type: 'object' }, requestId: { type: 'string' } },
-          },
-        },
-      },
-    },
+    { schema: DELEGATE_SCHEMA },
     (request: FastifyRequest<{ Body: DelegateRequest }>, reply: FastifyReply) => {
       void handleDelegateRequest(request, reply, logger);
     }

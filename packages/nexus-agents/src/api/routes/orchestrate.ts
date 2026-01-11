@@ -120,57 +120,58 @@ function buildTaskObject(
   return { ...baseTask, constraints: taskConstraints };
 }
 
+/** Orchestrate route schema. */
+const ORCHESTRATE_SCHEMA = {
+  description: 'Orchestrate a task using TechLead agent',
+  tags: ['Orchestration'],
+  body: {
+    type: 'object',
+    required: ['task'],
+    properties: {
+      task: { type: 'string', minLength: 1, description: 'Task description' },
+      context: {
+        type: 'object',
+        additionalProperties: true,
+        description: 'Additional context',
+      },
+      constraints: {
+        type: 'object',
+        properties: {
+          maxTokens: { type: 'number' },
+          maxCostUsd: { type: 'number' },
+          maxDurationMs: { type: 'number' },
+        },
+      },
+    },
+  },
+  response: {
+    200: {
+      type: 'object',
+      properties: {
+        taskId: { type: 'string' },
+        analysis: { type: 'object' },
+        result: {},
+        metadata: { type: 'object' },
+      },
+    },
+    400: {
+      type: 'object',
+      properties: { error: { type: 'object' }, requestId: { type: 'string' } },
+    },
+    500: {
+      type: 'object',
+      properties: { error: { type: 'object' }, requestId: { type: 'string' } },
+    },
+  },
+} as const;
+
 /**
  * Register orchestrate routes.
  */
 export function registerOrchestrateRoutes(fastify: FastifyInstance, logger: ILogger): void {
   fastify.post<{ Body: OrchestrateRequest; Reply: OrchestrateResponse | ApiError }>(
     '/orchestrate',
-    {
-      schema: {
-        description: 'Orchestrate a task using TechLead agent',
-        tags: ['Orchestration'],
-        body: {
-          type: 'object',
-          required: ['task'],
-          properties: {
-            task: { type: 'string', minLength: 1, description: 'Task description' },
-            context: {
-              type: 'object',
-              additionalProperties: true,
-              description: 'Additional context',
-            },
-            constraints: {
-              type: 'object',
-              properties: {
-                maxTokens: { type: 'number' },
-                maxCostUsd: { type: 'number' },
-                maxDurationMs: { type: 'number' },
-              },
-            },
-          },
-        },
-        response: {
-          200: {
-            type: 'object',
-            properties: {
-              taskId: { type: 'string' },
-              analysis: { type: 'object' },
-              result: {},
-              metadata: { type: 'object' },
-            },
-          },
-          400: {
-            type: 'object',
-            properties: { error: { type: 'object' }, requestId: { type: 'string' } },
-          },
-          500: {
-            type: 'object',
-            properties: { error: { type: 'object' }, requestId: { type: 'string' } },
-          },
-        },
-      },
-    },
+    { schema: ORCHESTRATE_SCHEMA },
     (request: FastifyRequest<{ Body: OrchestrateRequest }>, reply: FastifyReply) => {
       void handleOrchestrateRequest(request, reply, logger);
     }
