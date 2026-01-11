@@ -181,19 +181,31 @@ export class RoutingMetricsCollector {
   renderDashboard(config?: Partial<DashboardConfig>): string {
     const cfg = { ...DEFAULT_DASHBOARD_CONFIG, ...config };
     const metrics = this.getMetrics(cfg.periodHours);
-
-    const lines: string[] = [];
     const w = cfg.width;
 
-    // Header
-    lines.push('╭' + '─'.repeat(w - 2) + '╮');
-    lines.push(
-      this.centerText(`Routing Effectiveness Dashboard (last ${String(cfg.periodHours)}h)`, w)
-    );
-    lines.push('├' + '─'.repeat(w - 2) + '┤');
+    const lines: string[] = [
+      '╭' + '─'.repeat(w - 2) + '╮',
+      this.centerText(`Routing Effectiveness Dashboard (last ${String(cfg.periodHours)}h)`, w),
+      '├' + '─'.repeat(w - 2) + '┤',
+      ...this.renderModelDistribution(metrics, w),
+      '├' + '─'.repeat(w - 2) + '┤',
+      ...this.renderLearningProgress(metrics, w, cfg.showTrends),
+      '├' + '─'.repeat(w - 2) + '┤',
+      ...this.renderPerformanceSection(metrics, w),
+      '╰' + '─'.repeat(w - 2) + '╯',
+    ];
 
-    // Model selection distribution
-    lines.push(this.padText('│ Model Selection Distribution:', w));
+    return lines.join('\n');
+  }
+
+  private renderModelDistribution(metrics: RoutingMetrics, w: number): string[] {
+    const lines: string[] = [this.padText('│ Model Selection Distribution:', w)];
+
+    if (metrics.modelMetrics.length === 0) {
+      lines.push(this.padText('│   No routing data available', w));
+      return lines;
+    }
+
     for (const model of metrics.modelMetrics) {
       const barLength = Math.round(model.selectionPercent * 0.2);
       const bar = '█'.repeat(barLength) + '░'.repeat(20 - barLength);
@@ -204,36 +216,35 @@ export class RoutingMetricsCollector {
       );
     }
 
-    if (metrics.modelMetrics.length === 0) {
-      lines.push(this.padText('│   No routing data available', w));
-    }
+    return lines;
+  }
 
-    lines.push('├' + '─'.repeat(w - 2) + '┤');
+  private renderLearningProgress(
+    metrics: RoutingMetrics,
+    w: number,
+    showTrends: boolean
+  ): string[] {
+    const lines: string[] = [this.padText('│ Learning Progress:', w)];
 
-    // Learning progress
-    lines.push(this.padText('│ Learning Progress:', w));
     const expRate = `${String(Math.round(metrics.explorationRate * 100))}%`;
     const expStatus =
       metrics.explorationRate >= 0.1 && metrics.explorationRate <= 0.2 ? '(healthy)' : '(adjust)';
     lines.push(this.padText(`│   Exploration rate: ${expRate} ${expStatus}`, w));
 
-    if (cfg.showTrends) {
+    if (showTrends) {
       const trendArrow = metrics.avgRewardTrend > 0 ? '↑' : metrics.avgRewardTrend < 0 ? '↓' : '→';
       const trendValue = metrics.avgRewardTrend >= 0 ? '+' : '';
-      lines.push(
-        this.padText(
-          `│   Avg reward trend: ${trendArrow} ${trendValue}${metrics.avgRewardTrend.toFixed(2)} vs last period`,
-          w
-        )
-      );
+      const trend = `${trendArrow} ${trendValue}${metrics.avgRewardTrend.toFixed(2)} vs last period`;
+      lines.push(this.padText(`│   Avg reward trend: ${trend}`, w));
     }
 
     lines.push(this.padText(`│   Avg reward: ${metrics.avgReward.toFixed(2)}`, w));
+    return lines;
+  }
 
-    lines.push('├' + '─'.repeat(w - 2) + '┤');
+  private renderPerformanceSection(metrics: RoutingMetrics, w: number): string[] {
+    const lines: string[] = [this.padText('│ Performance:', w)];
 
-    // Performance
-    lines.push(this.padText('│ Performance:', w));
     lines.push(
       this.padText(`│   Routing decisions: ${String(metrics.totalDecisions).toLocaleString()}`, w)
     );
@@ -253,10 +264,7 @@ export class RoutingMetricsCollector {
       this.padText(`│   Task success rate: ${String(Math.round(overallSuccess * 100))}%`, w)
     );
 
-    // Footer
-    lines.push('╰' + '─'.repeat(w - 2) + '╯');
-
-    return lines.join('\n');
+    return lines;
   }
 
   /**
