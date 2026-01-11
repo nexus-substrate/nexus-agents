@@ -52,6 +52,8 @@ export type {
 // Outcome Storage (Issue #188 - SQLite persistence)
 export type {
   IOutcomeStorage,
+  ISQLiteDatabase,
+  ISQLiteStatement,
   OutcomeStorageConfig,
   StoredRoutingDecision,
   StoredTaskOutcome,

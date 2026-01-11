@@ -49,3 +49,39 @@ export type { RoutingAuditOptions, RoutingAuditResult } from './routing-audit.js
 // (Source: Issue #183, 5-0 consensus vote)
 export { orchestrateCommand } from './orchestrate-command.js';
 export type { OrchestrateOptions } from './orchestrate-command.js';
+
+// Session Persistence (Issue #190)
+export {
+  sessionCommand,
+  sessionList,
+  sessionShow,
+  sessionExport,
+  sessionDelete,
+  sessionPrune,
+  printSessionList,
+  printSessionShow,
+  getDefaultDbPath,
+} from './session-commands.js';
+export type {
+  SessionCommandOptions,
+  SessionListOptions,
+  SessionShowOptions,
+  SessionExportOptions,
+  SessionDeleteOptions,
+  SessionPruneOptions,
+} from './session-commands.js';
+
+// Session Storage (Issue #190)
+export { SQLiteSessionStorage, createSessionStorage } from './session-storage.js';
+export type {
+  ISessionStorage,
+  SessionStorageConfig,
+  StoredSession,
+  StoredTask,
+  SessionWithTasks,
+  SessionSummary,
+  SessionMetadata,
+  SessionStatus,
+  TaskStatus,
+} from './session-storage-types.js';
+export { SessionStorageError } from './session-storage-types.js';
