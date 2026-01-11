@@ -136,12 +136,27 @@ async function main(): Promise<void> {
   await dispatchCommand(parsedArgs);
 }
 
-// Run main if this is the entry point
-main().catch((error: unknown) => {
-  const logger = createLogger({ component: 'cli' });
-  logger.error(
-    'Fatal error during startup',
-    error instanceof Error ? error : new Error(String(error))
-  );
-  process.exit(EXIT_CODES.SERVER_START_FAILED);
-});
+// Run main only if this is the direct entry point (not imported as module)
+// Check if script URL matches the process execution path
+const isDirectRun = (): boolean => {
+  try {
+    // Convert import.meta.url (file://) to path and compare with process.argv[1]
+    const scriptPath = new URL(import.meta.url).pathname;
+    const execPath = process.argv[1];
+    // Handle both direct execution and symlink scenarios
+    return execPath !== undefined && (scriptPath.endsWith(execPath) || execPath.endsWith('cli.js'));
+  } catch {
+    return false;
+  }
+};
+
+if (isDirectRun()) {
+  main().catch((error: unknown) => {
+    const logger = createLogger({ component: 'cli' });
+    logger.error(
+      'Fatal error during startup',
+      error instanceof Error ? error : new Error(String(error))
+    );
+    process.exit(EXIT_CODES.SERVER_START_FAILED);
+  });
+}
