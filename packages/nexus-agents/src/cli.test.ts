@@ -294,6 +294,7 @@ describe('CLI Argument Parsing', () => {
           force: false,
           format: 'table',
           dryRun: false,
+          banditStats: false,
         },
         positionals: [],
       };
@@ -321,6 +322,7 @@ describe('CLI Argument Parsing', () => {
           force: false,
           format: 'table',
           dryRun: false,
+          banditStats: false,
         },
         positionals: ['config', 'show'],
       };
@@ -340,6 +342,7 @@ describe('CLI Argument Parsing', () => {
           force: false,
           format: 'table',
           dryRun: false,
+          banditStats: false,
         },
         positionals: [],
       };

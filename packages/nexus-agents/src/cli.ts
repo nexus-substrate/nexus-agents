@@ -60,6 +60,7 @@ function buildOptions(values: {
   format: string;
   input?: string;
   'dry-run': boolean;
+  'bandit-stats': boolean;
 }): ParsedCliArgs['options'] {
   // Check if mode was explicitly provided (not the default value)
   const explicitMode =
@@ -79,6 +80,7 @@ function buildOptions(values: {
     force: values.force,
     format: values.format,
     dryRun: values['dry-run'],
+    banditStats: values['bandit-stats'],
     ...(values.output !== undefined && { output: values.output }),
     ...(values.input !== undefined && { input: values.input }),
   };

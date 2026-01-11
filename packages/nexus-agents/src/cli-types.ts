@@ -29,7 +29,8 @@ export type CliCommand =
   | 'expert'
   | 'workflow'
   | 'doctor'
-  | 'review';
+  | 'review'
+  | 'routing-audit';
 
 /**
  * Parsed CLI arguments and command.
@@ -48,6 +49,7 @@ export interface ParsedCliArgs {
     format: string;
     input?: string;
     dryRun: boolean;
+    banditStats: boolean;
   };
   positionals: string[];
 }
@@ -102,6 +104,10 @@ export const PARSE_ARGS_CONFIG = {
       type: 'boolean' as const,
       default: false,
     },
+    'bandit-stats': {
+      type: 'boolean' as const,
+      default: false,
+    },
   },
   allowPositionals: true,
   strict: true,
@@ -125,6 +131,7 @@ COMMANDS:
   workflow list   List available workflow templates
   workflow run    Execute a workflow template
   review <url>    Review a GitHub pull request (dogfooding)
+  routing-audit   Debug model routing decisions
 
 OPTIONS:
   -h, --help           Show this help message
@@ -150,6 +157,12 @@ WORKFLOW OPTIONS:
 REVIEW OPTIONS:
   --dry-run            Review without posting to GitHub
 
+ROUTING-AUDIT OPTIONS:
+  --format=json        Output as JSON (default: ASCII table)
+  --verbose            Show explanation of routing steps
+  --dry-run            Use deterministic TOPSIS-only selection
+  --bandit-stats       Show detailed LinUCB bandit statistics
+
 EXAMPLES:
   nexus-agents                  Start MCP server (default)
   nexus-agents --interactive    Start interactive REPL
@@ -161,6 +174,8 @@ EXAMPLES:
   nexus-agents --mode=mesh      Full hybrid mesh mode
   nexus-agents review https://github.com/owner/repo/pull/123
   nexus-agents review owner/repo#123 --dry-run
+  nexus-agents routing-audit "Implement sorting algorithm"
+  nexus-agents routing-audit "Review code" --bandit-stats
 
 For more information, visit: https://github.com/williamzujkowski/nexus-agents
 `.trim();
@@ -181,6 +196,7 @@ export function isValidCommand(value: string): value is CliCommand {
     'workflow',
     'doctor',
     'review',
+    'routing-audit',
   ];
   return validCommands.includes(value as CliCommand);
 }

@@ -40,3 +40,7 @@ export type {
 // PR Review (dogfooding)
 export { reviewCommand } from './review-command.js';
 export type { ReviewCommandOptions } from './review-command.js';
+
+// Routing Audit (observability)
+export { routingAuditCommand, auditRouting } from './routing-audit.js';
+export type { RoutingAuditOptions, RoutingAuditResult } from './routing-audit.js';

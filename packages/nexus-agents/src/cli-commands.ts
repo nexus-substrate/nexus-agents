@@ -15,6 +15,7 @@ import {
   printWorkflowTemplates,
   replCommand,
   reviewCommand,
+  routingAuditCommand,
   type ExpertListFormat,
 } from './cli/index.js';
 import { EXIT_CODES, HELP_TEXT, type ParsedCliArgs } from './cli-types.js';
@@ -145,46 +146,89 @@ export async function handleReviewCommand(args: ParsedCliArgs): Promise<void> {
 }
 
 /**
- * Dispatches to the appropriate command handler.
- *
- * @param args - Parsed CLI arguments
+ * Handles the routing-audit command for debugging model selection.
  */
-export async function dispatchCommand(args: ParsedCliArgs): Promise<void> {
+export function handleRoutingAuditCommand(args: ParsedCliArgs): void {
+  // Get task from positionals (routing-audit <task>)
+  const task = args.positionals[1];
+  if (task === undefined) {
+    process.stdout.write('Error: Task description is required.\n');
+    process.stdout.write('Usage: nexus-agents routing-audit <task> [options]\n');
+    process.stdout.write('Examples:\n');
+    process.stdout.write('  nexus-agents routing-audit "Implement a complex algorithm"\n');
+    process.stdout.write('  nexus-agents routing-audit "Review this code" --verbose\n');
+    process.stdout.write('  nexus-agents routing-audit "Generate tests" --format=json\n');
+    process.exit(EXIT_CODES.INVALID_ARGS);
+  }
+
+  const exitCode = routingAuditCommand({
+    task,
+    explain: args.options.verbose,
+    deterministic: args.options.dryRun,
+    json: args.options.format === 'json',
+    verbose: args.options.verbose,
+    banditStats: args.options.banditStats,
+  });
+  process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
+}
+
+/**
+ * Handles synchronous commands that don't require await.
+ * Returns true if the command was handled.
+ */
+function handleSyncCommand(args: ParsedCliArgs): boolean {
   switch (args.command) {
     case 'help':
       printHelp();
       process.exit(EXIT_CODES.SUCCESS);
-      break;
-
+      return true;
     case 'version':
       printVersion();
       process.exit(EXIT_CODES.SUCCESS);
-      break;
+      return true;
+    case 'expert':
+      handleExpertCommand(args);
+      return true;
+    case 'routing-audit':
+      handleRoutingAuditCommand(args);
+      return true;
+    default:
+      return false;
+  }
+}
 
+/**
+ * Handles async commands that require await.
+ */
+async function handleAsyncCommand(args: ParsedCliArgs): Promise<void> {
+  switch (args.command) {
     case 'server':
       await handleServerCommand(args);
       break;
-
     case 'doctor': {
       const exitCode = await doctorCommand();
       process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
       break;
     }
-
     case 'config':
       await handleConfigCommand(args);
       break;
-
-    case 'expert':
-      handleExpertCommand(args);
-      break;
-
     case 'workflow':
       await handleWorkflowCommand(args);
       break;
-
     case 'review':
       await handleReviewCommand(args);
       break;
+  }
+}
+
+/**
+ * Dispatches to the appropriate command handler.
+ *
+ * @param args - Parsed CLI arguments
+ */
+export async function dispatchCommand(args: ParsedCliArgs): Promise<void> {
+  if (!handleSyncCommand(args)) {
+    await handleAsyncCommand(args);
   }
 }
