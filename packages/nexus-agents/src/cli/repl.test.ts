@@ -5,10 +5,26 @@
  * (Source: Issue #64, PROJECT_PLAN.md Section 5.2)
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vitest';
 
 // We test the module by importing its exported functions
 // The actual startRepl function requires stdin/stdout which we mock
+
+// Module caches for preloaded imports
+// These modules have heavy dependency trees - preload to avoid timeout in CI
+let indexModule: typeof import('./index.js');
+let replModule: typeof import('./repl.js');
+let cliModule: typeof import('../cli.js');
+
+// Preload all heavy modules before tests run
+// (Source: Issue #192 - CI timeout fix)
+beforeAll(async () => {
+  [indexModule, replModule, cliModule] = await Promise.all([
+    import('./index.js'),
+    import('./repl.js'),
+    import('../cli.js'),
+  ]);
+}, 30000); // 30s timeout for module loading in slow CI environments
 
 describe('REPL Module', () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -23,62 +39,50 @@ describe('REPL Module', () => {
   });
 
   describe('replCommand', () => {
-    it('should be exported from cli/index.js', async () => {
-      const { replCommand } = await import('./index.js');
-      expect(typeof replCommand).toBe('function');
+    it('should be exported from cli/index.js', () => {
+      expect(typeof indexModule.replCommand).toBe('function');
     });
 
-    it('should be exported from repl.js', async () => {
-      const { replCommand } = await import('./repl.js');
-      expect(typeof replCommand).toBe('function');
+    it('should be exported from repl.js', () => {
+      expect(typeof replModule.replCommand).toBe('function');
     });
   });
 
   describe('startRepl', () => {
-    it('should be exported from cli/index.js', async () => {
-      const { startRepl } = await import('./index.js');
-      expect(typeof startRepl).toBe('function');
+    it('should be exported from cli/index.js', () => {
+      expect(typeof indexModule.startRepl).toBe('function');
     });
 
-    it('should be exported from repl.js', async () => {
-      const { startRepl } = await import('./repl.js');
-      expect(typeof startRepl).toBe('function');
+    it('should be exported from repl.js', () => {
+      expect(typeof replModule.startRepl).toBe('function');
     });
   });
 
   describe('REPL command handling', () => {
     // Test helper functions indirectly through module structure
-    it('should have proper module structure', async () => {
-      const repl = await import('./repl.js');
-
+    it('should have proper module structure', () => {
       // Check that the module exports the expected functions
-      expect(repl).toHaveProperty('replCommand');
-      expect(repl).toHaveProperty('startRepl');
+      expect(replModule).toHaveProperty('replCommand');
+      expect(replModule).toHaveProperty('startRepl');
     });
   });
 
   describe('CLI integration', () => {
-    it('should add interactive option to parseCliArgs', async () => {
-      const { parseCliArgs } = await import('../cli.js');
-
-      const result = parseCliArgs(['--interactive']);
+    it('should add interactive option to parseCliArgs', () => {
+      const result = cliModule.parseCliArgs(['--interactive']);
 
       expect(result.options.interactive).toBe(true);
       expect(result.command).toBe('server');
     });
 
-    it('should default interactive to false', async () => {
-      const { parseCliArgs } = await import('../cli.js');
-
-      const result = parseCliArgs([]);
+    it('should default interactive to false', () => {
+      const result = cliModule.parseCliArgs([]);
 
       expect(result.options.interactive).toBe(false);
     });
 
-    it('should combine interactive with verbose', async () => {
-      const { parseCliArgs } = await import('../cli.js');
-
-      const result = parseCliArgs(['--interactive', '--verbose']);
+    it('should combine interactive with verbose', () => {
+      const result = cliModule.parseCliArgs(['--interactive', '--verbose']);
 
       expect(result.options.interactive).toBe(true);
       expect(result.options.verbose).toBe(true);
@@ -88,26 +92,23 @@ describe('REPL Module', () => {
 
 describe('REPL Session', () => {
   describe('session creation', () => {
-    it('should create unique session IDs', async () => {
+    it('should create unique session IDs', () => {
       // Session IDs are internal, but we can verify the module loads
-      const { startRepl } = await import('./repl.js');
-      expect(typeof startRepl).toBe('function');
+      expect(typeof replModule.startRepl).toBe('function');
     });
   });
 });
 
 describe('REPL Colors', () => {
-  it('should use ANSI color codes', async () => {
+  it('should use ANSI color codes', () => {
     // Colors are internal constants, but we verify the module loads correctly
-    const repl = await import('./repl.js');
-    expect(repl).toBeDefined();
+    expect(replModule).toBeDefined();
   });
 });
 
 describe('REPL Help Text', () => {
-  it('should include help command documentation', async () => {
+  it('should include help command documentation', () => {
     // Help text is internal, but we verify the module loads correctly
-    const repl = await import('./repl.js');
-    expect(repl).toBeDefined();
+    expect(replModule).toBeDefined();
   });
 });
