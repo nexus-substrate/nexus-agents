@@ -29,7 +29,8 @@ export type CliCommand =
   | 'expert'
   | 'workflow'
   | 'doctor'
-  | 'review';
+  | 'review'
+  | 'routing-audit';
 
 /**
  * Parsed CLI arguments and command.
