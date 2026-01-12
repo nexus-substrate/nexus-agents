@@ -6,9 +6,14 @@
  *
  * (Source: Issue #212, Process Automation Epic #209)
  * (Consensus: 7.8/10, 5/5 UNANIMOUS APPROVE)
+ *
+ * Vote Recording (Issue #227):
+ * - Record vote results as GitHub issue comments
+ * - Use --record <issue-number> flag
  */
 
 import * as crypto from 'node:crypto';
+import { execSync } from 'node:child_process';
 import type {
   VoteCommandOptions,
   VoterRole,
@@ -126,6 +131,97 @@ function printHashes(votes: readonly AgentVoteResult[]): void {
   writeLine('');
 }
 
+// ============================================================================
+// GitHub Vote Recording (Issue #227)
+// ============================================================================
+
+/**
+ * Validates that a GitHub issue exists and is accessible.
+ */
+function validateGitHubIssue(issueNumber: number): boolean {
+  try {
+    execSync(`gh issue view ${String(issueNumber)} --json number`, {
+      stdio: 'pipe',
+      encoding: 'utf8',
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Escapes special characters for shell command.
+ */
+function escapeForShell(text: string): string {
+  return text.replace(/"/g, '\\"').replace(/`/g, '\\`').replace(/\$/g, '\\$');
+}
+
+/**
+ * Formats vote result as markdown comment.
+ */
+export function formatVoteComment(result: VotingResult): string {
+  const now = new Date().toLocaleDateString('en-US', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+
+  const outcomeEmoji = result.result.outcome === 'approved' ? '✅' : '❌';
+  const outcomeText = result.result.outcome.toUpperCase();
+
+  const voteRows = result.votes
+    .map(({ role, vote }) => {
+      const roleLabel = VOTER_ROLES[role].split(' - ')[0] ?? role;
+      const decision = vote.decision.toUpperCase();
+      const confidence = `${(vote.confidence * 100).toFixed(0)}%`;
+      return `| ${roleLabel} | ${decision} | ${confidence} |`;
+    })
+    .join('\n');
+
+  const { voteCounts, approvalPercentage } = result.result;
+  const summary = `Approve: ${String(voteCounts.approve)}, Reject: ${String(voteCounts.reject)}, Abstain: ${String(voteCounts.abstain)} (${approvalPercentage.toFixed(1)}% approval)`;
+
+  return `## Consensus Vote Result
+
+**Date:** ${now} (ET)
+**Proposal:** ${result.proposal.slice(0, 200)}${result.proposal.length > 200 ? '...' : ''}
+**Threshold:** ${result.threshold}
+**Result:** ${outcomeEmoji} **${outcomeText}**
+
+### Vote Details
+| Agent | Decision | Confidence |
+|-------|----------|------------|
+${voteRows}
+
+**Summary:** ${summary}
+
+---
+*Vote conducted per CLAUDE.md Consensus Voting Protocol*`;
+}
+
+/**
+ * Records vote result to GitHub issue.
+ */
+function recordVoteToGitHub(issueNumber: number, result: VotingResult): void {
+  const comment = formatVoteComment(result);
+  const escapedComment = escapeForShell(comment);
+
+  try {
+    execSync(`gh issue comment ${String(issueNumber)} --body "${escapedComment}"`, {
+      stdio: 'pipe',
+      encoding: 'utf8',
+    });
+    writeLine(
+      `${colors.green}${symbols.check}${colors.reset} Vote recorded to issue #${String(issueNumber)}\n`
+    );
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    writeLine(`${colors.red}Failed to record vote: ${msg}${colors.reset}\n`);
+  }
+}
+
 async function runVote(options: VoteCommandOptions): Promise<VotingResult> {
   const threshold = THRESHOLD_MAP[options.threshold ?? 'supermajority'] ?? 'supermajority';
   const useQuick = options.quick === true;
@@ -165,11 +261,50 @@ function printDryRunBanner(): void {
 }
 
 /**
+ * Validates GitHub issue if recording is requested.
+ * Returns false if validation fails, true otherwise.
+ */
+function validateIssueIfNeeded(issueNumber: number | undefined): boolean {
+  if (issueNumber === undefined) return true;
+
+  writeLine(`${colors.dim}Validating issue #${String(issueNumber)}...${colors.reset}`);
+  if (!validateGitHubIssue(issueNumber)) {
+    writeLine(
+      `${colors.red}Error: Issue #${String(issueNumber)} not found or not accessible${colors.reset}\n`
+    );
+    writeLine(
+      `${colors.dim}Ensure you are authenticated with gh CLI and the issue exists.${colors.reset}\n`
+    );
+    return false;
+  }
+  writeLine(`${colors.green}${symbols.check}${colors.reset} Issue validated\n`);
+  return true;
+}
+
+/**
+ * Handles recording vote to GitHub or dry-run message.
+ */
+function handleRecording(options: VoteCommandOptions, result: VotingResult): void {
+  if (options.issueNumber === undefined) return;
+
+  if (options.dryRun === true) {
+    writeLine(
+      `${colors.yellow}[DRY RUN]${colors.reset} Would record to issue #${String(options.issueNumber)}\n`
+    );
+  } else {
+    recordVoteToGitHub(options.issueNumber, result);
+  }
+}
+
+/**
  * Run the vote command.
  */
 export async function voteCommand(options: VoteCommandOptions): Promise<number> {
   writeLine(`\n${colors.bold}Nexus Agents Consensus Vote${colors.reset}`);
   writeLine('============================\n');
+
+  if (!validateIssueIfNeeded(options.issueNumber)) return 1;
+
   if (options.dryRun === true) printDryRunBanner();
   writeLine(
     `${colors.dim}Proposal: ${options.proposal.slice(0, 100)}${options.proposal.length > 100 ? '...' : ''}${colors.reset}\n`
@@ -180,6 +315,9 @@ export async function voteCommand(options: VoteCommandOptions): Promise<number> 
     printSummary(result.result, result.threshold);
     if (options.verbose === true) printHashes(result.votes);
     writeLine(`${colors.dim}Completed in ${String(result.totalTimeMs)}ms${colors.reset}\n`);
+
+    handleRecording(options, result);
+
     return result.result.outcome === 'approved' ? 0 : 1;
   } catch (error) {
     writeLine(
