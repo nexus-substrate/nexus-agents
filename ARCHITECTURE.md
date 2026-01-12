@@ -106,6 +106,90 @@ Nexus-agents will adopt a **hybrid architecture** that combines:
 - #184: REST API gateway for non-MCP clients (P3)
 - #185: MCP gateway authentication and audit logging (P2)
 
+---
+
+## Agent-to-Agent (A2A) Protocol
+
+**Status:** 60% implemented (Issue #215)
+**Last Updated:** 2026-01-11 (ET)
+
+### Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ A2A Communication Layer                                      │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│ EventBus: ✅ Fully Implemented                              │
+│  └─ Topic-based pub/sub with wildcard patterns              │
+│  └─ Event history with filtering                            │
+│  └─ Global singleton via getGlobalEventBus()                │
+│                                                              │
+│ CollaborationSession: ✅ Emits Events                       │
+│  └─ session.created, session.finalized                      │
+│  └─ consensus.vote_cast                                     │
+│  └─ session.result_submitted                                │
+│                                                              │
+│ SwarmObserver: ✅ Subscribes & Tracks                       │
+│  └─ Real-time swarm visibility                              │
+│  └─ Agent collaboration graphs                              │
+│  └─ Session/consensus metrics                               │
+│                                                              │
+│ Protocol Iterations: ❌ Not Yet Emitting (#216)             │
+│ Agent Message Routing: ❌ Not Yet Implemented (#217)        │
+│ Byzantine Detection Events: ❌ Not Yet Emitting (#218)      │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Event Types
+
+| Topic Pattern | Events                                          | Status |
+| ------------- | ----------------------------------------------- | ------ |
+| `session.*`   | created, status_changed, finalized              | ✅     |
+| `consensus.*` | vote_requested, vote_cast, reached              | ✅     |
+| `agent.*`     | task_delegated, result_broadcast                | ✅     |
+| `protocol.*`  | started, iteration, completed                   | ❌     |
+| `message.*`   | sent, received                                  | ❌     |
+| `byzantine.*` | weight_updated, pattern_detected, agent_flagged | ❌     |
+
+### Key Files
+
+| File                       | Lines | Purpose                    |
+| -------------------------- | ----- | -------------------------- |
+| `event-bus.ts`             | 435   | Core event bus             |
+| `event-bus-types.ts`       | 373   | Event type definitions     |
+| `swarm-observer.ts`        | 350+  | Event subscriber & metrics |
+| `collaboration-session.ts` | 450+  | Session state & emissions  |
+
+### Usage Example
+
+```typescript
+import { getGlobalEventBus } from './agents/collaboration/event-bus.js';
+
+// Subscribe to consensus events
+const eventBus = getGlobalEventBus();
+eventBus.subscribe('consensus.*', (event) => {
+  console.log(`Vote cast: ${event.agentId} → ${event.decision}`);
+});
+
+// Query event history
+const recentVotes = eventBus.getHistory({
+  topic: 'consensus.vote_cast',
+  since: Date.now() - 60000, // Last minute
+});
+```
+
+### Roadmap
+
+| Issue | Feature                    | Priority |
+| ----- | -------------------------- | -------- |
+| #216  | Protocol iteration events  | P2       |
+| #217  | Agent message routing      | P2       |
+| #218  | Byzantine detection events | P3       |
+
+---
+
 ### REST API Gateway
 
 **Base URL:** `http://localhost:3000`
