@@ -93,3 +93,29 @@ export type { SystemReviewOptions, SystemReviewResult } from './system-review.js
 // Consensus Vote (Issue #212, Process Automation Epic #209)
 export { voteCommand } from './vote-command.js';
 export type { VoteCommandOptions, VotingResult } from './vote-types.js';
+
+// Issue Templates (Issue #229, Epic #225)
+export {
+  issueCommand,
+  validateIssue,
+  printValidationResult,
+  printTemplate,
+} from './issue-command.js';
+export type { IssueCommandOptions, IssueCommandResult } from './issue-command.js';
+export {
+  detectIssueType,
+  getTemplate,
+  validateIssueBody,
+  generateTemplateBody,
+  formatValidationResult,
+  TEMPLATES,
+  FEAT_TEMPLATE,
+  BUG_TEMPLATE,
+  TASK_TEMPLATE,
+} from './issue-templates.js';
+export type {
+  IssueType,
+  IssueTemplate,
+  IssueValidationResult,
+  RequiredSection,
+} from './issue-template-types.js';
