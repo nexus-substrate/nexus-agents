@@ -26,6 +26,9 @@ import type {
 } from '../core/index.js';
 import { ok, err, AgentError, createLogger } from '../core/index.js';
 import { TaskSchema, AgentMessageSchema, BaseAgentOptionsSchema } from './agent-schemas.js';
+import type { IEventBus } from './collaboration/event-bus-types.js';
+import { getGlobalEventBus } from './collaboration/event-bus.js';
+import { emitMessageReceived } from './collaboration/message-events.js';
 
 // Re-export schemas for convenience
 export { TaskSchema, AgentMessageSchema, BaseAgentOptionsSchema } from './agent-schemas.js';
@@ -50,6 +53,10 @@ export interface BaseAgentOptions {
   temperature?: number;
   /** Maximum tokens for responses */
   maxTokens?: number;
+  /** Event bus for message observability (uses global bus if not provided) */
+  eventBus?: IEventBus;
+  /** Whether to emit events for message handling (default: true) */
+  emitMessageEvents?: boolean;
 }
 
 const DEFAULT_MAX_DURATION_MS = 5 * 60 * 1000; // 5 minutes
@@ -70,6 +77,8 @@ export abstract class BaseAgent implements IAgent {
   protected readonly systemPrompt: string | undefined;
   protected readonly temperature: number;
   protected readonly maxTokens: number;
+  protected readonly eventBus: IEventBus;
+  protected readonly emitMessageEvents: boolean;
   private initialized = false;
 
   constructor(options: BaseAgentOptions) {
@@ -91,6 +100,8 @@ export abstract class BaseAgent implements IAgent {
     this.temperature = options.temperature ?? 0.3;
     this.maxTokens = options.maxTokens ?? 4096;
     this.logger = options.logger ?? createLogger({ agent: this.id, role: this.role });
+    this.eventBus = options.eventBus ?? getGlobalEventBus();
+    this.emitMessageEvents = options.emitMessageEvents ?? true;
   }
 
   get state(): AgentState {
@@ -184,6 +195,11 @@ export abstract class BaseAgent implements IAgent {
     }
 
     this.logger.debug('Handling message', { messageId: msg.id, from: msg.from, type: msg.type });
+
+    // Emit message.received event for observability (Issue #223)
+    if (this.emitMessageEvents) {
+      emitMessageReceived(this.eventBus, { message: msg, by: this.id });
+    }
 
     switch (msg.type) {
       case 'task':

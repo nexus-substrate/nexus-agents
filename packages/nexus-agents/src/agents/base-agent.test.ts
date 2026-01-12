@@ -27,6 +27,7 @@ import {
   type BaseAgentOptions,
 } from './base-agent.js';
 import { SimpleAgent } from './simple-agent.js';
+import type { IEventBus, TypedEvent } from './collaboration/event-bus-types.js';
 
 /**
  * Mock logger for testing.
@@ -1028,5 +1029,133 @@ describe('BaseAgentOptionsSchema', () => {
     };
 
     expect(BaseAgentOptionsSchema.safeParse(options).success).toBe(false);
+  });
+});
+
+// =============================================================================
+// EventBus Integration Tests (Issue #223)
+// =============================================================================
+
+/** Creates a mock EventBus for testing event emission. */
+function createMockEventBus(): IEventBus & { emittedEvents: TypedEvent[] } {
+  const emittedEvents: TypedEvent[] = [];
+  return {
+    emittedEvents,
+    emit: vi.fn((event: TypedEvent) => {
+      emittedEvents.push(event);
+    }),
+    emitAsync: vi.fn((event: TypedEvent) => {
+      emittedEvents.push(event);
+      return Promise.resolve();
+    }),
+    subscribe: vi.fn(() => ({ id: 'sub-1', pattern: '*', unsubscribe: vi.fn() })),
+    unsubscribe: vi.fn(),
+    getHistory: vi.fn(() => []),
+    clearHistory: vi.fn(),
+    getStats: vi.fn(() => ({
+      eventsEmitted: emittedEvents.length,
+      subscriptionsCreated: 0,
+      activeSubscriptions: 0,
+      historySize: 0,
+      errorCount: 0,
+    })),
+    hasSubscribers: vi.fn(() => false),
+  };
+}
+
+describe('BaseAgent EventBus integration', () => {
+  it('should use provided eventBus', () => {
+    const mockEventBus = createMockEventBus();
+    const agent = new SimpleAgent({
+      id: 'test-agent',
+      role: 'custom',
+      capabilities: [],
+      eventBus: mockEventBus,
+    });
+
+    expect(agent).toBeDefined();
+    // The eventBus is protected, so we verify it works via handleMessage
+  });
+
+  it('should emit message.received event when handling message', async () => {
+    const mockEventBus = createMockEventBus();
+    const agent = new SimpleAgent({
+      id: 'test-agent',
+      role: 'custom',
+      capabilities: [],
+      eventBus: mockEventBus,
+    });
+
+    const message: AgentMessage = {
+      id: 'msg-1',
+      type: 'query',
+      from: 'sender-agent',
+      to: 'test-agent',
+      payload: {},
+      timestamp: new Date().toISOString(),
+    };
+
+    await agent.handleMessage(message);
+
+    expect(mockEventBus.emit).toHaveBeenCalled();
+    const messageEvents = mockEventBus.emittedEvents.filter((e) => e.topic === 'message.received');
+    expect(messageEvents.length).toBe(1);
+    expect(messageEvents[0]?.payload).toMatchObject({
+      message: expect.objectContaining({ type: 'query' }),
+      by: 'test-agent',
+    });
+  });
+
+  it('should not emit events when emitMessageEvents is false', async () => {
+    const mockEventBus = createMockEventBus();
+    const agent = new SimpleAgent({
+      id: 'test-agent',
+      role: 'custom',
+      capabilities: [],
+      eventBus: mockEventBus,
+      emitMessageEvents: false,
+    });
+
+    const message: AgentMessage = {
+      id: 'msg-2',
+      type: 'status',
+      from: 'sender-agent',
+      to: 'test-agent',
+      payload: {},
+      timestamp: new Date().toISOString(),
+    };
+
+    await agent.handleMessage(message);
+
+    const messageEvents = mockEventBus.emittedEvents.filter((e) => e.topic === 'message.received');
+    expect(messageEvents.length).toBe(0);
+  });
+
+  it('should emit message.received for different message types', async () => {
+    const mockEventBus = createMockEventBus();
+    const agent = new SimpleAgent({
+      id: 'test-agent',
+      role: 'custom',
+      capabilities: [],
+      eventBus: mockEventBus,
+    });
+
+    const messageTypes: AgentMessage['type'][] = ['query', 'feedback', 'status', 'result'];
+
+    for (const type of messageTypes) {
+      const message: AgentMessage = {
+        id: `msg-${type}`,
+        type,
+        from: 'sender-agent',
+        to: 'test-agent',
+        payload: {},
+        timestamp: new Date().toISOString(),
+      };
+
+      await agent.handleMessage(message);
+    }
+
+    const messageEvents = mockEventBus.emittedEvents.filter((e) => e.topic === 'message.received');
+    expect(messageEvents.length).toBe(messageTypes.length);
   });
 });
