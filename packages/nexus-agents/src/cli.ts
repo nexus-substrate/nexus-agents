@@ -66,11 +66,8 @@ function parseOrchestrateModel(
   return undefined;
 }
 
-/**
- * Builds the options object from parsed values.
- * Uses auto-detection for mode when not explicitly provided.
- */
-function buildOptions(values: {
+/** Parsed values from parseArgs. */
+interface ParsedValues {
   help: boolean;
   version: boolean;
   verbose: boolean;
@@ -85,15 +82,26 @@ function buildOptions(values: {
   model?: string;
   'max-tokens'?: string;
   'max-cost-usd'?: string;
-}): ParsedCliArgs['options'] {
-  // Check if mode was explicitly provided (not the default value)
-  const explicitMode =
-    isValidServerMode(values.mode) && values.mode !== 'server' ? values.mode : undefined;
+  'create-issue': boolean;
+  fix: boolean;
+}
 
-  // Use auto-detection, passing explicit mode if provided
-  const detectionResult = detectMode({
-    explicitMode: explicitMode ?? (isValidServerMode(values.mode) ? values.mode : undefined),
-  });
+/** Builds orchestrate-specific options. */
+function buildOrchestrateOptions(values: ParsedValues): Record<string, unknown> {
+  const model = parseOrchestrateModel(values.model);
+  const maxTokens = parseNumericOption(values['max-tokens']);
+  const maxCostUsd = parseNumericOption(values['max-cost-usd']);
+  return {
+    ...(model !== undefined && { model }),
+    ...(maxTokens !== undefined && { maxTokens }),
+    ...(maxCostUsd !== undefined && { maxCostUsd }),
+  };
+}
+
+/** Builds the options object from parsed values. */
+function buildOptions(values: ParsedValues): ParsedCliArgs['options'] {
+  const explicitMode = isValidServerMode(values.mode) ? values.mode : undefined;
+  const detectionResult = detectMode({ explicitMode });
 
   return {
     help: values.help,
@@ -105,21 +113,11 @@ function buildOptions(values: {
     format: values.format,
     dryRun: values['dry-run'],
     banditStats: values['bandit-stats'],
+    createIssue: values['create-issue'],
+    fix: values.fix,
     ...(values.output !== undefined && { output: values.output }),
     ...(values.input !== undefined && { input: values.input }),
-    // Orchestrate command options - only spread if parsed value is defined
-    ...(() => {
-      const model = parseOrchestrateModel(values.model);
-      return model !== undefined ? { model } : {};
-    })(),
-    ...(() => {
-      const maxTokens = parseNumericOption(values['max-tokens']);
-      return maxTokens !== undefined ? { maxTokens } : {};
-    })(),
-    ...(() => {
-      const maxCostUsd = parseNumericOption(values['max-cost-usd']);
-      return maxCostUsd !== undefined ? { maxCostUsd } : {};
-    })(),
+    ...buildOrchestrateOptions(values),
   };
 }
 

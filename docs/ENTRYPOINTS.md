@@ -38,6 +38,7 @@ Nexus-agents provides four interface categories:
 | `review`        | `<url>`         | Review a GitHub PR                         | orchestrator |
 | `routing-audit` | `<task>`        | Debug routing decisions (dry-run)          | any          |
 | `orchestrate`   | `<task>`        | Execute task standalone                    | orchestrator |
+| `system-review` | -               | Run 5-phase system review                  | any          |
 
 ### Mode Selection
 
@@ -73,6 +74,11 @@ nexus-agents routing-audit "Implement a sorting algorithm" --format=json
 
 # Standalone orchestration
 nexus-agents orchestrate "Review this code for security issues"
+
+# System review (5-phase checklist)
+nexus-agents system-review
+nexus-agents system-review --create-issue
+nexus-agents system-review --fix --verbose
 ```
 
 ### Source Files
@@ -87,6 +93,7 @@ nexus-agents orchestrate "Review this code for security issues"
 | `src/cli/review-command.ts`      | PR review command     |
 | `src/cli/routing-audit.ts`       | Routing audit command |
 | `src/cli/orchestrate-command.ts` | Orchestrate command   |
+| `src/cli/system-review.ts`       | System review command |
 
 ---
 
@@ -599,6 +606,9 @@ cli_commands:
   - name: orchestrate
     args: ['<task>']
     mode: orchestrator
+  - name: system-review
+    flags: ['--create-issue', '--fix', '--verbose']
+    mode: any
 ```
 
 <!-- END:CLI_COMMANDS -->

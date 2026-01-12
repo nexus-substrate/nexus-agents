@@ -31,7 +31,8 @@ export type CliCommand =
   | 'doctor'
   | 'review'
   | 'routing-audit'
-  | 'orchestrate';
+  | 'orchestrate'
+  | 'system-review';
 
 /**
  * Parsed CLI arguments and command.
@@ -55,6 +56,9 @@ export interface ParsedCliArgs {
     model?: 'claude' | 'gemini' | 'codex';
     maxTokens?: number;
     maxCostUsd?: number;
+    // System review command options
+    createIssue: boolean;
+    fix: boolean;
   };
   positionals: string[];
 }
@@ -123,6 +127,15 @@ export const PARSE_ARGS_CONFIG = {
     'max-cost-usd': {
       type: 'string' as const,
     },
+    // System review command options
+    'create-issue': {
+      type: 'boolean' as const,
+      default: false,
+    },
+    fix: {
+      type: 'boolean' as const,
+      default: false,
+    },
   },
   allowPositionals: true,
   strict: true,
@@ -148,6 +161,7 @@ COMMANDS:
   review <url>    Review a GitHub pull request (dogfooding)
   routing-audit   Debug model routing decisions
   orchestrate     Execute task using CLI tools (standalone mode)
+  system-review   Run automated system review (5-phase checklist)
 
 OPTIONS:
   -h, --help           Show this help message
@@ -186,6 +200,11 @@ ORCHESTRATE OPTIONS:
   --max-tokens=<n>     Maximum token budget (default: 100000)
   --max-cost-usd=<n>   Maximum cost budget in USD (default: 10)
 
+SYSTEM-REVIEW OPTIONS:
+  --create-issue       Create GitHub issue with review results
+  --fix                Auto-fix correctable issues (lint errors)
+  --verbose            Show detailed phase output
+
 EXAMPLES:
   nexus-agents                  Start MCP server (default)
   nexus-agents --interactive    Start interactive REPL
@@ -202,6 +221,9 @@ EXAMPLES:
   nexus-agents orchestrate "Explain this function" --model=claude
   nexus-agents orchestrate "Generate unit tests" --dry-run
   nexus-agents orchestrate "Refactor for performance" --format=json
+  nexus-agents system-review                      Run 5-phase system review
+  nexus-agents system-review --create-issue       Create GitHub issue with results
+  nexus-agents system-review --fix                Auto-fix correctable issues
 
 For more information, visit: https://github.com/williamzujkowski/nexus-agents
 `.trim();
@@ -224,6 +246,7 @@ export function isValidCommand(value: string): value is CliCommand {
     'review',
     'routing-audit',
     'orchestrate',
+    'system-review',
   ];
   return validCommands.includes(value as CliCommand);
 }

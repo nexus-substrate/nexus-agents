@@ -85,3 +85,7 @@ export type {
   TaskStatus,
 } from './session-storage-types.js';
 export { SessionStorageError } from './session-storage-types.js';
+
+// System Review (Issue #211, Process Automation Epic #209)
+export { systemReviewCommand, runSystemReview, printSystemReviewResult } from './system-review.js';
+export type { SystemReviewOptions, SystemReviewResult } from './system-review.js';

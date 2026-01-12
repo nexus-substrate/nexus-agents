@@ -1,0 +1,302 @@
+name: System Review
+
+on:
+  schedule:
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+    inputs:
+      trigger_reason:
+        description: 'Reason for manual trigger'
+        required: false
+        type: string
+      create_issue:
+        description: 'Create GitHub issue with results'
+        required: false
+        default: true
+        type: boolean
+  issues:
+    types: [closed]
+
+concurrency:
+  group: system-review
+  cancel-in-progress: false
+
+jobs:
+  check-trigger:
+    name: Check Trigger Conditions
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.check.outputs.run }}
+      trigger_type: ${{ steps.check.outputs.type }}
+    steps:
+      - id: check
+        run: |
+          if [[ "${{ github.event_name }}" == "schedule" ]]; then
+            echo "run=true" >> $GITHUB_OUTPUT
+            echo "type=scheduled" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "run=true" >> $GITHUB_OUTPUT
+            echo "type=manual" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.event_name }}" == "issues" ]]; then
+            LABELS='${{ toJson(github.event.issue.labels.*.name) }}'
+            if echo "$LABELS" | grep -q "epic"; then
+              echo "run=true" >> $GITHUB_OUTPUT
+              echo "type=epic_closed" >> $GITHUB_OUTPUT
+            else
+              echo "run=false" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "run=false" >> $GITHUB_OUTPUT
+          fi
+
+  run-review:
+    name: Execute System Review
+    needs: check-trigger
+    if: needs.check-trigger.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      registry_implemented: ${{ steps.registry.outputs.implemented }}
+      registry_planned: ${{ steps.registry.outputs.planned }}
+      docs_claude_age: ${{ steps.docs.outputs.claude_age }}
+      docs_arch_age: ${{ steps.docs.outputs.arch_age }}
+      issues_open: ${{ steps.issues.outputs.open_count }}
+      issues_stale: ${{ steps.issues.outputs.stale_count }}
+      audit_vulns: ${{ steps.security.outputs.vulns }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Phase 1 - Registry Reconciliation
+        id: registry
+        run: |
+          echo "## Phase 1: Registry Reconciliation" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          TECHNIQUES_FILE="docs/research/registry/techniques.yaml"
+          if [ -f "$TECHNIQUES_FILE" ]; then
+            IMPLEMENTED=$(grep -c "status: implemented" "$TECHNIQUES_FILE" || echo "0")
+            PLANNED=$(grep -c "status: planned" "$TECHNIQUES_FILE" || echo "0")
+            NOT_STARTED=$(grep -c "status: not-started" "$TECHNIQUES_FILE" || echo "0")
+            REJECTED=$(grep -c "status: rejected" "$TECHNIQUES_FILE" || echo "0")
+            echo "| Status | Count |" >> $GITHUB_STEP_SUMMARY
+            echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Implemented | $IMPLEMENTED |" >> $GITHUB_STEP_SUMMARY
+            echo "| Planned | $PLANNED |" >> $GITHUB_STEP_SUMMARY
+            echo "| Not Started | $NOT_STARTED |" >> $GITHUB_STEP_SUMMARY
+            echo "| Rejected | $REJECTED |" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "implemented=$IMPLEMENTED" >> $GITHUB_OUTPUT
+            echo "planned=$PLANNED" >> $GITHUB_OUTPUT
+          else
+            echo "Registry file not found" >> $GITHUB_STEP_SUMMARY
+            echo "implemented=0" >> $GITHUB_OUTPUT
+            echo "planned=0" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Phase 2 - Documentation Sync
+        id: docs
+        run: |
+          echo "## Phase 2: Documentation Sync" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          NOW=$(date +%s)
+          CLAUDE_DAYS=0
+          ARCH_DAYS=0
+          CODING_DAYS=0
+          README_DAYS=0
+          if [ -f "CLAUDE.md" ]; then
+            CLAUDE_DATE=$(git log -1 --format="%ct" -- CLAUDE.md)
+            CLAUDE_DAYS=$(( (NOW - CLAUDE_DATE) / 86400 ))
+          fi
+          if [ -f "ARCHITECTURE.md" ]; then
+            ARCH_DATE=$(git log -1 --format="%ct" -- ARCHITECTURE.md)
+            ARCH_DAYS=$(( (NOW - ARCH_DATE) / 86400 ))
+          fi
+          if [ -f "CODING_STANDARDS.md" ]; then
+            CODING_DATE=$(git log -1 --format="%ct" -- CODING_STANDARDS.md)
+            CODING_DAYS=$(( (NOW - CODING_DATE) / 86400 ))
+          fi
+          if [ -f "README.md" ]; then
+            README_DATE=$(git log -1 --format="%ct" -- README.md)
+            README_DAYS=$(( (NOW - README_DATE) / 86400 ))
+          fi
+          echo "| Document | Days Since Update | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------------------|--------|" >> $GITHUB_STEP_SUMMARY
+          for DOC in CLAUDE.md ARCHITECTURE.md CODING_STANDARDS.md README.md; do
+            case $DOC in
+              CLAUDE.md) DAYS=$CLAUDE_DAYS ;;
+              ARCHITECTURE.md) DAYS=$ARCH_DAYS ;;
+              CODING_STANDARDS.md) DAYS=$CODING_DAYS ;;
+              README.md) DAYS=$README_DAYS ;;
+            esac
+            if [ "$DAYS" -lt 7 ]; then
+              STATUS="Current"
+            elif [ "$DAYS" -lt 30 ]; then
+              STATUS="Review needed"
+            else
+              STATUS="Stale"
+            fi
+            echo "| $DOC | $DAYS | $STATUS |" >> $GITHUB_STEP_SUMMARY
+          done
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "claude_age=$CLAUDE_DAYS" >> $GITHUB_OUTPUT
+          echo "arch_age=$ARCH_DAYS" >> $GITHUB_OUTPUT
+
+      - name: Phase 3 - Issue Health
+        id: issues
+        run: |
+          echo "## Phase 3: Issue Health" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          OPEN=$(gh issue list --state open --json number | jq 'length')
+          THIRTY_DAYS_AGO=$(date -d '30 days ago' --iso-8601)
+          STALE=$(gh issue list --state open --json updatedAt --jq "[.[] | select(.updatedAt < \"$THIRTY_DAYS_AGO\")] | length")
+          EPICS=$(gh issue list --state open --label epic --json number | jq 'length')
+          BUGS=$(gh issue list --state open --label bug --json number | jq 'length')
+          ENHANCEMENTS=$(gh issue list --state open --label enhancement --json number | jq 'length')
+          RESEARCH=$(gh issue list --state open --label research --json number | jq 'length')
+          echo "| Category | Count |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Open Issues | $OPEN |" >> $GITHUB_STEP_SUMMARY
+          echo "| Stale (>30 days) | $STALE |" >> $GITHUB_STEP_SUMMARY
+          echo "| Epics | $EPICS |" >> $GITHUB_STEP_SUMMARY
+          echo "| Bugs | $BUGS |" >> $GITHUB_STEP_SUMMARY
+          echo "| Enhancements | $ENHANCEMENTS |" >> $GITHUB_STEP_SUMMARY
+          echo "| Research | $RESEARCH |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "$OPEN" -lt 5 ]; then
+            echo "Low issue count - Consider running Research phase" >> $GITHUB_STEP_SUMMARY
+          fi
+          if [ "$STALE" -gt 0 ]; then
+            echo "Stale issues detected - Review and close or update" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "open_count=$OPEN" >> $GITHUB_OUTPUT
+          echo "stale_count=$STALE" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Phase 4 - Security Audit
+        id: security
+        run: |
+          echo "## Phase 4: Security Audit" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          AUDIT_OUTPUT=$(pnpm audit --json 2>/dev/null || true)
+          VULNS=$(echo "$AUDIT_OUTPUT" | jq '.metadata.vulnerabilities.total // 0')
+          echo "| Severity | Count |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          HIGH=$(echo "$AUDIT_OUTPUT" | jq '.metadata.vulnerabilities.high // 0')
+          MODERATE=$(echo "$AUDIT_OUTPUT" | jq '.metadata.vulnerabilities.moderate // 0')
+          LOW=$(echo "$AUDIT_OUTPUT" | jq '.metadata.vulnerabilities.low // 0')
+          echo "| High | $HIGH |" >> $GITHUB_STEP_SUMMARY
+          echo "| Moderate | $MODERATE |" >> $GITHUB_STEP_SUMMARY
+          echo "| Low | $LOW |" >> $GITHUB_STEP_SUMMARY
+          echo "| Total | $VULNS |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "$HIGH" -gt 0 ]; then
+            echo "Critical: $HIGH high severity vulnerabilities" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "vulns=$VULNS" >> $GITHUB_OUTPUT
+
+      - name: Phase 5 - Code Quality
+        id: quality
+        run: |
+          echo "## Phase 5: Code Quality" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          TYPECHECK_RESULT="Pass"
+          if ! pnpm typecheck 2>/dev/null; then
+            TYPECHECK_RESULT="Fail"
+          fi
+          LINT_RESULT="Pass"
+          if ! pnpm lint 2>/dev/null; then
+            LINT_RESULT="Fail"
+          fi
+          COVERAGE="Unknown"
+          if pnpm test:coverage 2>/dev/null; then
+            COVERAGE_FILE="packages/nexus-agents/coverage/coverage-summary.json"
+            if [ -f "$COVERAGE_FILE" ]; then
+              COVERAGE=$(jq '.total.lines.pct' "$COVERAGE_FILE")
+            fi
+          fi
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| TypeScript | $TYPECHECK_RESULT |" >> $GITHUB_STEP_SUMMARY
+          echo "| ESLint | $LINT_RESULT |" >> $GITHUB_STEP_SUMMARY
+          echo "| Coverage | ${COVERAGE}% |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+  create-issue:
+    name: Create Review Issue
+    needs: [check-trigger, run-review]
+    if: |
+      needs.check-trigger.outputs.should_run == 'true' &&
+      (github.event.inputs.create_issue == 'true' || github.event_name != 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create System Review Issue
+        run: |
+          TRIGGER="${{ needs.check-trigger.outputs.trigger_type }}"
+          DATE=$(date '+%Y-%m-%d')
+          TZ_DATE=$(TZ='America/New_York' date '+%Y-%m-%d %H:%M ET')
+          IMPL="${{ needs.run-review.outputs.registry_implemented }}"
+          PLAN="${{ needs.run-review.outputs.registry_planned }}"
+          CLAUDE="${{ needs.run-review.outputs.docs_claude_age }}"
+          ARCH="${{ needs.run-review.outputs.docs_arch_age }}"
+          OPEN="${{ needs.run-review.outputs.issues_open }}"
+          STALE="${{ needs.run-review.outputs.issues_stale }}"
+          VULNS="${{ needs.run-review.outputs.audit_vulns }}"
+
+          BODY=$(cat << 'ENDOFBODY'
+          ## System Review
+
+          **Trigger:** TRIGGER_PLACEHOLDER
+          **Generated:** DATE_PLACEHOLDER
+
+          ### Phase 1: Registry
+          - Implemented: IMPL_PLACEHOLDER
+          - Planned: PLAN_PLACEHOLDER
+
+          ### Phase 2: Docs
+          - CLAUDE.md: CLAUDE_PLACEHOLDER days
+          - ARCHITECTURE.md: ARCH_PLACEHOLDER days
+
+          ### Phase 3: Issues
+          - Open: OPEN_PLACEHOLDER
+          - Stale: STALE_PLACEHOLDER
+
+          ### Phase 4: Security
+          - Vulnerabilities: VULNS_PLACEHOLDER
+
+          ### Action Items
+          - [ ] Review stale issues
+          - [ ] Update outdated docs
+          - [ ] Address vulnerabilities
+
+          _Generated by System Review workflow_
+          ENDOFBODY
+          )
+
+          BODY="${BODY//TRIGGER_PLACEHOLDER/$TRIGGER}"
+          BODY="${BODY//DATE_PLACEHOLDER/$TZ_DATE}"
+          BODY="${BODY//IMPL_PLACEHOLDER/$IMPL}"
+          BODY="${BODY//PLAN_PLACEHOLDER/$PLAN}"
+          BODY="${BODY//CLAUDE_PLACEHOLDER/$CLAUDE}"
+          BODY="${BODY//ARCH_PLACEHOLDER/$ARCH}"
+          BODY="${BODY//OPEN_PLACEHOLDER/$OPEN}"
+          BODY="${BODY//STALE_PLACEHOLDER/$STALE}"
+          BODY="${BODY//VULNS_PLACEHOLDER/$VULNS}"
+
+          gh issue create \
+            --title "System Review: $DATE" \
+            --body "$BODY" \
+            --label "system-review"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

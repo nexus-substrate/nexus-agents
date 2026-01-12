@@ -17,6 +17,7 @@ import {
   reviewCommand,
   routingAuditCommand,
   orchestrateCommand,
+  systemReviewCommand,
   type ExpertListFormat,
 } from './cli/index.js';
 import { EXIT_CODES, HELP_TEXT, type ParsedCliArgs } from './cli-types.js';
@@ -221,6 +222,19 @@ export async function handleOrchestrateCommand(args: ParsedCliArgs): Promise<voi
 }
 
 /**
+ * Handles the system-review command for automated system review.
+ * (Source: Issue #211, Process Automation Epic #209)
+ */
+export function handleSystemReviewCommand(args: ParsedCliArgs): void {
+  const exitCode = systemReviewCommand({
+    createIssue: args.options.createIssue,
+    fix: args.options.fix,
+    verbose: args.options.verbose,
+  });
+  process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
+}
+
+/**
  * Handles synchronous commands that don't require await.
  * Returns true if the command was handled.
  */
@@ -239,6 +253,9 @@ function handleSyncCommand(args: ParsedCliArgs): boolean {
       return true;
     case 'routing-audit':
       handleRoutingAuditCommand(args);
+      return true;
+    case 'system-review':
+      handleSystemReviewCommand(args);
       return true;
     default:
       return false;
