@@ -275,6 +275,50 @@ export interface TrinityPhaseCompletedEvent extends DomainEvent {
 }
 
 /**
+ * Byzantine fault tolerance events (Issue #218).
+ * CP-WBFT weighted voting with Byzantine detection.
+ */
+export interface ByzantineWeightUpdatedEvent extends DomainEvent {
+  readonly topic: 'byzantine.weight_updated';
+  readonly payload: {
+    readonly agentId: string;
+    readonly previousWeight: number;
+    readonly newWeight: number;
+    readonly reason: 'performance_update' | 'flag_penalty' | 'recalibration';
+  };
+}
+
+export interface ByzantinePatternDetectedEvent extends DomainEvent {
+  readonly topic: 'byzantine.pattern_detected';
+  readonly payload: {
+    readonly patternType: 'contrarian' | 'collusion';
+    readonly agentIds: readonly string[];
+    readonly confidence: number;
+    readonly details: string;
+  };
+}
+
+export interface ByzantineAgentFlaggedEvent extends DomainEvent {
+  readonly topic: 'byzantine.agent_flagged';
+  readonly payload: {
+    readonly agentId: string;
+    readonly reason: string;
+    readonly previousWeight: number;
+    readonly canVote: boolean;
+  };
+}
+
+export interface ByzantineCollusionSuspectedEvent extends DomainEvent {
+  readonly topic: 'byzantine.collusion_suspected';
+  readonly payload: {
+    readonly groupAgentIds: readonly string[];
+    readonly groupSize: number;
+    readonly votingBlock: number;
+    readonly threshold: number;
+  };
+}
+
+/**
  * Union type for all typed events.
  */
 export type TypedEvent =
@@ -300,7 +344,11 @@ export type TypedEvent =
   | ReflexionCritiqueCompletedEvent
   | ReflexionSynthesisEvent
   | TrinityPhaseStartedEvent
-  | TrinityPhaseCompletedEvent;
+  | TrinityPhaseCompletedEvent
+  | ByzantineWeightUpdatedEvent
+  | ByzantinePatternDetectedEvent
+  | ByzantineAgentFlaggedEvent
+  | ByzantineCollusionSuspectedEvent;
 
 /**
  * Event listener function type.
@@ -475,6 +523,13 @@ export const EventTopics = {
   TRINITY_PHASE_STARTED: 'protocol.trinity.phase_started',
   TRINITY_PHASE_COMPLETED: 'protocol.trinity.phase_completed',
   TRINITY_ALL: 'protocol.trinity.*',
+
+  // Byzantine detection events (Issue #218)
+  BYZANTINE_WEIGHT_UPDATED: 'byzantine.weight_updated',
+  BYZANTINE_PATTERN_DETECTED: 'byzantine.pattern_detected',
+  BYZANTINE_AGENT_FLAGGED: 'byzantine.agent_flagged',
+  BYZANTINE_COLLUSION_SUSPECTED: 'byzantine.collusion_suspected',
+  BYZANTINE_ALL: 'byzantine.*',
 
   // Wildcard
   ALL: '*',

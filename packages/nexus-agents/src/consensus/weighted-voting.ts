@@ -18,6 +18,13 @@ import type {
   Vote,
 } from './types.js';
 import { DEFAULT_WEIGHTED_VOTING_CONFIG } from './types.js';
+import type { IEventBus } from '../agents/collaboration/event-bus-types.js';
+import {
+  emitWeightUpdated,
+  emitPatternDetected,
+  emitAgentFlagged,
+  emitCollusionSuspected,
+} from '../agents/collaboration/byzantine-events.js';
 
 const logger = createLogger({ component: 'weighted-voting' });
 
@@ -39,6 +46,16 @@ interface MutableAgentRecord {
   createdAt: Date;
 }
 
+/** Options for WeightedVoting constructor. */
+export interface WeightedVotingOptions {
+  /** Configuration for voting thresholds and weights. */
+  config?: Partial<WeightedVotingConfig>;
+  /** Optional event bus for Byzantine detection events (Issue #218). */
+  eventBus?: IEventBus;
+  /** Whether to emit Byzantine detection events (default: true if eventBus provided). */
+  emitEvents?: boolean;
+}
+
 /**
  * Weighted Byzantine voting implementation.
  * Implements CP-WBFT pattern for fault-tolerant multi-agent consensus.
@@ -46,10 +63,17 @@ interface MutableAgentRecord {
 export class WeightedVoting implements IWeightedVoting {
   private readonly records: Map<string, MutableAgentRecord> = new Map();
   private readonly config: WeightedVotingConfig;
+  private readonly eventBus: IEventBus | undefined;
+  private readonly emitEvents: boolean;
 
-  constructor(config: Partial<WeightedVotingConfig> = {}) {
-    this.config = { ...DEFAULT_WEIGHTED_VOTING_CONFIG, ...config };
-    logger.info('WeightedVoting initialized', { config: this.config });
+  constructor(options: WeightedVotingOptions = {}) {
+    this.config = { ...DEFAULT_WEIGHTED_VOTING_CONFIG, ...options.config };
+    this.eventBus = options.eventBus ?? undefined;
+    this.emitEvents = options.emitEvents ?? options.eventBus !== undefined;
+    logger.info('WeightedVoting initialized', {
+      config: this.config,
+      eventsEnabled: this.emitEvents,
+    });
   }
 
   calculateWeight(agentId: string): number {
@@ -66,6 +90,7 @@ export class WeightedVoting implements IWeightedVoting {
       if (record === undefined) return; // Should never happen
     }
 
+    const previousWeight = record.weight;
     record.totalTasks += 1;
     record.lastActive = new Date();
 
@@ -89,6 +114,16 @@ export class WeightedVoting implements IWeightedVoting {
     }
 
     this.updateDerivedMetrics(record);
+
+    // Emit weight update event (Issue #218)
+    if (this.emitEvents && this.eventBus !== undefined && previousWeight !== record.weight) {
+      emitWeightUpdated(this.eventBus, {
+        agentId,
+        previousWeight,
+        newWeight: record.weight,
+        reason: 'performance_update',
+      });
+    }
 
     logger.debug('Performance updated', {
       agentId,
@@ -214,12 +249,33 @@ export class WeightedVoting implements IWeightedVoting {
       return;
     }
 
+    const previousWeight = record.weight;
     record.byzantineFlags += 1;
     record.byzantineReasons.push(reason);
 
     // Severe weight penalty for Byzantine behavior
     record.weight = Math.max(0, record.weight * 0.5);
     this.updateDerivedMetrics(record);
+
+    const canStillVote = this.canVote(agentId);
+
+    // Emit agent flagged event (Issue #218)
+    if (this.emitEvents && this.eventBus !== undefined) {
+      emitAgentFlagged(this.eventBus, {
+        agentId,
+        reason,
+        previousWeight,
+        canVote: canStillVote,
+      });
+
+      // Also emit weight update
+      emitWeightUpdated(this.eventBus, {
+        agentId,
+        previousWeight,
+        newWeight: record.weight,
+        reason: 'flag_penalty',
+      });
+    }
 
     logger.warn('Agent flagged for Byzantine behavior', {
       agentId,
@@ -230,8 +286,20 @@ export class WeightedVoting implements IWeightedVoting {
 
     // Check if agent should be excluded
     if (record.byzantineFlags >= this.config.byzantineFlagThreshold) {
+      const weightBeforeExclusion = record.weight;
       record.trustScore = 0;
       record.weight = 0;
+
+      // Emit final weight update for exclusion (Issue #218)
+      if (this.emitEvents && this.eventBus !== undefined && weightBeforeExclusion > 0) {
+        emitWeightUpdated(this.eventBus, {
+          agentId,
+          previousWeight: weightBeforeExclusion,
+          newWeight: 0,
+          reason: 'flag_penalty',
+        });
+      }
+
       logger.warn('Agent excluded from voting due to Byzantine behavior', {
         agentId,
         flags: record.byzantineFlags,
@@ -265,6 +333,7 @@ export class WeightedVoting implements IWeightedVoting {
     for (const record of this.records.values()) {
       if (record.totalTasks < 3) continue; // Skip agents with insufficient history
 
+      const previousWeight = record.weight;
       const relativePerformance = record.successRate / Math.max(0.01, globalSuccessRate);
       const calibratedWeight = Math.min(
         1,
@@ -274,6 +343,16 @@ export class WeightedVoting implements IWeightedVoting {
       // Smooth transition (50% old weight, 50% calibrated)
       record.weight = (record.weight + calibratedWeight) / 2;
       this.updateDerivedMetrics(record);
+
+      // Emit weight update event for recalibration (Issue #218)
+      if (this.emitEvents && this.eventBus !== undefined && previousWeight !== record.weight) {
+        emitWeightUpdated(this.eventBus, {
+          agentId: record.agentId,
+          previousWeight,
+          newWeight: record.weight,
+          reason: 'recalibration',
+        });
+      }
     }
 
     logger.info('Weights recalibrated', {
@@ -341,10 +420,27 @@ export class WeightedVoting implements IWeightedVoting {
     voteArray: Array<[string, Vote]>,
     majorityApprove: boolean
   ): boolean {
+    const contrarianAgents: string[] = [];
+
     for (const [agentId, vote] of voteArray) {
       if (!this.isLowConfidenceContrarian(vote, majorityApprove)) continue;
       const record = this.records.get(agentId);
-      if (record !== undefined && record.byzantineFlags >= 2) return true;
+      if (record !== undefined && record.byzantineFlags >= 2) {
+        contrarianAgents.push(agentId);
+      }
+    }
+
+    if (contrarianAgents.length > 0) {
+      // Emit pattern detected event (Issue #218)
+      if (this.emitEvents && this.eventBus !== undefined) {
+        emitPatternDetected(this.eventBus, {
+          patternType: 'contrarian',
+          agentIds: contrarianAgents,
+          confidence: 0.8, // High confidence for flagged agents voting contrary
+          details: `${String(contrarianAgents.length)} agent(s) with Byzantine flags voting contrary to majority with low confidence`,
+        });
+      }
+      return true;
     }
     return false;
   }
@@ -355,20 +451,41 @@ export class WeightedVoting implements IWeightedVoting {
   }
 
   private detectCollusionPattern(voteArray: Array<[string, Vote]>): boolean {
-    const voteSignatures = new Map<string, number>();
-    for (const [, vote] of voteArray) {
+    const voteSignatures = new Map<string, string[]>();
+    for (const [agentId, vote] of voteArray) {
       const sig = `${vote.decision}:${vote.confidence.toFixed(2)}`;
-      voteSignatures.set(sig, (voteSignatures.get(sig) ?? 0) + 1);
+      const agents = voteSignatures.get(sig) ?? [];
+      agents.push(agentId);
+      voteSignatures.set(sig, agents);
     }
+
     const threshold = voteArray.length * 0.6;
-    for (const count of voteSignatures.values()) {
-      if (count >= 3 && count > threshold) return true;
+    for (const [signature, agents] of voteSignatures.entries()) {
+      if (agents.length >= 3 && agents.length > threshold) {
+        // Emit collusion events (Issue #218)
+        if (this.emitEvents && this.eventBus !== undefined) {
+          emitPatternDetected(this.eventBus, {
+            patternType: 'collusion',
+            agentIds: agents,
+            confidence: Math.min(0.95, agents.length / voteArray.length),
+            details: `${String(agents.length)} agents voting identically: ${signature}`,
+          });
+
+          emitCollusionSuspected(this.eventBus, {
+            groupAgentIds: agents,
+            groupSize: agents.length,
+            votingBlock: agents.length / voteArray.length,
+            threshold: 0.6,
+          });
+        }
+        return true;
+      }
     }
     return false;
   }
 }
 
 /** Create a weighted voting instance. */
-export function createWeightedVoting(config?: Partial<WeightedVotingConfig>): IWeightedVoting {
-  return new WeightedVoting(config);
+export function createWeightedVoting(options?: WeightedVotingOptions): IWeightedVoting {
+  return new WeightedVoting(options);
 }

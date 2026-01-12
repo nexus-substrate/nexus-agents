@@ -25,7 +25,7 @@ describe('WeightedVoting', () => {
         initialWeight: 0.8,
         quorumThreshold: 0.7,
       };
-      const instance = createWeightedVoting(config);
+      const instance = createWeightedVoting({ config });
       expect(instance).toBeInstanceOf(WeightedVoting);
     });
   });
@@ -52,7 +52,7 @@ describe('WeightedVoting', () => {
     });
 
     it('should respect custom initial weight', () => {
-      const customVoting = new WeightedVoting({ initialWeight: 0.8 });
+      const customVoting = new WeightedVoting({ config: { initialWeight: 0.8 } });
       customVoting.registerAgent('agent-1');
 
       const record = customVoting.getAgentRecord('agent-1');
@@ -150,14 +150,14 @@ describe('WeightedVoting', () => {
     });
 
     it('should return false for agent below weight threshold', () => {
-      const customVoting = new WeightedVoting({ minWeight: 0.6, initialWeight: 0.5 });
+      const customVoting = new WeightedVoting({ config: { minWeight: 0.6, initialWeight: 0.5 } });
       customVoting.registerAgent('agent-1');
 
       expect(customVoting.canVote('agent-1')).toBe(false);
     });
 
     it('should return false for agent with low trust score', () => {
-      const customVoting = new WeightedVoting({ minTrustScore: 0.8 });
+      const customVoting = new WeightedVoting({ config: { minTrustScore: 0.8 } });
       customVoting.registerAgent('agent-1');
 
       expect(customVoting.canVote('agent-1')).toBe(false);
@@ -439,6 +439,215 @@ describe('WeightedVoting', () => {
       }
 
       expect(voting.calculateWeight('agent-1')).toBeGreaterThanOrEqual(0);
+    });
+  });
+
+  describe('Byzantine Event Emissions (Issue #218)', () => {
+    interface MockEventBus {
+      events: Array<{ topic: string; payload: unknown }>;
+      emit: (event: { topic: string; payload: unknown }) => void;
+      emitAsync: (event: { topic: string; payload: unknown }) => Promise<void>;
+      subscribe: () => { id: string; pattern: string; unsubscribe: () => void };
+      unsubscribe: () => void;
+      getHistory: () => never[];
+      clearHistory: () => void;
+      getStats: () => {
+        eventsEmitted: number;
+        subscriptionsCreated: number;
+        activeSubscriptions: number;
+        historySize: number;
+        errorCount: number;
+      };
+      hasSubscribers: () => boolean;
+    }
+
+    function createMockEventBus(): MockEventBus {
+      const events: Array<{ topic: string; payload: unknown }> = [];
+      return {
+        events,
+        emit: (event: { topic: string; payload: unknown }) => {
+          events.push(event);
+        },
+        emitAsync: (event: { topic: string; payload: unknown }) => {
+          events.push(event);
+          return Promise.resolve();
+        },
+        subscribe: () => ({ id: 'sub-1', pattern: '*', unsubscribe: () => {} }),
+        unsubscribe: () => {},
+        getHistory: () => [],
+        clearHistory: () => {},
+        getStats: () => ({
+          eventsEmitted: events.length,
+          subscriptionsCreated: 0,
+          activeSubscriptions: 0,
+          historySize: 0,
+          errorCount: 0,
+        }),
+        hasSubscribers: () => false,
+      };
+    }
+
+    it('should emit weight_updated event on performance update', () => {
+      const mockBus = createMockEventBus();
+      const votingWithEvents = new WeightedVoting({ eventBus: mockBus });
+      votingWithEvents.registerAgent('agent-1');
+
+      votingWithEvents.updatePerformance('agent-1', 'success');
+
+      const weightEvents = mockBus.events.filter((e) => e.topic === 'byzantine.weight_updated');
+      expect(weightEvents).toHaveLength(1);
+      expect(weightEvents[0]?.payload).toMatchObject({
+        agentId: 'agent-1',
+        reason: 'performance_update',
+      });
+    });
+
+    it('should emit agent_flagged event when flagging Byzantine', () => {
+      const mockBus = createMockEventBus();
+      const votingWithEvents = new WeightedVoting({ eventBus: mockBus });
+      votingWithEvents.registerAgent('agent-1');
+
+      votingWithEvents.flagByzantine('agent-1', 'Suspicious pattern');
+
+      const flaggedEvents = mockBus.events.filter((e) => e.topic === 'byzantine.agent_flagged');
+      expect(flaggedEvents).toHaveLength(1);
+      expect(flaggedEvents[0]?.payload).toMatchObject({
+        agentId: 'agent-1',
+        reason: 'Suspicious pattern',
+      });
+    });
+
+    it('should emit weight_updated with flag_penalty reason when flagging', () => {
+      const mockBus = createMockEventBus();
+      const votingWithEvents = new WeightedVoting({ eventBus: mockBus });
+      votingWithEvents.registerAgent('agent-1');
+
+      votingWithEvents.flagByzantine('agent-1', 'Test reason');
+
+      const weightEvents = mockBus.events.filter(
+        (e) =>
+          e.topic === 'byzantine.weight_updated' &&
+          (e.payload as { reason: string }).reason === 'flag_penalty'
+      );
+      expect(weightEvents.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('should emit weight_updated on recalibration', () => {
+      const mockBus = createMockEventBus();
+      const votingWithEvents = new WeightedVoting({ eventBus: mockBus });
+      votingWithEvents.registerAgent('agent-1');
+
+      // Need 3+ tasks for recalibration
+      votingWithEvents.updatePerformance('agent-1', 'success');
+      votingWithEvents.updatePerformance('agent-1', 'success');
+      votingWithEvents.updatePerformance('agent-1', 'failure');
+
+      mockBus.events.length = 0; // Clear previous events
+
+      votingWithEvents.recalibrateWeights();
+
+      const recalibrationEvents = mockBus.events.filter(
+        (e) =>
+          e.topic === 'byzantine.weight_updated' &&
+          (e.payload as { reason: string }).reason === 'recalibration'
+      );
+      expect(recalibrationEvents.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('should emit pattern_detected for collusion', () => {
+      const mockBus = createMockEventBus();
+      const votingWithEvents = new WeightedVoting({ eventBus: mockBus });
+
+      votingWithEvents.registerAgent('agent-1');
+      votingWithEvents.registerAgent('agent-2');
+      votingWithEvents.registerAgent('agent-3');
+      votingWithEvents.registerAgent('agent-4');
+      votingWithEvents.registerAgent('agent-5');
+
+      // Create collusion pattern: >60% identical votes
+      const votes = new Map<string, Vote>([
+        ['agent-1', { decision: 'approve', confidence: 0.77, reasoning: 'R1' }],
+        ['agent-2', { decision: 'approve', confidence: 0.77, reasoning: 'R2' }],
+        ['agent-3', { decision: 'approve', confidence: 0.77, reasoning: 'R3' }],
+        ['agent-4', { decision: 'approve', confidence: 0.77, reasoning: 'R4' }],
+        ['agent-5', { decision: 'reject', confidence: 0.5, reasoning: 'R5' }],
+      ]);
+
+      votingWithEvents.weightedConsensus(votes);
+
+      const patternEvents = mockBus.events.filter((e) => e.topic === 'byzantine.pattern_detected');
+      expect(patternEvents.length).toBeGreaterThanOrEqual(1);
+      expect(patternEvents[0]?.payload).toMatchObject({
+        patternType: 'collusion',
+      });
+    });
+
+    it('should emit collusion_suspected for collusion pattern', () => {
+      const mockBus = createMockEventBus();
+      const votingWithEvents = new WeightedVoting({ eventBus: mockBus });
+
+      votingWithEvents.registerAgent('agent-1');
+      votingWithEvents.registerAgent('agent-2');
+      votingWithEvents.registerAgent('agent-3');
+      votingWithEvents.registerAgent('agent-4');
+      votingWithEvents.registerAgent('agent-5');
+
+      const votes = new Map<string, Vote>([
+        ['agent-1', { decision: 'approve', confidence: 0.77, reasoning: 'R1' }],
+        ['agent-2', { decision: 'approve', confidence: 0.77, reasoning: 'R2' }],
+        ['agent-3', { decision: 'approve', confidence: 0.77, reasoning: 'R3' }],
+        ['agent-4', { decision: 'approve', confidence: 0.77, reasoning: 'R4' }],
+        ['agent-5', { decision: 'reject', confidence: 0.5, reasoning: 'R5' }],
+      ]);
+
+      votingWithEvents.weightedConsensus(votes);
+
+      const collusionEvents = mockBus.events.filter(
+        (e) => e.topic === 'byzantine.collusion_suspected'
+      );
+      expect(collusionEvents.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('should not emit events when emitEvents is false', () => {
+      const mockBus = createMockEventBus();
+      const votingWithEvents = new WeightedVoting({ eventBus: mockBus, emitEvents: false });
+      votingWithEvents.registerAgent('agent-1');
+
+      votingWithEvents.updatePerformance('agent-1', 'success');
+
+      expect(mockBus.events).toHaveLength(0);
+    });
+
+    it('should emit pattern_detected for contrarian Byzantine behavior', () => {
+      const mockBus = createMockEventBus();
+      const votingWithEvents = new WeightedVoting({ eventBus: mockBus });
+
+      votingWithEvents.registerAgent('agent-1');
+      votingWithEvents.registerAgent('agent-2');
+      votingWithEvents.registerAgent('agent-3');
+      votingWithEvents.registerAgent('agent-4');
+
+      // Flag agent-1 twice
+      votingWithEvents.flagByzantine('agent-1', 'Reason 1');
+      votingWithEvents.flagByzantine('agent-1', 'Reason 2');
+
+      mockBus.events.length = 0; // Clear previous events
+
+      // agent-1 votes against majority with low confidence
+      const votes = new Map<string, Vote>([
+        ['agent-1', { decision: 'reject', confidence: 0.2, reasoning: 'R1' }],
+        ['agent-2', { decision: 'approve', confidence: 0.9, reasoning: 'R2' }],
+        ['agent-3', { decision: 'approve', confidence: 0.9, reasoning: 'R3' }],
+        ['agent-4', { decision: 'approve', confidence: 0.9, reasoning: 'R4' }],
+      ]);
+
+      votingWithEvents.weightedConsensus(votes);
+
+      const patternEvents = mockBus.events.filter((e) => e.topic === 'byzantine.pattern_detected');
+      expect(patternEvents.length).toBeGreaterThanOrEqual(1);
+      expect(patternEvents[0]?.payload).toMatchObject({
+        patternType: 'contrarian',
+      });
     });
   });
 });
