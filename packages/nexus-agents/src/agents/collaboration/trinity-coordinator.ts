@@ -36,6 +36,8 @@ import {
   emitTrinityStarted,
   emitTrinityIteration,
   emitTrinityCompleted,
+  emitPhaseStarted,
+  emitPhaseCompleted,
 } from './trinity-events.js';
 
 // =============================================================================
@@ -122,7 +124,8 @@ export class TrinityCoordinator {
   ): TrinityCoordinatorOptions {
     if (options === undefined) return {};
     if ('config' in options || 'eventBus' in options) return options;
-    return { config: options };
+    // At this point, options is TrinityConfig (has neither config nor eventBus keys)
+    return { config: options as TrinityConfig };
   }
 
   cancel(reason: string): void {
@@ -178,12 +181,12 @@ export class TrinityCoordinator {
         });
       }
 
-      const workResult = await this.runWorker(ctx, thinker, verifier);
+      const workResult = await this.runWorker(ctx, thinker, verifier, i);
       if (!workResult.ok) return workResult;
       worker = workResult.value;
       if (this.cancelFlag) return this.buildCancelledResult(ctx, thinker, worker);
 
-      const verifyResult = await this.runVerifier(ctx, thinker, worker);
+      const verifyResult = await this.runVerifier(ctx, thinker, worker, i);
       if (!verifyResult.ok) return verifyResult;
       verifier = verifyResult.value;
 
@@ -254,9 +257,29 @@ export class TrinityCoordinator {
 
   private async runThinker(ctx: CoordinationContext): Promise<Result<ThinkerOutput, AgentError>> {
     const phaseStart = Date.now();
-    const task = buildRoleTask(ctx.task, 'thinker', '');
 
+    // Emit phase started event (Issue #216)
+    emitPhaseStarted(this.eventBus, {
+      iteration: 0,
+      phase: 'thinker',
+      sessionId: ctx.sessionId,
+    });
+
+    const task = buildRoleTask(ctx.task, 'thinker', '');
     const result = await ctx.agent.execute(task);
+
+    const durationMs = Date.now() - phaseStart;
+    const tokensUsed = result.ok ? result.value.metadata.tokensUsed : 0;
+
+    // Emit phase completed event (Issue #216)
+    emitPhaseCompleted(this.eventBus, {
+      iteration: 0,
+      phase: 'thinker',
+      durationMs,
+      tokensUsed,
+      sessionId: ctx.sessionId,
+    });
+
     if (!result.ok) return err(new AgentError('Thinker phase failed', { cause: result.error }));
 
     const output = String(result.value.output);
@@ -276,9 +299,18 @@ export class TrinityCoordinator {
   private async runWorker(
     ctx: CoordinationContext,
     thinker: ThinkerOutput,
-    feedback: VerifierOutput | undefined
+    feedback: VerifierOutput | undefined,
+    iteration: number
   ): Promise<Result<WorkerOutput, AgentError>> {
     const phaseStart = Date.now();
+
+    // Emit phase started event (Issue #216)
+    emitPhaseStarted(this.eventBus, {
+      iteration,
+      phase: 'worker',
+      sessionId: ctx.sessionId,
+    });
+
     let context = `Thinker's Analysis:\n${thinker.problemAnalysis}\n\nApproach:\n${thinker.approach}`;
 
     if (feedback !== undefined) {
@@ -287,18 +319,23 @@ export class TrinityCoordinator {
 
     const task = buildRoleTask(ctx.task, 'worker', context);
     const result = await ctx.agent.execute(task);
+
+    const durationMs = Date.now() - phaseStart;
+    const tokensUsed = result.ok ? result.value.metadata.tokensUsed : 0;
+
+    // Emit phase completed event (Issue #216)
+    emitPhaseCompleted(this.eventBus, {
+      iteration,
+      phase: 'worker',
+      durationMs,
+      tokensUsed,
+      sessionId: ctx.sessionId,
+    });
+
     if (!result.ok) return err(new AgentError('Worker phase failed', { cause: result.error }));
 
     const output = String(result.value.output);
-    ctx.history.push(
-      this.createPhaseResult(
-        'working',
-        'worker',
-        output,
-        phaseStart,
-        result.value.metadata.tokensUsed
-      )
-    );
+    ctx.history.push(this.createPhaseResult('working', 'worker', output, phaseStart, tokensUsed));
 
     return ok(parseWorkerOutput(output));
   }
@@ -306,24 +343,40 @@ export class TrinityCoordinator {
   private async runVerifier(
     ctx: CoordinationContext,
     thinker: ThinkerOutput,
-    worker: WorkerOutput
+    worker: WorkerOutput,
+    iteration: number
   ): Promise<Result<VerifierOutput, AgentError>> {
     const phaseStart = Date.now();
+
+    // Emit phase started event (Issue #216)
+    emitPhaseStarted(this.eventBus, {
+      iteration,
+      phase: 'verifier',
+      sessionId: ctx.sessionId,
+    });
+
     const context = `Original Plan:\n${thinker.approach}\n\nSuccess Criteria:\n${thinker.successCriteria.join('\n')}\n\nWorker Output:\n${worker.implementation}`;
 
     const task = buildRoleTask(ctx.task, 'verifier', context);
     const result = await ctx.agent.execute(task);
+
+    const durationMs = Date.now() - phaseStart;
+    const tokensUsed = result.ok ? result.value.metadata.tokensUsed : 0;
+
+    // Emit phase completed event (Issue #216)
+    emitPhaseCompleted(this.eventBus, {
+      iteration,
+      phase: 'verifier',
+      durationMs,
+      tokensUsed,
+      sessionId: ctx.sessionId,
+    });
+
     if (!result.ok) return err(new AgentError('Verifier phase failed', { cause: result.error }));
 
     const output = String(result.value.output);
     ctx.history.push(
-      this.createPhaseResult(
-        'verifying',
-        'verifier',
-        output,
-        phaseStart,
-        result.value.metadata.tokensUsed
-      )
+      this.createPhaseResult('verifying', 'verifier', output, phaseStart, tokensUsed)
     );
 
     return ok(parseVerifierOutput(output));

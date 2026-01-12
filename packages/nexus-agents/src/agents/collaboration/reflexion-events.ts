@@ -1,8 +1,8 @@
 /**
  * Reflexion Protocol EventBus Integration Helpers
- * (Source: Issue #221, Sprint #219)
+ * (Source: Issues #221, #216, Sprint #219)
  *
- * Provides helper functions for emitting protocol lifecycle events
+ * Provides helper functions for emitting protocol lifecycle and phase events
  * for the Multi-Agent Reflexion (MAR) protocol.
  */
 
@@ -11,6 +11,9 @@ import type {
   ProtocolStartedEvent,
   ProtocolIterationEvent,
   ProtocolCompletedEvent,
+  ReflexionCritiqueStartedEvent,
+  ReflexionCritiqueCompletedEvent,
+  ReflexionSynthesisEvent,
 } from './event-bus-types.js';
 import { createEvent } from './event-bus.js';
 import type { ReflexionConfig, ReflexionResult } from './reflexion-types.js';
@@ -93,6 +96,84 @@ export function emitReflexionCompleted(
     {
       ...(params.sessionId !== undefined && { sessionId: params.sessionId }),
     }
+  );
+  eventBus.emit(event);
+}
+
+// =============================================================================
+// Phase Events (Issue #216)
+// =============================================================================
+
+/** Parameters for critique started event. */
+export interface ReflexionCritiqueStartedParams {
+  readonly iteration: number;
+  readonly personaId: string;
+  readonly personaRole: string;
+  readonly sessionId: string;
+}
+
+/** Emits protocol.reflexion.critique_started event. */
+export function emitCritiqueStarted(
+  eventBus: IEventBus,
+  params: ReflexionCritiqueStartedParams
+): void {
+  const event = createEvent<ReflexionCritiqueStartedEvent>(
+    'protocol.reflexion.critique_started',
+    {
+      iteration: params.iteration,
+      personaId: params.personaId,
+      personaRole: params.personaRole,
+    },
+    { sessionId: params.sessionId }
+  );
+  eventBus.emit(event);
+}
+
+/** Parameters for critique completed event. */
+export interface ReflexionCritiqueCompletedParams {
+  readonly iteration: number;
+  readonly personaId: string;
+  readonly severity: number;
+  readonly issueCount: number;
+  readonly sessionId: string;
+}
+
+/** Emits protocol.reflexion.critique_completed event. */
+export function emitCritiqueCompleted(
+  eventBus: IEventBus,
+  params: ReflexionCritiqueCompletedParams
+): void {
+  const event = createEvent<ReflexionCritiqueCompletedEvent>(
+    'protocol.reflexion.critique_completed',
+    {
+      iteration: params.iteration,
+      personaId: params.personaId,
+      severity: params.severity,
+      issueCount: params.issueCount,
+    },
+    { sessionId: params.sessionId }
+  );
+  eventBus.emit(event);
+}
+
+/** Parameters for synthesis event. */
+export interface ReflexionSynthesisParams {
+  readonly iteration: number;
+  readonly consensusSeverity: number;
+  readonly actionItemCount: number;
+  readonly sessionId: string;
+}
+
+/** Emits protocol.reflexion.synthesis event. */
+export function emitSynthesis(eventBus: IEventBus, params: ReflexionSynthesisParams): void {
+  const event = createEvent<ReflexionSynthesisEvent>(
+    'protocol.reflexion.synthesis',
+    {
+      iteration: params.iteration,
+      consensusSeverity: params.consensusSeverity,
+      actionItemCount: params.actionItemCount,
+    },
+    { sessionId: params.sessionId }
   );
   eventBus.emit(event);
 }

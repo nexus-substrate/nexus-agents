@@ -192,6 +192,89 @@ export interface ProtocolCompletedEvent extends DomainEvent {
 }
 
 /**
+ * Aegean protocol phase events (Issue #216).
+ */
+export interface AegeanRoundStartedEvent extends DomainEvent {
+  readonly topic: 'protocol.aegean.round_started';
+  readonly payload: {
+    readonly round: number;
+    readonly maxRounds: number;
+    readonly leaderId: string;
+  };
+}
+
+export interface AegeanVoteCollectedEvent extends DomainEvent {
+  readonly topic: 'protocol.aegean.vote_collected';
+  readonly payload: {
+    readonly round: number;
+    readonly voterId: string;
+    readonly voteCount: number;
+    readonly requiredQuorum: number;
+  };
+}
+
+export interface AegeanQuorumDetectedEvent extends DomainEvent {
+  readonly topic: 'protocol.aegean.quorum_detected';
+  readonly payload: {
+    readonly round: number;
+    readonly quorumSize: number;
+    readonly earlyTermination: boolean;
+  };
+}
+
+/**
+ * Reflexion protocol phase events (Issue #216).
+ */
+export interface ReflexionCritiqueStartedEvent extends DomainEvent {
+  readonly topic: 'protocol.reflexion.critique_started';
+  readonly payload: {
+    readonly iteration: number;
+    readonly personaId: string;
+    readonly personaRole: string;
+  };
+}
+
+export interface ReflexionCritiqueCompletedEvent extends DomainEvent {
+  readonly topic: 'protocol.reflexion.critique_completed';
+  readonly payload: {
+    readonly iteration: number;
+    readonly personaId: string;
+    readonly severity: number;
+    readonly issueCount: number;
+  };
+}
+
+export interface ReflexionSynthesisEvent extends DomainEvent {
+  readonly topic: 'protocol.reflexion.synthesis';
+  readonly payload: {
+    readonly iteration: number;
+    readonly consensusSeverity: number;
+    readonly actionItemCount: number;
+  };
+}
+
+/**
+ * Trinity protocol phase events (Issue #216).
+ */
+export interface TrinityPhaseStartedEvent extends DomainEvent {
+  readonly topic: 'protocol.trinity.phase_started';
+  readonly payload: {
+    readonly iteration: number;
+    readonly phase: 'thinker' | 'worker' | 'verifier';
+  };
+}
+
+export interface TrinityPhaseCompletedEvent extends DomainEvent {
+  readonly topic: 'protocol.trinity.phase_completed';
+  readonly payload: {
+    readonly iteration: number;
+    readonly phase: 'thinker' | 'worker' | 'verifier';
+    readonly durationMs: number;
+    readonly tokensUsed: number;
+  };
+}
+
+/**
  * Union type for all typed events.
  */
 export type TypedEvent =
@@ -209,7 +292,15 @@ export type TypedEvent =
   | ConsensusReachedEvent
   | ProtocolStartedEvent
   | ProtocolIterationEvent
-  | ProtocolCompletedEvent;
+  | ProtocolCompletedEvent
+  | AegeanRoundStartedEvent
+  | AegeanVoteCollectedEvent
+  | AegeanQuorumDetectedEvent
+  | ReflexionCritiqueStartedEvent
+  | ReflexionCritiqueCompletedEvent
+  | ReflexionSynthesisEvent
+  | TrinityPhaseStartedEvent
+  | TrinityPhaseCompletedEvent;
 
 /**
  * Event listener function type.
@@ -367,6 +458,23 @@ export const EventTopics = {
   PROTOCOL_ITERATION: 'protocol.iteration',
   PROTOCOL_COMPLETED: 'protocol.completed',
   PROTOCOL_ALL: 'protocol.*',
+
+  // Aegean phase events (Issue #216)
+  AEGEAN_ROUND_STARTED: 'protocol.aegean.round_started',
+  AEGEAN_VOTE_COLLECTED: 'protocol.aegean.vote_collected',
+  AEGEAN_QUORUM_DETECTED: 'protocol.aegean.quorum_detected',
+  AEGEAN_ALL: 'protocol.aegean.*',
+
+  // Reflexion phase events (Issue #216)
+  REFLEXION_CRITIQUE_STARTED: 'protocol.reflexion.critique_started',
+  REFLEXION_CRITIQUE_COMPLETED: 'protocol.reflexion.critique_completed',
+  REFLEXION_SYNTHESIS: 'protocol.reflexion.synthesis',
+  REFLEXION_ALL: 'protocol.reflexion.*',
+
+  // Trinity phase events (Issue #216)
+  TRINITY_PHASE_STARTED: 'protocol.trinity.phase_started',
+  TRINITY_PHASE_COMPLETED: 'protocol.trinity.phase_completed',
+  TRINITY_ALL: 'protocol.trinity.*',
 
   // Wildcard
   ALL: '*',

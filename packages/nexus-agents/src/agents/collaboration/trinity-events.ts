@@ -1,8 +1,8 @@
 /**
  * Trinity Protocol EventBus Integration Helpers
- * (Source: Issue #222, Sprint #219)
+ * (Source: Issues #222, #216, Sprint #219)
  *
- * Provides helper functions for emitting protocol lifecycle events
+ * Provides helper functions for emitting protocol lifecycle and phase events
  * for the TRINITY (Thinker/Worker/Verifier) protocol.
  */
 
@@ -11,6 +11,8 @@ import type {
   ProtocolStartedEvent,
   ProtocolIterationEvent,
   ProtocolCompletedEvent,
+  TrinityPhaseStartedEvent,
+  TrinityPhaseCompletedEvent,
 } from './event-bus-types.js';
 import { createEvent } from './event-bus.js';
 import type { TrinityConfig, TrinityResult } from './trinity-types.js';
@@ -85,6 +87,57 @@ export function emitTrinityCompleted(eventBus: IEventBus, params: TrinityComplet
     {
       ...(params.sessionId !== undefined && { sessionId: params.sessionId }),
     }
+  );
+  eventBus.emit(event);
+}
+
+// =============================================================================
+// Phase Events (Issue #216)
+// =============================================================================
+
+/** Trinity phase type. */
+export type TrinityPhase = 'thinker' | 'worker' | 'verifier';
+
+/** Parameters for phase started event. */
+export interface TrinityPhaseStartedParams {
+  readonly iteration: number;
+  readonly phase: TrinityPhase;
+  readonly sessionId: string;
+}
+
+/** Emits protocol.trinity.phase_started event. */
+export function emitPhaseStarted(eventBus: IEventBus, params: TrinityPhaseStartedParams): void {
+  const event = createEvent<TrinityPhaseStartedEvent>(
+    'protocol.trinity.phase_started',
+    {
+      iteration: params.iteration,
+      phase: params.phase,
+    },
+    { sessionId: params.sessionId }
+  );
+  eventBus.emit(event);
+}
+
+/** Parameters for phase completed event. */
+export interface TrinityPhaseCompletedParams {
+  readonly iteration: number;
+  readonly phase: TrinityPhase;
+  readonly durationMs: number;
+  readonly tokensUsed: number;
+  readonly sessionId: string;
+}
+
+/** Emits protocol.trinity.phase_completed event. */
+export function emitPhaseCompleted(eventBus: IEventBus, params: TrinityPhaseCompletedParams): void {
+  const event = createEvent<TrinityPhaseCompletedEvent>(
+    'protocol.trinity.phase_completed',
+    {
+      iteration: params.iteration,
+      phase: params.phase,
+      durationMs: params.durationMs,
+      tokensUsed: params.tokensUsed,
+    },
+    { sessionId: params.sessionId }
   );
   eventBus.emit(event);
 }

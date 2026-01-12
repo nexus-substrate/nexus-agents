@@ -35,13 +35,33 @@ import {
   emitProtocolStarted,
   emitProtocolIteration,
   emitProtocolCompleted,
+  emitAegeanRoundStarted,
+  emitAegeanVoteCollected,
+  emitAegeanQuorumDetected,
 } from './aegean-events.js';
+import {
+  parseVoteStatus,
+  extractReasoning,
+  createTimeoutVote,
+  createLeaderVote,
+  buildAegeanResult,
+} from './aegean-helpers.js';
 
 /** Options for the Aegean protocol. */
 export interface AegeanProtocolOptions extends ProtocolOptions {
   readonly aegeanConfig?: Partial<AegeanConfig>;
   /** Optional event bus for protocol lifecycle events. Uses global bus if not provided. */
   readonly eventBus?: IEventBus;
+}
+
+/** Options for vote collection. */
+interface CollectVotesOptions {
+  readonly experts: readonly string[];
+  readonly agents: Map<string, IAgent>;
+  readonly proposal: Proposal;
+  readonly leaderId: string;
+  readonly roundNumber: number;
+  readonly sessionId: string;
 }
 
 /** Builds and validates Aegean configuration. */
@@ -221,6 +241,14 @@ export class AegeanProtocol implements ICollaborationProtocol {
 
     this.logger.debug('Starting round', { roundNumber, leaderId });
 
+    // Emit round started event (Issue #216)
+    emitAegeanRoundStarted(this.eventBus, {
+      round: roundNumber,
+      maxRounds: this.config.maxRounds,
+      leaderId,
+      sessionId: config.sessionId,
+    });
+
     // Phase 1: Leader proposes
     const proposalResult = await this.generateProposal(leader, leaderId, config.task, roundNumber);
     if (!proposalResult.ok) return err(proposalResult.error);
@@ -228,13 +256,25 @@ export class AegeanProtocol implements ICollaborationProtocol {
     const { proposal, tokensUsed: proposalTokens } = proposalResult.value;
 
     // Phase 2: Collect votes
-    const votesResult = await this.collectVotes(config.experts, agents, proposal, leaderId);
+    const votesResult = await this.collectVotes({
+      experts: config.experts,
+      agents,
+      proposal,
+      leaderId,
+      roundNumber,
+      sessionId: config.sessionId,
+    });
     if (!votesResult.ok) return err(votesResult.error);
 
     const { votes, tokensUsed: voteTokens } = votesResult.value;
 
     // Phase 3: Evaluate quorum
-    const quorumStatus = this.evaluateQuorum(votes, config.experts.length);
+    const quorumStatus = this.evaluateQuorum(
+      votes,
+      config.experts.length,
+      roundNumber,
+      config.sessionId
+    );
 
     const roundData: AegeanRound = {
       roundNumber,
@@ -292,27 +332,26 @@ export class AegeanProtocol implements ICollaborationProtocol {
 
   /** Collects votes from all agents. */
   private async collectVotes(
-    experts: readonly string[],
-    agents: Map<string, IAgent>,
-    proposal: Proposal,
-    leaderId: string
+    opts: CollectVotesOptions
   ): Promise<Result<{ votes: AgentVote[]; tokensUsed: number }, AgentError>> {
+    const { experts, agents, proposal, leaderId, roundNumber, sessionId } = opts;
     const votes: AgentVote[] = [];
     let totalTokens = 0;
+    const quorumSize = calculateQuorumSize(experts.length, this.config.byzantineTolerance);
 
     const voterIds = experts.filter((id) => id !== leaderId);
 
     const votePromises = voterIds.map(async (agentId) => {
       const agent = agents.get(agentId);
       if (agent === undefined) {
-        return { agentId, vote: this.createTimeoutVote(agentId, proposal.proposalId), tokens: 0 };
+        return { agentId, vote: createTimeoutVote(agentId, proposal.proposalId), tokens: 0 };
       }
 
       const voteResult = await this.getAgentVote(agent, agentId, proposal);
       if (!voteResult.ok) {
         return {
           agentId,
-          vote: this.createTimeoutVote(agentId, proposal.proposalId),
+          vote: createTimeoutVote(agentId, proposal.proposalId),
           tokens: 0,
         };
       }
@@ -325,17 +364,19 @@ export class AegeanProtocol implements ICollaborationProtocol {
     for (const { vote, tokens } of results) {
       votes.push(vote);
       totalTokens += tokens;
+
+      // Emit vote collected event (Issue #216)
+      emitAegeanVoteCollected(this.eventBus, {
+        round: roundNumber,
+        voterId: vote.agentId,
+        voteCount: votes.length,
+        requiredQuorum: quorumSize,
+        sessionId,
+      });
     }
 
     // Leader implicitly accepts their own proposal
-    votes.push({
-      agentId: leaderId,
-      proposalId: proposal.proposalId,
-      status: 'accept',
-      reasoning: 'Leader accepts own proposal',
-      confidence: 1.0,
-      timestamp: Date.now(),
-    });
+    votes.push(createLeaderVote(leaderId, proposal.proposalId));
 
     return ok({ votes, tokensUsed: totalTokens });
   }
@@ -354,64 +395,58 @@ export class AegeanProtocol implements ICollaborationProtocol {
 
     const result = await agent.execute(voteTask);
     if (!result.ok) {
-      return ok({
-        vote: this.createTimeoutVote(agentId, proposal.proposalId),
-        tokensUsed: 0,
-      });
+      return ok({ vote: createTimeoutVote(agentId, proposal.proposalId), tokensUsed: 0 });
     }
 
-    const outputStr =
-      typeof result.value.output === 'string'
-        ? result.value.output
-        : JSON.stringify(result.value.output);
-
-    const isAccept = /accept|approve|agree|yes/i.test(outputStr);
-    const isReject = /reject|disapprove|disagree|no/i.test(outputStr);
-
+    const { status, confidence } = parseVoteStatus(result.value.output);
     const vote: AgentVote = {
       agentId,
       proposalId: proposal.proposalId,
-      status: isAccept ? 'accept' : isReject ? 'reject' : 'pending',
-      reasoning: outputStr.slice(0, 500),
-      confidence: isAccept || isReject ? 0.8 : 0.5,
+      status,
+      reasoning: extractReasoning(result.value.output),
+      confidence,
       timestamp: Date.now(),
     };
 
     return ok({ vote, tokensUsed: result.value.metadata.tokensUsed });
   }
 
-  /** Creates a timeout vote. */
-  private createTimeoutVote(agentId: string, proposalId: string): AgentVote {
-    return {
-      agentId,
-      proposalId,
-      status: 'timeout',
-      reasoning: 'Agent did not respond in time',
-      confidence: 0,
-      timestamp: Date.now(),
-    };
-  }
-
   /** Evaluates quorum status from votes. */
-  private evaluateQuorum(votes: readonly AgentVote[], totalAgents: number): QuorumStatus {
+  private evaluateQuorum(
+    votes: readonly AgentVote[],
+    totalAgents: number,
+    roundNumber: number,
+    sessionId: string
+  ): QuorumStatus {
     const required = calculateQuorumSize(totalAgents, this.config.byzantineTolerance);
     const accepts = votes.filter((v) => v.status === 'accept').length;
     const rejects = votes.filter((v) => v.status === 'reject').length;
     const pending = votes.filter((v) => v.status === 'pending' || v.status === 'timeout').length;
 
+    const hasQuorum = accepts >= required;
     const quorum: QuorumStatus = {
       required,
       accepts,
       rejects,
       pending,
-      hasQuorum: accepts >= required,
-      consensusReached: accepts >= required,
+      hasQuorum,
+      consensusReached: hasQuorum,
     };
+
+    // Emit quorum detected event (Issue #216)
+    if (hasQuorum) {
+      emitAegeanQuorumDetected(this.eventBus, {
+        round: roundNumber,
+        quorumSize: accepts,
+        earlyTermination: this.config.earlyTermination,
+        sessionId,
+      });
+    }
 
     return quorum;
   }
 
-  /** Builds the final result. */
+  /** Builds the final result using helper. */
   private buildResult(
     rounds: readonly AegeanRound[],
     consensusValue: unknown,
@@ -419,15 +454,7 @@ export class AegeanProtocol implements ICollaborationProtocol {
     startTime: number,
     tokensUsed: number
   ): AegeanResult {
-    return {
-      consensusValue,
-      consensusReached: terminationReason === 'consensus',
-      totalRounds: rounds.length,
-      totalDurationMs: Date.now() - startTime,
-      tokensUsed,
-      rounds,
-      terminationReason,
-    };
+    return buildAegeanResult({ rounds, consensusValue, terminationReason, startTime, tokensUsed });
   }
 
   /** Finalizes the session with results. */
