@@ -1,0 +1,141 @@
+name: Documentation Gate
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'packages/nexus-agents/src/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check-docs:
+    name: Documentation Coverage
+    runs-on: ubuntu-latest
+
+    # Skip if [skip-docs] is in PR title or body (DevEx amendment)
+    if: |
+      !contains(github.event.pull_request.title, '[skip-docs]') &&
+      !contains(github.event.pull_request.body, '[skip-docs]')
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get changed source files
+        id: changed
+        run: |
+          # Get source files changed in this PR
+          CHANGED_SRC=$(git diff --name-only origin/main...HEAD -- 'packages/nexus-agents/src/**/*.ts' | grep -v '\.test\.ts$' | grep -v '\.spec\.ts$' | grep -v '/types/' || true)
+          echo "Changed source files:"
+          echo "$CHANGED_SRC"
+
+          # Count changed files
+          COUNT=$(echo "$CHANGED_SRC" | grep -c . || echo 0)
+          echo "count=$COUNT" >> $GITHUB_OUTPUT
+          echo "files<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGED_SRC" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Check for documentation updates
+        id: docs
+        if: steps.changed.outputs.count > 0
+        run: |
+          # Check if any documentation was updated
+          DOC_CHANGED=$(git diff --name-only origin/main...HEAD -- \
+            'README.md' \
+            'ARCHITECTURE.md' \
+            'CLAUDE.md' \
+            'CODING_STANDARDS.md' \
+            'CHANGELOG.md' \
+            'docs/**/*.md' \
+            'docs/ENTRYPOINTS.md' || true)
+
+          echo "Documentation files changed:"
+          echo "$DOC_CHANGED"
+
+          if [ -z "$DOC_CHANGED" ]; then
+            echo "has_docs=false" >> $GITHUB_OUTPUT
+          else
+            echo "has_docs=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check for new modules
+        id: modules
+        if: steps.changed.outputs.count > 0
+        run: |
+          # Check for new index.ts files (new modules)
+          NEW_MODULES=$(git diff --name-only --diff-filter=A origin/main...HEAD -- 'packages/nexus-agents/src/**/index.ts' || true)
+
+          UNDOCUMENTED=""
+          for module_file in $NEW_MODULES; do
+            # Extract module name from path
+            MODULE=$(dirname "$module_file" | sed 's|packages/nexus-agents/src/||')
+
+            # Check if module is documented in ARCHITECTURE.md
+            if ! grep -q "$MODULE" ARCHITECTURE.md 2>/dev/null; then
+              UNDOCUMENTED="$UNDOCUMENTED $MODULE"
+            fi
+          done
+
+          if [ -n "$UNDOCUMENTED" ]; then
+            echo "undocumented=$UNDOCUMENTED" >> $GITHUB_OUTPUT
+            echo "has_undocumented=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_undocumented=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Report documentation status
+        if: steps.changed.outputs.count > 0
+        run: |
+          echo "## Documentation Check Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Source Files Changed" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "${{ steps.changed.outputs.files }}" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ steps.docs.outputs.has_docs }}" = "false" ]; then
+            echo "### ⚠️ Warning: No Documentation Updated" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Source files were changed but no documentation was updated." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Consider updating:**" >> $GITHUB_STEP_SUMMARY
+            echo "- \`docs/ENTRYPOINTS.md\` - For new/changed CLI commands, MCP tools, or API endpoints" >> $GITHUB_STEP_SUMMARY
+            echo "- \`ARCHITECTURE.md\` - For architectural changes or new modules" >> $GITHUB_STEP_SUMMARY
+            echo "- \`CLAUDE.md\` - For new protocols or development patterns" >> $GITHUB_STEP_SUMMARY
+            echo "- \`CHANGELOG.md\` - For user-facing changes" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "To skip this check, add \`[skip-docs]\` to your PR title or description." >> $GITHUB_STEP_SUMMARY
+
+            # Warning annotation (not blocking per DevEx amendment)
+            echo "::warning::No documentation updated for source changes. Consider updating relevant docs."
+          else
+            echo "### ✅ Documentation Updated" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Documentation changes detected alongside source changes." >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "${{ steps.modules.outputs.has_undocumented }}" = "true" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### ⚠️ Warning: New Modules Not in ARCHITECTURE.md" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "The following new modules should be documented in ARCHITECTURE.md:" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "${{ steps.modules.outputs.undocumented }}" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+
+            # Warning annotation (not blocking per DevEx amendment)
+            echo "::warning::New modules detected that are not documented in ARCHITECTURE.md: ${{ steps.modules.outputs.undocumented }}"
+          fi
+
+      - name: Skip message
+        if: steps.changed.outputs.count == 0
+        run: |
+          echo "## Documentation Check Skipped" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "No source files changed (or only test/type files changed)." >> $GITHUB_STEP_SUMMARY
