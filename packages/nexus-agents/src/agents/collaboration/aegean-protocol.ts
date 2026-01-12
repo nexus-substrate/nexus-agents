@@ -46,7 +46,9 @@ import {
   createVoteFromOutput,
   selectLeader,
   createRoundData,
+  determineIterationAction,
   type CollectVotesOptions,
+  type IterationAction,
 } from './aegean-helpers.js';
 
 /** Options for the Aegean protocol. */
@@ -149,17 +151,8 @@ export class AegeanProtocol implements ICollaborationProtocol {
     let totalTokensUsed = 0;
 
     for (let round = 0; round < this.config.maxRounds; round++) {
-      if (this.cancelled) {
-        return ok(
-          buildAegeanResult({
-            rounds,
-            consensusValue: null,
-            terminationReason: 'error',
-            startTime,
-            tokensUsed: totalTokensUsed,
-          })
-        );
-      }
+      const action = this.determinePreRoundAction(rounds, startTime, totalTokensUsed);
+      if (action) return ok(action);
 
       const roundResult = await this.executeRound(round, config, agents);
       if (!roundResult.ok) return err(roundResult.error);
@@ -168,55 +161,105 @@ export class AegeanProtocol implements ICollaborationProtocol {
       rounds.push(roundData);
       totalTokensUsed += tokensUsed;
 
-      if (roundData.quorumStatus.consensusReached) {
-        emitProtocolIteration(this.eventBus, {
-          round,
-          maxRounds: this.config.maxRounds,
-          status: 'converged',
-          sessionId: config.sessionId,
-        });
-        return ok(
-          buildAegeanResult({
-            rounds,
-            consensusValue: roundData.proposal?.value ?? null,
-            terminationReason: 'consensus',
-            startTime,
-            tokensUsed: totalTokensUsed,
-          })
-        );
-      }
-
-      if (
-        this.config.earlyTermination &&
-        isConsensusFailed(roundData.quorumStatus, config.experts.length)
-      ) {
-        this.logger.info('Early termination: consensus impossible', { round });
-        emitProtocolIteration(this.eventBus, {
-          round,
-          maxRounds: this.config.maxRounds,
-          status: 'max_reached',
-          sessionId: config.sessionId,
-        });
-        break;
-      }
-
-      emitProtocolIteration(this.eventBus, {
-        round,
-        maxRounds: this.config.maxRounds,
-        status: 'in_progress',
-        sessionId: config.sessionId,
-      });
+      const ctx = this.createIterationContext(rounds, startTime, totalTokensUsed);
+      const iterAction = this.handleIterationAction(round, roundData, config, ctx);
+      if (iterAction) return ok(iterAction);
     }
 
-    return ok(
-      buildAegeanResult({
-        rounds,
-        consensusValue: null,
-        terminationReason: 'max_rounds',
-        startTime,
-        tokensUsed: totalTokensUsed,
-      })
-    );
+    return ok(this.buildLoopResult(rounds, null, 'max_rounds', startTime, totalTokensUsed));
+  }
+
+  /** Determines if the loop should exit before a round. */
+  private determinePreRoundAction(
+    rounds: AegeanRound[],
+    startTime: number,
+    tokensUsed: number
+  ): AegeanResult | null {
+    if (this.cancelled) {
+      return this.buildLoopResult(rounds, null, 'error', startTime, tokensUsed);
+    }
+    return null;
+  }
+
+  /** Context for loop iteration handling. */
+  private createIterationContext(
+    rounds: AegeanRound[],
+    startTime: number,
+    totalTokensUsed: number
+  ): { rounds: AegeanRound[]; startTime: number; tokensUsed: number } {
+    return { rounds, startTime, tokensUsed: totalTokensUsed };
+  }
+
+  /** Handles post-round iteration actions. */
+  private handleIterationAction(
+    round: number,
+    roundData: AegeanRound,
+    config: CollaborationConfig,
+    ctx: { rounds: AegeanRound[]; startTime: number; tokensUsed: number }
+  ): AegeanResult | null {
+    const action = determineIterationAction({
+      cancelled: this.cancelled,
+      consensusReached: roundData.quorumStatus.consensusReached,
+      consensusValue: roundData.proposal?.value ?? null,
+      earlyTerminationEnabled: this.config.earlyTermination,
+      shouldEarlyTerminate: isConsensusFailed(roundData.quorumStatus, config.experts.length),
+    });
+
+    return this.processIterationAction(action, round, config.sessionId, ctx);
+  }
+
+  /** Processes the iteration action and emits events. */
+  private processIterationAction(
+    action: IterationAction,
+    round: number,
+    sessionId: string,
+    ctx: { rounds: AegeanRound[]; startTime: number; tokensUsed: number }
+  ): AegeanResult | null {
+    switch (action.type) {
+      case 'consensus':
+        this.emitIterationEvent(round, 'converged', sessionId);
+        return this.buildLoopResult(
+          ctx.rounds,
+          action.value,
+          'consensus',
+          ctx.startTime,
+          ctx.tokensUsed
+        );
+      case 'early_termination':
+        this.logger.info('Early termination: consensus impossible', { round });
+        this.emitIterationEvent(round, 'max_reached', sessionId);
+        return this.buildLoopResult(ctx.rounds, null, 'max_rounds', ctx.startTime, ctx.tokensUsed);
+      case 'continue':
+        this.emitIterationEvent(round, 'in_progress', sessionId);
+        return null;
+      case 'cancelled':
+        return this.buildLoopResult(ctx.rounds, null, 'error', ctx.startTime, ctx.tokensUsed);
+    }
+  }
+
+  /** Emits a protocol iteration event. */
+  private emitIterationEvent(
+    round: number,
+    status: 'converged' | 'max_reached' | 'in_progress',
+    sessionId: string
+  ): void {
+    emitProtocolIteration(this.eventBus, {
+      round,
+      maxRounds: this.config.maxRounds,
+      status,
+      sessionId,
+    });
+  }
+
+  /** Builds the final loop result. */
+  private buildLoopResult(
+    rounds: AegeanRound[],
+    consensusValue: unknown,
+    terminationReason: AegeanResult['terminationReason'],
+    startTime: number,
+    tokensUsed: number
+  ): AegeanResult {
+    return buildAegeanResult({ rounds, consensusValue, terminationReason, startTime, tokensUsed });
   }
 
   /** Executes a single consensus round. */

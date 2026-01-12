@@ -252,3 +252,32 @@ export function createRoundData(opts: CreateRoundDataOptions): AegeanRound {
     endTime: Date.now(),
   };
 }
+
+// =============================================================================
+// Consensus Loop Helpers
+// =============================================================================
+
+/** Result of a consensus loop iteration. */
+export type IterationAction =
+  | { type: 'continue' }
+  | { type: 'consensus'; value: unknown }
+  | { type: 'early_termination' }
+  | { type: 'cancelled' };
+
+/** Options for determining iteration action. */
+export interface DetermineIterationActionOptions {
+  readonly cancelled: boolean;
+  readonly consensusReached: boolean;
+  readonly consensusValue: unknown;
+  readonly earlyTerminationEnabled: boolean;
+  readonly shouldEarlyTerminate: boolean;
+}
+
+/** Determines the action to take after a consensus round. */
+export function determineIterationAction(opts: DetermineIterationActionOptions): IterationAction {
+  if (opts.cancelled) return { type: 'cancelled' };
+  if (opts.consensusReached) return { type: 'consensus', value: opts.consensusValue };
+  if (opts.earlyTerminationEnabled && opts.shouldEarlyTerminate)
+    return { type: 'early_termination' };
+  return { type: 'continue' };
+}
