@@ -30,6 +30,13 @@ import {
   createDefaultWorkerOutput,
   createDefaultVerifierOutput,
 } from './trinity-helpers.js';
+import type { IEventBus } from './event-bus-types.js';
+import { getGlobalEventBus } from './event-bus.js';
+import {
+  emitTrinityStarted,
+  emitTrinityIteration,
+  emitTrinityCompleted,
+} from './trinity-events.js';
 
 // =============================================================================
 // Types
@@ -47,6 +54,14 @@ interface CoordinationContext {
   readonly agent: IAgent;
   readonly startTime: number;
   readonly history: TrinityPhaseResult[];
+  readonly sessionId: string;
+}
+
+/** Options for TrinityCoordinator constructor. */
+export interface TrinityCoordinatorOptions {
+  readonly config?: TrinityConfig;
+  /** Optional event bus for protocol lifecycle events. Uses global bus if not provided. */
+  readonly eventBus?: IEventBus;
 }
 
 /** Resolved configuration with defaults applied. */
@@ -87,12 +102,27 @@ function resolveConfig(config: TrinityConfig | undefined): ResolvedConfig {
  */
 export class TrinityCoordinator {
   private readonly config: ResolvedConfig;
+  private readonly trinityConfig: TrinityConfig;
   private readonly log: ILogger;
+  private readonly eventBus: IEventBus;
   private cancelFlag = false;
 
-  constructor(config?: TrinityConfig) {
-    this.config = resolveConfig(config);
+  constructor(options?: TrinityConfig | TrinityCoordinatorOptions) {
+    // Handle both old (config only) and new (options object) signatures
+    const opts = this.normalizeOptions(options);
+    this.config = resolveConfig(opts.config);
+    this.trinityConfig = opts.config ?? {};
+    this.eventBus = opts.eventBus ?? getGlobalEventBus();
     this.log = logger;
+  }
+
+  /** Normalizes constructor options for backward compatibility. */
+  private normalizeOptions(
+    options?: TrinityConfig | TrinityCoordinatorOptions
+  ): TrinityCoordinatorOptions {
+    if (options === undefined) return {};
+    if ('config' in options || 'eventBus' in options) return options;
+    return { config: options };
   }
 
   cancel(reason: string): void {
@@ -102,14 +132,20 @@ export class TrinityCoordinator {
 
   async execute(options: TrinityExecuteOptions): Promise<Result<TrinityResult, AgentError>> {
     this.cancelFlag = false;
+    const sessionId = `trinity-${options.task.id}-${String(Date.now())}`;
     const ctx: CoordinationContext = {
       task: options.task,
       agent: options.agent,
       startTime: Date.now(),
       history: [],
+      sessionId,
     };
 
     this.log.info('Starting TRINITY coordination', { taskId: options.task.id });
+    emitTrinityStarted(this.eventBus, {
+      sessionId,
+      trinityConfig: { ...this.trinityConfig, maxIterations: this.config.maxIterations },
+    });
     return this.runCoordination(ctx);
   }
 
@@ -132,7 +168,7 @@ export class TrinityCoordinator {
 
     for (let i = 0; i < this.config.maxIterations; i++) {
       if (this.isTimedOut(ctx)) {
-        return this.okResult({
+        return this.emitAndReturn(ctx, {
           ctx,
           thinker,
           worker,
@@ -153,7 +189,8 @@ export class TrinityCoordinator {
 
       if (verifier.verdict === 'pass') {
         this.log.info('TRINITY verification passed', { iterations: i + 1 });
-        return this.okResult({
+        this.emitIteration(i, 'converged', ctx.sessionId);
+        return this.emitAndReturn(ctx, {
           ctx,
           thinker,
           worker,
@@ -167,10 +204,12 @@ export class TrinityCoordinator {
         iterations: i + 1,
         issues: verifier.issuesFound,
       });
+      this.emitIteration(i, 'in_progress', ctx.sessionId);
     }
 
     this.log.warn('TRINITY max iterations reached', { iterations: this.config.maxIterations });
-    return this.okResult({
+    this.emitIteration(this.config.maxIterations - 1, 'max_reached', ctx.sessionId);
+    return this.emitAndReturn(ctx, {
       ctx,
       thinker,
       worker,
@@ -178,6 +217,34 @@ export class TrinityCoordinator {
       stopReason: 'max_iterations',
       iterations: this.config.maxIterations,
     });
+  }
+
+  /** Emits an iteration event with given status. */
+  private emitIteration(
+    round: number,
+    status: 'converged' | 'max_reached' | 'in_progress',
+    sessionId: string
+  ): void {
+    emitTrinityIteration(this.eventBus, {
+      round,
+      maxRounds: this.config.maxIterations,
+      status,
+      sessionId,
+    });
+  }
+
+  /** Builds result, emits completed event, and returns. */
+  private emitAndReturn(
+    ctx: CoordinationContext,
+    opts: ResultBuildOpts
+  ): Result<TrinityResult, AgentError> {
+    const result = this.buildResult(opts);
+    emitTrinityCompleted(this.eventBus, {
+      result,
+      startTime: ctx.startTime,
+      sessionId: ctx.sessionId,
+    });
+    return ok(result);
   }
 
   /** Build an ok Result with the given parameters. */

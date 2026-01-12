@@ -11,8 +11,14 @@ import { ok, err, AgentError, createLogger } from '../../core/index.js';
 import type { CollaborationConfig, CollaborationResult } from './collaboration-types.js';
 import { CollaborationSession, createCollaborationSession } from './collaboration-session.js';
 import type { ICollaborationProtocol, ProtocolOptions } from './collaboration-protocol.js';
+import type { IEventBus } from './event-bus-types.js';
+import { getGlobalEventBus } from './event-bus.js';
+import {
+  emitReflexionStarted,
+  emitReflexionIteration,
+  emitReflexionCompleted,
+} from './reflexion-events.js';
 import type {
-  Persona,
   PersonaCritique,
   DebateResult,
   ReflexionRound,
@@ -24,6 +30,7 @@ import {
   DEFAULT_CODE_REVIEW_PERSONAS,
   calculateWeightedSeverity,
 } from './reflexion-types.js';
+import { generatePersonaCritique, runDebate, createReflexionRound } from './reflexion-helpers.js';
 
 /**
  * Options for the reflexion protocol.
@@ -31,6 +38,8 @@ import {
 export interface ReflexionProtocolOptions extends ProtocolOptions {
   /** Reflexion-specific configuration */
   readonly reflexionConfig?: Partial<ReflexionConfig>;
+  /** Optional event bus for protocol lifecycle events. Uses global bus if not provided. */
+  readonly eventBus?: IEventBus;
 }
 
 /** Default reflexion configuration values. */
@@ -69,6 +78,7 @@ function buildReflexionConfig(options: ReflexionProtocolOptions): ReflexionConfi
 export class ReflexionProtocol implements ICollaborationProtocol {
   readonly pattern = 'reflexion' as const;
   protected readonly logger: ILogger;
+  protected readonly eventBus: IEventBus;
   protected session: CollaborationSession | null = null;
   protected cancelled = false;
   protected readonly options: ReflexionProtocolOptions;
@@ -77,6 +87,7 @@ export class ReflexionProtocol implements ICollaborationProtocol {
   constructor(options: ReflexionProtocolOptions = {}) {
     this.options = options;
     this.logger = options.logger ?? createLogger({ component: 'ReflexionProtocol' });
+    this.eventBus = options.eventBus ?? getGlobalEventBus();
     this.config = buildReflexionConfig(options);
   }
 
@@ -124,13 +135,18 @@ export class ReflexionProtocol implements ICollaborationProtocol {
     return ok({ producerId, producer });
   }
 
-  /** Logs protocol start. */
+  /** Logs protocol start and emits started event. */
   private logProtocolStart(sessionId: string, producerId: string): void {
     this.logger.info('Starting reflexion protocol', {
       sessionId,
       producerId,
       personas: this.config.personas.map((p) => p.role),
       maxIterations: this.config.maxIterations,
+    });
+    emitReflexionStarted(this.eventBus, {
+      sessionId,
+      personaCount: this.config.personas.length,
+      reflexionConfig: this.config,
     });
   }
 
@@ -151,11 +167,23 @@ export class ReflexionProtocol implements ICollaborationProtocol {
       return err(initialResult.error);
     }
 
-    const reflexionResult = await this.runReflexionLoop(producer, task, initialResult.value.output);
+    const sessionId = this.session.getStatus()?.config.sessionId;
+    const reflexionResult = await this.runReflexionLoop(
+      producer,
+      task,
+      initialResult.value.output,
+      sessionId
+    );
     if (!reflexionResult.ok) {
       this.session.cancel(reflexionResult.error.message);
       return err(reflexionResult.error);
     }
+
+    emitReflexionCompleted(this.eventBus, {
+      result: reflexionResult.value,
+      startTime,
+      ...(sessionId !== undefined && { sessionId }),
+    });
 
     this.submitFinalResult(producerId, task.id, reflexionResult.value, startTime);
     return this.session.finalize();
@@ -206,7 +234,8 @@ export class ReflexionProtocol implements ICollaborationProtocol {
   private async runReflexionLoop(
     producer: IAgent,
     originalTask: Task,
-    initialOutput: unknown
+    initialOutput: unknown,
+    sessionId: string | undefined
   ): Promise<Result<ReflexionResult, AgentError>> {
     const startTime = Date.now();
     const rounds: ReflexionRound[] = [];
@@ -234,10 +263,16 @@ export class ReflexionProtocol implements ICollaborationProtocol {
       if (isConverged) {
         converged = true;
         terminationReason = 'converged';
+        this.emitIteration(iteration, 'converged', sessionId);
         break;
       }
 
+      this.emitIteration(iteration, 'in_progress', sessionId);
       currentOutput = output;
+    }
+
+    if (terminationReason === 'max_iterations') {
+      this.emitIteration(rounds.length - 1, 'max_reached', sessionId);
     }
 
     return ok({
@@ -248,6 +283,22 @@ export class ReflexionProtocol implements ICollaborationProtocol {
       terminationReason,
       totalDurationMs: Date.now() - startTime,
     });
+  }
+
+  /** Emits an iteration event with given status. */
+  private emitIteration(
+    round: number,
+    status: 'converged' | 'max_reached' | 'in_progress',
+    sessionId: string | undefined
+  ): void {
+    if (sessionId !== undefined) {
+      emitReflexionIteration(this.eventBus, {
+        round,
+        maxRounds: this.config.maxIterations,
+        status,
+        sessionId,
+      });
+    }
   }
 
   /** Executes a single reflexion round. */
@@ -261,11 +312,22 @@ export class ReflexionProtocol implements ICollaborationProtocol {
     this.logger.debug('Starting reflexion iteration', { iteration });
 
     const critiques = this.collectCritiques(currentOutput, originalTask);
-    const debate = this.runDebate(critiques);
+    const debate = runDebate(critiques);
     const weightedSeverity = calculateWeightedSeverity(critiques, this.config.personas);
 
     if (weightedSeverity < this.config.severityThreshold) {
-      return this.handleConvergence(iteration, currentOutput, critiques, debate, roundStart);
+      this.logger.info('Reflexion converged', {
+        iteration,
+        threshold: this.config.severityThreshold,
+      });
+      const round = createReflexionRound(
+        iteration,
+        { original: currentOutput, improved: currentOutput },
+        critiques,
+        debate,
+        roundStart
+      );
+      return ok({ round, isConverged: true, output: currentOutput });
     }
 
     const improvedResult = await this.generateImprovedOutput(
@@ -282,147 +344,19 @@ export class ReflexionProtocol implements ICollaborationProtocol {
       actionItems: debate.actionItems.length,
     });
 
-    return ok({
-      round: this.createRound(
-        iteration,
-        { original: currentOutput, improved: improvedResult.value.output },
-        critiques,
-        debate,
-        roundStart
-      ),
-      isConverged: false,
-      output: improvedResult.value.output,
-    });
-  }
-
-  /** Handles convergence case in reflexion round. */
-  private handleConvergence(
-    iteration: number,
-    output: unknown,
-    critiques: readonly PersonaCritique[],
-    debate: DebateResult,
-    roundStart: number
-  ): Result<{ round: ReflexionRound; isConverged: boolean; output: unknown }, AgentError> {
-    this.logger.info('Reflexion converged', {
+    const round = createReflexionRound(
       iteration,
-      threshold: this.config.severityThreshold,
-    });
-    return ok({
-      round: this.createRound(
-        iteration,
-        { original: output, improved: output },
-        critiques,
-        debate,
-        roundStart
-      ),
-      isConverged: true,
-      output,
-    });
-  }
-
-  /** Creates a reflexion round object. */
-  private createRound(
-    iteration: number,
-    outputs: { original: unknown; improved: unknown },
-    critiques: readonly PersonaCritique[],
-    debate: DebateResult,
-    roundStart: number
-  ): ReflexionRound {
-    return {
-      iteration,
-      originalOutput: outputs.original,
+      { original: currentOutput, improved: improvedResult.value.output },
       critiques,
       debate,
-      improvedOutput: outputs.improved,
-      durationMs: Date.now() - roundStart,
-    };
+      roundStart
+    );
+    return ok({ round, isConverged: false, output: improvedResult.value.output });
   }
 
   /** Collects critiques from all persona-based critics. */
   private collectCritiques(output: unknown, task: Task): readonly PersonaCritique[] {
-    return this.config.personas.map((persona) =>
-      this.generatePersonaCritique(persona, output, task)
-    );
-  }
-
-  /** Generates a critique from a specific persona. */
-  private generatePersonaCritique(persona: Persona, output: unknown, _task: Task): PersonaCritique {
-    const outputStr = typeof output === 'string' ? output : JSON.stringify(output);
-    const hasIssues = outputStr.length < 50;
-    const focusArea = persona.focusAreas[0] ?? 'key areas';
-
-    return {
-      personaId: persona.id,
-      role: persona.role,
-      critique: hasIssues
-        ? `As ${persona.role}, I found the output needs improvement in ${persona.focusAreas.join(', ')}.`
-        : `As ${persona.role}, the output adequately addresses ${persona.focusAreas.join(', ')}.`,
-      suggestedImprovement: hasIssues
-        ? `Consider expanding coverage of ${focusArea}.`
-        : 'No major improvements needed.',
-      severity: hasIssues ? 0.6 : 0.1,
-      issues: hasIssues ? [`Insufficient coverage of ${focusArea}`] : [],
-    };
-  }
-
-  /** Runs structured debate among critiques to synthesize feedback. */
-  private runDebate(critiques: readonly PersonaCritique[]): DebateResult {
-    const { agreements, disagreements } = this.categorizeIssues(critiques);
-    const avgSeverity = this.calculateAverageSeverity(critiques);
-    const actionItems = this.extractActionItems(critiques);
-
-    const agreementCount = String(agreements.length);
-    const disagreementCount = String(disagreements.length);
-    const severityStr = avgSeverity.toFixed(2);
-
-    return {
-      synthesizedReflection: `Debate complete: ${agreementCount} points of agreement, ${disagreementCount} points of disagreement. Average severity: ${severityStr}.`,
-      consensusSeverity: avgSeverity,
-      agreements,
-      disagreements,
-      actionItems,
-    };
-  }
-
-  /** Categorizes issues into agreements and disagreements. */
-  private categorizeIssues(critiques: readonly PersonaCritique[]): {
-    agreements: string[];
-    disagreements: string[];
-  } {
-    const issueCount = new Map<string, number>();
-    for (const critique of critiques) {
-      for (const issue of critique.issues) {
-        issueCount.set(issue, (issueCount.get(issue) ?? 0) + 1);
-      }
-    }
-
-    const agreements: string[] = [];
-    const disagreements: string[] = [];
-    const threshold = critiques.length / 2;
-
-    for (const [issue, count] of issueCount) {
-      if (count >= threshold) {
-        agreements.push(issue);
-      } else {
-        disagreements.push(issue);
-      }
-    }
-
-    return { agreements, disagreements };
-  }
-
-  /** Calculates average severity across critiques. */
-  private calculateAverageSeverity(critiques: readonly PersonaCritique[]): number {
-    if (critiques.length === 0) return 0;
-    return critiques.reduce((sum, c) => sum + c.severity, 0) / critiques.length;
-  }
-
-  /** Extracts action items from high-severity critiques. */
-  private extractActionItems(critiques: readonly PersonaCritique[]): string[] {
-    return critiques
-      .filter((c) => c.severity > 0.3)
-      .map((c) => c.suggestedImprovement)
-      .filter((s) => s !== 'No major improvements needed.');
+    return this.config.personas.map((persona) => generatePersonaCritique(persona, output, task));
   }
 
   /** Generates improved output based on debate feedback. */
