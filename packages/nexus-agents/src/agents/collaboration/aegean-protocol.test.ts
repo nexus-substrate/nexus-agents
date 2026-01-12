@@ -8,6 +8,34 @@ import { ok } from '../../core/index.js';
 import { AegeanProtocol, createAegeanProtocol } from './aegean-protocol.js';
 import { calculateQuorumSize, hasAcceptQuorum, isConsensusFailed } from './aegean-types.js';
 import type { CollaborationConfig } from './collaboration-types.js';
+import type { IEventBus, TypedEvent } from './event-bus-types.js';
+
+/** Creates a mock EventBus for testing event emission. */
+function createMockEventBus(): IEventBus & { emittedEvents: TypedEvent[] } {
+  const emittedEvents: TypedEvent[] = [];
+  return {
+    emittedEvents,
+    emit: vi.fn((event: TypedEvent) => {
+      emittedEvents.push(event);
+    }),
+    emitAsync: vi.fn((event: TypedEvent) => {
+      emittedEvents.push(event);
+      return Promise.resolve();
+    }),
+    subscribe: vi.fn(() => ({ id: 'sub-1', pattern: '*', unsubscribe: vi.fn() })),
+    unsubscribe: vi.fn(),
+    getHistory: vi.fn(() => []),
+    clearHistory: vi.fn(),
+    getStats: vi.fn(() => ({
+      eventsEmitted: 0,
+      subscriptionsCreated: 0,
+      activeSubscriptions: 0,
+      historySize: 0,
+      errorCount: 0,
+    })),
+    hasSubscribers: vi.fn(() => false),
+  };
+}
 
 /** Creates a mock agent that returns a specific output. */
 function createMockAgent(id: string, output: unknown): IAgent {
@@ -274,5 +302,118 @@ describe('Aegean helper functions', () => {
         )
       ).toBe(false);
     });
+  });
+});
+
+describe('AegeanProtocol EventBus integration', () => {
+  it('should emit protocol.started event on execution', async () => {
+    const mockEventBus = createMockEventBus();
+    const protocol = createAegeanProtocol({ eventBus: mockEventBus });
+
+    const config: CollaborationConfig = {
+      sessionId: 'test-session',
+      pattern: 'aegean',
+      experts: ['agent1', 'agent2', 'agent3'],
+      task: { id: 'test', description: 'Test task', context: {} },
+    };
+
+    const agents = new Map([
+      ['agent1', createMockAgent('agent1', 'proposal')],
+      ['agent2', createMockAgent('agent2', 'ACCEPT')],
+      ['agent3', createMockAgent('agent3', 'ACCEPT')],
+    ]);
+
+    await protocol.execute(config, agents);
+
+    const startedEvent = mockEventBus.emittedEvents.find((e) => e.topic === 'protocol.started');
+    expect(startedEvent).toBeDefined();
+    expect(startedEvent?.payload.protocolType).toBe('aegean');
+    expect(startedEvent?.payload.config.agentCount).toBe(3);
+    expect(startedEvent?.sessionId).toBe('test-session');
+  });
+
+  it('should emit protocol.iteration events for each round', async () => {
+    const mockEventBus = createMockEventBus();
+    const protocol = createAegeanProtocol({ eventBus: mockEventBus });
+
+    const config: CollaborationConfig = {
+      sessionId: 'iter-session',
+      pattern: 'aegean',
+      experts: ['agent1', 'agent2', 'agent3'],
+      task: { id: 'test', description: 'Test task', context: {} },
+    };
+
+    const agents = new Map([
+      ['agent1', createMockAgent('agent1', 'proposal')],
+      ['agent2', createMockAgent('agent2', 'ACCEPT')],
+      ['agent3', createMockAgent('agent3', 'ACCEPT')],
+    ]);
+
+    await protocol.execute(config, agents);
+
+    const iterationEvents = mockEventBus.emittedEvents.filter(
+      (e) => e.topic === 'protocol.iteration'
+    );
+    expect(iterationEvents.length).toBeGreaterThanOrEqual(1);
+    expect(iterationEvents[0]?.payload.round).toBe(1);
+    expect(iterationEvents[0]?.sessionId).toBe('iter-session');
+  });
+
+  it('should emit protocol.completed event with success status', async () => {
+    const mockEventBus = createMockEventBus();
+    const protocol = createAegeanProtocol({ eventBus: mockEventBus });
+
+    const config: CollaborationConfig = {
+      sessionId: 'complete-session',
+      pattern: 'aegean',
+      experts: ['agent1', 'agent2', 'agent3'],
+      task: { id: 'test', description: 'Test task', context: {} },
+    };
+
+    const agents = new Map([
+      ['agent1', createMockAgent('agent1', 'proposal')],
+      ['agent2', createMockAgent('agent2', 'ACCEPT')],
+      ['agent3', createMockAgent('agent3', 'ACCEPT')],
+    ]);
+
+    await protocol.execute(config, agents);
+
+    const completedEvent = mockEventBus.emittedEvents.find((e) => e.topic === 'protocol.completed');
+    expect(completedEvent).toBeDefined();
+    expect(completedEvent?.payload.success).toBe(true);
+    expect(completedEvent?.payload.iterations).toBeGreaterThanOrEqual(1);
+    expect(completedEvent?.payload.durationMs).toBeGreaterThan(0);
+  });
+
+  it('should emit protocol.completed event with failure status when consensus fails', async () => {
+    const mockEventBus = createMockEventBus();
+    const protocol = createAegeanProtocol({
+      eventBus: mockEventBus,
+      aegeanConfig: { maxRounds: 1, earlyTermination: true },
+    });
+
+    const config: CollaborationConfig = {
+      sessionId: 'fail-session',
+      pattern: 'aegean',
+      experts: ['agent1', 'agent2', 'agent3'],
+      task: { id: 'test', description: 'Test task', context: {} },
+    };
+
+    const agents = new Map([
+      ['agent1', createMockAgent('agent1', 'proposal')],
+      ['agent2', createMockAgent('agent2', 'REJECT')],
+      ['agent3', createMockAgent('agent3', 'REJECT')],
+    ]);
+
+    await protocol.execute(config, agents);
+
+    const completedEvent = mockEventBus.emittedEvents.find((e) => e.topic === 'protocol.completed');
+    expect(completedEvent).toBeDefined();
+    expect(completedEvent?.payload.success).toBe(false);
+  });
+
+  it('should use global EventBus when none provided', () => {
+    const protocol = createAegeanProtocol();
+    expect(protocol.pattern).toBe('aegean');
   });
 });

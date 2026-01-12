@@ -7,10 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **CLI Commands**
+  - `nexus-agents vote` - Consensus voting with 5 voter agents (#212)
+  - `nexus-agents system-review` - Automated system health check (#211)
+  - `nexus-agents routing-audit` - Debug routing decisions (#170)
+  - `nexus-agents orchestrate` - Standalone CLI orchestration (#183)
+- **Observability**
+  - SwarmObserver for real-time orchestration visibility (#91aeabf)
+  - Routing effectiveness dashboard (#171)
+  - LinUCB arm statistics for ML debugging (#174)
+- **Security**
+  - Phase 3 structured audit logging (#193)
+  - Docker sandbox executor with seccomp profiles (#175)
+  - Sandbox penetration testing suite (113 tests) (#180)
+- **Infrastructure**
+  - REST API gateway for non-MCP clients (#184)
+  - SQLite session persistence (#190)
+  - Centralized middleware chain (#189)
+  - Documentation CI Gate workflow (#213)
+- **A2A Protocol**
+  - EventBus for agent-to-agent communication (#182)
+  - Protocol lifecycle event types defined
+
+### Changed
+
+- ARCHITECTURE.md updated with Hybrid Architecture decision (5-0 unanimous)
+- ARCHITECTURE.md updated with A2A Protocol section (#215)
+
+### Fixed
+
+- Route schemas extracted to fix max-lines-per-function lint errors (#ef5ebe0)
+- REPL test timeouts in CI (#192)
+- exactOptionalPropertyTypes error in PolicyCheckOptions
+
 ### Planned
 
-- Additional workflow templates
-- CLI subcommands (interactive mode, config management)
+- Real agent voting (replace simulated votes) (#226)
+- Vote recording in GitHub issues (#227)
+- EventBus integration for Aegean, Reflexion, Trinity protocols (#220-#222)
+- Agent message routing through EventBus (#223-#224)
 
 ## [2.0.0] - 2026-01-04
 
