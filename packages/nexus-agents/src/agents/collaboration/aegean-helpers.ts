@@ -5,7 +5,107 @@
  * Pure helper functions extracted from aegean-protocol.ts to reduce file length.
  */
 
-import type { AgentVote, AegeanRound, AegeanResult } from './aegean-types.js';
+import type { IAgent, Task } from '../../core/types/index.js';
+import type {
+  AgentVote,
+  AegeanRound,
+  AegeanResult,
+  AegeanConfig,
+  Proposal,
+  QuorumStatus,
+} from './aegean-types.js';
+import { calculateQuorumSize, AegeanConfigSchema, DEFAULT_AEGEAN_CONFIG } from './aegean-types.js';
+
+// =============================================================================
+// Types
+// =============================================================================
+
+/** Options for vote collection. */
+export interface CollectVotesOptions {
+  readonly experts: readonly string[];
+  readonly agents: Map<string, IAgent>;
+  readonly proposal: Proposal;
+  readonly leaderId: string;
+  readonly roundNumber: number;
+  readonly sessionId: string;
+}
+
+/** Options for creating Aegean protocol. */
+export interface AegeanProtocolBuildOptions {
+  readonly aegeanConfig?: Partial<AegeanConfig>;
+}
+
+// =============================================================================
+// Config Building
+// =============================================================================
+
+/** Builds and validates Aegean configuration. */
+export function buildAegeanConfig(options: AegeanProtocolBuildOptions): AegeanConfig {
+  const merged = { ...DEFAULT_AEGEAN_CONFIG, ...options.aegeanConfig };
+  const parsed = AegeanConfigSchema.safeParse(merged);
+  if (!parsed.success) {
+    throw new Error(`Invalid Aegean config: ${parsed.error.message}`);
+  }
+  return parsed.data;
+}
+
+// =============================================================================
+// Proposal Building
+// =============================================================================
+
+/** Creates a proposal task for the leader. */
+export function createProposalTask(task: Task, round: number): Task {
+  return {
+    ...task,
+    id: `${task.id}-proposal-${String(round)}`,
+    description: `${task.description}\n\nAs the leader for round ${String(round + 1)}, propose a solution.`,
+  };
+}
+
+/** Creates a proposal from leader output. */
+export function createProposal(round: number, leaderId: string, output: unknown): Proposal {
+  return {
+    proposalId: `proposal-${String(round)}-${String(Date.now())}`,
+    round,
+    leaderId,
+    value: output,
+    timestamp: Date.now(),
+  };
+}
+
+// =============================================================================
+// Task Building
+// =============================================================================
+
+/** Creates a vote task for an agent. */
+export function createVoteTask(proposal: Proposal, agentId: string): Task {
+  return {
+    id: `vote-${proposal.proposalId}-${agentId}`,
+    description: `Review the following proposal and vote ACCEPT or REJECT.\n\nProposal:\n${JSON.stringify(proposal.value, null, 2)}`,
+    context: { metadata: { proposal } },
+  };
+}
+
+/** Creates a vote from agent output. */
+export function createVoteFromOutput(
+  agentId: string,
+  proposalId: string,
+  output: unknown,
+  tokensUsed: number
+): { vote: AgentVote; tokensUsed: number } {
+  const { status, confidence } = parseVoteStatus(output);
+  return {
+    vote: {
+      agentId,
+      proposalId,
+      status,
+      reasoning: extractReasoning(output),
+      confidence,
+      timestamp: Date.now(),
+    },
+    tokensUsed,
+  };
+}
 
 // =============================================================================
 // Vote Parsing
@@ -65,6 +165,35 @@ export function createLeaderVote(leaderId: string, proposalId: string): AgentVot
 }
 
 // =============================================================================
+// Quorum Evaluation
+// =============================================================================
+
+/** Options for evaluating quorum. */
+export interface EvaluateQuorumOptions {
+  readonly votes: readonly AgentVote[];
+  readonly totalAgents: number;
+  readonly byzantineTolerance: number;
+}
+
+/** Evaluates quorum status from votes. */
+export function evaluateQuorumStatus(opts: EvaluateQuorumOptions): {
+  required: number;
+  accepts: number;
+  rejects: number;
+  pending: number;
+  hasQuorum: boolean;
+  consensusReached: boolean;
+} {
+  const required = calculateQuorumSize(opts.totalAgents, opts.byzantineTolerance);
+  const accepts = opts.votes.filter((v) => v.status === 'accept').length;
+  const rejects = opts.votes.filter((v) => v.status === 'reject').length;
+  const pending = opts.votes.filter((v) => v.status === 'pending' || v.status === 'timeout').length;
+  const hasQuorum = accepts >= required;
+
+  return { required, accepts, rejects, pending, hasQuorum, consensusReached: hasQuorum };
+}
+
+// =============================================================================
 // Result Building
 // =============================================================================
 
@@ -87,5 +216,39 @@ export function buildAegeanResult(opts: BuildResultOptions): AegeanResult {
     tokensUsed: opts.tokensUsed,
     rounds: opts.rounds,
     terminationReason: opts.terminationReason,
+  };
+}
+
+// =============================================================================
+// Round Helpers
+// =============================================================================
+
+/** Selects leader for a round using round-robin. */
+export function selectLeader(experts: readonly string[], round: number): string {
+  const expertList = experts as string[];
+  return expertList[round % expertList.length] as string;
+}
+
+/** Options for creating round data. */
+export interface CreateRoundDataOptions {
+  readonly roundNumber: number;
+  readonly leaderId: string;
+  readonly proposal: Proposal;
+  readonly votes: AgentVote[];
+  readonly quorumStatus: QuorumStatus;
+  readonly startTime: number;
+}
+
+/** Creates round data object. */
+export function createRoundData(opts: CreateRoundDataOptions): AegeanRound {
+  return {
+    roundNumber: opts.roundNumber,
+    phase: opts.quorumStatus.consensusReached ? 'done' : 'voting',
+    leaderId: opts.leaderId,
+    proposal: opts.proposal,
+    votes: opts.votes,
+    quorumStatus: opts.quorumStatus,
+    startTime: opts.startTime,
+    endTime: Date.now(),
   };
 }

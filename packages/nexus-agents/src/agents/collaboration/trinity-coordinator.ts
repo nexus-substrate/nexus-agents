@@ -171,8 +171,7 @@ export class TrinityCoordinator {
 
     for (let i = 0; i < this.config.maxIterations; i++) {
       if (this.isTimedOut(ctx)) {
-        return this.emitAndReturn(ctx, {
-          ctx,
+        return this.returnResult(ctx, {
           thinker,
           worker,
           verifier,
@@ -193,8 +192,7 @@ export class TrinityCoordinator {
       if (verifier.verdict === 'pass') {
         this.log.info('TRINITY verification passed', { iterations: i + 1 });
         this.emitIteration(i, 'converged', ctx.sessionId);
-        return this.emitAndReturn(ctx, {
-          ctx,
+        return this.returnResult(ctx, {
           thinker,
           worker,
           verifier,
@@ -203,17 +201,13 @@ export class TrinityCoordinator {
         });
       }
 
-      this.log.info('TRINITY verification failed, iterating', {
-        iterations: i + 1,
-        issues: verifier.issuesFound,
-      });
+      this.log.info('TRINITY verification failed, iterating', { iterations: i + 1 });
       this.emitIteration(i, 'in_progress', ctx.sessionId);
     }
 
     this.log.warn('TRINITY max iterations reached', { iterations: this.config.maxIterations });
     this.emitIteration(this.config.maxIterations - 1, 'max_reached', ctx.sessionId);
-    return this.emitAndReturn(ctx, {
-      ctx,
+    return this.returnResult(ctx, {
       thinker,
       worker,
       verifier,
@@ -248,6 +242,20 @@ export class TrinityCoordinator {
       sessionId: ctx.sessionId,
     });
     return ok(result);
+  }
+
+  /** Shorthand for emitAndReturn with inline arguments. */
+  private returnResult(
+    ctx: CoordinationContext,
+    opts: {
+      thinker: ThinkerOutput;
+      worker: WorkerOutput | undefined;
+      verifier: VerifierOutput | undefined;
+      stopReason: TrinityResult['stopReason'];
+      iterations: number;
+    }
+  ): Result<TrinityResult, AgentError> {
+    return this.emitAndReturn(ctx, { ctx, ...opts });
   }
 
   /** Build an ok Result with the given parameters. */

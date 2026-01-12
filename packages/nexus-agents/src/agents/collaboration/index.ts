@@ -309,3 +309,30 @@ export type {
 export { EventTopics } from './event-bus-types.js';
 
 export { EventBus, getGlobalEventBus, resetGlobalEventBus, createEvent } from './event-bus.js';
+
+// Agent Message Router for peer-to-peer communication (Source: Issue #217, Sprint #219)
+export type {
+  AgentMessageRouterConfig,
+  AgentMessageRouterOptions,
+  SendOptions,
+  BroadcastOptions,
+  BroadcastResult,
+  RouterStats,
+  IAgentMessageRouter,
+} from './agent-message-router-types.js';
+
+export { DEFAULT_ROUTER_CONFIG } from './agent-message-router-types.js';
+
+export { AgentMessageRouter, createAgentMessageRouter } from './agent-message-router.js';
+
+// Message event helpers (Source: Issue #217, Sprint #219)
+export {
+  emitMessageSent,
+  emitMessageReceived,
+  emitTaskDelegated,
+  emitResultBroadcast,
+  type MessageSentParams,
+  type MessageReceivedParams,
+  type TaskDelegatedParams,
+  type ResultBroadcastParams,
+} from './message-events.js';
