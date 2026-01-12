@@ -366,6 +366,8 @@ interface IWorkflowEngine {
 
 ## API Reference
 
+For the complete entrypoint reference including all CLI commands, MCP tools, REST API endpoints, and programmatic APIs, see [docs/ENTRYPOINTS.md](./docs/ENTRYPOINTS.md).
+
 ### Adapters
 
 ```typescript

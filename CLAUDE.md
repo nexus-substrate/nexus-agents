@@ -35,6 +35,8 @@ nexus-agents review <url> # Review GitHub PR
 nexus-agents --help       # Full command list
 ```
 
+**Full Reference:** [docs/ENTRYPOINTS.md](./docs/ENTRYPOINTS.md) - Complete CLI, MCP, REST, and API documentation.
+
 ---
 
 ## Getting Started (5 Minutes)

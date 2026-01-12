@@ -88,6 +88,8 @@ Nexus-agents will adopt a **hybrid architecture** that combines:
 └─────────────────────────────────────────────────────────┘
 ```
 
+**User-Facing Interfaces:** See [docs/ENTRYPOINTS.md](./docs/ENTRYPOINTS.md) for the canonical reference of all CLI commands, MCP tools, REST API endpoints, and programmatic APIs.
+
 ### Implementation Roadmap
 
 | Phase   | Version | Focus                    | Issues     |
