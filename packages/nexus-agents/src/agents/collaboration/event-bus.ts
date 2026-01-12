@@ -78,6 +78,41 @@ function generateSubscriptionId(): SubscriptionId {
 }
 
 /**
+ * Generate a unique correlation ID for request tracing.
+ * (Source: Issue #224, Sprint #228)
+ *
+ * @example
+ * ```typescript
+ * const correlationId = generateCorrelationId();
+ * // -> 'cor_a1b2c3d4'
+ * ```
+ */
+export function generateCorrelationId(): string {
+  return `cor_${randomUUID().slice(0, 8)}`;
+}
+
+/**
+ * Create a child correlation ID that chains to a parent.
+ * Enables hierarchical tracing of subtasks.
+ * (Source: Issue #224, Sprint #228)
+ *
+ * @param parentCorrelationId - The parent correlation ID to chain from
+ * @returns A new correlation ID in format 'parentId.child_xxxxxxxx'
+ *
+ * @example
+ * ```typescript
+ * const parentId = generateCorrelationId();
+ * // -> 'cor_a1b2c3d4'
+ *
+ * const childId = createChildCorrelationId(parentId);
+ * // -> 'cor_a1b2c3d4.child_e5f6g7h8'
+ * ```
+ */
+export function createChildCorrelationId(parentCorrelationId: string): string {
+  return `${parentCorrelationId}.child_${randomUUID().slice(0, 8)}`;
+}
+
+/**
  * Event Bus for agent-to-agent communication.
  *
  * Features:

@@ -7,7 +7,14 @@
  */
 
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { EventBus, getGlobalEventBus, resetGlobalEventBus, createEvent } from './event-bus.js';
+import {
+  EventBus,
+  getGlobalEventBus,
+  resetGlobalEventBus,
+  createEvent,
+  generateCorrelationId,
+  createChildCorrelationId,
+} from './event-bus.js';
 import type {
   DomainEvent,
   SessionCreatedEvent,
@@ -674,5 +681,112 @@ describe('EventTopics constants', () => {
 
   it('should have wildcard pattern', () => {
     expect(EventTopics.ALL).toBe('*');
+  });
+});
+
+// =============================================================================
+// Correlation ID Tests (Issue #224)
+// =============================================================================
+
+describe('generateCorrelationId', () => {
+  it('should generate correlation ID with cor_ prefix', () => {
+    const correlationId = generateCorrelationId();
+
+    expect(correlationId).toMatch(/^cor_[a-f0-9]{8}$/);
+  });
+
+  it('should generate unique correlation IDs', () => {
+    const ids = new Set<string>();
+    for (let i = 0; i < 100; i++) {
+      ids.add(generateCorrelationId());
+    }
+
+    expect(ids.size).toBe(100);
+  });
+});
+
+describe('createChildCorrelationId', () => {
+  it('should create child ID chained to parent', () => {
+    const parentId = 'cor_a1b2c3d4';
+    const childId = createChildCorrelationId(parentId);
+
+    expect(childId).toMatch(/^cor_a1b2c3d4\.child_[a-f0-9]{8}$/);
+    expect(childId.startsWith(parentId)).toBe(true);
+  });
+
+  it('should support multi-level chaining', () => {
+    const grandparent = generateCorrelationId();
+    const parent = createChildCorrelationId(grandparent);
+    const child = createChildCorrelationId(parent);
+
+    expect(child).toContain(grandparent);
+    expect(child).toContain('.child_');
+    // Should have two .child_ segments
+    expect(child.split('.child_').length).toBe(3);
+  });
+
+  it('should generate unique child IDs for same parent', () => {
+    const parentId = generateCorrelationId();
+    const children = new Set<string>();
+
+    for (let i = 0; i < 50; i++) {
+      children.add(createChildCorrelationId(parentId));
+    }
+
+    expect(children.size).toBe(50);
+  });
+});
+
+describe('EventBus correlation ID tracing', () => {
+  let bus: EventBus;
+
+  beforeEach(() => {
+    bus = new EventBus();
+  });
+
+  it('should trace events across correlation ID hierarchy', () => {
+    const rootId = generateCorrelationId();
+    const childId = createChildCorrelationId(rootId);
+    const grandchildId = createChildCorrelationId(childId);
+
+    // Emit events at different levels
+    bus.emit(
+      createEvent<DomainEvent>('task.started', { level: 'root' }, { correlationId: rootId })
+    );
+    bus.emit(
+      createEvent<DomainEvent>('task.delegated', { level: 'child' }, { correlationId: childId })
+    );
+    bus.emit(
+      createEvent<DomainEvent>(
+        'task.completed',
+        { level: 'grandchild' },
+        { correlationId: grandchildId }
+      )
+    );
+
+    // Query by root should only find root
+    const rootEvents = bus.getHistory({ correlationId: rootId });
+    expect(rootEvents).toHaveLength(1);
+    expect(rootEvents[0]?.payload).toEqual({ level: 'root' });
+
+    // Query by child should only find child
+    const childEvents = bus.getHistory({ correlationId: childId });
+    expect(childEvents).toHaveLength(1);
+    expect(childEvents[0]?.payload).toEqual({ level: 'child' });
+  });
+
+  it('should filter combined by topic and correlationId', () => {
+    const corrId = generateCorrelationId();
+
+    bus.emit(createEvent<DomainEvent>('task.started', { data: 1 }, { correlationId: corrId }));
+    bus.emit(createEvent<DomainEvent>('task.completed', { data: 2 }, { correlationId: corrId }));
+    bus.emit(
+      createEvent<DomainEvent>('task.started', { data: 3 }, { correlationId: 'other-corr' })
+    );
+
+    const filtered = bus.getHistory({ topic: 'task.started', correlationId: corrId });
+
+    expect(filtered).toHaveLength(1);
+    expect(filtered[0]?.payload).toEqual({ data: 1 });
   });
 });
