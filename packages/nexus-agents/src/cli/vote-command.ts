@@ -2,10 +2,14 @@
  * nexus-agents vote command
  *
  * Automated Consensus Voting per CLAUDE.md Voting Protocol.
- * Spawns 5 voter agents and collects votes.
+ * Spawns 5 voter agents and collects votes using real LLM execution.
  *
  * (Source: Issue #212, Process Automation Epic #209)
  * (Consensus: 7.8/10, 5/5 UNANIMOUS APPROVE)
+ *
+ * Real Agent Voting (Issue #226):
+ * - Execute actual LLM calls for each voter role
+ * - Fall back to simulation if model unavailable
  *
  * Vote Recording (Issue #227):
  * - Record vote results as GitHub issue comments
@@ -14,16 +18,11 @@
 
 import * as crypto from 'node:crypto';
 import { execSync } from 'node:child_process';
-import type {
-  VoteCommandOptions,
-  VoterRole,
-  AgentVoteResult,
-  VotingResult,
-  VoteHash,
-} from './vote-types.js';
+import type { VoteCommandOptions, VoterRole, VotingResult, VoteHash } from './vote-types.js';
 import { THRESHOLD_MAP, VOTER_ROLES } from './vote-types.js';
 import type { Vote, ConsensusAlgorithm, ConsensusResult, Proposal } from '../consensus/types.js';
 import { createConsensusEngine } from '../consensus/engine.js';
+import { collectRealVotes, type AgentVoteResult } from './voter-agents.js';
 
 const colors = {
   reset: '\x1b[0m',
@@ -51,50 +50,25 @@ function generateVoteHash(role: VoterRole, vote: Vote): VoteHash {
   return { role, hash, timestamp: new Date().toISOString() };
 }
 
-function simulateVote(role: VoterRole, proposal: string): Vote {
-  const decisions: Array<'approve' | 'reject' | 'abstain'> = [
-    'approve',
-    'approve',
-    'approve',
-    'reject',
-    'abstain',
-  ];
-  const decision = decisions[Math.floor(Math.random() * decisions.length)] ?? 'approve';
-  const baseReasoning: Record<VoterRole, string> = {
-    architect: 'Evaluated technical design and architecture implications.',
-    security: 'Reviewed security considerations and attack surface.',
-    devex: 'Assessed developer experience and workflow impact.',
-    ai_ml: 'Analyzed AI/ML capabilities and learning potential.',
-    pm: 'Evaluated business value and resource requirements.',
-  };
-  return {
-    decision,
-    reasoning: `${baseReasoning[role]} Proposal: "${proposal.slice(0, 50)}..."`,
-    confidence: 0.7 + Math.random() * 0.3,
-  };
-}
-
-function collectVotes(
+/**
+ * Collects votes from voter agents.
+ * Uses real LLM execution when not in dry-run mode.
+ */
+async function collectVotes(
   proposal: string,
   roles: readonly VoterRole[],
-  _dryRun: boolean
-): readonly AgentVoteResult[] {
-  const results: AgentVoteResult[] = [];
-  for (const role of roles) {
-    const start = Date.now();
-    const vote = simulateVote(role, proposal);
-    results.push({
-      role,
-      vote,
-      processingTimeMs: Date.now() - start + Math.floor(Math.random() * 100),
-    });
-  }
-  return results;
+  dryRun: boolean
+): Promise<readonly AgentVoteResult[]> {
+  return collectRealVotes({
+    roles,
+    proposal,
+    simulate: dryRun,
+  });
 }
 
 function printVoteDetails(votes: readonly AgentVoteResult[]): void {
   writeLine(`${colors.cyan}Votes${colors.reset}\n`);
-  for (const { role, vote } of votes) {
+  for (const { role, vote, source } of votes) {
     const icon =
       vote.decision === 'approve'
         ? colors.green + symbols.check
@@ -102,8 +76,9 @@ function printVoteDetails(votes: readonly AgentVoteResult[]): void {
           ? colors.red + symbols.cross
           : colors.yellow + '?';
     const label = VOTER_ROLES[role].split(' - ')[0] ?? role;
+    const sourceTag = source === 'llm' ? '' : ` ${colors.dim}[sim]${colors.reset}`;
     writeLine(
-      `  ${icon}${colors.reset} ${label}: ${vote.decision.toUpperCase()} (${(vote.confidence * 100).toFixed(0)}%)`
+      `  ${icon}${colors.reset} ${label}: ${vote.decision.toUpperCase()} (${(vote.confidence * 100).toFixed(0)}%)${sourceTag}`
     );
   }
   writeLine('');
@@ -229,7 +204,11 @@ async function runVote(options: VoteCommandOptions): Promise<VotingResult> {
     ? ['architect', 'security', 'pm']
     : ['architect', 'security', 'devex', 'ai_ml', 'pm'];
   const start = Date.now();
-  const votes = collectVotes(options.proposal, roles, options.dryRun === true);
+
+  writeLine(
+    `${colors.dim}Collecting votes from ${String(roles.length)} agents...${colors.reset}\n`
+  );
+  const votes = await collectVotes(options.proposal, roles, options.dryRun === true);
   const engine = createConsensusEngine();
   const proposal: Proposal = {
     title: 'CLI Vote',
