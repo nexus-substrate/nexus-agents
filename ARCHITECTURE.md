@@ -106,6 +106,113 @@ Nexus-agents will adopt a **hybrid architecture** that combines:
 - #184: REST API gateway for non-MCP clients (P3)
 - #185: MCP gateway authentication and audit logging (P2)
 
+### REST API Gateway
+
+**Base URL:** `http://localhost:3000`
+**Framework:** Fastify with Swagger documentation
+
+#### Endpoints
+
+| Method | Path                 | Purpose                     | Auth    | Rate Limit |
+| ------ | -------------------- | --------------------------- | ------- | ---------- |
+| POST   | /api/v1/orchestrate  | Task orchestration          | API Key | 100/min    |
+| POST   | /api/v1/delegate     | Model routing/delegation    | API Key | 100/min    |
+| POST   | /api/v1/expert       | Create expert agent         | API Key | 100/min    |
+| GET    | /api/v1/expert/types | List available expert types | API Key | 100/min    |
+| POST   | /api/v1/workflow     | Run workflow template       | API Key | 100/min    |
+| GET    | /health              | Health check                | None    | None       |
+| GET    | /metrics             | Server metrics (JSON)       | None    | None       |
+| GET    | /metrics/prometheus  | Prometheus format metrics   | None    | None       |
+
+#### Authentication
+
+API key authentication via `X-API-Key` header:
+
+```bash
+curl -X POST http://localhost:3000/api/v1/orchestrate \
+  -H "X-API-Key: your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{"task": "Review this code for security issues"}'
+```
+
+#### Configuration
+
+```yaml
+# nexus-agents.yaml
+api:
+  port: 3000
+  host: 0.0.0.0
+  enableCors: true
+  rateLimitPerMinute: 100
+  apiKeyHeader: X-API-Key
+  apiKeys:
+    - key: 'your-secret-key'
+      name: 'ci-pipeline'
+      scopes: ['read', 'execute']
+```
+
+#### Rate Limiting
+
+- Default: 100 requests per minute per API key
+- Response headers: `X-RateLimit-Remaining`, `X-RateLimit-Reset`
+- Exceeded: HTTP 429 with `Retry-After` header
+
+#### Request/Response Examples
+
+**POST /api/v1/orchestrate**
+
+```json
+// Request
+{
+  "task": "Analyze security vulnerabilities in auth.ts",
+  "context": { "file": "src/auth.ts" },
+  "maxIterations": 3
+}
+
+// Response
+{
+  "success": true,
+  "result": {
+    "summary": "...",
+    "experts_consulted": ["security", "code"],
+    "recommendations": [...]
+  },
+  "metadata": {
+    "duration_ms": 1234,
+    "tokens_used": 5678
+  }
+}
+```
+
+**POST /api/v1/workflow**
+
+```json
+// Request
+{
+  "template": "code-review",
+  "inputs": { "url": "https://github.com/owner/repo/pull/123" },
+  "dryRun": false
+}
+
+// Response
+{
+  "success": true,
+  "result": {
+    "status": "completed",
+    "steps": [...],
+    "output": "..."
+  }
+}
+```
+
+#### Source Files
+
+| File                     | Purpose               |
+| ------------------------ | --------------------- |
+| `src/api/rest-server.ts` | Server implementation |
+| `src/api/rest-types.ts`  | Type definitions      |
+| `src/api/routes/*.ts`    | Route handlers        |
+
 ---
 
 ## Module Structure

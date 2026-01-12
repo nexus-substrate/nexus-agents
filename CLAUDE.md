@@ -370,6 +370,72 @@ Major decisions requiring multi-agent consensus:
    - Address specific concerns
    - Re-vote if proposal amended
 
+### Protocol Selection Guide
+
+The system implements 11 consensus protocols. Select based on task requirements:
+
+#### Quick Selection Matrix
+
+| Protocol              | Use When                                   | Agents      | Threshold       |
+| --------------------- | ------------------------------------------ | ----------- | --------------- |
+| **Simple Majority**   | Quick, non-critical decisions              | 2+          | >50%            |
+| **Supermajority**     | Important decisions, reversible            | 3-5         | ≥67%            |
+| **Unanimous**         | Critical, irreversible decisions           | 3-5         | 100%            |
+| **Aegean**            | Safety-critical, Byzantine tolerance       | 4-7 (3f+1)  | Quorum          |
+| **CP-WBFT**           | Untrusted agents, weighted trust           | Any         | 67% weighted    |
+| **Reflexion**         | Code review, iterative refinement          | 1-4 critics | Severity <0.3   |
+| **Multi-Round**       | Comprehensive evaluation, sycophancy check | 2-7         | 67%             |
+| **Free-MAD**          | Preserve minority opinions                 | 3-7         | Anti-conformity |
+| **Self-Refine**       | Autonomous improvement                     | 1           | Convergence     |
+| **Self-Debug**        | Error detection and repair                 | 1           | Test pass       |
+| **Proof-of-Learning** | Performance-weighted voting                | Any         | 50% weighted    |
+
+#### Decision Criteria
+
+| Factor       | Consideration           | Recommended Protocol           |
+| ------------ | ----------------------- | ------------------------------ |
+| Speed        | Fast decision needed    | Simple Majority, Self-Refine   |
+| Correctness  | High accuracy required  | Aegean, Reflexion, Multi-Round |
+| Robustness   | Expect failures/attacks | CP-WBFT, Aegean                |
+| Transparency | Need detailed reasoning | Reflexion, Free-MAD            |
+| Autonomy     | Single agent            | Self-Refine, Self-Debug        |
+| Learning     | Team improves over time | CP-WBFT, Proof-of-Learning     |
+
+#### Protocol Usage
+
+```typescript
+// Adaptive selection (automatic)
+const selector = new AdaptiveProtocolSelector();
+const protocol = selector.selectProtocol(taskConfig);
+// → reasoning tasks: parallel/voting (+13.2%)
+// → knowledge tasks: consensus (+2.8%)
+
+// Explicit protocol selection
+const session = new CollaborationSession({
+  pattern: 'aegean', // or: consensus, reflexion, self-refine
+  quorum: 0.67,
+  maxRounds: 3,
+});
+
+// Byzantine-fault-tolerant voting
+const weighted = new WeightedVoting({
+  minTrustScore: 0.3,
+  quorumThreshold: 0.67,
+  weightDecay: 0.9,
+  weightRecovery: 1.05,
+});
+```
+
+#### Integration Files
+
+| Module            | Location                                                 | Purpose                  |
+| ----------------- | -------------------------------------------------------- | ------------------------ |
+| Consensus Engine  | `src/consensus/`                                         | Core voting algorithms   |
+| Weighted Voting   | `src/consensus/weighted-voting.ts`                       | CP-WBFT implementation   |
+| Voting Protocol   | `src/consensus/voting-protocol.ts`                       | Multi-round voting       |
+| Collaboration     | `src/agents/collaboration/`                              | Protocol implementations |
+| Adaptive Selector | `src/agents/collaboration/adaptive-protocol-selector.ts` | Auto-selection           |
+
 ---
 
 ## CLI Agent Integration (v2.2.0+)
@@ -434,6 +500,131 @@ See `cli-project_plan.md` for full details:
 1. **Phase 1 (v2.2.0)**: MCP Server Mode - nexus-agents as MCP tool for Claude CLI
 2. **Phase 2 (v2.3.0)**: CLI Adapters - Subprocess integration for Gemini/Codex
 3. **Phase 3 (v3.0.0)**: Hybrid Mesh - Full bidirectional orchestration
+
+### Model Routing Architecture
+
+The CompositeRouter chains three specialized routers for intelligent model selection.
+
+#### Routing Pipeline: Budget → TOPSIS → LinUCB
+
+```
+Task → TaskAnalyzer → BudgetRouter → TopsisRouter → LinUCBBandit → Decision
+       (profile)      (filter)        (rank)         (learn)
+```
+
+| Stage | Router       | Purpose                                  | Research Basis |
+| ----- | ------------ | ---------------------------------------- | -------------- |
+| 1     | TaskAnalyzer | Profile task (complexity, type, context) | -              |
+| 2     | BudgetRouter | Enforce token/cost/latency constraints   | PILOT (arXiv)  |
+| 3     | TopsisRouter | Multi-criteria ranking (quality/cost)    | MoMA TOPSIS    |
+| 4     | LinUCBBandit | Contextual learning from outcomes        | PILOT LinUCB   |
+
+#### Task Analysis
+
+Tasks are profiled before routing:
+
+| Characteristic        | Derived From                       | Impact                      |
+| --------------------- | ---------------------------------- | --------------------------- |
+| `reasoningComplexity` | Keywords ("design", "architect")   | Boosts Claude quality score |
+| `contextRequired`     | 0.25 tokens/char + 500 tokens/file | Filters by context window   |
+| `codeGeneration`      | Keywords ("implement", "write")    | Boosts Codex score          |
+| `budgetSensitive`     | Keywords ("quick", "simple")       | Prioritizes Gemini          |
+
+#### Budget Constraints (PILOT Pattern)
+
+Session-level and per-task constraints:
+
+```typescript
+// Session budget (resets hourly)
+const session = {
+  tokenBudget: 1_000_000, // Default: 1M tokens/session
+  costBudgetUsd: 10.0, // Default: $10/session
+};
+
+// Per-task constraints
+const task = {
+  maxTokens: 100_000, // Max tokens for this task
+  maxCostUsd: 1.0, // Max cost for this task
+  maxLatencyMs: 60_000, // Max latency for this task
+};
+```
+
+**Warning thresholds:** 50% (info), 75% (warning), 90% (critical)
+
+#### TOPSIS Multi-Criteria Ranking
+
+Pareto-optimal model selection using weighted criteria:
+
+| Criterion | Weight | Direction | Description                 |
+| --------- | ------ | --------- | --------------------------- |
+| Quality   | 50%    | Maximize  | Reasoning + code generation |
+| Cost      | 30%    | Minimize  | $/token estimate            |
+| Latency   | 20%    | Minimize  | Response time               |
+
+**Algorithm:** Calculate closeness to ideal solution (0-1 score per CLI).
+
+#### LinUCB Contextual Bandit
+
+Learns from task outcomes to improve future routing:
+
+```typescript
+// 6D context vector
+const context = {
+  taskComplexity: 0.8, // Normalized 0-1
+  contextLengthNormalized: 0.3, // Tokens / max context
+  isCodeTask: true,
+  isReasoningTask: false,
+  budgetUtilization: 0.2, // % of budget used
+  timePressure: 0.0, // Deadline proximity
+};
+
+// UCB score calculation
+UCB = E[reward | context] + alpha * sqrt(uncertainty);
+
+// Learning update after task completion
+bandit.recordOutcome(cli, task, reward);
+```
+
+**Reward signal:** `success * 0.5 + (1 - retries/max) * 0.3 + coherence * 0.2`
+
+#### Configuration
+
+```yaml
+# nexus-agents.yaml
+routing:
+  enableBudgetFilter: true # Stage 2 on/off
+  enableTopsisRanking: true # Stage 3 on/off
+  enableLinUCBSelection: true # Stage 4 on/off
+
+  budget:
+    tokenBudget: 1000000 # Session token limit
+    costBudgetUsd: 10.0 # Session cost limit
+    resetIntervalMs: 3600000 # 1 hour reset
+
+  topsis:
+    qualityWeight: 0.5
+    costWeight: 0.3
+    latencyWeight: 0.2
+
+  linucb:
+    alpha: 1.0 # Exploration parameter
+```
+
+#### Debugging Routing Decisions
+
+```bash
+# Dry-run routing for a task
+nexus-agents routing-audit "Implement a sorting algorithm" --format=json
+
+# Output shows:
+# - Task profile analysis
+# - Budget filter results
+# - TOPSIS scores per CLI
+# - LinUCB selection with UCB scores
+# - Feature importance analysis
+```
+
+See `packages/nexus-agents/src/cli-adapters/` for implementation details.
 
 ---
 
@@ -590,6 +781,95 @@ If security vulnerability found:
 2. Create issue with `security` label (no details in public issue)
 3. Implement fix with security review
 4. Add regression test
+
+### Sandbox Execution
+
+Agent code execution runs in a sandboxed environment with configurable security levels.
+
+#### Execution Modes
+
+| Mode        | Description                      | Use Case                    |
+| ----------- | -------------------------------- | --------------------------- |
+| `none`      | No sandboxing (development only) | Local dev, debugging        |
+| `policy`    | Command allowlist enforcement    | Standard operation          |
+| `container` | Full Docker isolation            | Production, untrusted input |
+
+#### Docker Security (Container Mode)
+
+When `mode: container`, execution uses these security flags:
+
+```bash
+docker run \
+  --cap-drop=ALL \           # Drop all Linux capabilities
+  --read-only \              # Read-only root filesystem
+  --network=none \           # No network access
+  --user=node \              # Non-root user
+  --memory=512m \            # Memory limit
+  --cpus=2 \                 # CPU limit
+  --pids-limit=10 \          # Process limit
+  --security-opt=no-new-privileges
+```
+
+#### Command Allowlist (Policy Mode)
+
+**Allowed commands:**
+
+```
+pnpm, npm, git, gh, node, npx, tsc, eslint, prettier,
+vitest, tsx, cat, ls, pwd, echo, head, tail, wc, grep
+```
+
+**Hard-denied commands (blocked in all modes):**
+
+```
+rm, curl, wget, ssh, scp, nc, kill, pkill, sudo, su,
+chmod, chown, mount, dd, mkfs, fdisk, passwd
+```
+
+#### Environment Sanitization
+
+Variables with these prefixes are blocked from execution context:
+
+```
+API_*, TOKEN_*, SECRET_*, KEY_*, PASSWORD_*, CREDENTIAL_*,
+AWS_*, AZURE_*, GCP_*, ANTHROPIC_*, OPENAI_*
+```
+
+#### Configuration
+
+```yaml
+# nexus-agents.yaml
+security:
+  sandbox:
+    mode: policy # none | policy | container
+    fallbackMode: none # Fallback if container unavailable
+    resourceLimits:
+      memory: 512m
+      cpu: 2
+      timeout: 300s
+      maxProcesses: 10
+```
+
+#### Usage in Code
+
+```typescript
+import { SandboxManager } from 'nexus-agents';
+
+// Get sandbox instance (initialized at MCP server startup)
+const sandbox = SandboxManager.getInstance();
+
+// Execute command safely
+const result = await sandbox.execute('npm test', {
+  cwd: '/workspace',
+  timeout: 60000,
+});
+
+if (result.ok) {
+  console.log(result.value.stdout);
+} else {
+  console.error(result.error.message);
+}
+```
 
 ---
 

@@ -335,13 +335,77 @@ interface AgentVote {
   reasoning: string;
   amendments?: string[];
 }
-
-// Voting rules:
-// - Major architecture decisions: unanimous
-// - Implementation choices: majority
-// - Reversible decisions: simple majority
-// - Irreversible decisions: supermajority (4/5)
 ```
+
+#### 6.3.1 Protocol Selection Matrix
+
+| Task Type              | Protocol       | Implementation           | Threshold     | Use When                      |
+| ---------------------- | -------------- | ------------------------ | ------------- | ----------------------------- |
+| Architecture decisions | Aegean         | aegean-protocol.ts       | supermajority | Byzantine tolerance needed    |
+| Code review/reasoning  | Reflexion      | reflexion-protocol.ts    | severity <0.3 | Iterative critique required   |
+| Security audit         | Constitutional | constitutional-critic.ts | unanimous     | Principle validation needed   |
+| Quick decisions        | Simple Voting  | result-aggregator.ts     | majority      | Speed over thoroughness       |
+| Anti-groupthink        | Free-MAD       | free-mad-scoring.ts      | score-based   | Minority opinion matters      |
+| Iterative improvement  | Self-Refine    | self-refine-protocol.ts  | convergence   | Self-contained refinement     |
+| Implementation tasks   | TRINITY        | trinity-coordinator.ts   | verification  | Thinker/Worker/Verifier roles |
+| Byzantine systems      | CP-WBFT        | weighted-voting.ts       | 67% weighted  | Untrusted or variable agents  |
+
+#### 6.3.2 Protocol Implementation Pattern
+
+All protocols MUST implement `ICollaborationProtocol`:
+
+```typescript
+interface ICollaborationProtocol {
+  readonly pattern: CollaborationPattern;
+  execute(
+    config: CollaborationConfig,
+    agents: Map<string, IAgent>
+  ): Promise<Result<CollaborationResult, AgentError>>;
+  cancel(reason: string): void;
+}
+
+type CollaborationPattern =
+  | 'sequential' // Chain results through agents
+  | 'parallel' // Execute simultaneously
+  | 'review' // Peer review pattern
+  | 'consensus' // Voting-based decision
+  | 'reflexion' // Multi-agent critique loop
+  | 'aegean' // Byzantine consensus
+  | 'self-refine' // Iterative self-improvement
+  | 'self-debug'; // Error detection and repair
+
+// Byzantine quorum calculation (Aegean)
+function calculateQuorumSize(totalAgents: number): number {
+  // Tolerates f faults in 3f+1 agents
+  const f = Math.floor((totalAgents - 1) / 3);
+  return 2 * f + 1; // Minimum for safety
+}
+```
+
+#### 6.3.3 Voting Rules (Protocol-Aware)
+
+| Decision Type      | Protocol        | Threshold         | Rationale                  |
+| ------------------ | --------------- | ----------------- | -------------------------- |
+| Reversible changes | Simple Voting   | majority (>50%)   | Speed over consensus       |
+| Implementation     | TRINITY         | Verifier approval | Role-based validation      |
+| Architecture       | Aegean          | supermajority     | Byzantine fault tolerance  |
+| Security-critical  | Constitutional  | unanimous         | Principle-based safety     |
+| Irreversible       | Aegean + Const. | supermajority +   | Maximum safety guarantees  |
+| Performance-based  | CP-WBFT         | 67% weighted      | Trust-weighted voting      |
+| Debate outcomes    | Free-MAD        | Anti-conformity   | Protect minority positions |
+
+#### 6.3.4 Source Files
+
+| Module              | Path                                                |
+| ------------------- | --------------------------------------------------- |
+| Aegean Protocol     | `src/agents/collaboration/aegean-protocol.ts`       |
+| Reflexion Protocol  | `src/agents/collaboration/reflexion-protocol.ts`    |
+| Constitutional      | `src/agents/collaboration/constitutional-critic.ts` |
+| Free-MAD Scoring    | `src/agents/collaboration/free-mad-scoring.ts`      |
+| Self-Refine         | `src/agents/collaboration/self-refine-protocol.ts`  |
+| TRINITY Coordinator | `src/agents/collaboration/trinity-coordinator.ts`   |
+| Weighted Voting     | `src/consensus/weighted-voting.ts`                  |
+| Voting Protocol     | `src/consensus/voting-protocol.ts`                  |
 
 ### 6.4 Skill Definition Format
 
@@ -417,6 +481,98 @@ const validateInput = (input: unknown): Result<ValidInput, ValidationError> => {
 - [ ] Output sanitization before returning
 - [ ] Memory bounds on all collections
 - [ ] Timeout on all external calls
+
+### 7.4 Sandbox Execution Standards
+
+All agent-executed code MUST run through the sandbox system.
+
+#### Mode Selection
+
+| Mode        | When to Use                          | Security Level |
+| ----------- | ------------------------------------ | -------------- |
+| `none`      | Local development, trusted code only | None           |
+| `policy`    | Standard operation, known commands   | Medium         |
+| `container` | Production, untrusted input, CI/CD   | High           |
+
+**Default:** `policy` mode with automatic fallback if Docker unavailable.
+
+#### Command Classification
+
+```typescript
+// Commands MUST be classified before execution
+type CommandClass = 'allowed' | 'denied' | 'requires_approval';
+
+// Allowed - Execute immediately in sandbox
+const ALLOWED = ['pnpm', 'npm', 'git', 'node', 'tsc', 'eslint', 'vitest'];
+
+// Denied - Never execute, return error
+const DENIED = ['rm', 'curl', 'wget', 'ssh', 'sudo', 'kill', 'chmod'];
+
+// Requires Approval - Log warning, require explicit flag
+const REQUIRES_APPROVAL = ['docker', 'kubectl', 'aws', 'gcloud'];
+```
+
+#### Resource Limits (Enforced)
+
+| Resource   | Limit     | Rationale                  |
+| ---------- | --------- | -------------------------- |
+| Memory     | 512 MB    | Prevent memory exhaustion  |
+| CPU        | 2 cores   | Prevent CPU monopolization |
+| Timeout    | 5 minutes | Prevent hung processes     |
+| Processes  | 10 max    | Prevent fork bombs         |
+| Disk write | Read-only | Prevent persistent changes |
+| Network    | None      | Prevent data exfiltration  |
+
+#### Environment Sanitization Rules
+
+```typescript
+// Environment variables MUST be sanitized before passing to sandbox
+const BLOCKED_PREFIXES = [
+  'API_',
+  'TOKEN_',
+  'SECRET_',
+  'KEY_',
+  'PASSWORD_',
+  'CREDENTIAL_',
+  'AWS_',
+  'AZURE_',
+  'GCP_',
+  'ANTHROPIC_',
+  'OPENAI_',
+  'GOOGLE_AI_',
+];
+
+// Sanitize function - required before any sandbox.execute()
+function sanitizeEnv(env: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(env).filter(
+      ([key]) => !BLOCKED_PREFIXES.some((prefix) => key.startsWith(prefix))
+    )
+  );
+}
+```
+
+#### Integration Requirements
+
+1. **MCP Tools**: All Bash tool calls MUST route through SandboxManager
+2. **Workflow Steps**: Shell actions MUST use sandbox execution
+3. **CLI Adapters**: External CLI calls MUST respect sandbox policy
+4. **Tests**: Sandbox behavior MUST have penetration tests (see `sandbox-pentest.test.ts`)
+
+#### Audit Logging
+
+All sandbox executions MUST be logged:
+
+```typescript
+interface SandboxAuditLog {
+  timestamp: string; // ISO 8601 ET
+  command: string; // Command executed (sanitized)
+  mode: SandboxMode; // none | policy | container
+  result: 'success' | 'denied' | 'timeout' | 'error';
+  durationMs: number;
+  userId?: string; // If available
+}
+```
 
 ---
 
