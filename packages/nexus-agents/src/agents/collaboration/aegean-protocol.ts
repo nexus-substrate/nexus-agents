@@ -29,13 +29,13 @@ import {
   calculateQuorumSize,
   isConsensusFailed,
 } from './aegean-types.js';
-import type {
-  IEventBus,
-  ProtocolStartedEvent,
-  ProtocolIterationEvent,
-  ProtocolCompletedEvent,
-} from './event-bus-types.js';
-import { createEvent, getGlobalEventBus } from './event-bus.js';
+import type { IEventBus } from './event-bus-types.js';
+import { getGlobalEventBus } from './event-bus.js';
+import {
+  emitProtocolStarted,
+  emitProtocolIteration,
+  emitProtocolCompleted,
+} from './aegean-events.js';
 
 /** Options for the Aegean protocol. */
 export interface AegeanProtocolOptions extends ProtocolOptions {
@@ -94,7 +94,11 @@ export class AegeanProtocol implements ICollaborationProtocol {
     if (!startResult.ok) return err(startResult.error);
 
     this.logProtocolStart(config);
-    this.emitProtocolStarted(config);
+    emitProtocolStarted(this.eventBus, {
+      sessionId: config.sessionId,
+      agentCount: config.experts.length,
+      aegeanConfig: this.config,
+    });
 
     const aegeanResult = await this.runConsensusLoop(config, agents);
     if (!aegeanResult.ok) {
@@ -138,6 +142,20 @@ export class AegeanProtocol implements ICollaborationProtocol {
     });
   }
 
+  /** Emits an iteration event with given status. */
+  private emitIteration(
+    round: number,
+    status: 'converged' | 'max_reached' | 'in_progress',
+    sessionId: string
+  ): void {
+    emitProtocolIteration(this.eventBus, {
+      round,
+      maxRounds: this.config.maxRounds,
+      status,
+      sessionId,
+    });
+  }
+
   /** Runs the main consensus loop. */
   private async runConsensusLoop(
     config: CollaborationConfig,
@@ -160,7 +178,7 @@ export class AegeanProtocol implements ICollaborationProtocol {
       totalTokensUsed += tokensUsed;
 
       if (roundData.quorumStatus.consensusReached) {
-        this.emitProtocolIteration(round, 'converged', config.sessionId);
+        this.emitIteration(round, 'converged', config.sessionId);
         return ok(
           this.buildResult(
             rounds,
@@ -177,12 +195,11 @@ export class AegeanProtocol implements ICollaborationProtocol {
         isConsensusFailed(roundData.quorumStatus, config.experts.length)
       ) {
         this.logger.info('Early termination: consensus impossible', { round });
-        this.emitProtocolIteration(round, 'max_reached', config.sessionId);
+        this.emitIteration(round, 'max_reached', config.sessionId);
         break;
       }
 
-      // Emit iteration event for rounds that continue
-      this.emitProtocolIteration(round, 'in_progress', config.sessionId);
+      this.emitIteration(round, 'in_progress', config.sessionId);
     }
 
     return ok(this.buildResult(rounds, null, 'max_rounds', startTime, totalTokensUsed));
@@ -442,69 +459,13 @@ export class AegeanProtocol implements ICollaborationProtocol {
       },
     });
 
-    this.emitProtocolCompleted(result, startTime);
+    const sessionId = this.session.getStatus()?.config.sessionId;
+    emitProtocolCompleted(this.eventBus, {
+      result,
+      startTime,
+      ...(sessionId !== undefined && { sessionId }),
+    });
     return this.session.finalize();
-  }
-
-  // ============================================================================
-  // EventBus Integration (Issue #220)
-  // ============================================================================
-
-  /** Emits protocol.started event. */
-  private emitProtocolStarted(config: CollaborationConfig): void {
-    const event = createEvent<ProtocolStartedEvent>(
-      'protocol.started',
-      {
-        protocolType: 'aegean',
-        config: {
-          maxRounds: this.config.maxRounds,
-          confidenceThreshold: this.config.confidenceThreshold,
-          byzantineTolerance: this.config.byzantineTolerance,
-          agentCount: config.experts.length,
-        },
-      },
-      {
-        sessionId: config.sessionId,
-      }
-    );
-    this.eventBus.emit(event);
-  }
-
-  /** Emits protocol.iteration event for each round. */
-  private emitProtocolIteration(
-    round: number,
-    status: 'in_progress' | 'converged' | 'max_reached',
-    sessionId: string
-  ): void {
-    const event = createEvent<ProtocolIterationEvent>(
-      'protocol.iteration',
-      {
-        round: round + 1,
-        maxRounds: this.config.maxRounds,
-        status,
-      },
-      {
-        sessionId,
-      }
-    );
-    this.eventBus.emit(event);
-  }
-
-  /** Emits protocol.completed event. */
-  private emitProtocolCompleted(result: AegeanResult, startTime: number): void {
-    const sessionId = this.session?.getStatus()?.config.sessionId;
-    const event = createEvent<ProtocolCompletedEvent>(
-      'protocol.completed',
-      {
-        success: result.consensusReached,
-        iterations: result.totalRounds,
-        durationMs: Date.now() - startTime,
-      },
-      {
-        ...(sessionId !== undefined && { sessionId }),
-      }
-    );
-    this.eventBus.emit(event);
   }
 }
 
