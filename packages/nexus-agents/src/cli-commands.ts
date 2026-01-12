@@ -18,6 +18,7 @@ import {
   routingAuditCommand,
   orchestrateCommand,
   systemReviewCommand,
+  voteCommand,
   type ExpertListFormat,
 } from './cli/index.js';
 import { EXIT_CODES, HELP_TEXT, type ParsedCliArgs } from './cli-types.js';
@@ -235,6 +236,43 @@ export function handleSystemReviewCommand(args: ParsedCliArgs): void {
 }
 
 /**
+ * Validates threshold option for vote command.
+ */
+function isValidThreshold(value: string): value is 'majority' | 'supermajority' | 'unanimous' {
+  return ['majority', 'supermajority', 'unanimous'].includes(value);
+}
+
+/**
+ * Handles the vote command for consensus voting.
+ * (Source: Issue #212, Process Automation Epic #209)
+ */
+export async function handleVoteCommand(args: ParsedCliArgs): Promise<void> {
+  const proposal = args.options.proposal;
+  if (proposal === undefined) {
+    process.stdout.write('Error: Proposal is required.\n');
+    process.stdout.write('Usage: nexus-agents vote --proposal "..." [options]\n');
+    process.stdout.write('Examples:\n');
+    process.stdout.write('  nexus-agents vote --proposal "Add feature X"\n');
+    process.stdout.write('  nexus-agents vote -p "Proposal" -t supermajority\n');
+    process.stdout.write('  nexus-agents vote -p "Quick decision" --quick\n');
+    process.exit(EXIT_CODES.INVALID_ARGS);
+  }
+
+  const threshold = args.options.threshold;
+  const validThreshold =
+    threshold !== undefined && isValidThreshold(threshold) ? threshold : undefined;
+
+  const exitCode = await voteCommand({
+    proposal,
+    ...(validThreshold !== undefined && { threshold: validThreshold }),
+    dryRun: args.options.dryRun,
+    quick: args.options.quick,
+    verbose: args.options.verbose,
+  });
+  process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
+}
+
+/**
  * Handles synchronous commands that don't require await.
  * Returns true if the command was handled.
  */
@@ -286,6 +324,9 @@ async function handleAsyncCommand(args: ParsedCliArgs): Promise<void> {
       break;
     case 'orchestrate':
       await handleOrchestrateCommand(args);
+      break;
+    case 'vote':
+      await handleVoteCommand(args);
       break;
   }
 }

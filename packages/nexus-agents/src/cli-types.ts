@@ -32,7 +32,8 @@ export type CliCommand =
   | 'review'
   | 'routing-audit'
   | 'orchestrate'
-  | 'system-review';
+  | 'system-review'
+  | 'vote';
 
 /**
  * Parsed CLI arguments and command.
@@ -59,6 +60,10 @@ export interface ParsedCliArgs {
     // System review command options
     createIssue: boolean;
     fix: boolean;
+    // Vote command options
+    proposal?: string;
+    threshold?: 'majority' | 'supermajority' | 'unanimous';
+    quick: boolean;
   };
   positionals: string[];
 }
@@ -136,6 +141,20 @@ export const PARSE_ARGS_CONFIG = {
       type: 'boolean' as const,
       default: false,
     },
+    // Vote command options
+    proposal: {
+      type: 'string' as const,
+      short: 'p',
+    },
+    threshold: {
+      type: 'string' as const,
+      short: 't',
+    },
+    quick: {
+      type: 'boolean' as const,
+      short: 'q',
+      default: false,
+    },
   },
   allowPositionals: true,
   strict: true,
@@ -205,6 +224,13 @@ SYSTEM-REVIEW OPTIONS:
   --fix                Auto-fix correctable issues (lint errors)
   --verbose            Show detailed phase output
 
+VOTE OPTIONS:
+  -p, --proposal <text>  Proposal text to vote on (required)
+  -t, --threshold <t>    Voting threshold: majority, supermajority, unanimous
+  --quick                Use 3 agents instead of 5 for faster votes
+  --dry-run              Simulate votes without actual agent execution
+  --verbose              Show vote verification hashes
+
 EXAMPLES:
   nexus-agents                  Start MCP server (default)
   nexus-agents --interactive    Start interactive REPL
@@ -224,6 +250,9 @@ EXAMPLES:
   nexus-agents system-review                      Run 5-phase system review
   nexus-agents system-review --create-issue       Create GitHub issue with results
   nexus-agents system-review --fix                Auto-fix correctable issues
+  nexus-agents vote --proposal "Add feature X"    Run consensus vote
+  nexus-agents vote -p "Proposal" -t unanimous    Vote with unanimous threshold
+  nexus-agents vote -p "Quick decision" --quick   Fast 3-agent vote
 
 For more information, visit: https://github.com/williamzujkowski/nexus-agents
 `.trim();
@@ -247,6 +276,7 @@ export function isValidCommand(value: string): value is CliCommand {
     'routing-audit',
     'orchestrate',
     'system-review',
+    'vote',
   ];
   return validCommands.includes(value as CliCommand);
 }

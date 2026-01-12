@@ -84,6 +84,9 @@ interface ParsedValues {
   'max-cost-usd'?: string;
   'create-issue': boolean;
   fix: boolean;
+  proposal?: string;
+  threshold?: string;
+  quick: boolean;
 }
 
 /** Builds orchestrate-specific options. */
@@ -95,6 +98,25 @@ function buildOrchestrateOptions(values: ParsedValues): Record<string, unknown> 
     ...(model !== undefined && { model }),
     ...(maxTokens !== undefined && { maxTokens }),
     ...(maxCostUsd !== undefined && { maxCostUsd }),
+  };
+}
+
+/** Validates threshold option for vote command. */
+function parseThreshold(
+  value: string | undefined
+): 'majority' | 'supermajority' | 'unanimous' | undefined {
+  if (value === 'majority' || value === 'supermajority' || value === 'unanimous') {
+    return value;
+  }
+  return undefined;
+}
+
+/** Builds vote-specific options. */
+function buildVoteOptions(values: ParsedValues): Record<string, unknown> {
+  const threshold = parseThreshold(values.threshold);
+  return {
+    ...(values.proposal !== undefined && { proposal: values.proposal }),
+    ...(threshold !== undefined && { threshold }),
   };
 }
 
@@ -115,9 +137,11 @@ function buildOptions(values: ParsedValues): ParsedCliArgs['options'] {
     banditStats: values['bandit-stats'],
     createIssue: values['create-issue'],
     fix: values.fix,
+    quick: values.quick,
     ...(values.output !== undefined && { output: values.output }),
     ...(values.input !== undefined && { input: values.input }),
     ...buildOrchestrateOptions(values),
+    ...buildVoteOptions(values),
   };
 }
 

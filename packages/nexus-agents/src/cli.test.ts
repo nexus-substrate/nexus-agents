@@ -297,6 +297,7 @@ describe('CLI Argument Parsing', () => {
           banditStats: false,
           createIssue: false,
           fix: false,
+          quick: false,
         },
         positionals: [],
       };
@@ -327,6 +328,7 @@ describe('CLI Argument Parsing', () => {
           banditStats: false,
           createIssue: false,
           fix: false,
+          quick: false,
         },
         positionals: ['config', 'show'],
       };
@@ -349,6 +351,7 @@ describe('CLI Argument Parsing', () => {
           banditStats: false,
           createIssue: false,
           fix: false,
+          quick: false,
         },
         positionals: [],
       };
