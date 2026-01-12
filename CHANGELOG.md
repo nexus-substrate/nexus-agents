@@ -11,9 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **CLI Commands**
   - `nexus-agents vote` - Consensus voting with 5 voter agents (#212)
+    - Real LLM execution for voter agents (#226)
+    - Vote recording to GitHub issues via `--issueNumber` flag
   - `nexus-agents system-review` - Automated system health check (#211)
   - `nexus-agents routing-audit` - Debug routing decisions (#170)
   - `nexus-agents orchestrate` - Standalone CLI orchestration (#183)
+  - `nexus-agents issue validate` - Issue template validation (#229)
+  - `nexus-agents sprint plan` - Automated sprint planning (#230)
 - **Observability**
   - SwarmObserver for real-time orchestration visibility (#91aeabf)
   - Routing effectiveness dashboard (#171)
@@ -44,10 +48,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Planned
 
-- Real agent voting (replace simulated votes) (#226)
-- Vote recording in GitHub issues (#227)
 - EventBus integration for Aegean, Reflexion, Trinity protocols (#220-#222)
 - Agent message routing through EventBus (#223-#224)
+- Research Registry CLI (P3 - Epic #225)
 
 ## [2.0.0] - 2026-01-04
 
