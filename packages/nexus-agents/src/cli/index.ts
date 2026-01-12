@@ -119,3 +119,13 @@ export type {
   IssueValidationResult,
   RequiredSection,
 } from './issue-template-types.js';
+
+// Sprint Planning (Issue #230, Epic #225)
+export {
+  sprintCommand,
+  generateProposal,
+  printProposal,
+  printSprintResult,
+} from './sprint-command.js';
+export type { SprintCommandOptions, SprintPlanResult, SprintProposal } from './sprint-types.js';
+export type { SprintIssue, Priority, GitHubIssueRaw } from './sprint-types.js';
