@@ -922,19 +922,26 @@ techniques:
     metrics:
       performance_parity: '1B model matches 405B'
 
-    status: not-started
+    status: implemented
     priority: P2
     complexity: high
 
     integration_files:
-      - 'packages/nexus-agents/src/workflows/step-executor.ts'
+      - 'packages/nexus-agents/src/workflows/latts.ts'
+      - 'packages/nexus-agents/src/workflows/latts-types.ts'
+      - 'packages/nexus-agents/src/workflows/latts-controller.ts'
+      - 'packages/nexus-agents/src/workflows/latts-verifier.ts'
+      - 'packages/nexus-agents/src/workflows/latts.test.ts'
 
     implementation_issue: 153
     related_prs: []
 
     notes: |
-      Implement adaptive compute in workflow steps.
-      Add backtrack/restart to step executor.
+      Implemented LATTS adaptive test-time compute:
+      - LattsController for adaptive decision making
+      - LattsVerifier for acceptance criteria
+      - Resample, backtrack, restart, stop decisions
+      - Full test coverage
 
     dependencies: []
 
@@ -942,6 +949,9 @@ techniques:
       - date: '2026-01-09'
         decision: 'Issue created'
         rationale: 'Created during dogfooding session'
+      - date: '2026-01-09'
+        decision: 'Implemented'
+        rationale: 'Issue #153 closed - full LATTS implementation'
 
   # ============================================================================
   # SELF-IMPROVEMENT

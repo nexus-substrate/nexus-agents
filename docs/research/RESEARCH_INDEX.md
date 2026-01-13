@@ -9,10 +9,10 @@
 
 | Status      | Papers | Techniques |
 | ----------- | ------ | ---------- |
-| Implemented | -      | 24         |
+| Implemented | -      | 25         |
 | In Progress | -      | 0          |
 | Planned     | -      | 0          |
-| Not Started | -      | 2          |
+| Not Started | -      | 1          |
 | Rejected    | -      | 1          |
 
 > **Note:** Paper-level status tracking deprecated. Technique status is source of truth.
@@ -51,14 +51,13 @@ These techniques are high-impact and align well with the current architecture.
 
 ## Remaining Techniques (Not Started)
 
-Future work - 2 techniques remaining.
+Future work - 1 technique remaining.
 
-| Technique                                                                 | Topic         | Key Metrics       | Priority | Issue |
-| ------------------------------------------------------------------------- | ------------- | ----------------- | -------- | ----- |
-| [LATTS Adaptive Compute](registry/techniques.yaml#latts-adaptive-compute) | orchestration | 1B matches 405B   | P2       | #153  |
-| [RL-Trained Orchestrator](registry/techniques.yaml#rl-orchestrator)       | orchestration | 15-30% task boost | P4       | #154  |
+| Technique                                                           | Topic         | Key Metrics       | Priority | Issue |
+| ------------------------------------------------------------------- | ------------- | ----------------- | -------- | ----- |
+| [RL-Trained Orchestrator](registry/techniques.yaml#rl-orchestrator) | orchestration | 15-30% task boost | P4       | #154  |
 
-> **Note:** All P1 and most P2 techniques are now implemented (24/27).
+> **Note:** All P1 and P2 techniques are now implemented (25/27). Only P4 RL-orchestrator remains.
 
 ---
 
