@@ -50,9 +50,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - REPL test timeouts in CI (#192)
 - exactOptionalPropertyTypes error in PolicyCheckOptions
 
-### Planned
+### Completed (from Planned)
 
-- Research Registry CLI (P3 - Epic #225)
+- **Research Registry CLI** (Epic #225) - `nexus-agents research` commands (#237)
+  - `research status` - View technique implementation status
+  - `research overlap` - Find related techniques
+  - `research add` - Add papers from arXiv
 
 ## [2.0.0] - 2026-01-04
 
