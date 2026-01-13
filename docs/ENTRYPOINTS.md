@@ -1,6 +1,6 @@
 # Nexus-Agents Entrypoints
 
-**Last Updated:** 2026-01-11 (ET)
+**Last Updated:** 2026-01-12 (ET)
 **Canonical Source:** This document is the single source of truth for all entrypoints.
 **Issue:** #210 (Epic #209)
 
@@ -39,6 +39,10 @@ Nexus-agents provides four interface categories:
 | `routing-audit` | `<task>`        | Debug routing decisions (dry-run)          | any          |
 | `orchestrate`   | `<task>`        | Execute task standalone                    | orchestrator |
 | `system-review` | -               | Run 5-phase system review                  | any          |
+| `vote`          | `<proposal>`    | Consensus voting with 5 agents             | any          |
+| `issue`         | `validate`      | Validate issue against templates           | any          |
+| `sprint`        | `plan`          | Generate sprint proposal from open issues  | any          |
+| `sprint`        | `list`          | List open issues with priority labels      | any          |
 
 ### Mode Selection
 
@@ -74,6 +78,18 @@ nexus-agents routing-audit "Implement a sorting algorithm" --format=json
 
 # Standalone orchestration
 nexus-agents orchestrate "Review this code for security issues"
+
+# Consensus voting
+nexus-agents vote "Should we adopt TypeScript 6.0?"
+
+# Validate issue body
+nexus-agents issue validate --body="## Summary\nFix bug..."
+
+# Generate sprint proposal
+nexus-agents sprint plan --max=10 --create-issue
+
+# List sprint candidates
+nexus-agents sprint list --format=table
 
 # System review (5-phase checklist)
 nexus-agents system-review
