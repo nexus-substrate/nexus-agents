@@ -213,11 +213,11 @@ const recentVotes = eventBus.getHistory({
 
 | Method | Path                 | Purpose                     | Auth    | Rate Limit |
 | ------ | -------------------- | --------------------------- | ------- | ---------- |
-| POST   | /api/v1/orchestrate  | Task orchestration          | API Key | 100/min    |
-| POST   | /api/v1/delegate     | Model routing/delegation    | API Key | 100/min    |
-| POST   | /api/v1/expert       | Create expert agent         | API Key | 100/min    |
-| GET    | /api/v1/expert/types | List available expert types | API Key | 100/min    |
-| POST   | /api/v1/workflow     | Run workflow template       | API Key | 100/min    |
+| POST   | /api/v1/orchestrate  | Task orchestration          | API Key | 60/min     |
+| POST   | /api/v1/delegate     | Model routing/delegation    | API Key | 60/min     |
+| POST   | /api/v1/expert       | Create expert agent         | API Key | 60/min     |
+| GET    | /api/v1/expert/types | List available expert types | API Key | 60/min     |
+| POST   | /api/v1/workflow     | Run workflow template       | API Key | 60/min     |
 | GET    | /health              | Health check                | None    | None       |
 | GET    | /metrics             | Server metrics (JSON)       | None    | None       |
 | GET    | /metrics/prometheus  | Prometheus format metrics   | None    | None       |
@@ -1025,6 +1025,8 @@ stateDiagram-v2
 
 | Threat             | Vector               | Mitigation                                |
 | ------------------ | -------------------- | ----------------------------------------- |
+| Prompt Injection   | Malicious prompts    | Input/output tagging, structured output   |
+| SSRF               | Outbound HTTP calls  | URL allowlist, private IP blocking        |
 | Path Traversal     | Malicious file paths | Path normalization, directory jail        |
 | ReDoS              | Malicious regex      | Static patterns only, no user RegExp      |
 | MCP SDK ReDoS      | CVE-2026-0621        | TimeoutGuard, URI validation (Issue #107) |
@@ -1032,6 +1034,8 @@ stateDiagram-v2
 | Token Exhaustion   | Unbounded context    | Memory caps, pruning                      |
 | Injection          | Malformed prompts    | Input validation, Zod schemas             |
 | Byzantine Failures | Malicious agents     | Weighted voting with Byzantine detection  |
+
+> **Reference:** See OWASP LLM Top 10 (LLM01: Prompt Injection) for additional guidance.
 
 ### Security Layers
 

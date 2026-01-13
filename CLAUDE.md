@@ -39,6 +39,39 @@ nexus-agents --help       # Full command list
 
 ---
 
+## Prerequisites
+
+Before installing, verify your environment:
+
+```bash
+node --version   # Must be v22.x (LTS)
+pnpm --version   # Must be v9.x (recommended) or npm v10.x
+```
+
+**Required:**
+
+- Node.js 22.x LTS
+- pnpm 9.x or npm 10.x
+
+**Optional:**
+
+- Docker (for container sandbox mode)
+- Claude CLI (for MCP server mode)
+
+---
+
+## Environment Variables
+
+| Variable            | Required For       | Default               |
+| ------------------- | ------------------ | --------------------- |
+| `ANTHROPIC_API_KEY` | Claude adapter     | None                  |
+| `OPENAI_API_KEY`    | OpenAI adapter     | None                  |
+| `GOOGLE_AI_API_KEY` | Gemini adapter     | None                  |
+| `NEXUS_LOG_LEVEL`   | Logging verbosity  | `info`                |
+| `NEXUS_CONFIG_PATH` | Custom config path | `./nexus-agents.yaml` |
+
+---
+
 ## Getting Started (5 Minutes)
 
 ### For Claude Desktop Users
@@ -64,6 +97,24 @@ nexus-agents --help       # Full command list
 npm install -g nexus-agents
 nexus-agents doctor                    # Verify installation
 nexus-agents orchestrate "Explain closures in JavaScript"
+```
+
+### Verify Installation (Hello World)
+
+After installation, verify everything works:
+
+```bash
+# Check system health
+nexus-agents doctor
+
+# Expected output:
+# ✓ Node.js version: 22.x
+# ✓ Configuration loaded
+# ✓ API keys configured: 1 of 3
+# Status: Ready
+
+# Test orchestration (requires ANTHROPIC_API_KEY)
+nexus-agents orchestrate "Hello World: summarize this test" --verbose
 ```
 
 ### Mode Selection
@@ -435,6 +486,51 @@ const weighted = new WeightedVoting({
 | Voting Protocol   | `src/consensus/voting-protocol.ts`                       | Multi-round voting       |
 | Collaboration     | `src/agents/collaboration/`                              | Protocol implementations |
 | Adaptive Selector | `src/agents/collaboration/adaptive-protocol-selector.ts` | Auto-selection           |
+
+---
+
+## Agent-to-Agent (A2A) Protocol
+
+The EventBus enables direct agent-to-agent communication without client roundtrips.
+
+### Event Bus Usage
+
+```typescript
+import { getGlobalEventBus } from './agents/collaboration/event-bus.js';
+
+// Subscribe to consensus events
+const eventBus = getGlobalEventBus();
+eventBus.subscribe('consensus.*', (event) => {
+  console.log(`Vote cast: ${event.agentId} → ${event.decision}`);
+});
+
+// Query event history
+const recentVotes = eventBus.getHistory({
+  topic: 'consensus.vote_cast',
+  since: Date.now() - 60000, // Last minute
+});
+```
+
+### Event Topic Patterns
+
+| Topic Pattern | Events                             | Description          |
+| ------------- | ---------------------------------- | -------------------- |
+| `session.*`   | created, status_changed, finalized | Session lifecycle    |
+| `consensus.*` | vote_requested, vote_cast, reached | Voting events        |
+| `agent.*`     | task_delegated, result_broadcast   | Agent coordination   |
+| `protocol.*`  | started, iteration, completed      | Protocol phases      |
+| `message.*`   | sent, received                     | Inter-agent messages |
+| `byzantine.*` | weight_updated, pattern_detected   | Byzantine detection  |
+
+### Key Files
+
+| File                                          | Purpose                    |
+| --------------------------------------------- | -------------------------- |
+| `src/agents/collaboration/event-bus.ts`       | Core event bus             |
+| `src/agents/collaboration/event-bus-types.ts` | Event type definitions     |
+| `src/observability/swarm-observer.ts`         | Event subscriber & metrics |
+
+See [ARCHITECTURE.md](./ARCHITECTURE.md#agent-to-agent-a2a-protocol) for complete A2A documentation.
 
 ---
 
@@ -1047,6 +1143,40 @@ nexus-agents/
 4. Run tests after each change
 5. Update documentation
 6. Create PR with rationale
+
+### Release
+
+1. Ensure all CI gates pass
+2. Update CHANGELOG.md with version and date
+3. Version bump in package.json (semantic versioning)
+4. Create and push tag:
+   ```bash
+   git tag -a v2.3.0 -m "Release v2.3.0"
+   git push origin v2.3.0
+   ```
+5. Publish to npm: `pnpm publish`
+6. Create GitHub Release: `gh release create v2.3.0 --generate-notes`
+7. Update ALIGNMENT_ROADMAP.md phase status
+
+**Rollback (if needed):**
+
+```bash
+npm unpublish nexus-agents@2.3.0  # Within 72 hours
+git tag -d v2.3.0 && git push --delete origin v2.3.0
+```
+
+### Hotfix
+
+**Trigger:** Critical bug or security vulnerability in production.
+
+1. Create branch from latest release tag:
+   ```bash
+   git checkout -b hotfix/123-critical-fix v2.3.0
+   ```
+2. Implement fix with minimal changes
+3. Security label + P1 = single-reviewer approval sufficient
+4. Merge to main AND cherry-pick to release branch
+5. Immediate release with patch version bump (e.g., v2.3.1)
 
 ---
 

@@ -228,15 +228,16 @@ nexus-agents research add 2501.06322 --dry-run     # Preview adding paper
 **Base URL:** `http://localhost:3000`
 **API Version:** v1
 
-| Method | Endpoint              | Description           | Auth    | Rate Limit |
-| ------ | --------------------- | --------------------- | ------- | ---------- |
-| GET    | `/health`             | Health check          | None    | None       |
-| GET    | `/metrics`            | Prometheus metrics    | None    | None       |
-| GET    | `/metrics/prometheus` | Prometheus format     | None    | None       |
-| POST   | `/api/v1/orchestrate` | Task orchestration    | API Key | 60/min     |
-| POST   | `/api/v1/delegate`    | Model routing         | API Key | 60/min     |
-| POST   | `/api/v1/workflow`    | Workflow execution    | API Key | 60/min     |
-| POST   | `/api/v1/expert`      | Expert task execution | API Key | 60/min     |
+| Method | Endpoint               | Description           | Auth    | Rate Limit |
+| ------ | ---------------------- | --------------------- | ------- | ---------- |
+| GET    | `/health`              | Health check          | None    | None       |
+| GET    | `/metrics`             | Prometheus metrics    | None    | None       |
+| GET    | `/metrics/prometheus`  | Prometheus format     | None    | None       |
+| POST   | `/api/v1/orchestrate`  | Task orchestration    | API Key | 60/min     |
+| POST   | `/api/v1/delegate`     | Model routing         | API Key | 60/min     |
+| POST   | `/api/v1/workflow`     | Workflow execution    | API Key | 60/min     |
+| POST   | `/api/v1/expert`       | Expert task execution | API Key | 60/min     |
+| GET    | `/api/v1/expert/types` | List expert types     | API Key | 60/min     |
 
 ### Authentication
 
