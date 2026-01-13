@@ -43,6 +43,9 @@ Nexus-agents provides four interface categories:
 | `issue`         | `validate`      | Validate issue against templates           | any          |
 | `sprint`        | `plan`          | Generate sprint proposal from open issues  | any          |
 | `sprint`        | `list`          | List open issues with priority labels      | any          |
+| `research`      | `status`        | Show technique implementation status       | any          |
+| `research`      | `overlap`       | Find overlapping techniques                | any          |
+| `research`      | `add`           | Add new paper from arXiv                   | any          |
 
 ### Mode Selection
 
@@ -95,6 +98,13 @@ nexus-agents sprint list --format=table
 nexus-agents system-review
 nexus-agents system-review --create-issue
 nexus-agents system-review --fix --verbose
+
+# Research registry
+nexus-agents research status                       # Show all techniques
+nexus-agents research status --status=implemented  # Filter by status
+nexus-agents research status aegean-consensus      # Show specific technique
+nexus-agents research overlap trinity-roles        # Find related techniques
+nexus-agents research add 2501.06322 --dry-run     # Preview adding paper
 ```
 
 ### Source Files
@@ -110,6 +120,7 @@ nexus-agents system-review --fix --verbose
 | `src/cli/routing-audit.ts`       | Routing audit command |
 | `src/cli/orchestrate-command.ts` | Orchestrate command   |
 | `src/cli/system-review.ts`       | System review command |
+| `src/cli/research-command.ts`    | Research registry CLI |
 
 ---
 

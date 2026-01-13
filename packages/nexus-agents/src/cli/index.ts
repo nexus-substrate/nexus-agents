@@ -129,3 +129,42 @@ export {
 } from './sprint-command.js';
 export type { SprintCommandOptions, SprintPlanResult, SprintProposal } from './sprint-types.js';
 export type { SprintIssue, Priority, GitHubIssueRaw } from './sprint-types.js';
+
+// Research Registry (Issue #237, Epic #225)
+export {
+  researchCommand,
+  getResearchStatus,
+  findOverlaps,
+  paperExists,
+  fetchArxivMetadata,
+  addResearchPaper,
+  loadTechniquesRegistry,
+  loadPapersRegistry,
+  saveTechniquesRegistry,
+  savePapersRegistry,
+  formatStatusResult,
+  formatOverlapResult,
+  // Pure utility functions
+  toStatusSummary,
+  filterByStatus,
+  countByStatus,
+  calculateTagOverlap,
+  findSharedTags,
+  determineRelationship,
+} from './research-command.js';
+export type {
+  ResearchAddOptions,
+  ResearchStatusOptions,
+  ResearchOverlapOptions,
+  ResearchAddResult,
+  ResearchStatusResult,
+  ResearchOverlapResult,
+  TechniqueEntry,
+  TechniqueStatus,
+  TechniqueStatusSummary,
+  TechniquesRegistry,
+  PaperEntry,
+  PapersRegistry,
+  OverlapMatch,
+  ArxivMetadata,
+} from './research-types.js';
