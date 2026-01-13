@@ -271,7 +271,7 @@ describe('ClaudeCliAdapter', () => {
       expect(capturedArgs).toContain('session-123');
     });
 
-    it('should include max tokens when specified', async () => {
+    it('should NOT pass maxTokens to CLI (Claude CLI does not support --max-tokens)', async () => {
       mockSpawnResponse(JSON.stringify({ text: 'Short!' }));
 
       const task: CliTask = {
@@ -281,8 +281,9 @@ describe('ClaudeCliAdapter', () => {
 
       await adapter.execute(task);
 
-      expect(capturedArgs).toContain('--max-tokens');
-      expect(capturedArgs).toContain('100');
+      // Claude CLI does not support --max-tokens option (verified via `claude --help`)
+      // The CLI handles token limits internally based on model configuration
+      expect(capturedArgs).not.toContain('--max-tokens');
     });
 
     it('should use task model over default when provided', async () => {

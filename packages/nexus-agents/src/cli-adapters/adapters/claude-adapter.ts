@@ -62,10 +62,9 @@ export class ClaudeCliAdapter extends SubprocessCliAdapter {
       args.push('--resume', task.sessionId);
     }
 
-    // Add max tokens if specified
-    if (task.maxTokens !== undefined && task.maxTokens > 0) {
-      args.push('--max-tokens', String(task.maxTokens));
-    }
+    // Note: maxTokens is intentionally not passed to Claude CLI.
+    // The Claude CLI does not support --max-tokens. Use --max-budget-usd instead.
+    // The CLI handles token limits internally based on model configuration.
 
     // Add the task content as the prompt
     args.push(task.content);
