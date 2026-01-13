@@ -19,7 +19,10 @@ import {
   orchestrateCommand,
   systemReviewCommand,
   voteCommand,
+  indexCommand,
+  formatIndexResult,
   type ExpertListFormat,
+  type IndexSubcommand,
 } from './cli/index.js';
 import { EXIT_CODES, HELP_TEXT, type ParsedCliArgs } from './cli-types.js';
 import { startServer } from './cli-server.js';
@@ -273,6 +276,50 @@ export async function handleVoteCommand(args: ParsedCliArgs): Promise<void> {
 }
 
 /**
+ * Validates index subcommand.
+ */
+function isValidIndexSubcommand(value: string | undefined): value is IndexSubcommand {
+  return value === 'generate' || value === 'check' || value === 'diagram' || value === 'validate';
+}
+
+/**
+ * Validates output format for index command.
+ */
+function isValidIndexFormat(value: string): value is 'yaml' | 'json' {
+  return value === 'yaml' || value === 'json';
+}
+
+/**
+ * Handles the index command for codebase indexing.
+ * (Source: Issue #240)
+ */
+export async function handleIndexCommand(args: ParsedCliArgs): Promise<void> {
+  const subcommand = args.subcommand;
+  if (!isValidIndexSubcommand(subcommand)) {
+    process.stdout.write('Error: Index subcommand is required.\n');
+    process.stdout.write('Usage: nexus-agents index <subcommand> [options]\n');
+    process.stdout.write('Subcommands:\n');
+    process.stdout.write('  generate   Generate/update codebase index\n');
+    process.stdout.write('  check      Validate index freshness (for CI)\n');
+    process.stdout.write('  diagram    Generate Mermaid dependency diagram\n');
+    process.stdout.write('  validate   Check ARCHITECTURE.md matches index\n');
+    process.exit(EXIT_CODES.INVALID_ARGS);
+  }
+
+  const format = isValidIndexFormat(args.options.format) ? args.options.format : undefined;
+
+  const result = await indexCommand({
+    subcommand,
+    ...(format !== undefined && { format }),
+    ...(args.options.output !== undefined && { output: args.options.output }),
+    ...(args.options.verbose && { verbose: args.options.verbose }),
+  });
+
+  process.stdout.write(formatIndexResult(result) + '\n');
+  process.exit(result.success ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
+}
+
+/**
  * Handles synchronous commands that don't require await.
  * Returns true if the command was handled.
  */
@@ -327,6 +374,9 @@ async function handleAsyncCommand(args: ParsedCliArgs): Promise<void> {
       break;
     case 'vote':
       await handleVoteCommand(args);
+      break;
+    case 'index':
+      await handleIndexCommand(args);
       break;
   }
 }

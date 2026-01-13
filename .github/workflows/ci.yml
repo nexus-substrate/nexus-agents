@@ -96,6 +96,33 @@ jobs:
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
+  index-check:
+    name: Index Freshness Check
+    runs-on: ubuntu-latest
+    # Warning only - does not block CI
+    continue-on-error: true
+    needs: [build]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Check index freshness
+        run: |
+          cd packages/nexus-agents
+          node dist/cli.js index check || echo "::warning::Codebase index is out of date. Run 'nexus-agents index generate' to update."
+
   security:
     name: Security Audit
     runs-on: ubuntu-latest

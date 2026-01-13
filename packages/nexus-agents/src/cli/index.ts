@@ -168,3 +168,7 @@ export type {
   OverlapMatch,
   ArxivMetadata,
 } from './research-types.js';
+
+// Codebase Index (Issue #240)
+export { indexCommand, formatIndexResult } from './index-command.js';
+export type { IndexSubcommand, IndexCommandOptions, IndexCommandResult } from './index-command.js';

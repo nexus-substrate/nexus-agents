@@ -11,5 +11,7 @@ export default defineConfig({
   sourcemap: true,
   target: 'node22',
   outDir: 'dist',
+  // ts-morph uses CommonJS internally and must be external
+  external: ['ts-morph', '@ts-morph/common'],
   onSuccess: 'cp -r src/workflows/templates dist/workflows/ 2>/dev/null || true',
 });

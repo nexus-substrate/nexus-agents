@@ -33,7 +33,8 @@ export type CliCommand =
   | 'routing-audit'
   | 'orchestrate'
   | 'system-review'
-  | 'vote';
+  | 'vote'
+  | 'index';
 
 /**
  * Parsed CLI arguments and command.
@@ -181,6 +182,7 @@ COMMANDS:
   routing-audit   Debug model routing decisions
   orchestrate     Execute task using CLI tools (standalone mode)
   system-review   Run automated system review (5-phase checklist)
+  index           Generate and manage codebase index
 
 OPTIONS:
   -h, --help           Show this help message
@@ -231,6 +233,15 @@ VOTE OPTIONS:
   --dry-run              Simulate votes without actual agent execution
   --verbose              Show vote verification hashes
 
+INDEX OPTIONS:
+  index generate         Generate/update codebase index
+  index check            Validate index freshness (for CI)
+  index diagram          Generate Mermaid dependency diagram
+  index validate         Check ARCHITECTURE.md matches index
+  --format=<yaml|json>   Output format (default: yaml)
+  -o, --output=<path>    Custom output path
+  --verbose              Show extraction progress
+
 EXAMPLES:
   nexus-agents                  Start MCP server (default)
   nexus-agents --interactive    Start interactive REPL
@@ -253,6 +264,9 @@ EXAMPLES:
   nexus-agents vote --proposal "Add feature X"    Run consensus vote
   nexus-agents vote -p "Proposal" -t unanimous    Vote with unanimous threshold
   nexus-agents vote -p "Quick decision" --quick   Fast 3-agent vote
+  nexus-agents index generate                     Generate codebase index
+  nexus-agents index check                        Check if index is up to date
+  nexus-agents index diagram                      Generate dependency diagram
 
 For more information, visit: https://github.com/williamzujkowski/nexus-agents
 `.trim();
@@ -277,6 +291,7 @@ export function isValidCommand(value: string): value is CliCommand {
     'orchestrate',
     'system-review',
     'vote',
+    'index',
   ];
   return validCommands.includes(value as CliCommand);
 }
