@@ -1,6 +1,6 @@
 # Nexus-Agents Research Index
 
-**Generated:** 2026-01-11 (ET)
+**Generated:** 2026-01-13 (ET)
 **Total Papers:** 51 | **Techniques:** 27 | **Topics:** 6
 
 ---
@@ -9,9 +9,9 @@
 
 | Status      | Papers | Techniques |
 | ----------- | ------ | ---------- |
-| Implemented | -      | 21         |
+| Implemented | -      | 24         |
 | In Progress | -      | 0          |
-| Planned     | -      | 3          |
+| Planned     | -      | 0          |
 | Not Started | -      | 2          |
 | Rejected    | -      | 1          |
 
@@ -49,24 +49,16 @@ These techniques are high-impact and align well with the current architecture.
 
 ---
 
-## Priority 2 (P2) Techniques
+## Remaining Techniques (Not Started)
 
-Medium-impact or requiring moderate changes.
+Future work - 2 techniques remaining.
 
-| Technique                                                                         | Topic         | Key Metrics              | Issue |
-| --------------------------------------------------------------------------------- | ------------- | ------------------------ | ----- |
-| [CP-WBFT Consensus](registry/techniques.yaml#cp-wbft-consensus)                   | consensus     | 85.7% fault tolerance    | #103  |
-| [SATER Routing](registry/techniques.yaml#sater-routing)                           | routing       | 50%+ cost reduction      | #99   |
-| [TOPSIS Routing](registry/techniques.yaml#topsis-routing)                         | routing       | 31.46% cost reduction    | -     |
-| [Cascade Routing](registry/techniques.yaml#cascade-routing)                       | routing       | Agreement-based          | -     |
-| [Preference-Trained Routing](registry/techniques.yaml#preference-trained-routing) | routing       | 2x cost reduction        | -     |
-| [Mem0 Memory](registry/techniques.yaml#mem0-memory-architecture)                  | memory        | 91% latency reduction    | #101  |
-| [MIRIX Six-Type Memory](registry/techniques.yaml#mirix-six-type-memory)           | memory        | 35% accuracy improvement | #101  |
-| [MobiMem Evolution](registry/techniques.yaml#mobimem-evolution)                   | memory        | 280x faster retrieval    | -     |
-| [LATTS Adaptive Compute](registry/techniques.yaml#latts-adaptive-compute)         | orchestration | 1B matches 405B          | -     |
-| [Voyager Skill Library](registry/techniques.yaml#voyager-skill-library)           | code-gen      | 15.3x faster milestones  | -     |
-| [SICA Self-Improvement](registry/techniques.yaml#sica-self-improvement)           | code-gen      | 17%→53% SWE-Bench        | -     |
-| [Constitutional AI](registry/techniques.yaml#constitutional-ai)                   | code-gen      | Scales without humans    | -     |
+| Technique                                                                 | Topic         | Key Metrics       | Priority | Issue |
+| ------------------------------------------------------------------------- | ------------- | ----------------- | -------- | ----- |
+| [LATTS Adaptive Compute](registry/techniques.yaml#latts-adaptive-compute) | orchestration | 1B matches 405B   | P2       | #153  |
+| [RL-Trained Orchestrator](registry/techniques.yaml#rl-orchestrator)       | orchestration | 15-30% task boost | P4       | #154  |
+
+> **Note:** All P1 and most P2 techniques are now implemented (24/27).
 
 ---
 

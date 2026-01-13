@@ -503,18 +503,21 @@ techniques:
     metrics:
       cost_reduction: '2x'
 
-    status: planned
+    status: implemented
     priority: P2
     complexity: high
 
     integration_files:
-      - 'packages/nexus-agents/src/agents/'
+      - 'packages/nexus-agents/src/cli-adapters/preference-router.ts'
+      - 'packages/nexus-agents/src/cli-adapters/preference-router-types.ts'
+      - 'packages/nexus-agents/src/cli-adapters/preference-router.test.ts'
 
     implementation_issue: 148
     related_prs: []
 
     notes: |
-      Requires training data collection. Long-term improvement.
+      Implemented PreferenceRouter with preference-based model selection.
+      Uses historical preference data for routing decisions.
 
     dependencies: []
 
@@ -522,6 +525,9 @@ techniques:
       - date: '2026-01-09'
         decision: 'Issue created'
         rationale: 'Created during dogfooding session'
+      - date: '2026-01-13'
+        decision: 'Status updated to implemented'
+        rationale: 'PreferenceRouter in cli-adapters/ - commit a3d8e06'
 
   # ============================================================================
   # MEMORY SYSTEMS
@@ -547,20 +553,23 @@ techniques:
       token_savings: '90%'
       quality_improvement: '26%'
 
-    status: planned
+    status: implemented
     priority: P2
     complexity: high
 
     integration_files:
-      - 'packages/nexus-agents/src/agents/memory/'
+      - 'packages/nexus-agents/src/context/agentic-memory.ts'
+      - 'packages/nexus-agents/src/context/adaptive-memory.ts'
+      - 'packages/nexus-agents/src/context/graph-memory.ts'
+      - 'packages/nexus-agents/src/context/memory-backend.ts'
 
     implementation_issue: 156
     related_prs: []
 
     notes: |
-      CORE FEATURES ALREADY IMPLEMENTED - Review found high overlap.
-      Issue #156 refocused to benchmarking/optimization work.
-      Missing: performance validation (91% latency, 90% tokens, 26% quality).
+      Core features implemented via agentic-memory, adaptive-memory, and graph-memory.
+      Provides dynamic extraction, cross-session consolidation, and scalable retrieval.
+      Benchmarking for claimed metrics (91% latency, 90% tokens) remains future work.
 
     dependencies: []
 
@@ -568,6 +577,9 @@ techniques:
       - date: '2026-01-09'
         decision: 'Reviewed - ENHANCE_EXISTING recommendation'
         rationale: 'Core features in agentic-memory, adaptive-memory, graph-memory. Need benchmarks.'
+      - date: '2026-01-13'
+        decision: 'Status updated to implemented'
+        rationale: 'Core architecture complete - benchmarking is enhancement, not blocker'
 
   mirix-six-type-memory:
     name: 'MIRIX Six-Type Memory System'
@@ -639,21 +651,23 @@ techniques:
       retrieval_speed: '280x faster than GraphRAG'
       task_success_improvement: '50.3%'
 
-    status: planned
+    status: implemented
     priority: P2
     complexity: high
 
     integration_files:
-      - 'packages/nexus-agents/src/agents/'
-      - 'packages/nexus-agents/src/workflows/'
+      - 'packages/nexus-agents/src/context/mobimem.ts'
+      - 'packages/nexus-agents/src/context/mobimem-impl.ts'
+      - 'packages/nexus-agents/src/context/mobimem-types.ts'
+      - 'packages/nexus-agents/src/context/mobimem.test.ts'
 
     implementation_issue: 149
     related_prs: []
 
     notes: |
-      Enable agent improvement without retraining.
-      Experience Memory applicable to workflow templates.
-      Action Memory caches successful expert interactions.
+      Implemented MobiMemBackend with Profile, Experience, and Action modules.
+      Enables post-deployment evolution without retraining.
+      Experience Memory tracks workflow patterns for improvement.
 
     dependencies: []
 
@@ -661,6 +675,9 @@ techniques:
       - date: '2026-01-09'
         decision: 'Issue created'
         rationale: 'Created during dogfooding session'
+      - date: '2026-01-13'
+        decision: 'Status updated to implemented'
+        rationale: 'MobiMemBackend in context/ - commit 1c5d1b2'
 
   graph-based-memory:
     name: 'Graph-Based Memory'
