@@ -92,12 +92,12 @@ Nexus-agents will adopt a **hybrid architecture** that combines:
 
 ### Implementation Roadmap
 
-| Phase   | Version | Focus                    | Issues     |
-| ------- | ------- | ------------------------ | ---------- |
-| Current | v2.0.1  | MCP Server Mode (stable) | -          |
-| Phase 1 | v2.2.0  | Event Bus + Internal A2A | #182       |
-| Phase 2 | v2.3.0  | Standalone CLI Mode      | #183       |
-| Phase 3 | v3.0.0  | REST API + Full Hybrid   | #184, #185 |
+| Phase   | Version | Focus                    | Issues     | Status |
+| ------- | ------- | ------------------------ | ---------- | ------ |
+| Current | v2.0.1  | MCP Server Mode (stable) | -          | ✅     |
+| Phase 1 | v2.2.0  | Event Bus + Internal A2A | #182       | ✅     |
+| Phase 2 | v2.3.0  | Standalone CLI Mode      | #183       | -      |
+| Phase 3 | v3.0.0  | REST API + Full Hybrid   | #184, #185 | -      |
 
 ### Related Issues
 
@@ -110,8 +110,8 @@ Nexus-agents will adopt a **hybrid architecture** that combines:
 
 ## Agent-to-Agent (A2A) Protocol
 
-**Status:** 60% implemented (Issue #215)
-**Last Updated:** 2026-01-11 (ET)
+**Status:** ✅ Fully implemented (Issue #215)
+**Last Updated:** 2026-01-12 (ET)
 
 ### Architecture Overview
 
@@ -124,6 +124,7 @@ Nexus-agents will adopt a **hybrid architecture** that combines:
 │  └─ Topic-based pub/sub with wildcard patterns              │
 │  └─ Event history with filtering                            │
 │  └─ Global singleton via getGlobalEventBus()                │
+│  └─ Correlation ID chaining for request tracing (#224)      │
 │                                                              │
 │ CollaborationSession: ✅ Emits Events                       │
 │  └─ session.created, session.finalized                      │
@@ -135,9 +136,17 @@ Nexus-agents will adopt a **hybrid architecture** that combines:
 │  └─ Agent collaboration graphs                              │
 │  └─ Session/consensus metrics                               │
 │                                                              │
-│ Protocol Iterations: ❌ Not Yet Emitting (#216)             │
-│ Agent Message Routing: ❌ Not Yet Implemented (#217)        │
-│ Byzantine Detection Events: ❌ Not Yet Emitting (#218)      │
+│ Protocol Iterations: ✅ Implemented (#216)                  │
+│  └─ Granular phase events for all protocols                 │
+│  └─ Aegean, Reflexion, Trinity integration (#220-#222)      │
+│                                                              │
+│ Agent Message Routing: ✅ Implemented (#217, #223)          │
+│  └─ message.sent, message.received events                   │
+│  └─ BaseAgent emits on handleMessage()                      │
+│                                                              │
+│ Byzantine Detection Events: ✅ Implemented (#218)           │
+│  └─ byzantine.weight_updated, pattern_detected              │
+│  └─ Integrated with CP-WBFT consensus                       │
 │                                                              │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -149,9 +158,9 @@ Nexus-agents will adopt a **hybrid architecture** that combines:
 | `session.*`   | created, status_changed, finalized              | ✅     |
 | `consensus.*` | vote_requested, vote_cast, reached              | ✅     |
 | `agent.*`     | task_delegated, result_broadcast                | ✅     |
-| `protocol.*`  | started, iteration, completed                   | ❌     |
-| `message.*`   | sent, received                                  | ❌     |
-| `byzantine.*` | weight_updated, pattern_detected, agent_flagged | ❌     |
+| `protocol.*`  | started, iteration, completed                   | ✅     |
+| `message.*`   | sent, received                                  | ✅     |
+| `byzantine.*` | weight_updated, pattern_detected, agent_flagged | ✅     |
 
 ### Key Files
 
@@ -180,13 +189,18 @@ const recentVotes = eventBus.getHistory({
 });
 ```
 
-### Roadmap
+### Completed Issues
 
-| Issue | Feature                    | Priority |
-| ----- | -------------------------- | -------- |
-| #216  | Protocol iteration events  | P2       |
-| #217  | Agent message routing      | P2       |
-| #218  | Byzantine detection events | P3       |
+| Issue | Feature                        | Status |
+| ----- | ------------------------------ | ------ |
+| #216  | Protocol iteration events      | ✅     |
+| #217  | Agent message routing          | ✅     |
+| #218  | Byzantine detection events     | ✅     |
+| #220  | Aegean EventBus integration    | ✅     |
+| #221  | Reflexion EventBus integration | ✅     |
+| #222  | Trinity EventBus integration   | ✅     |
+| #223  | BaseAgent message events       | ✅     |
+| #224  | Correlation ID chaining        | ✅     |
 
 ---
 

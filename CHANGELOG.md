@@ -34,6 +34,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A2A Protocol**
   - EventBus for agent-to-agent communication (#182)
   - Protocol lifecycle event types defined
+  - EventBus integration for Aegean, Reflexion, Trinity protocols (#220-#222)
+  - Agent message routing through EventBus (#223-#224)
+  - Correlation ID generator with child chaining (#224)
+  - Byzantine detection events in CP-WBFT (#218)
 
 ### Changed
 
@@ -48,8 +52,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Planned
 
-- EventBus integration for Aegean, Reflexion, Trinity protocols (#220-#222)
-- Agent message routing through EventBus (#223-#224)
 - Research Registry CLI (P3 - Epic #225)
 
 ## [2.0.0] - 2026-01-04
