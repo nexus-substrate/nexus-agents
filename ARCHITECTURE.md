@@ -728,6 +728,46 @@ type MemoryImportance = 'critical' | 'high' | 'medium' | 'low';
 // High-importance memories are also written to Markdown files
 ```
 
+### IRoutingMemory (Context/Routing)
+
+Memory interface for routing-related data, bridging memory and routing systems (Issue #238, Consensus Approved 75%).
+
+```typescript
+interface IRoutingMemory {
+  // Preference Storage (#148 - Preference-Trained Routing)
+  storePreference(
+    decision: RoutingDecisionRecord,
+    outcome: TaskOutcomeRecord,
+    preference?: PreferenceSignal
+  ): Promise<Result<void, MemoryError>>;
+  getPreferences(
+    filter: PreferenceFilter,
+    limit: number
+  ): Promise<Result<PreferenceRecord[], MemoryError>>;
+
+  // Experience Memory (#149 - MobiMem Evolution)
+  storeExperience(experience: ExperienceRecord): Promise<Result<void, MemoryError>>;
+  getExperiences(query: string, limit: number): Promise<Result<ExperienceRecord[], MemoryError>>;
+
+  // Action Memory (#149 - MobiMem Evolution)
+  storeAction(action: ActionRecord): Promise<Result<void, MemoryError>>;
+  getActions(taskType: string, limit: number): Promise<Result<ActionRecord[], MemoryError>>;
+
+  // Export/Import for training
+  export(): Promise<Result<RoutingMemoryExport, MemoryError>>;
+  import(data: RoutingMemoryExport): Promise<Result<void, MemoryError>>;
+
+  // Statistics
+  getStats(): Promise<Result<RoutingMemoryStats, MemoryError>>;
+}
+```
+
+**Integration Points:**
+
+- Bridges `IMemoryBackend` (storage) with `ITaskRouter`/`ICompositeRouter` (routing)
+- Enables #148 Preference-Trained Routing (preference data export for training)
+- Enables #149 MobiMem Evolution (experience/action memory for post-deployment learning)
+
 ### IConsensusEngine (Consensus)
 
 Multi-agent voting with configurable strategies.

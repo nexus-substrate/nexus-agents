@@ -55,3 +55,19 @@ export { ParseError } from './workflow.js';
 // Tool types
 export type { ITool, IToolRegistry, ToolResult, ToolContentBlock, ToolInfo } from './tool.js';
 export { ToolError } from './tool.js';
+
+// Routing Memory types (Issue #238, Consensus Approved 75%)
+export type {
+  IRoutingMemory,
+  TaskProfileSummary,
+  RoutingDecisionRecord,
+  TaskOutcomeRecord,
+  PreferenceSignal,
+  PreferenceRecord,
+  PreferenceFilter,
+  ExperienceStep,
+  ExperienceRecord,
+  ActionRecord,
+  RoutingMemoryExport,
+  RoutingMemoryStats,
+} from './routing-memory.js';
