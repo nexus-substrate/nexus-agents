@@ -62,5 +62,11 @@
     "*.{json,md,yaml,yml}": [
       "prettier --write"
     ]
+  },
+  "pnpm": {
+    "overrides": {
+      "hono": "^4.11.4",
+      "@hono/node-server": "^1.19.9"
+    }
   }
 }
