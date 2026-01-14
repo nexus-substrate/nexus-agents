@@ -7,6 +7,49 @@
 
 import { z } from 'zod';
 
+// Re-export from split files for backward compatibility
+export {
+  RoutingResultSchema,
+  CategoryRoutingMetricsSchema,
+  CliRoutingMetricsSchema,
+  CliLatencyMetricsSchema,
+  type RoutingResult,
+  type CategoryRoutingMetrics,
+  type CliRoutingMetrics,
+  type CliLatencyMetrics,
+} from './schemas-routing.js';
+
+export {
+  CriterionScoreSchema,
+  ValidationResultSchema,
+  QualityResultSchema,
+  ScoreDistributionSchema,
+  type CriterionScore,
+  type ValidationResult,
+  type QualityResult,
+  type ScoreDistribution,
+} from './schemas-quality.js';
+
+export {
+  RegressionItemSchema,
+  ImprovementItemSchema,
+  MetricDeltasSchema,
+  BaselineComparisonSchema,
+  ReliabilityMetricsSchema,
+  TokenMetricsSchema,
+  type RegressionItem,
+  type ImprovementItem,
+  type MetricDeltas,
+  type BaselineComparison,
+  type ReliabilityMetrics,
+  type TokenMetrics,
+} from './schemas-comparison.js';
+
+// Import for local use
+import { RoutingResultSchema } from './schemas-routing.js';
+import { QualityResultSchema } from './schemas-quality.js';
+import { BaselineComparisonSchema } from './schemas-comparison.js';
+
 // ============================================================================
 // Constants and Enums
 // ============================================================================
@@ -187,118 +230,6 @@ export const LatencyMetricsSchema = z.object({
 
 export type LatencyMetrics = z.infer<typeof LatencyMetricsSchema>;
 
-/**
- * Schema for CLI-specific latency metrics.
- */
-export const CliLatencyMetricsSchema = z.object({
-  requestCount: z.number().nonnegative().describe('Number of requests'),
-  p50: z.number().nonnegative().describe('50th percentile in milliseconds'),
-  p95: z.number().nonnegative().describe('95th percentile in milliseconds'),
-  mean: z.number().nonnegative().describe('Mean latency in milliseconds'),
-});
-
-export type CliLatencyMetrics = z.infer<typeof CliLatencyMetricsSchema>;
-
-// ============================================================================
-// Routing Schemas
-// ============================================================================
-
-/**
- * Schema for routing result.
- */
-export const RoutingResultSchema = z.object({
-  selectedCli: z.enum(['claude', 'gemini', 'codex']).describe('CLI that was selected'),
-  optimalCli: z.enum(['claude', 'gemini', 'codex']).describe('Optimal CLI for this task'),
-  isOptimal: z.boolean().describe('Whether routing was optimal'),
-  isAcceptable: z.boolean().describe('Whether routing was acceptable'),
-  confidence: z.number().min(0).max(1).describe('Routing confidence score (0.0 - 1.0)'),
-  reasoning: z.string().optional().describe('Routing reasoning'),
-});
-
-export type RoutingResult = z.infer<typeof RoutingResultSchema>;
-
-/**
- * Schema for category routing metrics.
- */
-export const CategoryRoutingMetricsSchema = z.object({
-  taskCount: z.number().nonnegative().describe('Number of tasks in category'),
-  optimalRate: z.number().min(0).max(1).describe('Optimal routing rate'),
-  acceptableRate: z.number().min(0).max(1).describe('Acceptable routing rate'),
-  averageConfidence: z.number().min(0).max(1).describe('Average routing confidence'),
-});
-
-export type CategoryRoutingMetrics = z.infer<typeof CategoryRoutingMetricsSchema>;
-
-/**
- * Schema for CLI routing metrics.
- */
-export const CliRoutingMetricsSchema = z.object({
-  selectedCount: z.number().nonnegative().describe('Times this CLI was selected'),
-  optimalCount: z.number().nonnegative().describe('Times this CLI was optimal choice'),
-  selectionRate: z.number().min(0).max(1).describe('Selection rate'),
-  accuracyWhenSelected: z.number().min(0).max(1).describe('Accuracy when selected'),
-});
-
-export type CliRoutingMetrics = z.infer<typeof CliRoutingMetricsSchema>;
-
-// ============================================================================
-// Quality Schemas
-// ============================================================================
-
-/**
- * Schema for criterion score.
- */
-export const CriterionScoreSchema = z.object({
-  criterionId: z.string().describe('Criterion identifier'),
-  criterionName: z.string().describe('Criterion name'),
-  points: z.number().nonnegative().describe('Points awarded'),
-  maxPoints: z.number().positive().describe('Maximum points possible'),
-  normalizedScore: z.number().min(0).max(1).describe('Normalized score (0.0 - 1.0)'),
-  weight: z.number().positive().describe('Weight applied'),
-  notes: z.string().optional().describe('Scoring notes'),
-});
-
-export type CriterionScore = z.infer<typeof CriterionScoreSchema>;
-
-/**
- * Schema for validation result.
- */
-export const ValidationResultSchema = z.object({
-  type: z.string().describe('Validation type'),
-  passed: z.boolean().describe('Whether validation passed'),
-  message: z.string().describe('Validation message'),
-  expected: z.unknown().optional().describe('Expected value'),
-  actual: z.unknown().optional().describe('Actual value'),
-});
-
-export type ValidationResult = z.infer<typeof ValidationResultSchema>;
-
-/**
- * Schema for quality result.
- */
-export const QualityResultSchema = z.object({
-  score: z.number().min(0).max(100).describe('Overall quality score (0 - 100)'),
-  passed: z.boolean().describe('Whether task passed quality threshold'),
-  threshold: z.number().min(0).max(100).describe('Passing threshold used'),
-  criterionScores: z.array(CriterionScoreSchema).describe('Individual criterion scores'),
-  validationResults: z.array(ValidationResultSchema).describe('Validation results'),
-});
-
-export type QualityResult = z.infer<typeof QualityResultSchema>;
-
-/**
- * Schema for score distribution.
- */
-export const ScoreDistributionSchema = z.object({
-  bucket0to20: z.number().nonnegative().describe('Scores 0-20'),
-  bucket21to40: z.number().nonnegative().describe('Scores 21-40'),
-  bucket41to60: z.number().nonnegative().describe('Scores 41-60'),
-  bucket61to80: z.number().nonnegative().describe('Scores 61-80'),
-  bucket81to100: z.number().nonnegative().describe('Scores 81-100'),
-});
-
-export type ScoreDistribution = z.infer<typeof ScoreDistributionSchema>;
-
 // ============================================================================
 // Task Result Schemas
 // ============================================================================
@@ -384,91 +315,6 @@ export const TaskTestResultSchema = z.object({
 });
 
 export type TaskTestResult = z.infer<typeof TaskTestResultSchema>;
-
-// ============================================================================
-// Aggregate Metrics Schemas
-// ============================================================================
-
-/**
- * Schema for reliability metrics.
- */
-export const ReliabilityMetricsSchema = z.object({
-  successRate: z.number().min(0).max(1).describe('Overall success rate'),
-  totalRetries: z.number().nonnegative().describe('Total retry count'),
-  timeoutCount: z.number().nonnegative().describe('Timeout count'),
-  errorCount: z.number().nonnegative().describe('Error count'),
-  circuitBreakerTrips: z.number().nonnegative().describe('Circuit breaker trip count'),
-});
-
-export type ReliabilityMetrics = z.infer<typeof ReliabilityMetricsSchema>;
-
-/**
- * Schema for token metrics.
- */
-export const TokenMetricsSchema = z.object({
-  totalInputTokens: z.number().nonnegative().describe('Total input tokens'),
-  totalOutputTokens: z.number().nonnegative().describe('Total output tokens'),
-  totalTokens: z.number().nonnegative().describe('Total tokens'),
-  averagePerTask: z.number().nonnegative().describe('Average tokens per task'),
-});
-
-export type TokenMetrics = z.infer<typeof TokenMetricsSchema>;
-
-// ============================================================================
-// Comparison Schemas
-// ============================================================================
-
-/**
- * Schema for regression item.
- */
-export const RegressionItemSchema = z.object({
-  metric: z.string().describe('Metric name'),
-  baseline: z.number().describe('Baseline value'),
-  current: z.number().describe('Current value'),
-  percentChange: z.number().describe('Percentage change'),
-  severity: z.enum(['minor', 'moderate', 'severe']).describe('Severity level'),
-});
-
-export type RegressionItem = z.infer<typeof RegressionItemSchema>;
-
-/**
- * Schema for improvement item.
- */
-export const ImprovementItemSchema = z.object({
-  metric: z.string().describe('Metric name'),
-  baseline: z.number().describe('Baseline value'),
-  current: z.number().describe('Current value'),
-  percentChange: z.number().describe('Percentage change'),
-});
-
-export type ImprovementItem = z.infer<typeof ImprovementItemSchema>;
-
-/**
- * Schema for metric deltas.
- */
-export const MetricDeltasSchema = z.object({
-  qualityScore: z.number().describe('Quality score delta'),
-  passRate: z.number().describe('Pass rate delta'),
-  routingOptimalRate: z.number().describe('Routing optimal rate delta'),
-  latencyP95: z.number().describe('Latency p95 delta'),
-  successRate: z.number().describe('Success rate delta'),
-});
-
-export type MetricDeltas = z.infer<typeof MetricDeltasSchema>;
-
-/**
- * Schema for baseline comparison.
- */
-export const BaselineComparisonSchema = z.object({
-  baselineRunId: z.string().describe('Baseline run ID'),
-  baselineTimestamp: z.string().datetime().describe('Baseline run timestamp'),
-  improved: z.boolean().describe('Whether current run is better overall'),
-  regressions: z.array(RegressionItemSchema).describe('Regressions detected'),
-  improvements: z.array(ImprovementItemSchema).describe('Improvements detected'),
-  deltas: MetricDeltasSchema.describe('Metric deltas'),
-});
-
-export type BaselineComparison = z.infer<typeof BaselineComparisonSchema>;
 
 // ============================================================================
 // Test Run Result Schemas
