@@ -9,114 +9,38 @@
  */
 
 import type { ComponentInfo } from './component-scanner.js';
-import type { ILogger } from '../core/index.js';
 import { createLogger } from '../core/index.js';
+import type {
+  Recommendation,
+  MetricSource,
+  MetricCitation,
+  EvaluationResult,
+  EvaluatorRole,
+  EvaluatorConfig,
+  EvaluationThresholds,
+} from './evaluation-agents-types.js';
+import { DEFAULT_THRESHOLDS, DEFAULT_TIMEOUT_MS } from './evaluation-agents-types.js';
 
-// ============================================================================
-// Types
-// ============================================================================
-
-/**
- * Recommendation types for components.
- */
-export type Recommendation = 'retain' | 'refactor' | 'review' | 'deprecate';
-
-/**
- * Source of a metric citation.
- */
-export type MetricSource = 'scanner' | 'coverage_report' | 'git_history' | 'static_analysis';
-
-/**
- * Citation of a specific metric as evidence.
- * Per AI/ML approval: all claims must cite objective metrics.
- */
-export interface MetricCitation {
-  /** Metric name */
-  readonly metric: string;
-  /** Actual value */
-  readonly value: number | string;
-  /** Threshold that triggered the concern (if applicable) */
-  readonly threshold?: number | string;
-  /** Source of this metric */
-  readonly source: MetricSource;
-}
-
-/**
- * Result from a single evaluator agent.
- * Per AI/ML approval: isRecommendation must always be true.
- */
-export interface EvaluationResult {
-  /** Component path */
-  readonly component: string;
-  /** Recommendation for this component */
-  readonly recommendation: Recommendation;
-  /** Confidence in this recommendation (0-1) */
-  readonly confidence: number;
-  /** Metric citations supporting this recommendation */
-  readonly metrics: readonly MetricCitation[];
-  /** Specific concerns identified */
-  readonly concerns: readonly string[];
-  /** Explicit flag: this is a recommendation, not a decision */
-  readonly isRecommendation: true;
-  /** Agent that produced this evaluation */
-  readonly agent: EvaluatorRole;
-  /** Evaluation timestamp */
-  readonly timestamp: Date;
-}
-
-/**
- * Available evaluator roles.
- */
-export type EvaluatorRole = 'code-quality' | 'architecture-fit' | 'practical-value';
-
-/**
- * Configuration for evaluation agents.
- */
-export interface EvaluatorConfig {
-  /** Timeout per evaluation in ms (default: 30000) */
-  readonly timeoutMs?: number;
-  /** Logger instance */
-  readonly logger?: ILogger;
-  /** Thresholds for code quality metrics */
-  readonly thresholds?: EvaluationThresholds;
-}
-
-/**
- * Configurable thresholds for evaluation.
- */
-export interface EvaluationThresholds {
-  /** Max complexity before flagging (default: 20) */
-  readonly maxComplexity?: number;
-  /** Max lines before flagging (default: 400) */
-  readonly maxLines?: number;
-  /** Min export count to be considered "used" (default: 1) */
-  readonly minExports?: number;
-  /** Max dependencies before flagging coupling (default: 15) */
-  readonly maxDependencies?: number;
-}
-
-// ============================================================================
-// Constants
-// ============================================================================
-
-const DEFAULT_THRESHOLDS: Required<EvaluationThresholds> = {
-  maxComplexity: 20,
-  maxLines: 400,
-  minExports: 1,
-  maxDependencies: 15,
-} as const;
-
-const DEFAULT_TIMEOUT_MS = 30_000;
+// Re-export types for backward compatibility
+export type {
+  Recommendation,
+  MetricSource,
+  MetricCitation,
+  EvaluationResult,
+  EvaluatorRole,
+  EvaluatorConfig,
+  EvaluationThresholds,
+} from './evaluation-agents-types.js';
+export { DEFAULT_THRESHOLDS, DEFAULT_TIMEOUT_MS } from './evaluation-agents-types.js';
 
 // ============================================================================
 // Base Evaluator
 // ============================================================================
-
 /**
  * Base class for evaluation agents.
  */
 abstract class BaseEvaluator {
-  protected readonly log: ILogger;
+  protected readonly log;
   protected readonly thresholds: Required<EvaluationThresholds>;
   protected readonly timeoutMs: number;
 
@@ -211,7 +135,6 @@ abstract class BaseEvaluator {
 // ============================================================================
 // Code Quality Evaluator
 // ============================================================================
-
 /**
  * Evaluates code quality: maintainability, complexity, test coverage.
  */
@@ -293,7 +216,6 @@ export class CodeQualityEvaluator extends BaseEvaluator {
 // ============================================================================
 // Architecture Fit Evaluator
 // ============================================================================
-
 /**
  * Evaluates architecture fit: interface compliance, coupling, patterns.
  */
@@ -368,7 +290,6 @@ export class ArchitectureFitEvaluator extends BaseEvaluator {
 // ============================================================================
 // Practical Value Evaluator
 // ============================================================================
-
 /**
  * Evaluates practical value: usage, utility, necessity.
  */

@@ -7,6 +7,10 @@
  *
  * @module agents/collaboration/constitutional-critic
  * (Source: arXiv:2212.08073, Issue #147)
+ *
+ * File length justification: Core ConstitutionalCritic class with types in
+ * constitutional-types.ts. Critique/revise/refine logic is iterative and
+ * tightly coupled to class state.
  */
 
 import type { ILogger } from '../../core/index.js';

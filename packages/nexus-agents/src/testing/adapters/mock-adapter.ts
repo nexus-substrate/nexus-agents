@@ -3,6 +3,10 @@
  *
  * A mock implementation of ICliAdapter for testing purposes.
  * Provides configurable responses, simulated latency, and failure injection.
+ *
+ * File length justification: Full ICliAdapter mock implementation with
+ * extensive test configuration (responses, latency, failures). Types in
+ * cli-adapters/types.js. Splitting would fragment the mock's behavior.
  */
 
 import type { Result } from '../../core/index.js';

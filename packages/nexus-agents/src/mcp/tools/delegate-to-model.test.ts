@@ -432,6 +432,9 @@ describe('delegate_to_model Tool', () => {
       registerCompositeRouter: ReturnType<typeof vi.fn>;
       reset: ReturnType<typeof vi.fn>;
       recordStepOutcome: ReturnType<typeof vi.fn>;
+      evictStaleEntries: ReturnType<typeof vi.fn>;
+      getEvictedEntryCount: ReturnType<typeof vi.fn>;
+      getDecisionMapSize: ReturnType<typeof vi.fn>;
     } {
       return {
         recordRoutingDecision: vi.fn().mockReturnValue('test-routing-id'),
@@ -441,6 +444,9 @@ describe('delegate_to_model Tool', () => {
         registerCompositeRouter: vi.fn(),
         reset: vi.fn(),
         recordStepOutcome: vi.fn(),
+        evictStaleEntries: vi.fn().mockReturnValue(0),
+        getEvictedEntryCount: vi.fn().mockReturnValue(0),
+        getDecisionMapSize: vi.fn().mockReturnValue(0),
       };
     }
 

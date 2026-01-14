@@ -3,6 +3,10 @@
  *
  * Executes individual workflow steps using agent experts.
  * Handles input resolution, error handling, retries, timeouts, and conditions.
+ *
+ * File length justification: Core StepExecutor class with execution logic
+ * (executeSteps, runWithRetry, handleConditions). Types imported from core
+ * and workflows modules. Splitting would fragment step execution flow.
  */
 
 import type { Result, WorkflowStep, StepResult, AgentRole, Task } from '../core/index.js';

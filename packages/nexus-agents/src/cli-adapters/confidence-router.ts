@@ -15,7 +15,6 @@ import { createLogger } from '../core/logger.js';
 import type {
   IConfidenceRouter,
   ConfidenceEstimate,
-  ConfidenceFactors,
   CascadeOptions,
   CascadeResult,
   CliTask,
@@ -24,71 +23,41 @@ import type {
   CliName,
   ICliAdapter,
 } from './types.js';
+import {
+  type CacheEntry,
+  type CacheStats,
+  DEFAULT_CASCADE_OPTIONS,
+} from './confidence-router-types.js';
+import { estimateConfidence } from './confidence-router-helpers.js';
+
+// Re-export types and helpers for backward API compatibility
+export type { CacheEntry, CacheStats, TaskComplexity } from './confidence-router-types.js';
+export {
+  DEFAULT_CASCADE_OPTIONS,
+  HEDGING_PHRASES,
+  UNCERTAINTY_INDICATORS,
+  COMPLEX_TASK_INDICATORS,
+  SIMPLE_TASK_INDICATORS,
+  CONFIDENCE_WEIGHTS,
+  EXPECTED_WORD_COUNTS,
+} from './confidence-router-types.js';
+export {
+  estimateTaskComplexity,
+  calculateLengthFactor,
+  calculateHedgingFactor,
+  calculateStructureFactor,
+  calculateUncertaintyFactor,
+  calculateFactors,
+  calculateConfidenceScore,
+  generateConfidenceReason,
+  estimateConfidence,
+} from './confidence-router-helpers.js';
 
 const logger = createLogger({ component: 'confidence-router' });
 
-/**
- * Default cascade configuration.
- */
-const DEFAULT_CASCADE_OPTIONS: Required<CascadeOptions> = {
-  confidenceThreshold: 0.7,
-  fastModel: 'gemini' as CliName, // Gemini Flash for speed/cost
-  expensiveModel: 'claude' as CliName, // Claude for quality
-  maxEscalations: 2,
-  cacheResponses: true,
-};
-
-/**
- * Hedging phrases that indicate low confidence in responses.
- * Static patterns only (no user-provided RegExp - ReDoS prevention).
- */
-const HEDGING_PHRASES = [
-  'i think',
-  'i believe',
-  'probably',
-  'maybe',
-  'might be',
-  'could be',
-  'possibly',
-  'not sure',
-  'uncertain',
-  'i guess',
-  "i'm not certain",
-  'it seems',
-  'appears to',
-  'likely',
-  'unlikely',
-] as const;
-
-/**
- * Uncertainty indicators that suggest the model lacks confidence.
- */
-const UNCERTAINTY_INDICATORS = [
-  'however',
-  'although',
-  'but',
-  'on the other hand',
-  'alternatively',
-  'caveat',
-  'note that',
-  'be aware',
-  'keep in mind',
-  'disclaimer',
-] as const;
-
-/**
- * Response cache for avoiding redundant model calls.
- */
-interface CacheEntry {
-  readonly response: CliResponse;
-  readonly confidence: ConfidenceEstimate;
-  readonly timestamp: number;
-}
-
-/**
- * Task complexity levels for confidence estimation.
- */
-type TaskComplexity = 'simple' | 'moderate' | 'complex';
+// =============================================================================
+// Confidence Router Class
+// =============================================================================
 
 /**
  * Confidence-aware cascade router.
@@ -106,157 +75,9 @@ export class ConfidenceRouter implements IConfidenceRouter {
 
   /**
    * Estimate confidence in a model's response.
-   * Uses multiple heuristic factors based on SATER research.
    */
   estimateConfidence(task: CliTask, response: CliResponse): ConfidenceEstimate {
-    const factors = this.calculateFactors(task, response);
-
-    // Weighted combination of factors (weights from SATER paper)
-    const score =
-      factors.lengthFactor * 0.2 +
-      factors.hedgingFactor * 0.3 +
-      factors.structureFactor * 0.25 +
-      factors.uncertaintyFactor * 0.25;
-
-    const shouldEscalate = score < DEFAULT_CASCADE_OPTIONS.confidenceThreshold;
-    const reason = this.generateReason(factors, score);
-
-    return { score, factors, shouldEscalate, reason };
-  }
-
-  /**
-   * Calculate individual confidence factors.
-   */
-  private calculateFactors(task: CliTask, response: CliResponse): ConfidenceFactors {
-    const responseText = response.text.toLowerCase();
-    const wordCount = responseText.split(/\s+/).length;
-    const complexity = this.estimateTaskComplexity(task);
-
-    // Length factor: Very short or very long responses indicate issues
-    // Optimal range: 50-500 words for most tasks
-    const lengthFactor = this.calculateLengthFactor(wordCount, complexity);
-
-    // Hedging factor: Count hedging phrases (inverted - fewer = higher confidence)
-    const hedgingCount = HEDGING_PHRASES.filter((phrase) => responseText.includes(phrase)).length;
-    const hedgingFactor = Math.max(0, 1 - hedgingCount * 0.15);
-
-    // Structure factor: Well-structured responses indicate confidence
-    const structureFactor = this.calculateStructureFactor(response.text);
-
-    // Uncertainty factor: Count uncertainty indicators (inverted)
-    const uncertaintyCount = UNCERTAINTY_INDICATORS.filter((indicator) =>
-      responseText.includes(indicator)
-    ).length;
-    const uncertaintyFactor = Math.max(0, 1 - uncertaintyCount * 0.1);
-
-    return {
-      lengthFactor,
-      hedgingFactor,
-      structureFactor,
-      uncertaintyFactor,
-    };
-  }
-
-  /**
-   * Estimate task complexity from task content.
-   */
-  private estimateTaskComplexity(task: CliTask): TaskComplexity {
-    const content = task.content.toLowerCase();
-    const wordCount = content.split(/\s+/).length;
-
-    // Simple heuristics for complexity estimation
-    const complexIndicators = [
-      'design',
-      'architecture',
-      'implement',
-      'optimize',
-      'refactor',
-      'security',
-      'performance',
-      'scalable',
-      'distributed',
-      'algorithm',
-    ];
-    const simpleIndicators = [
-      'fix',
-      'add',
-      'remove',
-      'update',
-      'change',
-      'simple',
-      'basic',
-      'quick',
-    ];
-
-    const complexCount = complexIndicators.filter((i) => content.includes(i)).length;
-    const simpleCount = simpleIndicators.filter((i) => content.includes(i)).length;
-
-    if (wordCount > 100 || complexCount >= 2) {
-      return 'complex';
-    } else if (wordCount < 30 || simpleCount >= 2) {
-      return 'simple';
-    }
-    return 'moderate';
-  }
-
-  /**
-   * Calculate length factor based on response length appropriateness.
-   */
-  private calculateLengthFactor(wordCount: number, complexity: TaskComplexity): number {
-    // Task complexity affects expected length
-    const expectedMinWords = complexity === 'simple' ? 20 : complexity === 'complex' ? 100 : 50;
-    const expectedMaxWords = complexity === 'simple' ? 200 : complexity === 'complex' ? 1000 : 500;
-
-    if (wordCount < expectedMinWords * 0.5) {
-      // Too short - likely incomplete
-      return 0.4;
-    } else if (wordCount < expectedMinWords) {
-      // Slightly short
-      return 0.7;
-    } else if (wordCount <= expectedMaxWords) {
-      // Optimal range
-      return 1.0;
-    } else if (wordCount <= expectedMaxWords * 1.5) {
-      // Slightly long
-      return 0.8;
-    } else {
-      // Too long - may indicate padding or uncertainty
-      return 0.6;
-    }
-  }
-
-  /**
-   * Calculate structure factor based on response formatting.
-   */
-  private calculateStructureFactor(content: string): number {
-    let score = 0.5; // Base score
-
-    // Check for structured elements
-    if (content.includes('```')) score += 0.15; // Code blocks
-    if (/^\s*[-*]\s/m.test(content)) score += 0.1; // Bullet points
-    if (/^\s*\d+\.\s/m.test(content)) score += 0.1; // Numbered lists
-    if (/^#+\s/m.test(content)) score += 0.1; // Headers
-    if (content.includes('\n\n')) score += 0.05; // Paragraph breaks
-
-    return Math.min(1, score);
-  }
-
-  /**
-   * Generate human-readable reason for confidence score.
-   */
-  private generateReason(factors: ConfidenceFactors, score: number): string {
-    const issues: string[] = [];
-
-    if (factors.lengthFactor < 0.7) issues.push('response length concerns');
-    if (factors.hedgingFactor < 0.7) issues.push('hedging language detected');
-    if (factors.structureFactor < 0.6) issues.push('limited structure');
-    if (factors.uncertaintyFactor < 0.7) issues.push('uncertainty indicators');
-
-    if (issues.length === 0) {
-      return `High confidence (${(score * 100).toFixed(1)}%)`;
-    }
-
-    return `Confidence ${(score * 100).toFixed(1)}%: ${issues.join(', ')}`;
+    return estimateConfidence(task, response, DEFAULT_CASCADE_OPTIONS.confidenceThreshold);
   }
 
   /**
@@ -338,7 +159,7 @@ export class ConfidenceRouter implements IConfidenceRouter {
     }
 
     modelsUsed.push(opts.fastModel);
-    const fastConfidence = this.estimateConfidence(task, fastResult.value);
+    const fastConfidence = estimateConfidence(task, fastResult.value, opts.confidenceThreshold);
     confidenceHistory.push(fastConfidence);
 
     logger.debug('Fast model confidence', {
@@ -428,7 +249,11 @@ export class ConfidenceRouter implements IConfidenceRouter {
     }
 
     modelsUsed.push(opts.expensiveModel);
-    const expensiveConfidence = this.estimateConfidence(task, expensiveResult.value);
+    const expensiveConfidence = estimateConfidence(
+      task,
+      expensiveResult.value,
+      opts.confidenceThreshold
+    );
     confidenceHistory.push(expensiveConfidence);
 
     // Cache the high-quality response
@@ -510,7 +335,7 @@ export class ConfidenceRouter implements IConfidenceRouter {
   /**
    * Get cache statistics.
    */
-  getCacheStats(): { size: number; maxSize: number; maxAgeMs: number } {
+  getCacheStats(): CacheStats {
     return {
       size: this.cache.size,
       maxSize: this.maxCacheSize,
@@ -518,6 +343,10 @@ export class ConfidenceRouter implements IConfidenceRouter {
     };
   }
 }
+
+// =============================================================================
+// Factory Function
+// =============================================================================
 
 /**
  * Create a confidence router instance.

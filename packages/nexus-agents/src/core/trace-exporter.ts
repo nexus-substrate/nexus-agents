@@ -5,6 +5,10 @@
  * Provides JSON file export and console pretty-printing.
  *
  * (Source: Issue #132)
+ *
+ * File length justification: TraceVisualizer with tightly coupled formatting
+ * methods (span trees, cost bars, waterfall charts). Extracting individual
+ * format methods would fragment visualization logic across files.
  */
 
 import * as fs from 'node:fs';

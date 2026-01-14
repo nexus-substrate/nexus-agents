@@ -4,6 +4,9 @@
  * Executes a workflow template from the command line.
  *
  * (Source: Issue #67, PROJECT_PLAN.md Section 5.2)
+ *
+ * File structure: Types in workflow-run-types.ts, formatters in
+ * workflow-run-formatters.ts. Extracted per Issue #272.
  */
 
 import fs from 'node:fs';
@@ -16,6 +19,14 @@ import {
 } from '../workflows/index.js';
 import type { WorkflowDefinition, InputDefinition } from '../core/index.js';
 import { SecurityError } from '../core/index.js';
+
+// Re-export types and formatters
+export type { WorkflowRunOptions, WorkflowRunResult, ParsedInputs } from './workflow-run-types.js';
+export { printWorkflowRunResult, formatStep } from './workflow-run-formatters.js';
+
+// Local imports from extracted modules
+import type { WorkflowRunOptions, WorkflowRunResult, ParsedInputs } from './workflow-run-types.js';
+import { printWorkflowRunResult, printWorkflowTemplateList } from './workflow-run-formatters.js';
 
 /**
  * Validates that a file path is within the allowed root directory.
@@ -37,51 +48,6 @@ function validateInputPath(userPath: string, allowedRoot: string): string {
   }
   return resolved;
 }
-
-/**
- * ANSI color codes for terminal output.
- */
-const colors = {
-  reset: '\x1b[0m',
-  green: '\x1b[32m',
-  yellow: '\x1b[33m',
-  red: '\x1b[31m',
-  cyan: '\x1b[36m',
-  dim: '\x1b[2m',
-  bold: '\x1b[1m',
-} as const;
-
-/**
- * Options for the workflow run command.
- */
-export interface WorkflowRunOptions {
-  /** Workflow name or path */
-  readonly name: string;
-  /** Input JSON string or file path */
-  readonly input: string | undefined;
-  /** Dry run mode (validate without executing) */
-  readonly dryRun: boolean | undefined;
-  /** Verbose output */
-  readonly verbose: boolean | undefined;
-}
-
-/**
- * Result of workflow run command.
- */
-export interface WorkflowRunResult {
-  readonly success: boolean;
-  readonly message: string;
-  readonly workflowName?: string;
-  readonly dryRun: boolean;
-  readonly validationErrors?: string[];
-  readonly executionId?: string;
-  readonly steps?: number;
-}
-
-/**
- * Parsed workflow inputs.
- */
-type ParsedInputs = Record<string, unknown>;
 
 /**
  * Parses input from string or file path.
@@ -187,14 +153,6 @@ async function resolveWorkflow(
     throw new Error(`Workflow not found: ${nameOrPath}`);
   }
   return { workflow, source: `builtin:${nameOrPath}` };
-}
-
-/**
- * Formats a step for display.
- */
-function formatStep(step: { id: string; agent: string; action: string }, index: number): string {
-  const num = String(index + 1).padStart(2, ' ');
-  return `  ${num}. ${colors.cyan}${step.id}${colors.reset} → ${step.agent}::${step.action}`;
 }
 
 /**
@@ -311,78 +269,6 @@ export async function runWorkflowRun(options: WorkflowRunOptions): Promise<Workf
 }
 
 /**
- * Writes a line to stdout.
- */
-function writeLine(text: string): void {
-  process.stdout.write(text + '\n');
-}
-
-/**
- * Prints success result details.
- */
-function printSuccessResult(
-  result: WorkflowRunResult,
-  workflow: WorkflowDefinition | undefined,
-  verbose: boolean
-): void {
-  const title = result.dryRun ? 'Dry Run Complete' : 'Workflow Ready';
-  writeLine(`${colors.green}✓${colors.reset} ${colors.bold}${title}${colors.reset}`);
-  writeLine(`  Workflow: ${colors.cyan}${result.workflowName ?? 'unknown'}${colors.reset}`);
-
-  if (result.steps !== undefined) {
-    writeLine(`  Steps: ${String(result.steps)}`);
-  }
-
-  if (workflow !== undefined && verbose) {
-    writeLine('');
-    writeLine(`${colors.bold}Execution Plan:${colors.reset}`);
-    for (const [index, step] of workflow.steps.entries()) {
-      writeLine(formatStep(step, index));
-    }
-  }
-
-  if (!result.dryRun) {
-    writeLine('');
-    writeLine(`${colors.dim}Note: Full execution requires the MCP server.${colors.reset}`);
-    writeLine(`${colors.dim}Run: nexus-agents (then use orchestrate tool)${colors.reset}`);
-  }
-}
-
-/**
- * Prints failure result details.
- */
-function printFailureResult(result: WorkflowRunResult): void {
-  writeLine(`${colors.red}✗${colors.reset} ${colors.bold}Workflow Failed${colors.reset}`);
-  writeLine(`  ${result.message}`);
-
-  if (result.validationErrors !== undefined && result.validationErrors.length > 0) {
-    writeLine('');
-    writeLine(`${colors.bold}Validation Errors:${colors.reset}`);
-    for (const error of result.validationErrors) {
-      writeLine(`  ${colors.red}•${colors.reset} ${error}`);
-    }
-  }
-}
-
-/**
- * Prints the workflow run result.
- */
-export function printWorkflowRunResult(
-  result: WorkflowRunResult,
-  options: { workflow?: WorkflowDefinition; verbose?: boolean } = {}
-): void {
-  const { workflow, verbose = false } = options;
-
-  writeLine('');
-  if (result.success) {
-    printSuccessResult(result, workflow, verbose);
-  } else {
-    printFailureResult(result);
-  }
-  writeLine('');
-}
-
-/**
  * Lists available workflow templates.
  */
 export async function listWorkflowTemplates(): Promise<TemplateMetadata[]> {
@@ -396,37 +282,7 @@ export async function listWorkflowTemplates(): Promise<TemplateMetadata[]> {
  */
 export async function printWorkflowTemplates(): Promise<void> {
   const templates = await listWorkflowTemplates();
-
-  writeLine('');
-  writeLine(`${colors.bold}Available Workflow Templates:${colors.reset}`);
-  writeLine('');
-
-  if (templates.length === 0) {
-    writeLine(`  ${colors.dim}No templates found${colors.reset}`);
-    return;
-  }
-
-  // Group by category
-  const byCategory = new Map<string, TemplateMetadata[]>();
-  for (const template of templates) {
-    const category = template.category;
-    const existing = byCategory.get(category) ?? [];
-    existing.push(template);
-    byCategory.set(category, existing);
-  }
-
-  for (const [category, categoryTemplates] of byCategory) {
-    writeLine(`  ${colors.cyan}${category}:${colors.reset}`);
-    for (const template of categoryTemplates) {
-      const builtInTag = template.builtIn ? ` ${colors.dim}(built-in)${colors.reset}` : '';
-      writeLine(`    • ${template.name}${builtInTag}`);
-      if (template.description !== undefined) {
-        const desc = template.description.split('\n')[0] ?? '';
-        writeLine(`      ${colors.dim}${desc.slice(0, 60)}${colors.reset}`);
-      }
-    }
-    writeLine('');
-  }
+  printWorkflowTemplateList(templates);
 }
 
 /**

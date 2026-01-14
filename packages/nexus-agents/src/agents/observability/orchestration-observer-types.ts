@@ -1,12 +1,13 @@
 /**
- * nexus-agents/agents - SwarmObserver Types
+ * nexus-agents/agents - OrchestrationObserver Types
  *
  * Type definitions for real-time orchestration visibility.
  * Provides structured types for agent states, metrics, and routing decisions.
  *
- * (Source: Issue #187 - SwarmObserver for orchestration visibility)
+ * (Source: Issue #187 - OrchestrationObserver for orchestration visibility)
+ * (Renamed from SwarmObserver in Issue #251 to avoid collision with observability/swarm-observer.ts)
  *
- * @module agents/observability/swarm-observer-types
+ * @module agents/observability/orchestration-observer-types
  */
 
 import { z } from 'zod';
@@ -97,13 +98,13 @@ export interface SessionMetrics {
 }
 
 // ============================================================================
-// Swarm Statistics
+// Orchestration Statistics
 // ============================================================================
 
 /**
- * Aggregate swarm statistics.
+ * Aggregate orchestration statistics.
  */
-export interface SwarmStats {
+export interface OrchestrationStats {
   /** Total sessions observed */
   totalSessions: number;
   /** Currently active sessions */
@@ -131,29 +132,29 @@ export interface SwarmStats {
 // ============================================================================
 
 /**
- * SwarmObserver event types for visualization hooks.
+ * OrchestrationObserver event types for visualization hooks.
  */
-export type SwarmObserverEvent =
+export type OrchestrationObserverEvent =
   | { type: 'agent_state_changed'; agentId: string; state: AgentState; previousState: AgentState }
   | { type: 'routing_decision'; decision: RoutingDecision }
   | { type: 'session_started'; sessionId: string; pattern: string }
   | { type: 'session_completed'; sessionId: string; success: boolean; durationMs: number }
-  | { type: 'metrics_updated'; metrics: SwarmStats }
+  | { type: 'metrics_updated'; metrics: OrchestrationStats }
   | { type: 'error'; source: string; error: string };
 
 /**
  * Observer event listener function.
  */
-export type SwarmObserverListener = (event: SwarmObserverEvent) => void;
+export type OrchestrationObserverListener = (event: OrchestrationObserverEvent) => void;
 
 // ============================================================================
 // Observer Configuration
 // ============================================================================
 
 /**
- * SwarmObserver configuration schema.
+ * OrchestrationObserver configuration schema.
  */
-export const SwarmObserverConfigSchema = z.object({
+export const OrchestrationObserverConfigSchema = z.object({
   /** Maximum routing decisions to retain in history */
   maxRoutingHistory: z.number().positive().optional().default(100),
   /** Maximum session metrics to retain */
@@ -169,16 +170,16 @@ export const SwarmObserverConfigSchema = z.object({
     codex: 0.01,
   }),
 });
-export type SwarmObserverConfig = z.infer<typeof SwarmObserverConfigSchema>;
+export type OrchestrationObserverConfig = z.infer<typeof OrchestrationObserverConfigSchema>;
 
 // ============================================================================
 // Observer Interface
 // ============================================================================
 
 /**
- * SwarmObserver interface for dependency injection.
+ * OrchestrationObserver interface for dependency injection.
  */
-export interface ISwarmObserver {
+export interface IOrchestrationObserver {
   /** Start observing the event bus */
   start(): void;
 
@@ -194,14 +195,14 @@ export interface ISwarmObserver {
   /** Get session metrics */
   getSessionMetrics(sessionId?: string): readonly SessionMetrics[];
 
-  /** Get aggregate swarm statistics */
-  getStats(): SwarmStats;
+  /** Get aggregate orchestration statistics */
+  getStats(): OrchestrationStats;
 
   /** Add event listener for visualization */
-  addEventListener(listener: SwarmObserverListener): void;
+  addEventListener(listener: OrchestrationObserverListener): void;
 
   /** Remove event listener */
-  removeEventListener(listener: SwarmObserverListener): void;
+  removeEventListener(listener: OrchestrationObserverListener): void;
 
   /** Record a routing decision manually (for non-event-bus integrations) */
   recordRoutingDecision(decision: RoutingDecision): void;
@@ -238,9 +239,28 @@ export const ObserverTopics = {
 // ============================================================================
 
 /**
- * Options for creating a SwarmObserver.
+ * Options for creating an OrchestrationObserver.
  */
-export interface SwarmObserverOptions {
-  config?: Partial<SwarmObserverConfig> | undefined;
+export interface OrchestrationObserverOptions {
+  config?: Partial<OrchestrationObserverConfig> | undefined;
   logger?: ILogger | undefined;
 }
+
+// ============================================================================
+// Backward Compatibility Aliases (deprecated, will be removed in v3.0)
+// ============================================================================
+
+/** @deprecated Use OrchestrationStats instead */
+export type SwarmStats = OrchestrationStats;
+/** @deprecated Use OrchestrationObserverEvent instead */
+export type SwarmObserverEvent = OrchestrationObserverEvent;
+/** @deprecated Use OrchestrationObserverListener instead */
+export type SwarmObserverListener = OrchestrationObserverListener;
+/** @deprecated Use OrchestrationObserverConfig instead */
+export type SwarmObserverConfig = OrchestrationObserverConfig;
+/** @deprecated Use OrchestrationObserverConfigSchema instead */
+export const SwarmObserverConfigSchema = OrchestrationObserverConfigSchema;
+/** @deprecated Use IOrchestrationObserver instead */
+export type ISwarmObserver = IOrchestrationObserver;
+/** @deprecated Use OrchestrationObserverOptions instead */
+export type SwarmObserverOptions = OrchestrationObserverOptions;

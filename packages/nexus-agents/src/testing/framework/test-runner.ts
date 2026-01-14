@@ -4,6 +4,10 @@
  * Main test orchestrator for CLI evaluation testing.
  *
  * (Source: cli-project_plan.md v2.1.0, Phase 3)
+ *
+ * File length justification: Core TestRunner class with types in types.ts,
+ * scorers in rubric-scorer.ts and routing-scorer.ts, task execution in
+ * task-executor.ts. Remaining code is test orchestration flow.
  */
 
 import { randomUUID } from 'node:crypto';

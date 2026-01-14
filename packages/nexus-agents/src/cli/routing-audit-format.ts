@@ -1,0 +1,262 @@
+/**
+ * Routing Audit Formatting
+ *
+ * Output formatting functions for the routing-audit CLI command.
+ *
+ * @module cli/routing-audit-format
+ * (Source: Issue #170, Alignment Roadmap Phase 1)
+ */
+
+import { summarizeProfile } from '../cli-adapters/task-analyzer.js';
+import type { TopsisScore } from '../cli-adapters/topsis-types.js';
+import type {
+  RoutingAuditOptions,
+  RoutingAuditResult,
+  BanditStats,
+} from './routing-audit-types.js';
+import { ANSI, color, BOX_WIDTH, horizontalLine, boxLine } from './routing-audit-types.js';
+
+// =============================================================================
+// Header & Task Analysis Formatting
+// =============================================================================
+
+/**
+ * Formats the audit header section.
+ */
+export function formatHeader(result: RoutingAuditResult): string[] {
+  const lines: string[] = [];
+  lines.push(color('╭' + horizontalLine() + '╮', ANSI.cyan));
+  const title = `Routing Audit: "${result.task.slice(0, 35)}${result.task.length > 35 ? '...' : ''}"`;
+  lines.push(color('│', ANSI.cyan) + ` ${title.padEnd(BOX_WIDTH - 3)}` + color('│', ANSI.cyan));
+  lines.push(color('├' + horizontalLine() + '┤', ANSI.cyan));
+  return lines;
+}
+
+/**
+ * Formats the task analysis section.
+ */
+export function formatTaskAnalysis(result: RoutingAuditResult): string[] {
+  const lines: string[] = [];
+  lines.push(boxLine(color(' Task Analysis:', ANSI.bold)));
+  const profileSummary = summarizeProfile(result.taskProfile);
+  lines.push(boxLine(`   ${profileSummary}`));
+  lines.push(color('├' + horizontalLine() + '┤', ANSI.cyan));
+  return lines;
+}
+
+// =============================================================================
+// Budget & TOPSIS Formatting
+// =============================================================================
+
+/**
+ * Formats the budget filter section.
+ */
+export function formatBudgetFilter(result: RoutingAuditResult): string[] {
+  const lines: string[] = [];
+  const passCount = result.budgetResults.filter((r) => r.withinBudget).length;
+  const total = result.budgetResults.length;
+  lines.push(
+    boxLine(color(` Budget Filter (${String(passCount)}/${String(total)} pass):`, ANSI.bold))
+  );
+  for (const br of result.budgetResults) {
+    const status = br.withinBudget ? color('✓', ANSI.green) : color('✗', ANSI.red);
+    lines.push(boxLine(`   ${status} ${br.cliName.padEnd(8)} - ${br.reason}`));
+  }
+  lines.push(color('├' + horizontalLine() + '┤', ANSI.cyan));
+  return lines;
+}
+
+/**
+ * Formats the TOPSIS ranking section.
+ */
+export function formatTopsisRanking(result: RoutingAuditResult): string[] {
+  const lines: string[] = [];
+  lines.push(boxLine(color(' TOPSIS Ranking:', ANSI.bold)));
+  result.topsisResult.scores.forEach((score: TopsisScore, idx: number) => {
+    const rank = idx + 1;
+    const pct = (score.closenessScore * 100).toFixed(1);
+    const q = ((score.rawValues['quality'] ?? 0) * 10).toFixed(1);
+    const c = ((1 - (score.rawValues['cost'] ?? 0)) * 10).toFixed(1);
+    const l = ((1 - (score.rawValues['latency'] ?? 0)) * 10).toFixed(1);
+    lines.push(
+      boxLine(`   ${String(rank)}. ${score.cliName.padEnd(8)} (${pct}%) q=${q} c=${c} l=${l}`)
+    );
+  });
+  lines.push(color('├' + horizontalLine() + '┤', ANSI.cyan));
+  return lines;
+}
+
+// =============================================================================
+// LinUCB Selection Formatting
+// =============================================================================
+
+/**
+ * Formats the LinUCB selection section.
+ */
+export function formatLinUCBSelection(result: RoutingAuditResult): string[] {
+  const lines: string[] = [];
+  lines.push(boxLine(color(' LinUCB Selection:', ANSI.bold)));
+  for (const arm of result.linucbDetails) {
+    const marker =
+      arm.cliName === result.selectedCli
+        ? arm.isExploration
+          ? color('← explore', ANSI.yellow)
+          : color('← exploit', ANSI.green)
+        : '';
+    const ucb = arm.ucbScore.toFixed(2);
+    const pulls = String(arm.pullCount);
+    const content = `   ${arm.cliName.padEnd(8)} UCB: ${ucb.padStart(5)} pulls: ${pulls.padStart(3)} ${marker}`;
+    lines.push(color('│', ANSI.cyan) + content.padEnd(BOX_WIDTH + 8) + color('│', ANSI.cyan));
+  }
+  lines.push(color('├' + horizontalLine() + '┤', ANSI.cyan));
+  return lines;
+}
+
+/**
+ * Formats the final selection section.
+ */
+export function formatFinalSelection(result: RoutingAuditResult, explain: boolean): string[] {
+  const lines: string[] = [];
+  const selectionText = color(` Final Selection: ${result.selectedCli}`, ANSI.bold + ANSI.green);
+  lines.push(color('│', ANSI.cyan) + selectionText.padEnd(BOX_WIDTH + 11) + color('│', ANSI.cyan));
+  lines.push(boxLine(`   Reason: ${result.selectionReason}`));
+  lines.push(color('╰' + horizontalLine() + '╯', ANSI.cyan));
+
+  if (explain) {
+    lines.push('');
+    lines.push(color('Explanation:', ANSI.bold));
+    lines.push('  1. Task analyzed for complexity, code generation needs, and context size');
+    lines.push('  2. All CLIs checked against budget constraints (tokens, cost, latency)');
+    lines.push('  3. TOPSIS ranks CLIs by weighted criteria (quality 50%, cost 30%, latency 20%)');
+    lines.push('  4. LinUCB balances exploitation (best known) vs exploration (uncertain)');
+    lines.push(`  5. Final selection: ${result.selectedCli} via ${result.selectionReason}`);
+  }
+
+  return lines;
+}
+
+// =============================================================================
+// Bandit Stats Formatting (Issue #174)
+// =============================================================================
+
+/**
+ * Formats bandit stats header.
+ */
+function formatBanditStatsHeader(): string[] {
+  return [
+    '',
+    color('╭' + horizontalLine() + '╮', ANSI.yellow),
+    color('│', ANSI.yellow) +
+      color(' LinUCB Detailed Statistics (--bandit-stats)', ANSI.bold).padEnd(BOX_WIDTH + 7) +
+      color('│', ANSI.yellow),
+    color('├' + horizontalLine() + '┤', ANSI.yellow),
+  ];
+}
+
+/**
+ * Formats exploration stats section.
+ */
+function formatExplorationSection(stats: BanditStats): string[] {
+  const lines: string[] = [];
+  const ratio = (stats.exploration.explorationRatio * 100).toFixed(1);
+  const pulls = String(stats.exploration.totalPulls);
+
+  lines.push(
+    color('│', ANSI.yellow) +
+      ` Exploration: ${ratio}% ratio, ${pulls} total pulls`.padEnd(BOX_WIDTH - 2) +
+      color('│', ANSI.yellow)
+  );
+
+  lines.push(
+    color('│', ANSI.yellow) + ' Arm Distribution:'.padEnd(BOX_WIDTH - 2) + color('│', ANSI.yellow)
+  );
+
+  for (const arm of stats.exploration.armDistribution) {
+    const pct = (arm.proportion * 100).toFixed(1);
+    const bar = '█'.repeat(Math.round(arm.proportion * 20));
+    lines.push(
+      color('│', ANSI.yellow) +
+        `   ${arm.name.padEnd(8)} ${pct.padStart(5)}% ${bar}`.padEnd(BOX_WIDTH - 2) +
+        color('│', ANSI.yellow)
+    );
+  }
+
+  lines.push(color('├' + horizontalLine() + '┤', ANSI.yellow));
+  return lines;
+}
+
+/**
+ * Formats feature importance section.
+ */
+function formatFeatureImportanceSection(stats: BanditStats): string[] {
+  const lines: string[] = [];
+
+  lines.push(
+    color('│', ANSI.yellow) +
+      color(' Feature Importance by Arm:', ANSI.bold).padEnd(BOX_WIDTH + 7) +
+      color('│', ANSI.yellow)
+  );
+
+  for (const arm of stats.detailedArms) {
+    lines.push(
+      color('│', ANSI.yellow) +
+        `   ${color(arm.cliName, ANSI.cyan)}:`.padEnd(BOX_WIDTH + 5) +
+        color('│', ANSI.yellow)
+    );
+    const top3 = arm.featureImportance.slice(0, 3);
+    for (const fi of top3) {
+      const pct = (fi.importance * 100).toFixed(1);
+      lines.push(
+        color('│', ANSI.yellow) +
+          `     ${fi.feature.padEnd(18)} ${pct.padStart(5)}%`.padEnd(BOX_WIDTH - 2) +
+          color('│', ANSI.yellow)
+      );
+    }
+  }
+
+  lines.push(color('╰' + horizontalLine() + '╯', ANSI.yellow));
+  return lines;
+}
+
+/**
+ * Formats bandit statistics for detailed ML observability (Issue #174).
+ */
+export function formatBanditStats(result: RoutingAuditResult): string[] {
+  if (result.banditStats === undefined) return [];
+
+  return [
+    ...formatBanditStatsHeader(),
+    ...formatExplorationSection(result.banditStats),
+    ...formatFeatureImportanceSection(result.banditStats),
+  ];
+}
+
+// =============================================================================
+// Output Formatters
+// =============================================================================
+
+/**
+ * Formats the complete ASCII output.
+ */
+export function formatAsciiOutput(
+  result: RoutingAuditResult,
+  options: RoutingAuditOptions
+): string {
+  const lines: string[] = [
+    ...formatHeader(result),
+    ...formatTaskAnalysis(result),
+    ...formatBudgetFilter(result),
+    ...formatTopsisRanking(result),
+    ...formatLinUCBSelection(result),
+    ...formatFinalSelection(result, options.explain === true),
+    ...formatBanditStats(result),
+  ];
+  return lines.join('\n');
+}
+
+/**
+ * Formats the JSON output.
+ */
+export function formatJsonOutput(result: RoutingAuditResult): string {
+  return JSON.stringify(result, null, 2);
+}

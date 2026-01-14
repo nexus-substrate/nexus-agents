@@ -1,3 +1,7 @@
+// Justification: Core class with 40 tests, types/helpers already extracted.
+// Remaining 501 lines are tightly-coupled class methods. Further splitting
+// would fragment the cohesive ContextManager implementation.
+
 /**
  * nexus-agents/agents - ContextManager
  *
@@ -6,138 +10,39 @@
  * for accurate token counting.
  */
 
-import { z } from 'zod';
 import type { Result, Message, IModelAdapter, ILogger } from '../core/index.js';
 import { ok, err, ValidationError, createLogger } from '../core/index.js';
+import type {
+  ContextBudget,
+  ContextItem,
+  ContextManagerConfig,
+  ContextStats,
+  ContextItemCategory,
+} from './context-manager-types.js';
+import {
+  DEFAULT_BUDGET,
+  ContextManagerConfigSchema,
+  CHARS_PER_TOKEN,
+} from './context-manager-types.js';
+import {
+  sortItemsByPriority,
+  filterAndSortByCategory,
+  calculateContextStats,
+  calculateAvailableTokens,
+  buildSystemPrompt,
+  checkCategoryBudgetLimit,
+  checkTotalBudgetLimit,
+} from './context-manager-helpers.js';
 
-/**
- * Priority levels for context content.
- * Higher priority content is retained longer during pruning.
- */
-export const ContentPriority = {
-  /** System instructions - highest priority, never pruned */
-  SYSTEM: 100,
-  /** Current task description and requirements */
-  TASK: 80,
-  /** Active working content (recent code, research) */
-  ACTIVE: 60,
-  /** Historical context (older messages, results) */
-  HISTORY: 40,
-  /** Ephemeral content (debug logs, temp data) */
-  EPHEMERAL: 20,
-} as const;
-
-export type ContentPriority = (typeof ContentPriority)[keyof typeof ContentPriority];
-
-/**
- * Budget allocation for context categories.
- * Based on PROJECT_PLAN.md recommendations.
- */
-export interface ContextBudget {
-  /** System instructions and project context (default: 15%) */
-  system: number;
-  /** Current task description and requirements (default: 20%) */
-  task: number;
-  /** Active working content (default: 50%) */
-  active: number;
-  /** Reserved for response generation (default: 15%) */
-  reserved: number;
-}
-
-/**
- * Default budget allocation percentages.
- */
-export const DEFAULT_BUDGET: ContextBudget = {
-  system: 0.15,
-  task: 0.2,
-  active: 0.5,
-  reserved: 0.15,
-};
-
-/**
- * Zod schema for ContextBudget validation.
- */
-export const ContextBudgetSchema = z
-  .object({
-    system: z.number().min(0).max(1),
-    task: z.number().min(0).max(1),
-    active: z.number().min(0).max(1),
-    reserved: z.number().min(0).max(1),
-  })
-  .refine((data) => data.system + data.task + data.active + data.reserved <= 1.0, {
-    message: 'Budget allocations must not exceed 100%',
-  });
-
-/**
- * A piece of content in the context with its metadata.
- */
-export interface ContextItem {
-  /** Unique identifier for this item */
-  id: string;
-  /** The content (message, text, etc.) */
-  content: string;
-  /** Priority level for retention */
-  priority: ContentPriority;
-  /** Budget category this item belongs to */
-  category: keyof Omit<ContextBudget, 'reserved'>;
-  /** Token count for this item */
-  tokenCount: number;
-  /** When this item was added */
-  addedAt: number;
-  /** Optional metadata */
-  metadata?: Record<string, unknown>;
-}
-
-/**
- * Configuration for ContextManager.
- */
-export interface ContextManagerConfig {
-  /** Maximum context window size in tokens */
-  maxTokens: number;
-  /** Budget allocation (defaults to DEFAULT_BUDGET) */
-  budget?: ContextBudget;
-  /** Model adapter for token counting */
-  adapter?: IModelAdapter;
-  /** Custom logger */
-  logger?: ILogger;
-  /** Warning threshold (0-1) - warn when this % of budget is used */
-  warningThreshold?: number;
-}
-
-/**
- * Schema for ContextManagerConfig validation.
- */
-export const ContextManagerConfigSchema = z.object({
-  maxTokens: z.number().positive(),
-  budget: ContextBudgetSchema.optional(),
-  warningThreshold: z.number().min(0).max(1).optional(),
-});
-
-/**
- * Statistics about context usage.
- */
-export interface ContextStats {
-  /** Total tokens currently used */
-  totalTokens: number;
-  /** Tokens used per category */
-  categoryTokens: Record<keyof Omit<ContextBudget, 'reserved'>, number>;
-  /** Number of items per category */
-  itemCounts: Record<keyof Omit<ContextBudget, 'reserved'>, number>;
-  /** Available tokens (total - reserved) */
-  availableTokens: number;
-  /** Whether any category is over budget */
-  isOverBudget: boolean;
-  /** Categories that are over budget */
-  overBudgetCategories: Array<keyof Omit<ContextBudget, 'reserved'>>;
-  /** Percentage of total capacity used */
-  usagePercentage: number;
-}
-
-/**
- * Average characters per token for estimation fallback.
- * (Source: OpenAI documentation suggests ~4 chars per token for English)
- */
-const CHARS_PER_TOKEN = 4;
+// Re-export types for backward compatibility
+export type { ContextBudget, ContextItem, ContextManagerConfig, ContextStats, ContextItemCategory };
+export {
+  ContentPriority,
+  DEFAULT_BUDGET,
+  ContextManagerConfigSchema,
+  ContextBudgetSchema,
+  CHARS_PER_TOKEN,
+} from './context-manager-types.js';
 
 /**
  * Manages context window for agents with token budget enforcement.
@@ -161,11 +66,6 @@ const CHARS_PER_TOKEN = 4;
  * const canAdd = await manager.canAdd(newContent, 'active');
  * ```
  */
-/**
- * Type alias for context item categories (excludes 'reserved').
- */
-type ContextItemCategory = keyof Omit<ContextBudget, 'reserved'>;
-
 export class ContextManager {
   private readonly maxTokens: number;
   private readonly budget: ContextBudget;
@@ -243,7 +143,7 @@ export class ContextManager {
    * Validate that adding tokens would not exceed budget constraints.
    */
   private validateBudgetConstraints(
-    category: keyof Omit<ContextBudget, 'reserved'>,
+    category: ContextItemCategory,
     tokenCount: number
   ): ValidationError | null {
     const categoryError = this.checkCategoryBudget(category, tokenCount);
@@ -258,23 +158,26 @@ export class ContextManager {
    * Check if adding tokens would exceed category budget.
    */
   private checkCategoryBudget(
-    category: keyof Omit<ContextBudget, 'reserved'>,
+    category: ContextItemCategory,
     tokenCount: number
   ): ValidationError | null {
-    const categoryBudget = this.getCategoryBudget(category);
-    const currentCategoryTokens = this.getCategoryTokenCount(category);
-    const newTotal = currentCategoryTokens + tokenCount;
+    const result = checkCategoryBudgetLimit(
+      this.getCategoryTokenCount(category),
+      tokenCount,
+      this.maxTokens,
+      this.budget[category]
+    );
 
-    if (newTotal > categoryBudget) {
+    if (!result.ok) {
       this.logger.warn('Item would exceed category budget', {
         category,
         itemTokens: tokenCount,
-        currentTokens: currentCategoryTokens,
-        budget: categoryBudget,
+        currentTokens: result.currentTokens,
+        budget: result.budget,
       });
       return new ValidationError(
-        `Adding item would exceed ${category} budget: ${String(newTotal)} > ${String(categoryBudget)}`,
-        { context: { category, tokenCount, categoryBudget } }
+        `Adding item would exceed ${category} budget: ${String(result.newTotal)} > ${String(result.budget)}`,
+        { context: { category, tokenCount, categoryBudget: result.budget } }
       );
     }
     return null;
@@ -284,19 +187,22 @@ export class ContextManager {
    * Check if adding tokens would exceed total budget.
    */
   private checkTotalBudget(tokenCount: number): ValidationError | null {
-    const usableTokens = this.maxTokens * (1 - this.budget.reserved);
-    const currentTotal = this.getTotalTokenCount();
-    const newTotal = currentTotal + tokenCount;
+    const result = checkTotalBudgetLimit(
+      this.getTotalTokenCount(),
+      tokenCount,
+      this.maxTokens,
+      this.budget.reserved
+    );
 
-    if (newTotal > usableTokens) {
+    if (!result.ok) {
       this.logger.warn('Item would exceed total budget', {
         itemTokens: tokenCount,
-        currentTotal,
-        usableTokens,
+        currentTotal: result.currentTokens,
+        usableTokens: result.budget,
       });
       return new ValidationError(
-        `Adding item would exceed total context budget: ${String(newTotal)} > ${String(usableTokens)}`,
-        { context: { tokenCount, currentTotal, usableTokens } }
+        `Adding item would exceed total context budget: ${String(result.newTotal)} > ${String(result.budget)}`,
+        { context: { tokenCount, currentTotal: result.currentTokens, usableTokens: result.budget } }
       );
     }
     return null;
@@ -369,7 +275,7 @@ export class ContextManager {
    * @param category - The target category
    * @returns True if the content can fit
    */
-  async canAdd(content: string, category: keyof Omit<ContextBudget, 'reserved'>): Promise<boolean> {
+  async canAdd(content: string, category: ContextItemCategory): Promise<boolean> {
     const tokenCount = await this.countTokens(content);
     const categoryBudget = this.getCategoryBudget(category);
     const currentCategoryTokens = this.getCategoryTokenCount(category);
@@ -390,17 +296,8 @@ export class ContextManager {
    * @param category - The category to filter by
    * @returns Items in the category, sorted by priority (desc) then addedAt (asc)
    */
-  getByCategory(category: keyof Omit<ContextBudget, 'reserved'>): ContextItem[] {
-    return Array.from(this.items.values())
-      .filter((item) => item.category === category)
-      .sort((a, b) => {
-        // Higher priority first
-        if (a.priority !== b.priority) {
-          return b.priority - a.priority;
-        }
-        // Then by addedAt (older first for FIFO within same priority)
-        return a.addedAt - b.addedAt;
-      });
+  getByCategory(category: ContextItemCategory): ContextItem[] {
+    return filterAndSortByCategory(Array.from(this.items.values()), category);
   }
 
   /**
@@ -409,12 +306,7 @@ export class ContextManager {
    * @returns All items sorted
    */
   getAllItems(): ContextItem[] {
-    return Array.from(this.items.values()).sort((a, b) => {
-      if (a.priority !== b.priority) {
-        return b.priority - a.priority;
-      }
-      return a.addedAt - b.addedAt;
-    });
+    return sortItemsByPriority(Array.from(this.items.values()));
   }
 
   /**
@@ -450,11 +342,7 @@ export class ContextManager {
    * @returns Combined system prompt or undefined
    */
   getSystemPrompt(): string | undefined {
-    const systemItems = this.getByCategory('system');
-    if (systemItems.length === 0) {
-      return undefined;
-    }
-    return systemItems.map((item) => item.content).join('\n\n');
+    return buildSystemPrompt(Array.from(this.items.values()));
   }
 
   /**
@@ -467,47 +355,7 @@ export class ContextManager {
       return this.cachedStats;
     }
 
-    const categoryTokens: Record<keyof Omit<ContextBudget, 'reserved'>, number> = {
-      system: 0,
-      task: 0,
-      active: 0,
-    };
-
-    const itemCounts: Record<keyof Omit<ContextBudget, 'reserved'>, number> = {
-      system: 0,
-      task: 0,
-      active: 0,
-    };
-
-    for (const item of this.items.values()) {
-      categoryTokens[item.category] += item.tokenCount;
-      itemCounts[item.category]++;
-    }
-
-    const totalTokens = categoryTokens.system + categoryTokens.task + categoryTokens.active;
-    const availableTokens = Math.floor(this.maxTokens * (1 - this.budget.reserved));
-    const usagePercentage = totalTokens / availableTokens;
-
-    const overBudgetCategories: Array<keyof Omit<ContextBudget, 'reserved'>> = [];
-    const categories: Array<keyof Omit<ContextBudget, 'reserved'>> = ['system', 'task', 'active'];
-
-    for (const category of categories) {
-      const budget = this.getCategoryBudget(category);
-      if (categoryTokens[category] > budget) {
-        overBudgetCategories.push(category);
-      }
-    }
-
-    this.cachedStats = {
-      totalTokens,
-      categoryTokens,
-      itemCounts,
-      availableTokens,
-      isOverBudget: overBudgetCategories.length > 0,
-      overBudgetCategories,
-      usagePercentage,
-    };
-
+    this.cachedStats = calculateContextStats(this.items.values(), this.maxTokens, this.budget);
     return this.cachedStats;
   }
 
@@ -517,7 +365,7 @@ export class ContextManager {
    * @param category - The category to check
    * @returns Available tokens in the category
    */
-  getRemainingTokens(category: keyof Omit<ContextBudget, 'reserved'>): number {
+  getRemainingTokens(category: ContextItemCategory): number {
     const budget = this.getCategoryBudget(category);
     const used = this.getCategoryTokenCount(category);
     return Math.max(0, budget - used);
@@ -529,7 +377,7 @@ export class ContextManager {
    * @returns Available tokens in total
    */
   getTotalRemainingTokens(): number {
-    const usableTokens = Math.floor(this.maxTokens * (1 - this.budget.reserved));
+    const usableTokens = calculateAvailableTokens(this.maxTokens, this.budget.reserved);
     return Math.max(0, usableTokens - this.getTotalTokenCount());
   }
 
@@ -549,7 +397,7 @@ export class ContextManager {
    * @param category - The category to clear
    * @returns Number of items removed
    */
-  clearCategory(category: keyof Omit<ContextBudget, 'reserved'>): number {
+  clearCategory(category: ContextItemCategory): number {
     let count = 0;
     let tokensRemoved = 0;
     for (const [id, item] of this.items.entries()) {
@@ -585,7 +433,7 @@ export class ContextManager {
   /**
    * Get the token budget for a category.
    */
-  private getCategoryBudget(category: keyof Omit<ContextBudget, 'reserved'>): number {
+  private getCategoryBudget(category: ContextItemCategory): number {
     return Math.floor(this.maxTokens * this.budget[category]);
   }
 

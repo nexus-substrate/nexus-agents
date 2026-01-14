@@ -15,6 +15,8 @@ export {
   SecurityConfigSchema,
   SandboxConfigSchema,
   LoggingConfigSchema,
+  ToolRateLimitSchema,
+  DEFAULT_TOOL_RATE_LIMITS,
   defaultConfig,
 } from './schemas.js';
 
@@ -29,4 +31,6 @@ export type {
   SecurityConfig,
   SandboxConfig,
   LoggingConfig,
+  ToolRateLimit,
+  ToolCategory,
 } from './schemas.js';

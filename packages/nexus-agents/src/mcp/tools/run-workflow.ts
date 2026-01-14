@@ -3,70 +3,33 @@
  *
  * MCP tool for executing workflow templates with the workflow engine.
  * Supports both built-in templates and custom template paths.
+ *
+ * @module mcp/tools/run-workflow
  */
 
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Result } from '../../core/index.js';
-import type { IWorkflowEngine, WorkflowDefinition, StepResult, ILogger } from '../../core/index.js';
-import type { RateLimiter } from '../middleware/rate-limiter.js';
+import type { WorkflowDefinition, StepResult } from '../../core/index.js';
 import { WorkflowError, ParseError } from '../../core/index.js';
+import type {
+  RunWorkflowInput,
+  WorkflowToolResult,
+  StepResultSummary,
+  DryRunResult,
+  RunWorkflowDeps,
+} from './run-workflow-types.js';
+import { RunWorkflowInputSchema } from './run-workflow-types.js';
 
-/**
- * Input schema for the run_workflow tool.
- */
-export const RunWorkflowInputSchema = z.object({
-  template: z.string().min(1).describe('Workflow template name (e.g., code-review) or file path'),
-  inputs: z.record(z.unknown()).describe('Workflow inputs as key-value pairs'),
-  dryRun: z.boolean().optional().default(false).describe('Validate workflow without executing'),
-});
-
-export type RunWorkflowInput = z.infer<typeof RunWorkflowInputSchema>;
-
-/**
- * Workflow execution result returned by the tool.
- */
-export interface WorkflowToolResult {
-  executionId: string;
-  workflowName: string;
-  status: 'completed' | 'failed';
-  stepResults: StepResultSummary[];
-  output: unknown;
-  durationMs: number;
-}
-
-/**
- * Simplified step result for tool output.
- */
-export interface StepResultSummary {
-  stepId: string;
-  status: 'success' | 'failed' | 'skipped';
-  durationMs: number;
-  error?: string;
-}
-
-/**
- * Dry run validation result.
- */
-export interface DryRunResult {
-  valid: boolean;
-  workflowName: string;
-  stepCount: number;
-  inputsProvided: string[];
-  inputsRequired: string[];
-  inputsMissing: string[];
-  validationErrors: string[];
-}
-
-/**
- * Dependencies required by the run_workflow tool.
- */
-export interface RunWorkflowDeps {
-  workflowEngine: IWorkflowEngine;
-  logger?: ILogger;
-  /** Rate limiter for throttling tool calls (required) */
-  rateLimiter: RateLimiter;
-}
+// Re-export types for backward compatibility
+export type {
+  RunWorkflowInput,
+  WorkflowToolResult,
+  StepResultSummary,
+  DryRunResult,
+  RunWorkflowDeps,
+} from './run-workflow-types.js';
+export { RunWorkflowInputSchema } from './run-workflow-types.js';
 
 /**
  * Check if a template identifier is a file path.

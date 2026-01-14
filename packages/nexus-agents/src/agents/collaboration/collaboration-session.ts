@@ -3,6 +3,10 @@
  *
  * Manages collaboration sessions between multiple experts.
  * Handles session lifecycle, message routing, and result collection.
+ *
+ * File length justification: Core CollaborationSession class with types in
+ * collaboration-types.ts, schemas in collaboration-schemas.ts. Remaining code is
+ * tightly coupled session state machine (start, finalize, vote, review cycles).
  */
 
 import type { Result, TaskResult, ILogger, AgentRole } from '../../core/index.js';

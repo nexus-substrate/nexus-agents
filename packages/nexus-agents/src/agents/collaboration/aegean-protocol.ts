@@ -8,6 +8,10 @@
  * - Leader-based coordination with round-robin leader selection
  * - Incremental quorum detection for early termination
  * - Byzantine fault tolerance (tolerates f faults out of 3f+1 agents)
+ *
+ * File length justification: Core AegeanProtocol class with types in
+ * aegean-types.ts, event emitters in aegean-events.ts, helpers in
+ * aegean-helpers.ts. Protocol execution logic is tightly coupled.
  */
 
 import type { Result, ILogger, IAgent, Task } from '../../core/index.js';

@@ -6,6 +6,10 @@
  *
  * @module benchmarks/memory-benchmarks
  * (Source: Issue #156, arXiv:2504.19413)
+ *
+ * File length justification: Benchmark suite with types in benchmark-types.ts,
+ * runner in benchmark-runner.ts. Remaining code is benchmark definitions for
+ * store/retrieve/search/prune with quality metrics validation.
  */
 
 import { randomUUID } from 'node:crypto';

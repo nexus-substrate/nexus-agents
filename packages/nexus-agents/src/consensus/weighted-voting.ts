@@ -6,6 +6,10 @@
  *
  * @module consensus/weighted-voting
  * (Source: Issue #103, arXiv:2511.10400 - CP-WBFT)
+ *
+ * File length justification: Core WeightedVoting class with types already in
+ * ./types.js. Private methods for Byzantine detection and pattern analysis
+ * are tightly coupled to class state and cannot be cleanly extracted.
  */
 
 import { createLogger } from '../core/logger.js';

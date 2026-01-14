@@ -6,6 +6,10 @@
  *
  * @module agents/collaboration/event-bus
  * (Source: Issue #182, ARCHITECTURE.md Hybrid Architecture)
+ *
+ * File length justification: Core EventBus class with types in event-bus-types.ts,
+ * core types in event-bus-core-types.ts, events in event-bus-events.ts, topics in
+ * event-bus-topics.ts. Remaining code is cohesive pub/sub implementation.
  */
 
 import { randomUUID } from 'node:crypto';

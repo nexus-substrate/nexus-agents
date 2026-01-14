@@ -5,6 +5,10 @@
  * statistics and markdown index documentation.
  *
  * (Source: Research Tracking System - docs/research/RESEARCH_INDEX.md)
+ *
+ * File length justification: Zod schemas for research registry validation
+ * (papers, techniques, sources, stats). Schemas are interdependent and
+ * splitting would create circular import issues.
  */
 
 import { z } from 'zod';

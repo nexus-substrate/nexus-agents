@@ -5,54 +5,29 @@
  *
  * (Source: Issue #64, PROJECT_PLAN.md Section 5.2)
  * (Source: Node.js 22.x readline documentation)
+ *
+ * File structure: Types in repl-types.ts, formatters in
+ * repl-formatters.ts. Extracted per Issue #272.
  */
 
 import * as readline from 'node:readline';
 import { createLogger, type ILogger } from '../core/index.js';
-import { VERSION } from '../version.js';
 import { printWorkflowTemplates } from './workflow-run.js';
 import { expertListCommand } from './expert-list.js';
 
-/**
- * ANSI color codes for terminal output.
- */
-const colors = {
-  reset: '\x1b[0m',
-  green: '\x1b[32m',
-  yellow: '\x1b[33m',
-  red: '\x1b[31m',
-  cyan: '\x1b[36m',
-  blue: '\x1b[34m',
-  magenta: '\x1b[35m',
-  dim: '\x1b[2m',
-  bold: '\x1b[1m',
-} as const;
+// Re-export types
+export type { ReplSession, CommandResult } from './repl-types.js';
+export { colors, HANDLED } from './repl-types.js';
 
-/**
- * Session context maintained across REPL commands.
- */
-interface ReplSession {
-  /** History of tasks submitted */
-  history: string[];
-  /** Current session ID */
-  readonly sessionId: string;
-  /** Session start time */
-  readonly startTime: Date;
-  /** Verbose mode */
-  verbose: boolean;
-}
-
-/**
- * REPL command result.
- */
-interface CommandResult {
-  /** Whether the command was handled */
-  handled: boolean;
-  /** Whether to exit the REPL */
-  exit: boolean;
-  /** Output message */
-  output?: string;
-}
+// Local imports from extracted modules
+import { colors, HANDLED, type ReplSession, type CommandResult } from './repl-types.js';
+import {
+  printBanner,
+  printReplHelp,
+  printStatus,
+  printHistory,
+  clearScreen,
+} from './repl-formatters.js';
 
 /**
  * Creates a new REPL session.
@@ -65,104 +40,6 @@ function createSession(verbose: boolean): ReplSession {
     verbose,
   };
 }
-
-/**
- * Prints the REPL welcome banner.
- */
-function printBanner(): void {
-  const banner = `
-${colors.cyan}╔════════════════════════════════════════════════════════════╗
-║                    ${colors.bold}Nexus Agents v${VERSION}${colors.reset}${colors.cyan}                     ║
-║           Multi-agent orchestration interactive mode           ║
-╚════════════════════════════════════════════════════════════╝${colors.reset}
-
-${colors.dim}Type 'help' for available commands or enter a task to orchestrate.${colors.reset}
-${colors.dim}Type 'exit' or press Ctrl+C to quit.${colors.reset}
-`;
-  process.stdout.write(banner + '\n');
-}
-
-/**
- * Prints REPL help text.
- */
-function printReplHelp(): void {
-  const help = `
-${colors.bold}Available Commands:${colors.reset}
-
-  ${colors.cyan}help${colors.reset}              Show this help message
-  ${colors.cyan}exit${colors.reset}, ${colors.cyan}quit${colors.reset}        Exit the REPL
-  ${colors.cyan}clear${colors.reset}             Clear the screen
-  ${colors.cyan}history${colors.reset}           Show command history
-  ${colors.cyan}status${colors.reset}            Show session status
-
-${colors.bold}Expert Commands:${colors.reset}
-
-  ${colors.cyan}experts${colors.reset}           List available experts
-  ${colors.cyan}create <role>${colors.reset}     Create a custom expert
-
-${colors.bold}Workflow Commands:${colors.reset}
-
-  ${colors.cyan}workflows${colors.reset}         List available workflow templates
-  ${colors.cyan}run <name>${colors.reset}        Run a workflow (dry-run mode)
-
-${colors.bold}Task Orchestration:${colors.reset}
-
-  Any other input is treated as a task for the TechLead agent.
-  Example: "Review the authentication module for security issues"
-
-${colors.dim}Tip: Tasks are analyzed and delegated to appropriate experts.${colors.reset}
-`;
-  process.stdout.write(help + '\n');
-}
-
-/**
- * Prints session status.
- */
-function printStatus(session: ReplSession): void {
-  const uptime = Date.now() - session.startTime.getTime();
-  const uptimeSeconds = Math.floor(uptime / 1000);
-  const uptimeMinutes = Math.floor(uptimeSeconds / 60);
-  const seconds = uptimeSeconds % 60;
-
-  const status = `
-${colors.bold}Session Status:${colors.reset}
-  Session ID:    ${colors.cyan}${session.sessionId}${colors.reset}
-  Started:       ${session.startTime.toLocaleString()}
-  Uptime:        ${String(uptimeMinutes)}m ${String(seconds)}s
-  Commands run:  ${String(session.history.length)}
-  Verbose:       ${session.verbose ? 'enabled' : 'disabled'}
-`;
-  process.stdout.write(status + '\n');
-}
-
-/**
- * Prints command history.
- */
-function printHistory(session: ReplSession): void {
-  if (session.history.length === 0) {
-    process.stdout.write(`${colors.dim}No commands in history.${colors.reset}\n`);
-    return;
-  }
-
-  process.stdout.write(`${colors.bold}Command History:${colors.reset}\n`);
-  for (const [index, cmd] of session.history.entries()) {
-    const num = String(index + 1).padStart(3, ' ');
-    process.stdout.write(`  ${colors.dim}${num}${colors.reset}  ${cmd}\n`);
-  }
-  process.stdout.write('\n');
-}
-
-/**
- * Clears the terminal screen.
- */
-function clearScreen(): void {
-  process.stdout.write('\x1b[2J\x1b[0f');
-}
-
-/**
- * Handled result for simple commands.
- */
-const HANDLED: CommandResult = { handled: true, exit: false };
 
 /**
  * Handles simple single-word commands.
