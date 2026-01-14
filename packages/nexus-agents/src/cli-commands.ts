@@ -4,6 +4,8 @@
  * Command handlers for the CLI.
  *
  * @module cli-commands
+ *
+ * File structure: Validators in cli-commands-validators.ts. Extracted per Issue #272.
  */
 
 import { VERSION } from './version.js';
@@ -22,12 +24,27 @@ import {
   indexCommand,
   formatIndexResult,
   researchCommand,
-  isValidResearchSubcommand,
-  type ExpertListFormat,
-  type IndexSubcommand,
 } from './cli/index.js';
 import { EXIT_CODES, HELP_TEXT, type ParsedCliArgs } from './cli-types.js';
 import { startServer } from './cli-server.js';
+import {
+  isValidExpertListFormat,
+  isValidOrchestrateModel,
+  isValidThreshold,
+  isValidIndexSubcommand,
+  isValidIndexFormat,
+  isValidResearchFormat,
+  isValidResearchSubcommand,
+} from './cli-commands-validators.js';
+import {
+  printWorkflowRunUsage,
+  printReviewUsage,
+  printRoutingAuditUsage,
+  printOrchestrateUsage,
+  printVoteUsage,
+  printIndexUsage,
+  printResearchUsage,
+} from './cli-commands-usage.js';
 
 /**
  * Prints help text to stdout.
@@ -69,13 +86,6 @@ export async function handleConfigCommand(args: ParsedCliArgs): Promise<void> {
 }
 
 /**
- * Validates and coerces format to ExpertListFormat.
- */
-function isValidExpertListFormat(value: string): value is ExpertListFormat {
-  return ['table', 'json', 'yaml'].includes(value);
-}
-
-/**
  * Handles the expert command and its subcommands.
  */
 export function handleExpertCommand(args: ParsedCliArgs): void {
@@ -100,8 +110,7 @@ export async function handleWorkflowCommand(args: ParsedCliArgs): Promise<void> 
     // Get workflow name from positionals (workflow run <name>)
     const workflowName = args.positionals[2];
     if (workflowName === undefined) {
-      process.stdout.write('Error: Workflow name is required.\n');
-      process.stdout.write('Usage: nexus-agents workflow run <name> [options]\n');
+      printWorkflowRunUsage();
       process.exit(EXIT_CODES.INVALID_ARGS);
     }
 
@@ -137,11 +146,7 @@ export async function handleReviewCommand(args: ParsedCliArgs): Promise<void> {
   // Get PR URL from positionals (review <url>)
   const prUrl = args.positionals[1];
   if (prUrl === undefined) {
-    process.stdout.write('Error: PR URL is required.\n');
-    process.stdout.write('Usage: nexus-agents review <url> [options]\n');
-    process.stdout.write('Examples:\n');
-    process.stdout.write('  nexus-agents review https://github.com/owner/repo/pull/123\n');
-    process.stdout.write('  nexus-agents review owner/repo#123 --dry-run\n');
+    printReviewUsage();
     process.exit(EXIT_CODES.INVALID_ARGS);
   }
 
@@ -160,12 +165,7 @@ export function handleRoutingAuditCommand(args: ParsedCliArgs): void {
   // Get task from positionals (routing-audit <task>)
   const task = args.positionals[1];
   if (task === undefined) {
-    process.stdout.write('Error: Task description is required.\n');
-    process.stdout.write('Usage: nexus-agents routing-audit <task> [options]\n');
-    process.stdout.write('Examples:\n');
-    process.stdout.write('  nexus-agents routing-audit "Implement a complex algorithm"\n');
-    process.stdout.write('  nexus-agents routing-audit "Review this code" --verbose\n');
-    process.stdout.write('  nexus-agents routing-audit "Generate tests" --format=json\n');
+    printRoutingAuditUsage();
     process.exit(EXIT_CODES.INVALID_ARGS);
   }
 
@@ -181,13 +181,6 @@ export function handleRoutingAuditCommand(args: ParsedCliArgs): void {
 }
 
 /**
- * Validates model option for orchestrate command.
- */
-function isValidOrchestrateModel(value: string): value is 'claude' | 'gemini' | 'codex' {
-  return ['claude', 'gemini', 'codex'].includes(value);
-}
-
-/**
  * Handles the orchestrate command for standalone CLI execution.
  * (Source: Issue #183, 5-0 consensus vote)
  */
@@ -195,12 +188,7 @@ export async function handleOrchestrateCommand(args: ParsedCliArgs): Promise<voi
   // Get task from positionals (orchestrate <task>)
   const task = args.positionals[1];
   if (task === undefined) {
-    process.stdout.write('Error: Task description is required.\n');
-    process.stdout.write('Usage: nexus-agents orchestrate <task> [options]\n');
-    process.stdout.write('Examples:\n');
-    process.stdout.write('  nexus-agents orchestrate "Explain this function"\n');
-    process.stdout.write('  nexus-agents orchestrate "Generate tests" --model=claude\n');
-    process.stdout.write('  nexus-agents orchestrate "Refactor code" --dry-run\n');
+    printOrchestrateUsage();
     process.exit(EXIT_CODES.INVALID_ARGS);
   }
 
@@ -241,25 +229,13 @@ export function handleSystemReviewCommand(args: ParsedCliArgs): void {
 }
 
 /**
- * Validates threshold option for vote command.
- */
-function isValidThreshold(value: string): value is 'majority' | 'supermajority' | 'unanimous' {
-  return ['majority', 'supermajority', 'unanimous'].includes(value);
-}
-
-/**
  * Handles the vote command for consensus voting.
  * (Source: Issue #212, Process Automation Epic #209)
  */
 export async function handleVoteCommand(args: ParsedCliArgs): Promise<void> {
   const proposal = args.options.proposal;
   if (proposal === undefined) {
-    process.stdout.write('Error: Proposal is required.\n');
-    process.stdout.write('Usage: nexus-agents vote --proposal "..." [options]\n');
-    process.stdout.write('Examples:\n');
-    process.stdout.write('  nexus-agents vote --proposal "Add feature X"\n');
-    process.stdout.write('  nexus-agents vote -p "Proposal" -t supermajority\n');
-    process.stdout.write('  nexus-agents vote -p "Quick decision" --quick\n');
+    printVoteUsage();
     process.exit(EXIT_CODES.INVALID_ARGS);
   }
 
@@ -278,45 +254,13 @@ export async function handleVoteCommand(args: ParsedCliArgs): Promise<void> {
 }
 
 /**
- * Validates index subcommand.
- */
-function isValidIndexSubcommand(value: string | undefined): value is IndexSubcommand {
-  const validSubcommands = [
-    'generate',
-    'check',
-    'diagram',
-    'validate',
-    'entrypoints',
-    'freshness',
-    'links',
-  ];
-  return value !== undefined && validSubcommands.includes(value);
-}
-
-/**
- * Validates output format for index command.
- */
-function isValidIndexFormat(value: string): value is 'yaml' | 'json' {
-  return value === 'yaml' || value === 'json';
-}
-
-/**
  * Handles the index command for codebase indexing.
  * (Source: Issue #240)
  */
 export async function handleIndexCommand(args: ParsedCliArgs): Promise<void> {
   const subcommand = args.subcommand;
   if (!isValidIndexSubcommand(subcommand)) {
-    process.stdout.write('Error: Index subcommand is required.\n');
-    process.stdout.write('Usage: nexus-agents index <subcommand> [options]\n');
-    process.stdout.write('Subcommands:\n');
-    process.stdout.write('  generate     Generate/update codebase index\n');
-    process.stdout.write('  check        Validate index freshness (for CI)\n');
-    process.stdout.write('  diagram      Generate Mermaid dependency diagram\n');
-    process.stdout.write('  validate     Check ARCHITECTURE.md matches index\n');
-    process.stdout.write('  entrypoints  Extract CLI/MCP/REST entrypoints\n');
-    process.stdout.write('  freshness    Check documentation freshness\n');
-    process.stdout.write('  links        Validate markdown links\n');
+    printIndexUsage();
     process.exit(EXIT_CODES.INVALID_ARGS);
   }
 
@@ -334,30 +278,13 @@ export async function handleIndexCommand(args: ParsedCliArgs): Promise<void> {
 }
 
 /**
- * Validates output format for research command.
- */
-function isValidResearchFormat(value: string): value is 'table' | 'json' {
-  return value === 'table' || value === 'json';
-}
-
-/**
  * Handles the research command for research registry management.
  * (Source: Issue #237, Epic #225, Epic #261)
  */
 export async function handleResearchCommand(args: ParsedCliArgs): Promise<void> {
   const subcommand = args.subcommand;
   if (!isValidResearchSubcommand(subcommand)) {
-    process.stdout.write('Error: Research subcommand is required.\n');
-    process.stdout.write('Usage: nexus-agents research <subcommand> [options]\n');
-    process.stdout.write('Subcommands:\n');
-    process.stdout.write(
-      '  status [id]      Show technique status (optional: specific technique)\n'
-    );
-    process.stdout.write('  overlap <id>     Find overlapping techniques\n');
-    process.stdout.write('  add <arxiv-id>   Add paper from arXiv\n');
-    process.stdout.write('  stats            Show research statistics\n');
-    process.stdout.write('  refresh          Regenerate RESEARCH_INDEX.md\n');
-    process.stdout.write('  check            Check if index is up to date\n');
+    printResearchUsage();
     process.exit(EXIT_CODES.INVALID_ARGS);
   }
 
