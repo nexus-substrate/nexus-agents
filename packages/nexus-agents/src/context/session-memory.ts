@@ -8,146 +8,43 @@
  * (Source: Issue #130, arXiv:2303.11366 - Reflexion)
  */
 
-import { z } from 'zod';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { Result } from '../core/result.js';
 import { ok, err } from '../core/result.js';
 import type { ILogger } from '../core/logger.js';
 import { createLogger } from '../core/logger.js';
+import type {
+  SessionLearning,
+  CompletedTask,
+  ResolvedError,
+  SessionEpisode,
+  SessionMemoryConfig,
+} from './session-memory-types.js';
+import {
+  SessionLearningSchema,
+  CompletedTaskSchema,
+  ResolvedErrorSchema,
+  SessionEpisodeSchema,
+  SessionMemoryError,
+  DEFAULT_SESSION_MEMORY_CONFIG,
+} from './session-memory-types.js';
 
-// ============================================================================
-// Types and Schemas
-// ============================================================================
-
-/**
- * A learning captured during a session.
- */
-export interface SessionLearning {
-  /** The pattern or technique learned */
-  readonly pattern: string;
-  /** Context where this learning applies */
-  readonly context: string;
-  /** Confidence in this learning (0-1) */
-  readonly confidence: number;
-  /** Optional source (e.g., task, error, user feedback) */
-  readonly source?: string;
-}
-
-export const SessionLearningSchema = z.object({
-  pattern: z.string().min(1),
-  context: z.string().min(1),
-  confidence: z.number().min(0).max(1),
-  source: z.string().optional(),
-});
-
-/**
- * A task completed during a session.
- */
-export interface CompletedTask {
-  /** Issue or task identifier */
-  readonly issue?: string | number;
-  /** Approach used to complete the task */
-  readonly approach: string;
-  /** Challenges encountered */
-  readonly challenges: readonly string[];
-  /** Duration in milliseconds */
-  readonly durationMs?: number;
-}
-
-export const CompletedTaskSchema = z.object({
-  issue: z.union([z.string(), z.number()]).optional(),
-  approach: z.string().min(1),
-  challenges: z.array(z.string()),
-  durationMs: z.number().positive().optional(),
-});
-
-/**
- * An error resolved during a session.
- */
-export interface ResolvedError {
-  /** Error message or type */
-  readonly error: string;
-  /** Solution applied */
-  readonly solution: string;
-  /** File pattern where this applies */
-  readonly filePattern?: string;
-}
-
-export const ResolvedErrorSchema = z.object({
-  error: z.string().min(1),
-  solution: z.string().min(1),
-  filePattern: z.string().optional(),
-});
-
-/**
- * Complete session episode data.
- */
-export interface SessionEpisode {
-  /** Unique session identifier */
-  readonly sessionId: string;
-  /** Session date (ISO format) */
-  readonly date: string;
-  /** Session duration in milliseconds */
-  readonly durationMs: number;
-  /** Brief summary of the session */
-  readonly summary: string;
-  /** Learnings captured */
-  readonly learnings: readonly SessionLearning[];
-  /** Tasks completed */
-  readonly tasksCompleted: readonly CompletedTask[];
-  /** Errors resolved */
-  readonly errorsResolved: readonly ResolvedError[];
-}
-
-export const SessionEpisodeSchema = z.object({
-  sessionId: z.string().min(1),
-  date: z.string().min(1),
-  durationMs: z.number().min(0),
-  summary: z.string(),
-  learnings: z.array(SessionLearningSchema),
-  tasksCompleted: z.array(CompletedTaskSchema),
-  errorsResolved: z.array(ResolvedErrorSchema),
-});
-
-/**
- * Error for session memory operations.
- */
-export class SessionMemoryError extends Error {
-  constructor(
-    message: string,
-    public readonly context?: Record<string, unknown>
-  ) {
-    super(message);
-    this.name = 'SessionMemoryError';
-  }
-}
-
-// ============================================================================
-// Configuration
-// ============================================================================
-
-/**
- * Configuration for SessionMemory.
- */
-export interface SessionMemoryConfig {
-  /** Base directory for memory storage */
-  readonly memoryDir: string;
-  /** Maximum episodes to load on session start */
-  readonly maxEpisodesToLoad?: number;
-  /** Maximum learnings to include in context */
-  readonly maxLearningsInContext?: number;
-  /** Minimum confidence threshold for learnings */
-  readonly minConfidenceThreshold?: number;
-  /** Logger instance */
-  readonly logger?: ILogger;
-}
-
-const DEFAULT_CONFIG = {
-  maxEpisodesToLoad: 10,
-  maxLearningsInContext: 20,
-  minConfidenceThreshold: 0.5,
-} as const;
+// Re-export types for backward compatibility
+export type {
+  SessionLearning,
+  CompletedTask,
+  ResolvedError,
+  SessionEpisode,
+  SessionMemoryConfig,
+} from './session-memory-types.js';
+export {
+  SessionLearningSchema,
+  CompletedTaskSchema,
+  ResolvedErrorSchema,
+  SessionEpisodeSchema,
+  SessionMemoryError,
+} from './session-memory-types.js';
 
 // ============================================================================
 // Session Memory Implementation
@@ -168,11 +65,12 @@ export class SessionMemory {
 
   constructor(config: SessionMemoryConfig) {
     this.memoryDir = config.memoryDir;
-    this.maxEpisodesToLoad = config.maxEpisodesToLoad ?? DEFAULT_CONFIG.maxEpisodesToLoad;
+    this.maxEpisodesToLoad =
+      config.maxEpisodesToLoad ?? DEFAULT_SESSION_MEMORY_CONFIG.maxEpisodesToLoad;
     this.maxLearningsInContext =
-      config.maxLearningsInContext ?? DEFAULT_CONFIG.maxLearningsInContext;
+      config.maxLearningsInContext ?? DEFAULT_SESSION_MEMORY_CONFIG.maxLearningsInContext;
     this.minConfidenceThreshold =
-      config.minConfidenceThreshold ?? DEFAULT_CONFIG.minConfidenceThreshold;
+      config.minConfidenceThreshold ?? DEFAULT_SESSION_MEMORY_CONFIG.minConfidenceThreshold;
     this.log = config.logger ?? createLogger({ component: 'SessionMemory' });
   }
 
