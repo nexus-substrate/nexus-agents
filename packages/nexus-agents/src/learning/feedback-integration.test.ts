@@ -5,11 +5,12 @@
  * (Source: Issue #167, Epic #164)
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   FeedbackIntegration,
   createFeedbackIntegration,
   DEFAULT_FEEDBACK_INTEGRATION_CONFIG,
+  DEFAULT_DECISION_TTL_MS,
 } from './feedback-integration.js';
 import type { IFeedbackIntegration, RecordOutcomeParams } from './feedback-integration.js';
 import type {
@@ -86,6 +87,13 @@ describe('DEFAULT_FEEDBACK_INTEGRATION_CONFIG', () => {
     expect(DEFAULT_FEEDBACK_INTEGRATION_CONFIG.enableAutoFeedback).toBe(true);
     expect(DEFAULT_FEEDBACK_INTEGRATION_CONFIG.successQualityThreshold).toBe(0.7);
     expect(DEFAULT_FEEDBACK_INTEGRATION_CONFIG.partialQualityThreshold).toBe(0.4);
+    expect(DEFAULT_FEEDBACK_INTEGRATION_CONFIG.decisionTtlMs).toBe(DEFAULT_DECISION_TTL_MS);
+  });
+});
+
+describe('DEFAULT_DECISION_TTL_MS', () => {
+  it('should be 1 hour in milliseconds', () => {
+    expect(DEFAULT_DECISION_TTL_MS).toBe(3600000);
   });
 });
 
@@ -579,5 +587,228 @@ describe('FeedbackIntegration edge cases', () => {
     const stats = integration.getStats();
     expect(stats.totalDecisions).toBe(3);
     expect(stats.totalOutcomes).toBe(3);
+  });
+});
+
+describe('FeedbackIntegration TTL eviction', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('should track decision map size', () => {
+    const integration = new FeedbackIntegration();
+
+    expect(integration.getDecisionMapSize()).toBe(0);
+
+    const decision = createMockDecision();
+    integration.recordRoutingDecision(decision);
+
+    expect(integration.getDecisionMapSize()).toBe(1);
+  });
+
+  it('should evict entries older than TTL', () => {
+    // Use short TTL for testing (100ms)
+    const integration = new FeedbackIntegration({ decisionTtlMs: 100 });
+
+    const decision = createMockDecision();
+    integration.recordRoutingDecision(decision);
+
+    expect(integration.getDecisionMapSize()).toBe(1);
+
+    // Advance time past TTL
+    vi.advanceTimersByTime(150);
+
+    // Manually trigger eviction
+    const evictedCount = integration.evictStaleEntries();
+
+    expect(evictedCount).toBe(1);
+    expect(integration.getDecisionMapSize()).toBe(0);
+    expect(integration.getEvictedEntryCount()).toBe(1);
+  });
+
+  it('should not evict entries within TTL', () => {
+    // Use short TTL for testing (100ms)
+    const integration = new FeedbackIntegration({ decisionTtlMs: 100 });
+
+    const decision = createMockDecision();
+    integration.recordRoutingDecision(decision);
+
+    // Advance time but stay within TTL
+    vi.advanceTimersByTime(50);
+
+    const evictedCount = integration.evictStaleEntries();
+
+    expect(evictedCount).toBe(0);
+    expect(integration.getDecisionMapSize()).toBe(1);
+    expect(integration.getEvictedEntryCount()).toBe(0);
+  });
+
+  it('should evict only stale entries when mixed ages', () => {
+    const integration = new FeedbackIntegration({ decisionTtlMs: 100 });
+
+    // Record first decision
+    const decision1 = createMockDecision({ cliName: 'claude' });
+    integration.recordRoutingDecision(decision1);
+
+    // Advance time
+    vi.advanceTimersByTime(80);
+
+    // Record second decision
+    const decision2 = createMockDecision({ cliName: 'gemini' });
+    integration.recordRoutingDecision(decision2);
+
+    // Advance time so first is stale but second is not
+    vi.advanceTimersByTime(30);
+
+    const evictedCount = integration.evictStaleEntries();
+
+    expect(evictedCount).toBe(1);
+    expect(integration.getDecisionMapSize()).toBe(1);
+  });
+
+  it('should accumulate evicted entry count', () => {
+    const integration = new FeedbackIntegration({ decisionTtlMs: 100 });
+
+    // First batch
+    integration.recordRoutingDecision(createMockDecision());
+    integration.recordRoutingDecision(createMockDecision());
+    vi.advanceTimersByTime(150);
+    integration.evictStaleEntries();
+
+    expect(integration.getEvictedEntryCount()).toBe(2);
+
+    // Second batch
+    integration.recordRoutingDecision(createMockDecision());
+    vi.advanceTimersByTime(150);
+    integration.evictStaleEntries();
+
+    expect(integration.getEvictedEntryCount()).toBe(3);
+  });
+
+  it('should reset evicted entry count on reset()', () => {
+    const integration = new FeedbackIntegration({ decisionTtlMs: 100 });
+
+    integration.recordRoutingDecision(createMockDecision());
+    vi.advanceTimersByTime(150);
+    integration.evictStaleEntries();
+
+    expect(integration.getEvictedEntryCount()).toBe(1);
+
+    integration.reset();
+
+    expect(integration.getEvictedEntryCount()).toBe(0);
+    expect(integration.getDecisionMapSize()).toBe(0);
+  });
+
+  it('should throttle eviction to once per minute', () => {
+    const integration = new FeedbackIntegration({ decisionTtlMs: 100 });
+
+    // Record first decision - this triggers first eviction check
+    integration.recordRoutingDecision(createMockDecision());
+    vi.advanceTimersByTime(150);
+
+    // Record second decision within throttle window (< 60s)
+    // Stale entry should not be evicted yet
+    integration.recordRoutingDecision(createMockDecision());
+
+    // The stale first entry should still be there because eviction was throttled
+    // (less than 60 seconds passed since last eviction)
+    expect(integration.getDecisionMapSize()).toBe(2);
+
+    // Advance past throttle window
+    vi.advanceTimersByTime(60000);
+
+    // Record another decision - should trigger eviction now
+    integration.recordRoutingDecision(createMockDecision());
+
+    // Now eviction should have run and removed the stale entries
+    // (first two entries are now > 60 seconds old)
+    expect(integration.getEvictedEntryCount()).toBeGreaterThan(0);
+  });
+
+  it('should use default TTL when not specified', () => {
+    const integration = new FeedbackIntegration();
+
+    integration.recordRoutingDecision(createMockDecision());
+
+    // Advance less than 1 hour
+    vi.advanceTimersByTime(3500000); // ~58 minutes
+
+    const evictedCount = integration.evictStaleEntries();
+    expect(evictedCount).toBe(0);
+
+    // Advance past 1 hour total
+    vi.advanceTimersByTime(200000); // ~3 more minutes
+
+    const evictedCount2 = integration.evictStaleEntries();
+    expect(evictedCount2).toBe(1);
+  });
+
+  it('should return 0 when no entries to evict', () => {
+    const integration = new FeedbackIntegration();
+
+    const evictedCount = integration.evictStaleEntries();
+
+    expect(evictedCount).toBe(0);
+  });
+
+  it('should handle eviction after outcome clears entry', () => {
+    const integration = new FeedbackIntegration({ decisionTtlMs: 100 });
+    const router = createMockRouter();
+    integration.registerCompositeRouter(router);
+
+    const decision = createMockDecision();
+    const id = integration.recordRoutingDecision(decision);
+
+    // Record outcome - this clears the entry from the map
+    integration.recordOutcome({
+      routingDecisionId: id,
+      success: true,
+      qualityScore: 0.9,
+      durationMs: 500,
+      tokenUsage: 1000,
+    });
+
+    expect(integration.getDecisionMapSize()).toBe(0);
+
+    // Advance past TTL and evict
+    vi.advanceTimersByTime(150);
+    const evictedCount = integration.evictStaleEntries();
+
+    // Nothing to evict since outcome already cleared it
+    expect(evictedCount).toBe(0);
+  });
+});
+
+describe('FeedbackIntegration TTL configuration', () => {
+  it('should accept custom TTL in config', () => {
+    const customTtl = 5000; // 5 seconds
+    const integration = new FeedbackIntegration({ decisionTtlMs: customTtl });
+
+    // Record a decision
+    integration.recordRoutingDecision(createMockDecision());
+
+    expect(integration.getDecisionMapSize()).toBe(1);
+  });
+
+  it('should handle zero TTL (immediate eviction)', () => {
+    vi.useFakeTimers();
+    const integration = new FeedbackIntegration({ decisionTtlMs: 0 });
+
+    integration.recordRoutingDecision(createMockDecision());
+
+    // Even with 0 TTL, the entry exists until eviction runs
+    expect(integration.getDecisionMapSize()).toBe(1);
+
+    // Any time advance should make it stale
+    vi.advanceTimersByTime(1);
+    const evictedCount = integration.evictStaleEntries();
+
+    expect(evictedCount).toBe(1);
+    vi.useRealTimers();
   });
 });

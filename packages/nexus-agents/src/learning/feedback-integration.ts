@@ -60,9 +60,17 @@ export interface FeedbackIntegrationConfig {
   readonly successQualityThreshold: number;
   /** Quality score threshold for partial success (default: 0.4) */
   readonly partialQualityThreshold: number;
+  /** TTL for decision entries in milliseconds (default: 3600000 = 1 hour) */
+  readonly decisionTtlMs?: number | undefined;
   /** Logger instance */
   readonly logger?: ILogger | undefined;
 }
+
+/** Default TTL for decision entries: 1 hour */
+export const DEFAULT_DECISION_TTL_MS = 3600000;
+
+/** Minimum interval between eviction runs: 60 seconds */
+const EVICTION_THROTTLE_MS = 60000;
 
 /**
  * Default configuration.
@@ -71,6 +79,7 @@ export const DEFAULT_FEEDBACK_INTEGRATION_CONFIG: FeedbackIntegrationConfig = {
   enableAutoFeedback: true,
   successQualityThreshold: 0.7,
   partialQualityThreshold: 0.4,
+  decisionTtlMs: DEFAULT_DECISION_TTL_MS,
 };
 
 /**
@@ -110,12 +119,30 @@ export interface IFeedbackIntegration {
 
   /** Reset all collected data */
   reset(): void;
+
+  /** Evict stale entries from decision map that exceed TTL */
+  evictStaleEntries(): number;
+
+  /** Get total count of evicted entries since creation or last reset */
+  getEvictedEntryCount(): number;
+
+  /** Get current size of decision map */
+  getDecisionMapSize(): number;
 }
 
 /**
  * Feedback integration implementation.
  * Bridges OutcomeFeedbackCollector with workflow execution and CLI routing.
  */
+/**
+ * Entry in the decision map with timestamp for TTL eviction.
+ */
+interface DecisionEntry {
+  readonly cliName: CliName;
+  readonly task: string;
+  readonly createdAt: number;
+}
+
 export class FeedbackIntegration implements IFeedbackIntegration {
   private readonly config: FeedbackIntegrationConfig;
   private readonly logger: ILogger;
@@ -123,7 +150,13 @@ export class FeedbackIntegration implements IFeedbackIntegration {
   private compositeRouter?: ICompositeRouter;
 
   // Track routing decisions for feedback routing
-  private readonly decisionMap: Map<string, { cliName: CliName; task: string }> = new Map();
+  private readonly decisionMap: Map<string, DecisionEntry> = new Map();
+
+  // Throttle eviction to once per minute
+  private lastEvictionTime = 0;
+
+  // Track evicted entries for stats
+  private totalEvictedEntries = 0;
 
   constructor(config?: Partial<FeedbackIntegrationConfig>, collector?: OutcomeFeedbackCollector) {
     this.config = { ...DEFAULT_FEEDBACK_INTEGRATION_CONFIG, ...config };
@@ -138,9 +171,17 @@ export class FeedbackIntegration implements IFeedbackIntegration {
   recordRoutingDecision(decision: CompositeRoutingDecision, traceId?: TraceId): string {
     const id = randomUUID();
     const trace = traceId ?? (randomUUID() as TraceId);
+    const now = Date.now();
 
-    // Store for later outcome routing
-    this.decisionMap.set(id, { cliName: decision.cliName, task: decision.taskProfile.taskType });
+    // Evict stale entries (throttled to once per minute)
+    this.evictStaleEntriesThrottled(now);
+
+    // Store for later outcome routing with timestamp
+    this.decisionMap.set(id, {
+      cliName: decision.cliName,
+      task: decision.taskProfile.taskType,
+      createdAt: now,
+    });
 
     // Create RoutingDecision for collector
     const routingDecision: RoutingDecision = createRoutingDecision({
@@ -250,7 +291,59 @@ export class FeedbackIntegration implements IFeedbackIntegration {
   reset(): void {
     this.collector.reset();
     this.decisionMap.clear();
+    this.lastEvictionTime = 0;
+    this.totalEvictedEntries = 0;
     this.logger.info('FeedbackIntegration reset');
+  }
+
+  /**
+   * Evicts stale entries from decisionMap that exceed the configured TTL.
+   * Called on every recordRoutingDecision (throttled) and on reset.
+   */
+  evictStaleEntries(): number {
+    const now = Date.now();
+    const ttl = this.config.decisionTtlMs ?? DEFAULT_DECISION_TTL_MS;
+    const cutoff = now - ttl;
+    let evictedCount = 0;
+
+    for (const [id, entry] of this.decisionMap) {
+      if (entry.createdAt < cutoff) {
+        this.decisionMap.delete(id);
+        evictedCount++;
+      }
+    }
+
+    if (evictedCount > 0) {
+      this.totalEvictedEntries += evictedCount;
+      this.logger.debug('Evicted stale decision entries', {
+        evictedCount,
+        remainingEntries: this.decisionMap.size,
+        ttlMs: ttl,
+      });
+    }
+
+    return evictedCount;
+  }
+
+  /**
+   * Gets the total number of evicted entries since creation or last reset.
+   */
+  getEvictedEntryCount(): number {
+    return this.totalEvictedEntries;
+  }
+
+  /**
+   * Gets the current size of the decision map (for testing/monitoring).
+   */
+  getDecisionMapSize(): number {
+    return this.decisionMap.size;
+  }
+
+  private evictStaleEntriesThrottled(now: number): void {
+    if (now - this.lastEvictionTime >= EVICTION_THROTTLE_MS) {
+      this.evictStaleEntries();
+      this.lastEvictionTime = now;
+    }
   }
 
   private determineOutcomeClass(success: boolean, qualityScore: number): OutcomeClass {
