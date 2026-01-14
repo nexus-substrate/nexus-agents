@@ -29,6 +29,7 @@ export type CliCommand =
   | 'expert'
   | 'workflow'
   | 'doctor'
+  | 'verify'
   | 'review'
   | 'routing-audit'
   | 'orchestrate'
@@ -187,6 +188,7 @@ USAGE:
 
 COMMANDS:
   (default)       Start MCP server with stdio transport
+  verify          Quick installation verification (no API keys needed)
   doctor          Check CLI installations and health status
   config init     Generate starter configuration file
   expert list     List available experts (built-in and custom)
@@ -279,6 +281,7 @@ VALIDATION OPTIONS:
   --format=<fmt>         Output format: ascii, json (default: ascii)
 
 EXAMPLES:
+  nexus-agents verify           Quick installation check (first thing to run!)
   nexus-agents                  Start MCP server (default)
   nexus-agents --interactive    Start interactive REPL
   nexus-agents doctor           Check CLI health
@@ -332,6 +335,7 @@ export function isValidCommand(value: string): value is CliCommand {
     'expert',
     'workflow',
     'doctor',
+    'verify',
     'review',
     'routing-audit',
     'orchestrate',

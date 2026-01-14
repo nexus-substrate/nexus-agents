@@ -208,3 +208,7 @@ export type {
   ValidationDashboardOptions,
   ValidationDashboardResult,
 } from './validation-dashboard-types.js';
+
+// Verify Command (Issue #253 - Quick verification)
+export { verifyCommand, runVerify, printVerifyResult } from './verify-command.js';
+export type { VerifyOptions, VerifyCheck, VerifyResult } from './verify-command.js';

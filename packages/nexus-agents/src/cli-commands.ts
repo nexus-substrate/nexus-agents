@@ -26,6 +26,7 @@ import {
   researchCommand,
   validationDashboardCommand,
   parseValidationArgs,
+  verifyCommand,
 } from './cli/index.js';
 import { EXIT_CODES, HELP_TEXT, type ParsedCliArgs } from './cli-types.js';
 import { startServer } from './cli-server.js';
@@ -323,6 +324,15 @@ export function handleValidationCommand(args: ParsedCliArgs): void {
 }
 
 /**
+ * Handles the verify command for quick installation verification.
+ * (Source: Issue #253)
+ */
+export async function handleVerifyCommand(args: ParsedCliArgs): Promise<void> {
+  const exitCode = await verifyCommand({ verbose: args.options.verbose });
+  process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
+}
+
+/**
  * Handles synchronous commands that don't require await.
  * Returns true if the command was handled.
  */
@@ -366,6 +376,7 @@ const ASYNC_COMMAND_HANDLERS: Record<string, ((args: ParsedCliArgs) => Promise<v
   {
     server: handleServerCommand,
     doctor: handleDoctorCommandInternal,
+    verify: handleVerifyCommand,
     config: handleConfigCommand,
     workflow: handleWorkflowCommand,
     review: handleReviewCommand,
