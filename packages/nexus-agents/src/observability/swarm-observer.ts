@@ -3,6 +3,11 @@
  *
  * Swarm-level observability for tracking agent interactions, detecting
  * bottlenecks, identifying emergent clusters, and attributing success.
+ * Uses DirectedInteractionGraph for graph-based analysis.
+ *
+ * NOTE: This is the canonical SwarmObserver (graph-based interaction analysis).
+ * For EventBus-based orchestration visibility, see agents/observability/OrchestrationObserver
+ * which was previously named SwarmObserver (renamed in Issue #251).
  *
  * @module observability/swarm-observer
  * (Source: Alignment Roadmap Phase 1, Issue #158)

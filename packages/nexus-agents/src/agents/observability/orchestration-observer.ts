@@ -1,12 +1,13 @@
 /**
- * nexus-agents/agents - SwarmObserver Implementation
+ * nexus-agents/agents - OrchestrationObserver Implementation
  *
  * Real-time observability for multi-agent orchestration.
  * Subscribes to EventBus for agent states, routing decisions, and metrics.
  *
- * (Source: Issue #187 - SwarmObserver for orchestration visibility)
+ * (Source: Issue #187 - OrchestrationObserver for orchestration visibility)
+ * (Renamed from SwarmObserver in Issue #251 to avoid collision with observability/swarm-observer.ts)
  *
- * @module agents/observability/swarm-observer
+ * @module agents/observability/orchestration-observer
  */
 
 import type { ILogger } from '../../core/logger.js';
@@ -14,27 +15,27 @@ import { createLogger } from '../../core/logger.js';
 import type { CliName } from '../../cli-adapters/types.js';
 import type { IEventBus, DomainEvent, Subscription } from '../collaboration/event-bus-types.js';
 import {
-  SwarmObserverConfigSchema,
-  type ISwarmObserver,
-  type SwarmObserverConfig,
-  type SwarmObserverOptions,
+  OrchestrationObserverConfigSchema,
+  type IOrchestrationObserver,
+  type OrchestrationObserverConfig,
+  type OrchestrationObserverOptions,
   type TrackedAgent,
   type AgentState,
   type RoutingDecision,
   type SessionMetrics,
   type TokenUsage,
-  type SwarmStats,
-  type SwarmObserverListener,
-  type SwarmObserverEvent,
+  type OrchestrationStats,
+  type OrchestrationObserverListener,
+  type OrchestrationObserverEvent,
   ObserverTopics,
-} from './swarm-observer-types.js';
+} from './orchestration-observer-types.js';
 
 // ============================================================================
-// SwarmObserver Implementation
+// OrchestrationObserver Implementation
 // ============================================================================
 
 /**
- * SwarmObserver provides real-time visibility into multi-agent orchestration.
+ * OrchestrationObserver provides real-time visibility into multi-agent orchestration.
  *
  * Features:
  * - Tracks agent states (idle, thinking, executing)
@@ -44,7 +45,7 @@ import {
  *
  * @example
  * ```typescript
- * const observer = new SwarmObserver(eventBus);
+ * const observer = new OrchestrationObserver(eventBus);
  * observer.start();
  *
  * observer.addEventListener((event) => {
@@ -56,16 +57,16 @@ import {
  * const stats = observer.getStats();
  * ```
  */
-export class SwarmObserver implements ISwarmObserver {
+export class OrchestrationObserver implements IOrchestrationObserver {
   private readonly eventBus: IEventBus;
-  private readonly config: SwarmObserverConfig;
+  private readonly config: OrchestrationObserverConfig;
   private readonly logger: ILogger;
 
   // State tracking
   private readonly agents: Map<string, TrackedAgent> = new Map();
   private readonly routingHistory: RoutingDecision[] = [];
   private readonly sessionMetrics: Map<string, SessionMetrics> = new Map();
-  private readonly listeners: Set<SwarmObserverListener> = new Set();
+  private readonly listeners: Set<OrchestrationObserverListener> = new Set();
 
   // Subscriptions
   private readonly subscriptions: Subscription[] = [];
@@ -78,20 +79,20 @@ export class SwarmObserver implements ISwarmObserver {
   private totalTaskDurationMs = 0;
   private eventsProcessed = 0;
 
-  constructor(eventBus: IEventBus, options?: SwarmObserverOptions) {
+  constructor(eventBus: IEventBus, options?: OrchestrationObserverOptions) {
     this.eventBus = eventBus;
-    this.config = SwarmObserverConfigSchema.parse(options?.config ?? {});
-    this.logger = options?.logger ?? createLogger({ component: 'SwarmObserver' });
+    this.config = OrchestrationObserverConfigSchema.parse(options?.config ?? {});
+    this.logger = options?.logger ?? createLogger({ component: 'OrchestrationObserver' });
     this.startTime = Date.now();
   }
 
   start(): void {
     if (this.active) {
-      this.logger.warn('SwarmObserver already active');
+      this.logger.warn('OrchestrationObserver already active');
       return;
     }
 
-    this.logger.info('Starting SwarmObserver');
+    this.logger.info('Starting OrchestrationObserver');
     this.subscribeToEvents();
     this.active = true;
   }
@@ -99,7 +100,7 @@ export class SwarmObserver implements ISwarmObserver {
   stop(): void {
     if (!this.active) return;
 
-    this.logger.info('Stopping SwarmObserver');
+    this.logger.info('Stopping OrchestrationObserver');
     for (const sub of this.subscriptions) {
       sub.unsubscribe();
     }
@@ -362,7 +363,7 @@ export class SwarmObserver implements ISwarmObserver {
     return Array.from(this.sessionMetrics.values());
   }
 
-  getStats(): SwarmStats {
+  getStats(): OrchestrationStats {
     const routingDist: Record<CliName, number> = { claude: 0, gemini: 0, codex: 0 };
     for (const decision of this.routingHistory) {
       routingDist[decision.selectedCli]++;
@@ -433,15 +434,15 @@ export class SwarmObserver implements ISwarmObserver {
 
   // ========== Event Listener Management ==========
 
-  addEventListener(listener: SwarmObserverListener): void {
+  addEventListener(listener: OrchestrationObserverListener): void {
     this.listeners.add(listener);
   }
 
-  removeEventListener(listener: SwarmObserverListener): void {
+  removeEventListener(listener: OrchestrationObserverListener): void {
     this.listeners.delete(listener);
   }
 
-  private emitObserverEvent(event: SwarmObserverEvent): void {
+  private emitObserverEvent(event: OrchestrationObserverEvent): void {
     for (const listener of this.listeners) {
       try {
         listener(event);
@@ -462,15 +463,24 @@ export class SwarmObserver implements ISwarmObserver {
 // ============================================================================
 
 /**
- * Creates a SwarmObserver instance.
+ * Creates an OrchestrationObserver instance.
  *
  * @param eventBus - The event bus to observe
  * @param options - Optional configuration
- * @returns A new SwarmObserver instance
+ * @returns A new OrchestrationObserver instance
  */
-export function createSwarmObserver(
+export function createOrchestrationObserver(
   eventBus: IEventBus,
-  options?: SwarmObserverOptions
-): ISwarmObserver {
-  return new SwarmObserver(eventBus, options);
+  options?: OrchestrationObserverOptions
+): IOrchestrationObserver {
+  return new OrchestrationObserver(eventBus, options);
 }
+
+// ============================================================================
+// Backward Compatibility Aliases (deprecated, will be removed in v3.0)
+// ============================================================================
+
+/** @deprecated Use OrchestrationObserver instead */
+export const SwarmObserver = OrchestrationObserver;
+/** @deprecated Use createOrchestrationObserver instead */
+export const createSwarmObserver = createOrchestrationObserver;

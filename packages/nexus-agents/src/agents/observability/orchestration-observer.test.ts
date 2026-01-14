@@ -1,22 +1,27 @@
 /**
- * SwarmObserver Tests
+ * OrchestrationObserver Tests
  *
  * Tests for real-time orchestration observability.
+ * (Renamed from SwarmObserver in Issue #251)
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { EventBus } from '../collaboration/event-bus.js';
 import { createEvent } from '../collaboration/event-bus.js';
-import { SwarmObserver, createSwarmObserver } from './swarm-observer.js';
-import type { SwarmObserverEvent, RoutingDecision, TokenUsage } from './swarm-observer-types.js';
+import { OrchestrationObserver, createOrchestrationObserver } from './orchestration-observer.js';
+import type {
+  OrchestrationObserverEvent,
+  RoutingDecision,
+  TokenUsage,
+} from './orchestration-observer-types.js';
 
-describe('SwarmObserver', () => {
+describe('OrchestrationObserver', () => {
   let eventBus: EventBus;
-  let observer: SwarmObserver;
+  let observer: OrchestrationObserver;
 
   beforeEach(() => {
     eventBus = new EventBus();
-    observer = new SwarmObserver(eventBus);
+    observer = new OrchestrationObserver(eventBus);
   });
 
   afterEach(() => {
@@ -90,7 +95,7 @@ describe('SwarmObserver', () => {
     });
 
     it('should emit session events to listeners', () => {
-      const events: SwarmObserverEvent[] = [];
+      const events: OrchestrationObserverEvent[] = [];
       observer.addEventListener((e) => events.push(e));
 
       eventBus.emit(
@@ -153,7 +158,7 @@ describe('SwarmObserver', () => {
     });
 
     it('should emit state change events', () => {
-      const events: SwarmObserverEvent[] = [];
+      const events: OrchestrationObserverEvent[] = [];
       observer.addEventListener((e) => events.push(e));
 
       eventBus.emit(
@@ -212,7 +217,7 @@ describe('SwarmObserver', () => {
     });
 
     it('should emit routing decision events', () => {
-      const events: SwarmObserverEvent[] = [];
+      const events: OrchestrationObserverEvent[] = [];
       observer.addEventListener((e) => events.push(e));
 
       const decision: RoutingDecision = {
@@ -234,7 +239,7 @@ describe('SwarmObserver', () => {
     });
 
     it('should prune old routing decisions when limit exceeded', () => {
-      const observerWithLimit = new SwarmObserver(eventBus, {
+      const observerWithLimit = new OrchestrationObserver(eventBus, {
         config: { maxRoutingHistory: 3 },
       });
       observerWithLimit.start();
@@ -438,8 +443,8 @@ describe('SwarmObserver', () => {
   describe('event listener management', () => {
     it('should add and remove event listeners', () => {
       observer.start();
-      const events: SwarmObserverEvent[] = [];
-      const listener = (e: SwarmObserverEvent): void => {
+      const events: OrchestrationObserverEvent[] = [];
+      const listener = (e: OrchestrationObserverEvent): void => {
         events.push(e);
       };
 
@@ -493,7 +498,7 @@ describe('SwarmObserver', () => {
 
   describe('factory function', () => {
     it('should create observer via factory', () => {
-      const factoryObserver = createSwarmObserver(eventBus, {
+      const factoryObserver = createOrchestrationObserver(eventBus, {
         config: { verboseLogging: true },
       });
 
