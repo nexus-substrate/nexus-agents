@@ -11,126 +11,29 @@
 import type { EvaluationResult, Recommendation, EvaluatorRole } from './evaluation-agents.js';
 import type { ILogger } from '../core/index.js';
 import { createLogger } from '../core/index.js';
+import type {
+  ComponentCriticality,
+  AuditEntry,
+  AggregatedResult,
+  AggregationConfig,
+  OutputOptions,
+} from './aggregation-types.js';
+import {
+  DEFAULT_SECURITY_PATTERNS,
+  DEFAULT_CORE_PATTERNS,
+  THRESHOLDS,
+  RECOMMENDATION_PRIORITY,
+} from './aggregation-types.js';
+import { formatResults } from './aggregation-helpers.js';
 
-// ============================================================================
-// Types
-// ============================================================================
-
-/**
- * Component criticality levels for threshold selection.
- */
-export type ComponentCriticality = 'security-critical' | 'core' | 'utility';
-
-/**
- * Audit trail entry for transparency.
- */
-export interface AuditEntry {
-  /** Entry timestamp */
-  readonly timestamp: Date;
-  /** Agent that made the claim */
-  readonly agent: EvaluatorRole;
-  /** The claim or action */
-  readonly claim: string;
-  /** Supporting evidence (metric citation) */
-  readonly evidence: string | null;
-  /** Whether evidence was verified */
-  readonly verified: boolean;
-}
-
-/**
- * Aggregated result combining all evaluator votes.
- * This is a RECOMMENDATION for human review.
- */
-export interface AggregatedResult {
-  /** Component path */
-  readonly component: string;
-  /** Final aggregated recommendation */
-  readonly finalRecommendation: Recommendation;
-  /** Overall confidence (0-1) */
-  readonly confidence: number;
-  /** All evaluator votes */
-  readonly votes: readonly EvaluationResult[];
-  /** Dissenting opinions (different from final recommendation) */
-  readonly dissent: readonly EvaluationResult[];
-  /** Complete audit trail */
-  readonly auditTrail: readonly AuditEntry[];
-  /** Evidence quality score (0-1) */
-  readonly evidenceQuality: number;
-  /** Explicit flag: this is a recommendation, not a decision */
-  readonly isRecommendation: true;
-  /** Aggregation timestamp */
-  readonly timestamp: Date;
-}
-
-/**
- * Configuration for aggregation.
- */
-export interface AggregationConfig {
-  /** Logger instance */
-  readonly logger?: ILogger;
-  /** Override criticality detection */
-  readonly criticalityOverrides?: ReadonlyMap<string, ComponentCriticality>;
-  /** Patterns to identify security-critical components */
-  readonly securityPatterns?: readonly RegExp[];
-  /** Patterns to identify core components */
-  readonly corePatterns?: readonly RegExp[];
-}
-
-/**
- * Output options for formatting results.
- */
-export interface OutputOptions {
-  /** Verbose output with full details */
-  readonly verbose?: boolean;
-  /** Include audit trail in output */
-  readonly includeAuditTrail?: boolean;
-}
-
-// ============================================================================
-// Constants
-// ============================================================================
-
-/** Default patterns for security-critical components */
-const DEFAULT_SECURITY_PATTERNS: readonly RegExp[] = [
-  /auth/i,
-  /security/i,
-  /crypto/i,
-  /secret/i,
-  /password/i,
-  /token/i,
-  /permission/i,
-  /access[-_]?control/i,
-] as const;
-
-/** Default patterns for core components */
-const DEFAULT_CORE_PATTERNS: readonly RegExp[] = [
-  /^core\//,
-  /\/core\//,
-  /index\.ts$/,
-  /^src\/index/,
-  /engine/i,
-  /adapter/i,
-  /provider/i,
-] as const;
-
-/** Threshold definitions by criticality */
-const THRESHOLDS: Record<ComponentCriticality, { required: number; total: number }> = {
-  'security-critical': { required: 3, total: 3 }, // Unanimous
-  core: { required: 3, total: 3 }, // Supermajority (all 3)
-  utility: { required: 2, total: 3 }, // Simple majority
-} as const;
-
-/** Recommendation priority (higher = more severe) */
-const RECOMMENDATION_PRIORITY: Record<Recommendation, number> = {
-  retain: 0,
-  review: 1,
-  refactor: 2,
-  deprecate: 3,
-} as const;
-
-// ============================================================================
-// Aggregator Implementation
-// ============================================================================
+// Re-export types for backward compatibility
+export type {
+  ComponentCriticality,
+  AuditEntry,
+  AggregatedResult,
+  AggregationConfig,
+  OutputOptions,
+};
 
 /**
  * Aggregates evaluation results from multiple evaluators.
@@ -202,7 +105,7 @@ export class EvaluationAggregator {
 
     auditTrail.push({
       timestamp,
-      agent: 'code-quality',
+      agent: 'code-quality' as EvaluatorRole,
       claim: 'Aggregation started',
       evidence: `${String(evaluations.length)} evaluations received`,
       verified: true,
@@ -210,7 +113,7 @@ export class EvaluationAggregator {
 
     auditTrail.push({
       timestamp: new Date(),
-      agent: 'code-quality',
+      agent: 'code-quality' as EvaluatorRole,
       claim: `Component classified as ${criticality}`,
       evidence: componentPath,
       verified: true,
@@ -261,7 +164,7 @@ export class EvaluationAggregator {
   ): void {
     auditTrail.push({
       timestamp: new Date(),
-      agent: 'code-quality',
+      agent: 'code-quality' as EvaluatorRole,
       claim: `Final recommendation: ${recommendation}`,
       evidence: `Confidence: ${confidence.toFixed(2)}, Evidence quality: ${evidenceQuality.toFixed(2)}`,
       verified: true,
@@ -444,81 +347,9 @@ export class EvaluationAggregator {
    * Format aggregated results for output.
    */
   format(results: readonly AggregatedResult[], options: OutputOptions = {}): string {
-    const lines: string[] = [];
-    const isVerbose = options.verbose === true;
-    const includeAudit = options.includeAuditTrail === true;
-
-    for (const result of results) {
-      if (isVerbose) {
-        lines.push(this.formatVerbose(result, includeAudit));
-      } else {
-        lines.push(this.formatSummary(result));
-      }
-    }
-
-    return lines.join('\n');
-  }
-
-  /**
-   * Format a single result as summary (one line).
-   */
-  private formatSummary(result: AggregatedResult): string {
-    const confidence = (result.confidence * 100).toFixed(0);
-    const dissentCount = result.dissent.length;
-    const dissent = dissentCount > 0 ? ` (${String(dissentCount)} dissent)` : '';
-    return `[${result.finalRecommendation.toUpperCase()}] ${result.component} (${confidence}% confidence)${dissent}`;
-  }
-
-  /**
-   * Format a single result with full details.
-   */
-  private formatVerbose(result: AggregatedResult, includeAuditTrail: boolean): string {
-    const separator = '='.repeat(60);
-    const lines: string[] = [
-      separator,
-      `Component: ${result.component}`,
-      `Final Recommendation: ${result.finalRecommendation.toUpperCase()}`,
-      `Confidence: ${(result.confidence * 100).toFixed(1)}%`,
-      `Evidence Quality: ${(result.evidenceQuality * 100).toFixed(1)}%`,
-      ``,
-      `Votes:`,
-    ];
-
-    for (const vote of result.votes) {
-      lines.push(
-        `  - ${vote.agent}: ${vote.recommendation} (${(vote.confidence * 100).toFixed(0)}%)`
-      );
-      for (const concern of vote.concerns) {
-        lines.push(`      * ${concern}`);
-      }
-    }
-
-    if (result.dissent.length > 0) {
-      lines.push('');
-      lines.push('Dissenting Opinions:');
-      for (const d of result.dissent) {
-        lines.push(`  - ${d.agent}: ${d.recommendation} (${(d.confidence * 100).toFixed(0)}%)`);
-      }
-    }
-
-    if (includeAuditTrail) {
-      lines.push('');
-      lines.push('Audit Trail:');
-      for (const entry of result.auditTrail) {
-        const verified = entry.verified ? '[v]' : '[ ]';
-        const evidence = entry.evidence !== null ? ` | ${entry.evidence}` : '';
-        lines.push(`  ${verified} ${entry.agent}: ${entry.claim}${evidence}`);
-      }
-    }
-
-    lines.push('');
-    return lines.join('\n');
+    return formatResults(results, options);
   }
 }
-
-// ============================================================================
-// Factory Functions
-// ============================================================================
 
 /**
  * Create an evaluation aggregator with default configuration.
