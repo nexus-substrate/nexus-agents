@@ -16,17 +16,6 @@ export function printWorkflowRunUsage(): void {
 }
 
 /**
- * Prints review command usage and exits.
- */
-export function printReviewUsage(): void {
-  process.stdout.write('Error: PR URL is required.\n');
-  process.stdout.write('Usage: nexus-agents review <url> [options]\n');
-  process.stdout.write('Examples:\n');
-  process.stdout.write('  nexus-agents review https://github.com/owner/repo/pull/123\n');
-  process.stdout.write('  nexus-agents review owner/repo#123 --dry-run\n');
-}
-
-/**
  * Prints routing-audit command usage and exits.
  */
 export function printRoutingAuditUsage(): void {

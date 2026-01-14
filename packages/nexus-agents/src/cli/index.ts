@@ -41,6 +41,25 @@ export type {
 export { reviewCommand } from './review-command.js';
 export type { ReviewCommandOptions } from './review-command.js';
 
+// PR Review Demo (Issue #258 - Enhanced UX)
+export { reviewDemoCommand } from './review-demo-command.js';
+export type {
+  ReviewDemoOptions,
+  SetupStatus,
+  PreflightResult,
+  ProgressStep,
+} from './review-demo-types.js';
+export {
+  checkSetupStatus,
+  runPreflightChecks,
+  formatSetupStatus,
+  formatPreflightResults,
+  formatProgressStep,
+  createProgressSteps,
+  updateProgress,
+  getSetupInstructions,
+} from './review-demo-helpers.js';
+
 // Routing Audit (observability)
 export { routingAuditCommand, auditRouting } from './routing-audit.js';
 export type { RoutingAuditOptions, RoutingAuditResult } from './routing-audit.js';

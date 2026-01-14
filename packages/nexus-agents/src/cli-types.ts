@@ -56,6 +56,9 @@ export interface ParsedCliArgs {
     input?: string;
     dryRun: boolean;
     banditStats: boolean;
+    // Review command options
+    setup: boolean;
+    skipChecks: boolean;
     // Orchestrate command options
     model?: 'claude' | 'gemini' | 'codex';
     maxTokens?: number;
@@ -122,6 +125,15 @@ export const PARSE_ARGS_CONFIG = {
       default: false,
     },
     'bandit-stats': {
+      type: 'boolean' as const,
+      default: false,
+    },
+    // Review command options
+    setup: {
+      type: 'boolean' as const,
+      default: false,
+    },
+    'skip-checks': {
       type: 'boolean' as const,
       default: false,
     },
@@ -210,7 +222,9 @@ WORKFLOW OPTIONS:
   --dry-run            Validate workflow without executing
 
 REVIEW OPTIONS:
+  --setup              Run setup wizard
   --dry-run            Review without posting to GitHub
+  --skip-checks        Skip pre-flight validation
 
 ROUTING-AUDIT OPTIONS:
   --format=json        Output as JSON (default: ASCII table)

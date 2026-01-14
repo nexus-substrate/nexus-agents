@@ -16,7 +16,7 @@ import {
   workflowRunCommand,
   printWorkflowTemplates,
   replCommand,
-  reviewCommand,
+  reviewDemoCommand,
   routingAuditCommand,
   orchestrateCommand,
   systemReviewCommand,
@@ -40,7 +40,6 @@ import {
 } from './cli-commands-validators.js';
 import {
   printWorkflowRunUsage,
-  printReviewUsage,
   printRoutingAuditUsage,
   printOrchestrateUsage,
   printVoteUsage,
@@ -143,19 +142,18 @@ export async function handleServerCommand(args: ParsedCliArgs): Promise<void> {
 
 /**
  * Handles the review command for PR review (dogfooding).
+ * Enhanced with setup wizard and pre-flight checks (Issue #258).
  */
 export async function handleReviewCommand(args: ParsedCliArgs): Promise<void> {
-  // Get PR URL from positionals (review <url>)
-  const prUrl = args.positionals[1];
-  if (prUrl === undefined) {
-    printReviewUsage();
-    process.exit(EXIT_CODES.INVALID_ARGS);
-  }
+  // Get PR URL from positionals (review <url>) - optional with --setup
+  const prUrl = args.positionals[1] ?? '';
 
-  const exitCode = await reviewCommand({
+  const exitCode = await reviewDemoCommand({
     prUrl,
+    setup: args.options.setup,
     dryRun: args.options.dryRun,
     verbose: args.options.verbose,
+    skipChecks: args.options.skipChecks,
   });
   process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
 }

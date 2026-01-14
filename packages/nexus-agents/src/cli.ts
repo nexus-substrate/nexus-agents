@@ -79,6 +79,8 @@ interface ParsedValues {
   input?: string;
   'dry-run': boolean;
   'bandit-stats': boolean;
+  setup: boolean;
+  'skip-checks': boolean;
   model?: string;
   'max-tokens'?: string;
   'max-cost-usd'?: string;
@@ -135,6 +137,8 @@ function buildOptions(values: ParsedValues): ParsedCliArgs['options'] {
     format: values.format,
     dryRun: values['dry-run'],
     banditStats: values['bandit-stats'],
+    setup: values.setup,
+    skipChecks: values['skip-checks'],
     createIssue: values['create-issue'],
     fix: values.fix,
     quick: values.quick,
