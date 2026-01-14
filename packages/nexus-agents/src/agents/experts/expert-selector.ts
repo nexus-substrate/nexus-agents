@@ -5,7 +5,6 @@
  * domain alignment, and scoring algorithms.
  */
 
-import { z } from 'zod';
 import type { Task, AgentRole } from '../../core/index.js';
 import { ok, err, NexusError, ErrorCode } from '../../core/index.js';
 import type { Result } from '../../core/index.js';
@@ -16,6 +15,33 @@ import {
   TaskComplexity,
 } from './task-analyzer.js';
 import { DEFAULT_EXPERTS } from './expert-defaults.js';
+import type {
+  ExpertDefinition,
+  ExpertRegistry,
+  ExpertMatch,
+  SelectionResult,
+  SelectionOptions,
+  ExpertCollaborationPatternType,
+} from './expert-selector-types.js';
+import { ExpertCollaborationPattern, SelectionOptionsSchema } from './expert-selector-types.js';
+
+// Re-export types for backward compatibility
+export type {
+  ExpertDefinition,
+  ExpertRegistry,
+  ScoreBreakdown,
+  ExpertMatch,
+  SelectionResult,
+  SelectionOptions,
+  ExpertCollaborationPatternType,
+} from './expert-selector-types.js';
+export {
+  ExpertCollaborationPattern,
+  ScoreBreakdownSchema,
+  ExpertMatchSchema,
+  SelectionResultSchema,
+  SelectionOptionsSchema,
+} from './expert-selector-types.js';
 
 /** Error thrown when expert selection fails. */
 export class SelectionError extends NexusError {
@@ -24,113 +50,6 @@ export class SelectionError extends NexusError {
     this.name = 'SelectionError';
   }
 }
-
-/** Collaboration patterns for multi-expert tasks. */
-export const ExpertCollaborationPattern = {
-  SEQUENTIAL: 'sequential',
-  PARALLEL: 'parallel',
-  REVIEW_CHAIN: 'review_chain',
-  PAIR: 'pair',
-} as const;
-
-export type ExpertCollaborationPatternType =
-  (typeof ExpertCollaborationPattern)[keyof typeof ExpertCollaborationPattern];
-
-/** Definition of an expert's capabilities and metadata. */
-export interface ExpertDefinition {
-  id: string;
-  role: AgentRole;
-  name: string;
-  description: string;
-  capabilities: string[];
-  primaryDomain: TaskDomain;
-  secondaryDomains: TaskDomain[];
-  weight: number;
-  available: boolean;
-}
-
-/** Registry of available experts. */
-export interface ExpertRegistry {
-  getAll(): ExpertDefinition[];
-  getById(id: string): ExpertDefinition | undefined;
-  getByRole(role: AgentRole): ExpertDefinition[];
-  getByDomain(domain: TaskDomain): ExpertDefinition[];
-  getAvailable(): ExpertDefinition[];
-}
-
-/** Breakdown of how the match score was calculated. */
-export interface ScoreBreakdown {
-  capabilityScore: number;
-  domainScore: number;
-  weightScore: number;
-  finalScore: number;
-}
-
-/** Match result for a single expert. */
-export interface ExpertMatch {
-  expertId: string;
-  score: number;
-  matchedCapabilities: string[];
-  reasoning: string;
-  scoreBreakdown: ScoreBreakdown;
-}
-
-/** Result of expert selection. */
-export interface SelectionResult {
-  primary: ExpertMatch;
-  alternatives: ExpertMatch[];
-  requiresCollaboration: boolean;
-  suggestedPattern?: ExpertCollaborationPatternType;
-  confidence: number;
-}
-
-/** Options for expert selection. */
-export interface SelectionOptions {
-  minScore?: number;
-  maxAlternatives?: number;
-  capabilityWeights?: Record<string, number>;
-  preferredDomains?: TaskDomain[];
-  excludeExperts?: string[];
-  forceCollaboration?: boolean;
-}
-
-// ============================================================================
-// Zod Schemas
-// ============================================================================
-
-export const ScoreBreakdownSchema = z.object({
-  capabilityScore: z.number().min(0).max(1),
-  domainScore: z.number().min(0).max(1),
-  weightScore: z.number().min(0).max(1),
-  finalScore: z.number().min(0).max(1),
-});
-
-export const ExpertMatchSchema = z.object({
-  expertId: z.string().min(1),
-  score: z.number().min(0).max(1),
-  matchedCapabilities: z.array(z.string()),
-  reasoning: z.string(),
-  scoreBreakdown: ScoreBreakdownSchema,
-});
-
-export const SelectionResultSchema = z.object({
-  primary: ExpertMatchSchema,
-  alternatives: z.array(ExpertMatchSchema),
-  requiresCollaboration: z.boolean(),
-  suggestedPattern: z.enum(['sequential', 'parallel', 'review_chain', 'pair']).optional(),
-  confidence: z.number().min(0).max(1),
-});
-
-export const SelectionOptionsSchema = z.object({
-  minScore: z.number().min(0).max(1).optional(),
-  maxAlternatives: z.number().min(0).max(10).optional(),
-  capabilityWeights: z.record(z.number().min(0).max(10)).optional(),
-  preferredDomains: z
-    .array(z.enum(['code', 'security', 'architecture', 'documentation', 'testing', 'general']))
-    .optional(),
-  excludeExperts: z.array(z.string()).optional(),
-  forceCollaboration: z.boolean().optional(),
-});
 
 // ============================================================================
 // Default Expert Registry
