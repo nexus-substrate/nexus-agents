@@ -29,58 +29,29 @@ import type {
   OutcomeClass,
 } from './outcome-feedback-types.js';
 import { OutcomeFeedbackCollector, createRoutingDecision } from './outcome-feedback.js';
+import type {
+  RecordOutcomeParams,
+  FeedbackIntegrationConfig,
+  IFeedbackIntegration,
+} from './feedback-integration-types.js';
+import {
+  DEFAULT_DECISION_TTL_MS,
+  DEFAULT_FEEDBACK_INTEGRATION_CONFIG,
+} from './feedback-integration-types.js';
 
-/**
- * Parameters for recording an outcome.
- */
-export interface RecordOutcomeParams {
-  /** Routing decision ID */
-  readonly routingDecisionId: string;
-  /** Whether the task succeeded */
-  readonly success: boolean;
-  /** Quality score (0-1) */
-  readonly qualityScore: number;
-  /** Execution duration in milliseconds */
-  readonly durationMs: number;
-  /** Token usage */
-  readonly tokenUsage: number;
-  /** Number of retries (default: 0) */
-  readonly retryCount?: number | undefined;
-  /** Trace ID for correlation */
-  readonly traceId?: TraceId | undefined;
-}
-
-/**
- * Configuration for feedback integration.
- */
-export interface FeedbackIntegrationConfig {
-  /** Enable automatic feedback to routers (default: true) */
-  readonly enableAutoFeedback: boolean;
-  /** Quality score threshold for success (default: 0.7) */
-  readonly successQualityThreshold: number;
-  /** Quality score threshold for partial success (default: 0.4) */
-  readonly partialQualityThreshold: number;
-  /** TTL for decision entries in milliseconds (default: 3600000 = 1 hour) */
-  readonly decisionTtlMs?: number | undefined;
-  /** Logger instance */
-  readonly logger?: ILogger | undefined;
-}
-
-/** Default TTL for decision entries: 1 hour */
-export const DEFAULT_DECISION_TTL_MS = 3600000;
+// Re-export types for backward compatibility
+export type {
+  RecordOutcomeParams,
+  FeedbackIntegrationConfig,
+  IFeedbackIntegration,
+} from './feedback-integration-types.js';
+export {
+  DEFAULT_DECISION_TTL_MS,
+  DEFAULT_FEEDBACK_INTEGRATION_CONFIG,
+} from './feedback-integration-types.js';
 
 /** Minimum interval between eviction runs: 60 seconds */
 const EVICTION_THROTTLE_MS = 60000;
-
-/**
- * Default configuration.
- */
-export const DEFAULT_FEEDBACK_INTEGRATION_CONFIG: FeedbackIntegrationConfig = {
-  enableAutoFeedback: true,
-  successQualityThreshold: 0.7,
-  partialQualityThreshold: 0.4,
-  decisionTtlMs: DEFAULT_DECISION_TTL_MS,
-};
 
 /**
  * Maps CLI name to router type.
@@ -88,46 +59,6 @@ export const DEFAULT_FEEDBACK_INTEGRATION_CONFIG: FeedbackIntegrationConfig = {
 function cliNameToRouterType(_cliName: CliName): RouterType {
   // CompositeRouter uses multiple techniques, defaulting to 'topsis'
   return 'topsis';
-}
-
-/**
- * Interface for feedback integration.
- */
-export interface IFeedbackIntegration {
-  /** Record a routing decision from CompositeRouter */
-  recordRoutingDecision(decision: CompositeRoutingDecision, traceId?: TraceId): string;
-
-  /** Record a step outcome from workflow execution */
-  recordStepOutcome(
-    routingDecisionId: string,
-    stepResult: StepResult,
-    durationMs: number,
-    tokenUsage: number
-  ): void;
-
-  /** Record a generic task outcome */
-  recordOutcome(params: RecordOutcomeParams): void;
-
-  /** Get feedback statistics */
-  getStats(): FeedbackLoopStats;
-
-  /** Subscribe to outcome processed events */
-  onOutcomeProcessed(callback: OutcomeProcessedCallback): () => void;
-
-  /** Register CompositeRouter for bi-directional feedback */
-  registerCompositeRouter(router: ICompositeRouter): void;
-
-  /** Reset all collected data */
-  reset(): void;
-
-  /** Evict stale entries from decision map that exceed TTL */
-  evictStaleEntries(): number;
-
-  /** Get total count of evicted entries since creation or last reset */
-  getEvictedEntryCount(): number;
-
-  /** Get current size of decision map */
-  getDecisionMapSize(): number;
 }
 
 /**
