@@ -9,7 +9,6 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { createHash } from 'node:crypto';
 import { createLogger } from '../core/logger.js';
 import type {
   PreferenceDataPoint,
@@ -24,8 +23,10 @@ import {
   DEFAULT_PREFERENCE_ROUTER_CONFIG,
   PreferenceRouterConfigSchema,
 } from './preference-router-types.js';
+import { InMemoryPreferenceStore } from './preference-router-store.js';
+import { QueryFeatureExtractor } from './preference-router-extractor.js';
 
-// Re-export types
+// Re-export types and classes for backward compatibility
 export type {
   PreferenceDataPoint,
   QueryFeatures,
@@ -36,262 +37,10 @@ export type {
   IPreferenceDataStore,
 } from './preference-router-types.js';
 export { DEFAULT_PREFERENCE_ROUTER_CONFIG } from './preference-router-types.js';
+export { InMemoryPreferenceStore } from './preference-router-store.js';
+export { QueryFeatureExtractor } from './preference-router-extractor.js';
 
 const logger = createLogger({ component: 'PreferenceRouter' });
-
-/**
- * In-memory preference data store implementation.
- */
-export class InMemoryPreferenceStore implements IPreferenceDataStore {
-  private readonly dataPoints: Map<string, PreferenceDataPoint> = new Map();
-  private readonly maxSize: number;
-
-  constructor(maxSize = 10000) {
-    this.maxSize = maxSize;
-  }
-
-  store(dataPoint: PreferenceDataPoint): void {
-    this.enforceLimit();
-    this.dataPoints.set(dataPoint.id, dataPoint);
-  }
-
-  getAll(): readonly PreferenceDataPoint[] {
-    return [...this.dataPoints.values()];
-  }
-
-  getByDomain(domain: string): readonly PreferenceDataPoint[] {
-    const results: PreferenceDataPoint[] = [];
-    for (const dp of this.dataPoints.values()) {
-      if (dp.domain === domain) {
-        results.push(dp);
-      }
-    }
-    return results;
-  }
-
-  findSimilar(features: QueryFeatures, limit: number): readonly PreferenceDataPoint[] {
-    const scored: Array<{ point: PreferenceDataPoint; similarity: number }> = [];
-
-    for (const point of this.dataPoints.values()) {
-      const similarity = this.calculateSimilarity(features, point.features);
-      scored.push({ point, similarity });
-    }
-
-    return scored
-      .sort((a, b) => b.similarity - a.similarity)
-      .slice(0, limit)
-      .map((s) => s.point);
-  }
-
-  getStats(): PreferenceModelStats {
-    const domainCounts: Record<string, number> = {};
-    let strongPreferred = 0;
-
-    for (const point of this.dataPoints.values()) {
-      const domain = point.domain ?? 'unknown';
-      domainCounts[domain] = (domainCounts[domain] ?? 0) + 1;
-      if (point.strongModelPreferred) {
-        strongPreferred++;
-      }
-    }
-
-    const total = this.dataPoints.size;
-    return {
-      totalDataPoints: total,
-      dataPointsByDomain: domainCounts,
-      strongModelPreferenceRate: total > 0 ? strongPreferred / total : 0,
-      estimatedCostSavingsRate: total > 0 ? 1 - strongPreferred / total : 0,
-      lastUpdatedAt: new Date(),
-    };
-  }
-
-  clear(): void {
-    this.dataPoints.clear();
-  }
-
-  private calculateSimilarity(a: QueryFeatures, b: QueryFeatures): number {
-    let score = 0;
-    const maxScore = 7;
-
-    // Token count similarity (normalized)
-    const tokenDiff = Math.abs(a.tokenCount - b.tokenCount);
-    score += Math.max(0, 1 - tokenDiff / 1000);
-
-    // Complexity similarity
-    score += 1 - Math.abs(a.complexity - b.complexity);
-
-    // Boolean feature matches
-    if (a.requiresReasoning === b.requiresReasoning) score += 1;
-    if (a.requiresCode === b.requiresCode) score += 1;
-    if (a.requiresCreativity === b.requiresCreativity) score += 1;
-    if (a.hasAmbiguity === b.hasAmbiguity) score += 1;
-
-    // Domain match
-    if (a.domain === b.domain) score += 1;
-
-    return score / maxScore;
-  }
-
-  private enforceLimit(): void {
-    if (this.dataPoints.size >= this.maxSize) {
-      const oldest = [...this.dataPoints.entries()]
-        .sort((a, b) => a[1].recordedAt.getTime() - b[1].recordedAt.getTime())
-        .slice(0, Math.floor(this.maxSize * 0.1));
-
-      for (const [id] of oldest) {
-        this.dataPoints.delete(id);
-      }
-    }
-  }
-}
-
-/**
- * Feature extractor for queries.
- */
-export class QueryFeatureExtractor {
-  private static readonly CODE_KEYWORDS = [
-    'function',
-    'class',
-    'import',
-    'export',
-    'const',
-    'let',
-    'var',
-    'implement',
-    'refactor',
-    'debug',
-    'compile',
-    'test',
-    'typescript',
-    'javascript',
-    'python',
-    'code',
-  ];
-
-  private static readonly REASONING_KEYWORDS = [
-    'analyze',
-    'compare',
-    'evaluate',
-    'why',
-    'how',
-    'explain',
-    'reason',
-    'logic',
-    'prove',
-    'deduce',
-    'infer',
-  ];
-
-  private static readonly CREATIVITY_KEYWORDS = [
-    'create',
-    'design',
-    'imagine',
-    'brainstorm',
-    'innovative',
-    'creative',
-    'story',
-    'write',
-    'compose',
-  ];
-
-  private static readonly AMBIGUITY_INDICATORS = [
-    'maybe',
-    'might',
-    'could',
-    'or',
-    'possibly',
-    'uncertain',
-    'unclear',
-    'depends',
-  ];
-
-  extract(query: string): QueryFeatures {
-    const lowerQuery = query.toLowerCase();
-    const words = lowerQuery.split(/\s+/);
-    const tokenCount = this.estimateTokens(query);
-
-    return {
-      tokenCount,
-      complexity: this.calculateComplexity(query, words),
-      requiresReasoning: this.hasKeywords(words, QueryFeatureExtractor.REASONING_KEYWORDS),
-      requiresCode: this.hasKeywords(words, QueryFeatureExtractor.CODE_KEYWORDS),
-      requiresCreativity: this.hasKeywords(words, QueryFeatureExtractor.CREATIVITY_KEYWORDS),
-      hasAmbiguity: this.hasKeywords(words, QueryFeatureExtractor.AMBIGUITY_INDICATORS),
-      domain: this.detectDomain(words),
-      keywordSignature: this.generateKeywordSignature(words),
-    };
-  }
-
-  private estimateTokens(text: string): number {
-    // Rough estimate: ~4 chars per token on average
-    return Math.ceil(text.length / 4);
-  }
-
-  private calculateComplexity(query: string, words: string[]): number {
-    let complexity = 0;
-
-    // Length factor (0-0.3)
-    complexity += Math.min(0.3, words.length / 100);
-
-    // Sentence structure (0-0.2)
-    const sentences = query.split(/[.!?]+/).filter(Boolean);
-    complexity += Math.min(0.2, sentences.length / 10);
-
-    // Technical terms (0-0.3)
-    const technicalCount =
-      this.countKeywords(words, QueryFeatureExtractor.CODE_KEYWORDS) +
-      this.countKeywords(words, QueryFeatureExtractor.REASONING_KEYWORDS);
-    complexity += Math.min(0.3, technicalCount / 20);
-
-    // Question depth (0-0.2)
-    const questionWords = words.filter((w) =>
-      ['what', 'why', 'how', 'when', 'where', 'which'].includes(w)
-    );
-    complexity += Math.min(0.2, questionWords.length / 5);
-
-    return Math.min(1, complexity);
-  }
-
-  private hasKeywords(words: string[], keywords: string[]): boolean {
-    return words.some((w) => keywords.includes(w));
-  }
-
-  private countKeywords(words: string[], keywords: string[]): number {
-    return words.filter((w) => keywords.includes(w)).length;
-  }
-
-  private detectDomain(words: string[]): string {
-    const domainScores: Record<string, number> = {
-      coding: this.countKeywords(words, QueryFeatureExtractor.CODE_KEYWORDS),
-      reasoning: this.countKeywords(words, QueryFeatureExtractor.REASONING_KEYWORDS),
-      creative: this.countKeywords(words, QueryFeatureExtractor.CREATIVITY_KEYWORDS),
-    };
-
-    let maxDomain = 'general';
-    let maxScore = 0;
-
-    for (const [domain, score] of Object.entries(domainScores)) {
-      if (score > maxScore) {
-        maxScore = score;
-        maxDomain = domain;
-      }
-    }
-
-    return maxDomain;
-  }
-
-  private generateKeywordSignature(words: string[]): string {
-    const allKeywords = [
-      ...QueryFeatureExtractor.CODE_KEYWORDS,
-      ...QueryFeatureExtractor.REASONING_KEYWORDS,
-      ...QueryFeatureExtractor.CREATIVITY_KEYWORDS,
-    ];
-
-    const presentKeywords = words.filter((w) => allKeywords.includes(w)).sort();
-
-    return createHash('sha256').update(presentKeywords.join(',')).digest('hex').slice(0, 16);
-  }
-}
 
 /**
  * Preference-trained router that learns from human preference data.
