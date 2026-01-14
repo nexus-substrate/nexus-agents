@@ -64,8 +64,8 @@ export interface DryRunResult {
 export interface RunWorkflowDeps {
   workflowEngine: IWorkflowEngine;
   logger?: ILogger;
-  /** Optional rate limiter for throttling tool calls */
-  rateLimiter?: RateLimiter;
+  /** Rate limiter for throttling tool calls (required) */
+  rateLimiter: RateLimiter;
 }
 
 /**
@@ -406,20 +406,18 @@ export function registerRunWorkflowTool(server: McpServer, deps: RunWorkflowDeps
     },
     async (args) => {
       // Rate limiting check
-      if (deps.rateLimiter !== undefined) {
-        const acquired = deps.rateLimiter.tryAcquire();
-        if (!acquired) {
-          const state = deps.rateLimiter.getState();
-          return {
-            isError: true,
-            content: [
-              {
-                type: 'text' as const,
-                text: `Rate limit exceeded. Try again in ${String(state.nextTokenMs)}ms.`,
-              },
-            ],
-          };
-        }
+      const acquired = deps.rateLimiter.tryAcquire();
+      if (!acquired) {
+        const state = deps.rateLimiter.getState();
+        return {
+          isError: true,
+          content: [
+            {
+              type: 'text' as const,
+              text: `Rate limit exceeded. Try again in ${String(state.nextTokenMs)}ms.`,
+            },
+          ],
+        };
       }
 
       const validated = RunWorkflowInputSchema.safeParse(args);

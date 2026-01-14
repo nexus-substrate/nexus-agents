@@ -156,8 +156,8 @@ export type DelegateOutput = z.infer<typeof DelegateOutputSchema>;
 export interface DelegateDeps {
   /** Logger instance */
   logger?: ILogger | undefined;
-  /** Optional rate limiter */
-  rateLimiter?: RateLimiter | undefined;
+  /** Rate limiter for throttling tool calls (required) */
+  rateLimiter: RateLimiter;
   /** Optional CompositeRouter for intelligent routing (Issue #169) */
   router?: ICompositeRouter | undefined;
   /** Optional FeedbackIntegration for closed-loop learning (Issue #167) */
@@ -405,8 +405,7 @@ function successResult(text: string): ToolResult {
 }
 
 /** Checks rate limit, returns error result if exceeded. */
-function checkRateLimit(rateLimiter?: RateLimiter): ToolResult | null {
-  if (!rateLimiter) return null;
+function checkRateLimit(rateLimiter: RateLimiter): ToolResult | null {
   if (rateLimiter.tryAcquire()) return null;
   const state = rateLimiter.getState();
   return errorResult(`Rate limit exceeded. Try again in ${String(state.nextTokenMs)}ms.`);

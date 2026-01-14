@@ -10,6 +10,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
+import { RateLimiter } from '../middleware/index.js';
 import {
   registerDelegateToModelTool,
   DelegateInputSchema,
@@ -19,6 +20,17 @@ import {
 } from './delegate-to-model.js';
 
 const { analyzeTask, scoreModel, selectModel } = _testing;
+
+/**
+ * Creates a permissive rate limiter for tests.
+ */
+function createTestRateLimiter(): RateLimiter {
+  return new RateLimiter({
+    capacity: 1000,
+    refillRate: 1000,
+    refillIntervalMs: 1000,
+  });
+}
 
 describe('delegate_to_model Tool', () => {
   describe('DelegateInputSchema validation', () => {
@@ -284,7 +296,10 @@ describe('delegate_to_model Tool', () => {
         child: vi.fn().mockReturnThis(),
       };
 
-      registerDelegateToModelTool(server, { logger: mockLogger });
+      registerDelegateToModelTool(server, {
+        logger: mockLogger,
+        rateLimiter: createTestRateLimiter(),
+      });
 
       const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
       await server.connect(serverTransport);
@@ -448,6 +463,7 @@ describe('delegate_to_model Tool', () => {
       registerDelegateToModelTool(server, {
         logger: mockLogger,
         router: mockRouter,
+        rateLimiter: createTestRateLimiter(),
       });
 
       const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -482,6 +498,7 @@ describe('delegate_to_model Tool', () => {
       registerDelegateToModelTool(server, {
         logger: mockLogger,
         router: mockRouter,
+        rateLimiter: createTestRateLimiter(),
       });
 
       const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -519,6 +536,7 @@ describe('delegate_to_model Tool', () => {
         logger: mockLogger,
         router: mockRouter,
         feedbackIntegration: mockFeedback,
+        rateLimiter: createTestRateLimiter(),
       });
 
       const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -547,6 +565,7 @@ describe('delegate_to_model Tool', () => {
       registerDelegateToModelTool(server, {
         logger: mockLogger,
         router: mockRouter,
+        rateLimiter: createTestRateLimiter(),
         // No feedbackIntegration
       });
 

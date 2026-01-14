@@ -5,6 +5,7 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import type { Result, ILogger, Task, TaskResult } from '../../core/index.js';
 import { ok, err, AgentError } from '../../core/index.js';
+import { RateLimiter } from '../middleware/index.js';
 import {
   OrchestrateInputSchema,
   OrchestrateOutputSchema,
@@ -14,6 +15,17 @@ import {
   type OrchestrateDeps,
   type OrchestrateInput,
 } from './orchestrate.js';
+
+/**
+ * Creates a permissive rate limiter for tests.
+ */
+function createTestRateLimiter(): RateLimiter {
+  return new RateLimiter({
+    capacity: 1000,
+    refillRate: 1000,
+    refillIntervalMs: 1000,
+  });
+}
 
 /**
  * Mock logger for testing.
@@ -392,6 +404,7 @@ describe('Orchestration Logic', () => {
     deps = {
       techLead: mockTechLead,
       logger: mockLogger,
+      rateLimiter: createTestRateLimiter(),
     };
   });
 

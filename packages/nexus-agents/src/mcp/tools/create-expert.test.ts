@@ -5,6 +5,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { ILogger } from '../../core/index.js';
 import { Expert, type BuiltInExpertType } from '../../agents/index.js';
+import { RateLimiter } from '../middleware/index.js';
 import {
   CreateExpertInputSchema,
   type CreateExpertDeps,
@@ -12,6 +13,17 @@ import {
   getAvailableRoles,
   getCapabilitiesForRole,
 } from './create-expert.js';
+
+/**
+ * Creates a permissive rate limiter for tests.
+ */
+function createTestRateLimiter(): RateLimiter {
+  return new RateLimiter({
+    capacity: 1000,
+    refillRate: 1000,
+    refillIntervalMs: 1000,
+  });
+}
 
 /**
  * Creates a mock expert for testing.
@@ -63,6 +75,7 @@ function createTestDeps(factory?: IExpertFactory, logger?: ILogger): CreateExper
   const deps: CreateExpertDeps = {
     expertFactory: factory ?? createMockFactory(),
     expertRegistry: new Map<string, Expert>(),
+    rateLimiter: createTestRateLimiter(),
   };
   if (logger !== undefined) {
     deps.logger = logger;

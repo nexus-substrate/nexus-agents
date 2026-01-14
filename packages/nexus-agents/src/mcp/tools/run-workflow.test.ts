@@ -13,6 +13,7 @@ import type {
   ILogger,
 } from '../../core/index.js';
 import { WorkflowError, ParseError } from '../../core/index.js';
+import { RateLimiter } from '../middleware/index.js';
 import {
   registerRunWorkflowTool,
   RunWorkflowInputSchema,
@@ -20,6 +21,17 @@ import {
   type WorkflowToolResult,
   type DryRunResult,
 } from './run-workflow.js';
+
+/**
+ * Creates a permissive rate limiter for tests.
+ */
+function createTestRateLimiter(): RateLimiter {
+  return new RateLimiter({
+    capacity: 1000,
+    refillRate: 1000,
+    refillIntervalMs: 1000,
+  });
+}
 
 /** Tool response type */
 type ToolResponse = { content: Array<{ type: 'text'; text: string }>; isError?: boolean };
@@ -222,7 +234,7 @@ describe('registerRunWorkflowTool', () => {
     mockServer = createMockServer();
     mockEngine = createMockWorkflowEngine();
     mockLogger = createMockLogger();
-    deps = { workflowEngine: mockEngine, logger: mockLogger };
+    deps = { workflowEngine: mockEngine, logger: mockLogger, rateLimiter: createTestRateLimiter() };
   });
 
   it('should register the run_workflow tool', () => {
@@ -276,7 +288,11 @@ describe('run_workflow tool execution', () => {
   describe('running built-in templates', () => {
     beforeEach(() => {
       mockEngine = createMockWorkflowEngine();
-      deps = { workflowEngine: mockEngine, logger: mockLogger };
+      deps = {
+        workflowEngine: mockEngine,
+        logger: mockLogger,
+        rateLimiter: createTestRateLimiter(),
+      };
       registerRunWorkflowTool(
         mockServer as unknown as import('@modelcontextprotocol/sdk/server/mcp.js').McpServer,
         deps
@@ -331,7 +347,11 @@ describe('run_workflow tool execution', () => {
       mockEngine = createMockWorkflowEngine({
         templates: [{ name: 'only-template', version: '1.0.0', path: '/t.yaml' }],
       });
-      deps = { workflowEngine: mockEngine, logger: mockLogger };
+      deps = {
+        workflowEngine: mockEngine,
+        logger: mockLogger,
+        rateLimiter: createTestRateLimiter(),
+      };
       registerRunWorkflowTool(
         mockServer as unknown as import('@modelcontextprotocol/sdk/server/mcp.js').McpServer,
         deps
@@ -351,7 +371,11 @@ describe('run_workflow tool execution', () => {
   describe('dry run mode', () => {
     beforeEach(() => {
       mockEngine = createMockWorkflowEngine();
-      deps = { workflowEngine: mockEngine, logger: mockLogger };
+      deps = {
+        workflowEngine: mockEngine,
+        logger: mockLogger,
+        rateLimiter: createTestRateLimiter(),
+      };
       registerRunWorkflowTool(
         mockServer as unknown as import('@modelcontextprotocol/sdk/server/mcp.js').McpServer,
         deps
@@ -412,7 +436,11 @@ describe('run_workflow tool execution', () => {
           }),
         },
       });
-      deps = { workflowEngine: mockEngine, logger: mockLogger };
+      deps = {
+        workflowEngine: mockEngine,
+        logger: mockLogger,
+        rateLimiter: createTestRateLimiter(),
+      };
       registerRunWorkflowTool(
         mockServer as unknown as import('@modelcontextprotocol/sdk/server/mcp.js').McpServer,
         deps
@@ -448,7 +476,11 @@ describe('run_workflow tool execution', () => {
   describe('template loading from path', () => {
     beforeEach(() => {
       mockEngine = createMockWorkflowEngine();
-      deps = { workflowEngine: mockEngine, logger: mockLogger };
+      deps = {
+        workflowEngine: mockEngine,
+        logger: mockLogger,
+        rateLimiter: createTestRateLimiter(),
+      };
       registerRunWorkflowTool(
         mockServer as unknown as import('@modelcontextprotocol/sdk/server/mcp.js').McpServer,
         deps
@@ -486,7 +518,11 @@ describe('run_workflow tool execution', () => {
       mockEngine = createMockWorkflowEngine({
         loadTemplateResult: { ok: false, error: new ParseError('Invalid YAML syntax at line 10') },
       });
-      deps = { workflowEngine: mockEngine, logger: mockLogger };
+      deps = {
+        workflowEngine: mockEngine,
+        logger: mockLogger,
+        rateLimiter: createTestRateLimiter(),
+      };
       registerRunWorkflowTool(
         mockServer as unknown as import('@modelcontextprotocol/sdk/server/mcp.js').McpServer,
         deps
@@ -506,7 +542,11 @@ describe('run_workflow tool execution', () => {
   describe('input validation', () => {
     beforeEach(() => {
       mockEngine = createMockWorkflowEngine();
-      deps = { workflowEngine: mockEngine, logger: mockLogger };
+      deps = {
+        workflowEngine: mockEngine,
+        logger: mockLogger,
+        rateLimiter: createTestRateLimiter(),
+      };
       registerRunWorkflowTool(
         mockServer as unknown as import('@modelcontextprotocol/sdk/server/mcp.js').McpServer,
         deps
@@ -534,7 +574,7 @@ describe('run_workflow tool execution', () => {
   describe('without logger', () => {
     beforeEach(() => {
       mockEngine = createMockWorkflowEngine();
-      deps = { workflowEngine: mockEngine };
+      deps = { workflowEngine: mockEngine, rateLimiter: createTestRateLimiter() };
       registerRunWorkflowTool(
         mockServer as unknown as import('@modelcontextprotocol/sdk/server/mcp.js').McpServer,
         deps

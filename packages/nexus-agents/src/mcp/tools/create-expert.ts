@@ -57,8 +57,8 @@ export interface CreateExpertDeps {
   expertRegistry: Map<string, Expert>;
   /** Optional logger */
   logger?: ILogger;
-  /** Optional rate limiter for throttling tool calls */
-  rateLimiter?: RateLimiter;
+  /** Rate limiter for throttling tool calls (required) */
+  rateLimiter: RateLimiter;
 }
 
 /**
@@ -189,20 +189,18 @@ type CreateExpertToolResponse = {
 function createToolHandler(deps: CreateExpertDeps) {
   return (args: unknown): CreateExpertToolResponse => {
     // Rate limiting check
-    if (deps.rateLimiter !== undefined) {
-      const acquired = deps.rateLimiter.tryAcquire();
-      if (!acquired) {
-        const state = deps.rateLimiter.getState();
-        return {
-          isError: true,
-          content: [
-            {
-              type: 'text',
-              text: `Rate limit exceeded. Try again in ${String(state.nextTokenMs)}ms.`,
-            },
-          ],
-        };
-      }
+    const acquired = deps.rateLimiter.tryAcquire();
+    if (!acquired) {
+      const state = deps.rateLimiter.getState();
+      return {
+        isError: true,
+        content: [
+          {
+            type: 'text',
+            text: `Rate limit exceeded. Try again in ${String(state.nextTokenMs)}ms.`,
+          },
+        ],
+      };
     }
 
     // Validate input
@@ -263,13 +261,15 @@ export function registerCreateExpertTool(server: McpServer, deps: CreateExpertDe
 /**
  * Creates default dependencies for the create_expert tool.
  *
+ * @param rateLimiter - Rate limiter for throttling tool calls (required)
  * @param logger - Optional logger instance
  * @returns CreateExpertDeps with default factory and empty registry
  */
-export function createDefaultDeps(logger?: ILogger): CreateExpertDeps {
+export function createDefaultDeps(rateLimiter: RateLimiter, logger?: ILogger): CreateExpertDeps {
   const deps: CreateExpertDeps = {
     expertFactory: ExpertFactory,
     expertRegistry: new Map<string, Expert>(),
+    rateLimiter,
   };
   if (logger !== undefined) {
     deps.logger = logger;
