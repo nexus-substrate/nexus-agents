@@ -6,6 +6,9 @@
  *
  * @module cli/index-command
  * (Source: Issue #240)
+ *
+ * File structure: Types in index-command-types.ts, formatters in
+ * index-command-formatters.ts. Extracted per Issue #272.
  */
 
 import * as fs from 'node:fs/promises';
@@ -21,7 +24,6 @@ import {
   validateIndex,
   CodebaseIndexSchema,
   type CodebaseIndex,
-  type OutputFormat,
   extractEntrypoints,
   manifestToYaml,
   manifestToJson,
@@ -30,62 +32,18 @@ import {
   formatFreshnessJson,
 } from '../indexer/index.js';
 
+// Re-export types and formatters
+export type {
+  IndexSubcommand,
+  IndexCommandOptions,
+  IndexCommandResult,
+} from './index-command-types.js';
+export { formatIndexResult, ANSI } from './index-command-formatters.js';
+
+// Local imports from extracted modules
+import type { IndexCommandOptions, IndexCommandResult } from './index-command-types.js';
+
 const logger = createLogger({ component: 'index-command' });
-
-// =============================================================================
-// Types
-// =============================================================================
-
-/** Subcommand for the index CLI. */
-export type IndexSubcommand =
-  | 'generate'
-  | 'check'
-  | 'diagram'
-  | 'validate'
-  | 'entrypoints'
-  | 'freshness'
-  | 'links';
-
-/** Options for the index command. */
-export interface IndexCommandOptions {
-  readonly subcommand: IndexSubcommand;
-  readonly format?: OutputFormat;
-  readonly output?: string;
-  readonly verbose?: boolean;
-  readonly module?: string;
-  readonly inline?: boolean;
-}
-
-/** Result of the index command. */
-export interface IndexCommandResult {
-  readonly success: boolean;
-  readonly message: string;
-  readonly data?: {
-    readonly filesIndexed?: number;
-    readonly modulesFound?: number;
-    readonly outputPath?: string;
-    readonly validationResult?: {
-      readonly valid: boolean;
-      readonly missingFiles: readonly string[];
-      readonly extraFiles: readonly string[];
-      readonly modifiedFiles: readonly string[];
-    };
-  };
-}
-
-// =============================================================================
-// ANSI Formatting
-// =============================================================================
-
-const ANSI = {
-  reset: '\x1b[0m',
-  bold: '\x1b[1m',
-  dim: '\x1b[2m',
-  green: '\x1b[32m',
-  yellow: '\x1b[33m',
-  red: '\x1b[31m',
-  cyan: '\x1b[36m',
-};
 
 // =============================================================================
 // Command Implementation
@@ -95,7 +53,7 @@ const ANSI = {
  * Generates a fresh codebase index.
  */
 async function generateIndex(options: IndexCommandOptions): Promise<IndexCommandResult> {
-  const format: OutputFormat = options.format ?? 'yaml';
+  const format = options.format ?? 'yaml';
   const outputPath =
     options.output ?? (format === 'yaml' ? 'docs/codebase-index.yaml' : 'docs/codebase-index.json');
 
@@ -266,7 +224,7 @@ async function validateArchitecture(_options: IndexCommandOptions): Promise<Inde
  * Part of Epic #261 - Automated Documentation System.
  */
 async function entrypointsCommand(options: IndexCommandOptions): Promise<IndexCommandResult> {
-  const format: OutputFormat = options.format ?? 'yaml';
+  const format = options.format ?? 'yaml';
   const outputPath =
     options.output ??
     (format === 'yaml' ? 'docs/.generated/entrypoints.yaml' : 'docs/.generated/entrypoints.json');
@@ -399,62 +357,4 @@ export async function indexCommand(options: IndexCommandOptions): Promise<IndexC
       };
     }
   }
-}
-
-// =============================================================================
-// CLI Output Formatting
-// =============================================================================
-
-/** Formats a file list with a prefix marker, truncated to 10 items. */
-function formatFileList(
-  files: readonly string[],
-  label: string,
-  marker: string,
-  lines: string[]
-): void {
-  if (files.length === 0) return;
-  lines.push('');
-  lines.push(`  ${ANSI.yellow}${label}:${ANSI.reset}`);
-  for (const file of files.slice(0, 10)) {
-    lines.push(`    ${marker} ${file}`);
-  }
-  if (files.length > 10) {
-    lines.push(`    ... and ${String(files.length - 10)} more`);
-  }
-}
-
-/** Formats validation result details. */
-function formatValidationResult(
-  v: NonNullable<IndexCommandResult['data']>['validationResult'],
-  lines: string[]
-): void {
-  if (v === undefined) return;
-  formatFileList(v.missingFiles, 'Missing files (in codebase but not in index)', '+', lines);
-  formatFileList(v.extraFiles, 'Extra files (in index but not in codebase)', '-', lines);
-  formatFileList(v.modifiedFiles, 'Modified files (line count changed)', '~', lines);
-}
-
-/**
- * Formats the command result for CLI output.
- */
-export function formatIndexResult(result: IndexCommandResult): string {
-  const lines: string[] = [];
-  const status = result.success
-    ? `${ANSI.green}${ANSI.bold}SUCCESS`
-    : `${ANSI.red}${ANSI.bold}FAILED`;
-  lines.push(`${status}${ANSI.reset} ${result.message}`);
-
-  if (result.data !== undefined) {
-    lines.push('');
-    const d = result.data;
-    if (d.filesIndexed !== undefined)
-      lines.push(`  ${ANSI.cyan}Files indexed:${ANSI.reset} ${String(d.filesIndexed)}`);
-    if (d.modulesFound !== undefined)
-      lines.push(`  ${ANSI.cyan}Modules found:${ANSI.reset} ${String(d.modulesFound)}`);
-    if (d.outputPath !== undefined)
-      lines.push(`  ${ANSI.cyan}Output:${ANSI.reset} ${d.outputPath}`);
-    formatValidationResult(d.validationResult, lines);
-  }
-
-  return lines.join('\n');
 }
