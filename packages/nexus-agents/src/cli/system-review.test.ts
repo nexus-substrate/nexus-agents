@@ -4,6 +4,8 @@
  * (Source: Issue #249 - CLI test coverage)
  */
 
+/* eslint-disable @typescript-eslint/no-unsafe-call */
+
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   runSystemReview,
@@ -37,7 +39,8 @@ const mockReadFileSync = vi.mocked(fs.readFileSync);
 const mockAnalyzeFreshness = vi.mocked(analyzeFreshness);
 
 describe('system-review', () => {
-  let stdoutWriteSpy: ReturnType<typeof vi.spyOn>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let stdoutWriteSpy: any;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -49,6 +52,7 @@ describe('system-review', () => {
     mockAnalyzeFreshness.mockReturnValue({
       documents: [],
       summary: { total: 0, fresh: 0, warning: 0, stale: 0, unknown: 0 },
+      analyzedAt: '2026-01-14T10:00:00Z',
     });
   });
 
@@ -120,6 +124,8 @@ describe('system-review', () => {
         documents: [
           {
             path: 'ARCHITECTURE.md',
+            lastModified: '2026-01-09T10:00:00Z',
+            lastModifiedRelative: '5 days ago',
             daysSinceModified: 5,
             status: 'fresh',
             dependencies: ['src/core/index.ts'],
@@ -127,6 +133,8 @@ describe('system-review', () => {
           },
           {
             path: 'README.md',
+            lastModified: '2025-11-30T10:00:00Z',
+            lastModifiedRelative: '45 days ago',
             daysSinceModified: 45,
             status: 'stale',
             dependencies: [],
@@ -134,6 +142,7 @@ describe('system-review', () => {
           },
         ],
         summary: { total: 2, fresh: 1, warning: 0, stale: 1, unknown: 0 },
+        analyzedAt: '2026-01-14T10:00:00Z',
       });
 
       const result = runSystemReview();
@@ -237,6 +246,8 @@ describe('system-review', () => {
         documents: [
           {
             path: 'OLD_DOC.md',
+            lastModified: '2025-10-06T10:00:00Z',
+            lastModifiedRelative: '100 days ago',
             daysSinceModified: 100,
             status: 'stale',
             dependencies: [],
@@ -244,6 +255,7 @@ describe('system-review', () => {
           },
         ],
         summary: { total: 1, fresh: 0, warning: 0, stale: 1, unknown: 0 },
+        analyzedAt: '2026-01-14T10:00:00Z',
       });
       mockExecSync.mockImplementation((cmd) => {
         if (typeof cmd === 'string') {
@@ -297,7 +309,7 @@ describe('system-review', () => {
 
       printSystemReviewResult(result);
 
-      const output = stdoutWriteSpy.mock.calls.map((c) => c[0]).join('');
+      const output = stdoutWriteSpy.mock.calls.map((c: unknown[]) => c[0]).join('');
       expect(output).toContain('Phase 1');
       expect(output).toContain('Phase 2');
       expect(output).toContain('Phase 3');
@@ -320,7 +332,7 @@ describe('system-review', () => {
 
       printSystemReviewResult(result);
 
-      const output = stdoutWriteSpy.mock.calls.map((c) => c[0]).join('');
+      const output = stdoutWriteSpy.mock.calls.map((c: unknown[]) => c[0]).join('');
       expect(output).toContain('Action Items');
       expect(output).toContain('Fix security issue');
     });
@@ -339,7 +351,7 @@ describe('system-review', () => {
 
       printSystemReviewResult(result);
 
-      const output = stdoutWriteSpy.mock.calls.map((c) => c[0]).join('');
+      const output = stdoutWriteSpy.mock.calls.map((c: unknown[]) => c[0]).join('');
       expect(output).toContain('Fixes Applied');
     });
   });
@@ -402,7 +414,7 @@ describe('system-review', () => {
       systemReviewCommand({ createIssue: true });
 
       expect(issueCreated).toBe(true);
-      const output = stdoutWriteSpy.mock.calls.map((c) => c[0]).join('');
+      const output = stdoutWriteSpy.mock.calls.map((c: unknown[]) => c[0]).join('');
       expect(output).toContain('Issue created');
     });
 
@@ -416,7 +428,7 @@ describe('system-review', () => {
 
       systemReviewCommand({ createIssue: true });
 
-      const output = stdoutWriteSpy.mock.calls.map((c) => c[0]).join('');
+      const output = stdoutWriteSpy.mock.calls.map((c: unknown[]) => c[0]).join('');
       expect(output).toContain('Failed to create issue');
     });
   });
@@ -427,6 +439,8 @@ describe('system-review', () => {
         documents: [
           {
             path: 'doc1.md',
+            lastModified: '2025-10-06T10:00:00Z',
+            lastModifiedRelative: '100 days ago',
             daysSinceModified: 100,
             status: 'stale',
             dependencies: [],
@@ -434,6 +448,8 @@ describe('system-review', () => {
           },
           {
             path: 'doc2.md',
+            lastModified: '2025-10-06T10:00:00Z',
+            lastModifiedRelative: '100 days ago',
             daysSinceModified: 100,
             status: 'stale',
             dependencies: [],
@@ -441,6 +457,7 @@ describe('system-review', () => {
           },
         ],
         summary: { total: 2, fresh: 0, warning: 0, stale: 2, unknown: 0 },
+        analyzedAt: '2026-01-14T10:00:00Z',
       });
 
       const result = runSystemReview();

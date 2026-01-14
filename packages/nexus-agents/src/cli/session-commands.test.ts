@@ -4,6 +4,8 @@
  * (Source: Issue #249 - CLI test coverage)
  */
 
+/* eslint-disable @typescript-eslint/no-unsafe-call */
+
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   sessionList,
@@ -43,9 +45,12 @@ const mockMkdirSync = vi.mocked(fs.mkdirSync);
 const mockWriteFileSync = vi.mocked(fs.writeFileSync);
 
 describe('session-commands', () => {
-  let stdoutWriteSpy: ReturnType<typeof vi.spyOn>;
-  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
-  let processExitSpy: ReturnType<typeof vi.spyOn>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let stdoutWriteSpy: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let consoleErrorSpy: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let processExitSpy: any;
 
   const createMockStorage = (
     overrides: Record<string, unknown> = {}
@@ -180,7 +185,7 @@ describe('session-commands', () => {
 
       printSessionList(sessions, 'table');
 
-      const output = stdoutWriteSpy.mock.calls.map((c) => c[0]).join('');
+      const output = stdoutWriteSpy.mock.calls.map((c: unknown[]) => c[0]).join('');
       expect(output).toContain('Sessions');
       expect(output).toContain('session-1');
     });
@@ -188,7 +193,7 @@ describe('session-commands', () => {
     it('should handle empty list', () => {
       printSessionList([], 'table');
 
-      const output = stdoutWriteSpy.mock.calls.map((c) => c[0]).join('');
+      const output = stdoutWriteSpy.mock.calls.map((c: unknown[]) => c[0]).join('');
       expect(output).toContain('No sessions found');
     });
   });
@@ -228,7 +233,7 @@ describe('session-commands', () => {
     it('should print session not found', () => {
       printSessionShow(null);
 
-      const output = stdoutWriteSpy.mock.calls.map((c) => c[0]).join('');
+      const output = stdoutWriteSpy.mock.calls.map((c: unknown[]) => c[0]).join('');
       expect(output).toContain('Session not found');
     });
 
@@ -238,22 +243,24 @@ describe('session-commands', () => {
         status: 'completed' as const,
         createdAt: '2026-01-01',
         updatedAt: '2026-01-01',
-        metadata: { key: 'value' },
+        metadata: { custom: { key: 'value' } },
         tasks: [
           {
             id: 'task-1',
+            sessionId: 'session-1',
             task: 'Test task description that is very long and should be truncated',
             status: 'completed' as const,
             durationMs: 1000,
             tokensUsed: 500,
             result: 'Success',
+            createdAt: '2026-01-01T10:00:00Z',
           },
         ],
       };
 
       printSessionShow(session, 'text');
 
-      const output = stdoutWriteSpy.mock.calls.map((c) => c[0]).join('');
+      const output = stdoutWriteSpy.mock.calls.map((c: unknown[]) => c[0]).join('');
       expect(output).toContain('session-1');
       expect(output).toContain('Tasks');
     });
@@ -304,7 +311,7 @@ describe('session-commands', () => {
         status: 'completed',
         createdAt: '2026-01-01',
         updatedAt: '2026-01-01',
-        metadata: { key: 'value' },
+        metadata: { custom: { key: 'value' } },
         tasks: [
           {
             id: 'task-1',
@@ -466,7 +473,7 @@ describe('session-commands', () => {
 
       await sessionCommand('delete', ['session-1']);
 
-      const output = stdoutWriteSpy.mock.calls.map((c) => c[0]).join('');
+      const output = stdoutWriteSpy.mock.calls.map((c: unknown[]) => c[0]).join('');
       expect(output).toContain('deleted');
     });
 
@@ -478,7 +485,7 @@ describe('session-commands', () => {
 
       await sessionCommand('prune', ['30']);
 
-      const output = stdoutWriteSpy.mock.calls.map((c) => c[0]).join('');
+      const output = stdoutWriteSpy.mock.calls.map((c: unknown[]) => c[0]).join('');
       expect(output).toContain('3');
     });
 

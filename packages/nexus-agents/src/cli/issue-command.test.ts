@@ -4,6 +4,8 @@
  * (Source: Issue #249 - CLI test coverage)
  */
 
+/* eslint-disable @typescript-eslint/no-unsafe-call */
+
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   fetchGitHubIssue,
@@ -35,7 +37,8 @@ const mockGenerateTemplateBody = vi.mocked(generateTemplateBody);
 const mockGetTemplate = vi.mocked(getTemplate);
 
 describe('issue-command', () => {
-  let stdoutWriteSpy: ReturnType<typeof vi.spyOn>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let stdoutWriteSpy: any;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -154,8 +157,10 @@ describe('issue-command', () => {
 
       mockValidateIssueBody.mockReturnValue({
         valid: true,
-        template: { type: 'feat', displayName: 'Feature', sections: [] },
+        issueType: 'feat' as const,
+        template: { type: 'feat' as const, displayName: 'Feature', sections: [] },
         sections: [],
+        missingRequired: [],
         suggestions: [],
       });
 
@@ -178,8 +183,10 @@ describe('issue-command', () => {
 
       mockValidateIssueBody.mockReturnValue({
         valid: false,
-        template: { type: 'generic', displayName: 'Generic', sections: [] },
+        issueType: 'unknown' as const,
+        template: { type: 'unknown' as const, displayName: 'Generic', sections: [] },
         sections: [{ section: 'Description', required: true, found: false }],
+        missingRequired: ['Description'],
         suggestions: ['Add a Description section'],
       });
 
@@ -197,8 +204,10 @@ describe('issue-command', () => {
         issueNumber: 123,
         validation: {
           valid: true,
+          issueType: 'feat' as const,
           template: { type: 'feat' as const, displayName: 'Feature', sections: [] },
           sections: [],
+          missingRequired: [] as readonly string[],
           suggestions: [],
         },
       };
@@ -220,7 +229,7 @@ describe('issue-command', () => {
       printValidationResult(result, 'text');
 
       expect(stdoutWriteSpy).toHaveBeenCalled();
-      const output = stdoutWriteSpy.mock.calls.map((c) => c[0]).join('');
+      const output = stdoutWriteSpy.mock.calls.map((c: unknown[]) => c[0]).join('');
       expect(output).toContain('Error');
     });
   });
@@ -228,16 +237,23 @@ describe('issue-command', () => {
   describe('printTemplate', () => {
     it('should print template for issue type', () => {
       mockGetTemplate.mockReturnValue({
-        type: 'feat',
+        type: 'feat' as const,
         displayName: 'Feature',
-        sections: [{ name: 'Description', required: true, description: 'Describe the feature' }],
+        sections: [
+          {
+            name: 'Description',
+            pattern: /^## Description/i,
+            required: true,
+            description: 'Describe the feature',
+          },
+        ],
       });
       mockGenerateTemplateBody.mockReturnValue('## Description\n\n<!-- Describe the feature -->');
 
       printTemplate('feat');
 
       expect(stdoutWriteSpy).toHaveBeenCalled();
-      const output = stdoutWriteSpy.mock.calls.map((c) => c[0]).join('');
+      const output = stdoutWriteSpy.mock.calls.map((c: unknown[]) => c[0]).join('');
       expect(output).toContain('Feature');
       expect(output).toContain('Description');
     });
@@ -263,8 +279,10 @@ describe('issue-command', () => {
 
       mockValidateIssueBody.mockReturnValue({
         valid: true,
-        template: { type: 'feat', displayName: 'Feature', sections: [] },
+        issueType: 'feat' as const,
+        template: { type: 'feat' as const, displayName: 'Feature', sections: [] },
         sections: [],
+        missingRequired: [],
         suggestions: [],
       });
 
@@ -286,8 +304,10 @@ describe('issue-command', () => {
 
       mockValidateIssueBody.mockReturnValue({
         valid: false,
-        template: { type: 'generic', displayName: 'Generic', sections: [] },
+        issueType: 'unknown' as const,
+        template: { type: 'unknown' as const, displayName: 'Generic', sections: [] },
         sections: [],
+        missingRequired: [],
         suggestions: [],
       });
 
@@ -298,13 +318,13 @@ describe('issue-command', () => {
 
     it('should return 0 for create subcommand', () => {
       mockGetTemplate.mockReturnValue({
-        type: 'fix',
+        type: 'bug' as const,
         displayName: 'Bug Fix',
         sections: [],
       });
       mockGenerateTemplateBody.mockReturnValue('## Description\n\n');
 
-      const exitCode = issueCommand({ subcommand: 'create', type: 'fix' });
+      const exitCode = issueCommand({ subcommand: 'create', type: 'bug' });
 
       expect(exitCode).toBe(0);
     });
