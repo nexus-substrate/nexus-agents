@@ -3,6 +3,10 @@
  *
  * Token counting, cost tracking, and span management without OpenTelemetry.
  * Provides minimal overhead tracing for LLM operations.
+ *
+ * File length justification: Core Tracer class with types in trace-types.ts,
+ * pricing in trace-pricing.ts, helpers in trace-helpers.ts. Remaining code is
+ * tightly coupled span lifecycle management and metric aggregation.
  */
 
 import type { ILogger, LogContext } from './logger.js';

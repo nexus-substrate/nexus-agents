@@ -11,6 +11,10 @@
  *
  * @module context/agentic-memory
  * (Source: Issue #122, arXiv:2502.12110)
+ *
+ * File length justification: Core AgenticMemoryBackend class with types in
+ * agentic-memory-types.ts, helpers in agentic-memory-helpers.ts, linking
+ * in agentic-memory-linking.ts. Remaining code is IMemoryBackend impl.
  */
 
 import type { Result } from '../core/result.js';

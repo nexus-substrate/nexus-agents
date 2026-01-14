@@ -11,6 +11,10 @@
  * Uses shell: true only for version check command.
  * This is acceptable because the command and args are hardcoded constants.
  * See codex-adapter.ts for detailed security rationale.
+ *
+ * File length justification: ICliAdapter implementation with MCP client
+ * lifecycle, tool invocation, and health checks. Methods are tightly coupled
+ * to client state. Types in ../types.js, base class in ../base-adapter.ts.
  */
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';

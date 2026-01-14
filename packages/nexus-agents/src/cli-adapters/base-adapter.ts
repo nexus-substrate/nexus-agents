@@ -4,6 +4,10 @@
  * Abstract base class for CLI adapters with common functionality.
  *
  * (Source: cli-project_plan.md v2.1.0)
+ *
+ * File length justification: Abstract base class with shared CLI lifecycle
+ * methods (spawn, health, version). Types in ./types.js. Subclasses override
+ * execute() and transport-specific methods.
  */
 
 import { spawn, exec } from 'node:child_process';

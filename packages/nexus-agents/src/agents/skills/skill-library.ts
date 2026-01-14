@@ -7,6 +7,10 @@
  *
  * @module agents/skills/skill-library
  * (Source: arXiv:2305.16291, Issue #150)
+ *
+ * File length justification: Core SkillLibrary class with types in
+ * skill-types.ts, search in skill-search.ts, helpers in skill-helpers.ts.
+ * Remaining methods are tightly coupled to in-memory store state.
  */
 
 import { randomUUID } from 'node:crypto';
