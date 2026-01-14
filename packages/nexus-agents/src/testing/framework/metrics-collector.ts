@@ -6,200 +6,41 @@
  */
 
 import type { CliName, TokenUsage } from '../../cli-adapters/types.js';
+import type {
+  LatencyMeasurement,
+  MeasurementHandle,
+  LatencyMetrics,
+  ReliabilityMetrics,
+  TokenMetrics,
+  AggregateMetrics,
+  TaskOutcome,
+  TokenRecord,
+  PendingMeasurement,
+} from './metrics-collector-types.js';
+import {
+  EMPTY_LATENCY_METRICS,
+  EMPTY_RELIABILITY_METRICS,
+  EMPTY_TOKEN_METRICS,
+} from './metrics-collector-types.js';
 
-/**
- * A single latency measurement for a task execution.
- */
-export interface LatencyMeasurement {
-  readonly taskId: string;
-  readonly cli: CliName;
-  readonly startTime: bigint;
-  readonly endTime: bigint;
-  readonly durationMs: number;
-}
-
-/**
- * Handle for an in-progress measurement.
- * Call complete() when the operation finishes successfully.
- * Call abort() if the operation fails or is cancelled.
- */
-export interface MeasurementHandle {
-  /**
-   * Marks the measurement as complete and records the duration.
-   */
-  complete(): void;
-
-  /**
-   * Aborts the measurement with the given reason.
-   * @param reason - Why the measurement was aborted
-   */
-  abort(reason: string): void;
-}
-
-/**
- * Latency metrics with percentile calculations.
- */
-export interface LatencyMetrics {
-  /** Total number of measurements */
-  readonly count: number;
-  /** Minimum latency in milliseconds */
-  readonly minMs: number;
-  /** Maximum latency in milliseconds */
-  readonly maxMs: number;
-  /** Mean latency in milliseconds */
-  readonly meanMs: number;
-  /** Median (p50) latency in milliseconds */
-  readonly p50Ms: number;
-  /** 75th percentile latency in milliseconds */
-  readonly p75Ms: number;
-  /** 90th percentile latency in milliseconds */
-  readonly p90Ms: number;
-  /** 95th percentile latency in milliseconds */
-  readonly p95Ms: number;
-  /** 99th percentile latency in milliseconds */
-  readonly p99Ms: number;
-  /** Standard deviation in milliseconds */
-  readonly stdDevMs: number;
-}
-
-/**
- * Reliability metrics for task execution.
- */
-export interface ReliabilityMetrics {
-  /** Total task count */
-  readonly totalTasks: number;
-  /** Number of successful tasks */
-  readonly successCount: number;
-  /** Number of failed tasks */
-  readonly failureCount: number;
-  /** Success rate as a decimal (0.0 - 1.0) */
-  readonly successRate: number;
-  /** Total number of retries across all tasks */
-  readonly totalRetries: number;
-  /** Mean retries per failed task */
-  readonly meanRetriesPerFailure: number;
-  /** Tasks that succeeded without retries */
-  readonly firstAttemptSuccessCount: number;
-  /** First attempt success rate */
-  readonly firstAttemptSuccessRate: number;
-}
-
-/**
- * Token usage metrics.
- */
-export interface TokenMetrics {
-  /** Total input tokens consumed */
-  readonly totalInputTokens: number;
-  /** Total output tokens generated */
-  readonly totalOutputTokens: number;
-  /** Total tokens (input + output) */
-  readonly totalTokens: number;
-  /** Mean input tokens per task */
-  readonly meanInputTokens: number;
-  /** Mean output tokens per task */
-  readonly meanOutputTokens: number;
-  /** Number of tasks with token data */
-  readonly taskCount: number;
-}
-
-/**
- * Per-CLI breakdown of metrics.
- */
-export interface CliBreakdown<T> {
-  readonly claude: T | null;
-  readonly gemini: T | null;
-  readonly codex: T | null;
-}
-
-/**
- * Aggregate metrics across all CLIs.
- */
-export interface AggregateMetrics {
-  /** Overall latency metrics */
-  readonly latency: LatencyMetrics;
-  /** Overall reliability metrics */
-  readonly reliability: ReliabilityMetrics;
-  /** Overall token metrics */
-  readonly tokens: TokenMetrics;
-  /** Per-CLI latency breakdown */
-  readonly latencyByCli: CliBreakdown<LatencyMetrics>;
-  /** Per-CLI reliability breakdown */
-  readonly reliabilityByCli: CliBreakdown<ReliabilityMetrics>;
-  /** Per-CLI token breakdown */
-  readonly tokensByCli: CliBreakdown<TokenMetrics>;
-  /** Timestamp when metrics were calculated */
-  readonly timestamp: Date;
-}
-
-/**
- * Internal tracking for success/failure counts.
- */
-interface TaskOutcome {
-  readonly taskId: string;
-  readonly cli: CliName;
-  readonly success: boolean;
-  readonly retryCount: number;
-}
-
-/**
- * Internal tracking for token usage.
- */
-interface TokenRecord {
-  readonly taskId: string;
-  readonly cli: CliName;
-  readonly usage: TokenUsage;
-}
-
-/**
- * Internal state for in-progress measurements.
- */
-interface PendingMeasurement {
-  readonly taskId: string;
-  readonly cli: CliName;
-  readonly startTime: bigint;
-}
-
-/**
- * Empty latency metrics for CLIs with no data.
- */
-const EMPTY_LATENCY_METRICS: LatencyMetrics = {
-  count: 0,
-  minMs: 0,
-  maxMs: 0,
-  meanMs: 0,
-  p50Ms: 0,
-  p75Ms: 0,
-  p90Ms: 0,
-  p95Ms: 0,
-  p99Ms: 0,
-  stdDevMs: 0,
-};
-
-/**
- * Empty reliability metrics for CLIs with no data.
- */
-const EMPTY_RELIABILITY_METRICS: ReliabilityMetrics = {
-  totalTasks: 0,
-  successCount: 0,
-  failureCount: 0,
-  successRate: 0,
-  totalRetries: 0,
-  meanRetriesPerFailure: 0,
-  firstAttemptSuccessCount: 0,
-  firstAttemptSuccessRate: 0,
-};
-
-/**
- * Empty token metrics for CLIs with no data.
- */
-const EMPTY_TOKEN_METRICS: TokenMetrics = {
-  totalInputTokens: 0,
-  totalOutputTokens: 0,
-  totalTokens: 0,
-  meanInputTokens: 0,
-  meanOutputTokens: 0,
-  taskCount: 0,
-};
+// Re-export types for backward compatibility
+export type {
+  LatencyMeasurement,
+  MeasurementHandle,
+  LatencyMetrics,
+  ReliabilityMetrics,
+  TokenMetrics,
+  CliBreakdown,
+  AggregateMetrics,
+  TaskOutcome,
+  TokenRecord,
+  PendingMeasurement,
+} from './metrics-collector-types.js';
+export {
+  EMPTY_LATENCY_METRICS,
+  EMPTY_RELIABILITY_METRICS,
+  EMPTY_TOKEN_METRICS,
+} from './metrics-collector-types.js';
 
 /**
  * Collects and aggregates metrics during CLI test execution.
@@ -498,7 +339,11 @@ export class MetricsCollector {
   /**
    * Gets latency metrics broken down by CLI.
    */
-  private getLatencyByCli(): CliBreakdown<LatencyMetrics> {
+  private getLatencyByCli(): {
+    claude: LatencyMetrics | null;
+    gemini: LatencyMetrics | null;
+    codex: LatencyMetrics | null;
+  } {
     return {
       claude: this.getCliLatencyMetrics('claude'),
       gemini: this.getCliLatencyMetrics('gemini'),
@@ -509,7 +354,11 @@ export class MetricsCollector {
   /**
    * Gets reliability metrics broken down by CLI.
    */
-  private getReliabilityByCli(): CliBreakdown<ReliabilityMetrics> {
+  private getReliabilityByCli(): {
+    claude: ReliabilityMetrics | null;
+    gemini: ReliabilityMetrics | null;
+    codex: ReliabilityMetrics | null;
+  } {
     return {
       claude: this.getCliReliabilityMetrics('claude'),
       gemini: this.getCliReliabilityMetrics('gemini'),
@@ -520,7 +369,11 @@ export class MetricsCollector {
   /**
    * Gets token metrics broken down by CLI.
    */
-  private getTokensByCli(): CliBreakdown<TokenMetrics> {
+  private getTokensByCli(): {
+    claude: TokenMetrics | null;
+    gemini: TokenMetrics | null;
+    codex: TokenMetrics | null;
+  } {
     return {
       claude: this.getCliTokenMetrics('claude'),
       gemini: this.getCliTokenMetrics('gemini'),
