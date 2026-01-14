@@ -64,7 +64,7 @@ jobs:
       audit_vulns: ${{ steps.security.outputs.vulns }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
