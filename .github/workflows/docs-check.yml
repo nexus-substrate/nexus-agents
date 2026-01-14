@@ -3,30 +3,135 @@ name: Documentation Gate
 on:
   pull_request:
     branches: [main]
+  push:
+    branches: [main]
     paths:
       - 'packages/nexus-agents/src/**'
+      - 'docs/**'
+      - '.github/workflows/docs-check.yml'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  check-docs:
-    name: Documentation Coverage
+  # Job 1: TypeDoc Drift Detection
+  typedoc-check:
+    name: TypeDoc Verification
     runs-on: ubuntu-latest
 
-    # Skip if [skip-docs] is in PR title or body (DevEx amendment)
-    if: |
-      !contains(github.event.pull_request.title, '[skip-docs]') &&
-      !contains(github.event.pull_request.body, '[skip-docs]')
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - run: pnpm install
+
+      - name: Generate TypeDoc
+        run: pnpm --filter nexus-agents docs
+
+      - name: Check TypeDoc drift
+        run: |
+          if git diff --exit-code packages/nexus-agents/docs/api/; then
+            echo "✅ TypeDoc output is in sync"
+          else
+            echo "::error::TypeDoc output has drifted from committed version"
+            echo "Run 'pnpm --filter nexus-agents docs' and commit the changes"
+            exit 1
+          fi
+
+  # Job 2: Link Validation
+  link-check:
+    name: Link Validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - run: pnpm install
+
+      - name: Check markdown links
+        run: |
+          echo "Checking links in markdown files..."
+          find docs -name '*.md' -not -path 'docs/api/*' | head -50 | while read file; do
+            echo "Checking: $file"
+            pnpm exec markdown-link-check "$file" --config .markdown-link-check.json || true
+          done
+          # Also check root markdown files
+          for file in README.md ARCHITECTURE.md CLAUDE.md CODING_STANDARDS.md CHANGELOG.md; do
+            if [ -f "$file" ]; then
+              echo "Checking: $file"
+              pnpm exec markdown-link-check "$file" --config .markdown-link-check.json || true
+            fi
+          done
+
+  # Job 3: Documentation Coverage Check
+  docs-coverage:
+    name: Documentation Coverage
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    # Skip if [skip-docs] is in PR title or body
+    # Rate limited per escape hatch controls
 
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      - name: Check escape hatch rate limit
+        if: |
+          contains(github.event.pull_request.title, '[skip-docs]') ||
+          contains(github.event.pull_request.body, '[skip-docs]')
+        run: |
+          AUTHOR="${{ github.event.pull_request.user.login }}"
+          echo "::warning::Escape hatch [skip-docs] used by $AUTHOR"
+
+          # Check rate limit (2 per author per 7 days)
+          if [ -f "docs/.audit/escape-hatch.log" ]; then
+            RECENT=$(grep "| $AUTHOR |" docs/.audit/escape-hatch.log 2>/dev/null | \
+                     tail -14 | wc -l || echo 0)
+            if [ "$RECENT" -ge 2 ]; then
+              echo "::error::Rate limit exceeded. $AUTHOR has used [skip-docs] $RECENT times recently (limit: 2 per 7 days)"
+              exit 1
+            fi
+          fi
+
+          # Log usage
+          echo "$(date -u '+%Y-%m-%dT%H:%M:%SZ') | [skip-docs] | $AUTHOR | ${{ github.event.pull_request.head.sha }}" >> docs/.audit/escape-hatch.log
+
+      - name: Skip if escape hatch used
+        if: |
+          contains(github.event.pull_request.title, '[skip-docs]') ||
+          contains(github.event.pull_request.body, '[skip-docs]')
+        run: |
+          echo "## Documentation Check Skipped" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Escape hatch \`[skip-docs]\` detected. Documentation check bypassed." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "⚠️ This usage has been logged to \`docs/.audit/escape-hatch.log\`" >> $GITHUB_STEP_SUMMARY
+
       - name: Get changed source files
         id: changed
+        if: |
+          !contains(github.event.pull_request.title, '[skip-docs]') &&
+          !contains(github.event.pull_request.body, '[skip-docs]')
         run: |
           # Get source files changed in this PR
           CHANGED_SRC=$(git diff --name-only origin/main...HEAD -- 'packages/nexus-agents/src/**/*.ts' | grep -v '\.test\.ts$' | grep -v '\.spec\.ts$' | grep -v '/types/' || true)
@@ -42,7 +147,10 @@ jobs:
 
       - name: Check for documentation updates
         id: docs
-        if: steps.changed.outputs.count > 0
+        if: |
+          !contains(github.event.pull_request.title, '[skip-docs]') &&
+          !contains(github.event.pull_request.body, '[skip-docs]') &&
+          steps.changed.outputs.count > 0
         run: |
           # Check if any documentation was updated
           DOC_CHANGED=$(git diff --name-only origin/main...HEAD -- \
@@ -65,7 +173,10 @@ jobs:
 
       - name: Check for new modules
         id: modules
-        if: steps.changed.outputs.count > 0
+        if: |
+          !contains(github.event.pull_request.title, '[skip-docs]') &&
+          !contains(github.event.pull_request.body, '[skip-docs]') &&
+          steps.changed.outputs.count > 0
         run: |
           # Check for new index.ts files (new modules)
           NEW_MODULES=$(git diff --name-only --diff-filter=A origin/main...HEAD -- 'packages/nexus-agents/src/**/index.ts' || true)
@@ -89,7 +200,10 @@ jobs:
           fi
 
       - name: Report documentation status
-        if: steps.changed.outputs.count > 0
+        if: |
+          !contains(github.event.pull_request.title, '[skip-docs]') &&
+          !contains(github.event.pull_request.body, '[skip-docs]') &&
+          steps.changed.outputs.count > 0
         run: |
           echo "## Documentation Check Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -134,7 +248,10 @@ jobs:
           fi
 
       - name: Skip message
-        if: steps.changed.outputs.count == 0
+        if: |
+          !contains(github.event.pull_request.title, '[skip-docs]') &&
+          !contains(github.event.pull_request.body, '[skip-docs]') &&
+          steps.changed.outputs.count == 0
         run: |
           echo "## Documentation Check Skipped" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY

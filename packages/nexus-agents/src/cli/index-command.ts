@@ -22,6 +22,12 @@ import {
   CodebaseIndexSchema,
   type CodebaseIndex,
   type OutputFormat,
+  extractEntrypoints,
+  manifestToYaml,
+  manifestToJson,
+  analyzeFreshness,
+  formatFreshnessTable,
+  formatFreshnessJson,
 } from '../indexer/index.js';
 
 const logger = createLogger({ component: 'index-command' });
@@ -31,7 +37,14 @@ const logger = createLogger({ component: 'index-command' });
 // =============================================================================
 
 /** Subcommand for the index CLI. */
-export type IndexSubcommand = 'generate' | 'check' | 'diagram' | 'validate';
+export type IndexSubcommand =
+  | 'generate'
+  | 'check'
+  | 'diagram'
+  | 'validate'
+  | 'entrypoints'
+  | 'freshness'
+  | 'links';
 
 /** Options for the index command. */
 export interface IndexCommandOptions {
@@ -249,6 +262,115 @@ async function validateArchitecture(_options: IndexCommandOptions): Promise<Inde
 }
 
 /**
+ * Extracts entrypoints (CLI, MCP, REST) from source code.
+ * Part of Epic #261 - Automated Documentation System.
+ */
+async function entrypointsCommand(options: IndexCommandOptions): Promise<IndexCommandResult> {
+  const format: OutputFormat = options.format ?? 'yaml';
+  const outputPath =
+    options.output ??
+    (format === 'yaml' ? 'docs/.generated/entrypoints.yaml' : 'docs/.generated/entrypoints.json');
+
+  logger.info('Extracting entrypoints from source code...');
+
+  const result = extractEntrypoints({
+    packageRoot: 'packages/nexus-agents',
+    cliCommandsPath: 'src/cli-commands.ts',
+    mcpToolsPath: 'src/mcp/tools',
+    restRoutesPath: 'src/api/routes',
+    sanitize: true,
+  });
+
+  if (!result.success || result.manifest === undefined) {
+    const errorMsg = result.errors.join(', ') || 'Unknown extraction error';
+    return {
+      success: false,
+      message: `Entrypoint extraction failed: ${errorMsg}`,
+    };
+  }
+
+  const manifest = result.manifest;
+
+  // Log warnings if any
+  for (const warning of result.warnings) {
+    logger.warn(warning);
+  }
+
+  // Ensure output directory exists
+  const outputDir = path.dirname(outputPath);
+  await fs.mkdir(outputDir, { recursive: true });
+
+  // Write manifest
+  const content = format === 'yaml' ? manifestToYaml(manifest) : manifestToJson(manifest);
+  await fs.writeFile(outputPath, content, 'utf-8');
+
+  logger.info(`Wrote entrypoints manifest to ${outputPath}`);
+
+  const total =
+    manifest.cli_commands.length + manifest.mcp_tools.length + manifest.rest_endpoints.length;
+
+  return {
+    success: true,
+    message: `Extracted ${String(total)} entrypoints (${String(manifest.cli_commands.length)} CLI, ${String(manifest.mcp_tools.length)} MCP, ${String(manifest.rest_endpoints.length)} REST)`,
+    data: {
+      outputPath,
+    },
+  };
+}
+
+/**
+ * Checks documentation freshness.
+ * Part of Epic #261 - Automated Documentation System.
+ */
+async function freshnessCommand(options: IndexCommandOptions): Promise<IndexCommandResult> {
+  logger.info('Analyzing documentation freshness...');
+
+  const result = analyzeFreshness();
+
+  const { summary } = result;
+  const hasIssues = summary.stale > 0 || summary.warning > 0;
+
+  // Format output based on requested format
+  const output =
+    options.format === 'json' ? formatFreshnessJson(result) : formatFreshnessTable(result);
+
+  // Write to file if output path specified
+  if (options.output !== undefined) {
+    const outputDir = path.dirname(options.output);
+    await fs.mkdir(outputDir, { recursive: true });
+    await fs.writeFile(options.output, output, 'utf-8');
+    logger.info(`Wrote freshness report to ${options.output}`);
+  } else {
+    // Print to stdout
+    process.stdout.write(output + '\n');
+  }
+
+  return {
+    success: !hasIssues,
+    message: hasIssues
+      ? `Documentation freshness check: ${String(summary.stale)} stale, ${String(summary.warning)} warnings`
+      : `Documentation freshness check: ${String(summary.fresh)} documents are fresh`,
+    data: {
+      filesIndexed: summary.total,
+    },
+  };
+}
+
+/**
+ * Validates markdown links.
+ * Part of Epic #261 - Automated Documentation System.
+ */
+async function linksCommand(_options: IndexCommandOptions): Promise<IndexCommandResult> {
+  // Placeholder for link validation (Issue #263)
+  // TODO: Implement using markdown-link-check package
+  await Promise.resolve();
+  return {
+    success: true,
+    message: 'Link validation via CLI not yet implemented. Use CI workflow.',
+  };
+}
+
+/**
  * Main entry point for the index command.
  */
 export async function indexCommand(options: IndexCommandOptions): Promise<IndexCommandResult> {
@@ -263,6 +385,12 @@ export async function indexCommand(options: IndexCommandOptions): Promise<IndexC
       return generateDiagram(options);
     case 'validate':
       return validateArchitecture(options);
+    case 'entrypoints':
+      return entrypointsCommand(options);
+    case 'freshness':
+      return freshnessCommand(options);
+    case 'links':
+      return linksCommand(options);
     default: {
       const exhaustive: never = options.subcommand;
       return {

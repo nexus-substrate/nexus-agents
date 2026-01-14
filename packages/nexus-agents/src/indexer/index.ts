@@ -69,3 +69,55 @@ export {
   writeIndex,
   validateIndex,
 } from './generator.js';
+
+// Entrypoint Types (Epic #261)
+export type {
+  OptionSpec,
+  ParameterSpec,
+  CliCommandSpec,
+  McpToolSpec,
+  RestEndpointSpec,
+  EntrypointManifest,
+  EntrypointExtractorOptions,
+  EntrypointExtractionResult,
+} from './entrypoint-types.js';
+
+export {
+  ENTRYPOINT_SCHEMA_VERSION,
+  DEFAULT_ENTRYPOINT_EXTRACTOR_OPTIONS,
+  // Zod schemas
+  OptionSpecSchema,
+  ParameterSpecSchema,
+  CliCommandSpecSchema,
+  McpToolSpecSchema,
+  RestEndpointSpecSchema,
+  EntrypointManifestSchema,
+} from './entrypoint-types.js';
+
+// Entrypoint Extractor (Epic #261)
+export {
+  sanitizeValue,
+  extractEntrypoints,
+  extractCliCommands,
+  extractMcpTools,
+  extractRestEndpoints,
+  manifestToYaml,
+  manifestToJson,
+} from './entrypoint-extractor.js';
+
+// Freshness Analyzer (Epic #261, Issue #269)
+export type {
+  FreshnessStatus,
+  DocumentFreshness,
+  FreshnessAnalysisResult,
+  TrackedDocument,
+} from './freshness-analyzer.js';
+export {
+  DEFAULT_TRACKED_DOCUMENTS,
+  analyzeFreshness,
+  formatFreshnessTable,
+  formatFreshnessJson,
+} from './freshness-analyzer.js';
+
+// Research Index Module
+export * from './research-index/index.js';

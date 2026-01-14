@@ -130,9 +130,10 @@ export {
 export type { SprintCommandOptions, SprintPlanResult, SprintProposal } from './sprint-types.js';
 export type { SprintIssue, Priority, GitHubIssueRaw } from './sprint-types.js';
 
-// Research Registry (Issue #237, Epic #225)
+// Research Registry (Issue #237, Epic #225, Epic #261)
 export {
   researchCommand,
+  isValidResearchSubcommand,
   getResearchStatus,
   findOverlaps,
   paperExists,
@@ -152,6 +153,7 @@ export {
   findSharedTags,
   determineRelationship,
 } from './research-command.js';
+export type { ResearchSubcommand } from './research-command.js';
 export type {
   ResearchAddOptions,
   ResearchStatusOptions,

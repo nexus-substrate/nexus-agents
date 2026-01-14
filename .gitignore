@@ -30,9 +30,9 @@ pnpm-debug.log*
 # Turbo
 .turbo/
 
-# Generated docs
-docs/api/
-**/docs/api/
+# Generated docs - now committed for CI drift detection (Epic #261)
+# docs/api/ - TypeDoc output committed
+# **/docs/api/ - removed to allow package-level TypeDoc
 
 # Cache
 .cache/

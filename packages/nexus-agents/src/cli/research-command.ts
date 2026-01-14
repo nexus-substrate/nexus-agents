@@ -2,12 +2,15 @@
  * Research Registry CLI Commands
  *
  * CLI commands for interacting with the research registry.
- * Provides add, status, and overlap commands.
+ * Provides add, status, overlap, stats, refresh, and check commands.
  *
  * @see docs/research/RESEARCH_INDEX.md
  * @see Issue #237 (Epic #225)
+ * @see Epic #261 (Automated Documentation System)
  */
 
+import * as fs from 'node:fs/promises';
+import * as path from 'node:path';
 import type {
   ResearchStatusOptions,
   ResearchOverlapOptions,
@@ -20,6 +23,12 @@ import {
   formatOverlapResult,
   addResearchPaper,
 } from './research-helpers.js';
+import {
+  parseRegistry,
+  generateIndexMarkdown,
+  generateStatsJson,
+  generateSummaryReport,
+} from '../indexer/research-index/index.js';
 
 // Re-export helpers for external use
 export {
@@ -105,14 +114,136 @@ async function handleAddCommand(args: string[], options: Record<string, unknown>
 }
 
 // =============================================================================
+// INDEX GENERATION HANDLERS (Epic #261)
+// =============================================================================
+
+/** Gets the registry path. */
+function getRegistryPath(): string {
+  return path.resolve(process.cwd(), 'docs/research/registry');
+}
+
+/** Gets the index output path. */
+function getIndexPath(): string {
+  return path.resolve(process.cwd(), 'docs/research/RESEARCH_INDEX.md');
+}
+
+/**
+ * Handle stats subcommand - show research statistics
+ */
+async function handleStatsCommand(options: Record<string, unknown>): Promise<string> {
+  const registryPath = getRegistryPath();
+  const result = parseRegistry({ registryPath });
+
+  if (!result.ok) {
+    return `Error: Failed to parse registry: ${result.error.message}`;
+  }
+
+  const index = result.value;
+  const format = options['format'] as string | undefined;
+
+  // Ensure async compliance (future: may add async registry operations)
+  await Promise.resolve();
+
+  if (format === 'json') {
+    return generateStatsJson(index);
+  }
+
+  return generateSummaryReport(index);
+}
+
+/**
+ * Handle refresh subcommand - regenerate RESEARCH_INDEX.md
+ */
+async function handleRefreshCommand(options: Record<string, unknown>): Promise<string> {
+  const outputPath = (options['output'] as string | undefined) ?? getIndexPath();
+  const registryPath = getRegistryPath();
+  const result = parseRegistry({ registryPath });
+
+  if (!result.ok) {
+    return `Error: Failed to parse registry: ${result.error.message}`;
+  }
+
+  const index = result.value;
+  const mdResult = generateIndexMarkdown(index);
+
+  if (!mdResult.ok) {
+    return `Error: Failed to generate markdown: ${mdResult.error.message}`;
+  }
+
+  // Write the index
+  await fs.mkdir(path.dirname(outputPath), { recursive: true });
+  await fs.writeFile(outputPath, mdResult.value, 'utf-8');
+
+  const stats = index.stats;
+  return [
+    `Research index regenerated successfully`,
+    `  Output: ${outputPath}`,
+    `  Papers: ${String(stats.totalPapers)}`,
+    `  Techniques: ${String(stats.totalTechniques)}`,
+    `  Implemented: ${String(stats.techniquesByStatus.implemented)}`,
+  ].join('\n');
+}
+
+/**
+ * Handle check subcommand - check if index is up to date
+ */
+async function handleCheckCommand(): Promise<string> {
+  const indexPath = getIndexPath();
+
+  // Check if index exists
+  try {
+    await fs.access(indexPath);
+  } catch {
+    return `Error: Research index not found: ${indexPath}. Run 'nexus-agents research refresh' first.`;
+  }
+
+  // Parse registry and generate fresh index
+  const registryPath = getRegistryPath();
+  const result = parseRegistry({ registryPath });
+
+  if (!result.ok) {
+    return `Error: Failed to parse registry: ${result.error.message}`;
+  }
+
+  const mdResult = generateIndexMarkdown(result.value);
+  if (!mdResult.ok) {
+    return `Error: Failed to generate markdown: ${mdResult.error.message}`;
+  }
+
+  // Read existing index
+  const existingContent = await fs.readFile(indexPath, 'utf-8');
+  const freshContent = mdResult.value;
+
+  // Compare (normalize whitespace for comparison)
+  const normalize = (s: string): string => s.replace(/\s+/g, ' ').trim();
+  const isFresh = normalize(existingContent) === normalize(freshContent);
+
+  if (isFresh) {
+    return `Research index is up to date (${String(result.value.stats.totalTechniques)} techniques)`;
+  }
+
+  return `Research index is out of date. Run "nexus-agents research refresh" to update.`;
+}
+
+// =============================================================================
 // MAIN COMMAND HANDLER
 // =============================================================================
+
+/** Valid research subcommands. */
+export type ResearchSubcommand = 'status' | 'overlap' | 'add' | 'stats' | 'refresh' | 'check';
+
+/** Validates that a subcommand is valid. */
+export function isValidResearchSubcommand(value: string | undefined): value is ResearchSubcommand {
+  return (
+    value !== undefined && ['status', 'overlap', 'add', 'stats', 'refresh', 'check'].includes(value)
+  );
+}
 
 /**
  * Research command subcommand handler
  */
 export async function researchCommand(
-  subcommand: 'status' | 'overlap' | 'add',
+  subcommand: ResearchSubcommand,
   args: string[],
   options: Record<string, unknown>
 ): Promise<string> {
@@ -123,7 +254,13 @@ export async function researchCommand(
       return handleOverlapCommand(args, options);
     case 'add':
       return handleAddCommand(args, options);
+    case 'stats':
+      return handleStatsCommand(options);
+    case 'refresh':
+      return handleRefreshCommand(options);
+    case 'check':
+      return handleCheckCommand();
     default:
-      return `Unknown subcommand: ${String(subcommand)}. Available: status, overlap, add`;
+      return `Unknown subcommand: ${String(subcommand)}. Available: status, overlap, add, stats, refresh, check`;
   }
 }

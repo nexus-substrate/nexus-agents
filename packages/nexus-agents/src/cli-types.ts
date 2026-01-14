@@ -34,7 +34,8 @@ export type CliCommand =
   | 'orchestrate'
   | 'system-review'
   | 'vote'
-  | 'index';
+  | 'index'
+  | 'research';
 
 /**
  * Parsed CLI arguments and command.
@@ -183,6 +184,7 @@ COMMANDS:
   orchestrate     Execute task using CLI tools (standalone mode)
   system-review   Run automated system review (5-phase checklist)
   index           Generate and manage codebase index
+  research        Manage research registry and index
 
 OPTIONS:
   -h, --help           Show this help message
@@ -238,9 +240,20 @@ INDEX OPTIONS:
   index check            Validate index freshness (for CI)
   index diagram          Generate Mermaid dependency diagram
   index validate         Check ARCHITECTURE.md matches index
+  index entrypoints      Extract CLI/MCP/REST entrypoints
   --format=<yaml|json>   Output format (default: yaml)
   -o, --output=<path>    Custom output path
   --verbose              Show extraction progress
+
+RESEARCH OPTIONS:
+  research status [id]   Show technique status (all or specific)
+  research overlap <id>  Find overlapping techniques
+  research add <arxiv>   Add paper from arXiv
+  research stats         Show research statistics
+  research refresh       Regenerate RESEARCH_INDEX.md
+  research check         Check if index is up to date
+  --format=<table|json>  Output format (default: table)
+  -o, --output=<path>    Custom output path for refresh
 
 EXAMPLES:
   nexus-agents                  Start MCP server (default)
@@ -267,6 +280,12 @@ EXAMPLES:
   nexus-agents index generate                     Generate codebase index
   nexus-agents index check                        Check if index is up to date
   nexus-agents index diagram                      Generate dependency diagram
+  nexus-agents index entrypoints                  Extract entrypoints to YAML
+  nexus-agents research status                    Show all technique statuses
+  nexus-agents research stats                     Show research statistics
+  nexus-agents research stats --format=json       Statistics as JSON
+  nexus-agents research refresh                   Regenerate RESEARCH_INDEX.md
+  nexus-agents research check                     Check if index is up to date
 
 For more information, visit: https://github.com/williamzujkowski/nexus-agents
 `.trim();
@@ -292,6 +311,7 @@ export function isValidCommand(value: string): value is CliCommand {
     'system-review',
     'vote',
     'index',
+    'research',
   ];
   return validCommands.includes(value as CliCommand);
 }

@@ -21,6 +21,8 @@ import {
   voteCommand,
   indexCommand,
   formatIndexResult,
+  researchCommand,
+  isValidResearchSubcommand,
   type ExpertListFormat,
   type IndexSubcommand,
 } from './cli/index.js';
@@ -279,7 +281,16 @@ export async function handleVoteCommand(args: ParsedCliArgs): Promise<void> {
  * Validates index subcommand.
  */
 function isValidIndexSubcommand(value: string | undefined): value is IndexSubcommand {
-  return value === 'generate' || value === 'check' || value === 'diagram' || value === 'validate';
+  const validSubcommands = [
+    'generate',
+    'check',
+    'diagram',
+    'validate',
+    'entrypoints',
+    'freshness',
+    'links',
+  ];
+  return value !== undefined && validSubcommands.includes(value);
 }
 
 /**
@@ -299,10 +310,13 @@ export async function handleIndexCommand(args: ParsedCliArgs): Promise<void> {
     process.stdout.write('Error: Index subcommand is required.\n');
     process.stdout.write('Usage: nexus-agents index <subcommand> [options]\n');
     process.stdout.write('Subcommands:\n');
-    process.stdout.write('  generate   Generate/update codebase index\n');
-    process.stdout.write('  check      Validate index freshness (for CI)\n');
-    process.stdout.write('  diagram    Generate Mermaid dependency diagram\n');
-    process.stdout.write('  validate   Check ARCHITECTURE.md matches index\n');
+    process.stdout.write('  generate     Generate/update codebase index\n');
+    process.stdout.write('  check        Validate index freshness (for CI)\n');
+    process.stdout.write('  diagram      Generate Mermaid dependency diagram\n');
+    process.stdout.write('  validate     Check ARCHITECTURE.md matches index\n');
+    process.stdout.write('  entrypoints  Extract CLI/MCP/REST entrypoints\n');
+    process.stdout.write('  freshness    Check documentation freshness\n');
+    process.stdout.write('  links        Validate markdown links\n');
     process.exit(EXIT_CODES.INVALID_ARGS);
   }
 
@@ -317,6 +331,58 @@ export async function handleIndexCommand(args: ParsedCliArgs): Promise<void> {
 
   process.stdout.write(formatIndexResult(result) + '\n');
   process.exit(result.success ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
+}
+
+/**
+ * Validates output format for research command.
+ */
+function isValidResearchFormat(value: string): value is 'table' | 'json' {
+  return value === 'table' || value === 'json';
+}
+
+/**
+ * Handles the research command for research registry management.
+ * (Source: Issue #237, Epic #225, Epic #261)
+ */
+export async function handleResearchCommand(args: ParsedCliArgs): Promise<void> {
+  const subcommand = args.subcommand;
+  if (!isValidResearchSubcommand(subcommand)) {
+    process.stdout.write('Error: Research subcommand is required.\n');
+    process.stdout.write('Usage: nexus-agents research <subcommand> [options]\n');
+    process.stdout.write('Subcommands:\n');
+    process.stdout.write(
+      '  status [id]      Show technique status (optional: specific technique)\n'
+    );
+    process.stdout.write('  overlap <id>     Find overlapping techniques\n');
+    process.stdout.write('  add <arxiv-id>   Add paper from arXiv\n');
+    process.stdout.write('  stats            Show research statistics\n');
+    process.stdout.write('  refresh          Regenerate RESEARCH_INDEX.md\n');
+    process.stdout.write('  check            Check if index is up to date\n');
+    process.exit(EXIT_CODES.INVALID_ARGS);
+  }
+
+  // Get positional args after subcommand (research <subcommand> [args...])
+  const positionalArgs = args.positionals.slice(2);
+
+  // Build options from parsed args
+  const options: Record<string, unknown> = {};
+  options['format'] = isValidResearchFormat(args.options.format) ? args.options.format : 'table';
+  if (args.options.output !== undefined) {
+    options['output'] = args.options.output;
+  }
+  if (args.options.dryRun) {
+    options['dryRun'] = true;
+  }
+
+  try {
+    const result = await researchCommand(subcommand, positionalArgs, options);
+    process.stdout.write(result + '\n');
+    process.exit(EXIT_CODES.SUCCESS);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    process.stdout.write(`Error: ${message}\n`);
+    process.exit(EXIT_CODES.SERVER_START_FAILED);
+  }
 }
 
 /**
@@ -348,36 +414,34 @@ function handleSyncCommand(args: ParsedCliArgs): boolean {
 }
 
 /**
+ * Handles doctor command separately to manage exit code.
+ */
+async function handleDoctorCommandInternal(_args: ParsedCliArgs): Promise<void> {
+  const exitCode = await doctorCommand();
+  process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
+}
+
+/** Async command dispatch table for reduced complexity. */
+const ASYNC_COMMAND_HANDLERS: Record<string, ((args: ParsedCliArgs) => Promise<void>) | undefined> =
+  {
+    server: handleServerCommand,
+    doctor: handleDoctorCommandInternal,
+    config: handleConfigCommand,
+    workflow: handleWorkflowCommand,
+    review: handleReviewCommand,
+    orchestrate: handleOrchestrateCommand,
+    vote: handleVoteCommand,
+    index: handleIndexCommand,
+    research: handleResearchCommand,
+  };
+
+/**
  * Handles async commands that require await.
  */
 async function handleAsyncCommand(args: ParsedCliArgs): Promise<void> {
-  switch (args.command) {
-    case 'server':
-      await handleServerCommand(args);
-      break;
-    case 'doctor': {
-      const exitCode = await doctorCommand();
-      process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
-      break;
-    }
-    case 'config':
-      await handleConfigCommand(args);
-      break;
-    case 'workflow':
-      await handleWorkflowCommand(args);
-      break;
-    case 'review':
-      await handleReviewCommand(args);
-      break;
-    case 'orchestrate':
-      await handleOrchestrateCommand(args);
-      break;
-    case 'vote':
-      await handleVoteCommand(args);
-      break;
-    case 'index':
-      await handleIndexCommand(args);
-      break;
+  const handler = ASYNC_COMMAND_HANDLERS[args.command];
+  if (handler !== undefined) {
+    await handler(args);
   }
 }
 

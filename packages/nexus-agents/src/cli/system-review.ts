@@ -23,6 +23,7 @@ import type {
   AuditMetadata,
   CoverageData,
 } from './system-review-types.js';
+import { analyzeFreshness } from '../indexer/freshness-analyzer.js';
 
 export type { SystemReviewOptions, SystemReviewResult } from './system-review-types.js';
 
@@ -85,19 +86,34 @@ function runPhase1(projectRoot: string): TechniqueStats {
   };
 }
 
-function runPhase2(projectRoot: string): DocFreshness[] {
-  const docs = ['CLAUDE.md', 'ARCHITECTURE.md', 'CODING_STANDARDS.md', 'README.md', 'CHANGELOG.md'];
-  const results: DocFreshness[] = [];
-  for (const file of docs) {
-    const fp = path.join(projectRoot, file);
-    if (!fs.existsSync(fp)) continue;
-    const gitDate = safeExec(`git log -1 --format="%ct" -- "${fp}"`);
-    if (gitDate === null) continue;
-    const days = Math.floor((Date.now() - parseInt(gitDate, 10) * 1000) / (24 * 60 * 60 * 1000));
-    const status: 'current' | 'review' | 'stale' =
-      days >= 30 ? 'stale' : days >= 7 ? 'review' : 'current';
-    results.push({ file, daysSinceUpdate: days, status });
+function mapFreshnessStatus(freshnessStatus: string): 'current' | 'review' | 'stale' {
+  switch (freshnessStatus) {
+    case 'fresh':
+      return 'current';
+    case 'warning':
+      return 'review';
+    case 'stale':
+    case 'unknown':
+    default:
+      return 'stale';
   }
+}
+
+function runPhase2(projectRoot: string): DocFreshness[] {
+  // Use freshness analyzer for source-dependency tracking (Epic #261)
+  const freshnessResult = analyzeFreshness(undefined, projectRoot);
+  const results: DocFreshness[] = [];
+
+  for (const doc of freshnessResult.documents) {
+    results.push({
+      file: doc.path,
+      daysSinceUpdate: doc.daysSinceModified ?? 0,
+      status: mapFreshnessStatus(doc.status),
+      dependencies: doc.dependencies,
+      newerDependencies: doc.newerDependencies,
+    });
+  }
+
   return results;
 }
 
@@ -170,9 +186,19 @@ function generateActionItems(
   const items: string[] = [];
   if (r.techniques.notStarted > 5)
     items.push(`Review ${String(r.techniques.notStarted)} not-started techniques`);
-  for (const d of r.docs)
-    if (d.status === 'stale')
-      items.push(`Update ${d.file} (${String(d.daysSinceUpdate)} days stale)`);
+
+  // Enhanced doc staleness with source dependency info (Epic #261)
+  for (const d of r.docs) {
+    if (d.status === 'stale') {
+      const newerCount = d.newerDependencies?.length ?? 0;
+      if (newerCount > 0) {
+        items.push(`Update ${d.file} (${String(newerCount)} source files changed)`);
+      } else {
+        items.push(`Update ${d.file} (${String(d.daysSinceUpdate)} days stale)`);
+      }
+    }
+  }
+
   if (r.issues.staleCount > 0) items.push(`Review ${String(r.issues.staleCount)} stale issues`);
   if (r.issues.openCount < 5) items.push('Run Research phase (low issue count)');
   if (r.security.high > 0)
@@ -209,7 +235,13 @@ function printPhase2(docs: DocFreshness[]): void {
         : d.status === 'review'
           ? formatStatus('warn')
           : formatStatus('fail');
-    writeLine(`  ${s} ${d.file} (${String(d.daysSinceUpdate)} days)`);
+
+    // Show newer dependencies if any (Epic #261 source tracking)
+    const newerCount = d.newerDependencies?.length ?? 0;
+    const depInfo =
+      newerCount > 0 ? ` ${colors.yellow}[${String(newerCount)} newer deps]${colors.reset}` : '';
+
+    writeLine(`  ${s} ${d.file} (${String(d.daysSinceUpdate)} days)${depInfo}`);
   }
   writeLine('');
 }
@@ -287,11 +319,18 @@ export function printSystemReviewResult(r: SystemReviewResult): void {
   );
 }
 
+function formatDocRow(d: DocFreshness): string {
+  const newerCount = d.newerDependencies?.length ?? 0;
+  const statusIcon = d.status === 'current' ? '✅' : d.status === 'review' ? '⚠️' : '❌';
+  const newerInfo = newerCount > 0 ? ` (${String(newerCount)} newer deps)` : '';
+  return `| ${d.file} | ${String(d.daysSinceUpdate)} | ${statusIcon}${newerInfo} |`;
+}
+
 function createIssueBody(r: SystemReviewResult): string {
   const date = new Date().toISOString().split('T')[0] ?? 'unknown';
   const tz = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
   const s = String(calculateHealthScore(r));
-  return `## System Review: ${date}\n\n**Generated:** ${tz} ET\n**Health Score:** ${s}/100\n\n---\n\n### Phase 1: Registry\n\n| Status | Count |\n|--------|-------|\n| Implemented | ${String(r.techniques.implemented)} |\n| Planned | ${String(r.techniques.planned)} |\n| Not Started | ${String(r.techniques.notStarted)} |\n| Rejected | ${String(r.techniques.rejected)} |\n\n### Phase 2: Docs\n\n| Document | Days | Status |\n|----------|------|--------|\n${r.docs.map((d) => `| ${d.file} | ${String(d.daysSinceUpdate)} | ${d.status === 'current' ? '✅' : d.status === 'review' ? '⚠️' : '❌'} |`).join('\n')}\n\n### Phase 3: Issues\n\n- Open: ${String(r.issues.openCount)}\n- Stale: ${String(r.issues.staleCount)}\n\n### Phase 4: Security\n\n- High: ${String(r.security.high)}\n- Moderate: ${String(r.security.moderate)}\n- Low: ${String(r.security.low)}\n\n### Phase 5: Quality\n\n- TypeScript: ${r.quality.typecheckPass ? '✅' : '❌'}\n- ESLint: ${r.quality.lintPass ? '✅' : '❌'}\n- Coverage: ${r.quality.coveragePercent !== null ? `${r.quality.coveragePercent.toFixed(1)}%` : 'Unknown'}\n\n---\n\n### Action Items\n\n${r.actionItems.length > 0 ? r.actionItems.map((i) => `- [ ] ${i}`).join('\n') : '_No action items_'}\n\n---\n\n_Generated by \`nexus-agents system-review\`_`;
+  return `## System Review: ${date}\n\n**Generated:** ${tz} ET\n**Health Score:** ${s}/100\n\n---\n\n### Phase 1: Registry\n\n| Status | Count |\n|--------|-------|\n| Implemented | ${String(r.techniques.implemented)} |\n| Planned | ${String(r.techniques.planned)} |\n| Not Started | ${String(r.techniques.notStarted)} |\n| Rejected | ${String(r.techniques.rejected)} |\n\n### Phase 2: Docs\n\n| Document | Days | Status |\n|----------|------|--------|\n${r.docs.map(formatDocRow).join('\n')}\n\n### Phase 3: Issues\n\n- Open: ${String(r.issues.openCount)}\n- Stale: ${String(r.issues.staleCount)}\n\n### Phase 4: Security\n\n- High: ${String(r.security.high)}\n- Moderate: ${String(r.security.moderate)}\n- Low: ${String(r.security.low)}\n\n### Phase 5: Quality\n\n- TypeScript: ${r.quality.typecheckPass ? '✅' : '❌'}\n- ESLint: ${r.quality.lintPass ? '✅' : '❌'}\n- Coverage: ${r.quality.coveragePercent !== null ? `${r.quality.coveragePercent.toFixed(1)}%` : 'Unknown'}\n\n---\n\n### Action Items\n\n${r.actionItems.length > 0 ? r.actionItems.map((i) => `- [ ] ${i}`).join('\n') : '_No action items_'}\n\n---\n\n_Generated by \`nexus-agents system-review\`_`;
 }
 
 function createIssue(result: SystemReviewResult): string | null {

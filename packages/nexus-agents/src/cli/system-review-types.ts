@@ -28,11 +28,16 @@ export interface TechniqueStats {
 
 /**
  * Documentation freshness data.
+ * Enhanced in Epic #261 to track source dependencies.
  */
 export interface DocFreshness {
   readonly file: string;
   readonly daysSinceUpdate: number;
   readonly status: 'current' | 'review' | 'stale';
+  /** Source files that this document depends on */
+  readonly dependencies?: readonly string[];
+  /** Dependencies that have been modified more recently than the document */
+  readonly newerDependencies?: readonly string[];
 }
 
 /**
