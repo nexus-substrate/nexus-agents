@@ -1,3 +1,7 @@
+// Justification: Core class with 40 tests, types/helpers already extracted.
+// Remaining 501 lines are tightly-coupled class methods. Further splitting
+// would fragment the cohesive ContextManager implementation.
+
 /**
  * nexus-agents/agents - ContextManager
  *
