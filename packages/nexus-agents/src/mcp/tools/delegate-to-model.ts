@@ -15,6 +15,8 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger } from '../../core/index.js';
 import { createLogger } from '../../core/index.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
+import type { SecurityConfig } from '../../config/schemas.js';
+import { wrapToolWithTimeout } from '../middleware/tool-wrapper.js';
 import type { ICompositeRouter } from '../../cli-adapters/composite-router.js';
 import type { IFeedbackIntegration } from '../../learning/feedback-integration.js';
 import {
@@ -160,6 +162,8 @@ export interface DelegateDeps {
   router?: ICompositeRouter | undefined;
   /** Optional FeedbackIntegration for closed-loop learning (Issue #167) */
   feedbackIntegration?: IFeedbackIntegration | undefined;
+  /** Security configuration (includes timeout settings - Issue #271) */
+  security?: SecurityConfig | undefined;
 }
 
 /**
@@ -506,6 +510,8 @@ const TOOL_SCHEMA = {
 /**
  * Registers the delegate_to_model tool with the MCP server.
  *
+ * Includes timeout protection for CVE-2026-0621 mitigation (Issue #271).
+ *
  * @param server - MCP server instance
  * @param deps - Dependencies
  */
@@ -514,9 +520,20 @@ export function registerDelegateToModelTool(server: McpServer, deps: DelegateDep
   const description =
     'Route a task to the optimal model based on capability matching. Returns model recommendation with reasoning.';
 
-  // eslint-disable-next-line @typescript-eslint/no-deprecated -- Consistent with other tools in codebase
-  server.tool('delegate_to_model', description, TOOL_SCHEMA, createDelegateHandler(deps, logger));
-  logger.info('Registered delegate_to_model tool');
+  // Wrap handler with timeout protection (Issue #271, CVE-2026-0621)
+  const handler = createDelegateHandler(deps, logger);
+  const timeoutMs = deps.security?.timeout?.defaultTimeoutMs;
+  const wrappedHandler = wrapToolWithTimeout(
+    'delegate_to_model',
+    handler,
+    timeoutMs !== undefined ? { timeoutMs, logger } : { logger }
+  );
+
+  // Type assertion needed: MCP SDK expects index signature, our ToolResult is structurally compatible
+  /* eslint-disable @typescript-eslint/no-deprecated, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
+  server.tool('delegate_to_model', description, TOOL_SCHEMA, wrappedHandler as any);
+  /* eslint-enable @typescript-eslint/no-deprecated, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
+  logger.info('Registered delegate_to_model tool with timeout protection');
 }
 
 /**

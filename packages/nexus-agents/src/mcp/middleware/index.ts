@@ -108,3 +108,15 @@ export {
   withMiddleware,
   createMiddlewareFactory,
 } from './middleware-chain.js';
+
+// Tool wrapper helper (Issue #271, CVE-2026-0621)
+export {
+  // Types
+  type ToolFactoryConfig,
+  type ToolWrapperOptions,
+  // Constants
+  DEFAULT_TIMEOUT_CONFIG,
+  // Functions
+  createToolFactory,
+  wrapToolWithTimeout,
+} from './tool-wrapper.js';

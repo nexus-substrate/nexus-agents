@@ -126,6 +126,30 @@ export const SandboxConfigSchema = z.object({
 export type SandboxConfig = z.infer<typeof SandboxConfigSchema>;
 
 /**
+ * Timeout configuration schema.
+ *
+ * Controls timeout behavior for MCP operations to mitigate CVE-2026-0621.
+ * - defaultTimeoutMs: Default timeout for operations
+ * - maxTimeoutMs: Maximum allowed timeout
+ * - enableLogging: Whether to log timeout events
+ * - uriValidation: Whether to validate URIs against ReDoS patterns
+ *
+ * (Source: Issue #271, CVE-2026-0621 mitigation)
+ */
+export const TimeoutConfigSchema = z.object({
+  /** Default timeout in milliseconds (default: 30000) */
+  defaultTimeoutMs: z.number().positive().default(30000),
+  /** Maximum timeout in milliseconds (default: 300000) */
+  maxTimeoutMs: z.number().positive().default(300000),
+  /** Whether to log timeout events (default: true) */
+  enableLogging: z.boolean().default(true),
+  /** Enable URI validation to prevent ReDoS (default: true) */
+  uriValidation: z.boolean().default(true),
+});
+
+export type TimeoutConfig = z.infer<typeof TimeoutConfigSchema>;
+
+/**
  * Security configuration schema.
  */
 export const SecurityConfigSchema = z.object({
@@ -142,6 +166,8 @@ export const SecurityConfigSchema = z.object({
   policy: PolicyConfigSchema.optional(),
   /** Sandbox execution configuration (Issue #175) */
   sandbox: SandboxConfigSchema.optional(),
+  /** Timeout configuration (Issue #271, CVE-2026-0621) */
+  timeout: TimeoutConfigSchema.optional(),
 });
 
 export type SecurityConfig = z.infer<typeof SecurityConfigSchema>;
@@ -186,6 +212,12 @@ export const defaultConfig: Partial<AppConfig> = {
     policy: {
       defaultMode: 'read-only',
       policyMode: 'enforce',
+    },
+    timeout: {
+      defaultTimeoutMs: 30000,
+      maxTimeoutMs: 300000,
+      enableLogging: true,
+      uriValidation: true,
     },
   },
 };
