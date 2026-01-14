@@ -10,199 +10,32 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
-import type {
-  MessageParam,
-  ContentBlock as AnthropicContentBlock,
-  MessageStreamEvent,
-} from '@anthropic-ai/sdk/resources/messages';
+import type { MessageStreamEvent } from '@anthropic-ai/sdk/resources/messages';
 import type {
   Result,
   CompletionRequest,
   CompletionResponse,
   StreamChunk,
   ContentBlock,
-  Message,
-  ToolDefinition,
   TokenUsage,
-  StopReason,
 } from '../core/index.js';
-import { ok, err, ModelError, ConfigError, ModelCapability } from '../core/index.js';
+import { ok, err, ModelError, ConfigError } from '../core/index.js';
 import { BaseAdapter, type BaseAdapterConfig } from './base-adapter.js';
 import { createStream } from './streaming.js';
+import type { ClaudeAdapterConfig } from './claude-adapter-types.js';
+import { CLAUDE_CHARS_PER_TOKEN, DEFAULT_MAX_TOKENS } from './claude-adapter-types.js';
+import {
+  mapStopReason,
+  mapContentBlock,
+  mapMessage,
+  mapTool,
+  resolveModelId,
+  getModelCapabilities,
+} from './claude-adapter-helpers.js';
 
-/**
- * Supported Claude model identifiers.
- */
-export const CLAUDE_MODELS = {
-  OPUS_4: 'claude-opus-4-20250514',
-  SONNET_4: 'claude-sonnet-4-20250514',
-  HAIKU_3: 'claude-3-haiku-20240307',
-} as const;
-
-/**
- * Model aliases for convenience.
- */
-export const CLAUDE_MODEL_ALIASES: Record<string, string> = {
-  'claude-opus-4': CLAUDE_MODELS.OPUS_4,
-  'claude-sonnet-4': CLAUDE_MODELS.SONNET_4,
-  'claude-haiku-3': CLAUDE_MODELS.HAIKU_3,
-} as const;
-
-/**
- * Configuration specific to ClaudeAdapter.
- */
-export interface ClaudeAdapterConfig {
-  /** Model ID (e.g., 'claude-sonnet-4' or full model identifier) */
-  modelId: string;
-  /** API key for Anthropic API (required) */
-  apiKey: string;
-  /** Base URL for API (optional, defaults to Anthropic's API) */
-  baseUrl?: string;
-  /** Request timeout in milliseconds (optional) */
-  timeout?: number;
-  /** Maximum retries for failed requests (optional) */
-  maxRetries?: number;
-}
-
-/**
- * Characters per token estimate for Claude models.
- * Claude uses a custom tokenizer, but ~3.5 chars/token is a reasonable estimate
- * for English text.
- * (Source: Anthropic documentation on token counting)
- */
-const CLAUDE_CHARS_PER_TOKEN = 3.5;
-
-/**
- * Default maximum tokens for Claude models.
- */
-const DEFAULT_MAX_TOKENS = 4096;
-
-/**
- * Maps Anthropic stop reasons to our StopReason type.
- */
-function mapStopReason(anthropicReason: string | null): StopReason {
-  switch (anthropicReason) {
-    case 'end_turn':
-      return 'end_turn';
-    case 'max_tokens':
-      return 'max_tokens';
-    case 'stop_sequence':
-      return 'stop_sequence';
-    case 'tool_use':
-      return 'tool_use';
-    default:
-      return 'end_turn';
-  }
-}
-
-/**
- * Maps Anthropic content blocks to our ContentBlock type.
- */
-function mapContentBlock(block: AnthropicContentBlock): ContentBlock {
-  if (block.type === 'text') {
-    return { type: 'text', text: block.text };
-  }
-  if (block.type === 'tool_use') {
-    const toolBlock = block;
-    return {
-      type: 'tool_use',
-      id: toolBlock.id,
-      name: toolBlock.name,
-      input: toolBlock.input,
-    };
-  }
-  // Handle unexpected block types gracefully
-  return { type: 'text', text: '' };
-}
-
-/**
- * Maps our Message format to Anthropic's MessageParam format.
- */
-function mapMessage(message: Message): MessageParam {
-  const role = message.role === 'user' ? 'user' : 'assistant';
-
-  if (typeof message.content === 'string') {
-    return { role, content: message.content };
-  }
-
-  // Map content blocks
-  const content = message.content.map((block) => {
-    if (block.type === 'text') {
-      return { type: 'text' as const, text: block.text };
-    }
-    if (block.type === 'tool_use') {
-      return {
-        type: 'tool_use' as const,
-        id: block.id,
-        name: block.name,
-        input: block.input,
-      };
-    }
-    if (block.type === 'tool_result') {
-      const toolResult: {
-        type: 'tool_result';
-        tool_use_id: string;
-        content: string;
-        is_error?: boolean;
-      } = {
-        type: 'tool_result' as const,
-        tool_use_id: block.tool_use_id,
-        content: block.content,
-      };
-      // Only set is_error if explicitly defined (exactOptionalPropertyTypes)
-      if (block.is_error !== undefined) {
-        toolResult.is_error = block.is_error;
-      }
-      return toolResult;
-    }
-    // Image type is the remaining possibility
-    // Cast source to match Anthropic's expected type
-    return {
-      type: 'image' as const,
-      source: block.source as Anthropic.ImageBlockParam['source'],
-    };
-  });
-
-  return { role, content };
-}
-
-/**
- * Maps our ToolDefinition to Anthropic's tool format.
- */
-function mapTool(tool: ToolDefinition): Anthropic.Tool {
-  return {
-    name: tool.name,
-    description: tool.description,
-    input_schema: tool.inputSchema as Anthropic.Tool.InputSchema,
-  };
-}
-
-/**
- * Resolves model alias to full model identifier.
- */
-function resolveModelId(modelId: string): string {
-  return CLAUDE_MODEL_ALIASES[modelId] ?? modelId;
-}
-
-/**
- * Determines capabilities based on model ID.
- */
-function getModelCapabilities(modelId: string): readonly ModelCapability[] {
-  const capabilities: ModelCapability[] = [
-    ModelCapability.COMPLETION,
-    ModelCapability.STREAMING,
-    ModelCapability.TOOL_USE,
-    ModelCapability.VISION,
-  ];
-
-  // Extended thinking is available on Opus and Sonnet 4
-  const resolvedId = resolveModelId(modelId);
-  if (resolvedId.includes('opus') || resolvedId.includes('sonnet-4')) {
-    capabilities.push(ModelCapability.EXTENDED_THINKING);
-  }
-
-  return capabilities;
-}
+// Re-export types and constants for backward compatibility
+export type { ClaudeAdapterConfig } from './claude-adapter-types.js';
+export { CLAUDE_MODELS, CLAUDE_MODEL_ALIASES } from './claude-adapter-types.js';
 
 /**
  * Claude/Anthropic model adapter.
