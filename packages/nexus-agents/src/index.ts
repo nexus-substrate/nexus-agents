@@ -402,15 +402,30 @@ export {
   type ExpertResult,
   type ConflictResolver,
   type QualityScorer,
-  // Observability (SwarmObserver)
+  // Observability (OrchestrationObserver - renamed from SwarmObserver in Issue #251)
   AgentStateSchema,
-  SwarmObserverConfigSchema,
+  OrchestrationObserverConfigSchema,
   ObserverTopics,
+  type AgentState as ObserverAgentState,
   type TrackedAgent,
   type RoutingDecision,
-  type TokenUsage as SwarmTokenUsage,
+  type TokenUsage as ObserverTokenUsage,
   type CostMetrics,
   type SessionMetrics,
+  type OrchestrationStats,
+  type OrchestrationObserverEvent,
+  type OrchestrationObserverListener,
+  type OrchestrationObserverConfig,
+  type OrchestrationObserverOptions,
+  type IOrchestrationObserver,
+  OrchestrationObserver,
+  createOrchestrationObserver,
+} from './agents/index.js';
+
+// Backward compatibility aliases (deprecated, will be removed in v3.0)
+/* eslint-disable @typescript-eslint/no-deprecated */
+export {
+  SwarmObserverConfigSchema,
   type SwarmStats,
   type SwarmObserverEvent,
   type SwarmObserverListener,
@@ -420,6 +435,7 @@ export {
   SwarmObserver,
   createSwarmObserver,
 } from './agents/index.js';
+/* eslint-enable @typescript-eslint/no-deprecated */
 
 // ============================================================================
 // Workflows - Workflow engine with parallel execution
