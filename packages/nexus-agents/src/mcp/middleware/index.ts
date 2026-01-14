@@ -120,3 +120,16 @@ export {
   createToolFactory,
   wrapToolWithTimeout,
 } from './tool-wrapper.js';
+
+// Per-tool rate limiter factory (Issue #274 Phase 2)
+export {
+  // Types
+  type ToolRateLimiterFactoryConfig,
+  // Classes
+  ToolRateLimiterFactory,
+  // Functions
+  createToolRateLimiterFactory,
+  getGlobalToolRateLimiterFactory,
+  setGlobalToolRateLimiterFactory,
+  resetGlobalToolRateLimiterFactory,
+} from './tool-rate-limiter.js';
