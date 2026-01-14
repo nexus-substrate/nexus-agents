@@ -48,11 +48,25 @@ Multi-Agent Orchestration Release
 - ARCHITECTURE.md updated with Hybrid Architecture decision (5-0 unanimous)
 - ARCHITECTURE.md updated with A2A Protocol section (#215)
 
+### Refactored
+
+- **CLI File Splitting (#272)** - CODING_STANDARDS.md 400-line limit enforcement
+  - Split index-command.ts (460 → 357 lines)
+  - Split workflow-run.ts (457 → 313 lines)
+  - Split repl.ts (405 → 282 lines)
+  - Split voter-agents.ts (403 → 335 lines)
+  - Split cli-commands.ts (457 → 384 lines)
+  - Extracted types to `*-types.ts`, formatters to `*-formatters.ts`
+  - Extracted validators to `cli-commands-validators.ts`
+  - Extracted usage messages to `cli-commands-usage.ts`
+  - All refactors maintain backward compatibility via re-exports
+
 ### Fixed
 
 - Route schemas extracted to fix max-lines-per-function lint errors (#ef5ebe0)
 - REPL test timeouts in CI (#192)
 - exactOptionalPropertyTypes error in PolicyCheckOptions
+- Deprecated export lint errors in barrel files (#fe040e8)
 
 ### Completed (from Planned)
 
@@ -327,7 +341,8 @@ Phases 0-1: Foundation and Infrastructure
 
 ---
 
-[Unreleased]: https://github.com/williamzujkowski/nexus-agents/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/williamzujkowski/nexus-agents/compare/v2.1.0...HEAD
+[2.1.0]: https://github.com/williamzujkowski/nexus-agents/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/williamzujkowski/nexus-agents/compare/v1.0.0...v2.0.0
 [1.0.0]: https://github.com/williamzujkowski/nexus-agents/compare/v0.6.0...v1.0.0
 [0.6.0]: https://github.com/williamzujkowski/nexus-agents/compare/v0.5.0...v0.6.0
