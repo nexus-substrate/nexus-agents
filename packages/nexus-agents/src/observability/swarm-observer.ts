@@ -6,6 +6,10 @@
  *
  * @module observability/swarm-observer
  * (Source: Alignment Roadmap Phase 1, Issue #158)
+ *
+ * File length justification: Core SwarmObserver class with types already
+ * extracted to swarm-observer-types.ts. Private methods are tightly coupled
+ * to class state (events, graph, agentStates) and cannot cleanly extract.
  */
 
 import { randomUUID } from 'node:crypto';
