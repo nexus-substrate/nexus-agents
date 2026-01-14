@@ -35,7 +35,8 @@ export type CliCommand =
   | 'system-review'
   | 'vote'
   | 'index'
-  | 'research';
+  | 'research'
+  | 'validation';
 
 /**
  * Parsed CLI arguments and command.
@@ -185,6 +186,7 @@ COMMANDS:
   system-review   Run automated system review (5-phase checklist)
   index           Generate and manage codebase index
   research        Manage research registry and index
+  validation      Show learning validation dashboard
 
 OPTIONS:
   -h, --help           Show this help message
@@ -255,6 +257,13 @@ RESEARCH OPTIONS:
   --format=<table|json>  Output format (default: table)
   -o, --output=<path>    Custom output path for refresh
 
+VALIDATION OPTIONS:
+  --period=<period>      Time period: 1h, 24h, 7d, 30d, all (default: all)
+  --model=<name>         Filter to specific model(s) (comma-separated)
+  --task-type=<type>     Filter to specific task type(s) (comma-separated)
+  --min-sample=<n>       Minimum sample size for inclusion (default: 10)
+  --format=<fmt>         Output format: ascii, json (default: ascii)
+
 EXAMPLES:
   nexus-agents                  Start MCP server (default)
   nexus-agents --interactive    Start interactive REPL
@@ -286,6 +295,10 @@ EXAMPLES:
   nexus-agents research stats --format=json       Statistics as JSON
   nexus-agents research refresh                   Regenerate RESEARCH_INDEX.md
   nexus-agents research check                     Check if index is up to date
+  nexus-agents validation                         Show learning validation dashboard
+  nexus-agents validation --period=7d             Show dashboard for last 7 days
+  nexus-agents validation --format=json           Output dashboard as JSON
+  nexus-agents validation --model=claude          Filter to Claude only
 
 For more information, visit: https://github.com/williamzujkowski/nexus-agents
 `.trim();
@@ -312,6 +325,7 @@ export function isValidCommand(value: string): value is CliCommand {
     'vote',
     'index',
     'research',
+    'validation',
   ];
   return validCommands.includes(value as CliCommand);
 }

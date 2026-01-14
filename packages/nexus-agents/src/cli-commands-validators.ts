@@ -66,3 +66,9 @@ export function isValidResearchFormat(value: string): value is 'table' | 'json' 
  * Re-export isValidResearchSubcommand from research-command.
  */
 export { isValidResearchSubcommand } from './cli/index.js';
+
+/**
+ * Re-export validation dashboard validators.
+ * (Source: Issue #273)
+ */
+export { isValidPeriod, isValidDashboardFormat } from './cli/index.js';

@@ -92,3 +92,25 @@ export function printResearchUsage(): void {
   process.stdout.write('  refresh          Regenerate RESEARCH_INDEX.md\n');
   process.stdout.write('  check            Check if index is up to date\n');
 }
+
+/**
+ * Prints validation dashboard command usage and exits.
+ * (Source: Issue #273)
+ */
+export function printValidationUsage(): void {
+  process.stdout.write('Usage: nexus-agents validation [options]\n');
+  process.stdout.write('Options:\n');
+  process.stdout.write(
+    '  --period=<period>    Time period: 1h, 24h, 7d, 30d, all (default: all)\n'
+  );
+  process.stdout.write('  --model=<name>       Filter to specific model(s) (comma-separated)\n');
+  process.stdout.write(
+    '  --task-type=<type>   Filter to specific task type(s) (comma-separated)\n'
+  );
+  process.stdout.write('  --min-sample=<n>     Minimum sample size for inclusion (default: 10)\n');
+  process.stdout.write('  --format=<fmt>       Output format: ascii, json (default: ascii)\n');
+  process.stdout.write('Examples:\n');
+  process.stdout.write('  nexus-agents validation                    Show learning dashboard\n');
+  process.stdout.write('  nexus-agents validation --period=7d        Last 7 days only\n');
+  process.stdout.write('  nexus-agents validation --format=json      Output as JSON\n');
+}

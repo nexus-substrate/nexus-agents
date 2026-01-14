@@ -24,6 +24,8 @@ import {
   indexCommand,
   formatIndexResult,
   researchCommand,
+  validationDashboardCommand,
+  parseValidationArgs,
 } from './cli/index.js';
 import { EXIT_CODES, HELP_TEXT, type ParsedCliArgs } from './cli-types.js';
 import { startServer } from './cli-server.js';
@@ -313,6 +315,16 @@ export async function handleResearchCommand(args: ParsedCliArgs): Promise<void> 
 }
 
 /**
+ * Handles the validation command for learning validation dashboard.
+ * (Source: Issue #273)
+ */
+export function handleValidationCommand(args: ParsedCliArgs): void {
+  const options = parseValidationArgs(args.positionals, args.options.format, args.options.verbose);
+  const exitCode = validationDashboardCommand(options);
+  process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
+}
+
+/**
  * Handles synchronous commands that don't require await.
  * Returns true if the command was handled.
  */
@@ -334,6 +346,9 @@ function handleSyncCommand(args: ParsedCliArgs): boolean {
       return true;
     case 'system-review':
       handleSystemReviewCommand(args);
+      return true;
+    case 'validation':
+      handleValidationCommand(args);
       return true;
     default:
       return false;

@@ -174,3 +174,18 @@ export type {
 // Codebase Index (Issue #240)
 export { indexCommand, formatIndexResult } from './index-command.js';
 export type { IndexSubcommand, IndexCommandOptions, IndexCommandResult } from './index-command.js';
+
+// Validation Dashboard (Issue #273)
+export {
+  validationDashboardCommand,
+  runValidationDashboard,
+  formatValidationDashboardResult,
+  parseValidationArgs,
+  isValidPeriod,
+  isValidDashboardFormat,
+  VALID_PERIODS,
+} from './validation-dashboard-command.js';
+export type {
+  ValidationDashboardOptions,
+  ValidationDashboardResult,
+} from './validation-dashboard-types.js';

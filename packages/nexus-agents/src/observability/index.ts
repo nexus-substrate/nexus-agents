@@ -90,3 +90,18 @@ export type {
 } from './routing-metrics.js';
 
 export { RoutingMetricsCollector, createRoutingMetricsCollector } from './routing-metrics.js';
+
+// Validation Dashboard (Issue #273)
+export type {
+  TimePeriod,
+  ModelPerformanceSummary,
+  TaskTypePerformance,
+  LearningProgress,
+  DashboardSummary,
+  DashboardHealthIndicators,
+  DashboardFilter,
+  DashboardRenderOptions,
+} from './validation-dashboard-types.js';
+export { DEFAULT_DASHBOARD_RENDER_OPTIONS } from './validation-dashboard-types.js';
+export type { DashboardOutcome } from './validation-dashboard.js';
+export { ValidationDashboard, createValidationDashboard } from './validation-dashboard.js';

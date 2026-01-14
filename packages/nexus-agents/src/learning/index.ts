@@ -66,3 +66,38 @@ export {
   DEFAULT_OUTCOME_STORAGE_CONFIG,
 } from './outcome-storage-types.js';
 export { SQLiteOutcomeStorage, createOutcomeStorage } from './outcome-storage.js';
+
+// Validation Statistics (Issue #273)
+export type {
+  ConfidenceInterval,
+  ComparisonResult,
+  DistributionStats,
+  RegretAnalysis,
+  WinLossAnalysis,
+  ExperimentResult,
+  PerformanceMatrixEntry,
+  StatisticalOptions,
+} from './validation-stats-types.js';
+export { DEFAULT_STATISTICAL_OPTIONS } from './validation-stats-types.js';
+export {
+  proportionConfidenceInterval,
+  meanConfidenceInterval,
+  compareProportions,
+  calculateDistributionStats,
+  calculateRegret,
+  calculateWinLoss,
+  calculateMinSampleSize,
+} from './validation-stats.js';
+
+// A/B Test Tracker (Issue #273)
+export type {
+  ExperimentStatus,
+  ExperimentVariant,
+  ExperimentDefinition,
+  ExperimentOutcome,
+  VariantStats,
+  ExperimentSummary,
+  ExperimentExport,
+  IAbTestTracker,
+} from './ab-test-types.js';
+export { AbTestTracker, createAbTestTracker } from './ab-test-tracker.js';
