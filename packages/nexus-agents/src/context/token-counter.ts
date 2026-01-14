@@ -17,221 +17,46 @@ import Anthropic from '@anthropic-ai/sdk';
 import { GoogleGenAI } from '@google/genai';
 import { type Tiktoken, encoding_for_model } from 'tiktoken';
 import type { Result, Message } from '../core/index.js';
-import { ok, err, NexusError, ErrorCode } from '../core/index.js';
+import { ok, err } from '../core/index.js';
+import type {
+  TokenCounterConfig,
+  TokenCountResult,
+  CacheEntry,
+  ITokenCounter,
+} from './token-counter-types.js';
+import {
+  TokenCounterProvider,
+  TokenCountError,
+  CHARS_PER_TOKEN,
+  DEFAULT_MAX_CACHE_SIZE,
+  DEFAULT_CACHE_TTL_MS,
+  TIKTOKEN_MODEL_MAP,
+} from './token-counter-types.js';
+import {
+  generateCacheKey,
+  messagesToAnthropicFormat,
+  extractSystemPrompt,
+} from './token-counter-helpers.js';
 
-/**
- * Supported model families for token counting.
- */
-export const TokenCounterProvider = {
-  ANTHROPIC: 'anthropic',
-  GEMINI: 'gemini',
-  OPENAI: 'openai',
-} as const;
+// Re-export types for backward compatibility
+export type {
+  TokenCounterConfig,
+  TokenCountResult,
+  CacheEntry,
+  ITokenCounter,
+} from './token-counter-types.js';
+export {
+  TokenCounterProvider,
+  TokenCountError,
+  CHARS_PER_TOKEN,
+  DEFAULT_MAX_CACHE_SIZE,
+  DEFAULT_CACHE_TTL_MS,
+  TIKTOKEN_MODEL_MAP,
+} from './token-counter-types.js';
 
-export type TokenCounterProvider = (typeof TokenCounterProvider)[keyof typeof TokenCounterProvider];
-
-/**
- * Error specific to token counting operations.
- */
-export class TokenCountError extends NexusError {
-  constructor(message: string, options?: { cause?: Error; context?: Record<string, unknown> }) {
-    super(message, { code: ErrorCode.MODEL_ERROR, ...options });
-    this.name = 'TokenCountError';
-  }
-}
-
-/**
- * Configuration for the token counter.
- */
-export interface TokenCounterConfig {
-  /** Anthropic API key (optional, required for Anthropic counting) */
-  anthropicApiKey?: string;
-  /** Google API key (optional, required for Gemini counting) */
-  googleApiKey?: string;
-  /** Maximum cache entries (default: 1000) */
-  maxCacheSize?: number;
-  /** Cache TTL in milliseconds (default: 5 minutes) */
-  cacheTtlMs?: number;
-}
-
-/**
- * Token counting result with metadata.
- */
-export interface TokenCountResult {
-  /** Number of tokens */
-  count: number;
-  /** Whether the result was from cache */
-  cached: boolean;
-  /** Provider used for counting */
-  provider: TokenCounterProvider | 'estimate';
-  /** Model used (if applicable) */
-  model?: string;
-}
-
-/**
- * Cache entry for token counts.
- */
-interface CacheEntry {
-  count: number;
-  provider: TokenCounterProvider | 'estimate';
-  model?: string;
-  timestamp: number;
-}
-
-/**
- * Interface for token counting operations.
- */
-export interface ITokenCounter {
-  /**
-   * Count tokens for Anthropic/Claude models via API.
-   * @param messages - Messages to count tokens for
-   * @param model - Model identifier (e.g., 'claude-sonnet-4')
-   * @returns Promise with token count result
-   */
-  countAnthropic(
-    messages: Message[],
-    model: string
-  ): Promise<Result<TokenCountResult, TokenCountError>>;
-
-  /**
-   * Count tokens for Gemini models via API.
-   * @param content - Text content to count tokens for
-   * @param model - Model identifier (e.g., 'gemini-2.0-flash')
-   * @returns Promise with token count result
-   */
-  countGemini(content: string, model: string): Promise<Result<TokenCountResult, TokenCountError>>;
-
-  /**
-   * Count tokens for OpenAI models using local tiktoken.
-   * @param text - Text to count tokens for
-   * @param model - Model identifier (default: 'gpt-4o')
-   * @returns Token count result (synchronous, local)
-   */
-  countOpenAI(text: string, model?: string): Result<TokenCountResult, TokenCountError>;
-
-  /**
-   * Estimate tokens offline using character-based heuristic.
-   * @param text - Text to estimate tokens for
-   * @returns Estimated token count
-   */
-  estimate(text: string): number;
-
-  /**
-   * Clear the token count cache.
-   */
-  clearCache(): void;
-
-  /**
-   * Get current cache statistics.
-   */
-  getCacheStats(): { size: number; maxSize: number; ttlMs: number };
-}
-
-/**
- * Characters per token estimates by provider.
- * (Source: Provider documentation and empirical testing)
- */
-const CHARS_PER_TOKEN = {
-  anthropic: 3.5, // Claude models
-  gemini: 4.0, // Gemini models
-  openai: 4.0, // GPT models
-  default: 4.0, // Generic fallback
-} as const;
-
-/**
- * Default maximum cache entries.
- */
-const DEFAULT_MAX_CACHE_SIZE = 1000;
-
-/**
- * Default cache TTL (5 minutes).
- */
-const DEFAULT_CACHE_TTL_MS = 5 * 60 * 1000;
-
-/**
- * Tiktoken model mappings for OpenAI.
- * Maps model names to tiktoken encoding names.
- */
-const TIKTOKEN_MODEL_MAP: Record<string, string> = {
-  'gpt-4o': 'gpt-4o',
-  'gpt-4o-mini': 'gpt-4o',
-  'gpt-4-turbo': 'gpt-4-turbo',
-  'gpt-4': 'gpt-4',
-  'gpt-3.5-turbo': 'gpt-3.5-turbo',
-  o1: 'o1',
-  'o1-mini': 'o1',
-  'o1-preview': 'o1',
-} as const;
-
-/**
- * Generates a cache key from content.
- */
-function generateCacheKey(
-  content: string | Message[],
-  provider: TokenCounterProvider | 'estimate',
-  model?: string
-): string {
-  const contentStr = typeof content === 'string' ? content : JSON.stringify(content);
-  return `${provider}:${model ?? 'default'}:${contentStr}`;
-}
-
-/**
- * Converts Message[] to Anthropic MessageParam[] format.
- */
-function messagesToAnthropicFormat(messages: Message[]): Anthropic.MessageParam[] {
-  return messages
-    .filter((m) => m.role !== 'system')
-    .map((m) => {
-      const role = m.role === 'user' ? 'user' : 'assistant';
-      if (typeof m.content === 'string') {
-        return { role, content: m.content };
-      }
-      // Map content blocks
-      const content = m.content.map((block) => {
-        if (block.type === 'text') {
-          return { type: 'text' as const, text: block.text };
-        }
-        if (block.type === 'tool_use') {
-          return {
-            type: 'tool_use' as const,
-            id: block.id,
-            name: block.name,
-            input: block.input,
-          };
-        }
-        if (block.type === 'tool_result') {
-          return {
-            type: 'tool_result' as const,
-            tool_use_id: block.tool_use_id,
-            content: block.content,
-          };
-        }
-        // Image type - handle source type properly
-        return {
-          type: 'image' as const,
-          source: block.source as Anthropic.ImageBlockParam['source'],
-        };
-      });
-      return { role, content };
-    });
-}
-
-/**
- * Extracts system prompt from messages if present.
- */
-function extractSystemPrompt(messages: Message[]): string | undefined {
-  const systemMsg = messages.find((m) => m.role === 'system');
-  if (systemMsg === undefined) {
-    return undefined;
-  }
-  if (typeof systemMsg.content === 'string') {
-    return systemMsg.content;
-  }
-  return systemMsg.content
-    .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
-    .map((b) => b.text)
-    .join('\n');
-}
+// ============================================================================
+// Token Counter Implementation
+// ============================================================================
 
 /**
  * Universal token counter supporting multiple providers.
