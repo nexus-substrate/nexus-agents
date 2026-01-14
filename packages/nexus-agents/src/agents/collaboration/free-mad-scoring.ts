@@ -23,6 +23,15 @@ import type {
   VoteDecision,
 } from './free-mad-types.js';
 import { DEFAULT_FREE_MAD_CONFIG } from './free-mad-types.js';
+import {
+  findMajority,
+  detectConformity,
+  computePositionScores,
+  findWinningPosition,
+  countSimpleVotes,
+  getSimpleMajority,
+  generateReasoning,
+} from './free-mad-helpers.js';
 
 /**
  * Options for recording a position.
@@ -119,9 +128,10 @@ export class FreeMadScorer {
     }
 
     const totalAgents = roundPositions.length;
-    const { majorityPosition, majorityStrength } = this.findMajority(
+    const { majorityPosition, majorityStrength } = findMajority(
       positionDistribution,
-      totalAgents
+      totalAgents,
+      this.config.majorityThreshold
     );
 
     const snapshot: RoundSnapshot = {
@@ -132,101 +142,9 @@ export class FreeMadScorer {
     };
 
     trajectory.roundSnapshots.push(snapshot);
-    this.detectConformity(trajectory, snapshot);
+    detectConformity(trajectory, snapshot, this.config, this.logger);
 
     return snapshot;
-  }
-
-  /**
-   * Finds the majority position if threshold is met.
-   */
-  private findMajority(
-    distribution: Map<string, string[]>,
-    totalAgents: number
-  ): { majorityPosition: string | null; majorityStrength: number | null } {
-    let majorityPosition: string | null = null;
-    let majorityStrength: number | null = null;
-
-    for (const [position, agents] of distribution) {
-      const strength = agents.length / totalAgents;
-      if (strength >= this.config.majorityThreshold) {
-        if (majorityStrength === null || strength > majorityStrength) {
-          majorityPosition = position;
-          majorityStrength = strength;
-        }
-      }
-    }
-
-    return { majorityPosition, majorityStrength };
-  }
-
-  /**
-   * Detects conformity behavior in the trajectory.
-   */
-  private detectConformity(trajectory: DebateTrajectory, snapshot: RoundSnapshot): void {
-    if (snapshot.majorityPosition === null || snapshot.round === 0) {
-      return;
-    }
-
-    const prevSnapshot = trajectory.roundSnapshots.find((s) => s.round === snapshot.round - 1);
-    if (prevSnapshot === undefined) {
-      return;
-    }
-
-    for (const agentTrajectory of trajectory.agentTrajectories.values()) {
-      this.checkAgentConformity(agentTrajectory, snapshot, prevSnapshot);
-    }
-  }
-
-  /**
-   * Checks if a single agent conformed to majority.
-   */
-  private checkAgentConformity(
-    agentTrajectory: AgentTrajectory,
-    snapshot: RoundSnapshot,
-    prevSnapshot: RoundSnapshot
-  ): void {
-    const currentPos = agentTrajectory.positions.find((p) => p.round === snapshot.round);
-    const prevPos = agentTrajectory.positions.find((p) => p.round === snapshot.round - 1);
-
-    if (currentPos === undefined || prevPos === undefined) {
-      return;
-    }
-
-    if (currentPos.position === prevPos.position) {
-      return; // No position change
-    }
-
-    agentTrajectory.positionChanges++;
-
-    if (currentPos.position !== snapshot.majorityPosition) {
-      return; // Didn't change to majority
-    }
-
-    const wasInMajority =
-      prevSnapshot.majorityPosition !== null && prevPos.position === prevSnapshot.majorityPosition;
-
-    if (wasInMajority) {
-      return; // Was already in majority
-    }
-
-    agentTrajectory.conformedToMajority = true;
-    agentTrajectory.conformityRounds.push(snapshot.round);
-    this.logConformity(
-      agentTrajectory.agentId,
-      snapshot.round,
-      prevPos.position,
-      currentPos.position
-    );
-  }
-
-  /**
-   * Logs conformity detection if verbose mode is enabled.
-   */
-  private logConformity(agentId: string, round: number, from: string, to: string): void {
-    if (this.config.verbose) {
-      this.logger.debug('Detected conformity', { agentId, round, from, to });
-    }
   }
 
   /**
@@ -317,15 +235,15 @@ export class FreeMadScorer {
     trajectory.endedAt = new Date();
     const scores = this.computeScores(trajectory);
 
-    const positionScores = this.computePositionScores(trajectory, scores);
+    const positionScores = computePositionScores(trajectory, scores);
 
-    const { winningPosition } = this.findWinningPosition(positionScores);
+    const { winningPosition } = findWinningPosition(positionScores);
 
-    const simpleVoteCounts = this.countSimpleVotes(trajectory);
-    const simpleMajority = this.getSimpleMajority(simpleVoteCounts);
+    const simpleVoteCounts = countSimpleVotes(trajectory);
+    const simpleMajority = getSimpleMajority(simpleVoteCounts);
     const antiConformityMattered = simpleMajority !== winningPosition;
 
-    const reasoning = this.generateReasoning(
+    const reasoning = generateReasoning(
       winningPosition,
       positionScores,
       scores,
@@ -348,115 +266,6 @@ export class FreeMadScorer {
       reasoning,
       trajectory,
     };
-  }
-
-  /**
-   * Computes weighted position scores.
-   */
-  private computePositionScores(
-    trajectory: DebateTrajectory,
-    scores: AntiConformityScore[]
-  ): Map<string, number> {
-    const positionScores = new Map<string, number>();
-
-    for (const agentTrajectory of trajectory.agentTrajectories.values()) {
-      const agentScore = scores.find((s) => s.agentId === agentTrajectory.agentId);
-      if (agentScore === undefined) {
-        continue;
-      }
-
-      const finalPos = agentTrajectory.positions[agentTrajectory.positions.length - 1];
-      if (finalPos === undefined) {
-        continue;
-      }
-
-      const currentScore = positionScores.get(finalPos.position) ?? 0;
-      positionScores.set(finalPos.position, currentScore + agentScore.finalScore);
-    }
-
-    return positionScores;
-  }
-
-  /**
-   * Finds the winning position from scores.
-   */
-  private findWinningPosition(positionScores: Map<string, number>): {
-    winningPosition: string;
-    maxScore: number;
-  } {
-    let winningPosition = '';
-    let maxScore = -1;
-
-    for (const [position, score] of positionScores) {
-      if (score > maxScore) {
-        maxScore = score;
-        winningPosition = position;
-      }
-    }
-
-    return { winningPosition, maxScore };
-  }
-
-  /**
-   * Counts simple votes (ignoring anti-conformity).
-   */
-  private countSimpleVotes(trajectory: DebateTrajectory): Map<string, number> {
-    const counts = new Map<string, number>();
-
-    for (const agentTrajectory of trajectory.agentTrajectories.values()) {
-      const finalPos = agentTrajectory.positions[agentTrajectory.positions.length - 1];
-      if (finalPos !== undefined) {
-        counts.set(finalPos.position, (counts.get(finalPos.position) ?? 0) + 1);
-      }
-    }
-
-    return counts;
-  }
-
-  /**
-   * Gets the simple majority position.
-   */
-  private getSimpleMajority(voteCounts: Map<string, number>): string {
-    let majority = '';
-    let maxCount = 0;
-
-    for (const [position, count] of voteCounts) {
-      if (count > maxCount) {
-        maxCount = count;
-        majority = position;
-      }
-    }
-
-    return majority;
-  }
-
-  /**
-   * Generates reasoning for the decision.
-   */
-  private generateReasoning(
-    winningPosition: string,
-    positionScores: Map<string, number>,
-    agentScores: AntiConformityScore[],
-    antiConformityMattered: boolean
-  ): string {
-    const parts: string[] = [];
-
-    parts.push(`Winning position: "${winningPosition}"`);
-
-    const scoresStr = Array.from(positionScores.entries())
-      .map(([pos, score]) => `"${pos}": ${score.toFixed(2)}`)
-      .join(', ');
-    parts.push(`Position scores: {${scoresStr}}`);
-
-    if (antiConformityMattered) {
-      parts.push('Anti-conformity scoring changed the outcome from simple majority.');
-      const conformerCount = agentScores.filter((s) => s.conformityPenalty < 0).length;
-      if (conformerCount > 0) {
-        parts.push(`${String(conformerCount)} agent(s) penalized for conforming to majority.`);
-      }
-    }
-
-    return parts.join(' ');
   }
 
   /**
