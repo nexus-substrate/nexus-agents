@@ -10,135 +10,20 @@
  * (Source: OWASP ASVS 4.0, Authorization Controls)
  */
 
-import { z } from 'zod';
+import { createLogger, type ILogger, type Result, ok, err } from '../../core/index.js';
 
-import {
-  createLogger,
-  type ILogger,
-  type Result,
-  ok,
-  err,
-  SecurityError,
-} from '../../core/index.js';
-
-// =============================================================================
-// Types
-// =============================================================================
-
-/**
- * Artifact type for policy context.
- * Artifacts are resources that can be referenced in policy decisions.
- */
-export interface Artifact<T = unknown> {
-  readonly id: string;
-  readonly type: string;
-  readonly value: T;
-  readonly createdAt: Date;
-}
-
-/**
- * Execution mode for tool operations.
- * - 'read-only': Only read operations allowed (default)
- * - 'read-write': Both read and write operations allowed
- */
-export type ExecutionMode = 'read-only' | 'read-write';
-
-/**
- * Policy enforcement mode.
- * - 'enforce': Block denied operations
- * - 'warn': Log denials but allow execution (for migration)
- */
-export type PolicyMode = 'enforce' | 'warn';
-
-/**
- * Result of a policy evaluation.
- */
-export interface PolicyDecision {
-  readonly allowed: boolean;
-  readonly reason: string;
-  readonly requiredArtifact?: string;
-  readonly ruleName?: string;
-}
-
-/**
- * Context provided to policy rules for evaluation.
- */
-export interface PolicyContext {
-  readonly toolName: string;
-  readonly args: unknown;
-  readonly mode: ExecutionMode;
-  readonly artifacts?: Map<string, Artifact>;
-  readonly workflowId?: string;
-  readonly allowedPaths?: readonly string[];
-}
-
-/**
- * A single policy rule that can approve or deny operations.
- */
-export interface PolicyRule {
-  readonly name: string;
-  readonly description: string;
-  check(ctx: PolicyContext): PolicyDecision;
-}
-
-/**
- * Interface for the policy firewall.
- */
-export interface IPolicyFirewall {
-  evaluate(ctx: PolicyContext): PolicyDecision;
-  addRule(rule: PolicyRule): void;
-  removeRule(name: string): boolean;
-  getRules(): readonly PolicyRule[];
-  setMode(mode: PolicyMode): void;
-  getMode(): PolicyMode;
-}
-
-/**
- * Configuration for the policy firewall.
- */
-export interface PolicyFirewallConfig {
-  /** Enforcement mode (default: 'enforce') */
-  readonly mode?: PolicyMode;
-  /** Logger instance */
-  readonly logger?: ILogger;
-  /** Initial rules to register */
-  readonly rules?: readonly PolicyRule[];
-}
-
-/**
- * Policy error for authorization failures.
- */
-export class PolicyError extends SecurityError {
-  readonly decision: PolicyDecision;
-
-  constructor(message: string, decision: PolicyDecision) {
-    super(message, {
-      context: {
-        allowed: decision.allowed,
-        reason: decision.reason,
-        ruleName: decision.ruleName,
-        requiredArtifact: decision.requiredArtifact,
-      },
-    });
-    this.name = 'PolicyError';
-    this.decision = decision;
-  }
-}
-
-// =============================================================================
-// Zod Schemas for Configuration
-// =============================================================================
-
-/**
- * Schema for policy configuration.
- */
-export const PolicyConfigSchema = z.object({
-  defaultMode: z.enum(['read-only', 'read-write']).default('read-only'),
-  policyMode: z.enum(['enforce', 'warn']).default('enforce'),
-  allowedPaths: z.array(z.string()).default(['./']),
-});
-
-export type PolicyConfig = z.infer<typeof PolicyConfigSchema>;
+import type {
+  Artifact,
+  ExecutionMode,
+  PolicyMode,
+  PolicyDecision,
+  PolicyContext,
+  PolicyRule,
+  IPolicyFirewall,
+  PolicyFirewallConfig,
+} from './policy-types.js';
+import { PolicyError } from './policy-types.js';
+import { denyMutationsWithoutModeRule, safePathsRule } from './policy-rules.js';
 
 // =============================================================================
 // PolicyFirewall Implementation
@@ -342,192 +227,6 @@ export class PolicyFirewall implements IPolicyFirewall {
 }
 
 // =============================================================================
-// Default Policy Rules
-// =============================================================================
-
-/**
- * Tools that are considered write/mutation operations.
- */
-const MUTATION_TOOLS = new Set([
-  'write_file',
-  'edit_file',
-  'delete_file',
-  'create_directory',
-  'remove_directory',
-  'execute_command',
-  'run_shell',
-  'bash',
-  'create_expert',
-  'run_workflow',
-]);
-
-/**
- * Tools that are considered read-only operations.
- */
-const READ_ONLY_TOOLS = new Set([
-  'read_file',
-  'list_directory',
-  'search_files',
-  'get_status',
-  'orchestrate',
-  'delegate_to_model',
-]);
-
-/**
- * Checks if a tool is a mutation operation.
- */
-function isMutationTool(toolName: string): boolean {
-  // Check explicit mutation tools
-  if (MUTATION_TOOLS.has(toolName)) {
-    return true;
-  }
-
-  // Check explicit read-only tools
-  if (READ_ONLY_TOOLS.has(toolName)) {
-    return false;
-  }
-
-  // Default to treating unknown tools as mutations (safe default)
-  return true;
-}
-
-/**
- * Policy rule that denies mutation operations when mode is 'read-only'.
- *
- * This ensures that write operations are only allowed when explicitly
- * enabled via the 'read-write' mode.
- */
-export const denyMutationsWithoutModeRule: PolicyRule = {
-  name: 'deny-mutations-without-mode',
-  description: 'Blocks write operations unless mode is read-write',
-  check(ctx: PolicyContext): PolicyDecision {
-    // If mode is read-write, allow all operations
-    if (ctx.mode === 'read-write') {
-      return { allowed: true, reason: 'Read-write mode enabled' };
-    }
-
-    // Check if this is a mutation tool
-    if (isMutationTool(ctx.toolName)) {
-      return {
-        allowed: false,
-        reason: `Tool '${ctx.toolName}' is a mutation operation but mode is '${ctx.mode}'. Set mode to 'read-write' to enable.`,
-      };
-    }
-
-    // Read-only tool in read-only mode is allowed
-    return { allowed: true, reason: 'Read-only operation allowed' };
-  },
-};
-
-/**
- * Validates a path against allowed roots.
- *
- * @param targetPath - The path to validate
- * @param allowedPaths - Array of allowed root paths
- * @returns True if the path is within an allowed root
- */
-function isPathSafe(targetPath: string, allowedPaths: readonly string[]): boolean {
-  // Normalize the target path
-  const normalizedTarget = normalizePath(targetPath);
-
-  // Check if any allowed path is a prefix of the target
-  for (const allowed of allowedPaths) {
-    const normalizedAllowed = normalizePath(allowed);
-    if (normalizedTarget.startsWith(normalizedAllowed)) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-/**
- * Normalizes a path by removing trailing slashes and handling relative paths.
- */
-function normalizePath(p: string): string {
-  // Remove trailing slashes
-  let normalized = p.replace(/\/+$/, '');
-
-  // Handle relative paths
-  if (normalized === '.') {
-    normalized = '';
-  } else if (normalized.startsWith('./')) {
-    normalized = normalized.slice(2);
-  }
-
-  // Ensure absolute-like comparison
-  if (!normalized.startsWith('/')) {
-    normalized = '/' + normalized;
-  }
-
-  return normalized;
-}
-
-/**
- * Extracts path from tool arguments if present.
- */
-function extractPathFromArgs(args: unknown): string | undefined {
-  if (args === null || typeof args !== 'object') {
-    return undefined;
-  }
-
-  const argsObj = args as Record<string, unknown>;
-
-  // Common path field names
-  const pathFields = ['path', 'filePath', 'file_path', 'directory', 'dir', 'target'];
-
-  for (const field of pathFields) {
-    const value = argsObj[field];
-    if (typeof value === 'string') {
-      return value;
-    }
-  }
-
-  return undefined;
-}
-
-/**
- * Policy rule that validates paths against allowed roots.
- *
- * Prevents path traversal attacks by ensuring all file operations
- * target paths within configured allowed directories.
- */
-export const safePathsRule: PolicyRule = {
-  name: 'safe-paths',
-  description: 'Validates paths against allowed root directories',
-  check(ctx: PolicyContext): PolicyDecision {
-    // Extract path from arguments
-    const targetPath = extractPathFromArgs(ctx.args);
-
-    // If no path in args, allow (not a file operation)
-    if (targetPath === undefined) {
-      return { allowed: true, reason: 'No path argument found' };
-    }
-
-    // Check for obvious path traversal attempts
-    if (targetPath.includes('..')) {
-      return {
-        allowed: false,
-        reason: `Path contains '..' which may indicate path traversal: ${targetPath}`,
-      };
-    }
-
-    // Get allowed paths from context or use default
-    const allowedPaths = ctx.allowedPaths ?? ['./'];
-
-    // Validate path is within allowed roots
-    if (!isPathSafe(targetPath, allowedPaths)) {
-      return {
-        allowed: false,
-        reason: `Path '${targetPath}' is outside allowed directories: ${allowedPaths.join(', ')}`,
-      };
-    }
-
-    return { allowed: true, reason: 'Path is within allowed directories' };
-  },
-};
-
-// =============================================================================
 // Factory Functions
 // =============================================================================
 
@@ -615,3 +314,11 @@ export function createPolicyContext(
 
   return result as unknown as PolicyContext;
 }
+
+// =============================================================================
+// Re-exports for backward compatibility
+// =============================================================================
+
+export * from './policy-types.js';
+export * from './policy-rules.js';
+export * from './policy-helpers.js';

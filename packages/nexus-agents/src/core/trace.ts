@@ -5,204 +5,17 @@
  * Provides minimal overhead tracing for LLM operations.
  */
 
-import { randomUUID } from 'node:crypto';
 import type { ILogger, LogContext } from './logger.js';
 import { createLogger } from './logger.js';
-
-// =============================================================================
-// Types
-// =============================================================================
-
-/**
- * Trace context for correlating spans across operations.
- */
-export interface TraceContext {
-  /** Unique identifier for the entire trace */
-  traceId: string;
-  /** Span ID of the parent span (if nested) */
-  parentSpanId?: string;
-  /** Unique identifier for this span */
-  spanId: string;
-}
-
-/**
- * Status of a trace span.
- */
-export type SpanStatus = 'running' | 'success' | 'error';
-
-/**
- * LLM-specific metrics collected during a span.
- */
-export interface LLMMetrics {
-  /** Number of input tokens processed */
-  inputTokens: number;
-  /** Number of output tokens generated */
-  outputTokens: number;
-  /** Model identifier used */
-  model: string;
-  /** Provider identifier (e.g., 'anthropic', 'openai') */
-  provider: string;
-  /** Calculated cost in USD (optional) */
-  costUsd?: number;
-}
-
-/**
- * A single trace span representing a unit of work.
- */
-export interface TraceSpan {
-  /** Trace context for this span */
-  context: TraceContext;
-  /** Human-readable name for this span */
-  name: string;
-  /** Start time in milliseconds since epoch */
-  startTime: number;
-  /** End time in milliseconds since epoch (set when span ends) */
-  endTime?: number;
-  /** Current status of the span */
-  status: SpanStatus;
-  /** Arbitrary attributes attached to the span */
-  attributes: Record<string, unknown>;
-  /** LLM metrics if this span involves model calls */
-  llmMetrics?: LLMMetrics;
-  /** Error message if status is 'error' */
-  errorMessage?: string;
-}
-
-/**
- * Aggregated metrics across multiple spans.
- */
-export interface AggregatedMetrics {
-  /** Total spans created */
-  totalSpans: number;
-  /** Spans completed successfully */
-  successfulSpans: number;
-  /** Spans that ended in error */
-  errorSpans: number;
-  /** Total input tokens across all LLM calls */
-  totalInputTokens: number;
-  /** Total output tokens across all LLM calls */
-  totalOutputTokens: number;
-  /** Total cost in USD across all LLM calls */
-  totalCostUsd: number;
-  /** Duration in milliseconds */
-  durationMs: number;
-  /** Breakdown by model */
-  byModel: Record<string, { inputTokens: number; outputTokens: number; costUsd: number }>;
-  /** Breakdown by provider */
-  byProvider: Record<string, { inputTokens: number; outputTokens: number; costUsd: number }>;
-}
-
-/**
- * Configuration for the Tracer.
- */
-export interface TracerConfig {
-  /** Whether tracing is enabled (default: true) */
-  enabled?: boolean;
-  /** Logger to use for trace output */
-  logger?: ILogger;
-  /** Maximum number of spans to retain in memory */
-  maxSpans?: number;
-  /** Whether to log span events */
-  logSpans?: boolean;
-}
-
-// =============================================================================
-// Model Pricing (per 1M tokens, USD)
-// =============================================================================
-
-/**
- * Pricing information for a model.
- * (Source: Provider pricing pages, verified 2026-01-04)
- */
-interface ModelPricing {
-  inputPer1M: number;
-  outputPer1M: number;
-}
-
-/**
- * Model pricing table.
- * Prices are in USD per 1 million tokens.
- */
-const MODEL_PRICING: Record<string, ModelPricing> = {
-  // Anthropic Claude models (Source: anthropic.com/pricing)
-  'claude-opus-4': { inputPer1M: 15.0, outputPer1M: 75.0 },
-  'claude-sonnet-4': { inputPer1M: 3.0, outputPer1M: 15.0 },
-  'claude-3-5-sonnet': { inputPer1M: 3.0, outputPer1M: 15.0 },
-  'claude-3-5-haiku': { inputPer1M: 0.8, outputPer1M: 4.0 },
-  'claude-3-opus': { inputPer1M: 15.0, outputPer1M: 75.0 },
-  'claude-3-sonnet': { inputPer1M: 3.0, outputPer1M: 15.0 },
-  'claude-3-haiku': { inputPer1M: 0.25, outputPer1M: 1.25 },
-
-  // OpenAI models (Source: openai.com/pricing)
-  'gpt-4o': { inputPer1M: 2.5, outputPer1M: 10.0 },
-  'gpt-4o-mini': { inputPer1M: 0.15, outputPer1M: 0.6 },
-  'gpt-4-turbo': { inputPer1M: 10.0, outputPer1M: 30.0 },
-  'gpt-4': { inputPer1M: 30.0, outputPer1M: 60.0 },
-  'gpt-3.5-turbo': { inputPer1M: 0.5, outputPer1M: 1.5 },
-  o1: { inputPer1M: 15.0, outputPer1M: 60.0 },
-  'o1-mini': { inputPer1M: 3.0, outputPer1M: 12.0 },
-
-  // Google models (Source: cloud.google.com/vertex-ai/pricing)
-  'gemini-2.0-flash': { inputPer1M: 0.1, outputPer1M: 0.4 },
-  'gemini-1.5-pro': { inputPer1M: 1.25, outputPer1M: 5.0 },
-  'gemini-1.5-flash': { inputPer1M: 0.075, outputPer1M: 0.3 },
-};
-
-// =============================================================================
-// Cost Calculation
-// =============================================================================
-
-/**
- * Calculates the cost of an LLM call based on token usage.
- *
- * @param model - Model identifier
- * @param inputTokens - Number of input tokens
- * @param outputTokens - Number of output tokens
- * @returns Cost in USD, or undefined if pricing not available
- */
-export function calculateCost(
-  model: string,
-  inputTokens: number,
-  outputTokens: number
-): number | undefined {
-  // Try exact match first
-  let pricing = MODEL_PRICING[model];
-
-  // If not found, try partial match (e.g., 'claude-sonnet-4-20250514' -> 'claude-sonnet-4')
-  if (pricing === undefined) {
-    const baseModel = Object.keys(MODEL_PRICING).find((key) => model.startsWith(key));
-    if (baseModel !== undefined) {
-      pricing = MODEL_PRICING[baseModel];
-    }
-  }
-
-  if (pricing === undefined) {
-    return undefined;
-  }
-
-  const inputCost = (inputTokens / 1_000_000) * pricing.inputPer1M;
-  const outputCost = (outputTokens / 1_000_000) * pricing.outputPer1M;
-
-  return inputCost + outputCost;
-}
-
-// =============================================================================
-// ID Generation
-// =============================================================================
-
-/**
- * Generates a UUID-based trace ID.
- */
-export function generateTraceId(): string {
-  return randomUUID();
-}
-
-/**
- * Generates a UUID-based span ID.
- */
-export function generateSpanId(): string {
-  return randomUUID();
-}
+import type {
+  TraceContext,
+  LLMMetrics,
+  TraceSpan,
+  AggregatedMetrics,
+  TracerConfig,
+} from './trace-types.js';
+import { calculateCost } from './trace-pricing.js';
+import { generateTraceId, generateSpanId, setTracerFactory } from './trace-helpers.js';
 
 // =============================================================================
 // Tracer Class
@@ -657,88 +470,16 @@ export class Tracer {
 }
 
 // =============================================================================
-// Trace Helpers
+// Initialize tracer factory (breaks circular dependency)
 // =============================================================================
 
-/** Global tracer instance */
-let globalTracer: Tracer | undefined;
+// Register the Tracer factory so trace-helpers can create instances
+setTracerFactory((config?: TracerConfig) => new Tracer(config));
 
-/**
- * Gets or creates the global tracer instance.
- *
- * @param config - Optional configuration for creating the tracer
- * @returns The global tracer instance
- */
-export function getTracer(config?: TracerConfig): Tracer {
-  globalTracer ??= new Tracer(config);
-  return globalTracer;
-}
+// =============================================================================
+// Re-exports for backward compatibility
+// =============================================================================
 
-/**
- * Sets the global tracer instance.
- *
- * @param tracer - The tracer to use globally
- */
-export function setTracer(tracer: Tracer): void {
-  globalTracer = tracer;
-}
-
-/**
- * Wraps a function in a span, automatically tracking duration and errors.
- *
- * @param name - Name for the span
- * @param fn - Async function to wrap
- * @param attributes - Optional attributes to attach to the span
- * @returns Result of the wrapped function
- *
- * @example
- * ```typescript
- * const result = await withSpan('process-request', async () => {
- *   return await processRequest(data);
- * });
- * ```
- */
-export async function withSpan<T>(
-  name: string,
-  fn: () => Promise<T>,
-  attributes: Record<string, unknown> = {}
-): Promise<T> {
-  const tracer = getTracer();
-  const span = tracer.startSpan(name, attributes);
-
-  if (span === undefined) {
-    // Tracing disabled, just run the function
-    return fn();
-  }
-
-  try {
-    const result = await fn();
-    tracer.endSpan(span.context.spanId, 'success');
-    return result;
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    tracer.endSpan(span.context.spanId, 'error', errorMessage);
-    throw error;
-  }
-}
-
-/**
- * Records LLM metrics on the global tracer.
- *
- * @param spanId - ID of the span to record metrics for
- * @param metrics - LLM metrics to record
- */
-export function recordLLMMetrics(spanId: string, metrics: Omit<LLMMetrics, 'costUsd'>): void {
-  const tracer = getTracer();
-  tracer.recordLLMMetrics(spanId, metrics);
-}
-
-/**
- * Gets the current trace context from the global tracer.
- *
- * @returns Current trace context, or undefined if no trace is active
- */
-export function getTraceContext(): TraceContext | undefined {
-  const tracer = getTracer();
-  return tracer.getCurrentContext();
-}
+export * from './trace-types.js';
+export * from './trace-pricing.js';
+export * from './trace-helpers.js';
