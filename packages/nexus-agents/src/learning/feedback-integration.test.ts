@@ -57,12 +57,14 @@ function createMockRouter(): ICompositeRouter {
   return {
     route: vi.fn(),
     recordOutcome: vi.fn(),
+    recordPreference: vi.fn(),
     getStats: vi.fn().mockReturnValue({
       totalDecisions: 0,
       decisionsPerCli: { claude: 0, gemini: 0, codex: 0 },
       avgDecisionTimeMs: 0,
       budgetRejectionRate: 0,
     }),
+    hasMinimumPreferenceData: vi.fn().mockReturnValue(false),
   };
 }
 

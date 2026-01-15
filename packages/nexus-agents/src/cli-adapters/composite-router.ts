@@ -15,21 +15,30 @@ import type { ILogger } from '../core/index.js';
 import type { Task } from '../core/types/agent.js';
 import type { ICliAdapter, CliName, CliTask, BudgetConstraint } from './types.js';
 import { BudgetRouter } from './budget-router.js';
-import type { BanditContext } from './budget-router-types.js';
 import { TopsisRouter } from './topsis-router.js';
-import type { TopsisResult, TopsisModelProfile } from './topsis-types.js';
+import type { TopsisResult } from './topsis-types.js';
 import { DEFAULT_MODEL_PROFILES } from './topsis-types.js';
 import { LinUCBBandit } from './linucb-bandit.js';
+import { PreferenceRouter } from './preference-router.js';
+import type { PreferenceRouterConfig } from './preference-router-types.js';
 import { analyzeTask, type TaskProfile } from './task-analyzer.js';
 import {
   CompositeRouterConfigSchema,
   CompositeRoutingError,
   type CompositeRouterConfig,
+  type CompositeRouterConfigWithPreference,
   type CompositeRoutingDecision,
   type CompositeRouterStats,
   type PipelineResult,
   type BuildDecisionParams,
 } from './composite-router-types.js';
+import {
+  adjustProfileForTask,
+  taskProfileToBanditContext,
+  calculateConfidence,
+  buildReason,
+  filterByPreferenceTier,
+} from './composite-router-helpers.js';
 
 // Re-export types for consumers
 export {
@@ -37,6 +46,7 @@ export {
   DEFAULT_COMPOSITE_CONFIG,
   CompositeRoutingError,
   type CompositeRouterConfig,
+  type CompositeRouterConfigWithPreference,
   type CompositeRoutingDecision,
   type CompositeRouterStats,
 } from './composite-router-types.js';
@@ -49,19 +59,29 @@ export interface ICompositeRouter {
   route(task: CliTask): Promise<Result<CompositeRoutingDecision, CompositeRoutingError>>;
   /** Update learning models with outcome feedback */
   recordOutcome(cliName: CliName, task: CliTask, reward: number): void;
+  /** Record a preference data point for preference-trained routing */
+  recordPreference(
+    query: string,
+    strongModelPreferred: boolean,
+    quality?: { strong?: number; weak?: number }
+  ): void;
   /** Get router statistics */
   getStats(): CompositeRouterStats;
+  /** Check if preference router has minimum data for learned routing */
+  hasMinimumPreferenceData(): boolean;
 }
 
 /**
  * CompositeRouter implementation.
- * Chains Budget → TOPSIS → LinUCB for intelligent model selection.
+ * Chains Budget → Preference → TOPSIS → LinUCB for intelligent model selection.
  */
 export class CompositeRouter implements ICompositeRouter {
   private readonly config: CompositeRouterConfig;
+  private readonly preferenceRouterConfig?: Partial<PreferenceRouterConfig>;
   private readonly logger: ILogger;
   private readonly adapters: Map<CliName, ICliAdapter>;
   private budgetRouter?: BudgetRouter;
+  private preferenceRouter?: PreferenceRouter;
   private topsisRouter?: TopsisRouter;
   private linucbBandit?: LinUCBBandit;
   private readonly cliNames: CliName[];
@@ -74,10 +94,15 @@ export class CompositeRouter implements ICompositeRouter {
 
   constructor(
     adapters: Map<CliName, ICliAdapter>,
-    config?: Partial<CompositeRouterConfig>,
+    config?: Partial<CompositeRouterConfigWithPreference>,
     logger?: ILogger
   ) {
-    this.config = CompositeRouterConfigSchema.parse(config ?? {});
+    const { preferenceRouterConfig, ...baseConfig } = config ?? {};
+    this.config = CompositeRouterConfigSchema.parse(baseConfig);
+    // Only assign if defined (exactOptionalPropertyTypes compliance)
+    if (preferenceRouterConfig !== undefined) {
+      this.preferenceRouterConfig = preferenceRouterConfig;
+    }
     this.logger = logger ?? createLogger({ component: 'CompositeRouter' });
     this.adapters = adapters;
     this.cliNames = Array.from(adapters.keys());
@@ -85,6 +110,9 @@ export class CompositeRouter implements ICompositeRouter {
     // Initialize enabled routers
     if (this.config.enableBudgetFilter && adapters.size > 0) {
       this.budgetRouter = new BudgetRouter(adapters);
+    }
+    if (this.config.enablePreferenceRouting) {
+      this.preferenceRouter = new PreferenceRouter(preferenceRouterConfig);
     }
     if (this.config.enableTopsisRanking) {
       this.topsisRouter = new TopsisRouter();
@@ -96,6 +124,7 @@ export class CompositeRouter implements ICompositeRouter {
     this.logger.info('CompositeRouter initialized', {
       adapterCount: adapters.size,
       enableBudget: this.config.enableBudgetFilter,
+      enablePreference: this.config.enablePreferenceRouting,
       enableTopsis: this.config.enableTopsisRanking,
       enableLinUCB: this.config.enableLinUCBSelection,
     });
@@ -156,14 +185,22 @@ export class CompositeRouter implements ICompositeRouter {
       }
     }
 
-    // Step 2: TOPSIS ranking
+    // Step 2: Preference routing (optional, filters candidates based on learned preferences)
+    const { preferenceScore, preferenceTier, preferredCandidates } = this.runPreferenceStage(
+      task,
+      candidates,
+      stagesExecuted
+    );
+    candidates = preferredCandidates;
+
+    // Step 3: TOPSIS ranking
     const { ranking: topsisRanking, score: topsisScore } = this.runTopsisStage(
       taskProfile,
       candidates,
       stagesExecuted
     );
 
-    // Step 3: LinUCB selection
+    // Step 4: LinUCB selection
     const { selectedCli, ucbScore } = this.runLinUCBStage(
       taskProfile,
       topsisRanking,
@@ -173,7 +210,16 @@ export class CompositeRouter implements ICompositeRouter {
       return err(new CompositeRoutingError('No candidates available', 'selection'));
     }
 
-    return ok({ candidates, withinBudget, topsisRanking, topsisScore, selectedCli, ucbScore });
+    return ok({
+      candidates,
+      withinBudget,
+      preferenceScore,
+      preferenceTier,
+      topsisRanking,
+      topsisScore,
+      selectedCli,
+      ucbScore,
+    });
   }
 
   private runTopsisStage(
@@ -197,10 +243,61 @@ export class CompositeRouter implements ICompositeRouter {
     if (!this.config.enableLinUCBSelection || this.linucbBandit === undefined) {
       return { selectedCli: topsisRanking[0], ucbScore: undefined };
     }
-    const banditContext = this.taskProfileToBanditContext(taskProfile);
+    const banditContext = taskProfileToBanditContext(taskProfile);
     const selection = this.linucbBandit.select(banditContext);
     stagesExecuted.push('linucb-selection');
     return { selectedCli: selection.armName as CliName, ucbScore: selection.ucbScore };
+  }
+
+  private runPreferenceStage(
+    task: CliTask,
+    candidates: CliName[],
+    stagesExecuted: string[]
+  ): {
+    preferenceScore: number | undefined;
+    preferenceTier: 'strong' | 'weak' | undefined;
+    preferredCandidates: CliName[];
+  } {
+    // Skip if preference routing disabled or router not initialized
+    if (!this.config.enablePreferenceRouting || this.preferenceRouter === undefined) {
+      return {
+        preferenceScore: undefined,
+        preferenceTier: undefined,
+        preferredCandidates: candidates,
+      };
+    }
+
+    // Skip if insufficient data for learned routing
+    if (!this.preferenceRouter.hasMinimumData()) {
+      this.logger.debug('Preference routing skipped: insufficient data');
+      return {
+        preferenceScore: undefined,
+        preferenceTier: undefined,
+        preferredCandidates: candidates,
+      };
+    }
+
+    // Run preference routing
+    const decision = this.preferenceRouter.route(task.content);
+    stagesExecuted.push('preference-routing');
+
+    // Filter candidates based on preference tier
+    // Strong tier prefers powerful models (claude), weak tier prefers efficient models (gemini, codex)
+    const preferredCandidates = filterByPreferenceTier(candidates, decision.selectedTier);
+
+    this.logger.debug('Preference routing applied', {
+      tier: decision.selectedTier,
+      probability: decision.prediction.strongModelProbability,
+      confidence: decision.prediction.confidence,
+      candidatesBefore: candidates.length,
+      candidatesAfter: preferredCandidates.length,
+    });
+
+    return {
+      preferenceScore: decision.prediction.strongModelProbability,
+      preferenceTier: decision.selectedTier,
+      preferredCandidates: preferredCandidates.length > 0 ? preferredCandidates : candidates,
+    };
   }
 
   private buildRoutingDecision(
@@ -213,7 +310,7 @@ export class CompositeRouter implements ICompositeRouter {
       );
     }
 
-    const confidence = this.calculateConfidence(
+    const confidence = calculateConfidence(
       params.topsisScore,
       params.ucbScore,
       params.candidates.length
@@ -225,15 +322,18 @@ export class CompositeRouter implements ICompositeRouter {
       adapter: selectedAdapter,
       cliName: params.selectedCli,
       confidence,
-      reason: this.buildReason(
+      reason: buildReason(
         params.selectedCli,
         params.stagesExecuted,
         params.topsisScore,
-        params.ucbScore
+        params.ucbScore,
+        params.preferenceScore
       ),
       stagesExecuted: params.stagesExecuted,
       decisionTimeMs,
       withinBudget: params.withinBudget,
+      preferenceScore: params.preferenceScore,
+      preferenceTier: params.preferenceTier,
       topsisScore: params.topsisScore,
       ucbScore: params.ucbScore,
       alternatives: params.topsisRanking.filter((c) => c !== params.selectedCli),
@@ -265,13 +365,37 @@ export class CompositeRouter implements ICompositeRouter {
     }
     const internalTask = this.cliTaskToTask(task);
     const taskProfile = analyzeTask(internalTask);
-    const context = this.taskProfileToBanditContext(taskProfile);
+    const context = taskProfileToBanditContext(taskProfile);
     this.linucbBandit.update(armIndex, context, reward);
     this.logger.debug('Recorded outcome', { cliName, reward });
   }
 
+  recordPreference(
+    query: string,
+    strongModelPreferred: boolean,
+    quality?: { strong?: number; weak?: number }
+  ): void {
+    if (this.preferenceRouter === undefined) {
+      this.logger.warn('Preference routing not enabled, cannot record preference');
+      return;
+    }
+    this.preferenceRouter.recordPreference(
+      query,
+      strongModelPreferred,
+      quality?.strong,
+      quality?.weak
+    );
+    this.logger.debug('Recorded preference', { strongModelPreferred });
+  }
+
+  hasMinimumPreferenceData(): boolean {
+    if (this.preferenceRouter === undefined) return false;
+    return this.preferenceRouter.hasMinimumData();
+  }
+
   getStats(): CompositeRouterStats {
-    return {
+    const preferenceStats = this.buildPreferenceStats();
+    const baseStats = {
       totalDecisions: this.totalDecisions,
       decisionsPerCli: { ...this.decisionsPerCli },
       avgDecisionTimeMs:
@@ -279,6 +403,26 @@ export class CompositeRouter implements ICompositeRouter {
       budgetRejectionRate:
         this.totalDecisions > 0 ? this.budgetRejections / this.totalDecisions : 0,
       banditStats: this.linucbBandit?.getStats() ?? [],
+    };
+
+    // Conditionally add preferenceStats only if preference routing is enabled
+    if (preferenceStats !== undefined) {
+      return { ...baseStats, preferenceStats };
+    }
+    return baseStats;
+  }
+
+  private buildPreferenceStats(): CompositeRouterStats['preferenceStats'] {
+    if (!this.config.enablePreferenceRouting || this.preferenceRouter === undefined) {
+      return undefined;
+    }
+
+    const stats = this.preferenceRouter.getStats();
+    return {
+      enabled: true,
+      hasSufficientData: this.preferenceRouter.hasMinimumData(),
+      dataPointCount: stats.totalDataPoints,
+      strongModelPreferenceRate: stats.strongModelPreferenceRate,
     };
   }
 
@@ -315,63 +459,12 @@ export class CompositeRouter implements ICompositeRouter {
     if (this.topsisRouter === undefined) return { ranking: candidates, topScore: 1.0 };
 
     const profiles = DEFAULT_MODEL_PROFILES.filter((p) => candidates.includes(p.cliName));
-    const adjustedProfiles = profiles.map((p) => this.adjustProfileForTask(p, taskProfile));
+    const adjustedProfiles = profiles.map((p) => adjustProfileForTask(p, taskProfile));
     const result: TopsisResult = this.topsisRouter.selectModel({ profiles: adjustedProfiles });
 
     const scoreMap = new Map(result.scores.map((s) => [s.cliName, s.closenessScore]));
     const ranking = [...candidates].sort((a, b) => (scoreMap.get(b) ?? 0) - (scoreMap.get(a) ?? 0));
     return { ranking, topScore: scoreMap.get(ranking[0] ?? 'claude') ?? 1.0 };
-  }
-
-  private adjustProfileForTask(
-    profile: TopsisModelProfile,
-    taskProfile: TaskProfile
-  ): TopsisModelProfile {
-    if (taskProfile.taskType === 'architecture' || taskProfile.reasoningComplexity > 7) {
-      return { ...profile, qualityScore: Math.min(profile.qualityScore * 1.2, 10) };
-    }
-    if (taskProfile.taskType === 'bulk_operations' || taskProfile.contextRequired < 1000) {
-      return { ...profile, averageLatencyMs: profile.averageLatencyMs * 0.8 };
-    }
-    return profile;
-  }
-
-  private taskProfileToBanditContext(profile: TaskProfile): BanditContext {
-    return {
-      taskComplexity: profile.reasoningComplexity / 10,
-      contextLengthNormalized: Math.min(profile.contextRequired / 100000, 1),
-      isCodeTask: profile.codeGeneration,
-      isReasoningTask: profile.taskType === 'architecture' || profile.reasoningComplexity > 5,
-      budgetUtilization: 0.5,
-      timePressure: 0.3,
-    };
-  }
-
-  private calculateConfidence(
-    topsisScore: number | undefined,
-    ucbScore: number | undefined,
-    candidateCount: number
-  ): number {
-    const scores: number[] = [];
-    if (topsisScore !== undefined) scores.push(topsisScore);
-    if (ucbScore !== undefined) scores.push(Math.min(ucbScore / 10, 1));
-    const baseConfidence = Math.min(0.5 + candidateCount * 0.1, 0.8);
-    if (scores.length === 0) return baseConfidence;
-    const avgScore = scores.reduce((a, b) => a + b, 0) / scores.length;
-    return 0.3 * baseConfidence + 0.7 * avgScore;
-  }
-
-  private buildReason(
-    selectedCli: CliName,
-    stages: string[],
-    topsisScore?: number,
-    ucbScore?: number
-  ): string {
-    const parts: string[] = ['Selected ' + selectedCli];
-    if (stages.includes('budget-filter')) parts.push('within budget');
-    if (topsisScore !== undefined) parts.push('TOPSIS score ' + topsisScore.toFixed(2));
-    if (ucbScore !== undefined) parts.push('UCB score ' + ucbScore.toFixed(2));
-    return parts.join(', ');
   }
 }
 

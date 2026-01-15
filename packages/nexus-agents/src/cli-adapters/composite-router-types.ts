@@ -10,6 +10,7 @@
 import { z } from 'zod';
 import type { ICliAdapter, CliName } from './types.js';
 import type { TaskProfile } from './task-analyzer.js';
+import type { PreferenceRouterConfig } from './preference-router-types.js';
 
 /**
  * Configuration schema for CompositeRouter.
@@ -17,6 +18,8 @@ import type { TaskProfile } from './task-analyzer.js';
 export const CompositeRouterConfigSchema = z.object({
   /** Enable budget filtering stage (default: true) */
   enableBudgetFilter: z.boolean().default(true),
+  /** Enable preference-trained routing stage (default: false) */
+  enablePreferenceRouting: z.boolean().default(false),
   /** Enable TOPSIS ranking stage (default: true) */
   enableTopsisRanking: z.boolean().default(true),
   /** Enable LinUCB selection stage (default: true) */
@@ -34,19 +37,31 @@ export const CompositeRouterConfigSchema = z.object({
   linucbAlpha: z.number().positive().default(1.0),
   /** Maximum routing decision time in ms (default: 50) */
   maxDecisionTimeMs: z.number().positive().default(50),
+  /** Minimum preference data points before using learned routing (default: 10) */
+  preferenceMinDataPoints: z.number().int().positive().default(10),
 });
 
 export type CompositeRouterConfig = z.infer<typeof CompositeRouterConfigSchema>;
+
+/**
+ * Extended config type that includes preference router config.
+ */
+export interface CompositeRouterConfigWithPreference extends CompositeRouterConfig {
+  /** Preference router configuration (optional, uses defaults if not provided) */
+  preferenceRouterConfig?: Partial<PreferenceRouterConfig>;
+}
 
 /**
  * Default configuration.
  */
 export const DEFAULT_COMPOSITE_CONFIG: CompositeRouterConfig = {
   enableBudgetFilter: true,
+  enablePreferenceRouting: false,
   enableTopsisRanking: true,
   enableLinUCBSelection: true,
   linucbAlpha: 1.0,
   maxDecisionTimeMs: 50,
+  preferenceMinDataPoints: 10,
 };
 
 /**
@@ -67,6 +82,10 @@ export interface CompositeRoutingDecision {
   readonly decisionTimeMs: number;
   /** Budget feasibility (if budget filter enabled) */
   readonly withinBudget?: boolean | undefined;
+  /** Preference routing score (if preference routing enabled) */
+  readonly preferenceScore?: number | undefined;
+  /** Selected tier from preference routing */
+  readonly preferenceTier?: 'strong' | 'weak' | undefined;
   /** TOPSIS score (if TOPSIS ranking enabled) */
   readonly topsisScore?: number | undefined;
   /** LinUCB UCB score (if LinUCB enabled) */
@@ -102,6 +121,17 @@ export interface CompositeRouterStats {
   readonly avgDecisionTimeMs: number;
   /** Budget filter rejection rate */
   readonly budgetRejectionRate: number;
+  /** Preference routing statistics */
+  readonly preferenceStats?: {
+    /** Whether preference routing is enabled */
+    readonly enabled: boolean;
+    /** Whether sufficient data for preference routing */
+    readonly hasSufficientData: boolean;
+    /** Total preference data points collected */
+    readonly dataPointCount: number;
+    /** Strong model preference rate */
+    readonly strongModelPreferenceRate: number;
+  };
   /** LinUCB arm statistics */
   readonly banditStats: ReadonlyArray<{ name: string; pullCount: number; avgReward: number }>;
 }
@@ -112,6 +142,8 @@ export interface CompositeRouterStats {
 export interface PipelineResult {
   candidates: CliName[];
   withinBudget: boolean | undefined;
+  preferenceScore: number | undefined;
+  preferenceTier: 'strong' | 'weak' | undefined;
   topsisRanking: CliName[];
   topsisScore: number | undefined;
   selectedCli: CliName;
@@ -129,6 +161,8 @@ export interface BuildDecisionParams {
   stagesExecuted: string[];
   startTime: number;
   withinBudget: boolean | undefined;
+  preferenceScore: number | undefined;
+  preferenceTier: 'strong' | 'weak' | undefined;
   topsisScore: number | undefined;
   ucbScore: number | undefined;
 }

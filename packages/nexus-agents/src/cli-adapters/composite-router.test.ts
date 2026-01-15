@@ -348,3 +348,144 @@ describe('CompositeRouter confidence calculation', () => {
     expect(minimalResult.ok).toBe(true);
   });
 });
+
+describe('CompositeRouter preference routing', () => {
+  let adapters: Map<CliName, ICliAdapter>;
+
+  beforeEach(() => {
+    adapters = createTestAdapters();
+  });
+
+  describe('preference routing disabled by default', () => {
+    it('should skip preference routing when not enabled', async () => {
+      const router = new CompositeRouter(adapters);
+      const task: CliTask = { content: 'Test task' };
+      const result = await router.route(task);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.stagesExecuted).not.toContain('preference-routing');
+        expect(result.value.preferenceScore).toBeUndefined();
+        expect(result.value.preferenceTier).toBeUndefined();
+      }
+    });
+  });
+
+  describe('preference routing enabled', () => {
+    it('should include preference stage when enabled with config', async () => {
+      const router = new CompositeRouter(adapters, {
+        enablePreferenceRouting: true,
+        preferenceRouterConfig: { minDataPoints: 1 },
+      });
+
+      // Record some preference data to enable routing
+      router.recordPreference('complex task', true, { strong: 0.9, weak: 0.5 });
+      router.recordPreference('simple task', false, { strong: 0.6, weak: 0.8 });
+
+      const task: CliTask = { content: 'Test task' };
+      const result = await router.route(task);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.stagesExecuted).toContain('preference-routing');
+        expect(result.value.preferenceScore).toBeDefined();
+        expect(result.value.preferenceTier).toBeDefined();
+      }
+    });
+
+    it('should skip preference routing when insufficient data', async () => {
+      const router = new CompositeRouter(adapters, {
+        enablePreferenceRouting: true,
+        preferenceRouterConfig: { minDataPoints: 100 },
+      });
+
+      const task: CliTask = { content: 'Test task' };
+      const result = await router.route(task);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.stagesExecuted).not.toContain('preference-routing');
+        expect(result.value.preferenceScore).toBeUndefined();
+      }
+    });
+  });
+
+  describe('recordPreference', () => {
+    it('should not throw when preference routing enabled', () => {
+      const router = new CompositeRouter(adapters, {
+        enablePreferenceRouting: true,
+      });
+
+      expect(() => {
+        router.recordPreference('test query', true, { strong: 0.9, weak: 0.5 });
+      }).not.toThrow();
+    });
+
+    it('should not throw when preference routing disabled', () => {
+      const router = new CompositeRouter(adapters);
+
+      expect(() => {
+        router.recordPreference('test query', true);
+      }).not.toThrow();
+    });
+
+    it('should accept preference without quality scores', () => {
+      const router = new CompositeRouter(adapters, {
+        enablePreferenceRouting: true,
+      });
+
+      expect(() => {
+        router.recordPreference('simple query', false);
+      }).not.toThrow();
+    });
+  });
+
+  describe('hasMinimumPreferenceData', () => {
+    it('should return false when preference routing disabled', () => {
+      const router = new CompositeRouter(adapters);
+      expect(router.hasMinimumPreferenceData()).toBe(false);
+    });
+
+    it('should return false with no data points', () => {
+      const router = new CompositeRouter(adapters, {
+        enablePreferenceRouting: true,
+        preferenceRouterConfig: { minDataPoints: 10 },
+      });
+      expect(router.hasMinimumPreferenceData()).toBe(false);
+    });
+
+    it('should return true when minimum data points met', () => {
+      const router = new CompositeRouter(adapters, {
+        enablePreferenceRouting: true,
+        preferenceRouterConfig: { minDataPoints: 2 },
+      });
+
+      router.recordPreference('query 1', true);
+      router.recordPreference('query 2', false);
+
+      expect(router.hasMinimumPreferenceData()).toBe(true);
+    });
+  });
+
+  describe('getStats with preference', () => {
+    it('should include preference stats when enabled', () => {
+      const router = new CompositeRouter(adapters, {
+        enablePreferenceRouting: true,
+      });
+
+      router.recordPreference('query 1', true);
+      router.recordPreference('query 2', false);
+
+      const stats = router.getStats();
+      expect(stats.preferenceStats).toBeDefined();
+      expect(stats.preferenceStats?.dataPointCount).toBe(2);
+      expect(stats.preferenceStats?.enabled).toBe(true);
+    });
+
+    it('should have undefined preference stats when disabled', () => {
+      const router = new CompositeRouter(adapters);
+      const stats = router.getStats();
+      expect(stats.preferenceStats).toBeUndefined();
+    });
+  });
+});

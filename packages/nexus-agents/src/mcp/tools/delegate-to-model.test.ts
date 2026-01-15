@@ -379,7 +379,9 @@ describe('delegate_to_model Tool', () => {
     ): {
       route: ReturnType<typeof vi.fn>;
       recordOutcome: ReturnType<typeof vi.fn>;
+      recordPreference: ReturnType<typeof vi.fn>;
       getStats: ReturnType<typeof vi.fn>;
+      hasMinimumPreferenceData: ReturnType<typeof vi.fn>;
     } {
       return {
         route: vi.fn().mockResolvedValue(
@@ -412,12 +414,14 @@ describe('delegate_to_model Tool', () => {
               }
         ),
         recordOutcome: vi.fn(),
+        recordPreference: vi.fn(),
         getStats: vi.fn().mockReturnValue({
           totalDecisions: 0,
           decisionsPerCli: { claude: 0, gemini: 0, codex: 0 },
           avgDecisionTimeMs: 0,
           budgetRejectionRate: 0,
         }),
+        hasMinimumPreferenceData: vi.fn().mockReturnValue(false),
       };
     }
 
