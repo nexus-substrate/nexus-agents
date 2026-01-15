@@ -1,0 +1,51 @@
+# E2E User Journey: PR Review Flow
+# Tests complete user journey from PR submission to review completion
+# Layer 3 testing - simulates actual user interaction
+
+id: journey-pr-review
+name: Pull Request Review Journey
+description: |
+  Simulates a complete user journey of submitting a PR for review
+  using nexus-agents. Validates the end-to-end experience from
+  CLI invocation to review completion.
+
+maxTimeToFirstSuccessMs: 120000
+
+successCriteria:
+  - CLI command executes without errors
+  - PR details are fetched successfully
+  - Code analysis is performed
+  - Security check completes
+  - Review summary is generated
+  - Time to first success is under 60 seconds
+
+actions:
+  - type: cli_command
+    command: nexus-agents doctor
+    expectedOutcome: Health check passes
+    timeoutMs: 5000
+
+  - type: cli_command
+    command: nexus-agents config init
+    expectedOutcome: Configuration initialized
+    timeoutMs: 3000
+
+  - type: mcp_tool
+    command: orchestrate
+    args:
+      task: 'Review PR #123 in owner/repo'
+    expectedOutcome: Task is analyzed and delegated
+    timeoutMs: 30000
+
+  - type: workflow_run
+    command: code-review
+    args:
+      repository: owner/repo
+      pull_request_number: 123
+    expectedOutcome: Workflow completes successfully
+    timeoutMs: 60000
+
+  - type: cli_command
+    command: nexus-agents workflow status
+    expectedOutcome: Shows completed status
+    timeoutMs: 5000

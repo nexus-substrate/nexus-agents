@@ -1,0 +1,49 @@
+# E2E Scenario Fixture: Code Review Workflow
+# Tests the code-review workflow template with stubbed dependencies
+# Layer 1 testing - deterministic, fast, CI-friendly
+
+id: scenario-code-review-basic
+name: Code Review Basic Scenario
+description: |
+  Validates the code-review workflow template executes correctly
+  with expected outputs at each step.
+
+workflow: code-review
+classification: internal
+tags:
+  - workflow
+  - code-review
+  - layer-1
+
+inputs:
+  repository: owner/repo
+  pull_request_number: 123
+  review_depth: standard
+  focus_areas:
+    - security
+    - performance
+
+expectedOutputs:
+  - stepId: analyze-code
+    status: success
+    outputPattern: '"analysis".*"codeStructure"'
+    maxDurationMs: 5000
+    requiredFields:
+      - analysis
+      - codeStructure
+
+  - stepId: check-security
+    status: success
+    outputPattern: '"security".*"vulnerabilities"'
+    maxDurationMs: 5000
+    requiredFields:
+      - security
+      - vulnerabilities
+      - recommendations
+
+  - stepId: generate-summary
+    status: success
+    outputPattern: '"summary"'
+    maxDurationMs: 3000
+
+timeoutMs: 30000

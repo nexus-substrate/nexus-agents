@@ -1,0 +1,47 @@
+# E2E Scenario Fixture: Bug Fix Workflow
+# Tests the bug-fix workflow template with stubbed dependencies
+# Layer 1 testing - deterministic, fast, CI-friendly
+
+id: scenario-bug-fix-basic
+name: Bug Fix Basic Scenario
+description: |
+  Validates the bug-fix workflow template diagnoses issues,
+  implements fixes, and verifies solutions correctly.
+
+workflow: bug-fix
+classification: internal
+tags:
+  - workflow
+  - bug-fix
+  - layer-1
+
+inputs:
+  issue_description: "TypeError: Cannot read property 'length' of undefined"
+  file_path: src/utils/parser.ts
+  line_number: 42
+  error_trace: |
+    TypeError: Cannot read property 'length' of undefined
+        at Parser.parse (src/utils/parser.ts:42:15)
+        at processInput (src/index.ts:23:10)
+
+expectedOutputs:
+  - stepId: diagnose
+    status: success
+    outputPattern: '"diagnosis".*"Root cause"'
+    maxDurationMs: 5000
+    requiredFields:
+      - diagnosis
+
+  - stepId: implement-fix
+    status: success
+    outputPattern: '"fix"'
+    maxDurationMs: 10000
+    requiredFields:
+      - fix
+
+  - stepId: verify
+    status: success
+    outputPattern: '"verification".*"pass"'
+    maxDurationMs: 5000
+
+timeoutMs: 60000
