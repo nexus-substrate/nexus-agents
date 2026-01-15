@@ -188,7 +188,8 @@ describe('ClaudeCliAdapter', () => {
     it('should return correct model info for default model', () => {
       const info = adapter.getModelInfo();
 
-      expect(info.id).toBe('claude-sonnet-4');
+      // Default is now 'sonnet' (CLI alias) instead of 'claude-sonnet-4'
+      expect(info.id).toBe('sonnet');
       expect(info.name).toBe('Claude Sonnet 4');
       expect(info.contextWindow).toBe(200_000);
       expect(info.maxOutput).toBe(64_000);
@@ -250,7 +251,8 @@ describe('ClaudeCliAdapter', () => {
       expect(capturedArgs).toContain('--output-format');
       expect(capturedArgs).toContain('json');
       expect(capturedArgs).toContain('--model');
-      expect(capturedArgs).toContain('claude-sonnet-4');
+      // Default model 'sonnet' is passed directly (CLI alias)
+      expect(capturedArgs).toContain('sonnet');
     });
 
     it('should include system prompt when provided', async () => {
@@ -307,7 +309,8 @@ describe('ClaudeCliAdapter', () => {
       await adapter.execute(task);
 
       expect(capturedArgs).toContain('--model');
-      expect(capturedArgs).toContain('claude-opus-4');
+      // Internal model name 'claude-opus-4' is mapped to CLI alias 'opus'
+      expect(capturedArgs).toContain('opus');
     });
 
     it('should handle multi-line content correctly', async () => {

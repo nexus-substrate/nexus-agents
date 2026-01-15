@@ -27,9 +27,10 @@ export interface CliAgentExecutorConfig {
 
 /**
  * Default values for executor configuration.
+ * Note: Uses CLI alias 'sonnet' instead of full model name for compatibility.
  */
 const CLI_EXECUTOR_DEFAULTS = {
-  modelId: 'claude-sonnet-4',
+  modelId: 'sonnet',
   timeoutMs: 600_000, // 10 minutes - SWE-bench tasks involve file exploration
 } as const;
 

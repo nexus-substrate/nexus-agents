@@ -14,6 +14,21 @@ import { ClaudeResponseParser } from '../parsers/claude-parser.js';
 import type { ILogger } from '../../core/index.js';
 
 /**
+ * Maps internal model names to Claude CLI aliases.
+ * CLI accepts: 'sonnet', 'opus', 'haiku' or full names like 'claude-sonnet-4-5-20250929'
+ */
+const MODEL_TO_CLI_ALIAS: Record<string, string> = {
+  'claude-sonnet-4': 'sonnet',
+  'claude-opus-4': 'opus',
+  'claude-haiku-3': 'haiku',
+  'claude-opus-4-5-20251101': 'opus',
+  // Allow direct aliases to pass through
+  sonnet: 'sonnet',
+  opus: 'opus',
+  haiku: 'haiku',
+};
+
+/**
  * Claude CLI adapter using subprocess transport.
  * Executes: claude -p --output-format json "<task>"
  */
@@ -25,7 +40,7 @@ export class ClaudeCliAdapter extends SubprocessCliAdapter {
 
   constructor(options?: { model?: string; logger?: ILogger }) {
     super(options?.logger);
-    this.model = options?.model ?? 'claude-sonnet-4';
+    this.model = options?.model ?? 'sonnet';
   }
 
   /**
@@ -50,9 +65,10 @@ export class ClaudeCliAdapter extends SubprocessCliAdapter {
   protected getCommand(task: CliTask): CommandConfig {
     const args: string[] = ['-p', '--output-format', 'json'];
 
-    // Add model (always present due to default)
-    const model = task.model ?? this.model;
-    args.push('--model', model);
+    // Add model - convert internal names to CLI aliases
+    const internalModel = task.model ?? this.model;
+    const cliModel = MODEL_TO_CLI_ALIAS[internalModel] ?? internalModel;
+    args.push('--model', cliModel);
 
     // Add system prompt if provided
     if (task.systemPrompt !== undefined && task.systemPrompt !== '') {
@@ -87,6 +103,9 @@ export class ClaudeCliAdapter extends SubprocessCliAdapter {
       'claude-sonnet-4': 'Claude Sonnet 4',
       'claude-haiku-3': 'Claude Haiku 3',
       'claude-opus-4-5-20251101': 'Claude Opus 4.5',
+      opus: 'Claude Opus 4',
+      sonnet: 'Claude Sonnet 4',
+      haiku: 'Claude Haiku 3',
     };
 
     return displayNames[this.model] ?? this.model;
@@ -101,6 +120,9 @@ export class ClaudeCliAdapter extends SubprocessCliAdapter {
       'claude-opus-4-5-20251101': 15.0,
       'claude-sonnet-4': 3.0,
       'claude-haiku-3': 0.25,
+      opus: 15.0,
+      sonnet: 3.0,
+      haiku: 0.25,
     };
 
     return costs[this.model] ?? 3.0;
@@ -115,6 +137,9 @@ export class ClaudeCliAdapter extends SubprocessCliAdapter {
       'claude-opus-4-5-20251101': 75.0,
       'claude-sonnet-4': 15.0,
       'claude-haiku-3': 1.25,
+      opus: 75.0,
+      sonnet: 15.0,
+      haiku: 1.25,
     };
 
     return costs[this.model] ?? 15.0;

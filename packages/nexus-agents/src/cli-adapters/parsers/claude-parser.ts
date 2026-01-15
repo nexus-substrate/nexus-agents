@@ -68,12 +68,18 @@ export class ClaudeResponseParser implements ICliResponseParser<ClaudeCliRespons
 
   /**
    * Extracts just the response text (most stable field).
+   * Returns null if the response contains an error.
    */
   extractResponse(raw: string): string | null {
     try {
       const data: unknown = JSON.parse(raw);
       const record = this.asRecord(data);
       if (record === null) return null;
+
+      // Check for API errors (is_error: true indicates an error occurred)
+      if (record.is_error === true) {
+        return null;
+      }
 
       const result = record.result;
       if (typeof result === 'string') {
