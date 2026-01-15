@@ -10,10 +10,13 @@
 /* eslint-disable no-console */
 // Console output is intentional for CLI user feedback
 
+import type { Result } from '../core/result.js';
 import type { SWEBenchConfig, SWEBenchInstance } from './types.js';
-import { runAgentOnInstance, type RunOptions } from './agent-runner.js';
+import { runAgentOnInstance, type RunOptions, type IAgentExecutor } from './agent-runner.js';
+import { AgentRunnerError } from './agent-runner.js';
 import { PredictionWriter } from './prediction-writer.js';
-import { NexusAgentExecutor, createNexusExecutorFromEnv } from './nexus-agent-executor.js';
+import { createNexusExecutorFromEnv } from './nexus-agent-executor.js';
+import { createCliExecutor } from './cli-agent-executor.js';
 
 /**
  * Result from running benchmark.
@@ -39,22 +42,60 @@ export interface BenchmarkRunOptions {
   readonly verbose: boolean;
 }
 
-/** Create executor and return early error if unavailable. */
-export function createExecutor(verbose: boolean): ReturnType<typeof createNexusExecutorFromEnv> {
-  const overrides = verbose
-    ? {
-        onMessage: (msg: string): void => {
-          console.log(`  [agent] ${msg}`);
-        },
+/**
+ * Executor with model ID for reporting.
+ */
+export interface ExecutorWithModel extends IAgentExecutor {
+  getModelId(): string;
+}
+
+/**
+ * Create executor, preferring CLI over API.
+ *
+ * Order of preference:
+ * 1. Claude CLI (uses OAuth, no API key needed)
+ * 2. API with ANTHROPIC_API_KEY environment variable
+ */
+export async function createExecutor(
+  verbose: boolean
+): Promise<Result<ExecutorWithModel, AgentRunnerError>> {
+  const onMessage = verbose
+    ? (msg: string): void => {
+        console.log(`  [agent] ${msg}`);
       }
-    : {};
-  return createNexusExecutorFromEnv(overrides);
+    : undefined;
+
+  // Try CLI first (preferred - uses OAuth)
+  console.log('Checking CLI availability...');
+  const cliResult = await createCliExecutor({ onMessage });
+  if (cliResult.ok) {
+    console.log('Using Claude CLI (OAuth authentication)');
+    return cliResult;
+  }
+
+  // Fall back to API
+  console.log('CLI not available, checking API key...');
+  const apiResult = createNexusExecutorFromEnv({ onMessage });
+  if (apiResult.ok) {
+    console.log('Using Anthropic API');
+    return apiResult;
+  }
+
+  // Neither available
+  return {
+    ok: false,
+    error: new AgentRunnerError(
+      'No executor available. Either:\n' +
+        '  - Install and authenticate Claude CLI: "npm install -g @anthropic-ai/claude && claude auth"\n' +
+        '  - Set ANTHROPIC_API_KEY environment variable'
+    ),
+  };
 }
 
 /** Run single instance and handle result. */
 async function runSingleInstance(
   instance: SWEBenchInstance,
-  executor: NexusAgentExecutor,
+  executor: ExecutorWithModel,
   config: SWEBenchConfig,
   writer: PredictionWriter,
   verbose: boolean
@@ -97,7 +138,7 @@ async function runSingleInstance(
  * Run all instances and write predictions.
  */
 export async function runBenchmarkInstances(
-  executor: NexusAgentExecutor,
+  executor: ExecutorWithModel,
   options: BenchmarkRunOptions
 ): Promise<BenchmarkRunResult> {
   const { instances, config, outputPath, append, verbose } = options;

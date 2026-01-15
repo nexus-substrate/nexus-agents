@@ -167,6 +167,27 @@ export class JourneySimulator implements IJourneySimulator {
     return this.buildJourneyResult(journey, startTime, state);
   }
 
+  /**
+   * State accumulated during action execution.
+   */
+  private buildActionState(
+    results: ActionResult[],
+    firstSuccessTime: number | undefined,
+    failedAt?: number,
+    error?: string
+  ): { results: ActionResult[]; firstSuccessTime?: number; failedAt?: number; error?: string } {
+    const state: {
+      results: ActionResult[];
+      firstSuccessTime?: number;
+      failedAt?: number;
+      error?: string;
+    } = { results };
+    if (firstSuccessTime !== undefined) state.firstSuccessTime = firstSuccessTime;
+    if (failedAt !== undefined) state.failedAt = failedAt;
+    if (error !== undefined) state.error = error;
+    return state;
+  }
+
   private async executeAllActions(
     journey: UserJourney,
     startTime: number
@@ -190,22 +211,7 @@ export class JourneySimulator implements IJourneySimulator {
       }
 
       if (!outcome.result.succeeded) {
-        const result: {
-          results: ActionResult[];
-          firstSuccessTime?: number;
-          failedAt?: number;
-          error?: string;
-        } = {
-          results,
-          failedAt: i,
-        };
-        if (firstSuccessTime !== undefined) {
-          result.firstSuccessTime = firstSuccessTime;
-        }
-        if (outcome.result.error !== undefined) {
-          result.error = outcome.result.error;
-        }
-        return result;
+        return this.buildActionState(results, firstSuccessTime, i, outcome.result.error);
       }
 
       this.log.debug('Action completed', {
@@ -216,16 +222,7 @@ export class JourneySimulator implements IJourneySimulator {
       });
     }
 
-    const result: {
-      results: ActionResult[];
-      firstSuccessTime?: number;
-      failedAt?: number;
-      error?: string;
-    } = { results };
-    if (firstSuccessTime !== undefined) {
-      result.firstSuccessTime = firstSuccessTime;
-    }
-    return result;
+    return this.buildActionState(results, firstSuccessTime);
   }
 
   private async executeActionWithTimeout(

@@ -69,12 +69,21 @@ export type {
   RunOptions,
 } from './agent-runner.js';
 
-// Nexus agent executor
+// Nexus agent executor (API-based)
 export { NexusAgentExecutor, createNexusExecutorFromEnv } from './nexus-agent-executor.js';
 
 export type { NexusAgentExecutorConfig } from './nexus-agent-executor.js';
 
+// CLI agent executor (subprocess-based)
+export { CliAgentExecutor, createCliExecutor, isCliAvailable } from './cli-agent-executor.js';
+
+export type { CliAgentExecutorConfig } from './cli-agent-executor.js';
+
 // Benchmark runner
 export { createExecutor, runBenchmarkInstances } from './benchmark-runner.js';
 
-export type { BenchmarkRunResult, BenchmarkRunOptions } from './benchmark-runner.js';
+export type {
+  BenchmarkRunResult,
+  BenchmarkRunOptions,
+  ExecutorWithModel,
+} from './benchmark-runner.js';

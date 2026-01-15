@@ -109,10 +109,9 @@ async function runBenchmark(options: SWEBenchOptions): Promise<SWEBenchCommandRe
   console.log(`\nSWE-bench Run: ${options.variant}`);
   console.log('='.repeat(40));
 
-  const executorResult = createExecutor(options.verbose);
+  const executorResult = await createExecutor(options.verbose);
   if (!executorResult.ok) {
     console.error(`\nError: ${executorResult.error.message}`);
-    console.log('\nSet ANTHROPIC_API_KEY environment variable to run SWE-bench.');
     return { success: false, message: executorResult.error.message };
   }
 

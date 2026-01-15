@@ -40,7 +40,6 @@ describe('nexus-agent-executor', () => {
     instance: testInstance,
     config: testConfig,
     workDir: '/tmp/test',
-    attempt: 1,
   };
 
   describe('NexusAgentExecutor', () => {

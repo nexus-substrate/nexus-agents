@@ -20,13 +20,13 @@ export interface NexusAgentExecutorConfig {
   /** Anthropic API key. */
   readonly apiKey: string;
   /** Model ID to use (default: claude-sonnet-4). */
-  readonly modelId?: string;
+  readonly modelId?: string | undefined;
   /** Maximum tokens for response (default: 16384). */
-  readonly maxTokens?: number;
+  readonly maxTokens?: number | undefined;
   /** Temperature for generation (default: 0.2). */
-  readonly temperature?: number;
+  readonly temperature?: number | undefined;
   /** Callback for message logging. */
-  readonly onMessage?: (message: string) => void;
+  readonly onMessage?: ((message: string) => void) | undefined;
 }
 
 /**
