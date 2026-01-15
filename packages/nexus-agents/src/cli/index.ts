@@ -212,3 +212,7 @@ export type {
 // Verify Command (Issue #253 - Quick verification)
 export { verifyCommand, runVerify, printVerifyResult } from './verify-command.js';
 export type { VerifyOptions, VerifyCheck, VerifyResult } from './verify-command.js';
+
+// SWE-bench Command (Issue #257 - SWE-Bench Evaluation)
+export { sweBenchCommand, parseSweBenchArgs, printSweBenchHelp } from './swe-bench-command.js';
+export type { SWEBenchOptions, SWEBenchCommandResult } from './swe-bench-command.js';
