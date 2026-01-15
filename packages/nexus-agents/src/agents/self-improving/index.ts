@@ -34,3 +34,21 @@ export { SicaVersionManager, createVersionManager } from './sica-version-manager
 
 // Agent
 export { SicaAgent, createSicaAgent, type SicaAgentOptions } from './sica-agent.js';
+
+// Test Generator (Issue #256 - Phase 3.2 Self-Generated Test Automation)
+export { SicaTestGenerator, type ITestGenerator } from './sica-test-generator.js';
+export type {
+  CoverageMetrics,
+  CoverageGap,
+  GeneratedTest,
+  TestType,
+  TestFramework,
+  TestGenerationOptions,
+  TestGenerationResult,
+  TestValidationResult,
+  VersionTestMetrics,
+  TestImprovementAttempt,
+  SicaTestEventType,
+  SicaTestEvent,
+} from './sica-test-types.js';
+export { CoverageMetricsSchema, GeneratedTestSchema } from './sica-test-types.js';
