@@ -198,9 +198,10 @@ describe('BaseCliAdapter', () => {
       let callCount = 0;
 
       // Override executeTask to track calls and eventually succeed
+      // Default maxRetries is 1 (per Issue #280), so succeed on 2nd attempt
       adapter.executeTask = () => {
         callCount++;
-        if (callCount >= 3) {
+        if (callCount >= 2) {
           return Promise.resolve(ok({ text: 'success after retry' }));
         }
         return Promise.resolve(
@@ -221,7 +222,8 @@ describe('BaseCliAdapter', () => {
       const result = await executePromise;
 
       expect(result.ok).toBe(true);
-      expect(callCount).toBe(3);
+      // Default maxRetries: 1, so 2 total attempts (initial + 1 retry)
+      expect(callCount).toBe(2);
 
       vi.useRealTimers();
     });

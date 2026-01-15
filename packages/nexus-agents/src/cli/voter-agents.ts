@@ -6,6 +6,7 @@
  * analyzes proposals.
  *
  * (Source: Issue #226, Sprint #229)
+ * (Updated: Issue #280 - Fixed timeout handling, removed simulation fallback)
  *
  * File structure: Prompts in voter-prompts.ts. Extracted per Issue #272.
  */
@@ -23,6 +24,78 @@ export { VOTER_SYSTEM_PROMPTS, SIMULATED_VOTE_REASONING } from './voter-prompts.
 
 // Local import for use in this file
 import { VOTER_SYSTEM_PROMPTS, SIMULATED_VOTE_REASONING } from './voter-prompts.js';
+
+/**
+ * Default vote execution timeout (30 seconds).
+ * Reduced from CLI adapter default (60s) for faster feedback.
+ */
+const DEFAULT_VOTE_TIMEOUT_MS = 30_000;
+
+/**
+ * Maximum retries for vote execution.
+ */
+const DEFAULT_MAX_RETRIES = 2;
+
+/**
+ * Initial retry delay in milliseconds.
+ */
+const INITIAL_RETRY_DELAY_MS = 1_000;
+
+// ============================================================================
+// Vote Result Helpers (extracted per Issue #280 for complexity reduction)
+// ============================================================================
+
+/**
+ * Creates an error vote result (abstain with error message).
+ */
+function createErrorVoteResult(
+  role: VoterRole,
+  errorMsg: string,
+  processingTimeMs: number
+): AgentVoteResult {
+  return {
+    role,
+    vote: {
+      decision: 'abstain',
+      reasoning: `[Error] Vote execution failed: ${errorMsg}`,
+      confidence: 0,
+    },
+    processingTimeMs,
+    source: 'llm',
+    error: errorMsg,
+  };
+}
+
+/**
+ * Creates a simulation vote result.
+ */
+function createSimulationVoteResult(
+  role: VoterRole,
+  proposal: string,
+  processingTimeMs: number,
+  error?: string
+): AgentVoteResult {
+  return {
+    role,
+    vote: simulateVote(role, proposal),
+    processingTimeMs,
+    source: 'simulation',
+    ...(error !== undefined && { error }),
+  };
+}
+
+/**
+ * Creates simulated votes for multiple roles.
+ */
+function createSimulatedVotes(
+  roles: readonly VoterRole[],
+  proposal: string,
+  error?: string
+): readonly AgentVoteResult[] {
+  return roles.map((role) =>
+    createSimulationVoteResult(role, proposal, Math.floor(Math.random() * 100), error)
+  );
+}
 
 // ============================================================================
 // Structured Vote Response Schema
@@ -154,6 +227,10 @@ export interface VoterAgentOptions {
   readonly adapter?: IModelAdapter;
   /** Timeout per vote in milliseconds (default: 30000) */
   readonly timeoutMs?: number;
+  /** Maximum retries per vote (default: 2) */
+  readonly maxRetries?: number;
+  /** Whether to allow simulation fallback (default: false per Issue #280) */
+  readonly allowSimulation?: boolean;
 }
 
 // Re-export AgentVoteResult for convenience
@@ -162,16 +239,48 @@ export type { AgentVoteResult };
 const defaultLogger = createLogger({ component: 'voter-agents' });
 
 /**
- * Executes a real LLM vote for a single role.
+ * Wraps a promise with a timeout.
+ * Returns an error result if timeout is exceeded.
  */
-export async function executeAgentVote(
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  errorMessage: string
+): Promise<{ ok: true; value: T } | { ok: false; error: string }> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(errorMessage));
+    }, timeoutMs);
+  });
+
+  try {
+    const result = await Promise.race([promise, timeoutPromise]);
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
+    return { ok: true, value: result };
+  } catch (error) {
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+/**
+ * Delays for the specified milliseconds.
+ */
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Executes a single vote attempt (no retries).
+ */
+async function executeSingleVoteAttempt(
   role: VoterRole,
   proposal: string,
   adapter: IModelAdapter,
-  logger: ILogger
-): Promise<AgentVoteResult> {
-  const start = Date.now();
-
+  timeoutMs: number
+): Promise<{ ok: true; vote: Vote; output: string } | { ok: false; error: string }> {
   const request: CompletionRequest = {
     messages: [
       { role: 'system', content: VOTER_SYSTEM_PROMPTS[role] },
@@ -181,40 +290,116 @@ export async function executeAgentVote(
     temperature: 0.3, // Low temperature for consistent evaluations
   };
 
-  try {
-    const response = await adapter.complete(request);
+  const timeoutResult = await withTimeout(
+    adapter.complete(request),
+    timeoutMs,
+    `Vote timeout after ${String(timeoutMs)}ms for role: ${role}`
+  );
 
-    if (!response.ok) {
-      logger.warn('Vote execution failed', { role, error: response.error.message });
-      return {
-        role,
-        vote: simulateVote(role, proposal),
-        processingTimeMs: Date.now() - start,
-        source: 'simulation',
-        error: response.error.message,
-      };
+  if (!timeoutResult.ok) {
+    return { ok: false, error: timeoutResult.error };
+  }
+
+  const response = timeoutResult.value;
+
+  if (!response.ok) {
+    return { ok: false, error: response.error.message };
+  }
+
+  const output = extractTextFromResponse(response.value.content);
+  const vote = parseVoteResponse(output, role);
+
+  return { ok: true, vote, output };
+}
+
+/** Options for executeWithRetries. */
+interface RetryOptions {
+  readonly role: VoterRole;
+  readonly proposal: string;
+  readonly adapter: IModelAdapter;
+  readonly logger: ILogger;
+  readonly timeoutMs: number;
+  readonly maxRetries: number;
+}
+
+/**
+ * Executes vote attempts with retry logic.
+ * Returns the error message from last failed attempt, or undefined if successful.
+ */
+async function executeWithRetries(
+  opts: RetryOptions
+): Promise<{ vote: Vote; ok: true } | { error: string; ok: false }> {
+  const { role, proposal, adapter, logger, timeoutMs, maxRetries } = opts;
+  let lastError = '';
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    if (attempt > 0) {
+      const delayMs = INITIAL_RETRY_DELAY_MS * Math.pow(2, attempt - 1);
+      logger.debug('Retrying vote execution', { role, attempt, delayMs });
+      await delay(delayMs);
     }
 
-    const output = extractTextFromResponse(response.value.content);
-    const vote = parseVoteResponse(output, role);
+    const result = await executeSingleVoteAttempt(role, proposal, adapter, timeoutMs);
+    if (result.ok) {
+      return { vote: result.vote, ok: true };
+    }
 
-    return {
+    lastError = result.error;
+    logger.warn('Vote attempt failed', {
       role,
-      vote,
-      processingTimeMs: Date.now() - start,
-      source: 'llm',
-    };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.warn('Vote execution error', { role, error: message });
-    return {
-      role,
-      vote: simulateVote(role, proposal),
-      processingTimeMs: Date.now() - start,
-      source: 'simulation',
-      error: message,
-    };
+      attempt: attempt + 1,
+      maxRetries: maxRetries + 1,
+      error: lastError,
+    });
   }
+
+  return { error: lastError !== '' ? lastError : 'Unknown error after all retries', ok: false };
+}
+
+/**
+ * Executes a real LLM vote for a single role with timeout and retry support.
+ *
+ * Per Issue #280: No simulation fallback by default. Returns error result
+ * instead of simulated vote when execution fails.
+ */
+export async function executeAgentVote(
+  role: VoterRole,
+  proposal: string,
+  adapter: IModelAdapter,
+  logger: ILogger,
+  options?: { timeoutMs?: number; maxRetries?: number; allowSimulation?: boolean }
+): Promise<AgentVoteResult> {
+  const start = Date.now();
+  const timeoutMs = options?.timeoutMs ?? DEFAULT_VOTE_TIMEOUT_MS;
+  const maxRetries = options?.maxRetries ?? DEFAULT_MAX_RETRIES;
+  const allowSimulation = options?.allowSimulation ?? false;
+
+  const result = await executeWithRetries({
+    role,
+    proposal,
+    adapter,
+    logger,
+    timeoutMs,
+    maxRetries,
+  });
+  const processingTimeMs = Date.now() - start;
+
+  if (result.ok) {
+    return { role, vote: result.vote, processingTimeMs, source: 'llm' };
+  }
+
+  // All retries exhausted
+  logger.error('Vote execution failed after all retries', undefined, {
+    role,
+    errorMessage: result.error,
+  });
+
+  if (allowSimulation) {
+    logger.warn('Falling back to simulation (allowSimulation=true)', { role });
+    return createSimulationVoteResult(role, proposal, processingTimeMs, result.error);
+  }
+
+  return createErrorVoteResult(role, result.error, processingTimeMs);
 }
 
 /**
@@ -272,57 +457,79 @@ export interface CollectRealVotesOptions extends VoterAgentOptions {
   readonly roles: readonly VoterRole[];
   /** Proposal text */
   readonly proposal: string;
-  /** Use simulation mode (fallback for dry-run or no adapter) */
+  /** Use simulation mode (explicit opt-in only) */
   readonly simulate?: boolean;
 }
 
 /**
- * Collects votes from multiple voter agents.
- * Attempts real LLM execution, falls back to simulation if unavailable.
+ * Error thrown when no adapter is available and simulation is disabled.
  */
-export async function collectRealVotes(
-  options: CollectRealVotesOptions
-): Promise<readonly AgentVoteResult[]> {
-  const logger = options.logger ?? defaultLogger;
-  const { roles, proposal, simulate } = options;
-
-  // If simulation mode requested, use simulation
-  if (simulate === true) {
-    logger.info('Using simulation mode');
-    return roles.map((role) => ({
-      role,
-      vote: simulateVote(role, proposal),
-      processingTimeMs: Math.floor(Math.random() * 100),
-      source: 'simulation' as const,
-    }));
+export class NoAdapterError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'NoAdapterError';
   }
+}
 
-  // Try to get an adapter
-  let adapter: IModelAdapter;
+/**
+ * Resolves the model adapter, handling errors per Issue #280.
+ */
+async function resolveAdapter(
+  options: CollectRealVotesOptions,
+  logger: ILogger
+): Promise<{ adapter: IModelAdapter } | { error: string }> {
   try {
     const selection =
       options.adapter !== undefined
         ? { adapter: options.adapter, source: 'provided' as const }
         : await createAutoAdapter({ logger });
-    adapter = selection.adapter;
-    logger.info('Using adapter for voting', {
-      source: 'source' in selection ? selection.source : 'api',
-    });
+    return { adapter: selection.adapter };
   } catch (error) {
-    logger.warn('No adapter available, falling back to simulation', {
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return roles.map((role) => ({
-      role,
-      vote: simulateVote(role, proposal),
-      processingTimeMs: Math.floor(Math.random() * 100),
-      source: 'simulation' as const,
-      error: 'No adapter available',
-    }));
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    return { error: errorMessage };
+  }
+}
+
+/**
+ * Collects votes from multiple voter agents.
+ *
+ * Per Issue #280: No automatic simulation fallback. If no adapter is
+ * available and simulation is not explicitly enabled, throws NoAdapterError.
+ */
+export async function collectRealVotes(
+  options: CollectRealVotesOptions
+): Promise<readonly AgentVoteResult[]> {
+  const logger = options.logger ?? defaultLogger;
+  const { roles, proposal, simulate, allowSimulation } = options;
+  const timeoutMs = options.timeoutMs ?? DEFAULT_VOTE_TIMEOUT_MS;
+  const maxRetries = options.maxRetries ?? DEFAULT_MAX_RETRIES;
+
+  if (simulate === true) {
+    logger.info('Using simulation mode (explicitly requested)');
+    return createSimulatedVotes(roles, proposal);
   }
 
-  // Execute votes in parallel for all roles
-  const votePromises = roles.map((role) => executeAgentVote(role, proposal, adapter, logger));
+  const adapterResult = await resolveAdapter(options, logger);
+
+  if ('error' in adapterResult) {
+    logger.error('No adapter available for voting', undefined, { error: adapterResult.error });
+
+    if (allowSimulation === true) {
+      logger.warn('Falling back to simulation (allowSimulation=true)');
+      return createSimulatedVotes(roles, proposal, 'No adapter available');
+    }
+
+    throw new NoAdapterError(
+      `No adapter available for voting: ${adapterResult.error}. ` +
+        'Install a CLI (claude/gemini/codex) or set ANTHROPIC_API_KEY.'
+    );
+  }
+
+  logger.info('Using adapter for voting', { timeoutMs, maxRetries });
+  const voteOptions = { timeoutMs, maxRetries, allowSimulation: allowSimulation ?? false };
+  const votePromises = roles.map((role) =>
+    executeAgentVote(role, proposal, adapterResult.adapter, logger, voteOptions)
+  );
 
   return Promise.all(votePromises);
 }

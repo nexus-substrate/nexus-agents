@@ -42,11 +42,14 @@ const execAsync = promisify(exec);
 
 /**
  * Default execution options.
+ *
+ * Timeout reduced from 120s to 60s per Issue #280 to prevent
+ * cascading timeouts in multi-agent voting scenarios.
  */
 const DEFAULT_OPTIONS: Required<ExecutionOptions> = {
-  timeoutMs: 120_000, // 2 minutes
+  timeoutMs: 60_000, // 1 minute (reduced from 2 minutes per Issue #280)
   allowRetry: true,
-  maxRetries: 2,
+  maxRetries: 1, // Reduced from 2 to prevent 3+ minute total wait
   trackUsage: true,
 };
 
