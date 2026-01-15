@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **E2E Workflow Testing** (#281)
+  - 4-layer testing strategy: Contract, Scenario, AccuracyEval, Journey
+  - ScenarioRunner with stubbed dependencies for fast CI tests
+  - AccuracyEval for AI-driven quality assessment
+  - JourneySimulator for user journey validation
+  - 71 comprehensive tests
+- **CLI Commands**
+  - `nexus-agents verify` - Quick verification command (#253)
+  - `nexus-agents review-demo` - PR review demo workflow with wizard UX (#258)
+  - `nexus-agents validation-dashboard` - A/B testing dashboard (#273)
+  - `nexus-agents swe-bench` - SWE-bench evaluation module (#257)
+- **Self-Improving Agent**
+  - SicaTestGenerator for coverage-based test generation (#256)
+  - Coverage gap detection with priority scoring
+  - Test generation for vitest/jest frameworks
+  - Version-aware test metrics tracking
+- **Routing**
+  - PreferenceRouter integration into CompositeRouter chain (#275)
+- **Verification**
+  - QA verification engine for automated quality checks (#277)
+
+### Fixed
+
+- Consensus vote execution timeout and simulation fallback removal (#280)
+
 ## [2.1.0] - 2026-01-14
 
 Multi-Agent Orchestration Release

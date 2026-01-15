@@ -1,6 +1,6 @@
 # Nexus-Agents Entrypoints
 
-**Last Updated:** 2026-01-12 (ET)
+**Last Updated:** 2026-01-15 (ET)
 **Canonical Source:** This document is the single source of truth for all entrypoints.
 **Issue:** #210 (Epic #209)
 
@@ -23,29 +23,35 @@ Nexus-agents provides four interface categories:
 
 **Entry Point:** `nexus-agents [command] [options]`
 
-| Command         | Subcommand      | Description                                | Mode         |
-| --------------- | --------------- | ------------------------------------------ | ------------ |
-| `(default)`     | -               | Start MCP server                           | server       |
-| `--help`        | -               | Display help text                          | any          |
-| `--version`     | -               | Display version                            | any          |
-| `doctor`        | -               | Check CLI health and dependencies          | any          |
-| `config`        | `init`          | Generate starter configuration file        | any          |
-| `expert`        | `list`          | List available experts (built-in + custom) | any          |
-| `workflow`      | `list`          | List available workflow templates          | any          |
-| `workflow`      | `run <name>`    | Execute a workflow template                | orchestrator |
-| `server`        | -               | Start MCP server (explicit)                | server       |
-| `server`        | `--interactive` | Start interactive REPL mode                | server       |
-| `review`        | `<url>`         | Review a GitHub PR                         | orchestrator |
-| `routing-audit` | `<task>`        | Debug routing decisions (dry-run)          | any          |
-| `orchestrate`   | `<task>`        | Execute task standalone                    | orchestrator |
-| `system-review` | -               | Run 5-phase system review                  | any          |
-| `vote`          | `--proposal`    | Consensus voting with 5 agents             | any          |
-| `issue`         | `validate`      | Validate issue against templates           | any          |
-| `sprint`        | `plan`          | Generate sprint proposal from open issues  | any          |
-| `sprint`        | `list`          | List open issues with priority labels      | any          |
-| `research`      | `status`        | Show technique implementation status       | any          |
-| `research`      | `overlap`       | Find overlapping techniques                | any          |
-| `research`      | `add`           | Add new paper from arXiv                   | any          |
+| Command                | Subcommand      | Description                                | Mode         |
+| ---------------------- | --------------- | ------------------------------------------ | ------------ |
+| `(default)`            | -               | Start MCP server                           | server       |
+| `--help`               | -               | Display help text                          | any          |
+| `--version`            | -               | Display version                            | any          |
+| `doctor`               | -               | Check CLI health and dependencies          | any          |
+| `config`               | `init`          | Generate starter configuration file        | any          |
+| `expert`               | `list`          | List available experts (built-in + custom) | any          |
+| `workflow`             | `list`          | List available workflow templates          | any          |
+| `workflow`             | `run <name>`    | Execute a workflow template                | orchestrator |
+| `server`               | -               | Start MCP server (explicit)                | server       |
+| `server`               | `--interactive` | Start interactive REPL mode                | server       |
+| `review`               | `<url>`         | Review a GitHub PR                         | orchestrator |
+| `routing-audit`        | `<task>`        | Debug routing decisions (dry-run)          | any          |
+| `orchestrate`          | `<task>`        | Execute task standalone                    | orchestrator |
+| `system-review`        | -               | Run 5-phase system review                  | any          |
+| `vote`                 | `--proposal`    | Consensus voting with 5 agents             | any          |
+| `issue`                | `validate`      | Validate issue against templates           | any          |
+| `sprint`               | `plan`          | Generate sprint proposal from open issues  | any          |
+| `sprint`               | `list`          | List open issues with priority labels      | any          |
+| `research`             | `status`        | Show technique implementation status       | any          |
+| `research`             | `overlap`       | Find overlapping techniques                | any          |
+| `research`             | `add`           | Add new paper from arXiv                   | any          |
+| `verify`               | -               | Quick verification check                   | any          |
+| `review-demo`          | -               | PR review demo with wizard UX              | orchestrator |
+| `validation-dashboard` | -               | A/B testing and validation dashboard       | any          |
+| `swe-bench`            | `run`           | Run SWE-bench evaluation                   | orchestrator |
+| `swe-bench`            | `evaluate`      | Evaluate predictions                       | any          |
+| `swe-bench`            | `status`        | Show evaluation status                     | any          |
 
 ### Mode Selection
 
@@ -105,22 +111,40 @@ nexus-agents research status --status=implemented  # Filter by status
 nexus-agents research status aegean-consensus      # Show specific technique
 nexus-agents research overlap trinity-roles        # Find related techniques
 nexus-agents research add 2501.06322 --dry-run     # Preview adding paper
+
+# Quick verification
+nexus-agents verify
+
+# PR review demo with wizard
+nexus-agents review-demo
+
+# Validation dashboard
+nexus-agents validation-dashboard
+
+# SWE-bench evaluation
+nexus-agents swe-bench run --variant=lite --limit=10
+nexus-agents swe-bench evaluate predictions.jsonl
+nexus-agents swe-bench status
 ```
 
 ### Source Files
 
-| File                             | Purpose               |
-| -------------------------------- | --------------------- |
-| `src/cli-commands.ts`            | Command dispatcher    |
-| `src/cli/doctor.ts`              | Doctor command        |
-| `src/cli/config-init.ts`         | Config init command   |
-| `src/cli/expert-list.ts`         | Expert list command   |
-| `src/cli/workflow-run.ts`        | Workflow commands     |
-| `src/cli/review-command.ts`      | PR review command     |
-| `src/cli/routing-audit.ts`       | Routing audit command |
-| `src/cli/orchestrate-command.ts` | Orchestrate command   |
-| `src/cli/system-review.ts`       | System review command |
-| `src/cli/research-command.ts`    | Research registry CLI |
+| File                                      | Purpose               |
+| ----------------------------------------- | --------------------- |
+| `src/cli-commands.ts`                     | Command dispatcher    |
+| `src/cli/doctor.ts`                       | Doctor command        |
+| `src/cli/config-init.ts`                  | Config init command   |
+| `src/cli/expert-list.ts`                  | Expert list command   |
+| `src/cli/workflow-run.ts`                 | Workflow commands     |
+| `src/cli/review-command.ts`               | PR review command     |
+| `src/cli/routing-audit.ts`                | Routing audit command |
+| `src/cli/orchestrate-command.ts`          | Orchestrate command   |
+| `src/cli/system-review.ts`                | System review command |
+| `src/cli/verify-command.ts`               | Verify command        |
+| `src/cli/review-demo-command.ts`          | Review demo command   |
+| `src/cli/validation-dashboard-command.ts` | Validation dashboard  |
+| `src/cli/swe-bench-command.ts`            | SWE-bench command     |
+| `src/cli/research-command.ts`             | Research registry CLI |
 
 ---
 

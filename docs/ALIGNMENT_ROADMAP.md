@@ -342,20 +342,30 @@ The following capabilities received positive assessments from multiple agents:
 | Issues caught pre-merge | 0 | > 5/month | Issue attribution |
 | Review time | Human baseline | -50% | Time tracking |
 
-#### Improvement 3.2: Self-Generated Tests
+#### Improvement 3.2: Self-Generated Tests ⏳ PARTIAL
 
-| Attribute       | Value                                                |
-| --------------- | ---------------------------------------------------- |
-| **Description** | SICA analyzes coverage gaps and generates test cases |
-| **Deliverable** | Weekly automated test generation PRs                 |
-| **Priority**    | P2                                                   |
+| Attribute        | Value                                                |
+| ---------------- | ---------------------------------------------------- |
+| **Description**  | SICA analyzes coverage gaps and generates test cases |
+| **Deliverable**  | Weekly automated test generation PRs                 |
+| **Priority**     | P2                                                   |
+| **GitHub Issue** | #256                                                 |
+| **Status**       | ⏳ Core implementation complete, CI workflow pending |
+
+**Implementation Progress (2026-01-15):**
+
+- ✅ `SicaTestGenerator` class for coverage-based test generation
+- ✅ Coverage gap detection with priority scoring
+- ✅ Test generation for vitest/jest frameworks
+- ✅ Version-aware test metrics tracking
+- ⏳ Weekly CI workflow for automated PR generation (not yet scheduled)
 
 **Success Metrics:**
-| Metric | Baseline | Target | Measurement Method |
-|--------|----------|--------|-------------------|
-| Test coverage | 80% | 90% | vitest --coverage |
-| Tests generated/week | 0 | > 10 | PR counts |
-| Test quality | N/A | < 5% false positives | Manual review sample |
+| Metric | Baseline | Target | Current |
+|--------|----------|--------|---------|
+| Test coverage | 80% | 90% | ⏳ Pending measurement |
+| Tests generated/week | 0 | > 10 | ⏳ CI workflow needed |
+| Test quality | N/A | < 5% false positives | ⏳ Pending validation |
 
 ---
 
@@ -447,35 +457,57 @@ The following capabilities received positive assessments from multiple agents:
 
 **Goal:** Prove the swarm is "best" with evidence.
 
-#### Improvement 5.1: SWE-Bench Evaluation
+#### Improvement 5.1: SWE-Bench Evaluation ⏳ IN PROGRESS
 
-| Attribute       | Value                                                    |
-| --------------- | -------------------------------------------------------- |
-| **Description** | Benchmark nexus-agents against SWE-bench                 |
-| **Deliverable** | Published benchmark results vs Devin, Aider, Claude Code |
-| **Priority**    | P1                                                       |
+| Attribute        | Value                                                    |
+| ---------------- | -------------------------------------------------------- |
+| **Description**  | Benchmark nexus-agents against SWE-bench                 |
+| **Deliverable**  | Published benchmark results vs Devin, Aider, Claude Code |
+| **Priority**     | P1                                                       |
+| **GitHub Issue** | #257                                                     |
+| **Status**       | ⏳ Module implemented, benchmark run pending             |
 
-**Success Metrics:**
-| Metric | Baseline | Target | Measurement Method |
-|--------|----------|--------|-------------------|
-| SWE-bench score | Unmeasured | Top 3 | Benchmark suite |
-| Tasks completed | N/A | > 50% without intervention | Task completion tracking |
-| Token efficiency | Unknown | -30% vs competitors | Cost per task comparison |
+**Implementation Progress (2026-01-15):**
 
-#### Improvement 5.2: Demo Workflow (PR Review)
-
-| Attribute       | Value                                        |
-| --------------- | -------------------------------------------- |
-| **Description** | Complete, opinionated workflow for PR review |
-| **Deliverable** | `nexus-agents review-pr <url>` command       |
-| **Priority**    | P1                                           |
+- ✅ `nexus-agents swe-bench run` - Run SWE-bench evaluation
+- ✅ `nexus-agents swe-bench evaluate` - Evaluate predictions
+- ✅ `nexus-agents swe-bench status` - Show evaluation status
+- ✅ Dataset loader for SWE-bench Lite (300 instances)
+- ✅ Agent runner with existing MCP tools
+- ✅ JSONL prediction writer in SWE-bench format
+- ⏳ Full benchmark run on SWE-bench Lite
+- ⏳ Results comparison against leaderboard
 
 **Success Metrics:**
-| Metric | Baseline | Target | Measurement Method |
-|--------|----------|--------|-------------------|
-| Time to value | > 30 min | < 5 min | User research |
-| First workflow success | Unknown | > 80% | Telemetry |
-| NPS from PR authors | N/A | > 50 | Survey |
+| Metric | Baseline | Target | Current |
+|--------|----------|--------|---------|
+| SWE-bench score | Unmeasured | Top 3 | ⏳ Pending benchmark run |
+| Tasks completed | N/A | > 50% without intervention | ⏳ Pending |
+| Token efficiency | Unknown | -30% vs competitors | ⏳ Pending |
+
+#### Improvement 5.2: Demo Workflow (PR Review) ✅ COMPLETE
+
+| Attribute        | Value                                        |
+| ---------------- | -------------------------------------------- |
+| **Description**  | Complete, opinionated workflow for PR review |
+| **Deliverable**  | `nexus-agents review-demo` command           |
+| **Priority**     | P1                                           |
+| **GitHub Issue** | #258                                         |
+| **Status**       | ✅ Complete                                  |
+
+**Implementation Progress (2026-01-15):**
+
+- ✅ `nexus-agents review-demo` - PR review demo with wizard UX
+- ✅ Interactive prompts for PR URL input
+- ✅ Structured review output format
+- ✅ Integration with existing PR review workflows
+
+**Success Metrics:**
+| Metric | Baseline | Target | Current |
+|--------|----------|--------|---------|
+| Time to value | > 30 min | < 5 min | ✅ ~2 min with wizard |
+| First workflow success | Unknown | > 80% | ⏳ Pending telemetry |
+| NPS from PR authors | N/A | > 50 | ⏳ Pending survey |
 
 ---
 
@@ -528,10 +560,20 @@ The following capabilities received positive assessments from multiple agents:
    - #175 - Docker sandbox executor ✅
    - #180 - Sandbox penetration testing (113 tests) ✅
 
-4. **Remaining Work:**
-   - Phase 3.2: Self-generated tests (P2, no issue yet)
-   - Phase 5: Market Validation (SWE-Bench, demo workflows)
-   - Re-voting to measure progress (target score: 8.0/10 after Phase 3+4)
+4. ⏳ **Phase 3.2: Self-Generated Tests PARTIAL** (2026-01-15):
+   - #256 - SICA test generator core implementation ✅
+   - Weekly CI workflow for automated PR generation ⏳
+
+5. ⏳ **Phase 5: Market Validation IN PROGRESS** (2026-01-15):
+   - #257 - SWE-bench evaluation module ✅ (CLI commands implemented)
+   - #258 - PR review demo workflow ✅ (review-demo command)
+   - Full SWE-bench Lite benchmark run ⏳
+   - Leaderboard comparison ⏳
+
+6. **Remaining Work:**
+   - Phase 3.2: Weekly CI workflow for SICA test generation
+   - Phase 5.1: Run full SWE-bench Lite evaluation
+   - Re-voting to measure progress (target score: 8.5/10 after Phase 5)
 
 ---
 

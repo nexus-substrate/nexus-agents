@@ -608,7 +608,7 @@ techniques:
     integration_files:
       - 'packages/nexus-agents/src/context/typed-memory.ts'
       - 'packages/nexus-agents/src/context/typed-memory-impl.ts'
-      - 'packages/nexus-agents/src/context/typed-memory-types.ts'
+      - 'packages/nexus-agents/src/context/memory-types.ts'
 
     implementation_issue: 157
     related_prs: []
