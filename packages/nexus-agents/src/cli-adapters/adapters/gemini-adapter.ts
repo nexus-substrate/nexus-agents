@@ -9,7 +9,7 @@
  */
 
 import type { ICliResponseParser, CliTask, ModelInfo, CliName } from '../types.js';
-import { SubprocessCliAdapter } from '../base-adapter.js';
+import { SubprocessCliAdapter, type CommandConfig } from '../base-adapter.js';
 import { GeminiResponseParser } from '../parsers/gemini-parser.js';
 import type { ILogger } from '../../core/index.js';
 
@@ -45,7 +45,7 @@ export class GeminiCliAdapter extends SubprocessCliAdapter {
   /**
    * Gets CLI command and arguments for execution.
    */
-  protected getCommand(task: CliTask): { command: string; args: string[] } {
+  protected getCommand(task: CliTask): CommandConfig {
     const args: string[] = [];
 
     // Add the task content as positional argument

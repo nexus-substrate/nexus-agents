@@ -19,6 +19,8 @@ import { AgentRunnerError } from './agent-runner.js';
 export interface CliAgentExecutorConfig {
   /** Model ID to use (default: claude-sonnet-4). */
   readonly modelId?: string | undefined;
+  /** Timeout per execution in milliseconds (default: 300000 = 5 minutes). */
+  readonly timeoutMs?: number | undefined;
   /** Callback for message logging. */
   readonly onMessage?: ((message: string) => void) | undefined;
 }
@@ -28,6 +30,7 @@ export interface CliAgentExecutorConfig {
  */
 const CLI_EXECUTOR_DEFAULTS = {
   modelId: 'claude-sonnet-4',
+  timeoutMs: 600_000, // 10 minutes - SWE-bench tasks involve file exploration
 } as const;
 
 /**
@@ -39,10 +42,12 @@ const CLI_EXECUTOR_DEFAULTS = {
 export class CliAgentExecutor implements IAgentExecutor {
   private readonly adapter: ClaudeCliAdapter;
   private readonly modelId: string;
+  private readonly timeoutMs: number;
   private readonly messageCallback: ((message: string) => void) | null;
 
   constructor(config?: CliAgentExecutorConfig) {
     this.modelId = config?.modelId ?? CLI_EXECUTOR_DEFAULTS.modelId;
+    this.timeoutMs = config?.timeoutMs ?? CLI_EXECUTOR_DEFAULTS.timeoutMs;
     this.adapter = new ClaudeCliAdapter({ model: this.modelId });
     this.messageCallback = config?.onMessage ?? null;
   }
@@ -58,13 +63,18 @@ export class CliAgentExecutor implements IAgentExecutor {
     const startTime = Date.now();
 
     this.messageCallback?.(`Executing agent for ${context.instance.instance_id} via CLI`);
+    this.messageCallback?.(`Working directory: ${context.workDir}`);
 
     try {
-      const result = await this.adapter.execute({
-        content: userPrompt,
-        systemPrompt,
-        model: this.modelId,
-      });
+      const result = await this.adapter.execute(
+        {
+          content: userPrompt,
+          systemPrompt,
+          model: this.modelId,
+          options: { workDir: context.workDir },
+        },
+        { timeoutMs: this.timeoutMs }
+      );
 
       if (!result.ok) {
         return {

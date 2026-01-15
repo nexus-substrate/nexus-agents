@@ -27,6 +27,7 @@ import {
   validationDashboardCommand,
   parseValidationArgs,
   verifyCommand,
+  sweBenchCommand,
 } from './cli/index.js';
 import { EXIT_CODES, HELP_TEXT, type ParsedCliArgs } from './cli-types.js';
 import { startServer } from './cli-server.js';
@@ -324,6 +325,44 @@ export function handleValidationCommand(args: ParsedCliArgs): void {
 }
 
 /**
+ * Handles the swe-bench command for benchmark evaluation.
+ * (Source: Issue #257 - SWE-Bench Evaluation)
+ */
+export async function handleSweBenchCommand(args: ParsedCliArgs): Promise<void> {
+  // Build args array from parsed options for sweBenchCommand
+  const subArgs: string[] = [];
+
+  // Add subcommand (run, status, info, evaluate)
+  const subcommand = args.positionals[1] ?? 'run';
+  subArgs.push(subcommand);
+
+  // Add parsed options
+  if (args.options.variant !== undefined) {
+    subArgs.push(`--variant=${args.options.variant}`);
+  }
+  if (args.options.limit !== undefined) {
+    subArgs.push(`--limit=${String(args.options.limit)}`);
+  }
+  if (args.options.output !== undefined) {
+    subArgs.push(`--output=${args.options.output}`);
+  }
+  if (args.options.resume) {
+    subArgs.push('--resume');
+  }
+  if (args.options.verbose) {
+    subArgs.push('--verbose');
+  }
+  if (args.options.instance !== undefined) {
+    for (const inst of args.options.instance) {
+      subArgs.push(`--instance=${inst}`);
+    }
+  }
+
+  const exitCode = await sweBenchCommand(subArgs);
+  process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
+}
+
+/**
  * Handles the verify command for quick installation verification.
  * (Source: Issue #253)
  */
@@ -384,6 +423,7 @@ const ASYNC_COMMAND_HANDLERS: Record<string, ((args: ParsedCliArgs) => Promise<v
     vote: handleVoteCommand,
     index: handleIndexCommand,
     research: handleResearchCommand,
+    'swe-bench': handleSweBenchCommand,
   };
 
 /**

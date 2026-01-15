@@ -151,17 +151,19 @@ function passesFilters(instance: SWEBenchInstance, options: DatasetLoadOptions):
   return true;
 }
 
+/** Maximum rows per HuggingFace API request. */
+const HF_API_MAX_LENGTH = 100;
+
 /**
- * Fetches dataset from HuggingFace API.
+ * Fetches a single page from HuggingFace API.
  */
-async function fetchFromHuggingFace(
+async function fetchPage(
   datasetId: string,
-  options: DatasetLoadOptions
-): Promise<Result<readonly RawSWEBenchInstance[], DatasetLoadError>> {
+  offset: number,
+  length: number
+): Promise<Result<RawSWEBenchInstance[], DatasetLoadError>> {
   const baseUrl = 'https://datasets-server.huggingface.co/rows';
-  const limit = options.limit ?? 1000;
-  const offset = 0;
-  const url = `${baseUrl}?dataset=${encodeURIComponent(datasetId)}&config=default&split=test&offset=${String(offset)}&length=${String(limit)}`;
+  const url = `${baseUrl}?dataset=${encodeURIComponent(datasetId)}&config=default&split=test&offset=${String(offset)}&length=${String(length)}`;
 
   try {
     const response = await fetch(url, { headers: { Accept: 'application/json' } });
@@ -185,6 +187,44 @@ async function fetchFromHuggingFace(
   } catch (err) {
     return { ok: false, error: new DatasetLoadError('Failed to fetch from HuggingFace', err) };
   }
+}
+
+/**
+ * Fetches dataset from HuggingFace API with pagination.
+ */
+async function fetchFromHuggingFace(
+  datasetId: string,
+  options: DatasetLoadOptions,
+  totalInstances: number
+): Promise<Result<readonly RawSWEBenchInstance[], DatasetLoadError>> {
+  const requestedLimit = options.limit ?? totalInstances;
+  const allRows: RawSWEBenchInstance[] = [];
+  let offset = 0;
+
+  while (allRows.length < requestedLimit) {
+    const remaining = requestedLimit - allRows.length;
+    const pageSize = Math.min(remaining, HF_API_MAX_LENGTH);
+
+    const pageResult = await fetchPage(datasetId, offset, pageSize);
+    if (!pageResult.ok) {
+      return pageResult;
+    }
+
+    if (pageResult.value.length === 0) {
+      // No more data available
+      break;
+    }
+
+    allRows.push(...pageResult.value);
+    offset += pageResult.value.length;
+
+    // Stop if we got fewer rows than requested (end of dataset)
+    if (pageResult.value.length < pageSize) {
+      break;
+    }
+  }
+
+  return { ok: true, value: allRows };
 }
 
 /**
@@ -225,7 +265,11 @@ export async function loadDataset(
   const startTime = Date.now();
   const datasetInfo = SWE_BENCH_DATASETS[variant];
 
-  const fetchResult = await fetchFromHuggingFace(datasetInfo.hf_dataset_id, options);
+  const fetchResult = await fetchFromHuggingFace(
+    datasetInfo.hf_dataset_id,
+    options,
+    datasetInfo.num_instances
+  );
   if (!fetchResult.ok) {
     return { ok: false, error: fetchResult.error };
   }

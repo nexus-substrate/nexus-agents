@@ -89,6 +89,11 @@ interface ParsedValues {
   proposal?: string;
   threshold?: string;
   quick: boolean;
+  // SWE-bench options
+  variant?: string;
+  limit?: string;
+  instance?: string[];
+  resume: boolean;
 }
 
 /** Builds orchestrate-specific options. */
@@ -122,6 +127,34 @@ function buildVoteOptions(values: ParsedValues): Record<string, unknown> {
   };
 }
 
+/** Validates swe-bench variant option. */
+function parseSweBenchVariant(value: string | undefined): 'lite' | 'verified' | 'full' | undefined {
+  if (value === 'lite' || value === 'verified' || value === 'full') {
+    return value;
+  }
+  return undefined;
+}
+
+/** Builds swe-bench-specific options. */
+function buildSweBenchOptions(values: ParsedValues): {
+  variant?: 'lite' | 'verified' | 'full';
+  limit?: number;
+  instance?: string[];
+  resume: boolean;
+} {
+  const variant = parseSweBenchVariant(values.variant);
+  const limit = parseNumericOption(values.limit);
+  const base: { resume: boolean; variant?: 'lite' | 'verified' | 'full'; limit?: number } = {
+    resume: values.resume,
+  };
+  if (variant !== undefined) base.variant = variant;
+  if (limit !== undefined) base.limit = limit;
+  if (values.instance !== undefined && values.instance.length > 0) {
+    return { ...base, instance: values.instance };
+  }
+  return base;
+}
+
 /** Builds the options object from parsed values. */
 function buildOptions(values: ParsedValues): ParsedCliArgs['options'] {
   const explicitMode = isValidServerMode(values.mode) ? values.mode : undefined;
@@ -146,6 +179,7 @@ function buildOptions(values: ParsedValues): ParsedCliArgs['options'] {
     ...(values.input !== undefined && { input: values.input }),
     ...buildOrchestrateOptions(values),
     ...buildVoteOptions(values),
+    ...buildSweBenchOptions(values),
   };
 }
 

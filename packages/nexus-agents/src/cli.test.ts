@@ -300,6 +300,7 @@ describe('CLI Argument Parsing', () => {
           createIssue: false,
           fix: false,
           quick: false,
+          resume: false,
         },
         positionals: [],
       };
@@ -333,6 +334,7 @@ describe('CLI Argument Parsing', () => {
           createIssue: false,
           fix: false,
           quick: false,
+          resume: false,
         },
         positionals: ['config', 'show'],
       };
@@ -358,6 +360,7 @@ describe('CLI Argument Parsing', () => {
           createIssue: false,
           fix: false,
           quick: false,
+          resume: false,
         },
         positionals: [],
       };

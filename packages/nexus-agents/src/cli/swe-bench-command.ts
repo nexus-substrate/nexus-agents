@@ -119,8 +119,20 @@ async function runBenchmark(options: SWEBenchOptions): Promise<SWEBenchCommandRe
   console.log(`Model: ${executor.getModelId()}`);
 
   console.log('Loading dataset...');
-  const loadResult = await loadDataset(options.variant);
-  if (!loadResult.ok) return { success: false, message: loadResult.error.message };
+  // Pass limit to avoid fetching all instances when only testing a few
+  const loadOptions = options.limit !== undefined ? { limit: options.limit } : {};
+  const loadResult = await loadDataset(options.variant, loadOptions);
+  if (!loadResult.ok) {
+    console.error(`\nError loading dataset: ${loadResult.error.message}`);
+    if (loadResult.error.cause !== undefined) {
+      const causeMsg =
+        loadResult.error.cause instanceof Error
+          ? loadResult.error.cause.message
+          : JSON.stringify(loadResult.error.cause);
+      console.error(`  Cause: ${causeMsg}`);
+    }
+    return { success: false, message: loadResult.error.message };
+  }
 
   const allInstances = loadResult.value.instances;
   console.log(`Loaded ${String(allInstances.length)} instances`);

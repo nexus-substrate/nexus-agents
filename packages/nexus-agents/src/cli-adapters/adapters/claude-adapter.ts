@@ -9,7 +9,7 @@
  */
 
 import type { ICliResponseParser, CliTask, ModelInfo, CliName } from '../types.js';
-import { SubprocessCliAdapter } from '../base-adapter.js';
+import { SubprocessCliAdapter, type CommandConfig } from '../base-adapter.js';
 import { ClaudeResponseParser } from '../parsers/claude-parser.js';
 import type { ILogger } from '../../core/index.js';
 
@@ -44,8 +44,10 @@ export class ClaudeCliAdapter extends SubprocessCliAdapter {
 
   /**
    * Gets CLI command and arguments for execution.
+   * Uses stdin for the prompt to avoid argument escaping issues,
+   * especially important when using --add-dir.
    */
-  protected getCommand(task: CliTask): { command: string; args: string[] } {
+  protected getCommand(task: CliTask): CommandConfig {
     const args: string[] = ['-p', '--output-format', 'json'];
 
     // Add model (always present due to default)
@@ -62,14 +64,18 @@ export class ClaudeCliAdapter extends SubprocessCliAdapter {
       args.push('--resume', task.sessionId);
     }
 
+    // Add working directory for file access (e.g., SWE-bench)
+    const workDir = task.options?.['workDir'];
+    if (typeof workDir === 'string' && workDir.length > 0) {
+      args.push('--add-dir', workDir);
+    }
+
     // Note: maxTokens is intentionally not passed to Claude CLI.
     // The Claude CLI does not support --max-tokens. Use --max-budget-usd instead.
     // The CLI handles token limits internally based on model configuration.
 
-    // Add the task content as the prompt
-    args.push(task.content);
-
-    return { command: 'claude', args };
+    // Pass prompt via stdin to avoid argument escaping issues
+    return { command: 'claude', args, stdin: task.content };
   }
 
   /**

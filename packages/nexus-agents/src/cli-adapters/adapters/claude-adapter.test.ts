@@ -10,9 +10,10 @@ import { EventEmitter } from 'node:events';
 import { ClaudeCliAdapter } from './claude-adapter.js';
 import type { CliTask } from '../types.js';
 
-// Track captured command and args for verification
+// Track captured command, args, and stdin for verification
 let capturedCommand = '';
 let capturedArgs: string[] = [];
+let capturedStdin = '';
 
 // Mock spawn response data
 let mockStdout = '';
@@ -24,15 +25,23 @@ let mockError: Error | null = null;
 function createMockChildProcess(): EventEmitter & {
   stdout: EventEmitter;
   stderr: EventEmitter;
+  stdin: { write: ReturnType<typeof vi.fn>; end: ReturnType<typeof vi.fn> };
   kill: () => void;
 } {
   const child = new EventEmitter() as EventEmitter & {
     stdout: EventEmitter;
     stderr: EventEmitter;
+    stdin: { write: ReturnType<typeof vi.fn>; end: ReturnType<typeof vi.fn> };
     kill: () => void;
   };
   child.stdout = new EventEmitter();
   child.stderr = new EventEmitter();
+  child.stdin = {
+    write: vi.fn((data: string) => {
+      capturedStdin += data;
+    }),
+    end: vi.fn(),
+  };
   child.kill = vi.fn();
   return child;
 }
@@ -127,6 +136,7 @@ describe('ClaudeCliAdapter', () => {
     vi.clearAllMocks();
     capturedCommand = '';
     capturedArgs = [];
+    capturedStdin = '';
     mockStdout = '';
     mockStderr = '';
     mockExitCode = 0;
@@ -310,8 +320,9 @@ describe('ClaudeCliAdapter', () => {
 
       await adapter.execute(task);
 
-      // With spawn, multi-line content is passed as separate args without escaping issues
-      expect(capturedArgs).toContain('Line 1\nLine 2\nLine 3');
+      // Content is passed via stdin to avoid argument escaping issues with --add-dir
+      expect(capturedStdin).toBe('Line 1\nLine 2\nLine 3');
+      // System prompt is still passed as argument
       expect(capturedArgs).toContain('Multi-line\nsystem\nprompt');
     });
   });

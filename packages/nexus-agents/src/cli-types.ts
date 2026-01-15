@@ -37,7 +37,8 @@ export type CliCommand =
   | 'vote'
   | 'index'
   | 'research'
-  | 'validation';
+  | 'validation'
+  | 'swe-bench';
 
 /**
  * Parsed CLI arguments and command.
@@ -71,6 +72,11 @@ export interface ParsedCliArgs {
     proposal?: string;
     threshold?: 'majority' | 'supermajority' | 'unanimous';
     quick: boolean;
+    // SWE-bench command options
+    variant?: 'lite' | 'verified' | 'full';
+    limit?: number;
+    instance?: string[];
+    resume: boolean;
   };
   positionals: string[];
 }
@@ -169,6 +175,22 @@ export const PARSE_ARGS_CONFIG = {
     quick: {
       type: 'boolean' as const,
       short: 'q',
+      default: false,
+    },
+    // SWE-bench command options
+    variant: {
+      type: 'string' as const,
+      default: 'lite',
+    },
+    limit: {
+      type: 'string' as const,
+    },
+    instance: {
+      type: 'string' as const,
+      multiple: true,
+    },
+    resume: {
+      type: 'boolean' as const,
       default: false,
     },
   },
@@ -344,6 +366,7 @@ export function isValidCommand(value: string): value is CliCommand {
     'index',
     'research',
     'validation',
+    'swe-bench',
   ];
   return validCommands.includes(value as CliCommand);
 }
