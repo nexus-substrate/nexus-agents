@@ -9,6 +9,8 @@
  */
 
 import { z } from 'zod';
+import type { IAgent, Task } from '../../core/index.js';
+import type { IEventBus } from './event-bus-types.js';
 
 // =============================================================================
 // TRINITY Role Types
@@ -233,3 +235,46 @@ export const TrinityConfigSchema = z.object({
 
 /** Schema for stop reason. */
 export const TrinityStopReasonSchema = z.enum(['verified', 'max_iterations', 'timeout', 'error']);
+
+// =============================================================================
+// Coordinator Internal Types (moved from trinity-coordinator.ts for file size)
+// =============================================================================
+
+/** Options for executing TRINITY coordination. */
+export interface TrinityExecuteOptions {
+  readonly task: Task;
+  readonly agent: IAgent;
+}
+
+/** Internal context during coordination. */
+export interface CoordinationContext {
+  readonly task: Task;
+  readonly agent: IAgent;
+  readonly startTime: number;
+  readonly history: TrinityPhaseResult[];
+  readonly sessionId: string;
+}
+
+/** Options for TrinityCoordinator constructor. */
+export interface TrinityCoordinatorOptions {
+  readonly config?: TrinityConfig;
+  /** Optional event bus for protocol lifecycle events. Uses global bus if not provided. */
+  readonly eventBus?: IEventBus;
+}
+
+/** Resolved configuration with defaults applied. */
+export interface ResolvedConfig {
+  readonly maxIterations: number;
+  readonly timeoutMs: number;
+  readonly includeHistory: boolean;
+}
+
+/** Options for building final result. */
+export interface ResultBuildOpts {
+  readonly ctx: CoordinationContext;
+  readonly thinker: ThinkerOutput;
+  readonly worker: WorkerOutput | undefined;
+  readonly verifier: VerifierOutput | undefined;
+  readonly stopReason: TrinityResult['stopReason'];
+  readonly iterations: number;
+}

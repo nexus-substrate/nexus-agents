@@ -18,10 +18,10 @@ import type {
   PendingMeasurement,
 } from './metrics-collector-types.js';
 import {
-  EMPTY_LATENCY_METRICS,
-  EMPTY_RELIABILITY_METRICS,
-  EMPTY_TOKEN_METRICS,
-} from './metrics-collector-types.js';
+  computeLatencyMetrics,
+  computeReliabilityMetrics,
+  computeTokenMetrics,
+} from './metrics-collector-helpers.js';
 
 // Re-export types for backward compatibility
 export type {
@@ -136,7 +136,7 @@ export class MetricsCollector {
    * @returns Latency metrics including percentiles
    */
   calculateLatencyMetrics(): LatencyMetrics {
-    return this.computeLatencyMetrics(this.latencyMeasurements);
+    return computeLatencyMetrics(this.latencyMeasurements);
   }
 
   /**
@@ -145,7 +145,7 @@ export class MetricsCollector {
    * @returns Reliability metrics including success rates
    */
   calculateReliabilityMetrics(): ReliabilityMetrics {
-    return this.computeReliabilityMetrics(this.taskOutcomes);
+    return computeReliabilityMetrics(this.taskOutcomes);
   }
 
   /**
@@ -154,7 +154,7 @@ export class MetricsCollector {
    * @returns Token usage metrics
    */
   calculateTokenMetrics(): TokenMetrics {
-    return this.computeTokenMetrics(this.tokenRecords);
+    return computeTokenMetrics(this.tokenRecords);
   }
 
   /**
@@ -240,103 +240,6 @@ export class MetricsCollector {
   }
 
   /**
-   * Computes latency metrics from a set of measurements.
-   */
-  private computeLatencyMetrics(measurements: LatencyMeasurement[]): LatencyMetrics {
-    if (measurements.length === 0) {
-      return EMPTY_LATENCY_METRICS;
-    }
-
-    const durations = measurements.map((m) => m.durationMs).sort((a, b) => a - b);
-    const count = durations.length;
-    const sum = durations.reduce((acc, d) => acc + d, 0);
-    const mean = sum / count;
-
-    // Calculate standard deviation
-    const squaredDiffs = durations.map((d) => (d - mean) ** 2);
-    const variance = squaredDiffs.reduce((acc, d) => acc + d, 0) / count;
-    const stdDev = Math.sqrt(variance);
-
-    // Safe access since we checked length > 0
-    const minMs = durations[0] ?? 0;
-    const maxMs = durations[count - 1] ?? 0;
-
-    return {
-      count,
-      minMs,
-      maxMs,
-      meanMs: mean,
-      p50Ms: this.percentile(durations, 50),
-      p75Ms: this.percentile(durations, 75),
-      p90Ms: this.percentile(durations, 90),
-      p95Ms: this.percentile(durations, 95),
-      p99Ms: this.percentile(durations, 99),
-      stdDevMs: stdDev,
-    };
-  }
-
-  /**
-   * Computes reliability metrics from task outcomes.
-   */
-  private computeReliabilityMetrics(outcomes: TaskOutcome[]): ReliabilityMetrics {
-    if (outcomes.length === 0) {
-      return EMPTY_RELIABILITY_METRICS;
-    }
-
-    const totalTasks = outcomes.length;
-    const successes = outcomes.filter((o) => o.success);
-    const failures = outcomes.filter((o) => !o.success);
-    const successCount = successes.length;
-    const failureCount = failures.length;
-
-    const totalRetries = outcomes.reduce((acc, o) => acc + o.retryCount, 0);
-    const meanRetriesPerFailure = failureCount > 0 ? totalRetries / failureCount : 0;
-
-    const firstAttemptSuccesses = successes.filter((o) => o.retryCount === 0);
-    const firstAttemptSuccessCount = firstAttemptSuccesses.length;
-
-    return {
-      totalTasks,
-      successCount,
-      failureCount,
-      successRate: successCount / totalTasks,
-      totalRetries,
-      meanRetriesPerFailure,
-      firstAttemptSuccessCount,
-      firstAttemptSuccessRate: firstAttemptSuccessCount / totalTasks,
-    };
-  }
-
-  /**
-   * Computes token metrics from token records.
-   */
-  private computeTokenMetrics(records: TokenRecord[]): TokenMetrics {
-    if (records.length === 0) {
-      return EMPTY_TOKEN_METRICS;
-    }
-
-    const taskCount = records.length;
-    let totalInput = 0;
-    let totalOutput = 0;
-
-    for (const record of records) {
-      totalInput += record.usage.inputTokens;
-      totalOutput += record.usage.outputTokens;
-    }
-
-    const totalTokens = totalInput + totalOutput;
-
-    return {
-      totalInputTokens: totalInput,
-      totalOutputTokens: totalOutput,
-      totalTokens,
-      meanInputTokens: totalInput / taskCount,
-      meanOutputTokens: totalOutput / taskCount,
-      taskCount,
-    };
-  }
-
-  /**
    * Gets latency metrics broken down by CLI.
    */
   private getLatencyByCli(): {
@@ -389,7 +292,7 @@ export class MetricsCollector {
     if (measurements.length === 0) {
       return null;
     }
-    return this.computeLatencyMetrics(measurements);
+    return computeLatencyMetrics(measurements);
   }
 
   /**
@@ -400,7 +303,7 @@ export class MetricsCollector {
     if (outcomes.length === 0) {
       return null;
     }
-    return this.computeReliabilityMetrics(outcomes);
+    return computeReliabilityMetrics(outcomes);
   }
 
   /**
@@ -411,40 +314,7 @@ export class MetricsCollector {
     if (records.length === 0) {
       return null;
     }
-    return this.computeTokenMetrics(records);
-  }
-
-  /**
-   * Calculates a percentile value from a sorted array.
-   * Uses linear interpolation for non-integer indices.
-   *
-   * @param sortedValues - Array of values sorted in ascending order
-   * @param p - Percentile to calculate (0-100)
-   * @returns The percentile value
-   */
-  private percentile(sortedValues: number[], p: number): number {
-    if (sortedValues.length === 0) {
-      return 0;
-    }
-
-    const firstValue = sortedValues[0];
-    if (sortedValues.length === 1 || firstValue === undefined) {
-      return firstValue ?? 0;
-    }
-
-    const index = (p / 100) * (sortedValues.length - 1);
-    const lower = Math.floor(index);
-    const upper = Math.ceil(index);
-
-    const lowerValue = sortedValues[lower] ?? 0;
-    const upperValue = sortedValues[upper] ?? 0;
-
-    if (lower === upper) {
-      return lowerValue;
-    }
-
-    const fraction = index - lower;
-    return lowerValue + fraction * (upperValue - lowerValue);
+    return computeTokenMetrics(records);
   }
 }
 

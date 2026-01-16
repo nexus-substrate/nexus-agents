@@ -6,8 +6,15 @@
  */
 
 import type { Task } from '../../core/index.js';
-import type { TrinityRole, ThinkerOutput, WorkerOutput, VerifierOutput } from './trinity-types.js';
-import { TRINITY_ROLE_PROMPTS } from './trinity-types.js';
+import type {
+  TrinityRole,
+  ThinkerOutput,
+  WorkerOutput,
+  VerifierOutput,
+  TrinityConfig,
+  ResolvedConfig,
+} from './trinity-types.js';
+import { TRINITY_ROLE_PROMPTS, DEFAULT_TRINITY_CONFIG } from './trinity-types.js';
 
 /** Build task for a specific TRINITY role. */
 export function buildRoleTask(baseTask: Task, role: TrinityRole, context: string): Task {
@@ -100,5 +107,15 @@ export function createDefaultVerifierOutput(cancelled = false): VerifierOutput {
     qualityCheck: cancelled ? 'Cancelled' : '',
     issuesFound: cancelled ? ['Coordination cancelled'] : [],
     recommendations: [],
+  };
+}
+
+/** Merge config with defaults. */
+export function resolveConfig(config: TrinityConfig | undefined): ResolvedConfig {
+  const d = DEFAULT_TRINITY_CONFIG;
+  return {
+    maxIterations: config?.maxIterations ?? d.maxIterations,
+    timeoutMs: config?.timeoutMs ?? d.timeoutMs,
+    includeHistory: config?.includeHistory ?? d.includeHistory,
   };
 }

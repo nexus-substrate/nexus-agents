@@ -32,47 +32,25 @@ import type {
   ReflexionConfig,
   ReflexionResult,
 } from './reflexion-types.js';
+import { calculateWeightedSeverity } from './reflexion-types.js';
 import {
-  ReflexionConfigSchema,
-  DEFAULT_CODE_REVIEW_PERSONAS,
-  calculateWeightedSeverity,
-} from './reflexion-types.js';
-import { generatePersonaCritique, runDebate, createReflexionRound } from './reflexion-helpers.js';
+  generatePersonaCritique,
+  runDebate,
+  createReflexionRound,
+  buildReflexionConfig,
+  formatRefinementTask,
+  createFinalResultPayload,
+  type PartialReflexionConfig,
+} from './reflexion-helpers.js';
 
 /**
  * Options for the reflexion protocol.
  */
 export interface ReflexionProtocolOptions extends ProtocolOptions {
   /** Reflexion-specific configuration */
-  readonly reflexionConfig?: Partial<ReflexionConfig>;
+  readonly reflexionConfig?: PartialReflexionConfig;
   /** Optional event bus for protocol lifecycle events. Uses global bus if not provided. */
   readonly eventBus?: IEventBus;
-}
-
-/** Default reflexion configuration values. */
-const REFLEXION_DEFAULTS = {
-  maxIterations: 3,
-  severityThreshold: 0.3,
-  iterationTimeoutMs: 60000,
-  requireConsensus: false,
-} as const;
-
-/** Builds and validates the reflexion configuration. */
-function buildReflexionConfig(options: ReflexionProtocolOptions): ReflexionConfig {
-  const userConfig = options.reflexionConfig ?? {};
-  const configInput = {
-    maxIterations: userConfig.maxIterations ?? REFLEXION_DEFAULTS.maxIterations,
-    severityThreshold: userConfig.severityThreshold ?? REFLEXION_DEFAULTS.severityThreshold,
-    personas: userConfig.personas ?? DEFAULT_CODE_REVIEW_PERSONAS,
-    iterationTimeoutMs: userConfig.iterationTimeoutMs ?? REFLEXION_DEFAULTS.iterationTimeoutMs,
-    requireConsensus: userConfig.requireConsensus ?? REFLEXION_DEFAULTS.requireConsensus,
-  };
-
-  const parsedConfig = ReflexionConfigSchema.safeParse(configInput);
-  if (!parsedConfig.success) {
-    throw new Error(`Invalid reflexion config: ${parsedConfig.error.message}`);
-  }
-  return parsedConfig.data;
 }
 
 /**
@@ -95,7 +73,7 @@ export class ReflexionProtocol implements ICollaborationProtocol {
     this.options = options;
     this.logger = options.logger ?? createLogger({ component: 'ReflexionProtocol' });
     this.eventBus = options.eventBus ?? getGlobalEventBus();
-    this.config = buildReflexionConfig(options);
+    this.config = buildReflexionConfig(options.reflexionConfig);
   }
 
   cancel(reason: string): void {
@@ -204,25 +182,11 @@ export class ReflexionProtocol implements ICollaborationProtocol {
     startTime: number
   ): void {
     if (this.session === null) return;
-
     const totalDurationMs = Date.now() - startTime;
-    this.session.submitResult(producerId, {
-      taskId,
-      output: {
-        result: result.finalOutput,
-        reflexion: {
-          rounds: result.totalIterations,
-          converged: result.converged,
-          terminationReason: result.terminationReason,
-        },
-      },
-      metadata: {
-        durationMs: totalDurationMs,
-        tokensUsed: 0,
-        toolsUsed: [],
-        model: 'reflexion-protocol',
-      },
-    });
+    this.session.submitResult(
+      producerId,
+      createFinalResultPayload(taskId, result, totalDurationMs)
+    );
   }
 
   /** Executes the initial production task. */
@@ -424,29 +388,7 @@ export class ReflexionProtocol implements ICollaborationProtocol {
     if (this.cancelled) {
       return err(new AgentError('Reflexion cancelled'));
     }
-
-    const outputStr =
-      typeof currentOutput === 'string' ? currentOutput : JSON.stringify(currentOutput, null, 2);
-    const actionItemsStr = debate.actionItems.map((a, i) => `${String(i + 1)}. ${a}`).join('\n');
-
-    const refinementTask: Task = {
-      ...originalTask,
-      id: `${originalTask.id}-refinement-${String(Date.now())}`,
-      description: `Improve the following output based on critic feedback:
-
-ORIGINAL OUTPUT:
-${outputStr}
-
-CRITIC FEEDBACK:
-${debate.synthesizedReflection}
-
-ACTION ITEMS:
-${actionItemsStr}
-
-Please provide an improved version addressing the feedback.`,
-    };
-
-    return producer.execute(refinementTask);
+    return producer.execute(formatRefinementTask(originalTask, currentOutput, debate));
   }
 }
 

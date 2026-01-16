@@ -10,7 +10,7 @@
  * (Source: Issue #141, arXiv:2512.04695)
  */
 
-import type { Result, ILogger, IAgent, Task } from '../../core/index.js';
+import type { Result, ILogger } from '../../core/index.js';
 import { ok, err, AgentError, createLogger } from '../../core/index.js';
 import type {
   TrinityConfig,
@@ -20,8 +20,12 @@ import type {
   ThinkerOutput,
   WorkerOutput,
   VerifierOutput,
+  TrinityExecuteOptions,
+  CoordinationContext,
+  TrinityCoordinatorOptions,
+  ResolvedConfig,
+  ResultBuildOpts,
 } from './trinity-types.js';
-import { DEFAULT_TRINITY_CONFIG } from './trinity-types.js';
 import {
   buildRoleTask,
   parseThinkerOutput,
@@ -29,6 +33,7 @@ import {
   parseVerifierOutput,
   createDefaultWorkerOutput,
   createDefaultVerifierOutput,
+  resolveConfig,
 } from './trinity-helpers.js';
 import type { IEventBus } from './event-bus-types.js';
 import { getGlobalEventBus } from './event-bus.js';
@@ -40,60 +45,10 @@ import {
   emitPhaseCompleted,
 } from './trinity-events.js';
 
-// =============================================================================
-// Types
-// =============================================================================
-
-/** Options for executing TRINITY coordination. */
-export interface TrinityExecuteOptions {
-  readonly task: Task;
-  readonly agent: IAgent;
-}
-
-/** Internal context during coordination. */
-interface CoordinationContext {
-  readonly task: Task;
-  readonly agent: IAgent;
-  readonly startTime: number;
-  readonly history: TrinityPhaseResult[];
-  readonly sessionId: string;
-}
-
-/** Options for TrinityCoordinator constructor. */
-export interface TrinityCoordinatorOptions {
-  readonly config?: TrinityConfig;
-  /** Optional event bus for protocol lifecycle events. Uses global bus if not provided. */
-  readonly eventBus?: IEventBus;
-}
-
-/** Resolved configuration with defaults applied. */
-interface ResolvedConfig {
-  readonly maxIterations: number;
-  readonly timeoutMs: number;
-  readonly includeHistory: boolean;
-}
-
-/** Options for building final result. */
-interface ResultBuildOpts {
-  readonly ctx: CoordinationContext;
-  readonly thinker: ThinkerOutput;
-  readonly worker: WorkerOutput | undefined;
-  readonly verifier: VerifierOutput | undefined;
-  readonly stopReason: TrinityResult['stopReason'];
-  readonly iterations: number;
-}
+// Re-export types for backward compatibility
+export type { TrinityExecuteOptions, TrinityCoordinatorOptions };
 
 const logger = createLogger({ component: 'trinity-coordinator' });
-
-/** Merge config with defaults. */
-function resolveConfig(config: TrinityConfig | undefined): ResolvedConfig {
-  const d = DEFAULT_TRINITY_CONFIG;
-  return {
-    maxIterations: config?.maxIterations ?? d.maxIterations,
-    timeoutMs: config?.timeoutMs ?? d.timeoutMs,
-    includeHistory: config?.includeHistory ?? d.includeHistory,
-  };
-}
 
 // =============================================================================
 // TrinityCoordinator Class
@@ -256,11 +211,6 @@ export class TrinityCoordinator {
     }
   ): Result<TrinityResult, AgentError> {
     return this.emitAndReturn(ctx, { ctx, ...opts });
-  }
-
-  /** Build an ok Result with the given parameters. */
-  private okResult(opts: ResultBuildOpts): Result<TrinityResult, AgentError> {
-    return ok(this.buildResult(opts));
   }
 
   private async runThinker(ctx: CoordinationContext): Promise<Result<ThinkerOutput, AgentError>> {

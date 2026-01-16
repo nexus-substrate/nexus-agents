@@ -6,8 +6,104 @@
  * in the Multi-Agent Reflexion protocol.
  */
 
-import type { Task } from '../../core/index.js';
-import type { Persona, PersonaCritique, DebateResult, ReflexionRound } from './reflexion-types.js';
+import type { Task, TaskResult } from '../../core/index.js';
+import type {
+  Persona,
+  PersonaCritique,
+  DebateResult,
+  ReflexionRound,
+  ReflexionConfig,
+  ReflexionResult,
+} from './reflexion-types.js';
+import { ReflexionConfigSchema, DEFAULT_CODE_REVIEW_PERSONAS } from './reflexion-types.js';
+
+/** Default reflexion configuration values. */
+export const REFLEXION_DEFAULTS = {
+  maxIterations: 3,
+  severityThreshold: 0.3,
+  iterationTimeoutMs: 60000,
+  requireConsensus: false,
+} as const;
+
+/** Partial reflexion config for user overrides. */
+export interface PartialReflexionConfig {
+  readonly maxIterations?: number;
+  readonly severityThreshold?: number;
+  readonly personas?: readonly Persona[];
+  readonly iterationTimeoutMs?: number;
+  readonly requireConsensus?: boolean;
+}
+
+/** Builds and validates the reflexion configuration. */
+export function buildReflexionConfig(userConfig?: PartialReflexionConfig): ReflexionConfig {
+  const config = userConfig ?? {};
+  const configInput = {
+    maxIterations: config.maxIterations ?? REFLEXION_DEFAULTS.maxIterations,
+    severityThreshold: config.severityThreshold ?? REFLEXION_DEFAULTS.severityThreshold,
+    personas: config.personas ?? DEFAULT_CODE_REVIEW_PERSONAS,
+    iterationTimeoutMs: config.iterationTimeoutMs ?? REFLEXION_DEFAULTS.iterationTimeoutMs,
+    requireConsensus: config.requireConsensus ?? REFLEXION_DEFAULTS.requireConsensus,
+  };
+
+  const parsedConfig = ReflexionConfigSchema.safeParse(configInput);
+  if (!parsedConfig.success) {
+    throw new Error(`Invalid reflexion config: ${parsedConfig.error.message}`);
+  }
+  return parsedConfig.data;
+}
+
+/** Formats the refinement task for the producer agent. */
+export function formatRefinementTask(
+  originalTask: Task,
+  currentOutput: unknown,
+  debate: DebateResult
+): Task {
+  const outputStr =
+    typeof currentOutput === 'string' ? currentOutput : JSON.stringify(currentOutput, null, 2);
+  const actionItemsStr = debate.actionItems.map((a, i) => `${String(i + 1)}. ${a}`).join('\n');
+
+  return {
+    ...originalTask,
+    id: `${originalTask.id}-refinement-${String(Date.now())}`,
+    description: `Improve the following output based on critic feedback:
+
+ORIGINAL OUTPUT:
+${outputStr}
+
+CRITIC FEEDBACK:
+${debate.synthesizedReflection}
+
+ACTION ITEMS:
+${actionItemsStr}
+
+Please provide an improved version addressing the feedback.`,
+  };
+}
+
+/** Creates the final result payload for session submission. */
+export function createFinalResultPayload(
+  taskId: string,
+  result: ReflexionResult,
+  totalDurationMs: number
+): TaskResult {
+  return {
+    taskId,
+    output: {
+      result: result.finalOutput,
+      reflexion: {
+        rounds: result.totalIterations,
+        converged: result.converged,
+        terminationReason: result.terminationReason,
+      },
+    },
+    metadata: {
+      durationMs: totalDurationMs,
+      tokensUsed: 0,
+      toolsUsed: [],
+      model: 'reflexion-protocol',
+    },
+  };
+}
 
 /** Generates a critique from a specific persona. */
 export function generatePersonaCritique(

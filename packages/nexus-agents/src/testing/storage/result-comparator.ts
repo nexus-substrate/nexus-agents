@@ -7,6 +7,13 @@
  */
 
 import type { TaskTestResult, ExtendedTestRunResult } from '../schemas.js';
+import {
+  calculatePercentChange,
+  determineOverallTrend,
+  buildTaskMap,
+  createRegression,
+  createImprovement,
+} from './result-comparator-helpers.js';
 
 /**
  * A detected regression between test runs.
@@ -127,8 +134,8 @@ export class ResultComparator {
    * @returns Comparison results with regressions, improvements, and trend
    */
   compare(current: ExtendedTestRunResult, previous: ExtendedTestRunResult): RunComparison {
-    const currentTasks = this.buildTaskMap(current.taskResults);
-    const previousTasks = this.buildTaskMap(previous.taskResults);
+    const currentTasks = buildTaskMap(current.taskResults);
+    const previousTasks = buildTaskMap(previous.taskResults);
 
     const regressions: Regression[] = [];
     const improvements: Improvement[] = [];
@@ -167,7 +174,7 @@ export class ResultComparator {
       }
     }
 
-    const overallTrend = this.determineOverallTrend(regressions, improvements);
+    const overallTrend = determineOverallTrend(regressions, improvements);
 
     return {
       previousRunId: previous.id,
@@ -214,17 +221,6 @@ export class ResultComparator {
   }
 
   /**
-   * Build a map of task ID to task result for efficient lookup.
-   */
-  private buildTaskMap(tasks: readonly TaskTestResult[]): Map<string, TaskTestResult> {
-    const map = new Map<string, TaskTestResult>();
-    for (const task of tasks) {
-      map.set(task.taskId, task);
-    }
-    return map;
-  }
-
-  /**
    * Compare individual task results.
    */
   private compareTask(current: TaskTestResult, previous: TaskTestResult): TaskComparisonResult {
@@ -240,7 +236,7 @@ export class ResultComparator {
         continue;
       }
 
-      const percentChange = this.calculatePercentChange(currentValue, previousValue);
+      const percentChange = calculatePercentChange(currentValue, previousValue);
       const result = this.evaluateMetricChange(
         current,
         metric,
@@ -281,165 +277,24 @@ export class ResultComparator {
     if (isRegression) {
       const degradation = metric.higherIsBetter ? Math.abs(percentChange) : percentChange;
       return {
-        regression: this.createRegression(
-          task,
-          metric.name,
-          previousValue,
-          currentValue,
-          degradation
-        ),
+        regression: createRegression(task, metric.name, previousValue, currentValue, degradation),
       };
     }
 
     if (isImprovement) {
-      const improvement = metric.higherIsBetter ? percentChange : Math.abs(percentChange);
+      const improvementPct = metric.higherIsBetter ? percentChange : Math.abs(percentChange);
       return {
-        improvement: this.createImprovement(
+        improvement: createImprovement(
           task,
           metric.name,
           previousValue,
           currentValue,
-          improvement
+          improvementPct
         ),
       };
     }
 
     return {};
-  }
-
-  /**
-   * Create a regression object.
-   */
-  private createRegression(
-    task: TaskTestResult,
-    metricName: string,
-    previousValue: number,
-    currentValue: number,
-    degradation: number
-  ): Regression {
-    return {
-      taskId: task.taskId,
-      taskName: task.taskName,
-      metric: metricName,
-      previousValue,
-      currentValue,
-      degradation,
-      severity: this.determineSeverity(degradation, metricName),
-    };
-  }
-
-  /**
-   * Create an improvement object.
-   */
-  private createImprovement(
-    task: TaskTestResult,
-    metricName: string,
-    previousValue: number,
-    currentValue: number,
-    improvement: number
-  ): Improvement {
-    return {
-      taskId: task.taskId,
-      taskName: task.taskName,
-      metric: metricName,
-      previousValue,
-      currentValue,
-      improvement,
-    };
-  }
-
-  /**
-   * Calculate percentage change between current and previous values.
-   * Positive value means current is higher than previous.
-   *
-   * @returns Percentage change (e.g., 10 means 10% increase)
-   */
-  private calculatePercentChange(current: number, previous: number): number {
-    if (previous === 0) {
-      return current > 0 ? 100 : 0;
-    }
-    return ((current - previous) / previous) * 100;
-  }
-
-  /**
-   * Determine severity based on degradation amount and metric type.
-   */
-  private determineSeverity(degradation: number, metric: string): 'critical' | 'warning' | 'minor' {
-    // Critical thresholds vary by metric
-    const criticalThresholds: Record<string, number> = {
-      qualityScore: 20,
-      latencyMs: 100,
-      routingAccuracy: 30,
-      reliability: 15,
-    };
-
-    const warningThresholds: Record<string, number> = {
-      qualityScore: 10,
-      latencyMs: 50,
-      routingAccuracy: 20,
-      reliability: 10,
-    };
-
-    const criticalThreshold = criticalThresholds[metric] ?? 25;
-    const warningThreshold = warningThresholds[metric] ?? 15;
-
-    if (degradation >= criticalThreshold) {
-      return 'critical';
-    }
-
-    if (degradation >= warningThreshold) {
-      return 'warning';
-    }
-
-    return 'minor';
-  }
-
-  /**
-   * Determine overall trend from regressions and improvements.
-   * Uses a weighted scoring system where critical regressions count more.
-   */
-  private determineOverallTrend(
-    regressions: readonly Regression[],
-    improvements: readonly Improvement[]
-  ): 'improved' | 'regressed' | 'stable' {
-    // Calculate regression score with severity weighting
-    let regressionScore = 0;
-    for (const regression of regressions) {
-      switch (regression.severity) {
-        case 'critical':
-          regressionScore += 3;
-          break;
-        case 'warning':
-          regressionScore += 2;
-          break;
-        case 'minor':
-          regressionScore += 1;
-          break;
-      }
-    }
-
-    // Calculate improvement score (each improvement counts as 1)
-    const improvementScore = improvements.length;
-
-    // Determine trend based on score difference
-    const scoreDiff = improvementScore - regressionScore;
-
-    // If there are any critical regressions, trend is regressed
-    const hasCritical = regressions.some((r) => r.severity === 'critical');
-    if (hasCritical) {
-      return 'regressed';
-    }
-
-    // Use thresholds to determine trend
-    if (scoreDiff > 0) {
-      return 'improved';
-    }
-
-    if (scoreDiff < 0) {
-      return 'regressed';
-    }
-
-    return 'stable';
   }
 }
 

@@ -17,23 +17,28 @@ import type {
   SandboxResult,
   PolicyEvaluation,
   PolicyViolation,
-  ResourceUsage,
   ResourceLimits,
 } from './sandbox-types.js';
 import { DEFAULT_RESOURCE_LIMITS } from './sandbox-types.js';
 import { validateCommand, validateArgs } from './command-allowlist.js';
+import {
+  MAX_OUTPUT_SIZE,
+  DEFAULT_IMAGE,
+  isDockerAvailable,
+  resetDockerCache,
+  bytesToDockerMemory,
+  truncateOutput,
+  parseExecError,
+  createDeniedResult,
+  createDockerUnavailableResult,
+  createResourceUsageFromOutput,
+} from './docker-sandbox-helpers.js';
+
+// Re-export for backward compatibility
+export { isDockerAvailable, resetDockerCache };
 
 const execFileAsync = promisify(execFile);
 const logger = createLogger({ component: 'docker-sandbox' });
-
-/** Default Docker image for execution. */
-const DEFAULT_IMAGE = 'node:22-alpine';
-
-/** Maximum output size to capture (1MB). */
-const MAX_OUTPUT_SIZE = 1024 * 1024;
-
-/** Docker availability check result (cached). */
-let dockerAvailableCache: boolean | null = null;
 
 /**
  * Docker sandbox configuration.
@@ -47,57 +52,6 @@ export interface DockerSandboxConfig {
   readonly volumes?: readonly string[];
   /** User to run as in container (default: 'node'). */
   readonly user?: string;
-}
-
-/**
- * Check if Docker is available on the system.
- */
-export async function isDockerAvailable(): Promise<boolean> {
-  if (dockerAvailableCache !== null) {
-    return dockerAvailableCache;
-  }
-
-  try {
-    await execFileAsync('docker', ['version'], { timeout: 5000 });
-    dockerAvailableCache = true;
-    return true;
-  } catch {
-    dockerAvailableCache = false;
-    return false;
-  }
-}
-
-/**
- * Reset Docker availability cache (for testing).
- */
-export function resetDockerCache(): void {
-  dockerAvailableCache = null;
-}
-
-/**
- * Convert bytes to Docker memory format.
- */
-function bytesToDockerMemory(bytes: number): string {
-  const GB = 1024 * 1024 * 1024;
-  const MB = 1024 * 1024;
-  const KB = 1024;
-
-  if (bytes >= GB) {
-    return `${String(Math.floor(bytes / GB))}g`;
-  }
-  if (bytes >= MB) {
-    return `${String(Math.floor(bytes / MB))}m`;
-  }
-  return `${String(Math.floor(bytes / KB))}k`;
-}
-
-/**
- * Truncate output if it exceeds the maximum size.
- */
-function truncateOutput(output: string, maxSize: number = MAX_OUTPUT_SIZE): string {
-  if (output.length <= maxSize) return output;
-  const truncated = output.slice(0, maxSize);
-  return `${truncated}\n... [truncated ${String(output.length - maxSize)} bytes]`;
 }
 
 /**
@@ -130,13 +84,13 @@ export class DockerSandboxExecutor implements ISandboxExecutor {
     // First validate command
     const evaluation = this.validate(command, args, options);
     if (!evaluation.allowed) {
-      return this.createDeniedResult(evaluation, startTime);
+      return this.buildDeniedResult(evaluation, startTime);
     }
 
     // Check Docker availability
     const dockerAvailable = await isDockerAvailable();
     if (!dockerAvailable) {
-      return this.createDockerUnavailableResult(evaluation, startTime);
+      return this.buildDockerUnavailableResult(evaluation, startTime);
     }
 
     // Build and execute Docker command
@@ -145,9 +99,9 @@ export class DockerSandboxExecutor implements ISandboxExecutor {
 
     try {
       const result = await this.executeDocker(dockerArgs, limits.maxWallTimeMs);
-      return this.createSuccessResult(result, evaluation, startTime);
+      return this.buildSuccessResult(result, evaluation, startTime);
     } catch (error) {
-      return this.createErrorResult(error, evaluation, startTime, limits.maxWallTimeMs);
+      return this.buildErrorResult(error, evaluation, startTime, limits.maxWallTimeMs);
     }
   }
 
@@ -292,49 +246,53 @@ export class DockerSandboxExecutor implements ISandboxExecutor {
   }
 
   /**
-   * Create a denied result when policy prevents execution.
+   * Build a denied result when policy prevents execution.
    */
-  private createDeniedResult(evaluation: PolicyEvaluation, startTime: number): SandboxResult {
+  private buildDeniedResult(evaluation: PolicyEvaluation, startTime: number): SandboxResult {
     logger.warn('Docker sandbox denied execution', {
       policy: evaluation.policyId,
       reason: evaluation.reason,
     });
 
+    const deniedData = createDeniedResult(evaluation, Date.now() - startTime);
+
     return {
       success: false,
-      exitCode: 126,
-      stdout: '',
-      stderr: `Sandbox policy denied execution: ${evaluation.reason ?? 'Unknown reason'}`,
+      exitCode: deniedData.exitCode,
+      stdout: deniedData.stdout,
+      stderr: deniedData.stderr,
       durationMs: Date.now() - startTime,
-      resourceUsage: this.createEmptyResourceUsage(),
+      resourceUsage: deniedData.resourceUsage,
       policyEvaluation: evaluation,
     };
   }
 
   /**
-   * Create result when Docker is not available.
+   * Build result when Docker is not available.
    */
-  private createDockerUnavailableResult(
+  private buildDockerUnavailableResult(
     evaluation: PolicyEvaluation,
     startTime: number
   ): SandboxResult {
     logger.error('Docker is not available for sandbox execution');
 
+    const unavailableData = createDockerUnavailableResult();
+
     return {
       success: false,
-      exitCode: 127,
-      stdout: '',
-      stderr: 'Docker is not available. Install Docker to use container sandbox mode.',
+      exitCode: unavailableData.exitCode,
+      stdout: unavailableData.stdout,
+      stderr: unavailableData.stderr,
       durationMs: Date.now() - startTime,
-      resourceUsage: this.createEmptyResourceUsage(),
+      resourceUsage: unavailableData.resourceUsage,
       policyEvaluation: evaluation,
     };
   }
 
   /**
-   * Create a success result.
+   * Build a success result.
    */
-  private createSuccessResult(
+  private buildSuccessResult(
     result: { stdout: string; stderr: string },
     evaluation: PolicyEvaluation,
     startTime: number
@@ -349,28 +307,22 @@ export class DockerSandboxExecutor implements ISandboxExecutor {
       stdout: result.stdout,
       stderr: result.stderr,
       durationMs,
-      resourceUsage: {
-        memoryBytes: 0, // Docker doesn't report per-container easily
-        cpuTimeMs: 0,
-        processCount: 1,
-        outputBytes: result.stdout.length + result.stderr.length,
-        wallTimeMs: durationMs,
-      },
+      resourceUsage: createResourceUsageFromOutput(result.stdout, result.stderr, durationMs),
       policyEvaluation: evaluation,
     };
   }
 
   /**
-   * Create an error result.
+   * Build an error result.
    */
-  private createErrorResult(
+  private buildErrorResult(
     error: unknown,
     evaluation: PolicyEvaluation,
     startTime: number,
     timeoutMs: number
   ): SandboxResult {
     const durationMs = Date.now() - startTime;
-    const execError = this.parseExecError(error);
+    const execError = parseExecError(error);
 
     if (execError.isTimeout) {
       logger.warn('Docker sandbox execution timed out', { timeoutMs, durationMs });
@@ -384,52 +336,8 @@ export class DockerSandboxExecutor implements ISandboxExecutor {
       stdout: execError.stdout,
       stderr: execError.stderr,
       durationMs,
-      resourceUsage: {
-        memoryBytes: 0,
-        cpuTimeMs: 0,
-        processCount: 1,
-        outputBytes: execError.stdout.length + execError.stderr.length,
-        wallTimeMs: durationMs,
-      },
+      resourceUsage: createResourceUsageFromOutput(execError.stdout, execError.stderr, durationMs),
       policyEvaluation: evaluation,
-    };
-  }
-
-  /**
-   * Parse execution error.
-   */
-  private parseExecError(error: unknown): {
-    exitCode: number;
-    stdout: string;
-    stderr: string;
-    isTimeout: boolean;
-  } {
-    const execError = error as {
-      code?: number | string;
-      stdout?: string;
-      stderr?: string;
-      message?: string;
-      killed?: boolean;
-    };
-
-    return {
-      exitCode: typeof execError.code === 'number' ? execError.code : 1,
-      stdout: truncateOutput(execError.stdout ?? ''),
-      stderr: truncateOutput(execError.stderr ?? execError.message ?? 'Unknown error'),
-      isTimeout: execError.killed === true,
-    };
-  }
-
-  /**
-   * Create empty resource usage.
-   */
-  private createEmptyResourceUsage(): ResourceUsage {
-    return {
-      memoryBytes: 0,
-      cpuTimeMs: 0,
-      processCount: 0,
-      outputBytes: 0,
-      wallTimeMs: 0,
     };
   }
 }
