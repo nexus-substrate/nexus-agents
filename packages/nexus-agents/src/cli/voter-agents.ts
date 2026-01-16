@@ -7,214 +7,61 @@
  *
  * (Source: Issue #226, Sprint #229)
  * (Updated: Issue #280 - Fixed timeout handling, removed simulation fallback)
+ * (Refactored: Issue #285 - Extracted response and execution utilities)
  *
- * File structure: Prompts in voter-prompts.ts. Extracted per Issue #272.
+ * File structure:
+ * - voter-prompts.ts: System prompts for each voter role
+ * - voter-response.ts: Response parsing and validation
+ * - voter-execution.ts: Execution utilities (timeout, retry, result creation)
+ * - voter-agents.ts: Main API (this file)
  */
 
-import { z } from 'zod';
-import type { Vote } from '../consensus/types.js';
 import type { VoterRole, AgentVoteResult } from './vote-types.js';
 import { VOTER_ROLES } from './vote-types.js';
-import type { IModelAdapter, CompletionRequest, ILogger } from '../core/index.js';
+import type { IModelAdapter, ILogger } from '../core/index.js';
 import { createLogger } from '../core/index.js';
 import { createAutoAdapter } from '../adapters/auto-adapter.js';
 
 // Re-export prompts for backward compatibility
 export { VOTER_SYSTEM_PROMPTS, SIMULATED_VOTE_REASONING } from './voter-prompts.js';
 
-// Local import for use in this file
-import { VOTER_SYSTEM_PROMPTS, SIMULATED_VOTE_REASONING } from './voter-prompts.js';
+// Re-export response utilities for backward compatibility
+export {
+  VoteResponseSchema,
+  type VoteResponse,
+  buildVotePrompt,
+  extractJsonFromResponse,
+  parseVoteResponse,
+} from './voter-response.js';
 
-/**
- * Default vote execution timeout (30 seconds).
- * Reduced from CLI adapter default (60s) for faster feedback.
- */
-const DEFAULT_VOTE_TIMEOUT_MS = 30_000;
+// Re-export execution utilities for backward compatibility
+export {
+  DEFAULT_VOTE_TIMEOUT_MS,
+  DEFAULT_MAX_RETRIES,
+  createErrorVoteResult,
+  createSimulationVoteResult,
+  createSimulatedVotes,
+  simulateVote,
+  withTimeout,
+  delay,
+  extractTextFromResponse,
+  executeSingleVoteAttempt,
+  type RetryOptions,
+  executeWithRetries,
+} from './voter-execution.js';
 
-/**
- * Maximum retries for vote execution.
- */
-const DEFAULT_MAX_RETRIES = 2;
-
-/**
- * Initial retry delay in milliseconds.
- */
-const INITIAL_RETRY_DELAY_MS = 1_000;
-
-// ============================================================================
-// Vote Result Helpers (extracted per Issue #280 for complexity reduction)
-// ============================================================================
-
-/**
- * Creates an error vote result (abstain with error message).
- */
-function createErrorVoteResult(
-  role: VoterRole,
-  errorMsg: string,
-  processingTimeMs: number
-): AgentVoteResult {
-  return {
-    role,
-    vote: {
-      decision: 'abstain',
-      reasoning: `[Error] Vote execution failed: ${errorMsg}`,
-      confidence: 0,
-    },
-    processingTimeMs,
-    source: 'llm',
-    error: errorMsg,
-  };
-}
-
-/**
- * Creates a simulation vote result.
- */
-function createSimulationVoteResult(
-  role: VoterRole,
-  proposal: string,
-  processingTimeMs: number,
-  error?: string
-): AgentVoteResult {
-  return {
-    role,
-    vote: simulateVote(role, proposal),
-    processingTimeMs,
-    source: 'simulation',
-    ...(error !== undefined && { error }),
-  };
-}
-
-/**
- * Creates simulated votes for multiple roles.
- */
-function createSimulatedVotes(
-  roles: readonly VoterRole[],
-  proposal: string,
-  error?: string
-): readonly AgentVoteResult[] {
-  return roles.map((role) =>
-    createSimulationVoteResult(role, proposal, Math.floor(Math.random() * 100), error)
-  );
-}
+// Import from execution module for internal use
+import {
+  DEFAULT_VOTE_TIMEOUT_MS,
+  DEFAULT_MAX_RETRIES,
+  createErrorVoteResult,
+  createSimulationVoteResult,
+  createSimulatedVotes,
+  executeWithRetries,
+} from './voter-execution.js';
 
 // ============================================================================
-// Structured Vote Response Schema
-// ============================================================================
-
-/**
- * Zod schema for parsing structured vote responses from LLM.
- */
-export const VoteResponseSchema = z.object({
-  decision: z.enum(['approve', 'reject', 'abstain']).describe('Your vote decision'),
-  reasoning: z.string().min(10).max(500).describe('Brief explanation for your vote (10-500 chars)'),
-  confidence: z.number().min(0).max(1).describe('Confidence level 0-1'),
-  conditions: z.array(z.string()).optional().describe('Optional conditions for approval'),
-});
-
-export type VoteResponse = z.infer<typeof VoteResponseSchema>;
-
-// ============================================================================
-// Vote Prompt Construction
-// ============================================================================
-
-/**
- * Constructs the user prompt for vote evaluation.
- */
-export function buildVotePrompt(proposal: string): string {
-  return `Evaluate the following proposal and provide your vote.
-
-PROPOSAL:
-${proposal}
-
-Respond with a JSON object containing:
-- decision: "approve", "reject", or "abstain"
-- reasoning: Brief explanation (10-500 characters)
-- confidence: Number between 0 and 1
-- conditions: Optional array of conditions for approval
-
-Example response:
-{
-  "decision": "approve",
-  "reasoning": "The proposal aligns with architectural patterns and provides clear value.",
-  "confidence": 0.85,
-  "conditions": ["Add unit tests before merge"]
-}`;
-}
-
-// ============================================================================
-// Vote Response Parsing
-// ============================================================================
-
-/**
- * Extracts JSON from LLM response text.
- * Handles responses that may include markdown code blocks.
- */
-export function extractJsonFromResponse(text: string): string {
-  // Try to find JSON in code blocks first
-  const codeBlockMatch = /```(?:json)?\s*([\s\S]*?)```/i.exec(text);
-  if (codeBlockMatch?.[1] !== undefined) {
-    return codeBlockMatch[1].trim();
-  }
-
-  // Look for JSON object directly
-  const jsonMatch = /\{[\s\S]*\}/i.exec(text);
-  if (jsonMatch?.[0] !== undefined) {
-    return jsonMatch[0];
-  }
-
-  return text.trim();
-}
-
-/**
- * Parses vote response from LLM output.
- * Returns a fallback vote if parsing fails.
- */
-export function parseVoteResponse(output: string, role: VoterRole): Vote {
-  try {
-    const jsonStr = extractJsonFromResponse(output);
-    const parsed = JSON.parse(jsonStr) as unknown;
-    const validated = VoteResponseSchema.safeParse(parsed);
-
-    if (validated.success) {
-      return {
-        decision: validated.data.decision,
-        reasoning: validated.data.reasoning,
-        confidence: validated.data.confidence,
-        conditions: validated.data.conditions,
-      };
-    }
-
-    // Partial parse - try to extract what we can
-    return createFallbackVote(output, role, 'Validation failed');
-  } catch {
-    return createFallbackVote(output, role, 'Parse error');
-  }
-}
-
-/**
- * Creates a fallback vote when parsing fails.
- * Attempts to infer decision from text content.
- */
-function createFallbackVote(output: string, role: VoterRole, reason: string): Vote {
-  const lower = output.toLowerCase();
-  let decision: Vote['decision'] = 'abstain';
-
-  // Simple keyword detection
-  if (lower.includes('approve') || lower.includes('accept') || lower.includes('agree')) {
-    decision = 'approve';
-  } else if (lower.includes('reject') || lower.includes('decline') || lower.includes('disagree')) {
-    decision = 'reject';
-  }
-
-  return {
-    decision,
-    reasoning: `[${reason}] ${output.slice(0, 200)}`,
-    confidence: 0.5,
-  };
-}
-
-// ============================================================================
-// Agent Execution
+// Agent Vote Execution
 // ============================================================================
 
 /**
@@ -237,124 +84,6 @@ export interface VoterAgentOptions {
 export type { AgentVoteResult };
 
 const defaultLogger = createLogger({ component: 'voter-agents' });
-
-/**
- * Wraps a promise with a timeout.
- * Returns an error result if timeout is exceeded.
- */
-async function withTimeout<T>(
-  promise: Promise<T>,
-  timeoutMs: number,
-  errorMessage: string
-): Promise<{ ok: true; value: T } | { ok: false; error: string }> {
-  let timeoutId: ReturnType<typeof setTimeout> | undefined;
-
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    timeoutId = setTimeout(() => {
-      reject(new Error(errorMessage));
-    }, timeoutMs);
-  });
-
-  try {
-    const result = await Promise.race([promise, timeoutPromise]);
-    if (timeoutId !== undefined) clearTimeout(timeoutId);
-    return { ok: true, value: result };
-  } catch (error) {
-    if (timeoutId !== undefined) clearTimeout(timeoutId);
-    return { ok: false, error: error instanceof Error ? error.message : String(error) };
-  }
-}
-
-/**
- * Delays for the specified milliseconds.
- */
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/**
- * Executes a single vote attempt (no retries).
- */
-async function executeSingleVoteAttempt(
-  role: VoterRole,
-  proposal: string,
-  adapter: IModelAdapter,
-  timeoutMs: number
-): Promise<{ ok: true; vote: Vote; output: string } | { ok: false; error: string }> {
-  const request: CompletionRequest = {
-    messages: [
-      { role: 'system', content: VOTER_SYSTEM_PROMPTS[role] },
-      { role: 'user', content: buildVotePrompt(proposal) },
-    ],
-    maxTokens: 500,
-    temperature: 0.3, // Low temperature for consistent evaluations
-  };
-
-  const timeoutResult = await withTimeout(
-    adapter.complete(request),
-    timeoutMs,
-    `Vote timeout after ${String(timeoutMs)}ms for role: ${role}`
-  );
-
-  if (!timeoutResult.ok) {
-    return { ok: false, error: timeoutResult.error };
-  }
-
-  const response = timeoutResult.value;
-
-  if (!response.ok) {
-    return { ok: false, error: response.error.message };
-  }
-
-  const output = extractTextFromResponse(response.value.content);
-  const vote = parseVoteResponse(output, role);
-
-  return { ok: true, vote, output };
-}
-
-/** Options for executeWithRetries. */
-interface RetryOptions {
-  readonly role: VoterRole;
-  readonly proposal: string;
-  readonly adapter: IModelAdapter;
-  readonly logger: ILogger;
-  readonly timeoutMs: number;
-  readonly maxRetries: number;
-}
-
-/**
- * Executes vote attempts with retry logic.
- * Returns the error message from last failed attempt, or undefined if successful.
- */
-async function executeWithRetries(
-  opts: RetryOptions
-): Promise<{ vote: Vote; ok: true } | { error: string; ok: false }> {
-  const { role, proposal, adapter, logger, timeoutMs, maxRetries } = opts;
-  let lastError = '';
-
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    if (attempt > 0) {
-      const delayMs = INITIAL_RETRY_DELAY_MS * Math.pow(2, attempt - 1);
-      logger.debug('Retrying vote execution', { role, attempt, delayMs });
-      await delay(delayMs);
-    }
-
-    const result = await executeSingleVoteAttempt(role, proposal, adapter, timeoutMs);
-    if (result.ok) {
-      return { vote: result.vote, ok: true };
-    }
-
-    lastError = result.error;
-    logger.warn('Vote attempt failed', {
-      role,
-      attempt: attempt + 1,
-      maxRetries: maxRetries + 1,
-      error: lastError,
-    });
-  }
-
-  return { error: lastError !== '' ? lastError : 'Unknown error after all retries', ok: false };
-}
 
 /**
  * Executes a real LLM vote for a single role with timeout and retry support.
@@ -400,49 +129,6 @@ export async function executeAgentVote(
   }
 
   return createErrorVoteResult(role, result.error, processingTimeMs);
-}
-
-/**
- * Extracts text content from completion response.
- */
-function extractTextFromResponse(content: unknown): string {
-  if (typeof content === 'string') {
-    return content;
-  }
-  if (Array.isArray(content)) {
-    return content
-      .map((block) => {
-        if (typeof block === 'object' && block !== null && 'type' in block) {
-          const typed = block as { type: string; text?: string };
-          if (typed.type === 'text' && typeof typed.text === 'string') {
-            return typed.text;
-          }
-        }
-        return '';
-      })
-      .join('');
-  }
-  return String(content);
-}
-
-/**
- * Fallback simulation when LLM is unavailable.
- * Matches the original simulateVote behavior.
- */
-export function simulateVote(role: VoterRole, proposal: string): Vote {
-  const decisions: Array<'approve' | 'reject' | 'abstain'> = [
-    'approve',
-    'approve',
-    'approve',
-    'reject',
-    'abstain',
-  ];
-  const decision = decisions[Math.floor(Math.random() * decisions.length)] ?? 'approve';
-  return {
-    decision,
-    reasoning: `[Simulated] ${SIMULATED_VOTE_REASONING[role]} Proposal: "${proposal.slice(0, 50)}..."`,
-    confidence: 0.7 + Math.random() * 0.3,
-  };
 }
 
 // ============================================================================
