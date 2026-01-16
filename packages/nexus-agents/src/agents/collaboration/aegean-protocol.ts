@@ -1,17 +1,7 @@
 /**
- * nexus-agents/agents/collaboration - Aegean Consensus Protocol
- *
- * Implementation of Byzantine-fault-tolerant consensus based on
- * arxiv:2512.20184 "Reaching Agreement Among Reasoning LLM Agents".
- *
- * Key features:
- * - Leader-based coordination with round-robin leader selection
- * - Incremental quorum detection for early termination
- * - Byzantine fault tolerance (tolerates f faults out of 3f+1 agents)
- *
- * File length justification: Core AegeanProtocol class with types in
- * aegean-types.ts, event emitters in aegean-events.ts, helpers in
- * aegean-helpers.ts. Protocol execution logic is tightly coupled.
+ * Aegean Consensus Protocol - Byzantine-fault-tolerant consensus.
+ * Based on arxiv:2512.20184 "Reaching Agreement Among Reasoning LLM Agents".
+ * Types: aegean-types.ts, Events: aegean-events.ts, Helpers: aegean-helpers.ts
  */
 
 import type { Result, ILogger, IAgent, Task } from '../../core/index.js';
@@ -45,7 +35,6 @@ import {
 import {
   createTimeoutVote,
   createLeaderVote,
-  buildAegeanResult,
   evaluateQuorumStatus,
   buildAegeanConfig,
   createProposalTask,
@@ -55,8 +44,14 @@ import {
   selectLeader,
   createRoundData,
   determineIterationAction,
+  determinePreRoundAction,
+  createIterationContext,
+  processIterationAction,
+  buildLoopResult,
+  validateAegeanSetup,
+  buildSessionTaskResult,
   type CollectVotesOptions,
-  type IterationAction,
+  type IterationContext,
 } from './aegean-helpers.js';
 
 /** Options for the Aegean protocol. */
@@ -95,8 +90,12 @@ export class AegeanProtocol implements ICollaborationProtocol {
     config: CollaborationConfig,
     agents: Map<string, IAgent>
   ): Promise<Result<CollaborationResult, AgentError>> {
-    const validationResult = this.validateSetup(config, agents);
-    if (!validationResult.ok) return err(validationResult.error);
+    const validation = validateAegeanSetup({
+      config,
+      agents,
+      byzantineTolerance: this.config.byzantineTolerance,
+    });
+    if (!validation.ok) return err(validation.error);
 
     const startTime = Date.now();
     this.cancelled = false;
@@ -126,29 +125,6 @@ export class AegeanProtocol implements ICollaborationProtocol {
     return this.finalizeSession(config, aegeanResult.value, startTime);
   }
 
-  /** Validates the protocol setup. */
-  private validateSetup(
-    config: CollaborationConfig,
-    agents: Map<string, IAgent>
-  ): Result<void, AgentError> {
-    const minAgents = 3 * this.config.byzantineTolerance + 1;
-    if (config.experts.length < minAgents) {
-      return err(
-        new AgentError(
-          `Aegean requires at least ${String(minAgents)} agents for f=${String(this.config.byzantineTolerance)} Byzantine tolerance`
-        )
-      );
-    }
-
-    for (const expertId of config.experts) {
-      if (!agents.has(expertId)) {
-        return err(new AgentError(`Agent not found: ${expertId}`));
-      }
-    }
-
-    return ok(undefined);
-  }
-
   /** Runs the main consensus loop. */
   private async runConsensusLoop(
     config: CollaborationConfig,
@@ -159,8 +135,8 @@ export class AegeanProtocol implements ICollaborationProtocol {
     let totalTokensUsed = 0;
 
     for (let round = 0; round < this.config.maxRounds; round++) {
-      const action = this.determinePreRoundAction(rounds, startTime, totalTokensUsed);
-      if (action) return ok(action);
+      const preAction = determinePreRoundAction(this.cancelled, rounds, startTime, totalTokensUsed);
+      if (preAction) return ok(preAction);
 
       const roundResult = await this.executeRound(round, config, agents);
       if (!roundResult.ok) return err(roundResult.error);
@@ -169,33 +145,12 @@ export class AegeanProtocol implements ICollaborationProtocol {
       rounds.push(roundData);
       totalTokensUsed += tokensUsed;
 
-      const ctx = this.createIterationContext(rounds, startTime, totalTokensUsed);
+      const ctx = createIterationContext(rounds, startTime, totalTokensUsed);
       const iterAction = this.handleIterationAction(round, roundData, config, ctx);
       if (iterAction) return ok(iterAction);
     }
 
-    return ok(this.buildLoopResult(rounds, null, 'max_rounds', startTime, totalTokensUsed));
-  }
-
-  /** Determines if the loop should exit before a round. */
-  private determinePreRoundAction(
-    rounds: AegeanRound[],
-    startTime: number,
-    tokensUsed: number
-  ): AegeanResult | null {
-    if (this.cancelled) {
-      return this.buildLoopResult(rounds, null, 'error', startTime, tokensUsed);
-    }
-    return null;
-  }
-
-  /** Context for loop iteration handling. */
-  private createIterationContext(
-    rounds: AegeanRound[],
-    startTime: number,
-    totalTokensUsed: number
-  ): { rounds: AegeanRound[]; startTime: number; tokensUsed: number } {
-    return { rounds, startTime, tokensUsed: totalTokensUsed };
+    return ok(buildLoopResult(rounds, null, 'max_rounds', startTime, totalTokensUsed));
   }
 
   /** Handles post-round iteration actions. */
@@ -203,7 +158,7 @@ export class AegeanProtocol implements ICollaborationProtocol {
     round: number,
     roundData: AegeanRound,
     config: CollaborationConfig,
-    ctx: { rounds: AegeanRound[]; startTime: number; tokensUsed: number }
+    ctx: IterationContext
   ): AegeanResult | null {
     const action = determineIterationAction({
       cancelled: this.cancelled,
@@ -213,36 +168,19 @@ export class AegeanProtocol implements ICollaborationProtocol {
       shouldEarlyTerminate: isConsensusFailed(roundData.quorumStatus, config.experts.length),
     });
 
-    return this.processIterationAction(action, round, config.sessionId, ctx);
-  }
-
-  /** Processes the iteration action and emits events. */
-  private processIterationAction(
-    action: IterationAction,
-    round: number,
-    sessionId: string,
-    ctx: { rounds: AegeanRound[]; startTime: number; tokensUsed: number }
-  ): AegeanResult | null {
-    switch (action.type) {
-      case 'consensus':
-        this.emitIterationEvent(round, 'converged', sessionId);
-        return this.buildLoopResult(
-          ctx.rounds,
-          action.value,
-          'consensus',
-          ctx.startTime,
-          ctx.tokensUsed
-        );
-      case 'early_termination':
-        this.logger.info('Early termination: consensus impossible', { round });
-        this.emitIterationEvent(round, 'max_reached', sessionId);
-        return this.buildLoopResult(ctx.rounds, null, 'max_rounds', ctx.startTime, ctx.tokensUsed);
-      case 'continue':
-        this.emitIterationEvent(round, 'in_progress', sessionId);
-        return null;
-      case 'cancelled':
-        return this.buildLoopResult(ctx.rounds, null, 'error', ctx.startTime, ctx.tokensUsed);
-    }
+    return processIterationAction({
+      action,
+      round,
+      sessionId: config.sessionId,
+      maxRounds: this.config.maxRounds,
+      ctx,
+      emitIterationEvent: (r, status, sessId) => {
+        this.emitIterationEvent(r, status, sessId);
+      },
+      onEarlyTermination: (r) => {
+        this.logger.info('Early termination: consensus impossible', { round: r });
+      },
+    });
   }
 
   /** Emits a protocol iteration event. */
@@ -257,17 +195,6 @@ export class AegeanProtocol implements ICollaborationProtocol {
       status,
       sessionId,
     });
-  }
-
-  /** Builds the final loop result. */
-  private buildLoopResult(
-    rounds: AegeanRound[],
-    consensusValue: unknown,
-    terminationReason: AegeanResult['terminationReason'],
-    startTime: number,
-    tokensUsed: number
-  ): AegeanResult {
-    return buildAegeanResult({ rounds, consensusValue, terminationReason, startTime, tokensUsed });
   }
 
   /** Executes a single consensus round. */
@@ -455,23 +382,7 @@ export class AegeanProtocol implements ICollaborationProtocol {
     }
 
     const leaderId = config.experts[0] ?? 'unknown';
-    this.session.submitResult(leaderId, {
-      taskId: config.task.id,
-      output: {
-        consensusValue: result.consensusValue,
-        aegean: {
-          rounds: result.totalRounds,
-          consensusReached: result.consensusReached,
-          terminationReason: result.terminationReason,
-        },
-      },
-      metadata: {
-        durationMs: Date.now() - startTime,
-        tokensUsed: result.tokensUsed,
-        toolsUsed: [],
-        model: 'aegean-protocol',
-      },
-    });
+    this.session.submitResult(leaderId, buildSessionTaskResult(config.task.id, result, startTime));
 
     const sessionId = this.session.getStatus()?.config.sessionId;
     emitProtocolCompleted(this.eventBus, {

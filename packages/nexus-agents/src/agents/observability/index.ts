@@ -43,6 +43,25 @@ export {
 // Implementation (new names)
 export { OrchestrationObserver, createOrchestrationObserver } from './orchestration-observer.js';
 
+// Helper functions
+export {
+  extractStringField,
+  extractNumberField,
+  extractBooleanField,
+  extractStringArrayField,
+  extractSessionId,
+  createInitialSessionMetrics,
+  createInitialTokenUsage,
+  createInitialCostMetrics,
+  createTrackedAgent,
+  calculateRoutingDistribution,
+  calculateMetricsTotals,
+  countActiveSessions,
+  findActiveSession,
+  identifySessionsToRemove,
+  calculateTokenCost,
+} from './orchestration-observer-helpers.js';
+
 // Backward compatibility aliases (deprecated, will be removed in v3.0)
 /* eslint-disable @typescript-eslint/no-deprecated */
 export { SwarmObserver, createSwarmObserver } from './orchestration-observer.js';

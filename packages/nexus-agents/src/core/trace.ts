@@ -19,7 +19,15 @@ import type {
   TracerConfig,
 } from './trace-types.js';
 import { calculateCost } from './trace-pricing.js';
-import { generateTraceId, generateSpanId, setTracerFactory } from './trace-helpers.js';
+import {
+  generateTraceId,
+  generateSpanId,
+  setTracerFactory,
+  aggregateSpanMetrics,
+  calculateDuration,
+  findLatestRunningSpan,
+  getSpansToPrune,
+} from './trace-helpers.js';
 
 // =============================================================================
 // Tracer Class
@@ -326,18 +334,7 @@ export class Tracer {
     if (!this.enabled || this.currentTraceId === undefined) {
       return undefined;
     }
-
-    // Find the most recent running span
-    let latestSpan: TraceSpan | undefined;
-    for (const span of this.spans.values()) {
-      if (span.status === 'running') {
-        if (latestSpan === undefined || span.startTime > latestSpan.startTime) {
-          latestSpan = span;
-        }
-      }
-    }
-
-    return latestSpan?.context;
+    return findLatestRunningSpan(this.spans.values())?.context;
   }
 
   /**
@@ -359,91 +356,10 @@ export class Tracer {
       byProvider: {},
     };
 
-    const { minStartTime, maxEndTime } = this.aggregateSpanMetrics(spans, metrics);
-    this.calculateDuration(metrics, minStartTime, maxEndTime);
+    const { minStartTime, maxEndTime } = aggregateSpanMetrics(spans, metrics);
+    calculateDuration(metrics, minStartTime, maxEndTime);
 
     return metrics;
-  }
-
-  /**
-   * Aggregates individual span metrics into the aggregated metrics object.
-   */
-  private aggregateSpanMetrics(
-    spans: TraceSpan[],
-    metrics: AggregatedMetrics
-  ): { minStartTime: number; maxEndTime: number } {
-    let minStartTime = Infinity;
-    let maxEndTime = 0;
-
-    for (const span of spans) {
-      this.countSpanStatus(span, metrics);
-      minStartTime = Math.min(minStartTime, span.startTime);
-      if (span.endTime !== undefined) {
-        maxEndTime = Math.max(maxEndTime, span.endTime);
-      }
-      this.aggregateLLMMetrics(span, metrics);
-    }
-
-    return { minStartTime, maxEndTime };
-  }
-
-  /**
-   * Counts span by its status.
-   */
-  private countSpanStatus(span: TraceSpan, metrics: AggregatedMetrics): void {
-    if (span.status === 'success') {
-      metrics.successfulSpans++;
-    } else if (span.status === 'error') {
-      metrics.errorSpans++;
-    }
-  }
-
-  /**
-   * Aggregates LLM metrics from a span into the aggregated metrics.
-   */
-  private aggregateLLMMetrics(span: TraceSpan, metrics: AggregatedMetrics): void {
-    if (span.llmMetrics === undefined) {
-      return;
-    }
-
-    const llm = span.llmMetrics;
-    metrics.totalInputTokens += llm.inputTokens;
-    metrics.totalOutputTokens += llm.outputTokens;
-    metrics.totalCostUsd += llm.costUsd ?? 0;
-
-    this.aggregateByKey(metrics.byModel, llm.model, llm);
-    this.aggregateByKey(metrics.byProvider, llm.provider, llm);
-  }
-
-  /**
-   * Aggregates metrics into a keyed bucket (model or provider).
-   */
-  private aggregateByKey(
-    bucket: Record<string, { inputTokens: number; outputTokens: number; costUsd: number }>,
-    key: string,
-    llm: LLMMetrics
-  ): void {
-    let entry = bucket[key];
-    if (entry === undefined) {
-      entry = { inputTokens: 0, outputTokens: 0, costUsd: 0 };
-      bucket[key] = entry;
-    }
-    entry.inputTokens += llm.inputTokens;
-    entry.outputTokens += llm.outputTokens;
-    entry.costUsd += llm.costUsd ?? 0;
-  }
-
-  /**
-   * Calculates the total duration from time bounds.
-   */
-  private calculateDuration(
-    metrics: AggregatedMetrics,
-    minStartTime: number,
-    maxEndTime: number
-  ): void {
-    if (minStartTime !== Infinity && maxEndTime > 0) {
-      metrics.durationMs = maxEndTime - minStartTime;
-    }
   }
 
   /**
@@ -458,17 +374,9 @@ export class Tracer {
    * Prunes oldest completed spans to stay under maxSpans limit.
    */
   private pruneOldestSpans(): void {
-    const completedSpans = Array.from(this.spans.entries())
-      .filter(([, span]) => span.status !== 'running')
-      .sort((a, b) => a[1].startTime - b[1].startTime);
-
-    // Remove oldest 10% of completed spans
-    const toRemove = Math.ceil(completedSpans.length * 0.1);
-    for (let i = 0; i < toRemove && i < completedSpans.length; i++) {
-      const entry = completedSpans[i];
-      if (entry !== undefined) {
-        this.spans.delete(entry[0]);
-      }
+    const idsToDelete = getSpansToPrune(this.spans.entries(), 0.1);
+    for (const id of idsToDelete) {
+      this.spans.delete(id);
     }
   }
 }

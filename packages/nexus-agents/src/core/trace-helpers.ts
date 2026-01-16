@@ -5,7 +5,13 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import type { TraceContext, TracerConfig, LLMMetrics } from './trace-types.js';
+import type {
+  TraceContext,
+  TracerConfig,
+  LLMMetrics,
+  TraceSpan as TraceSpanType,
+  AggregatedMetrics as AggregatedMetricsType,
+} from './trace-types.js';
 
 // =============================================================================
 // ID Generation
@@ -193,4 +199,170 @@ export function recordLLMMetrics(spanId: string, metrics: Omit<LLMMetrics, 'cost
 export function getTraceContext(): TraceContext | undefined {
   const tracer = getTracer();
   return tracer.getCurrentContext();
+}
+
+// =============================================================================
+// Aggregation Helpers
+// =============================================================================
+
+/**
+ * Token bucket entry for model or provider aggregation.
+ */
+export interface TokenBucketEntry {
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number;
+}
+
+/**
+ * Result of span time bounds calculation.
+ */
+export interface SpanTimeBounds {
+  minStartTime: number;
+  maxEndTime: number;
+}
+
+/**
+ * Counts span by its status, incrementing the appropriate counter.
+ *
+ * @param span - The span to count
+ * @param metrics - The metrics object to update
+ */
+export function countSpanStatus(span: TraceSpanType, metrics: AggregatedMetricsType): void {
+  if (span.status === 'success') {
+    metrics.successfulSpans++;
+  } else if (span.status === 'error') {
+    metrics.errorSpans++;
+  }
+}
+
+/**
+ * Aggregates metrics into a keyed bucket (model or provider).
+ *
+ * @param bucket - The bucket to aggregate into
+ * @param key - The key (model name or provider)
+ * @param llm - The LLM metrics to aggregate
+ */
+export function aggregateByKey(
+  bucket: Record<string, TokenBucketEntry>,
+  key: string,
+  llm: LLMMetrics
+): void {
+  let entry = bucket[key];
+  if (entry === undefined) {
+    entry = { inputTokens: 0, outputTokens: 0, costUsd: 0 };
+    bucket[key] = entry;
+  }
+  entry.inputTokens += llm.inputTokens;
+  entry.outputTokens += llm.outputTokens;
+  entry.costUsd += llm.costUsd ?? 0;
+}
+
+/**
+ * Aggregates LLM metrics from a span into the aggregated metrics.
+ *
+ * @param span - The span containing LLM metrics
+ * @param metrics - The metrics object to update
+ */
+export function aggregateLLMMetrics(span: TraceSpanType, metrics: AggregatedMetricsType): void {
+  if (span.llmMetrics === undefined) {
+    return;
+  }
+
+  const llm = span.llmMetrics;
+  metrics.totalInputTokens += llm.inputTokens;
+  metrics.totalOutputTokens += llm.outputTokens;
+  metrics.totalCostUsd += llm.costUsd ?? 0;
+
+  aggregateByKey(metrics.byModel, llm.model, llm);
+  aggregateByKey(metrics.byProvider, llm.provider, llm);
+}
+
+/**
+ * Calculates the total duration from time bounds.
+ *
+ * @param metrics - The metrics object to update
+ * @param minStartTime - The earliest start time
+ * @param maxEndTime - The latest end time
+ */
+export function calculateDuration(
+  metrics: AggregatedMetricsType,
+  minStartTime: number,
+  maxEndTime: number
+): void {
+  if (minStartTime !== Infinity && maxEndTime > 0) {
+    metrics.durationMs = maxEndTime - minStartTime;
+  }
+}
+
+/**
+ * Aggregates individual span metrics into the aggregated metrics object.
+ *
+ * @param spans - Array of spans to aggregate
+ * @param metrics - The metrics object to update
+ * @returns The time bounds (min start, max end)
+ */
+export function aggregateSpanMetrics(
+  spans: TraceSpanType[],
+  metrics: AggregatedMetricsType
+): SpanTimeBounds {
+  let minStartTime = Infinity;
+  let maxEndTime = 0;
+
+  for (const span of spans) {
+    countSpanStatus(span, metrics);
+    minStartTime = Math.min(minStartTime, span.startTime);
+    if (span.endTime !== undefined) {
+      maxEndTime = Math.max(maxEndTime, span.endTime);
+    }
+    aggregateLLMMetrics(span, metrics);
+  }
+
+  return { minStartTime, maxEndTime };
+}
+
+/**
+ * Finds the most recent running span from a collection.
+ *
+ * @param spans - Iterator of spans to search
+ * @returns The latest running span, or undefined if none found
+ */
+export function findLatestRunningSpan(spans: Iterable<TraceSpanType>): TraceSpanType | undefined {
+  let latestSpan: TraceSpanType | undefined;
+  for (const span of spans) {
+    if (span.status === 'running') {
+      if (latestSpan === undefined || span.startTime > latestSpan.startTime) {
+        latestSpan = span;
+      }
+    }
+  }
+  return latestSpan;
+}
+
+/**
+ * Identifies span IDs to prune based on age, keeping running spans.
+ *
+ * @param entries - Span entries as [spanId, span] pairs
+ * @param prunePercent - Percentage of completed spans to remove (0-1)
+ * @returns Array of span IDs to delete
+ */
+export function getSpansToPrune(
+  entries: Iterable<[string, TraceSpanType]>,
+  prunePercent: number = 0.1
+): string[] {
+  const completedSpans = Array.from(entries)
+    .filter(([, span]) => span.status !== 'running')
+    .sort((a, b) => a[1].startTime - b[1].startTime);
+
+  const toRemove = Math.ceil(completedSpans.length * prunePercent);
+  const idsToDelete: string[] = [];
+
+  for (let i = 0; i < toRemove && i < completedSpans.length; i++) {
+    const entry = completedSpans[i];
+    if (entry !== undefined) {
+      idsToDelete.push(entry[0]);
+    }
+  }
+
+  return idsToDelete;
 }

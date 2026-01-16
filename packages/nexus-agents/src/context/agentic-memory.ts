@@ -11,22 +11,13 @@
  *
  * @module context/agentic-memory
  * (Source: Issue #122, arXiv:2502.12110)
- *
- * File length justification: Core AgenticMemoryBackend class with types in
- * agentic-memory-types.ts, helpers in agentic-memory-helpers.ts, linking
- * in agentic-memory-linking.ts. Remaining code is IMemoryBackend impl.
  */
 
 import type { Result } from '../core/result.js';
 import { ok, err } from '../core/result.js';
 import type { ILogger } from '../core/logger.js';
 import { createLogger } from '../core/logger.js';
-import type {
-  MemoryEntry,
-  MemoryMetadata,
-  ISQLiteDatabase,
-  MemoryRow,
-} from './memory-backend-types.js';
+import type { MemoryEntry, MemoryMetadata, ISQLiteDatabase } from './memory-backend-types.js';
 import { MemoryError } from './memory-backend-types.js';
 import { HybridMemoryBackend } from './memory-backend.js';
 import { GraphMemoryBackend } from './graph-memory.js';
@@ -49,12 +40,23 @@ import {
   detectEvolution,
   mergeExtractionConfig,
   mergeLinkingConfig,
-  memoryRowToAgenticEntry,
   searchWithAttributes,
   getAttributeSet,
-  getAttributesFromRow,
   findMatchingMemories,
 } from './agentic-memory-helpers.js';
+import {
+  queryMemoriesForAnalysis,
+  queryMemoryByKey,
+  queryCandidateMemories,
+  queryMemoriesForEvolution,
+  queryAllMemoriesExcept,
+  updateMemoryMetadata,
+  applyLinkSuggestions,
+  prepareRefreshedMetadata,
+  buildAgenticEntry,
+  memoryRowToAgenticEntry,
+  getAttributesFromRow,
+} from './agentic-memory-operations.js';
 
 // Re-export types (type-only exports)
 export type {
@@ -162,30 +164,21 @@ export class AgenticMemoryBackend implements IAgenticMemory {
     if (!this.initialized) throw new MemoryError('AgenticMemoryBackend not initialized');
   }
 
-  // =========================================================================
   // IMemoryBackend Methods (delegated to base)
-  // =========================================================================
-
   store(key: string, value: unknown, metadata: MemoryMetadata): Promise<Result<void, MemoryError>> {
     return this.base.store(key, value, metadata);
   }
-
   retrieve(key: string): Promise<Result<unknown, MemoryError>> {
     return this.base.retrieve(key);
   }
-
   search(query: string, limit: number): Promise<Result<MemoryEntry[], MemoryError>> {
     return this.base.search(query, limit);
   }
-
   prune(olderThan: Date): Promise<Result<number, MemoryError>> {
     return this.base.prune(olderThan);
   }
 
-  // =========================================================================
   // IAgenticMemory Methods
-  // =========================================================================
-
   async storeWithAttributes(
     key: string,
     value: unknown,
@@ -199,7 +192,7 @@ export class AgenticMemoryBackend implements IAgenticMemory {
       const storeResult = await this.base.store(key, value, extendedMetadata);
       if (!storeResult.ok) return storeResult;
 
-      const existingMemories = this.getExistingMemoriesForAnalysis(key);
+      const existingMemories = queryMemoriesForAnalysis(this.getDb(), key, this.extractionConfig);
       const now = new Date();
       const linkSuggestions = generateLinkSuggestions(
         key,
@@ -209,14 +202,7 @@ export class AgenticMemoryBackend implements IAgenticMemory {
         this.linkingConfig
       );
       const evolution = detectEvolution(key, attributes, now, existingMemories);
-      const entry: AgenticMemoryEntry = {
-        key,
-        value,
-        metadata: extendedMetadata,
-        createdAt: now,
-        accessedAt: now,
-        attributes,
-      };
+      const entry = buildAgenticEntry(key, value, extendedMetadata, attributes, now);
 
       this.log.debug('Stored with attributes', { key, keywords: attributes.keywords.length });
       return ok({ entry, linkSuggestions, evolution });
@@ -226,29 +212,11 @@ export class AgenticMemoryBackend implements IAgenticMemory {
     }
   }
 
-  private getExistingMemoriesForAnalysis(
-    excludeKey: string
-  ): Array<{ key: string; attrs: MemoryAttributes; createdAt: Date }> {
-    const rows = this.getDb()
-      .prepare<MemoryRow>(
-        'SELECT * FROM memories WHERE key != ? ORDER BY accessed_at DESC LIMIT 100'
-      )
-      .all(excludeKey);
-    return rows.map((row) => ({
-      key: row.key,
-      attrs: getAttributesFromRow(row, this.extractionConfig),
-      createdAt: new Date(row.created_at),
-    }));
-  }
-
   retrieveWithAttributes(key: string): Promise<Result<AgenticMemoryEntry | null, MemoryError>> {
     try {
       this.ensureInit();
-      const db = this.getDb();
-
-      const row = db.prepare<MemoryRow>('SELECT * FROM memories WHERE key = ?').get(key);
+      const row = queryMemoryByKey(this.getDb(), key);
       if (row === undefined) return Promise.resolve(ok(null));
-
       const entry = memoryRowToAgenticEntry(row, this.extractionConfig);
       return Promise.resolve(ok(entry));
     } catch (error) {
@@ -271,22 +239,12 @@ export class AgenticMemoryBackend implements IAgenticMemory {
   suggestLinks(key: string, limit?: number): Promise<Result<LinkSuggestion[], MemoryError>> {
     try {
       this.ensureInit();
-      const db = this.getDb();
-      const sourceRow = db.prepare<MemoryRow>('SELECT * FROM memories WHERE key = ?').get(key);
+      const sourceRow = queryMemoryByKey(this.getDb(), key);
       if (sourceRow === undefined)
         return Promise.resolve(err(new MemoryError(`Memory not found: ${key}`)));
 
       const sourceAttrs = getAttributesFromRow(sourceRow, this.extractionConfig);
-      const candidateRows = db
-        .prepare<MemoryRow>(
-          'SELECT * FROM memories WHERE key != ? ORDER BY accessed_at DESC LIMIT 100'
-        )
-        .all(key);
-      const candidates = candidateRows.map((row) => ({
-        key: row.key,
-        attrs: getAttributesFromRow(row, this.extractionConfig),
-        createdAt: new Date(row.created_at),
-      }));
+      const candidates = queryCandidateMemories(this.getDb(), key, this.extractionConfig);
       const maxSuggestions = limit ?? this.linkingConfig.maxSuggestions;
       const suggestions = generateLinkSuggestions(
         key,
@@ -315,7 +273,7 @@ export class AgenticMemoryBackend implements IAgenticMemory {
       if (!suggestionsResult.ok) return suggestionsResult;
 
       const filtered = suggestionsResult.value.filter((s) => s.confidence >= threshold);
-      const linksCreated = await this.applyLinkSuggestions(filtered, bidirectional);
+      const linksCreated = await applyLinkSuggestions(this.graph, filtered, bidirectional);
 
       this.log.debug('Linked related memories', { key, linksCreated, threshold });
       return ok(linksCreated);
@@ -325,47 +283,15 @@ export class AgenticMemoryBackend implements IAgenticMemory {
     }
   }
 
-  private async applyLinkSuggestions(
-    suggestions: LinkSuggestion[],
-    bidirectional: boolean
-  ): Promise<number> {
-    let count = 0;
-    for (const s of suggestions) {
-      const result = await this.graph.addRelationship(s.from, s.to, s.relationType, {
-        weight: s.confidence,
-        metadata: { reason: s.reason },
-      });
-      if (!result.ok) continue;
-      count++;
-      if (bidirectional) {
-        await this.graph.addRelationship(s.to, s.from, s.relationType, {
-          weight: s.confidence,
-          metadata: { reason: s.reason },
-        });
-      }
-    }
-    return count;
-  }
-
   detectEvolution(key: string): Promise<Result<EvolutionResult[], MemoryError>> {
     try {
       this.ensureInit();
-      const db = this.getDb();
-      const sourceRow = db.prepare<MemoryRow>('SELECT * FROM memories WHERE key = ?').get(key);
+      const sourceRow = queryMemoryByKey(this.getDb(), key);
       if (sourceRow === undefined)
         return Promise.resolve(err(new MemoryError(`Memory not found: ${key}`)));
 
       const sourceAttrs = getAttributesFromRow(sourceRow, this.extractionConfig);
-      const existingRows = db
-        .prepare<MemoryRow>(
-          'SELECT * FROM memories WHERE key != ? ORDER BY created_at DESC LIMIT 50'
-        )
-        .all(key);
-      const existingMemories = existingRows.map((row) => ({
-        key: row.key,
-        attrs: getAttributesFromRow(row, this.extractionConfig),
-        createdAt: new Date(row.created_at),
-      }));
+      const existingMemories = queryMemoriesForEvolution(this.getDb(), key, this.extractionConfig);
       const evolution = detectEvolution(
         key,
         sourceAttrs,
@@ -382,25 +308,16 @@ export class AgenticMemoryBackend implements IAgenticMemory {
   refreshAttributes(key: string): Promise<Result<MemoryAttributes, MemoryError>> {
     try {
       this.ensureInit();
-      const db = this.getDb();
-
-      const row = db.prepare<MemoryRow>('SELECT * FROM memories WHERE key = ?').get(key);
-      if (row === undefined) {
+      const row = queryMemoryByKey(this.getDb(), key);
+      if (row === undefined)
         return Promise.resolve(err(new MemoryError(`Memory not found: ${key}`)));
-      }
 
       const value = JSON.parse(row.value) as unknown;
       const attributes = extractAttributes(value, this.extractionConfig);
       const currentMeta = JSON.parse(row.metadata) as Record<string, unknown>;
-      const updatedMeta = {
-        ...currentMeta,
-        amem: { ...attributes, attributesUpdatedAt: Date.now() },
-      };
+      const updatedMeta = prepareRefreshedMetadata(currentMeta, attributes);
+      updateMemoryMetadata(this.getDb(), key, updatedMeta);
 
-      db.prepare('UPDATE memories SET metadata = ? WHERE key = ?').run(
-        JSON.stringify(updatedMeta),
-        key
-      );
       this.log.debug('Refreshed attributes', { key, keywords: attributes.keywords.length });
       return Promise.resolve(ok(attributes));
     } catch (error) {
@@ -416,8 +333,7 @@ export class AgenticMemoryBackend implements IAgenticMemory {
   ): Promise<Result<AgenticMemoryEntry[], MemoryError>> {
     try {
       this.ensureInit();
-      const db = this.getDb();
-      const sourceRow = db.prepare<MemoryRow>('SELECT * FROM memories WHERE key = ?').get(key);
+      const sourceRow = queryMemoryByKey(this.getDb(), key);
       if (sourceRow === undefined)
         return Promise.resolve(err(new MemoryError(`Memory not found: ${key}`)));
 
@@ -425,11 +341,7 @@ export class AgenticMemoryBackend implements IAgenticMemory {
       const sourceSet = getAttributeSet(sourceAttrs, attributeType);
       if (sourceSet.size === 0) return Promise.resolve(ok([]));
 
-      const allRows = db
-        .prepare<MemoryRow>(
-          'SELECT * FROM memories WHERE key != ? ORDER BY accessed_at DESC LIMIT 200'
-        )
-        .all(key);
+      const allRows = queryAllMemoriesExcept(this.getDb(), key);
       const matches = findMatchingMemories(
         allRows,
         sourceSet,
@@ -445,31 +357,21 @@ export class AgenticMemoryBackend implements IAgenticMemory {
     }
   }
 
-  // =========================================================================
-  // Configuration
-  // =========================================================================
-
+  // Configuration getters and setters
   getExtractionConfig(): ExtractionConfig {
     return this.extractionConfig;
   }
-
   updateExtractionConfig(config: Partial<ExtractionConfig>): void {
     this.extractionConfig = mergeExtractionConfig({ ...this.extractionConfig, ...config });
     this.log.info('Updated extraction config');
   }
-
   getLinkingConfig(): LinkingConfig {
     return this.linkingConfig;
   }
-
   updateLinkingConfig(config: Partial<LinkingConfig>): void {
     this.linkingConfig = mergeLinkingConfig({ ...this.linkingConfig, ...config });
     this.log.info('Updated linking config');
   }
-
-  // =========================================================================
-  // Lifecycle
-  // =========================================================================
 
   close(): void {
     this.base.close();
@@ -483,9 +385,7 @@ export class AgenticMemoryBackend implements IAgenticMemory {
   }
 }
 
-/**
- * Create an AgenticMemoryBackend instance.
- */
+/** Create an AgenticMemoryBackend instance. */
 export function createAgenticMemory(config: AgenticMemoryConfig): AgenticMemoryBackend {
   return new AgenticMemoryBackend(config);
 }

@@ -1,12 +1,6 @@
 /**
- * nexus-agents/agents - OrchestrationObserver Implementation
- *
- * Real-time observability for multi-agent orchestration.
- * Subscribes to EventBus for agent states, routing decisions, and metrics.
- *
- * (Source: Issue #187 - OrchestrationObserver for orchestration visibility)
- * (Renamed from SwarmObserver in Issue #251 to avoid collision with observability/swarm-observer.ts)
- *
+ * OrchestrationObserver - Real-time multi-agent orchestration visibility.
+ * (Source: Issue #187, renamed from SwarmObserver in Issue #251)
  * @module agents/observability/orchestration-observer
  */
 
@@ -16,6 +10,7 @@ import type { CliName } from '../../cli-adapters/types.js';
 import type { IEventBus, DomainEvent, Subscription } from '../collaboration/event-bus-types.js';
 import {
   OrchestrationObserverConfigSchema,
+  ObserverTopics,
   type IOrchestrationObserver,
   type OrchestrationObserverConfig,
   type OrchestrationObserverOptions,
@@ -27,35 +22,26 @@ import {
   type OrchestrationStats,
   type OrchestrationObserverListener,
   type OrchestrationObserverEvent,
-  ObserverTopics,
 } from './orchestration-observer-types.js';
-
-// ============================================================================
-// OrchestrationObserver Implementation
-// ============================================================================
+import {
+  extractStringField,
+  extractNumberField,
+  extractBooleanField,
+  extractStringArrayField,
+  extractSessionId,
+  createInitialSessionMetrics,
+  createTrackedAgent,
+  calculateRoutingDistribution,
+  calculateMetricsTotals,
+  countActiveSessions,
+  findActiveSession,
+  identifySessionsToRemove,
+  calculateTokenCost,
+} from './orchestration-observer-helpers.js';
 
 /**
- * OrchestrationObserver provides real-time visibility into multi-agent orchestration.
- *
- * Features:
- * - Tracks agent states (idle, thinking, executing)
- * - Records routing decisions for audit
- * - Aggregates session metrics and costs
- * - Emits events for external visualization
- *
- * @example
- * ```typescript
- * const observer = new OrchestrationObserver(eventBus);
- * observer.start();
- *
- * observer.addEventListener((event) => {
- *   if (event.type === 'routing_decision') {
- *     console.log('Routed to:', event.decision.selectedCli);
- *   }
- * });
- *
- * const stats = observer.getStats();
- * ```
+ * Provides real-time visibility into multi-agent orchestration.
+ * Tracks agent states, routing decisions, session metrics, and costs.
  */
 export class OrchestrationObserver implements IOrchestrationObserver {
   private readonly eventBus: IEventBus;
@@ -109,7 +95,6 @@ export class OrchestrationObserver implements IOrchestrationObserver {
   }
 
   private subscribeToEvents(): void {
-    // Subscribe to all relevant event patterns
     this.subscriptions.push(
       this.eventBus.subscribe(ObserverTopics.SESSIONS, (e) => {
         this.handleSessionEvent(e);
@@ -127,13 +112,10 @@ export class OrchestrationObserver implements IOrchestrationObserver {
     this.logger.debug('Subscribed to event topics', { topicCount: this.subscriptions.length });
   }
 
-  // ========== Event Handlers ==========
-
   private handleSessionEvent(event: DomainEvent): void {
     this.eventsProcessed++;
     const payload = event.payload as Record<string, unknown>;
-    // sessionId may be on event object OR in payload (for session.created)
-    const sessionId = this.extractSessionId(event, payload);
+    const sessionId = extractSessionId(event, payload);
 
     switch (event.topic) {
       case 'session.created':
@@ -149,18 +131,6 @@ export class OrchestrationObserver implements IOrchestrationObserver {
         this.onSessionFinalized(sessionId, payload);
         break;
     }
-  }
-
-  private extractSessionId(event: DomainEvent, payload: Record<string, unknown>): string {
-    // Check event.sessionId first, then payload.sessionId
-    if (event.sessionId !== undefined && event.sessionId !== '') {
-      return event.sessionId;
-    }
-    const payloadSessionId = payload['sessionId'];
-    if (typeof payloadSessionId === 'string' && payloadSessionId !== '') {
-      return payloadSessionId;
-    }
-    return '';
   }
 
   private handleAgentEvent(event: DomainEvent): void {
@@ -189,38 +159,22 @@ export class OrchestrationObserver implements IOrchestrationObserver {
     const payload = event.payload as Record<string, unknown>;
 
     if (event.topic === 'protocol.completed') {
-      const success = payload['success'] === true;
-      const durationMs = typeof payload['durationMs'] === 'number' ? payload['durationMs'] : 0;
+      const success = extractBooleanField(payload, 'success');
+      const durationMs = extractNumberField(payload, 'durationMs');
       this.totalTasks++;
       this.totalTaskDurationMs += durationMs;
       if (success) this.successfulTasks++;
     }
   }
 
-  // ========== Session Event Processors ==========
-
   private onSessionCreated(sessionId: string, payload: Record<string, unknown>): void {
     if (sessionId === '') return;
 
-    const pattern = typeof payload['pattern'] === 'string' ? payload['pattern'] : 'unknown';
-    const experts = Array.isArray(payload['experts']) ? (payload['experts'] as string[]) : [];
+    const pattern = extractStringField(payload, 'pattern') || 'unknown';
+    const experts = extractStringArrayField(payload, 'experts');
 
-    // Initialize session metrics
-    const metrics: SessionMetrics = {
-      sessionId,
-      startedAt: new Date().toISOString(),
-      durationMs: 0,
-      taskCount: 0,
-      successCount: 0,
-      failureCount: 0,
-      tokenUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
-      costMetrics: { totalCostUsd: 0, costPerModel: new Map() },
-      routingDecisions: 0,
-      eventsProcessed: 0,
-    };
-    this.sessionMetrics.set(sessionId, metrics);
+    this.sessionMetrics.set(sessionId, createInitialSessionMetrics(sessionId));
 
-    // Track agents from experts list
     for (const expertId of experts) {
       this.updateAgentState(expertId, 'idle', 'expert');
     }
@@ -230,7 +184,7 @@ export class OrchestrationObserver implements IOrchestrationObserver {
   }
 
   private onSessionStatusChanged(sessionId: string, payload: Record<string, unknown>): void {
-    const newStatus = typeof payload['newStatus'] === 'string' ? payload['newStatus'] : '';
+    const newStatus = extractStringField(payload, 'newStatus');
     const metrics = this.sessionMetrics.get(sessionId);
     if (metrics !== undefined) {
       metrics.eventsProcessed++;
@@ -242,7 +196,7 @@ export class OrchestrationObserver implements IOrchestrationObserver {
   }
 
   private onResultSubmitted(sessionId: string, payload: Record<string, unknown>): void {
-    const expertId = typeof payload['expertId'] === 'string' ? payload['expertId'] : '';
+    const expertId = extractStringField(payload, 'expertId');
     if (expertId !== '') {
       this.updateAgentState(expertId, 'idle');
     }
@@ -255,8 +209,8 @@ export class OrchestrationObserver implements IOrchestrationObserver {
   }
 
   private onSessionFinalized(sessionId: string, payload: Record<string, unknown>): void {
-    const success = payload['success'] === true;
-    const durationMs = typeof payload['durationMs'] === 'number' ? payload['durationMs'] : 0;
+    const success = extractBooleanField(payload, 'success');
+    const durationMs = extractNumberField(payload, 'durationMs');
 
     const metrics = this.sessionMetrics.get(sessionId);
     if (metrics !== undefined) {
@@ -267,12 +221,9 @@ export class OrchestrationObserver implements IOrchestrationObserver {
     this.emitObserverEvent({ type: 'session_completed', sessionId, success, durationMs });
   }
 
-  // ========== Agent Event Processors ==========
-
   private onTaskDelegated(payload: Record<string, unknown>): void {
-    const toAgent = typeof payload['toAgent'] === 'string' ? payload['toAgent'] : '';
-    const taskDescription =
-      typeof payload['taskDescription'] === 'string' ? payload['taskDescription'] : '';
+    const toAgent = extractStringField(payload, 'toAgent');
+    const taskDescription = extractStringField(payload, 'taskDescription');
 
     if (toAgent !== '') {
       this.updateAgentState(toAgent, 'executing', undefined, taskDescription);
@@ -280,7 +231,7 @@ export class OrchestrationObserver implements IOrchestrationObserver {
   }
 
   private onResultBroadcast(payload: Record<string, unknown>): void {
-    const agentId = typeof payload['agentId'] === 'string' ? payload['agentId'] : '';
+    const agentId = extractStringField(payload, 'agentId');
     if (agentId !== '') {
       this.updateAgentState(agentId, 'idle');
       const agent = this.agents.get(agentId);
@@ -289,8 +240,6 @@ export class OrchestrationObserver implements IOrchestrationObserver {
       }
     }
   }
-
-  // ========== State Management ==========
 
   private updateAgentState(
     agentId: string,
@@ -302,15 +251,7 @@ export class OrchestrationObserver implements IOrchestrationObserver {
     const previousState = agent?.state ?? 'idle';
 
     if (agent === undefined) {
-      agent = {
-        id: agentId,
-        role: role ?? 'unknown',
-        state,
-        currentTask,
-        lastUpdated: new Date().toISOString(),
-        taskCount: 0,
-        errorCount: 0,
-      };
+      agent = createTrackedAgent(agentId, state, role ?? 'unknown', currentTask);
       this.agents.set(agentId, agent);
     } else {
       agent.state = state;
@@ -322,29 +263,20 @@ export class OrchestrationObserver implements IOrchestrationObserver {
     }
 
     if (previousState !== state) {
-      this.emitObserverEvent({
-        type: 'agent_state_changed',
-        agentId,
-        state,
-        previousState,
-      });
+      this.emitObserverEvent({ type: 'agent_state_changed', agentId, state, previousState });
     }
   }
 
   private pruneOldMetrics(): void {
-    // Prune old session metrics to stay within limit
     const maxSessions = this.config.maxSessionHistory;
-    if (this.sessionMetrics.size > maxSessions) {
-      const sessions = Array.from(this.sessionMetrics.entries());
-      const sorted = sessions.sort((a, b) => a[1].startedAt.localeCompare(b[1].startedAt));
-      const toRemove = sorted.slice(0, sessions.length - maxSessions);
-      for (const [sessionId] of toRemove) {
-        this.sessionMetrics.delete(sessionId);
-      }
+    const sessionsToRemove = identifySessionsToRemove(
+      Array.from(this.sessionMetrics.entries()),
+      maxSessions
+    );
+    for (const sessionId of sessionsToRemove) {
+      this.sessionMetrics.delete(sessionId);
     }
   }
-
-  // ========== Public Query Methods ==========
 
   getAgentStates(): readonly TrackedAgent[] {
     return Array.from(this.agents.values());
@@ -364,21 +296,9 @@ export class OrchestrationObserver implements IOrchestrationObserver {
   }
 
   getStats(): OrchestrationStats {
-    const routingDist: Record<CliName, number> = { claude: 0, gemini: 0, codex: 0 };
-    for (const decision of this.routingHistory) {
-      routingDist[decision.selectedCli]++;
-    }
-
-    let totalTokens = 0;
-    let totalCost = 0;
-    for (const metrics of this.sessionMetrics.values()) {
-      totalTokens += metrics.tokenUsage.totalTokens;
-      totalCost += metrics.costMetrics.totalCostUsd;
-    }
-
-    const activeSessions = Array.from(this.sessionMetrics.values()).filter(
-      (m) => m.completedAt === undefined
-    ).length;
+    const routingDist = calculateRoutingDistribution(this.routingHistory);
+    const { totalTokens, totalCost } = calculateMetricsTotals(this.sessionMetrics.values());
+    const activeSessions = countActiveSessions(this.sessionMetrics.values());
 
     return {
       totalSessions: this.sessionMetrics.size,
@@ -394,22 +314,16 @@ export class OrchestrationObserver implements IOrchestrationObserver {
     };
   }
 
-  // ========== Manual Recording Methods ==========
-
   recordRoutingDecision(decision: RoutingDecision): void {
     this.routingHistory.push(decision);
 
-    // Prune if over limit
     if (this.routingHistory.length > this.config.maxRoutingHistory) {
       this.routingHistory.shift();
     }
 
-    // Update session metrics if session exists
-    const sessionMetrics = Array.from(this.sessionMetrics.values()).find(
-      (m) => m.completedAt === undefined
-    );
-    if (sessionMetrics !== undefined) {
-      sessionMetrics.routingDecisions++;
+    const activeSession = findActiveSession(this.sessionMetrics.values());
+    if (activeSession !== undefined) {
+      activeSession.routingDecisions++;
     }
 
     this.emitObserverEvent({ type: 'routing_decision', decision });
@@ -423,16 +337,13 @@ export class OrchestrationObserver implements IOrchestrationObserver {
     metrics.tokenUsage.outputTokens += tokens.outputTokens;
     metrics.tokenUsage.totalTokens += tokens.totalTokens;
 
-    // Calculate cost
     const rate = this.config.tokenCostRates[model] ?? 0.01;
-    const cost = (tokens.totalTokens / 1000) * rate;
+    const cost = calculateTokenCost(tokens, rate);
     metrics.costMetrics.totalCostUsd += cost;
 
     const currentModelCost = metrics.costMetrics.costPerModel.get(model) ?? 0;
     metrics.costMetrics.costPerModel.set(model, currentModelCost + cost);
   }
-
-  // ========== Event Listener Management ==========
 
   addEventListener(listener: OrchestrationObserverListener): void {
     this.listeners.add(listener);
@@ -458,17 +369,7 @@ export class OrchestrationObserver implements IOrchestrationObserver {
   }
 }
 
-// ============================================================================
-// Factory Function
-// ============================================================================
-
-/**
- * Creates an OrchestrationObserver instance.
- *
- * @param eventBus - The event bus to observe
- * @param options - Optional configuration
- * @returns A new OrchestrationObserver instance
- */
+/** Creates an OrchestrationObserver instance. */
 export function createOrchestrationObserver(
   eventBus: IEventBus,
   options?: OrchestrationObserverOptions
@@ -476,10 +377,7 @@ export function createOrchestrationObserver(
   return new OrchestrationObserver(eventBus, options);
 }
 
-// ============================================================================
-// Backward Compatibility Aliases (deprecated, will be removed in v3.0)
-// ============================================================================
-
+// Backward compatibility aliases (deprecated, will be removed in v3.0)
 /** @deprecated Use OrchestrationObserver instead */
 export const SwarmObserver = OrchestrationObserver;
 /** @deprecated Use createOrchestrationObserver instead */

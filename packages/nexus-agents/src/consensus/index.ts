@@ -108,4 +108,24 @@ export type {
 
 export { DEFAULT_WEIGHTED_VOTING_CONFIG } from './types.js';
 
-export { WeightedVoting, createWeightedVoting } from './weighted-voting.js';
+export {
+  WeightedVoting,
+  createWeightedVoting,
+  type WeightedVotingOptions,
+} from './weighted-voting.js';
+
+// Weighted voting helpers (internal utilities exported for testing)
+export {
+  isLowConfidenceContrarian,
+  computeMajorityDirection,
+  determineDecision,
+  updateDerivedMetrics,
+  toImmutableRecord,
+  createVoteSignature,
+  groupVotesBySignature,
+  createAgentRecord,
+  computeGlobalStats,
+  calculateCalibratedWeight,
+  applyOutcomeWeight,
+  type MutableAgentRecord,
+} from './weighted-voting-helpers.js';

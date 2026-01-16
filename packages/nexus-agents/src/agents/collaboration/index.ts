@@ -271,6 +271,21 @@ export {
   type RefinementOptions,
 } from './constitutional-critic.js';
 
+// Constitutional Critic helpers (Source: Issue #147, arxiv:2212.08073)
+export {
+  SEVERITY_ORDER,
+  getDetectionPatterns,
+  getLineNumber,
+  calculateScore,
+  checksPasses,
+  generateSummary,
+  summarizeChanges,
+  matchKeywords,
+  applyFix,
+  filterViolationsBySeverity,
+  type DetectionResult,
+} from './constitutional-critic-helpers.js';
+
 export {
   CODE_CONSTITUTION,
   getCriticalPrinciples,
