@@ -271,14 +271,16 @@ steps:
 
 ### MCP Tools
 
-The server exposes these MCP tools for integration:
+The server exposes these MCP tools for Claude Desktop integration:
 
-| Tool                | Description                                  |
-| ------------------- | -------------------------------------------- |
-| `orchestrate`       | Analyze task and coordinate expert execution |
-| `create_expert`     | Dynamically create a specialized expert      |
-| `run_workflow`      | Execute a predefined workflow template       |
-| `delegate_to_model` | Route task to optimal model by capability    |
+| Tool                | Description                                  | Rate Limit |
+| ------------------- | -------------------------------------------- | ---------- |
+| `orchestrate`       | Analyze task and coordinate expert execution | 10/min     |
+| `create_expert`     | Dynamically create a specialized expert      | 30/min     |
+| `run_workflow`      | Execute a predefined workflow template       | 5/min      |
+| `delegate_to_model` | Route task to optimal model by capability    | 20/min     |
+
+See [docs/ENTRYPOINTS.md](./docs/ENTRYPOINTS.md) for full API documentation including schemas and examples.
 
 ---
 

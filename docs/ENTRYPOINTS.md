@@ -146,10 +146,10 @@ nexus-agents swe-bench status
 
 | Tool                | Description                                   | Auth         | Rate Limit |
 | ------------------- | --------------------------------------------- | ------------ | ---------- |
-| `orchestrate`       | Task orchestration with TechLead coordination | None (local) | 60/min     |
-| `create_expert`     | Dynamic expert agent creation                 | None (local) | 60/min     |
-| `run_workflow`      | Execute workflow template                     | None (local) | 60/min     |
-| `delegate_to_model` | Route task to optimal model                   | None (local) | 60/min     |
+| `orchestrate`       | Task orchestration with TechLead coordination | None (local) | 10/min     |
+| `create_expert`     | Dynamic expert agent creation                 | None (local) | 30/min     |
+| `run_workflow`      | Execute workflow template                     | None (local) | 5/min      |
+| `delegate_to_model` | Route task to optimal model                   | None (local) | 20/min     |
 
 ### Tool Schemas
 
@@ -662,16 +662,16 @@ cli_commands:
 mcp_tools:
   - name: orchestrate
     auth: none
-    rate_limit: 60/min
+    rate_limit: 10/min
   - name: create_expert
     auth: none
-    rate_limit: 60/min
+    rate_limit: 30/min
   - name: run_workflow
     auth: none
-    rate_limit: 60/min
+    rate_limit: 5/min
   - name: delegate_to_model
     auth: none
-    rate_limit: 60/min
+    rate_limit: 20/min
 ```
 
 <!-- END:MCP_TOOLS -->
