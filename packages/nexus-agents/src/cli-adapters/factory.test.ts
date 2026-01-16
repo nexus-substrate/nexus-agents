@@ -73,7 +73,8 @@ describe('createCliAdapter', () => {
     const gemini = createCliAdapter({ cli: 'gemini' });
     const codex = createCliAdapter({ cli: 'codex' });
 
-    expect(claude.getModelInfo().id).toBe('claude-sonnet-4');
+    // Adapters use CLI aliases as model IDs
+    expect(claude.getModelInfo().id).toBe('sonnet');
     expect(gemini.getModelInfo().id).toBe('gemini-2.5-flash');
     expect(codex.getModelInfo().id).toBe('o3');
   });
