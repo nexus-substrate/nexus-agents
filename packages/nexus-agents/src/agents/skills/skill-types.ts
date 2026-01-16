@@ -310,6 +310,15 @@ export interface LibraryStatistics {
 }
 
 /**
+ * In-memory skill storage structure.
+ */
+export interface SkillStore {
+  skills: Map<string, Skill>;
+  executions: Map<string, SkillExecution[]>;
+  metrics: Map<string, SkillMetrics>;
+}
+
+/**
  * Common stop words to filter from searches.
  */
 export const STOP_WORDS = new Set([

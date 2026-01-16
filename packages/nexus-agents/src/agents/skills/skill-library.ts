@@ -7,10 +7,6 @@
  *
  * @module agents/skills/skill-library
  * (Source: arXiv:2305.16291, Issue #150)
- *
- * File length justification: Core SkillLibrary class with types in
- * skill-types.ts, search in skill-search.ts, helpers in skill-helpers.ts.
- * Remaining methods are tightly coupled to in-memory store state.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -19,15 +15,13 @@ import { createLogger } from '../../core/index.js';
 import type {
   Skill,
   SkillWithMetrics,
-  SkillMetrics,
   SkillExecution,
-  SkillExecutionStatus,
   SkillQuery,
   SkillSearchResult,
   CreateSkillOptions,
   SkillLibraryConfig,
-  SkillComplexity,
   LibraryStatistics,
+  SkillStore,
 } from './skill-types.js';
 import { DEFAULT_SKILL_LIBRARY_CONFIG, STOP_WORDS } from './skill-types.js';
 import { extractKeywords, calculateRelevanceScore, matchesAllCriteria } from './skill-search.js';
@@ -35,16 +29,13 @@ import {
   type RecordExecutionOptions,
   createExecutionRecord,
   applySkillUpdates,
+  createInitialMetrics,
+  calculateUpdatedMetrics,
+  addMetricsToSkill,
+  sortSkillsByCriteria,
+  calculateLibraryStatistics,
+  findLowestPerformingSkillId,
 } from './skill-helpers.js';
-
-/**
- * In-memory skill storage.
- */
-interface SkillStore {
-  skills: Map<string, Skill>;
-  executions: Map<string, SkillExecution[]>;
-  metrics: Map<string, SkillMetrics>;
-}
 
 /**
  * Voyager-style skill library for storing and retrieving executable skills.
@@ -95,7 +86,8 @@ export class SkillLibrary {
     };
 
     this.store.skills.set(skill.id, skill);
-    this.initializeMetrics(skill.id);
+    this.store.metrics.set(skill.id, createInitialMetrics());
+    this.store.executions.set(skill.id, []);
 
     this.logger.info('Skill added to library', {
       skillId: skill.id,
@@ -115,7 +107,7 @@ export class SkillLibrary {
     if (skill === undefined) {
       return undefined;
     }
-    return this.withMetrics(skill);
+    return addMetricsToSkill(skill, this.store.metrics.get(skillId));
   }
 
   /**
@@ -124,7 +116,7 @@ export class SkillLibrary {
   getSkillByName(name: string): SkillWithMetrics | undefined {
     for (const skill of this.store.skills.values()) {
       if (skill.name === name) {
-        return this.withMetrics(skill);
+        return addMetricsToSkill(skill, this.store.metrics.get(skill.id));
       }
     }
     return undefined;
@@ -137,7 +129,7 @@ export class SkillLibrary {
     let matches = this.filterSkills(query);
     const totalCount = matches.length;
 
-    matches = this.sortSkills(matches, query);
+    matches = sortSkillsByCriteria(matches, query.sortBy ?? 'name', query.sortOrder ?? 'asc');
 
     if (query.limit !== undefined && query.limit > 0) {
       matches = matches.slice(0, query.limit);
@@ -155,7 +147,7 @@ export class SkillLibrary {
    */
   recordExecution(
     skillId: string,
-    status: SkillExecutionStatus,
+    status: SkillExecution['status'],
     input: Record<string, unknown>,
     output?: string,
     errorMessage?: string
@@ -192,33 +184,19 @@ export class SkillLibrary {
     });
   }
 
-  /**
-   * Gets all skills in a category.
-   */
+  /** Gets all skills in a category. */
   getSkillsByCategory(category: string): readonly SkillWithMetrics[] {
     return this.searchSkills({ category: category as Skill['category'] }).skills;
   }
 
-  /**
-   * Gets the most successful skills.
-   */
+  /** Gets the most successful skills. */
   getTopPerformingSkills(limit: number = 10): readonly SkillWithMetrics[] {
-    return this.searchSkills({
-      sortBy: 'successRate',
-      sortOrder: 'desc',
-      limit,
-    }).skills;
+    return this.searchSkills({ sortBy: 'successRate', sortOrder: 'desc', limit }).skills;
   }
 
-  /**
-   * Gets the most frequently used skills.
-   */
+  /** Gets the most frequently used skills. */
   getMostUsedSkills(limit: number = 10): readonly SkillWithMetrics[] {
-    return this.searchSkills({
-      sortBy: 'executionCount',
-      sortOrder: 'desc',
-      limit,
-    }).skills;
+    return this.searchSkills({ sortBy: 'executionCount', sortOrder: 'desc', limit }).skills;
   }
 
   /**
@@ -272,51 +250,17 @@ export class SkillLibrary {
     return true;
   }
 
-  /**
-   * Gets library statistics.
-   */
+  /** Gets library statistics. */
   getStatistics(): LibraryStatistics {
-    const skills = Array.from(this.store.skills.values());
-    const metrics = Array.from(this.store.metrics.values());
-
-    const byCategory = new Map<string, number>();
-    const byComplexity = new Map<SkillComplexity, number>();
-
-    for (const skill of skills) {
-      byCategory.set(skill.category, (byCategory.get(skill.category) ?? 0) + 1);
-      byComplexity.set(skill.complexity, (byComplexity.get(skill.complexity) ?? 0) + 1);
-    }
-
-    const totalExecutions = metrics.reduce((sum, m) => sum + m.executionCount, 0);
-    const totalSuccesses = metrics.reduce((sum, m) => sum + m.successCount, 0);
-
-    return {
-      totalSkills: skills.length,
-      totalExecutions,
-      overallSuccessRate: totalExecutions > 0 ? totalSuccesses / totalExecutions : 0,
-      skillsByCategory: Object.fromEntries(byCategory),
-      skillsByComplexity: Object.fromEntries(byComplexity),
-    };
+    return calculateLibraryStatistics(
+      Array.from(this.store.skills.values()),
+      Array.from(this.store.metrics.values())
+    );
   }
 
-  /**
-   * Gets the current configuration.
-   */
+  /** Gets the current configuration. */
   getConfig(): SkillLibraryConfig {
     return this.config;
-  }
-
-  /**
-   * Initializes metrics for a new skill.
-   */
-  private initializeMetrics(skillId: string): void {
-    this.store.metrics.set(skillId, {
-      executionCount: 0,
-      successCount: 0,
-      avgExecutionTimeMs: 0,
-      successRate: 0,
-    });
-    this.store.executions.set(skillId, []);
   }
 
   /**
@@ -346,21 +290,8 @@ export class SkillLibrary {
       return;
     }
 
-    const executionTime = execution.endTime.getTime() - execution.startTime.getTime();
-    const isSuccess = execution.status === 'success';
-
-    const newCount = current.executionCount + 1;
-    const newSuccessCount = current.successCount + (isSuccess ? 1 : 0);
-    const newAvgTime =
-      (current.avgExecutionTimeMs * current.executionCount + executionTime) / newCount;
-
-    this.store.metrics.set(skillId, {
-      executionCount: newCount,
-      successCount: newSuccessCount,
-      avgExecutionTimeMs: newAvgTime,
-      successRate: newSuccessCount / newCount,
-      lastExecutedAt: execution.endTime,
-    });
+    const updated = calculateUpdatedMetrics(current, execution);
+    this.store.metrics.set(skillId, updated);
 
     this.evaluateRetention(skillId);
   }
@@ -395,40 +326,21 @@ export class SkillLibrary {
    * Removes the lowest performing skill.
    */
   private pruneLowestPerforming(): void {
-    let lowestId: string | undefined;
-    let lowestScore = Infinity;
-
-    for (const [skillId, metrics] of this.store.metrics.entries()) {
-      if (metrics.executionCount >= this.config.executionsBeforeEvaluation) {
-        if (metrics.successRate < lowestScore) {
-          lowestScore = metrics.successRate;
-          lowestId = skillId;
-        }
-      }
-    }
+    const lowestId = findLowestPerformingSkillId(
+      this.store.metrics,
+      this.config.executionsBeforeEvaluation
+    );
 
     if (lowestId !== undefined) {
       const skill = this.store.skills.get(lowestId);
+      const metrics = this.store.metrics.get(lowestId);
       this.removeSkill(lowestId);
       this.logger.info('Pruned lowest performing skill', {
         skillId: lowestId,
         skillName: skill?.name,
-        successRate: lowestScore.toFixed(2),
+        successRate: metrics?.successRate.toFixed(2),
       });
     }
-  }
-
-  /**
-   * Adds metrics to a skill.
-   */
-  private withMetrics(skill: Skill): SkillWithMetrics {
-    const metrics = this.store.metrics.get(skill.id) ?? {
-      executionCount: 0,
-      successCount: 0,
-      avgExecutionTimeMs: 0,
-      successRate: 0,
-    };
-    return { ...skill, metrics };
   }
 
   /**
@@ -438,44 +350,13 @@ export class SkillLibrary {
     const results: SkillWithMetrics[] = [];
 
     for (const skill of this.store.skills.values()) {
-      if (!this.matchesQuery(skill, query)) {
+      if (!matchesAllCriteria(skill, query, (id) => this.store.metrics.get(id))) {
         continue;
       }
-      results.push(this.withMetrics(skill));
+      results.push(addMetricsToSkill(skill, this.store.metrics.get(skill.id)));
     }
 
     return results;
-  }
-
-  /**
-   * Checks if a skill matches query criteria.
-   */
-  private matchesQuery(skill: Skill, query: SkillQuery): boolean {
-    return matchesAllCriteria(skill, query, (id) => this.store.metrics.get(id));
-  }
-
-  /**
-   * Sorts skills by the specified criteria.
-   */
-  private sortSkills(skills: SkillWithMetrics[], query: SkillQuery): SkillWithMetrics[] {
-    const sortBy = query.sortBy ?? 'name';
-    const sortOrder = query.sortOrder ?? 'asc';
-    const multiplier = sortOrder === 'asc' ? 1 : -1;
-
-    return skills.sort((a, b) => {
-      switch (sortBy) {
-        case 'name':
-          return multiplier * a.name.localeCompare(b.name);
-        case 'successRate':
-          return multiplier * (a.metrics.successRate - b.metrics.successRate);
-        case 'executionCount':
-          return multiplier * (a.metrics.executionCount - b.metrics.executionCount);
-        case 'createdAt':
-          return multiplier * (a.createdAt.getTime() - b.createdAt.getTime());
-        default:
-          return 0;
-      }
-    });
   }
 
   /**
@@ -488,7 +369,7 @@ export class SkillLibrary {
       const metrics = this.store.metrics.get(skill.id);
       const score = calculateRelevanceScore(skill, keywords, metrics);
       if (score > 0) {
-        scored.push({ skill: this.withMetrics(skill), score });
+        scored.push({ skill: addMetricsToSkill(skill, metrics), score });
       }
     }
 

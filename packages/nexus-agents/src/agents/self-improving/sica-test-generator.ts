@@ -25,31 +25,22 @@ import type {
   SicaTestEventType,
 } from './sica-test-types.js';
 import type { VersionId, AgentVersion } from './sica-types.js';
+import {
+  DEFAULT_TARGET_COVERAGE,
+  DEFAULT_FRAMEWORK,
+  DEFAULT_TEST_TYPES,
+  DEFAULT_MAX_TESTS_PER_FILE,
+  type ResolvedOptions,
+  createSuccessResult,
+  matchesFocusPaths,
+  selectTestType,
+  generateTestCode,
+  extractScenarios,
+  validateTestSyntax,
+  calculatePriority,
+} from './sica-test-helpers.js';
 
-// ============================================================================
-// Constants
-// ============================================================================
-
-const DEFAULT_TARGET_COVERAGE = 80;
-const DEFAULT_FRAMEWORK: TestFramework = 'vitest';
-const DEFAULT_TEST_TYPES: readonly TestType[] = ['unit', 'integration'];
-const DEFAULT_MAX_TESTS_PER_FILE = 5;
-
-/** Resolved options with all defaults applied. */
-interface ResolvedOptions {
-  readonly targetCoverage: number;
-  readonly framework: TestFramework;
-  readonly testTypes: readonly TestType[];
-  readonly maxPerFile: number;
-}
-
-// ============================================================================
-// Interface
-// ============================================================================
-
-/**
- * Interface for test generators.
- */
+/** Interface for test generators. */
 export interface ITestGenerator {
   generateTests(options?: TestGenerationOptions): Promise<TestGenerationResult>;
   validateTests(tests: readonly GeneratedTest[]): Promise<readonly TestValidationResult[]>;
@@ -57,13 +48,7 @@ export interface ITestGenerator {
   findCoverageGaps(target: number): Promise<readonly CoverageGap[]>;
 }
 
-// ============================================================================
-// Implementation
-// ============================================================================
-
-/**
- * Generates tests for SICA agent code.
- */
+/** Generates tests for SICA agent code. */
 export class SicaTestGenerator implements ITestGenerator {
   private readonly logger: ILogger;
   private readonly versionMetrics: Map<VersionId, VersionTestMetrics>;
@@ -75,13 +60,7 @@ export class SicaTestGenerator implements ITestGenerator {
     this.eventListeners = [];
   }
 
-  // ==========================================================================
-  // Test Generation
-  // ==========================================================================
-
-  /**
-   * Generates tests based on coverage gaps.
-   */
+  /** Generates tests based on coverage gaps. */
   async generateTests(options: TestGenerationOptions = {}): Promise<TestGenerationResult> {
     const start = Date.now();
     const opts = this.resolveOptions(options);
@@ -127,9 +106,7 @@ export class SicaTestGenerator implements ITestGenerator {
     };
   }
 
-  /**
-   * Resolves generation options with defaults.
-   */
+  /** Resolves generation options with defaults. */
   private resolveOptions(options: TestGenerationOptions): ResolvedOptions {
     return {
       targetCoverage: options.targetCoverage ?? DEFAULT_TARGET_COVERAGE,
@@ -139,9 +116,7 @@ export class SicaTestGenerator implements ITestGenerator {
     };
   }
 
-  /**
-   * Processes coverage gaps and generates tests.
-   */
+  /** Processes coverage gaps and generates tests. */
   private async processGaps(
     gaps: readonly CoverageGap[],
     options: TestGenerationOptions,
@@ -168,9 +143,7 @@ export class SicaTestGenerator implements ITestGenerator {
     return { tests, errors };
   }
 
-  /**
-   * Generates tests for a specific coverage gap.
-   */
+  /** Generates tests for a specific coverage gap. */
   private generateTestsForGap(
     gap: CoverageGap,
     options: { framework: TestFramework; testTypes: readonly TestType[]; maxPerFile: number }
@@ -187,9 +160,7 @@ export class SicaTestGenerator implements ITestGenerator {
     return tests;
   }
 
-  /**
-   * Creates a test for a specific uncovered area.
-   */
+  /** Creates a test for a specific uncovered area. */
   private createTestForArea(
     path: string,
     area: string,
@@ -213,13 +184,7 @@ export class SicaTestGenerator implements ITestGenerator {
     };
   }
 
-  // ==========================================================================
-  // Test Validation
-  // ==========================================================================
-
-  /**
-   * Validates generated tests.
-   */
+  /** Validates generated tests. */
   validateTests(tests: readonly GeneratedTest[]): Promise<readonly TestValidationResult[]> {
     const results: TestValidationResult[] = [];
 
@@ -238,9 +203,7 @@ export class SicaTestGenerator implements ITestGenerator {
     return Promise.resolve(results);
   }
 
-  /**
-   * Validates a single test.
-   */
+  /** Validates a single test. */
   private validateSingleTest(test: GeneratedTest): Omit<TestValidationResult, 'durationMs'> {
     const syntaxErrors = validateTestSyntax(test.code);
     if (syntaxErrors.length > 0) {
@@ -253,13 +216,7 @@ export class SicaTestGenerator implements ITestGenerator {
     return { testId: test.id, valid, passes: valid };
   }
 
-  // ==========================================================================
-  // Coverage Measurement
-  // ==========================================================================
-
-  /**
-   * Measures current coverage metrics.
-   */
+  /** Measures current coverage metrics. */
   measureCoverage(): Promise<CoverageMetrics> {
     // In a real implementation, this would run vitest --coverage
     // For now, return baseline metrics for SICA code
@@ -275,9 +232,7 @@ export class SicaTestGenerator implements ITestGenerator {
     return Promise.resolve(coverage);
   }
 
-  /**
-   * Finds coverage gaps below target.
-   */
+  /** Finds coverage gaps below target. */
   async findCoverageGaps(target: number): Promise<readonly CoverageGap[]> {
     const coverage = await this.measureCoverage();
     const gaps: CoverageGap[] = [];
@@ -296,9 +251,7 @@ export class SicaTestGenerator implements ITestGenerator {
     return gaps;
   }
 
-  /**
-   * Projects coverage after adding tests.
-   */
+  /** Projects coverage after adding tests. */
   private projectCoverage(
     before: CoverageMetrics,
     tests: readonly GeneratedTest[]
@@ -313,13 +266,7 @@ export class SicaTestGenerator implements ITestGenerator {
     };
   }
 
-  // ==========================================================================
-  // Version Integration
-  // ==========================================================================
-
-  /**
-   * Generates tests for a specific SICA version.
-   */
+  /** Generates tests for a specific SICA version. */
   async generateTestsForVersion(
     version: AgentVersion,
     options?: TestGenerationOptions
@@ -334,9 +281,7 @@ export class SicaTestGenerator implements ITestGenerator {
     return result;
   }
 
-  /**
-   * Records a test improvement attempt.
-   */
+  /** Records a test improvement attempt. */
   recordTestImprovement(attempt: TestImprovementAttempt): void {
     this.emit('test_improvement_attempted', attempt.sourceVersionId, {
       testCount: attempt.generatedTests.length,
@@ -346,16 +291,12 @@ export class SicaTestGenerator implements ITestGenerator {
     });
   }
 
-  /**
-   * Gets test metrics for a version.
-   */
+  /** Gets test metrics for a version. */
   getVersionMetrics(versionId: VersionId): VersionTestMetrics | undefined {
     return this.versionMetrics.get(versionId);
   }
 
-  /**
-   * Updates version metrics after test generation.
-   */
+  /** Updates version metrics after test generation. */
   private updateVersionMetrics(versionId: VersionId, result: TestGenerationResult): void {
     const existing = this.versionMetrics.get(versionId);
     const tests = [...(existing?.generatedTests ?? []), ...result.tests];
@@ -378,13 +319,7 @@ export class SicaTestGenerator implements ITestGenerator {
     }
   }
 
-  // ==========================================================================
-  // Events
-  // ==========================================================================
-
-  /**
-   * Subscribes to test generator events.
-   */
+  /** Subscribes to test generator events. */
   onEvent(listener: (event: SicaTestEvent) => void): () => void {
     this.eventListeners.push(listener);
     return () => {
@@ -393,9 +328,7 @@ export class SicaTestGenerator implements ITestGenerator {
     };
   }
 
-  /**
-   * Emits an event to all listeners.
-   */
+  /** Emits an event to all listeners. */
   private emit(
     type: SicaTestEventType,
     versionId: VersionId | undefined,
@@ -409,93 +342,4 @@ export class SicaTestGenerator implements ITestGenerator {
       listener(event);
     }
   }
-}
-
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
-function createSuccessResult(
-  tests: readonly GeneratedTest[],
-  before: CoverageMetrics,
-  after: CoverageMetrics,
-  durationMs: number
-): TestGenerationResult {
-  return {
-    success: true,
-    tests,
-    coverageBefore: before,
-    coverageAfter: after,
-    coverageGain: after.line - before.line,
-    errors: [],
-    durationMs,
-  };
-}
-
-function matchesFocusPaths(path: string, focusPaths: readonly string[]): boolean {
-  return focusPaths.some((fp) => path.includes(fp));
-}
-
-function selectTestType(area: string, types: readonly TestType[]): TestType {
-  const defaultType: TestType = types[0] ?? 'unit';
-  if (area.includes('integration') || area.includes('workflow')) {
-    return types.includes('integration') ? 'integration' : defaultType;
-  }
-  return defaultType;
-}
-
-function generateTestCode(
-  path: string,
-  area: string,
-  type: TestType,
-  framework: TestFramework
-): string {
-  const moduleName = extractModuleName(path);
-  const testName = sanitizeTestName(area);
-
-  if (framework === 'vitest' || framework === 'jest') {
-    return `import { describe, it, expect } from '${framework}';
-import { ${moduleName} } from '${path.replace('.ts', '.js')}';
-
-describe('${moduleName}', () => {
-  describe('${area}', () => {
-    it('${testName}', () => {
-      // Test ${type} for: ${area}
-      expect(${moduleName}).toBeDefined();
-    });
-  });
-});
-`;
-  }
-
-  return `// ${framework} test for ${area}`;
-}
-
-function extractModuleName(path: string): string {
-  const parts = path.split('/');
-  const filename = parts[parts.length - 1] ?? 'module';
-  return filename.replace('.ts', '').replace(/-/g, '');
-}
-
-function sanitizeTestName(area: string): string {
-  return `should handle ${area.toLowerCase().replace(/[^a-z0-9\s]/g, '')}`;
-}
-
-function extractScenarios(area: string): readonly string[] {
-  return [`handles ${area}`, `validates ${area} input`, `returns expected result for ${area}`];
-}
-
-function validateTestSyntax(code: string): readonly string[] {
-  const errors: string[] = [];
-  if (!code.includes('describe')) errors.push('Missing describe block');
-  if (!code.includes('it') && !code.includes('test')) errors.push('Missing test case');
-  return errors;
-}
-
-function calculatePriority(current: number, target: number): number {
-  const gap = target - current;
-  if (gap >= 20) return 10;
-  if (gap >= 10) return 7;
-  if (gap >= 5) return 5;
-  return 3;
 }

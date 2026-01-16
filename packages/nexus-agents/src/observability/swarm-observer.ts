@@ -11,10 +11,6 @@
  *
  * @module observability/swarm-observer
  * (Source: Alignment Roadmap Phase 1, Issue #158)
- *
- * File length justification: Core SwarmObserver class with types already
- * extracted to swarm-observer-types.ts. Private methods are tightly coupled
- * to class state (events, graph, agentStates) and cannot cleanly extract.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -24,7 +20,6 @@ import type {
   TraceId,
   SpanId,
   AgentEvent,
-  InteractionEdge,
   ContributionScore,
   BottleneckInfo,
   AgentCluster,
@@ -34,23 +29,22 @@ import type {
   InteractionGraph,
   AgentState,
   RecordInteractionOptions,
+  InteractionEdge,
 } from './swarm-observer-types.js';
 import {
   DEFAULT_SWARM_OBSERVER_CONFIG,
   SwarmObserverConfigSchema,
 } from './swarm-observer-types.js';
 import { DirectedInteractionGraph } from './interaction-graph.js';
-
-/**
- * Queue metrics for bottleneck detection.
- */
-interface AgentQueueMetrics {
-  agentId: AgentId;
-  pendingMessages: number;
-  lastMessageTime: number;
-  totalWaitTimeMs: number;
-  messageCount: number;
-}
+import {
+  type AgentQueueMetrics,
+  calculateSeverity,
+  calculateClusterCohesion,
+  countClusterInteractions,
+  findDominantPattern,
+  calculateContribution,
+  normalizeScores,
+} from './swarm-observer-helpers.js';
 
 /**
  * SwarmObserver implementation.
@@ -142,7 +136,7 @@ export class SwarmObserver implements ISwarmObserver {
           queuedMessages: metrics.pendingMessages,
           avgWaitTimeMs: avgWaitTime,
           blockedAgents,
-          severity: this.calculateSeverity(metrics.pendingMessages, blockedAgents),
+          severity: calculateSeverity(metrics.pendingMessages, blockedAgents),
         });
       }
     }
@@ -161,10 +155,10 @@ export class SwarmObserver implements ISwarmObserver {
     for (const component of components) {
       if (component.length < this.config.minClusterSize) continue;
 
-      const cohesion = this.calculateClusterCohesion(component);
+      const cohesion = calculateClusterCohesion(component, this.graph);
       if (cohesion < this.config.cohesionThreshold) continue;
 
-      const { internal, external } = this.countClusterInteractions(component);
+      const { internal, external } = countClusterInteractions(component, this.graph);
 
       clusters.push({
         clusterId: randomUUID(),
@@ -172,7 +166,7 @@ export class SwarmObserver implements ISwarmObserver {
         cohesion,
         internalInteractions: internal,
         externalInteractions: external,
-        dominantPattern: this.findDominantPattern(component),
+        dominantPattern: findDominantPattern(component, this.graph),
       });
     }
 
@@ -194,10 +188,10 @@ export class SwarmObserver implements ISwarmObserver {
       const events = this.getEventsByAgent(agentId);
       const taskEvents = events.filter((e) => this.isTaskEvent(e, taskId));
 
-      scores.set(agentId, this.calculateContribution(agentId, taskEvents));
+      scores.set(agentId, calculateContribution(agentId, taskEvents));
     }
 
-    return this.normalizeScores(scores);
+    return normalizeScores(scores);
   }
 
   /**
@@ -330,136 +324,12 @@ export class SwarmObserver implements ISwarmObserver {
     return recentlyBlocked.size;
   }
 
-  private calculateSeverity(
-    queuedMessages: number,
-    blockedAgents: number
-  ): 'low' | 'medium' | 'high' | 'critical' {
-    const score = queuedMessages + blockedAgents * 2;
-    if (score >= 20) return 'critical';
-    if (score >= 10) return 'high';
-    if (score >= 5) return 'medium';
-    return 'low';
-  }
-
-  private calculateClusterCohesion(agents: AgentId[]): number {
-    if (agents.length < 2) return 0;
-
-    let internalEdges = 0;
-    const agentSet = new Set(agents);
-
-    for (const agent of agents) {
-      const outgoing = this.graph.getOutgoingEdges(agent);
-      for (const edge of outgoing) {
-        if (agentSet.has(edge.to)) {
-          internalEdges++;
-        }
-      }
-    }
-
-    const maxPossible = agents.length * (agents.length - 1);
-    return maxPossible > 0 ? internalEdges / maxPossible : 0;
-  }
-
-  private countClusterInteractions(agents: AgentId[]): { internal: number; external: number } {
-    const agentSet = new Set(agents);
-    let internal = 0;
-    let external = 0;
-
-    for (const agent of agents) {
-      for (const edge of this.graph.getOutgoingEdges(agent)) {
-        if (agentSet.has(edge.to)) {
-          internal++;
-        } else {
-          external++;
-        }
-      }
-    }
-
-    return { internal, external };
-  }
-
-  private findDominantPattern(agents: AgentId[]): string | undefined {
-    const agentSet = new Set(agents);
-    const patterns = new Map<string, number>();
-
-    for (const agent of agents) {
-      for (const edge of this.graph.getOutgoingEdges(agent)) {
-        if (agentSet.has(edge.to)) {
-          const count = patterns.get(edge.interactionType) ?? 0;
-          patterns.set(edge.interactionType, count + 1);
-        }
-      }
-    }
-
-    let maxCount = 0;
-    let dominant: string | undefined;
-    for (const [pattern, count] of patterns) {
-      if (count > maxCount) {
-        maxCount = count;
-        dominant = pattern;
-      }
-    }
-
-    return dominant;
-  }
-
   private isTaskEvent(event: AgentEvent, taskId: TaskId): boolean {
     if (event.payload.type === 'task') {
       const payload = event.payload as { type: 'task'; taskId: TaskId };
       return payload.taskId === taskId;
     }
     return false;
-  }
-
-  private calculateContribution(agentId: AgentId, events: AgentEvent[]): ContributionScore {
-    let messagesSent = 0;
-    let messagesReceived = 0;
-    let activeTimeMs = 0;
-    let successfulTools = 0;
-    let errorCount = 0;
-
-    for (const event of events) {
-      if (event.payload.type === 'message') {
-        if (event.payload.direction === 'sent') messagesSent++;
-        else messagesReceived++;
-      } else if (event.payload.type === 'tool' && event.payload.phase === 'completed') {
-        if (event.payload.success === true) successfulTools++;
-      } else if (event.payload.type === 'error') {
-        errorCount++;
-      }
-      if (event.durationMs !== undefined && event.durationMs > 0) {
-        activeTimeMs += event.durationMs;
-      }
-    }
-
-    // Simple scoring: weight successful actions, penalize errors
-    const score = messagesSent * 0.1 + successfulTools * 0.3 - errorCount * 0.2;
-
-    return {
-      agentId,
-      score: Math.max(0, Math.min(1, score)),
-      messagesSent,
-      messagesReceived,
-      activeTimeMs,
-      successfulTools,
-      errorCount,
-    };
-  }
-
-  private normalizeScores(
-    scores: Map<AgentId, ContributionScore>
-  ): Map<AgentId, ContributionScore> {
-    const total = Array.from(scores.values()).reduce((sum, s) => sum + s.score, 0);
-    if (total === 0) return scores;
-
-    for (const [agentId, contribution] of scores) {
-      scores.set(agentId, {
-        ...contribution,
-        score: contribution.score / total,
-      });
-    }
-
-    return scores;
   }
 
   private countActiveAgents(windowStart: number): number {

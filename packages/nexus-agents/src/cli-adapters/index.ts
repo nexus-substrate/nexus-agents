@@ -31,7 +31,10 @@ export type {
 export { CLI_VERSION_REQUIREMENTS, DEFAULT_CAPABILITIES } from './types.js';
 
 // Base adapter
-export { BaseCliAdapter, SubprocessCliAdapter } from './base-adapter.js';
+export { BaseCliAdapter } from './base-adapter.js';
+
+// Subprocess adapter (extracted from base-adapter per Issue #272)
+export { SubprocessCliAdapter, type CommandConfig } from './subprocess-adapter.js';
 
 // Concrete adapters
 export { ClaudeCliAdapter } from './adapters/claude-adapter.js';

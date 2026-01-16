@@ -4,6 +4,7 @@
  * Pure utility functions for context management operations.
  */
 
+import type { Message } from '../core/index.js';
 import type {
   ContextItem,
   ContextItemCategory,
@@ -246,4 +247,102 @@ export function checkTotalBudgetLimit(
     budget: usableTokens,
     newTotal,
   };
+}
+
+/**
+ * Build messages array from context items.
+ * Converts context items to Message format for model requests.
+ * System items are skipped as they should be in systemPrompt.
+ *
+ * @param items - Sorted context items
+ * @returns Array of messages
+ */
+export function buildMessagesFromItems(items: ContextItem[]): Message[] {
+  const messages: Message[] = [];
+
+  for (const item of items) {
+    // Skip system items as they go in systemPrompt
+    if (item.category === 'system') {
+      continue;
+    }
+
+    // Parse content to determine role
+    // By default, treat as user message
+    messages.push({
+      role: 'user',
+      content: item.content,
+    });
+  }
+
+  return messages;
+}
+
+/**
+ * Create error message for category budget exceeded.
+ */
+export function createCategoryBudgetError(
+  category: ContextItemCategory,
+  result: BudgetCheckResult
+): string {
+  return `Adding item would exceed ${category} budget: ${String(result.newTotal)} > ${String(result.budget)}`;
+}
+
+/**
+ * Create error message for total budget exceeded.
+ */
+export function createTotalBudgetError(result: BudgetCheckResult): string {
+  return `Adding item would exceed total context budget: ${String(result.newTotal)} > ${String(result.budget)}`;
+}
+
+/**
+ * Update token counts in a category map (add operation).
+ */
+export function addTokensToCategory(
+  categoryTokenCounts: Map<ContextItemCategory, number>,
+  category: ContextItemCategory,
+  tokenCount: number
+): void {
+  const current = categoryTokenCounts.get(category) ?? 0;
+  categoryTokenCounts.set(category, current + tokenCount);
+}
+
+/**
+ * Update token counts in a category map (subtract operation).
+ */
+export function subtractTokensFromCategory(
+  categoryTokenCounts: Map<ContextItemCategory, number>,
+  category: ContextItemCategory,
+  tokenCount: number
+): void {
+  const current = categoryTokenCounts.get(category) ?? 0;
+  categoryTokenCounts.set(category, Math.max(0, current - tokenCount));
+}
+
+/**
+ * Reset all category token counts to zero.
+ */
+export function resetCategoryTokenCounts(
+  categoryTokenCounts: Map<ContextItemCategory, number>
+): void {
+  categoryTokenCounts.set('system', 0);
+  categoryTokenCounts.set('task', 0);
+  categoryTokenCounts.set('active', 0);
+}
+
+/**
+ * Create initial category token counts map.
+ */
+export function createCategoryTokenCounts(): Map<ContextItemCategory, number> {
+  return new Map([
+    ['system', 0],
+    ['task', 0],
+    ['active', 0],
+  ]);
+}
+
+/**
+ * Calculate category budget in tokens.
+ */
+export function calculateCategoryBudget(maxTokens: number, budgetAllocation: number): number {
+  return Math.floor(maxTokens * budgetAllocation);
 }

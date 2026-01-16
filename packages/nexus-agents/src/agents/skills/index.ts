@@ -28,6 +28,7 @@ export type {
   SkillExecutionStatus,
   SkillCategory,
   LibraryStatistics,
+  SkillStore,
 } from './skill-types.js';
 
 export { DEFAULT_SKILL_LIBRARY_CONFIG, COMPLEXITY_ORDER } from './skill-types.js';

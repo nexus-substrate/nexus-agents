@@ -1,7 +1,3 @@
-// Justification: Core class with 40 tests, types/helpers already extracted.
-// Remaining 501 lines are tightly-coupled class methods. Further splitting
-// would fragment the cohesive ContextManager implementation.
-
 /**
  * nexus-agents/agents - ContextManager
  *
@@ -32,6 +28,14 @@ import {
   buildSystemPrompt,
   checkCategoryBudgetLimit,
   checkTotalBudgetLimit,
+  buildMessagesFromItems,
+  createCategoryBudgetError,
+  createTotalBudgetError,
+  addTokensToCategory,
+  subtractTokensFromCategory,
+  resetCategoryTokenCounts,
+  createCategoryTokenCounts,
+  calculateCategoryBudget,
 } from './context-manager-helpers.js';
 
 // Re-export types for backward compatibility
@@ -46,25 +50,6 @@ export {
 
 /**
  * Manages context window for agents with token budget enforcement.
- *
- * @example
- * ```typescript
- * const manager = new ContextManager({
- *   maxTokens: 128000,
- *   adapter: claudeAdapter,
- * });
- *
- * // Add content with priority
- * await manager.add({
- *   id: 'system-prompt',
- *   content: systemPrompt,
- *   priority: ContentPriority.SYSTEM,
- *   category: 'system',
- * });
- *
- * // Check if we can add more
- * const canAdd = await manager.canAdd(newContent, 'active');
- * ```
  */
 export class ContextManager {
   private readonly maxTokens: number;
@@ -74,21 +59,9 @@ export class ContextManager {
   private readonly warningThreshold: number;
   private readonly items: Map<string, ContextItem> = new Map();
   private cachedStats: ContextStats | null = null;
-
-  /**
-   * Running totals for token counts by category.
-   * Updated incrementally on add/remove operations for O(1) lookups.
-   */
-  private categoryTokenCounts: Map<ContextItemCategory, number> = new Map([
-    ['system', 0],
-    ['task', 0],
-    ['active', 0],
-  ]);
-
-  /**
-   * Running total token count across all categories.
-   * Updated incrementally on add/remove operations for O(1) lookups.
-   */
+  /** Running totals for token counts by category. O(1) lookups. */
+  private categoryTokenCounts: Map<ContextItemCategory, number> = createCategoryTokenCounts();
+  /** Running total token count across all categories. O(1) lookups. */
   private totalTokenCount: number = 0;
 
   constructor(config: ContextManagerConfig) {
@@ -109,12 +82,7 @@ export class ContextManager {
     this.logger = config.logger ?? createLogger({ component: 'ContextManager' });
   }
 
-  /**
-   * Add an item to the context.
-   *
-   * @param item - The item to add (without tokenCount, will be calculated)
-   * @returns Result with the added item or error
-   */
+  /** Add an item to the context. Returns Result with the added item or error. */
   async add(
     item: Omit<ContextItem, 'tokenCount' | 'addedAt'>
   ): Promise<Result<ContextItem, ValidationError>> {
@@ -139,9 +107,7 @@ export class ContextManager {
     return ok(fullItem);
   }
 
-  /**
-   * Validate that adding tokens would not exceed budget constraints.
-   */
+  /** Validate that adding tokens would not exceed budget constraints. */
   private validateBudgetConstraints(
     category: ContextItemCategory,
     tokenCount: number
@@ -154,9 +120,7 @@ export class ContextManager {
     return this.checkTotalBudget(tokenCount);
   }
 
-  /**
-   * Check if adding tokens would exceed category budget.
-   */
+  /** Check if adding tokens would exceed category budget. */
   private checkCategoryBudget(
     category: ContextItemCategory,
     tokenCount: number
@@ -167,7 +131,6 @@ export class ContextManager {
       this.maxTokens,
       this.budget[category]
     );
-
     if (!result.ok) {
       this.logger.warn('Item would exceed category budget', {
         category,
@@ -175,17 +138,14 @@ export class ContextManager {
         currentTokens: result.currentTokens,
         budget: result.budget,
       });
-      return new ValidationError(
-        `Adding item would exceed ${category} budget: ${String(result.newTotal)} > ${String(result.budget)}`,
-        { context: { category, tokenCount, categoryBudget: result.budget } }
-      );
+      return new ValidationError(createCategoryBudgetError(category, result), {
+        context: { category, tokenCount, categoryBudget: result.budget },
+      });
     }
     return null;
   }
 
-  /**
-   * Check if adding tokens would exceed total budget.
-   */
+  /** Check if adding tokens would exceed total budget. */
   private checkTotalBudget(tokenCount: number): ValidationError | null {
     const result = checkTotalBudgetLimit(
       this.getTotalTokenCount(),
@@ -193,25 +153,20 @@ export class ContextManager {
       this.maxTokens,
       this.budget.reserved
     );
-
     if (!result.ok) {
       this.logger.warn('Item would exceed total budget', {
         itemTokens: tokenCount,
         currentTotal: result.currentTokens,
         usableTokens: result.budget,
       });
-      return new ValidationError(
-        `Adding item would exceed total context budget: ${String(result.newTotal)} > ${String(result.budget)}`,
-        { context: { tokenCount, currentTotal: result.currentTokens, usableTokens: result.budget } }
-      );
+      return new ValidationError(createTotalBudgetError(result), {
+        context: { tokenCount, currentTotal: result.currentTokens, usableTokens: result.budget },
+      });
     }
     return null;
   }
 
-  /**
-   * Store an item and log the operation.
-   * Updates running token count totals.
-   */
+  /** Store an item, update running token count totals, and log the operation. */
   private storeItem(id: string, fullItem: ContextItem): void {
     const existing = this.items.get(id);
 
@@ -237,12 +192,7 @@ export class ContextManager {
     }
   }
 
-  /**
-   * Remove an item from the context.
-   *
-   * @param id - The item ID to remove
-   * @returns True if item was removed, false if not found
-   */
+  /** Remove an item from the context. Returns true if removed, false if not found. */
   remove(id: string): boolean {
     const item = this.items.get(id);
     if (item === undefined) {
@@ -258,23 +208,12 @@ export class ContextManager {
     return true;
   }
 
-  /**
-   * Get an item by ID.
-   *
-   * @param id - The item ID
-   * @returns The item or undefined
-   */
+  /** Get an item by ID. */
   get(id: string): ContextItem | undefined {
     return this.items.get(id);
   }
 
-  /**
-   * Check if an item with the given content can be added to a category.
-   *
-   * @param content - The content to check
-   * @param category - The target category
-   * @returns True if the content can fit
-   */
+  /** Check if an item with the given content can be added to a category. */
   async canAdd(content: string, category: ContextItemCategory): Promise<boolean> {
     const tokenCount = await this.countTokens(content);
     const categoryBudget = this.getCategoryBudget(category);
@@ -290,66 +229,27 @@ export class ContextManager {
     return currentTotal + tokenCount <= usableTokens;
   }
 
-  /**
-   * Get all items in a category.
-   *
-   * @param category - The category to filter by
-   * @returns Items in the category, sorted by priority (desc) then addedAt (asc)
-   */
+  /** Get all items in a category, sorted by priority (desc) then addedAt (asc). */
   getByCategory(category: ContextItemCategory): ContextItem[] {
     return filterAndSortByCategory(Array.from(this.items.values()), category);
   }
 
-  /**
-   * Get all items sorted by priority (desc) then addedAt (asc).
-   *
-   * @returns All items sorted
-   */
+  /** Get all items sorted by priority (desc) then addedAt (asc). */
   getAllItems(): ContextItem[] {
     return sortItemsByPriority(Array.from(this.items.values()));
   }
 
-  /**
-   * Build messages array from context items.
-   * Converts context items to Message format for model requests.
-   *
-   * @returns Array of messages
-   */
+  /** Build messages array from context items for model requests. */
   buildMessages(): Message[] {
-    const items = this.getAllItems();
-    const messages: Message[] = [];
-
-    for (const item of items) {
-      // Skip system items as they go in systemPrompt
-      if (item.category === 'system') {
-        continue;
-      }
-
-      // Parse content to determine role
-      // By default, treat as user message
-      messages.push({
-        role: 'user',
-        content: item.content,
-      });
-    }
-
-    return messages;
+    return buildMessagesFromItems(this.getAllItems());
   }
 
-  /**
-   * Get the system prompt from system category items.
-   *
-   * @returns Combined system prompt or undefined
-   */
+  /** Get the system prompt from system category items. */
   getSystemPrompt(): string | undefined {
     return buildSystemPrompt(Array.from(this.items.values()));
   }
 
-  /**
-   * Get current context statistics.
-   *
-   * @returns Context usage statistics
-   */
+  /** Get current context statistics. */
   getStats(): ContextStats {
     if (this.cachedStats !== null) {
       return this.cachedStats;
@@ -359,31 +259,20 @@ export class ContextManager {
     return this.cachedStats;
   }
 
-  /**
-   * Get remaining tokens available in a category.
-   *
-   * @param category - The category to check
-   * @returns Available tokens in the category
-   */
+  /** Get remaining tokens available in a category. */
   getRemainingTokens(category: ContextItemCategory): number {
     const budget = this.getCategoryBudget(category);
     const used = this.getCategoryTokenCount(category);
     return Math.max(0, budget - used);
   }
 
-  /**
-   * Get total remaining tokens across all categories.
-   *
-   * @returns Available tokens in total
-   */
+  /** Get total remaining tokens across all categories. */
   getTotalRemainingTokens(): number {
     const usableTokens = calculateAvailableTokens(this.maxTokens, this.budget.reserved);
     return Math.max(0, usableTokens - this.getTotalTokenCount());
   }
 
-  /**
-   * Clear all items from the context.
-   */
+  /** Clear all items from the context. */
   clear(): void {
     this.items.clear();
     this.resetTokenCounts();
@@ -391,12 +280,7 @@ export class ContextManager {
     this.logger.info('Context cleared');
   }
 
-  /**
-   * Clear items from a specific category.
-   *
-   * @param category - The category to clear
-   * @returns Number of items removed
-   */
+  /** Clear items from a specific category. Returns number of items removed. */
   clearCategory(category: ContextItemCategory): number {
     let count = 0;
     let tokensRemoved = 0;
@@ -416,12 +300,7 @@ export class ContextManager {
     return count;
   }
 
-  /**
-   * Count tokens in text using adapter or fallback estimation.
-   *
-   * @param text - Text to count tokens for
-   * @returns Token count
-   */
+  /** Count tokens in text using adapter or fallback estimation. */
   async countTokens(text: string): Promise<number> {
     if (this.adapter !== undefined) {
       return await this.adapter.countTokens(text);
@@ -430,67 +309,45 @@ export class ContextManager {
     return Math.ceil(text.length / CHARS_PER_TOKEN);
   }
 
-  /**
-   * Get the token budget for a category.
-   */
+  /** Get the token budget for a category. */
   private getCategoryBudget(category: ContextItemCategory): number {
-    return Math.floor(this.maxTokens * this.budget[category]);
+    return calculateCategoryBudget(this.maxTokens, this.budget[category]);
   }
 
-  /**
-   * Get current token count for a category.
-   * Returns cached value updated on add/remove operations (O(1)).
-   */
+  /** Get current token count for a category. O(1). */
   private getCategoryTokenCount(category: ContextItemCategory): number {
     return this.categoryTokenCounts.get(category) ?? 0;
   }
 
-  /**
-   * Get total token count across all categories.
-   * Returns cached value updated on add/remove operations (O(1)).
-   */
+  /** Get total token count across all categories. O(1). */
   private getTotalTokenCount(): number {
     return this.totalTokenCount;
   }
 
-  /**
-   * Invalidate cached statistics.
-   */
+  /** Invalidate cached statistics. */
   private invalidateCache(): void {
     this.cachedStats = null;
   }
 
-  /**
-   * Add token count to running totals for a category.
-   */
+  /** Add token count to running totals for a category. */
   private addToTotals(category: ContextItemCategory, tokenCount: number): void {
-    const current = this.categoryTokenCounts.get(category) ?? 0;
-    this.categoryTokenCounts.set(category, current + tokenCount);
+    addTokensToCategory(this.categoryTokenCounts, category, tokenCount);
     this.totalTokenCount += tokenCount;
   }
 
-  /**
-   * Subtract token count from running totals for a category.
-   */
+  /** Subtract token count from running totals for a category. */
   private subtractFromTotals(category: ContextItemCategory, tokenCount: number): void {
-    const current = this.categoryTokenCounts.get(category) ?? 0;
-    this.categoryTokenCounts.set(category, Math.max(0, current - tokenCount));
+    subtractTokensFromCategory(this.categoryTokenCounts, category, tokenCount);
     this.totalTokenCount = Math.max(0, this.totalTokenCount - tokenCount);
   }
 
-  /**
-   * Reset all token count totals to zero.
-   */
+  /** Reset all token count totals to zero. */
   private resetTokenCounts(): void {
-    this.categoryTokenCounts.set('system', 0);
-    this.categoryTokenCounts.set('task', 0);
-    this.categoryTokenCounts.set('active', 0);
+    resetCategoryTokenCounts(this.categoryTokenCounts);
     this.totalTokenCount = 0;
   }
 
-  /**
-   * Check if usage exceeds warning threshold and log.
-   */
+  /** Check if usage exceeds warning threshold and log. */
   private checkWarningThreshold(): void {
     const stats = this.getStats();
     if (stats.usagePercentage >= this.warningThreshold) {

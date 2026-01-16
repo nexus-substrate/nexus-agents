@@ -4,10 +4,6 @@
  * Main test orchestrator for CLI evaluation testing.
  *
  * (Source: cli-project_plan.md v2.1.0, Phase 3)
- *
- * File length justification: Core TestRunner class with types in types.ts,
- * scorers in rubric-scorer.ts and routing-scorer.ts, task execution in
- * task-executor.ts. Remaining code is test orchestration flow.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -24,63 +20,22 @@ import type {
   TestRunResult,
   TaskTestResult,
   TestRunnerConfig,
-  RoutingDecisionDetails,
 } from './types.js';
 import { DEFAULT_TEST_RUNNER_CONFIG } from './types.js';
 import type { TaskRegistry } from './task-registry.js';
 import type { RubricScorer } from './rubric-scorer.js';
 import type { RoutingScorer } from './routing-scorer.js';
-import { estimateCost } from './test-metrics.js';
-import {
-  createAgentTask,
-  createCliTask,
-  createRoutingDecisionDetails,
-  createFailedRubricScore,
-  checkSuccess,
-  selectCli,
-  buildTaskResult,
-  createErrorResult,
-} from './task-executor.js';
 import {
   createProgressReporter,
   createSingleTaskExecutor,
   runParallelLoop,
 } from './parallel-executor.js';
 import { buildTestRunResult } from './run-result-builder.js';
+import { TestRunError, type TestRunnerOptions } from './test-runner-types.js';
+import { filterTasksByCli, executeTaskCore, createRunCompleteLog } from './test-runner-helpers.js';
 
-/**
- * Test run error for runner failures.
- */
-export class TestRunError extends Error {
-  constructor(
-    message: string,
-    readonly phase: 'setup' | 'execution' | 'teardown',
-    override readonly cause?: Error
-  ) {
-    super(message);
-    this.name = 'TestRunError';
-  }
-}
-
-/**
- * Options for creating a TestRunner.
- */
-export interface TestRunnerOptions {
-  /** CLI adapters keyed by name */
-  readonly adapters: Map<CliName, ICliAdapter>;
-  /** Task registry containing evaluation tasks */
-  readonly taskRegistry: TaskRegistry;
-  /** Rubric scorer for evaluating responses */
-  readonly rubricScorer: RubricScorer;
-  /** Routing scorer for evaluating routing decisions */
-  readonly routingScorer: RoutingScorer;
-  /** Optional configuration */
-  readonly config?: Partial<TestRunnerConfig>;
-  /** Optional task router */
-  readonly router?: ITaskRouter;
-  /** Optional logger */
-  readonly logger?: ILogger;
-}
+// Re-export types for backward compatibility
+export { TestRunError, type TestRunnerOptions } from './test-runner-types.js';
 
 /**
  * Main test orchestrator for CLI evaluation testing.
@@ -200,7 +155,7 @@ export class TestRunner {
       return err(new TestRunError('No tasks match the provided filter', 'setup'));
     }
 
-    const filteredTasks = filter?.clis ? this.filterTasksByCli(tasks, filter.clis) : tasks;
+    const filteredTasks = filter?.clis ? filterTasksByCli(tasks, filter.clis) : tasks;
     this.logger.info('Tasks to execute', { total: filteredTasks.length, filter });
     // Convert readonly array to mutable for Result type compatibility
     return ok([...filteredTasks]);
@@ -227,22 +182,12 @@ export class TestRunner {
    * Logs run completion.
    */
   private logRunComplete(runId: string, result: TestRunResult): void {
-    const successCount = result.taskResults.filter((r) => r.success).length;
-    this.logger.info('Test run complete', {
-      runId,
-      success: result.success,
-      totalTasks: result.taskResults.length,
-      successCount,
-      failureCount: result.taskResults.length - successCount,
-      durationMs: result.durationMs,
-    });
+    const logData = createRunCompleteLog(runId, result);
+    this.logger.info('Test run complete', logData);
   }
 
   /**
    * Runs a single evaluation task.
-   * @param task - Task to execute
-   * @param cli - Optional specific CLI to use
-   * @returns Task test result
    */
   async runTask(
     task: EvaluationTask,
@@ -264,7 +209,6 @@ export class TestRunner {
 
   /**
    * Validates all adapters are healthy.
-   * @returns Map of CLI name to health status
    */
   async validateAdapters(): Promise<Map<CliName, boolean>> {
     const results = new Map<CliName, boolean>();
@@ -288,23 +232,6 @@ export class TestRunner {
   abort(): void {
     this.aborted = true;
     this.logger.warn('Test run aborted');
-  }
-
-  /**
-   * Filters tasks by CLI availability.
-   */
-  private filterTasksByCli(
-    tasks: readonly EvaluationTask[],
-    clis: readonly CliName[]
-  ): EvaluationTask[] {
-    // Include tasks that have at least one preferred CLI in the filter,
-    // or tasks with no preference (can run on any CLI)
-    return tasks.filter((task) => {
-      if (task.preferredClis === undefined || task.preferredClis.length === 0) {
-        return true;
-      }
-      return task.preferredClis.some((cli) => clis.includes(cli));
-    });
   }
 
   /**
@@ -378,125 +305,30 @@ export class TestRunner {
    * Executes a single task.
    */
   private async executeTask(task: EvaluationTask, cli?: CliName): Promise<TaskTestResult> {
-    const startTime = Date.now();
-    const { selectedCli, routingDecision } = await this.resolveCliForTask(task, cli);
-
-    const adapter = this.adapters.get(selectedCli);
-    if (adapter === undefined) {
-      return createErrorResult(task, selectedCli, new Error(`Adapter ${selectedCli} not found`));
-    }
-
-    const cliTask = createCliTask(task);
-    const result = await adapter.execute(cliTask);
-    const durationMs = Date.now() - startTime;
-
-    if (!result.ok) {
-      return this.buildFailureResult(
-        task,
-        selectedCli,
-        durationMs,
-        routingDecision,
-        result.error.message
-      );
-    }
-
-    return this.buildSuccessResult(task, selectedCli, durationMs, result.value, routingDecision);
-  }
-
-  /**
-   * Resolves which CLI to use for a task.
-   */
-  private async resolveCliForTask(
-    task: EvaluationTask,
-    cli?: CliName
-  ): Promise<{ selectedCli: CliName; routingDecision?: RoutingDecisionDetails }> {
-    if (this.router !== undefined && cli === undefined) {
-      const agentTask = createAgentTask(task);
-      const routeResult = await this.router.routeWithDetails(agentTask);
-      if (routeResult.ok) {
-        return {
-          selectedCli: routeResult.value.adapter.name,
-          routingDecision: createRoutingDecisionDetails(routeResult.value, agentTask),
-        };
-      }
-    }
-    return { selectedCli: cli ?? selectCli(task, this.adapters) };
-  }
-
-  /**
-   * Builds a failure result for a task.
-   */
-  private buildFailureResult(
-    task: EvaluationTask,
-    cli: CliName,
-    durationMs: number,
-    routingDecision: RoutingDecisionDetails | undefined,
-    errorMessage: string
-  ): TaskTestResult {
-    // Build params conditionally for exactOptionalPropertyTypes
-    const params: Parameters<typeof buildTaskResult>[0] = {
+    // Build options conditionally for exactOptionalPropertyTypes
+    // Use type assertion because ExecuteTaskOptions has readonly properties
+    const baseOpts = {
       task,
-      cli,
-      response: '',
-      durationMs,
-      tokenUsage: { inputTokens: 0, outputTokens: 0 },
-      costUsd: 0,
-      rubricScore: createFailedRubricScore(),
-      success: false,
-      error: errorMessage,
+      adapters: this.adapters,
+      rubricScorer: this.rubricScorer,
+      routingScorer: this.routingScorer,
     };
-    if (routingDecision !== undefined) {
-      params.routingDecision = routingDecision;
+
+    if (cli !== undefined && this.router !== undefined) {
+      return executeTaskCore({ ...baseOpts, cli, router: this.router });
     }
-    return buildTaskResult(params);
-  }
-
-  /**
-   * Builds a success result for a task.
-   */
-  private buildSuccessResult(
-    task: EvaluationTask,
-    cli: CliName,
-    durationMs: number,
-    response: { text: string; usage?: { inputTokens: number; outputTokens: number } },
-    routingDecision?: RoutingDecisionDetails
-  ): TaskTestResult {
-    const rubricScore = this.rubricScorer.score(task, response.text);
-    const tokenUsage = {
-      inputTokens: response.usage?.inputTokens ?? 0,
-      outputTokens: response.usage?.outputTokens ?? 0,
-    };
-    const costUsd = estimateCost(cli, tokenUsage);
-
-    // Build params conditionally for exactOptionalPropertyTypes
-    const params: Parameters<typeof buildTaskResult>[0] = {
-      task,
-      cli,
-      response: response.text,
-      durationMs,
-      tokenUsage,
-      costUsd,
-      rubricScore,
-      success: checkSuccess(task, rubricScore),
-    };
-
-    if (routingDecision !== undefined) {
-      params.routingDecision = routingDecision;
-      params.routingScore = this.routingScorer.score(
-        task,
-        routingDecision,
-        rubricScore.overallScore
-      );
+    if (cli !== undefined) {
+      return executeTaskCore({ ...baseOpts, cli });
     }
-
-    return buildTaskResult(params);
+    if (this.router !== undefined) {
+      return executeTaskCore({ ...baseOpts, router: this.router });
+    }
+    return executeTaskCore(baseOpts);
   }
 }
 
 /**
  * Creates a new test runner using the options pattern.
- * @param options - Test runner options
- * @returns TestRunner instance
  */
 export function createTestRunner(options: TestRunnerOptions): TestRunner {
   return new TestRunner(options);

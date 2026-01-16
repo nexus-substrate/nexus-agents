@@ -9,7 +9,7 @@
  */
 
 import type { ICliResponseParser, CliTask, ModelInfo, CliName } from '../types.js';
-import { SubprocessCliAdapter, type CommandConfig } from '../base-adapter.js';
+import { SubprocessCliAdapter, type CommandConfig } from '../subprocess-adapter.js';
 import { ClaudeResponseParser } from '../parsers/claude-parser.js';
 import type { ILogger } from '../../core/index.js';
 
