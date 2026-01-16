@@ -9,7 +9,7 @@
 **Phase 4 Status:** ✅ COMPLETE (#175 ✅, #180 ✅, #271 ✅, #274 ✅)
 **Research Tracking:** ✅ COMPLETE (#133 closed - 25/25 techniques implemented)
 **Architecture Decision:** ✅ HYBRID APPROVED (5-0 unanimous - #182, #183, #184, #185 created)
-**Latest System Review:** 2026-01-16 - Score 8.06/10 (4/5 APPROVE, supermajority)
+**Latest System Review:** 2026-01-16 - Score 7.84/10 (3/5 APPROVE, simple majority)
 
 ---
 
@@ -838,10 +838,84 @@ The following capabilities received positive assessments from multiple agents:
 | 2026-01-16b | 7.80/10 | Sherman-Morrison verified |
 | 2026-01-16c | 7.78/10 | CLI splitting complete    |
 | 2026-01-16d | 8.06/10 | v2.2.0 released           |
+| 2026-01-16e | 7.84/10 | index.ts barrel split     |
 
 ### Next Review Trigger
 
-- After SWE-bench benchmark completes OR index.ts splitting completes (whichever first)
+- After SWE-bench benchmark completes OR 7 days (whichever first)
+
+---
+
+## System Review: 2026-01-16 (Post-Barrel Split #285)
+
+**Trigger:** Continuation of index.ts splitting work (813→59 lines)
+**Protocol:** CLAUDE.md Consensus Voting with 5-Agent Swarm
+**Date:** 2026-01-16 (ET)
+
+### Re-Assessment Scores
+
+| Agent     | Previous | Current | Delta | Primary Finding                          |
+| --------- | -------- | ------- | ----- | ---------------------------------------- |
+| Architect | 7.5/10   | 7.5/10  | 0     | Circular dependency in core/types        |
+| Security  | 8.2/10   | 8.2/10  | 0     | Seccomp profiles not enforced in sandbox |
+| DevEx     | 8.2/10   | 7.0/10  | -1.2  | 58 files still exceed 400-line limit     |
+| AI/ML     | 8.2/10   | 8.5/10  | +0.3  | LinUCB bandit state not persisted        |
+| PM        | 8.2/10   | 8.0/10  | -0.2  | SWE-bench execution still pending        |
+
+**Consensus Score: 7.84/10** (-0.22 from 8.06/10)
+**Result: 3/5 APPROVE** (60% - simple majority)
+
+### Key Findings
+
+1. **index.ts barrel split complete** - 813 lines → 59 lines via 11 domain export files
+2. **5354 tests passing** - All tests pass after split, full backward compatibility
+3. **58 files still exceed 400 lines** - Down from 60, but DevEx concern remains
+4. **Circular dependency identified** - core/types/routing-memory.ts imports from cli-adapters
+5. **Security seccomp gap** - Docker sandbox has --cap-drop=ALL but no seccomp profile
+
+### Dissent Summary
+
+**DevEx (NEEDS_WORK):**
+
+> "58 files exceed 400-line limit. File size violations prevent comprehensive code review. Breaking CODING_STANDARDS.md compliance."
+
+**Architect (NEEDS_WORK):**
+
+> "Circular dependency between core/types and cli-adapters violates module hierarchy. core should have no dependencies."
+
+### New GitHub Issues Created
+
+| Issue | Priority | Title                                                |
+| ----- | -------- | ---------------------------------------------------- |
+| #286  | P1       | Fix circular dependency in core/types/routing-memory |
+| #287  | P2       | Persist LinUCB bandit parameters across sessions     |
+| #288  | P2       | Add seccomp profile enforcement to Docker sandbox    |
+| #289  | P2       | Improve CLI module test coverage                     |
+| #290  | P2       | Schedule weekly SICA test generation CI workflow     |
+
+### Barrel File Split Details
+
+**index.ts split into 11 domain-specific exports:**
+
+| Export File             | Lines | Domain                     |
+| ----------------------- | ----- | -------------------------- |
+| exports/core.ts         | 74    | Types, Result<T,E>, errors |
+| exports/config.ts       | 26    | Configuration schemas      |
+| exports/adapters.ts     | 78    | Model adapters             |
+| exports/agents.ts       | 243   | Agent framework, TechLead  |
+| exports/workflows.ts    | 113   | Workflow engine            |
+| exports/mcp.ts          | 68    | MCP server                 |
+| exports/cli-adapters.ts | 66    | CLI integration            |
+| exports/context.ts      | 15    | Context management         |
+| exports/learning.ts     | 36    | Feedback and learning      |
+| exports/audit.ts        | 51    | Structured audit logging   |
+| exports/api.ts          | 33    | REST API Gateway           |
+
+**Result:** Main index.ts reduced from 813 to 59 lines (92.7% reduction)
+
+### Next Review Trigger
+
+- After SWE-bench benchmark completes OR 7 days (whichever first)
 
 ---
 
