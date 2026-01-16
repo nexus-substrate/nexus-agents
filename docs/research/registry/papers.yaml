@@ -1922,3 +1922,64 @@ papers:
 
     related_issues: []
     implementation_status: not-started
+
+  # ============================================================================
+  # CODE AGENTS / SWE-BENCH
+  # ============================================================================
+
+  arxiv-2512.10398:
+    title: 'Confucius Code Agent: Scalable Agent Scaffolding for Real-World Codebases'
+    authors:
+      - Sherman Wong
+      - Zhenting Qi
+      - Zhaodong Wang
+      - Nathan Hu
+      - Samuel Lin
+      - Jun Ge
+      - Erwin Gao
+      - Wenlin Chen
+      - Yilun Du
+      - Minlan Yu
+      - Ying Zhang
+    source: arxiv
+    arxiv_id: '2512.10398'
+    url: 'https://arxiv.org/abs/2512.10398'
+    publication_date: '2024-12'
+    venue: null
+
+    topics:
+      - code-generation
+      - orchestration
+    tags:
+      - swe-bench
+      - code-agent
+      - hierarchical-memory
+      - meta-agent
+      - cross-session-learning
+
+    reviewed_date: '2026-01-16'
+    reviewed_in: 'Issue #279'
+    summary: |
+      Production-scale code agent with Confucius SDK. Achieves 54.3% Resolve@1
+      on SWE-Bench-Pro. Three-perspective design (AX/UX/DX) with hierarchical
+      working memory and meta-agent for configuration synthesis.
+
+    key_findings:
+      - 'Hierarchical working memory for long-context reasoning'
+      - 'Persistent note-taking for cross-session learning'
+      - 'Meta-agent automates config synthesis via build-test-improve loop'
+      - '54.3% Resolve@1 on SWE-Bench-Pro'
+
+    relevance: medium
+    techniques_extracted: []
+
+    related_issues:
+      - 279
+    implementation_status: reviewed
+
+    # Overlap analysis with existing implementations:
+    # - Hierarchical memory → Overlaps with MIRIX typed memory (6-type system)
+    # - Cross-session learning → Overlaps with SessionMemory (#130), A-MEM
+    # - Meta-agent synthesis → Similar to SICA self-improvement (#151)
+    # - Extension system → Similar to Voyager skill library (#150)
+    # Conclusion: Reference paper, no new techniques to extract

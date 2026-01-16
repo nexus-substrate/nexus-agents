@@ -153,39 +153,25 @@ function aggregateModelStats(
   return [...modelMap.values()].sort((a, b) => b.cumulativeReward - a.cumulativeReward);
 }
 
-/**
- * Computes bandit learning progress metrics.
- */
-function computeBanditProgress(
-  banditStats: ReadonlyArray<{
-    name: string;
-    pullCount: number;
-    avgReward: number;
-    cumulativeReward: number;
-    learnedWeights: readonly number[];
-    featureImportance: readonly { feature: string; importance: number }[];
-  }>,
-  explorationStats: {
-    totalPulls: number;
-    explorationRatio: number;
-    armDistribution: ReadonlyArray<{ name: string; proportion: number }>;
-  }
-): BanditProgress {
-  // Aggregate feature importance across all models
-  const featureImportanceMap = new Map<string, { sum: number; count: number }>();
+/** Bandit stat entry for feature importance aggregation. */
+interface BanditStatEntry {
+  readonly featureImportance: readonly { feature: string; importance: number }[];
+}
+
+/** Aggregates feature importance across all models. */
+function aggregateFeatureImportance(
+  banditStats: ReadonlyArray<BanditStatEntry>
+): FeatureImportance[] {
+  const featureMap = new Map<string, { sum: number; count: number }>();
 
   for (const stat of banditStats) {
     for (const fi of stat.featureImportance) {
-      const existing = featureImportanceMap.get(fi.feature) ?? { sum: 0, count: 0 };
-      featureImportanceMap.set(fi.feature, {
-        sum: existing.sum + fi.importance,
-        count: existing.count + 1,
-      });
+      const existing = featureMap.get(fi.feature) ?? { sum: 0, count: 0 };
+      featureMap.set(fi.feature, { sum: existing.sum + fi.importance, count: existing.count + 1 });
     }
   }
 
-  // Convert to averaged feature importance
-  const topFeatures: FeatureImportance[] = Array.from(featureImportanceMap.entries())
+  const topFeatures = Array.from(featureMap.entries())
     .map(
       ([feature, { sum, count }]): FeatureImportance => ({
         feature,
@@ -198,12 +184,27 @@ function computeBanditProgress(
 
   // Fill with defaults if no data
   if (topFeatures.length === 0) {
-    for (const feature of FEATURE_NAMES.slice(0, 5)) {
-      topFeatures.push({ feature, importance: 0, direction: 'positive' });
-    }
+    return FEATURE_NAMES.slice(0, 5).map((feature) => ({
+      feature,
+      importance: 0,
+      direction: 'positive',
+    }));
   }
+  return topFeatures;
+}
 
-  // Convert proportion to percent for display
+/**
+ * Computes bandit learning progress metrics.
+ */
+function computeBanditProgress(
+  banditStats: ReadonlyArray<BanditStatEntry>,
+  explorationStats: {
+    totalPulls: number;
+    explorationRatio: number;
+    armDistribution: ReadonlyArray<{ name: string; proportion: number }>;
+  }
+): BanditProgress {
+  const topFeatures = aggregateFeatureImportance(banditStats);
   const armDistributionWithPercent = explorationStats.armDistribution.map((arm) => ({
     name: arm.name,
     percent: arm.proportion * 100,

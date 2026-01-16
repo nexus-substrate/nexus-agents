@@ -12,6 +12,7 @@ import type { BanditContext, LinUCBConfig } from './budget-router-types.js';
 import { DEFAULT_LINUCB_CONFIG, LinUCBConfigSchema } from './budget-router-types.js';
 import {
   createIdentityMatrix,
+  createIdentityMatrixInverse,
   createZeroVector,
   contextToFeatures,
   matVecMul,
@@ -20,7 +21,7 @@ import {
   matrixAdd,
   vectorAdd,
   vectorScale,
-  matrixInverse,
+  shermanMorrisonUpdate,
 } from './linucb-math.js';
 
 /**
@@ -29,6 +30,8 @@ import {
 interface ArmState {
   /** A matrix: d x d matrix for context covariance */
   A: number[][];
+  /** A inverse: cached inverse for O(d²) updates via Sherman-Morrison */
+  AInv: number[][];
   /** b vector: d-dimensional reward vector */
   b: number[];
   /** Number of times this arm was pulled */
@@ -55,6 +58,7 @@ export class LinUCBBandit {
 
     this.arms = armNames.map(() => ({
       A: createIdentityMatrix(this.config.featureDim, this.config.lambda),
+      AInv: createIdentityMatrixInverse(this.config.featureDim, this.config.lambda),
       b: createZeroVector(this.config.featureDim),
       pullCount: 0,
       cumulativeReward: 0,
@@ -90,6 +94,8 @@ export class LinUCBBandit {
 
   /**
    * Update arm with observed reward.
+   * Uses Sherman-Morrison formula for O(d²) incremental inverse update.
+   * (Source: Issue #254, PILOT paper section 3.2)
    */
   update(armIndex: number, context: BanditContext, reward: number): void {
     const arm = this.arms[armIndex];
@@ -99,7 +105,12 @@ export class LinUCBBandit {
     const xxT = outerProduct(features);
     const rx = vectorScale(features, reward);
 
+    // Update A matrix (kept for reference/debugging)
     arm.A = matrixAdd(arm.A, xxT);
+
+    // Update A inverse incrementally using Sherman-Morrison (O(d²) instead of O(d³))
+    arm.AInv = shermanMorrisonUpdate(arm.AInv, features);
+
     arm.b = vectorAdd(arm.b, rx);
     arm.pullCount++;
     arm.cumulativeReward += reward;
@@ -107,12 +118,13 @@ export class LinUCBBandit {
 
   /**
    * Compute UCB score for an arm given features.
+   * Uses cached AInv for O(d²) computation instead of O(d³) matrix inverse.
    */
   private computeUCB(arm: ArmState, features: readonly number[]): number {
-    const AInv = matrixInverse(arm.A);
-    const theta = matVecMul(AInv, arm.b);
+    // Use cached inverse (O(d²) matrix-vector multiply instead of O(d³) inversion)
+    const theta = matVecMul(arm.AInv, arm.b);
     const expectedReward = dotProduct(theta, features);
-    const AInvX = matVecMul(AInv, features);
+    const AInvX = matVecMul(arm.AInv, features);
     const uncertainty = Math.sqrt(dotProduct(features, AInvX));
     return expectedReward + this.config.alpha * uncertainty;
   }
@@ -157,8 +169,8 @@ export class LinUCBBandit {
     ];
 
     return this.arms.map((arm, i) => {
-      const AInv = matrixInverse(arm.A);
-      const theta = matVecMul(AInv, arm.b);
+      // Use cached inverse (O(d²) instead of O(d³))
+      const theta = matVecMul(arm.AInv, arm.b);
       const absWeights = theta.map(Math.abs);
       const totalWeight = absWeights.reduce((a, b) => a + b, 0) || 1;
 
@@ -214,6 +226,7 @@ export class LinUCBBandit {
   reset(): void {
     for (const arm of this.arms) {
       arm.A = createIdentityMatrix(this.config.featureDim, this.config.lambda);
+      arm.AInv = createIdentityMatrixInverse(this.config.featureDim, this.config.lambda);
       arm.b = createZeroVector(this.config.featureDim);
       arm.pullCount = 0;
       arm.cumulativeReward = 0;

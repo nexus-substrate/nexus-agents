@@ -250,3 +250,76 @@ export function matrixInverse(matrix: readonly (readonly number[])[]): number[][
   }
   return result;
 }
+
+/**
+ * Sherman-Morrison formula for incremental inverse update.
+ *
+ * Given A^(-1) and a vector x, computes (A + xx^T)^(-1) in O(d²) time
+ * instead of O(d³) for full matrix inversion.
+ *
+ * Formula: (A + uv^T)^(-1) = A^(-1) - (A^(-1) u v^T A^(-1)) / (1 + v^T A^(-1) u)
+ * For our case: u = v = x
+ *
+ * @param AInv - Current inverse matrix A^(-1)
+ * @param x - Vector to add as rank-1 update (xx^T added to A)
+ * @returns Updated inverse (A + xx^T)^(-1)
+ *
+ * (Source: Issue #254, PILOT paper section 3.2)
+ */
+export function shermanMorrisonUpdate(
+  AInv: readonly (readonly number[])[],
+  x: readonly number[]
+): number[][] {
+  // Step 1: Compute AInv * x (O(d²))
+  const AInvX = matVecMul(AInv, x);
+
+  // Step 2: Compute x^T * AInv * x = dot(x, AInvX) (O(d))
+  const xTAInvX = dotProduct(x, AInvX);
+
+  // Step 3: Denominator = 1 + x^T * AInv * x
+  const denom = 1 + xTAInvX;
+
+  // Numerical stability check - if denominator is too small, fallback to identity
+  if (Math.abs(denom) < 1e-10) {
+    // Return a copy of AInv (no update) to avoid numerical instability
+    return AInv.map((row) => [...row]);
+  }
+
+  // Step 4: Compute (AInv * x) * (AInv * x)^T / denom = outerProduct(AInvX) / denom
+  // This is the correction term to subtract from AInv
+  const correction = outerProduct(AInvX);
+  const scaleFactor = 1 / denom;
+
+  // Step 5: AInv_new = AInv - correction / denom
+  const result: number[][] = [];
+  for (let i = 0; i < AInv.length; i++) {
+    const row: number[] = [];
+    const aInvRow = AInv[i];
+    const corrRow = correction[i];
+    if (aInvRow === undefined || corrRow === undefined) continue;
+    for (let j = 0; j < aInvRow.length; j++) {
+      const aInvVal = aInvRow[j] ?? 0;
+      const corrVal = corrRow[j] ?? 0;
+      row.push(aInvVal - corrVal * scaleFactor);
+    }
+    result.push(row);
+  }
+  return result;
+}
+
+/**
+ * Create scaled identity matrix inverse for initialization.
+ * For A = λI, A^(-1) = (1/λ)I
+ */
+export function createIdentityMatrixInverse(dim: number, lambda: number): number[][] {
+  const invLambda = 1 / lambda;
+  const matrix: number[][] = [];
+  for (let i = 0; i < dim; i++) {
+    const row: number[] = [];
+    for (let j = 0; j < dim; j++) {
+      row.push(i === j ? invLambda : 0);
+    }
+    matrix.push(row);
+  }
+  return matrix;
+}
