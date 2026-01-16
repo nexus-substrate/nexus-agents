@@ -1,17 +1,49 @@
 /**
- * nexus-agents/core - Routing Memory Types
+ * nexus-agents/cli-adapters - Routing Memory Types
  *
  * Interface contract for memory↔routing integration.
  * Enables MobiMem Evolution (#149) and Preference-Trained Routing (#148).
  *
- * @module core/types/routing-memory
+ * Moved from core/types/routing-memory.ts to fix circular dependency (#286).
+ * This module belongs in cli-adapters since it's fundamentally about routing.
+ *
+ * @module cli-adapters/routing-memory-types
  * (Source: Issue #238, Consensus Vote APPROVED 75%)
  * (Source: docs/proposals/interface-contract-238.md)
  */
 
-import type { Result } from '../result.js';
-import type { MemoryError } from '../../context/memory-backend-types.js';
-import type { CliName, BudgetConstraint } from '../../cli-adapters/types.js';
+import type { Result } from '../core/result.js';
+import type { CliName } from './types-core.js';
+import type { BudgetConstraint } from './types-routing.js';
+
+// ============================================================================
+// Error Types
+// ============================================================================
+
+/**
+ * Error type for routing memory operations.
+ * Self-contained to avoid cross-module dependencies.
+ */
+export type RoutingMemoryErrorCode =
+  | 'STORAGE_FAILED'
+  | 'RETRIEVAL_FAILED'
+  | 'EXPORT_FAILED'
+  | 'IMPORT_FAILED'
+  | 'INVALID_DATA';
+
+export class RoutingMemoryError extends Error {
+  public readonly code: RoutingMemoryErrorCode;
+
+  constructor(
+    message: string,
+    code: RoutingMemoryErrorCode = 'STORAGE_FAILED',
+    public override readonly cause?: unknown
+  ) {
+    super(message);
+    this.name = 'RoutingMemoryError';
+    this.code = code;
+  }
+}
 
 // ============================================================================
 // Preference Storage Types (#148 - Preference-Trained Routing)
@@ -232,7 +264,7 @@ export interface RoutingMemoryStats {
 
 /**
  * Memory interface for routing-related data.
- * Bridges IMemoryBackend and routing systems.
+ * Bridges memory backend and routing systems.
  *
  * This interface enables:
  * - #148 Preference-Trained Routing: Store preferences and outcomes
@@ -267,7 +299,7 @@ export interface IRoutingMemory {
     decision: RoutingDecisionRecord,
     outcome: TaskOutcomeRecord,
     preference?: PreferenceSignal
-  ): Promise<Result<void, MemoryError>>;
+  ): Promise<Result<void, RoutingMemoryError>>;
 
   /**
    * Retrieve preference data for training.
@@ -277,7 +309,7 @@ export interface IRoutingMemory {
   getPreferences(
     filter: PreferenceFilter,
     limit: number
-  ): Promise<Result<PreferenceRecord[], MemoryError>>;
+  ): Promise<Result<PreferenceRecord[], RoutingMemoryError>>;
 
   // ===========================================================================
   // Experience Memory (#149 - MobiMem Evolution)
@@ -287,14 +319,17 @@ export interface IRoutingMemory {
    * Store an experience record for evolution.
    * @param experience - The experience to store
    */
-  storeExperience(experience: ExperienceRecord): Promise<Result<void, MemoryError>>;
+  storeExperience(experience: ExperienceRecord): Promise<Result<void, RoutingMemoryError>>;
 
   /**
    * Retrieve relevant experiences for a task.
    * @param query - Semantic query for experience retrieval
    * @param limit - Maximum experiences to return
    */
-  getExperiences(query: string, limit: number): Promise<Result<ExperienceRecord[], MemoryError>>;
+  getExperiences(
+    query: string,
+    limit: number
+  ): Promise<Result<ExperienceRecord[], RoutingMemoryError>>;
 
   // ===========================================================================
   // Action Memory (#149 - MobiMem Evolution)
@@ -304,14 +339,14 @@ export interface IRoutingMemory {
    * Store a successful action pattern.
    * @param action - The action pattern to cache
    */
-  storeAction(action: ActionRecord): Promise<Result<void, MemoryError>>;
+  storeAction(action: ActionRecord): Promise<Result<void, RoutingMemoryError>>;
 
   /**
    * Retrieve cached actions for a task type.
    * @param taskType - Type of task
    * @param limit - Maximum actions to return
    */
-  getActions(taskType: string, limit: number): Promise<Result<ActionRecord[], MemoryError>>;
+  getActions(taskType: string, limit: number): Promise<Result<ActionRecord[], RoutingMemoryError>>;
 
   // ===========================================================================
   // Export/Import
@@ -320,13 +355,13 @@ export interface IRoutingMemory {
   /**
    * Export all routing memory for training or backup.
    */
-  export(): Promise<Result<RoutingMemoryExport, MemoryError>>;
+  export(): Promise<Result<RoutingMemoryExport, RoutingMemoryError>>;
 
   /**
    * Import routing memory from export.
    * @param data - The exported data to import
    */
-  import(data: RoutingMemoryExport): Promise<Result<void, MemoryError>>;
+  import(data: RoutingMemoryExport): Promise<Result<void, RoutingMemoryError>>;
 
   // ===========================================================================
   // Statistics
@@ -335,5 +370,5 @@ export interface IRoutingMemory {
   /**
    * Get memory statistics.
    */
-  getStats(): Promise<Result<RoutingMemoryStats, MemoryError>>;
+  getStats(): Promise<Result<RoutingMemoryStats, RoutingMemoryError>>;
 }

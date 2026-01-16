@@ -52,3 +52,20 @@ export type {
   BudgetRouterOptions,
   IBudgetRouter,
 } from './types-routing.js';
+
+// Routing Memory types (moved from core/types - Issue #286)
+export type {
+  IRoutingMemory,
+  TaskProfileSummary,
+  RoutingDecisionRecord,
+  TaskOutcomeRecord,
+  PreferenceSignal,
+  PreferenceRecord,
+  PreferenceFilter,
+  ExperienceStep,
+  ExperienceRecord,
+  ActionRecord,
+  RoutingMemoryExport,
+  RoutingMemoryStats,
+} from './routing-memory-types.js';
+export { RoutingMemoryError } from './routing-memory-types.js';
