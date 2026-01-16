@@ -1,0 +1,66 @@
+/**
+ * CLI Adapters exports - CLI integration with defensive parsing
+ * Split from index.ts for file size compliance (Issue #285)
+ */
+
+export {
+  // Types
+  type CliName,
+  type CliTransport,
+  type TokenUsage as CliTokenUsage,
+  type CliResponse,
+  type CliError,
+  type CliErrorCode,
+  type VersionStatus,
+  type HealthStatus,
+  type CapacityStatus,
+  type ModelInfo as CliModelInfo,
+  type CapabilityProfile as CliCapabilityProfile,
+  type CliTask,
+  type ExecutionOptions as CliExecutionOptions,
+  type ICliAdapter,
+  type ICliResponseParser,
+  type VersionRequirements,
+  CLI_VERSION_REQUIREMENTS,
+  DEFAULT_CAPABILITIES as CLI_DEFAULT_CAPABILITIES,
+  // Base adapter
+  BaseCliAdapter,
+  SubprocessCliAdapter,
+  // Concrete adapters
+  ClaudeCliAdapter,
+  GeminiCliAdapter,
+  CodexCliAdapter,
+  CodexMcpAdapter,
+  // Parsers
+  ClaudeResponseParser,
+  type ClaudeCliResponse,
+  GeminiResponseParser,
+  type GeminiCliResponse,
+  CodexResponseParser,
+  type CodexCliResponse,
+  // Factory
+  createCliAdapter,
+  createAllAdapters,
+  isCliAvailable,
+  getAvailableClis,
+  type CliAdapterConfig,
+  // CLI Detection Cache (Issue #165)
+  CliDetectionCache,
+  createCliDetectionCache,
+  DEFAULT_CACHE_CONFIG as CLI_DEFAULT_CACHE_CONFIG,
+  CliDetectionCacheConfigSchema,
+  type ICliDetectionCache,
+  type CliDetectionCacheConfig,
+  type CliHealthResult,
+  type CacheStats as CliCacheStats,
+  // CompositeRouter (Issue #166)
+  CompositeRouter,
+  createCompositeRouter,
+  CompositeRouterConfigSchema,
+  DEFAULT_COMPOSITE_CONFIG as CLI_DEFAULT_COMPOSITE_CONFIG,
+  CompositeRoutingError,
+  type ICompositeRouter,
+  type CompositeRouterConfig,
+  type CompositeRoutingDecision,
+  type CompositeRouterStats,
+} from '../cli-adapters/index.js';
