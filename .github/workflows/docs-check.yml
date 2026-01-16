@@ -252,3 +252,88 @@ jobs:
           echo "## Documentation Check Skipped" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "No source files changed (or only test/type files changed)." >> $GITHUB_STEP_SUMMARY
+
+  # Job 4: LLMs.txt Generation Check
+  llms-txt-check:
+    name: LLMs.txt Verification
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - run: pnpm install
+
+      - name: Check llms.txt generation
+        run: |
+          npx tsx scripts/generate-docs.ts --check
+          if [ $? -eq 0 ]; then
+            echo "✅ llms.txt files are up to date"
+          else
+            echo "::error::llms.txt files are out of date"
+            echo "Run 'npx tsx scripts/generate-docs.ts' and commit the changes"
+            exit 1
+          fi
+
+  # Job 5: Secrets Guardrails
+  secrets-scan:
+    name: Documentation Secrets Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Scan for secrets in generated docs
+        run: |
+          # Define patterns that indicate potential secrets
+          SECRET_PATTERNS=(
+            'ANTHROPIC_API_KEY'
+            'OPENAI_API_KEY'
+            'GOOGLE_AI_API_KEY'
+            'API_KEY'
+            'SECRET_KEY'
+            'PASSWORD'
+            'TOKEN'
+            'sk-[a-zA-Z0-9]+'
+            'ghp_[a-zA-Z0-9]+'
+            'gho_[a-zA-Z0-9]+'
+            'xox[baprs]-[a-zA-Z0-9]+'
+          )
+
+          FOUND_SECRETS=0
+
+          # Scan docs/llms.txt and docs/llms-full.txt
+          for file in docs/llms.txt docs/llms-full.txt; do
+            if [ -f "$file" ]; then
+              for pattern in "${SECRET_PATTERNS[@]}"; do
+                # Skip pattern if it looks like a placeholder/example
+                if grep -E "$pattern" "$file" | grep -vE '(example|placeholder|your-|<|>|\$\{|process\.env)' > /dev/null 2>&1; then
+                  echo "::error::Potential secret pattern '$pattern' found in $file"
+                  FOUND_SECRETS=1
+                fi
+              done
+            fi
+          done
+
+          # Scan any .generated/ directory if it exists
+          if [ -d ".generated" ]; then
+            for pattern in "${SECRET_PATTERNS[@]}"; do
+              if grep -rE "$pattern" .generated/ | grep -vE '(example|placeholder|your-|<|>|\$\{|process\.env)' > /dev/null 2>&1; then
+                echo "::error::Potential secret pattern '$pattern' found in .generated/"
+                FOUND_SECRETS=1
+              fi
+            done
+          fi
+
+          if [ $FOUND_SECRETS -eq 1 ]; then
+            echo "::error::Potential secrets detected in generated documentation"
+            exit 1
+          else
+            echo "✅ No secrets detected in generated documentation"
+          fi

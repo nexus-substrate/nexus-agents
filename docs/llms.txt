@@ -24,15 +24,19 @@ nexus-agents --help           # See all commands
 ## Documentation Index
 
 ### Tier 1: Navigation (start here)
-- docs/INDEX.yaml - Machine-parseable topic index
-- docs/TROUBLESHOOTING.md - Common issues and solutions
+- docs/INDEX.yaml - primary index
+- docs/llms.txt - llm navigation
+- docs/llms-full.txt - llm comprehensive
+- QUICK_START.md - human quickstart
+- docs/TROUBLESHOOTING.md - troubleshooting
 
 ### Tier 2: Actionable Reference (load when relevant)
-- CLAUDE.md - Project context and protocols (~650 lines)
-- docs/ENTRYPOINTS.md - CLI, MCP, REST API reference
-- docs/architecture/README.md - Architecture overview
-- docs/development/README.md - Development guide
-- docs/research/RESEARCH_INDEX.md - Research tracking
+- CLAUDE.md - Project instructions, protocols, and agent behavior guidelines
+- docs/architecture/README.md - System design, component relationships, and technical decisions
+- docs/development/README.md - How to contribute, extend, and develop with the system
+- docs/TROUBLESHOOTING.md - Common issues, error resolution, and FAQ
+- docs/research/RESEARCH_INDEX.md - Research tracking, papers, and technique implementations
+- docs/ALIGNMENT_ROADMAP.md - Project alignment, phases, and progress tracking
 
 ### Tier 3: Deep Detail (load on demand)
 - ARCHITECTURE.md - Full system architecture
@@ -44,10 +48,10 @@ nexus-agents --help           # See all commands
 
 | Task Type | Tokens | What to Load |
 |-----------|--------|--------------|
-| Quick fix | 800 | llms.txt + relevant tier2 file |
-| Feature | 2500 | llms.txt + CLAUDE.md + tier2/3 as needed |
-| Research | 1500 | llms-full.txt + RESEARCH_INDEX.md |
-| System review | 6000 | llms-full.txt + CLAUDE.md + ARCHITECTURE.md |
+| Minimal | 800 | docs/llms.txt + Relevant topic tier2_file only |
+| Standard | 2500 | docs/llms.txt + CLAUDE.md (reduced) |
+| Research | 1500 | docs/llms-full.txt + docs/research/RESEARCH_INDEX.md |
+| Full | 6000 | docs/llms-full.txt + CLAUDE.md |
 
 ## Key Entry Points
 
@@ -95,3 +99,5 @@ packages/nexus-agents/src/
 - API reference: docs/ENTRYPOINTS.md
 - Architecture: ARCHITECTURE.md
 - Contributing: CONTRIBUTING.md
+
+<!-- Generated: 2026-01-16 from docs/INDEX.yaml -->

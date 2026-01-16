@@ -1,9 +1,48 @@
-# nexus-agents - Comprehensive Documentation
+/**
+ * Generate llms-full.txt content
+ * Split from generate-docs.ts to meet file size limits
+ */
 
-> Multi-agent orchestration MCP server for AI-powered software development
-> Use this file for deep research, architecture decisions, and system reviews
+interface TopicEntry {
+  summary: string;
+  tier2_file: string;
+  tier3_files: string[];
+  keywords: string[];
+}
 
-## Project Overview
+interface BudgetEntry {
+  tokens: number;
+  description: string;
+  load: string[];
+}
+
+interface IndexYaml {
+  schema_version: string;
+  last_updated: string;
+  navigation: Record<string, string>;
+  topics: Record<string, TopicEntry>;
+  context_budgets: Record<string, BudgetEntry>;
+  quick_reference: Record<string, Record<string, string>>;
+}
+
+function buildTier2Rows(topics: Record<string, TopicEntry>): string {
+  return Object.values(topics)
+    .map((topic) => {
+      const summary = topic.summary.split('.')[0] ?? topic.summary;
+      return `| ${topic.tier2_file} | ${summary} | ~400 |`;
+    })
+    .join('\n');
+}
+
+function buildTier3Rows(topics: Record<string, TopicEntry>): string {
+  return Object.values(topics)
+    .flatMap((topic) => topic.tier3_files.map((f) => `| ${f} | Component detail | TBD |`))
+    .slice(0, 10)
+    .join('\n');
+}
+
+function getProjectOverview(): string {
+  return `## Project Overview
 
 nexus-agents is a multi-agent orchestration system that coordinates AI models to handle complex software development tasks. It implements research-backed consensus protocols, intelligent routing, and sophisticated memory management.
 
@@ -17,48 +56,14 @@ nexus-agents is a multi-agent orchestration system that coordinates AI models to
 - 96% technique coverage from research registry
 - 87% context reduction via tiered documentation
 - 11 consensus protocols implemented
-- 8 memory system types
+- 8 memory system types`;
+}
 
-## Complete Documentation Map
-
-### Tier 1: Navigation
-| File | Purpose | Tokens |
-|------|---------|--------|
-| docs/INDEX.yaml | Machine-parseable index | ~200 |
-| docs/llms.txt | LLM navigation (concise) | ~400 |
-| docs/llms-full.txt | This file (comprehensive) | ~1200 |
-| docs/TROUBLESHOOTING.md | Common issues | ~300 |
-
-### Tier 2: Actionable Reference
-| File | Purpose | Lines |
-|------|---------|-------|
-| CLAUDE.md | Project instructions, protocols, and agent behavior guidelines | ~400 |
-| docs/architecture/README.md | System design, component relationships, and technical decisions | ~400 |
-| docs/development/README.md | How to contribute, extend, and develop with the system | ~400 |
-| docs/TROUBLESHOOTING.md | Common issues, error resolution, and FAQ | ~400 |
-| docs/research/RESEARCH_INDEX.md | Research tracking, papers, and technique implementations | ~400 |
-| docs/ALIGNMENT_ROADMAP.md | Project alignment, phases, and progress tracking | ~400 |
-
-### Tier 3: Deep Detail
-| File | Purpose | Lines |
-|------|---------|-------|
-| ARCHITECTURE.md | Full system architecture | ~1200 |
-| CODING_STANDARDS.md | Code style, patterns | ~600 |
-| CODING_STANDARDS.md | Component detail | TBD |
-| docs/ENTRYPOINTS.md | Component detail | TBD |
-| ARCHITECTURE.md | Component detail | TBD |
-| docs/architecture/AGENT_SYSTEM.md | Component detail | TBD |
-| docs/architecture/MEMORY_SYSTEM.md | Component detail | TBD |
-| docs/architecture/ROUTING_SYSTEM.md | Component detail | TBD |
-| docs/architecture/CONSENSUS_PROTOCOLS.md | Component detail | TBD |
-| docs/architecture/SECURITY.md | Component detail | TBD |
-| docs/architecture/MCP_PROTOCOL.md | Component detail | TBD |
-| docs/architecture/SWARM_OBSERVER_DESIGN.md | Component detail | TBD |
-
-## Architecture Deep Dive
+function getArchitectureSection(): string {
+  return `## Architecture Deep Dive
 
 ### Agent System
-```
+\`\`\`
 IAgent Interface
 ├── id: string
 ├── role: AgentRole
@@ -71,10 +76,10 @@ Agent Types:
 - TechLead: Orchestrates expert pool, delegates tasks
 - Expert: Specialized domain knowledge (Code, Security, Architecture, etc.)
 - Subagent: Spawned for parallel work within main context
-```
+\`\`\`
 
 ### Memory System (8 Types)
-```
+\`\`\`
 ITypedMemory (MIRIX-inspired, arXiv:2507.07957)
 ├── Core: Agent identity, constraints
 ├── Episodic: Task experiences (Reflexion, arXiv:2303.11366)
@@ -84,10 +89,10 @@ ITypedMemory (MIRIX-inspired, arXiv:2507.07957)
 ├── Vault: Cross-session persistence
 ├── Graph: Entity relationships (Mem0, arXiv:2504.19413)
 └── Adaptive: Priority-based retrieval
-```
+\`\`\`
 
 ### Routing System
-```
+\`\`\`
 CompositeRouter Pipeline (Epic #164)
 Task → TaskAnalyzer → BudgetRouter → TopsisRouter → LinUCBBandit → Decision
        (profile)      (filter)        (rank)         (learn)
@@ -98,10 +103,12 @@ Components:
 - LinUCBBandit: Contextual learning from outcomes
 - PreferenceRouter: Preference-trained selection (RouteLLM, arXiv:2406.18665)
 - QualityRouter: Quality-constrained (IPR, arXiv:2509.06274)
-```
+\`\`\``;
+}
 
-### Consensus Protocols (11 Implemented)
-```
+function getConsensusSection(): string {
+  return `### Consensus Protocols (11 Implemented)
+\`\`\`
 Protocol Selection by Task Type:
 ├── Simple Majority: Quick decisions (>50%)
 ├── Supermajority: Important decisions (≥67%)
@@ -114,10 +121,10 @@ Protocol Selection by Task Type:
 ├── Self-Refine: Iterative improvement (arXiv:2303.17651)
 ├── Self-Debug: Error detection/repair (arXiv:2304.05128)
 └── Proof-of-Learning: Performance-weighted
-```
+\`\`\`
 
 ### Security Architecture
-```
+\`\`\`
 Threat Mitigations:
 ├── Prompt Injection: Input/output tagging, structured output
 ├── SSRF: URL allowlist, private IP blocking
@@ -130,69 +137,75 @@ Sandbox Modes:
 ├── none: Development only
 ├── policy: Command allowlist (default)
 └── container: Full Docker isolation (production)
-```
+\`\`\``;
+}
 
-## CLI Reference
+function getCliReference(): string {
+  return `## CLI Reference
 
 ### Core Commands
-```bash
+\`\`\`bash
 nexus-agents                    # Start MCP server
 nexus-agents doctor             # Health check
 nexus-agents config init        # Generate config
 nexus-agents orchestrate <task> # Run orchestration
 nexus-agents review <url>       # Review GitHub PR
-```
+\`\`\`
 
 ### Expert Commands
-```bash
+\`\`\`bash
 nexus-agents expert list        # List expert types
 nexus-agents expert create      # Create expert
-```
+\`\`\`
 
 ### Workflow Commands
-```bash
+\`\`\`bash
 nexus-agents workflow list      # List templates
 nexus-agents workflow run       # Execute template
-```
+\`\`\`
 
 ### Debug Commands
-```bash
+\`\`\`bash
 nexus-agents routing-audit <task>  # Debug routing decisions
 nexus-agents --verbose             # Verbose output
-```
+\`\`\``;
+}
 
-## MCP Tools Reference
+function getMcpToolsReference(): string {
+  return `## MCP Tools Reference
 
 ### orchestrate
 Analyze task, select experts, coordinate execution.
-```typescript
+\`\`\`typescript
 {
   task: string,           // Task description
   context?: object,       // Additional context
   maxIterations?: number  // Max refinement rounds
 }
-```
+\`\`\`
 
 ### create_expert
 Spawn specialized agent for specific domain.
-```typescript
+\`\`\`typescript
 {
   type: 'code' | 'security' | 'architecture' | ...,
   config?: ExpertConfig
 }
-```
+\`\`\`
 
 ### run_workflow
 Execute YAML workflow template.
-```typescript
+\`\`\`typescript
 {
   template: string,       // Template name
   inputs: object,         // Template inputs
   dryRun?: boolean        // Preview only
 }
-```
+\`\`\``;
+}
 
-## Research Techniques Registry
+function getResearchSection(): string {
+  return `## Research Techniques Registry
 
 ### Implemented (25/27)
 - Aegean Consensus (arXiv:2512.20184)
@@ -214,12 +227,14 @@ Execute YAML workflow template.
 - And 9 more...
 
 ### Not Started (1)
-- RL-Trained Orchestrator (arXiv:2505.19591) - P4, requires RL infrastructure
+- RL-Trained Orchestrator (arXiv:2505.19591) - P4, requires RL infrastructure`;
+}
 
-## Configuration
+function getConfigSection(): string {
+  return `## Configuration
 
 ### nexus-agents.yaml
-```yaml
+\`\`\`yaml
 models:
   default: claude-sonnet-4
   tiers:
@@ -239,7 +254,7 @@ security:
   sandbox:
     mode: policy
     fallbackMode: none
-```
+\`\`\`
 
 ### Environment Variables
 | Variable | Required For | Default |
@@ -247,11 +262,13 @@ security:
 | ANTHROPIC_API_KEY | Claude adapter | None |
 | OPENAI_API_KEY | OpenAI adapter | None |
 | GOOGLE_AI_API_KEY | Gemini adapter | None |
-| NEXUS_LOG_LEVEL | Logging | info |
+| NEXUS_LOG_LEVEL | Logging | info |`;
+}
 
-## Source Code Map
+function getSourceMapSection(): string {
+  return `## Source Code Map
 
-```
+\`\`\`
 packages/nexus-agents/src/
 ├── core/              # Foundation layer
 │   ├── types/         # IAgent, IModelAdapter, Result<T,E>
@@ -293,20 +310,77 @@ packages/nexus-agents/src/
 └── observability/     # Metrics, tracing
     ├── swarm-observer.ts
     └── routing-metrics.ts
-```
+\`\`\``;
+}
 
-## Contributing
+function getFooter(): string {
+  return `## Contributing
 
 1. Read: CONTRIBUTING.md
 2. Standards: CODING_STANDARDS.md
 3. Research: docs/research/CONTRIBUTING.md
-4. Tests: `pnpm test`
-5. Lint: `pnpm lint`
+4. Tests: \`pnpm test\`
+5. Lint: \`pnpm lint\`
 
 ## Links
 
 - Repository: github.com/williamzujkowski/nexus-agents
 - MCP Protocol: modelcontextprotocol.io
-- Research Index: docs/research/RESEARCH_INDEX.md
+- Research Index: docs/research/RESEARCH_INDEX.md`;
+}
 
-<!-- Generated: 2026-01-16 from docs/INDEX.yaml -->
+export function generateLlmsFullTxt(index: IndexYaml): string {
+  const now = new Date().toISOString().split('T')[0] ?? 'unknown';
+  const tier2Rows = buildTier2Rows(index.topics);
+  const tier3Rows = buildTier3Rows(index.topics);
+
+  const docMapSection = `## Complete Documentation Map
+
+### Tier 1: Navigation
+| File | Purpose | Tokens |
+|------|---------|--------|
+| docs/INDEX.yaml | Machine-parseable index | ~200 |
+| docs/llms.txt | LLM navigation (concise) | ~400 |
+| docs/llms-full.txt | This file (comprehensive) | ~1200 |
+| docs/TROUBLESHOOTING.md | Common issues | ~300 |
+
+### Tier 2: Actionable Reference
+| File | Purpose | Lines |
+|------|---------|-------|
+${tier2Rows}
+
+### Tier 3: Deep Detail
+| File | Purpose | Lines |
+|------|---------|-------|
+| ARCHITECTURE.md | Full system architecture | ~1200 |
+| CODING_STANDARDS.md | Code style, patterns | ~600 |
+${tier3Rows}`;
+
+  return `# nexus-agents - Comprehensive Documentation
+
+> Multi-agent orchestration MCP server for AI-powered software development
+> Use this file for deep research, architecture decisions, and system reviews
+
+${getProjectOverview()}
+
+${docMapSection}
+
+${getArchitectureSection()}
+
+${getConsensusSection()}
+
+${getCliReference()}
+
+${getMcpToolsReference()}
+
+${getResearchSection()}
+
+${getConfigSection()}
+
+${getSourceMapSection()}
+
+${getFooter()}
+
+<!-- Generated: ${now} from docs/INDEX.yaml -->
+`;
+}
