@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-01-16
+
+E2E Testing & Developer Tools Release
+
 ### Added
 
 - **E2E Workflow Testing** (#281)
@@ -375,7 +379,8 @@ Phases 0-1: Foundation and Infrastructure
 
 ---
 
-[Unreleased]: https://github.com/williamzujkowski/nexus-agents/compare/v2.1.0...HEAD
+[Unreleased]: https://github.com/williamzujkowski/nexus-agents/compare/v2.2.0...HEAD
+[2.2.0]: https://github.com/williamzujkowski/nexus-agents/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/williamzujkowski/nexus-agents/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/williamzujkowski/nexus-agents/compare/v1.0.0...v2.0.0
 [1.0.0]: https://github.com/williamzujkowski/nexus-agents/compare/v0.6.0...v1.0.0
