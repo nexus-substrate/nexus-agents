@@ -4,16 +4,23 @@
  * Executes individual workflow steps using agent experts.
  * Handles input resolution, error handling, retries, timeouts, and conditions.
  *
- * File length justification: Core StepExecutor class with execution logic
- * (executeSteps, runWithRetry, handleConditions). Types imported from core
- * and workflows modules. Splitting would fragment step execution flow.
+ * Helper functions extracted to step-executor-helpers.ts.
  */
 
 import type { Result, WorkflowStep, StepResult, AgentRole, Task } from '../core/index.js';
-import { ok, err, WorkflowError, TimeoutError, ErrorCode } from '../core/index.js';
+import { ok, err, WorkflowError, TimeoutError } from '../core/index.js';
 import type { Expert, ExpertFactory as ExpertFactoryType } from '../agents/index.js';
 import type { WorkflowExecutionContext } from './execution-context.js';
 import { resolveInput, getReferencedSteps } from './expression-resolver.js';
+import {
+  evaluateCondition,
+  createTimeout,
+  calculateRetryDelay,
+  sleep,
+  buildTaskDescription,
+  extractErrorMessage,
+  isNonRetryableError,
+} from './step-executor-helpers.js';
 
 /** Default timeout for step execution (5 minutes). */
 const DEFAULT_TIMEOUT_MS = 300_000;
@@ -23,9 +30,6 @@ const DEFAULT_RETRIES = 0;
 
 /** Delay between retries in milliseconds. */
 const DEFAULT_RETRY_DELAY_MS = 1000;
-
-/** Maximum retry delay (capped with exponential backoff). */
-const MAX_RETRY_DELAY_MS = 30_000;
 
 /**
  * Interface for expert factory dependency.
@@ -80,127 +84,6 @@ export interface StepExecutionOptions {
   retries?: number;
   retryDelayMs?: number;
 }
-
-// ============================================================================
-// Condition Evaluation Helpers
-// ============================================================================
-
-function checkSimpleCondition(condition: string): boolean | null {
-  if (condition === 'always' || condition === 'true') return true;
-  if (condition === 'never' || condition === 'false') return false;
-  return null;
-}
-
-function checkStepStatusCondition(
-  condition: string,
-  context: WorkflowExecutionContext
-): boolean | null {
-  const match = condition.match(/^steps\.(\w+)\.status\s*==\s*['"](\w+)['"]$/i);
-  if (match === null) return null;
-
-  const stepId = match[1];
-  const expectedStatus = match[2]?.toLowerCase();
-  if (stepId === undefined || expectedStatus === undefined) return false;
-
-  const stepResult = context.stepResults.get(stepId);
-  return stepResult?.status === expectedStatus;
-}
-
-function checkStepOutputCondition(
-  condition: string,
-  context: WorkflowExecutionContext
-): boolean | null {
-  const match = condition.match(/^steps\.(\w+)\.output$/i);
-  if (match === null) return null;
-
-  const stepId = match[1];
-  if (stepId === undefined) return false;
-
-  const stepResult = context.stepResults.get(stepId);
-  return stepResult?.output !== undefined;
-}
-
-function evaluateCondition(condition: string, context: WorkflowExecutionContext): boolean {
-  const trimmed = condition.trim();
-  const lower = trimmed.toLowerCase();
-
-  const simple = checkSimpleCondition(lower);
-  if (simple !== null) return simple;
-
-  const status = checkStepStatusCondition(trimmed, context);
-  if (status !== null) return status;
-
-  const output = checkStepOutputCondition(trimmed, context);
-  if (output !== null) return output;
-
-  return true; // Default: treat unrecognized as truthy
-}
-
-// ============================================================================
-// Utility Functions
-// ============================================================================
-
-function createTimeout(ms: number, stepId: string): Promise<never> {
-  return new Promise((_, reject) => {
-    setTimeout(() => {
-      reject(new TimeoutError(`Step '${stepId}' timed out after ${String(ms)}ms`));
-    }, ms);
-  });
-}
-
-function calculateRetryDelay(attempt: number, baseDelayMs: number): number {
-  const delay = baseDelayMs * Math.pow(2, attempt);
-  return Math.min(delay, MAX_RETRY_DELAY_MS);
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function formatValue(value: unknown): string {
-  if (value === null || value === undefined) return 'null';
-  if (typeof value === 'string') {
-    return value.length > 100 ? `${value.substring(0, 100)}...` : value;
-  }
-  if (typeof value === 'object') {
-    const json = JSON.stringify(value);
-    return json.length > 100 ? `${json.substring(0, 100)}...` : json;
-  }
-  return typeof value === 'number' || typeof value === 'boolean' ? String(value) : '[complex]';
-}
-
-function buildTaskDescription(step: WorkflowStep, inputs: Record<string, unknown>): string {
-  const inputSummary = Object.entries(inputs)
-    .map(([key, value]) => `- ${key}: ${formatValue(value)}`)
-    .join('\n');
-
-  return `Execute action: ${step.action}\n\nInputs:\n${inputSummary}`;
-}
-
-function extractErrorMessage(error: Error | undefined): string {
-  if (error === undefined) return 'Unknown error';
-  if (error instanceof WorkflowError && error.cause instanceof Error) {
-    return extractErrorMessage(error.cause);
-  }
-  return error.message;
-}
-
-function isNonRetryableError(error: Error): boolean {
-  if (error.name === 'ValidationError') return true;
-  if (error instanceof WorkflowError) {
-    const code = error.code;
-    return (
-      code === ErrorCode.VALIDATION_ERROR ||
-      code === ErrorCode.WORKFLOW_PARSE_ERROR ||
-      code === ErrorCode.INVALID_INPUT
-    );
-  }
-  return false;
-}
-
-// ============================================================================
-// Step Executor Class
-// ============================================================================
 
 /**
  * Executor for individual workflow steps.

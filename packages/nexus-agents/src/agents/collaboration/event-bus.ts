@@ -6,13 +6,8 @@
  *
  * @module agents/collaboration/event-bus
  * (Source: Issue #182, ARCHITECTURE.md Hybrid Architecture)
- *
- * File length justification: Core EventBus class with types in event-bus-types.ts,
- * core types in event-bus-core-types.ts, events in event-bus-events.ts, topics in
- * event-bus-topics.ts. Remaining code is cohesive pub/sub implementation.
  */
 
-import { randomUUID } from 'node:crypto';
 import type {
   IEventBus,
   DomainEvent,
@@ -25,96 +20,22 @@ import type {
   EventBusStats,
 } from './event-bus-types.js';
 
-/** Default maximum history size */
-const DEFAULT_MAX_HISTORY_SIZE = 1000;
+import {
+  DEFAULT_MAX_HISTORY_SIZE,
+  MAX_SUBSCRIPTIONS,
+  type SubscriptionRecord,
+  patternToRegex,
+  topicMatchesPattern,
+  generateEventId,
+  generateSubscriptionId,
+  applyHistoryFilters,
+  applyHistoryLimit,
+  enrichEvent,
+  countMatchingSubscribers,
+} from './event-bus-helpers.js';
 
-/** Maximum number of subscriptions per bus */
-const MAX_SUBSCRIPTIONS = 500;
-
-/**
- * Internal subscription record.
- */
-interface SubscriptionRecord {
-  readonly id: SubscriptionId;
-  readonly pattern: TopicPattern;
-  readonly regex: RegExp;
-  readonly listener: EventListener;
-}
-
-/**
- * Convert a topic pattern to a regex for matching.
- * Supports wildcard patterns:
- * - 'session.created' -> exact match
- * - 'session.*' -> matches session.anything
- * - '*' -> matches everything
- */
-function patternToRegex(pattern: TopicPattern): RegExp {
-  if (pattern === '*') {
-    return /^.+$/;
-  }
-  // Use placeholder for * before escaping, then restore as regex wildcard
-  const WILDCARD_PLACEHOLDER = '\x00WILDCARD\x00';
-  const withPlaceholder = pattern.replace(/\*/g, WILDCARD_PLACEHOLDER);
-  const escaped = withPlaceholder.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
-  const withWildcards = escaped.replace(new RegExp(WILDCARD_PLACEHOLDER, 'g'), '[^.]+');
-  return new RegExp(`^${withWildcards}$`);
-}
-
-/**
- * Check if a topic matches a pattern.
- */
-function topicMatchesPattern(topic: string, regex: RegExp): boolean {
-  return regex.test(topic);
-}
-
-/**
- * Generate a unique event ID.
- */
-function generateEventId(): string {
-  return `evt-${String(Date.now())}-${randomUUID().slice(0, 8)}`;
-}
-
-/**
- * Generate a unique subscription ID.
- */
-function generateSubscriptionId(): SubscriptionId {
-  return `sub-${String(Date.now())}-${randomUUID().slice(0, 8)}`;
-}
-
-/**
- * Generate a unique correlation ID for request tracing.
- * (Source: Issue #224, Sprint #228)
- *
- * @example
- * ```typescript
- * const correlationId = generateCorrelationId();
- * // -> 'cor_a1b2c3d4'
- * ```
- */
-export function generateCorrelationId(): string {
-  return `cor_${randomUUID().slice(0, 8)}`;
-}
-
-/**
- * Create a child correlation ID that chains to a parent.
- * Enables hierarchical tracing of subtasks.
- * (Source: Issue #224, Sprint #228)
- *
- * @param parentCorrelationId - The parent correlation ID to chain from
- * @returns A new correlation ID in format 'parentId.child_xxxxxxxx'
- *
- * @example
- * ```typescript
- * const parentId = generateCorrelationId();
- * // -> 'cor_a1b2c3d4'
- *
- * const childId = createChildCorrelationId(parentId);
- * // -> 'cor_a1b2c3d4.child_e5f6g7h8'
- * ```
- */
-export function createChildCorrelationId(parentCorrelationId: string): string {
-  return `${parentCorrelationId}.child_${randomUUID().slice(0, 8)}`;
-}
+// Re-export correlation ID helpers for public API
+export { generateCorrelationId, createChildCorrelationId } from './event-bus-helpers.js';
 
 /**
  * Event Bus for agent-to-agent communication.
@@ -166,14 +87,14 @@ export class EventBus implements IEventBus {
    * Emit an event synchronously to all matching subscribers.
    */
   emit(event: DomainEvent): void {
-    const enrichedEvent = this.enrichEvent(event);
+    const enrichedEvent = enrichEvent(event);
     this.addToHistory(enrichedEvent);
     this.stats.eventsEmitted++;
 
     this.logger?.debug('Event emitted', {
       topic: enrichedEvent.topic,
       eventId: enrichedEvent.eventId,
-      subscriberCount: this.countMatchingSubscribers(enrichedEvent.topic),
+      subscriberCount: countMatchingSubscribers(enrichedEvent.topic, this.subscriptions),
     });
 
     for (const record of this.subscriptions.values()) {
@@ -187,7 +108,7 @@ export class EventBus implements IEventBus {
    * Emit an event and wait for all async handlers to complete.
    */
   async emitAsync(event: DomainEvent): Promise<void> {
-    const enrichedEvent = this.enrichEvent(event);
+    const enrichedEvent = enrichEvent(event);
     this.addToHistory(enrichedEvent);
     this.stats.eventsEmitted++;
 
@@ -265,57 +186,8 @@ export class EventBus implements IEventBus {
       return [...this.history];
     }
 
-    const result = this.applyHistoryFilters(filter);
-    return this.applyHistoryLimit(result, filter);
-  }
-
-  /**
-   * Apply topic, session, correlation, and timestamp filters.
-   */
-  private applyHistoryFilters(filter: EventFilter): DomainEvent[] {
-    let result: DomainEvent[] = this.history;
-
-    if (filter.topic !== undefined && filter.topic !== '') {
-      const regex = patternToRegex(filter.topic);
-      result = result.filter((e) => topicMatchesPattern(e.topic, regex));
-    }
-
-    if (filter.sessionId !== undefined && filter.sessionId !== '') {
-      result = result.filter((e) => e.sessionId === filter.sessionId);
-    }
-
-    if (filter.correlationId !== undefined && filter.correlationId !== '') {
-      result = result.filter((e) => e.correlationId === filter.correlationId);
-    }
-
-    return this.applyTimestampFilters(result, filter);
-  }
-
-  /**
-   * Apply timestamp-based filters.
-   */
-  private applyTimestampFilters(result: DomainEvent[], filter: EventFilter): DomainEvent[] {
-    if (filter.after !== undefined && filter.after !== '') {
-      const afterTimestamp = filter.after;
-      result = result.filter((e) => e.timestamp > afterTimestamp);
-    }
-
-    if (filter.before !== undefined && filter.before !== '') {
-      const beforeTimestamp = filter.before;
-      result = result.filter((e) => e.timestamp < beforeTimestamp);
-    }
-
-    return result;
-  }
-
-  /**
-   * Apply limit to history results.
-   */
-  private applyHistoryLimit(result: DomainEvent[], filter: EventFilter): DomainEvent[] {
-    if (filter.limit !== undefined && filter.limit > 0) {
-      return result.slice(-filter.limit);
-    }
-    return result;
+    const filtered = applyHistoryFilters(this.history, filter);
+    return applyHistoryLimit(filtered, filter);
   }
 
   /**
@@ -349,17 +221,6 @@ export class EventBus implements IEventBus {
       }
     }
     return false;
-  }
-
-  /**
-   * Enrich event with generated fields if missing.
-   */
-  private enrichEvent(event: DomainEvent): DomainEvent {
-    return {
-      ...event,
-      eventId: event.eventId || generateEventId(),
-      timestamp: event.timestamp || new Date().toISOString(),
-    };
   }
 
   /**
@@ -417,19 +278,6 @@ export class EventBus implements IEventBus {
       eventTopic: event.topic,
       eventId: event.eventId,
     });
-  }
-
-  /**
-   * Count subscribers matching a topic.
-   */
-  private countMatchingSubscribers(topic: string): number {
-    let count = 0;
-    for (const record of this.subscriptions.values()) {
-      if (topicMatchesPattern(topic, record.regex)) {
-        count++;
-      }
-    }
-    return count;
   }
 }
 

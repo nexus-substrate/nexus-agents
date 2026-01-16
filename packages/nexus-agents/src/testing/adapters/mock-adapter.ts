@@ -4,9 +4,7 @@
  * A mock implementation of ICliAdapter for testing purposes.
  * Provides configurable responses, simulated latency, and failure injection.
  *
- * File length justification: Full ICliAdapter mock implementation with
- * extensive test configuration (responses, latency, failures). Types in
- * cli-adapters/types.js. Splitting would fragment the mock's behavior.
+ * Types are in mock-adapter-types.ts, helpers in mock-adapter-helpers.ts.
  */
 
 import type { Result } from '../../core/index.js';
@@ -18,7 +16,6 @@ import type {
   CliTask,
   CliResponse,
   CliError,
-  CliErrorCode,
   HealthStatus,
   CapacityStatus,
   CapabilityProfile,
@@ -26,51 +23,20 @@ import type {
   ExecutionOptions,
 } from '../../cli-adapters/types.js';
 import { DEFAULT_CAPABILITIES } from '../../cli-adapters/types.js';
+import type { MockAdapterConfig, RecordedRequest, NextResponse } from './mock-adapter-types.js';
+import {
+  DEFAULT_CONFIG,
+  MODEL_INFO_BY_NAME,
+  createCliError,
+  createCliResponse,
+  shouldFailByRate,
+  delay,
+  mergeResponseMaps,
+  calculateEffectiveLatency,
+} from './mock-adapter-helpers.js';
 
-/**
- * Configuration for mock adapter behavior.
- */
-export interface MockAdapterConfig {
-  /** CLI name to emulate */
-  readonly name: CliName;
-  /** Default response text when no specific response is configured */
-  readonly defaultResponse: string;
-  /** Default simulated latency in milliseconds */
-  readonly defaultLatencyMs: number;
-  /** Probability of failure (0-1), for circuit breaker testing */
-  readonly failureRate: number;
-  /** Specific responses keyed by task content or session ID */
-  readonly responses: Map<string, string>;
-}
-
-/**
- * Recorded request for test assertions.
- */
-export interface RecordedRequest {
-  /** The task that was executed */
-  readonly task: CliTask;
-  /** Options passed to execute */
-  readonly options?: ExecutionOptions | undefined;
-  /** Timestamp of the request */
-  readonly timestamp: Date;
-}
-
-/**
- * Pending response override.
- * Can be a string (success) or Error (failure).
- */
-type NextResponse = string | Error;
-
-/**
- * Default configuration values.
- */
-const DEFAULT_CONFIG: MockAdapterConfig = {
-  name: 'claude',
-  defaultResponse: 'Mock response',
-  defaultLatencyMs: 0,
-  failureRate: 0,
-  responses: new Map(),
-};
+// Re-export types for backwards compatibility
+export type { MockAdapterConfig, RecordedRequest } from './mock-adapter-types.js';
 
 /**
  * Mock CLI adapter for testing.
@@ -88,21 +54,10 @@ export class MockCliAdapter implements ICliAdapter {
   private consecutiveFailures = 0;
 
   constructor(config?: Partial<MockAdapterConfig>) {
-    // Merge responses Maps
-    const mergedResponses = new Map<string, string>();
-    for (const [key, value] of DEFAULT_CONFIG.responses.entries()) {
-      mergedResponses.set(key, value);
-    }
-    if (config?.responses !== undefined) {
-      for (const [key, value] of config.responses.entries()) {
-        mergedResponses.set(key, value);
-      }
-    }
-
     this.config = {
       ...DEFAULT_CONFIG,
       ...config,
-      responses: mergedResponses,
+      responses: mergeResponseMaps(DEFAULT_CONFIG.responses, config?.responses),
     };
   }
 
@@ -124,41 +79,27 @@ export class MockCliAdapter implements ICliAdapter {
    * Executes a task with configurable response behavior.
    */
   async execute(task: CliTask, options?: ExecutionOptions): Promise<Result<CliResponse, CliError>> {
-    // Record the request
-    this.calls.push({
-      task,
-      options,
-      timestamp: new Date(),
-    });
+    this.recordCall(task, options);
 
-    // Simulate latency
-    const latency =
-      task.timeoutMs !== undefined && task.timeoutMs < this.config.defaultLatencyMs
-        ? task.timeoutMs
-        : this.config.defaultLatencyMs;
-
+    const latency = calculateEffectiveLatency(this.config.defaultLatencyMs, task.timeoutMs);
     if (latency > 0) {
-      await this.delay(latency);
+      await delay(latency);
     }
 
-    // Check for timeout (simulated)
-    if (options?.timeoutMs !== undefined && latency > options.timeoutMs) {
-      return err(this.createError('TIMEOUT', 'Request timed out'));
+    if (this.isTimedOut(options, latency)) {
+      return err(createCliError('TIMEOUT', 'Request timed out', this.config.name));
     }
 
-    // Check for queued response override
     const queuedResponse = this.processQueuedResponse(latency);
     if (queuedResponse !== undefined) {
       return queuedResponse;
     }
 
-    // Check for configured failure rate
-    if (this.shouldFail()) {
+    if (shouldFailByRate(this.config.failureRate)) {
       this.consecutiveFailures++;
-      return err(this.createError('EXECUTION_ERROR', 'Simulated failure'));
+      return err(createCliError('EXECUTION_ERROR', 'Simulated failure', this.config.name));
     }
 
-    // Return specific or default response
     return this.getConfiguredResponse(task, latency);
   }
 
@@ -204,34 +145,7 @@ export class MockCliAdapter implements ICliAdapter {
    * Gets model information.
    */
   getModelInfo(): ModelInfo {
-    const modelInfoByName: Record<CliName, ModelInfo> = {
-      claude: {
-        id: 'claude-sonnet-4',
-        name: 'Claude Sonnet 4',
-        contextWindow: 200_000,
-        maxOutput: 64_000,
-        costPerMillionInput: 3.0,
-        costPerMillionOutput: 15.0,
-      },
-      gemini: {
-        id: 'gemini-2.0-flash',
-        name: 'Gemini 2.0 Flash',
-        contextWindow: 1_000_000,
-        maxOutput: 8_192,
-        costPerMillionInput: 0.075,
-        costPerMillionOutput: 0.3,
-      },
-      codex: {
-        id: 'gpt-5-codex',
-        name: 'GPT-5 Codex',
-        contextWindow: 400_000,
-        maxOutput: 32_000,
-        costPerMillionInput: 2.0,
-        costPerMillionOutput: 8.0,
-      },
-    };
-
-    return modelInfoByName[this.config.name];
+    return MODEL_INFO_BY_NAME[this.config.name];
   }
 
   /**
@@ -344,6 +258,20 @@ export class MockCliAdapter implements ICliAdapter {
   // ----- Private Methods -----
 
   /**
+   * Records a request for test assertions.
+   */
+  private recordCall(task: CliTask, options?: ExecutionOptions): void {
+    this.calls.push({ task, options, timestamp: new Date() });
+  }
+
+  /**
+   * Checks if request has timed out.
+   */
+  private isTimedOut(options: ExecutionOptions | undefined, latency: number): boolean {
+    return options?.timeoutMs !== undefined && latency > options.timeoutMs;
+  }
+
+  /**
    * Processes queued response override if available.
    */
   private processQueuedResponse(latency: number): Result<CliResponse, CliError> | undefined {
@@ -356,10 +284,10 @@ export class MockCliAdapter implements ICliAdapter {
     }
     if (next instanceof Error) {
       this.consecutiveFailures++;
-      return err(this.createError('EXECUTION_ERROR', next.message));
+      return err(createCliError('EXECUTION_ERROR', next.message, this.config.name));
     }
     this.consecutiveFailures = 0;
-    return ok(this.createResponse(next, latency));
+    return ok(createCliResponse(next, latency, this.getModelInfo().id));
   }
 
   /**
@@ -368,61 +296,9 @@ export class MockCliAdapter implements ICliAdapter {
   private getConfiguredResponse(task: CliTask, latency: number): Result<CliResponse, CliError> {
     const responseKey = task.sessionId ?? task.content;
     const specificResponse = this.config.responses.get(responseKey);
-    if (specificResponse !== undefined) {
-      this.consecutiveFailures = 0;
-      return ok(this.createResponse(specificResponse, latency));
-    }
+    const text = specificResponse ?? this.config.defaultResponse;
     this.consecutiveFailures = 0;
-    return ok(this.createResponse(this.config.defaultResponse, latency));
-  }
-
-  /**
-   * Determines if this request should fail based on failure rate.
-   */
-  private shouldFail(): boolean {
-    if (this.config.failureRate <= 0) {
-      return false;
-    }
-    if (this.config.failureRate >= 1) {
-      return true;
-    }
-    return Math.random() < this.config.failureRate;
-  }
-
-  /**
-   * Creates a CLI error.
-   */
-  private createError(code: CliErrorCode, message: string): CliError {
-    const retryable = ['RATE_LIMITED', 'TIMEOUT', 'CONNECTION_ERROR'].includes(code);
-
-    return {
-      code,
-      message,
-      cli: this.config.name,
-      retryable,
-    };
-  }
-
-  /**
-   * Creates a CLI response.
-   */
-  private createResponse(text: string, latencyMs: number): CliResponse {
-    return {
-      text,
-      durationMs: latencyMs,
-      model: this.getModelInfo().id,
-      usage: {
-        inputTokens: Math.floor(text.length / 4),
-        outputTokens: Math.floor(text.length / 4),
-      },
-    };
-  }
-
-  /**
-   * Delays for the specified milliseconds.
-   */
-  private delay(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+    return ok(createCliResponse(text, latency, this.getModelInfo().id));
   }
 }
 
@@ -452,7 +328,7 @@ export function createFailingAdapter(name: CliName = 'claude'): MockCliAdapter {
     name,
     defaultResponse: '',
     defaultLatencyMs: 0,
-    failureRate: 1.0, // Always fail
+    failureRate: 1.0,
     responses: new Map(),
   });
 }

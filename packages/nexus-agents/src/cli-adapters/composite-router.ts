@@ -1,23 +1,15 @@
 /**
- * nexus-agents/cli-adapters - CompositeRouter
- *
- * Chains research routers (Budget → TOPSIS → LinUCB) into a unified routing pipeline.
- * Addresses vestigial router implementations by providing an entry point.
- *
+ * CompositeRouter: Chains Budget → TOPSIS → LinUCB for intelligent model selection.
  * @module cli-adapters/composite-router
- * (Source: Issue #166, Epic #164)
- * (Source: arXiv:2509.07571 - TOPSIS for LLM routing)
+ * (Source: Issue #166, Epic #164, arXiv:2509.07571)
  */
 
 import type { Result } from '../core/index.js';
 import { ok, err, createLogger } from '../core/index.js';
 import type { ILogger } from '../core/index.js';
-import type { Task } from '../core/types/agent.js';
-import type { ICliAdapter, CliName, CliTask, BudgetConstraint } from './types.js';
+import type { ICliAdapter, CliName, CliTask } from './types.js';
 import { BudgetRouter } from './budget-router.js';
 import { TopsisRouter } from './topsis-router.js';
-import type { TopsisResult } from './topsis-types.js';
-import { DEFAULT_MODEL_PROFILES } from './topsis-types.js';
 import { LinUCBBandit } from './linucb-bandit.js';
 import { PreferenceRouter } from './preference-router.js';
 import type { PreferenceRouterConfig } from './preference-router-types.js';
@@ -33,11 +25,14 @@ import {
   type BuildDecisionParams,
 } from './composite-router-types.js';
 import {
-  adjustProfileForTask,
   taskProfileToBanditContext,
-  calculateConfidence,
-  buildReason,
   filterByPreferenceTier,
+  cliTaskToTask,
+  applyBudgetFilter,
+  applyTopsisRanking,
+  defaultPreferenceStageResult,
+  buildDecisionFields,
+  type PreferenceStageResult,
 } from './composite-router-helpers.js';
 
 // Re-export types for consumers
@@ -51,30 +46,20 @@ export {
   type CompositeRouterStats,
 } from './composite-router-types.js';
 
-/**
- * Composite router interface for dependency injection.
- */
+/** Composite router interface for dependency injection. */
 export interface ICompositeRouter {
-  /** Route a task through the pipeline */
   route(task: CliTask): Promise<Result<CompositeRoutingDecision, CompositeRoutingError>>;
-  /** Update learning models with outcome feedback */
   recordOutcome(cliName: CliName, task: CliTask, reward: number): void;
-  /** Record a preference data point for preference-trained routing */
   recordPreference(
     query: string,
-    strongModelPreferred: boolean,
+    strongPreferred: boolean,
     quality?: { strong?: number; weak?: number }
   ): void;
-  /** Get router statistics */
   getStats(): CompositeRouterStats;
-  /** Check if preference router has minimum data for learned routing */
   hasMinimumPreferenceData(): boolean;
 }
 
-/**
- * CompositeRouter implementation.
- * Chains Budget → Preference → TOPSIS → LinUCB for intelligent model selection.
- */
+/** CompositeRouter implementation. */
 export class CompositeRouter implements ICompositeRouter {
   private readonly config: CompositeRouterConfig;
   private readonly preferenceRouterConfig?: Partial<PreferenceRouterConfig>;
@@ -156,7 +141,7 @@ export class CompositeRouter implements ICompositeRouter {
   }
 
   private analyzeTaskProfile(task: CliTask, stagesExecuted: string[]): TaskProfile {
-    const internalTask = this.cliTaskToTask(task);
+    const internalTask = cliTaskToTask(task);
     const taskProfile = analyzeTask(internalTask);
     stagesExecuted.push('task-analysis');
     return taskProfile;
@@ -175,7 +160,7 @@ export class CompositeRouter implements ICompositeRouter {
     // Step 1: Budget filtering
     let withinBudget: boolean | undefined;
     if (this.config.enableBudgetFilter && this.budgetRouter !== undefined) {
-      const budgetResult = this.applyBudgetFilter(task, candidates);
+      const budgetResult = applyBudgetFilter(task, candidates, this.budgetRouter, this.config);
       candidates = budgetResult.eligible;
       withinBudget = budgetResult.withinBudget;
       stagesExecuted.push('budget-filter');
@@ -230,7 +215,7 @@ export class CompositeRouter implements ICompositeRouter {
     if (!this.config.enableTopsisRanking || this.topsisRouter === undefined) {
       return { ranking: candidates, score: undefined };
     }
-    const result = this.applyTopsisRanking(taskProfile, candidates);
+    const result = applyTopsisRanking(taskProfile, candidates, this.topsisRouter);
     stagesExecuted.push('topsis-ranking');
     return { ranking: result.ranking, score: result.topScore };
   }
@@ -253,43 +238,22 @@ export class CompositeRouter implements ICompositeRouter {
     task: CliTask,
     candidates: CliName[],
     stagesExecuted: string[]
-  ): {
-    preferenceScore: number | undefined;
-    preferenceTier: 'strong' | 'weak' | undefined;
-    preferredCandidates: CliName[];
-  } {
-    // Skip if preference routing disabled or router not initialized
+  ): PreferenceStageResult {
     if (!this.config.enablePreferenceRouting || this.preferenceRouter === undefined) {
-      return {
-        preferenceScore: undefined,
-        preferenceTier: undefined,
-        preferredCandidates: candidates,
-      };
+      return defaultPreferenceStageResult(candidates);
     }
-
-    // Skip if insufficient data for learned routing
     if (!this.preferenceRouter.hasMinimumData()) {
       this.logger.debug('Preference routing skipped: insufficient data');
-      return {
-        preferenceScore: undefined,
-        preferenceTier: undefined,
-        preferredCandidates: candidates,
-      };
+      return defaultPreferenceStageResult(candidates);
     }
 
-    // Run preference routing
     const decision = this.preferenceRouter.route(task.content);
     stagesExecuted.push('preference-routing');
-
-    // Filter candidates based on preference tier
-    // Strong tier prefers powerful models (claude), weak tier prefers efficient models (gemini, codex)
     const preferredCandidates = filterByPreferenceTier(candidates, decision.selectedTier);
 
     this.logger.debug('Preference routing applied', {
       tier: decision.selectedTier,
       probability: decision.prediction.strongModelProbability,
-      confidence: decision.prediction.confidence,
-      candidatesBefore: candidates.length,
       candidatesAfter: preferredCandidates.length,
     });
 
@@ -310,25 +274,15 @@ export class CompositeRouter implements ICompositeRouter {
       );
     }
 
-    const confidence = calculateConfidence(
-      params.topsisScore,
-      params.ucbScore,
-      params.candidates.length
-    );
     const decisionTimeMs = Date.now() - params.startTime;
     this.updateStats(params.selectedCli, decisionTimeMs);
+    const { confidence, reason, alternatives } = buildDecisionFields({ ...params, decisionTimeMs });
 
     return ok({
       adapter: selectedAdapter,
       cliName: params.selectedCli,
       confidence,
-      reason: buildReason(
-        params.selectedCli,
-        params.stagesExecuted,
-        params.topsisScore,
-        params.ucbScore,
-        params.preferenceScore
-      ),
+      reason,
       stagesExecuted: params.stagesExecuted,
       decisionTimeMs,
       withinBudget: params.withinBudget,
@@ -336,7 +290,7 @@ export class CompositeRouter implements ICompositeRouter {
       preferenceTier: params.preferenceTier,
       topsisScore: params.topsisScore,
       ucbScore: params.ucbScore,
-      alternatives: params.topsisRanking.filter((c) => c !== params.selectedCli),
+      alternatives,
       taskProfile: params.taskProfile,
     });
   }
@@ -363,7 +317,7 @@ export class CompositeRouter implements ICompositeRouter {
       this.logger.warn('Unknown CLI for outcome recording', { cliName });
       return;
     }
-    const internalTask = this.cliTaskToTask(task);
+    const internalTask = cliTaskToTask(task);
     const taskProfile = analyzeTask(internalTask);
     const context = taskProfileToBanditContext(taskProfile);
     this.linucbBandit.update(armIndex, context, reward);
@@ -424,47 +378,6 @@ export class CompositeRouter implements ICompositeRouter {
       dataPointCount: stats.totalDataPoints,
       strongModelPreferenceRate: stats.strongModelPreferenceRate,
     };
-  }
-
-  private cliTaskToTask(cliTask: CliTask): Task {
-    return { id: 'task-' + String(Date.now()), description: cliTask.content, context: {} };
-  }
-
-  private applyBudgetFilter(
-    task: CliTask,
-    candidates: CliName[]
-  ): { eligible: CliName[]; withinBudget: boolean } {
-    if (this.budgetRouter === undefined) return { eligible: candidates, withinBudget: true };
-
-    const rawConstraints = this.config.budgetConstraints;
-    const constraint: BudgetConstraint = {};
-    if (rawConstraints?.maxTokens !== undefined) {
-      (constraint as { maxTokens: number }).maxTokens = rawConstraints.maxTokens;
-    }
-    if (rawConstraints?.maxCostUsd !== undefined) {
-      (constraint as { maxCostUsd: number }).maxCostUsd = rawConstraints.maxCostUsd;
-    }
-    if (rawConstraints?.maxLatencyMs !== undefined) {
-      (constraint as { maxLatencyMs: number }).maxLatencyMs = rawConstraints.maxLatencyMs;
-    }
-
-    const result = this.budgetRouter.checkBudget(task, constraint);
-    return { eligible: result.withinBudget ? candidates : [], withinBudget: result.withinBudget };
-  }
-
-  private applyTopsisRanking(
-    taskProfile: TaskProfile,
-    candidates: CliName[]
-  ): { ranking: CliName[]; topScore: number } {
-    if (this.topsisRouter === undefined) return { ranking: candidates, topScore: 1.0 };
-
-    const profiles = DEFAULT_MODEL_PROFILES.filter((p) => candidates.includes(p.cliName));
-    const adjustedProfiles = profiles.map((p) => adjustProfileForTask(p, taskProfile));
-    const result: TopsisResult = this.topsisRouter.selectModel({ profiles: adjustedProfiles });
-
-    const scoreMap = new Map(result.scores.map((s) => [s.cliName, s.closenessScore]));
-    const ranking = [...candidates].sort((a, b) => (scoreMap.get(b) ?? 0) - (scoreMap.get(a) ?? 0));
-    return { ranking, topScore: scoreMap.get(ranking[0] ?? 'claude') ?? 1.0 };
   }
 }
 

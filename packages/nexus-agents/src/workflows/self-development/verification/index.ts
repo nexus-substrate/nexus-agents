@@ -42,3 +42,20 @@ export {
 
 // Engine
 export { VerifyEngine, createVerifyEngine, type IVerifyEngine } from './verify-engine.js';
+
+// Helper Types
+export type { AnalysisResult, ScoreResult } from './verify-engine-helpers.js';
+
+// Helper Functions
+export {
+  findFailurePatterns,
+  hasSuccessPatternMatch,
+  analyzeCheckOutput,
+  computeScores,
+  allRequiredPassed,
+  buildFailureSummary,
+  buildRecommendations,
+  extractFilesFromIssues,
+  prioritizeFixes,
+  truncateOutput,
+} from './verify-engine-helpers.js';

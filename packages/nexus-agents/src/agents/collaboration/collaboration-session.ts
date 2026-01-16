@@ -3,10 +3,6 @@
  *
  * Manages collaboration sessions between multiple experts.
  * Handles session lifecycle, message routing, and result collection.
- *
- * File length justification: Core CollaborationSession class with types in
- * collaboration-types.ts, schemas in collaboration-schemas.ts. Remaining code is
- * tightly coupled session state machine (start, finalize, vote, review cycles).
  */
 
 import type { Result, TaskResult, ILogger, AgentRole } from '../../core/index.js';
@@ -31,44 +27,18 @@ import type {
   ConsensusVoteCastEvent,
 } from './event-bus-types.js';
 import { createEvent } from './event-bus.js';
+import { validateConfig, createSessionState, shouldFinalize } from './session-helpers.js';
 import {
-  getSequentialAssignments,
-  getParallelAssignments,
-  getReviewAssignments,
-  getConsensusAssignments,
-  isSessionSuccessful,
-  buildExpertResults,
-  buildAggregatedResult,
-  validateConfig,
-  createSessionState,
-  shouldFinalize,
-} from './session-helpers.js';
+  MAX_EVENT_LISTENERS,
+  emitEventToListeners,
+  dispatchTaskAssignments,
+  buildFinalCollaborationResult,
+  type CollaborationSessionOptions,
+  type SessionEvent,
+} from './collaboration-session-helpers.js';
 
-/**
- * Maximum number of event listeners allowed per session.
- * Prevents memory issues from unbounded listener growth.
- */
-const MAX_EVENT_LISTENERS = 50;
-
-/** Options for creating a CollaborationSession. */
-export interface CollaborationSessionOptions {
-  logger?: ILogger;
-  onStatusChange?: (status: SessionStatus) => void;
-  onMessage?: (message: CollaborationMessage) => void;
-  roleResolver?: (expertId: string) => AgentRole;
-  /** Optional event bus for cross-session event publishing */
-  eventBus?: IEventBus;
-}
-
-/** Session event types for callbacks. */
-export type SessionEvent =
-  | { type: 'status_change'; status: SessionStatus }
-  | { type: 'expert_joined'; expertId: string }
-  | { type: 'result_submitted'; expertId: string; result: TaskResult }
-  | { type: 'review_completed'; reviewerId: string; approved: boolean }
-  | { type: 'vote_received'; expertId: string; decision: string }
-  | { type: 'timeout'; expertId?: string }
-  | { type: 'error'; error: AgentError };
+// Re-export types for external consumers
+export type { CollaborationSessionOptions, SessionEvent } from './collaboration-session-helpers.js';
 
 /** Manages a collaboration session between multiple experts. */
 export class CollaborationSession {
@@ -287,19 +257,7 @@ export class CollaborationSession {
   getTaskAssignments(): TaskAssignmentMessage[] {
     if (this.state === null) return [];
     const { config, participants, results } = this.state;
-
-    switch (config.pattern) {
-      case 'sequential':
-        return getSequentialAssignments(config, participants, results);
-      case 'parallel':
-        return getParallelAssignments(config, participants);
-      case 'review':
-        return getReviewAssignments(config, participants, results);
-      case 'consensus':
-        return getConsensusAssignments(config, participants);
-      default:
-        return [];
-    }
+    return dispatchTaskAssignments({ pattern: config.pattern, config, participants, results });
   }
 
   /** Finalizes the session and returns aggregated result. */
@@ -307,50 +265,31 @@ export class CollaborationSession {
     if (this.state === null) return err(new AgentError('No active session'));
 
     this.clearTimeout();
-    const endTime = new Date();
-    const durationMs = endTime.getTime() - new Date(this.state.startedAt).getTime();
+    const { config, participants, results, votes, reviews, startedAt, error } = this.state;
 
-    const { config, participants, results, votes, reviews } = this.state;
-    const allResults = Array.from(results.values());
-
-    const success = isSessionSuccessful({
-      pattern: config.pattern,
+    const collaborationResult = buildFinalCollaborationResult({
+      config,
       participants,
       results,
       votes,
       reviews,
-      requireUnanimous: config.requireUnanimous === true,
-      minVotes: config.minVotes,
+      startedAt,
+      error,
     });
-    const baseResult = {
+
+    this.setStatus(collaborationResult.success ? 'completed' : 'failed');
+    this.state.completedAt = new Date().toISOString();
+    this.logger.info('Session finalized', {
       sessionId: config.sessionId,
-      pattern: config.pattern,
-      aggregatedResult: buildAggregatedResult({
-        pattern: config.pattern,
-        results: allResults,
-        participants,
-        votes,
-        reviews,
-        endTime,
-      }),
-      expertResults: buildExpertResults(participants, results),
-      durationMs,
-      success,
-    };
-
-    const collaborationResult: CollaborationResult = success
-      ? baseResult
-      : { ...baseResult, error: this.state.error ?? 'Unknown error' };
-
-    this.setStatus(success ? 'completed' : 'failed');
-    this.state.completedAt = endTime.toISOString();
-    this.logger.info('Session finalized', { sessionId: config.sessionId, success, durationMs });
+      success: collaborationResult.success,
+      durationMs: collaborationResult.durationMs,
+    });
 
     // Emit session finalized event to event bus
     this.emitBusEvent<SessionFinalizedEvent>('session.finalized', {
-      success,
-      resultCount: allResults.length,
-      durationMs,
+      success: collaborationResult.success,
+      resultCount: results.size,
+      durationMs: collaborationResult.durationMs,
     });
 
     this.state = null;
@@ -434,14 +373,7 @@ export class CollaborationSession {
   }
 
   private emitEvent(event: SessionEvent): void {
-    for (const listener of this.eventListeners) {
-      try {
-        listener(event);
-      } catch (e) {
-        const errorObj = e instanceof Error ? e : new Error(String(e));
-        this.logger.error('Event listener error', errorObj, { eventType: event.type });
-      }
-    }
+    emitEventToListeners(this.eventListeners, event, this.logger);
   }
 
   /** Emit an event to the external event bus if configured. */

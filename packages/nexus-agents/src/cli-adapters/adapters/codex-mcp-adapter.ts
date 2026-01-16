@@ -11,10 +11,6 @@
  * Uses shell: true only for version check command.
  * This is acceptable because the command and args are hardcoded constants.
  * See codex-adapter.ts for detailed security rationale.
- *
- * File length justification: ICliAdapter implementation with MCP client
- * lifecycle, tool invocation, and health checks. Methods are tightly coupled
- * to client state. Types in ../types.js, base class in ../base-adapter.ts.
  */
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -37,24 +33,19 @@ import type { Result } from '../../core/index.js';
 import { ok, err } from '../../core/index.js';
 import type { ILogger } from '../../core/index.js';
 import { createLogger } from '../../core/index.js';
-
-/**
- * Default execution options for Codex MCP.
- */
-const DEFAULT_OPTIONS: Required<ExecutionOptions> = {
-  timeoutMs: 120_000, // 2 minutes
-  allowRetry: true,
-  maxRetries: 2,
-  trackUsage: true,
-};
-
-/**
- * MCP tool call result structure.
- */
-interface McpToolResult {
-  content?: Array<{ type: string; text?: string }>;
-  isError?: boolean;
-}
+import {
+  DEFAULT_CODEX_MCP_OPTIONS,
+  type McpToolResult,
+  getModelDisplayName,
+  getCostPerMillionInput,
+  getCostPerMillionOutput,
+  extractTextFromContent,
+  createCliError,
+  delay,
+  createTimeout,
+  determineErrorCode,
+  parseVersionFromOutput,
+} from './codex-mcp-adapter-helpers.js';
 
 /**
  * Codex CLI adapter using MCP transport.
@@ -91,11 +82,11 @@ export class CodexMcpAdapter implements ICliAdapter {
   getModelInfo(): ModelInfo {
     return {
       id: this.model,
-      name: this.getModelDisplayName(),
+      name: getModelDisplayName(this.model),
       contextWindow: 400_000,
       maxOutput: 100_000,
-      costPerMillionInput: this.getCostPerMillionInput(),
-      costPerMillionOutput: this.getCostPerMillionOutput(),
+      costPerMillionInput: getCostPerMillionInput(this.model),
+      costPerMillionOutput: getCostPerMillionOutput(this.model),
     };
   }
 
@@ -137,7 +128,7 @@ export class CodexMcpAdapter implements ICliAdapter {
    * Executes a task on Codex via MCP.
    */
   async execute(task: CliTask, options?: ExecutionOptions): Promise<Result<CliResponse, CliError>> {
-    const opts = { ...DEFAULT_OPTIONS, ...options };
+    const opts = { ...DEFAULT_CODEX_MCP_OPTIONS, ...options };
 
     if (!this.connected || this.client === undefined) {
       await this.initialize();
@@ -181,10 +172,10 @@ export class CodexMcpAdapter implements ICliAdapter {
         nextAttempt: attempt + 1,
       });
 
-      await this.delay(Math.pow(2, attempt) * 1000);
+      await delay(Math.pow(2, attempt) * 1000);
     }
 
-    return err(lastError ?? this.createError('UNKNOWN', 'Unknown error'));
+    return err(lastError ?? createCliError('UNKNOWN', 'Unknown error', this.name));
   }
 
   /**
@@ -197,17 +188,17 @@ export class CodexMcpAdapter implements ICliAdapter {
     const startTime = Date.now();
 
     if (this.client === undefined) {
-      return err(this.createError('CONNECTION_ERROR', 'MCP client not initialized'));
+      return err(createCliError('CONNECTION_ERROR', 'MCP client not initialized', this.name));
     }
 
     try {
       const result = await Promise.race([
         this.callExecuteTool(task),
-        this.createTimeout(options.timeoutMs),
+        createTimeout(options.timeoutMs),
       ]);
 
       if (result === null) {
-        return err(this.createError('TIMEOUT', 'Execution timed out'));
+        return err(createCliError('TIMEOUT', 'Execution timed out', this.name));
       }
 
       return this.parseToolResult(result, startTime);
@@ -238,28 +229,19 @@ export class CodexMcpAdapter implements ICliAdapter {
   }
 
   /**
-   * Creates a timeout promise.
-   */
-  private createTimeout(ms: number): Promise<null> {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        resolve(null);
-      }, ms);
-    });
-  }
-
-  /**
    * Parses MCP tool result to CLI response.
    */
   private parseToolResult(result: McpToolResult, startTime: number): Result<CliResponse, CliError> {
     if (result.isError === true) {
-      const errorText = this.extractTextFromContent(result.content);
-      return err(this.createError('EXECUTION_ERROR', errorText ?? 'Tool execution failed'));
+      const errorText = extractTextFromContent(result.content);
+      return err(
+        createCliError('EXECUTION_ERROR', errorText ?? 'Tool execution failed', this.name)
+      );
     }
 
-    const text = this.extractTextFromContent(result.content);
+    const text = extractTextFromContent(result.content);
     if (text === null) {
-      return err(this.createError('PARSE_ERROR', 'No text content in response'));
+      return err(createCliError('PARSE_ERROR', 'No text content in response', this.name));
     }
 
     return ok({
@@ -270,40 +252,17 @@ export class CodexMcpAdapter implements ICliAdapter {
   }
 
   /**
-   * Extracts text from MCP content array.
-   */
-  private extractTextFromContent(content?: Array<{ type: string; text?: string }>): string | null {
-    if (content === undefined || content.length === 0) {
-      return null;
-    }
-
-    const textContents = content
-      .filter((c) => c.type === 'text' && c.text !== undefined)
-      .map((c) => c.text as string);
-
-    return textContents.length > 0 ? textContents.join('\n') : null;
-  }
-
-  /**
    * Handles execution errors.
    */
   private handleExecutionError(error: unknown): Result<CliResponse, CliError> {
     const message = error instanceof Error ? error.message : String(error);
+    const errorCode = determineErrorCode(message);
 
-    if (message.includes('ENOENT') || message.includes('not found')) {
-      return err(this.createError('NOT_FOUND', 'codex CLI not found', error as Error));
-    }
-
-    if (message.includes('timeout') || message.includes('ETIMEDOUT')) {
-      return err(this.createError('TIMEOUT', 'Execution timed out', error as Error));
-    }
-
-    if (message.includes('connection') || message.includes('disconnect')) {
+    if (errorCode === 'CONNECTION_ERROR') {
       this.connected = false;
-      return err(this.createError('CONNECTION_ERROR', message, error as Error));
     }
 
-    return err(this.createError('EXECUTION_ERROR', message, error as Error));
+    return err(createCliError(errorCode, message, this.name, error as Error));
   }
 
   /**
@@ -364,8 +323,7 @@ export class CodexMcpAdapter implements ICliAdapter {
           return;
         }
 
-        const match = /(\d+\.\d+\.\d+)/.exec(stdout.trim());
-        const version = match?.[1] ?? '0.0.0';
+        const version = parseVersionFromOutput(stdout);
         this.cachedVersion = version;
         resolve(version);
       });
@@ -402,66 +360,5 @@ export class CodexMcpAdapter implements ICliAdapter {
     }
     this.client = undefined;
     this.connected = false;
-  }
-
-  /**
-   * Gets model display name.
-   */
-  private getModelDisplayName(): string {
-    const displayNames: Record<string, string> = {
-      o3: 'O3',
-      'o3-mini': 'O3 Mini',
-      'o4-mini': 'O4 Mini',
-    };
-
-    return displayNames[this.model] ?? this.model;
-  }
-
-  /**
-   * Gets cost per million input tokens.
-   */
-  private getCostPerMillionInput(): number {
-    const costs: Record<string, number> = {
-      o3: 10.0,
-      'o3-mini': 1.1,
-      'o4-mini': 1.1,
-    };
-
-    return costs[this.model] ?? 1.1;
-  }
-
-  /**
-   * Gets cost per million output tokens.
-   */
-  private getCostPerMillionOutput(): number {
-    const costs: Record<string, number> = {
-      o3: 40.0,
-      'o3-mini': 4.4,
-      'o4-mini': 4.4,
-    };
-
-    return costs[this.model] ?? 4.4;
-  }
-
-  /**
-   * Creates a CLI error.
-   */
-  private createError(code: CliError['code'], message: string, cause?: Error): CliError {
-    const retryable = ['RATE_LIMITED', 'TIMEOUT', 'CONNECTION_ERROR'].includes(code);
-
-    return {
-      code,
-      message,
-      cli: this.name,
-      retryable,
-      ...(cause !== undefined && { cause }),
-    };
-  }
-
-  /**
-   * Delays for the specified milliseconds.
-   */
-  private delay(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }
