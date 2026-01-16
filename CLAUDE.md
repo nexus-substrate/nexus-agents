@@ -129,6 +129,37 @@ Auto-detection works in most cases. Run `nexus-agents --verbose` to see mode sel
 
 ---
 
+## Context Budget Guidance
+
+Allocate context tokens based on task complexity. Reference: `docs/INDEX.yaml`
+
+### Token Budgets by Task Type
+
+| Task Type          | Budget | Use For                                |
+| ------------------ | ------ | -------------------------------------- |
+| Minimal (quick)    | ~800   | Simple questions, file lookups         |
+| Standard (feature) | ~2,500 | Feature implementation, code review    |
+| Research           | ~1,500 | Documentation gathering, analysis      |
+| Full (system)      | ~6,000 | System reviews, architecture decisions |
+
+### Context Allocation Strategy
+
+| Allocation             | Percentage | Purpose                       |
+| ---------------------- | ---------- | ----------------------------- |
+| System instructions    | 15%        | CLAUDE.md, project context    |
+| Task description       | 20%        | Current task requirements     |
+| Active working content | 50%        | Code, research, file contents |
+| Response generation    | 15%        | Reserved for output           |
+
+### Preservation Techniques
+
+- **Use subagents** for exploratory work (keeps main context clean)
+- **Summarize large outputs** before adding to context
+- **Reference by path** rather than inlining large file contents
+- **Use `/clear`** when switching to unrelated tasks
+
+---
+
 ## Core Operating Principles
 
 ### 1. Time Authority
@@ -198,29 +229,6 @@ Write like a technically precise, experienced engineer who respects the reader's
 - Promise what the code can't deliver
 - Pad documentation with filler
 
-**Examples:**
-
-```markdown
-# Bad (marketing speak)
-
-"Nexus Agents revolutionizes AI orchestration with its cutting-edge
-multi-agent framework that seamlessly integrates with your workflow."
-
-# Good (honest and direct)
-
-"Nexus Agents coordinates multiple AI models to handle complex tasks.
-It runs as an MCP server. The CLI is not yet implemented."
-
-# Bad (vague)
-
-"Easily configure your experts with our intuitive YAML format."
-
-# Good (specific)
-
-"Experts are configured in YAML. See the example below.
-The `tier` field accepts: fast, balanced, or powerful."
-```
-
 **The test:** If a developer reads your documentation and tries to use the feature, will it work exactly as described? If not, fix the documentation or fix the code.
 
 ### 4. Research-First Approach
@@ -289,26 +297,6 @@ Before implementing a new technique, verify overlap with existing implementation
 3. **Check conflicts** - Are there conflicting approaches that need reconciliation?
 4. **Document findings** - Record overlap analysis in `docs/research/registry/alignments.yaml`
 
-```bash
-# Example: Check if routing techniques overlap
-grep -ri "routing" docs/research/registry/techniques.yaml
-grep -ri "router\|routing" packages/nexus-agents/src/
-
-# Compare technique approaches
-grep -A 30 "technique_id: cascade-routing" docs/research/registry/techniques.yaml
-grep -A 30 "technique_id: quality-routing" docs/research/registry/techniques.yaml
-```
-
-**Alignment Categories:**
-
-| Category        | Description                     |
-| --------------- | ------------------------------- |
-| `complementary` | Techniques work well together   |
-| `overlapping`   | Solve same problem differently  |
-| `conflicting`   | Contradictory approaches        |
-| `enhances`      | New technique improves existing |
-| `supersedes`    | New technique replaces existing |
-
 #### Adding New Research
 
 1. **Add paper to registry** - `docs/research/registry/papers.yaml`
@@ -326,19 +314,6 @@ See `docs/research/CONTRIBUTING.md` for detailed guidelines.
 | **P2**   | Medium impact, moderate changes needed   |
 | **P3**   | Lower impact, significant changes needed |
 | **P4**   | Infrastructure-level, long-term          |
-
-#### Querying Research
-
-```bash
-# Find P1 techniques
-grep -A 20 "priority: P1" docs/research/registry/techniques.yaml
-
-# Find papers by topic
-grep -B 5 -A 10 "topics:" docs/research/registry/papers.yaml | grep -A 10 "consensus"
-
-# Find implemented techniques
-grep -B 10 "status: implemented" docs/research/registry/techniques.yaml
-```
 
 ---
 
@@ -364,741 +339,41 @@ I operate as the **lead orchestrator** and delegate work to specialized subagent
 - Use parallel subagents for independent tasks
 - Synthesize subagent results before presenting to user
 
-### Context Management
-
-**Preserve context aggressively:**
-
-- Use subagents for exploratory work (keeps main context clean)
-- Summarize large outputs before adding to context
-- Reference files by path rather than inlining large contents
-- Use `/clear` when switching to unrelated tasks
-
-**Context budget allocation:**
-
-- 15% - System instructions and project context
-- 20% - Current task description and requirements
-- 50% - Active working content (code, research)
-- 15% - Reserved for response generation
-
 ---
 
-## Consensus Voting Protocol
-
-### When to Use Voting
-
-Major decisions requiring multi-agent consensus:
-
-- Architecture changes
-- New dependencies
-- API design decisions
-- Security-critical implementations
-- Breaking changes
-
-### Voting Process
-
-1. **Draft Proposal**
-   - Create detailed proposal document
-   - Include alternatives considered
-   - Document trade-offs
-
-2. **Spawn Voting Agents**
-
-   ```
-   Agents: Architect, Security, DevEx, AI/ML, PM
-   Each agent reviews and votes: APPROVE / DISSENT / ABSTAIN
-   ```
-
-3. **Consensus Thresholds**
-   | Decision Type | Threshold |
-   |---------------|-----------|
-   | Reversible changes | Simple majority (>50%) |
-   | Architecture decisions | Supermajority (≥4/5) |
-   | Security-critical | Unanimous |
-   | Breaking changes | Supermajority + user approval |
-
-4. **Handle Dissent**
-   - Document dissenting opinions
-   - Address specific concerns
-   - Re-vote if proposal amended
-
-### Protocol Selection Guide
-
-The system implements 11 consensus protocols. Select based on task requirements:
-
-#### Quick Selection Matrix
-
-| Protocol              | Use When                                   | Agents      | Threshold       |
-| --------------------- | ------------------------------------------ | ----------- | --------------- |
-| **Simple Majority**   | Quick, non-critical decisions              | 2+          | >50%            |
-| **Supermajority**     | Important decisions, reversible            | 3-5         | ≥67%            |
-| **Unanimous**         | Critical, irreversible decisions           | 3-5         | 100%            |
-| **Aegean**            | Safety-critical, Byzantine tolerance       | 4-7 (3f+1)  | Quorum          |
-| **CP-WBFT**           | Untrusted agents, weighted trust           | Any         | 67% weighted    |
-| **Reflexion**         | Code review, iterative refinement          | 1-4 critics | Severity <0.3   |
-| **Multi-Round**       | Comprehensive evaluation, sycophancy check | 2-7         | 67%             |
-| **Free-MAD**          | Preserve minority opinions                 | 3-7         | Anti-conformity |
-| **Self-Refine**       | Autonomous improvement                     | 1           | Convergence     |
-| **Self-Debug**        | Error detection and repair                 | 1           | Test pass       |
-| **Proof-of-Learning** | Performance-weighted voting                | Any         | 50% weighted    |
-
-#### Decision Criteria
-
-| Factor       | Consideration           | Recommended Protocol           |
-| ------------ | ----------------------- | ------------------------------ |
-| Speed        | Fast decision needed    | Simple Majority, Self-Refine   |
-| Correctness  | High accuracy required  | Aegean, Reflexion, Multi-Round |
-| Robustness   | Expect failures/attacks | CP-WBFT, Aegean                |
-| Transparency | Need detailed reasoning | Reflexion, Free-MAD            |
-| Autonomy     | Single agent            | Self-Refine, Self-Debug        |
-| Learning     | Team improves over time | CP-WBFT, Proof-of-Learning     |
-
-#### Protocol Usage
-
-```typescript
-// Adaptive selection (automatic)
-const selector = new AdaptiveProtocolSelector();
-const protocol = selector.selectProtocol(taskConfig);
-// → reasoning tasks: parallel/voting (+13.2%)
-// → knowledge tasks: consensus (+2.8%)
-
-// Explicit protocol selection
-const session = new CollaborationSession({
-  pattern: 'aegean', // or: consensus, reflexion, self-refine
-  quorum: 0.67,
-  maxRounds: 3,
-});
-
-// Byzantine-fault-tolerant voting
-const weighted = new WeightedVoting({
-  minTrustScore: 0.3,
-  quorumThreshold: 0.67,
-  weightDecay: 0.9,
-  weightRecovery: 1.05,
-});
-```
-
-#### Integration Files
-
-| Module            | Location                                                 | Purpose                  |
-| ----------------- | -------------------------------------------------------- | ------------------------ |
-| Consensus Engine  | `src/consensus/`                                         | Core voting algorithms   |
-| Weighted Voting   | `src/consensus/weighted-voting.ts`                       | CP-WBFT implementation   |
-| Voting Protocol   | `src/consensus/voting-protocol.ts`                       | Multi-round voting       |
-| Collaboration     | `src/agents/collaboration/`                              | Protocol implementations |
-| Adaptive Selector | `src/agents/collaboration/adaptive-protocol-selector.ts` | Auto-selection           |
-
----
-
-## Agent-to-Agent (A2A) Protocol
-
-The EventBus enables direct agent-to-agent communication without client roundtrips.
-
-### Event Bus Usage
-
-```typescript
-import { getGlobalEventBus } from './agents/collaboration/event-bus.js';
-
-// Subscribe to consensus events
-const eventBus = getGlobalEventBus();
-eventBus.subscribe('consensus.*', (event) => {
-  console.log(`Vote cast: ${event.agentId} → ${event.decision}`);
-});
-
-// Query event history
-const recentVotes = eventBus.getHistory({
-  topic: 'consensus.vote_cast',
-  since: Date.now() - 60000, // Last minute
-});
-```
-
-### Event Topic Patterns
-
-| Topic Pattern | Events                             | Description          |
-| ------------- | ---------------------------------- | -------------------- |
-| `session.*`   | created, status_changed, finalized | Session lifecycle    |
-| `consensus.*` | vote_requested, vote_cast, reached | Voting events        |
-| `agent.*`     | task_delegated, result_broadcast   | Agent coordination   |
-| `protocol.*`  | started, iteration, completed      | Protocol phases      |
-| `message.*`   | sent, received                     | Inter-agent messages |
-| `byzantine.*` | weight_updated, pattern_detected   | Byzantine detection  |
-
-### Key Files
-
-| File                                          | Purpose                    |
-| --------------------------------------------- | -------------------------- |
-| `src/agents/collaboration/event-bus.ts`       | Core event bus             |
-| `src/agents/collaboration/event-bus-types.ts` | Event type definitions     |
-| `src/observability/swarm-observer.ts`         | Event subscriber & metrics |
-
-See [ARCHITECTURE.md](./ARCHITECTURE.md#agent-to-agent-a2a-protocol) for complete A2A documentation.
-
----
-
-## CLI Agent Integration (v2.2.0+)
-
-### Supported CLIs
-
-nexus-agents integrates with three external CLI tools. All use OAuth authentication - nexus-agents handles zero credentials.
-
-| CLI            | Models                          | Auth             | Strengths                       |
-| -------------- | ------------------------------- | ---------------- | ------------------------------- |
-| **Claude CLI** | Opus 4.5, Sonnet 4.5, Haiku 4.5 | OAuth 2.0 / PKCE | Complex reasoning, architecture |
-| **Gemini CLI** | Gemini 2.5/3 Pro, Flash         | OAuth / ADC      | 1M context, multimodal          |
-| **Codex CLI**  | GPT-5.x-codex family            | ChatGPT OAuth    | Fast implementation, tests      |
-
-### Capability Matching
-
-Route tasks to the optimal model based on requirements:
-
-| Task Type               | Primary         | Secondary     | Tertiary     |
-| ----------------------- | --------------- | ------------- | ------------ |
-| Architecture decisions  | Claude Opus     | Claude Sonnet | Gemini Pro   |
-| Complex reasoning       | Claude Opus     | Codex 5.2     | Gemini Pro   |
-| Large codebase analysis | Gemini Pro (1M) | Claude Sonnet | Codex        |
-| Code implementation     | Claude Sonnet   | Codex         | Gemini Flash |
-| Test generation         | Codex           | Claude Haiku  | Gemini Flash |
-| Bulk operations         | Gemini Flash    | Codex Mini    | Claude Haiku |
-
-### CLI Adapter Interface
-
-```typescript
-interface ICliAdapter {
-  readonly name: 'claude' | 'gemini' | 'codex';
-  readonly transport: 'mcp' | 'subprocess';
-  readonly capabilities: CapabilityProfile;
-
-  execute(task: Task): Promise<Result<CliResponse, CliError>>;
-  healthCheck(): Promise<boolean>;
-}
-
-interface CapabilityProfile {
-  reasoning: number; // 0-10: Complex reasoning ability
-  contextWindow: number; // Max tokens
-  codeGeneration: number; // 0-10: Code quality
-  speed: number; // 0-10: Response latency
-  cost: number; // 0-10: Cost efficiency (10 = cheapest)
-}
-```
-
-### Mode Selection
-
-```bash
-nexus-agents                     # Auto-detect mode
-nexus-agents --mode=server       # MCP server for Claude CLI
-nexus-agents --mode=orchestrator # CLI orchestrator mode
-nexus-agents --mode=mesh         # Full hybrid mesh
-```
-
-### Implementation Phases
-
-See `cli-project_plan.md` for full details:
-
-1. **Phase 1 (v2.2.0)**: MCP Server Mode - nexus-agents as MCP tool for Claude CLI
-2. **Phase 2 (v2.3.0)**: CLI Adapters - Subprocess integration for Gemini/Codex
-3. **Phase 3 (v3.0.0)**: Hybrid Mesh - Full bidirectional orchestration
-
-### Model Routing Architecture
-
-The CompositeRouter chains three specialized routers for intelligent model selection.
-
-#### Routing Pipeline: Budget → TOPSIS → LinUCB
-
-```
-Task → TaskAnalyzer → BudgetRouter → TopsisRouter → LinUCBBandit → Decision
-       (profile)      (filter)        (rank)         (learn)
-```
-
-| Stage | Router       | Purpose                                  | Research Basis |
-| ----- | ------------ | ---------------------------------------- | -------------- |
-| 1     | TaskAnalyzer | Profile task (complexity, type, context) | -              |
-| 2     | BudgetRouter | Enforce token/cost/latency constraints   | PILOT (arXiv)  |
-| 3     | TopsisRouter | Multi-criteria ranking (quality/cost)    | MoMA TOPSIS    |
-| 4     | LinUCBBandit | Contextual learning from outcomes        | PILOT LinUCB   |
-
-#### Task Analysis
-
-Tasks are profiled before routing:
-
-| Characteristic        | Derived From                       | Impact                      |
-| --------------------- | ---------------------------------- | --------------------------- |
-| `reasoningComplexity` | Keywords ("design", "architect")   | Boosts Claude quality score |
-| `contextRequired`     | 0.25 tokens/char + 500 tokens/file | Filters by context window   |
-| `codeGeneration`      | Keywords ("implement", "write")    | Boosts Codex score          |
-| `budgetSensitive`     | Keywords ("quick", "simple")       | Prioritizes Gemini          |
-
-#### Budget Constraints (PILOT Pattern)
-
-Session-level and per-task constraints:
-
-```typescript
-// Session budget (resets hourly)
-const session = {
-  tokenBudget: 1_000_000, // Default: 1M tokens/session
-  costBudgetUsd: 10.0, // Default: $10/session
-};
-
-// Per-task constraints
-const task = {
-  maxTokens: 100_000, // Max tokens for this task
-  maxCostUsd: 1.0, // Max cost for this task
-  maxLatencyMs: 60_000, // Max latency for this task
-};
-```
-
-**Warning thresholds:** 50% (info), 75% (warning), 90% (critical)
-
-#### TOPSIS Multi-Criteria Ranking
-
-Pareto-optimal model selection using weighted criteria:
-
-| Criterion | Weight | Direction | Description                 |
-| --------- | ------ | --------- | --------------------------- |
-| Quality   | 50%    | Maximize  | Reasoning + code generation |
-| Cost      | 30%    | Minimize  | $/token estimate            |
-| Latency   | 20%    | Minimize  | Response time               |
-
-**Algorithm:** Calculate closeness to ideal solution (0-1 score per CLI).
-
-#### LinUCB Contextual Bandit
-
-Learns from task outcomes to improve future routing:
-
-```typescript
-// 6D context vector
-const context = {
-  taskComplexity: 0.8, // Normalized 0-1
-  contextLengthNormalized: 0.3, // Tokens / max context
-  isCodeTask: true,
-  isReasoningTask: false,
-  budgetUtilization: 0.2, // % of budget used
-  timePressure: 0.0, // Deadline proximity
-};
-
-// UCB score calculation
-UCB = E[reward | context] + alpha * sqrt(uncertainty);
-
-// Learning update after task completion
-bandit.recordOutcome(cli, task, reward);
-```
-
-**Reward signal:** `success * 0.5 + (1 - retries/max) * 0.3 + coherence * 0.2`
-
-#### Configuration
-
-```yaml
-# nexus-agents.yaml
-routing:
-  enableBudgetFilter: true # Stage 2 on/off
-  enableTopsisRanking: true # Stage 3 on/off
-  enableLinUCBSelection: true # Stage 4 on/off
-
-  budget:
-    tokenBudget: 1000000 # Session token limit
-    costBudgetUsd: 10.0 # Session cost limit
-    resetIntervalMs: 3600000 # 1 hour reset
-
-  topsis:
-    qualityWeight: 0.5
-    costWeight: 0.3
-    latencyWeight: 0.2
-
-  linucb:
-    alpha: 1.0 # Exploration parameter
-```
-
-#### Debugging Routing Decisions
-
-```bash
-# Dry-run routing for a task
-nexus-agents routing-audit "Implement a sorting algorithm" --format=json
-
-# Output shows:
-# - Task profile analysis
-# - Budget filter results
-# - TOPSIS scores per CLI
-# - LinUCB selection with UCB scores
-# - Feature importance analysis
-```
-
-See `packages/nexus-agents/src/cli-adapters/` for implementation details.
-
----
-
-## GitHub Integration
-
-### Issue Management
-
-**Create issues for:**
-
-- New features (label: `enhancement`)
-- Bugs discovered (label: `bug`)
-- Technical debt (label: `tech-debt`)
-- Security concerns (label: `security`)
-- Research tasks (label: `research`)
-
-```bash
-# Create feature issue
-gh issue create \
-  --title "feat: Add workflow persistence" \
-  --body "## Description\n\n## Acceptance Criteria\n\n## Tasks" \
-  --label "enhancement"
-
-# Create bug issue
-gh issue create \
-  --title "fix: Memory leak in CollaborationSpace" \
-  --body "## Bug Description\n\n## Steps to Reproduce\n\n## Expected Behavior" \
-  --label "bug"
-```
-
-### PR Workflow
-
-**Branch naming:**
-
-- `feat/<issue-number>-short-description`
-- `fix/<issue-number>-short-description`
-- `refactor/<description>`
-- `docs/<description>`
-
-**PR creation:**
-
-```bash
-# Create branch
-git checkout -b feat/123-add-workflow-engine
-
-# Make changes, commit with conventional commits
-git add .
-git commit -m "feat(workflows): add workflow parser
-
-- Implement YAML template parsing
-- Add step executor with retry logic
-- Support parallel execution
-
-Closes #123"
-
-# Push and create PR
-git push -u origin HEAD
-gh pr create \
-  --title "feat(workflows): add workflow parser" \
-  --body "## Summary\n- Implements #123\n\n## Changes\n\n## Testing" \
-  --base master
-```
-
-**PR merge (after approval):**
-
-```bash
-# Squash merge to keep history clean
-gh pr merge --squash --delete-branch
-```
-
-### Automated Tracking
-
-When starting work on a task:
-
-1. Check for existing issue or create one
-2. Reference issue number in commits
-3. Update issue with progress comments
-4. Close issue via PR or manual close
-
----
-
-## Coding Standards Enforcement
-
-### Pre-Implementation Checklist
-
-Before writing code:
-
-- [ ] Current datetime verified (ET)
-- [ ] Dependencies are current stable versions
-- [ ] No deprecated APIs being used
-- [ ] Interface defined before implementation
-- [ ] Test plan documented
-- [ ] GitHub issue created/linked
-
-### Code Quality Gates
-
-All code must pass:
-
-```bash
-pnpm lint          # Zero errors, zero warnings
-pnpm typecheck     # Zero type errors
-pnpm test          # All tests pass
-```
-
-**Hard limits (enforced by ESLint):**
-
-- Files ≤ 400 lines
-- Functions ≤ 50 lines
-- Cyclomatic complexity ≤ 10
-- Max parameters ≤ 5
-
-### Boundary Checklist
-
-For changes touching multiple modules:
-
-1. **Modules** - List each module and its single responsibility
-2. **Interfaces** - Define contracts before implementations
-3. **Dependencies** - Document direction (A depends on B's interface)
-4. **Tests** - Unit tests mock interfaces, integration tests verify boundaries
-5. **Migration** - Document breaking changes and migration path
-
----
-
-## Security Protocol
-
-### Mandatory Checks
-
-Before any code change:
-
-- [ ] No secrets in code, logs, or outputs
-- [ ] Input validation at all boundaries
-- [ ] Path traversal prevention on file ops
-- [ ] No user-provided RegExp (use static patterns only)
-- [ ] Rate limiting on public interfaces
-- [ ] Memory bounds on collections
-
-### Secrets Handling
-
-```typescript
-// NEVER do this
-const apiKey = process.env.API_KEY;
-console.log(`Using key: ${apiKey}`); // Leaks secret!
-
-// ALWAYS do this
-const vault = new SecretsVault();
-const apiKey = vault.get('API_KEY');
-logger.info('API key loaded', { keyPresent: !!apiKey }); // Safe
-```
-
-### Security Issue Response
-
-If security vulnerability found:
-
-1. **Do not commit** the vulnerable code
-2. Create issue with `security` label (no details in public issue)
-3. Implement fix with security review
-4. Add regression test
-
-### Sandbox Execution
-
-Agent code execution runs in a sandboxed environment with configurable security levels.
-
-#### Execution Modes
-
-| Mode        | Description                      | Use Case                    |
-| ----------- | -------------------------------- | --------------------------- |
-| `none`      | No sandboxing (development only) | Local dev, debugging        |
-| `policy`    | Command allowlist enforcement    | Standard operation          |
-| `container` | Full Docker isolation            | Production, untrusted input |
-
-#### Docker Security (Container Mode)
-
-When `mode: container`, execution uses these security flags:
-
-```bash
-docker run \
-  --cap-drop=ALL \           # Drop all Linux capabilities
-  --read-only \              # Read-only root filesystem
-  --network=none \           # No network access
-  --user=node \              # Non-root user
-  --memory=512m \            # Memory limit
-  --cpus=2 \                 # CPU limit
-  --pids-limit=10 \          # Process limit
-  --security-opt=no-new-privileges
-```
-
-#### Command Allowlist (Policy Mode)
-
-**Allowed commands:**
-
-```
-pnpm, npm, git, gh, node, npx, tsc, eslint, prettier,
-vitest, tsx, cat, ls, pwd, echo, head, tail, wc, grep
-```
-
-**Hard-denied commands (blocked in all modes):**
-
-```
-rm, curl, wget, ssh, scp, nc, kill, pkill, sudo, su,
-chmod, chown, mount, dd, mkfs, fdisk, passwd
-```
-
-#### Environment Sanitization
-
-Variables with these prefixes are blocked from execution context:
-
-```
-API_*, TOKEN_*, SECRET_*, KEY_*, PASSWORD_*, CREDENTIAL_*,
-AWS_*, AZURE_*, GCP_*, ANTHROPIC_*, OPENAI_*
-```
-
-#### Configuration
-
-```yaml
-# nexus-agents.yaml
-security:
-  sandbox:
-    mode: policy # none | policy | container
-    fallbackMode: none # Fallback if container unavailable
-    resourceLimits:
-      memory: 512m
-      cpu: 2
-      timeout: 300s
-      maxProcesses: 10
-```
-
-#### Usage in Code
-
-```typescript
-import { SandboxManager } from 'nexus-agents';
-
-// Get sandbox instance (initialized at MCP server startup)
-const sandbox = SandboxManager.getInstance();
-
-// Execute command safely
-const result = await sandbox.execute('npm test', {
-  cwd: '/workspace',
-  timeout: 60000,
-});
-
-if (result.ok) {
-  console.log(result.value.stdout);
-} else {
-  console.error(result.error.message);
-}
-```
-
----
-
-## MCP Server Development
-
-### Tool Design Pattern
-
-```typescript
-server.tool(
-  'tool_name',
-  {
-    // Zod schema with descriptions (Claude uses these)
-    param: z.string().describe('What this parameter does'),
-  },
-  async (args) => {
-    // 1. Validate input
-    const validated = Schema.safeParse(args);
-    if (!validated.success) {
-      return { isError: true, content: [{ type: 'text', text: validated.error.message }] };
-    }
-
-    // 2. Execute with proper error handling
-    try {
-      const result = await doWork(validated.data);
-      return { content: [{ type: 'text', text: JSON.stringify(result) }] };
-    } catch (error) {
-      return { isError: true, content: [{ type: 'text', text: error.message }] };
-    }
-  }
-);
-```
-
-### Testing MCP Tools
-
-```typescript
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-
-// Create linked transport pair
-const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-await server.connect(serverTransport);
-await client.connect(clientTransport);
-
-// Test tool execution
-const result = await client.callTool({ name: 'orchestrate', arguments: { task: 'test' } });
-```
-
----
-
-## Agent Development
-
-### Agent Interface Pattern
-
-```typescript
-interface IAgent {
-  readonly id: string;
-  readonly role: AgentRole;
-  readonly state: AgentState;
-
-  execute(task: Task): Promise<Result<TaskResult, AgentError>>;
-  handleMessage(msg: AgentMessage): Promise<Result<AgentResponse, AgentError>>;
-}
-
-// Implement with clear state machine
-class Expert implements IAgent {
-  state: AgentState = 'idle';
-
-  async execute(task: Task): Promise<Result<TaskResult, AgentError>> {
-    this.state = 'thinking';
-    try {
-      // ... implementation
-      this.state = 'idle';
-      return { ok: true, value: result };
-    } catch (error) {
-      this.state = 'error';
-      return { ok: false, error };
-    }
-  }
-}
-```
-
-### Prompt Engineering Standards
-
-```typescript
-// Structured prompt template
-const systemPrompt = `
-[ROLE]
-You are a ${role} specialized in ${domain}.
-
-[CAPABILITIES]
-${capabilities.join('\n')}
-
-[CONSTRAINTS]
-- ${constraints.join('\n- ')}
-
-[OUTPUT FORMAT]
-Respond with JSON matching this schema:
-${JSON.stringify(outputSchema, null, 2)}
-`;
-
-// Dynamic temperature by task type
-const TEMPERATURE_MAP = {
-  code_generation: 0.2,
-  code_review: 0.3,
-  creative_planning: 0.7,
-  refinement: 0.2,
-};
-```
-
----
-
-## Project Structure
-
-```
-nexus-agents/
-├── packages/
-│   └── nexus-agents/       # Main package (single consolidated package)
-│       ├── src/
-│       │   ├── core/       # Types, Result<T,E>, errors, logger
-│       │   ├── config/     # Configuration, validation
-│       │   ├── adapters/   # Model adapters (Claude, OpenAI, etc.)
-│       │   ├── agents/     # Agent framework, TechLead, Experts
-│       │   ├── workflows/  # Workflow engine, templates
-│       │   ├── mcp/        # MCP server, tools
-│       │   ├── index.ts    # Main exports
-│       │   └── cli.ts      # CLI entry point
-│       └── package.json
-├── .claude/
-│   ├── rules/              # Modular Claude rules
-│   └── skills/             # Project-specific skills
-├── CLAUDE.md               # This file
-├── CODING_STANDARDS.md     # Detailed standards
-└── pnpm-workspace.yaml
-```
+## Architecture & Development Documentation
+
+For detailed technical documentation, see:
+
+### Architecture (Tier 2 → Tier 3)
+
+| Topic           | Hub                                                          | Details                                                              |
+| --------------- | ------------------------------------------------------------ | -------------------------------------------------------------------- |
+| System Overview | [docs/architecture/README.md](./docs/architecture/README.md) | Module structure, data flow, interfaces                              |
+| Agent System    | -                                                            | [AGENT_SYSTEM.md](./docs/architecture/AGENT_SYSTEM.md)               |
+| Memory System   | -                                                            | [MEMORY_SYSTEM.md](./docs/architecture/MEMORY_SYSTEM.md)             |
+| Routing System  | -                                                            | [ROUTING_SYSTEM.md](./docs/architecture/ROUTING_SYSTEM.md)           |
+| Consensus       | -                                                            | [CONSENSUS_PROTOCOLS.md](./docs/architecture/CONSENSUS_PROTOCOLS.md) |
+| Security        | -                                                            | [SECURITY.md](./docs/architecture/SECURITY.md)                       |
+| MCP Protocol    | -                                                            | [MCP_PROTOCOL.md](./docs/architecture/MCP_PROTOCOL.md)               |
+
+### Development (Tier 2 → Tier 3)
+
+| Topic              | Hub                                                        | Details                                                           |
+| ------------------ | ---------------------------------------------------------- | ----------------------------------------------------------------- |
+| Contributing       | [docs/development/README.md](./docs/development/README.md) | Workflow, PR process, quality gates                               |
+| Agent Development  | -                                                          | [AGENT_DEVELOPMENT.md](./docs/development/AGENT_DEVELOPMENT.md)   |
+| Tool Development   | -                                                          | [TOOL_DEVELOPMENT.md](./docs/development/TOOL_DEVELOPMENT.md)     |
+| Memory Development | -                                                          | [MEMORY_DEVELOPMENT.md](./docs/development/MEMORY_DEVELOPMENT.md) |
+| Coding Standards   | [CODING_STANDARDS.md](./CODING_STANDARDS.md)               | TypeScript, security, testing standards                           |
+
+### Quick Access
+
+- **Consensus Protocols:** 11 protocols with selection matrix → [CONSENSUS_PROTOCOLS.md](./docs/architecture/CONSENSUS_PROTOCOLS.md)
+- **CLI Agent Integration:** Claude/Gemini/Codex routing → [ROUTING_SYSTEM.md](./docs/architecture/ROUTING_SYSTEM.md)
+- **A2A Protocol:** Event bus, agent messaging → [AGENT_SYSTEM.md](./docs/architecture/AGENT_SYSTEM.md#event-bus)
+- **Security & Sandboxing:** Threat model, sandbox modes → [SECURITY.md](./docs/architecture/SECURITY.md)
+- **MCP Tool Patterns:** Zod validation, error handling → [TOOL_DEVELOPMENT.md](./docs/development/TOOL_DEVELOPMENT.md)
 
 ---
 
@@ -1350,15 +625,25 @@ When anything fails:
 
 ## File References
 
-- @CODING_STANDARDS.md - Detailed coding standards
-- @ARCHITECTURE.md - System architecture and design decisions
-- @docs/ALIGNMENT_ROADMAP.md - Current implementation status and gap analysis
-- @docs/research/RESEARCH_INDEX.md - Research tracking overview
-- @docs/research/CONTRIBUTING.md - Research contribution guidelines
-- @docs/research/registry/techniques.yaml - Technique implementation status
-- @packages/nexus-agents/src/core/types/index.ts - Core type definitions
-- @packages/nexus-agents/src/mcp/ - MCP server and tool implementations
-- @packages/nexus-agents/src/agents/ - Agent framework
+### Primary Documentation
+
+- [docs/ENTRYPOINTS.md](./docs/ENTRYPOINTS.md) - CLI, MCP, REST, API reference
+- [docs/architecture/README.md](./docs/architecture/README.md) - Architecture hub
+- [docs/development/README.md](./docs/development/README.md) - Development hub
+- [CODING_STANDARDS.md](./CODING_STANDARDS.md) - Detailed coding standards
+
+### Research & Planning
+
+- [docs/ALIGNMENT_ROADMAP.md](./docs/ALIGNMENT_ROADMAP.md) - Current implementation status
+- [docs/research/RESEARCH_INDEX.md](./docs/research/RESEARCH_INDEX.md) - Research tracking overview
+- [docs/research/CONTRIBUTING.md](./docs/research/CONTRIBUTING.md) - Research contribution guidelines
+- [docs/research/registry/techniques.yaml](./docs/research/registry/techniques.yaml) - Technique status
+
+### Source Code
+
+- `packages/nexus-agents/src/core/types/index.ts` - Core type definitions
+- `packages/nexus-agents/src/mcp/` - MCP server and tool implementations
+- `packages/nexus-agents/src/agents/` - Agent framework
 
 ---
 
@@ -1390,7 +675,7 @@ gh pr checks <num>          # Check CI status
 
 ---
 
-_Last updated: 2026-01-11 (ET)_
+_Last updated: 2026-01-15 (ET)_
 _MCP Protocol: 2025-11-25_
 _Node.js: 22.x LTS_
 _TypeScript: 5.8+_
