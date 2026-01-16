@@ -216,3 +216,23 @@ export type { VerifyOptions, VerifyCheck, VerifyResult } from './verify-command.
 // SWE-bench Command (Issue #257 - SWE-Bench Evaluation)
 export { sweBenchCommand, parseSweBenchArgs, printSweBenchHelp } from './swe-bench-command.js';
 export type { SWEBenchOptions, SWEBenchCommandResult } from './swe-bench-command.js';
+
+// Learning Metrics Dashboard (Issue #284)
+export {
+  learningMetricsCommand,
+  runLearningMetrics,
+  gatherLearningMetrics,
+  parseLearningMetricsArgs,
+  printLearningMetricsHelp,
+  DEFAULT_LEARNING_METRICS_OPTIONS,
+} from './learning-metrics-command.js';
+export type {
+  LearningMetricsOptions,
+  LearningMetricsResult,
+  LearningMetricsContext,
+  ModelLearningStats,
+  BanditProgress,
+  RewardTrend,
+  FeedbackLoopStats,
+  FeatureImportance,
+} from './learning-metrics-command.js';

@@ -38,6 +38,7 @@ export type CliCommand =
   | 'index'
   | 'research'
   | 'validation'
+  | 'learning-metrics'
   | 'swe-bench';
 
 /**
@@ -77,6 +78,10 @@ export interface ParsedCliArgs {
     limit?: number;
     instance?: string[];
     resume: boolean;
+    // Learning-metrics command options
+    period?: number;
+    export?: string;
+    noTrends?: boolean;
   };
   positionals: string[];
 }
@@ -193,6 +198,18 @@ export const PARSE_ARGS_CONFIG = {
       type: 'boolean' as const,
       default: false,
     },
+    // Learning-metrics command options
+    period: {
+      type: 'string' as const,
+      short: 'p',
+    },
+    export: {
+      type: 'string' as const,
+    },
+    'no-trends': {
+      type: 'boolean' as const,
+      default: false,
+    },
   },
   allowPositionals: true,
   strict: true,
@@ -223,6 +240,7 @@ COMMANDS:
   index           Generate and manage codebase index
   research        Manage research registry and index
   validation      Show learning validation dashboard
+  learning-metrics Show aggregated learning metrics dashboard
 
 OPTIONS:
   -h, --help           Show this help message
@@ -302,6 +320,12 @@ VALIDATION OPTIONS:
   --min-sample=<n>       Minimum sample size for inclusion (default: 10)
   --format=<fmt>         Output format: ascii, json (default: ascii)
 
+LEARNING-METRICS OPTIONS:
+  --period=<hours>       Time period in hours (default: 24)
+  --format=json          Output format: ascii, json (default: ascii)
+  --bandit-stats         Include detailed LinUCB bandit statistics
+  --export=<path>        Export metrics to file (JSON format)
+
 EXAMPLES:
   nexus-agents verify           Quick installation check (first thing to run!)
   nexus-agents                  Start MCP server (default)
@@ -338,6 +362,10 @@ EXAMPLES:
   nexus-agents validation --period=7d             Show dashboard for last 7 days
   nexus-agents validation --format=json           Output dashboard as JSON
   nexus-agents validation --model=claude          Filter to Claude only
+  nexus-agents learning-metrics                   Show learning metrics dashboard
+  nexus-agents learning-metrics --period=48       Show metrics for last 48 hours
+  nexus-agents learning-metrics --bandit-stats    Include detailed bandit stats
+  nexus-agents learning-metrics --format=json     Output as JSON
 
 For more information, visit: https://github.com/williamzujkowski/nexus-agents
 `.trim();
@@ -366,6 +394,7 @@ export function isValidCommand(value: string): value is CliCommand {
     'index',
     'research',
     'validation',
+    'learning-metrics',
     'swe-bench',
   ];
   return validCommands.includes(value as CliCommand);

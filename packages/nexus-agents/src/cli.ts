@@ -94,6 +94,10 @@ interface ParsedValues {
   limit?: string;
   instance?: string[];
   resume: boolean;
+  // Learning-metrics options
+  period?: string;
+  export?: string;
+  'no-trends': boolean;
 }
 
 /** Builds orchestrate-specific options. */
@@ -155,6 +159,20 @@ function buildSweBenchOptions(values: ParsedValues): {
   return base;
 }
 
+/** Builds learning-metrics specific options. */
+function buildLearningMetricsOptions(values: ParsedValues): {
+  period?: number;
+  export?: string;
+  noTrends?: boolean;
+} {
+  const period = parseNumericOption(values.period);
+  const result: { period?: number; export?: string; noTrends?: boolean } = {};
+  if (period !== undefined) result.period = period;
+  if (values.export !== undefined) result.export = values.export;
+  if (values['no-trends']) result.noTrends = true;
+  return result;
+}
+
 /** Builds the options object from parsed values. */
 function buildOptions(values: ParsedValues): ParsedCliArgs['options'] {
   const explicitMode = isValidServerMode(values.mode) ? values.mode : undefined;
@@ -180,6 +198,7 @@ function buildOptions(values: ParsedValues): ParsedCliArgs['options'] {
     ...buildOrchestrateOptions(values),
     ...buildVoteOptions(values),
     ...buildSweBenchOptions(values),
+    ...buildLearningMetricsOptions(values),
   };
 }
 

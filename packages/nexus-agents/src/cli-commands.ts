@@ -28,6 +28,7 @@ import {
   parseValidationArgs,
   verifyCommand,
   sweBenchCommand,
+  learningMetricsCommand,
 } from './cli/index.js';
 import { EXIT_CODES, HELP_TEXT, type ParsedCliArgs } from './cli-types.js';
 import { startServer } from './cli-server.js';
@@ -325,6 +326,22 @@ export function handleValidationCommand(args: ParsedCliArgs): void {
 }
 
 /**
+ * Handles the learning-metrics command for aggregated learning dashboard.
+ * (Source: Issue #284)
+ */
+export function handleLearningMetricsCommand(args: ParsedCliArgs): void {
+  const format: 'ascii' | 'json' = args.options.format === 'json' ? 'json' : 'ascii';
+  const exitCode = learningMetricsCommand({
+    period: args.options.period ?? 24,
+    format,
+    banditStats: args.options.banditStats,
+    showTrends: args.options.noTrends !== true,
+    ...(args.options.export !== undefined && { exportPath: args.options.export }),
+  });
+  process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
+}
+
+/**
  * Handles the swe-bench command for benchmark evaluation.
  * (Source: Issue #257 - SWE-Bench Evaluation)
  */
@@ -396,6 +413,9 @@ function handleSyncCommand(args: ParsedCliArgs): boolean {
       return true;
     case 'validation':
       handleValidationCommand(args);
+      return true;
+    case 'learning-metrics':
+      handleLearningMetricsCommand(args);
       return true;
     default:
       return false;
