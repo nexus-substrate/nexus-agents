@@ -1,43 +1,35 @@
 ---
-paths: "**/*.ts"
+paths: '**/*.ts'
 ---
 
 # TypeScript Rules
 
-## Type Safety
+<!-- CANONICAL SOURCE: CODING_STANDARDS.md Section 4 -->
+
+Quick reference for TypeScript patterns. **Full documentation:** [CODING_STANDARDS.md](../../CODING_STANDARDS.md#4-typescript-standards)
+
+## Type Safety Essentials
 
 - Use `unknown` instead of `any`
-- Use `Result<T, E>` pattern for fallible operations
+- Use `Result<T, E>` for fallible operations
 - Use Zod for runtime validation at boundaries
 - Prefer discriminated unions over optional fields
 
-## Structure
+## Structure Limits (ESLint enforced)
 
-- Files ≤ 400 lines
-- Functions ≤ 50 lines
-- Max 5 parameters (use options object for more)
-- Max nesting depth: 4 levels
+| Metric     | Limit       |
+| ---------- | ----------- |
+| File       | ≤ 400 lines |
+| Function   | ≤ 50 lines  |
+| Parameters | ≤ 5         |
+| Nesting    | ≤ 4 levels  |
 
 ## Naming
 
 - Interfaces: `IModelAdapter` (I prefix)
 - Types: `PascalCase`
-- Functions: `camelCase`, verb-first (`createAdapter`)
+- Functions: `camelCase`, verb-first
 - Constants: `SCREAMING_SNAKE`
 - Files: `kebab-case.ts`
 
-## Patterns
-
-```typescript
-// Good: Result type for errors
-type Result<T, E> = { ok: true; value: T } | { ok: false; error: E };
-
-// Good: Zod validation
-const Schema = z.object({ name: z.string() });
-const result = Schema.safeParse(input);
-
-// Good: Discriminated union
-type Message =
-  | { type: 'text'; content: string }
-  | { type: 'tool'; name: string };
-```
+See [CODING_STANDARDS.md](../../CODING_STANDARDS.md#4-typescript-standards) for patterns and examples.

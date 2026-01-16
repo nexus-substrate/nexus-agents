@@ -9,45 +9,22 @@ allowed-tools: Bash, Read, WebFetch
 
 # Version Check Skill
 
-## Purpose
+<!-- CANONICAL SOURCE: CLAUDE.md Core Operating Principles - Version Currency Enforcement -->
 
-Verify all dependencies are current stable versions with no deprecations.
+**Full documentation:** [CLAUDE.md](../../CLAUDE.md#2-version-currency-enforcement)
 
-## Process
+## Quick Process
 
-### 1. Get Current Time (ET)
-
-```bash
-TZ='America/New_York' date '+%Y-%m-%d %H:%M:%S %Z'
-```
-
-### 2. Check Node.js Version
+### 1. Check Package Status
 
 ```bash
-node --version
-# Should be 22.x LTS (current as of 2026)
-```
-
-### 3. Check Package Versions
-
-For each dependency:
-
-```bash
-# Check current version and latest
 npm view <package> version
-npm view <package> 'dist-tags'
-
-# Check for deprecation
 npm view <package> deprecated
-
-# Check last publish date
 npm view <package> time.modified
-
-# Check required Node version
 npm view <package> engines
 ```
 
-### 4. Evaluate Criteria
+### 2. Evaluate Criteria
 
 | Criterion    | Pass                 | Fail           |
 | ------------ | -------------------- | -------------- |
@@ -56,50 +33,18 @@ npm view <package> engines
 | Node version | Compatible with 22.x | Incompatible   |
 | Security     | No advisories        | Has advisories |
 
-### 5. Run Security Audit
+### 3. Run Security Audit
 
 ```bash
 pnpm audit
-# or
-npm audit
-```
-
-### 6. Generate Report
-
-```markdown
-# Dependency Verification Report
-
-**Date:** [Current ET time]
-**Node.js:** [version]
-
-## Summary
-
-- Total packages: X
-- Up to date: Y
-- Needs update: Z
-- Deprecated: W
-
-## Details
-
-| Package | Current | Latest | Status | Notes |
-| ------- | ------- | ------ | ------ | ----- |
-| ...     | ...     | ...    | ...    | ...   |
-
-## Recommendations
-
-[List any required updates or replacements]
 ```
 
 ## Actions
 
-If deprecated package found:
+If deprecated or outdated:
 
-1. Find recommended replacement
+1. Find replacement
 2. Create GitHub issue to track migration
 3. Document migration path
 
-If outdated package found:
-
-1. Check changelog for breaking changes
-2. Create GitHub issue if major update needed
-3. Update if minor/patch
+See [CLAUDE.md](../../CLAUDE.md#2-version-currency-enforcement) for complete version verification protocol.

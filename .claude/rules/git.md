@@ -1,55 +1,32 @@
----
-paths: "*"
----
-
 # Git & GitHub Rules
+
+<!-- CANONICAL SOURCE: docs/development/CONTRIBUTION_GUIDE.md -->
+
+Quick reference for git workflows. **Full documentation:** [CONTRIBUTION_GUIDE.md](../../docs/development/CONTRIBUTION_GUIDE.md)
 
 ## Commit Messages
 
-Use conventional commits:
-
-```
-type(scope): description
-
-[optional body]
-
-[optional footer]
-```
+Use conventional commits: `type(scope): description`
 
 Types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `perf`
 
-Examples:
-- `feat(agents): add dynamic expert creation`
-- `fix(mcp): prevent path traversal in read_files`
-- `refactor(core): extract Result type to shared module`
-
 ## Branch Naming
 
-- `feat/<issue>-description` - New features
-- `fix/<issue>-description` - Bug fixes
-- `refactor/description` - Refactoring
-- `docs/description` - Documentation
+- `feat/<issue>-description`
+- `fix/<issue>-description`
+- `refactor/description`
+- `docs/description`
 
-## PR Requirements
-
-- Reference issue number in description
-- Include summary of changes
-- Ensure all CI checks pass
-- Request review before merge
-
-## GitHub CLI Commands
+## Quick Commands
 
 ```bash
 # Issues
 gh issue create --title "..." --body "..." --label "enhancement"
 gh issue list --state open
-gh issue view <number>
 
 # PRs
-gh pr create --title "..." --body "..." --base master
-gh pr view <number>
+gh pr create --title "..." --body "..." --base main
 gh pr merge --squash --delete-branch
-
-# Checks
-gh pr checks <number>
 ```
+
+See [CONTRIBUTION_GUIDE.md](../../docs/development/CONTRIBUTION_GUIDE.md) for full workflow.

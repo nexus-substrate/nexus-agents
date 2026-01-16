@@ -1,33 +1,20 @@
 ---
-paths: "**/*.test.ts"
+paths: '**/*.test.ts'
 ---
 
 # Testing Rules
 
+<!-- CANONICAL SOURCE: CODING_STANDARDS.md Section 8 -->
+
+Quick reference for testing patterns. **Full documentation:** [CODING_STANDARDS.md](../../CODING_STANDARDS.md#8-testing-standards)
+
 ## Coverage Targets
 
-- Line coverage: ≥ 80%
-- Branch coverage: ≥ 75%
-- Critical paths (security, validation): 100%
-
-## Test Structure
-
-```typescript
-describe('ComponentName', () => {
-  describe('methodName', () => {
-    it('should [expected behavior] when [condition]', () => {
-      // Arrange
-      const input = createTestInput();
-
-      // Act
-      const result = component.method(input);
-
-      // Assert
-      expect(result).toMatchExpectedOutput();
-    });
-  });
-});
-```
+| Type            | Target |
+| --------------- | ------ |
+| Line coverage   | ≥ 80%  |
+| Branch coverage | ≥ 75%  |
+| Critical paths  | 100%   |
 
 ## Test Categories
 
@@ -47,3 +34,5 @@ await client.connect(clientTransport);
 
 const result = await client.callTool({ name: 'tool', arguments: {} });
 ```
+
+See [CODING_STANDARDS.md](../../CODING_STANDARDS.md#8-testing-standards) for full test structure.
