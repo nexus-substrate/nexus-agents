@@ -8,8 +8,8 @@
 import type { Result } from '../../core/index.js';
 import { ok, err } from '../../core/index.js';
 import type { ScoringRubric, RubricCriterion } from '../task-types.js';
-import type { ScoringError } from './rubric-scorer.js';
-import { ScoringErrorCode } from './rubric-scorer.js';
+import type { ScoringError } from './rubric-types.js';
+import { ScoringErrorCode } from './rubric-types.js';
 
 /**
  * Validate that response is not empty.

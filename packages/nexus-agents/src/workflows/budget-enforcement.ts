@@ -6,7 +6,7 @@
 
 import type { ILogger, ContextBudget } from '../core/index.js';
 import { ContextManager } from '../agents/context-manager.js';
-import type { WorkflowStep } from './workflow-engine.js';
+import type { WorkflowStep } from './workflow-types.js';
 
 /**
  * Budget enforcement event logged during execution.

@@ -129,6 +129,12 @@ export type WorkflowStepInput = z.input<typeof WorkflowStepSchema>;
 export type WorkflowStepOutput = z.output<typeof WorkflowStepSchema>;
 
 /**
+ * Alias for WorkflowStepOutput for use in engine/execution code.
+ * This provides a cleaner name for runtime usage.
+ */
+export type WorkflowStep = WorkflowStepOutput;
+
+/**
  * Semantic version pattern for workflow versions.
  */
 const VERSION_REGEX = /^\d+\.\d+\.\d+(-[a-zA-Z0-9.-]+)?(\+[a-zA-Z0-9.-]+)?$/;

@@ -30,7 +30,6 @@ import type {
 import { TaskAnalysisSchema, SubTaskSchema, SynthesizedResultSchema } from './tech-lead-types.js';
 import {
   heuristicAnalysis,
-  heuristicDecomposition,
   heuristicSynthesis,
   createSingleResultSynthesis,
   selectExpertForSubtask,
@@ -38,6 +37,7 @@ import {
   estimateDuration,
   extractTextContent,
 } from './tech-lead-helpers.js';
+import { heuristicDecomposition } from './tech-lead-decomposition.js';
 import type { WorkflowDefinition } from '../core/index.js';
 import {
   convertPlanToWorkflow,

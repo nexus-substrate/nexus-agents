@@ -7,7 +7,19 @@
  * (Source: Issue #78 - Capability-based task router)
  */
 
-import type { TaskType } from './task-analyzer.js';
+/**
+ * Task type classification.
+ * Defined here to avoid circular dependency with task-analyzer.ts.
+ */
+export type TaskType =
+  | 'architecture'
+  | 'code_implementation'
+  | 'code_review'
+  | 'test_generation'
+  | 'documentation'
+  | 'large_codebase'
+  | 'bulk_operations'
+  | 'general';
 
 /**
  * Keywords for task type classification.

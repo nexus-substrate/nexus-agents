@@ -100,46 +100,6 @@ export function suggestApproach(taskType: string, complexity: number): string {
 }
 
 /**
- * Create a subtask with the given parameters.
- */
-export interface CreateSubtaskParams {
-  baseId: string;
-  num: number;
-  parentTaskId: string;
-  description: string;
-  expectedOutput: string;
-  deps: string[];
-  priority: 'critical' | 'high' | 'medium' | 'low';
-  complexity: number;
-  capabilities: string[];
-}
-
-export function createSubtask(params: CreateSubtaskParams): SubTask {
-  const {
-    baseId,
-    num,
-    parentTaskId,
-    description,
-    expectedOutput,
-    deps,
-    priority,
-    complexity,
-    capabilities,
-  } = params;
-  return {
-    id: `${baseId}-${String(num)}`,
-    parentTaskId,
-    description,
-    expectedOutput,
-    dependencies: deps.map((d) => `${baseId}-${d}`),
-    priority,
-    status: 'pending',
-    complexity,
-    requiredCapabilities: capabilities,
-  };
-}
-
-/**
  * Perform heuristic task analysis without model adapter.
  */
 export function heuristicAnalysis(task: Task, options: Required<TechLeadOptions>): TaskAnalysis {
@@ -169,9 +129,6 @@ export function heuristicAnalysis(task: Task, options: Required<TechLeadOptions>
     estimatedEffort: Math.ceil(complexity * 1.5),
   };
 }
-
-// Re-export heuristicDecomposition from the dedicated decomposition module
-export { heuristicDecomposition } from './tech-lead-decomposition.js';
 
 // Re-export expert selection functions from the dedicated module
 export { buildSelectionReason, selectExpertForSubtask } from './tech-lead-expert-selection.js';

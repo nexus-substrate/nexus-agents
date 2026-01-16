@@ -12,8 +12,9 @@ import type {
   CompositeRoutingDecision,
 } from '../../cli-adapters/composite-router.js';
 import type { IFeedbackIntegration } from '../../learning/feedback-integration.js';
-import type { CapabilityProfile, DelegateOutput } from './delegate-to-model.js';
-import { MODEL_CAPABILITIES } from './delegate-to-model.js';
+// Import directly from types to avoid circular dependency with delegate-to-model.ts
+import type { CapabilityProfile, DelegateOutput } from './delegate-to-model-types.js';
+import { MODEL_CAPABILITIES } from './delegate-to-model-types.js';
 
 /**
  * Maps CLI name to model name for output.

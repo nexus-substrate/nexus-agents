@@ -10,12 +10,16 @@
 
 import type { Result, TaskResult, ILogger, IAgent, Task } from '../../core/index.js';
 import { ok, err, AgentError, createLogger } from '../../core/index.js';
-import type { CollaborationConfig, CollaborationResult } from './collaboration-types.js';
-import {
-  CollaborationSession,
-  createCollaborationSession,
-  type CollaborationSessionOptions,
-} from './collaboration-session.js';
+import type {
+  CollaborationConfig,
+  CollaborationResult,
+  ICollaborationProtocol,
+  ProtocolOptions,
+} from './collaboration-types.js';
+
+// Re-export for backward compatibility
+export type { ICollaborationProtocol, ProtocolOptions };
+import { CollaborationSession, createCollaborationSession } from './collaboration-session.js';
 import { sleep } from './protocol-helpers.js';
 
 // Import and re-export protocol implementations from their dedicated modules
@@ -25,28 +29,6 @@ import { ReflexionProtocol } from './reflexion-protocol.js';
 import { AegeanProtocol } from './aegean-protocol.js';
 import { SelfRefineProtocol } from './self-refine-protocol.js';
 export { ReviewProtocol, ConsensusProtocol, ReflexionProtocol, AegeanProtocol, SelfRefineProtocol };
-
-/**
- * Base interface for collaboration protocols.
- */
-export interface ICollaborationProtocol {
-  readonly pattern: CollaborationConfig['pattern'];
-  execute(
-    config: CollaborationConfig,
-    agents: Map<string, IAgent>
-  ): Promise<Result<CollaborationResult, AgentError>>;
-  cancel(reason: string): void;
-}
-
-/**
- * Options for protocol execution.
- */
-export interface ProtocolOptions {
-  logger?: ILogger;
-  sessionOptions?: CollaborationSessionOptions;
-  sequentialDelay?: number;
-  continueOnFailure?: boolean;
-}
 
 /**
  * Abstract base class for collaboration protocols.

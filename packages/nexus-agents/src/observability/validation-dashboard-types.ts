@@ -157,3 +157,17 @@ export const DEFAULT_DASHBOARD_RENDER_OPTIONS: Required<DashboardRenderOptions> 
   showFeatureImportance: true,
   maxWidth: 100,
 };
+
+/**
+ * Outcome record for dashboard aggregation.
+ */
+export interface DashboardOutcome {
+  readonly model: string;
+  readonly taskType: string;
+  readonly success: boolean;
+  readonly reward: number;
+  readonly latencyMs: number;
+  readonly tokensUsed: number;
+  readonly timestamp: number;
+  readonly allModelRewards?: Record<string, number>;
+}

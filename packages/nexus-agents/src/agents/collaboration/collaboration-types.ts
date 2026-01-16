@@ -5,7 +5,8 @@
  * Defines patterns for sequential, parallel, review, and consensus collaboration.
  */
 
-import type { Task, TaskResult, AgentRole } from '../../core/index.js';
+import type { Task, TaskResult, AgentRole, IAgent, Result, ILogger } from '../../core/index.js';
+import type { AgentError } from '../../core/index.js';
 
 // Re-export schemas and constants from collaboration-schemas.ts
 export {
@@ -253,4 +254,35 @@ export interface AggregationMetadata {
   averageConfidence: number;
   totalTokensUsed: number;
   aggregatedAt: string;
+}
+
+/**
+ * Base interface for collaboration protocols.
+ *
+ * NOTE: This interface is defined here (not in collaboration-protocol.ts) to avoid
+ * circular dependencies. Protocol implementations import this interface, and
+ * collaboration-protocol.ts imports the implementations.
+ */
+export interface ICollaborationProtocol {
+  readonly pattern: CollaborationConfig['pattern'];
+  execute(
+    config: CollaborationConfig,
+    agents: Map<string, IAgent>
+  ): Promise<Result<CollaborationResult, AgentError>>;
+  cancel(reason: string): void;
+}
+
+/**
+ * Options for protocol execution.
+ *
+ * NOTE: sessionOptions uses a generic Record type to avoid circular dependency
+ * with collaboration-session.ts. The actual type is CollaborationSessionOptions
+ * which is defined in collaboration-session.ts.
+ */
+export interface ProtocolOptions {
+  logger?: ILogger;
+  /** Session options - accepts CollaborationSessionOptions from collaboration-session.ts */
+  sessionOptions?: Record<string, unknown>;
+  sequentialDelay?: number;
+  continueOnFailure?: boolean;
 }

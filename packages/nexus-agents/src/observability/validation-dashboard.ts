@@ -14,8 +14,12 @@ import type {
   DashboardHealthIndicators,
   LearningProgress,
   ModelPerformanceSummary,
+  DashboardOutcome,
 } from './validation-dashboard-types.js';
 import { DEFAULT_DASHBOARD_RENDER_OPTIONS } from './validation-dashboard-types.js';
+
+// Re-export DashboardOutcome for backward compatibility
+export type { DashboardOutcome } from './validation-dashboard-types.js';
 import { proportionConfidenceInterval } from '../learning/validation-stats.js';
 import {
   renderHeader,
@@ -35,20 +39,6 @@ import {
   calculateAvgReward,
   computeHealthScore,
 } from './validation-dashboard-calc.js';
-
-/**
- * Outcome record for dashboard aggregation.
- */
-export interface DashboardOutcome {
-  readonly model: string;
-  readonly taskType: string;
-  readonly success: boolean;
-  readonly reward: number;
-  readonly latencyMs: number;
-  readonly tokensUsed: number;
-  readonly timestamp: number;
-  readonly allModelRewards?: Record<string, number>;
-}
 
 /**
  * Validation Dashboard implementation.

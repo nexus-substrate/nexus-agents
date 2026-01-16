@@ -12,7 +12,7 @@ import {
   StreamCancelledError,
   createStream,
   type CreateStreamOptions,
-} from './streaming.js';
+} from './streaming-types.js';
 
 /**
  * Transforms stream chunks using a mapping function.

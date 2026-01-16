@@ -12,8 +12,8 @@ import type {
   ModelPerformanceSummary,
   TaskTypePerformance,
   TimePeriod,
+  DashboardOutcome,
 } from './validation-dashboard-types.js';
-import type { DashboardOutcome } from './validation-dashboard.js';
 import {
   proportionConfidenceInterval,
   calculateDistributionStats,

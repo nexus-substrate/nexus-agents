@@ -8,9 +8,13 @@
 
 import type { Result, TaskResult, ILogger, IAgent, Task } from '../../core/index.js';
 import { ok, err, AgentError, createLogger } from '../../core/index.js';
-import type { CollaborationConfig, CollaborationResult } from './collaboration-types.js';
+import type {
+  CollaborationConfig,
+  CollaborationResult,
+  ICollaborationProtocol,
+  ProtocolOptions,
+} from './collaboration-types.js';
 import { CollaborationSession, createCollaborationSession } from './collaboration-session.js';
-import type { ICollaborationProtocol, ProtocolOptions } from './collaboration-protocol.js';
 import type { IEventBus } from './event-bus-types.js';
 import { getGlobalEventBus } from './event-bus.js';
 import {

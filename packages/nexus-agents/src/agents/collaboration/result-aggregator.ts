@@ -5,15 +5,16 @@
  * Handles merging, conflict detection, and quality scoring.
  */
 
-import type { Result, TaskResult, ILogger } from '../../core/index.js';
+import type { Result, ILogger } from '../../core/index.js';
 import { ok, err, AgentError, createLogger } from '../../core/index.js';
+import type { AggregatedResult, ResultConflict } from './collaboration-types.js';
 import type {
-  AggregatedResult,
-  ResultConflict,
-  CollaborationPattern,
-  VoteMessage,
-  ReviewResponseMessage,
-} from './collaboration-types.js';
+  AggregationStrategy,
+  ExpertResult,
+  ConflictResolver,
+  QualityScorer,
+  AggregatorInput,
+} from './aggregator-types.js';
 import {
   defaultConflictResolver,
   defaultQualityScorer,
@@ -29,10 +30,14 @@ import {
   chainSequential,
 } from './aggregator-helpers.js';
 
-/**
- * Aggregation strategy types.
- */
-export type AggregationStrategy = 'merge' | 'select_best' | 'consensus' | 'sequential_chain';
+// Re-export types for backward compatibility
+export type {
+  AggregationStrategy,
+  ExpertResult,
+  ConflictResolver,
+  QualityScorer,
+  AggregatorInput,
+} from './aggregator-types.js';
 
 /**
  * Options for result aggregation.
@@ -43,40 +48,6 @@ export interface AggregatorOptions {
   qualityScorer?: QualityScorer;
   minQualityScore?: number;
 }
-
-/**
- * Input for aggregation.
- */
-export interface AggregatorInput {
-  pattern: CollaborationPattern;
-  results: ExpertResult[];
-  votes?: VoteMessage[];
-  reviews?: ReviewResponseMessage[];
-}
-
-/**
- * Expert result with metadata.
- */
-export interface ExpertResult {
-  expertId: string;
-  result: TaskResult;
-  confidence?: number;
-  order?: number;
-}
-
-/**
- * Conflict resolver function type.
- */
-export type ConflictResolver = (
-  conflict: ResultConflict,
-  result1: ExpertResult,
-  result2: ExpertResult
-) => 'expert1' | 'expert2' | 'merged';
-
-/**
- * Quality scorer function type.
- */
-export type QualityScorer = (results: ExpertResult[], aggregatedOutput: unknown) => number;
 
 /**
  * Aggregates results from multiple experts.

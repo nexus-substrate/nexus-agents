@@ -23,8 +23,10 @@ import {
   type BudgetEnforcementEvent,
   type BudgetEnforcementConfig,
 } from './budget-enforcement.js';
+import type { WorkflowStep } from './workflow-types.js';
 
 export type { BudgetEnforcementEvent } from './budget-enforcement.js';
+export type { WorkflowStep } from './workflow-types.js';
 
 /** Configuration for workflow engine. */
 export interface WorkflowEngineConfig {
@@ -60,20 +62,6 @@ export interface ExecutionPlan {
 /** Single execution phase (all steps run concurrently). */
 export interface ExecutionPhase {
   steps: WorkflowStep[];
-}
-
-/** Workflow step type. */
-export interface WorkflowStep {
-  id: string;
-  agent: string;
-  action: string;
-  inputs: Record<string, unknown>;
-  dependsOn?: string[];
-  parallel?: boolean;
-  retries?: number;
-  timeout?: number;
-  condition?: string;
-  contextBudget?: Partial<ContextBudget>;
 }
 
 /** Execution context for workflow. */

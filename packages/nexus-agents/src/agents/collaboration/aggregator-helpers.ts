@@ -11,7 +11,7 @@ import type {
   ReviewResponseMessage,
   ResultConflict,
 } from './collaboration-types.js';
-import type { AggregationStrategy, ExpertResult, ConflictResolver } from './result-aggregator.js';
+import type { AggregationStrategy, ExpertResult, ConflictResolver } from './aggregator-types.js';
 
 /**
  * Default conflict resolver - prefers higher confidence.

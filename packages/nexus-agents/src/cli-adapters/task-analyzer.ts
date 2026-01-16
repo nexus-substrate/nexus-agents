@@ -11,6 +11,7 @@
 import { z } from 'zod';
 import type { Task } from '../core/types/agent.js';
 import {
+  type TaskType,
   TASK_TYPE_KEYWORDS,
   HIGH_COMPLEXITY_KEYWORDS,
   CODE_GENERATION_KEYWORDS,
@@ -20,6 +21,9 @@ import {
   IMAGE_EXTENSIONS,
   TYPE_COMPLEXITY,
 } from './task-analyzer-keywords.js';
+
+// Re-export TaskType for backwards compatibility
+export type { TaskType } from './task-analyzer-keywords.js';
 
 /**
  * Task profile schema for validation.
@@ -51,11 +55,6 @@ export const TaskProfileSchema = z.object({
 });
 
 export type TaskProfile = z.infer<typeof TaskProfileSchema>;
-
-/**
- * Task type classification.
- */
-export type TaskType = TaskProfile['taskType'];
 
 /**
  * Average tokens per character (rough estimate).

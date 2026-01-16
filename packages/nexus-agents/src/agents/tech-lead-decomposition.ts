@@ -6,7 +6,49 @@
 
 import type { Task } from '../core/index.js';
 import type { SubTask, TaskAnalysis } from './tech-lead-types.js';
-import { createSubtask } from './tech-lead-helpers.js';
+
+/**
+ * Parameters for creating a subtask.
+ */
+export interface CreateSubtaskParams {
+  baseId: string;
+  num: number;
+  parentTaskId: string;
+  description: string;
+  expectedOutput: string;
+  deps: string[];
+  priority: 'critical' | 'high' | 'medium' | 'low';
+  complexity: number;
+  capabilities: string[];
+}
+
+/**
+ * Create a subtask with the given parameters.
+ */
+function createSubtask(params: CreateSubtaskParams): SubTask {
+  const {
+    baseId,
+    num,
+    parentTaskId,
+    description,
+    expectedOutput,
+    deps,
+    priority,
+    complexity,
+    capabilities,
+  } = params;
+  return {
+    id: `${baseId}-${String(num)}`,
+    parentTaskId,
+    description,
+    expectedOutput,
+    dependencies: deps.map((d) => `${baseId}-${d}`),
+    priority,
+    status: 'pending',
+    complexity,
+    requiredCapabilities: capabilities,
+  };
+}
 
 /**
  * Create subtasks for implementation task type.
