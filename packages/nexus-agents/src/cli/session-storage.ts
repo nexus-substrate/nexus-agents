@@ -40,6 +40,20 @@ import {
   generateSessionId,
   generateTaskId,
   getCurrentTimestamp,
+  toError,
+  SQL_INSERT_SESSION,
+  SQL_GET_SESSION,
+  SQL_UPDATE_SESSION_STATUS,
+  SQL_UPDATE_SESSION_METADATA,
+  SQL_UPDATE_SESSION_TIMESTAMP,
+  SQL_LIST_SESSIONS,
+  SQL_DELETE_SESSION,
+  SQL_PRUNE_SESSIONS,
+  SQL_COUNT_SESSIONS,
+  SQL_INSERT_TASK,
+  SQL_GET_TASKS,
+  SQL_UPDATE_TASK,
+  SQL_COUNT_TASKS,
 } from './session-storage-helpers.js';
 
 /**
@@ -132,16 +146,11 @@ export class SQLiteSessionStorage implements ISessionStorage {
   createSession(metadata?: SessionMetadata): Promise<Result<StoredSession, SessionStorageError>> {
     try {
       this.ensureInitialized();
-      const database = this.getDatabase();
       const id = generateSessionId();
       const now = getCurrentTimestamp();
       const metadataJson = JSON.stringify(metadata ?? {});
 
-      database
-        .prepare(
-          `INSERT INTO sessions (id, created_at, updated_at, status, metadata) VALUES (?, ?, ?, ?, ?)`
-        )
-        .run(id, now, now, 'active', metadataJson);
+      this.getDatabase().prepare(SQL_INSERT_SESSION).run(id, now, now, 'active', metadataJson);
 
       const session: StoredSession = {
         id,
@@ -154,10 +163,9 @@ export class SQLiteSessionStorage implements ISessionStorage {
       this.logger.debug('Created session', { id });
       return Promise.resolve(ok(session));
     } catch (error) {
-      const causeError = error instanceof Error ? error : new Error(String(error));
-      this.logger.error('Failed to create session', causeError);
+      this.logger.error('Failed to create session', toError(error));
       return Promise.resolve(
-        err(new SessionStorageError('Failed to create session', { cause: causeError }))
+        err(new SessionStorageError('Failed to create session', { cause: toError(error) }))
       );
     }
   }
@@ -165,14 +173,11 @@ export class SQLiteSessionStorage implements ISessionStorage {
   getSession(id: string): Promise<Result<StoredSession | null, SessionStorageError>> {
     try {
       this.ensureInitialized();
-      const row = this.getDatabase()
-        .prepare<SessionRow>(`SELECT * FROM sessions WHERE id = ?`)
-        .get(id);
+      const row = this.getDatabase().prepare<SessionRow>(SQL_GET_SESSION).get(id);
       return Promise.resolve(ok(row === undefined ? null : rowToSession(row)));
     } catch (error) {
-      const causeError = error instanceof Error ? error : new Error(String(error));
       return Promise.resolve(
-        err(new SessionStorageError('Failed to get session', { cause: causeError }))
+        err(new SessionStorageError('Failed to get session', { cause: toError(error) }))
       );
     }
   }
@@ -181,23 +186,17 @@ export class SQLiteSessionStorage implements ISessionStorage {
     try {
       this.ensureInitialized();
       const database = this.getDatabase();
-      const sessionRow = database
-        .prepare<SessionRow>(`SELECT * FROM sessions WHERE id = ?`)
-        .get(id);
+      const sessionRow = database.prepare<SessionRow>(SQL_GET_SESSION).get(id);
       if (sessionRow === undefined) return Promise.resolve(ok(null));
 
-      const taskRows = database
-        .prepare<TaskRow>(`SELECT * FROM tasks WHERE session_id = ? ORDER BY created_at ASC`)
-        .all(id);
-
+      const taskRows = database.prepare<TaskRow>(SQL_GET_TASKS).all(id);
       const session = rowToSession(sessionRow);
       const tasks = taskRows.map(rowToTask);
 
       return Promise.resolve(ok({ ...session, tasks }));
     } catch (error) {
-      const causeError = error instanceof Error ? error : new Error(String(error));
       return Promise.resolve(
-        err(new SessionStorageError('Failed to get session with tasks', { cause: causeError }))
+        err(new SessionStorageError('Failed to get session with tasks', { cause: toError(error) }))
       );
     }
   }
@@ -209,15 +208,12 @@ export class SQLiteSessionStorage implements ISessionStorage {
     try {
       this.ensureInitialized();
       const now = getCurrentTimestamp();
-      this.getDatabase()
-        .prepare(`UPDATE sessions SET status = ?, updated_at = ? WHERE id = ?`)
-        .run(status, now, id);
+      this.getDatabase().prepare(SQL_UPDATE_SESSION_STATUS).run(status, now, id);
       this.logger.debug('Updated session status', { id, status });
       return Promise.resolve(ok(undefined));
     } catch (error) {
-      const causeError = error instanceof Error ? error : new Error(String(error));
       return Promise.resolve(
-        err(new SessionStorageError('Failed to update session status', { cause: causeError }))
+        err(new SessionStorageError('Failed to update session status', { cause: toError(error) }))
       );
     }
   }
@@ -230,15 +226,12 @@ export class SQLiteSessionStorage implements ISessionStorage {
       this.ensureInitialized();
       const now = getCurrentTimestamp();
       const metadataJson = JSON.stringify(metadata);
-      this.getDatabase()
-        .prepare(`UPDATE sessions SET metadata = ?, updated_at = ? WHERE id = ?`)
-        .run(metadataJson, now, id);
+      this.getDatabase().prepare(SQL_UPDATE_SESSION_METADATA).run(metadataJson, now, id);
       this.logger.debug('Updated session metadata', { id });
       return Promise.resolve(ok(undefined));
     } catch (error) {
-      const causeError = error instanceof Error ? error : new Error(String(error));
       return Promise.resolve(
-        err(new SessionStorageError('Failed to update session metadata', { cause: causeError }))
+        err(new SessionStorageError('Failed to update session metadata', { cause: toError(error) }))
       );
     }
   }
@@ -248,27 +241,12 @@ export class SQLiteSessionStorage implements ISessionStorage {
       this.ensureInitialized();
       const effectiveLimit = limit ?? this.maxSessions;
       const rows = this.getDatabase()
-        .prepare<SessionSummaryRow>(
-          `
-          SELECT
-            s.id, s.created_at, s.updated_at, s.status,
-            COUNT(t.id) as task_count,
-            COALESCE(SUM(t.duration_ms), 0) as total_duration_ms,
-            COALESCE(SUM(t.tokens_used), 0) as total_tokens,
-            COALESCE(SUM(t.cost_usd), 0) as total_cost_usd
-          FROM sessions s
-          LEFT JOIN tasks t ON s.id = t.session_id
-          GROUP BY s.id
-          ORDER BY s.updated_at DESC
-          LIMIT ?
-        `
-        )
+        .prepare<SessionSummaryRow>(SQL_LIST_SESSIONS)
         .all(effectiveLimit);
       return Promise.resolve(ok(rows.map(rowToSessionSummary)));
     } catch (error) {
-      const causeError = error instanceof Error ? error : new Error(String(error));
       return Promise.resolve(
-        err(new SessionStorageError('Failed to list sessions', { cause: causeError }))
+        err(new SessionStorageError('Failed to list sessions', { cause: toError(error) }))
       );
     }
   }
@@ -280,14 +258,8 @@ export class SQLiteSessionStorage implements ISessionStorage {
       const id = generateTaskId();
       const now = getCurrentTimestamp();
 
-      database
-        .prepare(
-          `INSERT INTO tasks (id, session_id, task, status, created_at) VALUES (?, ?, ?, ?, ?)`
-        )
-        .run(id, sessionId, task, 'pending', now);
-
-      // Update session timestamp
-      database.prepare(`UPDATE sessions SET updated_at = ? WHERE id = ?`).run(now, sessionId);
+      database.prepare(SQL_INSERT_TASK).run(id, sessionId, task, 'pending', now);
+      database.prepare(SQL_UPDATE_SESSION_TIMESTAMP).run(now, sessionId);
 
       const storedTask: StoredTask = {
         id,
@@ -300,9 +272,8 @@ export class SQLiteSessionStorage implements ISessionStorage {
       this.logger.debug('Added task', { id, sessionId });
       return Promise.resolve(ok(storedTask));
     } catch (error) {
-      const causeError = error instanceof Error ? error : new Error(String(error));
       return Promise.resolve(
-        err(new SessionStorageError('Failed to add task', { cause: causeError }))
+        err(new SessionStorageError('Failed to add task', { cause: toError(error) }))
       );
     }
   }
@@ -319,20 +290,8 @@ export class SQLiteSessionStorage implements ISessionStorage {
   ): Promise<Result<void, SessionStorageError>> {
     try {
       this.ensureInitialized();
-      const database = this.getDatabase();
-
-      database
-        .prepare(
-          `
-          UPDATE tasks
-          SET result = COALESCE(?, result),
-              status = ?,
-              duration_ms = COALESCE(?, duration_ms),
-              tokens_used = COALESCE(?, tokens_used),
-              cost_usd = COALESCE(?, cost_usd)
-          WHERE id = ?
-        `
-        )
+      this.getDatabase()
+        .prepare(SQL_UPDATE_TASK)
         .run(
           update.result ?? null,
           update.status,
@@ -345,9 +304,8 @@ export class SQLiteSessionStorage implements ISessionStorage {
       this.logger.debug('Updated task', { taskId, status: update.status });
       return Promise.resolve(ok(undefined));
     } catch (error) {
-      const causeError = error instanceof Error ? error : new Error(String(error));
       return Promise.resolve(
-        err(new SessionStorageError('Failed to update task', { cause: causeError }))
+        err(new SessionStorageError('Failed to update task', { cause: toError(error) }))
       );
     }
   }
@@ -355,14 +313,11 @@ export class SQLiteSessionStorage implements ISessionStorage {
   getTasks(sessionId: string): Promise<Result<StoredTask[], SessionStorageError>> {
     try {
       this.ensureInitialized();
-      const rows = this.getDatabase()
-        .prepare<TaskRow>(`SELECT * FROM tasks WHERE session_id = ? ORDER BY created_at ASC`)
-        .all(sessionId);
+      const rows = this.getDatabase().prepare<TaskRow>(SQL_GET_TASKS).all(sessionId);
       return Promise.resolve(ok(rows.map(rowToTask)));
     } catch (error) {
-      const causeError = error instanceof Error ? error : new Error(String(error));
       return Promise.resolve(
-        err(new SessionStorageError('Failed to get tasks', { cause: causeError }))
+        err(new SessionStorageError('Failed to get tasks', { cause: toError(error) }))
       );
     }
   }
@@ -370,16 +325,13 @@ export class SQLiteSessionStorage implements ISessionStorage {
   deleteSession(id: string): Promise<Result<boolean, SessionStorageError>> {
     try {
       this.ensureInitialized();
-      const database = this.getDatabase();
-      // Tasks deleted via CASCADE
-      const result = database.prepare(`DELETE FROM sessions WHERE id = ?`).run(id);
+      const result = this.getDatabase().prepare(SQL_DELETE_SESSION).run(id);
       const deleted = result.changes > 0;
       if (deleted) this.logger.info('Deleted session', { id });
       return Promise.resolve(ok(deleted));
     } catch (error) {
-      const causeError = error instanceof Error ? error : new Error(String(error));
       return Promise.resolve(
-        err(new SessionStorageError('Failed to delete session', { cause: causeError }))
+        err(new SessionStorageError('Failed to delete session', { cause: toError(error) }))
       );
     }
   }
@@ -388,15 +340,12 @@ export class SQLiteSessionStorage implements ISessionStorage {
     try {
       this.ensureInitialized();
       const cutoff = olderThan.toISOString();
-      const result = this.getDatabase()
-        .prepare(`DELETE FROM sessions WHERE updated_at < ?`)
-        .run(cutoff);
+      const result = this.getDatabase().prepare(SQL_PRUNE_SESSIONS).run(cutoff);
       this.logger.info('Pruned old sessions', { count: result.changes, cutoff });
       return Promise.resolve(ok(result.changes));
     } catch (error) {
-      const causeError = error instanceof Error ? error : new Error(String(error));
       return Promise.resolve(
-        err(new SessionStorageError('Failed to prune sessions', { cause: causeError }))
+        err(new SessionStorageError('Failed to prune sessions', { cause: toError(error) }))
       );
     }
   }
@@ -405,17 +354,12 @@ export class SQLiteSessionStorage implements ISessionStorage {
     try {
       this.ensureInitialized();
       const database = this.getDatabase();
-      const sessions =
-        database.prepare<{ count: number }>('SELECT COUNT(*) as count FROM sessions').get()
-          ?.count ?? 0;
-      const tasks =
-        database.prepare<{ count: number }>('SELECT COUNT(*) as count FROM tasks').get()?.count ??
-        0;
+      const sessions = database.prepare<{ count: number }>(SQL_COUNT_SESSIONS).get()?.count ?? 0;
+      const tasks = database.prepare<{ count: number }>(SQL_COUNT_TASKS).get()?.count ?? 0;
       return Promise.resolve(ok({ sessions, tasks }));
     } catch (error) {
-      const causeError = error instanceof Error ? error : new Error(String(error));
       return Promise.resolve(
-        err(new SessionStorageError('Failed to get stats', { cause: causeError }))
+        err(new SessionStorageError('Failed to get stats', { cause: toError(error) }))
       );
     }
   }

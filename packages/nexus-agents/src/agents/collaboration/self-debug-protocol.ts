@@ -19,9 +19,7 @@ import type {
   ErrorExplanation,
   CodeFix,
   DebugIteration,
-  ErrorPattern,
 } from './self-debug-types.js';
-import { DEFAULT_ERROR_PATTERNS, DEFAULT_SELF_DEBUG_CONFIG } from './self-debug-types.js';
 import {
   buildExplanationPrompt,
   buildFixPrompt,
@@ -36,6 +34,14 @@ import {
   type CodeExecutor,
   type ResultBuildOpts,
 } from './self-debug-helpers.js';
+import type {
+  ResolvedConfig,
+  ExecutionContext,
+  FixAttemptOptions,
+  IterationResult,
+} from './self-debug-config.js';
+import { mergeConfig } from './self-debug-config.js';
+
 export type { CodeExecutor } from './self-debug-helpers.js';
 
 // =============================================================================
@@ -50,69 +56,7 @@ export interface SelfDebugExecuteOptions {
   readonly executor: CodeExecutor;
 }
 
-/** Resolved config with all defaults applied. */
-interface ResolvedConfig {
-  readonly maxIterations: number;
-  readonly iterationTimeoutMs: number;
-  readonly stopOnFirstError: boolean;
-  readonly includeExplanation: boolean;
-  readonly errorPatterns: readonly ErrorPattern[];
-}
-
-/** Context passed between methods during execution. */
-interface ExecutionContext {
-  readonly task: Task;
-  readonly agent: IAgent;
-  readonly executor: CodeExecutor;
-  readonly startTime: number;
-}
-
-/** Options for fix attempt. */
-interface FixAttemptOptions {
-  readonly ctx: ExecutionContext;
-  readonly code: string;
-  readonly execution: ExecutionResult;
-  readonly errors: ParsedError[];
-  readonly iterNum: number;
-  readonly iterStart: number;
-}
-
-/** Internal result from an iteration. */
-interface IterationResult {
-  success: boolean;
-  newCode: string;
-  execution: ExecutionResult;
-  fixedErrors: ParsedError[];
-  madeProgress: boolean;
-  iteration: DebugIteration;
-}
-
 const logger = createLogger({ component: 'self-debug-protocol' });
-
-/** Get default resolved config. */
-function getDefaultConfig(): ResolvedConfig {
-  const d = DEFAULT_SELF_DEBUG_CONFIG;
-  return {
-    maxIterations: d.maxIterations,
-    iterationTimeoutMs: d.iterationTimeoutMs,
-    stopOnFirstError: d.stopOnFirstError,
-    includeExplanation: d.includeExplanation,
-    errorPatterns: DEFAULT_ERROR_PATTERNS,
-  };
-}
-
-/** Merge config with defaults. */
-function mergeConfig(config: SelfDebugConfig | undefined): ResolvedConfig {
-  if (config === undefined) return getDefaultConfig();
-  const d = getDefaultConfig();
-  return {
-    maxIterations: config.maxIterations ?? d.maxIterations,
-    iterationTimeoutMs: config.iterationTimeoutMs ?? d.iterationTimeoutMs,
-    stopOnFirstError: config.stopOnFirstError ?? d.stopOnFirstError,
-    includeExplanation: config.includeExplanation ?? d.includeExplanation,
-    errorPatterns: config.errorPatterns ?? d.errorPatterns,
-  };
-}
 
 // =============================================================================
 // Self-Debug Protocol

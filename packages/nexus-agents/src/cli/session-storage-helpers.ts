@@ -161,3 +161,92 @@ export function generateTaskId(): string {
 export function getCurrentTimestamp(): string {
   return new Date().toISOString();
 }
+
+// ============================================================================
+// Error Helpers
+// ============================================================================
+
+/**
+ * Convert unknown error to Error instance.
+ * Used for wrapping errors in Result types.
+ */
+export function toError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
+}
+
+// ============================================================================
+// SQL Query Constants
+// ============================================================================
+
+/** Insert a new session. */
+export const SQL_INSERT_SESSION = `
+  INSERT INTO sessions (id, created_at, updated_at, status, metadata)
+  VALUES (?, ?, ?, ?, ?)
+`;
+
+/** Get a session by ID. */
+export const SQL_GET_SESSION = `SELECT * FROM sessions WHERE id = ?`;
+
+/** Update session status. */
+export const SQL_UPDATE_SESSION_STATUS = `
+  UPDATE sessions SET status = ?, updated_at = ? WHERE id = ?
+`;
+
+/** Update session metadata. */
+export const SQL_UPDATE_SESSION_METADATA = `
+  UPDATE sessions SET metadata = ?, updated_at = ? WHERE id = ?
+`;
+
+/** Update session timestamp. */
+export const SQL_UPDATE_SESSION_TIMESTAMP = `
+  UPDATE sessions SET updated_at = ? WHERE id = ?
+`;
+
+/** List sessions with task aggregates. */
+export const SQL_LIST_SESSIONS = `
+  SELECT
+    s.id, s.created_at, s.updated_at, s.status,
+    COUNT(t.id) as task_count,
+    COALESCE(SUM(t.duration_ms), 0) as total_duration_ms,
+    COALESCE(SUM(t.tokens_used), 0) as total_tokens,
+    COALESCE(SUM(t.cost_usd), 0) as total_cost_usd
+  FROM sessions s
+  LEFT JOIN tasks t ON s.id = t.session_id
+  GROUP BY s.id
+  ORDER BY s.updated_at DESC
+  LIMIT ?
+`;
+
+/** Delete a session by ID. */
+export const SQL_DELETE_SESSION = `DELETE FROM sessions WHERE id = ?`;
+
+/** Delete sessions older than a cutoff. */
+export const SQL_PRUNE_SESSIONS = `DELETE FROM sessions WHERE updated_at < ?`;
+
+/** Count sessions. */
+export const SQL_COUNT_SESSIONS = `SELECT COUNT(*) as count FROM sessions`;
+
+/** Insert a new task. */
+export const SQL_INSERT_TASK = `
+  INSERT INTO tasks (id, session_id, task, status, created_at)
+  VALUES (?, ?, ?, ?, ?)
+`;
+
+/** Get tasks for a session. */
+export const SQL_GET_TASKS = `
+  SELECT * FROM tasks WHERE session_id = ? ORDER BY created_at ASC
+`;
+
+/** Update a task. */
+export const SQL_UPDATE_TASK = `
+  UPDATE tasks
+  SET result = COALESCE(?, result),
+      status = ?,
+      duration_ms = COALESCE(?, duration_ms),
+      tokens_used = COALESCE(?, tokens_used),
+      cost_usd = COALESCE(?, cost_usd)
+  WHERE id = ?
+`;
+
+/** Count tasks. */
+export const SQL_COUNT_TASKS = `SELECT COUNT(*) as count FROM tasks`;

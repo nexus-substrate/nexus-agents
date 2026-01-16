@@ -1,13 +1,8 @@
-/**
- * nexus-agents/agents - ContextPruner
- *
- * Handles context pruning with priority-based content retention,
- * summarization triggers, and various history pruning strategies.
- */
+/** Context pruning with priority-based retention and multiple strategies. */
 
 import { z } from 'zod';
 import type { Result, IModelAdapter, ILogger } from '../core/index.js';
-import { ok, err, ValidationError, createLogger } from '../core/index.js';
+import { err, ValidationError, createLogger } from '../core/index.js';
 import {
   ContextManager,
   ContentPriority,
@@ -24,13 +19,19 @@ import {
   SLIDING_WINDOW_PROMPT,
   HIERARCHICAL_PROMPT,
   SEMANTIC_PROMPT,
-  createEmptyPruneResult,
   removeItemsDirectly,
   summarizeAndRemoveItems,
   extractKeywords,
   calculateRelevance,
   type PruneResult,
 } from './pruning-strategies.js';
+import {
+  calculateDefaultTarget,
+  scoreByPriorityWeightedAge,
+  removeItemsToTarget,
+  wrapPruneResult,
+  createEmptyPruneOk,
+} from './context-pruner-helpers.js';
 
 // Re-export strategy types
 export type { SlidingWindowOptions, HierarchicalOptions, SemanticOptions, PruneResult };
@@ -88,17 +89,10 @@ export interface PruneOptions {
   semanticOptions?: Partial<SemanticOptions>;
 }
 
-interface PruneScore {
-  item: ContextItem;
-  score: number;
-}
-
 const DEFAULT_MIN_ITEMS = 1;
 const DEFAULT_AUTO_TRIGGER = 0.9;
 
-/**
- * Handles context pruning with multiple strategies.
- */
+/** Handles context pruning with multiple strategies. */
 export class ContextPruner {
   private readonly contextManager: ContextManager;
   private readonly adapter: IModelAdapter | undefined;
@@ -138,10 +132,12 @@ export class ContextPruner {
   async prune(options: PruneOptions = {}): Promise<Result<PruneResult, ValidationError>> {
     const strategy = options.strategy ?? this.defaultStrategy;
     const categories = options.categories ?? ['active', 'task'];
-    const targetTokens = options.targetTokens ?? this.calculateDefaultTarget();
+    const stats = this.contextManager.getStats();
+    const targetTokens =
+      options.targetTokens ?? calculateDefaultTarget(stats, this.autoTriggerThreshold);
 
     if (targetTokens <= 0) {
-      return ok(createEmptyPruneResult());
+      return createEmptyPruneOk();
     }
 
     this.logger.info('Starting pruning operation', { strategy, targetTokens, categories });
@@ -216,20 +212,13 @@ export class ContextPruner {
     return freeableTokens;
   }
 
-  private calculateDefaultTarget(): number {
-    const stats = this.contextManager.getStats();
-    const targetUsage = this.autoTriggerThreshold - 0.1;
-    const targetTotal = Math.floor(stats.availableTokens * targetUsage);
-    return Math.max(0, stats.totalTokens - targetTotal);
-  }
-
   private pruneOldestFirst(
     targetTokens: number,
     categories: Array<keyof Omit<ContextBudget, 'reserved'>>
   ): Result<PruneResult, ValidationError> {
     const candidates = this.getPruneCandidates(categories);
     const sorted = candidates.sort((a, b) => a.addedAt - b.addedAt);
-    return this.removeItemsToTarget(sorted, targetTokens, categories);
+    return this.removeItemsToTargetInternal(sorted, targetTokens, categories);
   }
 
   private pruneLowestPriority(
@@ -238,7 +227,7 @@ export class ContextPruner {
   ): Result<PruneResult, ValidationError> {
     const candidates = this.getPruneCandidates(categories);
     const sorted = candidates.sort((a, b) => a.priority - b.priority || a.addedAt - b.addedAt);
-    return this.removeItemsToTarget(sorted, targetTokens, categories);
+    return this.removeItemsToTargetInternal(sorted, targetTokens, categories);
   }
 
   private prunePriorityWeightedAge(
@@ -246,17 +235,8 @@ export class ContextPruner {
     categories: Array<keyof Omit<ContextBudget, 'reserved'>>
   ): Result<PruneResult, ValidationError> {
     const candidates = this.getPruneCandidates(categories);
-    const now = Date.now();
-    const scores: PruneScore[] = candidates.map((item) => {
-      const ageHours = (now - item.addedAt) / (1000 * 60 * 60);
-      return { item, score: item.priority * (1 / (ageHours + 1)) };
-    });
-    scores.sort((a, b) => a.score - b.score);
-    return this.removeItemsToTarget(
-      scores.map((s) => s.item),
-      targetTokens,
-      categories
-    );
+    const sorted = scoreByPriorityWeightedAge(candidates);
+    return this.removeItemsToTargetInternal(sorted, targetTokens, categories);
   }
 
   private async pruneWithSummarization(
@@ -269,7 +249,7 @@ export class ContextPruner {
       return this.prunePriorityWeightedAge(targetTokens, categories);
     }
     const candidates = this.getPruneCandidates(categories);
-    if (candidates.length === 0) return ok(createEmptyPruneResult());
+    if (candidates.length === 0) return createEmptyPruneOk();
 
     const toSummarize = candidates
       .sort((a, b) => a.addedAt - b.addedAt)
@@ -282,7 +262,7 @@ export class ContextPruner {
       logger: this.logger,
       customPrompt,
     });
-    return ok(result);
+    return wrapPruneResult(result);
   }
 
   private async pruneSlidingWindow(
@@ -296,11 +276,11 @@ export class ContextPruner {
       : { preserveRecentCount: 10, summarizeOlder: true };
 
     const candidates = this.getPruneCandidates(categories);
-    if (candidates.length === 0) return ok(createEmptyPruneResult());
+    if (candidates.length === 0) return createEmptyPruneOk();
 
     const sorted = candidates.sort((a, b) => b.addedAt - a.addedAt);
     const olderItems = sorted.slice(config.preserveRecentCount);
-    if (olderItems.length === 0) return ok(createEmptyPruneResult());
+    if (olderItems.length === 0) return createEmptyPruneOk();
 
     if (config.summarizeOlder && this.adapter !== undefined) {
       const result = await summarizeAndRemoveItems({
@@ -311,9 +291,9 @@ export class ContextPruner {
         logger: this.logger,
         customPrompt: options.summarizationPrompt ?? SLIDING_WINDOW_PROMPT,
       });
-      return ok(result);
+      return wrapPruneResult(result);
     }
-    return ok(removeItemsDirectly(olderItems, targetTokens, this.contextManager));
+    return wrapPruneResult(removeItemsDirectly(olderItems, targetTokens, this.contextManager));
   }
 
   private async pruneHierarchical(
@@ -334,7 +314,7 @@ export class ContextPruner {
     const prunableMiddle = middleItems.filter(
       (item) => categories.includes(item.category) && item.priority < this.protectedPriority
     );
-    if (prunableMiddle.length === 0) return ok(createEmptyPruneResult());
+    if (prunableMiddle.length === 0) return createEmptyPruneOk();
 
     if (config.summarizeMiddle && this.adapter !== undefined) {
       const result = await summarizeAndRemoveItems({
@@ -345,9 +325,9 @@ export class ContextPruner {
         logger: this.logger,
         customPrompt: options.summarizationPrompt ?? HIERARCHICAL_PROMPT,
       });
-      return ok(result);
+      return wrapPruneResult(result);
     }
-    return this.removeItemsToTarget(prunableMiddle, targetTokens, categories);
+    return this.removeItemsToTargetInternal(prunableMiddle, targetTokens, categories);
   }
 
   private async pruneSemantic(
@@ -370,7 +350,7 @@ export class ContextPruner {
       : defaultConfig;
 
     const candidates = this.getPruneCandidates(categories);
-    if (candidates.length === 0) return ok(createEmptyPruneResult());
+    if (candidates.length === 0) return createEmptyPruneOk();
 
     const taskKeywords = extractKeywords(config.currentTask ?? '');
     const scoredItems = candidates.map((item) => ({
@@ -384,7 +364,7 @@ export class ContextPruner {
       .filter((scored) => scored.relevance < config.minRelevanceScore)
       .map((scored) => scored.item);
 
-    if (toPrune.length === 0) return ok(createEmptyPruneResult());
+    if (toPrune.length === 0) return createEmptyPruneOk();
 
     if (this.adapter !== undefined) {
       const result = await summarizeAndRemoveItems({
@@ -395,43 +375,25 @@ export class ContextPruner {
         logger: this.logger,
         customPrompt: options.summarizationPrompt ?? SEMANTIC_PROMPT,
       });
-      return ok(result);
+      return wrapPruneResult(result);
     }
-    return ok(removeItemsDirectly(toPrune, targetTokens, this.contextManager));
+    return wrapPruneResult(removeItemsDirectly(toPrune, targetTokens, this.contextManager));
   }
 
-  private removeItemsToTarget(
+  /** Internal method that delegates to the helper function. */
+  private removeItemsToTargetInternal(
     sortedItems: ContextItem[],
     targetTokens: number,
     categories: Array<keyof Omit<ContextBudget, 'reserved'>>
   ): Result<PruneResult, ValidationError> {
-    const categoryRemaining = new Map<keyof Omit<ContextBudget, 'reserved'>, number>();
-    for (const category of categories) {
-      categoryRemaining.set(category, this.contextManager.getByCategory(category).length);
-    }
-
-    const removedItems: ContextItem[] = [];
-    let tokensFreed = 0;
-
-    for (const item of sortedItems) {
-      if (tokensFreed >= targetTokens) break;
-      const remaining = categoryRemaining.get(item.category) ?? 0;
-      if (remaining <= this.minItemsPerCategory) continue;
-
-      this.contextManager.remove(item.id);
-      removedItems.push(item);
-      tokensFreed += item.tokenCount;
-      categoryRemaining.set(item.category, remaining - 1);
-    }
-
-    const targetReached = tokensFreed >= targetTokens;
-    this.logger.info('Pruning completed', {
-      itemsRemoved: removedItems.length,
-      tokensFreed,
+    const result = removeItemsToTarget({
+      sortedItems,
       targetTokens,
-      targetReached,
+      categories,
+      manager: this.contextManager,
+      minItemsPerCategory: this.minItemsPerCategory,
+      logger: this.logger,
     });
-
-    return ok({ removedItems, summarizedItems: [], tokensFreed, targetReached });
+    return wrapPruneResult(result);
   }
 }

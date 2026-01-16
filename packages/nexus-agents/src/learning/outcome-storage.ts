@@ -9,7 +9,7 @@
  */
 
 import type { Result } from '../core/result.js';
-import { ok, err } from '../core/result.js';
+import { ok } from '../core/result.js';
 import { ValidationError } from '../core/errors.js';
 import type { ILogger } from '../core/logger.js';
 import { createLogger } from '../core/logger.js';
@@ -36,6 +36,12 @@ import {
   rowToDecision,
   rowToOutcome,
   rowToStats,
+  INSERT_DECISION_SQL,
+  INSERT_OUTCOME_SQL,
+  INSERT_REWARD_SQL,
+  MODEL_STATS_SQL,
+  wrapStorageError,
+  toError,
 } from './outcome-storage-helpers.js';
 
 /**
@@ -77,13 +83,12 @@ export class SQLiteOutcomeStorage implements IOutcomeStorage {
     try {
       const betterSqlite3Module = await import('better-sqlite3').catch(() => null);
       if (betterSqlite3Module === null) {
-        return err(
-          new OutcomeStorageError('better-sqlite3 is not installed. Run: pnpm add better-sqlite3', {
-            context: { dbPath: this.dbPath },
-          })
+        return wrapStorageError(
+          new Error('better-sqlite3 is not installed'),
+          'better-sqlite3 is not installed. Run: pnpm add better-sqlite3',
+          { dbPath: this.dbPath }
         );
       }
-
       const Database = betterSqlite3Module.default;
       this.db = new (Database as new (path: string) => ISQLiteDatabase)(this.dbPath);
       this.createTables();
@@ -91,14 +96,10 @@ export class SQLiteOutcomeStorage implements IOutcomeStorage {
       this.logger.info('SQLiteOutcomeStorage initialized', { dbPath: this.dbPath });
       return ok(undefined);
     } catch (error) {
-      const causeError = error instanceof Error ? error : new Error(String(error));
-      this.logger.error('Failed to initialize SQLiteOutcomeStorage', causeError);
-      return err(
-        new OutcomeStorageError('Failed to initialize outcome storage', {
-          cause: causeError,
-          context: { dbPath: this.dbPath },
-        })
-      );
+      this.logger.error('Failed to initialize SQLiteOutcomeStorage', toError(error));
+      return wrapStorageError(error, 'Failed to initialize outcome storage', {
+        dbPath: this.dbPath,
+      });
     }
   }
 
@@ -127,15 +128,7 @@ export class SQLiteOutcomeStorage implements IOutcomeStorage {
   storeDecision(decision: StoredRoutingDecision): Promise<Result<void, OutcomeStorageError>> {
     try {
       this.ensureInitialized();
-      const database = this.getDatabase();
-
-      const stmt = database.prepare<RoutingDecisionRow>(`
-        INSERT OR REPLACE INTO routing_decisions
-        (id, trace_id, timestamp, router_type, selected_model, alternative_models,
-         confidence, reason, task_profile, request_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-
+      const stmt = this.getDatabase().prepare<RoutingDecisionRow>(INSERT_DECISION_SQL);
       stmt.run(
         decision.id,
         decision.traceId,
@@ -148,23 +141,15 @@ export class SQLiteOutcomeStorage implements IOutcomeStorage {
         JSON.stringify(decision.taskProfile),
         decision.requestId ?? null
       );
-
       this.logger.debug('Stored routing decision', {
         id: decision.id,
         model: decision.selectedModel,
       });
-
       return Promise.resolve(ok(undefined));
     } catch (error) {
-      const causeError = error instanceof Error ? error : new Error(String(error));
-      this.logger.error('Failed to store routing decision', causeError);
+      this.logger.error('Failed to store routing decision', toError(error));
       return Promise.resolve(
-        err(
-          new OutcomeStorageError('Failed to store routing decision', {
-            cause: causeError,
-            context: { decisionId: decision.id },
-          })
-        )
+        wrapStorageError(error, 'Failed to store routing decision', { decisionId: decision.id })
       );
     }
   }
@@ -172,15 +157,7 @@ export class SQLiteOutcomeStorage implements IOutcomeStorage {
   storeOutcome(outcome: StoredTaskOutcome): Promise<Result<void, OutcomeStorageError>> {
     try {
       this.ensureInitialized();
-      const database = this.getDatabase();
-
-      const stmt = database.prepare<TaskOutcomeRow>(`
-        INSERT OR REPLACE INTO task_outcomes
-        (routing_decision_id, timestamp, outcome_class, success, quality_score,
-         duration_ms, token_usage, error_message)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-
+      const stmt = this.getDatabase().prepare<TaskOutcomeRow>(INSERT_OUTCOME_SQL);
       stmt.run(
         outcome.routingDecisionId,
         new Date(outcome.timestamp).getTime(),
@@ -191,23 +168,17 @@ export class SQLiteOutcomeStorage implements IOutcomeStorage {
         outcome.tokenUsage,
         outcome.errorMessage ?? null
       );
-
       this.logger.debug('Stored task outcome', {
         decisionId: outcome.routingDecisionId,
         success: outcome.success,
       });
-
       return Promise.resolve(ok(undefined));
     } catch (error) {
-      const causeError = error instanceof Error ? error : new Error(String(error));
-      this.logger.error('Failed to store task outcome', causeError);
+      this.logger.error('Failed to store task outcome', toError(error));
       return Promise.resolve(
-        err(
-          new OutcomeStorageError('Failed to store task outcome', {
-            cause: causeError,
-            context: { decisionId: outcome.routingDecisionId },
-          })
-        )
+        wrapStorageError(error, 'Failed to store task outcome', {
+          decisionId: outcome.routingDecisionId,
+        })
       );
     }
   }
@@ -215,15 +186,7 @@ export class SQLiteOutcomeStorage implements IOutcomeStorage {
   storeReward(reward: StoredReward): Promise<Result<void, OutcomeStorageError>> {
     try {
       this.ensureInitialized();
-      const database = this.getDatabase();
-
-      const stmt = database.prepare(`
-        INSERT OR REPLACE INTO computed_rewards
-        (routing_decision_id, timestamp, reward, base_reward, quality_bonus,
-         speed_bonus, efficiency_bonus, retry_penalty)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-
+      const stmt = this.getDatabase().prepare(INSERT_REWARD_SQL);
       stmt.run(
         reward.routingDecisionId,
         new Date(reward.timestamp).getTime(),
@@ -234,23 +197,17 @@ export class SQLiteOutcomeStorage implements IOutcomeStorage {
         reward.efficiencyBonus,
         reward.retryPenalty
       );
-
       this.logger.debug('Stored computed reward', {
         decisionId: reward.routingDecisionId,
         reward: reward.reward,
       });
-
       return Promise.resolve(ok(undefined));
     } catch (error) {
-      const causeError = error instanceof Error ? error : new Error(String(error));
-      this.logger.error('Failed to store computed reward', causeError);
+      this.logger.error('Failed to store computed reward', toError(error));
       return Promise.resolve(
-        err(
-          new OutcomeStorageError('Failed to store computed reward', {
-            cause: causeError,
-            context: { decisionId: reward.routingDecisionId },
-          })
-        )
+        wrapStorageError(error, 'Failed to store computed reward', {
+          decisionId: reward.routingDecisionId,
+        })
       );
     }
   }
@@ -263,58 +220,29 @@ export class SQLiteOutcomeStorage implements IOutcomeStorage {
         .get(id);
       return Promise.resolve(ok(row === undefined ? null : rowToDecision(row)));
     } catch (error) {
-      const causeError = error instanceof Error ? error : new Error(String(error));
-      return Promise.resolve(
-        err(new OutcomeStorageError('Failed to get routing decision', { cause: causeError }))
-      );
+      return Promise.resolve(wrapStorageError(error, 'Failed to get routing decision'));
     }
   }
 
-  getOutcome(
-    routingDecisionId: string
-  ): Promise<Result<StoredTaskOutcome | null, OutcomeStorageError>> {
+  getOutcome(decisionId: string): Promise<Result<StoredTaskOutcome | null, OutcomeStorageError>> {
     try {
       this.ensureInitialized();
       const row = this.getDatabase()
         .prepare<TaskOutcomeRow>(`SELECT * FROM task_outcomes WHERE routing_decision_id = ?`)
-        .get(routingDecisionId);
+        .get(decisionId);
       return Promise.resolve(ok(row === undefined ? null : rowToOutcome(row)));
     } catch (error) {
-      const causeError = error instanceof Error ? error : new Error(String(error));
-      return Promise.resolve(
-        err(new OutcomeStorageError('Failed to get task outcome', { cause: causeError }))
-      );
+      return Promise.resolve(wrapStorageError(error, 'Failed to get task outcome'));
     }
   }
 
   getModelStats(): Promise<Result<StoredModelStats[], OutcomeStorageError>> {
     try {
       this.ensureInitialized();
-      const rows = this.getDatabase()
-        .prepare<ModelStatsRow>(
-          `
-        SELECT
-          rd.selected_model as model,
-          COUNT(DISTINCT rd.id) as total_decisions,
-          COUNT(DISTINCT o.routing_decision_id) as total_outcomes,
-          COALESCE(AVG(r.reward), 0) as avg_reward,
-          COALESCE(AVG(o.quality_score), 0) as avg_quality_score,
-          COALESCE(AVG(o.duration_ms), 0) as avg_latency_ms,
-          COALESCE(AVG(CAST(o.success AS REAL)), 0) as success_rate
-        FROM routing_decisions rd
-        LEFT JOIN task_outcomes o ON rd.id = o.routing_decision_id
-        LEFT JOIN computed_rewards r ON rd.id = r.routing_decision_id
-        GROUP BY rd.selected_model
-        ORDER BY total_decisions DESC
-      `
-        )
-        .all();
+      const rows = this.getDatabase().prepare<ModelStatsRow>(MODEL_STATS_SQL).all();
       return Promise.resolve(ok(rows.map(rowToStats)));
     } catch (error) {
-      const causeError = error instanceof Error ? error : new Error(String(error));
-      return Promise.resolve(
-        err(new OutcomeStorageError('Failed to get model stats', { cause: causeError }))
-      );
+      return Promise.resolve(wrapStorageError(error, 'Failed to get model stats'));
     }
   }
 
@@ -324,17 +252,11 @@ export class SQLiteOutcomeStorage implements IOutcomeStorage {
   ): Promise<Result<StoredRoutingDecision[], OutcomeStorageError>> {
     try {
       this.ensureInitialized();
-      const rows = this.getDatabase()
-        .prepare<RoutingDecisionRow>(
-          `SELECT * FROM routing_decisions WHERE selected_model = ? ORDER BY timestamp DESC LIMIT ?`
-        )
-        .all(model, limit);
+      const sql = `SELECT * FROM routing_decisions WHERE selected_model = ? ORDER BY timestamp DESC LIMIT ?`;
+      const rows = this.getDatabase().prepare<RoutingDecisionRow>(sql).all(model, limit);
       return Promise.resolve(ok(rows.map(rowToDecision)));
     } catch (error) {
-      const causeError = error instanceof Error ? error : new Error(String(error));
-      return Promise.resolve(
-        err(new OutcomeStorageError('Failed to get recent decisions', { cause: causeError }))
-      );
+      return Promise.resolve(wrapStorageError(error, 'Failed to get recent decisions'));
     }
   }
 
@@ -343,49 +265,33 @@ export class SQLiteOutcomeStorage implements IOutcomeStorage {
   ): Promise<Result<StoredRoutingDecision[], OutcomeStorageError>> {
     try {
       this.ensureInitialized();
-      const rows = this.getDatabase()
-        .prepare<RoutingDecisionRow>(
-          `SELECT * FROM routing_decisions WHERE request_id = ? ORDER BY timestamp DESC`
-        )
-        .all(requestId);
+      const sql = `SELECT * FROM routing_decisions WHERE request_id = ? ORDER BY timestamp DESC`;
+      const rows = this.getDatabase().prepare<RoutingDecisionRow>(sql).all(requestId);
       return Promise.resolve(ok(rows.map(rowToDecision)));
     } catch (error) {
-      const causeError = error instanceof Error ? error : new Error(String(error));
-      return Promise.resolve(
-        err(new OutcomeStorageError('Failed to get decisions by request ID', { cause: causeError }))
-      );
+      return Promise.resolve(wrapStorageError(error, 'Failed to get decisions by request ID'));
     }
   }
 
   prune(olderThan: Date): Promise<Result<number, OutcomeStorageError>> {
     try {
       this.ensureInitialized();
-      const database = this.getDatabase();
+      const db = this.getDatabase();
       const cutoff = olderThan.getTime();
-
+      const subquery = `(SELECT id FROM routing_decisions WHERE timestamp < ?)`;
       // Delete in order due to foreign key constraints
-      const r1 = database
-        .prepare(
-          `DELETE FROM computed_rewards WHERE routing_decision_id IN
-           (SELECT id FROM routing_decisions WHERE timestamp < ?)`
-        )
+      const r1 = db
+        .prepare(`DELETE FROM computed_rewards WHERE routing_decision_id IN ${subquery}`)
         .run(cutoff);
-      const r2 = database
-        .prepare(
-          `DELETE FROM task_outcomes WHERE routing_decision_id IN
-           (SELECT id FROM routing_decisions WHERE timestamp < ?)`
-        )
+      const r2 = db
+        .prepare(`DELETE FROM task_outcomes WHERE routing_decision_id IN ${subquery}`)
         .run(cutoff);
-      const r3 = database.prepare(`DELETE FROM routing_decisions WHERE timestamp < ?`).run(cutoff);
-
+      const r3 = db.prepare(`DELETE FROM routing_decisions WHERE timestamp < ?`).run(cutoff);
       const total = r1.changes + r2.changes + r3.changes;
       this.logger.info('Pruned old records', { total, cutoff: olderThan.toISOString() });
       return Promise.resolve(ok(total));
     } catch (error) {
-      const causeError = error instanceof Error ? error : new Error(String(error));
-      return Promise.resolve(
-        err(new OutcomeStorageError('Failed to prune records', { cause: causeError }))
-      );
+      return Promise.resolve(wrapStorageError(error, 'Failed to prune records'));
     }
   }
 
@@ -394,22 +300,18 @@ export class SQLiteOutcomeStorage implements IOutcomeStorage {
   > {
     try {
       this.ensureInitialized();
-      const database = this.getDatabase();
-      const decisions =
-        database.prepare<{ count: number }>('SELECT COUNT(*) as count FROM routing_decisions').get()
-          ?.count ?? 0;
-      const outcomes =
-        database.prepare<{ count: number }>('SELECT COUNT(*) as count FROM task_outcomes').get()
-          ?.count ?? 0;
-      const rewards =
-        database.prepare<{ count: number }>('SELECT COUNT(*) as count FROM computed_rewards').get()
-          ?.count ?? 0;
-      return Promise.resolve(ok({ decisions, outcomes, rewards }));
-    } catch (error) {
-      const causeError = error instanceof Error ? error : new Error(String(error));
+      const db = this.getDatabase();
+      const getCount = (table: string): number =>
+        db.prepare<{ count: number }>(`SELECT COUNT(*) as count FROM ${table}`).get()?.count ?? 0;
       return Promise.resolve(
-        err(new OutcomeStorageError('Failed to get counts', { cause: causeError }))
+        ok({
+          decisions: getCount('routing_decisions'),
+          outcomes: getCount('task_outcomes'),
+          rewards: getCount('computed_rewards'),
+        })
       );
+    } catch (error) {
+      return Promise.resolve(wrapStorageError(error, 'Failed to get counts'));
     }
   }
 

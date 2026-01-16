@@ -8,7 +8,6 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { createHash } from 'node:crypto';
 import type {
   IProfileMemory,
   IExperienceMemory,
@@ -20,6 +19,15 @@ import type {
   ActionStep,
   ExecutionOutcome,
 } from './mobimem-types.js';
+import {
+  calculateConfidence,
+  generatePatternKey,
+  hashInput,
+  calculatePatternScore,
+  computeUpdatedMetrics,
+  countUnique,
+  computeAverage,
+} from './mobimem-impl-helpers.js';
 
 /**
  * Profile Memory implementation.
@@ -48,7 +56,7 @@ export class ProfileMemoryImpl implements IProfileMemory {
       const updated: ProfileEntry = {
         ...existing,
         preferenceValue,
-        confidence: this.calculateConfidence(newObservationCount),
+        confidence: calculateConfidence(newObservationCount),
         observationCount: newObservationCount,
         updatedAt: now,
       };
@@ -62,7 +70,7 @@ export class ProfileMemoryImpl implements IProfileMemory {
       entityType,
       preferenceKey,
       preferenceValue,
-      confidence: this.calculateConfidence(1),
+      confidence: calculateConfidence(1),
       observationCount: 1,
       createdAt: now,
       updatedAt: now,
@@ -110,24 +118,11 @@ export class ProfileMemoryImpl implements IProfileMemory {
   }
 
   getUniqueEntities(): number {
-    const entities = new Set<string>();
-    for (const entry of this.entries.values()) {
-      entities.add(entry.entityId);
-    }
-    return entities.size;
+    return countUnique(this.entries.values(), (e) => e.entityId);
   }
 
   getAverageConfidence(): number {
-    if (this.entries.size === 0) return 0;
-    let total = 0;
-    for (const entry of this.entries.values()) {
-      total += entry.confidence;
-    }
-    return total / this.entries.size;
-  }
-
-  private calculateConfidence(observationCount: number): number {
-    return Math.min(1, Math.log10(observationCount + 1) / 2);
+    return computeAverage(this.entries.values(), (e) => e.confidence);
   }
 
   private enforceLimit(entityId: string): void {
@@ -160,19 +155,20 @@ export class ExperienceMemoryImpl implements IExperienceMemory {
     outcome: ExecutionOutcome,
     contextSignature: string
   ): ExperienceEntry {
-    const patternKey = this.generatePatternKey(taskType, actionSequence, contextSignature);
+    const patternKey = generatePatternKey(taskType, actionSequence, contextSignature);
     const existing = this.patterns.get(patternKey);
     const now = new Date();
 
     if (existing !== undefined) {
-      const newAttemptCount = existing.attemptCount + 1;
-      const newSuccessCount = existing.successCount + (outcome.success ? 1 : 0);
+      const metrics = computeUpdatedMetrics(
+        existing.successCount,
+        existing.attemptCount,
+        outcome.success
+      );
       const updated: ExperienceEntry = {
         ...existing,
         outcome,
-        successCount: newSuccessCount,
-        attemptCount: newAttemptCount,
-        successRate: newSuccessCount / newAttemptCount,
+        ...metrics,
         lastUsedAt: now,
       };
       this.patterns.set(patternKey, updated);
@@ -220,8 +216,8 @@ export class ExperienceMemoryImpl implements IExperienceMemory {
     for (const entry of this.patterns.values()) {
       if (entry.taskType !== taskType) continue;
 
-      const contextMatch = entry.contextSignature === contextSignature ? 1 : 0.5;
-      const score = entry.successRate * contextMatch * Math.log10(entry.attemptCount + 1);
+      const contextMatches = entry.contextSignature === contextSignature;
+      const score = calculatePatternScore(entry.successRate, contextMatches, entry.attemptCount);
 
       if (score > bestScore && entry.successRate >= this.config.minExperienceSuccessRate) {
         best = entry;
@@ -235,15 +231,8 @@ export class ExperienceMemoryImpl implements IExperienceMemory {
   updatePatternMetrics(patternId: string, success: boolean): void {
     for (const [key, entry] of this.patterns) {
       if (entry.id === patternId) {
-        const newAttemptCount = entry.attemptCount + 1;
-        const newSuccessCount = entry.successCount + (success ? 1 : 0);
-        this.patterns.set(key, {
-          ...entry,
-          successCount: newSuccessCount,
-          attemptCount: newAttemptCount,
-          successRate: newSuccessCount / newAttemptCount,
-          lastUsedAt: new Date(),
-        });
+        const metrics = computeUpdatedMetrics(entry.successCount, entry.attemptCount, success);
+        this.patterns.set(key, { ...entry, ...metrics, lastUsedAt: new Date() });
         return;
       }
     }
@@ -254,34 +243,11 @@ export class ExperienceMemoryImpl implements IExperienceMemory {
   }
 
   getUniqueTaskTypes(): number {
-    const types = new Set<string>();
-    for (const entry of this.patterns.values()) {
-      types.add(entry.taskType);
-    }
-    return types.size;
+    return countUnique(this.patterns.values(), (e) => e.taskType);
   }
 
   getAverageSuccessRate(): number {
-    if (this.patterns.size === 0) return 0;
-    let total = 0;
-    for (const entry of this.patterns.values()) {
-      total += entry.successRate;
-    }
-    return total / this.patterns.size;
-  }
-
-  private generatePatternKey(
-    taskType: string,
-    actionSequence: readonly ActionStep[],
-    contextSignature: string
-  ): string {
-    const sequenceHash = createHash('sha256')
-      .update(
-        JSON.stringify(actionSequence.map((a) => ({ type: a.actionType, params: a.parameters })))
-      )
-      .digest('hex')
-      .slice(0, 16);
-    return `${taskType}:${contextSignature}:${sequenceHash}`;
+    return computeAverage(this.patterns.values(), (e) => e.successRate);
   }
 
   private enforceLimit(taskType: string): void {
@@ -315,7 +281,7 @@ export class ActionCacheImpl implements IActionCache {
   }
 
   cache(input: unknown, result: unknown, durationMs: number): ActionCacheEntry {
-    const inputHash = this.hashInput(input);
+    const inputHash = hashInput(input);
     const now = new Date();
 
     const entry: ActionCacheEntry = {
@@ -338,7 +304,7 @@ export class ActionCacheImpl implements IActionCache {
 
   get(input: unknown): ActionCacheEntry | null {
     this.totalRequests++;
-    const inputHash = this.hashInput(input);
+    const inputHash = hashInput(input);
     const entry = this.entries.get(inputHash);
 
     if (entry === undefined) return null;
@@ -401,10 +367,6 @@ export class ActionCacheImpl implements IActionCache {
       hitRate: this.totalRequests > 0 ? this.totalHits / this.totalRequests : 0,
       timeSavedMs: totalTimeSaved,
     };
-  }
-
-  private hashInput(input: unknown): string {
-    return createHash('sha256').update(JSON.stringify(input)).digest('hex');
   }
 
   private enforceLimit(): void {

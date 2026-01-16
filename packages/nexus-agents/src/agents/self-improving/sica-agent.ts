@@ -19,11 +19,17 @@ import type {
   SicaExecutionResult,
   ImprovementAttempt,
   ImprovementOptions,
-  ConfigurationChange,
   SicaConfig,
 } from './sica-types.js';
 import { DEFAULT_SICA_CONFIG } from './sica-types.js';
 import { SicaVersionManager } from './sica-version-manager.js';
+import {
+  estimateQuality,
+  applyChanges,
+  createFailedAttempt,
+  generateHypothesis,
+  generateChanges,
+} from './sica-agent-helpers.js';
 
 /**
  * Options for creating a SICA agent.
@@ -216,22 +222,8 @@ export class SicaAgent {
       durationMs,
       tokensUsed: result.value.metadata.tokensUsed,
       success: true,
-      qualityScore: this.estimateQuality(result.value),
+      qualityScore: estimateQuality(result.value),
     };
-  }
-
-  /** Estimates quality of output (simplified). */
-  private estimateQuality(result: TaskResult): number {
-    const output = result.output as string;
-    if (typeof output !== 'string') return 0.5;
-
-    let score = 0.5;
-    if (output.length > 100) score += 0.1;
-    if (output.length > 500) score += 0.1;
-    if (!output.includes('error') && !output.includes('Error')) score += 0.1;
-    if (output.includes('```')) score += 0.1;
-
-    return Math.min(1, score);
   }
 
   /** Checks if improvement should be triggered. */
@@ -259,14 +251,14 @@ export class SicaAgent {
     metrics: VersionMetrics,
     options: ImprovementOptions
   ): ImprovementAttempt {
-    const hypothesis = this.generateHypothesis(metrics, options);
-    const changes = this.generateChanges(currentVersion.configuration, hypothesis, options);
+    const hypothesis = generateHypothesis(metrics, options);
+    const changes = generateChanges(currentVersion.configuration, hypothesis);
 
     if (changes.length === 0) {
-      return this.createFailedAttempt(currentVersion.id, hypothesis, 'No changes generated');
+      return createFailedAttempt(currentVersion.id, hypothesis, 'No changes generated');
     }
 
-    const newConfig = this.applyChanges(currentVersion.configuration, changes);
+    const newConfig = applyChanges(currentVersion.configuration, changes);
     const newVersion = this.versionManager.createDerivedVersion(
       currentVersion.id,
       newConfig,
@@ -274,7 +266,7 @@ export class SicaAgent {
     );
 
     if (newVersion === null) {
-      return this.createFailedAttempt(currentVersion.id, hypothesis, 'Failed to create version');
+      return createFailedAttempt(currentVersion.id, hypothesis, 'Failed to create version');
     }
 
     return {
@@ -289,143 +281,6 @@ export class SicaAgent {
         passed: true,
         performanceChange: 0,
         checks: [{ name: 'version_created', passed: true }],
-      },
-    };
-  }
-
-  /** Generates an improvement hypothesis. */
-  private generateHypothesis(metrics: VersionMetrics, options: ImprovementOptions): string {
-    const focus = options.focusArea ?? 'reliability';
-
-    if (metrics.successRate < 0.5) {
-      return 'Improve error handling and robustness';
-    }
-    if (focus === 'speed' && metrics.avgDurationMs > 10000) {
-      return 'Optimize for faster execution';
-    }
-    if (focus === 'quality' && (metrics.avgQualityScore ?? 0.5) < 0.7) {
-      return 'Enhance output quality and completeness';
-    }
-    if (focus === 'cost' && metrics.avgTokensUsed > 2000) {
-      return 'Reduce token usage while maintaining quality';
-    }
-
-    return 'General improvement to prompt clarity and structure';
-  }
-
-  /** Generates configuration changes based on hypothesis. */
-  private generateChanges(
-    config: AgentConfiguration,
-    hypothesis: string,
-    _options: ImprovementOptions
-  ): ConfigurationChange[] {
-    const changes: ConfigurationChange[] = [];
-
-    if (hypothesis.includes('error handling')) {
-      changes.push({
-        field: 'systemPrompt',
-        oldValue: config.systemPrompt,
-        newValue: this.improvePromptForErrors(config.systemPrompt),
-        reason: 'Added explicit error handling instructions',
-      });
-    }
-
-    if (hypothesis.includes('faster')) {
-      changes.push({
-        field: 'maxTokens',
-        oldValue: config.maxTokens,
-        newValue: Math.max(500, Math.floor(config.maxTokens * 0.8)),
-        reason: 'Reduced max tokens for faster response',
-      });
-    }
-
-    if (hypothesis.includes('quality')) {
-      changes.push({
-        field: 'temperature',
-        oldValue: config.temperature,
-        newValue: Math.max(0.1, config.temperature - 0.1),
-        reason: 'Lowered temperature for more consistent output',
-      });
-    }
-
-    if (hypothesis.includes('token usage')) {
-      changes.push({
-        field: 'systemPrompt',
-        oldValue: config.systemPrompt,
-        newValue: this.improvePromptForConciseness(config.systemPrompt),
-        reason: 'Added conciseness instructions',
-      });
-    }
-
-    // General improvement if no specific changes
-    if (changes.length === 0 && hypothesis.includes('General')) {
-      changes.push({
-        field: 'systemPrompt',
-        oldValue: config.systemPrompt,
-        newValue: this.improvePromptGeneral(config.systemPrompt),
-        reason: 'Refined prompt clarity and structure',
-      });
-    }
-
-    return changes;
-  }
-
-  /** Improves prompt generally. */
-  private improvePromptGeneral(prompt: string): string {
-    const addition = '\n\nFocus on clarity, correctness, and completeness in your responses.';
-    return prompt + addition;
-  }
-
-  /** Improves prompt for error handling. */
-  private improvePromptForErrors(prompt: string): string {
-    const addition =
-      '\n\nIMPORTANT: Handle edge cases carefully. Validate inputs before processing.';
-    return prompt + addition;
-  }
-
-  /** Improves prompt for conciseness. */
-  private improvePromptForConciseness(prompt: string): string {
-    const addition = '\n\nBe concise. Provide direct answers without unnecessary elaboration.';
-    return prompt + addition;
-  }
-
-  /** Applies changes to create a new configuration. */
-  private applyChanges(
-    config: AgentConfiguration,
-    changes: ConfigurationChange[]
-  ): AgentConfiguration {
-    let result = { ...config };
-
-    for (const change of changes) {
-      if (change.field === 'systemPrompt') {
-        result = { ...result, systemPrompt: change.newValue as string };
-      } else if (change.field === 'temperature') {
-        result = { ...result, temperature: change.newValue as number };
-      } else if (change.field === 'maxTokens') {
-        result = { ...result, maxTokens: change.newValue as number };
-      }
-    }
-
-    return result;
-  }
-
-  /** Creates a failed improvement attempt. */
-  private createFailedAttempt(
-    sourceVersionId: string,
-    hypothesis: string,
-    reason: string
-  ): ImprovementAttempt {
-    return {
-      id: randomUUID(),
-      sourceVersionId,
-      hypothesis,
-      changes: [],
-      successful: false,
-      attemptedAt: new Date(),
-      validation: {
-        passed: false,
-        performanceChange: 0,
-        checks: [{ name: 'creation', passed: false, details: reason }],
       },
     };
   }

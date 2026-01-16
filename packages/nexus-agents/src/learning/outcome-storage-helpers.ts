@@ -7,6 +7,8 @@
  * (Source: Issue #188)
  */
 
+import type { Result } from '../core/result.js';
+import { err } from '../core/result.js';
 import type { CliName } from '../cli-adapters/types.js';
 import type {
   ISQLiteDatabase,
@@ -17,6 +19,7 @@ import type {
   TaskOutcomeRow,
   ModelStatsRow,
 } from './outcome-storage-types.js';
+import { OutcomeStorageError } from './outcome-storage-types.js';
 
 // ============================================================================
 // Table Creation Helpers
@@ -141,4 +144,73 @@ export function rowToStats(row: ModelStatsRow): StoredModelStats {
     avgLatencyMs: row.avg_latency_ms,
     successRate: row.success_rate,
   };
+}
+
+// ============================================================================
+// SQL Query Constants
+// ============================================================================
+
+/** SQL for inserting/updating routing decisions. */
+export const INSERT_DECISION_SQL = `
+  INSERT OR REPLACE INTO routing_decisions
+  (id, trace_id, timestamp, router_type, selected_model, alternative_models,
+   confidence, reason, task_profile, request_id)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`;
+
+/** SQL for inserting/updating task outcomes. */
+export const INSERT_OUTCOME_SQL = `
+  INSERT OR REPLACE INTO task_outcomes
+  (routing_decision_id, timestamp, outcome_class, success, quality_score,
+   duration_ms, token_usage, error_message)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+`;
+
+/** SQL for inserting/updating computed rewards. */
+export const INSERT_REWARD_SQL = `
+  INSERT OR REPLACE INTO computed_rewards
+  (routing_decision_id, timestamp, reward, base_reward, quality_bonus,
+   speed_bonus, efficiency_bonus, retry_penalty)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+`;
+
+/** SQL for aggregating model statistics. */
+export const MODEL_STATS_SQL = `
+  SELECT
+    rd.selected_model as model,
+    COUNT(DISTINCT rd.id) as total_decisions,
+    COUNT(DISTINCT o.routing_decision_id) as total_outcomes,
+    COALESCE(AVG(r.reward), 0) as avg_reward,
+    COALESCE(AVG(o.quality_score), 0) as avg_quality_score,
+    COALESCE(AVG(o.duration_ms), 0) as avg_latency_ms,
+    COALESCE(AVG(CAST(o.success AS REAL)), 0) as success_rate
+  FROM routing_decisions rd
+  LEFT JOIN task_outcomes o ON rd.id = o.routing_decision_id
+  LEFT JOIN computed_rewards r ON rd.id = r.routing_decision_id
+  GROUP BY rd.selected_model
+  ORDER BY total_decisions DESC
+`;
+
+// ============================================================================
+// Error Handling Helpers
+// ============================================================================
+
+/**
+ * Wrap an error with OutcomeStorageError and return as a Result.
+ */
+export function wrapStorageError<T>(
+  error: unknown,
+  message: string,
+  context?: Record<string, unknown>
+): Result<T, OutcomeStorageError> {
+  const causeError = error instanceof Error ? error : new Error(String(error));
+  const options = context !== undefined ? { cause: causeError, context } : { cause: causeError };
+  return err(new OutcomeStorageError(message, options));
+}
+
+/**
+ * Convert an unknown error to an Error instance.
+ */
+export function toError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
 }

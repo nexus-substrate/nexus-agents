@@ -1,7 +1,7 @@
 /** Workflow Engine - Coordinates parsing, execution planning, and step execution. */
 
 import { ok, err, createLogger } from '../core/index.js';
-import type { Result, ILogger, ContextBudget } from '../core/index.js';
+import type { Result, ILogger } from '../core/index.js';
 import type {
   IWorkflowEngine,
   WorkflowDefinition,
@@ -12,11 +12,7 @@ import type {
 } from '../core/index.js';
 import { WorkflowError, ParseError } from '../core/index.js';
 import { v4 as uuidv4 } from 'uuid';
-import {
-  ContextManager,
-  DEFAULT_BUDGET,
-  type ContextManagerConfig,
-} from '../agents/context-manager.js';
+import { ContextManager } from '../agents/context-manager.js';
 import {
   applyBudgetEnforcement,
   copyBudgetEvents,
@@ -24,19 +20,28 @@ import {
   type BudgetEnforcementConfig,
 } from './budget-enforcement.js';
 import type { WorkflowStep } from './workflow-types.js';
+import {
+  type WorkflowEngineConfig,
+  type ResolvedConfig,
+  type ExecutionPlan,
+  type ExecutionContext,
+  type ExecutionOptions,
+  resolveConfig,
+  buildFinalOutput,
+  extractErrorMessage,
+  MAX_TRACKED_EXECUTIONS,
+} from './workflow-engine-helpers.js';
 
+// Re-export types from helpers for backward compatibility
 export type { BudgetEnforcementEvent } from './budget-enforcement.js';
 export type { WorkflowStep } from './workflow-types.js';
-
-/** Configuration for workflow engine. */
-export interface WorkflowEngineConfig {
-  defaultTimeoutMs?: number;
-  maxConcurrency?: number;
-  templatePaths?: string[];
-  contextManagerConfig?: Omit<ContextManagerConfig, 'budget'>;
-  defaultBudget?: ContextBudget;
-  logger?: ILogger;
-}
+export type {
+  WorkflowEngineConfig,
+  ExecutionPlan,
+  ExecutionPhase,
+  ExecutionContext,
+  ExecutionOptions,
+} from './workflow-engine-helpers.js';
 
 /** Dependencies for workflow engine. */
 export interface WorkflowEngineDeps {
@@ -54,35 +59,6 @@ export interface WorkflowEngineDeps {
   getBuiltInTemplates: () => Map<string, WorkflowDefinition>;
 }
 
-/** Execution plan with phases. */
-export interface ExecutionPlan {
-  phases: ExecutionPhase[];
-}
-
-/** Single execution phase (all steps run concurrently). */
-export interface ExecutionPhase {
-  steps: WorkflowStep[];
-}
-
-/** Execution context for workflow. */
-export interface ExecutionContext {
-  workflowId: string;
-  executionId: string;
-  inputs: Record<string, unknown>;
-  stepResults: Map<string, StepResult>;
-  variables: Map<string, unknown>;
-  abortController: AbortController;
-  contextManager: ContextManager | undefined;
-  budgetEvents: BudgetEnforcementEvent[];
-}
-
-/** Options for phase execution. */
-export interface ExecutionOptions {
-  maxConcurrency: number;
-  failFast: boolean;
-  timeoutMs?: number;
-}
-
 /** Active workflow execution tracking. */
 interface ActiveExecution {
   executionId: string;
@@ -90,30 +66,6 @@ interface ActiveExecution {
   status: ExecutionStatus;
   context: ExecutionContext;
   startTime: number;
-}
-
-const DEFAULT_TIMEOUT_MS = 300000; // 5 minutes
-const DEFAULT_MAX_CONCURRENCY = 5;
-const MAX_TRACKED_EXECUTIONS = 1000;
-
-/** Internal config type with resolved optional fields. */
-interface ResolvedConfig {
-  defaultTimeoutMs: number;
-  maxConcurrency: number;
-  templatePaths: string[];
-  contextManagerConfig: Omit<ContextManagerConfig, 'budget'> | undefined;
-  defaultBudget: ContextBudget;
-}
-
-/** Resolve workflow engine configuration with defaults. */
-function resolveConfig(config?: WorkflowEngineConfig): ResolvedConfig {
-  return {
-    defaultTimeoutMs: config?.defaultTimeoutMs ?? DEFAULT_TIMEOUT_MS,
-    maxConcurrency: config?.maxConcurrency ?? DEFAULT_MAX_CONCURRENCY,
-    templatePaths: config?.templatePaths ?? [],
-    contextManagerConfig: config?.contextManagerConfig,
-    defaultBudget: config?.defaultBudget ?? DEFAULT_BUDGET,
-  };
 }
 
 /** Workflow engine implementation. */
@@ -253,7 +205,7 @@ export class WorkflowEngine implements IWorkflowEngine {
       executionId,
       workflowName: workflow.name,
       stepResults: stepResults.value,
-      output: this.buildFinalOutput(stepResults.value),
+      output: buildFinalOutput(stepResults.value),
       totalDurationMs: Date.now() - startTime,
     };
     this.updateExecutionStatus(executionId, { state: 'completed', result });
@@ -265,7 +217,7 @@ export class WorkflowEngine implements IWorkflowEngine {
     executionId: string,
     workflowName: string
   ): Result<WorkflowResult, WorkflowError> {
-    const message = error instanceof Error ? error.message : 'Unknown error';
+    const message = extractErrorMessage(error);
     this.updateExecutionStatus(executionId, { state: 'failed', error: message });
     return err(new WorkflowError(message, { context: { executionId, workflowName } }));
   }
@@ -406,13 +358,6 @@ export class WorkflowEngine implements IWorkflowEngine {
   private updateExecutionStatus(executionId: string, status: ExecutionStatus): void {
     const exec = this.executions.get(executionId);
     if (exec) exec.status = status;
-  }
-
-  private buildFinalOutput(stepResults: StepResult[]): unknown {
-    const successfulSteps = stepResults.filter((r) => r.status === 'success');
-    return successfulSteps.length === 0
-      ? null
-      : (successfulSteps[successfulSteps.length - 1]?.output ?? null);
   }
 }
 
