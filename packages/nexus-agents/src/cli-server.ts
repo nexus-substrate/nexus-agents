@@ -23,7 +23,11 @@ import { detectMode, type ServerMode, type ModeDetectionResult } from './cli/ind
 import { EXIT_CODES } from './cli-types.js';
 import { getSwarmObserver, SwarmObserver } from './observability/index.js';
 import { initializeSandbox, getSandboxMode } from './security/sandbox/index.js';
-import { createDefaultPolicyFirewall } from './mcp/middleware/index.js';
+import {
+  createDefaultPolicyFirewall,
+  createToolRateLimiterFactory,
+  setGlobalToolRateLimiterFactory,
+} from './mcp/middleware/index.js';
 
 /**
  * Sets up graceful shutdown handlers.
@@ -230,26 +234,44 @@ function logFinalHealthMetrics(observer: SwarmObserver, logger: ILogger): void {
 }
 
 /**
- * Registers MCP tools with rate limiting.
+ * Registers MCP tools with per-tool rate limiting.
  * Must be called BEFORE connecting to transport.
+ *
+ * Uses ToolRateLimiterFactory to apply category-specific rate limits:
+ * - orchestrate: 10 req/60s (expensive operations)
+ * - delegate: 30 req/60s (model routing)
+ * - workflow: 20 req/60s (workflow execution)
+ * - expert: 60 req/60s (expert management)
+ *
+ * (Source: Issue #296 - Complete MCP tool rate limiting integration)
  */
 function registerMcpTools(server: McpServer, logger: ILogger): void {
   const toolInfra = registerTools(server, { logger });
 
-  // Register tools with shared rate limiter
+  // Create per-tool rate limiter factory
+  const rateLimiterFactory = createToolRateLimiterFactory({
+    enabled: true,
+    logger: toolInfra.logger,
+  });
+
+  // Set global factory for access by other components
+  setGlobalToolRateLimiterFactory(rateLimiterFactory);
+
+  // Register tools with per-tool rate limiters
   registerDelegateToModelTool(server, {
     logger: toolInfra.logger,
-    rateLimiter: toolInfra.rateLimiter,
+    rateLimiter: rateLimiterFactory.getForTool('delegate_to_model'),
   });
 
   registerOrchestrateTool(server, {
     techLead: createMockTechLead(),
     logger: toolInfra.logger,
-    rateLimiter: toolInfra.rateLimiter,
+    rateLimiter: rateLimiterFactory.getForTool('orchestrate'),
   });
 
-  logger.info('Tools registered', {
+  logger.info('Tools registered with per-tool rate limiting', {
     registeredTools: ['delegate_to_model', 'orchestrate'],
+    rateLimitingEnabled: rateLimiterFactory.isEnabled(),
   });
 }
 
