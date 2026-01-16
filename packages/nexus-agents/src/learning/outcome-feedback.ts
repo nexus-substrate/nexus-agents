@@ -8,7 +8,6 @@
  * (Source: Issue #160, Alignment Roadmap Phase 2)
  */
 
-import { randomUUID } from 'node:crypto';
 import { createLogger } from '../core/logger.js';
 import type {
   FeedbackCollectorConfig,
@@ -18,8 +17,6 @@ import type {
   FeedbackLoopStats,
   IOutcomeFeedback,
   OutcomeProcessedCallback,
-  OutcomeClass,
-  RouterType,
 } from './outcome-feedback-types.js';
 import {
   DEFAULT_FEEDBACK_COLLECTOR_CONFIG,
@@ -28,6 +25,15 @@ import {
 import type { TraceId } from '../observability/swarm-observer-types.js';
 import type { LinUCBBandit } from '../cli-adapters/linucb-bandit.js';
 import type { PreferenceRouter } from '../cli-adapters/preference-router.js';
+import {
+  countOutcomesByClass,
+  countDecisionsByRouter,
+  calculateAverageQuality,
+  generateRewardExplanation,
+} from './outcome-feedback-helpers.js';
+
+// Re-export factory functions for backward compatibility
+export { createRoutingDecision, createTaskOutcome } from './outcome-feedback-helpers.js';
 
 const logger = createLogger({ component: 'OutcomeFeedback' });
 
@@ -180,14 +186,14 @@ export class OutcomeFeedbackCollector implements IOutcomeFeedback {
         efficiencyBonus,
         retryPenalty,
       },
-      explanation: this.generateRewardExplanation(outcome, reward),
+      explanation: generateRewardExplanation(outcome, reward),
     };
   }
 
   getStats(): FeedbackLoopStats {
-    const outcomesByClass = this.countOutcomesByClass();
-    const decisionsByRouter = this.countDecisionsByRouter();
-    const avgQuality = this.calculateAverageQuality();
+    const outcomesByClass = countOutcomesByClass(this.outcomes);
+    const decisionsByRouter = countDecisionsByRouter(this.decisionHistory);
+    const avgQuality = calculateAverageQuality(this.outcomes);
     const avgReward = this.calculateAverageReward();
 
     return {
@@ -308,44 +314,6 @@ export class OutcomeFeedbackCollector implements IOutcomeFeedback {
     return oldest?.traceId;
   }
 
-  private countOutcomesByClass(): Record<OutcomeClass, number> {
-    const counts: Record<OutcomeClass, number> = {
-      success: 0,
-      partial: 0,
-      failure: 0,
-      timeout: 0,
-      error: 0,
-    };
-
-    for (const outcome of this.outcomes) {
-      counts[outcome.outcomeClass]++;
-    }
-
-    return counts;
-  }
-
-  private countDecisionsByRouter(): Record<RouterType, number> {
-    const counts: Record<RouterType, number> = {
-      linucb: 0,
-      preference: 0,
-      quality: 0,
-      cascade: 0,
-      topsis: 0,
-    };
-
-    for (const decision of this.decisionHistory) {
-      counts[decision.routerType]++;
-    }
-
-    return counts;
-  }
-
-  private calculateAverageQuality(): number {
-    if (this.outcomes.length === 0) return 0;
-    const sum = this.outcomes.reduce((acc, o) => acc + o.qualityScore, 0);
-    return sum / this.outcomes.length;
-  }
-
   private calculateAverageReward(): number {
     if (this.outcomes.length === 0) return 0;
 
@@ -355,54 +323,6 @@ export class OutcomeFeedbackCollector implements IOutcomeFeedback {
     }
     return sum / this.outcomes.length;
   }
-
-  private generateRewardExplanation(outcome: TaskOutcome, reward: number): string {
-    const parts: string[] = [];
-
-    if (outcome.success) {
-      parts.push('Task succeeded');
-    } else if (outcome.outcomeClass === 'partial') {
-      parts.push(
-        `Partial completion (${(outcome.qualitySignals.completionRatio * 100).toFixed(0)}%)`
-      );
-    } else {
-      parts.push(`Task ${outcome.outcomeClass}`);
-    }
-
-    parts.push(`quality=${outcome.qualityScore.toFixed(2)}`);
-    parts.push(`duration=${String(outcome.durationMs)}ms`);
-
-    if (outcome.qualitySignals.retryCount > 0) {
-      parts.push(`retries=${String(outcome.qualitySignals.retryCount)}`);
-    }
-
-    parts.push(`reward=${reward.toFixed(3)}`);
-
-    return parts.join(', ');
-  }
-}
-
-/**
- * Create a routing decision record.
- */
-export function createRoutingDecision(
-  params: Omit<RoutingDecision, 'id' | 'timestamp'>
-): RoutingDecision {
-  return {
-    id: randomUUID(),
-    timestamp: new Date().toISOString(),
-    ...params,
-  };
-}
-
-/**
- * Create a task outcome record.
- */
-export function createTaskOutcome(params: Omit<TaskOutcome, 'timestamp'>): TaskOutcome {
-  return {
-    timestamp: new Date().toISOString(),
-    ...params,
-  };
 }
 
 /**

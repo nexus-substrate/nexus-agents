@@ -10,6 +10,12 @@
 
 import { createLogger } from '../core/index.js';
 import type { CliName } from '../cli-adapters/types.js';
+import {
+  centerText,
+  renderModelDistribution,
+  renderLearningProgress,
+  renderPerformanceSection,
+} from './routing-metrics-helpers.js';
 
 const logger = createLogger({ component: 'routing-metrics' });
 
@@ -185,86 +191,17 @@ export class RoutingMetricsCollector {
 
     const lines: string[] = [
       '╭' + '─'.repeat(w - 2) + '╮',
-      this.centerText(`Routing Effectiveness Dashboard (last ${String(cfg.periodHours)}h)`, w),
+      centerText(`Routing Effectiveness Dashboard (last ${String(cfg.periodHours)}h)`, w),
       '├' + '─'.repeat(w - 2) + '┤',
-      ...this.renderModelDistribution(metrics, w),
+      ...renderModelDistribution(metrics, w),
       '├' + '─'.repeat(w - 2) + '┤',
-      ...this.renderLearningProgress(metrics, w, cfg.showTrends),
+      ...renderLearningProgress(metrics, w, cfg.showTrends),
       '├' + '─'.repeat(w - 2) + '┤',
-      ...this.renderPerformanceSection(metrics, w),
+      ...renderPerformanceSection(metrics, w),
       '╰' + '─'.repeat(w - 2) + '╯',
     ];
 
     return lines.join('\n');
-  }
-
-  private renderModelDistribution(metrics: RoutingMetrics, w: number): string[] {
-    const lines: string[] = [this.padText('│ Model Selection Distribution:', w)];
-
-    if (metrics.modelMetrics.length === 0) {
-      lines.push(this.padText('│   No routing data available', w));
-      return lines;
-    }
-
-    for (const model of metrics.modelMetrics) {
-      const barLength = Math.round(model.selectionPercent * 0.2);
-      const bar = '█'.repeat(barLength) + '░'.repeat(20 - barLength);
-      const pct = `${String(Math.round(model.selectionPercent * 100))}%`;
-      const reward = `(avg reward: ${model.avgReward.toFixed(2)})`;
-      lines.push(
-        this.padText(`│   ${model.model.padEnd(7)} ${bar} ${pct.padStart(4)} ${reward}`, w)
-      );
-    }
-
-    return lines;
-  }
-
-  private renderLearningProgress(
-    metrics: RoutingMetrics,
-    w: number,
-    showTrends: boolean
-  ): string[] {
-    const lines: string[] = [this.padText('│ Learning Progress:', w)];
-
-    const expRate = `${String(Math.round(metrics.explorationRate * 100))}%`;
-    const expStatus =
-      metrics.explorationRate >= 0.1 && metrics.explorationRate <= 0.2 ? '(healthy)' : '(adjust)';
-    lines.push(this.padText(`│   Exploration rate: ${expRate} ${expStatus}`, w));
-
-    if (showTrends) {
-      const trendArrow = metrics.avgRewardTrend > 0 ? '↑' : metrics.avgRewardTrend < 0 ? '↓' : '→';
-      const trendValue = metrics.avgRewardTrend >= 0 ? '+' : '';
-      const trend = `${trendArrow} ${trendValue}${metrics.avgRewardTrend.toFixed(2)} vs last period`;
-      lines.push(this.padText(`│   Avg reward trend: ${trend}`, w));
-    }
-
-    lines.push(this.padText(`│   Avg reward: ${metrics.avgReward.toFixed(2)}`, w));
-    return lines;
-  }
-
-  private renderPerformanceSection(metrics: RoutingMetrics, w: number): string[] {
-    const lines: string[] = [this.padText('│ Performance:', w)];
-
-    lines.push(
-      this.padText(`│   Routing decisions: ${String(metrics.totalDecisions).toLocaleString()}`, w)
-    );
-    lines.push(
-      this.padText(`│   Task outcomes: ${String(metrics.totalOutcomes).toLocaleString()}`, w)
-    );
-    lines.push(
-      this.padText(`│   Avg routing latency: ${String(metrics.avgRoutingLatencyMs)}ms`, w)
-    );
-
-    const overallSuccess =
-      metrics.modelMetrics.length > 0
-        ? metrics.modelMetrics.reduce((sum, m) => sum + m.successRate * m.selectionCount, 0) /
-          Math.max(metrics.totalDecisions, 1)
-        : 0;
-    lines.push(
-      this.padText(`│   Task success rate: ${String(Math.round(overallSuccess * 100))}%`, w)
-    );
-
-    return lines;
   }
 
   /**
@@ -391,18 +328,6 @@ export class RoutingMetricsCollector {
 
     return currentAvg - previousAvg;
   }
-
-  private centerText(text: string, width: number): string {
-    const padding = Math.max(0, width - text.length - 2);
-    const left = Math.floor(padding / 2);
-    const right = padding - left;
-    return '│' + ' '.repeat(left) + text + ' '.repeat(right) + '│';
-  }
-
-  private padText(text: string, width: number): string {
-    const padding = Math.max(0, width - text.length - 1);
-    return text + ' '.repeat(padding) + '│';
-  }
 }
 
 /**
@@ -413,3 +338,12 @@ export function createRoutingMetricsCollector(
 ): RoutingMetricsCollector {
   return new RoutingMetricsCollector(config);
 }
+
+// Re-export helpers for backward compatibility
+export {
+  centerText,
+  padText,
+  renderModelDistribution,
+  renderLearningProgress,
+  renderPerformanceSection,
+} from './routing-metrics-helpers.js';

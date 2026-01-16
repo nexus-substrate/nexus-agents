@@ -29,9 +29,27 @@ import { TaskSchema, AgentMessageSchema, BaseAgentOptionsSchema } from './agent-
 import type { IEventBus } from './collaboration/event-bus-types.js';
 import { getGlobalEventBus } from './collaboration/event-bus.js';
 import { emitMessageReceived } from './collaboration/message-events.js';
+import {
+  handleTaskMessage,
+  handleQueryMessage,
+  handleFeedbackMessage,
+  handleStatusMessage,
+  handleResultMessage,
+  type MessageHandlerContext,
+} from './base-agent-message-handlers.js';
 
 // Re-export schemas for convenience
 export { TaskSchema, AgentMessageSchema, BaseAgentOptionsSchema } from './agent-schemas.js';
+
+// Re-export message handlers for backward compatibility
+export {
+  handleTaskMessage,
+  handleQueryMessage,
+  handleFeedbackMessage,
+  handleStatusMessage,
+  handleResultMessage,
+  type MessageHandlerContext,
+} from './base-agent-message-handlers.js';
 
 /**
  * Options for creating a BaseAgent.
@@ -201,17 +219,20 @@ export abstract class BaseAgent implements IAgent {
       emitMessageReceived(this.eventBus, { message: msg, by: this.id });
     }
 
+    const ctx = this.getMessageHandlerContext();
     switch (msg.type) {
       case 'task':
-        return this.handleTaskMessage(msg);
+        return handleTaskMessage(msg, (task) => this.execute(task)) as Promise<
+          Result<AgentResponse, AgentError>
+        >;
       case 'query':
-        return this.handleQueryMessage(msg);
+        return handleQueryMessage(msg, ctx) as Promise<Result<AgentResponse, AgentError>>;
       case 'feedback':
-        return this.handleFeedbackMessage(msg);
+        return handleFeedbackMessage(msg, ctx) as Promise<Result<AgentResponse, AgentError>>;
       case 'status':
-        return this.handleStatusMessage(msg);
+        return handleStatusMessage(msg, ctx) as Promise<Result<AgentResponse, AgentError>>;
       case 'result':
-        return this.handleResultMessage(msg);
+        return handleResultMessage(msg, ctx) as Promise<Result<AgentResponse, AgentError>>;
       default:
         return err(
           new AgentError(`Unknown message type: ${String(msg.type)}`, {
@@ -219,6 +240,19 @@ export abstract class BaseAgent implements IAgent {
           })
         );
     }
+  }
+
+  /** Creates the context object needed by message handlers. */
+  private getMessageHandlerContext(): MessageHandlerContext {
+    return {
+      id: this.id,
+      role: this.role,
+      state: this._state,
+      capabilities: this.capabilities,
+      initialized: this.initialized,
+      historyLength: this.history.length,
+      logger: this.logger,
+    };
   }
 
   cleanup(): Promise<void> {
@@ -332,75 +366,5 @@ export abstract class BaseAgent implements IAgent {
 
   protected clearHistory(): void {
     this.history = [];
-  }
-
-  private async handleTaskMessage(msg: AgentMessage): Promise<Result<AgentResponse, AgentError>> {
-    const taskPayload = msg.payload as Partial<Task>;
-    if (taskPayload.id === undefined || taskPayload.description === undefined) {
-      return ok({
-        messageId: msg.id,
-        status: 'rejected',
-        error: 'Invalid task payload: missing id or description',
-      });
-    }
-
-    const task: Task = {
-      id: taskPayload.id,
-      description: taskPayload.description,
-      context: taskPayload.context ?? {},
-    };
-    if (taskPayload.constraints !== undefined) {
-      task.constraints = taskPayload.constraints;
-    }
-    if (taskPayload.priority !== undefined) {
-      task.priority = taskPayload.priority;
-    }
-
-    const result = await this.execute(task);
-    if (!result.ok) {
-      return ok({ messageId: msg.id, status: 'failed', error: result.error.message });
-    }
-
-    return ok({ messageId: msg.id, status: 'completed', data: result.value });
-  }
-
-  private handleQueryMessage(msg: AgentMessage): Promise<Result<AgentResponse, AgentError>> {
-    return Promise.resolve(
-      ok({
-        messageId: msg.id,
-        status: 'completed',
-        data: {
-          agentId: this.id,
-          role: this.role,
-          state: this._state,
-          capabilities: this.capabilities,
-        },
-      })
-    );
-  }
-
-  private handleFeedbackMessage(msg: AgentMessage): Promise<Result<AgentResponse, AgentError>> {
-    this.logger.info('Received feedback', { from: msg.from, payload: msg.payload });
-    return Promise.resolve(ok({ messageId: msg.id, status: 'accepted' }));
-  }
-
-  private handleStatusMessage(msg: AgentMessage): Promise<Result<AgentResponse, AgentError>> {
-    return Promise.resolve(
-      ok({
-        messageId: msg.id,
-        status: 'completed',
-        data: {
-          agentId: this.id,
-          state: this._state,
-          initialized: this.initialized,
-          historyLength: this.history.length,
-        },
-      })
-    );
-  }
-
-  private handleResultMessage(msg: AgentMessage): Promise<Result<AgentResponse, AgentError>> {
-    this.logger.debug('Received result', { from: msg.from });
-    return Promise.resolve(ok({ messageId: msg.id, status: 'accepted' }));
   }
 }

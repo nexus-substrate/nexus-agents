@@ -17,7 +17,6 @@ import type {
   IDashboardRenderer,
   AgentStatus,
   GraphSummary,
-  GraphEdgeDisplay,
   ActivityItem,
 } from './dashboard-types.js';
 import { DEFAULT_DASHBOARD_CONFIG } from './dashboard-types.js';
@@ -32,6 +31,29 @@ import type {
   ContributionScore,
   TraceId,
 } from './swarm-observer-types.js';
+import {
+  extractState,
+  summarizeEvent,
+  getEventSeverity,
+  buildGraphSummary,
+  getActiveTracesFromGraph,
+} from './dashboard-helpers.js';
+
+// Re-export helpers for backward compatibility
+export {
+  extractState,
+  summarizeEvent,
+  getEventSeverity,
+  buildGraphSummary,
+  getActiveTracesFromGraph,
+  summarizeStateChange,
+  summarizeMessage,
+  summarizeTool,
+  summarizeMemory,
+  summarizeTask,
+  summarizeError,
+  buildTopEdges,
+} from './dashboard-helpers.js';
 
 /**
  * Dashboard implementation that consumes SwarmObserver data.
@@ -58,7 +80,7 @@ export class Dashboard implements IDashboard {
       timestamp: now,
       health: opts.includeHealth === true ? health : this.emptyHealth(),
       agents: opts.includeAgents === true ? this.buildAgentStatuses(graph, health) : [],
-      graph: opts.includeGraph === true ? this.buildGraphSummary(graph) : this.emptyGraphSummary(),
+      graph: opts.includeGraph === true ? buildGraphSummary(graph) : this.emptyGraphSummary(),
       activity: opts.includeActivity === true ? this.buildActivityFeed() : [],
       bottlenecks: opts.includeBottlenecks === true ? health.bottlenecks : [],
       clusters: opts.includeClusters === true ? health.clusters : [],
@@ -149,7 +171,7 @@ export class Dashboard implements IDashboard {
     const stateEvents = events.filter((e) => e.eventType === 'state_change');
     const lastStateEvent = stateEvents[stateEvents.length - 1];
     const latestState =
-      lastStateEvent !== undefined ? this.extractState(lastStateEvent) : ('idle' as AgentState);
+      lastStateEvent !== undefined ? extractState(lastStateEvent) : ('idle' as AgentState);
 
     // Count metrics
     const toolEvents = events.filter((e) => e.eventType === 'tool_invoked');
@@ -166,78 +188,6 @@ export class Dashboard implements IDashboard {
       errorCount: errorEvents.length,
       isBottleneck: bottleneckIds.has(agentId),
     };
-  }
-
-  private extractState(event: AgentEvent): AgentState {
-    if (event.payload.type === 'state_change') {
-      return event.payload.newState;
-    }
-    return 'idle';
-  }
-
-  private buildGraphSummary(graph: InteractionGraph): GraphSummary {
-    const nodes = graph.getNodes();
-    const edges = graph.getEdges();
-    const nodeCount = nodes.length;
-    const edgeCount = edges.length;
-
-    // Calculate density: actual edges / possible edges
-    const possibleEdges = nodeCount * (nodeCount - 1);
-    const density = possibleEdges > 0 ? edgeCount / possibleEdges : 0;
-
-    // Get SCCs
-    const sccs = graph.getStronglyConnectedComponents();
-
-    // Get centrality
-    const centrality = graph.getDegreeCentrality();
-    const centralAgents = Array.from(centrality.entries())
-      .map(([agentId, cent]) => ({ agentId, centrality: cent }))
-      .sort((a, b) => b.centrality - a.centrality)
-      .slice(0, 5);
-
-    // Build top edges
-    const topEdges = this.buildTopEdges(graph);
-
-    return {
-      nodeCount,
-      edgeCount,
-      density,
-      stronglyConnectedComponents: sccs.length,
-      topEdges,
-      centralAgents,
-    };
-  }
-
-  private buildTopEdges(graph: InteractionGraph): GraphEdgeDisplay[] {
-    const edges = graph.getEdges();
-    const edgeMap = new Map<string, { count: number; successes: number; totalLatency: number }>();
-
-    for (const edge of edges) {
-      const key = `${edge.from}|${edge.to}`;
-      const existing = edgeMap.get(key) ?? { count: 0, successes: 0, totalLatency: 0 };
-      existing.count++;
-      if (edge.outcome === 'success') {
-        existing.successes++;
-      }
-      if (edge.durationMs !== undefined) {
-        existing.totalLatency += edge.durationMs;
-      }
-      edgeMap.set(key, existing);
-    }
-
-    return Array.from(edgeMap.entries())
-      .map(([key, stats]) => {
-        const [from, to] = key.split('|');
-        return {
-          from: from ?? '',
-          to: to ?? '',
-          count: stats.count,
-          successRate: stats.count > 0 ? stats.successes / stats.count : 0,
-          avgLatencyMs: stats.count > 0 ? stats.totalLatency / stats.count : 0,
-        };
-      })
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 10);
   }
 
   private buildActivityFeed(): ActivityItem[] {
@@ -263,78 +213,10 @@ export class Dashboard implements IDashboard {
       timestamp: event.timestamp,
       agentId: event.agentId,
       eventType: event.eventType,
-      summary: this.summarizeEvent(event),
-      severity: this.getEventSeverity(event),
+      summary: summarizeEvent(event),
+      severity: getEventSeverity(event),
       traceId: event.traceId,
     }));
-  }
-
-  private summarizeEvent(event: AgentEvent): string {
-    const summaryHandlers: Record<string, () => string> = {
-      state_change: () => this.summarizeStateChange(event),
-      message: () => this.summarizeMessage(event),
-      tool: () => this.summarizeTool(event),
-      memory: () => this.summarizeMemory(event),
-      task: () => this.summarizeTask(event),
-      error: () => this.summarizeError(event),
-    };
-
-    const handler = summaryHandlers[event.payload.type];
-    return handler !== undefined ? handler() : event.eventType;
-  }
-
-  private summarizeStateChange(event: AgentEvent): string {
-    if (event.payload.type !== 'state_change') return '';
-    return `${event.payload.previousState} → ${event.payload.newState}`;
-  }
-
-  private summarizeMessage(event: AgentEvent): string {
-    if (event.payload.type !== 'message') return '';
-    const { direction, messageType, targetAgentId, sourceAgentId } = event.payload;
-    if (direction === 'sent') {
-      return `sent ${messageType} to ${targetAgentId ?? 'unknown'}`;
-    }
-    return `recv ${messageType} from ${sourceAgentId ?? 'unknown'}`;
-  }
-
-  private summarizeTool(event: AgentEvent): string {
-    if (event.payload.type !== 'tool') return '';
-    const { phase, toolName, success } = event.payload;
-    if (phase === 'invoked') return `invoking ${toolName}`;
-    return success === true ? `${toolName} succeeded` : `${toolName} failed`;
-  }
-
-  private summarizeMemory(event: AgentEvent): string {
-    if (event.payload.type !== 'memory') return '';
-    return `${event.payload.operation} ${event.payload.memoryType}`;
-  }
-
-  private summarizeTask(event: AgentEvent): string {
-    if (event.payload.type !== 'task') return '';
-    const { phase, taskDescription, taskId, success } = event.payload;
-    if (phase === 'started') return `started: ${taskDescription ?? taskId}`;
-    return success === true ? `completed: ${taskId}` : `failed: ${taskId}`;
-  }
-
-  private summarizeError(event: AgentEvent): string {
-    if (event.payload.type !== 'error') return '';
-    return `error: ${event.payload.errorMessage.slice(0, 30)}`;
-  }
-
-  private getEventSeverity(event: AgentEvent): 'info' | 'warning' | 'error' {
-    if (event.eventType === 'error') {
-      return 'error';
-    }
-    if (event.payload.type === 'tool' && event.payload.success === false) {
-      return 'warning';
-    }
-    if (event.payload.type === 'task' && event.payload.success === false) {
-      return 'warning';
-    }
-    if (event.payload.type === 'state_change' && event.payload.newState === 'error') {
-      return 'error';
-    }
-    return 'info';
   }
 
   private getContributions(): ContributionScore[] {
@@ -351,19 +233,7 @@ export class Dashboard implements IDashboard {
 
   private getActiveTraces(): TraceId[] {
     const graph = this.observer.getCollaborationGraph();
-    const edges = graph.getEdges();
-
-    // Get unique traces from recent edges
-    const traces = new Set<TraceId>();
-    const cutoff = Date.now() - this.config.timeWindowMs;
-
-    for (const edge of edges) {
-      if (new Date(edge.timestamp).getTime() > cutoff) {
-        traces.add(edge.traceId);
-      }
-    }
-
-    return Array.from(traces);
+    return getActiveTracesFromGraph(graph, this.config.timeWindowMs);
   }
 
   private emptyHealth(): SwarmHealthMetrics {
