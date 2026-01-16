@@ -15,15 +15,9 @@ import type {
   SelfDevWorkflowState,
   SelfDevWorkflowResult,
   HumanDecision,
-  WorkflowPhase,
-  WorkflowCheckpoint,
   ReviewOutput,
 } from './types.js';
-import type {
-  SelfDevWorkflowDependencies,
-  WorkflowEvent,
-  WorkflowEventListener,
-} from './interfaces.js';
+import type { SelfDevWorkflowDependencies, WorkflowEventListener } from './interfaces.js';
 import {
   executeAnalyze,
   executeResearch,
@@ -34,8 +28,16 @@ import {
   executeVerify,
   executeCommit,
 } from './phase-executors.js';
-import { calculateMetrics } from './metrics.js';
 import { AuditTrail, createAuditTrail } from './audit-trail.js';
+import {
+  emitEvent,
+  updatePhase,
+  updateStatus,
+  createCheckpoint,
+  completeWorkflow,
+  failWorkflow,
+  type EngineStateContainer,
+} from './engine-helpers.js';
 
 // Re-export interfaces
 export type {
@@ -49,6 +51,17 @@ export type {
   WorkflowEventListener,
 } from './interfaces.js';
 
+// Re-export helpers for backward compatibility
+export {
+  emitEvent,
+  updatePhase,
+  updateStatus,
+  createCheckpoint,
+  completeWorkflow,
+  failWorkflow,
+  type EngineStateContainer,
+} from './engine-helpers.js';
+
 /** Self-Development Workflow Engine - orchestrates the meta-workflow for self-improvement. */
 export class SelfDevWorkflowEngine implements ISelfDevWorkflowEngine {
   private readonly states = new Map<string, SelfDevWorkflowState>();
@@ -61,6 +74,16 @@ export class SelfDevWorkflowEngine implements ISelfDevWorkflowEngine {
   >();
 
   constructor(private readonly deps: SelfDevWorkflowDependencies) {}
+
+  /** Get the state container for helper functions. */
+  private getContainer(): EngineStateContainer {
+    return {
+      states: this.states,
+      results: this.results,
+      auditTrails: this.auditTrails,
+      listeners: this.listeners,
+    };
+  }
 
   /** Get audit trail for an execution. */
   getAuditTrail(executionId: string): AuditTrail | undefined {
@@ -96,7 +119,7 @@ export class SelfDevWorkflowEngine implements ISelfDevWorkflowEngine {
     };
 
     this.states.set(executionId, state);
-    this.emit({ type: 'phase_started', phase: 'analyze', timestamp: now });
+    emitEvent(this.listeners, { type: 'phase_started', phase: 'analyze', timestamp: now });
 
     // Record workflow start and begin async execution
     void auditTrail.phaseStarted('analyze');
@@ -137,7 +160,11 @@ export class SelfDevWorkflowEngine implements ISelfDevWorkflowEngine {
     const updatedState: SelfDevWorkflowState = { ...state, status: 'cancelled' };
     this.states.set(executionId, updatedState);
 
-    this.emit({ type: 'workflow_failed', data: { reason }, timestamp: new Date().toISOString() });
+    emitEvent(this.listeners, {
+      type: 'workflow_failed',
+      data: { reason },
+      timestamp: new Date().toISOString(),
+    });
     return Promise.resolve();
   }
 
@@ -160,16 +187,6 @@ export class SelfDevWorkflowEngine implements ISelfDevWorkflowEngine {
   // Private execution methods
   // =========================================================================
 
-  private emit(event: WorkflowEvent): void {
-    for (const listener of this.listeners) {
-      try {
-        listener(event);
-      } catch {
-        // Ignore listener errors
-      }
-    }
-  }
-
   private async executeWorkflow(executionId: string): Promise<void> {
     const state = this.states.get(executionId);
     if (state === undefined) return;
@@ -178,9 +195,15 @@ export class SelfDevWorkflowEngine implements ISelfDevWorkflowEngine {
 
     try {
       const outputs = await this.runAllPhases(executionId, state);
-      this.completeWorkflow(executionId, outputs, startTime);
+      completeWorkflow(
+        this.getContainer(),
+        executionId,
+        outputs,
+        startTime,
+        this.deps.notifications
+      );
     } catch (error) {
-      this.failWorkflow(executionId, error, startTime);
+      failWorkflow(this.getContainer(), executionId, error, startTime, this.deps.notifications);
     }
   }
 
@@ -199,41 +222,42 @@ export class SelfDevWorkflowEngine implements ISelfDevWorkflowEngine {
     state: SelfDevWorkflowState
   ): Promise<SelfDevWorkflowResult['outputs']> {
     const outputs: SelfDevWorkflowResult['outputs'] = {};
+    const container = this.getContainer();
 
     const analyzeOut = await executeAnalyze(this.deps, state);
-    this.createCheckpoint(executionId, 'analyze', analyzeOut);
-    this.updatePhase(executionId, 'research');
+    createCheckpoint(container, executionId, 'analyze', analyzeOut);
+    updatePhase(container, executionId, 'research');
     (outputs as { analyze: typeof analyzeOut }).analyze = analyzeOut;
 
     const researchOut = await executeResearch(this.deps, state, analyzeOut);
-    this.createCheckpoint(executionId, 'research', researchOut);
-    this.updatePhase(executionId, 'plan');
+    createCheckpoint(container, executionId, 'research', researchOut);
+    updatePhase(container, executionId, 'plan');
     (outputs as { research: typeof researchOut }).research = researchOut;
 
     const planOut = await executePlan(this.deps, state, analyzeOut, researchOut);
-    this.createCheckpoint(executionId, 'plan', planOut);
-    this.updatePhase(executionId, 'refine');
+    createCheckpoint(container, executionId, 'plan', planOut);
+    updatePhase(container, executionId, 'refine');
     (outputs as { plan: typeof planOut }).plan = planOut;
 
     const refineOut = await executeRefine(this.deps, state, planOut);
-    this.createCheckpoint(executionId, 'refine', refineOut);
-    this.updatePhase(executionId, 'vote');
+    createCheckpoint(container, executionId, 'refine', refineOut);
+    updatePhase(container, executionId, 'vote');
     (outputs as { refine: typeof refineOut }).refine = refineOut;
 
     const voteOut = await executeVote(this.deps, state, refineOut);
-    this.createCheckpoint(executionId, 'vote', voteOut);
+    createCheckpoint(container, executionId, 'vote', voteOut);
     if (voteOut.verdict !== 'APPROVED') {
       throw new Error(`Consensus rejected: ${voteOut.verdict}`);
     }
-    this.updatePhase(executionId, 'review');
+    updatePhase(container, executionId, 'review');
     (outputs as { vote: typeof voteOut }).vote = voteOut;
 
     const reviewOut = await this.executeReview(executionId);
-    this.createCheckpoint(executionId, 'review', reviewOut);
+    createCheckpoint(container, executionId, 'review', reviewOut);
     if (reviewOut.decision !== 'approved') {
       throw new Error(`Human review ${reviewOut.decision}: ${reviewOut.feedback ?? 'No feedback'}`);
     }
-    this.updatePhase(executionId, 'implement');
+    updatePhase(container, executionId, 'implement');
     (outputs as { review: typeof reviewOut }).review = reviewOut;
 
     return outputs;
@@ -246,25 +270,26 @@ export class SelfDevWorkflowEngine implements ISelfDevWorkflowEngine {
   ): Promise<SelfDevWorkflowResult['outputs']> {
     const refineOut = outputs.refine;
     if (refineOut === undefined) throw new Error('Refine output missing');
+    const container = this.getContainer();
 
     const implementOut = await executeImplement(this.deps, state, refineOut);
-    this.createCheckpoint(executionId, 'implement', implementOut);
+    createCheckpoint(container, executionId, 'implement', implementOut);
     if (!implementOut.success) {
       throw new Error(`Implementation failed: ${implementOut.summary}`);
     }
-    this.updatePhase(executionId, 'verify');
+    updatePhase(container, executionId, 'verify');
     (outputs as { implement: typeof implementOut }).implement = implementOut;
 
     const verifyOut = await executeVerify(this.deps, state);
-    this.createCheckpoint(executionId, 'verify', verifyOut);
+    createCheckpoint(container, executionId, 'verify', verifyOut);
     if (!verifyOut.allPassed) {
       throw new Error(`Verification failed: ${verifyOut.failureReport ?? 'Unknown'}`);
     }
-    this.updatePhase(executionId, 'commit');
+    updatePhase(container, executionId, 'commit');
     (outputs as { verify: typeof verifyOut }).verify = verifyOut;
 
     const commitOut = await executeCommit(this.deps, state, outputs);
-    this.createCheckpoint(executionId, 'commit', commitOut);
+    createCheckpoint(container, executionId, 'commit', commitOut);
     (outputs as { commit: typeof commitOut }).commit = commitOut;
 
     return outputs;
@@ -273,8 +298,8 @@ export class SelfDevWorkflowEngine implements ISelfDevWorkflowEngine {
   private async executeReview(executionId: string): Promise<ReviewOutput> {
     const startTime = Date.now();
 
-    this.updateStatus(executionId, 'paused');
-    this.emit({
+    updateStatus(this.states, executionId, 'paused');
+    emitEvent(this.listeners, {
       type: 'human_review_required',
       data: { executionId },
       timestamp: new Date().toISOString(),
@@ -295,116 +320,6 @@ export class SelfDevWorkflowEngine implements ISelfDevWorkflowEngine {
       durationMs: Date.now() - startTime,
     };
     return result.feedback !== undefined ? { ...output, feedback: result.feedback } : output;
-  }
-
-  private completeWorkflow(
-    executionId: string,
-    outputs: SelfDevWorkflowResult['outputs'],
-    startTime: number
-  ): void {
-    const state = this.states.get(executionId);
-    const durationMs = Date.now() - startTime;
-    const checkpointCount = state?.checkpoints.filter((c) => c.phase === 'review').length ?? 0;
-    const metrics = calculateMetrics(outputs, durationMs, checkpointCount);
-
-    const successResult: SelfDevWorkflowResult = {
-      executionId,
-      success: true,
-      phase: 'commit',
-      outputs,
-      metrics,
-    };
-
-    this.results.set(executionId, successResult);
-    this.updateStatus(executionId, 'completed');
-    this.emit({ type: 'workflow_completed', timestamp: new Date().toISOString() });
-
-    void this.auditTrails.get(executionId)?.workflowCompleted(true, durationMs);
-
-    // Send completion notification
-    const prOut = outputs.commit;
-    void this.deps.notifications?.workflowCompleted(executionId, prOut?.prNumber, prOut?.prUrl);
-  }
-
-  private failWorkflow(executionId: string, error: unknown, startTime: number): void {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    const currentPhase = this.getPhase(executionId) ?? 'analyze';
-    const state = this.states.get(executionId);
-    const durationMs = Date.now() - startTime;
-    const checkpointCount = state?.checkpoints.filter((c) => c.phase === 'review').length ?? 0;
-    const metrics = calculateMetrics({}, durationMs, checkpointCount);
-
-    const failureResult: SelfDevWorkflowResult = {
-      executionId,
-      success: false,
-      phase: currentPhase,
-      outputs: {},
-      metrics,
-      error: errorMessage,
-    };
-
-    this.results.set(executionId, failureResult);
-    this.updateStatus(executionId, 'failed');
-    this.emit({
-      type: 'workflow_failed',
-      phase: currentPhase,
-      data: { error: errorMessage },
-      timestamp: new Date().toISOString(),
-    });
-
-    const audit = this.auditTrails.get(executionId);
-    void audit?.phaseFailed(currentPhase, errorMessage);
-    void audit?.workflowCompleted(false, durationMs);
-    void this.deps.notifications?.workflowFailed(executionId, currentPhase, errorMessage);
-  }
-
-  private getPhase(executionId: string): WorkflowPhase | undefined {
-    return this.states.get(executionId)?.currentPhase;
-  }
-
-  private updatePhase(executionId: string, phase: WorkflowPhase): void {
-    const state = this.states.get(executionId);
-    if (state === undefined) return;
-
-    const audit = this.auditTrails.get(executionId);
-    const prevPhase = state.currentPhase;
-
-    this.emit({ type: 'phase_completed', phase: prevPhase, timestamp: new Date().toISOString() });
-    const updated: SelfDevWorkflowState = { ...state, currentPhase: phase };
-    this.states.set(executionId, updated);
-    this.emit({ type: 'phase_started', phase, timestamp: new Date().toISOString() });
-
-    // Record phase transition in audit trail
-    void audit?.phaseCompleted(prevPhase, 0);
-    void audit?.phaseStarted(phase);
-  }
-
-  private updateStatus(executionId: string, status: SelfDevWorkflowState['status']): void {
-    const state = this.states.get(executionId);
-    if (state === undefined) return;
-
-    const updated: SelfDevWorkflowState = { ...state, status };
-    this.states.set(executionId, updated);
-  }
-
-  private createCheckpoint(executionId: string, phase: WorkflowPhase, outputs: unknown): void {
-    const state = this.states.get(executionId);
-    if (state === undefined) return;
-
-    const checkpoint: WorkflowCheckpoint = {
-      phase,
-      timestamp: new Date().toISOString(),
-      inputs: {},
-      outputs,
-      status: 'completed',
-    };
-
-    const updated: SelfDevWorkflowState = {
-      ...state,
-      checkpoints: [...state.checkpoints, checkpoint],
-    };
-    this.states.set(executionId, updated);
-    this.emit({ type: 'checkpoint_created', phase, timestamp: checkpoint.timestamp });
   }
 }
 

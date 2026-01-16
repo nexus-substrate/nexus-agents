@@ -30,7 +30,6 @@ import type {
   ModelInfo,
   CapabilityProfile,
   ExecutionOptions,
-  TokenUsage,
 } from '../types.js';
 import { DEFAULT_CAPABILITIES } from '../types.js';
 import type { Result } from '../../core/index.js';
@@ -38,6 +37,24 @@ import { ok, err } from '../../core/index.js';
 import type { ILogger } from '../../core/index.js';
 import { createLogger } from '../../core/index.js';
 import { CodexResponseParser } from '../parsers/codex-parser.js';
+import {
+  getModelDisplayName,
+  getCostPerMillionInput,
+  getCostPerMillionOutput,
+  createCodexError,
+  normalizeCodexResponse,
+  delay,
+} from './codex-adapter-helpers.js';
+
+// Re-export helpers for backward compatibility
+export {
+  getModelDisplayName,
+  getCostPerMillionInput,
+  getCostPerMillionOutput,
+  createCodexError,
+  normalizeCodexResponse,
+  delay,
+} from './codex-adapter-helpers.js';
 
 /**
  * Default execution options for Codex.
@@ -84,11 +101,11 @@ export class CodexCliAdapter implements ICliAdapter {
   getModelInfo(): ModelInfo {
     return {
       id: this.model,
-      name: this.getModelDisplayName(),
+      name: getModelDisplayName(this.model),
       contextWindow: 400_000,
       maxOutput: 100_000,
-      costPerMillionInput: this.getCostPerMillionInput(),
-      costPerMillionOutput: this.getCostPerMillionOutput(),
+      costPerMillionInput: getCostPerMillionInput(this.model),
+      costPerMillionOutput: getCostPerMillionOutput(this.model),
     };
   }
 
@@ -141,10 +158,10 @@ export class CodexCliAdapter implements ICliAdapter {
       });
 
       // Exponential backoff
-      await this.delay(Math.pow(2, attempt) * 1000);
+      await delay(Math.pow(2, attempt) * 1000);
     }
 
-    return err(lastError ?? this.createError('UNKNOWN', 'Unknown error'));
+    return err(lastError ?? createCodexError('UNKNOWN', 'Unknown error', this.name));
   }
 
   /**
@@ -195,19 +212,19 @@ export class CodexCliAdapter implements ICliAdapter {
   ): Result<CliResponse, CliError> {
     if (code !== 0 && stdout === '') {
       const message = stderr !== '' ? stderr : 'Process exited with error';
-      return err(this.createError('EXECUTION_ERROR', message));
+      return err(createCodexError('EXECUTION_ERROR', message, this.name));
     }
 
     const text = this.parser.extractResponse(stdout);
     if (text === null) {
-      return err(this.createError('PARSE_ERROR', 'Failed to parse response'));
+      return err(createCodexError('PARSE_ERROR', 'Failed to parse response', this.name));
     }
 
     const usage = this.parser.extractUsage(stdout);
     const sessionId = this.parser.extractSessionId(stdout);
 
     return ok(
-      this.normalizeResponse(text, usage ?? undefined, {
+      normalizeCodexResponse(text, usage ?? undefined, {
         durationMs: Date.now() - startTime,
         raw: stdout,
         ...(sessionId !== null && { sessionId }),
@@ -220,12 +237,12 @@ export class CodexCliAdapter implements ICliAdapter {
    */
   private handleError(error: Error): Result<CliResponse, CliError> {
     if (error.message.includes('ENOENT')) {
-      return err(this.createError('NOT_FOUND', 'codex CLI not found', error));
+      return err(createCodexError('NOT_FOUND', 'codex CLI not found', this.name, error));
     }
     if (error.message.includes('ETIMEDOUT') || error.message.includes('timeout')) {
-      return err(this.createError('TIMEOUT', 'Execution timed out', error));
+      return err(createCodexError('TIMEOUT', 'Execution timed out', this.name, error));
     }
-    return err(this.createError('EXECUTION_ERROR', error.message, error));
+    return err(createCodexError('EXECUTION_ERROR', error.message, this.name, error));
   }
 
   /**
@@ -342,81 +359,5 @@ export class CodexCliAdapter implements ICliAdapter {
   dispose(): Promise<void> {
     this.initialized = false;
     return Promise.resolve();
-  }
-
-  /**
-   * Gets model display name.
-   */
-  private getModelDisplayName(): string {
-    const displayNames: Record<string, string> = {
-      o3: 'O3',
-      'o3-mini': 'O3 Mini',
-      'o4-mini': 'O4 Mini',
-    };
-
-    return displayNames[this.model] ?? this.model;
-  }
-
-  /**
-   * Gets cost per million input tokens.
-   */
-  private getCostPerMillionInput(): number {
-    const costs: Record<string, number> = {
-      o3: 10.0,
-      'o3-mini': 1.1,
-      'o4-mini': 1.1,
-    };
-
-    return costs[this.model] ?? 1.1;
-  }
-
-  /**
-   * Gets cost per million output tokens.
-   */
-  private getCostPerMillionOutput(): number {
-    const costs: Record<string, number> = {
-      o3: 40.0,
-      'o3-mini': 4.4,
-      'o4-mini': 4.4,
-    };
-
-    return costs[this.model] ?? 4.4;
-  }
-
-  /**
-   * Creates a CLI error.
-   */
-  private createError(code: CliError['code'], message: string, cause?: Error): CliError {
-    const retryable = ['RATE_LIMITED', 'TIMEOUT', 'CONNECTION_ERROR'].includes(code);
-
-    return {
-      code,
-      message,
-      cli: this.name,
-      retryable,
-      ...(cause !== undefined && { cause }),
-    };
-  }
-
-  /**
-   * Normalizes CLI response to common format.
-   */
-  private normalizeResponse(
-    text: string,
-    usage?: TokenUsage,
-    extra?: Partial<CliResponse>
-  ): CliResponse {
-    return {
-      text,
-      ...(usage !== undefined && { usage }),
-      ...extra,
-    };
-  }
-
-  /**
-   * Delays for the specified milliseconds.
-   */
-  private delay(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }

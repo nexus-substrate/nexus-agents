@@ -9,7 +9,23 @@
  * (Source: Alignment Roadmap Phase 1, Issue #158)
  */
 
-import { z } from 'zod';
+// Re-export schemas and defaults from helper file for backward compatibility
+export {
+  DEFAULT_SWARM_OBSERVER_CONFIG,
+  SwarmObserverConfigSchema,
+  AgentEventSchema,
+} from './swarm-observer-schemas.js';
+
+// Re-export event payloads from helper file for backward compatibility
+export type {
+  EventPayload,
+  StateChangePayload,
+  MessagePayload,
+  ToolPayload,
+  MemoryPayload,
+  TaskPayload,
+  ErrorPayload,
+} from './swarm-observer-payloads.js';
 
 /**
  * Unique identifier for agents in the swarm.
@@ -82,83 +98,8 @@ export interface AgentEvent {
   readonly durationMs?: number;
 }
 
-/**
- * Discriminated union of event payloads.
- */
-export type EventPayload =
-  | StateChangePayload
-  | MessagePayload
-  | ToolPayload
-  | MemoryPayload
-  | TaskPayload
-  | ErrorPayload;
-
-/**
- * Payload for state change events.
- */
-export interface StateChangePayload {
-  readonly type: 'state_change';
-  readonly previousState: AgentState;
-  readonly newState: AgentState;
-  readonly reason?: string;
-}
-
-/**
- * Payload for message events.
- */
-export interface MessagePayload {
-  readonly type: 'message';
-  readonly direction: 'sent' | 'received';
-  readonly targetAgentId?: AgentId;
-  readonly sourceAgentId?: AgentId;
-  readonly messageType: string;
-  /** Truncated preview of message content */
-  readonly contentPreview?: string;
-}
-
-/**
- * Payload for tool invocation events.
- */
-export interface ToolPayload {
-  readonly type: 'tool';
-  readonly phase: 'invoked' | 'completed';
-  readonly toolName: string;
-  readonly success?: boolean;
-  readonly errorMessage?: string;
-}
-
-/**
- * Payload for memory operation events.
- */
-export interface MemoryPayload {
-  readonly type: 'memory';
-  readonly operation: 'read' | 'write';
-  readonly memoryType: string;
-  readonly key?: string;
-  readonly sizeBytes?: number;
-}
-
-/**
- * Payload for task lifecycle events.
- */
-export interface TaskPayload {
-  readonly type: 'task';
-  readonly phase: 'started' | 'completed';
-  readonly taskId: TaskId;
-  readonly taskDescription?: string;
-  readonly success?: boolean;
-}
-
-/**
- * Payload for error events.
- */
-export interface ErrorPayload {
-  readonly type: 'error';
-  readonly errorCode: string;
-  readonly errorMessage: string;
-  readonly stack?: string;
-  readonly recoverable: boolean;
-}
+// Import EventPayload for use in AgentEvent interface
+import type { EventPayload } from './swarm-observer-payloads.js';
 
 /**
  * Edge in the interaction graph representing a message/interaction.
@@ -293,56 +234,6 @@ export interface SwarmObserverConfig {
   /** Cohesion threshold for cluster detection */
   readonly cohesionThreshold: number;
 }
-
-/**
- * Default configuration for SwarmObserver.
- */
-export const DEFAULT_SWARM_OBSERVER_CONFIG: SwarmObserverConfig = {
-  maxEvents: 10000,
-  metricsWindowMs: 300000, // 5 minutes
-  logPayloads: false,
-  bottleneckThreshold: 10,
-  minClusterSize: 2,
-  cohesionThreshold: 0.5,
-};
-
-/**
- * Zod schema for SwarmObserverConfig validation.
- */
-export const SwarmObserverConfigSchema = z.object({
-  maxEvents: z.number().int().positive().default(10000),
-  metricsWindowMs: z.number().positive().default(300000),
-  logPayloads: z.boolean().default(false),
-  bottleneckThreshold: z.number().int().positive().default(10),
-  minClusterSize: z.number().int().min(2).default(2),
-  cohesionThreshold: z.number().min(0).max(1).default(0.5),
-});
-
-/**
- * Zod schema for AgentEvent validation.
- */
-export const AgentEventSchema = z.object({
-  eventId: z.string().min(1),
-  timestamp: z.string().datetime(),
-  agentId: z.string().min(1),
-  eventType: z.enum([
-    'state_change',
-    'message_sent',
-    'message_received',
-    'tool_invoked',
-    'tool_completed',
-    'memory_read',
-    'memory_write',
-    'task_started',
-    'task_completed',
-    'error',
-  ]),
-  traceId: z.string().length(32),
-  spanId: z.string().length(16),
-  parentSpanId: z.string().length(16).optional(),
-  payload: z.record(z.unknown()),
-  durationMs: z.number().nonnegative().optional(),
-});
 
 /**
  * Interface for the SwarmObserver.

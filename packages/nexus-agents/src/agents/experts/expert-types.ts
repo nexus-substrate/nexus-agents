@@ -8,6 +8,15 @@
 import { z } from 'zod';
 import type { AgentCapability, AgentRole } from '../../core/index.js';
 
+// Re-export documentation types for backward compatibility
+export type {
+  DocumentationResult,
+  DocumentationSection,
+  ApiDocumentation,
+  ApiEndpoint,
+  ApiType,
+} from './expert-documentation-types.js';
+
 /**
  * Expert domain categories.
  */
@@ -235,78 +244,6 @@ export interface TestQuality {
   assertionQuality: 'good' | 'fair' | 'poor';
   /** Issues found */
   issues: string[];
-}
-
-/**
- * Documentation result from DocumentationExpert.
- */
-export interface DocumentationResult extends ExpertOutput {
-  /** Documentation type */
-  documentationType: 'api' | 'readme' | 'guide' | 'reference';
-  /** Generated documentation sections */
-  sections?: DocumentationSection[] | undefined;
-  /** API documentation */
-  apiDocs?: ApiDocumentation | undefined;
-}
-
-/**
- * Documentation section.
- */
-export interface DocumentationSection {
-  /** Section title */
-  title: string;
-  /** Section content */
-  content: string;
-  /** Subsections */
-  subsections?: DocumentationSection[];
-}
-
-/**
- * API documentation structure.
- */
-export interface ApiDocumentation {
-  /** API endpoints or functions */
-  endpoints: ApiEndpoint[];
-  /** Data types */
-  types: ApiType[];
-}
-
-/**
- * API endpoint documentation.
- */
-export interface ApiEndpoint {
-  /** Endpoint name */
-  name: string;
-  /** Description */
-  description: string;
-  /** Parameters */
-  parameters: Array<{
-    name: string;
-    type: string;
-    description: string;
-    required: boolean;
-  }>;
-  /** Return type */
-  returns: { type: string; description: string };
-  /** Example usage */
-  example?: string;
-}
-
-/**
- * API type documentation.
- */
-export interface ApiType {
-  /** Type name */
-  name: string;
-  /** Description */
-  description: string;
-  /** Properties */
-  properties: Array<{
-    name: string;
-    type: string;
-    description: string;
-    optional: boolean;
-  }>;
 }
 
 // ============================================================================
