@@ -34,6 +34,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Consensus vote execution timeout and simulation fallback removal (#280)
 
+### Refactored
+
+- **CLI Module Splitting** (#285)
+  - `voter-agents.ts` split into voter-response.ts (127 lines) and voter-execution.ts (255 lines)
+  - `cli-commands.ts` split into cli-commands-handlers.ts (381 lines)
+  - Maintains backward compatibility via re-exports
+
 ## [2.1.0] - 2026-01-14
 
 Multi-Agent Orchestration Release

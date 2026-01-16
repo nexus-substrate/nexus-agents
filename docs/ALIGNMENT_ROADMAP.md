@@ -703,11 +703,20 @@ The following capabilities received positive assessments from multiple agents:
 
 ### Action Items
 
-| Action                           | Priority | Issue | Status     |
-| -------------------------------- | -------- | ----- | ---------- |
-| Split 25 files >400 lines        | P1       | #285  | 🆕 Created |
-| Execute SWE-bench Lite benchmark | P1       | #257  | ⏳ Pending |
-| Cut v2.2.0 release               | P2       | -     | ⏳ Ready   |
+| Action                           | Priority | Issue | Status                                    |
+| -------------------------------- | -------- | ----- | ----------------------------------------- |
+| Split 25 files >400 lines        | P1       | #285  | ⏳ In progress (2 files split, 23 remain) |
+| Execute SWE-bench Lite benchmark | P1       | #257  | ⏳ Pending (dedicated runtime needed)     |
+| Cut v2.2.0 release               | P2       | -     | ⏳ Ready                                  |
+
+### File Splitting Progress (2026-01-16)
+
+| File            | Before | After | Extracted To                                      |
+| --------------- | ------ | ----- | ------------------------------------------------- |
+| voter-agents.ts | 542    | 228   | voter-response.ts (127), voter-execution.ts (255) |
+| cli-commands.ts | 468    | 141   | cli-commands-handlers.ts (381)                    |
+
+**Note:** Many remaining files have documented justifications for exceeding 400 lines (tightly-coupled class methods, types already extracted). See Issue #285 for detailed analysis.
 
 ### DevEx Dissent Rationale
 
