@@ -1975,7 +1975,7 @@ papers:
 
     related_issues:
       - 279
-    implementation_status: reviewed
+    implementation_status: not-started
 
     # Overlap analysis with existing implementations:
     # - Hierarchical memory → Overlaps with MIRIX typed memory (6-type system)
