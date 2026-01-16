@@ -91,15 +91,6 @@ nexus-agents orchestrate "Review this code for security issues"
 # Consensus voting
 nexus-agents vote --proposal "Should we adopt TypeScript 6.0?"
 
-# Validate issue body
-nexus-agents issue validate --body="## Summary\nFix bug..."
-
-# Generate sprint proposal
-nexus-agents sprint plan --max=10 --create-issue
-
-# List sprint candidates
-nexus-agents sprint list --format=table
-
 # System review (5-phase checklist)
 nexus-agents system-review
 nexus-agents system-review --create-issue
