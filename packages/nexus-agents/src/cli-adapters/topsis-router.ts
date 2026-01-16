@@ -19,6 +19,24 @@ import type {
   TopsisResult,
 } from './topsis-types.js';
 import { DEFAULT_TOPSIS_CONFIG, DEFAULT_MODEL_PROFILES } from './topsis-types.js';
+import {
+  estimateCost,
+  calculateSumOfSquares,
+  calculateNormFactors,
+  calculateDistance,
+  calculateSavings,
+  generateReasoning,
+} from './topsis-helpers.js';
+
+// Re-export helpers for backward compatibility
+export {
+  estimateCost,
+  calculateSumOfSquares,
+  calculateNormFactors,
+  calculateDistance,
+  calculateSavings,
+  generateReasoning,
+} from './topsis-helpers.js';
 
 /**
  * Options for selecting a model with TOPSIS.
@@ -91,7 +109,7 @@ export class TopsisRouter {
     }
 
     // Calculate savings
-    const costSavings = this.calculateSavings(profiles, best.cliName);
+    const costSavings = calculateSavings(profiles, best.cliName);
 
     const result: TopsisResult = {
       selectedModel: best.cliName,
@@ -100,7 +118,7 @@ export class TopsisRouter {
       negativeIdeal: negative,
       costOptimized: costSavings > 10,
       estimatedSavingsPercent: costSavings,
-      reasoning: this.generateReasoning(best, ranked, costSavings),
+      reasoning: generateReasoning(best, ranked, costSavings),
     };
 
     this.logResult(result);
@@ -118,10 +136,10 @@ export class TopsisRouter {
     const matrix = new Map<CliName, Record<string, number>>();
 
     for (const profile of profiles) {
-      const estimatedCost = this.estimateCost(profile, inputTokens, outputTokens);
+      const cost = estimateCost(profile, inputTokens, outputTokens);
       const values: Record<string, number> = {
         quality: profile.qualityScore,
-        cost: estimatedCost,
+        cost: cost,
         latency: profile.averageLatencyMs,
       };
       matrix.set(profile.cliName, values);
@@ -131,57 +149,13 @@ export class TopsisRouter {
   }
 
   /**
-   * Estimates cost for a request.
-   */
-  private estimateCost(
-    profile: TopsisModelProfile,
-    inputTokens: number,
-    outputTokens: number
-  ): number {
-    const inputCost = (inputTokens / 1_000_000) * profile.costPerMillionInput;
-    const outputCost = (outputTokens / 1_000_000) * profile.costPerMillionOutput;
-    return inputCost + outputCost;
-  }
-
-  /**
-   * Calculates sum of squares for each criterion.
-   */
-  private calculateSumOfSquares(
-    matrix: Map<CliName, Record<string, number>>
-  ): Record<string, number> {
-    const sumOfSquares: Record<string, number> = {};
-    for (const criterion of this.config.criteria) {
-      sumOfSquares[criterion.name] = 0;
-    }
-
-    for (const values of matrix.values()) {
-      for (const criterion of this.config.criteria) {
-        const val = values[criterion.name] ?? 0;
-        sumOfSquares[criterion.name] = (sumOfSquares[criterion.name] ?? 0) + val * val;
-      }
-    }
-    return sumOfSquares;
-  }
-
-  /**
-   * Calculates normalization factors from sum of squares.
-   */
-  private calculateNormFactors(sumOfSquares: Record<string, number>): Record<string, number> {
-    const normFactors: Record<string, number> = {};
-    for (const criterion of this.config.criteria) {
-      normFactors[criterion.name] = Math.sqrt(sumOfSquares[criterion.name] ?? 0);
-    }
-    return normFactors;
-  }
-
-  /**
    * Normalizes the decision matrix using vector normalization.
    */
   private normalizeMatrix(
     matrix: Map<CliName, Record<string, number>>
   ): Map<CliName, Record<string, number>> {
-    const sumOfSquares = this.calculateSumOfSquares(matrix);
-    const normFactors = this.calculateNormFactors(sumOfSquares);
+    const sumOfSquares = calculateSumOfSquares(matrix, this.config.criteria);
+    const normFactors = calculateNormFactors(sumOfSquares, this.config.criteria);
 
     const normalized = new Map<CliName, Record<string, number>>();
     for (const [cli, values] of matrix) {
@@ -289,8 +263,8 @@ export class TopsisRouter {
     const normalizedValues = matrices.normalized.get(cli) ?? {};
     const weightedValues = matrices.weighted.get(cli) ?? {};
 
-    const distToPIS = this.calculateDistance(weightedValues, ideals.positive);
-    const distToNIS = this.calculateDistance(weightedValues, ideals.negative);
+    const distToPIS = calculateDistance(weightedValues, ideals.positive, this.config.criteria);
+    const distToNIS = calculateDistance(weightedValues, ideals.negative, this.config.criteria);
     const closeness = distToPIS + distToNIS > 0 ? distToNIS / (distToPIS + distToNIS) : 0;
 
     return {
@@ -302,58 +276,6 @@ export class TopsisRouter {
       distanceToNIS: distToNIS,
       closenessScore: closeness,
     };
-  }
-
-  /**
-   * Calculates Euclidean distance between weighted values and ideal.
-   */
-  private calculateDistance(values: Record<string, number>, ideal: Record<string, number>): number {
-    let sumSquares = 0;
-    for (const criterion of this.config.criteria) {
-      const diff = (values[criterion.name] ?? 0) - (ideal[criterion.name] ?? 0);
-      sumSquares += diff * diff;
-    }
-    return Math.sqrt(sumSquares);
-  }
-
-  /**
-   * Calculates cost savings percentage compared to highest quality model.
-   */
-  private calculateSavings(profiles: readonly TopsisModelProfile[], selected: CliName): number {
-    const selectedProfile = profiles.find((p) => p.cliName === selected);
-    const highestQuality = profiles.reduce((best, p) =>
-      p.qualityScore > best.qualityScore ? p : best
-    );
-
-    if (selectedProfile === undefined || selected === highestQuality.cliName) {
-      return 0;
-    }
-
-    const selectedCost = this.estimateCost(selectedProfile, 1000, 500);
-    const maxCost = this.estimateCost(highestQuality, 1000, 500);
-
-    return maxCost > 0 ? ((maxCost - selectedCost) / maxCost) * 100 : 0;
-  }
-
-  /**
-   * Generates human-readable reasoning for the selection.
-   */
-  private generateReasoning(best: TopsisScore, ranked: TopsisScore[], savings: number): string {
-    const parts: string[] = [];
-
-    parts.push(`Selected "${best.cliName}" with closeness score ${best.closenessScore.toFixed(3)}`);
-
-    if (ranked.length > 1 && ranked[1] !== undefined) {
-      const runnerUp = ranked[1];
-      const diff = best.closenessScore - runnerUp.closenessScore;
-      parts.push(`(${(diff * 100).toFixed(1)}% better than ${runnerUp.cliName})`);
-    }
-
-    if (savings > 10) {
-      parts.push(`Cost savings: ${savings.toFixed(1)}% vs highest quality model`);
-    }
-
-    return parts.join('. ');
   }
 
   /**

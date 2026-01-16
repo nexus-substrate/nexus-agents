@@ -342,8 +342,6 @@ export class VotingProtocol implements IVotingProtocol {
     return this.sessions.get(sessionId);
   }
 
-  // Private helpers
-
   private getSessionOrThrow(sessionId: string): VotingSession {
     const session = this.sessions.get(sessionId);
     if (!session) {

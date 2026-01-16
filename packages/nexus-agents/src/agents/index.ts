@@ -205,63 +205,8 @@ export {
   type DocumentationExpertOptions,
 } from './experts/index.js';
 
-// Collaboration protocol
-export {
-  // Types and schemas
-  type CollaborationPattern,
-  type SessionStatus,
-  type VoteDecision,
-  type CollaborationConfig,
-  type ExpertParticipation,
-  type CollaborationMessage,
-  type TaskAssignmentMessage,
-  type ResultSubmissionMessage,
-  type ReviewRequestMessage,
-  type ReviewResponseMessage,
-  type FeedbackMessage,
-  type VoteMessage,
-  type StatusUpdateMessage,
-  type SessionState,
-  type CollaborationResult,
-  type ExpertResultSummary,
-  type AggregatedResult,
-  type ResultConflict,
-  type AggregationMetadata,
-  CollaborationPatternSchema,
-  SessionStatusSchema,
-  VoteDecisionSchema,
-  CollaborationConfigSchema,
-  ExpertParticipationSchema,
-  VoteMessageSchema,
-  ReviewResponseMessageSchema,
-  DEFAULT_TIMEOUTS,
-  DEFAULT_MAX_RETRIES,
-  MIN_EXPERTS_FOR_PATTERN,
-  // Session management
-  CollaborationSession,
-  createCollaborationSession,
-  type CollaborationSessionOptions,
-  type SessionEvent,
-  // Protocol implementations
-  SequentialProtocol,
-  ParallelProtocol,
-  ReviewProtocol,
-  ConsensusProtocol,
-  ProtocolFactory,
-  createProtocolFactory,
-  type ICollaborationProtocol,
-  type ProtocolOptions,
-  // Result aggregation
-  ResultAggregator,
-  createResultAggregator,
-  aggregateResults,
-  type AggregationStrategy,
-  type AggregatorOptions,
-  type AggregatorInput,
-  type ExpertResult,
-  type ConflictResolver,
-  type QualityScorer,
-} from './collaboration/index.js';
+// Collaboration protocol (re-exported from helper file)
+export * from './collaboration-exports.js';
 
 // Agent resilience (failure detection and recovery)
 export {
@@ -399,5 +344,5 @@ export {
   type ISwarmObserver,
   SwarmObserver,
   createSwarmObserver,
-} from './observability/index.js';
+} from './deprecated-exports.js';
 /* eslint-enable @typescript-eslint/no-deprecated */
