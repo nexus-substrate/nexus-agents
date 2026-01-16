@@ -475,8 +475,18 @@ The following capabilities received positive assessments from multiple agents:
 - ✅ Dataset loader for SWE-bench Lite (300 instances)
 - ✅ Agent runner with existing MCP tools
 - ✅ JSONL prediction writer in SWE-bench format
-- ⏳ Full benchmark run on SWE-bench Lite
+- ✅ CLI model name fix (commit 6cff617) - Maps to valid CLI aliases
+- ✅ API error detection in response parser
+- ✅ Verification: Agent executes with ~4500 tokens/iteration
+- ⏳ Full benchmark run on SWE-bench Lite (requires ~2+ hours)
 - ⏳ Results comparison against leaderboard
+
+**Verification Results (2026-01-15):**
+| Test | Result |
+|------|--------|
+| CLI adapter simple task | ✅ Working with `sonnet` model |
+| Patch generation | ✅ Correctly extracts diffs |
+| SWE-bench instance (astropy) | ✅ Agent explores codebase, ~5 min/iteration |
 
 **Success Metrics:**
 | Metric | Baseline | Target | Current |
