@@ -1,0 +1,177 @@
+# docs/INDEX.yaml - Machine-parseable documentation index
+# Tiered Documentation System (Issue #283)
+# Generated: 2026-01-15T00:00:00-05:00
+# See: docs/proposals/TIERED_DOCS_PLAN.md
+
+schema_version: '1.0'
+last_updated: '2026-01-15'
+
+# =============================================================================
+# TIER 1: Navigation Layer - Always loaded for discovery
+# =============================================================================
+
+navigation:
+  primary_index: 'docs/INDEX.yaml'
+  llm_navigation: 'docs/llms.txt'
+  llm_comprehensive: 'docs/llms-full.txt'
+  human_quickstart: 'QUICK_START.md'
+  troubleshooting: 'docs/TROUBLESHOOTING.md'
+
+# =============================================================================
+# TOPICS - Each topic maps to Tier 2 hub and Tier 3 detailed docs
+# =============================================================================
+
+topics:
+  project_context:
+    summary: 'Project instructions, protocols, and agent behavior guidelines'
+    tier2_file: 'CLAUDE.md'
+    tier3_files:
+      - 'CODING_STANDARDS.md'
+      - 'docs/ENTRYPOINTS.md'
+    keywords:
+      - 'claude'
+      - 'instructions'
+      - 'protocols'
+      - 'guidelines'
+      - 'conventions'
+
+  architecture:
+    summary: 'System design, component relationships, and technical decisions'
+    tier2_file: 'docs/architecture/README.md'
+    tier3_files:
+      - 'ARCHITECTURE.md'
+      - 'docs/architecture/AGENT_SYSTEM.md'
+      - 'docs/architecture/MEMORY_SYSTEM.md'
+      - 'docs/architecture/ROUTING_SYSTEM.md'
+      - 'docs/architecture/CONSENSUS_PROTOCOLS.md'
+      - 'docs/architecture/SECURITY.md'
+      - 'docs/architecture/MCP_PROTOCOL.md'
+      - 'docs/architecture/SWARM_OBSERVER_DESIGN.md'
+      - 'docs/architecture/EXECUTION_DASHBOARD_DESIGN.md'
+    keywords:
+      - 'agents'
+      - 'memory'
+      - 'routing'
+      - 'consensus'
+      - 'security'
+      - 'mcp'
+      - 'swarm'
+      - 'design'
+
+  development:
+    summary: 'How to contribute, extend, and develop with the system'
+    tier2_file: 'docs/development/README.md'
+    tier3_files:
+      - 'CONTRIBUTING.md'
+      - 'docs/development/AGENT_DEVELOPMENT.md'
+      - 'docs/development/TOOL_DEVELOPMENT.md'
+      - 'docs/development/MEMORY_DEVELOPMENT.md'
+      - 'docs/guides/DEBUGGING_OBSERVABILITY.md'
+    keywords:
+      - 'contributing'
+      - 'development'
+      - 'testing'
+      - 'coding'
+      - 'standards'
+      - 'debugging'
+
+  troubleshooting:
+    summary: 'Common issues, error resolution, and FAQ'
+    tier2_file: 'docs/TROUBLESHOOTING.md'
+    tier3_files: []
+    keywords:
+      - 'errors'
+      - 'debugging'
+      - 'faq'
+      - 'issues'
+      - 'problems'
+      - 'help'
+
+  research:
+    summary: 'Research tracking, papers, and technique implementations'
+    tier2_file: 'docs/research/RESEARCH_INDEX.md'
+    tier3_files:
+      - 'docs/research/CONTRIBUTING.md'
+      - 'docs/research/registry/papers.yaml'
+      - 'docs/research/registry/techniques.yaml'
+      - 'docs/research/registry/sources.yaml'
+    keywords:
+      - 'research'
+      - 'papers'
+      - 'techniques'
+      - 'academic'
+      - 'implementation'
+
+  roadmap:
+    summary: 'Project alignment, phases, and progress tracking'
+    tier2_file: 'docs/ALIGNMENT_ROADMAP.md'
+    tier3_files:
+      - 'docs/proposals/TIERED_DOCS_PLAN.md'
+    keywords:
+      - 'roadmap'
+      - 'alignment'
+      - 'phases'
+      - 'progress'
+      - 'milestones'
+
+# =============================================================================
+# CONTEXT BUDGETS - Token allocation guidance per task type
+# =============================================================================
+
+context_budgets:
+  minimal:
+    tokens: 800
+    description: 'Quick tasks - single file edits, simple questions'
+    load:
+      - 'docs/llms.txt'
+      - 'Relevant topic tier2_file only'
+
+  standard:
+    tokens: 2500
+    description: 'Feature work - implementation, bug fixes'
+    load:
+      - 'docs/llms.txt'
+      - 'CLAUDE.md (reduced)'
+      - 'Relevant topic tier2_file + tier3_files as needed'
+
+  research:
+    tokens: 1500
+    description: 'Research context - exploring codebase, understanding design'
+    load:
+      - 'docs/llms-full.txt'
+      - 'docs/research/RESEARCH_INDEX.md'
+
+  full:
+    tokens: 6000
+    description: 'System review - architecture decisions, major refactoring'
+    load:
+      - 'docs/llms-full.txt'
+      - 'CLAUDE.md'
+      - 'ARCHITECTURE.md'
+      - 'All relevant tier2 and tier3 files'
+
+# =============================================================================
+# QUICK REFERENCE - Common entry points by task
+# =============================================================================
+
+quick_reference:
+  new_contributor:
+    start: 'QUICK_START.md'
+    then: 'CONTRIBUTING.md'
+
+  implement_feature:
+    start: 'docs/llms.txt'
+    then: 'CLAUDE.md'
+    reference: 'docs/ENTRYPOINTS.md'
+
+  debug_issue:
+    start: 'docs/TROUBLESHOOTING.md'
+    then: 'docs/guides/DEBUGGING_OBSERVABILITY.md'
+
+  understand_architecture:
+    start: 'docs/architecture/README.md'
+    then: 'ARCHITECTURE.md'
+
+  add_research:
+    start: 'docs/research/CONTRIBUTING.md'
+    then: 'docs/research/registry/techniques.yaml'

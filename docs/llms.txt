@@ -1,0 +1,97 @@
+# nexus-agents
+
+> Multi-agent orchestration MCP server for AI-powered software development
+
+## Project Overview
+
+nexus-agents coordinates multiple AI models (Claude, Gemini, Codex) to handle complex software development tasks. It runs as an MCP server for Claude Desktop or as a standalone CLI orchestrator.
+
+Key capabilities:
+- Multi-model routing with budget constraints
+- Expert agent delegation (Code, Architecture, Security, etc.)
+- Workflow automation via YAML templates
+- Byzantine fault-tolerant consensus protocols
+- 8-type memory system for context management
+
+## Quick Start
+
+```bash
+npm install -g nexus-agents
+nexus-agents doctor           # Verify installation
+nexus-agents --help           # See all commands
+```
+
+## Documentation Index
+
+### Tier 1: Navigation (start here)
+- docs/INDEX.yaml - Machine-parseable topic index
+- docs/TROUBLESHOOTING.md - Common issues and solutions
+
+### Tier 2: Actionable Reference (load when relevant)
+- CLAUDE.md - Project context and protocols (~650 lines)
+- docs/ENTRYPOINTS.md - CLI, MCP, REST API reference
+- docs/architecture/README.md - Architecture overview
+- docs/development/README.md - Development guide
+- docs/research/RESEARCH_INDEX.md - Research tracking
+
+### Tier 3: Deep Detail (load on demand)
+- ARCHITECTURE.md - Full system architecture
+- CODING_STANDARDS.md - Code style and patterns
+- docs/architecture/*.md - Component deep dives
+- docs/development/*.md - Development walkthroughs
+
+## Context Budget Guide
+
+| Task Type | Tokens | What to Load |
+|-----------|--------|--------------|
+| Quick fix | 800 | llms.txt + relevant tier2 file |
+| Feature | 2500 | llms.txt + CLAUDE.md + tier2/3 as needed |
+| Research | 1500 | llms-full.txt + RESEARCH_INDEX.md |
+| System review | 6000 | llms-full.txt + CLAUDE.md + ARCHITECTURE.md |
+
+## Key Entry Points
+
+### CLI Commands
+- `nexus-agents` - Start MCP server (default)
+- `nexus-agents orchestrate <task>` - Run task orchestration
+- `nexus-agents expert list` - List available experts
+- `nexus-agents workflow run <template>` - Execute workflow
+- `nexus-agents doctor` - Health check
+
+### MCP Tools (via Claude Desktop)
+- orchestrate - Task decomposition and delegation
+- create_expert - Spawn specialized agent
+- run_workflow - Execute workflow template
+- list_experts - Available expert types
+
+### Programmatic API
+```typescript
+import { createServer, TechLead, Expert } from 'nexus-agents';
+```
+
+## Architecture Highlights
+
+- **Agents**: TechLead orchestrates Expert pool (Code, Security, Architecture, etc.)
+- **Routing**: CompositeRouter chains Budget→TOPSIS→LinUCB for model selection
+- **Memory**: 8-type system (Core, Episodic, Semantic, Procedural, Resource, Vault, Graph, Adaptive)
+- **Consensus**: 11 protocols including Aegean, CP-WBFT, Reflexion
+
+## File Structure
+
+```
+packages/nexus-agents/src/
+├── core/          # Types, Result<T,E>, errors
+├── agents/        # TechLead, Experts, collaboration
+├── cli-adapters/  # Claude/Gemini/Codex integration
+├── context/       # Memory and token management
+├── consensus/     # Voting protocols
+├── mcp/           # MCP server and tools
+└── workflows/     # Template engine
+```
+
+## For More Information
+
+- Full docs: docs/llms-full.txt
+- API reference: docs/ENTRYPOINTS.md
+- Architecture: ARCHITECTURE.md
+- Contributing: CONTRIBUTING.md
