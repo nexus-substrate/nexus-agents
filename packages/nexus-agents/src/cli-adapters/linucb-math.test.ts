@@ -181,7 +181,7 @@ describe('linucb-math', () => {
 
       // Verify the result is a valid matrix (not NaN/Infinity)
       expect(AInv.length).toBe(dim);
-      expect(AInv[0].length).toBe(dim);
+      expect(AInv[0]?.length).toBe(dim);
       expect(AInv.every((row) => row.every((val) => Number.isFinite(val)))).toBe(true);
     });
   });
