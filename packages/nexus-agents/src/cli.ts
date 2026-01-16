@@ -256,11 +256,19 @@ async function main(): Promise<void> {
 // Check if script URL matches the process execution path
 const isDirectRun = (): boolean => {
   try {
-    // Convert import.meta.url (file://) to path and compare with process.argv[1]
-    const scriptPath = new URL(import.meta.url).pathname;
     const execPath = process.argv[1];
-    // Handle both direct execution and symlink scenarios
-    return execPath !== undefined && (scriptPath.endsWith(execPath) || execPath.endsWith('cli.js'));
+    if (execPath === undefined) return false;
+
+    // When running via npx or as installed global, execPath may be:
+    // - The actual cli.js file: /path/to/dist/cli.js
+    // - A symlink named nexus-agents: /path/to/.bin/nexus-agents
+    // - The package binary: /path/to/node_modules/nexus-agents/dist/cli.js
+    // When imported as a module in tests, execPath points to vitest/jest runner
+    return (
+      execPath.endsWith('cli.js') ||
+      execPath.endsWith('nexus-agents') ||
+      execPath.endsWith('.bin/nexus-agents')
+    );
   } catch {
     return false;
   }
