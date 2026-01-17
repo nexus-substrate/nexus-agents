@@ -113,26 +113,39 @@ export class TaskTypeClassifier {
     const content = this.extractContent(task);
     const signals: ClassificationSignal[] = [];
 
-    let reasoningScore = 0;
-    let knowledgeScore = 0;
+    const reasoningScore = this.matchPatterns(content, REASONING_PATTERNS, 'reasoning', signals);
+    const knowledgeScore = this.matchPatterns(content, KNOWLEDGE_PATTERNS, 'knowledge', signals);
 
-    // Check reasoning patterns
-    for (const { pattern, weight, name } of REASONING_PATTERNS) {
+    return this.computeResult(reasoningScore, knowledgeScore, signals);
+  }
+
+  /**
+   * Match patterns against content and accumulate signals.
+   */
+  private matchPatterns(
+    content: string,
+    patterns: ReadonlyArray<{ pattern: RegExp; weight: number; name: string }>,
+    indicates: 'reasoning' | 'knowledge',
+    signals: ClassificationSignal[]
+  ): number {
+    let score = 0;
+    for (const { pattern, weight, name } of patterns) {
       if (pattern.test(content)) {
-        reasoningScore += weight;
-        signals.push({ name, weight, indicates: 'reasoning' });
+        score += weight;
+        signals.push({ name, weight, indicates });
       }
     }
+    return score;
+  }
 
-    // Check knowledge patterns
-    for (const { pattern, weight, name } of KNOWLEDGE_PATTERNS) {
-      if (pattern.test(content)) {
-        knowledgeScore += weight;
-        signals.push({ name, weight, indicates: 'knowledge' });
-      }
-    }
-
-    // Normalize scores
+  /**
+   * Compute classification result from scores.
+   */
+  private computeResult(
+    reasoningScore: number,
+    knowledgeScore: number,
+    signals: readonly ClassificationSignal[]
+  ): ClassificationResult {
     const totalScore = reasoningScore + knowledgeScore;
     if (totalScore === 0) {
       return { type: 'unknown', confidence: 0, signals };
@@ -140,33 +153,52 @@ export class TaskTypeClassifier {
 
     const reasoningRatio = reasoningScore / totalScore;
     const knowledgeRatio = knowledgeScore / totalScore;
-
-    // Determine type based on dominant score
-    const isReasoning = reasoningRatio > knowledgeRatio;
     const confidence = Math.abs(reasoningRatio - knowledgeRatio);
 
-    // Apply minimum confidence threshold
     if (confidence < this.config.minConfidence) {
-      this.log.debug('Classification confidence below threshold', {
-        reasoningScore,
-        knowledgeScore,
-        confidence,
-        threshold: this.config.minConfidence,
-      });
+      this.logLowConfidence(reasoningScore, knowledgeScore, confidence);
       return { type: 'unknown', confidence, signals };
     }
 
-    const type: TaskType = isReasoning ? 'reasoning' : 'knowledge';
+    const type: TaskType = reasoningRatio > knowledgeRatio ? 'reasoning' : 'knowledge';
+    this.logClassification(type, confidence, reasoningScore, knowledgeScore, signals.length);
 
+    return { type, confidence, signals };
+  }
+
+  /**
+   * Log low confidence classification.
+   */
+  private logLowConfidence(
+    reasoningScore: number,
+    knowledgeScore: number,
+    confidence: number
+  ): void {
+    this.log.debug('Classification confidence below threshold', {
+      reasoningScore,
+      knowledgeScore,
+      confidence,
+      threshold: this.config.minConfidence,
+    });
+  }
+
+  /**
+   * Log successful classification.
+   */
+  private logClassification(
+    type: TaskType,
+    confidence: number,
+    reasoningScore: number,
+    knowledgeScore: number,
+    signalCount: number
+  ): void {
     this.log.debug('Task classified', {
       type,
       confidence,
       reasoningScore,
       knowledgeScore,
-      signalCount: signals.length,
+      signalCount,
     });
-
-    return { type, confidence, signals };
   }
 
   /**

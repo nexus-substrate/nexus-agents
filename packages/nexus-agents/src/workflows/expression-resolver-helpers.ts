@@ -52,13 +52,12 @@ export function resolveInputs(path: string[], context: WorkflowExecutionContext)
 }
 
 /**
- * Resolves a steps expression.
+ * Validates the step path has required components.
  *
  * @param path - Property path (stepId.output[.field...])
- * @param context - Execution context
- * @returns Resolve result
+ * @returns Error result if invalid, null if valid
  */
-export function resolveSteps(path: string[], context: WorkflowExecutionContext): ResolveResult {
+function validateStepPath(path: string[]): ResolveResult | null {
   if (path.length < 2) {
     return {
       success: false,
@@ -66,31 +65,35 @@ export function resolveSteps(path: string[], context: WorkflowExecutionContext):
     };
   }
 
-  const stepId = path[0];
-  const outputKey = path[1];
-  const rest = path.slice(2);
-
-  if (stepId === undefined || outputKey === undefined) {
+  if (path[0] === undefined || path[1] === undefined) {
     return {
       success: false,
       error: 'Steps expression requires stepId and output',
     };
   }
 
-  const stepResult: StepResult | undefined = context.stepResults.get(stepId);
+  return null;
+}
 
+/**
+ * Validates the step result exists and completed successfully.
+ *
+ * @param stepId - The step identifier
+ * @param outputKey - The output key (must be 'output')
+ * @param stepResult - The step result from context
+ * @returns Error result if invalid, null if valid
+ */
+function validateStepResult(
+  stepId: string,
+  outputKey: string,
+  stepResult: StepResult | undefined
+): ResolveResult | null {
   if (stepResult === undefined) {
-    return {
-      success: false,
-      error: `Step '${stepId}' has not completed`,
-    };
+    return { success: false, error: `Step '${stepId}' has not completed` };
   }
 
   if (stepResult.status !== 'success') {
-    return {
-      success: false,
-      error: `Step '${stepId}' did not complete successfully`,
-    };
+    return { success: false, error: `Step '${stepId}' did not complete successfully` };
   }
 
   if (outputKey !== 'output') {
@@ -100,11 +103,33 @@ export function resolveSteps(path: string[], context: WorkflowExecutionContext):
     };
   }
 
+  return null;
+}
+
+/**
+ * Resolves a steps expression.
+ *
+ * @param path - Property path (stepId.output[.field...])
+ * @param context - Execution context
+ * @returns Resolve result
+ */
+export function resolveSteps(path: string[], context: WorkflowExecutionContext): ResolveResult {
+  const pathError = validateStepPath(path);
+  if (pathError !== null) return pathError;
+
+  const stepId = path[0] as string;
+  const outputKey = path[1] as string;
+  const rest = path.slice(2);
+
+  const stepResult = context.stepResults.get(stepId);
+  const resultError = validateStepResult(stepId, outputKey, stepResult);
+  if (resultError !== null) return resultError;
+
   if (rest.length === 0) {
-    return { success: true, value: stepResult.output };
+    return { success: true, value: stepResult?.output };
   }
 
-  const value = getNestedValue(stepResult.output, rest);
+  const value = getNestedValue(stepResult?.output, rest);
   if (value === undefined) {
     return {
       success: false,

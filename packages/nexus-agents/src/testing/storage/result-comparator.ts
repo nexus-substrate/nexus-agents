@@ -137,44 +137,16 @@ export class ResultComparator {
     const currentTasks = buildTaskMap(current.taskResults);
     const previousTasks = buildTaskMap(previous.taskResults);
 
-    const regressions: Regression[] = [];
-    const improvements: Improvement[] = [];
-    let unchanged = 0;
+    const { newTaskIds, removedTaskIds, commonTaskIds } = this.categorizeTaskIds(
+      currentTasks,
+      previousTasks
+    );
 
-    // Find new and removed tasks
-    const currentTaskIds = new Set(currentTasks.keys());
-    const previousTaskIds = new Set(previousTasks.keys());
-
-    const newTaskIds = [...currentTaskIds].filter((id) => !previousTaskIds.has(id));
-    const removedTaskIds = [...previousTaskIds].filter((id) => !currentTaskIds.has(id));
-    const commonTaskIds = [...currentTaskIds].filter((id) => previousTaskIds.has(id));
-
-    // Compare common tasks
-    for (const taskId of commonTaskIds) {
-      const currentTask = currentTasks.get(taskId);
-      const previousTask = previousTasks.get(taskId);
-
-      if (currentTask === undefined || previousTask === undefined) {
-        continue;
-      }
-
-      const comparison = this.compareTask(currentTask, previousTask);
-
-      if (comparison.regressions.length > 0) {
-        regressions.push(...comparison.regressions);
-      }
-
-      if (comparison.improvements.length > 0) {
-        improvements.push(...comparison.improvements);
-      }
-
-      // Task is unchanged if no regressions or improvements detected
-      if (comparison.regressions.length === 0 && comparison.improvements.length === 0) {
-        unchanged++;
-      }
-    }
-
-    const overallTrend = determineOverallTrend(regressions, improvements);
+    const { regressions, improvements, unchanged } = this.compareCommonTasks(
+      commonTaskIds,
+      currentTasks,
+      previousTasks
+    );
 
     return {
       previousRunId: previous.id,
@@ -184,8 +156,54 @@ export class ResultComparator {
       unchanged,
       newTasks: newTaskIds.length,
       removedTasks: removedTaskIds.length,
-      overallTrend,
+      overallTrend: determineOverallTrend(regressions, improvements),
     };
+  }
+
+  /**
+   * Categorize task IDs into new, removed, and common sets.
+   */
+  private categorizeTaskIds(
+    currentTasks: Map<string, TaskTestResult>,
+    previousTasks: Map<string, TaskTestResult>
+  ): { newTaskIds: string[]; removedTaskIds: string[]; commonTaskIds: string[] } {
+    const currentTaskIds = new Set(currentTasks.keys());
+    const previousTaskIds = new Set(previousTasks.keys());
+
+    return {
+      newTaskIds: [...currentTaskIds].filter((id) => !previousTaskIds.has(id)),
+      removedTaskIds: [...previousTaskIds].filter((id) => !currentTaskIds.has(id)),
+      commonTaskIds: [...currentTaskIds].filter((id) => previousTaskIds.has(id)),
+    };
+  }
+
+  /**
+   * Compare tasks that exist in both runs.
+   */
+  private compareCommonTasks(
+    commonTaskIds: readonly string[],
+    currentTasks: Map<string, TaskTestResult>,
+    previousTasks: Map<string, TaskTestResult>
+  ): { regressions: Regression[]; improvements: Improvement[]; unchanged: number } {
+    const regressions: Regression[] = [];
+    const improvements: Improvement[] = [];
+    let unchanged = 0;
+
+    for (const taskId of commonTaskIds) {
+      const currentTask = currentTasks.get(taskId);
+      const previousTask = previousTasks.get(taskId);
+      if (currentTask === undefined || previousTask === undefined) continue;
+
+      const comparison = this.compareTask(currentTask, previousTask);
+      regressions.push(...comparison.regressions);
+      improvements.push(...comparison.improvements);
+
+      if (comparison.regressions.length === 0 && comparison.improvements.length === 0) {
+        unchanged++;
+      }
+    }
+
+    return { regressions, improvements, unchanged };
   }
 
   /**

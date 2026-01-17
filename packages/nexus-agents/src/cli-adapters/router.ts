@@ -133,41 +133,47 @@ export class TaskRouter implements ITaskRouter {
     const available = this.filterByCapacity(profile, capacities);
 
     if (available.length === 0) {
-      return err(
-        new RoutingError('No adapters available with sufficient capacity', {
-          context: { profile, capacities: Object.fromEntries(capacities) },
-        })
-      );
+      return this.noCapacityError(profile, capacities);
     }
 
     const ranked = this.rankAdapters(available, profile);
-    if (ranked.length === 0) {
-      return err(
-        new RoutingError('No suitable adapters found for task requirements', {
-          context: { profile, available: available.map((a) => a.name) },
-        })
-      );
-    }
-
     const best = ranked[0];
-    const alternatives = ranked.slice(1);
-    const decisionTimeMs = Date.now() - startTime;
-
-    if (best === undefined) {
-      return err(
-        new RoutingError('No suitable adapters found for task requirements', {
-          context: { profile, available: available.map((a) => a.name) },
-        })
-      );
+    if (ranked.length === 0 || best === undefined) {
+      return this.noSuitableAdapterError(profile, available);
     }
 
-    const decision: RoutingDecision = {
-      adapter: best.adapter,
-      confidence: best.score,
-      reason: best.reason,
-      alternatives: alternatives.map((a) => a.adapter),
-      decisionTimeMs,
-    };
+    return ok(this.buildDecision(task, best, ranked.slice(1), startTime));
+  }
+
+  private noCapacityError(
+    profile: TaskProfile,
+    capacities: Map<CliName, CapacityStatus>
+  ): Result<RoutingDecision, RoutingError> {
+    return err(
+      new RoutingError('No adapters available with sufficient capacity', {
+        context: { profile, capacities: Object.fromEntries(capacities) },
+      })
+    );
+  }
+
+  private noSuitableAdapterError(
+    profile: TaskProfile,
+    available: ICliAdapter[]
+  ): Result<RoutingDecision, RoutingError> {
+    return err(
+      new RoutingError('No suitable adapters found for task requirements', {
+        context: { profile, available: available.map((a) => a.name) },
+      })
+    );
+  }
+
+  private buildDecision(
+    task: Task,
+    best: { adapter: ICliAdapter; score: number; reason: string },
+    alternatives: Array<{ adapter: ICliAdapter; score: number; reason: string }>,
+    startTime: number
+  ): RoutingDecision {
+    const decisionTimeMs = Date.now() - startTime;
 
     this.logger.info('Task routed', {
       taskId: task.id,
@@ -177,7 +183,13 @@ export class TaskRouter implements ITaskRouter {
       alternatives: alternatives.map((a) => a.adapter.name),
     });
 
-    return ok(decision);
+    return {
+      adapter: best.adapter,
+      confidence: best.score,
+      reason: best.reason,
+      alternatives: alternatives.map((a) => a.adapter),
+      decisionTimeMs,
+    };
   }
 
   private async getAdapterCapacities(): Promise<Map<CliName, CapacityStatus>> {

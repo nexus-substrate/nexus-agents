@@ -149,6 +149,37 @@ export function computeBanditStats(bandit: LinUCBBandit): BanditStats {
 }
 
 // =============================================================================
+// Selection Logic Helpers
+// =============================================================================
+
+/**
+ * Determines the final CLI selection based on mode.
+ */
+function determineSelectedCli(
+  deterministic: boolean | undefined,
+  topsisSelectedModel: CliName,
+  banditArmName: string
+): CliName {
+  return deterministic === true ? topsisSelectedModel : (banditArmName as CliName);
+}
+
+/**
+ * Determines the selection reason based on mode and exploration state.
+ */
+function determineSelectionReason(
+  deterministic: boolean | undefined,
+  isExploration: boolean
+): string {
+  if (deterministic === true) {
+    return 'TOPSIS rank #1 (deterministic mode)';
+  }
+  if (isExploration) {
+    return 'LinUCB exploration (high uncertainty)';
+  }
+  return 'LinUCB exploitation (best expected reward)';
+}
+
+// =============================================================================
 // Main Audit Function
 // =============================================================================
 
@@ -157,7 +188,6 @@ export function computeBanditStats(bandit: LinUCBBandit): BanditStats {
  */
 export function auditRouting(options: RoutingAuditOptions): RoutingAuditResult {
   const { task, deterministic, banditStats: includeBanditStats } = options;
-
   logger.debug('Starting routing audit', { task: task.slice(0, 50) });
 
   // Step 1: Analyze task
@@ -176,23 +206,17 @@ export function auditRouting(options: RoutingAuditOptions): RoutingAuditResult {
   const linucbDetails = computeLinUCBDetails(bandit, context);
   const selection = bandit.select(context);
 
-  // Determine final selection
-  const selectedCli: CliName =
-    deterministic === true ? topsisResult.selectedModel : (selection.armName as CliName);
-
+  // Step 5: Determine final selection
+  const selectedCli = determineSelectedCli(
+    deterministic,
+    topsisResult.selectedModel,
+    selection.armName
+  );
   const selectedArmDetail = linucbDetails.find((d) => d.cliName === selectedCli);
   const isExploration = selectedArmDetail?.isExploration === true;
+  const selectionReason = determineSelectionReason(deterministic, isExploration);
 
-  let selectionReason: string;
-  if (deterministic === true) {
-    selectionReason = 'TOPSIS rank #1 (deterministic mode)';
-  } else if (isExploration) {
-    selectionReason = 'LinUCB exploration (high uncertainty)';
-  } else {
-    selectionReason = 'LinUCB exploitation (best expected reward)';
-  }
-
-  // Step 5: Build result (conditionally include bandit stats for Issue #174)
+  // Step 6: Build result
   const baseResult = {
     task,
     taskProfile,
@@ -204,9 +228,7 @@ export function auditRouting(options: RoutingAuditOptions): RoutingAuditResult {
     isExploration,
   };
 
-  if (includeBanditStats === true) {
-    return { ...baseResult, banditStats: computeBanditStats(bandit) };
-  }
-
-  return baseResult;
+  return includeBanditStats === true
+    ? { ...baseResult, banditStats: computeBanditStats(bandit) }
+    : baseResult;
 }

@@ -111,21 +111,55 @@ export class RoutingScorer {
     const withRouting = results.filter((r) => r.routingDecision !== undefined);
 
     if (withRouting.length === 0) {
-      return {
-        accuracy: 0,
-        preferredMatchRate: 0,
-        reasonableChoiceRate: 0,
-        averageConfidence: 0,
-        calibrationError: 0,
-      };
+      return this.createEmptyAccuracyStats();
     }
 
+    const stats = this.aggregateRoutingStats(withRouting);
+    const count = withRouting.length;
+
+    return {
+      accuracy: stats.preferredMatches / count,
+      preferredMatchRate: stats.preferredMatches / count,
+      reasonableChoiceRate: stats.reasonableChoices / count,
+      averageConfidence: stats.totalConfidence / count,
+      calibrationError: stats.totalCalibrationError / count,
+    };
+  }
+
+  /**
+   * Creates empty accuracy statistics for when no routing data exists.
+   */
+  private createEmptyAccuracyStats(): {
+    accuracy: number;
+    preferredMatchRate: number;
+    reasonableChoiceRate: number;
+    averageConfidence: number;
+    calibrationError: number;
+  } {
+    return {
+      accuracy: 0,
+      preferredMatchRate: 0,
+      reasonableChoiceRate: 0,
+      averageConfidence: 0,
+      calibrationError: 0,
+    };
+  }
+
+  /**
+   * Aggregates routing statistics from multiple test results.
+   */
+  private aggregateRoutingStats(results: readonly TaskTestResult[]): {
+    preferredMatches: number;
+    reasonableChoices: number;
+    totalConfidence: number;
+    totalCalibrationError: number;
+  } {
     let preferredMatches = 0;
     let reasonableChoices = 0;
     let totalConfidence = 0;
     let totalCalibrationError = 0;
 
-    for (const result of withRouting) {
+    for (const result of results) {
       const decision = result.routingDecision;
       if (decision === undefined) {
         continue;
@@ -134,27 +168,16 @@ export class RoutingScorer {
       if (this.checkPreferredMatch(result.task, decision.selectedCli)) {
         preferredMatches++;
       }
-
       if (this.checkReasonableChoice(result.task, decision.selectedCli)) {
         reasonableChoices++;
       }
 
       totalConfidence += decision.confidence;
-
-      // Calibration error: difference between confidence and actual success
       const actualSuccess = result.success ? 1 : 0;
       totalCalibrationError += Math.abs(decision.confidence - actualSuccess);
     }
 
-    const count = withRouting.length;
-
-    return {
-      accuracy: preferredMatches / count,
-      preferredMatchRate: preferredMatches / count,
-      reasonableChoiceRate: reasonableChoices / count,
-      averageConfidence: totalConfidence / count,
-      calibrationError: totalCalibrationError / count,
-    };
+    return { preferredMatches, reasonableChoices, totalConfidence, totalCalibrationError };
   }
 
   /**

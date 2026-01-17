@@ -178,55 +178,52 @@ function isNewerThan(dependencyPath: string, documentDate: Date): boolean {
 // ============================================================================
 
 /**
+ * Create an unknown freshness result for missing or untracked documents.
+ */
+function createUnknownFreshness(tracked: TrackedDocument): DocumentFreshness {
+  return {
+    path: tracked.path,
+    lastModified: null,
+    lastModifiedRelative: null,
+    daysSinceModified: null,
+    status: 'unknown',
+    dependencies: tracked.dependencies,
+    newerDependencies: [],
+  };
+}
+
+/**
+ * Determine freshness status based on age and dependency changes.
+ */
+function determineFreshnessStatus(
+  days: number,
+  newerDepsCount: number,
+  tracked: TrackedDocument
+): FreshnessStatus {
+  if (newerDepsCount > 0) return 'stale';
+  if (days >= tracked.staleThresholdDays) return 'stale';
+  if (days >= tracked.warningThresholdDays) return 'warning';
+  return 'fresh';
+}
+
+/**
  * Analyze freshness of a single document.
  */
 function analyzeDocument(tracked: TrackedDocument, projectRoot: string): DocumentFreshness {
   const fullPath = path.join(projectRoot, tracked.path);
 
-  // Check if file exists
   if (!fs.existsSync(fullPath)) {
-    return {
-      path: tracked.path,
-      lastModified: null,
-      lastModifiedRelative: null,
-      daysSinceModified: null,
-      status: 'unknown',
-      dependencies: tracked.dependencies,
-      newerDependencies: [],
-    };
+    return createUnknownFreshness(tracked);
   }
 
   const lastModifiedDate = getLastCommitDate(tracked.path);
-
   if (lastModifiedDate === null) {
-    return {
-      path: tracked.path,
-      lastModified: null,
-      lastModifiedRelative: null,
-      daysSinceModified: null,
-      status: 'unknown',
-      dependencies: tracked.dependencies,
-      newerDependencies: [],
-    };
+    return createUnknownFreshness(tracked);
   }
 
   const days = daysSince(lastModifiedDate);
-
-  // Find dependencies that are newer than the document
   const newerDeps = tracked.dependencies.filter((dep) => isNewerThan(dep, lastModifiedDate));
-
-  // Determine status
-  let status: FreshnessStatus;
-  if (newerDeps.length > 0) {
-    // Has newer dependencies - stale
-    status = 'stale';
-  } else if (days >= tracked.staleThresholdDays) {
-    status = 'stale';
-  } else if (days >= tracked.warningThresholdDays) {
-    status = 'warning';
-  } else {
-    status = 'fresh';
-  }
+  const status = determineFreshnessStatus(days, newerDeps.length, tracked);
 
   return {
     path: tracked.path,

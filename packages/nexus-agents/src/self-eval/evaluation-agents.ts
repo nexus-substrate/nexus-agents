@@ -306,7 +306,30 @@ export class PracticalValueEvaluator extends BaseEvaluator {
     const concerns: string[] = [];
     let score = 1.0;
 
-    // Check exports as proxy for usage
+    // Evaluate exports as proxy for usage
+    score = this.evaluateExports(component, metrics, concerns, score);
+
+    // Check special file types (index, test)
+    score = this.evaluateSpecialFiles(component, metrics, score);
+
+    // Size-based heuristics
+    score = this.evaluateSizeHeuristics(component, metrics, concerns, score);
+
+    const recommendation = this.scoreToRecommendation(score);
+    const confidence = 0.5 + Math.min(0.4, metrics.length * 0.08);
+
+    return this.createResult(component, recommendation, confidence, metrics, concerns);
+  }
+
+  /**
+   * Evaluates export count and density as usage indicators.
+   */
+  private evaluateExports(
+    component: ComponentInfo,
+    metrics: MetricCitation[],
+    concerns: string[],
+    score: number
+  ): number {
     metrics.push(this.cite('exports', component.exportCount, 'scanner'));
 
     if (component.exportCount < this.thresholds.minExports && !component.isTest) {
@@ -314,7 +337,6 @@ export class PracticalValueEvaluator extends BaseEvaluator {
       score -= 0.4;
     }
 
-    // Check file size vs export ratio (efficiency)
     if (component.exportCount > 0) {
       const linesPerExport = component.lines / component.exportCount;
       metrics.push(this.cite('linesPerExport', Math.round(linesPerExport), 'static_analysis'));
@@ -325,33 +347,49 @@ export class PracticalValueEvaluator extends BaseEvaluator {
       }
     }
 
-    // Check if this is an index/barrel file
+    return score;
+  }
+
+  /**
+   * Evaluates special file types (index, test) for additional value.
+   */
+  private evaluateSpecialFiles(
+    component: ComponentInfo,
+    metrics: MetricCitation[],
+    score: number
+  ): number {
     const isIndex = component.name === 'index';
     if (isIndex) {
       metrics.push(this.cite('isIndexFile', 'true', 'scanner'));
-      // Index files are typically valuable as entry points
       score += 0.1;
     }
 
-    // Check if test file (tests are valuable)
     if (component.isTest) {
       metrics.push(this.cite('isTest', 'true', 'scanner'));
-      // Test files are valuable, don't deprecate
       score = Math.max(score, 0.7);
     }
 
-    // Size-based heuristics
+    return score;
+  }
+
+  /**
+   * Evaluates size-based heuristics.
+   */
+  private evaluateSizeHeuristics(
+    component: ComponentInfo,
+    metrics: MetricCitation[],
+    concerns: string[],
+    score: number
+  ): number {
     metrics.push(this.cite('sizeBytes', component.sizeBytes, 'scanner'));
+    const isIndex = component.name === 'index';
 
     if (component.sizeBytes < 100 && !isIndex) {
       concerns.push('Very small file: may be trivial or stub');
       score -= 0.1;
     }
 
-    const recommendation = this.scoreToRecommendation(score);
-    const confidence = 0.5 + Math.min(0.4, metrics.length * 0.08);
-
-    return this.createResult(component, recommendation, confidence, metrics, concerns);
+    return score;
   }
 
   private scoreToRecommendation(score: number): Recommendation {

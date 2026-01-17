@@ -102,9 +102,9 @@ export function formatResultVerbose(result: AggregatedResult): string {
 // ============================================================================
 
 /**
- * Print results in summary mode.
+ * Print the report header with scan statistics.
  */
-export function printSummaryMode(commandResult: EvaluateCommandResult): void {
+function printSummaryHeader(commandResult: EvaluateCommandResult): void {
   writeLine('');
   writeLine(`${colors.bold}Self-Evaluation Report${colors.reset}`);
   writeLine('='.repeat(50));
@@ -121,28 +121,37 @@ export function printSummaryMode(commandResult: EvaluateCommandResult): void {
       `${colors.yellow}${symbols.warn} Evaluation timed out, results may be incomplete${colors.reset}`
     );
   }
+}
 
+/**
+ * Print the summary statistics section.
+ */
+function printSummaryStats(summary: EvaluateCommandResult['summary']): void {
   writeLine('');
   writeLine(`${colors.bold}Summary:${colors.reset}`);
-  const s = commandResult.summary;
-  writeLine(`  ${colors.green}Retain:${colors.reset} ${String(s.retain)}`);
-  writeLine(`  ${colors.yellow}Review:${colors.reset} ${String(s.review)}`);
-  writeLine(`  ${colors.yellow}Refactor:${colors.reset} ${String(s.refactor)}`);
-  writeLine(`  ${colors.red}Deprecate:${colors.reset} ${String(s.deprecate)}`);
-  writeLine(`  Avg Confidence: ${(s.averageConfidence * 100).toFixed(1)}%`);
-  writeLine(`  Avg Evidence Quality: ${(s.averageEvidenceQuality * 100).toFixed(1)}%`);
+  writeLine(`  ${colors.green}Retain:${colors.reset} ${String(summary.retain)}`);
+  writeLine(`  ${colors.yellow}Review:${colors.reset} ${String(summary.review)}`);
+  writeLine(`  ${colors.yellow}Refactor:${colors.reset} ${String(summary.refactor)}`);
+  writeLine(`  ${colors.red}Deprecate:${colors.reset} ${String(summary.deprecate)}`);
+  writeLine(`  Avg Confidence: ${(summary.averageConfidence * 100).toFixed(1)}%`);
+  writeLine(`  Avg Evidence Quality: ${(summary.averageEvidenceQuality * 100).toFixed(1)}%`);
+}
 
+/**
+ * Print the components list with size limiting.
+ */
+function printSummaryComponents(results: readonly AggregatedResult[]): void {
   writeLine('');
   writeLine(`${colors.bold}Components:${colors.reset}`);
   writeLine('');
 
   let outputSize = 0;
-  for (const result of commandResult.results) {
+  for (const result of results) {
     const formatted = formatResultSummary(result);
     outputSize += formatted.length;
 
     if (outputSize > MAX_OUTPUT_BYTES) {
-      const remaining = commandResult.results.length - commandResult.results.indexOf(result);
+      const remaining = results.length - results.indexOf(result);
       writeLine(
         `${colors.dim}... and ${String(remaining)} more components (use --verbose for full output)${colors.reset}`
       );
@@ -152,6 +161,15 @@ export function printSummaryMode(commandResult: EvaluateCommandResult): void {
     writeLine(formatted);
     writeLine('');
   }
+}
+
+/**
+ * Print results in summary mode.
+ */
+export function printSummaryMode(commandResult: EvaluateCommandResult): void {
+  printSummaryHeader(commandResult);
+  printSummaryStats(commandResult.summary);
+  printSummaryComponents(commandResult.results);
 
   writeLine(
     `${colors.dim}Note: These are RECOMMENDATIONS for human review, not decisions.${colors.reset}`

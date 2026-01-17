@@ -96,12 +96,7 @@ export class PolicyFirewall implements IPolicyFirewall {
 
     // If no rules, allow by default
     if (this.rules.length === 0) {
-      const decision: PolicyDecision = {
-        allowed: true,
-        reason: 'No policy rules configured',
-      };
-      this.logDecision(ctx, decision);
-      return decision;
+      return this.allowWithReason(ctx, 'No policy rules configured');
     }
 
     // Evaluate each rule in order
@@ -109,38 +104,53 @@ export class PolicyFirewall implements IPolicyFirewall {
       const decision = rule.check(ctx);
 
       if (!decision.allowed) {
-        const denialDecision: PolicyDecision = {
-          ...decision,
-          ruleName: rule.name,
-        };
-
-        this.logDecision(ctx, denialDecision);
-
-        // In warn mode, log but still allow
-        if (this.mode === 'warn') {
-          this.logger.warn('Policy denial overridden by warn mode', {
-            toolName: ctx.toolName,
-            ruleName: rule.name,
-            reason: decision.reason,
-          });
-          return {
-            allowed: true,
-            reason: `[WARN MODE] Would be denied: ${decision.reason}`,
-            ruleName: rule.name,
-          };
-        }
-
-        return denialDecision;
+        return this.handleDenial(ctx, rule, decision);
       }
     }
 
     // All rules passed
-    const allowDecision: PolicyDecision = {
-      allowed: true,
-      reason: 'All policy rules passed',
+    return this.allowWithReason(ctx, 'All policy rules passed');
+  }
+
+  /**
+   * Creates an allow decision with the given reason and logs it.
+   */
+  private allowWithReason(ctx: PolicyContext, reason: string): PolicyDecision {
+    const decision: PolicyDecision = { allowed: true, reason };
+    this.logDecision(ctx, decision);
+    return decision;
+  }
+
+  /**
+   * Handles a rule denial, respecting warn mode if configured.
+   */
+  private handleDenial(
+    ctx: PolicyContext,
+    rule: PolicyRule,
+    decision: PolicyDecision
+  ): PolicyDecision {
+    const denialDecision: PolicyDecision = {
+      ...decision,
+      ruleName: rule.name,
     };
-    this.logDecision(ctx, allowDecision);
-    return allowDecision;
+
+    this.logDecision(ctx, denialDecision);
+
+    // In warn mode, log but still allow
+    if (this.mode === 'warn') {
+      this.logger.warn('Policy denial overridden by warn mode', {
+        toolName: ctx.toolName,
+        ruleName: rule.name,
+        reason: decision.reason,
+      });
+      return {
+        allowed: true,
+        reason: `[WARN MODE] Would be denied: ${decision.reason}`,
+        ruleName: rule.name,
+      };
+    }
+
+    return denialDecision;
   }
 
   /**

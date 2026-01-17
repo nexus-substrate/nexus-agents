@@ -240,54 +240,64 @@ export function estimateCost(
   return inputCost + outputCost;
 }
 
+/** Core metrics computed from test results. */
+interface CoreMetrics {
+  readonly totalTasks: number;
+  readonly successfulTasks: number;
+  readonly failedTasks: number;
+  readonly successRate: number;
+  readonly averageScore: number;
+  readonly scoreStdDev: number;
+  readonly totalDurationMs: number;
+  readonly averageDurationMs: number;
+  readonly totalTokens: number;
+  readonly totalCostUsd: number;
+}
+
 /**
- * Computes aggregated metrics from test results.
+ * Computes core metrics (counts, rates, durations, costs) from results.
  */
-export function computeAggregatedMetrics(results: readonly TaskTestResult[]): AggregatedMetrics {
+function computeCoreMetrics(results: readonly TaskTestResult[]): CoreMetrics {
   const totalTasks = results.length;
-  if (totalTasks === 0) {
-    return createEmptyMetrics();
-  }
-
   const successfulTasks = results.filter((r) => r.success).length;
-  const failedTasks = totalTasks - successfulTasks;
-  const successRate = successfulTasks / totalTasks;
-
   const scores = results.filter((r) => r.success).map((r) => r.rubricScore.overallScore);
-  const averageScore = scores.length > 0 ? mean(scores) : 0;
-  const scoreStdDevValue = scores.length > 1 ? stdDev(scores) : 0;
-
   const totalDurationMs = results.reduce((sum, r) => sum + r.durationMs, 0);
-  const averageDurationMs = totalDurationMs / totalTasks;
-
   const totalTokens = results.reduce(
     (sum, r) => sum + r.tokenUsage.inputTokens + r.tokenUsage.outputTokens,
     0
   );
-  const totalCostUsd = results.reduce((sum, r) => sum + r.costUsd, 0);
 
-  const byCliMetrics = computeCliMetrics(results);
-  const byCategoryMetrics = computeCategoryMetrics(results);
-  const byDifficultyMetrics = computeDifficultyMetrics(results);
-  const routingMetrics = computeRoutingMetrics(results);
-
-  const baseMetrics: AggregatedMetrics = {
+  return {
     totalTasks,
     successfulTasks,
-    failedTasks,
-    successRate,
-    averageScore,
-    scoreStdDev: scoreStdDevValue,
+    failedTasks: totalTasks - successfulTasks,
+    successRate: successfulTasks / totalTasks,
+    averageScore: scores.length > 0 ? mean(scores) : 0,
+    scoreStdDev: scores.length > 1 ? stdDev(scores) : 0,
     totalDurationMs,
-    averageDurationMs,
+    averageDurationMs: totalDurationMs / totalTasks,
     totalTokens,
-    totalCostUsd,
+    totalCostUsd: results.reduce((sum, r) => sum + r.costUsd, 0),
+  };
+}
+
+/**
+ * Assembles final metrics with optional routing data.
+ */
+function assembleAggregatedMetrics(
+  core: CoreMetrics,
+  byCliMetrics: Map<CliName, CliMetrics>,
+  byCategoryMetrics: Map<TaskCategory, CategoryMetrics>,
+  byDifficultyMetrics: Map<TaskDifficulty, DifficultyMetrics>,
+  routingMetrics: { accuracy?: number; confidence?: number }
+): AggregatedMetrics {
+  const baseMetrics: AggregatedMetrics = {
+    ...core,
     byCliMetrics,
     byCategoryMetrics,
     byDifficultyMetrics,
   };
 
-  // Add routing metrics only if they exist
   if (routingMetrics.accuracy !== undefined) {
     return {
       ...baseMetrics,
@@ -299,4 +309,22 @@ export function computeAggregatedMetrics(results: readonly TaskTestResult[]): Ag
   }
 
   return baseMetrics;
+}
+
+/**
+ * Computes aggregated metrics from test results.
+ */
+export function computeAggregatedMetrics(results: readonly TaskTestResult[]): AggregatedMetrics {
+  if (results.length === 0) {
+    return createEmptyMetrics();
+  }
+
+  const core = computeCoreMetrics(results);
+  return assembleAggregatedMetrics(
+    core,
+    computeCliMetrics(results),
+    computeCategoryMetrics(results),
+    computeDifficultyMetrics(results),
+    computeRoutingMetrics(results)
+  );
 }

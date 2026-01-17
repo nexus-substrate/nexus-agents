@@ -104,6 +104,41 @@ function buildConfig(options: SWEBenchOptions): SWEBenchConfig {
   return options.limit !== undefined ? { ...base, limit: options.limit } : base;
 }
 
+/** Log dataset loading error with optional cause. */
+function logDatasetError(error: { message: string; cause?: unknown }): void {
+  console.error(`\nError loading dataset: ${error.message}`);
+  if (error.cause !== undefined) {
+    const causeMsg =
+      error.cause instanceof Error ? error.cause.message : JSON.stringify(error.cause);
+    console.error(`  Cause: ${causeMsg}`);
+  }
+}
+
+/** Load and select instances to run. */
+async function loadAndSelectInstances(
+  options: SWEBenchOptions
+): Promise<{ instances: SWEBenchInstance[]; error?: string }> {
+  console.log('Loading dataset...');
+  const loadOptions = options.limit !== undefined ? { limit: options.limit } : {};
+  const loadResult = await loadDataset(options.variant, loadOptions);
+  if (!loadResult.ok) {
+    logDatasetError(loadResult.error);
+    return { instances: [], error: loadResult.error.message };
+  }
+
+  const allInstances = loadResult.value.instances;
+  console.log(`Loaded ${String(allInstances.length)} instances`);
+
+  const completedIds = await getCompletedInstanceIds(options.output);
+  const completed = completedIds.ok ? completedIds.value : new Set<string>();
+  console.log(`Already completed: ${String(completed.size)}`);
+
+  const instancesToRun = selectInstances(allInstances, completed, options);
+  console.log(`Instances to run: ${String(instancesToRun.length)}`);
+
+  return { instances: instancesToRun };
+}
+
 /** Run the 'run' subcommand. */
 async function runBenchmark(options: SWEBenchOptions): Promise<SWEBenchCommandResult> {
   console.log(`\nSWE-bench Run: ${options.variant}`);
@@ -118,39 +153,15 @@ async function runBenchmark(options: SWEBenchOptions): Promise<SWEBenchCommandRe
   const executor = executorResult.value;
   console.log(`Model: ${executor.getModelId()}`);
 
-  console.log('Loading dataset...');
-  // Pass limit to avoid fetching all instances when only testing a few
-  const loadOptions = options.limit !== undefined ? { limit: options.limit } : {};
-  const loadResult = await loadDataset(options.variant, loadOptions);
-  if (!loadResult.ok) {
-    console.error(`\nError loading dataset: ${loadResult.error.message}`);
-    if (loadResult.error.cause !== undefined) {
-      const causeMsg =
-        loadResult.error.cause instanceof Error
-          ? loadResult.error.cause.message
-          : JSON.stringify(loadResult.error.cause);
-      console.error(`  Cause: ${causeMsg}`);
-    }
-    return { success: false, message: loadResult.error.message };
-  }
-
-  const allInstances = loadResult.value.instances;
-  console.log(`Loaded ${String(allInstances.length)} instances`);
-
-  const completedIds = await getCompletedInstanceIds(options.output);
-  const completed = completedIds.ok ? completedIds.value : new Set<string>();
-  console.log(`Already completed: ${String(completed.size)}`);
-
-  const instancesToRun = selectInstances(allInstances, completed, options);
-  console.log(`Instances to run: ${String(instancesToRun.length)}`);
-
-  if (instancesToRun.length === 0) {
+  const { instances, error } = await loadAndSelectInstances(options);
+  if (error !== undefined) return { success: false, message: error };
+  if (instances.length === 0) {
     console.log('\nNo instances to run.');
     return { success: true, message: 'No instances to run' };
   }
 
   const result = await runBenchmarkInstances(executor, {
-    instances: instancesToRun,
+    instances,
     config: buildConfig(options),
     outputPath: options.output,
     append: options.resume,

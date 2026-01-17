@@ -333,61 +333,76 @@ export interface ExtractionResult {
 }
 
 /**
+ * Checks if a file path matches any exclusion pattern.
+ */
+function shouldExcludeFile(filePath: string, excludePatterns: string[], rootDir: string): boolean {
+  return excludePatterns.some((pattern) => {
+    const patternBase = pattern.replace(/\*\*/g, '').replace(/\*/g, '');
+    return filePath.includes(patternBase.replace(rootDir, '').replace(/^\//, ''));
+  });
+}
+
+/**
+ * Processes source files and extracts metadata.
+ */
+function processSourceFiles(
+  project: Project,
+  rootDir: string,
+  excludePatterns: string[],
+  extractDescriptions: boolean
+): { files: FileEntry[]; errors: string[] } {
+  const files: FileEntry[] = [];
+  const errors: string[] = [];
+
+  for (const sourceFile of project.getSourceFiles()) {
+    const filePath = sourceFile.getFilePath();
+
+    if (shouldExcludeFile(filePath, excludePatterns, rootDir)) {
+      continue;
+    }
+
+    try {
+      files.push(extractFileEntry(sourceFile, rootDir, extractDescriptions));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      errors.push(`Error extracting ${filePath}: ${message}`);
+    }
+  }
+
+  return { files, errors };
+}
+
+/**
  * Extracts metadata from all TypeScript files in a project.
  */
 export function extractProject(options: Partial<ExtractorOptions> = {}): ExtractionResult {
   const opts: ExtractorOptions = { ...DEFAULT_EXTRACTOR_OPTIONS, ...options };
   const startTime = Date.now();
-  const errors: string[] = [];
-  const files: FileEntry[] = [];
 
-  // Create ts-morph project
   const project = new Project({
     skipAddingFilesFromTsConfig: true,
     skipFileDependencyResolution: true,
   });
 
-  // Resolve root directory
   const rootDir = path.resolve(process.cwd(), opts.rootDir);
-
-  // Build glob patterns
   const includePatterns = opts.include.map((p) => path.join(rootDir, p));
   const excludePatterns = opts.exclude.map((p) => path.join(rootDir, p));
 
-  // Add source files
   try {
     project.addSourceFilesAtPaths(includePatterns);
-
-    // Filter out excluded files
-    for (const sourceFile of project.getSourceFiles()) {
-      const filePath = sourceFile.getFilePath();
-
-      // Check exclusion patterns (simple check)
-      const shouldExclude = excludePatterns.some((pattern) => {
-        const patternBase = pattern.replace(/\*\*/g, '').replace(/\*/g, '');
-        return filePath.includes(patternBase.replace(rootDir, '').replace(/^\//, ''));
-      });
-
-      if (shouldExclude) {
-        continue;
-      }
-
-      try {
-        const entry = extractFileEntry(sourceFile, rootDir, opts.extractDescriptions);
-        files.push(entry);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        errors.push(`Error extracting ${filePath}: ${message}`);
-      }
-    }
+    const { files, errors } = processSourceFiles(
+      project,
+      rootDir,
+      excludePatterns,
+      opts.extractDescriptions
+    );
+    return { files, errors, durationMs: Date.now() - startTime };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    errors.push(`Error loading project: ${message}`);
+    return {
+      files: [],
+      errors: [`Error loading project: ${message}`],
+      durationMs: Date.now() - startTime,
+    };
   }
-
-  return {
-    files,
-    errors,
-    durationMs: Date.now() - startTime,
-  };
 }
