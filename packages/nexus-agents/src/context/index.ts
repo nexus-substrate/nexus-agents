@@ -18,6 +18,25 @@ export {
   type TokenCountResult,
 } from './token-counter.js';
 
+// Token Budget Tracking (Issue #304, Epic #301)
+export {
+  TokenBudgetTracker,
+  createTokenBudgetTracker,
+  TokenBudgetError,
+  DEFAULT_TOKEN_BUDGET_CONFIG,
+} from './token-budget-tracker.js';
+
+export type {
+  ITokenBudgetTracker,
+  TokenBudgetConfig,
+  TokenUsageRecord,
+  BudgetCheckResult,
+  BudgetStats,
+  BudgetWarning,
+  BudgetWarningLevel,
+  BudgetEnforcementMode,
+} from './token-budget-types.js';
+
 // Work balancer
 export {
   WorkBalancer,

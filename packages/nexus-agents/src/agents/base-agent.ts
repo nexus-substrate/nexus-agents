@@ -25,9 +25,15 @@ import type {
   Message,
 } from '../core/index.js';
 import { ok, err, AgentError, createLogger } from '../core/index.js';
+import {
+  TokenBudgetTracker,
+  type TokenBudgetConfig,
+  type ITokenBudgetTracker,
+} from '../context/token-budget-tracker.js';
+import { AgentStateMachine, type StateMachineOptions } from './state-machine.js';
 import { TaskSchema, AgentMessageSchema, BaseAgentOptionsSchema } from './agent-schemas.js';
 import type { IEventBus } from './collaboration/event-bus-types.js';
-import { getGlobalEventBus } from './collaboration/event-bus.js';
+import { getGlobalEventBus, createEvent } from './collaboration/event-bus.js';
 import { emitMessageReceived } from './collaboration/message-events.js';
 import {
   handleTaskMessage,
@@ -75,6 +81,10 @@ export interface BaseAgentOptions {
   eventBus?: IEventBus;
   /** Whether to emit events for message handling (default: true) */
   emitMessageEvents?: boolean;
+  /** State machine options for validated state transitions */
+  stateMachineOptions?: StateMachineOptions;
+  /** Token budget configuration for EMA-based tracking (Issue #304) */
+  tokenBudget?: TokenBudgetConfig;
 }
 
 const DEFAULT_MAX_DURATION_MS = 5 * 60 * 1000; // 5 minutes
@@ -86,7 +96,10 @@ export abstract class BaseAgent implements IAgent {
   readonly role: AgentRole;
   readonly capabilities: readonly AgentCapability[];
 
-  private _state: AgentState = 'idle';
+  /** State machine for validated state transitions (Issue #302) */
+  protected readonly stateMachine: AgentStateMachine;
+  /** Token budget tracker for EMA-based usage tracking (Issue #304) */
+  protected readonly budgetTracker: ITokenBudgetTracker;
   protected adapter: IModelAdapter | undefined;
   protected readonly logger: ILogger;
   protected config: AgentConfig | undefined;
@@ -120,16 +133,76 @@ export abstract class BaseAgent implements IAgent {
     this.logger = options.logger ?? createLogger({ agent: this.id, role: this.role });
     this.eventBus = options.eventBus ?? getGlobalEventBus();
     this.emitMessageEvents = options.emitMessageEvents ?? true;
+
+    // Initialize state machine with validated transitions (Issue #302)
+    this.stateMachine = new AgentStateMachine(options.stateMachineOptions);
+    this.stateMachine.onStateChange((transition) => {
+      this.logger.debug('State transition', {
+        from: transition.from,
+        to: transition.to,
+        event: transition.event,
+      });
+      const event = createEvent('agent.state_changed', {
+        agentId: this.id,
+        ...transition,
+      });
+      this.eventBus.emit(event);
+    });
+
+    // Initialize token budget tracker with EMA (Issue #304)
+    this.budgetTracker = new TokenBudgetTracker(options.tokenBudget, this.logger);
   }
 
   get state(): AgentState {
-    return this._state;
+    return this.stateMachine.state;
   }
 
+  /**
+   * Attempts a state transition using the state machine.
+   * Maps legacy state names to state machine events for backward compatibility.
+   *
+   * @deprecated Use stateMachine.transition() directly for new code
+   */
   protected setState(newState: AgentState): void {
-    const previousState = this._state;
-    this._state = newState;
-    this.logger.debug('State transition', { from: previousState, to: newState });
+    const currentState = this.stateMachine.state;
+
+    // Map legacy state changes to state machine events
+    if (newState === 'error') {
+      this.stateMachine.forceError({ reason: 'setState called with error' });
+      return;
+    }
+
+    // Determine the appropriate event based on current and target state
+    const event = this.getTransitionEvent(currentState, newState);
+    if (event !== undefined && this.stateMachine.canTransition(event)) {
+      const result = this.stateMachine.transition(event);
+      if (!result.ok) {
+        this.logger.warn('State transition failed', {
+          from: currentState,
+          to: newState,
+          event,
+          error: result.error.message,
+        });
+      }
+    } else if (currentState !== newState) {
+      // Log unmapped transitions for debugging
+      this.logger.debug('Unmapped state change (legacy)', { from: currentState, to: newState });
+    }
+  }
+
+  /**
+   * Maps current/target state pairs to state machine events.
+   */
+  private getTransitionEvent(
+    from: AgentState,
+    to: AgentState
+  ): 'task_assigned' | 'plan_completed' | 'task_completed' | 'failure' | 'recovered' | undefined {
+    if (from === 'idle' && to === 'thinking') return 'task_assigned';
+    if (from === 'thinking' && to === 'acting') return 'plan_completed';
+    if (from === 'acting' && to === 'idle') return 'task_completed';
+    if (from === 'error' && to === 'idle') return 'recovered';
+    if (to === 'error') return 'failure';
+    return undefined;
   }
 
   initialize(ctx: AgentContext): Promise<Result<void, AgentError>> {
@@ -157,16 +230,25 @@ export abstract class BaseAgent implements IAgent {
       return validationResult;
     }
 
-    if (this._state !== 'idle') {
+    // Use state machine for availability check (Issue #302)
+    if (!this.stateMachine.isAvailable()) {
       return err(
-        new AgentError(`Agent is not idle (current state: ${this._state})`, {
-          context: { agentId: this.id, currentState: this._state, taskId: task.id },
+        new AgentError(`Agent is not idle (current state: ${this.stateMachine.state})`, {
+          context: { agentId: this.id, currentState: this.stateMachine.state, taskId: task.id },
         })
       );
     }
 
     const startTime = Date.now();
-    this.setState('thinking');
+
+    // Use validated state transition (Issue #302)
+    const transitionResult = this.stateMachine.transition('task_assigned', { taskId: task.id });
+    if (!transitionResult.ok) {
+      return err(transitionResult.error);
+    }
+
+    // Start task-level budget tracking (Issue #304)
+    this.budgetTracker.startTask(task.id);
 
     this.logger.info('Executing task', {
       taskId: task.id,
@@ -179,22 +261,34 @@ export abstract class BaseAgent implements IAgent {
       const result = await this.executeWithTimeout(task, maxDuration);
 
       if (!result.ok) {
-        this.setState('error');
+        this.stateMachine.forceError({ taskId: task.id, error: result.error.message });
+        this.budgetTracker.endTask(); // End task tracking on failure (Issue #304)
         return result;
       }
 
       const durationMs = Date.now() - startTime;
-      this.setState('idle');
+
+      // Complete task - if still in thinking (no complete() calls), transition through acting first
+      if (this.stateMachine.state === 'thinking') {
+        this.stateMachine.transition('plan_completed', { taskId: task.id });
+      }
+      this.stateMachine.transition('task_completed', { taskId: task.id, durationMs });
+
+      // End task tracking and log budget stats (Issue #304)
+      const budgetStats = this.budgetTracker.endTask();
 
       this.logger.info('Task completed', {
         taskId: task.id,
         durationMs,
         tokensUsed: result.value.metadata.tokensUsed,
+        taskTokensUsed: budgetStats.taskTokensUsed,
+        sessionTokensUsed: budgetStats.sessionTokensUsed,
       });
 
       return result;
     } catch (error) {
-      this.setState('error');
+      this.stateMachine.forceError({ taskId: task.id, error: String(error) });
+      this.budgetTracker.endTask(); // End task tracking on exception (Issue #304)
       return err(this.transformError(error, task.id));
     }
   }
@@ -247,7 +341,7 @@ export abstract class BaseAgent implements IAgent {
     return {
       id: this.id,
       role: this.role,
-      state: this._state,
+      state: this.stateMachine.state,
       capabilities: this.capabilities,
       initialized: this.initialized,
       historyLength: this.history.length,
@@ -260,7 +354,8 @@ export abstract class BaseAgent implements IAgent {
     this.history = [];
     this.sharedState = {};
     this.initialized = false;
-    this.setState('idle');
+    // Reset state machine to idle (Issue #302)
+    this.stateMachine.reset();
     return Promise.resolve();
   }
 
@@ -337,6 +432,26 @@ export abstract class BaseAgent implements IAgent {
       return err(new AgentError('No model adapter configured', { context: { agentId: this.id } }));
     }
 
+    // Check budget before making model call (Issue #304)
+    const estimatedTokens = this.budgetTracker.predictNextTokens();
+    const budgetCheck = this.budgetTracker.checkBudget(estimatedTokens);
+
+    if (!budgetCheck.allowed) {
+      const errorOptions: { context: Record<string, unknown>; cause?: Error } = {
+        context: {
+          agentId: this.id,
+          estimatedTokens,
+          remainingTaskBudget: budgetCheck.remainingTaskBudget,
+          remainingSessionBudget: budgetCheck.remainingSessionBudget,
+        },
+      };
+      if (budgetCheck.error !== undefined) {
+        errorOptions.cause = budgetCheck.error;
+      }
+      return err(new AgentError('Token budget exceeded', errorOptions));
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-deprecated -- Internal backward compatibility
     this.setState('acting');
 
     const result = await this.adapter.complete(request);
@@ -349,6 +464,15 @@ export abstract class BaseAgent implements IAgent {
       );
     }
 
+    // Record actual token usage for EMA tracking (Issue #304)
+    this.budgetTracker.recordUsage({
+      timestamp: Date.now(),
+      inputTokens: result.value.usage.inputTokens,
+      outputTokens: result.value.usage.outputTokens,
+      totalTokens: result.value.usage.totalTokens,
+    });
+
+    // eslint-disable-next-line @typescript-eslint/no-deprecated -- Internal backward compatibility
     this.setState('thinking');
     return ok(result.value);
   }

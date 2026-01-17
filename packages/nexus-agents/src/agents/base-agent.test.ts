@@ -181,6 +181,7 @@ class TestAgent extends BaseAgent {
   }
 
   testSetState(state: 'idle' | 'thinking' | 'acting' | 'waiting' | 'error'): void {
+    // eslint-disable-next-line @typescript-eslint/no-deprecated -- Test helper for deprecated method
     this.setState(state);
   }
 }
@@ -283,6 +284,7 @@ describe('BaseAgent', () => {
       expect(mockLogger.debug).toHaveBeenCalledWith('State transition', {
         from: 'idle',
         to: 'thinking',
+        event: 'task_assigned',
       });
 
       agent.testSetState('acting');
@@ -290,6 +292,7 @@ describe('BaseAgent', () => {
       expect(mockLogger.debug).toHaveBeenCalledWith('State transition', {
         from: 'thinking',
         to: 'acting',
+        event: 'plan_completed',
       });
     });
   });
@@ -685,6 +688,9 @@ describe('BaseAgent', () => {
       });
 
       const agent = new TestAgent({ adapter: mockAdapter });
+      // Agent must be in thinking state for complete() to transition to acting
+      // (Issue #302: validated state transitions via AgentStateMachine)
+      agent.testSetState('thinking');
       await agent.testComplete({ messages: [] });
 
       expect(statesDuringComplete).toContain('acting');
