@@ -1,0 +1,231 @@
+---
+title: Nexus Agents
+description: Multi-agent orchestration MCP server with Byzantine consensus, intelligent routing, and research-backed protocols.
+template: splash
+hero:
+  tagline: Coordinate AI experts with research-backed protocols. Byzantine fault tolerance, intelligent routing, and 8 memory systems - built for production.
+  image:
+    file: ../../assets/houston.webp
+  actions:
+    - text: Get Started
+      link: /nexus-agents/getting-started/quick-start/
+      icon: right-arrow
+    - text: View on GitHub
+      link: https://github.com/williamzujkowski/nexus-agents
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid, Tabs, TabItem, LinkCard, Steps, Aside } from '@astrojs/starlight/components';
+
+## Why Nexus Agents?
+
+Building reliable multi-agent systems is hard. Models hallucinate, fail silently, and disagree with each other. Nexus Agents solves this with **research-backed protocols** that have been validated in academic literature.
+
+<CardGrid stagger>
+  <Card title="5 Specialized Experts" icon="puzzle">
+    Code, Architecture, Security, Performance, and Research experts - each with domain-specific prompts and capabilities. The Tech Lead orchestrates them automatically.
+  </Card>
+  <Card title="Byzantine Fault Tolerance" icon="shield">
+    When agents disagree, Aegean consensus and CP-WBFT protocols ensure correct decisions even with faulty or malicious agents. Validated with 85.7% fault tolerance.
+  </Card>
+  <Card title="Intelligent Routing" icon="rocket">
+    LinUCB contextual bandits learn which model works best for each task type. TOPSIS multi-criteria ranking optimizes for quality, cost, and latency simultaneously.
+  </Card>
+  <Card title="8 Memory Systems" icon="information">
+    Graph memory for relationships, session memory for context, typed memory for structure, and more. MIRIX six-type architecture validated at 85.4% benchmark accuracy.
+  </Card>
+</CardGrid>
+
+---
+
+## Quick Start
+
+Get up and running in under 5 minutes.
+
+<Tabs>
+  <TabItem label="npm">
+    ```bash
+    # Install globally
+    npm install -g nexus-agents
+
+    # Verify installation
+    nexus-agents doctor
+
+    # Start the MCP server
+    nexus-agents
+    ```
+  </TabItem>
+  <TabItem label="pnpm">
+    ```bash
+    # Install globally
+    pnpm add -g nexus-agents
+
+    # Verify installation
+    nexus-agents doctor
+
+    # Start the MCP server
+    nexus-agents
+    ```
+  </TabItem>
+  <TabItem label="npx">
+    ```bash
+    # Run directly without installing
+    npx nexus-agents doctor
+
+    # Start the MCP server
+    npx nexus-agents
+    ```
+  </TabItem>
+</Tabs>
+
+### Claude Desktop Integration
+
+Add to your Claude Desktop config (`~/.claude/mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "nexus-agents": {
+      "command": "nexus-agents",
+      "args": ["--mode=server"]
+    }
+  }
+}
+```
+
+Then ask Claude: **"orchestrate: Review this code for security issues"**
+
+<LinkCard
+  title="Full Installation Guide"
+  description="Detailed setup for all platforms, Docker, and CI/CD environments."
+  href="/nexus-agents/getting-started/installation/"
+/>
+
+---
+
+## Core Capabilities
+
+<CardGrid>
+  <Card title="MCP Protocol" icon="external">
+    **Native MCP support** for Claude Desktop and Claude CLI. All tools are discoverable and documented with Zod schemas.
+
+    - `orchestrate` - Coordinate expert execution
+    - `create_expert` - Dynamic expert creation
+    - `run_workflow` - Execute YAML workflows
+    - `delegate_to_model` - Intelligent routing
+  </Card>
+  <Card title="CLI Adapters" icon="laptop">
+    **Zero-credential OAuth** integration with external CLI tools. No API keys stored - all authentication via OAuth 2.0/PKCE.
+
+    - Claude CLI (Opus 4.5, Sonnet 4.5)
+    - Gemini CLI (2.5 Pro, Flash)
+    - Codex CLI (GPT-5.x family)
+  </Card>
+  <Card title="Workflow Engine" icon="document">
+    **YAML-based workflows** for repeatable processes. Parallel execution, dependency resolution, and step-level error handling.
+
+    ```yaml
+    steps:
+      - id: analyze
+        agent: code_expert
+        parallel: true
+    ```
+  </Card>
+  <Card title="Consensus Protocols" icon="approve-check">
+    **11 research-backed protocols** for different scenarios. Simple majority for speed, Aegean for Byzantine tolerance, Reflexion for iterative improvement.
+
+    - Task-aware protocol selection
+    - Multi-agent critique loops
+    - Anti-conformity scoring
+  </Card>
+</CardGrid>
+
+---
+
+## Architecture at a Glance
+
+```
+External Interface Layer
+├── MCP Gateway (Claude Desktop/CLI)
+├── REST API (CI/CD, enterprise)
+└── Standalone CLI (direct orchestration)
+        │
+Internal Orchestration Layer
+├── Event Bus (agent-to-agent messaging)
+├── Tech Lead Router
+├── Expert Pool (Code, Security, Arch, Perf, Research)
+└── Consensus Engine
+        │
+Execution Layer
+├── CLI Adapters (subprocess)
+├── Model APIs (HTTP)
+└── Workflow Engine
+```
+
+<Aside type="tip">
+  The hybrid architecture means you can use nexus-agents as an MCP server for Claude, a standalone CLI for scripts, or a REST API for CI/CD - all from the same codebase.
+</Aside>
+
+---
+
+## Research Foundation
+
+Every major component is backed by peer-reviewed research:
+
+| Component | Research | Key Metric |
+|-----------|----------|------------|
+| Aegean Consensus | arXiv:2512.20184 | 20x latency reduction |
+| CP-WBFT Voting | arXiv:2511.10400 | 85.7% fault tolerance |
+| TOPSIS Routing | arXiv:2509.07571 | 31.46% cost reduction |
+| LinUCB Bandits | arXiv:2508.21141 | Adaptive budget routing |
+| MIRIX Memory | arXiv:2507.07957 | 85.4% benchmark accuracy |
+| Reflexion Protocol | arXiv:2303.11366 | 91% HumanEval pass rate |
+
+<LinkCard
+  title="Research Index"
+  description="51 papers, 27 techniques, 6 topics - fully documented with implementation status."
+  href="/nexus-agents/research/index/"
+/>
+
+---
+
+## Explore the Documentation
+
+<CardGrid>
+  <LinkCard
+    title="Introduction"
+    description="Understand what nexus-agents is and why it exists."
+    href="/nexus-agents/getting-started/introduction/"
+  />
+  <LinkCard
+    title="Quick Start"
+    description="Get running in 5 minutes with step-by-step instructions."
+    href="/nexus-agents/getting-started/quick-start/"
+  />
+  <LinkCard
+    title="Architecture"
+    description="Deep dive into agents, routing, memory, and consensus."
+    href="/nexus-agents/architecture/overview/"
+  />
+  <LinkCard
+    title="CLI Usage"
+    description="Master the command-line interface and all available commands."
+    href="/nexus-agents/guides/cli-usage/"
+  />
+</CardGrid>
+
+---
+
+## Community
+
+<CardGrid>
+  <Card title="GitHub" icon="github">
+    Star the repo, file issues, and contribute code.
+
+    [github.com/williamzujkowski/nexus-agents](https://github.com/williamzujkowski/nexus-agents)
+  </Card>
+  <Card title="MIT License" icon="open-book">
+    Free to use, modify, and distribute. Built with Claude Code.
+  </Card>
+</CardGrid>
