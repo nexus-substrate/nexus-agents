@@ -11,6 +11,7 @@ export {
   ProviderConfigSchema,
   ExpertConfigSchema,
   ExpertDefinitionSchema,
+  CustomExpertDefinitionSchema,
   WorkflowConfigSchema,
   SecurityConfigSchema,
   SandboxConfigSchema,
@@ -19,6 +20,9 @@ export {
   EventBusConfigSchema,
   ObservabilityConfigSchema,
   DEFAULT_TOOL_RATE_LIMITS,
+  VALID_EXPERT_TIERS,
+  VALID_EXPERT_DOMAINS,
+  MAX_SYSTEM_PROMPT_LENGTH,
   defaultConfig,
 } from './schemas.js';
 
@@ -29,6 +33,9 @@ export type {
   ProviderConfig,
   ExpertConfig,
   ExpertDefinition,
+  CustomExpertDefinition,
+  ExpertTier,
+  ExpertDomain,
   WorkflowConfig,
   SecurityConfig,
   SandboxConfig,
