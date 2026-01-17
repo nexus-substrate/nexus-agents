@@ -4,10 +4,16 @@
  * Lists all available experts (built-in and custom).
  *
  * (Source: Issue #66, PROJECT_PLAN.md Section 5.2)
+ * (Updated: Issue #300 - Load custom experts from config)
  */
 
 import { DEFAULT_EXPERTS } from '../agents/experts/expert-defaults.js';
 import type { ExpertDefinition } from '../agents/experts/expert-selector-types.js';
+import {
+  loadCustomExperts,
+  formatValidationErrors,
+  type CustomExpertError,
+} from './custom-expert-loader.js';
 
 /**
  * ANSI color codes for terminal output.
@@ -34,6 +40,8 @@ export interface ExpertListOptions {
   readonly format?: ExpertListFormat;
   /** Show detailed information */
   readonly verbose?: boolean;
+  /** Custom config file path */
+  readonly configPath?: string;
 }
 
 /**
@@ -44,6 +52,10 @@ export interface ExpertListResult {
   readonly builtIn: ExpertDefinition[];
   readonly custom: ExpertDefinition[];
   readonly message: string;
+  /** Validation errors for custom experts */
+  readonly validationErrors: readonly CustomExpertError[];
+  /** Path to config file (if loaded) */
+  readonly configPath: string | undefined;
 }
 
 /**
@@ -178,15 +190,32 @@ function formatYaml(builtIn: ExpertDefinition[], custom: ExpertDefinition[]): st
  * @param options - List options
  * @returns Expert list result
  */
-export function runExpertList(_options: ExpertListOptions = {}): ExpertListResult {
+export function runExpertList(options: ExpertListOptions = {}): ExpertListResult {
   const builtIn = DEFAULT_EXPERTS;
-  const custom: ExpertDefinition[] = []; // TODO: Load from config
+
+  // Load custom experts from config (Issue #300)
+  const customResult = loadCustomExperts(options.configPath);
+  const custom = customResult.experts;
+  const validationErrors = customResult.errors;
+
+  // Determine success - we succeed even with validation errors if we loaded some experts
+  const hasErrors = validationErrors.length > 0;
+  const success = !hasErrors || custom.length > 0;
+
+  // Build message
+  let message = `Found ${String(builtIn.length)} built-in experts`;
+  message += ` and ${String(custom.length)} custom experts`;
+  if (hasErrors) {
+    message += ` (${String(validationErrors.length)} validation error${validationErrors.length === 1 ? '' : 's'})`;
+  }
 
   return {
-    success: true,
+    success,
     builtIn,
     custom,
-    message: `Found ${String(builtIn.length)} built-in experts and ${String(custom.length)} custom experts`,
+    message,
+    validationErrors,
+    configPath: customResult.configPath ?? undefined,
   };
 }
 
@@ -214,9 +243,20 @@ export function printExpertListResult(
     case 'table':
     default:
       writeLine('');
+      if (result.configPath !== undefined) {
+        writeLine(`${colors.dim}Config: ${result.configPath}${colors.reset}`);
+        writeLine('');
+      }
       writeLine(formatTable(result.builtIn, 'Built-in Experts'));
       writeLine(formatTable(result.custom, 'Custom Experts'));
       break;
+  }
+
+  // Print validation errors if any
+  if (result.validationErrors.length > 0) {
+    writeLine('');
+    writeLine(`${colors.yellow}${colors.bold}Validation Errors:${colors.reset}`);
+    writeLine(formatValidationErrors(result.validationErrors));
   }
 }
 
