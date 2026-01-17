@@ -8,7 +8,10 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger, AgentCapability } from '../../core/index.js';
+import { createLogger } from '../../core/index.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
+import type { SecurityConfig } from '../../config/schemas.js';
+import { wrapToolWithTimeout } from '../middleware/tool-wrapper.js';
 import {
   ExpertFactory,
   Expert,
@@ -59,6 +62,8 @@ export interface CreateExpertDeps {
   logger?: ILogger;
   /** Rate limiter for throttling tool calls (required) */
   rateLimiter: RateLimiter;
+  /** Security configuration (includes timeout settings - Issue #271, CVE-2026-0621) */
+  security?: SecurityConfig | undefined;
 }
 
 /**
@@ -187,57 +192,63 @@ type CreateExpertToolResponse = {
  * @returns Handler function for the tool
  */
 function createToolHandler(deps: CreateExpertDeps) {
-  return (args: unknown): CreateExpertToolResponse => {
-    // Rate limiting check
-    const acquired = deps.rateLimiter.tryAcquire();
-    if (!acquired) {
-      const state = deps.rateLimiter.getState();
+  // Returns Promise for compatibility with wrapToolWithTimeout (CVE-2026-0621 mitigation)
+  return (args: unknown): Promise<CreateExpertToolResponse> => {
+    return Promise.resolve().then((): CreateExpertToolResponse => {
+      // Rate limiting check
+      const acquired = deps.rateLimiter.tryAcquire();
+      if (!acquired) {
+        const state = deps.rateLimiter.getState();
+        return {
+          isError: true,
+          content: [
+            {
+              type: 'text',
+              text: `Rate limit exceeded. Try again in ${String(state.nextTokenMs)}ms.`,
+            },
+          ],
+        };
+      }
+
+      // Validate input
+      const validationResult = CreateExpertInputSchema.safeParse(args);
+      if (!validationResult.success) {
+        const errorMessage = validationResult.error.issues
+          .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
+          .join('; ');
+        return {
+          isError: true,
+          content: [{ type: 'text', text: `Validation error: ${errorMessage}` }],
+        };
+      }
+
+      // Execute tool logic
+      const result = handleCreateExpert(deps, validationResult.data);
+
+      if (!result.ok) {
+        return {
+          isError: true,
+          content: [{ type: 'text', text: `Failed to create expert: ${result.error}` }],
+        };
+      }
+
       return {
-        isError: true,
-        content: [
-          {
-            type: 'text',
-            text: `Rate limit exceeded. Try again in ${String(state.nextTokenMs)}ms.`,
-          },
-        ],
+        content: [{ type: 'text', text: JSON.stringify(result.value, null, 2) }],
       };
-    }
-
-    // Validate input
-    const validationResult = CreateExpertInputSchema.safeParse(args);
-    if (!validationResult.success) {
-      const errorMessage = validationResult.error.issues
-        .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
-        .join('; ');
-      return {
-        isError: true,
-        content: [{ type: 'text', text: `Validation error: ${errorMessage}` }],
-      };
-    }
-
-    // Execute tool logic
-    const result = handleCreateExpert(deps, validationResult.data);
-
-    if (!result.ok) {
-      return {
-        isError: true,
-        content: [{ type: 'text', text: `Failed to create expert: ${result.error}` }],
-      };
-    }
-
-    return {
-      content: [{ type: 'text', text: JSON.stringify(result.value, null, 2) }],
-    };
+    });
   };
 }
 
 /**
  * Registers the create_expert tool with the MCP server.
  *
+ * Includes timeout protection for CVE-2026-0621 mitigation (Issue #271).
+ *
  * @param server - MCP server instance
  * @param deps - Tool dependencies
  */
 export function registerCreateExpertTool(server: McpServer, deps: CreateExpertDeps): void {
+  const logger = deps.logger ?? createLogger({ tool: 'create_expert' });
   const toolSchema = {
     role: z
       .enum([
@@ -254,8 +265,20 @@ export function registerCreateExpertTool(server: McpServer, deps: CreateExpertDe
   const description =
     'Create a specialized expert agent for code, architecture, security, documentation, or testing tasks';
 
-  // eslint-disable-next-line @typescript-eslint/no-deprecated -- Consistent with other tools in codebase
-  server.tool('create_expert', description, toolSchema, createToolHandler(deps));
+  // Wrap handler with timeout protection (Issue #271, CVE-2026-0621)
+  const handler = createToolHandler(deps);
+  const timeoutMs = deps.security?.timeout?.defaultTimeoutMs;
+  const wrappedHandler = wrapToolWithTimeout(
+    'create_expert',
+    handler,
+    timeoutMs !== undefined ? { timeoutMs, logger } : { logger }
+  );
+
+  // Type assertion needed: MCP SDK expects index signature, our ToolResult is structurally compatible
+  /* eslint-disable @typescript-eslint/no-deprecated, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
+  server.tool('create_expert', description, toolSchema, wrappedHandler as any);
+  /* eslint-enable @typescript-eslint/no-deprecated, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
+  logger.info('Registered create_expert tool with timeout protection');
 }
 
 /**

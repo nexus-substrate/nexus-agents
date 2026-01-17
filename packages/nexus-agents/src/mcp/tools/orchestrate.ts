@@ -12,6 +12,8 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Result, ILogger, Task, TaskContext } from '../../core/index.js';
 import { ok, err, AgentError, createLogger } from '../../core/index.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
+import type { SecurityConfig } from '../../config/schemas.js';
+import { wrapToolWithTimeout } from '../middleware/tool-wrapper.js';
 import type { ExecutionPlan, Expert } from '../../agents/index.js';
 import { TechLead } from '../../agents/index.js';
 
@@ -85,6 +87,8 @@ export interface OrchestrateDeps {
   logger?: ILogger;
   /** Rate limiter for throttling tool calls (required) */
   rateLimiter: RateLimiter;
+  /** Security configuration (includes timeout settings - Issue #271, CVE-2026-0621) */
+  security?: SecurityConfig | undefined;
 }
 
 /**
@@ -308,6 +312,8 @@ function createOrchestrateHandler(deps: OrchestrateDeps, logger: ILogger) {
 /**
  * Registers the orchestrate tool with the MCP server.
  *
+ * Includes timeout protection for CVE-2026-0621 mitigation (Issue #271).
+ *
  * @param server - MCP server instance
  * @param deps - Dependencies including TechLead and optional expert factory
  */
@@ -316,9 +322,20 @@ export function registerOrchestrateTool(server: McpServer, deps: OrchestrateDeps
   const description =
     'Orchestrate a task by analyzing it, breaking it into subtasks if needed, and coordinating expert agents';
 
-  // eslint-disable-next-line @typescript-eslint/no-deprecated -- Consistent with other tools in codebase
-  server.tool('orchestrate', description, TOOL_SCHEMA, createOrchestrateHandler(deps, logger));
-  logger.info('Registered orchestrate tool');
+  // Wrap handler with timeout protection (Issue #271, CVE-2026-0621)
+  const handler = createOrchestrateHandler(deps, logger);
+  const timeoutMs = deps.security?.timeout?.defaultTimeoutMs;
+  const wrappedHandler = wrapToolWithTimeout(
+    'orchestrate',
+    handler,
+    timeoutMs !== undefined ? { timeoutMs, logger } : { logger }
+  );
+
+  // Type assertion needed: MCP SDK expects index signature, our ToolResult is structurally compatible
+  /* eslint-disable @typescript-eslint/no-deprecated, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
+  server.tool('orchestrate', description, TOOL_SCHEMA, wrappedHandler as any);
+  /* eslint-enable @typescript-eslint/no-deprecated, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
+  logger.info('Registered orchestrate tool with timeout protection');
 }
 
 /**

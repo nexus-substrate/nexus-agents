@@ -9,6 +9,7 @@
 import { z } from 'zod';
 import type { IWorkflowEngine, ILogger } from '../../core/index.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
+import type { SecurityConfig } from '../../config/schemas.js';
 
 // ============================================================================
 // Input Schema
@@ -76,4 +77,6 @@ export interface RunWorkflowDeps {
   logger?: ILogger;
   /** Rate limiter for throttling tool calls (required) */
   rateLimiter: RateLimiter;
+  /** Security configuration (includes timeout settings - Issue #271, CVE-2026-0621) */
+  security?: SecurityConfig | undefined;
 }

@@ -11,7 +11,8 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Result } from '../../core/index.js';
 import type { WorkflowDefinition, StepResult } from '../../core/index.js';
-import { WorkflowError, ParseError } from '../../core/index.js';
+import { WorkflowError, ParseError, createLogger } from '../../core/index.js';
+import { wrapToolWithTimeout } from '../middleware/tool-wrapper.js';
 import type {
   RunWorkflowInput,
   WorkflowToolResult,
@@ -355,11 +356,63 @@ const toolInputSchema = {
 };
 
 /**
+ * Creates the handler for the run_workflow tool.
+ * @param deps - Tool dependencies
+ * @returns Handler function
+ */
+function createRunWorkflowHandler(deps: RunWorkflowDeps): (args: unknown) => Promise<ToolResponse> {
+  return async (args: unknown): Promise<ToolResponse> => {
+    // Rate limiting check
+    const acquired = deps.rateLimiter.tryAcquire();
+    if (!acquired) {
+      const state = deps.rateLimiter.getState();
+      return {
+        isError: true,
+        content: [
+          {
+            type: 'text' as const,
+            text: `Rate limit exceeded. Try again in ${String(state.nextTokenMs)}ms.`,
+          },
+        ],
+      };
+    }
+
+    const validated = RunWorkflowInputSchema.safeParse(args);
+    if (!validated.success) {
+      const errorMessage = validated.error.errors
+        .map((e) => `${e.path.join('.')}: ${e.message}`)
+        .join(', ');
+      return {
+        isError: true,
+        content: [{ type: 'text' as const, text: `Validation error: ${errorMessage}` }],
+      };
+    }
+    return handleRunWorkflow(deps, validated.data);
+  };
+}
+
+/**
  * Register the run_workflow tool with an MCP server.
+ *
+ * Includes timeout protection for CVE-2026-0621 mitigation (Issue #271).
+ *
  * @param server - MCP server instance
  * @param deps - Tool dependencies
  */
 export function registerRunWorkflowTool(server: McpServer, deps: RunWorkflowDeps): void {
+  const logger = deps.logger ?? createLogger({ tool: 'run_workflow' });
+
+  // Wrap handler with timeout protection (Issue #271, CVE-2026-0621)
+  const handler = createRunWorkflowHandler(deps);
+  const timeoutMs = deps.security?.timeout?.defaultTimeoutMs;
+  const wrappedHandler = wrapToolWithTimeout(
+    'run_workflow',
+    handler,
+    timeoutMs !== undefined ? { timeoutMs, logger } : { logger }
+  );
+
+  // Type assertion needed: MCP SDK expects index signature, our ToolResult is structurally compatible
+  /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
   server.registerTool(
     'run_workflow',
     {
@@ -367,33 +420,8 @@ export function registerRunWorkflowTool(server: McpServer, deps: RunWorkflowDeps
         'Execute a workflow template with provided inputs, supporting built-in templates and custom paths',
       inputSchema: toolInputSchema,
     },
-    async (args) => {
-      // Rate limiting check
-      const acquired = deps.rateLimiter.tryAcquire();
-      if (!acquired) {
-        const state = deps.rateLimiter.getState();
-        return {
-          isError: true,
-          content: [
-            {
-              type: 'text' as const,
-              text: `Rate limit exceeded. Try again in ${String(state.nextTokenMs)}ms.`,
-            },
-          ],
-        };
-      }
-
-      const validated = RunWorkflowInputSchema.safeParse(args);
-      if (!validated.success) {
-        const errorMessage = validated.error.errors
-          .map((e) => `${e.path.join('.')}: ${e.message}`)
-          .join(', ');
-        return {
-          isError: true,
-          content: [{ type: 'text' as const, text: `Validation error: ${errorMessage}` }],
-        };
-      }
-      return handleRunWorkflow(deps, validated.data);
-    }
+    wrappedHandler as any
   );
+  /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
+  logger.info('Registered run_workflow tool with timeout protection');
 }

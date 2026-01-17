@@ -266,25 +266,7 @@ export abstract class BaseAgent implements IAgent {
         return result;
       }
 
-      const durationMs = Date.now() - startTime;
-
-      // Complete task - if still in thinking (no complete() calls), transition through acting first
-      if (this.stateMachine.state === 'thinking') {
-        this.stateMachine.transition('plan_completed', { taskId: task.id });
-      }
-      this.stateMachine.transition('task_completed', { taskId: task.id, durationMs });
-
-      // End task tracking and log budget stats (Issue #304)
-      const budgetStats = this.budgetTracker.endTask();
-
-      this.logger.info('Task completed', {
-        taskId: task.id,
-        durationMs,
-        tokensUsed: result.value.metadata.tokensUsed,
-        taskTokensUsed: budgetStats.taskTokensUsed,
-        sessionTokensUsed: budgetStats.sessionTokensUsed,
-      });
-
+      this.finalizeTaskSuccess(task, result.value, startTime);
       return result;
     } catch (error) {
       this.stateMachine.forceError({ taskId: task.id, error: String(error) });
@@ -406,6 +388,24 @@ export abstract class BaseAgent implements IAgent {
       );
     }
     return ok(result.data as Task);
+  }
+
+  /** Handles successful task completion: state transitions, budget tracking, and logging. */
+  private finalizeTaskSuccess(task: Task, result: TaskResult, startTime: number): void {
+    const durationMs = Date.now() - startTime;
+    // Complete task - if still in thinking, transition through acting first
+    if (this.stateMachine.state === 'thinking') {
+      this.stateMachine.transition('plan_completed', { taskId: task.id });
+    }
+    this.stateMachine.transition('task_completed', { taskId: task.id, durationMs });
+    const budgetStats = this.budgetTracker.endTask();
+    this.logger.info('Task completed', {
+      taskId: task.id,
+      durationMs,
+      tokensUsed: result.metadata.tokensUsed,
+      taskTokensUsed: budgetStats.taskTokensUsed,
+      sessionTokensUsed: budgetStats.sessionTokensUsed,
+    });
   }
 
   protected transformError(error: unknown, taskId: string): AgentError {
