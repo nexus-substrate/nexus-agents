@@ -6,7 +6,7 @@
  * @module cli/sprint-helpers
  */
 
-import { execSync } from 'node:child_process';
+import { safeExecSandboxed } from './sandbox-exec.js';
 import type {
   SprintPlanResult,
   SprintProposal,
@@ -48,10 +48,13 @@ export function writeLine(text: string): void {
  */
 export function fetchOpenIssues(): readonly GitHubIssueRaw[] {
   try {
-    const output = execSync(
+    const output = safeExecSandboxed(
       'gh issue list --state open --limit 100 --json number,title,body,state,labels,createdAt,updatedAt',
-      { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
+      { context: 'gh' }
     );
+    if (output === null) {
+      return [];
+    }
     return JSON.parse(output) as GitHubIssueRaw[];
   } catch {
     return [];

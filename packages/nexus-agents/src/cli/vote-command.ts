@@ -17,7 +17,7 @@
  */
 
 import * as crypto from 'node:crypto';
-import { execSync } from 'node:child_process';
+import { safeExecSandboxed } from './sandbox-exec.js';
 import type { VoteCommandOptions, VoterRole, VotingResult, VoteHash } from './vote-types.js';
 import { THRESHOLD_MAP, VOTER_ROLES } from './vote-types.js';
 import type { Vote, ConsensusAlgorithm, ConsensusResult, Proposal } from '../consensus/types.js';
@@ -114,15 +114,10 @@ function printHashes(votes: readonly AgentVoteResult[]): void {
  * Validates that a GitHub issue exists and is accessible.
  */
 function validateGitHubIssue(issueNumber: number): boolean {
-  try {
-    execSync(`gh issue view ${String(issueNumber)} --json number`, {
-      stdio: 'pipe',
-      encoding: 'utf8',
-    });
-    return true;
-  } catch {
-    return false;
-  }
+  const output = safeExecSandboxed(`gh issue view ${String(issueNumber)} --json number`, {
+    context: 'gh',
+  });
+  return output !== null;
 }
 
 /**
@@ -183,17 +178,17 @@ function recordVoteToGitHub(issueNumber: number, result: VotingResult): void {
   const comment = formatVoteComment(result);
   const escapedComment = escapeForShell(comment);
 
-  try {
-    execSync(`gh issue comment ${String(issueNumber)} --body "${escapedComment}"`, {
-      stdio: 'pipe',
-      encoding: 'utf8',
-    });
+  const output = safeExecSandboxed(
+    `gh issue comment ${String(issueNumber)} --body "${escapedComment}"`,
+    { context: 'gh' }
+  );
+
+  if (output !== null) {
     writeLine(
       `${colors.green}${symbols.check}${colors.reset} Vote recorded to issue #${String(issueNumber)}\n`
     );
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    writeLine(`${colors.red}Failed to record vote: ${msg}${colors.reset}\n`);
+  } else {
+    writeLine(`${colors.red}Failed to record vote: command denied or failed${colors.reset}\n`);
   }
 }
 

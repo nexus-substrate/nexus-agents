@@ -6,7 +6,7 @@
  * (Source: Issue #229, Epic #225)
  */
 
-import { execSync } from 'node:child_process';
+import { safeExecSandboxed } from './sandbox-exec.js';
 import type {
   IssueCommandOptions,
   IssueCommandResult,
@@ -48,10 +48,14 @@ function writeLine(text: string): void {
  */
 export function fetchGitHubIssue(issueNumber: number): GitHubIssue | null {
   try {
-    const output = execSync(
+    const output = safeExecSandboxed(
       `gh issue view ${String(issueNumber)} --json number,title,body,state,labels`,
-      { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
+      { context: 'gh' }
     );
+
+    if (output === null) {
+      return null;
+    }
 
     const data = JSON.parse(output) as {
       number: number;
@@ -85,10 +89,14 @@ export function createGitHubIssue(
     const labelArgs = labels.map((l) => `--label "${l}"`).join(' ');
     const escapedBody = body.replace(/"/g, '\\"').replace(/`/g, '\\`').replace(/\$/g, '\\$');
 
-    const output = execSync(
+    const output = safeExecSandboxed(
       `gh issue create --title "${title}" --body "${escapedBody}" ${labelArgs}`,
-      { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
+      { context: 'gh' }
     );
+
+    if (output === null) {
+      return null;
+    }
 
     // Extract issue number from URL
     const match = /\/issues\/(\d+)/.exec(output);

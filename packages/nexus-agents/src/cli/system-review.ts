@@ -8,9 +8,9 @@
  * (Consensus: 8.0/10, 5/5 UNANIMOUS APPROVE)
  */
 
-import { execSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { safeExecSandboxed } from './sandbox-exec.js';
 import type {
   SystemReviewOptions,
   SystemReviewResult,
@@ -57,12 +57,20 @@ function formatStatus(status: 'pass' | 'warn' | 'fail'): string {
   return map[status] + colors.reset;
 }
 
-function safeExec(command: string): string | null {
-  try {
-    return execSync(command, { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
-  } catch {
-    return null;
-  }
+function safeExec(command: string, cwd?: string): string | null {
+  // Use sandbox-aware execution with appropriate context
+  // gh/git = git context, pnpm = write context (runs build/lint), others = read
+  const context = command.startsWith('gh ')
+    ? 'gh'
+    : command.startsWith('git ')
+      ? 'git'
+      : command.startsWith('pnpm ')
+        ? 'write'
+        : 'read';
+  // Only include cwd if defined (exactOptionalPropertyTypes)
+  return cwd !== undefined
+    ? safeExecSandboxed(command, { context, cwd })
+    : safeExecSandboxed(command, { context });
 }
 
 function parseGhIssueList(json: string): GhIssueItem[] {
@@ -135,7 +143,7 @@ function runPhase3(): IssueHealth {
 
 function runPhase4(projectRoot: string): SecurityAudit {
   const def = { totalVulns: 0, high: 0, moderate: 0, low: 0 };
-  const out = safeExec(`cd "${projectRoot}" && pnpm audit --json 2>/dev/null`);
+  const out = safeExec('pnpm audit --json', projectRoot);
   if (out === null) return def;
   try {
     const a: unknown = JSON.parse(out);
@@ -152,8 +160,8 @@ function runPhase4(projectRoot: string): SecurityAudit {
 }
 
 function runPhase5(projectRoot: string): CodeQuality {
-  const tc = safeExec(`cd "${projectRoot}" && pnpm typecheck 2>&1`);
-  const lt = safeExec(`cd "${projectRoot}" && pnpm lint 2>&1`);
+  const tc = safeExec('pnpm typecheck', projectRoot);
+  const lt = safeExec('pnpm lint', projectRoot);
   let cov: number | null = null;
   const cf = path.join(projectRoot, 'packages/nexus-agents/coverage/coverage-summary.json');
   if (fs.existsSync(cf)) {
@@ -210,7 +218,7 @@ function generateActionItems(
 function applyFixes(projectRoot: string, result: SystemReviewResult): string[] {
   const fixes: string[] = [];
   if (!result.quality.lintPass) {
-    const lf = safeExec(`cd "${projectRoot}" && pnpm lint:fix 2>&1`);
+    const lf = safeExec('pnpm lint:fix', projectRoot);
     if (lf !== null && !lf.includes('error')) fixes.push('Auto-fixed ESLint issues');
   }
   return fixes;

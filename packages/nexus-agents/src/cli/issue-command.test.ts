@@ -16,9 +16,9 @@ import {
   issueCommand,
 } from './issue-command.js';
 
-// Mock child_process
-vi.mock('node:child_process', () => ({
-  execSync: vi.fn(),
+// Mock sandbox-exec module
+vi.mock('./sandbox-exec.js', () => ({
+  safeExecSandboxed: vi.fn(),
 }));
 
 // Mock issue-templates module
@@ -28,10 +28,10 @@ vi.mock('./issue-templates.js', () => ({
   getTemplate: vi.fn(),
 }));
 
-import { execSync } from 'node:child_process';
+import { safeExecSandboxed } from './sandbox-exec.js';
 import { validateIssueBody, generateTemplateBody, getTemplate } from './issue-templates.js';
 
-const mockExecSync = vi.mocked(execSync);
+const mockExecSync = vi.mocked(safeExecSandboxed);
 const mockValidateIssueBody = vi.mocked(validateIssueBody);
 const mockGenerateTemplateBody = vi.mocked(generateTemplateBody);
 const mockGetTemplate = vi.mocked(getTemplate);

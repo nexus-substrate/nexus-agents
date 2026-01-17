@@ -14,9 +14,9 @@ import {
   type SystemReviewResult,
 } from './system-review.js';
 
-// Mock node modules
-vi.mock('node:child_process', () => ({
-  execSync: vi.fn(),
+// Mock sandbox-exec module
+vi.mock('./sandbox-exec.js', () => ({
+  safeExecSandboxed: vi.fn(),
 }));
 
 vi.mock('node:fs', () => ({
@@ -29,11 +29,11 @@ vi.mock('../indexer/freshness-analyzer.js', () => ({
   analyzeFreshness: vi.fn(),
 }));
 
-import { execSync } from 'node:child_process';
+import { safeExecSandboxed } from './sandbox-exec.js';
 import * as fs from 'node:fs';
 import { analyzeFreshness } from '../indexer/freshness-analyzer.js';
 
-const mockExecSync = vi.mocked(execSync);
+const mockExecSync = vi.mocked(safeExecSandboxed);
 const mockExistsSync = vi.mocked(fs.existsSync);
 const mockReadFileSync = vi.mocked(fs.readFileSync);
 const mockAnalyzeFreshness = vi.mocked(analyzeFreshness);
@@ -419,9 +419,10 @@ describe('system-review', () => {
     });
 
     it('should handle issue creation failure', () => {
+      // safeExecSandboxed returns null on failure (catches errors internally)
       mockExecSync.mockImplementation((cmd) => {
         if (typeof cmd === 'string' && cmd.includes('gh issue create')) {
-          throw new Error('gh: not authenticated');
+          return null; // Simulate failure - safeExecSandboxed returns null on error
         }
         return '[]';
       });

@@ -13,6 +13,7 @@ import type {
   PreflightResult,
   PreflightCheck,
 } from './review-demo-types.js';
+import { safeExecSandboxed } from './sandbox-exec.js';
 
 /**
  * Checks setup status for the review command.
@@ -21,14 +22,9 @@ export async function checkSetupStatus(): Promise<SetupStatus> {
   const token = process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN;
   const hasGitHubToken = token !== undefined && token.length > 0;
 
-  let hasGhCli = false;
-  try {
-    const { execSync } = await import('node:child_process');
-    execSync('gh --version', { stdio: 'pipe' });
-    hasGhCli = true;
-  } catch {
-    hasGhCli = false;
-  }
+  // Check if gh CLI is available using sandbox-aware execution
+  const ghVersionOutput = safeExecSandboxed('gh --version', { context: 'gh' });
+  const hasGhCli = ghVersionOutput !== null;
 
   let tokenValid = false;
   let tokenScopes: string[] = [];

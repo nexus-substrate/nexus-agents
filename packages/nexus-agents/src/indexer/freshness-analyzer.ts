@@ -7,9 +7,9 @@
  * (Source: Epic #261, Issue #269)
  */
 
-import { execSync } from 'node:child_process';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
+import { safeExecSandboxed } from '../cli/sandbox-exec.js';
 
 // ============================================================================
 // Types
@@ -116,20 +116,15 @@ export const DEFAULT_TRACKED_DOCUMENTS: readonly TrackedDocument[] = [
  * Get the last commit date for a file/directory.
  */
 function getLastCommitDate(filePath: string): Date | null {
-  try {
-    const output = execSync(`git log -1 --format=%ci -- "${filePath}"`, {
-      encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-    }).trim();
+  const output = safeExecSandboxed(`git log -1 --format=%ci -- "${filePath}"`, {
+    context: 'git',
+  });
 
-    if (output === '') {
-      return null;
-    }
-
-    return new Date(output);
-  } catch {
+  if (output === null || output === '') {
     return null;
   }
+
+  return new Date(output);
 }
 
 /**

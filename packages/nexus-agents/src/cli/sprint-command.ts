@@ -6,7 +6,7 @@
  * (Source: Issue #230, Epic #225)
  */
 
-import { execSync } from 'node:child_process';
+import { safeExecSandboxed } from './sandbox-exec.js';
 import type {
   SprintCommandOptions,
   SprintPlanResult,
@@ -189,10 +189,14 @@ export function createSprintIssue(proposal: SprintProposal): number | null {
       .replace(/`/g, '\\`')
       .replace(/\$/g, '\\$');
 
-    const output = execSync(
+    const output = safeExecSandboxed(
       `gh issue create --title "${proposal.title}" --body "${escapedBody}" --label "epic"`,
-      { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
+      { context: 'gh' }
     );
+
+    if (output === null) {
+      return null;
+    }
 
     const match = /\/issues\/(\d+)/.exec(output);
     const issueNumStr = match?.[1];
