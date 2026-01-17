@@ -9,7 +9,22 @@
  */
 
 import { z } from 'zod';
-import type { WorkflowDefinition, WorkflowStep, StepResult } from '../../core/index.js';
+import type { WorkflowDefinition, StepResult } from '../../core/index.js';
+
+// Re-export fitness types and functions
+export type { FitnessMetrics, FitnessWeights } from './sew-fitness.js';
+export {
+  DEFAULT_FITNESS_METRICS,
+  DEFAULT_FITNESS_WEIGHTS,
+  computeFitnessScore,
+} from './sew-fitness.js';
+
+// Re-export step utilities
+export {
+  stepsAreDependent,
+  findReorderableSteps,
+  findParallelizableSteps,
+} from './sew-step-utils.js';
 
 /**
  * Semantic version for workflow versions.
@@ -59,87 +74,8 @@ export function incrementVersion(
   }
 }
 
-/**
- * Fitness metrics measuring workflow performance.
- */
-export interface FitnessMetrics {
-  /** Success rate (0-1) */
-  readonly successRate: number;
-  /** Average execution duration in milliseconds */
-  readonly avgDurationMs: number;
-  /** Average cost (arbitrary units, e.g., tokens) */
-  readonly avgCost: number;
-  /** Number of executions measured */
-  readonly executionCount: number;
-  /** Variance in duration (stability metric) */
-  readonly durationVariance: number;
-  /** Retry rate (0-1) - how often retries were needed */
-  readonly retryRate: number;
-}
-
-/**
- * Default fitness metrics for new workflows.
- */
-export const DEFAULT_FITNESS_METRICS: FitnessMetrics = {
-  successRate: 0,
-  avgDurationMs: 0,
-  avgCost: 0,
-  executionCount: 0,
-  durationVariance: 0,
-  retryRate: 0,
-};
-
-/**
- * Compute overall fitness score from metrics.
- * Higher is better. Range: 0-1.
- */
-export function computeFitnessScore(metrics: FitnessMetrics, weights?: FitnessWeights): number {
-  const w = weights ?? DEFAULT_FITNESS_WEIGHTS;
-
-  // Normalize metrics to 0-1 range (higher is better)
-  const successComponent = metrics.successRate * w.successRate;
-
-  // Duration: lower is better, use inverse (capped at 1 for 0ms)
-  const durationNormalized =
-    metrics.avgDurationMs > 0 ? 1 / (1 + metrics.avgDurationMs / 10000) : 1;
-  const durationComponent = durationNormalized * w.duration;
-
-  // Cost: lower is better, use inverse
-  const costNormalized = metrics.avgCost > 0 ? 1 / (1 + metrics.avgCost / 1000) : 1;
-  const costComponent = costNormalized * w.cost;
-
-  // Stability: lower variance is better
-  const stabilityNormalized =
-    metrics.durationVariance > 0 ? 1 / (1 + metrics.durationVariance / 1000000) : 1;
-  const stabilityComponent = stabilityNormalized * w.stability;
-
-  // Retry rate: lower is better
-  const retryComponent = (1 - metrics.retryRate) * w.retryRate;
-
-  return successComponent + durationComponent + costComponent + stabilityComponent + retryComponent;
-}
-
-/**
- * Weights for fitness score computation.
- */
-export interface FitnessWeights {
-  readonly successRate: number;
-  readonly duration: number;
-  readonly cost: number;
-  readonly stability: number;
-  readonly retryRate: number;
-}
-
-/**
- * Default fitness weights (must sum to 1).
- */
-export const DEFAULT_FITNESS_WEIGHTS: FitnessWeights = {
-  successRate: 0.4,
-  duration: 0.2,
-  cost: 0.15,
-  stability: 0.15,
-  retryRate: 0.1,
-};
+// Import FitnessMetrics for local type reference
+import type { FitnessMetrics } from './sew-fitness.js';
 
 /**
  * Versioned workflow with evolution history.
@@ -360,98 +296,4 @@ export interface EvolutionResult {
   readonly success: boolean;
   /** Reason if not successful */
   readonly reason?: string;
-}
-
-/**
- * Check if two steps have a dependency relationship.
- */
-export function stepsAreDependent(
-  stepA: WorkflowStep,
-  stepB: WorkflowStep,
-  allSteps: readonly WorkflowStep[]
-): boolean {
-  const stepADeps = new Set(stepA.dependsOn ?? []);
-  const stepBDeps = new Set(stepB.dependsOn ?? []);
-
-  // Direct dependency
-  if (stepADeps.has(stepB.id) || stepBDeps.has(stepA.id)) {
-    return true;
-  }
-
-  // Transitive dependency check
-  const getAllDependencies = (stepId: string, visited: Set<string>): Set<string> => {
-    if (visited.has(stepId)) return new Set();
-    visited.add(stepId);
-
-    const step = allSteps.find((s) => s.id === stepId);
-    if (!step?.dependsOn) return new Set();
-
-    const deps = new Set(step.dependsOn);
-    for (const dep of step.dependsOn) {
-      const transitiveDeps = getAllDependencies(dep, visited);
-      for (const td of transitiveDeps) {
-        deps.add(td);
-      }
-    }
-    return deps;
-  };
-
-  const allDepsA = getAllDependencies(stepA.id, new Set());
-  const allDepsB = getAllDependencies(stepB.id, new Set());
-
-  return allDepsA.has(stepB.id) || allDepsB.has(stepA.id);
-}
-
-/**
- * Find steps that can be reordered (independent steps).
- */
-export function findReorderableSteps(
-  steps: readonly WorkflowStep[]
-): readonly [WorkflowStep, WorkflowStep][] {
-  const pairs: [WorkflowStep, WorkflowStep][] = [];
-
-  for (let i = 0; i < steps.length; i++) {
-    for (let j = i + 1; j < steps.length; j++) {
-      const stepA = steps[i];
-      const stepB = steps[j];
-      if (stepA && stepB && !stepsAreDependent(stepA, stepB, steps)) {
-        pairs.push([stepA, stepB]);
-      }
-    }
-  }
-
-  return pairs;
-}
-
-/**
- * Find steps that can be parallelized.
- */
-export function findParallelizableSteps(steps: readonly WorkflowStep[]): readonly WorkflowStep[][] {
-  const groups: WorkflowStep[][] = [];
-  const visited = new Set<string>();
-
-  for (const step of steps) {
-    if (visited.has(step.id) || step.parallel === true) continue;
-
-    const parallelGroup: WorkflowStep[] = [step];
-    visited.add(step.id);
-
-    for (const other of steps) {
-      if (visited.has(other.id) || other.parallel === true) continue;
-      if (!stepsAreDependent(step, other, steps)) {
-        // Check if other can be parallel with all in group
-        const canParallelize = parallelGroup.every((g) => !stepsAreDependent(g, other, steps));
-        if (canParallelize) {
-          parallelGroup.push(other);
-          visited.add(other.id);
-        }
-      }
-    }
-
-    if (parallelGroup.length > 1) {
-      groups.push(parallelGroup);
-    }
-  }
-
-  return groups;
 }

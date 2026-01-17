@@ -213,3 +213,48 @@ export type {
   EvolutionHistoryEntry,
   EvolutionResult,
 } from './self-evolving/index.js';
+
+// ============================================================================
+// AFlow MCTS-based Workflow Generation (arXiv:2410.10762)
+// ============================================================================
+
+export {
+  // Types and schemas
+  DEFAULT_AFLOW_CONFIG,
+  AFlowConfigSchema,
+  DEFAULT_ACTION_SPACE_CONFIG,
+  // MCTS Tree
+  MCTSTree,
+  createMCTSTree,
+  // Action Space
+  ActionSpace,
+  createActionSpace,
+  // Evaluation
+  WorkflowEvaluator,
+  createWorkflowEvaluator,
+  DEFAULT_EVALUATION_WEIGHTS,
+  // AFlow Generator
+  AFlowGenerator,
+  AFlowError,
+  createAFlowGenerator,
+  generateWorkflow,
+} from './aflow/index.js';
+
+export type {
+  // AFlow types
+  ActionType,
+  WorkflowAction,
+  StepModifications,
+  MCTSNode,
+  UCTScore,
+  EvaluationResult,
+  AFlowConfig,
+  TaskSpecification,
+  TaskConstraints as AFlowTaskConstraints,
+  AFlowResult,
+  SearchHistoryEntry,
+  MCTSStats,
+  ActionSpaceConfig,
+  EvaluationWeights,
+  AFlowErrorCode,
+} from './aflow/index.js';

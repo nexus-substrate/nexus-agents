@@ -8,6 +8,7 @@
  */
 
 import type { StepResult, WorkflowDefinition } from '../../core/index.js';
+import { safeRegex } from '../../core/safe-regex.js';
 import type { ScenarioFixture, StepExpectation, StepValidation } from './types.js';
 
 /**
@@ -110,6 +111,7 @@ export function checkDuration(
 
 /**
  * Check if output matches expected pattern.
+ * Uses safeRegex to prevent ReDoS attacks (Issue #341).
  */
 export function checkOutputPattern(
   actual: StepResult,
@@ -119,8 +121,13 @@ export function checkOutputPattern(
   if (expected.outputPattern !== undefined) {
     const output =
       typeof actual.output === 'string' ? actual.output : JSON.stringify(actual.output);
-    const pattern = new RegExp(expected.outputPattern);
-    if (!pattern.test(output)) {
+    // Use safeRegex to prevent ReDoS attacks (Issue #341)
+    const result = safeRegex(expected.outputPattern);
+    if (!result.ok) {
+      failures.push(`Invalid regex pattern: ${expected.outputPattern}`);
+      return;
+    }
+    if (!result.value.test(output)) {
       failures.push(`Output did not match pattern ${expected.outputPattern}`);
     }
   }

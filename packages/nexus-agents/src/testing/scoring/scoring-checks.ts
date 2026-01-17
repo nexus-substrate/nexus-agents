@@ -5,6 +5,8 @@
  * Extracted from rubric-scorer.ts for complexity reduction.
  */
 
+import { safeRegex } from '../../core/safe-regex.js';
+
 /**
  * Result from a check operation.
  */
@@ -178,15 +180,16 @@ export interface PatternCheckParams {
 
 /**
  * Check if a regex pattern matches the response.
+ * Uses safeRegex to prevent ReDoS attacks (Issue #341).
  */
 export function checkRegexMatch(response: string, pattern: string, caseSensitive: boolean): number {
-  try {
-    const flags = caseSensitive ? '' : 'i';
-    const regex = new RegExp(pattern, flags);
-    return regex.test(response) ? 100 : 0;
-  } catch {
+  const flags = caseSensitive ? '' : 'i';
+  // Use safeRegex to prevent ReDoS attacks (Issue #341)
+  const result = safeRegex(pattern, flags);
+  if (!result.ok) {
     return 0;
   }
+  return result.value.test(response) ? 100 : 0;
 }
 
 /**

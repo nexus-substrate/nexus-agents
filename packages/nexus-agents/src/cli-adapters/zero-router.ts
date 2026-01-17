@@ -32,6 +32,16 @@ import {
   calculateEstimateConfidence,
   summarizeDifficultySpace,
 } from './difficulty-space.js';
+import {
+  groupOutcomesByLevel,
+  calculateSuccessRateByLevel,
+  calculateAvgQualityByLevel,
+  calculateMeanAbsoluteError,
+  calculateDifficultySuccessCorrelation,
+  calculateCalibrationBias,
+  hashTaskContent,
+  buildRoutingReason,
+} from './zero-router-calibration.js';
 
 // Re-export types for consumers
 export {
@@ -167,7 +177,15 @@ export class ZeroRouter implements IZeroRouter {
     const alternatives = candidates.slice(1);
     const calibrationApplied = this.config.enableCalibration && this.hasMinimumCalibrationData();
 
-    const reason = this.buildRoutingReason(difficulty, selectedCli, calibrationApplied);
+    const reason = buildRoutingReason({
+      level: difficulty.level,
+      aggregateScore: difficulty.aggregateScore,
+      dominantDimension: difficulty.dominantDimension,
+      recommendedTier: difficulty.recommendedTier,
+      selectedCli,
+      calibrationApplied,
+      calibrationBias: this.calibrationBias,
+    });
 
     return {
       difficulty,
@@ -228,11 +246,11 @@ export class ZeroRouter implements IZeroRouter {
       };
     }
 
-    const outcomesByLevel = this.groupOutcomesByLevel();
-    const successRateByLevel = this.calculateSuccessRateByLevel(outcomesByLevel);
-    const avgQualityByLevel = this.calculateAvgQualityByLevel(outcomesByLevel);
-    const meanAbsoluteError = this.calculateMeanAbsoluteError();
-    const difficultySuccessCorrelation = this.calculateCorrelation();
+    const outcomesByLevel = groupOutcomesByLevel(this.outcomes, this.config.thresholds);
+    const successRateByLevel = calculateSuccessRateByLevel(outcomesByLevel);
+    const avgQualityByLevel = calculateAvgQualityByLevel(outcomesByLevel);
+    const meanAbsoluteError = calculateMeanAbsoluteError(this.outcomes);
+    const difficultySuccessCorrelation = calculateDifficultySuccessCorrelation(this.outcomes);
 
     return {
       totalOutcomes: this.outcomes.length,
@@ -258,7 +276,7 @@ export class ZeroRouter implements IZeroRouter {
   private analyzeTaskProfile(task: CliTask): TaskProfile {
     // Convert CliTask to Task for the analyzer
     const internalTask: Task = {
-      id: this.hashTask(task.content),
+      id: hashTaskContent(task.content),
       description: task.content,
       context: {
         history: [],
@@ -282,159 +300,7 @@ export class ZeroRouter implements IZeroRouter {
   }
 
   private updateCalibrationBias(): void {
-    if (this.outcomes.length < 10) {
-      this.calibrationBias = 0;
-      return;
-    }
-
-    // Calculate bias: difference between estimated and actual difficulty
-    // Actual difficulty is inferred from success rate
-    // Low success = task was harder than estimated (positive bias needed)
-    // High success = task was easier than estimated (negative bias needed)
-
-    let biasSum = 0;
-    let count = 0;
-
-    for (const outcome of this.outcomes) {
-      // Infer actual difficulty from success (failure indicates harder task)
-      const actualDifficulty = outcome.success ? outcome.estimatedDifficulty : 1.0;
-      const error = actualDifficulty - outcome.estimatedDifficulty;
-      biasSum += error;
-      count++;
-    }
-
-    // Small learning rate to prevent overcorrection
-    const learningRate = 0.1;
-    const rawBias = count > 0 ? biasSum / count : 0;
-    this.calibrationBias = rawBias * learningRate;
-
-    // Clamp bias to reasonable range
-    this.calibrationBias = Math.max(-0.2, Math.min(0.2, this.calibrationBias));
-  }
-
-  private groupOutcomesByLevel(): Record<DifficultyLevel, DifficultyOutcome[]> {
-    const groups: Record<DifficultyLevel, DifficultyOutcome[]> = {
-      easy: [],
-      medium: [],
-      hard: [],
-    };
-
-    for (const outcome of this.outcomes) {
-      const level = classifyDifficultyLevel(outcome.estimatedDifficulty, this.config.thresholds);
-      groups[level].push(outcome);
-    }
-
-    return groups;
-  }
-
-  private calculateSuccessRateByLevel(
-    groups: Record<DifficultyLevel, DifficultyOutcome[]>
-  ): Record<DifficultyLevel, number> {
-    const result: Record<DifficultyLevel, number> = { easy: 0, medium: 0, hard: 0 };
-
-    for (const level of ['easy', 'medium', 'hard'] as DifficultyLevel[]) {
-      const levelOutcomes = groups[level];
-      if (levelOutcomes.length > 0) {
-        const successes = levelOutcomes.filter((o) => o.success).length;
-        result[level] = successes / levelOutcomes.length;
-      }
-    }
-
-    return result;
-  }
-
-  private calculateAvgQualityByLevel(
-    groups: Record<DifficultyLevel, DifficultyOutcome[]>
-  ): Record<DifficultyLevel, number> {
-    const result: Record<DifficultyLevel, number> = { easy: 0, medium: 0, hard: 0 };
-
-    for (const level of ['easy', 'medium', 'hard'] as DifficultyLevel[]) {
-      const levelOutcomes = groups[level];
-      const withQuality = levelOutcomes.filter((o) => o.qualityScore !== undefined);
-      if (withQuality.length > 0) {
-        const qualitySum = withQuality.reduce((sum, o) => sum + (o.qualityScore ?? 0), 0);
-        result[level] = qualitySum / withQuality.length;
-      }
-    }
-
-    return result;
-  }
-
-  private calculateMeanAbsoluteError(): number {
-    if (this.outcomes.length === 0) return 0;
-
-    // MAE between estimated difficulty and inferred actual difficulty
-    let totalError = 0;
-    for (const outcome of this.outcomes) {
-      // Use quality score as proxy for actual difficulty if available
-      // Otherwise, use success as binary indicator
-      const actualDifficulty =
-        outcome.qualityScore !== undefined
-          ? 1 - outcome.qualityScore // High quality = easier task
-          : outcome.success
-            ? 0.3 // Success suggests reasonable difficulty
-            : 0.8; // Failure suggests high difficulty
-
-      totalError += Math.abs(outcome.estimatedDifficulty - actualDifficulty);
-    }
-
-    return totalError / this.outcomes.length;
-  }
-
-  private calculateCorrelation(): number {
-    if (this.outcomes.length < 2) return 0;
-
-    // Calculate Pearson correlation between difficulty and success rate
-    const difficulties = this.outcomes.map((o) => o.estimatedDifficulty);
-    const successes: number[] = this.outcomes.map((o) => (o.success ? 1 : 0));
-
-    const n = difficulties.length;
-    const sumD = difficulties.reduce((a, b) => a + b, 0);
-    const sumS = successes.reduce((a: number, b: number) => a + b, 0);
-    const sumDS = difficulties.reduce((sum, d, i) => sum + d * (successes[i] ?? 0), 0);
-    const sumD2 = difficulties.reduce((sum, d) => sum + d * d, 0);
-    const sumS2 = successes.reduce((sum: number, s: number) => sum + s * s, 0);
-
-    const numerator = n * sumDS - sumD * sumS;
-    const denominator = Math.sqrt((n * sumD2 - sumD * sumD) * (n * sumS2 - sumS * sumS));
-
-    if (denominator === 0) return 0;
-
-    // Negative correlation expected: higher difficulty = lower success
-    return numerator / denominator;
-  }
-
-  private buildRoutingReason(
-    difficulty: DifficultyEstimate,
-    selectedCli: CliName,
-    calibrationApplied: boolean
-  ): string {
-    const parts: string[] = [];
-
-    parts.push(
-      `Difficulty: ${difficulty.level} (${(difficulty.aggregateScore * 100).toFixed(1)}%)`
-    );
-    parts.push(`Dominant: ${difficulty.dominantDimension}`);
-    parts.push(`Tier: ${difficulty.recommendedTier} → ${selectedCli}`);
-
-    if (calibrationApplied) {
-      parts.push(
-        `(calibrated: ${this.calibrationBias > 0 ? '+' : ''}${(this.calibrationBias * 100).toFixed(1)}%)`
-      );
-    }
-
-    return parts.join(' | ');
-  }
-
-  private hashTask(content: string): string {
-    // Simple hash for task deduplication
-    let hash = 0;
-    for (let i = 0; i < content.length; i++) {
-      const char = content.charCodeAt(i);
-      hash = (hash << 5) - hash + char;
-      hash = hash & hash;
-    }
-    return Math.abs(hash).toString(16);
+    this.calibrationBias = calculateCalibrationBias(this.outcomes);
   }
 }
 

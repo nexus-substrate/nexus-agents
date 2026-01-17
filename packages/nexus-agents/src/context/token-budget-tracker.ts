@@ -17,10 +17,14 @@ import type {
   TokenUsageRecord,
   BudgetCheckResult,
   BudgetStats,
-  BudgetWarning,
-  BudgetWarningLevel,
 } from './token-budget-types.js';
-import { TokenBudgetError, DEFAULT_TOKEN_BUDGET_CONFIG } from './token-budget-types.js';
+import { DEFAULT_TOKEN_BUDGET_CONFIG } from './token-budget-types.js';
+import {
+  collectBudgetWarnings,
+  createHardModeResult,
+  logBudgetWarning,
+  logWarnModeExceeded,
+} from './token-budget-helpers.js';
 
 // Re-export types for convenience
 export type {
@@ -33,6 +37,21 @@ export type {
   BudgetWarningLevel,
 } from './token-budget-types.js';
 export { TokenBudgetError, DEFAULT_TOKEN_BUDGET_CONFIG } from './token-budget-types.js';
+
+// Re-export helper functions
+export {
+  generateBudgetWarning,
+  logBudgetWarning,
+  collectBudgetWarnings,
+  createHardModeResult,
+  logWarnModeExceeded,
+} from './token-budget-helpers.js';
+export type {
+  WarningThresholds,
+  BudgetState,
+  HardModeParams,
+  WarnModeParams,
+} from './token-budget-helpers.js';
 
 /**
  * Token budget tracker with EMA-based prediction.
@@ -99,7 +118,11 @@ export class TokenBudgetTracker implements ITokenBudgetTracker {
    * Check if an operation is within budget.
    */
   checkBudget(estimatedTokens: number): BudgetCheckResult {
-    const warnings = this.collectWarnings(estimatedTokens);
+    const warnings = collectBudgetWarnings(
+      estimatedTokens,
+      { sessionTokensUsed: this.sessionTokensUsed, taskTokensUsed: this.taskTokensUsed },
+      this.config
+    );
     const remainingSessionBudget = this.config.maxTokensPerSession - this.sessionTokensUsed;
     const remainingTaskBudget = this.config.maxTokensPerTask - this.taskTokensUsed;
 
@@ -110,21 +133,34 @@ export class TokenBudgetTracker implements ITokenBudgetTracker {
     const exceeds = exceedsSessionBudget || exceedsTaskBudget;
 
     for (const warning of warnings) {
-      this.logWarning(warning);
+      logBudgetWarning(warning, this.logger);
     }
 
     if (exceeds && this.config.enforcementMode === 'hard') {
-      return this.createHardModeResult(
+      return createHardModeResult({
         estimatedTokens,
-        exceedsSessionBudget,
+        exceedsSession: exceedsSessionBudget,
         remainingSessionBudget,
         remainingTaskBudget,
-        warnings
-      );
+        warnings,
+        sessionTokensUsed: this.sessionTokensUsed,
+        taskTokensUsed: this.taskTokensUsed,
+        maxTokensPerSession: this.config.maxTokensPerSession,
+        maxTokensPerTask: this.config.maxTokensPerTask,
+      });
     }
 
     if (exceeds && this.config.enforcementMode === 'warn') {
-      this.logWarnModeExceeded(exceedsSessionBudget, exceedsTaskBudget, estimatedTokens);
+      logWarnModeExceeded(
+        {
+          exceedsSession: exceedsSessionBudget,
+          exceedsTask: exceedsTaskBudget,
+          estimatedTokens,
+          sessionUsed: this.sessionTokensUsed,
+          taskUsed: this.taskTokensUsed,
+        },
+        this.logger
+      );
     }
 
     return {
@@ -134,92 +170,6 @@ export class TokenBudgetTracker implements ITokenBudgetTracker {
       remainingTaskBudget: Math.max(0, remainingTaskBudget),
       warnings,
     };
-  }
-
-  /**
-   * Collect budget warnings for session and task.
-   */
-  private collectWarnings(estimatedTokens: number): BudgetWarning[] {
-    const warnings: BudgetWarning[] = [];
-    const projectedSessionUsage = this.sessionTokensUsed + estimatedTokens;
-    const projectedTaskUsage = this.taskTokensUsed + estimatedTokens;
-
-    const sessionUtilization = (projectedSessionUsage / this.config.maxTokensPerSession) * 100;
-    const sessionWarning = this.generateWarning(
-      sessionUtilization,
-      projectedSessionUsage,
-      this.config.maxTokensPerSession,
-      'session'
-    );
-    if (sessionWarning !== undefined) {
-      warnings.push(sessionWarning);
-    }
-
-    const taskUtilization = (projectedTaskUsage / this.config.maxTokensPerTask) * 100;
-    const taskWarning = this.generateWarning(
-      taskUtilization,
-      projectedTaskUsage,
-      this.config.maxTokensPerTask,
-      'task'
-    );
-    if (taskWarning !== undefined) {
-      warnings.push(taskWarning);
-    }
-
-    return warnings;
-  }
-
-  /**
-   * Create a result for hard mode budget exceeded.
-   */
-  private createHardModeResult(
-    estimatedTokens: number,
-    exceedsSession: boolean,
-    remainingSessionBudget: number,
-    remainingTaskBudget: number,
-    warnings: BudgetWarning[]
-  ): BudgetCheckResult {
-    const scope = exceedsSession ? 'session' : 'task';
-    const limit = exceedsSession ? this.config.maxTokensPerSession : this.config.maxTokensPerTask;
-    const used = exceedsSession ? this.sessionTokensUsed : this.taskTokensUsed;
-
-    return {
-      allowed: false,
-      estimatedTokens,
-      remainingSessionBudget,
-      remainingTaskBudget,
-      warnings,
-      error: new TokenBudgetError(
-        `Token budget exceeded: ${scope} limit of ${String(limit)} tokens would be exceeded ` +
-          `(current: ${String(used)}, estimated: ${String(estimatedTokens)})`,
-        {
-          context: {
-            scope,
-            limit,
-            currentUsage: used,
-            estimatedTokens,
-            wouldUse: used + estimatedTokens,
-          },
-        }
-      ),
-    };
-  }
-
-  /**
-   * Log warn mode exceeded message.
-   */
-  private logWarnModeExceeded(
-    exceedsSession: boolean,
-    exceedsTask: boolean,
-    estimatedTokens: number
-  ): void {
-    this.logger.warn('Token budget would be exceeded (warn mode - continuing)', {
-      exceedsSession,
-      exceedsTask,
-      estimatedTokens,
-      sessionUsed: this.sessionTokensUsed,
-      taskUsed: this.taskTokensUsed,
-    });
   }
 
   /**
@@ -346,66 +296,6 @@ export class TokenBudgetTracker implements ITokenBudgetTracker {
   updateConfig(config: Partial<TokenBudgetConfig>): void {
     this.config = { ...this.config, ...config };
     this.logger.debug('Config updated', { newConfig: this.config });
-  }
-
-  /**
-   * Generate a warning based on utilization level.
-   */
-  private generateWarning(
-    utilizationPercent: number,
-    tokensUsed: number,
-    budgetLimit: number,
-    scope: 'task' | 'session'
-  ): BudgetWarning | undefined {
-    let level: BudgetWarningLevel | undefined;
-
-    if (utilizationPercent >= this.config.criticalThreshold) {
-      level = 'critical';
-    } else if (utilizationPercent >= this.config.warningThreshold) {
-      level = 'warning';
-    } else if (utilizationPercent >= 50) {
-      level = 'info';
-    }
-
-    if (level === undefined) {
-      return undefined;
-    }
-
-    const remaining = Math.max(0, budgetLimit - tokensUsed);
-    return {
-      level,
-      message:
-        `${scope.charAt(0).toUpperCase() + scope.slice(1)} token budget at ` +
-        `${String(Math.round(utilizationPercent))}% (${String(remaining)} tokens remaining)`,
-      usagePercent: utilizationPercent,
-      tokensUsed,
-      budgetLimit,
-      scope,
-    };
-  }
-
-  /**
-   * Log a warning at the appropriate level.
-   */
-  private logWarning(warning: BudgetWarning): void {
-    const context = {
-      scope: warning.scope,
-      usagePercent: Math.round(warning.usagePercent),
-      tokensUsed: warning.tokensUsed,
-      budgetLimit: warning.budgetLimit,
-    };
-
-    switch (warning.level) {
-      case 'critical':
-        this.logger.warn(warning.message, context);
-        break;
-      case 'warning':
-        this.logger.warn(warning.message, context);
-        break;
-      case 'info':
-        this.logger.info(warning.message, context);
-        break;
-    }
   }
 }
 

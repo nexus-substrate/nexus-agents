@@ -142,6 +142,38 @@ export function analyzeToolForHazards(
   return ok(uniqueHazards);
 }
 
+/** Creates a "wrong timing" UCA for time-sensitive hazards */
+function createWrongTimingUca(
+  toolName: string,
+  hazardId: string,
+  ucaIndex: number
+): UnsafeControlAction {
+  return {
+    id: generateId('UCA', toolName, ucaIndex),
+    toolName,
+    type: UnsafeControlActionType.WRONG_TIMING,
+    description: `Tool '${toolName}' invoked before safety preconditions are verified`,
+    unsafeContext: 'No backup exists; concurrent access in progress; validation incomplete',
+    relatedHazards: [hazardId],
+  };
+}
+
+/** Creates a "not provided" UCA for security-critical operations */
+function createNotProvidedUca(
+  toolName: string,
+  hazardId: string,
+  ucaIndex: number
+): UnsafeControlAction {
+  return {
+    id: generateId('UCA', toolName, ucaIndex),
+    toolName,
+    type: UnsafeControlActionType.NOT_PROVIDED,
+    description: `Validation/sanitization not performed before '${toolName}' invocation`,
+    unsafeContext: 'Input contains malicious content; access control not checked',
+    relatedHazards: [hazardId],
+  };
+}
+
 /**
  * Generates unsafe control actions from identified hazards.
  */
@@ -153,13 +185,11 @@ export function generateUnsafeControlActions(
   const categories = classifyToolMultiple(toolDefinition.name);
   const triggerPatterns: TriggerPattern[] = [];
 
-  // Collect trigger patterns for all applicable categories
   for (const category of categories) {
     triggerPatterns.push(...getTriggerPatternsForCategory(category));
   }
 
   for (const hazard of hazards) {
-    // Generate "provided when unsafe" UCA
     const baseUca: UnsafeControlAction = {
       id: generateId('UCA', toolDefinition.name, ucas.length + 1),
       toolName: toolDefinition.name,
@@ -169,41 +199,20 @@ export function generateUnsafeControlActions(
       relatedHazards: [hazard.id],
     };
 
-    // Add trigger patterns only if present (exactOptionalPropertyTypes)
-    if (triggerPatterns.length > 0) {
-      ucas.push({ ...baseUca, triggerPatterns });
-    } else {
-      ucas.push(baseUca);
-    }
+    ucas.push(triggerPatterns.length > 0 ? { ...baseUca, triggerPatterns } : baseUca);
 
-    // Generate "wrong timing" UCA for time-sensitive hazards
-    if (
+    const isTimeSensitive =
       hazard.category === HazardCategory.DATA_LOSS ||
-      hazard.category === HazardCategory.INTEGRITY_VIOLATION
-    ) {
-      ucas.push({
-        id: generateId('UCA', toolDefinition.name, ucas.length + 1),
-        toolName: toolDefinition.name,
-        type: UnsafeControlActionType.WRONG_TIMING,
-        description: `Tool '${toolDefinition.name}' invoked before safety preconditions are verified`,
-        unsafeContext: 'No backup exists; concurrent access in progress; validation incomplete',
-        relatedHazards: [hazard.id],
-      });
+      hazard.category === HazardCategory.INTEGRITY_VIOLATION;
+    if (isTimeSensitive) {
+      ucas.push(createWrongTimingUca(toolDefinition.name, hazard.id, ucas.length + 1));
     }
 
-    // Generate "not provided" UCA for security-critical operations
-    if (
+    const isSecurityCritical =
       hazard.category === HazardCategory.INFORMATION_DISCLOSURE ||
-      hazard.category === HazardCategory.PRIVILEGE_ESCALATION
-    ) {
-      ucas.push({
-        id: generateId('UCA', toolDefinition.name, ucas.length + 1),
-        toolName: toolDefinition.name,
-        type: UnsafeControlActionType.NOT_PROVIDED,
-        description: `Validation/sanitization not performed before '${toolDefinition.name}' invocation`,
-        unsafeContext: 'Input contains malicious content; access control not checked',
-        relatedHazards: [hazard.id],
-      });
+      hazard.category === HazardCategory.PRIVILEGE_ESCALATION;
+    if (isSecurityCritical) {
+      ucas.push(createNotProvidedUca(toolDefinition.name, hazard.id, ucas.length + 1));
     }
   }
 

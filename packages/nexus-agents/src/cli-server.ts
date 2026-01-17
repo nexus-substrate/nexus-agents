@@ -14,8 +14,6 @@ import {
   registerDelegateToModelTool,
   registerOrchestrateTool,
   createMockTechLead,
-  initializeEventBusBridge,
-  getEventBusStats,
   type EventBusBridgeResult,
 } from './mcp/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -24,14 +22,22 @@ import { createLogger, type ILogger } from './core/index.js';
 import { VERSION } from './version.js';
 import { detectMode, type ServerMode, type ModeDetectionResult } from './cli/index.js';
 import { EXIT_CODES } from './cli-types.js';
-import { getSwarmObserver, SwarmObserver } from './observability/index.js';
-import type { EventBusConfig } from './config/index.js';
+import { SwarmObserver } from './observability/index.js';
 import { initializeSandbox, getSandboxMode } from './security/sandbox/index.js';
 import {
   createDefaultPolicyFirewall,
   createToolRateLimiterFactory,
   setGlobalToolRateLimiterFactory,
 } from './mcp/middleware/index.js';
+import {
+  initializeSwarmObserver,
+  initializeEventBus,
+  recordServerStartup,
+  recordServerShutdown,
+  logFinalHealthMetrics,
+  logFinalEventBusStats,
+  type ServerEventContext,
+} from './cli-server-lifecycle.js';
 
 /**
  * Sets up graceful shutdown handlers.
@@ -160,121 +166,6 @@ export function logSecurityConfig(logger: ILogger): void {
 }
 
 /**
- * Initializes the global SwarmObserver for interaction tracing.
- *
- * @param logger - Logger instance
- * @returns The initialized SwarmObserver instance
- */
-function initializeSwarmObserver(logger: ILogger): SwarmObserver {
-  const observer = getSwarmObserver({
-    maxEvents: 10000,
-  });
-
-  logger.info('SwarmObserver initialized for interaction tracing', {
-    maxEvents: 10000,
-  });
-
-  return observer;
-}
-
-/**
- * Initializes the EventBus bridge for agent-to-agent communication visibility.
- * Bridges EventBus events to SwarmObserver for observability in Claude Desktop.
- *
- * @param observer - SwarmObserver instance
- * @param logger - Logger instance
- * @param config - Optional EventBus configuration
- * @returns EventBus bridge result with cleanup function
- *
- * (Source: Issue #307 - EventBus MCP integration)
- */
-function initializeEventBus(
-  observer: SwarmObserver,
-  logger: ILogger,
-  config?: EventBusConfig
-): EventBusBridgeResult {
-  // Check environment variable for enable/disable override
-  const envEnabled = process.env['NEXUS_EVENTBUS_ENABLED'];
-  const enabled = envEnabled !== undefined ? envEnabled === 'true' : (config?.enabled ?? true);
-
-  const effectiveConfig: Partial<EventBusConfig> = {
-    ...config,
-    enabled,
-  };
-
-  const result = initializeEventBusBridge(observer, logger, effectiveConfig);
-
-  if (result.initialized) {
-    logger.info('EventBus bridge initialized for A2A visibility', {
-      subscriptionCount: result.subscriptionCount,
-      eventBusEnabled: enabled,
-    });
-  }
-
-  return result;
-}
-
-/**
- * Records a server lifecycle event to the SwarmObserver.
- */
-interface ServerEventContext {
-  readonly traceId: string;
-  readonly startupSpanId: string;
-}
-
-function recordServerStartup(observer: SwarmObserver): ServerEventContext {
-  const traceId = SwarmObserver.generateTraceId();
-  const startupSpanId = SwarmObserver.generateSpanId();
-
-  observer.recordEvent({
-    eventId: `startup-${startupSpanId}`,
-    timestamp: new Date().toISOString(),
-    agentId: 'mcp-server',
-    eventType: 'task_started',
-    traceId,
-    spanId: startupSpanId,
-    payload: {
-      type: 'task',
-      phase: 'started',
-      taskId: traceId,
-      taskDescription: 'MCP server startup',
-    },
-  });
-
-  return { traceId, startupSpanId };
-}
-
-function recordServerShutdown(observer: SwarmObserver, context: ServerEventContext): void {
-  const shutdownSpanId = SwarmObserver.generateSpanId();
-
-  observer.recordEvent({
-    eventId: `shutdown-${shutdownSpanId}`,
-    timestamp: new Date().toISOString(),
-    agentId: 'mcp-server',
-    eventType: 'task_completed',
-    traceId: context.traceId,
-    spanId: shutdownSpanId,
-    parentSpanId: context.startupSpanId,
-    payload: {
-      type: 'task',
-      phase: 'completed',
-      taskId: context.traceId,
-      taskDescription: 'MCP server shutdown',
-      success: true,
-    },
-  });
-}
-
-function logFinalHealthMetrics(observer: SwarmObserver, logger: ILogger): void {
-  const healthMetrics = observer.getHealthMetrics();
-  logger.info('Final swarm health metrics', {
-    activeAgents: healthMetrics.activeAgents,
-    totalAgents: healthMetrics.totalAgents,
-    totalInteractions: healthMetrics.totalInteractions,
-  });
-}
-
-/**
  * Options for creating the shutdown cleanup handler.
  */
 interface ShutdownCleanupOptions {
@@ -294,13 +185,7 @@ function createShutdownCleanup(options: ShutdownCleanupOptions): () => Promise<v
 
   return async (): Promise<void> => {
     if (eventBusBridge.initialized) {
-      const finalStats = getEventBusStats();
-      logger.info('Final EventBus statistics', {
-        eventsEmitted: finalStats.eventsEmitted,
-        activeSubscriptions: finalStats.activeSubscriptions,
-        historySize: finalStats.historySize,
-        errorCount: finalStats.errorCount,
-      });
+      logFinalEventBusStats(logger);
       eventBusBridge.cleanup();
     }
 

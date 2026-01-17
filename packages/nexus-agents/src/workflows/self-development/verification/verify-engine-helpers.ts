@@ -7,6 +7,7 @@
  * (Source: Issue #277 - QA cycle before issue closure)
  */
 
+import { safeRegex } from '../../../core/safe-regex.js';
 import type { CheckDefinition, CheckResult, CheckIssue } from './verify-types.js';
 
 // ============================================================================
@@ -21,8 +22,18 @@ export function findFailurePatterns(check: CheckDefinition, output: string): Che
   if (check.failurePatterns === undefined) return issues;
 
   for (const pattern of check.failurePatterns) {
-    const regex = new RegExp(pattern, 'gi');
-    const matches = output.match(regex);
+    // Use safeRegex to prevent ReDoS attacks (Issue #341)
+    const result = safeRegex(pattern, 'gi');
+    if (!result.ok) {
+      // Skip invalid patterns but log the issue
+      issues.push({
+        code: check.id,
+        message: `Invalid regex pattern: ${pattern}`,
+        severity: 'warning',
+      });
+      continue;
+    }
+    const matches = output.match(result.value);
     if (matches !== null) {
       for (const match of matches) {
         issues.push({ code: check.id, message: match, severity: 'error' });
@@ -40,8 +51,13 @@ export function hasSuccessPatternMatch(check: CheckDefinition, output: string): 
     return false;
   }
   for (const pattern of check.successPatterns) {
-    const regex = new RegExp(pattern, 'gi');
-    if (regex.test(output)) {
+    // Use safeRegex to prevent ReDoS attacks (Issue #341)
+    const result = safeRegex(pattern, 'gi');
+    if (!result.ok) {
+      // Skip invalid patterns
+      continue;
+    }
+    if (result.value.test(output)) {
       return true;
     }
   }

@@ -87,5 +87,18 @@ export type {
 export { ErrorMetricsCollector, errorMetrics, recordError } from './metrics.js';
 export type { ErrorMetrics, RecordErrorOptions, MetricsExport } from './metrics.js';
 
+// Safe Regex (Issue #341 - ReDoS prevention)
+export {
+  escapeRegex,
+  validatePattern,
+  safeRegex,
+  literalRegex,
+  safeTest,
+  safeMatch,
+  safeReplace,
+  SafeRegexError,
+  MAX_PATTERN_LENGTH,
+} from './safe-regex.js';
+
 // Types
 export * from './types/index.js';

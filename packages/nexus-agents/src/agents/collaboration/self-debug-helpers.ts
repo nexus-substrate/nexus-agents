@@ -5,6 +5,7 @@
  * (Source: Issue #131, arXiv:2304.05128)
  */
 
+import { escapeRegex, validatePattern } from '../../core/safe-regex.js';
 import type {
   ParsedError,
   ErrorExplanation,
@@ -26,9 +27,13 @@ export function extractGroupNum(match: RegExpMatchArray, index?: number): number
   return value !== undefined ? parseInt(value, 10) : undefined;
 }
 
-/** Extract section from text. */
+/** Extract section from text.
+ * Note: sectionName is escaped to prevent ReDoS (Issue #341).
+ */
 export function extractSection(text: string, sectionName: string): string | undefined {
-  const regex = new RegExp(`${sectionName}[:\\s]+([^\\n]+)`, 'i');
+  // Escape the section name to prevent ReDoS attacks (Issue #341)
+  const escapedName = escapeRegex(sectionName);
+  const regex = new RegExp(`${escapedName}[:\\s]+([^\\n]+)`, 'i');
   const match = text.match(regex);
   return match?.[1]?.trim();
 }
@@ -193,7 +198,9 @@ export async function executeCode(executor: CodeExecutor, code: string): Promise
   }
 }
 
-/** Parse errors from execution result using error patterns. */
+/** Parse errors from execution result using error patterns.
+ * Validates patterns to prevent ReDoS (Issue #341).
+ */
 export function parseErrorsFromOutput(
   result: ExecutionResult,
   patterns: readonly ErrorPattern[]
@@ -203,7 +210,17 @@ export function parseErrorsFromOutput(
   const output = result.stderr.length > 0 ? result.stderr : result.stdout;
   let errorId = 0;
   for (const pattern of patterns) {
-    const matches = output.matchAll(new RegExp(pattern.pattern, 'gm'));
+    // Validate pattern to prevent ReDoS attacks (Issue #341)
+    // ErrorPattern.pattern is already a RegExp, so we validate its source
+    const patternSource = pattern.pattern.source;
+    const validation = validatePattern(patternSource);
+    if (!validation.ok) {
+      // Skip dangerous patterns
+      continue;
+    }
+    // Use the original RegExp with global+multiline flags
+    const regex = new RegExp(pattern.pattern.source, 'gm');
+    const matches = output.matchAll(regex);
     for (const match of matches) {
       errors.push(createParsedError(match, pattern, ++errorId));
     }

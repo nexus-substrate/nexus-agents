@@ -8,92 +8,30 @@
  * (Source: Leveson, Engineering a Safer World, MIT Press 2011)
  */
 
-import { z } from 'zod';
-
 // =============================================================================
-// Hazard Categories
+// Re-export Enums (from stpa-enums.ts to avoid circular dependencies)
 // =============================================================================
 
-/**
- * Categories of hazards that MCP tools can introduce.
- * Each category represents a class of potential system-level harm.
- */
-export enum HazardCategory {
-  /** Loss or corruption of user data */
-  DATA_LOSS = 'data_loss',
-  /** Unauthorized elevation of access rights */
-  PRIVILEGE_ESCALATION = 'privilege_escalation',
-  /** Exhaustion of system resources (CPU, memory, disk, network) */
-  RESOURCE_EXHAUSTION = 'resource_exhaustion',
-  /** Unauthorized exposure of sensitive information */
-  INFORMATION_DISCLOSURE = 'information_disclosure',
-  /** Execution of unauthorized or malicious commands */
-  UNAUTHORIZED_EXECUTION = 'unauthorized_execution',
-  /** Violation of system integrity boundaries */
-  INTEGRITY_VIOLATION = 'integrity_violation',
-  /** Denial of service through malformed input or overload */
-  DENIAL_OF_SERVICE = 'denial_of_service',
-  /** Injection of malicious content or commands */
-  INJECTION = 'injection',
-}
+export {
+  HazardCategory,
+  HazardSeverity,
+  HazardLikelihood,
+  UnsafeControlActionType,
+  ConstraintEnforcement,
+  ConstraintPriority,
+  RiskLevel,
+} from './stpa-enums.js';
 
-/**
- * Zod schema for HazardCategory validation.
- */
-export const HazardCategorySchema = z.nativeEnum(HazardCategory);
-
-// =============================================================================
-// Severity and Likelihood
-// =============================================================================
-
-/**
- * Severity levels for potential hazards.
- */
-export enum HazardSeverity {
-  /** Catastrophic - system-wide impact, data loss, security breach */
-  CRITICAL = 'critical',
-  /** Serious - significant impact, partial data loss, degraded security */
-  HIGH = 'high',
-  /** Moderate - limited impact, recoverable */
-  MEDIUM = 'medium',
-  /** Minor - minimal impact, easily recoverable */
-  LOW = 'low',
-}
-
-/**
- * Likelihood levels for hazard occurrence.
- */
-export enum HazardLikelihood {
-  /** Almost certain to occur under normal conditions */
-  ALMOST_CERTAIN = 'almost_certain',
-  /** Likely to occur during typical usage */
-  LIKELY = 'likely',
-  /** Possible under certain conditions */
-  POSSIBLE = 'possible',
-  /** Unlikely but not impossible */
-  UNLIKELY = 'unlikely',
-  /** Very rare, requires exceptional circumstances */
-  RARE = 'rare',
-}
-
-// =============================================================================
-// Unsafe Control Action Types
-// =============================================================================
-
-/**
- * Types of unsafe control actions in STPA terminology.
- * These represent the four ways a control action can be unsafe.
- */
-export enum UnsafeControlActionType {
-  /** Control action not provided when needed */
-  NOT_PROVIDED = 'not_provided',
-  /** Control action provided when not needed (causes hazard) */
-  PROVIDED_CAUSES_HAZARD = 'provided_causes_hazard',
-  /** Control action provided too early, too late, or out of order */
-  WRONG_TIMING = 'wrong_timing',
-  /** Control action stopped too soon or applied too long */
-  WRONG_DURATION = 'wrong_duration',
-}
+// Import for type usage
+import type {
+  HazardCategory,
+  HazardSeverity,
+  HazardLikelihood,
+  UnsafeControlActionType,
+  ConstraintEnforcement,
+  ConstraintPriority,
+  RiskLevel,
+} from './stpa-enums.js';
 
 // =============================================================================
 // Core STPA Interfaces
@@ -172,38 +110,6 @@ export interface SafetyConstraint {
   readonly priority: ConstraintPriority;
 }
 
-/**
- * How a safety constraint is enforced.
- */
-export enum ConstraintEnforcement {
-  /** Prevent the action entirely */
-  PREVENT = 'prevent',
-  /** Require additional confirmation */
-  REQUIRE_CONFIRMATION = 'require_confirmation',
-  /** Log and alert but allow */
-  ALERT = 'alert',
-  /** Sanitize inputs before proceeding */
-  SANITIZE = 'sanitize',
-  /** Rate limit the action */
-  RATE_LIMIT = 'rate_limit',
-  /** Require specific privileges */
-  REQUIRE_PRIVILEGE = 'require_privilege',
-}
-
-/**
- * Priority levels for constraint evaluation.
- */
-export enum ConstraintPriority {
-  /** Must be evaluated first, blocks all else */
-  CRITICAL = 1,
-  /** High priority, evaluated early */
-  HIGH = 2,
-  /** Normal priority */
-  NORMAL = 3,
-  /** Low priority, evaluated last */
-  LOW = 4,
-}
-
 // =============================================================================
 // Analysis Results
 // =============================================================================
@@ -228,22 +134,6 @@ export interface ToolAnalysisResult {
   readonly riskLevel: RiskLevel;
   /** Timestamp of analysis */
   readonly analyzedAt: Date;
-}
-
-/**
- * Risk level classification based on risk score.
- */
-export enum RiskLevel {
-  /** Score 0-20: Minimal risk */
-  MINIMAL = 'minimal',
-  /** Score 21-40: Low risk */
-  LOW = 'low',
-  /** Score 41-60: Moderate risk */
-  MODERATE = 'moderate',
-  /** Score 61-80: High risk */
-  HIGH = 'high',
-  /** Score 81-100: Critical risk */
-  CRITICAL = 'critical',
 }
 
 /**
@@ -342,131 +232,37 @@ export const DEFAULT_ANALYSIS_CONFIG: AnalysisConfiguration = {
 };
 
 // =============================================================================
-// Tool Definition Input
+// Re-export Validation Types (from stpa-validation-types.ts)
 // =============================================================================
 
-/**
- * Simplified tool definition for analysis input.
- * This matches the structure of MCP tool definitions.
- */
-export interface ToolDefinition {
-  /** Tool name */
-  readonly name: string;
-  /** Tool description */
-  readonly description: string;
-  /** Input schema (JSON Schema format) */
-  readonly inputSchema: ToolInputSchema;
-}
-
-/**
- * JSON Schema representation of tool input.
- */
-export interface ToolInputSchema {
-  /** Schema type (typically 'object') */
-  readonly type: string;
-  /** Property definitions */
-  readonly properties?: Readonly<Record<string, PropertySchema>>;
-  /** Required property names */
-  readonly required?: readonly string[];
-  /** Additional properties allowed */
-  readonly additionalProperties?: boolean;
-}
-
-/**
- * Individual property schema.
- */
-export interface PropertySchema {
-  /** Property type */
-  readonly type: string;
-  /** Property description */
-  readonly description?: string;
-  /** Enum values if applicable */
-  readonly enum?: readonly unknown[];
-  /** Pattern for string validation */
-  readonly pattern?: string;
-  /** Minimum value for numbers */
-  readonly minimum?: number;
-  /** Maximum value for numbers */
-  readonly maximum?: number;
-}
+export type {
+  ToolDefinition,
+  ToolInputSchema,
+  PropertySchema,
+  ValidationResult,
+  ConstraintViolation,
+  ValidationWarning,
+} from './stpa-validation-types.js';
 
 // =============================================================================
-// Validation Result
+// Re-export Zod Schemas (from stpa-schemas.ts)
 // =============================================================================
 
-/**
- * Result of validating a tool against safety constraints.
- */
-export interface ValidationResult {
-  /** Whether the tool passes all constraints */
-  readonly valid: boolean;
-  /** Tool that was validated */
-  readonly toolName: string;
-  /** Constraints that were violated */
-  readonly violations: readonly ConstraintViolation[];
-  /** Constraints that passed */
-  readonly passed: readonly string[];
-  /** Warnings (non-blocking issues) */
-  readonly warnings: readonly ValidationWarning[];
-  /** Timestamp of validation */
-  readonly validatedAt: Date;
-}
-
-/**
- * A constraint violation found during validation.
- */
-export interface ConstraintViolation {
-  /** Constraint that was violated */
-  readonly constraintId: string;
-  /** Constraint description */
-  readonly constraintDescription: string;
-  /** Severity of the violation */
-  readonly severity: HazardSeverity;
-  /** Specific details about the violation */
-  readonly details: string;
-  /** Suggested remediation */
-  readonly remediation: string;
-}
-
-/**
- * A non-blocking warning from validation.
- */
-export interface ValidationWarning {
-  /** Warning code */
-  readonly code: string;
-  /** Warning message */
-  readonly message: string;
-  /** Affected parameter or aspect */
-  readonly affected: string;
-}
-
-// =============================================================================
-// Zod Schemas for Runtime Validation
-// =============================================================================
-
-/**
- * Zod schema for ToolDefinition validation.
- */
-export const ToolDefinitionSchema = z.object({
-  name: z.string().min(1),
-  description: z.string(),
-  inputSchema: z.object({
-    type: z.string(),
-    properties: z.record(z.unknown()).optional(),
-    required: z.array(z.string()).optional(),
-    additionalProperties: z.boolean().optional(),
-  }),
-});
-
-/**
- * Zod schema for AnalysisConfiguration validation.
- */
-export const AnalysisConfigurationSchema = z.object({
-  includeLowSeverity: z.boolean().default(true),
-  generateAllConstraints: z.boolean().default(true),
-  checkInteractions: z.boolean().default(true),
-  maxHazardsPerTool: z.number().int().min(1).max(100).default(50),
-  categories: z.array(HazardCategorySchema).default([]),
-});
-
-export type AnalysisConfigurationInput = z.input<typeof AnalysisConfigurationSchema>;
+export {
+  HazardCategorySchema,
+  HazardSeveritySchema,
+  ConstraintPrioritySchema,
+  RiskLevelSchema,
+  TriggerPatternSchema,
+  HazardSchema,
+  UnsafeControlActionSchema,
+  SafetyConstraintSchema,
+  PropertySchemaSchema,
+  ToolInputSchemaSchema,
+  ToolDefinitionSchema,
+  AnalysisConfigurationSchema,
+  ConstraintViolationSchema,
+  ValidationWarningSchema,
+  ValidationResultSchema,
+  type AnalysisConfigurationInput,
+} from './stpa-schemas.js';

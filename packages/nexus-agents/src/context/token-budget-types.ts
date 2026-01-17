@@ -120,7 +120,7 @@ export interface BudgetCheckResult {
   /** Remaining task budget */
   remainingTaskBudget: number;
   /** Any warnings generated */
-  warnings: BudgetWarning[];
+  warnings: readonly BudgetWarning[];
   /** Error if blocked (only when enforcementMode is 'hard') */
   error?: TokenBudgetError;
 }

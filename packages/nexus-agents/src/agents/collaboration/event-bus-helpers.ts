@@ -27,21 +27,39 @@ export interface SubscriptionRecord {
   readonly listener: (event: DomainEvent) => void | Promise<void>;
 }
 
+/** Maximum allowed topic pattern length */
+const MAX_TOPIC_PATTERN_LENGTH = 200;
+
 /**
  * Convert a topic pattern to a regex for matching.
  * Supports wildcard patterns:
  * - 'session.created' -> exact match
  * - 'session.*' -> matches session.anything
  * - '*' -> matches everything
+ *
+ * Security Note (Issue #341): This function is safe from ReDoS because:
+ * 1. The input is fully escaped before regex construction
+ * 2. Only `*` wildcards are converted to `[^.]+` (bounded, non-greedy)
+ * 3. Pattern length is bounded to prevent memory issues
+ *
+ * @throws Error if pattern exceeds MAX_TOPIC_PATTERN_LENGTH
  */
 export function patternToRegex(pattern: TopicPattern): RegExp {
+  // Validate length to prevent memory issues (Issue #341)
+  if (pattern.length > MAX_TOPIC_PATTERN_LENGTH) {
+    throw new Error(`Topic pattern exceeds maximum length of ${String(MAX_TOPIC_PATTERN_LENGTH)}`);
+  }
+
   if (pattern === '*') {
     return /^.+$/;
   }
   // Use placeholder for * before escaping, then restore as regex wildcard
+  // WILDCARD_PLACEHOLDER is a static constant, safe for RegExp (Issue #341)
   const WILDCARD_PLACEHOLDER = '\x00WILDCARD\x00';
   const withPlaceholder = pattern.replace(/\*/g, WILDCARD_PLACEHOLDER);
+  // Escape all regex special characters - this makes the pattern safe
   const escaped = withPlaceholder.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
+  // Replace placeholder with bounded wildcard - safe since input was escaped
   const withWildcards = escaped.replace(new RegExp(WILDCARD_PLACEHOLDER, 'g'), '[^.]+');
   return new RegExp(`^${withWildcards}$`);
 }

@@ -21,20 +21,27 @@ import type {
   AgentPairKey,
 } from './higher-order-types.js';
 import { createAgentPairKey, DEFAULT_HIGHER_ORDER_CONFIG } from './higher-order-types.js';
+import {
+  type MutablePairwiseHistory,
+  votesAgree,
+  didAlignWithOutcome,
+  computeCorrelationCoefficient,
+  partitionIntoIndependentGroups,
+} from './correlation-helpers.js';
+
+// Re-export helper types and functions for convenience
+export type { MutablePairwiseHistory } from './correlation-helpers.js';
+export {
+  votesAgree,
+  didAlignWithOutcome,
+  computeCorrelationCoefficient,
+  isIndependentFromSubset,
+  computeSubsetIndependenceScore,
+  computeSubsetObservationCount,
+  partitionIntoIndependentGroups,
+} from './correlation-helpers.js';
 
 const logger = createLogger({ component: 'correlation-tracker' });
-
-/**
- * Internal mutable representation of pairwise history.
- */
-interface MutablePairwiseHistory {
-  pairKey: AgentPairKey;
-  jointObservations: number;
-  agreements: number;
-  disagreements: number;
-  correlation: CorrelationCoefficient;
-  lastUpdated: Date;
-}
 
 /**
  * Correlation tracker implementation.
@@ -59,7 +66,7 @@ export class CorrelationTracker implements ICorrelationTracker {
       agentId,
       decision: vote.decision,
       confidence: vote.confidence,
-      alignedWithOutcome: this.didAlignWithOutcome(vote.decision, outcome),
+      alignedWithOutcome: didAlignWithOutcome(vote.decision, outcome),
       timestamp: new Date(),
     };
     this.storeObservation(agentId, observation);
@@ -79,7 +86,7 @@ export class CorrelationTracker implements ICorrelationTracker {
         agentId,
         decision: vote.decision,
         confidence: vote.confidence,
-        alignedWithOutcome: this.didAlignWithOutcome(vote.decision, outcome),
+        alignedWithOutcome: didAlignWithOutcome(vote.decision, outcome),
         timestamp: new Date(),
       };
       this.storeObservation(agentId, observation);
@@ -129,7 +136,12 @@ export class CorrelationTracker implements ICorrelationTracker {
     }
 
     const correlationMatrix = this.computeCorrelationMatrix();
-    const subsets = this.partitionIntoIndependentGroups(agents, correlationMatrix);
+    const subsets = partitionIntoIndependentGroups(
+      agents,
+      correlationMatrix,
+      this.pairwiseHistory,
+      this.config
+    );
 
     this.cachedSubsets = subsets;
     logger.debug('Identified independent subsets', {
@@ -211,14 +223,6 @@ export class CorrelationTracker implements ICorrelationTracker {
   // Private helpers
   // ============================================================================
 
-  private didAlignWithOutcome(decision: string, outcome: 'approved' | 'rejected'): boolean {
-    if (decision === 'abstain') return true;
-    return (
-      (decision === 'approve' && outcome === 'approved') ||
-      (decision === 'reject' && outcome === 'rejected')
-    );
-  }
-
   private storeObservation(agentId: string, observation: VotingObservation): void {
     let agentObs = this.observations.get(agentId);
     if (agentObs === undefined) {
@@ -264,40 +268,16 @@ export class CorrelationTracker implements ICorrelationTracker {
         }
 
         history.jointObservations++;
-        if (this.votesAgree(obsA, obsB)) {
+        if (votesAgree(obsA, obsB)) {
           history.agreements++;
         } else {
           history.disagreements++;
         }
 
-        history.correlation = this.computeCorrelationCoefficient(history);
+        history.correlation = computeCorrelationCoefficient(history);
         history.lastUpdated = new Date();
       }
     }
-  }
-
-  private votesAgree(obsA: VotingObservation, obsB: VotingObservation): boolean {
-    // Abstains are treated as neutral - neither agree nor disagree
-    if (obsA.decision === 'abstain' || obsB.decision === 'abstain') {
-      return true;
-    }
-    return obsA.decision === obsB.decision;
-  }
-
-  private computeCorrelationCoefficient(history: MutablePairwiseHistory): CorrelationCoefficient {
-    const n = history.jointObservations;
-    if (n === 0) return 0;
-
-    // Simple correlation: (agreements - disagreements) / total
-    // Range: -1 (always disagree) to +1 (always agree)
-    const agreementRate = history.agreements / n;
-    const disagreementRate = history.disagreements / n;
-
-    // Map [0, 1] agreement rate to [-1, 1] correlation
-    // 0.5 agreement rate = 0 correlation (random)
-    // 1.0 agreement rate = +1 correlation (perfect agreement)
-    // 0.0 agreement rate = -1 correlation (perfect disagreement)
-    return agreementRate - disagreementRate;
   }
 
   private getTrackedAgents(): string[] {
@@ -306,115 +286,6 @@ export class CorrelationTracker implements ICorrelationTracker {
 
   private invalidateCache(): void {
     this.cachedSubsets = null;
-  }
-
-  private partitionIntoIndependentGroups(
-    agents: string[],
-    correlationMatrix: CorrelationMatrix
-  ): IndependentSubset[] {
-    if (agents.length === 0) return [];
-
-    // Use greedy clustering: start with each agent, merge if not correlated
-    const subsets: IndependentSubset[] = [];
-    const assigned = new Set<string>();
-    let subsetId = 0;
-
-    for (const agent of agents) {
-      if (assigned.has(agent)) continue;
-
-      const subset: string[] = [agent];
-      assigned.add(agent);
-
-      // Try to add other unassigned agents if they're independent
-      for (const other of agents) {
-        if (assigned.has(other)) continue;
-        if (this.isIndependentFromSubset(other, subset, correlationMatrix)) {
-          subset.push(other);
-          assigned.add(other);
-        }
-      }
-
-      const independenceScore = this.computeSubsetIndependenceScore(subset, correlationMatrix);
-      const observationCount = this.computeSubsetObservationCount(subset);
-
-      subsets.push({
-        id: `subset-${String(subsetId++)}`,
-        agentIds: subset,
-        independenceScore,
-        observationCount,
-      });
-    }
-
-    return subsets;
-  }
-
-  private isIndependentFromSubset(
-    agent: string,
-    subset: string[],
-    correlationMatrix: CorrelationMatrix
-  ): boolean {
-    for (const member of subset) {
-      const pairKey = createAgentPairKey(agent, member);
-      const correlation = correlationMatrix.get(pairKey);
-
-      // If we don't have data, assume independent
-      if (correlation === undefined) continue;
-
-      // If correlation exceeds threshold, not independent
-      if (Math.abs(correlation) > this.config.independenceThreshold) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  private computeSubsetIndependenceScore(
-    subset: string[],
-    correlationMatrix: CorrelationMatrix
-  ): number {
-    if (subset.length < 2) return 0;
-
-    let totalCorrelation = 0;
-    let pairs = 0;
-
-    for (let i = 0; i < subset.length; i++) {
-      for (let j = i + 1; j < subset.length; j++) {
-        const agentA = subset[i];
-        const agentB = subset[j];
-        if (agentA !== undefined && agentB !== undefined) {
-          const pairKey = createAgentPairKey(agentA, agentB);
-          const correlation = correlationMatrix.get(pairKey);
-          if (correlation !== undefined) {
-            totalCorrelation += Math.abs(correlation);
-            pairs++;
-          }
-        }
-      }
-    }
-
-    return pairs > 0 ? totalCorrelation / pairs : 0;
-  }
-
-  private computeSubsetObservationCount(subset: string[]): number {
-    let minObservations = Infinity;
-
-    for (let i = 0; i < subset.length; i++) {
-      for (let j = i + 1; j < subset.length; j++) {
-        const agentA = subset[i];
-        const agentB = subset[j];
-        if (agentA !== undefined && agentB !== undefined) {
-          const pairKey = createAgentPairKey(agentA, agentB);
-          const history = this.pairwiseHistory.get(pairKey);
-          if (history !== undefined) {
-            minObservations = Math.min(minObservations, history.jointObservations);
-          } else {
-            minObservations = 0;
-          }
-        }
-      }
-    }
-
-    return minObservations === Infinity ? 0 : minObservations;
   }
 }
 
