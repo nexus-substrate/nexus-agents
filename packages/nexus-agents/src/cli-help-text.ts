@@ -33,6 +33,7 @@ COMMANDS:
   research        Manage research registry and index
   validation      Show learning validation dashboard
   learning-metrics Show aggregated learning metrics dashboard
+  swe-bench       Run SWE-bench evaluation benchmark
 
 OPTIONS:
   -h, --help           Show this help message
@@ -118,6 +119,18 @@ LEARNING-METRICS OPTIONS:
   --bandit-stats         Include detailed LinUCB bandit statistics
   --export=<path>        Export metrics to file (JSON format)
 
+SWE-BENCH OPTIONS:
+  swe-bench run          Run agents on SWE-bench instances (default)
+  swe-bench status       Show progress and completed predictions
+  swe-bench info         Display dataset information
+  swe-bench evaluate     Evaluate predictions using SWE-bench harness
+  --variant=<v>          Dataset variant: lite, verified, full (default: lite)
+  --limit=<n>            Maximum instances to run
+  --output=<path>        Output predictions file (default: predictions.jsonl)
+  --resume               Skip already completed instances
+  --instance=<id>        Run specific instance (can be repeated)
+  --verbose              Enable verbose output
+
 EXAMPLES:
   nexus-agents verify           Quick installation check (first thing to run!)
   nexus-agents                  Start MCP server (default)
@@ -158,6 +171,10 @@ EXAMPLES:
   nexus-agents learning-metrics --period=48       Show metrics for last 48 hours
   nexus-agents learning-metrics --bandit-stats    Include detailed bandit stats
   nexus-agents learning-metrics --format=json     Output as JSON
+  nexus-agents swe-bench info                     Show SWE-bench dataset info
+  nexus-agents swe-bench run --limit=5            Run 5 SWE-bench instances
+  nexus-agents swe-bench status                   Check progress
+  nexus-agents swe-bench evaluate                 Evaluate predictions
 
 For more information, visit: https://github.com/williamzujkowski/nexus-agents
 `.trim();

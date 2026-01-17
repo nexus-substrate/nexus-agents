@@ -25,12 +25,9 @@ import type {
   Message,
 } from '../core/index.js';
 import { ok, err, AgentError, createLogger } from '../core/index.js';
-import {
-  TokenBudgetTracker,
-  type TokenBudgetConfig,
-  type ITokenBudgetTracker,
-} from '../context/token-budget-tracker.js';
-import { AgentStateMachine, type StateMachineOptions } from './state-machine.js';
+import { TokenBudgetTracker, type ITokenBudgetTracker } from '../context/token-budget-tracker.js';
+import { AgentStateMachine } from './state-machine.js';
+import { mapStatesToEvent } from './state-machine-types.js';
 import { TaskSchema, AgentMessageSchema, BaseAgentOptionsSchema } from './agent-schemas.js';
 import type { IEventBus } from './collaboration/event-bus-types.js';
 import { getGlobalEventBus, createEvent } from './collaboration/event-bus.js';
@@ -43,11 +40,25 @@ import {
   handleResultMessage,
   type MessageHandlerContext,
 } from './base-agent-message-handlers.js';
+import { ContentPriority, type ContextManager } from './context-manager.js';
+import type { ContextPruner } from './context-pruner.js';
+import {
+  initializePruningInfrastructure,
+  type ResolvedPruningConfig,
+  type ContextPruningMetrics,
+} from './base-agent-pruning-init.js';
+import { executeContextPruning } from './base-agent-complete-helpers.js';
+import type { BaseAgentOptions } from './base-agent-types.js';
 
-// Re-export schemas for convenience
-export { TaskSchema, AgentMessageSchema, BaseAgentOptionsSchema } from './agent-schemas.js';
-
-// Re-export message handlers for backward compatibility
+// Re-export schemas, types, and message handlers for API consumers
+export {
+  TaskSchema,
+  AgentMessageSchema,
+  BaseAgentOptionsSchema,
+  ContextPrunerAgentConfigSchema,
+} from './agent-schemas.js';
+export type { ContextPrunerAgentConfig, ContextPruningMetrics } from './base-agent-pruning-init.js';
+export type { BaseAgentOptions } from './base-agent-types.js';
 export {
   handleTaskMessage,
   handleQueryMessage,
@@ -56,36 +67,6 @@ export {
   handleResultMessage,
   type MessageHandlerContext,
 } from './base-agent-message-handlers.js';
-
-/**
- * Options for creating a BaseAgent.
- */
-export interface BaseAgentOptions {
-  /** Unique agent identifier */
-  id: string;
-  /** Agent role */
-  role: AgentRole;
-  /** Agent capabilities */
-  capabilities: readonly AgentCapability[];
-  /** Model adapter for LLM interactions */
-  adapter?: IModelAdapter;
-  /** Custom logger instance */
-  logger?: ILogger;
-  /** System prompt for the agent */
-  systemPrompt?: string;
-  /** Default temperature for completions */
-  temperature?: number;
-  /** Maximum tokens for responses */
-  maxTokens?: number;
-  /** Event bus for message observability (uses global bus if not provided) */
-  eventBus?: IEventBus;
-  /** Whether to emit events for message handling (default: true) */
-  emitMessageEvents?: boolean;
-  /** State machine options for validated state transitions */
-  stateMachineOptions?: StateMachineOptions;
-  /** Token budget configuration for EMA-based tracking (Issue #304) */
-  tokenBudget?: TokenBudgetConfig;
-}
 
 const DEFAULT_MAX_DURATION_MS = 5 * 60 * 1000; // 5 minutes
 const MAX_HISTORY_ITEMS = 100;
@@ -111,6 +92,19 @@ export abstract class BaseAgent implements IAgent {
   protected readonly eventBus: IEventBus;
   protected readonly emitMessageEvents: boolean;
   private initialized = false;
+
+  /** Context pruning infrastructure (Issue #306) */
+  private readonly contextPruningEnabled: boolean;
+  private readonly contextManager: ContextManager | undefined;
+  private readonly contextPruner: ContextPruner | undefined;
+  private readonly pruningConfig: ResolvedPruningConfig;
+  private pruningMetrics: ContextPruningMetrics = {
+    pruningRounds: 0,
+    totalTokensPruned: 0,
+    lastPruningTokens: 0,
+    lastPruningItemsRemoved: 0,
+    lastPruningTargetReached: false,
+  };
 
   constructor(options: BaseAgentOptions) {
     const validation = BaseAgentOptionsSchema.safeParse(options);
@@ -151,6 +145,17 @@ export abstract class BaseAgent implements IAgent {
 
     // Initialize token budget tracker with EMA (Issue #304)
     this.budgetTracker = new TokenBudgetTracker(options.tokenBudget, this.logger);
+
+    // Initialize context pruning infrastructure (Issue #306)
+    const pruningInfra = initializePruningInfrastructure({
+      logger: this.logger,
+      ...(options.contextPruning !== undefined ? { config: options.contextPruning } : {}),
+      ...(options.adapter !== undefined ? { adapter: options.adapter } : {}),
+    });
+    this.pruningConfig = pruningInfra.pruningConfig;
+    this.contextPruningEnabled = pruningInfra.contextPruningEnabled;
+    this.contextManager = pruningInfra.contextManager;
+    this.contextPruner = pruningInfra.contextPruner;
   }
 
   get state(): AgentState {
@@ -165,15 +170,11 @@ export abstract class BaseAgent implements IAgent {
    */
   protected setState(newState: AgentState): void {
     const currentState = this.stateMachine.state;
-
-    // Map legacy state changes to state machine events
     if (newState === 'error') {
       this.stateMachine.forceError({ reason: 'setState called with error' });
       return;
     }
-
-    // Determine the appropriate event based on current and target state
-    const event = this.getTransitionEvent(currentState, newState);
+    const event = mapStatesToEvent(currentState, newState);
     if (event !== undefined && this.stateMachine.canTransition(event)) {
       const result = this.stateMachine.transition(event);
       if (!result.ok) {
@@ -185,24 +186,8 @@ export abstract class BaseAgent implements IAgent {
         });
       }
     } else if (currentState !== newState) {
-      // Log unmapped transitions for debugging
       this.logger.debug('Unmapped state change (legacy)', { from: currentState, to: newState });
     }
-  }
-
-  /**
-   * Maps current/target state pairs to state machine events.
-   */
-  private getTransitionEvent(
-    from: AgentState,
-    to: AgentState
-  ): 'task_assigned' | 'plan_completed' | 'task_completed' | 'failure' | 'recovered' | undefined {
-    if (from === 'idle' && to === 'thinking') return 'task_assigned';
-    if (from === 'thinking' && to === 'acting') return 'plan_completed';
-    if (from === 'acting' && to === 'idle') return 'task_completed';
-    if (from === 'error' && to === 'idle') return 'recovered';
-    if (to === 'error') return 'failure';
-    return undefined;
   }
 
   initialize(ctx: AgentContext): Promise<Result<void, AgentError>> {
@@ -409,20 +394,14 @@ export abstract class BaseAgent implements IAgent {
   }
 
   protected transformError(error: unknown, taskId: string): AgentError {
-    if (error instanceof AgentError) {
-      return error;
-    }
-
+    if (error instanceof AgentError) return error;
     const message = error instanceof Error ? error.message : String(error);
     const cause = error instanceof Error ? error : undefined;
-
-    const options: { context: Record<string, unknown>; cause?: Error } = {
+    const opts: { context: Record<string, unknown>; cause?: Error } = {
       context: { agentId: this.id, taskId },
     };
-    if (cause !== undefined) {
-      options.cause = cause;
-    }
-    return new AgentError(`Task execution failed: ${message}`, options);
+    if (cause !== undefined) opts.cause = cause;
+    return new AgentError(`Task execution failed: ${message}`, opts);
   }
 
   protected async complete(
@@ -431,24 +410,30 @@ export abstract class BaseAgent implements IAgent {
     if (this.adapter === undefined) {
       return err(new AgentError('No model adapter configured', { context: { agentId: this.id } }));
     }
-
     // Check budget before making model call (Issue #304)
     const estimatedTokens = this.budgetTracker.predictNextTokens();
     const budgetCheck = this.budgetTracker.checkBudget(estimatedTokens);
-
     if (!budgetCheck.allowed) {
-      const errorOptions: { context: Record<string, unknown>; cause?: Error } = {
-        context: {
-          agentId: this.id,
-          estimatedTokens,
-          remainingTaskBudget: budgetCheck.remainingTaskBudget,
-          remainingSessionBudget: budgetCheck.remainingSessionBudget,
-        },
+      const ctx = {
+        agentId: this.id,
+        estimatedTokens,
+        remainingTaskBudget: budgetCheck.remainingTaskBudget,
+        remainingSessionBudget: budgetCheck.remainingSessionBudget,
       };
-      if (budgetCheck.error !== undefined) {
-        errorOptions.cause = budgetCheck.error;
-      }
-      return err(new AgentError('Token budget exceeded', errorOptions));
+      const opts: { context: typeof ctx; cause?: Error } = { context: ctx };
+      if (budgetCheck.error !== undefined) opts.cause = budgetCheck.error;
+      return err(new AgentError('Token budget exceeded', opts));
+    }
+
+    // Context pruning before model call (Issue #306)
+    if (this.contextPruningEnabled && this.contextPruner !== undefined) {
+      await executeContextPruning({
+        agentId: this.id,
+        contextPruner: this.contextPruner,
+        pruningConfig: this.pruningConfig,
+        pruningMetrics: this.pruningMetrics,
+        eventBus: this.eventBus,
+      });
     }
 
     // eslint-disable-next-line @typescript-eslint/no-deprecated -- Internal backward compatibility
@@ -490,5 +475,44 @@ export abstract class BaseAgent implements IAgent {
 
   protected clearHistory(): void {
     this.history = [];
+  }
+
+  /**
+   * Gets the current pruning metrics for observability (Issue #306).
+   * Returns metrics even if pruning is disabled (all zeros).
+   */
+  getPruningMetrics(): Readonly<ContextPruningMetrics> {
+    return { ...this.pruningMetrics };
+  }
+
+  /**
+   * Adds content to the context manager for pruning consideration (Issue #306).
+   * Only effective when context pruning is enabled.
+   * @param content The content string to add
+   * @param priority Optional priority for pruning (default: HISTORY=40)
+   * @param category Optional category (default: 'active')
+   */
+  protected async addContextItem(
+    content: string,
+    priority?: (typeof ContentPriority)[keyof typeof ContentPriority],
+    category?: 'system' | 'task' | 'active'
+  ): Promise<void> {
+    if (this.contextPruningEnabled && this.contextManager !== undefined) {
+      const timestamp = Date.now().toString();
+      const randomSuffix = Math.random().toString(36).slice(2, 9);
+      await this.contextManager.add({
+        id: `ctx-${timestamp}-${randomSuffix}`,
+        content,
+        priority: priority ?? ContentPriority.HISTORY,
+        category: category ?? 'active',
+      });
+    }
+  }
+
+  /**
+   * Checks if context pruning is enabled for this agent.
+   */
+  isContextPruningEnabled(): boolean {
+    return this.contextPruningEnabled;
   }
 }

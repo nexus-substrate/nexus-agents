@@ -16,6 +16,8 @@ export {
   SandboxConfigSchema,
   LoggingConfigSchema,
   ToolRateLimitSchema,
+  EventBusConfigSchema,
+  ObservabilityConfigSchema,
   DEFAULT_TOOL_RATE_LIMITS,
   defaultConfig,
 } from './schemas.js';
@@ -33,4 +35,6 @@ export type {
   LoggingConfig,
   ToolRateLimit,
   ToolCategory,
+  EventBusConfig,
+  ObservabilityConfig,
 } from './schemas.js';

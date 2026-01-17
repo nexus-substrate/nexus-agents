@@ -14,6 +14,9 @@ import {
   registerDelegateToModelTool,
   registerOrchestrateTool,
   createMockTechLead,
+  initializeEventBusBridge,
+  getEventBusStats,
+  type EventBusBridgeResult,
 } from './mcp/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -22,6 +25,7 @@ import { VERSION } from './version.js';
 import { detectMode, type ServerMode, type ModeDetectionResult } from './cli/index.js';
 import { EXIT_CODES } from './cli-types.js';
 import { getSwarmObserver, SwarmObserver } from './observability/index.js';
+import type { EventBusConfig } from './config/index.js';
 import { initializeSandbox, getSandboxMode } from './security/sandbox/index.js';
 import {
   createDefaultPolicyFirewall,
@@ -174,6 +178,43 @@ function initializeSwarmObserver(logger: ILogger): SwarmObserver {
 }
 
 /**
+ * Initializes the EventBus bridge for agent-to-agent communication visibility.
+ * Bridges EventBus events to SwarmObserver for observability in Claude Desktop.
+ *
+ * @param observer - SwarmObserver instance
+ * @param logger - Logger instance
+ * @param config - Optional EventBus configuration
+ * @returns EventBus bridge result with cleanup function
+ *
+ * (Source: Issue #307 - EventBus MCP integration)
+ */
+function initializeEventBus(
+  observer: SwarmObserver,
+  logger: ILogger,
+  config?: EventBusConfig
+): EventBusBridgeResult {
+  // Check environment variable for enable/disable override
+  const envEnabled = process.env['NEXUS_EVENTBUS_ENABLED'];
+  const enabled = envEnabled !== undefined ? envEnabled === 'true' : (config?.enabled ?? true);
+
+  const effectiveConfig: Partial<EventBusConfig> = {
+    ...config,
+    enabled,
+  };
+
+  const result = initializeEventBusBridge(observer, logger, effectiveConfig);
+
+  if (result.initialized) {
+    logger.info('EventBus bridge initialized for A2A visibility', {
+      subscriptionCount: result.subscriptionCount,
+      eventBusEnabled: enabled,
+    });
+  }
+
+  return result;
+}
+
+/**
  * Records a server lifecycle event to the SwarmObserver.
  */
 interface ServerEventContext {
@@ -231,6 +272,46 @@ function logFinalHealthMetrics(observer: SwarmObserver, logger: ILogger): void {
     totalAgents: healthMetrics.totalAgents,
     totalInteractions: healthMetrics.totalInteractions,
   });
+}
+
+/**
+ * Options for creating the shutdown cleanup handler.
+ */
+interface ShutdownCleanupOptions {
+  readonly eventBusBridge: EventBusBridgeResult;
+  readonly observer: SwarmObserver;
+  readonly eventContext: ServerEventContext;
+  readonly server: McpServer;
+  readonly serverLogger: ILogger;
+  readonly logger: ILogger;
+}
+
+/**
+ * Creates the shutdown cleanup handler.
+ */
+function createShutdownCleanup(options: ShutdownCleanupOptions): () => Promise<void> {
+  const { eventBusBridge, observer, eventContext, server, serverLogger, logger } = options;
+
+  return async (): Promise<void> => {
+    if (eventBusBridge.initialized) {
+      const finalStats = getEventBusStats();
+      logger.info('Final EventBus statistics', {
+        eventsEmitted: finalStats.eventsEmitted,
+        activeSubscriptions: finalStats.activeSubscriptions,
+        historySize: finalStats.historySize,
+        errorCount: finalStats.errorCount,
+      });
+      eventBusBridge.cleanup();
+    }
+
+    recordServerShutdown(observer, eventContext);
+    logFinalHealthMetrics(observer, logger);
+
+    const closeResult = await closeServer(server, serverLogger);
+    if (!closeResult.ok) {
+      throw new Error(closeResult.error.message);
+    }
+  };
 }
 
 /**
@@ -315,6 +396,9 @@ export async function startServer(
   // Initialize SwarmObserver for interaction tracing (Issue #173)
   const observer = initializeSwarmObserver(serverLogger);
 
+  // Initialize EventBus bridge for A2A communication visibility (Issue #307)
+  const eventBusBridge = initializeEventBus(observer, serverLogger);
+
   // Initialize sandbox for agent execution isolation (Issue #175)
   const sandboxResult = await initializeSandbox();
   serverLogger.info('Sandbox initialized', {
@@ -344,16 +428,16 @@ export async function startServer(
   // Record server startup event for observability
   const eventContext = recordServerStartup(observer);
 
-  // Setup graceful shutdown with observer cleanup
-  setupShutdownHandlers(async () => {
-    recordServerShutdown(observer, eventContext);
-    logFinalHealthMetrics(observer, logger);
-
-    const closeResult = await closeServer(server, serverLogger);
-    if (!closeResult.ok) {
-      throw new Error(closeResult.error.message);
-    }
-  }, logger);
+  // Setup graceful shutdown with observer and EventBus cleanup
+  const cleanup = createShutdownCleanup({
+    eventBusBridge,
+    observer,
+    eventContext,
+    server,
+    serverLogger,
+    logger,
+  });
+  setupShutdownHandlers(cleanup, logger);
 
   logger.debug('Server running, waiting for requests...');
 }

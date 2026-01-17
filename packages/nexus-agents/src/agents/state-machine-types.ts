@@ -99,3 +99,23 @@ export const VALID_TRANSITIONS: ReadonlyMap<
   ],
   ['error', new Map<StateTransitionEvent, AgentState>([['recovered', 'idle']])],
 ]);
+
+/**
+ * Maps a current/target state pair to the appropriate state machine event.
+ * Used for legacy backward compatibility with setState().
+ *
+ * @param from Current state
+ * @param to Target state
+ * @returns The event to trigger, or undefined if no mapping exists
+ */
+export function mapStatesToEvent(
+  from: AgentState,
+  to: AgentState
+): StateTransitionEvent | undefined {
+  if (from === 'idle' && to === 'thinking') return 'task_assigned';
+  if (from === 'thinking' && to === 'acting') return 'plan_completed';
+  if (from === 'acting' && to === 'idle') return 'task_completed';
+  if (from === 'error' && to === 'idle') return 'recovered';
+  if (to === 'error') return 'failure';
+  return undefined;
+}

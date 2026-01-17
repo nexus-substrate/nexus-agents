@@ -58,6 +58,13 @@ export {
   createPolicyContext,
 } from './middleware/index.js';
 
+// EventBus Bridge (Issue #307)
+export {
+  initializeEventBusBridge,
+  getEventBusStats,
+  type EventBusBridgeResult,
+} from './eventbus-bridge.js';
+
 // Tools
 export {
   // Tool registration

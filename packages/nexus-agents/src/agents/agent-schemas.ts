@@ -5,6 +5,7 @@
  */
 
 import { z } from 'zod';
+import { PruningStrategy } from './context-pruner.js';
 
 /**
  * Zod schema for validating Task objects.
@@ -50,6 +51,33 @@ export const AgentMessageSchema = z.object({
 });
 
 /**
+ * Zod schema for validating ContextPrunerAgentConfig (Issue #306).
+ * Configuration for automatic context pruning in BaseAgent.
+ */
+export const ContextPrunerAgentConfigSchema = z.object({
+  /** Whether to enable automatic context pruning. Default: false (opt-in). */
+  enabled: z.boolean().optional(),
+  /** Pruning strategy to use. Default: 'priority_weighted_age'. */
+  strategy: z
+    .enum([
+      PruningStrategy.OLDEST_FIRST,
+      PruningStrategy.LOWEST_PRIORITY,
+      PruningStrategy.PRIORITY_WEIGHTED_AGE,
+      PruningStrategy.SUMMARIZE,
+      PruningStrategy.SLIDING_WINDOW,
+      PruningStrategy.HIERARCHICAL,
+      PruningStrategy.SEMANTIC,
+    ])
+    .optional(),
+  /** Maximum tokens before pruning is triggered. Default: 100000 (100K). */
+  maxTokens: z.number().positive().optional(),
+  /** Tokens reserved for response generation. Default: 10000 (10K). */
+  reserveTokens: z.number().positive().optional(),
+  /** Usage threshold (0-1) at which pruning is triggered. Default: 0.9 (90%). */
+  triggerThreshold: z.number().min(0).max(1).optional(),
+});
+
+/**
  * Zod schema for validating BaseAgentOptions.
  */
 export const BaseAgentOptionsSchema = z.object({
@@ -77,4 +105,6 @@ export const BaseAgentOptionsSchema = z.object({
   systemPrompt: z.string().optional(),
   temperature: z.number().min(0).max(1).optional(),
   maxTokens: z.number().positive().optional(),
+  /** Configuration for automatic context pruning (Issue #306). */
+  contextPruning: ContextPrunerAgentConfigSchema.optional(),
 });
