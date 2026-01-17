@@ -4,7 +4,7 @@
  * (Source: Issue #240)
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { Project } from 'ts-morph';
 import {
   detectFileCategory,
@@ -14,13 +14,28 @@ import {
   extractFileEntry,
 } from './extractor.js';
 
+// Shared Project instance to avoid expensive re-initialization per test
+// ts-morph Project creation is expensive; reusing one instance eliminates timeouts
+let sharedProject: Project;
+
+beforeAll(() => {
+  sharedProject = new Project({ useInMemoryFileSystem: true });
+});
+
+// Counter to ensure unique file names (in-memory FS doesn't allow overwrites)
+let fileCounter = 0;
+
 // Helper to create a source file for testing
 function createSourceFile(
   content: string,
   fileName = 'test.ts'
 ): ReturnType<Project['createSourceFile']> {
-  const project = new Project({ useInMemoryFileSystem: true });
-  return project.createSourceFile(fileName, content);
+  // Generate unique file name to avoid conflicts in shared project
+  // For paths with directories (like '/project/foo.ts'), insert counter before extension
+  // For simple names (like 'foo.ts'), also insert counter before extension
+  const counter = ++fileCounter;
+  const uniqueName = fileName.replace(/\.ts$/, `-${String(counter)}.ts`);
+  return sharedProject.createSourceFile(uniqueName, content);
 }
 
 describe('detectFileCategory', () => {
@@ -370,7 +385,8 @@ export const VERSION = '1.0.0';
 
     const entry = extractFileEntry(sourceFile, '/project', true);
 
-    expect(entry.path).toBe('test-service.ts');
+    // Path includes counter suffix from shared project (e.g., 'test-service-N.ts')
+    expect(entry.path).toMatch(/^test-service-\d+\.ts$/);
     expect(entry.lines).toBeGreaterThan(0);
     expect(entry.category).toBe('implementation');
     expect(entry.exports).toHaveLength(2);

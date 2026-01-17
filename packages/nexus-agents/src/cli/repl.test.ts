@@ -24,7 +24,7 @@ beforeAll(async () => {
     import('./repl.js'),
     import('../cli.js'),
   ]);
-}, 30000); // 30s timeout for module loading in slow CI environments
+}, 60000); // 60s timeout for module loading in slow CI environments
 
 describe('REPL Module', () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
