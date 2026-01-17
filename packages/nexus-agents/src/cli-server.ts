@@ -315,6 +315,30 @@ function createShutdownCleanup(options: ShutdownCleanupOptions): () => Promise<v
 }
 
 /**
+ * Creates the MCP server and handles creation failure.
+ * Exits process with SERVER_START_FAILED if creation fails.
+ *
+ * @returns The server instance with server and logger properties
+ */
+function createAndValidateMcpServer(logger: ILogger): {
+  readonly server: McpServer;
+  readonly logger: ILogger;
+} {
+  const serverResult = createServer({
+    name: 'nexus-agents',
+    version: VERSION,
+    logger,
+  });
+
+  if (!serverResult.ok) {
+    logger.error('Failed to create MCP server', new Error(serverResult.error.message));
+    process.exit(EXIT_CODES.SERVER_START_FAILED);
+  }
+
+  return serverResult.value;
+}
+
+/**
  * Registers MCP tools with per-tool rate limiting.
  * Must be called BEFORE connecting to transport.
  *
@@ -357,6 +381,40 @@ function registerMcpTools(server: McpServer, logger: ILogger): void {
 }
 
 /**
+ * Initializes the sandbox for agent execution isolation.
+ * Logs the sandbox configuration after initialization.
+ */
+async function initializeAndLogSandbox(logger: ILogger): Promise<void> {
+  const sandboxResult = await initializeSandbox();
+  logger.info('Sandbox initialized', {
+    mode: getSandboxMode(),
+    executor: sandboxResult.executor.name,
+    usedFallback: sandboxResult.usedFallback,
+  });
+}
+
+/**
+ * Connects the MCP server to stdio transport.
+ * Exits process with SERVER_START_FAILED if connection fails.
+ */
+async function connectToStdioTransport(
+  server: McpServer,
+  logger: ILogger,
+  serverLogger: ILogger
+): Promise<void> {
+  logger.info('Connecting to stdio transport');
+  const transport = new StdioServerTransport();
+  const connectResult = await connectTransport(server, transport, serverLogger);
+
+  if (!connectResult.ok) {
+    logger.error('Failed to connect MCP server', new Error(connectResult.error.message));
+    process.exit(EXIT_CODES.SERVER_START_FAILED);
+  }
+
+  logger.info('MCP server started successfully');
+}
+
+/**
  * Starts the MCP server with stdio transport.
  *
  * @param verbose - Whether to enable verbose logging
@@ -380,18 +438,7 @@ export async function startServer(
   logModeWarnings(logger, mode);
 
   // Create MCP server (tools must be registered BEFORE connecting)
-  const serverResult = createServer({
-    name: 'nexus-agents',
-    version: VERSION,
-    logger,
-  });
-
-  if (!serverResult.ok) {
-    logger.error('Failed to create MCP server', new Error(serverResult.error.message));
-    process.exit(EXIT_CODES.SERVER_START_FAILED);
-  }
-
-  const { server, logger: serverLogger } = serverResult.value;
+  const { server, logger: serverLogger } = createAndValidateMcpServer(logger);
 
   // Initialize SwarmObserver for interaction tracing (Issue #173)
   const observer = initializeSwarmObserver(serverLogger);
@@ -400,12 +447,7 @@ export async function startServer(
   const eventBusBridge = initializeEventBus(observer, serverLogger);
 
   // Initialize sandbox for agent execution isolation (Issue #175)
-  const sandboxResult = await initializeSandbox();
-  serverLogger.info('Sandbox initialized', {
-    mode: getSandboxMode(),
-    executor: sandboxResult.executor.name,
-    usedFallback: sandboxResult.usedFallback,
-  });
+  await initializeAndLogSandbox(serverLogger);
 
   // Log security configuration at startup (Issue #185)
   logSecurityConfig(serverLogger);
@@ -414,16 +456,7 @@ export async function startServer(
   registerMcpTools(server, serverLogger);
 
   // Connect to transport
-  logger.info('Connecting to stdio transport');
-  const transport = new StdioServerTransport();
-  const connectResult = await connectTransport(server, transport, serverLogger);
-
-  if (!connectResult.ok) {
-    logger.error('Failed to connect MCP server', new Error(connectResult.error.message));
-    process.exit(EXIT_CODES.SERVER_START_FAILED);
-  }
-
-  logger.info('MCP server started successfully');
+  await connectToStdioTransport(server, logger, serverLogger);
 
   // Record server startup event for observability
   const eventContext = recordServerStartup(observer);

@@ -194,3 +194,42 @@ export type {
   RoutingMemoryExport,
   RoutingMemoryStats,
 } from './routing-memory-types.js';
+
+// ZeroRouter - Universal Difficulty Space Routing (Issue #338)
+export {
+  ZeroRouter,
+  createZeroRouter,
+  estimateTaskDifficulty,
+  routeByTaskDifficulty,
+  ZeroRouterConfigSchema,
+  ZeroRoutingError,
+  DEFAULT_DIFFICULTY_THRESHOLDS,
+} from './zero-router.js';
+export type {
+  IZeroRouter,
+  ZeroRouterConfig,
+  DifficultyEstimate,
+  DifficultyOutcome,
+  CalibrationStats,
+  ZeroRoutingDecision,
+  DifficultyLevel,
+  ModelTier,
+} from './zero-router.js';
+
+// Difficulty Space utilities (Issue #338)
+export {
+  estimateDifficultySpace,
+  aggregateDifficulty,
+  findDominantDimension,
+  classifyDifficultyLevel,
+  calculateEstimateConfidence,
+  summarizeDifficultySpace,
+  normalize,
+} from './difficulty-space.js';
+export type {
+  DifficultySpace,
+  DifficultyDimension,
+  DifficultyWeights,
+  DifficultyThresholds,
+} from './zero-router-types.js';
+export { DIFFICULTY_DIMENSIONS, DEFAULT_DIFFICULTY_WEIGHTS } from './zero-router-types.js';

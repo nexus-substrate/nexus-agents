@@ -337,7 +337,13 @@ export class ConsensusEngine implements IConsensusEngine {
       timedOutProposals: 0,
       totalDurationMs: 0,
       totalVotes: 0,
-      algorithmUsage: { simple_majority: 0, supermajority: 0, unanimous: 0, proof_of_learning: 0 },
+      algorithmUsage: {
+        simple_majority: 0,
+        supermajority: 0,
+        unanimous: 0,
+        proof_of_learning: 0,
+        opinion_wise: 0,
+      },
     };
   }
 }

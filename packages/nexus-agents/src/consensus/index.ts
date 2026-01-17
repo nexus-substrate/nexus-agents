@@ -129,3 +129,41 @@ export {
   applyOutcomeWeight,
   type MutableAgentRecord,
 } from './weighted-voting-helpers.js';
+
+// Higher-Order Voting (Issue #333 - OW/ISP correlation-aware consensus)
+export type {
+  AgentPairKey,
+  CorrelationCoefficient,
+  CorrelationMatrix,
+  IndependentSubset,
+  VotingObservation,
+  PairwiseVotingHistory,
+  HigherOrderVotingConfig,
+  HigherOrderVotingResult,
+  CorrelationTrackerStats,
+  ICorrelationTracker,
+  IHigherOrderVoting,
+} from './higher-order-types.js';
+
+export {
+  createAgentPairKey,
+  parseAgentPairKey,
+  CorrelationCoefficientSchema,
+  IndependentSubsetSchema,
+  VotingObservationSchema,
+  PairwiseVotingHistorySchema,
+  HigherOrderVotingConfigSchema,
+  DEFAULT_HIGHER_ORDER_CONFIG,
+  HigherOrderVotingResultSchema,
+  CorrelationTrackerStatsSchema,
+} from './higher-order-types.js';
+
+export { CorrelationTracker, createCorrelationTracker } from './correlation-tracker.js';
+
+export {
+  OWVoting,
+  createOWVoting,
+  HigherOrderVotingStrategy,
+  createHigherOrderVotingStrategy,
+  type OWVotingOptions,
+} from './higher-order-voting.js';

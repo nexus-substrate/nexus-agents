@@ -1,11 +1,4 @@
-/**
- * nexus-agents/agents - BaseAgent
- *
- * Abstract base class implementing the IAgent interface.
- * Provides common functionality for state management, logging,
- * error handling, and model adapter integration.
- */
-
+/** Abstract base class implementing IAgent with state management, logging, and model integration. */
 import type {
   Result,
   IAgent,
@@ -27,8 +20,8 @@ import type {
 import { ok, err, AgentError, createLogger } from '../core/index.js';
 import { TokenBudgetTracker, type ITokenBudgetTracker } from '../context/token-budget-tracker.js';
 import { AgentStateMachine } from './state-machine.js';
-import { mapStatesToEvent } from './state-machine-types.js';
-import { TaskSchema, AgentMessageSchema, BaseAgentOptionsSchema } from './agent-schemas.js';
+import { performLegacyStateTransition } from './base-agent-state-helpers.js';
+import { AgentMessageSchema, BaseAgentOptionsSchema } from './agent-schemas.js';
 import type { IEventBus } from './collaboration/event-bus-types.js';
 import { getGlobalEventBus, createEvent } from './collaboration/event-bus.js';
 import { emitMessageReceived } from './collaboration/message-events.js';
@@ -40,33 +33,30 @@ import {
   handleResultMessage,
   type MessageHandlerContext,
 } from './base-agent-message-handlers.js';
-import { ContentPriority, type ContextManager } from './context-manager.js';
+import type { ContextManager } from './context-manager.js';
 import type { ContextPruner } from './context-pruner.js';
 import {
   initializePruningInfrastructure,
   type ResolvedPruningConfig,
   type ContextPruningMetrics,
 } from './base-agent-pruning-init.js';
-import { executeContextPruning } from './base-agent-complete-helpers.js';
+import {
+  executeContextPruning,
+  checkBudgetBeforeComplete,
+  executeModelCompletion,
+  addContextItem as addContextItemHelper,
+  ContentPriority,
+} from './base-agent-complete-helpers.js';
+import {
+  validateTask,
+  executeWithTimeout,
+  transformTaskError,
+  finalizeTaskSuccess,
+} from './base-agent-task-helpers.js';
 import type { BaseAgentOptions } from './base-agent-types.js';
 
 // Re-export schemas, types, and message handlers for API consumers
-export {
-  TaskSchema,
-  AgentMessageSchema,
-  BaseAgentOptionsSchema,
-  ContextPrunerAgentConfigSchema,
-} from './agent-schemas.js';
-export type { ContextPrunerAgentConfig, ContextPruningMetrics } from './base-agent-pruning-init.js';
-export type { BaseAgentOptions } from './base-agent-types.js';
-export {
-  handleTaskMessage,
-  handleQueryMessage,
-  handleFeedbackMessage,
-  handleStatusMessage,
-  handleResultMessage,
-  type MessageHandlerContext,
-} from './base-agent-message-handlers.js';
+export * from './base-agent-exports.js';
 
 const DEFAULT_MAX_DURATION_MS = 5 * 60 * 1000; // 5 minutes
 const MAX_HISTORY_ITEMS = 100;
@@ -162,32 +152,14 @@ export abstract class BaseAgent implements IAgent {
     return this.stateMachine.state;
   }
 
-  /**
-   * Attempts a state transition using the state machine.
-   * Maps legacy state names to state machine events for backward compatibility.
-   *
-   * @deprecated Use stateMachine.transition() directly for new code
-   */
+  /** @deprecated Use stateMachine.transition() directly for new code */
   protected setState(newState: AgentState): void {
-    const currentState = this.stateMachine.state;
-    if (newState === 'error') {
-      this.stateMachine.forceError({ reason: 'setState called with error' });
-      return;
-    }
-    const event = mapStatesToEvent(currentState, newState);
-    if (event !== undefined && this.stateMachine.canTransition(event)) {
-      const result = this.stateMachine.transition(event);
-      if (!result.ok) {
-        this.logger.warn('State transition failed', {
-          from: currentState,
-          to: newState,
-          event,
-          error: result.error.message,
-        });
-      }
-    } else if (currentState !== newState) {
-      this.logger.debug('Unmapped state change (legacy)', { from: currentState, to: newState });
-    }
+    // eslint-disable-next-line @typescript-eslint/no-deprecated -- Intentional legacy support
+    performLegacyStateTransition({
+      stateMachine: this.stateMachine,
+      logger: this.logger,
+      newState,
+    });
   }
 
   initialize(ctx: AgentContext): Promise<Result<void, AgentError>> {
@@ -210,12 +182,9 @@ export abstract class BaseAgent implements IAgent {
   }
 
   async execute(task: Task): Promise<Result<TaskResult, AgentError>> {
-    const validationResult = this.validateTask(task);
-    if (!validationResult.ok) {
-      return validationResult;
-    }
+    const validationResult = validateTask(task);
+    if (!validationResult.ok) return validationResult;
 
-    // Use state machine for availability check (Issue #302)
     if (!this.stateMachine.isAvailable()) {
       return err(
         new AgentError(`Agent is not idle (current state: ${this.stateMachine.state})`, {
@@ -225,16 +194,10 @@ export abstract class BaseAgent implements IAgent {
     }
 
     const startTime = Date.now();
-
-    // Use validated state transition (Issue #302)
     const transitionResult = this.stateMachine.transition('task_assigned', { taskId: task.id });
-    if (!transitionResult.ok) {
-      return err(transitionResult.error);
-    }
+    if (!transitionResult.ok) return err(transitionResult.error);
 
-    // Start task-level budget tracking (Issue #304)
     this.budgetTracker.startTask(task.id);
-
     this.logger.info('Executing task', {
       taskId: task.id,
       priority: task.priority,
@@ -243,20 +206,32 @@ export abstract class BaseAgent implements IAgent {
 
     try {
       const maxDuration = task.constraints?.maxDuration ?? DEFAULT_MAX_DURATION_MS;
-      const result = await this.executeWithTimeout(task, maxDuration);
+      const result = await executeWithTimeout({
+        task,
+        maxDurationMs: maxDuration,
+        executeTask: (t) => this.executeTask(t),
+        transformError: (error, taskId) => transformTaskError(error, this.id, taskId),
+      });
 
       if (!result.ok) {
         this.stateMachine.forceError({ taskId: task.id, error: result.error.message });
-        this.budgetTracker.endTask(); // End task tracking on failure (Issue #304)
+        this.budgetTracker.endTask();
         return result;
       }
 
-      this.finalizeTaskSuccess(task, result.value, startTime);
+      finalizeTaskSuccess({
+        task,
+        result: result.value,
+        startTime,
+        stateMachine: this.stateMachine,
+        budgetTracker: this.budgetTracker,
+        logger: this.logger,
+      });
       return result;
     } catch (error) {
       this.stateMachine.forceError({ taskId: task.id, error: String(error) });
-      this.budgetTracker.endTask(); // End task tracking on exception (Issue #304)
-      return err(this.transformError(error, task.id));
+      this.budgetTracker.endTask();
+      return err(transformTaskError(error, this.id, task.id));
     }
   }
 
@@ -333,75 +308,9 @@ export abstract class BaseAgent implements IAgent {
   protected abstract executeTask(task: Task): Promise<Result<TaskResult, AgentError>>;
   protected abstract buildPrompt(task: Task): Message[];
 
-  private async executeWithTimeout(
-    task: Task,
-    maxDurationMs: number
-  ): Promise<Result<TaskResult, AgentError>> {
-    return new Promise((resolve) => {
-      const timeoutId = setTimeout(() => {
-        resolve(
-          err(
-            new AgentError(`Task execution timed out after ${String(maxDurationMs)}ms`, {
-              context: { taskId: task.id, maxDurationMs },
-            })
-          )
-        );
-      }, maxDurationMs);
-
-      this.executeTask(task)
-        .then((result) => {
-          clearTimeout(timeoutId);
-          resolve(result);
-        })
-        .catch((error: unknown) => {
-          clearTimeout(timeoutId);
-          resolve(err(this.transformError(error, task.id)));
-        });
-    });
-  }
-
-  private validateTask(task: Task): Result<Task, AgentError> {
-    const result = TaskSchema.safeParse(task);
-    if (!result.success) {
-      const issues = result.error.issues
-        .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
-        .join('; ');
-      return err(
-        new AgentError(`Invalid task: ${issues}`, {
-          context: { taskId: task.id, validationErrors: result.error.issues },
-        })
-      );
-    }
-    return ok(result.data as Task);
-  }
-
-  /** Handles successful task completion: state transitions, budget tracking, and logging. */
-  private finalizeTaskSuccess(task: Task, result: TaskResult, startTime: number): void {
-    const durationMs = Date.now() - startTime;
-    // Complete task - if still in thinking, transition through acting first
-    if (this.stateMachine.state === 'thinking') {
-      this.stateMachine.transition('plan_completed', { taskId: task.id });
-    }
-    this.stateMachine.transition('task_completed', { taskId: task.id, durationMs });
-    const budgetStats = this.budgetTracker.endTask();
-    this.logger.info('Task completed', {
-      taskId: task.id,
-      durationMs,
-      tokensUsed: result.metadata.tokensUsed,
-      taskTokensUsed: budgetStats.taskTokensUsed,
-      sessionTokensUsed: budgetStats.sessionTokensUsed,
-    });
-  }
-
+  /** Transforms an unknown error into an AgentError. */
   protected transformError(error: unknown, taskId: string): AgentError {
-    if (error instanceof AgentError) return error;
-    const message = error instanceof Error ? error.message : String(error);
-    const cause = error instanceof Error ? error : undefined;
-    const opts: { context: Record<string, unknown>; cause?: Error } = {
-      context: { agentId: this.id, taskId },
-    };
-    if (cause !== undefined) opts.cause = cause;
-    return new AgentError(`Task execution failed: ${message}`, opts);
+    return transformTaskError(error, this.id, taskId);
   }
 
   protected async complete(
@@ -410,20 +319,13 @@ export abstract class BaseAgent implements IAgent {
     if (this.adapter === undefined) {
       return err(new AgentError('No model adapter configured', { context: { agentId: this.id } }));
     }
+
     // Check budget before making model call (Issue #304)
-    const estimatedTokens = this.budgetTracker.predictNextTokens();
-    const budgetCheck = this.budgetTracker.checkBudget(estimatedTokens);
-    if (!budgetCheck.allowed) {
-      const ctx = {
-        agentId: this.id,
-        estimatedTokens,
-        remainingTaskBudget: budgetCheck.remainingTaskBudget,
-        remainingSessionBudget: budgetCheck.remainingSessionBudget,
-      };
-      const opts: { context: typeof ctx; cause?: Error } = { context: ctx };
-      if (budgetCheck.error !== undefined) opts.cause = budgetCheck.error;
-      return err(new AgentError('Token budget exceeded', opts));
-    }
+    const budgetResult = checkBudgetBeforeComplete({
+      agentId: this.id,
+      budgetTracker: this.budgetTracker,
+    });
+    if (!budgetResult.ok) return budgetResult;
 
     // Context pruning before model call (Issue #306)
     if (this.contextPruningEnabled && this.contextPruner !== undefined) {
@@ -439,27 +341,16 @@ export abstract class BaseAgent implements IAgent {
     // eslint-disable-next-line @typescript-eslint/no-deprecated -- Internal backward compatibility
     this.setState('acting');
 
-    const result = await this.adapter.complete(request);
-    if (!result.ok) {
-      return err(
-        new AgentError(`Model completion failed: ${result.error.message}`, {
-          context: { agentId: this.id },
-          cause: result.error,
-        })
-      );
-    }
-
-    // Record actual token usage for EMA tracking (Issue #304)
-    this.budgetTracker.recordUsage({
-      timestamp: Date.now(),
-      inputTokens: result.value.usage.inputTokens,
-      outputTokens: result.value.usage.outputTokens,
-      totalTokens: result.value.usage.totalTokens,
+    const result = await executeModelCompletion({
+      agentId: this.id,
+      adapter: this.adapter,
+      request,
+      budgetTracker: this.budgetTracker,
     });
 
     // eslint-disable-next-line @typescript-eslint/no-deprecated -- Internal backward compatibility
     this.setState('thinking');
-    return ok(result.value);
+    return result;
   }
 
   protected addToHistory(message: Message): void {
@@ -485,26 +376,18 @@ export abstract class BaseAgent implements IAgent {
     return { ...this.pruningMetrics };
   }
 
-  /**
-   * Adds content to the context manager for pruning consideration (Issue #306).
-   * Only effective when context pruning is enabled.
-   * @param content The content string to add
-   * @param priority Optional priority for pruning (default: HISTORY=40)
-   * @param category Optional category (default: 'active')
-   */
+  /** Adds content to the context manager for pruning consideration (Issue #306). */
   protected async addContextItem(
     content: string,
     priority?: (typeof ContentPriority)[keyof typeof ContentPriority],
     category?: 'system' | 'task' | 'active'
   ): Promise<void> {
     if (this.contextPruningEnabled && this.contextManager !== undefined) {
-      const timestamp = Date.now().toString();
-      const randomSuffix = Math.random().toString(36).slice(2, 9);
-      await this.contextManager.add({
-        id: `ctx-${timestamp}-${randomSuffix}`,
+      await addContextItemHelper({
+        contextManager: this.contextManager,
         content,
-        priority: priority ?? ContentPriority.HISTORY,
-        category: category ?? 'active',
+        priority,
+        category,
       });
     }
   }

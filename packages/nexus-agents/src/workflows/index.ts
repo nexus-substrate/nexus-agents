@@ -163,3 +163,53 @@ export {
   ExpertFactoryAdapter,
 } from './step-executor.js';
 export type { IExpertFactory, StepExecutorDeps, StepExecutionOptions } from './step-executor.js';
+
+// ============================================================================
+// Self-Evolving Workflows (SEW)
+// ============================================================================
+
+export {
+  // Types
+  parseVersion,
+  formatVersion,
+  incrementVersion,
+  computeFitnessScore,
+  stepsAreDependent,
+  findReorderableSteps,
+  findParallelizableSteps,
+  DEFAULT_FITNESS_METRICS,
+  DEFAULT_FITNESS_WEIGHTS,
+  DEFAULT_EVOLUTION_CONFIG,
+  EvolutionConfigSchema,
+  // Mutation operators
+  adjustTimeout,
+  adjustRetries,
+  reorderSteps,
+  addParallelization,
+  removeParallelization,
+  randomTimeoutFactor,
+  randomRetryDelta,
+  applyRandomMutation,
+  createMutant,
+  describeMutation,
+  // Evolver
+  WorkflowEvolver,
+  createWorkflowEvolver,
+} from './self-evolving/index.js';
+
+export type {
+  SemanticVersion,
+  FitnessMetrics,
+  FitnessWeights,
+  WorkflowVersion,
+  MutationType,
+  WorkflowMutation,
+  TimeoutAdjustment,
+  RetryAdjustment,
+  StepReorder,
+  ParallelizationChange,
+  EvolutionConfig,
+  ExecutionOutcome,
+  EvolutionHistoryEntry,
+  EvolutionResult,
+} from './self-evolving/index.js';
