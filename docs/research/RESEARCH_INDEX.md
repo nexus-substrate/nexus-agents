@@ -1,7 +1,7 @@
 # Nexus-Agents Research Index
 
-**Generated:** 2026-01-16 (ET)
-**Total Papers:** 56 | **Techniques:** 27 | **Topics:** 6
+**Generated:** 2026-01-17 (ET)
+**Total Papers:** 67 | **Techniques:** 38 | **Topics:** 6
 
 ---
 
@@ -11,7 +11,7 @@
 | ----------- | ------ | ---------- |
 | Implemented | -      | 25         |
 | In Progress | -      | 0          |
-| Planned     | -      | 0          |
+| Planned     | -      | 11         |
 | Not Started | -      | 1          |
 | Rejected    | -      | 1          |
 
@@ -36,16 +36,20 @@
 
 These techniques are high-impact and align well with the current architecture.
 
-| Technique                                                                               | Topic           | Key Metrics                                                                                                                           | Issue |
-| --------------------------------------------------------------------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ----- |
-| [Aegean Consensus Protocol](registry/techniques.yaml#aegean-consensus)                  | consensus       | latency_reduction: 1.2x-20x, token_reduction: 4.4x, quality_impact: within 2.5% of baseline                                           | #119  |
-| [Task-Type Protocol Selection](registry/techniques.yaml#task-aware-protocol-selection)  | consensus       | reasoning_improvement: +13.2%, knowledge_improvement: +2.8%                                                                           | #125  |
-| [Multi-Agent Reflexion (MAR)](registry/techniques.yaml#multi-agent-reflexion)           | consensus       | reasoning_improvement: significant across benchmarks                                                                                  | -     |
-| [IPR Quality-Constrained Routing](registry/techniques.yaml#ipr-quality-estimators)      | routing         | cost_reduction: 43.9%, latency: sub-150ms                                                                                             | #128  |
-| [A-MEM Agentic Memory](registry/techniques.yaml#amem-agentic-memory)                    | memory          | semantic_organization: Automatic attribute extraction and linking, evolution_detection: Refinement, extension, supersession detection | #122  |
-| [TRINITY Thinker/Worker/Verifier Roles](registry/techniques.yaml#trinity-roles)         | orchestration   | benchmark_accuracy: 86.2% on LiveCodeBench                                                                                            | #141  |
-| [Self-Refine Iterative Loop](registry/techniques.yaml#self-refine-loop)                 | code-generation | average_improvement: 20%                                                                                                              | #126  |
-| [Reflexion Verbal Reinforcement Learning](registry/techniques.yaml#reflexion-verbal-rl) | code-generation | alfworld_improvement: +22%, hotpotqa_improvement: +20%, humaneval_pass1: 91%                                                          | #130  |
+| Technique                                                                                   | Topic           | Key Metrics                                                                                                                           | Issue |
+| ------------------------------------------------------------------------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ----- |
+| [Aegean Consensus Protocol](registry/techniques.yaml#aegean-consensus)                      | consensus       | latency_reduction: 1.2x-20x, token_reduction: 4.4x, quality_impact: within 2.5% of baseline                                           | #119  |
+| [Task-Type Protocol Selection](registry/techniques.yaml#task-aware-protocol-selection)      | consensus       | reasoning_improvement: +13.2%, knowledge_improvement: +2.8%                                                                           | #125  |
+| [Multi-Agent Reflexion (MAR)](registry/techniques.yaml#multi-agent-reflexion)               | consensus       | reasoning_improvement: significant across benchmarks                                                                                  | -     |
+| [IPR Quality-Constrained Routing](registry/techniques.yaml#ipr-quality-estimators)          | routing         | cost_reduction: 43.9%, latency: sub-150ms                                                                                             | #128  |
+| [A-MEM Agentic Memory](registry/techniques.yaml#amem-agentic-memory)                        | memory          | semantic_organization: Automatic attribute extraction and linking, evolution_detection: Refinement, extension, supersession detection | #122  |
+| [TRINITY Thinker/Worker/Verifier Roles](registry/techniques.yaml#trinity-roles)             | orchestration   | benchmark_accuracy: 86.2% on LiveCodeBench                                                                                            | #141  |
+| [Self-Refine Iterative Loop](registry/techniques.yaml#self-refine-loop)                     | code-generation | average_improvement: 20%                                                                                                              | #126  |
+| [Reflexion Verbal Reinforcement Learning](registry/techniques.yaml#reflexion-verbal-rl)     | code-generation | alfworld_improvement: +22%, hotpotqa_improvement: +20%, humaneval_pass1: 91%                                                          | #130  |
+| [STPA MCP Framework](registry/techniques.yaml#stpa-mcp-safety)                              | security        | Formal STPA safety analysis for MCP tools                                                                                             | #328  |
+| [AFlow MCTS Workflows](registry/techniques.yaml#aflow-mcts-workflows)                       | orchestration   | MCTS-based automatic workflow generation                                                                                              | #329  |
+| [SEW Self-Evolving Workflows](registry/techniques.yaml#sew-self-evolving-workflows)         | orchestration   | Self-evolving workflow patterns                                                                                                       | #330  |
+| [ZeroRouter Universal Difficulty](registry/techniques.yaml#zerorouter-universal-difficulty) | routing         | Universal difficulty space for routing                                                                                                | #338  |
 
 ---
 
@@ -70,6 +74,13 @@ Medium-impact or requiring moderate changes.
 | [Voyager Skill Library Pattern](registry/techniques.yaml#voyager-skill-library)             | code-generation | discovery_improvement: 3.3x more unique items, speed_improvement: up to 15.3x faster milestone        | #150  |
 | [SICA Self-Improving Agent](registry/techniques.yaml#sica-self-improvement)                 | code-generation | swebench_improvement: 17% -> 53%, file_editing_improvement: 82% -> 94%                                | #151  |
 | [Constitutional AI Self-Critique](registry/techniques.yaml#constitutional-ai)               | code-generation | scales: without human labelers                                                                        | #147  |
+| [Higher-Order Voting (OW/ISP)](registry/techniques.yaml#higher-order-voting)                | consensus       | Bayesian-optimal aggregation with correlation awareness                                               | #333  |
+| [Forest-of-Thought](registry/techniques.yaml#forest-of-thought)                             | orchestration   | Multi-tree reasoning with sparse activation                                                           | #331  |
+| [Agent-SafetyBench](registry/techniques.yaml#agent-safety-bench)                            | security        | Safety evaluation suite integration                                                                   | #332  |
+| [DAAO VAE Difficulty](registry/techniques.yaml#daao-difficulty-estimation)                  | routing         | VAE-based difficulty estimation for routing                                                           | #334  |
+| [Evolving Orchestration Upgrade](registry/techniques.yaml#evolving-orchestration)           | orchestration   | Puppeteer-style learned orchestration                                                                 | #335  |
+| [Hindsight Belief Memory](registry/techniques.yaml#hindsight-belief-memory)                 | memory          | Belief Memory layer for reasoning                                                                     | #336  |
+| [Scaling Coordination Predictor](registry/techniques.yaml#scaling-coordination-predictor)   | orchestration   | Coordination predictor for multi-agent scaling                                                        | #337  |
 
 ---
 
@@ -77,11 +88,16 @@ Medium-impact or requiring moderate changes.
 
 | Date       | Paper                                                                                                         | Topic           | Priority |
 | ---------- | ------------------------------------------------------------------------------------------------------------- | --------------- | -------- |
+| 2026-01-17 | [STPA MCP Framework](https://arxiv.org/abs/2601.08012)                                                        | security        | P1       |
+| 2026-01-17 | [AFlow (MCTS Workflows)](https://arxiv.org/abs/2410.10762)                                                    | orchestration   | P1       |
+| 2026-01-17 | [SEW (Self-Evolving Workflows)](https://arxiv.org/abs/2505.18646)                                             | orchestration   | P1       |
+| 2026-01-17 | [Higher-Order Voting (OW/ISP)](https://arxiv.org/abs/2510.01499)                                              | consensus       | P2       |
+| 2026-01-17 | [Forest-of-Thought](https://arxiv.org/abs/2412.09078)                                                         | orchestration   | P2       |
+| 2026-01-17 | [Agent-SafetyBench](https://arxiv.org/abs/2412.14470)                                                         | security        | P2       |
+| 2026-01-17 | [DAAO (VAE Difficulty)](https://arxiv.org/abs/2509.11079)                                                     | routing         | P2       |
+| 2026-01-17 | [Hindsight (Belief Memory)](https://arxiv.org/abs/2512.12818)                                                 | memory          | P2       |
+| 2026-01-17 | [Scaling Agent Systems](https://arxiv.org/abs/2512.08296)                                                     | orchestration   | P2       |
 | 2026-01-16 | [Confucius Code Agent: Scalable Agent Scaffolding for Real-World Codebases](https://arxiv.org/abs/2512.10398) | code-generation | -        |
-| 2026-01-09 | [A-MEM: Agentic Memory for LLM Agents](https://arxiv.org/abs/2502.12110)                                      | memory          | -        |
-| 2026-01-07 | [RouteLLM: Cost-Quality Routing for LLM Inference](https://arxiv.org/abs/2406.18510)                          | routing         | -        |
-| 2026-01-06 | [Multi-Agent Collaboration Mechanisms: A Survey of LLMs](https://arxiv.org/abs/2501.06322)                    | consensus       | -        |
-| 2026-01-06 | [Multi-Agent Collaboration via Evolving Orchestration](https://arxiv.org/abs/2505.19591)                      | orchestration   | -        |
 
 ---
 
@@ -193,6 +209,17 @@ Medium-impact or requiring moderate changes.
 | #151  | SICA Self-Improving Agent                  | arxiv-2504.15228                   |
 | #147  | Constitutional AI Self-Critique            | arxiv-2212.08073                   |
 | #131  | Self-Debug Code Repair                     | arxiv-2304.05128                   |
+| #328  | STPA MCP Framework                         | arxiv-2601.08012                   |
+| #329  | AFlow MCTS Workflows                       | arxiv-2410.10762                   |
+| #330  | SEW Self-Evolving Workflows                | arxiv-2505.18646                   |
+| #331  | Forest-of-Thought                          | arxiv-2412.09078                   |
+| #332  | Agent-SafetyBench                          | arxiv-2412.14470                   |
+| #333  | Higher-Order Voting (OW/ISP)               | arxiv-2510.01499                   |
+| #334  | DAAO VAE Difficulty                        | arxiv-2509.11079                   |
+| #335  | Evolving Orchestration Upgrade             | arxiv-2505.19591                   |
+| #336  | Hindsight Belief Memory                    | arxiv-2512.12818                   |
+| #337  | Scaling Coordination Predictor             | arxiv-2512.08296                   |
+| #338  | ZeroRouter Universal Difficulty            | zerorouter-tbd                     |
 
 ---
 
@@ -204,8 +231,8 @@ Medium-impact or requiring moderate changes.
 
 ## Registry Files
 
-- [papers.yaml](registry/papers.yaml) - All 56 papers with metadata
-- [techniques.yaml](registry/techniques.yaml) - All 27 techniques with status
+- [papers.yaml](registry/papers.yaml) - All 67 papers with metadata
+- [techniques.yaml](registry/techniques.yaml) - All 38 techniques with status
 - [sources.yaml](registry/sources.yaml) - Product docs and other sources
 
 ---
@@ -216,4 +243,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on adding new research.
 
 ---
 
-_Generated from YAML registries. Last updated: 2026-01-16 (ET)_
+_Generated from YAML registries. Last updated: 2026-01-17 (ET)_

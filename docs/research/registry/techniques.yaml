@@ -1284,3 +1284,414 @@ techniques:
       - date: '2026-01-07'
         decision: 'Rejected for current architecture'
         rationale: 'Requires same-model agents; hybrid CLI arch uses different models'
+
+  # ============================================================================
+  # NEW TECHNIQUES FROM 2026-01-17 CONSENSUS VOTE
+  # ============================================================================
+
+  stpa-mcp-safety:
+    name: 'STPA MCP Framework'
+    description: |
+      System-Theoretic Process Analysis (STPA) for formal safety analysis of
+      MCP tools. Identifies unsafe control actions and generates safety constraints.
+
+    source_papers:
+      - arxiv-2601.08012
+
+    topic: security
+    tags:
+      - stpa
+      - formal-safety
+      - mcp
+      - hazard-analysis
+
+    metrics:
+      hazard_coverage: 'Systematic UCA identification'
+      safety_constraints: 'Auto-generated from analysis'
+
+    status: planned
+    priority: P1
+    complexity: medium
+
+    integration_files:
+      - 'packages/nexus-agents/src/mcp/safety/stpa-analyzer.ts'
+      - 'packages/nexus-agents/src/mcp/safety/stpa-types.ts'
+
+    implementation_issue: 328
+    related_prs: []
+
+    notes: |
+      Formal safety analysis methodology for MCP tool registration.
+      Identifies unsafe control actions before tool execution.
+
+    dependencies: []
+
+    decision_history:
+      - date: '2026-01-17'
+        decision: 'APPROVED via consensus vote'
+        rationale: 'Weighted score 0.87, 12/15 agents FOR'
+
+  aflow-mcts-workflows:
+    name: 'AFlow MCTS Workflow Generation'
+    description: |
+      Monte Carlo Tree Search for automatic workflow discovery and optimization.
+      Agents discover optimal workflow structures through search.
+
+    source_papers:
+      - arxiv-2410.10762
+
+    topic: orchestration
+    tags:
+      - mcts
+      - workflow-generation
+      - automatic-discovery
+
+    metrics:
+      workflow_quality: 'Improved through search optimization'
+
+    status: planned
+    priority: P1
+    complexity: high
+
+    integration_files:
+      - 'packages/nexus-agents/src/workflows/aflow/mcts-search.ts'
+      - 'packages/nexus-agents/src/workflows/aflow/aflow-types.ts'
+
+    implementation_issue: 329
+    related_prs: []
+
+    notes: |
+      MCTS-based workflow discovery reduces manual template creation.
+      UCT selection balances exploration/exploitation.
+
+    dependencies: []
+
+    decision_history:
+      - date: '2026-01-17'
+        decision: 'APPROVED via consensus vote'
+        rationale: 'Weighted score 0.95, 14/15 agents FOR'
+
+  sew-self-evolving-workflows:
+    name: 'SEW Self-Evolving Workflows'
+    description: |
+      Self-evolving workflow patterns that adapt through execution feedback.
+      Workflows learn and improve automatically over time.
+
+    source_papers:
+      - arxiv-2505.18646
+
+    topic: orchestration
+    tags:
+      - self-evolving
+      - workflow-optimization
+      - feedback-learning
+
+    metrics:
+      improvement_rate: 'Continuous through execution feedback'
+
+    status: planned
+    priority: P1
+    complexity: medium
+
+    integration_files:
+      - 'packages/nexus-agents/src/workflows/self-evolving/workflow-evolver.ts'
+      - 'packages/nexus-agents/src/workflows/self-evolving/sew-types.ts'
+
+    implementation_issue: 330
+    related_prs: []
+
+    notes: |
+      Builds on existing workflow infrastructure.
+      Version management for workflow evolution tracking.
+
+    dependencies: []
+
+    decision_history:
+      - date: '2026-01-17'
+        decision: 'APPROVED via consensus vote'
+        rationale: 'Weighted score 0.78, 11/15 agents FOR'
+
+  higher-order-voting:
+    name: 'Higher-Order Voting (OW/ISP)'
+    description: |
+      Optimal Weighting (OW) and Information Score Prior (ISP) for
+      Bayesian-optimal aggregation with inter-agent correlation awareness.
+
+    source_papers:
+      - arxiv-2510.01499
+
+    topic: consensus
+    tags:
+      - bayesian
+      - correlation-aware
+      - optimal-weighting
+
+    metrics:
+      correlation_handling: 'Improved consensus on correlated inputs'
+
+    status: planned
+    priority: P2
+    complexity: medium
+
+    integration_files:
+      - 'packages/nexus-agents/src/consensus/higher-order-voting.ts'
+      - 'packages/nexus-agents/src/consensus/correlation-estimator.ts'
+
+    implementation_issue: 333
+    related_prs: []
+
+    notes: |
+      Mathematically grounded aggregation that handles groupthink/echo chambers.
+      Integrates with existing VotingProtocol.
+
+    dependencies:
+      - cp-wbft-consensus
+
+    decision_history:
+      - date: '2026-01-17'
+        decision: 'APPROVED via consensus vote'
+        rationale: 'Weighted score 0.89, 13/15 agents FOR'
+
+  forest-of-thought:
+    name: 'Forest-of-Thought Multi-Tree Reasoning'
+    description: |
+      Multi-tree reasoning with sparse activation for parallel exploration
+      of diverse reasoning paths.
+
+    source_papers:
+      - arxiv-2412.09078
+
+    topic: orchestration
+    tags:
+      - reasoning
+      - multi-tree
+      - sparse-activation
+
+    metrics:
+      reasoning_quality: 'Improved through diverse exploration'
+      efficiency: 'Sparse activation reduces compute'
+
+    status: planned
+    priority: P2
+    complexity: high
+
+    integration_files:
+      - 'packages/nexus-agents/src/agents/reasoning/forest-of-thought.ts'
+      - 'packages/nexus-agents/src/agents/reasoning/forest-types.ts'
+
+    implementation_issue: 331
+    related_prs: []
+
+    notes: |
+      Novel reasoning architecture for complex multi-step problems.
+      Cross-tree information sharing enables best-path selection.
+
+    dependencies: []
+
+    decision_history:
+      - date: '2026-01-17'
+        decision: 'APPROVED via consensus vote'
+        rationale: 'Weighted score 0.78, 11/15 agents FOR'
+
+  agent-safety-bench:
+    name: 'Agent-SafetyBench Evaluation Suite'
+    description: |
+      Comprehensive safety evaluation suite for agent behaviors across
+      multiple risk dimensions.
+
+    source_papers:
+      - arxiv-2412.14470
+
+    topic: security
+    tags:
+      - safety-evaluation
+      - risk-assessment
+      - benchmarking
+
+    metrics:
+      coverage: 'Multi-dimensional safety evaluation'
+
+    status: planned
+    priority: P2
+    complexity: medium
+
+    integration_files:
+      - 'packages/nexus-agents/src/security/safety-bench/safety-bench.ts'
+      - 'packages/nexus-agents/src/security/safety-bench/safety-categories.ts'
+
+    implementation_issue: 332
+    related_prs: []
+
+    notes: |
+      Systematic safety evaluation for CI/CD integration.
+      Generates safety reports for compliance.
+
+    dependencies: []
+
+    decision_history:
+      - date: '2026-01-17'
+        decision: 'APPROVED via consensus vote'
+        rationale: 'Weighted score 0.72, 10/15 agents FOR'
+
+  daao-difficulty-estimation:
+    name: 'DAAO VAE Difficulty Estimation'
+    description: |
+      VAE-based difficulty estimation for intelligent task routing.
+      Maps tasks to continuous difficulty spectrum.
+
+    source_papers:
+      - arxiv-2509.11079
+
+    topic: routing
+    tags:
+      - vae
+      - difficulty-estimation
+      - routing
+
+    metrics:
+      routing_accuracy: 'Improved task-model alignment'
+
+    status: planned
+    priority: P2
+    complexity: medium
+
+    integration_files:
+      - 'packages/nexus-agents/src/cli-adapters/daao-estimator.ts'
+      - 'packages/nexus-agents/src/cli-adapters/daao-types.ts'
+
+    implementation_issue: 334
+    related_prs: []
+
+    notes: |
+      Integrates with CompositeRouter for better model selection.
+      Learned representations transfer across domains.
+
+    dependencies:
+      - pilot-budget-routing
+
+    decision_history:
+      - date: '2026-01-17'
+        decision: 'APPROVED via consensus vote'
+        rationale: 'Weighted score 0.67, 9/15 agents FOR'
+
+  hindsight-belief-memory:
+    name: 'Hindsight Belief Memory'
+    description: |
+      Belief Memory layer for reasoning agents. Maintains and updates
+      beliefs about the world for sophisticated reasoning.
+
+    source_papers:
+      - arxiv-2512.12818
+
+    topic: memory
+    tags:
+      - belief-state
+      - reasoning
+      - hindsight
+
+    metrics:
+      reasoning_quality: 'Improved through belief tracking'
+
+    status: planned
+    priority: P2
+    complexity: medium
+
+    integration_files:
+      - 'packages/nexus-agents/src/context/belief-memory.ts'
+      - 'packages/nexus-agents/src/context/belief-types.ts'
+
+    implementation_issue: 336
+    related_prs: []
+
+    notes: |
+      Integrates with existing memory systems.
+      Hindsight correction improves belief accuracy.
+
+    dependencies:
+      - adaptive-memory
+
+    decision_history:
+      - date: '2026-01-17'
+        decision: 'APPROVED via consensus vote'
+        rationale: 'Weighted score 0.78, 11/15 agents FOR'
+
+  scaling-coordination-predictor:
+    name: 'Scaling Agent Coordination Predictor'
+    description: |
+      Prediction of coordination requirements for scaling multi-agent systems.
+      Enables optimal agent allocation and resource utilization.
+
+    source_papers:
+      - arxiv-2512.08296
+
+    topic: orchestration
+    tags:
+      - scaling
+      - coordination
+      - prediction
+
+    metrics:
+      allocation_efficiency: 'Improved agent utilization'
+
+    status: planned
+    priority: P2
+    complexity: medium
+
+    integration_files:
+      - 'packages/nexus-agents/src/agents/coordination/scaling-predictor.ts'
+      - 'packages/nexus-agents/src/agents/coordination/scaling-types.ts'
+
+    implementation_issue: 337
+    related_prs: []
+
+    notes: |
+      Integrates with orchestration layer.
+      Models scaling behavior for resource optimization.
+
+    dependencies: []
+
+    decision_history:
+      - date: '2026-01-17'
+        decision: 'APPROVED via consensus vote'
+        rationale: 'Weighted score 0.67, 9/15 agents FOR'
+
+  zerorouter-universal-difficulty:
+    name: 'ZeroRouter Universal Difficulty Space'
+    description: |
+      Universal difficulty space for model routing. Maps diverse tasks to a
+      unified difficulty metric for improved model selection across domains.
+
+    source_papers:
+      - zerorouter-tbd
+
+    topic: routing
+    tags:
+      - universal-difficulty
+      - routing
+      - transfer-learning
+
+    metrics:
+      routing_accuracy: 'Cross-domain difficulty assessment'
+
+    status: planned
+    priority: P1
+    complexity: medium
+
+    integration_files:
+      - 'packages/nexus-agents/src/cli-adapters/zero-router.ts'
+      - 'packages/nexus-agents/src/cli-adapters/difficulty-space.ts'
+
+    implementation_issue: 338
+    related_prs: []
+
+    notes: |
+      Unified difficulty representation across task types.
+      Integrates with CompositeRouter for improved model selection.
+
+    dependencies:
+      - pilot-budget-routing
+
+    decision_history:
+      - date: '2026-01-17'
+        decision: 'APPROVED via consensus vote'
+        rationale: 'Weighted score 0.72, 10/15 agents FOR'
