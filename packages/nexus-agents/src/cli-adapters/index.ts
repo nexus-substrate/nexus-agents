@@ -233,3 +233,35 @@ export type {
   DifficultyThresholds,
 } from './zero-router-types.js';
 export { DIFFICULTY_DIMENSIONS, DEFAULT_DIFFICULTY_WEIGHTS } from './zero-router-types.js';
+
+// DAAO - Difficulty-Aware Agent Orchestration (Issue #334, arXiv:2509.11079)
+export {
+  DAAOEstimator,
+  createDAAOEstimator,
+  estimateDAAODifficulty,
+  routeByDAAODifficulty,
+  encodeTaskFeatures,
+} from './daao-estimator.js';
+export type { IDAAOEstimator } from './daao-estimator.js';
+export type {
+  DAAOConfig,
+  DAAODifficultyEstimate,
+  DAAORoutingDecision,
+  DAAOOutcome,
+  DAAOCalibrationStats,
+  EncodedFeatures,
+  FeatureDimension,
+  FeatureWeights,
+  DAAOThresholds,
+} from './daao-types.js';
+export {
+  DAAOConfigSchema,
+  DAAOError,
+  FEATURE_DIMENSIONS,
+  DEFAULT_FEATURE_WEIGHTS,
+  DEFAULT_DAAO_THRESHOLDS,
+  DEFAULT_DAAO_CONFIG,
+  DEFAULT_DAAO_TIER_TO_CLIS,
+  EncodedFeaturesSchema,
+  FeatureWeightsSchema,
+} from './daao-types.js';
