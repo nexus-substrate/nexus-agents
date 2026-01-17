@@ -10,7 +10,9 @@
 **Research Tracking:** ✅ COMPLETE (#133 closed - 25/25 techniques implemented)
 **Architecture Decision:** ✅ HYBRID APPROVED (5-0 unanimous - #182, #183, #184, #185 created)
 **Latest System Review:** 2026-01-16g - Score 7.78/10 (5/5 APPROVE, unanimous)
-**Open Issues:** #257 (SWE-bench, skipped), #154 (RL orchestrator, P4)
+**Agent Improvement Epic:** #301 (Consensus-approved, 5/5 unanimous)
+**Open Issues:** #257 (SWE-bench, skipped), #154 (RL orchestrator, P4 stretch)
+**Closed This Session:** #303 (tool access control), #298 (markdown-link-check)
 
 ---
 
