@@ -130,8 +130,7 @@ export class PuppeteerOrchestrator {
   async execute(
     options: PuppeteerExecuteOptions
   ): Promise<Result<PuppeteerResult, PuppeteerError>> {
-    this.cancelled = false;
-    this.cancelReason = undefined;
+    this.resetState();
 
     const sessionId = generateSessionId();
     const startTime = Date.now();
@@ -139,6 +138,34 @@ export class PuppeteerOrchestrator {
 
     this.setupAbortSignal(signal);
 
+    const setupResult = this.setupAgents(options);
+    if (!setupResult.ok) return setupResult;
+    const { agentIds, agentMap } = setupResult.value;
+
+    this.emitStart(sessionId, task);
+
+    const state = this.stateManager.createInitialState(task, sessionId, initialContext);
+    const trajectory: PuppeteerStepResult[] = [];
+
+    return this.runAndComplete({
+      state,
+      trajectory,
+      agentIds,
+      agentMap,
+      task,
+      sessionId,
+      startTime,
+    });
+  }
+
+  private resetState(): void {
+    this.cancelled = false;
+    this.cancelReason = undefined;
+  }
+
+  private setupAgents(
+    options: PuppeteerExecuteOptions
+  ): Result<{ agentIds: string[]; agentMap: Map<string, IAgent> }, PuppeteerError> {
     const availableAgents = options.agents ?? [...this.agents.values()];
     if (availableAgents.length === 0) {
       return err(new PuppeteerError('No agents available', 'NO_AGENTS'));
@@ -146,11 +173,20 @@ export class PuppeteerOrchestrator {
 
     const agentIds = availableAgents.map((a) => a.id);
     const agentMap = new Map(availableAgents.map((a) => [a.id, a]));
+    return ok({ agentIds, agentMap });
+  }
 
-    this.emitStart(sessionId, task);
-
-    let state = this.stateManager.createInitialState(task, sessionId, initialContext);
-    const trajectory: PuppeteerStepResult[] = [];
+  private async runAndComplete(ctx: {
+    state: PuppeteerState;
+    trajectory: PuppeteerStepResult[];
+    agentIds: string[];
+    agentMap: Map<string, IAgent>;
+    task: Task;
+    sessionId: string;
+    startTime: number;
+  }): Promise<Result<PuppeteerResult, PuppeteerError>> {
+    const { trajectory, agentIds, agentMap, task, sessionId, startTime } = ctx;
+    let state = ctx.state;
 
     try {
       const loopResult = await this.runOrchestrationLoop({
@@ -163,7 +199,6 @@ export class PuppeteerOrchestrator {
         startTime,
       });
       if (!loopResult.ok) {
-        // Convert error result to error-terminated result
         return this.buildErrorResult(
           trajectory,
           'error',
@@ -173,7 +208,6 @@ export class PuppeteerOrchestrator {
         );
       }
       state = loopResult.value;
-
       return this.completeExecution(state, trajectory, sessionId, startTime);
     } catch (error) {
       const puppeteerError = this.wrapError(error);
