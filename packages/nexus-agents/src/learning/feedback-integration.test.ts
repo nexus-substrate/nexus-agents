@@ -68,6 +68,7 @@ function createMockRouter(): ICompositeRouter {
     }),
     hasMinimumPreferenceData: vi.fn().mockReturnValue(false),
     getZeroRouter: vi.fn().mockReturnValue(undefined),
+    getLatencyTracker: vi.fn().mockReturnValue(undefined),
   };
 }
 

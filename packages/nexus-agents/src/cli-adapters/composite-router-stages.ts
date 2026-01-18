@@ -11,6 +11,7 @@ import type { TopsisRouter } from './topsis-router.js';
 import type { LinUCBBandit } from './linucb-bandit.js';
 import type { PreferenceRouter } from './preference-router.js';
 import type { ZeroRouter } from './zero-router.js';
+import type { LatencyTracker } from './latency-tracker.js';
 import { analyzeTask, type TaskProfile } from './task-analyzer.js';
 import {
   CompositeRoutingError,
@@ -40,6 +41,7 @@ export interface StageDependencies {
   preferenceRouter: PreferenceRouter | undefined;
   topsisRouter: TopsisRouter | undefined;
   linucbBandit: LinUCBBandit | undefined;
+  latencyTracker: LatencyTracker | undefined;
 }
 
 /** Result from budget stage including rejection tracking. */
@@ -162,6 +164,49 @@ export function runPreferenceStage(
   };
 }
 
+/** Latency scoring stage result. (Issue #361) */
+export interface LatencyStageResult {
+  latencyScore: number | undefined;
+  latencyAdjustedRanking: CliName[];
+}
+
+/** Runs latency scoring stage. (Issue #361) */
+export function runLatencyStage(
+  candidates: CliName[],
+  stagesExecuted: string[],
+  deps: StageDependencies
+): LatencyStageResult {
+  if (!deps.config.enableLatencyTracking || deps.latencyTracker === undefined) {
+    return { latencyScore: undefined, latencyAdjustedRanking: candidates };
+  }
+
+  const scores = deps.latencyTracker.getScores(candidates);
+  stagesExecuted.push('latency-scoring');
+
+  // Sort candidates by latency score (higher is better/faster)
+  const sortedCandidates = [...candidates].sort((a, b) => {
+    const scoreA = scores.find((s) => s.cli === a)?.score ?? 0;
+    const scoreB = scores.find((s) => s.cli === b)?.score ?? 0;
+    return scoreB - scoreA;
+  });
+
+  const topScore = scores.find((s) => s.cli === sortedCandidates[0])?.score;
+
+  deps.logger.debug('Latency scoring applied', {
+    scores: scores.map((s) => ({
+      cli: s.cli,
+      score: s.score.toFixed(3),
+      reliable: s.hasReliableData,
+    })),
+    topCandidate: sortedCandidates[0],
+  });
+
+  return {
+    latencyScore: topScore,
+    latencyAdjustedRanking: sortedCandidates,
+  };
+}
+
 /** Executes full pipeline and returns result. */
 export function runPipeline(
   task: CliTask,
@@ -181,12 +226,15 @@ export function runPipeline(
   candidates = budgetResult.value.candidates;
   const withinBudget = budgetResult.value.withinBudget;
 
-  // Step 2: ZeroRouter + Step 3: Preference + Step 4: TOPSIS + Step 5: LinUCB
+  // Step 2: ZeroRouter + Step 3: Preference + Step 4: Latency + Step 5: TOPSIS + Step 6: LinUCB
   const zeroResult = runZeroRouterStage(task, candidates, stagesExecuted, deps);
   candidates = zeroResult.filteredCandidates;
 
   const prefResult = runPreferenceStage(task, candidates, stagesExecuted, deps);
   candidates = prefResult.preferredCandidates;
+
+  // Latency scoring stage (Issue #361)
+  const latencyResult = runLatencyStage(candidates, stagesExecuted, deps);
 
   const topsisResult = runTopsisStage(taskProfile, candidates, stagesExecuted, deps);
   const linucbResult = runLinUCBStage(taskProfile, topsisResult.ranking, stagesExecuted, deps);
@@ -205,5 +253,6 @@ export function runPipeline(
     topsisScore: topsisResult.score,
     selectedCli: linucbResult.selectedCli,
     ucbScore: linucbResult.ucbScore,
+    latencyScore: latencyResult.latencyScore,
   });
 }

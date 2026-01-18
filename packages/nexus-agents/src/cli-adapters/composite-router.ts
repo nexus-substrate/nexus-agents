@@ -14,6 +14,8 @@ import { PreferenceRouter } from './preference-router.js';
 import type { PreferenceRouterConfig } from './preference-router-types.js';
 import { ZeroRouter, type IZeroRouter } from './zero-router.js';
 import type { ZeroRouterConfig } from './zero-router-types.js';
+import { LatencyTracker, type ILatencyTracker } from './latency-tracker.js';
+import type { LatencyTrackerConfig } from './latency-tracker-types.js';
 import {
   CompositeRouterConfigSchema,
   CompositeRoutingError,
@@ -64,6 +66,7 @@ export interface ICompositeRouter {
   getStats(): CompositeRouterStats;
   hasMinimumPreferenceData(): boolean;
   getZeroRouter(): IZeroRouter | undefined;
+  getLatencyTracker(): ILatencyTracker | undefined;
 }
 
 /** CompositeRouter implementation. */
@@ -76,6 +79,7 @@ export class CompositeRouter implements ICompositeRouter {
   private preferenceRouter?: PreferenceRouter;
   private topsisRouter?: TopsisRouter;
   private linucbBandit?: LinUCBBandit;
+  private latencyTracker?: LatencyTracker;
   private readonly cliNames: CliName[];
 
   // Statistics tracking
@@ -92,18 +96,25 @@ export class CompositeRouter implements ICompositeRouter {
     config?: Partial<CompositeRouterConfigWithPreference>,
     logger?: ILogger
   ) {
-    const { preferenceRouterConfig, zeroRouterConfig, ...baseConfig } = config ?? {};
+    const { preferenceRouterConfig, zeroRouterConfig, latencyTrackerConfig, ...baseConfig } =
+      config ?? {};
     this.config = CompositeRouterConfigSchema.parse(baseConfig);
     this.logger = logger ?? createLogger({ component: 'CompositeRouter' });
     this.adapters = adapters;
     this.cliNames = Array.from(adapters.keys());
-    this.initializeRouters(adapters, preferenceRouterConfig, zeroRouterConfig);
+    this.initializeRouters(
+      adapters,
+      preferenceRouterConfig,
+      zeroRouterConfig,
+      latencyTrackerConfig
+    );
   }
 
   private initializeRouters(
     adapters: Map<CliName, ICliAdapter>,
     preferenceConfig?: Partial<PreferenceRouterConfig>,
-    zeroConfig?: Partial<ZeroRouterConfig>
+    zeroConfig?: Partial<ZeroRouterConfig>,
+    latencyConfig?: Partial<LatencyTrackerConfig>
   ): void {
     if (this.config.enableBudgetFilter && adapters.size > 0) {
       this.budgetRouter = new BudgetRouter(adapters);
@@ -115,6 +126,9 @@ export class CompositeRouter implements ICompositeRouter {
     if (this.config.enableLinUCBSelection && this.cliNames.length > 0) {
       this.linucbBandit = new LinUCBBandit(this.cliNames, { alpha: this.config.linucbAlpha });
     }
+    if (this.config.enableLatencyTracking) {
+      this.latencyTracker = new LatencyTracker(latencyConfig);
+    }
     this.logger.info('CompositeRouter initialized', {
       adapterCount: adapters.size,
       enableBudget: this.config.enableBudgetFilter,
@@ -122,6 +136,7 @@ export class CompositeRouter implements ICompositeRouter {
       enablePreference: this.config.enablePreferenceRouting,
       enableTopsis: this.config.enableTopsisRanking,
       enableLinUCB: this.config.enableLinUCBSelection,
+      enableLatencyTracking: this.config.enableLatencyTracking,
     });
   }
 
@@ -169,6 +184,11 @@ export class CompositeRouter implements ICompositeRouter {
     // Record difficulty outcome for ZeroRouter learning
     this.recordDifficultyOutcome(task, success);
 
+    // Record latency for latency-based routing (Issue #361)
+    if (this.latencyTracker !== undefined) {
+      this.latencyTracker.record(decision.cliName, durationMs, success);
+    }
+
     this.logger.debug('Auto-recorded feedback', {
       cli: decision.cliName,
       success,
@@ -214,6 +234,7 @@ export class CompositeRouter implements ICompositeRouter {
       preferenceRouter: this.preferenceRouter,
       topsisRouter: this.topsisRouter,
       linucbBandit: this.linucbBandit,
+      latencyTracker: this.latencyTracker,
     };
   }
 
@@ -255,6 +276,7 @@ export class CompositeRouter implements ICompositeRouter {
       preferenceTier: params.preferenceTier,
       topsisScore: params.topsisScore,
       ucbScore: params.ucbScore,
+      latencyScore: params.latencyScore,
       alternatives,
       taskProfile: params.taskProfile,
     });
@@ -310,8 +332,13 @@ export class CompositeRouter implements ICompositeRouter {
     return this.zeroRouter;
   }
 
+  getLatencyTracker(): ILatencyTracker | undefined {
+    return this.latencyTracker;
+  }
+
   getStats(): CompositeRouterStats {
     const preferenceStats = this.buildPreferenceStats();
+    const latencyStats = this.latencyTracker?.getTrackerStats();
     const baseStats = {
       totalDecisions: this.totalDecisions,
       decisionsPerCli: { ...this.decisionsPerCli },
@@ -320,6 +347,7 @@ export class CompositeRouter implements ICompositeRouter {
       budgetRejectionRate:
         this.totalDecisions > 0 ? this.budgetRejections / this.totalDecisions : 0,
       banditStats: this.linucbBandit?.getStats() ?? [],
+      latencyStats,
     };
 
     if (preferenceStats !== undefined) {

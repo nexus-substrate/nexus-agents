@@ -176,3 +176,50 @@ export type {
   DockerValidation,
   DiskSpaceValidation,
 } from './environment-validator.js';
+
+// Harness executor
+export {
+  HarnessExecutor,
+  createHarnessExecutor,
+  createValidatedExecutor,
+  executeHarness,
+  HarnessExecutorError,
+  DEFAULT_HARNESS_EXECUTION_CONFIG,
+} from './harness-executor.js';
+
+export type {
+  HarnessExecutionConfig,
+  HarnessExecutionResult,
+  HarnessValidationResult,
+  HarnessExecutionProgress,
+  HarnessProgressCallback,
+  IHarnessExecutor,
+} from './harness-executor.js';
+
+// Harness executor types (additional exports)
+export { mapTestStatus, mapResolutionStatus } from './harness-executor-types.js';
+
+export type {
+  RawTestResult,
+  RawInstanceResult,
+  RawHarnessOutput,
+  HarnessExecutionState,
+  HarnessErrorCode,
+} from './harness-executor-types.js';
+
+// Harness executor helpers
+export {
+  buildHarnessArgs,
+  buildHarnessCommand,
+  getSwebenchVersion,
+  getPythonVersion,
+  getDockerVersion,
+  parseProgressLine,
+  transformTestResult,
+  transformInstanceResult,
+  transformHarnessOutput,
+  validatePredictionsFile,
+  calculateEstimatedRemaining,
+  createInitialProgress,
+  getResultsFilePath,
+} from './harness-executor-helpers.js';

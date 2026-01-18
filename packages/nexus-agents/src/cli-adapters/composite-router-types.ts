@@ -12,6 +12,7 @@ import type { ICliAdapter, CliName } from './types.js';
 import type { TaskProfile } from './task-analyzer.js';
 import type { PreferenceRouterConfig } from './preference-router-types.js';
 import type { ZeroRouterConfig, DifficultyEstimate, ModelTier } from './zero-router-types.js';
+import type { LatencyTrackerConfig, LatencyTrackerStats } from './latency-tracker-types.js';
 
 /**
  * Configuration schema for CompositeRouter.
@@ -27,6 +28,10 @@ export const CompositeRouterConfigSchema = z.object({
   enableTopsisRanking: z.boolean().default(true),
   /** Enable LinUCB selection stage (default: true) */
   enableLinUCBSelection: z.boolean().default(true),
+  /** Enable latency tracking for routing decisions (default: true) (Issue #361) */
+  enableLatencyTracking: z.boolean().default(true),
+  /** Weight for latency score in final routing (0-1, default: 0.2) */
+  latencyScoreWeight: z.number().min(0).max(1).default(0.2),
   /** Budget constraints (optional) */
   budgetConstraints: z
     .object({
@@ -54,6 +59,8 @@ export interface CompositeRouterConfigWithPreference extends CompositeRouterConf
   preferenceRouterConfig?: Partial<PreferenceRouterConfig>;
   /** ZeroRouter configuration (optional, uses defaults if not provided) */
   zeroRouterConfig?: Partial<ZeroRouterConfig>;
+  /** Latency tracker configuration (optional, uses defaults if not provided) (Issue #361) */
+  latencyTrackerConfig?: Partial<LatencyTrackerConfig>;
 }
 
 /**
@@ -65,6 +72,8 @@ export const DEFAULT_COMPOSITE_CONFIG: CompositeRouterConfig = {
   enablePreferenceRouting: false,
   enableTopsisRanking: true,
   enableLinUCBSelection: true,
+  enableLatencyTracking: true,
+  latencyScoreWeight: 0.2,
   linucbAlpha: 1.0,
   maxDecisionTimeMs: 50,
   preferenceMinDataPoints: 10,
@@ -100,6 +109,8 @@ export interface CompositeRoutingDecision {
   readonly topsisScore?: number | undefined;
   /** LinUCB UCB score (if LinUCB enabled) */
   readonly ucbScore?: number | undefined;
+  /** Latency score (if latency tracking enabled) (Issue #361) */
+  readonly latencyScore?: number | undefined;
   /** Alternative adapters in ranked order */
   readonly alternatives: readonly CliName[];
   /** Task analysis used for routing */
@@ -144,6 +155,8 @@ export interface CompositeRouterStats {
   };
   /** LinUCB arm statistics */
   readonly banditStats: ReadonlyArray<{ name: string; pullCount: number; avgReward: number }>;
+  /** Latency tracking statistics (Issue #361) */
+  readonly latencyStats?: LatencyTrackerStats | undefined;
 }
 
 /**
@@ -160,6 +173,7 @@ export interface PipelineResult {
   topsisScore: number | undefined;
   selectedCli: CliName;
   ucbScore: number | undefined;
+  latencyScore: number | undefined;
 }
 
 /**
@@ -179,4 +193,5 @@ export interface BuildDecisionParams {
   preferenceTier: 'strong' | 'weak' | undefined;
   topsisScore: number | undefined;
   ucbScore: number | undefined;
+  latencyScore: number | undefined;
 }

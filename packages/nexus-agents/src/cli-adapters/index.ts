@@ -287,3 +287,57 @@ export {
   DEFAULT_TIMEOUT_PROFILE,
 } from './cli-timeout-profiles.js';
 export type { TimeoutProfile, TaskComplexity } from './cli-timeout-profiles.js';
+
+// Task Classifier for Fallback Chains (Issue #362)
+export {
+  classifyTask,
+  isCodeTask,
+  isResearchTask,
+  getAllTaskTypes,
+  DEFAULT_CLASSIFICATION_PATTERNS,
+  ClassificationPatternsSchema,
+} from './task-classifier.js';
+export type {
+  FallbackTaskType,
+  TaskClassification,
+  ClassificationPatterns,
+} from './task-classifier.js';
+
+// Fallback Chain Registry (Issue #362)
+export {
+  getFallbackChain,
+  filterAvailableClis,
+  getNextCli,
+  isChainExhausted,
+  FallbackChainManager,
+  createFallbackChainManager,
+  createFallbackChainRegistry,
+  DEFAULT_FALLBACK_CHAINS,
+  FallbackChainSchema,
+  FallbackChainRegistrySchema,
+} from './fallback-chains.js';
+export type {
+  FallbackChain,
+  FallbackChainRegistry,
+  FallbackChainMetrics,
+  FallbackMetricsRegistry,
+  FallbackOutcome,
+} from './fallback-chains.js';
+
+// Latency Tracker (Issue #361)
+export {
+  LatencyTracker,
+  createLatencyTracker,
+  LatencyTrackerConfigSchema,
+  LatencyTrackerError,
+  EMPTY_LATENCY_STATS,
+  DEFAULT_LATENCY_TRACKER_CONFIG,
+} from './latency-tracker.js';
+export type {
+  ILatencyTracker,
+  LatencyTrackerConfig,
+  LatencySample,
+  LatencyStats,
+  LatencyScore,
+  LatencyTrackerStats,
+} from './latency-tracker.js';
