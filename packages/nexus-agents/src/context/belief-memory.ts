@@ -27,7 +27,6 @@ import {
   BeliefMemoryConfigSchema,
   BeliefQuerySchema,
   BeliefSchema,
-  BeliefSourceType as BeliefSourceTypeEnum,
   BeliefUpdateType as BeliefUpdateTypeEnum,
   DEFAULT_BELIEF_CONFIG,
 } from './belief-types.js';
@@ -36,8 +35,6 @@ import {
   sortBeliefs,
   matchesQueryFilters,
   intersectSets,
-  strengthenConfidence,
-  weakenConfidence,
   createUpdateRecord,
 } from './belief-memory-helpers.js';
 import {
@@ -49,6 +46,13 @@ import {
   computeStatsInternal,
   type AuditDataStores,
 } from './belief-memory-audit.js';
+import {
+  reviseBeliefInternal,
+  applyHindsightInternal,
+  adjustConfidenceInternal,
+  pruneSupersededInternal,
+  type ReflectDataStores,
+} from './belief-memory-reflect.js';
 
 /**
  * In-memory implementation of Hindsight Belief Memory.
@@ -83,6 +87,18 @@ export class HindsightBeliefMemory implements IHindsightBeliefMemory {
       counterfactuals: this.counterfactuals,
       hindsightRecords: this.hindsightRecords,
       logger: this.logger,
+    };
+  }
+
+  private get reflectStores(): ReflectDataStores {
+    return {
+      beliefs: this.beliefs,
+      updates: this.updates,
+      hindsightRecords: this.hindsightRecords,
+      logger: this.logger,
+      recordUpdate: (opts) => {
+        this.recordUpdate(opts);
+      },
     };
   }
 
@@ -129,7 +145,7 @@ export class HindsightBeliefMemory implements IHindsightBeliefMemory {
         beliefId: newBelief.beliefId,
         updateType: BeliefUpdateTypeEnum.RETAIN,
         previousState: {},
-        newState: newBelief,
+        newState: newBelief as unknown as Record<string, unknown>,
         reason: 'Initial belief creation',
       });
       this.logger.debug('Belief retained', {
@@ -181,10 +197,11 @@ export class HindsightBeliefMemory implements IHindsightBeliefMemory {
   query(query: BeliefQuery): Promise<Result<readonly Belief[], MemoryError>> {
     try {
       const validation = BeliefQuerySchema.safeParse(query);
-      if (!validation.success)
+      if (!validation.success) {
         return Promise.resolve(
           err(new MemoryError('Invalid query', { context: { errors: validation.error.issues } }))
         );
+      }
       const candidateIds = this.getCandidateIds(query);
       const filtered = this.filterCandidates(candidateIds, query);
       const sorted = sortBeliefs(filtered, query.orderBy, query.orderDirection);
@@ -265,7 +282,7 @@ export class HindsightBeliefMemory implements IHindsightBeliefMemory {
   }
 
   // =========================================================================
-  // Reflect Operations
+  // Reflect Operations (delegated to belief-memory-reflect.ts)
   // =========================================================================
 
   revise(
@@ -273,40 +290,7 @@ export class HindsightBeliefMemory implements IHindsightBeliefMemory {
     updates: Partial<Pick<Belief, 'object' | 'confidence' | 'metadata'>>,
     reason: string
   ): Promise<Result<Belief, MemoryError>> {
-    try {
-      const existing = this.beliefs.get(beliefId);
-      if (existing === undefined)
-        return Promise.resolve(err(new MemoryError('Belief not found', { context: { beliefId } })));
-      if (existing.superseded)
-        return Promise.resolve(
-          err(new MemoryError('Cannot revise superseded belief', { context: { beliefId } }))
-        );
-      const now = new Date();
-      const revised: Belief = {
-        ...existing,
-        ...updates,
-        version: existing.version + 1,
-        updatedAt: now,
-      };
-      this.beliefs.set(beliefId, revised);
-      this.recordUpdate({
-        beliefId,
-        updateType: BeliefUpdateTypeEnum.REVISE,
-        previousState: { object: existing.object, confidence: existing.confidence },
-        newState: updates,
-        reason,
-      });
-      this.logger.debug('Belief revised', { beliefId, reason });
-      return Promise.resolve(ok(revised));
-    } catch (error) {
-      return Promise.resolve(
-        err(
-          new MemoryError('Failed to revise belief', {
-            cause: error instanceof Error ? error : new Error(String(error)),
-          })
-        )
-      );
-    }
+    return reviseBeliefInternal(this.reflectStores, { beliefId, updates, reason });
   }
 
   async supersede(
@@ -350,102 +334,15 @@ export class HindsightBeliefMemory implements IHindsightBeliefMemory {
   }
 
   applyHindsight(record: HindsightRecord): Promise<Result<readonly Belief[], MemoryError>> {
-    try {
-      const correctedBeliefs: Belief[] = [];
-      const now = new Date();
-      const taskRecords = this.hindsightRecords.get(record.taskId) ?? [];
-      taskRecords.push(record);
-      this.hindsightRecords.set(record.taskId, taskRecords);
-      for (const beliefId of record.correctedBeliefs) {
-        const belief = this.beliefs.get(beliefId);
-        if (belief === undefined || belief.superseded) continue;
-        const corrected: Belief = {
-          ...belief,
-          confidence: weakenConfidence(belief.confidence),
-          sourceType: BeliefSourceTypeEnum.HINDSIGHT,
-          version: belief.version + 1,
-          updatedAt: now,
-        };
-        this.beliefs.set(beliefId, corrected);
-        correctedBeliefs.push(corrected);
-        this.recordUpdate({
-          beliefId,
-          updateType: BeliefUpdateTypeEnum.CORRECT,
-          previousState: { confidence: belief.confidence },
-          newState: { confidence: corrected.confidence },
-          reason: `Hindsight correction: expected "${record.expectedOutcome}", got "${record.actualOutcome}"`,
-          evidence: record.hindsightId,
-        });
-      }
-      this.logger.info('Hindsight applied', {
-        hindsightId: record.hindsightId,
-        correctedCount: correctedBeliefs.length,
-      });
-      return Promise.resolve(ok(correctedBeliefs));
-    } catch (error) {
-      return Promise.resolve(
-        err(
-          new MemoryError('Failed to apply hindsight', {
-            cause: error instanceof Error ? error : new Error(String(error)),
-          })
-        )
-      );
-    }
+    return applyHindsightInternal(this.reflectStores, record);
   }
 
   reinforce(beliefId: string, evidence: string): Promise<Result<Belief, MemoryError>> {
-    return this.adjustConfidence(beliefId, evidence, 'reinforce');
-  }
-  weaken(beliefId: string, evidence: string): Promise<Result<Belief, MemoryError>> {
-    return this.adjustConfidence(beliefId, evidence, 'weaken');
+    return adjustConfidenceInternal(this.reflectStores, beliefId, evidence, 'reinforce');
   }
 
-  private adjustConfidence(
-    beliefId: string,
-    evidence: string,
-    direction: 'reinforce' | 'weaken'
-  ): Promise<Result<Belief, MemoryError>> {
-    try {
-      const existing = this.beliefs.get(beliefId);
-      if (existing === undefined)
-        return Promise.resolve(err(new MemoryError('Belief not found', { context: { beliefId } })));
-      if (existing.superseded)
-        return Promise.resolve(
-          err(new MemoryError(`Cannot ${direction} superseded belief`, { context: { beliefId } }))
-        );
-      const now = new Date();
-      const newConfidence =
-        direction === 'reinforce'
-          ? strengthenConfidence(existing.confidence)
-          : weakenConfidence(existing.confidence);
-      const updated: Belief = {
-        ...existing,
-        confidence: newConfidence,
-        version: existing.version + 1,
-        updatedAt: now,
-      };
-      this.beliefs.set(beliefId, updated);
-      const updateType =
-        direction === 'reinforce' ? BeliefUpdateTypeEnum.REINFORCE : BeliefUpdateTypeEnum.WEAKEN;
-      this.recordUpdate({
-        beliefId,
-        updateType,
-        previousState: { confidence: existing.confidence },
-        newState: { confidence: newConfidence },
-        reason: direction === 'reinforce' ? 'Corroborating evidence' : 'Contradicting evidence',
-        evidence,
-      });
-      this.logger.debug(`Belief ${direction}d`, { beliefId, newConfidence });
-      return Promise.resolve(ok(updated));
-    } catch (error) {
-      return Promise.resolve(
-        err(
-          new MemoryError(`Failed to ${direction} belief`, {
-            cause: error instanceof Error ? error : new Error(String(error)),
-          })
-        )
-      );
-    }
+  weaken(beliefId: string, evidence: string): Promise<Result<Belief, MemoryError>> {
+    return adjustConfidenceInternal(this.reflectStores, beliefId, evidence, 'weaken');
   }
 
   // =========================================================================
@@ -458,21 +355,26 @@ export class HindsightBeliefMemory implements IHindsightBeliefMemory {
   ): Promise<Result<Counterfactual, MemoryError>> {
     return createCounterfactualInternal(this.auditStores, hypothesis, taskContext);
   }
+
   validateCounterfactual(
     counterfactualId: string,
     actualOutcomes: readonly string[]
   ): Promise<Result<Counterfactual, MemoryError>> {
     return validateCounterfactualInternal(this.auditStores, counterfactualId, actualOutcomes);
   }
+
   getCounterfactuals(taskContext: string): Promise<Result<readonly Counterfactual[], MemoryError>> {
     return getCounterfactualsInternal(this.auditStores, taskContext);
   }
+
   getUpdateHistory(beliefId: string): Promise<Result<readonly BeliefUpdate[], MemoryError>> {
     return getUpdateHistoryInternal(this.auditStores, beliefId);
   }
+
   getHindsightRecords(taskId: string): Promise<Result<readonly HindsightRecord[], MemoryError>> {
     return getHindsightRecordsInternal(this.auditStores, taskId);
   }
+
   getStats(): Promise<Result<BeliefMemoryStats, MemoryError>> {
     try {
       return Promise.resolve(ok(computeStatsInternal(this.auditStores)));
@@ -488,28 +390,15 @@ export class HindsightBeliefMemory implements IHindsightBeliefMemory {
   }
 
   pruneSuperseded(olderThan: Date): Promise<Result<number, MemoryError>> {
-    try {
-      let pruned = 0;
-      const cutoff = olderThan.getTime();
-      for (const [id, belief] of this.beliefs.entries()) {
-        if (belief.superseded && belief.updatedAt.getTime() < cutoff) {
-          this.beliefs.delete(id);
-          this.removeFromIndices(belief);
-          this.updates.delete(id);
-          pruned++;
-        }
-      }
-      this.logger.info('Pruned superseded beliefs', { pruned, olderThan: olderThan.toISOString() });
-      return Promise.resolve(ok(pruned));
-    } catch (error) {
-      return Promise.resolve(
-        err(
-          new MemoryError('Failed to prune superseded beliefs', {
-            cause: error instanceof Error ? error : new Error(String(error)),
-          })
-        )
-      );
-    }
+    return pruneSupersededInternal(
+      {
+        ...this.reflectStores,
+        subjectIndex: this.subjectIndex,
+        predicateIndex: this.predicateIndex,
+        domainIndex: this.domainIndex,
+      },
+      olderThan
+    );
   }
 
   // =========================================================================
@@ -530,28 +419,16 @@ export class HindsightBeliefMemory implements IHindsightBeliefMemory {
     }
   }
 
-  private removeFromIndices(belief: Belief): void {
-    this.subjectIndex.get(belief.subject)?.delete(belief.beliefId);
-    this.predicateIndex.get(belief.predicate)?.delete(belief.beliefId);
-    if (belief.domain !== undefined) this.domainIndex.get(belief.domain)?.delete(belief.beliefId);
-  }
-
   private recordUpdate(opts: {
     beliefId: string;
     updateType: BeliefUpdate['updateType'];
-    previousState: Partial<Belief>;
-    newState: Partial<Belief>;
+    previousState: Record<string, unknown>;
+    newState: Record<string, unknown>;
     reason: string;
     evidence?: string;
   }): void {
     const history = this.updates.get(opts.beliefId) ?? [];
-    history.push(
-      createUpdateRecord({
-        ...opts,
-        previousState: opts.previousState as Record<string, unknown>,
-        newState: opts.newState as Record<string, unknown>,
-      })
-    );
+    history.push(createUpdateRecord(opts));
     this.updates.set(opts.beliefId, history);
   }
 }
