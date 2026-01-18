@@ -8,9 +8,11 @@
  * (Source: Issue #339)
  */
 
+import { resolve, sep } from 'node:path';
 import type { Result } from '../../core/index.js';
 import type { WorkflowDefinition, StepResult } from '../../core/index.js';
-import { WorkflowError } from '../../core/index.js';
+import { WorkflowError, SecurityError } from '../../core/index.js';
+import { getBuiltInTemplatesPath } from '../../workflows/template-loader.js';
 import type { StepResultSummary, DryRunResult, RunWorkflowDeps } from './run-workflow-types.js';
 
 // ============================================================================
@@ -30,6 +32,76 @@ export function isFilePath(template: string): boolean {
     template.endsWith('.yaml') ||
     template.endsWith('.yml')
   );
+}
+
+// ============================================================================
+// Path Validation (Security - Issue #353)
+// ============================================================================
+
+/**
+ * Validates that a file path is within one of the allowed root directories.
+ * Prevents path traversal attacks (e.g., ../../../etc/passwd).
+ *
+ * @param userPath - The user-provided file path
+ * @param allowedRoots - Array of allowed root directories
+ * @returns Result with validated absolute path or SecurityError
+ */
+export function validateWorkflowPath(
+  userPath: string,
+  allowedRoots: string[]
+): Result<string, SecurityError> {
+  if (allowedRoots.length === 0) {
+    return {
+      ok: false,
+      error: new SecurityError('No allowed directories configured for workflow templates', {
+        context: { userPath },
+      }),
+    };
+  }
+
+  // Resolve the user path to an absolute path
+  const resolvedPath = resolve(userPath);
+
+  // Check if the resolved path is within any of the allowed roots
+  for (const root of allowedRoots) {
+    const resolvedRoot = resolve(root);
+    // Path must be exactly the root OR start with root + separator
+    if (resolvedPath === resolvedRoot || resolvedPath.startsWith(resolvedRoot + sep)) {
+      return { ok: true, value: resolvedPath };
+    }
+  }
+
+  return {
+    ok: false,
+    error: new SecurityError('Path traversal detected: path escapes allowed directories', {
+      context: { userPath, allowedDirectories: allowedRoots.map((r) => resolve(r)) },
+    }),
+  };
+}
+
+/**
+ * Get allowed directories for workflow templates.
+ * Combines security config allowedPaths with built-in templates directory.
+ *
+ * @param deps - Tool dependencies containing security config
+ * @returns Array of allowed directory paths
+ */
+export function getAllowedWorkflowDirs(deps: RunWorkflowDeps): string[] {
+  const allowedDirs: string[] = [];
+
+  // Add built-in templates directory (always allowed)
+  allowedDirs.push(getBuiltInTemplatesPath());
+
+  // Add security config allowedPaths if configured
+  const securityPaths = deps.security?.allowedPaths;
+  if (securityPaths !== undefined && securityPaths.length > 0) {
+    allowedDirs.push(...securityPaths);
+  } else {
+    // Fall back to current working directory if no explicit config
+    allowedDirs.push(process.cwd());
+  }
+
+  return allowedDirs;
 }
 
 // ============================================================================
@@ -153,62 +225,97 @@ export function validateWorkflowInputs(
 // ============================================================================
 
 /**
- * Load workflow definition from template name or path.
- *
- * @param deps - Tool dependencies
- * @param template - Template name or path
- * @returns Result with workflow definition
+ * Load workflow from a file path with security validation.
+ * (Security fix: Issue #353)
  */
-export async function loadWorkflow(
+async function loadWorkflowFromPath(
   deps: RunWorkflowDeps,
-  template: string
+  filePath: string
+): Promise<Result<WorkflowDefinition, WorkflowError | SecurityError>> {
+  const { workflowEngine, logger } = deps;
+
+  // Validate path before loading (Security - Issue #353)
+  const allowedDirs = getAllowedWorkflowDirs(deps);
+  const pathValidation = validateWorkflowPath(filePath, allowedDirs);
+  if (!pathValidation.ok) {
+    logger?.warn('Workflow path validation failed', {
+      path: filePath,
+      error: pathValidation.error.message,
+    });
+    return { ok: false, error: pathValidation.error };
+  }
+
+  const validatedPath = pathValidation.value;
+  const result = await workflowEngine.loadTemplate(validatedPath);
+  if (!result.ok) {
+    return {
+      ok: false,
+      error: new WorkflowError(`Failed to load template from path: ${result.error.message}`, {
+        context: { path: validatedPath },
+      }),
+    };
+  }
+  return result;
+}
+
+/**
+ * Load workflow from a built-in template name.
+ */
+async function loadWorkflowFromName(
+  deps: RunWorkflowDeps,
+  name: string
 ): Promise<Result<WorkflowDefinition, WorkflowError>> {
   const { workflowEngine, logger } = deps;
 
-  if (isFilePath(template)) {
-    logger?.debug('Loading workflow from file', { path: template });
-    const result = await workflowEngine.loadTemplate(template);
-    if (!result.ok) {
-      return {
-        ok: false,
-        error: new WorkflowError(`Failed to load template from path: ${result.error.message}`, {
-          context: { path: template },
-        }),
-      };
-    }
-    return result;
-  }
-
-  // Load from built-in templates
-  logger?.debug('Looking up built-in template', { name: template });
+  logger?.debug('Looking up built-in template', { name });
   const templates = await workflowEngine.listTemplates();
-  const found = templates.find((t) => t.name === template);
+  const found = templates.find((t) => t.name === name);
 
   if (found === undefined) {
     const availableNames = templates.map((t) => t.name).join(', ');
     return {
       ok: false,
-      error: new WorkflowError(`Template not found: ${template}`, {
-        context: {
-          template,
-          availableTemplates: availableNames,
-        },
+      error: new WorkflowError(`Template not found: ${name}`, {
+        context: { template: name, availableTemplates: availableNames },
       }),
     };
   }
 
-  // Load the template by path
+  // Built-in templates are pre-validated, load directly
   const result = await workflowEngine.loadTemplate(found.path);
   if (!result.ok) {
     return {
       ok: false,
       error: new WorkflowError(`Failed to load template: ${result.error.message}`, {
-        context: { template, path: found.path },
+        context: { template: name, path: found.path },
       }),
     };
   }
-
   return result;
+}
+
+/**
+ * Load workflow definition from template name or path.
+ *
+ * Validates file paths against allowed directories to prevent path traversal attacks.
+ * (Security fix: Issue #353)
+ *
+ * @param deps - Tool dependencies
+ * @param template - Template name or path
+ * @returns Result with workflow definition or error
+ */
+export async function loadWorkflow(
+  deps: RunWorkflowDeps,
+  template: string
+): Promise<Result<WorkflowDefinition, WorkflowError | SecurityError>> {
+  const { logger } = deps;
+
+  if (isFilePath(template)) {
+    logger?.debug('Loading workflow from file', { path: template });
+    return loadWorkflowFromPath(deps, template);
+  }
+
+  return loadWorkflowFromName(deps, template);
 }
 
 // ============================================================================

@@ -110,7 +110,15 @@ export function countByStatus(
 export async function getResearchStatus(
   options: ResearchStatusOptions
 ): Promise<ResearchStatusResult> {
-  const registry = await loadTechniquesRegistry();
+  const result = await loadTechniquesRegistry();
+  if (!result.ok) {
+    return {
+      success: false,
+      techniques: [],
+      counts: { implemented: 0, planned: 0, notStarted: 0, rejected: 0, total: 0 },
+    };
+  }
+  const registry = result.value;
 
   // If specific technique requested
   if (options.techniqueId !== undefined && options.techniqueId !== '') {

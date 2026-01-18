@@ -142,3 +142,19 @@ export type {
   ReportMetadata,
   IReportGenerator,
 } from './evaluation-report-types.js';
+
+// SWE-Bench runner
+export {
+  SWEBenchRunner,
+  SWEBenchRunnerError,
+  createRunner,
+  createVariantRunner,
+  quickRun,
+} from './swe-bench-runner.js';
+
+export type {
+  RunnerErrorCode,
+  RunProgress,
+  ProgressCallback,
+  RunnerConfig,
+} from './swe-bench-runner.js';

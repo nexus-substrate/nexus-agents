@@ -86,6 +86,46 @@ export { StateManager, createStateManager, DEFAULT_STATE_MANAGER_CONFIG } from '
 // =============================================================================
 
 export { RuleBasedPolicy, createRuleBasedPolicy } from './rule-based-policy.js';
+export type { ScoringFeatures, AgentScores } from './rule-based-policy.js';
+
+// =============================================================================
+// Policy Feature Extraction
+// =============================================================================
+
+export {
+  extractFeatures,
+  extractKeywords,
+  detectStuckState,
+  inferLastPattern,
+} from './policy-feature-extraction.js';
+
+// =============================================================================
+// Policy Scoring
+// =============================================================================
+
+export {
+  computeCapabilityScore,
+  computeRecencyScore,
+  computePatternMatchScore,
+  computeCostEfficiencyScore,
+  computeProgressAdjustment,
+  computeAgentScore,
+  computeAllAgentScores,
+} from './policy-scoring.js';
+
+// =============================================================================
+// Policy Distribution
+// =============================================================================
+
+export {
+  softmax,
+  enforceMinProbability,
+  generateReasoning,
+  scoresToDistribution,
+  argmax,
+  weightedSample,
+  sampleFromDistribution,
+} from './policy-distribution.js';
 
 // =============================================================================
 // Pattern Tracker

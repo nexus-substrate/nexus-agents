@@ -7,11 +7,11 @@
  */
 
 import { readFileSync, existsSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { resolve, sep } from 'node:path';
 import * as yaml from 'yaml';
 import type { ZodError } from 'zod';
 import type { Result } from '../core/index.js';
-import { ok, err } from '../core/index.js';
+import { ok, err, SecurityError } from '../core/index.js';
 import {
   CustomExpertDefinitionSchema,
   VALID_EXPERT_TIERS,
@@ -25,6 +25,27 @@ import type { ExpertDefinition } from '../agents/experts/expert-selector-types.j
  * Default config file name.
  */
 const DEFAULT_CONFIG_FILE = 'nexus-agents.yaml';
+
+/**
+ * Validates that a file path is within the allowed root directory.
+ * Prevents path traversal attacks (e.g., ../../../etc/passwd).
+ * @param userPath - The user-provided file path
+ * @param allowedRoot - The root directory that paths must be within
+ * @returns Result with validated absolute path or SecurityError
+ */
+function validateConfigPath(userPath: string, allowedRoot: string): Result<string, SecurityError> {
+  const resolvedRoot = resolve(allowedRoot);
+  const resolved = resolve(allowedRoot, userPath);
+
+  if (!resolved.startsWith(resolvedRoot + sep) && resolved !== resolvedRoot) {
+    return err(
+      new SecurityError('Path traversal detected: config path escapes allowed root directory', {
+        context: { userPath, allowedRoot: resolvedRoot },
+      })
+    );
+  }
+  return ok(resolved);
+}
 
 /**
  * Error details for custom expert validation failures.
@@ -127,22 +148,46 @@ function formatExpertName(id: string): string {
 }
 
 /**
- * Finds the config file path.
+ * Result of finding config path - includes potential security errors.
  */
-function findConfigPath(): string | undefined {
+interface FindConfigResult {
+  path?: string;
+  securityError?: SecurityError;
+}
+
+/**
+ * Finds the config file path with path traversal validation.
+ *
+ * The NEXUS_CONFIG_PATH environment variable is validated to ensure it
+ * stays within the current working directory to prevent path traversal attacks.
+ *
+ * @returns Object containing the validated path or a security error
+ */
+function findConfigPath(): FindConfigResult {
+  const cwd = process.cwd();
+
   // Check environment variable first
   const envPath = process.env['NEXUS_CONFIG_PATH'];
-  if (envPath !== undefined && envPath !== '' && existsSync(envPath)) {
-    return resolve(envPath);
+  if (envPath !== undefined && envPath !== '') {
+    // Validate that the environment variable path stays within cwd
+    const validation = validateConfigPath(envPath, cwd);
+    if (!validation.ok) {
+      return { securityError: validation.error };
+    }
+
+    if (existsSync(validation.value)) {
+      return { path: validation.value };
+    }
+    // Path is valid but file doesn't exist - fall through to cwd check
   }
 
   // Check current directory
-  const cwdPath = resolve(process.cwd(), DEFAULT_CONFIG_FILE);
+  const cwdPath = resolve(cwd, DEFAULT_CONFIG_FILE);
   if (existsSync(cwdPath)) {
-    return cwdPath;
+    return { path: cwdPath };
   }
 
-  return undefined;
+  return {};
 }
 
 /**
@@ -236,68 +281,102 @@ function processCustomExperts(customExperts: Record<string, unknown>): {
 }
 
 /**
+ * Resolves the config path, either from explicit argument or auto-detection.
+ * Returns a security error if path traversal is detected.
+ */
+function resolveConfigPath(configPath: string | undefined): {
+  path?: string;
+  error?: CustomExpertError;
+} {
+  if (configPath !== undefined) {
+    return { path: configPath };
+  }
+
+  const findResult = findConfigPath();
+  if (findResult.securityError !== undefined) {
+    return {
+      error: {
+        expertId: 'config',
+        field: 'path',
+        message: findResult.securityError.message,
+        suggestion: 'NEXUS_CONFIG_PATH must be within the current working directory',
+      },
+    };
+  }
+
+  if (findResult.path !== undefined) {
+    return { path: findResult.path };
+  }
+  return {};
+}
+
+/**
+ * Reads and parses the config file content.
+ */
+function readConfigContent(configPath: string): { content?: string; error?: CustomExpertError } {
+  try {
+    return { content: readFileSync(configPath, 'utf-8') };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return {
+      error: {
+        expertId: 'config',
+        field: 'file',
+        message: `Failed to read config file: ${message}`,
+      },
+    };
+  }
+}
+
+/**
  * Loads custom experts from the nexus-agents.yaml config file.
  *
  * @param configPath - Optional path to config file (auto-detected if not provided)
  * @returns Result containing loaded experts and any validation errors
  */
 export function loadCustomExperts(configPath?: string): CustomExpertLoadResult {
-  const result: CustomExpertLoadResult = {
-    experts: [],
-    errors: [],
-  };
+  const result: CustomExpertLoadResult = { experts: [], errors: [] };
 
-  // Find config file
-  const resolvedPath = configPath ?? findConfigPath();
-  if (resolvedPath === undefined) {
-    // No config file found - not an error, just return empty
+  // Resolve config path with security validation
+  const pathResult = resolveConfigPath(configPath);
+  if (pathResult.error !== undefined) {
+    result.errors.push(pathResult.error);
     return result;
   }
-
-  result.configPath = resolvedPath;
+  if (pathResult.path === undefined) {
+    return result; // No config file found - not an error
+  }
+  result.configPath = pathResult.path;
 
   // Read config file
-  let content: string;
-  try {
-    content = readFileSync(resolvedPath, 'utf-8');
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    result.errors.push({
-      expertId: 'config',
-      field: 'file',
-      message: `Failed to read config file: ${message}`,
-    });
+  const contentResult = readConfigContent(pathResult.path);
+  if (contentResult.error !== undefined || contentResult.content === undefined) {
+    if (contentResult.error !== undefined) {
+      result.errors.push(contentResult.error);
+    }
     return result;
   }
 
   // Parse YAML
-  const parseResult = parseYaml(content);
+  const parseResult = parseYaml(contentResult.content);
   if (!parseResult.ok) {
-    result.errors.push({
-      expertId: 'config',
-      field: 'yaml',
-      message: parseResult.error.message,
-    });
+    result.errors.push({ expertId: 'config', field: 'yaml', message: parseResult.error.message });
     return result;
   }
 
-  // Extract raw expert config for individual validation
+  // Extract and process custom experts
   const configResult = extractRawExpertConfig(parseResult.value);
   if (!configResult.ok) {
     result.errors.push(...configResult.error);
     return result;
   }
-
-  const customExperts = configResult.value;
-  if (customExperts === undefined) {
+  if (configResult.value === undefined) {
     return result;
   }
 
-  // Process custom experts with individual validation
-  const { experts, errors } = processCustomExperts(customExperts);
-  result.experts = experts;
-  result.errors = errors;
-
+  const processed = processCustomExperts(configResult.value);
+  result.experts = processed.experts;
+  result.errors = processed.errors;
   return result;
 }
 

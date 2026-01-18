@@ -9,8 +9,10 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import { AuditLogger } from '../audit-logger.js';
 import { InMemoryAuditStorage, FileAuditStorage } from '../audit-storage.js';
+import type { FileAuditStorageConfig } from '../audit-storage.js';
 import type { AuditEvent, AuditActor, AuditLogConfig } from '../audit-types.js';
 import { AuditError } from '../audit-types.js';
+import { SecurityError } from '../../core/index.js';
 
 // ============================================================================
 // Test Helpers
@@ -562,6 +564,202 @@ describe('FileAuditStorage', () => {
       const results = await storage.query({ categories: ['security'], limit: 100, offset: 0 });
       expect(results).toHaveLength(1);
       expect(results[0]?.id).toBe('aud_query_1');
+    });
+  });
+});
+
+// ============================================================================
+// FileAuditStorage Path Traversal Prevention Tests
+// (Source: Issue #353 - Security path traversal validation)
+// ============================================================================
+
+describe('FileAuditStorage Path Traversal Prevention', () => {
+  const MALICIOUS_PATHS = [
+    '../../../etc/passwd',
+    '../../../../../../../tmp/malicious',
+    'foo/../../../etc/passwd',
+    './foo/../../../tmp/bad',
+    'logs/../../etc/passwd',
+  ];
+
+  const URL_ENCODED_PATHS = ['..%2f..%2f..%2fetc', '%2e%2e/%2e%2e/%2e%2e/etc'];
+
+  describe('FileAuditStorage.create() with allowedRoot', () => {
+    const allowedRoot = '/tmp/audit-test-allowed';
+
+    MALICIOUS_PATHS.forEach((maliciousPath) => {
+      it(`should reject path traversal via create(): ${maliciousPath}`, () => {
+        const config: FileAuditStorageConfig = {
+          logDir: maliciousPath,
+          filePrefix: 'audit',
+          maxFileSizeBytes: 1024,
+          maxFiles: 3,
+          flushIntervalMs: 100,
+          minSeverity: 'info',
+          enableHashChain: false,
+          enableCompression: false,
+          allowedRoot,
+        };
+
+        const result = FileAuditStorage.create(config);
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.error).toBeInstanceOf(SecurityError);
+          expect(result.error.message.toLowerCase()).toContain('traversal');
+        }
+      });
+    });
+
+    it('should reject absolute paths outside allowed root', () => {
+      const config: FileAuditStorageConfig = {
+        logDir: '/etc/passwd',
+        filePrefix: 'audit',
+        maxFileSizeBytes: 1024,
+        maxFiles: 3,
+        flushIntervalMs: 100,
+        minSeverity: 'info',
+        enableHashChain: false,
+        enableCompression: false,
+        allowedRoot,
+      };
+
+      const result = FileAuditStorage.create(config);
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error).toBeInstanceOf(SecurityError);
+      }
+    });
+
+    it('should allow valid paths within allowed root', () => {
+      const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'audit-allowed-'));
+      try {
+        const config: FileAuditStorageConfig = {
+          logDir: 'logs',
+          filePrefix: 'audit',
+          maxFileSizeBytes: 1024,
+          maxFiles: 3,
+          flushIntervalMs: 100,
+          minSeverity: 'info',
+          enableHashChain: false,
+          enableCompression: false,
+          allowedRoot: tempRoot,
+        };
+
+        const result = FileAuditStorage.create(config);
+
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+          // Cleanup
+          void result.value.close();
+        }
+      } finally {
+        fs.rmSync(tempRoot, { recursive: true, force: true });
+      }
+    });
+
+    it('should allow the allowed root itself as logDir', () => {
+      const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'audit-root-'));
+      try {
+        const config: FileAuditStorageConfig = {
+          logDir: tempRoot,
+          filePrefix: 'audit',
+          maxFileSizeBytes: 1024,
+          maxFiles: 3,
+          flushIntervalMs: 100,
+          minSeverity: 'info',
+          enableHashChain: false,
+          enableCompression: false,
+          allowedRoot: tempRoot,
+        };
+
+        const result = FileAuditStorage.create(config);
+
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+          void result.value.close();
+        }
+      } finally {
+        fs.rmSync(tempRoot, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe('FileAuditStorage constructor basic validation', () => {
+    MALICIOUS_PATHS.forEach((maliciousPath) => {
+      it(`should reject path traversal in constructor: ${maliciousPath}`, () => {
+        const config: AuditLogConfig = {
+          logDir: maliciousPath,
+          filePrefix: 'audit',
+          maxFileSizeBytes: 1024,
+          maxFiles: 3,
+          flushIntervalMs: 100,
+          minSeverity: 'info',
+          enableHashChain: false,
+          enableCompression: false,
+        };
+
+        expect(() => new FileAuditStorage(config)).toThrow(SecurityError);
+      });
+    });
+
+    URL_ENCODED_PATHS.forEach((encodedPath) => {
+      it(`should reject URL-encoded traversal: ${encodedPath}`, () => {
+        const config: AuditLogConfig = {
+          logDir: encodedPath,
+          filePrefix: 'audit',
+          maxFileSizeBytes: 1024,
+          maxFiles: 3,
+          flushIntervalMs: 100,
+          minSeverity: 'info',
+          enableHashChain: false,
+          enableCompression: false,
+        };
+
+        expect(() => new FileAuditStorage(config)).toThrow(SecurityError);
+      });
+    });
+
+    it('should reject system directories', () => {
+      const systemDirs = ['/etc', '/var', '/usr', '/bin', '/sbin', '/proc', '/sys'];
+
+      for (const sysDir of systemDirs) {
+        const config: AuditLogConfig = {
+          logDir: sysDir,
+          filePrefix: 'audit',
+          maxFileSizeBytes: 1024,
+          maxFiles: 3,
+          flushIntervalMs: 100,
+          minSeverity: 'info',
+          enableHashChain: false,
+          enableCompression: false,
+        };
+
+        expect(() => new FileAuditStorage(config)).toThrow(SecurityError);
+      }
+    });
+
+    it('should allow valid temp directory paths', () => {
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'audit-valid-'));
+      try {
+        const config: AuditLogConfig = {
+          logDir: tempDir,
+          filePrefix: 'audit',
+          maxFileSizeBytes: 1024,
+          maxFiles: 3,
+          flushIntervalMs: 100,
+          minSeverity: 'info',
+          enableHashChain: false,
+          enableCompression: false,
+        };
+
+        const storage = new FileAuditStorage(config);
+        expect(storage).toBeInstanceOf(FileAuditStorage);
+        void storage.close();
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
     });
   });
 });

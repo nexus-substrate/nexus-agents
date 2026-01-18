@@ -1,9 +1,8 @@
 /**
- * CompositeRouter: Chains Budget → ZeroRouter → Preference → TOPSIS → LinUCB.
+ * CompositeRouter: Chains Budget -> ZeroRouter -> Preference -> TOPSIS -> LinUCB.
  * @module cli-adapters/composite-router
  * (Source: Issue #166, Epic #164, Issue #347, arXiv:2509.07571)
  */
-/* eslint-disable max-lines -- Composite router coordinates 5 pipeline stages */
 import type { Result } from '../core/index.js';
 import { ok, err, createLogger } from '../core/index.js';
 import type { ILogger } from '../core/index.js';
@@ -15,7 +14,6 @@ import { PreferenceRouter } from './preference-router.js';
 import type { PreferenceRouterConfig } from './preference-router-types.js';
 import { ZeroRouter, type IZeroRouter } from './zero-router.js';
 import type { ZeroRouterConfig } from './zero-router-types.js';
-import { analyzeTask, type TaskProfile } from './task-analyzer.js';
 import {
   CompositeRouterConfigSchema,
   CompositeRoutingError,
@@ -23,23 +21,23 @@ import {
   type CompositeRouterConfigWithPreference,
   type CompositeRoutingDecision,
   type CompositeRouterStats,
-  type PipelineResult,
   type BuildDecisionParams,
+  type PipelineResult,
 } from './composite-router-types.js';
+import { buildDecisionFields } from './composite-router-helpers.js';
 import {
-  taskProfileToBanditContext,
-  filterByPreferenceTier,
-  cliTaskToTask,
-  applyBudgetFilter,
-  applyTopsisRanking,
-  applyZeroRouterFilter,
-  defaultPreferenceStageResult,
-  defaultZeroRouterStageResult,
-  buildDecisionFields,
-  buildDifficultyOutcome,
-  type PreferenceStageResult,
-  type ZeroRouterStageResult,
-} from './composite-router-helpers.js';
+  analyzeTaskProfile,
+  runPipeline,
+  type StageDependencies,
+} from './composite-router-stages.js';
+import {
+  recordBanditOutcome,
+  recordPreferenceSignal,
+  recordZeroRouterOutcome,
+  hasMinimumPreferenceData,
+  type LastRoutedTaskInfo,
+  type OutcomeDependencies,
+} from './composite-router-outcome.js';
 
 // Re-export types for consumers
 export {
@@ -70,8 +68,6 @@ export interface ICompositeRouter {
 /** CompositeRouter implementation. */
 export class CompositeRouter implements ICompositeRouter {
   private readonly config: CompositeRouterConfig;
-  private readonly preferenceRouterConfig?: Partial<PreferenceRouterConfig>;
-  private readonly zeroRouterConfig?: Partial<ZeroRouterConfig>;
   private readonly logger: ILogger;
   private readonly adapters: Map<CliName, ICliAdapter>;
   private budgetRouter?: BudgetRouter;
@@ -88,7 +84,7 @@ export class CompositeRouter implements ICompositeRouter {
   private budgetRejections = 0;
 
   // Track last routing for difficulty outcome recording
-  private lastRoutedTask?: { task: CliTask; selectedCli: CliName; difficulty: number };
+  private lastRoutedTask?: LastRoutedTaskInfo;
 
   constructor(
     adapters: Map<CliName, ICliAdapter>,
@@ -97,8 +93,6 @@ export class CompositeRouter implements ICompositeRouter {
   ) {
     const { preferenceRouterConfig, zeroRouterConfig, ...baseConfig } = config ?? {};
     this.config = CompositeRouterConfigSchema.parse(baseConfig);
-    if (preferenceRouterConfig !== undefined) this.preferenceRouterConfig = preferenceRouterConfig;
-    if (zeroRouterConfig !== undefined) this.zeroRouterConfig = zeroRouterConfig;
     this.logger = logger ?? createLogger({ component: 'CompositeRouter' });
     this.adapters = adapters;
     this.cliNames = Array.from(adapters.keys());
@@ -140,9 +134,15 @@ export class CompositeRouter implements ICompositeRouter {
   ): Result<CompositeRoutingDecision, CompositeRoutingError> {
     const stagesExecuted: string[] = [];
     try {
-      const taskProfile = this.analyzeTaskProfile(task, stagesExecuted);
-      const pipelineResult = this.runPipeline(task, taskProfile, stagesExecuted);
-      if (!pipelineResult.ok) return pipelineResult;
+      const taskProfile = analyzeTaskProfile(task, stagesExecuted);
+      const deps = this.getStageDependencies();
+      const pipelineResult = runPipeline(task, taskProfile, stagesExecuted, this.cliNames, deps);
+      if (!pipelineResult.ok) {
+        if (pipelineResult.error.stage === 'budget-filter') this.budgetRejections++;
+        return pipelineResult;
+      }
+
+      this.trackLastRoutedTask(task, pipelineResult.value);
 
       return this.buildRoutingDecision({
         ...pipelineResult.value,
@@ -155,158 +155,27 @@ export class CompositeRouter implements ICompositeRouter {
     }
   }
 
-  private analyzeTaskProfile(task: CliTask, stagesExecuted: string[]): TaskProfile {
-    const internalTask = cliTaskToTask(task);
-    const taskProfile = analyzeTask(internalTask);
-    stagesExecuted.push('task-analysis');
-    return taskProfile;
+  private getStageDependencies(): StageDependencies {
+    return {
+      config: this.config,
+      logger: this.logger,
+      cliNames: this.cliNames,
+      budgetRouter: this.budgetRouter,
+      zeroRouter: this.zeroRouter,
+      preferenceRouter: this.preferenceRouter,
+      topsisRouter: this.topsisRouter,
+      linucbBandit: this.linucbBandit,
+    };
   }
 
-  private runPipeline(
-    task: CliTask,
-    taskProfile: TaskProfile,
-    stagesExecuted: string[]
-  ): Result<PipelineResult, CompositeRoutingError> {
-    let candidates: CliName[] = [...this.cliNames];
-    if (candidates.length === 0) {
-      return err(new CompositeRoutingError('No CLI adapters available', 'initialization'));
-    }
-
-    // Step 1: Budget filtering
-    const budgetResult = this.runBudgetStage(task, candidates, stagesExecuted);
-    if (!budgetResult.ok) return budgetResult;
-    candidates = budgetResult.value.candidates;
-    const withinBudget = budgetResult.value.withinBudget;
-
-    // Step 2: ZeroRouter + Step 3: Preference + Step 4: TOPSIS + Step 5: LinUCB
-    const zeroResult = this.runZeroRouterStage(task, candidates, stagesExecuted);
-    candidates = zeroResult.filteredCandidates;
-
-    const prefResult = this.runPreferenceStage(task, candidates, stagesExecuted);
-    candidates = prefResult.preferredCandidates;
-
-    const topsisResult = this.runTopsisStage(taskProfile, candidates, stagesExecuted);
-    const linucbResult = this.runLinUCBStage(taskProfile, topsisResult.ranking, stagesExecuted);
-    if (linucbResult.selectedCli === undefined) {
-      return err(new CompositeRoutingError('No candidates available', 'selection'));
-    }
-
-    if (zeroResult.difficultyEstimate !== undefined) {
+  private trackLastRoutedTask(task: CliTask, result: PipelineResult): void {
+    if (result.difficultyEstimate !== undefined) {
       this.lastRoutedTask = {
         task,
-        selectedCli: linucbResult.selectedCli,
-        difficulty: zeroResult.difficultyEstimate.aggregateScore,
+        selectedCli: result.selectedCli,
+        difficulty: result.difficultyEstimate.aggregateScore,
       };
     }
-
-    return ok({
-      candidates,
-      withinBudget,
-      difficultyEstimate: zeroResult.difficultyEstimate,
-      difficultyTier: zeroResult.difficultyTier,
-      preferenceScore: prefResult.preferenceScore,
-      preferenceTier: prefResult.preferenceTier,
-      topsisRanking: topsisResult.ranking,
-      topsisScore: topsisResult.score,
-      selectedCli: linucbResult.selectedCli,
-      ucbScore: linucbResult.ucbScore,
-    });
-  }
-
-  private runBudgetStage(
-    task: CliTask,
-    candidates: CliName[],
-    stagesExecuted: string[]
-  ): Result<{ candidates: CliName[]; withinBudget: boolean | undefined }, CompositeRoutingError> {
-    if (!this.config.enableBudgetFilter || this.budgetRouter === undefined) {
-      return ok({ candidates, withinBudget: undefined });
-    }
-    const result = applyBudgetFilter(task, candidates, this.budgetRouter, this.config);
-    stagesExecuted.push('budget-filter');
-    if (result.eligible.length === 0) {
-      this.budgetRejections++;
-      return err(new CompositeRoutingError('No CLIs within budget', 'budget-filter'));
-    }
-    return ok({ candidates: result.eligible, withinBudget: result.withinBudget });
-  }
-
-  private runZeroRouterStage(
-    task: CliTask,
-    candidates: CliName[],
-    stagesExecuted: string[]
-  ): ZeroRouterStageResult {
-    if (!this.config.enableZeroRouter || this.zeroRouter === undefined) {
-      return defaultZeroRouterStageResult(candidates);
-    }
-
-    const result = applyZeroRouterFilter(task, candidates, this.zeroRouter);
-    stagesExecuted.push('zero-router');
-
-    this.logger.debug('ZeroRouter applied', {
-      level: result.difficultyEstimate?.level,
-      tier: result.difficultyTier,
-      score: result.difficultyEstimate?.aggregateScore.toFixed(3),
-      candidatesAfter: result.filteredCandidates.length,
-    });
-
-    return result;
-  }
-
-  private runTopsisStage(
-    taskProfile: TaskProfile,
-    candidates: CliName[],
-    stagesExecuted: string[]
-  ): { ranking: CliName[]; score: number | undefined } {
-    if (!this.config.enableTopsisRanking || this.topsisRouter === undefined) {
-      return { ranking: candidates, score: undefined };
-    }
-    const result = applyTopsisRanking(taskProfile, candidates, this.topsisRouter);
-    stagesExecuted.push('topsis-ranking');
-    return { ranking: result.ranking, score: result.topScore };
-  }
-
-  private runLinUCBStage(
-    taskProfile: TaskProfile,
-    topsisRanking: CliName[],
-    stagesExecuted: string[]
-  ): { selectedCli: CliName | undefined; ucbScore: number | undefined } {
-    if (!this.config.enableLinUCBSelection || this.linucbBandit === undefined) {
-      return { selectedCli: topsisRanking[0], ucbScore: undefined };
-    }
-    const banditContext = taskProfileToBanditContext(taskProfile);
-    const selection = this.linucbBandit.select(banditContext);
-    stagesExecuted.push('linucb-selection');
-    return { selectedCli: selection.armName as CliName, ucbScore: selection.ucbScore };
-  }
-
-  private runPreferenceStage(
-    task: CliTask,
-    candidates: CliName[],
-    stagesExecuted: string[]
-  ): PreferenceStageResult {
-    if (!this.config.enablePreferenceRouting || this.preferenceRouter === undefined) {
-      return defaultPreferenceStageResult(candidates);
-    }
-    if (!this.preferenceRouter.hasMinimumData()) {
-      this.logger.debug('Preference routing skipped: insufficient data');
-      return defaultPreferenceStageResult(candidates);
-    }
-
-    const decision = this.preferenceRouter.route(task.content);
-    stagesExecuted.push('preference-routing');
-    const preferredCandidates = filterByPreferenceTier(candidates, decision.selectedTier);
-
-    this.logger.debug('Preference routing applied', {
-      tier: decision.selectedTier,
-      probability: decision.prediction.strongModelProbability,
-      candidatesAfter: preferredCandidates.length,
-    });
-
-    return {
-      preferenceScore: decision.prediction.strongModelProbability,
-      preferenceTier: decision.selectedTier,
-      preferredCandidates: preferredCandidates.length > 0 ? preferredCandidates : candidates,
-    };
   }
 
   private buildRoutingDecision(
@@ -358,17 +227,7 @@ export class CompositeRouter implements ICompositeRouter {
   }
 
   recordOutcome(cliName: CliName, task: CliTask, reward: number): void {
-    if (this.linucbBandit === undefined) return;
-    const armIndex = this.cliNames.indexOf(cliName);
-    if (armIndex === -1) {
-      this.logger.warn('Unknown CLI for outcome recording', { cliName });
-      return;
-    }
-    const internalTask = cliTaskToTask(task);
-    const taskProfile = analyzeTask(internalTask);
-    const context = taskProfileToBanditContext(taskProfile);
-    this.linucbBandit.update(armIndex, context, reward);
-    this.logger.debug('Recorded outcome', { cliName, reward });
+    recordBanditOutcome(cliName, task, reward, this.getOutcomeDependencies());
   }
 
   recordPreference(
@@ -376,62 +235,28 @@ export class CompositeRouter implements ICompositeRouter {
     strongModelPreferred: boolean,
     quality?: { strong?: number; weak?: number }
   ): void {
-    if (this.preferenceRouter === undefined) {
-      this.logger.warn('Preference routing not enabled, cannot record preference');
-      return;
-    }
-    this.preferenceRouter.recordPreference(
-      query,
-      strongModelPreferred,
-      quality?.strong,
-      quality?.weak
-    );
-    this.logger.debug('Recorded preference', { strongModelPreferred });
+    recordPreferenceSignal(query, strongModelPreferred, quality, this.getOutcomeDependencies());
+  }
+
+  recordDifficultyOutcome(task: CliTask, success: boolean, qualityScore?: number): void {
+    recordZeroRouterOutcome(task, success, qualityScore, this.getOutcomeDependencies());
   }
 
   hasMinimumPreferenceData(): boolean {
-    if (this.preferenceRouter === undefined) return false;
-    return this.preferenceRouter.hasMinimumData();
+    return hasMinimumPreferenceData(this.getOutcomeDependencies());
   }
 
-  /** Records a difficulty outcome for ZeroRouter calibration. */
-  recordDifficultyOutcome(task: CliTask, success: boolean, qualityScore?: number): void {
-    if (this.zeroRouter === undefined) {
-      this.logger.debug('ZeroRouter not enabled, skipping difficulty outcome');
-      return;
-    }
-    const { difficulty, selectedCli } = this.getDifficultyInfo(task);
-    const outcome = buildDifficultyOutcome(
-      task.content,
-      difficulty,
-      selectedCli,
-      success,
-      qualityScore
-    );
-    this.zeroRouter.calibrate(outcome);
-    this.logger.debug('Recorded difficulty outcome', {
-      difficulty: difficulty.toFixed(3),
-      success,
-      qualityScore,
-    });
+  private getOutcomeDependencies(): OutcomeDependencies {
+    return {
+      logger: this.logger,
+      cliNames: this.cliNames,
+      linucbBandit: this.linucbBandit,
+      preferenceRouter: this.preferenceRouter,
+      zeroRouter: this.zeroRouter,
+      lastRoutedTask: this.lastRoutedTask,
+    };
   }
 
-  private getDifficultyInfo(task: CliTask): { difficulty: number; selectedCli: CliName } {
-    if (this.lastRoutedTask?.task.content === task.content) {
-      return {
-        difficulty: this.lastRoutedTask.difficulty,
-        selectedCli: this.lastRoutedTask.selectedCli,
-      };
-    }
-    // This is only called when zeroRouter is defined (checked in caller)
-    if (this.zeroRouter === undefined) return { difficulty: 0.5, selectedCli: 'claude' };
-    const estimate = this.zeroRouter.estimateDifficulty(task);
-    return { difficulty: estimate.aggregateScore, selectedCli: 'claude' };
-  }
-
-  /**
-   * Gets the ZeroRouter instance for direct access to calibration stats.
-   */
   getZeroRouter(): IZeroRouter | undefined {
     return this.zeroRouter;
   }
@@ -448,7 +273,6 @@ export class CompositeRouter implements ICompositeRouter {
       banditStats: this.linucbBandit?.getStats() ?? [],
     };
 
-    // Conditionally add preferenceStats only if preference routing is enabled
     if (preferenceStats !== undefined) {
       return { ...baseStats, preferenceStats };
     }
@@ -470,9 +294,7 @@ export class CompositeRouter implements ICompositeRouter {
   }
 }
 
-/**
- * Creates a CompositeRouter instance.
- */
+/** Creates a CompositeRouter instance. */
 export function createCompositeRouter(
   adapters: Map<CliName, ICliAdapter>,
   config?: Partial<CompositeRouterConfig>,

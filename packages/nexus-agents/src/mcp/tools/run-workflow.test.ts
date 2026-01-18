@@ -480,6 +480,12 @@ describe('run_workflow tool execution', () => {
         workflowEngine: mockEngine,
         logger: mockLogger,
         rateLimiter: createTestRateLimiter(),
+        // Configure security to allow test paths (Issue #353)
+        security: {
+          allowedPaths: ['/custom/workflows', process.cwd()],
+          blockedPatterns: [],
+          rateLimit: { enabled: false, requestsPerMinute: 100 },
+        },
       };
       registerRunWorkflowTool(
         mockServer as unknown as import('@modelcontextprotocol/sdk/server/mcp.js').McpServer,
@@ -494,6 +500,7 @@ describe('run_workflow tool execution', () => {
         inputs: { target: 'src/main.ts' },
       });
 
+      // Path is validated and resolved to absolute path (Issue #353)
       expect(mockEngine.loadTemplate).toHaveBeenCalledWith('/custom/workflows/my-workflow.yaml');
       expect(mockEngine.listTemplates).not.toHaveBeenCalled();
     });
@@ -502,14 +509,18 @@ describe('run_workflow tool execution', () => {
       const handler = getToolHandler();
       await handler({ template: 'my-workflow.yaml', inputs: { target: 'src/main.ts' } });
 
-      expect(mockEngine.loadTemplate).toHaveBeenCalledWith('my-workflow.yaml');
+      // Relative paths are resolved to absolute paths (Issue #353)
+      const { resolve } = await import('node:path');
+      expect(mockEngine.loadTemplate).toHaveBeenCalledWith(resolve('my-workflow.yaml'));
     });
 
     it('should detect yml extension as file path', async () => {
       const handler = getToolHandler();
       await handler({ template: 'my-workflow.yml', inputs: { target: 'src/main.ts' } });
 
-      expect(mockEngine.loadTemplate).toHaveBeenCalledWith('my-workflow.yml');
+      // Relative paths are resolved to absolute paths (Issue #353)
+      const { resolve } = await import('node:path');
+      expect(mockEngine.loadTemplate).toHaveBeenCalledWith(resolve('my-workflow.yml'));
     });
   });
 
@@ -522,6 +533,12 @@ describe('run_workflow tool execution', () => {
         workflowEngine: mockEngine,
         logger: mockLogger,
         rateLimiter: createTestRateLimiter(),
+        // Configure security to allow test paths (Issue #353)
+        security: {
+          allowedPaths: ['/valid/path', process.cwd()],
+          blockedPatterns: [],
+          rateLimit: { enabled: false, requestsPerMinute: 100 },
+        },
       };
       registerRunWorkflowTool(
         mockServer as unknown as import('@modelcontextprotocol/sdk/server/mcp.js').McpServer,
@@ -531,11 +548,21 @@ describe('run_workflow tool execution', () => {
 
     it('should return error when template fails to load', async () => {
       const handler = getToolHandler();
-      const result = await handler({ template: '/invalid/workflow.yaml', inputs: {} });
+      // Use a path that's within the allowed directories
+      const result = await handler({ template: '/valid/path/workflow.yaml', inputs: {} });
 
       expect(result.isError).toBe(true);
       expect(result.content[0]?.text).toContain('Failed to load template');
       expect(result.content[0]?.text).toContain('Invalid YAML syntax');
+    });
+
+    it('should return error for path traversal attempt', async () => {
+      const handler = getToolHandler();
+      // Attempt path traversal (Issue #353 security fix)
+      const result = await handler({ template: '/valid/path/../../../etc/passwd', inputs: {} });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0]?.text).toContain('Path traversal detected');
     });
   });
 

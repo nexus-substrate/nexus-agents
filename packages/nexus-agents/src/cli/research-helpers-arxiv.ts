@@ -149,11 +149,15 @@ export async function fetchArxivMetadata(arxivId: string): Promise<ArxivMetadata
 
 /**
  * Check if paper already exists in registry.
+ * Returns false if registry cannot be loaded.
  */
 export async function paperExists(arxivId: string): Promise<boolean> {
-  const registry = await loadPapersRegistry();
+  const result = await loadPapersRegistry();
+  if (!result.ok) {
+    return false;
+  }
   const paperId = `arxiv-${arxivId}`;
-  return paperId in registry.papers;
+  return paperId in result.value.papers;
 }
 
 /**

@@ -79,7 +79,16 @@ export function determineRelationship(
 export async function findOverlaps(
   options: ResearchOverlapOptions
 ): Promise<ResearchOverlapResult> {
-  const registry = await loadTechniquesRegistry();
+  const result = await loadTechniquesRegistry();
+  if (!result.ok) {
+    return {
+      success: false,
+      sourceId: options.techniqueId,
+      matches: [],
+      suggestedAlignments: [],
+    };
+  }
+  const registry = result.value;
 
   const sourceEntry = registry.techniques[options.techniqueId];
   if (!sourceEntry) {

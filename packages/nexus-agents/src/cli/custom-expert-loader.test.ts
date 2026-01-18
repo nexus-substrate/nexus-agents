@@ -269,7 +269,8 @@ experts:
     });
 
     it('should use NEXUS_CONFIG_PATH environment variable', () => {
-      process.env['NEXUS_CONFIG_PATH'] = '/custom/path/config.yaml';
+      // Use a relative path within cwd (path traversal protection applies)
+      process.env['NEXUS_CONFIG_PATH'] = 'custom/path/config.yaml';
       const validConfig = `
 experts:
   custom:
@@ -285,7 +286,7 @@ experts:
 
       const result = loadCustomExperts();
 
-      expect(result.configPath).toContain('/custom/path/config.yaml');
+      expect(result.configPath).toContain('custom/path/config.yaml');
       expect(result.experts).toHaveLength(1);
     });
 
@@ -454,6 +455,111 @@ experts:
 
       expect(result).not.toContain('Expert: config');
       expect(result).toContain('Failed to read config file');
+    });
+  });
+
+  describe('Path Traversal Prevention (Issue #353)', () => {
+    const MALICIOUS_PATHS = [
+      '../../../etc/passwd',
+      '../../../../../../../etc/passwd',
+      'foo/../../../etc/passwd',
+      './foo/../../../etc/passwd',
+      'config/../../etc/passwd',
+    ];
+
+    const ABSOLUTE_ESCAPE_PATHS = ['/etc/passwd', '/tmp/../etc/passwd'];
+
+    beforeEach(() => {
+      vi.clearAllMocks();
+      delete process.env['NEXUS_CONFIG_PATH'];
+    });
+
+    MALICIOUS_PATHS.forEach((maliciousPath) => {
+      it(`should reject path traversal via env: ${maliciousPath}`, () => {
+        process.env['NEXUS_CONFIG_PATH'] = maliciousPath;
+        vi.mocked(existsSync).mockReturnValue(true);
+
+        const result = loadCustomExperts();
+
+        expect(result.errors.length).toBeGreaterThan(0);
+        const securityError = result.errors.find(
+          (e) => e.message.toLowerCase().includes('traversal') || e.field === 'path'
+        );
+        expect(securityError).toBeDefined();
+        expect(securityError?.message).toContain('traversal');
+      });
+    });
+
+    ABSOLUTE_ESCAPE_PATHS.forEach((absolutePath) => {
+      it(`should reject absolute paths that escape cwd via env: ${absolutePath}`, () => {
+        process.env['NEXUS_CONFIG_PATH'] = absolutePath;
+        vi.mocked(existsSync).mockReturnValue(true);
+
+        const result = loadCustomExperts();
+
+        // Absolute paths outside cwd should be rejected
+        expect(result.errors.length).toBeGreaterThan(0);
+        const securityError = result.errors.find(
+          (e) => e.message.toLowerCase().includes('traversal') || e.field === 'path'
+        );
+        expect(securityError).toBeDefined();
+      });
+    });
+
+    it('should allow valid relative paths via env', () => {
+      process.env['NEXUS_CONFIG_PATH'] = 'config/nexus-agents.yaml';
+      const validConfig = `
+experts:
+  custom:
+    test_expert:
+      systemPrompt: "Test expert"
+      tier: balanced
+      domain: code
+      capabilities:
+        - task_execution
+`;
+      vi.mocked(existsSync).mockReturnValue(true);
+      vi.mocked(readFileSync).mockReturnValue(validConfig);
+
+      const result = loadCustomExperts();
+
+      // Should not have security errors
+      const securityError = result.errors.find(
+        (e) => e.message.toLowerCase().includes('traversal') || e.field === 'path'
+      );
+      expect(securityError).toBeUndefined();
+      expect(result.experts).toHaveLength(1);
+    });
+
+    it('should allow same-directory path via env', () => {
+      process.env['NEXUS_CONFIG_PATH'] = './nexus-agents.yaml';
+      const validConfig = `
+experts:
+  custom:
+    test_expert:
+      systemPrompt: "Test expert"
+`;
+      vi.mocked(existsSync).mockReturnValue(true);
+      vi.mocked(readFileSync).mockReturnValue(validConfig);
+
+      const result = loadCustomExperts();
+
+      // Should not have security errors
+      const securityError = result.errors.find(
+        (e) => e.message.toLowerCase().includes('traversal') || e.field === 'path'
+      );
+      expect(securityError).toBeUndefined();
+    });
+
+    it('should include helpful suggestion for path traversal errors', () => {
+      process.env['NEXUS_CONFIG_PATH'] = '../../../etc/passwd';
+      vi.mocked(existsSync).mockReturnValue(true);
+
+      const result = loadCustomExperts();
+
+      const securityError = result.errors.find((e) => e.field === 'path');
+      expect(securityError).toBeDefined();
+      expect(securityError?.suggestion).toContain('current working directory');
     });
   });
 });
