@@ -25,18 +25,19 @@ import type {
 } from './belief-types.js';
 import {
   BeliefMemoryConfigSchema,
-  BeliefQuerySchema,
   BeliefSchema,
   BeliefUpdateType as BeliefUpdateTypeEnum,
   DEFAULT_BELIEF_CONFIG,
 } from './belief-types.js';
+import { generateId, createUpdateRecord } from './belief-memory-helpers.js';
 import {
-  generateId,
-  sortBeliefs,
-  matchesQueryFilters,
-  intersectSets,
-  createUpdateRecord,
-} from './belief-memory-helpers.js';
+  recallInternal,
+  queryInternal,
+  recallBySubjectInternal,
+  recallCurrentInternal,
+  recallHistoryInternal,
+  type RecallDataStores,
+} from './belief-memory-recall.js';
 import {
   createCounterfactualInternal,
   validateCounterfactualInternal,
@@ -99,6 +100,15 @@ export class HindsightBeliefMemory implements IHindsightBeliefMemory {
       recordUpdate: (opts) => {
         this.recordUpdate(opts);
       },
+    };
+  }
+
+  private get recallStores(): RecallDataStores {
+    return {
+      beliefs: this.beliefs,
+      subjectIndex: this.subjectIndex,
+      predicateIndex: this.predicateIndex,
+      domainIndex: this.domainIndex,
     };
   }
 
@@ -177,93 +187,26 @@ export class HindsightBeliefMemory implements IHindsightBeliefMemory {
   }
 
   // =========================================================================
-  // Recall Operations
+  // Recall Operations (delegated to belief-memory-recall.ts)
   // =========================================================================
 
   recall(beliefId: string): Promise<Result<Belief | null, MemoryError>> {
-    try {
-      return Promise.resolve(ok(this.beliefs.get(beliefId) ?? null));
-    } catch (error) {
-      return Promise.resolve(
-        err(
-          new MemoryError('Failed to recall belief', {
-            cause: error instanceof Error ? error : new Error(String(error)),
-          })
-        )
-      );
-    }
+    return recallInternal(this.recallStores, beliefId);
   }
 
   query(query: BeliefQuery): Promise<Result<readonly Belief[], MemoryError>> {
-    try {
-      const validation = BeliefQuerySchema.safeParse(query);
-      if (!validation.success) {
-        return Promise.resolve(
-          err(new MemoryError('Invalid query', { context: { errors: validation.error.issues } }))
-        );
-      }
-      const candidateIds = this.getCandidateIds(query);
-      const filtered = this.filterCandidates(candidateIds, query);
-      const sorted = sortBeliefs(filtered, query.orderBy, query.orderDirection);
-      const limited = query.limit !== undefined ? sorted.slice(0, query.limit) : sorted;
-      return Promise.resolve(ok(limited));
-    } catch (error) {
-      return Promise.resolve(
-        err(
-          new MemoryError('Failed to query beliefs', {
-            cause: error instanceof Error ? error : new Error(String(error)),
-          })
-        )
-      );
-    }
-  }
-
-  private getCandidateIds(query: BeliefQuery): Set<string> | null {
-    let ids: Set<string> | null = null;
-    if (query.subject !== undefined) ids = new Set(this.subjectIndex.get(query.subject) ?? []);
-    if (query.predicate !== undefined) {
-      const pIds = this.predicateIndex.get(query.predicate) ?? new Set();
-      ids = ids ? intersectSets(ids, pIds) : new Set(pIds);
-    }
-    if (query.domain !== undefined) {
-      const dIds = this.domainIndex.get(query.domain) ?? new Set();
-      ids = ids ? intersectSets(ids, dIds) : new Set(dIds);
-    }
-    return ids;
-  }
-
-  private filterCandidates(candidateIds: Set<string> | null, query: BeliefQuery): Belief[] {
-    const allIds = candidateIds ?? new Set(this.beliefs.keys());
-    const filtered: Belief[] = [];
-    for (const id of allIds) {
-      const b = this.beliefs.get(id);
-      if (b !== undefined && matchesQueryFilters(b, query)) filtered.push(b);
-    }
-    return filtered;
+    return queryInternal(this.recallStores, query);
   }
 
   recallBySubject(
     subject: string,
     limit?: number
   ): Promise<Result<readonly Belief[], MemoryError>> {
-    const q: BeliefQuery = { subject, includeSuperseded: false };
-    return limit !== undefined ? this.query({ ...q, limit }) : this.query(q);
+    return recallBySubjectInternal(this.recallStores, subject, limit);
   }
 
-  async recallCurrent(
-    subject: string,
-    predicate: string
-  ): Promise<Result<Belief | null, MemoryError>> {
-    const result = await this.query({
-      subject,
-      predicate,
-      includeSuperseded: false,
-      orderBy: 'updatedAt',
-      orderDirection: 'desc',
-      limit: 1,
-    });
-    if (!result.ok) return result;
-    return ok(result.value[0] ?? null);
+  recallCurrent(subject: string, predicate: string): Promise<Result<Belief | null, MemoryError>> {
+    return recallCurrentInternal(this.recallStores, subject, predicate);
   }
 
   recallHistory(
@@ -271,14 +214,7 @@ export class HindsightBeliefMemory implements IHindsightBeliefMemory {
     predicate: string,
     limit?: number
   ): Promise<Result<readonly Belief[], MemoryError>> {
-    const q: BeliefQuery = {
-      subject,
-      predicate,
-      includeSuperseded: true,
-      orderBy: 'updatedAt',
-      orderDirection: 'desc',
-    };
-    return limit !== undefined ? this.query({ ...q, limit }) : this.query(q);
+    return recallHistoryInternal(this.recallStores, subject, predicate, limit);
   }
 
   // =========================================================================

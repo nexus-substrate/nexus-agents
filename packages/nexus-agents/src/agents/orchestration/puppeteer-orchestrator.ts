@@ -23,7 +23,6 @@ import type {
   PuppeteerResult,
   PuppeteerState,
   PuppeteerStepResult,
-  PuppeteerTerminationReason,
 } from './puppeteer-types.js';
 import { DEFAULT_PUPPETEER_CONFIG } from './puppeteer-types.js';
 import type { IPolicyEngine } from './policy-types.js';
@@ -32,22 +31,15 @@ import type { IPatternTracker } from './pattern-tracker.js';
 import { createStateManager } from './state-manager.js';
 import { createRuleBasedPolicy } from './rule-based-policy.js';
 import { createPatternTracker } from './pattern-tracker.js';
-import {
-  generateSessionId,
-  buildAgentStepOutput,
-  buildAgentTask,
-  buildStepResult,
-  buildPuppeteerResult,
-  detectTaskCompletion,
-  detectConvergence,
-} from './puppeteer-helpers.js';
-import type { BuildStepResultOptions } from './puppeteer-helpers.js';
+import { generateSessionId, buildPuppeteerResult } from './puppeteer-helpers.js';
 import {
   emitPuppeteerStarted,
   emitPuppeteerStepCompleted,
   emitPuppeteerCompleted,
   emitPuppeteerError,
 } from './puppeteer-events.js';
+import { executeStep, StepExecutionError } from './puppeteer-step-execution.js';
+import { shouldTerminate, determineTerminationReason } from './puppeteer-termination.js';
 
 // =============================================================================
 // Error Types
@@ -65,6 +57,13 @@ export class PuppeteerError extends Error {
     super(message);
     this.name = 'PuppeteerError';
     Object.setPrototypeOf(this, PuppeteerError.prototype);
+  }
+
+  /**
+   * Create from a StepExecutionError.
+   */
+  static fromStepError(stepError: StepExecutionError): PuppeteerError {
+    return new PuppeteerError(stepError.message, stepError.code, stepError.context);
   }
 }
 
@@ -158,133 +157,6 @@ export class PuppeteerOrchestrator {
     });
   }
 
-  private resetState(): void {
-    this.cancelled = false;
-    this.cancelReason = undefined;
-  }
-
-  private setupAgents(
-    options: PuppeteerExecuteOptions
-  ): Result<{ agentIds: string[]; agentMap: Map<string, IAgent> }, PuppeteerError> {
-    const availableAgents = options.agents ?? [...this.agents.values()];
-    if (availableAgents.length === 0) {
-      return err(new PuppeteerError('No agents available', 'NO_AGENTS'));
-    }
-
-    const agentIds = availableAgents.map((a) => a.id);
-    const agentMap = new Map(availableAgents.map((a) => [a.id, a]));
-    return ok({ agentIds, agentMap });
-  }
-
-  private async runAndComplete(ctx: {
-    state: PuppeteerState;
-    trajectory: PuppeteerStepResult[];
-    agentIds: string[];
-    agentMap: Map<string, IAgent>;
-    task: Task;
-    sessionId: string;
-    startTime: number;
-  }): Promise<Result<PuppeteerResult, PuppeteerError>> {
-    const { trajectory, agentIds, agentMap, task, sessionId, startTime } = ctx;
-    let state = ctx.state;
-
-    try {
-      const loopResult = await this.runOrchestrationLoop({
-        initialState: state,
-        trajectory,
-        agentIds,
-        agentMap,
-        task,
-        sessionId,
-        startTime,
-      });
-      if (!loopResult.ok) {
-        return this.buildErrorResult(
-          trajectory,
-          'error',
-          sessionId,
-          startTime,
-          loopResult.error.message
-        );
-      }
-      state = loopResult.value;
-      return this.completeExecution(state, trajectory, sessionId, startTime);
-    } catch (error) {
-      const puppeteerError = this.wrapError(error);
-      this.emitError(sessionId, puppeteerError);
-      return this.buildErrorResult(
-        trajectory,
-        'error',
-        sessionId,
-        startTime,
-        puppeteerError.message
-      );
-    }
-  }
-
-  private setupAbortSignal(signal: AbortSignal | undefined): void {
-    if (signal) {
-      signal.addEventListener('abort', () => {
-        this.cancel('AbortSignal triggered');
-      });
-    }
-  }
-
-  /**
-   * Context for orchestration loop execution.
-   */
-  private async runOrchestrationLoop(ctx: {
-    initialState: PuppeteerState;
-    trajectory: PuppeteerStepResult[];
-    agentIds: readonly string[];
-    agentMap: Map<string, IAgent>;
-    task: Task;
-    sessionId: string;
-    startTime: number;
-  }): Promise<Result<PuppeteerState, PuppeteerError>> {
-    const { trajectory, agentIds, agentMap, task, sessionId, startTime } = ctx;
-    let state = ctx.initialState;
-
-    while (!this.shouldTerminate(state, trajectory, startTime)) {
-      const stepResult = await this.executeStep(state, agentIds, agentMap, task);
-
-      if (!stepResult.ok) {
-        this.emitError(sessionId, stepResult.error);
-        return err(stepResult.error);
-      }
-
-      trajectory.push(stepResult.value);
-      state = stepResult.value.newState;
-      this.emitStepCompleted(sessionId, stepResult.value);
-
-      if (stepResult.value.shouldTerminate) break;
-    }
-
-    return ok(state);
-  }
-
-  private completeExecution(
-    state: PuppeteerState,
-    trajectory: readonly PuppeteerStepResult[],
-    sessionId: string,
-    startTime: number
-  ): Result<PuppeteerResult, PuppeteerError> {
-    const terminationReason = this.determineTerminationReason(state, trajectory, startTime);
-    const emergentPatterns = this.config.trackEmergentPatterns
-      ? this.patternTracker.analyze(trajectory)
-      : { hubAgents: [], cycles: [], graphDensity: 0, cyclicalityScore: 0 };
-
-    const result = buildPuppeteerResult(
-      trajectory,
-      emergentPatterns,
-      terminationReason,
-      sessionId,
-      startTime
-    );
-    this.emitCompleted(sessionId, result);
-    return ok(result);
-  }
-
   /**
    * Cancel ongoing orchestration.
    */
@@ -315,136 +187,125 @@ export class PuppeteerOrchestrator {
   }
 
   // ===========================================================================
-  // Private: Step Execution
+  // Private: State Management
   // ===========================================================================
 
-  private async executeStep(
-    state: PuppeteerState,
-    agentIds: readonly string[],
-    agentMap: Map<string, IAgent>,
-    originalTask: Task
-  ): Promise<Result<PuppeteerStepResult, PuppeteerError>> {
-    // Compute agent selection distribution
-    const distributionResult = await this.policyEngine.computeDistribution(state, agentIds);
-    if (!distributionResult.ok) {
-      return err(new PuppeteerError(distributionResult.error.message, 'POLICY_ERROR'));
+  private resetState(): void {
+    this.cancelled = false;
+    this.cancelReason = undefined;
+  }
+
+  private setupAbortSignal(signal: AbortSignal | undefined): void {
+    if (signal) {
+      signal.addEventListener('abort', () => {
+        this.cancel('AbortSignal triggered');
+      });
+    }
+  }
+
+  private setupAgents(
+    options: PuppeteerExecuteOptions
+  ): Result<{ agentIds: string[]; agentMap: Map<string, IAgent> }, PuppeteerError> {
+    const availableAgents = options.agents ?? [...this.agents.values()];
+    if (availableAgents.length === 0) {
+      return err(new PuppeteerError('No agents available', 'NO_AGENTS'));
     }
 
-    const distribution = distributionResult.value;
-
-    // Sample agent from distribution
-    const selectedAgentId = this.policyEngine.sampleAgent(distribution);
-    const agent = agentMap.get(selectedAgentId);
-
-    if (!agent) {
-      return err(new PuppeteerError(`Agent not found: ${selectedAgentId}`, 'AGENT_NOT_FOUND'));
-    }
-
-    // Extract context for this agent
-    const agentContext = this.stateManager.extractAgentContext(state, selectedAgentId);
-
-    // Build task for agent
-    const agentTask = buildAgentTask(originalTask, state, agentContext);
-
-    // Execute agent
-    const previousProgress = state.metadata.progress;
-    const agentResult = await agent.execute(agentTask);
-
-    if (!agentResult.ok) {
-      return err(
-        new PuppeteerError(
-          `Agent execution failed: ${agentResult.error.message}`,
-          'AGENT_EXECUTION_ERROR'
-        )
-      );
-    }
-
-    // Build agent output
-    const agentOutput = buildAgentStepOutput(state.step, selectedAgentId, agentResult.value);
-
-    // Update state
-    const newState = this.stateManager.updateState(state, agentOutput);
-
-    // Check for termination conditions
-    const { shouldTerminate, reason } = this.checkStepTermination(agentOutput, newState);
-
-    // Build step result options
-    const stepOptions: BuildStepResultOptions = {
-      selectedAgent: selectedAgentId,
-      distribution,
-      agentOutput,
-      newState,
-      previousProgress,
-      shouldTerminate,
-    };
-
-    // Only add terminationReason if defined (exactOptionalPropertyTypes compliance)
-    const stepResult =
-      reason !== undefined
-        ? buildStepResult({ ...stepOptions, terminationReason: reason })
-        : buildStepResult(stepOptions);
-
-    return ok(stepResult);
+    const agentIds = availableAgents.map((a) => a.id);
+    const agentMap = new Map(availableAgents.map((a) => [a.id, a]));
+    return ok({ agentIds, agentMap });
   }
 
   // ===========================================================================
-  // Private: Termination Logic
+  // Private: Execution Flow
   // ===========================================================================
 
-  private shouldTerminate(
-    state: PuppeteerState,
-    trajectory: readonly PuppeteerStepResult[],
-    startTime: number
-  ): boolean {
-    if (this.cancelled) return true;
-    if (state.step >= this.config.maxSteps) return true;
-    if (Date.now() - startTime >= this.config.timeoutMs) return true;
-    if (state.metadata.totalCost >= this.config.maxCostBudget) return true;
-    return false;
+  private async runAndComplete(ctx: {
+    state: PuppeteerState;
+    trajectory: PuppeteerStepResult[];
+    agentIds: string[];
+    agentMap: Map<string, IAgent>;
+    task: Task;
+    sessionId: string;
+    startTime: number;
+  }): Promise<Result<PuppeteerResult, PuppeteerError>> {
+    const { trajectory, agentIds, agentMap, task, sessionId, startTime } = ctx;
+    let state = ctx.state;
+
+    try {
+      const loopResult = await this.runOrchestrationLoop({
+        initialState: state,
+        trajectory,
+        agentIds,
+        agentMap,
+        task,
+        sessionId,
+        startTime,
+      });
+      if (!loopResult.ok) {
+        return this.buildErrorResult(trajectory, 'error', sessionId, startTime);
+      }
+      state = loopResult.value;
+      return this.completeExecution(state, trajectory, sessionId, startTime);
+    } catch (error) {
+      const puppeteerError = this.wrapError(error);
+      this.emitError(sessionId, puppeteerError);
+      return this.buildErrorResult(trajectory, 'error', sessionId, startTime);
+    }
   }
 
-  private checkStepTermination(
-    output: { output: unknown },
-    state: PuppeteerState
-  ): { shouldTerminate: boolean; reason?: PuppeteerTerminationReason } {
-    // Check for explicit task completion signal
-    if (
-      detectTaskCompletion(
-        output as {
-          output: unknown;
-          step: number;
-          agentId: string;
-          durationMs: number;
-          tokensUsed: number;
-          model: string;
-        }
-      )
-    ) {
-      return { shouldTerminate: true, reason: 'task_complete' };
+  private async runOrchestrationLoop(ctx: {
+    initialState: PuppeteerState;
+    trajectory: PuppeteerStepResult[];
+    agentIds: readonly string[];
+    agentMap: Map<string, IAgent>;
+    task: Task;
+    sessionId: string;
+    startTime: number;
+  }): Promise<Result<PuppeteerState, PuppeteerError>> {
+    const { trajectory, agentIds, agentMap, task, sessionId, startTime } = ctx;
+    let state = ctx.initialState;
+
+    const terminationCtx = { config: this.config, cancelled: this.cancelled };
+    const stepCtx = { policyEngine: this.policyEngine, stateManager: this.stateManager };
+
+    while (!shouldTerminate(terminationCtx, state, trajectory, startTime)) {
+      // Update cancellation state for termination context
+      terminationCtx.cancelled = this.cancelled;
+
+      const stepResult = await executeStep(stepCtx, state, agentIds, agentMap, task);
+
+      if (!stepResult.ok) {
+        this.emitError(sessionId, PuppeteerError.fromStepError(stepResult.error));
+        return err(PuppeteerError.fromStepError(stepResult.error));
+      }
+
+      trajectory.push(stepResult.value);
+      state = stepResult.value.newState;
+      this.emitStepCompleted(sessionId, stepResult.value);
+
+      if (stepResult.value.shouldTerminate) break;
     }
 
-    // Check for convergence
-    if (detectConvergence(state.agentOutputs)) {
-      return { shouldTerminate: true, reason: 'convergence' };
-    }
-
-    return { shouldTerminate: false };
+    return ok(state);
   }
 
-  private determineTerminationReason(
+  private completeExecution(
     state: PuppeteerState,
     trajectory: readonly PuppeteerStepResult[],
+    sessionId: string,
     startTime: number
-  ): PuppeteerTerminationReason {
-    if (this.cancelled) return 'cancelled';
+  ): Result<PuppeteerResult, PuppeteerError> {
+    const terminationCtx = { config: this.config, cancelled: this.cancelled };
+    const reason = determineTerminationReason(terminationCtx, state, trajectory, startTime);
 
-    const lastStep = trajectory[trajectory.length - 1];
-    if (lastStep?.terminationReason) return lastStep.terminationReason;
+    const emergentPatterns = this.config.trackEmergentPatterns
+      ? this.patternTracker.analyze(trajectory)
+      : { hubAgents: [], cycles: [], graphDensity: 0, cyclicalityScore: 0 };
 
-    if (state.step >= this.config.maxSteps) return 'max_steps';
-    if (Date.now() - startTime >= this.config.timeoutMs) return 'timeout';
-
-    return 'max_steps';
+    const result = buildPuppeteerResult(trajectory, emergentPatterns, reason, sessionId, startTime);
+    this.emitCompleted(sessionId, result);
+    return ok(result);
   }
 
   // ===========================================================================
@@ -453,16 +314,16 @@ export class PuppeteerOrchestrator {
 
   private wrapError(error: unknown): PuppeteerError {
     if (error instanceof PuppeteerError) return error;
+    if (error instanceof StepExecutionError) return PuppeteerError.fromStepError(error);
     const message = error instanceof Error ? error.message : String(error);
     return new PuppeteerError(message, 'UNKNOWN_ERROR');
   }
 
   private buildErrorResult(
     trajectory: readonly PuppeteerStepResult[],
-    reason: PuppeteerTerminationReason,
+    reason: 'error',
     sessionId: string,
-    startTime: number,
-    _errorMessage: string
+    startTime: number
   ): Result<PuppeteerResult, PuppeteerError> {
     const emergentPatterns = this.config.trackEmergentPatterns
       ? this.patternTracker.analyze(trajectory)
