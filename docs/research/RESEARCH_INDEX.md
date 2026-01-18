@@ -23,12 +23,13 @@
 
 | Topic                                               | Papers | Techniques | Description                         |
 | --------------------------------------------------- | ------ | ---------- | ----------------------------------- |
-| [Consensus](topics/consensus/README.md)             | 6      | 5          | Multi-agent decision protocols      |
-| [Routing](topics/routing/README.md)                 | 11     | 6          | Cost-efficient model routing        |
-| [Memory](topics/memory/README.md)                   | 13     | 6          | Context and long-term memory        |
+| [Consensus](topics/consensus/README.md)             | 6      | 6          | Multi-agent decision protocols      |
+| [Routing](topics/routing/README.md)                 | 11     | 8          | Cost-efficient model routing        |
+| [Memory](topics/memory/README.md)                   | 13     | 7          | Context and long-term memory        |
 | [Code Generation](topics/code-generation/README.md) | 16     | 6          | Self-improvement and skill learning |
 | [Cli Tools](topics/cli-tools/README.md)             | 0      | 0          | External CLI integration            |
-| [Orchestration](topics/orchestration/README.md)     | 14     | 4          | Multi-agent coordination            |
+| [Orchestration](topics/orchestration/README.md)     | 14     | 9          | Multi-agent coordination            |
+| [Security](topics/security/README.md)               | 2      | 2          | Safety analysis and evaluation      |
 
 ---
 

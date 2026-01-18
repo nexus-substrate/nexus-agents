@@ -87,3 +87,58 @@ export type {
   BenchmarkRunOptions,
   ExecutorWithModel,
 } from './benchmark-runner.js';
+
+// Evaluation harness types
+export { DEFAULT_EVALUATION_CONFIG, EvaluationHarnessError } from './evaluation-harness-types.js';
+
+export type {
+  EvaluationHarnessConfig,
+  EvaluationCacheLevel,
+  EvaluationMode,
+  TestStatus,
+  TestCaseResult,
+  ResolutionStatus,
+  InstanceEvaluationResult,
+  EvaluationMetrics,
+  RepositoryMetrics,
+  EvaluationRunResult,
+  CompetitorSystem,
+  CompetitorResult,
+  ComparisonReport,
+  EvaluationProgressCallback,
+  EvaluationProgress,
+  EvaluationPhase,
+  EvaluationErrorCode,
+  IEvaluationHarness,
+  EvaluationValidationResult,
+  LeaderboardEntry,
+  LeaderboardSnapshot,
+} from './evaluation-harness-types.js';
+
+// Evaluation report types
+export { DEFAULT_REPORT_CONFIG, ReportGenerationError } from './evaluation-report-types.js';
+
+export type {
+  ReportConfig,
+  ReportFormat,
+  ReportDetailLevel,
+  StatisticalSummary,
+  TimingStatistics,
+  ResourceStatistics,
+  FailureCategory,
+  FailureAnalysis,
+  FailureStatistics,
+  FailurePattern,
+  TokenUsageBreakdown,
+  TokensByPhase,
+  CostEstimate,
+  ModelPricing,
+  ReportSummary,
+  ReportMetrics,
+  ReportRepositoryBreakdown,
+  ReportComparison,
+  ReportInstanceDetails,
+  EvaluationReport,
+  ReportMetadata,
+  IReportGenerator,
+} from './evaluation-report-types.js';

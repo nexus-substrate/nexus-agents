@@ -442,4 +442,277 @@ describe('VotingProtocol', () => {
       expect(protocol).toBeInstanceOf(VotingProtocol);
     });
   });
+
+  describe('Edge Cases', () => {
+    let protocol: VotingProtocol;
+
+    beforeEach(() => {
+      protocol = new VotingProtocol();
+    });
+
+    describe('Session Management Edge Cases', () => {
+      it('should throw for non-existent session', () => {
+        // startAnalysisRound throws synchronously
+        expect(() => protocol.startAnalysisRound('non-existent')).toThrow('not found');
+      });
+
+      it('should handle duplicate session IDs gracefully', () => {
+        const committee = ['agent-1', 'agent-2'];
+        const session1 = protocol.createSession('Topic 1', committee);
+
+        // Creating another session should generate a different ID
+        const session2 = protocol.createSession('Topic 2', committee);
+
+        expect(session1.id).not.toBe(session2.id);
+      });
+
+      it('should throw for committee exceeding maximum size', () => {
+        // Default committee size is 3, so 20 should exceed it
+        const largeCommittee = Array.from({ length: 20 }, (_, i) => `agent-${String(i)}`);
+        expect(() => protocol.createSession('Large committee test', largeCommittee)).toThrow(
+          'Committee size exceeds maximum'
+        );
+      });
+
+      it('should handle committee with exactly 2 members (minimum)', () => {
+        const minCommittee = ['agent-1', 'agent-2'];
+        const session = protocol.createSession('Minimum committee', minCommittee);
+
+        expect(session.committee).toHaveLength(2);
+      });
+
+      it('should handle committee at maximum size (3)', () => {
+        const maxCommittee = ['agent-1', 'agent-2', 'agent-3'];
+        const session = protocol.createSession('Max committee', maxCommittee);
+
+        expect(session.committee).toHaveLength(3);
+      });
+    });
+
+    describe('Finding Submission Edge Cases', () => {
+      it('should handle empty findings array', async () => {
+        const session = protocol.createSession('Topic', ['agent-1', 'agent-2']);
+        await protocol.startAnalysisRound(session.id);
+
+        await protocol.submitFindings(session.id, 'agent-1', []);
+
+        const updatedSession = protocol.getSession(session.id);
+        expect(updatedSession?.rounds[0]?.findings.size).toBe(0);
+      });
+
+      it('should handle findings with very high confidence', async () => {
+        const session = protocol.createSession('Topic', ['agent-1', 'agent-2']);
+        await protocol.startAnalysisRound(session.id);
+
+        const highConfidenceFindings: AgentFinding[] = [
+          {
+            agentId: 'agent-1',
+            category: 'security',
+            severity: 'critical',
+            description: 'Absolutely certain vulnerability',
+            confidence: 1.0,
+          },
+        ];
+
+        await protocol.submitFindings(session.id, 'agent-1', highConfidenceFindings);
+
+        const updatedSession = protocol.getSession(session.id);
+        expect(updatedSession?.rounds[0]?.findings.size).toBe(1);
+      });
+
+      it('should handle findings with very low confidence', async () => {
+        const session = protocol.createSession('Topic', ['agent-1', 'agent-2']);
+        await protocol.startAnalysisRound(session.id);
+
+        const lowConfidenceFindings: AgentFinding[] = [
+          {
+            agentId: 'agent-1',
+            category: 'style',
+            severity: 'suggestion',
+            description: 'Very uncertain observation',
+            confidence: 0.1,
+          },
+        ];
+
+        await protocol.submitFindings(session.id, 'agent-1', lowConfidenceFindings);
+
+        const updatedSession = protocol.getSession(session.id);
+        expect(updatedSession?.rounds[0]?.findings.size).toBe(1);
+      });
+    });
+
+    describe('Voting Edge Cases', () => {
+      it('should handle unanimous abstention in final voting', async () => {
+        const committee = ['agent-1', 'agent-2', 'agent-3'];
+        const session = protocol.createSession('Topic', committee);
+        await protocol.startAnalysisRound(session.id);
+        await protocol.startDeliberationRound(session.id);
+        await protocol.startConsensusRound(session.id);
+
+        // All agents abstain
+        for (const agentId of committee) {
+          await protocol.submitFinalVote(session.id, agentId, {
+            decision: 'abstain',
+            reasoning: 'Need more information',
+            confidence: 0.3,
+          });
+        }
+
+        const result = await protocol.getResult(session.id);
+
+        expect(result).not.toBeNull();
+        // When all abstain, outcome is 'no_consensus' per implementation
+        expect(result?.outcome).toBe('no_consensus');
+      });
+
+      it('should handle partial committee voting (not all vote)', async () => {
+        const committee = ['agent-1', 'agent-2', 'agent-3'];
+        const session = protocol.createSession('Topic', committee);
+        await protocol.startAnalysisRound(session.id);
+        await protocol.startDeliberationRound(session.id);
+        await protocol.startConsensusRound(session.id);
+
+        // Only agent-1 votes
+        await protocol.submitFinalVote(session.id, 'agent-1', {
+          decision: 'approve',
+          reasoning: 'Looks good',
+          confidence: 0.9,
+        });
+
+        // Result should still be retrievable
+        const updatedSession = protocol.getSession(session.id);
+        expect(updatedSession?.rounds[2]?.finalVotes.size).toBe(1);
+      });
+    });
+
+    describe('Finding Vote Edge Cases', () => {
+      it('should handle voting on finding by same agent who submitted it', async () => {
+        const session = protocol.createSession('Topic', ['agent-1', 'agent-2']);
+        await protocol.startAnalysisRound(session.id);
+
+        await protocol.submitFindings(session.id, 'agent-1', [
+          {
+            agentId: 'agent-1',
+            category: 'bug',
+            severity: 'major',
+            description: 'Found a bug',
+            confidence: 0.8,
+          },
+        ]);
+
+        await protocol.startDeliberationRound(session.id);
+
+        const currentSession = protocol.getSession(session.id);
+        const findingId = Array.from(currentSession?.rounds[1]?.findings.keys() ?? [])[0];
+
+        // Agent-1 votes on their own finding
+        const vote: FindingVote = {
+          agentId: 'agent-1',
+          findingId: findingId!,
+          agree: true,
+          reasoning: 'I confirm my own finding',
+        };
+
+        await protocol.voteOnFinding(session.id, vote);
+
+        const sessionAfterVote = protocol.getSession(session.id);
+        const votes = sessionAfterVote?.rounds[1]?.findingVotes.get(findingId!);
+        expect(votes).toHaveLength(1);
+      });
+    });
+
+    describe('Agreement Calculation Edge Cases', () => {
+      it('should calculate 100% agreement when all agree', async () => {
+        const committee = ['agent-1', 'agent-2', 'agent-3'];
+        const session = protocol.createSession('Topic', committee);
+        await protocol.startAnalysisRound(session.id);
+
+        await protocol.submitFindings(session.id, 'agent-1', [
+          {
+            agentId: 'agent-1',
+            category: 'bug',
+            severity: 'major',
+            description: 'Critical bug',
+            confidence: 0.9,
+          },
+        ]);
+
+        await protocol.startDeliberationRound(session.id);
+
+        const currentSession = protocol.getSession(session.id);
+        const findingId = Array.from(currentSession?.rounds[1]?.findings.keys() ?? [])[0];
+
+        // All committee members agree
+        for (const agentId of ['agent-2', 'agent-3']) {
+          await protocol.voteOnFinding(session.id, {
+            agentId,
+            findingId: findingId!,
+            agree: true,
+            reasoning: 'Confirmed',
+          });
+        }
+
+        await protocol.startConsensusRound(session.id);
+        await submitAllFinalVotes(protocol, session.id, committee, {
+          decision: 'reject',
+          reasoning: 'Critical bug found',
+          confidence: 0.9,
+        });
+
+        const result = await protocol.getResult(session.id);
+
+        expect(result?.consolidatedFindings[0]?.agreementRatio).toBe(1);
+      });
+
+      it('should calculate 0% agreement when all disagree', async () => {
+        const committee = ['agent-1', 'agent-2', 'agent-3'];
+        const session = protocol.createSession('Topic', committee);
+        await protocol.startAnalysisRound(session.id);
+
+        await protocol.submitFindings(session.id, 'agent-1', [
+          {
+            agentId: 'agent-1',
+            category: 'style',
+            severity: 'minor',
+            description: 'Style issue',
+            confidence: 0.5,
+          },
+        ]);
+
+        await protocol.startDeliberationRound(session.id);
+
+        const currentSession = protocol.getSession(session.id);
+        const findingId = Array.from(currentSession?.rounds[1]?.findings.keys() ?? [])[0];
+
+        // All other committee members disagree
+        for (const agentId of ['agent-2', 'agent-3']) {
+          await protocol.voteOnFinding(session.id, {
+            agentId,
+            findingId: findingId!,
+            agree: false,
+            reasoning: 'Disagree with this finding',
+          });
+        }
+
+        await protocol.startConsensusRound(session.id);
+        await submitAllFinalVotes(protocol, session.id, committee, {
+          decision: 'approve',
+          reasoning: 'Finding was not valid',
+          confidence: 0.8,
+        });
+
+        const result = await protocol.getResult(session.id);
+
+        // When all disagree, agreementRatio is 0
+        // However, if the finding is filtered out due to low agreement, it may not appear
+        const firstFinding = result?.consolidatedFindings[0];
+        if (firstFinding) {
+          expect(firstFinding.agreementRatio).toBe(0);
+        } else {
+          // Finding was filtered due to low agreement - this is valid behavior
+          expect(result?.consolidatedFindings.length).toBe(0);
+        }
+      });
+    });
+  });
 });

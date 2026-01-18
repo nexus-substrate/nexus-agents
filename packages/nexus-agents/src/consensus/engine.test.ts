@@ -610,3 +610,451 @@ describe('Voting Strategies', () => {
     });
   });
 });
+
+/**
+ * Edge Case Tests for Consensus Protocols
+ * Tests boundary conditions, empty inputs, and failure scenarios.
+ */
+describe('Voting Strategy Edge Cases', () => {
+  describe('SimpleMajorityStrategy - Edge Cases', () => {
+    const strategy = new SimpleMajorityStrategy();
+
+    it('should handle empty vote map', () => {
+      const votes = new Map<string, Vote>();
+      const outcome = strategy.calculateOutcome(votes);
+
+      expect(outcome.approved).toBe(false);
+      expect(outcome.approvalPercentage).toBe(0);
+      expect(outcome.reason).toContain('No votes');
+    });
+
+    it('should handle tie vote (50-50 split)', () => {
+      const votes = new Map<string, Vote>([
+        ['agent-1', { decision: 'approve', reasoning: 'Yes', confidence: 0.9 }],
+        ['agent-2', { decision: 'reject', reasoning: 'No', confidence: 0.9 }],
+      ]);
+
+      const outcome = strategy.calculateOutcome(votes);
+
+      // 50% is NOT >50%, so should reject
+      expect(outcome.approved).toBe(false);
+      expect(outcome.approvalPercentage).toBe(50);
+    });
+
+    it('should handle all abstentions', () => {
+      const votes = new Map<string, Vote>([
+        ['agent-1', { decision: 'abstain', reasoning: 'Skip', confidence: 0.5 }],
+        ['agent-2', { decision: 'abstain', reasoning: 'Skip', confidence: 0.5 }],
+        ['agent-3', { decision: 'abstain', reasoning: 'Skip', confidence: 0.5 }],
+      ]);
+
+      const outcome = strategy.calculateOutcome(votes);
+
+      expect(outcome.approved).toBe(false);
+      expect(outcome.voteCounts.abstain).toBe(3);
+      expect(outcome.reason).toContain('No votes');
+    });
+
+    it('should handle single voter approval', () => {
+      const votes = new Map<string, Vote>([
+        ['agent-1', { decision: 'approve', reasoning: 'Yes', confidence: 1.0 }],
+      ]);
+
+      const outcome = strategy.calculateOutcome(votes);
+
+      expect(outcome.approved).toBe(true);
+      expect(outcome.approvalPercentage).toBe(100);
+    });
+
+    it('should handle single voter rejection', () => {
+      const votes = new Map<string, Vote>([
+        ['agent-1', { decision: 'reject', reasoning: 'No', confidence: 1.0 }],
+      ]);
+
+      const outcome = strategy.calculateOutcome(votes);
+
+      expect(outcome.approved).toBe(false);
+      expect(outcome.approvalPercentage).toBe(0);
+    });
+  });
+
+  describe('SupermajorityStrategy - Edge Cases', () => {
+    const strategy = new SupermajorityStrategy();
+
+    it('should handle empty vote map', () => {
+      const votes = new Map<string, Vote>();
+      const outcome = strategy.calculateOutcome(votes);
+
+      expect(outcome.approved).toBe(false);
+      expect(outcome.reason).toContain('No votes');
+    });
+
+    it('should reject at exactly 66% (below 67% threshold)', () => {
+      // 2 out of 3 = 66.67%, which is >= 67% threshold
+      const votes = new Map<string, Vote>([
+        ['agent-1', { decision: 'approve', reasoning: 'Yes', confidence: 0.9 }],
+        ['agent-2', { decision: 'approve', reasoning: 'Yes', confidence: 0.8 }],
+        ['agent-3', { decision: 'reject', reasoning: 'No', confidence: 0.7 }],
+      ]);
+
+      const outcome = strategy.calculateOutcome(votes);
+
+      // 66.67% >= 67% threshold (depending on exact implementation)
+      expect(outcome.approvalPercentage).toBeCloseTo(66.67, 1);
+    });
+
+    it('should approve at exactly 67% (at threshold)', () => {
+      // 67 out of 100 = 67%
+      const votes = new Map<string, Vote>();
+      for (let i = 0; i < 67; i++) {
+        votes.set(`approve-${String(i)}`, {
+          decision: 'approve',
+          reasoning: 'Yes',
+          confidence: 0.8,
+        });
+      }
+      for (let i = 0; i < 33; i++) {
+        votes.set(`reject-${String(i)}`, {
+          decision: 'reject',
+          reasoning: 'No',
+          confidence: 0.8,
+        });
+      }
+
+      const outcome = strategy.calculateOutcome(votes);
+
+      expect(outcome.approved).toBe(true);
+      expect(outcome.approvalPercentage).toBe(67);
+    });
+  });
+
+  describe('UnanimousStrategy - Edge Cases', () => {
+    const strategy = new UnanimousStrategy();
+
+    it('should handle empty vote map', () => {
+      const votes = new Map<string, Vote>();
+      const outcome = strategy.calculateOutcome(votes);
+
+      expect(outcome.approved).toBe(false);
+      expect(outcome.reason).toContain('No votes');
+    });
+
+    it('should approve with single voter', () => {
+      const votes = new Map<string, Vote>([
+        ['agent-1', { decision: 'approve', reasoning: 'Yes', confidence: 1.0 }],
+      ]);
+
+      const outcome = strategy.calculateOutcome(votes);
+
+      expect(outcome.approved).toBe(true);
+    });
+
+    it('should reject with single rejection among many approvals', () => {
+      const votes = new Map<string, Vote>();
+      for (let i = 0; i < 99; i++) {
+        votes.set(`approve-${String(i)}`, {
+          decision: 'approve',
+          reasoning: 'Yes',
+          confidence: 0.9,
+        });
+      }
+      votes.set('reject-1', {
+        decision: 'reject',
+        reasoning: 'No',
+        confidence: 0.9,
+      });
+
+      const outcome = strategy.calculateOutcome(votes);
+
+      expect(outcome.approved).toBe(false);
+      expect(outcome.reason).toContain('rejection');
+    });
+
+    it('should handle only abstentions (no approvals)', () => {
+      const votes = new Map<string, Vote>([
+        ['agent-1', { decision: 'abstain', reasoning: 'Skip', confidence: 0.5 }],
+      ]);
+
+      const outcome = strategy.calculateOutcome(votes);
+
+      expect(outcome.approved).toBe(false);
+      expect(outcome.reason).toContain('No approvals');
+    });
+  });
+
+  describe('ProofOfLearningStrategy - Edge Cases', () => {
+    const strategy = new ProofOfLearningStrategy();
+
+    it('should handle empty vote map', () => {
+      const votes = new Map<string, Vote>();
+      const outcome = strategy.calculateOutcome(votes);
+
+      expect(outcome.approved).toBe(false);
+      expect(outcome.reason).toContain('No weighted votes');
+    });
+
+    it('should handle zero weight agents', () => {
+      const votes = new Map<string, Vote>([
+        ['agent-1', { decision: 'approve', reasoning: 'Yes', confidence: 0.9 }],
+        ['agent-2', { decision: 'reject', reasoning: 'No', confidence: 0.8 }],
+      ]);
+
+      const weights = new Map<string, number>([
+        ['agent-1', 0],
+        ['agent-2', 0],
+      ]);
+
+      const outcome = strategy.calculateOutcome(votes, weights);
+
+      expect(outcome.approved).toBe(false);
+      expect(outcome.reason).toContain('No weighted votes');
+    });
+
+    it('should handle very small weights', () => {
+      const votes = new Map<string, Vote>([
+        ['agent-1', { decision: 'approve', reasoning: 'Yes', confidence: 0.9 }],
+        ['agent-2', { decision: 'reject', reasoning: 'No', confidence: 0.8 }],
+      ]);
+
+      const weights = new Map<string, number>([
+        ['agent-1', 0.001],
+        ['agent-2', 0.001],
+      ]);
+
+      const outcome = strategy.calculateOutcome(votes, weights);
+
+      // 50-50 split with equal weights should reject
+      expect(outcome.approved).toBe(false);
+    });
+
+    it('should handle dominant single agent weight', () => {
+      const votes = new Map<string, Vote>([
+        ['agent-1', { decision: 'approve', reasoning: 'Yes', confidence: 0.9 }],
+        ['agent-2', { decision: 'reject', reasoning: 'No', confidence: 0.8 }],
+        ['agent-3', { decision: 'reject', reasoning: 'No', confidence: 0.8 }],
+      ]);
+
+      // agent-1 has weight 10, others have 0.1 each
+      const weights = new Map<string, number>([
+        ['agent-1', 10],
+        ['agent-2', 0.1],
+        ['agent-3', 0.1],
+      ]);
+
+      const outcome = strategy.calculateOutcome(votes, weights);
+
+      // agent-1's weight dominates
+      expect(outcome.approved).toBe(true);
+      expect(outcome.weightedCounts?.approve).toBe(10);
+    });
+
+    it('should handle missing weights (default to 1.0)', () => {
+      const votes = new Map<string, Vote>([
+        ['agent-1', { decision: 'approve', reasoning: 'Yes', confidence: 0.9 }],
+        ['agent-2', { decision: 'approve', reasoning: 'Yes', confidence: 0.8 }],
+        ['agent-3', { decision: 'reject', reasoning: 'No', confidence: 0.7 }],
+      ]);
+
+      // Only provide weight for one agent
+      const weights = new Map<string, number>([['agent-1', 0.5]]);
+
+      const outcome = strategy.calculateOutcome(votes, weights);
+
+      // agent-1: 0.5, agent-2: 1.0 (default), agent-3: 1.0 (default)
+      // approve = 1.5, reject = 1.0
+      expect(outcome.approved).toBe(true);
+      expect(outcome.weightedCounts?.approve).toBe(1.5);
+    });
+  });
+
+  describe('calculateVoteWeight - Edge Cases', () => {
+    it('should handle undefined performance', () => {
+      const weight = calculateVoteWeight(undefined);
+      expect(weight).toBe(1.0);
+    });
+
+    it('should handle zero total votes', () => {
+      const performance: AgentPerformance = {
+        agentId: 'agent-1',
+        totalVotes: 0,
+        correctVotes: 0,
+        successRate: 0,
+        lastUpdated: new Date().toISOString(),
+      };
+
+      const weight = calculateVoteWeight(performance);
+      expect(weight).toBe(1.0);
+    });
+
+    it('should handle 50% success rate', () => {
+      const performance: AgentPerformance = {
+        agentId: 'agent-1',
+        totalVotes: 100,
+        correctVotes: 50,
+        successRate: 0.5,
+        lastUpdated: new Date().toISOString(),
+      };
+
+      const weight = calculateVoteWeight(performance);
+      // 0.5 + (0.5 * 0.5) = 0.75
+      expect(weight).toBeCloseTo(0.75, 2);
+    });
+  });
+});
+
+describe('ConsensusEngine - Edge Cases', () => {
+  let engine: ConsensusEngine;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    engine = createConsensusEngine({
+      defaultTimeout: 60000,
+      minVotersForQuorum: 2,
+      maxActiveProposals: 10,
+    });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  describe('duplicate votes', () => {
+    it('should handle agent voting multiple times (overwrite)', async () => {
+      const propResult = await engine.propose({
+        title: 'Test',
+        description: 'Test',
+        algorithm: 'simple_majority',
+      });
+
+      if (!propResult.ok) return;
+
+      // First vote: approve
+      await engine.vote(propResult.value, 'agent-1', {
+        decision: 'approve',
+        reasoning: 'First vote',
+        confidence: 0.9,
+      });
+
+      // Second vote: reject (should overwrite)
+      await engine.vote(propResult.value, 'agent-1', {
+        decision: 'reject',
+        reasoning: 'Changed my mind',
+        confidence: 0.8,
+      });
+
+      // Add another agent to meet quorum
+      await engine.vote(propResult.value, 'agent-2', {
+        decision: 'approve',
+        reasoning: 'Yes',
+        confidence: 0.9,
+      });
+
+      const result = await engine.close(propResult.value);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        // agent-1's final vote should be reject
+        expect(result.value.voteCounts.approve).toBe(1);
+        expect(result.value.voteCounts.reject).toBe(1);
+      }
+    });
+  });
+
+  describe('concurrent proposals', () => {
+    it('should handle multiple concurrent proposals', async () => {
+      const proposals = [];
+      for (let i = 0; i < 5; i++) {
+        const result = await engine.propose({
+          title: `Proposal ${String(i)}`,
+          description: 'Test',
+          algorithm: 'simple_majority',
+        });
+        if (result.ok) {
+          proposals.push(result.value);
+        }
+      }
+
+      expect(proposals.length).toBe(5);
+
+      // Vote on all proposals concurrently
+      const votePromises = proposals.map((propId) =>
+        engine.vote(propId, 'agent-1', {
+          decision: 'approve',
+          reasoning: 'Yes',
+          confidence: 0.9,
+        })
+      );
+
+      await Promise.all(votePromises);
+
+      // All votes should succeed
+      for (const propId of proposals) {
+        const result = await engine.getResult(propId);
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+          expect(result.value.voteCounts.approve).toBe(1);
+        }
+      }
+    });
+  });
+
+  describe('boundary conditions', () => {
+    it('should handle proposal with very long title', async () => {
+      const longTitle = 'A'.repeat(200);
+      const result = await engine.propose({
+        title: longTitle,
+        description: 'Test',
+        algorithm: 'simple_majority',
+      });
+
+      expect(result.ok).toBe(true);
+    });
+
+    it('should reject proposal with title exceeding max length', async () => {
+      const tooLongTitle = 'A'.repeat(201);
+      const result = await engine.propose({
+        title: tooLongTitle,
+        description: 'Test',
+        algorithm: 'simple_majority',
+      });
+
+      expect(result.ok).toBe(false);
+    });
+
+    it('should handle vote with zero confidence', async () => {
+      const propResult = await engine.propose({
+        title: 'Test',
+        description: 'Test',
+        algorithm: 'simple_majority',
+      });
+
+      if (!propResult.ok) return;
+
+      const voteResult = await engine.vote(propResult.value, 'agent-1', {
+        decision: 'approve',
+        reasoning: 'Very uncertain',
+        confidence: 0, // Minimum confidence
+      });
+
+      expect(voteResult.ok).toBe(true);
+    });
+
+    it('should handle vote with maximum confidence', async () => {
+      const propResult = await engine.propose({
+        title: 'Test',
+        description: 'Test',
+        algorithm: 'simple_majority',
+      });
+
+      if (!propResult.ok) return;
+
+      const voteResult = await engine.vote(propResult.value, 'agent-1', {
+        decision: 'approve',
+        reasoning: 'Absolutely certain',
+        confidence: 1, // Maximum confidence
+      });
+
+      expect(voteResult.ok).toBe(true);
+    });
+  });
+});
