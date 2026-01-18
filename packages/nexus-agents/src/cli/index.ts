@@ -156,7 +156,9 @@ export {
   getResearchStatus,
   findOverlaps,
   paperExists,
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- Re-exporting for backward compatibility
   fetchArxivMetadata,
+  fetchArxivMetadataResult,
   addResearchPaper,
   loadTechniquesRegistry,
   loadPapersRegistry,
@@ -172,7 +174,11 @@ export {
   findSharedTags,
   determineRelationship,
 } from './research-command.js';
-export type { ResearchSubcommand } from './research-command.js';
+export type {
+  ResearchSubcommand,
+  ArxivFetchError,
+  ArxivFetchErrorCode,
+} from './research-command.js';
 export type {
   ResearchAddOptions,
   ResearchStatusOptions,

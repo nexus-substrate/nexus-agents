@@ -60,3 +60,9 @@ export * from './exports/api.js';
 
 // Security - Sandboxing, safety evaluation, and security components (Issue #332)
 export * from './exports/security.js';
+
+// Consensus - Voting protocols, consensus engine, and strategies (Issue #351)
+export * from './exports/consensus.js';
+
+// Observability - Swarm-level observability for multi-agent systems (Issue #351)
+export * from './exports/observability.js';

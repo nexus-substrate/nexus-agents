@@ -154,6 +154,9 @@ function passesFilters(instance: SWEBenchInstance, options: DatasetLoadOptions):
 /** Maximum rows per HuggingFace API request. */
 const HF_API_MAX_LENGTH = 100;
 
+/** Timeout for HuggingFace API requests in milliseconds (30 seconds). @see Issue #350 */
+const HF_API_TIMEOUT_MS = 30_000;
+
 /**
  * Fetches a single page from HuggingFace API.
  */
@@ -166,7 +169,10 @@ async function fetchPage(
   const url = `${baseUrl}?dataset=${encodeURIComponent(datasetId)}&config=default&split=test&offset=${String(offset)}&length=${String(length)}`;
 
   try {
-    const response = await fetch(url, { headers: { Accept: 'application/json' } });
+    const response = await fetch(url, {
+      headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(HF_API_TIMEOUT_MS),
+    });
 
     if (!response.ok) {
       return {
@@ -185,7 +191,12 @@ async function fetchPage(
 
     return { ok: true, value: data.rows.map((r) => r.row) };
   } catch (err) {
-    return { ok: false, error: new DatasetLoadError('Failed to fetch from HuggingFace', err) };
+    const isTimeout = err instanceof Error && err.name === 'TimeoutError';
+    const timeoutSec = String(HF_API_TIMEOUT_MS / 1000);
+    const message = isTimeout
+      ? `HuggingFace API request timed out after ${timeoutSec} seconds`
+      : 'Failed to fetch from HuggingFace';
+    return { ok: false, error: new DatasetLoadError(message, err) };
   }
 }
 

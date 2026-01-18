@@ -530,6 +530,7 @@ describe('fetchArxivMetadata', () => {
   });
 
   it('should fetch and parse arXiv metadata', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-deprecated -- Testing deprecated function for backward compatibility
     const result = await fetchArxivMetadata('1234.56789');
 
     expect(result).not.toBeNull();
@@ -545,6 +546,7 @@ describe('fetchArxivMetadata', () => {
       })
     );
 
+    // eslint-disable-next-line @typescript-eslint/no-deprecated -- Testing deprecated function for backward compatibility
     const result = await fetchArxivMetadata('1234.56789');
     expect(result).toBeNull();
   });

@@ -48,3 +48,4 @@ credentials.json
 secrets.json
 .claude-flow/
 .swarm/
+packages/nexus-agents/coverage.json

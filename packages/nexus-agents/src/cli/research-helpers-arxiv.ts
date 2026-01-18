@@ -5,10 +5,30 @@
  *
  * @see docs/research/RESEARCH_INDEX.md
  * @see Issue #237 (Epic #225)
+ * @see Issue #350 (timeout configuration)
  */
 
+import type { Result } from '../core/result.js';
 import type { ArxivMetadata, ResearchAddOptions, ResearchAddResult } from './research-types.js';
 import { loadPapersRegistry } from './research-helpers-io.js';
+
+/** Timeout for arXiv API requests in milliseconds (30 seconds). */
+const ARXIV_API_TIMEOUT_MS = 30_000;
+
+/**
+ * Error codes for arXiv API operations.
+ */
+export type ArxivFetchErrorCode = 'TIMEOUT' | 'NETWORK' | 'HTTP_ERROR' | 'PARSE_ERROR';
+
+/**
+ * Structured error for arXiv fetch failures.
+ */
+export interface ArxivFetchError {
+  readonly code: ArxivFetchErrorCode;
+  readonly message: string;
+  readonly arxivId: string;
+  readonly cause?: unknown;
+}
 
 // =============================================================================
 // ARXIV PARSING
@@ -42,21 +62,85 @@ function parseArxivXml(arxivId: string, xml: string): ArxivMetadata | null {
 // =============================================================================
 
 /**
- * Fetch paper metadata from arXiv API.
- * Note: This is a simplified implementation.
+ * Creates a structured arXiv fetch error.
  */
-export async function fetchArxivMetadata(arxivId: string): Promise<ArxivMetadata | null> {
+function createArxivError(
+  code: ArxivFetchErrorCode,
+  arxivId: string,
+  message: string,
+  cause?: unknown
+): ArxivFetchError {
+  return { code, message, arxivId, cause };
+}
+
+/**
+ * Determines error code from caught exception.
+ */
+function getErrorCodeFromException(err: unknown): ArxivFetchErrorCode {
+  if (err instanceof Error && err.name === 'TimeoutError') {
+    return 'TIMEOUT';
+  }
+  return 'NETWORK';
+}
+
+/**
+ * Fetch paper metadata from arXiv API with timeout and structured error handling.
+ *
+ * @param arxivId - The arXiv paper ID (e.g., "2401.12345")
+ * @returns Result containing metadata or structured error
+ */
+export async function fetchArxivMetadataResult(
+  arxivId: string
+): Promise<Result<ArxivMetadata, ArxivFetchError>> {
   const url = `http://export.arxiv.org/api/query?id_list=${arxivId}`;
 
   try {
-    const response = await fetch(url);
-    if (!response.ok) return null;
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(ARXIV_API_TIMEOUT_MS),
+    });
+
+    if (!response.ok) {
+      return {
+        ok: false,
+        error: createArxivError(
+          'HTTP_ERROR',
+          arxivId,
+          `arXiv API returned ${String(response.status)} ${response.statusText}`
+        ),
+      };
+    }
 
     const xml = await response.text();
-    return parseArxivXml(arxivId, xml);
-  } catch {
-    return null;
+    const metadata = parseArxivXml(arxivId, xml);
+
+    if (metadata === null) {
+      return {
+        ok: false,
+        error: createArxivError('PARSE_ERROR', arxivId, 'Failed to parse arXiv XML response'),
+      };
+    }
+
+    return { ok: true, value: metadata };
+  } catch (err) {
+    const code = getErrorCodeFromException(err);
+    const message =
+      code === 'TIMEOUT'
+        ? `arXiv API request timed out after ${String(ARXIV_API_TIMEOUT_MS / 1000)} seconds`
+        : 'Network error while fetching from arXiv API';
+    return { ok: false, error: createArxivError(code, arxivId, message, err) };
   }
+}
+
+/**
+ * Fetch paper metadata from arXiv API.
+ *
+ * @deprecated Use fetchArxivMetadataResult for proper error handling
+ * @param arxivId - The arXiv paper ID (e.g., "2401.12345")
+ * @returns Metadata or null on any error
+ */
+export async function fetchArxivMetadata(arxivId: string): Promise<ArxivMetadata | null> {
+  const result = await fetchArxivMetadataResult(arxivId);
+  return result.ok ? result.value : null;
 }
 
 // =============================================================================
@@ -88,17 +172,18 @@ export async function addResearchPaper(options: ResearchAddOptions): Promise<Res
     };
   }
 
-  // Fetch metadata
-  const metadata = await fetchArxivMetadata(options.arxivId);
-  if (!metadata) {
+  // Fetch metadata using Result pattern
+  const metadataResult = await fetchArxivMetadataResult(options.arxivId);
+  if (!metadataResult.ok) {
     return {
       success: false,
       paperId: `arxiv-${options.arxivId}`,
       title: '',
-      message: `Could not fetch metadata for arXiv ID ${options.arxivId}`,
+      message: `Could not fetch metadata for arXiv ID ${options.arxivId}: ${metadataResult.error.message}`,
       dryRun: options.dryRun,
     };
   }
+  const metadata = metadataResult.value;
 
   if (options.dryRun) {
     return {
