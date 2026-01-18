@@ -2281,7 +2281,7 @@ papers:
 
     related_issues:
       - 336
-    implementation_status: planned
+    implementation_status: implemented
 
   arxiv-2512.08296:
     title: 'Scaling Agent Systems: Coordination Prediction and Resource Optimization'
@@ -2318,4 +2318,4 @@ papers:
 
     related_issues:
       - 337
-    implementation_status: planned
+    implementation_status: implemented

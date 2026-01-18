@@ -1698,7 +1698,7 @@ techniques:
     metrics:
       reasoning_quality: 'Improved through belief tracking'
 
-    status: planned
+    status: implemented
     priority: P2
     complexity: medium
 
@@ -1720,6 +1720,9 @@ techniques:
       - date: '2026-01-17'
         decision: 'APPROVED via consensus vote'
         rationale: 'Weighted score 0.78, 11/15 agents FOR'
+      - date: '2026-01-17'
+        decision: 'Implemented in commit 409dd49'
+        rationale: 'Swarm iteration 2 implementation'
 
   scaling-coordination-predictor:
     name: 'Scaling Agent Coordination Predictor'
@@ -1739,7 +1742,7 @@ techniques:
     metrics:
       allocation_efficiency: 'Improved agent utilization'
 
-    status: planned
+    status: implemented
     priority: P2
     complexity: medium
 
@@ -1760,6 +1763,9 @@ techniques:
       - date: '2026-01-17'
         decision: 'APPROVED via consensus vote'
         rationale: 'Weighted score 0.67, 9/15 agents FOR'
+      - date: '2026-01-17'
+        decision: 'Implemented in commit 409dd49'
+        rationale: 'Swarm iteration 2 implementation'
 
   zerorouter-universal-difficulty:
     name: 'ZeroRouter Universal Difficulty Space'

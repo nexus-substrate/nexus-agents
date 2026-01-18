@@ -9,9 +9,9 @@
 
 | Status      | Papers | Techniques |
 | ----------- | ------ | ---------- |
-| Implemented | -      | 31         |
+| Implemented | -      | 33         |
 | In Progress | -      | 2          |
-| Planned     | -      | 3          |
+| Planned     | -      | 1          |
 | Not Started | -      | 1          |
 | Rejected    | -      | 1          |
 
