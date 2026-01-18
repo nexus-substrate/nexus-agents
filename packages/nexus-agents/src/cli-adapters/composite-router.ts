@@ -6,7 +6,7 @@
 import type { Result } from '../core/index.js';
 import { ok, err, createLogger } from '../core/index.js';
 import type { ILogger } from '../core/index.js';
-import type { ICliAdapter, CliName, CliTask } from './types.js';
+import type { ICliAdapter, CliName, CliTask, CliResponse, CliError } from './types.js';
 import { BudgetRouter } from './budget-router.js';
 import { TopsisRouter } from './topsis-router.js';
 import { LinUCBBandit } from './linucb-bandit.js';
@@ -53,6 +53,7 @@ export {
 /** Composite router interface for dependency injection. */
 export interface ICompositeRouter {
   route(task: CliTask): Promise<Result<CompositeRoutingDecision, CompositeRoutingError>>;
+  executeTask(task: CliTask): Promise<Result<CliResponse, CliError | CompositeRoutingError>>;
   recordOutcome(cliName: CliName, task: CliTask, reward: number): void;
   recordPreference(
     query: string,
@@ -126,6 +127,54 @@ export class CompositeRouter implements ICompositeRouter {
 
   async route(task: CliTask): Promise<Result<CompositeRoutingDecision, CompositeRoutingError>> {
     return Promise.resolve().then(() => this.executeRouting(task, Date.now()));
+  }
+
+  /**
+   * Unified method that routes, executes, and auto-records feedback.
+   * Use this for most cases; use route() when you need decision details without execution.
+   *
+   * @param task - Task to execute
+   * @returns Result with CLI response or error
+   */
+  async executeTask(task: CliTask): Promise<Result<CliResponse, CliError | CompositeRoutingError>> {
+    const routeResult = await this.route(task);
+    if (!routeResult.ok) {
+      return err(routeResult.error);
+    }
+
+    const decision = routeResult.value;
+    const startTime = Date.now();
+
+    const executeResult = await decision.adapter.execute(task);
+
+    const durationMs = Date.now() - startTime;
+    const success = executeResult.ok;
+
+    // Auto-record feedback for learning systems
+    this.autoRecordFeedback(decision, task, success, durationMs);
+
+    return executeResult;
+  }
+
+  private autoRecordFeedback(
+    decision: CompositeRoutingDecision,
+    task: CliTask,
+    success: boolean,
+    durationMs: number
+  ): void {
+    // Record bandit outcome (reward: 1 for success, 0 for failure)
+    const reward = success ? 1.0 : 0.0;
+    this.recordOutcome(decision.cliName, task, reward);
+
+    // Record difficulty outcome for ZeroRouter learning
+    this.recordDifficultyOutcome(task, success);
+
+    this.logger.debug('Auto-recorded feedback', {
+      cli: decision.cliName,
+      success,
+      durationMs,
+      reward,
+    });
   }
 
   private executeRouting(

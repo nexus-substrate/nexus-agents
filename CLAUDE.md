@@ -643,7 +643,7 @@ grep -c "status: planned" docs/research/registry/techniques.yaml
 - [ ] ARCHITECTURE.md reflects current phase status
 - [ ] README.md lists current capabilities accurately
 - [ ] CHANGELOG.md has entries for shipped features
-- [ ] PROJECT_PLAN.md phase status is current
+- [ ] ALIGNMENT_ROADMAP.md phase status is current
 
 **Phase 3: Issue Health**
 

@@ -774,4 +774,76 @@ describe('CompositeRouter ZeroRouter integration (Issue #347)', () => {
       }
     });
   });
+
+  describe('executeTask', () => {
+    let adapters: Map<CliName, ICliAdapter>;
+    let router: CompositeRouter;
+
+    beforeEach(() => {
+      adapters = createTestAdapters();
+      router = new CompositeRouter(adapters);
+    });
+
+    it('should route, execute, and return result on success', async () => {
+      const task: CliTask = { content: 'Test task' };
+      const result = await router.executeTask(task);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.text).toBe('mock response');
+      }
+    });
+
+    it('should auto-record feedback after successful execution', async () => {
+      const recordOutcomeSpy = vi.spyOn(router, 'recordOutcome');
+      const recordDifficultySpy = vi.spyOn(router, 'recordDifficultyOutcome');
+
+      const task: CliTask = { content: 'Test task' };
+      await router.executeTask(task);
+
+      expect(recordOutcomeSpy).toHaveBeenCalledWith(expect.any(String), task, 1.0);
+      expect(recordDifficultySpy).toHaveBeenCalledWith(task, true);
+    });
+
+    it('should auto-record feedback with reward 0 on failed execution', async () => {
+      const failingAdapter = adapters.get('claude')!;
+      vi.mocked(failingAdapter.execute).mockResolvedValueOnce({
+        ok: false,
+        error: { code: 'EXECUTION_ERROR', message: 'Failed', cli: 'claude', retryable: false },
+      });
+
+      const recordOutcomeSpy = vi.spyOn(router, 'recordOutcome');
+      const recordDifficultySpy = vi.spyOn(router, 'recordDifficultyOutcome');
+
+      const task: CliTask = { content: 'Failing task' };
+      const result = await router.executeTask(task);
+
+      expect(result.ok).toBe(false);
+      expect(recordOutcomeSpy).toHaveBeenCalledWith(expect.any(String), task, 0.0);
+      expect(recordDifficultySpy).toHaveBeenCalledWith(task, false);
+    });
+
+    it('should return routing error if routing fails', async () => {
+      const emptyRouter = new CompositeRouter(new Map());
+
+      const task: CliTask = { content: 'Test task' };
+      const result = await emptyRouter.executeTask(task);
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error).toBeInstanceOf(CompositeRoutingError);
+      }
+    });
+
+    it('should call the selected adapter execute method', async () => {
+      const task: CliTask = { content: 'Execute this' };
+      await router.executeTask(task);
+
+      // At least one adapter should have been called
+      const executeWasCalled = Array.from(adapters.values()).some(
+        (adapter) => vi.mocked(adapter.execute).mock.calls.length > 0
+      );
+      expect(executeWasCalled).toBe(true);
+    });
+  });
 });

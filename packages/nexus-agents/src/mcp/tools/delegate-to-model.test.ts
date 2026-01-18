@@ -378,6 +378,7 @@ describe('delegate_to_model Tool', () => {
       cliName: 'claude' | 'gemini' | 'codex' = 'claude'
     ): {
       route: ReturnType<typeof vi.fn>;
+      executeTask: ReturnType<typeof vi.fn>;
       recordOutcome: ReturnType<typeof vi.fn>;
       recordPreference: ReturnType<typeof vi.fn>;
       recordDifficultyOutcome: ReturnType<typeof vi.fn>;
@@ -415,6 +416,7 @@ describe('delegate_to_model Tool', () => {
                 error: { message: 'Routing failed', stage: 'test' },
               }
         ),
+        executeTask: vi.fn(),
         recordOutcome: vi.fn(),
         recordPreference: vi.fn(),
         recordDifficultyOutcome: vi.fn(),

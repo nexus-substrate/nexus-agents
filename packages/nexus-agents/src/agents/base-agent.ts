@@ -40,7 +40,6 @@ import type { ResolvedPruningConfig, ContextPruningMetrics } from './base-agent-
 import {
   loadMemoryState,
   loadRelevantTypedMemories,
-  MemoryPersistenceMode,
   type ResolvedMemoryConfig,
   type AgentMemoryState,
   type TaskLearning,
@@ -49,43 +48,43 @@ import {
   type AgentMemoryError,
 } from './base-agent-memory-init.js';
 import {
-  executeContextPruning,
-  checkBudgetBeforeComplete,
-  executeModelCompletion,
   addContextItem as addContextItemHelper,
   ContentPriority,
 } from './base-agent-complete-helpers.js';
 import {
-  validateTask,
-  checkAgentAvailability,
-  executeWithTimeout,
-  transformTaskError,
-  finalizeTaskSuccess,
-  handleTaskFailure,
-} from './base-agent-task-helpers.js';
+  validateAdapter,
+  executePreCompletionChecks,
+  runModelCompletion,
+  type CompleteFlowContext,
+} from './base-agent-complete-flow.js';
+import { transformTaskError } from './base-agent-task-helpers.js';
+import {
+  setupExecute,
+  runTaskWithTimeout,
+  handleExecutionFailure as handleExecFailure,
+  finalizeSuccessfulExecution as finalizeExec,
+  handleExecutionError as handleExecError,
+  addToHistory as addToHistoryHelper,
+  getHistoryCopy,
+  type ExecuteFlowContext,
+  type TaskMemoryContext,
+} from './base-agent-execute-flow.js';
 import type { BaseAgentOptions } from './base-agent-types.js';
 import { createInitialPruningMetrics, copyPruningMetrics } from './base-agent-context-helpers.js';
 import {
-  flushMemoryState,
-  copyMemoryState,
-  doRecordLearning,
-  doRecordPattern,
-  doRecordResolution,
-  doFindResolution,
-  doGetLearnings,
-  doGetTopPatterns,
-} from './base-agent-memory-ops.js';
-import {
-  recordFailedTaskError,
-  persistMemoryAfterTask,
-  persistMemoryOnCleanup,
-} from './base-agent-execution-helpers.js';
+  getMemoryStateCopy,
+  flushMemory,
+  recordLearningToMemory,
+  recordPatternToMemory,
+  recordResolutionToMemory,
+  findResolution,
+  getTaskLearningsByType,
+  getTopPatterns,
+} from './base-agent-memory-accessors.js';
+import { persistMemoryOnCleanup } from './base-agent-execution-helpers.js';
 import { validateMessage, dispatchMessage } from './base-agent-dispatch.js';
 
 export * from './base-agent-exports.js';
-
-const DEFAULT_MAX_DURATION_MS = 5 * 60 * 1000;
-const MAX_HISTORY_ITEMS = 100;
 
 /** Abstract base class for all agents. Subclasses must implement executeTask and buildPrompt. */
 export abstract class BaseAgent implements IAgent {
@@ -216,94 +215,52 @@ export abstract class BaseAgent implements IAgent {
   }
 
   async execute(task: Task): Promise<Result<TaskResult, AgentError>> {
-    const validationResult = validateTask(task);
-    if (!validationResult.ok) return validationResult;
-    const availabilityCheck = checkAgentAvailability({
-      agentId: this.id,
-      taskId: task.id,
-      stateMachine: this.stateMachine,
-    });
-    if (!availabilityCheck.ok) return availabilityCheck;
-    const startTime = Date.now();
+    const setup = setupExecute(this.execFlowCtx, task);
+    if (!setup.valid && setup.error !== undefined) return err(setup.error);
     const transitionResult = this.stateMachine.transition('task_assigned', { taskId: task.id });
     if (!transitionResult.ok) return err(transitionResult.error);
     this.budgetTracker.startTask(task.id);
     this.logger.info('Executing task', { taskId: task.id, priority: task.priority });
     try {
-      const result = await this.runTaskWithTimeout(task);
-      if (!result.ok) return this.handleExecutionFailure(task, result);
-      await this.finalizeSuccessfulExecution(task, result.value, startTime);
+      const result = await runTaskWithTimeout(task, this.id, (t) => this.executeTask(t));
+      if (!result.ok) return handleExecFailure(task, result, this.execFlowCtx);
+      this.memoryState = await finalizeExec(
+        task,
+        result.value,
+        setup.startTime,
+        this.execFlowCtx,
+        this.taskMemCtx
+      );
       return result;
     } catch (error) {
-      return this.handleExecutionError(task, error);
+      const { error: agentError, updatedMemoryState } = handleExecError(
+        task,
+        error,
+        this.execFlowCtx,
+        this.taskMemCtx
+      );
+      this.memoryState = updatedMemoryState;
+      return err(agentError);
     }
   }
 
-  private async runTaskWithTimeout(task: Task): Promise<Result<TaskResult, AgentError>> {
-    const maxDuration = task.constraints?.maxDuration ?? DEFAULT_MAX_DURATION_MS;
-    return executeWithTimeout({
-      task,
-      maxDurationMs: maxDuration,
-      executeTask: (t) => this.executeTask(t),
-      transformError: (error, taskId) => transformTaskError(error, this.id, taskId),
-    });
-  }
-
-  private handleExecutionFailure(
-    task: Task,
-    result: Result<TaskResult, AgentError>
-  ): Result<TaskResult, AgentError> {
-    if (!result.ok) {
-      this.stateMachine.forceError({ taskId: task.id, error: result.error.message });
-      this.budgetTracker.endTask();
-    }
-    return result;
-  }
-
-  private async finalizeSuccessfulExecution(
-    task: Task,
-    result: TaskResult,
-    startTime: number
-  ): Promise<void> {
-    finalizeTaskSuccess({
-      task,
-      result,
-      startTime,
+  private get execFlowCtx(): ExecuteFlowContext {
+    return {
+      agentId: this.id,
       stateMachine: this.stateMachine,
       budgetTracker: this.budgetTracker,
       logger: this.logger,
-    });
-    if (
-      this.memoryEnabled &&
-      this.memoryConfig.persistenceMode === MemoryPersistenceMode.ON_TASK_COMPLETE
-    ) {
-      this.memoryState = await persistMemoryAfterTask({
-        memoryEnabled: this.memoryEnabled,
-        memoryBackend: this.memoryBackend,
-        memoryState: this.memoryState,
-        persistenceMode: this.memoryConfig.persistenceMode,
-        task,
-        startTime,
-        logger: this.logger,
-      });
-    }
-  }
-
-  private handleExecutionError(task: Task, error: unknown): Result<TaskResult, AgentError> {
-    this.memoryState = recordFailedTaskError({
       memoryEnabled: this.memoryEnabled,
       memoryState: this.memoryState,
-      error,
-    });
-    return err(
-      handleTaskFailure({
-        task,
-        error,
-        agentId: this.id,
-        stateMachine: this.stateMachine,
-        budgetTracker: this.budgetTracker,
-      })
-    );
+    };
+  }
+  private get taskMemCtx(): TaskMemoryContext {
+    return {
+      memoryEnabled: this.memoryEnabled,
+      memoryBackend: this.memoryBackend,
+      memoryState: this.memoryState,
+      persistenceMode: this.memoryConfig.persistenceMode,
+    };
   }
 
   async handleMessage(msg: AgentMessage): Promise<Result<AgentResponse, AgentError>> {
@@ -363,43 +320,38 @@ export abstract class BaseAgent implements IAgent {
   protected async complete(
     request: CompletionRequest
   ): Promise<Result<CompletionResponse, AgentError>> {
-    if (this.adapter === undefined)
-      return err(new AgentError('No model adapter configured', { context: { agentId: this.id } }));
-    const budgetResult = checkBudgetBeforeComplete({
-      agentId: this.id,
-      budgetTracker: this.budgetTracker,
-    });
-    if (!budgetResult.ok) return budgetResult;
-    if (this.contextPruningEnabled && this.contextPruner !== undefined) {
-      await executeContextPruning({
-        agentId: this.id,
-        contextPruner: this.contextPruner,
-        pruningConfig: this.pruningConfig,
-        pruningMetrics: this.pruningMetrics,
-        eventBus: this.eventBus,
-      });
-    }
+    const ctx = this.getCompleteFlowContext();
+    const adapterResult = validateAdapter(ctx);
+    if (!adapterResult.ok) return adapterResult;
+    const preCheckResult = await executePreCompletionChecks(ctx);
+    if (!preCheckResult.ok) return preCheckResult;
     // eslint-disable-next-line @typescript-eslint/no-deprecated -- Internal backward compatibility
     this.setState('acting');
-    const result = await executeModelCompletion({
-      agentId: this.id,
-      adapter: this.adapter,
-      request,
-      budgetTracker: this.budgetTracker,
-    });
+    const result = await runModelCompletion(ctx, adapterResult.value, request);
     // eslint-disable-next-line @typescript-eslint/no-deprecated -- Internal backward compatibility
     this.setState('thinking');
     return result;
   }
 
+  private getCompleteFlowContext(): CompleteFlowContext {
+    return {
+      agentId: this.id,
+      adapter: this.adapter,
+      budgetTracker: this.budgetTracker,
+      contextPruningEnabled: this.contextPruningEnabled,
+      contextPruner: this.contextPruner,
+      pruningConfig: this.pruningConfig,
+      pruningMetrics: this.pruningMetrics,
+      eventBus: this.eventBus,
+    };
+  }
+
   protected addToHistory(message: Message): void {
-    this.history.push(message);
-    if (this.history.length > MAX_HISTORY_ITEMS)
-      this.history = this.history.slice(-MAX_HISTORY_ITEMS);
+    this.history = addToHistoryHelper(this.history, message);
   }
 
   protected getHistory(): Message[] {
-    return [...this.history];
+    return getHistoryCopy(this.history);
   }
   protected clearHistory(): void {
     this.history = [];
@@ -430,14 +382,14 @@ export abstract class BaseAgent implements IAgent {
     return this.memoryEnabled;
   }
   getMemoryState(): Readonly<AgentMemoryState> | null {
-    return copyMemoryState(this.memoryState);
+    return getMemoryStateCopy(this.memoryState);
   }
   getRelevantMemories(): readonly TypedMemoryEntry[] {
     return this.relevantMemories;
   }
 
   async flushMemory(): Promise<Result<void, AgentMemoryError>> {
-    return flushMemoryState({
+    return flushMemory({
       memoryEnabled: this.memoryEnabled,
       memoryBackend: this.memoryBackend,
       memoryState: this.memoryState,
@@ -445,33 +397,28 @@ export abstract class BaseAgent implements IAgent {
     });
   }
 
-  private get memoryCtx(): { memoryEnabled: boolean; memoryState: AgentMemoryState | null } {
+  private get memOpCtx(): { memoryEnabled: boolean; memoryState: AgentMemoryState | null } {
     return { memoryEnabled: this.memoryEnabled, memoryState: this.memoryState };
   }
 
   protected recordLearning(learning: Omit<TaskLearning, 'id' | 'learnedAt'>): void {
-    this.memoryState = doRecordLearning(this.memoryCtx, learning);
+    this.memoryState = recordLearningToMemory(this.memOpCtx, learning);
   }
-
   protected recordPattern(
     pattern: Omit<ExecutionPattern, 'id' | 'lastSeen' | 'occurrences'>
   ): void {
-    this.memoryState = doRecordPattern(this.memoryCtx, pattern);
+    this.memoryState = recordPatternToMemory(this.memOpCtx, pattern);
   }
-
   protected recordResolution(resolution: Omit<ErrorResolution, 'resolvedAt'>): void {
-    this.memoryState = doRecordResolution(this.memoryCtx, resolution);
+    this.memoryState = recordResolutionToMemory(this.memOpCtx, resolution);
   }
-
   protected findResolutionForError(errorMessage: string): ErrorResolution | undefined {
-    return doFindResolution(this.memoryCtx, errorMessage);
+    return findResolution(this.memOpCtx, errorMessage);
   }
-
   protected getTaskLearnings(taskType: string): readonly TaskLearning[] {
-    return doGetLearnings(this.memoryCtx, taskType);
+    return getTaskLearningsByType(this.memOpCtx, taskType);
   }
-
   protected getTopExecutionPatterns(limit: number = 10): readonly ExecutionPattern[] {
-    return doGetTopPatterns(this.memoryCtx, limit);
+    return getTopPatterns(this.memOpCtx, limit);
   }
 }

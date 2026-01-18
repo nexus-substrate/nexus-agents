@@ -21,6 +21,17 @@ allowed-tools: Bash, Read, Glob, Grep, Task
 - [ROUTING_SYSTEM.md](../../docs/architecture/ROUTING_SYSTEM.md)
 - [ENTRYPOINTS.md](../../docs/ENTRYPOINTS.md)
 
+## Real-World Performance (Tested 2026-01-18)
+
+| Metric            | Value                 | Notes                                  |
+| ----------------- | --------------------- | -------------------------------------- |
+| Model version     | gpt-5.2-codex         | Latest research preview                |
+| Latency (simple)  | 3-4 seconds           | Single function generation             |
+| Latency (complex) | 5-6 seconds           | Interface + class boilerplate          |
+| Token overhead    | ~900-1050 per session | Fixed session initialization cost      |
+| Default sandbox   | read-only             | Safe for code generation               |
+| Code quality      | Production-ready      | Proper generics, types, error handling |
+
 ## When to Use Codex
 
 Codex excels at:
@@ -53,15 +64,23 @@ The CompositeRouter automatically routes to Codex when:
 
 ### Method 2: Direct CLI Execution
 
-For explicit Codex invocation:
+For explicit Codex invocation, use `codex exec` for non-interactive mode:
 
 ```bash
+# Basic code generation (non-interactive)
+codex exec "Implement a binary search function in TypeScript"
+
 # Via nexus-agents CLI
 nexus-agents orchestrate "Implement sorting algorithm" --cli=codex
 
-# Via codex directly
-codex exec -m o3 "Implement a binary search function"
+# Explicit model selection (default is gpt-5.2-codex)
+codex exec -m gpt-5.2-codex "Implement a debounce function"
+
+# Full autonomous mode (dangerous - writes files)
+codex exec --full-auto "Add error handling to all functions in utils.ts"
 ```
+
+**Important:** Use `codex exec` NOT `codex -p`. The `-p` flag is for interactive sessions.
 
 ### Method 3: Routing Audit
 
@@ -141,12 +160,20 @@ Codex selected if: high codeGeneration + low reasoningComplexity
 
 ## Codex Capabilities
 
-| Capability      | Score  | Notes                            |
-| --------------- | ------ | -------------------------------- |
-| Code Generation | 0.95   | Primary strength                 |
-| Context Window  | 400K   | Large file support               |
-| Cost Efficiency | High   | Lower than Claude for code tasks |
-| Latency         | Medium | Optimized for code completion    |
+| Capability      | Score | Notes                            |
+| --------------- | ----- | -------------------------------- |
+| Code Generation | 0.95  | Primary strength                 |
+| Context Window  | 400K  | Large file support               |
+| Cost Efficiency | High  | Lower than Claude for code tasks |
+| Latency         | 3-6s  | Fast for focused code tasks      |
+
+## Best Practices (From Real Testing)
+
+1. **Be explicit in prompts** - Include "Just output the function/code, no explanation" for cleaner output
+2. **Batch related requests** - Session overhead is ~900 tokens, batch similar generations
+3. **Validate generated code** - Run `tsc --noEmit` on TypeScript before integration
+4. **Set appropriate timeouts** - Use 90s timeout for complex generations
+5. **Handle ambiguity** - Codex asks clarifying questions for ambiguous prompts (graceful)
 
 ## Fallback Behavior
 

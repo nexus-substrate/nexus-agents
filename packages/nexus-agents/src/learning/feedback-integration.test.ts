@@ -56,6 +56,7 @@ function createMockDecision(
 function createMockRouter(): ICompositeRouter {
   return {
     route: vi.fn(),
+    executeTask: vi.fn(),
     recordOutcome: vi.fn(),
     recordPreference: vi.fn(),
     recordDifficultyOutcome: vi.fn(),

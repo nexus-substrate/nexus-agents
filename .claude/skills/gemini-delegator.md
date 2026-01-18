@@ -22,6 +22,17 @@ allowed-tools: Bash, Read, Grep, Glob
 - [Gemini CLI Research](../../docs/research/_legacy/gemini-cli-research.md)
 - [ROUTING_SYSTEM.md](../../docs/architecture/ROUTING_SYSTEM.md)
 
+## Real-World Performance (Tested 2026-01-18)
+
+| Metric             | Value                     | Notes                               |
+| ------------------ | ------------------------- | ----------------------------------- |
+| Max files analyzed | 978 files in single query | ~280k LOC processed successfully    |
+| Latency (simple)   | 10-15 seconds             | Single directory analysis           |
+| Latency (complex)  | 58-73 seconds             | Full codebase analysis              |
+| Cache efficiency   | 94k tokens cached         | Significant cost savings            |
+| Tool calls/session | Up to 20                  | File reads auto-executed            |
+| Model routing      | flash-lite → pro          | Two-model approach for optimization |
+
 ## When to Delegate to Gemini
 
 | Condition                 | Threshold/Criteria         | Reason                      |
@@ -55,7 +66,10 @@ nexus-agents delegate_to_model --task "Analyze this 500K token codebase"
 ### Method 2: Direct Gemini CLI
 
 ```bash
-# Basic delegation
+# Basic delegation (human-readable output)
+gemini -p "Analyze this codebase"
+
+# JSON output for parsing (note: response may contain markdown fences)
 gemini -p "Analyze this codebase" --output-format json
 
 # With auto-approve for autonomous operation
@@ -63,8 +77,15 @@ gemini --yolo -p "Review all files in src/" --output-format json
 
 # Specify model
 gemini -m gemini-2.5-flash -p "Quick analysis task"
-gemini -m gemini-2.5-pro -p "Complex reasoning task"
+gemini -m gemini-3-pro-preview -p "Complex reasoning task"
 ```
+
+**JSON Output Parsing Note:** The `response` field in JSON output may contain markdown code fences. Parse accordingly:
+
+````typescript
+const result = JSON.parse(output);
+const response = result.response.replace(/```\w*\n?/g, '').trim();
+````
 
 ## Multimodal Examples
 
