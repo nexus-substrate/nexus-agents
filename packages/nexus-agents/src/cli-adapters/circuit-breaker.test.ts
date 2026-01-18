@@ -13,6 +13,7 @@ import {
   DEFAULT_CIRCUIT_BREAKER_CONFIG,
   mapCliErrorToCategory,
   createCircuitBreakerRegistryWithMetrics,
+  categorizeError,
   type CircuitStateChangeEvent,
 } from './circuit-breaker.js';
 
@@ -82,6 +83,29 @@ describe('CliCircuitBreaker', () => {
       }
 
       expect(breaker.getState()).toBe('open');
+    });
+
+    it('should handle non-Error rejection values', async () => {
+      // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors
+      const result = await breaker.execute(() => Promise.reject('string error'));
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error).toBeInstanceOf(CircuitError);
+        expect(result.error.message).toContain('string error');
+        expect(result.error.cause).toBeInstanceOf(Error);
+      }
+    });
+
+    it('should handle null rejection values', async () => {
+      // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors
+      const result = await breaker.execute(() => Promise.reject(null));
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error).toBeInstanceOf(CircuitError);
+        expect(result.error.message).toContain('null');
+      }
     });
   });
 
@@ -351,6 +375,29 @@ describe('CliCircuitBreaker', () => {
       }
 
       expect(events).toHaveLength(0);
+    });
+
+    it('should ignore listener errors and continue processing', async () => {
+      const events: CircuitStateChangeEvent[] = [];
+      const throwingListener = (): void => {
+        throw new Error('Listener error');
+      };
+      const safeListener = (event: CircuitStateChangeEvent): void => {
+        events.push(event);
+      };
+
+      breaker.addStateChangeListener(throwingListener);
+      breaker.addStateChangeListener(safeListener);
+
+      for (let i = 0; i < DEFAULT_CIRCUIT_BREAKER_CONFIG.failureThreshold; i++) {
+        await breaker.execute(() => Promise.reject(new Error('test error')));
+      }
+
+      // The safe listener should still receive events even though the first listener throws
+      expect(events).toHaveLength(1);
+      const event = events[0];
+      expect(event).toBeDefined();
+      expect(event!.newState).toBe('open');
     });
   });
 
@@ -721,5 +768,59 @@ describe('CircuitError', () => {
     expect(json.context?.cliName).toBe('claude');
     expect(json.context?.circuitState).toBe('open');
     expect(json.context?.failureCategory).toBe('rate_limit');
+  });
+});
+
+describe('categorizeError', () => {
+  it('should return unknown for non-Error values', () => {
+    expect(categorizeError('string error')).toBe('unknown');
+    expect(categorizeError(123)).toBe('unknown');
+    expect(categorizeError(null)).toBe('unknown');
+    expect(categorizeError(undefined)).toBe('unknown');
+    expect(categorizeError({ message: 'object error' })).toBe('unknown');
+  });
+
+  it('should categorize timeout errors', () => {
+    expect(categorizeError(new Error('Request timeout'))).toBe('timeout');
+    expect(categorizeError(new Error('Operation timed out'))).toBe('timeout');
+  });
+
+  it('should categorize authentication errors', () => {
+    expect(categorizeError(new Error('Unauthorized access'))).toBe('authentication');
+    expect(categorizeError(new Error('OAuth token expired'))).toBe('authentication');
+    expect(categorizeError(new Error('Forbidden resource'))).toBe('authentication');
+    expect(categorizeError(new Error('Auth failed'))).toBe('authentication');
+  });
+
+  it('should categorize rate limit errors', () => {
+    expect(categorizeError(new Error('Rate limit exceeded'))).toBe('rate_limit');
+    expect(categorizeError(new Error('Too many requests'))).toBe('rate_limit');
+    expect(categorizeError(new Error('HTTP 429 error'))).toBe('rate_limit');
+  });
+
+  it('should categorize connection errors', () => {
+    expect(categorizeError(new Error('Connection refused'))).toBe('connection');
+    expect(categorizeError(new Error('ECONNREFUSED'))).toBe('connection');
+    expect(categorizeError(new Error('ENOTFOUND'))).toBe('connection');
+    expect(categorizeError(new Error('MCP connection lost'))).toBe('connection');
+  });
+
+  it('should categorize crash errors', () => {
+    expect(categorizeError(new Error('Process crashed'))).toBe('crash');
+    expect(categorizeError(new Error('Process exited unexpectedly'))).toBe('crash');
+    expect(categorizeError(new Error('Killed by SIGTERM'))).toBe('crash');
+    expect(categorizeError(new Error('SIGKILL received'))).toBe('crash');
+  });
+
+  it('should return unknown for unrecognized errors', () => {
+    expect(categorizeError(new Error('Some random error'))).toBe('unknown');
+    expect(categorizeError(new Error('Network error'))).toBe('unknown');
+    expect(categorizeError(new Error(''))).toBe('unknown');
+  });
+
+  it('should check error name as well as message', () => {
+    const timeoutError = new Error('Some error');
+    timeoutError.name = 'TimeoutError';
+    expect(categorizeError(timeoutError)).toBe('timeout');
   });
 });

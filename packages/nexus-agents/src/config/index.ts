@@ -67,6 +67,16 @@ export {
   getEnvVarDocumentation,
 } from './defaults.js';
 
+// ConfigManager (Issue #360)
+export { ConfigManager, getConfigManager } from './config-manager.js';
+
+export type {
+  ConfigSource,
+  ConfigValueMeta,
+  ConfigOverride,
+  ConfigCategory,
+} from './config-manager.js';
+
 export type {
   // Config structure types
   DefaultsConfig,

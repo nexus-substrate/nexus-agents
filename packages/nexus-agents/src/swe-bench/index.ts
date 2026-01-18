@@ -158,3 +158,21 @@ export type {
   ProgressCallback,
   RunnerConfig,
 } from './swe-bench-runner.js';
+
+// Environment validator
+export {
+  validateEnvironment,
+  validatePython,
+  validateSwebench,
+  validateDocker,
+  validateDiskSpace,
+  formatValidationResult,
+} from './environment-validator.js';
+
+export type {
+  EnvironmentValidationResult,
+  PythonValidation,
+  SwebenchValidation,
+  DockerValidation,
+  DiskSpaceValidation,
+} from './environment-validator.js';
