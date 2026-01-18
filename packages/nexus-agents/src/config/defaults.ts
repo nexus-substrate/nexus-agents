@@ -15,47 +15,40 @@
  * (Source: Central config consolidation initiative)
  */
 
-// ============================================================================
-// CLI Timeout Profiles
-// ============================================================================
+// Re-export types from defaults-types
+export type {
+  TaskComplexity,
+  TimeoutProfile,
+  KnownCliName,
+  TimeoutDefaults,
+  RateLimitDefaults,
+  ToolRateLimitConfig,
+  RetryDefaults,
+  WorkerDefaults,
+  CircuitBreakerDefaults,
+} from './defaults-types.js';
 
-/**
- * Task complexity levels for CLI timeout selection.
- */
-export type TaskComplexity = 'simple' | 'standard' | 'complex';
+export { isTaskComplexity, isKnownCliName } from './defaults-types.js';
 
-/**
- * Timeout profile structure for CLI tools.
- */
-export interface TimeoutProfile {
-  /** Timeout for simple tasks (single function, quick analysis) in ms */
-  readonly simple: number;
-  /** Timeout for standard tasks (multi-file changes, moderate analysis) in ms */
-  readonly standard: number;
-  /** Timeout for complex tasks (codebase-wide changes, deep analysis) in ms */
-  readonly complex: number;
-}
+// Re-export timeout profiles
+export {
+  TIMEOUT_PROFILES,
+  getTimeoutProfile,
+  getTimeoutForCli,
+} from './defaults-timeout-profiles.js';
 
-/**
- * Known CLI names for timeout profiles.
- */
-export type KnownCliName = 'claude' | 'gemini' | 'codex' | 'default';
+// Re-export env helpers (internal use)
+export { parseIntEnv, parseFloatEnv, parseBoolEnv } from './defaults-env.js';
 
-/**
- * CLI-specific timeout profiles based on real-world performance testing.
- *
- * Values derived from testing documented in Issue #357:
- * - Claude: 30-120s depending on complexity
- * - Gemini: 15-90s (times out on complex file analysis >60s)
- * - Codex: 10-60s (optimized for code generation)
- */
-export const TIMEOUT_PROFILES = {
-  claude: { simple: 30_000, standard: 60_000, complex: 120_000 },
-  gemini: { simple: 15_000, standard: 45_000, complex: 90_000 },
-  codex: { simple: 10_000, standard: 30_000, complex: 60_000 },
-  /** Default profile for unknown CLIs */
-  default: { simple: 30_000, standard: 60_000, complex: 120_000 },
-} as const satisfies Record<KnownCliName, TimeoutProfile>;
+import {
+  createGetTimeout,
+  createGetRetryConfig,
+  createGetRateLimitConfig,
+  createGetWorkerConfig,
+  createGetCircuitBreakerConfig,
+  createGetToolRateLimit,
+  createGetEnvVarDocumentation,
+} from './defaults-env.js';
 
 // ============================================================================
 // Central Defaults Object
@@ -289,7 +282,7 @@ export const DEFAULTS = {
 } as const;
 
 // ============================================================================
-// Type Exports
+// Type Exports for DEFAULTS
 // ============================================================================
 
 /** Type for the DEFAULTS object (readonly/const). */
@@ -298,54 +291,11 @@ export type DefaultsConfig = typeof DEFAULTS;
 /** Type for timeout defaults (readonly/const). */
 export type TimeoutDefaultsConst = typeof DEFAULTS.TIMEOUT_DEFAULTS;
 
-/** Mutable type for timeout defaults (for functions returning overridden values). */
-export interface TimeoutDefaults {
-  cliMs: number;
-  cliSimpleMs: number;
-  cliComplexMs: number;
-  apiMs: number;
-  apiMaxMs: number;
-  workflowMs: number;
-  workflowMaxMs: number;
-  stepMs: number;
-  mcpMs: number;
-  mcpMaxMs: number;
-  healthCheckMs: number;
-  testGlobalMs: number;
-  testTaskMs: number;
-  circuitBreakerResetMs: number;
-}
-
 /** Type for rate limit defaults (readonly/const). */
 export type RateLimitDefaultsConst = typeof DEFAULTS.RATE_LIMIT_DEFAULTS;
 
-/** Mutable type for rate limit defaults. */
-export interface RateLimitDefaults {
-  requestsPerMinute: number;
-  enabled: boolean;
-  maxConcurrent: number;
-  capacity: number;
-  refillRate: number;
-  refillIntervalMs: number;
-}
-
-/** Type for tool rate limit configuration. */
-export interface ToolRateLimitConfig {
-  readonly capacity: number;
-  readonly refillRate: number;
-  readonly refillIntervalMs: number;
-}
-
 /** Type for retry defaults (readonly/const). */
 export type RetryDefaultsConst = typeof DEFAULTS.RETRY_DEFAULTS;
-
-/** Mutable type for retry defaults. */
-export interface RetryDefaults {
-  maxRetries: number;
-  baseDelayMs: number;
-  maxDelayMs: number;
-  jitterFactor: number;
-}
 
 /** Type for buffer defaults (readonly/const). */
 export type BufferDefaults = typeof DEFAULTS.BUFFER_DEFAULTS;
@@ -353,30 +303,8 @@ export type BufferDefaults = typeof DEFAULTS.BUFFER_DEFAULTS;
 /** Type for worker defaults (readonly/const). */
 export type WorkerDefaultsConst = typeof DEFAULTS.WORKER_DEFAULTS;
 
-/** Mutable type for worker defaults. */
-export interface WorkerDefaults {
-  maxWorkers: number;
-  poolSize: number;
-  idleTimeoutMs: number;
-  workflowMaxParallel: number;
-  testParallelism: number;
-  evaluationMaxWorkers: number;
-  eventBusMaxHistory: number;
-  swarmObserverMaxEvents: number;
-}
-
 /** Type for circuit breaker defaults (readonly/const). */
 export type CircuitBreakerDefaultsConst = typeof DEFAULTS.CIRCUIT_BREAKER_DEFAULTS;
-
-/** Mutable type for circuit breaker defaults. */
-export interface CircuitBreakerDefaults {
-  failureThreshold: number;
-  resetTimeoutMs: number;
-  halfOpenSuccessThreshold: number;
-  countTimeoutsAsFailures: boolean;
-  countAuthFailuresAsFailures: boolean;
-  halfOpenMaxRequests: number;
-}
 
 /** Type for context defaults (readonly/const). */
 export type ContextDefaults = typeof DEFAULTS.CONTEXT_DEFAULTS;
@@ -388,46 +316,7 @@ export type ProviderDefaults = typeof DEFAULTS.PROVIDER_DEFAULTS;
 export type SecurityDefaults = typeof DEFAULTS.SECURITY_DEFAULTS;
 
 // ============================================================================
-// Environment Variable Override Helpers
-// ============================================================================
-
-/**
- * Parses an integer from an environment variable with fallback.
- */
-function parseIntEnv(envKey: string, fallback: number): number {
-  const envValue = process.env[envKey];
-  if (envValue === undefined) {
-    return fallback;
-  }
-  const parsed = parseInt(envValue, 10);
-  return isNaN(parsed) || parsed <= 0 ? fallback : parsed;
-}
-
-/**
- * Parses a float from an environment variable with fallback.
- */
-function parseFloatEnv(envKey: string, fallback: number): number {
-  const envValue = process.env[envKey];
-  if (envValue === undefined) {
-    return fallback;
-  }
-  const parsed = parseFloat(envValue);
-  return isNaN(parsed) ? fallback : parsed;
-}
-
-/**
- * Parses a boolean from an environment variable with fallback.
- */
-function parseBoolEnv(envKey: string, fallback: boolean): boolean {
-  const envValue = process.env[envKey];
-  if (envValue === undefined) {
-    return fallback;
-  }
-  return envValue !== 'false';
-}
-
-// ============================================================================
-// Environment Variable Override Functions
+// Environment Override Functions (bound to DEFAULTS)
 // ============================================================================
 
 /**
@@ -436,100 +325,37 @@ function parseBoolEnv(envKey: string, fallback: boolean): boolean {
  * @param key - Timeout key (e.g., 'cliMs', 'apiMs')
  * @returns Timeout value in milliseconds
  */
-export function getTimeout(key: keyof TimeoutDefaultsConst): number {
-  const envKey = `NEXUS_TIMEOUT_${key.replace(/Ms$/, '').toUpperCase()}`;
-  return parseIntEnv(envKey, DEFAULTS.TIMEOUT_DEFAULTS[key]);
-}
+export const getTimeout = createGetTimeout(DEFAULTS.TIMEOUT_DEFAULTS);
 
 /**
  * Get retry config with environment override support.
  *
  * @returns Retry configuration
  */
-export function getRetryConfig(): RetryDefaults {
-  const d = DEFAULTS.RETRY_DEFAULTS;
-  return {
-    maxRetries: parseIntEnv('NEXUS_RETRY_MAX_RETRIES', d.maxRetries),
-    baseDelayMs: parseIntEnv('NEXUS_RETRY_BASE_DELAY', d.baseDelayMs),
-    maxDelayMs: parseIntEnv('NEXUS_RETRY_MAX_DELAY', d.maxDelayMs),
-    jitterFactor: parseFloatEnv('NEXUS_RETRY_JITTER', d.jitterFactor),
-  };
-}
+export const getRetryConfig = createGetRetryConfig(DEFAULTS.RETRY_DEFAULTS);
 
 /**
  * Get rate limit config with environment override support.
  *
  * @returns Rate limit configuration
  */
-export function getRateLimitConfig(): RateLimitDefaults {
-  const d = DEFAULTS.RATE_LIMIT_DEFAULTS;
-  return {
-    requestsPerMinute: parseIntEnv('NEXUS_RATE_LIMIT_RPM', d.requestsPerMinute),
-    enabled: parseBoolEnv('NEXUS_RATE_LIMIT_ENABLED', d.enabled),
-    maxConcurrent: parseIntEnv('NEXUS_RATE_LIMIT_MAX_CONCURRENT', d.maxConcurrent),
-    capacity: parseIntEnv('NEXUS_RATE_LIMIT_CAPACITY', d.capacity),
-    refillRate: parseIntEnv('NEXUS_RATE_LIMIT_REFILL_RATE', d.refillRate),
-    refillIntervalMs: parseIntEnv('NEXUS_RATE_LIMIT_REFILL_INTERVAL', d.refillIntervalMs),
-  };
-}
+export const getRateLimitConfig = createGetRateLimitConfig(DEFAULTS.RATE_LIMIT_DEFAULTS);
 
 /**
  * Get worker config with environment override support.
  *
  * @returns Worker configuration
  */
-export function getWorkerConfig(): WorkerDefaults {
-  const d = DEFAULTS.WORKER_DEFAULTS;
-  return {
-    maxWorkers: parseIntEnv('NEXUS_WORKERS_MAX', d.maxWorkers),
-    poolSize: parseIntEnv('NEXUS_WORKERS_POOL_SIZE', d.poolSize),
-    idleTimeoutMs: parseIntEnv('NEXUS_WORKERS_IDLE_TIMEOUT', d.idleTimeoutMs),
-    workflowMaxParallel: parseIntEnv('NEXUS_WORKFLOW_MAX_PARALLEL', d.workflowMaxParallel),
-    testParallelism: parseIntEnv('NEXUS_TEST_PARALLELISM', d.testParallelism),
-    evaluationMaxWorkers: parseIntEnv('NEXUS_EVALUATION_MAX_WORKERS', d.evaluationMaxWorkers),
-    eventBusMaxHistory: parseIntEnv('NEXUS_EVENTBUS_MAX_HISTORY', d.eventBusMaxHistory),
-    swarmObserverMaxEvents: parseIntEnv(
-      'NEXUS_SWARM_OBSERVER_MAX_EVENTS',
-      d.swarmObserverMaxEvents
-    ),
-  };
-}
-
-// ============================================================================
-// Convenience Accessor Functions
-// ============================================================================
+export const getWorkerConfig = createGetWorkerConfig(DEFAULTS.WORKER_DEFAULTS);
 
 /**
- * Checks if a string is a known CLI name.
- */
-function isKnownCliName(cli: string): cli is KnownCliName {
-  return cli in TIMEOUT_PROFILES;
-}
-
-/**
- * Gets the timeout profile for a specific CLI.
+ * Gets the circuit breaker configuration.
  *
- * @param cli - CLI name (claude, gemini, codex)
- * @returns TimeoutProfile for the CLI
+ * @returns Circuit breaker configuration
  */
-export function getTimeoutProfile(cli: string): TimeoutProfile {
-  if (isKnownCliName(cli)) {
-    return (TIMEOUT_PROFILES as Record<KnownCliName, TimeoutProfile>)[cli];
-  }
-  return TIMEOUT_PROFILES.default;
-}
-
-/**
- * Gets timeout for a task based on CLI and complexity.
- *
- * @param cli - CLI name
- * @param complexity - Task complexity level
- * @returns Timeout in milliseconds
- */
-export function getTimeoutForCli(cli: string, complexity: TaskComplexity): number {
-  const profile = getTimeoutProfile(cli);
-  return profile[complexity];
-}
+export const getCircuitBreakerConfig = createGetCircuitBreakerConfig(
+  DEFAULTS.CIRCUIT_BREAKER_DEFAULTS
+);
 
 /**
  * Gets the tool rate limit configuration for a specific tool category.
@@ -537,39 +363,7 @@ export function getTimeoutForCli(cli: string, complexity: TaskComplexity): numbe
  * @param tool - Tool category (orchestrate, delegate, workflow, expert)
  * @returns Rate limit configuration
  */
-export function getToolRateLimit(
-  tool: keyof typeof DEFAULTS.TOOL_RATE_LIMITS
-): ToolRateLimitConfig {
-  return DEFAULTS.TOOL_RATE_LIMITS[tool];
-}
-
-/**
- * Gets the circuit breaker configuration.
- *
- * @returns Circuit breaker configuration
- */
-export function getCircuitBreakerConfig(): CircuitBreakerDefaults {
-  const d = DEFAULTS.CIRCUIT_BREAKER_DEFAULTS;
-  return {
-    failureThreshold: parseIntEnv('NEXUS_CIRCUIT_BREAKER_THRESHOLD', d.failureThreshold),
-    resetTimeoutMs: parseIntEnv('NEXUS_CIRCUIT_BREAKER_RESET_TIMEOUT', d.resetTimeoutMs),
-    halfOpenSuccessThreshold: d.halfOpenSuccessThreshold,
-    countTimeoutsAsFailures: d.countTimeoutsAsFailures,
-    countAuthFailuresAsFailures: d.countAuthFailuresAsFailures,
-    halfOpenMaxRequests: d.halfOpenMaxRequests,
-  };
-}
-
-// ============================================================================
-// Type Guards
-// ============================================================================
-
-/**
- * Type guard for task complexity.
- */
-export function isTaskComplexity(value: unknown): value is TaskComplexity {
-  return value === 'simple' || value === 'standard' || value === 'complex';
-}
+export const getToolRateLimit = createGetToolRateLimit(DEFAULTS.TOOL_RATE_LIMITS);
 
 // ============================================================================
 // Documentation Helper
@@ -580,51 +374,4 @@ export function isTaskComplexity(value: unknown): value is TaskComplexity {
  *
  * @returns Markdown documentation string
  */
-export function getEnvVarDocumentation(): string {
-  return `# Environment Variable Overrides
-
-All defaults can be overridden via environment variables using the NEXUS_ prefix.
-
-## Timeouts
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| NEXUS_TIMEOUT_CLI | ${String(DEFAULTS.TIMEOUT_DEFAULTS.cliMs)} | CLI execution timeout (ms) |
-| NEXUS_TIMEOUT_API | ${String(DEFAULTS.TIMEOUT_DEFAULTS.apiMs)} | API request timeout (ms) |
-| NEXUS_TIMEOUT_WORKFLOW | ${String(DEFAULTS.TIMEOUT_DEFAULTS.workflowMs)} | Workflow timeout (ms) |
-| NEXUS_TIMEOUT_MCP | ${String(DEFAULTS.TIMEOUT_DEFAULTS.mcpMs)} | MCP operation timeout (ms) |
-
-## Rate Limits
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| NEXUS_RATE_LIMIT_RPM | ${String(DEFAULTS.RATE_LIMIT_DEFAULTS.requestsPerMinute)} | Requests per minute |
-| NEXUS_RATE_LIMIT_ENABLED | ${String(DEFAULTS.RATE_LIMIT_DEFAULTS.enabled)} | Enable rate limiting |
-| NEXUS_RATE_LIMIT_CAPACITY | ${String(DEFAULTS.RATE_LIMIT_DEFAULTS.capacity)} | Token bucket capacity |
-
-## Retries
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| NEXUS_RETRY_MAX_RETRIES | ${String(DEFAULTS.RETRY_DEFAULTS.maxRetries)} | Maximum retry attempts |
-| NEXUS_RETRY_BASE_DELAY | ${String(DEFAULTS.RETRY_DEFAULTS.baseDelayMs)} | Base delay (ms) |
-| NEXUS_RETRY_MAX_DELAY | ${String(DEFAULTS.RETRY_DEFAULTS.maxDelayMs)} | Maximum delay (ms) |
-| NEXUS_RETRY_JITTER | ${String(DEFAULTS.RETRY_DEFAULTS.jitterFactor)} | Jitter factor (0-1) |
-
-## Workers
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| NEXUS_WORKERS_MAX | ${String(DEFAULTS.WORKER_DEFAULTS.maxWorkers)} | Maximum workers |
-| NEXUS_WORKERS_POOL_SIZE | ${String(DEFAULTS.WORKER_DEFAULTS.poolSize)} | Worker pool size |
-| NEXUS_WORKFLOW_MAX_PARALLEL | ${String(DEFAULTS.WORKER_DEFAULTS.workflowMaxParallel)} | Max parallel workflow steps |
-| NEXUS_TEST_PARALLELISM | ${String(DEFAULTS.WORKER_DEFAULTS.testParallelism)} | Test parallelism |
-
-## Circuit Breaker
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| NEXUS_CIRCUIT_BREAKER_THRESHOLD | ${String(DEFAULTS.CIRCUIT_BREAKER_DEFAULTS.failureThreshold)} | Failure threshold |
-| NEXUS_CIRCUIT_BREAKER_RESET_TIMEOUT | ${String(DEFAULTS.CIRCUIT_BREAKER_DEFAULTS.resetTimeoutMs)} | Reset timeout (ms) |
-`;
-}
+export const getEnvVarDocumentation = createGetEnvVarDocumentation(DEFAULTS);

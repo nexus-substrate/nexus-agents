@@ -33,7 +33,6 @@ import { BaseAgentOptionsSchema } from './agent-schemas.js';
 import type { IEventBus } from './collaboration/event-bus-types.js';
 import { getGlobalEventBus } from './collaboration/event-bus.js';
 import { emitMessageReceived } from './collaboration/message-events.js';
-import type { MessageHandlerContext } from './base-agent-message-handlers.js';
 import type { ContextManager } from './context-manager.js';
 import type { ContextPruner } from './context-pruner.js';
 import type { ResolvedPruningConfig, ContextPruningMetrics } from './base-agent-pruning-init.js';
@@ -53,7 +52,6 @@ import {
   validateAdapter,
   executePreCompletionChecks,
   runModelCompletion,
-  type CompleteFlowContext,
 } from './base-agent-complete-flow.js';
 import { transformTaskError } from './base-agent-task-helpers.js';
 import {
@@ -64,8 +62,6 @@ import {
   handleExecutionError as handleExecError,
   addToHistory as addToHistoryHelper,
   getHistoryCopy,
-  type ExecuteFlowContext,
-  type TaskMemoryContext,
 } from './base-agent-execute-flow.js';
 import type { BaseAgentOptions } from './base-agent-types.js';
 import { createInitialPruningMetrics, copyPruningMetrics } from './base-agent-context-helpers.js';
@@ -81,7 +77,15 @@ import {
 } from './base-agent-memory-accessors.js';
 import { persistMemoryOnCleanup } from './base-agent-execution-helpers.js';
 import { validateMessage, dispatchMessage } from './base-agent-dispatch.js';
-import { performInitialization, type InitializationContext } from './base-agent-init-helpers.js';
+import { performInitialization } from './base-agent-init-helpers.js';
+import {
+  buildInitializationContext,
+  buildMessageHandlerContext,
+  buildCompleteFlowContext,
+  buildExecuteFlowContext,
+  buildTaskMemoryContext,
+  type AgentContextState,
+} from './base-agent-context-builders.js';
 
 export * from './base-agent-exports.js';
 
@@ -166,6 +170,31 @@ export abstract class BaseAgent implements IAgent {
     return this.stateMachine.state;
   }
 
+  /** Builds the context state object for helper functions. */
+  private get contextState(): AgentContextState {
+    return {
+      id: this.id,
+      role: this.role,
+      capabilities: this.capabilities,
+      initialized: this.initialized,
+      historyLength: this.history.length,
+      adapter: this.adapter,
+      logger: this.logger,
+      stateMachine: this.stateMachine,
+      budgetTracker: this.budgetTracker,
+      eventBus: this.eventBus,
+      memoryEnabled: this.memoryEnabled,
+      memoryBackend: this.memoryBackend,
+      typedMemory: this.typedMemory,
+      memoryConfig: this.memoryConfig,
+      memoryState: this.memoryState,
+      contextPruningEnabled: this.contextPruningEnabled,
+      contextPruner: this.contextPruner,
+      pruningConfig: this.pruningConfig,
+      pruningMetrics: this.pruningMetrics,
+    };
+  }
+
   /** @deprecated Use stateMachine.transition() directly for new code */
   protected setState(newState: AgentState): void {
     // eslint-disable-next-line @typescript-eslint/no-deprecated -- Intentional legacy support
@@ -177,7 +206,7 @@ export abstract class BaseAgent implements IAgent {
   }
 
   async initialize(ctx: AgentContext): Promise<Result<void, AgentError>> {
-    const initCtx = this.getInitializationContext();
+    const initCtx = buildInitializationContext(this.contextState);
     const result = await performInitialization(initCtx, ctx);
     if (!result.ok) return result as Result<void, AgentError>;
     this.config = ctx.config;
@@ -189,67 +218,36 @@ export abstract class BaseAgent implements IAgent {
     return ok(undefined);
   }
 
-  private getInitializationContext(): InitializationContext {
-    return {
-      agentId: this.id,
-      role: this.role,
-      initialized: this.initialized,
-      memoryEnabled: this.memoryEnabled,
-      memoryBackend: this.memoryBackend,
-      typedMemory: this.typedMemory,
-      maxInitialLoadEntries: this.memoryConfig.maxInitialLoadEntries,
-      autoLoadOnInit: this.memoryConfig.autoLoadOnInit,
-      logger: this.logger,
-    };
-  }
-
   async execute(task: Task): Promise<Result<TaskResult, AgentError>> {
-    const setup = setupExecute(this.execFlowCtx, task);
+    const execCtx = buildExecuteFlowContext(this.contextState);
+    const setup = setupExecute(execCtx, task);
     if (!setup.valid && setup.error !== undefined) return err(setup.error);
     const transitionResult = this.stateMachine.transition('task_assigned', { taskId: task.id });
     if (!transitionResult.ok) return err(transitionResult.error);
     this.budgetTracker.startTask(task.id);
     this.logger.info('Executing task', { taskId: task.id, priority: task.priority });
+    const taskMemCtx = buildTaskMemoryContext(this.contextState);
     try {
       const result = await runTaskWithTimeout(task, this.id, (t) => this.executeTask(t));
-      if (!result.ok) return handleExecFailure(task, result, this.execFlowCtx);
+      if (!result.ok) return handleExecFailure(task, result, execCtx);
       this.memoryState = await finalizeExec(
         task,
         result.value,
         setup.startTime,
-        this.execFlowCtx,
-        this.taskMemCtx
+        execCtx,
+        taskMemCtx
       );
       return result;
     } catch (error) {
       const { error: agentError, updatedMemoryState } = handleExecError(
         task,
         error,
-        this.execFlowCtx,
-        this.taskMemCtx
+        execCtx,
+        taskMemCtx
       );
       this.memoryState = updatedMemoryState;
       return err(agentError);
     }
-  }
-
-  private get execFlowCtx(): ExecuteFlowContext {
-    return {
-      agentId: this.id,
-      stateMachine: this.stateMachine,
-      budgetTracker: this.budgetTracker,
-      logger: this.logger,
-      memoryEnabled: this.memoryEnabled,
-      memoryState: this.memoryState,
-    };
-  }
-  private get taskMemCtx(): TaskMemoryContext {
-    return {
-      memoryEnabled: this.memoryEnabled,
-      memoryBackend: this.memoryBackend,
-      memoryState: this.memoryState,
-      persistenceMode: this.memoryConfig.persistenceMode,
-    };
   }
 
   async handleMessage(msg: AgentMessage): Promise<Result<AgentResponse, AgentError>> {
@@ -262,21 +260,9 @@ export abstract class BaseAgent implements IAgent {
     if (this.emitMessageEvents) emitMessageReceived(this.eventBus, { message: msg, by: this.id });
     return dispatchMessage({
       msg,
-      ctx: this.getMessageHandlerContext(),
+      ctx: buildMessageHandlerContext(this.contextState),
       executeTask: (task) => this.execute(task),
     });
-  }
-
-  private getMessageHandlerContext(): MessageHandlerContext {
-    return {
-      id: this.id,
-      role: this.role,
-      state: this.stateMachine.state,
-      capabilities: this.capabilities,
-      initialized: this.initialized,
-      historyLength: this.history.length,
-      logger: this.logger,
-    };
   }
 
   async cleanup(): Promise<void> {
@@ -309,7 +295,7 @@ export abstract class BaseAgent implements IAgent {
   protected async complete(
     request: CompletionRequest
   ): Promise<Result<CompletionResponse, AgentError>> {
-    const ctx = this.getCompleteFlowContext();
+    const ctx = buildCompleteFlowContext(this.contextState);
     const adapterResult = validateAdapter(ctx);
     if (!adapterResult.ok) return adapterResult;
     const preCheckResult = await executePreCompletionChecks(ctx);
@@ -320,19 +306,6 @@ export abstract class BaseAgent implements IAgent {
     // eslint-disable-next-line @typescript-eslint/no-deprecated -- Internal backward compatibility
     this.setState('thinking');
     return result;
-  }
-
-  private getCompleteFlowContext(): CompleteFlowContext {
-    return {
-      agentId: this.id,
-      adapter: this.adapter,
-      budgetTracker: this.budgetTracker,
-      contextPruningEnabled: this.contextPruningEnabled,
-      contextPruner: this.contextPruner,
-      pruningConfig: this.pruningConfig,
-      pruningMetrics: this.pruningMetrics,
-      eventBus: this.eventBus,
-    };
   }
 
   protected addToHistory(message: Message): void {

@@ -24,28 +24,15 @@ import { DEFAULT_AFLOW_CONFIG, AFlowConfigSchema } from './aflow-types.js';
 import { MCTSTree, createMCTSTree } from './mcts-tree.js';
 import { ActionSpace, createActionSpace } from './action-space.js';
 import { WorkflowEvaluator, createWorkflowEvaluator } from './evaluation.js';
+import { AFlowError } from './aflow-generator-types.js';
+import { actionsEqual, createInitialWorkflow } from './aflow-generator-helpers.js';
+
+// Re-export types and error classes for convenience
+export { AFlowError } from './aflow-generator-types.js';
+export type { AFlowErrorCode } from './aflow-generator-types.js';
+export { actionsEqual, createInitialWorkflow } from './aflow-generator-helpers.js';
 
 const logger = createLogger({ component: 'AFlow' });
-
-/**
- * Error types for AFlow generation.
- */
-export class AFlowError extends Error {
-  constructor(
-    message: string,
-    public readonly code: AFlowErrorCode
-  ) {
-    super(message);
-    this.name = 'AFlowError';
-  }
-}
-
-export type AFlowErrorCode =
-  | 'INVALID_CONFIG'
-  | 'NO_VALID_ACTIONS'
-  | 'SEARCH_FAILED'
-  | 'TIMEOUT'
-  | 'MIN_STEPS_NOT_MET';
 
 /**
  * AFlow MCTS-based workflow generator.
@@ -72,7 +59,7 @@ export class AFlowGenerator {
 
   /**
    * Generate a workflow for the given task specification.
-   * Note: async is maintained for API compatibility, though current implementation is synchronous.
+   * Note: async is maintained for API compatibility.
    */
   async generate(task: TaskSpecification): Promise<Result<AFlowResult, AFlowError>> {
     // Yield to event loop for responsiveness with large iterations
@@ -83,7 +70,7 @@ export class AFlowGenerator {
     const searchHistory: SearchHistoryEntry[] = [];
 
     // Create initial workflow
-    const initialWorkflow = this.createInitialWorkflow(task);
+    const initialWorkflow = createInitialWorkflow(task);
     this.tree.initializeRoot(initialWorkflow);
 
     logger.info('Starting MCTS search', {
@@ -284,7 +271,7 @@ export class AFlowGenerator {
       .filter((a): a is WorkflowAction => a !== null);
 
     const unexploredActions = validActions.filter(
-      (a) => !existingActions.some((ea) => this.actionsEqual(a, ea))
+      (a) => !existingActions.some((ea) => actionsEqual(a, ea))
     );
 
     if (unexploredActions.length === 0) {
@@ -330,38 +317,6 @@ export class AFlowGenerator {
     // Evaluate the final workflow
     const evaluation = this.evaluator.evaluate(currentWorkflow, task);
     return evaluation.score;
-  }
-
-  /**
-   * Check if two actions are equal.
-   */
-  private actionsEqual(a: WorkflowAction, b: WorkflowAction): boolean {
-    if (a.type !== b.type) return false;
-    if (a.targetStepId !== b.targetStepId) return false;
-    if (a.sourceStepId !== b.sourceStepId) return false;
-    // For add_step, compare by step ID if present
-    if (a.type === 'add_step' && b.type === 'add_step') {
-      return a.newStep?.id === b.newStep?.id;
-    }
-    return true;
-  }
-
-  /**
-   * Create initial workflow from task specification.
-   */
-  private createInitialWorkflow(task: TaskSpecification): WorkflowDefinition {
-    return {
-      name: `generated-${String(Date.now())}`,
-      version: '1.0.0',
-      description: `Workflow for: ${task.description}`,
-      inputs: task.expectedInputs.map((input) => ({
-        name: input,
-        type: 'string' as const,
-        required: true,
-      })),
-      steps: [],
-      timeout: task.constraints?.maxTotalTimeout ?? 300000,
-    };
   }
 
   /**

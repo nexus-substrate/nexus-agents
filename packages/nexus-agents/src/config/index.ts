@@ -15,6 +15,8 @@ export {
   WorkflowConfigSchema,
   SecurityConfigSchema,
   SandboxConfigSchema,
+  PolicyConfigSchema,
+  TimeoutConfigSchema,
   LoggingConfigSchema,
   ToolRateLimitSchema,
   EventBusConfigSchema,
@@ -39,6 +41,8 @@ export type {
   WorkflowConfig,
   SecurityConfig,
   SandboxConfig,
+  PolicyConfig,
+  TimeoutConfig,
   LoggingConfig,
   ToolRateLimit,
   ToolCategory,
@@ -63,6 +67,11 @@ export {
   getToolRateLimit,
   // Type guards
   isTaskComplexity,
+  isKnownCliName,
+  // Environment helpers (internal use)
+  parseIntEnv,
+  parseFloatEnv,
+  parseBoolEnv,
   // Documentation
   getEnvVarDocumentation,
 } from './defaults.js';

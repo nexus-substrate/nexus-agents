@@ -12,23 +12,12 @@ import { v4 as uuidv4 } from 'uuid';
 import type { WorkflowDefinition } from '../../core/index.js';
 import type { MCTSNode, UCTScore, WorkflowAction, AFlowConfig, MCTSStats } from './aflow-types.js';
 import { DEFAULT_AFLOW_CONFIG } from './aflow-types.js';
-
-/**
- * Mutable internal node representation for tree operations.
- */
-interface MutableNode {
-  id: string;
-  workflow: WorkflowDefinition;
-  parentId: string | null;
-  action: WorkflowAction | null;
-  children: string[];
-  visitCount: number;
-  totalValue: number;
-  avgValue: number;
-  depth: number;
-  isTerminal: boolean;
-  createdAt: number;
-}
+import {
+  type MutableNode,
+  toImmutableNode,
+  calculateTreeStats,
+  createMutableNode,
+} from './mcts-tree-helpers.js';
 
 /**
  * MCTS Tree for workflow search.
@@ -47,24 +36,17 @@ export class MCTSTree {
    * Initialize tree with root workflow.
    */
   initializeRoot(workflow: WorkflowDefinition): MCTSNode {
-    const root: MutableNode = {
+    const root = createMutableNode({
       id: uuidv4(),
       workflow,
       parentId: null,
       action: null,
-      children: [],
-      visitCount: 0,
-      totalValue: 0,
-      avgValue: 0,
       depth: 0,
       isTerminal: false,
-      createdAt: Date.now(),
-    };
-
+    });
     this.nodes.set(root.id, root);
     this.rootId = root.id;
-
-    return this.toImmutable(root);
+    return toImmutableNode(root);
   }
 
   /**
@@ -73,7 +55,7 @@ export class MCTSTree {
   getRoot(): MCTSNode | null {
     if (this.rootId === null) return null;
     const root = this.nodes.get(this.rootId);
-    return root ? this.toImmutable(root) : null;
+    return root ? toImmutableNode(root) : null;
   }
 
   /**
@@ -81,7 +63,7 @@ export class MCTSTree {
    */
   getNode(nodeId: string): MCTSNode | null {
     const node = this.nodes.get(nodeId);
-    return node ? this.toImmutable(node) : null;
+    return node ? toImmutableNode(node) : null;
   }
 
   /**
@@ -96,24 +78,19 @@ export class MCTSTree {
     const parent = this.nodes.get(parentId);
     if (!parent) return null;
 
-    const child: MutableNode = {
+    const child = createMutableNode({
       id: uuidv4(),
       workflow: resultingWorkflow,
       parentId,
       action,
-      children: [],
-      visitCount: 0,
-      totalValue: 0,
-      avgValue: 0,
       depth: parent.depth + 1,
       isTerminal,
-      createdAt: Date.now(),
-    };
+    });
 
     this.nodes.set(child.id, child);
     parent.children.push(child.id);
 
-    return this.toImmutable(child);
+    return toImmutableNode(child);
   }
 
   /**
@@ -174,7 +151,7 @@ export class MCTSTree {
       current = next;
     }
 
-    return current ? this.toImmutable(current) : null;
+    return current ? toImmutableNode(current) : null;
   }
 
   /**
@@ -206,7 +183,7 @@ export class MCTSTree {
     return node.children
       .map((childId) => this.nodes.get(childId))
       .filter((child): child is MutableNode => child !== undefined)
-      .map((child) => this.toImmutable(child));
+      .map((child) => toImmutableNode(child));
   }
 
   /**
@@ -243,7 +220,7 @@ export class MCTSTree {
       }
     }
 
-    return best ? this.toImmutable(best) : null;
+    return best ? toImmutableNode(best) : null;
   }
 
   /**
@@ -260,7 +237,7 @@ export class MCTSTree {
       }
     }
 
-    return best ? this.toImmutable(best) : null;
+    return best ? toImmutableNode(best) : null;
   }
 
   /**
@@ -283,7 +260,7 @@ export class MCTSTree {
     while (currentId !== null) {
       const node = this.nodes.get(currentId);
       if (!node) break;
-      path.unshift(this.toImmutable(node));
+      path.unshift(toImmutableNode(node));
       currentId = node.parentId;
     }
 
@@ -294,42 +271,7 @@ export class MCTSTree {
    * Get tree statistics.
    */
   getStats(): MCTSStats {
-    const terminals: MutableNode[] = [];
-    let maxDepth = 0;
-    let totalBranching = 0;
-    let branchingCount = 0;
-
-    for (const node of this.nodes.values()) {
-      if (node.isTerminal) {
-        terminals.push(node);
-      }
-      if (node.depth > maxDepth) {
-        maxDepth = node.depth;
-      }
-      if (node.children.length > 0) {
-        totalBranching += node.children.length;
-        branchingCount++;
-      }
-    }
-
-    const terminalScores = terminals.filter((n) => n.visitCount > 0).map((n) => n.avgValue);
-
-    const avgTerminalScore =
-      terminalScores.length > 0
-        ? terminalScores.reduce((a, b) => a + b, 0) / terminalScores.length
-        : 0;
-
-    const bestNode = this.getBestNode();
-
-    return {
-      totalNodes: this.nodes.size,
-      maxDepthReached: maxDepth,
-      avgBranchingFactor: branchingCount > 0 ? totalBranching / branchingCount : 0,
-      bestScore: bestNode?.avgValue ?? 0,
-      avgTerminalScore,
-      totalSimulations: this.totalSimulations,
-      nodesPruned: 0, // No pruning implemented yet
-    };
+    return calculateTreeStats(this.nodes, () => this.getBestNode(), this.totalSimulations);
   }
 
   /**
@@ -379,25 +321,6 @@ export class MCTSTree {
    */
   get size(): number {
     return this.nodes.size;
-  }
-
-  /**
-   * Convert mutable node to immutable MCTSNode.
-   */
-  private toImmutable(node: MutableNode): MCTSNode {
-    return {
-      id: node.id,
-      workflow: node.workflow,
-      parentId: node.parentId,
-      action: node.action,
-      children: [...node.children],
-      visitCount: node.visitCount,
-      totalValue: node.totalValue,
-      avgValue: node.avgValue,
-      depth: node.depth,
-      isTerminal: node.isTerminal,
-      createdAt: node.createdAt,
-    };
   }
 
   /**

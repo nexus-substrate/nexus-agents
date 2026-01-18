@@ -109,11 +109,12 @@ export {
   generateFeedback,
 } from './evaluation-completeness.js';
 
+// AFlow Generator Types
+export { AFlowError } from './aflow-generator-types.js';
+export type { AFlowErrorCode } from './aflow-generator-types.js';
+
+// AFlow Generator Helpers
+export { actionsEqual, createInitialWorkflow } from './aflow-generator-helpers.js';
+
 // AFlow Generator
-export {
-  AFlowGenerator,
-  AFlowError,
-  createAFlowGenerator,
-  generateWorkflow,
-} from './aflow-generator.js';
-export type { AFlowErrorCode } from './aflow-generator.js';
+export { AFlowGenerator, createAFlowGenerator, generateWorkflow } from './aflow-generator.js';
