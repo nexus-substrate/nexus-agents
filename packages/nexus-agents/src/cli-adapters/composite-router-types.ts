@@ -11,6 +11,7 @@ import { z } from 'zod';
 import type { ICliAdapter, CliName } from './types.js';
 import type { TaskProfile } from './task-analyzer.js';
 import type { PreferenceRouterConfig } from './preference-router-types.js';
+import type { ZeroRouterConfig, DifficultyEstimate, ModelTier } from './zero-router-types.js';
 
 /**
  * Configuration schema for CompositeRouter.
@@ -18,6 +19,8 @@ import type { PreferenceRouterConfig } from './preference-router-types.js';
 export const CompositeRouterConfigSchema = z.object({
   /** Enable budget filtering stage (default: true) */
   enableBudgetFilter: z.boolean().default(true),
+  /** Enable ZeroRouter difficulty-based routing stage (default: false) */
+  enableZeroRouter: z.boolean().default(false),
   /** Enable preference-trained routing stage (default: false) */
   enablePreferenceRouting: z.boolean().default(false),
   /** Enable TOPSIS ranking stage (default: true) */
@@ -44,11 +47,13 @@ export const CompositeRouterConfigSchema = z.object({
 export type CompositeRouterConfig = z.infer<typeof CompositeRouterConfigSchema>;
 
 /**
- * Extended config type that includes preference router config.
+ * Extended config type that includes preference router and ZeroRouter config.
  */
 export interface CompositeRouterConfigWithPreference extends CompositeRouterConfig {
   /** Preference router configuration (optional, uses defaults if not provided) */
   preferenceRouterConfig?: Partial<PreferenceRouterConfig>;
+  /** ZeroRouter configuration (optional, uses defaults if not provided) */
+  zeroRouterConfig?: Partial<ZeroRouterConfig>;
 }
 
 /**
@@ -56,6 +61,7 @@ export interface CompositeRouterConfigWithPreference extends CompositeRouterConf
  */
 export const DEFAULT_COMPOSITE_CONFIG: CompositeRouterConfig = {
   enableBudgetFilter: true,
+  enableZeroRouter: false,
   enablePreferenceRouting: false,
   enableTopsisRanking: true,
   enableLinUCBSelection: true,
@@ -82,6 +88,10 @@ export interface CompositeRoutingDecision {
   readonly decisionTimeMs: number;
   /** Budget feasibility (if budget filter enabled) */
   readonly withinBudget?: boolean | undefined;
+  /** ZeroRouter difficulty estimate (if ZeroRouter enabled) */
+  readonly difficultyEstimate?: DifficultyEstimate | undefined;
+  /** ZeroRouter recommended model tier (if ZeroRouter enabled) */
+  readonly difficultyTier?: ModelTier | undefined;
   /** Preference routing score (if preference routing enabled) */
   readonly preferenceScore?: number | undefined;
   /** Selected tier from preference routing */
@@ -142,6 +152,8 @@ export interface CompositeRouterStats {
 export interface PipelineResult {
   candidates: CliName[];
   withinBudget: boolean | undefined;
+  difficultyEstimate: DifficultyEstimate | undefined;
+  difficultyTier: ModelTier | undefined;
   preferenceScore: number | undefined;
   preferenceTier: 'strong' | 'weak' | undefined;
   topsisRanking: CliName[];
@@ -161,6 +173,8 @@ export interface BuildDecisionParams {
   stagesExecuted: string[];
   startTime: number;
   withinBudget: boolean | undefined;
+  difficultyEstimate: DifficultyEstimate | undefined;
+  difficultyTier: ModelTier | undefined;
   preferenceScore: number | undefined;
   preferenceTier: 'strong' | 'weak' | undefined;
   topsisScore: number | undefined;

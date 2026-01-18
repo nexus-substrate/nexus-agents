@@ -1,0 +1,431 @@
+/**
+ * nexus-agents/workflows - Budget Circuit Breaker
+ *
+ * Implements circuit breaker pattern for budget enforcement during workflow
+ * execution. Opens the circuit when budget is exceeded, blocking operations
+ * until recovery conditions are met.
+ *
+ * (Source: Issue #349 - Implement budget enforcement circuit breaker)
+ */
+
+import type { Result, ILogger } from '../core/index.js';
+import { ok, err, createLogger } from '../core/index.js';
+import {
+  BudgetCircuitError,
+  BudgetCircuitErrorCode,
+  DEFAULT_BUDGET_CIRCUIT_CONFIG,
+  type BudgetCircuitState,
+  type BudgetCircuitBreakerConfig,
+  type BudgetCircuitSnapshot,
+  type BudgetCircuitStateChangeEvent,
+  type BudgetCircuitStateChangeListener,
+  type BudgetEnforcementResult,
+  type BudgetUsageSnapshot,
+  type IBudgetCircuitBreaker,
+  type StepBudgetAllocation,
+} from './budget-circuit-breaker-types.js';
+
+// Re-export types
+export {
+  BudgetCircuitError,
+  BudgetCircuitErrorCode,
+  BudgetCircuitBreakerConfigSchema,
+  DEFAULT_BUDGET_CIRCUIT_CONFIG,
+  type BudgetCircuitState,
+  type BudgetCircuitBreakerConfig,
+  type BudgetCircuitSnapshot,
+  type BudgetCircuitStateChangeEvent,
+  type BudgetCircuitStateChangeListener,
+  type BudgetEnforcementResult,
+  type BudgetUsageSnapshot,
+  type IBudgetCircuitBreaker,
+  type StepBudgetAllocation,
+} from './budget-circuit-breaker-types.js';
+
+// ============================================================================
+// Budget Circuit Breaker Implementation
+// ============================================================================
+
+/**
+ * Budget circuit breaker for workflow execution.
+ *
+ * Tracks budget usage and blocks operations when critical threshold is
+ * exceeded. Supports configurable warning thresholds, recovery probes,
+ * and per-step budget allocation.
+ */
+export class BudgetCircuitBreaker implements IBudgetCircuitBreaker {
+  private state: BudgetCircuitState = 'closed';
+  private lastStateChange: number;
+  private violationCount = 0;
+  private recoveryProbeCount = 0;
+  private lastUsage: BudgetUsageSnapshot | null = null;
+  private currentTokens = 0;
+  private readonly listeners: Set<BudgetCircuitStateChangeListener> = new Set();
+  private readonly logger: ILogger;
+  private readonly config: BudgetCircuitBreakerConfig;
+
+  constructor(
+    private readonly maxTokens: number,
+    config?: Partial<BudgetCircuitBreakerConfig>,
+    logger?: ILogger
+  ) {
+    this.config = { ...DEFAULT_BUDGET_CIRCUIT_CONFIG, ...config };
+    this.lastStateChange = Date.now();
+    this.logger = logger ?? createLogger({ component: 'budget-circuit-breaker' });
+  }
+
+  checkBudget(estimatedTokens: number): BudgetEnforcementResult {
+    this.checkCooldown();
+    const usage = this.createUsageSnapshot();
+    const projectedUsage = this.calculateProjectedUsage(estimatedTokens);
+
+    // Handle open circuit
+    if (this.state === 'open') {
+      return this.createBlockedResult(usage, 'Circuit is open - budget exceeded');
+    }
+
+    // Handle half-open state (allow probe)
+    if (this.state === 'half-open') {
+      return this.handleHalfOpenCheck(estimatedTokens, usage, projectedUsage);
+    }
+
+    // Closed state - normal budget check
+    return this.handleClosedCheck(estimatedTokens, usage, projectedUsage);
+  }
+
+  recordUsage(actualTokens: number): void {
+    this.currentTokens += actualTokens;
+    this.lastUsage = this.createUsageSnapshot();
+
+    this.logger.debug('Budget usage recorded', {
+      actualTokens,
+      totalUsed: this.currentTokens,
+      maxTokens: this.maxTokens,
+      usagePercent: this.lastUsage.usagePercent,
+    });
+
+    // Check if we should open the circuit after recording
+    if (this.state === 'closed' && this.lastUsage.usagePercent >= this.config.criticalThreshold) {
+      this.transitionTo('open', 'Usage exceeded critical threshold after recording');
+    }
+  }
+
+  allocateForStep(stepId: string, remainingSteps: number): StepBudgetAllocation {
+    const available = Math.max(0, this.maxTokens - this.currentTokens);
+    const reserveForOthers = remainingSteps > 1 ? this.config.stepReserve * available : 0;
+    const allocatable = available - reserveForOthers;
+    const perStepAllocation = Math.floor(allocatable / Math.max(1, remainingSteps));
+
+    this.logger.debug('Step budget allocated', {
+      stepId,
+      remainingSteps,
+      available,
+      allocated: perStepAllocation,
+      reserveForOthers: Math.floor(reserveForOthers),
+    });
+
+    return {
+      stepId,
+      allocatedTokens: perStepAllocation,
+      remainingForOtherSteps: available - perStepAllocation,
+      remainingStepCount: remainingSteps - 1,
+    };
+  }
+
+  getState(): BudgetCircuitState {
+    this.checkCooldown();
+    return this.state;
+  }
+
+  getSnapshot(): BudgetCircuitSnapshot {
+    this.checkCooldown();
+    return {
+      state: this.state,
+      lastStateChange: this.lastStateChange,
+      violationCount: this.violationCount,
+      recoveryProbeCount: this.recoveryProbeCount,
+      lastUsage: this.lastUsage,
+      config: this.config,
+    };
+  }
+
+  reset(): void {
+    const previousState = this.state;
+    this.state = 'closed';
+    this.violationCount = 0;
+    this.recoveryProbeCount = 0;
+    this.currentTokens = 0;
+    this.lastStateChange = Date.now();
+    this.lastUsage = null;
+
+    if (previousState !== 'closed') {
+      this.emitStateChange(previousState, 'closed', 'Manual reset');
+    }
+    this.logger.info('Budget circuit breaker reset');
+  }
+
+  forceOpen(reason: string): void {
+    if (this.state !== 'open') {
+      this.transitionTo('open', `Forced open: ${reason}`);
+    }
+  }
+
+  addStateChangeListener(listener: BudgetCircuitStateChangeListener): void {
+    this.listeners.add(listener);
+  }
+
+  removeStateChangeListener(listener: BudgetCircuitStateChangeListener): void {
+    this.listeners.delete(listener);
+  }
+
+  // -------------------------------------------------------------------------
+  // Private Methods - State Transitions
+  // -------------------------------------------------------------------------
+
+  private checkCooldown(): void {
+    if (this.state !== 'open') return;
+
+    const elapsed = Date.now() - this.lastStateChange;
+    if (elapsed >= this.config.cooldownMs) {
+      this.transitionTo('half-open', 'Cooldown elapsed');
+    }
+  }
+
+  private transitionTo(newState: BudgetCircuitState, reason: string): void {
+    const previousState = this.state;
+    this.state = newState;
+    this.lastStateChange = Date.now();
+
+    if (newState === 'closed') {
+      this.violationCount = 0;
+      this.recoveryProbeCount = 0;
+    } else if (newState === 'half-open') {
+      this.recoveryProbeCount = 0;
+    }
+
+    this.emitStateChange(previousState, newState, reason);
+  }
+
+  private emitStateChange(
+    previousState: BudgetCircuitState,
+    newState: BudgetCircuitState,
+    reason: string
+  ): void {
+    const event: BudgetCircuitStateChangeEvent = {
+      previousState,
+      newState,
+      timestamp: this.lastStateChange,
+      reason,
+      usage: this.lastUsage ?? this.createUsageSnapshot(),
+    };
+
+    this.logger.info('Budget circuit state changed', {
+      previousState,
+      newState,
+      reason,
+      usagePercent: event.usage.usagePercent,
+    });
+
+    for (const listener of this.listeners) {
+      try {
+        listener(event);
+      } catch {
+        // Ignore listener errors
+      }
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Private Methods - Budget Checks
+  // -------------------------------------------------------------------------
+
+  private handleClosedCheck(
+    estimatedTokens: number,
+    usage: BudgetUsageSnapshot,
+    projectedUsage: number
+  ): BudgetEnforcementResult {
+    // Check critical threshold
+    if (projectedUsage >= this.config.criticalThreshold) {
+      this.violationCount++;
+      if (this.config.hardStop) {
+        this.transitionTo('open', 'Projected usage exceeds critical threshold');
+        return this.createBlockedResult(usage, 'Budget exceeded - circuit opened');
+      }
+    }
+
+    // Check warning threshold
+    const warning =
+      projectedUsage >= this.config.warningThreshold
+        ? this.createWarningMessage(projectedUsage)
+        : undefined;
+
+    return this.createAllowedResult(usage, estimatedTokens, warning);
+  }
+
+  private handleHalfOpenCheck(
+    estimatedTokens: number,
+    usage: BudgetUsageSnapshot,
+    projectedUsage: number
+  ): BudgetEnforcementResult {
+    // In half-open, allow if projected usage is below warning threshold
+    if (projectedUsage < this.config.warningThreshold) {
+      this.recoveryProbeCount++;
+      if (this.recoveryProbeCount >= this.config.recoveryProbes) {
+        this.transitionTo('closed', 'Recovery probes successful');
+      }
+      return this.createAllowedResult(usage, estimatedTokens, 'Recovery probe allowed');
+    }
+
+    // Probe failed - back to open
+    this.transitionTo('open', 'Recovery probe failed - usage still high');
+    return this.createBlockedResult(usage, 'Recovery probe failed');
+  }
+
+  private calculateProjectedUsage(estimatedTokens: number): number {
+    const projected = this.currentTokens + estimatedTokens;
+    return this.maxTokens > 0 ? projected / this.maxTokens : 0;
+  }
+
+  private createUsageSnapshot(): BudgetUsageSnapshot {
+    const usagePercent = this.maxTokens > 0 ? this.currentTokens / this.maxTokens : 0;
+    return {
+      currentTokens: this.currentTokens,
+      maxTokens: this.maxTokens,
+      usagePercent,
+      availableTokens: Math.max(0, this.maxTokens - this.currentTokens),
+      timestamp: Date.now(),
+    };
+  }
+
+  // -------------------------------------------------------------------------
+  // Private Methods - Result Creation
+  // -------------------------------------------------------------------------
+
+  private createBlockedResult(usage: BudgetUsageSnapshot, reason: string): BudgetEnforcementResult {
+    return {
+      allowed: false,
+      reason,
+      usage,
+      circuitState: this.state,
+    };
+  }
+
+  private createAllowedResult(
+    usage: BudgetUsageSnapshot,
+    estimatedTokens: number,
+    warning?: string
+  ): BudgetEnforcementResult {
+    const result: BudgetEnforcementResult = {
+      allowed: true,
+      reason: 'Within budget',
+      usage,
+      circuitState: this.state,
+      allocatedTokens: estimatedTokens,
+    };
+    if (warning !== undefined) {
+      return { ...result, warning };
+    }
+    return result;
+  }
+
+  private createWarningMessage(projectedUsage: number): string {
+    const percentUsed = Math.round(projectedUsage * 100);
+    return `Budget warning: ${String(percentUsed)}% of budget will be used`;
+  }
+}
+
+// ============================================================================
+// Result-Based API
+// ============================================================================
+
+/**
+ * Check budget with Result type for fallible operations.
+ */
+export function checkBudgetResult(
+  breaker: IBudgetCircuitBreaker,
+  estimatedTokens: number
+): Result<BudgetEnforcementResult, BudgetCircuitError> {
+  const result = breaker.checkBudget(estimatedTokens);
+
+  if (!result.allowed) {
+    return err(
+      new BudgetCircuitError(result.reason, {
+        budgetErrorCode:
+          result.circuitState === 'open'
+            ? BudgetCircuitErrorCode.CIRCUIT_OPEN
+            : BudgetCircuitErrorCode.BUDGET_EXCEEDED,
+        circuitState: result.circuitState,
+        usage: result.usage,
+      })
+    );
+  }
+
+  return ok(result);
+}
+
+/**
+ * Allocate step budget with Result type.
+ */
+export function allocateStepBudgetResult(
+  breaker: IBudgetCircuitBreaker,
+  stepId: string,
+  remainingSteps: number
+): Result<StepBudgetAllocation, BudgetCircuitError> {
+  const state = breaker.getState();
+  if (state === 'open') {
+    const snapshot = breaker.getSnapshot();
+    return err(
+      new BudgetCircuitError('Cannot allocate budget - circuit is open', {
+        budgetErrorCode: BudgetCircuitErrorCode.CIRCUIT_OPEN,
+        circuitState: state,
+        usage: snapshot.lastUsage ?? {
+          currentTokens: 0,
+          maxTokens: 0,
+          usagePercent: 0,
+          availableTokens: 0,
+          timestamp: Date.now(),
+        },
+      })
+    );
+  }
+
+  const allocation = breaker.allocateForStep(stepId, remainingSteps);
+
+  if (allocation.allocatedTokens <= 0) {
+    const snapshot = breaker.getSnapshot();
+    return err(
+      new BudgetCircuitError('Insufficient budget for step allocation', {
+        budgetErrorCode: BudgetCircuitErrorCode.INSUFFICIENT_ALLOCATION,
+        circuitState: state,
+        usage: snapshot.lastUsage ?? {
+          currentTokens: 0,
+          maxTokens: 0,
+          usagePercent: 0,
+          availableTokens: 0,
+          timestamp: Date.now(),
+        },
+      })
+    );
+  }
+
+  return ok(allocation);
+}
+
+// ============================================================================
+// Factory Function
+// ============================================================================
+
+/**
+ * Creates a budget circuit breaker with the specified configuration.
+ */
+export function createBudgetCircuitBreaker(
+  maxTokens: number,
+  config?: Partial<BudgetCircuitBreakerConfig>,
+  logger?: ILogger
+): BudgetCircuitBreaker {
+  const mergedConfig: BudgetCircuitBreakerConfig = {
+    ...DEFAULT_BUDGET_CIRCUIT_CONFIG,
+    ...config,
+  };
+  return new BudgetCircuitBreaker(maxTokens, mergedConfig, logger);
+}

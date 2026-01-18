@@ -25,6 +25,7 @@ import type {
   TypedMemoryPruneResult,
   RelevanceFilterConfig,
 } from './memory-types.js';
+import type { IHindsightBeliefMemory } from './belief-types.js';
 import { MemoryType, DEFAULT_RELEVANCE_CONFIG } from './memory-types.js';
 import {
   CoreMemoryImpl,
@@ -34,6 +35,7 @@ import {
   ResourceMemoryImpl,
   KnowledgeVaultImpl,
 } from './typed-memory-impl.js';
+import { HindsightBeliefMemory } from './belief-memory.js';
 
 const logger = createLogger({ component: 'typed-memory' });
 
@@ -47,6 +49,7 @@ export class TypedMemory implements ITypedMemory {
   readonly procedural: IProceduralMemory;
   readonly resource: IResourceMemory;
   readonly vault: IKnowledgeVault;
+  readonly belief: IHindsightBeliefMemory;
 
   private readonly backend: IMemoryBackend;
   private readonly config: RelevanceFilterConfig;
@@ -60,6 +63,7 @@ export class TypedMemory implements ITypedMemory {
     this.procedural = new ProceduralMemoryImpl(backend);
     this.resource = new ResourceMemoryImpl(backend);
     this.vault = new KnowledgeVaultImpl(backend);
+    this.belief = new HindsightBeliefMemory();
     logger.info('TypedMemory initialized');
   }
 
@@ -98,6 +102,7 @@ export class TypedMemory implements ITypedMemory {
       procedural: 0,
       resource: 0,
       vault: 0,
+      belief: 0,
     };
     let total = 0;
     for (const type of Object.values(MemoryType)) {
@@ -116,7 +121,15 @@ export class TypedMemory implements ITypedMemory {
     logger.info('Pruned expired entries', { count: result.value });
     return ok({
       prunedCount: result.value,
-      prunedByType: { core: 0, episodic: 0, semantic: 0, procedural: 0, resource: 0, vault: 0 },
+      prunedByType: {
+        core: 0,
+        episodic: 0,
+        semantic: 0,
+        procedural: 0,
+        resource: 0,
+        vault: 0,
+        belief: 0,
+      },
     });
   }
 

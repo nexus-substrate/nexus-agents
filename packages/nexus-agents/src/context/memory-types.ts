@@ -40,6 +40,38 @@ export {
   VaultEntrySchema,
 } from './memory-module-types.js';
 
+// Re-export Hindsight Belief Memory types (arXiv:2512.12818)
+export type {
+  Belief,
+  BeliefConfidence,
+  BeliefMemoryConfig,
+  BeliefMemoryStats,
+  BeliefQuery,
+  BeliefSourceType,
+  BeliefUpdate,
+  BeliefUpdateType,
+  Counterfactual,
+  HindsightRecord,
+  IHindsightBeliefMemory,
+} from './belief-types.js';
+
+export {
+  BeliefConfidence as BeliefConfidenceEnum,
+  BeliefConfidenceSchema,
+  BeliefMemoryConfigSchema,
+  BeliefMemoryStatsSchema,
+  BeliefQuerySchema,
+  BeliefSchema,
+  BeliefSourceType as BeliefSourceTypeEnum,
+  BeliefSourceTypeSchema,
+  BeliefUpdateSchema,
+  BeliefUpdateType as BeliefUpdateTypeEnum,
+  BeliefUpdateTypeSchema,
+  CounterfactualSchema,
+  DEFAULT_BELIEF_CONFIG,
+  HindsightRecordSchema,
+} from './belief-types.js';
+
 // Import interfaces for use in ITypedMemory
 import type {
   ICoreMemory,
@@ -50,12 +82,16 @@ import type {
   IKnowledgeVault,
 } from './memory-module-types.js';
 
+// Import belief memory interface for extended typed memory
+import type { IHindsightBeliefMemory } from './belief-types.js';
+
 // ============================================================================
 // Memory Type Enum
 // ============================================================================
 
 /**
- * Six distinct memory types based on MIRIX architecture.
+ * Seven distinct memory types: six from MIRIX architecture plus Belief Memory.
+ * (Source: arXiv:2507.07957 - MIRIX, arXiv:2512.12818 - Hindsight Belief Memory)
  */
 export const MemoryType = {
   CORE: 'core',
@@ -64,6 +100,8 @@ export const MemoryType = {
   PROCEDURAL: 'procedural',
   RESOURCE: 'resource',
   VAULT: 'vault',
+  /** Hindsight Belief Memory for reasoning agents (arXiv:2512.12818) */
+  BELIEF: 'belief',
 } as const;
 
 export type MemoryType = (typeof MemoryType)[keyof typeof MemoryType];
@@ -75,6 +113,7 @@ export const MemoryTypeSchema = z.enum([
   'procedural',
   'resource',
   'vault',
+  'belief',
 ]);
 
 // ============================================================================
@@ -101,8 +140,8 @@ export interface TypedMemoryEntry<T extends MemoryType = MemoryType> {
 // ============================================================================
 
 /**
- * Unified typed memory interface providing access to all six memory types.
- * (Source: Issue #101, arXiv:2507.07957 - MIRIX Architecture)
+ * Unified typed memory interface providing access to all seven memory types.
+ * (Source: Issue #101, arXiv:2507.07957 - MIRIX, arXiv:2512.12818 - Hindsight)
  */
 export interface ITypedMemory {
   readonly core: ICoreMemory;
@@ -111,6 +150,8 @@ export interface ITypedMemory {
   readonly procedural: IProceduralMemory;
   readonly resource: IResourceMemory;
   readonly vault: IKnowledgeVault;
+  /** Hindsight Belief Memory for reasoning agents (arXiv:2512.12818) */
+  readonly belief: IHindsightBeliefMemory;
 
   /** Query entries by memory type */
   queryByType(
@@ -170,20 +211,31 @@ export interface RelevanceFilterConfig {
 
 /**
  * Default relevance filter configuration.
+ * Belief memory is relevant for roles that require reasoning and decision-making.
  */
 export const DEFAULT_RELEVANCE_CONFIG: RelevanceFilterConfig = {
   roleMemoryTypes: {
-    tech_lead: [MemoryType.CORE, MemoryType.EPISODIC, MemoryType.VAULT],
+    tech_lead: [MemoryType.CORE, MemoryType.EPISODIC, MemoryType.VAULT, MemoryType.BELIEF],
     code_expert: [MemoryType.PROCEDURAL, MemoryType.RESOURCE, MemoryType.EPISODIC],
-    architecture_expert: [MemoryType.SEMANTIC, MemoryType.RESOURCE, MemoryType.VAULT],
-    security_expert: [MemoryType.SEMANTIC, MemoryType.VAULT, MemoryType.PROCEDURAL],
+    architecture_expert: [
+      MemoryType.SEMANTIC,
+      MemoryType.RESOURCE,
+      MemoryType.VAULT,
+      MemoryType.BELIEF,
+    ],
+    security_expert: [
+      MemoryType.SEMANTIC,
+      MemoryType.VAULT,
+      MemoryType.PROCEDURAL,
+      MemoryType.BELIEF,
+    ],
     documentation_expert: [MemoryType.SEMANTIC, MemoryType.RESOURCE, MemoryType.EPISODIC],
     testing_expert: [MemoryType.SEMANTIC, MemoryType.EPISODIC, MemoryType.VAULT],
     custom: [MemoryType.SEMANTIC, MemoryType.PROCEDURAL, MemoryType.RESOURCE],
-    // TRINITY roles (arXiv:2512.04695)
-    thinker: [MemoryType.SEMANTIC, MemoryType.CORE, MemoryType.VAULT],
+    // TRINITY roles (arXiv:2512.04695) - thinker and verifier benefit from belief memory
+    thinker: [MemoryType.SEMANTIC, MemoryType.CORE, MemoryType.VAULT, MemoryType.BELIEF],
     worker: [MemoryType.PROCEDURAL, MemoryType.RESOURCE, MemoryType.EPISODIC],
-    verifier: [MemoryType.SEMANTIC, MemoryType.VAULT, MemoryType.PROCEDURAL],
+    verifier: [MemoryType.SEMANTIC, MemoryType.VAULT, MemoryType.PROCEDURAL, MemoryType.BELIEF],
   },
   minRelevanceScore: 0.5,
   maxEntriesPerType: 10,

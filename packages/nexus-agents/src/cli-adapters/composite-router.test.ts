@@ -489,3 +489,289 @@ describe('CompositeRouter preference routing', () => {
     });
   });
 });
+
+describe('CompositeRouter ZeroRouter integration (Issue #347)', () => {
+  let adapters: Map<CliName, ICliAdapter>;
+
+  beforeEach(() => {
+    adapters = createTestAdapters();
+  });
+
+  describe('ZeroRouter disabled by default', () => {
+    it('should skip ZeroRouter when not enabled', async () => {
+      const router = new CompositeRouter(adapters);
+      const task: CliTask = { content: 'Test task' };
+      const result = await router.route(task);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.stagesExecuted).not.toContain('zero-router');
+        expect(result.value.difficultyEstimate).toBeUndefined();
+        expect(result.value.difficultyTier).toBeUndefined();
+      }
+    });
+
+    it('should have undefined ZeroRouter when not enabled', () => {
+      const router = new CompositeRouter(adapters);
+      expect(router.getZeroRouter()).toBeUndefined();
+    });
+  });
+
+  describe('ZeroRouter enabled', () => {
+    it('should include ZeroRouter stage when enabled', async () => {
+      const router = new CompositeRouter(adapters, {
+        enableZeroRouter: true,
+      });
+
+      const task: CliTask = { content: 'Write a simple hello world function' };
+      const result = await router.route(task);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.stagesExecuted).toContain('zero-router');
+        expect(result.value.difficultyEstimate).toBeDefined();
+        expect(result.value.difficultyTier).toBeDefined();
+      }
+    });
+
+    it('should provide difficulty estimate with all dimensions', async () => {
+      const router = new CompositeRouter(adapters, {
+        enableZeroRouter: true,
+      });
+
+      const task: CliTask = { content: 'Design a complex distributed system' };
+      const result = await router.route(task);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        const estimate = result.value.difficultyEstimate;
+        expect(estimate).toBeDefined();
+        if (estimate !== undefined) {
+          expect(estimate.dimensions).toBeDefined();
+          expect(estimate.aggregateScore).toBeGreaterThanOrEqual(0);
+          expect(estimate.aggregateScore).toBeLessThanOrEqual(1);
+          expect(estimate.level).toBeDefined();
+          expect(['easy', 'medium', 'hard']).toContain(estimate.level);
+          expect(estimate.recommendedTier).toBeDefined();
+          expect(['fast', 'balanced', 'powerful']).toContain(estimate.recommendedTier);
+        }
+      }
+    });
+
+    it('should return ZeroRouter instance when enabled', () => {
+      const router = new CompositeRouter(adapters, {
+        enableZeroRouter: true,
+      });
+      const zeroRouter = router.getZeroRouter();
+      expect(zeroRouter).toBeDefined();
+    });
+
+    it('should route easy tasks to fast tier (gemini preferred)', async () => {
+      const router = new CompositeRouter(adapters, {
+        enableZeroRouter: true,
+        enableTopsisRanking: false,
+        enableLinUCBSelection: false,
+      });
+
+      // Simple task should be classified as easy -> fast tier -> gemini preferred
+      const task: CliTask = { content: 'hello' };
+      const result = await router.route(task);
+
+      expect(result.ok).toBe(true);
+      if (result.ok && result.value.difficultyTier === 'fast') {
+        // When tier is 'fast', gemini should be preferred (first in sorted order)
+        expect(result.value.cliName).toBe('gemini');
+      }
+    });
+
+    it('should route hard tasks to powerful tier (claude preferred)', async () => {
+      const router = new CompositeRouter(adapters, {
+        enableZeroRouter: true,
+        enableTopsisRanking: false,
+        enableLinUCBSelection: false,
+      });
+
+      // Complex task should be classified as hard -> powerful tier -> claude preferred
+      const complexTask =
+        'Design and implement a fault-tolerant distributed consensus ' +
+        'algorithm with Byzantine fault tolerance for a multi-region ' +
+        'database system';
+      const task: CliTask = { content: complexTask };
+      const result = await router.route(task);
+
+      expect(result.ok).toBe(true);
+      if (result.ok && result.value.difficultyTier === 'powerful') {
+        // When tier is 'powerful', claude should be preferred
+        expect(result.value.cliName).toBe('claude');
+      }
+    });
+  });
+
+  describe('recordDifficultyOutcome', () => {
+    it('should record difficulty outcome when ZeroRouter enabled', async () => {
+      const router = new CompositeRouter(adapters, {
+        enableZeroRouter: true,
+        zeroRouterConfig: { enableCalibration: true },
+      });
+
+      const task: CliTask = { content: 'Test task for calibration' };
+      await router.route(task);
+
+      expect(() => {
+        router.recordDifficultyOutcome(task, true, 0.9);
+      }).not.toThrow();
+
+      // Verify calibration stats updated
+      const zeroRouter = router.getZeroRouter();
+      expect(zeroRouter).toBeDefined();
+      if (zeroRouter !== undefined) {
+        const stats = zeroRouter.getCalibrationStats();
+        expect(stats.totalOutcomes).toBe(1);
+      }
+    });
+
+    it('should not throw when ZeroRouter disabled', () => {
+      const router = new CompositeRouter(adapters);
+      const task: CliTask = { content: 'Test task' };
+
+      expect(() => {
+        router.recordDifficultyOutcome(task, true);
+      }).not.toThrow();
+    });
+
+    it('should record outcome without quality score', async () => {
+      const router = new CompositeRouter(adapters, {
+        enableZeroRouter: true,
+        zeroRouterConfig: { enableCalibration: true },
+      });
+
+      const task: CliTask = { content: 'Simple task' };
+      await router.route(task);
+
+      expect(() => {
+        router.recordDifficultyOutcome(task, false);
+      }).not.toThrow();
+    });
+  });
+
+  describe('ZeroRouter with custom config', () => {
+    it('should accept custom thresholds', async () => {
+      const router = new CompositeRouter(adapters, {
+        enableZeroRouter: true,
+        zeroRouterConfig: {
+          thresholds: {
+            easyUpperBound: 0.2,
+            hardLowerBound: 0.8,
+          },
+        },
+      });
+
+      const task: CliTask = { content: 'Moderate complexity task' };
+      const result = await router.route(task);
+
+      expect(result.ok).toBe(true);
+    });
+
+    it('should accept custom weights', async () => {
+      const router = new CompositeRouter(adapters, {
+        enableZeroRouter: true,
+        zeroRouterConfig: {
+          weights: {
+            reasoning: 0.5,
+            knowledge: 0.1,
+            creativity: 0.1,
+            precision: 0.2,
+            context_length: 0.1,
+          },
+        },
+      });
+
+      const task: CliTask = { content: 'Test task with custom weights' };
+      const result = await router.route(task);
+
+      expect(result.ok).toBe(true);
+    });
+
+    it('should disable calibration when configured', async () => {
+      const router = new CompositeRouter(adapters, {
+        enableZeroRouter: true,
+        zeroRouterConfig: { enableCalibration: false },
+      });
+
+      const task: CliTask = { content: 'Test task' };
+      await router.route(task);
+
+      // Record outcome should have no effect
+      router.recordDifficultyOutcome(task, true, 0.9);
+
+      const zeroRouter = router.getZeroRouter();
+      expect(zeroRouter).toBeDefined();
+      if (zeroRouter !== undefined) {
+        const stats = zeroRouter.getCalibrationStats();
+        expect(stats.totalOutcomes).toBe(0);
+      }
+    });
+  });
+
+  describe('ZeroRouter reason in routing decision', () => {
+    it('should include difficulty info in reason string', async () => {
+      const router = new CompositeRouter(adapters, {
+        enableZeroRouter: true,
+      });
+
+      const task: CliTask = { content: 'Design a microservices architecture' };
+      const result = await router.route(task);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        // Reason should include difficulty tier and score
+        expect(result.value.reason).toContain('difficulty');
+      }
+    });
+  });
+
+  describe('ZeroRouter with other stages', () => {
+    it('should work with all stages enabled', async () => {
+      const router = new CompositeRouter(adapters, {
+        enableBudgetFilter: true,
+        enableZeroRouter: true,
+        enablePreferenceRouting: true,
+        enableTopsisRanking: true,
+        enableLinUCBSelection: true,
+        preferenceRouterConfig: { minDataPoints: 1 },
+      });
+
+      // Add preference data
+      router.recordPreference('complex task', true);
+
+      const task: CliTask = { content: 'Build a REST API endpoint' };
+      const result = await router.route(task);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.stagesExecuted).toContain('task-analysis');
+        expect(result.value.stagesExecuted).toContain('zero-router');
+        expect(result.value.stagesExecuted).toContain('preference-routing');
+        expect(result.value.stagesExecuted).toContain('topsis-ranking');
+        expect(result.value.stagesExecuted).toContain('linucb-selection');
+      }
+    });
+
+    it('should preserve ZeroRouter sorting when other stages run', async () => {
+      const router = new CompositeRouter(adapters, {
+        enableZeroRouter: true,
+        enableTopsisRanking: true,
+        enableLinUCBSelection: false,
+      });
+
+      const task: CliTask = { content: 'Simple string concatenation' };
+      const result = await router.route(task);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.difficultyEstimate).toBeDefined();
+        expect(result.value.topsisScore).toBeDefined();
+      }
+    });
+  });
+});

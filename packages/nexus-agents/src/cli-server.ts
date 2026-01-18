@@ -13,7 +13,11 @@ import {
   registerTools,
   registerDelegateToModelTool,
   registerOrchestrateTool,
+  registerCreateExpertTool,
+  registerRunWorkflowTool,
   createMockTechLead,
+  createDefaultDeps,
+  createMockWorkflowEngine,
   type EventBusBridgeResult,
 } from './mcp/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -259,8 +263,19 @@ function registerMcpTools(server: McpServer, logger: ILogger): void {
     rateLimiter: rateLimiterFactory.getForTool('orchestrate'),
   });
 
+  registerCreateExpertTool(
+    server,
+    createDefaultDeps(rateLimiterFactory.getForTool('create_expert'), toolInfra.logger)
+  );
+
+  registerRunWorkflowTool(server, {
+    workflowEngine: createMockWorkflowEngine(),
+    logger: toolInfra.logger,
+    rateLimiter: rateLimiterFactory.getForTool('run_workflow'),
+  });
+
   logger.info('Tools registered with per-tool rate limiting', {
-    registeredTools: ['delegate_to_model', 'orchestrate'],
+    registeredTools: ['delegate_to_model', 'orchestrate', 'create_expert', 'run_workflow'],
     rateLimitingEnabled: rateLimiterFactory.isEnabled(),
   });
 }

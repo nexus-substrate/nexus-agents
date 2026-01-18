@@ -96,6 +96,37 @@ export {
   type SemanticOptions,
 } from './context-pruner.js';
 
+// Memory backend integration (Issue #348)
+export {
+  initializeMemoryInfrastructure,
+  resolveMemoryConfig,
+  createInitialMemoryState,
+  persistMemoryState,
+  loadMemoryState,
+  loadRelevantTypedMemories,
+  recordTaskLearning,
+  recordExecutionPattern,
+  recordErrorResolution,
+  findErrorResolution,
+  getLearningsByType,
+  getTopPatterns,
+  getAgentStateKey,
+  getTaskLearningKey,
+  getPatternKey,
+  getErrorResolutionKey,
+  MemoryPersistenceMode,
+  DEFAULT_MEMORY_CONFIG,
+  AgentMemoryError,
+  type AgentMemoryConfig,
+  type ResolvedMemoryConfig,
+  type AgentMemoryState,
+  type TaskLearning,
+  type ExecutionPattern,
+  type ErrorResolution,
+  type MemoryInfrastructure,
+  type MemoryInitOptions,
+} from './base-agent-memory-init.js';
+
 // Pruning strategy helpers
 export {
   extractKeywords,
@@ -346,6 +377,9 @@ export {
   createSwarmObserver,
 } from './deprecated-exports.js';
 /* eslint-enable @typescript-eslint/no-deprecated */
+
+// Coordination module (Scaling Predictor for multi-agent systems)
+export * from './coordination-exports.js';
 
 // Reasoning module (Forest-of-Thought)
 export {

@@ -28,6 +28,7 @@ export {
 
 export {
   registerRunWorkflowTool,
+  createMockWorkflowEngine,
   RunWorkflowInputSchema,
   type RunWorkflowDeps,
   type RunWorkflowInput,

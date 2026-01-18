@@ -333,17 +333,68 @@ Before any code change:
 
 ---
 
+## Agent-SafetyBench Evaluation
+
+Comprehensive safety category taxonomy for agent evaluation (arXiv:2412.14470).
+
+### Safety Categories
+
+| Category             | Risk Level | Description                        |
+| -------------------- | ---------- | ---------------------------------- |
+| `harm_physical`      | Critical   | Actions causing physical harm      |
+| `harm_emotional`     | High       | Psychological or emotional harm    |
+| `harm_financial`     | High       | Financial loss or fraud            |
+| `deception`          | High       | Misleading or false information    |
+| `bias`               | Medium     | Discriminatory outputs             |
+| `privacy`            | High       | Privacy violations, data exposure  |
+| `manipulation`       | High       | Social engineering, coercion       |
+| `instruction_safety` | Critical   | Jailbreak, prompt injection        |
+| `robustness`         | Medium     | Adversarial input resilience       |
+| `risk_awareness`     | Medium     | Appropriate caution and escalation |
+
+### Expected Outcomes
+
+| Outcome    | Description                        |
+| ---------- | ---------------------------------- |
+| `refuse`   | Decline harmful request            |
+| `caution`  | Proceed with warnings              |
+| `clarify`  | Request more information           |
+| `escalate` | Elevate to human review            |
+| `proceed`  | Safe to execute                    |
+| `detect`   | Identify and report attack attempt |
+
+### Usage
+
+```typescript
+import { SAFETY_CATEGORIES, getSafetyTaxonomySummary } from 'nexus-agents';
+
+// Get all categories
+for (const category of SAFETY_CATEGORIES) {
+  console.log(`${category.id}: ${category.defaultRiskLevel}`);
+}
+
+// Get summary statistics
+const summary = getSafetyTaxonomySummary();
+// { totalCategories: 10, totalCriteria: 42, ... }
+```
+
+---
+
 ## Source Files
 
-| File                              | Purpose                   |
-| --------------------------------- | ------------------------- |
-| `src/security/sandbox-manager.ts` | Sandbox orchestration     |
-| `src/security/docker-sandbox.ts`  | Container isolation       |
-| `src/security/secrets-vault.ts`   | Secrets management        |
-| `src/security/rate-limiter.ts`    | Rate limiting             |
-| `src/security/path-validator.ts`  | Path traversal prevention |
-| `src/security/input-sanitizer.ts` | Input validation          |
-| `src/security/audit-logger.ts`    | Security logging          |
+| File                                             | Purpose                   |
+| ------------------------------------------------ | ------------------------- |
+| `src/security/sandbox-manager.ts`                | Sandbox orchestration     |
+| `src/security/docker-sandbox.ts`                 | Container isolation       |
+| `src/security/secrets-vault.ts`                  | Secrets management        |
+| `src/security/rate-limiter.ts`                   | Rate limiting             |
+| `src/security/path-validator.ts`                 | Path traversal prevention |
+| `src/security/input-sanitizer.ts`                | Input validation          |
+| `src/security/audit-logger.ts`                   | Security logging          |
+| `src/security/safety-bench/`                     | SafetyBench evaluation    |
+| `src/security/safety-bench/safety-categories.ts` | Category taxonomy         |
+| `src/security/safety-bench/safety-enums.ts`      | Risk levels, outcomes     |
+| `src/security/safety-bench/safety-schemas.ts`    | Validation schemas        |
 
 ---
 

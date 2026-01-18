@@ -258,3 +258,43 @@ export type {
   EvaluationWeights,
   AFlowErrorCode,
 } from './aflow/index.js';
+
+// ============================================================================
+// Budget Enforcement Circuit Breaker (Issue #349)
+// ============================================================================
+
+export {
+  // Circuit breaker
+  BudgetCircuitBreaker,
+  BudgetCircuitError,
+  BudgetCircuitErrorCode,
+  createBudgetCircuitBreaker,
+  checkBudgetResult,
+  allocateStepBudgetResult,
+  // Config schema
+  BudgetCircuitBreakerConfigSchema,
+  DEFAULT_BUDGET_CIRCUIT_CONFIG,
+  // Budget enforcement functions
+  applyBudgetEnforcement,
+  enforceBudgetForStep,
+  createWorkflowCircuitBreaker,
+  resolveStepBudget,
+  copyBudgetEvents,
+} from './budget-enforcement.js';
+
+export type {
+  // Circuit breaker types
+  BudgetCircuitState,
+  BudgetCircuitBreakerConfig,
+  BudgetCircuitSnapshot,
+  BudgetCircuitStateChangeEvent,
+  BudgetCircuitStateChangeListener,
+  BudgetEnforcementResult,
+  BudgetUsageSnapshot,
+  IBudgetCircuitBreaker,
+  StepBudgetAllocation,
+  // Budget enforcement types
+  BudgetEnforcementEvent,
+  BudgetEnforcementConfig,
+  EnforceBudgetOptions,
+} from './budget-enforcement.js';

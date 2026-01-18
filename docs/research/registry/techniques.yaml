@@ -904,6 +904,47 @@ techniques:
         decision: 'Issue created'
         rationale: 'Created during dogfooding session'
 
+  evolving-orchestration:
+    name: 'Evolving Orchestration Upgrade'
+    description: |
+      Puppeteer-style paradigm with RL-trained orchestrator for dynamic
+      agent selection. Upgrades existing orchestration with learned policies.
+
+    source_papers:
+      - arxiv-2505.19591
+
+    topic: orchestration
+    tags:
+      - reinforcement-learning
+      - puppeteer
+      - dynamic-selection
+      - policy
+
+    metrics:
+      task_completion_improvement: '15-30%'
+
+    status: planned
+    priority: P2
+    complexity: high
+
+    integration_files:
+      - 'packages/nexus-agents/src/agents/orchestration/evolving-orchestrator.ts'
+
+    implementation_issue: 335
+    related_prs: []
+
+    notes: |
+      Upgrade to existing orchestration with learned agent selection.
+      Builds on rl-orchestrator (#154) infrastructure when available.
+
+    dependencies:
+      - rl-orchestrator
+
+    decision_history:
+      - date: '2026-01-17'
+        decision: 'APPROVED via consensus vote'
+        rationale: 'Weighted score 0.83, 12/15 agents FOR'
+
   latts-adaptive-compute:
     name: 'LATTS Adaptive Test-Time Compute'
     description: |
@@ -1309,20 +1350,27 @@ techniques:
       hazard_coverage: 'Systematic UCA identification'
       safety_constraints: 'Auto-generated from analysis'
 
-    status: planned
+    status: implemented
     priority: P1
     complexity: medium
 
     integration_files:
       - 'packages/nexus-agents/src/mcp/safety/stpa-analyzer.ts'
       - 'packages/nexus-agents/src/mcp/safety/stpa-types.ts'
+      - 'packages/nexus-agents/src/mcp/safety/stpa-helpers.ts'
+      - 'packages/nexus-agents/src/mcp/safety/hazard-catalog.ts'
+      - 'packages/nexus-agents/src/mcp/safety/stpa-analyzer.test.ts'
 
     implementation_issue: 328
     related_prs: []
 
     notes: |
-      Formal safety analysis methodology for MCP tool registration.
-      Identifies unsafe control actions before tool execution.
+      Implemented as StpaAnalyzer class with:
+      - Tool category classification
+      - Hazard identification from catalog
+      - UCA generation for each hazard
+      - Safety constraint generation
+      - Risk scoring and level determination
 
     dependencies: []
 
@@ -1330,6 +1378,9 @@ techniques:
       - date: '2026-01-17'
         decision: 'APPROVED via consensus vote'
         rationale: 'Weighted score 0.87, 12/15 agents FOR'
+      - date: '2026-01-17'
+        decision: 'Implemented'
+        rationale: 'StpaAnalyzer with hazard catalog and constraint generation'
 
   aflow-mcts-workflows:
     name: 'AFlow MCTS Workflow Generation'
@@ -1349,20 +1400,27 @@ techniques:
     metrics:
       workflow_quality: 'Improved through search optimization'
 
-    status: planned
+    status: implemented
     priority: P1
     complexity: high
 
     integration_files:
-      - 'packages/nexus-agents/src/workflows/aflow/mcts-search.ts'
+      - 'packages/nexus-agents/src/workflows/aflow/mcts-tree.ts'
       - 'packages/nexus-agents/src/workflows/aflow/aflow-types.ts'
+      - 'packages/nexus-agents/src/workflows/aflow/aflow-generator.ts'
+      - 'packages/nexus-agents/src/workflows/aflow/action-space.ts'
+      - 'packages/nexus-agents/src/workflows/aflow/evaluation.ts'
+      - 'packages/nexus-agents/src/workflows/aflow/aflow-generator.test.ts'
 
     implementation_issue: 329
     related_prs: []
 
     notes: |
-      MCTS-based workflow discovery reduces manual template creation.
-      UCT selection balances exploration/exploitation.
+      Implemented as MCTSTree and AFlowGenerator classes with:
+      - MCTS tree with UCT selection for workflow exploration
+      - Action space defining workflow mutation operations
+      - Workflow evaluation and scoring
+      - Full test coverage
 
     dependencies: []
 
@@ -1370,6 +1428,9 @@ techniques:
       - date: '2026-01-17'
         decision: 'APPROVED via consensus vote'
         rationale: 'Weighted score 0.95, 14/15 agents FOR'
+      - date: '2026-01-17'
+        decision: 'Implemented'
+        rationale: 'MCTSTree with UCT selection and AFlowGenerator'
 
   sew-self-evolving-workflows:
     name: 'SEW Self-Evolving Workflows'
@@ -1389,20 +1450,27 @@ techniques:
     metrics:
       improvement_rate: 'Continuous through execution feedback'
 
-    status: planned
+    status: implemented
     priority: P1
     complexity: medium
 
     integration_files:
       - 'packages/nexus-agents/src/workflows/self-evolving/workflow-evolver.ts'
       - 'packages/nexus-agents/src/workflows/self-evolving/sew-types.ts'
+      - 'packages/nexus-agents/src/workflows/self-evolving/mutation-operators.ts'
+      - 'packages/nexus-agents/src/workflows/self-evolving/workflow-evolver-helpers.ts'
+      - 'packages/nexus-agents/src/workflows/self-evolving/workflow-evolver.test.ts'
 
     implementation_issue: 330
     related_prs: []
 
     notes: |
-      Builds on existing workflow infrastructure.
-      Version management for workflow evolution tracking.
+      Implemented as WorkflowEvolver class with:
+      - Genetic algorithm-based workflow evolution
+      - Mutation operators for workflow parameter modification
+      - Fitness tracking and version management
+      - Tournament selection and crossover
+      - Full test coverage
 
     dependencies: []
 
@@ -1410,6 +1478,9 @@ techniques:
       - date: '2026-01-17'
         decision: 'APPROVED via consensus vote'
         rationale: 'Weighted score 0.78, 11/15 agents FOR'
+      - date: '2026-01-17'
+        decision: 'Implemented'
+        rationale: 'WorkflowEvolver with genetic algorithm and mutation operators'
 
   higher-order-voting:
     name: 'Higher-Order Voting (OW/ISP)'
@@ -1429,20 +1500,27 @@ techniques:
     metrics:
       correlation_handling: 'Improved consensus on correlated inputs'
 
-    status: planned
+    status: implemented
     priority: P2
     complexity: medium
 
     integration_files:
       - 'packages/nexus-agents/src/consensus/higher-order-voting.ts'
-      - 'packages/nexus-agents/src/consensus/correlation-estimator.ts'
+      - 'packages/nexus-agents/src/consensus/higher-order-types.ts'
+      - 'packages/nexus-agents/src/consensus/higher-order-helpers.ts'
+      - 'packages/nexus-agents/src/consensus/correlation-tracker.ts'
+      - 'packages/nexus-agents/src/consensus/correlation-helpers.ts'
+      - 'packages/nexus-agents/src/consensus/higher-order-voting.test.ts'
 
     implementation_issue: 333
     related_prs: []
 
     notes: |
-      Mathematically grounded aggregation that handles groupthink/echo chambers.
-      Integrates with existing VotingProtocol.
+      Implemented as OWVoting and ISPVoting classes with:
+      - Opinion-Wise (OW) Bayesian aggregation with correlation awareness
+      - Independent Subset Partition (ISP) for groupthink mitigation
+      - Correlation tracking across voting history
+      - Integration with existing VotingProtocol
 
     dependencies:
       - cp-wbft-consensus
@@ -1451,6 +1529,9 @@ techniques:
       - date: '2026-01-17'
         decision: 'APPROVED via consensus vote'
         rationale: 'Weighted score 0.89, 13/15 agents FOR'
+      - date: '2026-01-17'
+        decision: 'Implemented'
+        rationale: 'OWVoting and ISPVoting with correlation tracking'
 
   forest-of-thought:
     name: 'Forest-of-Thought Multi-Tree Reasoning'
@@ -1471,20 +1552,25 @@ techniques:
       reasoning_quality: 'Improved through diverse exploration'
       efficiency: 'Sparse activation reduces compute'
 
-    status: planned
+    status: in-progress
     priority: P2
     complexity: high
 
     integration_files:
-      - 'packages/nexus-agents/src/agents/reasoning/forest-of-thought.ts'
       - 'packages/nexus-agents/src/agents/reasoning/forest-types.ts'
+      - 'packages/nexus-agents/src/agents/reasoning/forest-node-types.ts'
+      - 'packages/nexus-agents/src/agents/reasoning/forest-tree-types.ts'
+      - 'packages/nexus-agents/src/agents/reasoning/forest-config-types.ts'
+      - 'packages/nexus-agents/src/agents/reasoning/forest-result-types.ts'
 
     implementation_issue: 331
     related_prs: []
 
     notes: |
-      Novel reasoning architecture for complex multi-step problems.
-      Cross-tree information sharing enables best-path selection.
+      Types defined, implementation in progress:
+      - ForestState, ForestConfig, ForestResult types complete
+      - ReasoningNode, ReasoningTree types complete
+      - Main Forest class and execution logic pending
 
     dependencies: []
 
@@ -1492,6 +1578,9 @@ techniques:
       - date: '2026-01-17'
         decision: 'APPROVED via consensus vote'
         rationale: 'Weighted score 0.78, 11/15 agents FOR'
+      - date: '2026-01-17'
+        decision: 'Types implemented'
+        rationale: 'Forest type definitions complete, implementation pending'
 
   agent-safety-bench:
     name: 'Agent-SafetyBench Evaluation Suite'
@@ -1511,20 +1600,26 @@ techniques:
     metrics:
       coverage: 'Multi-dimensional safety evaluation'
 
-    status: planned
+    status: in-progress
     priority: P2
     complexity: medium
 
     integration_files:
-      - 'packages/nexus-agents/src/security/safety-bench/safety-bench.ts'
       - 'packages/nexus-agents/src/security/safety-bench/safety-categories.ts'
+      - 'packages/nexus-agents/src/security/safety-bench/safety-enums.ts'
+      - 'packages/nexus-agents/src/security/safety-bench/safety-schemas.ts'
+      - 'packages/nexus-agents/src/security/safety-bench/safety-category-definitions.ts'
+      - 'packages/nexus-agents/src/security/safety-bench/safety-category-definitions-2.ts'
 
     implementation_issue: 332
     related_prs: []
 
     notes: |
-      Systematic safety evaluation for CI/CD integration.
-      Generates safety reports for compliance.
+      Safety taxonomy and categories implemented:
+      - 10 safety categories (harm, deception, bias, privacy, etc.)
+      - Risk level enums and evaluation criteria schemas
+      - Category definitions with test case schemas
+      - Main evaluation harness (safety-bench.ts) pending
 
     dependencies: []
 
@@ -1532,6 +1627,9 @@ techniques:
       - date: '2026-01-17'
         decision: 'APPROVED via consensus vote'
         rationale: 'Weighted score 0.72, 10/15 agents FOR'
+      - date: '2026-01-17'
+        decision: 'Categories implemented'
+        rationale: 'Safety taxonomy complete, evaluation harness pending'
 
   daao-difficulty-estimation:
     name: 'DAAO VAE Difficulty Estimation'
@@ -1551,20 +1649,25 @@ techniques:
     metrics:
       routing_accuracy: 'Improved task-model alignment'
 
-    status: planned
+    status: implemented
     priority: P2
     complexity: medium
 
     integration_files:
       - 'packages/nexus-agents/src/cli-adapters/daao-estimator.ts'
       - 'packages/nexus-agents/src/cli-adapters/daao-types.ts'
+      - 'packages/nexus-agents/src/cli-adapters/daao-feature-extraction.ts'
+      - 'packages/nexus-agents/src/cli-adapters/daao-estimator.test.ts'
 
     implementation_issue: 334
     related_prs: []
 
     notes: |
-      Integrates with CompositeRouter for better model selection.
-      Learned representations transfer across domains.
+      Implemented as DAAOEstimator class with:
+      - 8-dimension feature extraction (lexical, syntactic, semantic, etc.)
+      - Difficulty estimation with configurable weights
+      - Calibration support for continuous improvement
+      - Integration with routing infrastructure
 
     dependencies:
       - pilot-budget-routing
@@ -1573,6 +1676,9 @@ techniques:
       - date: '2026-01-17'
         decision: 'APPROVED via consensus vote'
         rationale: 'Weighted score 0.67, 9/15 agents FOR'
+      - date: '2026-01-17'
+        decision: 'Implemented'
+        rationale: 'DAAOEstimator with 8-dimension feature extraction'
 
   hindsight-belief-memory:
     name: 'Hindsight Belief Memory'
@@ -1673,20 +1779,27 @@ techniques:
     metrics:
       routing_accuracy: 'Cross-domain difficulty assessment'
 
-    status: planned
+    status: implemented
     priority: P1
     complexity: medium
 
     integration_files:
       - 'packages/nexus-agents/src/cli-adapters/zero-router.ts'
+      - 'packages/nexus-agents/src/cli-adapters/zero-router-types.ts'
       - 'packages/nexus-agents/src/cli-adapters/difficulty-space.ts'
+      - 'packages/nexus-agents/src/cli-adapters/difficulty-estimators.ts'
+      - 'packages/nexus-agents/src/cli-adapters/zero-router-calibration.ts'
+      - 'packages/nexus-agents/src/cli-adapters/zero-router.test.ts'
 
     implementation_issue: 338
     related_prs: []
 
     notes: |
-      Unified difficulty representation across task types.
-      Integrates with CompositeRouter for improved model selection.
+      Implemented as ZeroRouter class with:
+      - Universal difficulty space mapping across task types
+      - Difficulty level classification (trivial, easy, medium, hard, expert)
+      - Calibration tracking for accuracy improvement
+      - Integration with routing infrastructure
 
     dependencies:
       - pilot-budget-routing
@@ -1695,3 +1808,6 @@ techniques:
       - date: '2026-01-17'
         decision: 'APPROVED via consensus vote'
         rationale: 'Weighted score 0.72, 10/15 agents FOR'
+      - date: '2026-01-17'
+        decision: 'Implemented'
+        rationale: 'ZeroRouter with difficulty space and calibration'

@@ -16,5 +16,6 @@
       "Bash(gemini --help:*)",
       "mcp__github__create_issue"
     ]
-  }
+  },
+  "outputStyle": "default"
 }

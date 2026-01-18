@@ -9,7 +9,11 @@ import type { ILogger, ContextBudget, StepResult } from '../core/index.js';
 import type { ContextManagerConfig } from '../agents/context-manager.js';
 import { DEFAULT_BUDGET } from '../agents/context-manager.js';
 import type { ContextManager } from '../agents/context-manager.js';
-import type { BudgetEnforcementEvent } from './budget-enforcement.js';
+import type {
+  BudgetEnforcementEvent,
+  BudgetCircuitBreakerConfig,
+  IBudgetCircuitBreaker,
+} from './budget-enforcement.js';
 import type { WorkflowStep } from './workflow-types.js';
 
 // ============================================================================
@@ -37,6 +41,10 @@ export interface WorkflowEngineConfig {
   contextManagerConfig?: Omit<ContextManagerConfig, 'budget'>;
   defaultBudget?: ContextBudget;
   logger?: ILogger;
+  /** Budget circuit breaker configuration */
+  budgetCircuitBreakerConfig?: Partial<BudgetCircuitBreakerConfig>;
+  /** Enable hard budget enforcement (default: false for backward compatibility) */
+  enableBudgetEnforcement?: boolean;
 }
 
 /** Internal config type with resolved optional fields. */
@@ -46,6 +54,8 @@ export interface ResolvedConfig {
   templatePaths: string[];
   contextManagerConfig: Omit<ContextManagerConfig, 'budget'> | undefined;
   defaultBudget: ContextBudget;
+  budgetCircuitBreakerConfig: Partial<BudgetCircuitBreakerConfig> | undefined;
+  enableBudgetEnforcement: boolean;
 }
 
 // ============================================================================
@@ -72,6 +82,8 @@ export interface ExecutionContext {
   abortController: AbortController;
   contextManager: ContextManager | undefined;
   budgetEvents: BudgetEnforcementEvent[];
+  /** Budget circuit breaker for enforcement (optional) */
+  budgetCircuitBreaker: IBudgetCircuitBreaker | undefined;
 }
 
 /** Options for phase execution. */
@@ -85,6 +97,17 @@ export interface ExecutionOptions {
 // Pure Helper Functions
 // ============================================================================
 
+/** Default resolved configuration values. */
+const DEFAULT_RESOLVED_CONFIG: ResolvedConfig = {
+  defaultTimeoutMs: DEFAULT_TIMEOUT_MS,
+  maxConcurrency: DEFAULT_MAX_CONCURRENCY,
+  templatePaths: [],
+  contextManagerConfig: undefined,
+  defaultBudget: DEFAULT_BUDGET,
+  budgetCircuitBreakerConfig: undefined,
+  enableBudgetEnforcement: false,
+};
+
 /**
  * Resolve workflow engine configuration with defaults.
  *
@@ -92,12 +115,13 @@ export interface ExecutionOptions {
  * @returns Fully resolved configuration with all defaults applied
  */
 export function resolveConfig(config?: WorkflowEngineConfig): ResolvedConfig {
+  if (config === undefined) {
+    return { ...DEFAULT_RESOLVED_CONFIG };
+  }
   return {
-    defaultTimeoutMs: config?.defaultTimeoutMs ?? DEFAULT_TIMEOUT_MS,
-    maxConcurrency: config?.maxConcurrency ?? DEFAULT_MAX_CONCURRENCY,
-    templatePaths: config?.templatePaths ?? [],
-    contextManagerConfig: config?.contextManagerConfig,
-    defaultBudget: config?.defaultBudget ?? DEFAULT_BUDGET,
+    ...DEFAULT_RESOLVED_CONFIG,
+    ...config,
+    templatePaths: config.templatePaths ?? [],
   };
 }
 

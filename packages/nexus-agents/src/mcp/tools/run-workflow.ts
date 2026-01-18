@@ -10,8 +10,8 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Result } from '../../core/index.js';
-import type { WorkflowDefinition } from '../../core/index.js';
-import { WorkflowError, createLogger } from '../../core/index.js';
+import type { WorkflowDefinition, IWorkflowEngine } from '../../core/index.js';
+import { WorkflowError, ParseError, createLogger } from '../../core/index.js';
 import { wrapToolWithTimeout } from '../middleware/tool-wrapper.js';
 import type {
   RunWorkflowInput,
@@ -226,4 +226,60 @@ export function registerRunWorkflowTool(server: McpServer, deps: RunWorkflowDeps
   );
   /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
   logger.info('Registered run_workflow tool with timeout protection');
+}
+
+/**
+ * Creates a mock workflow engine for testing and CLI initialization.
+ * Returns a stub implementation that lists templates but does not execute workflows.
+ *
+ * @returns IWorkflowEngine mock implementation
+ */
+export function createMockWorkflowEngine(): IWorkflowEngine {
+  return {
+    loadTemplate(path: string) {
+      return Promise.resolve({
+        ok: false as const,
+        error: new ParseError(`Mock workflow engine cannot load templates. Path: ${path}`),
+      });
+    },
+
+    execute(workflow) {
+      return Promise.resolve({
+        ok: false as const,
+        error: new WorkflowError(`Mock workflow engine cannot execute workflows`, {
+          context: { workflowName: workflow.name },
+        }),
+      });
+    },
+
+    getStatus(_executionId: string) {
+      return { state: 'pending' as const };
+    },
+
+    cancel(_executionId: string) {
+      return Promise.resolve({
+        ok: false as const,
+        error: new WorkflowError('Mock workflow engine cannot cancel executions'),
+      });
+    },
+
+    listTemplates() {
+      return Promise.resolve([
+        {
+          name: 'code-review',
+          version: '1.0.0',
+          path: '/templates/code-review.yaml',
+          description: 'Code review workflow',
+          category: 'development',
+        },
+        {
+          name: 'security-audit',
+          version: '1.0.0',
+          path: '/templates/security-audit.yaml',
+          description: 'Security audit workflow',
+          category: 'security',
+        },
+      ]);
+    },
+  };
 }

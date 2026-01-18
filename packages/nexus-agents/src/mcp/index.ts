@@ -87,6 +87,7 @@ export {
   type IExpertFactory,
   // run_workflow tool
   registerRunWorkflowTool,
+  createMockWorkflowEngine,
   RunWorkflowInputSchema,
   type RunWorkflowDeps,
   type RunWorkflowInput,

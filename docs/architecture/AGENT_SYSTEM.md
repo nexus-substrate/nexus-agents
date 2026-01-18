@@ -152,16 +152,33 @@ Specialized agents with domain expertise.
 | `testing`       | Test development  | Unit, integration, E2E tests       |
 | `documentation` | Technical writing | API docs, guides, comments         |
 
-### Expert Configuration
+### Custom Expert Configuration
+
+Define custom experts in `nexus-agents.yaml`:
 
 ```yaml
 experts:
   builtin: true # Enable built-in experts
   custom:
     rust_expert:
-      prompt: 'You are a Rust expert specializing in...'
-      tier: powerful
-      tools: [read_file, write_file]
+      systemPrompt: 'You are a Rust expert specializing in memory safety...'
+      tier: powerful # fast, balanced, or powerful
+      domain: code # primary domain
+      capabilities: [code_generation, code_review]
+      weight: 0.9 # Selection priority (0-1)
+      available: true
+    security_auditor:
+      systemPrompt: 'You are a security auditor focused on OWASP...'
+      tier: balanced
+      domain: security
+      capabilities: [vulnerability_analysis, threat_modeling]
+      secondaryDomains: [code] # Optional
+```
+
+Custom experts are validated with Zod schemas on load. List all experts with:
+
+```bash
+nexus-agents expert list
 ```
 
 ### Expert Factory Pattern

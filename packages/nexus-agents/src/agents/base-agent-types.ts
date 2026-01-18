@@ -9,6 +9,7 @@ import type { TokenBudgetConfig } from '../context/token-budget-tracker.js';
 import type { StateMachineOptions } from './state-machine.js';
 import type { IEventBus } from './collaboration/event-bus-types.js';
 import type { ContextPrunerAgentConfig } from './base-agent-pruning-init.js';
+import type { AgentMemoryConfig } from './base-agent-memory-init.js';
 
 /**
  * Options for creating a BaseAgent.
@@ -40,4 +41,6 @@ export interface BaseAgentOptions {
   tokenBudget?: TokenBudgetConfig;
   /** Configuration for automatic context pruning (Issue #306) */
   contextPruning?: ContextPrunerAgentConfig;
+  /** Configuration for memory backend integration (Issue #348) */
+  memory?: AgentMemoryConfig;
 }

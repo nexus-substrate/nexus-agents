@@ -616,7 +616,7 @@ describe('BaseAgent', () => {
 
       await agent.cleanup();
 
-      expect(mockLogger.info).toHaveBeenCalledWith('Cleaning up agent');
+      expect(mockLogger.info).toHaveBeenCalledWith('Cleaning up agent', { memoryEnabled: false });
     });
   });
 

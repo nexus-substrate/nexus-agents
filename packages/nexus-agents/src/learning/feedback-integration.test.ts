@@ -58,6 +58,7 @@ function createMockRouter(): ICompositeRouter {
     route: vi.fn(),
     recordOutcome: vi.fn(),
     recordPreference: vi.fn(),
+    recordDifficultyOutcome: vi.fn(),
     getStats: vi.fn().mockReturnValue({
       totalDecisions: 0,
       decisionsPerCli: { claude: 0, gemini: 0, codex: 0 },
@@ -65,6 +66,7 @@ function createMockRouter(): ICompositeRouter {
       budgetRejectionRate: 0,
     }),
     hasMinimumPreferenceData: vi.fn().mockReturnValue(false),
+    getZeroRouter: vi.fn().mockReturnValue(undefined),
   };
 }
 

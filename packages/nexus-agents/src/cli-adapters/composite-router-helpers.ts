@@ -4,7 +4,7 @@
  * Pure helper functions extracted from CompositeRouter to reduce file size.
  *
  * @module cli-adapters/composite-router-helpers
- * (Source: Issue #275, Epic #164)
+ * (Source: Issue #275, Epic #164, Issue #347)
  */
 
 import type { Task } from '../core/types/agent.js';
@@ -16,6 +16,9 @@ import type { TaskProfile } from './task-analyzer.js';
 import type { BudgetRouter } from './budget-router.js';
 import type { TopsisRouter } from './topsis-router.js';
 import type { CompositeRouterConfig } from './composite-router-types.js';
+import type { IZeroRouter } from './zero-router.js';
+import type { DifficultyEstimate, DifficultyOutcome, ModelTier } from './zero-router-types.js';
+import { hashTaskContent } from './zero-router-calibration.js';
 
 /**
  * Adjusts model profile based on task characteristics.
@@ -65,17 +68,29 @@ export function calculateConfidence(
 }
 
 /**
+ * Options for building routing reason.
+ */
+export interface BuildReasonOptions {
+  selectedCli: CliName;
+  stages: string[];
+  topsisScore?: number;
+  ucbScore?: number;
+  preferenceScore?: number;
+  difficultyTier?: ModelTier;
+  difficultyScore?: number;
+}
+
+/**
  * Builds a human-readable routing reason.
  */
-export function buildReason(
-  selectedCli: CliName,
-  stages: string[],
-  topsisScore?: number,
-  ucbScore?: number,
-  preferenceScore?: number
-): string {
+export function buildReason(options: BuildReasonOptions): string {
+  const { selectedCli, stages, topsisScore, ucbScore, preferenceScore, difficultyTier } = options;
+  const difficultyScore = options.difficultyScore;
   const parts: string[] = ['Selected ' + selectedCli];
   if (stages.includes('budget-filter')) parts.push('within budget');
+  if (difficultyTier !== undefined && difficultyScore !== undefined) {
+    parts.push('difficulty ' + difficultyTier + ' (' + difficultyScore.toFixed(2) + ')');
+  }
   if (preferenceScore !== undefined) parts.push('preference ' + preferenceScore.toFixed(2));
   if (topsisScore !== undefined) parts.push('TOPSIS score ' + topsisScore.toFixed(2));
   if (ucbScore !== undefined) parts.push('UCB score ' + ucbScore.toFixed(2));
@@ -192,6 +207,98 @@ export function defaultPreferenceStageResult(candidates: CliName[]): PreferenceS
 }
 
 /**
+ * ZeroRouter stage result.
+ */
+export interface ZeroRouterStageResult {
+  difficultyEstimate: DifficultyEstimate | undefined;
+  difficultyTier: ModelTier | undefined;
+  filteredCandidates: CliName[];
+}
+
+/**
+ * Default ZeroRouter stage result when ZeroRouter is disabled.
+ */
+export function defaultZeroRouterStageResult(candidates: CliName[]): ZeroRouterStageResult {
+  return {
+    difficultyEstimate: undefined,
+    difficultyTier: undefined,
+    filteredCandidates: candidates,
+  };
+}
+
+/**
+ * Maps model tier to preferred CLI order.
+ * Fast tier prefers gemini/codex, Powerful tier prefers claude.
+ */
+export function filterByDifficultyTier(candidates: CliName[], tier: ModelTier): CliName[] {
+  // Tier mappings aligned with ZeroRouter DEFAULT_TIER_TO_CLIS
+  const tierPreferences: Record<ModelTier, CliName[]> = {
+    fast: ['gemini', 'codex', 'claude'],
+    balanced: ['codex', 'gemini', 'claude'],
+    powerful: ['claude', 'codex', 'gemini'],
+  };
+
+  const preferred = tierPreferences[tier];
+  // Sort candidates by tier preference order
+  const sortedCandidates = [...candidates].sort((a, b) => {
+    const aIndex = preferred.indexOf(a);
+    const bIndex = preferred.indexOf(b);
+    // If not in preference list, put at end
+    const aPos = aIndex === -1 ? preferred.length : aIndex;
+    const bPos = bIndex === -1 ? preferred.length : bIndex;
+    return aPos - bPos;
+  });
+
+  return sortedCandidates;
+}
+
+/**
+ * Applies ZeroRouter difficulty-based filtering to candidate CLIs.
+ */
+export function applyZeroRouterFilter(
+  task: CliTask,
+  candidates: CliName[],
+  zeroRouter: IZeroRouter | undefined
+): ZeroRouterStageResult {
+  if (zeroRouter === undefined || candidates.length === 0) {
+    return defaultZeroRouterStageResult(candidates);
+  }
+
+  const decision = zeroRouter.routeByDifficulty(task, candidates);
+  const difficultyEstimate = decision.difficulty;
+  const difficultyTier = decision.tier;
+
+  // Sort candidates by tier preference
+  const filteredCandidates = filterByDifficultyTier(candidates, difficultyTier);
+
+  return {
+    difficultyEstimate,
+    difficultyTier,
+    filteredCandidates,
+  };
+}
+
+/**
+ * Builds a DifficultyOutcome object for calibration.
+ */
+export function buildDifficultyOutcome(
+  taskContent: string,
+  difficulty: number,
+  selectedCli: CliName,
+  success: boolean,
+  qualityScore?: number
+): DifficultyOutcome {
+  const base = {
+    taskHash: hashTaskContent(taskContent),
+    estimatedDifficulty: difficulty,
+    selectedCli,
+    success,
+    timestamp: Date.now(),
+  };
+  return qualityScore !== undefined ? { ...base, qualityScore } : base;
+}
+
+/**
  * Creates the routing decision result object.
  */
 export interface BuildDecisionContext {
@@ -201,6 +308,8 @@ export interface BuildDecisionContext {
   stagesExecuted: string[];
   decisionTimeMs: number;
   withinBudget: boolean | undefined;
+  difficultyEstimate: DifficultyEstimate | undefined;
+  difficultyTier: ModelTier | undefined;
   preferenceScore: number | undefined;
   preferenceTier: 'strong' | 'weak' | undefined;
   topsisScore: number | undefined;
@@ -217,13 +326,17 @@ export function buildDecisionFields(ctx: BuildDecisionContext): {
   alternatives: CliName[];
 } {
   const confidence = calculateConfidence(ctx.topsisScore, ctx.ucbScore, ctx.candidates.length);
-  const reason = buildReason(
-    ctx.selectedCli,
-    ctx.stagesExecuted,
-    ctx.topsisScore,
-    ctx.ucbScore,
-    ctx.preferenceScore
-  );
+  const reason = buildReason({
+    selectedCli: ctx.selectedCli,
+    stages: ctx.stagesExecuted,
+    ...(ctx.topsisScore !== undefined ? { topsisScore: ctx.topsisScore } : {}),
+    ...(ctx.ucbScore !== undefined ? { ucbScore: ctx.ucbScore } : {}),
+    ...(ctx.preferenceScore !== undefined ? { preferenceScore: ctx.preferenceScore } : {}),
+    ...(ctx.difficultyTier !== undefined ? { difficultyTier: ctx.difficultyTier } : {}),
+    ...(ctx.difficultyEstimate?.aggregateScore !== undefined
+      ? { difficultyScore: ctx.difficultyEstimate.aggregateScore }
+      : {}),
+  });
   const alternatives = ctx.topsisRanking.filter((c) => c !== ctx.selectedCli);
   return { confidence, reason, alternatives };
 }

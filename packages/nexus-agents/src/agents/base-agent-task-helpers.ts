@@ -30,6 +30,26 @@ export function validateTask(task: Task): Result<Task, AgentError> {
   return ok(result.data as Task);
 }
 
+/** Parameters for checking agent availability. */
+export interface CheckAvailabilityParams {
+  agentId: string;
+  taskId: string;
+  stateMachine: AgentStateMachine;
+}
+
+/** Checks if an agent is available to execute a task. */
+export function checkAgentAvailability(params: CheckAvailabilityParams): Result<void, AgentError> {
+  const { agentId, taskId, stateMachine } = params;
+  if (!stateMachine.isAvailable()) {
+    return err(
+      new AgentError(`Agent is not idle (current state: ${stateMachine.state})`, {
+        context: { agentId, currentState: stateMachine.state, taskId },
+      })
+    );
+  }
+  return ok(undefined);
+}
+
 /** Parameters for executeWithTimeout helper. */
 export interface ExecuteWithTimeoutParams {
   task: Task;
@@ -113,4 +133,23 @@ export function finalizeTaskSuccess(params: FinalizeTaskParams): void {
     taskTokensUsed: budgetStats.taskTokensUsed,
     sessionTokensUsed: budgetStats.sessionTokensUsed,
   });
+}
+
+/** Parameters for handling task execution failure. */
+export interface HandleTaskFailureParams {
+  task: Task;
+  error: unknown;
+  agentId: string;
+  stateMachine: AgentStateMachine;
+  budgetTracker: ITokenBudgetTracker;
+}
+
+/** Handles task execution failure: state transitions and budget tracking. */
+export function handleTaskFailure(params: HandleTaskFailureParams): AgentError {
+  const { task, error, agentId, stateMachine, budgetTracker } = params;
+
+  stateMachine.forceError({ taskId: task.id, error: String(error) });
+  budgetTracker.endTask();
+
+  return transformTaskError(error, agentId, task.id);
 }

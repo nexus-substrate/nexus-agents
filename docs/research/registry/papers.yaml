@@ -248,7 +248,7 @@ papers:
 
     related_issues:
       - 101
-    implementation_status: planned
+    implementation_status: implemented
 
   arxiv-2507.13334:
     title: 'Context Engineering Survey'
@@ -344,7 +344,7 @@ papers:
 
     related_issues:
       - 102
-    implementation_status: planned
+    implementation_status: implemented
 
   arxiv-2502.16696:
     title: 'OptiRoute'
@@ -443,7 +443,7 @@ papers:
       - moe-routing
 
     related_issues: []
-    implementation_status: planned
+    implementation_status: implemented
 
   arxiv-2509.09782:
     title: 'Cross-Attention Routing'
@@ -509,7 +509,7 @@ papers:
 
     related_issues:
       - 99
-    implementation_status: planned
+    implementation_status: implemented
 
   arxiv-2509.06274:
     title: 'IPR: Intelligent Prompt Routing'
@@ -546,7 +546,7 @@ papers:
 
     related_issues:
       - 102
-    implementation_status: planned
+    implementation_status: implemented
 
   arxiv-2508.21141:
     title: 'PILOT: Preference-Prior Routing with Budget Constraints'
@@ -581,7 +581,7 @@ papers:
 
     related_issues:
       - 102
-    implementation_status: planned
+    implementation_status: implemented
 
   # ============================================================================
   # CONSENSUS PROTOCOLS
@@ -621,7 +621,7 @@ papers:
 
     related_issues:
       - 100
-    implementation_status: planned
+    implementation_status: implemented
 
   arxiv-2511.10400:
     title: 'CP-WBFT: Confidence Probe-based Weighted Byzantine Fault Tolerant'
@@ -656,7 +656,7 @@ papers:
 
     related_issues:
       - 103
-    implementation_status: planned
+    implementation_status: implemented
 
   arxiv-2509.11035:
     title: 'Free-MAD: Score-Based Decision with Anti-Conformity'
@@ -691,7 +691,7 @@ papers:
       - anti-conformity-weighting
 
     related_issues: []
-    implementation_status: not-started
+    implementation_status: implemented
 
   arxiv-2512.20845:
     title: 'MAR: Multi-Agent Reflexion Improves Reasoning Abilities'
@@ -726,7 +726,7 @@ papers:
       - cross-agent-critique
 
     related_issues: []
-    implementation_status: planned
+    implementation_status: implemented
 
   # ============================================================================
   # CONTEXT OPTIMIZATION (KV Cache)
@@ -869,7 +869,7 @@ papers:
       - cma-es-optimization
 
     related_issues: []
-    implementation_status: planned
+    implementation_status: implemented
 
   arxiv-2511.02200:
     title: 'STRMAC: State-Aware Routing'
@@ -937,7 +937,7 @@ papers:
       - verifier-acceptance
 
     related_issues: []
-    implementation_status: not-started
+    implementation_status: implemented
 
   # ============================================================================
   # HYBRID ARCHITECTURES
@@ -1070,7 +1070,7 @@ papers:
       - agreement-based-cascading
 
     related_issues: []
-    implementation_status: not-started
+    implementation_status: implemented
 
   # ============================================================================
   # MEMORY SYSTEMS
@@ -1150,7 +1150,7 @@ papers:
 
     related_issues:
       - 101
-    implementation_status: planned
+    implementation_status: implemented
 
   arxiv-2512.15784:
     title: 'MobiMem: Post-Deployment Evolution via Memory Modules'
@@ -1189,7 +1189,7 @@ papers:
       - action-memory
 
     related_issues: []
-    implementation_status: planned
+    implementation_status: implemented
 
   arxiv-2511.20639:
     title: 'LatentMAS: Direct Latent Space Collaboration'
@@ -1261,7 +1261,7 @@ papers:
       - self-refine-loop
 
     related_issues: []
-    implementation_status: planned
+    implementation_status: implemented
 
   arxiv-2303.11366:
     title: 'Reflexion: Language Agents with Verbal Reinforcement Learning'
@@ -1297,7 +1297,7 @@ papers:
       - reflection-memory
 
     related_issues: []
-    implementation_status: planned
+    implementation_status: implemented
 
   arxiv-2310.04406:
     title: 'LATS: Language Agent Tree Search'
@@ -1508,7 +1508,7 @@ papers:
 
     related_issues:
       - 150
-    implementation_status: partial # voyager-skill-library implemented, automatic-curriculum pending
+    implementation_status: implemented
 
   arxiv-2410.14735:
     title: 'CycleQD: Quality-Diversity for Agent Skill Acquisition'
@@ -1683,7 +1683,7 @@ papers:
       - principle-based-critique
 
     related_issues: []
-    implementation_status: planned
+    implementation_status: implemented
 
   arxiv-2408.07199:
     title: 'Agent Q: Advanced Reasoning and Learning for Autonomous AI Agents'
@@ -1983,3 +1983,339 @@ papers:
     # - Meta-agent synthesis → Similar to SICA self-improvement (#151)
     # - Extension system → Similar to Voyager skill library (#150)
     # Conclusion: Reference paper, no new techniques to extract
+
+  # ============================================================================
+  # 2026-01-17 CONSENSUS VOTE - APPROVED PAPERS
+  # ============================================================================
+
+  arxiv-2601.08012:
+    title: 'STPA MCP Framework: System-Theoretic Process Analysis for MCP Safety'
+    authors: []
+    source: arxiv
+    arxiv_id: '2601.08012'
+    url: 'https://arxiv.org/abs/2601.08012'
+    publication_date: '2026-01'
+    venue: null
+
+    topics:
+      - security
+    tags:
+      - stpa
+      - formal-safety
+      - mcp
+      - hazard-analysis
+
+    reviewed_date: '2026-01-17'
+    reviewed_in: 'consensus-vote-2026-01-17.md'
+    summary: |
+      Formal STPA safety analysis methodology for MCP tools. Systematically
+      identifies Unsafe Control Actions (UCAs) and generates safety constraints
+      for tool registration and execution.
+
+    key_findings:
+      - 'Systematic UCA identification for MCP tool safety'
+      - 'Auto-generated safety constraints from STPA analysis'
+      - 'Formal hazard analysis methodology'
+
+    relevance: high
+    techniques_extracted:
+      - stpa-mcp-safety
+
+    related_issues:
+      - 328
+    implementation_status: implemented
+
+  arxiv-2410.10762:
+    title: 'AFlow: Automatic Workflow Discovery via MCTS'
+    authors: []
+    source: arxiv
+    arxiv_id: '2410.10762'
+    url: 'https://arxiv.org/abs/2410.10762'
+    publication_date: '2024-10'
+    venue: null
+
+    topics:
+      - orchestration
+    tags:
+      - mcts
+      - workflow-generation
+      - automatic-discovery
+      - optimization
+
+    reviewed_date: '2026-01-17'
+    reviewed_in: 'consensus-vote-2026-01-17.md'
+    summary: |
+      Monte Carlo Tree Search (MCTS) for automatic workflow discovery and
+      optimization. Agents discover optimal workflow structures through
+      principled search with UCT selection balancing exploration/exploitation.
+
+    key_findings:
+      - 'MCTS-based workflow discovery reduces manual template creation'
+      - 'UCT selection balances exploration and exploitation'
+      - 'Automatic optimization of workflow structures'
+
+    relevance: high
+    techniques_extracted:
+      - aflow-mcts-workflows
+
+    related_issues:
+      - 329
+    implementation_status: implemented
+
+  arxiv-2505.18646:
+    title: 'SEW: Self-Evolving Workflows for Agent Systems'
+    authors: []
+    source: arxiv
+    arxiv_id: '2505.18646'
+    url: 'https://arxiv.org/abs/2505.18646'
+    publication_date: '2025-05'
+    venue: null
+
+    topics:
+      - orchestration
+    tags:
+      - self-evolving
+      - workflow-optimization
+      - feedback-learning
+
+    reviewed_date: '2026-01-17'
+    reviewed_in: 'consensus-vote-2026-01-17.md'
+    summary: |
+      Self-evolving workflow patterns that adapt and improve through execution
+      feedback. Workflows learn automatically over time through continuous
+      feedback integration and version management.
+
+    key_findings:
+      - 'Continuous workflow improvement through execution feedback'
+      - 'Version management for workflow evolution tracking'
+      - 'Adaptive workflow patterns based on performance'
+
+    relevance: high
+    techniques_extracted:
+      - sew-self-evolving-workflows
+
+    related_issues:
+      - 330
+    implementation_status: implemented
+
+  arxiv-2510.01499:
+    title: 'Higher-Order Voting: Optimal Weighting and Information Score Prior'
+    authors: []
+    source: arxiv
+    arxiv_id: '2510.01499'
+    url: 'https://arxiv.org/abs/2510.01499'
+    publication_date: '2025-10'
+    venue: null
+
+    topics:
+      - consensus
+    tags:
+      - bayesian
+      - correlation-aware
+      - optimal-weighting
+      - voting
+
+    reviewed_date: '2026-01-17'
+    reviewed_in: 'consensus-vote-2026-01-17.md'
+    summary: |
+      Bayesian-optimal aggregation methods (Optimal Weighting and Information
+      Score Prior) that account for inter-agent correlation in voting scenarios.
+      Mathematically grounded approach to handling groupthink and echo chambers.
+
+    key_findings:
+      - 'Optimal Weighting (OW) accounts for agent correlation'
+      - 'Information Score Prior (ISP) improves consensus quality'
+      - 'Handles groupthink and echo chambers mathematically'
+
+    relevance: high
+    techniques_extracted:
+      - higher-order-voting
+
+    related_issues:
+      - 333
+    implementation_status: implemented
+
+  arxiv-2412.09078:
+    title: 'Forest-of-Thought: Multi-Tree Reasoning with Sparse Activation'
+    authors: []
+    source: arxiv
+    arxiv_id: '2412.09078'
+    url: 'https://arxiv.org/abs/2412.09078'
+    publication_date: '2024-12'
+    venue: null
+
+    topics:
+      - orchestration
+    tags:
+      - reasoning
+      - multi-tree
+      - sparse-activation
+      - parallel-exploration
+
+    reviewed_date: '2026-01-17'
+    reviewed_in: 'consensus-vote-2026-01-17.md'
+    summary: |
+      Multi-tree reasoning architecture with sparse activation for parallel
+      exploration of diverse reasoning paths. Cross-tree information sharing
+      enables selection of optimal reasoning trajectories.
+
+    key_findings:
+      - 'Parallel exploration of diverse reasoning paths'
+      - 'Sparse activation reduces computational overhead'
+      - 'Cross-tree information sharing for best-path selection'
+
+    relevance: high
+    techniques_extracted:
+      - forest-of-thought
+
+    related_issues:
+      - 331
+    implementation_status: in-progress
+
+  arxiv-2412.14470:
+    title: 'Agent-SafetyBench: Comprehensive Safety Evaluation for AI Agents'
+    authors: []
+    source: arxiv
+    arxiv_id: '2412.14470'
+    url: 'https://arxiv.org/abs/2412.14470'
+    publication_date: '2024-12'
+    venue: null
+
+    topics:
+      - security
+    tags:
+      - safety-evaluation
+      - risk-assessment
+      - benchmarking
+      - compliance
+
+    reviewed_date: '2026-01-17'
+    reviewed_in: 'consensus-vote-2026-01-17.md'
+    summary: |
+      Comprehensive safety evaluation suite for agent behaviors across multiple
+      risk dimensions. Provides systematic safety assessment for CI/CD integration
+      and compliance reporting.
+
+    key_findings:
+      - 'Multi-dimensional safety evaluation framework'
+      - 'CI/CD integration for automated safety checks'
+      - 'Compliance reporting and safety score generation'
+
+    relevance: high
+    techniques_extracted:
+      - agent-safety-bench
+
+    related_issues:
+      - 332
+    implementation_status: in-progress
+
+  arxiv-2509.11079:
+    title: 'DAAO: Difficulty-Aware Agent Orchestration via VAE'
+    authors: []
+    source: arxiv
+    arxiv_id: '2509.11079'
+    url: 'https://arxiv.org/abs/2509.11079'
+    publication_date: '2025-09'
+    venue: null
+
+    topics:
+      - routing
+    tags:
+      - vae
+      - difficulty-estimation
+      - task-routing
+      - latent-space
+
+    reviewed_date: '2026-01-17'
+    reviewed_in: 'consensus-vote-2026-01-17.md'
+    summary: |
+      VAE-based difficulty estimation for intelligent task routing. Maps tasks
+      to a continuous difficulty spectrum enabling improved task-model alignment
+      with learned representations that transfer across domains.
+
+    key_findings:
+      - 'Continuous difficulty spectrum for task mapping'
+      - 'Improved task-model alignment through VAE'
+      - 'Learned representations transfer across domains'
+
+    relevance: high
+    techniques_extracted:
+      - daao-difficulty-estimation
+
+    related_issues:
+      - 334
+    implementation_status: implemented
+
+  arxiv-2512.12818:
+    title: 'Hindsight Belief Memory for Reasoning Agents'
+    authors: []
+    source: arxiv
+    arxiv_id: '2512.12818'
+    url: 'https://arxiv.org/abs/2512.12818'
+    publication_date: '2025-12'
+    venue: null
+
+    topics:
+      - memory
+    tags:
+      - belief-state
+      - reasoning
+      - hindsight
+      - belief-memory
+
+    reviewed_date: '2026-01-17'
+    reviewed_in: 'consensus-vote-2026-01-17.md'
+    summary: |
+      Belief Memory layer for reasoning agents that maintains and updates
+      beliefs about the world. Hindsight correction improves belief accuracy
+      through retrospective analysis of reasoning outcomes.
+
+    key_findings:
+      - 'Belief state maintenance for improved reasoning'
+      - 'Hindsight correction for belief accuracy'
+      - 'Integration with existing memory systems'
+
+    relevance: high
+    techniques_extracted:
+      - hindsight-belief-memory
+
+    related_issues:
+      - 336
+    implementation_status: planned
+
+  arxiv-2512.08296:
+    title: 'Scaling Agent Systems: Coordination Prediction and Resource Optimization'
+    authors: []
+    source: arxiv
+    arxiv_id: '2512.08296'
+    url: 'https://arxiv.org/abs/2512.08296'
+    publication_date: '2025-12'
+    venue: null
+
+    topics:
+      - orchestration
+    tags:
+      - scaling
+      - coordination
+      - prediction
+      - resource-optimization
+
+    reviewed_date: '2026-01-17'
+    reviewed_in: 'consensus-vote-2026-01-17.md'
+    summary: |
+      Prediction of coordination requirements for scaling multi-agent systems.
+      Enables optimal agent allocation and resource utilization through
+      modeling of scaling behavior.
+
+    key_findings:
+      - 'Coordination requirement prediction for scaling'
+      - 'Optimal agent allocation strategies'
+      - 'Resource utilization modeling for efficiency'
+
+    relevance: high
+    techniques_extracted:
+      - scaling-coordination-predictor
+
+    related_issues:
+      - 337
+    implementation_status: planned

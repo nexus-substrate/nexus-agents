@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Custom Expert Loading** (#300)
+  - Load custom expert definitions from `nexus-agents.yaml` config
+  - Zod schema validation for tier, domain, systemPrompt, capabilities
+  - Automatic ID formatting (`custom-{id}`) to avoid collisions
+  - Integrated into `expert list` CLI command
+- **DAAO Difficulty Estimator** (#334)
+  - VAE-inspired 8-dimensional feature encoding for task complexity
+  - Features: lexical, syntactic, semantic, technical, scope, constraint, clarity, output
+  - Calibration system with outcome feedback learning
+  - Model tier routing based on difficulty (easy→fast, medium→balanced, hard→powerful)
+  - Based on arXiv:2509.11079
+- **Forest-of-Thought Types** (#331)
+  - Multi-tree reasoning types with sparse activation
+  - Tree, node, path, and forest state definitions
+  - Cross-tree information sharing (conclusions, insights, failure patterns)
+  - Forest statistics and convergence tracking
+  - Based on arXiv:2412.09078
+- **Agent-SafetyBench Categories** (#332)
+  - 10 safety category definitions for agent evaluation
+  - Categories: physical/emotional/financial harm, deception, bias, privacy, manipulation, instruction safety, robustness, risk awareness
+  - Risk levels (low/medium/high/critical) and expected outcomes
+  - Test case taxonomy with evaluation criteria
+  - Based on arXiv:2412.14470
+- **Public API Exports** (aba0467)
+  - Export DAAO estimator, Forest-of-Thought types, SafetyBench categories
+  - Design documentation for new modules
+
+### Fixed
+
+- TypeScript errors for Forest-of-Thought and expert-list integration (7380df0)
+
 ## [2.2.0] - 2026-01-16
 
 E2E Testing & Developer Tools Release
