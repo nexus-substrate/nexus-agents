@@ -354,6 +354,112 @@ I operate as the **lead orchestrator** and delegate work to specialized subagent
 - Use parallel subagents for independent tasks
 - Synthesize subagent results before presenting to user
 
+### Context Load Balancing (Claude/Codex/Gemini)
+
+When delegating work across CLI tools, follow these routing guidelines to optimize context usage, cost, and response quality.
+
+#### Quick Routing Reference
+
+| Task Type                        | Route To         | Reason                          |
+| -------------------------------- | ---------------- | ------------------------------- |
+| Complex reasoning, architecture  | **Claude**       | Best multi-step reasoning       |
+| Code implementation, refactoring | **Codex**        | Specialized for code generation |
+| Large codebase (>100K tokens)    | **Gemini**       | 1M context window               |
+| Images, audio, video             | **Gemini**       | Native multimodal support       |
+| Speed-critical, simple tasks     | **Gemini Flash** | Lowest latency                  |
+| Budget-sensitive operations      | **Gemini**       | Lowest cost per token           |
+| Security/compliance review       | **Claude**       | Requires careful reasoning      |
+| Test generation                  | **Codex**        | Code-focused task               |
+
+#### Context Preservation Rules
+
+1. **Monitor Claude context** - Delegate when usage > 60%
+2. **Use Gemini for exploration** - Codebase searches, bulk file analysis
+3. **Use Codex for implementation** - Writing code, tests, refactoring
+4. **Reserve Claude for synthesis** - Architecture decisions, complex reasoning
+
+#### Delegation Decision Flow
+
+```
+1. Is it multimodal (image/audio/video)? → Gemini
+2. Is context > 100K tokens? → Gemini
+3. Is Claude context > 60%? → Delegate (Codex for code, Gemini for other)
+4. Reasoning complexity > 7? → Claude
+5. Code implementation task? → Codex
+6. Budget-sensitive? → Gemini
+7. Default → Use TOPSIS multi-criteria ranking
+```
+
+#### Fallback Order
+
+| Primary Failed     | Fallback Chain                              |
+| ------------------ | ------------------------------------------- |
+| Claude unavailable | Codex (code) → Gemini (other)               |
+| Gemini unavailable | Claude (may chunk large context)            |
+| Codex unavailable  | Claude                                      |
+| All rate limited   | Queue task, notify user, retry with backoff |
+
+#### Cost Model ($/1K tokens)
+
+| CLI    | Input    | Output | Avg Latency |
+| ------ | -------- | ------ | ----------- |
+| Claude | $0.015   | $0.075 | 2000ms      |
+| Gemini | $0.00125 | $0.005 | 1500ms      |
+| Codex  | $0.003   | $0.015 | 1000ms      |
+
+**Full documentation:** [CONTEXT_LOAD_BALANCING.md](./docs/architecture/CONTEXT_LOAD_BALANCING.md)
+
+### Multimodal Capability Routing
+
+Route tasks based on media type. Gemini has native multimodal support; Claude requires base64 encoding.
+
+#### Task Routing by Media Type
+
+| Media Type           | Route To                                     | Reason                          |
+| -------------------- | -------------------------------------------- | ------------------------------- |
+| Image analysis       | **Gemini**                                   | Native support, 1M context      |
+| Image generation     | **Gemini** (Imagen)                          | Built-in generation models      |
+| Audio processing     | **Gemini**                                   | Native audio input support      |
+| Video analysis       | **Gemini**                                   | Native video frame extraction   |
+| UI screenshot review | **Claude** (reasoning) or **Gemini** (speed) | Choose based on task complexity |
+
+#### File Type Detection
+
+| Extensions                               | Processing Type   | Preferred CLI |
+| ---------------------------------------- | ----------------- | ------------- |
+| `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp` | Image             | Gemini        |
+| `.mp3`, `.wav`, `.m4a`, `.ogg`, `.flac`  | Audio             | Gemini        |
+| `.mp4`, `.mov`, `.webm`, `.avi`          | Video             | Gemini        |
+| `.pdf` (with images)                     | Document + Vision | Gemini        |
+
+#### Multimodal CLI Commands
+
+```bash
+# Image analysis with Gemini
+gemini "Describe this UI mockup" --image ./screenshot.png
+
+# Audio transcription
+gemini "Transcribe this meeting" --audio ./recording.m4a
+
+# Video analysis
+gemini "Summarize key points" --video ./demo.mp4
+
+# Image with Claude (base64 encoded)
+claude "Review this error screenshot" --image ./error.png
+
+# Batch image processing
+gemini "Extract text from receipts" --images ./receipts/*.jpg
+```
+
+#### Routing Decision
+
+```
+1. Has image/audio/video attachment? → Gemini (native multimodal)
+2. UI review needing deep reasoning? → Claude
+3. Bulk media processing? → Gemini (cost + speed)
+4. Text-only task? → Follow standard routing above
+```
+
 ---
 
 ## Architecture & Development Documentation
@@ -362,15 +468,16 @@ For detailed technical documentation, see:
 
 ### Architecture (Tier 2 → Tier 3)
 
-| Topic           | Hub                                                          | Details                                                              |
-| --------------- | ------------------------------------------------------------ | -------------------------------------------------------------------- |
-| System Overview | [docs/architecture/README.md](./docs/architecture/README.md) | Module structure, data flow, interfaces                              |
-| Agent System    | -                                                            | [AGENT_SYSTEM.md](./docs/architecture/AGENT_SYSTEM.md)               |
-| Memory System   | -                                                            | [MEMORY_SYSTEM.md](./docs/architecture/MEMORY_SYSTEM.md)             |
-| Routing System  | -                                                            | [ROUTING_SYSTEM.md](./docs/architecture/ROUTING_SYSTEM.md)           |
-| Consensus       | -                                                            | [CONSENSUS_PROTOCOLS.md](./docs/architecture/CONSENSUS_PROTOCOLS.md) |
-| Security        | -                                                            | [SECURITY.md](./docs/architecture/SECURITY.md)                       |
-| MCP Protocol    | -                                                            | [MCP_PROTOCOL.md](./docs/architecture/MCP_PROTOCOL.md)               |
+| Topic           | Hub                                                          | Details                                                                    |
+| --------------- | ------------------------------------------------------------ | -------------------------------------------------------------------------- |
+| System Overview | [docs/architecture/README.md](./docs/architecture/README.md) | Module structure, data flow, interfaces                                    |
+| Agent System    | -                                                            | [AGENT_SYSTEM.md](./docs/architecture/AGENT_SYSTEM.md)                     |
+| Memory System   | -                                                            | [MEMORY_SYSTEM.md](./docs/architecture/MEMORY_SYSTEM.md)                   |
+| Routing System  | -                                                            | [ROUTING_SYSTEM.md](./docs/architecture/ROUTING_SYSTEM.md)                 |
+| Load Balancing  | -                                                            | [CONTEXT_LOAD_BALANCING.md](./docs/architecture/CONTEXT_LOAD_BALANCING.md) |
+| Consensus       | -                                                            | [CONSENSUS_PROTOCOLS.md](./docs/architecture/CONSENSUS_PROTOCOLS.md)       |
+| Security        | -                                                            | [SECURITY.md](./docs/architecture/SECURITY.md)                             |
+| MCP Protocol    | -                                                            | [MCP_PROTOCOL.md](./docs/architecture/MCP_PROTOCOL.md)                     |
 
 ### Development (Tier 2 → Tier 3)
 
@@ -384,6 +491,7 @@ For detailed technical documentation, see:
 
 ### Quick Access
 
+- **Context Load Balancing:** Claude/Codex/Gemini delegation strategy → [CONTEXT_LOAD_BALANCING.md](./docs/architecture/CONTEXT_LOAD_BALANCING.md)
 - **Consensus Protocols:** 11 protocols with selection matrix → [CONSENSUS_PROTOCOLS.md](./docs/architecture/CONSENSUS_PROTOCOLS.md)
 - **CLI Agent Integration:** Claude/Gemini/Codex routing → [ROUTING_SYSTEM.md](./docs/architecture/ROUTING_SYSTEM.md)
 - **A2A Protocol:** Event bus, agent messaging → [AGENT_SYSTEM.md](./docs/architecture/AGENT_SYSTEM.md#event-bus)

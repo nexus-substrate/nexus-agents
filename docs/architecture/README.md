@@ -7,15 +7,16 @@
 
 ## Quick Navigation
 
-| Topic         | Hub       | Deep Dive                                              |
-| ------------- | --------- | ------------------------------------------------------ |
-| Agents        | This file | [AGENT_SYSTEM.md](./AGENT_SYSTEM.md)                   |
-| Memory        | This file | [MEMORY_SYSTEM.md](./MEMORY_SYSTEM.md)                 |
-| Routing       | This file | [ROUTING_SYSTEM.md](./ROUTING_SYSTEM.md)               |
-| Consensus     | This file | [CONSENSUS_PROTOCOLS.md](./CONSENSUS_PROTOCOLS.md)     |
-| Security      | This file | [SECURITY.md](./SECURITY.md)                           |
-| MCP           | This file | [MCP_PROTOCOL.md](./MCP_PROTOCOL.md)                   |
-| Observability | This file | [SWARM_OBSERVER_DESIGN.md](./SWARM_OBSERVER_DESIGN.md) |
+| Topic          | Hub       | Deep Dive                                                |
+| -------------- | --------- | -------------------------------------------------------- |
+| Agents         | This file | [AGENT_SYSTEM.md](./AGENT_SYSTEM.md)                     |
+| Memory         | This file | [MEMORY_SYSTEM.md](./MEMORY_SYSTEM.md)                   |
+| Routing        | This file | [ROUTING_SYSTEM.md](./ROUTING_SYSTEM.md)                 |
+| Load Balancing | This file | [CONTEXT_LOAD_BALANCING.md](./CONTEXT_LOAD_BALANCING.md) |
+| Consensus      | This file | [CONSENSUS_PROTOCOLS.md](./CONSENSUS_PROTOCOLS.md)       |
+| Security       | This file | [SECURITY.md](./SECURITY.md)                             |
+| MCP            | This file | [MCP_PROTOCOL.md](./MCP_PROTOCOL.md)                     |
+| Observability  | This file | [SWARM_OBSERVER_DESIGN.md](./SWARM_OBSERVER_DESIGN.md)   |
 
 ---
 
