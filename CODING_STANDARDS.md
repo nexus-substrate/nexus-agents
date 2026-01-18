@@ -1,13 +1,14 @@
 # Nexus Agents - Coding Standards
 
-**Version:** 2.1.0
-**Last Updated:** 2026-01-11 (ET)
+**Version:** 2.2.0
+**Last Updated:** 2026-01-18 (ET)
 **Status:** Active
 
 ---
 
 ## Table of Contents
 
+0. [Prime Directive](#0-prime-directive)
 1. [Time & Verification Authority](#1-time--verification-authority)
 2. [Source Hygiene](#2-source-hygiene)
 3. [Code Structure Limits](#3-code-structure-limits)
@@ -19,6 +20,7 @@
 9. [Dependency Management](#9-dependency-management)
 10. [Quality Gates](#10-quality-gates)
 11. [Execution Protocol](#11-execution-protocol)
+12. [Distributed Systems Standards](#12-distributed-systems-standards)
 
 ---
 
@@ -45,6 +47,49 @@ pnpm lint:fix              # Auto-fix lint errors
 # Check what needs fixing
 pnpm lint --format compact | head -20
 ```
+
+---
+
+## 0. Prime Directive
+
+**Priority hierarchy for all technical decisions:**
+
+```
+correctness > simplicity > performance > cleverness
+```
+
+| Priority        | Definition                                             | Test                                 |
+| --------------- | ------------------------------------------------------ | ------------------------------------ |
+| **Correctness** | Does it work as specified? Handles edge cases? Tested? | Can you prove it works?              |
+| **Simplicity**  | Can a new team member understand it in 5 minutes?      | Could you explain it without slides? |
+| **Performance** | Does it meet SLO requirements?                         | Not "is it theoretically optimal?"   |
+| **Cleverness**  | Never prioritize this                                  | Clever code is a maintenance burden  |
+
+**The goal:** Produce boring, readable, maintainable software that survives production.
+
+### 0.1 Boring Code Properties
+
+Boring code has these properties:
+
+- **Obvious control flow** - No hidden state machines or magic
+- **Predictable naming** - No abbreviations, no inside jokes
+- **Explicit dependencies** - No global state, no magic injection
+- **Defensive boundaries** - Validate at edges, trust internals
+
+### 0.2 The Dead Developer Test
+
+> If you died tomorrow, could someone else fix a bug in this code by reading it once?
+
+If no, simplify until yes.
+
+### 0.3 Decision Tiebreakers
+
+When two approaches are:
+
+- Equally correct → Choose the simpler one
+- Equally simple → Choose the more performant one
+- Equally performant → Choose the more obvious one
+- Clever but fast → **Reject it**
 
 ---
 
@@ -213,6 +258,30 @@ type Message =
 | Constants  | SCREAMING_SNAKE       | `MAX_RETRIES`, `DEFAULT_TIMEOUT` |
 | Files      | kebab-case            | `model-adapter.ts`               |
 | Test files | `.test.ts` suffix     | `model-adapter.test.ts`          |
+
+### 4.4 Semantic Naming Principles
+
+**Specific over short. Intent over type.**
+
+```typescript
+// Bad: Short, vague names
+const d = user.lastLogin;
+const u = getUser(id);
+const strName: string;
+
+// Good: Specific, intent-revealing names
+const daysSinceLastLogin = user.lastLogin;
+const authenticatedUser = getUser(userId);
+const displayName: string;
+
+// Boolean names: always predicates (is/has/can/should)
+const isValid: boolean; // Good
+const hasPermission: boolean; // Good
+const canEdit: boolean; // Good
+const valid: boolean; // Bad - not a predicate
+```
+
+**Avoid encoding type in name.** The type system handles this.
 
 ---
 
@@ -683,6 +752,40 @@ npm view <package> engines
 - [ ] Documentation updated
 - [ ] Version bumped correctly
 
+### 10.4 Delivery Standards
+
+**PR Discipline:**
+
+| Rule                | Rationale                 |
+| ------------------- | ------------------------- |
+| < 400 lines changed | Reviewable in one session |
+| Single purpose      | Easy to revert if needed  |
+| Demo-able outcome   | Proves it works           |
+| Tests included      | Prevents regressions      |
+
+**Required Artifacts for Non-Trivial Changes:**
+
+1. **Design note** - Problem, constraints, decision, tradeoffs
+2. **Test plan** - How to verify behavior
+3. **Rollout plan** - How to deploy safely
+4. **Rollback plan** - How to revert if needed
+
+**Reliability Patterns:**
+
+```typescript
+// Feature flags for risky changes
+if (featureFlags.isEnabled('new-router', { userId })) {
+  return newRouter.route(request);
+}
+return legacyRouter.route(request);
+
+// Progressive rollout
+const rolloutPercentage = config.get('new-feature-rollout'); // 0-100
+const shouldUseNewFeature = hash(userId) % 100 < rolloutPercentage;
+```
+
+**Ownership Rule:** You ship it, you support it. If you introduce complexity, you own the runbook.
+
 ---
 
 ## 11. Execution Protocol
@@ -722,6 +825,143 @@ Before any change, document:
 - What it affects (behavior, API, tests)
 - Migration requirements
 - Remaining `Verify:` items
+
+---
+
+## 12. Distributed Systems Standards
+
+**Source:** Kleppmann "Designing Data-Intensive Applications" (2017), Google SRE practices
+
+### 12.1 Guarantee Documentation
+
+**Hard Rule:** Every data operation MUST explicitly document its guarantees.
+
+```typescript
+/**
+ * Stores agent state to persistence layer.
+ *
+ * @guarantees
+ * - Consistency: eventual (within 5s under normal conditions)
+ * - Ordering: per-key (operations on same agentId are ordered)
+ * - Durability: WAL + async replication
+ * - Idempotency: yes (duplicate writes with same version are no-ops)
+ * - Failure: retries with exponential backoff, max 3 attempts
+ */
+async function saveAgentState(agentId: string, state: AgentState): Promise<Result<void, Error>>;
+```
+
+| Consistency Level   | Definition                           | Use When             |
+| ------------------- | ------------------------------------ | -------------------- |
+| `strong`            | Read returns most recent write       | Voting, counters     |
+| `bounded-staleness` | Read within time/version bound       | Dashboards (30s max) |
+| `eventual`          | Read eventually returns recent write | Logs, metrics        |
+| `read-your-writes`  | Client sees own writes immediately   | User sessions        |
+| `causal`            | Causally related ops ordered         | Agent message chains |
+
+### 12.2 Idempotency Rules
+
+**Hard Rule:** All mutating operations across network boundaries MUST be idempotent.
+
+```typescript
+// Idempotency key pattern
+function generateIdempotencyKey(params: {
+  operation: string;
+  resourceId: string;
+  payload: unknown;
+  clientId: string;
+}): string {
+  const content = JSON.stringify(params);
+  return createHash('sha256').update(content).digest('hex').slice(0, 32);
+}
+
+// Retry with exponential backoff
+const DEFAULT_RETRY: RetryConfig = {
+  maxAttempts: 3,
+  baseDelayMs: 100,
+  maxDelayMs: 10000,
+  jitterFactor: 0.2,
+  retryableErrors: new Set(['ECONNRESET', 'ETIMEDOUT', 'SERVICE_UNAVAILABLE']),
+};
+```
+
+### 12.3 Time Handling
+
+**Hard Rule:** Never assume wall clocks are synchronized across nodes.
+
+| Clock Type          | Use For                    | Never Use For                 |
+| ------------------- | -------------------------- | ----------------------------- |
+| `Date.now()`        | Logs, human timestamps     | Measuring durations, ordering |
+| `performance.now()` | Measuring durations        | Cross-process comparison      |
+| Lamport clock       | Event ordering             | Time-based expiration         |
+| Vector clock        | Causal ordering, conflicts | Simple sequences              |
+
+```typescript
+// WRONG: Wall clock for duration (can be negative!)
+const start = Date.now();
+await operation();
+const durationMs = Date.now() - start;
+
+// CORRECT: Monotonic clock for duration
+const start = performance.now();
+await operation();
+const durationMs = performance.now() - start;
+```
+
+### 12.4 Data Modeling
+
+**Hard Rule:** All persistent data MUST have explicit schema with version.
+
+```typescript
+/**
+ * @invariants
+ * - id is immutable after creation
+ * - createdAt <= lastHeartbeat
+ * - taskCount is monotonically increasing
+ * - version increments on every write
+ */
+const AgentStateSchema = z.object({
+  id: z.string().uuid(),
+  status: z.enum(['idle', 'running', 'paused', 'terminated']),
+  version: z.number().int().nonnegative(),
+  _schemaVersion: z.literal(1),
+});
+```
+
+### 12.5 Observability Requirements
+
+**Hard Rule:** Every distributed operation MUST emit structured logs, metrics, and traces.
+
+```typescript
+interface OperationLog {
+  operation: string; // e.g., 'agent.execute'
+  traceId: string; // W3C trace ID
+  spanId: string; // Current span
+  durationMs?: number; // For completion logs
+  status: 'started' | 'completed' | 'failed';
+  error?: { code: string; message: string };
+}
+```
+
+**Required Metrics (RED + USE):**
+
+| Metric                       | Type      | Purpose              |
+| ---------------------------- | --------- | -------------------- |
+| `operation_total`            | Counter   | Request rate         |
+| `operation_duration_seconds` | Histogram | Latency distribution |
+| `operation_in_flight`        | Gauge     | Concurrency          |
+| `retry_total`                | Counter   | Retry rate           |
+| `queue_depth`                | Gauge     | Saturation           |
+
+### 12.6 Distributed Systems Checklist
+
+- [ ] Consistency level documented for all data operations
+- [ ] Idempotency keys for all mutating network operations
+- [ ] Exponential backoff with jitter for all retries
+- [ ] Monotonic clocks for duration measurement
+- [ ] Schema version in all persistent data
+- [ ] Invariants documented and enforced
+- [ ] TraceId/SpanId in all logs
+- [ ] RED metrics exposed for all operations
 
 ---
 

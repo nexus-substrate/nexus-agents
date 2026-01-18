@@ -315,6 +315,21 @@ See `docs/research/CONTRIBUTING.md` for detailed guidelines.
 | **P3**   | Lower impact, significant changes needed |
 | **P4**   | Infrastructure-level, long-term          |
 
+### 6. Prime Directive
+
+**Priority order for all implementation decisions:**
+
+```
+correctness > simplicity > performance > cleverness
+```
+
+- **Correctness**: Does it work? Handles edge cases? Tested?
+- **Simplicity**: Can someone understand it in 5 minutes?
+- **Performance**: Does it meet requirements? (not theoretical optimality)
+- **Cleverness**: Never. Clever code is maintenance debt.
+
+**The goal:** Produce boring, readable, maintainable software that survives production.
+
 ---
 
 ## Orchestration Model
@@ -623,6 +638,91 @@ When anything fails:
 
 ---
 
+## Implementation Task Output Format
+
+For non-trivial implementation tasks, structure output in these sections:
+
+### 1. Assumptions
+
+State what you're taking as true:
+
+```
+ASSUMPTIONS:
+- Node.js 22.x runtime
+- TypeScript strict mode enabled
+- Input validated by caller
+```
+
+### 2. Plan
+
+Outline approach before writing code:
+
+```
+PLAN:
+1. Add interface to core/types
+2. Implement service
+3. Add tests
+4. Update exports
+
+FILES: [list files to create/modify]
+TESTS: [list test cases]
+```
+
+### 3. Implementation
+
+The code, followed by summary.
+
+### 4. Verification
+
+How to confirm it works:
+
+```
+VERIFICATION:
+pnpm test -- service.test.ts
+pnpm typecheck
+```
+
+### 5. Tradeoffs
+
+What you chose not to do and why:
+
+```
+TRADEOFFS:
+- Did NOT add caching: Scale doesn't justify complexity
+- DEFERRED: Metrics - create issue for Phase 2
+```
+
+---
+
+## Self-Check Quality Gate
+
+Before completing ANY implementation task:
+
+- [ ] Names reflect intent (no abbreviations except standard: id, url)
+- [ ] Functions do ONE thing (if "and" in description, split)
+- [ ] Errors handled with timeout/retry where applicable
+- [ ] Tests cover happy path + edge cases + error cases
+- [ ] No magic constants without explanation
+- [ ] No unnecessary abstraction
+
+---
+
+## Ask vs Assume Rule
+
+**Always clarify (never assume) for:**
+
+| Topic             | Example Question                   |
+| ----------------- | ---------------------------------- |
+| Deployment env    | "Lambda, ECS, or bare EC2?"        |
+| Expected scale    | "What's the QPS? Data volume?"     |
+| Consistency needs | "Eventual consistency acceptable?" |
+| Security          | "Does this handle PII?"            |
+| Breaking changes  | "Can we break existing API?"       |
+
+**Safe to assume:** TypeScript strict mode, UTF-8, JSON serialization, async/await, dependency injection.
+
+---
+
 ## File References
 
 ### Primary Documentation
@@ -675,7 +775,7 @@ gh pr checks <num>          # Check CI status
 
 ---
 
-_Last updated: 2026-01-15 (ET)_
+_Last updated: 2026-01-18 (ET)_
 _MCP Protocol: 2025-11-25_
 _Node.js: 22.x LTS_
 _TypeScript: 5.8+_
