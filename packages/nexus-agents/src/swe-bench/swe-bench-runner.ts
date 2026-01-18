@@ -18,213 +18,28 @@ import type {
   SWEBenchCheckpoint,
 } from './types.js';
 import { DEFAULT_SWE_BENCH_CONFIG } from './types.js';
-import type { DatasetLoadOptions } from './dataset-loader.js';
 import { loadDataset } from './dataset-loader.js';
 import type { IAgentExecutor, RunOptions } from './agent-runner.js';
 import { runAgentOnInstance } from './agent-runner.js';
 import { PredictionWriter } from './prediction-writer.js';
 
-// ============================================================================
-// Error Types
-// ============================================================================
+// Re-export types from types module
+export type {
+  RunnerErrorCode,
+  RunProgress,
+  ProgressCallback,
+  RunnerConfig,
+} from './swe-bench-runner-types.js';
+export { SWEBenchRunnerError } from './swe-bench-runner-types.js';
 
-/**
- * Error codes for runner failures.
- */
-export type RunnerErrorCode =
-  | 'DATASET_LOAD_FAILED'
-  | 'EXECUTOR_NOT_SET'
-  | 'RUN_ABORTED'
-  | 'CHECKPOINT_ERROR'
-  | 'IO_ERROR'
-  | 'UNKNOWN';
-
-/**
- * Error for runner operations.
- */
-export class SWEBenchRunnerError extends Error {
-  override readonly cause?: unknown;
-  readonly code: RunnerErrorCode;
-
-  constructor(message: string, code: RunnerErrorCode, cause?: unknown) {
-    super(message);
-    this.name = 'SWEBenchRunnerError';
-    this.code = code;
-    this.cause = cause;
-  }
-}
-
-// ============================================================================
-// Progress Tracking
-// ============================================================================
-
-/**
- * Progress information during a run.
- */
-export interface RunProgress {
-  /** Current instance index (0-based). */
-  readonly currentIndex: number;
-  /** Total instances to process. */
-  readonly totalInstances: number;
-  /** Current instance ID. */
-  readonly currentInstanceId: string;
-  /** Number of completed instances. */
-  readonly completed: number;
-  /** Number of failed instances. */
-  readonly failed: number;
-  /** Total tokens used so far. */
-  readonly tokensUsed: number;
-  /** Elapsed time in milliseconds. */
-  readonly elapsedMs: number;
-  /** Estimated remaining time in milliseconds. */
-  readonly estimatedRemainingMs: number;
-  /** Current resolution rate. */
-  readonly resolutionRate: number;
-}
-
-/**
- * Progress callback type.
- */
-export type ProgressCallback = (progress: RunProgress) => void;
-
-// ============================================================================
-// Runner Configuration
-// ============================================================================
-
-/**
- * Configuration for the runner.
- */
-export interface RunnerConfig {
-  /** SWE-bench configuration. */
-  readonly benchConfig: SWEBenchConfig;
-  /** Dataset load options. */
-  readonly loadOptions?: DatasetLoadOptions;
-  /** Model name for predictions. */
-  readonly modelName: string;
-  /** Whether to resume from checkpoint. */
-  readonly resume: boolean;
-  /** Checkpoint file path (if resuming). */
-  readonly checkpointPath?: string;
-  /** Progress callback. */
-  readonly onProgress?: ProgressCallback;
-  /** Message callback. */
-  readonly onMessage?: (message: string) => void;
-  /** Abort signal. */
-  readonly signal?: AbortSignal;
-}
-
-/**
- * Default runner configuration values.
- */
-const DEFAULT_RUNNER_CONFIG: Partial<RunnerConfig> = {
-  resume: false,
-  modelName: 'nexus-agents',
-};
-
-// ============================================================================
-// Run State
-// ============================================================================
-
-/**
- * Internal state during a run.
- */
-interface RunState {
-  startTime: number;
-  completed: number;
-  failed: number;
-  tokensUsed: number;
-  completedIds: Set<string>;
-  results: SWEBenchRunResult[];
-}
-
-/**
- * Creates initial run state.
- */
-function createInitialState(): RunState {
-  return {
-    startTime: Date.now(),
-    completed: 0,
-    failed: 0,
-    tokensUsed: 0,
-    completedIds: new Set(),
-    results: [],
-  };
-}
-
-// ============================================================================
-// Progress Calculation
-// ============================================================================
-
-/**
- * Calculates estimated remaining time.
- */
-function calculateEstimatedRemaining(state: RunState, remaining: number): number {
-  const elapsed = Date.now() - state.startTime;
-  const processed = state.completed + state.failed;
-  if (processed === 0) return 0;
-  const avgTimePerInstance = elapsed / processed;
-  return Math.round(avgTimePerInstance * remaining);
-}
-
-/**
- * Creates progress object.
- */
-function createProgress(
-  index: number,
-  total: number,
-  instanceId: string,
-  state: RunState
-): RunProgress {
-  const elapsed = Date.now() - state.startTime;
-  const processed = state.completed + state.failed;
-  const remaining = total - processed;
-  return {
-    currentIndex: index,
-    totalInstances: total,
-    currentInstanceId: instanceId,
-    completed: state.completed,
-    failed: state.failed,
-    tokensUsed: state.tokensUsed,
-    elapsedMs: elapsed,
-    estimatedRemainingMs: calculateEstimatedRemaining(state, remaining),
-    resolutionRate: processed > 0 ? state.completed / processed : 0,
-  };
-}
-
-// ============================================================================
-// Configuration Builder
-// ============================================================================
-
-/**
- * Builds optional config properties only if defined.
- */
-function buildOptionalConfigProps(config: Partial<RunnerConfig>): Partial<{
-  loadOptions: DatasetLoadOptions;
-  checkpointPath: string;
-  onProgress: ProgressCallback;
-  onMessage: (message: string) => void;
-  signal: AbortSignal;
-}> {
-  return {
-    ...(config.loadOptions !== undefined && { loadOptions: config.loadOptions }),
-    ...(config.checkpointPath !== undefined && { checkpointPath: config.checkpointPath }),
-    ...(config.onProgress !== undefined && { onProgress: config.onProgress }),
-    ...(config.onMessage !== undefined && { onMessage: config.onMessage }),
-    ...(config.signal !== undefined && { signal: config.signal }),
-  };
-}
-
-/**
- * Builds full runner config from partial input.
- */
-function buildRunnerConfig(config: Partial<RunnerConfig>): RunnerConfig {
-  const baseConfig = {
-    benchConfig: config.benchConfig ?? DEFAULT_SWE_BENCH_CONFIG,
-    modelName: config.modelName ?? DEFAULT_RUNNER_CONFIG.modelName ?? 'nexus-agents',
-    resume: config.resume ?? DEFAULT_RUNNER_CONFIG.resume ?? false,
-  };
-  return { ...baseConfig, ...buildOptionalConfigProps(config) };
-}
+// Import internal helpers
+import type { RunnerConfig, RunState } from './swe-bench-runner-types.js';
+import { SWEBenchRunnerError } from './swe-bench-runner-types.js';
+import {
+  buildRunnerConfig,
+  createInitialState,
+  createProgress,
+} from './swe-bench-runner-helpers.js';
 
 // ============================================================================
 // SWEBenchRunner Class

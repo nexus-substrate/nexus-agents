@@ -13,6 +13,7 @@
 | Agent Development  | This file | [AGENT_DEVELOPMENT.md](./AGENT_DEVELOPMENT.md)                     |
 | Tool Development   | This file | [TOOL_DEVELOPMENT.md](./TOOL_DEVELOPMENT.md)                       |
 | Memory Development | This file | [MEMORY_DEVELOPMENT.md](./MEMORY_DEVELOPMENT.md)                   |
+| CLI Delegation     | This file | [CLI_DELEGATION_GUIDE.md](./CLI_DELEGATION_GUIDE.md)               |
 | Coding Standards   | This file | [CODING_STANDARDS.md](../../CODING_STANDARDS.md)                   |
 | Debugging          | This file | [DEBUGGING_OBSERVABILITY.md](../guides/DEBUGGING_OBSERVABILITY.md) |
 

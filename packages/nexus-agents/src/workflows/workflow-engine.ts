@@ -11,18 +11,13 @@ import type {
   StepResult,
 } from '../core/index.js';
 import { WorkflowError, ParseError } from '../core/index.js';
-import { v4 as uuidv4 } from 'uuid';
-import { ContextManager } from '../agents/context-manager.js';
+import type { ContextManager } from '../agents/context-manager.js';
 import {
-  applyBudgetEnforcement,
   copyBudgetEvents,
-  enforceBudgetForStep,
-  createWorkflowCircuitBreaker,
   type BudgetEnforcementEvent,
-  type BudgetEnforcementConfig,
   type IBudgetCircuitBreaker,
 } from './budget-enforcement.js';
-import type { WorkflowStep } from './workflow-types.js';
+// WorkflowStep is used in workflow-engine-execution.ts
 import {
   type WorkflowEngineConfig,
   type ResolvedConfig,
@@ -32,8 +27,14 @@ import {
   resolveConfig,
   buildFinalOutput,
   extractErrorMessage,
-  MAX_TRACKED_EXECUTIONS,
 } from './workflow-engine-helpers.js';
+import type { WorkflowEngineDeps, ActiveExecution } from './workflow-engine-types.js';
+import {
+  cleanupOldExecutions,
+  initializeExecution,
+  enforceStepBudgets,
+  recordPhaseUsage,
+} from './workflow-engine-execution.js';
 
 // Re-export types from helpers for backward compatibility
 export type { BudgetEnforcementEvent } from './budget-enforcement.js';
@@ -45,31 +46,7 @@ export type {
   ExecutionContext,
   ExecutionOptions,
 } from './workflow-engine-helpers.js';
-
-/** Dependencies for workflow engine. */
-export interface WorkflowEngineDeps {
-  parseWorkflow: (
-    content: string,
-    format: 'yaml' | 'json'
-  ) => Result<WorkflowDefinition, ParseError>;
-  loadWorkflowFile: (path: string) => Promise<Result<WorkflowDefinition, ParseError>>;
-  createExecutionPlan: (workflow: WorkflowDefinition) => Result<ExecutionPlan, WorkflowError>;
-  executePhase: (
-    steps: WorkflowStep[],
-    context: ExecutionContext,
-    options: ExecutionOptions
-  ) => Promise<Result<StepResult[], WorkflowError>>;
-  getBuiltInTemplates: () => Map<string, WorkflowDefinition>;
-}
-
-/** Active workflow execution tracking. */
-interface ActiveExecution {
-  executionId: string;
-  workflowName: string;
-  status: ExecutionStatus;
-  context: ExecutionContext;
-  startTime: number;
-}
+export type { WorkflowEngineDeps } from './workflow-engine-types.js';
 
 /** Workflow engine implementation. */
 export class WorkflowEngine implements IWorkflowEngine {
@@ -85,16 +62,12 @@ export class WorkflowEngine implements IWorkflowEngine {
     this.config = resolveConfig(config);
   }
 
-  /**
-   * Load workflow template from file.
-   */
+  /** Load workflow template from file. */
   async loadTemplate(path: string): Promise<Result<WorkflowDefinition, ParseError>> {
     return this.deps.loadWorkflowFile(path);
   }
 
-  /**
-   * Execute a workflow with inputs.
-   */
+  /** Execute a workflow with inputs. */
   async execute(
     workflow: WorkflowDefinition,
     inputs: Record<string, unknown>
@@ -110,105 +83,28 @@ export class WorkflowEngine implements IWorkflowEngine {
       return planResult;
     }
 
+    // Clean up old executions before adding new ones
+    cleanupOldExecutions(this.executions);
+
     // Initialize execution
-    const { executionId, context, startTime } = this.initializeExecution(workflow, inputs);
+    const initResult = initializeExecution({
+      workflow,
+      inputs,
+      config: this.config,
+      logger: this.logger,
+    });
+    this.executions.set(initResult.executionId, initResult.execution);
 
     try {
-      return await this.runExecution(workflow, planResult.value, context, executionId, startTime);
+      return await this.runExecution(
+        workflow,
+        planResult.value,
+        initResult.context,
+        initResult.executionId,
+        initResult.startTime
+      );
     } catch (error) {
-      return this.handleExecutionError(error, executionId, workflow.name);
-    }
-  }
-
-  /**
-   * Initialize execution context and tracking.
-   */
-  private initializeExecution(
-    workflow: WorkflowDefinition,
-    inputs: Record<string, unknown>
-  ): { executionId: string; context: ExecutionContext; startTime: number } {
-    // Clean up old executions before adding new ones
-    this.cleanupOldExecutions();
-
-    const executionId = uuidv4();
-    const startTime = Date.now();
-
-    // Create context manager if configured
-    const contextManager = this.createContextManager(workflow);
-
-    // Create circuit breaker if enforcement is enabled
-    const budgetCircuitBreaker = this.config.enableBudgetEnforcement
-      ? this.createBudgetCircuitBreaker(contextManager, workflow)
-      : undefined;
-
-    const context: ExecutionContext = {
-      workflowId: workflow.name,
-      executionId,
-      inputs,
-      stepResults: new Map(),
-      variables: new Map(),
-      abortController: new AbortController(),
-      contextManager,
-      budgetEvents: [],
-      budgetCircuitBreaker,
-    };
-
-    const execution: ActiveExecution = {
-      executionId,
-      workflowName: workflow.name,
-      status: { state: 'pending' },
-      context,
-      startTime,
-    };
-    this.executions.set(executionId, execution);
-
-    if (contextManager !== undefined) {
-      this.logger.debug('Context manager initialized for workflow execution', {
-        executionId,
-        workflowName: workflow.name,
-        budget: workflow.defaultBudget ?? this.config.defaultBudget,
-      });
-    }
-
-    return { executionId, context, startTime };
-  }
-
-  private createContextManager(workflow: WorkflowDefinition): ContextManager | undefined {
-    if (this.config.contextManagerConfig === undefined) return undefined;
-    const budget = workflow.defaultBudget ?? this.config.defaultBudget;
-    return new ContextManager({ ...this.config.contextManagerConfig, budget, logger: this.logger });
-  }
-
-  private createBudgetCircuitBreaker(
-    contextManager: ContextManager | undefined,
-    workflow: WorkflowDefinition
-  ): IBudgetCircuitBreaker | undefined {
-    const budgetConfig: BudgetEnforcementConfig = {
-      engineDefaultBudget: this.config.defaultBudget,
-      logger: this.logger,
-    };
-    if (workflow.defaultBudget !== undefined) {
-      budgetConfig.workflowDefaultBudget = workflow.defaultBudget;
-    }
-    if (this.config.budgetCircuitBreakerConfig !== undefined) {
-      budgetConfig.circuitBreakerConfig = this.config.budgetCircuitBreakerConfig;
-    }
-    return createWorkflowCircuitBreaker(contextManager, budgetConfig);
-  }
-
-  private cleanupOldExecutions(): void {
-    if (this.executions.size < MAX_TRACKED_EXECUTIONS) return;
-    const completed: Array<{ id: string; startTime: number }> = [];
-    for (const [id, exec] of this.executions) {
-      if (exec.status.state !== 'running' && exec.status.state !== 'pending') {
-        completed.push({ id, startTime: exec.startTime });
-      }
-    }
-    completed.sort((a, b) => a.startTime - b.startTime);
-    const toRemove = Math.max(0, this.executions.size - MAX_TRACKED_EXECUTIONS + 1);
-    for (let i = 0; i < toRemove && i < completed.length; i++) {
-      const entry = completed[i];
-      if (entry !== undefined) this.executions.delete(entry.id);
+      return this.handleExecutionError(error, initResult.executionId, workflow.name);
     }
   }
 
@@ -363,7 +259,14 @@ export class WorkflowEngine implements IWorkflowEngine {
       });
 
       // Check budget enforcement for each step
-      const enforceResult = this.enforceStepBudgets(phase.steps, context, workflow, totalSteps);
+      const enforceResult = enforceStepBudgets({
+        steps: phase.steps,
+        context,
+        workflow,
+        totalSteps,
+        config: this.config,
+        logger: this.logger,
+      });
       if (!enforceResult.ok) return enforceResult;
 
       const options: ExecutionOptions = {
@@ -376,7 +279,7 @@ export class WorkflowEngine implements IWorkflowEngine {
       if (!phaseResult.ok) return phaseResult;
 
       // Record usage in circuit breaker after phase completion
-      this.recordPhaseUsage(phaseResult.value, context);
+      recordPhaseUsage(phaseResult.value, context);
 
       for (const result of phaseResult.value) {
         context.stepResults.set(result.stepId, result);
@@ -385,64 +288,6 @@ export class WorkflowEngine implements IWorkflowEngine {
       completedSteps += phase.steps.length;
     }
     return ok(allResults);
-  }
-
-  private enforceStepBudgets(
-    steps: WorkflowStep[],
-    context: ExecutionContext,
-    workflow: WorkflowDefinition,
-    totalSteps: number
-  ): Result<void, WorkflowError> {
-    const budgetConfig: BudgetEnforcementConfig = {
-      engineDefaultBudget: this.config.defaultBudget,
-      logger: this.logger,
-    };
-    if (workflow.defaultBudget !== undefined) {
-      budgetConfig.workflowDefaultBudget = workflow.defaultBudget;
-    }
-    if (this.config.budgetCircuitBreakerConfig !== undefined) {
-      budgetConfig.circuitBreakerConfig = this.config.budgetCircuitBreakerConfig;
-    }
-
-    for (const step of steps) {
-      // Use circuit breaker if available, otherwise fall back to logging-only
-      if (context.budgetCircuitBreaker !== undefined) {
-        const remainingSteps = totalSteps - context.stepResults.size;
-        const allocation = context.budgetCircuitBreaker.allocateForStep(step.id, remainingSteps);
-        const result = enforceBudgetForStep({
-          step,
-          contextManager: context.contextManager,
-          circuitBreaker: context.budgetCircuitBreaker,
-          budgetEvents: context.budgetEvents,
-          config: budgetConfig,
-          estimatedTokens: allocation.allocatedTokens,
-        });
-        if (!result.ok) {
-          return err(
-            new WorkflowError(`Budget exceeded for step '${step.id}': ${result.error.message}`, {
-              context: { stepId: step.id, circuitState: result.error.circuitState },
-              cause: result.error,
-            })
-          );
-        }
-      } else {
-        // Legacy logging-only enforcement
-        applyBudgetEnforcement(step, context.contextManager, context.budgetEvents, budgetConfig);
-      }
-    }
-    return ok(undefined);
-  }
-
-  private recordPhaseUsage(results: StepResult[], context: ExecutionContext): void {
-    if (context.budgetCircuitBreaker === undefined) return;
-
-    // Estimate token usage from step duration (rough heuristic)
-    // In real usage, this would come from actual token counting
-    const estimatedTokensPerMs = 0.5;
-    for (const result of results) {
-      const estimatedTokens = Math.round(result.durationMs * estimatedTokensPerMs);
-      context.budgetCircuitBreaker.recordUsage(estimatedTokens);
-    }
   }
 
   private updateExecutionStatus(executionId: string, status: ExecutionStatus): void {

@@ -38,8 +38,6 @@ import type { ContextManager } from './context-manager.js';
 import type { ContextPruner } from './context-pruner.js';
 import type { ResolvedPruningConfig, ContextPruningMetrics } from './base-agent-pruning-init.js';
 import {
-  loadMemoryState,
-  loadRelevantTypedMemories,
   type ResolvedMemoryConfig,
   type AgentMemoryState,
   type TaskLearning,
@@ -83,6 +81,7 @@ import {
 } from './base-agent-memory-accessors.js';
 import { persistMemoryOnCleanup } from './base-agent-execution-helpers.js';
 import { validateMessage, dispatchMessage } from './base-agent-dispatch.js';
+import { performInitialization, type InitializationContext } from './base-agent-init-helpers.js';
 
 export * from './base-agent-exports.js';
 
@@ -178,40 +177,30 @@ export abstract class BaseAgent implements IAgent {
   }
 
   async initialize(ctx: AgentContext): Promise<Result<void, AgentError>> {
-    if (this.initialized) {
-      return err(new AgentError('Agent already initialized', { context: { agentId: this.id } }));
-    }
-    this.logger.info('Initializing agent', {
-      modelId: ctx.config.modelId,
-      hasTools: ctx.tools !== undefined && ctx.tools.length > 0,
-      memoryEnabled: this.memoryEnabled,
-    });
+    const initCtx = this.getInitializationContext();
+    const result = await performInitialization(initCtx, ctx);
+    if (!result.ok) return result as Result<void, AgentError>;
     this.config = ctx.config;
     this.sharedState = ctx.sharedState ?? {};
-    if (this.memoryEnabled && this.memoryConfig.autoLoadOnInit) await this.loadMemoryOnInit();
+    if (result.value.memoryState !== null) this.memoryState = result.value.memoryState;
+    if (result.value.relevantMemories.length > 0)
+      this.relevantMemories = result.value.relevantMemories;
     this.initialized = true;
     return ok(undefined);
   }
 
-  private async loadMemoryOnInit(): Promise<void> {
-    if (this.memoryBackend !== undefined) {
-      const stateResult = await loadMemoryState(
-        this.memoryBackend,
-        this.id,
-        this.role,
-        this.logger
-      );
-      if (stateResult.ok) this.memoryState = stateResult.value;
-    }
-    if (this.typedMemory !== undefined) {
-      const memoriesResult = await loadRelevantTypedMemories(
-        this.typedMemory,
-        this.role,
-        this.memoryConfig.maxInitialLoadEntries,
-        this.logger
-      );
-      if (memoriesResult.ok) this.relevantMemories = memoriesResult.value;
-    }
+  private getInitializationContext(): InitializationContext {
+    return {
+      agentId: this.id,
+      role: this.role,
+      initialized: this.initialized,
+      memoryEnabled: this.memoryEnabled,
+      memoryBackend: this.memoryBackend,
+      typedMemory: this.typedMemory,
+      maxInitialLoadEntries: this.memoryConfig.maxInitialLoadEntries,
+      autoLoadOnInit: this.memoryConfig.autoLoadOnInit,
+      logger: this.logger,
+    };
   }
 
   async execute(task: Task): Promise<Result<TaskResult, AgentError>> {
@@ -349,7 +338,6 @@ export abstract class BaseAgent implements IAgent {
   protected addToHistory(message: Message): void {
     this.history = addToHistoryHelper(this.history, message);
   }
-
   protected getHistory(): Message[] {
     return getHistoryCopy(this.history);
   }
@@ -365,14 +353,13 @@ export abstract class BaseAgent implements IAgent {
     priority?: (typeof ContentPriority)[keyof typeof ContentPriority],
     category?: 'system' | 'task' | 'active'
   ): Promise<void> {
-    if (this.contextPruningEnabled && this.contextManager !== undefined) {
-      await addContextItemHelper({
-        contextManager: this.contextManager,
-        content,
-        priority,
-        category,
-      });
-    }
+    if (!this.contextPruningEnabled || this.contextManager === undefined) return;
+    await addContextItemHelper({
+      contextManager: this.contextManager,
+      content,
+      priority,
+      category,
+    });
   }
 
   isContextPruningEnabled(): boolean {
@@ -404,13 +391,11 @@ export abstract class BaseAgent implements IAgent {
   protected recordLearning(learning: Omit<TaskLearning, 'id' | 'learnedAt'>): void {
     this.memoryState = recordLearningToMemory(this.memOpCtx, learning);
   }
-  protected recordPattern(
-    pattern: Omit<ExecutionPattern, 'id' | 'lastSeen' | 'occurrences'>
-  ): void {
-    this.memoryState = recordPatternToMemory(this.memOpCtx, pattern);
+  protected recordPattern(p: Omit<ExecutionPattern, 'id' | 'lastSeen' | 'occurrences'>): void {
+    this.memoryState = recordPatternToMemory(this.memOpCtx, p);
   }
-  protected recordResolution(resolution: Omit<ErrorResolution, 'resolvedAt'>): void {
-    this.memoryState = recordResolutionToMemory(this.memOpCtx, resolution);
+  protected recordResolution(r: Omit<ErrorResolution, 'resolvedAt'>): void {
+    this.memoryState = recordResolutionToMemory(this.memOpCtx, r);
   }
   protected findResolutionForError(errorMessage: string): ErrorResolution | undefined {
     return findResolution(this.memOpCtx, errorMessage);
