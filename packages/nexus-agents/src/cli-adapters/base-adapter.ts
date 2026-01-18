@@ -35,6 +35,7 @@ import type {
   TokenUsage,
 } from './types.js';
 import { CLI_VERSION_REQUIREMENTS, DEFAULT_CAPABILITIES } from './types.js';
+import { getTimeoutForTaskAuto } from './cli-timeout-profiles.js';
 
 const execAsync = promisify(exec);
 
@@ -104,9 +105,15 @@ export abstract class BaseCliAdapter implements ICliAdapter {
 
   /**
    * Executes a task with error handling and retries.
+   *
+   * Timeout priority (highest to lowest):
+   * 1. options.timeoutMs - explicit execution option
+   * 2. task.timeoutMs - task-level setting
+   * 3. getTimeoutForTaskAuto() - computed from task complexity and CLI
    */
   async execute(task: CliTask, options?: ExecutionOptions): Promise<Result<CliResponse, CliError>> {
-    const opts = { ...DEFAULT_OPTIONS, ...options };
+    const effectiveTimeout = this.computeTimeout(task, options);
+    const opts = { ...DEFAULT_OPTIONS, ...options, timeoutMs: effectiveTimeout };
 
     if (!this.initialized) {
       await this.initialize();
@@ -116,8 +123,28 @@ export abstract class BaseCliAdapter implements ICliAdapter {
       cli: this.name,
       contentLength: task.content.length,
       model: task.model,
+      timeoutMs: effectiveTimeout,
     });
 
+    return this.executeWithRetry(task, opts);
+  }
+
+  /**
+   * Computes effective timeout for a task.
+   */
+  private computeTimeout(task: CliTask, options?: ExecutionOptions): number {
+    if (options?.timeoutMs !== undefined) return options.timeoutMs;
+    if (task.timeoutMs !== undefined) return task.timeoutMs;
+    return getTimeoutForTaskAuto(this.name, task.content);
+  }
+
+  /**
+   * Executes task with retry logic.
+   */
+  private async executeWithRetry(
+    task: CliTask,
+    opts: Required<ExecutionOptions>
+  ): Promise<Result<CliResponse, CliError>> {
     let lastError: CliError | undefined;
     const maxAttempts = opts.allowRetry ? opts.maxRetries + 1 : 1;
 
@@ -135,7 +162,7 @@ export abstract class BaseCliAdapter implements ICliAdapter {
 
       lastError = result.error;
 
-      if (!result.error.retryable || attempt === maxAttempts) {
+      if (this.isTerminalAttempt(result.error, attempt, maxAttempts)) {
         this.logger.warn('Task execution failed', {
           cli: this.name,
           attempt,
@@ -151,11 +178,17 @@ export abstract class BaseCliAdapter implements ICliAdapter {
         nextAttempt: attempt + 1,
       });
 
-      // Exponential backoff
       await this.delay(Math.pow(2, attempt) * 1000);
     }
 
     return err(lastError ?? this.createError('UNKNOWN', 'Unknown error'));
+  }
+
+  /**
+   * Checks if this attempt should be the final one.
+   */
+  private isTerminalAttempt(error: CliError, attempt: number, maxAttempts: number): boolean {
+    return !error.retryable || attempt === maxAttempts;
   }
 
   /**

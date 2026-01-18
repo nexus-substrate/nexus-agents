@@ -265,3 +265,25 @@ export {
   EncodedFeaturesSchema,
   FeatureWeightsSchema,
 } from './daao-types.js';
+
+// CLI Circuit Breaker Integration (Issue #359)
+export {
+  CliCircuitBreakerIntegration,
+  createCliCircuitBreakerIntegration,
+} from './cli-circuit-breaker.js';
+export type {
+  ICliCircuitBreakerIntegration,
+  CliCircuitBreakerConfig,
+  CircuitProtectedResult,
+  CliCircuitHealthStatus,
+} from './cli-circuit-breaker.js';
+
+// CLI Timeout Profiles (Issue #357)
+export {
+  getTimeoutForTask,
+  getTimeoutForTaskAuto,
+  estimateTaskComplexity,
+  CLI_TIMEOUT_PROFILES,
+  DEFAULT_TIMEOUT_PROFILE,
+} from './cli-timeout-profiles.js';
+export type { TimeoutProfile, TaskComplexity } from './cli-timeout-profiles.js';

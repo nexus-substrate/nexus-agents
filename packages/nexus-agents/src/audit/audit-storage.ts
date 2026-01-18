@@ -11,7 +11,6 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import * as readline from 'node:readline';
 import type { ILogger } from '../core/logger.js';
 import { createLogger } from '../core/logger.js';
 import type { Result } from '../core/index.js';
@@ -22,7 +21,17 @@ import type {
   AuditLogConfig,
   AuditQueryCriteria,
 } from './audit-types.js';
-import { AuditError, AuditEventSchema } from './audit-types.js';
+import { AuditError } from './audit-types.js';
+import { readAuditFile } from './audit-storage-queries.js';
+
+// Re-export query utilities and InMemoryAuditStorage for backwards compatibility
+export {
+  matchesCriteria,
+  matchesTimeRange,
+  matchesClassification,
+  matchesIdentifiers,
+  InMemoryAuditStorage,
+} from './audit-storage-queries.js';
 
 // ============================================================================
 // Path Validation
@@ -314,7 +323,13 @@ export class FileAuditStorage implements IAuditStorage {
       if (results.length >= limit) break;
 
       const filePath = path.join(this.logDir, file);
-      const events = await this.readFile(filePath, criteria);
+      const events = await readAuditFile({
+        filePath,
+        criteria,
+        onMalformedLine: (fp) => {
+          this.logger.debug('Skipped malformed audit line', { file: fp });
+        },
+      });
 
       for (const event of events) {
         if (skipped < offset) {
@@ -327,111 +342,5 @@ export class FileAuditStorage implements IAuditStorage {
     }
 
     return results;
-  }
-
-  private async readFile(filePath: string, criteria: AuditQueryCriteria): Promise<AuditEvent[]> {
-    const events: AuditEvent[] = [];
-    const stream = fs.createReadStream(filePath);
-    const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
-
-    for await (const line of rl) {
-      if (line.trim().length === 0) continue;
-      try {
-        const parsed = JSON.parse(line) as unknown;
-        const validated = AuditEventSchema.safeParse(parsed);
-        if (validated.success && matchesCriteria(validated.data, criteria)) {
-          events.push(validated.data);
-        }
-      } catch {
-        // Skip malformed lines
-        this.logger.debug('Skipped malformed audit line', { file: filePath });
-      }
-    }
-
-    return events;
-  }
-}
-
-// ============================================================================
-// Criteria Matching Helpers (extracted for complexity)
-// ============================================================================
-
-function matchesTimeRange(event: AuditEvent, criteria: AuditQueryCriteria): boolean {
-  if (criteria.startTime !== undefined && new Date(event.timestamp) < criteria.startTime)
-    return false;
-  if (criteria.endTime !== undefined && new Date(event.timestamp) > criteria.endTime) return false;
-  return true;
-}
-
-function matchesClassification(event: AuditEvent, criteria: AuditQueryCriteria): boolean {
-  if (criteria.categories !== undefined && !criteria.categories.includes(event.category))
-    return false;
-  if (criteria.severities !== undefined && !criteria.severities.includes(event.severity))
-    return false;
-  if (criteria.outcomes !== undefined && !criteria.outcomes.includes(event.outcome)) return false;
-  return true;
-}
-
-function matchesIdentifiers(event: AuditEvent, criteria: AuditQueryCriteria): boolean {
-  if (criteria.actorId !== undefined && event.actor.id !== criteria.actorId) return false;
-  if (criteria.resourceId !== undefined && event.resource?.id !== criteria.resourceId) return false;
-  if (criteria.requestId !== undefined && event.requestId !== criteria.requestId) return false;
-  if (criteria.traceId !== undefined && event.traceId !== criteria.traceId) return false;
-  return true;
-}
-
-function matchesCriteria(event: AuditEvent, criteria: AuditQueryCriteria): boolean {
-  return (
-    matchesTimeRange(event, criteria) &&
-    matchesClassification(event, criteria) &&
-    matchesIdentifiers(event, criteria)
-  );
-}
-
-// ============================================================================
-// In-Memory Audit Storage (for testing)
-// ============================================================================
-
-export class InMemoryAuditStorage implements IAuditStorage {
-  private readonly events: AuditEvent[] = [];
-  private readonly maxEvents: number;
-
-  constructor(maxEvents = 10000) {
-    this.maxEvents = maxEvents;
-  }
-
-  write(event: AuditEvent): Promise<void> {
-    this.events.push(event);
-    if (this.events.length > this.maxEvents) {
-      this.events.shift();
-    }
-    return Promise.resolve();
-  }
-
-  flush(): Promise<void> {
-    return Promise.resolve();
-  }
-
-  close(): Promise<void> {
-    return Promise.resolve();
-  }
-
-  query(criteria: AuditQueryCriteria): Promise<AuditEvent[]> {
-    const limit = criteria.limit;
-    const offset = criteria.offset;
-
-    const filtered = this.events.filter((event) => matchesCriteria(event, criteria));
-
-    return Promise.resolve(filtered.slice(offset, offset + limit));
-  }
-
-  /** Get all events (for testing) */
-  getAll(): AuditEvent[] {
-    return [...this.events];
-  }
-
-  /** Clear all events (for testing) */
-  clear(): void {
-    this.events.length = 0;
   }
 }

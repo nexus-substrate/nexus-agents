@@ -77,4 +77,19 @@ export {
   type ActionRecord,
   type RoutingMemoryExport,
   type RoutingMemoryStats,
+  // CLI Timeout Profiles (Issue #357)
+  getTimeoutForTask,
+  getTimeoutForTaskAuto,
+  estimateTaskComplexity,
+  CLI_TIMEOUT_PROFILES,
+  DEFAULT_TIMEOUT_PROFILE,
+  type TimeoutProfile,
+  type TaskComplexity as CliTaskComplexity,
+  // CLI Circuit Breaker Integration (Issue #359)
+  CliCircuitBreakerIntegration,
+  createCliCircuitBreakerIntegration,
+  type ICliCircuitBreakerIntegration,
+  type CliCircuitBreakerConfig,
+  type CircuitProtectedResult,
+  type CliCircuitHealthStatus,
 } from '../cli-adapters/index.js';

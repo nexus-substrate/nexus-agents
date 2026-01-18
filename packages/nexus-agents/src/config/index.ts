@@ -45,3 +45,48 @@ export type {
   EventBusConfig,
   ObservabilityConfig,
 } from './schemas.js';
+
+// Centralized defaults
+export {
+  // Main defaults object
+  DEFAULTS,
+  TIMEOUT_PROFILES,
+  // Environment override functions
+  getTimeout,
+  getRetryConfig,
+  getRateLimitConfig,
+  getWorkerConfig,
+  getCircuitBreakerConfig,
+  // Convenience accessors
+  getTimeoutProfile,
+  getTimeoutForCli,
+  getToolRateLimit,
+  // Type guards
+  isTaskComplexity,
+  // Documentation
+  getEnvVarDocumentation,
+} from './defaults.js';
+
+export type {
+  // Config structure types
+  DefaultsConfig,
+  TimeoutDefaults,
+  TimeoutDefaultsConst,
+  RateLimitDefaults,
+  RateLimitDefaultsConst,
+  RetryDefaults,
+  RetryDefaultsConst,
+  BufferDefaults,
+  WorkerDefaults,
+  WorkerDefaultsConst,
+  CircuitBreakerDefaults,
+  CircuitBreakerDefaultsConst,
+  ContextDefaults,
+  ProviderDefaults,
+  SecurityDefaults,
+  // Helper types
+  TimeoutProfile,
+  TaskComplexity,
+  ToolRateLimitConfig,
+  KnownCliName,
+} from './defaults.js';
