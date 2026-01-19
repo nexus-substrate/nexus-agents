@@ -33,6 +33,7 @@ export {
   handleSweBenchCommand,
   handleVerifyCommand,
   handleDoctorCommand,
+  handleSetupCommand,
 } from './cli-commands-handlers.js';
 
 // Import handlers for dispatch
@@ -53,6 +54,7 @@ import {
   handleIndexCommand,
   handleResearchCommand,
   handleSweBenchCommand,
+  handleSetupCommand,
 } from './cli-commands-handlers.js';
 
 /**
@@ -97,6 +99,9 @@ function handleSyncCommand(args: ParsedCliArgs): boolean {
       return true;
     case 'learning-metrics':
       handleLearningMetricsCommand(args);
+      return true;
+    case 'setup':
+      handleSetupCommand(args);
       return true;
     default:
       return false;

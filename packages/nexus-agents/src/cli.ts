@@ -98,6 +98,11 @@ interface ParsedValues {
   period?: string;
   export?: string;
   'no-trends': boolean;
+  // Setup command options (Issue #363)
+  'non-interactive': boolean;
+  'skip-mcp': boolean;
+  'skip-rules': boolean;
+  scope?: string;
 }
 
 /** Builds orchestrate-specific options. */
@@ -173,6 +178,36 @@ function buildLearningMetricsOptions(values: ParsedValues): {
   return result;
 }
 
+/** Validates scope option for setup command. */
+function parseSetupScope(value: string | undefined): 'user' | 'project' | undefined {
+  if (value === 'user' || value === 'project') {
+    return value;
+  }
+  return undefined;
+}
+
+/** Builds setup-specific options. */
+function buildSetupOptions(values: ParsedValues): {
+  nonInteractive: boolean;
+  skipMcp: boolean;
+  skipRules: boolean;
+  scope?: 'user' | 'project';
+} {
+  const scope = parseSetupScope(values.scope);
+  const result: {
+    nonInteractive: boolean;
+    skipMcp: boolean;
+    skipRules: boolean;
+    scope?: 'user' | 'project';
+  } = {
+    nonInteractive: values['non-interactive'],
+    skipMcp: values['skip-mcp'],
+    skipRules: values['skip-rules'],
+  };
+  if (scope !== undefined) result.scope = scope;
+  return result;
+}
+
 /** Builds the options object from parsed values. */
 function buildOptions(values: ParsedValues): ParsedCliArgs['options'] {
   const explicitMode = isValidServerMode(values.mode) ? values.mode : undefined;
@@ -199,6 +234,7 @@ function buildOptions(values: ParsedValues): ParsedCliArgs['options'] {
     ...buildVoteOptions(values),
     ...buildSweBenchOptions(values),
     ...buildLearningMetricsOptions(values),
+    ...buildSetupOptions(values),
   };
 }
 

@@ -27,6 +27,7 @@ import {
   verifyCommand,
   sweBenchCommand,
   learningMetricsCommand,
+  setupCommand,
 } from './cli/index.js';
 import { EXIT_CODES, type ParsedCliArgs } from './cli-types.js';
 import { startServer } from './cli-server.js';
@@ -377,5 +378,22 @@ export async function handleVerifyCommand(args: ParsedCliArgs): Promise<void> {
  */
 export async function handleDoctorCommand(_args: ParsedCliArgs): Promise<void> {
   const exitCode = await doctorCommand();
+  process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
+}
+
+/**
+ * Handles setup command for Claude CLI integration.
+ * (Source: Issue #363 - Auto-configure Claude CLI integration)
+ */
+export function handleSetupCommand(args: ParsedCliArgs): void {
+  const exitCode = setupCommand({
+    nonInteractive: args.options.nonInteractive,
+    force: args.options.force,
+    skipMcp: args.options.skipMcp,
+    skipRules: args.options.skipRules,
+    dryRun: args.options.dryRun,
+    verbose: args.options.verbose,
+    scope: args.options.scope === 'project' ? 'project' : 'user',
+  });
   process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
 }

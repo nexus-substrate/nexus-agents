@@ -301,6 +301,9 @@ describe('CLI Argument Parsing', () => {
           fix: false,
           quick: false,
           resume: false,
+          nonInteractive: false,
+          skipMcp: false,
+          skipRules: false,
         },
         positionals: [],
       };
@@ -335,6 +338,9 @@ describe('CLI Argument Parsing', () => {
           fix: false,
           quick: false,
           resume: false,
+          nonInteractive: false,
+          skipMcp: false,
+          skipRules: false,
         },
         positionals: ['config', 'show'],
       };
@@ -361,6 +367,9 @@ describe('CLI Argument Parsing', () => {
           fix: false,
           quick: false,
           resume: false,
+          nonInteractive: false,
+          skipMcp: false,
+          skipRules: false,
         },
         positionals: [],
       };

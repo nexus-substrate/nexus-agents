@@ -242,3 +242,33 @@ export type {
   FeedbackLoopStats,
   FeatureImportance,
 } from './learning-metrics-command.js';
+
+// Setup Command (Issue #363 - Auto-configure Claude CLI integration)
+export {
+  setupCommand,
+  runSetup,
+  printSetupResult,
+  generateMcpSnippet,
+  generateRulesContent,
+  detectEnvironment,
+} from './setup-command.js';
+export type { SetupOptions, SetupResult } from './setup-command.js';
+export type {
+  ClaudeCliInfo,
+  McpConfigInfo,
+  ProjectInfo,
+  EnvironmentInfo,
+  SetupStep,
+} from './setup-types.js';
+export {
+  detectClaudeCli,
+  detectMcpConfig,
+  detectProjectType,
+  detectProjectInfo,
+  getMcpJsonPath,
+  getRulesFilePath,
+  createRulesFile,
+  isInteractive,
+  NEXUS_AGENTS_MCP_ENTRY,
+  NEXUS_AGENTS_MCP_NPX_ENTRY,
+} from './setup-helpers.js';

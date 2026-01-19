@@ -19,6 +19,7 @@ USAGE:
 
 COMMANDS:
   (default)       Start MCP server with stdio transport
+  setup           Configure Claude CLI integration (MCP + CLAUDE.md rules)
   verify          Quick installation verification (no API keys needed)
   doctor          Check CLI installations and health status
   config init     Generate starter configuration file
@@ -44,6 +45,14 @@ OPTIONS:
                        - server:       MCP server only (for Claude CLI integration)
                        - orchestrator: CLI orchestrator (calls Gemini/Codex CLIs)
                        - mesh:         Full bidirectional (both modes)
+
+SETUP OPTIONS:
+  --non-interactive    Skip prompts (for CI/automation)
+  --force              Overwrite existing files
+  --skip-mcp           Skip MCP configuration snippet
+  --skip-rules         Skip .claude/rules/nexus-agents.md generation
+  --scope=<scope>      MCP config scope: user, project (default: user)
+  --dry-run            Show changes without making them
 
 CONFIG OPTIONS:
   -o, --output <path>  Output path for config init (default: ./nexus-agents.yaml)
@@ -132,6 +141,9 @@ SWE-BENCH OPTIONS:
   --verbose              Enable verbose output
 
 EXAMPLES:
+  nexus-agents setup            Configure Claude CLI integration
+  nexus-agents setup --dry-run  Preview changes without applying
+  nexus-agents setup --force    Overwrite existing configurations
   nexus-agents verify           Quick installation check (first thing to run!)
   nexus-agents                  Start MCP server (default)
   nexus-agents --interactive    Start interactive REPL
