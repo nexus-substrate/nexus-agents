@@ -208,7 +208,7 @@ Use different AI models through unified interfaces:
 
 | Provider   | Models                         | Best For                   |
 | ---------- | ------------------------------ | -------------------------- |
-| **Claude** | Sonnet 4, Opus 4.5, Haiku 4.5  | General coding, analysis   |
+| **Claude** | Sonnet 4, Opus 4, Haiku 3      | General coding, analysis   |
 | **OpenAI** | GPT-4o, o1, Codex              | Reasoning, code generation |
 | **Gemini** | 2.5 Pro, 2.5 Flash             | Long context, multimodal   |
 | **Ollama** | Llama 3, CodeLlama, Qwen, etc. | Local inference, privacy   |
