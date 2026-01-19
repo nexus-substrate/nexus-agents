@@ -37,7 +37,8 @@
     "format:check": "prettier --check .",
     "prepare": "husky",
     "preinstall": "npx only-allow pnpm",
-    "review": "npx tsx scripts/review-pr.ts"
+    "review": "npx tsx scripts/review-pr.ts",
+    "link-check": "npx lychee --config lychee.toml ."
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.0",
