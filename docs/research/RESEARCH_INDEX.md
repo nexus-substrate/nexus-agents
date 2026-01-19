@@ -1,7 +1,7 @@
 # Nexus-Agents Research Index
 
 **Generated:** 2026-01-18 (ET)
-**Total Papers:** 65 | **Techniques:** 38 | **Topics:** 6
+**Total Papers:** 67 | **Techniques:** 38 | **Topics:** 6
 
 ---
 

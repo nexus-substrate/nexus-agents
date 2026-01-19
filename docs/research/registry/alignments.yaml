@@ -119,18 +119,18 @@ alignments:
   # MEMORY TECHNIQUE ALIGNMENTS
   # ============================================================================
 
-  memory-reflexion-episodic:
+  memory-reflexion-mirix:
     techniques:
       - multi-agent-reflexion
-      - episodic-memory-for-reasoning
+      - mirix-six-type-memory
     category: enhances
     relationship: |
       Reflexion generates learnings through self-critique.
-      Episodic memory persists learnings across sessions.
-      Together: Reflexion produces insights, episodic memory stores them.
+      MIRIX episodic memory persists learnings across sessions.
+      Together: Reflexion produces insights, MIRIX episodic stores them.
     integration_approach: |
       After Reflexion completes, extract learnings and store
-      in episodic memory for future session retrieval.
+      in MIRIX episodic memory for future session retrieval.
     status: planned
     date: '2026-01-07'
 

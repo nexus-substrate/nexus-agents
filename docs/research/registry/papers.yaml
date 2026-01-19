@@ -283,6 +283,42 @@ papers:
   # ROUTING
   # ============================================================================
 
+  arxiv-2410.10347:
+    title: 'A Unified Approach to Routing and Cascading for LLMs'
+    authors: ['Dekoninck, J.', 'Baader, M.', 'Vechev, M.']
+    source: arxiv
+    arxiv_id: '2410.10347'
+    url: 'https://arxiv.org/abs/2410.10347'
+    publication_date: '2024-10'
+    venue: null
+
+    topics:
+      - routing
+    tags:
+      - cascade-routing
+      - model-selection
+      - cost-optimization
+      - theoretical
+
+    reviewed_date: '2026-01-18'
+    reviewed_in: 'routing-optimization.md'
+    summary: |
+      Derives optimal strategy for cascading, proves optimality of existing
+      routing, and proposes unified cascade routing framework.
+
+    key_findings:
+      - 'Novel optimal strategy for cascading with formal proofs'
+      - 'Unified framework integrating routing and cascading'
+      - 'Theoretical optimality guarantees'
+
+    relevance: high
+    techniques_extracted:
+      - cascade-routing
+
+    related_issues:
+      - 121
+    implementation_status: implemented
+
   arxiv-2406.18510:
     title: 'RouteLLM: Cost-Quality Routing for LLM Inference'
     authors: []
@@ -1259,6 +1295,43 @@ papers:
     relevance: high
     techniques_extracted:
       - self-refine-loop
+
+    related_issues: []
+    implementation_status: implemented
+
+  arxiv-2304.05128:
+    title: 'Teaching Large Language Models to Self-Debug'
+    authors: ['Chen, X.', 'Lin, M.', 'Schärli, N.', 'Zhou, D.']
+    source: conference
+    arxiv_id: '2304.05128'
+    url: 'https://arxiv.org/abs/2304.05128'
+    publication_date: '2023-04'
+    venue: 'ACL 2024 Findings'
+
+    topics:
+      - code-generation
+    tags:
+      - self-debug
+      - code-repair
+      - execution-feedback
+      - rubber-duck
+
+    reviewed_date: '2026-01-18'
+    reviewed_in: 'self-improvement-feedback-loops.md'
+    summary: |
+      Self-Debugging teaches LLMs to debug their own code via few-shot
+      prompting. Model explains code, identifies errors via execution
+      results, and iteratively fixes issues until tests pass.
+
+    key_findings:
+      - 'Rubber duck debugging without human feedback'
+      - '2-3% improvement on Spider text-to-SQL'
+      - '9% improvement on most complicated SQL queries'
+      - '12.1% increase on TransCoder, 10.8% on MBPP'
+
+    relevance: high
+    techniques_extracted:
+      - self-debug-repair
 
     related_issues: []
     implementation_status: implemented
