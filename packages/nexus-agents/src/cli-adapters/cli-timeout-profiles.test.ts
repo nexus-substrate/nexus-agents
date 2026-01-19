@@ -29,9 +29,10 @@ describe('getTimeoutForTask', () => {
     });
 
     it('should return correct timeouts for gemini', () => {
-      expect(getTimeoutForTask('gemini', 'simple')).toBe(15_000);
-      expect(getTimeoutForTask('gemini', 'standard')).toBe(45_000);
-      expect(getTimeoutForTask('gemini', 'complex')).toBe(90_000);
+      // Updated per Issue #366 (30s/60s/180s)
+      expect(getTimeoutForTask('gemini', 'simple')).toBe(30_000);
+      expect(getTimeoutForTask('gemini', 'standard')).toBe(60_000);
+      expect(getTimeoutForTask('gemini', 'complex')).toBe(180_000);
     });
 
     it('should return correct timeouts for codex', () => {
@@ -217,9 +218,10 @@ describe('getTimeoutForTaskAuto', () => {
 
   describe('works correctly for all known CLIs', () => {
     it('should work correctly for gemini', () => {
-      expect(getTimeoutForTaskAuto('gemini', 'Quick check')).toBe(15_000);
-      expect(getTimeoutForTaskAuto('gemini', 'Standard task')).toBe(45_000);
-      expect(getTimeoutForTaskAuto('gemini', 'Comprehensive review')).toBe(90_000);
+      // Gemini timeouts increased per Issue #366 (30s/60s/180s)
+      expect(getTimeoutForTaskAuto('gemini', 'Quick check')).toBe(30_000);
+      expect(getTimeoutForTaskAuto('gemini', 'Standard task')).toBe(60_000);
+      expect(getTimeoutForTaskAuto('gemini', 'Comprehensive review')).toBe(180_000);
     });
 
     it('should work correctly for codex', () => {
