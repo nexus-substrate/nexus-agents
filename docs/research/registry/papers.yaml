@@ -1227,6 +1227,51 @@ papers:
     related_issues: []
     implementation_status: implemented
 
+  arxiv-2310.08560:
+    title: 'MemGPT: Towards LLMs as Operating Systems'
+    authors:
+      - 'Packer, C.'
+      - 'Wooders, S.'
+      - 'Lin, K.'
+      - 'Fang, V.'
+      - 'Patil, S.G.'
+      - 'Stoica, I.'
+      - 'Gonzalez, J.E.'
+    source: conference
+    arxiv_id: '2310.08560'
+    url: 'https://arxiv.org/abs/2310.08560'
+    publication_date: '2023-10'
+    venue: 'ICLR 2024'
+
+    topics:
+      - memory
+    tags:
+      - virtual-context
+      - paging
+      - self-editing-memory
+      - long-context
+
+    reviewed_date: '2026-01-18'
+    reviewed_in: 'adaptive-memory technique'
+    summary: |
+      Operating system-inspired memory management for LLMs with virtual
+      context paging, self-editing main context, and hierarchical memory
+      (main + external storage) enabling extended conversations.
+
+    key_findings:
+      - 'Virtual context management analogous to OS paging'
+      - 'Self-editing main context for memory persistence'
+      - 'Hierarchical memory with main context and external storage'
+      - 'Enables unbounded conversation length'
+
+    relevance: high
+    techniques_extracted:
+      - adaptive-memory
+
+    related_issues:
+      - 143
+    implementation_status: implemented
+
   arxiv-2511.20639:
     title: 'LatentMAS: Direct Latent Space Collaboration'
     authors: []

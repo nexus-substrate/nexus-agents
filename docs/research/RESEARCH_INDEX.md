@@ -1,7 +1,7 @@
 # Nexus-Agents Research Index
 
 **Generated:** 2026-01-18 (ET)
-**Total Papers:** 67 | **Techniques:** 38 | **Topics:** 6
+**Total Papers:** 68 | **Techniques:** 38 | **Topics:** 6
 
 ---
 
@@ -25,7 +25,7 @@
 | --------------------------------------------------- | ------ | ---------- | ----------------------------------- |
 | [Consensus](topics/consensus/README.md)             | 6      | 6          | Multi-agent decision protocols      |
 | [Routing](topics/routing/README.md)                 | 11     | 8          | Cost-efficient model routing        |
-| [Memory](topics/memory/README.md)                   | 13     | 7          | Context and long-term memory        |
+| [Memory](topics/memory/README.md)                   | 14     | 7          | Context and long-term memory        |
 | [Code Generation](topics/code-generation/README.md) | 16     | 6          | Self-improvement and skill learning |
 | [Cli Tools](topics/cli-tools/README.md)             | 0      | 0          | External CLI integration            |
 | [Orchestration](topics/orchestration/README.md)     | 14     | 9          | Multi-agent coordination            |
