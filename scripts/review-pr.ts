@@ -112,7 +112,11 @@ function exec(command: string): string {
 
 function checkCLI(name: string, versionCmd: string): CLIHealth {
   const version = exec(versionCmd);
-  return { name, available: version.length > 0, version: version || undefined };
+  return {
+    name,
+    available: version.length > 0,
+    ...(version.length > 0 ? { version } : {}),
+  };
 }
 
 function getAvailableCLIs(): CLIHealth[] {
@@ -315,7 +319,7 @@ function parseArgs(args: string[]): ReviewOptions {
       process.exit(1);
     } else {
       const match = arg.match(/(\d+)$/);
-      if (match !== null) {
+      if (match?.[1] !== undefined) {
         options.prNumber = parseInt(match[1], 10);
       }
     }
@@ -398,6 +402,36 @@ function handleReviewResult(
   }
 }
 
+async function collectReviewResults(
+  modelsToRun: readonly string[],
+  diff: string,
+  reviewer: string,
+  timestamp: string
+): Promise<ReviewResult[]> {
+  const results: ReviewResult[] = [];
+  for (const model of modelsToRun) {
+    const result = await runReviewForModel(model, diff, reviewer, timestamp);
+    if (result !== null) {
+      results.push(result);
+    }
+  }
+  return results;
+}
+
+function processReviewResults(
+  results: readonly ReviewResult[],
+  prInfo: PRInfo,
+  prNumber: number,
+  dryRun: boolean
+): void {
+  for (let i = 0; i < results.length; i++) {
+    const result = results[i];
+    if (result !== undefined) {
+      handleReviewResult(result, prInfo, prNumber, dryRun, i === results.length - 1);
+    }
+  }
+}
+
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
 
@@ -426,29 +460,14 @@ async function main(): Promise<void> {
 
   const reviewer = exec('git config user.name') || exec('whoami') || 'unknown';
   const timestamp = new Date().toISOString();
-  const results: ReviewResult[] = [];
-
-  for (const model of modelsToRun) {
-    const result = await runReviewForModel(model, diff, reviewer, timestamp);
-    if (result !== null) {
-      results.push(result);
-    }
-  }
+  const results = await collectReviewResults(modelsToRun, diff, reviewer, timestamp);
 
   if (results.length === 0) {
     console.error('\nNo reviews completed successfully.');
     process.exit(1);
   }
 
-  for (let i = 0; i < results.length; i++) {
-    handleReviewResult(
-      results[i],
-      prInfo,
-      options.prNumber,
-      options.dryRun,
-      i === results.length - 1
-    );
-  }
+  processReviewResults(results, prInfo, options.prNumber, options.dryRun);
 
   if (!options.dryRun) {
     console.log(`\n✅ Review complete! PR #${String(options.prNumber)} marked as cli-reviewed.\n`);

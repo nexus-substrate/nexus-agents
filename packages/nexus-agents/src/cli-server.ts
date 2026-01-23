@@ -74,8 +74,12 @@ export function setupShutdownHandlers(cleanup: () => Promise<void>, logger: ILog
     }
   };
 
-  process.on('SIGINT', () => void handleShutdown('SIGINT'));
-  process.on('SIGTERM', () => void handleShutdown('SIGTERM'));
+  process.on('SIGINT', () => {
+    void handleShutdown('SIGINT');
+  });
+  process.on('SIGTERM', () => {
+    void handleShutdown('SIGTERM');
+  });
 
   // Handle uncaught errors
   process.on('uncaughtException', (error: Error) => {

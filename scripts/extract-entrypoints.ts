@@ -15,21 +15,19 @@
 /* eslint-disable no-console */
 // Console output is intentional for CLI user feedback
 
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access,
-   @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-return,
-   @typescript-eslint/restrict-template-expressions */
 // Type safety rules disabled because ESLint cannot resolve types from .js imports in scripts
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as YAML from 'yaml';
 import { parseArgs } from 'node:util';
+import { extractEntrypoints } from '../packages/nexus-agents/src/indexer/entrypoint-extractor.js';
 import {
-  extractEntrypoints,
+  EntrypointManifestSchema,
   type EntrypointManifest,
   type EntrypointExtractionResult,
-} from '../packages/nexus-agents/src/indexer/entrypoint-extractor.js';
-import { EntrypointManifestSchema } from '../packages/nexus-agents/src/indexer/entrypoint-types.js';
+  type ParameterSpec,
+} from '../packages/nexus-agents/src/indexer/entrypoint-types.js';
 
 // ============================================================================
 // Types
@@ -91,8 +89,13 @@ function parseCliArgs(): ScriptOptions {
   });
 
   const format = values.format === 'json' ? 'json' : 'yaml';
+  const rawOutput = values.output;
   const output =
-    values.output ?? (format === 'json' ? 'docs/.generated/entrypoints.json' : DEFAULT_OUTPUT);
+    typeof rawOutput === 'string'
+      ? rawOutput
+      : format === 'json'
+        ? 'docs/.generated/entrypoints.json'
+        : DEFAULT_OUTPUT;
 
   return {
     format,
@@ -203,7 +206,7 @@ function printDetails(result: EntrypointExtractionResult): void {
 
   console.log('\nMCP Tools:');
   for (const tool of manifest.mcp_tools) {
-    const params = tool.parameters.map((p) => p.name).join(', ');
+    const params = tool.parameters.map((p: ParameterSpec) => p.name).join(', ');
     console.log(`  - ${tool.name}(${params})`);
   }
 
