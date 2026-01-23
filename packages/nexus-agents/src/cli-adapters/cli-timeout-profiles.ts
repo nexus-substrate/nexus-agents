@@ -20,10 +20,16 @@ export interface TimeoutProfile {
   complex: number;
 }
 
-/** Timeout profiles per CLI tool based on real-world performance testing. */
+/**
+ * Timeout profiles per CLI tool based on real-world performance testing.
+ *
+ * Gemini timeouts increased per Issue #366:
+ * - Previous: 15s/45s/90s caused frequent timeouts on complex file analysis
+ * - New: 30s/60s/180s provides buffer for large context processing
+ */
 export const CLI_TIMEOUT_PROFILES: Record<string, TimeoutProfile> = {
   claude: { simple: 30_000, standard: 60_000, complex: 120_000 },
-  gemini: { simple: 15_000, standard: 45_000, complex: 90_000 },
+  gemini: { simple: 30_000, standard: 60_000, complex: 180_000 },
   codex: { simple: 10_000, standard: 30_000, complex: 60_000 },
 };
 

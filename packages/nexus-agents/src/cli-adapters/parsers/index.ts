@@ -12,6 +12,13 @@ export type { ClaudeCliResponse } from './claude-parser.js';
 export { GeminiResponseParser } from './gemini-parser.js';
 export type { GeminiCliResponse } from './gemini-parser.js';
 
+export { ResilientGeminiParser, createResilientGeminiParser } from './gemini-parser-resilient.js';
+export type {
+  ResilientParseResult,
+  ParseStrategy,
+  GeminiErrorInfo,
+} from './gemini-parser-resilient.js';
+
 export { CodexResponseParser } from './codex-parser.js';
 export type {
   CodexCliResponse,
