@@ -22,7 +22,7 @@ COMMANDS:
   setup           Configure Claude CLI integration (MCP + CLAUDE.md rules)
   verify          Quick installation verification (no API keys needed)
   doctor          Check CLI installations and health status
-  config init     Generate starter configuration file
+  config          Manage configuration (init, get, set, list, reset, export, import)
   expert list     List available experts (built-in and custom)
   workflow list   List available workflow templates
   workflow run    Execute a workflow template
@@ -55,8 +55,15 @@ SETUP OPTIONS:
   --dry-run            Show changes without making them
 
 CONFIG OPTIONS:
-  -o, --output <path>  Output path for config init (default: ./nexus-agents.yaml)
-  -f, --force          Overwrite existing configuration file
+  config init            Generate starter configuration file
+  config get <key>       Get a configuration value
+  config set <key> <val> Set a configuration value
+  config list            List all configuration values with categories
+  config reset [key]     Reset configuration to defaults (all or specific key)
+  config export [file]   Export configuration to file (default: stdout)
+  config import <file>   Import configuration from file (JSON or YAML)
+  -o, --output <path>    Output path for config init (default: ./nexus-agents.yaml)
+  -f, --force            Overwrite existing configuration file
 
 EXPERT OPTIONS:
   --format <fmt>       Output format: table, json, yaml (default: table)
@@ -101,6 +108,8 @@ INDEX OPTIONS:
   index diagram          Generate Mermaid dependency diagram
   index validate         Check ARCHITECTURE.md matches index
   index entrypoints      Extract CLI/MCP/REST entrypoints
+  index freshness        Check link freshness against last-modified headers
+  index links            Extract and validate documentation links
   --format=<yaml|json>   Output format (default: yaml)
   -o, --output=<path>    Custom output path
   --verbose              Show extraction progress
@@ -112,6 +121,7 @@ RESEARCH OPTIONS:
   research stats         Show research statistics
   research refresh       Regenerate RESEARCH_INDEX.md
   research check         Check if index is up to date
+  research index         Build/rebuild research search index
   --format=<table|json>  Output format (default: table)
   -o, --output=<path>    Custom output path for refresh
 
@@ -149,6 +159,12 @@ EXAMPLES:
   nexus-agents --interactive    Start interactive REPL
   nexus-agents doctor           Check CLI health
   nexus-agents config init      Generate config file
+  nexus-agents config get TIMEOUT_DEFAULTS.cliMs    Get timeout value
+  nexus-agents config set TIMEOUT_DEFAULTS.cliMs 90000  Set timeout
+  nexus-agents config list      List all configuration values
+  nexus-agents config reset     Reset all to defaults
+  nexus-agents config export ./config.json  Export configuration
+  nexus-agents config import ./config.yaml  Import configuration
   nexus-agents expert list      List available experts
   nexus-agents workflow list    List workflow templates
   nexus-agents workflow run code-review --dry-run
@@ -170,11 +186,14 @@ EXAMPLES:
   nexus-agents index check                        Check if index is up to date
   nexus-agents index diagram                      Generate dependency diagram
   nexus-agents index entrypoints                  Extract entrypoints to YAML
+  nexus-agents index freshness                    Check link freshness
+  nexus-agents index links                        Extract and validate links
   nexus-agents research status                    Show all technique statuses
   nexus-agents research stats                     Show research statistics
   nexus-agents research stats --format=json       Statistics as JSON
   nexus-agents research refresh                   Regenerate RESEARCH_INDEX.md
   nexus-agents research check                     Check if index is up to date
+  nexus-agents research index                     Build research search index
   nexus-agents validation                         Show learning validation dashboard
   nexus-agents validation --period=7d             Show dashboard for last 7 days
   nexus-agents validation --format=json           Output dashboard as JSON
