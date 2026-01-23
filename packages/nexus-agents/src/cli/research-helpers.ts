@@ -54,3 +54,17 @@ export {
   addResearchPaper,
 } from './research-helpers-arxiv.js';
 export type { ArxivFetchError, ArxivFetchErrorCode } from './research-helpers-arxiv.js';
+
+// Registry helpers (Issue #299)
+export {
+  generateRegistryEntry,
+  paperExistsInRegistry,
+  addPaperToRegistry,
+  getCurrentDate,
+} from './research-helpers-registry.js';
+export type {
+  RegistryError,
+  RegistryErrorCode,
+  AddPaperOptions,
+  AddPaperResult,
+} from './research-helpers-registry.js';

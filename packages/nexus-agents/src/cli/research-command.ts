@@ -62,8 +62,21 @@ export {
   fetchArxivMetadataResult,
   paperExists,
   addResearchPaper,
+  // Registry helpers (Issue #299)
+  generateRegistryEntry,
+  paperExistsInRegistry,
+  addPaperToRegistry,
+  getCurrentDate,
 } from './research-helpers.js';
-export type { ArxivFetchError, ArxivFetchErrorCode } from './research-helpers.js';
+export type {
+  ArxivFetchError,
+  ArxivFetchErrorCode,
+  // Registry types (Issue #299)
+  RegistryError,
+  RegistryErrorCode,
+  AddPaperOptions,
+  AddPaperResult,
+} from './research-helpers.js';
 
 // =============================================================================
 // SUBCOMMAND HANDLERS

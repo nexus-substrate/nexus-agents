@@ -113,3 +113,31 @@ export {
   findMissingDependencies,
   createSkillDependencyGraph,
 } from './skill-dependency-graph.js';
+
+// Skill Loader (Issue #374 Phase 3)
+export type {
+  SkillLoaderConfig,
+  SkillLoaderError,
+  SkillLoaderErrorCode,
+  LoadedSkillSet,
+  RoleSkillMapping,
+  FallbackBehavior,
+  ISkillLoader,
+} from './skill-loader.js';
+
+export {
+  // Class
+  SkillLoader,
+  // Factory
+  createSkillLoader,
+  // Constants
+  DEFAULT_ROLE_MAPPINGS,
+  DEFAULT_SKILL_LOADER_CONFIG,
+  // Zod Schemas
+  SkillLoaderConfigSchema,
+  LoadedSkillSetSchema,
+  SkillLoaderErrorSchema,
+  // Integration Hooks
+  initializeAgentSkills,
+  getSkillsForTask,
+} from './skill-loader.js';

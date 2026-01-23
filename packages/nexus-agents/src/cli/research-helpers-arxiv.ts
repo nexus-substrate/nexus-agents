@@ -11,6 +11,7 @@
 import type { Result } from '../core/result.js';
 import type { ArxivMetadata, ResearchAddOptions, ResearchAddResult } from './research-types.js';
 import { loadPapersRegistry } from './research-helpers-io.js';
+import { addPaperToRegistry } from './research-helpers-registry.js';
 
 /** Timeout for arXiv API requests in milliseconds (30 seconds). */
 const ARXIV_API_TIMEOUT_MS = 30_000;
@@ -162,26 +163,24 @@ export async function paperExists(arxivId: string): Promise<boolean> {
 
 /**
  * Add a paper to the registry.
+ *
+ * Fetches paper metadata from arXiv API, generates a registry entry,
+ * and persists it to docs/research/registry/papers.yaml.
+ *
+ * @param options - Options for adding the paper
+ * @returns Result indicating success or failure with details
+ *
+ * @see Issue #299 - Auto-add papers to registry from arXiv fetch
  */
 export async function addResearchPaper(options: ResearchAddOptions): Promise<ResearchAddResult> {
-  // Check for duplicates
-  const exists = await paperExists(options.arxivId);
-  if (exists) {
-    return {
-      success: false,
-      paperId: `arxiv-${options.arxivId}`,
-      title: '',
-      message: `Paper arxiv-${options.arxivId} already exists in registry`,
-      dryRun: options.dryRun,
-    };
-  }
+  const paperId = `arxiv-${options.arxivId}`;
 
   // Fetch metadata using Result pattern
   const metadataResult = await fetchArxivMetadataResult(options.arxivId);
   if (!metadataResult.ok) {
     return {
       success: false,
-      paperId: `arxiv-${options.arxivId}`,
+      paperId,
       title: '',
       message: `Could not fetch metadata for arXiv ID ${options.arxivId}: ${metadataResult.error.message}`,
       dryRun: options.dryRun,
@@ -189,22 +188,35 @@ export async function addResearchPaper(options: ResearchAddOptions): Promise<Res
   }
   const metadata = metadataResult.value;
 
-  if (options.dryRun) {
+  // Add to registry using the registry helper
+  const addOptions: {
+    metadata: ArxivMetadata;
+    topic?: string;
+    dryRun?: boolean;
+  } = {
+    metadata,
+    dryRun: options.dryRun,
+  };
+  if (options.topic !== undefined) {
+    addOptions.topic = options.topic;
+  }
+  const addResult = await addPaperToRegistry(addOptions);
+
+  if (!addResult.ok) {
     return {
-      success: true,
-      paperId: `arxiv-${options.arxivId}`,
+      success: false,
+      paperId,
       title: metadata.title,
-      message: `[DRY RUN] Would add paper: ${metadata.title}`,
-      dryRun: true,
+      message: addResult.error.message,
+      dryRun: options.dryRun,
     };
   }
 
-  // TODO: Add to registry (requires more implementation)
   return {
-    success: true,
-    paperId: `arxiv-${options.arxivId}`,
+    success: addResult.value.success,
+    paperId: addResult.value.paperId,
     title: metadata.title,
-    message: `Added paper: ${metadata.title}`,
-    dryRun: false,
+    message: addResult.value.message,
+    dryRun: addResult.value.dryRun,
   };
 }

@@ -149,7 +149,7 @@ export {
 export type { SprintCommandOptions, SprintPlanResult, SprintProposal } from './sprint-types.js';
 export type { SprintIssue, Priority, GitHubIssueRaw } from './sprint-types.js';
 
-// Research Registry (Issue #237, Epic #225, Epic #261, Issue #367)
+// Research Registry (Issue #237, Epic #225, Epic #261, Issue #367, Issue #299)
 export {
   researchCommand,
   isValidResearchSubcommand,
@@ -177,6 +177,11 @@ export {
   researchIndexCommand,
   parseResearchIndexArgs,
   getResearchIndexHelp,
+  // Registry helpers (Issue #299)
+  generateRegistryEntry,
+  paperExistsInRegistry,
+  addPaperToRegistry,
+  getCurrentDate,
 } from './research-command.js';
 export type {
   ResearchSubcommand,
@@ -186,6 +191,11 @@ export type {
   ResearchIndexOptions,
   ResearchIndexResult,
   ResearchIndexAction,
+  // Registry types (Issue #299)
+  RegistryError,
+  RegistryErrorCode,
+  AddPaperOptions,
+  AddPaperResult,
 } from './research-command.js';
 export type {
   ResearchAddOptions,
