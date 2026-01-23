@@ -12,7 +12,7 @@
 **Latest System Review:** 2026-01-23 - Score 7.78/10 (5/5 APPROVE, unanimous)
 **Agent Improvement Epic:** #301 (Consensus-approved, 5/5 unanimous)
 **Open Issues:** #257 (SWE-bench, deferred), #154 (RL orchestrator, P4)
-**Closed This Session:** #374 (skills loader), #360 (config commands), #358 (response caching), #299 (registry integration), #375 (CHANGELOG)
+**Closed This Session:** #377 (critical module tests), #378 (config CLI), #379 (RL infrastructure), #374 (skills loader), #360 (config commands), #358 (response caching), #299 (registry integration), #375-#376 (docs)
 
 ---
 
