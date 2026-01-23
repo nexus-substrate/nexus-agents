@@ -116,6 +116,64 @@ export const DEFAULT_RULE_BASED_CONFIG: Required<RuleBasedPolicyConfig> = {
   minProbability: 0.01,
 };
 
+/**
+ * Configuration for learnable policy (REINFORCE with baseline).
+ * (Source: Issue #154, arXiv:2505.19591)
+ */
+export interface LearnablePolicyConfig extends RuleBasedPolicyConfig {
+  /** Learning rate for weight updates (default: 0.01) */
+  readonly learningRate?: number;
+  /** Decay factor for baseline running average (default: 0.99) */
+  readonly baselineDecay?: number;
+  /** Maximum gradient magnitude for clipping (default: 1.0) */
+  readonly gradientClip?: number;
+  /** Minimum learning rate floor (default: 0.001) */
+  readonly minLearningRate?: number;
+  /** Per-update learning rate decay (default: 0.9999) */
+  readonly learningRateDecay?: number;
+  /** Discount factor for future rewards (default: 0.99) */
+  readonly discountFactor?: number;
+  /** Minimum updates before using learned policy (default: 10) */
+  readonly warmupUpdates?: number;
+}
+
+/** Default learnable policy configuration. */
+export const DEFAULT_LEARNABLE_CONFIG: Required<LearnablePolicyConfig> = {
+  // Base config
+  temperature: 1.0,
+  deterministic: false,
+  repetitionPenalty: 0.3,
+  minProbability: 0.01,
+  // Learning config
+  learningRate: 0.01,
+  baselineDecay: 0.99,
+  gradientClip: 1.0,
+  minLearningRate: 0.001,
+  learningRateDecay: 0.9999,
+  discountFactor: 0.99,
+  warmupUpdates: 10,
+};
+
+/**
+ * Statistics for learnable policy.
+ */
+export interface LearnablePolicyStats {
+  /** Total number of policy updates */
+  readonly updateCount: number;
+  /** Current learning rate */
+  readonly currentLearningRate: number;
+  /** Current baseline value */
+  readonly baseline: number;
+  /** Average gradient magnitude from last update */
+  readonly lastGradientNorm: number;
+  /** Total episodes trained on */
+  readonly totalEpisodes: number;
+  /** Average episode length */
+  readonly avgEpisodeLength: number;
+  /** Average final reward */
+  readonly avgFinalReward: number;
+}
+
 // =============================================================================
 // Policy Interface
 // =============================================================================
@@ -150,6 +208,7 @@ export interface IPolicyEngine {
 
 /**
  * Extended policy interface for learnable policies.
+ * (Source: Issue #154, arXiv:2505.19591)
  */
 export interface ILearnablePolicyEngine extends IPolicyEngine {
   /**
@@ -159,6 +218,16 @@ export interface ILearnablePolicyEngine extends IPolicyEngine {
     trajectory: readonly PolicyTrajectoryStep[],
     finalReward: number
   ): Promise<Result<void, PolicyError>>;
+
+  /**
+   * Get learning statistics for monitoring.
+   */
+  getStats(): LearnablePolicyStats;
+
+  /**
+   * Check if policy has completed warmup phase.
+   */
+  isWarmedUp(): boolean;
 }
 
 // =============================================================================
@@ -188,4 +257,26 @@ export const RuleBasedPolicyConfigSchema = z.object({
   deterministic: z.boolean().optional(),
   repetitionPenalty: z.number().min(0).max(1).optional(),
   minProbability: z.number().min(0).max(1).optional(),
+});
+
+/** Schema for LearnablePolicyConfig. */
+export const LearnablePolicyConfigSchema = RuleBasedPolicyConfigSchema.extend({
+  learningRate: z.number().positive().max(1).optional(),
+  baselineDecay: z.number().min(0).max(1).optional(),
+  gradientClip: z.number().positive().optional(),
+  minLearningRate: z.number().positive().max(1).optional(),
+  learningRateDecay: z.number().min(0).max(1).optional(),
+  discountFactor: z.number().min(0).max(1).optional(),
+  warmupUpdates: z.number().int().nonnegative().optional(),
+});
+
+/** Schema for LearnablePolicyStats. */
+export const LearnablePolicyStatsSchema = z.object({
+  updateCount: z.number().int().nonnegative(),
+  currentLearningRate: z.number().nonnegative(),
+  baseline: z.number(),
+  lastGradientNorm: z.number().nonnegative(),
+  totalEpisodes: z.number().int().nonnegative(),
+  avgEpisodeLength: z.number().nonnegative(),
+  avgFinalReward: z.number(),
 });

@@ -226,3 +226,28 @@ export {
   // Schemas
   ExperienceBufferConfigSchema,
 } from './experience-buffer.js';
+
+// =============================================================================
+// Trajectory Converter
+// =============================================================================
+
+export {
+  convertTrajectory,
+  convertSingleStep,
+  isValidDistribution,
+  convertTrajectoryWithValidation,
+} from './trajectory-converter.js';
+
+// =============================================================================
+// Learning Integration
+// =============================================================================
+
+export type { LearningIntegrationConfig } from './learning-integration.js';
+
+export {
+  processOrchestrationForLearning,
+  supportsLearning,
+  createLearningHandler,
+  computeEpisodeReward,
+  DEFAULT_LEARNING_CONFIG,
+} from './learning-integration.js';

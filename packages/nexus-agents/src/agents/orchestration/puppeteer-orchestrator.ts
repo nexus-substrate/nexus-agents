@@ -40,6 +40,13 @@ import {
 } from './puppeteer-events.js';
 import { executeStep, StepExecutionError } from './puppeteer-step-execution.js';
 import { shouldTerminate, determineTerminationReason } from './puppeteer-termination.js';
+import { ExperienceBuffer } from './experience-buffer.js';
+import {
+  processOrchestrationForLearning,
+  supportsLearning,
+  DEFAULT_LEARNING_CONFIG,
+} from './learning-integration.js';
+import type { LearningIntegrationConfig } from './learning-integration.js';
 
 // =============================================================================
 // Error Types
@@ -87,6 +94,8 @@ export interface PuppeteerOrchestratorOptions {
   readonly eventBus?: IEventBus;
   /** Registry of available agents */
   readonly agents?: readonly IAgent[];
+  /** Learning system configuration (Issue #154) */
+  readonly learningConfig?: LearningIntegrationConfig;
 }
 
 // =============================================================================
@@ -103,6 +112,8 @@ export class PuppeteerOrchestrator {
   private readonly patternTracker: IPatternTracker;
   private readonly eventBus: IEventBus | undefined;
   private readonly agents: Map<string, IAgent>;
+  private readonly experienceBuffer: ExperienceBuffer | null;
+  private readonly learningConfig: LearningIntegrationConfig;
 
   private cancelled = false;
   private cancelReason: string | undefined = undefined;
@@ -114,6 +125,12 @@ export class PuppeteerOrchestrator {
     this.patternTracker = options.patternTracker ?? createPatternTracker();
     this.eventBus = options.eventBus ?? undefined;
     this.agents = new Map();
+
+    // Learning system initialization (Issue #154)
+    this.learningConfig = options.learningConfig ?? DEFAULT_LEARNING_CONFIG;
+    this.experienceBuffer = this.learningConfig.enableLearning
+      ? new ExperienceBuffer({ maxCapacity: this.learningConfig.bufferCapacity })
+      : null;
 
     if (options.agents) {
       for (const agent of options.agents) {
@@ -304,6 +321,12 @@ export class PuppeteerOrchestrator {
       : { hubAgents: [], cycles: [], graphDensity: 0, cyclicalityScore: 0 };
 
     const result = buildPuppeteerResult(trajectory, emergentPatterns, reason, sessionId, startTime);
+
+    // Trigger learning integration (Issue #154)
+    if (this.experienceBuffer !== null && supportsLearning(this.policyEngine)) {
+      void processOrchestrationForLearning(result, this.experienceBuffer, this.policyEngine);
+    }
+
     this.emitCompleted(sessionId, result);
     return ok(result);
   }
