@@ -341,3 +341,23 @@ export type {
   LatencyScore,
   LatencyTrackerStats,
 } from './latency-tracker.js';
+
+// Response Cache (Issue #358)
+export {
+  InMemoryResponseCache,
+  createResponseCache,
+  generateCacheKey,
+  withCache,
+  ResponseCacheConfigSchema,
+  DEFAULT_RESPONSE_CACHE_CONFIG,
+  ResponseCacheError,
+} from './response-cache.js';
+export type {
+  CacheEntry,
+  ResponseCacheConfig,
+  ResponseCacheStats,
+  IResponseCache,
+  CacheKeyOptions,
+  WithCacheOptions,
+  ResponseCacheErrorCode,
+} from './response-cache.js';
