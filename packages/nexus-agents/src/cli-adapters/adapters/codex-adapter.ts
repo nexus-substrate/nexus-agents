@@ -85,7 +85,8 @@ export class CodexCliAdapter implements ICliAdapter {
 
   constructor(options?: { model?: string; logger?: ILogger }) {
     this.logger = options?.logger ?? createLogger({ component: 'codex-adapter' });
-    this.model = options?.model ?? 'o3';
+    // Use CLI's default model (avoid specifying unsupported models)
+    this.model = options?.model ?? '';
   }
 
   /**
@@ -176,7 +177,7 @@ export class CodexCliAdapter implements ICliAdapter {
     return new Promise((resolve) => {
       const args = this.buildArgs(task);
       const childProcess = spawn('codex', args, {
-        shell: true,
+        // Note: shell: true removed - causes argument splitting issues
         timeout: options.timeoutMs,
       });
 
@@ -254,9 +255,11 @@ export class CodexCliAdapter implements ICliAdapter {
     // Add JSON output
     args.push('--json');
 
-    // Add model (always present due to default)
+    // Add model only if specified (use CLI default otherwise)
     const model = task.model ?? this.model;
-    args.push('-m', model);
+    if (model !== '') {
+      args.push('-m', model);
+    }
 
     // Add sandbox mode for safety (read-only by default)
     args.push('-s', 'read-only');
@@ -264,8 +267,8 @@ export class CodexCliAdapter implements ICliAdapter {
     // Skip git repo check for standalone prompts
     args.push('--skip-git-repo-check');
 
-    // Add the task content
-    args.push(JSON.stringify(task.content));
+    // Add the task content (no JSON.stringify needed without shell: true)
+    args.push(task.content);
 
     return args;
   }

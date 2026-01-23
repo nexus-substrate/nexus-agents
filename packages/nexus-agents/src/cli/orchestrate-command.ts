@@ -300,7 +300,9 @@ export async function orchestrateCommand(options: OrchestrateOptions): Promise<n
     console.log(`Available CLIs: ${availableClis.join(', ')}`);
   }
 
-  const adapters = createAllAdapters(logger);
+  // Use subprocess for Codex in puppeteer mode (MCP 'execute' tool not available)
+  const codexTransport = options.engine === 'puppeteer' ? 'subprocess' : 'mcp';
+  const adapters = createAllAdapters(logger, codexTransport);
   if (adapters.size === 0) {
     console.error('Failed to create CLI adapters.');
     return 1;
