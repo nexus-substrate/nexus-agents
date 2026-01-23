@@ -1,6 +1,6 @@
 # Nexus-Agents Entrypoints
 
-**Last Updated:** 2026-01-15 (ET)
+**Last Updated:** 2026-01-23 (ET)
 **Canonical Source:** This document is the single source of truth for all entrypoints.
 **Issue:** #210 (Epic #209)
 
@@ -40,9 +40,6 @@ Nexus-agents provides four interface categories:
 | `orchestrate`          | `<task>`        | Execute task standalone                    | orchestrator |
 | `system-review`        | -               | Run 5-phase system review                  | any          |
 | `vote`                 | `--proposal`    | Consensus voting with 5 agents             | any          |
-| `issue`                | `validate`      | Validate issue against templates           | any          |
-| `sprint`               | `plan`          | Generate sprint proposal from open issues  | any          |
-| `sprint`               | `list`          | List open issues with priority labels      | any          |
 | `research`             | `status`        | Show technique implementation status       | any          |
 | `research`             | `overlap`       | Find overlapping techniques                | any          |
 | `research`             | `add`           | Add new paper from arXiv                   | any          |
