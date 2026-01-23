@@ -10,6 +10,8 @@
 import {
   doctorCommand,
   configInitCommand,
+  configCommand,
+  isValidConfigAction,
   expertListCommand,
   workflowRunCommand,
   printWorkflowTemplates,
@@ -58,20 +60,80 @@ export function handleUnimplementedCommand(command: string): void {
 }
 
 /**
+ * Handles the config init subcommand.
+ */
+async function handleConfigInit(args: ParsedCliArgs): Promise<void> {
+  const configOpts = {
+    force: args.options.force,
+    ...(args.options.output !== undefined && { output: args.options.output }),
+  };
+  const exitCode = await configInitCommand(configOpts);
+  process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
+}
+
+/**
+ * Prints error for unknown config subcommand.
+ */
+function printUnknownConfigSubcommand(subcommand: string): void {
+  process.stdout.write(`Unknown config subcommand: '${subcommand}'\n`);
+  process.stdout.write('Valid subcommands: init, get, set, list, reset, export, import\n');
+  process.stdout.write('Run "nexus-agents config --help" for usage details.\n');
+}
+
+/**
+ * Builds config command options from parsed CLI args.
+ */
+function buildConfigOptions(
+  args: ParsedCliArgs,
+  action: 'get' | 'set' | 'list' | 'reset' | 'export' | 'import'
+): {
+  action: typeof action;
+  key?: string;
+  value?: string;
+  file?: string;
+  format: 'json' | 'yaml';
+  force: boolean;
+  verbose: boolean;
+} {
+  // Parse key/value or file from positionals based on action
+  const key = args.positionals[2];
+  const value = args.positionals[3];
+  const format: 'json' | 'yaml' = args.options.format === 'yaml' ? 'yaml' : 'json';
+
+  return {
+    action,
+    ...(key !== undefined && { key }),
+    ...(value !== undefined && { value }),
+    ...(key !== undefined && { file: key }), // For export/import, key position is file path
+    format,
+    force: args.options.force,
+    verbose: args.options.verbose,
+  };
+}
+
+/**
  * Handles the config command and its subcommands.
+ * Supports: init, get, set, list, reset, export, import
+ * (Source: Issue #360, Issue #378)
  */
 export async function handleConfigCommand(args: ParsedCliArgs): Promise<void> {
-  if (args.subcommand === 'init') {
-    const configOpts = {
-      force: args.options.force,
-      ...(args.options.output !== undefined && { output: args.options.output }),
-    };
-    const exitCode = await configInitCommand(configOpts);
-    process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
-  } else {
-    handleUnimplementedCommand(`config ${args.subcommand ?? ''}`);
-    process.exit(EXIT_CODES.SUCCESS);
+  const subcommand = args.subcommand ?? '';
+
+  // Handle init separately (uses different implementation)
+  if (subcommand === 'init') {
+    return handleConfigInit(args);
   }
+
+  // Validate subcommand is a valid config action
+  if (!isValidConfigAction(subcommand)) {
+    printUnknownConfigSubcommand(subcommand);
+    process.exit(EXIT_CODES.INVALID_ARGS);
+    return;
+  }
+
+  const configOpts = buildConfigOptions(args, subcommand);
+  const exitCode = await configCommand(configOpts);
+  process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
 }
 
 /**
