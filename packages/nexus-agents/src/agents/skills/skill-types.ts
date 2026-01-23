@@ -9,6 +9,8 @@
  * (Source: arXiv:2305.16291, Issue #150)
  */
 
+import type { SkillCapabilities, SkillRBAC, SkillProvenance } from './skill-security.js';
+
 /**
  * Skill complexity levels.
  */
@@ -65,6 +67,12 @@ export interface Skill {
   readonly updatedAt: Date;
   /** Version number for tracking changes */
   readonly version: number;
+  /** Security capabilities (optional, for controlled execution) */
+  readonly capabilities?: SkillCapabilities;
+  /** Role-based access control (optional, for permission enforcement) */
+  readonly rbac?: SkillRBAC;
+  /** Provenance tracking (optional, for audit trail) */
+  readonly provenance?: SkillProvenance;
 }
 
 /**

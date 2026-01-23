@@ -8,6 +8,47 @@
  * (Source: arXiv:2305.16291, Issue #150)
  */
 
+// Security Types and Utilities (Issue #374)
+export type {
+  SkillPermission,
+  SkillCapabilities,
+  SkillRBAC,
+  SkillProvenance,
+  SkillAttestation,
+  AuthorizationMethod,
+  SecurityErrorCode,
+  SkillSecurityError,
+} from './skill-security.js';
+
+export {
+  // Constants
+  SKILL_PERMISSIONS,
+  DEFAULT_PERMISSIONS,
+  MAX_EXECUTION_TIME_MS,
+  DEFAULT_EXECUTION_TIME_MS,
+  DEFAULT_CAPABILITIES,
+  DEFAULT_RBAC,
+  // Zod Schemas
+  SkillPermissionSchema,
+  AgentRoleSchema,
+  SkillCapabilitiesSchema,
+  SkillRBACSchema,
+  SkillProvenanceSchema,
+  AuthorizationMethodSchema,
+  SkillAttestationSchema,
+  SecurityErrorCodeSchema,
+  SkillSecurityErrorSchema,
+  // Helper Functions
+  canExecuteSkill,
+  createAttestation,
+  validateSkillProvenance,
+  checkPermissionBoundary,
+  createSecurityError,
+  validateCapabilities,
+  validateRBAC,
+  validateSkillExecution,
+} from './skill-security.js';
+
 // Types
 export type {
   Skill,
@@ -47,3 +88,28 @@ export {
   type SkillComposerConfig,
   type CompositionValidation,
 } from './skill-composer.js';
+
+// Dependency Graph (Issue #374 Phase 2)
+export type {
+  SkillDependency,
+  SkillDependencyType,
+  DependencyError,
+  DependencyErrorCode,
+  ISkillDependencyGraph,
+} from './skill-dependency-graph.js';
+
+export {
+  // Class
+  SkillDependencyGraph,
+  // Zod Schemas
+  SkillDependencyTypeSchema,
+  SkillDependencySchema,
+  DependencyErrorCodeSchema,
+  DependencyErrorSchema,
+  // Helper Functions
+  createDependencyError,
+  buildDependencyGraph,
+  resolveWithFallbacks,
+  findMissingDependencies,
+  createSkillDependencyGraph,
+} from './skill-dependency-graph.js';
