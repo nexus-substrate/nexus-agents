@@ -117,14 +117,24 @@ describe('CodexCliAdapter (Subprocess)', () => {
     it('should return correct model info for default model', () => {
       const info = adapter.getModelInfo();
 
-      expect(info.id).toBe('o3');
-      expect(info.name).toBe('O3');
+      // Default model is empty string (uses CLI default)
+      expect(info.id).toBe('');
+      expect(info.name).toBe('');
       expect(info.contextWindow).toBe(400_000);
       expect(info.maxOutput).toBe(100_000);
     });
 
-    it('should return correct cost info for o3', () => {
+    it('should return correct cost info for default (uses fallback costs)', () => {
       const info = adapter.getModelInfo();
+
+      // Empty model uses fallback costs (same as o3-mini)
+      expect(info.costPerMillionInput).toBe(1.1);
+      expect(info.costPerMillionOutput).toBe(4.4);
+    });
+
+    it('should return correct cost info for o3', () => {
+      const o3Adapter = new CodexCliAdapter({ model: 'o3' });
+      const info = o3Adapter.getModelInfo();
 
       expect(info.costPerMillionInput).toBe(10.0);
       expect(info.costPerMillionOutput).toBe(40.0);
@@ -175,14 +185,16 @@ describe('CodexCliAdapter (Subprocess)', () => {
 
       await adapter.execute(task);
 
+      // Note: -m flag omitted when model is empty (uses CLI default)
+      // Note: -s flag removed (causes npm permission issues)
       expect(spawn).toHaveBeenCalledWith(
         'codex',
-        expect.arrayContaining(['exec', '--json', '-m', 'o3', '-s', 'read-only']),
+        expect.arrayContaining(['exec', '--json', '--skip-git-repo-check']),
         expect.any(Object)
       );
     });
 
-    it('should include task content as JSON string', async () => {
+    it('should include task content directly (not JSON-stringified)', async () => {
       const mockProcess = createMockProcess(JSON.stringify({ message: 'Done!' }));
       vi.mocked(spawn).mockReturnValue(mockProcess);
 
@@ -194,7 +206,8 @@ describe('CodexCliAdapter (Subprocess)', () => {
 
       const calls = vi.mocked(spawn).mock.calls;
       const args = calls[0]?.[1] as string[];
-      expect(args).toContain(JSON.stringify('Complex "task" with quotes'));
+      // Task content is passed directly without JSON.stringify (shell: false)
+      expect(args).toContain('Complex "task" with quotes');
     });
 
     it('should always skip git repo check', async () => {
@@ -226,8 +239,22 @@ describe('CodexCliAdapter (Subprocess)', () => {
       expect(args).toContain('o3-mini');
     });
 
-    it('should always include sandbox mode for safety', async () => {
+    it('should include -m flag with model when model is specified', async () => {
+      const customAdapter = new CodexCliAdapter({ model: 'o3-mini' });
       const mockProcess = createMockProcess(JSON.stringify({ message: 'Safe!' }));
+      vi.mocked(spawn).mockReturnValue(mockProcess);
+
+      const task: CliTask = { content: 'Test' };
+      await customAdapter.execute(task);
+
+      const calls = vi.mocked(spawn).mock.calls;
+      const args = calls[0]?.[1] as string[];
+      expect(args).toContain('-m');
+      expect(args).toContain('o3-mini');
+    });
+
+    it('should omit -m flag when model is empty (uses CLI default)', async () => {
+      const mockProcess = createMockProcess(JSON.stringify({ message: 'Default!' }));
       vi.mocked(spawn).mockReturnValue(mockProcess);
 
       const task: CliTask = { content: 'Test' };
@@ -235,8 +262,8 @@ describe('CodexCliAdapter (Subprocess)', () => {
 
       const calls = vi.mocked(spawn).mock.calls;
       const args = calls[0]?.[1] as string[];
-      expect(args).toContain('-s');
-      expect(args).toContain('read-only');
+      // -m flag should not be present when model is empty
+      expect(args).not.toContain('-m');
     });
   });
 
