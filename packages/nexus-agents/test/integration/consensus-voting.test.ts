@@ -244,10 +244,12 @@ describe('Integration: Consensus Voting', () => {
 
     beforeEach(() => {
       weightedVoting = new WeightedVoting({
-        minWeight: 0.1,
-        maxByzantineFraction: 0.33,
-        initialWeight: 0.5,
-        quorumThreshold: 0.67,
+        config: {
+          minWeight: 0.1,
+          maxByzantineFraction: 0.33,
+          initialWeight: 0.5,
+          quorumThreshold: 0.67,
+        },
       });
     });
 

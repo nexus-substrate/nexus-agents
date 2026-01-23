@@ -8,10 +8,9 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { TechLead } from '../../src/agents/tech-lead.js';
+import { TechLead, type ExecutionPlan, type ExpertAssignment } from '../../src/agents/index.js';
 import { ExpertFactory } from '../../src/agents/experts/expert-factory.js';
 import type { Task, TaskContext } from '../../src/core/types/index.js';
-import type { ExecutionPlan, ExpertAssignment } from '../../src/agents/types.js';
 
 /**
  * Helper to assert ExecutionPlan type with proper structure validation.
@@ -31,7 +30,7 @@ function assertExecutionPlan(output: unknown): ExecutionPlan {
   ) {
     throw new Error('Output is not a valid ExecutionPlan');
   }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-return
   return plan as any;
 }
 
@@ -63,7 +62,7 @@ describe('Integration: Orchestration Flow', () => {
         id: 'test-simple-1',
         description: 'Fix typo in README file',
         context: {} as TaskContext,
-        constraints: { maxIterations: 5, maxDurationMs: 30000 },
+        constraints: { maxDuration: 30000 },
       };
 
       const result = await techLead.execute(task);
@@ -84,7 +83,7 @@ describe('Integration: Orchestration Flow', () => {
         description:
           'Implement a new user authentication system with OAuth2, password hashing, session management, and rate limiting',
         context: {} as TaskContext,
-        constraints: { maxIterations: 20, maxDurationMs: 60000 },
+        constraints: { maxDuration: 60000 },
       };
 
       const result = await techLead.execute(task);
@@ -104,7 +103,7 @@ describe('Integration: Orchestration Flow', () => {
         id: 'test-code-1',
         description: 'Implement a new caching layer for the database queries',
         context: {} as TaskContext,
-        constraints: { maxIterations: 10, maxDurationMs: 30000 },
+        constraints: { maxDuration: 30000 },
       };
 
       const result = await techLead.execute(codeTask);
@@ -122,7 +121,7 @@ describe('Integration: Orchestration Flow', () => {
         id: 'test-security-1',
         description: 'Audit the API endpoints for SQL injection vulnerabilities',
         context: {} as TaskContext,
-        constraints: { maxIterations: 10, maxDurationMs: 30000 },
+        constraints: { maxDuration: 30000 },
       };
 
       const result = await techLead.execute(securityTask);
@@ -141,7 +140,7 @@ describe('Integration: Orchestration Flow', () => {
         id: 'test-expert-code',
         description: 'Write a function to validate email addresses',
         context: {} as TaskContext,
-        constraints: { maxIterations: 10, maxDurationMs: 30000 },
+        constraints: { maxDuration: 30000 },
       };
 
       const result = await techLead.execute(task);
@@ -159,7 +158,7 @@ describe('Integration: Orchestration Flow', () => {
         id: 'test-expert-security',
         description: 'Review authentication code for security vulnerabilities',
         context: {} as TaskContext,
-        constraints: { maxIterations: 10, maxDurationMs: 30000 },
+        constraints: { maxDuration: 30000 },
       };
 
       const result = await techLead.execute(task);
@@ -180,7 +179,7 @@ describe('Integration: Orchestration Flow', () => {
         description:
           'Create comprehensive test suite with unit tests and integration tests for the user service',
         context: {} as TaskContext,
-        constraints: { maxIterations: 10, maxDurationMs: 30000 },
+        constraints: { maxDuration: 30000 },
       };
 
       const result = await techLead.execute(task);
@@ -192,7 +191,7 @@ describe('Integration: Orchestration Flow', () => {
         // Should have at least one assignment
         expect(assignments.length).toBeGreaterThan(0);
         // Check that testing expert is assigned (may also assign code expert for test implementation)
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+
         const expertRoles = assignments.map((a: ExpertAssignment) => a.expertRole);
         const hasRelevantExpert = expertRoles.some(
           (role) => role === 'testing_expert' || role === 'code_expert'
@@ -207,7 +206,7 @@ describe('Integration: Orchestration Flow', () => {
         description:
           'Implement secure payment processing with full test coverage and documentation',
         context: {} as TaskContext,
-        constraints: { maxIterations: 20, maxDurationMs: 60000 },
+        constraints: { maxDuration: 60000 },
       };
 
       const result = await techLead.execute(task);
@@ -216,7 +215,7 @@ describe('Integration: Orchestration Flow', () => {
       if (result.ok) {
         const plan = assertExecutionPlan(result.value.output);
         const assignments = getAssignments(plan);
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+
         const uniqueExperts = new Set(assignments.map((a: ExpertAssignment) => a.expertRole));
         expect(uniqueExperts.size).toBeGreaterThan(1);
       }
@@ -261,7 +260,7 @@ describe('Integration: Orchestration Flow', () => {
         id: 'test-plan-structure',
         description: 'Build a REST API with CRUD operations',
         context: {} as TaskContext,
-        constraints: { maxIterations: 15, maxDurationMs: 45000 },
+        constraints: { maxDuration: 45000 },
       };
 
       const result = await techLead.execute(task);
@@ -286,7 +285,7 @@ describe('Integration: Orchestration Flow', () => {
         id: 'test-parallel',
         description: 'Create user service, product service, and order service independently',
         context: {} as TaskContext,
-        constraints: { maxIterations: 20, maxDurationMs: 60000 },
+        constraints: { maxDuration: 60000 },
       };
 
       const result = await techLead.execute(task);
@@ -303,7 +302,7 @@ describe('Integration: Orchestration Flow', () => {
         id: 'test-workflow-conversion',
         description: 'Implement feature with tests and docs',
         context: {} as TaskContext,
-        constraints: { maxIterations: 15, maxDurationMs: 45000 },
+        constraints: { maxDuration: 45000 },
       };
 
       const result = await techLead.execute(task);
@@ -311,7 +310,7 @@ describe('Integration: Orchestration Flow', () => {
       expect(result.ok).toBe(true);
       if (result.ok) {
         const plan = assertExecutionPlan(result.value.output);
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+
         const workflow = plan.asWorkflowDefinition({
           name: 'test-workflow',
           version: '1.0.0',
@@ -330,7 +329,7 @@ describe('Integration: Orchestration Flow', () => {
         id: 'test-empty',
         description: '',
         context: {} as TaskContext,
-        constraints: { maxIterations: 5, maxDurationMs: 30000 },
+        constraints: { maxDuration: 30000 },
       };
 
       const result = await techLead.execute(task);
@@ -344,7 +343,7 @@ describe('Integration: Orchestration Flow', () => {
         id: 'test-long-desc',
         description: 'a'.repeat(10000),
         context: {} as TaskContext,
-        constraints: { maxIterations: 5, maxDurationMs: 30000 },
+        constraints: { maxDuration: 30000 },
       };
 
       const result = await techLead.execute(task);
@@ -358,7 +357,7 @@ describe('Integration: Orchestration Flow', () => {
         id: 'test-constraints',
         description: 'Complex multi-step task requiring many iterations',
         context: {} as TaskContext,
-        constraints: { maxIterations: 2, maxDurationMs: 30000 },
+        constraints: { maxDuration: 30000 },
       };
 
       const result = await techLead.execute(task);
@@ -379,7 +378,7 @@ describe('Integration: Orchestration Flow', () => {
         id: 'test-metadata',
         description: 'Simple code task',
         context: {} as TaskContext,
-        constraints: { maxIterations: 10, maxDurationMs: 30000 },
+        constraints: { maxDuration: 30000 },
       };
 
       const result = await techLead.execute(task);
@@ -399,7 +398,7 @@ describe('Integration: Orchestration Flow', () => {
         id: 'test-state',
         description: 'Quick task',
         context: {} as TaskContext,
-        constraints: { maxIterations: 5, maxDurationMs: 30000 },
+        constraints: { maxDuration: 30000 },
       };
 
       await techLead.execute(task);

@@ -10,16 +10,16 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import type { Task } from '../../src/core/types/agent.js';
 import {
-  TaskRouter,
   createTaskRouter,
-  ConfidenceRouter,
   createConfidenceRouter,
-  BudgetRouter,
   createBudgetRouter,
   CliCircuitBreaker,
   CircuitBreakerRegistry,
   analyzeTask,
   DEFAULT_CAPABILITIES,
+  type ITaskRouter,
+  type IConfidenceRouter,
+  type IBudgetRouter,
   type ICliAdapter,
   type CliName,
   type CliTask,
@@ -48,14 +48,12 @@ function createMockAdapter(
     name,
     transport: 'subprocess' as const,
     capabilities: { ...DEFAULT_CAPABILITIES[name], ...capabilities },
-    execute: vi
-      .fn()
-      .mockResolvedValue(
-        ok({
-          text: 'Mock response',
-          usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 },
-        })
-      ),
+    execute: vi.fn().mockResolvedValue(
+      ok({
+        text: 'Mock response',
+        usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 },
+      })
+    ),
     healthCheck: vi.fn().mockResolvedValue({
       healthy: true,
       version: '1.0.0',
@@ -95,7 +93,7 @@ describe('Integration: CLI Cascade', () => {
     let mockGemini: ICliAdapter;
     let mockCodex: ICliAdapter;
     let adapters: Map<CliName, ICliAdapter>;
-    let router: TaskRouter;
+    let router: ITaskRouter;
 
     beforeEach(() => {
       mockClaude = createMockAdapter('claude', {
@@ -206,7 +204,7 @@ describe('Integration: CLI Cascade', () => {
 
   describe('ConfidenceRouter - Cascade Decisions', () => {
     let adapters: Map<CliName, ICliAdapter>;
-    let router: ConfidenceRouter;
+    let router: IConfidenceRouter;
 
     beforeEach(() => {
       const mockClaude = createMockAdapter('claude', {
@@ -264,13 +262,23 @@ describe('Integration: CLI Cascade', () => {
     it('should determine whether to escalate', () => {
       const highConf = {
         score: 0.9,
-        factors: {} as Record<string, number>,
+        factors: {
+          lengthFactor: 1.0,
+          hedgingFactor: 1.0,
+          structureFactor: 1.0,
+          uncertaintyFactor: 1.0,
+        },
         shouldEscalate: false,
         reason: 'High confidence',
       };
       const lowConf = {
         score: 0.4,
-        factors: {} as Record<string, number>,
+        factors: {
+          lengthFactor: 0.5,
+          hedgingFactor: 0.3,
+          structureFactor: 0.4,
+          uncertaintyFactor: 0.4,
+        },
         shouldEscalate: true,
         reason: 'Low confidence',
       };
@@ -282,7 +290,7 @@ describe('Integration: CLI Cascade', () => {
 
   describe('BudgetRouter - Cost Constraints', () => {
     let adapters: Map<CliName, ICliAdapter>;
-    let router: BudgetRouter;
+    let router: IBudgetRouter;
 
     beforeEach(() => {
       const mockClaude = createMockAdapter('claude', {
@@ -308,7 +316,7 @@ describe('Integration: CLI Cascade', () => {
 
       router = createBudgetRouter(adapters, {
         sessionBudget: { tokenBudget: 100000, costBudgetUsd: 1.0 },
-        taskBudget: { maxTokens: 50000, maxCostUsd: 0.5 },
+        defaultConstraints: { maxTokens: 50000, maxCostUsd: 0.5 },
       });
     });
 
@@ -371,10 +379,13 @@ describe('Integration: CLI Cascade', () => {
     let breaker: CliCircuitBreaker;
 
     beforeEach(() => {
-      breaker = new CliCircuitBreaker('test-cli', {
+      breaker = new CliCircuitBreaker('claude', {
         failureThreshold: 3,
-        successThreshold: 2,
-        timeout: 1000,
+        halfOpenSuccessThreshold: 2,
+        resetTimeoutMs: 1000,
+        countTimeoutsAsFailures: true,
+        countAuthFailuresAsFailures: false,
+        halfOpenMaxRequests: 3,
       });
     });
 
@@ -463,8 +474,11 @@ describe('Integration: CLI Cascade', () => {
     beforeEach(() => {
       registry = new CircuitBreakerRegistry({
         failureThreshold: 3,
-        successThreshold: 2,
-        timeout: 1000,
+        halfOpenSuccessThreshold: 2,
+        resetTimeoutMs: 1000,
+        countTimeoutsAsFailures: true,
+        countAuthFailuresAsFailures: false,
+        halfOpenMaxRequests: 3,
       });
     });
 
