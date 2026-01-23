@@ -280,3 +280,52 @@ export {
   NEXUS_AGENTS_MCP_ENTRY,
   NEXUS_AGENTS_MCP_NPX_ENTRY,
 } from './setup-helpers.js';
+
+// Config Command (Issue #360 - CLI Config Management)
+export {
+  configCommand,
+  runConfigCommand,
+  printConfigResult,
+  handleGet,
+  handleSet,
+  handleList,
+  handleReset,
+  handleExport,
+  handleImport,
+  getConfigCommandHelp,
+  ConfigCommandError,
+} from './config-command.js';
+export type {
+  ConfigCommandOptions,
+  ConfigResult,
+  ConfigGetResult,
+  ConfigSetResult,
+  ConfigListResult,
+  ConfigResetResult,
+  ConfigExportResult,
+  ConfigImportResult,
+  ConfigListEntry,
+  ConfigErrorCode,
+  ParsedConfigKey,
+  ExportedConfigData,
+  ImportedConfigData,
+} from './config-command-types.js';
+export {
+  parseConfigKey,
+  parseValueFromString,
+  getValidCategories,
+  getValidKeys,
+  createBackup,
+  resolveFilePath,
+  getDefaultExportPath,
+  serializeConfig,
+  parseConfigFile,
+  formatSource,
+  formatValue,
+} from './config-command-helpers.js';
+export {
+  CONFIG_ACTIONS,
+  CONFIG_FORMATS,
+  isValidConfigAction,
+  isValidConfigFormat,
+} from './config-command-types.js';
