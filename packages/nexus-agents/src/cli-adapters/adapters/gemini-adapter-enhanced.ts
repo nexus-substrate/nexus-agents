@@ -248,8 +248,8 @@ export class EnhancedGeminiCliAdapter extends SubprocessCliAdapter {
       args.push('--resume', task.sessionId);
     }
 
-    // Add sandbox mode for safety
-    args.push('-s');
+    // Note: Sandbox mode (-s) removed - causes npm permission issues
+    // and "rebuilt dependencies successfully" contamination
 
     return { command: 'gemini', args };
   }
