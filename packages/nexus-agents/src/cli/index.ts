@@ -149,7 +149,7 @@ export {
 export type { SprintCommandOptions, SprintPlanResult, SprintProposal } from './sprint-types.js';
 export type { SprintIssue, Priority, GitHubIssueRaw } from './sprint-types.js';
 
-// Research Registry (Issue #237, Epic #225, Epic #261)
+// Research Registry (Issue #237, Epic #225, Epic #261, Issue #367)
 export {
   researchCommand,
   isValidResearchSubcommand,
@@ -173,11 +173,19 @@ export {
   calculateTagOverlap,
   findSharedTags,
   determineRelationship,
+  // Research Index (Issue #367)
+  researchIndexCommand,
+  parseResearchIndexArgs,
+  getResearchIndexHelp,
 } from './research-command.js';
 export type {
   ResearchSubcommand,
   ArxivFetchError,
   ArxivFetchErrorCode,
+  // Research Index types (Issue #367)
+  ResearchIndexOptions,
+  ResearchIndexResult,
+  ResearchIndexAction,
 } from './research-command.js';
 export type {
   ResearchAddOptions,

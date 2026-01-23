@@ -29,6 +29,16 @@ import {
   generateStatsJson,
   generateSummaryReport,
 } from '../indexer/research-index/index.js';
+import {
+  researchIndexCommand,
+  parseResearchIndexArgs,
+  getResearchIndexHelp,
+} from './research-index-command.js';
+export type {
+  ResearchIndexOptions,
+  ResearchIndexResult,
+  ResearchIndexAction,
+} from './research-index-command.js';
 
 // Re-export helpers for external use
 export {
@@ -233,14 +243,25 @@ async function handleCheckCommand(): Promise<string> {
 // =============================================================================
 
 /** Valid research subcommands. */
-export type ResearchSubcommand = 'status' | 'overlap' | 'add' | 'stats' | 'refresh' | 'check';
+export type ResearchSubcommand =
+  | 'status'
+  | 'overlap'
+  | 'add'
+  | 'stats'
+  | 'refresh'
+  | 'check'
+  | 'index';
 
 /** Validates that a subcommand is valid. */
 export function isValidResearchSubcommand(value: string | undefined): value is ResearchSubcommand {
   return (
-    value !== undefined && ['status', 'overlap', 'add', 'stats', 'refresh', 'check'].includes(value)
+    value !== undefined &&
+    ['status', 'overlap', 'add', 'stats', 'refresh', 'check', 'index'].includes(value)
   );
 }
+
+// Re-export index command helpers for CLI integration
+export { researchIndexCommand, parseResearchIndexArgs, getResearchIndexHelp };
 
 /**
  * Research command subcommand handler
@@ -263,7 +284,13 @@ export async function researchCommand(
       return handleRefreshCommand(options);
     case 'check':
       return handleCheckCommand();
+    case 'index': {
+      // Handle index subcommand with --generate, --validate, --check flags
+      const indexOptions = parseResearchIndexArgs(args);
+      const result = await researchIndexCommand(indexOptions);
+      return result.message;
+    }
     default:
-      return `Unknown subcommand: ${String(subcommand)}. Available: status, overlap, add, stats, refresh, check`;
+      return `Unknown subcommand: ${String(subcommand)}. Available: status, overlap, add, stats, refresh, check, index`;
   }
 }
