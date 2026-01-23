@@ -70,6 +70,10 @@ export interface ParsedCliArgs {
     model?: 'claude' | 'gemini' | 'codex';
     maxTokens?: number;
     maxCostUsd?: number;
+    engine?: 'router' | 'puppeteer';
+    learn?: boolean;
+    policyPath?: string;
+    maxSteps?: number;
     // System review command options
     createIssue: boolean;
     fix: boolean;
@@ -166,6 +170,21 @@ export const PARSE_ARGS_CONFIG = {
       type: 'string' as const,
     },
     'max-cost-usd': {
+      type: 'string' as const,
+    },
+    // Orchestrate engine options (Issue #386)
+    engine: {
+      type: 'string' as const,
+      default: 'router',
+    },
+    learn: {
+      type: 'boolean' as const,
+      default: false,
+    },
+    'policy-path': {
+      type: 'string' as const,
+    },
+    'max-steps': {
       type: 'string' as const,
     },
     // System review command options

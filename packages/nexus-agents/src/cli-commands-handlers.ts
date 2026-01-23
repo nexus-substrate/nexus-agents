@@ -231,8 +231,17 @@ export function handleRoutingAuditCommand(args: ParsedCliArgs): void {
 }
 
 /**
+ * Validates orchestrate engine option.
+ * (Source: Issue #386)
+ */
+function isValidOrchestrateEngine(value: string): value is 'router' | 'puppeteer' {
+  return value === 'router' || value === 'puppeteer';
+}
+
+/**
  * Handles the orchestrate command for standalone CLI execution.
  * (Source: Issue #183, 5-0 consensus vote)
+ * (Source: Issue #386 - PuppeteerOrchestrator integration)
  */
 export async function handleOrchestrateCommand(args: ParsedCliArgs): Promise<void> {
   // Get task from positionals (orchestrate <task>)
@@ -253,6 +262,13 @@ export async function handleOrchestrateCommand(args: ParsedCliArgs): Promise<voi
   const maxTokens = args.options.maxTokens;
   const maxCostUsd = args.options.maxCostUsd;
 
+  // Parse engine options (Issue #386)
+  const engine = args.options.engine;
+  const validEngine = engine !== undefined && isValidOrchestrateEngine(engine) ? engine : undefined;
+  const learn = args.options.learn;
+  const policyPath = args.options.policyPath;
+  const maxSteps = args.options.maxSteps;
+
   const exitCode = await orchestrateCommand({
     task,
     model: validModel,
@@ -261,6 +277,10 @@ export async function handleOrchestrateCommand(args: ParsedCliArgs): Promise<voi
     dryRun: args.options.dryRun,
     maxTokens,
     maxCostUsd,
+    engine: validEngine,
+    learn,
+    policyPath,
+    maxSteps,
   });
   process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
 }

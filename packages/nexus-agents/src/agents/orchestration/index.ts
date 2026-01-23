@@ -88,6 +88,14 @@ export { StateManager, createStateManager, DEFAULT_STATE_MANAGER_CONFIG } from '
 export { RuleBasedPolicy, createRuleBasedPolicy } from './rule-based-policy.js';
 export type { ScoringFeatures, AgentScores } from './rule-based-policy.js';
 
+// Learnable Policy (Issue #154, #386)
+export {
+  LearnablePolicy,
+  createLearnablePolicy,
+  isLearnablePolicyEngine,
+} from './learnable-policy.js';
+export type { LearnablePolicyConfig, LearnablePolicyStats } from './policy-types.js';
+
 // =============================================================================
 // Policy Feature Extraction
 // =============================================================================

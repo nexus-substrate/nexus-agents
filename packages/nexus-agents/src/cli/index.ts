@@ -66,8 +66,24 @@ export type { RoutingAuditOptions, RoutingAuditResult } from './routing-audit.js
 
 // Orchestrate Command (standalone CLI mode)
 // (Source: Issue #183, 5-0 consensus vote)
+// (Source: Issue #386 - PuppeteerOrchestrator integration)
 export { orchestrateCommand } from './orchestrate-command.js';
-export type { OrchestrateOptions } from './orchestrate-command.js';
+export type { OrchestrateOptions, OrchestrateEngine } from './orchestrate-command.js';
+
+// Orchestrate Puppeteer Helpers (Issue #386)
+export {
+  executeWithPuppeteer,
+  loadPolicyParameters,
+  savePolicyParameters,
+  createAgentsFromAdapters,
+  createPolicyEngine,
+  createOrchestrator,
+  buildPuppeteerResult,
+} from './orchestrate-puppeteer.js';
+export type { PuppeteerOrchestrationResult } from './orchestrate-puppeteer.js';
+
+// CLI Adapter Agent (Issue #386)
+export { CliAdapterAgent } from './cli-adapter-agent.js';
 
 // Session Persistence (Issue #190)
 export {

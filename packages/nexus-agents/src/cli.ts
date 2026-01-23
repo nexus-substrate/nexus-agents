@@ -66,6 +66,17 @@ function parseOrchestrateModel(
   return undefined;
 }
 
+/**
+ * Validates orchestrate engine option.
+ * (Source: Issue #386)
+ */
+function parseOrchestrateEngine(value: string | undefined): 'router' | 'puppeteer' | undefined {
+  if (value === 'router' || value === 'puppeteer') {
+    return value;
+  }
+  return undefined;
+}
+
 /** Parsed values from parseArgs. */
 interface ParsedValues {
   help: boolean;
@@ -84,6 +95,11 @@ interface ParsedValues {
   model?: string;
   'max-tokens'?: string;
   'max-cost-usd'?: string;
+  // Orchestrate engine options (Issue #386)
+  engine?: string;
+  learn: boolean;
+  'policy-path'?: string;
+  'max-steps'?: string;
   'create-issue': boolean;
   fix: boolean;
   proposal?: string;
@@ -110,10 +126,16 @@ function buildOrchestrateOptions(values: ParsedValues): Record<string, unknown> 
   const model = parseOrchestrateModel(values.model);
   const maxTokens = parseNumericOption(values['max-tokens']);
   const maxCostUsd = parseNumericOption(values['max-cost-usd']);
+  const engine = parseOrchestrateEngine(values.engine);
+  const maxSteps = parseNumericOption(values['max-steps']);
   return {
     ...(model !== undefined && { model }),
     ...(maxTokens !== undefined && { maxTokens }),
     ...(maxCostUsd !== undefined && { maxCostUsd }),
+    ...(engine !== undefined && { engine }),
+    ...(values.learn && { learn: true }),
+    ...(values['policy-path'] !== undefined && { policyPath: values['policy-path'] }),
+    ...(maxSteps !== undefined && { maxSteps }),
   };
 }
 

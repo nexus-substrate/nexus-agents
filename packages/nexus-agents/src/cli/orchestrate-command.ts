@@ -6,6 +6,7 @@
  *
  * @module cli/orchestrate-command
  * (Source: Issue #183, 5-0 consensus vote for CLI orchestrator mode)
+ * (Source: Issue #386, PuppeteerOrchestrator integration)
  */
 
 /* eslint-disable no-console */
@@ -22,6 +23,13 @@ import {
   type CliName,
   type CliTask,
 } from '../cli-adapters/index.js';
+import {
+  executeWithPuppeteer,
+  type PuppeteerOrchestrationResult,
+} from './orchestrate-puppeteer.js';
+
+/** Engine type for orchestration */
+export type OrchestrateEngine = 'router' | 'puppeteer';
 
 /** Orchestrate command options */
 export interface OrchestrateOptions {
@@ -39,6 +47,14 @@ export interface OrchestrateOptions {
   maxTokens?: number | undefined;
   /** Maximum cost budget in USD */
   maxCostUsd?: number | undefined;
+  /** Engine type: router (default) or puppeteer (#386) */
+  engine?: OrchestrateEngine | undefined;
+  /** Enable learnable policy (puppeteer engine only) */
+  learn?: boolean | undefined;
+  /** Path to load/save policy parameters (puppeteer engine only) */
+  policyPath?: string | undefined;
+  /** Maximum orchestration steps (puppeteer engine only) */
+  maxSteps?: number | undefined;
 }
 
 /** Orchestration result */
@@ -93,7 +109,6 @@ async function executeWithRouting(
 ): Promise<OrchestrationResult> {
   const startTime = Date.now();
 
-  // Create composite router with budget constraints
   const router = createCompositeRouter(adapters, {
     budgetConstraints: {
       maxTokens: options.maxTokens ?? 100000,
@@ -101,7 +116,6 @@ async function executeWithRouting(
     },
   });
 
-  // Route the task
   logger.info('Routing task...', { task: task.content.slice(0, 50) });
   const routingResult = await router.route(task);
 
@@ -116,7 +130,6 @@ async function executeWithRouting(
 
   const decision = routingResult.value;
 
-  // Dry run returns just the routing decision
   if (options.dryRun === true) {
     return {
       success: true,
@@ -173,7 +186,8 @@ async function executeWithModel(
 /**
  * Format result for JSON output.
  */
-function formatResultJson(result: OrchestrationResult): string {
+function formatResultJson(result: OrchestrationResult | PuppeteerOrchestrationResult): string {
+  const puppeteerResult = result as PuppeteerOrchestrationResult;
   return JSON.stringify(
     {
       success: result.success,
@@ -181,8 +195,8 @@ function formatResultJson(result: OrchestrationResult): string {
       durationMs: result.durationMs,
       ...(result.response !== undefined && {
         text: result.response.text,
-        usage: result.response.usage,
-        costUsd: result.response.costUsd,
+        usage: (result.response as CliResponse).usage,
+        costUsd: (result.response as CliResponse).costUsd,
       }),
       ...(result.routing !== undefined && {
         routing: {
@@ -190,6 +204,9 @@ function formatResultJson(result: OrchestrationResult): string {
           confidence: result.routing.confidence,
           reason: result.routing.reason,
         },
+      }),
+      ...(puppeteerResult.puppeteer !== undefined && {
+        puppeteer: puppeteerResult.puppeteer,
       }),
       ...(result.error !== undefined && { error: result.error }),
     },
@@ -199,10 +216,30 @@ function formatResultJson(result: OrchestrationResult): string {
 }
 
 /**
+ * Format puppeteer stats for text output.
+ */
+function formatPuppeteerStats(puppeteer: PuppeteerOrchestrationResult['puppeteer']): string[] {
+  if (puppeteer === undefined) return [];
+  const lines = [
+    '\n--- Orchestration Stats ---',
+    `Steps: ${String(puppeteer.totalSteps)}`,
+    `Trajectory: ${String(puppeteer.trajectoryLength)} actions`,
+  ];
+  if (puppeteer.policyStats !== undefined) {
+    const stats = puppeteer.policyStats;
+    lines.push(`Policy updates: ${String(stats.updateCount)}`);
+    lines.push(`Learning rate: ${stats.currentLearningRate.toFixed(4)}`);
+    lines.push(`Baseline: ${stats.baseline.toFixed(4)}`);
+  }
+  return lines;
+}
+
+/**
  * Format result for text output.
  */
-function formatResultText(result: OrchestrationResult): string {
+function formatResultText(result: OrchestrationResult | PuppeteerOrchestrationResult): string {
   const lines: string[] = [];
+  const puppeteerResult = result as PuppeteerOrchestrationResult;
 
   if (result.success) {
     lines.push(`Task completed using ${result.model} (${String(result.durationMs)}ms)`);
@@ -212,15 +249,17 @@ function formatResultText(result: OrchestrationResult): string {
       lines.push(`Confidence: ${(result.routing.confidence * 100).toFixed(1)}%`);
     }
 
+    lines.push(...formatPuppeteerStats(puppeteerResult.puppeteer));
+
     if (result.response !== undefined) {
       lines.push('\n--- Response ---');
       lines.push(result.response.text);
-
-      if (result.response.usage !== undefined) {
+      const cliResponse = result.response as CliResponse;
+      if (cliResponse.usage !== undefined) {
         lines.push('\n--- Usage ---');
-        lines.push(`Tokens: ${String(result.response.usage.totalTokens ?? 0)}`);
-        if (result.response.costUsd !== undefined) {
-          lines.push(`Cost: $${result.response.costUsd.toFixed(4)}`);
+        lines.push(`Tokens: ${String(cliResponse.usage.totalTokens ?? 0)}`);
+        if (cliResponse.costUsd !== undefined) {
+          lines.push(`Cost: $${cliResponse.costUsd.toFixed(4)}`);
         }
       }
     }
@@ -236,7 +275,10 @@ function formatResultText(result: OrchestrationResult): string {
 /**
  * Format result for output.
  */
-function formatResult(result: OrchestrationResult, format: 'text' | 'json'): string {
+function formatResult(
+  result: OrchestrationResult | PuppeteerOrchestrationResult,
+  format: 'text' | 'json'
+): string {
   return format === 'json' ? formatResultJson(result) : formatResultText(result);
 }
 
@@ -246,7 +288,6 @@ function formatResult(result: OrchestrationResult, format: 'text' | 'json'): str
 export async function orchestrateCommand(options: OrchestrateOptions): Promise<number> {
   const logger = createLogger({ component: 'orchestrate', verbose: options.verbose });
 
-  // Check available CLIs
   const availableClis = await getAvailableClis();
   if (availableClis.length === 0) {
     console.error('No CLI tools available.');
@@ -259,33 +300,32 @@ export async function orchestrateCommand(options: OrchestrateOptions): Promise<n
     console.log(`Available CLIs: ${availableClis.join(', ')}`);
   }
 
-  // Create adapters for available CLIs
   const adapters = createAllAdapters(logger);
   if (adapters.size === 0) {
     console.error('Failed to create CLI adapters.');
     return 1;
   }
 
-  // Build the task
-  const task: CliTask = {
-    content: options.task,
-    systemPrompt: 'You are a helpful assistant.',
-  };
+  let result: OrchestrationResult | PuppeteerOrchestrationResult;
 
-  // Execute task
-  let result: OrchestrationResult;
-
-  if (options.model !== undefined) {
-    result = await executeWithModel(task, options.model, adapters, logger);
+  if (options.engine === 'puppeteer') {
+    result = await executeWithPuppeteer(options.task, adapters, options, logger);
   } else {
-    result = await executeWithRouting(task, adapters, options, logger);
+    const task: CliTask = {
+      content: options.task,
+      systemPrompt: 'You are a helpful assistant.',
+    };
+
+    if (options.model !== undefined) {
+      result = await executeWithModel(task, options.model, adapters, logger);
+    } else {
+      result = await executeWithRouting(task, adapters, options, logger);
+    }
   }
 
-  // Output result
   const output = formatResult(result, options.format ?? 'text');
   console.log(output);
 
-  // Cleanup adapters
   for (const adapter of adapters.values()) {
     await adapter.dispose();
   }
