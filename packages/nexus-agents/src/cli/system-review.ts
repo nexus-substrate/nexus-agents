@@ -11,18 +11,38 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { safeExecSandboxed } from './sandbox-exec.js';
-import type {
-  SystemReviewOptions,
-  SystemReviewResult,
-  TechniqueStats,
-  DocFreshness,
-  IssueHealth,
-  SecurityAudit,
-  CodeQuality,
-  GhIssueItem,
-  AuditMetadata,
-  CoverageData,
+import {
+  SYSTEM_REVIEW_CONSTANTS,
+  type SystemReviewOptions,
+  type SystemReviewResult,
+  type TechniqueStats,
+  type DocFreshness,
+  type IssueHealth,
+  type SecurityAudit,
+  type CodeQuality,
+  type GhIssueItem,
+  type AuditMetadata,
+  type CoverageData,
 } from './system-review-types.js';
+
+const {
+  STALE_ISSUE_DAYS,
+  MS_PER_DAY,
+  COVERAGE_TARGET_PERCENT,
+  LOW_ISSUE_COUNT_THRESHOLD,
+  NOT_STARTED_TECHNIQUE_THRESHOLD,
+  HEALTH_SCORE_BASE,
+  HEALTH_SCORE_WARN_THRESHOLD,
+  HEALTH_SCORE_PASS_THRESHOLD,
+  DOC_STALE_PENALTY,
+  DOC_REVIEW_PENALTY,
+  SECURITY_HIGH_PENALTY,
+  SECURITY_MODERATE_PENALTY,
+  TYPECHECK_FAIL_PENALTY,
+  LINT_FAIL_PENALTY,
+  LOW_COVERAGE_PENALTY,
+  STALE_ISSUE_PENALTY,
+} = SYSTEM_REVIEW_CONSTANTS;
 import { analyzeFreshness } from '../indexer/freshness-analyzer.js';
 
 export type { SystemReviewOptions, SystemReviewResult } from './system-review-types.js';
@@ -128,9 +148,9 @@ function runPhase2(projectRoot: string): DocFreshness[] {
 function runPhase3(): IssueHealth {
   const openOutput = safeExec('gh issue list --state open --json number');
   const openCount = openOutput !== null ? parseGhIssueList(openOutput).length : 0;
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const staleCutoff = new Date(Date.now() - STALE_ISSUE_DAYS * MS_PER_DAY).toISOString();
   const staleOutput = safeExec(
-    `gh issue list --state open --json updatedAt --jq '[.[] | select(.updatedAt < "${thirtyDaysAgo}")] | length'`
+    `gh issue list --state open --json updatedAt --jq '[.[] | select(.updatedAt < "${staleCutoff}")] | length'`
   );
   const staleCount = staleOutput !== null ? parseInt(staleOutput, 10) : 0;
   const byLabel: Record<string, number> = {};
@@ -183,7 +203,7 @@ function getQualityItems(q: CodeQuality): string[] {
   const items: string[] = [];
   if (!q.typecheckPass) items.push('Fix TypeScript errors');
   if (!q.lintPass) items.push('Fix ESLint errors');
-  if (q.coveragePercent !== null && q.coveragePercent < 80)
+  if (q.coveragePercent !== null && q.coveragePercent < COVERAGE_TARGET_PERCENT)
     items.push(`Improve coverage (${q.coveragePercent.toFixed(1)}%)`);
   return items;
 }
@@ -192,7 +212,7 @@ function generateActionItems(
   r: Omit<SystemReviewResult, 'actionItems' | 'fixesApplied'>
 ): string[] {
   const items: string[] = [];
-  if (r.techniques.notStarted > 5)
+  if (r.techniques.notStarted > NOT_STARTED_TECHNIQUE_THRESHOLD)
     items.push(`Review ${String(r.techniques.notStarted)} not-started techniques`);
 
   // Enhanced doc staleness with source dependency info (Epic #261)
@@ -208,7 +228,8 @@ function generateActionItems(
   }
 
   if (r.issues.staleCount > 0) items.push(`Review ${String(r.issues.staleCount)} stale issues`);
-  if (r.issues.openCount < 5) items.push('Run Research phase (low issue count)');
+  if (r.issues.openCount < LOW_ISSUE_COUNT_THRESHOLD)
+    items.push('Run Research phase (low issue count)');
   if (r.security.high > 0)
     items.push(`Address ${String(r.security.high)} high-severity vulnerabilities`);
   items.push(...getQualityItems(r.quality));
@@ -283,20 +304,26 @@ function printPhase5(q: CodeQuality): void {
   writeLine(`  ${formatStatus(q.lintPass ? 'pass' : 'fail')} ESLint`);
   if (q.coveragePercent !== null)
     writeLine(
-      `  ${formatStatus(q.coveragePercent >= 80 ? 'pass' : 'warn')} Coverage: ${q.coveragePercent.toFixed(1)}%`
+      `  ${formatStatus(q.coveragePercent >= COVERAGE_TARGET_PERCENT ? 'pass' : 'warn')} Coverage: ${q.coveragePercent.toFixed(1)}%`
     );
   writeLine('');
 }
 
 function calculateHealthScore(r: SystemReviewResult): number {
-  let s = 100;
-  for (const d of r.docs) s -= d.status === 'stale' ? 5 : d.status === 'review' ? 2 : 0;
-  s -= r.security.high * 20 + r.security.moderate * 5;
-  if (!r.quality.typecheckPass) s -= 15;
-  if (!r.quality.lintPass) s -= 15;
-  if (r.quality.coveragePercent !== null && r.quality.coveragePercent < 80) s -= 10;
-  s -= r.issues.staleCount * 2;
-  return Math.max(0, Math.min(100, s));
+  let score = HEALTH_SCORE_BASE;
+  for (const d of r.docs) {
+    score -=
+      d.status === 'stale' ? DOC_STALE_PENALTY : d.status === 'review' ? DOC_REVIEW_PENALTY : 0;
+  }
+  score -=
+    r.security.high * SECURITY_HIGH_PENALTY + r.security.moderate * SECURITY_MODERATE_PENALTY;
+  if (!r.quality.typecheckPass) score -= TYPECHECK_FAIL_PENALTY;
+  if (!r.quality.lintPass) score -= LINT_FAIL_PENALTY;
+  if (r.quality.coveragePercent !== null && r.quality.coveragePercent < COVERAGE_TARGET_PERCENT) {
+    score -= LOW_COVERAGE_PENALTY;
+  }
+  score -= r.issues.staleCount * STALE_ISSUE_PENALTY;
+  return Math.max(0, Math.min(HEALTH_SCORE_BASE, score));
 }
 
 /** Print system review results. */
@@ -322,8 +349,14 @@ export function printSystemReviewResult(r: SystemReviewResult): void {
     writeLine('');
   }
   const hs = calculateHealthScore(r);
+  const scoreColor =
+    hs >= HEALTH_SCORE_PASS_THRESHOLD
+      ? colors.green
+      : hs >= HEALTH_SCORE_WARN_THRESHOLD
+        ? colors.yellow
+        : colors.red;
   writeLine(
-    `${colors.bold}Health Score: ${hs >= 80 ? colors.green : hs >= 60 ? colors.yellow : colors.red}${String(hs)}/100${colors.reset}\n`
+    `${colors.bold}Health Score: ${scoreColor}${String(hs)}/${String(HEALTH_SCORE_BASE)}${colors.reset}\n`
   );
 }
 
@@ -338,7 +371,7 @@ function createIssueBody(r: SystemReviewResult): string {
   const date = new Date().toISOString().split('T')[0] ?? 'unknown';
   const tz = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
   const s = String(calculateHealthScore(r));
-  return `## System Review: ${date}\n\n**Generated:** ${tz} ET\n**Health Score:** ${s}/100\n\n---\n\n### Phase 1: Registry\n\n| Status | Count |\n|--------|-------|\n| Implemented | ${String(r.techniques.implemented)} |\n| Planned | ${String(r.techniques.planned)} |\n| Not Started | ${String(r.techniques.notStarted)} |\n| Rejected | ${String(r.techniques.rejected)} |\n\n### Phase 2: Docs\n\n| Document | Days | Status |\n|----------|------|--------|\n${r.docs.map(formatDocRow).join('\n')}\n\n### Phase 3: Issues\n\n- Open: ${String(r.issues.openCount)}\n- Stale: ${String(r.issues.staleCount)}\n\n### Phase 4: Security\n\n- High: ${String(r.security.high)}\n- Moderate: ${String(r.security.moderate)}\n- Low: ${String(r.security.low)}\n\n### Phase 5: Quality\n\n- TypeScript: ${r.quality.typecheckPass ? '✅' : '❌'}\n- ESLint: ${r.quality.lintPass ? '✅' : '❌'}\n- Coverage: ${r.quality.coveragePercent !== null ? `${r.quality.coveragePercent.toFixed(1)}%` : 'Unknown'}\n\n---\n\n### Action Items\n\n${r.actionItems.length > 0 ? r.actionItems.map((i) => `- [ ] ${i}`).join('\n') : '_No action items_'}\n\n---\n\n_Generated by \`nexus-agents system-review\`_`;
+  return `## System Review: ${date}\n\n**Generated:** ${tz} ET\n**Health Score:** ${s}/${String(HEALTH_SCORE_BASE)}\n\n---\n\n### Phase 1: Registry\n\n| Status | Count |\n|--------|-------|\n| Implemented | ${String(r.techniques.implemented)} |\n| Planned | ${String(r.techniques.planned)} |\n| Not Started | ${String(r.techniques.notStarted)} |\n| Rejected | ${String(r.techniques.rejected)} |\n\n### Phase 2: Docs\n\n| Document | Days | Status |\n|----------|------|--------|\n${r.docs.map(formatDocRow).join('\n')}\n\n### Phase 3: Issues\n\n- Open: ${String(r.issues.openCount)}\n- Stale: ${String(r.issues.staleCount)}\n\n### Phase 4: Security\n\n- High: ${String(r.security.high)}\n- Moderate: ${String(r.security.moderate)}\n- Low: ${String(r.security.low)}\n\n### Phase 5: Quality\n\n- TypeScript: ${r.quality.typecheckPass ? '✅' : '❌'}\n- ESLint: ${r.quality.lintPass ? '✅' : '❌'}\n- Coverage: ${r.quality.coveragePercent !== null ? `${r.quality.coveragePercent.toFixed(1)}%` : 'Unknown'}\n\n---\n\n### Action Items\n\n${r.actionItems.length > 0 ? r.actionItems.map((i) => `- [ ] ${i}`).join('\n') : '_No action items_'}\n\n---\n\n_Generated by \`nexus-agents system-review\`_`;
 }
 
 function createIssue(result: SystemReviewResult): string | null {
@@ -383,5 +416,5 @@ export function systemReviewCommand(options: SystemReviewOptions = {}): number {
     );
     writeLine('');
   }
-  return calculateHealthScore(result) >= 60 ? 0 : 1;
+  return calculateHealthScore(result) >= HEALTH_SCORE_WARN_THRESHOLD ? 0 : 1;
 }

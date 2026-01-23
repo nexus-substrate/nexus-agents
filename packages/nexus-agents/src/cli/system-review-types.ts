@@ -7,6 +7,42 @@
  */
 
 /**
+ * System review constants.
+ * Extracted from magic numbers for maintainability (Issue #384).
+ */
+export const SYSTEM_REVIEW_CONSTANTS = {
+  /** Time thresholds */
+  STALE_ISSUE_DAYS: 30,
+  MS_PER_DAY: 24 * 60 * 60 * 1000,
+
+  /** Quality thresholds */
+  COVERAGE_TARGET_PERCENT: 80,
+  LOW_ISSUE_COUNT_THRESHOLD: 5,
+  NOT_STARTED_TECHNIQUE_THRESHOLD: 5,
+
+  /** Health score calculation */
+  HEALTH_SCORE_BASE: 100,
+  HEALTH_SCORE_WARN_THRESHOLD: 60,
+  HEALTH_SCORE_PASS_THRESHOLD: 80,
+
+  /** Doc staleness penalties */
+  DOC_STALE_PENALTY: 5,
+  DOC_REVIEW_PENALTY: 2,
+
+  /** Security severity penalties */
+  SECURITY_HIGH_PENALTY: 20,
+  SECURITY_MODERATE_PENALTY: 5,
+
+  /** Code quality penalties */
+  TYPECHECK_FAIL_PENALTY: 15,
+  LINT_FAIL_PENALTY: 15,
+  LOW_COVERAGE_PENALTY: 10,
+
+  /** Issue penalties */
+  STALE_ISSUE_PENALTY: 2,
+} as const;
+
+/**
  * Options for system-review command.
  */
 export interface SystemReviewOptions {
