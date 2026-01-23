@@ -217,11 +217,11 @@ Use different AI models through unified interfaces:
 
 nexus-agents integrates with external CLI tools for orchestration:
 
-| CLI            | Version | Models Available                | Auth  |
-| -------------- | ------- | ------------------------------- | ----- |
-| **Claude CLI** | 2.0.76  | sonnet, opus (aliases)          | OAuth |
-| **Gemini CLI** | 0.22.5  | Model router (auto-selection)   | OAuth |
-| **Codex CLI**  | 0.77.0  | codex-mini-latest, GPT-5 family | OAuth |
+| CLI            | Version | Models Available              | Auth  |
+| -------------- | ------- | ----------------------------- | ----- |
+| **Claude CLI** | 2.0.76  | sonnet, opus (aliases)        | OAuth |
+| **Gemini CLI** | 0.22.5  | Model router (auto-selection) | OAuth |
+| **Codex CLI**  | 0.77.0  | o3, o3-mini, o4-mini          | OAuth |
 
 Model selection uses semantic classification with tier escalation:
 

@@ -923,18 +923,22 @@ techniques:
     metrics:
       task_completion_improvement: '15-30%'
 
-    status: planned
+    status: implemented
     priority: P2
     complexity: high
 
     integration_files:
-      - 'packages/nexus-agents/src/agents/orchestration/evolving-orchestrator.ts'
+      - 'packages/nexus-agents/src/agents/orchestration/puppeteer-orchestrator.ts'
+      - 'packages/nexus-agents/src/agents/orchestration/puppeteer-types.ts'
+      - 'packages/nexus-agents/src/agents/orchestration/puppeteer-helpers.ts'
+      - 'packages/nexus-agents/src/agents/orchestration/puppeteer-events.ts'
+      - 'packages/nexus-agents/src/agents/orchestration/puppeteer-orchestrator.test.ts'
 
     implementation_issue: 335
     related_prs: []
 
     notes: |
-      Upgrade to existing orchestration with learned agent selection.
+      Phase 1 (rule-based puppeteer) complete. Learned policies pending rl-orchestrator.
       Builds on rl-orchestrator (#154) infrastructure when available.
 
     dependencies:
