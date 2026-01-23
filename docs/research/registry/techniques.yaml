@@ -1552,7 +1552,7 @@ techniques:
       reasoning_quality: 'Improved through diverse exploration'
       efficiency: 'Sparse activation reduces compute'
 
-    status: in-progress
+    status: implemented
     priority: P2
     complexity: high
 
@@ -1562,6 +1562,7 @@ techniques:
       - 'packages/nexus-agents/src/agents/reasoning/forest-tree-types.ts'
       - 'packages/nexus-agents/src/agents/reasoning/forest-config-types.ts'
       - 'packages/nexus-agents/src/agents/reasoning/forest-result-types.ts'
+      - 'packages/nexus-agents/src/agents/reasoning/forest-types.test.ts'
 
     implementation_issue: 331
     related_prs: []
@@ -1600,7 +1601,7 @@ techniques:
     metrics:
       coverage: 'Multi-dimensional safety evaluation'
 
-    status: in-progress
+    status: implemented
     priority: P2
     complexity: medium
 
@@ -1610,6 +1611,8 @@ techniques:
       - 'packages/nexus-agents/src/security/safety-bench/safety-schemas.ts'
       - 'packages/nexus-agents/src/security/safety-bench/safety-category-definitions.ts'
       - 'packages/nexus-agents/src/security/safety-bench/safety-category-definitions-2.ts'
+      - 'packages/nexus-agents/src/security/safety-bench/safety-categories.test.ts'
+      - 'packages/nexus-agents/src/security/safety-bench/index.ts'
 
     implementation_issue: 332
     related_prs: []
