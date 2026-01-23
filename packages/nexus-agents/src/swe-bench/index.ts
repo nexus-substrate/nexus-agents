@@ -223,3 +223,70 @@ export {
   createInitialProgress,
   getResultsFilePath,
 } from './harness-executor-helpers.js';
+
+// Evaluation harness implementation
+export {
+  EvaluationHarness,
+  createEvaluationHarness,
+  createValidatedHarness,
+  evaluatePredictions,
+} from './evaluation-harness.js';
+
+// Patch applicator
+export {
+  PatchApplicator,
+  createPatchApplicator,
+  validatePatch,
+  applyPatch,
+  canApplyPatch,
+} from './patch-applicator.js';
+
+export type {
+  IPatchApplicator,
+  PatchValidationResult,
+  PatchApplicationResult,
+  PatchApplicationOptions,
+  PatchFormat,
+  PatchErrorCode,
+} from './patch-applicator-types.js';
+
+export { DEFAULT_PATCH_OPTIONS, PatchApplicatorError } from './patch-applicator-types.js';
+
+// Test runner
+export { TestRunner, createTestRunner, runTests, detectTestFramework } from './test-runner.js';
+
+export type {
+  ITestRunner,
+  TestRunnerConfig,
+  TestSuiteResult,
+  FrameworkDetectionResult,
+  TestFramework,
+  TestRunnerErrorCode,
+} from './test-runner-types.js';
+
+export { DEFAULT_TEST_RUNNER_CONFIG, TestRunnerError } from './test-runner-types.js';
+
+// Test runner parser
+export {
+  parseTestResults,
+  parseJsonResults,
+  parseStdoutResults,
+  readJsonResults,
+} from './test-runner-parser.js';
+
+// Test runner Docker execution
+export { executeInDocker, buildDockerArgs } from './test-runner-docker.js';
+
+export type {
+  DockerExecutionState,
+  CancelledResultFactory,
+  ErrorHandler,
+} from './test-runner-docker.js';
+
+// Report generator
+export {
+  ReportGenerator,
+  createReportGenerator,
+  generateReport,
+  exportReport,
+} from './report-generator.js';
