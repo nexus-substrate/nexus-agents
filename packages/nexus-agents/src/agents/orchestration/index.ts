@@ -207,3 +207,22 @@ export {
   emitPuppeteerError,
   emitPuppeteerPatternDetected,
 } from './puppeteer-events.js';
+
+// =============================================================================
+// Experience Buffer
+// =============================================================================
+
+export type {
+  ExperienceBufferConfig,
+  Episode,
+  SampledBatch,
+  BufferStats,
+} from './experience-buffer.js';
+
+export {
+  ExperienceBuffer,
+  createExperienceBuffer,
+  DEFAULT_EXPERIENCE_BUFFER_CONFIG,
+  // Schemas
+  ExperienceBufferConfigSchema,
+} from './experience-buffer.js';
