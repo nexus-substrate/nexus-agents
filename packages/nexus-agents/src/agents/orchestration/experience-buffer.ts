@@ -337,21 +337,43 @@ export class ExperienceBuffer {
   }
 
   /**
-   * Samples steps uniformly at random.
+   * Samples steps uniformly at random using reservoir sampling (Algorithm R).
+   * Optimized for O(k) memory where k = batchSize, instead of O(n) for full array copy.
+   * @see Issue #402 - Performance optimization
    */
   private sampleUniformly(batchSize: number): SampledBatch {
-    const allStepsWithEpisode = this.flattenStepsWithEpisodeIds();
-    const sampled = this.randomSample(allStepsWithEpisode, batchSize);
+    // Use reservoir sampling to avoid full array materialization
+    const reservoir: Array<{ step: PolicyTrajectoryStep; episodeId: string }> = [];
+    let count = 0;
+
+    for (const episode of this.episodes) {
+      for (const step of episode.steps) {
+        count++;
+        if (reservoir.length < batchSize) {
+          // Fill reservoir until we have enough samples
+          reservoir.push({ step, episodeId: episode.id });
+        } else {
+          // Algorithm R: replace with probability k/n
+          const j = Math.floor(Math.random() * count);
+          if (j < batchSize) {
+            reservoir[j] = { step, episodeId: episode.id };
+          }
+        }
+      }
+    }
 
     return {
-      steps: sampled.map((s) => s.step),
-      episodeIds: sampled.map((s) => s.episodeId),
-      weights: sampled.map(() => 1.0),
+      steps: reservoir.map((s) => s.step),
+      episodeIds: reservoir.map((s) => s.episodeId),
+      weights: reservoir.map(() => 1.0),
     };
   }
 
   /**
    * Samples steps with priority based on absolute TD error (approximated by reward magnitude).
+   * Note: This method still uses full array flattening. For very large buffers,
+   * consider using weighted reservoir sampling (Efraimidis & Spirakis algorithm).
+   * @see Issue #402 - Future optimization opportunity
    */
   private sampleWithPriority(batchSize: number): SampledBatch {
     const allStepsWithEpisode = this.flattenStepsWithEpisodeIds();
@@ -398,24 +420,6 @@ export class ExperienceBuffer {
     for (const episode of this.episodes) {
       for (const step of episode.steps) {
         result.push({ step, episodeId: episode.id });
-      }
-    }
-
-    return result;
-  }
-
-  /**
-   * Randomly samples n items from array without replacement.
-   */
-  private randomSample<T>(array: T[], n: number): T[] {
-    const copy = [...array];
-    const result: T[] = [];
-
-    for (let i = 0; i < n && copy.length > 0; i++) {
-      const idx = Math.floor(Math.random() * copy.length);
-      const item = copy.splice(idx, 1)[0];
-      if (item !== undefined) {
-        result.push(item);
       }
     }
 
