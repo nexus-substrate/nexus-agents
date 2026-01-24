@@ -31,6 +31,11 @@ import {
   formatFreshnessTable,
   formatFreshnessJson,
 } from '../indexer/index.js';
+import {
+  validateLinks,
+  formatLinkValidationTable,
+  formatLinkValidationJson,
+} from './index-command-link-validator.js';
 
 // Re-export types and formatters
 export type {
@@ -318,13 +323,44 @@ async function freshnessCommand(options: IndexCommandOptions): Promise<IndexComm
  * Validates markdown links.
  * Part of Epic #261 - Automated Documentation System.
  */
-async function linksCommand(_options: IndexCommandOptions): Promise<IndexCommandResult> {
-  // Placeholder for link validation (Issue #263)
-  // TODO: Implement using markdown-link-check package
-  await Promise.resolve();
+async function linksCommand(options: IndexCommandOptions): Promise<IndexCommandResult> {
+  logger.info('Validating documentation links...');
+
+  const result = await validateLinks({
+    baseDir: 'docs',
+    checkExternal: true,
+  });
+
+  const { summary } = result;
+  const hasBrokenLinks = summary.brokenLinks > 0;
+
+  // Format output based on requested format
+  const output =
+    options.format === 'json'
+      ? formatLinkValidationJson(result)
+      : formatLinkValidationTable(result);
+
+  // Write to file if output path specified
+  if (options.output !== undefined) {
+    const outputDir = path.dirname(options.output);
+    await fs.mkdir(outputDir, { recursive: true });
+    await fs.writeFile(options.output, output, 'utf-8');
+    logger.info(`Wrote link validation report to ${options.output}`);
+  } else {
+    // Print to stdout
+    process.stdout.write(output + '\n');
+  }
+
   return {
-    success: true,
-    message: 'Link validation via CLI not yet implemented. Use CI workflow.',
+    success: !hasBrokenLinks,
+    message: hasBrokenLinks
+      ? `Link validation: ${String(summary.brokenLinks)} broken links found`
+      : `Link validation: ${String(summary.totalLinks)} links validated, all OK`,
+    data: {
+      totalFiles: summary.totalFiles,
+      totalLinks: summary.totalLinks,
+      brokenLinks: summary.brokenLinks,
+    },
   };
 }
 

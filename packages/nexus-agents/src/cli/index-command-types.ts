@@ -43,5 +43,9 @@ export interface IndexCommandResult {
       readonly extraFiles: readonly string[];
       readonly modifiedFiles: readonly string[];
     };
+    /** Link validation results. */
+    readonly totalFiles?: number;
+    readonly totalLinks?: number;
+    readonly brokenLinks?: number;
   };
 }

@@ -439,11 +439,14 @@ describe('index-command', () => {
   });
 
   describe('links subcommand', () => {
-    it('should return placeholder message', async () => {
+    it('should validate documentation links', async () => {
       const result = await indexCommand({ subcommand: 'links' });
 
-      expect(result.success).toBe(true);
-      expect(result.message).toContain('not yet implemented');
+      expect(result.success).toBeDefined();
+      expect(result.message).toMatch(/Link validation:/);
+      expect(result.data).toBeDefined();
+      expect(result.data?.totalFiles).toBeGreaterThanOrEqual(0);
+      expect(result.data?.totalLinks).toBeGreaterThanOrEqual(0);
     });
   });
 
