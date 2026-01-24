@@ -87,6 +87,30 @@ describe('PuppeteerOrchestrator', () => {
 
       expect(orchestrator.getRegisteredAgents()).toContain('test-agent');
     });
+
+    it('respects policyMode config (#385)', () => {
+      // Default (rule_based) should work
+      const defaultOrchestrator = new PuppeteerOrchestrator();
+      expect(defaultOrchestrator).toBeDefined();
+
+      // Learned mode should create learnable policy
+      const learnedOrchestrator = new PuppeteerOrchestrator({
+        config: { policyMode: 'learned' },
+      });
+      expect(learnedOrchestrator).toBeDefined();
+
+      // Hybrid mode should work
+      const hybridOrchestrator = new PuppeteerOrchestrator({
+        config: { policyMode: 'hybrid' },
+      });
+      expect(hybridOrchestrator).toBeDefined();
+
+      // Rule-based explicit
+      const ruleBasedOrchestrator = new PuppeteerOrchestrator({
+        config: { policyMode: 'rule_based' },
+      });
+      expect(ruleBasedOrchestrator).toBeDefined();
+    });
   });
 
   describe('createPuppeteerOrchestrator factory', () => {

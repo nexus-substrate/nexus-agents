@@ -30,6 +30,8 @@ import type { IStateManager } from './state-manager.js';
 import type { IPatternTracker } from './pattern-tracker.js';
 import { createStateManager } from './state-manager.js';
 import { createRuleBasedPolicy } from './rule-based-policy.js';
+import { createLearnablePolicy } from './learnable-policy.js';
+import type { PolicyMode } from './puppeteer-config-types.js';
 import { createPatternTracker } from './pattern-tracker.js';
 import { generateSessionId, buildPuppeteerResult } from './puppeteer-helpers.js';
 import {
@@ -99,6 +101,30 @@ export interface PuppeteerOrchestratorOptions {
 }
 
 // =============================================================================
+// Policy Selection Helper
+// =============================================================================
+
+/**
+ * Creates a policy engine based on the configured policy mode.
+ *
+ * @param policyMode - Policy selection strategy
+ * @returns Policy engine for the specified mode
+ */
+function createPolicyForMode(policyMode: PolicyMode): IPolicyEngine {
+  switch (policyMode) {
+    case 'learned':
+      return createLearnablePolicy();
+    case 'hybrid':
+      // Hybrid mode uses learnable policy with lower learning rate
+      // for more stable exploration/exploitation balance
+      return createLearnablePolicy({ learningRate: 0.005 });
+    case 'rule_based':
+    default:
+      return createRuleBasedPolicy();
+  }
+}
+
+// =============================================================================
 // Puppeteer Orchestrator
 // =============================================================================
 
@@ -120,7 +146,8 @@ export class PuppeteerOrchestrator {
 
   constructor(options: PuppeteerOrchestratorOptions = {}) {
     this.config = { ...DEFAULT_PUPPETEER_CONFIG, ...options.config };
-    this.policyEngine = options.policyEngine ?? createRuleBasedPolicy();
+    // Use explicitly provided policy engine, or create one based on policyMode (#385)
+    this.policyEngine = options.policyEngine ?? createPolicyForMode(this.config.policyMode);
     this.stateManager = options.stateManager ?? createStateManager();
     this.patternTracker = options.patternTracker ?? createPatternTracker();
     this.eventBus = options.eventBus ?? undefined;
