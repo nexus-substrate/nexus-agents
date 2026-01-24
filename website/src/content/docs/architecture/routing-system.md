@@ -386,6 +386,6 @@ routing:
 
 ## Next Steps
 
-- [Memory System](/architecture/memory-system) - Learn how routing memory enables learning
-- [Agent System](/architecture/agent-system) - See how agents use routing
-- [Consensus Protocols](/architecture/consensus-protocols) - Understand decision making
+- [Memory System](/nexus-agents/architecture/memory-system) - Learn how routing memory enables learning
+- [Agent System](/nexus-agents/architecture/agent-system) - See how agents use routing
+- [Consensus Protocols](/nexus-agents/architecture/consensus-protocols) - Understand decision making

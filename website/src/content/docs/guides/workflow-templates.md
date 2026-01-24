@@ -560,6 +560,6 @@ output:
 
 ## Next Steps
 
-- [CLI Commands](/guides/cli-usage) - Run workflows from command line
-- [Debugging & Observability](/guides/debugging-observability) - Debug workflow execution
-- [Agent Development](/development/agent-development) - Create custom experts
+- [CLI Commands](/nexus-agents/guides/cli-usage) - Run workflows from command line
+- [Debugging & Observability](/nexus-agents/guides/debugging-observability) - Debug workflow execution
+- [Agent Development](/nexus-agents/development/agent-development) - Create custom experts

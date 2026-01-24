@@ -407,6 +407,6 @@ nexus-agents workflow run my-workflow \
 
 ## Next Steps
 
-- [MCP Integration](/guides/mcp-integration) - Set up Claude Desktop integration
-- [Workflow Templates](/guides/workflow-templates) - Create custom workflows
-- [Debugging & Observability](/guides/debugging-observability) - Debug agent behavior
+- [MCP Integration](/nexus-agents/guides/mcp-integration) - Set up Claude Desktop integration
+- [Workflow Templates](/nexus-agents/guides/workflow-templates) - Create custom workflows
+- [Debugging & Observability](/nexus-agents/guides/debugging-observability) - Debug agent behavior

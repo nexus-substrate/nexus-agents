@@ -215,9 +215,9 @@ security:
 
 ## Next Steps
 
-- [Agent System](/architecture/agent-system) - Learn about the agent framework and expert system
-- [Consensus Protocols](/architecture/consensus-protocols) - Understand multi-agent decision making
-- [Routing System](/architecture/routing-system) - Explore intelligent model selection
-- [Memory System](/architecture/memory-system) - Dive into the 8-type memory architecture
-- [MCP Protocol](/architecture/mcp-protocol) - Configure Claude Desktop integration
-- [Security](/architecture/security) - Review security measures and sandboxing
+- [Agent System](/nexus-agents/architecture/agent-system) - Learn about the agent framework and expert system
+- [Consensus Protocols](/nexus-agents/architecture/consensus-protocols) - Understand multi-agent decision making
+- [Routing System](/nexus-agents/architecture/routing-system) - Explore intelligent model selection
+- [Memory System](/nexus-agents/architecture/memory-system) - Dive into the 8-type memory architecture
+- [MCP Protocol](/nexus-agents/architecture/mcp-protocol) - Configure Claude Desktop integration
+- [Security](/nexus-agents/architecture/security) - Review security measures and sandboxing

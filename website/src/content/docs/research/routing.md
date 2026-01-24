@@ -343,5 +343,5 @@ Output shows:
 
 ## Related Topics
 
-- [CLI Adapters](/architecture/cli-adapters) - External CLI integration
-- [Consensus](/research/consensus) - Decision protocols
+- [Routing System](/nexus-agents/architecture/routing-system) - Architecture overview
+- [Consensus](/nexus-agents/research/consensus) - Decision protocols

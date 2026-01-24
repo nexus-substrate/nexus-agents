@@ -234,5 +234,5 @@ const scores = scorer.getAdjustedScores();
 
 ## Related Topics
 
-- [Orchestration](/architecture/orchestration) - Agent coordination patterns that use consensus
-- [Memory Systems](/research/memory) - Context for consensus decisions
+- [Agent System](/nexus-agents/architecture/agent-system) - Agent coordination patterns that use consensus
+- [Memory Systems](/nexus-agents/research/memory) - Context for consensus decisions

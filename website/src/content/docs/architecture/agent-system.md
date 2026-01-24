@@ -278,6 +278,6 @@ class CustomAgent implements IAgent {
 
 ## Next Steps
 
-- [Consensus Protocols](/architecture/consensus-protocols) - Learn about multi-agent decision making
-- [Memory System](/architecture/memory-system) - Understand how agents persist knowledge
-- [Routing System](/architecture/routing-system) - See how tasks are routed to optimal models
+- [Consensus Protocols](/nexus-agents/architecture/consensus-protocols) - Learn about multi-agent decision making
+- [Memory System](/nexus-agents/architecture/memory-system) - Understand how agents persist knowledge
+- [Routing System](/nexus-agents/architecture/routing-system) - See how tasks are routed to optimal models

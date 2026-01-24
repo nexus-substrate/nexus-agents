@@ -341,5 +341,5 @@ The memory systems are composed together:
 
 ## Related Topics
 
-- [Context Management](/architecture/context) - How memory integrates with context
-- [Code Generation](/research/consensus) - Reflexion memory for code tasks
+- [Memory System](/nexus-agents/architecture/memory-system) - How memory integrates with context
+- [Consensus](/nexus-agents/research/consensus) - Reflexion for iterative improvement

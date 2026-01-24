@@ -580,6 +580,6 @@ function createContextAwareTool(contextManager: ContextManager): ITool {
 
 ## Next Steps
 
-- [Agent Development](/development/agent-development) - Create agents that use tools
-- [Memory Development](/development/memory-development) - Add persistence to tools
-- [MCP Integration](/guides/mcp-integration) - Configure MCP server
+- [Agent Development](/nexus-agents/development/agent-development) - Create agents that use tools
+- [Memory Development](/nexus-agents/development/memory-development) - Add persistence to tools
+- [MCP Integration](/nexus-agents/guides/mcp-integration) - Configure MCP server

@@ -3,28 +3,28 @@ title: Research Foundation
 description: Academic research papers and techniques implemented in Nexus Agents
 ---
 
-Nexus Agents is built on a foundation of peer-reviewed research from leading AI labs. We track 56 papers across 6 research topics and have implemented 25 of 27 extracted techniques.
+Nexus Agents is built on a foundation of peer-reviewed research from leading AI labs. We track 68 papers across 6 research topics and have implemented 25 of 37 extracted techniques.
 
 ## Research Statistics
 
 | Category               | Count |
 | ---------------------- | ----- |
-| Total Papers Reviewed  | 56    |
-| Techniques Extracted   | 27    |
+| Total Papers Reviewed  | 68    |
+| Techniques Extracted   | 37    |
 | Techniques Implemented | 25    |
-| Techniques Remaining   | 1     |
+| Techniques Remaining   | 11    |
 | Techniques Rejected    | 1     |
 
 ## Research Topics
 
-| Topic                            | Papers | Techniques | Focus Area                          |
-| -------------------------------- | ------ | ---------- | ----------------------------------- |
-| [Consensus](/research/consensus) | 6      | 5          | Multi-agent decision protocols      |
-| [Routing](/research/routing)     | 11     | 6          | Cost-efficient model routing        |
-| [Memory](/research/memory)       | 13     | 6          | Context and long-term memory        |
-| Code Generation                  | 16     | 6          | Self-improvement and skill learning |
-| Orchestration                    | 14     | 4          | Multi-agent coordination            |
-| CLI Tools                        | 0      | 0          | External CLI integration            |
+| Topic                                         | Papers | Techniques | Focus Area                          |
+| --------------------------------------------- | ------ | ---------- | ----------------------------------- |
+| [Consensus](/nexus-agents/research/consensus) | 6      | 5          | Multi-agent decision protocols      |
+| [Routing](/nexus-agents/research/routing)     | 11     | 6          | Cost-efficient model routing        |
+| [Memory](/nexus-agents/research/memory)       | 13     | 6          | Context and long-term memory        |
+| Code Generation                               | 16     | 6          | Self-improvement and skill learning |
+| Orchestration                                 | 14     | 4          | Multi-agent coordination            |
+| CLI Tools                                     | 0      | 0          | External CLI integration            |
 
 ## Implementation Coverage
 
@@ -101,13 +101,13 @@ All research is tracked in structured YAML files:
 
 ## Contributing Research
 
-See the [Contributing Guide](/research/contributing) for instructions on adding new papers and techniques to the registry.
+See the [Contributing Guide](/nexus-agents/research/contributing) for instructions on adding new papers and techniques to the registry.
 
 ## Topic Deep Dives
 
-- [Consensus Protocols](/research/consensus) - Aegean, CP-WBFT, MAR, Free-MAD
-- [Model Routing](/research/routing) - PILOT, TOPSIS, RouteLLM, SATER, ABC
-- [Memory Systems](/research/memory) - Mem0, MIRIX, MobiMem, A-MEM
+- [Consensus Protocols](/nexus-agents/research/consensus) - Aegean, CP-WBFT, MAR, Free-MAD
+- [Model Routing](/nexus-agents/research/routing) - PILOT, TOPSIS, RouteLLM, SATER, ABC
+- [Memory Systems](/nexus-agents/research/memory) - Mem0, MIRIX, MobiMem, A-MEM
 
 ## References
 

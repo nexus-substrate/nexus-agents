@@ -311,6 +311,6 @@ const weighted = new WeightedVoting({
 
 ## Next Steps
 
-- [Agent System](/architecture/agent-system) - Learn about the agents that participate in consensus
-- [Security](/architecture/security) - See how Byzantine detection protects the system
-- [Routing System](/architecture/routing-system) - Understand how routing decisions are made
+- [Agent System](/nexus-agents/architecture/agent-system) - Learn about the agents that participate in consensus
+- [Security](/nexus-agents/architecture/security) - See how Byzantine detection protects the system
+- [Routing System](/nexus-agents/architecture/routing-system) - Understand how routing decisions are made

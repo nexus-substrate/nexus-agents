@@ -596,6 +596,6 @@ class ContextAwareAgent implements IAgent {
 
 ## Next Steps
 
-- [Tool Development](/development/tool-development) - Create MCP tools for agents
-- [Memory Development](/development/memory-development) - Add memory to agents
-- [Debugging & Observability](/guides/debugging-observability) - Debug agent behavior
+- [Tool Development](/nexus-agents/development/tool-development) - Create MCP tools for agents
+- [Memory Development](/nexus-agents/development/memory-development) - Add memory to agents
+- [Debugging & Observability](/nexus-agents/guides/debugging-observability) - Debug agent behavior

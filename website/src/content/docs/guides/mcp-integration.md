@@ -401,6 +401,6 @@ await startStdioServer(server);
 
 ## Next Steps
 
-- [CLI Commands](/guides/cli-usage) - Use nexus-agents from the command line
-- [Workflow Templates](/guides/workflow-templates) - Create custom automation
-- [Agent Development](/development/agent-development) - Build custom agents
+- [CLI Commands](/nexus-agents/guides/cli-usage) - Use nexus-agents from the command line
+- [Workflow Templates](/nexus-agents/guides/workflow-templates) - Create custom automation
+- [Agent Development](/nexus-agents/development/agent-development) - Build custom agents

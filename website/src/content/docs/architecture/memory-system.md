@@ -342,6 +342,6 @@ memory:
 
 ## Next Steps
 
-- [Agent System](/architecture/agent-system) - See how agents use memory
-- [Routing System](/architecture/routing-system) - Learn about routing memory integration
-- [Security](/architecture/security) - Understand memory isolation
+- [Agent System](/nexus-agents/architecture/agent-system) - See how agents use memory
+- [Routing System](/nexus-agents/architecture/routing-system) - Learn about routing memory integration
+- [Security](/nexus-agents/architecture/security) - Understand memory isolation

@@ -734,6 +734,6 @@ describe('Memory Integration', () => {
 
 ## Next Steps
 
-- [Agent Development](/development/agent-development) - Create agents that use memory
-- [Tool Development](/development/tool-development) - Build tools with memory access
-- [Architecture Overview](/reference/architecture) - System design details
+- [Agent Development](/nexus-agents/development/agent-development) - Create agents that use memory
+- [Tool Development](/nexus-agents/development/tool-development) - Build tools with memory access
+- [Architecture Overview](/nexus-agents/architecture/overview) - System design details

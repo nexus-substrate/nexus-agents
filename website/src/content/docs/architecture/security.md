@@ -338,6 +338,6 @@ pnpm test src/security/sandbox-pentest.test.ts
 
 ## Next Steps
 
-- [Consensus Protocols](/architecture/consensus-protocols) - Learn about Byzantine detection in voting
-- [Routing System](/architecture/routing-system) - See budget limits and circuit breakers
-- [MCP Protocol](/architecture/mcp-protocol) - Understand MCP tool security
+- [Consensus Protocols](/nexus-agents/architecture/consensus-protocols) - Learn about Byzantine detection in voting
+- [Routing System](/nexus-agents/architecture/routing-system) - See budget limits and circuit breakers
+- [MCP Protocol](/nexus-agents/architecture/mcp-protocol) - Understand MCP tool security

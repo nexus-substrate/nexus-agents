@@ -362,6 +362,6 @@ mcp:
 
 ## Next Steps
 
-- [Agent System](/architecture/agent-system) - Learn about the agents orchestrated via MCP
-- [Security](/architecture/security) - Understand MCP security considerations
-- [Routing System](/architecture/routing-system) - See how tool calls are routed
+- [Agent System](/nexus-agents/architecture/agent-system) - Learn about the agents orchestrated via MCP
+- [Security](/nexus-agents/architecture/security) - Understand MCP security considerations
+- [Routing System](/nexus-agents/architecture/routing-system) - See how tool calls are routed

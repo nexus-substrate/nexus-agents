@@ -442,6 +442,6 @@ function createAdapter(config: AdapterConfig): Result<IModelAdapter, ConfigError
 
 ## Next Steps
 
-- [Agent Development](/development/agent-development) - Create custom agents
-- [Tool Development](/development/tool-development) - Build MCP tools
-- [Memory Development](/development/memory-development) - Implement memory backends
+- [Agent Development](/nexus-agents/development/agent-development) - Create custom agents
+- [Tool Development](/nexus-agents/development/tool-development) - Build MCP tools
+- [Memory Development](/nexus-agents/development/memory-development) - Implement memory backends

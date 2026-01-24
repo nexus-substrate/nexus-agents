@@ -531,6 +531,6 @@ console.log('Slow interactions:', slowEdges);
 
 ## Next Steps
 
-- [CLI Commands](/guides/cli-usage) - Use debugging commands
-- [Agent Development](/development/agent-development) - Build observable agents
-- [Architecture Overview](/reference/architecture) - System design details
+- [CLI Commands](/nexus-agents/guides/cli-usage) - Use debugging commands
+- [Agent Development](/nexus-agents/development/agent-development) - Build observable agents
+- [Architecture Overview](/nexus-agents/architecture/overview) - System design details
