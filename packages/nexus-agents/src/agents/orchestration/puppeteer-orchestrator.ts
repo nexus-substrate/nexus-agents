@@ -144,6 +144,10 @@ export class PuppeteerOrchestrator {
   private cancelled = false;
   private cancelReason: string | undefined = undefined;
 
+  // AbortSignal cleanup state (Issue #401 - prevent listener leaks)
+  private abortSignal: AbortSignal | undefined = undefined;
+  private abortHandler: (() => void) | undefined = undefined;
+
   constructor(options: PuppeteerOrchestratorOptions = {}) {
     this.config = { ...DEFAULT_PUPPETEER_CONFIG, ...options.config };
     // Use explicitly provided policy engine, or create one based on policyMode (#385)
@@ -237,14 +241,32 @@ export class PuppeteerOrchestrator {
   private resetState(): void {
     this.cancelled = false;
     this.cancelReason = undefined;
+    // Clean up any lingering abort handler from previous execution
+    this.cleanupAbortSignal();
   }
 
   private setupAbortSignal(signal: AbortSignal | undefined): void {
     if (signal) {
-      signal.addEventListener('abort', () => {
+      // Store references for cleanup (Issue #401)
+      this.abortSignal = signal;
+      this.abortHandler = () => {
         this.cancel('AbortSignal triggered');
-      });
+      };
+      signal.addEventListener('abort', this.abortHandler);
     }
+  }
+
+  /**
+   * Clean up abort signal listener to prevent memory leaks.
+   * Called after execution completes (success or error).
+   * @see Issue #401
+   */
+  private cleanupAbortSignal(): void {
+    if (this.abortSignal && this.abortHandler) {
+      this.abortSignal.removeEventListener('abort', this.abortHandler);
+    }
+    this.abortSignal = undefined;
+    this.abortHandler = undefined;
   }
 
   private setupAgents(
@@ -355,6 +377,10 @@ export class PuppeteerOrchestrator {
     }
 
     this.emitCompleted(sessionId, result);
+
+    // Clean up abort signal listener (Issue #401)
+    this.cleanupAbortSignal();
+
     return ok(result);
   }
 
@@ -380,6 +406,10 @@ export class PuppeteerOrchestrator {
       : { hubAgents: [], cycles: [], graphDensity: 0, cyclicalityScore: 0 };
 
     const result = buildPuppeteerResult(trajectory, emergentPatterns, reason, sessionId, startTime);
+
+    // Clean up abort signal listener (Issue #401)
+    this.cleanupAbortSignal();
+
     return ok(result);
   }
 

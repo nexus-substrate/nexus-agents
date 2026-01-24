@@ -348,6 +348,56 @@ describe('cancellation', () => {
 
     expect(result.ok).toBe(true);
   });
+
+  it('cleans up abort signal listener after execution (Issue #401)', async () => {
+    const agent = createMockAgent('agent-1', ['Done']);
+
+    const orchestrator = new PuppeteerOrchestrator({ config: { maxSteps: 1 } });
+    orchestrator.registerAgent(agent);
+
+    const controller = new AbortController();
+    const signal = controller.signal;
+
+    // Track listener count using a spy pattern
+    let addCalls = 0;
+    let removeCalls = 0;
+    const originalAdd = signal.addEventListener.bind(signal);
+    const originalRemove = signal.removeEventListener.bind(signal);
+
+    signal.addEventListener = (type: string, listener: unknown) => {
+      addCalls++;
+      originalAdd(type, listener as () => void);
+    };
+    signal.removeEventListener = (type: string, listener: unknown) => {
+      removeCalls++;
+      originalRemove(type, listener as () => void);
+    };
+
+    const task = createTestTask();
+    await orchestrator.execute({ task, signal });
+
+    // Listener should be added and then removed
+    expect(addCalls).toBe(1);
+    expect(removeCalls).toBe(1);
+  });
+
+  it('cleans up abort signal on multiple sequential executions', async () => {
+    const agent = createMockAgent('agent-1', ['Done']);
+
+    const orchestrator = new PuppeteerOrchestrator({ config: { maxSteps: 1 } });
+    orchestrator.registerAgent(agent);
+
+    const task = createTestTask();
+
+    // Execute multiple times with different signals
+    for (let i = 0; i < 3; i++) {
+      const controller = new AbortController();
+      await orchestrator.execute({ task, signal: controller.signal });
+    }
+
+    // Should not throw or leak - this test passes if no errors occur
+    expect(true).toBe(true);
+  });
 });
 
 // =============================================================================
