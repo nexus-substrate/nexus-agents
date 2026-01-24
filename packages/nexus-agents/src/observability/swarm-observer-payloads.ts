@@ -8,7 +8,7 @@
  * (Source: Alignment Roadmap Phase 1, Issue #158)
  */
 
-import type { AgentId, AgentState, TaskId } from './swarm-observer-types.js';
+import type { AgentId, AgentState, TaskId } from './swarm-observer-core-types.js';
 
 /**
  * Discriminated union of event payloads.

@@ -9,7 +9,7 @@
  */
 
 import { z } from 'zod';
-import type { SwarmObserverConfig } from './swarm-observer-types.js';
+import type { SwarmObserverConfig } from './swarm-observer-core-types.js';
 
 /**
  * Default configuration for SwarmObserver.

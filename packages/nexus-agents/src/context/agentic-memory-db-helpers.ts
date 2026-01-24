@@ -16,7 +16,7 @@ import type {
   AgenticMemoryEntry,
 } from './agentic-memory-types.js';
 import { memoryRowToEntry } from './adaptive-memory-helpers.js';
-import { extractAttributes } from './agentic-memory-helpers.js';
+import { extractAttributes } from './agentic-memory-extraction.js';
 
 // ============================================================================
 // Database Helpers

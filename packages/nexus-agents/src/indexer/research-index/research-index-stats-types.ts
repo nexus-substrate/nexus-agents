@@ -12,7 +12,7 @@ import type {
   ResearchPaper,
   ResearchTechnique,
   ResearchSource,
-} from './research-index-types.js';
+} from './research-index-base-types.js';
 
 // ============================================================================
 // Statistics Types

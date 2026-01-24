@@ -10,7 +10,7 @@
 
 import type { Hazard, ToolDefinition } from './stpa-types.js';
 import { HazardCategory, HazardSeverity, HazardLikelihood } from './stpa-types.js';
-import { generateId } from './stpa-helpers.js';
+import { generateId } from './stpa-id-generator.js';
 
 // =============================================================================
 // Description Analysis

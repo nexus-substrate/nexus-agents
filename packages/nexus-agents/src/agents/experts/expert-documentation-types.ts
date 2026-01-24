@@ -5,7 +5,7 @@
  * Extracted from expert-types.ts to maintain file size limits.
  */
 
-import type { ExpertOutput } from './expert-types.js';
+import type { ExpertOutput } from './expert-base-types.js';
 
 /**
  * Documentation result from DocumentationExpert.

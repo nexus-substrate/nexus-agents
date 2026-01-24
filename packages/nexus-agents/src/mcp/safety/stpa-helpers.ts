@@ -48,13 +48,8 @@ export const LIKELIHOOD_WEIGHTS: Record<HazardLikelihood, number> = {
 // ID Generation
 // =============================================================================
 
-/**
- * Generates a unique ID for hazards, UCAs, and constraints.
- */
-export function generateId(prefix: string, toolName: string, index: number): string {
-  const sanitized = toolName.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase();
-  return `${prefix}-${sanitized}-${String(index).padStart(3, '0')}`;
-}
+// Re-export generateId from dedicated module
+export { generateId } from './stpa-id-generator.js';
 
 // =============================================================================
 // Risk Calculation

@@ -16,7 +16,32 @@ export {
   AgentEventSchema,
 } from './swarm-observer-schemas.js';
 
-// Re-export event payloads from helper file for backward compatibility
+// Import core types for use in interfaces
+import type {
+  AgentId,
+  TaskId,
+  TraceId,
+  SpanId,
+  EventType,
+  InteractionOutcome,
+} from './swarm-observer-core-types.js';
+
+// Re-export core types for backward compatibility
+export type {
+  AgentId,
+  TaskId,
+  TraceId,
+  SpanId,
+  EventType,
+  AgentState,
+  InteractionOutcome,
+  SwarmObserverConfig,
+} from './swarm-observer-core-types.js';
+
+// Import event payloads for use in interfaces
+import type { EventPayload } from './swarm-observer-payloads.js';
+
+// Re-export event payloads for backward compatibility
 export type {
   EventPayload,
   StateChangePayload,
@@ -26,53 +51,6 @@ export type {
   TaskPayload,
   ErrorPayload,
 } from './swarm-observer-payloads.js';
-
-/**
- * Unique identifier for agents in the swarm.
- */
-export type AgentId = string;
-
-/**
- * Unique identifier for tasks.
- */
-export type TaskId = string;
-
-/**
- * OpenTelemetry-compatible trace identifier.
- * Format: 32-character hex string (128-bit).
- */
-export type TraceId = string;
-
-/**
- * OpenTelemetry-compatible span identifier.
- * Format: 16-character hex string (64-bit).
- */
-export type SpanId = string;
-
-/**
- * Types of events the observer can track.
- */
-export type EventType =
-  | 'state_change'
-  | 'message_sent'
-  | 'message_received'
-  | 'tool_invoked'
-  | 'tool_completed'
-  | 'memory_read'
-  | 'memory_write'
-  | 'task_started'
-  | 'task_completed'
-  | 'error';
-
-/**
- * Agent state for tracking state transitions.
- */
-export type AgentState = 'idle' | 'thinking' | 'executing' | 'waiting' | 'error';
-
-/**
- * Outcome of an interaction.
- */
-export type InteractionOutcome = 'success' | 'failure' | 'timeout' | 'pending';
 
 /**
  * Core event emitted by agents for observation.
@@ -97,9 +75,6 @@ export interface AgentEvent {
   /** Duration in milliseconds (for completed events) */
   readonly durationMs?: number;
 }
-
-// Import EventPayload for use in AgentEvent interface
-import type { EventPayload } from './swarm-observer-payloads.js';
 
 /**
  * Edge in the interaction graph representing a message/interaction.
@@ -215,24 +190,6 @@ export interface SwarmHealthMetrics {
   readonly clusters: AgentCluster[];
   /** Timestamp of metrics calculation */
   readonly calculatedAt: string;
-}
-
-/**
- * Configuration for the SwarmObserver.
- */
-export interface SwarmObserverConfig {
-  /** Maximum events to keep in memory */
-  readonly maxEvents: number;
-  /** Time window for metrics calculation (ms) */
-  readonly metricsWindowMs: number;
-  /** Enable detailed payload logging */
-  readonly logPayloads: boolean;
-  /** Bottleneck threshold (queued messages) */
-  readonly bottleneckThreshold: number;
-  /** Minimum cluster size to detect */
-  readonly minClusterSize: number;
-  /** Cohesion threshold for cluster detection */
-  readonly cohesionThreshold: number;
 }
 
 /**

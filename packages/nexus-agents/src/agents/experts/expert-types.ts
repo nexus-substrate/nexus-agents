@@ -8,6 +8,10 @@
 import { z } from 'zod';
 import type { AgentCapability, AgentRole } from '../../core/index.js';
 
+// Re-export base types for backward compatibility
+export type { ExpertOptions, ExpertOutput } from './expert-base-types.js';
+import type { ExpertOutput } from './expert-base-types.js';
+
 // Re-export documentation types for backward compatibility
 export type {
   DocumentationResult,
@@ -21,38 +25,6 @@ export type {
  * Expert domain categories.
  */
 export type ExpertDomain = 'code' | 'security' | 'architecture' | 'testing' | 'documentation';
-
-/**
- * Expert-specific configuration options.
- */
-export interface ExpertOptions {
-  /** Custom system prompt override */
-  systemPromptOverride?: string;
-  /** Temperature for completions (domain-specific default if not set) */
-  temperature?: number;
-  /** Maximum tokens for responses */
-  maxTokens?: number;
-  /** Enable domain-specific heuristics */
-  enableHeuristics?: boolean;
-  /** Custom capability extensions */
-  additionalCapabilities?: AgentCapability[];
-}
-
-/**
- * Output format for expert task results.
- */
-export interface ExpertOutput {
-  /** Primary result content */
-  content: string;
-  /** Structured data if applicable */
-  structuredData?: Record<string, unknown> | undefined;
-  /** Recommendations or suggestions */
-  recommendations?: string[] | undefined;
-  /** Warnings or issues found */
-  warnings?: string[] | undefined;
-  /** Confidence score (0-1) */
-  confidence: number;
-}
 
 /**
  * Code analysis result from CodeExpert.
