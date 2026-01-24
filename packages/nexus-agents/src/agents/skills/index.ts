@@ -140,4 +140,5 @@ export {
   // Integration Hooks
   initializeAgentSkills,
   getSkillsForTask,
+  getSkillSetForTask,
 } from './skill-loader.js';

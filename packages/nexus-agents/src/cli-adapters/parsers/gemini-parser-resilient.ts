@@ -13,30 +13,23 @@
 
 import type { ICliResponseParser, TokenUsage } from '../types.js';
 import type { GeminiCliResponse } from './gemini-parser.js';
+import type { ResilientParseResult, GeminiErrorInfo } from './gemini-parser-resilient-types.js';
+import {
+  asRecord,
+  extractStringField,
+  extractUsageFromRecord,
+  extractSessionIdFromText,
+  extractTextFromMarkdown,
+  extractErrorMessage,
+  isLikelyErrorOutput,
+} from './gemini-parser-resilient-helpers.js';
 
-/** Parse result with metadata about which strategy succeeded. */
-export interface ResilientParseResult {
-  readonly response: string;
-  readonly sessionId?: string;
-  readonly usage?: TokenUsage;
-  readonly parseStrategy: ParseStrategy;
-  readonly raw: string;
-}
-
-/** Parsing strategy that succeeded. */
-export type ParseStrategy =
-  | 'json'
-  | 'json-extracted'
-  | 'markdown-code-block'
-  | 'plain-text'
-  | 'error-fallback';
-
-/** Error information extracted from Gemini CLI output. */
-export interface GeminiErrorInfo {
-  readonly type: 'timeout' | 'auth' | 'rate-limit' | 'api-error' | 'unknown';
-  readonly message: string;
-  readonly code?: number;
-}
+// Re-export types for backward compatibility
+export type {
+  ResilientParseResult,
+  ParseStrategy,
+  GeminiErrorInfo,
+} from './gemini-parser-resilient-types.js';
 
 /**
  * Resilient parser for Gemini CLI output.
@@ -146,7 +139,7 @@ export class ResilientGeminiParser implements ICliResponseParser<GeminiCliRespon
     }
 
     // Try to extract session ID from text patterns
-    return this.extractSessionIdFromText(raw);
+    return extractSessionIdFromText(raw);
   }
 
   /**
@@ -156,19 +149,19 @@ export class ResilientGeminiParser implements ICliResponseParser<GeminiCliRespon
     const lower = raw.toLowerCase();
 
     if (lower.includes('timeout') || lower.includes('timed out')) {
-      return { type: 'timeout', message: this.extractErrorMessage(raw) };
+      return { type: 'timeout', message: extractErrorMessage(raw) };
     }
 
     if (lower.includes('authentication') || lower.includes('unauthorized')) {
-      return { type: 'auth', message: this.extractErrorMessage(raw) };
+      return { type: 'auth', message: extractErrorMessage(raw) };
     }
 
     if (lower.includes('rate limit') || lower.includes('quota exceeded')) {
-      return { type: 'rate-limit', message: this.extractErrorMessage(raw) };
+      return { type: 'rate-limit', message: extractErrorMessage(raw) };
     }
 
     if (lower.includes('error') || lower.includes('failed')) {
-      return { type: 'api-error', message: this.extractErrorMessage(raw) };
+      return { type: 'api-error', message: extractErrorMessage(raw) };
     }
 
     return null;
@@ -181,14 +174,14 @@ export class ResilientGeminiParser implements ICliResponseParser<GeminiCliRespon
   private tryParseJson(raw: string): ResilientParseResult | null {
     try {
       const data: unknown = JSON.parse(raw);
-      const record = this.asRecord(data);
+      const record = asRecord(data);
       if (record === null) return null;
 
       const response = record.response;
       if (typeof response !== 'string') return null;
 
-      const sessionId = this.extractStringField(record, 'session_id');
-      const usage = this.extractUsageFromRecord(record);
+      const sessionId = extractStringField(record, 'session_id');
+      const usage = extractUsageFromRecord(record);
 
       const result: ResilientParseResult = {
         response,
@@ -253,7 +246,7 @@ export class ResilientGeminiParser implements ICliResponseParser<GeminiCliRespon
     // If no JSON found in code blocks, treat entire content as response
     // but only if it looks like substantive output
     if (raw.includes('```')) {
-      const cleanedContent = this.extractTextFromMarkdown(raw);
+      const cleanedContent = extractTextFromMarkdown(raw);
       if (cleanedContent.length > 0) {
         return {
           response: cleanedContent,
@@ -273,7 +266,7 @@ export class ResilientGeminiParser implements ICliResponseParser<GeminiCliRespon
     if (trimmed.length === 0) return null;
 
     // Skip if it looks like just error output
-    if (this.isLikelyErrorOutput(trimmed)) return null;
+    if (isLikelyErrorOutput(trimmed)) return null;
 
     // Accept as plain text response
     return {
@@ -281,146 +274,6 @@ export class ResilientGeminiParser implements ICliResponseParser<GeminiCliRespon
       parseStrategy: 'plain-text',
       raw,
     };
-  }
-
-  // -------------------------------------------------------------------------
-  // Helper Methods
-  // -------------------------------------------------------------------------
-
-  private asRecord(value: unknown): Record<string, unknown> | null {
-    if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-      return value as Record<string, unknown>;
-    }
-    return null;
-  }
-
-  private extractStringField(record: Record<string, unknown>, key: string): string | undefined {
-    const value = record[key];
-    return typeof value === 'string' ? value : undefined;
-  }
-
-  private extractUsageFromRecord(record: Record<string, unknown>): TokenUsage | undefined {
-    const stats = this.asRecord(record.stats);
-    if (stats === null) return undefined;
-
-    const models = this.asRecord(stats.models);
-    if (models === null) return undefined;
-
-    const totals = this.aggregateModelTokens(models);
-    if (totals.input === 0 && totals.output === 0) return undefined;
-
-    return {
-      inputTokens: totals.input,
-      outputTokens: totals.output,
-      totalTokens: totals.input + totals.output,
-      ...(totals.cached > 0 && { cachedInputTokens: totals.cached }),
-    };
-  }
-
-  private aggregateModelTokens(models: Record<string, unknown>): {
-    input: number;
-    output: number;
-    cached: number;
-  } {
-    let totalInput = 0;
-    let totalOutput = 0;
-    let totalCached = 0;
-
-    for (const modelStats of Object.values(models)) {
-      const modelRecord = this.asRecord(modelStats);
-      if (modelRecord === null) continue;
-
-      const tokens = this.asRecord(modelRecord.tokens);
-      if (tokens === null) continue;
-
-      const input = this.getNumber(tokens, 'input');
-      const candidates = this.getNumber(tokens, 'candidates');
-      const cached = this.getNumber(tokens, 'cached');
-
-      if (input !== null) totalInput += input;
-      if (candidates !== null) totalOutput += candidates;
-      if (cached !== null) totalCached += cached;
-    }
-
-    return { input: totalInput, output: totalOutput, cached: totalCached };
-  }
-
-  private getNumber(obj: Record<string, unknown>, key: string): number | null {
-    const value = obj[key];
-    return typeof value === 'number' ? value : null;
-  }
-
-  private extractSessionIdFromText(raw: string): string | null {
-    // Pattern for Gemini session IDs
-    const patterns = [/session[_-]?id[:\s]+["']?([a-zA-Z0-9_-]+)["']?/i, /gem_([a-zA-Z0-9]+)/];
-
-    for (const pattern of patterns) {
-      const match = pattern.exec(raw);
-      const captured = match?.[1];
-      if (captured !== undefined) {
-        return captured.startsWith('gem_') ? captured : `gem_${captured}`;
-      }
-    }
-
-    return null;
-  }
-
-  private extractTextFromMarkdown(raw: string): string {
-    // Remove code blocks and extract remaining text
-    let content = raw;
-
-    // Remove code blocks
-    content = content.replace(/```[\s\S]*?```/g, '');
-
-    // Remove markdown formatting
-    content = content.replace(/#{1,6}\s+/g, '');
-    content = content.replace(/\*{1,2}([^*]+)\*{1,2}/g, '$1');
-    content = content.replace(/_([^_]+)_/g, '$1');
-
-    return content.trim();
-  }
-
-  private extractErrorMessage(raw: string): string {
-    // Try to extract a clean error message
-    const lines = raw.split('\n').filter((line) => line.trim().length > 0);
-
-    // Look for error: prefix
-    for (const line of lines) {
-      const lower = line.toLowerCase();
-      if (lower.includes('error:')) {
-        return line.replace(/.*error:\s*/i, '').trim();
-      }
-    }
-
-    // Return first non-empty line as fallback
-    return lines[0]?.trim() ?? 'Unknown error';
-  }
-
-  private isLikelyErrorOutput(raw: string): boolean {
-    const lower = raw.toLowerCase();
-    const errorIndicators = [
-      'error:',
-      'exception:',
-      'traceback',
-      'stack trace',
-      'fatal:',
-      'panic:',
-    ];
-
-    // Check if output starts with error indicators
-    for (const indicator of errorIndicators) {
-      if (lower.startsWith(indicator)) return true;
-    }
-
-    // Check if it's a short error message
-    if (raw.length < 200) {
-      const errorKeywords = ['failed', 'error', 'cannot', 'unable to'];
-      const hasErrorKeyword = errorKeywords.some((kw) => lower.includes(kw));
-      const hasNoContent = !lower.includes('the ') && !lower.includes('this ');
-      if (hasErrorKeyword && hasNoContent) return true;
-    }
-
-    return false;
   }
 }
 

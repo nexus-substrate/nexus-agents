@@ -243,6 +243,25 @@ export {
   ExperienceBufferConfigSchema,
 } from './experience-buffer.js';
 
+// Experience Buffer Sampling (for advanced users)
+export {
+  sampleUniformly,
+  sampleWithPriority,
+  flattenStepsWithEpisodeIds,
+  weightedRandomIndex,
+  computePriorities,
+  prioritiesToProbabilities,
+  computeImportanceWeights,
+} from './experience-buffer-sampling.js';
+
+// Experience Buffer Types (for advanced users)
+export type {
+  SerializedEpisode,
+  SerializedBuffer,
+  StepWithEpisodeId,
+  SampledStepWithProb,
+} from './experience-buffer-types.js';
+
 // =============================================================================
 // Trajectory Converter
 // =============================================================================
@@ -253,6 +272,21 @@ export {
   isValidDistribution,
   convertTrajectoryWithValidation,
 } from './trajectory-converter.js';
+
+// =============================================================================
+// Policy Gradient Helpers
+// =============================================================================
+
+export type { LearnableWeightKey, GradientState } from './policy-gradient-helpers.js';
+
+export {
+  LEARNABLE_WEIGHTS,
+  computeReturns,
+  extractFeatureValues,
+  computeGradients,
+  normalizeWeights,
+  applyGradientUpdate,
+} from './policy-gradient-helpers.js';
 
 // =============================================================================
 // Learning Integration

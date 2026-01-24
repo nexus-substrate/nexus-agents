@@ -232,6 +232,21 @@ export {
   evaluatePredictions,
 } from './evaluation-harness.js';
 
+// Evaluation harness helpers
+export {
+  calculateMetrics,
+  calculateRepositoryMetrics,
+  extractRepoFromInstanceId,
+  extractModelName,
+  mapStateToPhase,
+  transformHarnessProgress,
+  createProgressAdapter,
+  getMemoryInfo,
+  getCpuCores,
+} from './evaluation-harness-helpers.js';
+
+export type { RawHarnessProgress, MemoryInfo } from './evaluation-harness-helpers.js';
+
 // Patch applicator
 export {
   PatchApplicator,

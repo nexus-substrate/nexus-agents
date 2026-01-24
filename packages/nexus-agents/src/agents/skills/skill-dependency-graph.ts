@@ -24,6 +24,13 @@ import {
   findZeroInDegreeNodes,
   executeKahnTraversal,
 } from './skill-dependency-graph-helpers.js';
+import {
+  wouldCreateCycle,
+  findCyclePath,
+  detectCycleDFS,
+  findCycleFromNode,
+  type NodeLookup,
+} from './skill-dependency-graph-cycle.js';
 
 // Re-export types and schemas
 export type {
@@ -60,6 +67,9 @@ interface SkillNode {
 export class SkillDependencyGraph implements ISkillDependencyGraph {
   /** Adjacency list representation */
   private readonly nodes: Map<string, SkillNode> = new Map();
+
+  /** Node lookup function for cycle detection utilities */
+  private readonly nodeLookup: NodeLookup = (id: string) => this.nodes.get(id);
 
   /** Adds a skill node to the graph. */
   addSkill(skillId: string, version: number = 1): void {
@@ -98,8 +108,8 @@ export class SkillDependencyGraph implements ISkillDependencyGraph {
       return versionResult;
     }
 
-    if (this.wouldCreateCycle(dependency.skillId, dependency.dependsOn)) {
-      const cyclePath = this.findCyclePath(dependency.skillId, dependency.dependsOn);
+    if (wouldCreateCycle(dependency.skillId, dependency.dependsOn, this.nodeLookup)) {
+      const cyclePath = findCyclePath(dependency.skillId, dependency.dependsOn, this.nodeLookup);
       return err(
         createDependencyError(
           'CIRCULAR_DEPENDENCY',
@@ -169,7 +179,7 @@ export class SkillDependencyGraph implements ISkillDependencyGraph {
     if (!this.nodes.has(skillId)) {
       return false;
     }
-    return this.detectCycleDFS(skillId, new Set(), new Set());
+    return detectCycleDFS(skillId, new Set(), new Set(), this.nodeLookup);
   }
 
   /** Validates the entire graph for consistency. */
@@ -197,8 +207,11 @@ export class SkillDependencyGraph implements ISkillDependencyGraph {
     const recursionStack = new Set<string>();
 
     for (const skillId of this.nodes.keys()) {
-      if (!visited.has(skillId) && this.detectCycleDFS(skillId, visited, recursionStack)) {
-        const cyclePath = this.findCycleFromNode(skillId);
+      if (
+        !visited.has(skillId) &&
+        detectCycleDFS(skillId, visited, recursionStack, this.nodeLookup)
+      ) {
+        const cyclePath = findCycleFromNode(skillId, this.nodeLookup);
         return err(
           createDependencyError(
             'CIRCULAR_DEPENDENCY',
@@ -249,101 +262,6 @@ export class SkillDependencyGraph implements ISkillDependencyGraph {
     }
 
     return ok(undefined);
-  }
-
-  private wouldCreateCycle(from: string, to: string): boolean {
-    return this.canReach(to, from, new Set());
-  }
-
-  private canReach(start: string, target: string, visited: Set<string>): boolean {
-    if (start === target) return true;
-    if (visited.has(start)) return false;
-    visited.add(start);
-
-    const node = this.nodes.get(start);
-    if (!node) return false;
-
-    for (const depId of node.dependencies.keys()) {
-      if (this.canReach(depId, target, visited)) return true;
-    }
-    return false;
-  }
-
-  private findCyclePath(from: string, to: string): readonly string[] {
-    const path: string[] = [from, to];
-    const visited = new Set<string>([from]);
-
-    const findPath = (current: string): boolean => {
-      if (current === from) return true;
-
-      const node = this.nodes.get(current);
-      if (!node) return false;
-
-      for (const depId of node.dependencies.keys()) {
-        if (!visited.has(depId)) {
-          visited.add(depId);
-          path.push(depId);
-          if (findPath(depId)) return true;
-          path.pop();
-        } else if (depId === from) {
-          return true;
-        }
-      }
-      return false;
-    };
-
-    findPath(to);
-    return path;
-  }
-
-  private detectCycleDFS(nodeId: string, visited: Set<string>, stack: Set<string>): boolean {
-    visited.add(nodeId);
-    stack.add(nodeId);
-
-    const node = this.nodes.get(nodeId);
-    if (node) {
-      for (const depId of node.dependencies.keys()) {
-        if (!visited.has(depId)) {
-          if (this.detectCycleDFS(depId, visited, stack)) return true;
-        } else if (stack.has(depId)) {
-          return true;
-        }
-      }
-    }
-
-    stack.delete(nodeId);
-    return false;
-  }
-
-  private findCycleFromNode(startId: string): readonly string[] {
-    const path: string[] = [];
-    const visited = new Set<string>();
-
-    const dfs = (nodeId: string): boolean => {
-      if (path.includes(nodeId)) {
-        const cycleStart = path.indexOf(nodeId);
-        path.splice(0, cycleStart);
-        path.push(nodeId);
-        return true;
-      }
-
-      if (visited.has(nodeId)) return false;
-      visited.add(nodeId);
-      path.push(nodeId);
-
-      const node = this.nodes.get(nodeId);
-      if (node) {
-        for (const depId of node.dependencies.keys()) {
-          if (dfs(depId)) return true;
-        }
-      }
-
-      path.pop();
-      return false;
-    };
-
-    dfs(startId);
-    return path;
   }
 
   private collectRelevantSkills(skillIds: readonly string[]): Set<string> {

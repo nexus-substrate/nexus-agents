@@ -11,7 +11,6 @@
  * (Source: Issue #257 - SWE-Bench Evaluation)
  */
 
-import * as os from 'node:os';
 import type { ILogger } from '../core/logger.js';
 import { createLogger } from '../core/logger.js';
 import type { Result } from '../core/result.js';
@@ -23,16 +22,21 @@ import type {
   EvaluationRunResult,
   InstanceEvaluationResult,
   EvaluationValidationResult,
-  EvaluationProgress,
   EvaluationProgressCallback,
-  EvaluationMetrics,
-  RepositoryMetrics,
 } from './evaluation-harness-types.js';
 import { DEFAULT_EVALUATION_CONFIG, EvaluationHarnessError } from './evaluation-harness-types.js';
 import { HarnessExecutor, createHarnessExecutor } from './harness-executor.js';
 import type { HarnessExecutionConfig } from './harness-executor-types.js';
 import { validateEnvironment } from './environment-validator.js';
 import { writePredictions } from './prediction-writer.js';
+import {
+  calculateMetrics,
+  calculateRepositoryMetrics,
+  extractModelName,
+  createProgressAdapter,
+  getMemoryInfo,
+  getCpuCores,
+} from './evaluation-harness-helpers.js';
 
 // ============================================================================
 // Evaluation Harness Implementation
@@ -64,8 +68,8 @@ export class EvaluationHarness implements IEvaluationHarness {
     this.logger.info('Validating evaluation environment');
 
     const envResult = await validateEnvironment(this.logger);
-    const memoryInfo = this.getMemoryInfo();
-    const cpuCores = this.getCpuCores();
+    const memoryInfo = getMemoryInfo();
+    const cpuCores = getCpuCores();
 
     const ready = envResult.valid;
     const errors: string[] = [...envResult.errors];
@@ -132,13 +136,13 @@ export class EvaluationHarness implements IEvaluationHarness {
     );
 
     const completedAt = new Date().toISOString();
-    const metrics = this.calculateMetrics(result.instanceResults);
-    const repositoryMetrics = this.calculateRepositoryMetrics(result.instanceResults);
+    const metrics = calculateMetrics(result.instanceResults);
+    const repositoryMetrics = calculateRepositoryMetrics(result.instanceResults);
 
     const runResult: EvaluationRunResult = {
       runId: effectiveConfig.runId,
       datasetName: effectiveConfig.datasetName,
-      modelNameOrPath: this.extractModelName(predictions),
+      modelNameOrPath: extractModelName(predictions),
       startedAt,
       completedAt,
       metrics,
@@ -255,7 +259,7 @@ export class EvaluationHarness implements IEvaluationHarness {
         : {}),
     };
 
-    const harnessProgress = this.createProgressAdapter(predictions.length, onProgress);
+    const harnessProgress = createProgressAdapter(predictions.length, onProgress);
 
     const result = await this.executor.execute(harnessConfig, harnessProgress);
 
@@ -271,158 +275,6 @@ export class EvaluationHarness implements IEvaluationHarness {
     }
 
     return returnValue;
-  }
-
-  /**
-   * Creates a progress adapter from harness progress to evaluation progress.
-   */
-  private createProgressAdapter(
-    totalPredictions: number,
-    onProgress?: EvaluationProgressCallback
-  ): ((progress: unknown) => void) | undefined {
-    if (onProgress === undefined) {
-      return undefined;
-    }
-
-    return (harnessProgress: unknown) => {
-      const hp = harnessProgress as {
-        currentInstanceId?: string;
-        completedCount: number;
-        totalCount: number;
-        resolvedCount: number;
-        elapsedMs: number;
-        estimatedRemainingMs?: number;
-        state: string;
-      };
-
-      const evaluationProgress: EvaluationProgress = {
-        currentInstanceId: hp.currentInstanceId ?? '',
-        currentIndex: hp.completedCount,
-        totalInstances: hp.totalCount || totalPredictions,
-        completedInstances: hp.completedCount,
-        resolvedSoFar: hp.resolvedCount,
-        currentResolutionRate: hp.completedCount > 0 ? hp.resolvedCount / hp.completedCount : 0,
-        estimatedRemainingMs: hp.estimatedRemainingMs ?? 0,
-        phase: this.mapStateToPhase(hp.state),
-      };
-
-      onProgress(evaluationProgress);
-    };
-  }
-
-  /**
-   * Maps harness state to evaluation phase.
-   */
-  private mapStateToPhase(state: string): EvaluationProgress['phase'] {
-    const phaseMap: Record<string, EvaluationProgress['phase']> = {
-      idle: 'initializing',
-      starting: 'loading_predictions',
-      running: 'evaluating',
-      parsing: 'aggregating',
-      completed: 'complete',
-      failed: 'complete',
-      cancelled: 'complete',
-    };
-    return phaseMap[state] ?? 'evaluating';
-  }
-
-  /**
-   * Calculates aggregate metrics from instance results.
-   */
-  private calculateMetrics(results: readonly InstanceEvaluationResult[]): EvaluationMetrics {
-    const totalInstances = results.length;
-    const predictedInstances = totalInstances;
-    const resolvedInstances = results.filter((r) => r.resolved).length;
-    const patchesApplied = results.filter((r) => r.patchApplied).length;
-    const timeouts = results.filter((r) => r.status === 'timeout').length;
-    const errors = results.filter((r) => r.status === 'error').length;
-
-    const totalDurationMs = results.reduce((sum, r) => sum + r.durationMs, 0);
-    const avgDurationMs = totalInstances > 0 ? Math.round(totalDurationMs / totalInstances) : 0;
-
-    return {
-      totalInstances,
-      predictedInstances,
-      resolvedInstances,
-      resolutionRate: predictedInstances > 0 ? resolvedInstances / predictedInstances : 0,
-      patchesApplied,
-      patchApplicationRate: predictedInstances > 0 ? patchesApplied / predictedInstances : 0,
-      timeouts,
-      errors,
-      avgDurationMs,
-      totalDurationMs,
-    };
-  }
-
-  /**
-   * Calculates per-repository metrics.
-   */
-  private calculateRepositoryMetrics(
-    results: readonly InstanceEvaluationResult[]
-  ): readonly RepositoryMetrics[] {
-    const repoMap = new Map<string, { total: number; resolved: number }>();
-
-    for (const result of results) {
-      const repo = this.extractRepoFromInstanceId(result.instanceId);
-      const current = repoMap.get(repo) ?? { total: 0, resolved: 0 };
-      current.total++;
-      if (result.resolved) {
-        current.resolved++;
-      }
-      repoMap.set(repo, current);
-    }
-
-    return Array.from(repoMap.entries()).map(([repository, stats]) => ({
-      repository,
-      totalInstances: stats.total,
-      resolvedInstances: stats.resolved,
-      resolutionRate: stats.total > 0 ? stats.resolved / stats.total : 0,
-    }));
-  }
-
-  /**
-   * Extracts repository name from instance ID.
-   * Instance IDs follow format: "owner__repo-issue_number"
-   * Handles hyphenated names like "scikit-learn__scikit-learn-9876"
-   */
-  private extractRepoFromInstanceId(instanceId: string): string {
-    const doubleUnderscoreIdx = instanceId.indexOf('__');
-    const lastDashIdx = instanceId.lastIndexOf('-');
-
-    if (doubleUnderscoreIdx !== -1 && lastDashIdx > doubleUnderscoreIdx) {
-      const owner = instanceId.slice(0, doubleUnderscoreIdx);
-      const repoAndIssue = instanceId.slice(doubleUnderscoreIdx + 2);
-      const repoName = repoAndIssue.slice(0, repoAndIssue.lastIndexOf('-'));
-      return `${owner}/${repoName}`;
-    }
-
-    // Fallback for unexpected formats
-    return 'unknown';
-  }
-
-  /**
-   * Extracts model name from predictions.
-   */
-  private extractModelName(predictions: readonly SWEBenchPrediction[]): string {
-    const first = predictions[0];
-    return first?.model_name_or_path ?? 'unknown';
-  }
-
-  /**
-   * Gets memory information.
-   */
-  private getMemoryInfo(): { total: number; free: number } {
-    return {
-      total: os.totalmem(),
-      free: os.freemem(),
-    };
-  }
-
-  /**
-   * Gets CPU core count.
-   */
-  private getCpuCores(): number {
-    return os.cpus().length;
   }
 }
 

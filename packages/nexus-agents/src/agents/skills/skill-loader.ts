@@ -14,7 +14,7 @@ import type { ILogger } from '../../core/index.js';
 import { createLogger } from '../../core/index.js';
 import type { Result } from '../../core/result.js';
 import { ok, err } from '../../core/result.js';
-import type { AgentRole, IAgent, Task } from '../../core/types/agent.js';
+import type { AgentRole } from '../../core/types/agent.js';
 import type { Skill } from './skill-types.js';
 import type { SkillLibrary } from './skill-library.js';
 import { canExecuteSkill, DEFAULT_RBAC } from './skill-security.js';
@@ -38,7 +38,7 @@ import {
   getAllCategoriesFromMapping,
 } from './skill-loader-helpers.js';
 
-// Re-export types
+// Re-export types and constants from loader-types
 export type {
   SkillLoaderConfig,
   SkillLoaderError,
@@ -48,7 +48,6 @@ export type {
   FallbackBehavior,
   ISkillLoader,
 } from './skill-loader-types.js';
-
 export {
   DEFAULT_ROLE_MAPPINGS,
   DEFAULT_SKILL_LOADER_CONFIG,
@@ -56,6 +55,13 @@ export {
   LoadedSkillSetSchema,
   SkillLoaderErrorSchema,
 } from './skill-loader-types.js';
+
+// Re-export integration hooks
+export {
+  initializeAgentSkills,
+  getSkillsForTask,
+  getSkillSetForTask,
+} from './skill-loader-integration.js';
 
 /**
  * Deterministic skill loader implementation.
@@ -393,33 +399,4 @@ export function createSkillLoader(
   logger?: ILogger
 ): ISkillLoader {
   return new SkillLoader(library, config, logger);
-}
-
-// ============================================================================
-// Integration Hooks
-// ============================================================================
-
-/** Initializes skills for an agent during agent setup. */
-export function initializeAgentSkills(
-  agent: IAgent,
-  loader: ISkillLoader
-): Result<void, SkillLoaderError> {
-  const result = loader.loadForAgent(agent.id, agent.role);
-  if (!result.ok) return result;
-
-  const validation = loader.validateLoadedSet(result.value);
-  if (!validation.ok) return validation;
-
-  return ok(undefined);
-}
-
-/** Gets skills appropriate for a task execution. */
-export function getSkillsForTask(
-  agent: IAgent,
-  task: Task,
-  loader: ISkillLoader
-): Result<readonly Skill[], SkillLoaderError> {
-  const result = loader.loadForTask(agent.id, agent.role, task.description);
-  if (!result.ok) return result;
-  return ok(result.value.skills);
 }

@@ -8,115 +8,33 @@
  * (Source: Issue #379, Issue #154)
  */
 
-import { z } from 'zod';
 import type { PolicyTrajectoryStep } from './policy-types.js';
+import type {
+  ExperienceBufferConfig,
+  Episode,
+  SampledBatch,
+  BufferStats,
+  SerializedBuffer,
+} from './experience-buffer-types.js';
+import { DEFAULT_EXPERIENCE_BUFFER_CONFIG } from './experience-buffer-types.js';
+export { ExperienceBufferConfigSchema } from './experience-buffer-types.js';
+import { sampleUniformly, sampleWithPriority } from './experience-buffer-sampling.js';
 
 // =============================================================================
-// Configuration Types
+// Re-exports for backward compatibility
 // =============================================================================
 
-/**
- * Configuration for the experience buffer.
- */
-export interface ExperienceBufferConfig {
-  /** Maximum trajectories to store (default: 10000) */
-  readonly maxCapacity?: number;
-  /** Priority sampling enabled (default: false) */
-  readonly prioritySampling?: boolean;
-  /** Priority exponent for prioritized sampling (default: 0.6) */
-  readonly priorityExponent?: number;
-}
+export type {
+  ExperienceBufferConfig,
+  Episode,
+  SampledBatch,
+  BufferStats,
+} from './experience-buffer-types.js';
 
-/** Default experience buffer configuration. */
-export const DEFAULT_EXPERIENCE_BUFFER_CONFIG: Required<ExperienceBufferConfig> = {
-  maxCapacity: 10000,
-  prioritySampling: false,
-  priorityExponent: 0.6,
-};
-
-// =============================================================================
-// Episode Types
-// =============================================================================
-
-/**
- * A complete episode of interaction.
- */
-export interface Episode {
-  /** Unique episode ID */
-  readonly id: string;
-  /** Session ID from orchestrator */
-  readonly sessionId: string;
-  /** Steps in this episode */
-  readonly steps: readonly PolicyTrajectoryStep[];
-  /** Total reward for episode */
-  readonly totalReward: number;
-  /** Episode timestamp */
-  readonly timestamp: Date;
-}
-
-/**
- * A batch of sampled steps for training.
- */
-export interface SampledBatch {
-  /** Sampled steps */
-  readonly steps: PolicyTrajectoryStep[];
-  /** Episode IDs for the steps */
-  readonly episodeIds: string[];
-  /** Importance weights (for prioritized sampling) */
-  readonly weights: number[];
-}
-
-/**
- * Statistics about the buffer state.
- */
-export interface BufferStats {
-  /** Total number of episodes */
-  readonly episodeCount: number;
-  /** Total number of steps across all episodes */
-  readonly totalSteps: number;
-  /** Average episode length */
-  readonly avgEpisodeLength: number;
-  /** Average total reward */
-  readonly avgTotalReward: number;
-  /** Buffer utilization (steps / capacity) */
-  readonly utilization: number;
-}
-
-// =============================================================================
-// Serialization Types
-// =============================================================================
-
-/**
- * JSON-serializable episode representation.
- */
-interface SerializedEpisode {
-  readonly id: string;
-  readonly sessionId: string;
-  readonly steps: readonly PolicyTrajectoryStep[];
-  readonly totalReward: number;
-  readonly timestamp: string;
-}
-
-/**
- * JSON-serializable buffer representation.
- */
-interface SerializedBuffer {
-  readonly version: string;
-  readonly config: Required<ExperienceBufferConfig>;
-  readonly episodes: readonly SerializedEpisode[];
-  readonly totalStepsCount: number;
-}
-
-// =============================================================================
-// Zod Schemas
-// =============================================================================
-
-/** Schema for ExperienceBufferConfig. */
-export const ExperienceBufferConfigSchema = z.object({
-  maxCapacity: z.number().int().positive().max(1000000).optional(),
-  prioritySampling: z.boolean().optional(),
-  priorityExponent: z.number().min(0).max(1).optional(),
-});
+export {
+  DEFAULT_EXPERIENCE_BUFFER_CONFIG,
+  ExperienceBufferConfigSchema,
+} from './experience-buffer-types.js';
 
 // =============================================================================
 // Experience Buffer Implementation
@@ -192,10 +110,15 @@ export class ExperienceBuffer {
     const effectiveBatchSize = Math.min(batchSize, this.totalStepsCount);
 
     if (this.config.prioritySampling) {
-      return this.sampleWithPriority(effectiveBatchSize);
+      return sampleWithPriority(
+        this.episodes,
+        effectiveBatchSize,
+        this.config.priorityExponent,
+        this.totalStepsCount
+      );
     }
 
-    return this.sampleUniformly(effectiveBatchSize);
+    return sampleUniformly(this.episodes, effectiveBatchSize);
   }
 
   /**
@@ -334,113 +257,6 @@ export class ExperienceBuffer {
         this.totalStepsCount -= oldest.steps.length;
       }
     }
-  }
-
-  /**
-   * Samples steps uniformly at random using reservoir sampling (Algorithm R).
-   * Optimized for O(k) memory where k = batchSize, instead of O(n) for full array copy.
-   * @see Issue #402 - Performance optimization
-   */
-  private sampleUniformly(batchSize: number): SampledBatch {
-    // Use reservoir sampling to avoid full array materialization
-    const reservoir: Array<{ step: PolicyTrajectoryStep; episodeId: string }> = [];
-    let count = 0;
-
-    for (const episode of this.episodes) {
-      for (const step of episode.steps) {
-        count++;
-        if (reservoir.length < batchSize) {
-          // Fill reservoir until we have enough samples
-          reservoir.push({ step, episodeId: episode.id });
-        } else {
-          // Algorithm R: replace with probability k/n
-          const j = Math.floor(Math.random() * count);
-          if (j < batchSize) {
-            reservoir[j] = { step, episodeId: episode.id };
-          }
-        }
-      }
-    }
-
-    return {
-      steps: reservoir.map((s) => s.step),
-      episodeIds: reservoir.map((s) => s.episodeId),
-      weights: reservoir.map(() => 1.0),
-    };
-  }
-
-  /**
-   * Samples steps with priority based on absolute TD error (approximated by reward magnitude).
-   * Note: This method still uses full array flattening. For very large buffers,
-   * consider using weighted reservoir sampling (Efraimidis & Spirakis algorithm).
-   * @see Issue #402 - Future optimization opportunity
-   */
-  private sampleWithPriority(batchSize: number): SampledBatch {
-    const allStepsWithEpisode = this.flattenStepsWithEpisodeIds();
-
-    // Compute priorities (using absolute reward as proxy for TD error)
-    const priorities = allStepsWithEpisode.map((s) =>
-      Math.pow(Math.abs(s.step.reward) + 0.01, this.config.priorityExponent)
-    );
-
-    const totalPriority = priorities.reduce((sum, p) => sum + p, 0);
-    const probabilities = priorities.map((p) => p / totalPriority);
-
-    // Sample with replacement according to probabilities
-    const sampled: Array<{ step: PolicyTrajectoryStep; episodeId: string; prob: number }> = [];
-
-    for (let i = 0; i < batchSize; i++) {
-      const idx = this.weightedRandomIndex(probabilities);
-      const item = allStepsWithEpisode[idx];
-      if (item) {
-        sampled.push({ step: item.step, episodeId: item.episodeId, prob: probabilities[idx] ?? 1 });
-      }
-    }
-
-    // Compute importance sampling weights
-    const maxWeight = 1.0 / (this.totalStepsCount * Math.min(...sampled.map((s) => s.prob)));
-    const weights = sampled.map((s) => {
-      const weight = 1.0 / (this.totalStepsCount * s.prob);
-      return weight / maxWeight; // Normalize to [0, 1]
-    });
-
-    return {
-      steps: sampled.map((s) => s.step),
-      episodeIds: sampled.map((s) => s.episodeId),
-      weights,
-    };
-  }
-
-  /**
-   * Flattens all steps with their episode IDs.
-   */
-  private flattenStepsWithEpisodeIds(): Array<{ step: PolicyTrajectoryStep; episodeId: string }> {
-    const result: Array<{ step: PolicyTrajectoryStep; episodeId: string }> = [];
-
-    for (const episode of this.episodes) {
-      for (const step of episode.steps) {
-        result.push({ step, episodeId: episode.id });
-      }
-    }
-
-    return result;
-  }
-
-  /**
-   * Returns a random index weighted by probabilities.
-   */
-  private weightedRandomIndex(probabilities: number[]): number {
-    const r = Math.random();
-    let cumulative = 0;
-
-    for (let i = 0; i < probabilities.length; i++) {
-      cumulative += probabilities[i] ?? 0;
-      if (r < cumulative) {
-        return i;
-      }
-    }
-
-    return probabilities.length - 1;
   }
 }
 

@@ -31,18 +31,11 @@ import type { ScoringFeatures } from './policy-feature-extraction.js';
 import { computeAllAgentScores } from './policy-scoring.js';
 import type { AgentScores } from './policy-scoring.js';
 import { scoresToDistribution, sampleFromDistribution } from './policy-distribution.js';
-
-// =============================================================================
-// Constants
-// =============================================================================
-
-/** Feature weight keys that can be learned. */
-const LEARNABLE_WEIGHTS = [
-  'recency',
-  'capability_match',
-  'cost_efficiency',
-  'pattern_match',
-] as const;
+import {
+  computeReturns,
+  computeGradients,
+  applyGradientUpdate,
+} from './policy-gradient-helpers.js';
 
 // =============================================================================
 // Learnable Policy Implementation
@@ -163,10 +156,16 @@ export class LearnablePolicy implements ILearnablePolicyEngine {
     }
 
     try {
-      const returns = this.computeReturns(trajectory, finalReward);
-      const gradients = this.computeGradients(trajectory, returns);
-      const newWeights = this.applyGradientUpdate(gradients);
+      const returns = computeReturns(trajectory, finalReward, this.config.discountFactor);
+      const gradients = computeGradients(trajectory, returns, this.baseline);
+      const { weights: newWeights, gradientNorm } = applyGradientUpdate(
+        gradients,
+        this.parameters.weights,
+        this.currentLearningRate,
+        this.config.gradientClip
+      );
 
+      this.lastGradientNorm = gradientNorm;
       this.updateParametersAndStats(newWeights, finalReward, trajectory.length);
 
       return Promise.resolve(ok(undefined));
@@ -179,76 +178,30 @@ export class LearnablePolicy implements ILearnablePolicyEngine {
   }
 
   /**
-   * Compute gradients across trajectory steps.
+   * Get learning statistics.
    */
-  private computeGradients(
-    trajectory: readonly PolicyTrajectoryStep[],
-    returns: number[]
-  ): Record<string, number> {
-    const gradients: Record<string, number> = {};
-    for (const key of LEARNABLE_WEIGHTS) {
-      gradients[key] = 0;
-    }
-
-    for (let t = 0; t < trajectory.length; t++) {
-      const step = trajectory[t];
-      const returnValue = returns[t];
-      if (step === undefined || returnValue === undefined) continue;
-
-      const advantage = returnValue - this.baseline;
-      const features = extractFeatures(step.state);
-      const featureValues = this.extractFeatureValues(features);
-
-      for (const key of LEARNABLE_WEIGHTS) {
-        const featureVal = featureValues[key] ?? 0;
-        const currentGrad = gradients[key] ?? 0;
-        gradients[key] = currentGrad + advantage * featureVal;
-      }
-    }
-
-    // Normalize by trajectory length
-    for (const key of LEARNABLE_WEIGHTS) {
-      const currentGrad = gradients[key] ?? 0;
-      gradients[key] = currentGrad / trajectory.length;
-    }
-
-    return gradients;
+  getStats(): LearnablePolicyStats {
+    return {
+      updateCount: this.updateCount,
+      currentLearningRate: this.currentLearningRate,
+      baseline: this.baseline,
+      lastGradientNorm: this.lastGradientNorm,
+      totalEpisodes: this.totalEpisodes,
+      avgEpisodeLength: this.totalEpisodes > 0 ? this.totalSteps / this.totalEpisodes : 0,
+      avgFinalReward: this.totalEpisodes > 0 ? this.totalReward / this.totalEpisodes : 0,
+    };
   }
 
   /**
-   * Apply gradient update with clipping and weight normalization.
+   * Check if policy has completed warmup phase.
    */
-  private applyGradientUpdate(gradients: Record<string, number>): Record<string, number> {
-    const gradNorm = Math.sqrt(Object.values(gradients).reduce((sum, g) => sum + g * g, 0));
-    this.lastGradientNorm = gradNorm;
-
-    const clipRatio =
-      gradNorm > this.config.gradientClip ? this.config.gradientClip / gradNorm : 1.0;
-
-    const newWeights = { ...this.parameters.weights };
-    for (const key of LEARNABLE_WEIGHTS) {
-      const currentWeight = newWeights[key] ?? 0;
-      const gradient = gradients[key] ?? 0;
-      newWeights[key] = currentWeight + this.currentLearningRate * gradient * clipRatio;
-    }
-
-    return this.normalizeWeights(newWeights);
+  isWarmedUp(): boolean {
+    return this.updateCount >= this.config.warmupUpdates;
   }
 
-  /**
-   * Normalize weights to sum to 1.
-   */
-  private normalizeWeights(weights: Record<string, number>): Record<string, number> {
-    const weightSum = Object.values(weights).reduce((s, w) => s + Math.abs(w), 0);
-    if (weightSum === 0) return weights;
-
-    const normalized = { ...weights };
-    for (const key of Object.keys(normalized)) {
-      const weight = normalized[key] ?? 0;
-      normalized[key] = Math.abs(weight) / weightSum;
-    }
-    return normalized;
-  }
+  // ===========================================================================
+  // Private: Parameter Updates
+  // ===========================================================================
 
   /**
    * Update policy parameters and learning statistics.
@@ -283,70 +236,6 @@ export class LearnablePolicy implements ILearnablePolicyEngine {
     this.totalEpisodes++;
     this.totalSteps += trajectoryLength;
     this.totalReward += finalReward;
-  }
-
-  /**
-   * Get learning statistics.
-   */
-  getStats(): LearnablePolicyStats {
-    return {
-      updateCount: this.updateCount,
-      currentLearningRate: this.currentLearningRate,
-      baseline: this.baseline,
-      lastGradientNorm: this.lastGradientNorm,
-      totalEpisodes: this.totalEpisodes,
-      avgEpisodeLength: this.totalEpisodes > 0 ? this.totalSteps / this.totalEpisodes : 0,
-      avgFinalReward: this.totalEpisodes > 0 ? this.totalReward / this.totalEpisodes : 0,
-    };
-  }
-
-  /**
-   * Check if policy has completed warmup phase.
-   */
-  isWarmedUp(): boolean {
-    return this.updateCount >= this.config.warmupUpdates;
-  }
-
-  // ===========================================================================
-  // Private: Gradient Computation
-  // ===========================================================================
-
-  /**
-   * Compute discounted returns for each step.
-   * Returns[t] = reward[t] + gamma * reward[t+1] + gamma^2 * reward[t+2] + ...
-   */
-  private computeReturns(
-    trajectory: readonly PolicyTrajectoryStep[],
-    finalReward: number
-  ): number[] {
-    const returns: number[] = Array.from({ length: trajectory.length }, () => 0);
-    const gamma = this.config.discountFactor;
-
-    // Bootstrap from final reward
-    let runningReturn = finalReward;
-
-    // Compute returns backwards
-    for (let t = trajectory.length - 1; t >= 0; t--) {
-      const step = trajectory[t];
-      if (step !== undefined) {
-        runningReturn = step.reward + gamma * runningReturn;
-        returns[t] = runningReturn;
-      }
-    }
-
-    return returns;
-  }
-
-  /**
-   * Extract feature values from scoring features.
-   */
-  private extractFeatureValues(features: ScoringFeatures): Record<string, number> {
-    return {
-      recency: features.recentAgents.length > 0 ? 0.5 : 1.0,
-      capability_match: features.taskKeywords.length > 0 ? 0.8 : 0.2,
-      cost_efficiency: 0.5, // Neutral default
-      pattern_match: features.lastPattern !== undefined && features.lastPattern !== '' ? 0.7 : 0.3,
-    };
   }
 
   // ===========================================================================

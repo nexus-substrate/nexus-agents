@@ -8,7 +8,6 @@
  * (Source: Issue #358)
  */
 
-import { createHash } from 'node:crypto';
 import { createLogger } from '../core/logger.js';
 import type { ILogger } from '../core/index.js';
 import type {
@@ -16,7 +15,6 @@ import type {
   ResponseCacheConfig,
   ResponseCacheStats,
   IResponseCache,
-  CacheKeyOptions,
   WithCacheOptions,
 } from './response-cache-types.js';
 import {
@@ -24,62 +22,7 @@ import {
   DEFAULT_RESPONSE_CACHE_CONFIG,
   ResponseCacheError,
 } from './response-cache-types.js';
-
-/**
- * Estimates the size of a value in bytes.
- * Uses JSON serialization for approximation.
- */
-function estimateSize(value: unknown): number {
-  try {
-    const json = JSON.stringify(value);
-    // Rough estimate: 2 bytes per character (UTF-16) + overhead
-    return json.length * 2 + 64;
-  } catch {
-    // Fallback for circular references or non-serializable
-    return 1024;
-  }
-}
-
-/**
- * Generates a deterministic cache key from adapter, prompt, and options.
- * Uses SHA-256 hash for consistent key generation.
- */
-export function generateCacheKey(options: CacheKeyOptions): string {
-  const { adapter, prompt, options: opts } = options;
-
-  // Normalize options by sorting keys for deterministic hashing
-  const normalizedOptions = opts !== undefined ? sortObjectKeys(opts) : {};
-
-  const content = JSON.stringify({
-    adapter,
-    prompt,
-    options: normalizedOptions,
-  });
-
-  const hash = createHash('sha256').update(content).digest('hex');
-  return `${adapter}:${hash.slice(0, 16)}`;
-}
-
-/**
- * Recursively sorts object keys for deterministic serialization.
- */
-function sortObjectKeys(obj: unknown): unknown {
-  if (typeof obj !== 'object' || obj === null) {
-    return obj;
-  }
-
-  if (Array.isArray(obj)) {
-    return obj.map((item) => sortObjectKeys(item));
-  }
-
-  const record = obj as Record<string, unknown>;
-  const sorted: Record<string, unknown> = {};
-  const keys = Object.keys(record).sort();
-  for (const key of keys) {
-    sorted[key] = sortObjectKeys(record[key]);
-  }
-  return sorted;
-}
+import { estimateSize } from './response-cache-utils.js';
 
 /**
  * In-memory response cache with LRU eviction and TTL.
@@ -436,6 +379,9 @@ export function createResponseCache(
 ): IResponseCache {
   return new InMemoryResponseCache(config, logger);
 }
+
+// Re-export from utils for convenience
+export { generateCacheKey } from './response-cache-utils.js';
 
 // Re-export types for convenience
 export type {

@@ -17,7 +17,19 @@ export type {
   ResilientParseResult,
   ParseStrategy,
   GeminiErrorInfo,
-} from './gemini-parser-resilient.js';
+  TokenTotals,
+} from './gemini-parser-resilient-types.js';
+
+// Re-export helpers for advanced use cases
+export {
+  asRecord,
+  extractStringField,
+  extractUsageFromRecord,
+  extractSessionIdFromText,
+  extractTextFromMarkdown,
+  extractErrorMessage,
+  isLikelyErrorOutput,
+} from './gemini-parser-resilient-helpers.js';
 
 export { CodexResponseParser } from './codex-parser.js';
 export type {

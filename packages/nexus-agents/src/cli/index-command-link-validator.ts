@@ -31,6 +31,17 @@ import type {
   LinkValidationResult,
 } from './index-command-link-types.js';
 
+// Import validation helpers
+import { validateLink } from './index-command-link-validation-helpers.js';
+
+// Re-export validation helpers for backward compatibility
+export {
+  validateInternalLink,
+  validateExternalLink,
+  validateAnchorLink,
+  validateLink,
+} from './index-command-link-validation-helpers.js';
+
 // =============================================================================
 // Link Extraction
 // =============================================================================
@@ -179,151 +190,6 @@ export function extractLinks(content: string): FoundLink[] {
   }
 
   return links;
-}
-
-// =============================================================================
-// Link Validation
-// =============================================================================
-
-/**
- * Validates an internal file link.
- */
-async function validateInternalLink(
-  url: string,
-  sourceFile: string
-): Promise<{ valid: boolean; error?: string }> {
-  // Remove anchor portion for file check
-  const [filePath, anchor] = url.split('#');
-  if (filePath === undefined || filePath === '') {
-    // Pure anchor link, would need content parsing
-    return { valid: true };
-  }
-
-  // Resolve relative to source file
-  const resolvedPath = path.resolve(path.dirname(sourceFile), filePath);
-
-  try {
-    await fs.access(resolvedPath);
-    // TODO: If anchor present, validate heading exists
-    if (anchor !== undefined) {
-      // For now, just check file exists
-    }
-    return { valid: true };
-  } catch {
-    return { valid: false, error: `File not found: ${resolvedPath}` };
-  }
-}
-
-/**
- * Validates an external HTTP link.
- */
-async function validateExternalLink(
-  url: string,
-  timeoutMs = 5000
-): Promise<{ valid: boolean; error?: string }> {
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => {
-      controller.abort();
-    }, timeoutMs);
-
-    const response = await fetch(url, {
-      method: 'HEAD',
-      signal: controller.signal,
-      headers: {
-        'User-Agent': 'nexus-agents-link-validator/1.0',
-      },
-      redirect: 'follow',
-    });
-
-    clearTimeout(timeout);
-
-    if (response.ok) {
-      return { valid: true };
-    }
-
-    // Some servers don't support HEAD, try GET
-    if (response.status === 405) {
-      const getController = new AbortController();
-      const getTimeout = setTimeout(() => {
-        getController.abort();
-      }, timeoutMs);
-
-      const getResponse = await fetch(url, {
-        method: 'GET',
-        signal: getController.signal,
-        headers: {
-          'User-Agent': 'nexus-agents-link-validator/1.0',
-        },
-        redirect: 'follow',
-      });
-
-      clearTimeout(getTimeout);
-
-      if (getResponse.ok) {
-        return { valid: true };
-      }
-      return { valid: false, error: `HTTP ${String(getResponse.status)}` };
-    }
-
-    return { valid: false, error: `HTTP ${String(response.status)}` };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    if (message.includes('abort')) {
-      return { valid: false, error: 'Timeout' };
-    }
-    return { valid: false, error: message };
-  }
-}
-
-/**
- * Validates an anchor link within a file.
- */
-async function validateAnchorLink(
-  anchor: string,
-  sourceFile: string
-): Promise<{ valid: boolean; error?: string }> {
-  try {
-    const content = await fs.readFile(sourceFile, 'utf-8');
-    const headingId = anchor.slice(1); // Remove leading #
-
-    // Check for headings that would create this anchor
-    const headingRegex = /^#{1,6}\s+(.+)$/gm;
-    let match: RegExpExecArray | null;
-    while ((match = headingRegex.exec(content)) !== null) {
-      const heading = match[1];
-      if (heading === undefined) continue;
-      // Convert heading to GitHub-style anchor
-      const expectedAnchor = heading
-        .toLowerCase()
-        .replace(/[^\w\s-]/g, '')
-        .replace(/\s+/g, '-');
-      if (expectedAnchor === headingId) {
-        return { valid: true };
-      }
-    }
-
-    return { valid: false, error: `Anchor not found: ${anchor}` };
-  } catch {
-    return { valid: false, error: 'Failed to read file for anchor check' };
-  }
-}
-
-/**
- * Validates a single link.
- */
-async function validateLink(
-  link: FoundLink,
-  sourceFile: string
-): Promise<{ valid: boolean; error?: string }> {
-  switch (link.type) {
-    case 'internal':
-      return validateInternalLink(link.url, sourceFile);
-    case 'external':
-      return validateExternalLink(link.url);
-    case 'anchor':
-      return validateAnchorLink(link.url, sourceFile);
-  }
 }
 
 // =============================================================================
