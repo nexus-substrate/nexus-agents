@@ -4,4 +4,4 @@
  * Standalone version export to avoid loading the entire package.
  */
 
-export const VERSION = '2.0.1';
+export const VERSION = '2.3.0';

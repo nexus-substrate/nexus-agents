@@ -5,30 +5,72 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.3.0] - 2026-01-24
 
 ### Added
 
+- RL-trained learnable orchestration policy with REINFORCE algorithm (#154)
+- ExperienceBuffer for RL infrastructure with priority sampling (#379)
+- PuppeteerOrchestrator CLI support with `--engine=puppeteer` (#386)
+- Link validation in research index command (#396)
+- Comprehensive E2E testing infrastructure with orchestrator learning tests (#154)
+- Astro Starlight documentation website
+- Per-tool rate limiting in MCP server for abuse prevention
+- Forest-of-Thought reasoning types (#331)
+- DAAO VAE-based difficulty estimation (#334)
+- AFlow MCTS implementation for agent search
+- STPA, ZeroRouter, SEW, and Higher-Order Voting techniques
+- Agent-SafetyBench safety categories (#332)
+- Custom expert loading from configuration (#300)
+- Sandbox execution wrapper for CLI execSync calls
 - Research paper registry integration with auto-add from arXiv fetch (#299)
 - Deterministic skill loader for agents (#374)
 - Config management CLI commands (#360)
 - Response caching layer for CLI adapters (#358)
 - Skill dependency graph with topological execution ordering (#374)
 - Security controls for skill system (RBAC, provenance) (#374)
-- Skills loader research documentation
 
 ### Changed
 
-- Large files split for CODING_STANDARDS compliance (#352)
+- Eliminated all 12 circular dependency chains (#292, #392)
+- 21+ files split for 400-line CODING_STANDARDS compliance (#293, #340, #352, #404)
+- Merged gemini-adapter-enhanced into canonical adapter (#389)
+- Magic numbers extracted to named constants (#384)
+- Codex adapter model defaults refactored for consistency
 - Enhanced Gemini adapter with circuit breaker (#366)
-- Integration tests updated for API changes
 
 ### Fixed
 
-- Gemini timeout expectations per Issue #366
-- Missing MemGPT paper added to registry (arxiv-2310.08560)
-- Registry inconsistencies found by swarm audit
-- Model version claims and paper count accuracy
+- Path traversal protection added to resolveFilePath (security)
+- AbortSignal listener cleanup in PuppeteerOrchestrator (memory leak)
+- Hardcoded routing latency replaced with actual measurement (#395)
+- policyMode config now respected in PuppeteerOrchestrator (#385)
+- Codex MCP tool names corrected (#388)
+- Codex subprocess adapter and puppeteer transport fixes (#388)
+- EnhancedGeminiCliAdapter sandbox flag removed (#387)
+- Gemini timeout expectations (#366)
+- Test path traversal protection in config-command tests
+
+### Performance
+
+- ResponseCache LRU key lookup optimized from O(n) to O(1) (#408)
+- EventBus CircularBuffer for O(1) history eviction (#407)
+- ExperienceBuffer sampling optimized with reservoir algorithm
+
+### Security
+
+- Path traversal protection in file resolution
+- Sandbox execution wrapping for all execSync calls
+- Per-tool rate limiting in MCP server
+
+### Testing
+
+- 561+ new tests added (dogfooding, sandbox, benchmarks, E2E)
+- Comprehensive tests for security-critical modules (#382, #383)
+- Core/MCP module test coverage (#377)
+- Config-command-helpers and research-index-generator edge cases
+
+## [Unreleased]
 
 ## [2.2.0] - 2026-01-16
 
@@ -97,6 +139,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[unreleased]: https://github.com/williamzujkowski/nexus-agents/compare/v2.2.0...HEAD
+[unreleased]: https://github.com/williamzujkowski/nexus-agents/compare/v2.3.0...HEAD
+[2.3.0]: https://github.com/williamzujkowski/nexus-agents/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/williamzujkowski/nexus-agents/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/williamzujkowski/nexus-agents/releases/tag/v2.1.0
