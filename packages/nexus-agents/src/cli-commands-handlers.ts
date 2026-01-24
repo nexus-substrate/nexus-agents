@@ -9,16 +9,12 @@
 
 import {
   doctorCommand,
-  configInitCommand,
-  configCommand,
-  isValidConfigAction,
   expertListCommand,
   workflowRunCommand,
   printWorkflowTemplates,
   replCommand,
   reviewDemoCommand,
   routingAuditCommand,
-  orchestrateCommand,
   systemReviewCommand,
   voteCommand,
   indexCommand,
@@ -27,7 +23,6 @@ import {
   validationDashboardCommand,
   parseValidationArgs,
   verifyCommand,
-  sweBenchCommand,
   learningMetricsCommand,
   setupCommand,
 } from './cli/index.js';
@@ -35,7 +30,6 @@ import { EXIT_CODES, type ParsedCliArgs } from './cli-types.js';
 import { startServer } from './cli-server.js';
 import {
   isValidExpertListFormat,
-  isValidOrchestrateModel,
   isValidThreshold,
   isValidIndexSubcommand,
   isValidIndexFormat,
@@ -45,11 +39,17 @@ import {
 import {
   printWorkflowRunUsage,
   printRoutingAuditUsage,
-  printOrchestrateUsage,
   printVoteUsage,
   printIndexUsage,
   printResearchUsage,
 } from './cli-commands-usage.js';
+
+// Re-export complex handlers for backward compatibility
+export {
+  handleConfigCommand,
+  handleOrchestrateCommand,
+  handleSweBenchCommand,
+} from './cli-commands-handlers-complex.js';
 
 /**
  * Handles unimplemented commands with a coming soon message.
@@ -57,83 +57,6 @@ import {
 export function handleUnimplementedCommand(command: string): void {
   process.stdout.write(`The '${command}' command is coming soon.\n`);
   process.stdout.write('Run "nexus-agents --help" for available options.\n');
-}
-
-/**
- * Handles the config init subcommand.
- */
-async function handleConfigInit(args: ParsedCliArgs): Promise<void> {
-  const configOpts = {
-    force: args.options.force,
-    ...(args.options.output !== undefined && { output: args.options.output }),
-  };
-  const exitCode = await configInitCommand(configOpts);
-  process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
-}
-
-/**
- * Prints error for unknown config subcommand.
- */
-function printUnknownConfigSubcommand(subcommand: string): void {
-  process.stdout.write(`Unknown config subcommand: '${subcommand}'\n`);
-  process.stdout.write('Valid subcommands: init, get, set, list, reset, export, import\n');
-  process.stdout.write('Run "nexus-agents config --help" for usage details.\n');
-}
-
-/**
- * Builds config command options from parsed CLI args.
- */
-function buildConfigOptions(
-  args: ParsedCliArgs,
-  action: 'get' | 'set' | 'list' | 'reset' | 'export' | 'import'
-): {
-  action: typeof action;
-  key?: string;
-  value?: string;
-  file?: string;
-  format: 'json' | 'yaml';
-  force: boolean;
-  verbose: boolean;
-} {
-  // Parse key/value or file from positionals based on action
-  const key = args.positionals[2];
-  const value = args.positionals[3];
-  const format: 'json' | 'yaml' = args.options.format === 'yaml' ? 'yaml' : 'json';
-
-  return {
-    action,
-    ...(key !== undefined && { key }),
-    ...(value !== undefined && { value }),
-    ...(key !== undefined && { file: key }), // For export/import, key position is file path
-    format,
-    force: args.options.force,
-    verbose: args.options.verbose,
-  };
-}
-
-/**
- * Handles the config command and its subcommands.
- * Supports: init, get, set, list, reset, export, import
- * (Source: Issue #360, Issue #378)
- */
-export async function handleConfigCommand(args: ParsedCliArgs): Promise<void> {
-  const subcommand = args.subcommand ?? '';
-
-  // Handle init separately (uses different implementation)
-  if (subcommand === 'init') {
-    return handleConfigInit(args);
-  }
-
-  // Validate subcommand is a valid config action
-  if (!isValidConfigAction(subcommand)) {
-    printUnknownConfigSubcommand(subcommand);
-    process.exit(EXIT_CODES.INVALID_ARGS);
-    return;
-  }
-
-  const configOpts = buildConfigOptions(args, subcommand);
-  const exitCode = await configCommand(configOpts);
-  process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
 }
 
 /**
@@ -226,61 +149,6 @@ export function handleRoutingAuditCommand(args: ParsedCliArgs): void {
     json: args.options.format === 'json',
     verbose: args.options.verbose,
     banditStats: args.options.banditStats,
-  });
-  process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
-}
-
-/**
- * Validates orchestrate engine option.
- * (Source: Issue #386)
- */
-function isValidOrchestrateEngine(value: string): value is 'router' | 'puppeteer' {
-  return value === 'router' || value === 'puppeteer';
-}
-
-/**
- * Handles the orchestrate command for standalone CLI execution.
- * (Source: Issue #183, 5-0 consensus vote)
- * (Source: Issue #386 - PuppeteerOrchestrator integration)
- */
-export async function handleOrchestrateCommand(args: ParsedCliArgs): Promise<void> {
-  // Get task from positionals (orchestrate <task>)
-  const task = args.positionals[1];
-  if (task === undefined) {
-    printOrchestrateUsage();
-    process.exit(EXIT_CODES.INVALID_ARGS);
-  }
-
-  // Parse optional model
-  const model = args.options.model;
-  const validModel = model !== undefined && isValidOrchestrateModel(model) ? model : undefined;
-
-  // Parse format
-  const format = args.options.format === 'json' ? 'json' : 'text';
-
-  // Parse numeric options
-  const maxTokens = args.options.maxTokens;
-  const maxCostUsd = args.options.maxCostUsd;
-
-  // Parse engine options (Issue #386)
-  const engine = args.options.engine;
-  const validEngine = engine !== undefined && isValidOrchestrateEngine(engine) ? engine : undefined;
-  const learn = args.options.learn;
-  const policyPath = args.options.policyPath;
-  const maxSteps = args.options.maxSteps;
-
-  const exitCode = await orchestrateCommand({
-    task,
-    model: validModel,
-    format,
-    verbose: args.options.verbose,
-    dryRun: args.options.dryRun,
-    maxTokens,
-    maxCostUsd,
-    engine: validEngine,
-    learn,
-    policyPath,
-    maxSteps,
   });
   process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
 }
@@ -405,44 +273,6 @@ export function handleLearningMetricsCommand(args: ParsedCliArgs): void {
     showTrends: args.options.noTrends !== true,
     ...(args.options.export !== undefined && { exportPath: args.options.export }),
   });
-  process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
-}
-
-/**
- * Handles the swe-bench command for benchmark evaluation.
- * (Source: Issue #257 - SWE-Bench Evaluation)
- */
-export async function handleSweBenchCommand(args: ParsedCliArgs): Promise<void> {
-  // Build args array from parsed options for sweBenchCommand
-  const subArgs: string[] = [];
-
-  // Add subcommand (run, status, info, evaluate)
-  const subcommand = args.positionals[1] ?? 'run';
-  subArgs.push(subcommand);
-
-  // Add parsed options
-  if (args.options.variant !== undefined) {
-    subArgs.push(`--variant=${args.options.variant}`);
-  }
-  if (args.options.limit !== undefined) {
-    subArgs.push(`--limit=${String(args.options.limit)}`);
-  }
-  if (args.options.output !== undefined) {
-    subArgs.push(`--output=${args.options.output}`);
-  }
-  if (args.options.resume) {
-    subArgs.push('--resume');
-  }
-  if (args.options.verbose) {
-    subArgs.push('--verbose');
-  }
-  if (args.options.instance !== undefined) {
-    for (const inst of args.options.instance) {
-      subArgs.push(`--instance=${inst}`);
-    }
-  }
-
-  const exitCode = await sweBenchCommand(subArgs);
   process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
 }
 
