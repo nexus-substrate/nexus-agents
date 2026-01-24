@@ -91,7 +91,13 @@ export class InMemoryResponseCache implements IResponseCache {
   private readonly config: ResponseCacheConfig;
   private readonly logger: ILogger;
   private readonly cache: Map<string, CacheEntry<unknown>> = new Map();
-  private readonly accessOrder: Map<string, number> = new Map();
+  /**
+   * Tracks LRU order using Map's insertion order property.
+   * When a key is accessed, it's deleted and re-inserted to move to "most recent" end.
+   * First key in iteration is always LRU - enables O(1) findLRUKey.
+   * @see Issue #408 - Performance optimization
+   */
+  private readonly lruOrder: Map<string, true> = new Map();
 
   private hits = 0;
   private misses = 0;
@@ -99,7 +105,6 @@ export class InMemoryResponseCache implements IResponseCache {
   private evictionsTTL = 0;
   private evictionsMemory = 0;
   private memoryUsedBytes = 0;
-  private accessCounter = 0;
   private disposed = false;
   private cleanupTimer: NodeJS.Timeout | undefined;
   private readonly createdAt: Date = new Date();
@@ -194,7 +199,7 @@ export class InMemoryResponseCache implements IResponseCache {
   clear(): void {
     this.ensureNotDisposed();
     this.cache.clear();
-    this.accessOrder.clear();
+    this.lruOrder.clear();
     this.memoryUsedBytes = 0;
     this.logIfEnabled('Cache cleared');
   }
@@ -224,7 +229,7 @@ export class InMemoryResponseCache implements IResponseCache {
       this.cleanupTimer = undefined;
     }
     this.cache.clear();
-    this.accessOrder.clear();
+    this.lruOrder.clear();
     this.logIfEnabled('Cache disposed');
   }
 
@@ -244,9 +249,14 @@ export class InMemoryResponseCache implements IResponseCache {
     return Date.now() > entry.expiresAt;
   }
 
+  /**
+   * Updates LRU order by deleting and re-inserting to move to end.
+   * Map iteration order is insertion order, so newest is at the end.
+   * O(1) operation.
+   */
   private updateAccessOrder(key: string): void {
-    this.accessCounter++;
-    this.accessOrder.set(key, this.accessCounter);
+    this.lruOrder.delete(key);
+    this.lruOrder.set(key, true);
   }
 
   private updateEntryHits(key: string, entry: CacheEntry<unknown>): void {
@@ -263,7 +273,7 @@ export class InMemoryResponseCache implements IResponseCache {
     if (entry === undefined) return false;
 
     this.cache.delete(key);
-    this.accessOrder.delete(key);
+    this.lruOrder.delete(key);
     this.memoryUsedBytes -= entry.sizeBytes;
 
     switch (reason) {
@@ -301,17 +311,14 @@ export class InMemoryResponseCache implements IResponseCache {
     }
   }
 
+  /**
+   * Returns the least recently used key in O(1) time.
+   * Uses Map's iteration order property - first key is always LRU.
+   * @see Issue #408 - Optimized from O(n) to O(1)
+   */
   private findLRUKey(): string | undefined {
-    let lruKey: string | undefined;
-    let lruAccess = Infinity;
-
-    for (const [key, access] of this.accessOrder) {
-      if (access < lruAccess) {
-        lruAccess = access;
-        lruKey = key;
-      }
-    }
-    return lruKey;
+    const first = this.lruOrder.keys().next();
+    return first.done === true ? undefined : first.value;
   }
 
   private startCleanupTimer(): void {
