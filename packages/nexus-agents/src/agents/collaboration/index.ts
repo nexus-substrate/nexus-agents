@@ -325,6 +325,9 @@ export { EventTopics } from './event-bus-types.js';
 
 export { EventBus, getGlobalEventBus, resetGlobalEventBus, createEvent } from './event-bus.js';
 
+// Circular Buffer for O(1) bounded collections (Source: Issue #407)
+export { CircularBuffer } from './circular-buffer.js';
+
 // Agent Message Router for peer-to-peer communication (Source: Issue #217, Sprint #219)
 export type {
   AgentMessageRouterConfig,

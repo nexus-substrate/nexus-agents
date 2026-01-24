@@ -34,6 +34,8 @@ import {
   countMatchingSubscribers,
 } from './event-bus-helpers.js';
 
+import { CircularBuffer } from './circular-buffer.js';
+
 // Re-export correlation ID helpers for public API
 export { generateCorrelationId, createChildCorrelationId } from './event-bus-helpers.js';
 
@@ -64,8 +66,7 @@ export { generateCorrelationId, createChildCorrelationId } from './event-bus-hel
  */
 export class EventBus implements IEventBus {
   private readonly subscriptions: Map<SubscriptionId, SubscriptionRecord> = new Map();
-  private readonly history: DomainEvent[] = [];
-  private readonly maxHistorySize: number;
+  private readonly history: CircularBuffer<DomainEvent>;
   private readonly asyncHandling: boolean;
   private readonly logger?: EventBusOptions['logger'];
 
@@ -78,7 +79,8 @@ export class EventBus implements IEventBus {
   };
 
   constructor(options: EventBusOptions = {}) {
-    this.maxHistorySize = options.maxHistorySize ?? DEFAULT_MAX_HISTORY_SIZE;
+    const maxHistorySize = options.maxHistorySize ?? DEFAULT_MAX_HISTORY_SIZE;
+    this.history = new CircularBuffer<DomainEvent>(maxHistorySize);
     this.asyncHandling = options.asyncHandling ?? false;
     this.logger = options.logger;
   }
@@ -182,11 +184,12 @@ export class EventBus implements IEventBus {
    * Get event history matching filter criteria.
    */
   getHistory(filter?: EventFilter): readonly DomainEvent[] {
+    const historyArray = this.history.toArray();
     if (filter === undefined) {
-      return [...this.history];
+      return historyArray;
     }
 
-    const filtered = applyHistoryFilters(this.history, filter);
+    const filtered = applyHistoryFilters(historyArray, filter);
     return applyHistoryLimit(filtered, filter);
   }
 
@@ -194,7 +197,7 @@ export class EventBus implements IEventBus {
    * Clear event history.
    */
   clearHistory(): void {
-    this.history.length = 0;
+    this.history.clear();
     this.stats.historySize = 0;
     this.logger?.debug('History cleared');
   }
@@ -224,14 +227,12 @@ export class EventBus implements IEventBus {
   }
 
   /**
-   * Add event to history, maintaining size limit.
+   * Add event to history, maintaining size limit via O(1) circular buffer.
+   * @see Issue #407 - Performance optimization
    */
   private addToHistory(event: DomainEvent): void {
     this.history.push(event);
-    if (this.history.length > this.maxHistorySize) {
-      this.history.shift();
-    }
-    this.stats.historySize = this.history.length;
+    this.stats.historySize = this.history.size;
   }
 
   /**
