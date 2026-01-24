@@ -6,7 +6,7 @@
  * @module observability/routing-metrics-helpers
  */
 
-import type { RoutingMetrics } from './routing-metrics.js';
+import type { RoutingMetrics } from './routing-metrics-types.js';
 
 // =============================================================================
 // Text Formatting Helpers

@@ -13,8 +13,8 @@ import type { NodeId, TreeId, ForestId, ReasoningNode } from './forest-node-type
 import { ReasoningNodeSchema } from './forest-node-types.js';
 import type { PathScore } from './forest-tree-types.js';
 import { PathScoreSchema } from './forest-tree-types.js';
-import type { ForestState, ForestStatistics } from './forest-types.js';
-import { ForestStateSchema, ForestStatisticsSchema } from './forest-types.js';
+import type { ForestState, ForestStatistics } from './forest-state-types.js';
+import { ForestStateSchema, ForestStatisticsSchema } from './forest-state-types.js';
 
 // ============================================================================
 // Termination Types

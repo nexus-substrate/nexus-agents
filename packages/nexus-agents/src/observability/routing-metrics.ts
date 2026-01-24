@@ -17,71 +17,27 @@ import {
   renderPerformanceSection,
 } from './routing-metrics-helpers.js';
 
+// Re-export types from shared types file
+export type {
+  RoutingRecord,
+  OutcomeRecord,
+  ModelMetrics,
+  RoutingMetrics,
+  DashboardConfig,
+} from './routing-metrics-types.js';
+export { DEFAULT_DASHBOARD_CONFIG } from './routing-metrics-types.js';
+
+// Import for internal use
+import type {
+  RoutingRecord,
+  OutcomeRecord,
+  ModelMetrics,
+  RoutingMetrics,
+  DashboardConfig,
+} from './routing-metrics-types.js';
+import { DEFAULT_DASHBOARD_CONFIG } from './routing-metrics-types.js';
+
 const logger = createLogger({ component: 'routing-metrics' });
-
-// =============================================================================
-// Types
-// =============================================================================
-
-/** Individual routing decision record. */
-export interface RoutingRecord {
-  readonly timestamp: string;
-  readonly traceId: string;
-  readonly selectedModel: CliName;
-  readonly alternativeModels: readonly CliName[];
-  readonly isExploration: boolean;
-  readonly taskType?: string;
-  readonly contextTokens?: number;
-}
-
-/** Outcome record for a routing decision. */
-export interface OutcomeRecord {
-  readonly timestamp: string;
-  readonly traceId: string;
-  readonly model: CliName;
-  readonly success: boolean;
-  readonly reward: number;
-  readonly qualityScore?: number;
-  readonly latencyMs?: number;
-}
-
-/** Aggregated metrics for a single model. */
-export interface ModelMetrics {
-  readonly model: CliName;
-  readonly selectionCount: number;
-  readonly selectionPercent: number;
-  readonly avgReward: number;
-  readonly avgQuality: number;
-  readonly avgLatencyMs: number;
-  readonly successRate: number;
-  readonly explorationCount: number;
-}
-
-/** Overall routing metrics. */
-export interface RoutingMetrics {
-  readonly periodStart: string;
-  readonly periodEnd: string;
-  readonly totalDecisions: number;
-  readonly totalOutcomes: number;
-  readonly modelMetrics: readonly ModelMetrics[];
-  readonly explorationRate: number;
-  readonly avgReward: number;
-  readonly avgRewardTrend: number;
-  readonly avgRoutingLatencyMs: number;
-}
-
-/** Dashboard rendering configuration. */
-export interface DashboardConfig {
-  readonly width: number;
-  readonly showTrends: boolean;
-  readonly periodHours: number;
-}
-
-const DEFAULT_DASHBOARD_CONFIG: DashboardConfig = {
-  width: 65,
-  showTrends: true,
-  periodHours: 24,
-};
 
 // =============================================================================
 // RoutingMetricsCollector

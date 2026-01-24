@@ -16,38 +16,14 @@ import { z } from 'zod';
 import type { NodeId, TreeId, ForestId } from './forest-node-types.js';
 import type { PathScore, ReasoningTree } from './forest-tree-types.js';
 import type { ForestConfig } from './forest-config-types.js';
+import type { ForestState, ForestStatistics } from './forest-state-types.js';
 
 // Re-export all types from sub-modules
 export * from './forest-node-types.js';
 export * from './forest-tree-types.js';
 export * from './forest-config-types.js';
+export * from './forest-state-types.js';
 export * from './forest-result-types.js';
-
-// ============================================================================
-// Forest State Types
-// ============================================================================
-
-/**
- * State of a forest of reasoning trees.
- *
- * - `initializing`: Forest is being set up
- * - `exploring`: Actively exploring trees
- * - `converging`: Trees are converging on solution(s)
- * - `completed`: Forest has finished exploration
- * - `timeout`: Exploration ended due to timeout
- */
-export type ForestState = 'initializing' | 'exploring' | 'converging' | 'completed' | 'timeout';
-
-/**
- * Schema for ForestState validation.
- */
-export const ForestStateSchema = z.enum([
-  'initializing',
-  'exploring',
-  'converging',
-  'completed',
-  'timeout',
-]);
 
 // ============================================================================
 // Cross-Tree Information Types
@@ -147,54 +123,11 @@ export const CrossTreeInfoSchema = z.object({
 });
 
 // ============================================================================
-// Forest Statistics
-// ============================================================================
-
-/**
- * Statistics for the entire forest.
- */
-export interface ForestStatistics {
-  /** Total number of trees */
-  readonly totalTrees: number;
-  /** Number of active trees */
-  readonly activeTrees: number;
-  /** Total nodes across all trees */
-  readonly totalNodes: number;
-  /** Total active nodes across all trees */
-  readonly totalActiveNodes: number;
-  /** Maximum depth across all trees */
-  readonly maxDepth: number;
-  /** Best path score found */
-  readonly bestPathScore: number;
-  /** Average tree score */
-  readonly avgTreeScore: number;
-  /** Total tokens used */
-  readonly totalTokensUsed: number;
-  /** Total exploration time in ms */
-  readonly totalExplorationTimeMs: number;
-  /** Activation ratio (active nodes / total nodes) */
-  readonly activationRatio: number;
-}
-
-/**
- * Schema for ForestStatistics validation.
- */
-export const ForestStatisticsSchema = z.object({
-  totalTrees: z.number().int().nonnegative(),
-  activeTrees: z.number().int().nonnegative(),
-  totalNodes: z.number().int().nonnegative(),
-  totalActiveNodes: z.number().int().nonnegative(),
-  maxDepth: z.number().int().nonnegative(),
-  bestPathScore: z.number().min(0).max(1),
-  avgTreeScore: z.number().min(0).max(1),
-  totalTokensUsed: z.number().int().nonnegative(),
-  totalExplorationTimeMs: z.number().nonnegative(),
-  activationRatio: z.number().min(0).max(1),
-});
-
-// ============================================================================
 // Forest Types
 // ============================================================================
+
+// Note: ForestState, ForestStateSchema, ForestStatistics, and ForestStatisticsSchema
+// are now in forest-state-types.ts and re-exported above.
 
 /**
  * A forest of reasoning trees with sparse activation.
