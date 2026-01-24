@@ -193,7 +193,7 @@ export class CodexMcpAdapter implements ICliAdapter {
 
     try {
       const result = await Promise.race([
-        this.callExecuteTool(task),
+        this.callCodexTool(task),
         createTimeout(options.timeoutMs),
       ]);
 
@@ -208,21 +208,39 @@ export class CodexMcpAdapter implements ICliAdapter {
   }
 
   /**
-   * Calls the execute tool on Codex MCP server.
+   * Calls the codex or codex-reply tool on Codex MCP server.
+   *
+   * The Codex MCP server exposes two tools:
+   * - `codex` - Initiates a new session
+   * - `codex-reply` - Continues an existing session using threadId
+   *
+   * @see https://developers.openai.com/codex/mcp/
    */
-  private async callExecuteTool(task: CliTask): Promise<McpToolResult> {
+  private async callCodexTool(task: CliTask): Promise<McpToolResult> {
     if (this.client === undefined) {
       throw new Error('Client not initialized');
     }
 
+    // Use codex-reply for session continuation, codex for new sessions
+    const isReply = task.sessionId !== undefined && task.sessionId !== '';
+    const toolName = isReply ? 'codex-reply' : 'codex';
+
+    const baseArgs = {
+      prompt: task.content,
+      ...(task.model !== undefined && { model: task.model }),
+    };
+
+    const args = isReply
+      ? { ...baseArgs, threadId: task.sessionId }
+      : {
+          ...baseArgs,
+          sandbox: 'read-only' as const,
+          'approval-policy': 'on-failure' as const,
+        };
+
     const result = await this.client.callTool({
-      name: 'execute',
-      arguments: {
-        prompt: task.content,
-        ...(task.model !== undefined && { model: task.model }),
-        ...(task.systemPrompt !== undefined && { system: task.systemPrompt }),
-        ...(task.maxTokens !== undefined && { max_tokens: task.maxTokens }),
-      },
+      name: toolName,
+      arguments: args,
     });
 
     return result as McpToolResult;

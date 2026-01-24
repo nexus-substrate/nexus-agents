@@ -202,7 +202,7 @@ describe('CodexMcpAdapter', () => {
       }
     });
 
-    it('should pass optional parameters to tool', async () => {
+    it('should call codex tool with correct arguments', async () => {
       const mockClient = {
         connect: vi.fn().mockResolvedValue(undefined),
         callTool: vi.fn().mockResolvedValue({
@@ -215,17 +215,41 @@ describe('CodexMcpAdapter', () => {
       await newAdapter.execute({
         content: 'Test task',
         model: 'o3-mini',
-        systemPrompt: 'Be helpful',
-        maxTokens: 1000,
       });
 
+      // Codex MCP server exposes 'codex' tool with these arguments
+      // @see https://developers.openai.com/codex/mcp/
       expect(mockClient.callTool).toHaveBeenCalledWith({
-        name: 'execute',
+        name: 'codex',
         arguments: {
           prompt: 'Test task',
           model: 'o3-mini',
-          system: 'Be helpful',
-          max_tokens: 1000,
+          sandbox: 'read-only',
+          'approval-policy': 'on-failure',
+        },
+      });
+    });
+
+    it('should use codex-reply tool for session continuation', async () => {
+      const mockClient = {
+        connect: vi.fn().mockResolvedValue(undefined),
+        callTool: vi.fn().mockResolvedValue({
+          content: [{ type: 'text', text: 'Response' }],
+        }),
+      };
+      vi.mocked(Client).mockImplementationOnce(() => mockClient as never);
+
+      const newAdapter = new CodexMcpAdapter();
+      await newAdapter.execute({
+        content: 'Follow up question',
+        sessionId: 'thread-123',
+      });
+
+      expect(mockClient.callTool).toHaveBeenCalledWith({
+        name: 'codex-reply',
+        arguments: {
+          prompt: 'Follow up question',
+          threadId: 'thread-123',
         },
       });
     });
