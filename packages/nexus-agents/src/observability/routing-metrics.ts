@@ -80,6 +80,7 @@ export class RoutingMetricsCollector {
       traceId: record.traceId,
       model: record.selectedModel,
       isExploration: record.isExploration,
+      routingLatencyMs: record.routingLatencyMs,
     });
   }
 
@@ -124,6 +125,14 @@ export class RoutingMetricsCollector {
     // Calculate trend (compare last period vs previous period)
     const avgRewardTrend = this.calculateRewardTrend(periodHours);
 
+    // Calculate average routing latency from decisions that have timing data
+    const decisionsWithLatency = recentDecisions.filter((d) => d.routingLatencyMs !== undefined);
+    const avgRoutingLatencyMs =
+      decisionsWithLatency.length > 0
+        ? decisionsWithLatency.reduce((sum, d) => sum + (d.routingLatencyMs ?? 0), 0) /
+          decisionsWithLatency.length
+        : 0;
+
     return {
       periodStart: cutoffStr,
       periodEnd: new Date(now).toISOString(),
@@ -133,7 +142,7 @@ export class RoutingMetricsCollector {
       explorationRate,
       avgReward,
       avgRewardTrend,
-      avgRoutingLatencyMs: 8, // Placeholder - would need timing instrumentation
+      avgRoutingLatencyMs,
     };
   }
 

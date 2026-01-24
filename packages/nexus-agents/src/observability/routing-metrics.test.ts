@@ -113,6 +113,32 @@ describe('RoutingMetricsCollector', () => {
       const geminiMetrics = metrics.modelMetrics.find((m) => m.model === 'gemini');
       expect(geminiMetrics?.avgLatencyMs).toBe(150);
     });
+
+    it('calculates average routing latency from decisions', () => {
+      collector.recordDecision(createDecision({ routingLatencyMs: 5 }));
+      collector.recordDecision(createDecision({ routingLatencyMs: 15 }));
+      collector.recordDecision(createDecision({ routingLatencyMs: 10 }));
+
+      const metrics = collector.getMetrics();
+      expect(metrics.avgRoutingLatencyMs).toBe(10);
+    });
+
+    it('ignores decisions without routing latency', () => {
+      collector.recordDecision(createDecision({ routingLatencyMs: 8 }));
+      collector.recordDecision(createDecision()); // No routingLatencyMs
+      collector.recordDecision(createDecision({ routingLatencyMs: 12 }));
+
+      const metrics = collector.getMetrics();
+      expect(metrics.avgRoutingLatencyMs).toBe(10);
+    });
+
+    it('returns zero routing latency when no latency data', () => {
+      collector.recordDecision(createDecision());
+      collector.recordDecision(createDecision());
+
+      const metrics = collector.getMetrics();
+      expect(metrics.avgRoutingLatencyMs).toBe(0);
+    });
   });
 
   describe('getMetrics', () => {

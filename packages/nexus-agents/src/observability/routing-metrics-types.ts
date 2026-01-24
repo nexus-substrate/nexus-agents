@@ -25,6 +25,8 @@ export interface RoutingRecord {
   readonly isExploration: boolean;
   readonly taskType?: string;
   readonly contextTokens?: number;
+  /** Time taken to make the routing decision (ms). */
+  readonly routingLatencyMs?: number;
 }
 
 /** Outcome record for a routing decision. */
