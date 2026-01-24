@@ -144,7 +144,8 @@ export type ConfigErrorCode =
   | 'FILE_ALREADY_EXISTS'
   | 'PARSE_ERROR'
   | 'WRITE_ERROR'
-  | 'VALIDATION_ERROR';
+  | 'VALIDATION_ERROR'
+  | 'PATH_TRAVERSAL';
 
 /** Config operation error. */
 export class ConfigCommandError extends Error {

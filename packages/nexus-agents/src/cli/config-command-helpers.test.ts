@@ -249,8 +249,9 @@ describe('createBackup', () => {
 });
 
 describe('resolveFilePath', () => {
-  it('returns absolute path unchanged', () => {
-    const absPath = '/absolute/path/to/file.json';
+  it('returns absolute path within base unchanged', () => {
+    const cwd = process.cwd();
+    const absPath = `${cwd}/file.json`;
     expect(resolveFilePath(absPath)).toBe(absPath);
   });
 
@@ -259,6 +260,60 @@ describe('resolveFilePath', () => {
     const resolved = resolveFilePath(relPath);
     expect(resolved).toContain(process.cwd());
     expect(resolved.endsWith('config.json')).toBe(true);
+  });
+
+  it('allows custom base directory', () => {
+    const customBase = '/tmp/test-base';
+    const resolved = resolveFilePath('config.json', customBase);
+    expect(resolved).toBe('/tmp/test-base/config.json');
+  });
+
+  it('allows resolving to exactly the base directory', () => {
+    const base = '/tmp/test-base';
+    expect(resolveFilePath('.', base)).toBe(base);
+  });
+
+  // Path traversal protection tests
+  describe('path traversal protection', () => {
+    it('throws on parent directory traversal with ../', () => {
+      expect(() => resolveFilePath('../../../etc/passwd')).toThrow(ConfigCommandError);
+      expect(() => resolveFilePath('../../../etc/passwd')).toThrow(/Path traversal detected/);
+    });
+
+    it('throws on absolute path outside base', () => {
+      expect(() => resolveFilePath('/etc/passwd')).toThrow(ConfigCommandError);
+      expect(() => resolveFilePath('/etc/passwd')).toThrow(/Path traversal detected/);
+    });
+
+    it('throws on hidden traversal with nested ..', () => {
+      expect(() => resolveFilePath('subdir/../../other/../../etc/passwd')).toThrow(
+        ConfigCommandError
+      );
+    });
+
+    it('throws on traversal with custom base', () => {
+      const customBase = '/tmp/safe-dir';
+      expect(() => resolveFilePath('../etc/passwd', customBase)).toThrow(ConfigCommandError);
+    });
+
+    it('allows subdirectories within base', () => {
+      const relPath = 'subdir/nested/file.json';
+      const resolved = resolveFilePath(relPath);
+      expect(resolved).toContain(process.cwd());
+      expect(resolved.endsWith('subdir/nested/file.json')).toBe(true);
+    });
+
+    it('normalizes paths with . components', () => {
+      const resolved = resolveFilePath('./config.json');
+      expect(resolved.endsWith('config.json')).toBe(true);
+      expect(resolved).not.toContain('./');
+    });
+
+    it('allows relative traversal that stays within base', () => {
+      // Going into subdir then back should be allowed if it stays in base
+      const resolved = resolveFilePath('subdir/../config.json');
+      expect(resolved.endsWith('config.json')).toBe(true);
+    });
   });
 });
 

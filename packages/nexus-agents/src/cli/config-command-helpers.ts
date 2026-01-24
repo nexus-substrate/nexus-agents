@@ -207,10 +207,35 @@ export async function createBackup(filePath: string): Promise<string | undefined
 }
 
 /**
- * Resolves a file path relative to CWD.
+ * Resolves a file path relative to CWD with path traversal protection.
+ *
+ * @param filePath - User-provided file path
+ * @param allowedBase - Base directory to restrict access to (defaults to CWD)
+ * @returns Resolved absolute path
+ * @throws ConfigCommandError if path traversal is detected
  */
-export function resolveFilePath(filePath: string): string {
-  return path.isAbsolute(filePath) ? filePath : path.resolve(process.cwd(), filePath);
+export function resolveFilePath(filePath: string, allowedBase?: string): string {
+  const base = allowedBase ?? process.cwd();
+  const resolved = path.isAbsolute(filePath) ? filePath : path.resolve(base, filePath);
+
+  // Normalize both paths to handle .. and . components
+  const normalizedResolved = path.normalize(resolved);
+  const normalizedBase = path.normalize(base);
+
+  // Ensure resolved path is within the allowed base directory
+  // Check both that it starts with base + separator (subdirectory) or equals base exactly
+  const isWithinBase =
+    normalizedResolved === normalizedBase ||
+    normalizedResolved.startsWith(normalizedBase + path.sep);
+
+  if (!isWithinBase) {
+    throw new ConfigCommandError(
+      'PATH_TRAVERSAL',
+      `Path traversal detected: "${filePath}" resolves outside allowed directory`
+    );
+  }
+
+  return normalizedResolved;
 }
 
 /**
