@@ -36,6 +36,17 @@ import {
   type CircuitBreakerConfig,
   type CircuitBreakerSnapshot,
 } from '../circuit-breaker.js';
+import {
+  getModelDisplayName,
+  getContextWindow,
+  getCostPerMillionInput,
+  getCostPerMillionOutput,
+  calculateBackoffDelay,
+  isRetryableError,
+  categorizeError,
+  createCircuitOpenError,
+  delay,
+} from './gemini-adapter-helpers.js';
 
 /** Configuration for Gemini adapter. */
 export interface GeminiConfig {
@@ -135,11 +146,11 @@ export class GeminiCliAdapter extends SubprocessCliAdapter {
   getModelInfo(): ModelInfo {
     return {
       id: this.model,
-      name: this.getModelDisplayName(),
-      contextWindow: this.getContextWindow(),
+      name: getModelDisplayName(this.model),
+      contextWindow: getContextWindow(this.model),
       maxOutput: 8_192,
-      costPerMillionInput: this.getCostPerMillionInput(),
-      costPerMillionOutput: this.getCostPerMillionOutput(),
+      costPerMillionInput: getCostPerMillionInput(this.model),
+      costPerMillionOutput: getCostPerMillionOutput(this.model),
     };
   }
 
@@ -190,53 +201,6 @@ export class GeminiCliAdapter extends SubprocessCliAdapter {
     return this.executeWithMetadata(task, options);
   }
 
-  private checkCircuitBreaker(): CliError | null {
-    if (this.circuitBreaker === null) {
-      return null;
-    }
-    if (this.circuitBreaker.getState() === 'open') {
-      return this.createCircuitOpenError();
-    }
-    return null;
-  }
-
-  private buildExecutionOptions(
-    taskContent: string,
-    options?: ExecutionOptions
-  ): Required<ExecutionOptions> {
-    const complexity = estimateTaskComplexity(taskContent);
-    const timeoutMs = options?.timeoutMs ?? getTimeoutForTask(this.name, complexity);
-
-    return {
-      timeoutMs,
-      allowRetry: options?.allowRetry ?? true,
-      maxRetries: options?.maxRetries ?? this.maxRetries,
-      trackUsage: options?.trackUsage ?? true,
-    };
-  }
-
-  private buildExecutionResult(
-    result: Result<{ response: CliResponse; retryCount: number }, CliError>,
-    startTime: number,
-    complexity: TaskComplexity
-  ): Result<GeminiExecutionResult, CliError> {
-    const totalDurationMs = Date.now() - startTime;
-    const circuitState = this.circuitBreaker?.getState() ?? 'closed';
-
-    if (result.ok) {
-      this.circuitBreaker?.recordSuccess();
-      return ok({
-        response: result.value.response,
-        retryCount: result.value.retryCount,
-        totalDurationMs,
-        complexity,
-        circuitState,
-      });
-    }
-
-    return err(result.error);
-  }
-
   /**
    * Gets current circuit breaker snapshot.
    */
@@ -278,9 +242,52 @@ export class GeminiCliAdapter extends SubprocessCliAdapter {
     return { command: 'gemini', args };
   }
 
-  // -------------------------------------------------------------------------
-  // Private Methods - Retry Logic
-  // -------------------------------------------------------------------------
+  private checkCircuitBreaker(): CliError | null {
+    if (this.circuitBreaker === null) {
+      return null;
+    }
+    if (this.circuitBreaker.getState() === 'open') {
+      return createCircuitOpenError('gemini');
+    }
+    return null;
+  }
+
+  private buildExecutionOptions(
+    taskContent: string,
+    options?: ExecutionOptions
+  ): Required<ExecutionOptions> {
+    const complexity = estimateTaskComplexity(taskContent);
+    const timeoutMs = options?.timeoutMs ?? getTimeoutForTask(this.name, complexity);
+
+    return {
+      timeoutMs,
+      allowRetry: options?.allowRetry ?? true,
+      maxRetries: options?.maxRetries ?? this.maxRetries,
+      trackUsage: options?.trackUsage ?? true,
+    };
+  }
+
+  private buildExecutionResult(
+    result: Result<{ response: CliResponse; retryCount: number }, CliError>,
+    startTime: number,
+    complexity: TaskComplexity
+  ): Result<GeminiExecutionResult, CliError> {
+    const totalDurationMs = Date.now() - startTime;
+    const circuitState = this.circuitBreaker?.getState() ?? 'closed';
+
+    if (result.ok) {
+      this.circuitBreaker?.recordSuccess();
+      return ok({
+        response: result.value.response,
+        retryCount: result.value.retryCount,
+        totalDurationMs,
+        complexity,
+        circuitState,
+      });
+    }
+
+    return err(result.error);
+  }
 
   private async executeWithRetryTracking(
     task: CliTask,
@@ -309,7 +316,7 @@ export class GeminiCliAdapter extends SubprocessCliAdapter {
 
       // Record failure with circuit breaker
       if (this.circuitBreaker !== null) {
-        this.circuitBreaker.recordFailure(this.categorizeError(error));
+        this.circuitBreaker.recordFailure(categorizeError(error));
       }
 
       // Check if error is retryable
@@ -318,11 +325,15 @@ export class GeminiCliAdapter extends SubprocessCliAdapter {
       }
 
       // Calculate and apply backoff delay
-      const delayMs = this.calculateBackoffDelay(retryContext.attempt);
+      const delayMs = calculateBackoffDelay(
+        retryContext.attempt,
+        this.baseDelayMs,
+        this.maxDelayMs
+      );
       retryContext = { ...retryContext, totalDelayMs: retryContext.totalDelayMs + delayMs };
 
       this.logRetryDelay(retryContext, delayMs);
-      await this.delay(delayMs);
+      await delay(delayMs);
     }
 
     return err(retryContext.lastError ?? this.createError('UNKNOWN', 'Max retries exceeded'));
@@ -345,39 +356,8 @@ export class GeminiCliAdapter extends SubprocessCliAdapter {
     }
 
     // Retry timeouts, rate limits, and connection errors
-    const retryableCodes = ['TIMEOUT', 'RATE_LIMITED', 'CONNECTION_ERROR'];
-    return retryableCodes.includes(error.code);
+    return isRetryableError(error.code);
   }
-
-  private calculateBackoffDelay(attempt: number): number {
-    // Exponential backoff with jitter
-    const exponentialDelay = this.baseDelayMs * Math.pow(2, attempt - 1);
-    const jitter = Math.random() * 0.3 * exponentialDelay;
-    const delay = exponentialDelay + jitter;
-
-    return Math.min(delay, this.maxDelayMs);
-  }
-
-  private categorizeError(
-    error: CliError
-  ): 'timeout' | 'rate_limit' | 'authentication' | 'connection' | 'unknown' {
-    switch (error.code) {
-      case 'TIMEOUT':
-        return 'timeout';
-      case 'RATE_LIMITED':
-        return 'rate_limit';
-      case 'NOT_AUTHENTICATED':
-        return 'authentication';
-      case 'CONNECTION_ERROR':
-        return 'connection';
-      default:
-        return 'unknown';
-    }
-  }
-
-  // -------------------------------------------------------------------------
-  // Private Methods - Logging
-  // -------------------------------------------------------------------------
 
   private logRetryAttempt(context: RetryContext, task: CliTask): void {
     if (context.attempt === 1) {
@@ -401,82 +381,15 @@ export class GeminiCliAdapter extends SubprocessCliAdapter {
       totalDelayMs: Math.round(context.totalDelayMs),
     });
   }
-
-  // -------------------------------------------------------------------------
-  // Private Methods - Model Info
-  // -------------------------------------------------------------------------
-
-  private getModelDisplayName(): string {
-    const displayNames: Record<string, string> = {
-      'gemini-2.5-pro': 'Gemini 2.5 Pro',
-      'gemini-2.5-flash': 'Gemini 2.5 Flash',
-      'gemini-2.5-flash-lite': 'Gemini 2.5 Flash Lite',
-    };
-
-    return displayNames[this.model] ?? this.model;
-  }
-
-  private getContextWindow(): number {
-    const contextWindows: Record<string, number> = {
-      'gemini-2.5-pro': 1_000_000,
-      'gemini-2.5-flash': 1_000_000,
-      'gemini-2.5-flash-lite': 1_000_000,
-    };
-
-    return contextWindows[this.model] ?? 1_000_000;
-  }
-
-  private getCostPerMillionInput(): number {
-    const costs: Record<string, number> = {
-      'gemini-2.5-pro': 1.25,
-      'gemini-2.5-flash': 0.075,
-      'gemini-2.5-flash-lite': 0.015,
-    };
-
-    return costs[this.model] ?? 0.075;
-  }
-
-  private getCostPerMillionOutput(): number {
-    const costs: Record<string, number> = {
-      'gemini-2.5-pro': 10.0,
-      'gemini-2.5-flash': 0.3,
-      'gemini-2.5-flash-lite': 0.06,
-    };
-
-    return costs[this.model] ?? 0.3;
-  }
-
-  // -------------------------------------------------------------------------
-  // Private Methods - Error Handling
-  // -------------------------------------------------------------------------
-
-  private createCircuitOpenError(): CliError {
-    return {
-      code: 'EXECUTION_ERROR',
-      message: 'Circuit breaker is open - Gemini CLI temporarily unavailable',
-      cli: 'gemini',
-      retryable: false,
-    };
-  }
-
-  protected override delay(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-  }
 }
 
-/**
- * @deprecated Use GeminiCliAdapter instead
- */
+/** @deprecated Use GeminiCliAdapter instead */
 export const EnhancedGeminiCliAdapter = GeminiCliAdapter;
 
-/**
- * Creates a Gemini CLI adapter with reliability features.
- */
+/** Creates a Gemini CLI adapter with reliability features. */
 export function createGeminiAdapter(config?: GeminiConfig): GeminiCliAdapter {
   return new GeminiCliAdapter(config);
 }
 
-/**
- * @deprecated Use createGeminiAdapter instead
- */
+/** @deprecated Use createGeminiAdapter instead */
 export const createEnhancedGeminiAdapter = createGeminiAdapter;
