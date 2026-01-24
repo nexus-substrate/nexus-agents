@@ -175,7 +175,7 @@ export class GeminiCliAdapter extends SubprocessCliAdapter {
     const complexity = estimateTaskComplexity(task.content);
     const effectiveOptions = this.buildExecutionOptions(task.content, options);
 
-    const result = await this.executeWithRetry(task, effectiveOptions);
+    const result = await this.executeWithRetryTracking(task, effectiveOptions);
 
     return this.buildExecutionResult(result, startTime, complexity);
   }
@@ -282,7 +282,7 @@ export class GeminiCliAdapter extends SubprocessCliAdapter {
   // Private Methods - Retry Logic
   // -------------------------------------------------------------------------
 
-  private async executeWithRetry(
+  private async executeWithRetryTracking(
     task: CliTask,
     options: Required<ExecutionOptions>
   ): Promise<Result<{ response: CliResponse; retryCount: number }, CliError>> {

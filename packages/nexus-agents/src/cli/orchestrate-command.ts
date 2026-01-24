@@ -23,39 +23,11 @@ import {
   type CliName,
   type CliTask,
 } from '../cli-adapters/index.js';
-import {
-  executeWithPuppeteer,
-  type PuppeteerOrchestrationResult,
-} from './orchestrate-puppeteer.js';
+import { executeWithPuppeteer } from './orchestrate-puppeteer.js';
+import type { OrchestrateOptions, PuppeteerOrchestrationResult } from './orchestrate-types.js';
 
-/** Engine type for orchestration */
-export type OrchestrateEngine = 'router' | 'puppeteer';
-
-/** Orchestrate command options */
-export interface OrchestrateOptions {
-  /** Task to execute */
-  task: string;
-  /** Specific model to use (bypasses routing) */
-  model?: 'claude' | 'gemini' | 'codex' | undefined;
-  /** Output format */
-  format?: 'text' | 'json' | undefined;
-  /** Enable verbose output */
-  verbose?: boolean | undefined;
-  /** Dry run - show routing decision without execution */
-  dryRun?: boolean | undefined;
-  /** Maximum tokens budget */
-  maxTokens?: number | undefined;
-  /** Maximum cost budget in USD */
-  maxCostUsd?: number | undefined;
-  /** Engine type: router (default) or puppeteer (#386) */
-  engine?: OrchestrateEngine | undefined;
-  /** Enable learnable policy (puppeteer engine only) */
-  learn?: boolean | undefined;
-  /** Path to load/save policy parameters (puppeteer engine only) */
-  policyPath?: string | undefined;
-  /** Maximum orchestration steps (puppeteer engine only) */
-  maxSteps?: number | undefined;
-}
+// Re-export types for backward compatibility
+export type { OrchestrateEngine, OrchestrateOptions } from './orchestrate-types.js';
 
 /** Orchestration result */
 interface OrchestrationResult {

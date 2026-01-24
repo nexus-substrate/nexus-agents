@@ -14,31 +14,14 @@ import {
   createLearnablePolicy,
   createRuleBasedPolicy,
   type PolicyParameters,
-  type LearnablePolicyStats,
 } from '../agents/orchestration/index.js';
 import type { IAgent, Task as AgentTask } from '../core/types/agent.js';
 import type { CliName, ICliAdapter } from '../cli-adapters/index.js';
-import type { OrchestrateOptions } from './orchestrate-command.js';
+import type { OrchestrateOptions, PuppeteerOrchestrationResult } from './orchestrate-types.js';
 import { CliAdapterAgent } from './cli-adapter-agent.js';
 
-/** Puppeteer orchestration result (extends base result). */
-export interface PuppeteerOrchestrationResult {
-  success: boolean;
-  model: string;
-  response?: {
-    text: string;
-    durationMs?: number;
-  };
-  routing?: undefined; // Puppeteer doesn't use routing
-  error?: string;
-  durationMs: number;
-  puppeteer?: {
-    totalSteps: number;
-    trajectoryLength: number;
-    finalReward?: number;
-    policyStats?: LearnablePolicyStats;
-  };
-}
+// Re-export for backward compatibility
+export type { PuppeteerOrchestrationResult } from './orchestrate-types.js';
 
 /**
  * Load policy parameters from file if exists.
