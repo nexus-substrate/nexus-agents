@@ -7,6 +7,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'node:fs/promises';
+import path from 'node:path';
 import { ConfigManager } from '../config/config-manager.js';
 import { DEFAULTS } from '../config/defaults.js';
 import {
@@ -150,7 +151,8 @@ describe('config-command handlers', () => {
   });
 
   describe('handleExport', () => {
-    const testExportPath = '/tmp/nexus-test-export.json';
+    // Use paths within cwd to satisfy path traversal protection
+    const testExportPath = path.join(process.cwd(), '.test-export.json');
 
     afterEach(async () => {
       try {
@@ -174,7 +176,7 @@ describe('config-command handlers', () => {
     });
 
     it('exports to YAML file', async () => {
-      const yamlPath = '/tmp/nexus-test-export.yaml';
+      const yamlPath = path.join(process.cwd(), '.test-export.yaml');
       try {
         const result = await handleExport(yamlPath, 'yaml');
         expect(result.success).toBe(true);
@@ -194,7 +196,7 @@ describe('config-command handlers', () => {
   });
 
   describe('handleImport', () => {
-    const testImportPath = '/tmp/nexus-test-import.json';
+    const testImportPath = path.join(process.cwd(), '.test-import.json');
 
     beforeEach(async () => {
       // Create test import file
@@ -228,7 +230,8 @@ describe('config-command handlers', () => {
     });
 
     it('throws on missing file', async () => {
-      await expect(handleImport('/nonexistent/path.json')).rejects.toThrow(ConfigCommandError);
+      const nonexistentPath = path.join(process.cwd(), '.nonexistent-import.json');
+      await expect(handleImport(nonexistentPath)).rejects.toThrow(ConfigCommandError);
     });
 
     it('skips invalid entries', async () => {
