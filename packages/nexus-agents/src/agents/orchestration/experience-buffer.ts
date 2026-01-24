@@ -17,7 +17,6 @@ import type {
   SerializedBuffer,
 } from './experience-buffer-types.js';
 import { DEFAULT_EXPERIENCE_BUFFER_CONFIG } from './experience-buffer-types.js';
-export { ExperienceBufferConfigSchema } from './experience-buffer-types.js';
 import { sampleUniformly, sampleWithPriority } from './experience-buffer-sampling.js';
 
 // =============================================================================
