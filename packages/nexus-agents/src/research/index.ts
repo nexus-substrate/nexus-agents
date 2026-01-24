@@ -90,7 +90,14 @@ export {
   DEFAULT_GENERATOR_OPTIONS,
 } from './research-index-generator.js';
 
-export type { GeneratorOptions } from './research-index-generator.js';
+export type {
+  GeneratorOptions,
+  PaperWithId,
+  TechniqueWithId,
+  ParsedData,
+  RegistryStats,
+  TopicStat,
+} from './research-index-generator.js';
 
 // ============================================================================
 // Validator
