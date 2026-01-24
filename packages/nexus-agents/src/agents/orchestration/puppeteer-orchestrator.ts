@@ -29,9 +29,6 @@ import type { IPolicyEngine } from './policy-types.js';
 import type { IStateManager } from './state-manager.js';
 import type { IPatternTracker } from './pattern-tracker.js';
 import { createStateManager } from './state-manager.js';
-import { createRuleBasedPolicy } from './rule-based-policy.js';
-import { createLearnablePolicy } from './learnable-policy.js';
-import type { PolicyMode } from './puppeteer-config-types.js';
 import { createPatternTracker } from './pattern-tracker.js';
 import { generateSessionId, buildPuppeteerResult } from './puppeteer-helpers.js';
 import {
@@ -49,32 +46,11 @@ import {
   DEFAULT_LEARNING_CONFIG,
 } from './learning-integration.js';
 import type { LearningIntegrationConfig } from './learning-integration.js';
+import { PuppeteerError } from './puppeteer-error.js';
+import { createPolicyForMode } from './puppeteer-policy-factory.js';
 
-// =============================================================================
-// Error Types
-// =============================================================================
-
-/**
- * Error class for orchestration failures.
- */
-export class PuppeteerError extends Error {
-  constructor(
-    message: string,
-    public readonly code: string,
-    public readonly context?: Record<string, unknown>
-  ) {
-    super(message);
-    this.name = 'PuppeteerError';
-    Object.setPrototypeOf(this, PuppeteerError.prototype);
-  }
-
-  /**
-   * Create from a StepExecutionError.
-   */
-  static fromStepError(stepError: StepExecutionError): PuppeteerError {
-    return new PuppeteerError(stepError.message, stepError.code, stepError.context);
-  }
-}
+// Re-export PuppeteerError for backward compatibility
+export { PuppeteerError } from './puppeteer-error.js';
 
 // =============================================================================
 // Orchestrator Options
@@ -98,30 +74,6 @@ export interface PuppeteerOrchestratorOptions {
   readonly agents?: readonly IAgent[];
   /** Learning system configuration (Issue #154) */
   readonly learningConfig?: LearningIntegrationConfig;
-}
-
-// =============================================================================
-// Policy Selection Helper
-// =============================================================================
-
-/**
- * Creates a policy engine based on the configured policy mode.
- *
- * @param policyMode - Policy selection strategy
- * @returns Policy engine for the specified mode
- */
-function createPolicyForMode(policyMode: PolicyMode): IPolicyEngine {
-  switch (policyMode) {
-    case 'learned':
-      return createLearnablePolicy();
-    case 'hybrid':
-      // Hybrid mode uses learnable policy with lower learning rate
-      // for more stable exploration/exploitation balance
-      return createLearnablePolicy({ learningRate: 0.005 });
-    case 'rule_based':
-    default:
-      return createRuleBasedPolicy();
-  }
 }
 
 // =============================================================================
@@ -418,27 +370,19 @@ export class PuppeteerOrchestrator {
   // ===========================================================================
 
   private emitStart(sessionId: string, task: Task): void {
-    if (this.eventBus) {
-      emitPuppeteerStarted(this.eventBus, sessionId, task);
-    }
+    if (this.eventBus) emitPuppeteerStarted(this.eventBus, sessionId, task);
   }
 
   private emitStepCompleted(sessionId: string, step: PuppeteerStepResult): void {
-    if (this.eventBus) {
-      emitPuppeteerStepCompleted(this.eventBus, sessionId, step);
-    }
+    if (this.eventBus) emitPuppeteerStepCompleted(this.eventBus, sessionId, step);
   }
 
   private emitCompleted(sessionId: string, result: PuppeteerResult): void {
-    if (this.eventBus) {
-      emitPuppeteerCompleted(this.eventBus, sessionId, result);
-    }
+    if (this.eventBus) emitPuppeteerCompleted(this.eventBus, sessionId, result);
   }
 
   private emitError(sessionId: string, error: PuppeteerError): void {
-    if (this.eventBus) {
-      emitPuppeteerError(this.eventBus, sessionId, error);
-    }
+    if (this.eventBus) emitPuppeteerError(this.eventBus, sessionId, error);
   }
 }
 

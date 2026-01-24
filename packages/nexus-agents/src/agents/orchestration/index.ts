@@ -152,16 +152,24 @@ export {
 } from './pattern-tracker.js';
 
 // =============================================================================
+// Error Types
+// =============================================================================
+
+export { PuppeteerError } from './puppeteer-error.js';
+
+// =============================================================================
+// Policy Factory
+// =============================================================================
+
+export { createPolicyForMode } from './puppeteer-policy-factory.js';
+
+// =============================================================================
 // Orchestrator
 // =============================================================================
 
 export type { PuppeteerOrchestratorOptions } from './puppeteer-orchestrator.js';
 
-export {
-  PuppeteerOrchestrator,
-  PuppeteerError,
-  createPuppeteerOrchestrator,
-} from './puppeteer-orchestrator.js';
+export { PuppeteerOrchestrator, createPuppeteerOrchestrator } from './puppeteer-orchestrator.js';
 
 // =============================================================================
 // Helpers
