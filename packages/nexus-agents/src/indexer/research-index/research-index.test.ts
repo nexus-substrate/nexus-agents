@@ -595,6 +595,126 @@ describe.skipIf(!hasRealRegistry)('Integration Tests (Real Registry)', () => {
 });
 
 // ============================================================================
+// Edge Case Tests
+// ============================================================================
+
+describe('Edge Cases', () => {
+  describe('Empty Registries', () => {
+    it('should handle empty papers array', () => {
+      const stats = computeStats([], [mockTechnique], [mockSource]);
+      expect(stats.totalPapers).toBe(0);
+      expect(stats.topicStats.every((t) => t.paperCount <= 0 || t.topic === 'cli-tools')).toBe(
+        true
+      );
+    });
+
+    it('should handle empty techniques array', () => {
+      const stats = computeStats([mockPaper], [], [mockSource]);
+      expect(stats.totalTechniques).toBe(0);
+      expect(stats.techniquesByStatus.implemented).toBe(0);
+      expect(stats.techniquesByPriority.P1).toBe(0);
+    });
+
+    it('should handle empty sources array', () => {
+      const stats = computeStats([mockPaper], [mockTechnique], []);
+      expect(stats.totalSources).toBe(0);
+    });
+
+    it('should handle all empty arrays', () => {
+      const stats = computeStats([], [], []);
+      expect(stats.totalPapers).toBe(0);
+      expect(stats.totalTechniques).toBe(0);
+      expect(stats.totalSources).toBe(0);
+    });
+
+    it('should generate markdown for empty index', () => {
+      const emptyIndex: ResearchIndex = {
+        schemaVersion: '1.0',
+        generatedAt: '2026-01-13 (ET)',
+        papers: [],
+        techniques: [],
+        sources: [],
+        stats: computeStats([], [], []),
+      };
+
+      const result = generateIndexMarkdown(emptyIndex);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value).toContain('# Nexus-Agents Research Index');
+        expect(result.value).toContain('Total Papers:** 0');
+      }
+    });
+  });
+
+  describe('Deterministic Output', () => {
+    it('should produce identical markdown for same input', () => {
+      const mockIndex = createMockIndex();
+
+      const result1 = generateIndexMarkdown(mockIndex);
+      const result2 = generateIndexMarkdown(mockIndex);
+
+      expect(result1.ok).toBe(true);
+      expect(result2.ok).toBe(true);
+      if (result1.ok && result2.ok) {
+        expect(result1.value).toBe(result2.value);
+      }
+    });
+
+    it('should produce identical JSON for same input', () => {
+      const mockIndex = createMockIndex();
+
+      const json1 = generateStatsJson(mockIndex);
+      const json2 = generateStatsJson(mockIndex);
+
+      expect(json1).toBe(json2);
+    });
+
+    it('should produce identical summary for same input', () => {
+      const mockIndex = createMockIndex();
+
+      const summary1 = generateSummaryReport(mockIndex);
+      const summary2 = generateSummaryReport(mockIndex);
+
+      expect(summary1).toBe(summary2);
+    });
+  });
+
+  describe('Special Characters', () => {
+    it('should handle papers with special characters in title', () => {
+      const specialPaper: ResearchPaperWithId = {
+        ...mockPaper,
+        id: 'special-paper',
+        title: 'Paper with "quotes" & <special> characters',
+      };
+
+      const index: ResearchIndex = {
+        ...createMockIndex(),
+        papers: [specialPaper],
+      };
+
+      const result = generateIndexMarkdown(index);
+      expect(result.ok).toBe(true);
+    });
+
+    it('should handle techniques with markdown in description', () => {
+      const specialTechnique: ResearchTechniqueWithId = {
+        ...mockTechnique,
+        id: 'special-technique',
+        description: 'Description with *bold* and `code` and [links](http://example.com)',
+      };
+
+      const index: ResearchIndex = {
+        ...createMockIndex(),
+        techniques: [specialTechnique],
+      };
+
+      const result = generateIndexMarkdown(index);
+      expect(result.ok).toBe(true);
+    });
+  });
+});
+
+// ============================================================================
 // Error Handling Tests
 // ============================================================================
 
