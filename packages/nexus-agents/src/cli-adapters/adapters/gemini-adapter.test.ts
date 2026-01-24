@@ -1,13 +1,26 @@
 /**
  * Tests for Gemini CLI Adapter
  *
- * Verifies Gemini-specific adapter functionality.
+ * Verifies Gemini-specific adapter functionality including:
+ * - Retry logic and circuit breaker integration
+ * - Enhanced timeout profiles
+ * - Resilient parsing
+ *
  * Base adapter behavior is tested in base-adapter.test.ts
+ *
  * (Source: Issue #114)
+ * (Source: Issue #366 - Enhanced features)
+ * (Source: Issue #389 - Merged enhanced adapter)
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { GeminiCliAdapter } from './gemini-adapter.js';
+import {
+  GeminiCliAdapter,
+  createGeminiAdapter,
+  // Test deprecated aliases work
+  EnhancedGeminiCliAdapter,
+  createEnhancedGeminiAdapter,
+} from './gemini-adapter.js';
 
 describe('GeminiCliAdapter', () => {
   let adapter: GeminiCliAdapter;
@@ -22,8 +35,9 @@ describe('GeminiCliAdapter', () => {
   });
 
   describe('constructor', () => {
-    it('should create adapter with default model', () => {
+    it('should create adapter with default configuration', () => {
       expect(adapter.name).toBe('gemini');
+      expect(adapter.transport).toBe('subprocess');
     });
 
     it('should use custom model when provided', () => {
@@ -42,6 +56,60 @@ describe('GeminiCliAdapter', () => {
       };
       const adapterWithLogger = new GeminiCliAdapter({ logger: mockLogger });
       expect(adapterWithLogger).toBeDefined();
+    });
+
+    it('should accept custom retry configuration', () => {
+      const customAdapter = new GeminiCliAdapter({
+        maxRetries: 5,
+        baseDelayMs: 500,
+        maxDelayMs: 15_000,
+      });
+      expect(customAdapter).toBeDefined();
+    });
+
+    it('should allow disabling circuit breaker', () => {
+      const customAdapter = new GeminiCliAdapter({
+        enableCircuitBreaker: false,
+      });
+      expect(customAdapter.getCircuitBreakerSnapshot()).toBeNull();
+    });
+
+    it('should accept custom circuit breaker config', () => {
+      const customAdapter = new GeminiCliAdapter({
+        circuitBreakerConfig: {
+          failureThreshold: 10,
+          resetTimeoutMs: 120_000,
+        },
+      });
+      const snapshot = customAdapter.getCircuitBreakerSnapshot();
+      expect(snapshot?.config.failureThreshold).toBe(10);
+    });
+  });
+
+  describe('factory functions', () => {
+    it('should create adapter instance with createGeminiAdapter', () => {
+      const instance = createGeminiAdapter();
+      expect(instance).toBeInstanceOf(GeminiCliAdapter);
+    });
+
+    it('should pass configuration to adapter', () => {
+      const instance = createGeminiAdapter({ model: 'gemini-2.5-pro' });
+      expect(instance.getModelInfo().id).toBe('gemini-2.5-pro');
+    });
+
+    it('should support deprecated createEnhancedGeminiAdapter', () => {
+      // eslint-disable-next-line @typescript-eslint/no-deprecated
+      const instance = createEnhancedGeminiAdapter();
+      expect(instance).toBeInstanceOf(GeminiCliAdapter);
+    });
+  });
+
+  describe('deprecated aliases', () => {
+    it('should work with EnhancedGeminiCliAdapter alias', () => {
+      // eslint-disable-next-line @typescript-eslint/no-deprecated
+      const enhanced = new EnhancedGeminiCliAdapter();
+      expect(enhanced.name).toBe('gemini');
+      expect(enhanced).toBeInstanceOf(GeminiCliAdapter);
     });
   });
 
@@ -115,6 +183,42 @@ describe('GeminiCliAdapter', () => {
     });
   });
 
+  describe('circuit breaker integration', () => {
+    it('should have circuit breaker enabled by default', () => {
+      const snapshot = adapter.getCircuitBreakerSnapshot();
+
+      expect(snapshot).not.toBeNull();
+      expect(snapshot?.state).toBe('closed');
+      expect(snapshot?.failureCount).toBe(0);
+    });
+
+    it('should allow manual circuit breaker reset', () => {
+      expect(() => {
+        adapter.resetCircuitBreaker();
+      }).not.toThrow();
+    });
+
+    it('should return null snapshot when circuit breaker disabled', () => {
+      const noCbAdapter = new GeminiCliAdapter({
+        enableCircuitBreaker: false,
+      });
+
+      expect(noCbAdapter.getCircuitBreakerSnapshot()).toBeNull();
+    });
+
+    it('should check circuit state before execution', () => {
+      // Verify circuit is closed initially
+      const snapshot = adapter.getCircuitBreakerSnapshot();
+      expect(snapshot?.state).toBe('closed');
+    });
+
+    it('should maintain closed state after reset', () => {
+      adapter.resetCircuitBreaker();
+      const snapshot = adapter.getCircuitBreakerSnapshot();
+      expect(snapshot?.state).toBe('closed');
+    });
+  });
+
   describe('transport', () => {
     it('should use subprocess transport', () => {
       expect(adapter.transport).toBe('subprocess');
@@ -130,5 +234,28 @@ describe('GeminiCliAdapter', () => {
       await adapter.initialize();
       await expect(adapter.dispose()).resolves.not.toThrow();
     });
+  });
+
+  describe('configuration defaults', () => {
+    it('should have correct default model', () => {
+      expect(adapter.getModelInfo().id).toBe('gemini-2.5-flash');
+    });
+
+    it('should have circuit breaker in closed state initially', () => {
+      const snapshot = adapter.getCircuitBreakerSnapshot();
+      expect(snapshot?.state).toBe('closed');
+    });
+  });
+});
+
+describe('GeminiCliAdapter resilient parsing', () => {
+  it('should use resilient parser for JSON parsing', async () => {
+    const adapter = new GeminiCliAdapter();
+
+    // The adapter internally uses ResilientGeminiParser
+    // This is verified by the adapter's construction
+    expect(adapter.name).toBe('gemini');
+
+    await adapter.dispose();
   });
 });

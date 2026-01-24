@@ -11,7 +11,7 @@
 
 import type { ICliAdapter, CliName, CliTransport } from './types.js';
 import { ClaudeCliAdapter } from './adapters/claude-adapter.js';
-import { EnhancedGeminiCliAdapter } from './adapters/gemini-adapter-enhanced.js';
+import { GeminiCliAdapter } from './adapters/gemini-adapter.js';
 import { CodexCliAdapter } from './adapters/codex-adapter.js';
 import { CodexMcpAdapter } from './adapters/codex-mcp-adapter.js';
 import type { ILogger } from '../core/index.js';
@@ -56,7 +56,7 @@ export function createCliAdapter(config: CliAdapterConfig): ICliAdapter {
       return new ClaudeCliAdapter(options);
 
     case 'gemini':
-      return new EnhancedGeminiCliAdapter(options);
+      return new GeminiCliAdapter(options);
 
     case 'codex':
       return createCodexAdapter(config.transport, options);
@@ -103,7 +103,7 @@ export function createAllAdapters(
   const options = logger !== undefined ? { logger } : undefined;
 
   adapters.set('claude', new ClaudeCliAdapter(options));
-  adapters.set('gemini', new EnhancedGeminiCliAdapter(options));
+  adapters.set('gemini', new GeminiCliAdapter(options));
   adapters.set('codex', createCodexAdapter(codexTransport, options ?? {}));
 
   return adapters;
