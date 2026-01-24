@@ -881,20 +881,33 @@ techniques:
     metrics:
       task_completion_improvement: '15-30%'
 
-    status: not-started
+    status: implemented
     priority: P4
     complexity: high
 
     integration_files:
-      - 'packages/nexus-agents/src/agents/'
+      - 'packages/nexus-agents/src/agents/orchestration/learnable-policy.ts'
+      - 'packages/nexus-agents/src/agents/orchestration/learnable-policy.test.ts'
+      - 'packages/nexus-agents/src/agents/orchestration/trajectory-converter.ts'
+      - 'packages/nexus-agents/src/agents/orchestration/trajectory-converter.test.ts'
+      - 'packages/nexus-agents/src/agents/orchestration/learning-integration.ts'
+      - 'packages/nexus-agents/src/agents/orchestration/experience-buffer.ts'
+      - 'packages/nexus-agents/src/agents/orchestration/experience-buffer.test.ts'
+      - 'packages/nexus-agents/src/agents/orchestration/policy-types.ts'
 
     implementation_issue: 154
     related_prs: []
 
     notes: |
-      Requires RL infrastructure. Long-term advanced feature.
+      REINFORCE with baseline policy gradient implementation:
+      - LearnablePolicy class with gradient-based weight updates
+      - TrajectoryConverter for PuppeteerStepResult → PolicyTrajectoryStep
+      - LearningIntegration utilities for orchestrator connection
+      - ExperienceBuffer for trajectory storage (10K capacity, priority sampling)
+      - 51 comprehensive tests for learnable-policy module
 
-    dependencies: []
+    dependencies:
+      - rule-based-coordination
 
     decision_history:
       - date: '2026-01-06'
@@ -903,6 +916,9 @@ techniques:
       - date: '2026-01-09'
         decision: 'Issue created'
         rationale: 'Created during dogfooding session'
+      - date: '2026-01-24'
+        decision: 'Implemented'
+        rationale: 'LearnablePolicy with REINFORCE algorithm - 51 tests passing'
 
   evolving-orchestration:
     name: 'Evolving Orchestration Upgrade'

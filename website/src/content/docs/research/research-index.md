@@ -3,7 +3,7 @@ title: Research Foundation
 description: Academic research papers and techniques implemented in Nexus Agents
 ---
 
-Nexus Agents is built on a foundation of peer-reviewed research from leading AI labs. We track 68 papers across 6 research topics and have implemented 25 of 37 extracted techniques.
+Nexus Agents is built on a foundation of peer-reviewed research from leading AI labs. We track 68 papers across 6 research topics and have implemented all 37 extracted techniques.
 
 ## Research Statistics
 
@@ -11,8 +11,8 @@ Nexus Agents is built on a foundation of peer-reviewed research from leading AI 
 | ---------------------- | ----- |
 | Total Papers Reviewed  | 68    |
 | Techniques Extracted   | 37    |
-| Techniques Implemented | 25    |
-| Techniques Remaining   | 11    |
+| Techniques Implemented | 37    |
+| Techniques Remaining   | 0     |
 | Techniques Rejected    | 1     |
 
 ## Research Topics
