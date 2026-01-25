@@ -25,11 +25,13 @@ export {
   getMcpJsonPath,
   configureMcpServer,
   isMcpServerConfigured,
-  // Hook configuration (Issue #416)
+  // Hook configuration (Issue #416, #420)
   generateHookConfig,
   generateHookSnippet,
   configureHooks,
   areHooksConfigured,
+  getExistingHooks,
+  mergeHookConfigs,
 } from './setup-mcp.js';
 export type { McpConfigResult, HookConfigResult, HookSettingsConfig } from './setup-mcp.js';
 

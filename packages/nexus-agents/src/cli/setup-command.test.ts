@@ -27,8 +27,11 @@ import {
   isInteractive,
   NEXUS_AGENTS_MCP_ENTRY,
   NEXUS_AGENTS_MCP_NPX_ENTRY,
+  mergeHookConfigs,
+  generateHookConfig,
 } from './setup-helpers.js';
 import type { SetupResult } from './setup-types.js';
+import type { HookSettingsConfig } from './setup-mcp.js';
 
 // Create unique temp directory for tests
 const testTmpDir = join(tmpdir(), `nexus-setup-test-${String(Date.now())}`);
@@ -568,6 +571,135 @@ describe('Setup Command', () => {
         delete process.env['CI'];
       }
       Object.defineProperty(process.stdout, 'isTTY', { value: originalTTY, configurable: true });
+    });
+  });
+
+  describe('mergeHookConfigs() (Issue #420)', () => {
+    it('should return new config when existing is undefined', () => {
+      const newConfig = generateHookConfig().hooks;
+      const result = mergeHookConfigs(undefined, newConfig);
+
+      expect(result).toEqual(newConfig);
+    });
+
+    it('should preserve existing user hooks when merging', () => {
+      const existingHooks: HookSettingsConfig['hooks'] = {
+        SessionStart: [
+          {
+            hooks: [
+              {
+                type: 'command',
+                command: 'my-custom-tool session-start',
+              },
+            ],
+          },
+        ],
+      };
+
+      const newConfig = generateHookConfig().hooks;
+      const result = mergeHookConfigs(existingHooks, newConfig);
+
+      // Should have both existing custom hook and nexus-agents hook
+      expect(result.SessionStart).toHaveLength(2);
+      expect(result.SessionStart?.[0]?.hooks[0]?.command).toBe('my-custom-tool session-start');
+      expect(result.SessionStart?.[1]?.hooks[0]?.command).toContain('nexus-agents');
+    });
+
+    it('should replace existing nexus-agents hooks with new ones', () => {
+      const existingHooks: HookSettingsConfig['hooks'] = {
+        SessionStart: [
+          {
+            hooks: [
+              {
+                type: 'command',
+                command: 'nexus-agents hooks old-command',
+              },
+            ],
+          },
+          {
+            hooks: [
+              {
+                type: 'command',
+                command: 'other-tool start',
+              },
+            ],
+          },
+        ],
+      };
+
+      const newConfig = generateHookConfig().hooks;
+      const result = mergeHookConfigs(existingHooks, newConfig);
+
+      // Should have other-tool and new nexus-agents (not old nexus-agents)
+      expect(result.SessionStart).toHaveLength(2);
+      expect(result.SessionStart?.[0]?.hooks[0]?.command).toBe('other-tool start');
+      expect(result.SessionStart?.[1]?.hooks[0]?.command).toBe('nexus-agents hooks session-start');
+    });
+
+    it('should preserve existing hooks for event types not in new config', () => {
+      const existingHooks: HookSettingsConfig['hooks'] = {
+        SessionEnd: [
+          {
+            hooks: [
+              {
+                type: 'command',
+                command: 'cleanup-tool run',
+              },
+            ],
+          },
+        ],
+      };
+
+      const newConfig = generateHookConfig().hooks;
+      const result = mergeHookConfigs(existingHooks, newConfig);
+
+      // SessionEnd should be preserved (nexus-agents doesn't have SessionEnd hooks)
+      expect(result.SessionEnd).toHaveLength(1);
+      expect(result.SessionEnd?.[0]?.hooks[0]?.command).toBe('cleanup-tool run');
+    });
+
+    it('should merge hooks for multiple event types', () => {
+      const existingHooks: HookSettingsConfig['hooks'] = {
+        SessionStart: [
+          {
+            hooks: [{ type: 'command', command: 'custom-start' }],
+          },
+        ],
+        PreToolUse: [
+          {
+            matcher: 'Read',
+            hooks: [{ type: 'command', command: 'custom-pre-read' }],
+          },
+        ],
+        PostToolUse: [
+          {
+            matcher: 'Write',
+            hooks: [{ type: 'command', command: 'custom-post-write' }],
+          },
+        ],
+      };
+
+      const newConfig = generateHookConfig().hooks;
+      const result = mergeHookConfigs(existingHooks, newConfig);
+
+      // All event types should have merged hooks
+      expect(result.SessionStart?.length).toBeGreaterThan(1);
+      expect(result.PreToolUse?.length).toBeGreaterThan(1);
+      expect(result.PostToolUse?.length).toBeGreaterThan(1);
+      expect(result.Stop?.length).toBeGreaterThan(0);
+    });
+
+    it('should handle empty existing hooks array', () => {
+      const existingHooks: HookSettingsConfig['hooks'] = {
+        SessionStart: [],
+      };
+
+      const newConfig = generateHookConfig().hooks;
+      const result = mergeHookConfigs(existingHooks, newConfig);
+
+      // Should just have the new nexus-agents hooks
+      expect(result.SessionStart).toHaveLength(1);
+      expect(result.SessionStart?.[0]?.hooks[0]?.command).toContain('nexus-agents');
     });
   });
 });

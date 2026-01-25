@@ -1,0 +1,265 @@
+/**
+ * nexus-agents doctor command - Formatting utilities
+ *
+ * Terminal output formatting for doctor command results.
+ * Extracted to comply with 400-line file limit.
+ *
+ * (Source: Issue #422 - Doctor command validations)
+ */
+
+import { DEFAULT_CAPABILITIES } from '../cli-adapters/types.js';
+import type { CapacityStatus } from '../cli-adapters/types.js';
+import type {
+  CliCheckResult,
+  NodeVersionCheck,
+  ApiKeyCheck,
+  ConfigFileCheck,
+  DoctorResult,
+} from './doctor.js';
+
+/** Required Node.js major version (for warning message). */
+const REQUIRED_NODE_MAJOR = 22;
+
+/**
+ * ANSI color codes for terminal output.
+ */
+const colors = {
+  reset: '\x1b[0m',
+  green: '\x1b[32m',
+  yellow: '\x1b[33m',
+  red: '\x1b[31m',
+  cyan: '\x1b[36m',
+  dim: '\x1b[2m',
+  bold: '\x1b[1m',
+} as const;
+
+/**
+ * Symbols for status output.
+ */
+const symbols = {
+  check: process.platform === 'win32' ? '√' : '✓',
+  cross: process.platform === 'win32' ? '×' : '✗',
+  warn: process.platform === 'win32' ? '!' : '⚠',
+};
+
+/**
+ * Helper to write a line to stdout.
+ */
+function writeLine(text: string): void {
+  process.stdout.write(text + '\n');
+}
+
+/**
+ * Formats a status symbol with color.
+ */
+function formatStatus(healthy: boolean, warn = false): string {
+  if (healthy) return `${colors.green}${symbols.check}${colors.reset}`;
+  if (warn) return `${colors.yellow}${symbols.warn}${colors.reset}`;
+  return `${colors.red}${symbols.cross}${colors.reset}`;
+}
+
+/**
+ * Formats version status with color.
+ */
+function formatVersionStatus(status: string): string {
+  switch (status) {
+    case 'supported':
+      return `${colors.green}supported${colors.reset}`;
+    case 'outdated':
+      return `${colors.yellow}outdated${colors.reset}`;
+    case 'unsupported':
+    case 'breaking':
+      return `${colors.red}${status}${colors.reset}`;
+    default:
+      return status;
+  }
+}
+
+/**
+ * Capitalizes the first letter of a string.
+ */
+function capitalize(str: string): string {
+  return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
+/**
+ * Formats capacity as percentage string.
+ */
+function formatCapacity(capacity?: CapacityStatus): string {
+  if (capacity === undefined) return 'Unknown';
+  const remaining = 100 - capacity.utilizationPercent;
+  const remainingStr = String(remaining);
+  if (remaining > 80) return `${colors.green}${remainingStr}% remaining${colors.reset}`;
+  if (remaining > 20) return `${colors.yellow}${remainingStr}% remaining${colors.reset}`;
+  return `${colors.red}${remainingStr}% remaining${colors.reset}`;
+}
+
+/**
+ * Prints details for an installed CLI.
+ */
+function printInstalledCliDetails(cli: CliCheckResult): void {
+  writeLine(`  Version: ${cli.version} (${formatVersionStatus(cli.versionStatus)})`);
+
+  const authText = cli.authenticated
+    ? `${colors.green}${cli.authMethod ?? 'Authenticated'}${colors.reset}`
+    : `${colors.red}Not authenticated${colors.reset}`;
+  writeLine(`  Auth: ${authText}`);
+
+  if (cli.capacity !== undefined) {
+    writeLine(`  Capacity: ${formatCapacity(cli.capacity)}`);
+  }
+}
+
+/**
+ * Prints a single CLI result.
+ */
+function printCliResult(cli: CliCheckResult): void {
+  const status = cli.installed && cli.authenticated;
+  const warn = cli.installed && (!cli.authenticated || cli.versionStatus === 'outdated');
+
+  writeLine(
+    `${formatStatus(status, warn)} ${colors.bold}${capitalize(cli.name)} CLI${colors.reset}`
+  );
+
+  if (cli.installed) {
+    printInstalledCliDetails(cli);
+  } else {
+    const errorText = cli.error ?? 'Not installed';
+    writeLine(`  ${colors.red}Error: ${errorText}${colors.reset}`);
+  }
+
+  if (cli.fix !== undefined && cli.fix !== '') {
+    writeLine(`  ${colors.dim}Fix: ${cli.fix}${colors.reset}`);
+  }
+
+  writeLine('');
+}
+
+/**
+ * Prints capability summary for installed CLIs.
+ */
+function printCapabilities(clis: CliCheckResult[]): void {
+  const installedClis = clis.filter((c) => c.installed);
+
+  if (installedClis.length === 0) {
+    writeLine(`${formatStatus(false)} No CLIs installed`);
+    return;
+  }
+
+  const caps = DEFAULT_CAPABILITIES;
+  const bestReasoning = installedClis.reduce((best, c) =>
+    caps[c.name].reasoning > caps[best.name].reasoning ? c : best
+  );
+  const bestContext = installedClis.reduce((best, c) =>
+    caps[c.name].contextWindow > caps[best.name].contextWindow ? c : best
+  );
+  const bestSpeed = installedClis.reduce((best, c) =>
+    caps[c.name].speed > caps[best.name].speed ? c : best
+  );
+
+  const contextTokensK = (caps[bestContext.name].contextWindow / 1000).toFixed(0);
+
+  writeLine(
+    `${formatStatus(true)} Complex reasoning: ${colors.bold}${capitalize(bestReasoning.name)}${colors.reset}`
+  );
+  writeLine(
+    `${formatStatus(true)} Large context: ${colors.bold}${capitalize(bestContext.name)}${colors.reset} (${contextTokensK}K tokens)`
+  );
+  writeLine(
+    `${formatStatus(true)} Fast execution: ${colors.bold}${capitalize(bestSpeed.name)}${colors.reset}`
+  );
+}
+
+/**
+ * Prints Node.js version check result.
+ */
+function printNodeVersionCheck(check: NodeVersionCheck): void {
+  const versionText = check.supported
+    ? `${colors.green}${check.version}${colors.reset}`
+    : `${colors.yellow}${check.version}${colors.reset}`;
+  writeLine(`${formatStatus(check.supported, !check.supported)} Node.js version: ${versionText}`);
+  if (!check.supported) {
+    writeLine(
+      `  ${colors.dim}Warning: Node.js ${String(REQUIRED_NODE_MAJOR)}.x LTS required${colors.reset}`
+    );
+  }
+}
+
+/**
+ * Prints API key configuration check results.
+ */
+function printApiKeysCheck(keys: ApiKeyCheck[]): void {
+  const configuredCount = keys.filter((k) => k.configured).length;
+  const configuredNames = keys.filter((k) => k.configured).map((k) => k.name);
+  const hasAny = configuredCount > 0;
+
+  writeLine(
+    `${formatStatus(hasAny, !hasAny)} API keys configured: ${String(configuredCount)} of ${String(keys.length)}`
+  );
+  if (hasAny) {
+    writeLine(`  ${colors.dim}Keys: ${configuredNames.join(', ')}${colors.reset}`);
+  } else {
+    writeLine(
+      `  ${colors.dim}Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or GOOGLE_AI_API_KEY${colors.reset}`
+    );
+  }
+}
+
+/**
+ * Prints configuration file check result.
+ */
+function printConfigFileCheck(check: ConfigFileCheck): void {
+  if (check.found && check.path !== null) {
+    writeLine(`${formatStatus(true)} Configuration loaded: ${check.path}`);
+  } else {
+    writeLine(`${formatStatus(false, true)} Configuration file: Not found`);
+    writeLine(`  ${colors.dim}Run: nexus-agents config init${colors.reset}`);
+  }
+}
+
+/**
+ * Prints the doctor results to stdout.
+ */
+export function printDoctorResults(result: DoctorResult): void {
+  writeLine('');
+  writeLine(`${colors.bold}Nexus Agents Doctor${colors.reset}`);
+  writeLine('===================');
+  writeLine('');
+
+  writeLine(`${colors.cyan}Checking environment...${colors.reset}`);
+  writeLine('');
+  printNodeVersionCheck(result.nodeVersion);
+  printApiKeysCheck(result.apiKeys);
+  printConfigFileCheck(result.configFile);
+  writeLine('');
+
+  writeLine(`${colors.cyan}Checking CLI installations...${colors.reset}`);
+  writeLine('');
+  for (const cli of result.clis) {
+    printCliResult(cli);
+  }
+
+  writeLine(`${colors.cyan}Checking MCP configuration...${colors.reset}`);
+  writeLine('');
+  writeLine(
+    `${formatStatus(result.mcpServerReady)} MCP Server mode: ${result.mcpServerReady ? 'Ready' : 'Not ready'}`
+  );
+  writeLine(
+    `${formatStatus(result.mcpClientReady)} MCP Client mode: ${result.mcpClientReady ? 'Ready (Codex mcp-server)' : 'Not ready (Codex not installed)'}`
+  );
+  writeLine('');
+
+  writeLine(`${colors.cyan}Checking capabilities...${colors.reset}`);
+  writeLine('');
+  printCapabilities(result.clis);
+  writeLine('');
+
+  const unhealthyCount = result.clis.filter((c) => !c.installed || !c.authenticated).length;
+  const nodeIssue = result.nodeVersion.supported ? 0 : 1;
+  const totalIssues = unhealthyCount + nodeIssue + (result.mcpServerReady ? 0 : 1);
+  const summary = result.allHealthy
+    ? `${colors.green}${colors.bold}Status: Ready${colors.reset}`
+    : `${colors.yellow}${colors.bold}Summary: ${String(totalIssues)} issue(s) found${colors.reset}`;
+  writeLine(summary);
+  writeLine('');
+}

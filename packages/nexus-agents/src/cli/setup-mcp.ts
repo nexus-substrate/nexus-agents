@@ -253,8 +253,79 @@ export function areHooksConfigured(): boolean {
 }
 
 /**
+ * Reads existing hooks from Claude CLI settings.
+ * Returns parsed hooks object or undefined if no hooks exist or parse fails.
+ */
+export function getExistingHooks(): HookSettingsConfig['hooks'] | undefined {
+  try {
+    const result = execSync('claude config get hooks', {
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    const trimmed = result.trim();
+    if (!trimmed || trimmed === 'null' || trimmed === 'undefined') {
+      return undefined;
+    }
+    return JSON.parse(trimmed) as HookSettingsConfig['hooks'];
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Merges two hook arrays, combining entries without duplicating nexus-agents hooks.
+ */
+function mergeHookArrays(
+  existing: HookMatcherEntry[] | undefined,
+  newHooks: HookMatcherEntry[]
+): HookMatcherEntry[] {
+  if (!existing || existing.length === 0) {
+    return newHooks;
+  }
+
+  // Filter out any existing nexus-agents hooks to avoid duplicates
+  const filteredExisting = existing.filter((entry) => {
+    return !entry.hooks.some((h) => h.command.startsWith('nexus-agents'));
+  });
+
+  // Combine existing (non-nexus) hooks with new nexus-agents hooks
+  return [...filteredExisting, ...newHooks];
+}
+
+/**
+ * Merges nexus-agents hooks with existing hooks configuration.
+ * Preserves existing user hooks while adding/updating nexus-agents hooks.
+ */
+export function mergeHookConfigs(
+  existing: HookSettingsConfig['hooks'] | undefined,
+  newConfig: HookSettingsConfig['hooks']
+): HookSettingsConfig['hooks'] {
+  if (!existing) {
+    return newConfig;
+  }
+
+  const hookTypes = ['SessionStart', 'SessionEnd', 'PreToolUse', 'PostToolUse', 'Stop'] as const;
+
+  const merged: HookSettingsConfig['hooks'] = {};
+
+  for (const hookType of hookTypes) {
+    const existingHooks = existing[hookType];
+    const newHooks = newConfig[hookType];
+
+    if (newHooks) {
+      merged[hookType] = mergeHookArrays(existingHooks, newHooks);
+    } else if (existingHooks) {
+      merged[hookType] = existingHooks;
+    }
+  }
+
+  return merged;
+}
+
+/**
  * Configures hooks in Claude CLI settings.
  * Uses `claude config set hooks` to register hook commands.
+ * Merges with existing hooks instead of overwriting them (Issue #420).
  */
 export function configureHooks(force: boolean = false): HookConfigResult {
   const isConfigured = areHooksConfigured();
@@ -267,11 +338,15 @@ export function configureHooks(force: boolean = false): HookConfigResult {
     };
   }
 
-  const hookConfig = generateHookConfig();
+  const nexusHookConfig = generateHookConfig();
 
   try {
-    // Use claude config set to add hooks
-    const configJson = JSON.stringify(hookConfig.hooks);
+    // Read existing hooks first to merge (Issue #420)
+    const existingHooks = getExistingHooks();
+    const mergedHooks = mergeHookConfigs(existingHooks, nexusHookConfig.hooks);
+
+    // Use claude config set with merged hooks
+    const configJson = JSON.stringify(mergedHooks);
     execSync(`claude config set hooks '${configJson}'`, {
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -279,7 +354,9 @@ export function configureHooks(force: boolean = false): HookConfigResult {
     return {
       success: true,
       alreadyConfigured: false,
-      message: 'Configured nexus-agents hooks in Claude Code settings',
+      message: existingHooks
+        ? 'Merged nexus-agents hooks with existing hooks in Claude Code settings'
+        : 'Configured nexus-agents hooks in Claude Code settings',
     };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);

@@ -2,27 +2,27 @@
  * nexus-agents doctor command
  *
  * Health check utility for CLI integration validation.
- * Verifies CLI installations, versions, and authentication.
+ * Verifies CLI installations, versions, authentication, Node.js version,
+ * API keys, configuration files, and MCP server readiness.
  *
  * (Source: Issue #91, cli-project_plan.md DevEx amendment)
+ * (Source: Issue #422 - Doctor command validations)
  */
 
+import { existsSync } from 'node:fs';
 import { createAllAdapters } from '../cli-adapters/factory.js';
 import type { CliName, HealthStatus, CapacityStatus } from '../cli-adapters/types.js';
-import { DEFAULT_CAPABILITIES } from '../cli-adapters/types.js';
+import { createServer } from '../mcp/server.js';
+import { printDoctorResults } from './doctor-formatting.js';
 
-/**
- * ANSI color codes for terminal output.
- */
-const colors = {
-  reset: '\x1b[0m',
-  green: '\x1b[32m',
-  yellow: '\x1b[33m',
-  red: '\x1b[31m',
-  cyan: '\x1b[36m',
-  dim: '\x1b[2m',
-  bold: '\x1b[1m',
-} as const;
+/** Required Node.js major version. */
+const REQUIRED_NODE_MAJOR = 22;
+
+/** API key environment variable names. */
+const API_KEY_VARS = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GOOGLE_AI_API_KEY'] as const;
+
+/** Configuration file paths to check (in order of priority). */
+const CONFIG_FILE_PATHS = ['./nexus-agents.yaml', './nexus-agents.yml'] as const;
 
 /**
  * Check result for a single CLI.
@@ -40,56 +40,42 @@ export interface CliCheckResult {
 }
 
 /**
+ * Node.js version check result.
+ */
+export interface NodeVersionCheck {
+  readonly version: string;
+  readonly major: number;
+  readonly supported: boolean;
+}
+
+/**
+ * API key check result.
+ */
+export interface ApiKeyCheck {
+  readonly name: string;
+  readonly configured: boolean;
+}
+
+/**
+ * Configuration file check result.
+ */
+export interface ConfigFileCheck {
+  readonly found: boolean;
+  readonly path: string | null;
+}
+
+/**
  * Complete doctor check results.
  */
 export interface DoctorResult {
   readonly clis: CliCheckResult[];
+  readonly nodeVersion: NodeVersionCheck;
+  readonly apiKeys: ApiKeyCheck[];
+  readonly configFile: ConfigFileCheck;
   readonly mcpServerReady: boolean;
   readonly mcpClientReady: boolean;
   readonly allHealthy: boolean;
   readonly timestamp: Date;
-}
-
-/**
- * Symbols for status output.
- */
-const symbols = {
-  check: process.platform === 'win32' ? '√' : '✓',
-  cross: process.platform === 'win32' ? '×' : '✗',
-  warn: process.platform === 'win32' ? '!' : '⚠',
-};
-
-/**
- * Helper to write a line to stdout.
- */
-function writeLine(text: string): void {
-  process.stdout.write(text + '\n');
-}
-
-/**
- * Formats a status symbol with color.
- */
-function formatStatus(healthy: boolean, warn = false): string {
-  if (healthy) return `${colors.green}${symbols.check}${colors.reset}`;
-  if (warn) return `${colors.yellow}${symbols.warn}${colors.reset}`;
-  return `${colors.red}${symbols.cross}${colors.reset}`;
-}
-
-/**
- * Formats version status with color.
- */
-function formatVersionStatus(status: string): string {
-  switch (status) {
-    case 'supported':
-      return `${colors.green}supported${colors.reset}`;
-    case 'outdated':
-      return `${colors.yellow}outdated${colors.reset}`;
-    case 'unsupported':
-    case 'breaking':
-      return `${colors.red}${status}${colors.reset}`;
-    default:
-      return status;
-  }
 }
 
 /**
@@ -117,13 +103,6 @@ function getFixCommand(name: CliName, issue: 'install' | 'upgrade' | 'auth'): st
 }
 
 /**
- * Capitalizes the first letter of a string.
- */
-function capitalize(str: string): string {
-  return str.charAt(0).toUpperCase() + str.slice(1);
-}
-
-/**
  * Creates a result for when a CLI is not found.
  */
 function createNotFoundResult(name: CliName, errorMsg: string): CliCheckResult {
@@ -136,6 +115,20 @@ function createNotFoundResult(name: CliName, errorMsg: string): CliCheckResult {
     error: errorMsg,
     fix: getFixCommand(name, 'install'),
   };
+}
+
+/**
+ * Determines the authentication method based on CLI name.
+ * CLIs use their own auth mechanisms - we report the method type
+ * rather than assuming a specific one like 'OAuth'.
+ */
+function detectAuthMethod(name: CliName): string {
+  const authMethods: Record<CliName, string> = {
+    claude: 'CLI auth',
+    gemini: 'ADC/CLI auth',
+    codex: 'CLI auth',
+  };
+  return authMethods[name];
 }
 
 /**
@@ -154,11 +147,10 @@ function createHealthyResult(
     version: health.version,
     versionStatus: health.versionStatus,
     authenticated,
-    ...(authenticated && { authMethod: 'OAuth' }),
+    ...(authenticated && { authMethod: detectAuthMethod(name) }),
     ...(capacity !== undefined && { capacity }),
   };
 
-  // Add optional fields conditionally
   if (health.message !== undefined && health.message !== '') {
     return { ...result, error: health.message };
   }
@@ -202,146 +194,86 @@ async function checkCli(name: CliName): Promise<CliCheckResult> {
 }
 
 /**
+ * Checks the Node.js version against the required version.
+ */
+function checkNodeVersion(): NodeVersionCheck {
+  const version = process.version;
+  const major = Number(version.slice(1).split('.')[0]);
+  return {
+    version,
+    major,
+    supported: major >= REQUIRED_NODE_MAJOR,
+  };
+}
+
+/**
+ * Checks which API keys are configured in the environment.
+ * Does NOT expose the actual key values - only reports presence.
+ */
+function checkApiKeys(): ApiKeyCheck[] {
+  return API_KEY_VARS.map((name) => ({
+    name,
+    configured: typeof process.env[name] === 'string' && process.env[name] !== '',
+  }));
+}
+
+/**
+ * Checks for the existence of a configuration file.
+ */
+function checkConfigFile(): ConfigFileCheck {
+  for (const configPath of CONFIG_FILE_PATHS) {
+    if (existsSync(configPath)) {
+      return { found: true, path: configPath };
+    }
+  }
+  return { found: false, path: null };
+}
+
+/**
+ * Validates that the MCP server can be created successfully.
+ * This is a lightweight check that verifies server instantiation works.
+ */
+function checkMcpServerReady(): boolean {
+  try {
+    const result = createServer({ name: 'nexus-agents-doctor-check' });
+    return result.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Runs the complete doctor check.
  */
 export async function runDoctor(): Promise<DoctorResult> {
   const clis = await Promise.all([checkCli('claude'), checkCli('gemini'), checkCli('codex')]);
-
-  const mcpServerReady = true;
+  const nodeVersion = checkNodeVersion();
+  const apiKeys = checkApiKeys();
+  const configFile = checkConfigFile();
+  const mcpServerReady = checkMcpServerReady();
   const codexCheck = clis.find((c) => c.name === 'codex');
   const mcpClientReady = codexCheck?.installed ?? false;
 
-  const allHealthy = clis.every(
-    (c) => c.installed && c.authenticated && c.versionStatus !== 'unsupported'
-  );
+  // At least one API key configured or one CLI authenticated
+  const hasAuthMethod =
+    apiKeys.some((k) => k.configured) || clis.some((c) => c.installed && c.authenticated);
 
-  return { clis, mcpServerReady, mcpClientReady, allHealthy, timestamp: new Date() };
-}
+  const allHealthy =
+    nodeVersion.supported &&
+    hasAuthMethod &&
+    mcpServerReady &&
+    clis.every((c) => c.installed && c.authenticated && c.versionStatus !== 'unsupported');
 
-/**
- * Formats capacity as percentage string.
- */
-function formatCapacity(capacity?: CapacityStatus): string {
-  if (capacity === undefined) return 'Unknown';
-  const remaining = 100 - capacity.utilizationPercent;
-  const remainingStr = String(remaining);
-  if (remaining > 80) return `${colors.green}${remainingStr}% remaining${colors.reset}`;
-  if (remaining > 20) return `${colors.yellow}${remainingStr}% remaining${colors.reset}`;
-  return `${colors.red}${remainingStr}% remaining${colors.reset}`;
-}
-
-/**
- * Prints details for an installed CLI.
- */
-function printInstalledCliDetails(cli: CliCheckResult): void {
-  writeLine(`  Version: ${cli.version} (${formatVersionStatus(cli.versionStatus)})`);
-
-  const authText = cli.authenticated
-    ? `${colors.green}${cli.authMethod ?? 'Authenticated'}${colors.reset}`
-    : `${colors.red}Not authenticated${colors.reset}`;
-  writeLine(`  Auth: ${authText}`);
-
-  if (cli.capacity !== undefined) {
-    writeLine(`  Capacity: ${formatCapacity(cli.capacity)}`);
-  }
-}
-
-/**
- * Prints a single CLI result.
- */
-function printCliResult(cli: CliCheckResult): void {
-  const status = cli.installed && cli.authenticated;
-  const warn = cli.installed && (!cli.authenticated || cli.versionStatus === 'outdated');
-
-  writeLine(
-    `${formatStatus(status, warn)} ${colors.bold}${capitalize(cli.name)} CLI${colors.reset}`
-  );
-
-  if (cli.installed) {
-    printInstalledCliDetails(cli);
-  } else {
-    const errorText = cli.error ?? 'Not installed';
-    writeLine(`  ${colors.red}Error: ${errorText}${colors.reset}`);
-  }
-
-  if (cli.fix !== undefined && cli.fix !== '') {
-    writeLine(`  ${colors.dim}Fix: ${cli.fix}${colors.reset}`);
-  }
-
-  writeLine('');
-}
-
-/**
- * Prints capability summary for installed CLIs.
- */
-function printCapabilities(clis: CliCheckResult[]): void {
-  const installedClis = clis.filter((c) => c.installed);
-
-  if (installedClis.length === 0) {
-    writeLine(`${formatStatus(false)} No CLIs installed`);
-    return;
-  }
-
-  const caps = DEFAULT_CAPABILITIES;
-  const bestReasoning = installedClis.reduce((best, c) =>
-    caps[c.name].reasoning > caps[best.name].reasoning ? c : best
-  );
-  const bestContext = installedClis.reduce((best, c) =>
-    caps[c.name].contextWindow > caps[best.name].contextWindow ? c : best
-  );
-  const bestSpeed = installedClis.reduce((best, c) =>
-    caps[c.name].speed > caps[best.name].speed ? c : best
-  );
-
-  const contextTokensK = (caps[bestContext.name].contextWindow / 1000).toFixed(0);
-
-  writeLine(
-    `${formatStatus(true)} Complex reasoning: ${colors.bold}${capitalize(bestReasoning.name)}${colors.reset}`
-  );
-  writeLine(
-    `${formatStatus(true)} Large context: ${colors.bold}${capitalize(bestContext.name)}${colors.reset} (${contextTokensK}K tokens)`
-  );
-  writeLine(
-    `${formatStatus(true)} Fast execution: ${colors.bold}${capitalize(bestSpeed.name)}${colors.reset}`
-  );
-}
-
-/**
- * Prints the doctor results to stdout.
- */
-export function printDoctorResults(result: DoctorResult): void {
-  writeLine('');
-  writeLine(`${colors.bold}Nexus Agents Doctor${colors.reset}`);
-  writeLine('===================');
-  writeLine('');
-  writeLine(`${colors.cyan}Checking CLI installations...${colors.reset}`);
-  writeLine('');
-
-  for (const cli of result.clis) {
-    printCliResult(cli);
-  }
-
-  writeLine(`${colors.cyan}Checking MCP configuration...${colors.reset}`);
-  writeLine('');
-  writeLine(
-    `${formatStatus(result.mcpServerReady)} MCP Server mode: ${result.mcpServerReady ? 'Ready' : 'Not ready'}`
-  );
-  writeLine(
-    `${formatStatus(result.mcpClientReady)} MCP Client mode: ${result.mcpClientReady ? 'Ready (Codex mcp-server)' : 'Not ready (Codex not installed)'}`
-  );
-  writeLine('');
-
-  writeLine(`${colors.cyan}Checking capabilities...${colors.reset}`);
-  writeLine('');
-  printCapabilities(result.clis);
-  writeLine('');
-
-  const unhealthyCount = result.clis.filter((c) => !c.installed || !c.authenticated).length;
-  const summary = result.allHealthy
-    ? `${colors.green}${colors.bold}Summary: All systems operational${colors.reset}`
-    : `${colors.yellow}${colors.bold}Summary: ${String(unhealthyCount)} issue(s) found${colors.reset}`;
-  writeLine(summary);
-  writeLine('');
+  return {
+    clis,
+    nodeVersion,
+    apiKeys,
+    configFile,
+    mcpServerReady,
+    mcpClientReady,
+    allHealthy,
+    timestamp: new Date(),
+  };
 }
 
 /**
@@ -353,3 +285,6 @@ export async function doctorCommand(): Promise<number> {
   printDoctorResults(result);
   return result.allHealthy ? 0 : 1;
 }
+
+// Re-export printDoctorResults for backward compatibility
+export { printDoctorResults } from './doctor-formatting.js';
