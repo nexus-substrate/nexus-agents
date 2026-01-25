@@ -34,6 +34,7 @@ export {
   handleVerifyCommand,
   handleDoctorCommand,
   handleSetupCommand,
+  handleHooksCommand,
 } from './cli-commands-handlers.js';
 
 // Import handlers for dispatch
@@ -55,6 +56,7 @@ import {
   handleResearchCommand,
   handleSweBenchCommand,
   handleSetupCommand,
+  handleHooksCommand,
 } from './cli-commands-handlers.js';
 
 /**
@@ -122,6 +124,7 @@ const ASYNC_COMMAND_HANDLERS: Record<string, ((args: ParsedCliArgs) => Promise<v
     index: handleIndexCommand,
     research: handleResearchCommand,
     'swe-bench': handleSweBenchCommand,
+    hooks: handleHooksCommand,
   };
 
 /**

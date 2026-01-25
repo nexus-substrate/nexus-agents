@@ -355,3 +355,17 @@ export {
   isValidConfigAction,
   isValidConfigFormat,
 } from './config-command-types.js';
+
+// Hooks (Issue #411 - Claude CLI Hook Integration)
+export { hookCommand, printHookHelp } from './hooks/index.js';
+export type {
+  HookInput,
+  HookEventName,
+  HookResult,
+  HookDecision,
+  SessionStartInput,
+  SessionEndInput,
+  PreToolUseInput,
+  PostToolUseInput,
+  StopInput,
+} from './hooks/hook-types.js';

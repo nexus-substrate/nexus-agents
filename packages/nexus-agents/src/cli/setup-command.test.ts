@@ -478,7 +478,7 @@ describe('Setup Command', () => {
 
       const output = writeCalls.join('');
       expect(output).toContain('MCP Configuration');
-      expect(output).toContain('mcp.json');
+      expect(output).toContain('claude mcp add-json');
     });
 
     it('should print warnings when present', () => {

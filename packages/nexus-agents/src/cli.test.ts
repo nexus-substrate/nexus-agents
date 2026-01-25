@@ -304,6 +304,7 @@ describe('CLI Argument Parsing', () => {
           nonInteractive: false,
           skipMcp: false,
           skipRules: false,
+          skipHooks: false,
         },
         positionals: [],
       };
@@ -341,6 +342,7 @@ describe('CLI Argument Parsing', () => {
           nonInteractive: false,
           skipMcp: false,
           skipRules: false,
+          skipHooks: false,
         },
         positionals: ['config', 'show'],
       };
@@ -370,6 +372,7 @@ describe('CLI Argument Parsing', () => {
           nonInteractive: false,
           skipMcp: false,
           skipRules: false,
+          skipHooks: false,
         },
         positionals: [],
       };

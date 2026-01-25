@@ -43,7 +43,8 @@ export type CliCommand =
   | 'validation'
   | 'learning-metrics'
   | 'swe-bench'
-  | 'setup';
+  | 'setup'
+  | 'hooks';
 
 /**
  * Parsed CLI arguments and command.
@@ -90,10 +91,11 @@ export interface ParsedCliArgs {
     period?: number;
     export?: string;
     noTrends?: boolean;
-    // Setup command options (Issue #363)
+    // Setup command options (Issue #363, #416)
     nonInteractive: boolean;
     skipMcp: boolean;
     skipRules: boolean;
+    skipHooks: boolean;
     scope?: 'user' | 'project';
   };
   positionals: string[];
@@ -251,6 +253,10 @@ export const PARSE_ARGS_CONFIG = {
       type: 'boolean' as const,
       default: false,
     },
+    'skip-hooks': {
+      type: 'boolean' as const,
+      default: false,
+    },
     scope: {
       type: 'string' as const,
       default: 'user',
@@ -287,6 +293,7 @@ export function isValidCommand(value: string): value is CliCommand {
     'learning-metrics',
     'swe-bench',
     'setup',
+    'hooks',
   ];
   return validCommands.includes(value as CliCommand);
 }

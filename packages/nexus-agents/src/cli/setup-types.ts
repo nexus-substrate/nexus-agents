@@ -21,6 +21,8 @@ export const SetupOptionsSchema = z.object({
   skipMcp: z.boolean().default(false),
   /** Skip CLAUDE.md/rules generation */
   skipRules: z.boolean().default(false),
+  /** Skip hooks configuration (Issue #416) */
+  skipHooks: z.boolean().default(false),
   /** Show what would be done without making changes */
   dryRun: z.boolean().default(false),
   /** Show detailed output */
@@ -108,7 +110,7 @@ export interface EnvironmentInfo {
  */
 export interface SetupStep {
   readonly name: string;
-  readonly status: 'pending' | 'success' | 'skipped' | 'failed';
+  readonly status: 'pending' | 'success' | 'skipped' | 'failed' | 'warning';
   readonly message?: string;
   readonly durationMs?: number;
 }
@@ -119,7 +121,14 @@ export interface SetupStep {
 export interface SetupResult {
   readonly success: boolean;
   readonly steps: readonly SetupStep[];
+  /** MCP configuration was successful via Claude CLI */
+  readonly mcpConfigured?: boolean;
+  /** Fallback MCP snippet for manual configuration */
   readonly mcpSnippet?: string;
+  /** Hooks configuration was successful via Claude CLI (Issue #416) */
+  readonly hooksConfigured?: boolean;
+  /** Fallback hook snippet for manual configuration */
+  readonly hookSnippet?: string;
   readonly rulesPath?: string;
   readonly warnings: readonly string[];
   readonly errors: readonly string[];

@@ -26,6 +26,7 @@ import {
   learningMetricsCommand,
   setupCommand,
 } from './cli/index.js';
+import { hookCommand, printHookHelp } from './cli/hooks/index.js';
 import { EXIT_CODES, type ParsedCliArgs } from './cli-types.js';
 import { startServer } from './cli-server.js';
 import {
@@ -296,6 +297,7 @@ export async function handleDoctorCommand(_args: ParsedCliArgs): Promise<void> {
 /**
  * Handles setup command for Claude CLI integration.
  * (Source: Issue #363 - Auto-configure Claude CLI integration)
+ * (Source: Issue #416 - Setup command hook configuration)
  */
 export function handleSetupCommand(args: ParsedCliArgs): void {
   const exitCode = setupCommand({
@@ -303,9 +305,27 @@ export function handleSetupCommand(args: ParsedCliArgs): void {
     force: args.options.force,
     skipMcp: args.options.skipMcp,
     skipRules: args.options.skipRules,
+    skipHooks: args.options.skipHooks,
     dryRun: args.options.dryRun,
     verbose: args.options.verbose,
     scope: args.options.scope === 'project' ? 'project' : 'user',
   });
+  process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
+}
+
+/**
+ * Handles hooks command for Claude CLI hook integration.
+ * (Source: Issue #411 - Claude CLI Hook Integration Commands)
+ */
+export async function handleHooksCommand(args: ParsedCliArgs): Promise<void> {
+  // If --help flag or no subcommand, print help
+  if (args.options.help || args.positionals.length < 2) {
+    printHookHelp();
+    process.exit(EXIT_CODES.SUCCESS);
+  }
+
+  // Pass remaining args to hook command (hooks <subcommand> [options...])
+  const hookArgs = args.positionals.slice(1);
+  const exitCode = await hookCommand(hookArgs);
   process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
 }

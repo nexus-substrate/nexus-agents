@@ -23,7 +23,15 @@ export {
   NEXUS_AGENTS_MCP_NPX_ENTRY,
   generateMcpSnippet,
   getMcpJsonPath,
+  configureMcpServer,
+  isMcpServerConfigured,
+  // Hook configuration (Issue #416)
+  generateHookConfig,
+  generateHookSnippet,
+  configureHooks,
+  areHooksConfigured,
 } from './setup-mcp.js';
+export type { McpConfigResult, HookConfigResult, HookSettingsConfig } from './setup-mcp.js';
 
 // Re-export rules generation
 export {

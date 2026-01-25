@@ -35,6 +35,7 @@ COMMANDS:
   validation      Show learning validation dashboard
   learning-metrics Show aggregated learning metrics dashboard
   swe-bench       Run SWE-bench evaluation benchmark
+  hooks           Claude CLI hook integration commands
 
 OPTIONS:
   -h, --help           Show this help message
@@ -51,6 +52,7 @@ SETUP OPTIONS:
   --force              Overwrite existing files
   --skip-mcp           Skip MCP configuration snippet
   --skip-rules         Skip .claude/rules/nexus-agents.md generation
+  --skip-hooks         Skip hook configuration in settings.json
   --scope=<scope>      MCP config scope: user, project (default: user)
   --dry-run            Show changes without making them
 
@@ -150,6 +152,21 @@ SWE-BENCH OPTIONS:
   --instance=<id>        Run specific instance (can be repeated)
   --verbose              Enable verbose output
 
+HOOKS OPTIONS:
+  hooks session-start    Handle SessionStart hook events
+  hooks session-end      Handle SessionEnd hook events
+  hooks pre-tool         Handle PreToolUse hook events
+  hooks post-tool        Handle PostToolUse hook events
+  hooks stop             Handle Stop hook events
+  --tool <name>          Tool name for pre-tool/post-tool commands
+  --validate             Enable input validation (pre-tool)
+  --load-context         Load session context (pre-tool)
+  --track-metrics        Track execution metrics (post-tool)
+  --format               Trigger file formatting (post-tool)
+  --check-tasks          Check for incomplete tasks (stop)
+  --generate-summary     Generate session summary (stop)
+  --export-metrics       Export metrics to file (session-end)
+
 EXAMPLES:
   nexus-agents setup            Configure Claude CLI integration
   nexus-agents setup --dry-run  Preview changes without applying
@@ -206,6 +223,9 @@ EXAMPLES:
   nexus-agents swe-bench run --limit=5            Run 5 SWE-bench instances
   nexus-agents swe-bench status                   Check progress
   nexus-agents swe-bench evaluate                 Evaluate predictions
+  nexus-agents hooks --help                       Show hooks command help
+  nexus-agents hooks session-start                Handle session start hook
+  nexus-agents hooks pre-tool --tool Bash         Handle pre-tool hook for Bash
 
 For more information, visit: https://github.com/williamzujkowski/nexus-agents
 `.trim();

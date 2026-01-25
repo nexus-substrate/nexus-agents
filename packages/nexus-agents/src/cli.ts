@@ -114,10 +114,11 @@ interface ParsedValues {
   period?: string;
   export?: string;
   'no-trends': boolean;
-  // Setup command options (Issue #363)
+  // Setup command options (Issue #363, #416)
   'non-interactive': boolean;
   'skip-mcp': boolean;
   'skip-rules': boolean;
+  'skip-hooks': boolean;
   scope?: string;
 }
 
@@ -213,6 +214,7 @@ function buildSetupOptions(values: ParsedValues): {
   nonInteractive: boolean;
   skipMcp: boolean;
   skipRules: boolean;
+  skipHooks: boolean;
   scope?: 'user' | 'project';
 } {
   const scope = parseSetupScope(values.scope);
@@ -220,11 +222,13 @@ function buildSetupOptions(values: ParsedValues): {
     nonInteractive: boolean;
     skipMcp: boolean;
     skipRules: boolean;
+    skipHooks: boolean;
     scope?: 'user' | 'project';
   } = {
     nonInteractive: values['non-interactive'],
     skipMcp: values['skip-mcp'],
     skipRules: values['skip-rules'],
+    skipHooks: values['skip-hooks'],
   };
   if (scope !== undefined) result.scope = scope;
   return result;

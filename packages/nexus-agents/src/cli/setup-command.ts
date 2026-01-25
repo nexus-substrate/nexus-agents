@@ -21,7 +21,12 @@ import {
   formatHeader,
   formatCodeBlock,
   isInteractive,
+  configureMcpServer,
+  // Hook configuration (Issue #416)
+  configureHooks,
+  generateHookSnippet,
 } from './setup-helpers.js';
+import type { McpConfigResult, HookConfigResult } from './setup-helpers.js';
 import { VERSION } from '../version.js';
 
 // ============================================================================
@@ -43,16 +48,23 @@ function writeEmptyLine(): void {
 }
 
 /**
- * Prints MCP snippet section.
+ * Prints MCP configuration result section.
  */
-function printMcpSnippet(snippet: string): void {
+function printMcpResult(mcpResult: McpConfigResult, snippet: string | undefined): void {
   writeLine(formatHeader('MCP Configuration'));
   writeLine('─'.repeat(40));
-  writeLine('Add this to ~/.claude/mcp.json:');
-  writeEmptyLine();
-  writeLine(formatCodeBlock(snippet));
-  writeEmptyLine();
-  writeLine("Or run: claude mcp add-json nexus-agents '<snippet>'");
+  if (mcpResult.success) {
+    writeLine(mcpResult.message);
+    writeLine('Run `/mcp` in Claude Code to verify.');
+  } else {
+    writeLine(`Failed: ${mcpResult.message}`);
+    if (snippet !== undefined) {
+      writeEmptyLine();
+      writeLine('Manual fallback - run:');
+      writeEmptyLine();
+      writeLine(formatCodeBlock(`claude mcp add-json nexus-agents '${snippet}'`));
+    }
+  }
   writeEmptyLine();
 }
 
@@ -64,6 +76,28 @@ function printRulesFile(rulesPath: string): void {
   writeLine('─'.repeat(40));
   writeLine(`Created: ${rulesPath}`);
   writeLine('Claude will now have context about nexus-agents tools.');
+  writeEmptyLine();
+}
+
+/**
+ * Prints hooks configuration result section.
+ * (Source: Issue #416)
+ */
+function printHooksResult(hookResult: HookConfigResult, snippet: string | undefined): void {
+  writeLine(formatHeader('Hooks Configuration'));
+  writeLine('─'.repeat(40));
+  if (hookResult.success) {
+    writeLine(hookResult.message);
+    writeLine('Hooks will track sessions, metrics, and validate tool use.');
+  } else {
+    writeLine(`Note: ${hookResult.message}`);
+    if (snippet !== undefined) {
+      writeEmptyLine();
+      writeLine('Manual fallback - add to ~/.claude/settings.json:');
+      writeEmptyLine();
+      writeLine(formatCodeBlock(snippet));
+    }
+  }
   writeEmptyLine();
 }
 
@@ -94,12 +128,12 @@ function printErrors(errors: readonly string[]): void {
 /**
  * Prints next steps section.
  */
-function printNextSteps(hasMcpSnippet: boolean): void {
+function printNextSteps(mcpConfigured: boolean, hasMcpSnippet: boolean): void {
   writeLine(formatHeader('Next Steps'));
   writeLine('─'.repeat(40));
-  if (hasMcpSnippet) {
-    writeLine('1. Add the MCP snippet to ~/.claude/mcp.json');
-    writeLine('2. Restart Claude Desktop (if using)');
+  if (hasMcpSnippet && !mcpConfigured) {
+    writeLine('1. Configure MCP manually (see above)');
+    writeLine('2. Restart Claude Code');
   }
   writeLine('3. Run: nexus-agents doctor');
   writeLine('4. Try: nexus-agents orchestrate "Hello World"');
@@ -158,7 +192,7 @@ function runDetectionStep(projectRoot: string): { env: EnvironmentInfo; step: Se
 function runMcpConfigStep(
   env: EnvironmentInfo,
   options: SetupOptions
-): { step: SetupStep; snippet: string | undefined } {
+): { step: SetupStep; snippet: string | undefined; mcpResult: McpConfigResult | undefined } {
   const startTime = Date.now();
 
   if (options.skipMcp) {
@@ -170,33 +204,50 @@ function runMcpConfigStep(
         durationMs: Date.now() - startTime,
       },
       snippet: undefined,
+      mcpResult: undefined,
     };
   }
 
-  // Check if already configured
-  if (env.existingMcpConfig?.hasNexusAgents === true && !options.force) {
+  // Use npx if Claude CLI is not installed (nexus-agents may not be in PATH)
+  const useNpx = !env.claudeCli.installed;
+  const snippet = generateMcpSnippet(useNpx);
+
+  // If Claude CLI is not installed, we can't configure automatically
+  if (!env.claudeCli.installed) {
     return {
       step: {
         name: 'MCP Configuration',
-        status: 'skipped',
-        message: 'nexus-agents already configured in mcp.json (use --force to update)',
+        status: 'warning',
+        message: 'Claude CLI not found - manual configuration required',
         durationMs: Date.now() - startTime,
       },
-      snippet: undefined,
+      snippet,
+      mcpResult: {
+        success: false,
+        alreadyConfigured: false,
+        message: 'Claude CLI not installed',
+      },
     };
   }
 
-  // Generate snippet for user to paste
-  const snippet = generateMcpSnippet(!env.claudeCli.installed);
+  // Configure using Claude CLI
+  const mcpResult = configureMcpServer(useNpx, options.force);
+
+  const status = mcpResult.success
+    ? mcpResult.alreadyConfigured
+      ? 'skipped'
+      : 'success'
+    : 'failed';
 
   return {
     step: {
       name: 'MCP Configuration',
-      status: 'success',
-      message: 'Generated MCP configuration snippet',
+      status,
+      message: mcpResult.message,
       durationMs: Date.now() - startTime,
     },
-    snippet,
+    snippet: mcpResult.success ? undefined : snippet,
+    mcpResult,
   };
 }
 
@@ -210,6 +261,20 @@ function makeRulesResult(
   return {
     step: { name: 'Rules File', status, message, durationMs: Date.now() - startTime },
     rulesPath,
+  };
+}
+
+/** Creates a hooks step result. */
+function makeHooksResult(
+  status: SetupStep['status'],
+  message: string,
+  startTime: number,
+  hookResult?: HookConfigResult
+): { step: SetupStep; hookSnippet: string | undefined; hookResult: HookConfigResult | undefined } {
+  return {
+    step: { name: 'Hooks Configuration', status, message, durationMs: Date.now() - startTime },
+    hookSnippet: hookResult?.success === false ? generateHookSnippet() : undefined,
+    hookResult,
   };
 }
 
@@ -245,6 +310,109 @@ function runRulesStep(
   }
 }
 
+/**
+ * Runs the hooks configuration step.
+ * (Source: Issue #416 - Setup command hook configuration)
+ */
+function runHooksStep(
+  env: EnvironmentInfo,
+  options: SetupOptions
+): { step: SetupStep; hookSnippet: string | undefined; hookResult: HookConfigResult | undefined } {
+  const startTime = Date.now();
+
+  if (options.skipHooks) {
+    return makeHooksResult('skipped', 'Skipped (--skip-hooks)', startTime);
+  }
+
+  // If Claude CLI is not installed, we can't configure automatically
+  if (!env.claudeCli.installed) {
+    return makeHooksResult(
+      'warning',
+      'Claude CLI not found - manual hook configuration required',
+      startTime,
+      {
+        success: false,
+        alreadyConfigured: false,
+        message: 'Claude CLI not installed',
+      }
+    );
+  }
+
+  // If dry-run, just report what would happen
+  if (options.dryRun) {
+    return makeHooksResult(
+      'success',
+      'Would configure nexus-agents hooks in Claude Code settings',
+      startTime
+    );
+  }
+
+  // Configure using Claude CLI
+  const hookResult = configureHooks(options.force);
+  const status = hookResult.success
+    ? hookResult.alreadyConfigured
+      ? 'skipped'
+      : 'success'
+    : 'failed';
+
+  return makeHooksResult(status, hookResult.message, startTime, hookResult);
+}
+
+// ============================================================================
+// Main Command Helpers
+// ============================================================================
+
+/**
+ * Adds Claude CLI warnings if not installed.
+ */
+function addClaudeCliWarnings(warnings: string[], installed: boolean): void {
+  if (!installed) {
+    warnings.push(
+      'Claude CLI not found. Install it with: npm install -g @anthropic-ai/claude-code'
+    );
+    warnings.push('The MCP snippet uses npx to run nexus-agents (works without global install).');
+  }
+}
+
+/**
+ * Collects errors from failed steps.
+ */
+function collectErrors(steps: readonly SetupStep[]): string[] {
+  return steps.filter((s) => s.status === 'failed').map((s) => s.message ?? `${s.name} failed`);
+}
+
+/** Result context for building final result. */
+interface SetupResultContext {
+  startTime: number;
+  steps: SetupStep[];
+  warnings: string[];
+  mcpResult: McpConfigResult | undefined;
+  snippet: string | undefined;
+  hookResult: HookConfigResult | undefined;
+  hookSnippet: string | undefined;
+  rulesPath: string | undefined;
+}
+
+/** Builds the final setup result from context. */
+function buildSetupResult(ctx: SetupResultContext): SetupResult {
+  const errors = collectErrors(ctx.steps);
+  const mcpConfigured = ctx.mcpResult?.success === true && !ctx.mcpResult.alreadyConfigured;
+  const hooksConfigured = ctx.hookResult?.success === true && !ctx.hookResult.alreadyConfigured;
+
+  return {
+    success: errors.length === 0,
+    steps: ctx.steps,
+    warnings: ctx.warnings,
+    errors,
+    durationMs: Date.now() - ctx.startTime,
+    ...(mcpConfigured && { mcpConfigured: true }),
+    ...(ctx.snippet !== undefined && { mcpSnippet: ctx.snippet }),
+    ...(hooksConfigured && { hooksConfigured: true }),
+    ...(ctx.hookSnippet !== undefined && { hookSnippet: ctx.hookSnippet }),
+    ...(ctx.rulesPath !== undefined && { rulesPath: ctx.rulesPath }),
+  };
+}
+
 // ============================================================================
 // Main Command
 // ============================================================================
@@ -257,51 +425,31 @@ export function runSetup(options: Partial<SetupOptions> = {}): SetupResult {
   const parsedOptions = SetupOptionsSchema.parse(options);
   const projectRoot = process.cwd();
 
-  const steps: SetupStep[] = [];
   const warnings: string[] = [];
-  const errors: string[] = [];
 
   // Step 1: Environment Detection
   const { env, step: detectionStep } = runDetectionStep(projectRoot);
-  steps.push(detectionStep);
-
-  // Check Claude CLI availability
-  if (!env.claudeCli.installed) {
-    warnings.push(
-      'Claude CLI not found. Install it with: npm install -g @anthropic-ai/claude-code'
-    );
-    warnings.push('The MCP snippet uses npx to run nexus-agents (works without global install).');
-  }
+  addClaudeCliWarnings(warnings, env.claudeCli.installed);
 
   // Step 2: MCP Configuration
-  const { step: mcpStep, snippet } = runMcpConfigStep(env, parsedOptions);
-  steps.push(mcpStep);
+  const { step: mcpStep, snippet, mcpResult } = runMcpConfigStep(env, parsedOptions);
 
   // Step 3: Rules File
   const { step: rulesStep, rulesPath } = runRulesStep(env, parsedOptions);
-  steps.push(rulesStep);
 
-  // Check for any failed steps
-  const hasFailures = steps.some((s) => s.status === 'failed');
-  if (hasFailures) {
-    const failedSteps = steps.filter((s) => s.status === 'failed');
-    for (const s of failedSteps) {
-      errors.push(s.message ?? `${s.name} failed`);
-    }
-  }
+  // Step 4: Hooks Configuration (Issue #416)
+  const { step: hooksStep, hookSnippet, hookResult } = runHooksStep(env, parsedOptions);
 
-  // Build result with optional properties conditionally included
-  const result: SetupResult = {
-    success: !hasFailures,
-    steps,
+  return buildSetupResult({
+    startTime,
+    steps: [detectionStep, mcpStep, rulesStep, hooksStep],
     warnings,
-    errors,
-    durationMs: Date.now() - startTime,
-    ...(snippet !== undefined && { mcpSnippet: snippet }),
-    ...(rulesPath !== undefined && { rulesPath }),
-  };
-
-  return result;
+    mcpResult,
+    snippet,
+    hookResult,
+    hookSnippet,
+    rulesPath,
+  });
 }
 
 /**
@@ -315,12 +463,34 @@ export function printSetupResult(result: SetupResult, verbose: boolean): void {
 
   printSteps(result.steps, verbose);
 
-  // Print optional sections
-  if (result.mcpSnippet !== undefined) printMcpSnippet(result.mcpSnippet);
+  // Print MCP result if there's a snippet (fallback needed) or it was configured
+  if (result.mcpSnippet !== undefined || result.mcpConfigured === true) {
+    const mcpResult: McpConfigResult =
+      result.mcpConfigured === true
+        ? {
+            success: true,
+            alreadyConfigured: false,
+            message: 'Added nexus-agents MCP server to Claude Code',
+          }
+        : { success: false, alreadyConfigured: false, message: 'Manual configuration required' };
+    printMcpResult(mcpResult, result.mcpSnippet);
+  }
+  // Print hooks result if there's a snippet (fallback needed) or it was configured
+  if (result.hookSnippet !== undefined || result.hooksConfigured === true) {
+    const hookResult: HookConfigResult =
+      result.hooksConfigured === true
+        ? {
+            success: true,
+            alreadyConfigured: false,
+            message: 'Configured nexus-agents hooks in Claude Code settings',
+          }
+        : { success: false, alreadyConfigured: false, message: 'Manual configuration required' };
+    printHooksResult(hookResult, result.hookSnippet);
+  }
   if (result.rulesPath !== undefined) printRulesFile(result.rulesPath);
   if (result.warnings.length > 0) printWarnings(result.warnings);
   if (result.errors.length > 0) printErrors(result.errors);
-  printNextSteps(result.mcpSnippet !== undefined);
+  printNextSteps(result.mcpConfigured === true, result.mcpSnippet !== undefined);
 
   printSummary(result.success);
 }

@@ -29,13 +29,16 @@ const symbols = {
 /**
  * Formats a status indicator.
  */
-export function formatStatus(status: 'success' | 'failed' | 'skipped' | 'pending'): string {
+export function formatStatus(
+  status: 'success' | 'failed' | 'skipped' | 'pending' | 'warning'
+): string {
   switch (status) {
     case 'success':
       return `${colors.green}${symbols.check}${colors.reset}`;
     case 'failed':
       return `${colors.red}${symbols.cross}${colors.reset}`;
     case 'skipped':
+    case 'warning':
       return `${colors.yellow}${symbols.warn}${colors.reset}`;
     case 'pending':
       return `${colors.dim}○${colors.reset}`;
