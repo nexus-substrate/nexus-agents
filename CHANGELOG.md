@@ -5,6 +5,37 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.0] - 2026-01-25
+
+### Added
+
+- Comprehensive hook tests with 243 tests across 9 files (#417)
+- Route tests with 71 tests across 6 files (#418)
+- Doctor command validations for Node.js version, API keys, and config file (#422)
+
+### Changed
+
+- Setup command now merges hooks instead of overwriting existing user hooks (#420)
+- Extracted doctor formatting into separate module for maintainability
+- README.md simplified from 519 to 183 lines with clear value proposition
+- QUICK_START.md improved with CLI tool requirements and auth steps
+
+### Fixed
+
+- Hook configuration now preserves existing user hooks during setup (#420)
+- Removed phantom `consensus_vote` tool from MCP documentation
+- Synced root package.json version
+
+### Dependencies
+
+- Removed deprecated `@types/uuid` (uuid v13+ includes types)
+- Bumped actions/checkout from 4 to 6
+- Bumped actions/setup-node from 4 to 6
+- Bumped actions/upload-artifact from 4 to 6
+- Bumped actions/github-script from 7 to 8
+- Bumped peter-evans/create-pull-request from 6 to 8
+- Updated 7 dev dependencies within semver ranges
+
 ## [2.3.0] - 2026-01-24
 
 ### Added
@@ -69,35 +100,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive tests for security-critical modules (#382, #383)
 - Core/MCP module test coverage (#377)
 - Config-command-helpers and research-index-generator edge cases
-
-## [Unreleased]
-
-### Added
-
-- Comprehensive hook tests with 243 tests across 9 files (#417)
-- Route tests with 71 tests across 6 files (#418)
-- Doctor command validations for Node.js version, API keys, and config file (#422)
-
-### Changed
-
-- Setup command now merges hooks instead of overwriting existing user hooks (#420)
-- Extracted doctor formatting into separate module for maintainability
-
-### Fixed
-
-- Hook configuration now preserves existing user hooks during setup (#420)
-- Removed phantom `consensus_vote` tool from MCP documentation
-- Synced root package.json version to 2.3.0
-
-### Dependencies
-
-- Removed deprecated `@types/uuid` (uuid v13+ includes types)
-- Bumped actions/checkout from 4 to 6
-- Bumped actions/setup-node from 4 to 6
-- Bumped actions/upload-artifact from 4 to 6
-- Bumped actions/github-script from 7 to 8
-- Bumped peter-evans/create-pull-request from 6 to 8
-- Bumped 8 production dependencies
 
 ## [2.2.0] - 2026-01-16
 
@@ -166,7 +168,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[unreleased]: https://github.com/williamzujkowski/nexus-agents/compare/v2.3.0...HEAD
+[unreleased]: https://github.com/williamzujkowski/nexus-agents/compare/v2.4.0...HEAD
+[2.4.0]: https://github.com/williamzujkowski/nexus-agents/compare/v2.3.0...v2.4.0
 [2.3.0]: https://github.com/williamzujkowski/nexus-agents/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/williamzujkowski/nexus-agents/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/williamzujkowski/nexus-agents/releases/tag/v2.1.0
