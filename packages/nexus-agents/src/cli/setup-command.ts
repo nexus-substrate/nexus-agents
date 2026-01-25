@@ -186,69 +186,69 @@ function runDetectionStep(projectRoot: string): { env: EnvironmentInfo; step: Se
   };
 }
 
+/** MCP step result type. */
+type McpStepResult = {
+  step: SetupStep;
+  snippet: string | undefined;
+  mcpResult: McpConfigResult | undefined;
+};
+
+/** Creates an MCP step result. */
+function makeMcpResult(
+  status: SetupStep['status'],
+  message: string,
+  startTime: number,
+  snippet?: string,
+  mcpResult?: McpConfigResult
+): McpStepResult {
+  return {
+    step: { name: 'MCP Configuration', status, message, durationMs: Date.now() - startTime },
+    snippet,
+    mcpResult,
+  };
+}
+
 /**
  * Runs the MCP configuration step.
  */
-function runMcpConfigStep(
-  env: EnvironmentInfo,
-  options: SetupOptions
-): { step: SetupStep; snippet: string | undefined; mcpResult: McpConfigResult | undefined } {
+function runMcpConfigStep(env: EnvironmentInfo, options: SetupOptions): McpStepResult {
   const startTime = Date.now();
 
   if (options.skipMcp) {
-    return {
-      step: {
-        name: 'MCP Configuration',
-        status: 'skipped',
-        message: 'Skipped (--skip-mcp)',
-        durationMs: Date.now() - startTime,
-      },
-      snippet: undefined,
-      mcpResult: undefined,
-    };
+    return makeMcpResult('skipped', 'Skipped (--skip-mcp)', startTime);
   }
 
-  // Use npx if Claude CLI is not installed (nexus-agents may not be in PATH)
   const useNpx = !env.claudeCli.installed;
   const snippet = generateMcpSnippet(useNpx);
 
-  // If Claude CLI is not installed, we can't configure automatically
   if (!env.claudeCli.installed) {
-    return {
-      step: {
-        name: 'MCP Configuration',
-        status: 'warning',
-        message: 'Claude CLI not found - manual configuration required',
-        durationMs: Date.now() - startTime,
-      },
-      snippet,
-      mcpResult: {
-        success: false,
-        alreadyConfigured: false,
-        message: 'Claude CLI not installed',
-      },
+    const mcpResult: McpConfigResult = {
+      success: false,
+      alreadyConfigured: false,
+      message: 'Claude CLI not installed',
     };
+    return makeMcpResult(
+      'warning',
+      'Claude CLI not found - manual configuration required',
+      startTime,
+      snippet,
+      mcpResult
+    );
   }
 
-  // Configure using Claude CLI
   const mcpResult = configureMcpServer(useNpx, options.force);
-
   const status = mcpResult.success
     ? mcpResult.alreadyConfigured
       ? 'skipped'
       : 'success'
     : 'failed';
-
-  return {
-    step: {
-      name: 'MCP Configuration',
-      status,
-      message: mcpResult.message,
-      durationMs: Date.now() - startTime,
-    },
-    snippet: mcpResult.success ? undefined : snippet,
-    mcpResult,
-  };
+  return makeMcpResult(
+    status,
+    mcpResult.message,
+    startTime,
+    mcpResult.success ? undefined : snippet,
+    mcpResult
+  );
 }
 
 /** Creates a rules step result. */
