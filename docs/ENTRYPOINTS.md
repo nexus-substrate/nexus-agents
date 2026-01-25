@@ -1,6 +1,6 @@
 # Nexus-Agents Entrypoints
 
-**Last Updated:** 2026-01-23 (ET)
+**Last Updated:** 2026-01-24 (ET)
 **Canonical Source:** This document is the single source of truth for all entrypoints.
 **Issue:** #210 (Epic #209)
 
@@ -49,6 +49,16 @@ Nexus-agents provides four interface categories:
 | `swe-bench`            | `run`           | Run SWE-bench evaluation                   | orchestrator |
 | `swe-bench`            | `evaluate`      | Evaluate predictions                       | any          |
 | `swe-bench`            | `status`        | Show evaluation status                     | any          |
+| `setup`                | -               | Configure Claude CLI integration           | any          |
+| `learning-metrics`     | -               | Show learning metrics dashboard            | any          |
+| `index`                | `generate`      | Generate codebase index                    | any          |
+| `index`                | `check`         | Validate index freshness                   | any          |
+| `index`                | `diagram`       | Generate Mermaid dependency diagram        | any          |
+| `hooks`                | `session-start` | Handle SessionStart hook events            | any          |
+| `hooks`                | `session-end`   | Handle SessionEnd hook events              | any          |
+| `hooks`                | `pre-tool`      | Handle PreToolUse hook events              | any          |
+| `hooks`                | `post-tool`     | Handle PostToolUse hook events             | any          |
+| `hooks`                | `stop`          | Handle Stop hook events                    | any          |
 
 ### Mode Selection
 
@@ -113,6 +123,27 @@ nexus-agents validation-dashboard
 nexus-agents swe-bench run --variant=lite --limit=10
 nexus-agents swe-bench evaluate predictions.jsonl
 nexus-agents swe-bench status
+
+# Setup Claude CLI integration
+nexus-agents setup                    # Auto-configure MCP + hooks + rules
+nexus-agents setup --dry-run          # Preview what would be done
+nexus-agents setup --skip-hooks       # Skip hook configuration
+
+# Learning metrics dashboard
+nexus-agents learning-metrics
+nexus-agents learning-metrics --period=48
+nexus-agents learning-metrics --bandit-stats --format=json
+
+# Codebase index
+nexus-agents index generate
+nexus-agents index check
+nexus-agents index diagram
+
+# Claude CLI hooks (called by Claude Code, not user)
+nexus-agents hooks session-start
+nexus-agents hooks pre-tool --tool Bash --validate
+nexus-agents hooks post-tool --track-metrics
+nexus-agents hooks stop --check-tasks
 ```
 
 ### Source Files
@@ -133,6 +164,10 @@ nexus-agents swe-bench status
 | `src/cli/validation-dashboard-command.ts` | Validation dashboard  |
 | `src/cli/swe-bench-command.ts`            | SWE-bench command     |
 | `src/cli/research-command.ts`             | Research registry CLI |
+| `src/cli/setup-command.ts`                | Setup command         |
+| `src/cli/learning-metrics-command.ts`     | Learning metrics      |
+| `src/cli/index-command.ts`                | Index command         |
+| `src/cli/hooks/index.ts`                  | Hooks command         |
 
 ---
 
@@ -648,6 +683,19 @@ cli_commands:
     mode: orchestrator
   - name: system-review
     flags: ['--create-issue', '--fix', '--verbose']
+    mode: any
+  - name: setup
+    flags:
+      ['--non-interactive', '--force', '--skip-mcp', '--skip-rules', '--skip-hooks', '--dry-run']
+    mode: any
+  - name: learning-metrics
+    flags: ['--period', '--format', '--bandit-stats', '--export']
+    mode: any
+  - name: index
+    subcommands: ['generate', 'check', 'diagram', 'validate', 'entrypoints', 'freshness', 'links']
+    mode: any
+  - name: hooks
+    subcommands: ['session-start', 'session-end', 'pre-tool', 'post-tool', 'stop']
     mode: any
 ```
 
