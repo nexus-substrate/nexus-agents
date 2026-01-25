@@ -148,7 +148,7 @@ jobs:
         if: |
           steps.generate.outputs.test_count > 0 &&
           github.event.inputs.dry_run != 'true'
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           commit-message: |
