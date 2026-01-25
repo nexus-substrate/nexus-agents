@@ -8,90 +8,22 @@
  * (Source: Issue #424 - Demo mode for API-free exploration)
  */
 
-import { DEFAULT_EXPERTS } from '../agents/experts/expert-defaults.js';
+import type { MockRoutingResult, MockWorkflow } from './demo-command-types.js';
+import { colors, isValidDemoSubcommand } from './demo-command-types.js';
+import {
+  formatRoutingDemo,
+  formatExpertListDemo,
+  formatWorkflowDemo,
+  formatAvailableWorkflows,
+} from './demo-command-formatters.js';
 
-/**
- * ANSI color codes for terminal output.
- */
-const colors = {
-  reset: '\x1b[0m',
-  green: '\x1b[32m',
-  yellow: '\x1b[33m',
-  cyan: '\x1b[36m',
-  blue: '\x1b[34m',
-  dim: '\x1b[2m',
-  bold: '\x1b[1m',
-} as const;
-
-/**
- * Demo command subcommands.
- */
-export type DemoSubcommand = 'routing' | 'expert-list' | 'workflow';
-
-/**
- * Options for the demo command.
- */
-export interface DemoOptions {
-  readonly subcommand: DemoSubcommand;
-  readonly task?: string;
-  readonly workflowName?: string;
-}
-
-/**
- * Validates if a string is a valid demo subcommand.
- */
-export function isValidDemoSubcommand(value: string | undefined): value is DemoSubcommand {
-  return value === 'routing' || value === 'expert-list' || value === 'workflow';
-}
+// Re-export types and validators for external use
+export type { DemoSubcommand, DemoOptions } from './demo-command-types.js';
+export { isValidDemoSubcommand } from './demo-command-types.js';
 
 // ============================================================================
-// Mock Data for Demo Mode
+// Mock Data Generation
 // ============================================================================
-
-/**
- * Mock routing decision for demo mode.
- */
-interface MockRoutingResult {
-  readonly task: string;
-  readonly taskProfile: {
-    readonly complexity: 'low' | 'medium' | 'high';
-    readonly codeGeneration: boolean;
-    readonly reasoning: boolean;
-    readonly estimatedTokens: number;
-  };
-  readonly budgetResults: readonly {
-    readonly model: string;
-    readonly withinBudget: boolean;
-    readonly reason: string;
-  }[];
-  readonly topsisRanking: readonly {
-    readonly model: string;
-    readonly score: number;
-    readonly quality: number;
-    readonly cost: number;
-    readonly latency: number;
-  }[];
-  readonly selectedModel: string;
-  readonly selectionReason: string;
-}
-
-/**
- * Mock workflow for demo mode.
- */
-interface MockWorkflow {
-  readonly name: string;
-  readonly description: string;
-  readonly inputs: readonly {
-    readonly name: string;
-    readonly type: string;
-    readonly required: boolean;
-  }[];
-  readonly steps: readonly {
-    readonly id: string;
-    readonly agent: string;
-    readonly description: string;
-  }[];
-}
 
 /**
  * Analyzes task to generate mock routing result.
@@ -191,190 +123,19 @@ function getMockWorkflow(name: string): MockWorkflow | undefined {
   return workflows[name];
 }
 
-// ============================================================================
-// Output Formatting
-// ============================================================================
-
 /**
- * Formats the routing demo output.
+ * Gets list of available mock workflows.
  */
-function formatRoutingDemo(result: MockRoutingResult): string {
-  const lines: string[] = [];
-
-  lines.push('');
-  lines.push(`${colors.cyan}${colors.bold}=== Routing Demo ===${colors.reset}`);
-  lines.push(`${colors.dim}(This is a mock response - no API keys required)${colors.reset}`);
-  lines.push('');
-  lines.push(`${colors.bold}Task:${colors.reset} "${result.task}"`);
-  lines.push('');
-
-  // Task Profile
-  lines.push(`${colors.bold}Task Analysis:${colors.reset}`);
-  lines.push(`  Complexity:      ${result.taskProfile.complexity}`);
-  lines.push(`  Code Generation: ${result.taskProfile.codeGeneration ? 'yes' : 'no'}`);
-  lines.push(`  Reasoning:       ${result.taskProfile.reasoning ? 'yes' : 'no'}`);
-  lines.push(`  Est. Tokens:     ${String(result.taskProfile.estimatedTokens)}`);
-  lines.push('');
-
-  // Budget Filter
-  lines.push(`${colors.bold}Budget Filter:${colors.reset}`);
-  for (const br of result.budgetResults) {
-    const status = br.withinBudget
-      ? `${colors.green}PASS${colors.reset}`
-      : `${colors.yellow}FAIL${colors.reset}`;
-    lines.push(`  ${br.model.padEnd(8)} ${status} - ${br.reason}`);
-  }
-  lines.push('');
-
-  // TOPSIS Ranking
-  lines.push(`${colors.bold}TOPSIS Ranking:${colors.reset}`);
-  lines.push(
-    `  ${'Model'.padEnd(8)} ${'Score'.padStart(6)} ${'Quality'.padStart(8)} ${'Cost'.padStart(6)} ${'Latency'.padStart(8)}`
-  );
-  lines.push(`  ${'-'.repeat(44)}`);
-  for (const score of result.topsisRanking) {
-    lines.push(
-      `  ${score.model.padEnd(8)} ${score.score.toFixed(2).padStart(6)} ${score.quality.toFixed(1).padStart(8)} ${score.cost.toFixed(1).padStart(6)} ${score.latency.toFixed(1).padStart(8)}`
-    );
-  }
-  lines.push('');
-
-  // Selection
-  lines.push(`${colors.bold}${colors.green}Selected: ${result.selectedModel}${colors.reset}`);
-  lines.push(`Reason: ${result.selectionReason}`);
-  lines.push('');
-
-  return lines.join('\n');
-}
-
-/**
- * Formats the expert list demo output.
- */
-function formatExpertListDemo(): string {
-  const lines: string[] = [];
-
-  lines.push('');
-  lines.push(`${colors.cyan}${colors.bold}=== Expert List Demo ===${colors.reset}`);
-  lines.push(`${colors.dim}(Available experts - no API keys required to view)${colors.reset}`);
-  lines.push('');
-
-  lines.push(`${colors.bold}Built-in Experts:${colors.reset}`);
-  lines.push('Name'.padEnd(20) + ' ' + 'Domain'.padEnd(15) + ' Capabilities');
-  lines.push('-'.repeat(70));
-
-  for (const expert of DEFAULT_EXPERTS) {
-    const name = expert.name;
-    const domain = expert.primaryDomain;
-    const caps = expert.capabilities.join(', ');
-    lines.push(`${name.padEnd(20)} ${domain.padEnd(15)} ${caps}`);
-  }
-
-  lines.push('');
-  lines.push(`${colors.bold}Expert Roles:${colors.reset}`);
-  lines.push(
-    `  ${colors.cyan}code_expert${colors.reset}          - Code implementation, refactoring, debugging`
-  );
-  lines.push(
-    `  ${colors.cyan}security_expert${colors.reset}      - Security analysis, vulnerability assessment`
-  );
-  lines.push(
-    `  ${colors.cyan}architecture_expert${colors.reset}  - System design, patterns, decisions`
-  );
-  lines.push(
-    `  ${colors.cyan}documentation_expert${colors.reset} - Technical writing, API documentation`
-  );
-  lines.push(`  ${colors.cyan}testing_expert${colors.reset}       - Test strategies, coverage, QA`);
-  lines.push('');
-  lines.push(
-    `${colors.dim}Use "nexus-agents expert list" for full details with API${colors.reset}`
-  );
-  lines.push('');
-
-  return lines.join('\n');
-}
-
-/**
- * Formats the workflow demo output.
- */
-function formatWorkflowDemo(workflow: MockWorkflow): string {
-  const lines: string[] = [];
-
-  lines.push('');
-  lines.push(`${colors.cyan}${colors.bold}=== Workflow Demo: ${workflow.name} ===${colors.reset}`);
-  lines.push(`${colors.dim}(Dry-run preview - no API keys required)${colors.reset}`);
-  lines.push('');
-
-  lines.push(`${colors.bold}Description:${colors.reset}`);
-  lines.push(`  ${workflow.description}`);
-  lines.push('');
-
-  lines.push(`${colors.bold}Required Inputs:${colors.reset}`);
-  for (const input of workflow.inputs) {
-    const required = input.required
-      ? `${colors.yellow}(required)${colors.reset}`
-      : `${colors.dim}(optional)${colors.reset}`;
-    lines.push(`  ${input.name}: ${input.type} ${required}`);
-  }
-  lines.push('');
-
-  lines.push(`${colors.bold}Execution Steps:${colors.reset}`);
-  for (let i = 0; i < workflow.steps.length; i++) {
-    const step = workflow.steps[i];
-    if (step !== undefined) {
-      lines.push(
-        `  ${String(i + 1)}. ${colors.cyan}[${step.id}]${colors.reset} ${step.description}`
-      );
-      lines.push(`     Agent: ${step.agent}`);
-    }
-  }
-  lines.push('');
-
-  lines.push(`${colors.bold}What would happen:${colors.reset}`);
-  lines.push(`  1. Workflow validates all required inputs`);
-  lines.push(`  2. Steps execute in order (parallel steps run together)`);
-  lines.push(`  3. Each step invokes the specified expert agent`);
-  lines.push(`  4. Results are passed to dependent steps`);
-  lines.push(`  5. Final output is aggregated and returned`);
-  lines.push('');
-
-  lines.push(
-    `${colors.dim}Use "nexus-agents workflow run ${workflow.name} --dry-run" with API for full validation${colors.reset}`
-  );
-  lines.push('');
-
-  return lines.join('\n');
-}
-
-/**
- * Lists available workflows for demo.
- */
-function formatAvailableWorkflows(): string {
-  const lines: string[] = [];
-
-  lines.push('');
-  lines.push(`${colors.cyan}${colors.bold}=== Available Workflows ===${colors.reset}`);
-  lines.push(
-    `${colors.dim}(Use "nexus-agents demo workflow <name>" to see details)${colors.reset}`
-  );
-  lines.push('');
-
-  const workflows = ['code-review', 'feature-implementation', 'security-audit'];
-
-  for (const name of workflows) {
-    const workflow = getMockWorkflow(name);
-    if (workflow !== undefined) {
-      lines.push(`  ${colors.cyan}${name}${colors.reset}`);
-      lines.push(`    ${workflow.description}`);
-      lines.push('');
-    }
-  }
-
-  lines.push(
-    `${colors.dim}Other workflows: bug-fix, documentation-update, refactoring, test-generation${colors.reset}`
-  );
-  lines.push('');
-
-  return lines.join('\n');
+function getAvailableWorkflows(): Array<{ name: string; description: string }> {
+  const names = ['code-review', 'feature-implementation', 'security-audit'];
+  return names
+    .map((name) => {
+      const workflow = getMockWorkflow(name);
+      return workflow !== undefined
+        ? { name: workflow.name, description: workflow.description }
+        : undefined;
+    })
+    .filter((w): w is { name: string; description: string } => w !== undefined);
 }
 
 // ============================================================================
@@ -401,14 +162,14 @@ export function runExpertListDemo(): string {
  */
 export function runWorkflowDemo(workflowName: string | undefined): string {
   if (workflowName === undefined || workflowName.length === 0) {
-    return formatAvailableWorkflows();
+    return formatAvailableWorkflows(getAvailableWorkflows());
   }
 
   const workflow = getMockWorkflow(workflowName);
   if (workflow === undefined) {
     return (
       `\n${colors.yellow}Workflow "${workflowName}" not found.${colors.reset}\n` +
-      formatAvailableWorkflows()
+      formatAvailableWorkflows(getAvailableWorkflows())
     );
   }
 
