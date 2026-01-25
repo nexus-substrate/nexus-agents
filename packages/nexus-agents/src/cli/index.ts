@@ -7,6 +7,10 @@
 export { doctorCommand, runDoctor, printDoctorResults } from './doctor.js';
 export type { DoctorResult, CliCheckResult } from './doctor.js';
 
+// Hello Command (Issue #423)
+export { helloCommand, gatherSystemInfo, printHelloResult } from './hello.js';
+export type { HelloResult } from './hello.js';
+
 export { configInitCommand, runConfigInit, printConfigInitResult } from './config-init.js';
 export type { ConfigInitOptions, ConfigInitResult } from './config-init.js';
 
@@ -369,3 +373,14 @@ export type {
   PostToolUseInput,
   StopInput,
 } from './hooks/hook-types.js';
+
+// Demo Command (Issue #424 - Demo mode for API-free exploration)
+export {
+  demoCommand,
+  runRoutingDemo,
+  runExpertListDemo,
+  runWorkflowDemo,
+  printDemoHelp,
+  isValidDemoSubcommand,
+} from './demo-command.js';
+export type { DemoSubcommand, DemoOptions } from './demo-command.js';

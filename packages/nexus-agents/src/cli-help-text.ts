@@ -19,6 +19,8 @@ USAGE:
 
 COMMANDS:
   (default)       Start MCP server with stdio transport
+  hello           Show welcome message and quick start (no API keys needed)
+  demo            API-free exploration mode (no API keys needed)
   setup           Configure Claude CLI integration (MCP + CLAUDE.md rules)
   verify          Quick installation verification (no API keys needed)
   doctor          Check CLI installations and health status
@@ -167,7 +169,18 @@ HOOKS OPTIONS:
   --generate-summary     Generate session summary (stop)
   --export-metrics       Export metrics to file (session-end)
 
+DEMO OPTIONS:
+  demo routing "task"    Show how routing would select models (mock)
+  demo expert-list       Show available experts with descriptions
+  demo workflow [name]   Show workflow steps (dry-run preview)
+
 EXAMPLES:
+  nexus-agents demo                              API-free exploration mode help
+  nexus-agents demo routing "Implement sorting"  Demo routing decision (mock)
+  nexus-agents demo expert-list                  List available experts
+  nexus-agents demo workflow                     List available workflows
+  nexus-agents demo workflow code-review         Demo code-review workflow steps
+  nexus-agents hello            Show welcome message and quick start
   nexus-agents setup            Configure Claude CLI integration
   nexus-agents setup --dry-run  Preview changes without applying
   nexus-agents setup --force    Overwrite existing configurations

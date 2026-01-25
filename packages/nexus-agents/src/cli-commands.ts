@@ -34,7 +34,9 @@ export {
   handleVerifyCommand,
   handleDoctorCommand,
   handleSetupCommand,
+  handleHelloCommand,
   handleHooksCommand,
+  handleDemoCommand,
 } from './cli-commands-handlers.js';
 
 // Import handlers for dispatch
@@ -56,7 +58,9 @@ import {
   handleResearchCommand,
   handleSweBenchCommand,
   handleSetupCommand,
+  handleHelloCommand,
   handleHooksCommand,
+  handleDemoCommand,
 } from './cli-commands-handlers.js';
 
 /**
@@ -73,41 +77,40 @@ export function printVersion(): void {
   process.stdout.write(`nexus-agents v${VERSION}\n`);
 }
 
+/** Sync command dispatch table for reduced complexity. */
+const SYNC_COMMAND_HANDLERS: Record<string, ((args: ParsedCliArgs) => void) | undefined> = {
+  hello: handleHelloCommand,
+  expert: handleExpertCommand,
+  'routing-audit': handleRoutingAuditCommand,
+  'system-review': handleSystemReviewCommand,
+  validation: handleValidationCommand,
+  'learning-metrics': handleLearningMetricsCommand,
+  setup: handleSetupCommand,
+  demo: handleDemoCommand,
+};
+
 /**
  * Handles synchronous commands that don't require await.
  * Returns true if the command was handled.
  */
 function handleSyncCommand(args: ParsedCliArgs): boolean {
-  switch (args.command) {
-    case 'help':
-      printHelp();
-      process.exit(EXIT_CODES.SUCCESS);
-      return true;
-    case 'version':
-      printVersion();
-      process.exit(EXIT_CODES.SUCCESS);
-      return true;
-    case 'expert':
-      handleExpertCommand(args);
-      return true;
-    case 'routing-audit':
-      handleRoutingAuditCommand(args);
-      return true;
-    case 'system-review':
-      handleSystemReviewCommand(args);
-      return true;
-    case 'validation':
-      handleValidationCommand(args);
-      return true;
-    case 'learning-metrics':
-      handleLearningMetricsCommand(args);
-      return true;
-    case 'setup':
-      handleSetupCommand(args);
-      return true;
-    default:
-      return false;
+  // Handle help and version separately (they have special exit behavior)
+  if (args.command === 'help') {
+    printHelp();
+    process.exit(EXIT_CODES.SUCCESS);
   }
+  if (args.command === 'version') {
+    printVersion();
+    process.exit(EXIT_CODES.SUCCESS);
+  }
+
+  // Dispatch to sync handler table
+  const handler = SYNC_COMMAND_HANDLERS[args.command];
+  if (handler !== undefined) {
+    handler(args);
+    return true;
+  }
+  return false;
 }
 
 /** Async command dispatch table for reduced complexity. */

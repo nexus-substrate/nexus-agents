@@ -28,6 +28,7 @@ export type CliCommand =
   | 'server'
   | 'help'
   | 'version'
+  | 'hello'
   | 'config'
   | 'expert'
   | 'workflow'
@@ -44,7 +45,8 @@ export type CliCommand =
   | 'learning-metrics'
   | 'swe-bench'
   | 'setup'
-  | 'hooks';
+  | 'hooks'
+  | 'demo';
 
 /**
  * Parsed CLI arguments and command.
@@ -277,6 +279,7 @@ export function isValidCommand(value: string): value is CliCommand {
     'server',
     'help',
     'version',
+    'hello',
     'config',
     'expert',
     'workflow',
@@ -294,6 +297,7 @@ export function isValidCommand(value: string): value is CliCommand {
     'swe-bench',
     'setup',
     'hooks',
+    'demo',
   ];
   return validCommands.includes(value as CliCommand);
 }

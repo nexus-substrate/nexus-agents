@@ -25,6 +25,8 @@ import {
   verifyCommand,
   learningMetricsCommand,
   setupCommand,
+  helloCommand,
+  demoCommand,
 } from './cli/index.js';
 import { hookCommand, printHookHelp } from './cli/hooks/index.js';
 import { EXIT_CODES, type ParsedCliArgs } from './cli-types.js';
@@ -310,6 +312,27 @@ export function handleSetupCommand(args: ParsedCliArgs): void {
     verbose: args.options.verbose,
     scope: args.options.scope === 'project' ? 'project' : 'user',
   });
+  process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
+}
+
+/**
+ * Handles hello command for quick introduction.
+ * (Source: Issue #423 - Hello World Command)
+ */
+export function handleHelloCommand(_args: ParsedCliArgs): void {
+  const exitCode = helloCommand();
+  process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
+}
+
+/**
+ * Handles demo command for API-free exploration.
+ * (Source: Issue #424 - Demo mode for API-free exploration)
+ */
+export function handleDemoCommand(args: ParsedCliArgs): void {
+  // Get subcommand from positionals (demo <subcommand> [args...])
+  const subcommand = args.subcommand;
+  const additionalArgs = args.positionals.slice(2);
+  const exitCode = demoCommand(subcommand, additionalArgs);
   process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
 }
 
