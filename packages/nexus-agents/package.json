@@ -78,7 +78,6 @@
   },
   "devDependencies": {
     "@types/semver": "^7.7.1",
-    "@types/uuid": "^11.0.0",
     "ts-morph": "^27.0.2",
     "tsup": "^8.3.0",
     "typedoc": "0.28.16"
