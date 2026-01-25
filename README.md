@@ -1,520 +1,181 @@
 # Nexus Agents
 
-> Multi-agent orchestration MCP server with model diversity and workflow automation
+> Orchestrate multiple AI experts from a single interface
 
+[![npm version](https://img.shields.io/npm/v/nexus-agents)](https://www.npmjs.com/package/nexus-agents)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D22.0.0-brightgreen)](https://nodejs.org)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.8+-blue)](https://www.typescriptlang.org)
-[![MCP Protocol](https://img.shields.io/badge/MCP-2025--11--25-purple)](https://modelcontextprotocol.io)
-[![npm version](https://img.shields.io/npm/v/nexus-agents)](https://www.npmjs.com/package/nexus-agents)
 
 ---
 
-## Overview
+## Why Nexus Agents?
 
-Nexus Agents is an MCP (Model Context Protocol) server that coordinates multiple AI experts to handle software development tasks. It provides a unified interface for different AI models and enables multi-agent collaboration through a Tech Lead and specialized experts.
+**One tool to coordinate Claude, OpenAI, Gemini, and Ollama.** Instead of switching between AI tools, nexus-agents routes your tasks to specialized experts that collaborate on complex problems.
 
-### Key Capabilities
-
-- **Multi-Agent Orchestration** - Tech Lead coordinates specialized experts for complex tasks
-- **Model Diversity** - Support for Claude, OpenAI, Gemini, and Ollama
-- **Workflow Automation** - YAML-based templates for repeatable processes
-- **Security-First Design** - Defense in depth with secrets vault and input validation
+```
+You: "Review this code for security and performance"
+     ↓
+Tech Lead analyzes → delegates to Security Expert + Code Expert
+     ↓
+Combined response with findings from both experts
+```
 
 ---
 
-## Quick Start
+## Quick Start (2 minutes)
 
-### Installation
+### 1. Install
 
 ```bash
-# Install the package
-npm install nexus-agents
-
-# Or install globally for CLI usage
 npm install -g nexus-agents
 ```
 
-### CLI Usage
+### 2. Verify
 
 ```bash
-# Start MCP server (default)
-nexus-agents
-
-# Or with npx
-npx nexus-agents
-
-# Check CLI installations and health
 nexus-agents doctor
-
-# Show help
-nexus-agents --help
-
-# Show version
-nexus-agents --version
 ```
 
-#### Server Modes
+### 3. Use
+
+**With Claude Code (recommended):**
 
 ```bash
-# MCP server only (for Claude CLI integration)
-nexus-agents --mode=server
-
-# CLI orchestrator (calls Gemini/Codex CLIs)
-nexus-agents --mode=orchestrator
-
-# Full hybrid mesh (both modes)
-nexus-agents --mode=mesh
+nexus-agents setup   # Auto-configures MCP server
 ```
 
-### Programmatic Usage
+Then in Claude: `"orchestrate: Review this PR for issues"`
 
-```typescript
-import {
-  createServer,
-  startStdioServer,
-  TechLead,
-  createClaudeAdapter,
-  ExpertFactory,
-} from 'nexus-agents';
-
-// Start MCP server
-const result = await startStdioServer({
-  name: 'my-server',
-  version: '1.0.0',
-});
-
-// Or use programmatically
-const adapter = createClaudeAdapter({
-  model: 'claude-sonnet-4-20250514',
-});
-const techLead = new TechLead({ adapter });
-
-// Create experts dynamically
-const factory = new ExpertFactory(adapter);
-const codeExpert = factory.create({ type: 'code' });
-```
-
-### Claude Desktop Integration
-
-Add to your Claude Desktop configuration (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
-
-```json
-{
-  "mcpServers": {
-    "nexus-agents": {
-      "command": "npx",
-      "args": ["nexus-agents"],
-      "env": {
-        "ANTHROPIC_API_KEY": "sk-ant-..."
-      }
-    }
-  }
-}
-```
-
-### Claude CLI Integration
-
-Nexus Agents works as an MCP server for Claude CLI (Claude Code). Add to your MCP configuration (`~/.claude/mcp.json`):
-
-```json
-{
-  "mcpServers": {
-    "nexus-agents": {
-      "command": "npx",
-      "args": ["nexus-agents"]
-    }
-  }
-}
-```
-
-Once configured, Claude CLI can use nexus-agents tools:
+**Standalone CLI:**
 
 ```bash
-# Claude CLI will automatically discover and use nexus-agents tools
-claude "Review this code for security issues"
-# → Uses orchestrate tool to delegate to Security Expert
-
-claude "Create a testing expert for this project"
-# → Uses create_expert tool
-
-claude "Run the code-review workflow"
-# → Uses run_workflow tool
+export ANTHROPIC_API_KEY=your-key
+nexus-agents orchestrate "Explain the architecture of this codebase"
 ```
-
-#### Verifying Setup
-
-Run the doctor command to verify your CLI installations:
-
-```bash
-$ nexus-agents doctor
-
-Nexus Agents Doctor
-===================
-
-Checking CLI installations...
-
-✓ Claude CLI
-  Version: 2.0.76 (supported)
-  Auth: OAuth
-  Capacity: 85% remaining
-
-✓ Gemini CLI
-  Version: 0.22.5 (supported)
-  Auth: ADC configured
-
-✓ Codex CLI
-  Version: 0.77.0 (supported)
-  Auth: OAuth
-
-Checking MCP configuration...
-
-✓ MCP Server mode: Ready
-✓ MCP Client mode: Ready (Codex mcp-server)
-
-Summary: All systems operational
-```
-
-#### Troubleshooting
-
-| Issue                 | Solution                                           |
-| --------------------- | -------------------------------------------------- |
-| CLI not found         | Run `nexus-agents doctor` to see install commands  |
-| Authentication failed | Run `<cli> auth login` (e.g., `claude auth login`) |
-| Version outdated      | Run `npm update -g @anthropic-ai/claude-code`      |
-| MCP connection failed | Check `~/.claude/mcp.json` syntax                  |
 
 ---
 
-## Features
+## What It Does
 
-### Multi-Agent Orchestration
-
-The Tech Lead agent analyzes incoming tasks and delegates to specialized experts:
-
-| Expert                   | Specialization                                         |
-| ------------------------ | ------------------------------------------------------ |
-| **Code Expert**          | Implementation, debugging, optimization, refactoring   |
-| **Architecture Expert**  | System design, patterns, trade-offs, scalability       |
-| **Security Expert**      | Vulnerability analysis, secure coding, threat modeling |
-| **Documentation Expert** | Technical writing, API docs, code comments             |
-| **Testing Expert**       | Test strategies, coverage analysis, test generation    |
-
-Experts can collaborate on complex tasks. The Tech Lead combines their outputs into a single response.
-
-### Model Adapters
-
-Use different AI models through unified interfaces:
-
-| Provider   | Models                         | Best For                   |
-| ---------- | ------------------------------ | -------------------------- |
-| **Claude** | Sonnet 4, Opus 4, Haiku 3      | General coding, analysis   |
-| **OpenAI** | GPT-4o, o1, Codex              | Reasoning, code generation |
-| **Gemini** | 2.5 Pro, 2.5 Flash             | Long context, multimodal   |
-| **Ollama** | Llama 3, CodeLlama, Qwen, etc. | Local inference, privacy   |
-
-#### CLI Integration (v2.2.0+)
-
-nexus-agents integrates with external CLI tools for orchestration:
-
-| CLI            | Version | Models Available              | Auth  |
-| -------------- | ------- | ----------------------------- | ----- |
-| **Claude CLI** | 2.0.76  | sonnet, opus (aliases)        | OAuth |
-| **Gemini CLI** | 0.22.5  | Model router (auto-selection) | OAuth |
-| **Codex CLI**  | 0.77.0  | o3, o3-mini, o4-mini          | OAuth |
-
-Model selection uses semantic classification with tier escalation:
-
-```
-Fast (quick queries) -> Balanced (most tasks) -> Powerful (complex reasoning)
-```
-
-### Workflow Engine
-
-Define reusable workflows in YAML:
-
-```yaml
-name: code-review
-version: '1.0.0'
-description: Automated code review workflow
-
-inputs:
-  - name: files
-    type: array
-    description: List of file paths to review
-    required: true
-
-steps:
-  - id: analyze
-    agent: code_expert
-    action: analyze_code
-    inputs:
-      files: ${{ inputs.files }}
-
-  - id: security
-    agent: security_expert
-    action: security_review
-    inputs:
-      files: ${{ inputs.files }}
-    parallel: true
-
-  - id: synthesize
-    agent: tech_lead
-    action: synthesize_reviews
-    inputs:
-      analysis: ${{ steps.analyze.output }}
-      security: ${{ steps.security.output }}
-    dependsOn:
-      - analyze
-      - security
-```
-
-### MCP Tools
-
-The server exposes these MCP tools for Claude Desktop integration:
-
-| Tool                | Description                                  | Rate Limit |
-| ------------------- | -------------------------------------------- | ---------- |
-| `orchestrate`       | Analyze task and coordinate expert execution | 10/min     |
-| `create_expert`     | Dynamically create a specialized expert      | 30/min     |
-| `run_workflow`      | Execute a predefined workflow template       | 5/min      |
-| `delegate_to_model` | Route task to optimal model by capability    | 20/min     |
-
-See [docs/ENTRYPOINTS.md](./docs/ENTRYPOINTS.md) for full API documentation including schemas and examples.
+| Feature                        | Description                                                                            |
+| ------------------------------ | -------------------------------------------------------------------------------------- |
+| **Multi-Expert Orchestration** | Tech Lead coordinates Code, Security, Architecture, Testing, and Documentation experts |
+| **Model Routing**              | Routes tasks to the best model based on capability (reasoning, speed, context size)    |
+| **Workflow Automation**        | YAML templates for repeatable processes like code review                               |
+| **MCP Integration**            | Works as a tool server for Claude Desktop and Claude Code                              |
 
 ---
 
-## Architecture
+## Available Experts
 
-```
-nexus-agents/
-├── packages/
-│   └── nexus-agents/         # Main package (single consolidated package)
-│       ├── src/
-│       │   ├── core/         # Shared types, Result<T,E>, errors, logger, trace
-│       │   ├── config/       # Configuration loading and validation
-│       │   ├── adapters/     # Model adapters (Claude, OpenAI, Gemini, Ollama)
-│       │   ├── agents/       # Agent framework (TechLead, Experts)
-│       │   ├── workflows/    # Workflow engine and templates
-│       │   ├── mcp/          # MCP server and tool definitions
-│       │   ├── cli/          # CLI subcommands (doctor, repl, config-init)
-│       │   ├── cli-adapters/ # External CLI adapters (Claude, Gemini, Codex)
-│       │   ├── index.ts      # Main exports
-│       │   └── cli.ts        # CLI entry point
-│       └── package.json
-├── .claude/
-│   ├── rules/                # Claude Code rules
-│   └── skills/               # Project-specific skills
-└── pnpm-workspace.yaml
-```
+| Expert        | Specialization                             |
+| ------------- | ------------------------------------------ |
+| Code          | Implementation, debugging, optimization    |
+| Architecture  | System design, patterns, scalability       |
+| Security      | Vulnerability analysis, secure coding      |
+| Testing       | Test strategies, coverage, test generation |
+| Documentation | Technical writing, API docs                |
 
-### Dependency Flow
+---
 
-```
-MCP Server (external boundary)
-    ↓
-Workflow Engine (orchestrates execution)
-    ↓
-Agents Layer (TechLead, Experts)
-    ↓
-Adapters Layer (Claude, OpenAI, Gemini, Ollama)
-    ↓
-Core Layer (Types, Result<T,E>, Errors, Logger)
+## Supported Models
+
+| Provider | Models                    | Best For                    |
+| -------- | ------------------------- | --------------------------- |
+| Claude   | Sonnet 4, Opus 4, Haiku 3 | Complex reasoning, analysis |
+| OpenAI   | GPT-4o, o1, Codex         | Code generation             |
+| Gemini   | 2.5 Pro, 2.5 Flash        | Long context, multimodal    |
+| Ollama   | Llama 3, CodeLlama, Qwen  | Local inference, privacy    |
+
+---
+
+## CLI Commands
+
+```bash
+nexus-agents                    # Start MCP server (default)
+nexus-agents doctor             # Check installation health
+nexus-agents setup              # Configure Claude CLI integration
+nexus-agents orchestrate "..."  # Run task with experts
+nexus-agents review <pr-url>    # Review a GitHub PR
+nexus-agents expert list        # List available experts
+nexus-agents workflow list      # List workflow templates
+nexus-agents --help             # Full command list
 ```
 
-### Core Interfaces
+---
 
-```typescript
-// Unified model interaction
-interface IModelAdapter {
-  complete(request: CompletionRequest): Promise<Result<Response, ModelError>>;
-  stream(request: CompletionRequest): AsyncIterable<StreamChunk>;
-  countTokens(text: string): Promise<number>;
-}
+## MCP Tools
 
-// Base agent contract
-interface IAgent {
-  readonly id: string;
-  readonly role: AgentRole;
-  execute(task: Task): Promise<Result<TaskResult, AgentError>>;
-  handleMessage(msg: AgentMessage): Promise<Result<AgentResponse, AgentError>>;
-}
+When running as an MCP server, these tools are available:
 
-// Workflow execution
-interface IWorkflowEngine {
-  loadTemplate(path: string): Promise<Result<WorkflowDefinition, ParseError>>;
-  execute(
-    workflow: WorkflowDefinition,
-    inputs: unknown
-  ): Promise<Result<WorkflowResult, WorkflowError>>;
-}
-```
+| Tool                | Description                                  |
+| ------------------- | -------------------------------------------- |
+| `orchestrate`       | Analyze task and coordinate expert execution |
+| `create_expert`     | Dynamically create a specialized expert      |
+| `run_workflow`      | Execute a workflow template                  |
+| `delegate_to_model` | Route task to optimal model                  |
 
 ---
 
 ## Configuration
 
-### Environment Variables
+**Environment Variables:**
 
-| Variable            | Description                       | Required                              |
-| ------------------- | --------------------------------- | ------------------------------------- |
-| `ANTHROPIC_API_KEY` | Claude API key                    | Yes (for Claude)                      |
-| `OPENAI_API_KEY`    | OpenAI API key                    | For OpenAI models                     |
-| `GOOGLE_AI_API_KEY` | Google AI API key                 | For Gemini models                     |
-| `OLLAMA_HOST`       | Ollama server URL                 | For Ollama (default: localhost:11434) |
-| `NEXUS_LOG_LEVEL`   | Log level (debug/info/warn/error) | No                                    |
+| Variable            | Description                       |
+| ------------------- | --------------------------------- |
+| `ANTHROPIC_API_KEY` | Claude API key                    |
+| `OPENAI_API_KEY`    | OpenAI API key                    |
+| `GOOGLE_AI_API_KEY` | Gemini API key                    |
+| `NEXUS_LOG_LEVEL`   | Log level (debug/info/warn/error) |
+
+**Generate config file:**
+
+```bash
+nexus-agents config init   # Creates nexus-agents.yaml
+```
 
 ---
 
-## API Reference
+## Documentation
 
-For the complete entrypoint reference including all CLI commands, MCP tools, REST API endpoints, and programmatic APIs, see [docs/ENTRYPOINTS.md](./docs/ENTRYPOINTS.md).
-
-### Adapters
-
-```typescript
-import {
-  createClaudeAdapter,
-  createOpenAIAdapter,
-  createGeminiAdapter,
-  createOllamaAdapter,
-  AdapterFactory,
-} from 'nexus-agents';
-
-// Create individual adapters
-const claude = createClaudeAdapter({ model: 'claude-sonnet-4-20250514' });
-const openai = createOpenAIAdapter({ model: 'gpt-4o' });
-const gemini = createGeminiAdapter({ model: 'gemini-1.5-pro' });
-const ollama = createOllamaAdapter({ model: 'llama3:8b' });
-
-// Or use the factory
-const factory = new AdapterFactory();
-const adapter = factory.create({ provider: 'anthropic', model: 'claude-sonnet-4-20250514' });
-```
-
-### Agents
-
-```typescript
-import { TechLead, ExpertFactory, Expert } from 'nexus-agents';
-
-// Create TechLead for orchestration
-const techLead = new TechLead({ adapter });
-
-// Create experts
-const factory = new ExpertFactory(adapter);
-const codeExpert = factory.create({ type: 'code' });
-const securityExpert = factory.create({ type: 'security' });
-```
-
-### MCP Server
-
-```typescript
-import { createServer, startStdioServer, registerTools } from 'nexus-agents';
-
-// Create and start server
-const result = await startStdioServer({
-  name: 'my-server',
-  version: '1.0.0',
-});
-
-if (result.ok) {
-  const { server } = result.value;
-  // Server is running with stdio transport
-}
-```
+| Topic              | Link                                                         |
+| ------------------ | ------------------------------------------------------------ |
+| Full CLI Reference | [docs/ENTRYPOINTS.md](./docs/ENTRYPOINTS.md)                 |
+| Architecture       | [docs/architecture/README.md](./docs/architecture/README.md) |
+| Contributing       | [CONTRIBUTING.md](./CONTRIBUTING.md)                         |
+| Coding Standards   | [CODING_STANDARDS.md](./CODING_STANDARDS.md)                 |
+| Quick Start Guide  | [QUICK_START.md](./QUICK_START.md)                           |
 
 ---
 
 ## Development
 
-### Prerequisites
-
-- Node.js 22.x LTS
-- pnpm 9.x
-- TypeScript 5.8+
-
-### Setup
-
 ```bash
-# Clone the repository
 git clone https://github.com/williamzujkowski/nexus-agents.git
 cd nexus-agents
-
-# Install dependencies
 pnpm install
-
-# Build the package
 pnpm build
-
-# Run tests
 pnpm test
-
-# Start development mode
-pnpm dev
 ```
 
-### Commands
-
-```bash
-# Development
-pnpm dev              # Start dev server with watch mode
-pnpm build            # Build the package
-pnpm clean            # Clean build artifacts
-
-# Quality
-pnpm lint             # Run ESLint
-pnpm lint:fix         # Fix linting issues
-pnpm typecheck        # Run TypeScript type checking
-pnpm test             # Run all tests
-pnpm test:coverage    # Run tests with coverage
-```
+**Requirements:** Node.js 22.x LTS, pnpm 9.x
 
 ---
 
 ## Contributing
 
-We welcome contributions! Please see our guidelines:
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feat/amazing-feature`)
+3. Commit with conventional commits (`feat(scope): add feature`)
+4. Open a Pull Request
 
-1. **Fork** the repository
-2. **Create** a feature branch (`git checkout -b feat/amazing-feature`)
-3. **Commit** with conventional commits (`git commit -m 'feat(agents): add amazing feature'`)
-4. **Push** to your branch (`git push origin feat/amazing-feature`)
-5. **Open** a Pull Request
-
-### Code Standards
-
-- Files must be under 400 lines
-- Functions must be under 50 lines
-- Test coverage must be at least 80%
-- All code must pass linting and type checking
-
-See [CODING_STANDARDS.md](./CODING_STANDARDS.md) for detailed guidelines.
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for contribution workflow.
-
-### Commit Convention
-
-We use [Conventional Commits](https://www.conventionalcommits.org/):
-
-```
-feat(scope): add new feature
-fix(scope): fix bug
-refactor(scope): refactor code
-docs(scope): update documentation
-test(scope): add tests
-chore(scope): maintenance tasks
-```
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for details.
 
 ---
 
 ## License
 
-MIT - See [LICENSE](./LICENSE) for details.
-
----
-
-## Acknowledgments
-
-This project is a clean-room rewrite inspired by [claude-team-mcp](https://github.com/original/claude-team-mcp), with attribution preserved per MIT license.
+MIT - See [LICENSE](./LICENSE)
 
 ---
 

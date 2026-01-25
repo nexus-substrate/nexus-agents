@@ -1,19 +1,26 @@
 # Nexus Agents Quick Start
 
-**Time to value: 5 minutes**
+Orchestrate multiple AI models using specialized experts to solve complex tasks.
+
+**Time to first success: 5-10 minutes** (depending on prerequisites)
 
 ---
 
 ## Prerequisites
 
 ```bash
-node --version   # Must be v22.x LTS
-pnpm --version   # Must be v9.x (or npm v10.x)
+node --version   # Must be v22.x LTS (required)
+```
+
+If you have an older version, upgrade with [nvm](https://github.com/nvm-sh/nvm):
+
+```bash
+nvm install 22 && nvm use 22
 ```
 
 ---
 
-## Installation
+## Install
 
 ```bash
 npm install -g nexus-agents
@@ -21,66 +28,55 @@ npm install -g nexus-agents
 
 ---
 
-## Verify Installation
+## Verify
 
 ```bash
 nexus-agents doctor
 ```
 
-Expected output:
-
-```
-✓ Node.js version: 22.x
-✓ Configuration loaded
-✓ API keys configured: 0 of 3
-Status: Ready (limited - no API keys)
-```
+You should see checks for Node.js version, configuration, and API keys. If you see errors, check the [Troubleshooting](#common-issues) section below.
 
 ---
 
-## Option 1: Claude Desktop Integration (Recommended)
+## Option 1: Claude Code Integration (Recommended)
 
-Add to `~/.claude/mcp.json`:
+**Requires:** [Claude CLI](https://docs.anthropic.com/en/docs/claude-code) installed
 
-```json
-{
-  "mcpServers": {
-    "nexus-agents": {
-      "command": "nexus-agents",
-      "args": ["--mode=server"]
-    }
-  }
-}
+```bash
+# Auto-configure MCP server
+nexus-agents setup
 ```
 
-Then in Claude Desktop, try:
+Then **in Claude Code chat** (not terminal), type:
 
 ```
 orchestrate: What files are in this project?
 ```
 
+Claude will use the nexus-agents MCP server to coordinate experts on your task.
+
 ---
 
 ## Option 2: Standalone CLI
 
-Set an API key:
+The standalone CLI uses external CLI tools for orchestration. Install at least one:
 
 ```bash
-export ANTHROPIC_API_KEY=your-key-here
+npm install -g @anthropic-ai/claude-code   # Claude CLI (recommended)
+# Or: npm install -g @google/gemini-cli    # Gemini CLI
+# Or: npm install -g @openai/codex         # Codex CLI
+```
+
+Authenticate:
+
+```bash
+claude auth login   # Follow OAuth flow
 ```
 
 Run a task:
 
 ```bash
 nexus-agents orchestrate "Explain closures in JavaScript"
-```
-
----
-
-## Option 3: PR Review Demo
-
-```bash
-nexus-agents review https://github.com/owner/repo/pull/123
 ```
 
 ---
@@ -92,21 +88,24 @@ nexus-agents review https://github.com/owner/repo/pull/123
 | See all commands   | `nexus-agents --help`                    |
 | List expert types  | `nexus-agents expert list`               |
 | List workflows     | `nexus-agents workflow list`             |
+| Review a GitHub PR | `nexus-agents review <url>`              |
 | Debug routing      | `nexus-agents routing-audit "your task"` |
-| Full documentation | See [CLAUDE.md](./CLAUDE.md)             |
+| Full documentation | [CLAUDE.md](./CLAUDE.md)                 |
 
 ---
 
 ## Common Issues
 
-| Issue                    | Solution                                                          |
-| ------------------------ | ----------------------------------------------------------------- |
-| "No API keys configured" | Set `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or `GOOGLE_AI_API_KEY` |
-| "Command not found"      | Ensure `npm bin -g` is in your PATH                               |
-| MCP connection fails     | Check `~/.claude/mcp.json` syntax                                 |
+| Issue                       | Solution                                                          |
+| --------------------------- | ----------------------------------------------------------------- |
+| "Command not found"         | Add `$(npm config get prefix)/bin` to your PATH                   |
+| "No API keys configured"    | Set `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or `GOOGLE_AI_API_KEY` |
+| Node.js version mismatch    | Install v22.x LTS with `nvm install 22`                           |
+| MCP connection fails        | Run `nexus-agents setup` or verify with `claude mcp list`         |
+| Setup doesn't detect Claude | Install Claude CLI: `npm install -g @anthropic-ai/claude-code`    |
 
-For more troubleshooting, see [docs/TROUBLESHOOTING.md](./docs/TROUBLESHOOTING.md).
+For more help, see [docs/TROUBLESHOOTING.md](./docs/TROUBLESHOOTING.md).
 
 ---
 
-_Last updated: 2026-01-16 (ET)_
+_Last updated: 2026-01-25 (ET)_

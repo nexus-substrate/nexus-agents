@@ -74,22 +74,18 @@ pnpm --version   # Must be v9.x (recommended) or npm v10.x
 
 ## Getting Started (5 Minutes)
 
-### For Claude Desktop Users
+### For Claude Code Users
 
 1. **Install:** `npm install -g nexus-agents`
-2. **Verify:** `nexus-agents doctor`
-3. **Configure Claude Desktop:** Add to `~/.claude/mcp.json`:
-   ```json
-   {
-     "mcpServers": {
-       "nexus-agents": {
-         "command": "nexus-agents",
-         "args": ["--mode=server"]
-       }
-     }
-   }
-   ```
+2. **Setup:** `nexus-agents setup` (auto-configures MCP server)
+3. **Verify:** `nexus-agents doctor`
 4. **Test:** Ask Claude "orchestrate: What files are in this project?"
+
+**Manual MCP Configuration (if setup fails):**
+
+```bash
+claude mcp add-json nexus-agents '{"command":"nexus-agents","args":["--mode=server"]}'
+```
 
 ### For Standalone CLI
 
@@ -883,7 +879,7 @@ gh pr checks <num>          # Check CI status
 
 ---
 
-_Last updated: 2026-01-18 (ET)_
+_Last updated: 2026-01-25 (ET)_
 _MCP Protocol: 2025-11-25_
 _Node.js: 22.x LTS_
 _TypeScript: 5.8+_

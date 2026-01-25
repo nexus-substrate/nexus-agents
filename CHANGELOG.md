@@ -72,6 +72,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Comprehensive hook tests with 243 tests across 9 files (#417)
+- Route tests with 71 tests across 6 files (#418)
+- Doctor command validations for Node.js version, API keys, and config file (#422)
+
+### Changed
+
+- Setup command now merges hooks instead of overwriting existing user hooks (#420)
+- Extracted doctor formatting into separate module for maintainability
+
+### Fixed
+
+- Hook configuration now preserves existing user hooks during setup (#420)
+- Removed phantom `consensus_vote` tool from MCP documentation
+- Synced root package.json version to 2.3.0
+
+### Dependencies
+
+- Removed deprecated `@types/uuid` (uuid v13+ includes types)
+- Bumped actions/checkout from 4 to 6
+- Bumped actions/setup-node from 4 to 6
+- Bumped actions/upload-artifact from 4 to 6
+- Bumped actions/github-script from 7 to 8
+- Bumped peter-evans/create-pull-request from 6 to 8
+- Bumped 8 production dependencies
+
 ## [2.2.0] - 2026-01-16
 
 ### Added
