@@ -50,6 +50,7 @@ OPTIONS:
                        - mesh:         Full bidirectional (both modes)
 
 SETUP OPTIONS:
+  --interactive        Run interactive setup wizard with guided prompts
   --non-interactive    Skip prompts (for CI/automation)
   --force              Overwrite existing files
   --skip-mcp           Skip MCP configuration snippet
@@ -182,6 +183,7 @@ EXAMPLES:
   nexus-agents demo workflow code-review         Demo code-review workflow steps
   nexus-agents hello            Show welcome message and quick start
   nexus-agents setup            Configure Claude CLI integration
+  nexus-agents setup --interactive  Run guided setup wizard
   nexus-agents setup --dry-run  Preview changes without applying
   nexus-agents setup --force    Overwrite existing configurations
   nexus-agents verify           Quick installation check (first thing to run!)

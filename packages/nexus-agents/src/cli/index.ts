@@ -282,15 +282,19 @@ export type {
 } from './learning-metrics-command.js';
 
 // Setup Command (Issue #363 - Auto-configure Claude CLI integration)
+// Interactive Wizard (Issue #425)
 export {
   setupCommand,
+  setupCommandAsync,
   runSetup,
   printSetupResult,
   generateMcpSnippet,
   generateRulesContent,
   detectEnvironment,
+  runWizard,
 } from './setup-command.js';
-export type { SetupOptions, SetupResult } from './setup-command.js';
+export type { SetupOptions, SetupResult, SetupCommandOptions } from './setup-command.js';
+export type { WizardAnswers, UsageMode } from './setup-command.js';
 export type {
   ClaudeCliInfo,
   McpConfigInfo,

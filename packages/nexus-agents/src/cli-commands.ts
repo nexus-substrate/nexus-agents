@@ -34,6 +34,7 @@ export {
   handleVerifyCommand,
   handleDoctorCommand,
   handleSetupCommand,
+  handleSetupCommandAsync,
   handleHelloCommand,
   handleHooksCommand,
   handleDemoCommand,
@@ -57,7 +58,7 @@ import {
   handleIndexCommand,
   handleResearchCommand,
   handleSweBenchCommand,
-  handleSetupCommand,
+  handleSetupCommandAsync,
   handleHelloCommand,
   handleHooksCommand,
   handleDemoCommand,
@@ -85,7 +86,6 @@ const SYNC_COMMAND_HANDLERS: Record<string, ((args: ParsedCliArgs) => void) | un
   'system-review': handleSystemReviewCommand,
   validation: handleValidationCommand,
   'learning-metrics': handleLearningMetricsCommand,
-  setup: handleSetupCommand,
   demo: handleDemoCommand,
 };
 
@@ -128,6 +128,7 @@ const ASYNC_COMMAND_HANDLERS: Record<string, ((args: ParsedCliArgs) => Promise<v
     research: handleResearchCommand,
     'swe-bench': handleSweBenchCommand,
     hooks: handleHooksCommand,
+    setup: handleSetupCommandAsync, // Uses async for interactive wizard support (Issue #425)
   };
 
 /**

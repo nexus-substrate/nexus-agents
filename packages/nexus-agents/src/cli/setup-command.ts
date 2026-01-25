@@ -6,6 +6,7 @@
  *
  * @module cli/setup-command
  * (Source: Issue #363 - Auto-configure Claude CLI integration)
+ * (Source: Issue #425 - Interactive setup wizard)
  */
 
 import { existsSync } from 'node:fs';
@@ -28,6 +29,7 @@ import {
 } from './setup-helpers.js';
 import type { McpConfigResult, HookConfigResult } from './setup-helpers.js';
 import { VERSION } from '../version.js';
+import { runWizard } from './setup-wizard.js';
 
 // ============================================================================
 // Output Helpers
@@ -496,7 +498,7 @@ export function printSetupResult(result: SetupResult, verbose: boolean): void {
 }
 
 /**
- * Setup command entry point.
+ * Setup command entry point (synchronous, non-interactive).
  *
  * @returns Exit code (0 = success, 1 = failure)
  */
@@ -516,9 +518,46 @@ export function setupCommand(options: Partial<SetupOptions> = {}): number {
   return result.success ? 0 : 1;
 }
 
+/** Extended options including interactive flag. */
+export interface SetupCommandOptions extends Partial<SetupOptions> {
+  interactive?: boolean;
+}
+
+/**
+ * Setup command entry point with interactive wizard support.
+ * (Source: Issue #425 - Interactive setup wizard)
+ *
+ * @returns Exit code (0 = success, 1 = failure)
+ */
+export async function setupCommandAsync(options: SetupCommandOptions = {}): Promise<number> {
+  // Run interactive wizard if requested
+  if (options.interactive === true) {
+    const wizardOptions = await runWizard();
+
+    if (wizardOptions === undefined) {
+      // User cancelled the wizard
+      return 1;
+    }
+
+    // Merge wizard options with any existing options (wizard options take precedence)
+    const mergedOptions = { ...options, ...wizardOptions };
+    delete (mergedOptions as SetupCommandOptions).interactive; // Remove interactive flag
+
+    const result = runSetup(mergedOptions);
+    printSetupResult(result, mergedOptions.verbose ?? false);
+    return result.success ? 0 : 1;
+  }
+
+  // Fall back to synchronous command
+  return setupCommand(options);
+}
+
 // ============================================================================
 // Exports
 // ============================================================================
 
 export { generateMcpSnippet, generateRulesContent, detectEnvironment };
+export { runWizard } from './setup-wizard.js';
 export type { SetupOptions, SetupResult };
+// SetupCommandOptions is already exported via interface definition above
+export type { WizardAnswers, UsageMode } from './setup-wizard.js';

@@ -25,6 +25,7 @@ import {
   verifyCommand,
   learningMetricsCommand,
   setupCommand,
+  setupCommandAsync,
   helloCommand,
   demoCommand,
 } from './cli/index.js';
@@ -297,12 +298,31 @@ export async function handleDoctorCommand(_args: ParsedCliArgs): Promise<void> {
 }
 
 /**
- * Handles setup command for Claude CLI integration.
+ * Handles setup command for Claude CLI integration (sync version).
  * (Source: Issue #363 - Auto-configure Claude CLI integration)
  * (Source: Issue #416 - Setup command hook configuration)
  */
 export function handleSetupCommand(args: ParsedCliArgs): void {
   const exitCode = setupCommand({
+    nonInteractive: args.options.nonInteractive,
+    force: args.options.force,
+    skipMcp: args.options.skipMcp,
+    skipRules: args.options.skipRules,
+    skipHooks: args.options.skipHooks,
+    dryRun: args.options.dryRun,
+    verbose: args.options.verbose,
+    scope: args.options.scope === 'project' ? 'project' : 'user',
+  });
+  process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
+}
+
+/**
+ * Handles setup command with interactive wizard support (async version).
+ * (Source: Issue #425 - Interactive setup wizard)
+ */
+export async function handleSetupCommandAsync(args: ParsedCliArgs): Promise<void> {
+  const exitCode = await setupCommandAsync({
+    interactive: args.options.interactive,
     nonInteractive: args.options.nonInteractive,
     force: args.options.force,
     skipMcp: args.options.skipMcp,
