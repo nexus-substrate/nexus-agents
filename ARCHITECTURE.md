@@ -126,30 +126,59 @@ nexus-agents/
 ├── packages/
 │   └── nexus-agents/       # Single consolidated package
 │       └── src/
-│           ├── core/       # Shared types, Result<T,E>, errors
-│           ├── config/     # Configuration, validation
-│           ├── adapters/   # Model adapters + capacity monitor
-│           ├── agents/     # Agent framework, experts, collaboration
-│           ├── workflows/  # Workflow engine, templates
-│           ├── mcp/        # MCP server, tools
-│           ├── cli/        # CLI interface + mode detection
+│           ├── adapters/     # Model adapters + capacity monitor
+│           ├── agents/       # Agent framework, experts, collaboration
+│           ├── api/          # REST API gateway (Fastify-based)
+│           ├── audit/        # SIEM-compatible audit logging
+│           ├── benchmarks/   # Performance benchmarking utilities
+│           ├── cli/          # CLI interface + mode detection
 │           ├── cli-adapters/ # External CLI integrations
-│           ├── learning/   # Feedback and learning infrastructure
-│           ├── context/    # Memory systems
-│           └── consensus/  # Multi-agent consensus engine
-└── ARCHITECTURE.md         # This file
+│           ├── config/       # Configuration, validation
+│           ├── consensus/    # Multi-agent consensus engine
+│           ├── context/      # Memory systems
+│           ├── core/         # Shared types, Result<T,E>, errors
+│           ├── dogfooding/   # Self-referential PR review tooling
+│           ├── exports/      # Domain-specific barrel exports
+│           ├── indexer/      # Codebase indexing + diagrams
+│           ├── learning/     # Feedback and learning infrastructure
+│           ├── mcp/          # MCP server, tools
+│           ├── observability/ # Swarm-level metrics + dashboards
+│           ├── research/     # Research index generation/validation
+│           ├── security/     # Sandboxing, isolation, safety-bench
+│           ├── self-eval/    # Code review recommendations
+│           ├── swe-bench/    # SWE-Bench integration + harness
+│           ├── testing/      # Test utilities, mocks, E2E
+│           └── workflows/    # Workflow engine, templates
+└── ARCHITECTURE.md           # This file
 ```
 
 ### Module Responsibilities
 
-| Module         | Responsibility                                | Deep Dive                                                          |
-| -------------- | --------------------------------------------- | ------------------------------------------------------------------ |
-| `core`         | Types, Result pattern, errors, logger         | -                                                                  |
-| `agents`       | Agent lifecycle, collaboration, context prune | [AGENT_SYSTEM.md](docs/architecture/AGENT_SYSTEM.md)               |
-| `context`      | Token counting, work balancing, memory        | [MEMORY_SYSTEM.md](docs/architecture/MEMORY_SYSTEM.md)             |
-| `cli-adapters` | External CLI integration, routing             | [ROUTING_SYSTEM.md](docs/architecture/ROUTING_SYSTEM.md)           |
-| `consensus`    | Multi-agent voting, weighted decisions        | [CONSENSUS_PROTOCOLS.md](docs/architecture/CONSENSUS_PROTOCOLS.md) |
-| `mcp`          | MCP protocol, tools                           | [MCP_PROTOCOL.md](docs/architecture/MCP_PROTOCOL.md)               |
+| Module          | Responsibility                                | Deep Dive                                                          |
+| --------------- | --------------------------------------------- | ------------------------------------------------------------------ |
+| `adapters`      | Model adapters, capacity monitoring           | -                                                                  |
+| `agents`        | Agent lifecycle, collaboration, context prune | [AGENT_SYSTEM.md](docs/architecture/AGENT_SYSTEM.md)               |
+| `api`           | REST API gateway for non-MCP clients          | -                                                                  |
+| `audit`         | SIEM-compatible audit logging, hash chain     | -                                                                  |
+| `benchmarks`    | Memory backend performance metrics            | -                                                                  |
+| `cli`           | CLI interface, mode detection, commands       | -                                                                  |
+| `cli-adapters`  | External CLI integration, routing             | [ROUTING_SYSTEM.md](docs/architecture/ROUTING_SYSTEM.md)           |
+| `config`        | Configuration loading and validation          | -                                                                  |
+| `consensus`     | Multi-agent voting, weighted decisions        | [CONSENSUS_PROTOCOLS.md](docs/architecture/CONSENSUS_PROTOCOLS.md) |
+| `context`       | Token counting, work balancing, memory        | [MEMORY_SYSTEM.md](docs/architecture/MEMORY_SYSTEM.md)             |
+| `core`          | Types, Result pattern, errors, logger         | -                                                                  |
+| `dogfooding`    | Self-referential PR review tooling            | -                                                                  |
+| `exports`       | Domain-specific barrel exports (Issue #285)   | -                                                                  |
+| `indexer`       | Codebase indexing, diagrams, freshness        | -                                                                  |
+| `learning`      | Feedback collection and learning infra        | -                                                                  |
+| `mcp`           | MCP protocol, tools                           | [MCP_PROTOCOL.md](docs/architecture/MCP_PROTOCOL.md)               |
+| `observability` | Swarm metrics, interaction graphs, dashboards | -                                                                  |
+| `research`      | Research index generation/validation          | -                                                                  |
+| `security`      | Sandboxing, isolation, safety-bench eval      | [SECURITY.md](docs/architecture/SECURITY.md)                       |
+| `self-eval`     | Code review recommendations, component scan   | -                                                                  |
+| `swe-bench`     | SWE-Bench integration and evaluation harness  | -                                                                  |
+| `testing`       | Mock adapters, metrics, E2E workflow tests    | -                                                                  |
+| `workflows`     | Workflow engine, templates, step execution    | -                                                                  |
 
 ---
 
