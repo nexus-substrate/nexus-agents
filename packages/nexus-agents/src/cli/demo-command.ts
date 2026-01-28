@@ -72,62 +72,156 @@ function analyzeTaskForDemo(task: string): MockRoutingResult {
   };
 }
 
+// ============================================================================
+// Mock Workflow Definitions
+// ============================================================================
+
+/** Code review workflow definition. */
+const CODE_REVIEW_WORKFLOW: MockWorkflow = {
+  name: 'code-review',
+  description: 'Automated code review with parallel security analysis',
+  inputs: [
+    { name: 'files', type: 'array', required: true },
+    { name: 'focus', type: 'string', required: false },
+    { name: 'strictness', type: 'string', required: false },
+  ],
+  steps: [
+    { id: 'analyze', agent: 'code_expert', description: 'Analyze code structure and quality' },
+    { id: 'security', agent: 'security_expert', description: 'Security-focused code review' },
+    { id: 'synthesize', agent: 'tech_lead', description: 'Synthesize findings into report' },
+  ],
+};
+
+/** Feature implementation workflow definition. */
+const FEATURE_IMPLEMENTATION_WORKFLOW: MockWorkflow = {
+  name: 'feature-implementation',
+  description: 'Guided feature implementation with TDD approach',
+  inputs: [
+    { name: 'description', type: 'string', required: true },
+    { name: 'targetFiles', type: 'array', required: false },
+  ],
+  steps: [
+    { id: 'plan', agent: 'architecture_expert', description: 'Create implementation plan' },
+    { id: 'tests', agent: 'testing_expert', description: 'Write tests first (TDD)' },
+    { id: 'implement', agent: 'code_expert', description: 'Implement the feature' },
+    { id: 'review', agent: 'code_expert', description: 'Self-review implementation' },
+  ],
+};
+
+/** Security audit workflow definition. */
+const SECURITY_AUDIT_WORKFLOW: MockWorkflow = {
+  name: 'security-audit',
+  description: 'Comprehensive security audit workflow',
+  inputs: [
+    { name: 'scope', type: 'string', required: true },
+    { name: 'depth', type: 'string', required: false },
+  ],
+  steps: [
+    { id: 'scan', agent: 'security_expert', description: 'Scan for vulnerabilities' },
+    { id: 'analyze', agent: 'security_expert', description: 'Deep analysis of findings' },
+    { id: 'report', agent: 'documentation_expert', description: 'Generate security report' },
+  ],
+};
+
+/** Bug fix workflow definition. */
+const BUG_FIX_WORKFLOW: MockWorkflow = {
+  name: 'bug-fix',
+  description: 'Bug fix workflow for diagnosing, fixing, and verifying bugs',
+  inputs: [
+    { name: 'bugDescription', type: 'string', required: true },
+    { name: 'affectedFiles', type: 'array', required: false },
+    { name: 'severity', type: 'string', required: false },
+  ],
+  steps: [
+    { id: 'diagnose', agent: 'code_expert', description: 'Analyze bug to identify root cause' },
+    { id: 'fix', agent: 'code_expert', description: 'Implement the bug fix' },
+    { id: 'test', agent: 'testing_expert', description: 'Generate regression tests' },
+    { id: 'verify', agent: 'testing_expert', description: 'Verify the fix is complete' },
+  ],
+};
+
+/** Documentation update workflow definition. */
+const DOCUMENTATION_UPDATE_WORKFLOW: MockWorkflow = {
+  name: 'documentation-update',
+  description: 'Documentation update workflow for maintaining accurate docs',
+  inputs: [
+    { name: 'scope', type: 'string', required: true },
+    { name: 'targetFiles', type: 'array', required: false },
+    { name: 'format', type: 'string', required: false },
+  ],
+  steps: [
+    { id: 'analyze', agent: 'documentation_expert', description: 'Analyze existing docs' },
+    { id: 'update', agent: 'documentation_expert', description: 'Update and generate docs' },
+    { id: 'review', agent: 'code_expert', description: 'Technical accuracy review' },
+  ],
+};
+
+/** Refactoring workflow definition. */
+const REFACTORING_WORKFLOW: MockWorkflow = {
+  name: 'refactoring',
+  description: 'Guided code refactoring with analysis and verification',
+  inputs: [
+    { name: 'files', type: 'array', required: true },
+    { name: 'goals', type: 'string', required: false },
+    { name: 'scope', type: 'string', required: false },
+  ],
+  steps: [
+    { id: 'analyze', agent: 'code_expert', description: 'Analyze code smells' },
+    { id: 'architecture', agent: 'architecture_expert', description: 'Review structure' },
+    { id: 'plan', agent: 'tech_lead', description: 'Create refactoring plan' },
+    { id: 'recommend', agent: 'code_expert', description: 'Generate recommendations' },
+  ],
+};
+
+/** Test generation workflow definition. */
+const TEST_GENERATION_WORKFLOW: MockWorkflow = {
+  name: 'test-generation',
+  description: 'Automated test creation and coverage improvement',
+  inputs: [
+    { name: 'files', type: 'array', required: true },
+    { name: 'testType', type: 'string', required: false },
+    { name: 'coverage', type: 'number', required: false },
+  ],
+  steps: [
+    { id: 'coverage', agent: 'testing_expert', description: 'Analyze test coverage' },
+    { id: 'structure', agent: 'code_expert', description: 'Analyze code testability' },
+    { id: 'unit_tests', agent: 'testing_expert', description: 'Generate unit tests' },
+    { id: 'integration_tests', agent: 'testing_expert', description: 'Generate integration tests' },
+    { id: 'validate', agent: 'testing_expert', description: 'Validate test quality' },
+  ],
+};
+
+/** All available mock workflows. */
+const MOCK_WORKFLOWS: Record<string, MockWorkflow> = {
+  'code-review': CODE_REVIEW_WORKFLOW,
+  'feature-implementation': FEATURE_IMPLEMENTATION_WORKFLOW,
+  'security-audit': SECURITY_AUDIT_WORKFLOW,
+  'bug-fix': BUG_FIX_WORKFLOW,
+  'documentation-update': DOCUMENTATION_UPDATE_WORKFLOW,
+  refactoring: REFACTORING_WORKFLOW,
+  'test-generation': TEST_GENERATION_WORKFLOW,
+};
+
 /**
  * Gets mock workflow data by name.
  */
 function getMockWorkflow(name: string): MockWorkflow | undefined {
-  const workflows: Record<string, MockWorkflow> = {
-    'code-review': {
-      name: 'code-review',
-      description: 'Automated code review with parallel security analysis',
-      inputs: [
-        { name: 'files', type: 'array', required: true },
-        { name: 'focus', type: 'string', required: false },
-        { name: 'strictness', type: 'string', required: false },
-      ],
-      steps: [
-        { id: 'analyze', agent: 'code_expert', description: 'Analyze code structure and quality' },
-        { id: 'security', agent: 'security_expert', description: 'Security-focused code review' },
-        { id: 'synthesize', agent: 'tech_lead', description: 'Synthesize findings into report' },
-      ],
-    },
-    'feature-implementation': {
-      name: 'feature-implementation',
-      description: 'Guided feature implementation with TDD approach',
-      inputs: [
-        { name: 'description', type: 'string', required: true },
-        { name: 'targetFiles', type: 'array', required: false },
-      ],
-      steps: [
-        { id: 'plan', agent: 'architecture_expert', description: 'Create implementation plan' },
-        { id: 'tests', agent: 'testing_expert', description: 'Write tests first (TDD)' },
-        { id: 'implement', agent: 'code_expert', description: 'Implement the feature' },
-        { id: 'review', agent: 'code_expert', description: 'Self-review implementation' },
-      ],
-    },
-    'security-audit': {
-      name: 'security-audit',
-      description: 'Comprehensive security audit workflow',
-      inputs: [
-        { name: 'scope', type: 'string', required: true },
-        { name: 'depth', type: 'string', required: false },
-      ],
-      steps: [
-        { id: 'scan', agent: 'security_expert', description: 'Scan for vulnerabilities' },
-        { id: 'analyze', agent: 'security_expert', description: 'Deep analysis of findings' },
-        { id: 'report', agent: 'documentation_expert', description: 'Generate security report' },
-      ],
-    },
-  };
-
-  return workflows[name];
+  return MOCK_WORKFLOWS[name];
 }
 
 /**
  * Gets list of available mock workflows.
  */
 function getAvailableWorkflows(): Array<{ name: string; description: string }> {
-  const names = ['code-review', 'feature-implementation', 'security-audit'];
+  const names = [
+    'code-review',
+    'feature-implementation',
+    'security-audit',
+    'bug-fix',
+    'documentation-update',
+    'refactoring',
+    'test-generation',
+  ];
   return names
     .map((name) => {
       const workflow = getMockWorkflow(name);

@@ -229,8 +229,9 @@ export function formatAvailableWorkflows(
     lines.push('');
   }
 
-  const otherWorkflows = 'bug-fix, documentation-update, refactoring, test-generation';
-  lines.push(`${colors.dim}Other workflows: ${otherWorkflows}${colors.reset}`);
+  lines.push(
+    `${colors.dim}Use "nexus-agents workflow list" for all available workflows${colors.reset}`
+  );
   lines.push('');
 
   return lines.join('\n');
