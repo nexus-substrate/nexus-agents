@@ -331,6 +331,7 @@ export const EXPERT_DEFAULT_CAPABILITIES: Record<AgentRole, readonly AgentCapabi
   architecture_expert: ['task_execution', 'research', 'collaboration'],
   testing_expert: ['task_execution', 'code_generation', 'tool_use'],
   documentation_expert: ['task_execution', 'research'],
+  devops_expert: ['task_execution', 'code_generation', 'tool_use', 'collaboration'],
   tech_lead: ['task_execution', 'delegation', 'collaboration', 'research'],
   custom: ['task_execution'],
   // TRINITY roles (arXiv:2512.04695)

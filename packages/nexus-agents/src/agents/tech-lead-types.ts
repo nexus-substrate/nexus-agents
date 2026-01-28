@@ -267,6 +267,7 @@ export const EXPERT_CAPABILITIES: Readonly<Record<AgentRole, readonly string[]>>
   security_expert: ['task_execution', 'code_review', 'research'],
   documentation_expert: ['task_execution', 'research'],
   testing_expert: ['task_execution', 'code_generation', 'tool_use'],
+  devops_expert: ['task_execution', 'code_generation', 'tool_use', 'collaboration'],
   custom: ['task_execution'],
   // TRINITY roles (arXiv:2512.04695)
   thinker: ['task_execution', 'research', 'collaboration'],

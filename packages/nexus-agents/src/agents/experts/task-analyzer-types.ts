@@ -34,6 +34,7 @@ export const TaskDomain = {
   ARCHITECTURE: 'architecture',
   DOCUMENTATION: 'documentation',
   TESTING: 'testing',
+  INFRASTRUCTURE: 'infrastructure',
   GENERAL: 'general',
 } as const;
 
@@ -74,13 +75,29 @@ export interface TaskAnalysisResult {
  * Zod schema for TaskAnalysisResult.
  */
 export const TaskAnalysisResultSchema = z.object({
-  domain: z.enum(['code', 'security', 'architecture', 'documentation', 'testing', 'general']),
+  domain: z.enum([
+    'code',
+    'security',
+    'architecture',
+    'documentation',
+    'testing',
+    'infrastructure',
+    'general',
+  ]),
   complexity: z.enum(['low', 'medium', 'high']),
   requiredCapabilities: z.array(z.string()),
   keywords: z.array(z.string()),
   estimatedEffort: z.number().min(1).max(10),
   secondaryDomains: z.array(
-    z.enum(['code', 'security', 'architecture', 'documentation', 'testing', 'general'])
+    z.enum([
+      'code',
+      'security',
+      'architecture',
+      'documentation',
+      'testing',
+      'infrastructure',
+      'general',
+    ])
   ),
   confidence: z.number().min(0).max(1),
 });

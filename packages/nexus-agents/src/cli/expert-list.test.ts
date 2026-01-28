@@ -30,7 +30,7 @@ describe('expert-list', () => {
 
       expect(result.success).toBe(true);
       expect(result.builtIn.length).toBeGreaterThan(0);
-      expect(result.builtIn.length).toBe(5); // 5 built-in experts
+      expect(result.builtIn.length).toBe(6); // 6 built-in experts
     });
 
     it('should return empty custom experts by default', () => {

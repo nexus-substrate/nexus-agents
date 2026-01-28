@@ -60,6 +60,7 @@ function createMockFactory(shouldSucceed = true, errorMessage = 'Factory error')
           security: 'security_expert',
           documentation: 'documentation_expert',
           testing: 'testing_expert',
+          devops: 'devops_expert',
         };
         return { ok: true as const, value: createMockExpert(roleMap[type]) };
       }
