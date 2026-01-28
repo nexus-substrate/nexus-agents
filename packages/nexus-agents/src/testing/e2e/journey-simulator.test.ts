@@ -295,7 +295,8 @@ describe('DefaultActionExecutor', () => {
       const result = await executor.execute(action);
 
       expect(result.succeeded).toBe(true);
-      expect(result.durationMs).toBeGreaterThanOrEqual(100);
+      // Allow 5ms tolerance for timer imprecision
+      expect(result.durationMs).toBeGreaterThanOrEqual(95);
     });
 
     it('should fail when command contains "fail"', async () => {

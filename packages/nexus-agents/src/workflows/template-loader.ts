@@ -5,6 +5,7 @@
  */
 
 import { readFile, readdir, stat } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { join, basename, extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
@@ -53,11 +54,48 @@ function validatePath(userPath: string, allowedRoot: string): Result<string, Sec
 
 /**
  * Get the directory containing built-in templates.
+ *
+ * Handles both development (unbundled) and production (bundled) scenarios:
+ * - Development: import.meta.url points to src/workflows/template-loader.ts
+ * - Production: import.meta.url points to dist/index.js or dist/cli.js
+ *
  * @returns Path to templates directory
  */
 export function getBuiltInTemplatesPath(): string {
   const currentFile = fileURLToPath(import.meta.url);
   const currentDir = dirname(currentFile);
+
+  // If running from bundled code (path contains 'dist'), anchor from dist directory
+  if (currentFile.includes(`${sep}dist${sep}`) || currentFile.endsWith(`${sep}dist`)) {
+    // Find the dist directory in the path and build templates path from there
+    const distIndex = currentFile.lastIndexOf(`${sep}dist${sep}`);
+    if (distIndex !== -1) {
+      const distDir = currentFile.substring(0, distIndex + 5); // +5 for "/dist"
+      const bundledPath = join(distDir, 'workflows', 'templates');
+      if (existsSync(bundledPath)) {
+        return bundledPath;
+      }
+    }
+  }
+
+  // Try multiple possible template locations for other scenarios
+  const possiblePaths = [
+    // Unbundled: relative to template-loader.ts in src/workflows/
+    join(currentDir, 'templates'),
+    // Bundled: relative to dist/ directory
+    join(currentDir, 'workflows', 'templates'),
+    // Bundled chunk: may be in dist/ with workflows/templates as sibling
+    join(dirname(currentDir), 'workflows', 'templates'),
+    join(dirname(currentDir), 'dist', 'workflows', 'templates'),
+  ];
+
+  for (const path of possiblePaths) {
+    if (existsSync(path)) {
+      return path;
+    }
+  }
+
+  // Fallback to the original path (for error reporting)
   return join(currentDir, 'templates');
 }
 
