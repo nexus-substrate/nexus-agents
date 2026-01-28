@@ -128,10 +128,12 @@ export class StateManager implements IStateManager {
    */
   extractAgentContext(state: PuppeteerState, agentId: string): string {
     const parts: string[] = [`Task: ${state.task.description}`, '', 'Previous Steps:'];
+    const taskKeywords = this.extractKeywords(state.task.description);
+    const totalSteps = state.agentOutputs.length;
 
     // Include relevant previous outputs
     for (const output of state.agentOutputs) {
-      const relevance = this.computeRelevance(output, agentId);
+      const relevance = this.computeRelevance(output, agentId, taskKeywords, totalSteps);
       if (relevance > 0.5) {
         parts.push(`[Step ${String(output.step)}] ${output.agentId}:`);
         parts.push(this.truncateOutput(output.output, 500));
@@ -283,10 +285,171 @@ export class StateManager implements IStateManager {
     return context.substring(0, maxLen - 3) + '...';
   }
 
-  private computeRelevance(_output: AgentStepOutput, _agentId: string): number {
-    // Simple recency-based relevance for now
-    // Future: Use semantic similarity or learned relevance
-    return 1.0;
+  /**
+   * Compute relevance of an output to the current agent and task.
+   * Uses keyword-based scoring with recency and agent alignment factors.
+   *
+   * @see Issue #457 - Semantic relevance scoring
+   */
+  private computeRelevance(
+    output: AgentStepOutput,
+    targetAgentId: string,
+    taskKeywords: Set<string>,
+    totalSteps: number
+  ): number {
+    // Factor 1: Keyword overlap with task (0-1)
+    const outputText = this.formatOutput(output);
+    const outputKeywords = this.extractKeywords(outputText);
+    const keywordRelevance = this.computeJaccardSimilarity(taskKeywords, outputKeywords);
+
+    // Factor 2: Agent alignment (same agent type gets boost)
+    const sameAgentType = this.areAgentsSameType(output.agentId, targetAgentId);
+    const agentAlignmentBonus = sameAgentType ? 0.2 : 0;
+
+    // Factor 3: Recency weight (newer outputs more relevant)
+    // Range: 0.5 (oldest) to 1.0 (newest)
+    const recencyWeight = totalSteps > 0 ? 0.5 + (output.step / totalSteps) * 0.5 : 1.0;
+
+    // Combine factors: 60% keywords, 20% recency, 20% agent alignment
+    const baseRelevance = keywordRelevance * 0.6 + recencyWeight * 0.2 + agentAlignmentBonus;
+
+    // Clamp to [0, 1]
+    return Math.max(0, Math.min(1, baseRelevance));
+  }
+
+  /**
+   * Extract significant keywords from text.
+   * Filters common stopwords and short tokens.
+   */
+  private extractKeywords(text: string): Set<string> {
+    const stopwords = new Set([
+      'the',
+      'a',
+      'an',
+      'is',
+      'are',
+      'was',
+      'were',
+      'be',
+      'been',
+      'being',
+      'have',
+      'has',
+      'had',
+      'do',
+      'does',
+      'did',
+      'will',
+      'would',
+      'could',
+      'should',
+      'may',
+      'might',
+      'must',
+      'shall',
+      'can',
+      'need',
+      'dare',
+      'to',
+      'of',
+      'in',
+      'for',
+      'on',
+      'with',
+      'at',
+      'by',
+      'from',
+      'as',
+      'into',
+      'through',
+      'during',
+      'before',
+      'after',
+      'above',
+      'below',
+      'between',
+      'under',
+      'again',
+      'further',
+      'then',
+      'once',
+      'here',
+      'there',
+      'when',
+      'where',
+      'why',
+      'how',
+      'all',
+      'each',
+      'few',
+      'more',
+      'most',
+      'other',
+      'some',
+      'such',
+      'no',
+      'not',
+      'only',
+      'own',
+      'same',
+      'so',
+      'than',
+      'too',
+      'very',
+      'just',
+      'and',
+      'but',
+      'if',
+      'or',
+      'because',
+      'until',
+      'while',
+      'this',
+      'that',
+      'these',
+      'those',
+      'it',
+    ]);
+
+    const words = text.toLowerCase().match(/\b[a-z][a-z0-9]*\b/g) ?? [];
+    const keywords = new Set<string>();
+
+    for (const word of words) {
+      if (word.length >= 3 && !stopwords.has(word)) {
+        keywords.add(word);
+      }
+    }
+
+    return keywords;
+  }
+
+  /**
+   * Compute Jaccard similarity between two keyword sets.
+   */
+  private computeJaccardSimilarity(setA: Set<string>, setB: Set<string>): number {
+    if (setA.size === 0 || setB.size === 0) {
+      return 0;
+    }
+
+    let intersection = 0;
+    for (const item of setA) {
+      if (setB.has(item)) {
+        intersection++;
+      }
+    }
+
+    const union = setA.size + setB.size - intersection;
+    return union > 0 ? intersection / union : 0;
+  }
+
+  /**
+   * Check if two agents are of the same type based on naming patterns.
+   */
+  private areAgentsSameType(agentA: string, agentB: string): boolean {
+    // Extract type from agent IDs (e.g., "code-expert-1" -> "code")
+    const typeA = agentA.split('-')[0] ?? '';
+    const typeB = agentB.split('-')[0] ?? '';
+    return typeA !== '' && typeA === typeB;
   }
 
   private estimateProgressFromOutputs(outputs: readonly AgentStepOutput[], task: Task): number {

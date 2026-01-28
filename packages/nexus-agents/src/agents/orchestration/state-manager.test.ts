@@ -391,3 +391,106 @@ describe('estimateTokens', () => {
     expect(tokens).toBe(0);
   });
 });
+
+// =============================================================================
+// Relevance Computation Tests (Issue #457)
+// =============================================================================
+
+describe('relevance computation', () => {
+  let manager: StateManager;
+
+  beforeEach(() => {
+    manager = new StateManager();
+  });
+
+  it('includes outputs with high keyword overlap', () => {
+    // Task about implementing authentication
+    const task = createTestTask('Implement user authentication system with login and password');
+    let state = manager.createInitialState(task, 'session-1');
+
+    // Output with relevant keywords
+    state = manager.updateState(
+      state,
+      createTestOutput(0, 'code-expert', 'Created authentication module with login function')
+    );
+    // Output with irrelevant keywords
+    state = manager.updateState(
+      state,
+      createTestOutput(1, 'code-expert', 'Refactored database connection pooling')
+    );
+
+    const context = manager.extractAgentContext(state, 'test-agent');
+
+    // Relevant output should be included
+    expect(context).toContain('authentication module');
+  });
+
+  it('prioritizes outputs from same agent type', () => {
+    const task = createTestTask('Write tests for API endpoint');
+    let state = manager.createInitialState(task, 'session-1');
+
+    // Add output from code-expert
+    state = manager.updateState(
+      state,
+      createTestOutput(0, 'code-expert-1', 'Created API endpoint tests')
+    );
+
+    // Get context for another code-expert
+    const context = manager.extractAgentContext(state, 'code-expert-2');
+
+    // Should include output from same agent type
+    expect(context).toContain('API endpoint tests');
+  });
+
+  it('includes recent outputs due to recency weighting', () => {
+    const task = createTestTask('Complete task X');
+    let state = manager.createInitialState(task, 'session-1');
+
+    // Add several outputs
+    for (let i = 0; i < 5; i++) {
+      state = manager.updateState(
+        state,
+        createTestOutput(i, `agent-${String(i)}`, `Step ${String(i)} output`)
+      );
+    }
+
+    const context = manager.extractAgentContext(state, 'test-agent');
+
+    // Recent output should be included
+    expect(context).toContain('Step 4 output');
+  });
+
+  it('filters outputs with low relevance', () => {
+    // Task about implementing feature X
+    const task = createTestTask('Implement feature X');
+    let state = manager.createInitialState(task, 'session-1');
+
+    // Add many unrelated outputs to push down relevance threshold
+    for (let i = 0; i < 10; i++) {
+      state = manager.updateState(
+        state,
+        createTestOutput(
+          i,
+          `misc-${String(i)}`,
+          'Completely unrelated content about something else entirely different'
+        )
+      );
+    }
+
+    const context = manager.extractAgentContext(state, 'test-agent');
+
+    // Task description should still be present
+    expect(context).toContain('feature X');
+  });
+
+  it('handles empty outputs gracefully', () => {
+    const task = createTestTask('Test task');
+    const state = manager.createInitialState(task, 'session-1');
+
+    const context = manager.extractAgentContext(state, 'test-agent');
+
+    // Should not throw and should contain task
+    expect(context).toContain('Test task');
+    expect(context).toContain('Previous Steps');
+  });
+});
