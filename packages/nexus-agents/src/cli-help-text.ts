@@ -31,6 +31,7 @@ COMMANDS:
   review <url>    Review a GitHub pull request (dogfooding)
   routing-audit   Debug model routing decisions
   orchestrate     Execute task using CLI tools (standalone mode)
+  vote            Run consensus vote on a proposal (5 agents)
   system-review   Run automated system review (5-phase checklist)
   index           Generate and manage codebase index
   research        Manage research registry and index

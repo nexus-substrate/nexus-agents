@@ -176,12 +176,14 @@ nexus-agents hooks stop --check-tasks
 **Protocol:** Model Context Protocol (2025-11-25)
 **Transport:** JSON-RPC 2.0 over stdio
 
-| Tool                | Description                                   | Auth         | Rate Limit |
-| ------------------- | --------------------------------------------- | ------------ | ---------- |
-| `orchestrate`       | Task orchestration with TechLead coordination | None (local) | 10/min     |
-| `create_expert`     | Dynamic expert agent creation                 | None (local) | 30/min     |
-| `run_workflow`      | Execute workflow template                     | None (local) | 5/min      |
-| `delegate_to_model` | Route task to optimal model                   | None (local) | 20/min     |
+| Tool                | Description                                     | Auth         | Rate Limit |
+| ------------------- | ----------------------------------------------- | ------------ | ---------- |
+| `orchestrate`       | Task orchestration with TechLead coordination   | None (local) | 10/min     |
+| `create_expert`     | Dynamic expert agent creation                   | None (local) | 60/min     |
+| `run_workflow`      | Execute workflow template                       | None (local) | 20/min     |
+| `delegate_to_model` | Route task to optimal model                     | None (local) | 30/min     |
+| `list_experts`      | List available expert types for discoverability | None (local) | 60/min     |
+| `list_workflows`    | List available workflow templates               | None (local) | 60/min     |
 
 ### Tool Schemas
 
@@ -258,15 +260,48 @@ nexus-agents hooks stop --check-tasks
 }
 ```
 
+#### list_experts
+
+```json
+{
+  "name": "list_experts",
+  "description": "List available expert types that can be created with create_expert",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "format": { "type": "string", "enum": ["full", "names"], "default": "full" }
+    }
+  }
+}
+```
+
+#### list_workflows
+
+```json
+{
+  "name": "list_workflows",
+  "description": "List available workflow templates that can be executed with run_workflow",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "category": { "type": "string", "description": "Filter by category" },
+      "format": { "type": "string", "enum": ["full", "names"], "default": "full" }
+    }
+  }
+}
+```
+
 ### Source Files
 
-| File                                 | Purpose            |
-| ------------------------------------ | ------------------ |
-| `src/mcp/tools/index.ts`             | Tool registration  |
-| `src/mcp/tools/orchestrate.ts`       | Orchestrate tool   |
-| `src/mcp/tools/create-expert.ts`     | Create expert tool |
-| `src/mcp/tools/run-workflow.ts`      | Run workflow tool  |
-| `src/mcp/tools/delegate-to-model.ts` | Delegate tool      |
+| File                                 | Purpose             |
+| ------------------------------------ | ------------------- |
+| `src/mcp/tools/index.ts`             | Tool registration   |
+| `src/mcp/tools/orchestrate.ts`       | Orchestrate tool    |
+| `src/mcp/tools/create-expert.ts`     | Create expert tool  |
+| `src/mcp/tools/run-workflow.ts`      | Run workflow tool   |
+| `src/mcp/tools/delegate-to-model.ts` | Delegate tool       |
+| `src/mcp/tools/list-experts.ts`      | List experts tool   |
+| `src/mcp/tools/list-workflows.ts`    | List workflows tool |
 
 ---
 
