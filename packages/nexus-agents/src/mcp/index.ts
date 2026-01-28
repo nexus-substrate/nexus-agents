@@ -85,6 +85,12 @@ export {
   type CreateExpertDeps,
   type CreateExpertResponse,
   type IExpertFactory,
+  // execute_expert tool (Issue #437)
+  registerExecuteExpertTool,
+  ExecuteExpertInputSchema,
+  type ExecuteExpertInput,
+  type ExecuteExpertDeps,
+  type ExecuteExpertResponse,
   // run_workflow tool
   registerRunWorkflowTool,
   createMockWorkflowEngine,

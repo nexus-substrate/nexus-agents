@@ -13,12 +13,14 @@ import {
   registerDelegateToModelTool,
   registerOrchestrateTool,
   registerCreateExpertTool,
+  registerExecuteExpertTool,
   registerRunWorkflowTool,
   registerListExpertsTool,
   registerListWorkflowsTool,
   createMockTechLead,
   createDefaultDeps,
 } from './mcp/index.js';
+import type { Expert } from './agents/index.js';
 import { createRealWorkflowEngine } from './workflows/index.js';
 import type { IModelAdapter, WorkflowDefinition } from './core/index.js';
 import { createTechLead } from './agents/index.js';
@@ -46,6 +48,7 @@ export const REGISTERED_TOOLS = [
   'delegate_to_model',
   'orchestrate',
   'create_expert',
+  'execute_expert',
   'run_workflow',
   'list_experts',
   'list_workflows',
@@ -66,6 +69,52 @@ function createTechLeadForOrchestration(
   return createMockTechLead();
 }
 
+/** Tool registration context passed to helpers. */
+interface ToolRegistrationContext {
+  server: McpServer;
+  logger: ILogger;
+  rateLimiterFactory: ReturnType<typeof createToolRateLimiterFactory>;
+  modelAdapter?: IModelAdapter;
+  builtInTemplates: Map<string, WorkflowDefinition>;
+}
+
+/** Register expert tools with shared registry. */
+function registerExpertTools(ctx: ToolRegistrationContext): void {
+  const sharedExpertRegistry = new Map<string, Expert>();
+  const createExpertDeps = createDefaultDeps(
+    ctx.rateLimiterFactory.getForTool('create_expert'),
+    ctx.logger
+  );
+  createExpertDeps.expertRegistry = sharedExpertRegistry;
+  registerCreateExpertTool(ctx.server, createExpertDeps);
+
+  registerExecuteExpertTool(ctx.server, {
+    expertRegistry: sharedExpertRegistry,
+    logger: ctx.logger,
+    rateLimiter: ctx.rateLimiterFactory.getForTool('execute_expert'),
+  });
+}
+
+/** Register workflow tools. */
+function registerWorkflowTools(ctx: ToolRegistrationContext): void {
+  const engineConfig = { builtInTemplates: ctx.builtInTemplates, logger: ctx.logger };
+  const workflowEngine = createRealWorkflowEngine(
+    ctx.modelAdapter !== undefined
+      ? { ...engineConfig, modelAdapter: ctx.modelAdapter }
+      : engineConfig
+  );
+  registerRunWorkflowTool(ctx.server, {
+    workflowEngine,
+    logger: ctx.logger,
+    rateLimiter: ctx.rateLimiterFactory.getForTool('run_workflow'),
+  });
+  registerListWorkflowsTool(ctx.server, {
+    logger: ctx.logger,
+    workflowEngine,
+    rateLimiter: ctx.rateLimiterFactory.getForTool('list_workflows'),
+  });
+}
+
 /**
  * Registers MCP tools with per-tool rate limiting.
  * Must be called BEFORE connecting to transport.
@@ -83,53 +132,39 @@ export function registerMcpTools(options: RegisterMcpToolsOptions): void {
   const { server, logger, builtInTemplates, modelAdapter } = options;
   const toolInfra = registerTools(server, { logger });
 
-  // Create per-tool rate limiter factory
   const rateLimiterFactory = createToolRateLimiterFactory({
     enabled: true,
     logger: toolInfra.logger,
   });
-
-  // Set global factory for access by other components
   setGlobalToolRateLimiterFactory(rateLimiterFactory);
 
-  // Register tools with per-tool rate limiters
-  registerDelegateToModelTool(server, {
+  const ctx: ToolRegistrationContext = {
+    server,
     logger: toolInfra.logger,
+    rateLimiterFactory,
+    modelAdapter,
+    builtInTemplates,
+  };
+
+  // Register core tools
+  registerDelegateToModelTool(server, {
+    logger: ctx.logger,
     rateLimiter: rateLimiterFactory.getForTool('delegate_to_model'),
   });
 
-  const techLead = createTechLeadForOrchestration(modelAdapter, toolInfra.logger);
+  const techLead = createTechLeadForOrchestration(modelAdapter, ctx.logger);
   registerOrchestrateTool(server, {
     techLead,
-    logger: toolInfra.logger,
+    logger: ctx.logger,
     rateLimiter: rateLimiterFactory.getForTool('orchestrate'),
   });
 
-  registerCreateExpertTool(
-    server,
-    createDefaultDeps(rateLimiterFactory.getForTool('create_expert'), toolInfra.logger)
-  );
-
-  // Workflow engine with real step execution when adapter available (Issue #430)
-  const engineConfig = { builtInTemplates, logger: toolInfra.logger };
-  const workflowEngine = createRealWorkflowEngine(
-    modelAdapter !== undefined ? { ...engineConfig, modelAdapter } : engineConfig
-  );
-  registerRunWorkflowTool(server, {
-    workflowEngine,
-    logger: toolInfra.logger,
-    rateLimiter: rateLimiterFactory.getForTool('run_workflow'),
-  });
-
-  // Discoverability tools (Issue #436)
+  // Expert and workflow tools (Issue #437, #430, #436)
+  registerExpertTools(ctx);
+  registerWorkflowTools(ctx);
   registerListExpertsTool(server, {
-    logger: toolInfra.logger,
+    logger: ctx.logger,
     rateLimiter: rateLimiterFactory.getForTool('list_experts'),
-  });
-  registerListWorkflowsTool(server, {
-    logger: toolInfra.logger,
-    workflowEngine,
-    rateLimiter: rateLimiterFactory.getForTool('list_workflows'),
   });
 
   logger.info('Tools registered with per-tool rate limiting', {

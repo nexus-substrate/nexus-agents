@@ -1,0 +1,282 @@
+/**
+ * nexus-agents/mcp - Execute Expert Tool
+ *
+ * MCP tool for executing tasks with previously created expert agents.
+ * Experts must be created first using the create_expert tool.
+ *
+ * @module mcp/tools/execute-expert
+ * (Source: Issue #437 - Add execute_expert tool)
+ */
+
+import { z } from 'zod';
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { ILogger, Task } from '../../core/index.js';
+import { createLogger } from '../../core/index.js';
+import type { RateLimiter } from '../middleware/rate-limiter.js';
+import type { SecurityConfig } from '../../config/schemas.js';
+import { wrapToolWithTimeout } from '../middleware/tool-wrapper.js';
+import type { Expert } from '../../agents/index.js';
+
+/**
+ * Input schema for execute_expert tool.
+ */
+export const ExecuteExpertInputSchema = z.object({
+  expertId: z.string().min(1).describe('Expert ID from create_expert tool'),
+  task: z.string().min(1).describe('Task description for the expert to execute'),
+  context: z.record(z.unknown()).optional().describe('Additional context metadata for the task'),
+});
+
+/**
+ * Type for validated execute expert input.
+ */
+export type ExecuteExpertInput = z.infer<typeof ExecuteExpertInputSchema>;
+
+/**
+ * Dependencies for execute_expert tool.
+ */
+export interface ExecuteExpertDeps {
+  /** Registry of created experts (shared with create_expert) */
+  expertRegistry: Map<string, Expert>;
+  /** Optional logger */
+  logger?: ILogger;
+  /** Rate limiter for throttling tool calls (required) */
+  rateLimiter: RateLimiter;
+  /** Security configuration (includes timeout settings - Issue #271, CVE-2026-0621) */
+  security?: SecurityConfig | undefined;
+}
+
+/**
+ * Response from execute_expert tool.
+ */
+export interface ExecuteExpertResponse {
+  /** Expert ID that executed the task */
+  expertId: string;
+  /** Expert role */
+  role: string;
+  /** Task execution output */
+  output: string;
+  /** Execution duration in milliseconds */
+  durationMs: number;
+  /** Token usage from the model */
+  tokensUsed: number;
+  /** Status of execution */
+  status: 'success' | 'error';
+  /** Error message if status is 'error' */
+  error?: string;
+}
+
+/**
+ * Builds a task object from the tool input.
+ */
+function buildTask(input: ExecuteExpertInput): Task {
+  return {
+    id: `exec-${String(Date.now())}-${Math.random().toString(36).slice(2, 9)}`,
+    description: input.task,
+    context: {
+      metadata: input.context ?? {},
+    },
+    constraints: {
+      maxTokens: 4096,
+      maxDuration: 120000, // 2 minute timeout for task execution
+    },
+  };
+}
+
+/**
+ * Look up expert and return error hint if not found.
+ */
+function lookupExpert(
+  registry: Map<string, Expert>,
+  expertId: string
+): { ok: true; expert: Expert } | { ok: false; error: string } {
+  const expert = registry.get(expertId);
+  if (expert === undefined) {
+    const availableIds = Array.from(registry.keys());
+    const hint =
+      availableIds.length > 0
+        ? ` Available experts: ${availableIds.join(', ')}`
+        : ' No experts have been created yet. Use create_expert first.';
+    return { ok: false, error: `Expert not found: ${expertId}.${hint}` };
+  }
+  return { ok: true, expert };
+}
+
+/**
+ * Build error response for failed execution.
+ */
+function buildErrorResponse(
+  expertId: string,
+  role: string,
+  errorMessage: string,
+  durationMs: number
+): ExecuteExpertResponse {
+  return {
+    expertId,
+    role,
+    output: '',
+    durationMs,
+    tokensUsed: 0,
+    status: 'error',
+    error: errorMessage,
+  };
+}
+
+/**
+ * Build success response from execution result.
+ */
+function buildSuccessResponse(
+  expertId: string,
+  role: string,
+  output: unknown,
+  durationMs: number,
+  tokensUsed: number
+): ExecuteExpertResponse {
+  const outputStr = typeof output === 'string' ? output : JSON.stringify(output, null, 2);
+  return {
+    expertId,
+    role,
+    output: outputStr,
+    durationMs,
+    tokensUsed,
+    status: 'success',
+  };
+}
+
+/**
+ * Handles the execute_expert tool execution.
+ */
+async function handleExecuteExpert(
+  deps: ExecuteExpertDeps,
+  args: ExecuteExpertInput
+): Promise<{ ok: true; value: ExecuteExpertResponse } | { ok: false; error: string }> {
+  const { expertId } = args;
+
+  const lookup = lookupExpert(deps.expertRegistry, expertId);
+  if (!lookup.ok) {
+    return { ok: false, error: lookup.error };
+  }
+  const expert = lookup.expert;
+
+  const task = buildTask(args);
+  deps.logger?.info('Executing expert task', { expertId, role: expert.role, taskId: task.id });
+
+  const startTime = Date.now();
+  const result = await expert.execute(task);
+  const durationMs = Date.now() - startTime;
+
+  if (!result.ok) {
+    deps.logger?.warn('Expert execution failed', { expertId, error: result.error.message });
+    return {
+      ok: true,
+      value: buildErrorResponse(expertId, expert.role, result.error.message, durationMs),
+    };
+  }
+
+  deps.logger?.info('Expert execution completed', {
+    expertId,
+    durationMs,
+    tokensUsed: result.value.metadata.tokensUsed,
+  });
+
+  return {
+    ok: true,
+    value: buildSuccessResponse(
+      expertId,
+      expert.role,
+      result.value.output,
+      durationMs,
+      result.value.metadata.tokensUsed
+    ),
+  };
+}
+
+/** MCP tool response type for execute_expert */
+type ExecuteExpertToolResponse = {
+  content: Array<{ type: 'text'; text: string }>;
+  isError?: boolean;
+};
+
+/**
+ * Creates a handler function for the execute_expert tool.
+ * @param deps - Tool dependencies
+ * @returns Handler function for the tool
+ */
+function createToolHandler(deps: ExecuteExpertDeps) {
+  return async (args: unknown): Promise<ExecuteExpertToolResponse> => {
+    // Rate limiting check
+    const acquired = deps.rateLimiter.tryAcquire();
+    if (!acquired) {
+      const state = deps.rateLimiter.getState();
+      return {
+        isError: true,
+        content: [
+          {
+            type: 'text',
+            text: `Rate limit exceeded. Try again in ${String(state.nextTokenMs)}ms.`,
+          },
+        ],
+      };
+    }
+
+    // Validate input
+    const validationResult = ExecuteExpertInputSchema.safeParse(args);
+    if (!validationResult.success) {
+      const errorMessage = validationResult.error.issues
+        .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
+        .join('; ');
+      return {
+        isError: true,
+        content: [{ type: 'text', text: `Validation error: ${errorMessage}` }],
+      };
+    }
+
+    // Execute tool logic
+    const result = await handleExecuteExpert(deps, validationResult.data);
+
+    if (!result.ok) {
+      return {
+        isError: true,
+        content: [{ type: 'text', text: `Failed to execute expert: ${result.error}` }],
+      };
+    }
+
+    return {
+      content: [{ type: 'text', text: JSON.stringify(result.value, null, 2) }],
+    };
+  };
+}
+
+/**
+ * Registers the execute_expert tool with the MCP server.
+ *
+ * Includes timeout protection for CVE-2026-0621 mitigation (Issue #271).
+ *
+ * @param server - MCP server instance
+ * @param deps - Tool dependencies
+ */
+export function registerExecuteExpertTool(server: McpServer, deps: ExecuteExpertDeps): void {
+  const logger = deps.logger ?? createLogger({ tool: 'execute_expert' });
+  const toolSchema = {
+    expertId: z.string().min(1).describe('Expert ID from create_expert tool'),
+    task: z.string().min(1).describe('Task description for the expert to execute'),
+    context: z.record(z.unknown()).optional().describe('Additional context metadata for the task'),
+  };
+
+  const description =
+    'Execute a task using a previously created expert agent. ' +
+    'Returns the expert analysis including output, confidence, and token usage.';
+
+  // Wrap handler with timeout protection (Issue #271, CVE-2026-0621)
+  const handler = createToolHandler(deps);
+  const timeoutMs = deps.security?.timeout?.defaultTimeoutMs ?? 120000; // 2 minute default for execution
+  const wrappedHandler = wrapToolWithTimeout('execute_expert', handler, {
+    timeoutMs,
+    logger,
+  });
+
+  // Type assertion needed: MCP SDK expects index signature, our ToolResult is structurally compatible
+  /* eslint-disable @typescript-eslint/no-deprecated, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
+  server.tool('execute_expert', description, toolSchema, wrappedHandler as any);
+  /* eslint-enable @typescript-eslint/no-deprecated, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
+  logger.info('Registered execute_expert tool with timeout protection');
+}

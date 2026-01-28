@@ -80,6 +80,14 @@ export {
   type WorkflowInfo,
 } from './list-workflows.js';
 
+export {
+  registerExecuteExpertTool,
+  ExecuteExpertInputSchema,
+  type ExecuteExpertInput,
+  type ExecuteExpertDeps,
+  type ExecuteExpertResponse,
+} from './execute-expert.js';
+
 /**
  * Options for tool registration.
  */
@@ -159,6 +167,7 @@ export function registerTools(
     tools: [
       'orchestrate',
       'create_expert',
+      'execute_expert',
       'run_workflow',
       'delegate_to_model',
       'list_experts',
