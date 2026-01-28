@@ -210,34 +210,145 @@ async function runConsensusVoting(
   return buildVoteOutputFromConsensus(result.value, minVotes);
 }
 
+/** Vote result with decision and reasoning. */
+type VoteResult = { decision: 'approve' | 'reject' | 'abstain'; reasoning: string };
+
+/** Context for evaluating a vote. */
+interface VoteContext {
+  readonly hasTests: boolean;
+  readonly hasFiles: boolean;
+  readonly hasCriticalIssues: boolean;
+  readonly personaSeverity: number;
+  readonly personaIssues: readonly string[];
+  readonly finalSeverity: number;
+  readonly converged: boolean;
+  readonly hasDependencies: boolean;
+}
+
+/** Evaluates security persona vote. */
+function evaluateSecurityVote(ctx: VoteContext): VoteResult {
+  const hasSecurityIssue = ctx.personaIssues.some((i) => i.toLowerCase().includes('security'));
+  if (ctx.hasCriticalIssues || hasSecurityIssue) {
+    return { decision: 'reject', reasoning: 'Security concerns not adequately addressed' };
+  }
+  if (ctx.finalSeverity < 0.3) {
+    return { decision: 'approve', reasoning: 'No critical security issues identified' };
+  }
+  return { decision: 'abstain', reasoning: 'Security review needed before approval' };
+}
+
+/** Evaluates thinker persona vote. */
+function evaluateThinkerVote(ctx: VoteContext): VoteResult {
+  if (!ctx.hasFiles) {
+    return {
+      decision: 'abstain',
+      reasoning: 'Plan lacks specific file targets - needs clarification',
+    };
+  }
+  return { decision: 'approve', reasoning: 'Problem analysis appears complete' };
+}
+
+/** Evaluates reviewer persona vote. */
+function evaluateReviewerVote(ctx: VoteContext): VoteResult {
+  if (!ctx.hasTests) {
+    return {
+      decision: ctx.personaSeverity > 0.3 ? 'reject' : 'abstain',
+      reasoning: 'Test coverage requirements not clearly defined',
+    };
+  }
+  return { decision: 'approve', reasoning: 'Test plan meets review standards' };
+}
+
+/** Evaluates architect persona vote. */
+function evaluateArchitectVote(ctx: VoteContext): VoteResult {
+  if (ctx.hasDependencies && !ctx.converged) {
+    return { decision: 'abstain', reasoning: 'Dependency changes need further review' };
+  }
+  return { decision: 'approve', reasoning: 'Architectural approach is sound' };
+}
+
+/** Evaluates default persona vote. */
+function evaluateDefaultVote(ctx: VoteContext, role: string): VoteResult {
+  const passes = ctx.finalSeverity < 0.3;
+  return {
+    decision: passes ? 'approve' : 'abstain',
+    reasoning: `${role}: ${passes ? 'Plan meets quality threshold' : 'Minor concerns remain'}`,
+  };
+}
+
 /**
- * Build fallback vote output without consensus protocol.
+ * Evaluate criteria-based vote for a persona.
+ * Uses heuristic analysis based on plan quality metrics.
+ * (Source: Issue #449 - Improve fallback implementations)
+ */
+function evaluateCriteriaVote(
+  persona: (typeof SELF_DEV_PERSONAS)[0],
+  refine: RefineOutput
+): VoteResult {
+  const personaCritique = refine.critiques.find((c) => c.personaId === persona.id);
+  const ctx: VoteContext = {
+    hasTests: refine.refinedPlan.testPlan.length > 20,
+    hasFiles: refine.refinedPlan.files.length > 0,
+    hasCriticalIssues: refine.critiques.some((c) => c.severity > 0.5),
+    personaSeverity: personaCritique?.severity ?? 0,
+    personaIssues: personaCritique?.issues ?? [],
+    finalSeverity: refine.finalSeverity,
+    converged: refine.converged,
+    hasDependencies: refine.refinedPlan.dependencies.length > 0,
+  };
+
+  const evaluators: Record<string, (ctx: VoteContext) => VoteResult> = {
+    security: evaluateSecurityVote,
+    thinker: evaluateThinkerVote,
+    reviewer: evaluateReviewerVote,
+    architect: evaluateArchitectVote,
+  };
+
+  const evaluator = evaluators[persona.role];
+  return evaluator !== undefined ? evaluator(ctx) : evaluateDefaultVote(ctx, persona.role);
+}
+
+/**
+ * Build fallback vote output with criteria-based voting.
+ * Uses heuristic analysis when ConsensusProtocol is unavailable.
+ * (Source: Issue #449 - Improve fallback implementations)
  */
 function buildFallbackVoteOutput(
   refine: RefineOutput,
   minVotes: number,
   startTime: number
 ): VoteOutput {
-  const votes = SELF_DEV_PERSONAS.slice(0, minVotes + 1).map((persona, index) => ({
-    type: 'vote' as const,
-    expertId: persona.id,
-    decision: index < minVotes ? ('approve' as const) : ('reject' as const),
-    reasoning: `${persona.role}: ${refine.finalSeverity < 0.3 ? 'Plan meets quality threshold' : 'Minor concerns remain'}`,
-    agentRole: persona.role,
-    hasVetoPower: persona.id === 'security',
-  }));
+  const votes = SELF_DEV_PERSONAS.slice(0, Math.min(minVotes + 2, SELF_DEV_PERSONAS.length)).map(
+    (persona) => {
+      const voteResult = evaluateCriteriaVote(persona, refine);
+      return {
+        type: 'vote' as const,
+        expertId: persona.id,
+        decision: voteResult.decision,
+        reasoning: voteResult.reasoning,
+        agentRole: persona.role,
+        hasVetoPower: persona.id === 'security',
+      };
+    }
+  );
 
   const approvalCount = votes.filter((v) => v.decision === 'approve').length;
   const rejectCount = votes.filter((v) => v.decision === 'reject').length;
+  const abstainCount = votes.filter((v) => v.decision === 'abstain').length;
+
+  const securityVeto = votes.find((v) => v.hasVetoPower && v.decision === 'reject');
+  const vetoExercised = securityVeto !== undefined;
+  const consensus = !vetoExercised && approvalCount >= minVotes;
 
   return {
     votes,
     approvalCount,
     rejectCount,
-    abstainCount: 0,
-    consensus: approvalCount >= minVotes,
-    vetoExercised: false,
-    verdict: approvalCount >= minVotes ? 'APPROVED' : 'REQUIRES_REVISION',
+    abstainCount,
+    consensus,
+    vetoExercised,
+    verdict: vetoExercised ? 'REJECTED' : consensus ? 'APPROVED' : 'REQUIRES_REVISION',
+    ...(securityVeto !== undefined ? { vetoReason: securityVeto.reasoning } : {}),
     durationMs: Date.now() - startTime,
   };
 }

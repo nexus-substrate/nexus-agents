@@ -97,21 +97,124 @@ function parseResearchResponse(
 }
 
 /**
- * Create placeholder research output.
+ * Generate heuristic best practices based on issue type.
  */
-function createPlaceholderResearchOutput(startTime: number): ResearchOutput {
+function getHeuristicBestPractices(issueType: string): string[] {
+  const practices: Record<string, string[]> = {
+    bug: [
+      'Write a failing test first that reproduces the bug',
+      'Use git bisect to identify when the bug was introduced',
+      'Check for similar bugs in related code paths',
+      'Document the root cause in the fix commit message',
+    ],
+    security: [
+      'Follow OWASP security guidelines',
+      'Validate all inputs at system boundaries',
+      'Use parameterized queries for database operations',
+      'Sanitize outputs to prevent injection attacks',
+      'Add security-focused tests for the fix',
+    ],
+    enhancement: [
+      'Follow existing code patterns and conventions',
+      'Add comprehensive tests for new functionality',
+      'Update documentation for public API changes',
+      'Consider backward compatibility implications',
+    ],
+    'tech-debt': [
+      'Document current behavior before refactoring',
+      'Make small, incremental changes',
+      'Ensure test coverage before refactoring',
+      'Preserve external API contracts',
+    ],
+    architecture: [
+      'Document the architectural decision (ADR)',
+      'Consider migration path for existing code',
+      'Identify all affected components',
+      'Plan for rollback if needed',
+    ],
+  };
+
+  return practices[issueType] ?? practices['enhancement'] ?? [];
+}
+
+/**
+ * Generate common patterns based on issue keywords.
+ */
+function getPatternsByKeywords(keywords: readonly string[]): string[] {
+  const patterns: string[] = [];
+
+  if (keywords.includes('api')) patterns.push('Use RESTful conventions for API endpoints');
+  if (keywords.includes('database')) patterns.push('Follow repository pattern for data access');
+  if (keywords.includes('test')) patterns.push('Follow AAA (Arrange-Act-Assert) test pattern');
+  if (keywords.includes('security')) patterns.push('Use defense-in-depth security approach');
+  if (keywords.includes('performance')) patterns.push('Profile before optimizing');
+
+  return patterns;
+}
+
+/**
+ * Build synthesized context string for heuristic research.
+ */
+function buildHeuristicContext(
+  issueType: string,
+  bestPractices: string[],
+  patterns: string[]
+): string {
+  return [
+    '## Heuristic Research Summary (Model Unavailable)',
+    '',
+    `This is a **${issueType}** issue. Research was generated using heuristic analysis.`,
+    '',
+    '### Recommended Approach',
+    ...bestPractices.map((p) => `- ${p}`),
+    '',
+    '### Common Patterns',
+    ...(patterns.length > 0
+      ? patterns.map((p) => `- ${p}`)
+      : ['- Follow existing codebase conventions']),
+    '',
+    '### Next Steps',
+    '- Search codebase for similar implementations',
+    '- Review test patterns in related files',
+    '- Check documentation for relevant guidelines',
+    '',
+    '_Note: Run with model adapter for comprehensive research._',
+  ].join('\n');
+}
+
+/**
+ * Create fallback research output with heuristic-based guidance.
+ * Used when model adapter is unavailable.
+ * (Source: Issue #449 - Improve fallback implementations)
+ */
+function createPlaceholderResearchOutput(
+  startTime: number,
+  issue?: { type: string; keywords: readonly string[]; title: string }
+): ResearchOutput {
+  const issueType = issue?.type ?? 'enhancement';
+  const keywords = issue?.keywords ?? [];
+  const bestPractices = getHeuristicBestPractices(issueType);
+  const patterns = getPatternsByKeywords(keywords);
+
   return {
-    codebase: { relevantFiles: [], existingPatterns: [], interfaces: [], testPatterns: [] },
+    codebase: {
+      relevantFiles: [],
+      existingPatterns: patterns,
+      interfaces: [],
+      testPatterns: ['Follow existing test patterns in src/**/*.test.ts'],
+    },
     academic: { papers: [] },
-    docs: { officialDocs: [], bestPractices: [], relatedGuides: [] },
+    docs: { officialDocs: [], bestPractices, relatedGuides: [] },
     history: { relatedIssues: [], relatedPRs: [], previousAttempts: [], relevantCommits: [] },
-    synthesizedContext: 'Research could not be completed - using fallback',
+    synthesizedContext: buildHeuristicContext(issueType, bestPractices, patterns),
     durationMs: Date.now() - startTime,
   };
 }
 
 /**
  * Execute RESEARCH phase - Multi-agent research using model adapter.
+ * Falls back to heuristic research when model unavailable.
+ * (Source: Issue #449 - Improve fallback implementations)
  */
 export async function executeResearch(
   deps: SelfDevWorkflowDependencies,
@@ -131,8 +234,15 @@ export async function executeResearch(
   });
 
   if (!response.ok) {
-    logger.warn('RESEARCH phase: Model call failed', { error: response.error.message });
-    return createPlaceholderResearchOutput(startTime);
+    logger.warn('RESEARCH phase: Model call failed, using heuristic fallback', {
+      error: response.error.message,
+      issueType: issue.type,
+    });
+    return createPlaceholderResearchOutput(startTime, {
+      type: issue.type,
+      keywords: issue.keywords,
+      title: issue.title,
+    });
   }
 
   const content = response.value.content[0];

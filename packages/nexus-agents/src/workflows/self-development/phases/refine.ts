@@ -112,37 +112,99 @@ function buildCritiquesFromReflexion(
   });
 }
 
-/**
- * Build fallback critiques from personas.
- */
-function buildFallbackCritiques(): RefineOutput['critiques'] {
-  return SELF_DEV_PERSONAS.map((persona) => ({
-    personaId: persona.id,
-    role: persona.role,
-    issues: [],
-    suggestions: [`Consider ${persona.focusAreas[0] ?? 'key'} aspects`],
-    severity: 0.1,
-  }));
+/** Critique result with issues, suggestions, and severity. */
+type CritiqueResult = { issues: string[]; suggestions: string[]; severity: number };
+
+/** Generate critique for a specific role. */
+function generateRoleCritique(
+  role: string,
+  hasFiles: boolean,
+  hasTests: boolean,
+  hasDeps: boolean,
+  hasApiFiles: boolean
+): CritiqueResult {
+  const critiques: Record<string, () => CritiqueResult> = {
+    thinker: () => ({
+      issues: hasFiles ? [] : ['No specific files identified for modification'],
+      suggestions: ['Verify problem analysis covers all edge cases'],
+      severity: hasFiles ? 0.1 : 0.3,
+    }),
+    reviewer: () => ({
+      issues: hasTests ? [] : ['Test plan may need more detail'],
+      suggestions: ['Ensure code review checklist is followed'],
+      severity: hasTests ? 0.1 : 0.4,
+    }),
+    security: () => ({
+      issues: hasApiFiles ? ['API changes require security review'] : [],
+      suggestions: ['Validate input sanitization', 'Check for injection vulnerabilities'],
+      severity: hasApiFiles ? 0.5 : 0.1,
+    }),
+    architect: () => ({
+      issues: [],
+      suggestions: hasDeps
+        ? ['Verify dependency changes are backward compatible', 'Consider impact on modularity']
+        : ['Consider impact on system modularity'],
+      severity: 0.1,
+    }),
+  };
+  return (
+    critiques[role]?.() ?? { issues: [], suggestions: ['Consider quality aspects'], severity: 0.1 }
+  );
 }
 
 /**
- * Build fallback refine output.
+ * Build fallback critiques from personas with heuristic analysis.
+ * (Source: Issue #449 - Improve fallback implementations)
+ */
+function buildFallbackCritiques(plan: PlanOutput): RefineOutput['critiques'] {
+  const hasTests = plan.plan.testPlan.length > 20;
+  const hasFiles = plan.plan.files.length > 0;
+  const hasDeps = plan.plan.dependencies.length > 0;
+  const hasApiFiles = plan.plan.files.some(
+    (f) => f.path.includes('api') || f.path.includes('route')
+  );
+
+  return SELF_DEV_PERSONAS.map((persona) => {
+    const result = generateRoleCritique(persona.role, hasFiles, hasTests, hasDeps, hasApiFiles);
+    return { personaId: persona.id, role: persona.role, ...result };
+  });
+}
+
+/**
+ * Build fallback refine output with heuristic critiques.
+ * Used when ReflexionProtocol is unavailable.
+ * (Source: Issue #449 - Improve fallback implementations)
  */
 function buildFallbackRefineOutput(plan: PlanOutput, startTime: number): RefineOutput {
+  const critiques = buildFallbackCritiques(plan);
+  const avgSeverity = critiques.reduce((sum, c) => sum + c.severity, 0) / critiques.length;
+  const hasSignificantIssues = critiques.some((c) => c.issues.length > 0);
+
   return {
     reflexionResult: {
       rounds: [],
-      finalOutput: plan.trinityResult.finalOutput,
+      finalOutput: [
+        '## Heuristic Refinement Summary',
+        '',
+        plan.trinityResult.finalOutput,
+        '',
+        '### Review Notes',
+        ...critiques.flatMap((c) =>
+          c.issues.length > 0 ? [`**${c.role}:** ${c.issues.join('; ')}`] : []
+        ),
+        '',
+        '_Note: Run with ReflexionProtocol for multi-agent refinement._',
+      ].join('\n'),
       totalIterations: 1,
-      converged: true,
-      terminationReason: 'converged',
+      converged: !hasSignificantIssues,
+      terminationReason: hasSignificantIssues ? 'max_iterations' : 'converged',
       totalDurationMs: Date.now() - startTime,
     },
     refinedPlan: plan.plan,
-    critiques: buildFallbackCritiques(),
+    critiques,
     iterations: 1,
-    converged: true,
-    finalSeverity: 0,
+    converged: !hasSignificantIssues,
+    finalSeverity: avgSeverity,
     durationMs: Date.now() - startTime,
   };
 }
