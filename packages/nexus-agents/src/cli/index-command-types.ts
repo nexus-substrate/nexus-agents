@@ -47,5 +47,11 @@ export interface IndexCommandResult {
     readonly totalFiles?: number;
     readonly totalLinks?: number;
     readonly brokenLinks?: number;
+    /** ARCHITECTURE.md validation results (Issue #445). */
+    readonly documentedModules?: readonly string[];
+    readonly actualModules?: readonly string[];
+    readonly missingInDocs?: readonly string[];
+    readonly missingInCode?: readonly string[];
+    readonly modulesValidated?: number;
   };
 }

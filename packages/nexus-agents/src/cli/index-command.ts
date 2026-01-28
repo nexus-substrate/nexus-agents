@@ -201,27 +201,104 @@ async function generateDiagram(options: IndexCommandOptions): Promise<IndexComma
 }
 
 /**
- * Validates ARCHITECTURE.md against the index.
+ * Extracts documented modules from ARCHITECTURE.md module structure section.
+ * Parses the directory tree in the markdown.
  */
-async function validateArchitecture(_options: IndexCommandOptions): Promise<IndexCommandResult> {
-  // This is a placeholder for future ARCHITECTURE.md validation
-  // For now, just check if the index exists and is valid
+function extractDocumentedModules(architectureContent: string): string[] {
+  const modules: string[] = [];
+  const moduleStructureMatch = architectureContent.match(
+    /## Module Structure[\s\S]*?```[\s\S]*?src\/\s*([\s\S]*?)```/
+  );
 
-  const indexPath = 'docs/codebase-index.yaml';
+  const captured = moduleStructureMatch?.[1];
+  if (captured !== undefined && captured !== '') {
+    // Extract directory names from tree: │ ├── core/ # Comment
+    for (const line of captured.split('\n')) {
+      const dirMatch = line.match(/[├└]── ([a-z-]+)\//);
+      const dirName = dirMatch?.[1];
+      if (dirName !== undefined && dirName !== '') {
+        modules.push(dirName);
+      }
+    }
+  }
+  return modules;
+}
 
+/**
+ * Gets actual module directories from src/.
+ */
+async function getActualModules(srcPath: string): Promise<string[]> {
   try {
-    await fs.access(indexPath);
+    const entries = await fs.readdir(srcPath, { withFileTypes: true });
+    return entries
+      .filter((e) => e.isDirectory() && !e.name.startsWith('.') && !e.name.startsWith('__'))
+      .map((e) => e.name);
   } catch {
+    return [];
+  }
+}
+
+/**
+ * Compares documented and actual modules, returning validation result.
+ */
+function compareModules(documentedModules: string[], actualModules: string[]): IndexCommandResult {
+  const missingInDocs = actualModules.filter((m) => !documentedModules.includes(m));
+  const missingInCode = documentedModules.filter((m) => !actualModules.includes(m));
+
+  if (missingInDocs.length > 0 || missingInCode.length > 0) {
+    const issues: string[] = [];
+    if (missingInDocs.length > 0) {
+      issues.push(`Modules in src/ but not in ARCHITECTURE.md: ${missingInDocs.join(', ')}`);
+    }
+    if (missingInCode.length > 0) {
+      issues.push(`Modules in ARCHITECTURE.md but not in src/: ${missingInCode.join(', ')}`);
+    }
     return {
       success: false,
-      message: 'Index file not found. Run "nexus-agents index generate" first.',
+      message: `ARCHITECTURE.md validation failed:\n${issues.join('\n')}`,
+      data: { documentedModules, actualModules, missingInDocs, missingInCode },
     };
   }
 
   return {
     success: true,
-    message: 'ARCHITECTURE.md validation not yet implemented. Index exists.',
+    message: `ARCHITECTURE.md is in sync with codebase (${String(actualModules.length)} modules validated)`,
+    data: { documentedModules, actualModules, modulesValidated: actualModules.length },
   };
+}
+
+/**
+ * Validates ARCHITECTURE.md module structure against actual codebase.
+ * (Source: Issue #445)
+ */
+async function validateArchitecture(options: IndexCommandOptions): Promise<IndexCommandResult> {
+  const architecturePath = options.output ?? 'ARCHITECTURE.md';
+  const srcPath = 'packages/nexus-agents/src';
+
+  let architectureContent: string;
+  try {
+    architectureContent = await fs.readFile(architecturePath, 'utf-8');
+  } catch {
+    return { success: false, message: `ARCHITECTURE.md not found at ${architecturePath}` };
+  }
+
+  try {
+    await fs.access(srcPath);
+  } catch {
+    return { success: false, message: `Source directory not found: ${srcPath}` };
+  }
+
+  const documentedModules = extractDocumentedModules(architectureContent);
+  if (documentedModules.length === 0) {
+    return {
+      success: false,
+      message:
+        'No module structure found in ARCHITECTURE.md. Expected "## Module Structure" section.',
+    };
+  }
+
+  const actualModules = await getActualModules(srcPath);
+  return compareModules(documentedModules, actualModules);
 }
 
 /**

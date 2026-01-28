@@ -15,6 +15,7 @@ vi.mock('node:fs/promises', () => ({
   readFile: vi.fn(),
   writeFile: vi.fn(),
   mkdir: vi.fn(),
+  readdir: vi.fn(),
 }));
 
 // Mock yaml
@@ -315,8 +316,8 @@ describe('index-command', () => {
   });
 
   describe('validate subcommand', () => {
-    it('should return error if index not found', async () => {
-      mockFs.access.mockRejectedValue(new Error('ENOENT'));
+    it('should return error if ARCHITECTURE.md not found', async () => {
+      mockFs.readFile.mockRejectedValue(new Error('ENOENT'));
 
       const result = await indexCommand({ subcommand: 'validate' });
 
@@ -324,13 +325,58 @@ describe('index-command', () => {
       expect(result.message).toContain('not found');
     });
 
-    it('should return success placeholder message', async () => {
+    it('should return error if no module structure found', async () => {
+      mockFs.readFile.mockResolvedValue('# ARCHITECTURE\n\nNo module structure here.');
       mockFs.access.mockResolvedValue(undefined);
 
       const result = await indexCommand({ subcommand: 'validate' });
 
+      expect(result.success).toBe(false);
+      expect(result.message).toContain('No module structure found');
+    });
+
+    it('should detect modules missing from documentation', async () => {
+      const archContent = `## Module Structure
+\`\`\`
+src/
+├── core/       # Core module
+└── agents/     # Agents module
+\`\`\``;
+      mockFs.readFile.mockResolvedValue(archContent);
+      mockFs.access.mockResolvedValue(undefined);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (mockFs.readdir as any).mockResolvedValue([
+        { name: 'core', isDirectory: () => true },
+        { name: 'agents', isDirectory: () => true },
+        { name: 'workflows', isDirectory: () => true }, // Not in docs
+      ]);
+
+      const result = await indexCommand({ subcommand: 'validate' });
+
+      expect(result.success).toBe(false);
+      expect(result.message).toContain('workflows');
+      expect(result.message).toContain('not in ARCHITECTURE.md');
+    });
+
+    it('should succeed when docs match codebase', async () => {
+      const archContent = `## Module Structure
+\`\`\`
+src/
+├── core/       # Core module
+└── agents/     # Agents module
+\`\`\``;
+      mockFs.readFile.mockResolvedValue(archContent);
+      mockFs.access.mockResolvedValue(undefined);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (mockFs.readdir as any).mockResolvedValue([
+        { name: 'core', isDirectory: () => true },
+        { name: 'agents', isDirectory: () => true },
+      ]);
+
+      const result = await indexCommand({ subcommand: 'validate' });
+
       expect(result.success).toBe(true);
-      expect(result.message).toContain('not yet implemented');
+      expect(result.message).toContain('in sync');
     });
   });
 
