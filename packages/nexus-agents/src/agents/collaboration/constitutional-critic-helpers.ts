@@ -9,6 +9,7 @@
  */
 
 import type { Violation, ViolationSeverity } from './constitutional-types.js';
+import { AstFixer, type AstFixResult } from './ast-fixer.js';
 
 /**
  * Severity ordering for comparisons.
@@ -148,25 +149,51 @@ export function matchKeywords(pattern: string, output: string): number {
   return keywords.length > 0 ? matchedKeywords / keywords.length : 0;
 }
 
+// Singleton AST fixer instance for reuse
+let astFixerInstance: AstFixer | null = null;
+
 /**
- * Applies a suggested fix to output by adding a comment.
+ * Gets or creates the AST fixer singleton.
  */
-export function applyFix(output: string, violation: Violation): string {
-  // Simple replacement - in real implementation would use AST
-  // For now, just add a comment noting the violation
-  if (violation.location !== undefined) {
-    const lineMatch = /line (\d+)/.exec(violation.location);
-    if (lineMatch !== null) {
-      const lineNum = parseInt(lineMatch[1] ?? '0', 10);
-      const lines = output.split('\n');
-      if (lineNum > 0 && lineNum <= lines.length) {
-        const comment = `// TODO: ${violation.principleName} - ${violation.suggestedFix}`;
-        lines.splice(lineNum - 1, 0, comment);
-        return lines.join('\n');
-      }
-    }
-  }
-  return output;
+function getAstFixer(): AstFixer {
+  astFixerInstance ??= new AstFixer();
+  return astFixerInstance;
+}
+
+/**
+ * Applies a suggested fix to code using AST transformation.
+ *
+ * Uses ts-morph for targeted code transformations based on violation type.
+ * Falls back to comment-based fix if AST transformation is not possible.
+ *
+ * @param code - The source code to fix
+ * @param violation - The violation to address
+ * @returns The fixed code (with AST transformation or TODO comment)
+ * @see Issue #459 - AST-based code fixing
+ */
+export function applyFix(code: string, violation: Violation): string {
+  const fixer = getAstFixer();
+  const result = fixer.applyFix(code, violation);
+  return result.code;
+}
+
+/**
+ * Applies a fix and returns detailed result information.
+ *
+ * @param code - The source code to fix
+ * @param violation - The violation to address
+ * @returns Detailed result with success status and change description
+ */
+export function applyFixWithResult(code: string, violation: Violation): AstFixResult {
+  const fixer = getAstFixer();
+  return fixer.applyFix(code, violation);
+}
+
+/**
+ * Resets the AST fixer singleton (for testing purposes).
+ */
+export function resetAstFixer(): void {
+  astFixerInstance = null;
 }
 
 /**
