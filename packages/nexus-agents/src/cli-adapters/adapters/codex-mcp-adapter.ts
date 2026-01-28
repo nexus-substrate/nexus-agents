@@ -46,6 +46,7 @@ import {
   determineErrorCode,
   parseVersionFromOutput,
 } from './codex-mcp-adapter-helpers.js';
+import { CapacityTracker, createCapacityTracker } from '../capacity-tracker.js';
 
 /**
  * Codex CLI adapter using MCP transport.
@@ -63,6 +64,7 @@ export class CodexMcpAdapter implements ICliAdapter {
   private mcpTransport: StdioClientTransport | undefined;
   private connected = false;
   private cachedVersion: string | undefined;
+  private capacityTracker: CapacityTracker | null = null;
 
   constructor(options?: { model?: string; logger?: ILogger }) {
     this.logger = options?.logger ?? createLogger({ component: 'codex-mcp-adapter' });
@@ -98,6 +100,7 @@ export class CodexMcpAdapter implements ICliAdapter {
       return;
     }
 
+    this.capacityTracker = createCapacityTracker(this.name);
     this.logger.debug('Initializing Codex MCP connection');
 
     try {
@@ -125,6 +128,33 @@ export class CodexMcpAdapter implements ICliAdapter {
   }
 
   /**
+   * Handles successful execution result - records usage and logs.
+   */
+  private handleSuccess(result: Result<CliResponse, CliError>, attempt: number): void {
+    if (!result.ok) return;
+    this.capacityTracker?.recordUsage(result.value.usage);
+    this.logger.info('Task executed successfully via MCP', {
+      cli: this.name,
+      attempt,
+      durationMs: result.value.durationMs,
+      tokensUsed: result.value.usage?.totalTokens,
+    });
+  }
+
+  /**
+   * Handles failed execution result - logs warning.
+   */
+  private handleFailure(result: Result<CliResponse, CliError>, attempt: number): void {
+    if (result.ok) return;
+    this.logger.warn('Task execution failed', {
+      cli: this.name,
+      attempt,
+      error: result.error.message,
+      retryable: result.error.retryable,
+    });
+  }
+
+  /**
    * Executes a task on Codex via MCP.
    */
   async execute(task: CliTask, options?: ExecutionOptions): Promise<Result<CliResponse, CliError>> {
@@ -146,32 +176,19 @@ export class CodexMcpAdapter implements ICliAdapter {
       const result = await this.executeViaClient(task, opts);
 
       if (result.ok) {
-        this.logger.info('Task executed successfully via MCP', {
-          cli: this.name,
-          attempt,
-          durationMs: result.value.durationMs,
-        });
+        this.handleSuccess(result, attempt);
         return result;
       }
 
       lastError = result.error;
+      const isTerminal = !result.error.retryable || attempt === maxAttempts;
 
-      if (!result.error.retryable || attempt === maxAttempts) {
-        this.logger.warn('Task execution failed', {
-          cli: this.name,
-          attempt,
-          error: result.error.message,
-          retryable: result.error.retryable,
-        });
+      if (isTerminal) {
+        this.handleFailure(result, attempt);
         return result;
       }
 
-      this.logger.debug('Retrying task execution', {
-        cli: this.name,
-        attempt,
-        nextAttempt: attempt + 1,
-      });
-
+      this.logger.debug('Retrying task execution', { cli: this.name, attempt });
       await delay(Math.pow(2, attempt) * 1000);
     }
 
@@ -353,18 +370,20 @@ export class CodexMcpAdapter implements ICliAdapter {
   }
 
   /**
-   * Gets current capacity status.
+   * Gets current capacity status based on tracked usage.
+   * @see Issue #456 - Real API rate limit tracking
    */
   getCapacity(): Promise<CapacityStatus> {
-    // Capacity tracking requires API integration
-    // For now, return high availability
-    return Promise.resolve({
-      remainingTokens: Number.MAX_SAFE_INTEGER,
-      remainingRequests: Number.MAX_SAFE_INTEGER,
-      resetTime: new Date(Date.now() + 3600_000),
-      utilizationPercent: 0,
-      exhausted: false,
-    });
+    if (this.capacityTracker === null) {
+      return Promise.resolve({
+        remainingTokens: Number.MAX_SAFE_INTEGER,
+        remainingRequests: Number.MAX_SAFE_INTEGER,
+        resetTime: new Date(Date.now() + 3600_000),
+        utilizationPercent: 0,
+        exhausted: false,
+      });
+    }
+    return Promise.resolve(this.capacityTracker.getCapacity());
   }
 
   /**

@@ -45,6 +45,7 @@ import {
   normalizeCodexResponse,
   delay,
 } from './codex-adapter-helpers.js';
+import { CapacityTracker, createCapacityTracker } from '../capacity-tracker.js';
 
 // Re-export helpers for backward compatibility
 export {
@@ -82,6 +83,7 @@ export class CodexCliAdapter implements ICliAdapter {
   private readonly model: string;
   private initialized = false;
   private cachedVersion?: string;
+  private capacityTracker: CapacityTracker | null = null;
 
   constructor(options?: { model?: string; logger?: ILogger }) {
     this.logger = options?.logger ?? createLogger({ component: 'codex-adapter' });
@@ -111,6 +113,33 @@ export class CodexCliAdapter implements ICliAdapter {
   }
 
   /**
+   * Handles successful execution result - records usage and logs.
+   */
+  private handleSuccess(result: Result<CliResponse, CliError>, attempt: number): void {
+    if (!result.ok) return;
+    this.capacityTracker?.recordUsage(result.value.usage);
+    this.logger.info('Task executed successfully', {
+      cli: this.name,
+      attempt,
+      durationMs: result.value.durationMs,
+      tokensUsed: result.value.usage?.totalTokens,
+    });
+  }
+
+  /**
+   * Handles failed execution result - logs warning.
+   */
+  private handleFailure(result: Result<CliResponse, CliError>, attempt: number): void {
+    if (result.ok) return;
+    this.logger.warn('Task execution failed', {
+      cli: this.name,
+      attempt,
+      error: result.error.message,
+      retryable: result.error.retryable,
+    });
+  }
+
+  /**
    * Executes a task on Codex CLI.
    */
   async execute(task: CliTask, options?: ExecutionOptions): Promise<Result<CliResponse, CliError>> {
@@ -132,33 +161,19 @@ export class CodexCliAdapter implements ICliAdapter {
       const result = await this.executeTask(task, opts);
 
       if (result.ok) {
-        this.logger.info('Task executed successfully', {
-          cli: this.name,
-          attempt,
-          durationMs: result.value.durationMs,
-        });
+        this.handleSuccess(result, attempt);
         return result;
       }
 
       lastError = result.error;
+      const isTerminal = !result.error.retryable || attempt === maxAttempts;
 
-      if (!result.error.retryable || attempt === maxAttempts) {
-        this.logger.warn('Task execution failed', {
-          cli: this.name,
-          attempt,
-          error: result.error.message,
-          retryable: result.error.retryable,
-        });
+      if (isTerminal) {
+        this.handleFailure(result, attempt);
         return result;
       }
 
-      this.logger.debug('Retrying task execution', {
-        cli: this.name,
-        attempt,
-        nextAttempt: attempt + 1,
-      });
-
-      // Exponential backoff
+      this.logger.debug('Retrying task execution', { cli: this.name, attempt });
       await delay(Math.pow(2, attempt) * 1000);
     }
 
@@ -336,22 +351,27 @@ export class CodexCliAdapter implements ICliAdapter {
   }
 
   /**
-   * Gets current capacity status.
+   * Gets current capacity status based on tracked usage.
+   * @see Issue #456 - Real API rate limit tracking
    */
   getCapacity(): Promise<CapacityStatus> {
-    return Promise.resolve({
-      remainingTokens: Number.MAX_SAFE_INTEGER,
-      remainingRequests: Number.MAX_SAFE_INTEGER,
-      resetTime: new Date(Date.now() + 3600_000),
-      utilizationPercent: 0,
-      exhausted: false,
-    });
+    if (this.capacityTracker === null) {
+      return Promise.resolve({
+        remainingTokens: Number.MAX_SAFE_INTEGER,
+        remainingRequests: Number.MAX_SAFE_INTEGER,
+        resetTime: new Date(Date.now() + 3600_000),
+        utilizationPercent: 0,
+        exhausted: false,
+      });
+    }
+    return Promise.resolve(this.capacityTracker.getCapacity());
   }
 
   /**
-   * Initializes the adapter.
+   * Initializes the adapter and capacity tracker.
    */
   initialize(): Promise<void> {
+    this.capacityTracker = createCapacityTracker(this.name);
     this.initialized = true;
     return Promise.resolve();
   }

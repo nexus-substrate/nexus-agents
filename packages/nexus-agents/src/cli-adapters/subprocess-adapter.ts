@@ -181,9 +181,10 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
   }
 
   /**
-   * Initializes the adapter (no-op for subprocess).
+   * Initializes the adapter and capacity tracker.
    */
   initialize(): Promise<void> {
+    this.initCapacityTracker();
     this.initialized = true;
     return Promise.resolve();
   }

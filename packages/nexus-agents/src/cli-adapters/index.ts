@@ -33,6 +33,17 @@ export { CLI_VERSION_REQUIREMENTS, DEFAULT_CAPABILITIES } from './types.js';
 // Base adapter
 export { BaseCliAdapter } from './base-adapter.js';
 
+// Capacity Tracker (Issue #456 - Real API rate limit tracking)
+export {
+  CapacityTracker,
+  createCapacityTracker,
+  getDefaultConfig,
+  DEFAULT_TOKEN_LIMITS,
+  DEFAULT_REQUEST_LIMITS,
+  RATE_LIMIT_WINDOW_MS,
+} from './capacity-tracker.js';
+export type { CapacityTrackerConfig } from './capacity-tracker.js';
+
 // Subprocess adapter (extracted from base-adapter per Issue #272)
 export { SubprocessCliAdapter, type CommandConfig } from './subprocess-adapter.js';
 

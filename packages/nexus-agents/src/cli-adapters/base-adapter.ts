@@ -36,6 +36,7 @@ import type {
 } from './types.js';
 import { CLI_VERSION_REQUIREMENTS, DEFAULT_CAPABILITIES } from './types.js';
 import { getTimeoutForTaskAuto } from './cli-timeout-profiles.js';
+import { CapacityTracker, createCapacityTracker } from './capacity-tracker.js';
 
 const execAsync = promisify(exec);
 
@@ -61,12 +62,21 @@ export abstract class BaseCliAdapter implements ICliAdapter {
   abstract readonly transport: CliTransport;
 
   protected readonly logger: ILogger;
+  protected capacityTracker: CapacityTracker | null = null;
   protected initialized = false;
   protected lastHealthCheck?: HealthStatus;
   protected cachedVersion?: string;
 
   constructor(logger?: ILogger) {
     this.logger = logger ?? createLogger({ component: 'cli-adapter' });
+  }
+
+  /**
+   * Initializes the capacity tracker.
+   * Called by subclasses after name is set.
+   */
+  protected initCapacityTracker(): void {
+    this.capacityTracker = createCapacityTracker(this.name);
   }
 
   /**
@@ -152,10 +162,12 @@ export abstract class BaseCliAdapter implements ICliAdapter {
       const result = await this.executeTask(task, opts);
 
       if (result.ok) {
+        this.recordUsage(result.value);
         this.logger.info('Task executed successfully', {
           cli: this.name,
           attempt,
           durationMs: result.value.durationMs,
+          tokensUsed: result.value.usage?.totalTokens,
         });
         return result;
       }
@@ -244,18 +256,33 @@ export abstract class BaseCliAdapter implements ICliAdapter {
   }
 
   /**
-   * Gets current capacity status.
-   * Default implementation returns full capacity.
-   * Override in subclasses to track actual usage.
+   * Gets current capacity status based on tracked usage.
+   * Uses usage-based tracking since CLI subprocess execution
+   * doesn't expose HTTP rate limit headers.
+   *
+   * @see Issue #456 - Real API rate limit tracking
    */
   getCapacity(): Promise<CapacityStatus> {
-    return Promise.resolve({
-      remainingTokens: Number.MAX_SAFE_INTEGER,
-      remainingRequests: Number.MAX_SAFE_INTEGER,
-      resetTime: new Date(Date.now() + 3600_000),
-      utilizationPercent: 0,
-      exhausted: false,
-    });
+    if (this.capacityTracker === null) {
+      // Fallback for uninitialized tracker
+      return Promise.resolve({
+        remainingTokens: Number.MAX_SAFE_INTEGER,
+        remainingRequests: Number.MAX_SAFE_INTEGER,
+        resetTime: new Date(Date.now() + 3600_000),
+        utilizationPercent: 0,
+        exhausted: false,
+      });
+    }
+    return Promise.resolve(this.capacityTracker.getCapacity());
+  }
+
+  /**
+   * Records usage from a response for capacity tracking.
+   */
+  protected recordUsage(response: CliResponse): void {
+    if (this.capacityTracker !== null) {
+      this.capacityTracker.recordUsage(response.usage);
+    }
   }
 
   /**
