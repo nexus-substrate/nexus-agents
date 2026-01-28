@@ -88,6 +88,16 @@ export {
   type ExecuteExpertResponse,
 } from './execute-expert.js';
 
+export {
+  registerConsensusVoteTool,
+  ConsensusVoteInputSchema,
+  type ConsensusVoteInput,
+  type ConsensusVoteDeps,
+  type ConsensusVoteResponse,
+  type AgentVoteSummary,
+  type VoteDecisionStatus,
+} from './consensus-vote.js';
+
 /**
  * Options for tool registration.
  */
@@ -172,6 +182,7 @@ export function registerTools(
       'delegate_to_model',
       'list_experts',
       'list_workflows',
+      'consensus_vote',
     ],
     logger,
     rateLimiter,

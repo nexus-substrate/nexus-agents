@@ -91,6 +91,14 @@ export {
   type ExecuteExpertInput,
   type ExecuteExpertDeps,
   type ExecuteExpertResponse,
+  // consensus_vote tool (Issue #435)
+  registerConsensusVoteTool,
+  ConsensusVoteInputSchema,
+  type ConsensusVoteInput,
+  type ConsensusVoteDeps,
+  type ConsensusVoteResponse,
+  type AgentVoteSummary,
+  type VoteDecisionStatus,
   // run_workflow tool
   registerRunWorkflowTool,
   createMockWorkflowEngine,

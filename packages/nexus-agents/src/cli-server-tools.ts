@@ -17,6 +17,7 @@ import {
   registerRunWorkflowTool,
   registerListExpertsTool,
   registerListWorkflowsTool,
+  registerConsensusVoteTool,
   createMockTechLead,
   createDefaultDeps,
 } from './mcp/index.js';
@@ -52,6 +53,7 @@ export const REGISTERED_TOOLS = [
   'run_workflow',
   'list_experts',
   'list_workflows',
+  'consensus_vote',
 ] as const;
 
 /**
@@ -115,6 +117,14 @@ function registerWorkflowTools(ctx: ToolRegistrationContext): void {
   });
 }
 
+/** Register consensus tools (Issue #435). */
+function registerConsensusTools(ctx: ToolRegistrationContext): void {
+  registerConsensusVoteTool(ctx.server, {
+    logger: ctx.logger,
+    rateLimiter: ctx.rateLimiterFactory.getForTool('consensus_vote'),
+  });
+}
+
 /**
  * Registers MCP tools with per-tool rate limiting.
  * Must be called BEFORE connecting to transport.
@@ -142,8 +152,8 @@ export function registerMcpTools(options: RegisterMcpToolsOptions): void {
     server,
     logger: toolInfra.logger,
     rateLimiterFactory,
-    modelAdapter,
     builtInTemplates,
+    ...(modelAdapter !== undefined && { modelAdapter }),
   };
 
   // Register core tools
@@ -159,9 +169,10 @@ export function registerMcpTools(options: RegisterMcpToolsOptions): void {
     rateLimiter: rateLimiterFactory.getForTool('orchestrate'),
   });
 
-  // Expert and workflow tools (Issue #437, #430, #436)
+  // Expert, workflow, and consensus tools (Issue #437, #430, #436, #435)
   registerExpertTools(ctx);
   registerWorkflowTools(ctx);
+  registerConsensusTools(ctx);
   registerListExpertsTool(server, {
     logger: ctx.logger,
     rateLimiter: rateLimiterFactory.getForTool('list_experts'),
