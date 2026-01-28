@@ -31,7 +31,7 @@ import {
 } from './cli/index.js';
 import { hookCommand, printHookHelp } from './cli/hooks/index.js';
 import { EXIT_CODES, type ParsedCliArgs } from './cli-types.js';
-import { startServer } from './cli-server.js';
+import { startServer, type OrchestratorModeOptions } from './cli-server.js';
 import {
   isValidExpertListFormat,
   isValidThreshold,
@@ -106,12 +106,34 @@ export async function handleWorkflowCommand(args: ParsedCliArgs): Promise<void> 
 }
 
 /**
+ * Builds orchestrator mode options from CLI args.
+ * (Source: Issue #446 - Implement orchestrator mode)
+ */
+function buildOrchestratorOptions(args: ParsedCliArgs): OrchestratorModeOptions {
+  return {
+    verbose: args.options.verbose,
+    format: args.options.format === 'json' ? 'json' : 'text',
+    dryRun: args.options.dryRun,
+    ...(args.options.task !== undefined && { task: args.options.task }),
+    ...(args.options.model !== undefined && { model: args.options.model }),
+    ...(args.options.maxTokens !== undefined && { maxTokens: args.options.maxTokens }),
+    ...(args.options.maxCostUsd !== undefined && { maxCostUsd: args.options.maxCostUsd }),
+  };
+}
+
+/**
  * Handles the server command (default mode or interactive REPL).
+ * In orchestrator mode, executes tasks directly without MCP server.
+ * (Source: Issue #446 - Implement orchestrator mode)
  */
 export async function handleServerCommand(args: ParsedCliArgs): Promise<void> {
   if (args.options.interactive) {
     const exitCode = await replCommand({ verbose: args.options.verbose });
     process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
+  } else if (args.options.mode === 'orchestrator') {
+    // Orchestrator mode: execute tasks directly (Issue #446)
+    const orchestratorOptions = buildOrchestratorOptions(args);
+    await startServer(args.options.verbose, args.options.mode, true, orchestratorOptions);
   } else {
     await startServer(args.options.verbose, args.options.mode);
   }

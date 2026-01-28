@@ -10,16 +10,12 @@ import {
   createServer,
   connectTransport,
   closeServer,
-  registerTools,
-  registerDelegateToModelTool,
-  registerOrchestrateTool,
-  registerCreateExpertTool,
-  registerRunWorkflowTool,
-  createMockTechLead,
-  createDefaultDeps,
-  createMockWorkflowEngine,
   type EventBusBridgeResult,
 } from './mcp/index.js';
+import { initializeBuiltInTemplates } from './workflows/index.js';
+import { createAutoAdapter } from './adapters/auto-adapter.js';
+import type { IModelAdapter } from './core/index.js';
+import { registerMcpTools } from './cli-server-tools.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { createLogger, type ILogger } from './core/index.js';
@@ -28,11 +24,7 @@ import { detectMode, type ServerMode, type ModeDetectionResult } from './cli/ind
 import { EXIT_CODES } from './cli-types.js';
 import { SwarmObserver } from './observability/index.js';
 import { initializeSandbox, getSandboxMode } from './security/sandbox/index.js';
-import {
-  createDefaultPolicyFirewall,
-  createToolRateLimiterFactory,
-  setGlobalToolRateLimiterFactory,
-} from './mcp/middleware/index.js';
+import { createDefaultPolicyFirewall } from './mcp/middleware/index.js';
 import {
   initializeSwarmObserver,
   initializeEventBus,
@@ -42,6 +34,10 @@ import {
   logFinalEventBusStats,
   type ServerEventContext,
 } from './cli-server-lifecycle.js';
+import { startOrchestratorMode, type OrchestratorModeOptions } from './cli-orchestrator.js';
+
+// Re-export for backward compatibility
+export { type OrchestratorModeOptions } from './cli-orchestrator.js';
 
 /**
  * Sets up graceful shutdown handlers.
@@ -125,14 +121,18 @@ export function logStartupInfo(
 }
 
 /**
- * Logs warnings for unimplemented modes.
+ * Validates that the requested mode is implemented.
+ * Exits with error for unimplemented modes (mesh only now).
+ *
+ * (Source: Issue #443 - Make unimplemented modes fail fast)
+ * (Source: Issue #446 - Implement orchestrator mode)
  */
-export function logModeWarnings(logger: ILogger, mode: ServerMode): void {
-  if (mode === 'orchestrator') {
-    logger.warn('Orchestrator mode not yet implemented, falling back to server mode');
-  } else if (mode === 'mesh') {
-    logger.warn('Mesh mode not yet implemented, falling back to server mode');
+export function validateModeOrExit(logger: ILogger, mode: ServerMode): void {
+  if (mode === 'mesh') {
+    logger.error('Mesh mode is not yet implemented. Use --mode=server instead.');
+    process.exit(EXIT_CODES.INVALID_ARGS);
   }
+  // Orchestrator mode is now implemented (Issue #446)
 }
 
 /**
@@ -232,59 +232,6 @@ function createAndValidateMcpServer(logger: ILogger): {
 }
 
 /**
- * Registers MCP tools with per-tool rate limiting.
- * Must be called BEFORE connecting to transport.
- *
- * Uses ToolRateLimiterFactory to apply category-specific rate limits:
- * - orchestrate: 10 req/60s (expensive operations)
- * - delegate: 30 req/60s (model routing)
- * - workflow: 20 req/60s (workflow execution)
- * - expert: 60 req/60s (expert management)
- *
- * (Source: Issue #296 - Complete MCP tool rate limiting integration)
- */
-function registerMcpTools(server: McpServer, logger: ILogger): void {
-  const toolInfra = registerTools(server, { logger });
-
-  // Create per-tool rate limiter factory
-  const rateLimiterFactory = createToolRateLimiterFactory({
-    enabled: true,
-    logger: toolInfra.logger,
-  });
-
-  // Set global factory for access by other components
-  setGlobalToolRateLimiterFactory(rateLimiterFactory);
-
-  // Register tools with per-tool rate limiters
-  registerDelegateToModelTool(server, {
-    logger: toolInfra.logger,
-    rateLimiter: rateLimiterFactory.getForTool('delegate_to_model'),
-  });
-
-  registerOrchestrateTool(server, {
-    techLead: createMockTechLead(),
-    logger: toolInfra.logger,
-    rateLimiter: rateLimiterFactory.getForTool('orchestrate'),
-  });
-
-  registerCreateExpertTool(
-    server,
-    createDefaultDeps(rateLimiterFactory.getForTool('create_expert'), toolInfra.logger)
-  );
-
-  registerRunWorkflowTool(server, {
-    workflowEngine: createMockWorkflowEngine(),
-    logger: toolInfra.logger,
-    rateLimiter: rateLimiterFactory.getForTool('run_workflow'),
-  });
-
-  logger.info('Tools registered with per-tool rate limiting', {
-    registeredTools: ['delegate_to_model', 'orchestrate', 'create_expert', 'run_workflow'],
-    rateLimitingEnabled: rateLimiterFactory.isEnabled(),
-  });
-}
-
-/**
  * Initializes the sandbox for agent execution isolation.
  * Logs the sandbox configuration after initialization.
  */
@@ -319,45 +266,67 @@ async function connectToStdioTransport(
 }
 
 /**
+ * Attempts to auto-detect a model adapter for real workflow execution.
+ * Returns undefined if no adapter is available (falls back to mock).
+ */
+async function tryDetectModelAdapter(logger: ILogger): Promise<IModelAdapter | undefined> {
+  try {
+    logger.info('Auto-detecting model adapter for workflow execution');
+    const result = await createAutoAdapter({ logger });
+    logger.info('Model adapter detected', { source: result.source, name: result.name });
+    return result.adapter;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.warn('No model adapter available, using mock execution', { error: message });
+    return undefined;
+  }
+}
+
+/**
  * Starts the MCP server with stdio transport.
  *
  * @param verbose - Whether to enable verbose logging
  * @param mode - Server mode (server, orchestrator, mesh)
  * @param modeWasExplicit - Whether mode was explicitly set via --mode flag
+ * @param orchestratorOptions - Options for orchestrator mode (when mode is 'orchestrator')
  */
 export async function startServer(
   verbose: boolean,
   mode: ServerMode,
-  modeWasExplicit: boolean = false
+  modeWasExplicit: boolean = false,
+  orchestratorOptions?: OrchestratorModeOptions
 ): Promise<void> {
   const logger = createLogger({ component: 'cli' });
+  if (verbose) logger.setLevel('debug');
 
-  if (verbose) {
-    logger.setLevel('debug');
+  validateModeOrExit(logger, mode); // Fail fast for unimplemented modes (Issue #443)
+
+  // Handle orchestrator mode separately (Issue #446)
+  if (mode === 'orchestrator') {
+    await startOrchestratorMode(orchestratorOptions ?? { verbose });
+    return;
   }
 
-  // Log mode detection details
   const detectionResult = detectMode({ explicitMode: modeWasExplicit ? mode : undefined });
   logStartupInfo(logger, detectionResult, verbose);
-  logModeWarnings(logger, mode);
 
-  // Create MCP server (tools must be registered BEFORE connecting)
   const { server, logger: serverLogger } = createAndValidateMcpServer(logger);
-
-  // Initialize SwarmObserver for interaction tracing (Issue #173)
   const observer = initializeSwarmObserver(serverLogger);
-
-  // Initialize EventBus bridge for A2A communication visibility (Issue #307)
   const eventBusBridge = initializeEventBus(observer, serverLogger);
 
-  // Initialize sandbox for agent execution isolation (Issue #175)
   await initializeAndLogSandbox(serverLogger);
-
-  // Log security configuration at startup (Issue #185)
   logSecurityConfig(serverLogger);
 
-  // Register tools with rate limiting (must happen BEFORE connecting)
-  registerMcpTools(server, serverLogger);
+  serverLogger.info('Loading built-in workflow templates');
+  const builtInTemplates = await initializeBuiltInTemplates();
+  serverLogger.info('Loaded built-in templates', { count: builtInTemplates.size });
+
+  const modelAdapter = await tryDetectModelAdapter(serverLogger);
+  const toolsOptions =
+    modelAdapter !== undefined
+      ? { server, logger: serverLogger, builtInTemplates, modelAdapter }
+      : { server, logger: serverLogger, builtInTemplates };
+  registerMcpTools(toolsOptions);
 
   // Connect to transport
   await connectToStdioTransport(server, logger, serverLogger);

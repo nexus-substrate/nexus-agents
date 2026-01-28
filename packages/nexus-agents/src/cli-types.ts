@@ -69,7 +69,8 @@ export interface ParsedCliArgs {
     // Review command options
     setup: boolean;
     skipChecks: boolean;
-    // Orchestrate command options
+    // Orchestrate command options (also used in orchestrator mode)
+    task?: string;
     model?: 'claude' | 'gemini' | 'codex';
     maxTokens?: number;
     maxCostUsd?: number;
@@ -166,7 +167,11 @@ export const PARSE_ARGS_CONFIG = {
       type: 'boolean' as const,
       default: false,
     },
-    // Orchestrate command options
+    // Orchestrate command options (also used in orchestrator mode)
+    task: {
+      type: 'string' as const,
+      short: 't',
+    },
     model: {
       type: 'string' as const,
     },
