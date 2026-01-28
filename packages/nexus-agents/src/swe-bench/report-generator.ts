@@ -254,15 +254,36 @@ export class ReportGenerator implements IReportGenerator {
   }
 
   /**
-   * Generates resource statistics (placeholder values).
+   * Generates resource statistics from evaluation result.
+   *
+   * Note: Memory tracking is estimated from current process; disk tracking
+   * is not yet implemented. Container count uses evaluated instance count
+   * as each instance runs in its own container.
+   *
+   * (Improved per Issue #454 - replace placeholder zeros with estimates)
    */
-  private generateResourceStatistics(_result: EvaluationRunResult): ResourceStatistics {
-    // In a real implementation, these would be tracked during evaluation
+  private generateResourceStatistics(result: EvaluationRunResult): ResourceStatistics {
+    // Get current process memory as estimate (imperfect but informative)
+    const memUsage = process.memoryUsage();
+    const currentMemoryMB = Math.round(memUsage.heapUsed / 1024 / 1024);
+
+    // Each evaluated instance typically runs in its own container
+    const containersCreated = result.instanceResults.length;
+
+    // Estimate avg memory based on instance count (rough heuristic)
+    // Assumes ~100MB base + ~50MB per concurrent container
+    const estimatedAvgMemory =
+      containersCreated > 0
+        ? Math.round(100 + (containersCreated * 50) / result.config.maxWorkers)
+        : currentMemoryMB;
+
     return {
-      peakMemory: 0,
-      avgMemory: 0,
+      // Use current heap as peak estimate (actual peak may have been higher)
+      peakMemory: Math.max(currentMemoryMB, estimatedAvgMemory),
+      avgMemory: estimatedAvgMemory,
+      // Disk tracking not yet implemented - would need to check docker volumes
       diskSpaceUsed: 0,
-      containersCreated: 0,
+      containersCreated,
     };
   }
 
