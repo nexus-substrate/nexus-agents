@@ -14,10 +14,79 @@ import type {
   CommitOutput,
   SelfDevWorkflowResult,
 } from '../types.js';
-import { runAllVerificationChecks } from '../shell-executor.js';
+import { runAllVerificationChecks, type VerificationCheckResult } from '../shell-executor.js';
 import { attemptAutoMerge } from './auto-merge.js';
 
 const logger = createLogger({ component: 'self-dev-phase-verify-commit' });
+
+/**
+ * Parse coverage percentage from test output.
+ *
+ * Supports common coverage output formats:
+ * - Vitest: "All files  |   85.5 |"
+ * - Jest/Istanbul: "Statements   : 85.5%"
+ * - Simple: "Coverage: 85.5%"
+ *
+ * @param output - Test command output string
+ * @returns Coverage percentage (0-100) or undefined if not found
+ */
+function parseCoverageFromOutput(output: string): number | undefined {
+  // Try Vitest format: "All files  |  85.5 |"
+  const vitestMatch = /All files[^|]*\|\s*([\d.]+)\s*\|/i.exec(output);
+  if (vitestMatch?.[1] !== undefined) {
+    const coverage = parseFloat(vitestMatch[1]);
+    if (!isNaN(coverage)) return coverage;
+  }
+
+  // Try Jest/Istanbul format: "Statements   : 85.5%"
+  const istanbulMatch = /Statements\s*:\s*([\d.]+)%/i.exec(output);
+  if (istanbulMatch?.[1] !== undefined) {
+    const coverage = parseFloat(istanbulMatch[1]);
+    if (!isNaN(coverage)) return coverage;
+  }
+
+  // Try simple format: "Coverage: 85.5%" or "coverage: 85.5%"
+  const simpleMatch = /coverage[:\s]+([\d.]+)%/i.exec(output);
+  if (simpleMatch?.[1] !== undefined) {
+    const coverage = parseFloat(simpleMatch[1]);
+    if (!isNaN(coverage)) return coverage;
+  }
+
+  return undefined;
+}
+
+/**
+ * Extract coverage from test check results.
+ *
+ * @param checks - Verification check results
+ * @returns Coverage percentage or 0 if not found
+ */
+function extractCoverageFromChecks(checks: readonly VerificationCheckResult[]): number {
+  // Find the test check
+  const testCheck = checks.find((c) => c.name === 'test');
+  if (testCheck === undefined) return 0;
+
+  // Try to parse from output
+  if (testCheck.output !== undefined) {
+    const coverage = parseCoverageFromOutput(testCheck.output);
+    if (coverage !== undefined) {
+      logger.debug('Parsed coverage from test output', { coverage });
+      return coverage;
+    }
+  }
+
+  // Try to parse from error output (coverage might be in stderr)
+  if (testCheck.error !== undefined) {
+    const coverage = parseCoverageFromOutput(testCheck.error);
+    if (coverage !== undefined) {
+      logger.debug('Parsed coverage from test error output', { coverage });
+      return coverage;
+    }
+  }
+
+  logger.debug('Coverage not found in test output, using 0');
+  return 0;
+}
 
 // =============================================================================
 // Phase 8: VERIFY
@@ -52,10 +121,13 @@ export async function executeVerify(
     totalCount: checks.length,
   });
 
+  // Extract coverage from test output (falls back to 0 if not found)
+  const coverage = extractCoverageFromChecks(checkResults);
+
   const output: VerifyOutput = {
     checks,
     allPassed,
-    coverage: 80,
+    coverage,
     durationMs: Date.now() - startTime,
   };
 

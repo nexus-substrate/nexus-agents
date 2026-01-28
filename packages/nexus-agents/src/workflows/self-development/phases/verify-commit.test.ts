@@ -301,13 +301,48 @@ describe('verify-commit', () => {
       expect(result.checks[0]!.output).toBe('Test output');
     });
 
-    it('sets default coverage value', async () => {
+    it('returns 0 coverage when no test output available', async () => {
       vi.mocked(runAllVerificationChecks).mockResolvedValue([]);
 
       const state = createMockState();
       const result = await executeVerify(deps, state);
 
-      expect(result.coverage).toBe(80);
+      // Coverage defaults to 0 when not found in output (Issue #458)
+      expect(result.coverage).toBe(0);
+    });
+
+    it('parses coverage from Vitest output format', async () => {
+      vi.mocked(runAllVerificationChecks).mockResolvedValue([
+        {
+          name: 'test',
+          command: 'pnpm test',
+          passed: true,
+          durationMs: 100,
+          output: 'All files     |   85.5 |   75.2 |   90.1 |   85.5 |',
+        },
+      ]);
+
+      const state = createMockState();
+      const result = await executeVerify(deps, state);
+
+      expect(result.coverage).toBe(85.5);
+    });
+
+    it('parses coverage from Jest/Istanbul format', async () => {
+      vi.mocked(runAllVerificationChecks).mockResolvedValue([
+        {
+          name: 'test',
+          command: 'pnpm test',
+          passed: true,
+          durationMs: 100,
+          output: 'Statements   : 92.3%',
+        },
+      ]);
+
+      const state = createMockState();
+      const result = await executeVerify(deps, state);
+
+      expect(result.coverage).toBe(92.3);
     });
 
     it('tracks duration of verification phase', async () => {
