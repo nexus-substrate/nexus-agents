@@ -36,6 +36,22 @@ import type { HookSettingsConfig } from './setup-mcp.js';
 // Create unique temp directory for tests
 const testTmpDir = join(tmpdir(), `nexus-setup-test-${String(Date.now())}`);
 
+// Mock child_process.execSync to avoid slow CLI detection during tests
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:child_process')>();
+  return {
+    ...actual,
+    execSync: (command: string, options?: unknown) => {
+      // Mock claude --version to return quickly
+      if (typeof command === 'string' && command.includes('claude --version')) {
+        throw new Error('ENOENT'); // Simulate claude not found
+      }
+      // Pass through other commands
+      return actual.execSync(command, options as Parameters<typeof actual.execSync>[1]);
+    },
+  };
+});
+
 describe('Setup Command', () => {
   beforeEach(() => {
     vi.clearAllMocks();

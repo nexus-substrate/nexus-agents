@@ -30,6 +30,8 @@ When running with MCP server mode, these tools are available:
 | \`create_expert\` | Dynamic expert agent creation |
 | \`run_workflow\` | Execute workflow templates |
 | \`delegate_to_model\` | Route task to optimal model |
+| \`list_experts\` | List available expert types (discoverability) |
+| \`list_workflows\` | List available workflow templates |
 
 ## Quick Commands
 

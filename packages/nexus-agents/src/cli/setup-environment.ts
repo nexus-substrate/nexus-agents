@@ -30,6 +30,7 @@ function parseClaudeVersion(output: string): string | undefined {
 
 /**
  * Detects if Claude CLI is installed and available.
+ * Uses a 3-second timeout to avoid hanging in slow environments.
  */
 export function detectClaudeCli(): ClaudeCliInfo {
   const configPath = join(homedir(), '.claude');
@@ -39,6 +40,7 @@ export function detectClaudeCli(): ClaudeCliInfo {
     const result = execSync('claude --version', {
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
+      timeout: 3000, // 3 second timeout to avoid hanging
     });
     const version = parseClaudeVersion(result);
 
