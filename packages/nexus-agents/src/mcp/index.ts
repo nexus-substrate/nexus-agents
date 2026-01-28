@@ -115,6 +115,20 @@ export {
   type DelegateDeps,
   type CapabilityProfile,
   type PreferredCapability,
+  // list_experts tool (Issue #436)
+  registerListExpertsTool,
+  ListExpertsInputSchema,
+  type ListExpertsInput,
+  type ListExpertsDeps,
+  type ListExpertsResponse,
+  type ExpertInfo,
+  // list_workflows tool (Issue #436)
+  registerListWorkflowsTool,
+  ListWorkflowsInputSchema,
+  type ListWorkflowsInput,
+  type ListWorkflowsDeps,
+  type ListWorkflowsResponse,
+  type WorkflowInfo,
 } from './tools/index.js';
 
 // STPA Safety Analysis Framework (Issue #328)

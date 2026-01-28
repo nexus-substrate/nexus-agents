@@ -298,3 +298,18 @@ export type {
   BudgetEnforcementConfig,
   EnforceBudgetOptions,
 } from './budget-enforcement.js';
+
+// ============================================================================
+// Workflow Engine Factory (Issue #430)
+// ============================================================================
+
+export {
+  createWorkflowEngineDeps,
+  createWorkflowEngineDepsAsync,
+  createRealWorkflowEngine,
+  createInitializedWorkflowEngine,
+  createProductionWorkflowEngine,
+  initializeBuiltInTemplates,
+  clearTemplateCache,
+} from './workflow-engine-factory.js';
+export type { WorkflowEngineFactoryConfig } from './workflow-engine-factory.js';

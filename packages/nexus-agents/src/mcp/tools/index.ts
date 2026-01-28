@@ -62,6 +62,24 @@ export {
   type PreferredCapability,
 } from './delegate-to-model.js';
 
+export {
+  registerListExpertsTool,
+  ListExpertsInputSchema,
+  type ListExpertsInput,
+  type ListExpertsDeps,
+  type ListExpertsResponse,
+  type ExpertInfo,
+} from './list-experts.js';
+
+export {
+  registerListWorkflowsTool,
+  ListWorkflowsInputSchema,
+  type ListWorkflowsInput,
+  type ListWorkflowsDeps,
+  type ListWorkflowsResponse,
+  type WorkflowInfo,
+} from './list-workflows.js';
+
 /**
  * Options for tool registration.
  */
@@ -138,7 +156,14 @@ export function registerTools(
   void server;
 
   return {
-    tools: ['orchestrate', 'create_expert', 'run_workflow', 'delegate_to_model'],
+    tools: [
+      'orchestrate',
+      'create_expert',
+      'run_workflow',
+      'delegate_to_model',
+      'list_experts',
+      'list_workflows',
+    ],
     logger,
     rateLimiter,
   };
