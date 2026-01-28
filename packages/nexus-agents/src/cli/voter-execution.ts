@@ -86,22 +86,66 @@ export function createSimulatedVotes(
 }
 
 /**
+ * Role-specific vote distributions for simulation.
+ * Each role has weighted probabilities reflecting their typical concerns:
+ * - security: More skeptical, finds potential issues
+ * - architect: Technically focused, generally supportive of good design
+ * - devex: Balanced, considers usability
+ * - ai_ml: Technically focused, evaluates AI aspects
+ * - pm: Business focused, generally supportive of value
+ *
+ * Format: [approve_weight, reject_weight, abstain_weight]
+ */
+const ROLE_VOTE_DISTRIBUTIONS: Record<VoterRole, [number, number, number]> = {
+  security: [40, 45, 15], // More skeptical - security concerns
+  architect: [55, 30, 15], // Generally approving of good design
+  devex: [50, 30, 20], // Balanced - considers usability
+  ai_ml: [55, 30, 15], // Technical focus
+  pm: [55, 25, 20], // Business focus - generally supportive
+};
+
+/**
+ * Selects a decision based on weighted probabilities.
+ */
+function selectWeightedDecision(
+  weights: [number, number, number]
+): 'approve' | 'reject' | 'abstain' {
+  const total = weights[0] + weights[1] + weights[2];
+  const rand = Math.random() * total;
+
+  if (rand < weights[0]) return 'approve';
+  if (rand < weights[0] + weights[1]) return 'reject';
+  return 'abstain';
+}
+
+/**
  * Fallback simulation when LLM is unavailable.
- * Matches the original simulateVote behavior.
+ * Uses role-specific vote distributions to provide more realistic simulation.
+ * Clearly marks output as simulated.
+ *
+ * (Improved per Issue #453 - remove hardcoded 60% approve bias)
  */
 export function simulateVote(role: VoterRole, proposal: string): Vote {
-  const decisions: Array<'approve' | 'reject' | 'abstain'> = [
-    'approve',
-    'approve',
-    'approve',
-    'reject',
-    'abstain',
-  ];
-  const decision = decisions[Math.floor(Math.random() * decisions.length)] ?? 'approve';
+  const weights = ROLE_VOTE_DISTRIBUTIONS[role];
+  const decision = selectWeightedDecision(weights);
+
+  // Confidence varies by decision type and role
+  // Rejections tend to be higher confidence (found specific issue)
+  // Approvals are moderate confidence (no issues found, but limited analysis)
+  // Abstains are low confidence (insufficient information)
+  let baseConfidence: number;
+  if (decision === 'reject') {
+    baseConfidence = 0.6 + Math.random() * 0.3; // 0.6-0.9
+  } else if (decision === 'approve') {
+    baseConfidence = 0.5 + Math.random() * 0.3; // 0.5-0.8
+  } else {
+    baseConfidence = 0.3 + Math.random() * 0.2; // 0.3-0.5
+  }
+
   return {
     decision,
-    reasoning: `[Simulated] ${SIMULATED_VOTE_REASONING[role]} Proposal: "${proposal.slice(0, 50)}..."`,
-    confidence: 0.7 + Math.random() * 0.3,
+    reasoning: `[Simulated - no LLM available] ${SIMULATED_VOTE_REASONING[role]} Proposal: "${proposal.slice(0, 50)}..."`,
+    confidence: baseConfidence,
   };
 }
 
