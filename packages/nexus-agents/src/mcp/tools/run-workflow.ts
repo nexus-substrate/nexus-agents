@@ -229,10 +229,18 @@ export function registerRunWorkflowTool(server: McpServer, deps: RunWorkflowDeps
 }
 
 /**
- * Creates a mock workflow engine for testing and CLI initialization.
- * Returns a stub implementation that lists templates but does not execute workflows.
+ * Creates a mock workflow engine for testing purposes only.
  *
- * @returns IWorkflowEngine mock implementation
+ * WARNING: This is a test stub that returns errors for all operations except
+ * listTemplates(). Do NOT use in production - use createRealWorkflowEngine()
+ * from workflows/workflow-engine-factory.ts instead.
+ *
+ * This mock is useful for:
+ * - Unit testing MCP tools without a real workflow engine
+ * - Integration tests that need a predictable workflow engine
+ *
+ * @returns IWorkflowEngine stub that fails execute/load operations
+ * @see createRealWorkflowEngine for production usage
  */
 export function createMockWorkflowEngine(): IWorkflowEngine {
   return {
