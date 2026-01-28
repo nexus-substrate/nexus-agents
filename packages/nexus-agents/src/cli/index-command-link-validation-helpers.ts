@@ -43,9 +43,12 @@ export async function validateInternalLink(
 
   try {
     await fs.access(resolvedPath);
-    // TODO: If anchor present, validate heading exists
-    if (anchor !== undefined) {
-      // For now, just check file exists
+    // If anchor present, validate heading exists in target file (Issue #450)
+    if (anchor !== undefined && anchor !== '') {
+      const anchorResult = await validateAnchorInFile(anchor, resolvedPath);
+      if (!anchorResult.valid) {
+        return anchorResult;
+      }
     }
     return { valid: true };
   } catch {
@@ -141,6 +144,44 @@ function handleFetchError(err: unknown): LinkValidationHelperResult {
 }
 
 /**
+ * Converts a heading text to GitHub-style anchor ID.
+ * Matches GitHub's algorithm: lowercase, remove special chars, spaces to hyphens.
+ */
+function headingToAnchor(heading: string): string {
+  return heading
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, '')
+    .replace(/\s+/g, '-');
+}
+
+/**
+ * Validates an anchor exists in a target file.
+ * Used by validateInternalLink for links like file.md#section.
+ * (Source: Issue #450)
+ */
+async function validateAnchorInFile(
+  anchor: string,
+  targetFile: string
+): Promise<LinkValidationHelperResult> {
+  try {
+    const content = await fs.readFile(targetFile, 'utf-8');
+    const headingRegex = /^#{1,6}\s+(.+)$/gm;
+    let match: RegExpExecArray | null;
+
+    while ((match = headingRegex.exec(content)) !== null) {
+      const heading = match[1];
+      if (heading !== undefined && headingToAnchor(heading) === anchor) {
+        return { valid: true };
+      }
+    }
+
+    return { valid: false, error: `Anchor '#${anchor}' not found in ${path.basename(targetFile)}` };
+  } catch {
+    return { valid: false, error: `Failed to read ${path.basename(targetFile)} for anchor check` };
+  }
+}
+
+/**
  * Validates an anchor link within a file.
  *
  * Reads the file content and searches for headings that would
@@ -150,30 +191,8 @@ export async function validateAnchorLink(
   anchor: string,
   sourceFile: string
 ): Promise<LinkValidationHelperResult> {
-  try {
-    const content = await fs.readFile(sourceFile, 'utf-8');
-    const headingId = anchor.slice(1); // Remove leading #
-
-    // Check for headings that would create this anchor
-    const headingRegex = /^#{1,6}\s+(.+)$/gm;
-    let match: RegExpExecArray | null;
-    while ((match = headingRegex.exec(content)) !== null) {
-      const heading = match[1];
-      if (heading === undefined) continue;
-      // Convert heading to GitHub-style anchor
-      const expectedAnchor = heading
-        .toLowerCase()
-        .replace(/[^\w\s-]/g, '')
-        .replace(/\s+/g, '-');
-      if (expectedAnchor === headingId) {
-        return { valid: true };
-      }
-    }
-
-    return { valid: false, error: `Anchor not found: ${anchor}` };
-  } catch {
-    return { valid: false, error: 'Failed to read file for anchor check' };
-  }
+  const headingId = anchor.slice(1); // Remove leading #
+  return validateAnchorInFile(headingId, sourceFile);
 }
 
 /**
