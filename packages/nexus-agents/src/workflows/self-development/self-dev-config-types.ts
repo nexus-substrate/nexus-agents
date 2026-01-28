@@ -36,6 +36,14 @@ export interface SelfDevWorkflowConfig {
   readonly autoMerge?: boolean;
   /** Merge method for auto-merge (default: squash) */
   readonly mergeMethod?: 'merge' | 'squash' | 'rebase';
+  /**
+   * Fail immediately when dependencies are unavailable instead of using fallbacks.
+   * When true, phases will throw errors if required dependencies (GitHub client,
+   * TrinityCoordinator, ReflexionProtocol, ConsensusProtocol) are missing.
+   * Default: false (use heuristic fallbacks)
+   * (Source: Issue #455 - Fail-fast mode)
+   */
+  readonly failFast?: boolean;
   /** Phase-specific configurations */
   readonly phases?: PhaseConfigs;
 }

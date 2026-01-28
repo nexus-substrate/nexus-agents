@@ -9,6 +9,7 @@
 import { createLogger } from '../../../core/index.js';
 import type { SelfDevWorkflowDependencies } from '../interfaces.js';
 import type { SelfDevWorkflowState, AnalyzeOutput } from '../types.js';
+import { checkFailFast } from './shared.js';
 
 const logger = createLogger({ component: 'self-dev-phase-analyze' });
 
@@ -196,9 +197,12 @@ function enrichIssue(issue: {
  */
 export async function executeAnalyze(
   deps: SelfDevWorkflowDependencies,
-  _state: SelfDevWorkflowState
+  state: SelfDevWorkflowState
 ): Promise<AnalyzeOutput> {
   const startTime = Date.now();
+
+  // Fail-fast check before falling back (Issue #455)
+  checkFailFast(state.config.failFast, deps.githubClient, 'ANALYZE', 'GitHub client');
 
   if (deps.githubClient === undefined) {
     logger.info('ANALYZE phase: using placeholder (no GitHub client)');

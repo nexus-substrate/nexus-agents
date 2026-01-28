@@ -8,7 +8,7 @@
  */
 
 // Shared utilities
-export { createSimpleAgent } from './shared.js';
+export { createSimpleAgent, checkFailFast, MissingDependencyError } from './shared.js';
 
 // Phase 1: ANALYZE
 export { executeAnalyze } from './analyze.js';

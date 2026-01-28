@@ -17,7 +17,7 @@ import type {
   PlanOutput,
   ImplementationPlan,
 } from '../types.js';
-import { createSimpleAgent } from './shared.js';
+import { createSimpleAgent, checkFailFast } from './shared.js';
 
 const logger = createLogger({ component: 'self-dev-phase-plan' });
 
@@ -353,6 +353,9 @@ export async function executePlan(
   const taskDescription = buildPlanTaskDescription(analyze, research);
   const config = state.config.phases?.plan;
   const maxIterations = config?.maxIterations ?? 3;
+
+  // Fail-fast check before falling back (Issue #455)
+  checkFailFast(state.config.failFast, deps.trinity, 'PLAN', 'TrinityCoordinator');
 
   if (deps.trinity === undefined) {
     logger.info('PLAN phase: TrinityCoordinator not injected, using placeholder');

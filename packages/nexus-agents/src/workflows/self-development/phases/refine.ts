@@ -11,7 +11,7 @@ import { createLogger } from '../../../core/index.js';
 import type { SelfDevWorkflowDependencies } from '../interfaces.js';
 import type { SelfDevWorkflowState, PlanOutput, RefineOutput } from '../types.js';
 import { SELF_DEV_PERSONAS } from '../types.js';
-import { createSimpleAgent } from './shared.js';
+import { createSimpleAgent, checkFailFast } from './shared.js';
 
 const logger = createLogger({ component: 'self-dev-phase-refine' });
 
@@ -302,6 +302,9 @@ export async function executeRefine(
   const startTime = Date.now();
   const phaseConfig = state.config.phases?.refine;
   const maxIterations = phaseConfig?.maxIterations ?? 3;
+
+  // Fail-fast check before falling back (Issue #455)
+  checkFailFast(state.config.failFast, deps.reflexion, 'REFINE', 'ReflexionProtocol');
 
   const reflexionOutput = await executeReflexionProtocol(deps, plan, maxIterations, startTime);
   if (reflexionOutput !== null) {

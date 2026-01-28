@@ -84,6 +84,9 @@ export {
   executeCommit,
 } from './phase-executors.js';
 
+// Fail-fast utilities (Issue #455)
+export { MissingDependencyError, checkFailFast } from './phases/shared.js';
+
 // Metrics
 export {
   calculateMetrics,

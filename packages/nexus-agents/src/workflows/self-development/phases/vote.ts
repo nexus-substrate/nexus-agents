@@ -11,7 +11,7 @@ import { createLogger } from '../../../core/index.js';
 import type { SelfDevWorkflowDependencies } from '../interfaces.js';
 import type { SelfDevWorkflowState, RefineOutput, VoteOutput } from '../types.js';
 import { SELF_DEV_PERSONAS } from '../types.js';
-import { createSimpleAgent } from './shared.js';
+import { createSimpleAgent, checkFailFast } from './shared.js';
 import { findPersonaRole } from './refine.js';
 
 const logger = createLogger({ component: 'self-dev-phase-vote' });
@@ -363,6 +363,9 @@ export async function executeVote(
 ): Promise<VoteOutput> {
   const startTime = Date.now();
   const minVotes = state.config.phases?.vote?.minVotes ?? 4;
+
+  // Fail-fast check before falling back (Issue #455)
+  checkFailFast(state.config.failFast, deps.consensus, 'VOTE', 'ConsensusProtocol');
 
   if (deps.consensus !== undefined) {
     const result = await runConsensusVoting(deps, state, refine, minVotes);
