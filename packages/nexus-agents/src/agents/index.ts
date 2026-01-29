@@ -96,6 +96,21 @@ export {
   type SemanticOptions,
 } from './context-pruner.js';
 
+// Context pruning agent config (Issue #476 - for ExpertFactory and BaseAgent)
+export {
+  DEFAULT_PRUNING_CONFIG,
+  resolvePruningConfig,
+  initializePruningInfrastructure,
+  type ContextPrunerAgentConfig,
+  type ResolvedPruningConfig,
+  type ContextPruningMetrics,
+  type PruningInfrastructure,
+  type PruningInitOptions,
+} from './base-agent-pruning-init.js';
+
+// Schema for context pruning config
+export { ContextPrunerAgentConfigSchema } from './agent-schemas.js';
+
 // Memory backend integration (Issue #348)
 export {
   initializeMemoryInfrastructure,

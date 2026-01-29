@@ -9,6 +9,7 @@ import type { Result, IModelAdapter, AgentCapability } from '../../core/index.js
 import { ok, err, AgentError } from '../../core/index.js';
 import { SimpleAgent } from '../simple-agent.js';
 import type { BaseAgentOptions } from '../base-agent.js';
+import type { ContextPrunerAgentConfig } from '../base-agent-pruning-init.js';
 import {
   type ExpertConfig,
   type BuiltInExpertType,
@@ -30,6 +31,7 @@ export class FactoryError extends AgentError {
 
 /**
  * Options for creating an expert.
+ * (Source: Issue #476 - Wire context pruning to ExpertFactory)
  */
 export interface CreateExpertOptions {
   /** Model adapter to use */
@@ -38,6 +40,12 @@ export interface CreateExpertOptions {
   modelOverrides?: Partial<ModelPreference>;
   /** Additional capabilities to add */
   additionalCapabilities?: AgentCapability[];
+  /**
+   * Context pruning configuration (Issue #476).
+   * Enables automatic memory management for long-running conversations.
+   * Since Issue #479, context pruning is enabled by default.
+   */
+  contextPruning?: ContextPrunerAgentConfig;
 }
 
 /**
@@ -114,6 +122,7 @@ function resolveMaxTokens(
 
 /**
  * Build agent options from validated config.
+ * (Source: Issue #476 - Wire context pruning to ExpertFactory)
  */
 function buildAgentOptions(
   validConfig: ExpertConfig,
@@ -132,6 +141,11 @@ function buildAgentOptions(
 
   if (options?.adapter !== undefined) {
     baseOptions.adapter = options.adapter;
+  }
+
+  // Pass through context pruning configuration (Issue #476)
+  if (options?.contextPruning !== undefined) {
+    baseOptions.contextPruning = options.contextPruning;
   }
 
   return baseOptions;

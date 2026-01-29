@@ -152,6 +152,57 @@ describe('ExpertFactory', () => {
         expect(result.value.metadata).toEqual({ version: '1.0' });
       }
     });
+
+    it('should accept contextPruning configuration (Issue #476)', () => {
+      const config: ExpertConfig = {
+        id: 'pruning-expert',
+        name: 'Pruning Expert',
+        role: 'code_expert',
+        systemPrompt: 'Prompt.',
+        capabilities: ['task_execution'],
+      };
+
+      const options: CreateExpertOptions = {
+        contextPruning: {
+          enabled: true,
+          maxTokens: 50000,
+          triggerThreshold: 0.85,
+        },
+      };
+
+      const result = ExpertFactory.create(config, options);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value).toBeInstanceOf(Expert);
+        expect(result.value.id).toBe('pruning-expert');
+        // Note: context pruning is applied internally to BaseAgent
+        // We verify the expert was created successfully with the config
+      }
+    });
+
+    it('should work with disabled contextPruning', () => {
+      const config: ExpertConfig = {
+        id: 'no-pruning-expert',
+        name: 'No Pruning Expert',
+        role: 'code_expert',
+        systemPrompt: 'Prompt.',
+        capabilities: ['task_execution'],
+      };
+
+      const options: CreateExpertOptions = {
+        contextPruning: {
+          enabled: false,
+        },
+      };
+
+      const result = ExpertFactory.create(config, options);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value).toBeInstanceOf(Expert);
+      }
+    });
   });
 
   describe('createBuiltIn', () => {
