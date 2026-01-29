@@ -93,6 +93,8 @@ interface ToolRegistrationContext {
   executionMode?: import('./mcp/middleware/index.js').ExecutionMode;
   /** Allowed paths (Issue #477) */
   allowedPaths?: readonly string[];
+  /** Security config for timeout settings (Issue #482) */
+  securityConfig?: import('./config/index.js').SecurityConfig;
 }
 
 /** Register expert tools with shared registry. */
@@ -152,6 +154,7 @@ function registerCoreTools(ctx: ToolRegistrationContext): void {
     techLead,
     logger: ctx.logger,
     rateLimiter: ctx.rateLimiterFactory.getForTool('orchestrate'),
+    security: ctx.securityConfig,
   });
 }
 
@@ -161,8 +164,15 @@ function createToolContext(
   toolInfra: { logger: ILogger },
   rateLimiterFactory: ReturnType<typeof createToolRateLimiterFactory>
 ): ToolRegistrationContext {
-  const { server, builtInTemplates, modelAdapter, policyFirewall, executionMode, allowedPaths } =
-    options;
+  const {
+    server,
+    builtInTemplates,
+    modelAdapter,
+    policyFirewall,
+    executionMode,
+    allowedPaths,
+    securityConfig,
+  } = options;
   return {
     server,
     logger: toolInfra.logger,
@@ -172,6 +182,7 @@ function createToolContext(
     ...(policyFirewall !== undefined && { policyFirewall }),
     ...(executionMode !== undefined && { executionMode }),
     ...(allowedPaths !== undefined && { allowedPaths }),
+    ...(securityConfig !== undefined && { securityConfig }),
   };
 }
 
