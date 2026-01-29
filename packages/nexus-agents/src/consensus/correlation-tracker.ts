@@ -46,17 +46,24 @@ const logger = createLogger({ component: 'correlation-tracker' });
 /**
  * Correlation tracker implementation.
  * Records voting history and computes pairwise agent correlations.
+ *
+ * Memory bounded: uses FIFO eviction when maxObservationsPerAgent or maxProposals limits reached.
  */
 export class CorrelationTracker implements ICorrelationTracker {
   private readonly config: HigherOrderVotingConfig;
   private readonly observations: Map<string, VotingObservation[]> = new Map();
   private readonly pairwiseHistory: Map<AgentPairKey, MutablePairwiseHistory> = new Map();
   private readonly agentProposals: Map<string, Map<string, VotingObservation>> = new Map();
+  /** Ordered list of proposal IDs for FIFO eviction */
+  private readonly proposalOrder: string[] = [];
   private cachedSubsets: IndependentSubset[] | null = null;
 
   constructor(config?: Partial<HigherOrderVotingConfig>) {
     this.config = { ...DEFAULT_HIGHER_ORDER_CONFIG, ...config };
-    logger.info('CorrelationTracker initialized', { config: this.config });
+    logger.info('CorrelationTracker initialized', {
+      maxObservationsPerAgent: this.config.maxObservationsPerAgent,
+      maxProposals: this.config.maxProposals,
+    });
   }
 
   recordVote(agentId: string, vote: Vote, outcome: 'approved' | 'rejected'): void {
@@ -78,6 +85,9 @@ export class CorrelationTracker implements ICorrelationTracker {
     votes: ReadonlyMap<string, Vote>,
     outcome: 'approved' | 'rejected'
   ): void {
+    // FIFO eviction when proposal limit reached (Issue #521)
+    this.evictOldProposalsIfNeeded();
+
     const proposalObservations: VotingObservation[] = [];
 
     for (const [agentId, vote] of votes) {
@@ -94,6 +104,9 @@ export class CorrelationTracker implements ICorrelationTracker {
       proposalObservations.push(observation);
     }
 
+    // Track proposal order for FIFO eviction
+    this.proposalOrder.push(proposalId);
+
     this.updatePairwiseCorrelations(proposalId, proposalObservations);
     this.invalidateCache();
 
@@ -101,6 +114,7 @@ export class CorrelationTracker implements ICorrelationTracker {
       proposalId,
       agentCount: votes.size,
       outcome,
+      totalProposals: this.proposalOrder.length,
     });
   }
 
@@ -215,6 +229,7 @@ export class CorrelationTracker implements ICorrelationTracker {
     this.observations.clear();
     this.pairwiseHistory.clear();
     this.agentProposals.clear();
+    this.proposalOrder.length = 0;
     this.cachedSubsets = null;
     logger.info('CorrelationTracker cleared');
   }
@@ -223,12 +238,53 @@ export class CorrelationTracker implements ICorrelationTracker {
   // Private helpers
   // ============================================================================
 
+  /**
+   * Evict oldest proposals when maxProposals limit is reached.
+   * Also cleans up agentProposals entries for evicted proposals.
+   */
+  private evictOldProposalsIfNeeded(): void {
+    while (this.proposalOrder.length >= this.config.maxProposals) {
+      const evictedProposalId = this.proposalOrder.shift();
+      if (evictedProposalId === undefined) break;
+
+      // Clean up agentProposals for the evicted proposal
+      for (const [agentId, proposalMap] of this.agentProposals) {
+        if (proposalMap.has(evictedProposalId)) {
+          proposalMap.delete(evictedProposalId);
+          // Clean up empty agent entries
+          if (proposalMap.size === 0) {
+            this.agentProposals.delete(agentId);
+          }
+        }
+      }
+
+      logger.debug('Evicted oldest proposal', {
+        evictedProposalId,
+        reason: 'maxProposals',
+        remainingProposals: this.proposalOrder.length,
+      });
+    }
+  }
+
   private storeObservation(agentId: string, observation: VotingObservation): void {
     let agentObs = this.observations.get(agentId);
     if (agentObs === undefined) {
       agentObs = [];
       this.observations.set(agentId, agentObs);
     }
+
+    // FIFO eviction when per-agent limit reached (Issue #521)
+    while (agentObs.length >= this.config.maxObservationsPerAgent) {
+      const evicted = agentObs.shift();
+      if (evicted !== undefined) {
+        logger.debug('Evicted oldest observation for agent', {
+          agentId,
+          evictedProposalId: evicted.proposalId,
+          reason: 'maxObservationsPerAgent',
+        });
+      }
+    }
+
     agentObs.push(observation);
   }
 

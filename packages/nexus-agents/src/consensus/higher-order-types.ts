@@ -156,6 +156,10 @@ export interface HigherOrderVotingConfig {
   readonly fallbackToSimpleVoting: boolean;
   /** Decay factor for old observations (0-1, default: 0.95) */
   readonly observationDecayFactor: number;
+  /** Maximum observations to store per agent before FIFO eviction (default: 1000) */
+  readonly maxObservationsPerAgent: number;
+  /** Maximum total proposals to track before evicting oldest (default: 5000) */
+  readonly maxProposals: number;
 }
 
 export const HigherOrderVotingConfigSchema = z.object({
@@ -165,6 +169,8 @@ export const HigherOrderVotingConfigSchema = z.object({
   independenceThreshold: z.number().min(0).max(1).default(0.2),
   fallbackToSimpleVoting: z.boolean().default(true),
   observationDecayFactor: z.number().min(0).max(1).default(0.95),
+  maxObservationsPerAgent: z.number().int().positive().default(1000),
+  maxProposals: z.number().int().positive().default(5000),
 });
 
 export const DEFAULT_HIGHER_ORDER_CONFIG: HigherOrderVotingConfig = {
@@ -174,6 +180,8 @@ export const DEFAULT_HIGHER_ORDER_CONFIG: HigherOrderVotingConfig = {
   independenceThreshold: 0.2,
   fallbackToSimpleVoting: true,
   observationDecayFactor: 0.95,
+  maxObservationsPerAgent: 1000,
+  maxProposals: 5000,
 };
 
 // ============================================================================
