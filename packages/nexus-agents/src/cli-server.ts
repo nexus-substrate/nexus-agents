@@ -36,6 +36,7 @@ import {
 } from './cli-server-lifecycle.js';
 import { startOrchestratorMode, type OrchestratorModeOptions } from './cli-orchestrator.js';
 import { loadConfig, type ConfigLoadResult, type AppConfig } from './config/index.js';
+import { initializeExperts } from './cli-server-experts.js';
 
 // Re-export for backward compatibility
 export { type OrchestratorModeOptions } from './cli-orchestrator.js';
@@ -413,6 +414,16 @@ export async function startServer(
 
   // Load and validate configuration (Issue #472)
   const configResult = loadAndLogConfig(logger);
+
+  // Initialize experts from configuration (Issue #486)
+  const expertResult = initializeExperts({
+    expertConfig: configResult.config.experts,
+    logger,
+  });
+  logger.debug('Expert system initialized', {
+    builtIn: expertResult.builtInCount,
+    custom: expertResult.customCount,
+  });
 
   const { server, logger: serverLogger } = createAndValidateMcpServer(logger);
   const observer = initializeSwarmObserver(serverLogger);
