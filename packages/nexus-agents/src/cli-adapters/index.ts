@@ -206,6 +206,25 @@ export type {
   RoutingMemoryStats,
 } from './routing-memory-types.js';
 
+// PreferenceRouter - Preference-Trained Routing (Issue #148, arXiv:2406.18665)
+export {
+  PreferenceRouter,
+  createPreferenceRouter,
+  InMemoryPreferenceStore,
+  QueryFeatureExtractor,
+  DEFAULT_PREFERENCE_ROUTER_CONFIG,
+} from './preference-router.js';
+export type {
+  PreferenceDataPoint,
+  QueryFeatures,
+  PreferencePrediction,
+  PreferenceRoutingDecision,
+  PreferenceRouterConfig,
+  PreferenceModelStats,
+  IPreferenceDataStore,
+} from './preference-router.js';
+export { PreferenceRouterConfigSchema } from './preference-router-types.js';
+
 // ZeroRouter - Universal Difficulty Space Routing (Issue #338)
 export {
   ZeroRouter,

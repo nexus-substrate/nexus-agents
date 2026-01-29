@@ -21,8 +21,8 @@ import type { RoutingMemoryConfig, RoutingMemoryStats } from '../context/routing
 export const CompositeRouterConfigSchema = z.object({
   /** Enable budget filtering stage (default: true) */
   enableBudgetFilter: z.boolean().default(true),
-  /** Enable ZeroRouter difficulty-based routing stage (default: false) */
-  enableZeroRouter: z.boolean().default(false),
+  /** Enable ZeroRouter difficulty-based routing stage (default: true) (Issue #473) */
+  enableZeroRouter: z.boolean().default(true),
   /** Enable preference-trained routing stage (default: false) */
   enablePreferenceRouting: z.boolean().default(false),
   /** Enable TOPSIS ranking stage (default: true) */
@@ -73,7 +73,7 @@ export interface CompositeRouterConfigWithPreference extends CompositeRouterConf
  */
 export const DEFAULT_COMPOSITE_CONFIG: CompositeRouterConfig = {
   enableBudgetFilter: true,
-  enableZeroRouter: false,
+  enableZeroRouter: true, // Issue #473 - Enable by default (699 lines of tests, fully implemented)
   enablePreferenceRouting: false,
   enableTopsisRanking: true,
   enableLinUCBSelection: true,

@@ -92,4 +92,18 @@ export {
   type CliCircuitBreakerConfig,
   type CircuitProtectedResult,
   type CliCircuitHealthStatus,
+  // PreferenceRouter - Preference-Trained Routing (Issue #148, arXiv:2406.18665)
+  PreferenceRouter,
+  createPreferenceRouter,
+  InMemoryPreferenceStore,
+  QueryFeatureExtractor,
+  DEFAULT_PREFERENCE_ROUTER_CONFIG,
+  PreferenceRouterConfigSchema,
+  type PreferenceDataPoint,
+  type QueryFeatures,
+  type PreferencePrediction,
+  type PreferenceRoutingDecision,
+  type PreferenceRouterConfig,
+  type PreferenceModelStats,
+  type IPreferenceDataStore,
 } from '../cli-adapters/index.js';

@@ -297,6 +297,14 @@ export class ClaudeAdapter extends BaseAdapter {
     if (request.tools !== undefined && request.tools.length > 0) {
       params.tools = request.tools.map(mapTool);
     }
+
+    // Issue #470: Log warning when responseFormat is requested but not supported
+    if (request.responseFormat !== undefined && request.responseFormat.type !== 'text') {
+      this.logger.warn('responseFormat is not supported by Claude adapter', {
+        requestedFormat: request.responseFormat.type,
+        suggestion: 'Use tool use or prompt engineering for structured output',
+      });
+    }
   }
 
   /**

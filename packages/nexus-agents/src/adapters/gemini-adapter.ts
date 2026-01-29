@@ -280,6 +280,36 @@ export class GeminiAdapter extends BaseAdapter {
   }
 
   /**
+   * Builds generation config from request parameters.
+   */
+  private buildGenerationConfig(request: CompletionRequest): GeminiRequestConfig {
+    const config: GeminiRequestConfig = {};
+    config.maxOutputTokens = request.maxTokens ?? DEFAULT_MAX_TOKENS;
+
+    const systemPrompt = this.extractSystemPrompt(request);
+    if (systemPrompt !== undefined) config.systemInstruction = systemPrompt;
+    if (request.temperature !== undefined) config.temperature = request.temperature;
+    if (request.stop !== undefined && request.stop.length > 0) config.stopSequences = request.stop;
+    if (request.tools !== undefined && request.tools.length > 0) {
+      config.tools = [{ functionDeclarations: request.tools.map(mapToolToFunctionDeclaration) }];
+    }
+
+    return config;
+  }
+
+  /**
+   * Logs warning when responseFormat is used with Gemini (not supported).
+   */
+  private warnIfUnsupportedFormat(request: CompletionRequest): void {
+    if (request.responseFormat !== undefined && request.responseFormat.type !== 'text') {
+      this.logger.warn('responseFormat is not supported by Gemini adapter', {
+        requestedFormat: request.responseFormat.type,
+        suggestion: 'Use tool use or prompt engineering for structured output',
+      });
+    }
+  }
+
+  /**
    * Builds Google AI API request parameters from our CompletionRequest.
    */
   private buildRequestParams(request: CompletionRequest): GeminiRequestParams {
@@ -288,37 +318,11 @@ export class GeminiAdapter extends BaseAdapter {
       .filter((c): c is Content => c !== null);
 
     const params: GeminiRequestParams = { model: this.resolvedModelId, contents };
-    const config: GeminiRequestConfig = {};
+    const config = this.buildGenerationConfig(request);
 
-    // Add max tokens (default if not specified)
-    config.maxOutputTokens = request.maxTokens ?? DEFAULT_MAX_TOKENS;
+    this.warnIfUnsupportedFormat(request);
 
-    // Add system instruction
-    const systemPrompt = this.extractSystemPrompt(request);
-    if (systemPrompt !== undefined) {
-      config.systemInstruction = systemPrompt;
-    }
-
-    // Add temperature
-    if (request.temperature !== undefined) {
-      config.temperature = request.temperature;
-    }
-
-    // Add stop sequences
-    if (request.stop !== undefined && request.stop.length > 0) {
-      config.stopSequences = request.stop;
-    }
-
-    // Add tools
-    if (request.tools !== undefined && request.tools.length > 0) {
-      config.tools = [{ functionDeclarations: request.tools.map(mapToolToFunctionDeclaration) }];
-    }
-
-    // Only add config if we have properties
-    if (Object.keys(config).length > 0) {
-      params.config = config;
-    }
-
+    if (Object.keys(config).length > 0) params.config = config;
     return params;
   }
 

@@ -35,6 +35,7 @@ import {
   type ServerEventContext,
 } from './cli-server-lifecycle.js';
 import { startOrchestratorMode, type OrchestratorModeOptions } from './cli-orchestrator.js';
+import { loadConfig, type ConfigLoadResult, type AppConfig } from './config/index.js';
 
 // Re-export for backward compatibility
 export { type OrchestratorModeOptions } from './cli-orchestrator.js';
@@ -136,40 +137,73 @@ export function validateModeOrExit(logger: ILogger, mode: ServerMode): void {
 }
 
 /**
+ * Loads and validates configuration from nexus-agents.yaml.
+ * (Source: Issue #472 - Wire AppConfigSchema to runtime)
+ */
+function loadAndLogConfig(logger: ILogger): ConfigLoadResult {
+  const result = loadConfig({ logger });
+
+  if (!result.ok) {
+    logger.error('Failed to load configuration', new Error(result.error.message));
+    process.exit(EXIT_CODES.SERVER_START_FAILED);
+  }
+
+  const configResult = result.value;
+  logger.info('Configuration loaded', {
+    configPath: configResult.configPath ?? '(defaults)',
+    usingDefaults: configResult.usingDefaults,
+    warningCount: configResult.warnings.length,
+    hasExperts: configResult.config.experts !== undefined,
+    hasWorkflows: configResult.config.workflows !== undefined,
+    hasSecurity: configResult.config.security !== undefined,
+  });
+
+  for (const warning of configResult.warnings) {
+    logger.warn(warning);
+  }
+
+  return configResult;
+}
+
+/** Gets policy values from config. */
+function getPolicyValues(config?: AppConfig): { mode: string; defaultExec: string } {
+  const policy = config?.security?.policy;
+  return { mode: policy?.policyMode ?? 'enforce', defaultExec: policy?.defaultMode ?? 'read-only' };
+}
+
+/** Gets rate limit values from config. */
+function getRateLimitValues(config?: AppConfig): { enabled: boolean; rpm: number } {
+  const rl = config?.security?.rateLimit;
+  return { enabled: rl?.enabled ?? true, rpm: rl?.requestsPerMinute ?? 60 };
+}
+
+/**
  * Logs security configuration at startup.
  * (Source: Issue #185 Phase 1 - Startup security logging)
  */
-export function logSecurityConfig(logger: ILogger): void {
-  // Get policy firewall configuration
+export function logSecurityConfig(logger: ILogger, config?: AppConfig): void {
   const policyFirewall = createDefaultPolicyFirewall();
-  const policyMode = policyFirewall.getMode();
-  const ruleCount = policyFirewall.getRules().length;
-
-  // Check authentication configuration (from env)
   const authEnabled = process.env['NEXUS_AUTH_ENABLED'] === 'true';
-  const authMethod = process.env['NEXUS_AUTH_METHOD'] ?? 'none';
+  const policyVals = getPolicyValues(config);
+  const rateLimitVals = getRateLimitValues(config);
 
   logger.info('Security configuration', {
-    policyMode,
-    policyRuleCount: ruleCount,
-    defaultExecutionMode: 'read-only',
+    policyMode: policyVals.mode,
+    defaultExecutionMode: policyVals.defaultExec,
+    policyRuleCount: policyFirewall.getRules().length,
     authEnabled,
-    authMethod,
-    deepLogSanitization: true,
-    requestIdTracking: true,
+    authMethod: process.env['NEXUS_AUTH_METHOD'] ?? 'none',
+    rateLimitEnabled: rateLimitVals.enabled,
+    rateLimitRequestsPerMinute: rateLimitVals.rpm,
+    allowedPaths: config?.security?.allowedPaths ?? ['./'],
   });
 
-  // Log specific security features
   if (!authEnabled) {
     logger.warn('Authentication is disabled. Set NEXUS_AUTH_ENABLED=true to enable.');
   }
 
-  // Log policy rules in verbose mode
   logger.debug('Policy firewall rules', {
-    rules: policyFirewall.getRules().map((r) => ({
-      name: r.name,
-      description: r.description,
-    })),
+    rules: policyFirewall.getRules().map((r) => ({ name: r.name, description: r.description })),
   });
 }
 
@@ -310,12 +344,15 @@ export async function startServer(
   const detectionResult = detectMode({ explicitMode: modeWasExplicit ? mode : undefined });
   logStartupInfo(logger, detectionResult, verbose);
 
+  // Load and validate configuration (Issue #472)
+  const configResult = loadAndLogConfig(logger);
+
   const { server, logger: serverLogger } = createAndValidateMcpServer(logger);
   const observer = initializeSwarmObserver(serverLogger);
   const eventBusBridge = initializeEventBus(observer, serverLogger);
 
   await initializeAndLogSandbox(serverLogger);
-  logSecurityConfig(serverLogger);
+  logSecurityConfig(serverLogger, configResult.config);
 
   serverLogger.info('Loading built-in workflow templates');
   const builtInTemplates = await initializeBuiltInTemplates();

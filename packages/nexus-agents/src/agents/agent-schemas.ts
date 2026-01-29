@@ -29,13 +29,30 @@ export const TaskSchema = z.object({
   }),
   constraints: z
     .object({
-      maxDuration: z.number().positive().optional(),
-      maxTokens: z.number().positive().optional(),
-      outputFormat: z.enum(['text', 'json', 'markdown']).optional(),
-      allowedTools: z.array(z.string()).optional(),
+      /** Maximum execution time in ms. ENFORCED via timeout mechanism. */
+      maxDuration: z
+        .number()
+        .positive()
+        .optional()
+        .describe('ENFORCED: Task times out after this duration'),
+      /** Maximum tokens to use. INFORMATIONAL only. */
+      maxTokens: z
+        .number()
+        .positive()
+        .optional()
+        .describe('INFORMATIONAL: Agents can see but not enforced'),
+      /** @deprecated Not enforced. Will be removed in v3.0. */
+      outputFormat: z
+        .enum(['text', 'json', 'markdown'])
+        .optional()
+        .describe('DEPRECATED: Not enforced'),
+      /** @deprecated Not enforced. Will be removed in v3.0. */
+      allowedTools: z.array(z.string()).optional().describe('DEPRECATED: Not enforced'),
     })
-    .optional(),
-  priority: z.number().optional(),
+    .optional()
+    .describe('Task constraints. See TaskConstraints type for enforcement status.'),
+  /** Priority. INFORMATIONAL - Logged but not used for scheduling. */
+  priority: z.number().optional().describe('INFORMATIONAL: Logged but not used for scheduling'),
 });
 
 /**

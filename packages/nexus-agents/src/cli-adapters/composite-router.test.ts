@@ -497,9 +497,10 @@ describe('CompositeRouter ZeroRouter integration (Issue #347)', () => {
     adapters = createTestAdapters();
   });
 
-  describe('ZeroRouter disabled by default', () => {
-    it('should skip ZeroRouter when not enabled', async () => {
-      const router = new CompositeRouter(adapters);
+  describe('ZeroRouter explicitly disabled', () => {
+    // Note: ZeroRouter is enabled by default since Issue #473
+    it('should skip ZeroRouter when explicitly disabled', async () => {
+      const router = new CompositeRouter(adapters, { enableZeroRouter: false });
       const task: CliTask = { content: 'Test task' };
       const result = await router.route(task);
 
@@ -511,8 +512,8 @@ describe('CompositeRouter ZeroRouter integration (Issue #347)', () => {
       }
     });
 
-    it('should have undefined ZeroRouter when not enabled', () => {
-      const router = new CompositeRouter(adapters);
+    it('should have undefined ZeroRouter when explicitly disabled', () => {
+      const router = new CompositeRouter(adapters, { enableZeroRouter: false });
       expect(router.getZeroRouter()).toBeUndefined();
     });
   });

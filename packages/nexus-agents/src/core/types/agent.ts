@@ -65,15 +65,33 @@ export interface TaskHistoryItem {
 
 /**
  * Constraints on task execution.
+ *
+ * @remarks
+ * Enforcement status of each field (Issue #469):
+ * - `maxDuration`: ENFORCED - Task times out after this duration
+ * - `maxTokens`: INFORMATIONAL - Included in task context for agent awareness, not enforced
+ * - `outputFormat`: DEPRECATED - Not enforced, will be removed in v3.0
+ * - `allowedTools`: DEPRECATED - Not enforced, will be removed in v3.0
  */
 export interface TaskConstraints {
-  /** Maximum execution time in ms */
+  /** Maximum execution time in ms. ENFORCED via timeout mechanism. */
   maxDuration?: number;
-  /** Maximum tokens to use */
+  /**
+   * Maximum tokens to use. INFORMATIONAL only - agents can see this but it's not enforced.
+   * Use model adapter budgets for actual token enforcement.
+   */
   maxTokens?: number;
-  /** Required output format */
+  /**
+   * Required output format.
+   * @deprecated Not enforced. Will be removed in v3.0.
+   * Use structured output patterns at the prompt level instead.
+   */
   outputFormat?: 'text' | 'json' | 'markdown';
-  /** Allowed tools */
+  /**
+   * Allowed tools for this task.
+   * @deprecated Not enforced. Will be removed in v3.0.
+   * Use policy firewall rules for tool restrictions instead.
+   */
   allowedTools?: string[];
 }
 
@@ -87,9 +105,12 @@ export interface Task {
   description: string;
   /** Task context */
   context: TaskContext;
-  /** Optional constraints */
+  /** Optional constraints. See {@link TaskConstraints} for enforcement status. */
   constraints?: TaskConstraints;
-  /** Priority (higher = more urgent) */
+  /**
+   * Priority (higher = more urgent).
+   * INFORMATIONAL - Logged but not used for scheduling or execution order.
+   */
   priority?: number;
 }
 

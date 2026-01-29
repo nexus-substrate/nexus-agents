@@ -79,6 +79,16 @@ export {
 // ConfigManager (Issue #360)
 export { ConfigManager, getConfigManager } from './config-manager.js';
 
+// Config Loader (Issue #472 - Wire AppConfigSchema to runtime)
+export {
+  loadConfig,
+  getConfig,
+  clearConfigCache,
+  reloadConfig,
+  ConfigLoadError,
+} from './config-loader.js';
+export type { ConfigLoadResult, ConfigLoadOptions, ConfigLoadErrorCode } from './config-loader.js';
+
 export type {
   ConfigSource,
   ConfigValueMeta,

@@ -53,6 +53,15 @@ export interface ToolDefinition {
 
 /**
  * Response format specification.
+ *
+ * @remarks
+ * Adapter support (Issue #470):
+ * - **OpenAI**: Full support for `json_object` and `json_schema`
+ * - **Ollama**: Supports `json_object` and `json_schema` (passes schema directly)
+ * - **Claude**: NOT SUPPORTED - Anthropic API lacks native JSON mode
+ * - **Gemini**: NOT SUPPORTED - Google API lacks JSON format constraints
+ *
+ * For Claude/Gemini, use tool use or prompt engineering for structured output.
  */
 export type ResponseFormat =
   | { type: 'text' }
@@ -73,7 +82,13 @@ export interface CompletionRequest {
   maxTokens?: number;
   /** Tools available for the model */
   tools?: ToolDefinition[];
-  /** Expected response format */
+  /**
+   * Expected response format.
+   *
+   * @remarks
+   * Only supported by OpenAI and Ollama adapters. Claude and Gemini
+   * adapters will ignore this field. See {@link ResponseFormat} for details.
+   */
   responseFormat?: ResponseFormat;
   /** Stop sequences */
   stop?: string[];
