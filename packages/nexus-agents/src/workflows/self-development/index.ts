@@ -140,3 +140,11 @@ export {
   type INotificationHandler,
   type WebhookConfig,
 } from './notifications.js';
+
+// Dependencies Factory (Issue #494)
+export {
+  createSelfDevDeps,
+  hasRealExecution,
+  type SelfDevDepsConfig,
+  type SelfDevDepsResult,
+} from './deps-factory.js';
