@@ -181,3 +181,37 @@ export type {
   EvolutionResult,
   EntityReference,
 } from './agentic-memory.js';
+
+// MobiMem Memory System (Issue #149, arXiv:2512.15784)
+export { MobiMem, createMobiMem, DEFAULT_MOBIMEM_CONFIG } from './mobimem.js';
+
+export type {
+  IMobiMem,
+  IProfileMemory,
+  IExperienceMemory,
+  IActionCache,
+  MobiMemConfig,
+  MobiMemStats,
+  ProfileEntry,
+  ExperienceEntry,
+  ActionCacheEntry,
+  ActionStep,
+  ExecutionOutcome,
+} from './mobimem.js';
+
+// Routing Memory Bridge (Issue #461, #148, #149)
+export {
+  RoutingMemory,
+  createRoutingMemory,
+  DEFAULT_ROUTING_MEMORY_CONFIG,
+} from './routing-memory.js';
+
+export type {
+  IRoutingMemory,
+  RoutingMemoryConfig,
+  RoutingMemoryStats,
+  ModelPerformance,
+  ModelPreference,
+  ExperiencePattern,
+  CachedActionResult,
+} from './routing-memory.js';

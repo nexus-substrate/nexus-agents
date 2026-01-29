@@ -13,6 +13,7 @@ import type { TaskProfile } from './task-analyzer.js';
 import type { PreferenceRouterConfig } from './preference-router-types.js';
 import type { ZeroRouterConfig, DifficultyEstimate, ModelTier } from './zero-router-types.js';
 import type { LatencyTrackerConfig, LatencyTrackerStats } from './latency-tracker-types.js';
+import type { RoutingMemoryConfig, RoutingMemoryStats } from '../context/routing-memory.js';
 
 /**
  * Configuration schema for CompositeRouter.
@@ -30,6 +31,8 @@ export const CompositeRouterConfigSchema = z.object({
   enableLinUCBSelection: z.boolean().default(true),
   /** Enable latency tracking for routing decisions (default: true) (Issue #361) */
   enableLatencyTracking: z.boolean().default(true),
+  /** Enable routing memory for learned routing (default: false) (Issue #463, #461) */
+  enableRoutingMemory: z.boolean().default(false),
   /** Weight for latency score in final routing (0-1, default: 0.2) */
   latencyScoreWeight: z.number().min(0).max(1).default(0.2),
   /** Budget constraints (optional) */
@@ -61,6 +64,8 @@ export interface CompositeRouterConfigWithPreference extends CompositeRouterConf
   zeroRouterConfig?: Partial<ZeroRouterConfig>;
   /** Latency tracker configuration (optional, uses defaults if not provided) (Issue #361) */
   latencyTrackerConfig?: Partial<LatencyTrackerConfig>;
+  /** Routing memory configuration (optional, uses defaults if not provided) (Issue #463) */
+  routingMemoryConfig?: Partial<RoutingMemoryConfig>;
 }
 
 /**
@@ -73,6 +78,7 @@ export const DEFAULT_COMPOSITE_CONFIG: CompositeRouterConfig = {
   enableTopsisRanking: true,
   enableLinUCBSelection: true,
   enableLatencyTracking: true,
+  enableRoutingMemory: false,
   latencyScoreWeight: 0.2,
   linucbAlpha: 1.0,
   maxDecisionTimeMs: 50,
@@ -157,6 +163,8 @@ export interface CompositeRouterStats {
   readonly banditStats: ReadonlyArray<{ name: string; pullCount: number; avgReward: number }>;
   /** Latency tracking statistics (Issue #361) */
   readonly latencyStats?: LatencyTrackerStats | undefined;
+  /** Routing memory statistics (Issue #463) */
+  readonly routingMemoryStats?: RoutingMemoryStats | undefined;
 }
 
 /**

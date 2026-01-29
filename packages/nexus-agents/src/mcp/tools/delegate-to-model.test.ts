@@ -386,6 +386,7 @@ describe('delegate_to_model Tool', () => {
       hasMinimumPreferenceData: ReturnType<typeof vi.fn>;
       getZeroRouter: ReturnType<typeof vi.fn>;
       getLatencyTracker: ReturnType<typeof vi.fn>;
+      getRoutingMemory: ReturnType<typeof vi.fn>;
     } {
       return {
         route: vi.fn().mockResolvedValue(
@@ -430,6 +431,7 @@ describe('delegate_to_model Tool', () => {
         hasMinimumPreferenceData: vi.fn().mockReturnValue(false),
         getZeroRouter: vi.fn().mockReturnValue(undefined),
         getLatencyTracker: vi.fn().mockReturnValue(undefined),
+        getRoutingMemory: vi.fn().mockReturnValue(undefined),
       };
     }
 

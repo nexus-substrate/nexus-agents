@@ -17,6 +17,12 @@ import type { ZeroRouterConfig } from './zero-router-types.js';
 import { LatencyTracker, type ILatencyTracker } from './latency-tracker.js';
 import type { LatencyTrackerConfig } from './latency-tracker-types.js';
 import {
+  RoutingMemory,
+  type IRoutingMemory,
+  type RoutingMemoryConfig,
+  type ModelPerformance,
+} from '../context/routing-memory.js';
+import {
   CompositeRouterConfigSchema,
   CompositeRoutingError,
   type CompositeRouterConfig,
@@ -67,6 +73,7 @@ export interface ICompositeRouter {
   hasMinimumPreferenceData(): boolean;
   getZeroRouter(): IZeroRouter | undefined;
   getLatencyTracker(): ILatencyTracker | undefined;
+  getRoutingMemory(): IRoutingMemory | undefined;
 }
 
 /** CompositeRouter implementation. */
@@ -80,6 +87,7 @@ export class CompositeRouter implements ICompositeRouter {
   private topsisRouter?: TopsisRouter;
   private linucbBandit?: LinUCBBandit;
   private latencyTracker?: LatencyTracker;
+  private routingMemory?: RoutingMemory;
   private readonly cliNames: CliName[];
 
   // Statistics tracking
@@ -96,8 +104,13 @@ export class CompositeRouter implements ICompositeRouter {
     config?: Partial<CompositeRouterConfigWithPreference>,
     logger?: ILogger
   ) {
-    const { preferenceRouterConfig, zeroRouterConfig, latencyTrackerConfig, ...baseConfig } =
-      config ?? {};
+    const {
+      preferenceRouterConfig,
+      zeroRouterConfig,
+      latencyTrackerConfig,
+      routingMemoryConfig,
+      ...baseConfig
+    } = config ?? {};
     this.config = CompositeRouterConfigSchema.parse(baseConfig);
     this.logger = logger ?? createLogger({ component: 'CompositeRouter' });
     this.adapters = adapters;
@@ -106,7 +119,8 @@ export class CompositeRouter implements ICompositeRouter {
       adapters,
       preferenceRouterConfig,
       zeroRouterConfig,
-      latencyTrackerConfig
+      latencyTrackerConfig,
+      routingMemoryConfig
     );
   }
 
@@ -114,12 +128,19 @@ export class CompositeRouter implements ICompositeRouter {
     adapters: Map<CliName, ICliAdapter>,
     preferenceConfig?: Partial<PreferenceRouterConfig>,
     zeroConfig?: Partial<ZeroRouterConfig>,
-    latencyConfig?: Partial<LatencyTrackerConfig>
+    latencyConfig?: Partial<LatencyTrackerConfig>,
+    routingMemoryConfig?: Partial<RoutingMemoryConfig>
   ): void {
     if (this.config.enableBudgetFilter && adapters.size > 0) {
       this.budgetRouter = new BudgetRouter(adapters);
     }
     if (this.config.enableZeroRouter) this.zeroRouter = new ZeroRouter(zeroConfig, this.logger);
+    if (this.config.enableRoutingMemory) {
+      this.routingMemory = new RoutingMemory(routingMemoryConfig);
+      this.logger.info('RoutingMemory enabled for learned routing', {
+        minObservations: this.routingMemory.getStats().totalPreferences,
+      });
+    }
     if (this.config.enablePreferenceRouting)
       this.preferenceRouter = new PreferenceRouter(preferenceConfig);
     if (this.config.enableTopsisRanking) this.topsisRouter = new TopsisRouter();
@@ -189,12 +210,48 @@ export class CompositeRouter implements ICompositeRouter {
       this.latencyTracker.record(decision.cliName, durationMs, success);
     }
 
+    // Record performance in routing memory for learned routing (Issue #463)
+    if (this.routingMemory !== undefined) {
+      const taskType = this.inferTaskType(task);
+      const performance: ModelPerformance = {
+        avgQuality: success ? decision.confidence : 0.3,
+        successRate: success ? 1.0 : 0.0,
+        avgLatencyMs: durationMs,
+        avgTokens: task.maxTokens ?? 1000,
+        observations: 1,
+      };
+      this.routingMemory.storePreference(decision.cliName, taskType, performance);
+    }
+
     this.logger.debug('Auto-recorded feedback', {
       cli: decision.cliName,
       success,
       durationMs,
       reward,
     });
+  }
+
+  /** Task type inference keywords. */
+  private static readonly TASK_TYPE_KEYWORDS: ReadonlyArray<
+    readonly [string, ReadonlyArray<string>]
+  > = [
+    ['coding', ['code', 'implement']],
+    ['review', ['review', 'audit']],
+    ['testing', ['test', 'spec']],
+    ['documentation', ['document', 'explain']],
+    ['refactoring', ['refactor']],
+    ['debugging', ['debug', 'fix']],
+  ];
+
+  /**
+   * Infer task type from task content for routing memory.
+   */
+  private inferTaskType(task: CliTask): string {
+    const content = task.content.toLowerCase();
+    for (const [taskType, keywords] of CompositeRouter.TASK_TYPE_KEYWORDS) {
+      if (keywords.some((kw) => content.includes(kw))) return taskType;
+    }
+    return 'general';
   }
 
   private executeRouting(
@@ -339,6 +396,7 @@ export class CompositeRouter implements ICompositeRouter {
   getStats(): CompositeRouterStats {
     const preferenceStats = this.buildPreferenceStats();
     const latencyStats = this.latencyTracker?.getTrackerStats();
+    const routingMemoryStats = this.routingMemory?.getStats();
     const baseStats = {
       totalDecisions: this.totalDecisions,
       decisionsPerCli: { ...this.decisionsPerCli },
@@ -348,12 +406,20 @@ export class CompositeRouter implements ICompositeRouter {
         this.totalDecisions > 0 ? this.budgetRejections / this.totalDecisions : 0,
       banditStats: this.linucbBandit?.getStats() ?? [],
       latencyStats,
+      routingMemoryStats,
     };
 
     if (preferenceStats !== undefined) {
       return { ...baseStats, preferenceStats };
     }
     return baseStats;
+  }
+
+  /**
+   * Get the routing memory instance (if enabled).
+   */
+  getRoutingMemory(): IRoutingMemory | undefined {
+    return this.routingMemory;
   }
 
   private buildPreferenceStats(): CompositeRouterStats['preferenceStats'] {
