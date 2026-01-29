@@ -17,6 +17,7 @@ import type {
   AgentCapability,
   CompletionRequest,
   Message,
+  IAgent,
 } from '../core/index.js';
 import { ok, err, AgentError } from '../core/index.js';
 import { BaseAgent, type BaseAgentOptions } from './base-agent.js';
@@ -44,6 +45,11 @@ import {
   type PlanConversionOptions,
   type ExecutionPlanData,
 } from './plan-converter.js';
+import {
+  TechLeadCollaborationHelper,
+  createTechLeadCollaborationHelper,
+  type TechLeadCollaborationConfig,
+} from './tech-lead-collaboration.js';
 
 /** Default TechLead options. */
 const DEFAULT_OPTIONS: Required<TechLeadOptions> = {
@@ -52,6 +58,14 @@ const DEFAULT_OPTIONS: Required<TechLeadOptions> = {
   enableParallelHints: true,
   expertWeights: {},
 };
+
+/** Extended options for TechLead with collaboration. */
+interface TechLeadExtendedOptions {
+  /** Collaboration configuration (Issue #488) */
+  collaborationConfig?: TechLeadCollaborationConfig;
+  /** Map of available expert agents for collaboration */
+  expertAgents?: Map<string, IAgent>;
+}
 
 /** System prompt for task analysis. */
 const ANALYSIS_PROMPT = `You are a technical lead analyzing a software development task.
@@ -111,8 +125,14 @@ export interface ExecutionPlan extends ExecutionPlanData {
  */
 export class TechLead extends BaseAgent {
   private readonly techLeadOptions: Required<TechLeadOptions>;
+  private readonly collaborationHelper: TechLeadCollaborationHelper;
+  private expertAgents: Map<string, IAgent>;
+  private lastAnalysis?: TaskAnalysis;
 
-  constructor(options: Partial<BaseAgentOptions> & { techLeadOptions?: TechLeadOptions } = {}) {
+  constructor(
+    options: Partial<BaseAgentOptions> &
+      TechLeadExtendedOptions & { techLeadOptions?: TechLeadOptions } = {}
+  ) {
     const baseOptions: BaseAgentOptions = {
       id: options.id ?? 'tech-lead',
       role: 'tech_lead',
@@ -134,6 +154,20 @@ export class TechLead extends BaseAgent {
     super(baseOptions);
 
     this.techLeadOptions = { ...DEFAULT_OPTIONS, ...options.techLeadOptions };
+    this.collaborationHelper = createTechLeadCollaborationHelper(options.collaborationConfig);
+    this.expertAgents = options.expertAgents ?? new Map<string, IAgent>();
+  }
+
+  /**
+   * Set expert agents for collaboration (Issue #488).
+   * Call this to provide agents that can participate in collaborative synthesis.
+   */
+  setExpertAgents(agents: Map<string, IAgent>): void {
+    this.expertAgents = agents;
+    this.logger.info('Expert agents registered for collaboration', {
+      agentCount: agents.size,
+      agentIds: [...agents.keys()],
+    });
   }
 
   /** Execute a task by analyzing, decomposing (if needed), and coordinating. */
@@ -143,6 +177,9 @@ export class TechLead extends BaseAgent {
     const analysisResult = await this.analyzeTask(task);
     if (!analysisResult.ok) return err(analysisResult.error);
     const analysis = analysisResult.value;
+
+    // Store analysis for use in synthesis (Issue #488)
+    this.lastAnalysis = analysis;
 
     this.logger.info('Task analyzed', {
       taskId: task.id,
@@ -252,8 +289,35 @@ export class TechLead extends BaseAgent {
     return subtasks.map((st) => selectExpertForSubtask(st, this.techLeadOptions.expertWeights));
   }
 
-  /** Synthesize results from multiple experts into a cohesive output. */
-  async synthesizeResults(results: TaskResult[]): Promise<Result<SynthesizedResult, AgentError>> {
+  /**
+   * Synthesize results from multiple experts into a cohesive output.
+   *
+   * Uses collaboration protocols for complex multi-expert synthesis (Issue #488)
+   * when enough experts and task complexity warrant it.
+   *
+   * @param results - Results to synthesize
+   * @param originalTask - Optional original task for context in collaborative synthesis
+   */
+  async synthesizeResults(
+    results: TaskResult[],
+    originalTask?: Task
+  ): Promise<Result<SynthesizedResult, AgentError>> {
+    // Handle edge cases
+    const edgeResult = this.handleSynthesisEdgeCases(results);
+    if (edgeResult !== undefined) return edgeResult;
+
+    // Try collaborative synthesis for complex tasks (Issue #488)
+    const collabResult = await this.tryCollaborativeSynthesis(results, originalTask);
+    if (collabResult !== undefined) return collabResult;
+
+    // Fall back to LLM or heuristic synthesis
+    return this.performStandardSynthesis(results);
+  }
+
+  /** Handle empty and single result edge cases. */
+  private handleSynthesisEdgeCases(
+    results: TaskResult[]
+  ): Result<SynthesizedResult, AgentError> | undefined {
     if (results.length === 0) {
       return ok({
         combinedOutput: '',
@@ -264,13 +328,51 @@ export class TechLead extends BaseAgent {
         recommendations: ['Ensure subtasks complete before synthesis'],
       });
     }
-
     if (results.length === 1) {
       const r = results[0];
       if (r === undefined) return err(new AgentError('Invalid result in array'));
       return ok(createSingleResultSynthesis(r));
     }
+    return undefined;
+  }
 
+  /** Try collaborative synthesis if conditions are met. */
+  private async tryCollaborativeSynthesis(
+    results: TaskResult[],
+    originalTask?: Task
+  ): Promise<Result<SynthesizedResult, AgentError> | undefined> {
+    const analysis = this.lastAnalysis ?? ({ complexity: 5 } as TaskAnalysis);
+    const shouldCollaborate =
+      this.collaborationHelper.shouldUseCollaboration(analysis, results.length) &&
+      this.expertAgents.size > 0 &&
+      originalTask !== undefined;
+
+    if (!shouldCollaborate) return undefined;
+
+    this.logger.info('Using collaborative synthesis', {
+      resultCount: results.length,
+      complexity: analysis.complexity,
+      expertCount: this.expertAgents.size,
+    });
+
+    const collabResult = await this.collaborationHelper.collaborativeSynthesis(
+      results,
+      this.expertAgents,
+      originalTask
+    );
+
+    if (collabResult.ok) return collabResult;
+
+    this.logger.warn('Collaborative synthesis failed, falling back to standard', {
+      error: collabResult.error.message,
+    });
+    return undefined;
+  }
+
+  /** Perform standard LLM or heuristic synthesis. */
+  private async performStandardSynthesis(
+    results: TaskResult[]
+  ): Promise<Result<SynthesizedResult, AgentError>> {
     if (this.adapter === undefined) return ok(heuristicSynthesis(results));
 
     const request: CompletionRequest = {
@@ -289,6 +391,13 @@ export class TechLead extends BaseAgent {
     );
 
     return parseResult.ok ? ok(parseResult.value) : ok(heuristicSynthesis(results));
+  }
+
+  /**
+   * Get the collaboration helper for external use.
+   */
+  getCollaborationHelper(): TechLeadCollaborationHelper {
+    return this.collaborationHelper;
   }
 
   /** Get the TechLead options. */

@@ -81,6 +81,20 @@ export interface ExpertAssignment {
 }
 
 /**
+ * Collaboration metadata for synthesis (Issue #488).
+ */
+export interface CollaborationMetadata {
+  /** Session ID from collaboration protocol */
+  sessionId: string;
+  /** Protocol pattern used */
+  pattern: string;
+  /** Number of participants */
+  participantCount: number;
+  /** Agreement level (0-1) */
+  agreementLevel: number;
+}
+
+/**
  * Synthesis of multiple task results.
  */
 export interface SynthesizedResult {
@@ -96,6 +110,8 @@ export interface SynthesizedResult {
   qualityScore: number;
   /** Recommendations for follow-up */
   recommendations: string[];
+  /** Collaboration metadata if collaborative synthesis was used (Issue #488) */
+  collaborationMetadata?: CollaborationMetadata | undefined;
 }
 
 /**
@@ -235,6 +251,16 @@ export const ConflictSchema = z.object({
 });
 
 /**
+ * Zod schema for CollaborationMetadata (Issue #488).
+ */
+export const CollaborationMetadataSchema = z.object({
+  sessionId: z.string(),
+  pattern: z.string(),
+  participantCount: z.number(),
+  agreementLevel: z.number().min(0).max(1),
+});
+
+/**
  * Zod schema for SynthesizedResult.
  */
 export const SynthesizedResultSchema = z.object({
@@ -244,6 +270,7 @@ export const SynthesizedResultSchema = z.object({
   conflicts: z.array(ConflictSchema),
   qualityScore: z.number().min(0).max(1),
   recommendations: z.array(z.string()),
+  collaborationMetadata: CollaborationMetadataSchema.optional(),
 });
 
 /**
