@@ -73,6 +73,32 @@ describe('pre-tool handler', () => {
       expect(result.stdout).toBeUndefined();
     });
 
+    describe('default security behavior', () => {
+      it('should block dangerous commands by default (no config)', async () => {
+        const input = createInput({ tool_input: { command: 'rm -rf /' } });
+
+        // No config passed - validation should be enabled by default for security
+        const result = await handlePreTool(input);
+
+        expect(result.exitCode).toBe(0);
+        const output = JSON.parse(result.stdout ?? '{}');
+        expect(output.hookSpecificOutput.permissionDecision).toBe('deny');
+        expect(output.hookSpecificOutput.permissionDecisionReason).toContain('rm -rf on root');
+      });
+
+      it('should allow disabling validation explicitly', async () => {
+        const input = createInput({ tool_input: { command: 'rm -rf /' } });
+        const config: PreToolHandlerConfig = { validateBash: false };
+
+        // Explicitly disabled validation
+        const result = await handlePreTool(input, config);
+
+        expect(result.exitCode).toBe(0);
+        const output = JSON.parse(result.stdout ?? '{}');
+        expect(output.hookSpecificOutput.permissionDecision).toBe('allow');
+      });
+    });
+
     describe('dangerous pattern detection', () => {
       const dangerousConfig: PreToolHandlerConfig = { validateBash: true };
 

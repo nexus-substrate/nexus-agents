@@ -19,7 +19,7 @@ const logger = createLogger({ component: 'PreToolHandler' });
  * Configuration for pre-tool handler.
  */
 export interface PreToolHandlerConfig {
-  /** Enable dangerous command validation for Bash */
+  /** Enable dangerous command validation for Bash (default: true for security) */
   validateBash?: boolean | undefined;
   /** Additional patterns to block (regex strings) */
   customBlockPatterns?: readonly string[] | undefined;
@@ -53,6 +53,21 @@ const SENSITIVE_FILES: ReadonlyArray<{ pattern: RegExp; warning: string }> = [
   { pattern: /\.env/, warning: 'Modifying environment file (may contain secrets)' },
 ];
 
+/** Checks if auto-allow is configured. */
+function shouldAutoAllow(config?: PreToolHandlerConfig): boolean {
+  return config?.autoAllow === true;
+}
+
+/** Checks if tool requires confirmation. */
+function requiresConfirmation(toolName: string, config?: PreToolHandlerConfig): boolean {
+  return config?.requireConfirmation?.includes(toolName) === true;
+}
+
+/** Checks if Bash validation should run. */
+function shouldValidateBash(toolName: string, config?: PreToolHandlerConfig): boolean {
+  return config?.validateBash !== false && toolName === 'Bash';
+}
+
 /**
  * Handles PreToolUse hook event.
  */
@@ -60,25 +75,20 @@ export function handlePreTool(
   input: PreToolUseInput,
   config?: PreToolHandlerConfig
 ): Promise<HookResult> {
-  // Auto-allow if configured
-  if (config?.autoAllow === true) {
+  if (shouldAutoAllow(config)) {
     return Promise.resolve(allowTool('Auto-allowed by configuration'));
   }
 
-  // Check if tool requires confirmation
-  if (config?.requireConfirmation?.includes(input.tool_name) === true) {
+  if (requiresConfirmation(input.tool_name, config)) {
     return Promise.resolve(exitSuccess());
   }
 
-  // Validate Bash commands if enabled
-  if (config?.validateBash === true && input.tool_name === 'Bash') {
-    const result = validateBashTool(input, config.customBlockPatterns);
+  if (shouldValidateBash(input.tool_name, config)) {
+    const result = validateBashTool(input, config?.customBlockPatterns);
     if (result !== null) return Promise.resolve(result);
   }
 
-  // Log sensitive file access (non-blocking)
   logSensitiveFileAccess(input);
-
   return Promise.resolve(allowTool());
 }
 
