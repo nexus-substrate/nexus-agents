@@ -166,7 +166,10 @@ function loadAndLogConfig(logger: ILogger): ConfigLoadResult {
 }
 
 /** Gets policy values from config. */
-function getPolicyValues(config?: AppConfig): { mode: string; defaultExec: string } {
+function getPolicyValues(config?: AppConfig): {
+  mode: 'enforce' | 'warn';
+  defaultExec: 'read-only' | 'read-write';
+} {
   const policy = config?.security?.policy;
   return { mode: policy?.policyMode ?? 'enforce', defaultExec: policy?.defaultMode ?? 'read-only' };
 }
@@ -178,11 +181,28 @@ function getRateLimitValues(config?: AppConfig): { enabled: boolean; rpm: number
 }
 
 /**
- * Logs security configuration at startup.
- * (Source: Issue #185 Phase 1 - Startup security logging)
+ * Creates and configures policy firewall from config.
+ * (Source: Issue #477 - Wire policy firewall to config)
  */
-export function logSecurityConfig(logger: ILogger, config?: AppConfig): void {
-  const policyFirewall = createDefaultPolicyFirewall();
+function createConfiguredPolicyFirewall(
+  logger: ILogger,
+  config?: AppConfig
+): ReturnType<typeof createDefaultPolicyFirewall> {
+  const policyVals = getPolicyValues(config);
+  return createDefaultPolicyFirewall({ mode: policyVals.mode, logger });
+}
+
+/**
+ * Logs security configuration at startup.
+ * Returns the configured policy firewall for use in tool registration.
+ * (Source: Issue #185 Phase 1 - Startup security logging)
+ * (Source: Issue #477 - Wire policy firewall to config)
+ */
+export function logSecurityConfig(
+  logger: ILogger,
+  config?: AppConfig
+): ReturnType<typeof createDefaultPolicyFirewall> {
+  const policyFirewall = createConfiguredPolicyFirewall(logger, config);
   const authEnabled = process.env['NEXUS_AUTH_ENABLED'] === 'true';
   const policyVals = getPolicyValues(config);
   const rateLimitVals = getRateLimitValues(config);
@@ -205,6 +225,8 @@ export function logSecurityConfig(logger: ILogger, config?: AppConfig): void {
   logger.debug('Policy firewall rules', {
     rules: policyFirewall.getRules().map((r) => ({ name: r.name, description: r.description })),
   });
+
+  return policyFirewall;
 }
 
 /**
@@ -352,17 +374,24 @@ export async function startServer(
   const eventBusBridge = initializeEventBus(observer, serverLogger);
 
   await initializeAndLogSandbox(serverLogger);
-  logSecurityConfig(serverLogger, configResult.config);
+  const policyFirewall = logSecurityConfig(serverLogger, configResult.config);
 
   serverLogger.info('Loading built-in workflow templates');
   const builtInTemplates = await initializeBuiltInTemplates();
   serverLogger.info('Loaded built-in templates', { count: builtInTemplates.size });
 
   const modelAdapter = await tryDetectModelAdapter(serverLogger);
-  const toolsOptions =
-    modelAdapter !== undefined
-      ? { server, logger: serverLogger, builtInTemplates, modelAdapter }
-      : { server, logger: serverLogger, builtInTemplates };
+  const policyVals = getPolicyValues(configResult.config);
+  const allowedPaths = configResult.config.security?.allowedPaths;
+  const toolsOptions = {
+    server,
+    logger: serverLogger,
+    builtInTemplates,
+    policyFirewall,
+    executionMode: policyVals.defaultExec,
+    ...(allowedPaths !== undefined && { allowedPaths }),
+    ...(modelAdapter !== undefined && { modelAdapter }),
+  };
   registerMcpTools(toolsOptions);
 
   // Connect to transport

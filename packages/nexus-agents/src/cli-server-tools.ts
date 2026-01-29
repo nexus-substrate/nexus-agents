@@ -41,6 +41,12 @@ export interface RegisterMcpToolsOptions {
   builtInTemplates: Map<string, WorkflowDefinition>;
   /** Optional model adapter for real workflow execution with expert agents */
   modelAdapter?: IModelAdapter;
+  /** Policy firewall for authorization (Issue #477) */
+  policyFirewall?: import('./mcp/middleware/index.js').IPolicyFirewall;
+  /** Default execution mode for policy evaluation (Issue #477) */
+  executionMode?: import('./mcp/middleware/index.js').ExecutionMode;
+  /** Allowed paths from security config (Issue #477) */
+  allowedPaths?: readonly string[];
 }
 
 /**
@@ -79,6 +85,12 @@ interface ToolRegistrationContext {
   rateLimiterFactory: ReturnType<typeof createToolRateLimiterFactory>;
   modelAdapter?: IModelAdapter;
   builtInTemplates: Map<string, WorkflowDefinition>;
+  /** Policy firewall for authorization (Issue #477) */
+  policyFirewall?: import('./mcp/middleware/index.js').IPolicyFirewall;
+  /** Default execution mode (Issue #477) */
+  executionMode?: import('./mcp/middleware/index.js').ExecutionMode;
+  /** Allowed paths (Issue #477) */
+  allowedPaths?: readonly string[];
 }
 
 /** Register expert tools with shared registry. */
@@ -140,7 +152,15 @@ function registerConsensusTools(ctx: ToolRegistrationContext): void {
  * (Source: Issue #430 - Wire up real workflow engine)
  */
 export function registerMcpTools(options: RegisterMcpToolsOptions): void {
-  const { server, logger, builtInTemplates, modelAdapter } = options;
+  const {
+    server,
+    logger,
+    builtInTemplates,
+    modelAdapter,
+    policyFirewall,
+    executionMode,
+    allowedPaths,
+  } = options;
   const toolInfra = registerTools(server, { logger });
 
   const rateLimiterFactory = createToolRateLimiterFactory({
@@ -155,6 +175,9 @@ export function registerMcpTools(options: RegisterMcpToolsOptions): void {
     rateLimiterFactory,
     builtInTemplates,
     ...(modelAdapter !== undefined && { modelAdapter }),
+    ...(policyFirewall !== undefined && { policyFirewall }),
+    ...(executionMode !== undefined && { executionMode }),
+    ...(allowedPaths !== undefined && { allowedPaths }),
   };
 
   // Register core tools
@@ -185,5 +208,8 @@ export function registerMcpTools(options: RegisterMcpToolsOptions): void {
     builtInTemplateCount: builtInTemplates.size,
     realWorkflowExecution: modelAdapter !== undefined,
     realTechLead: modelAdapter !== undefined,
+    policyFirewallEnabled: policyFirewall !== undefined,
+    policyMode: policyFirewall?.getMode(),
+    executionMode: executionMode ?? 'read-only',
   });
 }
