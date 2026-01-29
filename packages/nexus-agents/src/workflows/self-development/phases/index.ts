@@ -23,7 +23,7 @@ export { executePlan } from './plan.js';
 export { executeRefine, findPersonaRole, buildRefinementTask } from './refine.js';
 
 // Phase 5: VOTE (Consensus)
-export { executeVote } from './vote.js';
+export { executeVote, VotingUnavailableError } from './vote.js';
 
 // Phase 7: IMPLEMENT
 export { executeImplement } from './implement.js';

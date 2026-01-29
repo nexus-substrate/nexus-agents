@@ -354,7 +354,27 @@ function buildFallbackVoteOutput(
 }
 
 /**
+ * Error thrown when voting cannot proceed due to missing dependencies.
+ * (Source: Issue #501 - Fail-safe voting)
+ */
+export class VotingUnavailableError extends Error {
+  constructor(reason: string) {
+    super(
+      `VOTE phase cannot proceed: ${reason}. ` +
+        'To use heuristic fallback voting (NOT RECOMMENDED), set ' +
+        'config.phases.vote.allowHeuristicFallback = true'
+    );
+    this.name = 'VotingUnavailableError';
+  }
+}
+
+/**
  * Execute VOTE phase - Consensus voting.
+ *
+ * By default, this phase FAILS if ConsensusProtocol is unavailable to prevent
+ * fake votes from impacting decisions. Heuristic fallback can be explicitly
+ * enabled via config but is NOT RECOMMENDED for production use.
+ * (Source: Issue #501 - Fail-safe voting)
  */
 export async function executeVote(
   deps: SelfDevWorkflowDependencies,
@@ -363,6 +383,7 @@ export async function executeVote(
 ): Promise<VoteOutput> {
   const startTime = Date.now();
   const minVotes = state.config.phases?.vote?.minVotes ?? 4;
+  const allowHeuristicFallback = state.config.phases?.vote?.allowHeuristicFallback === true;
 
   // Fail-fast check before falling back (Issue #455)
   checkFailFast(state.config.failFast, deps.consensus, 'VOTE', 'ConsensusProtocol');
@@ -372,8 +393,20 @@ export async function executeVote(
     if (result !== null) {
       return { ...result, durationMs: Date.now() - startTime };
     }
+    // Consensus execution failed - fail unless heuristic fallback explicitly allowed
+    if (!allowHeuristicFallback) {
+      throw new VotingUnavailableError('ConsensusProtocol execution failed');
+    }
+    logger.warn('VOTE phase: ConsensusProtocol failed, using heuristic fallback (NOT RECOMMENDED)');
   } else {
-    logger.info('VOTE phase: ConsensusProtocol not injected, using fallback');
+    // ConsensusProtocol not injected - fail unless heuristic fallback explicitly allowed
+    // (Source: Issue #501 - Fail-safe voting)
+    if (!allowHeuristicFallback) {
+      throw new VotingUnavailableError('ConsensusProtocol not injected');
+    }
+    logger.warn(
+      'VOTE phase: ConsensusProtocol not injected, using heuristic fallback (NOT RECOMMENDED)'
+    );
   }
 
   return buildFallbackVoteOutput(refine, minVotes, startTime);

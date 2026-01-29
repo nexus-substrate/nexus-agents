@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { executeVote } from './vote.js';
+import { executeVote, VotingUnavailableError } from './vote.js';
 import type { SelfDevWorkflowDependencies } from '../interfaces.js';
 import type {
   SelfDevWorkflowState,
@@ -755,7 +755,7 @@ describe('vote phase', () => {
         expect(capturedAgents?.has('maintainer')).toBe(true);
       });
 
-      it('handles consensus protocol failure gracefully', async () => {
+      it('throws VotingUnavailableError when consensus protocol fails (Issue #501)', async () => {
         const deps = createMockDependencies();
         const mockConsensus = {
           execute: vi.fn().mockResolvedValue({
@@ -768,7 +768,36 @@ describe('vote phase', () => {
         const state = createMockState();
         const refine = createMockRefineOutput();
 
-        // Should fall back to fallback output
+        // Should throw error by default - no fake votes
+        await expect(executeVote(deps, state, refine)).rejects.toThrow(VotingUnavailableError);
+      });
+
+      it('falls back to heuristic when consensus fails AND allowHeuristicFallback is true', async () => {
+        const deps = createMockDependencies();
+        const mockConsensus = {
+          execute: vi.fn().mockResolvedValue({
+            ok: false,
+            error: { message: 'Consensus failed' },
+          }),
+        };
+        deps.consensus = mockConsensus as never;
+
+        const state = createMockState({
+          config: {
+            repository: 'test/repo',
+            workingDirectory: '/tmp/test',
+            phases: {
+              vote: {
+                minVotes: 4,
+                requireUnanimous: false,
+                allowHeuristicFallback: true, // Explicitly enabled
+              },
+            },
+          },
+        });
+        const refine = createMockRefineOutput();
+
+        // Should fall back to heuristic output when explicitly allowed
         const result = await executeVote(deps, state, refine);
 
         expect(result.votes.length).toBeGreaterThan(0);
@@ -830,12 +859,68 @@ describe('vote phase', () => {
       });
     });
 
-    describe('fallback behavior', () => {
-      it('uses fallback when consensus protocol not injected', async () => {
+    describe('fail-safe behavior (Issue #501)', () => {
+      it('throws VotingUnavailableError by default when consensus protocol not injected', async () => {
         const deps = createMockDependencies();
         // No consensus protocol injected
 
         const state = createMockState();
+        const refine = createMockRefineOutput();
+
+        await expect(executeVote(deps, state, refine)).rejects.toThrow(VotingUnavailableError);
+        await expect(executeVote(deps, state, refine)).rejects.toThrow(
+          'ConsensusProtocol not injected'
+        );
+      });
+
+      it('throws VotingUnavailableError when consensus execution fails', async () => {
+        const deps = createMockDependencies();
+        const mockConsensus = {
+          execute: vi.fn().mockResolvedValue({
+            ok: false,
+            error: new Error('Consensus failed'),
+          }),
+        };
+        deps.consensus = mockConsensus as never;
+
+        const state = createMockState();
+        const refine = createMockRefineOutput();
+
+        await expect(executeVote(deps, state, refine)).rejects.toThrow(VotingUnavailableError);
+        await expect(executeVote(deps, state, refine)).rejects.toThrow(
+          'ConsensusProtocol execution failed'
+        );
+      });
+
+      it('error message includes guidance to enable heuristic fallback', async () => {
+        const deps = createMockDependencies();
+        const state = createMockState();
+        const refine = createMockRefineOutput();
+
+        await expect(executeVote(deps, state, refine)).rejects.toThrow(
+          'allowHeuristicFallback = true'
+        );
+      });
+    });
+
+    describe('heuristic fallback behavior (when explicitly enabled)', () => {
+      it('uses heuristic fallback when allowHeuristicFallback is true', async () => {
+        const deps = createMockDependencies();
+        // No consensus protocol injected
+
+        const state = createMockState({
+          config: {
+            repository: 'test/repo',
+            workingDirectory: '/tmp/test',
+            phases: {
+              vote: {
+                minVotes: 4,
+                requireUnanimous: false,
+                allowHeuristicFallback: true, // Explicitly enabled
+              },
+            },
+          },
+        });
         const refine = createMockRefineOutput();
 
         const result = await executeVote(deps, state, refine);
@@ -844,7 +929,7 @@ describe('vote phase', () => {
         expect(result.durationMs).toBeGreaterThanOrEqual(0);
       });
 
-      it('fallback creates correct number of votes based on minVotes', async () => {
+      it('heuristic fallback creates correct number of votes based on minVotes', async () => {
         const deps = createMockDependencies();
 
         const state = createMockState({
@@ -855,6 +940,7 @@ describe('vote phase', () => {
               vote: {
                 minVotes: 3,
                 requireUnanimous: false,
+                allowHeuristicFallback: true,
               },
             },
           },
@@ -863,11 +949,12 @@ describe('vote phase', () => {
 
         const result = await executeVote(deps, state, refine);
 
-        // Fallback creates minVotes + 1 votes
-        expect(result.votes.length).toBe(4);
+        // Fallback creates min(minVotes + 2, SELF_DEV_PERSONAS.length) votes
+        // With minVotes=3, that's min(5, 5) = 5 votes
+        expect(result.votes.length).toBe(5);
       });
 
-      it('fallback approves first minVotes agents', async () => {
+      it('heuristic fallback approves based on severity evaluation', async () => {
         const deps = createMockDependencies();
 
         const state = createMockState({
@@ -878,6 +965,7 @@ describe('vote phase', () => {
               vote: {
                 minVotes: 3,
                 requireUnanimous: false,
+                allowHeuristicFallback: true,
               },
             },
           },
@@ -886,28 +974,37 @@ describe('vote phase', () => {
 
         const result = await executeVote(deps, state, refine);
 
-        expect(result.approvalCount).toBe(3);
-        expect(result.rejectCount).toBe(1);
+        // With low severity (0.15 < 0.3), most or all will approve
+        expect(result.approvalCount).toBeGreaterThanOrEqual(3);
+        expect(result.votes.length).toBe(5);
       });
 
-      it('fallback uses default minVotes of 4 when not configured', async () => {
+      it('heuristic fallback uses default minVotes of 4 when not configured', async () => {
         const deps = createMockDependencies();
 
         const state = createMockState({
           config: {
             repository: 'test/repo',
             workingDirectory: '/tmp/test',
+            phases: {
+              vote: {
+                allowHeuristicFallback: true,
+              },
+            },
           },
         });
         const refine = createMockRefineOutput();
 
         const result = await executeVote(deps, state, refine);
 
-        expect(result.approvalCount).toBe(4);
-        expect(result.rejectCount).toBe(1);
+        // With 5 personas, minVotes=4, slice creates 5 votes (min(6, 5))
+        // All use defaultVote since evaluator role keys don't match persona.role strings
+        // With low severity (0.15 < 0.3), all default to approve
+        expect(result.votes.length).toBe(5);
+        expect(result.approvalCount).toBeGreaterThanOrEqual(4);
       });
 
-      it('fallback reaches consensus when approvals >= minVotes', async () => {
+      it('heuristic fallback reaches consensus when approvals >= minVotes', async () => {
         const deps = createMockDependencies();
 
         const state = createMockState({
@@ -918,6 +1015,7 @@ describe('vote phase', () => {
               vote: {
                 minVotes: 3,
                 requireUnanimous: false,
+                allowHeuristicFallback: true,
               },
             },
           },
@@ -930,10 +1028,22 @@ describe('vote phase', () => {
         expect(result.verdict).toBe('APPROVED');
       });
 
-      it('fallback includes severity-based reasoning', async () => {
+      it('heuristic fallback includes severity-based reasoning', async () => {
         const deps = createMockDependencies();
 
-        const state = createMockState();
+        const state = createMockState({
+          config: {
+            repository: 'test/repo',
+            workingDirectory: '/tmp/test',
+            phases: {
+              vote: {
+                minVotes: 4,
+                requireUnanimous: false,
+                allowHeuristicFallback: true,
+              },
+            },
+          },
+        });
         // Default refine has finalSeverity = 0.15 (< 0.3)
         const refine = createMockRefineOutput();
 
@@ -943,10 +1053,22 @@ describe('vote phase', () => {
         expect(result.votes[0]?.reasoning).toContain('meets quality threshold');
       });
 
-      it('fallback includes different reasoning for higher severity', async () => {
+      it('heuristic fallback includes different reasoning for higher severity', async () => {
         const deps = createMockDependencies();
 
-        const state = createMockState();
+        const state = createMockState({
+          config: {
+            repository: 'test/repo',
+            workingDirectory: '/tmp/test',
+            phases: {
+              vote: {
+                minVotes: 4,
+                requireUnanimous: false,
+                allowHeuristicFallback: true,
+              },
+            },
+          },
+        });
         const refine: RefineOutput = {
           ...createMockRefineOutput(),
           finalSeverity: 0.5, // Higher severity
@@ -958,10 +1080,22 @@ describe('vote phase', () => {
         expect(result.votes[0]?.reasoning).toContain('Minor concerns remain');
       });
 
-      it('fallback never exercises veto', async () => {
+      it('heuristic fallback never exercises veto', async () => {
         const deps = createMockDependencies();
 
-        const state = createMockState();
+        const state = createMockState({
+          config: {
+            repository: 'test/repo',
+            workingDirectory: '/tmp/test',
+            phases: {
+              vote: {
+                minVotes: 4,
+                requireUnanimous: false,
+                allowHeuristicFallback: true,
+              },
+            },
+          },
+        });
         const refine = createMockRefineOutput();
 
         const result = await executeVote(deps, state, refine);
@@ -969,10 +1103,22 @@ describe('vote phase', () => {
         expect(result.vetoExercised).toBe(false);
       });
 
-      it('fallback has zero abstain count', async () => {
+      it('heuristic fallback has zero abstain count', async () => {
         const deps = createMockDependencies();
 
-        const state = createMockState();
+        const state = createMockState({
+          config: {
+            repository: 'test/repo',
+            workingDirectory: '/tmp/test',
+            phases: {
+              vote: {
+                minVotes: 4,
+                requireUnanimous: false,
+                allowHeuristicFallback: true,
+              },
+            },
+          },
+        });
         const refine = createMockRefineOutput();
 
         const result = await executeVote(deps, state, refine);

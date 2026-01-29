@@ -202,6 +202,15 @@ export interface VoteConfig {
   readonly requireUnanimous?: boolean;
   /** Timeout for voting (default: 60000ms) */
   readonly timeout?: number;
+  /**
+   * Allow heuristic-based voting fallback when ConsensusProtocol is unavailable.
+   * SECURITY WARNING: When true, votes are generated using rule-based criteria
+   * analysis instead of actual agent LLM reasoning. This can lead to incorrect
+   * decisions that don't account for nuanced concerns.
+   * Default: false (fail with error if ConsensusProtocol unavailable)
+   * (Source: Issue #501 - Fail-safe voting)
+   */
+  readonly allowHeuristicFallback?: boolean;
 }
 
 /**

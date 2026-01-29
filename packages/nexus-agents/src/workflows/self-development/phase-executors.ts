@@ -16,6 +16,7 @@ export {
   executePlan,
   executeRefine,
   executeVote,
+  VotingUnavailableError,
   executeImplement,
   executeVerify,
   executeCommit,
