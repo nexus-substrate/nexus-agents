@@ -70,6 +70,19 @@ export { EventBusConfigSchema, ObservabilityConfigSchema } from './schemas-obser
 
 export type { EventBusConfig, ObservabilityConfig } from './schemas-observability.js';
 
+// Re-export skills schemas (Issue #491)
+export {
+  SkillLibraryConfigSchema,
+  DEFAULT_SKILL_LIBRARY_CONFIG as DEFAULT_SKILLS_CONFIG,
+} from './schemas-skills.js';
+
+export type { SkillLibraryConfig } from './schemas-skills.js';
+
+// Re-export SICA schemas (Issue #492)
+export { SicaConfigSchema, DEFAULT_SICA_CONFIG } from './schemas-sica.js';
+
+export type { SicaConfig } from './schemas-sica.js';
+
 // Re-export routing schemas (Issue #475)
 export {
   BudgetConstraintsSchema,
@@ -102,6 +115,8 @@ import { ExpertConfigSchema } from './schemas-expert.js';
 import { SecurityConfigSchema } from './schemas-security.js';
 import { ObservabilityConfigSchema } from './schemas-observability.js';
 import { RoutingConfigSchema } from './schemas-routing.js';
+import { SkillLibraryConfigSchema } from './schemas-skills.js';
+import { SicaConfigSchema } from './schemas-sica.js';
 
 /**
  * Complete application configuration schema.
@@ -116,6 +131,10 @@ export const AppConfigSchema = z.object({
   observability: ObservabilityConfigSchema.optional(),
   /** Routing configuration (Issue #475) */
   routing: RoutingConfigSchema,
+  /** Skill library configuration (Issue #491) */
+  skills: SkillLibraryConfigSchema.optional(),
+  /** SICA self-improvement configuration (Issue #492) */
+  sica: SicaConfigSchema.optional(),
 });
 
 export type AppConfig = z.infer<typeof AppConfigSchema>;

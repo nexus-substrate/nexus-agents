@@ -37,6 +37,7 @@ import {
 import { startOrchestratorMode, type OrchestratorModeOptions } from './cli-orchestrator.js';
 import { loadConfig, type ConfigLoadResult, type AppConfig } from './config/index.js';
 import { initializeExperts } from './cli-server-experts.js';
+import { initializeSkillLibrary } from './cli-server-skills.js';
 
 // Re-export for backward compatibility
 export { type OrchestratorModeOptions } from './cli-orchestrator.js';
@@ -419,6 +420,13 @@ async function initializeSubsystems(
   logger.debug('Expert system initialized', {
     builtIn: expertResult.builtInCount,
     custom: expertResult.customCount,
+  });
+
+  // Initialize skill library from configuration (Issue #491)
+  const skillsResult = initializeSkillLibrary({ skillsConfig: config.skills, logger });
+  logger.debug('Skill library initialization', {
+    initialized: skillsResult.initialized,
+    reason: skillsResult.reason,
   });
 
   const { server, logger: serverLogger } = createAndValidateMcpServer(logger);
