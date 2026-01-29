@@ -20,6 +20,21 @@ import { attemptAutoMerge } from './auto-merge.js';
 const logger = createLogger({ component: 'self-dev-phase-verify-commit' });
 
 /**
+ * Error thrown when commit phase cannot proceed due to missing Git/GitHub clients.
+ * (Source: Issue #505 - Fail-safe commit)
+ */
+export class CommitUnavailableError extends Error {
+  constructor(reason: string) {
+    super(
+      `COMMIT phase cannot proceed: ${reason}. ` +
+        'To use placeholder fallback (NOT RECOMMENDED), set ' +
+        'config.phases.verify.allowPlaceholderFallback = true'
+    );
+    this.name = 'CommitUnavailableError';
+  }
+}
+
+/**
  * Parse coverage percentage from test output.
  *
  * Supports common coverage output formats:
@@ -379,7 +394,72 @@ async function handlePRAndMerge(
 }
 
 /**
+ * Check Git client availability and handle failure.
+ */
+function checkGitClientAvailability(
+  deps: SelfDevWorkflowDependencies,
+  allowFallback: boolean,
+  repository: string,
+  branch: string,
+  startTime: number
+): CommitOutput | null {
+  if (deps.gitClient !== undefined) return null;
+
+  if (!allowFallback) {
+    throw new CommitUnavailableError('Git client not injected');
+  }
+  logger.warn(
+    'COMMIT phase: Git client not available, using placeholder fallback (NOT RECOMMENDED)'
+  );
+  return buildPlaceholderCommitOutput(repository, branch, startTime);
+}
+
+/**
+ * Handle Git operation failure.
+ */
+function handleGitOperationFailure(
+  allowFallback: boolean,
+  repository: string,
+  branch: string,
+  startTime: number
+): CommitOutput {
+  if (!allowFallback) {
+    throw new CommitUnavailableError('Git operations failed');
+  }
+  logger.warn('COMMIT phase: Git operations failed, using placeholder fallback (NOT RECOMMENDED)');
+  return buildPlaceholderCommitOutput(repository, branch, startTime);
+}
+
+/**
+ * Handle GitHub client unavailability.
+ */
+function handleGitHubClientUnavailable(
+  allowFallback: boolean,
+  commitSha: string,
+  repository: string,
+  branch: string,
+  startTime: number
+): CommitOutput {
+  if (!allowFallback) {
+    throw new CommitUnavailableError('GitHub client not injected');
+  }
+  logger.warn('COMMIT phase: GitHub client not available, skipping PR creation (NOT RECOMMENDED)');
+  return {
+    branch,
+    commitSha,
+    prNumber: 0,
+    prUrl: `https://github.com/${repository}/pull/0`,
+    status: 'created',
+    durationMs: Date.now() - startTime,
+  };
+}
+
+/**
  * Execute COMMIT phase - Branch, commit, PR creation, and optional auto-merge.
+ *
+ * By default, this phase FAILS if Git or GitHub clients are unavailable to prevent
+ * workflows from proceeding with placeholder commit/PR data.
+ * (Source: Issue #505 - Fail-safe commit)
  */
 export async function executeCommit(
   deps: SelfDevWorkflowDependencies,
@@ -387,19 +467,57 @@ export async function executeCommit(
   outputs: SelfDevWorkflowResult['outputs']
 ): Promise<CommitOutput> {
   const startTime = Date.now();
+  const phaseConfig = state.config.phases?.verify;
+  const allowFallback = phaseConfig?.allowPlaceholderFallback === true;
   const issueNumber = outputs.analyze?.selectedIssue.number ?? 0;
   const issueTitle = outputs.analyze?.selectedIssue.title ?? 'self-dev';
   const branch = generateBranchName(issueNumber, issueTitle);
+  const repository = state.config.repository;
+
+  // Fail-fast check for Git client (Issue #505)
+  const gitClientCheck = checkGitClientAvailability(
+    deps,
+    allowFallback,
+    repository,
+    branch,
+    startTime
+  );
+  if (gitClientCheck !== null) return gitClientCheck;
+
   const gitResult = await executeGitOperations(deps, branch, outputs);
+  if (!gitResult.success) {
+    return handleGitOperationFailure(allowFallback, repository, branch, startTime);
+  }
 
-  const defaultPR = {
-    prNumber: 0,
-    prUrl: `https://github.com/${state.config.repository}/pull/0`,
-    status: 'created' as const,
-  };
-  const prData = gitResult.success
-    ? await handlePRAndMerge({ deps, state, outputs, branch, issueNumber, issueTitle })
-    : defaultPR;
+  // Fail-fast check for GitHub client (Issue #505)
+  if (deps.githubClient === undefined) {
+    return handleGitHubClientUnavailable(
+      allowFallback,
+      gitResult.commitSha,
+      repository,
+      branch,
+      startTime
+    );
+  }
 
+  const prData = await handlePRAndMerge({ deps, state, outputs, branch, issueNumber, issueTitle });
   return { branch, commitSha: gitResult.commitSha, ...prData, durationMs: Date.now() - startTime };
+}
+
+/**
+ * Build placeholder commit output when clients are unavailable (NOT RECOMMENDED).
+ */
+function buildPlaceholderCommitOutput(
+  repository: string,
+  branch: string,
+  startTime: number
+): CommitOutput {
+  return {
+    branch,
+    commitSha: '0000000',
+    prNumber: 0,
+    prUrl: `https://github.com/${repository}/pull/0`,
+    status: 'created',
+    durationMs: Date.now() - startTime,
+  };
 }

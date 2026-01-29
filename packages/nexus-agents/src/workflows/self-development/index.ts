@@ -105,6 +105,9 @@ export { RefineUnavailableError } from './phases/refine.js';
 // Fail-safe implementation (Issue #504)
 export { ImplementUnavailableError } from './phases/implement.js';
 
+// Fail-safe commit (Issue #505)
+export { CommitUnavailableError } from './phases/verify-commit.js';
+
 // Metrics
 export {
   calculateMetrics,

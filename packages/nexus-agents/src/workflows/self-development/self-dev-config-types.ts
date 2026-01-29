@@ -289,4 +289,12 @@ export interface VerifyConfig {
   readonly coverageThreshold?: number;
   /** Timeout per check (default: 120000ms) */
   readonly checkTimeout?: number;
+  /**
+   * Allow placeholder fallback when Git/GitHub clients are unavailable.
+   * SECURITY WARNING: When true, returns placeholder commit SHA ('0000000')
+   * and PR data (prNumber: 0) instead of failing when clients are missing.
+   * Default: false (fail with error if clients unavailable)
+   * (Source: Issue #505 - Fail-safe commit)
+   */
+  readonly allowPlaceholderFallback?: boolean;
 }

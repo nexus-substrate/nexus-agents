@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { executeVerify, executeCommit } from './verify-commit.js';
+import { executeVerify, executeCommit, CommitUnavailableError } from './verify-commit.js';
 import type { SelfDevWorkflowDependencies, IGitClient, IGitHubClient } from '../interfaces.js';
 import type { SelfDevWorkflowState } from '../types.js';
 import type { SelfDevWorkflowResult } from '../self-dev-state-types.js';
@@ -383,13 +383,36 @@ describe('verify-commit', () => {
       expect(mockGitClient.push).toHaveBeenCalledWith('self-dev/123-test-issue-title');
     });
 
-    it('returns default values when git client is not available', async () => {
+    it('throws CommitUnavailableError when git client not available', async () => {
       const depsWithoutGit: SelfDevWorkflowDependencies = {
         modelAdapter: { complete: vi.fn() } as never,
         githubClient: mockGitHubClient,
       };
 
       const state = createMockState();
+      const outputs = createMockOutputs();
+
+      await expect(executeCommit(depsWithoutGit, state, outputs)).rejects.toThrow(
+        CommitUnavailableError
+      );
+      await expect(executeCommit(depsWithoutGit, state, outputs)).rejects.toThrow(
+        'Git client not injected'
+      );
+    });
+
+    it('returns placeholder when git client not available and fallback enabled', async () => {
+      const depsWithoutGit: SelfDevWorkflowDependencies = {
+        modelAdapter: { complete: vi.fn() } as never,
+        githubClient: mockGitHubClient,
+      };
+
+      const state = {
+        ...createMockState(),
+        config: {
+          ...createMockState().config,
+          phases: { verify: { allowPlaceholderFallback: true } },
+        },
+      } as SelfDevWorkflowState;
       const outputs = createMockOutputs();
 
       const result = await executeCommit(depsWithoutGit, state, outputs);
@@ -399,7 +422,7 @@ describe('verify-commit', () => {
       expect(result.status).toBe('created');
     });
 
-    it('returns default values when github client is not available', async () => {
+    it('throws CommitUnavailableError when github client not available', async () => {
       const depsWithoutGitHub: SelfDevWorkflowDependencies = {
         modelAdapter: { complete: vi.fn() } as never,
         gitClient: mockGitClient,
@@ -408,19 +431,56 @@ describe('verify-commit', () => {
       const state = createMockState();
       const outputs = createMockOutputs();
 
+      await expect(executeCommit(depsWithoutGitHub, state, outputs)).rejects.toThrow(
+        CommitUnavailableError
+      );
+      await expect(executeCommit(depsWithoutGitHub, state, outputs)).rejects.toThrow(
+        'GitHub client not injected'
+      );
+    });
+
+    it('returns placeholder when github client not available and fallback enabled', async () => {
+      const depsWithoutGitHub: SelfDevWorkflowDependencies = {
+        modelAdapter: { complete: vi.fn() } as never,
+        gitClient: mockGitClient,
+      };
+
+      const state = {
+        ...createMockState(),
+        config: {
+          ...createMockState().config,
+          phases: { verify: { allowPlaceholderFallback: true } },
+        },
+      } as SelfDevWorkflowState;
+      const outputs = createMockOutputs();
+
       const result = await executeCommit(depsWithoutGitHub, state, outputs);
 
       expect(result.commitSha).toBe('abc1234');
       expect(result.prNumber).toBe(0);
-      // When GitHub client is unavailable, createPullRequest returns empty prUrl,
-      // but handlePRAndMerge uses fallback URL when prUrl is empty
       expect(result.prUrl).toBe('https://github.com/owner/repo/pull/0');
     });
 
-    it('handles git operation failure gracefully', async () => {
+    it('throws CommitUnavailableError when git operation fails', async () => {
       mockGitClient.createBranch = vi.fn().mockRejectedValue(new Error('Branch already exists'));
 
       const state = createMockState();
+      const outputs = createMockOutputs();
+
+      await expect(executeCommit(deps, state, outputs)).rejects.toThrow(CommitUnavailableError);
+      await expect(executeCommit(deps, state, outputs)).rejects.toThrow('Git operations failed');
+    });
+
+    it('returns placeholder when git operation fails and fallback enabled', async () => {
+      mockGitClient.createBranch = vi.fn().mockRejectedValue(new Error('Branch already exists'));
+
+      const state = {
+        ...createMockState(),
+        config: {
+          ...createMockState().config,
+          phases: { verify: { allowPlaceholderFallback: true } },
+        },
+      } as SelfDevWorkflowState;
       const outputs = createMockOutputs();
 
       const result = await executeCommit(deps, state, outputs);
@@ -1011,10 +1071,25 @@ describe('verify-commit', () => {
       expect(mockGitClient.add).not.toHaveBeenCalled();
     });
 
-    it('handles non-Error exceptions in git operations', async () => {
+    it('throws CommitUnavailableError on non-Error exceptions in git operations', async () => {
       mockGitClient.createBranch = vi.fn().mockRejectedValue('string error');
 
       const state = createMockState();
+      const outputs = createMockOutputs();
+
+      await expect(executeCommit(deps, state, outputs)).rejects.toThrow(CommitUnavailableError);
+    });
+
+    it('handles non-Error exceptions in git operations with fallback enabled', async () => {
+      mockGitClient.createBranch = vi.fn().mockRejectedValue('string error');
+
+      const state = {
+        ...createMockState(),
+        config: {
+          ...createMockState().config,
+          phases: { verify: { allowPlaceholderFallback: true } },
+        },
+      } as SelfDevWorkflowState;
       const outputs = createMockOutputs();
 
       const result = await executeCommit(deps, state, outputs);
@@ -1045,10 +1120,25 @@ describe('verify-commit', () => {
       expect(result.prUrl).toBe('https://github.com/owner/repo/pull/0');
     });
 
-    it('uses fallback PR URL when git operations fail', async () => {
+    it('throws CommitUnavailableError when git operations fail', async () => {
       mockGitClient.createBranch = vi.fn().mockRejectedValue(new Error('Failed'));
 
       const state = createMockState();
+      const outputs = createMockOutputs();
+
+      await expect(executeCommit(deps, state, outputs)).rejects.toThrow(CommitUnavailableError);
+    });
+
+    it('uses fallback PR URL when git operations fail with fallback enabled', async () => {
+      mockGitClient.createBranch = vi.fn().mockRejectedValue(new Error('Failed'));
+
+      const state = {
+        ...createMockState(),
+        config: {
+          ...createMockState().config,
+          phases: { verify: { allowPlaceholderFallback: true } },
+        },
+      } as SelfDevWorkflowState;
       const outputs = createMockOutputs();
 
       const result = await executeCommit(deps, state, outputs);

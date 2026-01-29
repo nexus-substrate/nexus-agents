@@ -34,4 +34,4 @@ export { executeVote, VotingUnavailableError } from './vote.js';
 export { executeImplement, ImplementUnavailableError } from './implement.js';
 
 // Phase 8: VERIFY & Phase 9: COMMIT
-export { executeVerify, executeCommit } from './verify-commit.js';
+export { executeVerify, executeCommit, CommitUnavailableError } from './verify-commit.js';
