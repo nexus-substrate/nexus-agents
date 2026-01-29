@@ -78,6 +78,7 @@ export interface QualityRouterConfig {
   readonly maxLatencyMs?: number;
   readonly logger?: ILogger;
   readonly costModel?: CostModel;
+  readonly latencyModel?: LatencyModel;
 }
 
 /**
@@ -87,6 +88,16 @@ export interface CostModel {
   readonly claude: { inputPerMillion: number; outputPerMillion: number };
   readonly gemini: { inputPerMillion: number; outputPerMillion: number };
   readonly codex: { inputPerMillion: number; outputPerMillion: number };
+}
+
+/**
+ * Latency model for adapter latency estimation.
+ * Issue #529: Make latency parameters configurable.
+ */
+export interface LatencyModel {
+  readonly claude: { baseMs: number; tokensPerSecond: number };
+  readonly gemini: { baseMs: number; tokensPerSecond: number };
+  readonly codex: { baseMs: number; tokensPerSecond: number };
 }
 
 /**
@@ -109,6 +120,13 @@ const DEFAULT_COST_MODEL: CostModel = {
   codex: { inputPerMillion: 2.0, outputPerMillion: 8.0 },
 } as const;
 
+/** Default latency model (Issue #529) */
+const DEFAULT_LATENCY_MODEL: LatencyModel = {
+  claude: { baseMs: 500, tokensPerSecond: 80 },
+  gemini: { baseMs: 400, tokensPerSecond: 100 },
+  codex: { baseMs: 300, tokensPerSecond: 120 },
+} as const;
+
 // ============================================================================
 // Quality Router
 // ============================================================================
@@ -119,6 +137,7 @@ const QUALITY_DEFAULTS = {
   maxCostUsd: Infinity,
   maxLatencyMs: Infinity,
   costModel: DEFAULT_COST_MODEL,
+  latencyModel: DEFAULT_LATENCY_MODEL,
 } as const;
 
 type ResolvedConfig = {
@@ -126,6 +145,7 @@ type ResolvedConfig = {
   maxCostUsd: number;
   maxLatencyMs: number;
   costModel: CostModel;
+  latencyModel: LatencyModel;
   logger: ILogger;
 };
 
@@ -137,6 +157,7 @@ function resolveQualityConfig(config: QualityRouterConfig | undefined): Resolved
     maxCostUsd: config.maxCostUsd ?? base.maxCostUsd,
     maxLatencyMs: config.maxLatencyMs ?? base.maxLatencyMs,
     costModel: config.costModel ?? base.costModel,
+    latencyModel: config.latencyModel ?? base.latencyModel,
     logger: config.logger ?? base.logger,
   };
 }
@@ -150,6 +171,7 @@ export class QualityRouter {
   private readonly maxCostUsd: number;
   private readonly maxLatencyMs: number;
   private readonly costModel: CostModel;
+  private readonly latencyModel: LatencyModel;
   private readonly log: ILogger;
   private readonly complexityEstimator: TaskComplexityEstimator;
   private readonly adapters = new Map<CliName, ICliAdapter>();
@@ -160,6 +182,7 @@ export class QualityRouter {
     this.maxCostUsd = resolved.maxCostUsd;
     this.maxLatencyMs = resolved.maxLatencyMs;
     this.costModel = resolved.costModel;
+    this.latencyModel = resolved.latencyModel;
     this.log = resolved.logger;
     this.complexityEstimator = new TaskComplexityEstimator(this.log);
   }
@@ -347,9 +370,8 @@ export class QualityRouter {
   }
 
   private estimateLatency(cli: CliName, outputTokens: number): number {
-    const base = { claude: 500, gemini: 400, codex: 300 };
-    const tps = { claude: 80, gemini: 100, codex: 120 };
-    return base[cli] + (outputTokens / tps[cli]) * 1000;
+    const model = this.latencyModel[cli];
+    return model.baseMs + (outputTokens / model.tokensPerSecond) * 1000;
   }
 
   private meetsConstraints(quality: QualityEstimate): boolean {
