@@ -311,6 +311,8 @@ export {
   createProductionWorkflowEngine,
   initializeBuiltInTemplates,
   clearTemplateCache,
+  // Fail-safe error (Issue #507)
+  WorkflowExecutionUnavailableError,
 } from './workflow-engine-factory.js';
 export type { WorkflowEngineFactoryConfig } from './workflow-engine-factory.js';
 

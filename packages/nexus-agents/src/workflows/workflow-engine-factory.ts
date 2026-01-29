@@ -10,6 +10,20 @@
 import type { Result, WorkflowDefinition, StepResult, IModelAdapter } from '../core/index.js';
 import type { WorkflowStep as CoreWorkflowStep } from '../core/index.js';
 import { ok, err, WorkflowError, ParseError, createLogger, type ILogger } from '../core/index.js';
+
+/**
+ * Error thrown when workflow execution cannot proceed due to missing expert factory.
+ * (Source: Issue #507 - Fail-safe workflow execution)
+ */
+export class WorkflowExecutionUnavailableError extends Error {
+  constructor(reason: string) {
+    super(
+      `Workflow execution cannot proceed: ${reason}. ` +
+        'To use mock execution (NOT RECOMMENDED), set useMockExecutor: true'
+    );
+    this.name = 'WorkflowExecutionUnavailableError';
+  }
+}
 import type { WorkflowEngineDeps } from './workflow-engine-types.js';
 import type {
   ExecutionContext,
@@ -251,28 +265,39 @@ function createMockStepExecutor(
 
 /**
  * Resolves the step executor based on configuration.
+ *
+ * By default, this function FAILS if expertFactory is missing to prevent
+ * workflows from proceeding with mock/placeholder execution.
+ * (Source: Issue #507 - Fail-safe workflow execution)
  */
 function resolveStepExecutor(
   options: CreateExecutePhaseOptions
 ): (step: CoreWorkflowStep, ctx: ParallelContext) => Promise<StepResult> {
   const { logger, expertFactory, workflowId, useMockExecutor } = options;
 
-  // Use real executor when we have expertFactory, workflowId, and not explicitly using mock
-  if (expertFactory !== undefined && workflowId !== undefined && useMockExecutor !== true) {
+  // Explicit mock execution requested - allow it with warning
+  if (useMockExecutor === true) {
+    logger.warn(
+      'useMockExecutor enabled; workflow steps will return mock results (NOT RECOMMENDED)'
+    );
+    return createMockStepExecutor(logger);
+  }
+
+  // Use real executor when we have expertFactory and workflowId
+  if (expertFactory !== undefined && workflowId !== undefined) {
     logger.info('Using real StepExecutor with ExpertFactory', { workflowId });
     return createRealStepExecutorCallback(expertFactory, logger, workflowId);
   }
 
+  // Fail-fast when expertFactory is provided but workflowId is missing (Issue #507)
   if (expertFactory !== undefined && workflowId === undefined) {
-    logger.warn('expertFactory provided but workflowId missing; falling back to mock executor');
-  } else if (expertFactory === undefined) {
-    logger.warn(
-      'No expertFactory provided; workflow steps will return mock results. ' +
-        'Configure expertFactory or modelAdapter to enable real execution.'
-    );
+    throw new WorkflowExecutionUnavailableError('expertFactory provided but workflowId missing');
   }
 
-  return createMockStepExecutor(logger);
+  // Fail-fast when expertFactory is missing (Issue #507)
+  throw new WorkflowExecutionUnavailableError(
+    'No expertFactory provided. Configure expertFactory or modelAdapter to enable real execution'
+  );
 }
 
 /**
@@ -465,11 +490,15 @@ export function createRealWorkflowEngine(config?: WorkflowEngineFactoryConfig): 
  * Creates and initializes a WorkflowEngine with built-in templates loaded.
  * This is the recommended way to create a production workflow engine.
  *
+ * Note: Requires modelAdapter, expertFactory, or useMockExecutor: true to be specified.
+ * Without these, WorkflowExecutionUnavailableError will be thrown.
+ * (Source: Issue #507 - Fail-safe workflow execution)
+ *
  * @param config - Engine configuration
  * @returns Promise resolving to WorkflowEngine instance
  */
 export async function createInitializedWorkflowEngine(
-  config?: WorkflowEngineConfig
+  config?: WorkflowEngineFactoryConfig
 ): Promise<IWorkflowEngine> {
   const builtInTemplates = await initializeBuiltInTemplates();
   return createRealWorkflowEngine({ ...config, builtInTemplates });

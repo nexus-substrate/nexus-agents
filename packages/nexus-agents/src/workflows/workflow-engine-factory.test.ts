@@ -21,6 +21,7 @@ import {
   createProductionWorkflowEngine,
   initializeBuiltInTemplates,
   clearTemplateCache,
+  WorkflowExecutionUnavailableError,
 } from './workflow-engine-factory.js';
 
 // ============================================================================
@@ -108,8 +109,13 @@ describe('Workflow Engine Factory', () => {
   });
 
   describe('createWorkflowEngineDeps()', () => {
-    it('should create deps with default config', () => {
-      const deps = createWorkflowEngineDeps();
+    it('should throw WorkflowExecutionUnavailableError when no expertFactory provided', () => {
+      // Issue #507: Fail-safe workflow execution
+      expect(() => createWorkflowEngineDeps()).toThrow(WorkflowExecutionUnavailableError);
+    });
+
+    it('should create deps with useMockExecutor flag', () => {
+      const deps = createWorkflowEngineDeps({ useMockExecutor: true });
 
       expect(deps).toBeDefined();
       expect(deps.parseWorkflow).toBeDefined();
@@ -121,7 +127,7 @@ describe('Workflow Engine Factory', () => {
 
     it('should use provided logger', () => {
       const logger = createLogger({ component: 'TestLogger' });
-      const deps = createWorkflowEngineDeps({ logger });
+      const deps = createWorkflowEngineDeps({ logger, useMockExecutor: true });
 
       expect(deps).toBeDefined();
     });
@@ -157,7 +163,7 @@ describe('Workflow Engine Factory', () => {
       expect(templates.size).toBeGreaterThan(0);
 
       // Create deps - should use cached templates
-      const deps = createWorkflowEngineDeps();
+      const deps = createWorkflowEngineDeps({ useMockExecutor: true });
       const builtInTemplates = deps.getBuiltInTemplates();
 
       expect(builtInTemplates.size).toBe(templates.size);
@@ -167,7 +173,10 @@ describe('Workflow Engine Factory', () => {
       const customTemplates = new Map<string, WorkflowDefinition>();
       customTemplates.set('custom', createTestWorkflow());
 
-      const deps = createWorkflowEngineDeps({ builtInTemplates: customTemplates });
+      const deps = createWorkflowEngineDeps({
+        builtInTemplates: customTemplates,
+        useMockExecutor: true,
+      });
       const templates = deps.getBuiltInTemplates();
 
       expect(templates.size).toBe(1);
@@ -210,8 +219,13 @@ describe('Workflow Engine Factory', () => {
   });
 
   describe('createRealWorkflowEngine()', () => {
-    it('should create a workflow engine instance', () => {
-      const engine = createRealWorkflowEngine();
+    it('should throw when no expertFactory provided', () => {
+      // Issue #507: Fail-safe workflow execution
+      expect(() => createRealWorkflowEngine()).toThrow(WorkflowExecutionUnavailableError);
+    });
+
+    it('should create engine with useMockExecutor flag', () => {
+      const engine = createRealWorkflowEngine({ useMockExecutor: true });
 
       expect(engine).toBeDefined();
       expect(engine.execute).toBeDefined();
@@ -231,8 +245,15 @@ describe('Workflow Engine Factory', () => {
   });
 
   describe('createInitializedWorkflowEngine()', () => {
-    it('should create engine with built-in templates loaded', async () => {
-      const engine = await createInitializedWorkflowEngine();
+    it('should throw when no expertFactory provided', async () => {
+      // Issue #507: Fail-safe workflow execution
+      await expect(createInitializedWorkflowEngine()).rejects.toThrow(
+        WorkflowExecutionUnavailableError
+      );
+    });
+
+    it('should create engine with built-in templates and useMockExecutor', async () => {
+      const engine = await createInitializedWorkflowEngine({ useMockExecutor: true });
 
       expect(engine).toBeDefined();
       const templates = await engine.listTemplates();
@@ -282,7 +303,7 @@ describe('Workflow Engine Factory', () => {
 
   describe('parseWorkflow dependency', () => {
     it('should parse valid YAML workflow', () => {
-      const deps = createWorkflowEngineDeps();
+      const deps = createWorkflowEngineDeps({ useMockExecutor: true });
       const yamlContent = `
 name: test-workflow
 version: "1.0.0"
@@ -308,7 +329,7 @@ steps:
     });
 
     it('should parse valid JSON workflow', () => {
-      const deps = createWorkflowEngineDeps();
+      const deps = createWorkflowEngineDeps({ useMockExecutor: true });
       const jsonContent = JSON.stringify(createTestWorkflow());
 
       const result = deps.parseWorkflow(jsonContent, 'json');
@@ -320,7 +341,7 @@ steps:
     });
 
     it('should return error for invalid YAML', () => {
-      const deps = createWorkflowEngineDeps();
+      const deps = createWorkflowEngineDeps({ useMockExecutor: true });
       const invalidYaml = 'invalid: yaml: content: [';
 
       const result = deps.parseWorkflow(invalidYaml, 'yaml');
@@ -329,7 +350,7 @@ steps:
     });
 
     it('should return error for invalid JSON', () => {
-      const deps = createWorkflowEngineDeps();
+      const deps = createWorkflowEngineDeps({ useMockExecutor: true });
       const invalidJson = '{ invalid json }';
 
       const result = deps.parseWorkflow(invalidJson, 'json');
@@ -340,7 +361,7 @@ steps:
 
   describe('createExecutionPlan dependency', () => {
     it('should create execution plan for valid workflow', () => {
-      const deps = createWorkflowEngineDeps();
+      const deps = createWorkflowEngineDeps({ useMockExecutor: true });
       const workflow = createTestWorkflow();
 
       const result = deps.createExecutionPlan(workflow);
@@ -353,7 +374,7 @@ steps:
     });
 
     it('should handle workflow with dependencies', () => {
-      const deps = createWorkflowEngineDeps();
+      const deps = createWorkflowEngineDeps({ useMockExecutor: true });
       const workflow: WorkflowDefinition = {
         name: 'dependent-workflow',
         version: '1.0.0',
@@ -459,20 +480,18 @@ steps:
   });
 
   describe('Edge Cases', () => {
-    it('should handle empty config', () => {
-      const deps = createWorkflowEngineDeps({});
-
-      expect(deps).toBeDefined();
+    it('should throw for empty config (no expertFactory)', () => {
+      // Issue #507: Fail-safe workflow execution
+      expect(() => createWorkflowEngineDeps({})).toThrow(WorkflowExecutionUnavailableError);
     });
 
-    it('should handle undefined config', () => {
-      const deps = createWorkflowEngineDeps(undefined);
-
-      expect(deps).toBeDefined();
+    it('should throw for undefined config (no expertFactory)', () => {
+      // Issue #507: Fail-safe workflow execution
+      expect(() => createWorkflowEngineDeps(undefined)).toThrow(WorkflowExecutionUnavailableError);
     });
 
     it('should handle workflow with no inputs', () => {
-      const deps = createWorkflowEngineDeps();
+      const deps = createWorkflowEngineDeps({ useMockExecutor: true });
       const workflow: WorkflowDefinition = {
         name: 'no-inputs',
         version: '1.0.0',
@@ -485,7 +504,7 @@ steps:
     });
 
     it('should handle workflow with many steps', () => {
-      const deps = createWorkflowEngineDeps();
+      const deps = createWorkflowEngineDeps({ useMockExecutor: true });
       const steps = Array.from({ length: 10 }, (_, i) => {
         const step: {
           id: string;
