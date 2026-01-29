@@ -14,13 +14,18 @@ export { createSimpleAgent, checkFailFast, MissingDependencyError } from './shar
 export { executeAnalyze, AnalyzeUnavailableError } from './analyze.js';
 
 // Phase 2: RESEARCH
-export { executeResearch } from './research.js';
+export { executeResearch, ResearchUnavailableError } from './research.js';
 
 // Phase 3: PLAN (TRINITY)
 export { executePlan, PlanUnavailableError } from './plan.js';
 
 // Phase 4: REFINE (Reflexion)
-export { executeRefine, findPersonaRole, buildRefinementTask } from './refine.js';
+export {
+  executeRefine,
+  findPersonaRole,
+  buildRefinementTask,
+  RefineUnavailableError,
+} from './refine.js';
 
 // Phase 5: VOTE (Consensus)
 export { executeVote, VotingUnavailableError } from './vote.js';

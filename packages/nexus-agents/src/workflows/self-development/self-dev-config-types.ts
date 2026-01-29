@@ -64,13 +64,28 @@ export interface SelfDevPlanConfig extends TrinityConfig {
 }
 
 /**
+ * Extended configuration for REFINE phase with fail-safe option.
+ * (Source: Issue #503 - Fail-safe refinement)
+ */
+export interface SelfDevRefineConfig extends ReflexionConfig {
+  /**
+   * Allow heuristic-based critique fallback when ReflexionProtocol is unavailable.
+   * SECURITY WARNING: When true, returns synthetic critiques based on heuristics
+   * instead of actual multi-agent LLM critique.
+   * Default: false (fail with error if ReflexionProtocol unavailable)
+   * (Source: Issue #503 - Fail-safe refinement)
+   */
+  readonly allowHeuristicFallback?: boolean;
+}
+
+/**
  * Phase-specific configuration overrides.
  */
 export interface PhaseConfigs {
   readonly analyze?: AnalyzeConfig;
   readonly research?: ResearchConfig;
   readonly plan?: SelfDevPlanConfig;
-  readonly refine?: ReflexionConfig;
+  readonly refine?: SelfDevRefineConfig;
   readonly vote?: VoteConfig;
   readonly implement?: ImplementConfig;
   readonly verify?: VerifyConfig;
@@ -156,6 +171,14 @@ export interface ResearchConfig {
   readonly maxPapers?: number;
   /** Search depth for codebase */
   readonly codebaseSearchDepth?: number;
+  /**
+   * Allow heuristic-based research fallback when model adapter fails.
+   * SECURITY WARNING: When true, returns synthetic research data based on
+   * heuristics instead of actual LLM-generated analysis.
+   * Default: false (fail with error if model call fails)
+   * (Source: Issue #502 - Fail-safe research)
+   */
+  readonly allowHeuristicFallback?: boolean;
 }
 
 /**

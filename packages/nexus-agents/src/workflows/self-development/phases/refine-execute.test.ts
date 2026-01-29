@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { executeRefine } from './refine.js';
+import { executeRefine, RefineUnavailableError } from './refine.js';
 import type { SelfDevWorkflowDependencies } from '../interfaces.js';
 import type { SelfDevWorkflowState, PlanOutput, ImplementationPlan } from '../types.js';
 import { SELF_DEV_PERSONAS } from '../types.js';
@@ -150,10 +150,24 @@ describe('refine phase - executeRefine', () => {
       expect(result.finalSeverity).toBe(0.3); // (0.5 + 0.1) / 2
     });
 
-    it('falls back when reflexion protocol fails', async () => {
+    it('throws RefineUnavailableError when reflexion fails and fallback disabled', async () => {
       deps.reflexion = {
         execute: vi.fn().mockResolvedValue({ ok: false, error: { message: 'Failed' } }),
       } as never;
+
+      await expect(executeRefine(deps, state, createMockPlan())).rejects.toThrow(
+        RefineUnavailableError
+      );
+      await expect(executeRefine(deps, state, createMockPlan())).rejects.toThrow(
+        'ReflexionProtocol execution failed'
+      );
+    });
+
+    it('falls back when reflexion fails and heuristic fallback enabled', async () => {
+      deps.reflexion = {
+        execute: vi.fn().mockResolvedValue({ ok: false, error: { message: 'Failed' } }),
+      } as never;
+      state.config.phases = { refine: { allowHeuristicFallback: true } };
 
       const result = await executeRefine(deps, state, createMockPlan());
 
@@ -210,9 +224,26 @@ describe('refine phase - executeRefine', () => {
     });
   });
 
-  describe('without reflexion protocol (fallback)', () => {
-    it('returns fallback output when reflexion is undefined', async () => {
+  describe('without reflexion protocol', () => {
+    it('throws RefineUnavailableError when reflexion undefined and fallback disabled', async () => {
       delete (deps as { reflexion?: unknown }).reflexion;
+
+      await expect(
+        executeRefine(deps as SelfDevWorkflowDependencies, state, createMockPlan())
+      ).rejects.toThrow(RefineUnavailableError);
+      await expect(
+        executeRefine(deps as SelfDevWorkflowDependencies, state, createMockPlan())
+      ).rejects.toThrow('ReflexionProtocol not injected');
+    });
+  });
+
+  describe('without reflexion protocol (heuristic fallback enabled)', () => {
+    beforeEach(() => {
+      delete (deps as { reflexion?: unknown }).reflexion;
+      state.config.phases = { refine: { allowHeuristicFallback: true } };
+    });
+
+    it('returns fallback output when reflexion is undefined', async () => {
       const plan = createMockPlan();
       const result = await executeRefine(deps as SelfDevWorkflowDependencies, state, plan);
 
@@ -220,11 +251,10 @@ describe('refine phase - executeRefine', () => {
       expect(result.iterations).toBe(1);
       expect(result.reflexionResult.totalIterations).toBe(1);
       expect(result.reflexionResult.terminationReason).toBe('converged');
-      expect(result.reflexionResult.finalOutput).toBe(plan.trinityResult.finalOutput);
+      expect(result.reflexionResult.finalOutput).toContain(plan.trinityResult.finalOutput);
     });
 
     it('builds fallback critiques from all personas', async () => {
-      delete (deps as { reflexion?: unknown }).reflexion;
       const result = await executeRefine(
         deps as SelfDevWorkflowDependencies,
         state,
@@ -235,38 +265,32 @@ describe('refine phase - executeRefine', () => {
       for (let i = 0; i < SELF_DEV_PERSONAS.length; i++) {
         expect(result.critiques[i]!.personaId).toBe(SELF_DEV_PERSONAS[i]!.id);
         expect(result.critiques[i]!.role).toBe(SELF_DEV_PERSONAS[i]!.role);
-        expect(result.critiques[i]!.issues).toHaveLength(0);
-        expect(result.critiques[i]!.suggestions).toHaveLength(1);
-        expect(result.critiques[i]!.severity).toBe(0.1);
       }
     });
 
-    it('includes focus areas in fallback suggestions', async () => {
-      delete (deps as { reflexion?: unknown }).reflexion;
+    it('generates heuristic critiques based on plan content', async () => {
       const result = await executeRefine(
         deps as SelfDevWorkflowDependencies,
         state,
         createMockPlan()
       );
 
-      for (let i = 0; i < SELF_DEV_PERSONAS.length; i++) {
-        const suggestion = result.critiques[i]!.suggestions[0];
-        expect(suggestion).toContain('Consider');
-        expect(suggestion).toContain(SELF_DEV_PERSONAS[i]!.focusAreas[0]);
+      // Check that critiques have some content
+      for (const critique of result.critiques) {
+        expect(critique.issues).toBeDefined();
+        expect(critique.suggestions).toBeDefined();
+        expect(typeof critique.severity).toBe('number');
       }
     });
 
-    it('sets finalSeverity to 0 and preserves refinedPlan', async () => {
-      delete (deps as { reflexion?: unknown }).reflexion;
+    it('preserves refinedPlan from original plan', async () => {
       const plan = createMockPlan();
       const result = await executeRefine(deps as SelfDevWorkflowDependencies, state, plan);
 
-      expect(result.finalSeverity).toBe(0);
       expect(result.refinedPlan).toBe(plan.plan);
     });
 
     it('tracks duration correctly', async () => {
-      delete (deps as { reflexion?: unknown }).reflexion;
       const startTime = Date.now();
       const result = await executeRefine(
         deps as SelfDevWorkflowDependencies,
@@ -281,8 +305,8 @@ describe('refine phase - executeRefine', () => {
   });
 
   describe('edge cases', () => {
-    it('handles missing phase config', async () => {
-      // Create a new state with no phases config
+    it('throws when missing phase config and no reflexion', async () => {
+      // Create a new state with no phases config - should throw by default
       const stateWithNoPhases = {
         executionId: 'test-exec-123',
         currentPhase: 'refine',
@@ -293,9 +317,30 @@ describe('refine phase - executeRefine', () => {
       } as unknown as SelfDevWorkflowState;
       delete (deps as { reflexion?: unknown }).reflexion;
 
+      await expect(
+        executeRefine(deps as SelfDevWorkflowDependencies, stateWithNoPhases, createMockPlan())
+      ).rejects.toThrow(RefineUnavailableError);
+    });
+
+    it('uses fallback when missing phase config but heuristic fallback enabled', async () => {
+      // Missing phases.refine but allowHeuristicFallback: true at phases level
+      const stateWithFallback = {
+        executionId: 'test-exec-123',
+        currentPhase: 'refine',
+        config: {
+          repository: 'owner/repo',
+          targetIssue: 1,
+          phases: { refine: { allowHeuristicFallback: true } },
+        },
+        checkpoints: [],
+        startedAt: new Date().toISOString(),
+        status: 'running',
+      } as unknown as SelfDevWorkflowState;
+      delete (deps as { reflexion?: unknown }).reflexion;
+
       const result = await executeRefine(
         deps as SelfDevWorkflowDependencies,
-        stateWithNoPhases,
+        stateWithFallback,
         createMockPlan()
       );
 

@@ -24,6 +24,7 @@ export type {
   HistoryFindings,
   ResearchOutput,
   SelfDevPlanConfig,
+  SelfDevRefineConfig,
   VoteConfig,
   ImplementConfig,
   VerifyConfig,

@@ -183,6 +183,21 @@ function buildHeuristicContext(
 }
 
 /**
+ * Error thrown when research cannot proceed due to model failures.
+ * (Source: Issue #502 - Fail-safe research)
+ */
+export class ResearchUnavailableError extends Error {
+  constructor(reason: string) {
+    super(
+      `RESEARCH phase cannot proceed: ${reason}. ` +
+        'To use heuristic fallback research (NOT RECOMMENDED), set ' +
+        'config.phases.research.allowHeuristicFallback = true'
+    );
+    this.name = 'ResearchUnavailableError';
+  }
+}
+
+/**
  * Create fallback research output with heuristic-based guidance.
  * Used when model adapter is unavailable.
  * (Source: Issue #449 - Improve fallback implementations)
@@ -213,16 +228,19 @@ function createPlaceholderResearchOutput(
 
 /**
  * Execute RESEARCH phase - Multi-agent research using model adapter.
- * Falls back to heuristic research when model unavailable.
- * (Source: Issue #449 - Improve fallback implementations)
+ *
+ * By default, this phase FAILS if the model call fails to prevent
+ * workflows from proceeding with heuristic-based fake research.
+ * (Source: Issue #502 - Fail-safe research)
  */
 export async function executeResearch(
   deps: SelfDevWorkflowDependencies,
-  _state: SelfDevWorkflowState,
+  state: SelfDevWorkflowState,
   analyze: AnalyzeOutput
 ): Promise<ResearchOutput> {
   const startTime = Date.now();
   const issue = analyze.selectedIssue;
+  const allowHeuristicFallback = state.config.phases?.research?.allowHeuristicFallback === true;
 
   logger.info('RESEARCH phase: Synthesizing research context', { issue: issue.number });
 
@@ -234,7 +252,12 @@ export async function executeResearch(
   });
 
   if (!response.ok) {
-    logger.warn('RESEARCH phase: Model call failed, using heuristic fallback', {
+    // Model call failed - fail unless heuristic fallback explicitly allowed
+    // (Source: Issue #502 - Fail-safe research)
+    if (!allowHeuristicFallback) {
+      throw new ResearchUnavailableError(`Model call failed: ${response.error.message}`);
+    }
+    logger.warn('RESEARCH phase: Model call failed, using heuristic fallback (NOT RECOMMENDED)', {
       error: response.error.message,
       issueType: issue.type,
     });

@@ -14,7 +14,9 @@
       "Bash(codex exec:*)",
       "Bash(timeout 60 codex exec:*)",
       "Bash(gemini --help:*)",
-      "mcp__github__create_issue"
+      "mcp__github__create_issue",
+      "Bash",
+      "Read"
     ]
   },
   "outputStyle": "default"

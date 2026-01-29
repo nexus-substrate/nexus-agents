@@ -153,6 +153,21 @@ function generateRoleCritique(
 }
 
 /**
+ * Error thrown when refinement cannot proceed due to missing dependencies.
+ * (Source: Issue #503 - Fail-safe refinement)
+ */
+export class RefineUnavailableError extends Error {
+  constructor(reason: string) {
+    super(
+      `REFINE phase cannot proceed: ${reason}. ` +
+        'To use heuristic fallback critiques (NOT RECOMMENDED), set ' +
+        'config.phases.refine.allowHeuristicFallback = true'
+    );
+    this.name = 'RefineUnavailableError';
+  }
+}
+
+/**
  * Build fallback critiques from personas with heuristic analysis.
  * (Source: Issue #449 - Improve fallback implementations)
  */
@@ -293,6 +308,10 @@ async function executeReflexionProtocol(
 
 /**
  * Execute REFINE phase - Multi-persona reflexion critique.
+ *
+ * By default, this phase FAILS if ReflexionProtocol is unavailable to prevent
+ * workflows from proceeding with heuristic-based fake critiques.
+ * (Source: Issue #503 - Fail-safe refinement)
  */
 export async function executeRefine(
   deps: SelfDevWorkflowDependencies,
@@ -302,6 +321,7 @@ export async function executeRefine(
   const startTime = Date.now();
   const phaseConfig = state.config.phases?.refine;
   const maxIterations = phaseConfig?.maxIterations ?? 3;
+  const allowHeuristicFallback = phaseConfig?.allowHeuristicFallback === true;
 
   // Fail-fast check before falling back (Issue #455)
   checkFailFast(state.config.failFast, deps.reflexion, 'REFINE', 'ReflexionProtocol');
@@ -311,6 +331,17 @@ export async function executeRefine(
     return reflexionOutput;
   }
 
-  logger.info('REFINE phase: ReflexionProtocol not injected, using fallback');
+  // ReflexionProtocol not injected or failed - fail unless heuristic fallback explicitly allowed
+  // (Source: Issue #503 - Fail-safe refinement)
+  if (!allowHeuristicFallback) {
+    throw new RefineUnavailableError(
+      deps.reflexion === undefined
+        ? 'ReflexionProtocol not injected'
+        : 'ReflexionProtocol execution failed'
+    );
+  }
+  logger.warn(
+    'REFINE phase: ReflexionProtocol unavailable, using heuristic fallback (NOT RECOMMENDED)'
+  );
   return buildFallbackRefineOutput(plan, startTime);
 }

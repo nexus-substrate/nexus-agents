@@ -90,11 +90,17 @@ export { MissingDependencyError, checkFailFast } from './phases/shared.js';
 // Fail-safe analysis (Issue #496)
 export { AnalyzeUnavailableError } from './phases/analyze.js';
 
+// Fail-safe research (Issue #502)
+export { ResearchUnavailableError } from './phases/research.js';
+
 // Fail-safe planning (Issue #497)
 export { PlanUnavailableError } from './phases/plan.js';
 
 // Fail-safe voting (Issue #501)
 export { VotingUnavailableError } from './phases/vote.js';
+
+// Fail-safe refinement (Issue #503)
+export { RefineUnavailableError } from './phases/refine.js';
 
 // Metrics
 export {
