@@ -142,6 +142,21 @@ function extractKeywords(title: string, body: string): string[] {
 }
 
 /**
+ * Error thrown when analysis cannot proceed due to missing dependencies.
+ * (Source: Issue #496 - Fail-safe analysis)
+ */
+export class AnalyzeUnavailableError extends Error {
+  constructor(reason: string) {
+    super(
+      `ANALYZE phase cannot proceed: ${reason}. ` +
+        'To use placeholder fallback (NOT RECOMMENDED), set ' +
+        'config.phases.analyze.allowPlaceholderFallback = true'
+    );
+    this.name = 'AnalyzeUnavailableError';
+  }
+}
+
+/**
  * Create placeholder output when no issues available.
  */
 function createPlaceholderAnalyzeOutput(startTime: number): AnalyzeOutput {
@@ -194,18 +209,30 @@ function enrichIssue(issue: {
 
 /**
  * Execute ANALYZE phase - Issue analysis and prioritization.
+ *
+ * By default, this phase FAILS if GitHub client is unavailable to prevent
+ * workflows from proceeding with fake placeholder issues.
+ * (Source: Issue #496 - Fail-safe analysis)
  */
 export async function executeAnalyze(
   deps: SelfDevWorkflowDependencies,
   state: SelfDevWorkflowState
 ): Promise<AnalyzeOutput> {
   const startTime = Date.now();
+  const allowPlaceholderFallback = state.config.phases?.analyze?.allowPlaceholderFallback === true;
 
   // Fail-fast check before falling back (Issue #455)
   checkFailFast(state.config.failFast, deps.githubClient, 'ANALYZE', 'GitHub client');
 
   if (deps.githubClient === undefined) {
-    logger.info('ANALYZE phase: using placeholder (no GitHub client)');
+    // GitHub client not injected - fail unless placeholder fallback explicitly allowed
+    // (Source: Issue #496 - Fail-safe analysis)
+    if (!allowPlaceholderFallback) {
+      throw new AnalyzeUnavailableError('GitHub client not injected');
+    }
+    logger.warn(
+      'ANALYZE phase: GitHub client not injected, using placeholder fallback (NOT RECOMMENDED)'
+    );
     return createPlaceholderAnalyzeOutput(startTime);
   }
 
@@ -214,6 +241,8 @@ export async function executeAnalyze(
   try {
     const issues = await deps.githubClient.listIssues(['self-development-approved']);
     if (issues.length === 0) {
+      // No approved issues is a legitimate scenario - return placeholder but don't fail
+      // This is different from missing client (which is a configuration error)
       logger.warn('ANALYZE phase: No approved issues found');
       return createPlaceholderAnalyzeOutput(startTime);
     }
@@ -241,6 +270,11 @@ export async function executeAnalyze(
   } catch (err) {
     const causeError = err instanceof Error ? err : new Error(String(err));
     logger.error('ANALYZE phase: GitHub API error', causeError);
+    // API error - fail unless placeholder fallback explicitly allowed
+    if (!allowPlaceholderFallback) {
+      throw new AnalyzeUnavailableError(`GitHub API error: ${causeError.message}`);
+    }
+    logger.warn('ANALYZE phase: GitHub API failed, using placeholder fallback (NOT RECOMMENDED)');
     return createPlaceholderAnalyzeOutput(startTime);
   }
 }

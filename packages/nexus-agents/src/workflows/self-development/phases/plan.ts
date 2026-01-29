@@ -292,6 +292,21 @@ function buildFallbackWorkerOutput(
 }
 
 /**
+ * Error thrown when planning cannot proceed due to missing dependencies.
+ * (Source: Issue #497 - Fail-safe planning)
+ */
+export class PlanUnavailableError extends Error {
+  constructor(reason: string) {
+    super(
+      `PLAN phase cannot proceed: ${reason}. ` +
+        'To use heuristic fallback planning (NOT RECOMMENDED), set ' +
+        'config.phases.plan.allowHeuristicFallback = true'
+    );
+    this.name = 'PlanUnavailableError';
+  }
+}
+
+/**
  * Build fallback plan output when TRINITY is not available.
  * Uses heuristic-based planning instead of LLM coordination.
  * (Source: Issue #449 - Improve fallback implementations)
@@ -342,6 +357,10 @@ function buildFallbackPlanOutput(
 
 /**
  * Execute PLAN phase - TRINITY Thinker/Worker/Verifier planning.
+ *
+ * By default, this phase FAILS if TrinityCoordinator is unavailable to prevent
+ * workflows from proceeding with heuristic-based fake plans.
+ * (Source: Issue #497 - Fail-safe planning)
  */
 export async function executePlan(
   deps: SelfDevWorkflowDependencies,
@@ -353,12 +372,20 @@ export async function executePlan(
   const taskDescription = buildPlanTaskDescription(analyze, research);
   const config = state.config.phases?.plan;
   const maxIterations = config?.maxIterations ?? 3;
+  const allowHeuristicFallback = config?.allowHeuristicFallback === true;
 
   // Fail-fast check before falling back (Issue #455)
   checkFailFast(state.config.failFast, deps.trinity, 'PLAN', 'TrinityCoordinator');
 
   if (deps.trinity === undefined) {
-    logger.info('PLAN phase: TrinityCoordinator not injected, using placeholder');
+    // TrinityCoordinator not injected - fail unless heuristic fallback explicitly allowed
+    // (Source: Issue #497 - Fail-safe planning)
+    if (!allowHeuristicFallback) {
+      throw new PlanUnavailableError('TrinityCoordinator not injected');
+    }
+    logger.warn(
+      'PLAN phase: TrinityCoordinator not injected, using heuristic fallback (NOT RECOMMENDED)'
+    );
     return buildFallbackPlanOutput(analyze, research, taskDescription, maxIterations, startTime);
   }
 
@@ -369,7 +396,13 @@ export async function executePlan(
   const result = await deps.trinity.execute({ task, agent });
 
   if (!result.ok) {
-    logger.warn('PLAN phase: TRINITY failed, falling back to placeholder', {
+    // TRINITY execution failed - fail unless heuristic fallback explicitly allowed
+    if (!allowHeuristicFallback) {
+      throw new PlanUnavailableError(
+        `TrinityCoordinator execution failed: ${result.error.message}`
+      );
+    }
+    logger.warn('PLAN phase: TRINITY failed, using heuristic fallback (NOT RECOMMENDED)', {
       error: result.error.message,
     });
     return buildFallbackPlanOutput(analyze, research, taskDescription, maxIterations, startTime);

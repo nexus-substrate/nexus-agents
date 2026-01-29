@@ -87,6 +87,12 @@ export {
 // Fail-fast utilities (Issue #455)
 export { MissingDependencyError, checkFailFast } from './phases/shared.js';
 
+// Fail-safe analysis (Issue #496)
+export { AnalyzeUnavailableError } from './phases/analyze.js';
+
+// Fail-safe planning (Issue #497)
+export { PlanUnavailableError } from './phases/plan.js';
+
 // Fail-safe voting (Issue #501)
 export { VotingUnavailableError } from './phases/vote.js';
 

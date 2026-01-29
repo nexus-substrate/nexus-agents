@@ -49,12 +49,27 @@ export interface SelfDevWorkflowConfig {
 }
 
 /**
+ * Extended configuration for PLAN phase with fail-safe option.
+ * (Source: Issue #497 - Fail-safe planning)
+ */
+export interface SelfDevPlanConfig extends TrinityConfig {
+  /**
+   * Allow heuristic-based planning fallback when TrinityCoordinator is unavailable.
+   * SECURITY WARNING: When true, returns a synthetic plan based on heuristics
+   * instead of actual LLM-coordinated planning.
+   * Default: false (fail with error if TrinityCoordinator unavailable)
+   * (Source: Issue #497 - Fail-safe planning)
+   */
+  readonly allowHeuristicFallback?: boolean;
+}
+
+/**
  * Phase-specific configuration overrides.
  */
 export interface PhaseConfigs {
   readonly analyze?: AnalyzeConfig;
   readonly research?: ResearchConfig;
-  readonly plan?: TrinityConfig;
+  readonly plan?: SelfDevPlanConfig;
   readonly refine?: ReflexionConfig;
   readonly vote?: VoteConfig;
   readonly implement?: ImplementConfig;
@@ -73,6 +88,14 @@ export interface AnalyzeConfig {
   readonly timeout?: number;
   /** Scoring weights */
   readonly scoring?: PriorityScoringWeights;
+  /**
+   * Allow placeholder fallback when GitHub client is unavailable or API fails.
+   * SECURITY WARNING: When true, returns a synthetic issue #0 with no real data.
+   * This allows the workflow to continue without real issue input.
+   * Default: false (fail with error if GitHub client unavailable)
+   * (Source: Issue #496 - Fail-safe analysis)
+   */
+  readonly allowPlaceholderFallback?: boolean;
 }
 
 /**

@@ -23,6 +23,7 @@ export type {
   DocFindings,
   HistoryFindings,
   ResearchOutput,
+  SelfDevPlanConfig,
   VoteConfig,
   ImplementConfig,
   VerifyConfig,

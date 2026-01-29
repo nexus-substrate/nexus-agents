@@ -11,13 +11,13 @@
 export { createSimpleAgent, checkFailFast, MissingDependencyError } from './shared.js';
 
 // Phase 1: ANALYZE
-export { executeAnalyze } from './analyze.js';
+export { executeAnalyze, AnalyzeUnavailableError } from './analyze.js';
 
 // Phase 2: RESEARCH
 export { executeResearch } from './research.js';
 
 // Phase 3: PLAN (TRINITY)
-export { executePlan } from './plan.js';
+export { executePlan, PlanUnavailableError } from './plan.js';
 
 // Phase 4: REFINE (Reflexion)
 export { executeRefine, findPersonaRole, buildRefinementTask } from './refine.js';
