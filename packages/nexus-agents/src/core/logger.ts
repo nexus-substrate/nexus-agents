@@ -7,6 +7,12 @@
 /** Log levels in order of severity */
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
+/** Log output format */
+export type LogFormat = 'json' | 'pretty';
+
+/** Log output destination */
+export type LogDestination = 'stdout' | 'stderr' | 'file';
+
 /** Log context/metadata */
 export interface LogContext {
   [key: string]: unknown;
@@ -33,6 +39,10 @@ export interface ILogger {
   error(message: string, error?: Error, context?: LogContext): void;
   child(context: LogContext): ILogger;
   setLevel(level: LogLevel): void;
+  /** Set output format (json or pretty) - optional for backward compatibility */
+  setFormat?: ((format: LogFormat) => void) | undefined;
+  /** Set output destination (stdout, stderr, or file) - optional for backward compatibility */
+  setDestination?: ((destination: LogDestination, filePath?: string) => void) | undefined;
 }
 
 /** Patterns to sanitize from logs */
@@ -226,17 +236,62 @@ function formatEntry(
   return entry;
 }
 
-function writeLog(level: LogLevel, entry: LogEntry): void {
-  const output = JSON.stringify(entry) + '\n';
-  if (level === 'debug' || level === 'info') {
-    process.stdout.write(output);
-  } else {
-    process.stderr.write(output);
+/** ANSI color codes for pretty format. */
+const COLORS = {
+  reset: '\x1b[0m',
+  dim: '\x1b[2m',
+  debug: '\x1b[36m', // cyan
+  info: '\x1b[32m', // green
+  warn: '\x1b[33m', // yellow
+  error: '\x1b[31m', // red
+} as const;
+
+/** Formats a log entry in pretty human-readable format. */
+function formatPretty(entry: LogEntry): string {
+  const color = COLORS[entry.level];
+  const levelPad = entry.level.toUpperCase().padEnd(5);
+  const ctx =
+    entry.context !== undefined
+      ? ` ${COLORS.dim}${JSON.stringify(entry.context)}${COLORS.reset}`
+      : '';
+  const err =
+    entry.error !== undefined
+      ? `\n  ${COLORS.error}${entry.error.name}: ${entry.error.message}${COLORS.reset}`
+      : '';
+  const stack =
+    entry.error?.stack !== undefined ? `\n${COLORS.dim}${entry.error.stack}${COLORS.reset}` : '';
+  return `${COLORS.dim}${entry.timestamp}${COLORS.reset} ${color}${levelPad}${COLORS.reset} ${entry.message}${ctx}${err}${stack}\n`;
+}
+
+/** Global logger configuration state. */
+let globalFormat: LogFormat = 'json';
+let globalDestination: LogDestination = 'stdout';
+let globalFilePath: string | undefined;
+let fileStream: import('fs').WriteStream | undefined;
+
+/** Gets the output stream based on destination. */
+function getOutputStream(): NodeJS.WritableStream {
+  if (globalDestination === 'file' && globalFilePath !== undefined) {
+    if (fileStream === undefined) {
+      // Lazy import fs to avoid issues in browser environments
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const fs = require('fs') as typeof import('fs');
+      fileStream = fs.createWriteStream(globalFilePath, { flags: 'a' });
+    }
+    return fileStream;
   }
+  return globalDestination === 'stderr' ? process.stderr : process.stdout;
+}
+
+/** Writes a log entry to the configured destination. */
+function writeLog(entry: LogEntry): void {
+  const output = globalFormat === 'pretty' ? formatPretty(entry) : JSON.stringify(entry) + '\n';
+  getOutputStream().write(output);
 }
 
 /**
- * Creates a structured JSON logger.
+ * Creates a structured logger with configurable format and destination.
+ * (Source: Issue #485 - Wire logging.format and logging.destination)
  */
 export function createLogger(baseContext?: LogContext): ILogger {
   let currentLevel: LogLevel = 'info';
@@ -248,7 +303,7 @@ export function createLogger(baseContext?: LogContext): ILogger {
 
   function log(level: LogLevel, msg: string, ctx?: LogContext, e?: Error): void {
     if (shouldLog(level)) {
-      writeLog(level, formatEntry(level, msg, context, ctx, e));
+      writeLog(formatEntry(level, msg, context, ctx, e));
     }
   }
 
@@ -268,6 +323,18 @@ export function createLogger(baseContext?: LogContext): ILogger {
     child: (childCtx): ILogger => createLogger({ ...context, ...childCtx }),
     setLevel: (level): void => {
       currentLevel = level;
+    },
+    setFormat: (format): void => {
+      globalFormat = format;
+    },
+    setDestination: (destination, filePath): void => {
+      // Close existing file stream if changing destination
+      if (fileStream !== undefined && (destination !== 'file' || filePath !== globalFilePath)) {
+        fileStream.end();
+        fileStream = undefined;
+      }
+      globalDestination = destination;
+      globalFilePath = filePath;
     },
   };
 }

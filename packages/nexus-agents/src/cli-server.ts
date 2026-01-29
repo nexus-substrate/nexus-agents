@@ -397,9 +397,20 @@ function applyLoggingConfig(logger: ILogger, verbose: boolean, config: AppConfig
     logger.debug('Log level set from configuration', { level: config.logging.level });
   }
 
-  // TODO(Issue #485): Wire logging.format and logging.destination to logger
-  // Currently only level is supported. Format (json/pretty) and destination
-  // (stdout/stderr/file) require logger infrastructure changes.
+  // Wire logging format (Issue #485)
+  if (config.logging?.format !== undefined && logger.setFormat !== undefined) {
+    logger.setFormat(config.logging.format);
+    logger.debug('Log format set from configuration', { format: config.logging.format });
+  }
+
+  // Wire logging destination (Issue #485)
+  if (config.logging?.destination !== undefined && logger.setDestination !== undefined) {
+    logger.setDestination(config.logging.destination, config.logging.filePath);
+    logger.debug('Log destination set from configuration', {
+      destination: config.logging.destination,
+      filePath: config.logging.filePath,
+    });
+  }
 }
 
 /**
