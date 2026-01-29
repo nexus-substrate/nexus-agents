@@ -70,11 +70,38 @@ export { EventBusConfigSchema, ObservabilityConfigSchema } from './schemas-obser
 
 export type { EventBusConfig, ObservabilityConfig } from './schemas-observability.js';
 
+// Re-export routing schemas (Issue #475)
+export {
+  BudgetConstraintsSchema,
+  TopsisCriterionSchema,
+  TopsisConfigSchema,
+  DifficultyWeightsConfigSchema,
+  DifficultyThresholdsSchema,
+  ZeroRouterConfigSchema,
+  LatencyTrackerConfigSchema,
+  RoutingMemoryConfigSchema,
+  RoutingConfigSchema,
+  DEFAULT_ROUTING_CONFIG,
+} from './schemas-routing.js';
+
+export type {
+  BudgetConstraints,
+  TopsisCriterion,
+  TopsisConfig,
+  DifficultyWeightsConfig,
+  DifficultyThresholds,
+  ZeroRouterConfig,
+  LatencyTrackerConfig,
+  RoutingMemoryConfig,
+  RoutingConfig,
+} from './schemas-routing.js';
+
 // Import for local use in AppConfigSchema
 import { ModelConfigSchema, WorkflowConfigSchema, LoggingConfigSchema } from './schemas-core.js';
 import { ExpertConfigSchema } from './schemas-expert.js';
 import { SecurityConfigSchema } from './schemas-security.js';
 import { ObservabilityConfigSchema } from './schemas-observability.js';
+import { RoutingConfigSchema } from './schemas-routing.js';
 
 /**
  * Complete application configuration schema.
@@ -87,6 +114,8 @@ export const AppConfigSchema = z.object({
   logging: LoggingConfigSchema.optional(),
   /** Observability configuration (Issue #307) */
   observability: ObservabilityConfigSchema.optional(),
+  /** Routing configuration (Issue #475) */
+  routing: RoutingConfigSchema,
 });
 
 export type AppConfig = z.infer<typeof AppConfigSchema>;

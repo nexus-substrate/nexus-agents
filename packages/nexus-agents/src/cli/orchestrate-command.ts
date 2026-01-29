@@ -23,6 +23,7 @@ import {
   type CliName,
   type CliTask,
 } from '../cli-adapters/index.js';
+import { getConfig, adaptRoutingConfig } from '../config/index.js';
 import { executeWithPuppeteer } from './orchestrate-puppeteer.js';
 import type { OrchestrateOptions, PuppeteerOrchestrationResult } from './orchestrate-types.js';
 
@@ -81,11 +82,20 @@ async function executeWithRouting(
 ): Promise<OrchestrationResult> {
   const startTime = Date.now();
 
+  // Load routing config from nexus-agents.yaml (Issue #475)
+  const configResult = getConfig();
+  const routingConfig = adaptRoutingConfig(configResult.config.routing);
+
+  // Override budget constraints with CLI options if provided
+  const budgetConstraints = {
+    ...routingConfig.budgetConstraints,
+    ...(options.maxTokens !== undefined && { maxTokens: options.maxTokens }),
+    ...(options.maxCostUsd !== undefined && { maxCostUsd: options.maxCostUsd }),
+  };
+
   const router = createCompositeRouter(adapters, {
-    budgetConstraints: {
-      maxTokens: options.maxTokens ?? 100000,
-      maxCostUsd: options.maxCostUsd ?? 10,
-    },
+    ...routingConfig,
+    budgetConstraints,
   });
 
   logger.info('Routing task...', { task: task.content.slice(0, 50) });

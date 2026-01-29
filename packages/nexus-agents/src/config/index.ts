@@ -21,6 +21,17 @@ export {
   ToolRateLimitSchema,
   EventBusConfigSchema,
   ObservabilityConfigSchema,
+  // Routing schemas (Issue #475)
+  BudgetConstraintsSchema,
+  TopsisCriterionSchema,
+  TopsisConfigSchema,
+  DifficultyWeightsConfigSchema,
+  DifficultyThresholdsSchema,
+  ZeroRouterConfigSchema,
+  LatencyTrackerConfigSchema,
+  RoutingMemoryConfigSchema,
+  RoutingConfigSchema,
+  DEFAULT_ROUTING_CONFIG,
   DEFAULT_TOOL_RATE_LIMITS,
   VALID_EXPERT_TIERS,
   VALID_EXPERT_DOMAINS,
@@ -48,7 +59,20 @@ export type {
   ToolCategory,
   EventBusConfig,
   ObservabilityConfig,
+  // Routing types (Issue #475)
+  BudgetConstraints,
+  TopsisCriterion,
+  TopsisConfig,
+  DifficultyWeightsConfig,
+  DifficultyThresholds,
+  ZeroRouterConfig,
+  LatencyTrackerConfig,
+  RoutingMemoryConfig,
+  RoutingConfig,
 } from './schemas.js';
+
+// Routing config adapter (Issue #475)
+export { adaptRoutingConfig, getTopsisConfigFromYaml } from './routing-config-adapter.js';
 
 // Centralized defaults
 export {
