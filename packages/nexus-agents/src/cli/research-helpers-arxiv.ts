@@ -93,7 +93,7 @@ function getErrorCodeFromException(err: unknown): ArxivFetchErrorCode {
 export async function fetchArxivMetadataResult(
   arxivId: string
 ): Promise<Result<ArxivMetadata, ArxivFetchError>> {
-  const url = `http://export.arxiv.org/api/query?id_list=${arxivId}`;
+  const url = `https://export.arxiv.org/api/query?id_list=${arxivId}`;
 
   try {
     const response = await fetch(url, {
