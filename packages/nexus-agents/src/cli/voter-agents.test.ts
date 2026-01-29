@@ -256,9 +256,10 @@ That's my vote.`;
       const vote = simulateVote('architect', 'Test proposal');
 
       expect(['approve', 'reject', 'abstain']).toContain(vote.decision);
-      expect(vote.reasoning).toContain('[Simulated]');
-      expect(vote.confidence).toBeGreaterThanOrEqual(0.7);
-      expect(vote.confidence).toBeLessThanOrEqual(1.0);
+      expect(vote.reasoning).toMatch(/\[Simulated/); // Matches '[Simulated]' or '[Simulated - no LLM available]'
+      // Confidence varies by decision: reject 0.6-0.9, approve 0.5-0.8, abstain 0.3-0.5 (Issue #453)
+      expect(vote.confidence).toBeGreaterThanOrEqual(0.3);
+      expect(vote.confidence).toBeLessThanOrEqual(0.9);
     });
 
     it('should include role-specific reasoning', () => {
@@ -423,7 +424,7 @@ That's my vote.`;
       });
 
       expect(result.source).toBe('simulation');
-      expect(result.vote.reasoning).toContain('[Simulated]');
+      expect(result.vote.reasoning).toMatch(/\[Simulated/); // Matches '[Simulated]' or '[Simulated - no LLM available]'
     });
 
     it('should timeout and return error when adapter is slow', async () => {
