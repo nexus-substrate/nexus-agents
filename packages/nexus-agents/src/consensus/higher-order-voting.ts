@@ -71,7 +71,11 @@ export class OWVoting implements IHigherOrderVoting, IVotingStrategy {
     const hasSufficientData = hasSufficientCorrelationData(agentIds, correlationMatrix);
 
     if (!hasSufficientData && this.config.fallbackToSimpleVoting) {
-      logger.debug('Insufficient correlation data, falling back to simple voting');
+      // Issue #525: Log at INFO level for visibility
+      logger.info('Insufficient correlation data, falling back to simple voting', {
+        agentCount: agentIds.length,
+        reason: 'insufficient_correlation_data',
+      });
       return this.aggregateSimpleInternal(votes);
     }
 
@@ -124,7 +128,10 @@ export class OWVoting implements IHigherOrderVoting, IVotingStrategy {
     independentSubsets: readonly IndependentSubset[]
   ): HigherOrderVotingResult {
     if (independentSubsets.length === 0) {
-      logger.debug('No independent subsets, falling back to simple voting');
+      // Issue #525: Log at INFO level for visibility
+      logger.info('No independent subsets, falling back to simple voting', {
+        reason: 'no_independent_subsets',
+      });
       return this.aggregateSimpleInternal(votes);
     }
 
@@ -171,7 +178,11 @@ export class OWVoting implements IHigherOrderVoting, IVotingStrategy {
 
     if (!tracker.hasSufficientData(agentIds)) {
       if (this.config.fallbackToSimpleVoting) {
-        logger.debug('Insufficient data for correlation analysis, using simple voting');
+        // Issue #525: Log at INFO level for visibility
+        logger.info('Insufficient data for correlation analysis, using simple voting', {
+          agentCount: agentIds.length,
+          reason: 'insufficient_tracker_data',
+        });
         return this.aggregateSimpleInternal(votes);
       }
     }
