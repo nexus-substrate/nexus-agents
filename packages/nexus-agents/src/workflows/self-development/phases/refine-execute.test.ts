@@ -167,9 +167,12 @@ describe('refine phase - executeRefine', () => {
       deps.reflexion = {
         execute: vi.fn().mockResolvedValue({ ok: false, error: { message: 'Failed' } }),
       } as never;
-      state.config.phases = { refine: { allowHeuristicFallback: true } };
+      const stateWithFallback = {
+        ...state,
+        config: { ...state.config, phases: { refine: { allowHeuristicFallback: true } } },
+      } as SelfDevWorkflowState;
 
-      const result = await executeRefine(deps, state, createMockPlan());
+      const result = await executeRefine(deps, stateWithFallback, createMockPlan());
 
       expect(result.converged).toBe(true);
       expect(result.iterations).toBe(1);
@@ -238,14 +241,19 @@ describe('refine phase - executeRefine', () => {
   });
 
   describe('without reflexion protocol (heuristic fallback enabled)', () => {
+    let fallbackState: SelfDevWorkflowState;
+
     beforeEach(() => {
       delete (deps as { reflexion?: unknown }).reflexion;
-      state.config.phases = { refine: { allowHeuristicFallback: true } };
+      fallbackState = {
+        ...state,
+        config: { ...state.config, phases: { refine: { allowHeuristicFallback: true } } },
+      } as SelfDevWorkflowState;
     });
 
     it('returns fallback output when reflexion is undefined', async () => {
       const plan = createMockPlan();
-      const result = await executeRefine(deps as SelfDevWorkflowDependencies, state, plan);
+      const result = await executeRefine(deps as SelfDevWorkflowDependencies, fallbackState, plan);
 
       expect(result.converged).toBe(true);
       expect(result.iterations).toBe(1);
@@ -257,7 +265,7 @@ describe('refine phase - executeRefine', () => {
     it('builds fallback critiques from all personas', async () => {
       const result = await executeRefine(
         deps as SelfDevWorkflowDependencies,
-        state,
+        fallbackState,
         createMockPlan()
       );
 
@@ -271,7 +279,7 @@ describe('refine phase - executeRefine', () => {
     it('generates heuristic critiques based on plan content', async () => {
       const result = await executeRefine(
         deps as SelfDevWorkflowDependencies,
-        state,
+        fallbackState,
         createMockPlan()
       );
 
@@ -285,7 +293,7 @@ describe('refine phase - executeRefine', () => {
 
     it('preserves refinedPlan from original plan', async () => {
       const plan = createMockPlan();
-      const result = await executeRefine(deps as SelfDevWorkflowDependencies, state, plan);
+      const result = await executeRefine(deps as SelfDevWorkflowDependencies, fallbackState, plan);
 
       expect(result.refinedPlan).toBe(plan.plan);
     });
@@ -294,7 +302,7 @@ describe('refine phase - executeRefine', () => {
       const startTime = Date.now();
       const result = await executeRefine(
         deps as SelfDevWorkflowDependencies,
-        state,
+        fallbackState,
         createMockPlan()
       );
       const endTime = Date.now();

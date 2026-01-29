@@ -102,6 +102,9 @@ export { VotingUnavailableError } from './phases/vote.js';
 // Fail-safe refinement (Issue #503)
 export { RefineUnavailableError } from './phases/refine.js';
 
+// Fail-safe implementation (Issue #504)
+export { ImplementUnavailableError } from './phases/implement.js';
+
 // Metrics
 export {
   calculateMetrics,

@@ -271,6 +271,14 @@ export interface ImplementConfig {
     readonly lint: string;
     readonly test: string;
   };
+  /**
+   * Allow placeholder fallback when model adapter fails.
+   * SECURITY WARNING: When true, returns success=false with placeholder file list
+   * from the plan instead of actual LLM-generated implementation.
+   * Default: false (fail with error if model call fails)
+   * (Source: Issue #504 - Fail-safe implementation)
+   */
+  readonly allowPlaceholderFallback?: boolean;
 }
 
 /**

@@ -9,8 +9,24 @@
 import { createLogger } from '../../../core/index.js';
 import type { SelfDevWorkflowDependencies } from '../interfaces.js';
 import type { SelfDevWorkflowState, RefineOutput, ImplementOutput } from '../types.js';
+import { checkFailFast } from './shared.js';
 
 const logger = createLogger({ component: 'self-dev-phase-implement' });
+
+/**
+ * Error thrown when implementation cannot proceed due to model failure.
+ * (Source: Issue #504 - Fail-safe implementation)
+ */
+export class ImplementUnavailableError extends Error {
+  constructor(reason: string) {
+    super(
+      `IMPLEMENT phase cannot proceed: ${reason}. ` +
+        'To use placeholder fallback (NOT RECOMMENDED), set ' +
+        'config.phases.implement.allowPlaceholderFallback = true'
+    );
+    this.name = 'ImplementUnavailableError';
+  }
+}
 
 const IMPLEMENT_SYSTEM_PROMPT = `You are an expert code implementer.
 Generate clean, well-documented TypeScript code following these guidelines:
@@ -86,47 +102,18 @@ function categorizeFilesFromPlan(filesFromPlan: RefineOutput['refinedPlan']['fil
 }
 
 /**
- * Execute IMPLEMENT phase - Code generation using model adapter.
- * SelfDebug and SelfRefine protocols are available but require specific
- * execution contexts (code executor, collaboration config) that are better
- * suited for actual file-level implementation. Here we use the model adapter
- * directly with structured prompts.
+ * Build successful implementation output from model response.
  */
-export async function executeImplement(
-  deps: SelfDevWorkflowDependencies,
-  _state: SelfDevWorkflowState,
-  refine: RefineOutput
-): Promise<ImplementOutput> {
-  const startTime = Date.now();
-  const filesFromPlan = refine.refinedPlan.files;
-  let filesCreated: string[] = [];
-  let filesModified: string[] = [];
-  const selfDebugIterations = 0;
-  let selfRefineIterations = 0;
+function buildSuccessOutput(
+  output: string,
+  filesFromPlan: RefineOutput['refinedPlan']['files'],
+  startTime: number
+): ImplementOutput {
+  const parsed = parseImplementationFiles(output);
+  let filesCreated = parsed.created;
+  let filesModified = parsed.modified;
 
-  logProtocolAvailability(deps);
-
-  const implementPrompt = buildImplementPrompt(refine);
-
-  logger.info('IMPLEMENT phase: Generating implementation', {
-    files: filesFromPlan.length,
-  });
-
-  const response = await deps.modelAdapter.complete({
-    messages: [{ role: 'user', content: implementPrompt }],
-    systemPrompt: IMPLEMENT_SYSTEM_PROMPT,
-    maxTokens: 4000,
-  });
-
-  if (response.ok) {
-    const content = response.value.content[0];
-    const output = content?.type === 'text' ? content.text : '';
-    const parsed = parseImplementationFiles(output);
-    filesCreated = parsed.created;
-    filesModified = parsed.modified;
-    selfRefineIterations = 1;
-  }
-
+  // If no files parsed from output, use files from plan
   if (filesCreated.length === 0 && filesModified.length === 0) {
     const categorized = categorizeFilesFromPlan(filesFromPlan);
     filesCreated = categorized.created;
@@ -143,12 +130,80 @@ export async function executeImplement(
   return {
     filesCreated,
     filesModified,
-    selfRefineIterations,
-    selfDebugIterations,
+    selfRefineIterations: 1,
+    selfDebugIterations: 0,
     success: true,
     summary: `Implemented ${String(totalFiles)} files`,
     durationMs: Date.now() - startTime,
   };
+}
+
+/**
+ * Build fallback output when model fails (NOT RECOMMENDED).
+ */
+function buildFallbackOutput(
+  errorMessage: string,
+  filesFromPlan: RefineOutput['refinedPlan']['files'],
+  startTime: number
+): ImplementOutput {
+  logger.warn('IMPLEMENT phase: Model call failed, using placeholder fallback (NOT RECOMMENDED)', {
+    error: errorMessage,
+  });
+
+  const categorized = categorizeFilesFromPlan(filesFromPlan);
+
+  return {
+    filesCreated: categorized.created,
+    filesModified: categorized.modified,
+    selfRefineIterations: 0,
+    selfDebugIterations: 0,
+    success: false,
+    summary: `Implementation failed: ${errorMessage}. Placeholder file list from plan.`,
+    durationMs: Date.now() - startTime,
+  };
+}
+
+/**
+ * Execute IMPLEMENT phase - Code generation using model adapter.
+ *
+ * By default, this phase FAILS if the model call fails to prevent workflows
+ * from proceeding with false success flags.
+ * (Source: Issue #504 - Fail-safe implementation)
+ */
+export async function executeImplement(
+  deps: SelfDevWorkflowDependencies,
+  state: SelfDevWorkflowState,
+  refine: RefineOutput
+): Promise<ImplementOutput> {
+  const startTime = Date.now();
+  const filesFromPlan = refine.refinedPlan.files;
+  const phaseConfig = state.config.phases?.implement;
+  const allowPlaceholderFallback = phaseConfig?.allowPlaceholderFallback === true;
+
+  // Fail-fast check before falling back (Issue #455)
+  checkFailFast(state.config.failFast, deps.modelAdapter, 'IMPLEMENT', 'ModelAdapter');
+  logProtocolAvailability(deps);
+
+  logger.info('IMPLEMENT phase: Generating implementation', { files: filesFromPlan.length });
+
+  const response = await deps.modelAdapter.complete({
+    messages: [{ role: 'user', content: buildImplementPrompt(refine) }],
+    systemPrompt: IMPLEMENT_SYSTEM_PROMPT,
+    maxTokens: 4000,
+  });
+
+  if (response.ok) {
+    const content = response.value.content[0];
+    const output = content?.type === 'text' ? content.text : '';
+    return buildSuccessOutput(output, filesFromPlan, startTime);
+  }
+
+  // Model call failed - fail unless placeholder fallback explicitly allowed
+  if (!allowPlaceholderFallback) {
+    throw new ImplementUnavailableError(`Model call failed: ${response.error.message}`);
+  }
+
+  return buildFallbackOutput(response.error.message, filesFromPlan, startTime);
 }
 
 /**

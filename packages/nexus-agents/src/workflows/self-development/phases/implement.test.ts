@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { executeImplement } from './implement.js';
+import { executeImplement, ImplementUnavailableError } from './implement.js';
 import type { SelfDevWorkflowDependencies } from '../interfaces.js';
 import type { SelfDevWorkflowState, RefineOutput, ImplementationPlan } from '../types.js';
 import { ok, err } from '../../../core/index.js';
@@ -460,7 +460,7 @@ describe('executeImplement', () => {
       expect(result.filesCreated).toContain('plan-file.ts');
     });
 
-    it('uses plan files when model response fails', async () => {
+    it('throws ImplementUnavailableError when model response fails', async () => {
       const failingAdapter = createMockModelAdapter();
       failingAdapter.complete = vi.fn().mockResolvedValue(err(new Error('Model error')));
       deps = createMockDependencies({ modelAdapter: failingAdapter });
@@ -468,10 +468,28 @@ describe('executeImplement', () => {
         files: [{ path: 'fallback.ts', action: 'create', description: 'Fallback' }],
       });
 
-      const result = await executeImplement(deps, state, refine);
+      await expect(executeImplement(deps, state, refine)).rejects.toThrow(
+        ImplementUnavailableError
+      );
+      await expect(executeImplement(deps, state, refine)).rejects.toThrow('Model call failed');
+    });
+
+    it('uses plan files when model fails and fallback enabled', async () => {
+      const failingAdapter = createMockModelAdapter();
+      failingAdapter.complete = vi.fn().mockResolvedValue(err(new Error('Model error')));
+      deps = createMockDependencies({ modelAdapter: failingAdapter });
+      refine = createMockRefineOutput({
+        files: [{ path: 'fallback.ts', action: 'create', description: 'Fallback' }],
+      });
+      const stateWithFallback = {
+        ...state,
+        config: { ...state.config, phases: { implement: { allowPlaceholderFallback: true } } },
+      } as SelfDevWorkflowState;
+
+      const result = await executeImplement(deps, stateWithFallback, refine);
 
       expect(result.filesCreated).toContain('fallback.ts');
-      expect(result.success).toBe(true);
+      expect(result.success).toBe(false); // Reports failure when using fallback
     });
 
     it('categorizes plan files correctly on fallback', async () => {
