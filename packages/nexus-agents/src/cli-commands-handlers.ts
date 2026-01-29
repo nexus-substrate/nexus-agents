@@ -28,6 +28,11 @@ import {
   setupCommandAsync,
   helloCommand,
   demoCommand,
+  // Issue #526: Newly wired commands
+  sprintCommand,
+  sessionCommand,
+  evaluateCommand,
+  issueCommand,
 } from './cli/index.js';
 import { hookCommand, printHookHelp } from './cli/hooks/index.js';
 import { EXIT_CODES, type ParsedCliArgs } from './cli-types.js';
@@ -393,4 +398,162 @@ export async function handleHooksCommand(args: ParsedCliArgs): Promise<void> {
   const hookArgs = args.positionals.slice(1);
   const exitCode = await hookCommand(hookArgs);
   process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
+}
+
+// ============================================================================
+// Issue #526: Newly Wired Commands
+// ============================================================================
+
+/**
+ * Handles sprint command for automated sprint planning.
+ * (Source: Issue #230, Epic #225)
+ */
+export async function handleSprintCommand(args: ParsedCliArgs): Promise<void> {
+  const subcommand = args.subcommand;
+  if (subcommand !== 'plan' && subcommand !== 'list') {
+    process.stdout.write('Usage: nexus-agents sprint <plan|list> [options]\n');
+    process.stdout.write('\nSubcommands:\n');
+    process.stdout.write('  plan    Generate sprint proposal from open issues\n');
+    process.stdout.write('  list    Show prioritized backlog\n');
+    process.stdout.write('\nOptions:\n');
+    process.stdout.write('  --vote          Run consensus vote on proposal\n');
+    process.stdout.write('  --create-issue  Create GitHub issue if approved\n');
+    process.stdout.write('  --dry-run       Preview without side effects\n');
+    process.stdout.write('  --format        Output format (text|json)\n');
+    process.exit(EXIT_CODES.INVALID_ARGS);
+  }
+
+  // Build options based on flags
+  const sprintOpts: {
+    subcommand: 'plan' | 'list';
+    vote?: boolean;
+    createIssue?: boolean;
+    format?: 'text' | 'json';
+    dryRun?: boolean;
+  } = {
+    subcommand,
+    format: args.options.format === 'json' ? 'json' : 'text',
+  };
+  if (args.options.createIssue) {
+    sprintOpts.vote = true;
+    sprintOpts.createIssue = true;
+  }
+  if (args.options.dryRun) {
+    sprintOpts.dryRun = true;
+  }
+  const exitCode = await sprintCommand(sprintOpts);
+  process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
+}
+
+/**
+ * Handles session command for session management.
+ * (Source: Issue #190 - CLI session persistence with SQLite)
+ */
+export async function handleSessionCommand(args: ParsedCliArgs): Promise<void> {
+  const subcommand = args.subcommand;
+  if (
+    subcommand !== 'list' &&
+    subcommand !== 'show' &&
+    subcommand !== 'export' &&
+    subcommand !== 'delete' &&
+    subcommand !== 'prune'
+  ) {
+    process.stdout.write('Usage: nexus-agents session <subcommand> [options]\n');
+    process.stdout.write('\nSubcommands:\n');
+    process.stdout.write('  list     List sessions\n');
+    process.stdout.write('  show     Show session details\n');
+    process.stdout.write('  export   Export session to file\n');
+    process.stdout.write('  delete   Delete a session\n');
+    process.stdout.write('  prune    Delete old sessions\n');
+    process.stdout.write('\nOptions:\n');
+    process.stdout.write('  --limit <n>     Limit results (default: 20)\n');
+    process.stdout.write('  --format        Output format (table|json)\n');
+    process.stdout.write('  --output <path> Output file path\n');
+    process.exit(EXIT_CODES.INVALID_ARGS);
+  }
+
+  // Pass remaining args after subcommand to sessionCommand
+  const remainingArgs = args.positionals.slice(2);
+  await sessionCommand(subcommand, remainingArgs);
+  // sessionCommand handles its own exit
+}
+
+/**
+ * Handles evaluate command for self-evaluation.
+ * (Source: Issue #140, Self-Evaluation MVP)
+ */
+export async function handleEvaluateCommand(args: ParsedCliArgs): Promise<void> {
+  // Build args array for evaluateCommand
+  const evalArgs: string[] = [];
+
+  // Map CLI options to evaluate command args
+  if (args.options.verbose) evalArgs.push('--verbose');
+  if (args.options.format === 'json') evalArgs.push('--json');
+
+  // Get target from positionals (evaluate <target>)
+  const target = args.positionals[1];
+  if (target !== undefined) {
+    evalArgs.push('--target', target);
+  }
+
+  const exitCode = await evaluateCommand(evalArgs);
+  process.exit(
+    exitCode === 0
+      ? EXIT_CODES.SUCCESS
+      : exitCode === 1
+        ? EXIT_CODES.SERVER_START_FAILED
+        : EXIT_CODES.SHUTDOWN_ERROR
+  );
+}
+
+/**
+ * Handles issue command for issue template management.
+ * (Source: Issue #229, Epic #225)
+ */
+export function handleIssueCommand(args: ParsedCliArgs): void {
+  const subcommand = args.subcommand;
+  if (subcommand !== 'validate' && subcommand !== 'create') {
+    process.stdout.write('Usage: nexus-agents issue <subcommand> [options]\n');
+    process.stdout.write('\nSubcommands:\n');
+    process.stdout.write('  validate <number>  Validate issue against template\n');
+    process.stdout.write('  create <type>      Show issue template for creating\n');
+    process.stdout.write('\nTypes: feat, bug, task, refactor, docs\n');
+    process.exit(EXIT_CODES.INVALID_ARGS);
+  }
+
+  // Get issue number or template type from positionals
+  const arg = args.positionals[2];
+  if (arg === undefined) {
+    process.stdout.write('Error: Missing argument\n');
+    process.exit(EXIT_CODES.INVALID_ARGS);
+  }
+
+  // Build options based on subcommand
+  const format: 'text' | 'json' = args.options.format === 'json' ? 'json' : 'text';
+
+  if (subcommand === 'validate') {
+    const issueNumber = parseInt(arg, 10);
+    if (isNaN(issueNumber)) {
+      process.stdout.write('Error: Invalid issue number\n');
+      process.exit(EXIT_CODES.INVALID_ARGS);
+    }
+    const exitCode = issueCommand({
+      subcommand: 'validate',
+      issueNumber,
+      format,
+    });
+    process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
+  } else {
+    // create subcommand
+    const validTypes = ['feat', 'bug', 'task', 'refactor', 'docs'];
+    const type = validTypes.includes(arg)
+      ? (arg as 'feat' | 'bug' | 'task' | 'refactor' | 'docs')
+      : 'feat';
+    const exitCode = issueCommand({
+      subcommand: 'create',
+      type,
+      format,
+    });
+    process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
+  }
 }

@@ -33,6 +33,10 @@ COMMANDS:
   orchestrate     Execute task using CLI tools (standalone mode)
   vote            Run consensus vote on a proposal (5 agents)
   system-review   Run automated system review (5-phase checklist)
+  sprint          Automated sprint planning from open issues
+  session         Manage session persistence (list, show, export, delete, prune)
+  evaluate        Self-evaluation of codebase components
+  issue           Issue template validation and management
   index           Generate and manage codebase index
   research        Manage research registry and index
   validation      Show learning validation dashboard
@@ -171,6 +175,38 @@ HOOKS OPTIONS:
   --generate-summary     Generate session summary (stop)
   --export-metrics       Export metrics to file (session-end)
 
+SPRINT OPTIONS:
+  sprint plan            Generate sprint proposal from open issues
+  sprint list            Show prioritized backlog
+  --vote                 Run consensus vote on proposal (via --create-issue)
+  --create-issue         Create GitHub issue if approved
+  --dry-run              Preview without side effects
+  --format=<fmt>         Output format: text, json (default: text)
+
+SESSION OPTIONS:
+  session list           List sessions
+  session show <id>      Show session details
+  session export <id>    Export session to file
+  session delete <id>    Delete a session
+  session prune <days>   Delete sessions older than N days
+  --limit=<n>            Limit results (default: 20)
+  --format=<fmt>         Output format: table, json (default: table)
+  --output=<path>        Output file path for export
+  --dry-run              Preview prune without deleting
+
+EVALUATE OPTIONS:
+  evaluate [target]      Evaluate components in target directory
+  --target=<path>        Target directory (default: src/adapters/)
+  --verbose              Show verbose output
+  --format=json          Output as JSON
+  --timeout=<ms>         Timeout in milliseconds (default: 120000)
+
+ISSUE OPTIONS:
+  issue validate <num>   Validate issue against template
+  issue create <type>    Show issue template for creating
+  --format=<fmt>         Output format: text, json (default: text)
+  Types: feat, bug, task, refactor, docs
+
 DEMO OPTIONS:
   demo routing "task"    Show how routing would select models (mock)
   demo expert-list       Show available experts with descriptions
@@ -242,6 +278,17 @@ EXAMPLES:
   nexus-agents hooks --help                       Show hooks command help
   nexus-agents hooks session-start                Handle session start hook
   nexus-agents hooks pre-tool --tool Bash         Handle pre-tool hook for Bash
+  nexus-agents sprint list                        Show prioritized backlog
+  nexus-agents sprint plan                        Generate sprint proposal
+  nexus-agents sprint plan --create-issue         Create issue if vote passes
+  nexus-agents session list                       List stored sessions
+  nexus-agents session show abc123                Show session details
+  nexus-agents session export abc123 --output=session.md  Export to markdown
+  nexus-agents session prune 30                   Delete sessions older than 30 days
+  nexus-agents evaluate                           Evaluate default target (src/adapters/)
+  nexus-agents evaluate src/core/ --verbose       Evaluate core with verbose output
+  nexus-agents issue validate 123                 Validate issue #123 against template
+  nexus-agents issue create feat                  Show feature issue template
 
 For more information, visit: https://github.com/williamzujkowski/nexus-agents
 `.trim();

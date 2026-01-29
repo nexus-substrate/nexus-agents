@@ -46,7 +46,11 @@ export type CliCommand =
   | 'swe-bench'
   | 'setup'
   | 'hooks'
-  | 'demo';
+  | 'demo'
+  | 'sprint'
+  | 'session'
+  | 'evaluate'
+  | 'issue';
 
 /**
  * Parsed CLI arguments and command.
@@ -303,6 +307,10 @@ export function isValidCommand(value: string): value is CliCommand {
     'setup',
     'hooks',
     'demo',
+    'sprint',
+    'session',
+    'evaluate',
+    'issue',
   ];
   return validCommands.includes(value as CliCommand);
 }

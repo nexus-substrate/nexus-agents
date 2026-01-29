@@ -38,6 +38,11 @@ export {
   handleHelloCommand,
   handleHooksCommand,
   handleDemoCommand,
+  // Issue #526: Newly wired commands
+  handleSprintCommand,
+  handleSessionCommand,
+  handleEvaluateCommand,
+  handleIssueCommand,
 } from './cli-commands-handlers.js';
 
 // Import handlers for dispatch
@@ -62,6 +67,11 @@ import {
   handleHelloCommand,
   handleHooksCommand,
   handleDemoCommand,
+  // Issue #526: Newly wired commands
+  handleSprintCommand,
+  handleSessionCommand,
+  handleEvaluateCommand,
+  handleIssueCommand,
 } from './cli-commands-handlers.js';
 
 /**
@@ -87,6 +97,8 @@ const SYNC_COMMAND_HANDLERS: Record<string, ((args: ParsedCliArgs) => void) | un
   validation: handleValidationCommand,
   'learning-metrics': handleLearningMetricsCommand,
   demo: handleDemoCommand,
+  // Issue #526: Newly wired sync command
+  issue: handleIssueCommand,
 };
 
 /**
@@ -129,6 +141,10 @@ const ASYNC_COMMAND_HANDLERS: Record<string, ((args: ParsedCliArgs) => Promise<v
     'swe-bench': handleSweBenchCommand,
     hooks: handleHooksCommand,
     setup: handleSetupCommandAsync, // Uses async for interactive wizard support (Issue #425)
+    // Issue #526: Newly wired async commands
+    sprint: handleSprintCommand,
+    session: handleSessionCommand,
+    evaluate: handleEvaluateCommand,
   };
 
 /**
