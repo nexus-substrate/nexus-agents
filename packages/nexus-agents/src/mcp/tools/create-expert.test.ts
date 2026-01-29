@@ -136,6 +136,16 @@ describe('CreateExpertInputSchema', () => {
       }
     });
 
+    it('should accept devops_expert role', () => {
+      const input = { role: 'devops_expert' };
+      const result = CreateExpertInputSchema.safeParse(input);
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.role).toBe('devops_expert');
+      }
+    });
+
     it('should reject invalid role', () => {
       const input = { role: 'invalid_expert' };
       const result = CreateExpertInputSchema.safeParse(input);
@@ -226,6 +236,15 @@ describe('Expert creation logic', () => {
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.value.role).toBe('testing_expert');
+      }
+    });
+
+    it('should create devops expert', () => {
+      const result = deps.expertFactory.createBuiltIn('devops');
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.role).toBe('devops_expert');
       }
     });
   });
@@ -330,7 +349,8 @@ describe('getAvailableRoles', () => {
     expect(roles).toContain('security_expert');
     expect(roles).toContain('documentation_expert');
     expect(roles).toContain('testing_expert');
-    expect(roles).toHaveLength(5);
+    expect(roles).toContain('devops_expert');
+    expect(roles).toHaveLength(6);
   });
 });
 
@@ -373,6 +393,14 @@ describe('getCapabilitiesForRole', () => {
     expect(capabilities).toBeDefined();
     expect(capabilities).toContain('task_execution');
     expect(capabilities).toContain('research');
+  });
+
+  it('should return capabilities for devops_expert', () => {
+    const capabilities = getCapabilitiesForRole('devops_expert');
+
+    expect(capabilities).toBeDefined();
+    expect(capabilities).toContain('task_execution');
+    expect(capabilities).toContain('code_generation');
   });
 
   it('should return undefined for invalid role', () => {

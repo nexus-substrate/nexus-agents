@@ -2,7 +2,7 @@
  * nexus-agents/mcp - Create Expert Tool
  *
  * MCP tool for creating expert agents dynamically.
- * Supports built-in expert types: code, architecture, security, documentation, testing.
+ * Supports built-in expert types: code, architecture, security, documentation, testing, devops.
  */
 
 import { z } from 'zod';
@@ -30,6 +30,7 @@ export const CreateExpertInputSchema = z.object({
       'security_expert',
       'documentation_expert',
       'testing_expert',
+      'devops_expert',
     ])
     .describe('Expert role to create'),
   modelPreference: z.string().optional().describe('Preferred model (e.g., claude-sonnet-4)'),
@@ -95,6 +96,7 @@ const ROLE_TO_EXPERT_TYPE: Record<string, BuiltInExpertType> = {
   security_expert: 'security',
   documentation_expert: 'documentation',
   testing_expert: 'testing',
+  devops_expert: 'devops',
 };
 
 /**
@@ -257,13 +259,14 @@ export function registerCreateExpertTool(server: McpServer, deps: CreateExpertDe
         'security_expert',
         'documentation_expert',
         'testing_expert',
+        'devops_expert',
       ])
       .describe('Expert role to create'),
     modelPreference: z.string().optional().describe('Preferred model (e.g., claude-sonnet-4)'),
   };
 
   const description =
-    'Create a specialized expert agent for code, architecture, security, documentation, or testing tasks';
+    'Create a specialized expert agent for code, architecture, security, documentation, testing, or devops tasks';
 
   // Wrap handler with timeout protection (Issue #271, CVE-2026-0621)
   const handler = createToolHandler(deps);
