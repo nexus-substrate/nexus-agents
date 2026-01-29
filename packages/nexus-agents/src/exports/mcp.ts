@@ -1,6 +1,7 @@
 /**
  * MCP exports - MCP server implementation
  * Split from index.ts for file size compliance (Issue #285)
+ * Updated Issue #538: Added missing tool registration exports
  */
 
 export {
@@ -28,6 +29,28 @@ export {
   createTimer,
   withLogging,
   type McpLogContext,
+  // Policy firewall (Issue #538)
+  type Artifact,
+  type ExecutionMode,
+  type PolicyMode,
+  type PolicyDecision,
+  type PolicyContext,
+  type PolicyRule,
+  type IPolicyFirewall,
+  type PolicyFirewallConfig,
+  type PolicyConfig,
+  PolicyFirewall,
+  PolicyError,
+  PolicyConfigSchema,
+  denyMutationsWithoutModeRule,
+  safePathsRule,
+  createDefaultPolicyFirewall,
+  evaluatePolicy,
+  createPolicyContext,
+  // EventBus Bridge (Issue #307, #538)
+  initializeEventBusBridge,
+  getEventBusStats,
+  type EventBusBridgeResult,
   // Tools
   registerTools,
   toolSuccess,
@@ -46,6 +69,20 @@ export {
   type CreateExpertDeps,
   type CreateExpertResponse,
   type IExpertFactory as McpExpertFactory,
+  // execute_expert tool (Issue #437, #538)
+  registerExecuteExpertTool,
+  ExecuteExpertInputSchema,
+  type ExecuteExpertInput,
+  type ExecuteExpertDeps,
+  type ExecuteExpertResponse,
+  // consensus_vote tool (Issue #435, #538)
+  registerConsensusVoteTool,
+  ConsensusVoteInputSchema,
+  type ConsensusVoteInput,
+  type ConsensusVoteDeps,
+  type ConsensusVoteResponse,
+  type AgentVoteSummary,
+  type VoteDecisionStatus,
   // run_workflow tool
   registerRunWorkflowTool,
   RunWorkflowInputSchema,
@@ -59,9 +96,34 @@ export {
   OrchestrateInputSchema,
   OrchestrateOutputSchema,
   OrchestrationError,
+  OrchestrationUnavailableError,
   type OrchestrateInput,
   type OrchestrateOutput,
   type OrchestrateDeps,
   type ITechLead,
   type IOrchestrateExpertFactory,
+  // delegate_to_model tool (Issue #538)
+  registerDelegateToModelTool,
+  DelegateInputSchema,
+  DelegateOutputSchema,
+  MODEL_CAPABILITIES,
+  type DelegateInput,
+  type DelegateOutput,
+  type DelegateDeps,
+  type CapabilityProfile,
+  type PreferredCapability,
+  // list_experts tool (Issue #436, #538)
+  registerListExpertsTool,
+  ListExpertsInputSchema,
+  type ListExpertsInput,
+  type ListExpertsDeps,
+  type ListExpertsResponse,
+  type ExpertInfo,
+  // list_workflows tool (Issue #436, #538)
+  registerListWorkflowsTool,
+  ListWorkflowsInputSchema,
+  type ListWorkflowsInput,
+  type ListWorkflowsDeps,
+  type ListWorkflowsResponse,
+  type WorkflowInfo,
 } from '../mcp/index.js';
