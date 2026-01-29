@@ -368,6 +368,7 @@ async function initializeAndRegisterTools(
   const policyVals = getPolicyValues(config);
   const allowedPaths = config.security?.allowedPaths;
   const securityConfig = config.security;
+  const workflowConfig = config.workflows;
   const toolsOptions = {
     server,
     logger,
@@ -377,6 +378,7 @@ async function initializeAndRegisterTools(
     ...(allowedPaths !== undefined && { allowedPaths }),
     ...(modelAdapter !== undefined && { modelAdapter }),
     ...(securityConfig !== undefined && { securityConfig }),
+    ...(workflowConfig !== undefined && { workflowConfig }),
   };
   registerMcpTools(toolsOptions);
 }

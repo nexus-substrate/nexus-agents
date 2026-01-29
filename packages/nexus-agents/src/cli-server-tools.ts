@@ -49,6 +49,8 @@ export interface RegisterMcpToolsOptions {
   allowedPaths?: readonly string[];
   /** Security config for rate limiting and timeout (Issue #484) */
   securityConfig?: import('./config/index.js').SecurityConfig;
+  /** Workflow config for engine settings (Issue #487) */
+  workflowConfig?: import('./config/index.js').WorkflowConfig;
 }
 
 /**
@@ -95,6 +97,8 @@ interface ToolRegistrationContext {
   allowedPaths?: readonly string[];
   /** Security config for timeout settings (Issue #482) */
   securityConfig?: import('./config/index.js').SecurityConfig;
+  /** Workflow config for engine settings (Issue #487) */
+  workflowConfig?: import('./config/index.js').WorkflowConfig;
 }
 
 /** Register expert tools with shared registry. */
@@ -116,7 +120,15 @@ function registerExpertTools(ctx: ToolRegistrationContext): void {
 
 /** Register workflow tools. */
 function registerWorkflowTools(ctx: ToolRegistrationContext): void {
-  const engineConfig = { builtInTemplates: ctx.builtInTemplates, logger: ctx.logger };
+  const wfConfig = ctx.workflowConfig;
+  const engineConfig = {
+    builtInTemplates: ctx.builtInTemplates,
+    logger: ctx.logger,
+    // Wire workflow config to engine settings (Issue #487)
+    ...(wfConfig?.timeout !== undefined && { defaultTimeoutMs: wfConfig.timeout }),
+    ...(wfConfig?.maxParallel !== undefined && { maxConcurrency: wfConfig.maxParallel }),
+    ...(wfConfig?.templatesDir !== undefined && { templatePaths: [wfConfig.templatesDir] }),
+  };
   const workflowEngine = createRealWorkflowEngine(
     ctx.modelAdapter !== undefined
       ? { ...engineConfig, modelAdapter: ctx.modelAdapter }
@@ -172,6 +184,7 @@ function createToolContext(
     executionMode,
     allowedPaths,
     securityConfig,
+    workflowConfig,
   } = options;
   return {
     server,
@@ -183,6 +196,7 @@ function createToolContext(
     ...(executionMode !== undefined && { executionMode }),
     ...(allowedPaths !== undefined && { allowedPaths }),
     ...(securityConfig !== undefined && { securityConfig }),
+    ...(workflowConfig !== undefined && { workflowConfig }),
   };
 }
 
