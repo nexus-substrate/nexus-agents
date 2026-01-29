@@ -22,9 +22,12 @@ import type {
   IEventBus,
   SessionCreatedEvent,
   SessionStatusChangedEvent,
+  SessionParticipantJoinedEvent,
   SessionResultSubmittedEvent,
   SessionFinalizedEvent,
+  ConsensusVoteRequestedEvent,
   ConsensusVoteCastEvent,
+  ConsensusReachedEvent,
 } from './event-bus-types.js';
 import { createEvent } from './event-bus.js';
 import { validateConfig, createSessionState, shouldFinalize } from './session-helpers.js';
@@ -88,6 +91,23 @@ export class CollaborationSession {
       pattern: config.pattern,
       experts: config.experts,
     });
+
+    // Emit participant joined event for each expert (Issue #527)
+    for (const participant of this.state.participants) {
+      this.emitBusEvent<SessionParticipantJoinedEvent>('session.participant_joined', {
+        expertId: participant.expertId,
+        role: participant.role,
+      });
+    }
+
+    // For consensus pattern, emit vote_requested event (Issue #527)
+    if (config.pattern === 'consensus') {
+      this.emitBusEvent<ConsensusVoteRequestedEvent>('consensus.vote_requested', {
+        proposalId: config.sessionId,
+        proposal: config.task.description,
+        voters: config.experts,
+      });
+    }
 
     return ok(config.sessionId);
   }
@@ -291,6 +311,20 @@ export class CollaborationSession {
       resultCount: results.size,
       durationMs: collaborationResult.durationMs,
     });
+
+    // For consensus pattern, emit consensus.reached event (Issue #527)
+    if (config.pattern === 'consensus' && votes.length > 0) {
+      const approveCount = votes.filter((v) => v.decision === 'approve').length;
+      const rejectCount = votes.filter((v) => v.decision === 'reject').length;
+      const decision =
+        approveCount > rejectCount ? 'approve' : rejectCount > approveCount ? 'reject' : 'abstain';
+      this.emitBusEvent<ConsensusReachedEvent>('consensus.reached', {
+        proposalId: config.sessionId,
+        decision,
+        voteCount: votes.length,
+        unanimity: approveCount === votes.length || rejectCount === votes.length,
+      });
+    }
 
     this.state = null;
     return ok(collaborationResult);
