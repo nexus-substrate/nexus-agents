@@ -354,3 +354,6 @@ export {
   type TaskDelegatedParams,
   type ResultBroadcastParams,
 } from './message-events.js';
+
+// AST-based code fixer for constitutional violations (Source: Issue #459)
+export { AstFixer, createAstFixer, type AstFixResult } from './ast-fixer.js';

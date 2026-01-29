@@ -103,3 +103,33 @@ export {
   createTrinityCoordinator,
   type TrinityExecuteOptions,
 } from './collaboration/index.js';
+
+// Agent Message Router for peer-to-peer communication (Source: Issue #217)
+export type {
+  AgentMessageRouterConfig,
+  AgentMessageRouterOptions,
+  SendOptions,
+  BroadcastOptions,
+  BroadcastResult,
+  RouterStats,
+  IAgentMessageRouter,
+} from './collaboration/index.js';
+
+export { DEFAULT_ROUTER_CONFIG } from './collaboration/index.js';
+
+export { AgentMessageRouter, createAgentMessageRouter } from './collaboration/index.js';
+
+// Message event helpers (Source: Issue #217)
+export {
+  emitMessageSent,
+  emitMessageReceived,
+  emitTaskDelegated,
+  emitResultBroadcast,
+  type MessageSentParams,
+  type MessageReceivedParams,
+  type TaskDelegatedParams,
+  type ResultBroadcastParams,
+} from './collaboration/index.js';
+
+// AST-based code fixer for constitutional violations (Source: Issue #459)
+export { AstFixer, createAstFixer, type AstFixResult } from './collaboration/index.js';
