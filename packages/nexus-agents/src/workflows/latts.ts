@@ -56,6 +56,15 @@ interface AttemptContext {
 }
 
 /**
+ * Discriminated union for attempt outcomes (Issue #539).
+ * When shouldReturn is true, result is available.
+ * When shouldReturn is false (retry case), result is not needed.
+ */
+type AttemptOutcome =
+  | { entry: LattsHistoryEntry; shouldReturn: true; result: LattsExecutionResult }
+  | { entry: LattsHistoryEntry; shouldReturn: false };
+
+/**
  * LATTS executor that wraps step execution with adaptive compute scaling.
  */
 export class LattsExecutor {
@@ -151,7 +160,7 @@ export class LattsExecutor {
   private async executeAttempt(
     executeStep: () => Promise<StepResult>,
     ctx: AttemptContext
-  ): Promise<{ entry: LattsHistoryEntry; shouldReturn: boolean; result: LattsExecutionResult }> {
+  ): Promise<AttemptOutcome> {
     const attemptStart = Date.now();
     const result = await executeStep();
 
@@ -170,7 +179,7 @@ export class LattsExecutor {
       };
     }
 
-    return { entry, shouldReturn: false, result: null as unknown as LattsExecutionResult };
+    return { entry, shouldReturn: false };
   }
 
   private async verifyResult(result: StepResult, ctx: AttemptContext): Promise<VerificationResult> {
