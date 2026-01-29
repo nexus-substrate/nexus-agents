@@ -129,8 +129,8 @@ export const AppConfigSchema = z.object({
   logging: LoggingConfigSchema.optional(),
   /** Observability configuration (Issue #307) */
   observability: ObservabilityConfigSchema.optional(),
-  /** Routing configuration (Issue #475) */
-  routing: RoutingConfigSchema,
+  /** Routing configuration (Issue #475) - used in orchestrator mode */
+  routing: RoutingConfigSchema.optional(),
   /** Skill library configuration (Issue #491) */
   skills: SkillLibraryConfigSchema.optional(),
   /** SICA self-improvement configuration (Issue #492) */

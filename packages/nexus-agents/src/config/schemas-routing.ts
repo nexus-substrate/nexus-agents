@@ -172,84 +172,82 @@ export type RoutingMemoryConfig = z.infer<typeof RoutingMemoryConfigSchema>;
  * Complete routing configuration schema.
  * Exposes all routing subsystem parameters via nexus-agents.yaml.
  */
-export const RoutingConfigSchema = z
-  .object({
-    /**
-     * Pipeline stage toggles.
-     * Enable or disable individual routing stages.
-     */
-    stages: z
-      .object({
-        /** Enable budget filtering stage */
-        budgetFilter: z.boolean().default(true),
-        /** Enable ZeroRouter difficulty-based routing */
-        zeroRouter: z.boolean().default(true),
-        /** Enable preference-trained routing */
-        preferenceRouting: z.boolean().default(false),
-        /** Enable TOPSIS ranking */
-        topsisRanking: z.boolean().default(true),
-        /** Enable LinUCB selection */
-        linucbSelection: z.boolean().default(true),
-        /** Enable latency tracking */
-        latencyTracking: z.boolean().default(true),
-        /** Enable routing memory for learned routing */
-        routingMemory: z.boolean().default(false),
-      })
-      .optional(),
+export const RoutingConfigSchema = z.object({
+  /**
+   * Pipeline stage toggles.
+   * Enable or disable individual routing stages.
+   */
+  stages: z
+    .object({
+      /** Enable budget filtering stage */
+      budgetFilter: z.boolean().default(true),
+      /** Enable ZeroRouter difficulty-based routing */
+      zeroRouter: z.boolean().default(true),
+      /** Enable preference-trained routing */
+      preferenceRouting: z.boolean().default(false),
+      /** Enable TOPSIS ranking */
+      topsisRanking: z.boolean().default(true),
+      /** Enable LinUCB selection */
+      linucbSelection: z.boolean().default(true),
+      /** Enable latency tracking */
+      latencyTracking: z.boolean().default(true),
+      /** Enable routing memory for learned routing */
+      routingMemory: z.boolean().default(false),
+    })
+    .optional(),
 
-    /**
-     * Budget constraints for routing decisions.
-     */
-    budget: BudgetConstraintsSchema,
+  /**
+   * Budget constraints for routing decisions.
+   */
+  budget: BudgetConstraintsSchema,
 
-    /**
-     * TOPSIS multi-criteria decision making configuration.
-     */
-    topsis: TopsisConfigSchema,
+  /**
+   * TOPSIS multi-criteria decision making configuration.
+   */
+  topsis: TopsisConfigSchema,
 
-    /**
-     * ZeroRouter difficulty-based routing configuration.
-     */
-    zeroRouter: ZeroRouterConfigSchema,
+  /**
+   * ZeroRouter difficulty-based routing configuration.
+   */
+  zeroRouter: ZeroRouterConfigSchema,
 
-    /**
-     * Latency tracker configuration.
-     */
-    latencyTracker: LatencyTrackerConfigSchema,
+  /**
+   * Latency tracker configuration.
+   */
+  latencyTracker: LatencyTrackerConfigSchema,
 
-    /**
-     * Routing memory configuration.
-     */
-    routingMemory: RoutingMemoryConfigSchema,
+  /**
+   * Routing memory configuration.
+   */
+  routingMemory: RoutingMemoryConfigSchema,
 
-    /**
-     * LinUCB bandit parameters.
-     */
-    linucb: z
-      .object({
-        /** Exploration parameter (higher = more exploration) */
-        alpha: z.number().positive().default(1.0),
-        /** Maximum routing decision time in milliseconds */
-        maxDecisionTimeMs: z.number().positive().default(50),
-      })
-      .optional(),
+  /**
+   * LinUCB bandit parameters.
+   */
+  linucb: z
+    .object({
+      /** Exploration parameter (higher = more exploration) */
+      alpha: z.number().positive().default(1.0),
+      /** Maximum routing decision time in milliseconds */
+      maxDecisionTimeMs: z.number().positive().default(50),
+    })
+    .optional(),
 
-    /**
-     * Preference router parameters.
-     */
-    preference: z
-      .object({
-        /** Minimum data points before using learned preferences */
-        minDataPoints: z.number().int().positive().default(10),
-      })
-      .optional(),
+  /**
+   * Preference router parameters.
+   */
+  preference: z
+    .object({
+      /** Minimum data points before using learned preferences */
+      minDataPoints: z.number().int().positive().default(10),
+    })
+    .optional(),
 
-    /**
-     * Weight for latency score in final routing (0-1).
-     */
-    latencyScoreWeight: z.number().min(0).max(1).default(0.2),
-  })
-  .optional();
+  /**
+   * Weight for latency score in final routing (0-1).
+   */
+  latencyScoreWeight: z.number().min(0).max(1).default(0.2),
+});
 
 export type RoutingConfig = z.infer<typeof RoutingConfigSchema>;
 
