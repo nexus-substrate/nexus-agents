@@ -415,6 +415,16 @@ export async function startServer(
   // Load and validate configuration (Issue #472)
   const configResult = loadAndLogConfig(logger);
 
+  // Apply logging level from config (Issue #485) - verbose flag takes precedence
+  if (!verbose && configResult.config.logging?.level !== undefined) {
+    logger.setLevel(configResult.config.logging.level);
+    logger.debug('Log level set from configuration', { level: configResult.config.logging.level });
+  }
+
+  // TODO(Issue #485): Wire logging.format and logging.destination to logger
+  // Currently only level is supported. Format (json/pretty) and destination
+  // (stdout/stderr/file) require logger infrastructure changes.
+
   // Initialize experts from configuration (Issue #486)
   const expertResult = initializeExperts({
     expertConfig: configResult.config.experts,
