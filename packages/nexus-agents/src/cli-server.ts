@@ -443,7 +443,8 @@ async function initializeSubsystems(
   const observer = initializeSwarmObserver(serverLogger, {
     maxEvents: config.observability?.swarmObserverMaxEvents,
   });
-  const eventBusBridge = initializeEventBus(observer, serverLogger);
+  // Wire EventBus config for A2A communication settings
+  const eventBusBridge = initializeEventBus(observer, serverLogger, config.observability?.eventBus);
 
   await initializeAndLogSandbox(serverLogger, config.security?.sandbox);
   const policyFirewall = logSecurityConfig(serverLogger, config);
