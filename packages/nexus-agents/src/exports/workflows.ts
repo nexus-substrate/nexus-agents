@@ -109,4 +109,13 @@ export {
   type IExpertFactory as WorkflowExpertFactory,
   type StepExecutorDeps,
   type StepExecutionOptions,
+  // Workflow engine factory (Issue #498)
+  createWorkflowEngineDeps,
+  createWorkflowEngineDepsAsync,
+  createRealWorkflowEngine,
+  createInitializedWorkflowEngine,
+  createProductionWorkflowEngine,
+  initializeBuiltInTemplates,
+  clearTemplateCache,
+  type WorkflowEngineFactoryConfig,
 } from '../workflows/index.js';
