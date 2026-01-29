@@ -94,8 +94,14 @@ export async function* mergeStreams<T>(
     }
   });
 
-  // Start all consumers without blocking
-  void Promise.all(consumers);
+  // Start all consumers without blocking (Issue #541)
+  // Each consumer has try-catch that forwards errors to controller.error(),
+  // so Promise.all should always resolve. Add defensive catch for edge cases.
+  Promise.all(consumers).catch((error: unknown) => {
+    // This should not happen since each consumer catches its own errors,
+    // but handle it defensively to prevent silent failures.
+    controller.error(error instanceof Error ? error : new StreamError(String(error)));
+  });
 
   yield* merged;
 }
