@@ -47,6 +47,8 @@ export interface RegisterMcpToolsOptions {
   executionMode?: import('./mcp/middleware/index.js').ExecutionMode;
   /** Allowed paths from security config (Issue #477) */
   allowedPaths?: readonly string[];
+  /** Security config for rate limiting and timeout (Issue #484) */
+  securityConfig?: import('./config/index.js').SecurityConfig;
 }
 
 /**
@@ -187,11 +189,23 @@ function createToolContext(
  * (Source: Issue #430 - Wire up real workflow engine)
  */
 export function registerMcpTools(options: RegisterMcpToolsOptions): void {
-  const { server, logger, builtInTemplates, modelAdapter, policyFirewall, executionMode } = options;
+  const {
+    server,
+    logger,
+    builtInTemplates,
+    modelAdapter,
+    policyFirewall,
+    executionMode,
+    securityConfig,
+  } = options;
   const toolInfra = registerTools(server, { logger });
 
+  const rateLimitConfig = securityConfig?.rateLimit;
+  const perToolConfig = rateLimitConfig?.perTool;
+  const rateLimitEnabled = rateLimitConfig?.enabled ?? true;
   const rateLimiterFactory = createToolRateLimiterFactory({
-    enabled: true,
+    enabled: rateLimitEnabled,
+    ...(perToolConfig !== undefined && { perTool: perToolConfig }),
     logger: toolInfra.logger,
   });
   setGlobalToolRateLimiterFactory(rateLimiterFactory);
@@ -211,6 +225,7 @@ export function registerMcpTools(options: RegisterMcpToolsOptions): void {
   logger.info('Tools registered with per-tool rate limiting', {
     registeredTools: [...REGISTERED_TOOLS],
     rateLimitingEnabled: rateLimiterFactory.isEnabled(),
+    customRateLimitsConfigured: perToolConfig !== undefined,
     builtInTemplateCount: builtInTemplates.size,
     realWorkflowExecution: modelAdapter !== undefined,
     realTechLead: modelAdapter !== undefined,

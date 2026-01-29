@@ -290,13 +290,20 @@ function createAndValidateMcpServer(logger: ILogger): {
 /**
  * Initializes the sandbox for agent execution isolation.
  * Logs the sandbox configuration after initialization.
+ *
+ * @param logger - Logger for initialization messages
+ * @param sandboxConfig - Optional sandbox configuration from security config (Issue #483)
  */
-async function initializeAndLogSandbox(logger: ILogger): Promise<void> {
-  const sandboxResult = await initializeSandbox();
+async function initializeAndLogSandbox(
+  logger: ILogger,
+  sandboxConfig?: import('./config/index.js').SandboxConfig
+): Promise<void> {
+  const sandboxResult = await initializeSandbox(sandboxConfig);
   logger.info('Sandbox initialized', {
     mode: getSandboxMode(),
     executor: sandboxResult.executor.name,
     usedFallback: sandboxResult.usedFallback,
+    configuredMode: sandboxConfig?.mode ?? 'default',
   });
 }
 
@@ -339,6 +346,42 @@ async function tryDetectModelAdapter(logger: ILogger): Promise<IModelAdapter | u
 }
 
 /**
+ * Initializes and registers MCP tools with the server.
+ * Handles template loading, model adapter detection, and tool registration.
+ *
+ * @param server - MCP server instance
+ * @param logger - Logger for registration messages
+ * @param policyFirewall - Policy firewall for authorization
+ * @param config - Application configuration
+ */
+async function initializeAndRegisterTools(
+  server: import('@modelcontextprotocol/sdk/server/mcp.js').McpServer,
+  logger: ILogger,
+  policyFirewall: import('./mcp/middleware/index.js').IPolicyFirewall,
+  config: import('./config/index.js').AppConfig
+): Promise<void> {
+  logger.info('Loading built-in workflow templates');
+  const builtInTemplates = await initializeBuiltInTemplates();
+  logger.info('Loaded built-in templates', { count: builtInTemplates.size });
+
+  const modelAdapter = await tryDetectModelAdapter(logger);
+  const policyVals = getPolicyValues(config);
+  const allowedPaths = config.security?.allowedPaths;
+  const securityConfig = config.security;
+  const toolsOptions = {
+    server,
+    logger,
+    builtInTemplates,
+    policyFirewall,
+    executionMode: policyVals.defaultExec,
+    ...(allowedPaths !== undefined && { allowedPaths }),
+    ...(modelAdapter !== undefined && { modelAdapter }),
+    ...(securityConfig !== undefined && { securityConfig }),
+  };
+  registerMcpTools(toolsOptions);
+}
+
+/**
  * Starts the MCP server with stdio transport.
  *
  * @param verbose - Whether to enable verbose logging
@@ -373,26 +416,10 @@ export async function startServer(
   const observer = initializeSwarmObserver(serverLogger);
   const eventBusBridge = initializeEventBus(observer, serverLogger);
 
-  await initializeAndLogSandbox(serverLogger);
+  await initializeAndLogSandbox(serverLogger, configResult.config.security?.sandbox);
   const policyFirewall = logSecurityConfig(serverLogger, configResult.config);
 
-  serverLogger.info('Loading built-in workflow templates');
-  const builtInTemplates = await initializeBuiltInTemplates();
-  serverLogger.info('Loaded built-in templates', { count: builtInTemplates.size });
-
-  const modelAdapter = await tryDetectModelAdapter(serverLogger);
-  const policyVals = getPolicyValues(configResult.config);
-  const allowedPaths = configResult.config.security?.allowedPaths;
-  const toolsOptions = {
-    server,
-    logger: serverLogger,
-    builtInTemplates,
-    policyFirewall,
-    executionMode: policyVals.defaultExec,
-    ...(allowedPaths !== undefined && { allowedPaths }),
-    ...(modelAdapter !== undefined && { modelAdapter }),
-  };
-  registerMcpTools(toolsOptions);
+  await initializeAndRegisterTools(server, serverLogger, policyFirewall, configResult.config);
 
   // Connect to transport
   await connectToStdioTransport(server, logger, serverLogger);

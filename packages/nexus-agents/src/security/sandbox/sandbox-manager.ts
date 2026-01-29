@@ -23,7 +23,7 @@ export interface SandboxManagerConfig {
   /** Fall back to policy mode if container unavailable. */
   readonly fallbackToPolicy: boolean;
   /** Docker image for container mode. */
-  readonly dockerImage?: string;
+  readonly dockerImage?: string | undefined;
   /** Enable network access in container mode. */
   readonly networkEnabled: boolean;
 }
