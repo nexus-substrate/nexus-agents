@@ -11,7 +11,7 @@ import type { Vote } from '../consensus/types.js';
 import type { VoterRole, AgentVoteResult } from './vote-types.js';
 import type { IModelAdapter, CompletionRequest, ILogger } from '../core/index.js';
 import { VOTER_SYSTEM_PROMPTS, SIMULATED_VOTE_REASONING } from './voter-prompts.js';
-import { buildVotePrompt, parseVoteResponse } from './voter-response.js';
+import { buildVotePrompt, parseVoteResponse, SyntheticVoteError } from './voter-response.js';
 
 /**
  * Default vote execution timeout (30 seconds).
@@ -35,6 +35,7 @@ const INITIAL_RETRY_DELAY_MS = 1_000;
 
 /**
  * Creates an error vote result (abstain with error message).
+ * Issue #523: Uses source: 'error' instead of 'llm' for accuracy.
  */
 export function createErrorVoteResult(
   role: VoterRole,
@@ -49,7 +50,7 @@ export function createErrorVoteResult(
       confidence: 0,
     },
     processingTimeMs,
-    source: 'llm',
+    source: 'error',
     error: errorMsg,
   };
 }
@@ -216,6 +217,10 @@ export function extractTextFromResponse(content: unknown): string {
 
 /**
  * Executes a single vote attempt (no retries).
+ *
+ * By default, throws SyntheticVoteError if response parsing fails.
+ * This ensures we only get real LLM votes, not synthetic fallbacks.
+ * (Source: Issue #512 - Fail-safe voting)
  */
 export async function executeSingleVoteAttempt(
   role: VoterRole,
@@ -249,9 +254,19 @@ export async function executeSingleVoteAttempt(
   }
 
   const output = extractTextFromResponse(response.value.content);
-  const vote = parseVoteResponse(output, role);
 
-  return { ok: true, vote, output };
+  try {
+    // parseVoteResponse throws SyntheticVoteError by default if parsing fails
+    // This ensures we only accept real LLM votes, not synthetic fallbacks
+    const vote = parseVoteResponse(output, role);
+    return { ok: true, vote, output };
+  } catch (error) {
+    if (error instanceof SyntheticVoteError) {
+      // Parsing failed - return error to trigger retry
+      return { ok: false, error: `Vote parsing failed: ${error.message}` };
+    }
+    throw error; // Re-throw unexpected errors
+  }
 }
 
 /** Options for executeWithRetries. */

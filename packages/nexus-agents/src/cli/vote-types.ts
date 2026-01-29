@@ -54,9 +54,14 @@ export interface AgentVoteResult {
   readonly role: VoterRole;
   readonly vote: Vote;
   readonly processingTimeMs: number;
-  /** Source of the vote: 'llm' for real execution, 'simulation' for fallback */
-  readonly source: 'llm' | 'simulation';
-  /** Error message if vote fell back to simulation */
+  /**
+   * Source of the vote:
+   * - 'llm': Real LLM execution
+   * - 'simulation': Fallback simulation (opt-in only)
+   * - 'error': Error during execution (Issue #523)
+   */
+  readonly source: 'llm' | 'simulation' | 'error';
+  /** Error message if vote fell back to simulation or encountered an error */
   readonly error?: string;
 }
 
