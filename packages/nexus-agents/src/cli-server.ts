@@ -385,6 +385,58 @@ async function initializeAndRegisterTools(
 }
 
 /**
+ * Applies logging configuration from config file.
+ * (Source: Issue #485 - Wire logging config)
+ */
+function applyLoggingConfig(logger: ILogger, verbose: boolean, config: AppConfig): void {
+  // Apply logging level from config - verbose flag takes precedence
+  if (!verbose && config.logging?.level !== undefined) {
+    logger.setLevel(config.logging.level);
+    logger.debug('Log level set from configuration', { level: config.logging.level });
+  }
+
+  // TODO(Issue #485): Wire logging.format and logging.destination to logger
+  // Currently only level is supported. Format (json/pretty) and destination
+  // (stdout/stderr/file) require logger infrastructure changes.
+}
+
+/**
+ * Initializes all subsystems from configuration.
+ * Returns the initialized components needed for server operation.
+ */
+async function initializeSubsystems(
+  config: AppConfig,
+  logger: ILogger
+): Promise<{
+  server: import('@modelcontextprotocol/sdk/server/mcp.js').McpServer;
+  serverLogger: ILogger;
+  observer: SwarmObserver;
+  eventBusBridge: EventBusBridgeResult;
+  policyFirewall: ReturnType<typeof createDefaultPolicyFirewall>;
+}> {
+  // Initialize experts from configuration (Issue #486)
+  const expertResult = initializeExperts({ expertConfig: config.experts, logger });
+  logger.debug('Expert system initialized', {
+    builtIn: expertResult.builtInCount,
+    custom: expertResult.customCount,
+  });
+
+  const { server, logger: serverLogger } = createAndValidateMcpServer(logger);
+
+  // Wire observability config to SwarmObserver (Issue #493)
+  const observer = initializeSwarmObserver(serverLogger, {
+    maxEvents: config.observability?.swarmObserverMaxEvents,
+  });
+  const eventBusBridge = initializeEventBus(observer, serverLogger);
+
+  await initializeAndLogSandbox(serverLogger, config.security?.sandbox);
+  const policyFirewall = logSecurityConfig(serverLogger, config);
+  await initializeAndRegisterTools(server, serverLogger, policyFirewall, config);
+
+  return { server, serverLogger, observer, eventBusBridge, policyFirewall };
+}
+
+/**
  * Starts the MCP server with stdio transport.
  *
  * @param verbose - Whether to enable verbose logging
@@ -414,35 +466,13 @@ export async function startServer(
 
   // Load and validate configuration (Issue #472)
   const configResult = loadAndLogConfig(logger);
+  applyLoggingConfig(logger, verbose, configResult.config);
 
-  // Apply logging level from config (Issue #485) - verbose flag takes precedence
-  if (!verbose && configResult.config.logging?.level !== undefined) {
-    logger.setLevel(configResult.config.logging.level);
-    logger.debug('Log level set from configuration', { level: configResult.config.logging.level });
-  }
-
-  // TODO(Issue #485): Wire logging.format and logging.destination to logger
-  // Currently only level is supported. Format (json/pretty) and destination
-  // (stdout/stderr/file) require logger infrastructure changes.
-
-  // Initialize experts from configuration (Issue #486)
-  const expertResult = initializeExperts({
-    expertConfig: configResult.config.experts,
-    logger,
-  });
-  logger.debug('Expert system initialized', {
-    builtIn: expertResult.builtInCount,
-    custom: expertResult.customCount,
-  });
-
-  const { server, logger: serverLogger } = createAndValidateMcpServer(logger);
-  const observer = initializeSwarmObserver(serverLogger);
-  const eventBusBridge = initializeEventBus(observer, serverLogger);
-
-  await initializeAndLogSandbox(serverLogger, configResult.config.security?.sandbox);
-  const policyFirewall = logSecurityConfig(serverLogger, configResult.config);
-
-  await initializeAndRegisterTools(server, serverLogger, policyFirewall, configResult.config);
+  // Initialize all subsystems
+  const { server, serverLogger, observer, eventBusBridge } = await initializeSubsystems(
+    configResult.config,
+    logger
+  );
 
   // Connect to transport
   await connectToStdioTransport(server, logger, serverLogger);

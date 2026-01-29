@@ -18,18 +18,33 @@ import {
 } from './mcp/index.js';
 
 /**
+ * Options for SwarmObserver initialization.
+ * (Source: Issue #493 - Wire observability config to SwarmObserver)
+ */
+export interface InitializeSwarmObserverOptions {
+  /** Maximum events to retain (default: 10000) */
+  maxEvents?: number | undefined;
+}
+
+/**
  * Initializes the global SwarmObserver for interaction tracing.
  *
  * @param logger - Logger instance
+ * @param options - Optional configuration from observability config
  * @returns The initialized SwarmObserver instance
  */
-export function initializeSwarmObserver(logger: ILogger): SwarmObserver {
+export function initializeSwarmObserver(
+  logger: ILogger,
+  options?: InitializeSwarmObserverOptions
+): SwarmObserver {
+  const maxEvents = options?.maxEvents ?? 10000;
   const observer = getSwarmObserver({
-    maxEvents: 10000,
+    maxEvents,
   });
 
   logger.info('SwarmObserver initialized for interaction tracing', {
-    maxEvents: 10000,
+    maxEvents,
+    configuredFromYaml: options?.maxEvents !== undefined,
   });
 
   return observer;
