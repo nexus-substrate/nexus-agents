@@ -10,7 +10,10 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { createLogger } from '../core/logger.js';
 import { safeExecSandboxed } from './sandbox-exec.js';
+
+const logger = createLogger({ component: 'system-review' });
 import {
   SYSTEM_REVIEW_CONSTANTS,
   type SystemReviewOptions,
@@ -63,11 +66,22 @@ function safeExec(command: string, cwd?: string): string | null {
     : safeExecSandboxed(command, { context });
 }
 
-function parseGhIssueList(json: string): GhIssueItem[] {
+function parseGhIssueList(json: string, context: string): GhIssueItem[] {
   try {
     const p: unknown = JSON.parse(json);
-    return Array.isArray(p) ? (p as GhIssueItem[]) : [];
-  } catch {
+    if (!Array.isArray(p)) {
+      logger.warn('gh issue list returned non-array', { context, type: typeof p });
+      return [];
+    }
+    return p as GhIssueItem[];
+  } catch (error) {
+    // Issue #515: Log parse errors instead of silent swallow
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    logger.warn('Failed to parse gh issue list JSON', {
+      context,
+      error: message,
+      jsonPreview: json.slice(0, 100),
+    });
     return [];
   }
 }
@@ -117,7 +131,7 @@ function runPhase2(projectRoot: string): DocFreshness[] {
 
 function runPhase3(): IssueHealth {
   const openOutput = safeExec('gh issue list --state open --json number');
-  const openCount = openOutput !== null ? parseGhIssueList(openOutput).length : 0;
+  const openCount = openOutput !== null ? parseGhIssueList(openOutput, 'open issues').length : 0;
   const staleCutoff = new Date(Date.now() - STALE_ISSUE_DAYS * MS_PER_DAY).toISOString();
   const staleOutput = safeExec(
     `gh issue list --state open --json updatedAt --jq '[.[] | select(.updatedAt < "${staleCutoff}")] | length'`
@@ -126,15 +140,18 @@ function runPhase3(): IssueHealth {
   const byLabel: Record<string, number> = {};
   for (const label of ['epic', 'bug', 'enhancement', 'research', 'documentation']) {
     const out = safeExec(`gh issue list --state open --label ${label} --json number`);
-    byLabel[label] = out !== null ? parseGhIssueList(out).length : 0;
+    byLabel[label] = out !== null ? parseGhIssueList(out, `label:${label}`).length : 0;
   }
   return { openCount, staleCount, byLabel };
 }
 
 function runPhase4(projectRoot: string): SecurityAudit {
-  const def = { totalVulns: 0, high: 0, moderate: 0, low: 0 };
+  const def = { totalVulns: 0, high: 0, moderate: 0, low: 0, parseError: false };
   const out = safeExec('pnpm audit --json', projectRoot);
-  if (out === null) return def;
+  if (out === null) {
+    logger.warn('pnpm audit command failed or returned null', { projectRoot });
+    return { ...def, parseError: true };
+  }
   try {
     const a: unknown = JSON.parse(out);
     const m = (a as { metadata?: AuditMetadata }).metadata?.vulnerabilities ?? {};
@@ -143,9 +160,16 @@ function runPhase4(projectRoot: string): SecurityAudit {
       high: m.high ?? 0,
       moderate: m.moderate ?? 0,
       low: m.low ?? 0,
+      parseError: false,
     };
-  } catch {
-    return def;
+  } catch (error) {
+    // Issue #515: Log parse errors instead of silent swallow
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    logger.warn('Failed to parse pnpm audit JSON', {
+      error: message,
+      outputPreview: out.slice(0, 200),
+    });
+    return { ...def, parseError: true };
   }
 }
 
@@ -158,8 +182,10 @@ function runPhase5(projectRoot: string): CodeQuality {
     try {
       const c: unknown = JSON.parse(fs.readFileSync(cf, 'utf-8'));
       cov = (c as CoverageData).total?.lines?.pct ?? null;
-    } catch {
-      /* ignore */
+    } catch (error) {
+      // Issue #515: Log parse errors instead of silent swallow
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      logger.warn('Failed to parse coverage JSON', { error: message, file: cf });
     }
   }
   return {
@@ -178,15 +204,21 @@ function getQualityItems(q: CodeQuality): string[] {
   return items;
 }
 
-function generateActionItems(
-  r: Omit<SystemReviewResult, 'actionItems' | 'fixesApplied'>
-): string[] {
-  const items: string[] = [];
-  if (r.techniques.notStarted > NOT_STARTED_TECHNIQUE_THRESHOLD)
-    items.push(`Review ${String(r.techniques.notStarted)} not-started techniques`);
+/** Get security-related action items. (Issue #515) */
+function getSecurityItems(security: SecurityAudit): string[] {
+  if (security.parseError === true) {
+    return ['WARNING: Security audit parsing failed - verify pnpm audit manually'];
+  }
+  if (security.high > 0) {
+    return [`Address ${String(security.high)} high-severity vulnerabilities`];
+  }
+  return [];
+}
 
-  // Enhanced doc staleness with source dependency info (Epic #261)
-  for (const d of r.docs) {
+/** Get stale doc items. */
+function getStaleDocItems(docs: readonly DocFreshness[]): string[] {
+  const items: string[] = [];
+  for (const d of docs) {
     if (d.status === 'stale') {
       const newerCount = d.newerDependencies?.length ?? 0;
       if (newerCount > 0) {
@@ -196,12 +228,20 @@ function generateActionItems(
       }
     }
   }
+  return items;
+}
 
+function generateActionItems(
+  r: Omit<SystemReviewResult, 'actionItems' | 'fixesApplied'>
+): string[] {
+  const items: string[] = [];
+  if (r.techniques.notStarted > NOT_STARTED_TECHNIQUE_THRESHOLD)
+    items.push(`Review ${String(r.techniques.notStarted)} not-started techniques`);
+  items.push(...getStaleDocItems(r.docs));
   if (r.issues.staleCount > 0) items.push(`Review ${String(r.issues.staleCount)} stale issues`);
   if (r.issues.openCount < LOW_ISSUE_COUNT_THRESHOLD)
     items.push('Run Research phase (low issue count)');
-  if (r.security.high > 0)
-    items.push(`Address ${String(r.security.high)} high-severity vulnerabilities`);
+  items.push(...getSecurityItems(r.security));
   items.push(...getQualityItems(r.quality));
   return items;
 }

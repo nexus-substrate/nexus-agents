@@ -93,6 +93,8 @@ export interface SecurityAudit {
   readonly high: number;
   readonly moderate: number;
   readonly low: number;
+  /** True if parsing failed and values are defaults (Issue #515) */
+  readonly parseError?: boolean;
 }
 
 /**
