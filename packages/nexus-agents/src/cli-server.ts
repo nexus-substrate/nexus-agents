@@ -38,6 +38,7 @@ import { startOrchestratorMode, type OrchestratorModeOptions } from './cli-orche
 import { loadConfig, type ConfigLoadResult, type AppConfig } from './config/index.js';
 import { initializeExperts } from './cli-server-experts.js';
 import { initializeSkillLibrary } from './cli-server-skills.js';
+import { initializeSica } from './cli-server-sica.js';
 
 // Re-export for backward compatibility
 export { type OrchestratorModeOptions } from './cli-orchestrator.js';
@@ -427,6 +428,13 @@ async function initializeSubsystems(
   logger.debug('Skill library initialization', {
     initialized: skillsResult.initialized,
     reason: skillsResult.reason,
+  });
+
+  // Initialize SICA self-improvement from configuration (Issue #492)
+  const sicaResult = initializeSica({ sicaConfig: config.sica, logger });
+  logger.debug('SICA initialization', {
+    enabled: sicaResult.enabled,
+    reason: sicaResult.reason,
   });
 
   const { server, logger: serverLogger } = createAndValidateMcpServer(logger);
