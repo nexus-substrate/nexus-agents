@@ -313,3 +313,34 @@ export {
   clearTemplateCache,
 } from './workflow-engine-factory.js';
 export type { WorkflowEngineFactoryConfig } from './workflow-engine-factory.js';
+
+// ============================================================================
+// LATTS (Locally Adaptive Test-Time Scaling) (Issue #153)
+// ============================================================================
+
+export {
+  // Types
+  type IVerifier,
+  type ILattsController,
+  type VerificationResult,
+  type VerifierContext,
+  type LattsDecision,
+  type DecisionContext,
+  type LattsConfig,
+  type LattsHistoryEntry,
+  type LattsExecutionResult,
+  type LattsStats,
+  // Constants and schemas
+  DEFAULT_LATTS_CONFIG,
+  LattsConfigSchema,
+} from './latts-types.js';
+
+export {
+  // Verifier
+  HeuristicVerifier,
+  // Controller
+  AdaptiveLattsController,
+  // Executor
+  LattsExecutor,
+  createLattsExecutor,
+} from './latts.js';

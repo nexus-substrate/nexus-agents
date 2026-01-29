@@ -271,3 +271,7 @@ export * from './coordination-exports.js';
 
 // Reasoning module (Forest-of-Thought)
 export * from './reasoning-exports.js';
+
+// Puppeteer Orchestration module (Issue #335)
+// Uses explicit exports to avoid conflicts with reasoning module
+export * from './orchestration-exports.js';
