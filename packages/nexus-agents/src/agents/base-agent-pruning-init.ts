@@ -9,9 +9,9 @@ import type { IModelAdapter, ILogger } from '../core/index.js';
 import { ContextManager } from './context-manager.js';
 import { ContextPruner, PruningStrategy } from './context-pruner.js';
 
-/** Configuration for automatic context pruning in BaseAgent (Issue #306). */
+/** Configuration for automatic context pruning in BaseAgent (Issue #306, #479). */
 export interface ContextPrunerAgentConfig {
-  /** Whether to enable automatic context pruning. Default: false (opt-in). */
+  /** Whether to enable automatic context pruning. Default: true (Issue #479). */
   enabled?: boolean;
   /** Pruning strategy to use. Default: 'priority_weighted_age'. */
   strategy?: PruningStrategy;
@@ -32,9 +32,12 @@ export interface ResolvedPruningConfig {
   triggerThreshold: number;
 }
 
-/** Default context pruning configuration values. */
+/**
+ * Default context pruning configuration values.
+ * Note: enabled=true by default since Issue #479 (mature feature with 140+ tests).
+ */
 export const DEFAULT_PRUNING_CONFIG: ResolvedPruningConfig = {
-  enabled: false,
+  enabled: true, // Issue #479 - enabled by default (140+ tests, production-ready)
   strategy: PruningStrategy.PRIORITY_WEIGHTED_AGE,
   maxTokens: 100_000, // 100K tokens
   reserveTokens: 10_000, // 10K reserved for response generation

@@ -93,9 +93,7 @@ class TestPruningAgent extends BaseAgent {
     super(baseOptions);
   }
 
-  protected async executeTask(
-    task: Task
-  ): Promise<
+  protected async executeTask(task: Task): Promise<
     Result<
       {
         taskId: string;
@@ -154,13 +152,24 @@ describe('BaseAgent Context Pruning Integration (Issue #306)', () => {
   });
 
   describe('Configuration', () => {
-    it('should default to disabled context pruning', () => {
-      const agent = new TestPruningAgent({ logger: mockLogger });
+    it('should default to enabled context pruning (Issue #479)', () => {
+      const agent = new TestPruningAgent({ logger: mockLogger, adapter: mockAdapter });
+
+      expect(agent.isContextPruningEnabled()).toBe(true);
+    });
+
+    it('should disable context pruning when explicitly configured', () => {
+      const agent = new TestPruningAgent({
+        logger: mockLogger,
+        contextPruning: {
+          enabled: false,
+        },
+      });
 
       expect(agent.isContextPruningEnabled()).toBe(false);
     });
 
-    it('should enable context pruning when configured', () => {
+    it('should use custom pruning configuration when provided', () => {
       const agent = new TestPruningAgent({
         logger: mockLogger,
         adapter: mockAdapter,
@@ -294,8 +303,9 @@ describe('BaseAgent Context Pruning Integration (Issue #306)', () => {
   });
 
   describe('Backward Compatibility', () => {
-    it('should work without contextPruning option', () => {
+    it('should work without contextPruning option (now enabled by default per Issue #479)', () => {
       // This tests that agents created without contextPruning config still work
+      // Note: Since Issue #479, context pruning is enabled by default
       const agent = new TestPruningAgent({
         id: 'legacy-agent',
         role: 'code_expert',
@@ -304,7 +314,8 @@ describe('BaseAgent Context Pruning Integration (Issue #306)', () => {
         logger: mockLogger,
       });
 
-      expect(agent.isContextPruningEnabled()).toBe(false);
+      // Context pruning is now enabled by default (Issue #479)
+      expect(agent.isContextPruningEnabled()).toBe(true);
       expect(agent.getPruningMetrics()).toEqual({
         pruningRounds: 0,
         totalTokensPruned: 0,

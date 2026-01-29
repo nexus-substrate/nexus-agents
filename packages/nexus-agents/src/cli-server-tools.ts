@@ -138,6 +138,41 @@ function registerConsensusTools(ctx: ToolRegistrationContext): void {
   });
 }
 
+/** Register core routing and orchestration tools. */
+function registerCoreTools(ctx: ToolRegistrationContext): void {
+  registerDelegateToModelTool(ctx.server, {
+    logger: ctx.logger,
+    rateLimiter: ctx.rateLimiterFactory.getForTool('delegate_to_model'),
+  });
+
+  const techLead = createTechLeadForOrchestration(ctx.modelAdapter, ctx.logger);
+  registerOrchestrateTool(ctx.server, {
+    techLead,
+    logger: ctx.logger,
+    rateLimiter: ctx.rateLimiterFactory.getForTool('orchestrate'),
+  });
+}
+
+/** Creates tool registration context from options. */
+function createToolContext(
+  options: RegisterMcpToolsOptions,
+  toolInfra: { logger: ILogger },
+  rateLimiterFactory: ReturnType<typeof createToolRateLimiterFactory>
+): ToolRegistrationContext {
+  const { server, builtInTemplates, modelAdapter, policyFirewall, executionMode, allowedPaths } =
+    options;
+  return {
+    server,
+    logger: toolInfra.logger,
+    rateLimiterFactory,
+    builtInTemplates,
+    ...(modelAdapter !== undefined && { modelAdapter }),
+    ...(policyFirewall !== undefined && { policyFirewall }),
+    ...(executionMode !== undefined && { executionMode }),
+    ...(allowedPaths !== undefined && { allowedPaths }),
+  };
+}
+
 /**
  * Registers MCP tools with per-tool rate limiting.
  * Must be called BEFORE connecting to transport.
@@ -152,15 +187,7 @@ function registerConsensusTools(ctx: ToolRegistrationContext): void {
  * (Source: Issue #430 - Wire up real workflow engine)
  */
 export function registerMcpTools(options: RegisterMcpToolsOptions): void {
-  const {
-    server,
-    logger,
-    builtInTemplates,
-    modelAdapter,
-    policyFirewall,
-    executionMode,
-    allowedPaths,
-  } = options;
+  const { server, logger, builtInTemplates, modelAdapter, policyFirewall, executionMode } = options;
   const toolInfra = registerTools(server, { logger });
 
   const rateLimiterFactory = createToolRateLimiterFactory({
@@ -169,31 +196,10 @@ export function registerMcpTools(options: RegisterMcpToolsOptions): void {
   });
   setGlobalToolRateLimiterFactory(rateLimiterFactory);
 
-  const ctx: ToolRegistrationContext = {
-    server,
-    logger: toolInfra.logger,
-    rateLimiterFactory,
-    builtInTemplates,
-    ...(modelAdapter !== undefined && { modelAdapter }),
-    ...(policyFirewall !== undefined && { policyFirewall }),
-    ...(executionMode !== undefined && { executionMode }),
-    ...(allowedPaths !== undefined && { allowedPaths }),
-  };
+  const ctx = createToolContext(options, toolInfra, rateLimiterFactory);
 
-  // Register core tools
-  registerDelegateToModelTool(server, {
-    logger: ctx.logger,
-    rateLimiter: rateLimiterFactory.getForTool('delegate_to_model'),
-  });
-
-  const techLead = createTechLeadForOrchestration(modelAdapter, ctx.logger);
-  registerOrchestrateTool(server, {
-    techLead,
-    logger: ctx.logger,
-    rateLimiter: rateLimiterFactory.getForTool('orchestrate'),
-  });
-
-  // Expert, workflow, and consensus tools (Issue #437, #430, #436, #435)
+  // Register all tool categories
+  registerCoreTools(ctx);
   registerExpertTools(ctx);
   registerWorkflowTools(ctx);
   registerConsensusTools(ctx);
