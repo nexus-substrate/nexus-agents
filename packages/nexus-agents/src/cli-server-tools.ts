@@ -18,9 +18,10 @@ import {
   registerListExpertsTool,
   registerListWorkflowsTool,
   registerConsensusVoteTool,
-  createMockTechLead,
   createDefaultDeps,
 } from './mcp/index.js';
+// Import mock directly from source (not public API - used as fallback when no adapter)
+import { createMockTechLead } from './mcp/tools/orchestrate.js';
 import type { Expert } from './agents/index.js';
 import { createRealWorkflowEngine } from './workflows/index.js';
 import type { IModelAdapter, WorkflowDefinition } from './core/index.js';

@@ -67,6 +67,7 @@ function createSimpleStepResult(step: CoreWorkflowStep, startTime: number): Step
       action: step.action,
       agent: step.agent,
       message: `Executed step ${step.id} with action ${step.action}`,
+      mock: true, // Indicates this was mock execution, not real
     },
     durationMs: Date.now() - startTime,
     status: 'success',
@@ -264,6 +265,11 @@ function resolveStepExecutor(
 
   if (expertFactory !== undefined && workflowId === undefined) {
     logger.warn('expertFactory provided but workflowId missing; falling back to mock executor');
+  } else if (expertFactory === undefined) {
+    logger.warn(
+      'No expertFactory provided; workflow steps will return mock results. ' +
+        'Configure expertFactory or modelAdapter to enable real execution.'
+    );
   }
 
   return createMockStepExecutor(logger);

@@ -101,7 +101,6 @@ export {
   type VoteDecisionStatus,
   // run_workflow tool
   registerRunWorkflowTool,
-  createMockWorkflowEngine,
   RunWorkflowInputSchema,
   type RunWorkflowDeps,
   type RunWorkflowInput,
@@ -110,7 +109,6 @@ export {
   type DryRunResult,
   // orchestrate tool
   registerOrchestrateTool,
-  createMockTechLead,
   OrchestrateInputSchema,
   OrchestrateOutputSchema,
   OrchestrationError,

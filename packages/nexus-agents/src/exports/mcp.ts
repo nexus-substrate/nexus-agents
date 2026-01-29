@@ -56,7 +56,6 @@ export {
   type DryRunResult,
   // orchestrate tool
   registerOrchestrateTool,
-  createMockTechLead,
   OrchestrateInputSchema,
   OrchestrateOutputSchema,
   OrchestrationError,

@@ -28,7 +28,6 @@ export {
 
 export {
   registerRunWorkflowTool,
-  createMockWorkflowEngine,
   RunWorkflowInputSchema,
   type RunWorkflowDeps,
   type RunWorkflowInput,
@@ -37,9 +36,10 @@ export {
   type DryRunResult,
 } from './run-workflow.js';
 
+// Note: createMockWorkflowEngine is available for testing via direct import from run-workflow.js
+
 export {
   registerOrchestrateTool,
-  createMockTechLead,
   OrchestrateInputSchema,
   OrchestrateOutputSchema,
   OrchestrationError,
@@ -49,6 +49,8 @@ export {
   type ITechLead,
   type IExpertFactory as IOrchestrateExpertFactory,
 } from './orchestrate.js';
+
+// Note: createMockTechLead is available for testing via direct import from orchestrate.js
 
 export {
   registerDelegateToModelTool,
