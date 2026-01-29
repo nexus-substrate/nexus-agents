@@ -11,7 +11,7 @@ export {
   validateWorkflow,
   // Workflow types
   InputTypeSchema,
-  formatZodErrors,
+  // Note: formatZodErrors internalized in #478 - use workflow-types.ts directly
   type InputType,
   type InputDefinitionInput,
   type InputDefinitionOutput,
@@ -42,9 +42,8 @@ export {
   type ExecutionPlan as WorkflowExecutionPlan,
   // Parallel executor
   executeParallel,
-  withRetries,
-  allSucceeded,
-  getFailedSteps,
+  // Note: withRetries, allSucceeded, getFailedSteps internalized in #478
+  // Use parallel-executor.ts directly if needed for testing
   type ParallelOptions,
   type ExecutionContext,
   type StepExecutor,
