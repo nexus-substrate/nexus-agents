@@ -292,6 +292,7 @@ export class CompositeRouter implements ICompositeRouter {
       topsisRouter: this.topsisRouter,
       linucbBandit: this.linucbBandit,
       latencyTracker: this.latencyTracker,
+      routingMemory: this.routingMemory,
     };
   }
 

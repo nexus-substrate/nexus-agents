@@ -12,6 +12,7 @@ import type { LinUCBBandit } from './linucb-bandit.js';
 import type { PreferenceRouter } from './preference-router.js';
 import type { ZeroRouter } from './zero-router.js';
 import type { LatencyTracker } from './latency-tracker.js';
+import type { IRoutingMemory } from '../context/routing-memory.js';
 import { analyzeTask, type TaskProfile } from './task-analyzer.js';
 import {
   CompositeRoutingError,
@@ -42,6 +43,7 @@ export interface StageDependencies {
   topsisRouter: TopsisRouter | undefined;
   linucbBandit: LinUCBBandit | undefined;
   latencyTracker: LatencyTracker | undefined;
+  routingMemory: IRoutingMemory | undefined;
 }
 
 /** Result from budget stage including rejection tracking. */
@@ -207,6 +209,63 @@ export function runLatencyStage(
   };
 }
 
+/** Routing memory stage result. (Issue #489) */
+export interface RoutingMemoryStageResult {
+  recommendation: CliName | undefined;
+  memoryConfidence: number | undefined;
+}
+
+/** Runs routing memory stage to get learned recommendation. (Issue #489) */
+export function runRoutingMemoryStage(
+  task: CliTask,
+  candidates: CliName[],
+  stagesExecuted: string[],
+  deps: StageDependencies
+): RoutingMemoryStageResult {
+  if (!deps.config.enableRoutingMemory || deps.routingMemory === undefined) {
+    return { recommendation: undefined, memoryConfidence: undefined };
+  }
+
+  const taskType = inferTaskTypeFromContent(task.content);
+  const recommendation = deps.routingMemory.getRecommendation(taskType);
+  stagesExecuted.push('routing-memory');
+
+  if (recommendation !== undefined && candidates.includes(recommendation)) {
+    deps.logger.debug('Routing memory recommendation', {
+      taskType,
+      recommended: recommendation,
+      inCandidates: true,
+    });
+    return { recommendation, memoryConfidence: 0.8 };
+  }
+
+  deps.logger.debug('Routing memory: no recommendation or not in candidates', {
+    taskType,
+    recommended: recommendation,
+    candidateCount: candidates.length,
+  });
+  return { recommendation: undefined, memoryConfidence: undefined };
+}
+
+/** Task type keywords mapping for routing memory. */
+const TASK_TYPE_KEYWORDS: ReadonlyArray<readonly [string, ReadonlyArray<string>]> = [
+  ['coding', ['code', 'implement']],
+  ['review', ['review', 'audit']],
+  ['testing', ['test', 'spec']],
+  ['documentation', ['document', 'explain']],
+  ['refactoring', ['refactor']],
+  ['debugging', ['debug', 'fix']],
+];
+
+/** Infer task type from content for routing memory lookup. */
+function inferTaskTypeFromContent(content: string): string {
+  const lower = content.toLowerCase();
+  for (const [taskType, keywords] of TASK_TYPE_KEYWORDS) {
+    if (keywords.some((kw) => lower.includes(kw))) return taskType;
+  }
+  return 'general';
+}
+
 /** Executes full pipeline and returns result. */
 export function runPipeline(
   task: CliTask,
@@ -226,7 +285,10 @@ export function runPipeline(
   candidates = budgetResult.value.candidates;
   const withinBudget = budgetResult.value.withinBudget;
 
-  // Step 2: ZeroRouter + Step 3: Preference + Step 4: Latency + Step 5: TOPSIS + Step 6: LinUCB
+  // Step 2: Routing Memory (Issue #489) - check for learned recommendations
+  const memoryResult = runRoutingMemoryStage(task, candidates, stagesExecuted, deps);
+
+  // Step 3: ZeroRouter + Step 4: Preference + Step 5: Latency + Step 6: TOPSIS + Step 7: LinUCB
   const zeroResult = runZeroRouterStage(task, candidates, stagesExecuted, deps);
   candidates = zeroResult.filteredCandidates;
 
@@ -242,6 +304,9 @@ export function runPipeline(
     return err(new CompositeRoutingError('No candidates available', 'selection'));
   }
 
+  // Use memory recommendation if available and high confidence (Issue #489)
+  const selectedCli = selectWithMemoryInfluence(linucbResult.selectedCli, memoryResult, deps);
+
   return ok({
     candidates,
     withinBudget,
@@ -251,8 +316,31 @@ export function runPipeline(
     preferenceTier: prefResult.preferenceTier,
     topsisRanking: topsisResult.ranking,
     topsisScore: topsisResult.score,
-    selectedCli: linucbResult.selectedCli,
+    selectedCli,
     ucbScore: linucbResult.ucbScore,
     latencyScore: latencyResult.latencyScore,
+    memoryRecommendation: memoryResult.recommendation,
+    memoryConfidence: memoryResult.memoryConfidence,
   });
+}
+
+/** Select CLI with optional memory influence. (Issue #489) */
+function selectWithMemoryInfluence(
+  linucbSelection: CliName,
+  memoryResult: RoutingMemoryStageResult,
+  deps: StageDependencies
+): CliName {
+  // If routing memory has a high-confidence recommendation, use it
+  if (memoryResult.recommendation !== undefined && memoryResult.memoryConfidence !== undefined) {
+    const confidenceThreshold = 0.7;
+    if (memoryResult.memoryConfidence >= confidenceThreshold) {
+      deps.logger.debug('Using routing memory recommendation', {
+        memoryChoice: memoryResult.recommendation,
+        linucbChoice: linucbSelection,
+        confidence: memoryResult.memoryConfidence,
+      });
+      return memoryResult.recommendation;
+    }
+  }
+  return linucbSelection;
 }

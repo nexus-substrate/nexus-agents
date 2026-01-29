@@ -182,6 +182,10 @@ export interface PipelineResult {
   selectedCli: CliName;
   ucbScore: number | undefined;
   latencyScore: number | undefined;
+  /** Routing memory recommendation (Issue #489) */
+  memoryRecommendation: CliName | undefined;
+  /** Routing memory confidence (Issue #489) */
+  memoryConfidence: number | undefined;
 }
 
 /**
