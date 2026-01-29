@@ -39,6 +39,7 @@ import { loadConfig, type ConfigLoadResult, type AppConfig } from './config/inde
 import { initializeExperts } from './cli-server-experts.js';
 import { initializeSkillLibrary } from './cli-server-skills.js';
 import { initializeSica } from './cli-server-sica.js';
+import { initializeFeedbackIntegration } from './cli-server-feedback.js';
 
 // Re-export for backward compatibility
 export { type OrchestratorModeOptions } from './cli-orchestrator.js';
@@ -356,12 +357,14 @@ async function tryDetectModelAdapter(logger: ILogger): Promise<IModelAdapter | u
  * @param logger - Logger for registration messages
  * @param policyFirewall - Policy firewall for authorization
  * @param config - Application configuration
+ * @param feedbackIntegration - Optional FeedbackIntegration for closed-loop learning (Issue #490)
  */
 async function initializeAndRegisterTools(
   server: import('@modelcontextprotocol/sdk/server/mcp.js').McpServer,
   logger: ILogger,
   policyFirewall: import('./mcp/middleware/index.js').IPolicyFirewall,
-  config: import('./config/index.js').AppConfig
+  config: import('./config/index.js').AppConfig,
+  feedbackIntegration?: import('./learning/feedback-integration.js').IFeedbackIntegration
 ): Promise<void> {
   logger.info('Loading built-in workflow templates');
   const builtInTemplates = await initializeBuiltInTemplates();
@@ -382,6 +385,7 @@ async function initializeAndRegisterTools(
     ...(modelAdapter !== undefined && { modelAdapter }),
     ...(securityConfig !== undefined && { securityConfig }),
     ...(workflowConfig !== undefined && { workflowConfig }),
+    ...(feedbackIntegration !== undefined && { feedbackIntegration }),
   };
   registerMcpTools(toolsOptions);
 }
@@ -448,6 +452,13 @@ async function initializeSubsystems(
     reason: sicaResult.reason,
   });
 
+  // Initialize FeedbackIntegration for closed-loop learning (Issue #490)
+  const feedbackResult = initializeFeedbackIntegration({ logger });
+  logger.debug('FeedbackIntegration initialization', {
+    initialized: feedbackResult.initialized,
+    reason: feedbackResult.reason,
+  });
+
   const { server, logger: serverLogger } = createAndValidateMcpServer(logger);
 
   // Wire observability config to SwarmObserver (Issue #493)
@@ -459,7 +470,14 @@ async function initializeSubsystems(
 
   await initializeAndLogSandbox(serverLogger, config.security?.sandbox);
   const policyFirewall = logSecurityConfig(serverLogger, config);
-  await initializeAndRegisterTools(server, serverLogger, policyFirewall, config);
+  // Pass FeedbackIntegration to tools for closed-loop learning (Issue #490)
+  await initializeAndRegisterTools(
+    server,
+    serverLogger,
+    policyFirewall,
+    config,
+    feedbackResult.feedbackIntegration
+  );
 
   return { server, serverLogger, observer, eventBusBridge, policyFirewall };
 }

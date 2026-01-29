@@ -51,6 +51,8 @@ export interface RegisterMcpToolsOptions {
   securityConfig?: import('./config/index.js').SecurityConfig;
   /** Workflow config for engine settings (Issue #487) */
   workflowConfig?: import('./config/index.js').WorkflowConfig;
+  /** FeedbackIntegration for closed-loop learning (Issue #490) */
+  feedbackIntegration?: import('./learning/feedback-integration.js').IFeedbackIntegration;
 }
 
 /**
@@ -97,6 +99,8 @@ interface ToolRegistrationContext {
   allowedPaths?: readonly string[];
   /** Security config for timeout settings (Issue #482) */
   securityConfig?: import('./config/index.js').SecurityConfig;
+  /** FeedbackIntegration for closed-loop learning (Issue #490) */
+  feedbackIntegration?: import('./learning/feedback-integration.js').IFeedbackIntegration;
   /** Workflow config for engine settings (Issue #487) */
   workflowConfig?: import('./config/index.js').WorkflowConfig;
 }
@@ -159,6 +163,8 @@ function registerCoreTools(ctx: ToolRegistrationContext): void {
   registerDelegateToModelTool(ctx.server, {
     logger: ctx.logger,
     rateLimiter: ctx.rateLimiterFactory.getForTool('delegate_to_model'),
+    // Wire FeedbackIntegration for closed-loop learning (Issue #490)
+    ...(ctx.feedbackIntegration !== undefined && { feedbackIntegration: ctx.feedbackIntegration }),
   });
 
   const techLead = createTechLeadForOrchestration(ctx.modelAdapter, ctx.logger);
@@ -185,6 +191,7 @@ function createToolContext(
     allowedPaths,
     securityConfig,
     workflowConfig,
+    feedbackIntegration,
   } = options;
   return {
     server,
@@ -197,6 +204,7 @@ function createToolContext(
     ...(allowedPaths !== undefined && { allowedPaths }),
     ...(securityConfig !== undefined && { securityConfig }),
     ...(workflowConfig !== undefined && { workflowConfig }),
+    ...(feedbackIntegration !== undefined && { feedbackIntegration }),
   };
 }
 
