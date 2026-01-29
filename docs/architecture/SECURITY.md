@@ -19,6 +19,50 @@ Security-first design with 7 defense layers:
 
 ---
 
+## ⚠️ Critical: Authentication Disabled by Default
+
+**The CLI server runs WITHOUT authentication by default.**
+
+### Risk Assessment
+
+| Environment           | Risk Level | Recommendation                    |
+| --------------------- | ---------- | --------------------------------- |
+| Local Development     | Low        | Acceptable for local-only access  |
+| CI/CD Pipelines       | Medium     | Enable auth if exposed to network |
+| Production Deployment | **HIGH**   | **MUST enable authentication**    |
+| Shared Networks       | **HIGH**   | **MUST enable authentication**    |
+
+### Enabling Authentication
+
+Set the environment variable before starting the server:
+
+```bash
+export NEXUS_AUTH_ENABLED=true
+nexus-agents --mode=server
+```
+
+Or in your configuration:
+
+```yaml
+# nexus-agents.yaml
+server:
+  auth:
+    enabled: true
+    # Configure your auth provider
+```
+
+### Startup Warning
+
+When authentication is disabled, the server logs:
+
+```
+[WARN] Authentication is disabled. Set NEXUS_AUTH_ENABLED=true to enable.
+```
+
+**Do not ignore this warning in production environments.**
+
+---
+
 ## Threat Model
 
 | Threat             | Vector               | Mitigation                               | Status |
