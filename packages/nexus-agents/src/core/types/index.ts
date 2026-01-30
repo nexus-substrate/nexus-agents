@@ -56,5 +56,18 @@ export { ParseError } from './workflow.js';
 export type { ITool, IToolRegistry, ToolResult, ToolContentBlock, ToolInfo } from './tool.js';
 export { ToolError } from './tool.js';
 
+// Orchestrator types (IOrchestrator - canonical orchestration interface)
+export type {
+  IOrchestrator,
+  IOrchestratorFactory,
+  OrchestratorType,
+  OrchestratorDefinition,
+  OrchestratorExecuteOptions,
+  OrchestratorStep,
+  OrchestratorResult,
+  OrchestratorErrorCode,
+} from './orchestrator.js';
+export { OrchestratorError } from './orchestrator.js';
+
 // Note: Routing Memory types moved to cli-adapters/routing-memory-types.ts (Issue #286)
 // Import from 'nexus-agents' or 'nexus-agents/cli-adapters' instead of core/types

@@ -136,11 +136,10 @@ function assessCanonicalPaths(): FitnessComponent {
     score -= 5;
   }
 
-  // Check for IOrchestrator interface
-  const hasOrchestratorInterface = fileContains(
-    join(SRC_ROOT, 'core/types/index.ts'),
-    /interface IOrchestrator/
-  );
+  // Check for IOrchestrator interface (defined in orchestrator.ts, exported from index.ts)
+  const hasOrchestratorInterface =
+    existsSync(join(SRC_ROOT, 'core/types/orchestrator.ts')) &&
+    fileContains(join(SRC_ROOT, 'core/types/orchestrator.ts'), /interface IOrchestrator/);
   if (hasOrchestratorInterface) {
     rewards.push('IOrchestrator interface defined');
     score += 3;

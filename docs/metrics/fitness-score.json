@@ -1,19 +1,18 @@
 {
-  "total": 83,
+  "total": 88,
   "maxTotal": 100,
-  "percentage": 83,
+  "percentage": 88,
   "components": [
     {
       "name": "Canonical Paths",
-      "score": 12,
+      "score": 17,
       "maxScore": 20,
-      "details": ["Routers: 8", "Unified interface: false"],
+      "details": ["Routers: 8", "Unified interface: true"],
       "penalties": [
         "8 router implementations (target: 1 canonical + strategies)",
-        "3 separate orchestration systems without unified interface",
-        "No IOrchestrator interface"
+        "3 separate orchestration systems without unified interface"
       ],
-      "rewards": ["CompositeRouter exists as orchestrator"]
+      "rewards": ["CompositeRouter exists as orchestrator", "IOrchestrator interface defined"]
     },
     {
       "name": "Determinism",
@@ -55,12 +54,13 @@
       "score": 15,
       "maxScore": 15,
       "details": [],
-      "penalties": ["No ADR directory"],
+      "penalties": [],
       "rewards": [
         "CLAUDE.md governance document exists",
         "Wiring graph documented",
         "Completeness score tracked",
-        "Redundancy analysis documented"
+        "Redundancy analysis documented",
+        "ADR decision records exist"
       ]
     },
     {
@@ -85,5 +85,5 @@
     }
   ],
   "trend": "stable",
-  "assessmentDate": "2026-01-30T03:06:25.808Z"
+  "assessmentDate": "2026-01-30T03:12:55.150Z"
 }
