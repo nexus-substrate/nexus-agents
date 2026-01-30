@@ -107,5 +107,15 @@ export {
   MAX_PATTERN_LENGTH,
 } from './safe-regex.js';
 
+// Task Analysis
+export {
+  TaskTypeClassifier,
+  createTaskTypeClassifier,
+  type TaskType,
+  type ClassificationResult,
+  type ClassificationSignal,
+  type TaskTypeClassifierConfig,
+} from './task-analysis/index.js';
+
 // Types
 export * from './types/index.js';

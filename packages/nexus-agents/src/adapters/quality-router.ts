@@ -12,7 +12,7 @@
  * (Source: Issue #128, arXiv:2406.18510)
  */
 
-import type { Task, ILogger, Result } from '../core/index.js';
+import type { Task, ILogger, Result, TaskType } from '../core/index.js';
 import { ok, err, AgentError, createLogger } from '../core/index.js';
 import type {
   ICliAdapter,
@@ -22,7 +22,6 @@ import type {
   CliName,
   CapabilityProfile,
 } from '../cli-adapters/types.js';
-import type { TaskType } from '../agents/collaboration/task-type-classifier.js';
 import { TaskComplexityEstimator, type ComplexityEstimate } from './complexity-estimator.js';
 
 // Re-export complexity types

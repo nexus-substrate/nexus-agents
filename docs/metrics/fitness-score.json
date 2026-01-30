@@ -1,7 +1,7 @@
 {
-  "total": 88,
+  "total": 90,
   "maxTotal": 100,
-  "percentage": 88,
+  "percentage": 90,
   "components": [
     {
       "name": "Canonical Paths",
@@ -18,20 +18,20 @@
       "name": "Determinism",
       "score": 8,
       "maxScore": 15,
-      "details": ["Random calls: 66", "Date.now calls: 667"],
-      "penalties": ["66 unseeded Math.random() calls", "667 Date.now() calls (consider injection)"],
+      "details": ["Random calls: 66", "Date.now calls: 669"],
+      "penalties": ["66 unseeded Math.random() calls", "669 Date.now() calls (consider injection)"],
       "rewards": []
     },
     {
       "name": "Observability",
       "score": 15,
       "maxScore": 15,
-      "details": ["Logger uses: 169"],
+      "details": ["Logger uses: 172"],
       "penalties": [],
       "rewards": [
         "SwarmObserver exists",
         "Trace exporter exists",
-        "Strong logging adoption (169 uses)",
+        "Strong logging adoption (172 uses)",
         "Audit logging module exists"
       ]
     },
@@ -65,11 +65,11 @@
     },
     {
       "name": "Layer Coupling",
-      "score": 8,
+      "score": 10,
       "maxScore": 10,
       "details": [],
-      "penalties": ["3 adapter→agent imports (layer violation)"],
-      "rewards": ["No core→MCP layer violations"]
+      "penalties": [],
+      "rewards": ["No adapter→agent layer violations", "No core→MCP layer violations"]
     },
     {
       "name": "Config Surface",
@@ -85,5 +85,5 @@
     }
   ],
   "trend": "stable",
-  "assessmentDate": "2026-01-30T03:12:55.150Z"
+  "assessmentDate": "2026-01-30T03:23:11.980Z"
 }

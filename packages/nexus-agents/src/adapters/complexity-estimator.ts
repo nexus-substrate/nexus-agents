@@ -8,13 +8,8 @@
  * (Source: Issue #128, arXiv:2406.18510)
  */
 
-import type { Task, ILogger } from '../core/index.js';
-import { createLogger } from '../core/index.js';
-import type {
-  TaskType,
-  ClassificationResult,
-} from '../agents/collaboration/task-type-classifier.js';
-import { createTaskTypeClassifier } from '../agents/collaboration/task-type-classifier.js';
+import type { Task, ILogger, TaskType, ClassificationResult } from '../core/index.js';
+import { createLogger, createTaskTypeClassifier } from '../core/index.js';
 
 // ============================================================================
 // Types
