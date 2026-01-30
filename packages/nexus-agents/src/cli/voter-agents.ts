@@ -32,6 +32,10 @@ export {
   buildVotePrompt,
   extractJsonFromResponse,
   parseVoteResponse,
+  SyntheticVoteError,
+  type ParsedVote,
+  type ParsedVoteSource,
+  type ParseVoteOptions,
 } from './voter-response.js';
 
 // Re-export execution utilities for backward compatibility

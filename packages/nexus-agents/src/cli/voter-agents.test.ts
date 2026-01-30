@@ -218,36 +218,52 @@ That's my vote.`;
       expect(vote.conditions).toEqual(['Add tests', 'Update docs']);
     });
 
-    it('should create fallback vote for invalid JSON', () => {
+    it('should throw SyntheticVoteError for invalid JSON by default', () => {
       const output = 'I approve this proposal because it looks good';
-      const vote = parseVoteResponse(output, 'devex');
+
+      expect(() => parseVoteResponse(output, 'devex')).toThrow(/Vote response parsing failed/);
+    });
+
+    it('should create fallback vote when allowSyntheticVote is true', () => {
+      const output = 'I approve this proposal because it looks good';
+      const vote = parseVoteResponse(output, 'devex', { allowSyntheticVote: true });
 
       expect(vote.decision).toBe('approve');
-      expect(vote.reasoning).toContain('[Parse error]');
+      expect(vote.reasoning).toContain('[SYNTHETIC:');
       expect(vote.confidence).toBe(0.5);
+      expect(vote.source).toBe('fallback');
     });
 
-    it('should infer reject from text content', () => {
+    it('should infer reject from text content when allowSyntheticVote is true', () => {
       const output = 'I reject this because of security concerns';
-      const vote = parseVoteResponse(output, 'security');
+      const vote = parseVoteResponse(output, 'security', { allowSyntheticVote: true });
 
       expect(vote.decision).toBe('reject');
+      expect(vote.source).toBe('fallback');
     });
 
-    it('should default to abstain when decision unclear', () => {
+    it('should default to abstain when decision unclear and allowSyntheticVote is true', () => {
       const output = 'I need more information about this feature';
-      const vote = parseVoteResponse(output, 'ai_ml');
+      const vote = parseVoteResponse(output, 'ai_ml', { allowSyntheticVote: true });
 
       expect(vote.decision).toBe('abstain');
+      expect(vote.source).toBe('fallback');
     });
 
-    it('should handle malformed JSON gracefully', () => {
+    it('should throw SyntheticVoteError for malformed JSON by default', () => {
       const output = '{"decision": "approve", "reasoning": missing quotes}';
-      const vote = parseVoteResponse(output, 'architect');
+
+      expect(() => parseVoteResponse(output, 'architect')).toThrow(/Vote response parsing failed/);
+    });
+
+    it('should handle malformed JSON with allowSyntheticVote', () => {
+      const output = '{"decision": "approve", "reasoning": missing quotes}';
+      const vote = parseVoteResponse(output, 'architect', { allowSyntheticVote: true });
 
       // Should fall back to keyword detection
       expect(vote.decision).toBe('approve');
       expect(vote.confidence).toBe(0.5);
+      expect(vote.source).toBe('fallback');
     });
   });
 

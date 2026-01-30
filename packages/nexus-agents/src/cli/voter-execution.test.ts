@@ -53,10 +53,11 @@ describe('voter-execution', () => {
       expect(result.vote.reasoning).toContain('Timeout');
     });
 
-    it('should set source to llm', () => {
+    it('should set source to error', () => {
       const result = createErrorVoteResult('architect', 'Error', 100);
 
-      expect(result.source).toBe('llm');
+      // Error votes should have source 'error', not 'llm' (Issue #532)
+      expect(result.source).toBe('error');
     });
 
     it('should preserve processing time', () => {
@@ -146,7 +147,7 @@ describe('voter-execution', () => {
     it('should include simulated marker in reasoning', () => {
       const vote = simulateVote('architect', 'Proposal');
 
-      expect(vote.reasoning).toContain('[Simulated]');
+      expect(vote.reasoning).toContain('[Simulated');
     });
 
     it('should include proposal snippet in reasoning', () => {
@@ -155,11 +156,12 @@ describe('voter-execution', () => {
       expect(vote.reasoning).toContain('This is the proposal');
     });
 
-    it('should have confidence between 0.7 and 1.0', () => {
+    it('should have confidence between 0.3 and 0.9 (varies by decision type)', () => {
+      // Confidence varies by decision: abstain 0.3-0.5, approve 0.5-0.8, reject 0.6-0.9
       for (let i = 0; i < 10; i++) {
         const vote = simulateVote('pm', 'Proposal');
-        expect(vote.confidence).toBeGreaterThanOrEqual(0.7);
-        expect(vote.confidence).toBeLessThanOrEqual(1.0);
+        expect(vote.confidence).toBeGreaterThanOrEqual(0.3);
+        expect(vote.confidence).toBeLessThanOrEqual(0.9);
       }
     });
   });
@@ -274,13 +276,18 @@ describe('voter-execution', () => {
       vi.clearAllMocks();
     });
 
+    // Valid JSON vote response for tests
+    const VALID_VOTE_JSON = JSON.stringify({
+      decision: 'approve',
+      reasoning: 'This is a good proposal that meets all requirements',
+      confidence: 0.9,
+    });
+
     it('should return vote on successful completion', async () => {
       const mockResponse: MockCompletionResult = {
         ok: true,
         value: {
-          content: [
-            { type: 'text', text: 'APPROVE\nReasoning: This is a good proposal\nConfidence: 0.9' },
-          ],
+          content: [{ type: 'text', text: VALID_VOTE_JSON }],
           usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 },
           stopReason: 'end_turn',
           model: 'test-model',
@@ -357,11 +364,18 @@ describe('voter-execution', () => {
       vi.restoreAllMocks();
     });
 
+    // Valid JSON vote response that matches VoteResponseSchema
+    const VALID_VOTE_JSON = JSON.stringify({
+      decision: 'approve',
+      reasoning: 'This looks good and reasonable to implement',
+      confidence: 0.8,
+    });
+
     it('should succeed on first attempt', async () => {
       const mockResponse: MockCompletionResult = {
         ok: true,
         value: {
-          content: [{ type: 'text', text: 'APPROVE\nReasoning: Good\nConfidence: 0.8' }],
+          content: [{ type: 'text', text: VALID_VOTE_JSON }],
           usage: { inputTokens: 50, outputTokens: 25, totalTokens: 75 },
           stopReason: 'end_turn',
           model: 'test-model',
@@ -390,7 +404,7 @@ describe('voter-execution', () => {
       const successResponse: MockCompletionResult = {
         ok: true,
         value: {
-          content: [{ type: 'text', text: 'APPROVE\nReasoning: Good\nConfidence: 0.8' }],
+          content: [{ type: 'text', text: VALID_VOTE_JSON }],
           usage: { inputTokens: 50, outputTokens: 25, totalTokens: 75 },
           stopReason: 'end_turn',
           model: 'test-model',
@@ -446,7 +460,7 @@ describe('voter-execution', () => {
       const successResponse: MockCompletionResult = {
         ok: true,
         value: {
-          content: [{ type: 'text', text: 'APPROVE\nReasoning: Good\nConfidence: 0.8' }],
+          content: [{ type: 'text', text: VALID_VOTE_JSON }],
           usage: { inputTokens: 50, outputTokens: 25, totalTokens: 75 },
           stopReason: 'end_turn',
           model: 'test-model',
