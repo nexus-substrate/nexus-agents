@@ -11,17 +11,20 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger } from '../../core/index.js';
-import { createLogger } from '../../core/index.js';
+import { createLogger, getTimeProvider, getRandomProvider } from '../../core/index.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
 import { wrapToolWithTimeout } from '../middleware/tool-wrapper.js';
-import type { ConsensusAlgorithm, Vote } from '../../consensus/types.js';
+import type { ConsensusAlgorithm, Vote, ConsensusResult } from '../../consensus/types.js';
 import type { VoterRole, VotingResult, AgentVoteResult } from '../../cli/vote-types.js';
-import { THRESHOLD_MAP, VOTER_ROLES } from '../../cli/vote-types.js';
+import { VOTER_ROLES } from '../../cli/vote-types.js';
 import { collectRealVotes } from '../../cli/voter-agents.js';
 import { createConsensusEngine } from '../../consensus/engine.js';
 import type { Proposal } from '../../consensus/types.js';
-import type { HigherOrderVotingResult, ICorrelationTracker } from '../../consensus/higher-order-types.js';
+import type {
+  HigherOrderVotingResult,
+  ICorrelationTracker,
+} from '../../consensus/higher-order-types.js';
 import { HigherOrderVotingStrategy, createCorrelationTracker } from '../../consensus/index.js';
 
 /**
@@ -44,9 +47,7 @@ let persistentCorrelationTracker: ICorrelationTracker | undefined;
  * @returns The module-level CorrelationTracker instance
  */
 function getOrCreateCorrelationTracker(): ICorrelationTracker {
-  if (persistentCorrelationTracker === undefined) {
-    persistentCorrelationTracker = createCorrelationTracker();
-  }
+  persistentCorrelationTracker ??= createCorrelationTracker();
   return persistentCorrelationTracker;
 }
 
@@ -96,7 +97,9 @@ export const ConsensusVoteInputSchema = z.object({
   threshold: z
     .enum(['majority', 'supermajority', 'unanimous'])
     .optional()
-    .describe('Voting threshold (legacy): majority, supermajority, unanimous. Use strategy instead.'),
+    .describe(
+      'Voting threshold (legacy): majority, supermajority, unanimous. Use strategy instead.'
+    ),
   strategy: VotingStrategySchema.optional().describe(
     'Voting strategy: simple_majority (default), supermajority, unanimous, proof_of_learning, or higher_order (Bayesian-optimal)'
   ),
@@ -201,14 +204,6 @@ export interface ConsensusVoteResponse {
 }
 
 /**
- * Maps threshold input to consensus algorithm.
- * @deprecated Use resolveStrategy() instead
- */
-function mapThreshold(threshold: 'majority' | 'supermajority' | 'unanimous'): ConsensusAlgorithm {
-  return THRESHOLD_MAP[threshold] ?? 'simple_majority';
-}
-
-/**
  * Resolves the voting strategy from input.
  * Strategy takes precedence over threshold if both are specified.
  * (Source: Issue #514)
@@ -303,7 +298,10 @@ interface ExtendedVotingResult extends VotingResult {
  * Builds the response from voting result.
  * Updated for Issue #514 to include strategy and Higher-Order metadata.
  */
-function buildResponse(input: ConsensusVoteInput, result: ExtendedVotingResult): ConsensusVoteResponse {
+function buildResponse(
+  input: ConsensusVoteInput,
+  result: ExtendedVotingResult
+): ConsensusVoteResponse {
   const proposalTruncated =
     input.proposal.length > 200 ? input.proposal.slice(0, 200) + '...' : input.proposal;
 
@@ -344,127 +342,104 @@ function buildResponse(input: ConsensusVoteInput, result: ExtendedVotingResult):
   return response;
 }
 
-/**
- * Executes the consensus voting process.
- * Updated for Issue #514 to support Higher-Order Voting.
- */
-async function executeVoting(input: ConsensusVoteInput, logger: ILogger): Promise<ExtendedVotingResult> {
-  const strategy = resolveStrategy(input);
-  const algorithm = strategyToAlgorithm(strategy);
-  const roles = getVoterRoles(input.quickMode ?? false);
-  const startTime = Date.now();
-
-  logger.info('Starting consensus vote', {
-    strategy,
-    algorithm,
-    roleCount: roles.length,
-    dryRun: input.dryRun,
-  });
-
-  // Collect votes from agents
-  const votes = await collectRealVotes({
-    roles,
-    proposal: input.proposal,
-    simulate: input.dryRun ?? false,
-  });
-
-  // Create proposal and process votes through consensus engine
+/** Process votes through consensus engine and return result. */
+async function processVotesThroughEngine(
+  votes: readonly AgentVoteResult[],
+  proposal: string,
+  algorithm: ConsensusAlgorithm
+): Promise<ConsensusResult> {
   const engine = createConsensusEngine();
-  const proposal: Proposal = {
+  const engineProposal: Proposal = {
     title: 'MCP Consensus Vote',
-    description: input.proposal,
+    description: proposal,
     algorithm,
   };
-
-  const proposalResult = await engine.propose(proposal);
-  if (!proposalResult.ok) {
+  const proposalResult = await engine.propose(engineProposal);
+  if (!proposalResult.ok)
     throw new Error(`Failed to create proposal: ${proposalResult.error.message}`);
-  }
 
   const proposalId = proposalResult.value;
-  for (const { role, vote } of votes) {
-    await engine.vote(proposalId, role, vote);
-  }
+  for (const { role, vote } of votes) await engine.vote(proposalId, role, vote);
 
   const resultRes = await engine.close(proposalId);
-  if (!resultRes.ok) {
-    throw new Error(`Failed to close proposal: ${resultRes.error.message}`);
-  }
+  if (!resultRes.ok) throw new Error(`Failed to close proposal: ${resultRes.error.message}`);
+  return resultRes.value;
+}
 
-  // Convert votes to Map format for Higher-Order Voting
-  const voteMap = new Map<string, Vote>();
-  for (const { role, vote } of votes) {
-    voteMap.set(role, vote);
-  }
-
-  // Higher-Order Voting aggregation (Issue #514, #517)
-  let higherOrderResult: HigherOrderVotingResult | undefined;
-  if (strategy === 'higher_order') {
-    const hovStrategy = new HigherOrderVotingStrategy();
-    // Use persistent tracker to accumulate voting history (Issue #517)
-    const tracker = getOrCreateCorrelationTracker();
-
-    // Aggregate using Higher-Order Voting with accumulated correlation data
-    higherOrderResult = hovStrategy.aggregate(voteMap, tracker);
-    logger.info('Higher-Order Voting aggregation complete', {
-      method: higherOrderResult.method,
-      decision: higherOrderResult.decision,
-      posteriorApproval: higherOrderResult.posteriorApproval.toFixed(3),
-      effectiveVoteCount: higherOrderResult.effectiveVoteCount.toFixed(2),
-      usedCorrelationData: higherOrderResult.usedCorrelationData,
-    });
-  }
-
-  // Record votes to correlation tracker for future Higher-Order decisions (Issue #517)
-  // CRITICAL (Issue #532): Only record REAL LLM votes to prevent contamination.
-  // Simulated/error votes would corrupt the correlation model used by Higher-Order Voting.
-  const trackerOutcome: 'approved' | 'rejected' =
-    resultRes.value.outcome === 'approved' ? 'approved' : 'rejected';
-  const allVotesReal = votes.every((v) => v.source === 'llm');
-
-  if (allVotesReal) {
-    const tracker = getOrCreateCorrelationTracker();
-    const trackingProposalId = `consensus-${String(Date.now())}-${Math.random().toString(36).slice(2, 9)}`;
-    tracker.recordProposalVotes(trackingProposalId, voteMap, trackerOutcome);
-    logger.debug('Recorded votes to correlation tracker', {
-      proposalId: trackingProposalId,
-      outcome: trackerOutcome,
-      agentCount: voteMap.size,
-    });
-  } else {
-    // Log which votes were non-real to aid debugging
-    const nonRealVotes = votes.filter((v) => v.source !== 'llm');
-    logger.warn('Skipping correlation tracker recording due to non-LLM votes (Issue #532)', {
-      nonRealCount: nonRealVotes.length,
-      nonRealSources: nonRealVotes.map((v) => ({ role: v.role, source: v.source })),
-      reason: 'Simulated/error votes would contaminate HOV correlation model',
-    });
-  }
-
-  const totalTimeMs = Date.now() - startTime;
-  logger.info('Consensus vote completed', {
-    strategy,
-    outcome: resultRes.value.outcome,
-    approvalPercentage: resultRes.value.approvalPercentage,
-    durationMs: totalTimeMs,
+/** Run Higher-Order Voting aggregation if strategy is higher_order. */
+function runHigherOrderVoting(
+  strategy: VotingStrategy,
+  voteMap: Map<string, Vote>,
+  logger: ILogger
+): HigherOrderVotingResult | undefined {
+  if (strategy !== 'higher_order') return undefined;
+  const hovStrategy = new HigherOrderVotingStrategy();
+  const tracker = getOrCreateCorrelationTracker();
+  const result = hovStrategy.aggregate(voteMap, tracker);
+  logger.info('Higher-Order Voting complete', {
+    method: result.method,
+    decision: result.decision,
+    posteriorApproval: result.posteriorApproval.toFixed(3),
   });
+  return result;
+}
 
-  const baseResult: ExtendedVotingResult = {
+/** Record votes to correlation tracker if all votes are real LLM votes. */
+function recordVotesToTracker(
+  votes: readonly AgentVoteResult[],
+  voteMap: Map<string, Vote>,
+  outcome: 'approved' | 'rejected',
+  logger: ILogger
+): void {
+  const allVotesReal = votes.every((v) => v.source === 'llm');
+  if (!allVotesReal) {
+    const nonReal = votes.filter((v) => v.source !== 'llm');
+    logger.warn('Skipping correlation recording due to non-LLM votes', { count: nonReal.length });
+    return;
+  }
+  const tracker = getOrCreateCorrelationTracker();
+  const id = `consensus-${String(getTimeProvider().now())}-${getRandomProvider().random().toString(36).slice(2, 9)}`;
+  tracker.recordProposalVotes(id, voteMap, outcome);
+  logger.debug('Recorded votes to tracker', { proposalId: id, outcome });
+}
+
+/** Executes the consensus voting process. */
+async function executeVoting(
+  input: ConsensusVoteInput,
+  logger: ILogger
+): Promise<ExtendedVotingResult> {
+  const strategy = resolveStrategy(input);
+  const algorithm = strategyToAlgorithm(strategy);
+  const roles = getVoterRoles(input.quickMode);
+  const startTime = getTimeProvider().now();
+
+  logger.info('Starting consensus vote', { strategy, algorithm, roleCount: roles.length });
+
+  const votes = await collectRealVotes({ roles, proposal: input.proposal, simulate: input.dryRun });
+  const engineResult = await processVotesThroughEngine(votes, input.proposal, algorithm);
+
+  const voteMap = new Map<string, Vote>();
+  for (const { role, vote } of votes) voteMap.set(role, vote);
+
+  const higherOrderResult = runHigherOrderVoting(strategy, voteMap, logger);
+  const outcome: 'approved' | 'rejected' =
+    engineResult.outcome === 'approved' ? 'approved' : 'rejected';
+  recordVotesToTracker(votes, voteMap, outcome, logger);
+
+  const totalTimeMs = getTimeProvider().now() - startTime;
+  logger.info('Consensus vote completed', { strategy, outcome, durationMs: totalTimeMs });
+
+  const result: ExtendedVotingResult = {
     proposal: input.proposal,
     threshold: algorithm,
-    result: resultRes.value,
+    result: engineResult,
     votes,
     totalTimeMs,
-    dryRun: input.dryRun ?? false,
+    dryRun: input.dryRun,
     strategy,
   };
-
-  // Only add higherOrderResult if defined (for exactOptionalPropertyTypes)
-  if (higherOrderResult !== undefined) {
-    baseResult.higherOrderResult = higherOrderResult;
-  }
-
-  return baseResult;
+  if (higherOrderResult !== undefined) result.higherOrderResult = higherOrderResult;
+  return result;
 }
 
 /**
@@ -556,11 +531,12 @@ export function registerConsensusVoteTool(server: McpServer, deps: ConsensusVote
     threshold: z
       .enum(['majority', 'supermajority', 'unanimous'])
       .optional()
-      .describe('Voting threshold (legacy): majority (>50%), supermajority (>=67%), unanimous (100%). Use strategy instead.'),
-    strategy: VotingStrategySchema.optional()
       .describe(
-        'Voting strategy: simple_majority (default), supermajority, unanimous, proof_of_learning, or higher_order (Bayesian-optimal with correlation awareness)'
+        'Voting threshold (legacy): majority (>50%), supermajority (>=67%), unanimous (100%). Use strategy instead.'
       ),
+    strategy: VotingStrategySchema.optional().describe(
+      'Voting strategy: simple_majority (default), supermajority, unanimous, proof_of_learning, or higher_order (Bayesian-optimal with correlation awareness)'
+    ),
     quickMode: z
       .boolean()
       .optional()
