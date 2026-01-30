@@ -8,29 +8,42 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { handleSessionStart, type SessionStartHandlerConfig } from './session-start.js';
 import type { SessionStartInput } from '../hook-types.js';
 
-// Mock the logger
-vi.mock('../../../core/logger.js', () => ({
-  createLogger: vi.fn(() => ({
+// Use vi.hoisted to ensure proper hoisting with forks pool (Issue #582)
+const mocks = vi.hoisted(() => {
+  const mockLogger = {
     info: vi.fn(),
     warn: vi.fn(),
     error: vi.fn(),
     debug: vi.fn(),
-  })),
+  };
+  const mockStorage = {
+    initialize: vi.fn().mockResolvedValue({ ok: true }),
+    createSession: vi.fn().mockResolvedValue({ ok: true, value: null }),
+    close: vi.fn().mockResolvedValue(undefined),
+  };
+  return { mockLogger, mockStorage };
+});
+
+// Mock the logger
+vi.mock('../../../core/logger.js', () => ({
+  createLogger: vi.fn(() => mocks.mockLogger),
 }));
 
-// Mock session storage
-const mockStorage = {
-  initialize: vi.fn(),
-  createSession: vi.fn(),
-  close: vi.fn(),
-};
-
+// Mock session storage - use class with constructor
 vi.mock('../../session-storage.js', () => ({
-  SQLiteSessionStorage: vi.fn().mockImplementation(() => mockStorage),
+  SQLiteSessionStorage: class MockSQLiteSessionStorage {
+    initialize = mocks.mockStorage.initialize;
+    createSession = mocks.mockStorage.createSession;
+    close = mocks.mockStorage.close;
+  },
 }));
+
+// Re-export for test access
+const mockStorage = mocks.mockStorage;
+
+import { handleSessionStart, type SessionStartHandlerConfig } from './session-start.js';
 
 describe('session-start handler', () => {
   const createInput = (overrides: Partial<SessionStartInput> = {}): SessionStartInput => ({

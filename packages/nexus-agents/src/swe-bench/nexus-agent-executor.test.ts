@@ -4,22 +4,32 @@
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
+import type { AgentContext } from './agent-runner.js';
+import type { SWEBenchInstance, SWEBenchConfig } from './types.js';
+import { DEFAULT_SWE_BENCH_CONFIG } from './types.js';
+
+// Use vi.hoisted to ensure proper hoisting with forks pool (Issue #582)
+const mocks = vi.hoisted(() => {
+  const mockComplete = vi.fn();
+  return { mockComplete };
+});
+
+// Mock the ClaudeAdapter - use class-based mock
+vi.mock('../adapters/claude-adapter.js', () => ({
+  ClaudeAdapter: class MockClaudeAdapter {
+    modelId: string;
+    complete = mocks.mockComplete;
+    constructor(config: { apiKey: string; modelId: string }) {
+      this.modelId = config.modelId;
+    }
+  },
+}));
+
 import {
   NexusAgentExecutor,
   createNexusExecutorFromEnv,
   type NexusAgentExecutorConfig,
 } from './nexus-agent-executor.js';
-import type { AgentContext } from './agent-runner.js';
-import type { SWEBenchInstance, SWEBenchConfig } from './types.js';
-import { DEFAULT_SWE_BENCH_CONFIG } from './types.js';
-
-// Mock the ClaudeAdapter
-vi.mock('../adapters/claude-adapter.js', () => ({
-  ClaudeAdapter: vi.fn().mockImplementation((config: { apiKey: string; modelId: string }) => ({
-    modelId: config.modelId,
-    complete: vi.fn(),
-  })),
-}));
 
 describe('nexus-agent-executor', () => {
   const testInstance: SWEBenchInstance = {

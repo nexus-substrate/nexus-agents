@@ -9,42 +9,59 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { SWEBenchInstance, SWEBenchConfig } from './types.js';
 import { DEFAULT_SWE_BENCH_CONFIG } from './types.js';
-import { AgentRunnerError } from './agent-runner.js';
 
-// Mock the executors
-vi.mock('./cli-agent-executor.js', () => ({
-  createCliExecutor: vi.fn(),
-  isCliAvailable: vi.fn(),
-  CliAgentExecutor: vi.fn(),
-}));
-
-vi.mock('./nexus-agent-executor.js', () => ({
-  createNexusExecutorFromEnv: vi.fn(),
-  NexusAgentExecutor: vi.fn(),
-}));
-
-// Mock the agent runner
-vi.mock('./agent-runner.js', () => ({
-  runAgentOnInstance: vi.fn(),
-  AgentRunnerError: class AgentRunnerError extends Error {
+// Use vi.hoisted to ensure proper hoisting with forks pool (Issue #582)
+const mocks = vi.hoisted(() => {
+  const mockCreateCliExecutor = vi.fn();
+  const mockIsCliAvailable = vi.fn();
+  const mockCreateNexusExecutorFromEnv = vi.fn();
+  const mockRunAgentOnInstance = vi.fn();
+  const mockPredictionWriter = vi.fn();
+  // AgentRunnerError must be inside vi.hoisted to be available in vi.mock
+  class MockAgentRunnerError extends Error {
     constructor(message: string) {
       super(message);
       this.name = 'AgentRunnerError';
     }
-  },
+  }
+  return {
+    mockCreateCliExecutor,
+    mockIsCliAvailable,
+    mockCreateNexusExecutorFromEnv,
+    mockRunAgentOnInstance,
+    mockPredictionWriter,
+    MockAgentRunnerError,
+  };
+});
+
+// Mock the executors
+vi.mock('./cli-agent-executor.js', () => ({
+  createCliExecutor: mocks.mockCreateCliExecutor,
+  isCliAvailable: mocks.mockIsCliAvailable,
+  CliAgentExecutor: vi.fn(),
+}));
+
+vi.mock('./nexus-agent-executor.js', () => ({
+  createNexusExecutorFromEnv: mocks.mockCreateNexusExecutorFromEnv,
+  NexusAgentExecutor: vi.fn(),
+}));
+
+vi.mock('./agent-runner.js', () => ({
+  runAgentOnInstance: mocks.mockRunAgentOnInstance,
+  AgentRunnerError: mocks.MockAgentRunnerError,
 }));
 
 // Mock the prediction writer
 vi.mock('./prediction-writer.js', () => ({
-  PredictionWriter: vi.fn().mockImplementation(() => ({
-    open: vi.fn().mockResolvedValue({ ok: true, value: undefined }),
-    write: vi.fn().mockResolvedValue({ ok: true, value: undefined }),
-    writeResult: vi.fn().mockResolvedValue({ ok: true, value: true }),
-    close: vi.fn().mockResolvedValue({ ok: true, value: undefined }),
-    getPredictionCount: vi.fn().mockReturnValue(0),
-    getOutputPath: vi.fn().mockReturnValue('predictions.jsonl'),
-  })),
+  PredictionWriter: mocks.mockPredictionWriter,
 }));
+
+// Re-export for test access
+const mockCreateCliExecutor = mocks.mockCreateCliExecutor;
+const mockCreateNexusExecutorFromEnv = mocks.mockCreateNexusExecutorFromEnv;
+const mockRunAgentOnInstance = mocks.mockRunAgentOnInstance;
+const MockPredictionWriter = mocks.mockPredictionWriter;
+const AgentRunnerError = mocks.MockAgentRunnerError;
 
 import {
   createExecutor,
@@ -52,15 +69,6 @@ import {
   type BenchmarkRunOptions,
   type ExecutorWithModel,
 } from './benchmark-runner.js';
-import { createCliExecutor } from './cli-agent-executor.js';
-import { createNexusExecutorFromEnv } from './nexus-agent-executor.js';
-import { runAgentOnInstance } from './agent-runner.js';
-import { PredictionWriter } from './prediction-writer.js';
-
-const mockCreateCliExecutor = vi.mocked(createCliExecutor);
-const mockCreateNexusExecutorFromEnv = vi.mocked(createNexusExecutorFromEnv);
-const mockRunAgentOnInstance = vi.mocked(runAgentOnInstance);
-const MockPredictionWriter = vi.mocked(PredictionWriter);
 
 describe('benchmark-runner', () => {
   let consoleLogSpy: ReturnType<typeof vi.spyOn>;
@@ -68,6 +76,18 @@ describe('benchmark-runner', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    // Set up default PredictionWriter mock (Issue #582)
+    MockPredictionWriter.mockImplementation(
+      () =>
+        ({
+          open: vi.fn().mockResolvedValue({ ok: true, value: undefined }),
+          write: vi.fn().mockResolvedValue({ ok: true, value: undefined }),
+          writeResult: vi.fn().mockResolvedValue({ ok: true, value: true }),
+          close: vi.fn().mockResolvedValue({ ok: true, value: undefined }),
+          getPredictionCount: vi.fn().mockReturnValue(0),
+          getOutputPath: vi.fn().mockReturnValue('predictions.jsonl'),
+        }) as never
+    );
   });
 
   afterEach(() => {

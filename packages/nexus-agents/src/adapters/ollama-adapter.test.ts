@@ -8,15 +8,28 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ModelCapability, ErrorCode, NexusError } from '../core/index.js';
 import type { StreamChunk } from '../core/index.js';
+
+// Use vi.hoisted to ensure proper hoisting with forks pool (Issue #582)
+const mocks = vi.hoisted(() => {
+  const mockChat = vi.fn();
+  return { mockChat };
+});
+
+vi.mock('ollama', () => ({
+  Ollama: class MockOllama {
+    chat = mocks.mockChat;
+  },
+}));
+
+// Re-export for test access
+const mockChat = mocks.mockChat;
+
 import {
   OllamaAdapter,
   createOllamaAdapter,
   OLLAMA_MODELS,
   type OllamaAdapterConfig,
 } from './ollama-adapter.js';
-
-const mockChat = vi.fn();
-vi.mock('ollama', () => ({ Ollama: vi.fn().mockImplementation(() => ({ chat: mockChat })) }));
 
 describe('OllamaAdapter', () => {
   const validConfig: OllamaAdapterConfig = { modelId: 'llama3:8b' };

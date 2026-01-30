@@ -11,6 +11,28 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ConfigError, ModelCapability, ErrorCode, NexusError } from '../core/index.js';
 import type { StreamChunk } from '../core/index.js';
+
+// Create mock at module scope - must be before vi.mock (Issue #582)
+// Using vi.hoisted to ensure proper hoisting with forks pool
+const mocks = vi.hoisted(() => {
+  const mockCreate = vi.fn();
+  return { mockCreate };
+});
+
+// Mock the OpenAI SDK - reference hoisted mock
+vi.mock('openai', () => ({
+  default: class MockOpenAI {
+    chat = {
+      completions: {
+        create: mocks.mockCreate,
+      },
+    };
+  },
+}));
+
+// Re-export for test access
+const mockCreate = mocks.mockCreate;
+
 import {
   OpenAIAdapter,
   createOpenAIAdapter,
@@ -18,22 +40,6 @@ import {
   OPENAI_MODEL_ALIASES,
   type OpenAIAdapterConfig,
 } from './openai-adapter.js';
-
-// Create mock functions at module level
-const mockCreate = vi.fn();
-
-// Mock the OpenAI SDK
-vi.mock('openai', () => {
-  return {
-    default: vi.fn().mockImplementation(() => ({
-      chat: {
-        completions: {
-          create: mockCreate,
-        },
-      },
-    })),
-  };
-});
 
 describe('OpenAIAdapter', () => {
   const validConfig: OpenAIAdapterConfig = {

@@ -11,6 +11,29 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ConfigError, ModelCapability, ErrorCode, NexusError } from '../core/index.js';
 import type { StreamChunk } from '../core/index.js';
+
+// Create mock at module scope - must be before vi.mock (Issue #582)
+// Using vi.hoisted to ensure proper hoisting with forks pool
+const mocks = vi.hoisted(() => {
+  const mockCreate = vi.fn();
+  const mockStream = vi.fn();
+  return { mockCreate, mockStream };
+});
+
+// Mock the Anthropic SDK - reference hoisted mock
+vi.mock('@anthropic-ai/sdk', () => ({
+  default: class MockAnthropic {
+    messages = {
+      create: mocks.mockCreate,
+      stream: mocks.mockStream,
+    };
+  },
+}));
+
+// Re-export for test access
+const mockCreate = mocks.mockCreate;
+const mockStream = mocks.mockStream;
+
 import {
   ClaudeAdapter,
   createClaudeAdapter,
@@ -18,22 +41,6 @@ import {
   CLAUDE_MODEL_ALIASES,
   type ClaudeAdapterConfig,
 } from './claude-adapter.js';
-
-// Create mock functions at module level
-const mockCreate = vi.fn();
-const mockStream = vi.fn();
-
-// Mock the Anthropic SDK
-vi.mock('@anthropic-ai/sdk', () => {
-  return {
-    default: vi.fn().mockImplementation(() => ({
-      messages: {
-        create: mockCreate,
-        stream: mockStream,
-      },
-    })),
-  };
-});
 
 describe('ClaudeAdapter', () => {
   const validConfig: ClaudeAdapterConfig = {

@@ -11,6 +11,29 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ConfigError, ModelCapability, ErrorCode, NexusError } from '../core/index.js';
 import type { StreamChunk } from '../core/index.js';
+
+// Create mock at module scope - must be before vi.mock (Issue #582)
+// Using vi.hoisted to ensure proper hoisting with forks pool
+const mocks = vi.hoisted(() => {
+  const mockGenerateContent = vi.fn();
+  const mockGenerateContentStream = vi.fn();
+  return { mockGenerateContent, mockGenerateContentStream };
+});
+
+// Mock the Google GenAI SDK - reference hoisted mock
+vi.mock('@google/genai', () => ({
+  GoogleGenAI: class MockGoogleGenAI {
+    models = {
+      generateContent: mocks.mockGenerateContent,
+      generateContentStream: mocks.mockGenerateContentStream,
+    };
+  },
+}));
+
+// Re-export for test access
+const mockGenerateContent = mocks.mockGenerateContent;
+const mockGenerateContentStream = mocks.mockGenerateContentStream;
+
 import {
   GeminiAdapter,
   createGeminiAdapter,
@@ -18,22 +41,6 @@ import {
   GEMINI_MODEL_ALIASES,
   type GeminiAdapterConfig,
 } from './gemini-adapter.js';
-
-// Create mock functions at module level
-const mockGenerateContent = vi.fn();
-const mockGenerateContentStream = vi.fn();
-
-// Mock the Google GenAI SDK
-vi.mock('@google/genai', () => {
-  return {
-    GoogleGenAI: vi.fn().mockImplementation(() => ({
-      models: {
-        generateContent: mockGenerateContent,
-        generateContentStream: mockGenerateContentStream,
-      },
-    })),
-  };
-});
 
 describe('GeminiAdapter', () => {
   const validConfig: GeminiAdapterConfig = {

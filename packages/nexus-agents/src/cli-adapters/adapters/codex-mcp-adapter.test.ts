@@ -5,65 +5,85 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { CodexMcpAdapter } from './codex-mcp-adapter.js';
+
+// Use vi.hoisted to ensure proper hoisting with forks pool (Issue #582)
+const mocks = vi.hoisted(() => {
+  const mockClient = vi.fn();
+  const mockTransport = vi.fn();
+  const mockSpawn = vi.fn();
+  return { mockClient, mockTransport, mockSpawn };
+});
 
 // Mock the MCP SDK modules
 vi.mock('@modelcontextprotocol/sdk/client/index.js', () => ({
-  Client: vi.fn().mockImplementation(() => ({
-    connect: vi.fn().mockResolvedValue(undefined),
-    callTool: vi.fn(),
-  })),
+  Client: mocks.mockClient,
 }));
 
 vi.mock('@modelcontextprotocol/sdk/client/stdio.js', () => ({
-  StdioClientTransport: vi.fn().mockImplementation(() => ({
-    close: vi.fn().mockResolvedValue(undefined),
-  })),
+  StdioClientTransport: mocks.mockTransport,
 }));
 
 // Mock child_process for version check
 vi.mock('node:child_process', () => ({
-  spawn: vi.fn().mockImplementation(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    type EventCallback = (...args: any[]) => void;
-    const events: Record<string, EventCallback[]> = {};
-
-    return {
-      stdout: {
-        on: vi.fn((event: string, cb: EventCallback) => {
-          const key = `stdout_${event}`;
-          events[key] ??= [];
-          events[key].push(cb);
-          if (event === 'data') {
-            setTimeout(() => {
-              cb(Buffer.from('codex version 0.77.0'));
-            }, 0);
-          }
-        }),
-      },
-      stderr: {
-        on: vi.fn(),
-      },
-      on: vi.fn((event: string, cb: EventCallback) => {
-        events[event] ??= [];
-        events[event].push(cb);
-        if (event === 'close') {
-          setTimeout(() => {
-            cb(0);
-          }, 10);
-        }
-      }),
-    };
-  }),
+  spawn: mocks.mockSpawn,
 }));
 
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+// Re-export for test access
+const Client = mocks.mockClient;
+
+import { CodexMcpAdapter } from './codex-mcp-adapter.js';
 
 describe('CodexMcpAdapter', () => {
   let adapter: CodexMcpAdapter;
 
   beforeEach(() => {
     vi.clearAllMocks();
+
+    // Set up default MCP Client mock (Issue #582)
+    Client.mockImplementation(() => ({
+      connect: vi.fn().mockResolvedValue(undefined),
+      callTool: vi.fn(),
+    }));
+
+    // Set up default transport mock
+    mocks.mockTransport.mockImplementation(() => ({
+      close: vi.fn().mockResolvedValue(undefined),
+    }));
+
+    // Set up default spawn mock for version check
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    type EventCallback = (...args: any[]) => void;
+    mocks.mockSpawn.mockImplementation(() => {
+      const events: Record<string, EventCallback[]> = {};
+
+      return {
+        stdout: {
+          on: vi.fn((event: string, cb: EventCallback) => {
+            const key = `stdout_${event}`;
+            events[key] ??= [];
+            events[key].push(cb);
+            if (event === 'data') {
+              setTimeout(() => {
+                cb(Buffer.from('codex version 0.77.0'));
+              }, 0);
+            }
+          }),
+        },
+        stderr: {
+          on: vi.fn(),
+        },
+        on: vi.fn((event: string, cb: EventCallback) => {
+          events[event] ??= [];
+          events[event].push(cb);
+          if (event === 'close') {
+            setTimeout(() => {
+              cb(0);
+            }, 10);
+          }
+        }),
+      };
+    });
+
     adapter = new CodexMcpAdapter();
   });
 

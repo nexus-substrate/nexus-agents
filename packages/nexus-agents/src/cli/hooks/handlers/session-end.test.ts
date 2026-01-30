@@ -8,36 +8,53 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { handleSessionEnd, type SessionEndHandlerConfig } from './session-end.js';
 import type { SessionEndInput } from '../hook-types.js';
 
-// Mock the logger
-vi.mock('../../../core/logger.js', () => ({
-  createLogger: vi.fn(() => ({
+// Use vi.hoisted to ensure proper hoisting with forks pool (Issue #582)
+const mocks = vi.hoisted(() => {
+  const mockWriteFile = vi.fn().mockResolvedValue(undefined);
+  const mockLogger = {
     info: vi.fn(),
     warn: vi.fn(),
     error: vi.fn(),
     debug: vi.fn(),
-  })),
+  };
+  const mockStorage = {
+    initialize: vi.fn().mockResolvedValue({ ok: true }),
+    listSessions: vi.fn().mockResolvedValue({ ok: true, value: [] }),
+    updateSessionStatus: vi.fn().mockResolvedValue({ ok: true }),
+    getSessionWithTasks: vi.fn().mockResolvedValue({ ok: true, value: null }),
+    close: vi.fn().mockResolvedValue(undefined),
+  };
+  return { mockWriteFile, mockLogger, mockStorage };
+});
+
+// Mock the logger
+vi.mock('../../../core/logger.js', () => ({
+  createLogger: vi.fn(() => mocks.mockLogger),
 }));
 
 // Mock fs/promises for metrics export
 vi.mock('node:fs/promises', () => ({
-  writeFile: vi.fn().mockResolvedValue(undefined),
+  writeFile: mocks.mockWriteFile,
 }));
 
-// Mock session storage
-const mockStorage = {
-  initialize: vi.fn(),
-  listSessions: vi.fn(),
-  updateSessionStatus: vi.fn(),
-  getSessionWithTasks: vi.fn(),
-  close: vi.fn(),
-};
-
+// Mock session storage - use class with constructor
 vi.mock('../../session-storage.js', () => ({
-  SQLiteSessionStorage: vi.fn().mockImplementation(() => mockStorage),
+  SQLiteSessionStorage: class MockSQLiteSessionStorage {
+    initialize = mocks.mockStorage.initialize;
+    listSessions = mocks.mockStorage.listSessions;
+    updateSessionStatus = mocks.mockStorage.updateSessionStatus;
+    getSessionWithTasks = mocks.mockStorage.getSessionWithTasks;
+    close = mocks.mockStorage.close;
+  },
 }));
+
+// Re-export for test access
+const mockStorage = mocks.mockStorage;
+const mockWriteFile = mocks.mockWriteFile;
+
+import { handleSessionEnd, type SessionEndHandlerConfig } from './session-end.js';
 
 describe('session-end handler', () => {
   const createInput = (overrides: Partial<SessionEndInput> = {}): SessionEndInput => ({
@@ -210,8 +227,7 @@ describe('session-end handler', () => {
 
         await handleSessionEnd(input, config);
 
-        const { writeFile } = await import('node:fs/promises');
-        expect(writeFile).toHaveBeenCalled();
+        expect(mockWriteFile).toHaveBeenCalled();
       });
 
       it('should not export metrics when disabled', async () => {
@@ -220,8 +236,7 @@ describe('session-end handler', () => {
 
         await handleSessionEnd(input, config);
 
-        const { writeFile } = await import('node:fs/promises');
-        expect(writeFile).not.toHaveBeenCalled();
+        expect(mockWriteFile).not.toHaveBeenCalled();
       });
 
       it('should handle getSessionWithTasks failure', async () => {
@@ -290,10 +305,8 @@ describe('session-end handler', () => {
 
         await handleSessionEnd(input, config);
 
-        const { writeFile } = await import('node:fs/promises');
-        expect(writeFile).toHaveBeenCalled();
-        const mockFn = writeFile as ReturnType<typeof vi.fn>;
-        const writeCall = mockFn.mock.calls[0];
+        expect(mockWriteFile).toHaveBeenCalled();
+        const writeCall = mockWriteFile.mock.calls[0];
         expect(writeCall).toBeDefined();
         const metricsJson = writeCall?.[1] as string;
         const metrics = JSON.parse(metricsJson) as Record<string, unknown>;
@@ -305,8 +318,7 @@ describe('session-end handler', () => {
       });
 
       it('should handle write failure gracefully', async () => {
-        const { writeFile } = await import('node:fs/promises');
-        (writeFile as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('Permission denied'));
+        mockWriteFile.mockRejectedValue(new Error('Permission denied'));
 
         const input = createInput();
         const config: SessionEndHandlerConfig = {

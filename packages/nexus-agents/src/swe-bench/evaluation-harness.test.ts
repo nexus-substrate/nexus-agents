@@ -5,16 +5,45 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { DEFAULT_EVALUATION_CONFIG } from './evaluation-harness-types.js';
+
+// Use vi.hoisted to ensure proper hoisting with forks pool (Issue #582)
+const mocks = vi.hoisted(() => {
+  const mockHarnessExecutor = vi.fn();
+  const mockCreateHarnessExecutor = vi.fn();
+  const mockValidateEnvironment = vi.fn();
+  const mockWritePredictions = vi.fn();
+  return {
+    mockHarnessExecutor,
+    mockCreateHarnessExecutor,
+    mockValidateEnvironment,
+    mockWritePredictions,
+  };
+});
+
+// Mock dependencies
+vi.mock('./harness-executor.js', () => ({
+  HarnessExecutor: mocks.mockHarnessExecutor,
+  createHarnessExecutor: mocks.mockCreateHarnessExecutor,
+}));
+
+vi.mock('./environment-validator.js', () => ({
+  validateEnvironment: mocks.mockValidateEnvironment,
+}));
+
+vi.mock('./prediction-writer.js', () => ({
+  writePredictions: mocks.mockWritePredictions,
+}));
+
 import {
   EvaluationHarness,
   createEvaluationHarness,
   createValidatedHarness,
 } from './evaluation-harness.js';
-import { DEFAULT_EVALUATION_CONFIG } from './evaluation-harness-types.js';
 
-// Mock dependencies
-vi.mock('./harness-executor.js', () => ({
-  HarnessExecutor: vi.fn().mockImplementation(() => ({
+// Set up default mocks at top level for all describe blocks (Issue #582)
+beforeEach(() => {
+  const defaultExecutor = {
     validate: vi.fn().mockResolvedValue({
       ready: true,
       pythonAvailable: true,
@@ -36,34 +65,12 @@ vi.mock('./harness-executor.js', () => ({
     }),
     cancel: vi.fn().mockResolvedValue(undefined),
     getVersion: vi.fn().mockResolvedValue('1.0.0'),
-  })),
-  createHarnessExecutor: vi.fn().mockImplementation(() => ({
-    validate: vi.fn().mockResolvedValue({
-      ready: true,
-      pythonAvailable: true,
-      swebenchInstalled: true,
-      dockerAvailable: true,
-      errors: [],
-    }),
-    execute: vi.fn().mockResolvedValue({
-      success: true,
-      runId: 'test-run',
-      datasetName: 'lite',
-      modelNameOrPath: 'test-model',
-      totalInstances: 1,
-      resolvedInstances: 1,
-      resolutionRate: 1.0,
-      instanceResults: [],
-      startedAt: '2024-01-01T00:00:00Z',
-      completedAt: '2024-01-01T00:01:00Z',
-    }),
-    cancel: vi.fn().mockResolvedValue(undefined),
-    getVersion: vi.fn().mockResolvedValue('1.0.0'),
-  })),
-}));
+  };
 
-vi.mock('./environment-validator.js', () => ({
-  validateEnvironment: vi.fn().mockResolvedValue({
+  mocks.mockHarnessExecutor.mockImplementation(() => defaultExecutor);
+  mocks.mockCreateHarnessExecutor.mockImplementation(() => defaultExecutor);
+
+  mocks.mockValidateEnvironment.mockResolvedValue({
     valid: true,
     python: { available: true, version: '3.11.0' },
     swebench: { installed: true, version: '1.0.0' },
@@ -71,19 +78,16 @@ vi.mock('./environment-validator.js', () => ({
     diskSpace: { available: 200 * 1024 * 1024 * 1024, sufficient: true },
     errors: [],
     warnings: [],
-  }),
-}));
+  });
 
-vi.mock('./prediction-writer.js', () => ({
-  writePredictions: vi.fn().mockResolvedValue({ ok: true }),
-}));
+  mocks.mockWritePredictions.mockResolvedValue({ ok: true });
+});
 
 describe('EvaluationHarness', () => {
   let harness: EvaluationHarness;
 
   beforeEach(() => {
     harness = createEvaluationHarness();
-    vi.clearAllMocks();
   });
 
   describe('validate', () => {

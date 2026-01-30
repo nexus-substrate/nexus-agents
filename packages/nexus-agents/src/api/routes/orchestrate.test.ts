@@ -6,24 +6,20 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
-import { registerOrchestrateRoutes } from './orchestrate.js';
 import type { OrchestrateRequest, OrchestrateResponse } from '../rest-types.js';
+
+// Use vi.hoisted to ensure proper hoisting with forks pool (Issue #582)
+const mocks = vi.hoisted(() => {
+  const mockTechLead = vi.fn();
+  return { mockTechLead };
+});
 
 // Mock the TechLead agent
 vi.mock('../../agents/index.js', () => ({
-  TechLead: vi.fn().mockImplementation(() => ({
-    execute: vi.fn().mockResolvedValue({
-      ok: true,
-      value: {
-        taskId: 'test-task-id',
-        output: {
-          analysis: { complexity: 5, taskType: 'general' },
-          subtasks: [],
-        },
-      },
-    }),
-  })),
+  TechLead: mocks.mockTechLead,
 }));
+
+import { registerOrchestrateRoutes } from './orchestrate.js';
 
 /**
  * Mock logger interface for testing.
@@ -58,6 +54,22 @@ describe('Orchestrate Routes', () => {
   let mockLogger: MockLogger;
 
   beforeEach(async () => {
+    vi.clearAllMocks();
+
+    // Set up default TechLead mock (Issue #582)
+    mocks.mockTechLead.mockImplementation(() => ({
+      execute: vi.fn().mockResolvedValue({
+        ok: true,
+        value: {
+          taskId: 'test-task-id',
+          output: {
+            analysis: { complexity: 5, taskType: 'general' },
+            subtasks: [],
+          },
+        },
+      }),
+    }));
+
     mockLogger = createMockLogger();
     fastify = Fastify();
     registerOrchestrateRoutes(fastify, mockLogger);

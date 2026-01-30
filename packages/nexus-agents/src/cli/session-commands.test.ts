@@ -7,6 +7,39 @@
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+// Use vi.hoisted to ensure proper hoisting with forks pool (Issue #582)
+const mocks = vi.hoisted(() => {
+  const mockExistsSync = vi.fn();
+  const mockMkdirSync = vi.fn();
+  const mockWriteFileSync = vi.fn();
+  const mockCreateSessionStorage = vi.fn();
+  return { mockExistsSync, mockMkdirSync, mockWriteFileSync, mockCreateSessionStorage };
+});
+
+// Mock node modules
+vi.mock('node:fs', () => ({
+  existsSync: mocks.mockExistsSync,
+  mkdirSync: mocks.mockMkdirSync,
+  writeFileSync: mocks.mockWriteFileSync,
+}));
+
+vi.mock('node:os', () => ({
+  homedir: vi.fn(() => '/home/user'),
+}));
+
+// Mock session-storage
+vi.mock('./session-storage.js', () => ({
+  createSessionStorage: mocks.mockCreateSessionStorage,
+  SQLiteSessionStorage: vi.fn(),
+}));
+
+// Re-export for test access
+const mockCreateSessionStorage = mocks.mockCreateSessionStorage;
+const mockExistsSync = mocks.mockExistsSync;
+const mockMkdirSync = mocks.mockMkdirSync;
+const mockWriteFileSync = mocks.mockWriteFileSync;
+
 import {
   sessionList,
   printSessionList,
@@ -18,31 +51,6 @@ import {
   sessionCommand,
   getDefaultDbPath,
 } from './session-commands.js';
-
-// Mock node modules
-vi.mock('node:fs', () => ({
-  existsSync: vi.fn(),
-  mkdirSync: vi.fn(),
-  writeFileSync: vi.fn(),
-}));
-
-vi.mock('node:os', () => ({
-  homedir: vi.fn(() => '/home/user'),
-}));
-
-// Mock session-storage
-vi.mock('./session-storage.js', () => ({
-  createSessionStorage: vi.fn(),
-  SQLiteSessionStorage: vi.fn(),
-}));
-
-import * as fs from 'node:fs';
-import { createSessionStorage } from './session-storage.js';
-
-const mockCreateSessionStorage = vi.mocked(createSessionStorage);
-const mockExistsSync = vi.mocked(fs.existsSync);
-const mockMkdirSync = vi.mocked(fs.mkdirSync);
-const mockWriteFileSync = vi.mocked(fs.writeFileSync);
 
 describe('session-commands', () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -77,6 +85,8 @@ describe('session-commands', () => {
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     processExitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
     mockExistsSync.mockReturnValue(true);
+    // Set up default mock storage (Issue #582 - process.exit mock doesn't stop execution)
+    mockCreateSessionStorage.mockReturnValue(createMockStorage() as never);
   });
 
   afterEach(() => {
