@@ -7,6 +7,7 @@
  * @module core/task-analysis
  */
 
+// Legacy reasoning/knowledge classifier (use SharedTaskAnalyzer for new code)
 export {
   TaskTypeClassifier,
   createTaskTypeClassifier,
@@ -15,3 +16,16 @@ export {
   type ClassificationSignal,
   type TaskTypeClassifierConfig,
 } from './task-type-classifier.js';
+
+// Unified task analyzer (ADR-0004 - consolidates 5 independent analyzers)
+export type {
+  ISharedTaskAnalyzer,
+  TaskAnalysisResult,
+  SharedTaskAnalyzerConfig,
+  ReasoningKnowledgeType,
+  ComplexityLevel,
+  TaskTypeCategory,
+  TaskCapabilities,
+} from './shared-task-analyzer.js';
+
+export { SharedTaskAnalyzer, createSharedTaskAnalyzer } from './shared-task-analyzer.js';
