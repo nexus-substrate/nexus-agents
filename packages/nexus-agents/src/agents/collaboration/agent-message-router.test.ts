@@ -161,6 +161,49 @@ describe('AgentMessageRouter', () => {
       expect(events).toHaveLength(1);
     });
 
+    it('should emit agent.task_delegated event for task messages', async () => {
+      const sender = createMockAgent('sender');
+      const receiver = createMockAgent('receiver');
+      router.register(sender);
+      router.register(receiver);
+
+      const events: unknown[] = [];
+      eventBus.subscribe('agent.task_delegated', (event) => {
+        events.push(event);
+      });
+
+      // Send a task message
+      const message = createTestMessage('sender', 'receiver', 'task');
+      message.payload = 'Implement feature X';
+      await router.send(message);
+
+      expect(events).toHaveLength(1);
+      const event = events[0] as {
+        payload: { fromAgent: string; toAgent: string; taskDescription: string };
+      };
+      expect(event.payload.fromAgent).toBe('sender');
+      expect(event.payload.toAgent).toBe('receiver');
+      expect(event.payload.taskDescription).toBe('Implement feature X');
+    });
+
+    it('should NOT emit agent.task_delegated event for non-task messages', async () => {
+      const sender = createMockAgent('sender');
+      const receiver = createMockAgent('receiver');
+      router.register(sender);
+      router.register(receiver);
+
+      const events: unknown[] = [];
+      eventBus.subscribe('agent.task_delegated', (event) => {
+        events.push(event);
+      });
+
+      // Send a query message (not a task)
+      const message = createTestMessage('sender', 'receiver', 'query');
+      await router.send(message);
+
+      expect(events).toHaveLength(0);
+    });
+
     it('should emit message.received event on successful delivery', async () => {
       const sender = createMockAgent('sender');
       const receiver = createMockAgent('receiver');

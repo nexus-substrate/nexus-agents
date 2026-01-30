@@ -25,7 +25,12 @@ import type {
   RouterStats,
 } from './agent-message-router-types.js';
 import { DEFAULT_ROUTER_CONFIG } from './agent-message-router-types.js';
-import { emitMessageSent, emitMessageReceived, emitResultBroadcast } from './message-events.js';
+import {
+  emitMessageSent,
+  emitMessageReceived,
+  emitResultBroadcast,
+  emitTaskDelegated,
+} from './message-events.js';
 
 // =============================================================================
 // Internal Types
@@ -114,6 +119,11 @@ export class AgentMessageRouter implements IAgentMessageRouter {
         to: message.to,
         correlationId: options.correlationId,
       });
+
+      // Emit task delegation event for task messages (Issue #557)
+      if (message.type === 'task') {
+        this.emitTaskDelegation(message, options.correlationId);
+      }
     }
 
     const timeout = options.timeoutMs ?? this.config.timeoutMs;
@@ -240,6 +250,25 @@ export class AgentMessageRouter implements IAgentMessageRouter {
         correlationId,
       });
     }
+  }
+
+  /**
+   * Emits task delegation event for task messages.
+   * (Source: Issue #557 - Wire up dead emitTaskDelegated function)
+   */
+  private emitTaskDelegation(message: AgentMessage, correlationId?: string): void {
+    const taskDescription =
+      typeof message.payload === 'string'
+        ? message.payload
+        : JSON.stringify(message.payload).slice(0, 200);
+
+    emitTaskDelegated(this.eventBus, {
+      fromAgent: message.from,
+      toAgent: message.to,
+      taskDescription,
+      priority: 'medium', // Default priority for routed tasks
+      correlationId,
+    });
   }
 
   private async deliverWithRetry(
