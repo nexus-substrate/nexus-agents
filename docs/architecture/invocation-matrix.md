@@ -1,227 +1,126 @@
 # Invocation Matrix
 
-> Machine-readable companion: [`wiring-graph.json`](./wiring-graph.json)
+Component call patterns for nexus-agents. Cross-reference with [wiring-graph.json](./wiring-graph.json).
 
-## Overview
+## Entry Points
 
-This document maps all invocation patterns between components across MCP, CLI, and Hybrid execution modes.
+| Entry        | File                      | Purpose                        |
+| ------------ | ------------------------- | ------------------------------ |
+| MCP Server   | `src/cli-server.ts`       | Claude Desktop/CLI integration |
+| CLI          | `src/cli.ts`              | Command-line interface         |
+| Orchestrator | `src/cli-orchestrator.ts` | Standalone orchestration       |
+| Library      | `src/index.ts`            | ESM module exports             |
 
-## Entry Point Matrix
+## Layer-to-Layer Invocations
 
-| Entry Point           | Mode    | Transport            | Handler                | Downstream Dependencies    |
-| --------------------- | ------- | -------------------- | ---------------------- | -------------------------- |
-| `cli-server.ts`       | MCP     | StdioServerTransport | `createServer()`       | mcp-tools, eventbus-bridge |
-| `cli.ts`              | CLI     | Commander.js         | `program.parseAsync()` | cli-commands               |
-| `cli-orchestrator.ts` | Hybrid  | Direct               | `OrchestratorMode`     | TechLead, CompositeRouter  |
-| `index.ts`            | Library | ESM Import           | N/A                    | All exports                |
-
-## MCP Tool Invocation Matrix
-
-| MCP Tool            | Input Schema               | Invokes                          | Returns             | Side Effects      |
-| ------------------- | -------------------------- | -------------------------------- | ------------------- | ----------------- |
-| `orchestrate`       | `OrchestrateInputSchema`   | TechLead → Experts → Adapters    | `OrchestrateResult` | Metrics, Feedback |
-| `create_expert`     | `CreateExpertInputSchema`  | ExpertFactory                    | `ExpertInstance`    | Registry update   |
-| `execute_expert`    | `ExecuteExpertInputSchema` | ExpertRegistry → Expert          | `ExpertResult`      | Metrics           |
-| `run_workflow`      | `RunWorkflowInputSchema`   | WorkflowParser → Executor        | `WorkflowResult`    | Metrics, Logs     |
-| `consensus_vote`    | `ConsensusVoteInputSchema` | ConsensusEngine → VotingProtocol | `VoteResult`        | Vote history      |
-| `list_experts`      | `ListExpertsInputSchema`   | ExpertRegistry                   | `ExpertList`        | None              |
-| `list_workflows`    | `ListWorkflowsInputSchema` | WorkflowParser                   | `WorkflowList`      | None              |
-| `delegate_to_model` | `DelegateInputSchema`      | CompositeRouter → Adapter        | `DelegateResult`    | Routing metrics   |
-
-## CLI Command Invocation Matrix
-
-### Core Commands
-
-| Command                    | Handler                  | Invokes          | MCP Equivalent |
-| -------------------------- | ------------------------ | ---------------- | -------------- |
-| `nexus-agents doctor`      | `doctor.ts`              | Config, Adapters | N/A            |
-| `nexus-agents setup`       | `setup-command.ts`       | Config           | N/A            |
-| `nexus-agents hello`       | `hello.ts`               | Version, Config  | N/A            |
-| `nexus-agents demo`        | `demo-command.ts`        | Demo data        | N/A            |
-| `nexus-agents orchestrate` | `orchestrate-command.ts` | TechLead         | `orchestrate`  |
-| `nexus-agents config`      | `config-command.ts`      | ConfigManager    | N/A            |
-
-### Workflow Commands
-
-| Command         | Handler           | Invokes        | MCP Equivalent   |
-| --------------- | ----------------- | -------------- | ---------------- |
-| `workflow list` | `workflow-run.ts` | WorkflowParser | `list_workflows` |
-| `workflow run`  | `workflow-run.ts` | WorkflowEngine | `run_workflow`   |
-| `expert list`   | `expert-list.ts`  | ExpertRegistry | `list_experts`   |
-
-### Research Commands
-
-| Command            | Handler                       | Invokes           | MCP Equivalent |
-| ------------------ | ----------------------------- | ----------------- | -------------- |
-| `research add`     | `research-command.ts`         | ArxivFetcher      | N/A            |
-| `research status`  | `research-command.ts`         | TechniqueRegistry | N/A            |
-| `research overlap` | `research-helpers-overlap.ts` | AlignmentChecker  | N/A            |
-| `research index`   | `research-index-helpers.ts`   | IndexRebuilder    | N/A            |
-
-### Planning Commands
-
-| Command         | Handler             | Invokes        | MCP Equivalent   |
-| --------------- | ------------------- | -------------- | ---------------- |
-| `sprint`        | `sprint-command.ts` | SprintPlanner  | N/A              |
-| `vote`          | `vote-command.ts`   | VotingProtocol | `consensus_vote` |
-| `issue`         | `issue-command.ts`  | GitHub API     | N/A              |
-| `system-review` | `system-review.ts`  | SystemAnalyzer | N/A              |
-
-### Evaluation Commands
-
-| Command            | Handler                       | Invokes             | MCP Equivalent |
-| ------------------ | ----------------------------- | ------------------- | -------------- |
-| `swe-bench`        | `swe-bench-command.ts`        | SweBenchHarness     | N/A            |
-| `verify`           | `verify-command.ts`           | Verifier            | N/A            |
-| `learning-metrics` | `learning-metrics-command.ts` | FeedbackIntegration | N/A            |
-
-## Internal Invocation Patterns
-
-### Orchestration Flow
+### External → Orchestration
 
 ```
-TechLead.executeTask(task)
-├── ExpertSelector.selectExpert(task)
-│   └── ExpertRegistry.query(capabilities)
-├── CompositeRouter.route(task)
-│   ├── BudgetRouter.checkBudget()
-│   ├── ZeroRouter.estimateDifficulty()
-│   ├── PreferenceRouter.getPreference()
-│   ├── TopsisRouter.rank()
-│   └── LinUCBRouter.explore()
-├── SelectedAdapter.executeTask(task)
-│   ├── ClaudeAdapter.execute() OR
-│   ├── GeminiAdapter.execute() OR
-│   ├── CodexAdapter.execute() OR
-│   └── OllamaAdapter.execute()
-├── FeedbackIntegration.recordOutcome()
-│   └── OutcomeStorage.persist()
-└── EventBusBridge.publish(event)
-    └── SwarmObserver.record()
+MCP Server
+    ├─→ orchestrate tool ──→ TechLead
+    ├─→ create_expert ──→ ExpertFactory
+    ├─→ execute_expert ──→ ExpertRegistry
+    ├─→ run_workflow ──→ WorkflowEngine
+    ├─→ consensus_vote ──→ ConsensusEngine
+    └─→ delegate_to_model ──→ CompositeRouter
 ```
 
-### Consensus Flow
+### Orchestration → Routing
+
+| From         | To              | Type |
+| ------------ | --------------- | ---- |
+| TechLead     | CompositeRouter | uses |
+| ExpertSystem | CompositeRouter | uses |
+
+### Routing → Execution
+
+| Router          | Adapter       | Type   |
+| --------------- | ------------- | ------ |
+| CompositeRouter | ClaudeAdapter | routes |
+| CompositeRouter | GeminiAdapter | routes |
+| CompositeRouter | CodexAdapter  | routes |
+| CompositeRouter | OllamaAdapter | routes |
+
+### Execution → Learning
+
+| From                | To                  | Type     |
+| ------------------- | ------------------- | -------- |
+| ClaudeAdapter       | FeedbackIntegration | reports  |
+| GeminiAdapter       | FeedbackIntegration | reports  |
+| FeedbackIntegration | OutcomeStorage      | persists |
+| FeedbackIntegration | CompositeRouter     | updates  |
+
+### Orchestration → Memory
+
+| From           | To             | Type |
+| -------------- | -------------- | ---- |
+| TechLead       | ContextManager | uses |
+| ContextManager | ContextPruner  | uses |
+
+## Cross-Cutting Concerns
+
+| From           | To              | Type      |
+| -------------- | --------------- | --------- |
+| MCPServer      | EventBusBridge  | uses      |
+| EventBusBridge | SwarmObserver   | publishes |
+| MCPTools       | PolicyFirewall  | validates |
+| TechLead       | SICAIntegration | uses      |
+
+## CLI Command Flows
+
+### `nexus-agents orchestrate`
 
 ```
-ConsensusEngine.runConsensus(topic, agents)
-├── ProtocolSelector.select(topic)
-│   └── AegeanProtocol OR VotingProtocol OR WeightedVoting
-├── foreach Agent:
-│   └── Agent.vote(topic)
-├── CorrelationTracker.recordVotes()
-├── VotingProtocol.tally()
-└── HigherOrderVoting.verifyQuorum()
+CLI → parseArgs → Orchestrator → TechLead
+                                   ├─→ TaskDecomposition
+                                   ├─→ ExpertSelection
+                                   ├─→ CompositeRouter → ModelAdapter
+                                   └─→ ResultSynthesis
 ```
 
-### Workflow Flow
+### `nexus-agents review <url>`
 
 ```
-WorkflowEngine.execute(definition)
-├── WorkflowParser.parse(yaml)
-├── DependencyGraph.build()
-├── ExecutionPlanner.createPhases()
-└── foreach Phase:
-    └── ParallelExecutor.executeSteps()
-        └── StepExecutor.execute(step)
-            └── CompositeRouter.route() → Adapter.execute()
+CLI → GitHubClient → fetchPR
+                       └─→ ReviewWorkflow
+                              ├─→ CodeExpert
+                              ├─→ SecurityExpert
+                              └─→ ConsensusEngine → VotingProtocol
 ```
 
-## Event Bus Message Types
-
-| Event Type          | Publisher       | Subscribers                        | Payload         |
-| ------------------- | --------------- | ---------------------------------- | --------------- |
-| `task.started`      | TechLead        | SwarmObserver, AuditLogger         | TaskInfo        |
-| `task.completed`    | TechLead        | SwarmObserver, FeedbackIntegration | TaskResult      |
-| `expert.selected`   | ExpertSelector  | SwarmObserver                      | ExpertInfo      |
-| `routing.decision`  | CompositeRouter | SwarmObserver, FeedbackIntegration | RoutingDecision |
-| `adapter.response`  | Adapters        | SwarmObserver                      | AdapterResponse |
-| `vote.cast`         | VotingProtocol  | CorrelationTracker                 | VoteRecord      |
-| `consensus.reached` | ConsensusEngine | AuditLogger                        | ConsensusResult |
-
-## Middleware Chain
+### `nexus-agents workflow run`
 
 ```
-MCP Request
-    │
-    ▼
-┌──────────────────┐
-│  Rate Limiter    │ (per-tool throttling)
-└────────┬─────────┘
-         │
-         ▼
-┌──────────────────┐
-│  Zod Validation  │ (input schema validation)
-└────────┬─────────┘
-         │
-         ▼
-┌──────────────────┐
-│  Policy Firewall │ (execution policy enforcement)
-└────────┬─────────┘
-         │
-         ▼
-┌──────────────────┐
-│  STPA Safety     │ (hazard analysis)
-└────────┬─────────┘
-         │
-         ▼
-┌──────────────────┐
-│  Tool Handler    │ (business logic)
-└────────┬─────────┘
-         │
-         ▼
-┌──────────────────┐
-│  Logging         │ (structured audit)
-└──────────────────┘
+CLI → WorkflowParser → ExecutionPlanner
+                          └─→ ParallelExecutor
+                                 ├─→ StepExecutor (parallel)
+                                 └─→ ResultAggregation
 ```
 
-## Cross-Mode Parity
+## MCP Tool Invocations
 
-| Capability         | MCP                 | CLI             | Hybrid          | Parity Status |
-| ------------------ | ------------------- | --------------- | --------------- | ------------- |
-| Task Orchestration | `orchestrate`       | `orchestrate`   | Direct          | ✓ Complete    |
-| Expert Creation    | `create_expert`     | N/A             | Programmatic    | ⚠ CLI gap     |
-| Expert Execution   | `execute_expert`    | N/A             | Programmatic    | ⚠ CLI gap     |
-| Workflow Execution | `run_workflow`      | `workflow run`  | Direct          | ✓ Complete    |
-| Consensus Voting   | `consensus_vote`    | `vote`          | Direct          | ✓ Complete    |
-| Expert Listing     | `list_experts`      | `expert list`   | Programmatic    | ✓ Complete    |
-| Workflow Listing   | `list_workflows`    | `workflow list` | Programmatic    | ✓ Complete    |
-| Model Routing      | `delegate_to_model` | `orchestrate`   | CompositeRouter | ✓ Complete    |
+| Tool              | Dependencies           | Purpose                       |
+| ----------------- | ---------------------- | ----------------------------- |
+| orchestrate       | TechLead, ExpertSystem | Multi-agent task coordination |
+| create_expert     | ExpertFactory          | Dynamic expert creation       |
+| execute_expert    | ExpertRegistry         | Expert execution              |
+| run_workflow      | WorkflowEngine         | Workflow template execution   |
+| consensus_vote    | ConsensusEngine        | Multi-agent voting            |
+| delegate_to_model | CompositeRouter        | Model routing                 |
+| list_experts      | ExpertRegistry         | Discoverability               |
+| list_workflows    | WorkflowRegistry       | Discoverability               |
 
-## Dependency Injection Points
+## Event Bus Topics
 
-| Interface         | Implementation                     | Injection Point     |
-| ----------------- | ---------------------------------- | ------------------- |
-| `IModelAdapter`   | ClaudeAdapter, GeminiAdapter, etc. | AdapterFactory      |
-| `IExpert`         | CodeExpert, SecurityExpert, etc.   | ExpertFactory       |
-| `IRouter`         | BudgetRouter, TopsisRouter, etc.   | CompositeRouter     |
-| `IVotingProtocol` | VotingProtocol, WeightedVoting     | ConsensusEngine     |
-| `IWorkflowEngine` | WorkflowEngine                     | MCP Tools           |
-| `IOutcomeStorage` | SQLiteOutcomeStorage               | FeedbackIntegration |
-| `ILogger`         | createLogger()                     | All components      |
-
-## Error Propagation
-
-```
-Adapter Error
-    │
-    ▼
-Result.err(CliError)
-    │
-    ▼
-CircuitBreaker.recordFailure()
-    │
-    ├─── FallbackChains.tryNext() ─── Retry with different adapter
-    │
-    └─── (exhausted) ─── CompositeRoutingError
-                              │
-                              ▼
-                         MCP ToolError
-                              │
-                              ▼
-                         Client Error Response
-```
+| Topic            | Publishers      | Subscribers           |
+| ---------------- | --------------- | --------------------- |
+| agent.started    | TechLead        | OrchestrationObserver |
+| agent.completed  | All Experts     | OrchestrationObserver |
+| routing.decision | CompositeRouter | FeedbackIntegration   |
+| model.response   | ModelAdapters   | OrchestrationObserver |
+| consensus.vote   | ConsensusEngine | AuditLogger           |
 
 ---
 
-_Last updated: 2026-01-29_
-_Source: System Mandate - Loop A: Discovery + Wiring Graph Generation_
+_Generated from wiring-graph.json (v1.0.0)_
+_See [MCP_PROTOCOL.md](./MCP_PROTOCOL.md) for protocol details_

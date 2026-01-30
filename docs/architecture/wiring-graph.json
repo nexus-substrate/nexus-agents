@@ -499,9 +499,9 @@
     }
   },
   "technicalDebt": {
-    "deprecatedModules": ["deprecated-exports.ts"],
-    "skippedTests": ["patch-applicator.test.ts:159,163,167"],
-    "unsafeTypeCasts": 9,
-    "oversizedFiles": ["forest-engine.ts:969"]
+    "deprecatedModules": [],
+    "skippedTests": [],
+    "unsafeTypeCasts": 8,
+    "oversizedFiles": []
   }
 }
