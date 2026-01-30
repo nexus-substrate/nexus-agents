@@ -4,6 +4,10 @@
  * Estimates task complexity for quality-constrained routing decisions.
  * Part of the RouteLLM implementation (arXiv:2406.18510).
  *
+ * @deprecated Use SharedTaskAnalyzer.getComplexity() from 'nexus-agents/core' instead.
+ * This module is superseded by the unified SharedTaskAnalyzer (ADR-0004).
+ * Migration: import { createSharedTaskAnalyzer } from 'nexus-agents/core'
+ *
  * @module adapters/complexity-estimator
  * (Source: Issue #128, arXiv:2406.18510)
  */

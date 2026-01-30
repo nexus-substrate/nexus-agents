@@ -4,6 +4,12 @@
  * Analyzes tasks to create a TaskProfile for intelligent routing.
  * Uses heuristics and keywords to determine task requirements.
  *
+ * @deprecated Use SharedTaskAnalyzer from 'nexus-agents/core' instead.
+ * This module is superseded by the unified SharedTaskAnalyzer (ADR-0004).
+ * Migration: import { createSharedTaskAnalyzer } from 'nexus-agents/core'
+ *   - getTaskType() replaces classifyTaskType()
+ *   - getCapabilities() replaces analyzeTask() capability flags
+ *
  * (Source: Issue #78 - Capability-based task router)
  * (Source: cli-project_plan.md v2.1.0, Phase 2)
  */

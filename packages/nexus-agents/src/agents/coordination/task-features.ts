@@ -4,6 +4,12 @@
  * Extracts features from tasks for scaling prediction.
  * Uses keyword matching, pattern detection, and structural analysis.
  *
+ * @deprecated Use SharedTaskAnalyzer from 'nexus-agents/core' instead.
+ * This module is superseded by the unified SharedTaskAnalyzer (ADR-0004).
+ * Migration: import { createSharedTaskAnalyzer } from 'nexus-agents/core'
+ *   - analyze() provides unified feature extraction
+ *   - getCapabilities() replaces parallelizable/multimodal detection
+ *
  * @module agents/coordination/task-features
  * (Source: Issue #337, arXiv:2512.08296)
  */

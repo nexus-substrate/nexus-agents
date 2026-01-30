@@ -4,6 +4,11 @@
  * Classifies tasks into types for selecting appropriate fallback chains.
  * Uses keyword-based classification with configurable patterns.
  *
+ * @deprecated Use SharedTaskAnalyzer from 'nexus-agents/core' instead.
+ * This module is superseded by the unified SharedTaskAnalyzer (ADR-0004).
+ * Migration: import { createSharedTaskAnalyzer } from 'nexus-agents/core'
+ *   - getTaskType() provides similar classification with unified taxonomy
+ *
  * @module cli-adapters/task-classifier
  * (Source: Issue #362 - Task-type-aware fallback chains)
  */

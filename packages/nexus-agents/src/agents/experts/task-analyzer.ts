@@ -4,6 +4,12 @@
  * Analyzes tasks to extract features for expert matching.
  * Uses keyword extraction and pattern matching to determine domain, complexity,
  * and required capabilities.
+ *
+ * @deprecated Use SharedTaskAnalyzer from 'nexus-agents/core' instead.
+ * This module is superseded by the unified SharedTaskAnalyzer (ADR-0004).
+ * Migration: import { createSharedTaskAnalyzer } from 'nexus-agents/core'
+ *   - analyze() provides unified task analysis
+ *   - getComplexity() replaces complexity estimation
  */
 
 import type { Task, Result } from '../../core/index.js';
