@@ -14,7 +14,7 @@ import type { ILogger, Task } from '../../core/index.js';
 import { createLogger, getTimeProvider, getRandomProvider } from '../../core/index.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
-import { wrapToolWithTimeout } from '../middleware/tool-wrapper.js';
+import { wrapToolWithTimeout, toSdkCallback } from '../middleware/tool-wrapper.js';
 import type { Expert } from '../../agents/index.js';
 
 /**
@@ -276,7 +276,7 @@ export function registerExecuteExpertTool(server: McpServer, deps: ExecuteExpert
 
   // Type assertion needed: MCP SDK expects index signature, our ToolResult is structurally compatible
   /* eslint-disable @typescript-eslint/no-deprecated, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
-  server.tool('execute_expert', description, toolSchema, wrappedHandler as any);
+  server.tool('execute_expert', description, toolSchema, toSdkCallback(wrappedHandler));
   /* eslint-enable @typescript-eslint/no-deprecated, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
   logger.info('Registered execute_expert tool with timeout protection');
 }

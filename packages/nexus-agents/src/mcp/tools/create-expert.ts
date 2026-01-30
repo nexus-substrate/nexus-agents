@@ -11,7 +11,7 @@ import type { ILogger, AgentCapability } from '../../core/index.js';
 import { createLogger } from '../../core/index.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
-import { wrapToolWithTimeout } from '../middleware/tool-wrapper.js';
+import { wrapToolWithTimeout, toSdkCallback } from '../middleware/tool-wrapper.js';
 import {
   ExpertFactory,
   Expert,
@@ -279,7 +279,7 @@ export function registerCreateExpertTool(server: McpServer, deps: CreateExpertDe
 
   // Type assertion needed: MCP SDK expects index signature, our ToolResult is structurally compatible
   /* eslint-disable @typescript-eslint/no-deprecated, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
-  server.tool('create_expert', description, toolSchema, wrappedHandler as any);
+  server.tool('create_expert', description, toolSchema, toSdkCallback(wrappedHandler));
   /* eslint-enable @typescript-eslint/no-deprecated, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
   logger.info('Registered create_expert tool with timeout protection');
 }

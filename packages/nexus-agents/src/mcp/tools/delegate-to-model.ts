@@ -13,7 +13,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger } from '../../core/index.js';
 import { createLogger } from '../../core/index.js';
-import { wrapToolWithTimeout } from '../middleware/tool-wrapper.js';
+import { wrapToolWithTimeout, toSdkCallback } from '../middleware/tool-wrapper.js';
 import {
   mapCompositeDecisionToOutput,
   routeViaCompositeRouter,
@@ -138,7 +138,7 @@ export function registerDelegateToModelTool(server: McpServer, deps: DelegateDep
 
   // Type assertion needed: MCP SDK expects index signature, our ToolResult is structurally compatible
   /* eslint-disable @typescript-eslint/no-deprecated, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
-  server.tool('delegate_to_model', description, TOOL_SCHEMA, wrappedHandler as any);
+  server.tool('delegate_to_model', description, TOOL_SCHEMA, toSdkCallback(wrappedHandler));
   /* eslint-enable @typescript-eslint/no-deprecated, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
   logger.info('Registered delegate_to_model tool with timeout protection');
 }

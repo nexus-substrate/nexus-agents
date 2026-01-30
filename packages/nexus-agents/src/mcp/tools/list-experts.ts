@@ -14,7 +14,7 @@ import type { ILogger } from '../../core/index.js';
 import { createLogger } from '../../core/index.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
-import { wrapToolWithTimeout } from '../middleware/tool-wrapper.js';
+import { wrapToolWithTimeout, toSdkCallback } from '../middleware/tool-wrapper.js';
 import { BUILT_IN_EXPERTS, type BuiltInExpertType } from '../../agents/index.js';
 
 /**
@@ -220,7 +220,7 @@ export function registerListExpertsTool(server: McpServer, deps: ListExpertsDeps
 
   // Type assertion needed: MCP SDK expects index signature
   /* eslint-disable @typescript-eslint/no-deprecated, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
-  server.tool('list_experts', description, toolSchema, wrappedHandler as any);
+  server.tool('list_experts', description, toolSchema, toSdkCallback(wrappedHandler));
   /* eslint-enable @typescript-eslint/no-deprecated, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
   logger.info('Registered list_experts tool with timeout protection');
 }

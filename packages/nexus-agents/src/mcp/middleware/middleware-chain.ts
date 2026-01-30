@@ -19,9 +19,15 @@ import { createRequestContext, contextForLogging, type RequestContext } from './
 
 /**
  * MCP tool result type.
+ *
+ * This interface is structurally compatible with the MCP SDK's CallToolResult.
+ * The content array accepts text content for simplicity, while remaining
+ * compatible with the SDK's broader ContentBlock type at runtime.
  */
 export interface ToolResult {
+  /** Content blocks returned by the tool (text content) */
   content: Array<{ type: 'text'; text: string }>;
+  /** Whether this represents an error result */
   isError?: boolean;
 }
 

@@ -14,7 +14,7 @@ import type { ILogger, IWorkflowEngine } from '../../core/index.js';
 import { createLogger } from '../../core/index.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
-import { wrapToolWithTimeout } from '../middleware/tool-wrapper.js';
+import { wrapToolWithTimeout, toSdkCallback } from '../middleware/tool-wrapper.js';
 
 /**
  * Input schema for list_workflows tool.
@@ -211,7 +211,7 @@ export function registerListWorkflowsTool(server: McpServer, deps: ListWorkflows
 
   // Type assertion needed: MCP SDK expects index signature
   /* eslint-disable @typescript-eslint/no-deprecated, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
-  server.tool('list_workflows', description, toolSchema, wrappedHandler as any);
+  server.tool('list_workflows', description, toolSchema, toSdkCallback(wrappedHandler));
   /* eslint-enable @typescript-eslint/no-deprecated, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
   logger.info('Registered list_workflows tool with timeout protection');
 }

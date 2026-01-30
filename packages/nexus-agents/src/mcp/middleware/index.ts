@@ -119,6 +119,7 @@ export {
   // Functions
   createToolFactory,
   wrapToolWithTimeout,
+  toSdkCallback,
 } from './tool-wrapper.js';
 
 // Per-tool rate limiter factory (Issue #274 Phase 2)

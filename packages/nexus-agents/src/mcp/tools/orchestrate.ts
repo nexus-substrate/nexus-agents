@@ -20,7 +20,7 @@ import {
 } from '../../core/index.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
-import { wrapToolWithTimeout } from '../middleware/tool-wrapper.js';
+import { wrapToolWithTimeout, toSdkCallback } from '../middleware/tool-wrapper.js';
 import type { ExecutionPlan, Expert } from '../../agents/index.js';
 import { createTechLeadWithSica } from './orchestrate-sica.js';
 
@@ -350,10 +350,10 @@ export function registerOrchestrateTool(server: McpServer, deps: OrchestrateDeps
     timeoutMs !== undefined ? { timeoutMs, logger } : { logger }
   );
 
-  // Type assertion needed: MCP SDK expects index signature, our ToolResult is structurally compatible
-  /* eslint-disable @typescript-eslint/no-deprecated, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
-  server.tool('orchestrate', description, TOOL_SCHEMA, wrappedHandler as any);
-  /* eslint-enable @typescript-eslint/no-deprecated, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
+  // Use toSdkCallback to adapt handler to SDK's expected signature (Issue #567)
+  /* eslint-disable @typescript-eslint/no-deprecated */
+  server.tool('orchestrate', description, TOOL_SCHEMA, toSdkCallback(wrappedHandler));
+  /* eslint-enable @typescript-eslint/no-deprecated */
   logger.info('Registered orchestrate tool with timeout protection');
 }
 

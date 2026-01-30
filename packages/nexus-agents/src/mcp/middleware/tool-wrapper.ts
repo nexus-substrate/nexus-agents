@@ -154,6 +154,34 @@ export function wrapToolWithTimeout(
 }
 
 /**
+ * Adapts a ToolHandler to the MCP SDK's expected callback signature.
+ *
+ * The MCP SDK's registerTool expects a callback that receives (args, extra)
+ * and returns CallToolResult. Our ToolHandler receives just args and returns
+ * ToolResult. This adapter bridges the two types safely.
+ *
+ * @param handler - Our internal ToolHandler
+ * @returns SDK-compatible callback function
+ *
+ * @example
+ * ```typescript
+ * const handler = wrapToolWithTimeout('my_tool', async (args) => {
+ *   return { content: [{ type: 'text', text: 'Done' }] };
+ * });
+ * server.registerTool('my_tool', config, toSdkCallback(handler));
+ * ```
+ */
+export function toSdkCallback(
+  handler: ToolHandler
+): (args: unknown, extra: unknown) => Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
+  return async (args: unknown, _extra: unknown) => {
+    const result = await handler(args);
+    // Our ToolResult is structurally compatible with CallToolResult
+    return result;
+  };
+}
+
+/**
  * Re-export middleware factory for advanced use cases.
  */
 export { createMiddlewareFactory, withMiddleware };

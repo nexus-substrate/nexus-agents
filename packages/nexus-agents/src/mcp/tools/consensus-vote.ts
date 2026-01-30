@@ -14,7 +14,7 @@ import type { ILogger } from '../../core/index.js';
 import { createLogger, getTimeProvider, getRandomProvider } from '../../core/index.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
-import { wrapToolWithTimeout } from '../middleware/tool-wrapper.js';
+import { wrapToolWithTimeout, toSdkCallback } from '../middleware/tool-wrapper.js';
 import type { ConsensusAlgorithm, Vote, ConsensusResult } from '../../consensus/types.js';
 import type { VoterRole, VotingResult, AgentVoteResult } from '../../cli/vote-types.js';
 import { VOTER_ROLES } from '../../cli/vote-types.js';
@@ -562,7 +562,7 @@ export function registerConsensusVoteTool(server: McpServer, deps: ConsensusVote
 
   // Type assertion needed: MCP SDK expects index signature, our ToolResult is structurally compatible
   /* eslint-disable @typescript-eslint/no-deprecated, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
-  server.tool('consensus_vote', description, toolSchema, wrappedHandler as any);
+  server.tool('consensus_vote', description, toolSchema, toSdkCallback(wrappedHandler));
   /* eslint-enable @typescript-eslint/no-deprecated, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
   logger.info('Registered consensus_vote tool with timeout protection');
 }

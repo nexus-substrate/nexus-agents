@@ -12,7 +12,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Result } from '../../core/index.js';
 import type { WorkflowDefinition, IWorkflowEngine } from '../../core/index.js';
 import { WorkflowError, ParseError, createLogger, getTimeProvider } from '../../core/index.js';
-import { wrapToolWithTimeout } from '../middleware/tool-wrapper.js';
+import { wrapToolWithTimeout, toSdkCallback } from '../middleware/tool-wrapper.js';
 import type {
   RunWorkflowInput,
   WorkflowToolResult,
@@ -213,8 +213,8 @@ export function registerRunWorkflowTool(server: McpServer, deps: RunWorkflowDeps
     timeoutMs !== undefined ? { timeoutMs, logger } : { logger }
   );
 
-  // Type assertion needed: MCP SDK expects index signature, our ToolResult is structurally compatible
-  /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
+  // Type assertion needed: MCP SDK expects index signature
+  /* eslint-disable @typescript-eslint/no-deprecated, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
   server.registerTool(
     'run_workflow',
     {
@@ -222,9 +222,9 @@ export function registerRunWorkflowTool(server: McpServer, deps: RunWorkflowDeps
         'Execute a workflow template with provided inputs, supporting built-in templates and custom paths',
       inputSchema: toolInputSchema,
     },
-    wrappedHandler as any
+    toSdkCallback(wrappedHandler)
   );
-  /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
+  /* eslint-enable @typescript-eslint/no-deprecated, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
   logger.info('Registered run_workflow tool with timeout protection');
 }
 
