@@ -1,0 +1,507 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "version": "1.0.0",
+  "generated": "2026-01-29T00:00:00Z",
+  "description": "Nexus-Agents System Wiring Graph - Machine-readable topology",
+  "metadata": {
+    "totalSourceFiles": 920,
+    "totalTestFiles": 343,
+    "sourceLOC": 196405,
+    "testLOC": 161042,
+    "implementedTechniques": 37
+  },
+  "entryPoints": {
+    "mcp": {
+      "file": "src/cli-server.ts",
+      "transport": "StdioServerTransport",
+      "description": "MCP server for Claude Desktop/CLI integration"
+    },
+    "cli": {
+      "file": "src/cli.ts",
+      "commands": 30,
+      "description": "CLI main entry point"
+    },
+    "orchestrator": {
+      "file": "src/cli-orchestrator.ts",
+      "description": "Standalone orchestrator mode"
+    },
+    "library": {
+      "file": "src/index.ts",
+      "exports": 11,
+      "description": "ESM module exports"
+    }
+  },
+  "layers": {
+    "external": {
+      "description": "External interfaces (MCP, CLI, REST)",
+      "nodes": ["mcp-server", "cli-commands", "api-gateway"]
+    },
+    "orchestration": {
+      "description": "Agent coordination and workflow execution",
+      "nodes": ["tech-lead", "expert-system", "workflow-engine", "consensus-engine"]
+    },
+    "routing": {
+      "description": "Model selection and load balancing",
+      "nodes": ["composite-router", "budget-router", "topsis-router", "zero-router"]
+    },
+    "execution": {
+      "description": "Model adapters and response handling",
+      "nodes": ["claude-adapter", "gemini-adapter", "codex-adapter", "ollama-adapter"]
+    },
+    "learning": {
+      "description": "Feedback loop and outcome tracking",
+      "nodes": ["feedback-integration", "outcome-storage", "preference-router"]
+    },
+    "memory": {
+      "description": "Context management and persistence",
+      "nodes": ["context-manager", "context-pruner", "memory-store"]
+    },
+    "observability": {
+      "description": "Metrics, tracing, and audit",
+      "nodes": ["swarm-observer", "trace-exporter", "audit-logger"]
+    }
+  },
+  "nodes": {
+    "mcp-server": {
+      "path": "src/mcp/server.ts",
+      "type": "entry-point",
+      "status": "complete",
+      "tests": "src/mcp/server.test.ts",
+      "dependencies": ["mcp-tools", "eventbus-bridge"]
+    },
+    "mcp-tools": {
+      "path": "src/mcp/tools/",
+      "type": "module",
+      "status": "complete",
+      "children": [
+        "orchestrate",
+        "create-expert",
+        "execute-expert",
+        "run-workflow",
+        "consensus-vote",
+        "list-experts",
+        "list-workflows",
+        "delegate-to-model"
+      ]
+    },
+    "orchestrate": {
+      "path": "src/mcp/tools/orchestrate.ts",
+      "type": "tool",
+      "status": "complete",
+      "tests": "src/mcp/tools/orchestrate.test.ts",
+      "loc": 348,
+      "dependencies": ["tech-lead", "expert-system"]
+    },
+    "create-expert": {
+      "path": "src/mcp/tools/create-expert.ts",
+      "type": "tool",
+      "status": "complete",
+      "tests": "src/mcp/tools/create-expert.test.ts",
+      "loc": 282,
+      "dependencies": ["expert-factory"]
+    },
+    "execute-expert": {
+      "path": "src/mcp/tools/execute-expert.ts",
+      "type": "tool",
+      "status": "complete",
+      "tests": "src/mcp/tools/execute-expert.test.ts",
+      "loc": 279,
+      "dependencies": ["expert-registry"]
+    },
+    "run-workflow": {
+      "path": "src/mcp/tools/run-workflow.ts",
+      "type": "tool",
+      "status": "complete",
+      "tests": "src/mcp/tools/run-workflow.test.ts",
+      "loc": 225,
+      "dependencies": ["workflow-engine"]
+    },
+    "consensus-vote": {
+      "path": "src/mcp/tools/consensus-vote.ts",
+      "type": "tool",
+      "status": "complete",
+      "tests": "src/mcp/tools/consensus-vote.test.ts",
+      "loc": 589,
+      "dependencies": ["consensus-engine"]
+    },
+    "list-experts": {
+      "path": "src/mcp/tools/list-experts.ts",
+      "type": "tool",
+      "status": "complete",
+      "tests": "src/mcp/tools/list-experts.test.ts",
+      "loc": 223,
+      "dependencies": ["expert-registry"]
+    },
+    "list-workflows": {
+      "path": "src/mcp/tools/list-workflows.ts",
+      "type": "tool",
+      "status": "complete",
+      "tests": "src/mcp/tools/list-workflows.test.ts",
+      "loc": 214,
+      "dependencies": ["workflow-parser"]
+    },
+    "delegate-to-model": {
+      "path": "src/mcp/tools/delegate-to-model.ts",
+      "type": "tool",
+      "status": "complete",
+      "tests": "src/mcp/tools/delegate-to-model.test.ts",
+      "loc": 141,
+      "dependencies": ["composite-router"]
+    },
+    "cli-commands": {
+      "path": "src/cli/",
+      "type": "module",
+      "status": "complete",
+      "children": [
+        "doctor",
+        "setup",
+        "hello",
+        "demo",
+        "orchestrate-cmd",
+        "config",
+        "workflow",
+        "expert",
+        "research",
+        "sprint",
+        "vote",
+        "issue",
+        "session",
+        "verify",
+        "swe-bench",
+        "learning-metrics"
+      ]
+    },
+    "tech-lead": {
+      "path": "src/agents/tech-lead.ts",
+      "type": "agent",
+      "status": "complete",
+      "tests": "src/agents/tech-lead.test.ts",
+      "loc": 800,
+      "dependencies": ["expert-system", "state-machine", "context-manager"]
+    },
+    "expert-system": {
+      "path": "src/agents/experts/",
+      "type": "module",
+      "status": "complete",
+      "children": [
+        "expert-factory",
+        "expert-registry",
+        "expert-selector",
+        "code-expert",
+        "security-expert",
+        "architecture-expert",
+        "testing-expert",
+        "documentation-expert"
+      ]
+    },
+    "expert-factory": {
+      "path": "src/agents/experts/expert-factory.ts",
+      "type": "factory",
+      "status": "complete",
+      "tests": "src/agents/experts/expert-factory.test.ts",
+      "loc": 350
+    },
+    "expert-registry": {
+      "path": "src/agents/experts/expert-registry.ts",
+      "type": "registry",
+      "status": "complete",
+      "tests": "src/agents/experts/expert-registry.test.ts"
+    },
+    "expert-selector": {
+      "path": "src/agents/experts/expert-selector.ts",
+      "type": "selector",
+      "status": "complete",
+      "tests": "src/agents/experts/expert-selector.test.ts"
+    },
+    "code-expert": {
+      "path": "src/agents/experts/code-expert.ts",
+      "type": "expert",
+      "status": "complete",
+      "tests": "src/agents/experts/code-expert.test.ts"
+    },
+    "security-expert": {
+      "path": "src/agents/experts/security-expert.ts",
+      "type": "expert",
+      "status": "complete",
+      "tests": "src/agents/experts/security-expert.test.ts"
+    },
+    "architecture-expert": {
+      "path": "src/agents/experts/architecture-expert.ts",
+      "type": "expert",
+      "status": "complete",
+      "tests": "src/agents/experts/architecture-expert.test.ts"
+    },
+    "testing-expert": {
+      "path": "src/agents/experts/testing-expert.ts",
+      "type": "expert",
+      "status": "complete",
+      "tests": "src/agents/experts/testing-expert.test.ts"
+    },
+    "documentation-expert": {
+      "path": "src/agents/experts/documentation-expert.ts",
+      "type": "expert",
+      "status": "complete",
+      "tests": "src/agents/experts/documentation-expert.test.ts"
+    },
+    "workflow-engine": {
+      "path": "src/workflows/",
+      "type": "module",
+      "status": "complete",
+      "children": [
+        "workflow-parser",
+        "execution-planner",
+        "parallel-executor",
+        "step-executor",
+        "latts-engine",
+        "aflow",
+        "self-evolving"
+      ]
+    },
+    "workflow-parser": {
+      "path": "src/workflows/workflow-parser.ts",
+      "type": "parser",
+      "status": "complete",
+      "tests": "src/workflows/workflow-parser.test.ts"
+    },
+    "execution-planner": {
+      "path": "src/workflows/execution-planner.ts",
+      "type": "planner",
+      "status": "complete"
+    },
+    "parallel-executor": {
+      "path": "src/workflows/parallel-executor.ts",
+      "type": "executor",
+      "status": "complete",
+      "tests": "src/workflows/parallel-executor.test.ts"
+    },
+    "step-executor": {
+      "path": "src/workflows/step-executor.ts",
+      "type": "executor",
+      "status": "complete"
+    },
+    "consensus-engine": {
+      "path": "src/consensus/engine.ts",
+      "type": "engine",
+      "status": "complete",
+      "tests": "src/consensus/engine.test.ts",
+      "dependencies": ["voting-protocol", "weighted-voting", "higher-order-voting"]
+    },
+    "voting-protocol": {
+      "path": "src/consensus/voting-protocol.ts",
+      "type": "protocol",
+      "status": "complete",
+      "tests": "src/consensus/voting-protocol.test.ts"
+    },
+    "weighted-voting": {
+      "path": "src/consensus/weighted-voting.ts",
+      "type": "protocol",
+      "status": "complete",
+      "tests": "src/consensus/weighted-voting.test.ts"
+    },
+    "higher-order-voting": {
+      "path": "src/consensus/higher-order-voting.ts",
+      "type": "protocol",
+      "status": "complete",
+      "tests": "src/consensus/higher-order-voting.test.ts"
+    },
+    "composite-router": {
+      "path": "src/cli-adapters/composite-router.ts",
+      "type": "router",
+      "status": "complete",
+      "tests": "src/cli-adapters/composite-router.test.ts",
+      "dependencies": [
+        "budget-router",
+        "topsis-router",
+        "zero-router",
+        "preference-router",
+        "linucb-router"
+      ]
+    },
+    "budget-router": {
+      "path": "src/cli-adapters/budget-router.ts",
+      "type": "router",
+      "status": "complete",
+      "tests": "src/cli-adapters/budget-router.test.ts",
+      "research": "arXiv:2402.08200"
+    },
+    "topsis-router": {
+      "path": "src/cli-adapters/topsis-router.ts",
+      "type": "router",
+      "status": "complete",
+      "tests": "src/cli-adapters/topsis-router.test.ts",
+      "research": "arXiv:2509.07571"
+    },
+    "zero-router": {
+      "path": "src/cli-adapters/zero-router.ts",
+      "type": "router",
+      "status": "complete",
+      "tests": "src/cli-adapters/zero-router.test.ts",
+      "research": "arXiv:2403.02408"
+    },
+    "preference-router": {
+      "path": "src/cli-adapters/preference-router.ts",
+      "type": "router",
+      "status": "complete",
+      "tests": "src/cli-adapters/preference-router.test.ts",
+      "research": "arXiv:2406.18665"
+    },
+    "claude-adapter": {
+      "path": "src/cli-adapters/adapters/claude-adapter.ts",
+      "type": "adapter",
+      "status": "complete",
+      "tests": "src/cli-adapters/adapters/claude-adapter.test.ts"
+    },
+    "gemini-adapter": {
+      "path": "src/cli-adapters/adapters/gemini-adapter.ts",
+      "type": "adapter",
+      "status": "complete",
+      "tests": "src/cli-adapters/adapters/gemini-adapter.test.ts"
+    },
+    "codex-adapter": {
+      "path": "src/cli-adapters/adapters/codex-parser.ts",
+      "type": "adapter",
+      "status": "complete"
+    },
+    "ollama-adapter": {
+      "path": "src/cli-adapters/adapters/ollama-adapter.ts",
+      "type": "adapter",
+      "status": "complete",
+      "tests": "src/cli-adapters/adapters/ollama-adapter.test.ts"
+    },
+    "feedback-integration": {
+      "path": "src/learning/feedback-integration.ts",
+      "type": "integration",
+      "status": "complete",
+      "tests": "src/learning/feedback-integration.test.ts",
+      "dependencies": ["outcome-storage", "composite-router"]
+    },
+    "outcome-storage": {
+      "path": "src/learning/outcome-storage.ts",
+      "type": "storage",
+      "status": "complete",
+      "research": "Issue #560"
+    },
+    "context-manager": {
+      "path": "src/agents/context-manager.ts",
+      "type": "manager",
+      "status": "complete",
+      "tests": "src/agents/context-manager.test.ts"
+    },
+    "context-pruner": {
+      "path": "src/agents/context-pruner.ts",
+      "type": "pruner",
+      "status": "complete",
+      "tests": "src/agents/context-pruner.test.ts"
+    },
+    "swarm-observer": {
+      "path": "src/observability/swarm-observer.ts",
+      "type": "observer",
+      "status": "complete",
+      "tests": "src/observability/swarm-observer.test.ts"
+    },
+    "eventbus-bridge": {
+      "path": "src/mcp/eventbus-bridge.ts",
+      "type": "bridge",
+      "status": "complete",
+      "tests": "src/mcp/eventbus-bridge.test.ts"
+    },
+    "state-machine": {
+      "path": "src/agents/state-machine.ts",
+      "type": "state-machine",
+      "status": "complete",
+      "tests": "src/agents/state-machine.test.ts"
+    },
+    "sica-integration": {
+      "path": "src/agents/self-improving/",
+      "type": "module",
+      "status": "complete",
+      "research": "arXiv:2504.14809",
+      "dependencies": ["tech-lead"]
+    },
+    "collaboration-protocols": {
+      "path": "src/agents/collaboration/",
+      "type": "module",
+      "status": "complete",
+      "children": [
+        "aegean-protocol",
+        "task-type-classifier",
+        "constitutional-critic",
+        "mars-protocol"
+      ]
+    },
+    "aegean-protocol": {
+      "path": "src/agents/collaboration/aegean-protocol.ts",
+      "type": "protocol",
+      "status": "complete",
+      "tests": "src/agents/collaboration/aegean-protocol.test.ts",
+      "research": "arXiv:2512.20184"
+    },
+    "safety-framework": {
+      "path": "src/mcp/safety/",
+      "type": "module",
+      "status": "complete",
+      "children": ["stpa-analyzer", "hazard-catalog", "safety-constraints"]
+    },
+    "policy-firewall": {
+      "path": "src/mcp/middleware/policy.ts",
+      "type": "middleware",
+      "status": "complete",
+      "tests": "src/mcp/middleware/policy.test.ts"
+    }
+  },
+  "edges": {
+    "mcp-to-orchestration": [
+      { "from": "mcp-server", "to": "mcp-tools", "type": "registers" },
+      { "from": "orchestrate", "to": "tech-lead", "type": "invokes" },
+      { "from": "create-expert", "to": "expert-factory", "type": "invokes" },
+      { "from": "execute-expert", "to": "expert-registry", "type": "queries" },
+      { "from": "run-workflow", "to": "workflow-engine", "type": "invokes" },
+      { "from": "consensus-vote", "to": "consensus-engine", "type": "invokes" },
+      { "from": "delegate-to-model", "to": "composite-router", "type": "invokes" }
+    ],
+    "orchestration-to-routing": [
+      { "from": "tech-lead", "to": "composite-router", "type": "uses" },
+      { "from": "expert-system", "to": "composite-router", "type": "uses" }
+    ],
+    "routing-to-execution": [
+      { "from": "composite-router", "to": "claude-adapter", "type": "routes" },
+      { "from": "composite-router", "to": "gemini-adapter", "type": "routes" },
+      { "from": "composite-router", "to": "codex-adapter", "type": "routes" },
+      { "from": "composite-router", "to": "ollama-adapter", "type": "routes" }
+    ],
+    "execution-to-learning": [
+      { "from": "claude-adapter", "to": "feedback-integration", "type": "reports" },
+      { "from": "gemini-adapter", "to": "feedback-integration", "type": "reports" },
+      { "from": "feedback-integration", "to": "outcome-storage", "type": "persists" },
+      { "from": "feedback-integration", "to": "composite-router", "type": "updates" }
+    ],
+    "orchestration-to-memory": [
+      { "from": "tech-lead", "to": "context-manager", "type": "uses" },
+      { "from": "context-manager", "to": "context-pruner", "type": "uses" }
+    ],
+    "cross-cutting": [
+      { "from": "mcp-server", "to": "eventbus-bridge", "type": "uses" },
+      { "from": "eventbus-bridge", "to": "swarm-observer", "type": "publishes" },
+      { "from": "mcp-tools", "to": "policy-firewall", "type": "validates" },
+      { "from": "tech-lead", "to": "sica-integration", "type": "uses" }
+    ]
+  },
+  "coverage": {
+    "thresholds": {
+      "nodeReachability": 0.95,
+      "edgeExercised": 0.9,
+      "entryPointCoverage": 1.0
+    },
+    "current": {
+      "nodeReachability": 0.98,
+      "edgeExercised": 0.85,
+      "entryPointCoverage": 1.0
+    }
+  },
+  "technicalDebt": {
+    "deprecatedModules": ["deprecated-exports.ts"],
+    "skippedTests": ["patch-applicator.test.ts:159,163,167"],
+    "unsafeTypeCasts": 9,
+    "oversizedFiles": ["forest-engine.ts:969"]
+  }
+}
