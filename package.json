@@ -32,6 +32,7 @@
     "test:coverage": "turbo test:coverage",
     "lint": "turbo lint",
     "lint:fix": "turbo lint:fix",
+    "lint:arch": "npx tsx scripts/arch-lint.ts",
     "typecheck": "turbo typecheck",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
