@@ -327,6 +327,8 @@ export class CollaborationSession {
     }
 
     this.state = null;
+    // Issue #548: Clear event listeners to prevent memory leak on session reuse
+    this.eventListeners.length = 0;
     return ok(collaborationResult);
   }
 
@@ -336,6 +338,8 @@ export class CollaborationSession {
     this.state.error = reason;
     this.setStatus('failed');
     this.logger.warn('Session cancelled', { sessionId: this.state.config.sessionId, reason });
+    // Issue #548: Clear event listeners to prevent memory leak on session reuse
+    this.eventListeners.length = 0;
   }
 
   addEventListener(listener: (event: SessionEvent) => void): void {
