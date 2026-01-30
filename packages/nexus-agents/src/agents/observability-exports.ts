@@ -39,5 +39,5 @@ export {
   type ISwarmObserver,
   SwarmObserver,
   createSwarmObserver,
-} from './deprecated-exports.js';
+} from './observability/index.js';
 /* eslint-enable @typescript-eslint/no-deprecated */
