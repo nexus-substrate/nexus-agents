@@ -271,23 +271,12 @@ export function createMockWorkflowEngine(): IWorkflowEngine {
       });
     },
 
+    /**
+     * Returns empty list - mock engine has no templates.
+     * (Source: Issue #536 - Consistent behavior with execute/load failures)
+     */
     listTemplates() {
-      return Promise.resolve([
-        {
-          name: 'code-review',
-          version: '1.0.0',
-          path: '/templates/code-review.yaml',
-          description: 'Code review workflow',
-          category: 'development',
-        },
-        {
-          name: 'security-audit',
-          version: '1.0.0',
-          path: '/templates/security-audit.yaml',
-          description: 'Security audit workflow',
-          category: 'security',
-        },
-      ]);
+      return Promise.resolve([]);
     },
   };
 }
