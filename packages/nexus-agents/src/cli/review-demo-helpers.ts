@@ -15,6 +15,9 @@ import type {
 } from './review-demo-types.js';
 import { safeExecSandboxed } from './sandbox-exec.js';
 
+/** Timeout for GitHub API requests in milliseconds (10 seconds). */
+const GITHUB_API_TIMEOUT_MS = 10_000;
+
 /**
  * Checks setup status for the review command.
  */
@@ -53,12 +56,14 @@ async function validateToken(
   token: string
 ): Promise<{ valid: boolean; scopes: string[]; username?: string }> {
   try {
+    // Issue #546: Add timeout to prevent indefinite hangs
     const response = await fetch('https://api.github.com/user', {
       headers: {
         Authorization: `Bearer ${token}`,
         Accept: 'application/vnd.github+json',
         'X-GitHub-Api-Version': '2022-11-28',
       },
+      signal: AbortSignal.timeout(GITHUB_API_TIMEOUT_MS),
     });
 
     if (!response.ok) {

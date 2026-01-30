@@ -127,6 +127,24 @@ const LEVEL_PRIORITY: Record<LogLevel, number> = {
 };
 
 /**
+ * Valid log level values for NEXUS_LOG_LEVEL environment variable.
+ * Issue #545: Implement environment variable support as documented in CLAUDE.md.
+ */
+const VALID_LOG_LEVELS = new Set<string>(['debug', 'info', 'warn', 'error']);
+
+/**
+ * Gets the default log level from environment or returns 'info'.
+ * Reads from NEXUS_LOG_LEVEL environment variable.
+ */
+function getDefaultLogLevel(): LogLevel {
+  const envLevel = process.env.NEXUS_LOG_LEVEL?.toLowerCase();
+  if (envLevel !== undefined && VALID_LOG_LEVELS.has(envLevel)) {
+    return envLevel as LogLevel;
+  }
+  return 'info';
+}
+
+/**
  * Sanitizes a string by redacting known secret patterns.
  */
 export function sanitize(text: string): string {
@@ -294,7 +312,7 @@ function writeLog(entry: LogEntry): void {
  * (Source: Issue #485 - Wire logging.format and logging.destination)
  */
 export function createLogger(baseContext?: LogContext): ILogger {
-  let currentLevel: LogLevel = 'info';
+  let currentLevel: LogLevel = getDefaultLogLevel();
   const context = baseContext ?? {};
 
   function shouldLog(level: LogLevel): boolean {
