@@ -136,10 +136,8 @@ export function registerDelegateToModelTool(server: McpServer, deps: DelegateDep
     timeoutMs !== undefined ? { timeoutMs, logger } : { logger }
   );
 
-  // Type assertion needed: MCP SDK expects index signature, our ToolResult is structurally compatible
-  /* eslint-disable @typescript-eslint/no-deprecated, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- server.tool() is deprecated but still used
   server.tool('delegate_to_model', description, TOOL_SCHEMA, toSdkCallback(wrappedHandler));
-  /* eslint-enable @typescript-eslint/no-deprecated, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
   logger.info('Registered delegate_to_model tool with timeout protection');
 }
 

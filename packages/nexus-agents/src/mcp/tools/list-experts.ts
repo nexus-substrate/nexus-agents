@@ -218,9 +218,7 @@ export function registerListExpertsTool(server: McpServer, deps: ListExpertsDeps
     timeoutMs !== undefined ? { timeoutMs, logger } : { logger }
   );
 
-  // Type assertion needed: MCP SDK expects index signature
-  /* eslint-disable @typescript-eslint/no-deprecated, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- server.tool() is deprecated but still used
   server.tool('list_experts', description, toolSchema, toSdkCallback(wrappedHandler));
-  /* eslint-enable @typescript-eslint/no-deprecated, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
   logger.info('Registered list_experts tool with timeout protection');
 }

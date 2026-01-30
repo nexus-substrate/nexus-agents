@@ -274,9 +274,7 @@ export function registerExecuteExpertTool(server: McpServer, deps: ExecuteExpert
     logger,
   });
 
-  // Type assertion needed: MCP SDK expects index signature, our ToolResult is structurally compatible
-  /* eslint-disable @typescript-eslint/no-deprecated, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- server.tool() is deprecated but still used
   server.tool('execute_expert', description, toolSchema, toSdkCallback(wrappedHandler));
-  /* eslint-enable @typescript-eslint/no-deprecated, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
   logger.info('Registered execute_expert tool with timeout protection');
 }

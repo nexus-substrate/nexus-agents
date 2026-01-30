@@ -277,10 +277,8 @@ export function registerCreateExpertTool(server: McpServer, deps: CreateExpertDe
     timeoutMs !== undefined ? { timeoutMs, logger } : { logger }
   );
 
-  // Type assertion needed: MCP SDK expects index signature, our ToolResult is structurally compatible
-  /* eslint-disable @typescript-eslint/no-deprecated, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- server.tool() is deprecated but still used
   server.tool('create_expert', description, toolSchema, toSdkCallback(wrappedHandler));
-  /* eslint-enable @typescript-eslint/no-deprecated, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
   logger.info('Registered create_expert tool with timeout protection');
 }
 

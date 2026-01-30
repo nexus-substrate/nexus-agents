@@ -213,8 +213,6 @@ export function registerRunWorkflowTool(server: McpServer, deps: RunWorkflowDeps
     timeoutMs !== undefined ? { timeoutMs, logger } : { logger }
   );
 
-  // Type assertion needed: MCP SDK expects index signature
-  /* eslint-disable @typescript-eslint/no-deprecated, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
   server.registerTool(
     'run_workflow',
     {
@@ -224,7 +222,6 @@ export function registerRunWorkflowTool(server: McpServer, deps: RunWorkflowDeps
     },
     toSdkCallback(wrappedHandler)
   );
-  /* eslint-enable @typescript-eslint/no-deprecated, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
   logger.info('Registered run_workflow tool with timeout protection');
 }
 

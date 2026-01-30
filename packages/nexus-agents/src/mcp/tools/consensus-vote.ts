@@ -560,9 +560,7 @@ export function registerConsensusVoteTool(server: McpServer, deps: ConsensusVote
     logger,
   });
 
-  // Type assertion needed: MCP SDK expects index signature, our ToolResult is structurally compatible
-  /* eslint-disable @typescript-eslint/no-deprecated, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- server.tool() is deprecated but still used
   server.tool('consensus_vote', description, toolSchema, toSdkCallback(wrappedHandler));
-  /* eslint-enable @typescript-eslint/no-deprecated, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
   logger.info('Registered consensus_vote tool with timeout protection');
 }
