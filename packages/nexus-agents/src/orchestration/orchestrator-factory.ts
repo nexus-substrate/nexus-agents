@@ -28,6 +28,7 @@ import {
   createProductionWorkflowEngine,
   type WorkflowEngineFactoryConfig,
 } from '../workflows/workflow-engine-factory.js';
+import { TechLeadAdapter, PuppeteerAdapter } from './orchestrator-adapters.js';
 
 // ============================================================================
 // Workflow Orchestrator Adapter
@@ -281,18 +282,10 @@ export class OrchestratorFactory implements IOrchestratorFactory {
         return new WorkflowOrchestratorAdapter(this.workflowEngine, this.logger);
 
       case 'tech_lead':
-        // TODO: Implement TechLeadAdapter in Phase 2
-        throw new OrchestratorError(
-          'TechLeadAdapter not yet implemented. See ADR-0002 Phase 2.',
-          'NO_AGENTS_AVAILABLE'
-        );
+        return new TechLeadAdapter();
 
       case 'puppeteer':
-        // TODO: Implement PuppeteerAdapter in Phase 2
-        throw new OrchestratorError(
-          'PuppeteerAdapter not yet implemented. See ADR-0002 Phase 2.',
-          'NO_AGENTS_AVAILABLE'
-        );
+        return new PuppeteerAdapter();
 
       case 'custom':
         throw new OrchestratorError(
@@ -311,13 +304,9 @@ export class OrchestratorFactory implements IOrchestratorFactory {
   }
 
   listTypes(): OrchestratorType[] {
-    const types: OrchestratorType[] = ['workflow'];
-
-    // Only list types that are available
-    // tech_lead and puppeteer are not yet implemented
-    // but will be added when adapters are complete
-
-    return types;
+    // All three canonical orchestrator types are now available
+    // per ADR-0002 Phase 2 implementation
+    return ['workflow', 'tech_lead', 'puppeteer'];
   }
 }
 

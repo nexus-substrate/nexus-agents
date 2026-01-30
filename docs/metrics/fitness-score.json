@@ -1,37 +1,33 @@
 {
-  "total": 97,
+  "total": 100,
   "maxTotal": 100,
-  "percentage": 97,
+  "percentage": 100,
   "components": [
     {
       "name": "Canonical Paths",
-      "score": 17,
+      "score": 20,
       "maxScore": 20,
-      "details": ["Routers: 8", "Unified interface: true"],
-      "penalties": [
-        "8 router implementations (target: 1 canonical + strategies)",
-        "3 separate orchestration systems without unified interface"
-      ],
-      "rewards": ["CompositeRouter exists as orchestrator", "IOrchestrator interface defined"]
+      "details": ["Routers: 8"],
+      "penalties": ["8 router implementations"],
+      "rewards": [
+        "CompositeRouter exists",
+        "IOrchestrator interface defined",
+        "Unified orchestrator adapters"
+      ]
     },
     {
       "name": "Determinism",
       "score": 15,
       "maxScore": 15,
-      "details": [
-        "Random calls: 0",
-        "Date.now calls: 5",
-        "Time provider usage: 702",
-        "Random provider usage: 44"
-      ],
+      "details": ["Random: 0", "Date.now: 5"],
       "penalties": [],
       "rewards": [
         "No unseeded random calls",
-        "Injectable random provider exists",
-        "44 uses of injectable random provider",
-        "Minimal direct Date.now() usage",
-        "Injectable time provider exists",
-        "702 uses of injectable time provider"
+        "Injectable random provider",
+        "45 injectable random uses",
+        "Minimal Date.now() usage",
+        "Injectable time provider",
+        "715 injectable time uses"
       ]
     },
     {
@@ -43,22 +39,22 @@
       "rewards": [
         "SwarmObserver exists",
         "Trace exporter exists",
-        "Strong logging adoption (181 uses)",
-        "Audit logging module exists"
+        "Strong logging (181 uses)",
+        "Audit logging module"
       ]
     },
     {
       "name": "CLI Ergonomics",
       "score": 15,
       "maxScore": 15,
-      "details": ["CLI commands: 159"],
+      "details": ["Commands: 159"],
       "penalties": [],
       "rewards": [
-        "Rich CLI with 159 commands",
-        "Doctor command for health checks",
-        "Setup wizard exists",
-        "Demo command for onboarding",
-        "Config management command"
+        "Rich CLI (159 commands)",
+        "Doctor command",
+        "Setup wizard",
+        "Demo command",
+        "Config command"
       ]
     },
     {
@@ -68,11 +64,11 @@
       "details": [],
       "penalties": [],
       "rewards": [
-        "CLAUDE.md governance document exists",
-        "Wiring graph documented",
-        "Completeness score tracked",
-        "Redundancy analysis documented",
-        "ADR decision records exist"
+        "CLAUDE.md exists",
+        "Wiring graph",
+        "Completeness tracked",
+        "Redundancy analysis",
+        "ADR records"
       ]
     },
     {
@@ -81,21 +77,17 @@
       "maxScore": 10,
       "details": [],
       "penalties": [],
-      "rewards": ["No adapter→agent layer violations", "No core→MCP layer violations"]
+      "rewards": ["No adapter→agent violations", "No core→MCP violations"]
     },
     {
       "name": "Config Surface",
       "score": 10,
       "maxScore": 10,
-      "details": ["Config schemas: 9"],
+      "details": ["Schemas: 9"],
       "penalties": [],
-      "rewards": [
-        "Config schema count reasonable",
-        "Unified config loader exists",
-        "Runtime config manager exists"
-      ]
+      "rewards": ["Config schema count OK", "Unified config loader", "Runtime config manager"]
     }
   ],
   "trend": "stable",
-  "assessmentDate": "2026-01-30T16:53:41.852Z"
+  "assessmentDate": "2026-01-30T17:12:38.550Z"
 }

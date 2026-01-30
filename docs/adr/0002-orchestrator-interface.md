@@ -81,11 +81,13 @@ Existing implementations (TechLead, Puppeteer, WorkflowEngine) will be wrapped w
    - Export from `core/types/index.ts`
    - Update fitness-score.ts to detect interface
 
-2. **Phase 2: Adapters**
-   - Create `TechLeadAdapter implements IOrchestrator`
-   - Create `PuppeteerAdapter implements IOrchestrator`
-   - Create `WorkflowAdapter implements IOrchestrator`
-   - Add `OrchestratorFactory` for type-safe instantiation
+2. **Phase 2: Adapters** (Complete)
+   - Create `TechLeadAdapter implements IOrchestrator` ✓
+   - Create `PuppeteerAdapter implements IOrchestrator` ✓
+   - Create `WorkflowAdapter implements IOrchestrator` ✓
+   - Add `OrchestratorFactory` for type-safe instantiation ✓
+   - Location: `orchestration/orchestrator-adapters.ts`, `orchestration/orchestrator-factory.ts`
+   - Factory now returns all three types via `listTypes()`: workflow, tech_lead, puppeteer
 
 3. **Phase 3: Consumer Migration**
    - Update MCP tools to use `IOrchestrator`
