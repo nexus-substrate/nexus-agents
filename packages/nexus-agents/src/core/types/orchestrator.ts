@@ -69,7 +69,7 @@ export interface OrchestratorStep {
   /** Status */
   status: 'success' | 'failed' | 'skipped';
   /** Error if failed */
-  error?: string;
+  error: string | undefined;
 }
 
 /**
