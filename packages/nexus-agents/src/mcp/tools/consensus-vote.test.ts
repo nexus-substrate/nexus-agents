@@ -131,13 +131,14 @@ describe('ConsensusVoteInputSchema', () => {
       expect(result.success).toBe(false);
     });
 
-    it('should default to majority when threshold is not provided', () => {
+    it('should not require threshold (optional field)', () => {
       const input = { proposal: 'Test proposal' };
       const result = ConsensusVoteInputSchema.safeParse(input);
 
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.data.threshold).toBe('majority');
+        // threshold is optional, defaults to undefined (simple_majority strategy used)
+        expect(result.data.threshold).toBeUndefined();
       }
     });
   });
