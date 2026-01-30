@@ -102,6 +102,17 @@ export class OrchestrationError extends AgentError {
 }
 
 /**
+ * Error thrown when orchestration is unavailable (no model adapter configured).
+ * (Source: Issue #554 - Fix silent mock fallback)
+ */
+export class OrchestrationUnavailableError extends AgentError {
+  constructor(message: string, options?: { cause?: Error; context?: Record<string, unknown> }) {
+    super(message, options);
+    this.name = 'OrchestrationUnavailableError';
+  }
+}
+
+/**
  * Generates a unique task ID for tracking execution.
  */
 function generateTaskId(): string {

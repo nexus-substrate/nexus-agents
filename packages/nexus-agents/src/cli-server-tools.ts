@@ -27,6 +27,18 @@ import { createRealWorkflowEngine } from './workflows/index.js';
 import type { IModelAdapter, WorkflowDefinition } from './core/index.js';
 import { createTechLead } from './agents/index.js';
 import type { ILogger } from './core/index.js';
+import { NexusError, ErrorCode } from './core/index.js';
+
+/**
+ * Error thrown when TechLead orchestration is unavailable.
+ * (Source: Issue #554 - Fix silent mock TechLead fallback)
+ */
+export class TechLeadUnavailableError extends NexusError {
+  constructor(message: string) {
+    super(message, { code: ErrorCode.MODEL_UNAVAILABLE });
+    this.name = 'TechLeadUnavailableError';
+  }
+}
 import {
   createToolRateLimiterFactory,
   setGlobalToolRateLimiterFactory,
@@ -41,6 +53,12 @@ export interface RegisterMcpToolsOptions {
   builtInTemplates: Map<string, WorkflowDefinition>;
   /** Optional model adapter for real workflow execution with expert agents */
   modelAdapter?: IModelAdapter;
+  /**
+   * Explicitly allow mock TechLead when no model adapter is available.
+   * If false or undefined, an error is thrown when no adapter is detected.
+   * (Source: Issue #554 - Fix silent mock TechLead fallback)
+   */
+  useMockTechLead?: boolean;
   /** Policy firewall for authorization (Issue #477) */
   policyFirewall?: import('./mcp/middleware/index.js').IPolicyFirewall;
   /** Default execution mode for policy evaluation (Issue #477) */
@@ -71,17 +89,32 @@ export const REGISTERED_TOOLS = [
 
 /**
  * Creates the TechLead instance for orchestration.
- * Uses real TechLead with model adapter when available, otherwise mock.
+ * Uses real TechLead with model adapter when available.
  * (Source: Issue #442 - Wire up real TechLead)
+ * (Source: Issue #554 - Require explicit opt-in for mock TechLead)
+ *
+ * @throws {TechLeadUnavailableError} When no adapter and mock not explicitly requested
  */
 function createTechLeadForOrchestration(
   modelAdapter: IModelAdapter | undefined,
-  logger: ILogger
+  logger: ILogger,
+  useMockTechLead?: boolean
 ): import('./mcp/tools/orchestrate.js').ITechLead {
   if (modelAdapter !== undefined) {
     return createTechLead({ adapter: modelAdapter, logger });
   }
-  return createMockTechLead();
+
+  // Issue #554: Do NOT silently enable mock TechLead - require explicit opt-in
+  if (useMockTechLead === true) {
+    logger.warn('Using mock TechLead as explicitly configured (no real adapter available)');
+    return createMockTechLead();
+  }
+
+  throw new TechLeadUnavailableError(
+    'No model adapter available and mock TechLead not explicitly enabled. ' +
+      'Set useMockTechLead: true in config to use mock mode, or configure an API key ' +
+      '(ANTHROPIC_API_KEY, OPENAI_API_KEY, or GOOGLE_AI_API_KEY).'
+  );
 }
 
 /** Tool registration context passed to helpers. */
@@ -91,6 +124,8 @@ interface ToolRegistrationContext {
   rateLimiterFactory: ReturnType<typeof createToolRateLimiterFactory>;
   modelAdapter?: IModelAdapter;
   builtInTemplates: Map<string, WorkflowDefinition>;
+  /** Allow mock TechLead when no adapter (Issue #554) */
+  useMockTechLead?: boolean;
   /** Policy firewall for authorization (Issue #477) */
   policyFirewall?: import('./mcp/middleware/index.js').IPolicyFirewall;
   /** Default execution mode (Issue #477) */
@@ -167,7 +202,12 @@ function registerCoreTools(ctx: ToolRegistrationContext): void {
     ...(ctx.feedbackIntegration !== undefined && { feedbackIntegration: ctx.feedbackIntegration }),
   });
 
-  const techLead = createTechLeadForOrchestration(ctx.modelAdapter, ctx.logger);
+  // Issue #554: Pass useMockTechLead to require explicit opt-in for mock
+  const techLead = createTechLeadForOrchestration(
+    ctx.modelAdapter,
+    ctx.logger,
+    ctx.useMockTechLead
+  );
   registerOrchestrateTool(ctx.server, {
     techLead,
     logger: ctx.logger,
@@ -186,6 +226,7 @@ function createToolContext(
     server,
     builtInTemplates,
     modelAdapter,
+    useMockTechLead,
     policyFirewall,
     executionMode,
     allowedPaths,
@@ -199,6 +240,7 @@ function createToolContext(
     rateLimiterFactory,
     builtInTemplates,
     ...(modelAdapter !== undefined && { modelAdapter }),
+    ...(useMockTechLead !== undefined && { useMockTechLead }),
     ...(policyFirewall !== undefined && { policyFirewall }),
     ...(executionMode !== undefined && { executionMode }),
     ...(allowedPaths !== undefined && { allowedPaths }),

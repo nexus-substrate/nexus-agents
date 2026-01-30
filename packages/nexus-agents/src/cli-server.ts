@@ -334,7 +334,8 @@ async function connectToStdioTransport(
 
 /**
  * Attempts to auto-detect a model adapter for real workflow execution.
- * Returns undefined if no adapter is available (falls back to mock).
+ * Returns undefined if no adapter is available.
+ * (Source: Issue #554 - Updated to not suggest mock fallback)
  */
 async function tryDetectModelAdapter(logger: ILogger): Promise<IModelAdapter | undefined> {
   try {
@@ -344,7 +345,14 @@ async function tryDetectModelAdapter(logger: ILogger): Promise<IModelAdapter | u
     return result.adapter;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    logger.warn('No model adapter available, using mock execution', { error: message });
+    // Issue #554: Don't suggest mock - real adapter is required unless explicitly configured
+    logger.warn(
+      'No model adapter available - orchestration and workflows will fail unless configured',
+      {
+        error: message,
+        hint: 'Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or GOOGLE_AI_API_KEY',
+      }
+    );
     return undefined;
   }
 }

@@ -350,6 +350,7 @@ describe('ConsensusVoteResponse structure', () => {
     const response: ConsensusVoteResponse = {
       proposal: 'Test proposal',
       threshold: 'majority',
+      strategy: 'simple_majority',
       decision: 'approved',
       approvalPercentage: 80,
       voteCounts: {
@@ -382,6 +383,7 @@ describe('ConsensusVoteResponse structure', () => {
     const response: ConsensusVoteResponse = {
       proposal: 'Test proposal',
       threshold: 'unanimous',
+      strategy: 'unanimous',
       decision: 'rejected',
       approvalPercentage: 60,
       voteCounts: {
