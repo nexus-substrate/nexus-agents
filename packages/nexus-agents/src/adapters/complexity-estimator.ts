@@ -8,8 +8,11 @@
  * This module is superseded by the unified SharedTaskAnalyzer (ADR-0004).
  * Migration: import { createSharedTaskAnalyzer } from 'nexus-agents/core'
  *
+ * NOTE: This module now delegates to SharedTaskAnalyzer internally (Issue #574).
+ * Exports are maintained for backward compatibility but will be removed in v3.0.
+ *
  * @module adapters/complexity-estimator
- * (Source: Issue #128, arXiv:2406.18510)
+ * (Source: Issue #128, Issue #574, arXiv:2406.18510)
  */
 
 import type { Task, ILogger, TaskType, ClassificationResult } from '../core/index.js';
