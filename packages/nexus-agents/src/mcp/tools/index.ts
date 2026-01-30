@@ -43,6 +43,7 @@ export {
   OrchestrateInputSchema,
   OrchestrateOutputSchema,
   OrchestrationError,
+  OrchestrationUnavailableError,
   type OrchestrateInput,
   type OrchestrateOutput,
   type OrchestrateDeps,

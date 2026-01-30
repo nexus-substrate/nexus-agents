@@ -71,4 +71,11 @@ export {
   ExplorationEventTypeSchema,
   ExplorationEventSchema,
   ForestResultSchema,
+  // Engine (execution layer - Issue #513)
+  ForestEngine,
+  createForestEngine,
+  executeForest,
+  ForestExecutionError,
+  ForestAdapterUnavailableError,
+  type ForestEngineOptions,
 } from './reasoning/index.js';

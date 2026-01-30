@@ -16,3 +16,6 @@ export * from './forest-node-types.js';
 export * from './forest-tree-types.js';
 export * from './forest-config-types.js';
 export * from './forest-result-types.js';
+
+// Forest engine - execution layer
+export * from './forest-engine.js';
