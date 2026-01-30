@@ -18,6 +18,7 @@ import type {
   SycophancyReport,
   SycophancyIndicator,
 } from './types.js';
+import { createQuorumValidator, type QuorumValidationConfig } from './quorum-validator.js';
 
 /**
  * Generate a unique session ID.
@@ -93,7 +94,8 @@ export function calculateAgreementScore(votes: Vote[]): number {
 }
 
 /**
- * Determine outcome from final votes.
+ * Determine outcome from final votes using unified QuorumValidator.
+ * Per ADR-0003, this delegates to the consolidated quorum logic.
  */
 export function determineOutcome(
   votes: Vote[],
@@ -101,14 +103,36 @@ export function determineOutcome(
 ): VotingProtocolResult['outcome'] {
   if (votes.length === 0) return 'no_consensus';
 
+  // Convert array to Map for QuorumValidator
+  const voteMap = new Map<string, Vote>();
+  votes.forEach((vote, index) => {
+    voteMap.set(`voter_${String(index)}`, vote);
+  });
+
+  // Create quorum config from voting protocol config
+  const quorumConfig: QuorumValidationConfig = {
+    algorithm: 'simple_majority',
+    threshold: config.agreementThreshold,
+    minVoters: 2, // Minimum for valid consensus
+  };
+
+  // Use unified QuorumValidator
+  const validator = createQuorumValidator();
+  const result = validator.validateQuorum({
+    votes: voteMap,
+    config: quorumConfig,
+  });
+
+  // Map QuorumValidationResult to VotingProtocolResult outcome
+  if (result.status === 'reached') {
+    return result.decision === 'approve' ? 'approved' : 'rejected';
+  }
+
+  // Check for mixed votes (needs revision)
   const approvals = votes.filter((v) => v.decision === 'approve').length;
   const rejections = votes.filter((v) => v.decision === 'reject').length;
-  const approvalRatio = approvals / votes.length;
-  const rejectionRatio = rejections / votes.length;
-
-  if (approvalRatio >= config.agreementThreshold) return 'approved';
-  if (rejectionRatio >= config.agreementThreshold) return 'rejected';
   if (approvals > 0 && rejections > 0) return 'needs_revision';
+
   return 'no_consensus';
 }
 
