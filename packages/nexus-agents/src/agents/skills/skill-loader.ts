@@ -11,7 +11,7 @@
  */
 
 import type { ILogger } from '../../core/index.js';
-import { createLogger } from '../../core/index.js';
+import { createLogger, getTimeProvider } from '../../core/index.js';
 import type { Result } from '../../core/result.js';
 import { ok, err } from '../../core/result.js';
 import type { AgentRole } from '../../core/types/agent.js';
@@ -196,7 +196,7 @@ export class SkillLoader implements ISkillLoader {
       skills,
       executionOrder,
       missingRequired,
-      loadedAt: new Date(),
+      loadedAt: new Date(getTimeProvider().now()),
     };
 
     this.logger.info('Skills loaded for agent', {
@@ -262,7 +262,7 @@ export class SkillLoader implements ISkillLoader {
       skills: limitedSkills,
       executionOrder,
       missingRequired: baseSet.missingRequired,
-      loadedAt: new Date(),
+      loadedAt: new Date(getTimeProvider().now()),
     };
 
     this.logger.info('Skills loaded for task', {
@@ -353,7 +353,7 @@ export class SkillLoader implements ISkillLoader {
         skills: [],
         executionOrder: [],
         missingRequired: [],
-        loadedAt: new Date(),
+        loadedAt: new Date(getTimeProvider().now()),
       });
     }
 

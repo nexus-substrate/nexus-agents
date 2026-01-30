@@ -9,7 +9,7 @@
 
 import { randomUUID } from 'crypto';
 import type { ILogger } from '../../core/index.js';
-import { createLogger } from '../../core/index.js';
+import { createLogger, getTimeProvider } from '../../core/index.js';
 import type {
   CoverageMetrics,
   CoverageGap,
@@ -62,7 +62,7 @@ export class SicaTestGenerator implements ITestGenerator {
 
   /** Generates tests based on coverage gaps. */
   async generateTests(options: TestGenerationOptions = {}): Promise<TestGenerationResult> {
-    const start = Date.now();
+    const start = getTimeProvider().now();
     const opts = this.resolveOptions(options);
 
     this.logger.info('Starting test generation', {
@@ -75,7 +75,12 @@ export class SicaTestGenerator implements ITestGenerator {
 
     if (gaps.length === 0) {
       this.logger.info('No coverage gaps found');
-      return createSuccessResult([], coverageBefore, coverageBefore, Date.now() - start);
+      return createSuccessResult(
+        [],
+        coverageBefore,
+        coverageBefore,
+        getTimeProvider().now() - start
+      );
     }
 
     const { tests, errors } = await this.processGaps(gaps, options, opts);
@@ -88,7 +93,7 @@ export class SicaTestGenerator implements ITestGenerator {
       framework: opts.framework,
     });
 
-    const durationMs = Date.now() - start;
+    const durationMs = getTimeProvider().now() - start;
     this.logger.info('Test generation complete', {
       testCount: tests.length,
       coverageGain,
@@ -180,7 +185,7 @@ export class SicaTestGenerator implements ITestGenerator {
       target: path,
       scenarios,
       framework,
-      generatedAt: new Date(),
+      generatedAt: new Date(getTimeProvider().now()),
     };
   }
 
@@ -189,9 +194,9 @@ export class SicaTestGenerator implements ITestGenerator {
     const results: TestValidationResult[] = [];
 
     for (const test of tests) {
-      const start = Date.now();
+      const start = getTimeProvider().now();
       const result = this.validateSingleTest(test);
-      results.push({ ...result, durationMs: Date.now() - start });
+      results.push({ ...result, durationMs: getTimeProvider().now() - start });
     }
 
     this.emit('tests_validated', undefined, {
@@ -308,7 +313,7 @@ export class SicaTestGenerator implements ITestGenerator {
       passRate,
       coverage: result.coverageAfter,
       generatedTests: tests,
-      lastUpdatedAt: new Date(),
+      lastUpdatedAt: new Date(getTimeProvider().now()),
     });
 
     if (result.coverageGain > 0) {
@@ -336,8 +341,8 @@ export class SicaTestGenerator implements ITestGenerator {
   ): void {
     const event: SicaTestEvent =
       versionId !== undefined
-        ? { type, versionId, timestamp: new Date(), data }
-        : { type, timestamp: new Date(), data };
+        ? { type, versionId, timestamp: new Date(getTimeProvider().now()), data }
+        : { type, timestamp: new Date(getTimeProvider().now()), data };
     for (const listener of this.eventListeners) {
       listener(event);
     }

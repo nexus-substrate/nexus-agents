@@ -7,6 +7,7 @@
  * (Source: Issue #360 - CLI Config Management)
  */
 
+import { getTimeProvider } from '../core/index.js';
 import type {
   ConfigListEntry,
   ExportedConfigData,
@@ -32,7 +33,7 @@ export function serializeConfig(
 ): string {
   const data: ExportedConfigData = {
     version: VERSION,
-    exportedAt: new Date().toISOString(),
+    exportedAt: new Date(getTimeProvider().now()).toISOString(),
     entries,
   };
 

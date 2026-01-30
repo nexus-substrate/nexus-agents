@@ -6,7 +6,7 @@
  * @module workflows/self-development/phases/implement
  */
 
-import { createLogger } from '../../../core/index.js';
+import { createLogger, getTimeProvider } from '../../../core/index.js';
 import type { SelfDevWorkflowDependencies } from '../interfaces.js';
 import type { SelfDevWorkflowState, RefineOutput, ImplementOutput } from '../types.js';
 import { checkFailFast } from './shared.js';
@@ -134,7 +134,7 @@ function buildSuccessOutput(
     selfDebugIterations: 0,
     success: true,
     summary: `Implemented ${String(totalFiles)} files`,
-    durationMs: Date.now() - startTime,
+    durationMs: getTimeProvider().now() - startTime,
   };
 }
 
@@ -159,7 +159,7 @@ function buildFallbackOutput(
     selfDebugIterations: 0,
     success: false,
     summary: `Implementation failed: ${errorMessage}. Placeholder file list from plan.`,
-    durationMs: Date.now() - startTime,
+    durationMs: getTimeProvider().now() - startTime,
   };
 }
 
@@ -175,7 +175,7 @@ export async function executeImplement(
   state: SelfDevWorkflowState,
   refine: RefineOutput
 ): Promise<ImplementOutput> {
-  const startTime = Date.now();
+  const startTime = getTimeProvider().now();
   const filesFromPlan = refine.refinedPlan.files;
   const phaseConfig = state.config.phases?.implement;
   const allowPlaceholderFallback = phaseConfig?.allowPlaceholderFallback === true;

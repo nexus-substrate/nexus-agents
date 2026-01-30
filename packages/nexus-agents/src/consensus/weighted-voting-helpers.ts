@@ -8,6 +8,7 @@
  * (Source: Issue #103, arXiv:2511.10400 - CP-WBFT)
  */
 
+import { getTimeProvider } from '../core/index.js';
 import type { WeightedAgentRecord, WeightedConsensusResult, Vote } from './types.js';
 import type { IEventBus } from '../agents/collaboration/event-bus-types.js';
 
@@ -147,7 +148,7 @@ export function groupVotesBySignature(
  * Create a new mutable agent record with initial values.
  */
 export function createAgentRecord(agentId: string, initialWeight: number): MutableAgentRecord {
-  const now = new Date();
+  const now = new Date(getTimeProvider().now());
   return {
     agentId,
     totalTasks: 0,

@@ -8,7 +8,7 @@
  */
 
 import type { Result, ILogger, ContextBudget } from '../core/index.js';
-import { ok, err } from '../core/index.js';
+import { ok, err, getTimeProvider } from '../core/index.js';
 import { ContextManager } from '../agents/context-manager.js';
 import type { WorkflowStep } from './workflow-types.js';
 import {
@@ -106,7 +106,7 @@ export function applyBudgetEnforcement(
 
   // Log the budget enforcement event
   const event: BudgetEnforcementEvent = {
-    timestamp: Date.now(),
+    timestamp: getTimeProvider().now(),
     stepId: step.id,
     budget,
     source,
@@ -161,7 +161,7 @@ export function enforceBudgetForStep(
 
   // Log the event regardless of outcome
   const event: BudgetEnforcementEvent = {
-    timestamp: Date.now(),
+    timestamp: getTimeProvider().now(),
     stepId: step.id,
     budget,
     source,
@@ -254,7 +254,7 @@ function createSkippedResult(): BudgetEnforcementResult {
       maxTokens: 0,
       usagePercent: 0,
       availableTokens: 0,
-      timestamp: Date.now(),
+      timestamp: getTimeProvider().now(),
     },
     circuitState: 'closed',
   };

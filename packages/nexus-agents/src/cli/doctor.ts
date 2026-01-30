@@ -10,6 +10,7 @@
  */
 
 import { existsSync } from 'node:fs';
+import { getTimeProvider } from '../core/index.js';
 import { createAllAdapters } from '../cli-adapters/factory.js';
 import type { CliName, HealthStatus, CapacityStatus } from '../cli-adapters/types.js';
 import { createServer } from '../mcp/server.js';
@@ -272,7 +273,7 @@ export async function runDoctor(): Promise<DoctorResult> {
     mcpServerReady,
     mcpClientReady,
     allHealthy,
-    timestamp: new Date(),
+    timestamp: new Date(getTimeProvider().now()),
   };
 }
 

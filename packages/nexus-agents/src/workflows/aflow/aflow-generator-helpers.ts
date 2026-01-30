@@ -9,6 +9,7 @@
  */
 
 import type { WorkflowDefinition } from '../../core/index.js';
+import { getTimeProvider } from '../../core/index.js';
 import type { TaskSpecification, WorkflowAction } from './aflow-types.js';
 
 /**
@@ -32,7 +33,7 @@ export function actionsEqual(a: WorkflowAction, b: WorkflowAction): boolean {
  */
 export function createInitialWorkflow(task: TaskSpecification): WorkflowDefinition {
   return {
-    name: `generated-${String(Date.now())}`,
+    name: `generated-${String(getTimeProvider().now())}`,
     version: '1.0.0',
     description: `Workflow for: ${task.description}`,
     inputs: task.expectedInputs.map((input) => ({

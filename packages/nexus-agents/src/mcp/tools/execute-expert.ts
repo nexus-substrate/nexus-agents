@@ -11,7 +11,7 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger, Task } from '../../core/index.js';
-import { createLogger } from '../../core/index.js';
+import { createLogger, getTimeProvider, getRandomProvider } from '../../core/index.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
 import { wrapToolWithTimeout } from '../middleware/tool-wrapper.js';
@@ -70,7 +70,7 @@ export interface ExecuteExpertResponse {
  */
 function buildTask(input: ExecuteExpertInput): Task {
   return {
-    id: `exec-${String(Date.now())}-${Math.random().toString(36).slice(2, 9)}`,
+    id: `exec-${String(getTimeProvider().now())}-${getRandomProvider().random().toString(36).slice(2, 9)}`,
     description: input.task,
     context: {
       metadata: input.context ?? {},
@@ -160,9 +160,9 @@ async function handleExecuteExpert(
   const task = buildTask(args);
   deps.logger?.info('Executing expert task', { expertId, role: expert.role, taskId: task.id });
 
-  const startTime = Date.now();
+  const startTime = getTimeProvider().now();
   const result = await expert.execute(task);
-  const durationMs = Date.now() - startTime;
+  const durationMs = getTimeProvider().now() - startTime;
 
   if (!result.ok) {
     deps.logger?.warn('Expert execution failed', { expertId, error: result.error.message });

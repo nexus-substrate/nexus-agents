@@ -5,6 +5,7 @@
  */
 
 import type { WorkflowDefinition } from '../core/index.js';
+import { getTimeProvider } from '../core/index.js';
 import type { ITemplateRegistry, TemplateMetadata, TemplateCategory } from './template-types.js';
 import { loadTemplatesFromDirectory, getBuiltInTemplatesWithMetadata } from './template-loader.js';
 
@@ -109,7 +110,7 @@ class TemplateRegistry implements ITemplateRegistry {
       category: partialMetadata?.category ?? 'custom',
       keywords: partialMetadata?.keywords ?? extractKeywordsFromWorkflow(workflow),
       builtIn: false,
-      updatedAt: new Date().toISOString(),
+      updatedAt: new Date(getTimeProvider().now()).toISOString(),
     };
     if (workflow.description !== undefined) {
       metadata.description = workflow.description;

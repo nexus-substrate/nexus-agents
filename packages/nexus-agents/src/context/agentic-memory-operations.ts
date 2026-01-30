@@ -9,6 +9,7 @@
  * (Source: Issue #122, arXiv:2502.12110)
  */
 
+import { getTimeProvider } from '../core/index.js';
 import type { ISQLiteDatabase, MemoryRow, MemoryMetadata } from './memory-backend-types.js';
 import type {
   MemoryAttributes,
@@ -156,7 +157,7 @@ export function prepareRefreshedMetadata(
 ): Record<string, unknown> {
   return {
     ...currentMeta,
-    amem: { ...attributes, attributesUpdatedAt: Date.now() },
+    amem: { ...attributes, attributesUpdatedAt: getTimeProvider().now() },
   };
 }
 

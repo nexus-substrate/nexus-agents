@@ -16,6 +16,7 @@
 import { createHash } from 'crypto';
 import type { Result } from '../../core/result.js';
 import { ok, err } from '../../core/result.js';
+import { getTimeProvider } from '../../core/index.js';
 import type { AgentRole } from '../../core/types/agent.js';
 
 // Re-export types from skill-security-types.ts
@@ -128,7 +129,7 @@ export function createAttestation(
   return {
     skillId,
     executorId,
-    timestamp: new Date(),
+    timestamp: new Date(getTimeProvider().now()),
     inputHash: computeInputHash(input),
     authorized,
     authorizationMethod: method,

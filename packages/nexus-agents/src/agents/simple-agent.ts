@@ -5,7 +5,7 @@
  */
 
 import type { Result, Task, TaskResult, CompletionRequest, Message } from '../core/index.js';
-import { ok, err, AgentError } from '../core/index.js';
+import { ok, err, AgentError, getTimeProvider } from '../core/index.js';
 import { BaseAgent } from './base-agent.js';
 
 /**
@@ -19,7 +19,7 @@ export class SimpleAgent extends BaseAgent {
    * Execute a task by sending it to the model.
    */
   protected async executeTask(task: Task): Promise<Result<TaskResult, AgentError>> {
-    const startTime = Date.now();
+    const startTime = getTimeProvider().now();
     const messages = this.buildPrompt(task);
 
     // Build request, only including defined optional properties
@@ -37,7 +37,7 @@ export class SimpleAgent extends BaseAgent {
       return err(result.error);
     }
 
-    const durationMs = Date.now() - startTime;
+    const durationMs = getTimeProvider().now() - startTime;
 
     // Extract text content from response
     const textContent = result.value.content

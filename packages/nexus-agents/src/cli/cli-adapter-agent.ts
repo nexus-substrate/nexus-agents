@@ -19,7 +19,12 @@ import type {
   AgentCapability,
   AgentContext,
 } from '../core/types/agent.js';
-import { ok as agentOk, err as agentErr, AgentCapability as Cap } from '../core/index.js';
+import {
+  ok as agentOk,
+  err as agentErr,
+  AgentCapability as Cap,
+  getTimeProvider,
+} from '../core/index.js';
 import { AgentError } from '../core/errors.js';
 import type { Result } from '../core/result.js';
 import type { ICliAdapter, CliName, CliTask } from '../cli-adapters/index.js';
@@ -47,7 +52,7 @@ export class CliAdapterAgent implements IAgent {
   }
 
   async execute(task: AgentTask): Promise<Result<TaskResult, AgentError>> {
-    const startTime = Date.now();
+    const startTime = getTimeProvider().now();
     const cliTask: CliTask = {
       content: task.description,
       systemPrompt: 'You are a helpful assistant.',
@@ -62,7 +67,7 @@ export class CliAdapterAgent implements IAgent {
       taskId: task.id,
       output: result.value.text,
       metadata: {
-        durationMs: Date.now() - startTime,
+        durationMs: getTimeProvider().now() - startTime,
         tokensUsed: result.value.usage?.totalTokens ?? 0,
         toolsUsed: [],
         model: this.cliName,

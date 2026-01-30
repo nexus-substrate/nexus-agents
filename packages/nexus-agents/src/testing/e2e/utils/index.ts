@@ -8,6 +8,7 @@
  */
 
 import type { Result } from '../../../core/index.js';
+import { getTimeProvider, getRandomProvider } from '../../../core/index.js';
 
 /**
  * Assert that a Result is Ok and return the value.
@@ -125,9 +126,9 @@ export async function waitFor(
   options: { timeoutMs?: number; intervalMs?: number } = {}
 ): Promise<void> {
   const { timeoutMs = 5000, intervalMs = 100 } = options;
-  const start = Date.now();
+  const start = getTimeProvider().now();
 
-  while (Date.now() - start < timeoutMs) {
+  while (getTimeProvider().now() - start < timeoutMs) {
     if (await condition()) {
       return;
     }
@@ -192,7 +193,7 @@ export function captureConsole(): {
  * Generate a unique test ID for isolation.
  */
 export function generateTestId(prefix = 'test'): string {
-  return `${prefix}-${String(Date.now())}-${Math.random().toString(36).slice(2, 8)}`;
+  return `${prefix}-${String(getTimeProvider().now())}-${getRandomProvider().random().toString(36).slice(2, 8)}`;
 }
 
 /**

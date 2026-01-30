@@ -8,6 +8,7 @@
  * (Source: Issue #257 - SWE-Bench Evaluation)
  */
 
+import { getTimeProvider } from '../core/index.js';
 import type { SWEBenchVariant } from './types.js';
 
 /**
@@ -56,7 +57,7 @@ export const DEFAULT_EVALUATION_CONFIG: EvaluationHarnessConfig = {
   datasetName: 'lite',
   predictionsPath: './predictions.jsonl',
   maxWorkers: 8,
-  runId: `eval-${String(Date.now())}`,
+  runId: `eval-${String(getTimeProvider().now())}`,
   cacheLevel: 'env',
   mode: 'docker',
   timeoutSeconds: 1800, // 30 minutes per instance

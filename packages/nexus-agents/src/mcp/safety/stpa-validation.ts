@@ -4,6 +4,7 @@
  * Functions for validating tools against safety constraints.
  */
 
+import { getTimeProvider } from '../../core/index.js';
 import type {
   ToolDefinition,
   SafetyConstraint,
@@ -69,7 +70,7 @@ export function validateToolAgainstConstraints(
     violations,
     passed,
     warnings,
-    validatedAt: new Date(),
+    validatedAt: new Date(getTimeProvider().now()),
   };
 }
 

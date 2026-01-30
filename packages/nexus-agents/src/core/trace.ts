@@ -11,6 +11,7 @@
 
 import type { ILogger, LogContext } from './logger.js';
 import { createLogger } from './logger.js';
+import { getTimeProvider } from './time-provider.js';
 import type {
   TraceContext,
   LLMMetrics,
@@ -137,7 +138,7 @@ export class Tracer {
     const span: TraceSpan = {
       context,
       name,
-      startTime: Date.now(),
+      startTime: getTimeProvider().now(),
       status: 'running',
       attributes,
     };
@@ -205,7 +206,7 @@ export class Tracer {
       return;
     }
 
-    span.endTime = Date.now();
+    span.endTime = getTimeProvider().now();
     span.status = status;
     if (errorMessage !== undefined) {
       span.errorMessage = errorMessage;

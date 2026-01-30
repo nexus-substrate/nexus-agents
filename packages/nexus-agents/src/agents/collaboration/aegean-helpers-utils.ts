@@ -9,6 +9,7 @@
 import type { AgentVote, Proposal } from './aegean-types.js';
 import { calculateQuorumSize } from './aegean-types.js';
 import type { Task } from '../../core/index.js';
+import { getTimeProvider } from '../../core/index.js';
 
 // =============================================================================
 // Vote Parsing
@@ -51,7 +52,7 @@ export function createTimeoutVote(agentId: string, proposalId: string): AgentVot
     status: 'timeout',
     reasoning: 'Agent did not respond in time',
     confidence: 0,
-    timestamp: Date.now(),
+    timestamp: getTimeProvider().now(),
   };
 }
 
@@ -63,7 +64,7 @@ export function createLeaderVote(leaderId: string, proposalId: string): AgentVot
     status: 'accept',
     reasoning: 'Leader accepts own proposal',
     confidence: 1.0,
-    timestamp: Date.now(),
+    timestamp: getTimeProvider().now(),
   };
 }
 
@@ -82,7 +83,7 @@ export function createVoteFromOutput(
       status,
       reasoning: extractReasoning(output),
       confidence,
-      timestamp: Date.now(),
+      timestamp: getTimeProvider().now(),
     },
     tokensUsed,
   };
@@ -104,11 +105,11 @@ export function createProposalTask(task: Task, round: number): Task {
 /** Creates a proposal from leader output. */
 export function createProposal(round: number, leaderId: string, output: unknown): Proposal {
   return {
-    proposalId: `proposal-${String(round)}-${String(Date.now())}`,
+    proposalId: `proposal-${String(round)}-${String(getTimeProvider().now())}`,
     round,
     leaderId,
     value: output,
-    timestamp: Date.now(),
+    timestamp: getTimeProvider().now(),
   };
 }
 

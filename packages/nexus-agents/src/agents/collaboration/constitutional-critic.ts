@@ -10,7 +10,7 @@
  */
 
 import type { ILogger } from '../../core/index.js';
-import { createLogger } from '../../core/index.js';
+import { createLogger, getTimeProvider } from '../../core/index.js';
 import type {
   Constitution,
   Principle,
@@ -104,7 +104,7 @@ export class ConstitutionalCritic {
       overallScore: score,
       passesConstitution,
       summary,
-      timestamp: new Date(),
+      timestamp: new Date(getTimeProvider().now()),
     };
 
     this.logCritique(result, constitution.name);
@@ -143,7 +143,7 @@ export class ConstitutionalCritic {
     constitution: Constitution,
     options: RefinementOptions = {}
   ): RefinementResult {
-    const startTime = Date.now();
+    const startTime = getTimeProvider().now();
     const maxIterations = options.maxIterations ?? this.config.maxIterations;
     const targetScore = options.targetScore ?? this.config.passingScore;
 
@@ -156,7 +156,7 @@ export class ConstitutionalCritic {
 
     const finalCritique =
       iterations[iterations.length - 1]?.critique ?? this.critique(currentOutput, constitution);
-    const durationMs = Date.now() - startTime;
+    const durationMs = getTimeProvider().now() - startTime;
 
     const result: RefinementResult = {
       originalOutput: output,

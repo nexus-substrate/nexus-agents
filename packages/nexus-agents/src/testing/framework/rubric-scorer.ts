@@ -6,6 +6,7 @@
  * (Source: cli-project_plan.md v2.1.0, Phase 3)
  */
 
+import { getTimeProvider } from '../../core/index.js';
 import type {
   EvaluationTask,
   EvaluationRubric,
@@ -107,7 +108,7 @@ export class RubricScorer {
       overallScore: Math.min(1, Math.max(0, overallScore)),
       criterionScores,
       rubricId: rubric.id,
-      timestamp: new Date().toISOString(),
+      timestamp: new Date(getTimeProvider().now()).toISOString(),
     };
   }
 
@@ -143,7 +144,7 @@ export class RubricScorer {
       overallScore: baseScore,
       criterionScores,
       rubricId: 'fallback-patterns',
-      timestamp: new Date().toISOString(),
+      timestamp: new Date(getTimeProvider().now()).toISOString(),
     };
   }
 
@@ -178,7 +179,7 @@ export class RubricScorer {
       overallScore,
       criterionScores,
       rubricId: 'fallback-patterns',
-      timestamp: new Date().toISOString(),
+      timestamp: new Date(getTimeProvider().now()).toISOString(),
     };
   }
 

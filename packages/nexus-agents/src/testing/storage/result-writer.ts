@@ -8,6 +8,7 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { type Result, ok, err } from '../../core/result.js';
+import { getTimeProvider } from '../../core/index.js';
 import { type TestRunResult, type ResultWriterConfig, TestRunResultSchema } from '../schemas.js';
 
 /**
@@ -342,7 +343,7 @@ export function createResultWriter(config: ResultWriterConfig): ResultWriter {
  * Generate current timestamp in America/New_York timezone formatted as ISO 8601.
  */
 export function generateTimestamp(): string {
-  const now = new Date();
+  const now = new Date(getTimeProvider().now());
   // Note: For storage, we use UTC (ISO 8601 with Z suffix) for consistency
   // The timezone field in TestRunResult records America/New_York for reference
   return now.toISOString();

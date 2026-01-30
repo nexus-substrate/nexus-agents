@@ -9,7 +9,7 @@
  */
 
 import type { ILogger, IModelAdapter } from '../../core/index.js';
-import { createLogger } from '../../core/index.js';
+import { createLogger, getTimeProvider } from '../../core/index.js';
 import type { SelfDevWorkflowDependencies } from './interfaces.js';
 import { createTrinityCoordinator } from '../../agents/collaboration/trinity-coordinator.js';
 import { createReflexionProtocol } from '../../agents/collaboration/reflexion-protocol.js';
@@ -68,7 +68,7 @@ export interface SelfDevDepsResult {
 
 /** Generates a unique execution ID. */
 function generateExecutionId(): string {
-  return `selfdev-${String(Date.now())}`;
+  return `selfdev-${String(getTimeProvider().now())}`;
 }
 
 /** Builds status object based on config. */

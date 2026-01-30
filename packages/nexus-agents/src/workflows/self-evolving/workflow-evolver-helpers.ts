@@ -10,6 +10,7 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import type { WorkflowStep } from '../../core/index.js';
+import { getRandomProvider, getTimeProvider } from '../../core/index.js';
 import type { WorkflowVersion, WorkflowMutation } from './sew-types.js';
 import {
   DEFAULT_FITNESS_METRICS,
@@ -26,11 +27,12 @@ export function tournamentSelect(
   population: readonly WorkflowVersion[],
   selectionPressure: number
 ): WorkflowVersion | null {
+  const random = getRandomProvider();
   const tournamentSize = Math.min(3, population.length);
   const contestants: WorkflowVersion[] = [];
 
   for (let i = 0; i < tournamentSize; i++) {
-    const index = Math.floor(Math.random() * population.length);
+    const index = random.randomInt(0, population.length);
     const contestant = population[index];
     if (contestant) contestants.push(contestant);
   }
@@ -41,7 +43,7 @@ export function tournamentSelect(
   contestants.sort((a, b) => b.fitnessScore - a.fitnessScore);
 
   for (const contestant of contestants) {
-    if (Math.random() < 1 / selectionPressure) {
+    if (random.random() < 1 / selectionPressure) {
       return contestant;
     }
   }
@@ -68,9 +70,10 @@ export function areWorkflowsCompatible(
  * Randomly selects timeout, retries, and parallel from either parent.
  */
 export function createCrossoverStep(step1: WorkflowStep, step2: WorkflowStep): WorkflowStep {
-  const selectedTimeout = Math.random() < 0.5 ? step1.timeout : step2.timeout;
-  const selectedRetries = Math.random() < 0.5 ? step1.retries : step2.retries;
-  const selectedParallel = Math.random() < 0.5 ? step1.parallel : step2.parallel;
+  const random = getRandomProvider();
+  const selectedTimeout = random.random() < 0.5 ? step1.timeout : step2.timeout;
+  const selectedRetries = random.random() < 0.5 ? step1.retries : step2.retries;
+  const selectedParallel = random.random() < 0.5 ? step1.parallel : step2.parallel;
 
   const childStep: WorkflowStep = {
     id: step1.id,
@@ -96,6 +99,7 @@ export function createChildVersion(
   betterParent: WorkflowVersion,
   childSteps: WorkflowStep[]
 ): WorkflowVersion {
+  const time = getTimeProvider();
   const semVer = parseVersion(betterParent.version);
   const newVersion = incrementVersion(semVer, 'patch');
 
@@ -119,7 +123,7 @@ export function createChildVersion(
         factor: 1,
       },
     ],
-    createdAt: Date.now(),
+    createdAt: time.now(),
     isActive: false,
   };
 }

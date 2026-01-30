@@ -7,7 +7,7 @@
  */
 
 import type { Result, TaskResult, ILogger, IAgent, Task } from '../../core/index.js';
-import { ok, err, AgentError, createLogger } from '../../core/index.js';
+import { ok, err, AgentError, createLogger, getTimeProvider } from '../../core/index.js';
 import type {
   CollaborationConfig,
   CollaborationResult,
@@ -87,7 +87,7 @@ export class ReflexionProtocol implements ICollaborationProtocol {
     config: CollaborationConfig,
     agents: Map<string, IAgent>
   ): Promise<Result<CollaborationResult, AgentError>> {
-    const startTime = Date.now();
+    const startTime = getTimeProvider().now();
     this.cancelled = false;
     this.session = createCollaborationSession(this.options.sessionOptions);
 
@@ -183,7 +183,7 @@ export class ReflexionProtocol implements ICollaborationProtocol {
     startTime: number
   ): void {
     if (this.session === null) return;
-    const totalDurationMs = Date.now() - startTime;
+    const totalDurationMs = getTimeProvider().now() - startTime;
     this.session.submitResult(
       producerId,
       createFinalResultPayload(taskId, result, totalDurationMs)
@@ -209,7 +209,7 @@ export class ReflexionProtocol implements ICollaborationProtocol {
     initialOutput: unknown,
     sessionId: string | undefined
   ): Promise<Result<ReflexionResult, AgentError>> {
-    const startTime = Date.now();
+    const startTime = getTimeProvider().now();
     const rounds: ReflexionRound[] = [];
     let currentOutput = initialOutput;
     let converged = false;
@@ -254,7 +254,7 @@ export class ReflexionProtocol implements ICollaborationProtocol {
       totalIterations: rounds.length,
       converged,
       terminationReason,
-      totalDurationMs: Date.now() - startTime,
+      totalDurationMs: getTimeProvider().now() - startTime,
     });
   }
 
@@ -298,7 +298,7 @@ export class ReflexionProtocol implements ICollaborationProtocol {
     iteration: number,
     sessionId: string | undefined
   ): Promise<Result<{ round: ReflexionRound; isConverged: boolean; output: unknown }, AgentError>> {
-    const roundStart = Date.now();
+    const roundStart = getTimeProvider().now();
     this.logger.debug('Starting reflexion iteration', { iteration });
 
     const critiques = this.collectCritiques(currentOutput, originalTask, iteration, sessionId);

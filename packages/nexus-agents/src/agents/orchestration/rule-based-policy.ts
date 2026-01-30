@@ -9,6 +9,7 @@
  */
 
 import { ok, err } from '../../core/result.js';
+import { getTimeProvider } from '../../core/index.js';
 import type { Result } from '../../core/result.js';
 import type { PuppeteerState, AgentDistribution } from './puppeteer-types.js';
 import type {
@@ -131,7 +132,7 @@ export class RuleBasedPolicy implements IPolicyEngine {
       },
       biases: {},
       metadata: {
-        created: new Date().toISOString(),
+        created: new Date(getTimeProvider().now()).toISOString(),
         trainedOnTasks: 0,
       },
     };

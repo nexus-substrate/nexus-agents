@@ -8,7 +8,7 @@
  * (Source: Issue #156, arXiv:2504.19413)
  */
 
-import { createLogger } from '../core/index.js';
+import { createLogger, getTimeProvider } from '../core/index.js';
 import type {
   BenchmarkSuiteResult,
   OperationBenchmark,
@@ -203,7 +203,7 @@ async function benchmarkPrune(
     data.size,
     async () => {
       // Prune entries older than 1 day
-      const pruneDate = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const pruneDate = new Date(getTimeProvider().now() - 24 * 60 * 60 * 1000);
       await backend.prune(pruneDate);
     },
     { ...config, measurementIterations: 10 } // Fewer iterations for destructive operation
@@ -232,7 +232,7 @@ export async function runMemoryBenchmarks(
     // Clear backend before each size using prune with future date
     // This removes all entries regardless of age
     try {
-      const futureDate = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000); // 1 year from now
+      const futureDate = new Date(getTimeProvider().now() + 365 * 24 * 60 * 60 * 1000); // 1 year from now
       await backend.prune(futureDate);
     } catch {
       // Ignore if prune fails

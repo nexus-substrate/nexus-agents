@@ -9,6 +9,7 @@
 
 import type { Result } from '../core/result.js';
 import { ok, err } from '../core/result.js';
+import { getTimeProvider } from '../core/index.js';
 import type { ILogger } from '../core/logger.js';
 import { MemoryError } from './memory-backend-types.js';
 import type {
@@ -43,7 +44,7 @@ export function createCounterfactualInternal(
       affectedBeliefs: affectedBeliefs.map((b) => b.beliefId),
       predictedOutcomes: predictOutcomes(hypothesis, affectedBeliefs),
       validated: false as const,
-      createdAt: new Date(),
+      createdAt: new Date(getTimeProvider().now()),
     };
     const counterfactual: Counterfactual =
       taskContext !== undefined ? { ...baseCounterfactual, taskContext } : baseCounterfactual;

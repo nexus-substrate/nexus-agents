@@ -10,6 +10,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as yaml from 'yaml';
+import { getTimeProvider } from '../../core/index.js';
 import type { Result } from '../../core/result.js';
 import {
   type ResearchIndex,
@@ -294,7 +295,7 @@ export function parseRegistry(
   const stats = computeStats(papersResult.value, techniquesResult.value, sourcesResult.value);
 
   // Generate timestamp in ET
-  const now = new Date();
+  const now = new Date(getTimeProvider().now());
   const etFormatter = new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/New_York',
     year: 'numeric',

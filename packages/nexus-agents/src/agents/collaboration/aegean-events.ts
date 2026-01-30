@@ -15,6 +15,7 @@ import type {
   AegeanQuorumDetectedEvent,
 } from './event-bus-types.js';
 import { createEvent } from './event-bus.js';
+import { getTimeProvider } from '../../core/index.js';
 import type { AegeanConfig, AegeanResult } from './aegean-types.js';
 
 /** Configuration for emitting protocol started event. */
@@ -82,7 +83,7 @@ export function emitProtocolCompleted(eventBus: IEventBus, params: ProtocolCompl
     {
       success: params.result.consensusReached,
       iterations: params.result.totalRounds,
-      durationMs: Date.now() - params.startTime,
+      durationMs: getTimeProvider().now() - params.startTime,
     },
     {
       ...(params.sessionId !== undefined && { sessionId: params.sessionId }),

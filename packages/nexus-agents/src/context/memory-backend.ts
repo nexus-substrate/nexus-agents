@@ -11,6 +11,7 @@
 import { z } from 'zod';
 import type { Result } from '../core/result.js';
 import { ok, err } from '../core/result.js';
+import { getTimeProvider } from '../core/index.js';
 import { ValidationError } from '../core/errors.js';
 import type { ILogger } from '../core/logger.js';
 import { createLogger } from '../core/logger.js';
@@ -191,7 +192,7 @@ export class HybridMemoryBackend implements IMemoryBackend {
           })
         );
 
-      const now = Date.now();
+      const now = getTimeProvider().now();
       const expiresAt = metadata.ttl !== undefined ? now + metadata.ttl : null;
       const database = this.getDatabase();
 
@@ -224,12 +225,14 @@ export class HybridMemoryBackend implements IMemoryBackend {
       const row = stmt.get(key);
 
       if (row === undefined) return Promise.resolve(ok(null));
-      if (this.autoExpire && row.expires_at !== null && row.expires_at < Date.now()) {
+      if (this.autoExpire && row.expires_at !== null && row.expires_at < getTimeProvider().now()) {
         database.prepare('DELETE FROM memories WHERE key = ?').run(key);
         this.logger.debug('Auto-expired memory', { key });
         return Promise.resolve(ok(null));
       }
-      database.prepare('UPDATE memories SET accessed_at = ? WHERE key = ?').run(Date.now(), key);
+      database
+        .prepare('UPDATE memories SET accessed_at = ? WHERE key = ?')
+        .run(getTimeProvider().now(), key);
       return Promise.resolve(ok(JSON.parse(row.value) as unknown));
     } catch (error) {
       const causeError = error instanceof Error ? error : new Error(String(error));

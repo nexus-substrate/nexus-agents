@@ -7,7 +7,7 @@
  * (Source: Issue #170, Alignment Roadmap Phase 1)
  */
 
-import { createLogger } from '../core/index.js';
+import { createLogger, getTimeProvider } from '../core/index.js';
 import type { CliName } from '../cli-adapters/types.js';
 import { TopsisRouter } from '../cli-adapters/topsis-router.js';
 import type { TopsisResult } from '../cli-adapters/topsis-types.js';
@@ -42,7 +42,7 @@ const CLI_NAMES: readonly CliName[] = ['claude', 'gemini', 'codex'];
  */
 export function analyzeTaskString(taskStr: string): TaskProfile {
   const task: Task = {
-    id: 'audit-' + String(Date.now()),
+    id: 'audit-' + String(getTimeProvider().now()),
     description: taskStr,
     context: {},
   };

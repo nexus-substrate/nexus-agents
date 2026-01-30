@@ -9,6 +9,7 @@
  */
 
 import type { Result } from '../core/result.js';
+import { getTimeProvider } from '../core/index.js';
 import { ClaudeCliAdapter } from '../cli-adapters/adapters/claude-adapter.js';
 import type { IAgentExecutor, AgentContext, AgentExecutionResult } from './agent-runner.js';
 import { AgentRunnerError } from './agent-runner.js';
@@ -61,7 +62,7 @@ export class CliAgentExecutor implements IAgentExecutor {
     userPrompt: string,
     context: AgentContext
   ): Promise<Result<AgentExecutionResult, AgentRunnerError>> {
-    const startTime = Date.now();
+    const startTime = getTimeProvider().now();
 
     this.messageCallback?.(`Executing agent for ${context.instance.instance_id} via CLI`);
     this.messageCallback?.(`Working directory: ${context.workDir}`);
@@ -87,7 +88,7 @@ export class CliAgentExecutor implements IAgentExecutor {
       const response = result.value.text;
       const tokensUsed =
         result.value.usage?.totalTokens ?? this.estimateTokens(userPrompt, response);
-      const durationMs = result.value.durationMs ?? Date.now() - startTime;
+      const durationMs = result.value.durationMs ?? getTimeProvider().now() - startTime;
 
       this.messageCallback?.(`Completed in ${String(durationMs)}ms, ~${String(tokensUsed)} tokens`);
 

@@ -8,7 +8,7 @@
  */
 
 import type { Result, WorkflowStep, StepResult, AgentRole, Task } from '../core/index.js';
-import { ok, err, WorkflowError, TimeoutError } from '../core/index.js';
+import { ok, err, WorkflowError, TimeoutError, getTimeProvider } from '../core/index.js';
 import type { Expert, ExpertFactory as ExpertFactoryType } from '../agents/index.js';
 import type { WorkflowExecutionContext } from './execution-context.js';
 import { resolveInput, getReferencedSteps } from './expression-resolver.js';
@@ -100,7 +100,7 @@ export class StepExecutor {
     context: WorkflowExecutionContext,
     options?: StepExecutionOptions
   ): Promise<Result<StepResult, WorkflowError>> {
-    const startTime = Date.now();
+    const startTime = getTimeProvider().now();
 
     // Pre-execution checks
     const preCheck = this.preExecutionChecks(step, context, startTime);
@@ -134,7 +134,7 @@ export class StepExecutor {
       return ok({
         stepId: step.id,
         output: null,
-        durationMs: Date.now() - startTime,
+        durationMs: getTimeProvider().now() - startTime,
         status: 'skipped',
       });
     }
@@ -214,7 +214,7 @@ export class StepExecutor {
     return ok({
       stepId: step.id,
       output: null,
-      durationMs: Date.now() - startTime,
+      durationMs: getTimeProvider().now() - startTime,
       status: 'failed',
       error: extractErrorMessage(lastError),
     });
@@ -259,7 +259,7 @@ export class StepExecutor {
 
     const expert = expertResult.value;
     const task: Task = {
-      id: `${step.id}-${String(Date.now())}`,
+      id: `${step.id}-${String(getTimeProvider().now())}`,
       description: buildTaskDescription(step, resolvedInputs),
       context: { metadata: { stepId: step.id, action: step.action, inputs: resolvedInputs } },
     };
@@ -296,7 +296,7 @@ export class StepExecutor {
       return ok({
         stepId: step.id,
         output: taskResult.value.output,
-        durationMs: Date.now() - startTime,
+        durationMs: getTimeProvider().now() - startTime,
         status: 'success',
       });
     } catch (error) {

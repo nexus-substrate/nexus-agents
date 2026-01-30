@@ -7,7 +7,7 @@
 
 import { z } from 'zod';
 import type { StepResult } from '../core/index.js';
-import { ValidationError } from '../core/index.js';
+import { ValidationError, getTimeProvider, getRandomProvider } from '../core/index.js';
 
 /**
  * Full execution context for a running workflow.
@@ -52,8 +52,8 @@ export interface CreateExecutionContextOptions {
  * Generate a unique execution ID.
  */
 function generateExecutionId(): string {
-  const timestamp = Date.now().toString(36);
-  const random = Math.random().toString(36).substring(2, 10);
+  const timestamp = getTimeProvider().now().toString(36);
+  const random = getRandomProvider().random().toString(36).substring(2, 10);
   return `exec_${timestamp}_${random}`;
 }
 
@@ -74,7 +74,7 @@ export function createExecutionContext(
     inputs: { ...inputs },
     stepResults: new Map<string, StepResult>(),
     variables: new Map<string, unknown>(),
-    startedAt: new Date(),
+    startedAt: new Date(getTimeProvider().now()),
     cancelled: false,
   };
 }
@@ -169,7 +169,7 @@ export function areStepsCompleted(context: WorkflowExecutionContext, stepIds: st
  * @returns Duration in milliseconds
  */
 export function getExecutionDuration(context: WorkflowExecutionContext): number {
-  return Date.now() - context.startedAt.getTime();
+  return getTimeProvider().now() - context.startedAt.getTime();
 }
 
 /**

@@ -7,6 +7,7 @@
  */
 
 import type { Task, TaskResult } from '../../core/index.js';
+import { getTimeProvider } from '../../core/index.js';
 import type {
   Persona,
   PersonaCritique,
@@ -87,7 +88,7 @@ export function formatRefinementTask(
 
   return {
     ...originalTask,
-    id: `${originalTask.id}-refinement-${String(Date.now())}`,
+    id: `${originalTask.id}-refinement-${String(getTimeProvider().now())}`,
     description: `Improve the following output based on critic feedback:
 
 ORIGINAL OUTPUT:
@@ -222,6 +223,6 @@ export function createReflexionRound(
     critiques,
     debate,
     improvedOutput: outputs.improved,
-    durationMs: Date.now() - roundStart,
+    durationMs: getTimeProvider().now() - roundStart,
   };
 }

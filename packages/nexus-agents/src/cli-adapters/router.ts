@@ -11,6 +11,7 @@
 import { z } from 'zod';
 import type { Result } from '../core/result.js';
 import { ok, err } from '../core/result.js';
+import { getTimeProvider } from '../core/index.js';
 import { NexusError, ErrorCode } from '../core/errors.js';
 import type { ILogger } from '../core/logger.js';
 import { logger as defaultLogger } from '../core/logger.js';
@@ -125,7 +126,7 @@ export class TaskRouter implements ITaskRouter {
   }
 
   async routeWithDetails(task: Task): Promise<Result<RoutingDecision, RoutingError>> {
-    const startTime = Date.now();
+    const startTime = getTimeProvider().now();
     const profile = analyzeTask(task);
     this.logger.debug('Task analyzed', { profile: summarizeProfile(profile), taskId: task.id });
 
@@ -173,7 +174,7 @@ export class TaskRouter implements ITaskRouter {
     alternatives: Array<{ adapter: ICliAdapter; score: number; reason: string }>,
     startTime: number
   ): RoutingDecision {
-    const decisionTimeMs = Date.now() - startTime;
+    const decisionTimeMs = getTimeProvider().now() - startTime;
 
     this.logger.info('Task routed', {
       taskId: task.id,
@@ -218,7 +219,7 @@ export class TaskRouter implements ITaskRouter {
     return {
       remainingTokens: 0,
       remainingRequests: 0,
-      resetTime: new Date(),
+      resetTime: new Date(getTimeProvider().now()),
       utilizationPercent: 100,
       exhausted: true,
     };

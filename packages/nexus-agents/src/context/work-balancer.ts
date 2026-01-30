@@ -9,7 +9,7 @@
  */
 
 import type { Result } from '../core/index.js';
-import { ok, err, createLogger } from '../core/index.js';
+import { ok, err, createLogger, getTimeProvider } from '../core/index.js';
 import type { ICliAdapter, CapacityStatus, CapabilityProfile } from '../cli-adapters/types.js';
 import {
   type TaskProfile,
@@ -292,7 +292,7 @@ export class WorkBalancer implements IWorkBalancer {
       id: `task-${String(++this.taskIdCounter)}`,
       profile: task,
       description,
-      queuedAt: new Date(),
+      queuedAt: new Date(getTimeProvider().now()),
       priority: Math.max(1, Math.min(10, priority)),
     };
 

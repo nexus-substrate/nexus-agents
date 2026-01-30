@@ -13,7 +13,7 @@ import type {
   CompletionRequest,
   Message,
 } from '../../core/index.js';
-import { ok, err, AgentError } from '../../core/index.js';
+import { ok, err, AgentError, getTimeProvider } from '../../core/index.js';
 import { BaseAgent, type BaseAgentOptions } from '../base-agent.js';
 import {
   type ExpertOptions,
@@ -73,7 +73,7 @@ export class SecurityExpert extends BaseAgent {
   }
 
   protected async executeTask(task: Task): Promise<Result<TaskResult, AgentError>> {
-    const startTime = Date.now();
+    const startTime = getTimeProvider().now();
 
     this.logger.info('Executing security task', {
       taskId: task.id,
@@ -128,7 +128,7 @@ Analyze for security vulnerabilities and provide findings in the specified JSON 
       taskId: task.id,
       output: result,
       metadata: {
-        durationMs: Date.now() - startTime,
+        durationMs: getTimeProvider().now() - startTime,
         tokensUsed: 0,
         toolsUsed: [],
         model: 'heuristic',
@@ -168,7 +168,7 @@ Analyze for security vulnerabilities and provide findings in the specified JSON 
       taskId: task.id,
       output: result,
       metadata: {
-        durationMs: Date.now() - startTime,
+        durationMs: getTimeProvider().now() - startTime,
         tokensUsed: response.usage.totalTokens,
         toolsUsed: [],
         model: response.model,

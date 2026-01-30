@@ -10,6 +10,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { TaskResult } from '../../core/index.js';
+import { getTimeProvider } from '../../core/index.js';
 import type {
   AgentConfiguration,
   ConfigurationChange,
@@ -122,7 +123,7 @@ export function createFailedAttempt(
     hypothesis,
     changes: [],
     successful: false,
-    attemptedAt: new Date(),
+    attemptedAt: new Date(getTimeProvider().now()),
     validation: {
       passed: false,
       performanceChange: 0,

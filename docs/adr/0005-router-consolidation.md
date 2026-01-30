@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted (Phase 1 Complete)
 
 ## Context
 
@@ -126,6 +126,77 @@ Success criteria:
 - All existing tests pass through new pipeline
 - CompositeRouter stages are configurable at runtime
 - Single routing decision format across all stages
+
+## Implementation Progress
+
+### Phase 1 - Complete (2026-01-30)
+
+**Files Created:**
+
+- `cli-adapters/routing/router-stage.ts` - IRouterStage and IRoutingPipeline interfaces
+- `cli-adapters/routing/routing-pipeline.ts` - RoutingPipeline implementation
+- `cli-adapters/routing/stages/topsis-stage.ts` - First stage: TopsisRouterStage
+- `cli-adapters/routing/stages/budget-stage.ts` - Second stage: BudgetFilterStage
+- `cli-adapters/routing/stages/index.ts` - Stage exports
+- `cli-adapters/routing/index.ts` - Module exports
+
+**Key Decisions:**
+
+1. **Coexistence Strategy**: The new IRoutingPipeline coexists with CompositeRouter
+   - CompositeRouter continues to work with its internal pipeline (composite-router-stages.ts)
+   - New routers should implement IRouterStage for the unified pipeline
+   - No forced migration of working code
+
+2. **Stage Pattern**: Each stage wraps an existing router (e.g., TopsisRouterStage wraps TopsisRouter)
+   - Preserves existing implementations
+   - Adds composable interface on top
+   - Gradual migration path
+
+3. **BudgetFilterStage** (priority: 20): Cost-aware early filtering
+   - Filters candidates that exceed cost/token budgets
+   - References arXiv:2508.21141 (PILOT pattern)
+   - Uses determinism providers for testability
+
+4. **ZeroRouterStage** (priority: 40): Difficulty-based scoring
+   - Wraps ZeroRouter for universal difficulty estimation
+   - Scores candidates based on task difficulty match
+   - Supports calibration through outcome recording
+
+5. **PreferenceStage** (priority: 50): Learned preference scoring
+   - Wraps PreferenceRouter for RouteLLM-style preference learning
+   - Applies learned user preferences to score candidates
+   - Supports online learning through outcome recording
+
+6. **LinUCBStage** (priority: 70): Contextual bandit selection
+   - Wraps LinUCBBandit for adaptive model selection
+   - Balances exploration vs exploitation
+   - Learns from outcome rewards
+
+7. **LatencyStage** (priority: 80): Performance-based scoring
+   - Wraps LatencyTracker for latency-based adjustments
+   - Tracks rolling window statistics with time decay
+   - Adjusts scores based on observed CLI performance
+
+### Phase 2 - Complete (2026-01-30)
+
+All 6 stages implemented and exported via unified `cli-adapters/routing` module:
+
+| Stage             | Priority | Wraps            | Purpose                        |
+| ----------------- | -------- | ---------------- | ------------------------------ |
+| BudgetFilterStage | 20       | BudgetRouter     | Cost-aware early filtering     |
+| ZeroRouterStage   | 40       | ZeroRouter       | Difficulty-based scoring       |
+| PreferenceStage   | 50       | PreferenceRouter | Learned preferences (RouteLLM) |
+| TopsisRouterStage | 60       | TopsisRouter     | Multi-criteria TOPSIS ranking  |
+| LinUCBStage       | 70       | LinUCBBandit     | Contextual bandit selection    |
+| LatencyStage      | 80       | LatencyTracker   | Performance-based scoring      |
+
+Pipeline execution order: Budget(20) → Zero(40) → Preference(50) → TOPSIS(60) → LinUCB(70) → Latency(80)
+
+### Phase 3 - Future
+
+- Optional: Migrate CompositeRouter to use IRoutingPipeline internally
+- Optional: Add ConfidenceStage wrapping ConfidenceRouter
+- Add deprecation markers to old router interfaces once all stages are available
 
 ## References
 

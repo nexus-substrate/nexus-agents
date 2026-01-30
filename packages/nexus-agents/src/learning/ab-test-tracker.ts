@@ -8,6 +8,7 @@
  * (Source: Issue #273 - Learning Validation Dashboard)
  */
 
+import { getTimeProvider } from '../core/index.js';
 import type {
   ExperimentDefinition,
   ExperimentOutcome,
@@ -71,7 +72,7 @@ export class AbTestTracker implements IAbTestTracker {
     const updated: ExperimentDefinition = {
       ...experiment,
       status: 'running',
-      startedAt: experiment.startedAt ?? new Date().toISOString(),
+      startedAt: experiment.startedAt ?? new Date(getTimeProvider().now()).toISOString(),
     };
 
     this.experiments.set(experimentId, updated);
@@ -108,7 +109,7 @@ export class AbTestTracker implements IAbTestTracker {
     const updated: ExperimentDefinition = {
       ...experiment,
       status: 'completed',
-      endedAt: new Date().toISOString(),
+      endedAt: new Date(getTimeProvider().now()).toISOString(),
     };
 
     this.experiments.set(experimentId, updated);
@@ -234,7 +235,7 @@ export class AbTestTracker implements IAbTestTracker {
     }
 
     return {
-      exportedAt: new Date().toISOString(),
+      exportedAt: new Date(getTimeProvider().now()).toISOString(),
       experiments,
       outcomes: allOutcomes,
       summaries,

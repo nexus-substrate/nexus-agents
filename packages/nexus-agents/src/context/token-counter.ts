@@ -17,7 +17,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { GoogleGenAI } from '@google/genai';
 import { type Tiktoken, encoding_for_model } from 'tiktoken';
 import type { Result, Message } from '../core/index.js';
-import { ok, err } from '../core/index.js';
+import { ok, err, getTimeProvider } from '../core/index.js';
 import type {
   TokenCounterConfig,
   TokenCountResult,
@@ -155,7 +155,7 @@ export class TokenCounter implements ITokenCounter {
         count,
         provider: TokenCounterProvider.ANTHROPIC,
         model,
-        timestamp: Date.now(),
+        timestamp: getTimeProvider().now(),
       });
 
       return ok({ count, cached: false, provider: TokenCounterProvider.ANTHROPIC, model });
@@ -205,7 +205,7 @@ export class TokenCounter implements ITokenCounter {
         count,
         provider: TokenCounterProvider.GEMINI,
         model,
-        timestamp: Date.now(),
+        timestamp: getTimeProvider().now(),
       });
 
       return ok({ count, cached: false, provider: TokenCounterProvider.GEMINI, model });
@@ -241,7 +241,7 @@ export class TokenCounter implements ITokenCounter {
         count,
         provider: TokenCounterProvider.OPENAI,
         model,
-        timestamp: Date.now(),
+        timestamp: getTimeProvider().now(),
       });
 
       return ok({ count, cached: false, provider: TokenCounterProvider.OPENAI, model });
@@ -333,7 +333,7 @@ export class TokenCounter implements ITokenCounter {
     }
 
     // Check TTL
-    if (Date.now() - entry.timestamp > this.cacheTtlMs) {
+    if (getTimeProvider().now() - entry.timestamp > this.cacheTtlMs) {
       this.cache.delete(key);
       return undefined;
     }

@@ -9,6 +9,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Result } from '../../core/result.js';
 import { ok, err } from '../../core/result.js';
+import { getTimeProvider } from '../../core/index.js';
 import type { ILogger } from '../../core/logger.js';
 import { logger as defaultLogger } from '../../core/logger.js';
 import type { ICliAdapter, CliName } from '../../cli-adapters/types.js';
@@ -71,7 +72,7 @@ export class TestRunner {
   ): Promise<Result<TestRunResult, TestRunError>> {
     this.aborted = false;
     const runId = randomUUID();
-    const startTime = new Date();
+    const startTime = new Date(getTimeProvider().now());
 
     this.logger.info('Starting test run', { runId, runName: this.config.runName, filter });
 
@@ -104,7 +105,7 @@ export class TestRunner {
             runId,
             config: this.config,
             startTime,
-            endTime: new Date(),
+            endTime: new Date(getTimeProvider().now()),
             results: executionResult.value,
             adapters: this.adapters,
             filter,
@@ -113,7 +114,7 @@ export class TestRunner {
             runId,
             config: this.config,
             startTime,
-            endTime: new Date(),
+            endTime: new Date(getTimeProvider().now()),
             results: executionResult.value,
             adapters: this.adapters,
           }
@@ -170,7 +171,12 @@ export class TestRunner {
     onProgress?: ProgressCallback
   ): Promise<Result<TaskTestResult[], TestRunError>> {
     try {
-      const results = await this.executeTasksParallel(tasks, clis, onProgress, Date.now());
+      const results = await this.executeTasksParallel(
+        tasks,
+        clis,
+        onProgress,
+        getTimeProvider().now()
+      );
       return ok(results);
     } catch (error) {
       const cause = error instanceof Error ? error : new Error(String(error));
@@ -245,7 +251,7 @@ export class TestRunner {
   ): Promise<TaskTestResult[]> {
     const taskQueue = [...tasks];
     const completed = { count: 0, successCount: 0 };
-    const start = startMs ?? Date.now();
+    const start = startMs ?? getTimeProvider().now();
 
     const reportProgress = createProgressReporter(onProgress, tasks, taskQueue, completed, start);
 

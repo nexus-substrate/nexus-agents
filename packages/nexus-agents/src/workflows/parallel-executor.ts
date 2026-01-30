@@ -6,7 +6,7 @@
  */
 
 import type { Result } from '../core/index.js';
-import { ok, err, WorkflowError } from '../core/index.js';
+import { ok, err, WorkflowError, getTimeProvider } from '../core/index.js';
 import type { WorkflowStep, StepResult } from '../core/index.js';
 import { TaskQueue } from './task-queue.js';
 
@@ -97,7 +97,7 @@ async function executeStepWithTimeout(
   }
 
   const stepTimeout = step.timeout ?? 0;
-  const startTime = Date.now();
+  const startTime = getTimeProvider().now();
   const stepContext: ExecutionContext = { ...context, signal };
 
   if (stepTimeout === 0) {
@@ -119,7 +119,7 @@ function executeWithTimeout(
 ): Promise<StepResult> {
   return new Promise<StepResult>((resolve) => {
     const timeoutId = setTimeout(() => {
-      resolve(createTimeoutResult(step.id, Date.now() - startTime, timeout));
+      resolve(createTimeoutResult(step.id, getTimeProvider().now() - startTime, timeout));
     }, timeout);
 
     executor(step, context)
@@ -129,7 +129,7 @@ function executeWithTimeout(
       })
       .catch((error: unknown) => {
         clearTimeout(timeoutId);
-        resolve(createErrorResult(step.id, Date.now() - startTime, error));
+        resolve(createErrorResult(step.id, getTimeProvider().now() - startTime, error));
       });
   });
 }

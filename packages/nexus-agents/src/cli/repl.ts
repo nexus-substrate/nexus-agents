@@ -11,7 +11,7 @@
  */
 
 import * as readline from 'node:readline';
-import { createLogger, type ILogger } from '../core/index.js';
+import { createLogger, getTimeProvider, type ILogger } from '../core/index.js';
 import { printWorkflowTemplates } from './workflow-run.js';
 import { expertListCommand } from './expert-list.js';
 
@@ -35,8 +35,8 @@ import {
 function createSession(verbose: boolean): ReplSession {
   return {
     history: [],
-    sessionId: `repl-${String(Date.now())}`,
-    startTime: new Date(),
+    sessionId: `repl-${String(getTimeProvider().now())}`,
+    startTime: new Date(getTimeProvider().now()),
     verbose,
   };
 }

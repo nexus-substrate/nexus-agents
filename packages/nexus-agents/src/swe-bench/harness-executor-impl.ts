@@ -12,6 +12,7 @@
 import type { ChildProcess } from 'node:child_process';
 import type { ILogger } from '../core/logger.js';
 import { createLogger } from '../core/logger.js';
+import { getTimeProvider } from '../core/index.js';
 import type { InstanceEvaluationResult } from './evaluation-harness-types.js';
 import type {
   IHarnessExecutor,
@@ -111,7 +112,7 @@ export class HarnessExecutor implements IHarnessExecutor {
     onProgress?: HarnessProgressCallback
   ): Promise<HarnessExecutionResult> {
     this.isCancelled = false;
-    const startedAt = new Date().toISOString();
+    const startedAt = new Date(getTimeProvider().now()).toISOString();
     const effectiveConfig = { ...DEFAULT_HARNESS_EXECUTION_CONFIG, ...config };
 
     this.logger.info('Starting harness execution', {
@@ -186,7 +187,7 @@ export class HarnessExecutor implements IHarnessExecutor {
     startedAt: string,
     swebenchVersion?: string
   ): HarnessExecutionResult {
-    const completedAt = new Date().toISOString();
+    const completedAt = new Date(getTimeProvider().now()).toISOString();
     const executionResult: HarnessExecutionResult = { ...result, startedAt, completedAt };
 
     if (swebenchVersion !== undefined) {
@@ -209,7 +210,7 @@ export class HarnessExecutor implements IHarnessExecutor {
       ...config,
       instanceIds: [instanceId],
       maxWorkers: 1,
-      runId: `single-${instanceId}-${String(Date.now())}`,
+      runId: `single-${instanceId}-${String(getTimeProvider().now())}`,
     };
 
     const result = await this.execute(singleConfig);

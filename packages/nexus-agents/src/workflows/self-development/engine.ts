@@ -9,6 +9,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { getTimeProvider } from '../../core/index.js';
 import type {
   ISelfDevWorkflowEngine,
   SelfDevWorkflowConfig,
@@ -103,7 +104,7 @@ export class SelfDevWorkflowEngine implements ISelfDevWorkflowEngine {
 
   start(config: SelfDevWorkflowConfig): Promise<SelfDevWorkflowState> {
     const executionId = randomUUID();
-    const now = new Date().toISOString();
+    const now = new Date(getTimeProvider().now()).toISOString();
 
     // Create audit trail for this execution
     const auditTrail = this.deps.auditTrail ?? createAuditTrail(executionId);
@@ -163,7 +164,7 @@ export class SelfDevWorkflowEngine implements ISelfDevWorkflowEngine {
     emitEvent(this.listeners, {
       type: 'workflow_failed',
       data: { reason },
-      timestamp: new Date().toISOString(),
+      timestamp: new Date(getTimeProvider().now()).toISOString(),
     });
     return Promise.resolve();
   }
@@ -191,7 +192,7 @@ export class SelfDevWorkflowEngine implements ISelfDevWorkflowEngine {
     const state = this.states.get(executionId);
     if (state === undefined) return;
 
-    const startTime = Date.now();
+    const startTime = getTimeProvider().now();
 
     try {
       const outputs = await this.runAllPhases(executionId, state);
@@ -296,13 +297,13 @@ export class SelfDevWorkflowEngine implements ISelfDevWorkflowEngine {
   }
 
   private async executeReview(executionId: string): Promise<ReviewOutput> {
-    const startTime = Date.now();
+    const startTime = getTimeProvider().now();
 
     updateStatus(this.states, executionId, 'paused');
     emitEvent(this.listeners, {
       type: 'human_review_required',
       data: { executionId },
-      timestamp: new Date().toISOString(),
+      timestamp: new Date(getTimeProvider().now()).toISOString(),
     });
     void this.deps.notifications?.reviewRequired(executionId);
 
@@ -316,8 +317,8 @@ export class SelfDevWorkflowEngine implements ISelfDevWorkflowEngine {
 
     const output: ReviewOutput = {
       decision: result.decision,
-      timestamp: new Date().toISOString(),
-      durationMs: Date.now() - startTime,
+      timestamp: new Date(getTimeProvider().now()).toISOString(),
+      durationMs: getTimeProvider().now() - startTime,
     };
     return result.feedback !== undefined ? { ...output, feedback: result.feedback } : output;
   }

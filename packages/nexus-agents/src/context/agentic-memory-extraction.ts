@@ -9,6 +9,7 @@
  * (Source: Issue #392 - Circular dependency resolution)
  */
 
+import { getTimeProvider } from '../core/index.js';
 import type {
   MemoryAttributes,
   EntityReference,
@@ -268,6 +269,6 @@ export function extractAttributes(value: unknown, config: ExtractionConfig): Mem
     semanticTags: extractSemanticTags(text, config.maxSemanticTags),
     contextDescription: generateContextDescription(text, config.maxContextLength),
     entities: extractEntities(text, config.maxEntities),
-    attributesUpdatedAt: new Date(),
+    attributesUpdatedAt: new Date(getTimeProvider().now()),
   };
 }

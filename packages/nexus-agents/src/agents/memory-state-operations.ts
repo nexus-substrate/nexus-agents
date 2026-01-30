@@ -7,6 +7,7 @@
  * @module agents/memory-state-operations
  */
 
+import { getRandomProvider, getTimeProvider } from '../core/index.js';
 import type {
   AgentMemoryState,
   TaskLearning,
@@ -21,10 +22,12 @@ export function recordTaskLearning(
   state: AgentMemoryState,
   learning: Omit<TaskLearning, 'id' | 'learnedAt'>
 ): AgentMemoryState {
+  const time = getTimeProvider();
+  const random = getRandomProvider();
   const newLearning: TaskLearning = {
     ...learning,
-    id: `learn_${String(Date.now())}_${Math.random().toString(36).slice(2, 8)}`,
-    learnedAt: new Date(),
+    id: `learn_${String(time.now())}_${random.random().toString(36).slice(2, 8)}`,
+    learnedAt: new Date(getTimeProvider().now()),
   };
 
   return {
@@ -50,7 +53,7 @@ export function recordExecutionPattern(
         (existing.successRate * existing.occurrences + pattern.successRate) /
         (existing.occurrences + 1),
       occurrences: existing.occurrences + 1,
-      lastSeen: new Date(),
+      lastSeen: new Date(getTimeProvider().now()),
     };
 
     return {
@@ -60,12 +63,14 @@ export function recordExecutionPattern(
   }
 
   // Create new pattern
+  const time = getTimeProvider();
+  const random = getRandomProvider();
   const newPattern: ExecutionPattern = {
-    id: `pattern_${String(Date.now())}_${Math.random().toString(36).slice(2, 8)}`,
+    id: `pattern_${String(time.now())}_${random.random().toString(36).slice(2, 8)}`,
     pattern: pattern.pattern,
     successRate: pattern.successRate,
     occurrences: pattern.occurrences ?? 1,
-    lastSeen: new Date(),
+    lastSeen: new Date(getTimeProvider().now()),
   };
 
   return {
@@ -83,7 +88,7 @@ export function recordErrorResolution(
 ): AgentMemoryState {
   const newResolution: ErrorResolution = {
     ...resolution,
-    resolvedAt: new Date(),
+    resolvedAt: new Date(getTimeProvider().now()),
   };
 
   // Replace existing resolution for same error pattern if exists

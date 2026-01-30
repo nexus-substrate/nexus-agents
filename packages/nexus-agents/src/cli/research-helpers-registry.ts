@@ -10,6 +10,7 @@
  */
 
 import type { Result } from '../core/result.js';
+import { getTimeProvider } from '../core/index.js';
 import type { ArxivMetadata, PaperEntry, PapersRegistry } from './research-types.js';
 import { loadPapersRegistry, savePapersRegistry } from './research-helpers-io.js';
 
@@ -70,7 +71,7 @@ export interface AddPaperResult {
  * Get current date in YYYY-MM-DD format (America/New_York timezone).
  */
 export function getCurrentDate(): string {
-  const now = new Date();
+  const now = new Date(getTimeProvider().now());
   return now.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
 }
 

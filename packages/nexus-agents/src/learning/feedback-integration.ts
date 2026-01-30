@@ -9,7 +9,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { createLogger } from '../core/logger.js';
+import { createLogger, getTimeProvider } from '../core/index.js';
 import type { ILogger } from '../core/logger.js';
 import type { StepResult } from '../core/types/workflow.js';
 import type { CliName } from '../cli-adapters/types.js';
@@ -119,7 +119,7 @@ export class FeedbackIntegration implements IFeedbackIntegration {
   recordRoutingDecision(decision: CompositeRoutingDecision, traceId?: TraceId): string {
     const id = randomUUID();
     const trace = traceId ?? (randomUUID() as TraceId);
-    const now = Date.now();
+    const now = getTimeProvider().now();
 
     // Evict stale entries (throttled to once per minute)
     this.evictStaleEntriesThrottled(now);
@@ -153,7 +153,7 @@ export class FeedbackIntegration implements IFeedbackIntegration {
       const storedDecision: StoredRoutingDecision = {
         id,
         traceId: trace,
-        timestamp: new Date().toISOString(),
+        timestamp: new Date(getTimeProvider().now()).toISOString(),
         routerType: cliNameToRouterType(decision.cliName),
         selectedModel: decision.cliName,
         alternativeModels: decision.alternatives,
@@ -211,7 +211,7 @@ export class FeedbackIntegration implements IFeedbackIntegration {
 
     const outcome: TaskOutcome = {
       routingDecisionId,
-      timestamp: new Date().toISOString(),
+      timestamp: new Date(getTimeProvider().now()).toISOString(),
       success,
       outcomeClass,
       qualityScore,
@@ -265,7 +265,7 @@ export class FeedbackIntegration implements IFeedbackIntegration {
     const computedReward = this.collector.computeReward(outcome);
     const storedReward: StoredReward = {
       routingDecisionId,
-      timestamp: new Date().toISOString(),
+      timestamp: new Date(getTimeProvider().now()).toISOString(),
       reward: computedReward.reward,
       baseReward: computedReward.components.baseReward,
       qualityBonus: computedReward.components.qualityBonus,
@@ -304,7 +304,7 @@ export class FeedbackIntegration implements IFeedbackIntegration {
    * Called on every recordRoutingDecision (throttled) and on reset.
    */
   evictStaleEntries(): number {
-    const now = Date.now();
+    const now = getTimeProvider().now();
     const ttl = this.config.decisionTtlMs ?? DEFAULT_DECISION_TTL_MS;
     const cutoff = now - ttl;
     let evictedCount = 0;

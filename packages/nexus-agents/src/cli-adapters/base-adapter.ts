@@ -14,7 +14,7 @@ import { promisify } from 'node:util';
 import semver from 'semver';
 
 import type { Result } from '../core/index.js';
-import { err } from '../core/index.js';
+import { err, getTimeProvider } from '../core/index.js';
 import type { ILogger } from '../core/index.js';
 import { createLogger } from '../core/index.js';
 
@@ -216,7 +216,7 @@ export abstract class BaseCliAdapter implements ICliAdapter {
         healthy: versionStatus !== 'unsupported' && versionStatus !== 'breaking',
         version,
         versionStatus,
-        lastChecked: new Date(),
+        lastChecked: new Date(getTimeProvider().now()),
         ...(message !== undefined && { message }),
       };
 
@@ -228,7 +228,7 @@ export abstract class BaseCliAdapter implements ICliAdapter {
         version: 'unknown',
         versionStatus: 'unsupported',
         message: error instanceof Error ? error.message : 'Health check failed',
-        lastChecked: new Date(),
+        lastChecked: new Date(getTimeProvider().now()),
       };
     }
   }
@@ -268,7 +268,7 @@ export abstract class BaseCliAdapter implements ICliAdapter {
       return Promise.resolve({
         remainingTokens: Number.MAX_SAFE_INTEGER,
         remainingRequests: Number.MAX_SAFE_INTEGER,
-        resetTime: new Date(Date.now() + 3600_000),
+        resetTime: new Date(getTimeProvider().now() + 3600_000),
         utilizationPercent: 0,
         exhausted: false,
       });

@@ -15,7 +15,7 @@ import rateLimit from '@fastify/rate-limit';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import type { ILogger } from '../core/logger.js';
-import { createLogger } from '../core/logger.js';
+import { createLogger, getTimeProvider, getRandomProvider } from '../core/index.js';
 import { VERSION } from '../version.js';
 import {
   RestApiConfigSchema,
@@ -75,7 +75,7 @@ export class RestApiServer implements IRestApiServer {
     this.config = RestApiConfigSchema.parse(options?.config ?? {});
     this.logger = options?.logger ?? createLogger({ component: 'RestApiServer' });
     this.apiKeys = new Map((options?.apiKeys ?? []).map((k) => [k.key, k]));
-    this.startTime = Date.now();
+    this.startTime = getTimeProvider().now();
   }
 
   async start(): Promise<void> {
@@ -202,7 +202,7 @@ export class RestApiServer implements IRestApiServer {
 
     // Request logging and timing
     this.fastify.addHook('onRequest', (request, _reply, done) => {
-      (request as FastifyRequest & { startTime: number }).startTime = Date.now();
+      (request as FastifyRequest & { startTime: number }).startTime = getTimeProvider().now();
       this.requestCount++;
       const endpoint = request.routeOptions.url ?? request.url;
       this.requestsPerEndpoint.set(endpoint, (this.requestsPerEndpoint.get(endpoint) ?? 0) + 1);
@@ -216,9 +216,10 @@ export class RestApiServer implements IRestApiServer {
 
     // Response logging
     this.fastify.addHook('onResponse', (request, reply, done) => {
+      const time = getTimeProvider();
       const startTime =
-        (request as FastifyRequest & { startTime?: number }).startTime ?? Date.now();
-      const duration = Date.now() - startTime;
+        (request as FastifyRequest & { startTime?: number }).startTime ?? time.now();
+      const duration = time.now() - startTime;
       this.totalResponseTimeMs += duration;
 
       if (reply.statusCode >= 400) {
@@ -244,7 +245,7 @@ export class RestApiServer implements IRestApiServer {
           message: error.message,
         },
         requestId: request.id,
-        timestamp: new Date().toISOString(),
+        timestamp: new Date(getTimeProvider().now()).toISOString(),
       };
 
       void reply.status(500).send(apiError);
@@ -277,7 +278,7 @@ export class RestApiServer implements IRestApiServer {
       const error: ApiError = {
         error: { code: 'UNAUTHORIZED', message: 'API key required' },
         requestId: request.id,
-        timestamp: new Date().toISOString(),
+        timestamp: new Date(getTimeProvider().now()).toISOString(),
       };
       await reply.status(401).send(error);
       return;
@@ -288,7 +289,7 @@ export class RestApiServer implements IRestApiServer {
       const error: ApiError = {
         error: { code: 'UNAUTHORIZED', message: 'Invalid API key' },
         requestId: request.id,
-        timestamp: new Date().toISOString(),
+        timestamp: new Date(getTimeProvider().now()).toISOString(),
       };
       await reply.status(401).send(error);
       return;
@@ -318,7 +319,9 @@ export class RestApiServer implements IRestApiServer {
   }
 
   private generateRequestId(): string {
-    return 'req-' + String(Date.now()) + '-' + Math.random().toString(36).slice(2, 8);
+    const time = getTimeProvider();
+    const random = getRandomProvider();
+    return 'req-' + String(time.now()) + '-' + random.random().toString(36).slice(2, 8);
   }
 
   // ========== Metrics Methods ==========
@@ -335,7 +338,7 @@ export class RestApiServer implements IRestApiServer {
       requestsPerEndpoint: Object.fromEntries(this.requestsPerEndpoint),
       avgResponseTimeMs: this.requestCount > 0 ? this.totalResponseTimeMs / this.requestCount : 0,
       errorRate: this.requestCount > 0 ? this.errorCount / this.requestCount : 0,
-      uptimeMs: Date.now() - this.startTime,
+      uptimeMs: getTimeProvider().now() - this.startTime,
     };
   }
 }

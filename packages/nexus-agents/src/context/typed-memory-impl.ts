@@ -7,6 +7,7 @@
 
 import type { Result } from '../core/result.js';
 import { ok, err } from '../core/result.js';
+import { getTimeProvider } from '../core/index.js';
 import type { IMemoryBackend, MemoryMetadata, MemoryError } from './memory-backend-types.js';
 import { MemoryImportance, MemoryError as MemError } from './memory-backend-types.js';
 import type {
@@ -130,7 +131,7 @@ export class SemanticMemoryImpl implements ISemanticMemory {
       tags: ['semantic', fact.domain, fact.subject],
     };
     if (fact.validUntil !== undefined) {
-      meta.ttl = fact.validUntil.getTime() - Date.now();
+      meta.ttl = fact.validUntil.getTime() - getTimeProvider().now();
     }
     return this.backend.store(`semantic:${fact.factId}`, fact, meta);
   }
@@ -174,7 +175,7 @@ export class SemanticMemoryImpl implements ISemanticMemory {
     const fact = await this.getFact(factId);
     if (!fact.ok) return fact;
     if (fact.value === null) return ok(undefined);
-    const updated = { ...fact.value, validUntil: new Date() };
+    const updated = { ...fact.value, validUntil: new Date(getTimeProvider().now()) };
     return this.storeFact(updated);
   }
 }
@@ -282,7 +283,7 @@ export class ResourceMemoryImpl implements IResourceMemory {
     const res = await this.getResource(resourceId);
     if (!res.ok) return res;
     if (res.value === null) return ok(undefined);
-    return this.storeResource({ ...res.value, lastAccessed: new Date() });
+    return this.storeResource({ ...res.value, lastAccessed: new Date(getTimeProvider().now()) });
   }
 
   async searchResources(
@@ -308,7 +309,7 @@ export class KnowledgeVaultImpl implements IKnowledgeVault {
     const tags = ['vault', entry.category, entry.importance, ...(entry.tags ?? [])];
     const meta: MemoryMetadata = { importance, tags };
     if (entry.expiresAt !== undefined) {
-      meta.ttl = entry.expiresAt.getTime() - Date.now();
+      meta.ttl = entry.expiresAt.getTime() - getTimeProvider().now();
     }
     return this.backend.store(`vault:${entry.vaultId}`, entry, meta);
   }
@@ -354,13 +355,17 @@ export class KnowledgeVaultImpl implements IKnowledgeVault {
     const entry = await this.retrieve(vaultId);
     if (!entry.ok) return entry;
     if (entry.value === null) return ok(undefined);
-    return this.store({ ...entry.value, category: 'archive', updatedAt: new Date() });
+    return this.store({
+      ...entry.value,
+      category: 'archive',
+      updatedAt: new Date(getTimeProvider().now()),
+    });
   }
 
   async getExpired(): Promise<Result<readonly VaultEntry[], MemoryError>> {
     const result = await this.backend.search('vault', 100);
     if (!result.ok) return result;
-    const now = new Date();
+    const now = new Date(getTimeProvider().now());
     const expired = result.value
       .map((e) => e.value as VaultEntry)
       .filter((v) => v.expiresAt !== undefined && v.expiresAt < now);

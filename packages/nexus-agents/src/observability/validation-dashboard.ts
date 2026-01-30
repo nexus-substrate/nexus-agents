@@ -17,6 +17,7 @@ import type {
   DashboardOutcome,
 } from './validation-dashboard-types.js';
 import { DEFAULT_DASHBOARD_RENDER_OPTIONS } from './validation-dashboard-types.js';
+import { getTimeProvider } from '../core/index.js';
 
 // Re-export DashboardOutcome for backward compatibility
 export type { DashboardOutcome } from './validation-dashboard-types.js';
@@ -55,7 +56,7 @@ export class ValidationDashboard {
 
   /** Record exploration rate snapshot. */
   recordExplorationRate(rate: number): void {
-    this.explorationHistory.push({ timestamp: Date.now(), rate });
+    this.explorationHistory.push({ timestamp: getTimeProvider().now(), rate });
     if (this.explorationHistory.length > 1000) {
       this.explorationHistory = this.explorationHistory.slice(-1000);
     }

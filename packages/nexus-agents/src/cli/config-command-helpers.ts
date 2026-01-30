@@ -10,6 +10,7 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { existsSync } from 'node:fs';
+import { getTimeProvider } from '../core/index.js';
 import { DEFAULTS } from '../config/defaults.js';
 import type { ConfigCategory } from '../config/config-manager.js';
 import type { ParsedConfigKey } from './config-command-types.js';
@@ -194,7 +195,7 @@ export async function createBackup(filePath: string): Promise<string | undefined
     return undefined;
   }
 
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const timestamp = new Date(getTimeProvider().now()).toISOString().replace(/[:.]/g, '-');
   const backupPath = `${filePath}.backup-${timestamp}`;
 
   await fs.copyFile(filePath, backupPath);

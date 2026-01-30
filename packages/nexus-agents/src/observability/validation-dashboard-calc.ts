@@ -14,6 +14,7 @@ import type {
   TimePeriod,
   DashboardOutcome,
 } from './validation-dashboard-types.js';
+import { getTimeProvider } from '../core/index.js';
 import {
   proportionConfidenceInterval,
   calculateDistributionStats,
@@ -23,7 +24,7 @@ import {
 
 /** Get period time bounds. */
 export function getPeriodBounds(period: TimePeriod): { start: number; end: number } {
-  const now = Date.now();
+  const now = getTimeProvider().now();
   const end = now;
   let start: number;
 

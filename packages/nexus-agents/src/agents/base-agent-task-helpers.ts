@@ -6,7 +6,7 @@
  */
 
 import type { Result, Task, TaskResult, ILogger } from '../core/index.js';
-import { ok, err, AgentError } from '../core/index.js';
+import { ok, err, AgentError, getTimeProvider } from '../core/index.js';
 import { TaskSchema } from './agent-schemas.js';
 import type { AgentStateMachine } from './state-machine.js';
 import type { ITokenBudgetTracker } from '../context/token-budget-tracker.js';
@@ -117,7 +117,7 @@ export interface FinalizeTaskParams {
 /** Handles successful task completion: state transitions, budget tracking, and logging. */
 export function finalizeTaskSuccess(params: FinalizeTaskParams): void {
   const { task, result, startTime, stateMachine, budgetTracker, logger } = params;
-  const durationMs = Date.now() - startTime;
+  const durationMs = getTimeProvider().now() - startTime;
 
   // Complete task - if still in thinking, transition through acting first
   if (stateMachine.state === 'thinking') {

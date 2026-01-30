@@ -19,32 +19,40 @@ import type {
   SycophancyIndicator,
 } from './types.js';
 import { createQuorumValidator, type QuorumValidationConfig } from './quorum-validator.js';
+import { getTimeProvider, getRandomProvider } from '../core/index.js';
 
 /**
  * Generate a unique session ID.
  */
 export function generateSessionId(): string {
-  return `session_${String(Date.now())}_${Math.random().toString(36).slice(2, 9)}`;
+  const time = getTimeProvider();
+  const random = getRandomProvider();
+  return `session_${String(time.now())}_${random.randomString(7)}`;
 }
 
 /**
  * Generate a unique finding ID.
  */
 export function generateFindingId(): string {
-  return `finding_${String(Date.now())}_${Math.random().toString(36).slice(2, 9)}`;
+  const time = getTimeProvider();
+  const random = getRandomProvider();
+  return `finding_${String(time.now())}_${random.randomString(7)}`;
 }
 
 /**
  * Generate a unique round ID.
  */
 export function generateRoundId(): string {
-  return `round_${String(Date.now())}_${Math.random().toString(36).slice(2, 9)}`;
+  const time = getTimeProvider();
+  const random = getRandomProvider();
+  return `round_${String(time.now())}_${random.randomString(7)}`;
 }
 
 /**
  * Create a new voting round.
  */
 export function createRound(phase: VotingRoundPhase, roundNumber: number): VotingRound {
+  const time = getTimeProvider();
   return {
     id: generateRoundId(),
     phase,
@@ -52,7 +60,7 @@ export function createRound(phase: VotingRoundPhase, roundNumber: number): Votin
     findings: new Map(),
     findingVotes: new Map(),
     finalVotes: new Map(),
-    startedAt: new Date().toISOString(),
+    startedAt: time.nowIso(),
     roundNumber,
   };
 }
@@ -193,10 +201,11 @@ export function consolidateFindings(session: VotingSession): ConsolidatedFinding
  * Build round summaries from session.
  */
 export function buildRoundSummaries(session: VotingSession): RoundSummary[] {
+  const time = getTimeProvider();
   return session.rounds.map((round, index) => {
     const startTime = new Date(round.startedAt).getTime();
     const endTime =
-      round.completedAt !== undefined ? new Date(round.completedAt).getTime() : Date.now();
+      round.completedAt !== undefined ? new Date(round.completedAt).getTime() : time.now();
 
     let votesCount = 0;
     let agreementScore = 0;

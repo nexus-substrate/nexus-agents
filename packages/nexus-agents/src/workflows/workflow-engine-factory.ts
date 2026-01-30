@@ -9,7 +9,15 @@
 
 import type { Result, WorkflowDefinition, StepResult, IModelAdapter } from '../core/index.js';
 import type { WorkflowStep as CoreWorkflowStep } from '../core/index.js';
-import { ok, err, WorkflowError, ParseError, createLogger, type ILogger } from '../core/index.js';
+import {
+  ok,
+  err,
+  WorkflowError,
+  ParseError,
+  createLogger,
+  getTimeProvider,
+  type ILogger,
+} from '../core/index.js';
 
 /**
  * Error thrown when workflow execution cannot proceed due to missing expert factory.
@@ -83,7 +91,7 @@ function createSimpleStepResult(step: CoreWorkflowStep, startTime: number): Step
       message: `Executed step ${step.id} with action ${step.action}`,
       mock: true, // Indicates this was mock execution, not real
     },
-    durationMs: Date.now() - startTime,
+    durationMs: getTimeProvider().now() - startTime,
     status: 'success',
   };
 }
@@ -107,7 +115,7 @@ function bridgeToWorkflowContext(
     inputs: parallelCtx.inputs,
     stepResults: parallelCtx.stepResults,
     variables: new Map(),
-    startedAt: new Date(),
+    startedAt: new Date(getTimeProvider().now()),
     cancelled: parallelCtx.signal?.aborted === true,
   };
 }
@@ -181,7 +189,7 @@ function createRealStepExecutorCallback(
   const executor = createStepExecutor({ expertFactory, logger: adaptedLogger });
 
   return async (step, ctx) => {
-    const startTime = Date.now();
+    const startTime = getTimeProvider().now();
     const workflowCtx = bridgeToWorkflowContext(ctx, workflowId);
 
     // Wire abort signal to cancellation
@@ -207,7 +215,7 @@ function createRealStepExecutorCallback(
       return {
         stepId: step.id,
         output: null,
-        durationMs: Date.now() - startTime,
+        durationMs: getTimeProvider().now() - startTime,
         status: 'failed',
         error: result.error.message,
       };
@@ -253,7 +261,7 @@ function createMockStepExecutor(
   logger: ILogger
 ): (step: CoreWorkflowStep, ctx: ParallelContext) => Promise<StepResult> {
   return (step: CoreWorkflowStep, _ctx: ParallelContext): Promise<StepResult> => {
-    const startTime = Date.now();
+    const startTime = getTimeProvider().now();
     logger.debug('Executing step (mock)', {
       stepId: step.id,
       agent: step.agent,

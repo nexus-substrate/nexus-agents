@@ -9,6 +9,7 @@
  */
 
 import type { WorkflowDefinition, WorkflowStep } from '../../core/index.js';
+import { getRandomProvider } from '../../core/index.js';
 import type {
   WorkflowMutation,
   TimeoutAdjustment,
@@ -160,11 +161,12 @@ export function adjustRetries(
 export function reorderSteps(
   workflow: WorkflowDefinition
 ): { workflow: WorkflowDefinition; mutation: StepReorder } | null {
+  const random = getRandomProvider();
   const reorderablePairs = findReorderableSteps(workflow.steps);
   if (reorderablePairs.length === 0) return null;
 
   // Pick a random pair
-  const pairIndex = Math.floor(Math.random() * reorderablePairs.length);
+  const pairIndex = random.randomInt(0, reorderablePairs.length);
   const pair = reorderablePairs[pairIndex];
   if (!pair) return null;
 
@@ -208,11 +210,12 @@ export function reorderSteps(
 export function addParallelization(
   workflow: WorkflowDefinition
 ): { workflow: WorkflowDefinition; mutation: ParallelizationChange } | null {
+  const random = getRandomProvider();
   const parallelGroups = findParallelizableSteps(workflow.steps);
   if (parallelGroups.length === 0) return null;
 
   // Pick a random group
-  const groupIndex = Math.floor(Math.random() * parallelGroups.length);
+  const groupIndex = random.randomInt(0, parallelGroups.length);
   const group = parallelGroups[groupIndex];
   if (!group || group.length < 2) return null;
 
@@ -274,16 +277,18 @@ export function removeParallelization(
  * Generate a random timeout adjustment factor within config bounds.
  */
 export function randomTimeoutFactor(config: EvolutionConfig): number {
+  const random = getRandomProvider();
   const [min, max] = config.timeoutAdjustmentRange;
-  return min + Math.random() * (max - min);
+  return min + random.random() * (max - min);
 }
 
 /**
  * Generate a random retry adjustment delta within config bounds.
  */
 export function randomRetryDelta(config: EvolutionConfig): number {
+  const random = getRandomProvider();
   const [min, max] = config.retryAdjustmentRange;
-  return Math.floor(min + Math.random() * (max - min + 1));
+  return random.randomInt(min, max + 1);
 }
 
 /**
@@ -297,15 +302,16 @@ export function applyRandomMutation(
   workflow: WorkflowDefinition,
   config: EvolutionConfig
 ): { workflow: WorkflowDefinition; mutations: WorkflowMutation[] } {
+  const random = getRandomProvider();
   const mutations: WorkflowMutation[] = [];
   let currentWorkflow = workflow;
 
   // Try each step for possible mutation
   for (const step of workflow.steps) {
-    if (Math.random() > config.mutationRate) continue;
+    if (random.random() > config.mutationRate) continue;
 
     // Choose mutation type randomly
-    const mutationType = Math.random();
+    const mutationType = random.random();
 
     if (mutationType < 0.4) {
       // Timeout adjustment (40% chance)

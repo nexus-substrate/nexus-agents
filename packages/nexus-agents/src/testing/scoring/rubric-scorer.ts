@@ -6,7 +6,7 @@
  */
 
 import type { Result } from '../../core/index.js';
-import { ok } from '../../core/index.js';
+import { ok, getTimeProvider } from '../../core/index.js';
 import type {
   ScoringRubric,
   RubricCriterion,
@@ -88,7 +88,7 @@ export class RubricScorer {
       totalWeightedScore,
       maxWeightedScore,
       summary: this.generateSummary(criteriaScores, overallScore, passed, rubric),
-      evaluatedAt: new Date().toISOString(),
+      evaluatedAt: new Date(getTimeProvider().now()).toISOString(),
     });
   }
 

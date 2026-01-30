@@ -7,7 +7,7 @@
  */
 
 import type { Task } from '../../../core/index.js';
-import { createLogger } from '../../../core/index.js';
+import { createLogger, getTimeProvider } from '../../../core/index.js';
 import type { TrinityResult } from '../../../agents/collaboration/trinity-types.js';
 import type { SelfDevWorkflowDependencies } from '../interfaces.js';
 import type {
@@ -216,7 +216,7 @@ function buildPlanOutputFromTrinity(
     plan: buildImplementationPlanFromTrinity(trinityResult, analyze),
     iterations: trinityResult.iterations,
     verified: trinityResult.verifierOutput.verdict === 'pass',
-    durationMs: Date.now() - startTime,
+    durationMs: getTimeProvider().now() - startTime,
   };
 }
 
@@ -318,7 +318,7 @@ function buildFallbackPlanOutput(
   _maxIterations: number,
   startTime: number
 ): PlanOutput {
-  const durationMs = Date.now() - startTime;
+  const durationMs = getTimeProvider().now() - startTime;
   const issue = analyze.selectedIssue;
   const steps = generateStepsForType(issue.type, issue.title);
   const guidance = buildImplementationGuidance(issue, steps, research.codebase.relevantFiles);
@@ -368,7 +368,7 @@ export async function executePlan(
   analyze: AnalyzeOutput,
   research: ResearchOutput
 ): Promise<PlanOutput> {
-  const startTime = Date.now();
+  const startTime = getTimeProvider().now();
   const taskDescription = buildPlanTaskDescription(analyze, research);
   const config = state.config.phases?.plan;
   const maxIterations = config?.maxIterations ?? 3;

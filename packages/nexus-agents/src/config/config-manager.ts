@@ -8,6 +8,7 @@
  */
 
 import { z } from 'zod';
+import { getTimeProvider } from '../core/index.js';
 import { DEFAULTS } from './defaults.js';
 
 // ============================================================================
@@ -204,7 +205,7 @@ export class ConfigManager {
       );
     }
 
-    this.overrides.set(fullKey, { value, source, setAt: new Date() });
+    this.overrides.set(fullKey, { value, source, setAt: new Date(getTimeProvider().now()) });
   }
 
   /** Clears an override. Returns true if it existed. */

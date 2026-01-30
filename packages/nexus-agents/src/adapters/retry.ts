@@ -15,6 +15,7 @@ import {
   ok,
   NexusError,
   ErrorCode,
+  getRandomProvider,
 } from '../core/index.js';
 
 /**
@@ -102,7 +103,7 @@ export function calculateDelay(attempt: number, config: RetryConfig): number {
 
   // Apply jitter: delay +/- (delay * jitterFactor)
   const jitterRange = cappedDelay * config.jitterFactor;
-  const jitter = (Math.random() * 2 - 1) * jitterRange;
+  const jitter = (getRandomProvider().random() * 2 - 1) * jitterRange;
 
   return Math.max(0, Math.floor(cappedDelay + jitter));
 }

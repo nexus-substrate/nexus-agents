@@ -8,6 +8,7 @@
  * (Source: Issue #379, Issue #154)
  */
 
+import { getTimeProvider } from '../../core/index.js';
 import type { PolicyTrajectoryStep } from './policy-types.js';
 import type {
   ExperienceBufferConfig,
@@ -80,7 +81,7 @@ export class ExperienceBuffer {
       sessionId,
       steps: [...steps],
       totalReward,
-      timestamp: new Date(),
+      timestamp: new Date(getTimeProvider().now()),
     };
 
     this.episodes.push(episode);

@@ -13,6 +13,7 @@ import { promisify } from 'node:util';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import type { ILogger } from '../core/logger.js';
+import { getTimeProvider } from '../core/index.js';
 import type { PatchApplicationResult, PatchApplicationOptions } from './patch-applicator-types.js';
 
 const execAsync = promisify(exec);
@@ -45,7 +46,7 @@ export type ResolvedPatchOptions = Required<Omit<PatchApplicationOptions, 'workD
  * @returns Path to the created temporary file
  */
 export async function writeTempPatch(patch: string, workDir: string): Promise<string> {
-  const tempPath = path.join(workDir, `.patch-${String(Date.now())}.patch`);
+  const tempPath = path.join(workDir, `.patch-${String(getTimeProvider().now())}.patch`);
   await fs.writeFile(tempPath, patch, 'utf-8');
   return tempPath;
 }

@@ -10,7 +10,7 @@
 
 import { readFile } from 'node:fs/promises';
 import * as yaml from 'yaml';
-import { logger } from '../../core/logger.js';
+import { logger, getTimeProvider } from '../../core/index.js';
 import type {
   IJourneySimulator,
   UserJourney,
@@ -34,7 +34,8 @@ export interface IActionExecutor {
  */
 export class DefaultActionExecutor implements IActionExecutor {
   async execute(action: JourneyAction): Promise<ActionResult> {
-    const startTime = Date.now();
+    const time = getTimeProvider();
+    const startTime = time.now();
 
     try {
       // Simulate action execution
@@ -43,14 +44,14 @@ export class DefaultActionExecutor implements IActionExecutor {
       return {
         index: 0, // Will be set by caller
         succeeded: true,
-        durationMs: Date.now() - startTime,
+        durationMs: time.now() - startTime,
         output: JSON.stringify({ action: action.type, command: action.command, status: 'ok' }),
       };
     } catch (error) {
       return {
         index: 0,
         succeeded: false,
-        durationMs: Date.now() - startTime,
+        durationMs: time.now() - startTime,
         error: error instanceof Error ? error.message : String(error),
       };
     }
@@ -157,7 +158,7 @@ export class JourneySimulator implements IJourneySimulator {
    * Simulate a user journey.
    */
   async simulate(journey: UserJourney): Promise<JourneyResult> {
-    const startTime = Date.now();
+    const startTime = getTimeProvider().now();
     this.log.info('Starting journey simulation', {
       journeyId: journey.id,
       actionCount: journey.actions.length,
@@ -207,7 +208,7 @@ export class JourneySimulator implements IJourneySimulator {
       results.push(outcome.result);
 
       if (outcome.result.succeeded && firstSuccessTime === undefined) {
-        firstSuccessTime = Date.now() - startTime;
+        firstSuccessTime = getTimeProvider().now() - startTime;
       }
 
       if (!outcome.result.succeeded) {
@@ -238,7 +239,12 @@ export class JourneySimulator implements IJourneySimulator {
     } catch (e) {
       const errorMsg = e instanceof Error ? e.message : String(e);
       return {
-        result: { index, succeeded: false, durationMs: Date.now() - startTime, error: errorMsg },
+        result: {
+          index,
+          succeeded: false,
+          durationMs: getTimeProvider().now() - startTime,
+          error: errorMsg,
+        },
       };
     }
   }
@@ -258,7 +264,7 @@ export class JourneySimulator implements IJourneySimulator {
     startTime: number,
     state: { results: ActionResult[]; firstSuccessTime?: number; failedAt?: number; error?: string }
   ): JourneyResult {
-    const durationMs = Date.now() - startTime;
+    const durationMs = getTimeProvider().now() - startTime;
     const succeeded =
       state.failedAt === undefined && this.checkSuccessCriteria(journey, state.results);
     this.log.info('Journey simulation completed', {

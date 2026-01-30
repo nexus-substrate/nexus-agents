@@ -8,6 +8,7 @@
 
 import type { ICliAdapter, CliName } from '../../cli-adapters/types.js';
 import type { ILogger } from '../../core/logger.js';
+import { getTimeProvider } from '../../core/index.js';
 import type { EvaluationTask, TaskTestResult, ProgressCallback } from './types.js';
 import { selectCli, createErrorResult } from './task-executor.js';
 
@@ -51,7 +52,7 @@ export function createProgressReporter(
   return (): void => {
     if (onProgress === undefined) return;
 
-    const elapsedMs = Date.now() - startMs;
+    const elapsedMs = getTimeProvider().now() - startMs;
     const avgTimePerTask = completed.count > 0 ? elapsedMs / completed.count : 0;
     const remaining = tasks.length - completed.count;
     const estimatedRemainingMs = avgTimePerTask * remaining;

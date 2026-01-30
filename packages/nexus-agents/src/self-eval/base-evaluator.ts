@@ -9,7 +9,7 @@
  */
 
 import type { ComponentInfo } from './component-scanner.js';
-import { createLogger } from '../core/index.js';
+import { createLogger, getTimeProvider } from '../core/index.js';
 import type {
   Recommendation,
   MetricSource,
@@ -42,7 +42,7 @@ export abstract class BaseEvaluator {
    * Evaluate a component and return recommendation.
    */
   async evaluate(component: ComponentInfo): Promise<EvaluationResult> {
-    const startTime = Date.now();
+    const startTime = getTimeProvider().now();
 
     try {
       const result = await Promise.race([this.performEvaluation(component), this.timeout()]);
@@ -50,7 +50,7 @@ export abstract class BaseEvaluator {
       this.log.debug('Evaluation complete', {
         component: component.path,
         recommendation: result.recommendation,
-        durationMs: Date.now() - startTime,
+        durationMs: getTimeProvider().now() - startTime,
       });
 
       return result;
@@ -89,7 +89,7 @@ export abstract class BaseEvaluator {
       concerns,
       isRecommendation: true,
       agent: this.role,
-      timestamp: new Date(),
+      timestamp: new Date(getTimeProvider().now()),
     };
   }
 

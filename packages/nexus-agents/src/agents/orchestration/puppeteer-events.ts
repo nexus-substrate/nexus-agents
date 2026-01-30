@@ -8,6 +8,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { getTimeProvider } from '../../core/index.js';
 import type { DomainEvent, IEventBus } from '../collaboration/event-bus-types.js';
 import type { Task } from '../../core/index.js';
 import type {
@@ -249,7 +250,7 @@ export function emitPuppeteerStarted(
 ): void {
   const event: PuppeteerStartedEvent = {
     eventId: randomUUID(),
-    timestamp: new Date().toISOString(),
+    timestamp: new Date(getTimeProvider().now()).toISOString(),
     topic: PuppeteerTopics.STARTED,
     sessionId,
     payload: {
@@ -274,7 +275,7 @@ export function emitPuppeteerStepCompleted(
   const probability = step.distribution.probabilities.get(step.selectedAgent) ?? 0;
   const event: PuppeteerStepCompletedEvent = {
     eventId: randomUUID(),
-    timestamp: new Date().toISOString(),
+    timestamp: new Date(getTimeProvider().now()).toISOString(),
     topic: PuppeteerTopics.STEP_COMPLETED,
     sessionId,
     payload: {
@@ -302,7 +303,7 @@ export function emitPuppeteerCompleted(
 ): void {
   const event: PuppeteerCompletedEvent = {
     eventId: randomUUID(),
-    timestamp: new Date().toISOString(),
+    timestamp: new Date(getTimeProvider().now()).toISOString(),
     topic: PuppeteerTopics.COMPLETED,
     sessionId,
     payload: {
@@ -344,7 +345,7 @@ export function emitPuppeteerError(
 
   const event: PuppeteerErrorEvent = {
     eventId: randomUUID(),
-    timestamp: new Date().toISOString(),
+    timestamp: new Date(getTimeProvider().now()).toISOString(),
     topic: PuppeteerTopics.ERROR,
     sessionId,
     payload,
@@ -362,7 +363,7 @@ export function emitPuppeteerPatternDetected(
 ): void {
   const event: PuppeteerPatternDetectedEvent = {
     eventId: randomUUID(),
-    timestamp: new Date().toISOString(),
+    timestamp: new Date(getTimeProvider().now()).toISOString(),
     topic: PuppeteerTopics.PATTERN_DETECTED,
     sessionId,
     payload: {

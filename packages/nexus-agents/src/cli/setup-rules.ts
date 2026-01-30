@@ -10,6 +10,7 @@
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { VERSION } from '../version.js';
+import { getTimeProvider } from '../core/index.js';
 import type { BackupInfo } from './setup-types.js';
 
 /**
@@ -109,7 +110,7 @@ export function createRulesFile(projectRoot: string, dryRun: boolean): string {
  */
 export function backupFile(filePath: string): BackupInfo {
   const content = readFileSync(filePath, 'utf-8');
-  const backupPath = `${filePath}.backup.${String(Date.now())}`;
+  const backupPath = `${filePath}.backup.${String(getTimeProvider().now())}`;
   writeFileSync(backupPath, content, 'utf-8');
 
   return {

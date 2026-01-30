@@ -10,6 +10,7 @@
 import { Project } from 'ts-morph';
 import * as path from 'node:path';
 import * as yaml from 'yaml';
+import { getTimeProvider } from '../core/index.js';
 import type {
   EntrypointManifest,
   EntrypointExtractionResult,
@@ -40,7 +41,7 @@ import { extractRestEndpoints } from './entrypoint-rest-extractor.js';
  * Generates an ISO 8601 timestamp in America/New_York timezone.
  */
 function generateTimestamp(): string {
-  return new Date().toLocaleString('en-US', {
+  return new Date(getTimeProvider().now()).toLocaleString('en-US', {
     timeZone: 'America/New_York',
     year: 'numeric',
     month: '2-digit',

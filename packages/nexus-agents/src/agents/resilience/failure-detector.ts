@@ -6,7 +6,7 @@
  */
 
 import type { Message, ILogger } from '../../core/index.js';
-import { createLogger } from '../../core/index.js';
+import { createLogger, getTimeProvider } from '../../core/index.js';
 import type {
   FailureArchetype,
   DetectedFailure,
@@ -81,7 +81,7 @@ export class FailureDetector {
    * Analyzes agent behavior for failure archetypes.
    */
   detect(input: DetectionInput): DetectionResult {
-    const startTime = Date.now();
+    const startTime = getTimeProvider().now();
     const failures: DetectedFailure[] = [];
     let checksPerformed = 0;
     let contentAnalyzed = 0;
@@ -97,7 +97,7 @@ export class FailureDetector {
       }
     }
 
-    const durationMs = Date.now() - startTime;
+    const durationMs = getTimeProvider().now() - startTime;
     this.logger.debug('Detection complete', {
       hasFailure: failures.length > 0,
       failureCount: failures.length,
@@ -333,7 +333,7 @@ export class FailureDetector {
       description: this.getArchetypeDescription(archetype),
       indicators,
       confidence,
-      timestamp: Date.now(),
+      timestamp: getTimeProvider().now(),
     };
   }
 

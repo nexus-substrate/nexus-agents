@@ -6,7 +6,7 @@
  */
 
 import type { Result, TaskResult, AgentRole } from '../../core/index.js';
-import { ok, err, AgentError } from '../../core/index.js';
+import { ok, err, AgentError, getTimeProvider } from '../../core/index.js';
 import type {
   CollaborationConfig,
   CollaborationPattern,
@@ -330,7 +330,7 @@ export function createSessionState(
   config: CollaborationConfig,
   roleResolver: (expertId: string) => AgentRole
 ): SessionState {
-  const now = new Date().toISOString();
+  const now = new Date(getTimeProvider().now()).toISOString();
   const participants: ExpertParticipation[] = config.experts.map((expertId) => ({
     expertId,
     role: roleResolver(expertId),

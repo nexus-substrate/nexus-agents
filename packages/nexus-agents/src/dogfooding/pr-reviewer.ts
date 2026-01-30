@@ -8,7 +8,7 @@
  */
 
 import type { Result, Task, TaskResult, IModelAdapter } from '../core/index.js';
-import { ok, err, createLogger } from '../core/index.js';
+import { ok, err, createLogger, getTimeProvider } from '../core/index.js';
 import { createSecurityExpert } from '../agents/experts/security-expert.js';
 import { createCodeExpert } from '../agents/experts/code-expert.js';
 import { createTestingExpert } from '../agents/experts/testing-expert.js';
@@ -58,7 +58,7 @@ export class PRReviewer {
    * Reviews a pull request using multi-agent collaboration.
    */
   async reviewPR(prUrl: string): Promise<Result<PRReviewResult, Error>> {
-    const startTime = Date.now();
+    const startTime = getTimeProvider().now();
     const traceId = SwarmObserver.generateTraceId();
 
     logger.info('Starting PR review', { prUrl, traceId });
@@ -114,7 +114,7 @@ export class PRReviewer {
     category: ReviewCategory,
     traceId: string
   ): Promise<ExpertReviewResult> {
-    const startTime = Date.now();
+    const startTime = getTimeProvider().now();
     const expertId = `${category}-expert`;
 
     logger.debug('Running expert review', { expertId, category });
@@ -123,7 +123,7 @@ export class PRReviewer {
     const task = this.createReviewTask(pr, category);
 
     const result = await expert.execute(task);
-    const durationMs = Date.now() - startTime;
+    const durationMs = getTimeProvider().now() - startTime;
 
     this.observer.recordInteraction({
       from: 'pr-reviewer',
@@ -286,11 +286,11 @@ Provide a structured review with:
       expertReviews: reviews,
       findingsBySeverity: countBySeverity(allFindings),
       findingsByCategory: countByCategory(allFindings),
-      totalDurationMs: Date.now() - startTime,
+      totalDurationMs: getTimeProvider().now() - startTime,
       expertCount: reviews.length,
       consensusScore,
       debateRounds: 1,
-      timestamp: new Date().toISOString(),
+      timestamp: new Date(getTimeProvider().now()).toISOString(),
     };
   }
 

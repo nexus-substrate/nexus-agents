@@ -8,7 +8,7 @@
  */
 
 import type { Result, Task, TaskResult, ILogger, Message } from '../core/index.js';
-import { AgentError } from '../core/index.js';
+import { AgentError, getTimeProvider } from '../core/index.js';
 import type { ITokenBudgetTracker } from '../context/token-budget-tracker.js';
 import type { IMemoryBackend } from '../context/memory-backend-types.js';
 import type { AgentStateMachine } from './state-machine.js';
@@ -76,7 +76,7 @@ export function setupExecute(ctx: ExecuteFlowContext, task: Task): ExecuteSetupR
     return { valid: false, error: availabilityCheck.error, startTime: 0 };
   }
 
-  return { valid: true, startTime: Date.now() };
+  return { valid: true, startTime: getTimeProvider().now() };
 }
 
 /**

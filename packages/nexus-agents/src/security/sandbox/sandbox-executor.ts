@@ -10,7 +10,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { resolve, normalize } from 'node:path';
-import { createLogger } from '../../core/index.js';
+import { createLogger, getTimeProvider } from '../../core/index.js';
 import type {
   ISandboxExecutor,
   SandboxExecutionOptions,
@@ -93,7 +93,7 @@ export class PolicySandboxExecutor implements ISandboxExecutor {
     args: readonly string[],
     options: SandboxExecutionOptions
   ): Promise<SandboxResult> {
-    const startTime = Date.now();
+    const startTime = getTimeProvider().now();
     const policy = options.policy;
 
     // Validate command and args
@@ -252,7 +252,7 @@ export class PolicySandboxExecutor implements ISandboxExecutor {
       exitCode: 126, // Permission denied exit code
       stdout: '',
       stderr: `Sandbox policy denied execution: ${evaluation.reason ?? 'Unknown reason'}`,
-      durationMs: Date.now() - startTime,
+      durationMs: getTimeProvider().now() - startTime,
       resourceUsage: this.createEmptyResourceUsage(),
       policyEvaluation: evaluation,
     };
@@ -268,7 +268,7 @@ export class PolicySandboxExecutor implements ISandboxExecutor {
     evaluation: PolicyEvaluation,
     startTime: number
   ): SandboxResult {
-    const durationMs = Date.now() - startTime;
+    const durationMs = getTimeProvider().now() - startTime;
 
     logger.debug('Sandbox execution succeeded', { command, durationMs });
 
@@ -300,7 +300,7 @@ export class PolicySandboxExecutor implements ISandboxExecutor {
     startTime: number
   ): SandboxResult {
     const execError = parseExecError(error);
-    const durationMs = Date.now() - startTime;
+    const durationMs = getTimeProvider().now() - startTime;
 
     this.logExecutionError(command, execError, durationMs);
 

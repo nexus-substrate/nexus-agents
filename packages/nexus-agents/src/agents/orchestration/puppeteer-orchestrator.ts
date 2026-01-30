@@ -16,6 +16,7 @@
 import { ok, err } from '../../core/result.js';
 import type { Result } from '../../core/result.js';
 import type { IAgent, Task } from '../../core/index.js';
+import { getTimeProvider } from '../../core/index.js';
 import type { IEventBus } from '../collaboration/event-bus-types.js';
 import type {
   PuppeteerConfig,
@@ -132,7 +133,7 @@ export class PuppeteerOrchestrator {
     this.resetState();
 
     const sessionId = generateSessionId();
-    const startTime = Date.now();
+    const startTime = getTimeProvider().now();
     const { task, initialContext, signal } = options;
 
     this.setupAbortSignal(signal);

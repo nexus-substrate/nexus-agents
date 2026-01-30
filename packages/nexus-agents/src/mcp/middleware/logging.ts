@@ -5,7 +5,7 @@
  * Provides consistent logging across all MCP tools and handlers.
  */
 
-import { createLogger, type ILogger, type LogContext } from '../../core/index.js';
+import { createLogger, type ILogger, type LogContext, getTimeProvider } from '../../core/index.js';
 
 /**
  * MCP-specific log context fields.
@@ -142,9 +142,9 @@ export function logToolError(
  * ```
  */
 export function createTimer(): { elapsed: () => number } {
-  const startTime = Date.now();
+  const startTime = getTimeProvider().now();
   return {
-    elapsed: () => Date.now() - startTime,
+    elapsed: () => getTimeProvider().now() - startTime,
   };
 }
 

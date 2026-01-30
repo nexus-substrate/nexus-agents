@@ -15,6 +15,7 @@
 
 import type { Result } from '../core/result.js';
 import { ok, err } from '../core/result.js';
+import { getTimeProvider } from '../core/index.js';
 import type { ILogger } from '../core/logger.js';
 import { createLogger } from '../core/logger.js';
 import type { MemoryEntry, MemoryMetadata, ISQLiteDatabase } from './memory-backend-types.js';
@@ -193,7 +194,7 @@ export class AgenticMemoryBackend implements IAgenticMemory {
       if (!storeResult.ok) return storeResult;
 
       const existingMemories = queryMemoriesForAnalysis(this.getDb(), key, this.extractionConfig);
-      const now = new Date();
+      const now = new Date(getTimeProvider().now());
       const linkSuggestions = generateLinkSuggestions(
         key,
         attributes,

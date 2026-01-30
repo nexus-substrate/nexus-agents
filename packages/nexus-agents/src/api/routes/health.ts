@@ -8,11 +8,12 @@
 
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import type { ILogger } from '../../core/logger.js';
+import { getTimeProvider } from '../../core/index.js';
 import { VERSION } from '../../version.js';
 import type { HealthResponse, MetricsResponse } from '../rest-types.js';
 
 /** Track server start time. */
-const serverStartTime = Date.now();
+const serverStartTime = getTimeProvider().now();
 
 /**
  * Health check result.
@@ -61,7 +62,7 @@ function registerHealthEndpoint(fastify: FastifyInstance): void {
       return {
         status: allPassing ? 'healthy' : 'degraded',
         version: VERSION,
-        uptime: Date.now() - serverStartTime,
+        uptime: getTimeProvider().now() - serverStartTime,
         checks,
       };
     }
@@ -140,7 +141,7 @@ function registerPrometheusEndpoint(fastify: FastifyInstance): void {
       },
     },
     (_request, reply: FastifyReply) => {
-      const uptime = Date.now() - serverStartTime;
+      const uptime = getTimeProvider().now() - serverStartTime;
       const uptimeSeconds = Math.floor(uptime / 1000);
       const lines = [
         '# HELP nexus_agents_up Server up status',
@@ -191,9 +192,10 @@ async function runHealthChecks(): Promise<Record<string, HealthCheck>> {
  * Measure event loop lag.
  */
 async function measureEventLoopLag(): Promise<number> {
-  const start = Date.now();
+  const time = getTimeProvider();
+  const start = time.now();
   await new Promise((resolve) => {
     setImmediate(resolve);
   });
-  return Date.now() - start;
+  return time.now() - start;
 }

@@ -6,6 +6,7 @@
  * (Source: cli-project_plan.md v2.1.0, Phase 3)
  */
 
+import { getTimeProvider } from '../../core/index.js';
 import type { CliName, CliTask, ICliAdapter } from '../../cli-adapters/types.js';
 import type { Task } from '../../core/types/agent.js';
 import type { ITaskRouter, RoutingDecision } from '../../cli-adapters/router.js';
@@ -80,7 +81,7 @@ export function createFailedRubricScore(): RubricScore {
     overallScore: 0,
     criterionScores: [],
     rubricId: 'failed',
-    timestamp: new Date().toISOString(),
+    timestamp: new Date(getTimeProvider().now()).toISOString(),
   };
 }
 
@@ -155,7 +156,7 @@ export function buildTaskResult(params: TaskResultParams): TaskTestResult {
     costUsd: params.costUsd,
     rubricScore: params.rubricScore,
     success: params.success,
-    timestamp: new Date().toISOString(),
+    timestamp: new Date(getTimeProvider().now()).toISOString(),
   };
 
   // Build result with only defined optional properties
@@ -190,7 +191,7 @@ export function createErrorResult(
     rubricScore: createFailedRubricScore(),
     success: false,
     error: error instanceof Error ? error.message : String(error),
-    timestamp: new Date().toISOString(),
+    timestamp: new Date(getTimeProvider().now()).toISOString(),
   };
 }
 

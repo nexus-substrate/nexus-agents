@@ -6,7 +6,7 @@
  * @module workflows/self-development/phases/verify-commit
  */
 
-import { createLogger } from '../../../core/index.js';
+import { createLogger, getTimeProvider } from '../../../core/index.js';
 import type { SelfDevWorkflowDependencies } from '../interfaces.js';
 import type {
   SelfDevWorkflowState,
@@ -114,7 +114,7 @@ export async function executeVerify(
   deps: SelfDevWorkflowDependencies,
   state: SelfDevWorkflowState
 ): Promise<VerifyOutput> {
-  const startTime = Date.now();
+  const startTime = getTimeProvider().now();
   const cwd = state.config.workingDirectory ?? process.cwd();
 
   const checkResults = await runAllVerificationChecks(cwd);
@@ -143,7 +143,7 @@ export async function executeVerify(
     checks,
     allPassed,
     coverage,
-    durationMs: Date.now() - startTime,
+    durationMs: getTimeProvider().now() - startTime,
   };
 
   if (!allPassed && failedChecks.length > 0) {
@@ -450,7 +450,7 @@ function handleGitHubClientUnavailable(
     prNumber: 0,
     prUrl: `https://github.com/${repository}/pull/0`,
     status: 'created',
-    durationMs: Date.now() - startTime,
+    durationMs: getTimeProvider().now() - startTime,
   };
 }
 
@@ -466,7 +466,7 @@ export async function executeCommit(
   state: SelfDevWorkflowState,
   outputs: SelfDevWorkflowResult['outputs']
 ): Promise<CommitOutput> {
-  const startTime = Date.now();
+  const startTime = getTimeProvider().now();
   const phaseConfig = state.config.phases?.verify;
   const allowFallback = phaseConfig?.allowPlaceholderFallback === true;
   const issueNumber = outputs.analyze?.selectedIssue.number ?? 0;
@@ -501,7 +501,12 @@ export async function executeCommit(
   }
 
   const prData = await handlePRAndMerge({ deps, state, outputs, branch, issueNumber, issueTitle });
-  return { branch, commitSha: gitResult.commitSha, ...prData, durationMs: Date.now() - startTime };
+  return {
+    branch,
+    commitSha: gitResult.commitSha,
+    ...prData,
+    durationMs: getTimeProvider().now() - startTime,
+  };
 }
 
 /**
@@ -518,6 +523,6 @@ function buildPlaceholderCommitOutput(
     prNumber: 0,
     prUrl: `https://github.com/${repository}/pull/0`,
     status: 'created',
-    durationMs: Date.now() - startTime,
+    durationMs: getTimeProvider().now() - startTime,
   };
 }

@@ -7,7 +7,7 @@
  */
 
 import type { IAgent, Task } from '../../../core/index.js';
-import { createLogger } from '../../../core/index.js';
+import { createLogger, getTimeProvider } from '../../../core/index.js';
 import type { SelfDevWorkflowDependencies } from '../interfaces.js';
 import type { SelfDevWorkflowState, RefineOutput, VoteOutput } from '../types.js';
 import { SELF_DEV_PERSONAS } from '../types.js';
@@ -21,7 +21,7 @@ const logger = createLogger({ component: 'self-dev-phase-vote' });
  */
 function buildVotingTask(refine: RefineOutput): Task {
   return {
-    id: `vote-${String(Date.now())}`,
+    id: `vote-${String(getTimeProvider().now())}`,
     description: buildVotingPrompt(refine),
     context: {
       metadata: {
@@ -187,7 +187,7 @@ async function runConsensusVoting(
 
   const result = await deps.consensus.execute(
     {
-      sessionId: `vote-${String(Date.now())}`,
+      sessionId: `vote-${String(getTimeProvider().now())}`,
       pattern: 'consensus',
       experts: expertIds,
       task: votingTask,
@@ -349,7 +349,7 @@ function buildFallbackVoteOutput(
     vetoExercised,
     verdict: vetoExercised ? 'REJECTED' : consensus ? 'APPROVED' : 'REQUIRES_REVISION',
     ...(securityVeto !== undefined ? { vetoReason: securityVeto.reasoning } : {}),
-    durationMs: Date.now() - startTime,
+    durationMs: getTimeProvider().now() - startTime,
   };
 }
 
@@ -381,7 +381,7 @@ export async function executeVote(
   state: SelfDevWorkflowState,
   refine: RefineOutput
 ): Promise<VoteOutput> {
-  const startTime = Date.now();
+  const startTime = getTimeProvider().now();
   const minVotes = state.config.phases?.vote?.minVotes ?? 4;
   const allowHeuristicFallback = state.config.phases?.vote?.allowHeuristicFallback === true;
 
@@ -391,7 +391,7 @@ export async function executeVote(
   if (deps.consensus !== undefined) {
     const result = await runConsensusVoting(deps, state, refine, minVotes);
     if (result !== null) {
-      return { ...result, durationMs: Date.now() - startTime };
+      return { ...result, durationMs: getTimeProvider().now() - startTime };
     }
     // Consensus execution failed - fail unless heuristic fallback explicitly allowed
     if (!allowHeuristicFallback) {

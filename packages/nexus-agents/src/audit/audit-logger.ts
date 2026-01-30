@@ -12,6 +12,7 @@
 import * as crypto from 'node:crypto';
 import type { ILogger } from '../core/logger.js';
 import { createLogger } from '../core/logger.js';
+import { getTimeProvider } from '../core/index.js';
 import type {
   IAuditLogger,
   IAuditStorage,
@@ -32,7 +33,7 @@ import { FileAuditStorage } from './audit-storage.js';
 // ============================================================================
 
 function generateEventId(): string {
-  const timestamp = Date.now().toString(36);
+  const timestamp = getTimeProvider().now().toString(36);
   const random = crypto.randomBytes(6).toString('hex');
   return `aud_${timestamp}_${random}`;
 }
@@ -122,7 +123,7 @@ export class AuditLogger implements IAuditLogger {
   }
 
   private createEvent(input: AuditEventInput): AuditEvent {
-    const now = new Date();
+    const now = new Date(getTimeProvider().now());
     const event: AuditEvent = {
       id: generateEventId(),
       version: '1.0',

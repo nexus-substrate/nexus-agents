@@ -4,6 +4,8 @@
  * JSON-structured logging with secret sanitization.
  */
 
+import { getTimeProvider } from './time-provider.js';
+
 /** Log levels in order of severity */
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
@@ -239,7 +241,7 @@ function formatEntry(
   error?: Error
 ): LogEntry {
   const entry: LogEntry = {
-    timestamp: formatTimestamp(new Date()),
+    timestamp: formatTimestamp(new Date(getTimeProvider().now())),
     level,
     message: sanitize(message),
   };

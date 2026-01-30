@@ -8,6 +8,7 @@
  * (Source: Issue #257 - SWE-Bench Evaluation)
  */
 
+import { getTimeProvider } from '../core/index.js';
 import type { DatasetLoadOptions } from './dataset-loader.js';
 import { DEFAULT_SWE_BENCH_CONFIG } from './types.js';
 import type {
@@ -38,7 +39,7 @@ export const DEFAULT_RUNNER_CONFIG: Partial<RunnerConfig> = {
  */
 export function createInitialState(): RunState {
   return {
-    startTime: Date.now(),
+    startTime: getTimeProvider().now(),
     completed: 0,
     failed: 0,
     tokensUsed: 0,
@@ -55,7 +56,7 @@ export function createInitialState(): RunState {
  * Calculates estimated remaining time.
  */
 export function calculateEstimatedRemaining(state: RunState, remaining: number): number {
-  const elapsed = Date.now() - state.startTime;
+  const elapsed = getTimeProvider().now() - state.startTime;
   const processed = state.completed + state.failed;
   if (processed === 0) return 0;
   const avgTimePerInstance = elapsed / processed;
@@ -71,7 +72,7 @@ export function createProgress(
   instanceId: string,
   state: RunState
 ): RunProgress {
-  const elapsed = Date.now() - state.startTime;
+  const elapsed = getTimeProvider().now() - state.startTime;
   const processed = state.completed + state.failed;
   const remaining = total - processed;
   return {

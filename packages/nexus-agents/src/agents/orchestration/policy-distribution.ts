@@ -9,6 +9,7 @@
  * (Source: Issue #335, Issue #352, arXiv:2505.19591)
  */
 
+import { getRandomProvider } from '../../core/index.js';
 import type { AgentDistribution } from './puppeteer-types.js';
 import type { AgentScores } from './policy-scoring.js';
 
@@ -167,7 +168,7 @@ export function argmax(distribution: AgentDistribution): string {
  * Sample agent according to probability distribution.
  */
 export function weightedSample(distribution: AgentDistribution): string {
-  const random = Math.random();
+  const random = getRandomProvider().random();
   let cumulative = 0;
 
   for (const [agentId, prob] of distribution.probabilities) {

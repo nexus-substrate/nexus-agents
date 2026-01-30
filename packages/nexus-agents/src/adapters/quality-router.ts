@@ -13,7 +13,7 @@
  */
 
 import type { Task, ILogger, Result, TaskType } from '../core/index.js';
-import { ok, err, AgentError, createLogger } from '../core/index.js';
+import { ok, err, AgentError, createLogger, getTimeProvider } from '../core/index.js';
 import type {
   ICliAdapter,
   CliTask,
@@ -192,7 +192,7 @@ export class QualityRouter {
   }
 
   route(task: Task): Result<RoutingDecision, AgentError> {
-    const startTime = Date.now();
+    const startTime = getTimeProvider().now();
     if (this.adapters.size === 0) {
       return err(new AgentError('No adapters registered'));
     }
@@ -205,7 +205,9 @@ export class QualityRouter {
       return err(new AgentError('No suitable adapter found'));
     }
 
-    return ok(this.buildDecision(selected, candidates, complexity, Date.now() - startTime));
+    return ok(
+      this.buildDecision(selected, candidates, complexity, getTimeProvider().now() - startTime)
+    );
   }
 
   async execute(task: Task): Promise<Result<QualityRoutedResult, AgentError | CliError>> {
@@ -217,9 +219,9 @@ export class QualityRouter {
     if (!adapter) return err(new AgentError(`Adapter not found: ${decision.selectedCli}`));
 
     const cliTask = this.buildCliTask(task);
-    const startTime = Date.now();
+    const startTime = getTimeProvider().now();
     const execResult = await adapter.execute(cliTask);
-    const actualLatencyMs = Date.now() - startTime;
+    const actualLatencyMs = getTimeProvider().now() - startTime;
 
     if (!execResult.ok) return err(execResult.error);
 

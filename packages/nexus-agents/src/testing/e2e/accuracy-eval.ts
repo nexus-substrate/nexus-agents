@@ -9,6 +9,7 @@
  */
 
 import { logger } from '../../core/logger.js';
+import { getTimeProvider } from '../../core/index.js';
 import type {
   IAccuracyEval,
   AccuracyEvalConfig,
@@ -149,7 +150,7 @@ export class AccuracyEval implements IAccuracyEval {
    * Run an accuracy evaluation.
    */
   async evaluate(config: AccuracyEvalConfig): Promise<AccuracyEvalResult> {
-    const startTime = Date.now();
+    const startTime = getTimeProvider().now();
     this.logEvalStart(config);
 
     const { feedback, scores, totalTokens } = await this.runEvaluationRounds(config);
@@ -242,7 +243,7 @@ export class AccuracyEval implements IAccuracyEval {
   ): AccuracyEvalResult {
     const avgScore = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
     const passed = avgScore >= config.qualityThreshold;
-    const durationMs = Date.now() - startTime;
+    const durationMs = getTimeProvider().now() - startTime;
     const estimatedCostUsd = (totalTokens / 1000) * 0.003;
 
     this.log.info('Accuracy evaluation completed', {

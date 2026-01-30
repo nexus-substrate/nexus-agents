@@ -1,4 +1,5 @@
 #!/usr/bin/env npx tsx
+
 /**
  * CLI Orchestration Fitness Score
  *
@@ -82,18 +83,25 @@ function fileContains(filePath: string, pattern: RegExp): boolean {
 /**
  * Count pattern occurrences in directory.
  */
-function countPatternInDir(dir: string, filePattern: RegExp, contentPattern: RegExp): number {
+function isExcluded(entry: string, excludePatterns: RegExp[] | undefined): boolean {
+  return excludePatterns?.some((p) => p.test(entry)) ?? false;
+}
+
+function countPatternInDir(
+  dir: string,
+  filePattern: RegExp,
+  contentPattern: RegExp,
+  excludePatterns?: RegExp[]
+): number {
   if (!existsSync(dir)) return 0;
   let count = 0;
-  const entries = readdirSync(dir);
-  for (const entry of entries) {
+  for (const entry of readdirSync(dir)) {
     const fullPath = join(dir, entry);
     const stat = statSync(fullPath);
     if (stat.isDirectory() && !entry.startsWith('.') && entry !== 'node_modules') {
-      count += countPatternInDir(fullPath, filePattern, contentPattern);
-    } else if (filePattern.test(entry)) {
-      const content = readFileSync(fullPath, 'utf-8');
-      const matches = content.match(contentPattern);
+      count += countPatternInDir(fullPath, filePattern, contentPattern, excludePatterns);
+    } else if (filePattern.test(entry) && !isExcluded(entry, excludePatterns)) {
+      const matches = readFileSync(fullPath, 'utf-8').match(contentPattern);
       count += matches?.length ?? 0;
     }
   }
@@ -164,13 +172,37 @@ function assessCanonicalPaths(): FitnessComponent {
 /**
  * Assess determinism.
  */
-function assessDeterminism(): FitnessComponent {
-  const penalties: string[] = [];
-  const rewards: string[] = [];
-  let score = 15;
+const DETERMINISM_EXCLUDES = [
+  /\.test\.ts$/,
+  /\.spec\.ts$/,
+  /random-provider\.ts$/,
+  /time-provider\.ts$/,
+];
 
-  // Count Math.random() uses
-  const randomCount = countPatternInDir(SRC_ROOT, /\.ts$/, /Math\.random\(\)/g);
+function assessDeterminism(): FitnessComponent {
+  const penalties: string[] = [],
+    rewards: string[] = [];
+  let score = 15;
+  const randomCount = countPatternInDir(
+    SRC_ROOT,
+    /\.ts$/,
+    /Math\.random\(\)/g,
+    DETERMINISM_EXCLUDES
+  );
+  const dateNowCount = countPatternInDir(SRC_ROOT, /\.ts$/, /Date\.now\(\)/g, DETERMINISM_EXCLUDES);
+  const timeUsage = countPatternInDir(
+    SRC_ROOT,
+    /\.ts$/,
+    /getTimeProvider\(\)/g,
+    DETERMINISM_EXCLUDES
+  );
+  const randomUsage = countPatternInDir(
+    SRC_ROOT,
+    /\.ts$/,
+    /getRandomProvider\(\)/g,
+    DETERMINISM_EXCLUDES
+  );
+
   if (randomCount > 10) {
     penalties.push(`${String(randomCount)} unseeded Math.random() calls`);
     score -= Math.min(5, Math.floor(randomCount / 5));
@@ -179,24 +211,41 @@ function assessDeterminism(): FitnessComponent {
     score += 2;
   }
 
-  // Check for seeded random utilities
-  if (existsSync(join(SRC_ROOT, 'core/random.ts'))) {
-    rewards.push('Seeded random utility exists');
-    score += 2;
+  if (existsSync(join(SRC_ROOT, 'core/random-provider.ts'))) {
+    rewards.push('Injectable random provider exists');
+    score += 1;
+  }
+  if (randomUsage > 5) {
+    rewards.push(`${String(randomUsage)} uses of injectable random provider`);
+    score += 1;
   }
 
-  // Check for timestamp injection
-  const dateNowCount = countPatternInDir(SRC_ROOT, /\.ts$/, /Date\.now\(\)/g);
   if (dateNowCount > 50) {
     penalties.push(`${String(dateNowCount)} Date.now() calls (consider injection)`);
     score -= 2;
+  } else if (dateNowCount < 10) {
+    rewards.push('Minimal direct Date.now() usage');
+  }
+
+  if (existsSync(join(SRC_ROOT, 'core/time-provider.ts'))) {
+    rewards.push('Injectable time provider exists');
+    score += 1;
+  }
+  if (timeUsage > 10) {
+    rewards.push(`${String(timeUsage)} uses of injectable time provider`);
+    score += 1;
   }
 
   return {
     name: 'Determinism',
     score: Math.max(0, Math.min(15, score)),
     maxScore: 15,
-    details: [`Random calls: ${String(randomCount)}`, `Date.now calls: ${String(dateNowCount)}`],
+    details: [
+      `Random: ${String(randomCount)}`,
+      `Date.now: ${String(dateNowCount)}`,
+      `Time provider: ${String(timeUsage)}`,
+      `Random provider: ${String(randomUsage)}`,
+    ],
     penalties,
     rewards,
   };

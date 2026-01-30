@@ -13,7 +13,7 @@ import { promisify } from 'node:util';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import type { ILogger } from '../core/logger.js';
-import { createLogger } from '../core/logger.js';
+import { createLogger, getTimeProvider } from '../core/index.js';
 import type {
   ITestRunner,
   TestRunnerConfig,
@@ -240,7 +240,7 @@ export class TestRunner implements ITestRunner {
    * Executes the test command.
    */
   private async executeTests(command: string, config: TestRunnerConfig): Promise<TestSuiteResult> {
-    const startTime = Date.now();
+    const startTime = getTimeProvider().now();
 
     if (config.useDocker) {
       const dockerOptions: ExecuteInDockerOptions = {
@@ -287,7 +287,7 @@ export class TestRunner implements ITestRunner {
    * Handles test execution errors.
    */
   private handleTestError(err: unknown, startTime: number): TestSuiteResult {
-    const durationMs = Date.now() - startTime;
+    const durationMs = getTimeProvider().now() - startTime;
     const execErr = err as {
       stdout?: string;
       stderr?: string;
@@ -348,7 +348,7 @@ export class TestRunner implements ITestRunner {
       skipped: 0,
       errored: 0,
       total: 0,
-      durationMs: Date.now() - startTime,
+      durationMs: getTimeProvider().now() - startTime,
       output: '',
       error: 'Test execution was cancelled',
     };

@@ -7,6 +7,7 @@
  * @see Issue #367 - Deterministic RESEARCH_INDEX.md generation
  */
 
+import { getTimeProvider } from '../core/index.js';
 import { TOPIC_DESCRIPTIONS, RESEARCH_TOPICS } from './research-schemas.js';
 import type { PaperWithId, TechniqueWithId, RegistryStats } from './research-index-types.js';
 
@@ -18,7 +19,7 @@ import type { PaperWithId, TechniqueWithId, RegistryStats } from './research-ind
  * Get current date in ET timezone (YYYY-MM-DD format).
  */
 export function getETDate(): string {
-  const now = new Date();
+  const now = new Date(getTimeProvider().now());
   const formatter = new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/New_York',
     year: 'numeric',

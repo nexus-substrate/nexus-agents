@@ -8,6 +8,7 @@
  */
 
 import type { Result } from '../core/result.js';
+import { getTimeProvider } from '../core/index.js';
 import type { SWEBenchInstance, SWEBenchVariant, SWEBenchDatasetInfo } from './types.js';
 import { SWE_BENCH_DATASETS } from './types.js';
 
@@ -127,7 +128,8 @@ function validateInstance(raw: RawSWEBenchInstance): SWEBenchInstance | null {
     repo: raw.repo as string,
     base_commit: raw.base_commit as string,
     problem_statement: raw.problem_statement as string,
-    created_at: getOptionalString(raw.created_at) ?? new Date().toISOString(),
+    created_at:
+      getOptionalString(raw.created_at) ?? new Date(getTimeProvider().now()).toISOString(),
   };
 
   // Build optional properties and merge
@@ -273,7 +275,7 @@ export async function loadDataset(
   variant: SWEBenchVariant,
   options: DatasetLoadOptions = {}
 ): Promise<Result<DatasetLoadResult, DatasetLoadError>> {
-  const startTime = Date.now();
+  const startTime = getTimeProvider().now();
   const datasetInfo = SWE_BENCH_DATASETS[variant];
 
   const fetchResult = await fetchFromHuggingFace(
@@ -294,7 +296,7 @@ export async function loadDataset(
       info: datasetInfo,
       count: instances.length,
       filtered,
-      durationMs: Date.now() - startTime,
+      durationMs: getTimeProvider().now() - startTime,
     },
   };
 }

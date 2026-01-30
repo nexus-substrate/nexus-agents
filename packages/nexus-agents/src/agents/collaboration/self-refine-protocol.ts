@@ -10,7 +10,7 @@
  */
 
 import type { Result, TaskResult, ILogger, IAgent, Task } from '../../core/index.js';
-import { ok, err, AgentError, createLogger } from '../../core/index.js';
+import { ok, err, AgentError, createLogger, getTimeProvider } from '../../core/index.js';
 import type { CollaborationConfig, CollaborationResult } from './collaboration-types.js';
 import { createCollaborationSession, type CollaborationSession } from './collaboration-session.js';
 
@@ -179,7 +179,7 @@ export class SelfRefineProtocol {
       agent,
       task: config.task,
       sessionId: config.sessionId,
-      startTime: Date.now(),
+      startTime: getTimeProvider().now(),
     });
   }
 
@@ -218,7 +218,7 @@ export class SelfRefineProtocol {
     previousOutput: string,
     index: number
   ): Promise<{ iteration: RefinementIteration; refinedOutput: string; converged: boolean } | null> {
-    const iterationStart = Date.now();
+    const iterationStart = getTimeProvider().now();
 
     const feedbackResult = await this.generateFeedback(ctx.agent, currentOutput, ctx.task);
     if (!feedbackResult.ok) {
@@ -233,7 +233,7 @@ export class SelfRefineProtocol {
       output: currentOutput,
       feedback,
       similarityToPrevious: similarity,
-      durationMs: Date.now() - iterationStart,
+      durationMs: getTimeProvider().now() - iterationStart,
     };
 
     if (similarity >= this.config.convergenceThreshold && index > 0) {
@@ -259,7 +259,7 @@ export class SelfRefineProtocol {
       taskId: ctx.task.id,
       output: loopResult.finalOutput,
       metadata: {
-        durationMs: Date.now() - ctx.startTime,
+        durationMs: getTimeProvider().now() - ctx.startTime,
         tokensUsed: 0,
         toolsUsed: [],
         model: 'self-refine',

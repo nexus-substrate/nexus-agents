@@ -8,7 +8,7 @@
  * @see https://en.wikipedia.org/wiki/Token_bucket
  */
 
-import { type Result, ok, err } from '../core/index.js';
+import { type Result, ok, err, getTimeProvider } from '../core/index.js';
 import { RateLimitError } from '../core/index.js';
 
 /**
@@ -89,7 +89,7 @@ export class RateLimiter {
     this.refillRate = config.refillRate;
     this.refillInterval = config.refillInterval ?? 100;
     this.tokens = config.capacity;
-    this.lastRefillTime = Date.now();
+    this.lastRefillTime = getTimeProvider().now();
   }
 
   /**
@@ -118,7 +118,7 @@ export class RateLimiter {
    * Called automatically before token operations.
    */
   private refill(): void {
-    const now = Date.now();
+    const now = getTimeProvider().now();
     const elapsedMs = now - this.lastRefillTime;
     const elapsedSeconds = elapsedMs / 1000;
     const tokensToAdd = elapsedSeconds * this.refillRate;
@@ -267,7 +267,7 @@ export class RateLimiter {
    */
   public reset(): void {
     this.tokens = this.capacity;
-    this.lastRefillTime = Date.now();
+    this.lastRefillTime = getTimeProvider().now();
   }
 
   /**

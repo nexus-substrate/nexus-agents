@@ -10,6 +10,7 @@
 import type { Vote } from '../consensus/types.js';
 import type { VoterRole, AgentVoteResult } from './vote-types.js';
 import type { IModelAdapter, CompletionRequest, ILogger } from '../core/index.js';
+import { getRandomProvider } from '../core/index.js';
 import { VOTER_SYSTEM_PROMPTS, SIMULATED_VOTE_REASONING } from './voter-prompts.js';
 import { buildVotePrompt, parseVoteResponse, SyntheticVoteError } from './voter-response.js';
 
@@ -81,8 +82,9 @@ export function createSimulatedVotes(
   proposal: string,
   error?: string
 ): readonly AgentVoteResult[] {
+  const random = getRandomProvider();
   return roles.map((role) =>
-    createSimulationVoteResult(role, proposal, Math.floor(Math.random() * 100), error)
+    createSimulationVoteResult(role, proposal, random.randomInt(0, 100), error)
   );
 }
 
@@ -111,8 +113,9 @@ const ROLE_VOTE_DISTRIBUTIONS: Record<VoterRole, [number, number, number]> = {
 function selectWeightedDecision(
   weights: [number, number, number]
 ): 'approve' | 'reject' | 'abstain' {
+  const random = getRandomProvider();
   const total = weights[0] + weights[1] + weights[2];
-  const rand = Math.random() * total;
+  const rand = random.random() * total;
 
   if (rand < weights[0]) return 'approve';
   if (rand < weights[0] + weights[1]) return 'reject';
@@ -127,6 +130,7 @@ function selectWeightedDecision(
  * (Improved per Issue #453 - remove hardcoded 60% approve bias)
  */
 export function simulateVote(role: VoterRole, proposal: string): Vote {
+  const random = getRandomProvider();
   const weights = ROLE_VOTE_DISTRIBUTIONS[role];
   const decision = selectWeightedDecision(weights);
 
@@ -136,11 +140,11 @@ export function simulateVote(role: VoterRole, proposal: string): Vote {
   // Abstains are low confidence (insufficient information)
   let baseConfidence: number;
   if (decision === 'reject') {
-    baseConfidence = 0.6 + Math.random() * 0.3; // 0.6-0.9
+    baseConfidence = 0.6 + random.random() * 0.3; // 0.6-0.9
   } else if (decision === 'approve') {
-    baseConfidence = 0.5 + Math.random() * 0.3; // 0.5-0.8
+    baseConfidence = 0.5 + random.random() * 0.3; // 0.5-0.8
   } else {
-    baseConfidence = 0.3 + Math.random() * 0.2; // 0.3-0.5
+    baseConfidence = 0.3 + random.random() * 0.2; // 0.3-0.5
   }
 
   return {

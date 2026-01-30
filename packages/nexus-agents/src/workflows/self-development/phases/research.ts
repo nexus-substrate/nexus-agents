@@ -6,7 +6,7 @@
  * @module workflows/self-development/phases/research
  */
 
-import { createLogger } from '../../../core/index.js';
+import { createLogger, getTimeProvider } from '../../../core/index.js';
 import type { SelfDevWorkflowDependencies } from '../interfaces.js';
 import type { SelfDevWorkflowState, AnalyzeOutput, ResearchOutput } from '../types.js';
 
@@ -222,7 +222,7 @@ function createPlaceholderResearchOutput(
     docs: { officialDocs: [], bestPractices, relatedGuides: [] },
     history: { relatedIssues: [], relatedPRs: [], previousAttempts: [], relevantCommits: [] },
     synthesizedContext: buildHeuristicContext(issueType, bestPractices, patterns),
-    durationMs: Date.now() - startTime,
+    durationMs: getTimeProvider().now() - startTime,
   };
 }
 
@@ -238,7 +238,7 @@ export async function executeResearch(
   state: SelfDevWorkflowState,
   analyze: AnalyzeOutput
 ): Promise<ResearchOutput> {
-  const startTime = Date.now();
+  const startTime = getTimeProvider().now();
   const issue = analyze.selectedIssue;
   const allowHeuristicFallback = state.config.phases?.research?.allowHeuristicFallback === true;
 
@@ -274,7 +274,7 @@ export async function executeResearch(
 
   logger.info('RESEARCH phase: Complete', {
     contextLength: synthesizedContext.length,
-    durationMs: Date.now() - startTime,
+    durationMs: getTimeProvider().now() - startTime,
   });
 
   return {
@@ -283,6 +283,6 @@ export async function executeResearch(
     docs: parsed.docs,
     history: parsed.history,
     synthesizedContext,
-    durationMs: Date.now() - startTime,
+    durationMs: getTimeProvider().now() - startTime,
   };
 }

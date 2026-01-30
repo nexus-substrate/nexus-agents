@@ -8,6 +8,7 @@
  * (Source: Issue #379, Issue #154, Issue #402)
  */
 
+import { getRandomProvider } from '../../core/index.js';
 import type {
   Episode,
   SampledBatch,
@@ -44,7 +45,8 @@ export function flattenStepsWithEpisodeIds(episodes: readonly Episode[]): StepWi
  * @returns Selected index
  */
 export function weightedRandomIndex(probabilities: readonly number[]): number {
-  const r = Math.random();
+  const random = getRandomProvider();
+  const r = random.random();
   let cumulative = 0;
 
   for (let i = 0; i < probabilities.length; i++) {
@@ -71,6 +73,7 @@ export function weightedRandomIndex(probabilities: readonly number[]): number {
  * @see Issue #402 - Performance optimization
  */
 export function sampleUniformly(episodes: readonly Episode[], batchSize: number): SampledBatch {
+  const random = getRandomProvider();
   // Use reservoir sampling to avoid full array materialization
   const reservoir: StepWithEpisodeId[] = [];
   let count = 0;
@@ -83,7 +86,7 @@ export function sampleUniformly(episodes: readonly Episode[], batchSize: number)
         reservoir.push({ step, episodeId: episode.id });
       } else {
         // Algorithm R: replace with probability k/n
-        const j = Math.floor(Math.random() * count);
+        const j = random.randomInt(0, count);
         if (j < batchSize) {
           reservoir[j] = { step, episodeId: episode.id };
         }

@@ -5,7 +5,7 @@
  */
 
 import type { Result, ILogger, IAgent, Task } from '../../core/index.js';
-import { ok, err, AgentError, createLogger } from '../../core/index.js';
+import { ok, err, AgentError, createLogger, getTimeProvider } from '../../core/index.js';
 import type {
   CollaborationConfig,
   CollaborationResult,
@@ -97,7 +97,7 @@ export class AegeanProtocol implements ICollaborationProtocol {
     });
     if (!validation.ok) return err(validation.error);
 
-    const startTime = Date.now();
+    const startTime = getTimeProvider().now();
     this.cancelled = false;
     this.session = createCollaborationSession(this.options.sessionOptions);
 
@@ -130,7 +130,7 @@ export class AegeanProtocol implements ICollaborationProtocol {
     config: CollaborationConfig,
     agents: Map<string, IAgent>
   ): Promise<Result<AegeanResult, AgentError>> {
-    const startTime = Date.now();
+    const startTime = getTimeProvider().now();
     const rounds: AegeanRound[] = [];
     let totalTokensUsed = 0;
 
@@ -203,7 +203,7 @@ export class AegeanProtocol implements ICollaborationProtocol {
     config: CollaborationConfig,
     agents: Map<string, IAgent>
   ): Promise<Result<{ roundData: AegeanRound; tokensUsed: number }, AgentError>> {
-    const roundStart = Date.now();
+    const roundStart = getTimeProvider().now();
     const leaderId = selectLeader(config.experts, roundNumber);
     const leader = agents.get(leaderId);
 

@@ -7,6 +7,7 @@
  * @module agents/memory-operations
  */
 
+import { getTimeProvider } from '../core/index.js';
 import type { ILogger, AgentRole } from '../core/index.js';
 import type {
   IMemoryBackend,
@@ -37,7 +38,7 @@ export async function persistMemoryState(
 
   const updatedState: AgentMemoryState = {
     ...state,
-    persistedAt: new Date(),
+    persistedAt: new Date(getTimeProvider().now()),
   };
 
   const result = await backend.store(key, updatedState, metadata);
@@ -86,7 +87,8 @@ export async function loadMemoryState(
   const state: AgentMemoryState = {
     agentId: loaded.agentId ?? agentId,
     role: loaded.role ?? role,
-    persistedAt: loaded.persistedAt instanceof Date ? loaded.persistedAt : new Date(),
+    persistedAt:
+      loaded.persistedAt instanceof Date ? loaded.persistedAt : new Date(getTimeProvider().now()),
     taskLearnings: Array.isArray(loaded.taskLearnings) ? loaded.taskLearnings : [],
     executionPatterns: Array.isArray(loaded.executionPatterns) ? loaded.executionPatterns : [],
     errorResolutions: Array.isArray(loaded.errorResolutions) ? loaded.errorResolutions : [],

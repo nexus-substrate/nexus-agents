@@ -6,7 +6,7 @@
 
 import type { Content, Part, FunctionDeclaration } from '@google/genai';
 import type { ContentBlock, Message, ToolDefinition, StopReason } from '../core/index.js';
-import { ModelCapability } from '../core/index.js';
+import { ModelCapability, getTimeProvider, getRandomProvider } from '../core/index.js';
 
 /**
  * Supported Gemini model identifiers.
@@ -94,7 +94,7 @@ export function mapPartToContentBlock(part: Part): ContentBlock | null {
   if (part.functionCall !== undefined) {
     return {
       type: 'tool_use',
-      id: `tool_${String(Date.now())}_${Math.random().toString(36).slice(2, 9)}`,
+      id: `tool_${String(getTimeProvider().now())}_${getRandomProvider().random().toString(36).slice(2, 9)}`,
       name: part.functionCall.name ?? '',
       input: part.functionCall.args ?? {},
     };

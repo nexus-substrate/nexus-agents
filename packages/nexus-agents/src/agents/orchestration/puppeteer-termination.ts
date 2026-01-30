@@ -13,6 +13,7 @@ import type {
   PuppeteerStepResult,
   PuppeteerTerminationReason,
 } from './puppeteer-types.js';
+import { getTimeProvider } from '../../core/index.js';
 
 // =============================================================================
 // Termination Context
@@ -43,7 +44,7 @@ export function shouldTerminate(
 
   if (cancelled) return true;
   if (state.step >= config.maxSteps) return true;
-  if (Date.now() - startTime >= config.timeoutMs) return true;
+  if (getTimeProvider().now() - startTime >= config.timeoutMs) return true;
   if (state.metadata.totalCost >= config.maxCostBudget) return true;
 
   return false;
@@ -66,7 +67,7 @@ export function determineTerminationReason(
   if (lastStep?.terminationReason) return lastStep.terminationReason;
 
   if (state.step >= config.maxSteps) return 'max_steps';
-  if (Date.now() - startTime >= config.timeoutMs) return 'timeout';
+  if (getTimeProvider().now() - startTime >= config.timeoutMs) return 'timeout';
 
   return 'max_steps';
 }

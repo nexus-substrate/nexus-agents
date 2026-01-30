@@ -7,7 +7,7 @@
  * (Source: Token Bucket Algorithm, RFC 6585)
  */
 
-import { createLogger, type ILogger } from '../../core/index.js';
+import { createLogger, type ILogger, getTimeProvider } from '../../core/index.js';
 
 /**
  * Configuration for the token bucket rate limiter.
@@ -74,7 +74,7 @@ export class RateLimiter {
     this.refillRate = config.refillRate;
     this.refillIntervalMs = config.refillIntervalMs ?? DEFAULT_REFILL_INTERVAL_MS;
     this.tokens = this.capacity;
-    this.lastRefillTime = Date.now();
+    this.lastRefillTime = getTimeProvider().now();
     this.name = config.name ?? 'rate-limiter';
     this.logger = config.logger ?? createLogger({ component: this.name });
 
@@ -90,7 +90,7 @@ export class RateLimiter {
    * Called automatically before each acquire attempt.
    */
   private refill(): void {
-    const now = Date.now();
+    const now = getTimeProvider().now();
     const elapsed = now - this.lastRefillTime;
     const intervals = Math.floor(elapsed / this.refillIntervalMs);
 
@@ -142,7 +142,7 @@ export class RateLimiter {
     this.refill();
 
     const nextTokenMs =
-      this.tokens > 0 ? 0 : this.refillIntervalMs - (Date.now() - this.lastRefillTime);
+      this.tokens > 0 ? 0 : this.refillIntervalMs - (getTimeProvider().now() - this.lastRefillTime);
 
     return {
       tokens: this.tokens,
@@ -157,7 +157,7 @@ export class RateLimiter {
    */
   reset(): void {
     this.tokens = this.capacity;
-    this.lastRefillTime = Date.now();
+    this.lastRefillTime = getTimeProvider().now();
     this.logger.debug('Rate limiter reset', { tokens: this.tokens });
   }
 }

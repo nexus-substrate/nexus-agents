@@ -8,6 +8,7 @@
  */
 
 import type { Result } from '../core/result.js';
+import { getTimeProvider } from '../core/index.js';
 import type { SWEBenchInstance, SWEBenchPrediction, SWEBenchRunResult } from './types.js';
 
 /**
@@ -141,7 +142,7 @@ export function buildFailedResult(
     instance_id: instanceId,
     completed: false as const,
     error,
-    duration_ms: Date.now() - startTime,
+    duration_ms: getTimeProvider().now() - startTime,
   };
 
   if (state === undefined) {
@@ -174,7 +175,7 @@ export function buildSuccessResult(
     instance_id: instance.instance_id,
     completed: true,
     prediction,
-    duration_ms: Date.now() - startTime,
+    duration_ms: getTimeProvider().now() - startTime,
     tokens_used: state.totalTokens,
     iterations: state.iterations,
   };

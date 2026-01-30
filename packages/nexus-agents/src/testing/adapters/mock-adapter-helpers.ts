@@ -5,6 +5,7 @@
  * Extracted to keep mock-adapter.ts under 400 lines.
  */
 
+import { getRandomProvider } from '../../core/index.js';
 import type {
   CliName,
   CliErrorCode,
@@ -103,7 +104,7 @@ export function shouldFailByRate(failureRate: number): boolean {
   if (failureRate >= 1) {
     return true;
   }
-  return Math.random() < failureRate;
+  return getRandomProvider().random() < failureRate;
 }
 
 /**

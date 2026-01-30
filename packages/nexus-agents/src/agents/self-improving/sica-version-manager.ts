@@ -9,7 +9,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { ILogger } from '../../core/index.js';
-import { createLogger } from '../../core/index.js';
+import { createLogger, getTimeProvider } from '../../core/index.js';
 import type {
   VersionId,
   AgentVersion,
@@ -222,7 +222,7 @@ export class SicaVersionManager {
       version: versionNumber,
       parentVersion: parentId,
       configuration,
-      createdAt: new Date(),
+      createdAt: new Date(getTimeProvider().now()),
       status: 'active',
       improvementRationale: rationale,
     };
@@ -234,7 +234,7 @@ export class SicaVersionManager {
       successRate: 0,
       avgDurationMs: 0,
       avgTokensUsed: 0,
-      lastUpdatedAt: new Date(),
+      lastUpdatedAt: new Date(getTimeProvider().now()),
     };
 
     this.versions.set(version.id, { version, metrics, executionHistory: [] });
@@ -272,7 +272,7 @@ export class SicaVersionManager {
       avgDurationMs: avgDuration,
       avgTokensUsed: avgTokens,
       ...(avgQuality !== undefined && { avgQualityScore: avgQuality }),
-      lastUpdatedAt: new Date(),
+      lastUpdatedAt: new Date(getTimeProvider().now()),
     };
   }
 
@@ -340,7 +340,7 @@ export class SicaVersionManager {
 
     const event: SicaEvent = {
       type,
-      timestamp: new Date(),
+      timestamp: new Date(getTimeProvider().now()),
       ...(versionId !== undefined && { versionId }),
       details,
     };

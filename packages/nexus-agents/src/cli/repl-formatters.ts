@@ -8,6 +8,7 @@
  */
 
 import { VERSION } from '../version.js';
+import { getTimeProvider } from '../core/index.js';
 import { colors, type ReplSession } from './repl-types.js';
 
 /**
@@ -63,7 +64,7 @@ ${colors.dim}Tip: Tasks are analyzed and delegated to appropriate experts.${colo
  * Prints session status.
  */
 export function printStatus(session: ReplSession): void {
-  const uptime = Date.now() - session.startTime.getTime();
+  const uptime = getTimeProvider().now() - session.startTime.getTime();
   const uptimeSeconds = Math.floor(uptime / 1000);
   const uptimeMinutes = Math.floor(uptimeSeconds / 60);
   const seconds = uptimeSeconds % 60;

@@ -8,6 +8,7 @@
  */
 
 import * as path from 'node:path';
+import { getTimeProvider } from '../core/index.js';
 import type { FileEntry, ModuleEntry, ModuleStats, IndexStats, CodebaseIndex } from './types.js';
 import { SCHEMA_VERSION } from './types.js';
 
@@ -275,7 +276,7 @@ export function buildIndex(files: readonly FileEntry[]): CodebaseIndex {
   const stats = computeIndexStats(modules);
 
   // Generate timestamp in ET timezone
-  const now = new Date();
+  const now = new Date(getTimeProvider().now());
   const etFormatter = new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/New_York',
     year: 'numeric',

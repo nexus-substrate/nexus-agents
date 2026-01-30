@@ -6,6 +6,7 @@
  */
 
 import type { ILogger, Task, TaskResult } from '../core/index.js';
+import { getTimeProvider } from '../core/index.js';
 import type { IMemoryBackend } from '../context/memory-backend-types.js';
 import type { Result } from '../core/result.js';
 import {
@@ -56,7 +57,7 @@ export async function persistMemoryAfterTaskCompletion(
   params: PersistAfterTaskParams
 ): Promise<AgentMemoryState> {
   const { task, startTime, memoryState, backend, logger } = params;
-  const durationMs = Date.now() - startTime;
+  const durationMs = getTimeProvider().now() - startTime;
 
   // Record execution pattern
   const taskType = categorizeTaskByKeywords(task.description.toLowerCase());

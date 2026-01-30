@@ -6,7 +6,7 @@
  */
 
 import type { Result, ILogger } from '../../core/index.js';
-import { ok, err, AgentError, createLogger } from '../../core/index.js';
+import { ok, err, AgentError, createLogger, getTimeProvider } from '../../core/index.js';
 import type { AggregatedResult, ResultConflict } from './collaboration-types.js';
 import type {
   AggregationStrategy,
@@ -149,7 +149,7 @@ export class ResultAggregator {
         conflictCount: conflicts.length,
         averageConfidence: Math.round(avgConfidence * 100) / 100,
         totalTokensUsed,
-        aggregatedAt: new Date().toISOString(),
+        aggregatedAt: new Date(getTimeProvider().now()).toISOString(),
       },
     };
   }

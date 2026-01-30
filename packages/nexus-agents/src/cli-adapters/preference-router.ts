@@ -9,7 +9,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { createLogger } from '../core/logger.js';
+import { createLogger, getTimeProvider } from '../core/index.js';
 import type {
   PreferenceDataPoint,
   QueryFeatures,
@@ -70,7 +70,7 @@ export class PreferenceRouter {
    * Route a query to the optimal model based on learned preferences.
    */
   route(query: string): PreferenceRoutingDecision {
-    const startTime = Date.now();
+    const startTime = getTimeProvider().now();
     const features = this.featureExtractor.extract(query);
     const prediction = this.predict(features);
 
@@ -87,7 +87,7 @@ export class PreferenceRouter {
       selectedCli: selectedConfig.cli,
       prediction,
       reason: this.generateReason(prediction, threshold, useStrong),
-      routingLatencyMs: Date.now() - startTime,
+      routingLatencyMs: getTimeProvider().now() - startTime,
       estimatedCostSavings: costSavings,
     };
 
@@ -119,7 +119,7 @@ export class PreferenceRouter {
       strongModelPreferred,
       strongModelQuality,
       weakModelQuality,
-      recordedAt: new Date(),
+      recordedAt: new Date(getTimeProvider().now()),
       domain: features.domain,
     };
 

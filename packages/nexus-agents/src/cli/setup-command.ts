@@ -12,6 +12,7 @@
 import { existsSync } from 'node:fs';
 import type { SetupOptions, SetupResult, SetupStep, EnvironmentInfo } from './setup-types.js';
 import { SetupOptionsSchema } from './setup-types.js';
+import { getTimeProvider } from '../core/index.js';
 import {
   detectEnvironment,
   generateMcpSnippet,
@@ -174,7 +175,8 @@ function printSummary(success: boolean): void {
  * Runs the environment detection step.
  */
 function runDetectionStep(projectRoot: string): { env: EnvironmentInfo; step: SetupStep } {
-  const startTime = Date.now();
+  const time = getTimeProvider();
+  const startTime = time.now();
   const env = detectEnvironment(projectRoot);
 
   return {
@@ -183,7 +185,7 @@ function runDetectionStep(projectRoot: string): { env: EnvironmentInfo; step: Se
       name: 'Environment Detection',
       status: 'success',
       message: `Platform: ${env.platform}, Claude CLI: ${env.claudeCli.installed ? (env.claudeCli.version ?? 'installed') : 'not found'}`,
-      durationMs: Date.now() - startTime,
+      durationMs: time.now() - startTime,
     },
   };
 }
@@ -204,7 +206,12 @@ function makeMcpResult(
   mcpResult?: McpConfigResult
 ): McpStepResult {
   return {
-    step: { name: 'MCP Configuration', status, message, durationMs: Date.now() - startTime },
+    step: {
+      name: 'MCP Configuration',
+      status,
+      message,
+      durationMs: getTimeProvider().now() - startTime,
+    },
     snippet,
     mcpResult,
   };
@@ -214,7 +221,7 @@ function makeMcpResult(
  * Runs the MCP configuration step.
  */
 function runMcpConfigStep(env: EnvironmentInfo, options: SetupOptions): McpStepResult {
-  const startTime = Date.now();
+  const startTime = getTimeProvider().now();
 
   if (options.skipMcp) {
     return makeMcpResult('skipped', 'Skipped (--skip-mcp)', startTime);
@@ -261,7 +268,7 @@ function makeRulesResult(
   rulesPath?: string
 ): { step: SetupStep; rulesPath: string | undefined } {
   return {
-    step: { name: 'Rules File', status, message, durationMs: Date.now() - startTime },
+    step: { name: 'Rules File', status, message, durationMs: getTimeProvider().now() - startTime },
     rulesPath,
   };
 }
@@ -274,7 +281,12 @@ function makeHooksResult(
   hookResult?: HookConfigResult
 ): { step: SetupStep; hookSnippet: string | undefined; hookResult: HookConfigResult | undefined } {
   return {
-    step: { name: 'Hooks Configuration', status, message, durationMs: Date.now() - startTime },
+    step: {
+      name: 'Hooks Configuration',
+      status,
+      message,
+      durationMs: getTimeProvider().now() - startTime,
+    },
     hookSnippet: hookResult?.success === false ? generateHookSnippet() : undefined,
     hookResult,
   };
@@ -287,7 +299,7 @@ function runRulesStep(
   env: EnvironmentInfo,
   options: SetupOptions
 ): { step: SetupStep; rulesPath: string | undefined } {
-  const startTime = Date.now();
+  const startTime = getTimeProvider().now();
 
   if (options.skipRules) {
     return makeRulesResult('skipped', 'Skipped (--skip-rules)', startTime);
@@ -320,7 +332,7 @@ function runHooksStep(
   env: EnvironmentInfo,
   options: SetupOptions
 ): { step: SetupStep; hookSnippet: string | undefined; hookResult: HookConfigResult | undefined } {
-  const startTime = Date.now();
+  const startTime = getTimeProvider().now();
 
   if (options.skipHooks) {
     return makeHooksResult('skipped', 'Skipped (--skip-hooks)', startTime);
@@ -406,7 +418,7 @@ function buildSetupResult(ctx: SetupResultContext): SetupResult {
     steps: ctx.steps,
     warnings: ctx.warnings,
     errors,
-    durationMs: Date.now() - ctx.startTime,
+    durationMs: getTimeProvider().now() - ctx.startTime,
     ...(mcpConfigured && { mcpConfigured: true }),
     ...(ctx.snippet !== undefined && { mcpSnippet: ctx.snippet }),
     ...(hooksConfigured && { hooksConfigured: true }),
@@ -423,7 +435,7 @@ function buildSetupResult(ctx: SetupResultContext): SetupResult {
  * Runs the setup command.
  */
 export function runSetup(options: Partial<SetupOptions> = {}): SetupResult {
-  const startTime = Date.now();
+  const startTime = getTimeProvider().now();
   const parsedOptions = SetupOptionsSchema.parse(options);
   const projectRoot = process.cwd();
 

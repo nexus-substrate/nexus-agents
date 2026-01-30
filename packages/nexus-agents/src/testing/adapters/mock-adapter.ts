@@ -8,7 +8,7 @@
  */
 
 import type { Result } from '../../core/index.js';
-import { ok, err } from '../../core/index.js';
+import { ok, err, getTimeProvider } from '../../core/index.js';
 import type {
   ICliAdapter,
   CliName,
@@ -111,7 +111,7 @@ export class MockCliAdapter implements ICliAdapter {
       healthy: this.mockHealthy,
       version: this.mockVersion,
       versionStatus: 'supported',
-      lastChecked: new Date(),
+      lastChecked: new Date(getTimeProvider().now()),
     };
 
     if (!this.mockHealthy) {
@@ -128,7 +128,7 @@ export class MockCliAdapter implements ICliAdapter {
     return Promise.resolve({
       remainingTokens: Number.MAX_SAFE_INTEGER,
       remainingRequests: Number.MAX_SAFE_INTEGER,
-      resetTime: new Date(Date.now() + 3600_000),
+      resetTime: new Date(getTimeProvider().now() + 3600_000),
       utilizationPercent: 0,
       exhausted: false,
     });
@@ -261,7 +261,7 @@ export class MockCliAdapter implements ICliAdapter {
    * Records a request for test assertions.
    */
   private recordCall(task: CliTask, options?: ExecutionOptions): void {
-    this.calls.push({ task, options, timestamp: new Date() });
+    this.calls.push({ task, options, timestamp: new Date(getTimeProvider().now()) });
   }
 
   /**

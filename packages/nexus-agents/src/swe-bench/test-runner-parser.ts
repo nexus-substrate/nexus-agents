@@ -10,6 +10,7 @@
 
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import { getTimeProvider } from '../core/index.js';
 import type { TestCaseResult } from './evaluation-harness-types.js';
 import type { TestSuiteResult } from './test-runner-types.js';
 
@@ -183,7 +184,7 @@ export async function parseTestResults(
   startTime: number,
   workDir: string
 ): Promise<TestSuiteResult> {
-  const durationMs = Date.now() - startTime;
+  const durationMs = getTimeProvider().now() - startTime;
 
   // Try to read JSON results file
   const jsonResults = await readJsonResults(workDir);

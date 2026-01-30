@@ -8,7 +8,7 @@
  */
 
 import * as fs from 'node:fs';
-import type { ILogger } from '../core/index.js';
+import { getTimeProvider, type ILogger } from '../core/index.js';
 import {
   PuppeteerOrchestrator,
   createLearnablePolicy,
@@ -142,7 +142,7 @@ export function buildPuppeteerResult(
           : JSON.stringify(puppeteerResult.output),
       durationMs: puppeteerResult.totalDurationMs,
     },
-    durationMs: Date.now() - startTime,
+    durationMs: getTimeProvider().now() - startTime,
     puppeteer: {
       totalSteps: puppeteerResult.totalSteps,
       trajectoryLength: puppeteerResult.trajectory.length,
@@ -169,7 +169,7 @@ export async function executeWithPuppeteer(
   options: OrchestrateOptions,
   logger: ILogger
 ): Promise<PuppeteerOrchestrationResult> {
-  const startTime = Date.now();
+  const startTime = getTimeProvider().now();
   const useLearnable = options.learn === true;
 
   const agents = createAgentsFromAdapters(adapters);
@@ -178,14 +178,14 @@ export async function executeWithPuppeteer(
       success: false,
       model: 'puppeteer',
       error: 'No CLI adapters available to create agents',
-      durationMs: Date.now() - startTime,
+      durationMs: getTimeProvider().now() - startTime,
     };
   }
 
   const policyEngine = createPolicyEngine(options, logger);
   const orchestrator = createOrchestrator(policyEngine, agents, options);
   const task: AgentTask = {
-    id: `cli-${String(Date.now())}`,
+    id: `cli-${String(getTimeProvider().now())}`,
     description: taskContent,
     context: { workingDirectory: process.cwd() },
   };
@@ -203,7 +203,7 @@ export async function executeWithPuppeteer(
       success: false,
       model: 'puppeteer',
       error: execResult.error.message,
-      durationMs: Date.now() - startTime,
+      durationMs: getTimeProvider().now() - startTime,
     };
   }
 

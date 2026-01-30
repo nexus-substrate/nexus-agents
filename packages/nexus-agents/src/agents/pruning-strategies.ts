@@ -10,7 +10,7 @@
  */
 
 import type { Result, IModelAdapter, ILogger, Message } from '../core/index.js';
-import { ok, err, ValidationError } from '../core/index.js';
+import { ok, err, ValidationError, getTimeProvider } from '../core/index.js';
 import { ContentPriority, type ContextItem, type ContextBudget } from './context-manager.js';
 import type { PruneResult, IContextManagerOperations } from './pruning-strategies-types.js';
 import { STOP_WORDS, SLIDING_WINDOW_PROMPT } from './pruning-strategies-types.js';
@@ -72,7 +72,7 @@ export async function addSummaryItem(
 ): Promise<{ item: ContextItem | undefined; tokenCount: number }> {
   const tokenCount = await manager.countTokens(summary);
   const result = await manager.add({
-    id: `summary-${String(Date.now())}`,
+    id: `summary-${String(getTimeProvider().now())}`,
     content: summary,
     priority: ContentPriority.HISTORY,
     category,

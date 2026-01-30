@@ -11,6 +11,7 @@
 import { z } from 'zod';
 import { createLogger } from '../core/logger.js';
 import type { ILogger } from '../core/index.js';
+import { getTimeProvider } from '../core/index.js';
 import type { CliName, HealthStatus, VersionStatus } from './types.js';
 
 /**
@@ -103,7 +104,7 @@ export class CliDetectionCache implements ICliDetectionCache {
   private readonly cache: Map<CliName, CliHealthResult> = new Map();
   private hits = 0;
   private misses = 0;
-  private lastReset: Date = new Date();
+  private lastReset: Date = new Date(getTimeProvider().now());
 
   constructor(config?: Partial<CliDetectionCacheConfig>) {
     const validated = CliDetectionCacheConfigSchema.parse({
@@ -148,7 +149,7 @@ export class CliDetectionCache implements ICliDetectionCache {
     const result = this.cache.get(cli);
     if (result === undefined) return true;
 
-    const age = Date.now() - result.checkedAt.getTime();
+    const age = getTimeProvider().now() - result.checkedAt.getTime();
     return age > this.config.ttlMs;
   }
 
@@ -183,7 +184,7 @@ export class CliDetectionCache implements ICliDetectionCache {
   resetStats(): void {
     this.hits = 0;
     this.misses = 0;
-    this.lastReset = new Date();
+    this.lastReset = new Date(getTimeProvider().now());
     this.logger.debug('Cache stats reset');
   }
 

@@ -4,6 +4,7 @@
  * Helper functions for building consensus results.
  */
 
+import { getTimeProvider } from '../core/index.js';
 import type {
   ProposalId,
   ProposalState,
@@ -22,7 +23,7 @@ export function buildPendingResult(
   outcome: VotingOutcome,
   config: ConsensusEngineConfig
 ): ConsensusResult {
-  const now = new Date();
+  const now = new Date(getTimeProvider().now());
   return {
     proposalId,
     proposal: state.proposal,
@@ -47,7 +48,7 @@ export function buildFinalResult(
   outcome: VotingOutcome,
   config: ConsensusEngineConfig
 ): ConsensusResult {
-  const now = new Date();
+  const now = new Date(getTimeProvider().now());
   const quorumReached = state.votes.size >= config.minVotersForQuorum;
   const finalStatus = determineFinalStatus(quorumReached, outcome.approved);
 
@@ -75,7 +76,7 @@ export function buildTimeoutResult(
   outcome: VotingOutcome,
   config: ConsensusEngineConfig
 ): ConsensusResult {
-  const now = new Date();
+  const now = new Date(getTimeProvider().now());
   return {
     proposalId,
     proposal: state.proposal,

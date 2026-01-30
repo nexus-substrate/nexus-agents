@@ -10,6 +10,7 @@
 
 import type { Result } from '../core/result.js';
 import { ok, err } from '../core/result.js';
+import { getTimeProvider } from '../core/index.js';
 import type { ILogger } from '../core/logger.js';
 import { createLogger } from '../core/logger.js';
 import { MemoryError } from './memory-backend-types.js';
@@ -140,7 +141,7 @@ export class HindsightBeliefMemory implements IHindsightBeliefMemory {
           )
         );
       }
-      const now = new Date();
+      const now = new Date(getTimeProvider().now());
       const newBelief: Belief = {
         ...belief,
         beliefId: generateId('belief'),
@@ -240,7 +241,7 @@ export class HindsightBeliefMemory implements IHindsightBeliefMemory {
         return err(new MemoryError('Belief not found', { context: { beliefId } }));
       const retainResult = await this.retainInternal(newBelief);
       if (!retainResult.ok) return retainResult;
-      const now = new Date();
+      const now = new Date(getTimeProvider().now());
       const superseded: Belief = {
         ...existing,
         superseded: true,

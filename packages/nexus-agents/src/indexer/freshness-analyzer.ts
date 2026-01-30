@@ -9,6 +9,7 @@
 
 import * as path from 'node:path';
 import * as fs from 'node:fs';
+import { getTimeProvider } from '../core/index.js';
 import { safeExecSandboxed } from '../cli/sandbox-exec.js';
 
 // ============================================================================
@@ -131,7 +132,7 @@ function getLastCommitDate(filePath: string): Date | null {
  * Get human-readable relative time string.
  */
 function getRelativeTime(date: Date): string {
-  const now = new Date();
+  const now = new Date(getTimeProvider().now());
   const diffMs = now.getTime() - date.getTime();
   const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
 
@@ -157,7 +158,7 @@ function getRelativeTime(date: Date): string {
  * Calculate days since a date.
  */
 function daysSince(date: Date): number {
-  const now = new Date();
+  const now = new Date(getTimeProvider().now());
   const diffMs = now.getTime() - date.getTime();
   return Math.floor(diffMs / (1000 * 60 * 60 * 24));
 }
@@ -256,7 +257,7 @@ export function analyzeFreshness(
   return {
     documents,
     summary,
-    analyzedAt: new Date().toISOString(),
+    analyzedAt: new Date(getTimeProvider().now()).toISOString(),
   };
 }
 

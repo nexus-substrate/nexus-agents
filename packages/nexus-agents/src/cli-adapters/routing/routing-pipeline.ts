@@ -8,7 +8,7 @@
  * (Source: Issue #574, ADR-0005)
  */
 
-import { createLogger, type ILogger } from '../../core/logger.js';
+import { createLogger, type ILogger, getTimeProvider } from '../../core/index.js';
 import type { Result } from '../../core/result.js';
 import {
   type IRoutingPipeline,
@@ -74,7 +74,8 @@ export class RoutingPipeline implements IRoutingPipeline {
     task: string,
     metadata?: Record<string, unknown>
   ): Promise<Result<RoutingDecision, StageError>> {
-    const startTime = Date.now();
+    const time = getTimeProvider();
+    const startTime = time.now();
     this.totalRoutings++;
 
     let ctx = createRoutingContext(task, this.availableClis, metadata);
@@ -115,16 +116,17 @@ export class RoutingPipeline implements IRoutingPipeline {
   ): Promise<
     Result<{ context: RoutingContext; earlyDecision: RoutingDecision | undefined }, StageError>
   > {
+    const time = getTimeProvider();
     const sortedStages = [...this.stages].sort((a, b) => a.priority - b.priority);
 
     for (const stage of sortedStages) {
-      const stageStart = Date.now();
+      const stageStart = time.now();
 
       if (!stage.canHandle(ctx)) {
         ctx = addTrace(
           ctx,
           stage.name,
-          Date.now() - stageStart,
+          time.now() - stageStart,
           'skip',
           'canHandle returned false'
         );
@@ -137,7 +139,7 @@ export class RoutingPipeline implements IRoutingPipeline {
         ctx = addTrace(
           ctx,
           stage.name,
-          Date.now() - stageStart,
+          time.now() - stageStart,
           'skip',
           `Error: ${result.error.message}`
         );
@@ -165,8 +167,9 @@ export class RoutingPipeline implements IRoutingPipeline {
   }
 
   private recordSuccess(startTime: number): void {
+    const time = getTimeProvider();
     this.successCount++;
-    this.totalLatencyMs += Date.now() - startTime;
+    this.totalLatencyMs += time.now() - startTime;
   }
 
   addStage(stage: IRouterStage): void {
@@ -276,12 +279,13 @@ export class RoutingPipeline implements IRoutingPipeline {
         ? ctx.signals.join('; ')
         : `Selected ${best.cli} with score ${best.score.toFixed(2)}`;
 
+    const time = getTimeProvider();
     return {
       selectedCli: best.cli,
       confidence,
       reason,
       alternatives,
-      routingTimeMs: Date.now() - startTime,
+      routingTimeMs: time.now() - startTime,
       trace: ctx.trace,
     };
   }

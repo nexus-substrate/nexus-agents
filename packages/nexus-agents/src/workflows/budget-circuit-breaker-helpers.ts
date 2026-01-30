@@ -8,7 +8,7 @@
  */
 
 import type { Result } from '../core/index.js';
-import { ok, err } from '../core/index.js';
+import { ok, err, getTimeProvider } from '../core/index.js';
 import {
   BudgetCircuitError,
   BudgetCircuitErrorCode,
@@ -66,7 +66,7 @@ export function allocateStepBudgetResult(
           maxTokens: 0,
           usagePercent: 0,
           availableTokens: 0,
-          timestamp: Date.now(),
+          timestamp: getTimeProvider().now(),
         },
       })
     );
@@ -85,7 +85,7 @@ export function allocateStepBudgetResult(
           maxTokens: 0,
           usagePercent: 0,
           availableTokens: 0,
-          timestamp: Date.now(),
+          timestamp: getTimeProvider().now(),
         },
       })
     );

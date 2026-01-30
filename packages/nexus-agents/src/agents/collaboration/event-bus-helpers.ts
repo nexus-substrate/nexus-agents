@@ -9,6 +9,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { getTimeProvider } from '../../core/index.js';
 import type { SubscriptionId, TopicPattern, DomainEvent, EventFilter } from './event-bus-types.js';
 
 /** Default maximum history size */
@@ -75,14 +76,14 @@ export function topicMatchesPattern(topic: string, regex: RegExp): boolean {
  * Generate a unique event ID.
  */
 export function generateEventId(): string {
-  return `evt-${String(Date.now())}-${randomUUID().slice(0, 8)}`;
+  return `evt-${String(getTimeProvider().now())}-${randomUUID().slice(0, 8)}`;
 }
 
 /**
  * Generate a unique subscription ID.
  */
 export function generateSubscriptionId(): SubscriptionId {
-  return `sub-${String(Date.now())}-${randomUUID().slice(0, 8)}`;
+  return `sub-${String(getTimeProvider().now())}-${randomUUID().slice(0, 8)}`;
 }
 
 /**
@@ -178,7 +179,7 @@ export function enrichEvent(event: DomainEvent): DomainEvent {
   return {
     ...event,
     eventId: event.eventId || generateEventId(),
-    timestamp: event.timestamp || new Date().toISOString(),
+    timestamp: event.timestamp || new Date(getTimeProvider().now()).toISOString(),
   };
 }
 

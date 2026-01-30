@@ -8,6 +8,7 @@
  */
 
 import type { ILogger, Task, AgentRole } from '../core/index.js';
+import { getTimeProvider } from '../core/index.js';
 import type { IMemoryBackend } from '../context/memory-backend-types.js';
 import type { AgentMemoryState, MemoryPersistenceMode } from './base-agent-memory-init.js';
 import {
@@ -75,7 +76,7 @@ export async function persistMemoryAfterTask(
     return memoryState;
   }
 
-  const durationMs = Date.now() - startTime;
+  const durationMs = getTimeProvider().now() - startTime;
   const successRate = 1.0;
   const taskType = categorizeTaskType(task.description);
 

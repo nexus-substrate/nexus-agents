@@ -10,6 +10,7 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import type { WorkflowDefinition } from '../../core/index.js';
+import { getRandomProvider, getTimeProvider } from '../../core/index.js';
 import type {
   WorkflowVersion,
   EvolutionConfig,
@@ -62,7 +63,7 @@ export class WorkflowEvolver {
       metrics: DEFAULT_FITNESS_METRICS,
       parentVersion: null,
       appliedMutations: [],
-      createdAt: Date.now(),
+      createdAt: getTimeProvider().now(),
       isActive: true,
     };
     this.versions.set(version.id, version);
@@ -116,6 +117,8 @@ export class WorkflowEvolver {
 
   /** Create mutations of a workflow. */
   evolve(baseVersion: WorkflowVersion): WorkflowVersion[] {
+    const random = getRandomProvider();
+    const time = getTimeProvider();
     const variants: WorkflowVersion[] = [];
     const semVer = parseVersion(baseVersion.version);
 
@@ -123,7 +126,7 @@ export class WorkflowEvolver {
       const { workflow: mutatedWorkflow, mutations } = createMutant(
         baseVersion.workflow,
         this.config,
-        1 + Math.floor(Math.random() * 2)
+        1 + random.randomInt(0, 2)
       );
       if (mutations.length === 0) continue;
 
@@ -136,7 +139,7 @@ export class WorkflowEvolver {
         metrics: DEFAULT_FITNESS_METRICS,
         parentVersion: baseVersion.id,
         appliedMutations: mutations,
-        createdAt: Date.now(),
+        createdAt: time.now(),
         isActive: false,
       };
 
@@ -228,6 +231,8 @@ export class WorkflowEvolver {
 
   /** Run a complete evolution cycle. */
   runEvolutionCycle(baseVersion: WorkflowVersion): EvolutionHistoryEntry {
+    const random = getRandomProvider();
+    const time = getTimeProvider();
     const mutants = this.evolve(baseVersion);
     const population = [baseVersion, ...mutants];
 
@@ -241,7 +246,7 @@ export class WorkflowEvolver {
         .filter((v): v is WorkflowVersion => v !== undefined)
     );
 
-    if (selected.length >= 2 && Math.random() < this.config.crossoverRate) {
+    if (selected.length >= 2 && random.random() < this.config.crossoverRate) {
       const [idx1, idx2] = selectCrossoverIndices(selected.length);
       const p1 = selected[idx1];
       const p2 = selected[idx2];
@@ -253,12 +258,12 @@ export class WorkflowEvolver {
 
     return {
       generation: 0,
-      timestamp: Date.now(),
+      timestamp: time.now(),
       population: selected,
       bestFitness,
       avgFitness,
       mutationsApplied: mutants.reduce((sum, m) => sum + m.appliedMutations.length, 0),
-      crossoversPerformed: Math.random() < this.config.crossoverRate ? 1 : 0,
+      crossoversPerformed: random.random() < this.config.crossoverRate ? 1 : 0,
     };
   }
 

@@ -8,6 +8,7 @@
  */
 
 import type { Task } from '../core/types/agent.js';
+import { getTimeProvider } from '../core/index.js';
 import type { CliName, CliTask, BudgetConstraint } from './types.js';
 import type { BanditContext } from './budget-router-types.js';
 import type { TopsisModelProfile, TopsisResult } from './topsis-types.js';
@@ -117,7 +118,11 @@ export function filterByPreferenceTier(candidates: CliName[], tier: 'strong' | '
  * Converts a CliTask to internal Task format.
  */
 export function cliTaskToTask(cliTask: CliTask): Task {
-  return { id: 'task-' + String(Date.now()), description: cliTask.content, context: {} };
+  return {
+    id: 'task-' + String(getTimeProvider().now()),
+    description: cliTask.content,
+    context: {},
+  };
 }
 
 /**
@@ -293,7 +298,7 @@ export function buildDifficultyOutcome(
     estimatedDifficulty: difficulty,
     selectedCli,
     success,
-    timestamp: Date.now(),
+    timestamp: getTimeProvider().now(),
   };
   return qualityScore !== undefined ? { ...base, qualityScore } : base;
 }

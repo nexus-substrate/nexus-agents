@@ -10,7 +10,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { Result, ILogger, IAgent, Task, TaskResult } from '../../core/index.js';
-import { ok, err, AgentError, createLogger } from '../../core/index.js';
+import { ok, err, AgentError, createLogger, getTimeProvider } from '../../core/index.js';
 import type {
   AgentConfiguration,
   AgentVersion,
@@ -86,7 +86,7 @@ export class SicaAgent {
       return err(new AgentError('No active version available'));
     }
 
-    const startTime = Date.now();
+    const startTime = getTimeProvider().now();
     this.logger.debug('Executing task', { taskId: task.id, versionId: version.id });
 
     const result = await this.executeWithVersion(task, version);
@@ -132,7 +132,7 @@ export class SicaAgent {
       return Promise.resolve(err(new AgentError('Improvement cooldown not elapsed')));
     }
 
-    this.lastImprovementTime = Date.now();
+    this.lastImprovementTime = getTimeProvider().now();
 
     const attempt = this.generateImprovement(currentVersion, metrics, options);
     this.improvementHistory.push(attempt);
@@ -207,7 +207,7 @@ export class SicaAgent {
     result: Result<TaskResult, AgentError>,
     startTime: number
   ): ExecutionMetrics {
-    const durationMs = Date.now() - startTime;
+    const durationMs = getTimeProvider().now() - startTime;
 
     if (!result.ok) {
       return {
@@ -241,7 +241,7 @@ export class SicaAgent {
 
   /** Checks if improvement can be triggered (cooldown). */
   private canTriggerImprovement(): boolean {
-    const elapsed = Date.now() - this.lastImprovementTime;
+    const elapsed = getTimeProvider().now() - this.lastImprovementTime;
     return elapsed >= this.config.improvementCooldownMs;
   }
 
@@ -276,7 +276,7 @@ export class SicaAgent {
       hypothesis,
       changes,
       successful: true,
-      attemptedAt: new Date(),
+      attemptedAt: new Date(getTimeProvider().now()),
       validation: {
         passed: true,
         performanceChange: 0,

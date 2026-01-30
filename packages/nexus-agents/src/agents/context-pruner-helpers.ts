@@ -8,6 +8,7 @@
  */
 
 import type { ILogger } from '../core/index.js';
+import { getTimeProvider } from '../core/index.js';
 import type { ContextItem, ContextBudget } from './context-manager.js';
 import { createEmptyPruneResult, type PruneResult } from './pruning-strategies.js';
 
@@ -72,7 +73,7 @@ export function calculatePriorityWeightedScore(item: ContextItem, now: number): 
  * @returns Sorted array of items (lowest score first = prune first)
  */
 export function scoreByPriorityWeightedAge(candidates: ContextItem[]): ContextItem[] {
-  const now = Date.now();
+  const now = getTimeProvider().now();
   const scores: PruneScore[] = candidates.map((item) => ({
     item,
     score: calculatePriorityWeightedScore(item, now),

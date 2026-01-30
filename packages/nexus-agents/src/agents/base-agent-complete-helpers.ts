@@ -11,7 +11,7 @@ import type {
   CompletionResponse,
   IModelAdapter,
 } from '../core/index.js';
-import { ok, err, AgentError } from '../core/index.js';
+import { ok, err, AgentError, getTimeProvider, getRandomProvider } from '../core/index.js';
 import type { ITokenBudgetTracker } from '../context/token-budget-tracker.js';
 import type { IEventBus } from './collaboration/event-bus-types.js';
 import { createEvent } from './collaboration/event-bus.js';
@@ -138,7 +138,7 @@ export async function executeModelCompletion(
 
   // Record actual token usage for EMA tracking (Issue #304)
   budgetTracker.recordUsage({
-    timestamp: Date.now(),
+    timestamp: getTimeProvider().now(),
     inputTokens: result.value.usage.inputTokens,
     outputTokens: result.value.usage.outputTokens,
     totalTokens: result.value.usage.totalTokens,
@@ -161,8 +161,8 @@ export interface AddContextItemParams {
  */
 export async function addContextItem(params: AddContextItemParams): Promise<void> {
   const { contextManager, content, priority, category } = params;
-  const timestamp = Date.now().toString();
-  const randomSuffix = Math.random().toString(36).slice(2, 9);
+  const timestamp = getTimeProvider().now().toString();
+  const randomSuffix = getRandomProvider().random().toString(36).slice(2, 9);
   await contextManager.add({
     id: `ctx-${timestamp}-${randomSuffix}`,
     content,

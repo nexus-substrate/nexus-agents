@@ -8,6 +8,7 @@
  */
 
 import { randomBytes } from 'node:crypto';
+import { getTimeProvider } from '../../core/index.js';
 
 /**
  * Caller identification for audit trails.
@@ -83,7 +84,7 @@ export function generateSessionId(): string {
  * (Source: CLAUDE.md - Time Authority section)
  */
 function formatTimestamp(): string {
-  const now = new Date();
+  const now = new Date(getTimeProvider().now());
   const formatter = new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/New_York',
     timeZoneName: 'shortOffset',

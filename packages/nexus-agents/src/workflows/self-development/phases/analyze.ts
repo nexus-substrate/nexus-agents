@@ -6,7 +6,7 @@
  * @module workflows/self-development/phases/analyze
  */
 
-import { createLogger } from '../../../core/index.js';
+import { createLogger, getTimeProvider } from '../../../core/index.js';
 import type { SelfDevWorkflowDependencies } from '../interfaces.js';
 import type { SelfDevWorkflowState, AnalyzeOutput } from '../types.js';
 import { checkFailFast } from './shared.js';
@@ -177,7 +177,7 @@ function createPlaceholderAnalyzeOutput(startTime: number): AnalyzeOutput {
       type: 'enhancement',
     },
     selectionRationale: 'No issues with self-development-approved label found',
-    durationMs: Date.now() - startTime,
+    durationMs: getTimeProvider().now() - startTime,
   };
 }
 
@@ -218,7 +218,7 @@ export async function executeAnalyze(
   deps: SelfDevWorkflowDependencies,
   state: SelfDevWorkflowState
 ): Promise<AnalyzeOutput> {
-  const startTime = Date.now();
+  const startTime = getTimeProvider().now();
   const allowPlaceholderFallback = state.config.phases?.analyze?.allowPlaceholderFallback === true;
 
   // Fail-fast check before falling back (Issue #455)
@@ -265,7 +265,7 @@ export async function executeAnalyze(
       prioritizedIssues,
       selectedIssue,
       selectionRationale: `Selected #${String(selectedIssue.number)} with priority score ${String(selectedIssue.priorityScore)}/100`,
-      durationMs: Date.now() - startTime,
+      durationMs: getTimeProvider().now() - startTime,
     };
   } catch (err) {
     const causeError = err instanceof Error ? err : new Error(String(err));

@@ -1,6 +1,6 @@
 /** Workflow Engine - Coordinates parsing, execution planning, and step execution. */
 
-import { ok, err, createLogger } from '../core/index.js';
+import { ok, err, createLogger, getTimeProvider } from '../core/index.js';
 import type { Result, ILogger } from '../core/index.js';
 import type {
   IWorkflowEngine,
@@ -128,7 +128,7 @@ export class WorkflowEngine implements IWorkflowEngine {
       workflowName: workflow.name,
       stepResults: stepResults.value,
       output: buildFinalOutput(stepResults.value),
-      totalDurationMs: Date.now() - startTime,
+      totalDurationMs: getTimeProvider().now() - startTime,
     };
     this.updateExecutionStatus(executionId, { state: 'completed', result });
     return ok(result);
@@ -181,7 +181,7 @@ export class WorkflowEngine implements IWorkflowEngine {
     exec.context.abortController.abort();
     this.updateExecutionStatus(executionId, {
       state: 'cancelled',
-      cancelledAt: new Date().toISOString(),
+      cancelledAt: new Date(getTimeProvider().now()).toISOString(),
     });
     return Promise.resolve(ok(undefined));
   }

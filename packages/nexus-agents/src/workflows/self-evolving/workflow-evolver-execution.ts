@@ -9,6 +9,7 @@
  */
 
 import type { StepResult } from '../../core/index.js';
+import { getRandomProvider, getTimeProvider } from '../../core/index.js';
 import type { FitnessMetrics, ExecutionOutcome } from './sew-types.js';
 import { DEFAULT_FITNESS_METRICS, computeFitnessScore } from './sew-types.js';
 
@@ -79,7 +80,7 @@ export function createOutcome(options: CreateOutcomeOptions): ExecutionOutcome {
     cost: options.cost,
     stepResults: options.stepResults,
     totalRetries: options.totalRetries,
-    timestamp: Date.now(),
+    timestamp: getTimeProvider().now(),
   };
 }
 
@@ -87,10 +88,11 @@ export function createOutcome(options: CreateOutcomeOptions): ExecutionOutcome {
  * Select random indices for crossover.
  */
 export function selectCrossoverIndices(populationSize: number): [number, number] {
-  const idx1 = Math.floor(Math.random() * populationSize);
-  let idx2 = Math.floor(Math.random() * populationSize);
+  const random = getRandomProvider();
+  const idx1 = random.randomInt(0, populationSize);
+  let idx2 = random.randomInt(0, populationSize);
   while (idx2 === idx1 && populationSize > 1) {
-    idx2 = Math.floor(Math.random() * populationSize);
+    idx2 = random.randomInt(0, populationSize);
   }
   return [idx1, idx2];
 }

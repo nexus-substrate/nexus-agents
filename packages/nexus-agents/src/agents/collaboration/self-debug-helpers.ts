@@ -6,6 +6,7 @@
  */
 
 import { escapeRegex, validatePattern } from '../../core/safe-regex.js';
+import { getTimeProvider } from '../../core/index.js';
 import type {
   ParsedError,
   ErrorExplanation,
@@ -184,7 +185,7 @@ export function buildIteration(opts: IterationBuildOpts): DebugIteration {
     explanations: opts.explanations,
     proposedFixes: opts.fixes,
     appliedFix: opts.appliedFix,
-    durationMs: Date.now() - opts.startTime,
+    durationMs: getTimeProvider().now() - opts.startTime,
   };
 }
 

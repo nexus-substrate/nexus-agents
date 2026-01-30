@@ -9,6 +9,7 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import { z } from 'zod';
+import { getTimeProvider } from './index.js';
 
 /**
  * Current schema version for artifacts.
@@ -198,7 +199,7 @@ export function createArtifact<T>(
     data,
     metadata: {
       ...metadata,
-      createdAt: new Date().toISOString(),
+      createdAt: new Date(getTimeProvider().now()).toISOString(),
     },
   };
 }

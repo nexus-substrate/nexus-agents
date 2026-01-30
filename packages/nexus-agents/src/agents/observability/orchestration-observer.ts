@@ -6,6 +6,7 @@
 
 import type { ILogger } from '../../core/logger.js';
 import { createLogger } from '../../core/logger.js';
+import { getTimeProvider } from '../../core/index.js';
 import type { CliName } from '../../cli-adapters/types.js';
 import type { IEventBus, DomainEvent, Subscription } from '../collaboration/event-bus-types.js';
 import {
@@ -78,7 +79,7 @@ export class OrchestrationObserver implements IOrchestrationObserver {
     this.eventBus = eventBus;
     this.config = OrchestrationObserverConfigSchema.parse(options?.config ?? {});
     this.logger = options?.logger ?? createLogger({ component: 'OrchestrationObserver' });
-    this.startTime = Date.now();
+    this.startTime = getTimeProvider().now();
   }
 
   start(): void {
@@ -270,7 +271,7 @@ export class OrchestrationObserver implements IOrchestrationObserver {
 
     const metrics = this.sessionMetrics.get(sessionId);
     if (metrics !== undefined) {
-      metrics.completedAt = new Date().toISOString();
+      metrics.completedAt = new Date(getTimeProvider().now()).toISOString();
       metrics.durationMs = durationMs;
     }
 
@@ -312,7 +313,7 @@ export class OrchestrationObserver implements IOrchestrationObserver {
     } else {
       agent.state = state;
       agent.currentTask = currentTask;
-      agent.lastUpdated = new Date().toISOString();
+      agent.lastUpdated = new Date(getTimeProvider().now()).toISOString();
       if (role !== undefined) {
         (agent as { role: string }).role = role;
       }
@@ -366,7 +367,7 @@ export class OrchestrationObserver implements IOrchestrationObserver {
       totalTokens,
       totalCostUsd: totalCost,
       eventsProcessed: this.eventsProcessed,
-      uptimeMs: Date.now() - this.startTime,
+      uptimeMs: getTimeProvider().now() - this.startTime,
       // Consensus stats (Issue #552)
       consensus: {
         votesRequested: this.consensusVotesRequested,

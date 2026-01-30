@@ -8,6 +8,7 @@
  */
 
 import { z } from 'zod';
+import { getTimeProvider } from '../../core/index.js';
 import type { Result } from '../../core/result.js';
 import type { PuppeteerState, AgentDistribution } from './puppeteer-types.js';
 
@@ -85,7 +86,7 @@ export const DEFAULT_POLICY_PARAMETERS: PolicyParameters = {
   },
   biases: {},
   metadata: {
-    created: new Date().toISOString(),
+    created: new Date(getTimeProvider().now()).toISOString(),
     trainedOnTasks: 0,
   },
 };

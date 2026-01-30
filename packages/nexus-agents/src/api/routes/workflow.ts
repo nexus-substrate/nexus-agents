@@ -8,6 +8,7 @@
 
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import type { ILogger } from '../../core/logger.js';
+import { getTimeProvider } from '../../core/index.js';
 import {
   WorkflowRequestSchema,
   type WorkflowRequest,
@@ -26,7 +27,7 @@ function createValidationError(requestId: string, message: string, issues?: unkn
       details: issues !== undefined ? { issues } : undefined,
     },
     requestId,
-    timestamp: new Date().toISOString(),
+    timestamp: new Date(getTimeProvider().now()).toISOString(),
   };
 }
 
@@ -37,7 +38,7 @@ function createInternalError(requestId: string, message: string): ApiError {
   return {
     error: { code: 'INTERNAL_ERROR', message },
     requestId,
-    timestamp: new Date().toISOString(),
+    timestamp: new Date(getTimeProvider().now()).toISOString(),
   };
 }
 
@@ -46,7 +47,7 @@ function createInternalError(requestId: string, message: string): ApiError {
  */
 function buildWorkflowResponse(durationMs: number): WorkflowResponse {
   return {
-    executionId: 'exec-' + String(Date.now()),
+    executionId: 'exec-' + String(getTimeProvider().now()),
     status: 'completed',
     stepResults: [
       {
@@ -121,7 +122,8 @@ async function handleWorkflowRequest(
   reply: FastifyReply,
   logger: ILogger
 ): Promise<void> {
-  const startTime = Date.now();
+  const time = getTimeProvider();
+  const startTime = time.now();
   const requestId = request.id;
 
   const parseResult = WorkflowRequestSchema.safeParse(request.body);
@@ -145,7 +147,7 @@ async function handleWorkflowRequest(
 
   try {
     // Simulated execution - in full implementation, would use WorkflowEngine
-    const durationMs = Date.now() - startTime;
+    const durationMs = time.now() - startTime;
     const response = buildWorkflowResponse(durationMs);
 
     logger.info('Workflow complete', { requestId, executionId: response.executionId, durationMs });

@@ -1,7 +1,7 @@
 {
-  "total": 90,
+  "total": 97,
   "maxTotal": 100,
-  "percentage": 90,
+  "percentage": 97,
   "components": [
     {
       "name": "Canonical Paths",
@@ -16,22 +16,34 @@
     },
     {
       "name": "Determinism",
-      "score": 8,
+      "score": 15,
       "maxScore": 15,
-      "details": ["Random calls: 66", "Date.now calls: 669"],
-      "penalties": ["66 unseeded Math.random() calls", "669 Date.now() calls (consider injection)"],
-      "rewards": []
+      "details": [
+        "Random calls: 0",
+        "Date.now calls: 5",
+        "Time provider usage: 702",
+        "Random provider usage: 44"
+      ],
+      "penalties": [],
+      "rewards": [
+        "No unseeded random calls",
+        "Injectable random provider exists",
+        "44 uses of injectable random provider",
+        "Minimal direct Date.now() usage",
+        "Injectable time provider exists",
+        "702 uses of injectable time provider"
+      ]
     },
     {
       "name": "Observability",
       "score": 15,
       "maxScore": 15,
-      "details": ["Logger uses: 172"],
+      "details": ["Logger uses: 181"],
       "penalties": [],
       "rewards": [
         "SwarmObserver exists",
         "Trace exporter exists",
-        "Strong logging adoption (172 uses)",
+        "Strong logging adoption (181 uses)",
         "Audit logging module exists"
       ]
     },
@@ -85,5 +97,5 @@
     }
   ],
   "trend": "stable",
-  "assessmentDate": "2026-01-30T03:23:11.980Z"
+  "assessmentDate": "2026-01-30T16:53:41.852Z"
 }

@@ -12,6 +12,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { Result } from '../core/result.js';
 import { ok, err } from '../core/result.js';
+import { getTimeProvider } from '../core/index.js';
 import type { ILogger } from '../core/logger.js';
 import { createLogger } from '../core/logger.js';
 import type {
@@ -91,11 +92,11 @@ export class SessionMemory {
     }
 
     this.ensureMemoryDir();
-    this.sessionStartTime = Date.now();
+    this.sessionStartTime = getTimeProvider().now();
 
     this.currentSession = {
       sessionId,
-      date: new Date().toISOString().split('T')[0] as string,
+      date: new Date(getTimeProvider().now()).toISOString().split('T')[0] as string,
       durationMs: 0,
       summary: '',
       learnings: [],
@@ -118,7 +119,7 @@ export class SessionMemory {
       return err(new SessionMemoryError('No session in progress'));
     }
 
-    const durationMs = Date.now() - this.sessionStartTime;
+    const durationMs = getTimeProvider().now() - this.sessionStartTime;
     const episode: SessionEpisode = {
       ...this.currentSession,
       durationMs,
@@ -362,7 +363,7 @@ export class SessionMemory {
       this.ensureMemoryDir();
       // Use more of session ID to avoid collisions
       const sessionSuffix = episode.sessionId.replace(/[^a-zA-Z0-9-]/g, '-').slice(0, 16);
-      const timestamp = Date.now().toString(36); // Base36 timestamp for uniqueness
+      const timestamp = getTimeProvider().now().toString(36); // Base36 timestamp for uniqueness
       const filename = `episode-${episode.date}-${sessionSuffix}-${timestamp}.json`;
       const filepath = path.join(this.memoryDir, filename);
       const content = JSON.stringify(episode, null, 2);

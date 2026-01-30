@@ -6,6 +6,7 @@
  */
 
 import type { TaskResult, AgentRole, ILogger } from '../../core/index.js';
+import { getTimeProvider } from '../../core/index.js';
 import type { IEventBus } from './event-bus-types.js';
 
 /**
@@ -122,7 +123,7 @@ export interface BuildFinalResultInput {
  */
 export function buildFinalCollaborationResult(input: BuildFinalResultInput): CollaborationResult {
   const { config, participants, results, votes, reviews, startedAt, error } = input;
-  const endTime = new Date();
+  const endTime = new Date(getTimeProvider().now());
   const durationMs = endTime.getTime() - new Date(startedAt).getTime();
   const allResults = Array.from(results.values());
 

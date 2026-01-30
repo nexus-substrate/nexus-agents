@@ -8,6 +8,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { getTimeProvider } from '../core/index.js';
 import type {
   IProfileMemory,
   IExperienceMemory,
@@ -49,7 +50,7 @@ export class ProfileMemoryImpl implements IProfileMemory {
   ): ProfileEntry {
     const key = `${entityId}:${preferenceKey}`;
     const existing = this.entries.get(key);
-    const now = new Date();
+    const now = new Date(getTimeProvider().now());
 
     if (existing !== undefined) {
       const newObservationCount = existing.observationCount + 1;
@@ -157,7 +158,7 @@ export class ExperienceMemoryImpl implements IExperienceMemory {
   ): ExperienceEntry {
     const patternKey = generatePatternKey(taskType, actionSequence, contextSignature);
     const existing = this.patterns.get(patternKey);
-    const now = new Date();
+    const now = new Date(getTimeProvider().now());
 
     if (existing !== undefined) {
       const metrics = computeUpdatedMetrics(
@@ -232,7 +233,11 @@ export class ExperienceMemoryImpl implements IExperienceMemory {
     for (const [key, entry] of this.patterns) {
       if (entry.id === patternId) {
         const metrics = computeUpdatedMetrics(entry.successCount, entry.attemptCount, success);
-        this.patterns.set(key, { ...entry, ...metrics, lastUsedAt: new Date() });
+        this.patterns.set(key, {
+          ...entry,
+          ...metrics,
+          lastUsedAt: new Date(getTimeProvider().now()),
+        });
         return;
       }
     }
@@ -282,7 +287,7 @@ export class ActionCacheImpl implements IActionCache {
 
   cache(input: unknown, result: unknown, durationMs: number): ActionCacheEntry {
     const inputHash = hashInput(input);
-    const now = new Date();
+    const now = new Date(getTimeProvider().now());
 
     const entry: ActionCacheEntry = {
       id: randomUUID(),
@@ -309,7 +314,7 @@ export class ActionCacheImpl implements IActionCache {
 
     if (entry === undefined) return null;
 
-    if (entry.expiresAt < new Date()) {
+    if (entry.expiresAt < new Date(getTimeProvider().now())) {
       this.entries.delete(inputHash);
       return null;
     }
@@ -325,7 +330,7 @@ export class ActionCacheImpl implements IActionCache {
           ...entry,
           hitCount: entry.hitCount + 1,
           timeSavedMs: entry.timeSavedMs + entry.originalDurationMs,
-          lastAccessedAt: new Date(),
+          lastAccessedAt: new Date(getTimeProvider().now()),
         };
         this.entries.set(hash, updated);
         return;
@@ -334,7 +339,7 @@ export class ActionCacheImpl implements IActionCache {
   }
 
   evictExpired(): number {
-    const now = new Date();
+    const now = new Date(getTimeProvider().now());
     let evicted = 0;
 
     for (const [hash, entry] of this.entries) {

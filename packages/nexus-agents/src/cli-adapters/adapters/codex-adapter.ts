@@ -33,7 +33,7 @@ import type {
 } from '../types.js';
 import { DEFAULT_CAPABILITIES } from '../types.js';
 import type { Result } from '../../core/index.js';
-import { ok, err } from '../../core/index.js';
+import { ok, err, getTimeProvider } from '../../core/index.js';
 import type { ILogger } from '../../core/index.js';
 import { createLogger } from '../../core/index.js';
 import { CodexResponseParser } from '../parsers/codex-parser.js';
@@ -187,7 +187,7 @@ export class CodexCliAdapter implements ICliAdapter {
     task: CliTask,
     options: Required<ExecutionOptions>
   ): Promise<Result<CliResponse, CliError>> {
-    const startTime = Date.now();
+    const startTime = getTimeProvider().now();
 
     return new Promise((resolve) => {
       const args = this.buildArgs(task);
@@ -241,7 +241,7 @@ export class CodexCliAdapter implements ICliAdapter {
 
     return ok(
       normalizeCodexResponse(text, usage ?? undefined, {
-        durationMs: Date.now() - startTime,
+        durationMs: getTimeProvider().now() - startTime,
         raw: stdout,
         ...(sessionId !== null && { sessionId }),
       })
@@ -299,7 +299,7 @@ export class CodexCliAdapter implements ICliAdapter {
         healthy: true,
         version,
         versionStatus: 'supported',
-        lastChecked: new Date(),
+        lastChecked: new Date(getTimeProvider().now()),
       };
     } catch (error) {
       return {
@@ -307,7 +307,7 @@ export class CodexCliAdapter implements ICliAdapter {
         version: 'unknown',
         versionStatus: 'unsupported',
         message: error instanceof Error ? error.message : 'Health check failed',
-        lastChecked: new Date(),
+        lastChecked: new Date(getTimeProvider().now()),
       };
     }
   }
@@ -359,7 +359,7 @@ export class CodexCliAdapter implements ICliAdapter {
       return Promise.resolve({
         remainingTokens: Number.MAX_SAFE_INTEGER,
         remainingRequests: Number.MAX_SAFE_INTEGER,
-        resetTime: new Date(Date.now() + 3600_000),
+        resetTime: new Date(getTimeProvider().now() + 3600_000),
         utilizationPercent: 0,
         exhausted: false,
       });

@@ -9,6 +9,7 @@
 
 import type { AgentEvent, AgentState, InteractionGraph, TraceId } from './swarm-observer-types.js';
 import type { GraphEdgeDisplay, GraphSummary } from './dashboard-types.js';
+import { getTimeProvider } from '../core/index.js';
 
 /**
  * Extract state from a state_change event.
@@ -189,7 +190,7 @@ export function buildGraphSummary(graph: InteractionGraph): GraphSummary {
 export function getActiveTracesFromGraph(graph: InteractionGraph, timeWindowMs: number): TraceId[] {
   const edges = graph.getEdges();
   const traces = new Set<TraceId>();
-  const cutoff = Date.now() - timeWindowMs;
+  const cutoff = getTimeProvider().now() - timeWindowMs;
 
   for (const edge of edges) {
     if (new Date(edge.timestamp).getTime() > cutoff) {

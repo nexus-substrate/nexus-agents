@@ -8,7 +8,7 @@
  * (Source: Issue #160, Alignment Roadmap Phase 2)
  */
 
-import { createLogger } from '../core/logger.js';
+import { createLogger, getTimeProvider } from '../core/index.js';
 import type {
   FeedbackCollectorConfig,
   RoutingDecision,
@@ -204,7 +204,7 @@ export class OutcomeFeedbackCollector implements IOutcomeFeedback {
       avgQualityScore: avgQuality,
       avgReward,
       decisionsByRouter,
-      lastUpdatedAt: new Date().toISOString(),
+      lastUpdatedAt: new Date(getTimeProvider().now()).toISOString(),
     };
   }
 
@@ -213,7 +213,7 @@ export class OutcomeFeedbackCollector implements IOutcomeFeedback {
   }
 
   clearExpiredDecisions(): number {
-    const now = Date.now();
+    const now = getTimeProvider().now();
     const cutoff = now - this.config.pendingTimeoutMs;
     let cleared = 0;
 

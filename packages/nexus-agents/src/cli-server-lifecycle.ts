@@ -9,6 +9,7 @@
  */
 
 import type { ILogger } from './core/index.js';
+import { getTimeProvider } from './core/index.js';
 import { getSwarmObserver, SwarmObserver } from './observability/index.js';
 import type { EventBusConfig } from './config/index.js';
 import {
@@ -104,7 +105,7 @@ export function recordServerStartup(observer: SwarmObserver): ServerEventContext
 
   observer.recordEvent({
     eventId: `startup-${startupSpanId}`,
-    timestamp: new Date().toISOString(),
+    timestamp: new Date(getTimeProvider().now()).toISOString(),
     agentId: 'mcp-server',
     eventType: 'task_started',
     traceId,
@@ -128,7 +129,7 @@ export function recordServerShutdown(observer: SwarmObserver, context: ServerEve
 
   observer.recordEvent({
     eventId: `shutdown-${shutdownSpanId}`,
-    timestamp: new Date().toISOString(),
+    timestamp: new Date(getTimeProvider().now()).toISOString(),
     agentId: 'mcp-server',
     eventType: 'task_completed',
     traceId: context.traceId,

@@ -10,7 +10,7 @@
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import type { ILogger } from '../../../core/index.js';
-import { createLogger } from '../../../core/index.js';
+import { createLogger, getTimeProvider } from '../../../core/index.js';
 import type {
   CheckDefinition,
   CheckResult,
@@ -86,7 +86,7 @@ export class VerifyEngine implements IVerifyEngine {
    * Runs all configured verification checks.
    */
   async verify(input: VerifyInput): Promise<VerifyOutput> {
-    const start = Date.now();
+    const start = getTimeProvider().now();
     this.emit('verify.started', { workDir: input.workDir, checkCount: this.config.checks.length });
     this.logger.info('Starting verification', {
       workDir: input.workDir,
@@ -119,7 +119,7 @@ export class VerifyEngine implements IVerifyEngine {
       }
     }
 
-    const output = this.computeOutput(checkResults, Date.now() - start, earlyExit);
+    const output = this.computeOutput(checkResults, getTimeProvider().now() - start, earlyExit);
 
     if (this.config.generateFeedback && output.verdict === 'fail') {
       const feedback = this.generateFeedback(output);
@@ -143,7 +143,7 @@ export class VerifyEngine implements IVerifyEngine {
    * Executes a single check.
    */
   private async executeCheck(check: CheckDefinition, workDir: string): Promise<CheckResult> {
-    const start = Date.now();
+    const start = getTimeProvider().now();
     const timeout = check.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
     try {
@@ -160,7 +160,7 @@ export class VerifyEngine implements IVerifyEngine {
         checkId: check.id,
         passed,
         score,
-        durationMs: Date.now() - start,
+        durationMs: getTimeProvider().now() - start,
         output: truncateOutput(output),
         issues,
       };
@@ -177,7 +177,7 @@ export class VerifyEngine implements IVerifyEngine {
         passed,
         severity: 'error',
         score,
-        durationMs: Date.now() - start,
+        durationMs: getTimeProvider().now() - start,
         output: truncateOutput(errorOutput),
         error: errorMessage,
         issues,
@@ -266,7 +266,7 @@ export class VerifyEngine implements IVerifyEngine {
    * Emits an event to all listeners.
    */
   private emit(type: VerifyEventType, data: Record<string, unknown>): void {
-    const event: VerifyEvent = { type, timestamp: new Date(), data };
+    const event: VerifyEvent = { type, timestamp: new Date(getTimeProvider().now()), data };
     for (const listener of this.eventListeners) {
       listener(event);
     }

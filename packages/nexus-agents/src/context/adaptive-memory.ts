@@ -10,6 +10,7 @@
 
 import type { Result } from '../core/result.js';
 import { ok, err } from '../core/result.js';
+import { getTimeProvider } from '../core/index.js';
 import type { ILogger } from '../core/logger.js';
 import { createLogger } from '../core/logger.js';
 import type { MemoryEntry, MemoryMetadata, ISQLiteDatabase } from './memory-backend-types.js';
@@ -175,7 +176,7 @@ export class AdaptiveMemoryBackend implements IAdaptiveMemory {
       const entry = memoryRowToEntry(row);
       const priority = calculatePriorityScore({
         entry,
-        now: new Date(),
+        now: new Date(getTimeProvider().now()),
         config: this.scoringConfig,
         ...(query !== undefined && { query }),
       });

@@ -16,6 +16,7 @@ import type {
   ReflexionSynthesisEvent,
 } from './event-bus-types.js';
 import { createEvent } from './event-bus.js';
+import { getTimeProvider } from '../../core/index.js';
 import type { ReflexionConfig, ReflexionResult } from './reflexion-types.js';
 
 /** Configuration for emitting protocol started event. */
@@ -91,7 +92,7 @@ export function emitReflexionCompleted(
     {
       success: params.result.converged,
       iterations: params.result.totalIterations,
-      durationMs: Date.now() - params.startTime,
+      durationMs: getTimeProvider().now() - params.startTime,
     },
     {
       ...(params.sessionId !== undefined && { sessionId: params.sessionId }),

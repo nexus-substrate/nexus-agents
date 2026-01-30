@@ -7,6 +7,7 @@
  * (Source: Issue #148, arXiv:2406.18665)
  */
 
+import { getTimeProvider } from '../core/index.js';
 import type {
   PreferenceDataPoint,
   QueryFeatures,
@@ -76,7 +77,7 @@ export class InMemoryPreferenceStore implements IPreferenceDataStore {
       dataPointsByDomain: domainCounts,
       strongModelPreferenceRate: total > 0 ? strongPreferred / total : 0,
       estimatedCostSavingsRate: total > 0 ? 1 - strongPreferred / total : 0,
-      lastUpdatedAt: new Date(),
+      lastUpdatedAt: new Date(getTimeProvider().now()),
     };
   }
 

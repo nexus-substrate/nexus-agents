@@ -9,6 +9,7 @@
 
 import type { Result } from '../core/result.js';
 import { ok } from '../core/result.js';
+import { getTimeProvider } from '../core/index.js';
 import type { AgentRole } from '../core/types/agent.js';
 import { createLogger } from '../core/logger.js';
 import type { IMemoryBackend, MemoryEntry, MemoryError } from './memory-backend-types.js';
@@ -116,7 +117,7 @@ export class TypedMemory implements ITypedMemory {
   }
 
   async pruneExpired(): Promise<Result<TypedMemoryPruneResult, MemoryError>> {
-    const result = await this.backend.prune(new Date());
+    const result = await this.backend.prune(new Date(getTimeProvider().now()));
     if (!result.ok) return result;
     logger.info('Pruned expired entries', { count: result.value });
     return ok({

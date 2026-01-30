@@ -11,7 +11,7 @@
  */
 
 import type { Result, ILogger } from '../../core/index.js';
-import { ok, err, AgentError, createLogger } from '../../core/index.js';
+import { ok, err, AgentError, createLogger, getTimeProvider } from '../../core/index.js';
 import type {
   TrinityConfig,
   TrinityResult,
@@ -90,11 +90,12 @@ export class TrinityCoordinator {
 
   async execute(options: TrinityExecuteOptions): Promise<Result<TrinityResult, AgentError>> {
     this.cancelFlag = false;
-    const sessionId = `trinity-${options.task.id}-${String(Date.now())}`;
+    const time = getTimeProvider();
+    const sessionId = `trinity-${options.task.id}-${String(time.now())}`;
     const ctx: CoordinationContext = {
       task: options.task,
       agent: options.agent,
-      startTime: Date.now(),
+      startTime: time.now(),
       history: [],
       sessionId,
     };
@@ -214,7 +215,8 @@ export class TrinityCoordinator {
   }
 
   private async runThinker(ctx: CoordinationContext): Promise<Result<ThinkerOutput, AgentError>> {
-    const phaseStart = Date.now();
+    const time = getTimeProvider();
+    const phaseStart = time.now();
 
     // Emit phase started event (Issue #216)
     emitPhaseStarted(this.eventBus, {
@@ -226,7 +228,7 @@ export class TrinityCoordinator {
     const task = buildRoleTask(ctx.task, 'thinker', '');
     const result = await ctx.agent.execute(task);
 
-    const durationMs = Date.now() - phaseStart;
+    const durationMs = time.now() - phaseStart;
     const tokensUsed = result.ok ? result.value.metadata.tokensUsed : 0;
 
     // Emit phase completed event (Issue #216)
@@ -260,7 +262,8 @@ export class TrinityCoordinator {
     feedback: VerifierOutput | undefined,
     iteration: number
   ): Promise<Result<WorkerOutput, AgentError>> {
-    const phaseStart = Date.now();
+    const time = getTimeProvider();
+    const phaseStart = time.now();
 
     // Emit phase started event (Issue #216)
     emitPhaseStarted(this.eventBus, {
@@ -278,7 +281,7 @@ export class TrinityCoordinator {
     const task = buildRoleTask(ctx.task, 'worker', context);
     const result = await ctx.agent.execute(task);
 
-    const durationMs = Date.now() - phaseStart;
+    const durationMs = time.now() - phaseStart;
     const tokensUsed = result.ok ? result.value.metadata.tokensUsed : 0;
 
     // Emit phase completed event (Issue #216)
@@ -304,7 +307,8 @@ export class TrinityCoordinator {
     worker: WorkerOutput,
     iteration: number
   ): Promise<Result<VerifierOutput, AgentError>> {
-    const phaseStart = Date.now();
+    const time = getTimeProvider();
+    const phaseStart = time.now();
 
     // Emit phase started event (Issue #216)
     emitPhaseStarted(this.eventBus, {
@@ -318,7 +322,7 @@ export class TrinityCoordinator {
     const task = buildRoleTask(ctx.task, 'verifier', context);
     const result = await ctx.agent.execute(task);
 
-    const durationMs = Date.now() - phaseStart;
+    const durationMs = time.now() - phaseStart;
     const tokensUsed = result.ok ? result.value.metadata.tokensUsed : 0;
 
     // Emit phase completed event (Issue #216)
@@ -347,11 +351,11 @@ export class TrinityCoordinator {
     startTime: number,
     tokensUsed: number
   ): TrinityPhaseResult {
-    return { phase, role, output, durationMs: Date.now() - startTime, tokensUsed };
+    return { phase, role, output, durationMs: getTimeProvider().now() - startTime, tokensUsed };
   }
 
   private isTimedOut(ctx: CoordinationContext): boolean {
-    return Date.now() - ctx.startTime > this.config.timeoutMs;
+    return getTimeProvider().now() - ctx.startTime > this.config.timeoutMs;
   }
 
   private buildCancelledResult(
@@ -383,7 +387,7 @@ export class TrinityCoordinator {
       workerOutput: w,
       verifierOutput: v,
       iterations: opts.iterations,
-      totalDurationMs: Date.now() - opts.ctx.startTime,
+      totalDurationMs: getTimeProvider().now() - opts.ctx.startTime,
       history: this.config.includeHistory ? [...opts.ctx.history] : [],
       stopReason: opts.stopReason,
     };

@@ -10,6 +10,7 @@
 
 import { createLogger } from '../core/logger.js';
 import type { ILogger } from '../core/index.js';
+import { getTimeProvider } from '../core/index.js';
 import type {
   CacheEntry,
   ResponseCacheConfig,
@@ -50,7 +51,7 @@ export class InMemoryResponseCache implements IResponseCache {
   private memoryUsedBytes = 0;
   private disposed = false;
   private cleanupTimer: NodeJS.Timeout | undefined;
-  private readonly createdAt: Date = new Date();
+  private readonly createdAt: Date = new Date(getTimeProvider().now());
 
   constructor(config?: Partial<ResponseCacheConfig>, logger?: ILogger) {
     const validated = ResponseCacheConfigSchema.parse({
@@ -93,7 +94,7 @@ export class InMemoryResponseCache implements IResponseCache {
   set(key: string, value: unknown, ttl?: number): void {
     this.ensureNotDisposed();
     const effectiveTTL = ttl ?? this.config.defaultTTL;
-    const now = Date.now();
+    const now = getTimeProvider().now();
     const sizeBytes = estimateSize(value);
 
     // Check memory before adding
@@ -159,7 +160,7 @@ export class InMemoryResponseCache implements IResponseCache {
       evictionsTTL: this.evictionsTTL,
       evictionsMemory: this.evictionsMemory,
       createdAt: this.createdAt,
-      lastUpdated: new Date(),
+      lastUpdated: new Date(getTimeProvider().now()),
     };
   }
 
@@ -189,7 +190,7 @@ export class InMemoryResponseCache implements IResponseCache {
   }
 
   private isExpired(entry: CacheEntry<unknown>): boolean {
-    return Date.now() > entry.expiresAt;
+    return getTimeProvider().now() > entry.expiresAt;
   }
 
   /**
@@ -276,7 +277,7 @@ export class InMemoryResponseCache implements IResponseCache {
   private cleanupExpired(): void {
     if (this.disposed) return;
 
-    const now = Date.now();
+    const now = getTimeProvider().now();
     const keysToDelete: string[] = [];
 
     for (const [key, entry] of this.cache) {

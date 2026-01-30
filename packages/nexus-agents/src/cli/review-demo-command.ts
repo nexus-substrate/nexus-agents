@@ -8,6 +8,7 @@
  * (Source: Issue #258 - PR Review Demo Workflow)
  */
 
+import { getTimeProvider } from '../core/index.js';
 import { createPRReviewer, formatReviewComment } from '../dogfooding/index.js';
 import type { PRReviewResult, ReviewSeverity } from '../dogfooding/index.js';
 import type { ReviewDemoOptions, ProgressStep } from './review-demo-types.js';
@@ -118,7 +119,7 @@ async function runReviewWithProgress(
   verbose: boolean
 ): Promise<number> {
   let steps = createProgressSteps();
-  const startTime = Date.now();
+  const startTime = getTimeProvider().now();
 
   printHeader(prUrl, dryRun);
 
@@ -141,7 +142,7 @@ async function runReviewWithProgress(
   }
 
   // Update remaining steps based on result
-  const durationMs = Date.now() - startTime;
+  const durationMs = getTimeProvider().now() - startTime;
   steps = updateAllStepsCompleted(steps, result.value, durationMs);
   printProgress(steps, verbose);
 

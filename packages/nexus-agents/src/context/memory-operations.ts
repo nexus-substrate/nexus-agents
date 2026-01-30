@@ -8,6 +8,7 @@
 
 import type { Result } from '../core/result.js';
 import { ok, err } from '../core/result.js';
+import { getTimeProvider } from '../core/index.js';
 import type { ILogger } from '../core/logger.js';
 import type {
   ISQLiteDatabase,
@@ -54,7 +55,7 @@ export function cleanupExpiredEntries(
   autoExpire: boolean,
   logger: ILogger
 ): { entries: MemoryEntry[]; expiredCount: number } {
-  const now = Date.now();
+  const now = getTimeProvider().now();
   const entries: MemoryEntry[] = [];
   const expiredKeys: string[] = [];
 
@@ -157,7 +158,7 @@ export function expireAllEntries(
     const stmt = database.prepare(
       'DELETE FROM memories WHERE expires_at IS NOT NULL AND expires_at < ?'
     );
-    const result = stmt.run(Date.now());
+    const result = stmt.run(getTimeProvider().now());
     logger.info('Expired memories', { count: result.changes });
     return ok(result.changes);
   } catch (error) {

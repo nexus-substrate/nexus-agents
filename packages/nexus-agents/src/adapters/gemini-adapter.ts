@@ -19,7 +19,14 @@ import type {
   ContentBlock,
   TokenUsage,
 } from '../core/index.js';
-import { ok, err, ModelError, ConfigError } from '../core/index.js';
+import {
+  ok,
+  err,
+  ModelError,
+  ConfigError,
+  getTimeProvider,
+  getRandomProvider,
+} from '../core/index.js';
 import { BaseAdapter, type BaseAdapterConfig } from './base-adapter.js';
 import { createStream } from './streaming.js';
 import {
@@ -330,7 +337,7 @@ export class GeminiAdapter extends BaseAdapter {
    * Generates a unique tool ID.
    */
   private generateToolId(): string {
-    return `tool_${String(Date.now())}_${Math.random().toString(36).slice(2, 9)}`;
+    return `tool_${String(getTimeProvider().now())}_${getRandomProvider().random().toString(36).slice(2, 9)}`;
   }
 
   /**

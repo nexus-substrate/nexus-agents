@@ -10,7 +10,14 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Result, ILogger, Task, TaskContext } from '../../core/index.js';
-import { ok, err, AgentError, createLogger } from '../../core/index.js';
+import {
+  ok,
+  err,
+  AgentError,
+  createLogger,
+  getTimeProvider,
+  getRandomProvider,
+} from '../../core/index.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
 import { wrapToolWithTimeout } from '../middleware/tool-wrapper.js';
@@ -116,8 +123,8 @@ export class OrchestrationUnavailableError extends AgentError {
  * Generates a unique task ID for tracking execution.
  */
 function generateTaskId(): string {
-  const timestamp = Date.now().toString(36);
-  const random = Math.random().toString(36).substring(2, 8);
+  const timestamp = getTimeProvider().now().toString(36);
+  const random = getRandomProvider().random().toString(36).substring(2, 8);
   return `orch-${timestamp}-${random}`;
 }
 
@@ -216,7 +223,7 @@ async function executeOrchestration(
   // Use SICA-wrapped TechLead when enabled (Issue #558)
   const techLead = deps.techLead ?? createTechLeadWithSica(logger);
   const taskId = generateTaskId();
-  const startTime = Date.now();
+  const startTime = getTimeProvider().now();
 
   logger.info('Starting orchestration', { taskId, taskLength: input.task.length });
 
@@ -235,7 +242,7 @@ async function executeOrchestration(
       );
     }
 
-    const durationMs = Date.now() - startTime;
+    const durationMs = getTimeProvider().now() - startTime;
     const output = buildOutput(taskId, result.value, durationMs);
 
     logger.info('Orchestration completed', {

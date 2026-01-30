@@ -6,6 +6,8 @@
  * @module testing/e2e/mocks/mock-circuit-breaker
  */
 
+import { getTimeProvider } from '../../../core/index.js';
+
 export type CircuitState = 'closed' | 'open' | 'half_open';
 
 export interface CircuitBreakerConfig {
@@ -72,7 +74,7 @@ export class MockCircuitBreaker {
    */
   recordFailure(): void {
     this.failures++;
-    this.lastFailure = Date.now();
+    this.lastFailure = getTimeProvider().now();
 
     if (this._state === 'closed' && this.failures >= this.failureThreshold) {
       this._state = 'open';
@@ -87,7 +89,7 @@ export class MockCircuitBreaker {
    */
   recordSuccess(): void {
     this.successes++;
-    this.lastSuccess = Date.now();
+    this.lastSuccess = getTimeProvider().now();
 
     if (this._state === 'half_open') {
       if (this.successes >= this.successThreshold) {
@@ -102,7 +104,7 @@ export class MockCircuitBreaker {
    */
   tryReset(): boolean {
     if (this._state === 'open') {
-      const now = Date.now();
+      const now = getTimeProvider().now();
       if (this.lastFailure === null || now - this.lastFailure >= this.resetTimeout) {
         this._state = 'half_open';
         this.successes = 0;

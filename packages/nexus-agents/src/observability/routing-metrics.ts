@@ -8,7 +8,7 @@
  * (Source: Alignment Roadmap Phase 1, Issue #171)
  */
 
-import { createLogger } from '../core/index.js';
+import { createLogger, getTimeProvider } from '../core/index.js';
 import type { CliName } from '../cli-adapters/types.js';
 import {
   centerText,
@@ -102,7 +102,7 @@ export class RoutingMetricsCollector {
    * Get routing metrics for a time period.
    */
   getMetrics(periodHours = 24): RoutingMetrics {
-    const now = Date.now();
+    const now = getTimeProvider().now();
     const cutoff = now - periodHours * 60 * 60 * 1000;
     const cutoffStr = new Date(cutoff).toISOString();
 
@@ -190,7 +190,9 @@ export class RoutingMetricsCollector {
   // ---------------------------------------------------------------------------
 
   private enforceRetention(): void {
-    const cutoff = new Date(Date.now() - this.config.retentionHours * 60 * 60 * 1000).toISOString();
+    const cutoff = new Date(
+      getTimeProvider().now() - this.config.retentionHours * 60 * 60 * 1000
+    ).toISOString();
 
     // Remove old decisions
     while (this.decisions.length > 0) {
@@ -269,7 +271,7 @@ export class RoutingMetricsCollector {
   }
 
   private calculateRewardTrend(periodHours: number): number {
-    const now = Date.now();
+    const now = getTimeProvider().now();
     const currentCutoff = now - periodHours * 60 * 60 * 1000;
     const previousCutoff = currentCutoff - periodHours * 60 * 60 * 1000;
 

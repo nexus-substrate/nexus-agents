@@ -5,6 +5,7 @@
  * Keeps gemini-adapter.ts under 400 lines per CODING_STANDARDS.md.
  */
 
+import { getRandomProvider } from '../../core/index.js';
 import type { CliError, CliName } from '../types.js';
 import type { FailureCategory } from '../circuit-breaker-types.js';
 
@@ -116,7 +117,7 @@ export function calculateBackoffDelay(
   maxDelayMs: number
 ): number {
   const exponentialDelay = baseDelayMs * Math.pow(2, attempt - 1);
-  const jitter = Math.random() * 0.3 * exponentialDelay;
+  const jitter = getRandomProvider().random() * 0.3 * exponentialDelay;
   const delay = exponentialDelay + jitter;
 
   return Math.min(delay, maxDelayMs);

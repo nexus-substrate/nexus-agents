@@ -9,6 +9,7 @@
  */
 
 import { createLogger } from '../core/logger.js';
+import { getTimeProvider } from '../core/index.js';
 import type {
   IWeightedVoting,
   WeightedAgentRecord,
@@ -80,7 +81,7 @@ export class WeightedVoting implements IWeightedVoting {
 
     const previousWeight = record.weight;
     record.totalTasks += 1;
-    record.lastActive = new Date();
+    record.lastActive = new Date(getTimeProvider().now());
 
     // Update task counts
     if (outcome === 'success') record.successfulTasks += 1;

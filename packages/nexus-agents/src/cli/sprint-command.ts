@@ -6,6 +6,7 @@
  * (Source: Issue #230, Epic #225)
  */
 
+import { getTimeProvider } from '../core/index.js';
 import { safeExecSandboxed } from './sandbox-exec.js';
 import type {
   SprintCommandOptions,
@@ -46,7 +47,7 @@ export {
  * Generate sprint title from date.
  */
 export function generateSprintTitle(duration: string): string {
-  const now = new Date();
+  const now = new Date(getTimeProvider().now());
   const dateStr = now.toLocaleDateString('en-US', {
     timeZone: 'America/New_York',
     year: 'numeric',

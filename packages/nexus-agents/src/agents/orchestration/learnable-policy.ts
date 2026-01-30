@@ -9,6 +9,7 @@
  */
 
 import { ok, err } from '../../core/result.js';
+import { getTimeProvider } from '../../core/index.js';
 import type { Result } from '../../core/result.js';
 import type { PuppeteerState, AgentDistribution } from './puppeteer-types.js';
 import type {
@@ -220,7 +221,7 @@ export class LearnablePolicy implements ILearnablePolicyEngine {
       metadata: {
         ...this.parameters.metadata,
         trainedOnTasks: trainedCount + 1,
-        lastUpdated: new Date().toISOString(),
+        lastUpdated: new Date(getTimeProvider().now()).toISOString(),
       },
     };
 

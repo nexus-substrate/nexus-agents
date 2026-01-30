@@ -9,7 +9,7 @@
  */
 
 import type { StepResult } from '../core/index.js';
-import { createLogger } from '../core/logger.js';
+import { createLogger, getTimeProvider } from '../core/index.js';
 import type {
   IVerifier,
   ILattsController,
@@ -121,7 +121,8 @@ export class LattsExecutor {
     stepResults: ReadonlyMap<string, StepResult>,
     backtrackableSteps: readonly string[] = []
   ): Promise<LattsExecutionResult> {
-    const startTime = Date.now();
+    const time = getTimeProvider();
+    const startTime = time.now();
     const history: LattsHistoryEntry[] = [];
     let totalAttemptsUsed = 0;
 
@@ -154,14 +155,14 @@ export class LattsExecutor {
   }
 
   private isTimeBudgetExceeded(startTime: number): boolean {
-    return Date.now() - startTime >= this.config.maxTimeMs;
+    return getTimeProvider().now() - startTime >= this.config.maxTimeMs;
   }
 
   private async executeAttempt(
     executeStep: () => Promise<StepResult>,
     ctx: AttemptContext
   ): Promise<AttemptOutcome> {
-    const attemptStart = Date.now();
+    const attemptStart = getTimeProvider().now();
     const result = await executeStep();
 
     const verification = await this.verifyResult(result, ctx);
@@ -203,7 +204,7 @@ export class LattsExecutor {
       currentAttempt: ctx.history.length + 1,
       backtrackableSteps: ctx.backtrackableSteps,
       allowRestart: this.config.allowRestart,
-      elapsedMs: Date.now() - ctx.startTime,
+      elapsedMs: getTimeProvider().now() - ctx.startTime,
       maxTimeMs: this.config.maxTimeMs,
     };
 
@@ -222,7 +223,7 @@ export class LattsExecutor {
       result,
       verification,
       decision,
-      durationMs: Date.now() - attemptStart,
+      durationMs: getTimeProvider().now() - attemptStart,
     };
   }
 
@@ -277,7 +278,7 @@ export class LattsExecutor {
       verification,
       history: allHistory,
       totalAttempts: allHistory.length,
-      totalDurationMs: Date.now() - startTime,
+      totalDurationMs: getTimeProvider().now() - startTime,
       earlyStop: isEarlyStop,
       success: verification.accepted,
     };
@@ -298,7 +299,7 @@ export class LattsExecutor {
       verification: lastEntry.verification,
       history,
       totalAttempts,
-      totalDurationMs: Date.now() - startTime,
+      totalDurationMs: getTimeProvider().now() - startTime,
       earlyStop: false,
       success: lastEntry.verification.accepted,
     };

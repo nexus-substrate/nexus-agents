@@ -14,7 +14,7 @@ import * as path from 'node:path';
 import type { ILogger } from '../core/logger.js';
 import { createLogger } from '../core/logger.js';
 import type { Result } from '../core/index.js';
-import { SecurityError } from '../core/index.js';
+import { SecurityError, getTimeProvider } from '../core/index.js';
 import type {
   IAuditStorage,
   AuditEvent,
@@ -199,7 +199,7 @@ export class FileAuditStorage implements IAuditStorage {
   }
 
   private generateFileName(): string {
-    const now = new Date();
+    const now = new Date(getTimeProvider().now());
     const dateStr = now.toISOString().split('T')[0] ?? 'unknown'; // YYYY-MM-DD
     const timePart = now.toISOString().split('T')[1];
     const timeStr =

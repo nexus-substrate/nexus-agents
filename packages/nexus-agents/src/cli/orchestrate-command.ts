@@ -12,7 +12,7 @@
 /* eslint-disable no-console */
 // Console output is intentional for CLI user feedback
 
-import { createLogger, type ILogger } from '../core/index.js';
+import { createLogger, getTimeProvider, type ILogger } from '../core/index.js';
 import {
   createCompositeRouter,
   createAllAdapters,
@@ -49,6 +49,7 @@ async function runWithAdapter(
   logger: ILogger,
   startTime: number
 ): Promise<OrchestrationResult> {
+  const time = getTimeProvider();
   logger.info('Executing task...', { model: decision.cliName });
   const execResult = await decision.adapter.execute(task);
 
@@ -58,7 +59,7 @@ async function runWithAdapter(
       model: decision.cliName,
       routing: decision,
       error: execResult.error.message,
-      durationMs: Date.now() - startTime,
+      durationMs: time.now() - startTime,
     };
   }
 
@@ -67,7 +68,7 @@ async function runWithAdapter(
     model: decision.cliName,
     response: execResult.value,
     routing: decision,
-    durationMs: Date.now() - startTime,
+    durationMs: time.now() - startTime,
   };
 }
 
@@ -80,7 +81,8 @@ async function executeWithRouting(
   options: OrchestrateOptions,
   logger: ILogger
 ): Promise<OrchestrationResult> {
-  const startTime = Date.now();
+  const time = getTimeProvider();
+  const startTime = time.now();
 
   // Load routing config from nexus-agents.yaml (Issue #475)
   const configResult = getConfig();
@@ -106,7 +108,7 @@ async function executeWithRouting(
       success: false,
       model: 'none',
       error: routingResult.error.message,
-      durationMs: Date.now() - startTime,
+      durationMs: time.now() - startTime,
     };
   }
 
@@ -117,7 +119,7 @@ async function executeWithRouting(
       success: true,
       model: decision.cliName,
       routing: decision,
-      durationMs: Date.now() - startTime,
+      durationMs: time.now() - startTime,
     };
   }
 
@@ -133,7 +135,8 @@ async function executeWithModel(
   adapters: Map<CliName, ICliAdapter>,
   logger: ILogger
 ): Promise<OrchestrationResult> {
-  const startTime = Date.now();
+  const time = getTimeProvider();
+  const startTime = time.now();
 
   const adapter = adapters.get(model);
   if (adapter === undefined) {
@@ -141,7 +144,7 @@ async function executeWithModel(
       success: false,
       model,
       error: `Model '${model}' not available. Available: ${[...adapters.keys()].join(', ')}`,
-      durationMs: Date.now() - startTime,
+      durationMs: time.now() - startTime,
     };
   }
 
@@ -153,7 +156,7 @@ async function executeWithModel(
       success: false,
       model,
       error: execResult.error.message,
-      durationMs: Date.now() - startTime,
+      durationMs: time.now() - startTime,
     };
   }
 
@@ -161,7 +164,7 @@ async function executeWithModel(
     success: true,
     model,
     response: execResult.value,
-    durationMs: Date.now() - startTime,
+    durationMs: time.now() - startTime,
   };
 }
 

@@ -13,7 +13,7 @@
  */
 
 import type { Result, ILogger } from '../../core/index.js';
-import { ok, err, createLogger } from '../../core/index.js';
+import { ok, err, createLogger, getTimeProvider } from '../../core/index.js';
 import type {
   ICliResponseParser,
   CliTask,
@@ -182,7 +182,7 @@ export class GeminiCliAdapter extends SubprocessCliAdapter {
       return err(circuitCheckResult);
     }
 
-    const startTime = Date.now();
+    const startTime = getTimeProvider().now();
     const complexity = estimateTaskComplexity(task.content);
     const effectiveOptions = this.buildExecutionOptions(task.content, options);
 
@@ -272,7 +272,7 @@ export class GeminiCliAdapter extends SubprocessCliAdapter {
     startTime: number,
     complexity: TaskComplexity
   ): Result<GeminiExecutionResult, CliError> {
-    const totalDurationMs = Date.now() - startTime;
+    const totalDurationMs = getTimeProvider().now() - startTime;
     const circuitState = this.circuitBreaker?.getState() ?? 'closed';
 
     if (result.ok) {

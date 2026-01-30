@@ -17,6 +17,7 @@
  */
 
 import * as crypto from 'node:crypto';
+import { getTimeProvider } from '../core/index.js';
 import { safeExecSandboxed } from './sandbox-exec.js';
 import type { VoteCommandOptions, VoterRole, VotingResult, VoteHash } from './vote-types.js';
 import { THRESHOLD_MAP, VOTER_ROLES } from './vote-types.js';
@@ -47,7 +48,7 @@ function writeLine(text: string): void {
 function generateVoteHash(role: VoterRole, vote: Vote): VoteHash {
   const data = JSON.stringify({ role, decision: vote.decision, reasoning: vote.reasoning });
   const hash = crypto.createHash('sha256').update(data).digest('hex').slice(0, 16);
-  return { role, hash, timestamp: new Date().toISOString() };
+  return { role, hash, timestamp: new Date(getTimeProvider().now()).toISOString() };
 }
 
 /**
@@ -131,7 +132,7 @@ function escapeForShell(text: string): string {
  * Formats vote result as markdown comment.
  */
 export function formatVoteComment(result: VotingResult): string {
-  const now = new Date().toLocaleDateString('en-US', {
+  const now = new Date(getTimeProvider().now()).toLocaleDateString('en-US', {
     timeZone: 'America/New_York',
     year: 'numeric',
     month: '2-digit',
@@ -198,7 +199,7 @@ async function runVote(options: VoteCommandOptions): Promise<VotingResult> {
   const roles: readonly VoterRole[] = useQuick
     ? ['architect', 'security', 'pm']
     : ['architect', 'security', 'devex', 'ai_ml', 'pm'];
-  const start = Date.now();
+  const start = getTimeProvider().now();
 
   writeLine(
     `${colors.dim}Collecting votes from ${String(roles.length)} agents...${colors.reset}\n`
@@ -223,7 +224,7 @@ async function runVote(options: VoteCommandOptions): Promise<VotingResult> {
     threshold,
     result: resultRes.value,
     votes,
-    totalTimeMs: Date.now() - start,
+    totalTimeMs: getTimeProvider().now() - start,
     dryRun: options.dryRun === true,
   };
 }

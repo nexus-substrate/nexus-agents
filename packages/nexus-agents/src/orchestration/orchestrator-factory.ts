@@ -12,7 +12,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { Result, IModelAdapter } from '../core/index.js';
-import { ok, err, createLogger, type ILogger } from '../core/index.js';
+import { ok, err, createLogger, getTimeProvider, type ILogger } from '../core/index.js';
 import type {
   IOrchestrator,
   IOrchestratorFactory,
@@ -78,7 +78,7 @@ export class WorkflowOrchestratorAdapter implements IOrchestrator {
     }
 
     const executionId = randomUUID();
-    const startTime = Date.now();
+    const startTime = getTimeProvider().now();
     this.setRunning(executionId);
 
     try {
@@ -180,7 +180,7 @@ export class WorkflowOrchestratorAdapter implements IOrchestrator {
 
     this.executions.set(executionId, {
       state: 'cancelled',
-      cancelledAt: new Date().toISOString(),
+      cancelledAt: new Date(getTimeProvider().now()).toISOString(),
     });
 
     this.logger.info('Cancelled execution', { executionId, reason });
@@ -214,7 +214,7 @@ export class WorkflowOrchestratorAdapter implements IOrchestrator {
       orchestratorType: 'workflow',
       steps,
       output: result.output,
-      totalDurationMs: Date.now() - startTime,
+      totalDurationMs: getTimeProvider().now() - startTime,
       totalTokensUsed: 0,
       agentsUsed: steps.map((s) => s.agentId),
     };

@@ -11,6 +11,7 @@
 import { scanComponents } from '../self-eval/component-scanner.js';
 import { evaluateComponent } from '../self-eval/evaluation-agents.js';
 import { createAggregator, type AggregatedResult } from '../self-eval/aggregation-logic.js';
+import { getTimeProvider } from '../core/index.js';
 import type { ComponentInfo } from '../self-eval/component-scanner.js';
 import type { EvaluationResult } from '../self-eval/evaluation-agents.js';
 import type {
@@ -44,7 +45,8 @@ async function evaluateDirectory(
   totalLines: number;
   timedOut: boolean;
 }> {
-  const startTime = Date.now();
+  const time = getTimeProvider();
+  const startTime = time.now();
   const deadline = startTime + timeoutMs;
 
   // Scan components
@@ -58,12 +60,12 @@ async function evaluateDirectory(
 
   // Evaluate each component
   for (const component of inventory.components) {
-    if (Date.now() > deadline) {
+    if (time.now() > deadline) {
       timedOut = true;
       break;
     }
 
-    const evaluations = await evaluateComponentWithTimeout(component, deadline - Date.now());
+    const evaluations = await evaluateComponentWithTimeout(component, deadline - time.now());
     evaluationsByComponent.set(component.path, [...evaluations]);
   }
 
@@ -186,7 +188,7 @@ export function parseOptions(args: readonly string[]): EvaluateOptions {
  */
 export async function evaluateCommand(args: readonly string[] = []): Promise<number> {
   const options = parseOptions(args);
-  const startTime = Date.now();
+  const startTime = getTimeProvider().now();
 
   try {
     const { results, componentsScanned, totalLines, timedOut } = await evaluateDirectory(
@@ -200,10 +202,10 @@ export async function evaluateCommand(args: readonly string[] = []): Promise<num
       results,
       componentsScanned,
       totalLines,
-      durationMs: Date.now() - startTime,
+      durationMs: getTimeProvider().now() - startTime,
       completedWithinTimeout: !timedOut,
       summary,
-      timestamp: new Date(),
+      timestamp: new Date(getTimeProvider().now()),
     };
 
     // Output based on mode

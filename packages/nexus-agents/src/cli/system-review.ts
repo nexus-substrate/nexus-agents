@@ -10,7 +10,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { createLogger } from '../core/logger.js';
+import { createLogger, getTimeProvider } from '../core/index.js';
 import { safeExecSandboxed } from './sandbox-exec.js';
 
 const logger = createLogger({ component: 'system-review' });
@@ -132,7 +132,9 @@ function runPhase2(projectRoot: string): DocFreshness[] {
 function runPhase3(): IssueHealth {
   const openOutput = safeExec('gh issue list --state open --json number');
   const openCount = openOutput !== null ? parseGhIssueList(openOutput, 'open issues').length : 0;
-  const staleCutoff = new Date(Date.now() - STALE_ISSUE_DAYS * MS_PER_DAY).toISOString();
+  const staleCutoff = new Date(
+    getTimeProvider().now() - STALE_ISSUE_DAYS * MS_PER_DAY
+  ).toISOString();
   const staleOutput = safeExec(
     `gh issue list --state open --json updatedAt --jq '[.[] | select(.updatedAt < "${staleCutoff}")] | length'`
   );
@@ -263,7 +265,14 @@ export function runSystemReview(options: SystemReviewOptions = {}): SystemReview
     issues = runPhase3(),
     security = runPhase4(pr),
     quality = runPhase5(pr);
-  const partial = { timestamp: new Date(), techniques, docs, issues, security, quality };
+  const partial = {
+    timestamp: new Date(getTimeProvider().now()),
+    techniques,
+    docs,
+    issues,
+    security,
+    quality,
+  };
   const actionItems = generateActionItems(partial);
   const fixesApplied =
     options.fix === true ? applyFixes(pr, { ...partial, actionItems, fixesApplied: [] }) : [];

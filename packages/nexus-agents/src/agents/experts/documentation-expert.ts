@@ -13,7 +13,7 @@ import type {
   CompletionRequest,
   Message,
 } from '../../core/index.js';
-import { ok, err, AgentError } from '../../core/index.js';
+import { ok, err, AgentError, getTimeProvider } from '../../core/index.js';
 import { BaseAgent, type BaseAgentOptions } from '../base-agent.js';
 import {
   type ExpertOptions,
@@ -63,7 +63,7 @@ export class DocumentationExpert extends BaseAgent {
   }
 
   protected async executeTask(task: Task): Promise<Result<TaskResult, AgentError>> {
-    const startTime = Date.now();
+    const startTime = getTimeProvider().now();
     const docType = inferDocumentationType(task.description);
 
     this.logger.info('Executing documentation task', {
@@ -124,7 +124,7 @@ Generate documentation in the specified JSON format.`,
       taskId: task.id,
       output: result,
       metadata: {
-        durationMs: Date.now() - startTime,
+        durationMs: getTimeProvider().now() - startTime,
         tokensUsed: 0,
         toolsUsed: [],
         model: 'heuristic',
@@ -159,7 +159,7 @@ Generate documentation in the specified JSON format.`,
       taskId: task.id,
       output: result,
       metadata: {
-        durationMs: Date.now() - startTime,
+        durationMs: getTimeProvider().now() - startTime,
         tokensUsed: response.usage.totalTokens,
         toolsUsed: [],
         model: response.model,

@@ -5,6 +5,7 @@
  * Evaluates how well the routing system selects optimal CLIs for tasks.
  */
 
+import { getTimeProvider } from '../../core/index.js';
 import type {
   CliName,
   TaskTestResult,
@@ -29,7 +30,7 @@ const ALL_CATEGORIES: readonly TaskCategory[] = Object.values(TaskCategoryEnum) 
  * Gets the current timestamp in America/New_York timezone as ISO 8601.
  */
 function getCurrentTimestamp(): string {
-  return new Date().toLocaleString('en-US', {
+  return new Date(getTimeProvider().now()).toLocaleString('en-US', {
     timeZone: 'America/New_York',
     year: 'numeric',
     month: '2-digit',

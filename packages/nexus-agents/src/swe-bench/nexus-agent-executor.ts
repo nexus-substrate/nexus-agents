@@ -8,6 +8,7 @@
  */
 
 import type { Result } from '../core/result.js';
+import { getTimeProvider } from '../core/index.js';
 import { ClaudeAdapter } from '../adapters/claude-adapter.js';
 import type { ClaudeAdapterConfig } from '../adapters/claude-adapter-types.js';
 import type { IAgentExecutor, AgentContext, AgentExecutionResult } from './agent-runner.js';
@@ -70,7 +71,7 @@ export class NexusAgentExecutor implements IAgentExecutor {
     userPrompt: string,
     context: AgentContext
   ): Promise<Result<AgentExecutionResult, AgentRunnerError>> {
-    const startTime = Date.now();
+    const startTime = getTimeProvider().now();
 
     this.messageCallback?.(`Executing agent for ${context.instance.instance_id}`);
 
@@ -91,7 +92,7 @@ export class NexusAgentExecutor implements IAgentExecutor {
 
       const response = this.extractTextFromResponse(result.value.content);
       const tokensUsed = result.value.usage.totalTokens;
-      const durationMs = Date.now() - startTime;
+      const durationMs = getTimeProvider().now() - startTime;
 
       this.messageCallback?.(`Completed in ${String(durationMs)}ms, ${String(tokensUsed)} tokens`);
 

@@ -8,6 +8,7 @@
 
 import { Project, type SourceFile } from 'ts-morph';
 import * as path from 'node:path';
+import { getTimeProvider } from '../core/index.js';
 import type { FileEntry, ExtractorOptions } from './types.js';
 import { DEFAULT_EXTRACTOR_OPTIONS } from './types.js';
 import { detectFileCategory } from './category-detection.js';
@@ -102,7 +103,7 @@ function processSourceFiles(
  */
 export function extractProject(options: Partial<ExtractorOptions> = {}): ExtractionResult {
   const opts: ExtractorOptions = { ...DEFAULT_EXTRACTOR_OPTIONS, ...options };
-  const startTime = Date.now();
+  const startTime = getTimeProvider().now();
 
   const project = new Project({
     skipAddingFilesFromTsConfig: true,
@@ -121,13 +122,13 @@ export function extractProject(options: Partial<ExtractorOptions> = {}): Extract
       excludePatterns,
       opts.extractDescriptions
     );
-    return { files, errors, durationMs: Date.now() - startTime };
+    return { files, errors, durationMs: getTimeProvider().now() - startTime };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return {
       files: [],
       errors: [`Error loading project: ${message}`],
-      durationMs: Date.now() - startTime,
+      durationMs: getTimeProvider().now() - startTime,
     };
   }
 }

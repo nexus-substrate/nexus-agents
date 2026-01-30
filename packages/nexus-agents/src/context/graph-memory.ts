@@ -11,6 +11,7 @@
 
 import type { Result } from '../core/result.js';
 import { ok, err } from '../core/result.js';
+import { getTimeProvider } from '../core/index.js';
 import type { ILogger } from '../core/logger.js';
 import { createLogger } from '../core/logger.js';
 import type { MemoryEntry, MemoryMetadata, ISQLiteDatabase } from './memory-backend-types.js';
@@ -164,7 +165,7 @@ export class GraphMemoryBackend implements IGraphMemory {
       const weight = opts?.weight ?? 1.0;
       const metadata = opts?.metadata !== undefined ? JSON.stringify(opts.metadata) : null;
       const stmt = db.prepare(`INSERT OR REPLACE INTO graph_edges VALUES (?, ?, ?, ?, ?, ?)`);
-      stmt.run(from, to, type, weight, Date.now(), metadata);
+      stmt.run(from, to, type, weight, getTimeProvider().now(), metadata);
       this.log.debug('Added relationship', { from, to, type, weight });
       return Promise.resolve(ok(undefined));
     } catch (error) {

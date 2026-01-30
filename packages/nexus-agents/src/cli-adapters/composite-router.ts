@@ -1,10 +1,11 @@
+/* eslint-disable max-lines */
 /**
  * CompositeRouter: Chains Budget -> ZeroRouter -> Preference -> TOPSIS -> LinUCB.
  * @module cli-adapters/composite-router
  * (Source: Issue #166, Epic #164, Issue #347, arXiv:2509.07571)
  */
 import type { Result } from '../core/index.js';
-import { ok, err, createLogger } from '../core/index.js';
+import { ok, err, createLogger, getTimeProvider } from '../core/index.js';
 import type { ILogger } from '../core/index.js';
 import type { ICliAdapter, CliName, CliTask, CliResponse, CliError } from './types.js';
 import { BudgetRouter } from './budget-router.js';
@@ -181,7 +182,7 @@ export class CompositeRouter implements ICompositeRouter {
   }
 
   async route(task: CliTask): Promise<Result<CompositeRoutingDecision, CompositeRoutingError>> {
-    return Promise.resolve().then(() => this.executeRouting(task, Date.now()));
+    return Promise.resolve().then(() => this.executeRouting(task, getTimeProvider().now()));
   }
 
   /**
@@ -198,7 +199,7 @@ export class CompositeRouter implements ICompositeRouter {
     }
 
     const decision = routeResult.value;
-    const startTime = Date.now();
+    const startTime = getTimeProvider().now();
 
     // Generate traceId for metrics correlation (Issue #559)
     const traceId = generateTraceId();
@@ -210,7 +211,7 @@ export class CompositeRouter implements ICompositeRouter {
 
     const executeResult = await decision.adapter.execute(task);
 
-    const durationMs = Date.now() - startTime;
+    const durationMs = getTimeProvider().now() - startTime;
     const success = executeResult.ok;
 
     // Auto-record feedback for learning systems
@@ -358,7 +359,7 @@ export class CompositeRouter implements ICompositeRouter {
       );
     }
 
-    const decisionTimeMs = Date.now() - params.startTime;
+    const decisionTimeMs = getTimeProvider().now() - params.startTime;
     this.updateStats(params.selectedCli, decisionTimeMs);
     const { confidence, reason, alternatives } = buildDecisionFields({ ...params, decisionTimeMs });
 

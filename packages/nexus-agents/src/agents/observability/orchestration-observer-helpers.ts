@@ -9,6 +9,7 @@
 
 import type { CliName } from '../../cli-adapters/types.js';
 import type { DomainEvent } from '../collaboration/event-bus-types.js';
+import { getTimeProvider } from '../../core/index.js';
 import type {
   TrackedAgent,
   AgentState,
@@ -102,7 +103,7 @@ export function extractSessionId(event: DomainEvent, payload: Record<string, unk
 export function createInitialSessionMetrics(sessionId: string): SessionMetrics {
   return {
     sessionId,
-    startedAt: new Date().toISOString(),
+    startedAt: new Date(getTimeProvider().now()).toISOString(),
     durationMs: 0,
     taskCount: 0,
     successCount: 0,
@@ -159,7 +160,7 @@ export function createTrackedAgent(
     role,
     state,
     currentTask,
-    lastUpdated: new Date().toISOString(),
+    lastUpdated: new Date(getTimeProvider().now()).toISOString(),
     taskCount: 0,
     errorCount: 0,
   };

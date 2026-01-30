@@ -11,7 +11,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { ILogger } from '../../core/index.js';
-import { createLogger } from '../../core/index.js';
+import { createLogger, getTimeProvider } from '../../core/index.js';
 import type {
   Skill,
   SkillWithMetrics,
@@ -67,7 +67,7 @@ export class SkillLibrary {
       }
     }
 
-    const now = new Date();
+    const now = new Date(getTimeProvider().now());
     const skill: Skill = {
       id: randomUUID(),
       name: options.name,

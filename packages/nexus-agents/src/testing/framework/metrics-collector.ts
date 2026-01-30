@@ -6,6 +6,7 @@
  */
 
 import type { CliName, TokenUsage } from '../../cli-adapters/types.js';
+import { getTimeProvider } from '../../core/index.js';
 import type {
   LatencyMeasurement,
   MeasurementHandle,
@@ -170,7 +171,7 @@ export class MetricsCollector {
       latencyByCli: this.getLatencyByCli(),
       reliabilityByCli: this.getReliabilityByCli(),
       tokensByCli: this.getTokensByCli(),
-      timestamp: new Date(),
+      timestamp: new Date(getTimeProvider().now()),
     };
   }
 

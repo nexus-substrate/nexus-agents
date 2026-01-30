@@ -10,7 +10,7 @@
 import { spawn } from 'node:child_process';
 
 import type { Result } from '../core/index.js';
-import { ok, err } from '../core/index.js';
+import { ok, err, getTimeProvider } from '../core/index.js';
 
 import type {
   CliTransport,
@@ -57,7 +57,7 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
     options: Required<ExecutionOptions>
   ): Promise<Result<CliResponse, CliError>> {
     const cmdConfig = this.getCommand(task);
-    const startTime = Date.now();
+    const startTime = getTimeProvider().now();
 
     return new Promise((resolve) => {
       const child = spawn(cmdConfig.command, cmdConfig.args, {
@@ -154,7 +154,7 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
 
     return ok(
       this.normalizeResponse(text, usage ?? undefined, {
-        durationMs: Date.now() - startTime,
+        durationMs: getTimeProvider().now() - startTime,
         raw: stdout,
         ...(sessionId !== null && { sessionId }),
       })

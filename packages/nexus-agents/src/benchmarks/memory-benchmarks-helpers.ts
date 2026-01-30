@@ -8,6 +8,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { getRandomProvider } from '../core/index.js';
 import type { QualityMetrics, BenchmarkConfig } from './benchmark-types.js';
 
 /**
@@ -88,7 +89,7 @@ export function generateContent(
   let currentSize = 0;
 
   while (currentSize < sizeBytes) {
-    const word = words[Math.floor(Math.random() * words.length)] ?? 'data';
+    const word = words[Math.floor(getRandomProvider().random() * words.length)] ?? 'data';
     parts.push(word);
     currentSize += word.length + 1;
   }
@@ -102,7 +103,7 @@ export function generateContent(
 export function generateTags(count: number, words: readonly string[] = BENCHMARK_WORDS): string[] {
   const tags: string[] = [];
   for (let i = 0; i < count; i++) {
-    tags.push(words[Math.floor(Math.random() * words.length)] ?? 'tag');
+    tags.push(words[Math.floor(getRandomProvider().random() * words.length)] ?? 'tag');
   }
   return tags;
 }

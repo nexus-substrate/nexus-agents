@@ -11,6 +11,7 @@
 import { readFile } from 'node:fs/promises';
 import * as yaml from 'yaml';
 import type { WorkflowDefinition, StepResult } from '../../core/index.js';
+import { getTimeProvider } from '../../core/index.js';
 import { WorkflowDefinitionSchema } from '../../workflows/workflow-types.js';
 import { logger } from '../../core/logger.js';
 import type {
@@ -60,7 +61,7 @@ export const defaultStubFactory: StubFactory = {
           agent: agentType,
           action,
           inputKeys: Object.keys(inputs),
-          timestamp: new Date().toISOString(),
+          timestamp: new Date(getTimeProvider().now()).toISOString(),
         }),
         durationMs: 10,
       };
@@ -93,7 +94,7 @@ export class ScenarioRunner implements IScenarioRunner {
    */
   async run(scenario: ScenarioFixture, config?: Partial<E2ETestConfig>): Promise<ScenarioResult> {
     const testConfig: E2ETestConfig = { ...DEFAULT_E2E_CONFIG, ...config };
-    const startTime = Date.now();
+    const startTime = getTimeProvider().now();
 
     this.log.info('Running scenario', { scenarioId: scenario.id, dryRun: testConfig.dryRun });
 
@@ -109,7 +110,7 @@ export class ScenarioRunner implements IScenarioRunner {
       const validations = this.validateResults(stepResults, scenario.expectedOutputs);
 
       const passed = validations.every((v) => v.passed);
-      const durationMs = Date.now() - startTime;
+      const durationMs = getTimeProvider().now() - startTime;
 
       this.log.info('Scenario completed', { scenarioId: scenario.id, passed, durationMs });
 
@@ -118,10 +119,10 @@ export class ScenarioRunner implements IScenarioRunner {
         passed,
         stepResults: validations,
         durationMs,
-        executedAt: new Date().toISOString(),
+        executedAt: new Date(getTimeProvider().now()).toISOString(),
       };
     } catch (error) {
-      const durationMs = Date.now() - startTime;
+      const durationMs = getTimeProvider().now() - startTime;
       const errorMessage = error instanceof Error ? error.message : String(error);
 
       this.log.error('Scenario failed', error instanceof Error ? error : new Error(String(error)), {
@@ -134,7 +135,7 @@ export class ScenarioRunner implements IScenarioRunner {
         stepResults: [],
         durationMs,
         error: errorMessage,
-        executedAt: new Date().toISOString(),
+        executedAt: new Date(getTimeProvider().now()).toISOString(),
       };
     }
   }
@@ -209,8 +210,8 @@ export class ScenarioRunner implements IScenarioRunner {
       scenarioId: scenario.id,
       passed: true,
       stepResults: validations,
-      durationMs: Date.now() - startTime,
-      executedAt: new Date().toISOString(),
+      durationMs: getTimeProvider().now() - startTime,
+      executedAt: new Date(getTimeProvider().now()).toISOString(),
     };
   }
 

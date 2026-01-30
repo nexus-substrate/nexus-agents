@@ -14,6 +14,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { getTimeProvider } from '../core/index.js';
 import type {
   AgentId,
   TaskId,
@@ -99,7 +100,7 @@ export class SwarmObserver implements ISwarmObserver {
       from,
       to,
       interactionType,
-      timestamp: new Date().toISOString(),
+      timestamp: new Date(getTimeProvider().now()).toISOString(),
       outcome,
       traceId,
       weight: outcome === 'success' ? 1 : 0.5,
@@ -200,7 +201,7 @@ export class SwarmObserver implements ISwarmObserver {
   getHealthMetrics(): SwarmHealthMetrics {
     const nodes = this.graph.getNodes();
     const edges = this.graph.getEdges();
-    const windowStart = Date.now() - this.config.metricsWindowMs;
+    const windowStart = getTimeProvider().now() - this.config.metricsWindowMs;
 
     const recentEdges = edges.filter((e) => new Date(e.timestamp).getTime() >= windowStart);
 
@@ -219,7 +220,7 @@ export class SwarmObserver implements ISwarmObserver {
       avgLatencyMs: recentEdges.length > 0 ? totalLatency / recentEdges.length : 0,
       bottlenecks: this.getBottlenecks(),
       clusters: this.getEmergentClusters(),
-      calculatedAt: new Date().toISOString(),
+      calculatedAt: new Date(getTimeProvider().now()).toISOString(),
     };
   }
 
@@ -283,7 +284,7 @@ export class SwarmObserver implements ISwarmObserver {
     if (event.payload.type === 'message' && event.payload.direction === 'received') {
       const metrics = this.getOrCreateQueueMetrics(event.agentId);
       metrics.pendingMessages = Math.max(0, metrics.pendingMessages - 1);
-      const waitTime = Date.now() - metrics.lastMessageTime;
+      const waitTime = getTimeProvider().now() - metrics.lastMessageTime;
       metrics.totalWaitTimeMs += waitTime;
       metrics.messageCount++;
     }
@@ -295,7 +296,7 @@ export class SwarmObserver implements ISwarmObserver {
       metrics = {
         agentId,
         pendingMessages: 0,
-        lastMessageTime: Date.now(),
+        lastMessageTime: getTimeProvider().now(),
         totalWaitTimeMs: 0,
         messageCount: 0,
       };
@@ -307,13 +308,13 @@ export class SwarmObserver implements ISwarmObserver {
   private incrementPendingMessages(agentId: AgentId): void {
     const metrics = this.getOrCreateQueueMetrics(agentId);
     metrics.pendingMessages++;
-    metrics.lastMessageTime = Date.now();
+    metrics.lastMessageTime = getTimeProvider().now();
   }
 
   private countBlockedAgents(targetAgentId: AgentId): number {
     const incoming = this.graph.getIncomingEdges(targetAgentId);
     const recentlyBlocked = new Set<AgentId>();
-    const threshold = Date.now() - 60000; // Last minute
+    const threshold = getTimeProvider().now() - 60000; // Last minute
 
     for (const edge of incoming) {
       if (new Date(edge.timestamp).getTime() >= threshold && edge.outcome === 'pending') {

@@ -8,7 +8,7 @@
  */
 
 import { cpus, totalmem, platform, arch } from 'node:os';
-import { createLogger } from '../core/index.js';
+import { createLogger, getTimeProvider } from '../core/index.js';
 import type {
   LatencyMetrics,
   ThroughputMetrics,
@@ -155,7 +155,7 @@ export async function runOperationBenchmark(
 ): Promise<OperationBenchmark> {
   const cfg = { ...DEFAULT_BENCHMARK_CONFIG, ...config };
   const sampler = new LatencySampler();
-  const startTime = Date.now();
+  const startTime = getTimeProvider().now();
   const startMemory = process.memoryUsage().heapUsed;
   let peakMemory = startMemory;
 
@@ -180,7 +180,7 @@ export async function runOperationBenchmark(
     }
   }
 
-  const endTime = Date.now();
+  const endTime = getTimeProvider().now();
   const durationMs = endTime - startTime;
   const latency = sampler.getMetrics();
 
@@ -202,7 +202,7 @@ export async function runOperationBenchmark(
     latency,
     throughput,
     resources,
-    timestamp: new Date().toISOString(),
+    timestamp: new Date(getTimeProvider().now()).toISOString(),
   };
 }
 

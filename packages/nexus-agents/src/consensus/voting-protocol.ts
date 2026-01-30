@@ -10,6 +10,7 @@
  */
 
 import { createLogger } from '../core/logger.js';
+import { getTimeProvider } from '../core/index.js';
 import type { ILogger } from '../core/index.js';
 import type {
   IVotingProtocol,
@@ -78,7 +79,7 @@ export class VotingProtocol implements IVotingProtocol {
       currentRound: 0,
       config: sessionConfig,
       status: 'active',
-      createdAt: new Date().toISOString(),
+      createdAt: new Date(getTimeProvider().now()).toISOString(),
     };
 
     this.sessions.set(session.id, session);
@@ -136,7 +137,7 @@ export class VotingProtocol implements IVotingProtocol {
       const timestampedFinding = {
         ...validation.data,
         agentId,
-        timestamp: new Date().toISOString(),
+        timestamp: new Date(getTimeProvider().now()).toISOString(),
       };
       currentRound.findings.set(findingId, timestampedFinding);
     }
@@ -159,7 +160,7 @@ export class VotingProtocol implements IVotingProtocol {
     const analysisRound = session.rounds[0];
     if (analysisRound) {
       analysisRound.status = 'completed';
-      analysisRound.completedAt = new Date().toISOString();
+      analysisRound.completedAt = new Date(getTimeProvider().now()).toISOString();
     }
 
     if (session.config.enableAntiSycophancy) {
@@ -244,7 +245,7 @@ export class VotingProtocol implements IVotingProtocol {
     const deliberationRound = session.rounds[1];
     if (deliberationRound) {
       deliberationRound.status = 'completed';
-      deliberationRound.completedAt = new Date().toISOString();
+      deliberationRound.completedAt = new Date(getTimeProvider().now()).toISOString();
     }
 
     const round = createRound('consensus', 3);
@@ -278,7 +279,7 @@ export class VotingProtocol implements IVotingProtocol {
 
     currentRound.finalVotes.set(agentId, {
       ...validation.data,
-      timestamp: new Date().toISOString(),
+      timestamp: new Date(getTimeProvider().now()).toISOString(),
     });
 
     this.logger.debug('Final vote recorded', {
@@ -312,10 +313,10 @@ export class VotingProtocol implements IVotingProtocol {
     const result = this.buildFinalResult(session);
     session.finalResult = result;
     session.status = 'completed';
-    session.completedAt = new Date().toISOString();
+    session.completedAt = new Date(getTimeProvider().now()).toISOString();
 
     consensusRound.status = 'completed';
-    consensusRound.completedAt = new Date().toISOString();
+    consensusRound.completedAt = new Date(getTimeProvider().now()).toISOString();
 
     this.logger.info('Voting session completed', {
       sessionId,
@@ -366,7 +367,7 @@ export class VotingProtocol implements IVotingProtocol {
 
   private buildFinalResult(session: VotingSession): VotingProtocolResult {
     const startTime = new Date(session.createdAt).getTime();
-    const endTime = Date.now();
+    const endTime = getTimeProvider().now();
 
     const consolidatedFindingsList = consolidateFindings(session);
     const roundSummaries = buildRoundSummaries(session);

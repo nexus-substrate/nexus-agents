@@ -7,7 +7,7 @@
  */
 
 import type { Result, IAgent, TaskResult } from '../../core/index.js';
-import { ok, err, AgentError } from '../../core/index.js';
+import { ok, err, AgentError, getTimeProvider } from '../../core/index.js';
 import type {
   AgentVote,
   AegeanRound,
@@ -86,7 +86,7 @@ export function buildAegeanResult(opts: BuildResultOptions): AegeanResult {
     consensusValue: opts.consensusValue,
     consensusReached: opts.terminationReason === 'consensus',
     totalRounds: opts.rounds.length,
-    totalDurationMs: Date.now() - opts.startTime,
+    totalDurationMs: getTimeProvider().now() - opts.startTime,
     tokensUsed: opts.tokensUsed,
     rounds: opts.rounds,
     terminationReason: opts.terminationReason,
@@ -117,7 +117,7 @@ export function createRoundData(opts: CreateRoundDataOptions): AegeanRound {
     votes: opts.votes,
     quorumStatus: opts.quorumStatus,
     startTime: opts.startTime,
-    endTime: Date.now(),
+    endTime: getTimeProvider().now(),
   };
 }
 
@@ -313,7 +313,7 @@ export function buildSessionTaskResult(
       },
     },
     metadata: {
-      durationMs: Date.now() - startTime,
+      durationMs: getTimeProvider().now() - startTime,
       tokensUsed: result.tokensUsed,
       toolsUsed: [],
       model: 'aegean-protocol',

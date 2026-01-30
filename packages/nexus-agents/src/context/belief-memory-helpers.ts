@@ -7,6 +7,7 @@
  * (Source: Issue #336, arXiv:2512.12818 - Hindsight Belief Memory)
  */
 
+import { getTimeProvider, getRandomProvider } from '../core/index.js';
 import type {
   Belief,
   BeliefConfidence,
@@ -22,8 +23,8 @@ import { BeliefConfidence as BeliefConfidenceEnum } from './belief-types.js';
 
 /** Generate a unique ID with prefix */
 export function generateId(prefix: string): string {
-  const timestamp = Date.now().toString(36);
-  const random = Math.random().toString(36).substring(2, 10);
+  const timestamp = getTimeProvider().now().toString(36);
+  const random = getRandomProvider().random().toString(36).substring(2, 10);
   return `${prefix}_${timestamp}_${random}`;
 }
 
@@ -193,6 +194,6 @@ export function createUpdateRecord(options: UpdateRecordOptions): BeliefUpdate {
     newState: options.newState,
     reason: options.reason,
     ...(options.evidence !== undefined ? { evidence: options.evidence } : {}),
-    timestamp: new Date(),
+    timestamp: new Date(getTimeProvider().now()),
   };
 }

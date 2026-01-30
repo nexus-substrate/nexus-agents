@@ -9,6 +9,7 @@
  */
 
 import { VERSION } from '../version.js';
+import { getTimeProvider } from '../core/index.js';
 import { defaultConfig } from '../config/index.js';
 import { BUILT_IN_EXPERTS } from '../agents/experts/expert-config.js';
 
@@ -183,7 +184,8 @@ function checkExpertSystem(): VerifyCheck {
  * Runs all verification checks.
  */
 export function runVerify(): Promise<VerifyResult> {
-  const startTime = Date.now();
+  const time = getTimeProvider();
+  const startTime = time.now();
 
   const checks: VerifyCheck[] = [
     checkNodeVersion(),
@@ -193,7 +195,7 @@ export function runVerify(): Promise<VerifyResult> {
   ];
 
   const allPassed = checks.every((c) => c.passed);
-  const durationMs = Date.now() - startTime;
+  const durationMs = time.now() - startTime;
 
   return Promise.resolve({
     version: VERSION,

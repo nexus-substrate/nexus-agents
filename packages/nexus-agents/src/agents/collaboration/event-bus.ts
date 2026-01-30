@@ -8,6 +8,7 @@
  * (Source: Issue #182, ARCHITECTURE.md Hybrid Architecture)
  */
 
+import { getTimeProvider } from '../../core/index.js';
 import type {
   IEventBus,
   DomainEvent,
@@ -313,7 +314,7 @@ export function createEvent<T extends DomainEvent>(
 ): T {
   return {
     eventId: generateEventId(),
-    timestamp: new Date().toISOString(),
+    timestamp: new Date(getTimeProvider().now()).toISOString(),
     topic,
     payload,
     sessionId: options?.sessionId,

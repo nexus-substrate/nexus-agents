@@ -9,6 +9,7 @@
 
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import { getTimeProvider } from '../core/index.js';
 import type { ILogger } from '../core/logger.js';
 import { createLogger } from '../core/logger.js';
 import type {
@@ -138,7 +139,7 @@ export class ReportGenerator implements IReportGenerator {
   private generateMetadata(result: EvaluationRunResult, config: ReportConfig): ReportMetadata {
     return {
       title: config.title ?? `SWE-bench Evaluation: ${result.modelNameOrPath}`,
-      generatedAt: new Date().toISOString(),
+      generatedAt: new Date(getTimeProvider().now()).toISOString(),
       variant: result.datasetName,
       modelName: result.modelNameOrPath,
       nexusVersion: '2.2.0', // Would be dynamic in real implementation

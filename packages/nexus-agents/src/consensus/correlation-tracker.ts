@@ -9,6 +9,7 @@
  */
 
 import { createLogger } from '../core/logger.js';
+import { getTimeProvider, getRandomProvider } from '../core/index.js';
 import type { Vote } from './types-core.js';
 import type {
   ICorrelationTracker,
@@ -67,14 +68,14 @@ export class CorrelationTracker implements ICorrelationTracker {
   }
 
   recordVote(agentId: string, vote: Vote, outcome: 'approved' | 'rejected'): void {
-    const proposalId = `proposal-${String(Date.now())}-${Math.random().toString(36).slice(2, 9)}`;
+    const proposalId = `proposal-${String(getTimeProvider().now())}-${getRandomProvider().random().toString(36).slice(2, 9)}`;
     const observation: VotingObservation = {
       proposalId,
       agentId,
       decision: vote.decision,
       confidence: vote.confidence,
       alignedWithOutcome: didAlignWithOutcome(vote.decision, outcome),
-      timestamp: new Date(),
+      timestamp: new Date(getTimeProvider().now()),
     };
     this.storeObservation(agentId, observation);
     this.invalidateCache();
@@ -97,7 +98,7 @@ export class CorrelationTracker implements ICorrelationTracker {
         decision: vote.decision,
         confidence: vote.confidence,
         alignedWithOutcome: didAlignWithOutcome(vote.decision, outcome),
-        timestamp: new Date(),
+        timestamp: new Date(getTimeProvider().now()),
       };
       this.storeObservation(agentId, observation);
       this.storeAgentProposal(agentId, proposalId, observation);
@@ -318,7 +319,7 @@ export class CorrelationTracker implements ICorrelationTracker {
             agreements: 0,
             disagreements: 0,
             correlation: 0,
-            lastUpdated: new Date(),
+            lastUpdated: new Date(getTimeProvider().now()),
           };
           this.pairwiseHistory.set(pairKey, history);
         }
@@ -331,7 +332,7 @@ export class CorrelationTracker implements ICorrelationTracker {
         }
 
         history.correlation = computeCorrelationCoefficient(history);
-        history.lastUpdated = new Date();
+        history.lastUpdated = new Date(getTimeProvider().now());
       }
     }
   }

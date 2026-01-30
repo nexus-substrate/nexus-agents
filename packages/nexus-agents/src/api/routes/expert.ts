@@ -8,6 +8,7 @@
 
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import type { ILogger } from '../../core/logger.js';
+import { getTimeProvider } from '../../core/index.js';
 import {
   ExpertRequestSchema,
   type ExpertRequest,
@@ -29,7 +30,7 @@ function createValidationError(requestId: string, issues: unknown): ApiError {
       details: { issues },
     },
     requestId,
-    timestamp: new Date().toISOString(),
+    timestamp: new Date(getTimeProvider().now()).toISOString(),
   };
 }
 
@@ -40,7 +41,7 @@ function createInternalError(requestId: string, message: string): ApiError {
   return {
     error: { code: 'INTERNAL_ERROR', message },
     requestId,
-    timestamp: new Date().toISOString(),
+    timestamp: new Date(getTimeProvider().now()).toISOString(),
   };
 }
 
@@ -49,7 +50,7 @@ function createInternalError(requestId: string, message: string): ApiError {
  */
 function buildExpertResponse(expertType: string, durationMs: number): ExpertResponse {
   return {
-    expertId: 'expert-' + expertType + '-' + String(Date.now()),
+    expertId: 'expert-' + expertType + '-' + String(getTimeProvider().now()),
     expertType,
     result: {
       analysis: `${expertType} analysis of the task`,
@@ -153,7 +154,8 @@ async function handleExpertRequest(
   reply: FastifyReply,
   logger: ILogger
 ): Promise<void> {
-  const startTime = Date.now();
+  const time = getTimeProvider();
+  const startTime = time.now();
   const requestId = request.id;
 
   const parseResult = ExpertRequestSchema.safeParse(request.body);
@@ -167,7 +169,7 @@ async function handleExpertRequest(
 
   try {
     // Simulated execution - in full implementation, would use ExpertFactory
-    const durationMs = Date.now() - startTime;
+    const durationMs = time.now() - startTime;
     const response = buildExpertResponse(type, durationMs);
 
     logger.info('Expert complete', { requestId, expertId: response.expertId, durationMs });

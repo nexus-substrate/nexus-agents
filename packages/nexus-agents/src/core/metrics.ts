@@ -8,6 +8,7 @@
  */
 
 import { type ErrorCode, NexusError } from './errors.js';
+import { getTimeProvider } from './time-provider.js';
 
 /**
  * Snapshot of error metrics at a point in time.
@@ -96,7 +97,7 @@ export class ErrorMetricsCollector {
   private readonly startedAt: Date;
 
   constructor() {
-    this.startedAt = new Date();
+    this.startedAt = new Date(getTimeProvider().now());
   }
 
   /**
@@ -107,7 +108,7 @@ export class ErrorMetricsCollector {
   record(options: RecordErrorOptions): void {
     const { component, error } = options;
     const code = this.extractErrorCode(error);
-    const timestamp = new Date();
+    const timestamp = new Date(getTimeProvider().now());
 
     // Update counters
     this.totalErrors++;
@@ -134,7 +135,7 @@ export class ErrorMetricsCollector {
    * Gets the current error metrics snapshot.
    */
   getMetrics(): ErrorMetrics {
-    const now = Date.now();
+    const now = getTimeProvider().now();
     const base = {
       totalErrors: this.totalErrors,
       errorsByCode: new Map(this.errorsByCode),
@@ -162,7 +163,7 @@ export class ErrorMetricsCollector {
    * Exports metrics in a format suitable for monitoring systems.
    */
   export(): MetricsExport {
-    const now = Date.now();
+    const now = getTimeProvider().now();
     const windowStart = now - RATE_WINDOW_MS;
 
     // Calculate error rate from recent errors

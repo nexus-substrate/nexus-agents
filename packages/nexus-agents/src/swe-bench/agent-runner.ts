@@ -8,6 +8,7 @@
  */
 
 import type { Result } from '../core/result.js';
+import { getTimeProvider } from '../core/index.js';
 import type { SWEBenchInstance, SWEBenchRunResult, SWEBenchConfig } from './types.js';
 import {
   SWE_BENCH_SYSTEM_PROMPT,
@@ -162,7 +163,7 @@ export async function runAgentOnInstance(
   instance: SWEBenchInstance,
   options: RunOptions
 ): Promise<Result<SWEBenchRunResult, AgentRunnerError>> {
-  const startTime = Date.now();
+  const startTime = getTimeProvider().now();
   const { executor, config, onMessage, signal } = options;
 
   if (signal?.aborted === true) {
@@ -205,7 +206,7 @@ function checkEarlyExit(
   if (signal?.aborted === true) {
     return buildFailedResult(instanceId, 'Aborted', startTime, state);
   }
-  if (Date.now() - startTime > config.timeout_ms) {
+  if (getTimeProvider().now() - startTime > config.timeout_ms) {
     return buildFailedResult(instanceId, 'Timeout', startTime, state);
   }
   return null;

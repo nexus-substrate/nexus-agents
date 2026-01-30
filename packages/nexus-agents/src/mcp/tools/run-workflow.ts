@@ -11,7 +11,7 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Result } from '../../core/index.js';
 import type { WorkflowDefinition, IWorkflowEngine } from '../../core/index.js';
-import { WorkflowError, ParseError, createLogger } from '../../core/index.js';
+import { WorkflowError, ParseError, createLogger, getTimeProvider } from '../../core/index.js';
 import { wrapToolWithTimeout } from '../middleware/tool-wrapper.js';
 import type {
   RunWorkflowInput,
@@ -76,7 +76,7 @@ async function executeWorkflow(
     inputCount: Object.keys(inputs).length,
   });
 
-  const startTime = Date.now();
+  const startTime = getTimeProvider().now();
   const result = await workflowEngine.execute(workflow, inputs);
 
   if (!result.ok) {
@@ -94,7 +94,7 @@ async function executeWorkflow(
 
   logger?.info('Workflow completed', {
     workflowName: workflow.name,
-    durationMs: Date.now() - startTime,
+    durationMs: getTimeProvider().now() - startTime,
     stepCount: workflowResult.stepResults.length,
   });
 

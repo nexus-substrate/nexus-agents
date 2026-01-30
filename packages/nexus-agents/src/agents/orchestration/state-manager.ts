@@ -9,6 +9,7 @@
  */
 
 import type { Task } from '../../core/index.js';
+import { getTimeProvider } from '../../core/index.js';
 import type { PuppeteerState, PuppeteerStateMetadata, AgentStepOutput } from './puppeteer-types.js';
 
 // =============================================================================
@@ -168,7 +169,7 @@ export class StateManager implements IStateManager {
    * Create initial state for a task.
    */
   createInitialState(task: Task, sessionId: string, initialContext?: string): PuppeteerState {
-    const now = new Date().toISOString();
+    const now = new Date(getTimeProvider().now()).toISOString();
     return {
       step: 0,
       task,
@@ -299,7 +300,7 @@ export class StateManager implements IStateManager {
     output: AgentStepOutput
   ): PuppeteerStateMetadata {
     const startTime = new Date(current.startedAt).getTime();
-    const elapsedMs = Date.now() - startTime;
+    const elapsedMs = getTimeProvider().now() - startTime;
     const costPerToken = 0.00001; // $0.01 per 1K tokens
 
     return {

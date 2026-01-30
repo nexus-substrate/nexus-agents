@@ -10,7 +10,7 @@
 
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { createLogger } from '../../core/index.js';
+import { createLogger, getTimeProvider } from '../../core/index.js';
 import type {
   ISandboxExecutor,
   SandboxExecutionOptions,
@@ -79,7 +79,7 @@ export class DockerSandboxExecutor implements ISandboxExecutor {
     args: readonly string[],
     options: SandboxExecutionOptions
   ): Promise<SandboxResult> {
-    const startTime = Date.now();
+    const startTime = getTimeProvider().now();
 
     // First validate command
     const evaluation = this.validate(command, args, options);
@@ -254,14 +254,14 @@ export class DockerSandboxExecutor implements ISandboxExecutor {
       reason: evaluation.reason,
     });
 
-    const deniedData = createDeniedResult(evaluation, Date.now() - startTime);
+    const deniedData = createDeniedResult(evaluation, getTimeProvider().now() - startTime);
 
     return {
       success: false,
       exitCode: deniedData.exitCode,
       stdout: deniedData.stdout,
       stderr: deniedData.stderr,
-      durationMs: Date.now() - startTime,
+      durationMs: getTimeProvider().now() - startTime,
       resourceUsage: deniedData.resourceUsage,
       policyEvaluation: evaluation,
     };
@@ -283,7 +283,7 @@ export class DockerSandboxExecutor implements ISandboxExecutor {
       exitCode: unavailableData.exitCode,
       stdout: unavailableData.stdout,
       stderr: unavailableData.stderr,
-      durationMs: Date.now() - startTime,
+      durationMs: getTimeProvider().now() - startTime,
       resourceUsage: unavailableData.resourceUsage,
       policyEvaluation: evaluation,
     };
@@ -297,7 +297,7 @@ export class DockerSandboxExecutor implements ISandboxExecutor {
     evaluation: PolicyEvaluation,
     startTime: number
   ): SandboxResult {
-    const durationMs = Date.now() - startTime;
+    const durationMs = getTimeProvider().now() - startTime;
 
     logger.debug('Docker sandbox execution succeeded', { durationMs });
 
@@ -321,7 +321,7 @@ export class DockerSandboxExecutor implements ISandboxExecutor {
     startTime: number,
     timeoutMs: number
   ): SandboxResult {
-    const durationMs = Date.now() - startTime;
+    const durationMs = getTimeProvider().now() - startTime;
     const execError = parseExecError(error);
 
     if (execError.isTimeout) {

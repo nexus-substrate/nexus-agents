@@ -7,6 +7,7 @@
  * @module agents/memory-state-types
  */
 
+import { getTimeProvider } from '../core/index.js';
 import type { ILogger, AgentRole } from '../core/index.js';
 import type { AgentMemoryConfig, ResolvedMemoryConfig } from './memory-config-types.js';
 
@@ -123,7 +124,7 @@ export function createInitialMemoryState(agentId: string, role: AgentRole): Agen
   return {
     agentId,
     role,
-    persistedAt: new Date(),
+    persistedAt: new Date(getTimeProvider().now()),
     taskLearnings: [],
     executionPatterns: [],
     errorResolutions: [],

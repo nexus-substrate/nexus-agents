@@ -7,6 +7,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { getTimeProvider } from '../core/index.js';
 import type {
   RoutingDecision,
   TaskOutcome,
@@ -101,7 +102,7 @@ export function createRoutingDecision(
 ): RoutingDecision {
   return {
     id: randomUUID(),
-    timestamp: new Date().toISOString(),
+    timestamp: new Date(getTimeProvider().now()).toISOString(),
     ...params,
   };
 }
@@ -111,7 +112,7 @@ export function createRoutingDecision(
  */
 export function createTaskOutcome(params: Omit<TaskOutcome, 'timestamp'>): TaskOutcome {
   return {
-    timestamp: new Date().toISOString(),
+    timestamp: new Date(getTimeProvider().now()).toISOString(),
     ...params,
   };
 }

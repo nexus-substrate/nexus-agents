@@ -10,7 +10,7 @@
  */
 
 import type { ILogger } from '../../core/index.js';
-import { createLogger } from '../../core/index.js';
+import { createLogger, getTimeProvider } from '../../core/index.js';
 import type {
   DebatePosition,
   AgentTrajectory,
@@ -68,7 +68,7 @@ export class FreeMadScorer {
       agentTrajectories: new Map(),
       roundSnapshots: [],
       totalRounds: 0,
-      startedAt: new Date(),
+      startedAt: new Date(getTimeProvider().now()),
     };
   }
 
@@ -83,7 +83,7 @@ export class FreeMadScorer {
       round,
       position: normalizedPosition,
       confidence,
-      timestamp: new Date(),
+      timestamp: new Date(getTimeProvider().now()),
       ...(reasoning !== undefined && { reasoning }),
     };
 
@@ -232,7 +232,7 @@ export class FreeMadScorer {
    * Evaluates the trajectory and determines the winning position.
    */
   evaluate(trajectory: DebateTrajectory): FreeMadResult {
-    trajectory.endedAt = new Date();
+    trajectory.endedAt = new Date(getTimeProvider().now());
     const scores = this.computeScores(trajectory);
 
     const positionScores = computePositionScores(trajectory, scores);

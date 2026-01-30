@@ -8,6 +8,7 @@
  * (Source: Issue #143, arXiv:2310.08560)
  */
 
+import { getTimeProvider } from '../core/index.js';
 import type { MemoryEntry, MemoryRow, ISQLiteDatabase } from './memory-backend-types.js';
 import { MemoryImportance } from './memory-backend-types.js';
 import type {
@@ -274,7 +275,7 @@ export function getMemoryRow(db: ISQLiteDatabase, key: string): MemoryRow | unde
  */
 export function touchMemory(db: ISQLiteDatabase, key: string): boolean {
   const stmt = db.prepare('UPDATE memories SET accessed_at = ? WHERE key = ?');
-  const result = stmt.run(Date.now(), key);
+  const result = stmt.run(getTimeProvider().now(), key);
   return result.changes > 0;
 }
 
@@ -301,7 +302,7 @@ export function scoreAndSortEntries(
   opts: PriorityRetrievalOptions | undefined,
   config: ScoringConfig
 ): ScoredMemoryEntry[] {
-  const now = new Date();
+  const now = new Date(getTimeProvider().now());
 
   // Convert and score
   const scored: ScoredMemoryEntry[] = rows.map((row) => {

@@ -10,7 +10,7 @@
 
 import type { ZodSchema } from 'zod';
 import type { ILogger } from '../../core/index.js';
-import { createLogger } from '../../core/index.js';
+import { createLogger, getTimeProvider } from '../../core/index.js';
 import { validateToolInput } from './validation.js';
 import { RateLimiter, type RateLimiterConfig } from './rate-limiter.js';
 import { type IPolicyFirewall, type ExecutionMode, createPolicyContext } from './policy.js';
@@ -200,12 +200,12 @@ function createTimeoutMiddleware(guard: TimeoutGuard, toolName: string): Middlew
  */
 function createAuditMiddleware(): Middleware {
   return async (args, ctx, next) => {
-    const startTime = Date.now();
+    const startTime = getTimeProvider().now();
     ctx.logger.info('Tool invocation started');
 
     try {
       const result = await next(args, ctx);
-      const durationMs = Date.now() - startTime;
+      const durationMs = getTimeProvider().now() - startTime;
 
       if (result.isError === true) {
         ctx.logger.warn('Tool execution completed with error', { durationMs });
@@ -214,7 +214,7 @@ function createAuditMiddleware(): Middleware {
       }
       return result;
     } catch (error) {
-      const durationMs = Date.now() - startTime;
+      const durationMs = getTimeProvider().now() - startTime;
       const message = error instanceof Error ? error.message : 'Unknown error';
       ctx.logger.error('Tool execution failed', error instanceof Error ? error : undefined, {
         durationMs,

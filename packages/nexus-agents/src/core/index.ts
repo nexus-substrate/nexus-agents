@@ -117,5 +117,27 @@ export {
   type TaskTypeClassifierConfig,
 } from './task-analysis/index.js';
 
+// Time Provider (Determinism - System Mandate)
+export type { ITimeProvider, TimeProviderConfig } from './time-provider.js';
+export {
+  SystemTimeProvider,
+  FixedTimeProvider,
+  getTimeProvider,
+  setTimeProvider,
+  resetTimeProvider,
+  createTimeProvider,
+} from './time-provider.js';
+
+// Random Provider (Determinism - System Mandate)
+export type { IRandomProvider, RandomProviderConfig } from './random-provider.js';
+export {
+  SystemRandomProvider,
+  SeededRandomProvider,
+  getRandomProvider,
+  setRandomProvider,
+  resetRandomProvider,
+  createRandomProvider,
+} from './random-provider.js';
+
 // Types
 export * from './types/index.js';

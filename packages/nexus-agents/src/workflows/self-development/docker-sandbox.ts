@@ -10,7 +10,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { Result } from '../../core/index.js';
-import { ok, err, createLogger } from '../../core/index.js';
+import { ok, err, createLogger, getTimeProvider } from '../../core/index.js';
 
 const execFileAsync = promisify(execFile);
 const logger = createLogger({ component: 'docker-sandbox' });
@@ -169,7 +169,7 @@ export async function executeSandboxed(
   command: string,
   config: SandboxConfig
 ): Promise<Result<SandboxResult, SandboxError>> {
-  const startTime = Date.now();
+  const startTime = getTimeProvider().now();
   const timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
   const dockerAvailable = await isDockerAvailable();
@@ -191,14 +191,19 @@ export async function executeSandboxed(
       exitCode: 0,
       stdout: truncateOutput(stdout),
       stderr: truncateOutput(stderr),
-      durationMs: Date.now() - startTime,
+      durationMs: getTimeProvider().now() - startTime,
       success: true,
     };
 
     logger.debug('Sandboxed command succeeded', { command, durationMs: result.durationMs });
     return ok(result);
   } catch (error) {
-    return handleExecError(command, error as ExecError, Date.now() - startTime, timeoutMs);
+    return handleExecError(
+      command,
+      error as ExecError,
+      getTimeProvider().now() - startTime,
+      timeoutMs
+    );
   }
 }
 

@@ -7,6 +7,7 @@
  */
 
 import * as os from 'node:os';
+import { getTimeProvider } from '../../core/index.js';
 import type { ICliAdapter, CliName } from '../../cli-adapters/types.js';
 import type {
   TaskTestResult,
@@ -91,7 +92,7 @@ export async function getEnvironmentInfo(
     arch: os.arch(),
     frameworkVersion: VERSION,
     cliVersions,
-    capturedAt: new Date().toISOString(),
+    capturedAt: new Date(getTimeProvider().now()).toISOString(),
   };
 }
 

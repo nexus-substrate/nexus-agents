@@ -15,6 +15,7 @@ import type { ILogger } from '../core/logger.js';
 import { createLogger } from '../core/logger.js';
 import type { Result } from '../core/result.js';
 import { ok, err } from '../core/result.js';
+import { getTimeProvider } from '../core/index.js';
 import type { SWEBenchPrediction } from './types.js';
 import type {
   IEvaluationHarness,
@@ -106,7 +107,7 @@ export class EvaluationHarness implements IEvaluationHarness {
     onProgress?: EvaluationProgressCallback
   ): Promise<EvaluationRunResult> {
     this.isCancelled = false;
-    const startedAt = new Date().toISOString();
+    const startedAt = new Date(getTimeProvider().now()).toISOString();
     const effectiveConfig = { ...DEFAULT_EVALUATION_CONFIG, ...config };
 
     this.logger.info('Starting evaluation', {
@@ -135,7 +136,7 @@ export class EvaluationHarness implements IEvaluationHarness {
       onProgress
     );
 
-    const completedAt = new Date().toISOString();
+    const completedAt = new Date(getTimeProvider().now()).toISOString();
     const metrics = calculateMetrics(result.instanceResults);
     const repositoryMetrics = calculateRepositoryMetrics(result.instanceResults);
 
@@ -173,7 +174,7 @@ export class EvaluationHarness implements IEvaluationHarness {
     const singleConfig: EvaluationHarnessConfig = {
       ...config,
       instanceIds: [prediction.instance_id],
-      runId: `single-${prediction.instance_id}-${String(Date.now())}`,
+      runId: `single-${prediction.instance_id}-${String(getTimeProvider().now())}`,
     };
 
     const result = await this.evaluate([prediction], singleConfig);

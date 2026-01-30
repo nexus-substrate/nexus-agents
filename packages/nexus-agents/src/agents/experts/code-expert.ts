@@ -12,7 +12,7 @@
  */
 
 import type { Result, Task, TaskResult, CompletionRequest, Message } from '../../core/index.js';
-import { ok, err, AgentError } from '../../core/index.js';
+import { ok, err, AgentError, getTimeProvider } from '../../core/index.js';
 import { BaseAgent, type BaseAgentOptions } from '../base-agent.js';
 import type { CodeAnalysisResult } from './expert-types.js';
 import {
@@ -52,7 +52,7 @@ export class CodeExpert extends BaseAgent {
    * Execute a code-related task.
    */
   protected async executeTask(task: Task): Promise<Result<TaskResult, AgentError>> {
-    const startTime = Date.now();
+    const startTime = getTimeProvider().now();
     const operationType = inferOperationType(task.description);
 
     this.logger.info('Executing code task', {
@@ -110,7 +110,7 @@ Please analyze and provide your response in the JSON format specified.`,
       taskId: task.id,
       output: result,
       metadata: {
-        durationMs: Date.now() - startTime,
+        durationMs: getTimeProvider().now() - startTime,
         tokensUsed: 0,
         toolsUsed: [],
         model: 'heuristic',
@@ -148,7 +148,7 @@ Please analyze and provide your response in the JSON format specified.`,
       taskId: task.id,
       output: result,
       metadata: {
-        durationMs: Date.now() - startTime,
+        durationMs: getTimeProvider().now() - startTime,
         tokensUsed: response.usage.totalTokens,
         toolsUsed: [],
         model: response.model,

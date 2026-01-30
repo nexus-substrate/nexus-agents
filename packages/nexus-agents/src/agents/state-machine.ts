@@ -14,7 +14,7 @@
  */
 
 import type { AgentState } from '../core/index.js';
-import { type Result, ok, err, AgentError } from '../core/index.js';
+import { type Result, ok, err, AgentError, getTimeProvider } from '../core/index.js';
 import {
   type StateTransitionEvent,
   type StateTransition,
@@ -260,7 +260,7 @@ export class AgentStateMachine {
       from: this.currentState,
       to,
       event,
-      timestamp: new Date().toISOString(),
+      timestamp: new Date(getTimeProvider().now()).toISOString(),
     };
     if (context !== undefined) {
       transition.context = context;

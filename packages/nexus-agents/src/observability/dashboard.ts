@@ -20,6 +20,7 @@ import type {
   ActivityItem,
 } from './dashboard-types.js';
 import { DEFAULT_DASHBOARD_CONFIG } from './dashboard-types.js';
+import { getTimeProvider } from '../core/index.js';
 import { createDashboardRenderer } from './dashboard-renderer.js';
 import type {
   ISwarmObserver,
@@ -72,7 +73,7 @@ export class Dashboard implements IDashboard {
 
   getSnapshot(options?: DashboardUpdateOptions): DashboardSnapshot {
     const opts = this.normalizeOptions(options);
-    const now = new Date().toISOString();
+    const now = new Date(getTimeProvider().now()).toISOString();
     const health = this.observer.getHealthMetrics();
     const graph = this.observer.getCollaborationGraph();
 
@@ -181,7 +182,7 @@ export class Dashboard implements IDashboard {
     return {
       agentId,
       state: latestState,
-      lastActivity: lastEvent?.timestamp ?? new Date().toISOString(),
+      lastActivity: lastEvent?.timestamp ?? new Date(getTimeProvider().now()).toISOString(),
       messagesSent: outgoing.length,
       messagesReceived: incoming.length,
       toolsInvoked: toolEvents.length,
@@ -205,7 +206,7 @@ export class Dashboard implements IDashboard {
     allEvents.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
     // Filter to time window
-    const cutoff = Date.now() - this.config.timeWindowMs;
+    const cutoff = getTimeProvider().now() - this.config.timeWindowMs;
     const recentEvents = allEvents.filter((e) => new Date(e.timestamp).getTime() > cutoff);
 
     // Convert to activity items
@@ -246,7 +247,7 @@ export class Dashboard implements IDashboard {
       avgLatencyMs: 0,
       bottlenecks: [],
       clusters: [],
-      calculatedAt: new Date().toISOString(),
+      calculatedAt: new Date(getTimeProvider().now()).toISOString(),
     };
   }
 

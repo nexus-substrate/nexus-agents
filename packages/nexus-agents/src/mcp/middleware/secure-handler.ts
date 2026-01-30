@@ -12,7 +12,7 @@
  */
 
 import type { ILogger } from '../../core/index.js';
-import { createLogger } from '../../core/index.js';
+import { createLogger, getTimeProvider } from '../../core/index.js';
 import {
   createRequestContext,
   contextForLogging,
@@ -159,13 +159,13 @@ async function executeHandler(
   ctx: HandlerContext,
   logger: ILogger
 ): Promise<ToolResult> {
-  const startTime = Date.now();
+  const startTime = getTimeProvider().now();
   const result =
     handler.length >= 2
       ? await (handler as ContextAwareHandler)(args, ctx)
       : await (handler as ToolHandler)(args);
 
-  const durationMs = Date.now() - startTime;
+  const durationMs = getTimeProvider().now() - startTime;
   if (result.isError === true) {
     logger.warn('Tool execution completed with error', { durationMs });
   } else {

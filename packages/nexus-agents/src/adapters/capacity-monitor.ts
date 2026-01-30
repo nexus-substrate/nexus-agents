@@ -9,6 +9,7 @@
  * @see Google Cloud: https://cloud.google.com/docs/quota
  */
 
+import { getTimeProvider } from '../core/index.js';
 import {
   type CapacityInfo,
   type CapacityMonitorConfig,
@@ -67,7 +68,7 @@ export class CapacityMonitor implements ICapacityMonitor {
   public updateFromHeaders(provider: string, headers: Headers | HeadersLike): void {
     const mapping = HEADER_MAPPINGS[provider];
     const state = this.getOrCreateState(provider);
-    const now = new Date();
+    const now = new Date(getTimeProvider().now());
 
     if (mapping) {
       this.parseProviderHeaders(headers, mapping, state);
@@ -107,7 +108,7 @@ export class CapacityMonitor implements ICapacityMonitor {
     if (!state?.resetTime) {
       return null;
     }
-    const now = Date.now();
+    const now = getTimeProvider().now();
     const resetMs = state.resetTime.getTime();
     return Math.max(0, resetMs - now);
   }
@@ -128,7 +129,7 @@ export class CapacityMonitor implements ICapacityMonitor {
       state.metadata = { ...state.metadata, ...info.metadata };
     }
 
-    state.lastUpdated = new Date();
+    state.lastUpdated = new Date(getTimeProvider().now());
     this.providers.set(provider, state);
     this.checkLowCapacity(provider, state);
   }
@@ -153,7 +154,7 @@ export class CapacityMonitor implements ICapacityMonitor {
       totalTokens: this.config.defaultTotalTokens,
       totalRequests: this.config.defaultTotalRequests,
       resetTime: null,
-      lastUpdated: new Date(),
+      lastUpdated: new Date(getTimeProvider().now()),
       metadata: {},
     };
   }
@@ -253,7 +254,7 @@ export class CapacityMonitor implements ICapacityMonitor {
     const num = parseFloat(numStr);
     const unit = relativeMatch[2] ?? 's';
     const ms = this.getMilliseconds(num, unit);
-    return new Date(Date.now() + ms);
+    return new Date(getTimeProvider().now() + ms);
   }
 
   private parseUnixTimestamp(value: string): Date | null {
@@ -263,7 +264,7 @@ export class CapacityMonitor implements ICapacityMonitor {
     if (timestamp > 1000000000) {
       return new Date(timestamp * 1000);
     }
-    return new Date(Date.now() + timestamp * 1000);
+    return new Date(getTimeProvider().now() + timestamp * 1000);
   }
 
   private getMilliseconds(num: number, unit: string): number {

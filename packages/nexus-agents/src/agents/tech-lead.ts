@@ -19,7 +19,7 @@ import type {
   Message,
   IAgent,
 } from '../core/index.js';
-import { ok, err, AgentError } from '../core/index.js';
+import { ok, err, AgentError, getTimeProvider } from '../core/index.js';
 import { BaseAgent, type BaseAgentOptions } from './base-agent.js';
 import type {
   SubTask,
@@ -172,7 +172,7 @@ export class TechLead extends BaseAgent {
 
   /** Execute a task by analyzing, decomposing (if needed), and coordinating. */
   protected async executeTask(task: Task): Promise<Result<TaskResult, AgentError>> {
-    const startTime = Date.now();
+    const startTime = getTimeProvider().now();
 
     const analysisResult = await this.analyzeTask(task);
     if (!analysisResult.ok) return err(analysisResult.error);
@@ -201,7 +201,7 @@ export class TechLead extends BaseAgent {
       taskId: task.id,
       output,
       metadata: {
-        durationMs: Date.now() - startTime,
+        durationMs: getTimeProvider().now() - startTime,
         tokensUsed: 0,
         toolsUsed: [],
         model: 'tech-lead-orchestration',

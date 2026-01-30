@@ -7,7 +7,7 @@
  */
 
 import type { Result, Task } from '../../../core/index.js';
-import { ok, err, AgentError } from '../../../core/index.js';
+import { ok, err, AgentError, getRandomProvider } from '../../../core/index.js';
 
 export interface MockCliAdapterConfig {
   name: 'claude' | 'gemini' | 'codex';
@@ -110,7 +110,7 @@ export class MockCliAdapter {
       await this.delay(this.responseDelay);
     }
 
-    if (Math.random() < this.failureRate) {
+    if (getRandomProvider().random() < this.failureRate) {
       return err(
         new AgentError(this.errorMessage, {
           context: { cliName: this.name, taskId: task.id },

@@ -9,6 +9,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { getTimeProvider } from './index.js';
 import type { TraceSpan, AggregatedMetrics, Tracer } from './trace.js';
 import {
   type ResolvedVisualizationOptions,
@@ -85,7 +86,7 @@ export function exportTraceToFile(
 
   const exportData: ExportedTrace = {
     traceId,
-    exportedAt: new Date().toISOString(),
+    exportedAt: new Date(getTimeProvider().now()).toISOString(),
     spans,
     metrics,
   };
@@ -116,7 +117,7 @@ export function exportTraceToString(tracer: Tracer, format: ExportFormat = 'json
 
   const exportData: ExportedTrace = {
     traceId,
-    exportedAt: new Date().toISOString(),
+    exportedAt: new Date(getTimeProvider().now()).toISOString(),
     spans,
     metrics,
   };
@@ -209,7 +210,7 @@ export function printTrace(tracer: Tracer, options?: VisualizationOptions): void
  * @returns Filename with timestamp
  */
 export function generateTraceFilename(traceId: string): string {
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const timestamp = new Date(getTimeProvider().now()).toISOString().replace(/[:.]/g, '-');
   const shortId = traceId.slice(0, 8);
   return `trace-${timestamp}-${shortId}.json`;
 }

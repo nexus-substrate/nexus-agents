@@ -11,6 +11,7 @@
  */
 
 import type { CliName, TokenUsage, CapacityStatus } from './types-core.js';
+import { getTimeProvider } from '../core/index.js';
 
 /**
  * Default rate limits per CLI provider (tokens per minute).
@@ -109,14 +110,14 @@ export class CapacityTracker {
     this.config = config;
     this.usageHistory = [];
     this.requestCount = 0;
-    this.windowStart = Date.now();
+    this.windowStart = getTimeProvider().now();
   }
 
   /**
    * Records token usage from a completed request.
    */
   recordUsage(usage: TokenUsage | undefined): void {
-    const now = Date.now();
+    const now = getTimeProvider().now();
     this.pruneOldEntries(now);
 
     this.requestCount++;
@@ -134,7 +135,7 @@ export class CapacityTracker {
    * Gets current capacity status based on tracked usage.
    */
   getCapacity(): CapacityStatus {
-    const now = Date.now();
+    const now = getTimeProvider().now();
     this.pruneOldEntries(now);
 
     const usedTokens = this.usageHistory.reduce((sum, entry) => sum + entry.tokens, 0);
@@ -161,7 +162,7 @@ export class CapacityTracker {
    * Gets time until the rate limit window resets.
    */
   getTimeUntilReset(): number {
-    const now = Date.now();
+    const now = getTimeProvider().now();
     const resetTime = this.windowStart + this.config.windowMs;
     return Math.max(0, resetTime - now);
   }
@@ -172,7 +173,7 @@ export class CapacityTracker {
   reset(): void {
     this.usageHistory.length = 0;
     this.requestCount = 0;
-    this.windowStart = Date.now();
+    this.windowStart = getTimeProvider().now();
   }
 
   /**

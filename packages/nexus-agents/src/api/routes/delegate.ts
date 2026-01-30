@@ -8,6 +8,7 @@
 
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import type { ILogger } from '../../core/logger.js';
+import { getTimeProvider } from '../../core/index.js';
 import {
   DelegateRequestSchema,
   type DelegateRequest,
@@ -26,7 +27,7 @@ function createValidationError(requestId: string, issues: unknown): ApiError {
       details: { issues },
     },
     requestId,
-    timestamp: new Date().toISOString(),
+    timestamp: new Date(getTimeProvider().now()).toISOString(),
   };
 }
 
@@ -37,7 +38,7 @@ function createInternalError(requestId: string, message: string): ApiError {
   return {
     error: { code: 'INTERNAL_ERROR', message },
     requestId,
-    timestamp: new Date().toISOString(),
+    timestamp: new Date(getTimeProvider().now()).toISOString(),
   };
 }
 

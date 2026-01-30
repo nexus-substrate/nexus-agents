@@ -19,7 +19,7 @@
 import type { VoterRole, AgentVoteResult } from './vote-types.js';
 import { VOTER_ROLES } from './vote-types.js';
 import type { IModelAdapter, ILogger } from '../core/index.js';
-import { createLogger } from '../core/index.js';
+import { createLogger, getTimeProvider } from '../core/index.js';
 import { createAutoAdapter } from '../adapters/auto-adapter.js';
 
 // Re-export prompts for backward compatibility
@@ -102,7 +102,7 @@ export async function executeAgentVote(
   logger: ILogger,
   options?: { timeoutMs?: number; maxRetries?: number; allowSimulation?: boolean }
 ): Promise<AgentVoteResult> {
-  const start = Date.now();
+  const start = getTimeProvider().now();
   const timeoutMs = options?.timeoutMs ?? DEFAULT_VOTE_TIMEOUT_MS;
   const maxRetries = options?.maxRetries ?? DEFAULT_MAX_RETRIES;
   const allowSimulation = options?.allowSimulation ?? false;
@@ -115,7 +115,7 @@ export async function executeAgentVote(
     timeoutMs,
     maxRetries,
   });
-  const processingTimeMs = Date.now() - start;
+  const processingTimeMs = getTimeProvider().now() - start;
 
   if (result.ok) {
     return { role, vote: result.vote, processingTimeMs, source: 'llm' };

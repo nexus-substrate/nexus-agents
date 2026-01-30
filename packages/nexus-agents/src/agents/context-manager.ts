@@ -7,7 +7,7 @@
  */
 
 import type { Result, Message, IModelAdapter, ILogger } from '../core/index.js';
-import { ok, err, ValidationError, createLogger } from '../core/index.js';
+import { ok, err, ValidationError, createLogger, getTimeProvider } from '../core/index.js';
 import type {
   ContextBudget,
   ContextItem,
@@ -91,7 +91,7 @@ export class ContextManager {
     const fullItem: ContextItem = {
       ...item,
       tokenCount,
-      addedAt: Date.now(),
+      addedAt: getTimeProvider().now(),
     };
 
     // Validate budget constraints

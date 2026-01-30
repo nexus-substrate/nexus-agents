@@ -6,7 +6,7 @@
  * @module workflows/self-development/audit-trail
  */
 
-import { createLogger } from '../../core/index.js';
+import { createLogger, getTimeProvider } from '../../core/index.js';
 import type { WorkflowPhase } from './types.js';
 
 const logger = createLogger({ component: 'self-dev-audit' });
@@ -164,7 +164,7 @@ export class AuditTrail {
   async record(category: AuditCategory, event: string, options: RecordOptions = {}): Promise<void> {
     const auditEvent: AuditEvent = {
       id: generateEventId(this.executionId),
-      timestamp: new Date().toISOString(),
+      timestamp: new Date(getTimeProvider().now()).toISOString(),
       executionId: this.executionId,
       category,
       severity: options.severity ?? 'info',

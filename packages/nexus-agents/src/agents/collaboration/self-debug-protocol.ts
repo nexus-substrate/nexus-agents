@@ -10,7 +10,7 @@
  */
 
 import type { Result, ILogger, IAgent, Task } from '../../core/index.js';
-import { ok, err, AgentError, createLogger } from '../../core/index.js';
+import { ok, err, AgentError, createLogger, getTimeProvider } from '../../core/index.js';
 import type {
   SelfDebugConfig,
   SelfDebugResult,
@@ -86,7 +86,7 @@ export class SelfDebugProtocol {
       task: options.task,
       agent: options.agent,
       executor: options.executor,
-      startTime: Date.now(),
+      startTime: getTimeProvider().now(),
     };
 
     this.cancelFlag = false;
@@ -193,7 +193,7 @@ export class SelfDebugProtocol {
     code: string,
     iterNum: number
   ): Promise<Result<IterationResult, AgentError>> {
-    const iterStart = Date.now();
+    const iterStart = getTimeProvider().now();
     const execution = await executeCode(ctx.executor, code);
     const errors = this.getErrors(execution, iterNum);
 

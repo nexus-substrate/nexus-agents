@@ -7,6 +7,7 @@
  * (Source: arXiv:2305.16291, Issue #150)
  */
 
+import { getTimeProvider } from '../../core/index.js';
 import type {
   Skill,
   SkillExecution,
@@ -36,8 +37,8 @@ export interface RecordExecutionOptions {
 export function createExecutionRecord(options: RecordExecutionOptions): SkillExecution {
   return {
     skillId: options.skillId,
-    startTime: new Date(),
-    endTime: new Date(),
+    startTime: new Date(getTimeProvider().now()),
+    endTime: new Date(getTimeProvider().now()),
     status: options.status,
     input: options.input,
     ...(options.output !== undefined && { output: options.output }),
@@ -89,7 +90,7 @@ export function applySkillUpdates(existing: Skill, updates: Partial<CreateSkillO
   return {
     ...existing,
     ...buildSkillUpdateFields(updates),
-    updatedAt: new Date(),
+    updatedAt: new Date(getTimeProvider().now()),
     version: existing.version + 1,
   };
 }

@@ -7,7 +7,7 @@
  */
 
 import type { Result } from '../../core/index.js';
-import { ok, err } from '../../core/index.js';
+import { ok, err, getTimeProvider } from '../../core/index.js';
 
 // =============================================================================
 // Types
@@ -60,7 +60,7 @@ export interface MetricsComparison {
  */
 export function createEmptyBaseline(): BaselineSnapshot {
   return {
-    timestamp: new Date().toISOString(),
+    timestamp: new Date(getTimeProvider().now()).toISOString(),
     testCoverage: 0,
     lintErrors: 0,
     lintWarnings: 0,
@@ -125,7 +125,7 @@ export function createBaselineFromChecks(checks: readonly CheckResult[]): Baseli
   }
 
   return {
-    timestamp: new Date().toISOString(),
+    timestamp: new Date(getTimeProvider().now()).toISOString(),
     testCoverage: state.coverage,
     lintErrors: state.lint.errors,
     lintWarnings: state.lint.warnings,

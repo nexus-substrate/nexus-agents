@@ -11,7 +11,14 @@
  * @module mcp/middleware/timeout-guard
  */
 
-import { createLogger, type ILogger, type Result, ok, err } from '../../core/index.js';
+import {
+  createLogger,
+  type ILogger,
+  type Result,
+  ok,
+  err,
+  getTimeProvider,
+} from '../../core/index.js';
 
 /**
  * Error codes for timeout-related failures.
@@ -157,7 +164,7 @@ export class TimeoutGuard {
     }
 
     this.logStart(operationName, timeoutMs);
-    const startTime = Date.now();
+    const startTime = getTimeProvider().now();
     const state: TimeoutState = { timeoutId: undefined, timedOut: false };
 
     try {
@@ -212,7 +219,7 @@ export class TimeoutGuard {
     timeoutMs: number,
     operationName: string
   ): Result<GuardedResult<T>, TimeoutError> {
-    const durationMs = Date.now() - startTime;
+    const durationMs = getTimeProvider().now() - startTime;
     const nearTimeout = durationMs > timeoutMs * NEAR_TIMEOUT_THRESHOLD;
 
     if (nearTimeout && this.enableLogging) {
@@ -237,7 +244,7 @@ export class TimeoutGuard {
     timeoutMs: number,
     startTime: number
   ): TimeoutError {
-    const durationMs = Date.now() - startTime;
+    const durationMs = getTimeProvider().now() - startTime;
 
     if (timedOut) {
       this.logger.error('Operation timed out', undefined, {

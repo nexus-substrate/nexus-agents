@@ -11,7 +11,7 @@
  */
 
 import type { Result } from '../core/index.js';
-import { createLogger } from '../core/logger.js';
+import { createLogger, getTimeProvider } from '../core/index.js';
 import type {
   IConfidenceRouter,
   ConfidenceEstimate,
@@ -96,7 +96,7 @@ export class ConfidenceRouter implements IConfidenceRouter {
     options?: CascadeOptions
   ): Promise<Result<CascadeResult, CliError>> {
     const opts = { ...DEFAULT_CASCADE_OPTIONS, ...options };
-    const startTime = Date.now();
+    const startTime = getTimeProvider().now();
 
     // Check cache first
     const cacheResult = this.checkCacheHit(task, opts, startTime);
@@ -127,7 +127,7 @@ export class ConfidenceRouter implements IConfidenceRouter {
           escalationCount: 0,
           modelsUsed: [],
           confidenceHistory: [cached.confidence],
-          totalDurationMs: Date.now() - startTime,
+          totalDurationMs: getTimeProvider().now() - startTime,
         },
       };
     }
@@ -215,7 +215,7 @@ export class ConfidenceRouter implements IConfidenceRouter {
         escalationCount: 0,
         modelsUsed,
         confidenceHistory,
-        totalDurationMs: Date.now() - startTime,
+        totalDurationMs: getTimeProvider().now() - startTime,
       },
     };
   }
@@ -269,7 +269,7 @@ export class ConfidenceRouter implements IConfidenceRouter {
         escalationCount: 1,
         modelsUsed,
         confidenceHistory,
-        totalDurationMs: Date.now() - startTime,
+        totalDurationMs: getTimeProvider().now() - startTime,
       },
     };
   }
@@ -292,7 +292,7 @@ export class ConfidenceRouter implements IConfidenceRouter {
     if (!entry) return undefined;
 
     // Check age
-    if (Date.now() - entry.timestamp > this.maxCacheAge) {
+    if (getTimeProvider().now() - entry.timestamp > this.maxCacheAge) {
       this.cache.delete(key);
       return undefined;
     }
@@ -320,7 +320,7 @@ export class ConfidenceRouter implements IConfidenceRouter {
     this.cache.set(key, {
       response,
       confidence,
-      timestamp: Date.now(),
+      timestamp: getTimeProvider().now(),
     });
   }
 

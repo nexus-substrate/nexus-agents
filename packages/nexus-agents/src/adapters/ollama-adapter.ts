@@ -23,7 +23,15 @@ import type {
   TokenUsage,
   StopReason,
 } from '../core/index.js';
-import { ok, err, ModelError, ConfigError, ModelCapability } from '../core/index.js';
+import {
+  ok,
+  err,
+  ModelError,
+  ConfigError,
+  ModelCapability,
+  getTimeProvider,
+  getRandomProvider,
+} from '../core/index.js';
 import { BaseAdapter, type BaseAdapterConfig } from './base-adapter.js';
 import { createStream } from './streaming.js';
 
@@ -81,7 +89,7 @@ function mapOllamaMessageToContent(message: OllamaMessage): ContentBlock[] {
     for (const tc of toolCalls) {
       content.push({
         type: 'tool_use',
-        id: `tool_${String(Date.now())}_${Math.random().toString(36).slice(2, 9)}`,
+        id: `tool_${String(getTimeProvider().now())}_${getRandomProvider().random().toString(36).slice(2, 9)}`,
         name: tc.function.name,
         input: tc.function.arguments,
       });

@@ -9,6 +9,7 @@
  */
 
 import type { Result } from '../core/result.js';
+import { getTimeProvider } from '../core/index.js';
 import type {
   SWEBenchVariant,
   SWEBenchInstance,
@@ -136,7 +137,7 @@ export class SWEBenchRunner {
     const checkpoint: SWEBenchCheckpoint = {
       config: this.config.benchConfig,
       completed_instances: completedIds,
-      last_updated: new Date().toISOString(),
+      last_updated: new Date(getTimeProvider().now()).toISOString(),
     };
 
     try {
@@ -351,7 +352,7 @@ export class SWEBenchRunner {
       total_duration_ms: totalDuration,
       avg_duration_ms: results.length > 0 ? totalDuration / results.length : 0,
       model: this.config.modelName,
-      timestamp: new Date().toISOString(),
+      timestamp: new Date(getTimeProvider().now()).toISOString(),
     };
   }
 }

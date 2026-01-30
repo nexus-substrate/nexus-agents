@@ -10,6 +10,7 @@
  */
 
 import type { ICliAdapter, CliName, CliTransport } from './types.js';
+import { getTimeProvider } from '../core/index.js';
 import { ClaudeCliAdapter } from './adapters/claude-adapter.js';
 import { GeminiCliAdapter } from './adapters/gemini-adapter.js';
 import { CodexCliAdapter } from './adapters/codex-adapter.js';
@@ -143,7 +144,7 @@ export async function isCliAvailable(cli: CliName, cache?: ICliDetectionCache): 
         healthy: false,
         version: 'unknown',
         versionStatus: 'unsupported',
-        checkedAt: new Date(),
+        checkedAt: new Date(getTimeProvider().now()),
         message: 'Health check failed',
       });
     }

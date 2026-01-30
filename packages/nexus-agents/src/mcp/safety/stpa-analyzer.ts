@@ -10,6 +10,7 @@
 
 import type { Result } from '../../core/result.js';
 import { ok, err } from '../../core/result.js';
+import { getTimeProvider } from '../../core/index.js';
 import type {
   ToolDefinition,
   Hazard,
@@ -277,7 +278,7 @@ export function analyzeTools(
   tools: readonly ToolDefinition[],
   config: Partial<AnalysisConfiguration> = {}
 ): Result<StpaAnalysisResult, StpaAnalysisError> {
-  const startTime = new Date();
+  const startTime = new Date(getTimeProvider().now());
   const fullConfig = AnalysisConfigurationSchema.parse(config);
   const toolResults: ToolAnalysisResult[] = [];
 
@@ -300,11 +301,11 @@ export function analyzeTools(
       safetyConstraints: constraints,
       riskScore,
       riskLevel: determineRiskLevel(riskScore),
-      analyzedAt: new Date(),
+      analyzedAt: new Date(getTimeProvider().now()),
     });
   }
 
-  const endTime = new Date();
+  const endTime = new Date(getTimeProvider().now());
   const interactions = fullConfig.checkInteractions ? findHazardInteractions(toolResults) : [];
   const summary = generateSummary(toolResults);
 

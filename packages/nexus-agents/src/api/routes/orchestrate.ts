@@ -8,6 +8,7 @@
 
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import type { ILogger } from '../../core/logger.js';
+import { getTimeProvider } from '../../core/index.js';
 import type { TaskConstraints } from '../../core/index.js';
 import { createTechLeadWithSica } from '../../mcp/tools/orchestrate-sica.js';
 import {
@@ -28,7 +29,7 @@ function createValidationError(requestId: string, issues: unknown): ApiError {
       details: { issues },
     },
     requestId,
-    timestamp: new Date().toISOString(),
+    timestamp: new Date(getTimeProvider().now()).toISOString(),
   };
 }
 
@@ -39,7 +40,7 @@ function createInternalError(requestId: string, message: string): ApiError {
   return {
     error: { code: 'INTERNAL_ERROR', message },
     requestId,
-    timestamp: new Date().toISOString(),
+    timestamp: new Date(getTimeProvider().now()).toISOString(),
   };
 }
 
@@ -50,7 +51,7 @@ function createOrchestrationError(requestId: string, message: string): ApiError 
   return {
     error: { code: 'ORCHESTRATION_ERROR', message },
     requestId,
-    timestamp: new Date().toISOString(),
+    timestamp: new Date(getTimeProvider().now()).toISOString(),
   };
 }
 
@@ -188,7 +189,8 @@ async function handleOrchestrateRequest(
   reply: FastifyReply,
   logger: ILogger
 ): Promise<void> {
-  const startTime = Date.now();
+  const time = getTimeProvider();
+  const startTime = time.now();
   const requestId = request.id;
 
   const parseResult = OrchestrateRequestSchema.safeParse(request.body);
@@ -214,7 +216,7 @@ async function handleOrchestrateRequest(
       return;
     }
 
-    const durationMs = Date.now() - startTime;
+    const durationMs = time.now() - startTime;
     const response = buildOrchestrateResponse(result.value.taskId, result.value.output, durationMs);
 
     logger.info('Orchestrate complete', { requestId, durationMs });

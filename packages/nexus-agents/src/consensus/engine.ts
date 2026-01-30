@@ -6,7 +6,7 @@
  */
 
 import type { Result, ILogger } from '../core/index.js';
-import { ok, err, AgentError, createLogger } from '../core/index.js';
+import { ok, err, AgentError, createLogger, getTimeProvider } from '../core/index.js';
 import type {
   Proposal,
   ProposalId,
@@ -160,7 +160,7 @@ export class ConsensusEngine implements IConsensusEngine {
 
   updateAgentPerformance(agentId: string, wasCorrect: boolean): void {
     const existing = this.agentPerformance.get(agentId);
-    const now = new Date().toISOString();
+    const now = new Date(getTimeProvider().now()).toISOString();
 
     if (existing === undefined) {
       this.agentPerformance.set(agentId, {
@@ -192,7 +192,7 @@ export class ConsensusEngine implements IConsensusEngine {
   }
 
   private createProposalState(data: Proposal, proposalId: ProposalId): ProposalState {
-    const now = new Date();
+    const now = new Date(getTimeProvider().now());
     return {
       proposal: { ...data, id: proposalId, createdAt: now.toISOString() },
       status: 'voting',
@@ -252,7 +252,10 @@ export class ConsensusEngine implements IConsensusEngine {
   }
 
   private recordVote(state: ProposalState, agentId: string, vote: Vote): void {
-    state.votes.set(agentId, { ...vote, timestamp: new Date().toISOString() });
+    state.votes.set(agentId, {
+      ...vote,
+      timestamp: new Date(getTimeProvider().now()).toISOString(),
+    });
     if (state.proposal.algorithm === 'proof_of_learning') {
       const performance = this.agentPerformance.get(agentId);
       state.voteWeights.set(agentId, calculateVoteWeight(performance));

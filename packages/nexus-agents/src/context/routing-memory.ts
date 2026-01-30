@@ -11,6 +11,7 @@
  */
 
 import { createLogger } from '../core/logger.js';
+import { getTimeProvider } from '../core/index.js';
 import type { ILogger } from '../core/logger.js';
 import type { CliName } from '../cli-adapters/types.js';
 import {
@@ -191,7 +192,7 @@ export class RoutingMemory implements IRoutingMemory {
     const entry = this.mobimem.profile.observe(entityId, 'agent', preferenceKey, {
       model,
       performance,
-      updatedAt: new Date().toISOString(),
+      updatedAt: new Date(getTimeProvider().now()).toISOString(),
     });
 
     this.logger.debug('Stored model preference', {

@@ -6,7 +6,7 @@
  * @module workflows/self-development/phases/auto-merge
  */
 
-import { createLogger } from '../../../core/index.js';
+import { createLogger, getTimeProvider } from '../../../core/index.js';
 import type { SelfDevWorkflowDependencies } from '../interfaces.js';
 
 const logger = createLogger({ component: 'self-dev-auto-merge' });
@@ -29,10 +29,10 @@ export async function waitForChecks(
     return { ready: false, reason: 'GitHub client not available' };
   }
 
-  const startTime = Date.now();
+  const startTime = getTimeProvider().now();
   let lastStatus: { checksStatus: string; reviewStatus: string } | undefined;
 
-  while (Date.now() - startTime < timeoutMs) {
+  while (getTimeProvider().now() - startTime < timeoutMs) {
     const status = await deps.githubClient.getPRStatus(prNumber);
     lastStatus = status;
 

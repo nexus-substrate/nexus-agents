@@ -9,7 +9,7 @@
  */
 
 import type { Result } from '../core/index.js';
-import { err, ok } from '../core/index.js';
+import { err, ok, getTimeProvider } from '../core/index.js';
 import type { CliName, CliErrorCode } from './types.js';
 import {
   CircuitError,
@@ -65,7 +65,7 @@ export class CliCircuitBreaker implements ICircuitBreaker {
     private readonly cliName: CliName,
     private readonly config: CircuitBreakerConfig = DEFAULT_CIRCUIT_BREAKER_CONFIG
   ) {
-    this.lastStateChange = Date.now();
+    this.lastStateChange = getTimeProvider().now();
   }
 
   /**
@@ -115,7 +115,7 @@ export class CliCircuitBreaker implements ICircuitBreaker {
     this.successCount = 0;
     this.lastFailureTime = null;
     this.halfOpenRequests = 0;
-    this.lastStateChange = Date.now();
+    this.lastStateChange = getTimeProvider().now();
 
     if (previousState !== 'closed') {
       this.emitStateChange(previousState, 'closed', 'Manual reset');
@@ -177,7 +177,7 @@ export class CliCircuitBreaker implements ICircuitBreaker {
 
   private checkStateTransition(): void {
     if (this.state === 'open' && this.lastFailureTime !== null) {
-      const elapsed = Date.now() - this.lastFailureTime;
+      const elapsed = getTimeProvider().now() - this.lastFailureTime;
       if (elapsed >= this.config.resetTimeoutMs) {
         this.transitionTo('half-open', 'Reset timeout elapsed');
       }
@@ -198,7 +198,7 @@ export class CliCircuitBreaker implements ICircuitBreaker {
 
   private onFailure(category: FailureCategory): void {
     this.failureCount++;
-    this.lastFailureTime = Date.now();
+    this.lastFailureTime = getTimeProvider().now();
 
     if (this.state === 'closed' && this.failureCount >= this.config.failureThreshold) {
       const reason = `Failure threshold (${String(this.config.failureThreshold)}) exceeded`;
@@ -211,7 +211,7 @@ export class CliCircuitBreaker implements ICircuitBreaker {
   private transitionTo(newState: CircuitState, reason: string): void {
     const previousState = this.state;
     this.state = newState;
-    this.lastStateChange = Date.now();
+    this.lastStateChange = getTimeProvider().now();
 
     if (newState === 'closed') {
       this.failureCount = 0;

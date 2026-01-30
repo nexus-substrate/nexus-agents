@@ -16,7 +16,7 @@
  */
 
 import type { Result } from '../core/index.js';
-import { ok, err } from '../core/index.js';
+import { ok, err, getTimeProvider } from '../core/index.js';
 import { createLogger } from '../core/logger.js';
 import type { ILogger } from '../core/logger.js';
 import type { CliTask, CliResponse, CliError, CliName, ICliAdapter } from './types.js';
@@ -68,7 +68,7 @@ export class AgreementCascadeRouter implements IAgreementCascadeRouter {
     task: CliTask,
     stages: readonly CascadeStage[]
   ): Promise<Result<CascadeResult, CliError>> {
-    const startTime = Date.now();
+    const startTime = getTimeProvider().now();
     const stageHistory: StageResult[] = [];
     let totalCostWeight = 0;
     const maxCostWeight = stages.reduce((sum, s) => sum + s.costWeight, 0);
@@ -126,7 +126,7 @@ export class AgreementCascadeRouter implements IAgreementCascadeRouter {
       stagesExecuted: stageIndex + 1,
       consensusReached: true,
       contributingModels: Array.from(stageResult.responses.keys()),
-      totalDurationMs: Date.now() - startTime,
+      totalDurationMs: getTimeProvider().now() - startTime,
       estimatedCostSavings: costSavings,
       stageHistory,
     });
@@ -160,7 +160,7 @@ export class AgreementCascadeRouter implements IAgreementCascadeRouter {
       stagesExecuted: stageHistory.length,
       consensusReached: false,
       contributingModels: [bestResponse.model],
-      totalDurationMs: Date.now() - startTime,
+      totalDurationMs: getTimeProvider().now() - startTime,
       estimatedCostSavings: 0,
       stageHistory,
     });
@@ -170,7 +170,7 @@ export class AgreementCascadeRouter implements IAgreementCascadeRouter {
    * Execute a single cascade stage with multiple models.
    */
   private async executeStage(task: CliTask, stage: CascadeStage): Promise<StageResult> {
-    const startTime = Date.now();
+    const startTime = getTimeProvider().now();
     const responses = new Map<CliName, CliResponse>();
     const failures = new Map<CliName, string>();
 
@@ -206,7 +206,7 @@ export class AgreementCascadeRouter implements IAgreementCascadeRouter {
       hasAgreement: agreement.hasAgreement,
       consensusResponse: agreement.consensusResponse,
       agreementScore: agreement.score,
-      durationMs: Date.now() - startTime,
+      durationMs: getTimeProvider().now() - startTime,
     };
   }
 

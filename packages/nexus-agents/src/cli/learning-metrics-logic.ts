@@ -7,6 +7,7 @@
  * (Source: Issue #284 - Learning metrics dashboard)
  */
 
+import { getTimeProvider } from '../core/index.js';
 import type { LinUCBBandit } from '../cli-adapters/linucb-bandit.js';
 import type { RoutingMetricsCollector } from '../observability/routing-metrics.js';
 import type { FeedbackIntegration } from '../learning/feedback-integration.js';
@@ -39,7 +40,7 @@ export function gatherLearningMetrics(
   feedbackIntegration: FeedbackIntegration | undefined,
   options: LearningMetricsOptions
 ): LearningMetricsResult {
-  const timestamp = new Date().toISOString();
+  const timestamp = new Date(getTimeProvider().now()).toISOString();
   const periodHours = options.period;
 
   // Gather bandit statistics

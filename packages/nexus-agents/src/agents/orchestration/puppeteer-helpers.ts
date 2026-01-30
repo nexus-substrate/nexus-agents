@@ -9,6 +9,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { Task, TaskResult } from '../../core/index.js';
+import { getTimeProvider } from '../../core/index.js';
 import type {
   PuppeteerState,
   PuppeteerStepResult,
@@ -227,7 +228,7 @@ export function buildPuppeteerResult(
   startTime: number
 ): PuppeteerResult {
   const success = terminationReason === 'task_complete';
-  const totalDurationMs = Date.now() - startTime;
+  const totalDurationMs = getTimeProvider().now() - startTime;
 
   // Get final output
   const lastStep = trajectory[trajectory.length - 1];

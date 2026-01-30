@@ -8,6 +8,7 @@
 
 import type { Result } from '../core/result.js';
 import { ok, err } from '../core/result.js';
+import { getTimeProvider } from '../core/index.js';
 import type { ILogger } from '../core/logger.js';
 import { MemoryError } from './memory-backend-types.js';
 import type { Belief, BeliefUpdate, HindsightRecord } from './belief-types.js';
@@ -79,7 +80,7 @@ export function reviseBeliefInternal(
         err(new MemoryError('Cannot revise superseded belief', { context: { beliefId } }))
       );
     }
-    const now = new Date();
+    const now = new Date(getTimeProvider().now());
     const revised: Belief = {
       ...existing,
       ...updates,
@@ -116,7 +117,7 @@ export function applyHindsightInternal(
 ): Promise<Result<readonly Belief[], MemoryError>> {
   try {
     const correctedBeliefs: Belief[] = [];
-    const now = new Date();
+    const now = new Date(getTimeProvider().now());
 
     // Store the hindsight record
     const taskRecords = stores.hindsightRecords.get(record.taskId) ?? [];
@@ -184,7 +185,7 @@ export function adjustConfidenceInternal(
       );
     }
 
-    const now = new Date();
+    const now = new Date(getTimeProvider().now());
     const newConfidence =
       direction === 'reinforce'
         ? strengthenConfidence(existing.confidence)

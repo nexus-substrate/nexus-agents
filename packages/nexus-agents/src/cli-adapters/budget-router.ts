@@ -10,6 +10,7 @@
  */
 
 import type { Result } from '../core/index.js';
+import { getTimeProvider } from '../core/index.js';
 import { createLogger } from '../core/logger.js';
 import type {
   IBudgetRouter,
@@ -69,7 +70,7 @@ export class BudgetRouter implements IBudgetRouter {
   constructor(adapters: Map<CliName, ICliAdapter>, options?: BudgetRouterOptions) {
     this.adapters = adapters;
     this.options = { ...DEFAULT_OPTIONS, ...options };
-    this.sessionStartedAt = new Date();
+    this.sessionStartedAt = new Date(getTimeProvider().now());
 
     // Set up auto-reset timer if configured
     const resetInterval = this.options.sessionBudget.resetIntervalMs ?? 3600000;
@@ -137,7 +138,7 @@ export class BudgetRouter implements IBudgetRouter {
   resetBudget(): void {
     this.tokensUsed = 0;
     this.costSpentUsd = 0;
-    this.sessionStartedAt = new Date();
+    this.sessionStartedAt = new Date(getTimeProvider().now());
     logger.info('Budget reset');
 
     // Reschedule reset timer
@@ -271,7 +272,7 @@ export class BudgetRouter implements IBudgetRouter {
     estimatedTokens: number,
     estimatedCostUsd: number
   ): Promise<Result<CliResponse & { budgetAfter: SessionBudget }, CliError>> {
-    const startTime = Date.now();
+    const startTime = getTimeProvider().now();
     const result = await adapter.execute(task);
 
     if (!result.ok) {
@@ -284,7 +285,7 @@ export class BudgetRouter implements IBudgetRouter {
     this.updateBudget({ tokens: actualTokens, costUsd: actualCostUsd });
 
     const budgetAfter = this.getSessionBudget();
-    const durationMs = Date.now() - startTime;
+    const durationMs = getTimeProvider().now() - startTime;
 
     logger.info('Task executed with budget tracking', {
       adapter: adapter.name,

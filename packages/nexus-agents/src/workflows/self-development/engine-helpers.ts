@@ -6,6 +6,7 @@
  * @module workflows/self-development/engine-helpers
  */
 
+import { getTimeProvider } from '../../core/index.js';
 import type {
   SelfDevWorkflowState,
   SelfDevWorkflowResult,
@@ -72,14 +73,14 @@ export function updatePhase(
   emitEvent(container.listeners, {
     type: 'phase_completed',
     phase: prevPhase,
-    timestamp: new Date().toISOString(),
+    timestamp: new Date(getTimeProvider().now()).toISOString(),
   });
   const updated: SelfDevWorkflowState = { ...state, currentPhase: phase };
   container.states.set(executionId, updated);
   emitEvent(container.listeners, {
     type: 'phase_started',
     phase,
-    timestamp: new Date().toISOString(),
+    timestamp: new Date(getTimeProvider().now()).toISOString(),
   });
 
   // Record phase transition in audit trail
@@ -112,7 +113,7 @@ export function createCheckpoint(
 
   const checkpoint: WorkflowCheckpoint = {
     phase,
-    timestamp: new Date().toISOString(),
+    timestamp: new Date(getTimeProvider().now()).toISOString(),
     inputs: {},
     outputs,
     status: 'completed',
@@ -139,7 +140,7 @@ export function completeWorkflow(
   notifications?: NotificationDeps
 ): void {
   const state = container.states.get(executionId);
-  const durationMs = Date.now() - startTime;
+  const durationMs = getTimeProvider().now() - startTime;
   const checkpointCount = state?.checkpoints.filter((c) => c.phase === 'review').length ?? 0;
   const metrics = calculateMetrics(outputs, durationMs, checkpointCount);
 
@@ -155,7 +156,7 @@ export function completeWorkflow(
   updateStatus(container.states, executionId, 'completed');
   emitEvent(container.listeners, {
     type: 'workflow_completed',
-    timestamp: new Date().toISOString(),
+    timestamp: new Date(getTimeProvider().now()).toISOString(),
   });
 
   void container.auditTrails.get(executionId)?.workflowCompleted(true, durationMs);
@@ -176,7 +177,7 @@ export function failWorkflow(
   const errorMessage = error instanceof Error ? error.message : String(error);
   const currentPhase = getPhase(container.states, executionId) ?? 'analyze';
   const state = container.states.get(executionId);
-  const durationMs = Date.now() - startTime;
+  const durationMs = getTimeProvider().now() - startTime;
   const checkpointCount = state?.checkpoints.filter((c) => c.phase === 'review').length ?? 0;
   const metrics = calculateMetrics({}, durationMs, checkpointCount);
 
@@ -195,7 +196,7 @@ export function failWorkflow(
     type: 'workflow_failed',
     phase: currentPhase,
     data: { error: errorMessage },
-    timestamp: new Date().toISOString(),
+    timestamp: new Date(getTimeProvider().now()).toISOString(),
   });
 
   const audit = container.auditTrails.get(executionId);

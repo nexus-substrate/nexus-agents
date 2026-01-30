@@ -10,7 +10,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { Result } from '../../core/index.js';
-import { ok, err, createLogger } from '../../core/index.js';
+import { ok, err, createLogger, getTimeProvider } from '../../core/index.js';
 
 const execFileAsync = promisify(execFile);
 const logger = createLogger({ component: 'shell-executor' });
@@ -126,7 +126,7 @@ export async function executeShellCommand(
   args: readonly string[],
   options?: ShellOptions
 ): Promise<Result<ShellResult, ShellError>> {
-  const startTime = Date.now();
+  const startTime = getTimeProvider().now();
   const cwd = options?.cwd ?? process.cwd();
   const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
@@ -140,11 +140,23 @@ export async function executeShellCommand(
       env: { ...process.env, ...options?.env },
     });
 
-    const result = buildSuccessResult(command, args, stdout, stderr, Date.now() - startTime);
+    const result = buildSuccessResult(
+      command,
+      args,
+      stdout,
+      stderr,
+      getTimeProvider().now() - startTime
+    );
     logger.debug('Shell command succeeded', { command, durationMs: result.durationMs });
     return ok(result);
   } catch (error) {
-    return handleExecError(command, args, error as ExecError, Date.now() - startTime, timeoutMs);
+    return handleExecError(
+      command,
+      args,
+      error as ExecError,
+      getTimeProvider().now() - startTime,
+      timeoutMs
+    );
   }
 }
 

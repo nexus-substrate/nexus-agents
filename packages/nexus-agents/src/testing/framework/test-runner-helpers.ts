@@ -7,6 +7,7 @@
  */
 
 import type { ICliAdapter, CliName } from '../../cli-adapters/types.js';
+import { getTimeProvider } from '../../core/index.js';
 import type { ITaskRouter } from '../../cli-adapters/router.js';
 import type {
   EvaluationTask,
@@ -177,7 +178,7 @@ export interface ExecuteTaskOptions {
 export async function executeTaskCore(options: ExecuteTaskOptions): Promise<TaskTestResult> {
   const { task, cli, adapters, router, rubricScorer, routingScorer } = options;
 
-  const startTime = Date.now();
+  const startTime = getTimeProvider().now();
 
   // Build resolveCliOptions conditionally for exactOptionalPropertyTypes
   const resolveOpts: ResolveCliOptions = { task, adapters };
@@ -197,7 +198,7 @@ export async function executeTaskCore(options: ExecuteTaskOptions): Promise<Task
 
   const cliTask = createCliTask(task);
   const result = await adapter.execute(cliTask);
-  const durationMs = Date.now() - startTime;
+  const durationMs = getTimeProvider().now() - startTime;
 
   if (!result.ok) {
     return buildFailureResult({

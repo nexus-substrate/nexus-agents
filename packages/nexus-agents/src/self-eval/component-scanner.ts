@@ -11,7 +11,7 @@
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { join, basename, extname, relative } from 'node:path';
 import type { ILogger } from '../core/index.js';
-import { createLogger } from '../core/index.js';
+import { createLogger, getTimeProvider } from '../core/index.js';
 
 // ============================================================================
 // Types
@@ -126,7 +126,7 @@ export class ComponentScanner {
    * Scan a directory and return component inventory.
    */
   async scan(directory: string): Promise<ComponentInventory> {
-    const startTime = Date.now();
+    const startTime = getTimeProvider().now();
     this.log.info('Starting component scan', { directory });
 
     const files = await this.findFiles(directory);
@@ -141,9 +141,9 @@ export class ComponentScanner {
 
     const inventory: ComponentInventory = {
       components,
-      scanTime: new Date(),
+      scanTime: new Date(getTimeProvider().now()),
       directory,
-      durationMs: Date.now() - startTime,
+      durationMs: getTimeProvider().now() - startTime,
       totalFiles: components.length,
       totalLines: components.reduce((sum, c) => sum + c.lines, 0),
     };

@@ -13,7 +13,7 @@ import * as os from 'node:os';
 import type { Result } from '../core/result.js';
 import { ok, err } from '../core/result.js';
 import type { ILogger } from '../core/logger.js';
-import { createLogger } from '../core/logger.js';
+import { createLogger, getTimeProvider } from '../core/index.js';
 import {
   type SessionSummary,
   type SessionWithTasks,
@@ -282,7 +282,7 @@ export async function sessionPrune(
   if (!storageResult.ok) return storageResult;
   const storage = storageResult.value;
   try {
-    const cutoff = new Date(Date.now() - options.days * 24 * 60 * 60 * 1000);
+    const cutoff = new Date(getTimeProvider().now() - options.days * 24 * 60 * 60 * 1000);
     if (options.dryRun === true) {
       const listResult = await storage.listSessions(1000);
       if (!listResult.ok) return listResult;

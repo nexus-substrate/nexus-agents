@@ -15,6 +15,7 @@ import type {
   TrinityPhaseCompletedEvent,
 } from './event-bus-types.js';
 import { createEvent } from './event-bus.js';
+import { getTimeProvider } from '../../core/index.js';
 import type { TrinityConfig, TrinityResult } from './trinity-types.js';
 
 /** Configuration for emitting protocol started event. */
@@ -82,7 +83,7 @@ export function emitTrinityCompleted(eventBus: IEventBus, params: TrinityComplet
     {
       success: params.result.success,
       iterations: params.result.iterations,
-      durationMs: Date.now() - params.startTime,
+      durationMs: getTimeProvider().now() - params.startTime,
     },
     {
       ...(params.sessionId !== undefined && { sessionId: params.sessionId }),

@@ -7,7 +7,7 @@
  */
 
 import type { IAgent, Task } from '../../../core/index.js';
-import { createLogger } from '../../../core/index.js';
+import { createLogger, getTimeProvider } from '../../../core/index.js';
 import type { SelfDevWorkflowDependencies } from '../interfaces.js';
 import type { SelfDevWorkflowState, PlanOutput, RefineOutput } from '../types.js';
 import { SELF_DEV_PERSONAS } from '../types.js';
@@ -60,7 +60,7 @@ function extractSuggestionsFromContribution(contribution: string): string[] {
  */
 export function buildRefinementTask(plan: PlanOutput): Task {
   return {
-    id: `refine-${String(Date.now())}`,
+    id: `refine-${String(getTimeProvider().now())}`,
     description: `Critique and refine the implementation plan:\n\n${plan.trinityResult.finalOutput}`,
     context: {
       metadata: {
@@ -213,14 +213,14 @@ function buildFallbackRefineOutput(plan: PlanOutput, startTime: number): RefineO
       totalIterations: 1,
       converged: !hasSignificantIssues,
       terminationReason: hasSignificantIssues ? 'max_iterations' : 'converged',
-      totalDurationMs: Date.now() - startTime,
+      totalDurationMs: getTimeProvider().now() - startTime,
     },
     refinedPlan: plan.plan,
     critiques,
     iterations: 1,
     converged: !hasSignificantIssues,
     finalSeverity: avgSeverity,
-    durationMs: Date.now() - startTime,
+    durationMs: getTimeProvider().now() - startTime,
   };
 }
 
@@ -255,14 +255,14 @@ function buildRefineOutputFromReflexion(
       totalIterations: reflexionResult.expertResults.length,
       converged: reflexionResult.success,
       terminationReason: reflexionResult.success ? 'converged' : 'max_iterations',
-      totalDurationMs: Date.now() - startTime,
+      totalDurationMs: getTimeProvider().now() - startTime,
     },
     refinedPlan: plan.plan,
     critiques,
     iterations: reflexionResult.expertResults.length,
     converged: reflexionResult.success,
     finalSeverity: avgSeverity,
-    durationMs: Date.now() - startTime,
+    durationMs: getTimeProvider().now() - startTime,
   };
 }
 
@@ -284,7 +284,7 @@ async function executeReflexionProtocol(
 
   const result = await deps.reflexion.execute(
     {
-      sessionId: `refine-${String(Date.now())}`,
+      sessionId: `refine-${String(getTimeProvider().now())}`,
       pattern: 'reflexion',
       experts: expertIds,
       task: refinementTask,
@@ -318,7 +318,7 @@ export async function executeRefine(
   state: SelfDevWorkflowState,
   plan: PlanOutput
 ): Promise<RefineOutput> {
-  const startTime = Date.now();
+  const startTime = getTimeProvider().now();
   const phaseConfig = state.config.phases?.refine;
   const maxIterations = phaseConfig?.maxIterations ?? 3;
   const allowHeuristicFallback = phaseConfig?.allowHeuristicFallback === true;

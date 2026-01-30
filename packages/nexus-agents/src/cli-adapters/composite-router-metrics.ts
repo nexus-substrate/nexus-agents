@@ -9,6 +9,7 @@
  */
 
 import type { ILogger } from '../core/index.js';
+import { getTimeProvider, getRandomProvider } from '../core/index.js';
 import type { CliName } from './types.js';
 import type {
   CompositeRoutingDecision,
@@ -50,7 +51,7 @@ export function recordDecisionToMetrics(
   if (deps.metricsCollector === undefined) return;
 
   deps.metricsCollector.recordDecision({
-    timestamp: new Date().toISOString(),
+    timestamp: new Date(getTimeProvider().now()).toISOString(),
     traceId,
     selectedModel: decision.cliName,
     alternativeModels: decision.alternatives,
@@ -80,7 +81,7 @@ export function recordOutcomeToMetrics(
 
   // Build record inline with conditional spread for readonly interface
   deps.metricsCollector.recordOutcome({
-    timestamp: new Date().toISOString(),
+    timestamp: new Date(getTimeProvider().now()).toISOString(),
     traceId: opts.traceId,
     model: opts.cliName,
     success: opts.success,
@@ -103,5 +104,5 @@ export function recordOutcomeToMetrics(
  * @returns A unique trace ID string
  */
 export function generateTraceId(): string {
-  return `rt-${String(Date.now())}-${Math.random().toString(36).slice(2, 8)}`;
+  return `rt-${String(getTimeProvider().now())}-${getRandomProvider().random().toString(36).slice(2, 8)}`;
 }

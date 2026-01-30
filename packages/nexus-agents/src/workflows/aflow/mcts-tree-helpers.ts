@@ -9,6 +9,7 @@
  */
 
 import type { WorkflowDefinition } from '../../core/index.js';
+import { getTimeProvider } from '../../core/index.js';
 import type { MCTSNode, WorkflowAction, MCTSStats } from './aflow-types.js';
 
 /**
@@ -126,6 +127,6 @@ export function createMutableNode(options: CreateNodeOptions): MutableNode {
     avgValue: 0,
     depth: options.depth,
     isTerminal: options.isTerminal,
-    createdAt: Date.now(),
+    createdAt: getTimeProvider().now(),
   };
 }

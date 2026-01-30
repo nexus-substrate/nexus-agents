@@ -5,7 +5,7 @@
  * workflow-engine.ts to keep files under 400 lines.
  */
 
-import { ok, err } from '../core/index.js';
+import { ok, err, getTimeProvider } from '../core/index.js';
 import type { Result, ILogger, StepResult } from '../core/index.js';
 import type { WorkflowDefinition } from '../core/index.js';
 import { WorkflowError } from '../core/index.js';
@@ -99,7 +99,7 @@ export function cleanupOldExecutions(executions: Map<string, ActiveExecution>): 
 export function initializeExecution(params: InitExecutionParams): InitExecutionResult {
   const { workflow, inputs, config, logger } = params;
   const executionId = uuidv4();
-  const startTime = Date.now();
+  const startTime = getTimeProvider().now();
 
   // Create context manager if configured
   const contextManager = createContextManagerForWorkflow(config, workflow, logger);

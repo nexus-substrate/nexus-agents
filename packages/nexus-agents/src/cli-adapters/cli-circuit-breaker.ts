@@ -8,7 +8,7 @@
  */
 
 import type { Result, ILogger } from '../core/index.js';
-import { ok, err, createLogger } from '../core/index.js';
+import { ok, err, createLogger, getTimeProvider } from '../core/index.js';
 import type { ICliAdapter, CliName, CliTask, CliResponse, CliError } from './types.js';
 import {
   CircuitBreakerRegistry,
@@ -150,7 +150,12 @@ export class CliCircuitBreakerIntegration implements ICliCircuitBreakerIntegrati
         lastFailureTime: snapshot.lastFailureTime,
       });
     }
-    return { clis, systemHealthy: healthyCount > 0, healthyCount, timestamp: Date.now() };
+    return {
+      clis,
+      systemHealthy: healthyCount > 0,
+      healthyCount,
+      timestamp: getTimeProvider().now(),
+    };
   }
 
   getCircuitSnapshots(): Map<CliName, CircuitBreakerSnapshot> {

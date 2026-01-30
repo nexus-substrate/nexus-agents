@@ -8,6 +8,7 @@
  * (Source: Issue #257 - SWE-Bench Evaluation)
  */
 
+import { getTimeProvider } from '../core/index.js';
 import type { SWEBenchVariant } from './types.js';
 import type {
   InstanceEvaluationResult,
@@ -69,7 +70,7 @@ export const DEFAULT_HARNESS_EXECUTION_CONFIG: HarnessExecutionConfig = {
   predictionsPath: './predictions.jsonl',
   datasetName: 'lite',
   maxWorkers: 8,
-  runId: `run-${String(Date.now())}`,
+  runId: `run-${String(getTimeProvider().now())}`,
   timeoutSeconds: 1800,
   outputDir: './logs/run_evaluation',
   useDocker: true,

@@ -7,6 +7,7 @@
  * (Source: Issue #190)
  */
 
+import { getRandomProvider, getTimeProvider } from '../core/index.js';
 import type {
   ISQLiteDatabase,
   StoredSession,
@@ -137,18 +138,22 @@ export function rowToSessionSummary(row: SessionSummaryRow): SessionSummary {
  * Generate a unique session ID.
  */
 export function generateSessionId(): string {
-  const timestamp = Date.now().toString(36);
-  const random = Math.random().toString(36).substring(2, 8);
-  return `ses_${timestamp}_${random}`;
+  const time = getTimeProvider();
+  const random = getRandomProvider();
+  const timestamp = time.now().toString(36);
+  const randomPart = random.random().toString(36).substring(2, 8);
+  return `ses_${timestamp}_${randomPart}`;
 }
 
 /**
  * Generate a unique task ID.
  */
 export function generateTaskId(): string {
-  const timestamp = Date.now().toString(36);
-  const random = Math.random().toString(36).substring(2, 8);
-  return `tsk_${timestamp}_${random}`;
+  const time = getTimeProvider();
+  const random = getRandomProvider();
+  const timestamp = time.now().toString(36);
+  const randomPart = random.random().toString(36).substring(2, 8);
+  return `tsk_${timestamp}_${randomPart}`;
 }
 
 // ============================================================================
@@ -159,7 +164,7 @@ export function generateTaskId(): string {
  * Get current timestamp in ISO format (ET timezone aware).
  */
 export function getCurrentTimestamp(): string {
-  return new Date().toISOString();
+  return new Date(getTimeProvider().now()).toISOString();
 }
 
 // ============================================================================

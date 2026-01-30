@@ -9,7 +9,7 @@
  */
 
 import type { ILogger } from '../core/index.js';
-import { createLogger } from '../core/index.js';
+import { createLogger, getTimeProvider } from '../core/index.js';
 import {
   DEFAULT_BUDGET_CIRCUIT_CONFIG,
   type BudgetCircuitState,
@@ -71,7 +71,7 @@ export class BudgetCircuitBreaker implements IBudgetCircuitBreaker {
     logger?: ILogger
   ) {
     this.config = { ...DEFAULT_BUDGET_CIRCUIT_CONFIG, ...config };
-    this.lastStateChange = Date.now();
+    this.lastStateChange = getTimeProvider().now();
     this.logger = logger ?? createLogger({ component: 'budget-circuit-breaker' });
   }
 
@@ -156,7 +156,7 @@ export class BudgetCircuitBreaker implements IBudgetCircuitBreaker {
     this.violationCount = 0;
     this.recoveryProbeCount = 0;
     this.currentTokens = 0;
-    this.lastStateChange = Date.now();
+    this.lastStateChange = getTimeProvider().now();
     this.lastUsage = null;
 
     if (previousState !== 'closed') {
@@ -186,7 +186,7 @@ export class BudgetCircuitBreaker implements IBudgetCircuitBreaker {
   private checkCooldown(): void {
     if (this.state !== 'open') return;
 
-    const elapsed = Date.now() - this.lastStateChange;
+    const elapsed = getTimeProvider().now() - this.lastStateChange;
     if (elapsed >= this.config.cooldownMs) {
       this.transitionTo('half-open', 'Cooldown elapsed');
     }
@@ -195,7 +195,7 @@ export class BudgetCircuitBreaker implements IBudgetCircuitBreaker {
   private transitionTo(newState: BudgetCircuitState, reason: string): void {
     const previousState = this.state;
     this.state = newState;
-    this.lastStateChange = Date.now();
+    this.lastStateChange = getTimeProvider().now();
 
     if (newState === 'closed') {
       this.violationCount = 0;
@@ -294,7 +294,7 @@ export class BudgetCircuitBreaker implements IBudgetCircuitBreaker {
       maxTokens: this.maxTokens,
       usagePercent,
       availableTokens: Math.max(0, this.maxTokens - this.currentTokens),
-      timestamp: Date.now(),
+      timestamp: getTimeProvider().now(),
     };
   }
 

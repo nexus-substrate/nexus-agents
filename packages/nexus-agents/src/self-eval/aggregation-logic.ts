@@ -10,7 +10,7 @@
 
 import type { EvaluationResult, Recommendation, EvaluatorRole } from './evaluation-agents.js';
 import type { ILogger } from '../core/index.js';
-import { createLogger } from '../core/index.js';
+import { createLogger, getTimeProvider } from '../core/index.js';
 import type {
   ComponentCriticality,
   AuditEntry,
@@ -88,7 +88,7 @@ export class EvaluationAggregator {
       auditTrail,
       evidenceQuality,
       isRecommendation: true,
-      timestamp: new Date(),
+      timestamp: new Date(getTimeProvider().now()),
     };
   }
 
@@ -101,7 +101,7 @@ export class EvaluationAggregator {
     criticality: ComponentCriticality
   ): AuditEntry[] {
     const auditTrail: AuditEntry[] = [];
-    const timestamp = new Date();
+    const timestamp = new Date(getTimeProvider().now());
 
     auditTrail.push({
       timestamp,
@@ -112,7 +112,7 @@ export class EvaluationAggregator {
     });
 
     auditTrail.push({
-      timestamp: new Date(),
+      timestamp: new Date(getTimeProvider().now()),
       agent: 'code-quality' as EvaluatorRole,
       claim: `Component classified as ${criticality}`,
       evidence: componentPath,
@@ -163,7 +163,7 @@ export class EvaluationAggregator {
     evidenceQuality: number
   ): void {
     auditTrail.push({
-      timestamp: new Date(),
+      timestamp: new Date(getTimeProvider().now()),
       agent: 'code-quality' as EvaluatorRole,
       claim: `Final recommendation: ${recommendation}`,
       evidence: `Confidence: ${confidence.toFixed(2)}, Evidence quality: ${evidenceQuality.toFixed(2)}`,

@@ -11,7 +11,7 @@
 import type { Result } from '../../core/result.js';
 import { ok, err } from '../../core/result.js';
 import type { WorkflowDefinition } from '../../core/index.js';
-import { createLogger } from '../../core/logger.js';
+import { createLogger, getTimeProvider } from '../../core/index.js';
 import type {
   AFlowConfig,
   AFlowResult,
@@ -66,7 +66,7 @@ export class AFlowGenerator {
     await Promise.resolve();
 
     this.cancelled = false;
-    const startTime = Date.now();
+    const startTime = getTimeProvider().now();
     const searchHistory: SearchHistoryEntry[] = [];
 
     // Create initial workflow
@@ -112,8 +112,9 @@ export class AFlowGenerator {
     try {
       while (iteration < this.config.maxIterations && !this.cancelled) {
         // Check timeout
-        if (Date.now() - startTime > this.config.evaluationTimeoutMs) {
-          logger.warn('AFlow search timeout', { iteration, elapsed: Date.now() - startTime });
+        const time = getTimeProvider();
+        if (time.now() - startTime > this.config.evaluationTimeoutMs) {
+          logger.warn('AFlow search timeout', { iteration, elapsed: time.now() - startTime });
           break;
         }
 
@@ -185,7 +186,7 @@ export class AFlowGenerator {
       totalIterations: iteration,
       nodesExplored: this.tree.size,
       simulationsRun,
-      durationMs: Date.now() - startTime,
+      durationMs: getTimeProvider().now() - startTime,
       earlyTerminated: bestScore >= this.config.earlyTerminationThreshold,
       searchHistory,
     };
@@ -242,7 +243,7 @@ export class AFlowGenerator {
         action: expandedNode.action,
         score: avgValue,
         childCount: this.tree.getChildren(expandedNode.id).length,
-        timestamp: Date.now(),
+        timestamp: getTimeProvider().now(),
       });
     }
 
