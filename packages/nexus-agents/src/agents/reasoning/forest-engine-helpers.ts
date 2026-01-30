@@ -3,7 +3,7 @@
  * @module agents/reasoning/forest-engine-helpers
  */
 
-import type { ReasoningNode, NodeId, ReasoningStepType } from './forest-node-types.js';
+import type { ReasoningNode, NodeId, ReasoningStepType, TreeId } from './forest-node-types.js';
 import type { ReasoningTree, PathScore, PathScoreBreakdown } from './forest-tree-types.js';
 import type { ForestStatistics, ForestState } from './forest-state-types.js';
 import type {
@@ -12,7 +12,11 @@ import type {
   TerminationReason,
   ExplorationEvent,
 } from './forest-result-types.js';
-import type { ForestId, TreeId } from './forest-node-types.js';
+import type { ForestId } from './forest-node-types.js';
+import type { ForestConfig } from './forest-config-types.js';
+import { DEFAULT_FOREST_CONFIG, ForestConfigSchema } from './forest-config-types.js';
+import { generateNodeId } from './forest-engine-ids.js';
+import { getTimeProvider } from '../../core/index.js';
 
 /** Parsed hypothesis response. */
 export interface ParsedHypothesis {
@@ -290,4 +294,77 @@ export function buildForestResult(params: BuildResultParams): ForestResult {
     totalTokensUsed: tokensUsed,
     explorationHistory,
   };
+}
+
+/** Parses and validates forest configuration. */
+export function parseForestConfig(inputConfig: Partial<ForestConfig> | undefined): ForestConfig {
+  const result = ForestConfigSchema.safeParse({ ...DEFAULT_FOREST_CONFIG, ...(inputConfig ?? {}) });
+  return result.success ? result.data : DEFAULT_FOREST_CONFIG;
+}
+
+/** Input for building a new reasoning node. */
+export interface BuildNodeInput {
+  parsed: ParsedReasoningStep;
+  parentNode: ReasoningNode;
+  treeId: TreeId;
+  treeNodesSize: number;
+  tokensUsed: number;
+}
+
+/** Builds a new reasoning node from parsed response. */
+export function buildReasoningNode(input: BuildNodeInput): ReasoningNode {
+  const { parsed, parentNode, treeId, treeNodesSize, tokensUsed } = input;
+  const time = getTimeProvider();
+  const now = time.now();
+  const quality = calculateQualityScore(parsed.stepType, parsed.confidence, parentNode.depth);
+  const treeIndexStr = treeId.split('-')[1];
+  const treeIndex = parseInt(treeIndexStr ?? '0', 10);
+  return {
+    id: generateNodeId(treeIndex, treeNodesSize),
+    treeId,
+    parentId: parentNode.id,
+    children: [],
+    depth: parentNode.depth + 1,
+    stepType: parsed.stepType,
+    content: parsed.content,
+    metadata: {
+      tokensUsed,
+      ...(parsed.conclusionContent !== undefined
+        ? { custom: { conclusionContent: parsed.conclusionContent } }
+        : {}),
+    },
+    state: 'active',
+    confidence: parsed.confidence,
+    qualityScore: quality,
+    estimatedValue: parsed.confidence * 0.7 + quality * 0.3,
+    isActive: !parsed.isConclusion,
+    activationScore: parsed.isConclusion ? 0 : parsed.confidence,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+/** Checks if early termination should occur. */
+export function shouldTerminateEarly(config: ForestConfig, score: number): boolean {
+  return config.enableEarlyTermination && score >= config.earlyTerminationThreshold;
+}
+
+/** Exploration iteration result. */
+export interface IterationResult {
+  shouldTerminate: boolean;
+  reason?: TerminationReason;
+  tokensUsed: number;
+}
+
+/** Process termination and early exit check. Returns updated reason if score triggers early termination. */
+export function checkEarlyTermination(
+  config: ForestConfig,
+  res: { score: number } | null,
+  bestScore: number
+): { newBestScore: number; reason: TerminationReason | null } {
+  if (res === null || res.score <= bestScore) return { newBestScore: bestScore, reason: null };
+  const newBest = res.score;
+  if (shouldTerminateEarly(config, newBest))
+    return { newBestScore: newBest, reason: 'solution_found' };
+  return { newBestScore: newBest, reason: null };
 }

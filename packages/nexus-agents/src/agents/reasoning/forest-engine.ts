@@ -13,9 +13,8 @@ import type { CreateForestInput } from './forest-types.js';
 import type { TreeId, ReasoningNode } from './forest-node-types.js';
 import type { ReasoningTree } from './forest-tree-types.js';
 import type { ForestConfig } from './forest-config-types.js';
-import { DEFAULT_FOREST_CONFIG, ForestConfigSchema } from './forest-config-types.js';
 import type { ForestResult, TerminationReason, ExplorationEvent } from './forest-result-types.js';
-import { generateForestId, generateNodeId } from './forest-engine-ids.js';
+import { generateForestId } from './forest-engine-ids.js';
 import { HYPOTHESIS_PROMPT, REASONING_STEP_PROMPT } from './forest-engine-prompts.js';
 import { ForestExecutionError, ForestAdapterUnavailableError } from './forest-engine-errors.js';
 import {
@@ -23,15 +22,18 @@ import {
   parseHypothesisResponse,
   parseReasoningStepResponse,
   buildPathContent,
-  calculateQualityScore,
   buildCrossTreeContext,
   buildForestResult,
+  parseForestConfig,
+  buildReasoningNode,
+  checkEarlyTermination,
   type BuildResultParams,
 } from './forest-engine-helpers.js';
 import {
   createInitialTrees,
   addNodeToTree,
   markNodeCompleted,
+  completeNodeInState,
   type TreeExplorationState,
   type ExplorationStateMap,
 } from './forest-engine-tree.js';
@@ -55,6 +57,16 @@ interface HandleExpansionInput {
   nodeToExpand: ReasoningNode;
 }
 
+/** Input for processStep method. */
+interface ProcessStepInput {
+  trees: Map<TreeId, ReasoningTree>;
+  explState: ExplorationStateMap;
+  problem: string;
+  config: ForestConfig;
+  history: ExplorationEvent[];
+  bestScore: number;
+}
+
 /** Forest-of-Thought reasoning engine. */
 export class ForestEngine {
   private readonly logger: ILogger;
@@ -72,17 +84,13 @@ export class ForestEngine {
     const time = getTimeProvider();
     const startTime = time.now();
     const forestId = generateForestId();
-    const explorationHistory: ExplorationEvent[] = [];
-    const configResult = ForestConfigSchema.safeParse({
-      ...DEFAULT_FOREST_CONFIG,
-      ...(input.config ?? {}),
-    });
-    const config = configResult.success ? configResult.data : DEFAULT_FOREST_CONFIG;
+    const history: ExplorationEvent[] = [];
+    const config = parseForestConfig(input.config);
     this.logger.info('Starting Forest-of-Thought', { forestId, maxTrees: config.maxTrees });
     try {
       const hypotheses = await this.generateHypotheses(input, config);
       const { trees, explorationState } = createInitialTrees(hypotheses, forestId);
-      explorationHistory.push({
+      history.push({
         timestamp: time.now(),
         eventType: 'tree_created',
         details: { treeCount: trees.size },
@@ -92,7 +100,7 @@ export class ForestEngine {
         explorationState,
         input.problem,
         config,
-        explorationHistory
+        history
       );
       const durationMs = time.now() - startTime;
       const params: BuildResultParams = {
@@ -102,7 +110,7 @@ export class ForestEngine {
         terminationReason: result.terminationReason,
         tokensUsed: result.tokensUsed,
         durationMs,
-        explorationHistory,
+        explorationHistory: history,
       };
       const finalResult = buildForestResult(params);
       this.logger.info('Forest completed', {
@@ -165,14 +173,13 @@ export class ForestEngine {
     const { expansion, tree, state, explorationState, trees, history, nodeToExpand } = input;
     if (expansion.node === null) return null;
     const time = getTimeProvider();
-    const updatedTree = addNodeToTree(tree, expansion.node, nodeToExpand.id);
-    trees.set(tree.id, updatedTree);
-    const newActiveIds = expansion.node.isActive
+    trees.set(tree.id, addNodeToTree(tree, expansion.node, nodeToExpand.id));
+    const newActive = expansion.node.isActive
       ? [...state.activeNodeIds, expansion.node.id]
       : state.activeNodeIds;
     explorationState.set(tree.id, {
       ...state,
-      activeNodeIds: newActiveIds,
+      activeNodeIds: newActive,
       currentDepth: Math.max(state.currentDepth, expansion.node.depth),
     });
     history.push({
@@ -182,23 +189,54 @@ export class ForestEngine {
       nodeId: expansion.node.id,
       details: { stepType: expansion.node.stepType },
     });
-    if (expansion.node.stepType === 'conclusion') {
-      const score = expansion.node.qualityScore * expansion.node.confidence;
-      history.push({
-        timestamp: time.now(),
-        eventType: 'conclusion_reached',
-        treeId: tree.id,
-        nodeId: expansion.node.id,
-        details: { score },
-      });
-      return { score };
-    }
-    return null;
+    if (expansion.node.stepType !== 'conclusion') return null;
+    const score = expansion.node.qualityScore * expansion.node.confidence;
+    history.push({
+      timestamp: time.now(),
+      eventType: 'conclusion_reached',
+      treeId: tree.id,
+      nodeId: expansion.node.id,
+      details: { score },
+    });
+    return { score };
+  }
+
+  /** Process a single iteration step. Returns tokens used and optional termination reason. */
+  private async processStep(
+    input: ProcessStepInput
+  ): Promise<{ tokens: number; done?: TerminationReason; newBest: number } | null> {
+    const { trees, explState, problem, config, history, bestScore } = input;
+    const node = this.getActiveNodes(trees, explState, config)[0];
+    if (node === undefined) return null;
+    const tree = trees.get(node.treeId),
+      state = explState.get(node.treeId);
+    if (tree === undefined || state === undefined) return { tokens: 0, newBest: bestScore };
+    const exp = await this.expandNode(
+      node,
+      tree,
+      problem,
+      config,
+      buildCrossTreeContext(trees, node.treeId)
+    );
+    const res = this.handleExpansion({
+      expansion: exp,
+      tree,
+      state,
+      explorationState: explState,
+      trees,
+      history,
+      nodeToExpand: node,
+    });
+    const chk = checkEarlyTermination(config, res, bestScore);
+    trees.set(tree.id, markNodeCompleted(tree, node.id));
+    explState.set(tree.id, completeNodeInState(state, node.id));
+    const base = { tokens: exp.tokensUsed, newBest: chk.newBestScore };
+    return chk.reason !== null ? { ...base, done: chk.reason } : base;
   }
 
   private async exploreForest(
     trees: Map<TreeId, ReasoningTree>,
-    explorationState: ExplorationStateMap,
+    explState: ExplorationStateMap,
     problem: string,
     config: ForestConfig,
     history: ExplorationEvent[]
@@ -207,55 +245,31 @@ export class ForestEngine {
     terminationReason: TerminationReason;
     tokensUsed: number;
   }> {
-    const time = getTimeProvider();
-    const startTime = time.now();
+    const startTime = getTimeProvider().now();
     let tokensUsed = 0,
       terminationReason: TerminationReason = 'no_progress',
       bestScore = 0;
-    for (let iter = 0; iter < config.maxDepth * config.maxTrees; iter++) {
-      const termCheck = this.checkTermination(startTime, tokensUsed, config);
-      if (termCheck !== null) {
-        terminationReason = termCheck;
+    for (let i = 0; i < config.maxDepth * config.maxTrees; i++) {
+      const term = this.checkTermination(startTime, tokensUsed, config);
+      if (term !== null) {
+        terminationReason = term;
         break;
       }
-      const nodeToExpand = this.getActiveNodes(trees, explorationState, config)[0];
-      if (nodeToExpand === undefined) break;
-      const tree = trees.get(nodeToExpand.treeId);
-      const state = explorationState.get(nodeToExpand.treeId);
-      if (tree === undefined || state === undefined) continue;
-      const expansion = await this.expandNode(
-        nodeToExpand,
-        tree,
+      const step = await this.processStep({
+        trees,
+        explState,
         problem,
         config,
-        buildCrossTreeContext(trees, nodeToExpand.treeId)
-      );
-      tokensUsed += expansion.tokensUsed;
-      const conclusionResult = this.handleExpansion({
-        expansion,
-        tree,
-        state,
-        explorationState,
-        trees,
         history,
-        nodeToExpand,
+        bestScore,
       });
-      if (conclusionResult !== null && conclusionResult.score > bestScore) {
-        bestScore = conclusionResult.score;
-        if (
-          config.enableEarlyTermination &&
-          conclusionResult.score >= config.earlyTerminationThreshold
-        ) {
-          terminationReason = 'solution_found';
-          break;
-        }
+      if (step === null) break;
+      tokensUsed += step.tokens;
+      bestScore = step.newBest;
+      if (step.done !== undefined) {
+        terminationReason = step.done;
+        break;
       }
-      trees.set(tree.id, markNodeCompleted(tree, nodeToExpand.id));
-      explorationState.set(tree.id, {
-        ...state,
-        activeNodeIds: state.activeNodeIds.filter((id) => id !== nodeToExpand.id),
-        completedNodeIds: [...state.completedNodeIds, nodeToExpand.id],
-      });
     }
     return { trees, terminationReason, tokensUsed };
   }
@@ -303,34 +317,13 @@ export class ForestEngine {
     const tokensUsed = response.value.usage.totalTokens;
     const parsed = parseReasoningStepResponse(extractText(response.value.content));
     if (parsed === null) return { node: null, tokensUsed };
-    const time = getTimeProvider();
-    const now = time.now();
-    const quality = calculateQualityScore(parsed.stepType, parsed.confidence, node.depth);
-    const treeIndexStr = tree.id.split('-')[1];
-    const treeIndex = parseInt(treeIndexStr ?? '0', 10);
-    const newNode: ReasoningNode = {
-      id: generateNodeId(treeIndex, tree.nodes.size),
+    const newNode = buildReasoningNode({
+      parsed,
+      parentNode: node,
       treeId: tree.id,
-      parentId: node.id,
-      children: [],
-      depth: node.depth + 1,
-      stepType: parsed.stepType,
-      content: parsed.content,
-      metadata: {
-        tokensUsed,
-        ...(parsed.conclusionContent !== undefined
-          ? { custom: { conclusionContent: parsed.conclusionContent } }
-          : {}),
-      },
-      state: 'active',
-      confidence: parsed.confidence,
-      qualityScore: quality,
-      estimatedValue: parsed.confidence * 0.7 + quality * 0.3,
-      isActive: !parsed.isConclusion,
-      activationScore: parsed.isConclusion ? 0 : parsed.confidence,
-      createdAt: now,
-      updatedAt: now,
-    };
+      treeNodesSize: tree.nodes.size,
+      tokensUsed,
+    });
     return { node: newNode, tokensUsed };
   }
 }

@@ -161,3 +161,15 @@ export function markNodeCompleted(tree: ReasoningTree, nodeId: NodeId): Reasonin
     updatedAt: time.now(),
   };
 }
+
+/** Updates exploration state after node completion. */
+export function completeNodeInState(
+  state: TreeExplorationState,
+  nodeId: NodeId
+): TreeExplorationState {
+  return {
+    ...state,
+    activeNodeIds: state.activeNodeIds.filter((id) => id !== nodeId),
+    completedNodeIds: [...state.completedNodeIds, nodeId],
+  };
+}
