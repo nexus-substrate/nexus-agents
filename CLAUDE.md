@@ -877,7 +877,30 @@ gh pr view <num>            # View PR
 gh pr checks <num>          # Check CI status
 ```
 
----
+<!-- GOVERNANCE:TOOL_INDEX:START -->
+
+## MCP Tools Reference
+
+| Tool                | Description                                                                                                  |
+| ------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `orchestrate`       | Orchestrate a task by analyzing it, breaking it into subtasks if needed, and coordinating expert agents      |
+| `create_expert`     | Create a specialized expert agent for code, architecture, security, documentation, testing, or devops tasks  |
+| `execute_expert`    | Execute a task using a previously created expert agent.                                                      |
+| `run_workflow`      | run_workflow tool                                                                                            |
+| `consensus_vote`    | Execute multi-model consensus voting on a proposal.                                                          |
+| `delegate_to_model` | Route a task to the optimal model based on capability matching. Returns model recommendation with reasoning. |
+| `list_experts`      | List available expert types that can be created with create_expert.                                          |
+| `list_workflows`    | List available workflow templates that can be executed with run_workflow.                                    |
+
+_Auto-generated from source. 8 tools registered._
+
+<!-- GOVERNANCE:TOOL_INDEX:END -->
+
+<!-- GOVERNANCE:VERSION:START -->
+
+_Governance Version: 2026-01-30_
+
+## <!-- GOVERNANCE:VERSION:END -->
 
 _Last updated: 2026-01-25 (ET)_
 _MCP Protocol: 2025-11-25_

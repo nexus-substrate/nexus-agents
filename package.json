@@ -33,6 +33,8 @@
     "lint": "turbo lint",
     "lint:fix": "turbo lint:fix",
     "lint:arch": "npx tsx scripts/arch-lint.ts",
+    "governance:inject": "npx tsx scripts/inject-governance.ts inject",
+    "governance:check": "npx tsx scripts/inject-governance.ts check",
     "typecheck": "turbo typecheck",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
