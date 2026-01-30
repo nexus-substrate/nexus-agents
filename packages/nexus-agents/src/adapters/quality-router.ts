@@ -113,10 +113,14 @@ export interface QualityRoutedResult {
 // Constants
 // ============================================================================
 
+/**
+ * Default cost model. Values aligned with cli-adapters/budget-utils.ts TOKEN_COSTS.
+ * Canonical pricing source: https://openai.com/pricing (verified 2025-01)
+ */
 const DEFAULT_COST_MODEL: CostModel = {
   claude: { inputPerMillion: 3.0, outputPerMillion: 15.0 },
   gemini: { inputPerMillion: 0.075, outputPerMillion: 0.3 },
-  codex: { inputPerMillion: 2.0, outputPerMillion: 8.0 },
+  codex: { inputPerMillion: 2.5, outputPerMillion: 10.0 }, // Fixed: was 2.0/8.0
 } as const;
 
 /** Default latency model (Issue #529) */

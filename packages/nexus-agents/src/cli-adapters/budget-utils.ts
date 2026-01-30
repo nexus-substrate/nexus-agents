@@ -1,6 +1,9 @@
 /**
  * Budget utilities for cost estimation and token counting.
  *
+ * CANONICAL SOURCE for token costs across the codebase.
+ * Other modules should import from here or align their constants.
+ *
  * @module cli-adapters/budget-utils
  * (Source: Issue #102, arXiv:2508.21141 - EMNLP 2025)
  */
