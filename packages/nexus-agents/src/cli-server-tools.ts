@@ -88,10 +88,18 @@ export const REGISTERED_TOOLS = [
 ] as const;
 
 /**
+ * Environment variable to enable mock TechLead orchestration.
+ * NOT RECOMMENDED for production - mock results are heuristic-based.
+ * (Source: Issue #540 - Add environment variable for mock orchestration)
+ */
+const MOCK_ORCHESTRATION_ENV = 'NEXUS_ALLOW_MOCK_ORCHESTRATION';
+
+/**
  * Creates the TechLead instance for orchestration.
  * Uses real TechLead with model adapter when available.
  * (Source: Issue #442 - Wire up real TechLead)
  * (Source: Issue #554 - Require explicit opt-in for mock TechLead)
+ * (Source: Issue #540 - Add environment variable support)
  *
  * @throws {TechLeadUnavailableError} When no adapter and mock not explicitly requested
  */
@@ -104,16 +112,20 @@ function createTechLeadForOrchestration(
     return createTechLead({ adapter: modelAdapter, logger });
   }
 
-  // Issue #554: Do NOT silently enable mock TechLead - require explicit opt-in
-  if (useMockTechLead === true) {
-    logger.warn('Using mock TechLead as explicitly configured (no real adapter available)');
+  // Issue #554/#540: Check both config option and environment variable
+  const envMockEnabled = process.env[MOCK_ORCHESTRATION_ENV] === 'true';
+  const mockEnabled = useMockTechLead === true || envMockEnabled;
+
+  if (mockEnabled) {
+    const source = envMockEnabled ? `${MOCK_ORCHESTRATION_ENV} env var` : 'config';
+    logger.warn(`Using mock TechLead as explicitly configured via ${source} (no real adapter available)`);
     return createMockTechLead();
   }
 
   throw new TechLeadUnavailableError(
     'No model adapter available and mock TechLead not explicitly enabled. ' +
-      'Set useMockTechLead: true in config to use mock mode, or configure an API key ' +
-      '(ANTHROPIC_API_KEY, OPENAI_API_KEY, or GOOGLE_AI_API_KEY).'
+      `Set useMockTechLead: true in config, or ${MOCK_ORCHESTRATION_ENV}=true, ` +
+      'or configure an API key (ANTHROPIC_API_KEY, OPENAI_API_KEY, or GOOGLE_AI_API_KEY).'
   );
 }
 
