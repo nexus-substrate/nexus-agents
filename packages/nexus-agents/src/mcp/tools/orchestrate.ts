@@ -15,7 +15,7 @@ import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
 import { wrapToolWithTimeout } from '../middleware/tool-wrapper.js';
 import type { ExecutionPlan, Expert } from '../../agents/index.js';
-import { TechLead } from '../../agents/index.js';
+import { createTechLeadWithSica } from './orchestrate-sica.js';
 
 /**
  * Input schema for the orchestrate tool.
@@ -213,7 +213,8 @@ async function executeOrchestration(
   deps: OrchestrateDeps
 ): Promise<Result<OrchestrateOutput, OrchestrationError>> {
   const logger = deps.logger ?? createLogger({ tool: 'orchestrate' });
-  const techLead = deps.techLead ?? new TechLead({ logger });
+  // Use SICA-wrapped TechLead when enabled (Issue #558)
+  const techLead = deps.techLead ?? createTechLeadWithSica(logger);
   const taskId = generateTaskId();
   const startTime = Date.now();
 

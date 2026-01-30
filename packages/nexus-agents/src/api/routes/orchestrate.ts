@@ -9,7 +9,7 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import type { ILogger } from '../../core/logger.js';
 import type { TaskConstraints } from '../../core/index.js';
-import { TechLead } from '../../agents/index.js';
+import { createTechLeadWithSica } from '../../mcp/tools/orchestrate-sica.js';
 import {
   OrchestrateRequestSchema,
   type OrchestrateRequest,
@@ -201,7 +201,8 @@ async function handleOrchestrateRequest(
   logger.info('Orchestrate request', { requestId, taskLength: task.length });
 
   try {
-    const techLead = new TechLead({});
+    // Use SICA-wrapped TechLead when enabled (Issue #558)
+    const techLead = createTechLeadWithSica(logger);
 
     // Build task object, only including constraints if provided
     const taskObj = buildTaskObject(requestId, task, context ?? {}, constraints);
