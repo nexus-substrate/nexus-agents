@@ -31,8 +31,9 @@ import {
   type CompositeRouterStats,
   type BuildDecisionParams,
   type PipelineResult,
+  type IRoutingMetricsCollector,
 } from './composite-router-types.js';
-import { buildDecisionFields } from './composite-router-helpers.js';
+import { buildDecisionFields, buildPreferenceStats } from './composite-router-helpers.js';
 import {
   analyzeTaskProfile,
   runPipeline,
@@ -46,6 +47,11 @@ import {
   type LastRoutedTaskInfo,
   type OutcomeDependencies,
 } from './composite-router-outcome.js';
+import {
+  recordDecisionToMetrics,
+  recordOutcomeToMetrics,
+  generateTraceId,
+} from './composite-router-metrics.js';
 
 // Re-export types for consumers
 export {
@@ -56,6 +62,7 @@ export {
   type CompositeRouterConfigWithPreference,
   type CompositeRoutingDecision,
   type CompositeRouterStats,
+  type IRoutingMetricsCollector,
 } from './composite-router-types.js';
 
 /** Composite router interface for dependency injection. */
@@ -74,6 +81,8 @@ export interface ICompositeRouter {
   getZeroRouter(): IZeroRouter | undefined;
   getLatencyTracker(): ILatencyTracker | undefined;
   getRoutingMemory(): IRoutingMemory | undefined;
+  /** Get the metrics collector (if configured) (Issue #559) */
+  getMetricsCollector(): IRoutingMetricsCollector | undefined;
 }
 
 /** CompositeRouter implementation. */
@@ -88,6 +97,8 @@ export class CompositeRouter implements ICompositeRouter {
   private linucbBandit?: LinUCBBandit;
   private latencyTracker?: LatencyTracker;
   private routingMemory?: RoutingMemory;
+  /** Metrics collector for routing observability (Issue #559) */
+  private metricsCollector?: IRoutingMetricsCollector;
   private readonly cliNames: CliName[];
 
   // Statistics tracking
@@ -99,6 +110,9 @@ export class CompositeRouter implements ICompositeRouter {
   // Track last routing for difficulty outcome recording
   private lastRoutedTask?: LastRoutedTaskInfo;
 
+  // Track last traceId for metrics correlation (Issue #559)
+  private lastTraceId?: string;
+
   constructor(
     adapters: Map<CliName, ICliAdapter>,
     config?: Partial<CompositeRouterConfigWithPreference>,
@@ -109,12 +123,17 @@ export class CompositeRouter implements ICompositeRouter {
       zeroRouterConfig,
       latencyTrackerConfig,
       routingMemoryConfig,
+      metricsCollector,
       ...baseConfig
     } = config ?? {};
     this.config = CompositeRouterConfigSchema.parse(baseConfig);
     this.logger = logger ?? createLogger({ component: 'CompositeRouter' });
     this.adapters = adapters;
     this.cliNames = Array.from(adapters.keys());
+    // Only assign metricsCollector if provided (Issue #559)
+    if (metricsCollector !== undefined) {
+      this.metricsCollector = metricsCollector;
+    }
     this.initializeRouters(
       adapters,
       preferenceRouterConfig,
@@ -181,6 +200,14 @@ export class CompositeRouter implements ICompositeRouter {
     const decision = routeResult.value;
     const startTime = Date.now();
 
+    // Generate traceId for metrics correlation (Issue #559)
+    const traceId = generateTraceId();
+    this.lastTraceId = traceId;
+    recordDecisionToMetrics(decision, traceId, {
+      metricsCollector: this.metricsCollector,
+      logger: this.logger,
+    });
+
     const executeResult = await decision.adapter.execute(task);
 
     const durationMs = Date.now() - startTime;
@@ -221,6 +248,21 @@ export class CompositeRouter implements ICompositeRouter {
         observations: 1,
       };
       this.routingMemory.storePreference(decision.cliName, taskType, performance);
+    }
+
+    // Record outcome to metrics collector (Issue #559)
+    if (this.lastTraceId !== undefined) {
+      recordOutcomeToMetrics(
+        {
+          traceId: this.lastTraceId,
+          cliName: decision.cliName,
+          success,
+          reward,
+          qualityScore: success ? decision.confidence : 0.3,
+          latencyMs: durationMs,
+        },
+        { metricsCollector: this.metricsCollector, logger: this.logger }
+      );
     }
 
     this.logger.debug('Auto-recorded feedback', {
@@ -394,8 +436,19 @@ export class CompositeRouter implements ICompositeRouter {
     return this.latencyTracker;
   }
 
+  /**
+   * Get the metrics collector (if configured).
+   * (Source: Issue #559 - Wire RoutingMetricsCollector to CompositeRouter)
+   */
+  getMetricsCollector(): IRoutingMetricsCollector | undefined {
+    return this.metricsCollector;
+  }
+
   getStats(): CompositeRouterStats {
-    const preferenceStats = this.buildPreferenceStats();
+    const preferenceStats = buildPreferenceStats(
+      this.config.enablePreferenceRouting,
+      this.preferenceRouter
+    );
     const latencyStats = this.latencyTracker?.getTrackerStats();
     const routingMemoryStats = this.routingMemory?.getStats();
     const baseStats = {
@@ -416,25 +469,9 @@ export class CompositeRouter implements ICompositeRouter {
     return baseStats;
   }
 
-  /**
-   * Get the routing memory instance (if enabled).
-   */
+  /** Get the routing memory instance (if enabled). */
   getRoutingMemory(): IRoutingMemory | undefined {
     return this.routingMemory;
-  }
-
-  private buildPreferenceStats(): CompositeRouterStats['preferenceStats'] {
-    if (!this.config.enablePreferenceRouting || this.preferenceRouter === undefined) {
-      return undefined;
-    }
-
-    const stats = this.preferenceRouter.getStats();
-    return {
-      enabled: true,
-      hasSufficientData: this.preferenceRouter.hasMinimumData(),
-      dataPointCount: stats.totalDataPoints,
-      strongModelPreferenceRate: stats.strongModelPreferenceRate,
-    };
   }
 }
 

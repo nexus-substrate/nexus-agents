@@ -387,6 +387,7 @@ describe('delegate_to_model Tool', () => {
       getZeroRouter: ReturnType<typeof vi.fn>;
       getLatencyTracker: ReturnType<typeof vi.fn>;
       getRoutingMemory: ReturnType<typeof vi.fn>;
+      getMetricsCollector: ReturnType<typeof vi.fn>;
     } {
       return {
         route: vi.fn().mockResolvedValue(
@@ -432,6 +433,7 @@ describe('delegate_to_model Tool', () => {
         getZeroRouter: vi.fn().mockReturnValue(undefined),
         getLatencyTracker: vi.fn().mockReturnValue(undefined),
         getRoutingMemory: vi.fn().mockReturnValue(undefined),
+        getMetricsCollector: vi.fn().mockReturnValue(undefined),
       };
     }
 

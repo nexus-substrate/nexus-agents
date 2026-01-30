@@ -14,6 +14,25 @@ import type { PreferenceRouterConfig } from './preference-router-types.js';
 import type { ZeroRouterConfig, DifficultyEstimate, ModelTier } from './zero-router-types.js';
 import type { LatencyTrackerConfig, LatencyTrackerStats } from './latency-tracker-types.js';
 import type { RoutingMemoryConfig, RoutingMemoryStats } from '../context/routing-memory.js';
+import type {
+  RoutingRecord,
+  OutcomeRecord,
+  RoutingMetrics,
+} from '../observability/routing-metrics-types.js';
+
+/**
+ * Interface for routing metrics collection.
+ * Allows dependency injection of RoutingMetricsCollector.
+ * (Source: Issue #559 - Wire RoutingMetricsCollector to CompositeRouter)
+ */
+export interface IRoutingMetricsCollector {
+  /** Record a routing decision. */
+  recordDecision(record: RoutingRecord): void;
+  /** Record an outcome for a routing decision. */
+  recordOutcome(record: OutcomeRecord): void;
+  /** Get metrics for a time period. */
+  getMetrics(periodHours?: number): RoutingMetrics;
+}
 
 /**
  * Configuration schema for CompositeRouter.
@@ -66,6 +85,8 @@ export interface CompositeRouterConfigWithPreference extends CompositeRouterConf
   latencyTrackerConfig?: Partial<LatencyTrackerConfig>;
   /** Routing memory configuration (optional, uses defaults if not provided) (Issue #463) */
   routingMemoryConfig?: Partial<RoutingMemoryConfig>;
+  /** Routing metrics collector for observability (optional) (Issue #559) */
+  metricsCollector?: IRoutingMetricsCollector;
 }
 
 /**

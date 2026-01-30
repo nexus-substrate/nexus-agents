@@ -340,3 +340,34 @@ export function buildDecisionFields(ctx: BuildDecisionContext): {
   const alternatives = ctx.topsisRanking.filter((c) => c !== ctx.selectedCli);
   return { confidence, reason, alternatives };
 }
+
+/**
+ * Builds preference stats for CompositeRouter stats output.
+ */
+export function buildPreferenceStats(
+  enablePreferenceRouting: boolean,
+  preferenceRouter:
+    | {
+        getStats: () => { totalDataPoints: number; strongModelPreferenceRate: number };
+        hasMinimumData: () => boolean;
+      }
+    | undefined
+):
+  | {
+      enabled: boolean;
+      hasSufficientData: boolean;
+      dataPointCount: number;
+      strongModelPreferenceRate: number;
+    }
+  | undefined {
+  if (!enablePreferenceRouting || preferenceRouter === undefined) {
+    return undefined;
+  }
+  const stats = preferenceRouter.getStats();
+  return {
+    enabled: true,
+    hasSufficientData: preferenceRouter.hasMinimumData(),
+    dataPointCount: stats.totalDataPoints,
+    strongModelPreferenceRate: stats.strongModelPreferenceRate,
+  };
+}
