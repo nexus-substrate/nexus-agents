@@ -38,6 +38,12 @@ import {
   DEFAULT_DECISION_TTL_MS,
   DEFAULT_FEEDBACK_INTEGRATION_CONFIG,
 } from './feedback-integration-types.js';
+import type {
+  IOutcomeStorage,
+  StoredRoutingDecision,
+  StoredTaskOutcome,
+  StoredReward,
+} from './outcome-storage-types.js';
 
 // Re-export types for backward compatibility
 export type {
@@ -79,6 +85,8 @@ export class FeedbackIntegration implements IFeedbackIntegration {
   private readonly logger: ILogger;
   private readonly collector: OutcomeFeedbackCollector;
   private compositeRouter?: ICompositeRouter;
+  /** SQLite storage for cross-session persistence (Issue #560) */
+  private readonly outcomeStorage?: IOutcomeStorage;
 
   // Track routing decisions for feedback routing
   private readonly decisionMap: Map<string, DecisionEntry> = new Map();
@@ -94,8 +102,17 @@ export class FeedbackIntegration implements IFeedbackIntegration {
     this.logger = this.config.logger ?? createLogger({ component: 'FeedbackIntegration' });
     this.collector = collector ?? new OutcomeFeedbackCollector();
 
+    // Wire SQLite outcome storage if persistence is enabled (Issue #560)
+    if (this.config.enablePersistence === true && this.config.outcomeStorage !== undefined) {
+      this.outcomeStorage = this.config.outcomeStorage;
+      this.logger.info('SQLiteOutcomeStorage wired for persistent feedback', {
+        enablePersistence: true,
+      });
+    }
+
     this.logger.info('FeedbackIntegration initialized', {
       enableAutoFeedback: this.config.enableAutoFeedback,
+      enablePersistence: this.config.enablePersistence ?? false,
     });
   }
 
@@ -131,11 +148,30 @@ export class FeedbackIntegration implements IFeedbackIntegration {
     const decisionWithId = { ...routingDecision, id };
     this.collector.recordRoutingDecision(decisionWithId);
 
+    // Persist to SQLite storage if enabled (Issue #560)
+    if (this.outcomeStorage !== undefined) {
+      const storedDecision: StoredRoutingDecision = {
+        id,
+        traceId: trace,
+        timestamp: new Date().toISOString(),
+        routerType: cliNameToRouterType(decision.cliName),
+        selectedModel: decision.cliName,
+        alternativeModels: decision.alternatives,
+        confidence: decision.confidence,
+        reason: decision.reason,
+        taskProfile: decision.taskProfile as unknown as Record<string, unknown>,
+      };
+      this.outcomeStorage.storeDecision(storedDecision).catch((error: unknown) => {
+        this.logger.warn('Failed to persist routing decision to SQLite', { id, error });
+      });
+    }
+
     this.logger.debug('Routing decision recorded', {
       id,
       cliName: decision.cliName,
       confidence: decision.confidence,
       stages: decision.stagesExecuted,
+      persisted: this.outcomeStorage !== undefined,
     });
 
     return id;
@@ -169,7 +205,6 @@ export class FeedbackIntegration implements IFeedbackIntegration {
       retryCount = 0,
       traceId,
     } = params;
-
     const outcomeClass = this.determineOutcomeClass(success, qualityScore);
     const completionRatio = success ? 1.0 : qualityScore / this.config.successQualityThreshold;
     const trace = traceId ?? (randomUUID() as TraceId);
@@ -197,12 +232,49 @@ export class FeedbackIntegration implements IFeedbackIntegration {
       this.routeFeedbackToCompositeRouter(routingDecisionId, outcome);
     }
 
+    // Persist to SQLite if enabled (Issue #560)
+    this.persistOutcomeToStorage(routingDecisionId, outcome);
+
     this.logger.debug('Task outcome recorded', {
       routingDecisionId,
       success,
       outcomeClass,
       qualityScore,
       durationMs,
+      persisted: this.outcomeStorage !== undefined,
+    });
+  }
+
+  /** Persists outcome and reward to SQLite storage (Issue #560). */
+  private persistOutcomeToStorage(routingDecisionId: string, outcome: TaskOutcome): void {
+    if (this.outcomeStorage === undefined) return;
+
+    const storedOutcome: StoredTaskOutcome = {
+      routingDecisionId,
+      timestamp: outcome.timestamp,
+      outcomeClass: outcome.outcomeClass,
+      success: outcome.success,
+      qualityScore: outcome.qualityScore,
+      durationMs: outcome.durationMs,
+      tokenUsage: outcome.tokenUsage,
+    };
+    this.outcomeStorage.storeOutcome(storedOutcome).catch((error: unknown) => {
+      this.logger.warn('Failed to persist task outcome to SQLite', { routingDecisionId, error });
+    });
+
+    const computedReward = this.collector.computeReward(outcome);
+    const storedReward: StoredReward = {
+      routingDecisionId,
+      timestamp: new Date().toISOString(),
+      reward: computedReward.reward,
+      baseReward: computedReward.components.baseReward,
+      qualityBonus: computedReward.components.qualityBonus,
+      speedBonus: computedReward.components.speedBonus,
+      efficiencyBonus: computedReward.components.efficiencyBonus,
+      retryPenalty: computedReward.components.retryPenalty,
+    };
+    this.outcomeStorage.storeReward(storedReward).catch((error: unknown) => {
+      this.logger.warn('Failed to persist reward to SQLite', { routingDecisionId, error });
     });
   }
 

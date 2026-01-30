@@ -15,6 +15,7 @@ import type {
 } from '../cli-adapters/composite-router.js';
 import type { TraceId } from '../observability/swarm-observer-types.js';
 import type { FeedbackLoopStats, OutcomeProcessedCallback } from './outcome-feedback-types.js';
+import type { IOutcomeStorage } from './outcome-storage-types.js';
 
 // ============================================================================
 // Parameters
@@ -58,6 +59,18 @@ export interface FeedbackIntegrationConfig {
   readonly decisionTtlMs?: number | undefined;
   /** Logger instance */
   readonly logger?: ILogger | undefined;
+  /**
+   * Enable persistent storage via SQLite (default: false).
+   * Requires outcomeStorage to be provided.
+   * (Source: Issue #560 - Wire SQLiteOutcomeStorage to feedback loop)
+   */
+  readonly enablePersistence?: boolean | undefined;
+  /**
+   * SQLite outcome storage instance for cross-session learning.
+   * Only used when enablePersistence is true.
+   * (Source: Issue #560 - Wire SQLiteOutcomeStorage to feedback loop)
+   */
+  readonly outcomeStorage?: IOutcomeStorage | undefined;
 }
 
 /** Default TTL for decision entries: 1 hour */
