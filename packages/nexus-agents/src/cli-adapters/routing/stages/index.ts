@@ -8,8 +8,22 @@
  * (Source: ADR-0005)
  */
 
+// Confidence cascade stage (priority: 10)
+export {
+  ConfidenceCascadeStage,
+  createConfidenceCascadeStage,
+  type ConfidenceCascadeConfig,
+} from './confidence-cascade-stage.js';
+
 // Budget filter stage (priority: 20)
 export { BudgetFilterStage, createBudgetStage, type BudgetStageConfig } from './budget-stage.js';
+
+// Capability match stage (priority: 35)
+export {
+  CapabilityMatchStage,
+  createCapabilityMatchStage,
+  type CapabilityMatchConfig,
+} from './capability-match-stage.js';
 
 // Zero difficulty stage (priority: 40)
 export { ZeroRouterStage, createZeroStage, type ZeroStageConfig } from './zero-stage.js';
@@ -26,6 +40,13 @@ export { TopsisRouterStage, createTopsisStage, type TopsisStageConfig } from './
 
 // LinUCB bandit stage (priority: 70)
 export { LinUCBStage, createLinUCBStage, type LinUCBStageConfig } from './linucb-stage.js';
+
+// Quality constraint stage (priority: 75)
+export {
+  QualityConstraintStage,
+  createQualityConstraintStage,
+  type QualityConstraintConfig,
+} from './quality-constraint-stage.js';
 
 // Latency performance stage (priority: 80)
 export { LatencyStage, createLatencyStage, type LatencyStageConfig } from './latency-stage.js';
