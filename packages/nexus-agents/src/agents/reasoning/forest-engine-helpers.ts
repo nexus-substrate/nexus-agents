@@ -222,23 +222,22 @@ function buildStatistics(input: StatsInput): ForestStatistics {
   };
 }
 
-/** Builds the final ForestResult. */
-export function buildForestResult(params: BuildResultParams): ForestResult {
-  const {
-    forestId,
-    problem,
-    trees,
-    terminationReason,
-    tokensUsed,
-    durationMs,
-    explorationHistory,
-  } = params;
+/** Aggregated tree data for result building. */
+interface TreeAggregation {
+  conclusions: ReasoningNode[];
+  topPaths: PathScore[];
+  maxDepth: number;
+  totalNodes: number;
+  totalActiveNodes: number;
+}
+
+/** Aggregates tree data for result building. */
+function aggregateTreeData(trees: Map<TreeId, ReasoningTree>): TreeAggregation {
   const conclusions: ReasoningNode[] = [];
   const topPaths: PathScore[] = [];
   let maxDepth = 0,
     totalNodes = 0,
     totalActiveNodes = 0;
-
   for (const tree of trees.values()) {
     maxDepth = Math.max(maxDepth, tree.statistics.maxDepth);
     totalNodes += tree.statistics.totalNodes;
@@ -250,27 +249,40 @@ export function buildForestResult(params: BuildResultParams): ForestResult {
       }
     }
   }
-
   topPaths.sort((a, b) => b.score - a.score);
-  const bestSolution = findBestSolution(topPaths, trees);
+  return { conclusions, topPaths, maxDepth, totalNodes, totalActiveNodes };
+}
+
+/** Builds the final ForestResult. */
+export function buildForestResult(params: BuildResultParams): ForestResult {
+  const {
+    forestId,
+    problem,
+    trees,
+    terminationReason,
+    tokensUsed,
+    durationMs,
+    explorationHistory,
+  } = params;
+  const agg = aggregateTreeData(trees);
+  const bestSolution = findBestSolution(agg.topPaths, trees);
   const statistics = buildStatistics({
     trees,
-    topPaths,
-    totalNodes,
-    totalActiveNodes,
-    maxDepth,
+    topPaths: agg.topPaths,
+    totalNodes: agg.totalNodes,
+    totalActiveNodes: agg.totalActiveNodes,
+    maxDepth: agg.maxDepth,
     tokensUsed,
     durationMs,
   });
   const finalState: ForestState =
     terminationReason === 'solution_found' ? 'completed' : 'converging';
-
   return {
     forestId,
     problem,
     bestSolution,
-    topPaths: topPaths.slice(0, 5),
-    conclusions,
+    topPaths: agg.topPaths.slice(0, 5),
+    conclusions: agg.conclusions,
     finalState,
     terminationReason,
     statistics,

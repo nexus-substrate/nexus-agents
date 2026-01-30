@@ -10,12 +10,12 @@
 import type { ILogger, IModelAdapter, CompletionRequest, Result } from '../../core/index.js';
 import { createLogger, ok, err, getTimeProvider } from '../../core/index.js';
 import type { CreateForestInput } from './forest-types.js';
-import type { ForestId, TreeId, NodeId, ReasoningNode } from './forest-node-types.js';
+import type { TreeId, ReasoningNode } from './forest-node-types.js';
 import type { ReasoningTree } from './forest-tree-types.js';
 import type { ForestConfig } from './forest-config-types.js';
 import { DEFAULT_FOREST_CONFIG, ForestConfigSchema } from './forest-config-types.js';
 import type { ForestResult, TerminationReason, ExplorationEvent } from './forest-result-types.js';
-import { generateForestId, generateTreeId, generateNodeId } from './forest-engine-ids.js';
+import { generateForestId, generateNodeId } from './forest-engine-ids.js';
 import { HYPOTHESIS_PROMPT, REASONING_STEP_PROMPT } from './forest-engine-prompts.js';
 import { ForestExecutionError, ForestAdapterUnavailableError } from './forest-engine-errors.js';
 import {
@@ -28,6 +28,13 @@ import {
   buildForestResult,
   type BuildResultParams,
 } from './forest-engine-helpers.js';
+import {
+  createInitialTrees,
+  addNodeToTree,
+  markNodeCompleted,
+  type TreeExplorationState,
+  type ExplorationStateMap,
+} from './forest-engine-tree.js';
 
 export { ForestExecutionError, ForestAdapterUnavailableError };
 
@@ -36,15 +43,6 @@ export interface ForestEngineOptions {
   readonly logger?: ILogger;
   readonly adapter?: IModelAdapter;
 }
-
-/** Internal tracking for tree exploration. */
-interface TreeExplorationState {
-  readonly activeNodeIds: readonly NodeId[];
-  readonly completedNodeIds: readonly NodeId[];
-  readonly currentDepth: number;
-}
-
-type ExplorationStateMap = Map<TreeId, TreeExplorationState>;
 
 /** Input for handleExpansion method. */
 interface HandleExpansionInput {
@@ -69,32 +67,26 @@ export class ForestEngine {
 
   /** Creates and executes a Forest-of-Thought reasoning process. */
   async execute(input: CreateForestInput): Promise<Result<ForestResult, ForestExecutionError>> {
-    if (this.adapter === undefined) {
+    if (this.adapter === undefined)
       return err(new ForestAdapterUnavailableError('No model adapter provided'));
-    }
-
     const time = getTimeProvider();
     const startTime = time.now();
     const forestId = generateForestId();
     const explorationHistory: ExplorationEvent[] = [];
-
     const configResult = ForestConfigSchema.safeParse({
       ...DEFAULT_FOREST_CONFIG,
       ...(input.config ?? {}),
     });
     const config = configResult.success ? configResult.data : DEFAULT_FOREST_CONFIG;
-
     this.logger.info('Starting Forest-of-Thought', { forestId, maxTrees: config.maxTrees });
-
     try {
       const hypotheses = await this.generateHypotheses(input, config);
-      const { trees, explorationState } = this.createInitialTrees(hypotheses, forestId);
+      const { trees, explorationState } = createInitialTrees(hypotheses, forestId);
       explorationHistory.push({
         timestamp: time.now(),
         eventType: 'tree_created',
         details: { treeCount: trees.size },
       });
-
       const result = await this.exploreForest(
         trees,
         explorationState,
@@ -103,7 +95,6 @@ export class ForestEngine {
         explorationHistory
       );
       const durationMs = time.now() - startTime;
-
       const params: BuildResultParams = {
         forestId,
         problem: input.problem,
@@ -114,7 +105,6 @@ export class ForestEngine {
         explorationHistory,
       };
       const finalResult = buildForestResult(params);
-
       this.logger.info('Forest completed', {
         forestId,
         durationMs,
@@ -134,10 +124,10 @@ export class ForestEngine {
     input: CreateForestInput,
     config: ForestConfig
   ): Promise<readonly string[]> {
-    if (input.initialHypotheses !== undefined && input.initialHypotheses.length > 0)
+    if (input.initialHypotheses !== undefined && input.initialHypotheses.length > 0) {
       return input.initialHypotheses.slice(0, config.maxTrees);
+    }
     if (this.adapter === undefined) return ['Direct analysis approach'];
-
     const hypotheses: string[] = [];
     for (let i = 0; i < config.maxTrees; i++) {
       const prompt = HYPOTHESIS_PROMPT.replace('{problem}', input.problem).replace(
@@ -160,73 +150,6 @@ export class ForestEngine {
     return hypotheses;
   }
 
-  private createInitialTrees(
-    hypotheses: readonly string[],
-    forestId: ForestId
-  ): { trees: Map<TreeId, ReasoningTree>; explorationState: ExplorationStateMap } {
-    const time = getTimeProvider();
-    const now = time.now();
-    const trees = new Map<TreeId, ReasoningTree>();
-    const explorationState: ExplorationStateMap = new Map();
-
-    for (let i = 0; i < hypotheses.length; i++) {
-      const treeId = generateTreeId(i);
-      const rootNodeId = generateNodeId(i, 0);
-      const hypothesis = hypotheses[i] ?? `Hypothesis ${String(i)}`;
-
-      const rootNode: ReasoningNode = {
-        id: rootNodeId,
-        treeId,
-        parentId: null,
-        children: [],
-        depth: 0,
-        stepType: 'hypothesis',
-        content: hypothesis,
-        metadata: {},
-        state: 'active',
-        confidence: 0.5,
-        qualityScore: 0.5,
-        estimatedValue: 0.5,
-        isActive: true,
-        activationScore: 1.0,
-        createdAt: now,
-        updatedAt: now,
-      };
-
-      const tree: ReasoningTree = {
-        id: treeId,
-        forestId,
-        rootId: rootNodeId,
-        nodes: new Map([[rootNodeId, rootNode]]),
-        state: 'growing',
-        overallScore: 0.5,
-        explorationPriority: 1.0,
-        hypothesis,
-        bestPaths: [],
-        statistics: {
-          totalNodes: 1,
-          activeNodes: 1,
-          maxDepth: 0,
-          avgQualityScore: 0.5,
-          avgConfidence: 0.5,
-          conclusionCount: 0,
-          totalTokensUsed: 0,
-          avgBranchingFactor: 0,
-        },
-        createdAt: now,
-        updatedAt: now,
-      };
-
-      trees.set(treeId, tree);
-      explorationState.set(treeId, {
-        activeNodeIds: [rootNodeId],
-        completedNodeIds: [],
-        currentDepth: 0,
-      });
-    }
-    return { trees, explorationState };
-  }
-
   private checkTermination(
     startTime: number,
     tokensUsed: number,
@@ -242,7 +165,7 @@ export class ForestEngine {
     const { expansion, tree, state, explorationState, trees, history, nodeToExpand } = input;
     if (expansion.node === null) return null;
     const time = getTimeProvider();
-    const updatedTree = this.addNodeToTree(tree, expansion.node, nodeToExpand.id);
+    const updatedTree = addNodeToTree(tree, expansion.node, nodeToExpand.id);
     trees.set(tree.id, updatedTree);
     const newActiveIds = expansion.node.isActive
       ? [...state.activeNodeIds, expansion.node.id]
@@ -289,21 +212,17 @@ export class ForestEngine {
     let tokensUsed = 0,
       terminationReason: TerminationReason = 'no_progress',
       bestScore = 0;
-
     for (let iter = 0; iter < config.maxDepth * config.maxTrees; iter++) {
       const termCheck = this.checkTermination(startTime, tokensUsed, config);
       if (termCheck !== null) {
         terminationReason = termCheck;
         break;
       }
-
       const nodeToExpand = this.getActiveNodes(trees, explorationState, config)[0];
       if (nodeToExpand === undefined) break;
-
       const tree = trees.get(nodeToExpand.treeId);
       const state = explorationState.get(nodeToExpand.treeId);
       if (tree === undefined || state === undefined) continue;
-
       const expansion = await this.expandNode(
         nodeToExpand,
         tree,
@@ -312,7 +231,6 @@ export class ForestEngine {
         buildCrossTreeContext(trees, nodeToExpand.treeId)
       );
       tokensUsed += expansion.tokensUsed;
-
       const conclusionResult = this.handleExpansion({
         expansion,
         tree,
@@ -332,8 +250,7 @@ export class ForestEngine {
           break;
         }
       }
-
-      trees.set(tree.id, this.markNodeCompleted(tree, nodeToExpand.id));
+      trees.set(tree.id, markNodeCompleted(tree, nodeToExpand.id));
       explorationState.set(tree.id, {
         ...state,
         activeNodeIds: state.activeNodeIds.filter((id) => id !== nodeToExpand.id),
@@ -371,7 +288,6 @@ export class ForestEngine {
     crossTreeContext: string
   ): Promise<{ node: ReasoningNode | null; tokensUsed: number }> {
     if (this.adapter === undefined) return { node: null, tokensUsed: 0 };
-
     const prompt = REASONING_STEP_PROMPT.replace('{problem}', problem)
       .replace('{hypothesis}', tree.hypothesis)
       .replace('{path}', buildPathContent(tree, node))
@@ -384,15 +300,12 @@ export class ForestEngine {
     };
     const response = await this.adapter.complete(request);
     if (!response.ok) return { node: null, tokensUsed: 0 };
-
     const tokensUsed = response.value.usage.totalTokens;
     const parsed = parseReasoningStepResponse(extractText(response.value.content));
     if (parsed === null) return { node: null, tokensUsed };
-
     const time = getTimeProvider();
     const now = time.now();
     const quality = calculateQualityScore(parsed.stepType, parsed.confidence, node.depth);
-
     const treeIndexStr = tree.id.split('-')[1];
     const treeIndex = parseInt(treeIndexStr ?? '0', 10);
     const newNode: ReasoningNode = {
@@ -420,64 +333,13 @@ export class ForestEngine {
     };
     return { node: newNode, tokensUsed };
   }
-
-  private addNodeToTree(
-    tree: ReasoningTree,
-    newNode: ReasoningNode,
-    parentId: NodeId
-  ): ReasoningTree {
-    const time = getTimeProvider();
-    const nodes = new Map(tree.nodes);
-    nodes.set(newNode.id, newNode);
-    const parent = nodes.get(parentId);
-    if (parent !== undefined)
-      nodes.set(parentId, { ...parent, children: [...parent.children, newNode.id] });
-
-    const allNodes = Array.from(nodes.values());
-    return {
-      ...tree,
-      nodes,
-      statistics: {
-        ...tree.statistics,
-        totalNodes: nodes.size,
-        activeNodes: allNodes.filter((n) => n.isActive).length,
-        maxDepth: Math.max(tree.statistics.maxDepth, newNode.depth),
-        conclusionCount: allNodes.filter((n) => n.stepType === 'conclusion').length,
-        avgQualityScore: allNodes.reduce((s, n) => s + n.qualityScore, 0) / allNodes.length,
-        avgConfidence: allNodes.reduce((s, n) => s + n.confidence, 0) / allNodes.length,
-      },
-      updatedAt: time.now(),
-    };
-  }
-
-  private markNodeCompleted(tree: ReasoningTree, nodeId: NodeId): ReasoningTree {
-    const time = getTimeProvider();
-    const node = tree.nodes.get(nodeId);
-    if (node === undefined) return tree;
-    const nodes = new Map(tree.nodes);
-    nodes.set(nodeId, { ...node, state: 'completed', isActive: false, updatedAt: time.now() });
-    return {
-      ...tree,
-      nodes,
-      statistics: {
-        ...tree.statistics,
-        activeNodes: Array.from(nodes.values()).filter((n) => n.isActive).length,
-      },
-      updatedAt: time.now(),
-    };
-  }
 }
 
 export function createForestEngine(options?: ForestEngineOptions): ForestEngine {
   return new ForestEngine(options);
 }
 
-/**
- * Convenience function to execute Forest-of-Thought reasoning in one call.
- * @param input - Problem and optional hypotheses/config
- * @param options - Engine options (logger, adapter)
- * @returns ForestResult with best solution and exploration data
- */
+/** Convenience function to execute Forest-of-Thought reasoning in one call. */
 export async function executeForest(
   input: CreateForestInput,
   options: ForestEngineOptions = {}
