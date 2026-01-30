@@ -171,6 +171,8 @@ export interface ConsensusEngineConfig {
   minVotersForQuorum: number;
   maxActiveProposals: number;
   enablePerformanceTracking: boolean;
+  /** Maximum number of closed proposals to retain. Oldest are evicted when exceeded. (Issue #549) */
+  maxClosedProposals: number;
 }
 
 /**
@@ -181,6 +183,7 @@ export const ConsensusEngineConfigSchema = z.object({
   minVotersForQuorum: z.number().int().positive().default(2),
   maxActiveProposals: z.number().int().positive().default(100),
   enablePerformanceTracking: z.boolean().default(true),
+  maxClosedProposals: z.number().int().positive().default(1000), // Issue #549
 });
 
 /**
@@ -191,6 +194,7 @@ export const DEFAULT_CONSENSUS_CONFIG: ConsensusEngineConfig = {
   minVotersForQuorum: 2,
   maxActiveProposals: 100,
   enablePerformanceTracking: true,
+  maxClosedProposals: 1000, // Issue #549: Prevent unbounded memory growth
 };
 
 /**

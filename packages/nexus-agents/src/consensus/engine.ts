@@ -289,7 +289,7 @@ export class ConsensusEngine implements IConsensusEngine {
     const outcome = this.calculateOutcome(state);
     const result = buildTimeoutResult(state, proposalId, outcome, this.config);
     this.proposals.delete(proposalId);
-    this.closedProposals.set(proposalId, result);
+    this.addClosedProposal(proposalId, result);
     this.metrics.timedOutProposals++;
     this.metrics.totalDurationMs += result.durationMs;
     this.metrics.totalVotes += state.votes.size;
@@ -297,7 +297,7 @@ export class ConsensusEngine implements IConsensusEngine {
 
   private finalize(proposalId: ProposalId, result: ConsensusResult, voteCount: number): void {
     this.proposals.delete(proposalId);
-    this.closedProposals.set(proposalId, result);
+    this.addClosedProposal(proposalId, result);
     this.updateMetrics(result);
     this.logger.info('Proposal closed', {
       proposalId,
@@ -307,6 +307,20 @@ export class ConsensusEngine implements IConsensusEngine {
       quorumReached: result.quorumReached,
       durationMs: result.durationMs,
     });
+  }
+
+  /**
+   * Adds a closed proposal and evicts oldest entries if over limit.
+   * Issue #549: Prevent unbounded memory growth in closedProposals Map.
+   */
+  private addClosedProposal(proposalId: ProposalId, result: ConsensusResult): void {
+    // Evict oldest entries if at capacity (Map maintains insertion order)
+    while (this.closedProposals.size >= this.config.maxClosedProposals) {
+      const oldestKey = this.closedProposals.keys().next().value as ProposalId;
+      this.closedProposals.delete(oldestKey);
+      this.logger.debug('Evicted oldest closed proposal', { evictedId: oldestKey });
+    }
+    this.closedProposals.set(proposalId, result);
   }
 
   private calculateOutcome(state: ProposalState): VotingOutcome {
