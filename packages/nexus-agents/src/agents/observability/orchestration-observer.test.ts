@@ -547,4 +547,94 @@ describe('OrchestrationObserver', () => {
       expect(stats.avgTaskDurationMs).toBeCloseTo(1266.67, 0);
     });
   });
+
+  describe('consensus event handling', () => {
+    beforeEach(() => {
+      observer.start();
+    });
+
+    it('should track consensus events (Issue #552)', () => {
+      // Emit vote requested
+      eventBus.emit(
+        createEvent('consensus.vote_requested', {
+          proposalId: 'prop-1',
+          proposal: 'Should we refactor?',
+          voters: ['agent-1', 'agent-2', 'agent-3'],
+        })
+      );
+
+      // Emit votes cast
+      eventBus.emit(
+        createEvent('consensus.vote_cast', {
+          proposalId: 'prop-1',
+          voterId: 'agent-1',
+          decision: 'approve',
+          reasoning: 'Good idea',
+        })
+      );
+
+      eventBus.emit(
+        createEvent('consensus.vote_cast', {
+          proposalId: 'prop-1',
+          voterId: 'agent-2',
+          decision: 'approve',
+          reasoning: 'Agree',
+        })
+      );
+
+      eventBus.emit(
+        createEvent('consensus.vote_cast', {
+          proposalId: 'prop-1',
+          voterId: 'agent-3',
+          decision: 'reject',
+          reasoning: 'Too risky',
+        })
+      );
+
+      // Emit consensus reached
+      eventBus.emit(
+        createEvent('consensus.reached', {
+          proposalId: 'prop-1',
+          decision: 'approve',
+          voteCount: 3,
+          unanimity: false,
+        })
+      );
+
+      const stats = observer.getStats();
+      expect(stats.consensus.votesRequested).toBe(1);
+      expect(stats.consensus.votesCast).toBe(3);
+      expect(stats.consensus.consensusReached).toBe(1);
+      expect(stats.consensus.decisions.approved).toBe(2);
+      expect(stats.consensus.decisions.rejected).toBe(1);
+      expect(stats.consensus.decisions.abstained).toBe(0);
+      expect(stats.consensus.unanimityRate).toBe(0);
+    });
+
+    it('should track unanimity rate correctly', () => {
+      // First consensus - unanimous
+      eventBus.emit(
+        createEvent('consensus.reached', {
+          proposalId: 'prop-1',
+          decision: 'approve',
+          voteCount: 3,
+          unanimity: true,
+        })
+      );
+
+      // Second consensus - not unanimous
+      eventBus.emit(
+        createEvent('consensus.reached', {
+          proposalId: 'prop-2',
+          decision: 'approve',
+          voteCount: 3,
+          unanimity: false,
+        })
+      );
+
+      const stats = observer.getStats();
+      expect(stats.consensus.consensusReached).toBe(2);
+      expect(stats.consensus.unanimityRate).toBe(0.5);
+    });
+  });
 });

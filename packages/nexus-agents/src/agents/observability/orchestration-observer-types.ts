@@ -125,6 +125,29 @@ export interface OrchestrationStats {
   eventsProcessed: number;
   /** Observer uptime in ms */
   uptimeMs: number;
+  /** Consensus voting statistics (Issue #552) */
+  consensus: ConsensusStats;
+}
+
+/**
+ * Consensus voting statistics tracked by observer.
+ * (Source: Issue #552 - Wire up consensus event handlers)
+ */
+export interface ConsensusStats {
+  /** Total votes requested */
+  votesRequested: number;
+  /** Total votes cast */
+  votesCast: number;
+  /** Consensus decisions reached */
+  consensusReached: number;
+  /** Approvals vs rejections */
+  decisions: {
+    approved: number;
+    rejected: number;
+    abstained: number;
+  };
+  /** Unanimity rate (0-1) */
+  unanimityRate: number;
 }
 
 // ============================================================================

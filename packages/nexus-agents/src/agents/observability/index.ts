@@ -19,6 +19,7 @@ export {
   type CostMetrics,
   type SessionMetrics,
   type OrchestrationStats,
+  type ConsensusStats,
   type OrchestrationObserverEvent,
   type OrchestrationObserverListener,
   type OrchestrationObserverConfig,

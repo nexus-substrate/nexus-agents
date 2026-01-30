@@ -65,6 +65,15 @@ export class OrchestrationObserver implements IOrchestrationObserver {
   private totalTaskDurationMs = 0;
   private eventsProcessed = 0;
 
+  // Consensus stats (Issue #552)
+  private consensusVotesRequested = 0;
+  private consensusVotesCast = 0;
+  private consensusReachedCount = 0;
+  private consensusApproved = 0;
+  private consensusRejected = 0;
+  private consensusAbstained = 0;
+  private consensusUnanimous = 0;
+
   constructor(eventBus: IEventBus, options?: OrchestrationObserverOptions) {
     this.eventBus = eventBus;
     this.config = OrchestrationObserverConfigSchema.parse(options?.config ?? {});
@@ -147,10 +156,57 @@ export class OrchestrationObserver implements IOrchestrationObserver {
     }
   }
 
+  /**
+   * Handles consensus events and tracks voting statistics.
+   * (Source: Issue #552 - Wire up consensus event handlers)
+   */
   private handleConsensusEvent(event: DomainEvent): void {
     this.eventsProcessed++;
+    const payload = event.payload as Record<string, unknown>;
+
+    switch (event.topic) {
+      case 'consensus.vote_requested':
+        this.onVoteRequested(payload);
+        break;
+      case 'consensus.vote_cast':
+        this.onVoteCast(payload);
+        break;
+      case 'consensus.reached':
+        this.onConsensusReached(payload);
+        break;
+      default:
+        this.logVerbose('Unknown consensus event', { topic: event.topic });
+    }
+  }
+
+  private onVoteRequested(payload: Record<string, unknown>): void {
+    this.consensusVotesRequested++;
+    this.logVerbose('Vote requested', { proposalId: extractStringField(payload, 'proposalId') });
+  }
+
+  private onVoteCast(payload: Record<string, unknown>): void {
+    this.consensusVotesCast++;
+    const decision = extractStringField(payload, 'decision');
+    if (decision === 'approve') this.consensusApproved++;
+    else if (decision === 'reject') this.consensusRejected++;
+    else if (decision === 'abstain') this.consensusAbstained++;
+    this.logVerbose('Vote cast', { voterId: extractStringField(payload, 'voterId'), decision });
+  }
+
+  private onConsensusReached(payload: Record<string, unknown>): void {
+    this.consensusReachedCount++;
+    const unanimity = extractBooleanField(payload, 'unanimity');
+    if (unanimity) this.consensusUnanimous++;
+    this.logVerbose('Consensus reached', {
+      proposalId: extractStringField(payload, 'proposalId'),
+      decision: extractStringField(payload, 'decision'),
+      unanimity,
+    });
+  }
+
+  private logVerbose(message: string, context: Record<string, unknown>): void {
     if (this.config.verboseLogging) {
-      this.logger.debug('Consensus event', { topic: event.topic });
+      this.logger.debug(message, context);
     }
   }
 
@@ -311,6 +367,19 @@ export class OrchestrationObserver implements IOrchestrationObserver {
       totalCostUsd: totalCost,
       eventsProcessed: this.eventsProcessed,
       uptimeMs: Date.now() - this.startTime,
+      // Consensus stats (Issue #552)
+      consensus: {
+        votesRequested: this.consensusVotesRequested,
+        votesCast: this.consensusVotesCast,
+        consensusReached: this.consensusReachedCount,
+        decisions: {
+          approved: this.consensusApproved,
+          rejected: this.consensusRejected,
+          abstained: this.consensusAbstained,
+        },
+        unanimityRate:
+          this.consensusReachedCount > 0 ? this.consensusUnanimous / this.consensusReachedCount : 0,
+      },
     };
   }
 
