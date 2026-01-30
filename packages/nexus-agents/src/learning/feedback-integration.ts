@@ -60,10 +60,37 @@ export {
 const EVICTION_THROTTLE_MS = 60000;
 
 /**
- * Maps CLI name to router type.
+ * Determines the decisive routing technique from a CompositeRoutingDecision.
+ * Analyzes which routing stage was most influential in the final decision.
+ * (Source: Issue #464 - Improve routing technique analytics)
+ *
+ * @param decision - The routing decision with stage execution info
+ * @returns The RouterType that was decisive in the routing decision
  */
-function cliNameToRouterType(_cliName: CliName): RouterType {
-  // CompositeRouter uses multiple techniques, defaulting to 'topsis'
+function getDecisiveRouterType(decision: CompositeRoutingDecision): RouterType {
+  const stages = decision.stagesExecuted;
+
+  // LinUCB bandit selection is most decisive when it contributes a UCB score
+  if (stages.includes('linucb-selection') && decision.ucbScore !== undefined) {
+    return 'linucb';
+  }
+
+  // Preference routing when it provided a score
+  if (stages.includes('preference-routing') && decision.preferenceScore !== undefined) {
+    return 'preference';
+  }
+
+  // ZeroRouter cascade-style routing based on difficulty
+  if (stages.includes('zero-router') && decision.difficultyTier !== undefined) {
+    return 'cascade';
+  }
+
+  // TOPSIS ranking when it provided a score
+  if (stages.includes('topsis-ranking') && decision.topsisScore !== undefined) {
+    return 'topsis';
+  }
+
+  // Default fallback
   return 'topsis';
 }
 
@@ -134,7 +161,7 @@ export class FeedbackIntegration implements IFeedbackIntegration {
     // Create RoutingDecision for collector
     const routingDecision: RoutingDecision = createRoutingDecision({
       traceId: trace,
-      routerType: cliNameToRouterType(decision.cliName),
+      routerType: getDecisiveRouterType(decision),
       selectedModel: decision.cliName,
       confidence: decision.confidence,
       query: decision.reason,
@@ -154,7 +181,7 @@ export class FeedbackIntegration implements IFeedbackIntegration {
         id,
         traceId: trace,
         timestamp: new Date(getTimeProvider().now()).toISOString(),
-        routerType: cliNameToRouterType(decision.cliName),
+        routerType: getDecisiveRouterType(decision),
         selectedModel: decision.cliName,
         alternativeModels: decision.alternatives,
         confidence: decision.confidence,
