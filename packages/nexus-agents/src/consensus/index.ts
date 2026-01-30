@@ -69,6 +69,23 @@ export type { IConsensusEngine } from './engine.js';
 
 export { ConsensusEngine, ConsensusError, createConsensusEngine } from './engine.js';
 
+// Unified quorum validator (Issue #576 - consolidates quorum logic)
+export type {
+  IQuorumValidator,
+  QuorumValidationInput,
+  QuorumValidationConfig,
+  QuorumValidationResult,
+  QuorumBreakdown,
+  EligibilityResult,
+  AgentRecord,
+} from './quorum-validator.js';
+
+export {
+  QuorumValidator,
+  createQuorumValidator,
+  DEFAULT_QUORUM_THRESHOLDS,
+} from './quorum-validator.js';
+
 // Multi-round voting protocol (Issue #100)
 export type {
   VotingRoundPhase,
