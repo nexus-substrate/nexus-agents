@@ -68,7 +68,7 @@ export {
  * ```typescript
  * const counter = new TokenCounter({
  *   anthropicApiKey: process.env.ANTHROPIC_API_KEY,
- *   googleApiKey: process.env.GOOGLE_API_KEY,
+ *   googleApiKey: process.env.GOOGLE_AI_API_KEY,
  * });
  *
  * // Count via Anthropic API
@@ -380,7 +380,7 @@ export class TokenCounter implements ITokenCounter {
  * ```typescript
  * const counter = createTokenCounter({
  *   anthropicApiKey: process.env.ANTHROPIC_API_KEY,
- *   googleApiKey: process.env.GOOGLE_API_KEY,
+ *   googleApiKey: process.env.GOOGLE_AI_API_KEY,
  * });
  * ```
  */

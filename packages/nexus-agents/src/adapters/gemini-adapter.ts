@@ -48,7 +48,7 @@ export { GEMINI_MODELS, GEMINI_MODEL_ALIASES, type GeminiAdapterConfig } from '.
  * ```typescript
  * const adapter = new GeminiAdapter({
  *   modelId: 'gemini-2.5-flash',
- *   apiKey: process.env.GOOGLE_API_KEY,
+ *   apiKey: process.env.GOOGLE_AI_API_KEY,
  * });
  *
  * const result = await adapter.complete({
@@ -393,7 +393,7 @@ export class GeminiAdapter extends BaseAdapter {
  * ```typescript
  * const adapter = createGeminiAdapter({
  *   modelId: 'gemini-2.5-flash',
- *   apiKey: process.env.GOOGLE_API_KEY!,
+ *   apiKey: process.env.GOOGLE_AI_API_KEY!,
  * });
  * ```
  */
