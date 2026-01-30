@@ -206,13 +206,26 @@ describe('Workflow Engine Factory', () => {
       expect(deps).toBeDefined();
     });
 
-    it('should fall back to mock executor when no adapter available', async () => {
+    it('should throw when no adapter available and mock not explicitly enabled (Issue #551)', async () => {
       // Mock createAutoAdapter to throw an error
       vi.mock('../adapters/auto-adapter.js', () => ({
         createAutoAdapter: vi.fn().mockRejectedValue(new Error('No adapter available')),
       }));
 
-      const deps = await createWorkflowEngineDepsAsync();
+      // Issue #551: Should throw instead of silently enabling mock
+      await expect(createWorkflowEngineDepsAsync()).rejects.toThrow(
+        WorkflowExecutionUnavailableError
+      );
+    });
+
+    it('should allow mock executor when explicitly enabled', async () => {
+      // Mock createAutoAdapter to throw an error
+      vi.mock('../adapters/auto-adapter.js', () => ({
+        createAutoAdapter: vi.fn().mockRejectedValue(new Error('No adapter available')),
+      }));
+
+      // With explicit useMockExecutor: true, should succeed
+      const deps = await createWorkflowEngineDepsAsync({ useMockExecutor: true });
 
       expect(deps).toBeDefined();
     });

@@ -570,7 +570,17 @@ export async function createWorkflowEngineDepsAsync(
     return createWorkflowEngineDeps({ ...config, modelAdapter: adapter, logger });
   }
 
-  return createWorkflowEngineDeps({ ...config, useMockExecutor: true, logger });
+  // Issue #551: Do NOT silently enable mock executor - require explicit opt-in
+  // If useMockExecutor was explicitly set, honor it; otherwise throw
+  if (config?.useMockExecutor === true) {
+    logger.warn('Using mock executor as explicitly configured (no real adapter available)');
+    return createWorkflowEngineDeps({ ...config, useMockExecutor: true, logger });
+  }
+
+  throw new WorkflowExecutionUnavailableError(
+    'No model adapter available and mock execution not explicitly enabled. ' +
+      'Set useMockExecutor: true in config to use mock mode, or configure an API key.'
+  );
 }
 
 /**
