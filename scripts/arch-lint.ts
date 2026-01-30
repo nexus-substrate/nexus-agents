@@ -201,7 +201,10 @@ function checkSecurity(filePath: string, content: string): Violation[] {
   const relPath = relative(SRC_ROOT, filePath);
   const lines = content.split('\n');
   const isTestFile =
-    relPath.includes('.test.') || relPath.includes('/testing/') || relPath.includes('/fixtures/');
+    relPath.includes('.test.') ||
+    relPath.startsWith('testing/') ||
+    relPath.includes('/testing/') ||
+    relPath.includes('/fixtures/');
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
