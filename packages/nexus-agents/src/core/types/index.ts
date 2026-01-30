@@ -69,5 +69,15 @@ export type {
 } from './orchestrator.js';
 export { OrchestratorError } from './orchestrator.js';
 
+// Pruning strategy types (IPruneStrategy - canonical pruning interface)
+export type {
+  IPruneStrategy,
+  IPruneStrategyFactory,
+  PruneContext,
+  PruneDecision,
+  PruneResult,
+} from './prune-strategy.js';
+export { PruneStrategyName } from './prune-strategy.js';
+
 // Note: Routing Memory types moved to cli-adapters/routing-memory-types.ts (Issue #286)
 // Import from 'nexus-agents' or 'nexus-agents/cli-adapters' instead of core/types
