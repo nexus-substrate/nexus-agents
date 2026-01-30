@@ -16,6 +16,24 @@ import type {
   SelfDebugResult,
 } from './self-debug-types.js';
 
+/**
+ * Error thrown when synthetic error generation is used without explicit opt-in.
+ * (Source: Issue #510 - Fail-safe Self-Debug)
+ *
+ * By default, Self-Debug requires pattern-based error parsing to function properly.
+ * Using synthetic errors generates generic "unknown" errors that may lead to poor
+ * fix strategies. To explicitly opt-in to synthetic errors, set `allowSyntheticErrors: true`.
+ */
+export class SyntheticDebugError extends Error {
+  constructor(reason: string) {
+    super(
+      `Self-Debug error parsing cannot proceed: ${reason}. ` +
+        'To use synthetic errors (NOT RECOMMENDED), set allowSyntheticErrors: true'
+    );
+    this.name = 'SyntheticDebugError';
+  }
+}
+
 /** Extract group from regex match. */
 export function extractGroup(match: RegExpMatchArray, index?: number): string | undefined {
   return index !== undefined ? match[index] : undefined;

@@ -102,6 +102,13 @@ export {
   type ReflexionProtocolOptions,
 } from './reflexion-protocol.js';
 
+// Reflexion helpers (Issue #509 - Fail-safe Reflexion)
+export {
+  SyntheticCritiqueError,
+  REFLEXION_DEFAULTS,
+  type PartialReflexionConfig,
+} from './reflexion-helpers.js';
+
 // Aegean Byzantine-fault-tolerant consensus (Source: arxiv:2512.20184)
 export type {
   AegeanPhase,
@@ -195,6 +202,9 @@ export {
   type CodeExecutor,
   type SelfDebugExecuteOptions,
 } from './self-debug-protocol.js';
+
+// Self-Debug helpers (Issue #510 - Fail-safe Self-Debug)
+export { SyntheticDebugError } from './self-debug-helpers.js';
 
 // TRINITY Thinker/Worker/Verifier coordinator (Source: Issue #141, arxiv:2512.04695)
 export type {

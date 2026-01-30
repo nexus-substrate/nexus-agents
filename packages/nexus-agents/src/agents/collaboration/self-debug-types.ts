@@ -192,6 +192,15 @@ export interface SelfDebugConfig {
   readonly verifyCommand?: string;
   /** Working directory for execution */
   readonly workingDir?: string;
+  /**
+   * Allow synthetic (heuristic) error generation when no patterns match.
+   * (Issue #510 - Fail-safe Self-Debug)
+   *
+   * WARNING: Synthetic errors use the raw stderr/stdout without real parsing.
+   * This may lead to poor fix strategies. Only use for testing/development.
+   * Default: false (throws SyntheticDebugError when no patterns match)
+   */
+  readonly allowSyntheticErrors?: boolean;
 }
 
 /**
@@ -311,4 +320,5 @@ export const DEFAULT_SELF_DEBUG_CONFIG: Required<
   iterationTimeoutMs: 60000,
   stopOnFirstError: true,
   includeExplanation: true,
+  allowSyntheticErrors: false, // Issue #510: Fail-safe default
 };

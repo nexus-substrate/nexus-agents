@@ -6,8 +6,27 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ReflexionProtocol, createReflexionProtocol } from './reflexion-protocol.js';
+import {
+  ReflexionProtocol,
+  createReflexionProtocol,
+  type ReflexionProtocolOptions,
+} from './reflexion-protocol.js';
 import { DEFAULT_CODE_REVIEW_PERSONAS } from './reflexion-types.js';
+import { SyntheticCritiqueError } from './reflexion-helpers.js';
+
+/**
+ * Helper to create a test protocol with synthetic critiques allowed.
+ * (Issue #509) Tests use heuristic critiques which require explicit opt-in.
+ */
+function createTestProtocol(options?: ReflexionProtocolOptions): ReflexionProtocol {
+  return createReflexionProtocol({
+    ...options,
+    reflexionConfig: {
+      ...options?.reflexionConfig,
+      allowSyntheticCritiques: true,
+    },
+  });
+}
 import type {
   IAgent,
   Task,
@@ -84,6 +103,32 @@ describe('ReflexionProtocol', () => {
       expect(protocol.pattern).toBe('reflexion');
     });
 
+    it('should throw SyntheticCritiqueError when synthetic critiques not allowed', async () => {
+      // Issue #509: Default behavior should throw when no real critique generator available
+      const protocol = new ReflexionProtocol({
+        reflexionConfig: {
+          allowSyntheticCritiques: false, // Explicitly disabled (also the default)
+        },
+      });
+
+      const mockProducer = createMockAgent('producer');
+      const agents = new Map<string, IAgent>();
+      agents.set('producer', mockProducer);
+
+      // Execution should throw SyntheticCritiqueError
+      await expect(
+        protocol.execute(
+          {
+            sessionId: 'test-session',
+            pattern: 'reflexion',
+            experts: ['producer'],
+            task: createTestTask(),
+          },
+          agents
+        )
+      ).rejects.toThrow(SyntheticCritiqueError);
+    });
+
     it('should throw on invalid config', () => {
       const firstPersona = DEFAULT_CODE_REVIEW_PERSONAS[0];
       expect(firstPersona).toBeDefined();
@@ -112,7 +157,8 @@ describe('ReflexionProtocol', () => {
     let mockProducer: IAgent;
 
     beforeEach(() => {
-      protocol = createReflexionProtocol();
+      // Use createTestProtocol to allow synthetic critiques (Issue #509)
+      protocol = createTestProtocol();
       mockProducer = createMockAgent('producer');
     });
 
@@ -253,11 +299,12 @@ describe('createReflexionProtocol', () => {
 describe('ReflexionProtocol - Edge Cases', () => {
   describe('Iteration Limits', () => {
     it('should complete execution with limited iterations', async () => {
-      // Configure with only 1 iteration
+      // Configure with only 1 iteration and allow synthetic critiques (Issue #509)
       const protocol = new ReflexionProtocol({
         reflexionConfig: {
           maxIterations: 1,
           severityThreshold: 0.01, // Very low threshold = always wants improvement
+          allowSyntheticCritiques: true,
         },
       });
 
@@ -304,7 +351,7 @@ describe('ReflexionProtocol - Edge Cases', () => {
 
   describe('Multi-Expert Scenarios', () => {
     it('should work with multiple experts in the list', async () => {
-      const protocol = createReflexionProtocol();
+      const protocol = createTestProtocol();
 
       // Create multiple mock agents
       const mockAgent1 = createMockAgent('producer-1');
@@ -334,7 +381,7 @@ describe('ReflexionProtocol - Edge Cases', () => {
 
   describe('Empty Output Handling', () => {
     it('should handle agent returning empty output', async () => {
-      const protocol = createReflexionProtocol();
+      const protocol = createTestProtocol();
 
       const emptyOutputAgent: IAgent = {
         id: 'producer',
@@ -373,7 +420,7 @@ describe('ReflexionProtocol - Edge Cases', () => {
 
   describe('Concurrent Cancellation', () => {
     it('should handle cancel called multiple times', () => {
-      const protocol = createReflexionProtocol();
+      const protocol = createTestProtocol();
 
       // Multiple cancellations should not throw
       expect(() => {
@@ -384,7 +431,7 @@ describe('ReflexionProtocol - Edge Cases', () => {
     });
 
     it('should handle cancel before execution', async () => {
-      const protocol = createReflexionProtocol();
+      const protocol = createTestProtocol();
 
       // Cancel before any execution
       protocol.cancel('Pre-emptive cancel');
@@ -411,7 +458,7 @@ describe('ReflexionProtocol - Edge Cases', () => {
 
   describe('Task Context Edge Cases', () => {
     it('should handle task with empty context', async () => {
-      const protocol = createReflexionProtocol();
+      const protocol = createTestProtocol();
       const mockProducer = createMockAgent('producer');
       const agents = new Map<string, IAgent>();
       agents.set('producer', mockProducer);
@@ -436,7 +483,7 @@ describe('ReflexionProtocol - Edge Cases', () => {
     });
 
     it('should handle task with no constraints', async () => {
-      const protocol = createReflexionProtocol();
+      const protocol = createTestProtocol();
       const mockProducer = createMockAgent('producer');
       const agents = new Map<string, IAgent>();
       agents.set('producer', mockProducer);
@@ -485,6 +532,7 @@ describe('ReflexionProtocol - Edge Cases', () => {
       const protocol = new ReflexionProtocol({
         reflexionConfig: {
           personas: customPersonas,
+          allowSyntheticCritiques: true, // Issue #509
         },
       });
 
@@ -506,7 +554,7 @@ describe('ReflexionProtocol - Edge Cases', () => {
     });
 
     it('should use default personas when none provided', async () => {
-      const protocol = createReflexionProtocol();
+      const protocol = createTestProtocol();
 
       const mockProducer = createMockAgent('producer');
       const agents = new Map<string, IAgent>();

@@ -6,7 +6,19 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { SelfDebugProtocol, createSelfDebugProtocol } from './self-debug-protocol.js';
 import type { CodeExecutor, SelfDebugExecuteOptions } from './self-debug-protocol.js';
-import type { ExecutionResult, ParsedError } from './self-debug-types.js';
+import type { ExecutionResult, ParsedError, SelfDebugConfig } from './self-debug-types.js';
+// SyntheticDebugError exported for consumers but not used directly in tests
+
+/**
+ * Helper to create a test protocol with synthetic errors allowed.
+ * (Issue #510) Tests use synthetic errors which require explicit opt-in.
+ */
+function createTestProtocol(config?: SelfDebugConfig): SelfDebugProtocol {
+  return createSelfDebugProtocol({
+    ...config,
+    allowSyntheticErrors: true,
+  });
+}
 import type {
   IAgent,
   Task,
@@ -140,7 +152,8 @@ describe('execute', () => {
   let protocol: SelfDebugProtocol;
 
   beforeEach(() => {
-    protocol = new SelfDebugProtocol({ maxIterations: 3 });
+    // Use createTestProtocol to allow synthetic errors (Issue #510)
+    protocol = createTestProtocol({ maxIterations: 3 });
   });
 
   it('returns success when code passes initially', async () => {
@@ -298,7 +311,7 @@ describe('execute', () => {
 
 describe('cancel', () => {
   it('cancels during execution', async () => {
-    const protocol = new SelfDebugProtocol({ maxIterations: 10 });
+    const protocol = createTestProtocol({ maxIterations: 10 });
 
     let execCount = 0;
     const executor: CodeExecutor = () => {
@@ -432,7 +445,7 @@ describe('parseErrors', () => {
 
 describe('configuration', () => {
   it('respects maxIterations setting', async () => {
-    const protocol = new SelfDebugProtocol({ maxIterations: 2 });
+    const protocol = createTestProtocol({ maxIterations: 2 });
     const agent = createMockAgent(Array<string>(10).fill('```\ncode\n```'));
     const executor = createPermanentlyFailingExecutor('error');
 
@@ -450,7 +463,7 @@ describe('configuration', () => {
   });
 
   it('skips explanations when includeExplanation is false', async () => {
-    const protocol = new SelfDebugProtocol({ maxIterations: 1, includeExplanation: false });
+    const protocol = createTestProtocol({ maxIterations: 1, includeExplanation: false });
     const agent = createMockAgent(['```\nfixed\n```']);
     const executor = createPermanentlyFailingExecutor('error');
 
@@ -474,7 +487,7 @@ describe('configuration', () => {
 
 describe('history tracking', () => {
   it('records iteration details', async () => {
-    const protocol = new SelfDebugProtocol({ maxIterations: 2 });
+    const protocol = createTestProtocol({ maxIterations: 2 });
     const agent = createMockAgent([
       'Explanation',
       '```\nfixed\n```',
@@ -501,7 +514,7 @@ describe('history tracking', () => {
   });
 
   it('tracks proposed and applied fixes', async () => {
-    const protocol = new SelfDebugProtocol({ maxIterations: 1 });
+    const protocol = createTestProtocol({ maxIterations: 1 });
     const agent = createMockAgent(['Explanation', '```javascript\nconst fixed = true;\n```']);
     const executor = createPermanentlyFailingExecutor('Error');
 
@@ -542,7 +555,7 @@ describe('edge cases', () => {
   });
 
   it('handles agent returning empty response', async () => {
-    const protocol = new SelfDebugProtocol({ maxIterations: 1 });
+    const protocol = createTestProtocol({ maxIterations: 1 });
     const agent = createMockAgent(['', '']);
     const executor = createPermanentlyFailingExecutor('error');
 

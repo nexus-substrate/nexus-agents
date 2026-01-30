@@ -31,6 +31,7 @@ import {
   executeCode,
   parseErrorsFromOutput,
   createSyntheticError,
+  SyntheticDebugError,
   type CodeExecutor,
   type ResultBuildOpts,
 } from './self-debug-helpers.js';
@@ -241,8 +242,22 @@ export class SelfDebugProtocol {
 
   private getErrors(execution: ExecutionResult, iterNum: number): ParsedError[] {
     const errors = this.parseErrors(execution);
-    if (errors.length === 0 && !execution.success)
+
+    // (Issue #510) Fail-safe: check if synthetic errors are allowed when no patterns match
+    if (errors.length === 0 && !execution.success) {
+      if (!this.config.allowSyntheticErrors) {
+        this.log.error(
+          'No error patterns matched and synthetic errors not allowed. ' +
+            'Set allowSyntheticErrors: true to use generic error handling.'
+        );
+        throw new SyntheticDebugError(
+          'No error patterns matched failed execution output. ' +
+            'Consider adding custom error patterns or enabling synthetic errors'
+        );
+      }
+      this.log.warn('Using synthetic error - no patterns matched. Results may be unreliable.');
       return [createSyntheticError(execution, iterNum)];
+    }
     return errors;
   }
 

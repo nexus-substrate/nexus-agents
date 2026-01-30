@@ -17,12 +17,31 @@ import type {
 } from './reflexion-types.js';
 import { ReflexionConfigSchema, DEFAULT_CODE_REVIEW_PERSONAS } from './reflexion-types.js';
 
+/**
+ * Error thrown when synthetic critiques are used without explicit opt-in.
+ * (Source: Issue #509 - Fail-safe Reflexion)
+ *
+ * By default, Reflexion requires a real critique generator (LLM-based) to function properly.
+ * Using synthetic critiques returns heuristic results that may lead to poor refinements.
+ * To explicitly opt-in to synthetic critiques, set `allowSyntheticCritiques: true`.
+ */
+export class SyntheticCritiqueError extends Error {
+  constructor(reason: string) {
+    super(
+      `Reflexion critique generation cannot proceed: ${reason}. ` +
+        'To use synthetic critiques (NOT RECOMMENDED), set allowSyntheticCritiques: true'
+    );
+    this.name = 'SyntheticCritiqueError';
+  }
+}
+
 /** Default reflexion configuration values. */
 export const REFLEXION_DEFAULTS = {
   maxIterations: 3,
   severityThreshold: 0.3,
   iterationTimeoutMs: 60000,
   requireConsensus: false,
+  allowSyntheticCritiques: false,
 } as const;
 
 /** Partial reflexion config for user overrides. */
@@ -32,6 +51,8 @@ export interface PartialReflexionConfig {
   readonly personas?: readonly Persona[];
   readonly iterationTimeoutMs?: number;
   readonly requireConsensus?: boolean;
+  /** Allow synthetic critiques when no real critique generator is available (Issue #509) */
+  readonly allowSyntheticCritiques?: boolean;
 }
 
 /** Builds and validates the reflexion configuration. */
@@ -43,6 +64,8 @@ export function buildReflexionConfig(userConfig?: PartialReflexionConfig): Refle
     personas: config.personas ?? DEFAULT_CODE_REVIEW_PERSONAS,
     iterationTimeoutMs: config.iterationTimeoutMs ?? REFLEXION_DEFAULTS.iterationTimeoutMs,
     requireConsensus: config.requireConsensus ?? REFLEXION_DEFAULTS.requireConsensus,
+    allowSyntheticCritiques:
+      config.allowSyntheticCritiques ?? REFLEXION_DEFAULTS.allowSyntheticCritiques,
   };
 
   const parsedConfig = ReflexionConfigSchema.safeParse(configInput);

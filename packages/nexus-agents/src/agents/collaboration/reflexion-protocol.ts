@@ -40,6 +40,7 @@ import {
   buildReflexionConfig,
   formatRefinementTask,
   createFinalResultPayload,
+  SyntheticCritiqueError,
   type PartialReflexionConfig,
 } from './reflexion-helpers.js';
 
@@ -350,6 +351,26 @@ export class ReflexionProtocol implements ICollaborationProtocol {
     iteration: number,
     sessionId: string | undefined
   ): readonly PersonaCritique[] {
+    // (Issue #509) Fail-safe: check if synthetic critiques are allowed
+    // Currently, generatePersonaCritique always uses heuristics instead of real LLM analysis.
+    // This may lead to poor quality feedback. Require explicit opt-in for synthetic critiques.
+    if (!this.config.allowSyntheticCritiques) {
+      this.logger.error(
+        'Synthetic critiques not allowed. Set allowSyntheticCritiques: true to use heuristic critiques.'
+      );
+      throw new SyntheticCritiqueError(
+        'No real critique generator available. ' +
+          'Current implementation uses heuristic-based synthetic critiques'
+      );
+    }
+
+    // Log warning when using synthetic critiques
+    if (iteration === 0) {
+      this.logger.warn(
+        'Using synthetic critiques - results are heuristic-based and may produce unreliable feedback'
+      );
+    }
+
     return this.config.personas.map((persona) => {
       // Emit critique started event (Issue #216)
       if (sessionId !== undefined) {

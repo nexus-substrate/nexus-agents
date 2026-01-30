@@ -139,6 +139,16 @@ export interface ReflexionConfig {
   readonly iterationTimeoutMs: number;
   /** Whether to require consensus among critics */
   readonly requireConsensus: boolean;
+  /**
+   * Allow synthetic (heuristic) critiques when no real critique generator is available.
+   * (Issue #509 - Fail-safe Reflexion)
+   *
+   * WARNING: Synthetic critiques use simple heuristics (e.g., output length) instead of
+   * real LLM analysis. This may lead to poor quality feedback and incorrect refinements.
+   * Only use for testing/development.
+   * Default: false (throws SyntheticCritiqueError when no generator available)
+   */
+  readonly allowSyntheticCritiques: boolean;
 }
 
 /**
@@ -150,6 +160,7 @@ export const ReflexionConfigSchema = z.object({
   personas: z.array(PersonaSchema).min(2),
   iterationTimeoutMs: z.number().min(1000).default(60000),
   requireConsensus: z.boolean().default(false),
+  allowSyntheticCritiques: z.boolean().default(false),
 });
 
 /**

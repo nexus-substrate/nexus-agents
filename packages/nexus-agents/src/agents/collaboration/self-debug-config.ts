@@ -30,6 +30,8 @@ export interface ResolvedConfig {
   readonly stopOnFirstError: boolean;
   readonly includeExplanation: boolean;
   readonly errorPatterns: readonly ErrorPattern[];
+  /** Allow synthetic errors when no patterns match (Issue #510) */
+  readonly allowSyntheticErrors: boolean;
 }
 
 /** Get default resolved config. */
@@ -41,6 +43,7 @@ export function getDefaultConfig(): ResolvedConfig {
     stopOnFirstError: d.stopOnFirstError,
     includeExplanation: d.includeExplanation,
     errorPatterns: DEFAULT_ERROR_PATTERNS,
+    allowSyntheticErrors: d.allowSyntheticErrors,
   };
 }
 
@@ -54,6 +57,7 @@ export function mergeConfig(config: SelfDebugConfig | undefined): ResolvedConfig
     stopOnFirstError: config.stopOnFirstError ?? d.stopOnFirstError,
     includeExplanation: config.includeExplanation ?? d.includeExplanation,
     errorPatterns: config.errorPatterns ?? d.errorPatterns,
+    allowSyntheticErrors: config.allowSyntheticErrors ?? d.allowSyntheticErrors,
   };
 }
 
