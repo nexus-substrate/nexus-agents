@@ -15,32 +15,7 @@ import {
   type WorkflowResponse,
   type ApiError,
 } from '../rest-types.js';
-
-/**
- * Create validation error response.
- */
-function createValidationError(requestId: string, message: string, issues?: unknown): ApiError {
-  return {
-    error: {
-      code: 'VALIDATION_ERROR',
-      message,
-      details: issues !== undefined ? { issues } : undefined,
-    },
-    requestId,
-    timestamp: new Date(getTimeProvider().now()).toISOString(),
-  };
-}
-
-/**
- * Create internal error response.
- */
-function createInternalError(requestId: string, message: string): ApiError {
-  return {
-    error: { code: 'INTERNAL_ERROR', message },
-    requestId,
-    timestamp: new Date(getTimeProvider().now()).toISOString(),
-  };
-}
+import { createValidationError, createInternalError } from '../error-helpers.js';
 
 /**
  * Build workflow response.
@@ -128,9 +103,7 @@ async function handleWorkflowRequest(
 
   const parseResult = WorkflowRequestSchema.safeParse(request.body);
   if (!parseResult.success) {
-    await reply
-      .status(400)
-      .send(createValidationError(requestId, 'Invalid request body', parseResult.error.issues));
+    await reply.status(400).send(createValidationError(requestId, parseResult.error.issues));
     return;
   }
 

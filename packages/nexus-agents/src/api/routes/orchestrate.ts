@@ -10,8 +10,7 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import type { ILogger } from '../../core/logger.js';
 import type { Result } from '../../core/result.js';
-import { getTimeProvider } from '../../core/index.js';
-import type { TaskConstraints, Task } from '../../core/index.js';
+import { getTimeProvider, type TaskConstraints, type Task } from '../../core/index.js';
 import type { IOrchestrator, OrchestratorDefinition } from '../../core/types/orchestrator.js';
 import { OrchestratorFactory } from '../../orchestration/orchestrator-factory.js';
 import { createTechLeadWithSica } from '../../mcp/tools/orchestrate-sica.js';
@@ -21,43 +20,11 @@ import {
   type OrchestrateResponse,
   type ApiError,
 } from '../rest-types.js';
-
-/**
- * Create validation error response.
- */
-function createValidationError(requestId: string, issues: unknown): ApiError {
-  return {
-    error: {
-      code: 'VALIDATION_ERROR',
-      message: 'Invalid request body',
-      details: { issues },
-    },
-    requestId,
-    timestamp: new Date(getTimeProvider().now()).toISOString(),
-  };
-}
-
-/**
- * Create internal error response.
- */
-function createInternalError(requestId: string, message: string): ApiError {
-  return {
-    error: { code: 'INTERNAL_ERROR', message },
-    requestId,
-    timestamp: new Date(getTimeProvider().now()).toISOString(),
-  };
-}
-
-/**
- * Create orchestration error response.
- */
-function createOrchestrationError(requestId: string, message: string): ApiError {
-  return {
-    error: { code: 'ORCHESTRATION_ERROR', message },
-    requestId,
-    timestamp: new Date(getTimeProvider().now()).toISOString(),
-  };
-}
+import {
+  createValidationError,
+  createInternalError,
+  createOrchestrationError,
+} from '../error-helpers.js';
 
 /**
  * Extract analysis from output if available.

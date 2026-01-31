@@ -15,35 +15,10 @@ import {
   type ExpertResponse,
   type ApiError,
 } from '../rest-types.js';
+import { createValidationError, createInternalError } from '../error-helpers.js';
 
 /** Available expert types. */
 const EXPERT_TYPES = ['code', 'security', 'architecture', 'testing', 'documentation'] as const;
-
-/**
- * Create validation error response.
- */
-function createValidationError(requestId: string, issues: unknown): ApiError {
-  return {
-    error: {
-      code: 'VALIDATION_ERROR',
-      message: 'Invalid request body',
-      details: { issues },
-    },
-    requestId,
-    timestamp: new Date(getTimeProvider().now()).toISOString(),
-  };
-}
-
-/**
- * Create internal error response.
- */
-function createInternalError(requestId: string, message: string): ApiError {
-  return {
-    error: { code: 'INTERNAL_ERROR', message },
-    requestId,
-    timestamp: new Date(getTimeProvider().now()).toISOString(),
-  };
-}
 
 /**
  * Build expert response.
