@@ -7,7 +7,7 @@
  */
 
 import type { CliName } from '../../cli-adapters/types.js';
-import type { TaskType, TaskProfile } from '../../cli-adapters/task-analyzer.js';
+import type { TaskTypeCategory as TaskType, TaskProfile } from '../../core/index.js';
 
 /**
  * Task difficulty levels for evaluation.

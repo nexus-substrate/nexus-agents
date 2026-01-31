@@ -7,7 +7,7 @@
  * (Source: Issue #170, Alignment Roadmap Phase 1)
  */
 
-import { summarizeProfile } from '../cli-adapters/task-analyzer.js';
+import { summarizeTaskProfile } from '../core/index.js';
 import type { TopsisScore } from '../cli-adapters/topsis-types.js';
 import type {
   RoutingAuditOptions,
@@ -38,7 +38,7 @@ export function formatHeader(result: RoutingAuditResult): string[] {
 export function formatTaskAnalysis(result: RoutingAuditResult): string[] {
   const lines: string[] = [];
   lines.push(boxLine(color(' Task Analysis:', ANSI.bold)));
-  const profileSummary = summarizeProfile(result.taskProfile);
+  const profileSummary = summarizeTaskProfile(result.taskProfile);
   lines.push(boxLine(`   ${profileSummary}`));
   lines.push(color('├' + horizontalLine() + '┤', ANSI.cyan));
   return lines;

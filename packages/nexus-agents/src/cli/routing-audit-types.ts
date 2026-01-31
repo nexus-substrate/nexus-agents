@@ -9,7 +9,7 @@
 
 import type { CliName } from '../cli-adapters/types.js';
 import type { TopsisResult } from '../cli-adapters/topsis-types.js';
-import type { TaskProfile } from '../cli-adapters/task-analyzer.js';
+import type { TaskProfile } from '../core/index.js';
 
 // =============================================================================
 // Command Options & Result Types

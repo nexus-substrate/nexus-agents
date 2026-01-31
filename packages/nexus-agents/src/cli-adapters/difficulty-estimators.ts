@@ -8,7 +8,7 @@
  * (Source: Issue #339)
  */
 
-import type { TaskProfile } from './task-analyzer.js';
+import type { TaskProfile } from '../core/index.js';
 
 // ============================================================================
 // Constants for normalization
