@@ -31,6 +31,7 @@ import {
   ModelCapability,
   getTimeProvider,
   getRandomProvider,
+  getTokenEstimator,
 } from '../core/index.js';
 import { BaseAdapter, type BaseAdapterConfig } from './base-adapter.js';
 import { createStream } from './streaming.js';
@@ -53,7 +54,6 @@ export const OLLAMA_MODELS = {
 
 const DEFAULT_OLLAMA_HOST = 'http://localhost:11434';
 const DEFAULT_MAX_TOKENS = 2048;
-const OLLAMA_CHARS_PER_TOKEN = 4;
 
 /** Configuration specific to OllamaAdapter. */
 export interface OllamaAdapterConfig {
@@ -198,7 +198,8 @@ export class OllamaAdapter extends BaseAdapter {
   }
 
   override countTokens(text: string): Promise<number> {
-    return Promise.resolve(Math.ceil(text.length / OLLAMA_CHARS_PER_TOKEN));
+    // Use unified TokenEstimator with generic ratio (~4 chars/token)
+    return Promise.resolve(getTokenEstimator().estimateText(text, 'generic'));
   }
 
   private async executeStream(
