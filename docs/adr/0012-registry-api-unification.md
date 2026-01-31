@@ -2,7 +2,7 @@
 
 ## Status
 
-APPROVED (Consensus Vote: 80% approval, 2026-01-31)
+IMPLEMENTED (Consensus Vote: 80% approval, 2026-01-31)
 
 ## Context
 
@@ -58,10 +58,17 @@ Unify both registries behind the `IRegistry<T,E>` interface already defined in `
 
 ## Implementation
 
-1. Update ExpertRegistry to implement IRegistry<ExpertDefinition>
-2. Update TemplateRegistry to implement IRegistry<WorkflowTemplate>
-3. Add resetInstance() to TemplateRegistry
-4. Update tests to use interface methods where appropriate
+1. ✅ Update ExpertRegistry to implement IRegistry<Expert, RegistryError>
+   - Added getAll(), getAllIds(), query(predicate), search() methods
+   - Renamed query(options) to queryWithOptions() for backward compatibility
+   - Updated RegistryStats to extend IRegistryStats with total field
+2. ✅ Update TemplateRegistry with IRegistry-compatible methods
+   - Added id field to TemplateMetadata (alias for name)
+   - Added TemplateRegistryError class
+   - Added get(), has(), getAllIds(), query(predicate), size, isEmpty, clear() methods
+   - Updated getStats() to return IRegistryStats-compatible type
+3. ✅ resetInstance() equivalent exists as resetRegistry() for TemplateRegistry
+4. ✅ Updated tests to use non-deprecated interface methods
 
 ## Related
 
