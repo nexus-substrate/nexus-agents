@@ -2,12 +2,23 @@
  * nexus-agents/workflows - Template Registry
  *
  * Registry for managing workflow templates (built-in and custom).
+ * Implements IRegistry<TemplateMetadata, TemplateRegistryError> (ADR-0012).
  */
 
-import type { WorkflowDefinition } from '../core/index.js';
-import { getTimeProvider } from '../core/index.js';
+import type { WorkflowDefinition, Result, IRegistryStats } from '../core/index.js';
+import { getTimeProvider, ok, err, AgentError } from '../core/index.js';
 import type { ITemplateRegistry, TemplateMetadata, TemplateCategory } from './template-types.js';
 import { loadTemplatesFromDirectory, getBuiltInTemplatesWithMetadata } from './template-loader.js';
+
+/**
+ * Error specific to template registry operations.
+ */
+export class TemplateRegistryError extends AgentError {
+  constructor(message: string, options?: { cause?: Error; context?: Record<string, unknown> }) {
+    super(message, options);
+    this.name = 'TemplateRegistryError';
+  }
+}
 
 /**
  * Maximum number of templates allowed in registry.
@@ -104,6 +115,7 @@ class TemplateRegistry implements ITemplateRegistry {
     partialMetadata?: Partial<TemplateMetadata>
   ): TemplateMetadata {
     const metadata: TemplateMetadata = {
+      id: workflow.name, // IRegistryItem compliance (ADR-0012)
       name: workflow.name,
       version: workflow.version,
       path: partialMetadata?.path ?? '',
@@ -216,10 +228,97 @@ class TemplateRegistry implements ITemplateRegistry {
     }
   }
 
+  // =========================================================================
+  // IRegistry Interface Methods (ADR-0012)
+  // =========================================================================
+
+  /**
+   * Get template metadata by ID.
+   * IRegistry interface method.
+   *
+   * @param id - Template ID to retrieve
+   * @returns Result with TemplateMetadata or TemplateRegistryError
+   */
+  get(id: string): Result<TemplateMetadata, TemplateRegistryError> {
+    const meta = this.metadata.get(id);
+    if (meta === undefined) {
+      return err(
+        new TemplateRegistryError(`Template with ID '${id}' not found`, {
+          context: {
+            requestedId: id,
+            availableIds: this.getAllIds(),
+          },
+        })
+      );
+    }
+    return ok(meta);
+  }
+
+  /**
+   * Check if a template is registered.
+   * IRegistry interface method.
+   *
+   * @param id - Template ID to check
+   * @returns True if template is registered
+   */
+  has(id: string): boolean {
+    return this.metadata.has(id);
+  }
+
+  /**
+   * Get all registered template IDs.
+   * IRegistry interface method.
+   *
+   * @returns Array of all registered template IDs
+   */
+  getAllIds(): string[] {
+    return Array.from(this.metadata.keys());
+  }
+
+  /**
+   * Query templates with predicate function.
+   * IRegistry interface method.
+   *
+   * @param predicate - Function to test each template
+   * @returns Array of matching templates
+   */
+  query(predicate: (item: TemplateMetadata) => boolean): TemplateMetadata[] {
+    return Array.from(this.metadata.values()).filter(predicate);
+  }
+
+  /**
+   * Get the number of registered templates.
+   * IRegistry interface method.
+   */
+  get size(): number {
+    return this.metadata.size;
+  }
+
+  /**
+   * Check if the registry is empty.
+   * IRegistry interface method.
+   */
+  get isEmpty(): boolean {
+    return this.metadata.size === 0;
+  }
+
+  /**
+   * Clear all templates (built-in and custom).
+   * IRegistry interface method.
+   *
+   * WARNING: This removes built-in templates. Use clearCustom() to only clear custom templates.
+   */
+  clear(): void {
+    this.definitions.clear();
+    this.metadata.clear();
+    this.initialized = false;
+  }
+
   /**
    * Get registry statistics.
+   * IRegistry interface method with domain-specific extensions.
    */
-  getStats(): { total: number; builtIn: number; custom: number } {
+  getStats(): IRegistryStats & { builtIn: number; custom: number } {
     const builtIn = this.getBuiltIn().length;
     const total = this.metadata.size;
     return { total, builtIn, custom: total - builtIn };

@@ -110,6 +110,7 @@ export {
   createIsolatedRegistry,
   resetRegistry,
   TemplateRegistry,
+  TemplateRegistryError,
 } from './template-registry.js';
 
 // ============================================================================

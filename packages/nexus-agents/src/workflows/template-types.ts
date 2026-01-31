@@ -14,8 +14,11 @@ export type TemplateCategory = 'development' | 'review' | 'documentation' | 'tes
 
 /**
  * Extended template metadata for registry.
+ * Implements IRegistryItem for unified registry API (ADR-0012).
  */
 export interface TemplateMetadata extends WorkflowTemplate {
+  /** Unique identifier (alias for name, required by IRegistryItem) */
+  readonly id: string;
   /** Template category */
   category: TemplateCategory;
   /** Keywords for search */

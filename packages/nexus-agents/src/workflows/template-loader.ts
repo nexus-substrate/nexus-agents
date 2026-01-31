@@ -188,6 +188,7 @@ export async function loadTemplateFile(
     const isBuiltIn = BUILT_IN_TEMPLATES.includes(templateName as BuiltInTemplateName);
 
     const metadata: TemplateMetadata = {
+      id: definition.name, // IRegistryItem compliance (ADR-0012)
       name: definition.name,
       version: definition.version,
       path: validatedPath,
