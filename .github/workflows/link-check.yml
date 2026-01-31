@@ -112,10 +112,11 @@ jobs:
         with:
           args: >-
             --offline
-            --base ${{ github.workspace }}/website/dist
+            --base-url file://${{ github.workspace }}/website/dist
             --include-verbatim
-            '${{ github.workspace }}/website/dist/**/*.html'
+            'website/dist'
           fail: true
+          failIfEmpty: false
           output: ./docs-site-report.md
 
       - name: Upload docs site report

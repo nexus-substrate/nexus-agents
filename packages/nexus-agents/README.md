@@ -371,8 +371,8 @@ We welcome contributions! Please see our guidelines:
 - Test coverage must be at least 80%
 - All code must pass linting and type checking
 
-See [CODING_STANDARDS.md](./CODING_STANDARDS.md) for detailed guidelines.
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for contribution workflow.
+See [CODING_STANDARDS.md](../../CODING_STANDARDS.md) for detailed guidelines.
+See [CONTRIBUTING.md](../../CONTRIBUTING.md) for contribution workflow.
 
 ### Commit Convention
 
@@ -391,7 +391,7 @@ chore(scope): maintenance tasks
 
 ## License
 
-MIT - See [LICENSE](./LICENSE) for details.
+MIT - See [LICENSE](../../LICENSE) for details.
 
 ---
 

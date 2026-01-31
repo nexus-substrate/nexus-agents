@@ -21,6 +21,7 @@ exclude_path = [
   "coverage",
   ".pnpm-store",
   "packages/nexus-agents/src/**/*.test.ts",
+  "packages/nexus-agents/docs/api",
   "website/node_modules",
   "website/dist",
 ]

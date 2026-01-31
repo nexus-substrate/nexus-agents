@@ -6,11 +6,11 @@
 
 ## Quick Navigation
 
-| Document                                                                | Purpose                                             | Audience                |
-| ----------------------------------------------------------------------- | --------------------------------------------------- | ----------------------- |
-| **[SKILL_ASSIGNMENT_RESEARCH.md](./SKILL_ASSIGNMENT_RESEARCH.md)**      | Comprehensive research on skill assignment patterns | Architects, Researchers |
-| **[Expert Selector](../../architecture/AGENT_SYSTEM.md#expert-system)** | Current implementation (AGENT_SYSTEM.md)            | Developers              |
-| **[Custom Experts Config](../../CLAUDE.md#expert-system)**              | How to define custom experts                        | Users                   |
+| Document                                                                   | Purpose                                             | Audience                |
+| -------------------------------------------------------------------------- | --------------------------------------------------- | ----------------------- |
+| **[SKILL_ASSIGNMENT_RESEARCH.md](./SKILL_ASSIGNMENT_RESEARCH.md)**         | Comprehensive research on skill assignment patterns | Architects, Researchers |
+| **[Expert Selector](../../../architecture/AGENT_SYSTEM.md#expert-system)** | Current implementation (AGENT_SYSTEM.md)            | Developers              |
+| **[Custom Experts Config](../../../../CLAUDE.md#expert-system)**           | How to define custom experts                        | Users                   |
 
 ---
 
