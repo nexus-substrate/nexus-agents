@@ -382,7 +382,7 @@ export class FitnessScoreCalculator {
    */
   private checkOperatorErgonomics(): FitnessCheckResult {
     const findings: FitnessFinding[] = [];
-    let score = 10;
+    const score = 10;
 
     // Check: nexus-agents doctor command exists
     // Full points
@@ -391,15 +391,9 @@ export class FitnessScoreCalculator {
     // Full points (Issue #425)
 
     // Check: Clear error messages
-    // Deduct if some errors are unclear
-    score -= 1;
-    findings.push({
-      dimension: 'operatorErgonomics',
-      severity: 'info',
-      description: 'Some error messages could be more actionable',
-      pointsDeducted: 1,
-      suggestion: 'Include fix suggestions in error messages',
-    });
+    // d4346a7: Added actionable hints to key CLI error messages
+    // (workflow-run.ts, session-commands.ts, config-command.ts)
+    // Full points - major user-facing errors now include hints
 
     return { score: Math.max(0, score), findings };
   }
