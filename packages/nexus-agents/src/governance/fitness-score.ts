@@ -257,6 +257,10 @@ export class FitnessScoreCalculator {
       suggestion: 'Consider consolidating routers behind unified interfaces',
     });
 
+    // Consolidated: toError utility (ecdf0e3) - no deduction
+    // Consolidated: STPA safety framework (7bbf6e5) - no deduction
+    // Consolidated: REST API server integration (bbd3709) - no deduction
+
     return { score: Math.max(0, score), findings };
   }
 
