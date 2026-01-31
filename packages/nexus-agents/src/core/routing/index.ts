@@ -34,3 +34,30 @@ export type { IRoutingMemory } from '../../context/routing-memory.js';
 
 // Re-export factory for creating routers
 export { createCompositeRouter } from '../../cli-adapters/composite-router.js';
+
+// Unified Routing Context Store (ADR-0008)
+export type {
+  IRoutingContextStore,
+  RoutingContextStoreConfig,
+  RoutingContextError,
+  RoutingContextStats,
+  // Preference types
+  PreferenceDataPoint,
+  PreferenceStats,
+  QueryFeatures,
+  // Performance types
+  ModelPerformance,
+  ModelPreference,
+  ExperiencePattern,
+  CachedActionResult,
+  // Metrics types
+  RoutingDecision,
+  TaskOutcome,
+  AggregatedModelMetrics,
+  RoutingMetricsSummary,
+  // Common types
+  Timestamp,
+  TaskType,
+  Domain,
+} from './routing-context-store.js';
+export { RoutingContextStore, createRoutingContextStore } from './routing-context-store-impl.js';
