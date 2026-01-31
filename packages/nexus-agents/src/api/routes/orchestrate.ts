@@ -2,14 +2,18 @@
  * nexus-agents/api - Orchestrate Route
  *
  * POST /api/v1/orchestrate endpoint for task orchestration.
+ * Uses unified IOrchestrator interface via factory (ADR-0014, Issue #595).
  *
  * @module api/routes/orchestrate
  */
 
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import type { ILogger } from '../../core/logger.js';
+import type { Result } from '../../core/result.js';
 import { getTimeProvider } from '../../core/index.js';
-import type { TaskConstraints } from '../../core/index.js';
+import type { TaskConstraints, Task } from '../../core/index.js';
+import type { IOrchestrator, OrchestratorDefinition } from '../../core/types/orchestrator.js';
+import { OrchestratorFactory } from '../../orchestration/orchestrator-factory.js';
 import { createTechLeadWithSica } from '../../mcp/tools/orchestrate-sica.js';
 import {
   OrchestrateRequestSchema,
@@ -56,26 +60,61 @@ function createOrchestrationError(requestId: string, message: string): ApiError 
 }
 
 /**
- * Build successful orchestration response.
+ * Extract analysis from output if available.
+ */
+function extractAnalysis(output: unknown): OrchestrateResponse['analysis'] {
+  const defaultAnalysis = {
+    complexity: 5,
+    taskType: 'general',
+    requirements: [] as string[],
+    approach: 'TechLead orchestration',
+  };
+
+  if (typeof output !== 'object' || output === null) {
+    return defaultAnalysis;
+  }
+
+  const outputObj = output as Record<string, unknown>;
+  const analysis = outputObj.analysis;
+
+  if (typeof analysis !== 'object' || analysis === null) {
+    return defaultAnalysis;
+  }
+
+  const analysisObj = analysis as Record<string, unknown>;
+
+  // Extract requirements with type-safe filtering
+  const reqs = Array.isArray(analysisObj.requirements)
+    ? (analysisObj.requirements as unknown[]).filter((r): r is string => typeof r === 'string')
+    : [];
+
+  return {
+    complexity: typeof analysisObj.complexity === 'number' ? analysisObj.complexity : 5,
+    taskType: typeof analysisObj.taskType === 'string' ? analysisObj.taskType : 'general',
+    requirements: reqs,
+    approach:
+      typeof analysisObj.approach === 'string' ? analysisObj.approach : 'TechLead orchestration',
+  };
+}
+
+/**
+ * Build successful orchestration response from OrchestratorResult.
+ * Uses unified IOrchestrator result format (Issue #595).
  */
 function buildOrchestrateResponse(
   taskId: string,
   output: unknown,
-  durationMs: number
+  durationMs: number,
+  orchResult?: import('../../core/types/orchestrator.js').OrchestratorResult
 ): OrchestrateResponse {
   return {
     taskId,
-    analysis: {
-      complexity: 5,
-      taskType: 'general',
-      requirements: [],
-      approach: 'TechLead orchestration',
-    },
+    analysis: extractAnalysis(output),
     result: output,
     metadata: {
       durationMs,
-      tokensUsed: 0,
-      expertsUsed: [],
+      tokensUsed: orchResult?.totalTokensUsed ?? 0,
+      expertsUsed: orchResult?.agentsUsed ?? [],
     },
   };
 }
@@ -119,6 +158,31 @@ function buildTaskObject(
   if (Object.keys(taskConstraints).length === 0) return baseTask;
 
   return { ...baseTask, constraints: taskConstraints };
+}
+
+/**
+ * Creates an IOrchestrator instance for REST API usage.
+ * Uses factory pattern with SICA-wrapped TechLead (ADR-0014, Issue #595).
+ */
+function createOrchestratorForRest(logger: ILogger): IOrchestrator {
+  // Create TechLead instance (SICA-wrapped when enabled - Issue #558)
+  const techLead = createTechLeadWithSica(logger);
+
+  // Create factory with TechLead instance wired (ADR-0014)
+  const factory = new OrchestratorFactory({
+    logger,
+    techLead: techLead as { execute: (task: unknown) => Promise<Result<unknown, unknown>> },
+  });
+
+  // Return TechLead orchestrator adapter
+  return factory.create('tech_lead');
+}
+
+/**
+ * Build OrchestratorDefinition from task for IOrchestrator.execute().
+ */
+function buildOrchestratorDefinition(task: Task): OrchestratorDefinition {
+  return { type: 'task', task };
 }
 
 /** Orchestrate route schema. */
@@ -203,13 +267,16 @@ async function handleOrchestrateRequest(
   logger.info('Orchestrate request', { requestId, taskLength: task.length });
 
   try {
-    // Use SICA-wrapped TechLead when enabled (Issue #558)
-    const techLead = createTechLeadWithSica(logger);
+    // Use unified IOrchestrator via factory (ADR-0014, Issue #595)
+    const orchestrator = createOrchestratorForRest(logger);
 
     // Build task object, only including constraints if provided
     const taskObj = buildTaskObject(requestId, task, context ?? {}, constraints);
 
-    const result = await techLead.execute(taskObj);
+    // Create orchestrator definition for task execution
+    const definition = buildOrchestratorDefinition(taskObj as Task);
+
+    const result = await orchestrator.execute(definition, {});
 
     if (!result.ok) {
       await reply.status(500).send(createOrchestrationError(requestId, result.error.message));
@@ -217,7 +284,15 @@ async function handleOrchestrateRequest(
     }
 
     const durationMs = time.now() - startTime;
-    const response = buildOrchestrateResponse(result.value.taskId, result.value.output, durationMs);
+
+    // Build response from OrchestratorResult
+    const orchResult = result.value;
+    const response = buildOrchestrateResponse(
+      orchResult.executionId,
+      orchResult.output,
+      durationMs,
+      orchResult
+    );
 
     logger.info('Orchestrate complete', { requestId, durationMs });
     await reply.send(response);
