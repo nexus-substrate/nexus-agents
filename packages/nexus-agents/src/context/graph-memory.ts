@@ -39,8 +39,9 @@ import {
   getEdgesForKey,
   bfsTraverse,
   findShortestPath,
-  memoryExists,
 } from './graph-memory-helpers.js';
+// Shared utilities per ADR-0013
+import { memoryExists } from '../utils/memory-db-utils.js';
 
 // Re-export types
 export type {

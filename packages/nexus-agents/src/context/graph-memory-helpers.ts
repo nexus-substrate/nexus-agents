@@ -17,6 +17,12 @@ import type {
 } from './graph-memory-types.js';
 import { DEFAULT_GRAPH_MEMORY_CONFIG } from './graph-memory-types.js';
 import type { MemoryEntry, MemoryRow, ISQLiteDatabase } from './memory-backend-types.js';
+// Shared utilities per ADR-0013
+import {
+  memoryRowToEntry as sharedMemoryRowToEntry,
+  memoryExists as sharedMemoryExists,
+  getMemoryEntry as sharedGetMemoryEntry,
+} from '../utils/memory-db-utils.js';
 
 // ============================================================================
 // SQL Schema
@@ -66,15 +72,12 @@ export function rowToEdge(row: GraphEdgeRow): GraphEdge {
   return base;
 }
 
-/** Convert a MemoryRow to a MemoryEntry. */
+/**
+ * Convert a MemoryRow to a MemoryEntry.
+ * @deprecated Use import from '../utils/memory-db-utils.js' directly. Will be removed in v3.0.
+ */
 export function memoryRowToEntry(row: MemoryRow): MemoryEntry {
-  return {
-    key: row.key,
-    value: JSON.parse(row.value) as unknown,
-    metadata: JSON.parse(row.metadata) as MemoryEntry['metadata'],
-    createdAt: new Date(row.created_at),
-    accessedAt: new Date(row.accessed_at),
-  };
+  return sharedMemoryRowToEntry(row);
 }
 
 // ============================================================================
@@ -219,7 +222,7 @@ export function bfsTraverse(config: BFSConfig): TraversalResult[] {
     if (current === undefined) break;
 
     if (current.depth > 0 || opts.includeStart) {
-      const entry = getMemoryEntry(db, current.key);
+      const entry = sharedGetMemoryEntry(db, current.key);
       if (entry !== undefined) {
         state.results.push(buildTraversalResult(entry, current.depth, current.path, current.edge));
       }
@@ -285,18 +288,18 @@ export function findShortestPath(
 // Memory Retrieval Helper
 // ============================================================================
 
-/** Get a memory entry by key. */
+/**
+ * Get a memory entry by key.
+ * @deprecated Use import from '../utils/memory-db-utils.js' directly. Will be removed in v3.0.
+ */
 export function getMemoryEntry(db: ISQLiteDatabase, key: string): MemoryEntry | undefined {
-  const stmt = db.prepare<MemoryRow>('SELECT * FROM memories WHERE key = ?');
-  const row = stmt.get(key);
-  return row !== undefined ? memoryRowToEntry(row) : undefined;
+  return sharedGetMemoryEntry(db, key);
 }
 
-/** Check if a memory key exists. */
+/**
+ * Check if a memory key exists.
+ * @deprecated Use import from '../utils/memory-db-utils.js' directly. Will be removed in v3.0.
+ */
 export function memoryExists(db: ISQLiteDatabase, key: string): boolean {
-  const stmt = db.prepare<{ count: number }>(
-    'SELECT COUNT(*) as count FROM memories WHERE key = ?'
-  );
-  const result = stmt.get(key);
-  return result !== undefined && result.count > 0;
+  return sharedMemoryExists(db, key);
 }
