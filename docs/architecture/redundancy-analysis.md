@@ -1,7 +1,22 @@
 # System Redundancy Analysis
 
 > Generated: 2026-01-29
+> Updated: 2026-01-31
 > Source: System Mandate Loop H - Redundancy & Duplication Discovery
+
+## Consolidation Progress (as of 2026-01-31)
+
+| Item                    | Status         | Commits/Issues            |
+| ----------------------- | -------------- | ------------------------- |
+| Token estimation        | ✅ COMPLETE    | 11fadd6, 06724b5, 45abf43 |
+| toError utility         | ✅ COMPLETE    | ecdf0e3                   |
+| Error message hints     | ✅ COMPLETE    | d4346a7                   |
+| Task analyzer migration | 🔄 IN PROGRESS | Issue #586                |
+| SwarmObserver wiring    | 📋 PLANNED     | Issue #587                |
+| Layer separation        | 📋 PLANNED     | Issue #588                |
+| Consensus caching       | 📋 PLANNED     | Issue #589                |
+
+**Fitness Score:** 87/100 (target: 90+)
 
 ## Executive Summary
 
@@ -36,8 +51,9 @@ The nexus-agents codebase contains **significant architectural redundancy** acro
 **Task Analysis Duplication:**
 
 - `TaskRouter` and `ZeroRouter` both call `analyzeTask()` identically
-- Token estimation duplicated in 3+ places
-- ~150 lines of duplicate analysis code
+- ~~Token estimation duplicated in 3+ places~~ **CONSOLIDATED** (commits 11fadd6, 06724b5, 45abf43)
+  - All adapters now use unified `getTokenEstimator()` from core
+- ~150 lines of duplicate analysis code (Issue #586 tracks SharedTaskAnalyzer migration)
 
 **Cascade Pattern Duplication:**
 
