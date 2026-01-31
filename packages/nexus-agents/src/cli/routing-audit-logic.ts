@@ -7,14 +7,20 @@
  * (Source: Issue #170, Alignment Roadmap Phase 1)
  */
 
-import { createLogger, getTimeProvider } from '../core/index.js';
+import {
+  createLogger,
+  getTimeProvider,
+  createSharedTaskAnalyzer,
+  taskAnalysisResultToTaskProfile,
+  taskAnalysisResultToBanditContext,
+  type TaskProfile,
+  type BanditContext,
+} from '../core/index.js';
 import type { CliName } from '../cli-adapters/types.js';
 import { TopsisRouter } from '../cli-adapters/topsis-router.js';
 import type { TopsisResult } from '../cli-adapters/topsis-types.js';
 import { DEFAULT_MODEL_PROFILES } from '../cli-adapters/topsis-types.js';
 import { LinUCBBandit } from '../cli-adapters/linucb-bandit.js';
-import type { BanditContext } from '../cli-adapters/budget-router-types.js';
-import { analyzeTask, type TaskProfile } from '../cli-adapters/task-analyzer.js';
 import type { Task } from '../core/types/agent.js';
 import type {
   RoutingAuditOptions,
@@ -46,22 +52,39 @@ export function analyzeTaskString(taskStr: string): TaskProfile {
     description: taskStr,
     context: {},
   };
-  // eslint-disable-next-line @typescript-eslint/no-deprecated -- Issue #574: migrate to SharedTaskAnalyzer
-  return analyzeTask(task);
+  const analyzer = createSharedTaskAnalyzer();
+  const analysis = analyzer.analyze(task);
+  return taskAnalysisResultToTaskProfile(analysis);
 }
 
 /**
- * Converts task profile to bandit context.
+ * Converts task profile to bandit context using core adapter.
  */
-export function taskProfileToBanditContext(profile: TaskProfile): BanditContext {
+export function taskProfileToBanditContextFromProfile(profile: TaskProfile): BanditContext {
+  // For backward compatibility, convert profile back to context using original formula
   return {
     taskComplexity: profile.reasoningComplexity / 10,
     contextLengthNormalized: Math.min(profile.contextRequired / 100000, 1),
-    isCodeTask: profile.codeGeneration,
-    isReasoningTask: profile.taskType === 'architecture' || profile.reasoningComplexity > 5,
+    isCodeTask: profile.codeGeneration ? 1 : 0,
+    isReasoningTask: profile.taskType === 'architecture' || profile.reasoningComplexity > 5 ? 1 : 0,
     budgetUtilization: 0.5,
     timePressure: 0.3,
   };
+}
+
+/**
+ * Analyzes a task string and returns its bandit context directly.
+ * More efficient than going through TaskProfile for bandit use cases.
+ */
+export function analyzeToBanditContext(taskStr: string): BanditContext {
+  const task: Task = {
+    id: 'audit-' + String(getTimeProvider().now()),
+    description: taskStr,
+    context: {},
+  };
+  const analyzer = createSharedTaskAnalyzer();
+  const analysis = analyzer.analyze(task);
+  return taskAnalysisResultToBanditContext(analysis);
 }
 
 /**
@@ -203,7 +226,7 @@ export function auditRouting(options: RoutingAuditOptions): RoutingAuditResult {
 
   // Step 4: LinUCB selection
   const bandit = new LinUCBBandit(eligibleClis);
-  const context = taskProfileToBanditContext(taskProfile);
+  const context = taskProfileToBanditContextFromProfile(taskProfile);
   const linucbDetails = computeLinUCBDetails(bandit, context);
   const selection = bandit.select(context);
 

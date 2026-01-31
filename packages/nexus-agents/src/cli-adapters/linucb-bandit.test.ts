@@ -17,8 +17,8 @@ describe('LinUCBBandit', () => {
   const createContext = (overrides?: Partial<BanditContext>): BanditContext => ({
     taskComplexity: 0.5,
     contextLengthNormalized: 0.3,
-    isCodeTask: false,
-    isReasoningTask: false,
+    isCodeTask: 0,
+    isReasoningTask: 0,
     budgetUtilization: 0.2,
     timePressure: 0.1,
     ...overrides,
@@ -114,7 +114,7 @@ describe('LinUCBBandit', () => {
   describe('learning behavior', () => {
     it('should favor arms with higher rewards over time', () => {
       const bandit = new LinUCBBandit(armNames, { alpha: 0.1 }); // Lower exploration
-      const context = createContext({ taskComplexity: 0.8, isReasoningTask: true });
+      const context = createContext({ taskComplexity: 0.8, isReasoningTask: 1 });
 
       // Train arm 0 (claude) with high rewards for reasoning tasks
       for (let i = 0; i < 20; i++) {
@@ -134,8 +134,8 @@ describe('LinUCBBandit', () => {
     it('should adapt to different contexts', () => {
       const bandit = new LinUCBBandit(armNames, { alpha: 0.1 });
 
-      const codeContext = createContext({ isCodeTask: true, taskComplexity: 0.3 });
-      const reasoningContext = createContext({ isReasoningTask: true, taskComplexity: 0.9 });
+      const codeContext = createContext({ isCodeTask: 1, taskComplexity: 0.3 });
+      const reasoningContext = createContext({ isReasoningTask: 1, taskComplexity: 0.9 });
 
       // Train codex for code tasks
       for (let i = 0; i < 10; i++) {
@@ -237,8 +237,8 @@ describe('LinUCBBandit', () => {
       const extremeContext: BanditContext = {
         taskComplexity: 1.0,
         contextLengthNormalized: 1.0,
-        isCodeTask: true,
-        isReasoningTask: true,
+        isCodeTask: 1,
+        isReasoningTask: 1,
         budgetUtilization: 1.0,
         timePressure: 1.0,
       };
@@ -253,8 +253,8 @@ describe('LinUCBBandit', () => {
       const zeroContext: BanditContext = {
         taskComplexity: 0,
         contextLengthNormalized: 0,
-        isCodeTask: false,
-        isReasoningTask: false,
+        isCodeTask: 0,
+        isReasoningTask: 0,
         budgetUtilization: 0,
         timePressure: 0,
       };

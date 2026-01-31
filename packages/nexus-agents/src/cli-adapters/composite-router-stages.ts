@@ -5,6 +5,11 @@
 import type { Result } from '../core/index.js';
 import { ok, err } from '../core/index.js';
 import type { ILogger } from '../core/index.js';
+import {
+  createSharedTaskAnalyzer,
+  taskAnalysisResultToTaskProfile,
+  type TaskProfile,
+} from '../core/index.js';
 import type { CliName, CliTask } from './types.js';
 import type { BudgetRouter } from './budget-router.js';
 import type { TopsisRouter } from './topsis-router.js';
@@ -13,7 +18,6 @@ import type { PreferenceRouter } from './preference-router.js';
 import type { ZeroRouter } from './zero-router.js';
 import type { LatencyTracker } from './latency-tracker.js';
 import type { IRoutingMemory } from '../context/routing-memory.js';
-import { analyzeTask, type TaskProfile } from './task-analyzer.js';
 import {
   CompositeRoutingError,
   type CompositeRouterConfig,
@@ -56,10 +60,10 @@ export interface BudgetStageResult {
 /** Analyzes task and returns profile, updating stages array. */
 export function analyzeTaskProfile(task: CliTask, stagesExecuted: string[]): TaskProfile {
   const internalTask = cliTaskToTask(task);
-  // eslint-disable-next-line @typescript-eslint/no-deprecated -- Issue #574: migrate to SharedTaskAnalyzer
-  const taskProfile = analyzeTask(internalTask);
+  const analyzer = createSharedTaskAnalyzer();
+  const analysis = analyzer.analyze(internalTask);
   stagesExecuted.push('task-analysis');
-  return taskProfile;
+  return taskAnalysisResultToTaskProfile(analysis);
 }
 
 /** Runs budget filtering stage. */

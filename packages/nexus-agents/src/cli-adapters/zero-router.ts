@@ -9,9 +9,14 @@
  * (Source: Issue #338)
  */
 
-import { createLogger, type ILogger } from '../core/index.js';
+import {
+  createLogger,
+  type ILogger,
+  createSharedTaskAnalyzer,
+  taskAnalysisResultToTaskProfile,
+  type TaskProfile,
+} from '../core/index.js';
 import type { CliName, CliTask } from './types.js';
-import { analyzeTask, type TaskProfile } from './task-analyzer.js';
 import type { Task } from '../core/types/agent.js';
 import {
   type ZeroRouterConfig,
@@ -283,8 +288,9 @@ export class ZeroRouter implements IZeroRouter {
         metadata: {},
       },
     };
-    // eslint-disable-next-line @typescript-eslint/no-deprecated -- Issue #574: migrate to SharedTaskAnalyzer
-    return analyzeTask(internalTask);
+    const analyzer = createSharedTaskAnalyzer();
+    const analysis = analyzer.analyze(internalTask);
+    return taskAnalysisResultToTaskProfile(analysis);
   }
 
   private getTierForLevel(level: DifficultyLevel): ModelTier {

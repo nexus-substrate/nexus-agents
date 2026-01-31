@@ -396,16 +396,14 @@ describe('TaskRouter', () => {
 
     it('should filter adapters with insufficient context window', async () => {
       // Mock Codex with small context window
-      const smallCodex = createMockAdapter('codex', { contextWindow: 10_000 });
+      const smallCodex = createMockAdapter('codex', { contextWindow: 1_000 });
       adapters.set('codex', smallCodex);
 
       const router = new TaskRouter(adapters);
+      // Use a long description to exceed context window (SharedTaskAnalyzer ADR-0004)
       const task = createTestTask({
-        description: 'Implement feature',
-        context: {
-          // Many files requiring large context
-          files: Array.from({ length: 50 }, (_, i) => 'file' + String(i) + '.ts'),
-        },
+        description: 'A'.repeat(5000) + ' Implement a large feature with many components',
+        context: {},
       });
 
       const result = await router.route(task);

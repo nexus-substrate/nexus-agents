@@ -121,16 +121,17 @@ export const DEFAULT_COST_MODELS: Readonly<Record<string, AdapterCostModel>> = {
 
 /**
  * LinUCB bandit context for a routing decision.
+ * Note: isCodeTask/isReasoningTask use numeric 0/1 for bandit algorithm compatibility.
  */
 export interface BanditContext {
   /** Task complexity score (0-1) */
   readonly taskComplexity: number;
   /** Required context length normalized (0-1) */
   readonly contextLengthNormalized: number;
-  /** Is code generation task */
-  readonly isCodeTask: boolean;
-  /** Is reasoning task */
-  readonly isReasoningTask: boolean;
+  /** Is code generation task (0 or 1) */
+  readonly isCodeTask: number;
+  /** Is reasoning task (0 to 1, supports fractional values) */
+  readonly isReasoningTask: number;
   /** Budget utilization (0-1) */
   readonly budgetUtilization: number;
   /** Time pressure (0-1, higher = more urgent) */

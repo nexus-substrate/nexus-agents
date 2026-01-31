@@ -42,8 +42,8 @@ export function contextToFeatures(context: BanditContext): number[] {
   return [
     context.taskComplexity,
     context.contextLengthNormalized,
-    context.isCodeTask ? 1 : 0,
-    context.isReasoningTask ? 1 : 0,
+    context.isCodeTask,
+    context.isReasoningTask,
     context.budgetUtilization,
     context.timePressure,
   ];

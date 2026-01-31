@@ -135,7 +135,8 @@ describe('ZeroRouter', () => {
     it('should estimate medium difficulty for moderate tasks', () => {
       const estimate = router.estimateDifficulty(mediumTask);
 
-      expect(estimate.aggregateScore).toBeGreaterThan(0.2);
+      // SharedTaskAnalyzer (ADR-0004) produces lower scores for straightforward tasks
+      expect(estimate.aggregateScore).toBeGreaterThan(0.1);
       expect(estimate.aggregateScore).toBeLessThan(0.9);
     });
 

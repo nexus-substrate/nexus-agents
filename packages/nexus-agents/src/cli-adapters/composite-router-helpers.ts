@@ -44,8 +44,8 @@ export function taskProfileToBanditContext(profile: TaskProfile): BanditContext 
   return {
     taskComplexity: profile.reasoningComplexity / 10,
     contextLengthNormalized: Math.min(profile.contextRequired / 100000, 1),
-    isCodeTask: profile.codeGeneration,
-    isReasoningTask: profile.taskType === 'architecture' || profile.reasoningComplexity > 5,
+    isCodeTask: profile.codeGeneration ? 1 : 0,
+    isReasoningTask: profile.taskType === 'architecture' || profile.reasoningComplexity > 5 ? 1 : 0,
     budgetUtilization: 0.5,
     timePressure: 0.3,
   };

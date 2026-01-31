@@ -129,6 +129,26 @@ export {
   type TaskTypeClassifierConfig,
 } from './task-analysis/index.js';
 
+// Shared Task Analyzer (ADR-0004, Issue #574)
+export type {
+  ISharedTaskAnalyzer,
+  TaskAnalysisResult,
+  SharedTaskAnalyzerConfig,
+  ReasoningKnowledgeType,
+  ComplexityLevel,
+  TaskTypeCategory,
+  TaskCapabilities,
+} from './task-analysis/index.js';
+export { SharedTaskAnalyzer, createSharedTaskAnalyzer } from './task-analysis/index.js';
+
+// Task Profile Adapter (Issue #586 - Legacy compatibility)
+export type { TaskProfile, BanditContext } from './task-analysis/index.js';
+export {
+  taskAnalysisResultToTaskProfile,
+  taskAnalysisResultToBanditContext,
+  summarizeTaskProfile,
+} from './task-analysis/index.js';
+
 // Time Provider (Determinism - System Mandate)
 export type { ITimeProvider, TimeProviderConfig } from './time-provider.js';
 export {

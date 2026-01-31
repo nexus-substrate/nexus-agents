@@ -2,17 +2,16 @@
  * CompositeRouter outcome recording functions.
  * @module cli-adapters/composite-router-outcome
  */
-import type { ILogger } from '../core/index.js';
+import {
+  type ILogger,
+  createSharedTaskAnalyzer,
+  taskAnalysisResultToBanditContext,
+} from '../core/index.js';
 import type { CliName, CliTask } from './types.js';
 import type { LinUCBBandit } from './linucb-bandit.js';
 import type { PreferenceRouter } from './preference-router.js';
 import type { IZeroRouter } from './zero-router.js';
-import { analyzeTask } from './task-analyzer.js';
-import {
-  cliTaskToTask,
-  taskProfileToBanditContext,
-  buildDifficultyOutcome,
-} from './composite-router-helpers.js';
+import { cliTaskToTask, buildDifficultyOutcome } from './composite-router-helpers.js';
 
 /** Last routed task info for difficulty outcome recording. */
 export interface LastRoutedTaskInfo {
@@ -45,9 +44,9 @@ export function recordBanditOutcome(
     return;
   }
   const internalTask = cliTaskToTask(task);
-  // eslint-disable-next-line @typescript-eslint/no-deprecated -- Issue #574: migrate to SharedTaskAnalyzer
-  const taskProfile = analyzeTask(internalTask);
-  const context = taskProfileToBanditContext(taskProfile);
+  const analyzer = createSharedTaskAnalyzer();
+  const analysis = analyzer.analyze(internalTask);
+  const context = taskAnalysisResultToBanditContext(analysis);
   deps.linucbBandit.update(armIndex, context, reward);
   deps.logger.debug('Recorded outcome', { cliName, reward });
 }

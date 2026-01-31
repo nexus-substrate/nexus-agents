@@ -6,11 +6,14 @@
  * (Source: cli-project_plan.md v2.1.0, Phase 3)
  */
 
-import { getTimeProvider } from '../../core/index.js';
+import {
+  getTimeProvider,
+  createSharedTaskAnalyzer,
+  taskAnalysisResultToTaskProfile,
+} from '../../core/index.js';
 import type { CliName, CliTask, ICliAdapter } from '../../cli-adapters/types.js';
 import type { Task } from '../../core/types/agent.js';
 import type { ITaskRouter, RoutingDecision } from '../../cli-adapters/router.js';
-import { analyzeTask } from '../../cli-adapters/task-analyzer.js';
 import type {
   EvaluationTask,
   TaskTestResult,
@@ -61,8 +64,9 @@ export function createRoutingDecisionDetails(
   decision: RoutingDecision,
   task: Task
 ): RoutingDecisionDetails {
-  // eslint-disable-next-line @typescript-eslint/no-deprecated -- Issue #574: migrate to SharedTaskAnalyzer
-  const taskProfile = analyzeTask(task);
+  const analyzer = createSharedTaskAnalyzer();
+  const analysis = analyzer.analyze(task);
+  const taskProfile = taskAnalysisResultToTaskProfile(analysis);
 
   return {
     selectedCli: decision.adapter.name,

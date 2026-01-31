@@ -11,13 +11,18 @@
 import { z } from 'zod';
 import type { Result } from '../core/result.js';
 import { ok, err } from '../core/result.js';
-import { getTimeProvider } from '../core/index.js';
+import {
+  getTimeProvider,
+  createSharedTaskAnalyzer,
+  taskAnalysisResultToTaskProfile,
+  summarizeTaskProfile,
+  type TaskProfile,
+} from '../core/index.js';
 import { NexusError, ErrorCode } from '../core/errors.js';
 import type { ILogger } from '../core/logger.js';
 import { logger as defaultLogger } from '../core/logger.js';
 import type { Task } from '../core/types/agent.js';
 import type { ICliAdapter, CliName, CapacityStatus } from './types.js';
-import { analyzeTask, summarizeProfile, type TaskProfile } from './task-analyzer.js';
 import {
   scoreTaskType,
   scoreReasoning,
@@ -127,9 +132,10 @@ export class TaskRouter implements ITaskRouter {
 
   async routeWithDetails(task: Task): Promise<Result<RoutingDecision, RoutingError>> {
     const startTime = getTimeProvider().now();
-    // eslint-disable-next-line @typescript-eslint/no-deprecated -- Issue #574: migrate to SharedTaskAnalyzer
-    const profile = analyzeTask(task);
-    this.logger.debug('Task analyzed', { profile: summarizeProfile(profile), taskId: task.id });
+    const analyzer = createSharedTaskAnalyzer();
+    const analysis = analyzer.analyze(task);
+    const profile = taskAnalysisResultToTaskProfile(analysis);
+    this.logger.debug('Task analyzed', { profile: summarizeTaskProfile(profile), taskId: task.id });
 
     const capacities = await this.getAdapterCapacities();
     const available = this.filterByCapacity(profile, capacities);

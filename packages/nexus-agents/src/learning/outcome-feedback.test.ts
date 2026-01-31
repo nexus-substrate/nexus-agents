@@ -29,8 +29,8 @@ describe('OutcomeFeedbackCollector', () => {
       banditContext: {
         taskComplexity: 0.5,
         contextLengthNormalized: 0.3,
-        isCodeTask: true,
-        isReasoningTask: false,
+        isCodeTask: 1,
+        isReasoningTask: 0,
         budgetUtilization: 0.2,
         timePressure: 0.1,
       },

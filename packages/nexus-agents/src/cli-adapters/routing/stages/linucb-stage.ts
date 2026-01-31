@@ -178,8 +178,8 @@ export class LinUCBStage implements IRouterStage {
    * Build bandit context from routing context.
    */
   private buildBanditContext(ctx: RoutingContext): BanditContext {
-    const isCodeTask = this.isCodeRelated(ctx.task);
-    const isReasoningTask = this.isReasoningRelated(ctx.task);
+    const isCodeTask = this.isCodeRelated(ctx.task) ? 1 : 0;
+    const isReasoningTask = this.isReasoningRelated(ctx.task) ? 1 : 0;
     return {
       taskComplexity: this.estimateComplexity(ctx.task),
       contextLengthNormalized: Math.min(1, ctx.task.length / 10000),
@@ -194,8 +194,8 @@ export class LinUCBStage implements IRouterStage {
    * Build bandit context from outcome.
    */
   private buildOutcomeContext(outcome: RoutingOutcome): BanditContext {
-    const isCodeTask = this.isCodeRelated(outcome.task);
-    const isReasoningTask = this.isReasoningRelated(outcome.task);
+    const isCodeTask = this.isCodeRelated(outcome.task) ? 1 : 0;
+    const isReasoningTask = this.isReasoningRelated(outcome.task) ? 1 : 0;
     return {
       taskComplexity: this.estimateComplexity(outcome.task),
       contextLengthNormalized: Math.min(1, outcome.task.length / 10000),

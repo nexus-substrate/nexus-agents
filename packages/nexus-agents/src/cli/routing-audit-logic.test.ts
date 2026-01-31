@@ -9,7 +9,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   analyzeTaskString,
-  taskProfileToBanditContext,
+  taskProfileToBanditContextFromProfile,
   simulateBudgetFilter,
   runTopsisRanking,
   computeLinUCBDetails,
@@ -57,10 +57,10 @@ describe('routing-audit-logic', () => {
     });
   });
 
-  describe('taskProfileToBanditContext', () => {
+  describe('taskProfileToBanditContextFromProfile', () => {
     it('should convert task profile to bandit context', () => {
       const profile = analyzeTaskString('Write a complex algorithm with optimization');
-      const context = taskProfileToBanditContext(profile);
+      const context = taskProfileToBanditContextFromProfile(profile);
 
       expect(context).toHaveProperty('taskComplexity');
       expect(context).toHaveProperty('contextLengthNormalized');
@@ -72,7 +72,7 @@ describe('routing-audit-logic', () => {
 
     it('should normalize task complexity', () => {
       const profile = analyzeTaskString('Simple task');
-      const context = taskProfileToBanditContext(profile);
+      const context = taskProfileToBanditContextFromProfile(profile);
 
       expect(context.taskComplexity).toBeGreaterThanOrEqual(0);
       expect(context.taskComplexity).toBeLessThanOrEqual(1);
@@ -80,7 +80,7 @@ describe('routing-audit-logic', () => {
 
     it('should normalize context length', () => {
       const profile = analyzeTaskString('Task with lots of context requirements');
-      const context = taskProfileToBanditContext(profile);
+      const context = taskProfileToBanditContextFromProfile(profile);
 
       expect(context.contextLengthNormalized).toBeGreaterThanOrEqual(0);
       expect(context.contextLengthNormalized).toBeLessThanOrEqual(1);
@@ -88,21 +88,21 @@ describe('routing-audit-logic', () => {
 
     it('should set isCodeTask for code generation tasks', () => {
       const profile = analyzeTaskString('Write a Python function');
-      const context = taskProfileToBanditContext(profile);
+      const context = taskProfileToBanditContextFromProfile(profile);
 
-      expect(context.isCodeTask).toBe(true);
+      expect(context.isCodeTask).toBe(1);
     });
 
     it('should set default budget utilization', () => {
       const profile = analyzeTaskString('Any task');
-      const context = taskProfileToBanditContext(profile);
+      const context = taskProfileToBanditContextFromProfile(profile);
 
       expect(context.budgetUtilization).toBe(0.5);
     });
 
     it('should set default time pressure', () => {
       const profile = analyzeTaskString('Any task');
-      const context = taskProfileToBanditContext(profile);
+      const context = taskProfileToBanditContextFromProfile(profile);
 
       expect(context.timePressure).toBe(0.3);
     });
@@ -183,8 +183,8 @@ describe('routing-audit-logic', () => {
       const context: BanditContext = {
         taskComplexity: 0.5,
         contextLengthNormalized: 0.3,
-        isCodeTask: true,
-        isReasoningTask: false,
+        isCodeTask: 1,
+        isReasoningTask: 0,
         budgetUtilization: 0.5,
         timePressure: 0.3,
       };
@@ -202,8 +202,8 @@ describe('routing-audit-logic', () => {
       const context: BanditContext = {
         taskComplexity: 0.5,
         contextLengthNormalized: 0.3,
-        isCodeTask: false,
-        isReasoningTask: true,
+        isCodeTask: 0,
+        isReasoningTask: 1,
         budgetUtilization: 0.5,
         timePressure: 0.3,
       };
@@ -221,8 +221,8 @@ describe('routing-audit-logic', () => {
       const context: BanditContext = {
         taskComplexity: 0.5,
         contextLengthNormalized: 0.3,
-        isCodeTask: false,
-        isReasoningTask: false,
+        isCodeTask: 0,
+        isReasoningTask: 0,
         budgetUtilization: 0.5,
         timePressure: 0.3,
       };
@@ -240,8 +240,8 @@ describe('routing-audit-logic', () => {
       const context: BanditContext = {
         taskComplexity: 0.5,
         contextLengthNormalized: 0.3,
-        isCodeTask: true,
-        isReasoningTask: false,
+        isCodeTask: 1,
+        isReasoningTask: 0,
         budgetUtilization: 0.5,
         timePressure: 0.3,
       };

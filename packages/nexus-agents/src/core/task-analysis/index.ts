@@ -29,3 +29,11 @@ export type {
 } from './shared-task-analyzer.js';
 
 export { SharedTaskAnalyzer, createSharedTaskAnalyzer } from './shared-task-analyzer.js';
+
+// Task profile adapter for legacy compatibility (Issue #586)
+export type { TaskProfile, BanditContext } from './task-profile-adapter.js';
+export {
+  taskAnalysisResultToTaskProfile,
+  taskAnalysisResultToBanditContext,
+  summarizeTaskProfile,
+} from './task-profile-adapter.js';
