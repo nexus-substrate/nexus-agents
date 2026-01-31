@@ -56,12 +56,7 @@ export interface OpenAIAdapterConfig {
   organization?: string;
 }
 
-/**
- * Characters per token estimate for OpenAI models.
- * ~4 chars/token is the standard estimate for English text.
- * (Source: OpenAI documentation on tokenization)
- */
-export const OPENAI_CHARS_PER_TOKEN = 4;
+// Note: Token estimation moved to core/token-estimator.ts (unified TokenEstimator)
 
 /**
  * Default maximum tokens for OpenAI models.

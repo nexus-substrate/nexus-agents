@@ -53,12 +53,7 @@ export interface GeminiAdapterConfig {
   maxRetries?: number;
 }
 
-/**
- * Characters per token estimate for Gemini models.
- * Gemini uses a similar tokenizer to other modern LLMs.
- * ~4 chars/token is a reasonable estimate for English text.
- */
-export const GEMINI_CHARS_PER_TOKEN = 4;
+// Note: Token estimation moved to core/token-estimator.ts (unified TokenEstimator)
 
 /**
  * Default maximum tokens for Gemini models.

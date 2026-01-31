@@ -40,13 +40,7 @@ export interface ClaudeAdapterConfig {
   maxRetries?: number;
 }
 
-/**
- * Characters per token estimate for Claude models.
- * Claude uses a custom tokenizer, but ~3.5 chars/token is a reasonable estimate
- * for English text.
- * (Source: Anthropic documentation on token counting)
- */
-export const CLAUDE_CHARS_PER_TOKEN = 3.5;
+// Note: Token estimation moved to core/token-estimator.ts (unified TokenEstimator)
 
 /**
  * Default maximum tokens for Claude models.
