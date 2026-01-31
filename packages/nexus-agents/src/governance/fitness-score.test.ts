@@ -167,15 +167,17 @@ describe('Fitness score baseline', () => {
     expect(audit.score).toBeGreaterThanOrEqual(70);
   });
 
-  it('should track token estimation redundancy', () => {
+  it('should reflect completed token estimation consolidation', () => {
     const audit = calculateFitnessScore('redundancy-test');
 
     const tokenFinding = audit.findings.find((f) =>
       f.description.toLowerCase().includes('token estimation')
     );
 
-    // Should have finding about token estimation duplication
-    expect(tokenFinding).toBeDefined();
+    // Token estimation consolidation is complete - no finding expected
+    // All adapters now use unified TokenEstimator from core/token-estimator.ts
+    // (Commits: 11fadd6, 06724b5, 45abf43)
+    expect(tokenFinding).toBeUndefined();
   });
 
   it('should track task analysis consolidation', () => {

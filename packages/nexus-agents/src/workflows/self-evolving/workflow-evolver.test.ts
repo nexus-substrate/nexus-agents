@@ -7,8 +7,9 @@
  * (Source: Issue #330)
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { WorkflowDefinition, WorkflowStep } from '../../core/index.js';
+import { setRandomProvider, resetRandomProvider } from '../../core/index.js';
 import { WorkflowEvolver, createWorkflowEvolver } from './workflow-evolver.js';
 import {
   adjustTimeout,
@@ -432,6 +433,29 @@ describe('WorkflowEvolver', () => {
   });
 
   describe('evolve', () => {
+    // Use deterministic random provider to ensure mutations happen
+    beforeEach(() => {
+      let callCount = 0;
+      setRandomProvider({
+        random: () => {
+          // Return values that trigger mutations:
+          // - First call per step: < mutationRate (0.1) to pass the continue check
+          // - Second call: < 0.4 to select timeout_adjustment
+          const values = [0.05, 0.2, 0.05, 0.2, 0.05, 0.2];
+          return values[callCount++ % values.length]!;
+        },
+        randomInt: (min: number, max: number) => min + Math.floor((max - min) / 2),
+        randomString: (length: number) => 'a'.repeat(length),
+        randomChoice: <T>(arr: readonly T[]) => arr[0],
+        shuffle: <T>(arr: readonly T[]) => [...arr],
+        uuid: () => `test-uuid-${String(callCount++)}`,
+      });
+    });
+
+    afterEach(() => {
+      resetRandomProvider();
+    });
+
     it('should create variant versions through mutation', () => {
       const workflow = createTestWorkflow();
       const base = evolver.registerInitialVersion(workflow);
