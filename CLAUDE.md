@@ -62,13 +62,16 @@ pnpm --version   # Must be v9.x (recommended) or npm v10.x
 
 ## Environment Variables
 
-| Variable            | Required For       | Default               |
-| ------------------- | ------------------ | --------------------- |
-| `ANTHROPIC_API_KEY` | Claude adapter     | None                  |
-| `OPENAI_API_KEY`    | OpenAI adapter     | None                  |
-| `GOOGLE_AI_API_KEY` | Gemini adapter     | None                  |
-| `NEXUS_LOG_LEVEL`   | Logging verbosity  | `info`                |
-| `NEXUS_CONFIG_PATH` | Custom config path | `./nexus-agents.yaml` |
+| Variable             | Required For       | Default               |
+| -------------------- | ------------------ | --------------------- |
+| `ANTHROPIC_API_KEY`  | Claude adapter     | None                  |
+| `OPENAI_API_KEY`     | OpenAI adapter     | None                  |
+| `GOOGLE_AI_API_KEY`  | Gemini adapter     | None                  |
+| `NEXUS_LOG_LEVEL`    | Logging verbosity  | `info`                |
+| `NEXUS_CONFIG_PATH`  | Custom config path | `./nexus-agents.yaml` |
+| `NEXUS_AUTH_ENABLED` | MCP authentication | `false` (disabled)    |
+
+**Security Note:** Authentication is disabled by default for local development convenience. Set `NEXUS_AUTH_ENABLED=true` for production or network-exposed deployments.
 
 ---
 
