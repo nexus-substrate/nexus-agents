@@ -398,3 +398,84 @@ export function createCircuitBreakerRegistryWithMetrics(
 
   return registry;
 }
+
+// ============================================================================
+// Capacity Monitor Integration
+// ============================================================================
+
+/**
+ * Configuration for capacity monitor integration.
+ */
+export interface CapacityMonitorIntegrationConfig {
+  /** Token threshold below which to trip circuit (default: 1000) */
+  readonly criticalTokenThreshold?: number;
+  /** Provider name to CLI name mapping */
+  readonly providerToCliMapping?: Record<string, CliName>;
+}
+
+const DEFAULT_CAPACITY_INTEGRATION_CONFIG: Required<CapacityMonitorIntegrationConfig> = {
+  criticalTokenThreshold: 1000,
+  providerToCliMapping: {
+    anthropic: 'claude',
+    openai: 'codex',
+    google: 'gemini',
+  },
+} as const;
+
+/**
+ * Integrates a CapacityMonitor with CircuitBreakerRegistry to trip circuits
+ * when provider capacity is critically low.
+ *
+ * This addresses Issue #543: Wire up onLowCapacity callback.
+ *
+ * @param monitor - The capacity monitor to integrate
+ * @param registry - The circuit breaker registry
+ * @param config - Optional configuration
+ * @param logger - Optional logger for diagnostics
+ * @returns Unsubscribe function to remove the callback
+ *
+ * @example
+ * ```typescript
+ * const monitor = createCapacityMonitor();
+ * const registry = new CircuitBreakerRegistry();
+ *
+ * // Wire up capacity signals to circuit breaker
+ * const unsubscribe = integrateCapacityMonitorWithCircuitBreaker(
+ *   monitor,
+ *   registry,
+ *   { criticalTokenThreshold: 500 }
+ * );
+ *
+ * // Later: clean up
+ * unsubscribe();
+ * ```
+ */
+export function integrateCapacityMonitorWithCircuitBreaker(
+  monitor: { onLowCapacity: (callback: (provider: string, remaining: number) => void) => () => void },
+  registry: CircuitBreakerRegistry,
+  config?: CapacityMonitorIntegrationConfig,
+  logger?: { warn: (message: string, context?: Record<string, unknown>) => void }
+): () => void {
+  const mergedConfig = { ...DEFAULT_CAPACITY_INTEGRATION_CONFIG, ...config };
+
+  return monitor.onLowCapacity((provider: string, remaining: number) => {
+    // Map provider name to CLI name
+    const cliName = mergedConfig.providerToCliMapping[provider];
+    if (cliName === undefined) {
+      logger?.warn('Unknown provider for capacity monitoring', { provider, remaining });
+      return;
+    }
+
+    // Trip the circuit if capacity is critically low
+    if (remaining < mergedConfig.criticalTokenThreshold) {
+      const breaker = registry.getBreaker(cliName);
+      breaker.recordFailure('rate_limit');
+      logger?.warn('Circuit tripped due to low capacity', {
+        provider,
+        cliName,
+        remaining,
+        threshold: mergedConfig.criticalTokenThreshold,
+      });
+    }
+  });
+}

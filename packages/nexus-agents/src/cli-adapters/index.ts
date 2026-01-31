@@ -79,6 +79,7 @@ export {
   DEFAULT_CIRCUIT_BREAKER_CONFIG,
   mapCliErrorToCategory,
   createCircuitBreakerRegistryWithMetrics,
+  integrateCapacityMonitorWithCircuitBreaker,
 } from './circuit-breaker.js';
 export type {
   CircuitState,
@@ -88,6 +89,7 @@ export type {
   CircuitStateChangeEvent,
   CircuitStateChangeListener,
   ICircuitBreaker,
+  CapacityMonitorIntegrationConfig,
 } from './circuit-breaker.js';
 
 // Task Analyzer (Issue #78)

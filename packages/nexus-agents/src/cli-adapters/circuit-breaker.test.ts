@@ -14,6 +14,7 @@ import {
   mapCliErrorToCategory,
   createCircuitBreakerRegistryWithMetrics,
   categorizeError,
+  integrateCapacityMonitorWithCircuitBreaker,
   type CircuitStateChangeEvent,
 } from './circuit-breaker.js';
 
@@ -822,5 +823,158 @@ describe('categorizeError', () => {
     const timeoutError = new Error('Some error');
     timeoutError.name = 'TimeoutError';
     expect(categorizeError(timeoutError)).toBe('timeout');
+  });
+});
+
+describe('integrateCapacityMonitorWithCircuitBreaker', () => {
+  let registry: CircuitBreakerRegistry;
+  let mockMonitor: {
+    callbacks: Array<(provider: string, remaining: number) => void>;
+    onLowCapacity: (callback: (provider: string, remaining: number) => void) => () => void;
+  };
+  let mockLogger: { warn: ReturnType<typeof vi.fn> };
+
+  beforeEach(() => {
+    registry = new CircuitBreakerRegistry();
+    mockMonitor = {
+      callbacks: [],
+      onLowCapacity: (callback) => {
+        mockMonitor.callbacks.push(callback);
+        return () => {
+          const index = mockMonitor.callbacks.indexOf(callback);
+          if (index >= 0) mockMonitor.callbacks.splice(index, 1);
+        };
+      },
+    };
+    mockLogger = { warn: vi.fn() };
+  });
+
+  it('should register callback with capacity monitor', () => {
+    integrateCapacityMonitorWithCircuitBreaker(mockMonitor, registry);
+    expect(mockMonitor.callbacks.length).toBe(1);
+  });
+
+  it('should return unsubscribe function', () => {
+    const unsubscribe = integrateCapacityMonitorWithCircuitBreaker(mockMonitor, registry);
+    expect(mockMonitor.callbacks.length).toBe(1);
+    unsubscribe();
+    expect(mockMonitor.callbacks.length).toBe(0);
+  });
+
+  it('should trip circuit breaker when capacity is critically low', () => {
+    integrateCapacityMonitorWithCircuitBreaker(mockMonitor, registry, {
+      criticalTokenThreshold: 1000,
+    });
+
+    // Get a breaker first
+    registry.getBreaker('claude');
+
+    // Simulate low capacity callback
+    const callback = mockMonitor.callbacks[0];
+    expect(callback).toBeDefined();
+    if (callback !== undefined) {
+      callback('anthropic', 500); // Below threshold
+    }
+
+    // Circuit should have recorded failure
+    const snapshot = registry.getBreaker('claude').getSnapshot();
+    expect(snapshot.failureCount).toBeGreaterThan(0);
+  });
+
+  it('should not trip circuit breaker when capacity is above threshold', () => {
+    integrateCapacityMonitorWithCircuitBreaker(mockMonitor, registry, {
+      criticalTokenThreshold: 1000,
+    });
+
+    registry.getBreaker('claude');
+
+    const callback = mockMonitor.callbacks[0];
+    expect(callback).toBeDefined();
+    if (callback !== undefined) {
+      callback('anthropic', 5000); // Above threshold
+    }
+
+    const snapshot = registry.getBreaker('claude').getSnapshot();
+    expect(snapshot.failureCount).toBe(0);
+  });
+
+  it('should map provider names to CLI names correctly', () => {
+    integrateCapacityMonitorWithCircuitBreaker(mockMonitor, registry, {
+      criticalTokenThreshold: 1000,
+    });
+
+    registry.getBreaker('codex');
+    registry.getBreaker('gemini');
+
+    const callback = mockMonitor.callbacks[0];
+    expect(callback).toBeDefined();
+    if (callback !== undefined) {
+      callback('openai', 100);
+      callback('google', 100);
+    }
+
+    expect(registry.getBreaker('codex').getSnapshot().failureCount).toBeGreaterThan(0);
+    expect(registry.getBreaker('gemini').getSnapshot().failureCount).toBeGreaterThan(0);
+  });
+
+  it('should log warning for unknown providers', () => {
+    integrateCapacityMonitorWithCircuitBreaker(mockMonitor, registry, undefined, mockLogger);
+
+    const callback = mockMonitor.callbacks[0];
+    expect(callback).toBeDefined();
+    if (callback !== undefined) {
+      callback('unknown-provider', 100);
+    }
+
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      'Unknown provider for capacity monitoring',
+      expect.objectContaining({ provider: 'unknown-provider' })
+    );
+  });
+
+  it('should log warning when circuit is tripped', () => {
+    integrateCapacityMonitorWithCircuitBreaker(
+      mockMonitor,
+      registry,
+      { criticalTokenThreshold: 1000 },
+      mockLogger
+    );
+
+    registry.getBreaker('claude');
+
+    const callback = mockMonitor.callbacks[0];
+    expect(callback).toBeDefined();
+    if (callback !== undefined) {
+      callback('anthropic', 500);
+    }
+
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      'Circuit tripped due to low capacity',
+      expect.objectContaining({
+        provider: 'anthropic',
+        cliName: 'claude',
+        remaining: 500,
+        threshold: 1000,
+      })
+    );
+  });
+
+  it('should support custom provider to CLI mapping', () => {
+    integrateCapacityMonitorWithCircuitBreaker(mockMonitor, registry, {
+      criticalTokenThreshold: 1000,
+      providerToCliMapping: {
+        'my-custom-provider': 'claude',
+      },
+    });
+
+    registry.getBreaker('claude');
+
+    const callback = mockMonitor.callbacks[0];
+    expect(callback).toBeDefined();
+    if (callback !== undefined) {
+      callback('my-custom-provider', 500);
+    }
+
+    expect(registry.getBreaker('claude').getSnapshot().failureCount).toBeGreaterThan(0);
   });
 });
