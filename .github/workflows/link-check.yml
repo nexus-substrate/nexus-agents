@@ -112,9 +112,9 @@ jobs:
         with:
           args: >-
             --offline
-            --base website/dist
+            --base ${{ github.workspace }}/website/dist
             --include-verbatim
-            'website/dist/**/*.html'
+            '${{ github.workspace }}/website/dist/**/*.html'
           fail: true
           output: ./docs-site-report.md
 
