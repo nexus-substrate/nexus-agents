@@ -40,6 +40,13 @@ import { initializeExperts } from './cli-server-experts.js';
 import { initializeSkillLibrary } from './cli-server-skills.js';
 import { initializeSica } from './cli-server-sica.js';
 import { initializeFeedbackIntegration } from './cli-server-feedback.js';
+import {
+  extractRestConfig,
+  startRestApiServer,
+  stopRestApiServer,
+  logRestApiConfig,
+} from './cli-server-rest.js';
+import type { RestApiServer } from './api/rest-server.js';
 
 // Re-export for backward compatibility
 export { type OrchestratorModeOptions } from './cli-orchestrator.js';
@@ -243,15 +250,21 @@ interface ShutdownCleanupOptions {
   readonly server: McpServer;
   readonly serverLogger: ILogger;
   readonly logger: ILogger;
+  /** REST API server (if started) - Issue #524 */
+  readonly restServer: RestApiServer | null;
 }
 
 /**
  * Creates the shutdown cleanup handler.
  */
 function createShutdownCleanup(options: ShutdownCleanupOptions): () => Promise<void> {
-  const { eventBusBridge, observer, eventContext, server, serverLogger, logger } = options;
+  const { eventBusBridge, observer, eventContext, server, serverLogger, logger, restServer } =
+    options;
 
   return async (): Promise<void> => {
+    // Stop REST API server first (Issue #524)
+    await stopRestApiServer(restServer, logger);
+
     if (eventBusBridge.initialized) {
       logFinalEventBusStats(logger);
       eventBusBridge.cleanup();
@@ -531,10 +544,15 @@ export async function startServer(
   // Connect to transport
   await connectToStdioTransport(server, logger, serverLogger);
 
+  // Start REST API server if enabled (Issue #524)
+  const restConfig = extractRestConfig(configResult.config);
+  logRestApiConfig(restConfig, logger);
+  const restServer = await startRestApiServer(restConfig, logger);
+
   // Record server startup event for observability
   const eventContext = recordServerStartup(observer);
 
-  // Setup graceful shutdown with observer and EventBus cleanup
+  // Setup graceful shutdown with observer, EventBus, and REST API cleanup
   const cleanup = createShutdownCleanup({
     eventBusBridge,
     observer,
@@ -542,6 +560,7 @@ export async function startServer(
     server,
     serverLogger,
     logger,
+    restServer,
   });
   setupShutdownHandlers(cleanup, logger);
 

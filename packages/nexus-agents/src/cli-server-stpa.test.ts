@@ -6,6 +6,53 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { runStpaSafetyAnalysis, StpaSafetyError, TOOL_DEFINITIONS } from './cli-server-stpa.js';
 import type { ILogger } from './core/index.js';
+import type { StpaAnalysisResult } from './mcp/safety/index.js';
+import { HazardCategory, RiskLevel } from './mcp/safety/index.js';
+
+/** Creates a valid mock StpaAnalysisResult for testing. */
+function createMockAnalysisResult(): StpaAnalysisResult {
+  return {
+    toolResults: [],
+    summary: {
+      totalTools: 0,
+      totalHazards: 0,
+      totalUnsafeControlActions: 0,
+      totalSafetyConstraints: 0,
+      hazardsByCategory: {
+        [HazardCategory.DATA_LOSS]: 0,
+        [HazardCategory.PRIVILEGE_ESCALATION]: 0,
+        [HazardCategory.RESOURCE_EXHAUSTION]: 0,
+        [HazardCategory.INFORMATION_DISCLOSURE]: 0,
+        [HazardCategory.UNAUTHORIZED_EXECUTION]: 0,
+        [HazardCategory.INTEGRITY_VIOLATION]: 0,
+        [HazardCategory.DENIAL_OF_SERVICE]: 0,
+        [HazardCategory.INJECTION]: 0,
+      },
+      averageRiskScore: 0,
+      toolsByRiskLevel: {
+        [RiskLevel.CRITICAL]: 0,
+        [RiskLevel.HIGH]: 0,
+        [RiskLevel.MODERATE]: 0,
+        [RiskLevel.LOW]: 0,
+        [RiskLevel.MINIMAL]: 0,
+      },
+    },
+    interactions: [],
+    metadata: {
+      analyzerVersion: '1.0.0',
+      startedAt: new Date(),
+      completedAt: new Date(),
+      durationMs: 0,
+      configuration: {
+        includeLowSeverity: true,
+        generateAllConstraints: true,
+        checkInteractions: true,
+        maxHazardsPerTool: 50,
+        categories: [],
+      },
+    },
+  };
+}
 
 describe('cli-server-stpa', () => {
   let mockLogger: ILogger;
@@ -81,33 +128,7 @@ describe('cli-server-stpa', () => {
 
   describe('StpaSafetyError', () => {
     it('should be an instance of Error', () => {
-      const mockResult = {
-        toolResults: [],
-        summary: {
-          totalTools: 0,
-          totalHazards: 0,
-          totalUnsafeControlActions: 0,
-          totalSafetyConstraints: 0,
-          hazardsByCategory: {},
-          averageRiskScore: 0,
-          toolsByRiskLevel: {},
-        },
-        interactions: [],
-        metadata: {
-          analyzerVersion: '1.0.0',
-          startedAt: new Date(),
-          completedAt: new Date(),
-          durationMs: 0,
-          configuration: {
-            includeLowSeverity: true,
-            generateAllConstraints: true,
-            checkInteractions: true,
-            maxHazardsPerTool: 50,
-            categories: [],
-          },
-        },
-      };
-
+      const mockResult = createMockAnalysisResult();
       const error = new StpaSafetyError('Test error', mockResult);
 
       expect(error).toBeInstanceOf(Error);
@@ -117,33 +138,7 @@ describe('cli-server-stpa', () => {
     });
 
     it('should have SECURITY_ERROR code', () => {
-      const mockResult = {
-        toolResults: [],
-        summary: {
-          totalTools: 0,
-          totalHazards: 0,
-          totalUnsafeControlActions: 0,
-          totalSafetyConstraints: 0,
-          hazardsByCategory: {},
-          averageRiskScore: 0,
-          toolsByRiskLevel: {},
-        },
-        interactions: [],
-        metadata: {
-          analyzerVersion: '1.0.0',
-          startedAt: new Date(),
-          completedAt: new Date(),
-          durationMs: 0,
-          configuration: {
-            includeLowSeverity: true,
-            generateAllConstraints: true,
-            checkInteractions: true,
-            maxHazardsPerTool: 50,
-            categories: [],
-          },
-        },
-      };
-
+      const mockResult = createMockAnalysisResult();
       const error = new StpaSafetyError('Test error', mockResult);
       expect(error.code).toBe('SECURITY_ERROR');
     });
