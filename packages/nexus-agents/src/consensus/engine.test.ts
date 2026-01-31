@@ -373,6 +373,182 @@ describe('ConsensusEngine', () => {
   });
 });
 
+describe('Proposal Content Caching (Issue #589)', () => {
+  let cachedEngine: ConsensusEngine;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    cachedEngine = createConsensusEngine({
+      defaultTimeout: 60000,
+      minVotersForQuorum: 2,
+      maxActiveProposals: 100,
+      proposalCache: {
+        enabled: true,
+        ttlMs: 3600000, // 1 hour
+        maxEntries: 10,
+      },
+    });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('should return cached result for identical proposal content', async () => {
+    const proposal: Proposal = {
+      title: 'Cached Proposal',
+      description: 'This proposal should be cached',
+      algorithm: 'simple_majority',
+    };
+
+    // Create and close the first proposal
+    const firstResult = await cachedEngine.propose(proposal);
+    expect(firstResult.ok).toBe(true);
+    if (!firstResult.ok) return;
+
+    const vote: Vote = {
+      decision: 'approve',
+      reasoning: 'Good proposal',
+      confidence: 0.9,
+    };
+    await cachedEngine.vote(firstResult.value, 'agent-1', vote);
+    await cachedEngine.vote(firstResult.value, 'agent-2', vote);
+    await cachedEngine.close(firstResult.value);
+
+    expect(cachedEngine.getCacheSize()).toBe(1);
+
+    // Submit identical proposal content
+    const secondResult = await cachedEngine.propose(proposal);
+    expect(secondResult.ok).toBe(true);
+    if (!secondResult.ok) return;
+
+    // Should return cached proposal ID
+    expect(secondResult.value).toBe(firstResult.value);
+  });
+
+  it('should not cache when caching is disabled', async () => {
+    const uncachedEngine = createConsensusEngine({
+      defaultTimeout: 60000,
+      minVotersForQuorum: 2,
+      proposalCache: {
+        enabled: false,
+        ttlMs: 3600000,
+        maxEntries: 10,
+      },
+    });
+
+    const proposal: Proposal = {
+      title: 'Not Cached',
+      description: 'This proposal should not be cached',
+      algorithm: 'simple_majority',
+    };
+
+    const firstResult = await uncachedEngine.propose(proposal);
+    expect(firstResult.ok).toBe(true);
+    if (!firstResult.ok) return;
+
+    const vote: Vote = { decision: 'approve', reasoning: 'OK', confidence: 0.8 };
+    await uncachedEngine.vote(firstResult.value, 'agent-1', vote);
+    await uncachedEngine.vote(firstResult.value, 'agent-2', vote);
+    await uncachedEngine.close(firstResult.value);
+
+    expect(uncachedEngine.getCacheSize()).toBe(0);
+  });
+
+  it('should expire cached entries after TTL', async () => {
+    const shortTTLEngine = createConsensusEngine({
+      defaultTimeout: 60000,
+      minVotersForQuorum: 2,
+      proposalCache: {
+        enabled: true,
+        ttlMs: 1000, // 1 second
+        maxEntries: 10,
+      },
+    });
+
+    const proposal: Proposal = {
+      title: 'Expiring',
+      description: 'This cache entry will expire',
+      algorithm: 'simple_majority',
+    };
+
+    const firstResult = await shortTTLEngine.propose(proposal);
+    if (!firstResult.ok) return;
+
+    const vote: Vote = { decision: 'approve', reasoning: 'OK', confidence: 0.8 };
+    await shortTTLEngine.vote(firstResult.value, 'agent-1', vote);
+    await shortTTLEngine.vote(firstResult.value, 'agent-2', vote);
+    await shortTTLEngine.close(firstResult.value);
+
+    // Advance time past TTL
+    vi.advanceTimersByTime(2000);
+
+    // Submit identical proposal - should create new one due to expiration
+    const secondResult = await shortTTLEngine.propose({
+      title: 'Expiring',
+      description: 'This cache entry will expire',
+      algorithm: 'simple_majority',
+    });
+
+    expect(secondResult.ok).toBe(true);
+    if (!secondResult.ok) return;
+    expect(secondResult.value).not.toBe(firstResult.value);
+  });
+
+  it('should evict oldest entries when cache is full', async () => {
+    const smallCacheEngine = createConsensusEngine({
+      defaultTimeout: 60000,
+      minVotersForQuorum: 2,
+      proposalCache: {
+        enabled: true,
+        ttlMs: 3600000,
+        maxEntries: 2,
+      },
+    });
+
+    const vote: Vote = { decision: 'approve', reasoning: 'OK', confidence: 0.8 };
+
+    // Fill cache with 2 proposals
+    for (let i = 1; i <= 3; i++) {
+      const result = await smallCacheEngine.propose({
+        title: `Proposal ${String(i)}`,
+        description: `Description ${String(i)}`,
+        algorithm: 'simple_majority',
+      });
+      if (result.ok) {
+        await smallCacheEngine.vote(result.value, 'agent-1', vote);
+        await smallCacheEngine.vote(result.value, 'agent-2', vote);
+        await smallCacheEngine.close(result.value);
+      }
+    }
+
+    // Cache should have max 2 entries
+    expect(smallCacheEngine.getCacheSize()).toBeLessThanOrEqual(2);
+  });
+
+  it('should clear cache on demand', async () => {
+    const proposal: Proposal = {
+      title: 'Clearable',
+      description: 'Test clearing',
+      algorithm: 'simple_majority',
+    };
+
+    const result = await cachedEngine.propose(proposal);
+    if (!result.ok) return;
+
+    const vote: Vote = { decision: 'approve', reasoning: 'OK', confidence: 0.8 };
+    await cachedEngine.vote(result.value, 'agent-1', vote);
+    await cachedEngine.vote(result.value, 'agent-2', vote);
+    await cachedEngine.close(result.value);
+
+    expect(cachedEngine.getCacheSize()).toBe(1);
+
+    cachedEngine.clearCache();
+
+    expect(cachedEngine.getCacheSize()).toBe(0);
+  });
+});
+
 describe('Voting Strategies', () => {
   describe('SimpleMajorityStrategy', () => {
     const strategy = new SimpleMajorityStrategy();

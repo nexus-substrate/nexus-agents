@@ -17,6 +17,7 @@ import type {
   ConsensusEngineConfig,
   ProposalState,
   ConsensusMetrics,
+  ProposalCacheConfig,
 } from './types.js';
 import { ProposalSchema, VoteSchema, DEFAULT_CONSENSUS_CONFIG } from './types.js';
 import { VotingStrategyFactory, calculateVoteWeight, type VotingOutcome } from './strategies.js';
@@ -55,19 +56,40 @@ interface InternalMetrics {
 }
 
 /**
+ * Cache entry for proposal content-based caching (Issue #589).
+ */
+interface ProposalCacheEntry {
+  readonly proposalId: ProposalId;
+  readonly result: ConsensusResult;
+  readonly cachedAt: number;
+}
+
+/**
+ * Default proposal cache configuration.
+ */
+const DEFAULT_PROPOSAL_CACHE_CONFIG: ProposalCacheConfig = {
+  enabled: false,
+  ttlMs: 3600000, // 1 hour
+  maxEntries: 500,
+};
+
+/**
  * Consensus engine for multi-agent decision making.
  */
 export class ConsensusEngine implements IConsensusEngine {
   private readonly proposals: Map<ProposalId, ProposalState> = new Map();
   private readonly closedProposals: Map<ProposalId, ConsensusResult> = new Map();
   private readonly agentPerformance: Map<string, AgentPerformance> = new Map();
+  private readonly proposalContentCache: Map<string, ProposalCacheEntry> = new Map();
   private readonly strategyFactory: VotingStrategyFactory;
   private readonly config: ConsensusEngineConfig;
+  private readonly cacheConfig: ProposalCacheConfig;
   private readonly logger: ILogger;
   private readonly metrics: InternalMetrics;
 
   constructor(config?: Partial<ConsensusEngineConfig>, logger?: ILogger) {
     this.config = { ...DEFAULT_CONSENSUS_CONFIG, ...config };
+    this.cacheConfig = { ...DEFAULT_PROPOSAL_CACHE_CONFIG, ...config?.proposalCache };
     this.logger = logger ?? createLogger({ component: 'ConsensusEngine' });
     this.strategyFactory = new VotingStrategyFactory();
     this.metrics = this.createInitialMetrics();
@@ -83,6 +105,18 @@ export class ConsensusEngine implements IConsensusEngine {
           })
         )
       );
+    }
+
+    // Check cache for identical proposal content (Issue #589)
+    if (this.cacheConfig.enabled) {
+      const cachedEntry = this.getCachedResult(validation.data);
+      if (cachedEntry !== undefined) {
+        this.logger.debug('Returning cached proposal result', {
+          cachedProposalId: cachedEntry.proposalId,
+          cachedOutcome: cachedEntry.result.outcome,
+        });
+        return Promise.resolve(ok(cachedEntry.proposalId));
+      }
     }
 
     if (this.proposals.size >= this.config.maxActiveProposals) {
@@ -302,6 +336,15 @@ export class ConsensusEngine implements IConsensusEngine {
     this.proposals.delete(proposalId);
     this.addClosedProposal(proposalId, result);
     this.updateMetrics(result);
+
+    // Cache successful results for determinism (Issue #589)
+    if (
+      this.cacheConfig.enabled &&
+      (result.outcome === 'approved' || result.outcome === 'rejected')
+    ) {
+      this.addToCache(result.proposal, proposalId, result);
+    }
+
     this.logger.info('Proposal closed', {
       proposalId,
       outcome: result.outcome,
@@ -362,6 +405,79 @@ export class ConsensusEngine implements IConsensusEngine {
         opinion_wise: 0,
       },
     };
+  }
+
+  // ============================================================================
+  // Proposal Content Caching (Issue #589)
+  // ============================================================================
+
+  /**
+   * Creates a content hash for a proposal to enable cache lookups.
+   * Hash is based on title, description, and algorithm (deterministic content).
+   */
+  private hashProposalContent(proposal: Proposal): string {
+    const content = [proposal.title, proposal.description, proposal.algorithm].join('|');
+    // Simple FNV-1a hash for fast deterministic hashing
+    let hash = 2166136261;
+    for (let i = 0; i < content.length; i++) {
+      hash ^= content.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0).toString(16);
+  }
+
+  /**
+   * Gets cached result for a proposal if it exists and hasn't expired.
+   */
+  private getCachedResult(proposal: Proposal): ProposalCacheEntry | undefined {
+    const hash = this.hashProposalContent(proposal);
+    const cached = this.proposalContentCache.get(hash);
+    if (cached === undefined) return undefined;
+
+    const now = getTimeProvider().now();
+    if (now - cached.cachedAt > this.cacheConfig.ttlMs) {
+      this.proposalContentCache.delete(hash);
+      this.logger.debug('Cache entry expired', { hash });
+      return undefined;
+    }
+
+    return cached;
+  }
+
+  /**
+   * Adds a proposal result to the cache, evicting oldest entries if needed.
+   */
+  private addToCache(proposal: Proposal, proposalId: ProposalId, result: ConsensusResult): void {
+    const hash = this.hashProposalContent(proposal);
+
+    // Evict oldest entries if at capacity (Map maintains insertion order)
+    while (this.proposalContentCache.size >= this.cacheConfig.maxEntries) {
+      const oldestKey = this.proposalContentCache.keys().next().value as string;
+      this.proposalContentCache.delete(oldestKey);
+      this.logger.debug('Evicted oldest cache entry', { hash: oldestKey });
+    }
+
+    this.proposalContentCache.set(hash, {
+      proposalId,
+      result,
+      cachedAt: getTimeProvider().now(),
+    });
+    this.logger.debug('Added proposal to cache', { hash, proposalId });
+  }
+
+  /**
+   * Gets the current cache size (for testing/monitoring).
+   */
+  getCacheSize(): number {
+    return this.proposalContentCache.size;
+  }
+
+  /**
+   * Clears the proposal content cache (for testing/reset).
+   */
+  clearCache(): void {
+    this.proposalContentCache.clear();
+    this.logger.debug('Proposal cache cleared');
   }
 }
 

@@ -34,6 +34,9 @@ export {
   type ProposalState,
   type ConsensusMetrics,
   ConsensusMetricsSchema,
+  // Proposal caching (Issue #589)
+  type ProposalCacheConfig,
+  ProposalCacheConfigSchema,
 } from './types-core.js';
 
 // Multi-round voting protocol types (Issue #100)

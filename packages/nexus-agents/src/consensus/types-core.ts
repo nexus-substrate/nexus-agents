@@ -164,6 +164,18 @@ export const AgentPerformanceSchema = z.object({
 });
 
 /**
+ * Proposal content caching configuration for determinism. (Issue #589)
+ */
+export interface ProposalCacheConfig {
+  /** Enable content-based caching for repeated proposals */
+  enabled: boolean;
+  /** TTL in milliseconds (default: 1 hour) */
+  ttlMs: number;
+  /** Maximum cached entries (default: 500) */
+  maxEntries: number;
+}
+
+/**
  * Consensus engine configuration.
  */
 export interface ConsensusEngineConfig {
@@ -173,7 +185,18 @@ export interface ConsensusEngineConfig {
   enablePerformanceTracking: boolean;
   /** Maximum number of closed proposals to retain. Oldest are evicted when exceeded. (Issue #549) */
   maxClosedProposals: number;
+  /** Content-based proposal caching for determinism (Issue #589) */
+  proposalCache?: ProposalCacheConfig;
 }
+
+/**
+ * Proposal cache configuration schema. (Issue #589)
+ */
+export const ProposalCacheConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  ttlMs: z.number().int().positive().default(3600000), // 1 hour
+  maxEntries: z.number().int().positive().default(500),
+});
 
 /**
  * Consensus engine configuration schema.
@@ -184,6 +207,7 @@ export const ConsensusEngineConfigSchema = z.object({
   maxActiveProposals: z.number().int().positive().default(100),
   enablePerformanceTracking: z.boolean().default(true),
   maxClosedProposals: z.number().int().positive().default(1000), // Issue #549
+  proposalCache: ProposalCacheConfigSchema.optional(), // Issue #589
 });
 
 /**
