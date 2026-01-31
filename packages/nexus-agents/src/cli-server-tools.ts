@@ -28,6 +28,10 @@ import type { IModelAdapter, WorkflowDefinition } from './core/index.js';
 import { createTechLead } from './agents/index.js';
 import type { ILogger } from './core/index.js';
 import { NexusError, ErrorCode } from './core/index.js';
+import { runStpaSafetyAnalysis, StpaSafetyError } from './cli-server-stpa.js';
+
+// Re-export for public API
+export { StpaSafetyError };
 
 /**
  * Error thrown when TechLead orchestration is unavailable.
@@ -71,6 +75,10 @@ export interface RegisterMcpToolsOptions {
   workflowConfig?: import('./config/index.js').WorkflowConfig;
   /** FeedbackIntegration for closed-loop learning (Issue #490) */
   feedbackIntegration?: import('./learning/feedback-integration.js').IFeedbackIntegration;
+  /** Enable STPA safety analysis during tool registration (Issue #530) */
+  enableStpaSafetyAnalysis?: boolean;
+  /** Fail registration if high-severity hazards are found (Issue #530) */
+  failOnHighSeverityHazards?: boolean;
 }
 
 /**
@@ -118,7 +126,9 @@ function createTechLeadForOrchestration(
 
   if (mockEnabled) {
     const source = envMockEnabled ? `${MOCK_ORCHESTRATION_ENV} env var` : 'config';
-    logger.warn(`Using mock TechLead as explicitly configured via ${source} (no real adapter available)`);
+    logger.warn(
+      `Using mock TechLead as explicitly configured via ${source} (no real adapter available)`
+    );
     return createMockTechLead();
   }
 
@@ -228,6 +238,15 @@ function registerCoreTools(ctx: ToolRegistrationContext): void {
   });
 }
 
+/** Runs STPA analysis if enabled in options. */
+function maybeRunStpaAnalysis(options: RegisterMcpToolsOptions, logger: ILogger): void {
+  const enableStpa = options.enableStpaSafetyAnalysis ?? false;
+  if (!enableStpa) return;
+
+  logger.info('Running STPA safety analysis on registered tools');
+  runStpaSafetyAnalysis(logger, options.failOnHighSeverityHazards ?? false);
+}
+
 /** Creates tool registration context from options. */
 function createToolContext(
   options: RegisterMcpToolsOptions,
@@ -320,4 +339,7 @@ export function registerMcpTools(options: RegisterMcpToolsOptions): void {
     policyMode: policyFirewall?.getMode(),
     executionMode: executionMode ?? 'read-only',
   });
+
+  // Run STPA safety analysis if enabled (Issue #530)
+  maybeRunStpaAnalysis(options, logger);
 }
