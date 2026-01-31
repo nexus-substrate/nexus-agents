@@ -100,7 +100,9 @@ export {
   type OrchestrateInput,
   type OrchestrateOutput,
   type OrchestrateDeps,
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- Intentional: re-export deprecated API for backwards compat
   type ITechLead,
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- Intentional: re-export deprecated API for backwards compat
   type IOrchestrateExpertFactory,
   // delegate_to_model tool (Issue #538)
   registerDelegateToModelTool,

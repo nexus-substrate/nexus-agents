@@ -23,6 +23,7 @@ import type { ITechLead } from './orchestrate.js';
  * @param logger - Logger instance
  * @returns ITechLead-compatible agent
  */
+// eslint-disable-next-line @typescript-eslint/no-deprecated -- Intentional: backwards compat (Issue #595)
 export function createTechLeadWithSica(logger: ILogger): ITechLead {
   const techLead = new TechLead({ logger });
 
@@ -69,6 +70,7 @@ export function createTechLeadWithSica(logger: ILogger): ITechLead {
  *
  * Transforms SicaExecutionResult to the shape expected by orchestrate tool.
  */
+// eslint-disable-next-line @typescript-eslint/no-deprecated -- Intentional: backwards compat (Issue #595)
 function createSicaTechLeadAdapter(sicaAgent: SicaAgent, _logger: ILogger): ITechLead {
   return {
     async execute(
@@ -111,6 +113,7 @@ function createSicaTechLeadAdapter(sicaAgent: SicaAgent, _logger: ILogger): ITec
  * This is useful for accessing SICA-specific functionality like
  * version management and improvement history.
  */
+// eslint-disable-next-line @typescript-eslint/no-deprecated -- Intentional: backwards compat (Issue #595)
 export function getSicaAgentFromTechLead(_techLead: ITechLead): SicaAgent | undefined {
   // This function exists for future extensibility when we need
   // to access SICA internals from the wrapped agent.

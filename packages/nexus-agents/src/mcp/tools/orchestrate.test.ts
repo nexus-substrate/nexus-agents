@@ -2,6 +2,8 @@
  * nexus-agents/mcp - Orchestrate Tool Tests
  */
 
+/* eslint-disable @typescript-eslint/no-deprecated -- Test file: intentionally tests deprecated APIs for backwards compat */
+
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import type { Result, ILogger, Task, TaskResult } from '../../core/index.js';
 import { ok, err, AgentError } from '../../core/index.js';

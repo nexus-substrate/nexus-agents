@@ -111,6 +111,7 @@ const MOCK_ORCHESTRATION_ENV = 'NEXUS_ALLOW_MOCK_ORCHESTRATION';
  *
  * @throws {TechLeadUnavailableError} When no adapter and mock not explicitly requested
  */
+/* eslint-disable @typescript-eslint/no-deprecated -- Intentional: backwards compat, will migrate to IOrchestrator (Issue #595) */
 function createTechLeadForOrchestration(
   modelAdapter: IModelAdapter | undefined,
   logger: ILogger,
@@ -138,6 +139,7 @@ function createTechLeadForOrchestration(
       'or configure an API key (ANTHROPIC_API_KEY, OPENAI_API_KEY, or GOOGLE_AI_API_KEY).'
   );
 }
+/* eslint-enable @typescript-eslint/no-deprecated */
 
 /** Tool registration context passed to helpers. */
 interface ToolRegistrationContext {

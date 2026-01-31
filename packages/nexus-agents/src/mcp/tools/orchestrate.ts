@@ -7,6 +7,7 @@
  * @module mcp/tools/orchestrate
  * (Source: MCP Protocol 2025-11-25)
  * (Refactored: Issue #531 - Use createSecureHandlerFactory)
+ * (Refactored: Issue #595 - Use unified IOrchestrator via factory)
  */
 
 import { z } from 'zod';
@@ -20,12 +21,14 @@ import {
   getTimeProvider,
   getRandomProvider,
 } from '../../core/index.js';
+import type { IOrchestrator, OrchestratorDefinition } from '../../core/types/orchestrator.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
 import { wrapToolWithTimeout, toSdkCallback } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import type { ExecutionPlan, Expert } from '../../agents/index.js';
 import { createTechLeadWithSica } from './orchestrate-sica.js';
+import { OrchestratorFactory } from '../../orchestration/orchestrator-factory.js';
 
 /**
  * Input schema for the orchestrate tool.
@@ -74,6 +77,8 @@ export type OrchestrateOutput = z.infer<typeof OrchestrateOutputSchema>;
 /**
  * Interface for TechLead operations.
  * Allows for dependency injection and mocking.
+ * @deprecated Use IOrchestrator from core/types/orchestrator.js instead.
+ * Will be removed in v3.0. (Issue #595)
  */
 export interface ITechLead {
   execute(
@@ -83,6 +88,8 @@ export interface ITechLead {
 
 /**
  * Interface for expert factory operations.
+ * @deprecated Not used with unified orchestrator pattern.
+ * Will be removed in v3.0. (Issue #595)
  */
 export interface IExpertFactory {
   createBuiltIn(type: string): Result<Expert, AgentError>;
@@ -92,7 +99,20 @@ export interface IExpertFactory {
  * Dependencies for the orchestrate tool.
  */
 export interface OrchestrateDeps {
+  /**
+   * Pre-configured orchestrator instance (unified interface).
+   * If not provided, a TechLead-based orchestrator is created via factory.
+   */
+  orchestrator?: IOrchestrator;
+  /**
+   * @deprecated Use orchestrator instead. Will be removed in v3.0.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- Intentional: deprecated API for backwards compat
   techLead?: ITechLead;
+  /**
+   * @deprecated Not used with unified orchestrator pattern. Will be removed in v3.0.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- Intentional: deprecated API for backwards compat
   expertFactory?: IExpertFactory;
   logger?: ILogger;
   /** Rate limiter for throttling tool calls (required) */
@@ -153,31 +173,15 @@ function createTaskFromInput(input: OrchestrateInput, taskId: string): Task {
 }
 
 /**
- * Extracts expert names from execution plan assignments.
+ * Builds the orchestration output from OrchestratorResult.
+ * Uses the unified IOrchestrator result format (Issue #595).
  */
-function extractExpertsUsed(output: unknown): string[] {
-  if (typeof output !== 'object' || output === null) {
-    return [];
-  }
-
-  const plan = output as Partial<ExecutionPlan>;
-  if (!Array.isArray(plan.assignments)) {
-    return [];
-  }
-
-  return plan.assignments.map((a) => a.expertRole);
-}
-
-/**
- * Builds the orchestration output from execution result.
- */
-function buildOutput(
+function buildOutputFromOrchestratorResult(
   taskId: string,
-  result: { output: unknown; metadata: unknown },
+  orchResult: import('../../core/types/orchestrator.js').OrchestratorResult,
   durationMs: number
 ): OrchestrateOutput {
-  const output = result.output as Partial<ExecutionPlan>;
-  const metadata = result.metadata as { tokensUsed?: number } | undefined;
+  const output = orchResult.output as Partial<ExecutionPlan>;
 
   const analysis = output.analysis ?? {
     taskId,
@@ -190,8 +194,8 @@ function buildOutput(
     estimatedEffort: 1,
   };
 
-  const stepsCompleted = Array.isArray(output.subtasks) ? output.subtasks.length : 0;
-  const expertsUsed = extractExpertsUsed(result.output);
+  const stepsCompleted = orchResult.steps.length;
+  const expertsUsed = orchResult.agentsUsed;
 
   return {
     taskId,
@@ -205,48 +209,88 @@ function buildOutput(
       approach: analysis.approach,
       estimatedEffort: analysis.estimatedEffort,
     },
-    result: result.output,
+    result: orchResult.output,
     stepsCompleted,
     metadata: {
       durationMs,
-      tokensUsed: metadata?.tokensUsed ?? 0,
+      tokensUsed: orchResult.totalTokensUsed,
       expertsUsed,
     },
   };
 }
 
 /**
+ * Creates an IOrchestrator instance from dependencies.
+ * Uses factory pattern for unified orchestrator access (Issue #595).
+ */
+function createOrchestratorFromDeps(deps: OrchestrateDeps, logger: ILogger): IOrchestrator {
+  // If orchestrator provided directly, use it
+  if (deps.orchestrator !== undefined) {
+    return deps.orchestrator;
+  }
+
+  // Create TechLead instance (SICA-wrapped when enabled - Issue #558)
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- Backwards compatibility
+  const techLead = deps.techLead ?? createTechLeadWithSica(logger);
+
+  // Create factory with TechLead instance wired (ADR-0014)
+  const factory = new OrchestratorFactory({
+    logger,
+    techLead: techLead as { execute: (task: unknown) => Promise<Result<unknown, unknown>> },
+  });
+
+  // Return TechLead orchestrator adapter
+  return factory.create('tech_lead');
+}
+
+/**
+ * Creates error options for OrchestrationError with optional cause.
+ */
+function createErrorOptions(
+  taskId: string,
+  cause: Error | undefined
+): { cause?: Error; context: Record<string, unknown> } {
+  const options: { cause?: Error; context: Record<string, unknown> } = { context: { taskId } };
+  if (cause !== undefined) {
+    options.cause = cause;
+  }
+  return options;
+}
+
+/**
  * Executes the orchestration logic.
+ * Uses unified IOrchestrator interface via factory (Issue #595).
  */
 async function executeOrchestration(
   input: OrchestrateInput,
   deps: OrchestrateDeps
 ): Promise<Result<OrchestrateOutput, OrchestrationError>> {
   const logger = deps.logger ?? createLogger({ tool: 'orchestrate' });
-  // Use SICA-wrapped TechLead when enabled (Issue #558)
-  const techLead = deps.techLead ?? createTechLeadWithSica(logger);
+  const orchestrator = createOrchestratorFromDeps(deps, logger);
   const taskId = generateTaskId();
   const startTime = getTimeProvider().now();
 
   logger.info('Starting orchestration', { taskId, taskLength: input.task.length });
 
   const task = createTaskFromInput(input, taskId);
+  const definition: OrchestratorDefinition = { type: 'task', task };
 
   try {
-    const result = await techLead.execute(task);
+    const result = await orchestrator.execute(definition, {});
 
     if (!result.ok) {
       logger.error('Orchestration failed', result.error, { taskId });
+      const cause = result.error instanceof Error ? result.error : undefined;
       return err(
-        new OrchestrationError(`Task execution failed: ${result.error.message}`, {
-          cause: result.error,
-          context: { taskId },
-        })
+        new OrchestrationError(
+          `Task execution failed: ${result.error.message}`,
+          createErrorOptions(taskId, cause)
+        )
       );
     }
 
     const durationMs = getTimeProvider().now() - startTime;
-    const output = buildOutput(taskId, result.value, durationMs);
+    const output = buildOutputFromOrchestratorResult(taskId, result.value, durationMs);
 
     logger.info('Orchestration completed', {
       taskId,
@@ -259,16 +303,11 @@ async function executeOrchestration(
     const message = error instanceof Error ? error.message : 'Unknown error';
     const cause = error instanceof Error ? error : undefined;
     logger.error('Orchestration exception', cause, { taskId });
-
-    const errorOptions: { cause?: Error; context: Record<string, unknown> } = {
-      context: { taskId },
-    };
-    if (cause !== undefined) {
-      errorOptions.cause = cause;
-    }
-
     return err(
-      new OrchestrationError(`Orchestration failed unexpectedly: ${message}`, errorOptions)
+      new OrchestrationError(
+        `Orchestration failed unexpectedly: ${message}`,
+        createErrorOptions(taskId, cause)
+      )
     );
   }
 }
@@ -359,7 +398,9 @@ export function registerOrchestrateTool(server: McpServer, deps: OrchestrateDeps
 /**
  * Creates a mock TechLead for testing purposes.
  * Uses heuristic analysis without model adapter.
+ * @deprecated Use createMockOrchestrator instead. Will be removed in v3.0.
  */
+// eslint-disable-next-line @typescript-eslint/no-deprecated -- Deprecated export for backwards compatibility
 export function createMockTechLead(): ITechLead {
   return {
     execute(task: Task) {
@@ -401,4 +442,19 @@ export function createMockTechLead(): ITechLead {
       );
     },
   };
+}
+
+/**
+ * Creates a mock orchestrator for testing purposes.
+ * Returns an IOrchestrator that uses heuristic analysis without model adapter.
+ * (Issue #595 - Unified orchestrator pattern)
+ */
+export function createMockOrchestrator(): IOrchestrator {
+  // Create mock TechLead and wire via factory
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- Using deprecated for backwards compat
+  const mockTechLead = createMockTechLead();
+  const factory = new OrchestratorFactory({
+    techLead: mockTechLead as { execute: (task: unknown) => Promise<Result<unknown, unknown>> },
+  });
+  return factory.create('tech_lead');
 }
