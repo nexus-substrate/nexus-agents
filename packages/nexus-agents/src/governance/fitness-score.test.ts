@@ -6,12 +6,11 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import type { ILogger } from '../core/index.js';
 import {
   FitnessScoreCalculator,
   createFitnessScoreCalculator,
   calculateFitnessScore,
-  type FitnessAudit,
-  type FitnessDimensions,
 } from './fitness-score.js';
 
 describe('FitnessScoreCalculator', () => {
@@ -34,7 +33,10 @@ describe('FitnessScoreCalculator', () => {
       const calculator = new FitnessScoreCalculator();
       const audit = calculator.audit('test-v1.0.0');
 
-      const dimensionSum = Object.values(audit.dimensions).reduce((sum, val) => sum + val, 0);
+      const dimensionSum = Object.values(audit.dimensions).reduce(
+        (sum: number, val: number) => sum + val,
+        0
+      );
       expect(audit.score).toBe(dimensionSum);
     });
 
@@ -132,13 +134,15 @@ describe('createFitnessScoreCalculator', () => {
   });
 
   it('should accept custom logger', () => {
-    const mockLogger = {
+    const mockLogger: ILogger = {
       debug: () => {},
       info: () => {},
       warn: () => {},
       error: () => {},
+      child: () => mockLogger,
+      setLevel: () => {},
     };
-    const calculator = createFitnessScoreCalculator(mockLogger as any);
+    const calculator = createFitnessScoreCalculator(mockLogger);
     expect(calculator).toBeInstanceOf(FitnessScoreCalculator);
   });
 });

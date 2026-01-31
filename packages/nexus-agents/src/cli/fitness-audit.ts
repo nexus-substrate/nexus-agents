@@ -68,12 +68,9 @@ function formatSeverity(severity: 'info' | 'warning' | 'critical'): string {
 }
 
 /**
- * Print the audit report to stdout.
+ * Print the report header.
  */
-function printReport(audit: FitnessAudit): void {
-  const { score, dimensions, findings, version, timestamp } = audit;
-
-  // Header
+function printHeader(): void {
   writeLine();
   writeLine(
     `${COLORS.bold}${COLORS.cyan}╔══════════════════════════════════════════════════════════════╗${COLORS.reset}`
@@ -85,8 +82,12 @@ function printReport(audit: FitnessAudit): void {
     `${COLORS.bold}${COLORS.cyan}╚══════════════════════════════════════════════════════════════╝${COLORS.reset}`
   );
   writeLine();
+}
 
-  // Summary
+/**
+ * Print the summary section.
+ */
+function printSummary(score: number, version: string, timestamp: string): void {
   const scoreColor = score >= 90 ? COLORS.green : score >= 70 ? COLORS.yellow : COLORS.red;
   writeLine(
     `${COLORS.bold}Overall Score:${COLORS.reset} ${scoreColor}${COLORS.bold}${String(score)}/100${COLORS.reset}`
@@ -94,8 +95,12 @@ function printReport(audit: FitnessAudit): void {
   writeLine(`${COLORS.dim}Version: ${version}${COLORS.reset}`);
   writeLine(`${COLORS.dim}Timestamp: ${timestamp}${COLORS.reset}`);
   writeLine();
+}
 
-  // Dimension scores
+/**
+ * Print the dimension scores section.
+ */
+function printDimensions(dimensions: FitnessAudit['dimensions']): void {
   writeLine(`${COLORS.bold}Dimension Scores:${COLORS.reset}`);
   writeLine(
     `  Canonical Paths:        ${formatScore(dimensions.canonicalPaths, 20)}  (duplicate path elimination)`
@@ -122,31 +127,34 @@ function printReport(audit: FitnessAudit): void {
     `  Governance Integration: ${formatScore(dimensions.governanceIntegration, 5)}  (policy enforcement)`
   );
   writeLine();
+}
 
-  // Findings
+/**
+ * Print the findings section.
+ */
+function printFindings(findings: readonly FitnessFinding[]): void {
   if (findings.length > 0) {
     writeLine(`${COLORS.bold}Findings (${String(findings.length)}):${COLORS.reset}`);
-
-    const criticalFindings = findings.filter((f) => f.severity === 'critical');
-    const warningFindings = findings.filter((f) => f.severity === 'warning');
-    const infoFindings = findings.filter((f) => f.severity === 'info');
-
-    for (const finding of criticalFindings) {
-      printFinding(finding);
-    }
-    for (const finding of warningFindings) {
-      printFinding(finding);
-    }
-    for (const finding of infoFindings) {
+    const critical = findings.filter((f) => f.severity === 'critical');
+    const warning = findings.filter((f) => f.severity === 'warning');
+    const info = findings.filter((f) => f.severity === 'info');
+    for (const finding of [...critical, ...warning, ...info]) {
       printFinding(finding);
     }
   } else {
     writeLine(`${COLORS.green}No findings - all checks passed!${COLORS.reset}`);
   }
-
   writeLine();
+}
 
-  // Target
+/**
+ * Print the audit report to stdout.
+ */
+function printReport(audit: FitnessAudit): void {
+  printHeader();
+  printSummary(audit.score, audit.version, audit.timestamp);
+  printDimensions(audit.dimensions);
+  printFindings(audit.findings);
   writeLine(`${COLORS.bold}Target:${COLORS.reset} 90+/100 after consolidation`);
   writeLine(`${COLORS.dim}See Issue #574 for consolidation roadmap${COLORS.reset}`);
   writeLine();

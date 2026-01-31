@@ -223,45 +223,39 @@ export class FitnessScoreCalculator {
 
     // Check: Token estimation unified
     // Deduct if multiple implementations exist
-    const tokenEstimationDuplications = 6; // Known: 7 places, 1 canonical
-    if (tokenEstimationDuplications > 0) {
-      const deduction = Math.min(tokenEstimationDuplications, 3);
-      score -= deduction;
-      findings.push({
-        dimension: 'canonicalPaths',
-        severity: 'warning',
-        description: `Token estimation duplicated in ${tokenEstimationDuplications} locations`,
-        pointsDeducted: deduction,
-        suggestion: 'Migrate to core/token-estimator.ts (Issue #583)',
-      });
-    }
+    const tokenEstimationDuplications: number = 6; // Known: 7 places, 1 canonical
+    const tokenDeduction = Math.min(tokenEstimationDuplications, 3);
+    score -= tokenDeduction;
+    findings.push({
+      dimension: 'canonicalPaths',
+      severity: 'warning',
+      description: `Token estimation duplicated in ${String(tokenEstimationDuplications)} locations`,
+      pointsDeducted: tokenDeduction,
+      suggestion: 'Migrate to core/token-estimator.ts (Issue #583)',
+    });
 
     // Check: Task analysis unified
-    const taskAnalysisDuplications = 2; // task-analyzer.ts vs SharedTaskAnalyzer
-    if (taskAnalysisDuplications > 0) {
-      score -= 2;
-      findings.push({
-        dimension: 'canonicalPaths',
-        severity: 'warning',
-        description: 'Task analysis has legacy and new implementation',
-        pointsDeducted: 2,
-        suggestion: 'Complete migration to SharedTaskAnalyzer (Issue #574)',
-      });
-    }
+    // task-analyzer.ts vs SharedTaskAnalyzer - 2 implementations
+    score -= 2;
+    findings.push({
+      dimension: 'canonicalPaths',
+      severity: 'warning',
+      description: 'Task analysis has legacy and new implementation',
+      pointsDeducted: 2,
+      suggestion: 'Complete migration to SharedTaskAnalyzer (Issue #574)',
+    });
 
     // Check: Router implementations
-    const routerCount = 8;
-    if (routerCount > 5) {
-      const deduction = Math.min(routerCount - 5, 3);
-      score -= deduction;
-      findings.push({
-        dimension: 'canonicalPaths',
-        severity: 'info',
-        description: `${routerCount} router implementations (expected ≤5 after consolidation)`,
-        pointsDeducted: deduction,
-        suggestion: 'Consider consolidating routers behind unified interfaces',
-      });
-    }
+    const routerCount: number = 8;
+    const routerDeduction = Math.min(routerCount - 5, 3);
+    score -= routerDeduction;
+    findings.push({
+      dimension: 'canonicalPaths',
+      severity: 'info',
+      description: `${String(routerCount)} router implementations (expected ≤5 after consolidation)`,
+      pointsDeducted: routerDeduction,
+      suggestion: 'Consider consolidating routers behind unified interfaces',
+    });
 
     return { score: Math.max(0, score), findings };
   }
@@ -271,7 +265,7 @@ export class FitnessScoreCalculator {
    */
   private checkExplicitBehavior(): FitnessCheckResult {
     const findings: FitnessFinding[] = [];
-    let score = 15;
+    const score = 15;
 
     // Check: Implicit mock fallback fixed (Issue #554)
     // Full points if NEXUS_ALLOW_MOCK_ORCHESTRATION is required
@@ -418,7 +412,7 @@ export class FitnessScoreCalculator {
    */
   private checkGovernanceIntegration(): FitnessCheckResult {
     const findings: FitnessFinding[] = [];
-    let score = 5;
+    const score = 5;
 
     // Check: Policy firewall exists
     // Full points
