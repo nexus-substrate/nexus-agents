@@ -79,24 +79,5 @@ export const DEFAULT_TARGET = 'src/adapters/';
 /** Max output bytes for non-verbose mode (10KB) */
 export const MAX_OUTPUT_BYTES = 10_240;
 
-/**
- * ANSI color codes for terminal output.
- */
-export const colors = {
-  reset: '\x1b[0m',
-  green: '\x1b[32m',
-  yellow: '\x1b[33m',
-  red: '\x1b[31m',
-  cyan: '\x1b[36m',
-  dim: '\x1b[2m',
-  bold: '\x1b[1m',
-} as const;
-
-/**
- * Symbols for status output.
- */
-export const symbols = {
-  check: process.platform === 'win32' ? '[OK]' : '✓',
-  warn: process.platform === 'win32' ? '[!]' : '⚠',
-  cross: process.platform === 'win32' ? '[X]' : '✗',
-} as const;
+// Re-export ANSI utilities for convenience
+export { colors, symbols } from './ansi-output.js';

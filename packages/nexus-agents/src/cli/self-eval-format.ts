@@ -14,17 +14,10 @@ import {
 } from '../self-eval/aggregation-logic.js';
 import type { EvaluateCommandResult } from './self-eval-types.js';
 import { colors, symbols, MAX_OUTPUT_BYTES } from './self-eval-types.js';
+import { writeLine } from './ansi-output.js';
 
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
-/**
- * Helper to write a line to stdout.
- */
-export function writeLine(text: string): void {
-  process.stdout.write(text + '\n');
-}
+// Re-export for backward compatibility
+export { writeLine };
 
 /**
  * Get color for recommendation.

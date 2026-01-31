@@ -18,6 +18,10 @@ import {
   type CodeQuality,
 } from './system-review-types.js';
 import { safeExecSandboxed } from './sandbox-exec.js';
+import { colors, symbols, writeLine } from './ansi-output.js';
+
+// Re-export for backward compatibility
+export { colors, symbols, writeLine };
 
 const {
   COVERAGE_TARGET_PERCENT,
@@ -33,30 +37,6 @@ const {
   LOW_COVERAGE_PENALTY,
   STALE_ISSUE_PENALTY,
 } = SYSTEM_REVIEW_CONSTANTS;
-
-/** Console color codes. */
-export const colors = {
-  reset: '\x1b[0m',
-  green: '\x1b[32m',
-  yellow: '\x1b[33m',
-  red: '\x1b[31m',
-  cyan: '\x1b[36m',
-  dim: '\x1b[2m',
-  bold: '\x1b[1m',
-} as const;
-
-/** Cross-platform console symbols. */
-export const symbols = {
-  check: process.platform === 'win32' ? '√' : '✓',
-  cross: process.platform === 'win32' ? '×' : '✗',
-  warn: process.platform === 'win32' ? '!' : '⚠',
-  bullet: process.platform === 'win32' ? '*' : '•',
-} as const;
-
-/** Write a line to stdout. */
-export function writeLine(text: string): void {
-  process.stdout.write(text + '\n');
-}
 
 /** Format a status indicator with color. */
 export function formatStatus(status: 'pass' | 'warn' | 'fail'): string {

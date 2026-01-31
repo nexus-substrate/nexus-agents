@@ -1,27 +1,16 @@
 /**
  * Config Command Formatting
  *
- * ANSI colors and output formatting functions for config CLI commands.
+ * Output formatting functions for config CLI commands.
  *
  * @module cli/config-command-formatting
  * (Source: Issue #360 - CLI Config Management)
  */
 
-// ============================================================================
-// ANSI Colors
-// ============================================================================
+import { colors, writeLine, writeEmptyLine } from './ansi-output.js';
 
-/** ANSI color codes for terminal output. */
-export const colors = {
-  reset: '\x1b[0m',
-  green: '\x1b[32m',
-  yellow: '\x1b[33m',
-  red: '\x1b[31m',
-  cyan: '\x1b[36m',
-  dim: '\x1b[2m',
-  bold: '\x1b[1m',
-  magenta: '\x1b[35m',
-} as const;
+// Re-export for backward compatibility
+export { colors, writeLine, writeEmptyLine };
 
 // ============================================================================
 // Output Formatting
@@ -65,20 +54,6 @@ export function formatValue(value: unknown): string {
     return value ? `${colors.green}true${colors.reset}` : `${colors.red}false${colors.reset}`;
   }
   return JSON.stringify(value);
-}
-
-/**
- * Writes a line to stdout.
- */
-export function writeLine(text: string): void {
-  process.stdout.write(text + '\n');
-}
-
-/**
- * Writes an empty line.
- */
-export function writeEmptyLine(): void {
-  process.stdout.write('\n');
 }
 
 /**

@@ -14,30 +14,10 @@ import type {
   Priority,
   GitHubIssueRaw,
 } from './sprint-types.js';
+import { colors, symbols, writeLine } from './ansi-output.js';
 
-// ============================================================================
-// Terminal Output Helpers
-// ============================================================================
-
-export const colors = {
-  reset: '\x1b[0m',
-  green: '\x1b[32m',
-  yellow: '\x1b[33m',
-  red: '\x1b[31m',
-  cyan: '\x1b[36m',
-  dim: '\x1b[2m',
-  bold: '\x1b[1m',
-} as const;
-
-export const symbols = {
-  check: process.platform === 'win32' ? 'v' : '✓',
-  cross: process.platform === 'win32' ? 'x' : '✗',
-  bullet: process.platform === 'win32' ? '*' : '•',
-};
-
-export function writeLine(text: string): void {
-  process.stdout.write(text + '\n');
-}
+// Re-export for backward compatibility
+export { colors, symbols, writeLine };
 
 // ============================================================================
 // Issue Fetching and Parsing
