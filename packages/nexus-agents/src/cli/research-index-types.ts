@@ -6,6 +6,8 @@
  * @see Issue #367 - Deterministic RESEARCH_INDEX.md generation
  */
 
+import type { CommandResult } from '../core/index.js';
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -35,10 +37,12 @@ export interface ResearchIndexOptions {
 
 /**
  * Result of the research index command.
+ * Extends CommandResult base pattern (Issue #584).
  */
-export interface ResearchIndexResult {
-  readonly success: boolean;
+export interface ResearchIndexResult extends CommandResult {
+  /** Always present - human-readable message */
   readonly message: string;
+  /** Exit code for CLI */
   readonly exitCode: number;
 }
 

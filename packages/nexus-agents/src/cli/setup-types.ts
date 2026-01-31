@@ -8,6 +8,7 @@
  */
 
 import { z } from 'zod';
+import type { CommandResult } from '../core/index.js';
 
 /**
  * Setup command options schema.
@@ -117,9 +118,10 @@ export interface SetupStep {
 
 /**
  * Setup result summary.
+ * Extends CommandResult base pattern (Issue #584).
  */
-export interface SetupResult {
-  readonly success: boolean;
+export interface SetupResult extends CommandResult {
+  /** Setup steps executed */
   readonly steps: readonly SetupStep[];
   /** MCP configuration was successful via Claude CLI */
   readonly mcpConfigured?: boolean;

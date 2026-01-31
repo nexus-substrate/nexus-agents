@@ -7,6 +7,7 @@
  */
 
 import { z } from 'zod';
+import type { CommandResult } from '../core/index.js';
 
 /**
  * Supported issue types for template validation.
@@ -113,14 +114,11 @@ export interface GitHubIssue {
 
 /**
  * Result of the issue command.
+ * Extends CommandResult base pattern (Issue #584).
  */
-export interface IssueCommandResult {
-  /** Whether command succeeded */
-  readonly success: boolean;
+export interface IssueCommandResult extends CommandResult {
   /** Issue number processed */
   readonly issueNumber?: number;
   /** Validation result if validate subcommand */
   readonly validation?: IssueValidationResult;
-  /** Error message if failed */
-  readonly error?: string;
 }

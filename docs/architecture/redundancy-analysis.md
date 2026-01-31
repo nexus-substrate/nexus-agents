@@ -12,7 +12,7 @@
 | toError utility            | ✅ COMPLETE    | ecdf0e3                   |
 | Error message hints        | ✅ COMPLETE    | d4346a7                   |
 | OrchestrationObserver wire | ✅ COMPLETE    | Issue #587, 03d97a2       |
-| CommandResult base type    | 🔄 IN PROGRESS | Issue #584, 765d6a9       |
+| CommandResult base type    | ✅ COMPLETE    | Issue #584, 765d6a9       |
 | Task analyzer migration    | 🔄 IN PROGRESS | Issue #586                |
 | Layer separation           | 📋 PLANNED     | Issue #588                |
 | Consensus caching          | 📋 PLANNED     | Issue #589                |

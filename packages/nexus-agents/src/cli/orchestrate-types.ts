@@ -10,6 +10,7 @@
  */
 
 import type { LearnablePolicyStats } from '../agents/orchestration/index.js';
+import type { CommandResult } from '../core/index.js';
 
 /** Engine type for orchestration */
 export type OrchestrateEngine = 'router' | 'puppeteer';
@@ -40,17 +41,23 @@ export interface OrchestrateOptions {
   maxSteps?: number | undefined;
 }
 
-/** Puppeteer orchestration result (extends base result). */
-export interface PuppeteerOrchestrationResult {
-  success: boolean;
+/**
+ * Puppeteer orchestration result.
+ * Extends CommandResult base pattern (Issue #584).
+ */
+export interface PuppeteerOrchestrationResult extends CommandResult {
+  /** Model used for execution */
   model: string;
+  /** Response from the model */
   response?: {
     text: string;
     durationMs?: number;
   };
-  routing?: undefined; // Puppeteer doesn't use routing
-  error?: string;
+  /** Puppeteer doesn't use routing */
+  routing?: undefined;
+  /** Total duration in milliseconds */
   durationMs: number;
+  /** Puppeteer-specific metrics */
   puppeteer?: {
     totalSteps: number;
     trajectoryLength: number;

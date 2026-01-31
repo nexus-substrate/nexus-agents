@@ -8,6 +8,7 @@
  */
 
 import { z } from 'zod';
+import type { CommandResult } from '../core/index.js';
 
 // ============================================================================
 // Enums and Constants
@@ -59,11 +60,15 @@ export type ParsedConfigKey = z.infer<typeof ParsedConfigKeySchema>;
 // Result Types
 // ============================================================================
 
-/** Base result interface for config operations. */
-export interface ConfigResultBase {
-  readonly success: boolean;
-  readonly action: (typeof CONFIG_ACTIONS)[number];
+/**
+ * Base result interface for config operations.
+ * Extends CommandResult base pattern (Issue #584).
+ */
+export interface ConfigResultBase extends CommandResult {
+  /** Always present - human-readable message */
   readonly message: string;
+  /** Action that was performed */
+  readonly action: (typeof CONFIG_ACTIONS)[number];
 }
 
 /** Result for get operation. */

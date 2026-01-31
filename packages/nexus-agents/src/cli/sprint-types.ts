@@ -4,9 +4,11 @@
  * Type definitions for the sprint planning CLI command.
  *
  * (Source: Issue #230, Epic #225)
+ * (Source: Issue #584 - CommandResult consolidation)
  */
 
 import { z } from 'zod';
+import type { CommandResult } from '../core/index.js';
 
 /**
  * Priority levels for sprint items.
@@ -50,18 +52,15 @@ export interface SprintProposal {
 
 /**
  * Sprint planning result.
+ * Extends CommandResult with sprint-specific fields.
  */
-export interface SprintPlanResult {
-  /** Whether planning succeeded */
-  readonly success: boolean;
+export interface SprintPlanResult extends CommandResult {
   /** Generated proposal */
   readonly proposal?: SprintProposal;
   /** Vote result if vote was requested */
   readonly voteOutcome?: 'approved' | 'rejected' | 'pending' | 'skipped';
   /** Created issue number if issue was created */
   readonly createdIssueNumber?: number;
-  /** Error message if failed */
-  readonly error?: string;
 }
 
 /**

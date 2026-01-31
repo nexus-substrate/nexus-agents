@@ -9,6 +9,7 @@
  */
 
 import { z } from 'zod';
+import type { CommandResult } from '../core/index.js';
 
 // =============================================================================
 // PAPER TYPES
@@ -179,13 +180,17 @@ export type ResearchOverlapOptions = z.infer<typeof ResearchOverlapOptionsSchema
 // =============================================================================
 
 /**
- * Result of 'research add' command
+ * Result of 'research add' command.
+ * Extends CommandResult base pattern (Issue #584).
  */
-export interface ResearchAddResult {
-  readonly success: boolean;
-  readonly paperId: string;
-  readonly title: string;
+export interface ResearchAddResult extends CommandResult {
+  /** Always present - human-readable message */
   readonly message: string;
+  /** Paper ID that was added */
+  readonly paperId: string;
+  /** Paper title */
+  readonly title: string;
+  /** Whether this was a dry run */
   readonly dryRun: boolean;
 }
 
@@ -202,11 +207,13 @@ export interface TechniqueStatusSummary {
 }
 
 /**
- * Result of 'research status' command
+ * Result of 'research status' command.
+ * Extends CommandResult base pattern (Issue #584).
  */
-export interface ResearchStatusResult {
-  readonly success: boolean;
+export interface ResearchStatusResult extends CommandResult {
+  /** Techniques matching the query */
   readonly techniques: readonly TechniqueStatusSummary[];
+  /** Counts by status */
   readonly counts: {
     readonly implemented: number;
     readonly planned: number;
@@ -234,12 +241,15 @@ export interface OverlapMatch {
 }
 
 /**
- * Result of 'research overlap' command
+ * Result of 'research overlap' command.
+ * Extends CommandResult base pattern (Issue #584).
  */
-export interface ResearchOverlapResult {
-  readonly success: boolean;
+export interface ResearchOverlapResult extends CommandResult {
+  /** Source technique ID */
   readonly sourceId: string;
+  /** Matching techniques with overlap scores */
   readonly matches: readonly OverlapMatch[];
+  /** Suggested alignment entries */
   readonly suggestedAlignments: readonly string[];
 }
 

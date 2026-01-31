@@ -8,6 +8,7 @@
  */
 
 import type { TimePeriod } from '../observability/validation-dashboard-types.js';
+import type { CommandResult } from '../core/index.js';
 
 /**
  * Validation dashboard CLI command options.
@@ -39,10 +40,9 @@ export interface ValidationDashboardOptions {
 
 /**
  * Validation dashboard CLI command result.
+ * Extends CommandResult base pattern (Issue #584).
  */
-export interface ValidationDashboardResult {
-  /** Whether the command succeeded */
-  readonly success: boolean;
+export interface ValidationDashboardResult extends CommandResult {
   /** Output to display */
   readonly output: string;
   /** Total decisions shown */
