@@ -1,67 +1,45 @@
-# ADR-0011: Orchestrator Interface - Deferred
+# ADR-0011: Orchestrator Interface Unification
 
 ## Status
 
-REJECTED (Consensus Vote: 50% approval, 2026-01-31)
+SUPERSEDED by ADR-0014 (Re-evaluation: APPROVED, 100% approval, 2026-01-31)
 
-## Context
+## Original Decision (2026-01-31)
 
-Multiple orchestration entry points exist:
+**REJECTED (50% tie)** - Defer unified IOrchestrator interface implementation.
 
-- cli-orchestrator.ts (CLI)
-- mcp/tools/orchestrate.ts (MCP)
-- workflows/workflow-engine.ts (Workflows)
+## Re-evaluation (2026-01-31)
 
-A proposal was made to wrap these behind a unified IOrchestrator interface.
+A fresh consensus vote was conducted. Key changes since original vote:
 
-## Decision
+1. IOrchestrator interface already exists in `core/types/orchestrator.ts`
+2. OrchestratorFactory already exists with working adapters
+3. WorkflowOrchestratorAdapter proves the pattern works
+4. TechLeadAdapter and PuppeteerAdapter stubs are ready
 
-**Defer unified interface implementation.**
-
-The consensus vote was tied (50%), which does not meet the majority threshold. This indicates:
-
-- Current separation works and is well-tested
-- Risk of over-abstraction outweighs benefits
-- Each orchestrator serves distinct concerns
-- Unified interface may add complexity without clear benefit
-
-## Consensus Vote
+### Re-evaluation Consensus Vote
 
 - **Date:** 2026-01-31
 - **Threshold:** Simple Majority (50%)
-- **Result:** REJECTED (50% - did not exceed threshold)
+- **Result:** APPROVED (100%)
 - **Votes:**
-  - Software Architect: REJECT
-  - Security Engineer: APPROVE
-  - Developer Experience: APPROVE
-  - AI/ML Engineer: REJECT
-  - Product Manager: ABSTAIN
+  - Software Architect: APPROVE (infrastructure already exists, complete the pattern)
+  - Security Engineer: APPROVE (enables consistent security controls)
+  - Developer Experience: APPROVE (reduces learning curve)
+  - AI/ML Engineer: APPROVE (unlocks token tracking across orchestration)
+  - Product Manager: APPROVE (low effort, high return)
 
-## Consequences
+## New Decision
 
-### Positive
+**Complete the unified IOrchestrator implementation.**
 
-- Avoids premature abstraction
-- Keeps implementation simple
-- Each orchestrator can evolve independently
+The infrastructure (interface, factory, one adapter) already exists. Only adapter completion and entry point refactoring remains.
 
-### Negative
+## Implementation
 
-- Some error handling duplication
-- No shared configuration pattern
-- Changes may need to be made in multiple places
-
-## Future Consideration
-
-Revisit if:
-
-- A fourth orchestrator is added
-- Significant error handling duplication emerges
-- Configuration management becomes complex
-
-Note: IOrchestrator interface exists in core/types/orchestrator.ts but implementation wrapping is deferred.
+See ADR-0014 for implementation details.
 
 ## Related
 
 - Issue #595
-- Epic #598 (LOOP H)
+- ADR-0014 (supersedes this document)

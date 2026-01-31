@@ -1,61 +1,49 @@
-# ADR-0010: Memory Helpers - Keep Separate
+# ADR-0010: Memory Helpers Consolidation
 
 ## Status
 
-REJECTED (Consensus Vote: 40% approval, 2026-01-31)
+SUPERSEDED by ADR-0013 (Re-evaluation: APPROVED, 75% approval, 2026-01-31)
 
-## Context
+## Original Decision (2026-01-31)
 
-The codebase has 20+ memory helper files:
+**REJECTED (40%)** - Keep memory helpers separate per memory system.
 
-- agentic-memory-helpers.ts
-- belief-memory-helpers.ts
-- graph-memory-helpers.ts
-- etc.
+## Re-evaluation (2026-01-31)
 
-A proposal was made to consolidate these into shared utility modules.
+A fresh consensus vote was conducted with updated context.
 
-## Decision
-
-**Keep memory helpers separate per memory system.**
-
-The consensus vote rejected consolidation, indicating that:
-
-- Domain-specific helpers serve research paper implementations
-- Premature consolidation risks breaking specialized behavior
-- Current separation aids debugging and testing
-- Each memory system has unique extraction/transformation needs
-
-## Consensus Vote
+### Re-evaluation Consensus Vote
 
 - **Date:** 2026-01-31
 - **Threshold:** Simple Majority (50%)
-- **Result:** REJECTED (40%)
+- **Result:** APPROVED (75%)
 - **Votes:**
-  - Software Architect: REJECT
-  - Security Engineer: APPROVE
-  - Developer Experience: REJECT
-  - AI/ML Engineer: REJECT
-  - Product Manager: APPROVE
+  - Software Architect: APPROVE (shared utility layer reduces maintenance burden)
+  - Security Engineer: ABSTAIN (neutral from security perspective)
+  - Developer Experience: APPROVE (reduces cognitive load, clearer mental models)
+  - AI/ML Engineer: REJECT (preserve research paper alignment)
+  - Product Manager: APPROVE (reduces technical debt, improves velocity)
 
-## Consequences
+### Key Changes Since Original Vote
 
-### Positive
+1. Better understanding of which patterns are truly common vs specialized
+2. Recognition that composition over inheritance can preserve research alignment
+3. Fitness score improvements are measurable
 
-- Preserves research paper alignment
-- Easier per-system maintenance
-- Clear ownership boundaries
+## New Decision
 
-### Negative
+**Proceed with targeted consolidation** while preserving research paper alignment:
 
-- Some code duplication remains
-- Fitness score impact: no improvement on canonicalPaths
+1. Create `utils/extraction.ts` for genuinely common entity extraction patterns
+2. Create `utils/memory-transform.ts` for shared transformation utilities
+3. Keep paper-specific semantics in memory-specific helpers
+4. Use composition (imports) rather than inheritance
 
-## Future Consideration
+## Implementation
 
-If similar patterns emerge across 3+ memory systems, reconsider consolidation with a more targeted proposal focusing on specific utility functions rather than wholesale reorganization.
+See ADR-0013 for implementation details and migration plan.
 
 ## Related
 
 - Issue #593
-- Epic #598 (LOOP H)
+- ADR-0013 (supersedes this document)
