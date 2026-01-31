@@ -54,3 +54,16 @@ export {
   DefaultActionExecutor,
   type IActionExecutor,
 } from './journey-simulator.js';
+
+// Validation Harness (Layer 4 - System Integrity)
+export {
+  ValidationHarness,
+  createValidationHarness,
+  runValidation,
+  DEFAULT_HARNESS_CONFIG,
+  type ValidationMode,
+  type ValidationCheck,
+  type ValidationCategory,
+  type ValidationResult,
+  type ValidationHarnessConfig,
+} from './validation-harness.js';
