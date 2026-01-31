@@ -76,14 +76,14 @@ format = "detailed"
 # Base URL for relative links (for docs site)
 # base = "https://williamzujkowski.github.io/nexus-agents"
 
-# File types to check
+# File types to check (regex patterns)
 include = [
-  "*.md",
-  "*.mdx",
-  "*.json",
-  "*.yaml",
-  "*.yml",
-  "*.html",
+  ".*\\.md$",
+  ".*\\.mdx$",
+  ".*\\.json$",
+  ".*\\.yaml$",
+  ".*\\.yml$",
+  ".*\\.html$",
 ]
 
 # Cache results
