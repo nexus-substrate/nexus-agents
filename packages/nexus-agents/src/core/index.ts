@@ -139,5 +139,21 @@ export {
   createRandomProvider,
 } from './random-provider.js';
 
+// Token Estimation (Issue #574 - Router consolidation)
+export type {
+  TokenEstimatorProvider,
+  TokenEstimate,
+  TokenEstimateOptions,
+  ITokenEstimator,
+} from './token-estimator.js';
+export {
+  TokenEstimator,
+  getTokenEstimator,
+  createTokenEstimator,
+  resetTokenEstimator,
+  estimateTokens,
+  estimateTokensForProvider,
+} from './token-estimator.js';
+
 // Types
 export * from './types/index.js';
