@@ -37,3 +37,11 @@ export {
   taskAnalysisResultToBanditContext,
   summarizeTaskProfile,
 } from './task-profile-adapter.js';
+
+// Expert selector adapter for legacy compatibility (ADR-0004, Issue #593)
+export type {
+  ExpertTaskDomain,
+  ExpertTaskComplexity,
+  ExpertTaskAnalysisResult,
+} from './task-profile-adapter.js';
+export { toExpertTaskAnalysisResult } from './task-profile-adapter.js';
