@@ -28,13 +28,16 @@ import { AdaptiveMemoryConfigSchema } from './adaptive-memory-types.js';
 import {
   mergeScoringConfig,
   scoreAndSortEntries,
-  getAllMemoryRows,
-  getMemoryRow,
   touchMemory,
-  memoryExists,
-  memoryRowToEntry,
   calculatePriorityScore,
 } from './adaptive-memory-helpers.js';
+// Shared utilities per ADR-0013
+import {
+  getAllMemoryRows,
+  getMemoryRow,
+  memoryExists,
+  memoryRowToEntry,
+} from '../utils/memory-db-utils.js';
 
 // Re-export types
 export type {

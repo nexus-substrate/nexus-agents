@@ -15,7 +15,8 @@ import type {
   ExtractionConfig,
   AgenticMemoryEntry,
 } from './agentic-memory-types.js';
-import { memoryRowToEntry } from './adaptive-memory-helpers.js';
+// Shared utilities per ADR-0013
+import { memoryRowToEntry } from '../utils/memory-db-utils.js';
 import { extractAttributes } from './agentic-memory-extraction.js';
 
 // ============================================================================

@@ -20,6 +20,17 @@ import type {
   ScoringWeights,
 } from './adaptive-memory-types.js';
 import { DEFAULT_SCORING_CONFIG } from './adaptive-memory-types.js';
+// Shared utilities per ADR-0013
+import {
+  tokenize as sharedTokenize,
+  stringifyValue as sharedStringifyValue,
+} from '../utils/text-utils.js';
+import {
+  memoryRowToEntry as sharedMemoryRowToEntry,
+  memoryExists as sharedMemoryExists,
+  getMemoryRow as sharedGetMemoryRow,
+  getAllMemoryRows as sharedGetAllMemoryRows,
+} from '../utils/memory-db-utils.js';
 
 // ============================================================================
 // Recency Scoring
@@ -105,13 +116,10 @@ export function calculateRelevanceScore(query: string | undefined, value: string
 
 /**
  * Tokenize a string into lowercase words.
+ * Uses shared utility from utils/text-utils.ts per ADR-0013.
  */
 function tokenize(text: string): string[] {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .split(/\s+/)
-    .filter((t) => t.length > 0);
+  return sharedTokenize(text, 1); // Use minLength=1 to match original filter(t.length > 0)
 }
 
 // ============================================================================
@@ -157,11 +165,10 @@ export function calculatePriorityScore(input: PriorityCalculationConfig): Priori
 
 /**
  * Stringify a value for relevance scoring.
+ * Uses shared utility from utils/text-utils.ts per ADR-0013.
  */
 function stringifyValue(value: unknown): string {
-  if (typeof value === 'string') return value;
-  if (value === null || value === undefined) return '';
-  return JSON.stringify(value);
+  return sharedStringifyValue(value);
 }
 
 /**
@@ -195,15 +202,10 @@ function resolveWeights(base: ScoringWeights, overrides?: Partial<ScoringWeights
 
 /**
  * Convert a MemoryRow to a MemoryEntry.
+ * @deprecated Use import from '../utils/memory-db-utils.js' directly. Will be removed in v3.0.
  */
 export function memoryRowToEntry(row: MemoryRow): MemoryEntry {
-  return {
-    key: row.key,
-    value: JSON.parse(row.value) as unknown,
-    metadata: JSON.parse(row.metadata) as MemoryEntry['metadata'],
-    createdAt: new Date(row.created_at),
-    accessedAt: new Date(row.accessed_at),
-  };
+  return sharedMemoryRowToEntry(row);
 }
 
 // ============================================================================
@@ -256,18 +258,18 @@ export function filterScoredEntries(
 
 /**
  * Get all memory rows from the database.
+ * @deprecated Use import from '../utils/memory-db-utils.js' directly. Will be removed in v3.0.
  */
 export function getAllMemoryRows(db: ISQLiteDatabase, limit: number): MemoryRow[] {
-  const stmt = db.prepare<MemoryRow>('SELECT * FROM memories ORDER BY accessed_at DESC LIMIT ?');
-  return stmt.all(limit);
+  return sharedGetAllMemoryRows(db, limit);
 }
 
 /**
  * Get a single memory row by key.
+ * @deprecated Use import from '../utils/memory-db-utils.js' directly. Will be removed in v3.0.
  */
 export function getMemoryRow(db: ISQLiteDatabase, key: string): MemoryRow | undefined {
-  const stmt = db.prepare<MemoryRow>('SELECT * FROM memories WHERE key = ?');
-  return stmt.get(key);
+  return sharedGetMemoryRow(db, key);
 }
 
 /**
@@ -281,13 +283,10 @@ export function touchMemory(db: ISQLiteDatabase, key: string): boolean {
 
 /**
  * Check if a memory key exists.
+ * @deprecated Use import from '../utils/memory-db-utils.js' directly. Will be removed in v3.0.
  */
 export function memoryExists(db: ISQLiteDatabase, key: string): boolean {
-  const stmt = db.prepare<{ count: number }>(
-    'SELECT COUNT(*) as count FROM memories WHERE key = ?'
-  );
-  const result = stmt.get(key);
-  return result !== undefined && result.count > 0;
+  return sharedMemoryExists(db, key);
 }
 
 // ============================================================================
@@ -306,7 +305,7 @@ export function scoreAndSortEntries(
 
   // Convert and score
   const scored: ScoredMemoryEntry[] = rows.map((row) => {
-    const entry = memoryRowToEntry(row);
+    const entry = sharedMemoryRowToEntry(row);
     const priority = calculatePriorityScore({
       entry,
       now,
