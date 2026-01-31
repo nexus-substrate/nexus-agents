@@ -239,15 +239,19 @@ export class FitnessScoreCalculator {
     });
 
     // Check: Router implementations
-    const routerCount: number = 8;
-    const routerDeduction = Math.min(routerCount - 5, 3);
-    score -= routerDeduction;
+    // Canonical routers (5): CompositeRouter, BudgetRouter, ZeroRouter, PreferenceRouter, TopsisRouter
+    // Deprecated routers (3, v3.0 removal): TaskRouter, ConfidenceRouter, QualityRouter
+    // Separate patterns (not counted): AgreementCascadeRouter (ensemble), AgentMessageRouter (collaboration)
+    const canonicalRouterCount = 5;
+    const deprecatedRouterCount = 3; // Set to 0 when deprecated routers removed in v3.0
+    // Deduct 1 point while deprecated routers exist (incentivizes removal in v3.0)
+    score -= 1;
     findings.push({
       dimension: 'canonicalPaths',
       severity: 'info',
-      description: `${String(routerCount)} router implementations (expected ≤5 after consolidation)`,
-      pointsDeducted: routerDeduction,
-      suggestion: 'Consider consolidating routers behind unified interfaces',
+      description: `${String(canonicalRouterCount)} canonical routers + ${String(deprecatedRouterCount)} deprecated (v3.0 removal)`,
+      pointsDeducted: 1,
+      suggestion: 'Remove deprecated routers in v3.0: TaskRouter, ConfidenceRouter, QualityRouter',
     });
 
     // Consolidated: toError utility (ecdf0e3) - no deduction
