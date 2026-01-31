@@ -39,6 +39,21 @@ jobs:
       - name: Run tests
         run: pnpm test
 
+      - name: Fitness audit gate (requires score >= 90 for release)
+        run: |
+          cd packages/nexus-agents
+          node dist/cli.js fitness-audit --format=json > fitness-report.json
+          SCORE=$(jq '.score' fitness-report.json)
+          echo "Fitness Score: $SCORE/100"
+
+          if [ "$SCORE" -lt 90 ]; then
+            echo "::error::Fitness score $SCORE is below release threshold of 90"
+            echo "Run 'nexus-agents fitness-audit' locally to see detailed findings"
+            exit 1
+          fi
+
+          echo "::notice::Fitness audit passed with score $SCORE/100 (release threshold: 90)"
+
       - name: Publish packages (dry run)
         if: ${{ inputs.dry_run == 'true' }}
         run: pnpm -r publish --access public --no-git-checks --dry-run

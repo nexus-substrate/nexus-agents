@@ -96,6 +96,55 @@ jobs:
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
+  fitness-audit:
+    name: Fitness Audit
+    runs-on: ubuntu-latest
+    needs: [build]
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Run fitness audit
+        id: fitness
+        run: |
+          cd packages/nexus-agents
+          node dist/cli.js fitness-audit --format=json > fitness-report.json
+          SCORE=$(jq '.score' fitness-report.json)
+          echo "score=$SCORE" >> $GITHUB_OUTPUT
+          echo "Fitness Score: $SCORE/100"
+
+          # Fail if below minimum threshold (70)
+          if [ "$SCORE" -lt 70 ]; then
+            echo "::error::Fitness score $SCORE is below minimum threshold of 70"
+            exit 1
+          fi
+
+          # Warn if below target threshold (90)
+          if [ "$SCORE" -lt 90 ]; then
+            echo "::warning::Fitness score $SCORE is below target threshold of 90"
+          fi
+
+          echo "::notice::Fitness audit passed with score $SCORE/100"
+
+      - name: Upload fitness report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fitness-report
+          path: packages/nexus-agents/fitness-report.json
+
   index-check:
     name: Index Freshness Check
     runs-on: ubuntu-latest
@@ -146,7 +195,7 @@ jobs:
   # Gate for branch protection - requires all checks to pass
   ci-success:
     name: CI Success
-    needs: [lint, typecheck, build, test]
+    needs: [lint, typecheck, build, test, fitness-audit]
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -155,7 +204,8 @@ jobs:
           if [[ "${{ needs.lint.result }}" != "success" ]] || \
              [[ "${{ needs.typecheck.result }}" != "success" ]] || \
              [[ "${{ needs.test.result }}" != "success" ]] || \
-             [[ "${{ needs.build.result }}" != "success" ]]; then
+             [[ "${{ needs.build.result }}" != "success" ]] || \
+             [[ "${{ needs.fitness-audit.result }}" != "success" ]]; then
             echo "One or more required jobs failed"
             exit 1
           fi
