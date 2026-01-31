@@ -71,6 +71,7 @@ function createMockRouter(): ICompositeRouter {
     getLatencyTracker: vi.fn().mockReturnValue(undefined),
     getRoutingMemory: vi.fn().mockReturnValue(undefined),
     getMetricsCollector: vi.fn().mockReturnValue(undefined),
+    getOrchestrationObserver: vi.fn().mockReturnValue(undefined),
   };
 }
 

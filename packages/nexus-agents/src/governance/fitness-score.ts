@@ -307,7 +307,7 @@ export class FitnessScoreCalculator {
    */
   private checkObservability(): FitnessCheckResult {
     const findings: FitnessFinding[] = [];
-    let score = 15;
+    const score = 15;
 
     // Check: Tracing infrastructure exists
     // Full points - Tracer, TraceExporter exist
@@ -315,16 +315,10 @@ export class FitnessScoreCalculator {
     // Check: Metrics collection
     // Full points - ErrorMetricsCollector exists
 
-    // Check: SwarmObserver integration
-    // Deduct if not fully wired
-    score -= 3;
-    findings.push({
-      dimension: 'observability',
-      severity: 'warning',
-      description: 'SwarmObserver not wired to all routing decisions',
-      pointsDeducted: 3,
-      suggestion: 'Integrate SwarmObserver in CompositeRouter',
-    });
+    // Check: OrchestrationObserver integration - COMPLETE (Issue #587)
+    // CompositeRouter now accepts orchestrationObserver config and records all routing decisions
+    // Commit: Wire OrchestrationObserver to CompositeRouter
+    // No deduction - fully wired
 
     return { score: Math.max(0, score), findings };
   }

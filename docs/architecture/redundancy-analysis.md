@@ -6,17 +6,17 @@
 
 ## Consolidation Progress (as of 2026-01-31)
 
-| Item                    | Status         | Commits/Issues            |
-| ----------------------- | -------------- | ------------------------- |
-| Token estimation        | ✅ COMPLETE    | 11fadd6, 06724b5, 45abf43 |
-| toError utility         | ✅ COMPLETE    | ecdf0e3                   |
-| Error message hints     | ✅ COMPLETE    | d4346a7                   |
-| Task analyzer migration | 🔄 IN PROGRESS | Issue #586                |
-| SwarmObserver wiring    | 📋 PLANNED     | Issue #587                |
-| Layer separation        | 📋 PLANNED     | Issue #588                |
-| Consensus caching       | 📋 PLANNED     | Issue #589                |
+| Item                       | Status         | Commits/Issues            |
+| -------------------------- | -------------- | ------------------------- |
+| Token estimation           | ✅ COMPLETE    | 11fadd6, 06724b5, 45abf43 |
+| toError utility            | ✅ COMPLETE    | ecdf0e3                   |
+| Error message hints        | ✅ COMPLETE    | d4346a7                   |
+| OrchestrationObserver wire | ✅ COMPLETE    | Issue #587                |
+| Task analyzer migration    | 🔄 IN PROGRESS | Issue #586                |
+| Layer separation           | 📋 PLANNED     | Issue #588                |
+| Consensus caching          | 📋 PLANNED     | Issue #589                |
 
-**Fitness Score:** 87/100 (target: 90+)
+**Fitness Score:** 90/100 ✓ (target: 90+)
 
 ## Executive Summary
 

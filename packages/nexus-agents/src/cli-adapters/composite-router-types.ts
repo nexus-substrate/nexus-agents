@@ -19,6 +19,7 @@ import type {
   OutcomeRecord,
   RoutingMetrics,
 } from '../observability/routing-metrics-types.js';
+import type { IOrchestrationObserver } from '../agents/observability/orchestration-observer-types.js';
 
 /**
  * Interface for routing metrics collection.
@@ -87,6 +88,8 @@ export interface CompositeRouterConfigWithPreference extends CompositeRouterConf
   routingMemoryConfig?: Partial<RoutingMemoryConfig>;
   /** Routing metrics collector for observability (optional) (Issue #559) */
   metricsCollector?: IRoutingMetricsCollector;
+  /** Orchestration observer for routing decision tracking (optional) (Issue #587) */
+  orchestrationObserver?: IOrchestrationObserver;
 }
 
 /**

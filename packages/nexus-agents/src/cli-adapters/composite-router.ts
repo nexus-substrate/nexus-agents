@@ -5,9 +5,13 @@
  * (Source: Issue #166, Epic #164, Issue #347, arXiv:2509.07571)
  */
 import type { Result } from '../core/index.js';
-import { ok, err, createLogger, getTimeProvider } from '../core/index.js';
+import { ok, err, createLogger, getTimeProvider, getRandomProvider } from '../core/index.js';
 import type { ILogger } from '../core/index.js';
 import type { ICliAdapter, CliName, CliTask, CliResponse, CliError } from './types.js';
+import type {
+  IOrchestrationObserver,
+  RoutingDecision,
+} from '../agents/observability/orchestration-observer-types.js';
 import { BudgetRouter } from './budget-router.js';
 import { TopsisRouter } from './topsis-router.js';
 import { LinUCBBandit } from './linucb-bandit.js';
@@ -84,6 +88,8 @@ export interface ICompositeRouter {
   getRoutingMemory(): IRoutingMemory | undefined;
   /** Get the metrics collector (if configured) (Issue #559) */
   getMetricsCollector(): IRoutingMetricsCollector | undefined;
+  /** Get the orchestration observer (if configured) (Issue #587) */
+  getOrchestrationObserver(): IOrchestrationObserver | undefined;
 }
 
 /** CompositeRouter implementation. */
@@ -100,6 +106,8 @@ export class CompositeRouter implements ICompositeRouter {
   private routingMemory?: RoutingMemory;
   /** Metrics collector for routing observability (Issue #559) */
   private metricsCollector?: IRoutingMetricsCollector;
+  /** Orchestration observer for routing decision tracking (Issue #587) */
+  private orchestrationObserver?: IOrchestrationObserver;
   private readonly cliNames: CliName[];
 
   // Statistics tracking
@@ -125,6 +133,7 @@ export class CompositeRouter implements ICompositeRouter {
       latencyTrackerConfig,
       routingMemoryConfig,
       metricsCollector,
+      orchestrationObserver,
       ...baseConfig
     } = config ?? {};
     this.config = CompositeRouterConfigSchema.parse(baseConfig);
@@ -134,6 +143,11 @@ export class CompositeRouter implements ICompositeRouter {
     // Only assign metricsCollector if provided (Issue #559)
     if (metricsCollector !== undefined) {
       this.metricsCollector = metricsCollector;
+    }
+    // Only assign orchestrationObserver if provided (Issue #587)
+    if (orchestrationObserver !== undefined) {
+      this.orchestrationObserver = orchestrationObserver;
+      this.logger.debug('OrchestrationObserver wired to CompositeRouter');
     }
     this.initializeRouters(
       adapters,
@@ -208,6 +222,9 @@ export class CompositeRouter implements ICompositeRouter {
       metricsCollector: this.metricsCollector,
       logger: this.logger,
     });
+
+    // Record routing decision to orchestration observer (Issue #587)
+    this.recordToOrchestrationObserver(decision, task);
 
     const executeResult = await decision.adapter.execute(task);
 
@@ -389,6 +406,38 @@ export class CompositeRouter implements ICompositeRouter {
     this.totalDecisionTimeMs += decisionTimeMs;
   }
 
+  /**
+   * Record a routing decision to the orchestration observer (Issue #587).
+   */
+  private recordToOrchestrationObserver(decision: CompositeRoutingDecision, task: CliTask): void {
+    if (this.orchestrationObserver === undefined) {
+      return;
+    }
+
+    // Convert CompositeRoutingDecision to RoutingDecision for observer
+    const routingDecision: RoutingDecision = {
+      timestamp: new Date().toISOString(),
+      taskId: `task-${getRandomProvider().uuid()}`,
+      taskDescription:
+        task.content.length > 100 ? task.content.substring(0, 100) + '...' : task.content,
+      selectedCli: decision.cliName,
+      confidence: decision.confidence,
+      reason: decision.reason,
+      alternatives: decision.alternatives,
+      stagesExecuted: decision.stagesExecuted,
+      decisionTimeMs: decision.decisionTimeMs,
+      withinBudget: decision.withinBudget,
+      topsisScore: decision.topsisScore,
+      ucbScore: decision.ucbScore,
+    };
+
+    this.orchestrationObserver.recordRoutingDecision(routingDecision);
+    this.logger.debug('Recorded routing decision to OrchestrationObserver', {
+      cli: decision.cliName,
+      confidence: decision.confidence,
+    });
+  }
+
   private handleRoutingError(
     error: unknown,
     stagesExecuted: string[]
@@ -443,6 +492,14 @@ export class CompositeRouter implements ICompositeRouter {
    */
   getMetricsCollector(): IRoutingMetricsCollector | undefined {
     return this.metricsCollector;
+  }
+
+  /**
+   * Get the orchestration observer (if configured).
+   * (Source: Issue #587 - Wire OrchestrationObserver to CompositeRouter)
+   */
+  getOrchestrationObserver(): IOrchestrationObserver | undefined {
+    return this.orchestrationObserver;
   }
 
   getStats(): CompositeRouterStats {
