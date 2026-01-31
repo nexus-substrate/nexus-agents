@@ -352,21 +352,15 @@ export class FitnessScoreCalculator {
    */
   private checkLayerSeparation(): FitnessCheckResult {
     const findings: FitnessFinding[] = [];
-    let score = 10;
+    const score = 10;
 
     // Check: Core has no adapter imports
     // Full points if clean
 
     // Check: MCP tools don't import CLI adapters directly
-    // Deduct if coupling exists
-    score -= 2;
-    findings.push({
-      dimension: 'layerSeparation',
-      severity: 'warning',
-      description: 'Some MCP tools directly import CLI adapter implementations',
-      pointsDeducted: 2,
-      suggestion: 'Use interfaces and dependency injection',
-    });
+    // COMPLETE (Issue #588): MCP tools now import ICompositeRouter from core/routing
+    // core/routing/index.ts provides a stable interface layer over cli-adapters
+    // No deduction - proper abstraction in place
 
     return { score: Math.max(0, score), findings };
   }

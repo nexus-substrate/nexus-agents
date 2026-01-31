@@ -8,10 +8,9 @@
  */
 
 import { z } from 'zod';
-import type { ILogger } from '../../core/index.js';
+import type { ILogger, ICompositeRouter } from '../../core/index.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
-import type { ICompositeRouter } from '../../cli-adapters/composite-router.js';
 import type { IFeedbackIntegration } from '../../learning/feedback-integration.js';
 
 /**

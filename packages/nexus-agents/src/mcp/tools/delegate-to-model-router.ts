@@ -6,11 +6,7 @@
  * (Source: Issue #169, Epic #164)
  */
 
-import type { ILogger } from '../../core/index.js';
-import type {
-  ICompositeRouter,
-  CompositeRoutingDecision,
-} from '../../cli-adapters/composite-router.js';
+import type { ILogger, ICompositeRouter, CompositeRoutingDecision } from '../../core/index.js';
 import type { IFeedbackIntegration } from '../../learning/feedback-integration.js';
 // Import directly from types to avoid circular dependency with delegate-to-model.ts
 import type { CapabilityProfile, DelegateOutput } from './delegate-to-model-types.js';

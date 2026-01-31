@@ -167,5 +167,23 @@ export {
   estimateTokensForProvider,
 } from './token-estimator.js';
 
+// Routing Interfaces (Issue #588 - Layer separation)
+export type {
+  ICompositeRouter,
+  CompositeRoutingDecision,
+  CompositeRoutingError,
+  CompositeRouterStats,
+  CompositeRouterConfig,
+  CliName,
+  CliTask,
+  CliResponse,
+  CliError,
+  ICliAdapter,
+  IZeroRouter,
+  ILatencyTracker,
+  IRoutingMemory,
+} from './routing/index.js';
+export { createCompositeRouter } from './routing/index.js';
+
 // Types
 export * from './types/index.js';
