@@ -6,6 +6,7 @@
  *
  * @module mcp/tools/list-workflows
  * (Source: Issue #436 - Add discoverability tools)
+ * (Refactored: Issue #531 - Use createSecureHandlerFactory)
  */
 
 import { z } from 'zod';
@@ -15,6 +16,7 @@ import { createLogger } from '../../core/index.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
 import { wrapToolWithTimeout, toSdkCallback } from '../middleware/tool-wrapper.js';
+import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 
 /**
  * Input schema for list_workflows tool.
@@ -77,10 +79,10 @@ export interface ListWorkflowsResponse {
  * Handles the list_workflows tool execution.
  */
 async function handleListWorkflows(
-  deps: ListWorkflowsDeps,
+  workflowEngine: IWorkflowEngine,
   args: ListWorkflowsInput
 ): Promise<ListWorkflowsResponse> {
-  const templates = await deps.workflowEngine.listTemplates();
+  const templates = await workflowEngine.listTemplates();
 
   // Filter by category if specified
   let workflows = templates.map((t) => ({
@@ -123,27 +125,13 @@ type ListWorkflowsToolResponse = {
 };
 
 /**
- * Creates a handler function for the list_workflows tool.
- * @param deps - Tool dependencies
- * @returns Handler function for the tool
+ * Creates the core handler logic for list_workflows tool.
+ * Rate limiting is handled by createSecureHandler wrapper.
+ * @param workflowEngine - Workflow engine for listing templates
+ * @returns Context-aware handler function
  */
-function createToolHandler(deps: ListWorkflowsDeps) {
-  return async (args: unknown): Promise<ListWorkflowsToolResponse> => {
-    // Rate limiting check
-    const acquired = deps.rateLimiter.tryAcquire();
-    if (!acquired) {
-      const state = deps.rateLimiter.getState();
-      return {
-        isError: true,
-        content: [
-          {
-            type: 'text',
-            text: `Rate limit exceeded. Try again in ${String(state.nextTokenMs)}ms.`,
-          },
-        ],
-      };
-    }
-
+function createListWorkflowsHandler(workflowEngine: IWorkflowEngine) {
+  return async (args: unknown, ctx: HandlerContext): Promise<ListWorkflowsToolResponse> => {
     // Validate input
     const validationResult = ListWorkflowsInputSchema.safeParse(args);
     if (!validationResult.success) {
@@ -158,9 +146,9 @@ function createToolHandler(deps: ListWorkflowsDeps) {
 
     try {
       // Execute tool logic
-      const result = await handleListWorkflows(deps, validationResult.data);
+      const result = await handleListWorkflows(workflowEngine, validationResult.data);
 
-      deps.logger?.debug('Listed available workflows', {
+      ctx.logger.debug('Listed available workflows', {
         count: result.count,
         category: validationResult.data.category,
       });
@@ -181,6 +169,7 @@ function createToolHandler(deps: ListWorkflowsDeps) {
 /**
  * Registers the list_workflows tool with the MCP server.
  *
+ * Uses createSecureHandler for standardized security middleware (Issue #531).
  * Includes timeout protection for CVE-2026-0621 mitigation (Issue #271).
  *
  * @param server - MCP server instance
@@ -200,12 +189,18 @@ export function registerListWorkflowsTool(server: McpServer, deps: ListWorkflows
     'List available workflow templates that can be executed with run_workflow. ' +
     'Returns template names, versions, descriptions, and categories.';
 
-  // Wrap handler with timeout protection (Issue #271, CVE-2026-0621)
-  const handler = createToolHandler(deps);
+  // Wrap handler with secure handler for rate limiting and request context (Issue #531)
+  const secureHandler = createSecureHandler(createListWorkflowsHandler(deps.workflowEngine), {
+    toolName: 'list_workflows',
+    rateLimiter: deps.rateLimiter,
+    logger,
+  });
+
+  // Wrap with timeout protection (Issue #271, CVE-2026-0621)
   const timeoutMs = deps.security?.timeout?.defaultTimeoutMs;
   const wrappedHandler = wrapToolWithTimeout(
     'list_workflows',
-    handler,
+    secureHandler,
     timeoutMs !== undefined ? { timeoutMs, logger } : { logger }
   );
 
@@ -214,5 +209,5 @@ export function registerListWorkflowsTool(server: McpServer, deps: ListWorkflows
     { description, inputSchema: toolSchema },
     toSdkCallback(wrappedHandler)
   );
-  logger.info('Registered list_workflows tool with timeout protection');
+  logger.info('Registered list_workflows tool with secure handler and timeout protection');
 }

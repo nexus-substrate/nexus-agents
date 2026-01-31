@@ -6,6 +6,7 @@
  *
  * @module mcp/tools/list-experts
  * (Source: Issue #436 - Add discoverability tools)
+ * (Refactored: Issue #531 - Use createSecureHandlerFactory)
  */
 
 import { z } from 'zod';
@@ -15,6 +16,7 @@ import { createLogger } from '../../core/index.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
 import { wrapToolWithTimeout, toSdkCallback } from '../middleware/tool-wrapper.js';
+import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import { BUILT_IN_EXPERTS, type BuiltInExpertType } from '../../agents/index.js';
 
 /**
@@ -142,55 +144,39 @@ type ListExpertsToolResponse = {
 };
 
 /**
- * Creates a handler function for the list_experts tool.
- * @param deps - Tool dependencies
- * @returns Handler function for the tool
+ * Core handler logic for list_experts tool.
+ * Rate limiting is handled by createSecureHandler wrapper.
+ * @param args - Tool arguments
+ * @param ctx - Handler context with request info and logger
+ * @returns Tool response
  */
-function createToolHandler(deps: ListExpertsDeps) {
-  return (args: unknown): Promise<ListExpertsToolResponse> => {
-    return Promise.resolve().then((): ListExpertsToolResponse => {
-      // Rate limiting check
-      const acquired = deps.rateLimiter.tryAcquire();
-      if (!acquired) {
-        const state = deps.rateLimiter.getState();
-        return {
-          isError: true,
-          content: [
-            {
-              type: 'text',
-              text: `Rate limit exceeded. Try again in ${String(state.nextTokenMs)}ms.`,
-            },
-          ],
-        };
-      }
-
-      // Validate input
-      const validationResult = ListExpertsInputSchema.safeParse(args);
-      if (!validationResult.success) {
-        const errorMessage = validationResult.error.issues
-          .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
-          .join('; ');
-        return {
-          isError: true,
-          content: [{ type: 'text', text: `Validation error: ${errorMessage}` }],
-        };
-      }
-
-      // Execute tool logic
-      const result = handleListExperts(validationResult.data);
-
-      deps.logger?.debug('Listed available experts', { count: result.count });
-
-      return {
-        content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
-      };
+function listExpertsHandler(args: unknown, ctx: HandlerContext): Promise<ListExpertsToolResponse> {
+  // Validate input
+  const validationResult = ListExpertsInputSchema.safeParse(args);
+  if (!validationResult.success) {
+    const errorMessage = validationResult.error.issues
+      .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
+      .join('; ');
+    return Promise.resolve({
+      isError: true,
+      content: [{ type: 'text', text: `Validation error: ${errorMessage}` }],
     });
-  };
+  }
+
+  // Execute tool logic
+  const result = handleListExperts(validationResult.data);
+
+  ctx.logger.debug('Listed available experts', { count: result.count });
+
+  return Promise.resolve({
+    content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+  });
 }
 
 /**
  * Registers the list_experts tool with the MCP server.
  *
+ * Uses createSecureHandler for standardized security middleware (Issue #531).
  * Includes timeout protection for CVE-2026-0621 mitigation (Issue #271).
  *
  * @param server - MCP server instance
@@ -209,12 +195,18 @@ export function registerListExpertsTool(server: McpServer, deps: ListExpertsDeps
     'List available expert types that can be created with create_expert. ' +
     'Returns role names, descriptions, and capabilities for each expert type.';
 
-  // Wrap handler with timeout protection (Issue #271, CVE-2026-0621)
-  const handler = createToolHandler(deps);
+  // Wrap handler with secure handler for rate limiting and request context (Issue #531)
+  const secureHandler = createSecureHandler(listExpertsHandler, {
+    toolName: 'list_experts',
+    rateLimiter: deps.rateLimiter,
+    logger,
+  });
+
+  // Wrap with timeout protection (Issue #271, CVE-2026-0621)
   const timeoutMs = deps.security?.timeout?.defaultTimeoutMs;
   const wrappedHandler = wrapToolWithTimeout(
     'list_experts',
-    handler,
+    secureHandler,
     timeoutMs !== undefined ? { timeoutMs, logger } : { logger }
   );
 
@@ -223,5 +215,5 @@ export function registerListExpertsTool(server: McpServer, deps: ListExpertsDeps
     { description, inputSchema: toolSchema },
     toSdkCallback(wrappedHandler)
   );
-  logger.info('Registered list_experts tool with timeout protection');
+  logger.info('Registered list_experts tool with secure handler and timeout protection');
 }

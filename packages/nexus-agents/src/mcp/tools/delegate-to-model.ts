@@ -5,15 +5,17 @@
  * Routes tasks to optimal model based on task requirements and available capacity.
  * Supports intelligent routing via CompositeRouter when available.
  *
+ * @module mcp/tools/delegate-to-model
  * (Source: MCP Protocol 2025-11-25)
  * (Source: cli-project_plan.md v2.0.0)
  * (Source: Issue #169, Epic #164)
+ * (Refactored: Issue #531 - Use createSecureHandlerFactory)
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import type { ILogger } from '../../core/index.js';
 import { createLogger } from '../../core/index.js';
 import { wrapToolWithTimeout, toSdkCallback } from '../middleware/tool-wrapper.js';
+import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import {
   mapCompositeDecisionToOutput,
   routeViaCompositeRouter,
@@ -23,7 +25,6 @@ import { DelegateInputSchema, TOOL_SCHEMA } from './delegate-to-model-types.js';
 import {
   analyzeTask,
   selectModel,
-  checkRateLimit,
   buildDelegateOutput,
   successResult,
   errorResult,
@@ -49,33 +50,30 @@ export {
 } from './delegate-to-model-types.js';
 
 /**
- * Creates the handler for the delegate_to_model tool.
+ * Creates the core handler logic for delegate_to_model tool.
+ * Rate limiting is handled by createSecureHandler wrapper.
  * Uses CompositeRouter when available for intelligent routing.
  * Falls back to local model selection when router is not provided.
  */
 function createDelegateHandler(
-  deps: DelegateDeps,
-  logger: ILogger
-): (args: unknown) => Promise<ToolResult> {
-  return async (args: unknown): Promise<ToolResult> => {
-    const rateLimitError = checkRateLimit(deps.rateLimiter);
-    if (rateLimitError) return rateLimitError;
-
+  deps: DelegateDeps
+): (args: unknown, ctx: HandlerContext) => Promise<ToolResult> {
+  return async (args: unknown, ctx: HandlerContext): Promise<ToolResult> => {
     const validated = DelegateInputSchema.safeParse(args);
     if (!validated.success) {
       const msg = validated.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ');
-      logger.warn('Invalid delegate_to_model input', { errors: validated.error.issues });
+      ctx.logger.warn('Invalid delegate_to_model input', { errors: validated.error.issues });
       return errorResult(`Validation error: ${msg}`);
     }
 
     const input = validated.data;
-    logger.info('Analyzing task for model routing', {
+    ctx.logger.info('Analyzing task for model routing', {
       taskLength: input.task.length,
       hasRouter: deps.router !== undefined,
     });
 
     const requirements = analyzeTask(input.task);
-    logger.debug('Task requirements analyzed', { ...requirements });
+    ctx.logger.debug('Task requirements analyzed', { ...requirements });
 
     // Try CompositeRouter first if available (Issue #169)
     if (deps.router !== undefined) {
@@ -83,7 +81,7 @@ function createDelegateHandler(
         input.task,
         deps.router,
         deps.feedbackIntegration,
-        logger
+        ctx.logger
       );
 
       if (routingResult !== null) {
@@ -91,7 +89,7 @@ function createDelegateHandler(
           routingResult.decision,
           requirements.estimatedTokens
         );
-        logger.info('Model recommendation via CompositeRouter', {
+        ctx.logger.info('Model recommendation via CompositeRouter', {
           recommendedModel: output.recommended_model,
           confidence: routingResult.decision.confidence,
           stages: routingResult.decision.stagesExecuted,
@@ -100,7 +98,7 @@ function createDelegateHandler(
         return successResult(JSON.stringify(output, null, 2));
       }
 
-      logger.info('Falling back to local model selection');
+      ctx.logger.info('Falling back to local model selection');
     }
 
     // Fall back to local model selection
@@ -109,7 +107,9 @@ function createDelegateHandler(
 
     if (!output) return errorResult(`Unknown model: ${selection.model}`);
 
-    logger.info('Model recommendation complete', { recommendedModel: output.recommended_model });
+    ctx.logger.info('Model recommendation complete', {
+      recommendedModel: output.recommended_model,
+    });
     return successResult(JSON.stringify(output, null, 2));
   };
 }
@@ -117,6 +117,7 @@ function createDelegateHandler(
 /**
  * Registers the delegate_to_model tool with the MCP server.
  *
+ * Uses createSecureHandler for standardized security middleware (Issue #531).
  * Includes timeout protection for CVE-2026-0621 mitigation (Issue #271).
  *
  * @param server - MCP server instance
@@ -125,12 +126,18 @@ function createDelegateHandler(
 export function registerDelegateToModelTool(server: McpServer, deps: DelegateDeps): void {
   const logger = deps.logger ?? createLogger({ tool: 'delegate_to_model' });
 
-  // Wrap handler with timeout protection (Issue #271, CVE-2026-0621)
-  const handler = createDelegateHandler(deps, logger);
+  // Wrap handler with secure handler for rate limiting and request context (Issue #531)
+  const secureHandler = createSecureHandler(createDelegateHandler(deps), {
+    toolName: 'delegate_to_model',
+    rateLimiter: deps.rateLimiter,
+    logger,
+  });
+
+  // Wrap with timeout protection (Issue #271, CVE-2026-0621)
   const timeoutMs = deps.security?.timeout?.defaultTimeoutMs;
   const wrappedHandler = wrapToolWithTimeout(
     'delegate_to_model',
-    handler,
+    secureHandler,
     timeoutMs !== undefined ? { timeoutMs, logger } : { logger }
   );
 
@@ -143,7 +150,7 @@ export function registerDelegateToModelTool(server: McpServer, deps: DelegateDep
     },
     toSdkCallback(wrappedHandler)
   );
-  logger.info('Registered delegate_to_model tool with timeout protection');
+  logger.info('Registered delegate_to_model tool with secure handler and timeout protection');
 }
 
 /**

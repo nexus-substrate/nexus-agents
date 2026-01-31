@@ -3,6 +3,9 @@
  *
  * MCP tool for creating expert agents dynamically.
  * Supports built-in expert types: code, architecture, security, documentation, testing, devops.
+ *
+ * @module mcp/tools/create-expert
+ * (Refactored: Issue #531 - Use createSecureHandlerFactory)
  */
 
 import { z } from 'zod';
@@ -12,6 +15,7 @@ import { createLogger } from '../../core/index.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
 import { wrapToolWithTimeout, toSdkCallback } from '../middleware/tool-wrapper.js';
+import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import {
   ExpertFactory,
   Expert,
@@ -189,54 +193,42 @@ type CreateExpertToolResponse = {
 };
 
 /**
- * Creates a handler function for the create_expert tool.
+ * Creates the core handler logic for create_expert tool.
+ * Rate limiting is handled by createSecureHandler wrapper.
  * @param deps - Tool dependencies
- * @returns Handler function for the tool
+ * @returns Context-aware handler function
  */
-function createToolHandler(deps: CreateExpertDeps) {
-  // Returns Promise for compatibility with wrapToolWithTimeout (CVE-2026-0621 mitigation)
-  return (args: unknown): Promise<CreateExpertToolResponse> => {
-    return Promise.resolve().then((): CreateExpertToolResponse => {
-      // Rate limiting check
-      const acquired = deps.rateLimiter.tryAcquire();
-      if (!acquired) {
-        const state = deps.rateLimiter.getState();
-        return {
-          isError: true,
-          content: [
-            {
-              type: 'text',
-              text: `Rate limit exceeded. Try again in ${String(state.nextTokenMs)}ms.`,
-            },
-          ],
-        };
-      }
+function createCreateExpertHandler(deps: CreateExpertDeps) {
+  return (args: unknown, ctx: HandlerContext): Promise<CreateExpertToolResponse> => {
+    // Validate input
+    const validationResult = CreateExpertInputSchema.safeParse(args);
+    if (!validationResult.success) {
+      const errorMessage = validationResult.error.issues
+        .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
+        .join('; ');
+      return Promise.resolve({
+        isError: true,
+        content: [{ type: 'text', text: `Validation error: ${errorMessage}` }],
+      });
+    }
 
-      // Validate input
-      const validationResult = CreateExpertInputSchema.safeParse(args);
-      if (!validationResult.success) {
-        const errorMessage = validationResult.error.issues
-          .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
-          .join('; ');
-        return {
-          isError: true,
-          content: [{ type: 'text', text: `Validation error: ${errorMessage}` }],
-        };
-      }
+    // Execute tool logic
+    const result = handleCreateExpert(deps, validationResult.data);
 
-      // Execute tool logic
-      const result = handleCreateExpert(deps, validationResult.data);
+    if (!result.ok) {
+      return Promise.resolve({
+        isError: true,
+        content: [{ type: 'text', text: `Failed to create expert: ${result.error}` }],
+      });
+    }
 
-      if (!result.ok) {
-        return {
-          isError: true,
-          content: [{ type: 'text', text: `Failed to create expert: ${result.error}` }],
-        };
-      }
+    ctx.logger.debug('Expert created successfully', {
+      expertId: result.value.expertId,
+      role: result.value.role,
+    });
 
-      return {
-        content: [{ type: 'text', text: JSON.stringify(result.value, null, 2) }],
-      };
+    return Promise.resolve({
+      content: [{ type: 'text', text: JSON.stringify(result.value, null, 2) }],
     });
   };
 }
@@ -244,6 +236,7 @@ function createToolHandler(deps: CreateExpertDeps) {
 /**
  * Registers the create_expert tool with the MCP server.
  *
+ * Uses createSecureHandler for standardized security middleware (Issue #531).
  * Includes timeout protection for CVE-2026-0621 mitigation (Issue #271).
  *
  * @param server - MCP server instance
@@ -268,12 +261,18 @@ export function registerCreateExpertTool(server: McpServer, deps: CreateExpertDe
   const description =
     'Create a specialized expert agent for code, architecture, security, documentation, testing, or devops tasks';
 
-  // Wrap handler with timeout protection (Issue #271, CVE-2026-0621)
-  const handler = createToolHandler(deps);
+  // Wrap handler with secure handler for rate limiting and request context (Issue #531)
+  const secureHandler = createSecureHandler(createCreateExpertHandler(deps), {
+    toolName: 'create_expert',
+    rateLimiter: deps.rateLimiter,
+    logger,
+  });
+
+  // Wrap with timeout protection (Issue #271, CVE-2026-0621)
   const timeoutMs = deps.security?.timeout?.defaultTimeoutMs;
   const wrappedHandler = wrapToolWithTimeout(
     'create_expert',
-    handler,
+    secureHandler,
     timeoutMs !== undefined ? { timeoutMs, logger } : { logger }
   );
 
@@ -282,7 +281,7 @@ export function registerCreateExpertTool(server: McpServer, deps: CreateExpertDe
     { description, inputSchema: toolSchema },
     toSdkCallback(wrappedHandler)
   );
-  logger.info('Registered create_expert tool with timeout protection');
+  logger.info('Registered create_expert tool with secure handler and timeout protection');
 }
 
 /**

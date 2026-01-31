@@ -6,6 +6,7 @@
  *
  * @module mcp/tools/execute-expert
  * (Source: Issue #437 - Add execute_expert tool)
+ * (Refactored: Issue #531 - Use createSecureHandlerFactory)
  */
 
 import { z } from 'zod';
@@ -15,6 +16,7 @@ import { createLogger, getTimeProvider, getRandomProvider } from '../../core/ind
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
 import { wrapToolWithTimeout, toSdkCallback } from '../middleware/tool-wrapper.js';
+import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import type { Expert } from '../../agents/index.js';
 
 /**
@@ -197,27 +199,13 @@ type ExecuteExpertToolResponse = {
 };
 
 /**
- * Creates a handler function for the execute_expert tool.
+ * Creates the core handler logic for execute_expert tool.
+ * Rate limiting is handled by createSecureHandler wrapper.
  * @param deps - Tool dependencies
- * @returns Handler function for the tool
+ * @returns Context-aware handler function
  */
-function createToolHandler(deps: ExecuteExpertDeps) {
-  return async (args: unknown): Promise<ExecuteExpertToolResponse> => {
-    // Rate limiting check
-    const acquired = deps.rateLimiter.tryAcquire();
-    if (!acquired) {
-      const state = deps.rateLimiter.getState();
-      return {
-        isError: true,
-        content: [
-          {
-            type: 'text',
-            text: `Rate limit exceeded. Try again in ${String(state.nextTokenMs)}ms.`,
-          },
-        ],
-      };
-    }
-
+function createExecuteExpertHandler(deps: ExecuteExpertDeps) {
+  return async (args: unknown, ctx: HandlerContext): Promise<ExecuteExpertToolResponse> => {
     // Validate input
     const validationResult = ExecuteExpertInputSchema.safeParse(args);
     if (!validationResult.success) {
@@ -229,6 +217,8 @@ function createToolHandler(deps: ExecuteExpertDeps) {
         content: [{ type: 'text', text: `Validation error: ${errorMessage}` }],
       };
     }
+
+    ctx.logger.debug('Executing expert task', { expertId: validationResult.data.expertId });
 
     // Execute tool logic
     const result = await handleExecuteExpert(deps, validationResult.data);
@@ -249,6 +239,7 @@ function createToolHandler(deps: ExecuteExpertDeps) {
 /**
  * Registers the execute_expert tool with the MCP server.
  *
+ * Uses createSecureHandler for standardized security middleware (Issue #531).
  * Includes timeout protection for CVE-2026-0621 mitigation (Issue #271).
  *
  * @param server - MCP server instance
@@ -266,10 +257,16 @@ export function registerExecuteExpertTool(server: McpServer, deps: ExecuteExpert
     'Execute a task using a previously created expert agent. ' +
     'Returns the expert analysis including output, confidence, and token usage.';
 
-  // Wrap handler with timeout protection (Issue #271, CVE-2026-0621)
-  const handler = createToolHandler(deps);
+  // Wrap handler with secure handler for rate limiting and request context (Issue #531)
+  const secureHandler = createSecureHandler(createExecuteExpertHandler(deps), {
+    toolName: 'execute_expert',
+    rateLimiter: deps.rateLimiter,
+    logger,
+  });
+
+  // Wrap with timeout protection (Issue #271, CVE-2026-0621)
   const timeoutMs = deps.security?.timeout?.defaultTimeoutMs ?? 120000; // 2 minute default for execution
-  const wrappedHandler = wrapToolWithTimeout('execute_expert', handler, {
+  const wrappedHandler = wrapToolWithTimeout('execute_expert', secureHandler, {
     timeoutMs,
     logger,
   });
@@ -279,5 +276,5 @@ export function registerExecuteExpertTool(server: McpServer, deps: ExecuteExpert
     { description, inputSchema: toolSchema },
     toSdkCallback(wrappedHandler)
   );
-  logger.info('Registered execute_expert tool with timeout protection');
+  logger.info('Registered execute_expert tool with secure handler and timeout protection');
 }

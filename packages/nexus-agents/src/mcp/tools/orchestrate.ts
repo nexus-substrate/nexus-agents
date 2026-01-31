@@ -4,7 +4,9 @@
  * MCP tool for task orchestration using TechLead agent.
  * Analyzes tasks, coordinates with experts, and returns structured results.
  *
+ * @module mcp/tools/orchestrate
  * (Source: MCP Protocol 2025-11-25)
+ * (Refactored: Issue #531 - Use createSecureHandlerFactory)
  */
 
 import { z } from 'zod';
@@ -21,6 +23,7 @@ import {
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
 import { wrapToolWithTimeout, toSdkCallback } from '../middleware/tool-wrapper.js';
+import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import type { ExecutionPlan, Expert } from '../../agents/index.js';
 import { createTechLeadWithSica } from './orchestrate-sica.js';
 
@@ -285,36 +288,24 @@ const TOOL_SCHEMA = {
 };
 
 /**
- * Creates a tool handler for the orchestrate tool.
+ * Creates the core handler logic for orchestrate tool.
+ * Rate limiting is handled by createSecureHandler wrapper.
  */
-function createOrchestrateHandler(deps: OrchestrateDeps, logger: ILogger) {
-  return async (args: unknown) => {
-    // Rate limiting check
-    const acquired = deps.rateLimiter.tryAcquire();
-    if (!acquired) {
-      const state = deps.rateLimiter.getState();
-      return {
-        isError: true,
-        content: [
-          {
-            type: 'text' as const,
-            text: `Rate limit exceeded. Try again in ${String(state.nextTokenMs)}ms.`,
-          },
-        ],
-      };
-    }
-
+function createOrchestrateHandler(deps: OrchestrateDeps) {
+  return async (args: unknown, ctx: HandlerContext) => {
     const validated = OrchestrateInputSchema.safeParse(args);
     if (!validated.success) {
       const errorMessage = validated.error.issues
         .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
         .join('; ');
-      logger.warn('Invalid orchestrate input', { errors: validated.error.issues });
+      ctx.logger.warn('Invalid orchestrate input', { errors: validated.error.issues });
       return {
         isError: true,
         content: [{ type: 'text' as const, text: `Validation error: ${errorMessage}` }],
       };
     }
+
+    ctx.logger.debug('Starting orchestration', { taskLength: validated.data.task.length });
 
     const result = await executeOrchestration(validated.data, deps);
     if (!result.ok) {
@@ -331,6 +322,7 @@ function createOrchestrateHandler(deps: OrchestrateDeps, logger: ILogger) {
 /**
  * Registers the orchestrate tool with the MCP server.
  *
+ * Uses createSecureHandler for standardized security middleware (Issue #531).
  * Includes timeout protection for CVE-2026-0621 mitigation (Issue #271).
  *
  * @param server - MCP server instance
@@ -341,12 +333,18 @@ export function registerOrchestrateTool(server: McpServer, deps: OrchestrateDeps
   const description =
     'Orchestrate a task by analyzing it, breaking it into subtasks if needed, and coordinating expert agents';
 
-  // Wrap handler with timeout protection (Issue #271, CVE-2026-0621)
-  const handler = createOrchestrateHandler(deps, logger);
+  // Wrap handler with secure handler for rate limiting and request context (Issue #531)
+  const secureHandler = createSecureHandler(createOrchestrateHandler(deps), {
+    toolName: 'orchestrate',
+    rateLimiter: deps.rateLimiter,
+    logger,
+  });
+
+  // Wrap with timeout protection (Issue #271, CVE-2026-0621)
   const timeoutMs = deps.security?.timeout?.defaultTimeoutMs;
   const wrappedHandler = wrapToolWithTimeout(
     'orchestrate',
-    handler,
+    secureHandler,
     timeoutMs !== undefined ? { timeoutMs, logger } : { logger }
   );
 
@@ -355,7 +353,7 @@ export function registerOrchestrateTool(server: McpServer, deps: OrchestrateDeps
     { description, inputSchema: TOOL_SCHEMA },
     toSdkCallback(wrappedHandler)
   );
-  logger.info('Registered orchestrate tool with timeout protection');
+  logger.info('Registered orchestrate tool with secure handler and timeout protection');
 }
 
 /**

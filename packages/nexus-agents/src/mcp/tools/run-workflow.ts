@@ -5,6 +5,7 @@
  * Supports both built-in templates and custom template paths.
  *
  * @module mcp/tools/run-workflow
+ * (Refactored: Issue #531 - Use createSecureHandlerFactory)
  */
 
 import { z } from 'zod';
@@ -13,6 +14,7 @@ import type { Result } from '../../core/index.js';
 import type { WorkflowDefinition, IWorkflowEngine } from '../../core/index.js';
 import { WorkflowError, ParseError, createLogger, getTimeProvider } from '../../core/index.js';
 import { wrapToolWithTimeout, toSdkCallback } from '../middleware/tool-wrapper.js';
+import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import type {
   RunWorkflowInput,
   WorkflowToolResult,
@@ -157,28 +159,16 @@ const toolInputSchema = {
 };
 
 /**
- * Creates the handler for the run_workflow tool.
+ * Creates the core handler logic for run_workflow tool.
+ * Rate limiting is handled by createSecureHandler wrapper.
  *
  * @param deps - Tool dependencies
- * @returns Handler function
+ * @returns Context-aware handler function
  */
-function createRunWorkflowHandler(deps: RunWorkflowDeps): (args: unknown) => Promise<ToolResponse> {
-  return async (args: unknown): Promise<ToolResponse> => {
-    // Rate limiting check
-    const acquired = deps.rateLimiter.tryAcquire();
-    if (!acquired) {
-      const state = deps.rateLimiter.getState();
-      return {
-        isError: true,
-        content: [
-          {
-            type: 'text' as const,
-            text: `Rate limit exceeded. Try again in ${String(state.nextTokenMs)}ms.`,
-          },
-        ],
-      };
-    }
-
+function createRunWorkflowHandler(
+  deps: RunWorkflowDeps
+): (args: unknown, ctx: HandlerContext) => Promise<ToolResponse> {
+  return async (args: unknown, ctx: HandlerContext): Promise<ToolResponse> => {
     const validated = RunWorkflowInputSchema.safeParse(args);
     if (!validated.success) {
       const errorMessage = validated.error.errors
@@ -189,6 +179,12 @@ function createRunWorkflowHandler(deps: RunWorkflowDeps): (args: unknown) => Pro
         content: [{ type: 'text' as const, text: `Validation error: ${errorMessage}` }],
       };
     }
+
+    ctx.logger.debug('Running workflow', {
+      template: validated.data.template,
+      dryRun: validated.data.dryRun,
+    });
+
     return handleRunWorkflow(deps, validated.data);
   };
 }
@@ -196,6 +192,7 @@ function createRunWorkflowHandler(deps: RunWorkflowDeps): (args: unknown) => Pro
 /**
  * Register the run_workflow tool with an MCP server.
  *
+ * Uses createSecureHandler for standardized security middleware (Issue #531).
  * Includes timeout protection for CVE-2026-0621 mitigation (Issue #271).
  *
  * @param server - MCP server instance
@@ -204,12 +201,18 @@ function createRunWorkflowHandler(deps: RunWorkflowDeps): (args: unknown) => Pro
 export function registerRunWorkflowTool(server: McpServer, deps: RunWorkflowDeps): void {
   const logger = deps.logger ?? createLogger({ tool: 'run_workflow' });
 
-  // Wrap handler with timeout protection (Issue #271, CVE-2026-0621)
-  const handler = createRunWorkflowHandler(deps);
+  // Wrap handler with secure handler for rate limiting and request context (Issue #531)
+  const secureHandler = createSecureHandler(createRunWorkflowHandler(deps), {
+    toolName: 'run_workflow',
+    rateLimiter: deps.rateLimiter,
+    logger,
+  });
+
+  // Wrap with timeout protection (Issue #271, CVE-2026-0621)
   const timeoutMs = deps.security?.timeout?.defaultTimeoutMs;
   const wrappedHandler = wrapToolWithTimeout(
     'run_workflow',
-    handler,
+    secureHandler,
     timeoutMs !== undefined ? { timeoutMs, logger } : { logger }
   );
 
@@ -222,7 +225,7 @@ export function registerRunWorkflowTool(server: McpServer, deps: RunWorkflowDeps
     },
     toSdkCallback(wrappedHandler)
   );
-  logger.info('Registered run_workflow tool with timeout protection');
+  logger.info('Registered run_workflow tool with secure handler and timeout protection');
 }
 
 /**

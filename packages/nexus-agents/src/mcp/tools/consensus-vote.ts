@@ -6,6 +6,7 @@
  *
  * @module mcp/tools/consensus-vote
  * (Source: Issue #435 - Add consensus_vote tool for multi-model voting)
+ * (Refactored: Issue #531 - Use createSecureHandlerFactory)
  */
 
 import { z } from 'zod';
@@ -15,6 +16,7 @@ import { createLogger, getTimeProvider, getRandomProvider } from '../../core/ind
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
 import { wrapToolWithTimeout, toSdkCallback } from '../middleware/tool-wrapper.js';
+import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import type { ConsensusAlgorithm, Vote, ConsensusResult } from '../../consensus/types.js';
 import type { VoterRole, VotingResult, AgentVoteResult } from '../../cli/vote-types.js';
 import { VOTER_ROLES } from '../../cli/vote-types.js';
@@ -477,25 +479,11 @@ type ConsensusVoteToolResponse = {
 };
 
 /**
- * Creates a handler function for the consensus_vote tool.
+ * Creates the core handler logic for consensus_vote tool.
+ * Rate limiting is handled by createSecureHandler wrapper.
  */
-function createToolHandler(deps: ConsensusVoteDeps) {
-  return async (args: unknown): Promise<ConsensusVoteToolResponse> => {
-    // Rate limiting check
-    const acquired = deps.rateLimiter.tryAcquire();
-    if (!acquired) {
-      const state = deps.rateLimiter.getState();
-      return {
-        isError: true,
-        content: [
-          {
-            type: 'text',
-            text: `Rate limit exceeded. Try again in ${String(state.nextTokenMs)}ms.`,
-          },
-        ],
-      };
-    }
-
+function createConsensusVoteHandler(deps: ConsensusVoteDeps) {
+  return async (args: unknown, ctx: HandlerContext): Promise<ConsensusVoteToolResponse> => {
     // Validate input
     const validationResult = ConsensusVoteInputSchema.safeParse(args);
     if (!validationResult.success) {
@@ -507,6 +495,11 @@ function createToolHandler(deps: ConsensusVoteDeps) {
         content: [{ type: 'text', text: `Validation error: ${errorMessage}` }],
       };
     }
+
+    ctx.logger.debug('Starting consensus vote', {
+      strategy: validationResult.data.strategy ?? 'simple_majority',
+      quickMode: validationResult.data.quickMode,
+    });
 
     // Execute tool logic
     const result = await handleConsensusVote(deps, validationResult.data);
@@ -527,6 +520,7 @@ function createToolHandler(deps: ConsensusVoteDeps) {
 /**
  * Registers the consensus_vote tool with the MCP server.
  *
+ * Uses createSecureHandler for standardized security middleware (Issue #531).
  * Includes timeout protection for CVE-2026-0621 mitigation (Issue #271).
  *
  * @param server - MCP server instance
@@ -563,11 +557,17 @@ export function registerConsensusVoteTool(server: McpServer, deps: ConsensusVote
     'to vote on proposals with configurable strategies. ' +
     'Supports higher_order strategy for Bayesian-optimal aggregation with correlation awareness (Issue #514).';
 
-  // Wrap handler with timeout protection (Issue #271, CVE-2026-0621)
+  // Wrap handler with secure handler for rate limiting and request context (Issue #531)
+  const secureHandler = createSecureHandler(createConsensusVoteHandler(deps), {
+    toolName: 'consensus_vote',
+    rateLimiter: deps.rateLimiter,
+    logger,
+  });
+
+  // Wrap with timeout protection (Issue #271, CVE-2026-0621)
   // Longer timeout for voting (up to 5 minutes for 5 agents)
-  const handler = createToolHandler(deps);
   const timeoutMs = deps.security?.timeout?.defaultTimeoutMs ?? 300000;
-  const wrappedHandler = wrapToolWithTimeout('consensus_vote', handler, {
+  const wrappedHandler = wrapToolWithTimeout('consensus_vote', secureHandler, {
     timeoutMs,
     logger,
   });
@@ -577,5 +577,5 @@ export function registerConsensusVoteTool(server: McpServer, deps: ConsensusVote
     { description, inputSchema: toolSchema },
     toSdkCallback(wrappedHandler)
   );
-  logger.info('Registered consensus_vote tool with timeout protection');
+  logger.info('Registered consensus_vote tool with secure handler and timeout protection');
 }
