@@ -221,19 +221,11 @@ export class FitnessScoreCalculator {
     const findings: FitnessFinding[] = [];
     let score = 20;
 
-    // Check: Token estimation unified
-    // Deduct if multiple implementations exist
-    // 11fadd6: Ollama adapter now uses unified TokenEstimator
-    const tokenEstimationDuplications: number = 5; // Known: 6 places, 1 canonical (was 7)
-    const tokenDeduction = Math.min(tokenEstimationDuplications, 3);
-    score -= tokenDeduction;
-    findings.push({
-      dimension: 'canonicalPaths',
-      severity: 'warning',
-      description: `Token estimation duplicated in ${String(tokenEstimationDuplications)} locations`,
-      pointsDeducted: tokenDeduction,
-      suggestion: 'Migrate to core/token-estimator.ts (Issue #583)',
-    });
+    // Check: Token estimation unified - COMPLETE
+    // All adapters now use unified TokenEstimator from core/token-estimator.ts
+    // 11fadd6: Ollama adapter migrated
+    // 06724b5: Dead constants removed (CLAUDE/OPENAI/GEMINI_CHARS_PER_TOKEN)
+    // No deduction - fully consolidated
 
     // Check: Task analysis unified
     // task-analyzer.ts vs SharedTaskAnalyzer - 2 implementations
