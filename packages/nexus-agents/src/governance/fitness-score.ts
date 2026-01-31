@@ -262,6 +262,11 @@ export class FitnessScoreCalculator {
     //   - policy-feature-extraction, task-analyzer-keywords, task-analyzer, agentic-memory
     // Consolidated: Orchestrator factory wiring (ADR-0014, b2e4c0e) - no deduction
     //   - TechLeadAdapter, PuppeteerAdapter now accept instances
+    // Consolidated: MCP orchestrate tool to IOrchestrator (ADR-0014, 33c8748) - no deduction
+    //   - Uses OrchestratorFactory, ITechLead deprecated
+    // Consolidated: Similarity utilities (ADR-0013, 2bc7ff1) - no deduction
+    //   - calculateTokenOverlap, calculateJaccardSimilarity, calculateTextJaccardSimilarity
+    //   - Used by adaptive-memory-helpers, policy-feature-extraction
 
     return { score: Math.max(0, score), findings };
   }
