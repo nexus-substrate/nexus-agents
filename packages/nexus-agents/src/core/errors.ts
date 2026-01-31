@@ -335,6 +335,99 @@ export class RateLimitError extends NexusError {
 }
 
 // ============================================================================
+// Error Categories (ADR-0009)
+// ============================================================================
+
+/**
+ * Error category for classifying errors by type.
+ * Used for monitoring, error handling, and observability.
+ * (Source: ADR-0009 - Error Class Hierarchy)
+ */
+export const ErrorCategory = {
+  /** Input validation failures */
+  VALIDATION: 'validation',
+  /** Failed operations (retryable) */
+  OPERATION: 'operation',
+  /** Configuration issues */
+  CONFIGURATION: 'configuration',
+  /** External resource failures */
+  RESOURCE: 'resource',
+  /** Security violations */
+  SECURITY: 'security',
+  /** Internal/system errors */
+  INTERNAL: 'internal',
+} as const;
+
+export type ErrorCategory = (typeof ErrorCategory)[keyof typeof ErrorCategory];
+
+/**
+ * Operation error for failed operations that may be retryable.
+ * Use for transient failures in internal operations.
+ * (Source: ADR-0009 - Error Class Hierarchy)
+ */
+export class OperationError extends NexusError {
+  readonly retryable: boolean;
+
+  constructor(
+    message: string,
+    options?: Partial<Omit<NexusErrorOptions, 'code'>> & { retryable?: boolean }
+  ) {
+    super(message, { code: ErrorCode.INTERNAL_ERROR, ...options });
+    this.name = 'OperationError';
+    this.retryable = options?.retryable ?? true;
+  }
+}
+
+/**
+ * Resource error for external resource failures.
+ * Use for failures interacting with external systems (APIs, databases, files).
+ * (Source: ADR-0009 - Error Class Hierarchy)
+ */
+export class ResourceError extends NexusError {
+  readonly resourceType: string;
+  readonly retryable: boolean;
+
+  constructor(
+    message: string,
+    options: Partial<Omit<NexusErrorOptions, 'code'>> & {
+      resourceType: string;
+      retryable?: boolean;
+    }
+  ) {
+    super(message, { code: ErrorCode.INTERNAL_ERROR, ...options });
+    this.name = 'ResourceError';
+    this.resourceType = options.resourceType;
+    this.retryable = options.retryable ?? true;
+  }
+}
+
+/**
+ * Get the error category for an error.
+ * Useful for monitoring and error handling.
+ */
+export function getErrorCategory(error: Error): ErrorCategory {
+  if (error instanceof ValidationError) return ErrorCategory.VALIDATION;
+  if (error instanceof ConfigError) return ErrorCategory.CONFIGURATION;
+  if (error instanceof SecurityError) return ErrorCategory.SECURITY;
+  if (error instanceof ResourceError) return ErrorCategory.RESOURCE;
+  if (error instanceof OperationError) return ErrorCategory.OPERATION;
+  if (error instanceof NexusError) return ErrorCategory.INTERNAL;
+  return ErrorCategory.INTERNAL;
+}
+
+/**
+ * Check if an error is retryable.
+ */
+export function isRetryableError(error: Error): boolean {
+  if (error instanceof OperationError) return error.retryable;
+  if (error instanceof ResourceError) return error.retryable;
+  if (error instanceof AgentFailureError) return error.retryable;
+  if (error instanceof RateLimitError) return true;
+  if (error instanceof TimeoutError) return true;
+  return false;
+}
+
+// ============================================================================
 // Utility Functions
 // ============================================================================
 

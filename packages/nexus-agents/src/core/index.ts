@@ -36,8 +36,14 @@ export {
   ReflectionFailureError,
   PlanningFailureError,
   ActionFailureError,
+  // Error categories (ADR-0009 - Error Class Hierarchy)
+  ErrorCategory,
+  OperationError,
+  ResourceError,
   // Utility functions
   toError,
+  getErrorCategory,
+  isRetryableError,
 } from './errors.js';
 export type { SerializedError, NexusErrorOptions, AgentFailureOptions } from './errors.js';
 

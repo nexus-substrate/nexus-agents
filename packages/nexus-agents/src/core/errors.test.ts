@@ -16,6 +16,12 @@ import {
   RateLimitError,
   ErrorCode,
   AgentErrorCategory,
+  // ADR-0009: Error Class Hierarchy
+  ErrorCategory,
+  OperationError,
+  ResourceError,
+  getErrorCategory,
+  isRetryableError,
   type SerializedError,
 } from './errors.js';
 
@@ -760,5 +766,187 @@ describe('Error serialization edge cases', () => {
     expect(parsed.message).toBe('Top');
     expect(parsed.context).toEqual({ operation: 'test' });
     expect(parsed.cause?.code).toBe(ErrorCode.VALIDATION_ERROR);
+  });
+});
+
+// ============================================================================
+// ADR-0009: Error Class Hierarchy
+// ============================================================================
+
+describe('ErrorCategory (ADR-0009)', () => {
+  it('contains all category values', () => {
+    expect(ErrorCategory.VALIDATION).toBe('validation');
+    expect(ErrorCategory.OPERATION).toBe('operation');
+    expect(ErrorCategory.CONFIGURATION).toBe('configuration');
+    expect(ErrorCategory.RESOURCE).toBe('resource');
+    expect(ErrorCategory.SECURITY).toBe('security');
+    expect(ErrorCategory.INTERNAL).toBe('internal');
+  });
+});
+
+describe('OperationError (ADR-0009)', () => {
+  it('has correct name and code', () => {
+    const error = new OperationError('Operation failed');
+
+    expect(error.name).toBe('OperationError');
+    expect(error.code).toBe(ErrorCode.INTERNAL_ERROR);
+  });
+
+  it('defaults retryable to true', () => {
+    const error = new OperationError('Operation failed');
+    expect(error.retryable).toBe(true);
+  });
+
+  it('allows overriding retryable', () => {
+    const error = new OperationError('Operation failed', { retryable: false });
+    expect(error.retryable).toBe(false);
+  });
+
+  it('is instanceof NexusError', () => {
+    const error = new OperationError('Operation failed');
+    expect(error instanceof NexusError).toBe(true);
+    expect(error instanceof OperationError).toBe(true);
+  });
+
+  it('accepts context', () => {
+    const error = new OperationError('Operation failed', {
+      context: { operation: 'save', attempt: 3 },
+    });
+    expect(error.context).toEqual({ operation: 'save', attempt: 3 });
+  });
+});
+
+describe('ResourceError (ADR-0009)', () => {
+  it('has correct name and code', () => {
+    const error = new ResourceError('Resource unavailable', { resourceType: 'database' });
+
+    expect(error.name).toBe('ResourceError');
+    expect(error.code).toBe(ErrorCode.INTERNAL_ERROR);
+  });
+
+  it('stores resourceType', () => {
+    const error = new ResourceError('Database connection failed', { resourceType: 'database' });
+    expect(error.resourceType).toBe('database');
+  });
+
+  it('defaults retryable to true', () => {
+    const error = new ResourceError('Resource unavailable', { resourceType: 'api' });
+    expect(error.retryable).toBe(true);
+  });
+
+  it('allows overriding retryable', () => {
+    const error = new ResourceError('Resource unavailable', {
+      resourceType: 'api',
+      retryable: false,
+    });
+    expect(error.retryable).toBe(false);
+  });
+
+  it('is instanceof NexusError', () => {
+    const error = new ResourceError('Resource unavailable', { resourceType: 'file' });
+    expect(error instanceof NexusError).toBe(true);
+    expect(error instanceof ResourceError).toBe(true);
+  });
+
+  it('accepts context', () => {
+    const error = new ResourceError('S3 bucket not accessible', {
+      resourceType: 's3',
+      context: { bucket: 'my-bucket', region: 'us-east-1' },
+    });
+    expect(error.context).toEqual({ bucket: 'my-bucket', region: 'us-east-1' });
+  });
+});
+
+describe('getErrorCategory (ADR-0009)', () => {
+  it('returns VALIDATION for ValidationError', () => {
+    const error = new ValidationError('Invalid input');
+    expect(getErrorCategory(error)).toBe(ErrorCategory.VALIDATION);
+  });
+
+  it('returns CONFIGURATION for ConfigError', () => {
+    const error = new ConfigError('Config not found');
+    expect(getErrorCategory(error)).toBe(ErrorCategory.CONFIGURATION);
+  });
+
+  it('returns SECURITY for SecurityError', () => {
+    const error = new SecurityError('Unauthorized');
+    expect(getErrorCategory(error)).toBe(ErrorCategory.SECURITY);
+  });
+
+  it('returns RESOURCE for ResourceError', () => {
+    const error = new ResourceError('Resource unavailable', { resourceType: 'api' });
+    expect(getErrorCategory(error)).toBe(ErrorCategory.RESOURCE);
+  });
+
+  it('returns OPERATION for OperationError', () => {
+    const error = new OperationError('Operation failed');
+    expect(getErrorCategory(error)).toBe(ErrorCategory.OPERATION);
+  });
+
+  it('returns INTERNAL for other NexusError subclasses', () => {
+    const modelError = new ModelError('Model unavailable');
+    const agentError = new AgentError('Agent failed');
+    const workflowError = new WorkflowError('Workflow failed');
+
+    expect(getErrorCategory(modelError)).toBe(ErrorCategory.INTERNAL);
+    expect(getErrorCategory(agentError)).toBe(ErrorCategory.INTERNAL);
+    expect(getErrorCategory(workflowError)).toBe(ErrorCategory.INTERNAL);
+  });
+
+  it('returns INTERNAL for plain Error', () => {
+    const error = new Error('Regular error');
+    expect(getErrorCategory(error)).toBe(ErrorCategory.INTERNAL);
+  });
+});
+
+describe('isRetryableError (ADR-0009)', () => {
+  it('returns true for OperationError with retryable=true', () => {
+    const error = new OperationError('Failed', { retryable: true });
+    expect(isRetryableError(error)).toBe(true);
+  });
+
+  it('returns false for OperationError with retryable=false', () => {
+    const error = new OperationError('Failed', { retryable: false });
+    expect(isRetryableError(error)).toBe(false);
+  });
+
+  it('returns true for ResourceError with retryable=true', () => {
+    const error = new ResourceError('Unavailable', { resourceType: 'api', retryable: true });
+    expect(isRetryableError(error)).toBe(true);
+  });
+
+  it('returns false for ResourceError with retryable=false', () => {
+    const error = new ResourceError('Unavailable', { resourceType: 'api', retryable: false });
+    expect(isRetryableError(error)).toBe(false);
+  });
+
+  it('returns true for AgentFailureError with retryable=true', () => {
+    const error = new MemoryFailureError('Memory failure');
+    expect(isRetryableError(error)).toBe(true);
+  });
+
+  it('returns true for RateLimitError', () => {
+    const error = new RateLimitError('Rate limited');
+    expect(isRetryableError(error)).toBe(true);
+  });
+
+  it('returns true for TimeoutError', () => {
+    const error = new TimeoutError('Timed out');
+    expect(isRetryableError(error)).toBe(true);
+  });
+
+  it('returns false for ValidationError', () => {
+    const error = new ValidationError('Invalid');
+    expect(isRetryableError(error)).toBe(false);
+  });
+
+  it('returns false for SecurityError', () => {
+    const error = new SecurityError('Unauthorized');
+    expect(isRetryableError(error)).toBe(false);
+  });
+
+  it('returns false for plain Error', () => {
+    const error = new Error('Regular error');
+    expect(isRetryableError(error)).toBe(false);
   });
 });
