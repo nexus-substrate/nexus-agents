@@ -24,14 +24,20 @@ gh pr merge               # Merge PR
 
 # Nexus-Agents CLI
 nexus-agents              # Start MCP server (default)
+nexus-agents hello        # Welcome message (no API keys)
+nexus-agents demo         # API-free exploration mode
+nexus-agents verify       # Quick installation check
 nexus-agents doctor       # Check CLI health
+nexus-agents setup        # Configure Claude CLI integration
 nexus-agents config init  # Generate starter config
 nexus-agents expert list  # List available experts
 nexus-agents workflow list # List workflow templates
 nexus-agents workflow run # Execute workflow template
 nexus-agents routing-audit # Debug model routing
 nexus-agents orchestrate  # Standalone task execution
+nexus-agents vote         # Consensus voting (5 agents)
 nexus-agents review <url> # Review GitHub PR
+nexus-agents fitness-audit # CLI fitness score audit
 nexus-agents --help       # Full command list
 ```
 
@@ -328,6 +334,191 @@ correctness > simplicity > performance > cleverness
 - **Cleverness**: Never. Clever code is maintenance debt.
 
 **The goal:** Produce boring, readable, maintainable software that survives production.
+
+---
+
+## Governance Framework
+
+This section defines **executable governance** - rules that must be enforced through CI, reviews, and automation.
+
+### Canonical Paths (Anti-Sprawl Policy)
+
+**There must be ONE canonical implementation path** for each system concern. Multiple paths create maintenance burden and architectural drift.
+
+#### Canonical Implementations
+
+| Concern              | Canonical Path        | Location                                         | Non-Canonical (Deprecated)                           |
+| -------------------- | --------------------- | ------------------------------------------------ | ---------------------------------------------------- |
+| **Task Analysis**    | `SharedTaskAnalyzer`  | `src/core/task-analysis/shared-task-analyzer.ts` | `src/agents/experts/task-analyzer.ts` (v3.0 removal) |
+| **Task Routing**     | `CompositeRouter`     | `src/cli-adapters/composite-router.ts`           | Direct stage router usage                            |
+| **Consensus Voting** | `ConsensusEngine`     | `src/consensus/engine.ts`                        | -                                                    |
+| **CLI Adapters**     | `createAllAdapters()` | `src/cli-adapters/factory.ts`                    | Direct adapter instantiation                         |
+| **MCP Tools**        | `registerTools()`     | `src/mcp/tools/index.ts`                         | Manual tool registration                             |
+
+#### CompositeRouter Pipeline (5 Stages)
+
+All task routing MUST go through the CompositeRouter pipeline:
+
+```
+Task → BudgetRouter → ZeroRouter → PreferenceRouter → TopsisRouter → LinUCB → Selected Model
+```
+
+**Do NOT** directly instantiate stage routers. Use `CompositeRouter.route(task)`.
+
+#### File Modification Rules
+
+**Always prefer:**
+
+- Modifying existing files over creating new ones
+- Extending existing modules over creating parallel implementations
+- Refactoring in-place over creating `_v2`, `_new`, or `_enhanced` variants
+
+**Never create:**
+
+- `enhanced_*`, `new_*`, `v2_*`, `refactor_*` files
+- Duplicate modules with slightly different interfaces
+- Parallel implementations "for testing"
+
+**If existing code is poorly structured:** Refactor it - do not fork it.
+
+### Refactor Threshold Guidance
+
+Refactoring must improve **clarity, structure, or maintainability**, not chase arbitrary metrics.
+
+#### Decision Gate (≥3 "yes" required to refactor)
+
+Before refactoring, answer:
+
+1. Does this improve clarity?
+2. Does this improve testability?
+3. Does this improve separation of concerns?
+4. Does this reduce coupling?
+5. Does this reduce cognitive load?
+
+**If fewer than 3 "yes" → Do NOT refactor.**
+
+#### What to Preserve
+
+| Situation                       | Action      |
+| ------------------------------- | ----------- |
+| File 400-600 lines but cohesive | Keep intact |
+| Function 50-90 lines but clear  | Keep intact |
+| Clear linear workflow           | Keep intact |
+| High cognitive complexity       | Refactor    |
+| Mixed responsibilities          | Refactor    |
+
+**Rule:** Optimize for **clarity and intent**, not mechanical line counts.
+
+### Consensus Voting Protocol
+
+**When to require consensus voting:**
+
+| Trigger                   | Threshold     | Agents    |
+| ------------------------- | ------------- | --------- |
+| Architecture changes      | supermajority | 5         |
+| Breaking API changes      | unanimous     | 5         |
+| Security-related changes  | supermajority | 5         |
+| Sprint planning decisions | majority      | 3 (quick) |
+| Feature prioritization    | majority      | 5         |
+
+#### Voting Strategies
+
+| Strategy            | Threshold                     | Use When                                      |
+| ------------------- | ----------------------------- | --------------------------------------------- |
+| `majority`          | >50%                          | General decisions, feature flags              |
+| `supermajority`     | ≥67%                          | Architecture, security, breaking changes      |
+| `unanimous`         | 100%                          | Critical infrastructure, irreversible changes |
+| `proof-of-learning` | Weighted by agent performance | AI-generated code approval                    |
+| `higher-order`      | Correlation-aware             | Detecting sycophancy patterns                 |
+
+#### CLI Usage
+
+```bash
+# Standard 5-agent vote
+nexus-agents vote --proposal "Add feature X" --threshold supermajority
+
+# Quick 3-agent vote
+nexus-agents vote --proposal "Minor change" --threshold majority --quick
+
+# Dry-run (simulation)
+nexus-agents vote --proposal "Test decision" --dry-run --verbose
+```
+
+#### MCP Tool Usage
+
+```typescript
+// Via MCP tool
+await callTool('consensus_vote', {
+  proposal: { title: 'Add feature', description: '...' },
+  algorithm: 'supermajority',
+  timeout: 300000,
+});
+```
+
+### Fitness Audit Requirements
+
+The fitness audit measures CLI orchestration architectural quality across 8 dimensions.
+
+#### Target Score: 90+/100
+
+**Current Score:** 92/100
+
+#### Fitness Dimensions
+
+| Dimension               | Max Points | Description                        |
+| ----------------------- | ---------- | ---------------------------------- |
+| `canonicalPaths`        | 20         | Penalizes duplicate workflow paths |
+| `explicitBehavior`      | 15         | Penalizes hidden/magic behavior    |
+| `determinism`           | 15         | Rewards predictable execution      |
+| `observability`         | 15         | Rewards telemetry coverage         |
+| `configSimplicity`      | 10         | Penalizes config surface area      |
+| `layerSeparation`       | 10         | Penalizes cross-layer coupling     |
+| `operatorErgonomics`    | 10         | Rewards CLI usability              |
+| `governanceIntegration` | 5          | Rewards policy enforcement         |
+
+#### Running the Audit
+
+```bash
+# Run fitness audit
+nexus-agents fitness-audit
+
+# JSON output for CI
+nexus-agents fitness-audit --format=json
+
+# Filter by severity
+nexus-agents fitness-audit --min-severity=warning
+```
+
+#### CI Integration
+
+**Releases MUST have fitness score ≥ 90.**
+
+```yaml
+# In CI workflow
+- run: nexus-agents fitness-audit --format=json
+- run: |
+    SCORE=$(nexus-agents fitness-audit --format=json | jq '.score')
+    if [ "$SCORE" -lt 90 ]; then exit 1; fi
+```
+
+### Governance Version Tracking
+
+CLAUDE.md includes governance version markers:
+
+```markdown
+<!-- GOVERNANCE:VERSION:START -->
+
+_Governance Version: YYYY-MM-DD_
+
+<!-- GOVERNANCE:VERSION:END -->
+```
+
+**Update the version when:**
+
+- Adding new governance rules
+- Modifying canonical paths
+- Changing voting thresholds
+- Updating fitness requirements
 
 ---
 
@@ -901,11 +1092,11 @@ _Auto-generated from source. 8 tools registered._
 
 <!-- GOVERNANCE:VERSION:START -->
 
-_Governance Version: 2026-01-30_
+_Governance Version: 2026-01-31_
 
-## <!-- GOVERNANCE:VERSION:END -->
+<!-- GOVERNANCE:VERSION:END -->
 
-_Last updated: 2026-01-25 (ET)_
+_Last updated: 2026-01-31 (ET)_
 _MCP Protocol: 2025-11-25_
 _Node.js: 22.x LTS_
 _TypeScript: 5.8+_
