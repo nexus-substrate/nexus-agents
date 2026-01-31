@@ -286,7 +286,7 @@ describe('ExpertRegistry', () => {
     it('should filter by role', () => {
       const registry = ExpertRegistry.getInstance();
 
-      const results = registry.query({ role: 'code_expert' });
+      const results = registry.queryWithOptions({ role: 'code_expert' });
 
       expect(results).toHaveLength(2);
     });
@@ -294,7 +294,7 @@ describe('ExpertRegistry', () => {
     it('should filter by all capabilities', () => {
       const registry = ExpertRegistry.getInstance();
 
-      const results = registry.query({
+      const results = registry.queryWithOptions({
         capabilities: ['task_execution', 'code_generation'],
       });
 
@@ -304,7 +304,7 @@ describe('ExpertRegistry', () => {
     it('should filter by any capability', () => {
       const registry = ExpertRegistry.getInstance();
 
-      const results = registry.query({
+      const results = registry.queryWithOptions({
         anyCapability: ['code_review', 'code_generation'],
       });
 
@@ -314,7 +314,7 @@ describe('ExpertRegistry', () => {
     it('should apply limit', () => {
       const registry = ExpertRegistry.getInstance();
 
-      const results = registry.query({ limit: 2 });
+      const results = registry.queryWithOptions({ limit: 2 });
 
       expect(results).toHaveLength(2);
     });
@@ -322,7 +322,7 @@ describe('ExpertRegistry', () => {
     it('should combine filters', () => {
       const registry = ExpertRegistry.getInstance();
 
-      const results = registry.query({
+      const results = registry.queryWithOptions({
         role: 'code_expert',
         capabilities: ['code_generation'],
       });
@@ -332,13 +332,13 @@ describe('ExpertRegistry', () => {
     });
   });
 
-  describe('list', () => {
-    it('should list all experts', () => {
+  describe('getAll', () => {
+    it('should get all experts', () => {
       const registry = ExpertRegistry.getInstance();
       registry.register(createTestExpert('expert-1'));
       registry.register(createTestExpert('expert-2'));
 
-      const experts = registry.list();
+      const experts = registry.getAll();
 
       expect(experts).toHaveLength(2);
     });
@@ -346,19 +346,19 @@ describe('ExpertRegistry', () => {
     it('should return empty for empty registry', () => {
       const registry = ExpertRegistry.getInstance();
 
-      const experts = registry.list();
+      const experts = registry.getAll();
 
       expect(experts).toHaveLength(0);
     });
   });
 
-  describe('listIds', () => {
-    it('should list all expert IDs', () => {
+  describe('getAllIds', () => {
+    it('should get all expert IDs', () => {
       const registry = ExpertRegistry.getInstance();
       registry.register(createTestExpert('expert-1'));
       registry.register(createTestExpert('expert-2'));
 
-      const ids = registry.listIds();
+      const ids = registry.getAllIds();
 
       expect(ids).toContain('expert-1');
       expect(ids).toContain('expert-2');
@@ -428,7 +428,7 @@ describe('ExpertRegistry', () => {
 
       const stats = registry.getStats();
 
-      expect(stats.totalExperts).toBe(2);
+      expect(stats.total).toBe(2);
       expect(stats.byRole.code_expert).toBe(1);
       expect(stats.byRole.testing_expert).toBe(1);
       expect(stats.byCapability.task_execution).toBe(2);
@@ -440,7 +440,7 @@ describe('ExpertRegistry', () => {
 
       const stats = registry.getStats();
 
-      expect(stats.totalExperts).toBe(0);
+      expect(stats.total).toBe(0);
       expect(stats.byRole).toEqual({});
       expect(stats.byCapability).toEqual({});
     });

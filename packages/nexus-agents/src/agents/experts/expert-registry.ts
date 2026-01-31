@@ -3,9 +3,12 @@
  *
  * Singleton registry for managing expert agents.
  * Provides registration, lookup, and query capabilities.
+ *
+ * Implements IRegistry<Expert, RegistryError> for unified registry API.
+ * (Source: ADR-0012 - Registry API Unification)
  */
 
-import type { Result, AgentCapability } from '../../core/index.js';
+import type { Result, AgentCapability, IRegistry, IRegistryStats } from '../../core/index.js';
 import { ok, err, AgentError } from '../../core/index.js';
 import type { Expert } from './expert-factory.js';
 
@@ -43,9 +46,12 @@ export interface QueryOptions {
 
 /**
  * Statistics about the registry.
+ * Extends IRegistryStats for interface compatibility (ADR-0012).
  */
-export interface RegistryStats {
-  /** Total number of registered experts */
+export interface RegistryStats extends IRegistryStats {
+  /** Total number of registered experts (IRegistryStats alias) */
+  total: number;
+  /** @deprecated Use total instead */
   totalExperts: number;
   /** Count by role */
   byRole: Record<string, number>;
@@ -58,8 +64,10 @@ export interface RegistryStats {
  *
  * Provides thread-safe registration and lookup of experts.
  * Supports querying by ID, role, and capabilities.
+ *
+ * Implements IRegistry<Expert, RegistryError> for unified registry API.
  */
-export class ExpertRegistry {
+export class ExpertRegistry implements IRegistry<Expert, RegistryError> {
   private static instance: ExpertRegistry | undefined;
   private readonly experts: Map<string, Expert>;
 
@@ -207,11 +215,12 @@ export class ExpertRegistry {
 
   /**
    * Query experts with multiple criteria.
+   * Domain-specific query with structured options.
    *
    * @param options - Query options
    * @returns Array of matching experts
    */
-  query(options: QueryOptions): Expert[] {
+  queryWithOptions(options: QueryOptions): Expert[] {
     let results = Array.from(this.experts.values());
 
     // Filter by role
@@ -244,21 +253,79 @@ export class ExpertRegistry {
   }
 
   /**
+   * Query experts with predicate function.
+   * IRegistry interface method.
+   *
+   * @param predicate - Function to test each expert
+   * @returns Array of matching experts
+   */
+  query(predicate: (item: Expert) => boolean): Expert[] {
+    return Array.from(this.experts.values()).filter(predicate);
+  }
+
+  /**
    * List all registered experts.
    *
    * @returns Array of all registered experts
+   * @deprecated Use getAll() instead (IRegistry interface)
    */
   list(): Expert[] {
-    return Array.from(this.experts.values());
+    return this.getAll();
   }
 
   /**
    * List all registered expert IDs.
    *
    * @returns Array of all registered expert IDs
+   * @deprecated Use getAllIds() instead (IRegistry interface)
    */
   listIds(): string[] {
+    return this.getAllIds();
+  }
+
+  // =========================================================================
+  // IRegistry Interface Methods (ADR-0012)
+  // =========================================================================
+
+  /**
+   * Get all registered experts.
+   * IRegistry interface method.
+   *
+   * @returns Array of all registered experts
+   */
+  getAll(): Expert[] {
+    return Array.from(this.experts.values());
+  }
+
+  /**
+   * Get all registered expert IDs.
+   * IRegistry interface method.
+   *
+   * @returns Array of all registered expert IDs
+   */
+  getAllIds(): string[] {
     return Array.from(this.experts.keys());
+  }
+
+  /**
+   * Search experts by text query.
+   * IRegistry interface method.
+   *
+   * Searches expert ID, name, role, and capabilities.
+   *
+   * @param searchTerm - Search term to match
+   * @returns Array of matching experts
+   */
+  search(searchTerm: string): Expert[] {
+    const term = searchTerm.toLowerCase();
+    return Array.from(this.experts.values()).filter((expert) => {
+      return (
+        expert.id.toLowerCase().includes(term) ||
+        expert.name.toLowerCase().includes(term) ||
+        expert.role.toLowerCase().includes(term) ||
+        expert.capabilities.some((cap) => cap.toLowerCase().includes(term))
+      );
+    });
   }
 
   /**
@@ -284,6 +351,7 @@ export class ExpertRegistry {
 
   /**
    * Get statistics about the registry.
+   * Returns IRegistryStats-compatible stats with domain-specific extensions.
    */
   getStats(): RegistryStats {
     const byRole: Record<string, number> = {};
@@ -300,7 +368,8 @@ export class ExpertRegistry {
     }
 
     return {
-      totalExperts: this.experts.size,
+      total: this.experts.size,
+      totalExperts: this.experts.size, // deprecated alias
       byRole,
       byCapability,
     };
@@ -340,7 +409,7 @@ export class ExpertRegistry {
         new RegistryError('No expert matches the required capabilities', {
           context: {
             requiredCapabilities,
-            availableExperts: this.listIds(),
+            availableExperts: this.getAllIds(),
           },
         })
       );

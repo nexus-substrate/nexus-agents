@@ -73,7 +73,7 @@ describe('Agent Expert System E2E Tests', () => {
       if (codeExpert.ok) registry.register(codeExpert.value);
       if (securityExpert.ok) registry.register(securityExpert.value);
 
-      const all = registry.list();
+      const all = registry.getAll();
       expect(all.length).toBe(2);
     });
 
@@ -98,8 +98,7 @@ describe('Agent Expert System E2E Tests', () => {
       if (codeExpert.ok) registry.register(codeExpert.value);
 
       const stats = registry.getStats();
-      // RegistryStats has totalExperts not total
-      expect(stats.totalExperts).toBe(1);
+      expect(stats.total).toBe(1);
     });
   });
 
