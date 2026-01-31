@@ -127,6 +127,7 @@ export class TaskRouter implements ITaskRouter {
 
   async routeWithDetails(task: Task): Promise<Result<RoutingDecision, RoutingError>> {
     const startTime = getTimeProvider().now();
+    // eslint-disable-next-line @typescript-eslint/no-deprecated -- Issue #574: migrate to SharedTaskAnalyzer
     const profile = analyzeTask(task);
     this.logger.debug('Task analyzed', { profile: summarizeProfile(profile), taskId: task.id });
 

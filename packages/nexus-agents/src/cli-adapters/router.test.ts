@@ -6,6 +6,8 @@
  * (Source: Issue #78 - Capability-based task router)
  */
 
+/* eslint-disable @typescript-eslint/no-deprecated -- Testing deprecated analyzeTask, see Issue #574 */
+
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { Task } from '../core/types/agent.js';
 import type { ICliAdapter, CliName, CapacityStatus, CapabilityProfile } from './types.js';

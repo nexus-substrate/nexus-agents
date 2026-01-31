@@ -82,7 +82,7 @@ describe('ValidationHarness', () => {
       if (category !== undefined) {
         const skippedCheck = category.checks.find((c) => c.id === 'mcp-mandates-injection');
         expect(skippedCheck).toBeDefined();
-        if (skippedCheck !== undefined && skippedCheck.details !== undefined) {
+        if (skippedCheck?.details !== undefined) {
           expect(skippedCheck.details['skipped']).toBe(true);
         }
       }
@@ -137,7 +137,7 @@ describe('ValidationHarness', () => {
       if (category !== undefined) {
         const check = category.checks.find((c) => c.id === 'mcp-tool-index');
         expect(check).toBeDefined();
-        if (check !== undefined && check.details !== undefined) {
+        if (check?.details !== undefined) {
           expect(check.details['toolCount']).toBe(8);
         }
       }
@@ -178,7 +178,7 @@ describe('ValidationHarness', () => {
       if (category !== undefined) {
         const check = category.checks.find((c) => c.id === 'cli-commands-execute');
         expect(check).toBeDefined();
-        if (check !== undefined && check.details !== undefined) {
+        if (check?.details !== undefined) {
           expect(check.details['commandCount']).toBeGreaterThan(0);
         }
       }

@@ -438,7 +438,9 @@ export class ValidationHarness {
 
     try {
       const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error('Check timeout')), this.config.checkTimeoutMs);
+        setTimeout(() => {
+          reject(new Error('Check timeout'));
+        }, this.config.checkTimeoutMs);
       });
 
       const result = await Promise.race([check.validate(this.logger), timeoutPromise]);

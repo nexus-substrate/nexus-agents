@@ -56,6 +56,7 @@ export interface BudgetStageResult {
 /** Analyzes task and returns profile, updating stages array. */
 export function analyzeTaskProfile(task: CliTask, stagesExecuted: string[]): TaskProfile {
   const internalTask = cliTaskToTask(task);
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- Issue #574: migrate to SharedTaskAnalyzer
   const taskProfile = analyzeTask(internalTask);
   stagesExecuted.push('task-analysis');
   return taskProfile;

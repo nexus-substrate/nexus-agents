@@ -91,6 +91,7 @@ export type {
 } from './circuit-breaker.js';
 
 // Task Analyzer (Issue #78)
+// eslint-disable-next-line @typescript-eslint/no-deprecated -- Backward compatibility, see Issue #574
 export { analyzeTask, summarizeProfile, TaskProfileSchema } from './task-analyzer.js';
 export type { TaskProfile, TaskType } from './task-analyzer.js';
 

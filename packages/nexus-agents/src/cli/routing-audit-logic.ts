@@ -46,6 +46,7 @@ export function analyzeTaskString(taskStr: string): TaskProfile {
     description: taskStr,
     context: {},
   };
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- Issue #574: migrate to SharedTaskAnalyzer
   return analyzeTask(task);
 }
 

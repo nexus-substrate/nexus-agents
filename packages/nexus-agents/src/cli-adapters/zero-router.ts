@@ -283,6 +283,7 @@ export class ZeroRouter implements IZeroRouter {
         metadata: {},
       },
     };
+    // eslint-disable-next-line @typescript-eslint/no-deprecated -- Issue #574: migrate to SharedTaskAnalyzer
     return analyzeTask(internalTask);
   }
 
