@@ -1,25 +1,143 @@
 /**
  * nexus-agents demo command
  *
- * API-free exploration mode for demonstrating nexus-agents functionality
- * without requiring API keys. All responses are canned/mock.
+ * Exploration mode for demonstrating nexus-agents functionality.
+ * Uses real CLI execution when CLIs are available and authenticated,
+ * falls back to mock responses when not available.
  *
  * @module cli/demo-command
  * (Source: Issue #424 - Demo mode for API-free exploration)
  */
 
-import type { MockRoutingResult, MockWorkflow } from './demo-command-types.js';
+import type {
+  MockRoutingResult,
+  MockWorkflow,
+  CliAvailability,
+  LiveRoutingResult,
+} from './demo-command-types.js';
 import { colors, isValidDemoSubcommand } from './demo-command-types.js';
 import {
   formatRoutingDemo,
   formatExpertListDemo,
   formatWorkflowDemo,
   formatAvailableWorkflows,
+  formatLiveRoutingDemo,
 } from './demo-command-formatters.js';
+import { createAllAdapters } from '../cli-adapters/factory.js';
+import type { CliName } from '../cli-adapters/types.js';
 
 // Re-export types and validators for external use
 export type { DemoSubcommand, DemoOptions } from './demo-command-types.js';
 export { isValidDemoSubcommand } from './demo-command-types.js';
+
+// ============================================================================
+// CLI Availability Detection
+// ============================================================================
+
+/** Cache for CLI availability to avoid repeated checks within a session. */
+let cliAvailabilityCache: readonly CliAvailability[] | null = null;
+
+/**
+ * Checks which CLIs are available and authenticated.
+ * Results are cached for the duration of the session.
+ */
+async function getCliAvailability(): Promise<readonly CliAvailability[]> {
+  if (cliAvailabilityCache !== null) {
+    return cliAvailabilityCache;
+  }
+
+  const adapters = createAllAdapters();
+  const cliNames: CliName[] = ['claude', 'gemini', 'codex'];
+  const results: CliAvailability[] = [];
+
+  for (const name of cliNames) {
+    const adapter = adapters.get(name);
+    if (!adapter) {
+      results.push({ name, available: false, authenticated: false });
+      continue;
+    }
+
+    try {
+      const health = await adapter.healthCheck();
+      results.push({
+        name,
+        available: true,
+        authenticated: health.healthy,
+      });
+    } catch {
+      results.push({ name, available: false, authenticated: false });
+    }
+  }
+
+  cliAvailabilityCache = results;
+  return results;
+}
+
+/** Helper to find CLI by name from authenticated list. */
+function findCli(clis: readonly CliAvailability[], name: string): CliAvailability | undefined {
+  return clis.find((c) => c.name === name);
+}
+
+/** Get CLI preference order based on task type. */
+function getCliPreference(isCodeTask: boolean, isReasoningTask: boolean): string[] {
+  // Code task: prefer codex, then claude
+  if (isCodeTask && !isReasoningTask) return ['codex', 'claude'];
+  // Reasoning task: prefer claude
+  if (isReasoningTask) return ['claude', 'gemini'];
+  // Simple task: prefer gemini for speed
+  return ['gemini', 'claude'];
+}
+
+/**
+ * Gets the best available CLI for task execution.
+ * Prefers: codex for code, claude for reasoning, gemini for speed.
+ */
+function selectBestAvailableCli(
+  availableClis: readonly CliAvailability[],
+  isCodeTask: boolean,
+  isReasoningTask: boolean
+): CliAvailability | undefined {
+  const authenticated = availableClis.filter((c) => c.authenticated);
+  if (authenticated.length === 0) return undefined;
+
+  const preferences = getCliPreference(isCodeTask, isReasoningTask);
+  for (const name of preferences) {
+    const cli = findCli(authenticated, name);
+    if (cli) return cli;
+  }
+  return authenticated[0];
+}
+
+/**
+ * Executes a task on the selected CLI and returns the result.
+ */
+async function executeOnCli(
+  cliName: string,
+  task: string
+): Promise<{ result: string; timeMs: number } | undefined> {
+  const adapters = createAllAdapters();
+  const adapter = adapters.get(cliName as CliName);
+  if (!adapter) return undefined;
+
+  const startTime = Date.now();
+  try {
+    const result = await adapter.execute(
+      { content: task },
+      { timeoutMs: 30000 } // 30 second timeout for demo
+    );
+
+    if (!result.ok) {
+      return undefined;
+    }
+
+    return {
+      result: result.value.text,
+      timeMs: Date.now() - startTime,
+    };
+  } catch {
+    return undefined;
+  }
+}
 
 // ============================================================================
 // Mock Data Generation
@@ -238,10 +356,48 @@ function getAvailableWorkflows(): Array<{ name: string; description: string }> {
 
 /**
  * Runs the routing demo subcommand.
+ * Uses real CLI execution when available, falls back to mock.
  */
-export function runRoutingDemo(task: string): string {
-  const result = analyzeTaskForDemo(task);
-  return formatRoutingDemo(result);
+export async function runRoutingDemo(task: string, execute: boolean = true): Promise<string> {
+  const mockResult = analyzeTaskForDemo(task);
+  const availableClis = await getCliAvailability();
+  const hasAuthenticatedCli = availableClis.some((c) => c.authenticated);
+
+  // If no authenticated CLIs or execution disabled, use mock
+  if (!hasAuthenticatedCli || !execute) {
+    return formatRoutingDemo(mockResult);
+  }
+
+  // Find best CLI for task type
+  const isCodeTask = /code|implement|write|function|class|refactor/i.test(task);
+  const isReasoningTask = /explain|analyze|review|architecture|design/i.test(task);
+  const selectedCli = selectBestAvailableCli(availableClis, isCodeTask, isReasoningTask);
+
+  if (!selectedCli) {
+    return formatRoutingDemo(mockResult);
+  }
+
+  // Build live result
+  const liveResult: LiveRoutingResult = {
+    ...mockResult,
+    mode: 'live',
+    availableClis,
+    selectedModel: selectedCli.name,
+    selectionReason: `Selected ${selectedCli.name} (authenticated and available)`,
+  };
+
+  // Execute task on selected CLI
+  const execution = await executeOnCli(selectedCli.name, task);
+  if (execution) {
+    return formatLiveRoutingDemo({
+      ...liveResult,
+      executionResult: execution.result,
+      executionTime: execution.timeMs,
+    });
+  }
+
+  // Execution failed, show routing only
+  return formatLiveRoutingDemo(liveResult);
 }
 
 /**
@@ -275,29 +431,51 @@ export function runWorkflowDemo(workflowName: string | undefined): string {
  */
 export function printDemoHelp(): void {
   process.stdout.write(`
-${colors.bold}nexus-agents demo${colors.reset} - API-free exploration mode
+${colors.bold}nexus-agents demo${colors.reset} - exploration mode
 
 ${colors.bold}USAGE:${colors.reset}
   nexus-agents demo <subcommand> [options]
 
 ${colors.bold}SUBCOMMANDS:${colors.reset}
-  routing "task"      Show how routing would select models (mock)
+  routing "task"      Route task to best model and execute (live or mock)
   expert-list         Show available experts with descriptions
   workflow [name]     Show workflow steps (dry-run preview)
+
+${colors.bold}OPTIONS:${colors.reset}
+  --mock              Force mock mode (no CLI execution)
 
 ${colors.bold}EXAMPLES:${colors.reset}
   nexus-agents demo routing "Implement a sorting algorithm"
   nexus-agents demo routing "Explain JavaScript closures"
+  nexus-agents demo routing "Hello world" --mock
   nexus-agents demo expert-list
   nexus-agents demo workflow
   nexus-agents demo workflow code-review
 
 ${colors.bold}NOTES:${colors.reset}
-  - All responses are mock/canned - no API keys required
-  - Use this to understand what nexus-agents can do
-  - For real execution, configure API keys and use the main commands
+  - If CLIs (claude, gemini, codex) are available and authenticated,
+    routing demo will execute tasks using the selected CLI
+  - Falls back to mock mode when no authenticated CLIs are found
+  - Use --mock to always use mock mode (API-free)
+  - Run "nexus-agents doctor" to check CLI availability
 
 `);
+}
+
+/** Handle routing subcommand. */
+async function handleRoutingSubcommand(
+  args: string[],
+  options?: { mock?: boolean }
+): Promise<{ output: string; exitCode: number }> {
+  const task = args[0];
+  if (task === undefined || task.length === 0) {
+    process.stderr.write('Error: Task is required for routing demo.\n');
+    process.stderr.write('Usage: nexus-agents demo routing "your task here"\n');
+    return { output: '', exitCode: 1 };
+  }
+  const executeReal = !(options?.mock ?? false);
+  const output = await runRoutingDemo(task, executeReal);
+  return { output, exitCode: 0 };
 }
 
 /**
@@ -305,35 +483,31 @@ ${colors.bold}NOTES:${colors.reset}
  *
  * @param subcommand - The demo subcommand to run
  * @param args - Additional arguments for the subcommand
+ * @param options - Additional options (--mock to force mock mode)
  * @returns Exit code (0 = success, 1 = error)
  */
-export function demoCommand(subcommand: string | undefined, args: string[]): number {
+export async function demoCommand(
+  subcommand: string | undefined,
+  args: string[],
+  options?: { mock?: boolean }
+): Promise<number> {
   if (subcommand === undefined || !isValidDemoSubcommand(subcommand)) {
     printDemoHelp();
     return subcommand === undefined ? 0 : 1;
   }
 
-  let output: string;
-
   switch (subcommand) {
     case 'routing': {
-      const task = args[0];
-      if (task === undefined || task.length === 0) {
-        process.stderr.write('Error: Task is required for routing demo.\n');
-        process.stderr.write('Usage: nexus-agents demo routing "your task here"\n');
-        return 1;
-      }
-      output = runRoutingDemo(task);
-      break;
+      const result = await handleRoutingSubcommand(args, options);
+      if (result.exitCode !== 0) return result.exitCode;
+      process.stdout.write(result.output);
+      return 0;
     }
     case 'expert-list':
-      output = runExpertListDemo();
-      break;
+      process.stdout.write(runExpertListDemo());
+      return 0;
     case 'workflow':
-      output = runWorkflowDemo(args[0]);
-      break;
+      process.stdout.write(runWorkflowDemo(args[0]));
+      return 0;
   }
-
-  process.stdout.write(output);
-  return 0;
 }

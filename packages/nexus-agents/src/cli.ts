@@ -120,6 +120,8 @@ interface ParsedValues {
   'skip-rules': boolean;
   'skip-hooks': boolean;
   scope?: string;
+  // Demo command options
+  mock: boolean;
 }
 
 /** Builds orchestrate-specific options. */
@@ -254,6 +256,7 @@ function buildOptions(values: ParsedValues): ParsedCliArgs['options'] {
     createIssue: values['create-issue'],
     fix: values.fix,
     quick: values.quick,
+    mock: values.mock,
     ...(values.output !== undefined && { output: values.output }),
     ...(values.input !== undefined && { input: values.input }),
     ...buildOrchestrateOptions(values),

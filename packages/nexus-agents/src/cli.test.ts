@@ -305,6 +305,7 @@ describe('CLI Argument Parsing', () => {
           skipMcp: false,
           skipRules: false,
           skipHooks: false,
+          mock: false,
         },
         positionals: [],
       };
@@ -343,6 +344,7 @@ describe('CLI Argument Parsing', () => {
           skipMcp: false,
           skipRules: false,
           skipHooks: false,
+          mock: false,
         },
         positionals: ['config', 'show'],
       };
@@ -373,6 +375,7 @@ describe('CLI Argument Parsing', () => {
           skipMcp: false,
           skipRules: false,
           skipHooks: false,
+          mock: false,
         },
         positionals: [],
       };

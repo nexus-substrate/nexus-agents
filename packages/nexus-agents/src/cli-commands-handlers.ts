@@ -377,11 +377,14 @@ export function handleHelloCommand(_args: ParsedCliArgs): void {
  * Handles demo command for API-free exploration.
  * (Source: Issue #424 - Demo mode for API-free exploration)
  */
-export function handleDemoCommand(args: ParsedCliArgs): void {
+export async function handleDemoCommand(args: ParsedCliArgs): Promise<void> {
   // Get subcommand from positionals (demo <subcommand> [args...])
   const subcommand = args.subcommand;
   const additionalArgs = args.positionals.slice(2);
-  const exitCode = demoCommand(subcommand, additionalArgs);
+  const options = {
+    mock: args.options.mock,
+  };
+  const exitCode = await demoCommand(subcommand, additionalArgs, options);
   process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
 }
 

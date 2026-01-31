@@ -100,7 +100,6 @@ const SYNC_COMMAND_HANDLERS: Record<string, ((args: ParsedCliArgs) => void) | un
   'system-review': handleSystemReviewCommand,
   validation: handleValidationCommand,
   'learning-metrics': handleLearningMetricsCommand,
-  demo: handleDemoCommand,
   // Issue #526: Newly wired sync command
   issue: handleIssueCommand,
   // System Mandate LOOP I: Fitness Audit
@@ -147,6 +146,7 @@ const ASYNC_COMMAND_HANDLERS: Record<string, ((args: ParsedCliArgs) => Promise<v
     'swe-bench': handleSweBenchCommand,
     hooks: handleHooksCommand,
     setup: handleSetupCommandAsync, // Uses async for interactive wizard support (Issue #425)
+    demo: handleDemoCommand, // Made async for live CLI execution
     // Issue #526: Newly wired async commands
     sprint: handleSprintCommand,
     session: handleSessionCommand,

@@ -8,7 +8,7 @@
  */
 
 import { DEFAULT_EXPERTS } from '../agents/experts/expert-defaults.js';
-import type { MockRoutingResult, MockWorkflow } from './demo-command-types.js';
+import type { MockRoutingResult, MockWorkflow, LiveRoutingResult } from './demo-command-types.js';
 import { colors } from './demo-command-types.js';
 
 // ============================================================================
@@ -233,6 +233,82 @@ export function formatAvailableWorkflows(
     `${colors.dim}Use "nexus-agents workflow list" for all available workflows${colors.reset}`
   );
   lines.push('');
+
+  return lines.join('\n');
+}
+
+// ============================================================================
+// Live Routing Demo Formatting
+// ============================================================================
+
+/**
+ * Formats CLI availability status.
+ */
+function formatCliAvailability(clis: LiveRoutingResult['availableClis']): string[] {
+  const lines: string[] = [];
+  for (const cli of clis) {
+    const status = cli.authenticated
+      ? `${colors.green}✓${colors.reset}`
+      : cli.available
+        ? `${colors.yellow}○${colors.reset}`
+        : `${colors.dim}✗${colors.reset}`;
+    const statusText = cli.authenticated
+      ? 'authenticated'
+      : cli.available
+        ? 'available (not authenticated)'
+        : 'not available';
+    lines.push(`  ${status} ${cli.name.padEnd(8)} - ${statusText}`);
+  }
+  return lines;
+}
+
+/**
+ * Formats the live routing demo output (with real CLI execution).
+ */
+export function formatLiveRoutingDemo(result: LiveRoutingResult): string {
+  const lines: string[] = [];
+
+  lines.push('');
+  lines.push(`${colors.cyan}${colors.bold}=== Routing Demo (LIVE) ===${colors.reset}`);
+  lines.push(`${colors.green}(Using authenticated CLIs for real execution)${colors.reset}`);
+  lines.push('');
+  lines.push(`${colors.bold}Task:${colors.reset} "${result.task}"`);
+  lines.push('');
+
+  // CLI Availability
+  lines.push(`${colors.bold}CLI Availability:${colors.reset}`);
+  lines.push(...formatCliAvailability(result.availableClis));
+  lines.push('');
+
+  // Task Profile
+  lines.push(`${colors.bold}Task Analysis:${colors.reset}`);
+  lines.push(`  Complexity:      ${result.taskProfile.complexity}`);
+  lines.push(`  Code Generation: ${result.taskProfile.codeGeneration ? 'yes' : 'no'}`);
+  lines.push(`  Reasoning:       ${result.taskProfile.reasoning ? 'yes' : 'no'}`);
+  lines.push(`  Est. Tokens:     ${String(result.taskProfile.estimatedTokens)}`);
+  lines.push('');
+
+  // Selection
+  lines.push(`${colors.bold}${colors.green}Selected: ${result.selectedModel}${colors.reset}`);
+  lines.push(`Reason: ${result.selectionReason}`);
+  lines.push('');
+
+  // Execution Result
+  if (result.executionResult !== undefined) {
+    lines.push(`${colors.bold}Execution Result:${colors.reset}`);
+    if (result.executionTime !== undefined) {
+      lines.push(`${colors.dim}(Completed in ${String(result.executionTime)}ms)${colors.reset}`);
+    }
+    lines.push('');
+    lines.push(result.executionResult);
+    lines.push('');
+  } else {
+    lines.push(`${colors.yellow}Note: Execution was not performed or failed${colors.reset}`);
+    lines.push(
+      `${colors.dim}Run "nexus-agents doctor" to verify CLI authentication${colors.reset}`
+    );
+    lines.push('');
+  }
 
   return lines.join('\n');
 }

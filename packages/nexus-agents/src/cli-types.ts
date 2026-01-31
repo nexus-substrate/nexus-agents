@@ -105,6 +105,8 @@ export interface ParsedCliArgs {
     skipRules: boolean;
     skipHooks: boolean;
     scope?: 'user' | 'project';
+    // Demo command options
+    mock: boolean;
   };
   positionals: string[];
 }
@@ -272,6 +274,11 @@ export const PARSE_ARGS_CONFIG = {
     scope: {
       type: 'string' as const,
       default: 'user',
+    },
+    // Demo command options
+    mock: {
+      type: 'boolean' as const,
+      default: false,
     },
   },
   allowPositionals: true,

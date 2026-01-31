@@ -48,8 +48,8 @@ describe('demo-command', () => {
   });
 
   describe('runRoutingDemo', () => {
-    it('should return formatted routing output', () => {
-      const result = runRoutingDemo('Implement a sorting algorithm');
+    it('should return formatted routing output', async () => {
+      const result = await runRoutingDemo('Implement a sorting algorithm', false);
 
       expect(result).toContain('Routing Demo');
       expect(result).toContain('Task Analysis');
@@ -58,33 +58,33 @@ describe('demo-command', () => {
       expect(result).toContain('Selected:');
     });
 
-    it('should detect code tasks', () => {
-      const result = runRoutingDemo('Write a function to parse JSON');
+    it('should detect code tasks', async () => {
+      const result = await runRoutingDemo('Write a function to parse JSON', false);
 
       expect(result).toContain('Code Generation: yes');
     });
 
-    it('should detect reasoning tasks', () => {
-      const result = runRoutingDemo('Explain how closures work');
+    it('should detect reasoning tasks', async () => {
+      const result = await runRoutingDemo('Explain how closures work', false);
 
       expect(result).toContain('Reasoning:       yes');
     });
 
-    it('should show mock disclaimer', () => {
-      const result = runRoutingDemo('Any task');
+    it('should show mock disclaimer', async () => {
+      const result = await runRoutingDemo('Any task', false);
 
       expect(result).toContain('mock response');
       expect(result).toContain('no API keys required');
     });
 
-    it('should select codex for pure code tasks', () => {
-      const result = runRoutingDemo('Implement a sorting function');
+    it('should select codex for pure code tasks', async () => {
+      const result = await runRoutingDemo('Implement a sorting function', false);
 
       expect(result).toContain('Selected: codex');
     });
 
-    it('should select claude for reasoning tasks', () => {
-      const result = runRoutingDemo('Explain and analyze this architecture');
+    it('should select claude for reasoning tasks', async () => {
+      const result = await runRoutingDemo('Explain and analyze this architecture', false);
 
       expect(result).toContain('Selected: claude');
     });
@@ -176,8 +176,8 @@ describe('demo-command', () => {
   });
 
   describe('demoCommand', () => {
-    it('should print help when no subcommand provided', () => {
-      const exitCode = demoCommand(undefined, []);
+    it('should print help when no subcommand provided', async () => {
+      const exitCode = await demoCommand(undefined, [], { mock: true });
 
       expect(exitCode).toBe(0);
       expect(stdoutWriteMock).toHaveBeenCalled();
@@ -186,14 +186,14 @@ describe('demo-command', () => {
       expect(output).toContain('SUBCOMMANDS');
     });
 
-    it('should return 1 for invalid subcommand', () => {
-      const exitCode = demoCommand('invalid', []);
+    it('should return 1 for invalid subcommand', async () => {
+      const exitCode = await demoCommand('invalid', [], { mock: true });
 
       expect(exitCode).toBe(1);
     });
 
-    it('should handle routing subcommand', () => {
-      const exitCode = demoCommand('routing', ['Test task']);
+    it('should handle routing subcommand', async () => {
+      const exitCode = await demoCommand('routing', ['Test task'], { mock: true });
 
       expect(exitCode).toBe(0);
       expect(stdoutWriteMock).toHaveBeenCalled();
@@ -201,15 +201,15 @@ describe('demo-command', () => {
       expect(output).toContain('Routing Demo');
     });
 
-    it('should return error for routing without task', () => {
-      const exitCode = demoCommand('routing', []);
+    it('should return error for routing without task', async () => {
+      const exitCode = await demoCommand('routing', [], { mock: true });
 
       expect(exitCode).toBe(1);
       expect(stderrWriteMock).toHaveBeenCalled();
     });
 
-    it('should handle expert-list subcommand', () => {
-      const exitCode = demoCommand('expert-list', []);
+    it('should handle expert-list subcommand', async () => {
+      const exitCode = await demoCommand('expert-list', [], { mock: true });
 
       expect(exitCode).toBe(0);
       expect(stdoutWriteMock).toHaveBeenCalled();
@@ -217,8 +217,8 @@ describe('demo-command', () => {
       expect(output).toContain('Expert List Demo');
     });
 
-    it('should handle workflow subcommand without name', () => {
-      const exitCode = demoCommand('workflow', []);
+    it('should handle workflow subcommand without name', async () => {
+      const exitCode = await demoCommand('workflow', [], { mock: true });
 
       expect(exitCode).toBe(0);
       expect(stdoutWriteMock).toHaveBeenCalled();
@@ -226,8 +226,8 @@ describe('demo-command', () => {
       expect(output).toContain('Available Workflows');
     });
 
-    it('should handle workflow subcommand with name', () => {
-      const exitCode = demoCommand('workflow', ['code-review']);
+    it('should handle workflow subcommand with name', async () => {
+      const exitCode = await demoCommand('workflow', ['code-review'], { mock: true });
 
       expect(exitCode).toBe(0);
       expect(stdoutWriteMock).toHaveBeenCalled();
@@ -237,8 +237,8 @@ describe('demo-command', () => {
   });
 
   describe('educational content', () => {
-    it('should explain routing process', () => {
-      const result = runRoutingDemo('Any task');
+    it('should explain routing process', async () => {
+      const result = await runRoutingDemo('Any task', false);
 
       expect(result).toContain('Task Analysis');
       expect(result).toContain('Budget Filter');

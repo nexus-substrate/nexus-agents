@@ -67,6 +67,25 @@ export interface MockWorkflow {
 }
 
 /**
+ * Available CLI status for demo mode.
+ */
+export interface CliAvailability {
+  readonly name: string;
+  readonly available: boolean;
+  readonly authenticated: boolean;
+}
+
+/**
+ * Live routing result when CLIs are available.
+ */
+export interface LiveRoutingResult extends MockRoutingResult {
+  readonly mode: 'live' | 'mock';
+  readonly availableClis: readonly CliAvailability[];
+  readonly executionResult?: string;
+  readonly executionTime?: number;
+}
+
+/**
  * ANSI color codes for terminal output.
  */
 export const colors = {
@@ -77,6 +96,7 @@ export const colors = {
   blue: '\x1b[34m',
   dim: '\x1b[2m',
   bold: '\x1b[1m',
+  red: '\x1b[31m',
 } as const;
 
 /**
