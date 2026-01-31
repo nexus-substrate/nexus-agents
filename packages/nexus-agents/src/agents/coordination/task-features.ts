@@ -15,6 +15,7 @@
  */
 
 import type { Task } from '../../core/index.js';
+import { getTokenEstimator } from '../../core/index.js';
 import type { TaskFeatures, ScalingTaskType, TaskSignal } from './scaling-types.js';
 
 // =============================================================================
@@ -260,13 +261,15 @@ function estimateComplexity(description: string): number {
 
 /**
  * Estimate token requirement based on task features.
+ * Uses unified TokenEstimator with complexity-based output multiplier.
  */
 function estimateTokens(description: string, complexity: number): number {
-  const wordCount = description.split(/\s+/).length;
-  // Base estimate: 10 tokens per input word, scaled by complexity
-  const baseEstimate = wordCount * 10;
+  // Use TokenEstimator for base input token estimate
+  const baseInputTokens = getTokenEstimator().estimateText(description);
+  // Scale by complexity for expected output
   const complexityMultiplier = 1 + complexity * 2;
-  return Math.max(1000, Math.round(baseEstimate * complexityMultiplier));
+  // Output estimate: base scaled by complexity, with minimum threshold
+  return Math.max(1000, Math.round(baseInputTokens * 10 * complexityMultiplier));
 }
 
 // =============================================================================

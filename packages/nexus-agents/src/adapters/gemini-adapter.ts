@@ -26,11 +26,11 @@ import {
   ConfigError,
   getTimeProvider,
   getRandomProvider,
+  getTokenEstimator,
 } from '../core/index.js';
 import { BaseAdapter, type BaseAdapterConfig } from './base-adapter.js';
 import { createStream } from './streaming.js';
 import {
-  GEMINI_CHARS_PER_TOKEN,
   DEFAULT_MAX_TOKENS,
   mapStopReason,
   mapMessageToContent,
@@ -180,7 +180,8 @@ export class GeminiAdapter extends BaseAdapter {
    * @returns Approximate token count
    */
   override countTokens(text: string): Promise<number> {
-    return Promise.resolve(Math.ceil(text.length / GEMINI_CHARS_PER_TOKEN));
+    // Use unified TokenEstimator with Gemini-specific ratio (~4 chars/token)
+    return Promise.resolve(getTokenEstimator().estimateText(text, 'gemini'));
   }
 
   /**

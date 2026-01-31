@@ -13,7 +13,14 @@
  */
 
 import type { Task, ILogger, Result, TaskType } from '../core/index.js';
-import { ok, err, AgentError, createLogger, getTimeProvider } from '../core/index.js';
+import {
+  ok,
+  err,
+  AgentError,
+  createLogger,
+  getTimeProvider,
+  getTokenEstimator,
+} from '../core/index.js';
 import type {
   ICliAdapter,
   CliTask,
@@ -370,8 +377,8 @@ export class QualityRouter {
 
   private estimateTokens(task: Task): { input: number; output: number } {
     const content = task.description + JSON.stringify(task.context.history ?? []);
-    const inputTokens = Math.ceil(content.length / 4);
-    return { input: inputTokens, output: Math.ceil(inputTokens * 1.5) };
+    const estimate = getTokenEstimator().estimateTask(content, { outputMultiplier: 1.5 });
+    return { input: estimate.input, output: estimate.output };
   }
 
   private estimateLatency(cli: CliName, outputTokens: number): number {

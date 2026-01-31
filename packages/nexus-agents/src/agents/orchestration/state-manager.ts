@@ -9,7 +9,7 @@
  */
 
 import type { Task } from '../../core/index.js';
-import { getTimeProvider } from '../../core/index.js';
+import { getTimeProvider, getTokenEstimator } from '../../core/index.js';
 import type { PuppeteerState, PuppeteerStateMetadata, AgentStepOutput } from './puppeteer-types.js';
 
 // =============================================================================
@@ -24,7 +24,10 @@ export interface StateManagerConfig {
   readonly maxContextTokens?: number;
   /** Compression threshold (percentage of max before compressing) */
   readonly compressionThreshold?: number;
-  /** Characters per token estimate */
+  /**
+   * Characters per token estimate.
+   * @deprecated Use getTokenEstimator() from core instead (Issue #583). This field is ignored.
+   */
   readonly charsPerToken?: number;
 }
 
@@ -262,9 +265,10 @@ export class StateManager implements IStateManager {
 
   /**
    * Estimate token count for a string.
+   * Uses unified TokenEstimator from core.
    */
   estimateTokens(text: string): number {
-    return Math.ceil(text.length / this.config.charsPerToken);
+    return getTokenEstimator().estimateText(text);
   }
 
   // ===========================================================================

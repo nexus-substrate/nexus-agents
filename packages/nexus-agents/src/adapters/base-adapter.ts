@@ -23,6 +23,7 @@ import {
   NexusError,
   ErrorCode,
   createLogger,
+  getTokenEstimator,
   type NexusErrorOptions,
 } from '../core/index.js';
 
@@ -47,13 +48,6 @@ export interface BaseAdapterConfig {
   /** Maximum number of retries for failed requests */
   maxRetries?: number;
 }
-
-/**
- * Token estimation factor - average characters per token.
- * This is a rough estimate; specific providers may have different tokenization.
- * (Source: OpenAI documentation suggests ~4 chars per token for English text)
- */
-const CHARS_PER_TOKEN = 4;
 
 /**
  * Extended ModelError that supports specific error codes.
@@ -148,7 +142,7 @@ export abstract class BaseAdapter implements IModelAdapter {
   abstract stream(request: CompletionRequest): AsyncIterable<StreamChunk>;
 
   /**
-   * Count tokens in text using rough character-based estimation.
+   * Count tokens in text using the unified TokenEstimator.
    *
    * This provides a reasonable estimate for most use cases.
    * Concrete adapters may override this with provider-specific tokenizers.
@@ -157,8 +151,7 @@ export abstract class BaseAdapter implements IModelAdapter {
    * @returns Approximate token count
    */
   countTokens(text: string): Promise<number> {
-    // Rough estimation: ~4 characters per token for English text
-    return Promise.resolve(Math.ceil(text.length / CHARS_PER_TOKEN));
+    return Promise.resolve(getTokenEstimator().estimateText(text));
   }
 
   /**

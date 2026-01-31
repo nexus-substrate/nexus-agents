@@ -18,11 +18,10 @@ import type {
   StreamChunk,
   TokenUsage,
 } from '../core/index.js';
-import { ok, err, ModelError, ConfigError } from '../core/index.js';
+import { ok, err, ModelError, ConfigError, getTokenEstimator } from '../core/index.js';
 import { BaseAdapter, type BaseAdapterConfig } from './base-adapter.js';
 import { createStream } from './streaming.js';
 import {
-  OPENAI_CHARS_PER_TOKEN,
   DEFAULT_MAX_TOKENS,
   resolveModelId,
   getModelCapabilities,
@@ -199,7 +198,8 @@ export class OpenAIAdapter extends BaseAdapter {
    * @returns Approximate token count
    */
   override countTokens(text: string): Promise<number> {
-    return Promise.resolve(Math.ceil(text.length / OPENAI_CHARS_PER_TOKEN));
+    // Use unified TokenEstimator with OpenAI-specific ratio (~4 chars/token)
+    return Promise.resolve(getTokenEstimator().estimateText(text, 'openai'));
   }
 
   /**

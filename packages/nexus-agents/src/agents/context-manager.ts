@@ -7,7 +7,14 @@
  */
 
 import type { Result, Message, IModelAdapter, ILogger } from '../core/index.js';
-import { ok, err, ValidationError, createLogger, getTimeProvider } from '../core/index.js';
+import {
+  ok,
+  err,
+  ValidationError,
+  createLogger,
+  getTimeProvider,
+  getTokenEstimator,
+} from '../core/index.js';
 import type {
   ContextBudget,
   ContextItem,
@@ -15,11 +22,7 @@ import type {
   ContextStats,
   ContextItemCategory,
 } from './context-manager-types.js';
-import {
-  DEFAULT_BUDGET,
-  ContextManagerConfigSchema,
-  CHARS_PER_TOKEN,
-} from './context-manager-types.js';
+import { DEFAULT_BUDGET, ContextManagerConfigSchema } from './context-manager-types.js';
 import {
   sortItemsByPriority,
   filterAndSortByCategory,
@@ -305,8 +308,8 @@ export class ContextManager {
     if (this.adapter !== undefined) {
       return await this.adapter.countTokens(text);
     }
-    // Fallback: rough character-based estimation
-    return Math.ceil(text.length / CHARS_PER_TOKEN);
+    // Fallback: use unified TokenEstimator
+    return getTokenEstimator().estimateText(text);
   }
 
   /** Get the token budget for a category. */

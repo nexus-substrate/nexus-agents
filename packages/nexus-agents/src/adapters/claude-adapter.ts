@@ -19,11 +19,11 @@ import type {
   ContentBlock,
   TokenUsage,
 } from '../core/index.js';
-import { ok, err, ModelError, ConfigError } from '../core/index.js';
+import { ok, err, ModelError, ConfigError, getTokenEstimator } from '../core/index.js';
 import { BaseAdapter, type BaseAdapterConfig } from './base-adapter.js';
 import { createStream } from './streaming.js';
 import type { ClaudeAdapterConfig } from './claude-adapter-types.js';
-import { CLAUDE_CHARS_PER_TOKEN, DEFAULT_MAX_TOKENS } from './claude-adapter-types.js';
+import { DEFAULT_MAX_TOKENS } from './claude-adapter-types.js';
 import {
   mapStopReason,
   mapContentBlock,
@@ -183,9 +183,8 @@ export class ClaudeAdapter extends BaseAdapter {
    * @returns Approximate token count
    */
   override countTokens(text: string): Promise<number> {
-    // Claude tokenizes slightly differently than GPT models
-    // ~3.5 characters per token is a reasonable estimate for English
-    return Promise.resolve(Math.ceil(text.length / CLAUDE_CHARS_PER_TOKEN));
+    // Use unified TokenEstimator with Claude-specific ratio (~3.5 chars/token)
+    return Promise.resolve(getTokenEstimator().estimateText(text, 'claude'));
   }
 
   /**
