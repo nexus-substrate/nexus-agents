@@ -228,6 +228,7 @@ export class WorkflowOrchestratorAdapter implements IOrchestrator {
 
 /**
  * Configuration for OrchestratorFactory.
+ * (Enhanced per ADR-0014 - Orchestrator Interface Unification)
  */
 export interface OrchestratorFactoryConfig {
   /** Logger instance */
@@ -236,6 +237,10 @@ export interface OrchestratorFactoryConfig {
   modelAdapter?: IModelAdapter;
   /** Workflow engine config */
   workflowConfig?: WorkflowEngineFactoryConfig;
+  /** Pre-created TechLead instance for tech_lead orchestrator */
+  techLead?: { execute: (task: unknown) => Promise<Result<unknown, unknown>> };
+  /** Pre-created PuppeteerOrchestrator instance */
+  puppeteerOrchestrator?: { execute: (task: unknown) => Promise<Result<unknown, unknown>> };
 }
 
 /**
@@ -281,11 +286,25 @@ export class OrchestratorFactory implements IOrchestratorFactory {
         }
         return new WorkflowOrchestratorAdapter(this.workflowEngine, this.logger);
 
-      case 'tech_lead':
-        return new TechLeadAdapter();
+      case 'tech_lead': {
+        const adapter = new TechLeadAdapter();
+        // Wire TechLead instance if provided (ADR-0014)
+        if (this.config.techLead !== undefined) {
+          adapter.setTechLead(this.config.techLead);
+          this.logger.debug('TechLead instance wired to adapter');
+        }
+        return adapter;
+      }
 
-      case 'puppeteer':
-        return new PuppeteerAdapter();
+      case 'puppeteer': {
+        const adapter = new PuppeteerAdapter();
+        // Wire PuppeteerOrchestrator instance if provided (ADR-0014)
+        if (this.config.puppeteerOrchestrator !== undefined) {
+          adapter.setPuppeteer(this.config.puppeteerOrchestrator);
+          this.logger.debug('PuppeteerOrchestrator instance wired to adapter');
+        }
+        return adapter;
+      }
 
       case 'custom':
         throw new OrchestratorError(
