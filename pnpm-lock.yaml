@@ -5,7 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  hono: ^4.11.4
+  hono: ^4.11.7
   '@hono/node-server': ^1.19.9
 
 importers:
@@ -696,7 +696,7 @@ packages:
       }
     engines: { node: '>=18.14.1' }
     peerDependencies:
-      hono: ^4.11.4
+      hono: ^4.11.7
 
   '@humanfs/core@0.19.1':
     resolution:
