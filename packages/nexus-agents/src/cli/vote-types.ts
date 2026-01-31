@@ -14,6 +14,7 @@ import type { ConsensusAlgorithm, Vote, ConsensusResult } from '../consensus/typ
 export interface VoteCommandOptions {
   readonly proposal: string;
   readonly threshold?: 'majority' | 'supermajority' | 'unanimous';
+  /** Use simulated votes instead of LLM execution (maps from --dry-run CLI flag) */
   readonly dryRun?: boolean;
   readonly quick?: boolean;
   readonly verbose?: boolean;
@@ -74,7 +75,8 @@ export interface VotingResult {
   readonly result: ConsensusResult;
   readonly votes: readonly AgentVoteResult[];
   readonly totalTimeMs: number;
-  readonly dryRun: boolean;
+  /** Whether simulated votes were used instead of LLM execution */
+  readonly simulateVotes: boolean;
 }
 
 /**

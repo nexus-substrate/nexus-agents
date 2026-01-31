@@ -53,17 +53,17 @@ function generateVoteHash(role: VoterRole, vote: Vote): VoteHash {
 
 /**
  * Collects votes from voter agents.
- * Uses real LLM execution when not in dry-run mode.
+ * Uses real LLM execution when not using simulated votes.
  */
 async function collectVotes(
   proposal: string,
   roles: readonly VoterRole[],
-  dryRun: boolean
+  simulateVotes: boolean
 ): Promise<readonly AgentVoteResult[]> {
   return collectRealVotes({
     roles,
     proposal,
-    simulate: dryRun,
+    simulate: simulateVotes,
   });
 }
 
@@ -225,7 +225,7 @@ async function runVote(options: VoteCommandOptions): Promise<VotingResult> {
     result: resultRes.value,
     votes,
     totalTimeMs: getTimeProvider().now() - start,
-    dryRun: options.dryRun === true,
+    simulateVotes: options.dryRun === true,
   };
 }
 

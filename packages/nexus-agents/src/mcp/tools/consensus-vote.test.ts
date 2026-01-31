@@ -175,24 +175,24 @@ describe('ConsensusVoteInputSchema', () => {
     });
   });
 
-  describe('dryRun validation', () => {
-    it('should accept dryRun true', () => {
-      const input = { proposal: 'Test proposal', dryRun: true };
+  describe('simulateVotes validation', () => {
+    it('should accept simulateVotes true', () => {
+      const input = { proposal: 'Test proposal', simulateVotes: true };
       const result = ConsensusVoteInputSchema.safeParse(input);
 
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.data.dryRun).toBe(true);
+        expect(result.data.simulateVotes).toBe(true);
       }
     });
 
-    it('should accept dryRun false', () => {
-      const input = { proposal: 'Test proposal', dryRun: false };
+    it('should accept simulateVotes false', () => {
+      const input = { proposal: 'Test proposal', simulateVotes: false };
       const result = ConsensusVoteInputSchema.safeParse(input);
 
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.data.dryRun).toBe(false);
+        expect(result.data.simulateVotes).toBe(false);
       }
     });
 
@@ -202,7 +202,7 @@ describe('ConsensusVoteInputSchema', () => {
 
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.data.dryRun).toBe(false);
+        expect(result.data.simulateVotes).toBe(false);
       }
     });
   });
@@ -213,7 +213,7 @@ describe('ConsensusVoteInputSchema', () => {
         proposal: 'Should we refactor the authentication module?',
         threshold: 'supermajority' as const,
         quickMode: true,
-        dryRun: false,
+        simulateVotes: false,
       };
       const result = ConsensusVoteInputSchema.safeParse(input);
 
@@ -222,7 +222,7 @@ describe('ConsensusVoteInputSchema', () => {
         expect(result.data.proposal).toBe('Should we refactor the authentication module?');
         expect(result.data.threshold).toBe('supermajority');
         expect(result.data.quickMode).toBe(true);
-        expect(result.data.dryRun).toBe(false);
+        expect(result.data.simulateVotes).toBe(false);
       }
     });
   });
@@ -258,7 +258,7 @@ describe('Logger integration', () => {
     deps.logger?.info('Starting consensus vote', {
       threshold: 'simple_majority',
       roleCount: 5,
-      dryRun: false,
+      simulateVotes: false,
     });
 
     expect(mockLogger.info).toHaveBeenCalledWith(
@@ -266,7 +266,7 @@ describe('Logger integration', () => {
       expect.objectContaining({
         threshold: 'simple_majority',
         roleCount: 5,
-        dryRun: false,
+        simulateVotes: false,
       })
     );
   });
@@ -368,7 +368,7 @@ describe('ConsensusVoteResponse structure', () => {
         },
       ],
       durationMs: 5000,
-      dryRun: false,
+      simulateVotes: false,
     };
 
     expect(response.decision).toBe('approved');
@@ -393,7 +393,7 @@ describe('ConsensusVoteResponse structure', () => {
       },
       votes: [],
       durationMs: 4500,
-      dryRun: false,
+      simulateVotes: false,
     };
 
     expect(response.decision).toBe('rejected');

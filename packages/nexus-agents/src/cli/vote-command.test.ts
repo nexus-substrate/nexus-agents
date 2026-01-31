@@ -66,7 +66,7 @@ function createMockVotingResult(overrides: Partial<VotingResult> = {}): VotingRe
       },
     ],
     totalTimeMs: 530,
-    dryRun: false,
+    simulateVotes: false,
     ...overrides,
   };
 }

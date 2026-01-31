@@ -108,7 +108,11 @@ export const ConsensusVoteInputSchema = z.object({
     .optional()
     .default(false)
     .describe('Use 3 agents instead of 5 for faster execution'),
-  dryRun: z.boolean().optional().default(false).describe('Simulate without actual LLM execution'),
+  simulateVotes: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe('Use simulated votes instead of LLM execution'),
 });
 
 /**
@@ -197,8 +201,8 @@ export interface ConsensusVoteResponse {
   votes: AgentVoteSummary[];
   /** Execution duration in milliseconds */
   durationMs: number;
-  /** Whether this was a dry run */
-  dryRun: boolean;
+  /** Whether simulated votes were used */
+  simulateVotes: boolean;
   /** Higher-Order Voting metadata (only present when strategy='higher_order') */
   higherOrderMetadata?: HigherOrderMetadata;
 }
@@ -317,7 +321,7 @@ function buildResponse(
     },
     votes: result.votes.map(toAgentVoteSummary),
     durationMs: result.totalTimeMs,
-    dryRun: result.dryRun,
+    simulateVotes: result.simulateVotes,
   };
 
   // Add legacy threshold if provided (for backward compatibility)
@@ -415,7 +419,11 @@ async function executeVoting(
 
   logger.info('Starting consensus vote', { strategy, algorithm, roleCount: roles.length });
 
-  const votes = await collectRealVotes({ roles, proposal: input.proposal, simulate: input.dryRun });
+  const votes = await collectRealVotes({
+    roles,
+    proposal: input.proposal,
+    simulate: input.simulateVotes,
+  });
   const engineResult = await processVotesThroughEngine(votes, input.proposal, algorithm);
 
   const voteMap = new Map<string, Vote>();
@@ -435,7 +443,7 @@ async function executeVoting(
     result: engineResult,
     votes,
     totalTimeMs,
-    dryRun: input.dryRun,
+    simulateVotes: input.simulateVotes,
     strategy,
   };
   if (higherOrderResult !== undefined) result.higherOrderResult = higherOrderResult;
@@ -542,7 +550,11 @@ export function registerConsensusVoteTool(server: McpServer, deps: ConsensusVote
       .optional()
       .default(false)
       .describe('Use 3 agents instead of 5 for faster execution'),
-    dryRun: z.boolean().optional().default(false).describe('Simulate without actual LLM execution'),
+    simulateVotes: z
+      .boolean()
+      .optional()
+      .default(false)
+      .describe('Use simulated votes instead of LLM execution'),
   };
 
   const description =
