@@ -79,5 +79,15 @@ export type {
 } from './prune-strategy.js';
 export { PruneStrategyName } from './prune-strategy.js';
 
+// Registry types (IRegistry - canonical registry interface, Issue #596)
+export type {
+  IRegistry,
+  ISingletonRegistry,
+  IRegistryItem,
+  IRegisterOptions,
+  IRegistryStats,
+} from './registry.js';
+export { isRegistryItem } from './registry.js';
+
 // Note: Routing Memory types moved to cli-adapters/routing-memory-types.ts (Issue #286)
 // Import from 'nexus-agents' or 'nexus-agents/cli-adapters' instead of core/types
