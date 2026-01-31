@@ -277,7 +277,10 @@ export async function runConfigCommand(
 
     default: {
       const unknownAction = (parsed as { action: string }).action;
-      throw new ConfigCommandError('VALIDATION_ERROR', `Unknown action: ${unknownAction}`);
+      throw new ConfigCommandError(
+        'VALIDATION_ERROR',
+        `Unknown action: ${unknownAction}\n` + `Valid actions: init, show, get, set, import`
+      );
     }
   }
 }

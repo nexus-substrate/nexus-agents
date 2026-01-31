@@ -66,7 +66,10 @@ function parseInputs(inputArg: string): ParsedInputs {
     const validatedPath = validateInputPath(inputArg, cwd);
 
     if (!fs.existsSync(validatedPath)) {
-      throw new Error(`Input file not found: ${inputArg}`);
+      throw new Error(
+        `Input file not found: ${inputArg}\n` +
+          `Hint: Ensure the file exists and the path is correct relative to ${cwd}`
+      );
     }
     const content = fs.readFileSync(validatedPath, 'utf-8');
     return JSON.parse(content) as ParsedInputs;
@@ -150,7 +153,11 @@ async function resolveWorkflow(
   // Look up in registry
   const workflow = registry.getById(nameOrPath);
   if (workflow === undefined) {
-    throw new Error(`Workflow not found: ${nameOrPath}`);
+    throw new Error(
+      `Workflow not found: ${nameOrPath}\n` +
+        `Hint: Run 'nexus-agents workflow list' to see available workflows, ` +
+        `or provide a path to a .yaml file.`
+    );
   }
   return { workflow, source: `builtin:${nameOrPath}` };
 }

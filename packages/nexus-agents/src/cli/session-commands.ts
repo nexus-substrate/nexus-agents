@@ -220,7 +220,12 @@ export async function sessionExport(
   if (!sessionResult.ok) return sessionResult;
   const session = sessionResult.value;
   if (session === null) {
-    return err(new SessionStorageError('Session not found: ' + options.sessionId));
+    return err(
+      new SessionStorageError(
+        `Session not found: ${options.sessionId}\n` +
+          `Hint: Run 'nexus-agents session list' to see available sessions.`
+      )
+    );
   }
   const content =
     options.format === 'markdown'
