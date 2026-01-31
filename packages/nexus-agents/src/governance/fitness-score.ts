@@ -267,6 +267,12 @@ export class FitnessScoreCalculator {
     // Consolidated: Similarity utilities (ADR-0013, 2bc7ff1) - no deduction
     //   - calculateTokenOverlap, calculateJaccardSimilarity, calculateTextJaccardSimilarity
     //   - Used by adaptive-memory-helpers, policy-feature-extraction
+    // Consolidated: REST orchestrate to IOrchestrator (ADR-0014, e83e9b5) - no deduction
+    //   - Uses OrchestratorFactory, same pattern as MCP tool
+    // Architectural decision: CLI orchestrate uses different pattern (JUSTIFIED)
+    //   - CLI uses CompositeRouter for external tool delegation (Claude/Gemini/Codex)
+    //   - MCP/REST use IOrchestrator for internal agent orchestration
+    //   - Different use cases, not redundancy
 
     return { score: Math.max(0, score), findings };
   }
