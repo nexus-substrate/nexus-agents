@@ -5,7 +5,13 @@
  */
 
 // Validation
-export { validateToolInput, createValidator, isZodError } from './validation.js';
+export {
+  validateToolInput,
+  validateToolOutput,
+  createValidator,
+  createOutputValidator,
+  isZodError,
+} from './validation.js';
 
 // Rate limiting
 export {
