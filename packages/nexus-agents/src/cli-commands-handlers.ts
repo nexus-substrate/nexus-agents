@@ -33,6 +33,8 @@ import {
   sessionCommand,
   evaluateCommand,
   issueCommand,
+  // System Mandate LOOP I: Fitness Audit
+  fitnessAuditCommand,
 } from './cli/index.js';
 import { hookCommand, printHookHelp } from './cli/hooks/index.js';
 import { EXIT_CODES, type ParsedCliArgs } from './cli-types.js';
@@ -556,4 +558,19 @@ export function handleIssueCommand(args: ParsedCliArgs): void {
     });
     process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
   }
+}
+
+// ============================================================================
+// System Mandate LOOP I: Fitness Audit Command
+// ============================================================================
+
+/**
+ * Handles fitness-audit command for CLI orchestration fitness scoring.
+ * (Source: System Mandate LOOP I)
+ */
+export function handleFitnessAuditCommand(args: ParsedCliArgs): void {
+  const exitCode = fitnessAuditCommand({
+    json: args.options.format === 'json',
+  });
+  process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
 }

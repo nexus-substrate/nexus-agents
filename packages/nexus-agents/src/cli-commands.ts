@@ -43,6 +43,8 @@ export {
   handleSessionCommand,
   handleEvaluateCommand,
   handleIssueCommand,
+  // System Mandate LOOP I: Fitness Audit
+  handleFitnessAuditCommand,
 } from './cli-commands-handlers.js';
 
 // Import handlers for dispatch
@@ -72,6 +74,8 @@ import {
   handleSessionCommand,
   handleEvaluateCommand,
   handleIssueCommand,
+  // System Mandate LOOP I: Fitness Audit
+  handleFitnessAuditCommand,
 } from './cli-commands-handlers.js';
 
 /**
@@ -99,6 +103,8 @@ const SYNC_COMMAND_HANDLERS: Record<string, ((args: ParsedCliArgs) => void) | un
   demo: handleDemoCommand,
   // Issue #526: Newly wired sync command
   issue: handleIssueCommand,
+  // System Mandate LOOP I: Fitness Audit
+  'fitness-audit': handleFitnessAuditCommand,
 };
 
 /**

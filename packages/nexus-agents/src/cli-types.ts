@@ -50,7 +50,8 @@ export type CliCommand =
   | 'sprint'
   | 'session'
   | 'evaluate'
-  | 'issue';
+  | 'issue'
+  | 'fitness-audit';
 
 /**
  * Parsed CLI arguments and command.
@@ -311,6 +312,7 @@ export function isValidCommand(value: string): value is CliCommand {
     'session',
     'evaluate',
     'issue',
+    'fitness-audit',
   ];
   return validCommands.includes(value as CliCommand);
 }

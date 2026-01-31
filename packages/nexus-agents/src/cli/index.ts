@@ -388,3 +388,7 @@ export {
   isValidDemoSubcommand,
 } from './demo-command.js';
 export type { DemoSubcommand, DemoOptions } from './demo-command.js';
+
+// Fitness Audit (System Mandate LOOP I - CLI Orchestration Fitness Score)
+export { fitnessAuditCommand } from './fitness-audit.js';
+export type { FitnessAuditOptions } from './fitness-audit.js';

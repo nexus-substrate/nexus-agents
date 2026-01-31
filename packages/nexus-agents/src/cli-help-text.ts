@@ -43,6 +43,7 @@ COMMANDS:
   learning-metrics Show aggregated learning metrics dashboard
   swe-bench       Run SWE-bench evaluation benchmark
   hooks           Claude CLI hook integration commands
+  fitness-audit   Run CLI orchestration fitness score audit
 
 OPTIONS:
   -h, --help           Show this help message
@@ -207,6 +208,10 @@ ISSUE OPTIONS:
   --format=<fmt>         Output format: text, json (default: text)
   Types: feat, bug, task, refactor, docs
 
+FITNESS-AUDIT OPTIONS:
+  --format=json          Output as JSON (default: formatted text)
+  --min-severity=<sev>   Filter findings: info, warning, critical (default: all)
+
 DEMO OPTIONS:
   demo routing "task"    Show how routing would select models (mock)
   demo expert-list       Show available experts with descriptions
@@ -289,6 +294,8 @@ EXAMPLES:
   nexus-agents evaluate src/core/ --verbose       Evaluate core with verbose output
   nexus-agents issue validate 123                 Validate issue #123 against template
   nexus-agents issue create feat                  Show feature issue template
+  nexus-agents fitness-audit                      Run CLI fitness score audit (target: 90+)
+  nexus-agents fitness-audit --format=json        Output fitness audit as JSON
 
 For more information, visit: https://github.com/williamzujkowski/nexus-agents
 `.trim();
