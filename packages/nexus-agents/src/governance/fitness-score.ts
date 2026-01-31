@@ -223,7 +223,8 @@ export class FitnessScoreCalculator {
 
     // Check: Token estimation unified
     // Deduct if multiple implementations exist
-    const tokenEstimationDuplications: number = 6; // Known: 7 places, 1 canonical
+    // 11fadd6: Ollama adapter now uses unified TokenEstimator
+    const tokenEstimationDuplications: number = 5; // Known: 6 places, 1 canonical (was 7)
     const tokenDeduction = Math.min(tokenEstimationDuplications, 3);
     score -= tokenDeduction;
     findings.push({
