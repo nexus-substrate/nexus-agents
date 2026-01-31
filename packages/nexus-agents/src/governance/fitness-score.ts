@@ -256,6 +256,10 @@ export class FitnessScoreCalculator {
     // Consolidated: Memory DB utilities (ADR-0013, 48f7aad) - no deduction
     //   - memoryRowToEntry, memoryExists, getMemoryRow, getAllMemoryRows
     //   - tokenize, tokenizeFiltered, stringifyValue
+    // Consolidated: ID generation utilities (ADR-0013, a5f9c31) - no deduction
+    //   - generateId, generateHyphenId, generateShortUuid
+    // Consolidated: STOPWORDS across 4 modules (ADR-0013, 03a5928) - no deduction
+    //   - policy-feature-extraction, task-analyzer-keywords, task-analyzer, agentic-memory
     // Consolidated: Orchestrator factory wiring (ADR-0014, b2e4c0e) - no deduction
     //   - TechLeadAdapter, PuppeteerAdapter now accept instances
 
