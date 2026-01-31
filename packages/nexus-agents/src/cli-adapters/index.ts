@@ -394,3 +394,22 @@ export type {
   WithCacheOptions,
   ResponseCacheErrorCode,
 } from './response-cache.js';
+
+// Unified Routing Types (Issue #574)
+export {
+  UnifiedRoutingDecisionSchema,
+  RoutingDecisionBuilder,
+  createRoutingDecisionBuilder,
+  createSimpleRoutingDecision,
+} from './unified-routing-types.js';
+export type { RoutingStrategy, UnifiedRoutingDecision } from './unified-routing-types.js';
+
+// Cascade Router Base (Issue #574)
+export { CascadeRouterBase, DEFAULT_CASCADE_BASE_CONFIG } from './cascade-router-base.js';
+export type {
+  CascadeRouterBaseConfig,
+  ModelExecutionResult,
+  CascadeStageResult,
+  CascadeExecutionResult,
+  ICascadeRouter,
+} from './cascade-router-base.js';
