@@ -312,8 +312,9 @@ jobs:
           for file in docs/llms.txt docs/llms-full.txt; do
             if [ -f "$file" ]; then
               for pattern in "${SECRET_PATTERNS[@]}"; do
-                # Skip pattern if it looks like a placeholder/example
-                if grep -E "$pattern" "$file" | grep -vE '(example|placeholder|your-|<|>|\$\{|process\.env)' > /dev/null 2>&1; then
+                # Skip pattern if it looks like a placeholder/example/documentation
+                # Exclude: examples, placeholders, environment refs, markdown tables (| pattern |)
+                if grep -E "$pattern" "$file" | grep -vE '(example|placeholder|your-|<|>|\$\{|process\.env|\| .* \|)' > /dev/null 2>&1; then
                   echo "::error::Potential secret pattern '$pattern' found in $file"
                   FOUND_SECRETS=1
                 fi
