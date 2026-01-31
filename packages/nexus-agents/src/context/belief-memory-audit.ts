@@ -19,7 +19,9 @@ import type {
   Counterfactual,
   HindsightRecord,
 } from './belief-types.js';
-import { generateId, initializeStatsCounters, buildStatsResult } from './belief-memory-helpers.js';
+import { initializeStatsCounters, buildStatsResult } from './belief-memory-helpers.js';
+// Shared utilities per ADR-0013
+import { generateId } from '../utils/id-utils.js';
 
 /** Data stores required for audit operations */
 export interface AuditDataStores {

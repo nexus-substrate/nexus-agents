@@ -30,7 +30,9 @@ import {
   BeliefUpdateType as BeliefUpdateTypeEnum,
   DEFAULT_BELIEF_CONFIG,
 } from './belief-types.js';
-import { generateId, createUpdateRecord } from './belief-memory-helpers.js';
+import { createUpdateRecord } from './belief-memory-helpers.js';
+// Shared utilities per ADR-0013
+import { generateId } from '../utils/id-utils.js';
 import {
   recallInternal,
   queryInternal,

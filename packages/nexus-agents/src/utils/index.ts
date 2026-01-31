@@ -23,3 +23,5 @@ export {
   tokenizeFiltered,
   stringifyValue,
 } from './text-utils.js';
+
+export { generateId, generateHyphenId, generateShortUuid } from './id-utils.js';

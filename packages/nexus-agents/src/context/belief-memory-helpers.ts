@@ -7,7 +7,7 @@
  * (Source: Issue #336, arXiv:2512.12818 - Hindsight Belief Memory)
  */
 
-import { getTimeProvider, getRandomProvider } from '../core/index.js';
+import { getTimeProvider } from '../core/index.js';
 import type {
   Belief,
   BeliefConfidence,
@@ -16,16 +16,19 @@ import type {
   BeliefSourceType,
 } from './belief-types.js';
 import { BeliefConfidence as BeliefConfidenceEnum } from './belief-types.js';
+// Shared utilities per ADR-0013
+import { generateId as sharedGenerateId } from '../utils/id-utils.js';
 
 // ============================================================================
 // ID Generation
 // ============================================================================
 
-/** Generate a unique ID with prefix */
+/**
+ * Generate a unique ID with prefix.
+ * @deprecated Use import from '../utils/id-utils.js' directly. Will be removed in v3.0.
+ */
 export function generateId(prefix: string): string {
-  const timestamp = getTimeProvider().now().toString(36);
-  const random = getRandomProvider().random().toString(36).substring(2, 10);
-  return `${prefix}_${timestamp}_${random}`;
+  return sharedGenerateId(prefix, 8);
 }
 
 // ============================================================================
@@ -187,7 +190,7 @@ export interface UpdateRecordOptions {
 /** Create a new update record */
 export function createUpdateRecord(options: UpdateRecordOptions): BeliefUpdate {
   return {
-    updateId: generateId('update'),
+    updateId: sharedGenerateId('update', 8),
     beliefId: options.beliefId,
     updateType: options.updateType,
     previousState: options.previousState,

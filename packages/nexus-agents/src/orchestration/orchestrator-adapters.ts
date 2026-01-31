@@ -10,7 +10,7 @@
 
 import type { Result } from '../core/result.js';
 import { ok, err } from '../core/result.js';
-import { getTimeProvider, getRandomProvider } from '../core/index.js';
+import { getTimeProvider } from '../core/index.js';
 import type { Task, ExecutionStatus } from '../core/types/index.js';
 import type {
   IOrchestrator,
@@ -21,11 +21,12 @@ import type {
   OrchestratorStep,
 } from '../core/types/orchestrator.js';
 import { OrchestratorError } from '../core/types/orchestrator.js';
+// Shared utilities per ADR-0013
+import { generateHyphenId } from '../utils/id-utils.js';
 
+// Use shared utility for ID generation
 function generateId(prefix: string): string {
-  const ts = String(getTimeProvider().now());
-  const rand = getRandomProvider().random().toString(36).slice(2, 8);
-  return `${prefix}-${ts}-${rand}`;
+  return generateHyphenId(prefix, 6);
 }
 
 function createStep(
