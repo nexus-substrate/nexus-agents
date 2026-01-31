@@ -253,6 +253,11 @@ export class FitnessScoreCalculator {
     // Consolidated: toError utility (ecdf0e3) - no deduction
     // Consolidated: STPA safety framework (7bbf6e5) - no deduction
     // Consolidated: REST API server integration (bbd3709) - no deduction
+    // Consolidated: Memory DB utilities (ADR-0013, 48f7aad) - no deduction
+    //   - memoryRowToEntry, memoryExists, getMemoryRow, getAllMemoryRows
+    //   - tokenize, tokenizeFiltered, stringifyValue
+    // Consolidated: Orchestrator factory wiring (ADR-0014, b2e4c0e) - no deduction
+    //   - TechLeadAdapter, PuppeteerAdapter now accept instances
 
     return { score: Math.max(0, score), findings };
   }
