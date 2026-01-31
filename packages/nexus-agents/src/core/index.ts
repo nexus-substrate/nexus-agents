@@ -7,6 +7,16 @@
 export type { Result } from './result.js';
 export { ok, err, isOk, isErr, map, mapErr, unwrap, unwrapOr } from './result.js';
 
+// Command result pattern (Issue #584 - CLI result consolidation)
+export type { CommandResult } from './command-result.js';
+export {
+  commandOk,
+  commandErr,
+  isCommandOk,
+  isCommandErr,
+  getCommandData,
+} from './command-result.js';
+
 // Error hierarchy
 export {
   ErrorCode,

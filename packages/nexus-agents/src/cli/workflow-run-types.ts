@@ -5,7 +5,10 @@
  *
  * @module cli/workflow-run-types
  * (Source: Issue #67, extracted from workflow-run.ts for #272)
+ * (Source: Issue #584 - CommandResult consolidation)
  */
+
+import type { CommandResult } from '../core/index.js';
 
 /**
  * ANSI color codes for terminal output.
@@ -36,14 +39,23 @@ export interface WorkflowRunOptions {
 
 /**
  * Result of workflow run command.
+ * Extends CommandResult base pattern with workflow-specific fields.
+ *
+ * Note: Direct properties are maintained for backward compatibility.
+ * New code should use the CommandResult pattern from core module.
  */
-export interface WorkflowRunResult {
-  readonly success: boolean;
+export interface WorkflowRunResult extends CommandResult {
+  /** Always present - human-readable message */
   readonly message: string;
+  /** Workflow name that was executed */
   readonly workflowName?: string;
+  /** Whether this was a dry run */
   readonly dryRun: boolean;
+  /** Validation errors if any */
   readonly validationErrors?: string[];
+  /** Execution ID for tracking */
   readonly executionId?: string;
+  /** Number of steps executed */
   readonly steps?: number;
 }
 
