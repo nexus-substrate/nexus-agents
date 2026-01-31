@@ -228,6 +228,7 @@ function computeTopicStats(
     'code-generation',
     'cli-tools',
     'orchestration',
+    'security',
   ];
 
   return topics.map((topic) => {
@@ -254,7 +255,7 @@ export function computeStats(
     totalPapers: papers.length,
     totalTechniques: techniques.length,
     totalSources: sources.length,
-    totalTopics: 6,
+    totalTopics: 7,
     techniquesByStatus: countTechniquesByStatus(techniques),
     techniquesByPriority: countTechniquesByPriority(techniques),
     topicStats: computeTopicStats(papers, techniques),

@@ -85,6 +85,7 @@ export function generateTopicsTable(index: ResearchIndex): string {
     'code-generation': 'Self-improvement and skill learning',
     'cli-tools': 'External CLI integration',
     orchestration: 'Multi-agent coordination',
+    security: 'Agent safety and security evaluation',
   };
 
   const rows = topicStats.map((stat) => {

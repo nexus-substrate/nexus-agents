@@ -270,7 +270,7 @@ describe('Statistics Computation', () => {
       expect(stats.totalPapers).toBe(1);
       expect(stats.totalTechniques).toBe(1);
       expect(stats.totalSources).toBe(1);
-      expect(stats.totalTopics).toBe(6);
+      expect(stats.totalTopics).toBe(7);
     });
 
     it('should count techniques by status correctly', () => {

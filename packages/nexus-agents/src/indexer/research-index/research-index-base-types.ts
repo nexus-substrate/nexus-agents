@@ -31,6 +31,7 @@ export const ResearchTopicSchema = z.enum([
   'code-generation',
   'cli-tools',
   'orchestration',
+  'security',
 ]);
 export type ResearchTopic = z.infer<typeof ResearchTopicSchema>;
 
@@ -53,6 +54,7 @@ export const PaperStatusSchema = z.enum([
   'implemented',
   'planned',
   'partial',
+  'in-progress',
   'not-started',
   'rejected',
 ]);
