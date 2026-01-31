@@ -168,18 +168,6 @@ export function getCurrentTimestamp(): string {
 }
 
 // ============================================================================
-// Error Helpers
-// ============================================================================
-
-/**
- * Convert unknown error to Error instance.
- * Used for wrapping errors in Result types.
- */
-export function toError(error: unknown): Error {
-  return error instanceof Error ? error : new Error(String(error));
-}
-
-// ============================================================================
 // SQL Query Constants
 // ============================================================================
 

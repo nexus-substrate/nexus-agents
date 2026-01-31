@@ -333,3 +333,15 @@ export class RateLimitError extends NexusError {
     this.name = 'RateLimitError';
   }
 }
+
+// ============================================================================
+// Utility Functions
+// ============================================================================
+
+/**
+ * Convert an unknown error to an Error instance.
+ * Useful for wrapping errors in Result types from try-catch blocks.
+ */
+export function toError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
+}

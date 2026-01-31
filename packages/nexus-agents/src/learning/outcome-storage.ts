@@ -10,7 +10,7 @@
 
 import type { Result } from '../core/result.js';
 import { ok } from '../core/result.js';
-import { ValidationError } from '../core/errors.js';
+import { ValidationError, toError } from '../core/errors.js';
 import type { ILogger } from '../core/logger.js';
 import { createLogger } from '../core/logger.js';
 import type { CliName } from '../cli-adapters/types.js';
@@ -41,7 +41,6 @@ import {
   INSERT_REWARD_SQL,
   MODEL_STATS_SQL,
   wrapStorageError,
-  toError,
 } from './outcome-storage-helpers.js';
 
 /**

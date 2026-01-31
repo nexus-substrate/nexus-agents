@@ -8,7 +8,7 @@
  */
 
 import type { Result } from '../core/result.js';
-import { err } from '../core/result.js';
+import { err } from '../core/index.js';
 import type { CliName } from '../cli-adapters/types.js';
 import type {
   ISQLiteDatabase,
@@ -206,11 +206,4 @@ export function wrapStorageError<T>(
   const causeError = error instanceof Error ? error : new Error(String(error));
   const options = context !== undefined ? { cause: causeError, context } : { cause: causeError };
   return err(new OutcomeStorageError(message, options));
-}
-
-/**
- * Convert an unknown error to an Error instance.
- */
-export function toError(error: unknown): Error {
-  return error instanceof Error ? error : new Error(String(error));
 }

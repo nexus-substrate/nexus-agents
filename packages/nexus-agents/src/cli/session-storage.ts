@@ -10,7 +10,7 @@
 
 import type { Result } from '../core/result.js';
 import { ok, err } from '../core/result.js';
-import { ValidationError } from '../core/errors.js';
+import { ValidationError, toError } from '../core/errors.js';
 import type { ILogger } from '../core/logger.js';
 import { createLogger } from '../core/logger.js';
 import {
@@ -40,7 +40,6 @@ import {
   generateSessionId,
   generateTaskId,
   getCurrentTimestamp,
-  toError,
   SQL_INSERT_SESSION,
   SQL_GET_SESSION,
   SQL_UPDATE_SESSION_STATUS,

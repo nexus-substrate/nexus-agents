@@ -26,6 +26,8 @@ export {
   ReflectionFailureError,
   PlanningFailureError,
   ActionFailureError,
+  // Utility functions
+  toError,
 } from './errors.js';
 export type { SerializedError, NexusErrorOptions, AgentFailureOptions } from './errors.js';
 
