@@ -91,6 +91,13 @@ export const STOPWORDS = new Set([
   'my',
   'your',
   'our',
+  'their',
+  'him',
+  'her',
+  'them',
+  'his',
+  'hers',
+  'able',
 ]);
 
 // ============================================================================
