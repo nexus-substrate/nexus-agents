@@ -124,8 +124,6 @@ function createDelegateHandler(
  */
 export function registerDelegateToModelTool(server: McpServer, deps: DelegateDeps): void {
   const logger = deps.logger ?? createLogger({ tool: 'delegate_to_model' });
-  const description =
-    'Route a task to the optimal model based on capability matching. Returns model recommendation with reasoning.';
 
   // Wrap handler with timeout protection (Issue #271, CVE-2026-0621)
   const handler = createDelegateHandler(deps, logger);
@@ -136,8 +134,15 @@ export function registerDelegateToModelTool(server: McpServer, deps: DelegateDep
     timeoutMs !== undefined ? { timeoutMs, logger } : { logger }
   );
 
-  // eslint-disable-next-line @typescript-eslint/no-deprecated -- server.tool() is deprecated but still used
-  server.tool('delegate_to_model', description, TOOL_SCHEMA, toSdkCallback(wrappedHandler));
+  server.registerTool(
+    'delegate_to_model',
+    {
+      description:
+        'Route a task to the optimal model based on capability matching. Returns model recommendation with reasoning.',
+      inputSchema: TOOL_SCHEMA,
+    },
+    toSdkCallback(wrappedHandler)
+  );
   logger.info('Registered delegate_to_model tool with timeout protection');
 }
 

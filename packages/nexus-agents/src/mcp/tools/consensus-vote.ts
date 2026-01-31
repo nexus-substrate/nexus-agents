@@ -560,7 +560,10 @@ export function registerConsensusVoteTool(server: McpServer, deps: ConsensusVote
     logger,
   });
 
-  // eslint-disable-next-line @typescript-eslint/no-deprecated -- server.tool() is deprecated but still used
-  server.tool('consensus_vote', description, toolSchema, toSdkCallback(wrappedHandler));
+  server.registerTool(
+    'consensus_vote',
+    { description, inputSchema: toolSchema },
+    toSdkCallback(wrappedHandler)
+  );
   logger.info('Registered consensus_vote tool with timeout protection');
 }

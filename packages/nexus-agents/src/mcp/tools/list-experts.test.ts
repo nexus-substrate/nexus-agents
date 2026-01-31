@@ -58,10 +58,12 @@ describe('list_experts tool', () => {
         deps
       );
 
-      expect(mockServer.tool).toHaveBeenCalledWith(
+      expect(mockServer.registerTool).toHaveBeenCalledWith(
         'list_experts',
-        expect.any(String),
-        expect.any(Object),
+        expect.objectContaining({
+          description: expect.any(String),
+          inputSchema: expect.any(Object),
+        }),
         expect.any(Function)
       );
     });
@@ -72,9 +74,9 @@ describe('list_experts tool', () => {
         deps
       );
 
-      const calls = mockServer.tool.mock.calls;
+      const calls = mockServer.registerTool.mock.calls;
       expect(calls.length).toBeGreaterThan(0);
-      const handler = calls[0]?.[3] as (
+      const handler = calls[0]?.[2] as (
         args: unknown
       ) => Promise<{ isError?: boolean; content: Array<{ text: string }> }>;
       expect(handler).toBeDefined();
@@ -104,7 +106,7 @@ describe('list_experts tool', () => {
         deps
       );
 
-      const handler = mockServer.tool.mock.calls[0]?.[3] as (
+      const handler = mockServer.registerTool.mock.calls[0]?.[2] as (
         args: unknown
       ) => Promise<{ content: Array<{ text: string }> }>;
       const result = await handler({});
@@ -127,7 +129,7 @@ describe('list_experts tool', () => {
         deps
       );
 
-      const handler = mockServer.tool.mock.calls[0]?.[3] as (
+      const handler = mockServer.registerTool.mock.calls[0]?.[2] as (
         args: unknown
       ) => Promise<{ content: Array<{ text: string }> }>;
       const result = await handler({ format: 'names' });
@@ -149,7 +151,8 @@ describe('list_experts tool', () => {
         deps
       );
 
-      const handler = mockServer.tool.mock.calls[0]?.[3] as (
+      // registerTool signature: (name, options, handler)
+      const handler = mockServer.registerTool.mock.calls[0]?.[2] as (
         args: unknown
       ) => Promise<{ isError?: boolean; content: Array<{ text: string }> }>;
       const result = await handler({});
@@ -164,7 +167,8 @@ describe('list_experts tool', () => {
         deps
       );
 
-      const handler = mockServer.tool.mock.calls[0]?.[3] as (
+      // registerTool signature: (name, options, handler)
+      const handler = mockServer.registerTool.mock.calls[0]?.[2] as (
         args: unknown
       ) => Promise<{ isError?: boolean; content: Array<{ text: string }> }>;
       const result = await handler({ format: 'invalid' });

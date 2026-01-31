@@ -209,7 +209,10 @@ export function registerListWorkflowsTool(server: McpServer, deps: ListWorkflows
     timeoutMs !== undefined ? { timeoutMs, logger } : { logger }
   );
 
-  // eslint-disable-next-line @typescript-eslint/no-deprecated -- server.tool() is deprecated but still used
-  server.tool('list_workflows', description, toolSchema, toSdkCallback(wrappedHandler));
+  server.registerTool(
+    'list_workflows',
+    { description, inputSchema: toolSchema },
+    toSdkCallback(wrappedHandler)
+  );
   logger.info('Registered list_workflows tool with timeout protection');
 }

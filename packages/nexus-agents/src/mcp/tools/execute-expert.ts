@@ -274,7 +274,10 @@ export function registerExecuteExpertTool(server: McpServer, deps: ExecuteExpert
     logger,
   });
 
-  // eslint-disable-next-line @typescript-eslint/no-deprecated -- server.tool() is deprecated but still used
-  server.tool('execute_expert', description, toolSchema, toSdkCallback(wrappedHandler));
+  server.registerTool(
+    'execute_expert',
+    { description, inputSchema: toolSchema },
+    toSdkCallback(wrappedHandler)
+  );
   logger.info('Registered execute_expert tool with timeout protection');
 }

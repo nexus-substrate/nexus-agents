@@ -218,7 +218,10 @@ export function registerListExpertsTool(server: McpServer, deps: ListExpertsDeps
     timeoutMs !== undefined ? { timeoutMs, logger } : { logger }
   );
 
-  // eslint-disable-next-line @typescript-eslint/no-deprecated -- server.tool() is deprecated but still used
-  server.tool('list_experts', description, toolSchema, toSdkCallback(wrappedHandler));
+  server.registerTool(
+    'list_experts',
+    { description, inputSchema: toolSchema },
+    toSdkCallback(wrappedHandler)
+  );
   logger.info('Registered list_experts tool with timeout protection');
 }

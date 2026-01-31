@@ -277,8 +277,11 @@ export function registerCreateExpertTool(server: McpServer, deps: CreateExpertDe
     timeoutMs !== undefined ? { timeoutMs, logger } : { logger }
   );
 
-  // eslint-disable-next-line @typescript-eslint/no-deprecated -- server.tool() is deprecated but still used
-  server.tool('create_expert', description, toolSchema, toSdkCallback(wrappedHandler));
+  server.registerTool(
+    'create_expert',
+    { description, inputSchema: toolSchema },
+    toSdkCallback(wrappedHandler)
+  );
   logger.info('Registered create_expert tool with timeout protection');
 }
 

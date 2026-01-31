@@ -350,10 +350,11 @@ export function registerOrchestrateTool(server: McpServer, deps: OrchestrateDeps
     timeoutMs !== undefined ? { timeoutMs, logger } : { logger }
   );
 
-  // Use toSdkCallback to adapt handler to SDK's expected signature (Issue #567)
-  /* eslint-disable @typescript-eslint/no-deprecated */
-  server.tool('orchestrate', description, TOOL_SCHEMA, toSdkCallback(wrappedHandler));
-  /* eslint-enable @typescript-eslint/no-deprecated */
+  server.registerTool(
+    'orchestrate',
+    { description, inputSchema: TOOL_SCHEMA },
+    toSdkCallback(wrappedHandler)
+  );
   logger.info('Registered orchestrate tool with timeout protection');
 }
 

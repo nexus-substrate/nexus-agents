@@ -100,10 +100,12 @@ describe('list_workflows tool', () => {
         deps
       );
 
-      expect(mockServer.tool).toHaveBeenCalledWith(
+      expect(mockServer.registerTool).toHaveBeenCalledWith(
         'list_workflows',
-        expect.any(String),
-        expect.any(Object),
+        expect.objectContaining({
+          description: expect.any(String),
+          inputSchema: expect.any(Object),
+        }),
         expect.any(Function)
       );
     });
@@ -114,7 +116,7 @@ describe('list_workflows tool', () => {
         deps
       );
 
-      const handler = mockServer.tool.mock.calls[0]?.[3] as ToolHandler;
+      const handler = mockServer.registerTool.mock.calls[0]?.[2] as ToolHandler;
       const result = await handler({});
 
       expect(result.isError).toBeUndefined();
@@ -138,7 +140,7 @@ describe('list_workflows tool', () => {
         deps
       );
 
-      const handler = mockServer.tool.mock.calls[0]?.[3] as ToolHandler;
+      const handler = mockServer.registerTool.mock.calls[0]?.[2] as ToolHandler;
       const result = await handler({ category: 'development' });
       const parsed = JSON.parse(result.content[0]?.text ?? '{}') as {
         count: number;
@@ -155,7 +157,7 @@ describe('list_workflows tool', () => {
         deps
       );
 
-      const handler = mockServer.tool.mock.calls[0]?.[3] as ToolHandler;
+      const handler = mockServer.registerTool.mock.calls[0]?.[2] as ToolHandler;
       const result = await handler({ category: 'SECURITY' });
       const parsed = JSON.parse(result.content[0]?.text ?? '{}');
 
@@ -169,7 +171,7 @@ describe('list_workflows tool', () => {
         deps
       );
 
-      const handler = mockServer.tool.mock.calls[0]?.[3] as ToolHandler;
+      const handler = mockServer.registerTool.mock.calls[0]?.[2] as ToolHandler;
       const result = await handler({ format: 'names' });
       const parsed = JSON.parse(result.content[0]?.text ?? '{}');
 
@@ -189,7 +191,7 @@ describe('list_workflows tool', () => {
         deps
       );
 
-      const handler = mockServer.tool.mock.calls[0]?.[3] as ToolHandler;
+      const handler = mockServer.registerTool.mock.calls[0]?.[2] as ToolHandler;
       const result = await handler({});
 
       expect(result.isError).toBe(true);
@@ -206,7 +208,7 @@ describe('list_workflows tool', () => {
         deps
       );
 
-      const handler = mockServer.tool.mock.calls[0]?.[3] as ToolHandler;
+      const handler = mockServer.registerTool.mock.calls[0]?.[2] as ToolHandler;
       const result = await handler({});
       const parsed = JSON.parse(result.content[0]?.text ?? '{}');
 
@@ -226,7 +228,7 @@ describe('list_workflows tool', () => {
         deps
       );
 
-      const handler = mockServer.tool.mock.calls[0]?.[3] as ToolHandler;
+      const handler = mockServer.registerTool.mock.calls[0]?.[2] as ToolHandler;
       const result = await handler({});
 
       expect(result.isError).toBe(true);
