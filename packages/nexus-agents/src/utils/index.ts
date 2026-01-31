@@ -25,3 +25,12 @@ export {
 } from './text-utils.js';
 
 export { generateId, generateHyphenId, generateShortUuid } from './id-utils.js';
+
+export {
+  calculateTokenOverlap,
+  calculateSetOverlapCount,
+  calculateJaccardSimilarity,
+  calculateTextJaccardSimilarity,
+  areTextsSimilar,
+  calculateMaxPairwiseSimilarity,
+} from './similarity-utils.js';

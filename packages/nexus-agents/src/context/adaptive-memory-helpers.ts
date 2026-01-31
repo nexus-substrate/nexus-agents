@@ -25,6 +25,7 @@ import {
   tokenize as sharedTokenize,
   stringifyValue as sharedStringifyValue,
 } from '../utils/text-utils.js';
+import { calculateTokenOverlap } from '../utils/similarity-utils.js';
 import {
   memoryRowToEntry as sharedMemoryRowToEntry,
   memoryExists as sharedMemoryExists,
@@ -90,7 +91,7 @@ export function calculateImportanceScore(importance: string, config: ScoringConf
 
 /**
  * Calculate relevance score between query and memory value.
- * Uses simple token overlap scoring (Jaccard-like similarity).
+ * Uses token overlap scoring via shared similarity-utils (ADR-0013).
  *
  * @param query - Search query
  * @param value - Memory value (stringified)
@@ -103,15 +104,8 @@ export function calculateRelevanceScore(query: string | undefined, value: string
 
   if (queryTokens.length === 0 || valueTokens.length === 0) return 0.5;
 
-  const valueSet = new Set(valueTokens);
-  let matches = 0;
-
-  for (const token of queryTokens) {
-    if (valueSet.has(token)) matches++;
-  }
-
-  // Jaccard-like: matches / queryTokens (how much of query is covered)
-  return matches / queryTokens.length;
+  // Use shared utility for overlap calculation (ADR-0013)
+  return calculateTokenOverlap(queryTokens, valueTokens);
 }
 
 /**

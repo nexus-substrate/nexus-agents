@@ -12,6 +12,7 @@
 import type { PuppeteerState, AgentStepOutput } from './puppeteer-types.js';
 // Shared utilities per ADR-0013
 import { STOPWORDS } from '../../utils/text-utils.js';
+import { calculateTextJaccardSimilarity } from '../../utils/similarity-utils.js';
 
 // =============================================================================
 // Scoring Features
@@ -65,26 +66,19 @@ export function extractKeywords(description: string): string[] {
 }
 
 /**
- * Compute Jaccard-like similarity between recent output strings.
+ * Compute Jaccard similarity between the last two output strings.
+ * Uses shared similarity utility (ADR-0013).
  */
 function computeSimilarity(strings: string[]): number {
   if (strings.length < 2) return 0;
 
-  // Simple Jaccard-like similarity based on word overlap
-  const wordSets = strings.map((s) => new Set(s.toLowerCase().split(/\s+/)));
-  const lastSet = wordSets[wordSets.length - 1];
-  const prevSet = wordSets[wordSets.length - 2];
+  const lastStr = strings[strings.length - 1];
+  const prevStr = strings[strings.length - 2];
 
-  if (lastSet === undefined || prevSet === undefined) return 0;
-  if (lastSet.size === 0 || prevSet.size === 0) return 0;
+  if (lastStr === undefined || prevStr === undefined) return 0;
 
-  let intersection = 0;
-  for (const word of lastSet) {
-    if (prevSet.has(word)) intersection++;
-  }
-
-  const union = lastSet.size + prevSet.size - intersection;
-  return union > 0 ? intersection / union : 0;
+  // Use shared utility for Jaccard calculation (ADR-0013)
+  return calculateTextJaccardSimilarity(prevStr, lastStr);
 }
 
 /**
