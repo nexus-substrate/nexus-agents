@@ -16,104 +16,31 @@ import type {
   EntityType,
   ExtractionConfig,
 } from './agentic-memory-types.js';
+// Shared utilities per ADR-0013
+import {
+  tokenize as sharedTokenize,
+  tokenizeFiltered as sharedTokenizeFiltered,
+  stringifyValue as sharedStringifyValue,
+} from '../utils/text-utils.js';
 
 // ============================================================================
-// Stopwords (common words to filter from keywords)
-// ============================================================================
-
-const STOPWORDS = new Set([
-  'a',
-  'an',
-  'and',
-  'are',
-  'as',
-  'at',
-  'be',
-  'by',
-  'for',
-  'from',
-  'has',
-  'he',
-  'in',
-  'is',
-  'it',
-  'its',
-  'of',
-  'on',
-  'or',
-  'that',
-  'the',
-  'to',
-  'was',
-  'were',
-  'will',
-  'with',
-  'this',
-  'but',
-  'they',
-  'have',
-  'had',
-  'what',
-  'when',
-  'where',
-  'who',
-  'which',
-  'why',
-  'how',
-  'all',
-  'each',
-  'every',
-  'both',
-  'few',
-  'more',
-  'most',
-  'other',
-  'some',
-  'such',
-  'no',
-  'nor',
-  'not',
-  'only',
-  'own',
-  'same',
-  'so',
-  'than',
-  'too',
-  'very',
-  'can',
-  'just',
-  'should',
-  'now',
-  'i',
-  'you',
-  'we',
-  'me',
-  'my',
-  'your',
-  'our',
-]);
-
-// ============================================================================
-// Tokenization
+// Tokenization (delegated to shared utilities)
 // ============================================================================
 
 /**
  * Tokenize text into normalized words.
- * Removes punctuation, converts to lowercase, splits on whitespace.
+ * @deprecated Use import from '../utils/text-utils.js' directly. Will be removed in v3.0.
  */
 export function tokenize(text: string): string[] {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .split(/\s+/)
-    .filter((t) => t.length > 1);
+  return sharedTokenize(text, 2);
 }
 
 /**
  * Tokenize and filter stopwords.
+ * @deprecated Use import from '../utils/text-utils.js' directly. Will be removed in v3.0.
  */
 export function tokenizeFiltered(text: string): string[] {
-  return tokenize(text).filter((t) => !STOPWORDS.has(t));
+  return sharedTokenizeFiltered(text, 2);
 }
 
 // ============================================================================
@@ -125,7 +52,7 @@ export function tokenizeFiltered(text: string): string[] {
  * Returns the most frequent significant words.
  */
 export function extractKeywords(text: string, maxKeywords: number): string[] {
-  const tokens = tokenizeFiltered(text);
+  const tokens = sharedTokenizeFiltered(text, 2);
   if (tokens.length === 0) return [];
 
   // Count frequencies
@@ -253,17 +180,11 @@ export function generateContextDescription(text: string, maxLength: number): str
 // Attribute Extraction Pipeline
 // ============================================================================
 
-function stringifyValue(value: unknown): string {
-  if (typeof value === 'string') return value;
-  if (value === null || value === undefined) return '';
-  return JSON.stringify(value);
-}
-
 /**
  * Extract all A-MEM attributes from a value.
  */
 export function extractAttributes(value: unknown, config: ExtractionConfig): MemoryAttributes {
-  const text = stringifyValue(value);
+  const text = sharedStringifyValue(value);
   return {
     keywords: extractKeywords(text, config.maxKeywords),
     semanticTags: extractSemanticTags(text, config.maxSemanticTags),

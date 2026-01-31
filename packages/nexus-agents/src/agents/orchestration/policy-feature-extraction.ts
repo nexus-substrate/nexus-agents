@@ -10,6 +10,8 @@
  */
 
 import type { PuppeteerState, AgentStepOutput } from './puppeteer-types.js';
+// Shared utilities per ADR-0013
+import { STOPWORDS } from '../../utils/text-utils.js';
 
 // =============================================================================
 // Scoring Features
@@ -32,54 +34,6 @@ export interface ScoringFeatures {
   /** Last agent's reasoning pattern (if any) */
   lastPattern?: string;
 }
-
-// =============================================================================
-// Stop Words for Keyword Extraction
-// =============================================================================
-
-const STOP_WORDS = new Set([
-  'the',
-  'a',
-  'an',
-  'is',
-  'are',
-  'was',
-  'were',
-  'be',
-  'been',
-  'being',
-  'have',
-  'has',
-  'had',
-  'do',
-  'does',
-  'did',
-  'will',
-  'would',
-  'could',
-  'should',
-  'may',
-  'might',
-  'must',
-  'shall',
-  'to',
-  'of',
-  'in',
-  'for',
-  'on',
-  'with',
-  'at',
-  'by',
-  'from',
-  'this',
-  'that',
-  'these',
-  'those',
-  'it',
-  'its',
-  'and',
-  'or',
-]);
 
 // =============================================================================
 // Pattern Mapping
@@ -106,7 +60,7 @@ export function extractKeywords(description: string): string[] {
   return description
     .toLowerCase()
     .split(/\W+/)
-    .filter((word) => word.length > 2 && !STOP_WORDS.has(word))
+    .filter((word) => word.length > 2 && !STOPWORDS.has(word))
     .slice(0, 10);
 }
 

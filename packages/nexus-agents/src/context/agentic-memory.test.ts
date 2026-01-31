@@ -11,8 +11,6 @@ import {
   DEFAULT_LINKING_CONFIG,
 } from './agentic-memory.js';
 import {
-  tokenize,
-  tokenizeFiltered,
   extractKeywords,
   extractSemanticTags,
   extractEntities,
@@ -25,6 +23,8 @@ import {
   mergeExtractionConfig,
   mergeLinkingConfig,
 } from './agentic-memory-helpers.js';
+// Shared utilities per ADR-0013
+import { tokenize, tokenizeFiltered } from '../utils/text-utils.js';
 import type { ISQLiteDatabase, ISQLiteStatement, MemoryRow } from './memory-backend-types.js';
 import { MemoryImportance } from './memory-backend-types.js';
 import type { MemoryAttributes, EntityReference } from './agentic-memory-types.js';

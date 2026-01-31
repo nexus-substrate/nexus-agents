@@ -24,11 +24,12 @@ import {
   AnalysisError,
 } from './task-analyzer-types.js';
 import {
-  STOP_WORDS,
   DOMAIN_KEYWORDS,
   CAPABILITY_KEYWORDS,
   COMPLEXITY_INDICATORS,
 } from './task-analyzer-keywords.js';
+// Shared utilities per ADR-0013
+import { STOPWORDS } from '../../utils/text-utils.js';
 
 // Re-export types
 export {
@@ -53,7 +54,7 @@ function extractKeywords(text: string): string[] {
     .toLowerCase()
     .replace(/[^\w\s-]/g, ' ')
     .split(/\s+/)
-    .filter((word) => word.length > 1 && !STOP_WORDS.has(word));
+    .filter((word) => word.length > 1 && !STOPWORDS.has(word));
 
   // Return unique keywords
   return [...new Set(words)];
