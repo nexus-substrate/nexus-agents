@@ -10,6 +10,7 @@
 
 import type { WorkflowDefinition, WorkflowStep } from '../../core/index.js';
 import { getRandomProvider } from '../../core/index.js';
+import { clamp } from '../../utils/math-utils.js';
 import type {
   WorkflowMutation,
   TimeoutAdjustment,
@@ -70,9 +71,7 @@ export function adjustTimeout(
   if (!step) return null;
 
   const originalValue = step.timeout ?? DEFAULT_TIMEOUT_MS;
-  const newValue = Math.round(
-    Math.max(MIN_TIMEOUT_MS, Math.min(MAX_TIMEOUT_MS, originalValue * factor))
-  );
+  const newValue = Math.round(clamp(originalValue * factor, MIN_TIMEOUT_MS, MAX_TIMEOUT_MS));
 
   // Skip if no effective change
   if (newValue === originalValue) return null;
@@ -122,7 +121,7 @@ export function adjustRetries(
   if (!step) return null;
 
   const originalValue = step.retries ?? DEFAULT_RETRIES;
-  const newValue = Math.max(MIN_RETRIES, Math.min(MAX_RETRIES, originalValue + delta));
+  const newValue = clamp(originalValue + delta, MIN_RETRIES, MAX_RETRIES);
 
   // Skip if no effective change
   if (newValue === originalValue) return null;

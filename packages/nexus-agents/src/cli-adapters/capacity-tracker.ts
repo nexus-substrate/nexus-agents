@@ -12,6 +12,7 @@
 
 import type { CliName, TokenUsage, CapacityStatus } from './types-core.js';
 import { getTimeProvider } from '../core/index.js';
+import { clampPercent } from '../utils/math-utils.js';
 
 /**
  * Default rate limits per CLI provider (tokens per minute).
@@ -144,7 +145,7 @@ export class CapacityTracker {
 
     const tokenUtilization = (usedTokens / this.config.tokenLimit) * 100;
     const requestUtilization = (this.requestCount / this.config.requestLimit) * 100;
-    const utilizationPercent = Math.min(100, Math.max(tokenUtilization, requestUtilization));
+    const utilizationPercent = clampPercent(Math.max(tokenUtilization, requestUtilization));
 
     const exhausted = remainingTokens === 0 || remainingRequests === 0;
     const resetTime = new Date(this.windowStart + this.config.windowMs);

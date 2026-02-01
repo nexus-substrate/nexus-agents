@@ -19,6 +19,7 @@ import {
 } from './system-review-types.js';
 import { safeExecSandboxed } from './sandbox-exec.js';
 import { colors, symbols, writeLine } from './ansi-output.js';
+import { clamp } from '../utils/math-utils.js';
 
 // Re-export for backward compatibility
 export { colors, symbols, writeLine };
@@ -63,7 +64,7 @@ export function calculateHealthScore(r: SystemReviewResult): number {
     score -= LOW_COVERAGE_PENALTY;
   }
   score -= r.issues.staleCount * STALE_ISSUE_PENALTY;
-  return Math.max(0, Math.min(HEALTH_SCORE_BASE, score));
+  return clamp(score, 0, HEALTH_SCORE_BASE);
 }
 
 /** Print Phase 1: Registry Reconciliation results. */
