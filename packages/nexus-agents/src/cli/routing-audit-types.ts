@@ -94,12 +94,5 @@ export const ANSI = colors;
 // Re-export color function for backward compatibility
 export { color };
 
-export const BOX_WIDTH = 65;
-
-export function horizontalLine(char = '─'): string {
-  return char.repeat(BOX_WIDTH - 2);
-}
-
-export function boxLine(content: string): string {
-  return color('│', ANSI.cyan) + content.padEnd(BOX_WIDTH - 2) + color('│', ANSI.cyan);
-}
+// Re-export box drawing utilities from canonical source
+export { BOX_WIDTH, horizontalLine, boxLine } from './box-drawing.js';

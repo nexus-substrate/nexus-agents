@@ -18,31 +18,13 @@ import type {
 } from './learning-metrics-types.js';
 import { formatPercentage } from '../core/index.js';
 import { colors, color } from './ansi-output.js';
+import { horizontalLine, boxLine, centerText } from './box-drawing.js';
 
 // =============================================================================
 // ANSI Formatting Constants (from canonical source)
 // =============================================================================
 
 const ANSI = colors;
-
-const BOX_WIDTH = 65;
-
-function horizontalLine(char = '─'): string {
-  return char.repeat(BOX_WIDTH - 2);
-}
-
-function boxLine(content: string, borderColor = ANSI.cyan): string {
-  return color('│', borderColor) + content.padEnd(BOX_WIDTH - 2) + color('│', borderColor);
-}
-
-function centerText(text: string, borderColor = ANSI.cyan): string {
-  const padding = Math.max(0, BOX_WIDTH - text.length - 2);
-  const left = Math.floor(padding / 2);
-  const right = padding - left;
-  return (
-    color('│', borderColor) + ' '.repeat(left) + text + ' '.repeat(right) + color('│', borderColor)
-  );
-}
 
 // =============================================================================
 // Header Formatting
