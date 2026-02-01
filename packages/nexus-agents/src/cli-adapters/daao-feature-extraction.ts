@@ -8,6 +8,8 @@
  * (Source: Issue #334, arXiv:2509.11079)
  */
 
+import { clamp01 } from '../utils/math-utils.js';
+
 // ============================================================================
 // Feature Extraction Constants
 // ============================================================================
@@ -244,7 +246,7 @@ export function tokenize(text: string): string[] {
 export function normalize(value: number, min: number, max: number): number {
   if (max === min) return 0.5;
   const normalized = (value - min) / (max - min);
-  return Math.max(0, Math.min(1, normalized));
+  return clamp01(normalized);
 }
 
 /**
@@ -372,7 +374,7 @@ export function extractClarity(lower: string): number {
   const clarityScore = saturate(clarityCount, 5);
   const ambiguityCount = countKeywordMatches(lower, AMBIGUITY_KEYWORDS);
   const ambiguityScore = saturate(ambiguityCount, 5);
-  return Math.max(0, Math.min(1, clarityScore * 1.2 - ambiguityScore * 0.8 + 0.5));
+  return clamp01(clarityScore * 1.2 - ambiguityScore * 0.8 + 0.5);
 }
 
 /**

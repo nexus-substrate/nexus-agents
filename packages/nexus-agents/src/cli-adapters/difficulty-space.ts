@@ -9,6 +9,7 @@
  */
 
 import type { CliTask } from './types-capability.js';
+import { clamp01 } from '../utils/math-utils.js';
 import type { TaskProfile } from './task-analyzer.js';
 import {
   type DifficultySpace,
@@ -54,7 +55,7 @@ import {
 export function normalize(value: number, min: number, max: number): number {
   if (max === min) return 0.5;
   const normalized = (value - min) / (max - min);
-  return Math.max(0, Math.min(1, normalized));
+  return clamp01(normalized);
 }
 
 // ============================================================================
@@ -163,7 +164,7 @@ export function calculateEstimateConfidence(space: DifficultySpace): number {
   const normalizedStdDev = stdDev / 0.5;
   const confidence = 1 - normalizedStdDev;
 
-  return Math.max(0, Math.min(1, confidence));
+  return clamp01(confidence);
 }
 
 /**

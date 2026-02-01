@@ -9,6 +9,7 @@
  */
 
 import type { TaskProfile } from '../core/index.js';
+import { clamp, clamp01 } from '../utils/math-utils.js';
 
 // ============================================================================
 // Constants for normalization
@@ -127,7 +128,7 @@ function normalizeKeywordCount(count: number, saturationPoint: number): number {
   if (count === 0) return 0;
   const ratio = count / saturationPoint;
   const raw = ratio * (2 - ratio);
-  return Math.max(0.2, Math.min(1, raw));
+  return clamp(raw, 0.2, 1);
 }
 
 /**
@@ -136,7 +137,7 @@ function normalizeKeywordCount(count: number, saturationPoint: number): number {
 function normalize(value: number, min: number, max: number): number {
   if (max === min) return 0.5;
   const normalized = (value - min) / (max - min);
-  return Math.max(0, Math.min(1, normalized));
+  return clamp01(normalized);
 }
 
 // ============================================================================
@@ -158,7 +159,7 @@ export function estimateReasoningDifficulty(content: string, profile?: TaskProfi
 
   difficulty = difficulty * 0.5 + keywordFactor * 0.35 + taskTypeBonus + 0.15 * difficulty;
 
-  return Math.max(0, Math.min(1, difficulty));
+  return clamp01(difficulty);
 }
 
 /**

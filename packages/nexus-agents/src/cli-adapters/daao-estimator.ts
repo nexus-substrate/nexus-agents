@@ -5,6 +5,7 @@
  */
 
 import { createLogger, type ILogger } from '../core/index.js';
+import { clamp, clamp01 } from '../utils/math-utils.js';
 import type { CliTask, CliName } from './types.js';
 import type { DifficultyLevel, ModelTier } from './zero-router-types.js';
 import {
@@ -90,7 +91,7 @@ export class DAAOEstimator implements IDAAOEstimator {
       score = this.applyCalibration(score);
     }
 
-    score = Math.max(0, Math.min(1, score));
+    score = clamp01(score);
 
     const level = this.classifyLevel(score);
     const recommendedTier = this.getTierForLevel(level);
@@ -231,7 +232,7 @@ export class DAAOEstimator implements IDAAOEstimator {
     const values = FEATURE_DIMENSIONS.map((dim) => features[dim]);
     const mean = values.reduce((a, b) => a + b, 0) / values.length;
     const variance = values.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / values.length;
-    return Math.max(0, Math.min(1, 1 - Math.sqrt(variance) / 0.5));
+    return clamp01(1 - Math.sqrt(variance) / 0.5);
   }
 
   private findDominantFeature(features: EncodedFeatures): FeatureDimension {
@@ -278,7 +279,7 @@ export class DAAOEstimator implements IDAAOEstimator {
     }
 
     this.calibrationBias = biasSum / this.outcomes.length;
-    this.calibrationBias = Math.max(-0.2, Math.min(0.2, this.calibrationBias));
+    this.calibrationBias = clamp(this.calibrationBias, -0.2, 0.2);
   }
 
   private calculateSuccessRateByLevel(): Record<DifficultyLevel, number> {
