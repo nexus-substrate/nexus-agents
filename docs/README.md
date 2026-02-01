@@ -136,6 +136,7 @@ Detailed technical documentation:
 | [e2e-testing-epic-final.md](./plans/e2e-testing-epic-final.md)             | E2E testing plan        | Active     |
 | [agent-improvement-epic-draft.md](./plans/agent-improvement-epic-draft.md) | Agent improvements      | Draft      |
 | [e2e-testing-epic-draft.md](./plans/e2e-testing-epic-draft.md)             | E2E testing draft       | Superseded |
+| [PROJECT_PLAN_2026-01-03.md](./plans/PROJECT_PLAN_2026-01-03.md)           | Original project plan   | Historical |
 
 #### Design Documents
 
@@ -204,8 +205,12 @@ Documents kept for historical reference only:
 | Document                                       | Reason                    | Replacement                                       |
 | ---------------------------------------------- | ------------------------- | ------------------------------------------------- |
 | [docs/research/\_legacy/](./research/_legacy/) | Historical research notes | [RESEARCH_INDEX.md](./research/RESEARCH_INDEX.md) |
-| [PROJECT_PLAN.md](../PROJECT_PLAN.md)          | Outdated planning         | [ALIGNMENT_ROADMAP.md](./ALIGNMENT_ROADMAP.md)    |
-| [RESEARCH_SUMMARY.md](../RESEARCH_SUMMARY.md)  | Outdated summary          | [RESEARCH_INDEX.md](./research/RESEARCH_INDEX.md) |
+
+**Recently Archived/Removed:**
+
+- `PROJECT_PLAN.md` - Moved to [plans/PROJECT_PLAN_2026-01-03.md](./plans/PROJECT_PLAN_2026-01-03.md)
+- `RESEARCH_SUMMARY.md` - Removed (content exists in [research/topics/agent-skills/](./research/topics/agent-skills/))
+- `docs/codebase-index.yaml` - Removed (was empty; use packages/nexus-agents/docs/codebase-index.yaml)
 
 ---
 
