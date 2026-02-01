@@ -1,22 +1,24 @@
 ---
 title: 'Consensus Protocols Architecture'
-description: 'The consensus system implements 11 protocols for multi-agent decisions:'
+description: 'The consensus system implements 5 core voting algorithms for multi-agent decisions:'
 ---
 
 ---
 
 ## Overview
 
-The consensus system implements 11 protocols for multi-agent decisions:
+The consensus system implements 5 core voting algorithms for multi-agent decisions:
 
-- Simple/Supermajority/Unanimous voting
-- Aegean (Byzantine fault tolerant)
-- CP-WBFT (weighted Byzantine)
-- Reflexion (multi-agent critique)
-- Free-MAD (anti-conformity)
-- Self-Refine/Self-Debug (iterative improvement)
-- Proof-of-Learning (performance-weighted)
-- TRINITY (role-based coordination)
+**Implemented Algorithms:**
+
+- **simple_majority**: >50% approval threshold
+- **supermajority**: ≥67% approval threshold
+- **unanimous**: 100% approval required
+- **proof_of_learning**: Weighted by agent performance
+- **opinion_wise**: Opinion-based aggregation
+
+**Research-Based Protocols (Referenced):**
+The system draws inspiration from several research protocols documented in our research index, including Aegean (Byzantine fault tolerant), Reflexion (multi-agent critique), and Self-Refine patterns.
 
 ---
 
@@ -52,7 +54,8 @@ type ConsensusAlgorithm =
   | 'simple_majority' // >50%
   | 'supermajority' // ≥67%
   | 'unanimous' // 100%
-  | 'proof_of_learning'; // Weighted by agent performance
+  | 'proof_of_learning' // Weighted by agent performance
+  | 'opinion_wise'; // Opinion-based aggregation
 
 interface Vote {
   agentId: string;

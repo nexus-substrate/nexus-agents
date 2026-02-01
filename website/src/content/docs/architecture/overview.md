@@ -65,7 +65,7 @@ interface IAgent {
 
 ### Memory System
 
-8-type memory architecture (MIRIX-inspired):
+7-type memory architecture (MIRIX-inspired):
 
 - **Core**: Agent identity and constraints
 - **Episodic**: Task experiences
@@ -73,8 +73,7 @@ interface IAgent {
 - **Procedural**: Skills and workflows
 - **Resource**: External references
 - **Vault**: Cross-session persistence
-- **Graph**: Entity relationships
-- **Adaptive**: Priority-based retrieval
+- **Belief**: Hindsight belief memory for reasoning (arXiv:2512.12818)
 
 ### Routing System
 
@@ -90,12 +89,13 @@ Task → TaskAnalyzer → BudgetRouter → TopsisRouter → LinUCB → Decision
 
 ### Consensus Protocols
 
-11 protocols for multi-agent decisions:
+5 core voting algorithms for multi-agent decisions:
 
-- Simple/Supermajority/Unanimous voting
-- Aegean (Byzantine fault tolerant)
-- Reflexion (multi-agent critique)
-- Self-Refine/Self-Debug (iterative improvement)
+- **simple_majority**: >50% approval threshold
+- **supermajority**: ≥67% approval threshold
+- **unanimous**: 100% approval required
+- **proof_of_learning**: Weighted by agent performance
+- **opinion_wise**: Opinion-based aggregation
 
 ---
 

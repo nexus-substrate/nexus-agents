@@ -7,7 +7,7 @@
 
 ## Overview
 
-The memory system provides 8 distinct memory types inspired by MIRIX (arXiv:2507.07957):
+The memory system provides 7 distinct memory types inspired by MIRIX (arXiv:2507.07957):
 
 1. **Core** - Agent identity and constraints
 2. **Episodic** - Task experiences
@@ -15,8 +15,7 @@ The memory system provides 8 distinct memory types inspired by MIRIX (arXiv:2507
 4. **Procedural** - Skills and workflows
 5. **Resource** - External references
 6. **Vault** - Cross-session persistence
-7. **Graph** - Entity relationships
-8. **Adaptive** - Priority-based retrieval
+7. **Belief** - Hindsight belief memory for reasoning agents (arXiv:2512.12818)
 
 This architecture achieves +35% accuracy vs RAG with 99.9% storage reduction.
 
@@ -55,7 +54,7 @@ type MemoryImportance = 'critical' | 'high' | 'medium' | 'low';
 
 ## Typed Memory System (ITypedMemory)
 
-MIRIX-style six-type memory with specialized sub-interfaces.
+MIRIX-style 7-type memory with specialized sub-interfaces.
 
 ```typescript
 interface ITypedMemory {
