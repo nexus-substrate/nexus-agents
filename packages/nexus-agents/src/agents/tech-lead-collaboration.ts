@@ -25,7 +25,7 @@ import type {
   ResultSummary,
   Conflict,
 } from './tech-lead-types.js';
-import { v4 as uuidv4 } from 'uuid';
+import { generateUUID } from '../utils/index.js';
 
 /**
  * Configuration for TechLead collaboration integration.
@@ -118,7 +118,7 @@ export class TechLeadCollaborationHelper {
     results: TaskResult[],
     originalTask: Task
   ): { collabConfig: CollaborationConfig; sessionId: string } {
-    const sessionId = `synthesis-${uuidv4().slice(0, 8)}`;
+    const sessionId = `synthesis-${generateUUID().slice(0, 8)}`;
     const synthesisTask: Task = {
       id: sessionId,
       description: createSynthesisPrompt(results, originalTask),

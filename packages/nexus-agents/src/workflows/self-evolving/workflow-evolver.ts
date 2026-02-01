@@ -8,7 +8,7 @@
  * (Source: Issue #330)
  */
 
-import { v4 as uuidv4 } from 'uuid';
+import { generateUUID } from '../../utils/index.js';
 import type { WorkflowDefinition } from '../../core/index.js';
 import { getRandomProvider, getTimeProvider } from '../../core/index.js';
 import type {
@@ -56,7 +56,7 @@ export class WorkflowEvolver {
   /** Register the initial workflow version. */
   registerInitialVersion(workflow: WorkflowDefinition): WorkflowVersion {
     const version: WorkflowVersion = {
-      id: uuidv4(),
+      id: generateUUID(),
       version: workflow.version,
       workflow,
       fitnessScore: 0,
@@ -132,7 +132,7 @@ export class WorkflowEvolver {
 
       const newVersion = incrementVersion(semVer, 'patch');
       const variant: WorkflowVersion = {
-        id: uuidv4(),
+        id: generateUUID(),
         version: formatVersion(newVersion),
         workflow: { ...mutatedWorkflow, version: formatVersion(newVersion) },
         fitnessScore: 0,

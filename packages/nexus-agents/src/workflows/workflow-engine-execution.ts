@@ -9,7 +9,7 @@ import { ok, err, getTimeProvider } from '../core/index.js';
 import type { Result, ILogger, StepResult } from '../core/index.js';
 import type { WorkflowDefinition } from '../core/index.js';
 import { WorkflowError } from '../core/index.js';
-import { v4 as uuidv4 } from 'uuid';
+import { generateUUID } from '../utils/index.js';
 import { ContextManager } from '../agents/context-manager.js';
 import {
   applyBudgetEnforcement,
@@ -98,7 +98,7 @@ export function cleanupOldExecutions(executions: Map<string, ActiveExecution>): 
  */
 export function initializeExecution(params: InitExecutionParams): InitExecutionResult {
   const { workflow, inputs, config, logger } = params;
-  const executionId = uuidv4();
+  const executionId = generateUUID();
   const startTime = getTimeProvider().now();
 
   // Create context manager if configured

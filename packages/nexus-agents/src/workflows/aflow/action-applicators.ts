@@ -8,7 +8,7 @@
  * (Source: Issue #329, arXiv:2410.10762)
  */
 
-import { v4 as uuidv4 } from 'uuid';
+import { generateStepId } from '../../utils/index.js';
 import type { WorkflowDefinition, WorkflowStep } from '../../core/index.js';
 import type { WorkflowAction, StepModifications } from './aflow-types.js';
 
@@ -49,7 +49,7 @@ export function applyAddStep(
   if (!action.newStep) return workflow;
 
   const newStep: WorkflowStep = {
-    id: action.newStep.id ?? `step-${uuidv4().slice(0, 8)}`,
+    id: action.newStep.id ?? generateStepId(),
     agent: action.newStep.agent ?? 'code_expert',
     action: action.newStep.action ?? 'execute',
     inputs: action.newStep.inputs ?? {},

@@ -7,7 +7,7 @@
  * Schema version: 1.0.0
  */
 
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { getTimeProvider } from './index.js';
 
@@ -193,7 +193,7 @@ export function createArtifact<T>(
   metadata: CreateArtifactInput
 ): Artifact<T> {
   return {
-    id: uuidv4(),
+    id: randomUUID(),
     type,
     schemaVersion: ARTIFACT_SCHEMA_VERSION,
     data,

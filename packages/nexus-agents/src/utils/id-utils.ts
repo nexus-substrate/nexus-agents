@@ -10,6 +10,7 @@
  * @see docs/adr/0013-memory-helpers-consolidation.md
  */
 
+import { randomUUID } from 'node:crypto';
 import { getTimeProvider, getRandomProvider } from '../core/index.js';
 
 /**
@@ -80,3 +81,60 @@ export function generateShortUuid(prefix: string): string {
   const rand2 = getRandomProvider().random().toString(16).substring(2, 6);
   return `${prefix}-${rand1}${rand2}`;
 }
+
+// ============================================================================
+// UUID Generation (node:crypto)
+// ============================================================================
+
+/**
+ * Generates a UUID v4 using node:crypto.randomUUID().
+ * This is the canonical UUID generator - use instead of `uuid` package.
+ *
+ * Note: This uses node:crypto directly for performance. For deterministic
+ * testing scenarios, use generateId() or generateShortUuid() instead.
+ *
+ * @returns A UUID v4 string
+ *
+ * @example
+ * ```typescript
+ * const id = generateUUID(); // 'f47ac10b-58cc-4372-a567-0e02b2c3d479'
+ * ```
+ */
+export function generateUUID(): string {
+  return randomUUID();
+}
+
+/**
+ * Generates a short UUID (first 8 characters).
+ * Useful for display purposes or step IDs.
+ *
+ * @param prefix - Optional prefix for the ID
+ * @returns A short UUID string, optionally prefixed
+ *
+ * @example
+ * ```typescript
+ * const id = generateShortUUIDv4();           // 'f47ac10b'
+ * const stepId = generateShortUUIDv4('step'); // 'step-f47ac10b'
+ * ```
+ */
+export function generateShortUUIDv4(prefix?: string): string {
+  const shortId = randomUUID().slice(0, 8);
+  return prefix !== undefined ? `${prefix}-${shortId}` : shortId;
+}
+
+/**
+ * Generates a step ID using UUID.
+ * Replacement for `step-${uuidv4().slice(0, 8)}` pattern.
+ *
+ * @param prefix - Prefix for the step ID (default: 'step')
+ * @returns A prefixed short UUID
+ */
+export function generateStepId(prefix = 'step'): string {
+  return generateShortUUIDv4(prefix);
+}
+
+/**
+ * Alias for generateUUID - compatibility with `uuid` package's v4.
+ * @deprecated Use generateUUID() instead for new code.
+ */
+export const uuidv4 = generateUUID;

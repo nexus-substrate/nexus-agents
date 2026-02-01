@@ -24,7 +24,14 @@ export {
   stringifyValue,
 } from './text-utils.js';
 
-export { generateId, generateHyphenId, generateShortUuid } from './id-utils.js';
+export {
+  generateId,
+  generateHyphenId,
+  generateShortUuid,
+  generateUUID,
+  generateShortUUIDv4,
+  generateStepId,
+} from './id-utils.js';
 
 export {
   calculateTokenOverlap,

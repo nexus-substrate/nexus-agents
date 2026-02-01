@@ -8,7 +8,7 @@
  * (Source: Issue #329, arXiv:2410.10762)
  */
 
-import { v4 as uuidv4 } from 'uuid';
+import { generateStepId } from '../../utils/index.js';
 import type { WorkflowDefinition, AgentRole } from '../../core/index.js';
 import type {
   WorkflowAction,
@@ -61,7 +61,7 @@ export function createAddStepActionsForAgent(
   return config.availableActions.map((action) => ({
     type: 'add_step' as ActionType,
     newStep: {
-      id: `step-${uuidv4().slice(0, 8)}`,
+      id: generateStepId(),
       agent,
       action,
       inputs: {},

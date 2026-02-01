@@ -8,7 +8,7 @@
  * (Source: Issue #329, arXiv:2410.10762)
  */
 
-import { v4 as uuidv4 } from 'uuid';
+import { generateUUID } from '../../utils/index.js';
 import type { WorkflowDefinition } from '../../core/index.js';
 import type { MCTSNode, UCTScore, WorkflowAction, AFlowConfig, MCTSStats } from './aflow-types.js';
 import { DEFAULT_AFLOW_CONFIG } from './aflow-types.js';
@@ -37,7 +37,7 @@ export class MCTSTree {
    */
   initializeRoot(workflow: WorkflowDefinition): MCTSNode {
     const root = createMutableNode({
-      id: uuidv4(),
+      id: generateUUID(),
       workflow,
       parentId: null,
       action: null,
@@ -79,7 +79,7 @@ export class MCTSTree {
     if (!parent) return null;
 
     const child = createMutableNode({
-      id: uuidv4(),
+      id: generateUUID(),
       workflow: resultingWorkflow,
       parentId,
       action,

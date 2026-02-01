@@ -8,7 +8,7 @@
  * (Source: Issue #330, #339)
  */
 
-import { v4 as uuidv4 } from 'uuid';
+import { generateUUID } from '../../utils/index.js';
 import type { WorkflowStep } from '../../core/index.js';
 import { getRandomProvider, getTimeProvider } from '../../core/index.js';
 import type { WorkflowVersion, WorkflowMutation } from './sew-types.js';
@@ -104,7 +104,7 @@ export function createChildVersion(
   const newVersion = incrementVersion(semVer, 'patch');
 
   return {
-    id: uuidv4(),
+    id: generateUUID(),
     version: formatVersion(newVersion),
     workflow: {
       ...betterParent.workflow,
