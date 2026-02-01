@@ -120,7 +120,8 @@ jobs:
         id: fitness
         run: |
           cd packages/nexus-agents
-          node dist/cli.js fitness-audit --format=json > fitness-report.json
+          # Run audit and extract JSON (skip log line on first line)
+          node dist/cli.js fitness-audit --format=json | tail -n +2 > fitness-report.json
           SCORE=$(jq '.score' fitness-report.json)
           echo "score=$SCORE" >> $GITHUB_OUTPUT
           echo "Fitness Score: $SCORE/100"
