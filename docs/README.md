@@ -70,6 +70,7 @@ Detailed technical documentation:
 | [SECURITY.md](./architecture/SECURITY.md)                                 | Security model, sandboxing  | Canonical |
 | [MCP_PROTOCOL.md](./architecture/MCP_PROTOCOL.md)                         | MCP integration details     | Canonical |
 | [TECHLEAD_WORKFLOW_ENGINE.md](./architecture/TECHLEAD_WORKFLOW_ENGINE.md) | TechLead vs WorkflowEngine  | Canonical |
+| [dependency-graph.md](./architecture/dependency-graph.md)                 | Module dependency diagram   | Generated |
 
 #### Development
 
@@ -157,6 +158,7 @@ Detailed technical documentation:
 | [process-automation-improvements.md](./proposals/process-automation-improvements.md) | Process automation    | Proposed    |
 | [protocol-improvement-system.md](./proposals/protocol-improvement-system.md)         | Protocol improvements | Proposed    |
 | [self-evaluation-mvp.md](./proposals/self-evaluation-mvp.md)                         | Self-evaluation MVP   | Proposed    |
+| [adapter-architecture-review.md](./proposals/adapter-architecture-review.md)         | Adapter review        | Draft       |
 
 #### Workflows
 
@@ -241,7 +243,8 @@ The following are excluded from this index:
 - `website/node_modules/` - Dependencies
 - `coverage/` - Test coverage reports (generated)
 - `node_modules/` - Dependencies
-- `packages/nexus-agents/docs/` - **TO BE REMOVED** (see #602)
+- `packages/nexus-agents/docs/api/` - Generated TypeDoc output
+- `packages/nexus-agents/docs/codebase-index.yaml` - Generated codebase index
 
 ---
 
