@@ -1,6 +1,6 @@
 # Nexus-Agents Entrypoints
 
-**Last Updated:** 2026-01-24 (ET)
+**Last Updated:** 2026-02-01 (ET)
 **Canonical Source:** This document is the single source of truth for all entrypoints.
 **Issue:** #210 (Epic #209)
 
@@ -67,6 +67,97 @@ Nexus-agents provides four interface categories:
 | `server`       | `--mode=server`       | MCP server for Claude Desktop (default) |
 | `orchestrator` | `--mode=orchestrator` | Standalone CLI, CI/CD pipelines         |
 | `mesh`         | `--mode=mesh`         | Hybrid bidirectional mode               |
+
+### Global Options
+
+Options available for all commands:
+
+| Option            | Type    | Default  | Description              |
+| ----------------- | ------- | -------- | ------------------------ |
+| `-h`, `--help`    | boolean | -        | Show help message        |
+| `-v`, `--version` | boolean | -        | Show version information |
+| `--verbose`       | boolean | `false`  | Enable verbose output    |
+| `-m`, `--mode`    | enum    | `server` | Server mode (see above)  |
+
+### Command Options Reference
+
+#### orchestrate
+
+| Option           | Type    | Default  | Description                             |
+| ---------------- | ------- | -------- | --------------------------------------- |
+| `--model`        | enum    | auto     | CLI to use: `claude`, `gemini`, `codex` |
+| `--format`       | enum    | `text`   | Output format: `text`, `json`           |
+| `--dry-run`      | boolean | `false`  | Show routing decision without executing |
+| `--max-tokens`   | number  | `100000` | Maximum token budget                    |
+| `--max-cost-usd` | number  | `10`     | Maximum cost budget in USD              |
+
+#### vote
+
+| Option              | Type    | Default    | Description                                         |
+| ------------------- | ------- | ---------- | --------------------------------------------------- |
+| `-p`, `--proposal`  | string  | required   | Proposal text to vote on                            |
+| `-t`, `--threshold` | enum    | `majority` | Threshold: `majority`, `supermajority`, `unanimous` |
+| `--timeout`         | number  | `90`       | Timeout per vote in seconds                         |
+| `--quick`           | boolean | `false`    | Use 3 agents instead of 5                           |
+| `--dry-run`         | boolean | `false`    | Simulate votes without agent execution              |
+
+#### review
+
+| Option          | Type    | Default | Description                      |
+| --------------- | ------- | ------- | -------------------------------- |
+| `--setup`       | boolean | `false` | Run setup wizard                 |
+| `--dry-run`     | boolean | `false` | Review without posting to GitHub |
+| `--skip-checks` | boolean | `false` | Skip pre-flight validation       |
+
+#### setup
+
+| Option              | Type    | Default | Description                         |
+| ------------------- | ------- | ------- | ----------------------------------- |
+| `--interactive`     | boolean | `true`  | Run interactive setup wizard        |
+| `--non-interactive` | boolean | `false` | Skip prompts (for CI/automation)    |
+| `--force`           | boolean | `false` | Overwrite existing files            |
+| `--skip-mcp`        | boolean | `false` | Skip MCP configuration              |
+| `--skip-rules`      | boolean | `false` | Skip rules file generation          |
+| `--skip-hooks`      | boolean | `false` | Skip hook configuration             |
+| `--scope`           | enum    | `user`  | MCP config scope: `user`, `project` |
+| `--dry-run`         | boolean | `false` | Show changes without making them    |
+
+#### routing-audit
+
+| Option           | Type    | Default | Description                    |
+| ---------------- | ------- | ------- | ------------------------------ |
+| `--format`       | enum    | `table` | Output format: `table`, `json` |
+| `--dry-run`      | boolean | `false` | Use deterministic TOPSIS-only  |
+| `--bandit-stats` | boolean | `false` | Show LinUCB bandit statistics  |
+
+#### system-review
+
+| Option           | Type    | Default | Description                      |
+| ---------------- | ------- | ------- | -------------------------------- |
+| `--create-issue` | boolean | `false` | Create GitHub issue with results |
+| `--fix`          | boolean | `false` | Auto-fix correctable issues      |
+
+#### learning-metrics
+
+| Option           | Type    | Default | Description                      |
+| ---------------- | ------- | ------- | -------------------------------- |
+| `--period`       | number  | `24`    | Time period in hours             |
+| `--format`       | enum    | `ascii` | Output format: `ascii`, `json`   |
+| `--bandit-stats` | boolean | `false` | Include LinUCB bandit statistics |
+
+#### research
+
+| Option           | Type   | Default | Description                    |
+| ---------------- | ------ | ------- | ------------------------------ |
+| `--format`       | enum   | `table` | Output format: `table`, `json` |
+| `-o`, `--output` | string | -       | Custom output path for refresh |
+
+#### index
+
+| Option           | Type   | Default | Description                   |
+| ---------------- | ------ | ------- | ----------------------------- |
+| `--format`       | enum   | `yaml`  | Output format: `yaml`, `json` |
+| `-o`, `--output` | string | -       | Custom output path            |
 
 ### Usage Examples
 
