@@ -324,7 +324,7 @@ describe('extractDescription', () => {
 export const x = 1;
     `);
     const desc = extractDescription(sourceFile);
-    expect(desc).toBe('This is a test module');
+    expect(desc).toBe('This is a test module.');
   });
 
   it('should skip JSDoc tags', () => {
@@ -338,7 +338,7 @@ export const x = 1;
 export const x = 1;
     `);
     const desc = extractDescription(sourceFile);
-    expect(desc).toBe('Module description here');
+    expect(desc).toBe('Module description here.');
   });
 
   it('should return undefined for files without JSDoc', () => {
@@ -391,7 +391,7 @@ export const VERSION = '1.0.0';
     expect(entry.category).toBe('implementation');
     expect(entry.exports).toHaveLength(2);
     expect(entry.dependencies).toHaveLength(2);
-    expect(entry.description).toBe('Test service implementation');
+    expect(entry.description).toBe('Test service implementation.');
   });
 
   it('should handle files with no exports', () => {

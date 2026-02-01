@@ -187,7 +187,9 @@ describe('Fitness score baseline', () => {
       f.description.toLowerCase().includes('task analysis')
     );
 
-    // Should have finding about task analysis migration
-    expect(taskAnalysisFinding).toBeDefined();
+    // Task analysis consolidation is complete - no finding expected
+    // CLI routing pipeline uses SharedTaskAnalyzer via taskAnalysisResultToTaskProfile()
+    // (Commits: cb81074 - routing pipeline migration)
+    expect(taskAnalysisFinding).toBeUndefined();
   });
 });
