@@ -10,6 +10,7 @@
 
 import type { Result } from '../core/index.js';
 import { ok, err, createLogger, getTimeProvider } from '../core/index.js';
+import { clamp, clampScore } from '../utils/math-utils.js';
 import type { ICliAdapter, CapacityStatus, CapabilityProfile } from '../cli-adapters/types.js';
 import {
   type TaskProfile,
@@ -260,7 +261,7 @@ export class WorkBalancer implements IWorkBalancer {
       contextScore * weights.context;
     const totalWeight = Object.values(weights).reduce((sum, w) => sum + w, 0);
 
-    return Math.min(10, Math.max(0, weightedScore / totalWeight));
+    return clampScore(weightedScore / totalWeight);
   }
 
   getCapacityScore(capacity: CapacityInfo, task: TaskProfile): number {
@@ -293,7 +294,7 @@ export class WorkBalancer implements IWorkBalancer {
       profile: task,
       description,
       queuedAt: new Date(getTimeProvider().now()),
-      priority: Math.max(1, Math.min(10, priority)),
+      priority: clamp(priority, 1, 10),
     };
 
     const insertIndex = this.queue.findIndex((t) => t.priority < queuedTask.priority);

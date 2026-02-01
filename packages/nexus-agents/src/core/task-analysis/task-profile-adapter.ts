@@ -16,6 +16,7 @@ import type {
   TaskTypeCategory,
   ComplexityLevel,
 } from './shared-task-analyzer.js';
+import { clamp } from '../../utils/math-utils.js';
 
 /**
  * Legacy TaskProfile type for backward compatibility.
@@ -319,7 +320,7 @@ export function toExpertTaskAnalysisResult(
     complexity: mapComplexityLevel(analysis.complexity),
     requiredCapabilities: extractRequiredCapabilities(analysis),
     keywords: extractKeywords(analysis),
-    estimatedEffort: Math.max(1, Math.min(10, Math.round(analysis.complexityScore * 10))),
+    estimatedEffort: clamp(Math.round(analysis.complexityScore * 10), 1, 10),
     secondaryDomains: detectSecondaryDomains(analysis),
     confidence: Math.max(analysis.taskTypeConfidence, analysis.reasoningConfidence),
   };

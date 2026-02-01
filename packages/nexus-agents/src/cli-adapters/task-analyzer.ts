@@ -20,6 +20,7 @@
 
 import { z } from 'zod';
 import type { Task } from '../core/types/agent.js';
+import { clampScore } from '../utils/math-utils.js';
 import {
   type TaskType,
   IMAGE_EXTENSIONS,
@@ -253,7 +254,7 @@ function calculateComplexityCompat(text: string, taskType: TaskType): number {
   complexity += Math.min(keywordCount, 3);
 
   // Clamp to 0-10
-  return Math.min(10, Math.max(0, complexity));
+  return clampScore(complexity);
 }
 
 /**

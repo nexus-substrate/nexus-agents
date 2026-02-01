@@ -14,6 +14,7 @@
 
 import type { Task, Result } from '../../core/index.js';
 import { ok, err } from '../../core/index.js';
+import { clamp } from '../../utils/math-utils.js';
 import {
   type TaskAnalysisResult,
   type TaskDomain,
@@ -237,7 +238,7 @@ function estimateEffort(
   baseEffort += secondaryDomains.length * 0.5;
 
   // Clamp to 1-10 range
-  return Math.max(1, Math.min(10, Math.round(baseEffort)));
+  return clamp(Math.round(baseEffort), 1, 10);
 }
 
 // ============================================================================

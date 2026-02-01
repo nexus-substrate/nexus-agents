@@ -22,6 +22,7 @@ import {
   getRandomProvider,
   formatZodError,
 } from '../../core/index.js';
+import { clamp } from '../../utils/math-utils.js';
 import type { IOrchestrator, OrchestratorDefinition } from '../../core/types/orchestrator.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
@@ -405,7 +406,7 @@ export function createMockTechLead(): ITechLead {
   return {
     execute(task: Task) {
       // Simulate basic analysis without model
-      const complexity = Math.min(10, Math.max(1, Math.floor(task.description.length / 50)));
+      const complexity = clamp(Math.floor(task.description.length / 50), 1, 10);
       const needsDecomposition = complexity > 5;
 
       const analysis = {
