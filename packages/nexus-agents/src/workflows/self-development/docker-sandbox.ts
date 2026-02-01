@@ -11,6 +11,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { Result } from '../../core/index.js';
 import { ok, err, createLogger, getTimeProvider } from '../../core/index.js';
+import { truncateWithInfo } from '../../utils/text-utils.js';
 
 const execFileAsync = promisify(execFile);
 const logger = createLogger({ component: 'docker-sandbox' });
@@ -83,11 +84,10 @@ export class SandboxError extends Error {
 
 /**
  * Truncate output if it exceeds the maximum size.
+ * Wraps truncateWithInfo from utils/text-utils.ts.
  */
 function truncateOutput(output: string, maxSize: number = MAX_OUTPUT_SIZE): string {
-  if (output.length <= maxSize) return output;
-  const truncated = output.slice(0, maxSize);
-  return `${truncated}\n... [truncated ${String(output.length - maxSize)} bytes]`;
+  return truncateWithInfo(output, maxSize);
 }
 
 /**

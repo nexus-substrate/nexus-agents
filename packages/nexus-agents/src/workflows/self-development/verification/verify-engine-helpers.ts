@@ -9,6 +9,7 @@
 
 import { safeRegex } from '../../../core/safe-regex.js';
 import type { CheckDefinition, CheckResult, CheckIssue } from './verify-types.js';
+import { truncateWithInfo } from '../../../utils/text-utils.js';
 
 // ============================================================================
 // Output Analysis
@@ -254,8 +255,8 @@ export function prioritizeFixes(
 
 /**
  * Truncates output to reasonable length.
+ * Re-exported from utils/text-utils.ts for backward compatibility.
  */
 export function truncateOutput(output: string, maxLength: number = 5000): string {
-  if (output.length <= maxLength) return output;
-  return output.slice(0, maxLength) + '\n... (truncated)';
+  return truncateWithInfo(output, maxLength);
 }

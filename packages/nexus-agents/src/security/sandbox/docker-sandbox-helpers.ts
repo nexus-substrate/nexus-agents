@@ -11,6 +11,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { ResourceUsage, PolicyEvaluation } from './sandbox-types.js';
+import { truncateWithInfo } from '../../utils/text-utils.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -67,11 +68,10 @@ export function bytesToDockerMemory(bytes: number): string {
 
 /**
  * Truncate output if it exceeds the maximum size.
+ * Re-exported from utils/text-utils.ts for backward compatibility.
  */
 export function truncateOutput(output: string, maxSize: number = MAX_OUTPUT_SIZE): string {
-  if (output.length <= maxSize) return output;
-  const truncated = output.slice(0, maxSize);
-  return `${truncated}\n... [truncated ${String(output.length - maxSize)} bytes]`;
+  return truncateWithInfo(output, maxSize);
 }
 
 /**

@@ -7,6 +7,7 @@
  */
 
 import type { SourceFile } from 'ts-morph';
+import { truncateSentence } from '../utils/text-utils.js';
 
 /** Result of processing a single line in JSDoc extraction. */
 type LineResult = 'start' | 'end' | 'stop' | 'skip' | 'content';
@@ -26,11 +27,12 @@ function extractJsDocLineContent(trimmed: string): string {
   return trimmed.startsWith('*') ? trimmed.slice(1).trim() : trimmed;
 }
 
-/** Truncates text to first sentence or max 150 chars. */
+/**
+ * Truncates text to first sentence or max 150 chars.
+ * Uses truncateSentence from utils/text-utils.ts.
+ */
 function truncateDescription(full: string): string {
-  const firstSentence = full.split(/[.!?]/)[0];
-  if (firstSentence !== undefined && firstSentence.length <= 150) return firstSentence.trim();
-  return full.slice(0, 150).trim() + '...';
+  return truncateSentence(full, 150);
 }
 
 /**
