@@ -24,6 +24,9 @@ exclude_path = [
   "packages/nexus-agents/docs/api",
   "website/node_modules",
   "website/dist",
+  # Website content has relative links designed for the live site,
+  # not the file system. Check canonical docs instead.
+  "website/src/content/docs",
 ]
 
 # Exclude specific URLs
