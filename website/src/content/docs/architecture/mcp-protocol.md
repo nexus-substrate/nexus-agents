@@ -1,16 +1,22 @@
 ---
-title: MCP Protocol
-description: Model Context Protocol implementation for Claude Desktop integration, including tool definitions, resources, and setup.
+title: 'MCP Protocol Architecture'
+description: 'Model Context Protocol (MCP) integration enables Claude Desktop to orchestrate nexus-agents. The system implements the MCP 2025-11-25 specification.'
 ---
+
+---
+
+## Overview
 
 Model Context Protocol (MCP) integration enables Claude Desktop to orchestrate nexus-agents. The system implements the MCP 2025-11-25 specification.
 
-## Key Capabilities
+### Key Capabilities
 
 - **Tool Definitions** - Zod-validated tool schemas
 - **Structured Output** - JSON and text content blocks
 - **Resource Management** - Dynamic context exposure
 - **Error Handling** - Tool errors vs protocol errors
+
+---
 
 ## MCP Server Architecture
 
@@ -40,63 +46,7 @@ Model Context Protocol (MCP) integration enables Claude Desktop to orchestrate n
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## Claude Desktop Setup
-
-Add nexus-agents to your Claude Desktop configuration:
-
-```json
-// ~/.claude/mcp.json
-{
-  "mcpServers": {
-    "nexus-agents": {
-      "command": "nexus-agents",
-      "args": ["--mode=server"]
-    }
-  }
-}
-```
-
-### Verification
-
-```bash
-# Test MCP server starts correctly
-nexus-agents --mode=server --verbose
-
-# Check tool registration
-# Look for: "Registered tool: orchestrate"
-```
-
-## Registered Tools
-
-| Tool          | Description                  | Key Parameters           |
-| ------------- | ---------------------------- | ------------------------ |
-| `orchestrate` | Main task orchestration      | task, context, maxTurns  |
-| `delegate`    | Route task to specific model | task, targetModel        |
-| `expert`      | Create domain expert         | type, customPrompt       |
-| `workflow`    | Execute workflow template    | template, inputs, dryRun |
-| `review`      | Review GitHub PR             | url, focus               |
-
-### Tool Examples
-
-**orchestrate**
-
-```typescript
-// Input
-{ task: "Review this code for security issues", context: { file: "auth.ts" } }
-
-// Output
-{ summary: "...", experts_consulted: ["security", "code"], recommendations: [...] }
-```
-
-**workflow**
-
-```typescript
-// Input
-{ template: "code-review", inputs: { url: "https://github.com/..." }, dryRun: false }
-
-// Output
-{ status: "completed", steps: [...], output: "..." }
-```
+---
 
 ## Tool Design Pattern
 
@@ -142,6 +92,8 @@ server.tool(
 4. **Tool errors vs protocol errors** - Use `isError: true` for tool failures
 5. **Structured output** - Support both `structuredContent` and `TextContent`
 
+---
+
 ## Tool Interface
 
 ```typescript
@@ -171,6 +123,42 @@ type ToolContentBlock =
   | { type: 'resource'; uri: string; mimeType?: string };
 ```
 
+---
+
+## Registered Tools
+
+| Tool          | Description                  | Key Parameters           |
+| ------------- | ---------------------------- | ------------------------ |
+| `orchestrate` | Main task orchestration      | task, context, maxTurns  |
+| `delegate`    | Route task to specific model | task, targetModel        |
+| `expert`      | Create domain expert         | type, customPrompt       |
+| `workflow`    | Execute workflow template    | template, inputs, dryRun |
+| `review`      | Review GitHub PR             | url, focus               |
+
+### Tool Examples
+
+**orchestrate**
+
+```typescript
+// Input
+{ task: "Review this code for security issues", context: { file: "auth.ts" } }
+
+// Output
+{ summary: "...", experts_consulted: ["security", "code"], recommendations: [...] }
+```
+
+**workflow**
+
+```typescript
+// Input
+{ template: "code-review", inputs: { url: "https://github.com/..." }, dryRun: false }
+
+// Output
+{ status: "completed", steps: [...], output: "..." }
+```
+
+---
+
 ## Resource Exposure
 
 Dynamic context exposure to Claude:
@@ -193,6 +181,42 @@ server.resource('project_context', 'text/markdown', async () => {
 | `architecture`    | text/markdown    | ARCHITECTURE.md summary  |
 | `config`          | application/json | Current configuration    |
 | `routing_stats`   | application/json | Routing performance data |
+
+---
+
+## Testing MCP Tools
+
+```typescript
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+
+describe('MCP Tools', () => {
+  let client: Client;
+  let server: Server;
+
+  beforeEach(async () => {
+    // Create linked transport pair
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+
+    server = createServer();
+    client = new Client({ name: 'test-client' });
+
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+  });
+
+  it('should orchestrate task', async () => {
+    const result = await client.callTool({
+      name: 'orchestrate',
+      arguments: { task: 'Test task' },
+    });
+
+    expect(result.isError).toBe(false);
+    expect(result.content).toHaveLength(1);
+  });
+});
+```
+
+---
 
 ## Error Handling
 
@@ -230,39 +254,9 @@ throw new McpError(ErrorCode.InternalError, 'Database connection failed');
 | Internal     | No      | Yes   | Database failure          |
 | Protocol     | No      | Yes   | MCP spec violation        |
 
-## Testing MCP Tools
+---
 
-```typescript
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-
-describe('MCP Tools', () => {
-  let client: Client;
-  let server: Server;
-
-  beforeEach(async () => {
-    // Create linked transport pair
-    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-
-    server = createServer();
-    client = new Client({ name: 'test-client' });
-
-    await server.connect(serverTransport);
-    await client.connect(clientTransport);
-  });
-
-  it('should orchestrate task', async () => {
-    const result = await client.callTool({
-      name: 'orchestrate',
-      arguments: { task: 'Test task' },
-    });
-
-    expect(result.isError).toBe(false);
-    expect(result.content).toHaveLength(1);
-  });
-});
-```
-
-## Adding a New Tool
+## Extension: Adding a New Tool
 
 ### 1. Define Tool Interface
 
@@ -319,6 +313,8 @@ describe('my_tool', () => {
 });
 ```
 
+---
+
 ## Configuration
 
 ```yaml
@@ -344,6 +340,37 @@ mcp:
       dryRunDefault: false
 ```
 
+---
+
+## Claude Desktop Integration
+
+### Setup
+
+Add to `~/.claude/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "nexus-agents": {
+      "command": "nexus-agents",
+      "args": ["--mode=server"]
+    }
+  }
+}
+```
+
+### Verification
+
+```bash
+# Test MCP server starts correctly
+nexus-agents --mode=server --verbose
+
+# Check tool registration
+# Look for: "Registered tool: orchestrate"
+```
+
+---
+
 ## Source Files
 
 | File                    | Purpose                   |
@@ -354,14 +381,19 @@ mcp:
 | `src/mcp/types.ts`      | Type definitions          |
 | `src/cli/cli-server.ts` | Server mode entry point   |
 
+---
+
 ## Protocol Reference
 
 - **Specification:** [modelcontextprotocol.io](https://modelcontextprotocol.io)
 - **SDK Version:** @modelcontextprotocol/sdk@1.25.1
 - **Protocol Version:** 2025-11-25
 
-## Next Steps
+---
 
-- [Agent System](/nexus-agents/architecture/agent-system) - Learn about the agents orchestrated via MCP
-- [Security](/nexus-agents/architecture/security) - Understand MCP security considerations
-- [Routing System](/nexus-agents/architecture/routing-system) - See how tool calls are routed
+## Related Documents
+
+- **Agent System:** [AGENT_SYSTEM.md](/nexus-agents/architecture/agent-system/)
+- **Security:** [SECURITY.md](/nexus-agents/architecture/security/)
+- **Full Architecture:** [ARCHITECTURE.md](../../ARCHITECTURE.md)
+- **API Reference:** [ENTRYPOINTS.md](../ENTRYPOINTS.md)

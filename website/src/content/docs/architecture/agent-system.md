@@ -1,13 +1,24 @@
 ---
-title: Agent System
-description: The agent framework, TechLead orchestrator, domain experts, and state machine that power Nexus Agents.
+title: 'Agent System Architecture'
+description: 'The agent system provides the core abstraction for intelligent task execution. Agents are autonomous entities that:'
 ---
 
-The agent system provides the core abstraction for intelligent task execution. Agents are autonomous entities that receive tasks, execute them using model adapters, collaborate through protocols, and maintain state throughout their lifecycle.
+---
+
+## Overview
+
+The agent system provides the core abstraction for intelligent task execution. Agents are autonomous entities that:
+
+- Receive tasks from the TechLead orchestrator
+- Execute tasks using model adapters
+- Collaborate through protocols (consensus, reflexion, etc.)
+- Maintain state throughout their lifecycle
+
+---
 
 ## Core Interface: IAgent
 
-All agents implement this interface, enabling polymorphic handling across the system:
+All agents implement this interface, enabling polymorphic handling across the system.
 
 ```typescript
 interface IAgent {
@@ -25,12 +36,12 @@ interface IAgent {
 
 ### Properties
 
-| Property       | Type                         | Description                            |
-| -------------- | ---------------------------- | -------------------------------------- |
-| `id`           | `string`                     | Unique identifier                      |
-| `role`         | `AgentRole`                  | Functional role (code, security, etc.) |
-| `state`        | `AgentState`                 | Current lifecycle state                |
-| `capabilities` | `readonly AgentCapability[]` | What this agent can do                 |
+| Property       | Type                         | Description                      |
+| -------------- | ---------------------------- | -------------------------------- |
+| `id`           | `string`                     | Unique identifier                |
+| `role`         | `AgentRole`                  | Functional role (code, security) |
+| `state`        | `AgentState`                 | Current lifecycle state          |
+| `capabilities` | `readonly AgentCapability[]` | What this agent can do           |
 
 ### Methods
 
@@ -41,9 +52,11 @@ interface IAgent {
 | `initialize()`    | Setup agent context and resources   |
 | `cleanup()`       | Release resources on shutdown       |
 
+---
+
 ## Agent State Machine
 
-Agents transition through well-defined states during task execution:
+Agents transition through well-defined states during task execution.
 
 ```mermaid
 stateDiagram-v2
@@ -77,82 +90,11 @@ stateDiagram-v2
 3. **Cleanup must complete** - Agent cannot be reused after `cleanup()`
 4. **Timeouts trigger error** - Configurable per-task timeout protection
 
-## TechLead Orchestrator
-
-The TechLead is the central orchestrator that:
-
-- Analyzes incoming tasks to determine complexity and requirements
-- Selects appropriate experts from the pool
-- Delegates subtasks to experts
-- Synthesizes results from multiple experts
-- Manages the overall task lifecycle
-
-```typescript
-const techLead = new TechLead({
-  modelAdapter: claudeAdapter,
-  expertPool: expertFactory,
-  maxDelegations: 5,
-});
-
-const result = await techLead.execute({
-  id: 'task-001',
-  description: 'Review this code for security issues',
-  context: { file: 'auth.ts' },
-});
-```
-
-## Expert System
-
-Specialized agents with domain expertise handle specific types of tasks.
-
-### Built-in Expert Types
-
-| Expert          | Domain            | Capabilities                       |
-| --------------- | ----------------- | ---------------------------------- |
-| `code`          | Code generation   | Write, refactor, explain code      |
-| `security`      | Security analysis | Vulnerability detection, hardening |
-| `architecture`  | System design     | Design patterns, trade-offs        |
-| `testing`       | Test development  | Unit, integration, E2E tests       |
-| `documentation` | Technical writing | API docs, guides, comments         |
-
-### Expert Configuration
-
-Define custom experts in your configuration:
-
-```yaml
-experts:
-  builtin: true # Enable built-in experts
-  custom:
-    rust_expert:
-      prompt: 'You are a Rust expert specializing in systems programming...'
-      tier: powerful
-      tools: [read_file, write_file]
-
-    react_expert:
-      prompt: 'You are a React expert with deep knowledge of hooks...'
-      tier: balanced
-      tools: [read_file, write_file, run_tests]
-```
-
-### Expert Factory Pattern
-
-Create experts dynamically at runtime:
-
-```typescript
-// Create expert dynamically
-const expert = ExpertFactory.create({
-  type: 'code',
-  prompt: 'Additional context for this session...',
-  tier: 'balanced',
-});
-
-// Execute task
-const result = await expert.execute(task);
-```
+---
 
 ## Collaboration Protocols
 
-Agents collaborate through structured protocols for complex tasks:
+Agents collaborate through structured protocols for complex tasks.
 
 ```typescript
 interface ICollaborationProtocol {
@@ -176,7 +118,7 @@ type CollaborationPattern =
 
 | Pattern      | Use When                               | Example                    |
 | ------------ | -------------------------------------- | -------------------------- |
-| `sequential` | Results feed into next step            | Code -> Test -> Review     |
+| `sequential` | Results feed into next step            | Code → Test → Review       |
 | `parallel`   | Independent subtasks, speed matters    | Multi-file analysis        |
 | `review`     | Quality assurance needed               | Security review of code    |
 | `consensus`  | Critical decisions requiring agreement | Architecture choices       |
@@ -189,13 +131,75 @@ Uses multiple persona-based critics to iteratively refine outputs:
 - **Devil's Advocate**: Challenges assumptions
 - **Security Critic**: Identifies vulnerabilities
 - **Maintainability Critic**: Assesses code quality
-- **Correctness Critic**: Logic errors, edge cases
 
-This approach avoids "degeneration of thought" from single-agent self-reflection by bringing diverse perspectives to the critique process.
+This approach avoids "degeneration of thought" from single-agent self-reflection.
+
+**Source:** arXiv:2512.20845
+
+---
+
+## Expert System
+
+Specialized agents with domain expertise.
+
+### Built-in Expert Types
+
+| Expert          | Domain            | Capabilities                       |
+| --------------- | ----------------- | ---------------------------------- |
+| `code`          | Code generation   | Write, refactor, explain code      |
+| `security`      | Security analysis | Vulnerability detection, hardening |
+| `architecture`  | System design     | Design patterns, trade-offs        |
+| `testing`       | Test development  | Unit, integration, E2E tests       |
+| `documentation` | Technical writing | API docs, guides, comments         |
+
+### Custom Expert Configuration
+
+Define custom experts in `nexus-agents.yaml`:
+
+```yaml
+experts:
+  builtin: true # Enable built-in experts
+  custom:
+    rust_expert:
+      systemPrompt: 'You are a Rust expert specializing in memory safety...'
+      tier: powerful # fast, balanced, or powerful
+      domain: code # primary domain
+      capabilities: [code_generation, code_review]
+      weight: 0.9 # Selection priority (0-1)
+      available: true
+    security_auditor:
+      systemPrompt: 'You are a security auditor focused on OWASP...'
+      tier: balanced
+      domain: security
+      capabilities: [vulnerability_analysis, threat_modeling]
+      secondaryDomains: [code] # Optional
+```
+
+Custom experts are validated with Zod schemas on load. List all experts with:
+
+```bash
+nexus-agents expert list
+```
+
+### Expert Factory Pattern
+
+```typescript
+// Create expert dynamically
+const expert = ExpertFactory.create({
+  type: 'code',
+  prompt: 'Additional context...',
+  tier: 'balanced',
+});
+
+// Execute task
+const result = await expert.execute(task);
+```
+
+---
 
 ## Context Pruner
 
-Manages context window to prevent token exhaustion:
+Manages context window to prevent token exhaustion.
 
 ```typescript
 type PruningStrategy =
@@ -224,46 +228,7 @@ interface ContextPrunerConfig {
 | `summarize`       | Long sessions            | Summarization latency  |
 | `semantic`        | Research/reasoning tasks | Computational cost     |
 
-## Creating a Custom Agent
-
-Implement the `IAgent` interface:
-
-```typescript
-import { IAgent, Task, Result, TaskResult, AgentError } from 'nexus-agents';
-
-class CustomAgent implements IAgent {
-  readonly id = 'custom-001';
-  readonly role = 'custom';
-  state: AgentState = 'idle';
-  readonly capabilities = ['analyze', 'generate'];
-
-  async execute(task: Task): Promise<Result<TaskResult, AgentError>> {
-    this.state = 'thinking';
-    try {
-      // Your implementation
-      const result = await this.processTask(task);
-      this.state = 'idle';
-      return { ok: true, value: result };
-    } catch (error) {
-      this.state = 'error';
-      return { ok: false, error: new AgentError('Execution failed', error) };
-    }
-  }
-
-  async handleMessage(msg: AgentMessage): Promise<Result<AgentResponse, AgentError>> {
-    // Handle inter-agent messages
-  }
-
-  async initialize(ctx: AgentContext): Promise<Result<void, AgentError>> {
-    // Setup resources
-    return { ok: true, value: undefined };
-  }
-
-  async cleanup(): Promise<void> {
-    // Release resources
-  }
-}
-```
+---
 
 ## Source Files
 
@@ -276,8 +241,11 @@ class CustomAgent implements IAgent {
 | `src/agents/collaboration/`    | Collaboration protocols       |
 | `src/agents/context-pruner.ts` | Context management            |
 
-## Next Steps
+---
 
-- [Consensus Protocols](/nexus-agents/architecture/consensus-protocols) - Learn about multi-agent decision making
-- [Memory System](/nexus-agents/architecture/memory-system) - Understand how agents persist knowledge
-- [Routing System](/nexus-agents/architecture/routing-system) - See how tasks are routed to optimal models
+## Related Documents
+
+- **Memory System:** [MEMORY_SYSTEM.md](/nexus-agents/architecture/memory-system/)
+- **Consensus Protocols:** [CONSENSUS_PROTOCOLS.md](/nexus-agents/architecture/consensus-protocols/)
+- **Full Architecture:** [ARCHITECTURE.md](../../ARCHITECTURE.md)
+- **Coding Standards:** [CODING_STANDARDS.md](../../CODING_STANDARDS.md)

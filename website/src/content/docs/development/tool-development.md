@@ -1,9 +1,15 @@
 ---
-title: MCP Tool Development
-description: Create custom MCP tools with Zod validation for nexus-agents.
+title: 'MCP Tool Development Guide'
+description: 'This guide walks through creating new MCP tools for nexus-agents. Tools follow the MCP 2025-11-25 specification and use Zod for input validation.'
 ---
 
-This guide covers creating new MCP tools for nexus-agents. Tools follow the MCP 2025-11-25 specification and use Zod for input validation.
+---
+
+## Overview
+
+This guide walks through creating new MCP tools for nexus-agents. Tools follow the MCP 2025-11-25 specification and use Zod for input validation.
+
+---
 
 ## Tool Architecture
 
@@ -29,11 +35,11 @@ type ToolContentBlock =
   | { type: 'resource'; uri: string; mimeType?: string };
 ```
 
+---
+
 ## Creating a New Tool
 
 ### Step 1: Define Input Schema
-
-Use Zod for comprehensive input validation:
 
 ```typescript
 // src/mcp/tools/my-tool.ts
@@ -43,19 +49,11 @@ const MyToolInputSchema = z.object({
   // Required parameters
   query: z.string().min(1).describe('Search query to execute'),
 
-  // Optional parameters with defaults
+  // Optional parameters
   limit: z.number().min(1).max(100).default(10).describe('Maximum results to return'),
 
   // Enum parameters
   format: z.enum(['json', 'text', 'markdown']).default('text').describe('Output format'),
-
-  // Optional nested object
-  options: z
-    .object({
-      verbose: z.boolean().default(false),
-      includeMetadata: z.boolean().default(true),
-    })
-    .optional(),
 });
 
 type MyToolInput = z.infer<typeof MyToolInputSchema>;
@@ -71,7 +69,7 @@ export const myTool: ITool = {
   description: `Search for items matching a query.
 
 Use this tool when you need to:
-- Find specific items in the codebase
+- Find specific items
 - Search by criteria
 
 Parameters:
@@ -135,17 +133,19 @@ export function registerTools(server: McpServer, registry: IToolRegistry): void 
 }
 ```
 
+---
+
 ## Tool Design Patterns
 
-### Pattern 1: Direct Server Registration
+### Pattern 1: Direct Registration
 
-For simple tools, register directly with the MCP server:
+For simple tools, register directly with the server:
 
 ```typescript
 server.tool(
   'simple_tool',
   {
-    param: z.string().describe('What this parameter does'),
+    param: z.string().describe('What this does'),
   },
   async (args) => {
     return {
@@ -160,22 +160,15 @@ server.tool(
 For tools with dependencies:
 
 ```typescript
-function createAnalysisTool(deps: { adapter: IModelAdapter }): ITool {
+function createMyTool(deps: { adapter: IModelAdapter }): ITool {
   return {
-    name: 'analyze_code',
-    description: 'Analyze code with AI assistance',
-    inputSchema: AnalysisSchema,
+    name: 'my_tool',
+    description: '...',
+    inputSchema: Schema,
     async execute(input) {
-      const parsed = AnalysisSchema.parse(input);
-
-      // Use injected adapter
-      const response = await deps.adapter.complete({
-        messages: [{ role: 'user', content: parsed.code }],
-      });
-
-      return {
-        content: [{ type: 'text', text: response.value.content }],
-      };
+      // Use deps.adapter
+      const response = await deps.adapter.complete(request);
+      return { content: [{ type: 'text', text: response }] };
     },
   };
 }
@@ -189,13 +182,10 @@ For tools that need to load resources:
 async execute(input: unknown): Promise<ToolResult> {
   const parsed = Schema.safeParse(input);
   if (!parsed.success) {
-    return {
-      isError: true,
-      content: [{ type: 'text', text: parsed.error.message }],
-    };
+    return { isError: true, content: [{ type: 'text', text: parsed.error.message }] };
   }
 
-  // Validate resource exists before loading
+  // Validate resource exists
   const exists = await resourceExists(parsed.data.path);
   if (!exists) {
     return {
@@ -206,17 +196,17 @@ async execute(input: unknown): Promise<ToolResult> {
 
   // Load and process
   const content = await loadResource(parsed.data.path);
-  return {
-    content: [{ type: 'text', text: content }],
-  };
+  return { content: [{ type: 'text', text: content }] };
 }
 ```
+
+---
 
 ## Error Handling
 
 ### Tool Errors vs Protocol Errors
 
-| Error Type         | Use `isError: true` | Throw Exception |
+| Type               | Use `isError: true` | Throw Exception |
 | ------------------ | ------------------- | --------------- |
 | Invalid input      | Yes                 | No              |
 | Resource not found | Yes                 | No              |
@@ -242,42 +232,7 @@ return {
 throw new McpError(ErrorCode.InternalError, 'Database connection failed');
 ```
 
-### Structured Error Responses
-
-```typescript
-function createErrorResponse(
-  code: string,
-  message: string,
-  details?: Record<string, unknown>
-): ToolResult {
-  return {
-    isError: true,
-    content: [
-      {
-        type: 'text',
-        text: JSON.stringify(
-          {
-            error: {
-              code,
-              message,
-              details,
-              timestamp: new Date().toISOString(),
-            },
-          },
-          null,
-          2
-        ),
-      },
-    ],
-  };
-}
-
-// Usage
-return createErrorResponse('VALIDATION_ERROR', 'Invalid input parameters', {
-  field: 'query',
-  issue: 'must not be empty',
-});
-```
+---
 
 ## Security Considerations
 
@@ -294,22 +249,20 @@ async execute(input: unknown): Promise<ToolResult> {
   if (!validPath.ok) {
     return {
       isError: true,
-      content: [{ type: 'text', text: 'Invalid path: access denied' }],
+      content: [{ type: 'text', text: 'Invalid path' }],
     };
   }
 
   // Safe to use validPath.value
-  const content = await readFile(validPath.value);
-  return { content: [{ type: 'text', text: content }] };
 }
 ```
 
 ### Input Sanitization
 
 ```typescript
-// Use Zod for strict type validation
+// Use Zod for type validation
 const Schema = z.object({
-  // Never allow arbitrary regex (ReDoS prevention)
+  // Never allow arbitrary regex
   pattern: z.string().regex(/^[a-zA-Z0-9_-]+$/),
 
   // Limit string lengths
@@ -317,9 +270,6 @@ const Schema = z.object({
 
   // Validate URLs
   url: z.string().url(),
-
-  // Restrict to allowed values
-  action: z.enum(['read', 'list', 'search']),
 });
 ```
 
@@ -333,17 +283,15 @@ async execute(input: unknown): Promise<ToolResult> {
   if (!rateLimiter.consume('my_tool', 1)) {
     return {
       isError: true,
-      content: [{
-        type: 'text',
-        text: 'Rate limit exceeded. Try again in 60 seconds.',
-      }],
+      content: [{ type: 'text', text: 'Rate limit exceeded. Try again later.' }],
     };
   }
 
   // Proceed with execution
-  // ...
 }
 ```
+
+---
 
 ## Testing MCP Tools
 
@@ -372,27 +320,14 @@ describe('my_tool', () => {
     });
 
     expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain('Validation');
   });
 
   it('should handle missing optional parameters', async () => {
     const result = await myTool.execute({
       query: 'test',
-      // limit and format use defaults
     });
 
     expect(result.isError).toBeFalsy();
-  });
-
-  it('should respect rate limits', async () => {
-    // Exhaust rate limit
-    for (let i = 0; i < 100; i++) {
-      await myTool.execute({ query: 'test' });
-    }
-
-    const result = await myTool.execute({ query: 'test' });
-    expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain('Rate limit');
   });
 });
 ```
@@ -401,7 +336,6 @@ describe('my_tool', () => {
 
 ```typescript
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 
 describe('my_tool integration', () => {
   let client: Client;
@@ -411,15 +345,10 @@ describe('my_tool integration', () => {
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
 
     server = createServer();
-    client = new Client({ name: 'test-client', version: '1.0.0' });
+    client = new Client({ name: 'test-client' });
 
     await server.connect(serverTransport);
     await client.connect(clientTransport);
-  });
-
-  afterEach(async () => {
-    await client.close();
-    await server.close();
   });
 
   it('should execute via MCP protocol', async () => {
@@ -431,155 +360,50 @@ describe('my_tool integration', () => {
     expect(result.isError).toBe(false);
     expect(result.content).toHaveLength(1);
   });
-
-  it('should list tool in capabilities', async () => {
-    const tools = await client.listTools();
-    const myTool = tools.tools.find((t) => t.name === 'my_tool');
-
-    expect(myTool).toBeDefined();
-    expect(myTool?.description).toContain('Search');
-  });
 });
 ```
+
+---
 
 ## Tool Description Guidelines
 
 Good descriptions help Claude decide when to use your tool:
 
 ```typescript
-// Good description - Clear, specific, with examples
+// Good description
 description: `Analyze code files for security vulnerabilities.
 
 Use this tool when:
 - Reviewing code for security issues
-- Checking for common vulnerability patterns (XSS, SQL injection)
+- Checking for common vulnerability patterns
 - Auditing authentication/authorization code
-
-Do NOT use this tool for:
-- Performance analysis (use analyze_performance instead)
-- Code style checks (use lint_code instead)
 
 Parameters:
 - files: List of file paths to analyze (required)
 - severity: Minimum severity to report (default: medium)
-- categories: Vulnerability categories to check (default: all)
 
 Returns:
-- List of vulnerabilities with severity, location, and remediation advice
-- Summary statistics by category`;
+- List of vulnerabilities found with severity and remediation`;
 
-// Bad description - Too vague
-description: 'Analyze files';
+// Bad description
+description: 'Analyze files'; // Too vague
 ```
 
-### Description Checklist
-
-- Clearly state what the tool does
-- List when to use the tool
-- List when NOT to use the tool (if alternatives exist)
-- Document all parameters with types and defaults
-- Describe the output format
-
-## Advanced Patterns
-
-### Streaming Results
-
-For long-running tools that produce incremental output:
-
-```typescript
-async execute(input: unknown): Promise<ToolResult> {
-  const parsed = Schema.parse(input);
-  const results: string[] = [];
-
-  // Process incrementally
-  for await (const item of processItems(parsed.items)) {
-    results.push(formatItem(item));
-
-    // Could emit progress events here
-    // eventBus.emit({ topic: 'tool.progress', ... });
-  }
-
-  return {
-    content: [{
-      type: 'text',
-      text: results.join('\n'),
-    }],
-  };
-}
-```
-
-### Tool Composition
-
-Combine multiple tools for complex operations:
-
-```typescript
-async execute(input: unknown): Promise<ToolResult> {
-  const parsed = Schema.parse(input);
-
-  // Step 1: Search
-  const searchResult = await searchTool.execute({
-    query: parsed.query,
-  });
-
-  if (searchResult.isError) {
-    return searchResult;
-  }
-
-  // Step 2: Analyze each result
-  const items = parseSearchResults(searchResult);
-  const analyses = await Promise.all(
-    items.map(item => analyzeTool.execute({ item }))
-  );
-
-  // Step 3: Combine results
-  return {
-    content: [{
-      type: 'text',
-      text: formatCombinedResults(analyses),
-    }],
-  };
-}
-```
-
-### Context-Aware Tools
-
-Tools that use session or agent context:
-
-```typescript
-function createContextAwareTool(contextManager: ContextManager): ITool {
-  return {
-    name: 'context_search',
-    description: 'Search within current session context',
-    inputSchema: Schema,
-    async execute(input) {
-      const parsed = Schema.parse(input);
-
-      // Get current context
-      const context = contextManager.getCurrentContext();
-
-      // Search within context
-      const results = searchInContext(context, parsed.query);
-
-      return {
-        content: [{ type: 'text', text: JSON.stringify(results) }],
-      };
-    },
-  };
-}
-```
+---
 
 ## Source Files
 
-| File                     | Purpose              |
-| ------------------------ | -------------------- |
-| `src/mcp/index.ts`       | Server creation      |
-| `src/mcp/tools/`         | Tool implementations |
-| `src/mcp/tools/index.ts` | Tool registration    |
-| `src/mcp/types.ts`       | Type definitions     |
-| `src/core/types/tool.ts` | ITool interface      |
+| File                 | Purpose              |
+| -------------------- | -------------------- |
+| `src/mcp/index.ts`   | Server creation      |
+| `src/mcp/tools/`     | Tool implementations |
+| `src/mcp/types.ts`   | Type definitions     |
+| `src/mcp/resources/` | Resource handlers    |
 
-## Next Steps
+---
 
-- [Agent Development](/nexus-agents/development/agent-development) - Create agents that use tools
-- [Memory Development](/nexus-agents/development/memory-development) - Add persistence to tools
-- [MCP Integration](/nexus-agents/guides/mcp-integration) - Configure MCP server
+## Related Documents
+
+- **MCP Architecture:** [MCP_PROTOCOL.md](/nexus-agents/architecture/mcp-protocol/)
+- **Security:** [SECURITY.md](/nexus-agents/architecture/security/)
+- **API Reference:** [ENTRYPOINTS.md](../ENTRYPOINTS.md)

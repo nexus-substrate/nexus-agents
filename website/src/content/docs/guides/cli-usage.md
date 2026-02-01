@@ -1,29 +1,69 @@
 ---
-title: CLI Commands & Usage
-description: Complete reference for nexus-agents command-line interface including all commands, options, and usage examples.
+title: 'CLI Usage'
+description: 'Nexus-agents provides four interface categories:'
 ---
 
-The nexus-agents CLI provides multiple commands for orchestration, workflow execution, debugging, and system management.
+**Last Updated:** 2026-01-24 (ET)
+**Canonical Source:** This document is the single source of truth for all entrypoints.
+**Issue:** #210 (Epic #209)
 
-## Quick Start
+---
 
-```bash
-# Install globally
-npm install -g nexus-agents
+## Overview
 
-# Verify installation
-nexus-agents doctor
+Nexus-agents provides four interface categories:
 
-# Start MCP server (default mode)
-nexus-agents
+| Interface        | Use Case                            | Transport           |
+| ---------------- | ----------------------------------- | ------------------- |
+| CLI Commands     | Terminal usage, CI/CD pipelines     | Process             |
+| MCP Tools        | Claude Desktop, MCP clients         | JSON-RPC over stdio |
+| REST API         | Enterprise integration, web clients | HTTP                |
+| Programmatic API | Library usage, custom applications  | TypeScript import   |
 
-# Run standalone orchestration
-nexus-agents orchestrate "Review this code for security issues"
-```
+---
 
-## Mode Selection
+## CLI Commands
 
-Nexus-agents operates in three modes based on your use case:
+**Entry Point:** `nexus-agents [command] [options]`
+
+| Command                | Subcommand      | Description                                | Mode         |
+| ---------------------- | --------------- | ------------------------------------------ | ------------ |
+| `(default)`            | -               | Start MCP server                           | server       |
+| `--help`               | -               | Display help text                          | any          |
+| `--version`            | -               | Display version                            | any          |
+| `doctor`               | -               | Check CLI health and dependencies          | any          |
+| `config`               | `init`          | Generate starter configuration file        | any          |
+| `expert`               | `list`          | List available experts (built-in + custom) | any          |
+| `workflow`             | `list`          | List available workflow templates          | any          |
+| `workflow`             | `run <name>`    | Execute a workflow template                | orchestrator |
+| `server`               | -               | Start MCP server (explicit)                | server       |
+| `server`               | `--interactive` | Start interactive REPL mode                | server       |
+| `review`               | `<url>`         | Review a GitHub PR                         | orchestrator |
+| `routing-audit`        | `<task>`        | Debug routing decisions (dry-run)          | any          |
+| `orchestrate`          | `<task>`        | Execute task standalone                    | orchestrator |
+| `system-review`        | -               | Run 5-phase system review                  | any          |
+| `vote`                 | `--proposal`    | Consensus voting with 5 agents             | any          |
+| `research`             | `status`        | Show technique implementation status       | any          |
+| `research`             | `overlap`       | Find overlapping techniques                | any          |
+| `research`             | `add`           | Add new paper from arXiv                   | any          |
+| `verify`               | -               | Quick verification check                   | any          |
+| `review-demo`          | -               | PR review demo with wizard UX              | orchestrator |
+| `validation-dashboard` | -               | A/B testing and validation dashboard       | any          |
+| `swe-bench`            | `run`           | Run SWE-bench evaluation                   | orchestrator |
+| `swe-bench`            | `evaluate`      | Evaluate predictions                       | any          |
+| `swe-bench`            | `status`        | Show evaluation status                     | any          |
+| `setup`                | -               | Configure Claude CLI integration           | any          |
+| `learning-metrics`     | -               | Show learning metrics dashboard            | any          |
+| `index`                | `generate`      | Generate codebase index                    | any          |
+| `index`                | `check`         | Validate index freshness                   | any          |
+| `index`                | `diagram`       | Generate Mermaid dependency diagram        | any          |
+| `hooks`                | `session-start` | Handle SessionStart hook events            | any          |
+| `hooks`                | `session-end`   | Handle SessionEnd hook events              | any          |
+| `hooks`                | `pre-tool`      | Handle PreToolUse hook events              | any          |
+| `hooks`                | `post-tool`     | Handle PostToolUse hook events             | any          |
+| `hooks`                | `stop`          | Handle Stop hook events                    | any          |
+
+### Mode Selection
 
 | Mode           | Flag                  | Description                             |
 | -------------- | --------------------- | --------------------------------------- |
@@ -31,382 +71,736 @@ Nexus-agents operates in three modes based on your use case:
 | `orchestrator` | `--mode=orchestrator` | Standalone CLI, CI/CD pipelines         |
 | `mesh`         | `--mode=mesh`         | Hybrid bidirectional mode               |
 
-Mode is auto-detected in most cases. Use `nexus-agents --verbose` to see mode selection reasoning.
-
-## Core Commands
-
-### doctor
-
-Check CLI health and verify dependencies.
+### Usage Examples
 
 ```bash
+# Start MCP server (default)
+nexus-agents
+
+# Health check
 nexus-agents doctor
+
+# Generate config
+nexus-agents config init
+
+# List experts
+nexus-agents expert list
+
+# Run workflow
+nexus-agents workflow run code-review --input='{"url": "..."}'
+
+# Review PR
+nexus-agents review https://github.com/owner/repo/pull/123
+
+# Debug routing
+nexus-agents routing-audit "Implement a sorting algorithm" --format=json
+
+# Standalone orchestration
+nexus-agents orchestrate "Review this code for security issues"
+
+# Consensus voting
+nexus-agents vote --proposal "Should we adopt TypeScript 6.0?"
+
+# System review (5-phase checklist)
+nexus-agents system-review
+nexus-agents system-review --create-issue
+nexus-agents system-review --fix --verbose
+
+# Research registry
+nexus-agents research status                       # Show all techniques
+nexus-agents research status --status=implemented  # Filter by status
+nexus-agents research status aegean-consensus      # Show specific technique
+nexus-agents research overlap trinity-roles        # Find related techniques
+nexus-agents research add 2501.06322 --dry-run     # Preview adding paper
+
+# Quick verification
+nexus-agents verify
+
+# PR review demo with wizard
+nexus-agents review-demo
+
+# Validation dashboard
+nexus-agents validation-dashboard
+
+# SWE-bench evaluation
+nexus-agents swe-bench run --variant=lite --limit=10
+nexus-agents swe-bench evaluate predictions.jsonl
+nexus-agents swe-bench status
+
+# Setup Claude CLI integration
+nexus-agents setup                    # Auto-configure MCP + hooks + rules
+nexus-agents setup --dry-run          # Preview what would be done
+nexus-agents setup --skip-hooks       # Skip hook configuration
+
+# Learning metrics dashboard
+nexus-agents learning-metrics
+nexus-agents learning-metrics --period=48
+nexus-agents learning-metrics --bandit-stats --format=json
+
+# Codebase index
+nexus-agents index generate
+nexus-agents index check
+nexus-agents index diagram
+
+# Claude CLI hooks (called by Claude Code, not user)
+nexus-agents hooks session-start
+nexus-agents hooks pre-tool --tool Bash --validate
+nexus-agents hooks post-tool --track-metrics
+nexus-agents hooks stop --check-tasks
 ```
 
-**Output:**
+### Source Files
 
+| File                                      | Purpose               |
+| ----------------------------------------- | --------------------- |
+| `src/cli-commands.ts`                     | Command dispatcher    |
+| `src/cli/doctor.ts`                       | Doctor command        |
+| `src/cli/config-init.ts`                  | Config init command   |
+| `src/cli/expert-list.ts`                  | Expert list command   |
+| `src/cli/workflow-run.ts`                 | Workflow commands     |
+| `src/cli/review-command.ts`               | PR review command     |
+| `src/cli/routing-audit.ts`                | Routing audit command |
+| `src/cli/orchestrate-command.ts`          | Orchestrate command   |
+| `src/cli/system-review.ts`                | System review command |
+| `src/cli/verify-command.ts`               | Verify command        |
+| `src/cli/review-demo-command.ts`          | Review demo command   |
+| `src/cli/validation-dashboard-command.ts` | Validation dashboard  |
+| `src/cli/swe-bench-command.ts`            | SWE-bench command     |
+| `src/cli/research-command.ts`             | Research registry CLI |
+| `src/cli/setup-command.ts`                | Setup command         |
+| `src/cli/learning-metrics-command.ts`     | Learning metrics      |
+| `src/cli/index-command.ts`                | Index command         |
+| `src/cli/hooks/index.ts`                  | Hooks command         |
+
+---
+
+## MCP Tools
+
+**Protocol:** Model Context Protocol (2025-11-25)
+**Transport:** JSON-RPC 2.0 over stdio
+
+| Tool                | Description                                     | Auth         | Rate Limit |
+| ------------------- | ----------------------------------------------- | ------------ | ---------- |
+| `orchestrate`       | Task orchestration with TechLead coordination   | None (local) | 10/min     |
+| `create_expert`     | Dynamic expert agent creation                   | None (local) | 60/min     |
+| `run_workflow`      | Execute workflow template                       | None (local) | 20/min     |
+| `delegate_to_model` | Route task to optimal model                     | None (local) | 30/min     |
+| `list_experts`      | List available expert types for discoverability | None (local) | 60/min     |
+| `list_workflows`    | List available workflow templates               | None (local) | 60/min     |
+
+### Tool Schemas
+
+#### orchestrate
+
+```json
+{
+  "name": "orchestrate",
+  "description": "Orchestrate a complex task using specialized expert agents",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "task": { "type": "string", "description": "Task description" },
+      "context": { "type": "object", "description": "Optional context" },
+      "maxIterations": { "type": "number", "default": 3 }
+    },
+    "required": ["task"]
+  }
+}
 ```
-Nexus-Agents Doctor v2.2.0 (ET)
 
-[CHECK] Node.js version: v22.13.0 (required: >=22.0.0)
-[CHECK] Configuration: Found nexus-agents.yaml
-[CHECK] API keys: 2 of 3 configured
-  - ANTHROPIC_API_KEY: Configured
-  - OPENAI_API_KEY: Configured
-  - GOOGLE_AI_API_KEY: Not set
-[CHECK] CLI adapters available:
-  - claude: Available (v1.0.40)
-  - gemini: Available (v0.2.5)
-  - codex: Not found
+#### create_expert
 
-Status: Ready
+```json
+{
+  "name": "create_expert",
+  "description": "Create a specialized expert agent",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "role": {
+        "type": "string",
+        "enum": ["code", "security", "architecture", "testing", "documentation"]
+      },
+      "modelPreference": { "type": "string", "description": "Preferred model tier" }
+    },
+    "required": ["role"]
+  }
+}
 ```
 
-### config init
+#### run_workflow
 
-Generate a starter configuration file.
+```json
+{
+  "name": "run_workflow",
+  "description": "Execute a predefined workflow template",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "template": { "type": "string", "description": "Workflow template name" },
+      "inputs": { "type": "object", "description": "Workflow inputs" },
+      "dryRun": { "type": "boolean", "default": false }
+    },
+    "required": ["template"]
+  }
+}
+```
+
+#### delegate_to_model
+
+```json
+{
+  "name": "delegate_to_model",
+  "description": "Route a task to the optimal model based on capabilities",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "task": { "type": "string", "description": "Task description" },
+      "preferredCapability": { "type": "string", "enum": ["reasoning", "code", "speed", "cost"] }
+    },
+    "required": ["task"]
+  }
+}
+```
+
+#### list_experts
+
+```json
+{
+  "name": "list_experts",
+  "description": "List available expert types that can be created with create_expert",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "format": { "type": "string", "enum": ["full", "names"], "default": "full" }
+    }
+  }
+}
+```
+
+#### list_workflows
+
+```json
+{
+  "name": "list_workflows",
+  "description": "List available workflow templates that can be executed with run_workflow",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "category": { "type": "string", "description": "Filter by category" },
+      "format": { "type": "string", "enum": ["full", "names"], "default": "full" }
+    }
+  }
+}
+```
+
+### Source Files
+
+| File                                 | Purpose             |
+| ------------------------------------ | ------------------- |
+| `src/mcp/tools/index.ts`             | Tool registration   |
+| `src/mcp/tools/orchestrate.ts`       | Orchestrate tool    |
+| `src/mcp/tools/create-expert.ts`     | Create expert tool  |
+| `src/mcp/tools/run-workflow.ts`      | Run workflow tool   |
+| `src/mcp/tools/delegate-to-model.ts` | Delegate tool       |
+| `src/mcp/tools/list-experts.ts`      | List experts tool   |
+| `src/mcp/tools/list-workflows.ts`    | List workflows tool |
+
+---
+
+## REST API
+
+**Base URL:** `http://localhost:3000`
+**API Version:** v1
+
+| Method | Endpoint               | Description           | Auth    | Rate Limit |
+| ------ | ---------------------- | --------------------- | ------- | ---------- |
+| GET    | `/health`              | Health check          | None    | None       |
+| GET    | `/metrics`             | Prometheus metrics    | None    | None       |
+| GET    | `/metrics/prometheus`  | Prometheus format     | None    | None       |
+| POST   | `/api/v1/orchestrate`  | Task orchestration    | API Key | 60/min     |
+| POST   | `/api/v1/delegate`     | Model routing         | API Key | 60/min     |
+| POST   | `/api/v1/workflow`     | Workflow execution    | API Key | 60/min     |
+| POST   | `/api/v1/expert`       | Expert task execution | API Key | 60/min     |
+| GET    | `/api/v1/expert/types` | List expert types     | API Key | 60/min     |
+
+### Authentication
+
+All `/api/v1/*` endpoints require API key authentication:
 
 ```bash
-nexus-agents config init
+curl -X POST http://localhost:3000/api/v1/orchestrate \
+  -H "X-API-Key: your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{"task": "Review this code"}'
 ```
 
-Creates `nexus-agents.yaml` with default settings:
+### Request/Response Examples
+
+#### POST /api/v1/orchestrate
+
+```json
+// Request
+{
+  "task": "Analyze security vulnerabilities in auth.ts",
+  "context": { "file": "src/auth.ts" },
+  "maxIterations": 3
+}
+
+// Response
+{
+  "success": true,
+  "result": {
+    "summary": "...",
+    "experts_consulted": ["security", "code"],
+    "recommendations": [...]
+  },
+  "metadata": {
+    "duration_ms": 1234,
+    "tokens_used": 5678
+  }
+}
+```
+
+#### POST /api/v1/workflow
+
+```json
+// Request
+{
+  "template": "code-review",
+  "inputs": {
+    "url": "https://github.com/owner/repo/pull/123"
+  },
+  "dryRun": false
+}
+
+// Response
+{
+  "success": true,
+  "result": {
+    "status": "completed",
+    "steps": [...],
+    "output": "..."
+  }
+}
+```
+
+### Configuration
 
 ```yaml
-models:
-  default: claude-sonnet-4
-  tiers:
-    fast: [claude-haiku-3, gpt-4o-mini]
-    balanced: [claude-sonnet-4, gpt-4o]
-    powerful: [claude-opus-4, o1-pro]
-
-experts:
-  builtin: true
-
-security:
-  sandbox:
-    mode: policy
+# nexus-agents.yaml
+api:
+  port: 3000
+  host: 0.0.0.0
+  enableCors: true
+  rateLimitPerMinute: 60
+  apiKeyHeader: X-API-Key
 ```
 
-### expert list
+### Source Files
 
-List available expert agents.
+| File                            | Purpose               |
+| ------------------------------- | --------------------- |
+| `src/api/rest-server.ts`        | Server implementation |
+| `src/api/rest-types.ts`         | Type definitions      |
+| `src/api/routes/index.ts`       | Route registration    |
+| `src/api/routes/health.ts`      | Health endpoints      |
+| `src/api/routes/orchestrate.ts` | Orchestrate endpoint  |
+| `src/api/routes/delegate.ts`    | Delegate endpoint     |
+| `src/api/routes/workflow.ts`    | Workflow endpoint     |
+| `src/api/routes/expert.ts`      | Expert endpoint       |
 
-```bash
-nexus-agents expert list
+---
+
+## Programmatic API
+
+**Package:** `nexus-agents`
+**Entry Point:** `import { ... } from 'nexus-agents'`
+
+### Core Exports
+
+```typescript
+// Result Pattern
+import { ok, err, isOk, isErr, map, mapErr, unwrap } from 'nexus-agents';
+
+// Errors
+import {
+  NexusError,
+  ValidationError,
+  ConfigError,
+  ModelError,
+  AgentError,
+  WorkflowError,
+  SecurityError,
+  TimeoutError,
+} from 'nexus-agents';
+
+// Configuration
+import { AppConfigSchema, defaultConfig, type AppConfig } from 'nexus-agents';
 ```
 
-**Output:**
+### Model Adapters
 
-```
-Built-in Experts:
-  - code          Code analysis and implementation
-  - security      Security vulnerability detection
-  - architecture  System design and patterns
-  - testing       Test generation and coverage
-  - documentation API docs and technical writing
-  - devops        CI/CD and infrastructure
+```typescript
+import {
+  // Factory functions
+  createClaudeAdapter,
+  createOpenAIAdapter,
+  createGeminiAdapter,
+  createOllamaAdapter,
+  AdapterFactory,
 
-Custom Experts:
-  - rust_expert   (from config)
-```
+  // Classes
+  ClaudeAdapter,
+  OpenAIAdapter,
+  GeminiAdapter,
+  OllamaAdapter,
 
-### orchestrate
-
-Execute a task using the agent swarm (standalone mode).
-
-```bash
-# Basic usage
-nexus-agents orchestrate "Analyze this codebase for security issues"
-
-# With context
-nexus-agents orchestrate "Review auth.ts" --context='{"file": "src/auth.ts"}'
-
-# Verbose output
-nexus-agents orchestrate "Explain closures" --verbose
+  // Types
+  type IModelAdapter,
+  type CompletionRequest,
+  type CompletionResponse,
+} from 'nexus-agents';
 ```
 
-**Options:**
+### Agents & Experts
 
-- `--context` - JSON object with additional context
-- `--max-iterations` - Maximum refinement iterations (default: 3)
-- `--verbose` - Show detailed execution trace
+```typescript
+import {
+  // Core agents
+  TechLead,
+  Expert,
+  ExpertFactory,
 
-## Workflow Commands
+  // Built-in experts
+  CodeExpert,
+  SecurityExpert,
+  ArchitectureExpert,
+  TestingExpert,
+  DocumentationExpert,
 
-### workflow list
+  // Selection utilities
+  selectExperts,
+  analyzeTask,
 
-List available workflow templates.
-
-```bash
-nexus-agents workflow list
+  // Types
+  type Task,
+  type TaskResult,
+  type ExecutionPlan,
+} from 'nexus-agents';
 ```
 
-**Output:**
+### Workflows
 
-```
-Built-in Workflows:
-  - code-review    Review code changes with security focus
-  - pr-review      GitHub PR analysis and feedback
-  - test-gen       Generate test cases for functions
-  - doc-gen        Generate API documentation
+```typescript
+import {
+  // Parsing
+  parseWorkflowYaml,
+  loadWorkflowFile,
+  validateWorkflow,
 
-Custom Workflows:
-  - my-workflow    (from ./workflows/my-workflow.yaml)
-```
+  // Templates
+  BUILT_IN_TEMPLATES,
+  createTemplateRegistry,
 
-### workflow run
-
-Execute a workflow template.
-
-```bash
-# Run code review workflow
-nexus-agents workflow run code-review --input='{"files": ["src/*.ts"]}'
-
-# Run PR review
-nexus-agents workflow run pr-review --input='{"url": "https://github.com/owner/repo/pull/123"}'
-
-# Dry run (preview without execution)
-nexus-agents workflow run test-gen --input='{"file": "utils.ts"}' --dry-run
+  // Types
+  type WorkflowDefinition,
+  type WorkflowStep,
+  type WorkflowResult,
+} from 'nexus-agents';
 ```
 
-**Options:**
+### MCP Server
 
-- `--input` - JSON object with workflow inputs (required)
-- `--dry-run` - Preview execution plan without running
-- `--verbose` - Show step-by-step execution
+```typescript
+import {
+  // Server creation
+  createServer,
+  startStdioServer,
 
-## GitHub Integration
+  // Tool registration
+  registerTools,
+  registerOrchestrateTool,
+  registerCreateExpertTool,
+  registerRunWorkflowTool,
 
-### review
-
-Review a GitHub pull request.
-
-```bash
-nexus-agents review https://github.com/owner/repo/pull/123
+  // Types
+  type ServerConfig,
+  type ServerInstance,
+} from 'nexus-agents';
 ```
 
-The review includes:
+### CLI Adapters
 
-- Security analysis
-- Code quality assessment
-- TypeScript best practices
-- Test coverage recommendations
+```typescript
+import {
+  // Adapter creation
+  createCliAdapter,
+  createAllAdapters,
+  getAvailableClis,
 
-### review-demo
+  // Adapter classes
+  ClaudeCliAdapter,
+  GeminiCliAdapter,
+  CodexCliAdapter,
 
-Interactive PR review demo with wizard UX.
+  // Routing
+  CompositeRouter,
+  createCompositeRouter,
 
-```bash
-nexus-agents review-demo
+  // Detection
+  CliDetectionCache,
+  createCliDetectionCache,
+
+  // Types
+  type ICliAdapter,
+  type CliTask,
+  type CliResponse,
+} from 'nexus-agents';
 ```
 
-Prompts for PR URL and guides through the review process.
+### Context & Memory
 
-## Debugging Commands
+```typescript
+import {
+  // Token counting
+  TokenCounter,
+  createTokenCounter,
 
-### routing-audit
+  // Context management
+  ContextManager,
 
-Debug routing decisions without executing tasks.
-
-```bash
-# Basic audit
-nexus-agents routing-audit "Implement a sorting algorithm"
-
-# JSON output for machine parsing
-nexus-agents routing-audit "Complex reasoning task" --format=json
-
-# With bandit statistics
-nexus-agents routing-audit "Code generation task" --bandit-stats
+  // Types
+  type ITokenCounter,
+  type TokenCountResult,
+} from 'nexus-agents';
 ```
 
-**Sample Output:**
+### Observability
 
-```
-Task Profile Analysis:
-  - Code generation: 85%
-  - Reasoning complexity: High
-  - Context required: 2,500 tokens
+```typescript
+import {
+  // Swarm observation
+  SwarmObserver,
+  createSwarmObserver,
 
-Budget Filter Results:
-  [PASS] claude - Within budget
-  [PASS] gemini - Within budget
-  [PASS] codex  - Within budget
+  // Audit logging
+  AuditLogger,
+  createAuditLogger,
 
-TOPSIS Ranking:
-  1. claude  (0.82) - Best quality/cost balance
-  2. codex   (0.71) - Fast, good for code
-  3. gemini  (0.68) - Large context available
-
-LinUCB Selection:
-  Selected: claude (UCB score: 0.89)
-  Mode: Exploitation (learned preference)
+  // Types
+  type ISwarmObserver,
+  type IAuditLogger,
+} from 'nexus-agents';
 ```
 
-**Options:**
+### Learning & Feedback
 
-- `--format` - Output format: `text` (default), `json`
-- `--verbose` - Show detailed scoring breakdown
-- `--dry-run` - Skip actual model calls
-- `--bandit-stats` - Show LinUCB arm statistics
+```typescript
+import {
+  // Feedback collection
+  OutcomeFeedbackCollector,
+  createOutcomeFeedbackCollector,
 
-### system-review
+  // Integration
+  FeedbackIntegration,
+  createFeedbackIntegration,
 
-Run a 5-phase system health review.
+  // Utilities
+  computeOutcomeReward,
 
-```bash
-# Basic review
-nexus-agents system-review
-
-# Create GitHub issue with findings
-nexus-agents system-review --create-issue
-
-# Auto-fix detected issues
-nexus-agents system-review --fix --verbose
+  // Types
+  type TaskOutcome,
+  type ComputedReward,
+} from 'nexus-agents';
 ```
 
-**Phases:**
+### REST API Server
 
-1. Registry Reconciliation - Verify technique statuses
-2. Documentation Sync - Check docs match implementation
-3. Issue Health - Audit open/stale issues
-4. Code Quality - Run lint and type checks
-5. Security Scan - Check for vulnerabilities
+```typescript
+import {
+  RestApiServer,
+  createRestApiServer,
 
-### verify
-
-Quick verification check.
-
-```bash
-nexus-agents verify
+  // Types
+  type RestApiConfig,
+  type RestApiServerOptions,
+} from 'nexus-agents';
 ```
 
-Runs essential health checks and reports status.
+### Quick Start Examples
 
-## Research Registry Commands
+#### MCP Server Mode
 
-### research status
+```typescript
+import { startStdioServer } from 'nexus-agents';
 
-Show technique implementation status.
-
-```bash
-# Show all techniques
-nexus-agents research status
-
-# Filter by status
-nexus-agents research status --status=implemented
-
-# Show specific technique
-nexus-agents research status aegean-consensus
+await startStdioServer({
+  name: 'my-server',
+  version: '1.0.0',
+});
 ```
 
-### research overlap
+#### Programmatic Usage
 
-Find overlapping or related techniques.
+```typescript
+import { createClaudeAdapter, TechLead } from 'nexus-agents';
 
-```bash
-nexus-agents research overlap trinity-roles
+const adapter = createClaudeAdapter({ model: 'claude-sonnet-4-20250514' });
+const techLead = new TechLead({ adapter });
+const result = await techLead.execute({
+  description: 'Analyze this codebase for security issues',
+});
+
+if (result.ok) {
+  console.log(result.value.summary);
+}
 ```
 
-### research add
+#### REST API Server
 
-Add a new paper from arXiv.
+```typescript
+import { createRestApiServer } from 'nexus-agents';
 
-```bash
-# Preview addition
-nexus-agents research add 2501.06322 --dry-run
+const server = await createRestApiServer({
+  port: 3000,
+  enableCors: true,
+  rateLimitPerMinute: 100,
+});
 
-# Add and update registry
-nexus-agents research add 2501.06322
+await server.start();
 ```
 
-## Validation & Testing
+### Source Files
 
-### validation-dashboard
+| File                      | Purpose          |
+| ------------------------- | ---------------- |
+| `src/index.ts`            | Main exports     |
+| `src/core/types/index.ts` | Type definitions |
+| `src/adapters/index.ts`   | Model adapters   |
+| `src/agents/index.ts`     | Agent framework  |
+| `src/workflows/index.ts`  | Workflow engine  |
 
-Open the A/B testing and validation dashboard.
+---
 
-```bash
-nexus-agents validation-dashboard
+## Machine-Parseable Reference
+
+<!-- BEGIN:CLI_COMMANDS -->
+
+```yaml
+cli_commands:
+  - name: help
+    flags: ['--help', '-h']
+    mode: any
+  - name: version
+    flags: ['--version', '-v']
+    mode: any
+  - name: doctor
+    mode: any
+  - name: config init
+    mode: any
+  - name: expert list
+    mode: any
+  - name: workflow list
+    mode: any
+  - name: workflow run
+    args: ['<template>']
+    mode: orchestrator
+  - name: server
+    flags: ['--interactive']
+    mode: server
+  - name: review
+    args: ['<url>']
+    mode: orchestrator
+  - name: routing-audit
+    args: ['<task>']
+    flags: ['--format', '--verbose', '--dry-run']
+    mode: any
+  - name: orchestrate
+    args: ['<task>']
+    mode: orchestrator
+  - name: system-review
+    flags: ['--create-issue', '--fix', '--verbose']
+    mode: any
+  - name: setup
+    flags:
+      ['--non-interactive', '--force', '--skip-mcp', '--skip-rules', '--skip-hooks', '--dry-run']
+    mode: any
+  - name: learning-metrics
+    flags: ['--period', '--format', '--bandit-stats', '--export']
+    mode: any
+  - name: index
+    subcommands: ['generate', 'check', 'diagram', 'validate', 'entrypoints', 'freshness', 'links']
+    mode: any
+  - name: hooks
+    subcommands: ['session-start', 'session-end', 'pre-tool', 'post-tool', 'stop']
+    mode: any
 ```
 
-### swe-bench
+<!-- END:CLI_COMMANDS -->
 
-Run SWE-bench evaluation for benchmarking.
+<!-- BEGIN:MCP_TOOLS -->
 
-```bash
-# Run evaluation on SWE-bench Lite
-nexus-agents swe-bench run --variant=lite --limit=10
-
-# Evaluate predictions
-nexus-agents swe-bench evaluate predictions.jsonl
-
-# Check evaluation status
-nexus-agents swe-bench status
+```yaml
+mcp_tools:
+  - name: orchestrate
+    auth: none
+    rate_limit: 10/min
+  - name: create_expert
+    auth: none
+    rate_limit: 30/min
+  - name: run_workflow
+    auth: none
+    rate_limit: 5/min
+  - name: delegate_to_model
+    auth: none
+    rate_limit: 20/min
 ```
 
-## Consensus Voting
+<!-- END:MCP_TOOLS -->
 
-### vote
+<!-- BEGIN:REST_API -->
 
-Run consensus voting with 5 specialized agents.
-
-```bash
-nexus-agents vote --proposal "Should we adopt TypeScript 6.0?"
+```yaml
+rest_api:
+  base_url: http://localhost:3000
+  version: v1
+  endpoints:
+    - method: GET
+      path: /health
+      auth: none
+    - method: GET
+      path: /metrics
+      auth: none
+    - method: POST
+      path: /api/v1/orchestrate
+      auth: api_key
+      rate_limit: 60/min
+    - method: POST
+      path: /api/v1/delegate
+      auth: api_key
+      rate_limit: 60/min
+    - method: POST
+      path: /api/v1/workflow
+      auth: api_key
+      rate_limit: 60/min
+    - method: POST
+      path: /api/v1/expert
+      auth: api_key
+      rate_limit: 60/min
 ```
 
-Agents (Architect, Security, DevEx, AI/ML, PM) analyze the proposal and vote with reasoning.
+<!-- END:REST_API -->
 
-## Global Options
+---
 
-These options work with all commands:
+## Cross-References
 
-| Option         | Description           |
-| -------------- | --------------------- |
-| `--help`, `-h` | Display help text     |
-| `--version`    | Display version       |
-| `--verbose`    | Enable verbose output |
-| `--mode`       | Force specific mode   |
-| `--config`     | Path to config file   |
+- **CLAUDE.md** - Quick Reference section links here
+- **README.md** - Installation links here for "full reference"
+- **ARCHITECTURE.md** - Interface Layer section links here
 
-## Environment Variables
+---
 
-| Variable            | Purpose                 | Default               |
-| ------------------- | ----------------------- | --------------------- |
-| `ANTHROPIC_API_KEY` | Claude model access     | None                  |
-| `OPENAI_API_KEY`    | OpenAI model access     | None                  |
-| `GOOGLE_AI_API_KEY` | Gemini model access     | None                  |
-| `NEXUS_LOG_LEVEL`   | Logging verbosity       | `info`                |
-| `NEXUS_CONFIG_PATH` | Custom config file path | `./nexus-agents.yaml` |
-
-## Examples
-
-### CI/CD Integration
-
-```bash
-# In GitHub Actions
-- name: Review PR
-  run: |
-    npx nexus-agents review ${{ github.event.pull_request.html_url }}
-```
-
-### Daily Codebase Review
-
-```bash
-#!/bin/bash
-nexus-agents orchestrate "Review recent changes for security issues" \
-  --context='{"since": "yesterday"}'
-```
-
-### Custom Workflow
-
-```bash
-nexus-agents workflow run my-workflow \
-  --input='{"target": "production", "checks": ["security", "performance"]}'
-```
-
-## Next Steps
-
-- [MCP Integration](/nexus-agents/guides/mcp-integration) - Set up Claude Desktop integration
-- [Workflow Templates](/nexus-agents/guides/workflow-templates) - Create custom workflows
-- [Debugging & Observability](/nexus-agents/guides/debugging-observability) - Debug agent behavior
+_Generated per Process Automation Proposal #3 (Issue #210)_
+_Approved by 5-agent consensus vote (8.6/10, unanimous)_

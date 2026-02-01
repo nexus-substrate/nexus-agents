@@ -1,13 +1,17 @@
 ---
-title: Contributing Research
-description: How to add new papers and techniques to the research registry
+title: 'Contributing Research'
+description: 'This guide explains how to add new research papers, techniques, and sources to the nexus-agents research tracking system.'
 ---
+
+**Last Updated:** 2026-01-11 (ET)
 
 This guide explains how to add new research papers, techniques, and sources to the nexus-agents research tracking system.
 
-## Before You Start
+---
 
-**You MUST check the registry before starting any new research.** This prevents duplicate efforts and ensures we build on existing work.
+## ⚠️ MANDATORY: Check Registry Before Starting
+
+**You MUST check the registry before starting any new research.** This is not optional guidance—it is a required protocol to prevent duplicate efforts.
 
 ### Required Checks
 
@@ -39,9 +43,11 @@ grep -ri "technique-keyword" packages/nexus-agents/src/
 
 Proceed with research and document findings per the sections below.
 
+---
+
 ## Adding a New Paper
 
-### Step 1: Add Entry to papers.yaml
+### 1. Add Entry to papers.yaml
 
 Add your paper to `docs/research/registry/papers.yaml`:
 
@@ -63,7 +69,7 @@ arxiv-XXXX.XXXXX:
     - relevant-tag-2
 
   # Research tracking
-  reviewed_date: '2026-01-17'
+  reviewed_date: '2026-01-07'
   reviewed_in: 'topics/topic-name/README.md'
   summary: |
     Brief 2-3 sentence summary of the paper's contribution.
@@ -83,7 +89,7 @@ arxiv-XXXX.XXXXX:
   implementation_status: not-started # not-started, planned, in-progress, implemented
 ```
 
-### Step 2: Update Topic README
+### 2. Update Topic README
 
 Add the paper to the appropriate topic README in `docs/research/topics/<topic>/README.md`:
 
@@ -91,7 +97,7 @@ Add the paper to the appropriate topic README in `docs/research/topics/<topic>/R
 2. If extracting a technique, add to "Recommended Techniques" section
 3. Update "Implementation Roadmap" if relevant
 
-### Step 3: Extract Techniques (if applicable)
+### 3. Extract Techniques (if applicable)
 
 If the paper introduces a technique we might implement, add to `docs/research/registry/techniques.yaml`:
 
@@ -130,42 +136,9 @@ technique-id:
   decision_history: []
 ```
 
-## Priority Definitions
+---
 
-| Priority | Definition                                       | Examples                      |
-| -------- | ------------------------------------------------ | ----------------------------- |
-| **P1**   | High impact, direct fit for current architecture | Aegean consensus, IPR routing |
-| **P2**   | Medium impact or requires moderate changes       | TOPSIS scoring, Mem0 memory   |
-| **P3**   | Lower impact or requires significant changes     | BET compression               |
-| **P4**   | Infrastructure-level or long-term                | RL orchestrator               |
-
-## Topic Categories
-
-| Topic             | Scope                                              |
-| ----------------- | -------------------------------------------------- |
-| `consensus`       | Multi-agent decision protocols, voting, agreement  |
-| `routing`         | Task-to-model routing, cost optimization, cascades |
-| `memory`          | Context compression, long-term memory, caching     |
-| `code-generation` | Self-improvement, skill learning, feedback loops   |
-| `cli-tools`       | External CLI integration (Claude, Gemini, Codex)   |
-| `orchestration`   | Multi-agent coordination, role-based systems       |
-
-## Research Status Lifecycle
-
-```
-candidate → reviewed → implemented
-              ↓
-           archived
-```
-
-| Status        | Description                              |
-| ------------- | ---------------------------------------- |
-| `candidate`   | Paper found, needs full review           |
-| `reviewed`    | Full read complete, techniques extracted |
-| `implemented` | At least one technique implemented       |
-| `archived`    | Superseded or no longer relevant         |
-
-## Adding Non-Paper Sources
+## Adding a Non-Paper Source
 
 For product documentation, specifications, or blog posts, add to `docs/research/registry/sources.yaml`:
 
@@ -181,7 +154,7 @@ source-id:
   tags:
     - tag-1
 
-  reviewed_date: '2026-01-17'
+  reviewed_date: '2026-01-07'
   reviewed_in: 'topics/cli-tools/source-name.md'
 
   key_info:
@@ -191,7 +164,59 @@ source-id:
   version_checked: '1.2.3' # Version/date when reviewed
 ```
 
-## Tracking Negative Results
+---
+
+## Priority Definitions
+
+| Priority | Definition                                       | Examples                      |
+| -------- | ------------------------------------------------ | ----------------------------- |
+| **P1**   | High impact, direct fit for current architecture | Aegean consensus, IPR routing |
+| **P2**   | Medium impact or requires moderate changes       | TOPSIS scoring, Mem0 memory   |
+| **P3**   | Lower impact or requires significant changes     | BET compression, LatentMAS    |
+| **P4**   | Infrastructure-level or long-term                | xKV cache, RL orchestrator    |
+
+---
+
+## Research Protocol v2
+
+**Dogfooded 2026-01-09:** TRINITY + Reflexion + Consensus.
+
+### Status Lifecycle (4 states)
+
+```
+candidate → reviewed → implemented
+              ↓
+           archived
+```
+
+| Status        | Description                              |
+| ------------- | ---------------------------------------- |
+| `candidate`   | Paper found, needs full review           |
+| `reviewed`    | Full read complete, techniques extracted |
+| `implemented` | At least one technique implemented       |
+| `archived`    | Superseded or no longer relevant         |
+
+### Integration with Self-Development
+
+When the Self-Development workflow runs Phase 2 (RESEARCH):
+
+1. Check `papers.yaml` first before external arXiv search
+2. Reuse existing reviews for related papers
+3. After implementation, update technique status
+
+### Staleness Detection
+
+Use git history instead of manual tracking:
+
+```bash
+# When was this file last updated?
+git log -1 --format="%ar" -- docs/research/registry/papers.yaml
+
+# Find papers not touched in 90+ days
+git log --since="90 days ago" -- docs/research/registry/
+```
+
+### Negative Results Tracking
 
 Document rejected approaches in `registry/negative-results.yaml`:
 
@@ -207,7 +232,48 @@ technique-id:
 
 This prevents re-researching already-rejected approaches.
 
-## Creating a GitHub Issue
+---
+
+## Topic Categories
+
+| Topic             | Scope                                              |
+| ----------------- | -------------------------------------------------- |
+| `consensus`       | Multi-agent decision protocols, voting, agreement  |
+| `routing`         | Task-to-model routing, cost optimization, cascades |
+| `memory`          | Context compression, long-term memory, caching     |
+| `code-generation` | Self-improvement, skill learning, feedback loops   |
+| `cli-tools`       | External CLI integration (Claude, Gemini, Codex)   |
+| `orchestration`   | Multi-agent coordination, role-based systems       |
+
+---
+
+## Regenerating the Index
+
+After making changes, regenerate `RESEARCH_INDEX.md`:
+
+```bash
+# Manual regeneration (future automation)
+# For now, manually update RESEARCH_INDEX.md to reflect changes
+```
+
+---
+
+## Quality Checklist
+
+Before submitting research updates:
+
+- [ ] Checked for duplicate papers/techniques
+- [ ] Added to papers.yaml with all required fields
+- [ ] Updated appropriate topic README
+- [ ] Extracted techniques if applicable
+- [ ] Set appropriate priority and status
+- [ ] Linked to GitHub issues if implementation is planned
+- [ ] Summary is concise (2-3 sentences)
+- [ ] Key findings are specific and measurable
+
+---
+
+## Creating a GitHub Issue for Technique Implementation
 
 When a P1/P2 technique is ready for implementation:
 
@@ -244,41 +310,10 @@ gh issue create \
 
 Then update `implementation_issue` in techniques.yaml with the issue number.
 
-## Quality Checklist
-
-Before submitting research updates:
-
-- [ ] Checked for duplicate papers/techniques
-- [ ] Added to papers.yaml with all required fields
-- [ ] Updated appropriate topic README
-- [ ] Extracted techniques if applicable
-- [ ] Set appropriate priority and status
-- [ ] Linked to GitHub issues if implementation is planned
-- [ ] Summary is concise (2-3 sentences)
-- [ ] Key findings are specific and measurable
-
-## Staleness Detection
-
-Use git history to detect stale research:
-
-```bash
-# When was this file last updated?
-git log -1 --format="%ar" -- docs/research/registry/papers.yaml
-
-# Find papers not touched in 90+ days
-git log --since="90 days ago" -- docs/research/registry/
-```
-
-## Integration with Self-Development
-
-When the Self-Development workflow runs Phase 2 (RESEARCH):
-
-1. Check `papers.yaml` first before external arXiv search
-2. Reuse existing reviews for related papers
-3. After implementation, update technique status
+---
 
 ## Questions?
 
 - Check existing topic READMEs for examples
 - Review papers.yaml for entry format
-- Open a [GitHub issue](https://github.com/williamzujkowski/nexus-agents/issues) for process questions
+- Open an issue for process questions

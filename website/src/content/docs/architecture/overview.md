@@ -1,128 +1,58 @@
 ---
-title: Architecture Overview
-description: High-level architecture of Nexus Agents, a multi-agent orchestration system with hybrid deployment modes.
+title: 'Architecture Overview'
+description: '┌─────────────────────────────────────────────────────────────┐'
 ---
 
-Nexus Agents is a multi-agent orchestration MCP server that coordinates AI experts with model diversity, workflow automation, and security-first design.
+**Full Details:** [ARCHITECTURE.md](../../ARCHITECTURE.md)
 
-## Key Capabilities
+---
 
-- **Multi-Model Support**: Claude, OpenAI, Gemini, Ollama adapters
-- **Expert System**: Specialized agents (Code, Architecture, Security, Testing, Documentation)
-- **Workflow Engine**: YAML-defined automated workflows
-- **MCP Protocol**: Claude Desktop integration via Model Context Protocol
-- **11 Consensus Protocols**: Byzantine fault tolerant multi-agent decisions
-- **8-Type Memory**: MIRIX-inspired memory architecture
-- **Intelligent Routing**: Budget, TOPSIS, and LinUCB pipeline
+## Quick Navigation
 
-## Hybrid Architecture
+| Topic          | Hub       | Deep Dive                                                                       |
+| -------------- | --------- | ------------------------------------------------------------------------------- |
+| Agents         | This file | [AGENT_SYSTEM.md](/nexus-agents/architecture/agent-system/)                     |
+| Memory         | This file | [MEMORY_SYSTEM.md](/nexus-agents/architecture/memory-system/)                   |
+| Routing        | This file | [ROUTING_SYSTEM.md](/nexus-agents/architecture/routing-system/)                 |
+| Load Balancing | This file | [CONTEXT_LOAD_BALANCING.md](/nexus-agents/architecture/context-load-balancing/) |
+| Consensus      | This file | [CONSENSUS_PROTOCOLS.md](/nexus-agents/architecture/consensus-protocols/)       |
+| Security       | This file | [SECURITY.md](/nexus-agents/architecture/security/)                             |
+| MCP            | This file | [MCP_PROTOCOL.md](/nexus-agents/architecture/mcp-protocol/)                     |
+| Observability  | This file | [SWARM_OBSERVER_DESIGN.md](/nexus-agents/architecture/swarm-observer-design/)   |
+| SWE-Bench      | This file | [SWE_BENCH_HARNESS.md](/nexus-agents/architecture/swe-bench-harness/)           |
 
-Nexus Agents adopts a hybrid architecture combining multiple deployment modes:
+---
 
-1. **MCP Gateway** - External interface for Claude CLI integration
-2. **Internal Event Bus** - Agent-to-agent communication without client roundtrips
-3. **Standalone CLI Mode** - Non-MCP orchestration for CI/CD pipelines
-4. **REST API Gateway** - Enterprise integration
+## System Overview
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│              External Interface Layer                        │
-│  ┌──────────┐  ┌──────────┐  ┌──────────────────────┐       │
-│  │   MCP    │  │   REST   │  │   Standalone CLI     │       │
-│  │ Gateway  │  │   API    │  │   (`nexus-agents`)   │       │
-│  └────┬─────┘  └────┬─────┘  └──────────┬───────────┘       │
-└───────│─────────────│───────────────────│───────────────────┘
-        │             │                   │
-        └─────────────┴───────────────────┘
-                      │
-┌─────────────────────▼───────────────────────────────────────┐
-│              Internal Orchestration Layer                    │
-│  ┌─────────────────────────────────────────────────┐        │
-│  │              Event Bus                          │        │
-│  │  - Agent-to-agent messaging                     │        │
-│  │  - Consensus voting without client roundtrips   │        │
-│  │  - Parallel expert coordination                 │        │
-│  └───────────────────────┬─────────────────────────┘        │
-│                          │                                   │
-│  ┌──────────┐  ┌─────────▼──────┐  ┌───────────────┐        │
-│  │ TechLead │  │  Expert Pool   │  │  Consensus    │        │
-│  │ Router   │  │ (Code,Sec,etc) │  │  Engine       │        │
-│  └──────────┘  └────────────────┘  └───────────────┘        │
-└─────────────────────────────────────────────────────────────┘
-                          │
-┌─────────────────────────▼───────────────────────────────────┐
-│              Execution Layer                                 │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐       │
-│  │ CLI Adapters │  │ Model APIs   │  │  Workflows   │       │
-│  │ (subprocess) │  │ (HTTP)       │  │  (Engine)    │       │
-│  └──────────────┘  └──────────────┘  └──────────────┘       │
+│                    External Interfaces                       │
+│   MCP Server │ REST API │ Standalone CLI                    │
+└──────────────────────────┬──────────────────────────────────┘
+                           │
+┌──────────────────────────▼──────────────────────────────────┐
+│                  Orchestration Layer                         │
+│   TechLead │ Expert Pool │ Event Bus │ Consensus Engine     │
+└──────────────────────────┬──────────────────────────────────┘
+                           │
+┌──────────────────────────▼──────────────────────────────────┐
+│                    Execution Layer                           │
+│   CLI Adapters │ Model APIs │ Workflow Engine               │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## Data Flow
+---
 
-The following sequence diagram shows how a request flows from Claude Desktop through the system:
+## Core Components
 
-```mermaid
-sequenceDiagram
-    participant CD as Claude Desktop
-    participant MCP as MCP Server
-    participant TL as TechLead
-    participant EX as Expert(s)
-    participant AD as Adapter
-    participant API as Model API
+### Agent System
 
-    CD->>MCP: tool_call(orchestrate)
-    MCP->>MCP: Validate input (Zod)
-    MCP->>TL: Analyze task
-    TL->>EX: Delegate subtasks
-    EX->>AD: complete(subtask)
-    AD->>API: API request
-    API-->>AD: Response
-    AD-->>EX: Result<Response>
-    EX-->>TL: TaskResult
-    TL-->>MCP: Result<TaskResult>
-    MCP-->>CD: tool_result
-```
+The agent framework provides:
 
-## Module Structure
-
-```
-packages/nexus-agents/src/
-├── core/           # Shared types, Result<T,E>, errors, logger
-├── config/         # Configuration loading, validation, Zod schemas
-├── adapters/       # Model adapters (Claude, OpenAI, Gemini, Ollama)
-├── agents/         # Agent framework, TechLead, Experts
-│   ├── tech-lead/      # Orchestration
-│   ├── experts/        # Domain experts
-│   ├── collaboration/  # Consensus protocols
-│   └── self-improving/ # SICA implementation
-├── workflows/      # Workflow engine, templates, execution
-├── mcp/            # MCP server, tool definitions
-├── cli/            # CLI interface, mode detection
-├── cli-adapters/   # External CLI integrations
-├── learning/       # Feedback and learning infrastructure
-├── context/        # Memory systems
-└── consensus/      # Multi-agent consensus engine
-```
-
-## Module Responsibilities
-
-| Module         | Responsibility                                  |
-| -------------- | ----------------------------------------------- |
-| `core`         | Types, Result pattern, errors, logger           |
-| `agents`       | Agent lifecycle, collaboration, context pruning |
-| `context`      | Token counting, work balancing, 8-type memory   |
-| `cli-adapters` | External CLI integration, intelligent routing   |
-| `consensus`    | Multi-agent voting, weighted decisions          |
-| `mcp`          | MCP protocol implementation, tools              |
-| `workflows`    | Template parsing, step execution                |
-
-## Core Interfaces
-
-### IAgent
-
-All agents implement this interface:
+- **TechLead**: Orchestrates expert pool, delegates tasks
+- **Experts**: Specialized domain agents (Code, Security, Architecture, etc.)
+- **State Machine**: idle → thinking → acting → waiting → error
 
 ```typescript
 interface IAgent {
@@ -133,91 +63,83 @@ interface IAgent {
 }
 ```
 
-### IModelAdapter
+### Memory System
 
-Unified interface for all model providers:
+8-type memory architecture (MIRIX-inspired):
 
-```typescript
-interface IModelAdapter {
-  readonly providerId: string;
-  readonly modelId: string;
-  complete(request: CompletionRequest): Promise<Result<CompletionResponse, ModelError>>;
-}
+- **Core**: Agent identity and constraints
+- **Episodic**: Task experiences
+- **Semantic**: Domain knowledge
+- **Procedural**: Skills and workflows
+- **Resource**: External references
+- **Vault**: Cross-session persistence
+- **Graph**: Entity relationships
+- **Adaptive**: Priority-based retrieval
+
+### Routing System
+
+CompositeRouter pipeline for intelligent model selection:
+
+```
+Task → TaskAnalyzer → BudgetRouter → TopsisRouter → LinUCB → Decision
 ```
 
-### IWorkflowEngine
+- Budget constraints (tokens, cost, latency)
+- Multi-criteria ranking (quality vs cost)
+- Contextual learning from outcomes
 
-Workflow execution engine:
+### Consensus Protocols
 
-```typescript
-interface IWorkflowEngine {
-  loadTemplate(path: string): Promise<Result<WorkflowDefinition, ParseError>>;
-  execute(
-    workflow: WorkflowDefinition,
-    inputs: Record<string, unknown>
-  ): Promise<Result<WorkflowResult, WorkflowError>>;
-}
+11 protocols for multi-agent decisions:
+
+- Simple/Supermajority/Unanimous voting
+- Aegean (Byzantine fault tolerant)
+- Reflexion (multi-agent critique)
+- Self-Refine/Self-Debug (iterative improvement)
+
+---
+
+## Key Design Decisions
+
+### Hybrid Architecture (ADR-001)
+
+**Decision:** Combine MCP Gateway + Internal Event Bus + Standalone CLI
+**Rationale:** Enables Claude CLI integration, peer-to-peer agent coordination, and CI/CD pipelines
+
+### Zero-Credential Pattern (ADR-002)
+
+**Decision:** OAuth for all CLI adapters, no stored credentials
+**Rationale:** Security-first, delegates auth to CLI tools
+
+### Result<T,E> Error Handling (ADR-003)
+
+**Decision:** Explicit error types over exceptions
+**Rationale:** Type-safe error handling, exhaustive matching
+
+---
+
+## File Map
+
+```
+packages/nexus-agents/src/
+├── agents/
+│   ├── tech-lead/         # Orchestration
+│   ├── experts/           # Domain experts
+│   ├── collaboration/     # Consensus protocols
+│   └── self-improving/    # SICA implementation
+├── cli-adapters/          # External CLI integration
+├── context/               # Memory management
+├── consensus/             # Voting protocols
+├── mcp/                   # MCP server
+├── swe-bench/             # SWE-Bench evaluation harness
+└── observability/         # Metrics, tracing
 ```
 
-## Event Bus (A2A Protocol)
+---
 
-The EventBus enables direct agent-to-agent communication:
+## Related Documents
 
-| Topic Pattern | Events                             | Description          |
-| ------------- | ---------------------------------- | -------------------- |
-| `session.*`   | created, status_changed, finalized | Session lifecycle    |
-| `consensus.*` | vote_requested, vote_cast, reached | Voting events        |
-| `agent.*`     | task_delegated, result_broadcast   | Agent coordination   |
-| `protocol.*`  | started, iteration, completed      | Protocol phases      |
-| `message.*`   | sent, received                     | Inter-agent messages |
-| `byzantine.*` | weight_updated, pattern_detected   | Byzantine detection  |
-
-## Security Layers
-
-7 defense layers protect the system:
-
-1. **Input Validation** - Zod schemas at all boundaries
-2. **Secrets Vault** - Never expose API keys or tokens
-3. **Rate Limiting** - Token bucket per tool
-4. **Memory Bounds** - Context pruning, history caps
-5. **Path Safety** - Normalized paths, directory jails
-6. **Timeout Protection** - TimeoutGuard for async operations
-7. **Byzantine Detection** - Weighted voting with pattern detection
-
-## Configuration
-
-Configuration follows a precedence order (highest to lowest):
-
-1. Environment variables (`NEXUS_*`)
-2. Project config (`./nexus-agents.yaml`)
-3. User config (`~/.config/nexus-agents/config.yaml`)
-4. Default values
-
-Example configuration:
-
-```yaml
-models:
-  default: claude-sonnet-4
-  tiers:
-    fast: [claude-haiku-3, gpt-4o-mini]
-    balanced: [claude-sonnet-4, gpt-4o]
-    powerful: [claude-opus-4, o1-pro]
-
-routing:
-  enableBudgetFilter: true
-  enableTopsisRanking: true
-  enableLinUCBSelection: true
-
-security:
-  sandbox:
-    mode: policy
-```
-
-## Next Steps
-
-- [Agent System](/nexus-agents/architecture/agent-system) - Learn about the agent framework and expert system
-- [Consensus Protocols](/nexus-agents/architecture/consensus-protocols) - Understand multi-agent decision making
-- [Routing System](/nexus-agents/architecture/routing-system) - Explore intelligent model selection
-- [Memory System](/nexus-agents/architecture/memory-system) - Dive into the 8-type memory architecture
-- [MCP Protocol](/nexus-agents/architecture/mcp-protocol) - Configure Claude Desktop integration
-- [Security](/nexus-agents/architecture/security) - Review security measures and sandboxing
+- **Full Architecture:** [ARCHITECTURE.md](../../ARCHITECTURE.md)
+- **Coding Standards:** [CODING_STANDARDS.md](../../CODING_STANDARDS.md)
+- **Research Index:** [RESEARCH_INDEX.md](../research/RESEARCH_INDEX.md)
+- **API Reference:** [ENTRYPOINTS.md](../ENTRYPOINTS.md)

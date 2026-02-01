@@ -1,237 +1,114 @@
 ---
-title: Quick Start
-description: Get nexus-agents running in under 5 minutes with step-by-step instructions.
+title: 'Nexus Agents Quick Start'
+description: 'Orchestrate multiple AI models using specialized experts to solve complex tasks.'
 ---
 
-This guide gets you from zero to a working nexus-agents setup in under 5 minutes.
+Orchestrate multiple AI models using specialized experts to solve complex tasks.
+
+**Time to first success: 5-10 minutes** (depending on prerequisites)
+
+---
 
 ## Prerequisites
 
-Before you begin, verify you have:
-
 ```bash
-node --version   # Must be v22.x
-npm --version    # Must be v10.x (or pnpm v9.x)
+node --version   # Must be v22.x LTS (required)
 ```
 
-You also need at least one API key:
+If you have an older version, upgrade with [nvm](https://github.com/nvm-sh/nvm):
 
-- `ANTHROPIC_API_KEY` for Claude models (recommended)
-- `OPENAI_API_KEY` for OpenAI models
-- `GOOGLE_AI_API_KEY` for Gemini models
+```bash
+nvm install 22 && nvm use 22
+```
 
-## Step 1: Install
+---
 
-Install nexus-agents globally:
+## Install
 
 ```bash
 npm install -g nexus-agents
 ```
 
-Or use pnpm:
+---
 
-```bash
-pnpm add -g nexus-agents
-```
-
-## Step 2: Verify Installation
-
-Run the doctor command to check your setup:
+## Verify
 
 ```bash
 nexus-agents doctor
 ```
 
-You should see output like:
+You should see checks for Node.js version, configuration, and API keys. If you see errors, check the [Troubleshooting](#common-issues) section below.
 
-```
-Nexus Agents Doctor
-===================
+---
 
-Checking CLI installations...
+## Option 1: Claude Code Integration (Recommended)
 
-✓ Claude CLI
-  Version: 2.0.76 (supported)
-  Auth: OAuth
-  Capacity: 85% remaining
-
-✓ Gemini CLI
-  Version: 0.22.5 (supported)
-  Auth: ADC configured
-
-✓ Codex CLI
-  Version: 0.77.0 (supported)
-  Auth: OAuth
-
-Checking MCP configuration...
-
-✓ MCP Server mode: Ready
-✓ MCP Client mode: Ready
-
-Summary: All systems operational
-```
-
-If any CLI is missing, the doctor command will show install instructions.
-
-## Step 3: Set Up API Key
-
-Export your API key:
+**Requires:** [Claude CLI](https://docs.anthropic.com/en/docs/claude-code) installed
 
 ```bash
-export ANTHROPIC_API_KEY="sk-ant-your-key-here"
+# Auto-configure MCP server
+nexus-agents setup
 ```
 
-Or create a `.env` file in your project:
+Then **in Claude Code chat** (not terminal), type:
+
+```
+orchestrate: What files are in this project?
+```
+
+Claude will use the nexus-agents MCP server to coordinate experts on your task.
+
+---
+
+## Option 2: Standalone CLI
+
+The standalone CLI uses external CLI tools for orchestration. Install at least one:
 
 ```bash
-echo "ANTHROPIC_API_KEY=sk-ant-your-key-here" > .env
+npm install -g @anthropic-ai/claude-code   # Claude CLI (recommended)
+# Or: npm install -g @google/gemini-cli    # Gemini CLI
+# Or: npm install -g @openai/codex         # Codex CLI
 ```
 
-## Step 4: Configure Claude Desktop
-
-Add nexus-agents to your Claude Desktop MCP configuration.
-
-**macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
-
-**Linux:** `~/.config/claude/claude_desktop_config.json`
-
-**Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
-
-```json
-{
-  "mcpServers": {
-    "nexus-agents": {
-      "command": "nexus-agents",
-      "args": ["--mode=server"],
-      "env": {
-        "ANTHROPIC_API_KEY": "sk-ant-your-key-here"
-      }
-    }
-  }
-}
-```
-
-Restart Claude Desktop to load the new configuration.
-
-## Step 5: Test It
-
-Open Claude Desktop and try these commands:
-
-### Basic Orchestration
-
-```
-orchestrate: What are the security concerns with storing passwords in plain text?
-```
-
-Claude will delegate to the Security Expert and return a detailed analysis.
-
-### Code Review
-
-```
-orchestrate: Review this code for issues:
-
-function login(user, password) {
-  if (user === "admin" && password === "password123") {
-    return true;
-  }
-  return false;
-}
-```
-
-The Tech Lead will coordinate Code and Security experts to provide comprehensive feedback.
-
-### Create a Custom Expert
-
-```
-create_expert: Create a testing expert specialized in React testing library
-```
-
-## Alternative: Standalone CLI
-
-If you prefer not to use Claude Desktop, you can run nexus-agents standalone:
+Authenticate:
 
 ```bash
-# Start interactive orchestration
-nexus-agents orchestrate "Review this repository for security issues"
-
-# Run a specific workflow
-nexus-agents workflow run code-review --input files=src/auth.ts
-
-# Debug routing decisions
-nexus-agents routing-audit "Implement a sorting algorithm"
+claude auth login   # Follow OAuth flow
 ```
 
-## Alternative: Claude CLI Integration
-
-For Claude CLI (Claude Code) users, add to `~/.claude/mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "nexus-agents": {
-      "command": "nexus-agents",
-      "args": ["--mode=server"]
-    }
-  }
-}
-```
-
-Then use naturally in Claude CLI:
+Run a task:
 
 ```bash
-claude "orchestrate: analyze this codebase for performance bottlenecks"
+nexus-agents orchestrate "Explain closures in JavaScript"
 ```
 
-## What's Next?
+---
 
-You now have a working nexus-agents setup. Here's where to go next:
+## Next Steps
 
-- [Installation](/nexus-agents/getting-started/installation/) - Detailed setup for Docker, CI/CD, and advanced scenarios
-- [Configuration](/nexus-agents/getting-started/configuration/) - Customize models, experts, and behavior
-- [CLI Usage](/nexus-agents/guides/cli-usage/) - Master all CLI commands
-- [MCP Integration](/nexus-agents/guides/mcp-integration/) - Deep dive into MCP tools
+| Goal               | Command                                         |
+| ------------------ | ----------------------------------------------- |
+| See all commands   | `nexus-agents --help`                           |
+| List expert types  | `nexus-agents expert list`                      |
+| List workflows     | `nexus-agents workflow list`                    |
+| Review a GitHub PR | `nexus-agents review <url>`                     |
+| Debug routing      | `nexus-agents routing-audit "your task"`        |
+| Full documentation | [CLAUDE.md](/nexus-agents/architecture/claude/) |
 
-## Troubleshooting
+---
 
-### "Command not found: nexus-agents"
+## Common Issues
 
-Ensure the npm global bin directory is in your PATH:
+| Issue                       | Solution                                                          |
+| --------------------------- | ----------------------------------------------------------------- |
+| "Command not found"         | Add `$(npm config get prefix)/bin` to your PATH                   |
+| "No API keys configured"    | Set `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or `GOOGLE_AI_API_KEY` |
+| Node.js version mismatch    | Install v22.x LTS with `nvm install 22`                           |
+| MCP connection fails        | Run `nexus-agents setup` or verify with `claude mcp list`         |
+| Setup doesn't detect Claude | Install Claude CLI: `npm install -g @anthropic-ai/claude-code`    |
 
-```bash
-# Find the global bin directory
-npm config get prefix
+For more help, see [docs/TROUBLESHOOTING.md](./docs/TROUBLESHOOTING.md).
 
-# Add to PATH (add to .bashrc or .zshrc)
-export PATH="$(npm config get prefix)/bin:$PATH"
-```
+---
 
-### "ANTHROPIC_API_KEY not set"
-
-Export the environment variable or add it to the MCP config:
-
-```bash
-export ANTHROPIC_API_KEY="sk-ant-your-key"
-```
-
-### "MCP connection failed"
-
-1. Check the config file syntax (must be valid JSON)
-2. Verify the nexus-agents command works: `nexus-agents --version`
-3. Restart Claude Desktop
-
-### "Doctor shows CLI not found"
-
-Install the missing CLI:
-
-```bash
-# Claude CLI
-npm install -g @anthropic-ai/claude-code
-
-# Gemini CLI
-npm install -g @anthropic-ai/gemini-code
-
-# Codex CLI
-npm install -g @openai/codex
-```
-
-For more troubleshooting, see the [Debugging Guide](/nexus-agents/guides/debugging-observability/).
+_Last updated: 2026-01-25 (ET)_

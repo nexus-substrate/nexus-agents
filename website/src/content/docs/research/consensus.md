@@ -1,238 +1,83 @@
 ---
-title: Consensus Protocols
-description: Multi-agent decision-making protocols implemented in Nexus Agents
+title: 'Consensus Research'
+description: 'Research on multi-agent consensus mechanisms for coordinating decision-making across multiple AI agents. Key focus areas include formal consensus protocols, voting mechanisms, Byzantine fault toler...'
 ---
 
-Research on multi-agent consensus mechanisms for coordinating decision-making across multiple AI agents. All 5 consensus techniques have been implemented.
+**Last Updated:** 2026-01-07 (ET)
+**Status:** Active Research
 
-## Implementation Status
+---
 
-| Technique                    | Paper                                                | Priority | Status      | Issue                                                               |
-| ---------------------------- | ---------------------------------------------------- | -------- | ----------- | ------------------------------------------------------------------- |
-| Aegean Consensus Protocol    | [arXiv:2512.20184](https://arxiv.org/abs/2512.20184) | P1       | Implemented | [#119](https://github.com/williamzujkowski/nexus-agents/issues/119) |
-| Task-Type Protocol Selection | [arXiv:2502.19130](https://arxiv.org/abs/2502.19130) | P1       | Implemented | [#125](https://github.com/williamzujkowski/nexus-agents/issues/125) |
-| Multi-Agent Reflexion (MAR)  | [arXiv:2512.20845](https://arxiv.org/abs/2512.20845) | P1       | Implemented | -                                                                   |
-| CP-WBFT Byzantine Consensus  | [arXiv:2511.10400](https://arxiv.org/abs/2511.10400) | P2       | Implemented | [#103](https://github.com/williamzujkowski/nexus-agents/issues/103) |
-| Free-MAD Anti-Conformity     | [arXiv:2509.11035](https://arxiv.org/abs/2509.11035) | P2       | Implemented | [#152](https://github.com/williamzujkowski/nexus-agents/issues/152) |
+## Overview
 
-## Aegean Consensus Protocol
+Research on multi-agent consensus mechanisms for coordinating decision-making across multiple AI agents. Key focus areas include formal consensus protocols, voting mechanisms, Byzantine fault tolerance, and task-aware protocol selection.
 
-**Paper:** [Aegean: Formal Consensus for Stochastic Reasoning](https://arxiv.org/abs/2512.20184)
+## Key Papers
 
-Formal consensus protocol for stochastic reasoning with incremental quorum detection. Achieves significant performance improvements while maintaining quality.
+| Paper                                                                | Key Contribution                                                 | Priority | Status      |
+| -------------------------------------------------------------------- | ---------------------------------------------------------------- | -------- | ----------- |
+| [Aegean](https://arxiv.org/abs/2512.20184)                           | Formal consensus with incremental quorum, 20x latency reduction  | P1       | planned     |
+| [Voting or Consensus](https://arxiv.org/abs/2502.19130)              | Task-type protocol selection (+13.2% reasoning, +2.8% knowledge) | P1       | planned     |
+| [MAR](https://arxiv.org/abs/2512.20845)                              | Multi-agent reflexion for cross-agent critique                   | P1       | planned     |
+| [CP-WBFT](https://arxiv.org/abs/2511.10400)                          | Byzantine fault tolerance with 85.7% fault rate tolerance        | P2       | planned     |
+| [Free-MAD](https://arxiv.org/abs/2509.11035)                         | Anti-conformity scoring to prevent majority influence            | P2       | not-started |
+| [Multi-Agent Collaboration Survey](https://arxiv.org/abs/2501.06322) | Taxonomy of coordination strategies                              | -        | not-started |
 
-### Key Metrics
+## Recommended Techniques
 
-| Metric            | Value                   |
-| ----------------- | ----------------------- |
-| Latency Reduction | 1.2x - 20x              |
-| Token Reduction   | 4.4x                    |
-| Quality Impact    | Within 2.5% of baseline |
+### High Priority (P1)
 
-### Implementation
+#### Aegean Consensus Protocol
 
-Implemented as `AegeanProtocol` class with:
+- **Source:** [arxiv-2512.20184](https://arxiv.org/abs/2512.20184)
+- **Key Metrics:** 1.2x-20x latency reduction, 4.4x token reduction
+- **Integration Point:** `packages/nexus-agents/src/agents/collaboration/consensus-protocol.ts`
+- **GitHub Issue:** #100
 
-- Leader-based coordination with round-robin selection
-- Incremental quorum detection for early termination
-- Byzantine fault tolerance (tolerates f faults out of 3f+1 agents)
-- Full test coverage (23 tests)
+Formal consensus protocol for stochastic reasoning with incremental quorum detection. Direct replacement for current heuristic consensus with early termination when quorum is reached.
 
-**Source Files:**
+#### Task-Aware Protocol Selection
 
-- `src/agents/collaboration/aegean-types.ts`
-- `src/agents/collaboration/aegean-protocol.ts`
+- **Source:** [arxiv-2502.19130](https://arxiv.org/abs/2502.19130)
+- **Key Metrics:** +13.2% on reasoning tasks, +2.8% on knowledge tasks
+- **Integration Point:** `packages/nexus-agents/src/agents/collaboration/consensus-protocol.ts`
 
-### Usage
+Select between voting (reasoning) and consensus (knowledge) protocols based on task type classification. Low complexity, high impact improvement.
 
-```typescript
-import { AegeanProtocol } from 'nexus-agents';
+#### Multi-Agent Reflexion (MAR)
 
-const protocol = new AegeanProtocol({
-  agents: ['agent-1', 'agent-2', 'agent-3', 'agent-4'],
-  quorumThreshold: 0.67,
-  maxRounds: 5,
-});
+- **Source:** [arxiv-2512.20845](https://arxiv.org/abs/2512.20845)
+- **Key Metrics:** Significant reasoning improvements
+- **Integration Point:** `packages/nexus-agents/src/agents/collaboration/collaboration-space.ts`
 
-const result = await protocol.execute(task);
-```
+Cross-agent critique within collaboration spaces for diverse perspectives and consensus through multi-agent evaluation.
 
-## Task-Type Protocol Selection
+### Medium Priority (P2)
 
-**Paper:** [Voting or Consensus? Decision-Making in Multi-Agent Debate](https://arxiv.org/abs/2502.19130)
+#### CP-WBFT Byzantine Fault Tolerance
 
-Empirically determined that voting works better for reasoning tasks while consensus works better for knowledge tasks. Automatic protocol selection based on task classification.
+- **Source:** [arxiv-2511.10400](https://arxiv.org/abs/2511.10400)
+- **Key Metrics:** 85.7% fault rate tolerance
+- **Integration Point:** `packages/nexus-agents/src/agents/collaboration/result-aggregator.ts`
+- **GitHub Issue:** #103
 
-### Key Metrics
+Confidence probe-based weighted voting for Byzantine fault tolerance in expert collaboration.
 
-| Task Type       | Improvement |
-| --------------- | ----------- |
-| Reasoning Tasks | +13.2%      |
-| Knowledge Tasks | +2.8%       |
+## Implementation Roadmap
 
-### Implementation
-
-Implemented `TaskTypeClassifier` and `AdaptiveProtocolSelector`:
-
-- Keyword-based task classification (reasoning vs knowledge)
-- Automatic protocol selection based on task type
-- Configurable pattern mapping
-- 31 comprehensive tests
-
-**Source Files:**
-
-- `src/agents/collaboration/task-type-classifier.ts`
-- `src/agents/collaboration/adaptive-protocol-selector.ts`
-
-### Usage
-
-```typescript
-import { AdaptiveProtocolSelector } from 'nexus-agents';
-
-const selector = new AdaptiveProtocolSelector();
-const protocol = selector.selectProtocol(task);
-
-// Returns 'voting' for reasoning tasks, 'consensus' for knowledge tasks
-```
-
-## Multi-Agent Reflexion (MAR)
-
-**Paper:** [MAR: Multi-Agent Reflexion Improves Reasoning Abilities](https://arxiv.org/abs/2512.20845)
-
-Multiple agents reflect and critique each other's outputs for improved reasoning through cross-agent evaluation. Avoids "degeneration of thought" from single-agent self-reflection.
-
-### Key Metrics
-
-| Metric                | Value                         |
-| --------------------- | ----------------------------- |
-| Reasoning Improvement | Significant across benchmarks |
-
-### Implementation
-
-Implemented as `ReflexionProtocol` class with:
-
-- Persona-based multi-agent debates
-- Weighted severity scoring
-- Iterative critique and synthesis rounds
-- Default code review personas (security, performance, maintainability, correctness)
-
-**Source Files:**
-
-- `src/agents/collaboration/reflexion-types.ts`
-- `src/agents/collaboration/reflexion-protocol.ts`
-
-### Usage
-
-```typescript
-import { ReflexionProtocol } from 'nexus-agents';
-
-const protocol = new ReflexionProtocol({
-  personas: ['security-critic', 'performance-critic', 'maintainability-critic'],
-  maxRounds: 3,
-  severityThreshold: 0.3,
-});
-
-const result = await protocol.execute(codeReviewTask);
-```
-
-## CP-WBFT Byzantine Fault Tolerant Consensus
-
-**Paper:** [CP-WBFT: Confidence Probe-based Weighted Byzantine Fault Tolerant](https://arxiv.org/abs/2511.10400)
-
-Confidence Probe-based Weighted Byzantine Fault Tolerant consensus that handles malicious or faulty agents through weighted voting with heuristic detection of adversarial patterns.
-
-### Key Metrics
-
-| Metric          | Value |
-| --------------- | ----- |
-| Fault Tolerance | 85.7% |
-
-### Implementation
-
-Implemented weighted Byzantine fault tolerance for expert collaboration:
-
-- Confidence probes for vote weighting
-- Pattern detection for adversarial behavior (contrarian voting, collusion)
-- Automatic weight adjustment based on historical performance
-
-**Source Files:**
-
-- `src/consensus/weighted-voting.ts`
-- `src/agents/collaboration/result-aggregator.ts`
-
-### Usage
-
-```typescript
-import { WeightedVoting } from 'nexus-agents';
-
-const voting = new WeightedVoting({
-  minTrustScore: 0.3,
-  quorumThreshold: 0.67,
-  weightDecay: 0.9,
-  weightRecovery: 1.05,
-});
-
-const result = voting.weightedConsensus(votes);
-```
-
-## Free-MAD Anti-Conformity Scoring
-
-**Paper:** [Free-MAD: Score-Based Decision with Anti-Conformity](https://arxiv.org/abs/2509.11035)
-
-Score-based decision with anti-conformity to prevent majority influence on correct answers. Protects minority positions that may be correct.
-
-### Key Metrics
-
-| Metric     | Value                    |
-| ---------- | ------------------------ |
-| Robustness | Enhanced against attacks |
-
-### Implementation
-
-Implemented as `FreeMadScorer` class with:
-
-- Debate trajectory tracking across multiple rounds
-- Anti-conformity scoring with configurable penalty weights
-- Persistence bonus for minority position maintainers
-- Conformity detection when agents change to match majority
-- Integration helpers for existing consensus protocols
-- 19 comprehensive tests
-
-**Source Files:**
-
-- `src/agents/collaboration/free-mad-types.ts`
-- `src/agents/collaboration/free-mad-scoring.ts`
-
-### Usage
-
-```typescript
-import { FreeMadScorer } from 'nexus-agents';
-
-const scorer = new FreeMadScorer({
-  conformityPenalty: 0.2,
-  persistenceBonus: 0.15,
-});
-
-// Track positions across debate rounds
-scorer.recordPosition('agent-1', 'round-1', 'position-A');
-scorer.recordPosition('agent-2', 'round-1', 'position-B');
-
-// Get anti-conformity adjusted scores
-const scores = scorer.getAdjustedScores();
-```
-
-## Source Papers
-
-| Paper                                                                              | Year | Key Contribution                |
-| ---------------------------------------------------------------------------------- | ---- | ------------------------------- |
-| [Multi-Agent Collaboration Mechanisms: A Survey](https://arxiv.org/abs/2501.06322) | 2025 | Taxonomy of collaboration types |
-| [Voting or Consensus?](https://arxiv.org/abs/2502.19130)                           | 2025 | Protocol comparison             |
-| [Aegean](https://arxiv.org/abs/2512.20184)                                         | 2025 | Formal consensus with quorum    |
-| [CP-WBFT](https://arxiv.org/abs/2511.10400)                                        | 2025 | Byzantine fault tolerance       |
-| [Free-MAD](https://arxiv.org/abs/2509.11035)                                       | 2025 | Anti-conformity scoring         |
-| [MAR](https://arxiv.org/abs/2512.20845)                                            | 2025 | Multi-agent reflexion           |
+1. **Phase 1 (v2.3.0):** Aegean consensus, task-aware protocol selection
+2. **Phase 2 (v2.4.0):** MAR cross-agent critique, Free-MAD scoring
+3. **Phase 3 (v3.0.0):** CP-WBFT Byzantine fault tolerance
 
 ## Related Topics
 
-- [Agent System](/nexus-agents/architecture/agent-system) - Agent coordination patterns that use consensus
-- [Memory Systems](/nexus-agents/research/memory) - Context for consensus decisions
+- [Orchestration](../orchestration/README.md) - Agent coordination patterns
+- [Memory](../memory/README.md) - Context for consensus decisions
+
+## References
+
+- [Aegean: Formal Consensus for Stochastic Reasoning](https://arxiv.org/abs/2512.20184)
+- [Voting or Consensus? Decision-Making in Multi-Agent Debate](https://arxiv.org/abs/2502.19130)
+- [MAR: Multi-Agent Reflexion](https://arxiv.org/abs/2512.20845)
+- [CP-WBFT: Byzantine Fault Tolerant Consensus](https://arxiv.org/abs/2511.10400)
+- [Free-MAD: Score-Based Decision](https://arxiv.org/abs/2509.11035)

@@ -1,9 +1,9 @@
 ---
-title: Installation
-description: Detailed installation instructions for nexus-agents across all platforms, Docker, and CI/CD environments.
+title: 'Installation'
+description: 'Detailed installation instructions for nexus-agents across all platforms, Docker, and CI/CD environments.'
 ---
 
-This guide covers all installation methods for nexus-agents, from simple npm install to Docker containers and CI/CD integration.
+Detailed installation instructions for nexus-agents across all platforms, Docker, and CI/CD environments.
 
 ## System Requirements
 
@@ -466,8 +466,8 @@ sudo usermod -aG docker $USER
 # Log out and back in
 ```
 
-## Next Steps
+## Related Documentation
 
-- [Configuration](/nexus-agents/getting-started/configuration/) - Set up models, experts, and routing
+- [Configuration](/nexus-agents/architecture/configuration/) - Set up models, experts, and routing
 - [Quick Start](/nexus-agents/getting-started/quick-start/) - Try your first orchestration
-- [CLI Usage](/nexus-agents/guides/cli-usage/) - Learn all CLI commands
+- [CLI Usage](../ENTRYPOINTS.md) - Learn all CLI commands

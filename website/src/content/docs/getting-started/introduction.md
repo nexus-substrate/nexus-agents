@@ -1,144 +1,184 @@
 ---
-title: Introduction
-description: What nexus-agents is, why it exists, and how it differs from other multi-agent frameworks.
+title: 'Introduction'
+description: '> Orchestrate multiple AI experts from a single interface'
 ---
 
-Nexus Agents is a multi-agent orchestration server that coordinates AI experts to handle complex software development tasks. It implements the [Model Context Protocol (MCP)](https://modelcontextprotocol.io) to integrate with Claude Desktop and Claude CLI, while also supporting standalone operation and REST API access.
+> Orchestrate multiple AI experts from a single interface
 
-## The Problem
+[![npm version](https://img.shields.io/npm/v/nexus-agents)](https://www.npmjs.com/package/nexus-agents)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Node.js Version](https://img.shields.io/badge/node-%3E%3D22.0.0-brightgreen)](https://nodejs.org)
 
-Building reliable multi-agent systems is harder than it looks:
+---
 
-1. **Models disagree.** Ask three LLMs the same question and you get three different answers. Which one is correct?
+## Why Nexus Agents?
 
-2. **Models fail silently.** A model might return a plausible-sounding response that's completely wrong. Without verification, errors propagate.
-
-3. **Context gets lost.** Long conversations exhaust context windows. Important information from early in a session disappears.
-
-4. **Routing is guesswork.** Choosing which model to use for each task is typically hardcoded or random. There's no learning from outcomes.
-
-5. **Security is an afterthought.** Most multi-agent frameworks store API keys in plain text and execute arbitrary code without sandboxing.
-
-## The Solution
-
-Nexus Agents addresses each of these problems with **research-backed protocols** that have been validated in academic literature:
-
-| Problem                     | Solution                                   | Research                     |
-| --------------------------- | ------------------------------------------ | ---------------------------- |
-| Models disagree             | Byzantine consensus protocols              | Aegean (arXiv:2512.20184)    |
-| Models fail silently        | Multi-agent critique and verification      | Reflexion (arXiv:2303.11366) |
-| Context gets lost           | 8 specialized memory systems               | MIRIX (arXiv:2507.07957)     |
-| Routing is guesswork        | Contextual bandits with learning           | PILOT (arXiv:2508.21141)     |
-| Security is an afterthought | Sandboxed execution, zero-credential OAuth | Docker + OAuth 2.0/PKCE      |
-
-## Key Concepts
-
-### Experts
-
-Nexus Agents uses specialized experts for different domains:
-
-| Expert                  | Focus                                                  |
-| ----------------------- | ------------------------------------------------------ |
-| **Code Expert**         | Implementation, debugging, optimization, refactoring   |
-| **Architecture Expert** | System design, patterns, trade-offs, scalability       |
-| **Security Expert**     | Vulnerability analysis, secure coding, threat modeling |
-| **Performance Expert**  | Profiling, optimization, benchmarking                  |
-| **Research Expert**     | Literature review, technique identification            |
-
-Each expert has domain-specific system prompts and capabilities. The **Tech Lead** agent analyzes incoming tasks and delegates to the appropriate experts automatically.
-
-### Consensus Protocols
-
-When experts disagree, consensus protocols determine the final answer:
-
-- **Simple Majority** - Fast decisions for non-critical tasks
-- **Supermajority** - Architecture decisions requiring broad agreement
-- **Unanimous** - Security-critical changes requiring 100% agreement
-- **Aegean** - Byzantine fault tolerance for untrusted environments
-- **Reflexion** - Iterative critique and refinement
-
-The system automatically selects the appropriate protocol based on task type.
-
-### Routing
-
-Task routing determines which model handles each request:
+**One tool to coordinate Claude, OpenAI, Gemini, and Ollama.** Instead of switching between AI tools, nexus-agents routes your tasks to specialized experts that collaborate on complex problems.
 
 ```
-Task Analysis → Budget Check → TOPSIS Ranking → LinUCB Selection
+You: "Review this code for security and performance"
+     ↓
+Tech Lead analyzes → delegates to Security Expert + Code Expert
+     ↓
+Combined response with findings from both experts
 ```
 
-1. **Task Analysis** - Classify complexity, domain, and requirements
-2. **Budget Check** - Filter models that exceed token/cost/latency limits
-3. **TOPSIS Ranking** - Multi-criteria optimization (quality vs. cost vs. latency)
-4. **LinUCB Selection** - Contextual bandit that learns from outcomes
+---
 
-The router improves over time by tracking which models perform best for each task type.
+## Quick Start (2 minutes)
 
-### Memory Systems
+### 1. Install
 
-Eight memory systems handle different types of information:
-
-| Memory         | Purpose                              |
-| -------------- | ------------------------------------ |
-| **Session**    | Current conversation context         |
-| **Graph**      | Entity relationships and connections |
-| **Adaptive**   | Priority-weighted retrieval          |
-| **Typed**      | Six-type MIRIX architecture          |
-| **Agentic**    | Zettelkasten-style linked notes      |
-| **Episodic**   | Past task experiences                |
-| **Semantic**   | Domain knowledge                     |
-| **Procedural** | Learned workflows                    |
-
-## What Nexus Agents Is Not
-
-**Not a model provider.** Nexus Agents coordinates models from Anthropic, OpenAI, Google, and local providers (Ollama). It does not train or host models.
-
-**Not a chatbot framework.** While it can power chat applications, nexus-agents is designed for programmatic orchestration of software development tasks.
-
-**Not a replacement for Claude Code.** Nexus Agents is designed to work _with_ Claude Code as an MCP server, extending its capabilities with multi-agent coordination.
-
-## Architecture Overview
-
-```
-┌─────────────────────────────────────────┐
-│       External Interface Layer          │
-│  MCP Gateway │ REST API │ CLI           │
-└────────────────────┬────────────────────┘
-                     │
-┌────────────────────▼────────────────────┐
-│    Internal Orchestration Layer         │
-│  Event Bus │ Tech Lead │ Consensus      │
-└────────────────────┬────────────────────┘
-                     │
-┌────────────────────▼────────────────────┐
-│         Execution Layer                 │
-│  CLI Adapters │ Model APIs │ Workflows  │
-└─────────────────────────────────────────┘
+```bash
+npm install -g nexus-agents
 ```
 
-The hybrid architecture supports three modes:
+### 2. Verify
 
-- **Server Mode** - MCP server for Claude Desktop/CLI integration
-- **Orchestrator Mode** - Standalone CLI for scripts and automation
-- **Mesh Mode** - Full hybrid with both capabilities
+```bash
+nexus-agents doctor
+```
 
-## Requirements
+### 3. Use
 
-- **Node.js 22.x LTS** (required)
-- **pnpm 9.x** or **npm 10.x** (recommended)
-- **Docker** (optional, for sandboxed execution)
+**With Claude Code (recommended):**
 
-At least one model provider:
+```bash
+nexus-agents setup   # Auto-configures MCP server
+```
 
-- Anthropic API key for Claude models
-- OpenAI API key for GPT models
-- Google AI API key for Gemini models
-- Ollama installation for local models
+Then in Claude: `"orchestrate: Review this PR for issues"`
 
-## Next Steps
+**Standalone CLI:**
 
-Ready to get started?
+```bash
+export ANTHROPIC_API_KEY=your-key
+nexus-agents orchestrate "Explain the architecture of this codebase"
+```
 
-1. [Quick Start](/nexus-agents/getting-started/quick-start/) - 5-minute setup guide
-2. [Installation](/nexus-agents/getting-started/installation/) - Detailed installation instructions
-3. [Configuration](/nexus-agents/getting-started/configuration/) - Configure models and behavior
+> **Security Note:** The server runs without authentication by default. For production deployments, set `NEXUS_AUTH_ENABLED=true`. See [SECURITY.md](./docs/architecture/SECURITY.md) for details.
+
+---
+
+## What It Does
+
+| Feature                        | Description                                                                            |
+| ------------------------------ | -------------------------------------------------------------------------------------- |
+| **Multi-Expert Orchestration** | Tech Lead coordinates Code, Security, Architecture, Testing, and Documentation experts |
+| **Model Routing**              | Routes tasks to the best model based on capability (reasoning, speed, context size)    |
+| **Workflow Automation**        | YAML templates for repeatable processes like code review                               |
+| **MCP Integration**            | Works as a tool server for Claude Desktop and Claude Code                              |
+
+---
+
+## Available Experts
+
+| Expert        | Specialization                             |
+| ------------- | ------------------------------------------ |
+| Code          | Implementation, debugging, optimization    |
+| Architecture  | System design, patterns, scalability       |
+| Security      | Vulnerability analysis, secure coding      |
+| Testing       | Test strategies, coverage, test generation |
+| Documentation | Technical writing, API docs                |
+
+---
+
+## Supported Models
+
+| Provider | Models                    | Best For                    |
+| -------- | ------------------------- | --------------------------- |
+| Claude   | Sonnet 4, Opus 4, Haiku 3 | Complex reasoning, analysis |
+| OpenAI   | GPT-4o, o1, Codex         | Code generation             |
+| Gemini   | 2.5 Pro, 2.5 Flash        | Long context, multimodal    |
+| Ollama   | Llama 3, CodeLlama, Qwen  | Local inference, privacy    |
+
+---
+
+## CLI Commands
+
+```bash
+nexus-agents                    # Start MCP server (default)
+nexus-agents doctor             # Check installation health
+nexus-agents setup              # Configure Claude CLI integration
+nexus-agents orchestrate "..."  # Run task with experts
+nexus-agents review <pr-url>    # Review a GitHub PR
+nexus-agents expert list        # List available experts
+nexus-agents workflow list      # List workflow templates
+nexus-agents --help             # Full command list
+```
+
+---
+
+## MCP Tools
+
+When running as an MCP server, these tools are available:
+
+| Tool                | Description                                  |
+| ------------------- | -------------------------------------------- |
+| `orchestrate`       | Analyze task and coordinate expert execution |
+| `create_expert`     | Dynamically create a specialized expert      |
+| `run_workflow`      | Execute a workflow template                  |
+| `delegate_to_model` | Route task to optimal model                  |
+
+---
+
+## Configuration
+
+| ------------------- | --------------------------------- |
+| `ANTHROPIC_API_KEY` | Claude API key |
+| `OPENAI_API_KEY` | OpenAI API key |
+| `GOOGLE_AI_API_KEY` | Gemini API key |
+| `NEXUS_LOG_LEVEL` | Log level (debug/info/warn/error) |
+
+**Generate config file:**
+
+```bash
+nexus-agents config init   # Creates nexus-agents.yaml
+```
+
+---
+
+## Documentation
+
+| Topic              | Link                                                                |
+| ------------------ | ------------------------------------------------------------------- |
+| Full CLI Reference | [docs/ENTRYPOINTS.md](./docs/ENTRYPOINTS.md)                        |
+| Architecture       | [docs/architecture/README.md](./docs/architecture/README.md)        |
+| Contributing       | [CONTRIBUTING.md](/nexus-agents/architecture/contributing/)         |
+| Coding Standards   | [CODING_STANDARDS.md](/nexus-agents/architecture/coding-standards/) |
+| Quick Start Guide  | [QUICK_START.md](/nexus-agents/architecture/quick-start/)           |
+
+---
+
+## Development
+
+```bash
+git clone https://github.com/williamzujkowski/nexus-agents.git
+cd nexus-agents
+pnpm install
+pnpm build
+pnpm test
+```
+
+**Requirements:** Node.js 22.x LTS, pnpm 9.x
+
+---
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feat/amazing-feature`)
+3. Commit with conventional commits (`feat(scope): add feature`)
+4. Open a Pull Request
+
+See [CONTRIBUTING.md](/nexus-agents/architecture/contributing/) for details.
+
+---
+
+## License
+
+MIT - See [LICENSE](./LICENSE)
+
+---
+
+Built with Claude Code

@@ -1,7 +1,9 @@
 ---
-title: Workflow Templates
-description: Create and customize YAML workflow templates for automated multi-agent task execution.
+title: 'Workflow Templates'
+description: 'Create and customize YAML workflow templates for automated multi-agent task execution.'
 ---
+
+Create and customize YAML workflow templates for automated multi-agent task execution.
 
 Workflow templates define automated sequences of agent tasks. Write once, execute repeatedly with different inputs.
 
@@ -558,8 +560,8 @@ output:
   approval_recommendation: '{{ steps.compile-report.output.recommendation }}'
 ```
 
-## Next Steps
+## Related Documentation
 
-- [CLI Commands](/nexus-agents/guides/cli-usage) - Run workflows from command line
-- [Debugging & Observability](/nexus-agents/guides/debugging-observability) - Debug workflow execution
-- [Agent Development](/nexus-agents/development/agent-development) - Create custom experts
+- [CLI Usage](../ENTRYPOINTS.md) - Run workflows from command line
+- [Debugging & Observability](/nexus-agents/architecture/debugging-observability/) - Debug workflow execution
+- [Agent Development](/nexus-agents/development/agent-development/) - Create custom experts

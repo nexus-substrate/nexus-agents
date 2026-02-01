@@ -1,11 +1,21 @@
 ---
-title: Contributing Guide
-description: How to contribute to nexus-agents including setup, workflow, and coding standards.
+title: 'Contributing to Nexus Agents'
+description: 'This guide covers development setup, coding standards, and the contribution workflow for Nexus Agents.'
 ---
 
-This guide covers how to set up your development environment, contribute code, and follow project standards.
+This guide covers development setup, coding standards, and the contribution workflow for Nexus Agents.
 
-## Prerequisites
+## Code of Conduct
+
+By participating in this project, you agree to maintain a respectful and inclusive environment. Please be considerate in your interactions with other contributors.
+
+---
+
+## Development Setup
+
+### Prerequisites
+
+Before you begin, ensure you have the following installed:
 
 | Tool            | Version  | Purpose                 |
 | --------------- | -------- | ----------------------- |
@@ -14,434 +24,546 @@ This guide covers how to set up your development environment, contribute code, a
 | Git             | Latest   | Version control         |
 | GitHub CLI (gh) | Latest   | Issue and PR management |
 
-Verify your environment:
+Verify your setup:
 
 ```bash
-node --version   # Must be v22.x
-pnpm --version   # Must be v9.x
-gh --version     # For issue/PR management
+node --version    # Should output v22.x.x
+pnpm --version    # Should output 9.x.x
+git --version     # Any recent version
+gh --version      # Any recent version
 ```
-
-## Development Setup
 
 ### Clone and Install
 
-```bash
-# Clone repository
-git clone https://github.com/williamzujkowski/nexus-agents.git
-cd nexus-agents
+1. **Fork the repository** on GitHub
 
-# Install dependencies
-pnpm install
+2. **Clone your fork:**
 
-# Verify installation
-pnpm test
-```
+   ```bash
+   git clone https://github.com/<your-username>/nexus-agents.git
+   cd nexus-agents
+   ```
 
-### Environment Variables
+3. **Add upstream remote:**
 
-Create a `.env` file (not committed):
+   ```bash
+   git remote add upstream https://github.com/williamzujkowski/nexus-agents.git
+   ```
 
-```bash
-# Required for Claude models
-ANTHROPIC_API_KEY=your-key
+4. **Install dependencies:**
 
-# Optional for other providers
-OPENAI_API_KEY=your-key
-GOOGLE_AI_API_KEY=your-key
+   ```bash
+   pnpm install
+   ```
 
-# Development settings
-NEXUS_LOG_LEVEL=debug
-```
-
-### Common Commands
+### Build and Test Commands
 
 ```bash
 # Development
-pnpm dev              # Start dev server
+pnpm dev              # Start development server
 pnpm build            # Build all packages
 pnpm test             # Run tests
-pnpm test:watch       # Watch mode
+pnpm test:coverage    # Run tests with coverage report
 
-# Quality
-pnpm lint             # Lint code
-pnpm lint:fix         # Auto-fix lint issues
-pnpm typecheck        # Type check
-
-# Utilities
-pnpm clean            # Clean build artifacts
+# Code Quality
+pnpm lint             # Lint all files
+pnpm lint:fix         # Auto-fix linting issues
+pnpm typecheck        # Run TypeScript type checking
 ```
 
-## Contribution Workflow
+---
 
-### Step 1: Find or Create an Issue
+## Development Workflow
 
-Before starting work:
+### Branch Naming Conventions
+
+Use the following prefixes for your branches:
+
+| Prefix      | Use Case               | Example                            |
+| ----------- | ---------------------- | ---------------------------------- |
+| `feat/`     | New features           | `feat/123-add-workflow-engine`     |
+| `fix/`      | Bug fixes              | `fix/456-memory-leak-fix`          |
+| `docs/`     | Documentation changes  | `docs/update-api-reference`        |
+| `refactor/` | Code refactoring       | `refactor/extract-result-type`     |
+| `test/`     | Test additions/changes | `test/add-agent-integration-tests` |
+| `chore/`    | Maintenance tasks      | `chore/update-dependencies`        |
+
+Always include the issue number when one exists: `feat/<issue-number>-short-description`
+
+### Commit Message Format
+
+We use [Conventional Commits](https://www.conventionalcommits.org/). Each commit message should follow this format:
+
+```
+type(scope): description
+
+[optional body]
+
+[optional footer]
+```
+
+**Types:**
+
+- `feat` - New feature
+- `fix` - Bug fix
+- `docs` - Documentation only
+- `refactor` - Code change that neither fixes a bug nor adds a feature
+- `test` - Adding or updating tests
+- `chore` - Maintenance tasks
+- `perf` - Performance improvement
+
+**Examples:**
 
 ```bash
-# Search for existing issues
-gh issue list --search "keyword"
+# Feature commit
+git commit -m "feat(agents): add dynamic expert creation
 
-# Check research registry for related techniques
-grep -i "keyword" docs/research/registry/techniques.yaml
+- Implement ExpertFactory for on-demand agent creation
+- Add role-based configuration system
+- Support custom tool assignments
+
+Closes #123"
+
+# Bug fix commit
+git commit -m "fix(mcp): prevent path traversal in file operations
+
+Resolves security vulnerability in read_files tool.
+
+Closes #456"
+
+# Documentation commit
+git commit -m "docs(api): update tool reference documentation"
 ```
 
-Create an issue if one does not exist:
+### Pull Request Process
+
+1. **Create a branch** from the latest `main`:
+
+   ```bash
+   git checkout main
+   git pull upstream main
+   git checkout -b feat/123-your-feature
+   ```
+
+2. **Make your changes** following our coding standards (see below)
+
+3. **Run quality gates** before committing:
+
+   ```bash
+   pnpm lint
+   pnpm typecheck
+   pnpm test
+   ```
+
+4. **Push your branch:**
+
+   ```bash
+   git push -u origin feat/123-your-feature
+   ```
+
+5. **Create a Pull Request:**
+
+   ```bash
+   gh pr create \
+     --title "feat(scope): your feature description" \
+     --body "## Summary
+   - Implements #123
+
+   ## Changes
+   - List of changes
+
+   ## Testing
+   - How you tested this" \
+     --base main
+   ```
+
+6. **Run CLI-based PR review** (required before merge):
+
+   ```bash
+   pnpm review <PR-number>
+   ```
+
+   This uses locally authenticated CLI tools (Claude, Gemini, or Codex) at zero API cost.
+   See [PR Review Workflow](#pr-review-workflow) below for details.
+
+7. **Address review feedback** and ensure CI passes
+
+8. **Merge** (maintainers will squash-merge approved PRs)
+
+---
+
+## PR Review Workflow
+
+All PRs require a CLI-based review before merging. This workflow uses locally authenticated CLI tools at zero API cost.
+
+### Prerequisites
+
+You need at least one of these CLI tools installed and authenticated:
+
+| CLI        | Authentication                  | Best For                      |
+| ---------- | ------------------------------- | ----------------------------- |
+| Claude CLI | OAuth (Claude Max subscription) | Security, architecture review |
+| Gemini CLI | OAuth / ADC                     | Large files (1M context)      |
+| Codex CLI  | ChatGPT OAuth                   | Code quality, test coverage   |
 
 ```bash
-gh issue create \
-  --title "feat: brief description" \
-  --body "## Description
-
-What needs to be done.
-
-## Acceptance Criteria
-- [ ] Criterion 1
-- [ ] Criterion 2" \
-  --label "enhancement"
+# Verify CLI authentication
+claude --version    # Claude CLI
+gemini --version    # Gemini CLI
+codex --version     # Codex CLI
 ```
 
-### Step 2: Create a Branch
+### Running a Review
 
 ```bash
-git checkout main
-git pull origin main
-git checkout -b feat/<issue-number>-short-description
+# Basic review (auto-selects best available CLI)
+pnpm review <PR-number>
+
+# Use specific model
+pnpm review 186 --model=claude
+pnpm review 186 --model=gemini
+pnpm review 186 --model=codex
+
+# Preview review without posting (dry run)
+pnpm review 186 --dry-run
+
+# Run review with all available CLIs
+pnpm review 186 --all
+
+# Verbose output
+pnpm review 186 --verbose
 ```
 
-**Branch naming conventions:**
+### Model Selection Guidance
 
-- `feat/<issue>-description` - New features
-- `fix/<issue>-description` - Bug fixes
-- `refactor/description` - Code refactoring
-- `docs/description` - Documentation
+| Task Type               | Recommended     |
+| ----------------------- | --------------- |
+| Security review         | Claude          |
+| Architecture review     | Claude          |
+| Large codebase (>100KB) | Gemini (1M ctx) |
+| Code quality            | Codex           |
+| Test coverage analysis  | Codex           |
 
-### Step 3: Implement with TDD
+### Review Process
 
-Write tests first:
+1. Developer creates PR
+2. CI runs (lint, test, build) → must pass
+3. Developer runs `pnpm review <PR#>`
+4. Review posted as PR comment
+5. `cli-reviewed` label added automatically
+6. Branch protection verifies label
+7. Merge enabled
 
-```bash
-# Watch mode for TDD
-pnpm test:watch packages/nexus-agents/src/path/to/feature.test.ts
-```
+### Stale Reviews
 
-```typescript
-// feature.test.ts
-import { describe, it, expect } from 'vitest';
-import { myFeature } from './feature.js';
+When new commits are pushed to a PR:
 
-describe('myFeature', () => {
-  it('should handle the happy path', () => {
-    const result = myFeature('input');
-    expect(result.ok).toBe(true);
-  });
+- The `cli-reviewed` label is automatically removed
+- A comment is posted requesting re-review
+- Re-run `pnpm review <PR#>` to review updated changes
 
-  it('should handle errors gracefully', () => {
-    const result = myFeature('');
-    expect(result.ok).toBe(false);
-  });
-});
-```
+### Fallback Options
 
-Then implement until tests pass.
+If CLI tools are unavailable, maintainers can:
 
-### Step 4: Run Quality Gates
+- Manually trigger GitHub Actions workflow (requires API keys)
+- Manually add the `cli-reviewed` label after human review
 
-All must pass before commit:
+See [docs/proposals/cli-pr-review-workflow.md](./docs/proposals/cli-pr-review-workflow.md) for full design rationale.
 
-```bash
-pnpm lint          # Zero errors, zero warnings
-pnpm typecheck     # Zero type errors
-pnpm test          # All tests pass
-```
+---
 
-### Step 5: Commit with Conventional Format
+## Code Quality Standards
 
-```bash
-git add .
-git commit -m "$(cat <<'EOF'
-feat(scope): brief description
+All contributions must adhere to our coding standards. For complete details, see [CODING_STANDARDS.md](/nexus-agents/architecture/coding-standards/).
 
-- Implementation detail 1
-- Implementation detail 2
+### Key Requirements
 
-Closes #<issue>
+#### File and Function Limits
 
-Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
-EOF
-)"
-```
+| Metric                  | Limit         |
+| ----------------------- | ------------- |
+| File length             | 400 lines max |
+| Function length         | 50 lines max  |
+| Cyclomatic complexity   | 10 max        |
+| Parameters per function | 5 max         |
+| Nesting depth           | 4 levels max  |
 
-### Step 6: Create Pull Request
+These limits are enforced by ESLint and will cause CI to fail if exceeded.
 
-```bash
-git push -u origin HEAD
+#### TypeScript Requirements
 
-gh pr create \
-  --title "feat(scope): description" \
-  --body "## Summary
-- Implements #<issue>
+- Use `strict` mode
+- Use `unknown` instead of `any`
+- Use `Result<T, E>` pattern for fallible operations
+- Define interfaces before implementations
+- Use Zod for runtime validation at boundaries
 
-## Changes
-- Change 1
-- Change 2
+#### Naming Conventions
 
-## Testing
-- How to test
+| Type       | Convention            | Example             |
+| ---------- | --------------------- | ------------------- |
+| Interfaces | `I` prefix            | `IModelAdapter`     |
+| Types      | PascalCase            | `CompletionRequest` |
+| Functions  | camelCase, verb-first | `createAdapter`     |
+| Constants  | SCREAMING_SNAKE       | `MAX_RETRIES`       |
+| Files      | kebab-case            | `model-adapter.ts`  |
 
-## Checklist
-- [ ] Tests pass
-- [ ] Lint clean
-- [ ] Types clean"
-```
+### Quality Gates
 
-## Commit Message Format
+All code must pass these checks before merge:
 
-### Types
+- [ ] `pnpm lint` - Zero errors, zero warnings
+- [ ] `pnpm typecheck` - Zero type errors
+- [ ] `pnpm test` - All tests pass
+- [ ] Coverage >= 80%
+- [ ] No secrets in code
 
-| Type       | Use For                      |
-| ---------- | ---------------------------- |
-| `feat`     | New feature                  |
-| `fix`      | Bug fix                      |
-| `docs`     | Documentation only           |
-| `refactor` | Code change (no feature/fix) |
-| `test`     | Adding or updating tests     |
-| `chore`    | Maintenance tasks            |
-| `perf`     | Performance improvement      |
-
-### Scopes
-
-| Scope       | Package/Module             |
-| ----------- | -------------------------- |
-| `core`      | Core types, Result, errors |
-| `agents`    | Agent framework, experts   |
-| `mcp`       | MCP server, tools          |
-| `cli`       | CLI commands               |
-| `adapters`  | Model adapters             |
-| `workflows` | Workflow engine            |
-| `consensus` | Consensus protocols        |
-| `memory`    | Memory systems             |
-| `routing`   | CLI routing, budget        |
-
-### Examples
-
-```bash
-# Feature
-feat(agents): add code expert with TypeScript support
-
-# Bug fix
-fix(routing): handle empty task descriptions
-
-# Documentation
-docs(api): update MCP tool documentation
-
-# Refactoring
-refactor(memory): extract common logic to base class
-```
-
-## Coding Standards
-
-### TypeScript
-
-```typescript
-// Use Result<T, E> for fallible operations
-type Result<T, E> = { ok: true; value: T } | { ok: false; error: E };
-
-// Use unknown over any
-function parse(input: unknown): Result<Data, ParseError> {}
-
-// Explicit return types
-function calculate(x: number): number {
-  return x * 2;
-}
-
-// Zod for runtime validation
-const InputSchema = z.object({
-  task: z.string().min(1),
-  context: z.record(z.unknown()).optional(),
-});
-```
-
-### File Limits
-
-| Metric                | Limit     |
-| --------------------- | --------- |
-| File length           | 400 lines |
-| Function length       | 50 lines  |
-| Cyclomatic complexity | 10        |
-| Parameters            | 5         |
-
-### Naming Conventions
-
-| Type       | Convention      | Example             |
-| ---------- | --------------- | ------------------- |
-| Interfaces | `I` prefix      | `IModelAdapter`     |
-| Types      | PascalCase      | `CompletionRequest` |
-| Functions  | camelCase       | `createAdapter`     |
-| Constants  | SCREAMING_SNAKE | `MAX_RETRIES`       |
-| Files      | kebab-case      | `model-adapter.ts`  |
-| Tests      | `.test.ts`      | `adapter.test.ts`   |
-
-## Quality Gates
-
-### Pre-Commit (Required)
-
-- `pnpm lint` passes with zero errors/warnings
-- `pnpm typecheck` passes with zero errors
-- `pnpm test` passes all tests
-- Files are under 400 lines
-- Functions are under 50 lines
-
-### Pre-Merge (Required)
-
-- All pre-commit gates pass
-- Test coverage at least 80%
-- Security audit clean
-- No deprecated dependencies
-- Documentation updated
-
-### Pre-Release
-
-- All pre-merge gates pass
-- E2E tests pass
-- Performance benchmarks pass
-- CHANGELOG updated
-- Version bumped
-
-## PR Review Process
-
-### Automated Review
-
-PRs receive automated review via Claude Code Action:
-
-```yaml
-# .github/workflows/claude-review.yml
-on:
-  pull_request:
-    types: [opened, synchronize]
-```
-
-### Review Focus Areas
-
-| Area        | Check For                             |
-| ----------- | ------------------------------------- |
-| Security    | Path traversal, injection, secrets    |
-| TypeScript  | No `any`, Result<T,E>, Zod validation |
-| Testing     | Coverage, edge cases, mocks           |
-| Standards   | File/function limits, naming          |
-| Performance | No unbounded loops, memory leaks      |
-
-## Issue Labels
-
-| Label              | Description               |
-| ------------------ | ------------------------- |
-| `bug`              | Something is broken       |
-| `enhancement`      | New feature or request    |
-| `tech-debt`        | Code improvement          |
-| `security`         | Security-related          |
-| `documentation`    | Documentation improvement |
-| `good-first-issue` | Good for newcomers        |
-| `P1` - `P4`        | Priority levels           |
+---
 
 ## Testing Guidelines
 
-### Unit Tests
+### Coverage Requirements
+
+| Type            | Target |
+| --------------- | ------ |
+| Line coverage   | >= 80% |
+| Branch coverage | >= 75% |
+| Critical paths  | 100%   |
+
+Critical paths include: security, validation, and error handling code.
+
+### Test Structure
+
+We use Vitest for testing. Follow this structure:
 
 ```typescript
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 
-describe('MyService', () => {
-  it('should process valid input', () => {
-    const result = service.process({ valid: true });
-    expect(result.ok).toBe(true);
-  });
+describe('ModuleName', () => {
+  describe('functionName', () => {
+    it('should handle expected input correctly', () => {
+      // Arrange
+      const input = {
+        /* ... */
+      };
 
-  it('should reject invalid input', () => {
-    const result = service.process({ valid: false });
-    expect(result.ok).toBe(false);
-    expect(result.error.code).toBe('INVALID_INPUT');
-  });
-});
-```
+      // Act
+      const result = functionName(input);
 
-### Integration Tests
-
-```typescript
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-
-describe('MCP Integration', () => {
-  let client: Client;
-  let server: Server;
-
-  beforeEach(async () => {
-    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-    await server.connect(serverTransport);
-    await client.connect(clientTransport);
-  });
-
-  it('should handle tool calls', async () => {
-    const result = await client.callTool({
-      name: 'orchestrate',
-      arguments: { task: 'test' },
+      // Assert
+      expect(result.ok).toBe(true);
     });
-    expect(result.isError).toBe(false);
+
+    it('should return error for invalid input', () => {
+      // Arrange
+      const invalidInput = {
+        /* ... */
+      };
+
+      // Act
+      const result = functionName(invalidInput);
+
+      // Assert
+      expect(result.ok).toBe(false);
+      expect(result.error).toMatchObject({
+        /* ... */
+      });
+    });
   });
 });
 ```
 
-### Mocking
+### Test Categories
 
-```typescript
-import { vi } from 'vitest';
+1. **Unit tests** - Isolated tests with mocked dependencies
+2. **Integration tests** - Test module boundaries with real dependencies
+3. **Contract tests** - Verify interface compliance
+4. **Security tests** - Test for path traversal, injection, etc.
 
-// Mock a module
-vi.mock('./external-service', () => ({
-  ExternalService: vi.fn().mockImplementation(() => ({
-    call: vi.fn().mockResolvedValue({ data: 'mocked' }),
-  })),
-}));
+### Running Tests
 
-// Spy on a method
-const spy = vi.spyOn(service, 'method');
-await service.method();
-expect(spy).toHaveBeenCalled();
+```bash
+# Run all tests
+pnpm test
+
+# Run with coverage
+pnpm test:coverage
+
+# Run specific test file
+pnpm test packages/nexus-agents/src/core/__tests__/result.test.ts
+
+# Run in watch mode
+pnpm test --watch
 ```
 
-## Documentation
+---
 
-### When to Update Docs
+## Documentation Requirements
+
+### When to Update Documentation
 
 - Adding new features or tools
 - Changing public APIs
 - Modifying configuration options
-- Fixing incorrect documentation
+- Updating dependencies with breaking changes
 
-### JSDoc Format
+### Documentation Standards
 
-```typescript
+- Keep documentation close to the code it describes
+- Use JSDoc comments for public functions and interfaces
+- Include examples in documentation
+- Update the CHANGELOG.md for user-facing changes
+
+### JSDoc Example
+
+````typescript
 /**
- * Creates a new model adapter.
- * @param config - Adapter configuration
- * @returns Result containing the adapter or an error
+ * Creates a new expert agent with the specified role and capabilities.
+ *
+ * @param config - Configuration for the expert agent
+ * @param config.role - The role type (e.g., 'architect', 'reviewer')
+ * @param config.tools - Array of tool names the agent can use
+ * @returns Result containing the created agent or an error
+ *
  * @example
- * const result = createAdapter({ model: 'claude-sonnet-4' });
+ * ```typescript
+ * const result = await createExpert({
+ *   role: 'architect',
+ *   tools: ['read_files', 'analyze_code']
+ * });
+ *
  * if (result.ok) {
- *   const adapter = result.value;
+ *   const agent = result.value;
  * }
+ * ```
  */
-function createAdapter(config: AdapterConfig): Result<IModelAdapter, ConfigError> {
-  // ...
-}
+````
+
+---
+
+## Issue Reporting Guidelines
+
+### Before Creating an Issue
+
+1. Search existing issues to avoid duplicates
+2. Check the documentation for answers
+3. Verify you're using the latest version
+
+### Bug Reports
+
+Use the bug report template:
+
+```markdown
+## Bug Description
+
+A clear description of what the bug is.
+
+## Steps to Reproduce
+
+1. Step one
+2. Step two
+3. Step three
+
+## Expected Behavior
+
+What you expected to happen.
+
+## Actual Behavior
+
+What actually happened.
+
+## Environment
+
+- Node.js version:
+- pnpm version:
+- OS:
+
+## Additional Context
+
+Any other relevant information (logs, screenshots, etc.)
 ```
+
+Create a bug report:
+
+```bash
+gh issue create \
+  --title "fix: brief description of the bug" \
+  --label "bug"
+```
+
+### Feature Requests
+
+Use the feature request template:
+
+```markdown
+## Feature Description
+
+A clear description of the feature you'd like.
+
+## Use Case
+
+Why do you need this feature? What problem does it solve?
+
+## Proposed Solution
+
+How do you think this should work?
+
+## Alternatives Considered
+
+What other approaches have you considered?
+
+## Additional Context
+
+Any other relevant information.
+```
+
+Create a feature request:
+
+```bash
+gh issue create \
+  --title "feat: brief description of the feature" \
+  --label "enhancement"
+```
+
+### Issue Labels
+
+| Label              | Description                               |
+| ------------------ | ----------------------------------------- |
+| `bug`              | Something isn't working                   |
+| `enhancement`      | New feature or request                    |
+| `tech-debt`        | Code improvements without feature changes |
+| `security`         | Security-related issues                   |
+| `research`         | Research tasks requiring investigation    |
+| `documentation`    | Documentation improvements                |
+| `good-first-issue` | Good for newcomers                        |
+| `cli-reviewed`     | PR has been reviewed with CLI tools       |
+
+---
+
+## Security Issues
+
+If you discover a security vulnerability, please **do not** create a public issue. Instead:
+
+1. Create an issue with the `security` label
+2. Do not include specific vulnerability details in the public issue
+3. Wait for maintainer response with secure communication channel
+
+---
 
 ## Getting Help
 
-- **Discord:** Join our community for questions
-- **Issues:** Search existing issues before creating new ones
-- **Discussions:** Use GitHub Discussions for questions
+- Review the [CLAUDE.md](/nexus-agents/architecture/claude/) for project architecture
+- Check [CODING_STANDARDS.md](/nexus-agents/architecture/coding-standards/) for detailed standards
+- Open a discussion for questions
+- Join our community channels (if available)
 
-## Next Steps
+---
 
-- [Agent Development](/nexus-agents/development/agent-development) - Create custom agents
-- [Tool Development](/nexus-agents/development/tool-development) - Build MCP tools
-- [Memory Development](/nexus-agents/development/memory-development) - Implement memory backends
+## Recognition
+
+Contributors are listed in the release notes.
+
+---
+
+_Last updated: 2026-01-04 (ET)_

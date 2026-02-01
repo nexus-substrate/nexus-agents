@@ -49,6 +49,15 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Install root dependencies
+        run: pnpm install
+
+      - name: Sync canonical docs to website
+        run: npx tsx scripts/sync-docs.ts
+
       - name: Install website dependencies
         working-directory: website
         run: npm ci

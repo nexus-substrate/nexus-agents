@@ -1,9 +1,9 @@
 ---
-title: Configuration
-description: Configure nexus-agents with YAML files, environment variables, and programmatic options.
+title: 'Configuration'
+description: 'Configure nexus-agents with YAML files, environment variables, and programmatic options.'
 ---
 
-Nexus-agents is highly configurable through YAML configuration files, environment variables, and programmatic options. This guide covers all configuration methods.
+Configure nexus-agents with YAML files, environment variables, and programmatic options.
 
 ## Configuration Precedence
 
@@ -580,8 +580,8 @@ logging:
   format: json
 ```
 
-## Next Steps
+## Related Documentation
 
-- [CLI Usage](/nexus-agents/guides/cli-usage/) - Use configuration in CLI commands
-- [Workflow Templates](/nexus-agents/guides/workflow-templates/) - Create custom workflows
-- [Architecture](/nexus-agents/architecture/overview/) - Understand system design
+- [CLI Usage](../ENTRYPOINTS.md) - Use configuration in CLI commands
+- [Workflow Templates](../guides/WORKFLOW_TEMPLATES.md) - Create custom workflows
+- [Architecture Overview](/nexus-agents/architecture/readme/) - Understand system design

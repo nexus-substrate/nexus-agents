@@ -1,9 +1,15 @@
 ---
-title: Memory Development
-description: Create custom memory backends implementing the 8-type MIRIX memory architecture for nexus-agents.
+title: 'Memory Development Guide'
+description: 'This guide walks through implementing custom memory backends and integrating with the 8-type memory architecture.'
 ---
 
-This guide covers creating custom memory backends for nexus-agents. Memory systems implement the `IMemoryBackend` interface and can integrate with the 8-type MIRIX memory architecture.
+---
+
+## Overview
+
+This guide walks through implementing custom memory backends and integrating with the 8-type memory architecture.
+
+---
 
 ## Memory Architecture
 
@@ -33,8 +39,6 @@ type MemoryImportance = 'critical' | 'high' | 'medium' | 'low';
 
 ### 8 Memory Types (MIRIX)
 
-The MIRIX architecture defines 8 specialized memory types:
-
 | Type       | Interface           | Purpose                   |
 | ---------- | ------------------- | ------------------------- |
 | Core       | `ICoreMemory`       | Agent identity, rules     |
@@ -45,6 +49,8 @@ The MIRIX architecture defines 8 specialized memory types:
 | Vault      | `IKnowledgeVault`   | Cross-session persistence |
 | Graph      | `IGraphMemory`      | Entity relationships      |
 | Adaptive   | `IAdaptiveMemory`   | Priority-based retrieval  |
+
+---
 
 ## Creating a Custom Memory Backend
 
@@ -163,58 +169,18 @@ describe('CustomMemoryBackend', () => {
     expect(keys).toContain('key1');
     expect(keys).toContain('key2');
   });
-
-  it('should handle metadata', async () => {
-    await memory.set(
-      'important',
-      { data: 'critical' },
-      {
-        importance: 'critical',
-        tags: ['security', 'config'],
-      }
-    );
-
-    expect(await memory.has('important')).toBe(true);
-  });
-
-  it('should report correct size', async () => {
-    expect(await memory.size()).toBe(0);
-
-    await memory.set('key1', 'value1');
-    await memory.set('key2', 'value2');
-
-    expect(await memory.size()).toBe(2);
-  });
 });
 ```
 
+---
+
 ## Implementing Typed Memory
 
-### Episodic Memory
-
-Track task experiences for learning:
+### Episodic Memory Example
 
 ```typescript
 // src/context/episodic-memory.ts
 import type { IEpisodicMemory, Episode, EpisodeQuery } from './memory-types.js';
-
-interface Episode {
-  id: string;
-  timestamp: number;
-  taskDescription: string;
-  taskType: string;
-  outcome: string;
-  success: boolean;
-  learnings?: string[];
-}
-
-interface EpisodeQuery {
-  since?: number;
-  until?: number;
-  taskType?: string;
-  success?: boolean;
-  limit?: number;
-}
 
 export class EpisodicMemoryBackend implements IEpisodicMemory {
   private episodes: Episode[] = [];
@@ -297,26 +263,15 @@ export class EpisodicMemoryBackend implements IEpisodicMemory {
 }
 ```
 
-### Graph Memory
+---
 
-Store entity relationships:
+## Graph Memory Implementation
+
+### Creating Entity Relationships
 
 ```typescript
 // src/context/graph-memory.ts
-import type { IGraphMemory } from './memory-types.js';
-
-interface Entity {
-  id: string;
-  type: string;
-  properties: Record<string, unknown>;
-}
-
-interface Relationship {
-  source: string;
-  target: string;
-  type: string;
-  properties?: Record<string, unknown>;
-}
+import type { IGraphMemory, Entity, Relationship } from './memory-types.js';
 
 export class GraphMemoryBackend implements IGraphMemory {
   private entities = new Map<string, Entity>();
@@ -324,10 +279,6 @@ export class GraphMemoryBackend implements IGraphMemory {
 
   async addEntity(entity: Entity): Promise<void> {
     this.entities.set(entity.id, entity);
-  }
-
-  async getEntity(id: string): Promise<Entity | undefined> {
-    return this.entities.get(id);
   }
 
   async addRelationship(relationship: Relationship): Promise<void> {
@@ -368,70 +319,18 @@ export class GraphMemoryBackend implements IGraphMemory {
 
     return current.map((id) => this.entities.get(id)).filter((e): e is Entity => e !== undefined);
   }
-
-  async findPath(
-    startEntity: string,
-    endEntity: string,
-    maxDepth: number = 5
-  ): Promise<string[] | null> {
-    // BFS to find shortest path
-    const visited = new Set<string>();
-    const queue: { id: string; path: string[] }[] = [{ id: startEntity, path: [startEntity] }];
-
-    while (queue.length > 0) {
-      const { id, path } = queue.shift()!;
-
-      if (id === endEntity) {
-        return path;
-      }
-
-      if (path.length >= maxDepth || visited.has(id)) {
-        continue;
-      }
-
-      visited.add(id);
-
-      const related = await this.getRelatedEntities(id);
-      for (const entity of related) {
-        if (!visited.has(entity.id)) {
-          queue.push({ id: entity.id, path: [...path, entity.id] });
-        }
-      }
-    }
-
-    return null;
-  }
 }
 ```
 
-### Adaptive Memory
+---
 
-Priority-based retrieval with recency decay:
+## Adaptive Memory Integration
+
+### Priority-Based Retrieval
 
 ```typescript
 // src/context/adaptive-memory.ts
-import type { IMemoryBackend, MemoryImportance } from './memory-types.js';
-
-interface MemoryItem {
-  content: unknown;
-  timestamp: number;
-  importance?: MemoryImportance;
-  accessCount: number;
-  _score?: number;
-}
-
-interface RetrievalOptions {
-  minScore: number;
-  limit: number;
-  recencyDecay: number; // Higher = slower decay
-  weights: {
-    recency: number;
-    importance: number;
-    relevance: number;
-  };
-}
-
-export class AdaptiveMemoryBackend {
+export class AdaptiveMemoryBackend implements IAdaptiveMemory {
   private backend: IMemoryBackend;
 
   constructor(backend: IMemoryBackend) {
@@ -449,7 +348,7 @@ export class AdaptiveMemoryBackend {
     }
 
     // Sort by score
-    items.sort((a, b) => (b._score ?? 0) - (a._score ?? 0));
+    items.sort((a, b) => b._score - a._score);
 
     return items.slice(0, options.limit);
   }
@@ -490,104 +389,14 @@ export class AdaptiveMemoryBackend {
 
   private calculateRelevance(item: MemoryItem, query: string): number {
     const queryWords = query.toLowerCase().split(/\s+/);
-    const itemText = JSON.stringify(item.content).toLowerCase();
+    const itemText = JSON.stringify(item).toLowerCase();
     const matches = queryWords.filter((w) => itemText.includes(w));
     return matches.length / queryWords.length;
   }
 }
 ```
 
-## Session Memory
-
-Persist learnings across sessions:
-
-```typescript
-// src/context/session-memory.ts
-import { writeFile, readFile, mkdir } from 'node:fs/promises';
-import { join } from 'node:path';
-
-interface Learning {
-  id: string;
-  content: string;
-  confidence: number;
-  timestamp: number;
-  sessionId: string;
-}
-
-interface SessionMemoryConfig {
-  storagePath: string;
-  minConfidence: number;
-}
-
-export class SessionMemory {
-  private config: SessionMemoryConfig;
-  private learnings: Learning[] = [];
-  private currentSessionId: string | null = null;
-
-  constructor(config: SessionMemoryConfig) {
-    this.config = config;
-  }
-
-  async startSession(sessionId: string): Promise<void> {
-    this.currentSessionId = sessionId;
-
-    // Load previous learnings
-    await this.loadLearnings();
-  }
-
-  async endSession(): Promise<void> {
-    // Persist current session's learnings
-    await this.saveLearnings();
-    this.currentSessionId = null;
-  }
-
-  async recordLearning(content: string, confidence: number): Promise<void> {
-    if (!this.currentSessionId) {
-      throw new Error('No active session');
-    }
-
-    this.learnings.push({
-      id: crypto.randomUUID(),
-      content,
-      confidence,
-      timestamp: Date.now(),
-      sessionId: this.currentSessionId,
-    });
-  }
-
-  async getRelevantLearnings(query: string, limit: number = 10): Promise<Learning[]> {
-    // Filter by minimum confidence
-    const filtered = this.learnings.filter((l) => l.confidence >= this.config.minConfidence);
-
-    // Simple keyword matching for relevance
-    const keywords = query.toLowerCase().split(/\s+/);
-    const scored = filtered.map((learning) => {
-      const text = learning.content.toLowerCase();
-      const matches = keywords.filter((k) => text.includes(k)).length;
-      return { learning, score: matches / keywords.length };
-    });
-
-    scored.sort((a, b) => b.score - a.score);
-    return scored.slice(0, limit).map((s) => s.learning);
-  }
-
-  private async loadLearnings(): Promise<void> {
-    try {
-      const path = join(this.config.storagePath, 'learnings.json');
-      const data = await readFile(path, 'utf-8');
-      this.learnings = JSON.parse(data);
-    } catch {
-      this.learnings = [];
-    }
-  }
-
-  private async saveLearnings(): Promise<void> {
-    await mkdir(this.config.storagePath, { recursive: true });
-    const path = join(this.config.storagePath, 'learnings.json');
-    await writeFile(path, JSON.stringify(this.learnings, null, 2));
-  }
-}
-```
+---
 
 ## Best Practices
 
@@ -604,36 +413,16 @@ export class SessionMemory {
 ```typescript
 // Use async iteration for large datasets
 for await (const [key, value] of memory.entries()) {
-  // Process one at a time to avoid memory pressure
+  // Process one at a time
 }
 
 // Cache frequently accessed items
-const cache = new Map<string, { value: unknown; fetchedAt: number }>();
-const CACHE_TTL = 60000; // 1 minute
-
-async function getCached<T>(key: string): Promise<T | undefined> {
-  const cached = cache.get(key);
-  if (cached && Date.now() - cached.fetchedAt < CACHE_TTL) {
-    return cached.value as T;
-  }
-
-  const value = await memory.get<T>(key);
-  if (value !== undefined) {
-    cache.set(key, { value, fetchedAt: Date.now() });
-  }
-  return value;
-}
+const cache = new Map<string, CachedItem>();
 
 // Batch writes when possible
-interface WriteOperation {
-  key: string;
-  value: unknown;
-  metadata?: MemoryMetadata;
-}
-
-async function batchWrite(operations: WriteOperation[]): Promise<void> {
-  await Promise.all(operations.map((op) => memory.set(op.key, op.value, op.metadata)));
-}
+const batch: WriteOperation[] = [];
+batch.push({ key, value, metadata });
+await memory.batchWrite(batch);
 ```
 
 ### Memory Limits
@@ -645,80 +434,7 @@ async function batchWrite(operations: WriteOperation[]): Promise<void> {
 | Graph    | 5,000 entities    | Relationship limit   |
 | Session  | 100 learnings     | Current session only |
 
-### Importance Guidelines
-
-| Importance | Use For                                |
-| ---------- | -------------------------------------- |
-| `critical` | Security rules, core configuration     |
-| `high`     | Frequently accessed, important context |
-| `medium`   | Standard memories (default)            |
-| `low`      | Temporary, easily reconstructed        |
-
-## Testing Memory Backends
-
-### Unit Tests
-
-```typescript
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-
-describe('MemoryBackend', () => {
-  let memory: IMemoryBackend;
-
-  beforeEach(async () => {
-    memory = new CustomMemoryBackend();
-  });
-
-  afterEach(async () => {
-    await memory.clear();
-  });
-
-  it('should handle concurrent writes', async () => {
-    const writes = Array.from({ length: 100 }, (_, i) => memory.set(`key${i}`, `value${i}`));
-
-    await Promise.all(writes);
-
-    expect(await memory.size()).toBe(100);
-  });
-
-  it('should respect expiration during iteration', async () => {
-    await memory.set('expired', 'value', { expiresAt: Date.now() - 1000 });
-    await memory.set('valid', 'value', { expiresAt: Date.now() + 60000 });
-
-    const keys: string[] = [];
-    for await (const key of memory.keys()) {
-      keys.push(key);
-    }
-
-    expect(keys).not.toContain('expired');
-    expect(keys).toContain('valid');
-  });
-});
-```
-
-### Integration Tests
-
-```typescript
-describe('Memory Integration', () => {
-  it('should persist across sessions', async () => {
-    const sessionMemory = new SessionMemory({
-      storagePath: './test-storage',
-      minConfidence: 0.5,
-    });
-
-    // Session 1
-    await sessionMemory.startSession('session-1');
-    await sessionMemory.recordLearning('Important fact', 0.9);
-    await sessionMemory.endSession();
-
-    // Session 2
-    await sessionMemory.startSession('session-2');
-    const learnings = await sessionMemory.getRelevantLearnings('Important');
-
-    expect(learnings).toHaveLength(1);
-    expect(learnings[0].content).toBe('Important fact');
-  });
-});
-```
+---
 
 ## Source Files
 
@@ -732,8 +448,10 @@ describe('Memory Integration', () => {
 | `src/context/agentic-memory.ts`  | A-MEM implementation     |
 | `src/context/session-memory.ts`  | Cross-session storage    |
 
-## Next Steps
+---
 
-- [Agent Development](/nexus-agents/development/agent-development) - Create agents that use memory
-- [Tool Development](/nexus-agents/development/tool-development) - Build tools with memory access
-- [Architecture Overview](/nexus-agents/architecture/overview) - System design details
+## Related Documents
+
+- **Memory Architecture:** [MEMORY_SYSTEM.md](/nexus-agents/architecture/memory-system/)
+- **Agent System:** [AGENT_SYSTEM.md](/nexus-agents/architecture/agent-system/)
+- **Research:** [RESEARCH_INDEX.md](../research/RESEARCH_INDEX.md)

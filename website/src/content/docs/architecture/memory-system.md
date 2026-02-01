@@ -1,11 +1,13 @@
 ---
-title: Memory System
-description: 8-type memory architecture inspired by MIRIX, including typed memory, graph memory, adaptive retrieval, and cross-session persistence.
+title: 'Memory System Architecture'
+description: 'The memory system provides 8 distinct memory types inspired by MIRIX (arXiv:2507.07957):'
 ---
 
-The memory system provides 8 distinct memory types inspired by MIRIX (arXiv:2507.07957). This architecture achieves +35% accuracy vs RAG with 99.9% storage reduction.
+---
 
-## Memory Types
+## Overview
+
+The memory system provides 8 distinct memory types inspired by MIRIX (arXiv:2507.07957):
 
 1. **Core** - Agent identity and constraints
 2. **Episodic** - Task experiences
@@ -16,9 +18,13 @@ The memory system provides 8 distinct memory types inspired by MIRIX (arXiv:2507
 7. **Graph** - Entity relationships
 8. **Adaptive** - Priority-based retrieval
 
+This architecture achieves +35% accuracy vs RAG with 99.9% storage reduction.
+
+---
+
 ## Core Interface: IMemoryBackend
 
-Hybrid persistence layer with SQLite + Markdown export:
+Hybrid persistence layer with SQLite + Markdown export.
 
 ```typescript
 interface IMemoryBackend {
@@ -45,9 +51,11 @@ type MemoryImportance = 'critical' | 'high' | 'medium' | 'low';
 | `medium`   | Yes    | No       | Task context                |
 | `low`      | Yes    | No       | Temporary data              |
 
-## Typed Memory System
+---
 
-MIRIX-style six-type memory with specialized sub-interfaces:
+## Typed Memory System (ITypedMemory)
+
+MIRIX-style six-type memory with specialized sub-interfaces.
 
 ```typescript
 interface ITypedMemory {
@@ -78,13 +86,15 @@ type MemoryType = 'core' | 'episodic' | 'semantic' | 'procedural' | 'resource' |
 | `resource`   | External references   | Cached      | URLs, file paths, APIs     |
 | `vault`      | Cross-session storage | Permanent   | Learnings across sessions  |
 
-## Routing Memory
+---
 
-Bridges memory and routing systems for learning-based model selection:
+## Routing Memory (IRoutingMemory)
+
+Bridges memory and routing systems for learning-based model selection.
 
 ```typescript
 interface IRoutingMemory {
-  // Preference Storage (RouteLLM pattern)
+  // Preference Storage (#148 - Preference-Trained Routing)
   storePreference(
     decision: RoutingDecisionRecord,
     outcome: TaskOutcomeRecord,
@@ -95,11 +105,11 @@ interface IRoutingMemory {
     limit: number
   ): Promise<Result<PreferenceRecord[], MemoryError>>;
 
-  // Experience Memory (MobiMem Evolution)
+  // Experience Memory (#149 - MobiMem Evolution)
   storeExperience(experience: ExperienceRecord): Promise<Result<void, MemoryError>>;
   getExperiences(query: string, limit: number): Promise<Result<ExperienceRecord[], MemoryError>>;
 
-  // Action Memory (MobiMem Evolution)
+  // Action Memory (#149 - MobiMem Evolution)
   storeAction(action: ActionRecord): Promise<Result<void, MemoryError>>;
   getActions(taskType: string, limit: number): Promise<Result<ActionRecord[], MemoryError>>;
 
@@ -118,9 +128,11 @@ interface IRoutingMemory {
 - **MobiMem Evolution**: Experience/action memory for post-deployment learning
 - **CompositeRouter**: Feeds routing decisions into LinUCB bandit
 
+---
+
 ## Graph Memory
 
-Entity relationships extracted from context:
+Entity relationships extracted from context.
 
 ```typescript
 interface IGraphMemory {
@@ -148,9 +160,11 @@ Automatically extracts:
 | Transitive closure | "What's affected if we change Auth?"  | Impact graph         |
 | Pattern match      | "Find all classes with security bugs" | Matching entities    |
 
+---
+
 ## Adaptive Memory
 
-Priority-based retrieval combining recency, importance, and relevance:
+Priority-based retrieval combining recency, importance, and relevance.
 
 ```typescript
 interface IAdaptiveMemory {
@@ -171,9 +185,7 @@ interface MemoryItem {
 
 ### Retrieval Algorithm
 
-```
-Priority score = (importance * 0.4) + (recency * 0.3) + (relevance * 0.3)
-```
+Priority score = `(importance × 0.4) + (recency × 0.3) + (relevance × 0.3)`
 
 Where:
 
@@ -181,9 +193,11 @@ Where:
 - **Recency**: Exponential decay from creation time
 - **Relevance**: Semantic similarity to current query
 
+---
+
 ## Session Memory
 
-Cross-session persistence for learning retention (Reflexion pattern):
+Cross-session persistence for learning retention (Reflexion pattern).
 
 ```typescript
 interface ISessionMemory {
@@ -211,6 +225,8 @@ interface ISessionMemory {
 }
 ```
 
+---
+
 ## Memory Lifecycle
 
 ```mermaid
@@ -234,66 +250,7 @@ sequenceDiagram
     end
 ```
 
-## Agentic Memory (A-MEM)
-
-Zettelkasten-inspired agentic memory based on arXiv:2502.12110:
-
-```typescript
-interface IAgenticMemory {
-  store(content: string): Promise<AgenticMemoryEntry>;
-  query(query: string, limit: number): Promise<AgenticMemoryEntry[]>;
-  getSuggestedLinks(entryId: string): Promise<LinkSuggestion[]>;
-  detectEvolution(newEntry: AgenticMemoryEntry): Promise<EvolutionResult>;
-}
-
-interface AgenticMemoryEntry {
-  id: string;
-  content: string;
-  keywords: string[];
-  tags: string[];
-  entities: string[];
-  contextDescription: string;
-  linkedEntries: string[];
-  createdAt: Date;
-}
-
-type EvolutionType = 'refinement' | 'extension' | 'supersession' | 'contradiction';
-```
-
-### Features
-
-- **Automatic attribute extraction**: Keywords, tags, entities, context
-- **Dynamic link suggestion**: Based on similarity (60% keyword, 40% entity)
-- **Memory evolution detection**: Refinement, extension, supersession, contradiction
-- **PII filtering**: In entity extraction
-
-## MobiMem Evolution
-
-Post-deployment evolution via Profile, Experience, and Action memory modules (arXiv:2512.15784):
-
-```typescript
-interface IMobiMemBackend {
-  // Profile Memory
-  storeProfile(profile: AgentProfile): Promise<void>;
-  getProfile(): Promise<AgentProfile>;
-
-  // Experience Memory
-  storeExperience(experience: WorkflowExperience): Promise<void>;
-  getRelevantExperiences(context: string): Promise<WorkflowExperience[]>;
-
-  // Action Memory
-  storeAction(action: TaskAction): Promise<void>;
-  getSimilarActions(task: string): Promise<TaskAction[]>;
-}
-```
-
-### Metrics
-
-| Metric                   | Value                     |
-| ------------------------ | ------------------------- |
-| Profile alignment        | 83.1%                     |
-| Retrieval speed          | 280x faster than GraphRAG |
-| Task success improvement | 50.3%                     |
+---
 
 ## Configuration
 
@@ -316,6 +273,8 @@ memory:
     relevanceThreshold: 0.3
 ```
 
+---
+
 ## Source Files
 
 | File                               | Purpose                     |
@@ -330,6 +289,8 @@ memory:
 | `src/context/mobimem.ts`           | MobiMem evolution           |
 | `src/core/types/routing-memory.ts` | Routing memory interface    |
 
+---
+
 ## Research Sources
 
 | Technique            | Paper            | Key Metrics                   |
@@ -340,8 +301,10 @@ memory:
 | A-MEM Agentic Memory | arXiv:2502.12110 | Zettelkasten-inspired linking |
 | Reflexion            | arXiv:2303.11366 | 91% HumanEval                 |
 
-## Next Steps
+---
 
-- [Agent System](/nexus-agents/architecture/agent-system) - See how agents use memory
-- [Routing System](/nexus-agents/architecture/routing-system) - Learn about routing memory integration
-- [Security](/nexus-agents/architecture/security) - Understand memory isolation
+## Related Documents
+
+- **Agent System:** [AGENT_SYSTEM.md](/nexus-agents/architecture/agent-system/)
+- **Routing System:** [ROUTING_SYSTEM.md](/nexus-agents/architecture/routing-system/)
+- **Full Architecture:** [ARCHITECTURE.md](../../ARCHITECTURE.md)

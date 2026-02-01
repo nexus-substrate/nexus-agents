@@ -1,20 +1,48 @@
 ---
-title: Routing System
-description: Intelligent model selection through the CompositeRouter pipeline with LinUCB learning, TOPSIS ranking, and budget constraints.
+title: 'Routing System Architecture'
+description: 'The routing system intelligently selects the optimal CLI/model for each task through a 3-stage pipeline:'
 ---
 
-The routing system intelligently selects the optimal CLI/model for each task through a 3-stage pipeline. This approach achieves 43.9% cost reduction while maintaining quality thresholds.
+---
+
+## Overview
+
+The routing system intelligently selects the optimal CLI/model for each task through a 3-stage pipeline:
+
+```
+Task → TaskAnalyzer → BudgetRouter → TopsisRouter → LinUCBBandit → Decision
+       (profile)      (filter)        (rank)         (learn)
+```
+
+This achieves 43.9% cost reduction while maintaining quality thresholds.
+
+---
 
 ## CompositeRouter Pipeline
 
-```
-Task -> TaskAnalyzer -> BudgetRouter -> TopsisRouter -> LinUCBBandit -> Decision
-        (profile)       (filter)        (rank)          (learn)
+Chains multiple routers in sequence for intelligent model selection.
+
+```typescript
+interface ICompositeRouter {
+  route(task: CliTask): Promise<Result<CompositeRoutingDecision, CompositeRoutingError>>;
+  getStats(): CompositeRouterStats;
+  invalidateCaches(): void;
+}
+
+interface CompositeRoutingDecision {
+  readonly cliName: 'claude' | 'gemini' | 'codex';
+  readonly reason: string;
+  readonly confidence: number;
+  readonly topsisScore?: number;
+  readonly linucbExploration?: number;
+  readonly alternatives: readonly ('claude' | 'gemini' | 'codex')[];
+  readonly stagesExecuted: readonly string[];
+}
 ```
 
 ### Stage 1: Task Analysis
 
-Profiles tasks before routing to determine characteristics:
+Profiles tasks before routing:
 
 | Characteristic        | Derived From                       | Impact                      |
 | --------------------- | ---------------------------------- | --------------------------- |
@@ -25,7 +53,7 @@ Profiles tasks before routing to determine characteristics:
 
 ### Stage 2: Budget Filter
 
-Enforces token, cost, and latency constraints:
+Enforces token/cost/latency constraints:
 
 ```typescript
 interface BudgetConstraint {
@@ -64,29 +92,11 @@ const context = {
 UCB = E[reward | context] + alpha * sqrt(uncertainty);
 ```
 
-## CompositeRouter Interface
-
-```typescript
-interface ICompositeRouter {
-  route(task: CliTask): Promise<Result<CompositeRoutingDecision, CompositeRoutingError>>;
-  getStats(): CompositeRouterStats;
-  invalidateCaches(): void;
-}
-
-interface CompositeRoutingDecision {
-  readonly cliName: 'claude' | 'gemini' | 'codex';
-  readonly reason: string;
-  readonly confidence: number;
-  readonly topsisScore?: number;
-  readonly linucbExploration?: number;
-  readonly alternatives: readonly ('claude' | 'gemini' | 'codex')[];
-  readonly stagesExecuted: readonly string[];
-}
-```
+---
 
 ## Task Router Interface
 
-Routes tasks to optimal CLI based on capability matching:
+Routes tasks to optimal CLI based on capability matching.
 
 ```typescript
 interface ITaskRouter {
@@ -106,7 +116,9 @@ type CliName = 'claude' | 'gemini' | 'codex';
 type CliTransport = 'mcp' | 'subprocess';
 ```
 
-## Budget Router
+---
+
+## Budget Router (IBudgetRouter)
 
 Budget-constrained routing with PILOT pattern (arXiv:2508.21141).
 
@@ -148,9 +160,11 @@ interface SessionBudget {
 }
 ```
 
-## Circuit Breaker
+---
 
-Prevents cascading failures with configurable thresholds:
+## Circuit Breaker (ICircuitBreaker)
+
+Prevents cascading failures with configurable thresholds.
 
 ```typescript
 interface ICircuitBreaker {
@@ -184,9 +198,11 @@ circuitBreaker:
   rollingWindow: 60000 # ms for failure counting
 ```
 
-## CLI Detection Cache
+---
 
-Caches CLI health check results with TTL and invalidation:
+## CLI Detection Cache (ICliDetectionCache)
+
+Caches CLI health check results with TTL and invalidation.
 
 ```typescript
 interface ICliDetectionCache {
@@ -214,9 +230,11 @@ interface CliHealthResult {
 | Unavailable    | 30 seconds | Retry quickly after failure |
 | Version change | Immediate  | Capabilities may differ     |
 
-## Token Counter
+---
 
-Universal token counting across model providers:
+## Token Counter (ITokenCounter)
+
+Universal token counting across model providers.
 
 ```typescript
 interface ITokenCounter {
@@ -235,11 +253,13 @@ type TokenCounterProvider = 'tiktoken' | 'anthropic' | 'heuristic';
 | ----------- | -------- | ------- | --------------- |
 | `tiktoken`  | High     | Fast    | OpenAI models   |
 | `anthropic` | Exact    | Medium  | Claude models   |
-| `heuristic` | +/-10%   | Instant | Quick estimates |
+| `heuristic` | ±10%     | Instant | Quick estimates |
 
-## Capacity Monitor
+---
 
-Tracks rate limits across model providers:
+## Capacity Monitor (ICapacityMonitor)
+
+Tracks rate limits across model providers.
 
 ```typescript
 interface ICapacityMonitor {
@@ -266,9 +286,11 @@ interface CapacityInfo {
 | OpenAI    | `x-ratelimit-*-tokens`  | `x-ratelimit-*-requests` |
 | Google    | `x-goog-api-*`          | `x-goog-api-*`           |
 
-## Work Balancer
+---
 
-Distributes parallel tasks across available CLIs:
+## Work Balancer (IWorkBalancer)
+
+Distributes parallel tasks across available CLIs.
 
 ```typescript
 interface IWorkBalancer {
@@ -292,9 +314,11 @@ interface BalanceResult {
 3. **Load balance**: Distribute evenly with affinity hints
 4. **Fallback**: Queue tasks if all CLIs at capacity
 
-## Feedback Integration
+---
 
-Connects routing decisions to outcomes for closed-loop learning:
+## Feedback Integration (IFeedbackIntegration)
+
+Connects routing decisions to outcomes for closed-loop learning.
 
 ```typescript
 interface IFeedbackIntegration {
@@ -310,6 +334,13 @@ interface TaskOutcome {
   readonly tokensUsed?: number;
   readonly errorCategory?: string;
 }
+
+interface RoutingOutcomeStats {
+  readonly totalRoutings: number;
+  readonly successRate: number;
+  readonly avgLatencyMs: number;
+  readonly avgTokens: number;
+}
 ```
 
 ### Reward Computation
@@ -318,9 +349,9 @@ interface TaskOutcome {
 reward = success * 0.5 + (1 - retries / max) * 0.3 + coherence * 0.2;
 ```
 
-## CLI Debugging
+---
 
-Debug routing decisions without executing tasks:
+## CLI Debugging
 
 ```bash
 # Dry-run routing for a task
@@ -336,6 +367,8 @@ nexus-agents routing-audit "Implement a sorting algorithm" --format=json
 # Show bandit statistics
 nexus-agents routing-audit "task" --bandit-stats
 ```
+
+---
 
 ## Configuration
 
@@ -359,33 +392,94 @@ routing:
     alpha: 1.0 # Exploration parameter
 ```
 
+---
+
+## DAAO Difficulty Estimator
+
+VAE-inspired difficulty estimation for tier routing (arXiv:2509.11079).
+
+```typescript
+interface IDAAOEstimator {
+  encode(task: CliTask): EncodedFeatures;
+  estimateDifficulty(task: CliTask): DAAODifficultyEstimate;
+  route(task: CliTask, availableClis?: CliName[]): DAAORoutingDecision;
+  calibrate(outcome: DAAOOutcome): void;
+}
+```
+
+### 8-Dimensional Feature Encoding
+
+| Feature                | Description                      | Range |
+| ---------------------- | -------------------------------- | ----- |
+| `lexicalComplexity`    | Vocabulary richness, word length | 0-1   |
+| `syntacticComplexity`  | Sentence structure, nesting      | 0-1   |
+| `semanticDensity`      | Domain terms, technical concepts | 0-1   |
+| `technicalSpecificity` | API/framework references         | 0-1   |
+| `taskScope`            | Multi-step vs single-step        | 0-1   |
+| `constraintComplexity` | Requirements, edge cases         | 0-1   |
+| `clarity`              | Ambiguity level (inverted)       | 0-1   |
+| `outputComplexity`     | Expected output size/format      | 0-1   |
+
+### Difficulty → Tier Mapping
+
+| Level    | Score Range | Model Tier |
+| -------- | ----------- | ---------- |
+| `easy`   | 0.0 - 0.35  | `fast`     |
+| `medium` | 0.35 - 0.65 | `balanced` |
+| `hard`   | 0.65 - 1.0  | `powerful` |
+
+### Calibration
+
+The estimator learns from outcomes to adjust difficulty bias:
+
+```typescript
+estimator.calibrate({
+  taskId: 'task-123',
+  features: encodedFeatures,
+  estimatedScore: 0.45,
+  actualTier: 'balanced',
+  success: true,
+  qualityScore: 0.82,
+});
+```
+
+---
+
 ## Source Files
 
-| File                                      | Purpose                |
-| ----------------------------------------- | ---------------------- |
-| `src/cli-adapters/composite-router.ts`    | Main routing pipeline  |
-| `src/cli-adapters/budget-router.ts`       | Budget enforcement     |
-| `src/cli-adapters/topsis-router.ts`       | Multi-criteria ranking |
-| `src/cli-adapters/linucb-bandit.ts`       | Contextual bandit      |
-| `src/cli-adapters/circuit-breaker.ts`     | Fault tolerance        |
-| `src/cli-adapters/cli-detection-cache.ts` | Health check caching   |
-| `src/context/token-counter.ts`            | Token counting         |
-| `src/adapters/capacity-monitor.ts`        | Rate limit tracking    |
-| `src/learning/feedback-integration.ts`    | Outcome learning       |
-| `src/cli/routing-audit.ts`                | Debug CLI command      |
+| File                                          | Purpose                |
+| --------------------------------------------- | ---------------------- |
+| `src/cli-adapters/composite-router.ts`        | Main routing pipeline  |
+| `src/cli-adapters/budget-router.ts`           | Budget enforcement     |
+| `src/cli-adapters/topsis-router.ts`           | Multi-criteria ranking |
+| `src/cli-adapters/linucb-bandit.ts`           | Contextual bandit      |
+| `src/cli-adapters/daao-estimator.ts`          | Difficulty estimation  |
+| `src/cli-adapters/daao-types.ts`              | DAAO type definitions  |
+| `src/cli-adapters/daao-feature-extraction.ts` | Feature extraction     |
+| `src/cli-adapters/circuit-breaker.ts`         | Fault tolerance        |
+| `src/cli-adapters/cli-detection-cache.ts`     | Health check caching   |
+| `src/context/token-counter.ts`                | Token counting         |
+| `src/adapters/capacity-monitor.ts`            | Rate limit tracking    |
+| `src/learning/feedback-integration.ts`        | Outcome learning       |
+| `src/cli/routing-audit.ts`                    | Debug CLI command      |
+
+---
 
 ## Research Sources
 
 | Technique             | Paper            | Key Metrics            |
 | --------------------- | ---------------- | ---------------------- |
+| DAAO Difficulty       | arXiv:2509.11079 | VAE-based estimation   |
 | PILOT Budget Routing  | arXiv:2508.21141 | Budget-constrained     |
 | TOPSIS Multi-Criteria | arXiv:2509.07571 | 31.46% cost reduction  |
 | IPR Quality Routing   | arXiv:2509.06274 | 43.9% cost reduction   |
 | RouteLLM Preference   | arXiv:2406.18665 | 2x cost reduction      |
 | SATER Confidence      | arXiv:2510.05164 | 50%+ cost, 80% latency |
 
-## Next Steps
+---
 
-- [Memory System](/nexus-agents/architecture/memory-system) - Learn how routing memory enables learning
-- [Agent System](/nexus-agents/architecture/agent-system) - See how agents use routing
-- [Consensus Protocols](/nexus-agents/architecture/consensus-protocols) - Understand decision making
+## Related Documents
+
+- **Memory System:** [MEMORY_SYSTEM.md](/nexus-agents/architecture/memory-system/)
+- **Agent System:** [AGENT_SYSTEM.md](/nexus-agents/architecture/agent-system/)
+- **Full Architecture:** [ARCHITECTURE.md](../../ARCHITECTURE.md)

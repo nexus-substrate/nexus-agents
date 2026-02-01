@@ -1,7 +1,9 @@
 ---
-title: MCP & Claude Desktop Integration
-description: Configure nexus-agents as an MCP server for Claude Desktop with full tool access.
+title: 'MCP & Claude Desktop Integration'
+description: 'Configure nexus-agents as an MCP server for Claude Desktop with full tool access.'
 ---
+
+Configure nexus-agents as an MCP server for Claude Desktop with full tool access.
 
 Nexus-agents implements the Model Context Protocol (MCP) 2025-11-25 specification, enabling seamless integration with Claude Desktop and other MCP-compatible clients.
 
@@ -399,8 +401,8 @@ registerTools(server, {
 await startStdioServer(server);
 ```
 
-## Next Steps
+## Related Documentation
 
-- [CLI Commands](/nexus-agents/guides/cli-usage) - Use nexus-agents from the command line
-- [Workflow Templates](/nexus-agents/guides/workflow-templates) - Create custom automation
-- [Agent Development](/nexus-agents/development/agent-development) - Build custom agents
+- [CLI Usage](../ENTRYPOINTS.md) - Use nexus-agents from the command line
+- [Workflow Templates](/nexus-agents/architecture/workflow-templates/) - Create custom automation
+- [Agent Development](/nexus-agents/development/agent-development/) - Build custom agents

@@ -1,9 +1,27 @@
 ---
-title: Debugging & Observability
-description: Debug multi-agent workflows using SwarmObserver, EventBus, routing metrics, and correlation tracking.
+title: 'Debugging with Observability'
+description: 'This guide covers debugging multi-agent workflows using the nexus-agents observability infrastructure.'
 ---
 
-Nexus-agents provides comprehensive observability tools for debugging multi-agent workflows, tracking interactions, and optimizing routing decisions.
+**Version:** 1.0.0
+**Last Updated:** 2026-01-12 (ET)
+**Sprint:** #228 (A2A Observability Completion)
+
+This guide covers debugging multi-agent workflows using the nexus-agents observability infrastructure.
+
+---
+
+## Table of Contents
+
+1. [Quick Reference](#quick-reference)
+2. [EventBus Debugging](#eventbus-debugging)
+3. [Correlation ID Tracking](#correlation-id-tracking)
+4. [SwarmObserver](#swarmobserver)
+5. [Byzantine Detection](#byzantine-detection)
+6. [Routing Metrics](#routing-metrics)
+7. [Common Debugging Scenarios](#common-debugging-scenarios)
+
+---
 
 ## Quick Reference
 
@@ -14,7 +32,6 @@ import {
   generateCorrelationId,
   createChildCorrelationId,
 } from 'nexus-agents/agents/collaboration/event-bus.js';
-
 import { getSwarmObserver } from 'nexus-agents/observability/swarm-observer.js';
 import { createRoutingMetricsCollector } from 'nexus-agents/observability/routing-metrics.js';
 ```
@@ -25,59 +42,11 @@ import { createRoutingMetricsCollector } from 'nexus-agents/observability/routin
 | SwarmObserver  | Interaction tracking     | `recordEvent()`, `getBottlenecks()`, `getHealthMetrics()` |
 | RoutingMetrics | Model selection analysis | `recordDecision()`, `renderDashboard()`                   |
 
-## CLI Debugging Tools
-
-### routing-audit
-
-Debug routing decisions without executing tasks:
-
-```bash
-# Basic audit
-nexus-agents routing-audit "Implement a sorting algorithm"
-
-# JSON output
-nexus-agents routing-audit "Complex task" --format=json
-
-# With bandit statistics
-nexus-agents routing-audit "Code task" --bandit-stats --verbose
-```
-
-**Sample Output:**
-
-```
-Task Profile Analysis:
-  - Code generation: 85%
-  - Reasoning complexity: High
-  - Context required: 2,500 tokens
-
-Budget Filter Results:
-  [PASS] claude - Within budget
-  [PASS] gemini - Within budget
-  [PASS] codex  - Within budget
-
-TOPSIS Ranking:
-  1. claude  (0.82) - Best quality/cost balance
-  2. codex   (0.71) - Fast, good for code
-  3. gemini  (0.68) - Large context available
-
-LinUCB Selection:
-  Selected: claude (UCB score: 0.89)
-  Mode: Exploitation (learned preference)
-```
-
-### system-review
-
-Run comprehensive system health checks:
-
-```bash
-nexus-agents system-review --verbose
-```
+---
 
 ## EventBus Debugging
 
-The EventBus enables agent-to-agent communication and provides event history for debugging.
-
-### Subscribing to Events
+### Subscribing to Debug Events
 
 ```typescript
 import { EventBus, EventTopics } from 'nexus-agents/agents/collaboration/event-bus.js';
@@ -90,16 +59,16 @@ const debugSub = bus.subscribe('*', (event) => {
 });
 
 // Subscribe to specific domain
-bus.subscribe('session.*', (event) => {
+const sessionSub = bus.subscribe('session.*', (event) => {
   console.log('Session event:', event);
 });
 
 // Subscribe to consensus events
-bus.subscribe('consensus.*', (event) => {
+const consensusSub = bus.subscribe('consensus.*', (event) => {
   console.log('Consensus:', event.payload);
 });
 
-// Clean up
+// Clean up when done
 debugSub.unsubscribe();
 ```
 
@@ -119,7 +88,7 @@ const requestTrace = bus.getHistory({
 
 // Filter by time window
 const recentEvents = bus.getHistory({
-  after: new Date(Date.now() - 60000).toISOString(),
+  after: new Date(Date.now() - 60000).toISOString(), // Last minute
   limit: 100,
 });
 
@@ -145,11 +114,13 @@ const specificTrace = bus.getHistory({
 | `protocol.trinity.*`   | phase_started, phase_completed                                           |
 | `byzantine.*`          | weight_updated, pattern_detected, agent_flagged, collusion_suspected     |
 
+---
+
 ## Correlation ID Tracking
 
 Correlation IDs enable request tracing across agent boundaries.
 
-### Generating IDs
+### Generating Correlation IDs
 
 ```typescript
 import {
@@ -157,7 +128,7 @@ import {
   createChildCorrelationId,
 } from 'nexus-agents/agents/collaboration/event-bus.js';
 
-// Generate root correlation ID
+// Generate root correlation ID for a request
 const rootId = generateCorrelationId();
 // -> 'cor_a1b2c3d4'
 
@@ -165,16 +136,20 @@ const rootId = generateCorrelationId();
 const subtask1Id = createChildCorrelationId(rootId);
 // -> 'cor_a1b2c3d4.child_e5f6g7h8'
 
+const subtask2Id = createChildCorrelationId(rootId);
+// -> 'cor_a1b2c3d4.child_i9j0k1l2'
+
 // Nested subtasks
 const nestedId = createChildCorrelationId(subtask1Id);
 // -> 'cor_a1b2c3d4.child_e5f6g7h8.child_m3n4o5p6'
 ```
 
-### Using in Events
+### Using Correlation IDs in Events
 
 ```typescript
 import { createEvent } from 'nexus-agents/agents/collaboration/event-bus.js';
 
+// Create event with correlation ID
 const event = createEvent(
   'agent.task_delegated',
   {
@@ -192,18 +167,18 @@ const event = createEvent(
 bus.emit(event);
 ```
 
-### Tracing Request Flow
+### Tracing a Request Flow
 
 ```typescript
-// Get all events for a correlation ID
+// 1. Start with the root correlation ID
 const trace = bus.getHistory({ correlationId: rootId });
 
-// Order by timestamp
+// 2. Order by timestamp
 const orderedTrace = trace.sort(
   (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
 );
 
-// Visualize the flow
+// 3. Visualize the flow
 for (const event of orderedTrace) {
   const depth = event.correlationId?.split('.child_').length ?? 0;
   const indent = '  '.repeat(depth);
@@ -211,11 +186,13 @@ for (const event of orderedTrace) {
 }
 ```
 
+---
+
 ## SwarmObserver
 
 The SwarmObserver tracks agent interactions and detects swarm-level patterns.
 
-### Setup
+### Basic Setup
 
 ```typescript
 import { getSwarmObserver, SwarmObserver } from 'nexus-agents/observability/swarm-observer.js';
@@ -233,7 +210,7 @@ const customObserver = new SwarmObserver({
 });
 ```
 
-### Recording Events
+### Recording Agent Events
 
 ```typescript
 // Record agent state change
@@ -245,6 +222,20 @@ observer.recordEvent({
   payload: {
     type: 'state_change',
     newState: 'thinking',
+  },
+});
+
+// Record message event
+observer.recordEvent({
+  eventId: SwarmObserver.generateSpanId(),
+  traceId,
+  agentId: 'code-expert',
+  timestamp: new Date().toISOString(),
+  payload: {
+    type: 'message',
+    direction: 'received',
+    fromAgent: 'tech-lead',
+    content: 'Review this PR',
   },
 });
 
@@ -264,7 +255,7 @@ observer.recordEvent({
 });
 ```
 
-### Recording Interactions
+### Recording Agent Interactions
 
 ```typescript
 // Record delegation
@@ -302,7 +293,7 @@ for (const bottleneck of bottlenecks) {
 }
 ```
 
-### Identifying Clusters
+### Identifying Emergent Clusters
 
 ```typescript
 const clusters = observer.getEmergentClusters();
@@ -312,11 +303,12 @@ for (const cluster of clusters) {
   console.log(`  - Agents: ${cluster.agents.join(', ')}`);
   console.log(`  - Cohesion: ${cluster.cohesion.toFixed(2)}`);
   console.log(`  - Internal interactions: ${cluster.internalInteractions}`);
+  console.log(`  - External interactions: ${cluster.externalInteractions}`);
   console.log(`  - Dominant pattern: ${cluster.dominantPattern ?? 'none'}`);
 }
 ```
 
-### Health Metrics
+### Getting Health Metrics
 
 ```typescript
 const health = observer.getHealthMetrics();
@@ -329,57 +321,130 @@ console.log(`  Total interactions: ${health.totalInteractions}`);
 console.log(`  Success rate: ${(health.successRate * 100).toFixed(1)}%`);
 console.log(`  Avg latency: ${health.avgLatencyMs.toFixed(0)}ms`);
 console.log(`  Bottlenecks: ${health.bottlenecks.length}`);
+console.log(`  Clusters: ${health.clusters.length}`);
 ```
+
+### Success Attribution
+
+```typescript
+// Register agents for a task
+observer.registerAgentForTask('task-123', 'tech-lead');
+observer.registerAgentForTask('task-123', 'code-expert');
+observer.registerAgentForTask('task-123', 'security-expert');
+
+// ... task execution with recorded events ...
+
+// Attribute success
+const contributions = observer.attributeSuccess('task-123');
+
+for (const [agentId, score] of contributions) {
+  console.log(`${agentId}: ${(score.score * 100).toFixed(1)}%`);
+  console.log(`  - Messages sent: ${score.messagesSent}`);
+  console.log(`  - Successful tools: ${score.successfulTools}`);
+  console.log(`  - Errors: ${score.errorCount}`);
+}
+```
+
+---
 
 ## Byzantine Detection
 
-Monitor for Byzantine (adversarial) behavior patterns.
+The weighted voting system emits events when Byzantine patterns are detected.
 
-### Subscribe to Byzantine Events
+### Subscribing to Byzantine Events
 
 ```typescript
+import { EventBus, EventTopics } from 'nexus-agents/agents/collaboration/event-bus.js';
+
+const bus = new EventBus();
+
 // Weight changes
 bus.subscribe(EventTopics.BYZANTINE_WEIGHT_UPDATED, (event) => {
   const { agentId, previousWeight, newWeight, reason } = event.payload;
-  console.log(`Agent ${agentId} weight: ${previousWeight.toFixed(2)} -> ${newWeight.toFixed(2)}`);
+  console.log(
+    `Agent ${agentId} weight: ${previousWeight.toFixed(2)} -> ${newWeight.toFixed(2)} (${reason})`
+  );
 });
 
 // Pattern detection
 bus.subscribe(EventTopics.BYZANTINE_PATTERN_DETECTED, (event) => {
   const { patternType, agentIds, confidence, details } = event.payload;
-  console.warn(`Byzantine pattern: ${patternType}`);
+  console.warn(`Byzantine pattern detected: ${patternType}`);
   console.warn(`  Agents: ${agentIds.join(', ')}`);
   console.warn(`  Confidence: ${(confidence * 100).toFixed(0)}%`);
+  console.warn(`  Details: ${details}`);
 });
 
 // Agent flagging
 bus.subscribe(EventTopics.BYZANTINE_AGENT_FLAGGED, (event) => {
   const { agentId, reason, canVote } = event.payload;
   console.error(`Agent ${agentId} flagged: ${reason}`);
+  console.error(`  Can still vote: ${canVote}`);
 });
 
 // Collusion detection
 bus.subscribe(EventTopics.BYZANTINE_COLLUSION_SUSPECTED, (event) => {
   const { groupAgentIds, votingBlock, threshold } = event.payload;
-  console.error(`Collusion suspected: ${groupAgentIds.join(', ')}`);
+  console.error(`Collusion suspected among: ${groupAgentIds.join(', ')}`);
+  console.error(`  Voting block: ${(votingBlock * 100).toFixed(0)}%`);
+  console.error(`  Threshold: ${(threshold * 100).toFixed(0)}%`);
 });
 ```
 
+### Using WeightedVoting with EventBus
+
+```typescript
+import { createWeightedVoting } from 'nexus-agents/consensus/weighted-voting.js';
+import { EventBus } from 'nexus-agents/agents/collaboration/event-bus.js';
+
+const eventBus = new EventBus();
+const voting = createWeightedVoting({
+  eventBus,
+  config: {
+    initialWeight: 0.5,
+    quorumThreshold: 0.67,
+    byzantineFlagThreshold: 3,
+  },
+});
+
+// Register agents
+voting.registerAgent('agent-1');
+voting.registerAgent('agent-2');
+voting.registerAgent('agent-3');
+
+// Update performance (emits weight_updated events)
+voting.updatePerformance('agent-1', 'success');
+voting.updatePerformance('agent-2', 'failure');
+
+// Run consensus (may emit pattern_detected, collusion_suspected)
+const votes = new Map([
+  ['agent-1', { decision: 'approve', confidence: 0.9 }],
+  ['agent-2', { decision: 'reject', confidence: 0.2 }],
+  ['agent-3', { decision: 'approve', confidence: 0.8 }],
+]);
+
+const result = voting.weightedConsensus(votes);
+console.log(`Decision: ${result.decision}`);
+console.log(`Byzantine detected: ${result.byzantineDetected}`);
+```
+
+---
+
 ## Routing Metrics
 
-Track model selection patterns and effectiveness.
+The routing metrics collector tracks model selection patterns.
 
-### Recording Decisions
+### Recording Routing Decisions
 
 ```typescript
 import { createRoutingMetricsCollector } from 'nexus-agents/observability/routing-metrics.js';
 
 const metrics = createRoutingMetricsCollector({
   maxRecords: 10000,
-  retentionHours: 168,
+  retentionHours: 168, // 1 week
 });
 
-// Record decision
+// Record a routing decision
 metrics.recordDecision({
   timestamp: new Date().toISOString(),
   traceId: 'trace-123',
@@ -402,9 +467,10 @@ metrics.recordOutcome({
 });
 ```
 
-### ASCII Dashboard
+### Viewing the Dashboard
 
 ```typescript
+// Render ASCII dashboard
 console.log(
   metrics.renderDashboard({
     width: 70,
@@ -412,114 +478,135 @@ console.log(
     periodHours: 24,
   })
 );
+
+// Output:
+// ╭────────────────────────────────────────────────────────────────────╮
+// │       Routing Effectiveness Dashboard (last 24h)                  │
+// ├────────────────────────────────────────────────────────────────────┤
+// │ Model Selection Distribution:                                      │
+// │   claude  ████████████░░░░░░░░ 60% (avg reward: 0.82)             │
+// │   gemini  ██████░░░░░░░░░░░░░░ 30% (avg reward: 0.78)             │
+// │   codex   ██░░░░░░░░░░░░░░░░░░ 10% (avg reward: 0.75)             │
+// ├────────────────────────────────────────────────────────────────────┤
+// │ Learning Progress:                                                 │
+// │   Exploration rate: 15% (healthy)                                  │
+// │   Avg reward trend: ↑ +0.05 vs last period                        │
+// │   Avg reward: 0.80                                                 │
+// ├────────────────────────────────────────────────────────────────────┤
+// │ Performance:                                                       │
+// │   Routing decisions: 1,234                                         │
+// │   Task outcomes: 1,180                                             │
+// │   Avg routing latency: 8ms                                         │
+// │   Task success rate: 85%                                           │
+// ╰────────────────────────────────────────────────────────────────────╯
 ```
 
-**Output:**
-
-```
-+--------------------------------------------------------------------+
-|       Routing Effectiveness Dashboard (last 24h)                   |
-+--------------------------------------------------------------------+
-| Model Selection Distribution:                                       |
-|   claude  ████████████░░░░░░░░ 60% (avg reward: 0.82)              |
-|   gemini  ██████░░░░░░░░░░░░░░ 30% (avg reward: 0.78)              |
-|   codex   ██░░░░░░░░░░░░░░░░░░ 10% (avg reward: 0.75)              |
-+--------------------------------------------------------------------+
-| Learning Progress:                                                  |
-|   Exploration rate: 15% (healthy)                                   |
-|   Avg reward trend: +0.05 vs last period                           |
-+--------------------------------------------------------------------+
-| Performance:                                                        |
-|   Routing decisions: 1,234                                          |
-|   Task success rate: 85%                                            |
-+--------------------------------------------------------------------+
-```
-
-### JSON Export
+### Getting Metrics as JSON
 
 ```typescript
 const jsonMetrics = metrics.toJSON(24);
-const data = JSON.parse(jsonMetrics);
+console.log(jsonMetrics);
 
+// Parse and analyze
+const data = JSON.parse(jsonMetrics);
 console.log(`Exploration rate: ${(data.explorationRate * 100).toFixed(1)}%`);
 console.log(`Average reward: ${data.avgReward.toFixed(2)}`);
 ```
 
+---
+
 ## Common Debugging Scenarios
 
-### Request Never Completes
+### Scenario 1: Request Never Completes
 
-```typescript
-// 1. Check event history for the correlation ID
-const trace = bus.getHistory({ correlationId: requestCorrelationId });
-const lastEvent = trace[trace.length - 1];
-console.log('Last event:', lastEvent?.topic, lastEvent?.timestamp);
+1. Check EventBus history for the correlation ID:
 
-// 2. Check for bottlenecks
-const bottlenecks = observer.getBottlenecks();
-if (bottlenecks.length > 0) {
-  console.log('Bottleneck at:', bottlenecks[0].agentId);
-}
+   ```typescript
+   const trace = bus.getHistory({ correlationId: requestCorrelationId });
+   const lastEvent = trace[trace.length - 1];
+   console.log('Last event:', lastEvent?.topic, lastEvent?.timestamp);
+   ```
 
-// 3. Check agent states
-const health = observer.getHealthMetrics();
-console.log('Error agents:', health.errorAgents);
-```
+2. Check for bottlenecks:
 
-### Poor Task Quality
+   ```typescript
+   const bottlenecks = observer.getBottlenecks();
+   if (bottlenecks.length > 0) {
+     console.log('Bottleneck at:', bottlenecks[0].agentId);
+   }
+   ```
 
-```typescript
-// 1. Check routing decisions
-const metrics = metricsCollector.getMetrics(24);
-for (const model of metrics.modelMetrics) {
-  if (model.successRate < 0.7) {
-    console.log(`${model.model} has low success rate: ${model.successRate}`);
-  }
-}
+3. Check agent states:
+   ```typescript
+   const health = observer.getHealthMetrics();
+   console.log('Error agents:', health.errorAgents);
+   ```
 
-// 2. Check for Byzantine patterns
-const byzantineEvents = bus.getHistory({ topic: 'byzantine.*' });
-if (byzantineEvents.length > 0) {
-  console.log('Byzantine events detected:', byzantineEvents.length);
-}
-```
+### Scenario 2: Poor Task Quality
 
-### Consensus Failures
+1. Check routing decisions:
 
-```typescript
-// 1. Subscribe to consensus events
-bus.subscribe('consensus.*', (event) => {
-  console.log(event.topic, event.payload);
-});
+   ```typescript
+   const metrics = metricsCollector.getMetrics(24);
+   for (const model of metrics.modelMetrics) {
+     if (model.successRate < 0.7) {
+       console.log(`${model.model} has low success rate: ${model.successRate}`);
+     }
+   }
+   ```
 
-// 2. Check weighted voting records
-const records = voting.getAllRecords();
-for (const record of records) {
-  if (!voting.canVote(record.agentId)) {
-    console.log(`${record.agentId} cannot vote:`, {
-      weight: record.weight,
-      trustScore: record.trustScore,
-      byzantineFlags: record.byzantineFlags,
-    });
-  }
-}
-```
+2. Check for Byzantine patterns:
+   ```typescript
+   const byzantineEvents = bus.getHistory({ topic: 'byzantine.*' });
+   if (byzantineEvents.length > 0) {
+     console.log('Byzantine events detected:', byzantineEvents.length);
+   }
+   ```
 
-### High Latency
+### Scenario 3: Consensus Failures
 
-```typescript
-// 1. Check routing latency
-const metrics = metricsCollector.getMetrics(1);
-for (const model of metrics.modelMetrics) {
-  console.log(`${model.model}: ${model.avgLatencyMs}ms`);
-}
+1. Subscribe to consensus events:
 
-// 2. Check interaction graph for slow paths
-const graph = observer.getCollaborationGraph();
-const edges = graph.getEdges();
-const slowEdges = edges.filter((e) => (e.durationMs ?? 0) > 5000);
-console.log('Slow interactions:', slowEdges);
-```
+   ```typescript
+   bus.subscribe('consensus.*', (event) => {
+     console.log(event.topic, event.payload);
+   });
+   ```
+
+2. Check weighted voting records:
+   ```typescript
+   const records = voting.getAllRecords();
+   for (const record of records) {
+     if (!voting.canVote(record.agentId)) {
+       console.log(`${record.agentId} cannot vote:`, {
+         weight: record.weight,
+         trustScore: record.trustScore,
+         byzantineFlags: record.byzantineFlags,
+       });
+     }
+   }
+   ```
+
+### Scenario 4: High Latency
+
+1. Check routing latency:
+
+   ```typescript
+   const metrics = metricsCollector.getMetrics(1); // Last hour
+   for (const model of metrics.modelMetrics) {
+     console.log(`${model.model}: ${model.avgLatencyMs}ms`);
+   }
+   ```
+
+2. Check interaction graph for long paths:
+   ```typescript
+   const graph = observer.getCollaborationGraph();
+   const edges = graph.getEdges();
+   const slowEdges = edges.filter((e) => (e.durationMs ?? 0) > 5000);
+   console.log('Slow interactions:', slowEdges);
+   ```
+
+---
 
 ## Best Practices
 
@@ -529,8 +616,14 @@ console.log('Slow interactions:', slowEdges);
 4. **Set up bottleneck alerts** - Use `getBottlenecks()` in health checks
 5. **Clear history periodically** - Prevent memory growth in long-running processes
 
-## Next Steps
+---
 
-- [CLI Commands](/nexus-agents/guides/cli-usage) - Use debugging commands
-- [Agent Development](/nexus-agents/development/agent-development) - Build observable agents
-- [Architecture Overview](/nexus-agents/architecture/overview) - System design details
+## Related Documentation
+
+- [SWARM_OBSERVER_DESIGN.md](/nexus-agents/architecture/swarm-observer-design/) - Architecture design
+- [ARCHITECTURE.md](../../ARCHITECTURE.md) - System architecture
+- [event-bus-types.ts](../../packages/nexus-agents/src/agents/collaboration/event-bus-types.ts) - Event type definitions
+
+---
+
+_Last updated: 2026-01-12 (ET)_

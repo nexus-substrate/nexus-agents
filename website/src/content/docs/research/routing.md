@@ -1,347 +1,112 @@
 ---
-title: Model Routing
-description: Research-backed intelligent routing of tasks to optimal models
+title: 'Routing Research'
+description: 'Research on intelligent routing of tasks to optimal models based on cost, quality, and latency constraints. Covers quality-constrained routing, preference-trained routers, cascade strategies, and m...'
 ---
 
-Research on intelligent routing of tasks to optimal models based on cost, quality, and latency constraints. All 6 routing techniques have been implemented and unified via the CompositeRouter.
+**Last Updated:** 2026-01-10 (ET)
+**Status:** Active Research (Core Routing Implemented)
 
-## Implementation Status
+---
 
-| Technique                            | Paper                                                | Priority | Status      | Issue                                                               |
-| ------------------------------------ | ---------------------------------------------------- | -------- | ----------- | ------------------------------------------------------------------- |
-| IPR Quality-Constrained Routing      | [arXiv:2509.06274](https://arxiv.org/abs/2509.06274) | P1       | Implemented | [#128](https://github.com/williamzujkowski/nexus-agents/issues/128) |
-| PILOT Budget-Constrained Routing     | [arXiv:2508.21141](https://arxiv.org/abs/2508.21141) | P2       | Implemented | [#102](https://github.com/williamzujkowski/nexus-agents/issues/102) |
-| TOPSIS Multi-Criteria Routing        | [arXiv:2509.07571](https://arxiv.org/abs/2509.07571) | P2       | Implemented | [#146](https://github.com/williamzujkowski/nexus-agents/issues/146) |
-| SATER Confidence-Aware Routing       | [arXiv:2510.05164](https://arxiv.org/abs/2510.05164) | P2       | Implemented | [#99](https://github.com/williamzujkowski/nexus-agents/issues/99)   |
-| Agreement-Based Cascading (ABC)      | [arXiv:2410.10347](https://arxiv.org/abs/2410.10347) | P2       | Implemented | [#121](https://github.com/williamzujkowski/nexus-agents/issues/121) |
-| Preference-Trained Router (RouteLLM) | [arXiv:2406.18665](https://arxiv.org/abs/2406.18665) | P2       | Implemented | [#148](https://github.com/williamzujkowski/nexus-agents/issues/148) |
+## Overview
 
-## Routing Architecture
+Research on intelligent routing of tasks to optimal models based on cost, quality, and latency constraints. Covers quality-constrained routing, preference-trained routers, cascade strategies, and multi-criteria optimization.
 
-All routing techniques are unified through the `CompositeRouter` which chains three stages:
+## Key Papers
 
-```
-Task → BudgetRouter → TopsisRouter → LinUCBBandit → Selected Model
-         (filter)       (rank)          (learn)
-```
+| Paper                                               | Key Contribution                                  | Priority | Status          |
+| --------------------------------------------------- | ------------------------------------------------- | -------- | --------------- |
+| [IPR](https://arxiv.org/abs/2509.06274)             | Quality-constrained routing, 43.9% cost reduction | P1       | partial         |
+| [PILOT](https://arxiv.org/abs/2508.21141)           | Budget-constrained LinUCB routing                 | P1       | **implemented** |
+| [SATER](https://arxiv.org/abs/2510.05164)           | Confidence-aware rejection, 50%+ cost reduction   | P2       | partial         |
+| [MoMA](https://arxiv.org/abs/2509.07571)            | TOPSIS multi-criteria, 31.46% cost reduction      | P2       | **implemented** |
+| [RouteLLM](https://arxiv.org/abs/2406.18665)        | Preference-trained routing, 2x cost reduction     | P2       | planned         |
+| [Edge Multi-LLM](https://arxiv.org/abs/2507.00672)  | Agreement-based cascading                         | P2       | **implemented** |
+| [Cross-Attention](https://arxiv.org/abs/2509.09782) | Query-model matching                              | -        | not-started     |
+| [OptiRoute](https://arxiv.org/abs/2502.16696)       | kNN + hierarchical filtering                      | -        | not-started     |
 
-### Stage 1: Budget Filter
+**Implementation Notes:**
 
-Enforces token, cost, and latency constraints. Models that exceed budget are filtered out.
+- PILOT: BudgetRouter + LinUCBBandit in `cli-adapters/`
+- MoMA: TopsisRouter in `cli-adapters/topsis-router.ts`
+- Edge Multi-LLM: AgreementCascadeRouter in `cli-adapters/agreement-cascade-router.ts`
+- All unified via CompositeRouter (Epic #164)
 
-### Stage 2: TOPSIS Ranking
+## Recommended Techniques
 
-Multi-criteria ranking using quality, cost, and latency weights. Returns Pareto-optimal model selection.
+### High Priority (P1)
 
-### Stage 3: LinUCB Selection
+#### IPR Quality-Constrained Routing
 
-Contextual bandit that learns from task outcomes. Balances exploration vs exploitation.
+- **Source:** [arxiv-2509.06274](https://arxiv.org/abs/2509.06274)
+- **Key Metrics:** 43.9% cost reduction, sub-150ms latency
+- **Integration Point:** `packages/nexus-agents/src/adapters/`, `packages/nexus-agents/src/agents/tech-lead.ts`
+- **GitHub Issue:** #102
 
-## IPR Quality-Constrained Routing
+Quality-constrained routing with user-controlled tolerance parameter and lightweight estimators. Directly applicable to CLI adapter capability matching.
 
-**Paper:** [IPR: Intelligent Prompt Routing](https://arxiv.org/abs/2509.06274)
+#### PILOT Budget-Constrained Routing
 
-Quality-constrained routing with user-controlled tolerance parameter and lightweight estimators. Routes to the cheapest model that meets the quality threshold.
+- **Source:** [arxiv-2508.21141](https://arxiv.org/abs/2508.21141)
+- **Key Metrics:** Adaptive budget handling
+- **Integration Point:** `packages/nexus-agents/src/workflows/execution-planner.ts`
+- **GitHub Issue:** #102
 
-### Key Metrics
+Contextual bandit (LinUCB) with preference-prior routing and multi-choice knapsack budget constraints. Add cost tracking to ContextBudget.
 
-| Metric          | Value     |
-| --------------- | --------- |
-| Cost Reduction  | 43.9%     |
-| Routing Latency | Sub-150ms |
+### Medium Priority (P2)
 
-### Implementation
+#### SATER Confidence-Aware Routing
 
-Implemented as `QualityRouter` class with `TaskComplexityEstimator`:
-
-- Task complexity estimation (5 factors: length, structure, domain, reasoning, tools)
-- Quality/cost trade-off optimization for CLI adapters
-- Sub-150ms routing latency achieved
-- 22 comprehensive tests
-
-**Source Files:**
-
-- `src/adapters/quality-router.ts`
-- `src/adapters/complexity-estimator.ts`
-
-### Usage
-
-```typescript
-import { QualityRouter } from 'nexus-agents';
-
-const router = new QualityRouter({
-  qualityThreshold: 0.8,
-  costWeight: 0.3,
-});
-
-const model = await router.route(task);
-```
-
-## PILOT Budget-Constrained Routing
-
-**Paper:** [PILOT: Preference-Prior Routing with Budget Constraints](https://arxiv.org/abs/2508.21141)
-
-Contextual bandit (LinUCB) with preference-prior routing and multi-choice knapsack budget constraints.
-
-### Key Metrics
-
-| Metric          | Value                            |
-| --------------- | -------------------------------- |
-| Budget Handling | Adaptive to diverse requirements |
-
-### Implementation
-
-Full PILOT Budget-Constrained Routing implemented:
-
-- LinUCB contextual bandit (462 lines) with 6-feature context
-- Token, cost, and latency budget enforcement
-- Session budget tracking with auto-reset
-- Budget warnings at configurable thresholds
-- 3-stage CompositeRouter: Budget → TOPSIS → LinUCB
-- Comprehensive test coverage (43+ budget tests, 40+ LinUCB tests)
-
-**Source Files:**
-
-- `src/cli-adapters/budget-router.ts`
-- `src/cli-adapters/linucb-bandit.ts`
-- `src/cli-adapters/composite-router.ts`
-- `src/cli-adapters/budget-utils.ts`
-
-### Usage
-
-```typescript
-import { BudgetRouter } from 'nexus-agents';
-
-const router = new BudgetRouter({
-  tokenBudget: 1_000_000,
-  costBudgetUsd: 10.0,
-  resetIntervalMs: 3600000, // 1 hour
-});
-
-const result = await router.routeWithBudget(task, {
-  maxTokens: 100_000,
-  maxCostUsd: 1.0,
-});
-```
-
-## TOPSIS Multi-Criteria Routing
-
-**Paper:** [MoMA: Towards Generalized Routing](https://arxiv.org/abs/2509.07571)
-
-Multi-criteria decision algorithm for Pareto-optimal model selection balancing performance vs cost.
-
-### Key Metrics
-
-| Metric         | Value  |
-| -------------- | ------ |
-| Cost Reduction | 31.46% |
-
-### Implementation
-
-Implemented `TopsisRouter` with:
-
-- Vector normalization of decision matrix
-- Configurable criteria weights (quality, cost, latency)
-- Positive/negative ideal solution calculation
-- Closeness score ranking
-- Cost savings estimation vs highest quality model
-- 22 comprehensive tests
-
-**Source Files:**
-
-- `src/cli-adapters/topsis-router.ts`
-- `src/cli-adapters/topsis-types.ts`
-
-### Usage
-
-```typescript
-import { TopsisRouter } from 'nexus-agents';
-
-const router = new TopsisRouter({
-  weights: {
-    quality: 0.5,
-    cost: 0.3,
-    latency: 0.2,
-  },
-});
-
-const ranked = router.rank(task, availableModels);
-```
-
-## SATER Confidence-Aware Routing
-
-**Paper:** [SATER: Dual-Mode Routing with Confidence-Aware Rejection](https://arxiv.org/abs/2510.05164)
+- **Source:** [arxiv-2510.05164](https://arxiv.org/abs/2510.05164)
+- **Key Metrics:** 50%+ cost reduction, 80%+ cascade latency reduction
+- **Integration Point:** `packages/nexus-agents/src/agents/experts/expert-selector.ts`
+- **GitHub Issue:** #99
 
 Dual-mode routing with shortest-response preference optimization and confidence-aware rejection.
 
-### Key Metrics
+#### TOPSIS Multi-Criteria Routing
 
-| Metric                    | Value |
-| ------------------------- | ----- |
-| Cost Reduction            | 50%+  |
-| Cascade Latency Reduction | 80%+  |
+- **Source:** [arxiv-2509.07571](https://arxiv.org/abs/2509.07571)
+- **Key Metrics:** 31.46% cost reduction
+- **Integration Point:** `packages/nexus-agents/src/agents/experts/expert-selector.ts`
 
-### Implementation
+Multi-criteria decision algorithm for Pareto-optimal model selection (performance vs cost).
 
-Implemented confidence-aware cascade routing with confidence estimation before model escalation.
+#### Agreement-Based Cascading (ABC)
 
-**Source Files:**
-
-- `src/adapters/`
-- `src/agents/experts/expert-selector.ts`
-
-### Usage
-
-```typescript
-import { CascadeRouter } from 'nexus-agents';
-
-const router = new CascadeRouter({
-  confidenceThreshold: 0.85,
-  stages: ['haiku', 'sonnet', 'opus'],
-});
-
-const result = await router.route(task);
-```
-
-## Agreement-Based Cascading (ABC)
-
-**Paper:** [Edge Multi-LLM: Hybrid Routing with Cascade/ABC Patterns](https://arxiv.org/abs/2507.00672)
+- **Source:** [arxiv-2507.00672](https://arxiv.org/abs/2507.00672)
+- **Integration Point:** `packages/nexus-agents/src/adapters/`
 
 Cascade of increasingly powerful models with ensemble agreement at each stage. Escalate only when agreement threshold not met.
 
-### Key Metrics
+## Implementation Status
 
-| Metric            | Value       |
-| ----------------- | ----------- |
-| Cost Optimization | Significant |
+**Completed (v2.2.0 - Epic #164):**
 
-### Implementation
+- ✅ CompositeRouter chains Budget→TOPSIS→LinUCB
+- ✅ BudgetRouter with session budget tracking
+- ✅ TopsisRouter for multi-criteria optimization
+- ✅ LinUCBBandit for contextual bandit selection
+- ✅ AgreementCascadeRouter for ensemble agreement
+- ✅ FeedbackIntegration for closed-loop learning
+- ✅ CliDetectionCache for health check caching
 
-Implemented `AgreementCascadeRouter` class with:
+**Planned (v2.3.0+):**
 
-- Multi-model execution at each cascade stage
-- Jaccard similarity-based response clustering
-- Configurable agreement thresholds (default 0.7)
-- Cost savings tracking for early resolution
-- 14 comprehensive tests
-
-**Source Files:**
-
-- `src/cli-adapters/agreement-cascade-router.ts`
-
-### Usage
-
-```typescript
-import { AgreementCascadeRouter } from 'nexus-agents';
-
-const router = new AgreementCascadeRouter({
-  agreementThreshold: 0.7,
-  stages: [
-    { models: ['haiku-1', 'haiku-2'], costPerToken: 0.001 },
-    { models: ['sonnet'], costPerToken: 0.01 },
-  ],
-});
-
-const result = await router.route(task);
-```
-
-## Preference-Trained Router (RouteLLM)
-
-**Paper:** [RouteLLM: Learning to Route LLMs with Preference Data](https://arxiv.org/abs/2406.18665)
-
-Train router on human preference data for dynamic selection between strong/weak LLM. Transfer learning maintains performance.
-
-### Key Metrics
-
-| Metric         | Value |
-| -------------- | ----- |
-| Cost Reduction | 2x    |
-
-### Implementation
-
-Implemented `PreferenceRouter` with preference-based model selection using historical preference data for routing decisions.
-
-**Source Files:**
-
-- `src/cli-adapters/preference-router.ts`
-- `src/cli-adapters/preference-router-types.ts`
-
-### Usage
-
-```typescript
-import { PreferenceRouter } from 'nexus-agents';
-
-const router = new PreferenceRouter({
-  preferenceData: loadedPreferences,
-  strongModel: 'opus',
-  weakModel: 'haiku',
-});
-
-const model = await router.route(task);
-```
-
-## Composite Router
-
-All routing techniques are unified through the `CompositeRouter`:
-
-```typescript
-import { CompositeRouter } from 'nexus-agents';
-
-const router = new CompositeRouter({
-  budget: {
-    tokenBudget: 1_000_000,
-    costBudgetUsd: 10.0,
-  },
-  topsis: {
-    qualityWeight: 0.5,
-    costWeight: 0.3,
-    latencyWeight: 0.2,
-  },
-  linucb: {
-    alpha: 1.0, // Exploration parameter
-  },
-});
-
-// Route with full pipeline
-const decision = await router.route(task);
-
-// Decision includes:
-// - cliName: Selected model
-// - confidence: Routing confidence
-// - reason: Why this model was chosen
-// - alternatives: Fallback options
-// - stagesExecuted: Which stages ran
-```
-
-## Debug Routing Decisions
-
-Use the `routing-audit` CLI command to debug routing decisions:
-
-```bash
-# Dry-run routing for a task
-nexus-agents routing-audit "Implement a sorting algorithm" --format=json
-```
-
-Output shows:
-
-- Task profile analysis
-- Budget filter results
-- TOPSIS scores per CLI
-- LinUCB selection with UCB scores
-- Feature importance analysis
-
-## Source Papers
-
-| Paper                                              | Year | Key Contribution            |
-| -------------------------------------------------- | ---- | --------------------------- |
-| [RouteLLM](https://arxiv.org/abs/2406.18665)       | 2024 | Preference-trained routing  |
-| [IPR](https://arxiv.org/abs/2509.06274)            | 2025 | Quality-constrained routing |
-| [PILOT](https://arxiv.org/abs/2508.21141)          | 2025 | Budget-constrained routing  |
-| [SATER](https://arxiv.org/abs/2510.05164)          | 2025 | Confidence-aware routing    |
-| [MoMA](https://arxiv.org/abs/2509.07571)           | 2025 | TOPSIS multi-criteria       |
-| [Edge Multi-LLM](https://arxiv.org/abs/2507.00672) | 2025 | Agreement-based cascading   |
+- IPR quality estimators (lightweight quality prediction)
+- RouteLLM preference training (requires training data collection)
+- SATER confidence-aware rejection (partial via cascade)
 
 ## Related Topics
 
-- [Routing System](/nexus-agents/architecture/routing-system) - Architecture overview
-- [Consensus](/nexus-agents/research/consensus) - Decision protocols
+- [CLI Tools](../cli-tools/README.md) - CLI adapter routing
+- [Orchestration](../orchestration/README.md) - Task distribution
+
+## References
+
+- [IPR: Intelligent Prompt Routing](https://arxiv.org/abs/2509.06274)
+- [PILOT: Preference-Prior Routing](https://arxiv.org/abs/2508.21141)
+- [SATER: Dual-Mode Routing](https://arxiv.org/abs/2510.05164)
+- [MoMA: Generalized Routing](https://arxiv.org/abs/2509.07571)
+- [RouteLLM: Learning to Route](https://arxiv.org/abs/2406.18665)
