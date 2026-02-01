@@ -11,6 +11,7 @@
     "scripts/inject-governance.ts",
     "scripts/check-docops-skill.ts",
     "scripts/check-docs-indexed.ts",
+    "scripts/check-frontmatter.ts",
     ".github/workflows/docs-check.yml",
     ".github/workflows/deploy-docs.yml",
     ".github/workflows/link-check.yml",
@@ -39,7 +40,8 @@
       "secrets-scan",
       "docops-skill-sync",
       "canonical-index",
-      "markdown-lint"
+      "markdown-lint",
+      "frontmatter-check"
     ]
   },
   "enforcement_rules": {

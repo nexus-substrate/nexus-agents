@@ -35,7 +35,7 @@ This specification defines the **single canonical documentation pipeline** for n
                          ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                    VALIDATION LAYER                              │
-│  docs-check.yml (10 CI jobs)                                    │
+│  docs-check.yml (11 CI jobs)                                    │
 │  - typedoc-check: API docs drift                                │
 │  - llms-txt-check: Generated context freshness                  │
 │  - website-sync: Canonical → Website sync                       │
@@ -46,6 +46,7 @@ This specification defines the **single canonical documentation pipeline** for n
 │  - docops-skill-sync: Pipeline → Skill sync                     │
 │  - canonical-index: All docs indexed                            │
 │  - markdown-lint: Markdown style consistency                    │
+│  - frontmatter-check: Website frontmatter validation            │
 └────────────────────────┬────────────────────────────────────────┘
                          │
                          ▼
@@ -157,7 +158,7 @@ npx tsx scripts/inject-governance.ts check   # CI validation
 
 ## CI Validation Jobs
 
-### docs-check.yml (10 Jobs)
+### docs-check.yml (11 Jobs)
 
 | Job                 | Purpose                    | Blocking     | Trigger  |
 | ------------------- | -------------------------- | ------------ | -------- |
@@ -171,6 +172,7 @@ npx tsx scripts/inject-governance.ts check   # CI validation
 | `docops-skill-sync` | Pipeline → Skill sync      | Yes          | PR only  |
 | `canonical-index`   | All docs in README.md      | Yes          | Push, PR |
 | `markdown-lint`     | Markdown style consistency | Yes          | Push, PR |
+| `frontmatter-check` | Website frontmatter valid  | Yes          | Push, PR |
 
 ### link-check.yml (Standalone)
 

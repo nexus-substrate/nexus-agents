@@ -491,3 +491,31 @@ jobs:
             echo "Run 'pnpm lint:md:fix' to auto-fix issues"
             exit 1
           fi
+
+  # Job 11: Frontmatter Validation
+  frontmatter-check:
+    name: Frontmatter Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - run: pnpm install
+
+      - name: Validate website frontmatter
+        run: |
+          npx tsx scripts/check-frontmatter.ts
+          if [ $? -eq 0 ]; then
+            echo "✅ All website docs have valid frontmatter"
+          else
+            echo "::error::Website docs missing required frontmatter"
+            echo "Run 'npx tsx scripts/check-frontmatter.ts --fix' to add placeholders"
+            exit 1
+          fi
