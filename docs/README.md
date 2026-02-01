@@ -60,15 +60,16 @@ Detailed technical documentation:
 
 #### Architecture
 
-| Document                                                              | Description                 | Status    |
-| --------------------------------------------------------------------- | --------------------------- | --------- |
-| [AGENT_SYSTEM.md](./architecture/AGENT_SYSTEM.md)                     | Agent framework design      | Canonical |
-| [MEMORY_SYSTEM.md](./architecture/MEMORY_SYSTEM.md)                   | 8-type memory architecture  | Canonical |
-| [ROUTING_SYSTEM.md](./architecture/ROUTING_SYSTEM.md)                 | Model routing pipeline      | Canonical |
-| [CONSENSUS_PROTOCOLS.md](./architecture/CONSENSUS_PROTOCOLS.md)       | 11 consensus protocols      | Canonical |
-| [CONTEXT_LOAD_BALANCING.md](./architecture/CONTEXT_LOAD_BALANCING.md) | Claude/Gemini/Codex routing | Canonical |
-| [SECURITY.md](./architecture/SECURITY.md)                             | Security model, sandboxing  | Canonical |
-| [MCP_PROTOCOL.md](./architecture/MCP_PROTOCOL.md)                     | MCP integration details     | Canonical |
+| Document                                                                  | Description                 | Status    |
+| ------------------------------------------------------------------------- | --------------------------- | --------- |
+| [AGENT_SYSTEM.md](./architecture/AGENT_SYSTEM.md)                         | Agent framework design      | Canonical |
+| [MEMORY_SYSTEM.md](./architecture/MEMORY_SYSTEM.md)                       | 8-type memory architecture  | Canonical |
+| [ROUTING_SYSTEM.md](./architecture/ROUTING_SYSTEM.md)                     | Model routing pipeline      | Canonical |
+| [CONSENSUS_PROTOCOLS.md](./architecture/CONSENSUS_PROTOCOLS.md)           | 11 consensus protocols      | Canonical |
+| [CONTEXT_LOAD_BALANCING.md](./architecture/CONTEXT_LOAD_BALANCING.md)     | Claude/Gemini/Codex routing | Canonical |
+| [SECURITY.md](./architecture/SECURITY.md)                                 | Security model, sandboxing  | Canonical |
+| [MCP_PROTOCOL.md](./architecture/MCP_PROTOCOL.md)                         | MCP integration details     | Canonical |
+| [TECHLEAD_WORKFLOW_ENGINE.md](./architecture/TECHLEAD_WORKFLOW_ENGINE.md) | TechLead vs WorkflowEngine  | Canonical |
 
 #### Development
 

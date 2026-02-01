@@ -1,10 +1,11 @@
-# Nexus Agents - TechLead vs WorkflowEngine Architecture
+# TechLead vs WorkflowEngine Architecture
 
 **Version:** 2.0.1
-**Last Updated:** 2026-01-11 (ET)
-**Status:** Current
+**Last Updated:** 2026-02-01 (ET)
+**Status:** Canonical
+**Location:** `docs/architecture/TECHLEAD_WORKFLOW_ENGINE.md`
 
-> For the full system architecture, see [/ARCHITECTURE.md](/ARCHITECTURE.md) at the repository root.
+> For the full system architecture, see [ARCHITECTURE.md](../../ARCHITECTURE.md) at the repository root.
 > This document focuses on the separation between dynamic planning (TechLead) and static execution (WorkflowEngine).
 
 ---
@@ -637,4 +638,4 @@ interface InputDefinition {
 
 ---
 
-_Last updated: 2026-01-07 (ET)_
+_Last updated: 2026-02-01 (ET)_
