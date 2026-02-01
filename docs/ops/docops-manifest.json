@@ -38,7 +38,8 @@
       "docs-coverage",
       "secrets-scan",
       "docops-skill-sync",
-      "canonical-index"
+      "canonical-index",
+      "markdown-lint"
     ]
   },
   "enforcement_rules": {
