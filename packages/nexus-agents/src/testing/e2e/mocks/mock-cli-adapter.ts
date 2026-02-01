@@ -8,6 +8,7 @@
 
 import type { Result, Task } from '../../../core/index.js';
 import { ok, err, AgentError, getRandomProvider } from '../../../core/index.js';
+import { clamp01 } from '../../../utils/math-utils.js';
 
 export interface MockCliAdapterConfig {
   name: 'claude' | 'gemini' | 'codex';
@@ -63,7 +64,7 @@ export class MockCliAdapter {
   }
 
   setFailureRate(rate: number): void {
-    this.failureRate = Math.max(0, Math.min(1, rate));
+    this.failureRate = clamp01(rate);
   }
 
   setResponseDelay(ms: number): void {

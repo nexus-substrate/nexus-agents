@@ -93,13 +93,13 @@ export function selectAgentCount(topology: CoordinationTopology, features: TaskF
       return Math.min(1 + features.parallelizability, 5);
     case 'decentralized':
       // 2-3 agents typically optimal for peer-to-peer
-      return Math.min(3, Math.max(2, features.parallelizability));
+      return clamp(features.parallelizability, 2, 3);
     case 'independent':
       // 3-5 independent agents for aggregation
-      return Math.min(5, Math.max(3, features.parallelizability));
+      return clamp(features.parallelizability, 3, 5);
     case 'hierarchical':
       // Tree structure based on complexity
-      return Math.min(7, Math.max(3, Math.ceil(features.complexity * 7)));
+      return clamp(Math.ceil(features.complexity * 7), 3, 7);
     default:
       return 1;
   }

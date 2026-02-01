@@ -10,6 +10,7 @@
 
 import { logger } from '../../core/logger.js';
 import { getTimeProvider } from '../../core/index.js';
+import { clampScore } from '../../utils/math-utils.js';
 import type {
   IAccuracyEval,
   AccuracyEvalConfig,
@@ -74,7 +75,7 @@ export class DefaultQualityEvaluator implements IQualityEvaluator {
     const matchRatio = this.computeMatchRatio(expected, output);
     let score = this.computeBaseScore(matchRatio, issues, strengths);
     score = this.applyModifiers(output, score, issues, strengths);
-    score = Math.max(0, Math.min(10, score));
+    score = clampScore(score);
 
     const matchPercent = String(Math.round(matchRatio * 100));
     const charCount = String(output.length);

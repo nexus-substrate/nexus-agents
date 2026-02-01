@@ -7,6 +7,7 @@
  */
 
 import type { CliName } from '../../cli-adapters/types.js';
+import { clamp01 } from '../../utils/math-utils.js';
 import type {
   EvaluationTask,
   RoutingDecisionDetails,
@@ -91,7 +92,7 @@ export class RoutingScorer {
       reasonableChoice,
       confidenceCalibration,
       decisionTimeScore,
-      overallScore: Math.min(1, Math.max(0, overallScore)),
+      overallScore: clamp01(overallScore),
       explanation,
     };
   }

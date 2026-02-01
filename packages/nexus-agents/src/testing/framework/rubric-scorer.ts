@@ -7,6 +7,7 @@
  */
 
 import { getTimeProvider } from '../../core/index.js';
+import { clamp01 } from '../../utils/math-utils.js';
 import type {
   EvaluationTask,
   EvaluationRubric,
@@ -105,7 +106,7 @@ export class RubricScorer {
     const overallScore = totalWeight > 0 ? weightedSum / totalWeight : 0;
 
     return {
-      overallScore: Math.min(1, Math.max(0, overallScore)),
+      overallScore: clamp01(overallScore),
       criterionScores,
       rubricId: rubric.id,
       timestamp: getTimeProvider().nowIso(),
