@@ -22,6 +22,18 @@ export {
   tokenizeToSet,
   tokenizeFiltered,
   stringifyValue,
+  capitalize,
+  capitalizeWords,
+  capitalizeKebab,
+  truncateText,
+  truncateWithInfo,
+  truncateSentence,
+  splitLines,
+  splitNonEmptyLines,
+  splitTrimmedLines,
+  countSentences,
+  splitSentences,
+  countWords,
 } from './text-utils.js';
 
 export {

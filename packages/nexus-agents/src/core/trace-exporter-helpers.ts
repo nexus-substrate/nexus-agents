@@ -6,6 +6,7 @@
  */
 
 import type { TraceSpan, AggregatedMetrics } from './trace.js';
+import { colors } from '../cli/ansi-output.js';
 
 // =============================================================================
 // Types
@@ -34,22 +35,14 @@ export interface SpanNode {
 }
 
 // =============================================================================
-// ANSI Colors
+// ANSI Colors (re-exported for backward compatibility)
 // =============================================================================
 
 /**
  * ANSI color codes for terminal output.
+ * @deprecated Import 'colors' from '../cli/ansi-output.js' directly
  */
-export const COLORS = {
-  reset: '\x1b[0m',
-  bold: '\x1b[1m',
-  dim: '\x1b[2m',
-  green: '\x1b[32m',
-  red: '\x1b[31m',
-  yellow: '\x1b[33m',
-  cyan: '\x1b[36m',
-  gray: '\x1b[90m',
-} as const;
+export const COLORS = colors;
 
 // =============================================================================
 // Formatting Functions
@@ -135,11 +128,11 @@ export function getStatusIndicator(status: string, useColors: boolean): string {
   if (useColors) {
     switch (status) {
       case 'success':
-        return `${COLORS.green}✓${COLORS.reset}`;
+        return `${colors.green}✓${colors.reset}`;
       case 'error':
-        return `${COLORS.red}✗${COLORS.reset}`;
+        return `${colors.red}✗${colors.reset}`;
       case 'running':
-        return `${COLORS.yellow}●${COLORS.reset}`;
+        return `${colors.yellow}●${colors.reset}`;
       default:
         return '?';
     }
@@ -173,7 +166,7 @@ export function appendTokenInfo(
   }
   const tokenStr = formatTokens(span.llmMetrics.inputTokens, span.llmMetrics.outputTokens);
   if (opts.colors) {
-    return `${mainLine} ${COLORS.cyan}[${tokenStr}]${COLORS.reset}`;
+    return `${mainLine} ${colors.cyan}[${tokenStr}]${colors.reset}`;
   }
   return `${mainLine} [${tokenStr}]`;
 }
@@ -191,7 +184,7 @@ export function appendCostInfo(
   }
   const costStr = formatCost(span.llmMetrics.costUsd);
   if (opts.colors) {
-    return `${mainLine} ${COLORS.yellow}${costStr}${COLORS.reset}`;
+    return `${mainLine} ${colors.yellow}${costStr}${colors.reset}`;
   }
   return `${mainLine} ${costStr}`;
 }
@@ -208,7 +201,7 @@ export function renderErrorLine(
     return null;
   }
   if (opts.colors) {
-    return `${errorPrefix}${COLORS.red}Error: ${span.errorMessage}${COLORS.reset}`;
+    return `${errorPrefix}${colors.red}Error: ${span.errorMessage}${colors.reset}`;
   }
   return `${errorPrefix}Error: ${span.errorMessage}`;
 }
@@ -321,7 +314,7 @@ export function renderSpanNode(
  */
 export function renderHeader(traceId: string, useColors: boolean): string {
   if (useColors) {
-    return `${COLORS.bold}🔍 Trace: ${traceId}${COLORS.reset}`;
+    return `${colors.bold}🔍 Trace: ${traceId}${colors.reset}`;
   }
   return `Trace: ${traceId}`;
 }
@@ -349,7 +342,7 @@ export function buildSummaryParts(
   if (metrics.errorSpans > 0) {
     const errCount = String(metrics.errorSpans);
     if (opts.colors) {
-      parts.push(`${COLORS.red}Errors: ${errCount}${COLORS.reset}`);
+      parts.push(`${colors.red}Errors: ${errCount}${colors.reset}`);
     } else {
       parts.push(`Errors: ${errCount}`);
     }

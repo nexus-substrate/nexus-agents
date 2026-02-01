@@ -259,3 +259,95 @@ export function truncateSentence(text: string, maxLength = 150): string {
   if (text.length <= maxLength) return text;
   return text.slice(0, maxLength).trim() + '...';
 }
+
+// ============================================================================
+// Line Splitting
+// ============================================================================
+
+/**
+ * Split text into lines.
+ * Handles both Unix (\n) and Windows (\r\n) line endings.
+ *
+ * @param text - Input text to split
+ * @returns Array of lines (may include empty strings)
+ * @example splitLines('a\nb\nc') // ['a', 'b', 'c']
+ * @example splitLines('a\n\nb') // ['a', '', 'b']
+ */
+export function splitLines(text: string): string[] {
+  return text.split(/\r?\n/);
+}
+
+/**
+ * Split text into non-empty lines.
+ * Filters out empty lines and whitespace-only lines.
+ *
+ * @param text - Input text to split
+ * @returns Array of non-empty lines
+ * @example splitNonEmptyLines('a\n\nb\n  \nc') // ['a', 'b', 'c']
+ */
+export function splitNonEmptyLines(text: string): string[] {
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+}
+
+/**
+ * Split text into trimmed lines, preserving empty lines.
+ * Trims each line but keeps empty lines in the output.
+ *
+ * @param text - Input text to split
+ * @returns Array of trimmed lines
+ * @example splitTrimmedLines('  a  \n\n  b  ') // ['a', '', 'b']
+ */
+export function splitTrimmedLines(text: string): string[] {
+  return text.split(/\r?\n/).map((line) => line.trim());
+}
+
+// ============================================================================
+// Sentence/Word Splitting
+// ============================================================================
+
+/**
+ * Count the number of sentences in text.
+ * Counts sentence-ending punctuation followed by space or end of string.
+ *
+ * @param text - Input text
+ * @returns Number of sentences
+ * @example countSentences('Hello world. How are you?') // 2
+ */
+export function countSentences(text: string): number {
+  const matches = text.match(/[.!?]+(?:\s|$)/g);
+  return matches !== null ? matches.length : 0;
+}
+
+/**
+ * Split text into sentences.
+ * Splits on sentence-ending punctuation followed by space.
+ *
+ * @param text - Input text
+ * @returns Array of sentences (trimmed)
+ * @example splitSentences('Hello world. How are you?') // ['Hello world.', 'How are you?']
+ */
+export function splitSentences(text: string): string[] {
+  // Split on sentence endings followed by space, keeping the punctuation
+  return text
+    .split(/(?<=[.!?])\s+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+}
+
+/**
+ * Count the number of words in text.
+ * Splits on whitespace and counts non-empty tokens.
+ *
+ * @param text - Input text
+ * @returns Number of words
+ * @example countWords('Hello world') // 2
+ */
+export function countWords(text: string): number {
+  return text
+    .trim()
+    .split(/\s+/)
+    .filter((w) => w.length > 0).length;
+}
