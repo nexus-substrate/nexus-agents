@@ -56,7 +56,7 @@ export ANTHROPIC_API_KEY=your-key
 nexus-agents orchestrate "Explain the architecture of this codebase"
 ```
 
-> **Security Note:** The server runs without authentication by default. For production deployments, set `NEXUS_AUTH_ENABLED=true`. See [SECURITY.md](./docs/architecture/SECURITY.md) for details.
+> **Security Note:** The server runs without authentication by default. For production deployments, set `NEXUS_AUTH_ENABLED=true`. See [Security](/nexus-agents/architecture/security/) for details.
 
 ---
 
@@ -143,10 +143,10 @@ nexus-agents config init   # Creates nexus-agents.yaml
 | Topic              | Link                                                                                                  |
 | ------------------ | ----------------------------------------------------------------------------------------------------- |
 | Full CLI Reference | [CLI Usage](/nexus-agents/guides/cli-usage/)                                                          |
-| Architecture       | [docs/architecture/README.md](./docs/architecture/README.md)                                          |
-| Contributing       | [CONTRIBUTING.md](/nexus-agents/architecture/contributing/)                                           |
+| Architecture       | [Architecture Overview](/nexus-agents/architecture/overview/)                                         |
+| Contributing       | [Contributing](/nexus-agents/development/contributing/)                                               |
 | Coding Standards   | [CODING_STANDARDS.md](https://github.com/williamzujkowski/nexus-agents/blob/main/CODING_STANDARDS.md) |
-| Quick Start Guide  | [QUICK_START.md](/nexus-agents/architecture/quick-start/)                                             |
+| Quick Start Guide  | [Quick Start](/nexus-agents/getting-started/quick-start/)                                             |
 
 ---
 
@@ -171,13 +171,13 @@ pnpm test
 3. Commit with conventional commits (`feat(scope): add feature`)
 4. Open a Pull Request
 
-See [CONTRIBUTING.md](/nexus-agents/architecture/contributing/) for details.
+See [Contributing](/nexus-agents/development/contributing/) for details.
 
 ---
 
 ## License
 
-MIT - See [LICENSE](./LICENSE)
+MIT - See [LICENSE](https://github.com/williamzujkowski/nexus-agents/blob/main/LICENSE)
 
 ---
 

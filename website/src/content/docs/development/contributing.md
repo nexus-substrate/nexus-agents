@@ -553,7 +553,7 @@ If you discover a security vulnerability, please **do not** create a public issu
 
 ## Getting Help
 
-- Review the [CLAUDE.md](/nexus-agents/architecture/claude/) for project architecture
+- Review the [CLAUDE.md](https://github.com/williamzujkowski/nexus-agents/blob/main/CLAUDE.md) for project architecture
 - Check [CODING_STANDARDS.md](https://github.com/williamzujkowski/nexus-agents/blob/main/CODING_STANDARDS.md) for detailed standards
 - Open a discussion for questions
 - Join our community channels (if available)
