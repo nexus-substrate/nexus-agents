@@ -112,6 +112,14 @@ export function colorize(text: string, color: ColorName): string {
 }
 
 /**
+ * Wraps text in a raw ANSI code with reset.
+ * Use this when combining codes or using dynamic values.
+ */
+export function color(text: string, code: string): string {
+  return `${code}${text}${colors.reset}`;
+}
+
+/**
  * Formats text as bold.
  */
 export function bold(text: string): string {

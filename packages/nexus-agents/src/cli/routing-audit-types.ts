@@ -10,6 +10,7 @@
 import type { CliName } from '../cli-adapters/types.js';
 import type { TopsisResult } from '../cli-adapters/topsis-types.js';
 import type { TaskProfile } from '../core/index.js';
+import { colors, color } from './ansi-output.js';
 
 // =============================================================================
 // Command Options & Result Types
@@ -84,23 +85,14 @@ export interface RoutingAuditResult {
 }
 
 // =============================================================================
-// ANSI Formatting Constants
+// ANSI Formatting Constants (re-exported from canonical source)
 // =============================================================================
 
-export const ANSI = {
-  reset: '\x1b[0m',
-  bold: '\x1b[1m',
-  dim: '\x1b[2m',
-  green: '\x1b[32m',
-  yellow: '\x1b[33m',
-  blue: '\x1b[34m',
-  cyan: '\x1b[36m',
-  red: '\x1b[31m',
-} as const;
+/** Alias for `colors` from ansi-output.ts. Prefer importing `colors` directly for new code. */
+export const ANSI = colors;
 
-export function color(text: string, code: string): string {
-  return `${code}${text}${ANSI.reset}`;
-}
+// Re-export color function for backward compatibility
+export { color };
 
 export const BOX_WIDTH = 65;
 

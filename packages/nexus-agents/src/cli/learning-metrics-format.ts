@@ -17,25 +17,13 @@ import type {
   FeatureImportance,
 } from './learning-metrics-types.js';
 import { formatPercentage } from '../core/index.js';
+import { colors, color } from './ansi-output.js';
 
 // =============================================================================
-// ANSI Formatting Constants
+// ANSI Formatting Constants (from canonical source)
 // =============================================================================
 
-const ANSI = {
-  reset: '\x1b[0m',
-  bold: '\x1b[1m',
-  dim: '\x1b[2m',
-  green: '\x1b[32m',
-  yellow: '\x1b[33m',
-  blue: '\x1b[34m',
-  cyan: '\x1b[36m',
-  red: '\x1b[31m',
-} as const;
-
-function color(text: string, code: string): string {
-  return `${code}${text}${ANSI.reset}`;
-}
+const ANSI = colors;
 
 const BOX_WIDTH = 65;
 
