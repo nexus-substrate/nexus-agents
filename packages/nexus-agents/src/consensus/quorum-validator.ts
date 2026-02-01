@@ -8,7 +8,7 @@
  * (Source: Issue #576, ADR-0003)
  */
 
-import { createLogger, type ILogger } from '../core/index.js';
+import { createLogger, formatPercentage, type ILogger } from '../core/index.js';
 import type { ConsensusAlgorithm, Vote, VoteCounts, WeightedVoteCounts } from './types-core.js';
 
 // ============================================================================
@@ -381,12 +381,12 @@ export class QuorumValidator implements IQuorumValidator {
       return `Weighted quorum not reached: ${totalWeight.toFixed(2)} < ${String(threshold)}`;
     }
     if (approveRatio > rejectRatio) {
-      return `Approval wins with weighted ratio ${(approveRatio * 100).toFixed(1)}%`;
+      return `Approval wins with weighted ratio ${formatPercentage(approveRatio, 1)}`;
     }
     if (rejectRatio > approveRatio) {
-      return `Rejection wins with weighted ratio ${(rejectRatio * 100).toFixed(1)}%`;
+      return `Rejection wins with weighted ratio ${formatPercentage(rejectRatio, 1)}`;
     }
-    return `No clear winner: approve=${(approveRatio * 100).toFixed(1)}%, reject=${(rejectRatio * 100).toFixed(1)}%`;
+    return `No clear winner: approve=${formatPercentage(approveRatio, 1)}, reject=${formatPercentage(rejectRatio, 1)}`;
   }
 
   private calculateSimpleQuorum(
@@ -437,12 +437,12 @@ export class QuorumValidator implements IQuorumValidator {
       return `Insufficient voters: ${String(activeVotes)} < ${String(minVoters)}`;
     }
     if (approveRatio >= threshold) {
-      return `Approval reaches threshold: ${(approveRatio * 100).toFixed(1)}% >= ${(threshold * 100).toFixed(1)}%`;
+      return `Approval reaches threshold: ${formatPercentage(approveRatio, 1)} >= ${formatPercentage(threshold, 1)}`;
     }
     if (rejectRatio >= threshold) {
-      return `Rejection reaches threshold: ${(rejectRatio * 100).toFixed(1)}% >= ${(threshold * 100).toFixed(1)}%`;
+      return `Rejection reaches threshold: ${formatPercentage(rejectRatio, 1)} >= ${formatPercentage(threshold, 1)}`;
     }
-    return `No decision reached threshold: approve=${(approveRatio * 100).toFixed(1)}%, reject=${(rejectRatio * 100).toFixed(1)}%`;
+    return `No decision reached threshold: approve=${formatPercentage(approveRatio, 1)}, reject=${formatPercentage(rejectRatio, 1)}`;
   }
 
   private buildNotReachedResult(

@@ -16,6 +16,7 @@ import type {
   ActivityItem,
 } from './dashboard-types.js';
 import type { SwarmHealthMetrics, BottleneckInfo, AgentCluster } from './swarm-observer-types.js';
+import { formatPercentage } from '../core/index.js';
 
 /**
  * Text-based dashboard renderer for terminal output.
@@ -60,7 +61,7 @@ export class TextDashboardRenderer implements IDashboardRenderer {
   renderHealth(health: SwarmHealthMetrics): string {
     const lines: string[] = ['┌─ SWARM HEALTH ─────────────────────────────────────────┐'];
 
-    const successPct = (health.successRate * 100).toFixed(1);
+    const successPct = formatPercentage(health.successRate, 1);
     const healthBar = this.renderBar(health.successRate, 20);
 
     lines.push(
@@ -69,7 +70,7 @@ export class TextDashboardRenderer implements IDashboardRenderer {
     lines.push(
       `│  Interactions: ${String(health.totalInteractions).padStart(5)}       Latency: ${health.avgLatencyMs.toFixed(0).padStart(5)}ms         │`
     );
-    lines.push(`│  Success Rate: ${healthBar} ${successPct.padStart(5)}%         │`);
+    lines.push(`│  Success Rate: ${healthBar} ${successPct.padStart(6)}         │`);
     lines.push('└────────────────────────────────────────────────────────┘');
 
     return lines.join('\n');
