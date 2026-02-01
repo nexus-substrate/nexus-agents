@@ -33,6 +33,12 @@ export interface ITimeProvider {
    * Get current Date object.
    */
   nowDate(): Date;
+
+  /**
+   * Get current date as YYYY-MM-DD string.
+   * Consolidates the common pattern: nowIso().split('T')[0]
+   */
+  nowDateString(): string;
 }
 
 /**
@@ -77,6 +83,10 @@ export class SystemTimeProvider implements ITimeProvider {
   nowDate(): Date {
     return new Date(this.now());
   }
+
+  nowDateString(): string {
+    return this.nowIso().split('T')[0] ?? '';
+  }
 }
 
 /**
@@ -100,6 +110,10 @@ export class FixedTimeProvider implements ITimeProvider {
 
   nowDate(): Date {
     return new Date(this.currentTime);
+  }
+
+  nowDateString(): string {
+    return this.nowIso().split('T')[0] ?? '';
   }
 
   /**

@@ -96,7 +96,7 @@ export class SessionMemory {
 
     this.currentSession = {
       sessionId,
-      date: getTimeProvider().nowIso().split('T')[0] as string,
+      date: getTimeProvider().nowDateString(),
       durationMs: 0,
       summary: '',
       learnings: [],
