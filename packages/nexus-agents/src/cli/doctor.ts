@@ -10,7 +10,7 @@
  */
 
 import { existsSync } from 'node:fs';
-import { getTimeProvider } from '../core/index.js';
+import { getTimeProvider, getErrorMessage } from '../core/index.js';
 import { createAllAdapters } from '../cli-adapters/factory.js';
 import type { CliName, HealthStatus, CapacityStatus } from '../cli-adapters/types.js';
 import { createServer } from '../mcp/server.js';
@@ -188,7 +188,7 @@ async function checkCli(name: CliName): Promise<CliCheckResult> {
 
     return createHealthyResult(name, health, capacity);
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = getErrorMessage(error);
     const isNotFound = message.includes('ENOENT') || message.includes('not found');
     return createNotFoundResult(name, isNotFound ? 'Not found in PATH' : message);
   }

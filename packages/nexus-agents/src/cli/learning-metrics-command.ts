@@ -9,7 +9,7 @@
  */
 
 import { writeFileSync } from 'node:fs';
-import { createLogger } from '../core/index.js';
+import { createLogger, getErrorMessage, toError } from '../core/index.js';
 import type { LinUCBBandit } from '../cli-adapters/linucb-bandit.js';
 import type { RoutingMetricsCollector } from '../observability/routing-metrics.js';
 import type { FeedbackIntegration } from '../learning/feedback-integration.js';
@@ -158,9 +158,9 @@ export function learningMetricsCommand(
 
     return 0;
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
+    const msg = getErrorMessage(error);
     process.stderr.write(`Error: ${msg}\n`);
-    logger.error('Learning metrics failed', error instanceof Error ? error : new Error(msg));
+    logger.error('Learning metrics failed', toError(error));
     return 1;
   }
 }

@@ -9,6 +9,7 @@
 import { z } from 'zod';
 import type { Vote } from '../consensus/types.js';
 import type { VoterRole } from './vote-types.js';
+import { getErrorMessage } from '../core/index.js';
 
 // ============================================================================
 // Error Classes
@@ -208,7 +209,7 @@ export function parseVoteResponse(
     }
 
     // Parse error - throw or fallback based on config
-    const reason = error instanceof Error ? error.message : 'Unknown parse error';
+    const reason = getErrorMessage(error, 'Unknown parse error');
     if (!allowSyntheticVote) {
       throw new SyntheticVoteError(reason, output);
     }

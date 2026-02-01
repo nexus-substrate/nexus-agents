@@ -12,7 +12,7 @@ import type { PostToolUseInput, HookResult } from '../hook-types.js';
 import { exitSuccess, postToolContext } from '../hook-output.js';
 import { SQLiteSessionStorage } from '../../session-storage.js';
 import { TaskStatus } from '../../session-storage-types.js';
-import { createLogger } from '../../../core/logger.js';
+import { createLogger, getErrorMessage } from '../../../core/index.js';
 import {
   getDbPathFromEnv,
   isFeatureDisabled,
@@ -118,8 +118,7 @@ async function trackToolMetrics(input: PostToolUseInput, dbPath?: string): Promi
     await recordToolTask(storage, input);
     storage.close();
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.debug('Failed to track metrics', { error: message });
+    logger.debug('Failed to track metrics', { error: getErrorMessage(error) });
   }
 }
 

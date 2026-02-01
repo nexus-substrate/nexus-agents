@@ -7,7 +7,7 @@
  * (Source: Issue #360 - CLI Config Management)
  */
 
-import { getTimeProvider } from '../core/index.js';
+import { getTimeProvider, getErrorMessage } from '../core/index.js';
 import type {
   ConfigListEntry,
   ExportedConfigData,
@@ -100,7 +100,7 @@ export function parseConfigFile(content: string, format: 'json' | 'yaml'): Impor
       const parsed = JSON.parse(content) as unknown;
       return validateImportedData(parsed);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
+      const message = getErrorMessage(error);
       throw new ConfigCommandError('PARSE_ERROR', `Failed to parse JSON: ${message}`);
     }
   }

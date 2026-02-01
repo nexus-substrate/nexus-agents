@@ -8,7 +8,7 @@
  */
 
 import * as fs from 'node:fs';
-import { getTimeProvider, type ILogger } from '../core/index.js';
+import { getTimeProvider, getErrorMessage, type ILogger } from '../core/index.js';
 import {
   PuppeteerOrchestrator,
   createLearnablePolicy,
@@ -35,7 +35,7 @@ export function loadPolicyParameters(path: string, logger: ILogger): PolicyParam
       return params;
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = getErrorMessage(error);
     logger.warn('Failed to load policy parameters', { path, error: message });
   }
   return undefined;
@@ -53,7 +53,7 @@ export function savePolicyParameters(
     fs.writeFileSync(path, JSON.stringify(params, null, 2));
     logger.info('Saved policy parameters', { path });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = getErrorMessage(error);
     logger.warn('Failed to save policy parameters', { path, error: message });
   }
 }

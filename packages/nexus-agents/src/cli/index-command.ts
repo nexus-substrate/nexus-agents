@@ -14,7 +14,7 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import * as yaml from 'yaml';
-import { createLogger } from '../core/index.js';
+import { createLogger, getErrorMessage } from '../core/index.js';
 import {
   extractProject,
   buildIndex,
@@ -127,10 +127,9 @@ async function checkIndex(options: IndexCommandOptions): Promise<IndexCommandRes
     CodebaseIndexSchema.parse(parsed); // Validate schema
     existingIndex = parsed as CodebaseIndex; // Cast after validation
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
     return {
       success: false,
-      message: `Failed to parse index file: ${message}`,
+      message: `Failed to parse index file: ${getErrorMessage(error)}`,
     };
   }
 

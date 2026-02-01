@@ -12,7 +12,14 @@
 
 import { randomUUID } from 'node:crypto';
 import type { Result, IModelAdapter } from '../core/index.js';
-import { ok, err, createLogger, getTimeProvider, type ILogger } from '../core/index.js';
+import {
+  ok,
+  err,
+  createLogger,
+  getTimeProvider,
+  getErrorMessage,
+  type ILogger,
+} from '../core/index.js';
 import type {
   IOrchestrator,
   IOrchestratorFactory,
@@ -85,7 +92,7 @@ export class WorkflowOrchestratorAdapter implements IOrchestrator {
     try {
       return await this.executeWorkflow(definition.templatePath, inputs, executionId, startTime);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = getErrorMessage(error);
       this.setFailed(executionId, message);
       return err(new OrchestratorError(`Unexpected error: ${message}`, 'STEP_FAILED'));
     }
@@ -367,7 +374,7 @@ export async function createOrchestratorFactory(
     workflowEngine = await createProductionWorkflowEngine(workflowConfig);
     logger.info('WorkflowEngine initialized');
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = getErrorMessage(error);
     logger.warn('WorkflowEngine initialization failed, workflow orchestration unavailable', {
       error: message,
     });

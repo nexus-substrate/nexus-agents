@@ -12,7 +12,7 @@ import type { StopInput, HookResult } from '../hook-types.js';
 import { exitSuccess, blockStop } from '../hook-output.js';
 import { SQLiteSessionStorage } from '../../session-storage.js';
 import { TaskStatus, type StoredTask } from '../../session-storage-types.js';
-import { createLogger } from '../../../core/logger.js';
+import { createLogger, getErrorMessage } from '../../../core/index.js';
 import { getDbPathFromEnv, isFeatureDisabled, HookEnvVars } from './handler-utils.js';
 
 const logger = createLogger({ component: 'StopHandler' });
@@ -78,8 +78,7 @@ async function processStopWithTasks(
 
     return result;
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.debug('Stop handler error', { error: message });
+    logger.debug('Stop handler error', { error: getErrorMessage(error) });
     return exitSuccess();
   }
 }

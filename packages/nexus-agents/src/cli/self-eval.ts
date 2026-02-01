@@ -11,7 +11,7 @@
 import { scanComponents } from '../self-eval/component-scanner.js';
 import { evaluateComponent } from '../self-eval/evaluation-agents.js';
 import { createAggregator, type AggregatedResult } from '../self-eval/aggregation-logic.js';
-import { getTimeProvider } from '../core/index.js';
+import { getTimeProvider, getErrorMessage } from '../core/index.js';
 import type { ComponentInfo } from '../self-eval/component-scanner.js';
 import type { EvaluationResult } from '../self-eval/evaluation-agents.js';
 import type {
@@ -223,7 +223,7 @@ export async function evaluateCommand(args: readonly string[] = []): Promise<num
     }
     return 0;
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = getErrorMessage(error);
     process.stderr.write(`${colors.red}Error: ${message}${colors.reset}\n`);
     return 2;
   }

@@ -8,7 +8,7 @@
  * (Source: Issue #170, Alignment Roadmap Phase 1)
  */
 
-import { createLogger } from '../core/index.js';
+import { createLogger, getErrorMessage } from '../core/index.js';
 import type { RoutingAuditOptions } from './routing-audit-types.js';
 import { auditRouting } from './routing-audit-logic.js';
 import { formatAsciiOutput, formatJsonOutput } from './routing-audit-format.js';
@@ -51,9 +51,9 @@ export function routingAuditCommand(options: RoutingAuditOptions): number {
 
     return 0;
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
+    const msg = getErrorMessage(error);
     process.stderr.write(`Error: ${msg}\n`);
-    logger.error('Routing audit failed', error instanceof Error ? error : new Error(msg));
+    logger.error('Routing audit failed', new Error(msg));
     return 1;
   }
 }

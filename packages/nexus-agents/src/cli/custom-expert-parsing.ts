@@ -11,7 +11,7 @@ import { resolve } from 'node:path';
 import * as yaml from 'yaml';
 import type { SecurityError } from '../core/index.js';
 import type { Result } from '../core/index.js';
-import { ok, err } from '../core/index.js';
+import { ok, err, getErrorMessage } from '../core/index.js';
 import { CustomExpertDefinitionSchema, type CustomExpertDefinition } from '../config/index.js';
 import type { ExpertDefinition } from '../agents/experts/expert-selector-types.js';
 import {
@@ -83,8 +83,9 @@ export function parseYaml(content: string): Result<unknown, Error> {
     const parsed: unknown = yaml.parse(content);
     return ok(parsed);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown YAML parse error';
-    return err(new Error(`YAML parse error: ${message}`));
+    return err(
+      new Error(`YAML parse error: ${getErrorMessage(error, 'Unknown YAML parse error')}`)
+    );
   }
 }
 
@@ -230,12 +231,11 @@ export function readConfigContent(configPath: string): {
   try {
     return { content: readFileSync(configPath, 'utf-8') };
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
     return {
       error: {
         expertId: 'config',
         field: 'file',
-        message: `Failed to read config file: ${message}`,
+        message: `Failed to read config file: ${getErrorMessage(error)}`,
       },
     };
   }

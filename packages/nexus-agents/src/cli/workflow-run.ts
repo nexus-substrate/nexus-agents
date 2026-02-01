@@ -18,7 +18,7 @@ import {
   type TemplateMetadata,
 } from '../workflows/index.js';
 import type { WorkflowDefinition, InputDefinition } from '../core/index.js';
-import { SecurityError } from '../core/index.js';
+import { SecurityError, getErrorMessage } from '../core/index.js';
 
 // Re-export types and formatters
 export type { WorkflowRunOptions, WorkflowRunResult, ParsedInputs } from './workflow-run-types.js';
@@ -200,7 +200,7 @@ function parseAndValidateInputs(
     try {
       parsedInputs = parseInputs(input);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = getErrorMessage(error);
       return {
         success: false,
         result: createFailureResult(`Failed to parse inputs: ${message}`, dryRun, workflow.name),
@@ -238,7 +238,7 @@ export async function runWorkflowRun(options: WorkflowRunOptions): Promise<Workf
     const resolved = await resolveWorkflow(name, registry);
     workflow = resolved.workflow;
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = getErrorMessage(error);
     return createFailureResult(message, dryRun);
   }
 

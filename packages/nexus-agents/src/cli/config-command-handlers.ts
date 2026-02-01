@@ -13,6 +13,7 @@ import { existsSync } from 'node:fs';
 import { getConfigManager } from '../config/config-manager.js';
 import type { ConfigCategory } from '../config/config-manager.js';
 import { DEFAULTS } from '../config/defaults.js';
+import { getErrorMessage } from '../core/index.js';
 import type {
   ConfigGetResult,
   ConfigSetResult,
@@ -200,7 +201,7 @@ async function writeConfigFile(filePath: string, content: string): Promise<void>
   try {
     await fs.writeFile(filePath, content, 'utf-8');
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
+    const message = getErrorMessage(error);
     throw new ConfigCommandError('WRITE_ERROR', `Failed to write file: ${message}`);
   }
 }
@@ -249,7 +250,7 @@ async function readImportFile(
     const content = await fs.readFile(filePath, 'utf-8');
     return { content, format };
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
+    const message = getErrorMessage(error);
     throw new ConfigCommandError('PARSE_ERROR', `Failed to read file: ${message}`);
   }
 }

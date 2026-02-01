@@ -9,6 +9,7 @@
 import { existsSync } from 'node:fs';
 import { writeFile, mkdir } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
+import { getErrorMessage } from '../core/index.js';
 import { colors } from './ansi-output.js';
 
 /**
@@ -209,7 +210,7 @@ export async function runConfigInit(options: ConfigInitOptions = {}): Promise<Co
       created: true,
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
+    const message = getErrorMessage(error);
     return {
       success: false,
       path: outputPath,

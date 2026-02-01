@@ -13,7 +13,7 @@ import * as fs from 'node:fs/promises';
 import { join, resolve, sep } from 'node:path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import type { Result } from '../core/index.js';
-import { SecurityError } from '../core/index.js';
+import { SecurityError, getErrorMessage } from '../core/index.js';
 import { ParseError } from '../core/types/workflow.js';
 import type { TechniquesRegistry, PapersRegistry } from './research-types.js';
 
@@ -95,7 +95,7 @@ export async function loadTechniquesRegistry(
     const content = await fs.readFile(pathValidation.value, 'utf-8');
     return { ok: true, value: parseYaml(content) as TechniquesRegistry };
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
+    const message = getErrorMessage(error);
     return { ok: false, error: new ParseError(`Failed to load techniques registry: ${message}`) };
   }
 }
@@ -122,7 +122,7 @@ export async function loadPapersRegistry(
     const content = await fs.readFile(pathValidation.value, 'utf-8');
     return { ok: true, value: parseYaml(content) as PapersRegistry };
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
+    const message = getErrorMessage(error);
     return { ok: false, error: new ParseError(`Failed to load papers registry: ${message}`) };
   }
 }
@@ -156,7 +156,7 @@ export async function saveTechniquesRegistry(
     await fs.writeFile(pathValidation.value, content, 'utf-8');
     return { ok: true, value: undefined };
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
+    const message = getErrorMessage(error);
     return { ok: false, error: new ParseError(`Failed to save techniques registry: ${message}`) };
   }
 }
@@ -186,7 +186,7 @@ export async function savePapersRegistry(
     await fs.writeFile(pathValidation.value, content, 'utf-8');
     return { ok: true, value: undefined };
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
+    const message = getErrorMessage(error);
     return { ok: false, error: new ParseError(`Failed to save papers registry: ${message}`) };
   }
 }

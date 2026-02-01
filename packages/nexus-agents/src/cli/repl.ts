@@ -11,7 +11,7 @@
  */
 
 import * as readline from 'node:readline';
-import { createLogger, getTimeProvider, type ILogger } from '../core/index.js';
+import { createLogger, getTimeProvider, getErrorMessage, type ILogger } from '../core/index.js';
 import { printWorkflowTemplates } from './workflow-run.js';
 import { expertListCommand } from './expert-list.js';
 
@@ -249,7 +249,7 @@ export async function startRepl(options: { verbose?: boolean } = {}): Promise<vo
             return;
           }
         } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
+          const message = getErrorMessage(error);
           process.stdout.write(`${colors.red}Error:${colors.reset} ${message}\n`);
         }
 
@@ -275,7 +275,7 @@ export async function replCommand(options: { verbose?: boolean } = {}): Promise<
     await startRepl(options);
     return 0;
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = getErrorMessage(error);
     process.stderr.write(`REPL error: ${message}\n`);
     return 1;
   }

@@ -19,7 +19,7 @@
 import type { VoterRole, AgentVoteResult } from './vote-types.js';
 import { VOTER_ROLES } from './vote-types.js';
 import type { IModelAdapter, ILogger } from '../core/index.js';
-import { createLogger, getTimeProvider } from '../core/index.js';
+import { createLogger, getTimeProvider, getErrorMessage } from '../core/index.js';
 import { createAutoAdapter } from '../adapters/auto-adapter.js';
 
 // Re-export prompts for backward compatibility
@@ -175,8 +175,7 @@ async function resolveAdapter(
         : await createAutoAdapter({ logger });
     return { adapter: selection.adapter };
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    return { error: errorMessage };
+    return { error: getErrorMessage(error) };
   }
 }
 

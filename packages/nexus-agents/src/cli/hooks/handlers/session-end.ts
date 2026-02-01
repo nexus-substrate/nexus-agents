@@ -12,7 +12,7 @@ import type { SessionEndInput, HookResult } from '../hook-types.js';
 import { exitSuccess } from '../hook-output.js';
 import { SQLiteSessionStorage } from '../../session-storage.js';
 import { SessionStatus, type SessionWithTasks } from '../../session-storage-types.js';
-import { createLogger } from '../../../core/logger.js';
+import { createLogger, getErrorMessage } from '../../../core/index.js';
 import { getDbPathFromEnv, isFeatureDisabled, HookEnvVars } from './handler-utils.js';
 
 const logger = createLogger({ component: 'SessionEndHandler' });
@@ -64,7 +64,7 @@ async function finalizeSession(
 
     return exitSuccess(`Session ${input.session_id} ended (reason: ${input.reason})`);
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = getErrorMessage(error);
     logger.error('Session end handler error', new Error(message));
     return exitSuccess(`Session ${input.session_id} ended (error: ${message})`);
   }
@@ -134,8 +134,7 @@ async function exportSessionMetrics(
       logger.debug('Session metrics', metrics);
     }
   } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : String(error);
-    logger.error('Failed to export metrics', new Error(errorMsg));
+    logger.error('Failed to export metrics', new Error(getErrorMessage(error)));
   }
 }
 

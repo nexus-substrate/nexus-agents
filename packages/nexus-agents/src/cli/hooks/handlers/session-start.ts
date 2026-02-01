@@ -12,7 +12,7 @@ import type { SessionStartInput, HookResult } from '../hook-types.js';
 import { exitSuccess, sessionStartContext } from '../hook-output.js';
 import { SQLiteSessionStorage } from '../../session-storage.js';
 import type { SessionMetadata, StoredSession } from '../../session-storage-types.js';
-import { createLogger } from '../../../core/logger.js';
+import { createLogger, getErrorMessage } from '../../../core/index.js';
 import { getDefaultDbPath } from './handler-utils.js';
 
 const logger = createLogger({ component: 'SessionStartHandler' });
@@ -74,7 +74,7 @@ async function initializeSession(
 
     return exitSuccess(`Session ${input.session_id} started (storage: ${session.id})`);
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = getErrorMessage(error);
     logger.error('Session start handler error', new Error(message));
     return exitSuccess(`Session ${input.session_id} acknowledged (error: ${message})`);
   }

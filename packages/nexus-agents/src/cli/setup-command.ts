@@ -12,7 +12,7 @@
 import { existsSync } from 'node:fs';
 import type { SetupOptions, SetupResult, SetupStep, EnvironmentInfo } from './setup-types.js';
 import { SetupOptionsSchema } from './setup-types.js';
-import { getTimeProvider } from '../core/index.js';
+import { getTimeProvider, getErrorMessage } from '../core/index.js';
 import {
   detectEnvironment,
   generateMcpSnippet,
@@ -319,7 +319,7 @@ function runRulesStep(
     const msg = options.dryRun ? `Would create: ${createdPath}` : `Created: ${createdPath}`;
     return makeRulesResult('success', msg, startTime, createdPath);
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
+    const msg = getErrorMessage(error);
     return makeRulesResult('failed', `Failed to create rules file: ${msg}`, startTime);
   }
 }

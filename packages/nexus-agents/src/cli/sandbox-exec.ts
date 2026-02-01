@@ -9,7 +9,7 @@
  */
 
 import { execSync, type ExecSyncOptions } from 'node:child_process';
-import { createLogger } from '../core/index.js';
+import { createLogger, getErrorMessage } from '../core/index.js';
 import {
   validateCommand,
   validateArgs,
@@ -173,7 +173,7 @@ export function safeExecSandboxed(
   } catch (error) {
     logger.debug('Command execution failed', {
       command: commandString,
-      error: error instanceof Error ? error.message : String(error),
+      error: getErrorMessage(error),
     });
     return null;
   }

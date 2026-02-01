@@ -10,7 +10,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { createLogger, getTimeProvider } from '../core/index.js';
+import { createLogger, getTimeProvider, getErrorMessage } from '../core/index.js';
 import { safeExecSandboxed } from './sandbox-exec.js';
 
 const logger = createLogger({ component: 'system-review' });
@@ -76,7 +76,7 @@ function parseGhIssueList(json: string, context: string): GhIssueItem[] {
     return p as GhIssueItem[];
   } catch (error) {
     // Issue #515: Log parse errors instead of silent swallow
-    const message = error instanceof Error ? error.message : 'Unknown error';
+    const message = getErrorMessage(error);
     logger.warn('Failed to parse gh issue list JSON', {
       context,
       error: message,
@@ -166,7 +166,7 @@ function runPhase4(projectRoot: string): SecurityAudit {
     };
   } catch (error) {
     // Issue #515: Log parse errors instead of silent swallow
-    const message = error instanceof Error ? error.message : 'Unknown error';
+    const message = getErrorMessage(error);
     logger.warn('Failed to parse pnpm audit JSON', {
       error: message,
       outputPreview: out.slice(0, 200),
@@ -186,7 +186,7 @@ function runPhase5(projectRoot: string): CodeQuality {
       cov = (c as CoverageData).total?.lines?.pct ?? null;
     } catch (error) {
       // Issue #515: Log parse errors instead of silent swallow
-      const message = error instanceof Error ? error.message : 'Unknown error';
+      const message = getErrorMessage(error);
       logger.warn('Failed to parse coverage JSON', { error: message, file: cf });
     }
   }

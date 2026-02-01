@@ -17,7 +17,7 @@
  */
 
 import * as crypto from 'node:crypto';
-import { getTimeProvider, formatPercentage } from '../core/index.js';
+import { getTimeProvider, formatPercentage, getErrorMessage } from '../core/index.js';
 import { safeExecSandboxed } from './sandbox-exec.js';
 import type { VoteCommandOptions, VoterRole, VotingResult, VoteHash } from './vote-types.js';
 import { THRESHOLD_MAP, VOTER_ROLES } from './vote-types.js';
@@ -276,9 +276,7 @@ export async function voteCommand(options: VoteCommandOptions): Promise<number> 
 
     return result.result.outcome === 'approved' ? 0 : 1;
   } catch (error) {
-    writeLine(
-      `${colors.red}Error: ${error instanceof Error ? error.message : String(error)}${colors.reset}`
-    );
+    writeLine(`${colors.red}Error: ${getErrorMessage(error)}${colors.reset}`);
     return 1;
   }
 }
