@@ -11,6 +11,7 @@ import type { Vote } from '../consensus/types.js';
 import type { VoterRole, AgentVoteResult } from './vote-types.js';
 import type { IModelAdapter, CompletionRequest, ILogger } from '../core/index.js';
 import { getRandomProvider } from '../core/index.js';
+import { delay, withTimeout } from '../utils/async-utils.js';
 import { VOTER_SYSTEM_PROMPTS, SIMULATED_VOTE_REASONING } from './voter-prompts.js';
 import { buildVotePrompt, parseVoteResponse, SyntheticVoteError } from './voter-response.js';
 
@@ -158,39 +159,8 @@ export function simulateVote(role: VoterRole, proposal: string): Vote {
 // Timeout and Retry Utilities
 // ============================================================================
 
-/**
- * Wraps a promise with a timeout.
- * Returns an error result if timeout is exceeded.
- */
-export async function withTimeout<T>(
-  promise: Promise<T>,
-  timeoutMs: number,
-  errorMessage: string
-): Promise<{ ok: true; value: T } | { ok: false; error: string }> {
-  let timeoutId: ReturnType<typeof setTimeout> | undefined;
-
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    timeoutId = setTimeout(() => {
-      reject(new Error(errorMessage));
-    }, timeoutMs);
-  });
-
-  try {
-    const result = await Promise.race([promise, timeoutPromise]);
-    if (timeoutId !== undefined) clearTimeout(timeoutId);
-    return { ok: true, value: result };
-  } catch (error) {
-    if (timeoutId !== undefined) clearTimeout(timeoutId);
-    return { ok: false, error: error instanceof Error ? error.message : String(error) };
-  }
-}
-
-/**
- * Delays for the specified milliseconds.
- */
-export function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+// Re-export from canonical source for backward compatibility
+export { withTimeout, delay } from '../utils/async-utils.js';
 
 // ============================================================================
 // Vote Attempt Execution

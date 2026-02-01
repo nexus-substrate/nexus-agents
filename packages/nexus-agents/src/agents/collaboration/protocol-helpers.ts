@@ -136,9 +136,5 @@ export function createVotingTask(originalTask: Task): Task {
   };
 }
 
-/**
- * Sleep utility for delays.
- */
-export function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+// Re-export from canonical source for backward compatibility
+export { sleep } from '../../utils/async-utils.js';

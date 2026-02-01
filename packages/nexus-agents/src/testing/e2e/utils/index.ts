@@ -9,6 +9,7 @@
 
 import type { Result } from '../../../core/index.js';
 import { getTimeProvider, getRandomProvider } from '../../../core/index.js';
+import { sleep } from '../../../utils/async-utils.js';
 
 /**
  * Assert that a Result is Ok and return the value.
@@ -111,12 +112,8 @@ export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions =
   throw lastError ?? new Error('Retry failed');
 }
 
-/**
- * Sleep for a specified duration.
- */
-export function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+// Re-export from canonical source for backward compatibility
+export { sleep } from '../../../utils/async-utils.js';
 
 /**
  * Wait for a condition to be true.

@@ -107,12 +107,8 @@ export function shouldFailByRate(failureRate: number): boolean {
   return getRandomProvider().random() < failureRate;
 }
 
-/**
- * Creates a delay promise for simulating latency.
- */
-export function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+// Re-export from canonical source for backward compatibility
+export { delay } from '../../utils/async-utils.js';
 
 /**
  * Merges response maps, with source overriding defaults.

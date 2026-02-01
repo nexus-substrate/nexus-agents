@@ -34,3 +34,5 @@ export {
   areTextsSimilar,
   calculateMaxPairwiseSimilarity,
 } from './similarity-utils.js';
+
+export { sleep, delay, withTimeout, sequence, type TimeoutResult } from './async-utils.js';

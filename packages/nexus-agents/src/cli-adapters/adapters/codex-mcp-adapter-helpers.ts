@@ -126,12 +126,8 @@ export function createCliError(
   };
 }
 
-/**
- * Delays for the specified milliseconds.
- */
-export function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+// Re-export from canonical source for backward compatibility
+export { delay } from '../../utils/async-utils.js';
 
 /**
  * Creates a timeout promise that resolves to null.

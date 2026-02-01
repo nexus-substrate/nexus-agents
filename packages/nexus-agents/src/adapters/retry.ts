@@ -17,6 +17,7 @@ import {
   ErrorCode,
   getRandomProvider,
 } from '../core/index.js';
+import { sleep } from '../utils/async-utils.js';
 
 /**
  * Configuration for retry behavior.
@@ -108,15 +109,8 @@ export function calculateDelay(attempt: number, config: RetryConfig): number {
   return Math.max(0, Math.floor(cappedDelay + jitter));
 }
 
-/**
- * Creates a promise that resolves after the specified delay.
- *
- * @param ms - Delay in milliseconds
- * @returns Promise that resolves after the delay
- */
-export function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+// Re-export sleep from canonical source for backward compatibility
+export { sleep } from '../utils/async-utils.js';
 
 /**
  * HTTP status codes that indicate a retryable error.

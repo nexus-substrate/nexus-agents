@@ -105,12 +105,8 @@ export function calculateRetryDelay(attempt: number, baseDelayMs: number): numbe
   return Math.min(delay, MAX_RETRY_DELAY_MS);
 }
 
-/**
- * Sleeps for the specified duration.
- */
-export function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+// Re-export from canonical source for backward compatibility
+export { sleep } from '../utils/async-utils.js';
 
 // ============================================================================
 // Formatting and Error Utilities

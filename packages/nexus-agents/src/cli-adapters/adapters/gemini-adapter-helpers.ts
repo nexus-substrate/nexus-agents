@@ -173,9 +173,5 @@ export function createCircuitOpenError(cli: CliName): CliError {
 // Utility Functions
 // -----------------------------------------------------------------------------
 
-/**
- * Delays execution for the specified milliseconds.
- */
-export function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+// Re-export from canonical source for backward compatibility
+export { delay } from '../../utils/async-utils.js';
