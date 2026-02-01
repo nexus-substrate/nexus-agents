@@ -14,6 +14,10 @@ import { NexusError, ErrorCode } from '../core/errors.js';
 import type { ILogger } from '../core/logger.js';
 import type { CliName } from '../cli-adapters/types.js';
 import type { RouterType, OutcomeClass } from './outcome-feedback-types.js';
+import type { ISQLiteDatabase, ISQLiteStatement } from '../core/types/index.js';
+
+// Re-export for backward compatibility
+export type { ISQLiteDatabase, ISQLiteStatement };
 
 // ============================================================================
 // Error Types
@@ -259,24 +263,4 @@ export const DEFAULT_OUTCOME_STORAGE_CONFIG = {
   autoPruneInterval: 3600000, // 1 hour
 } as const;
 
-// ============================================================================
-// SQLite Types (for better-sqlite3)
-// ============================================================================
-
-/**
- * Minimal interface for better-sqlite3 Database.
- */
-export interface ISQLiteDatabase {
-  exec(sql: string): void;
-  prepare<T = unknown>(sql: string): ISQLiteStatement<T>;
-  close(): void;
-}
-
-/**
- * Minimal interface for better-sqlite3 Statement.
- */
-export interface ISQLiteStatement<T = unknown> {
-  run(...params: unknown[]): { changes: number };
-  get(...params: unknown[]): T | undefined;
-  all(...params: unknown[]): T[];
-}
+// SQLite types imported from core/types/database-types.ts

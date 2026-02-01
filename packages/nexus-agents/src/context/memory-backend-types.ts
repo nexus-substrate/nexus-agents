@@ -10,6 +10,10 @@ import { z } from 'zod';
 import type { Result } from '../core/result.js';
 import { NexusError, ErrorCode } from '../core/errors.js';
 import type { ILogger } from '../core/logger.js';
+import type { ISQLiteDatabase, ISQLiteStatement } from '../core/types/index.js';
+
+// Re-export for backward compatibility
+export type { ISQLiteDatabase, ISQLiteStatement };
 
 // ============================================================================
 // Types and Interfaces
@@ -171,22 +175,5 @@ export interface MemoryRow {
   expires_at: number | null;
 }
 
-/**
- * Minimal interface for better-sqlite3 Database.
- * This allows the implementation to work with the actual library
- * while keeping the types minimal for testing.
- */
-export interface ISQLiteDatabase {
-  exec(sql: string): void;
-  prepare<T = unknown>(sql: string): ISQLiteStatement<T>;
-  close(): void;
-}
-
-/**
- * Minimal interface for better-sqlite3 Statement.
- */
-export interface ISQLiteStatement<T = unknown> {
-  run(...params: unknown[]): { changes: number };
-  get(...params: unknown[]): T | undefined;
-  all(...params: unknown[]): T[];
-}
+// ISQLiteDatabase and ISQLiteStatement imported from core/types/database-types.ts
+// and re-exported above for backward compatibility

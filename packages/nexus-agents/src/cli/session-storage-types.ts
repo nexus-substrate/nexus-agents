@@ -12,6 +12,10 @@ import { z } from 'zod';
 import type { Result } from '../core/result.js';
 import { NexusError, ErrorCode } from '../core/errors.js';
 import type { ILogger } from '../core/logger.js';
+import type { ISQLiteDatabase, ISQLiteStatement } from '../core/types/index.js';
+
+// Re-export for backward compatibility
+export type { ISQLiteDatabase, ISQLiteStatement };
 
 // ============================================================================
 // Error Types
@@ -262,24 +266,4 @@ export const DEFAULT_SESSION_STORAGE_CONFIG = {
   maxSessions: 1000,
 } as const;
 
-// ============================================================================
-// SQLite Types (for better-sqlite3)
-// ============================================================================
-
-/**
- * Minimal interface for better-sqlite3 Database.
- */
-export interface ISQLiteDatabase {
-  exec(sql: string): void;
-  prepare<T = unknown>(sql: string): ISQLiteStatement<T>;
-  close(): void;
-}
-
-/**
- * Minimal interface for better-sqlite3 Statement.
- */
-export interface ISQLiteStatement<T = unknown> {
-  run(...params: unknown[]): { changes: number; lastInsertRowid: number | bigint };
-  get(...params: unknown[]): T | undefined;
-  all(...params: unknown[]): T[];
-}
+// SQLite types imported from core/types/database-types.ts
