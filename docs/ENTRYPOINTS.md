@@ -19,6 +19,24 @@ Nexus-agents provides four interface categories:
 
 ---
 
+## Quick Reference
+
+Most commonly used commands:
+
+| Command                        | Description                          |
+| ------------------------------ | ------------------------------------ |
+| `nexus-agents doctor`          | Check system health and dependencies |
+| `nexus-agents setup`           | Configure Claude CLI integration     |
+| `nexus-agents orchestrate`     | Run task with agent coordination     |
+| `nexus-agents review <url>`    | Review a GitHub PR                   |
+| `nexus-agents vote --proposal` | Multi-agent consensus voting         |
+| `nexus-agents workflow run`    | Execute predefined workflow          |
+| `nexus-agents expert list`     | List available expert types          |
+| `nexus-agents routing-audit`   | Debug model routing decisions        |
+| `nexus-agents --help`          | Show all available commands          |
+
+---
+
 ## CLI Commands
 
 **Entry Point:** `nexus-agents [command] [options]`
