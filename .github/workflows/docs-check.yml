@@ -434,3 +434,32 @@ jobs:
             echo "Update .claude/skills/documentation-management.md to reflect pipeline changes"
             exit 1
           fi
+
+  # Job 9: Canonical Index Validation
+  canonical-index:
+    name: Canonical Index Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - run: pnpm install
+
+      - name: Check all docs are indexed
+        run: |
+          npx tsx scripts/check-docs-indexed.ts
+          if [ $? -eq 0 ]; then
+            echo "✅ All documentation properly indexed in docs/README.md"
+          else
+            echo "::error::Unindexed documentation files found"
+            echo "Add missing docs to docs/README.md (canonical index)"
+            npx tsx scripts/check-docs-indexed.ts --fix
+            exit 1
+          fi

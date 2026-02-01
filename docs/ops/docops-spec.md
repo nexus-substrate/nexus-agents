@@ -35,7 +35,7 @@ This specification defines the **single canonical documentation pipeline** for n
                          ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                    VALIDATION LAYER                              │
-│  docs-check.yml (7 CI jobs)                                     │
+│  docs-check.yml (9 CI jobs)                                     │
 │  - typedoc-check: API docs drift                                │
 │  - llms-txt-check: Generated context freshness                  │
 │  - website-sync: Canonical → Website sync                       │
@@ -43,6 +43,8 @@ This specification defines the **single canonical documentation pipeline** for n
 │  - link-check: URL validation                                   │
 │  - docs-coverage: PR documentation updates                      │
 │  - secrets-scan: Secrets in generated docs                      │
+│  - docops-skill-sync: Pipeline → Skill sync                     │
+│  - canonical-index: All docs indexed                            │
 └────────────────────────┬────────────────────────────────────────┘
                          │
                          ▼
@@ -154,7 +156,7 @@ npx tsx scripts/inject-governance.ts check   # CI validation
 
 ## CI Validation Jobs
 
-### docs-check.yml (8 Jobs)
+### docs-check.yml (9 Jobs)
 
 | Job                 | Purpose                   | Blocking     | Trigger  |
 | ------------------- | ------------------------- | ------------ | -------- |
@@ -166,6 +168,7 @@ npx tsx scripts/inject-governance.ts check   # CI validation
 | `docs-coverage`     | PR documentation updates  | No (warning) | PR only  |
 | `secrets-scan`      | Secrets in generated docs | Yes          | Push, PR |
 | `docops-skill-sync` | Pipeline → Skill sync     | Yes          | PR only  |
+| `canonical-index`   | All docs in README.md     | Yes          | Push, PR |
 
 ### link-check.yml (Standalone)
 

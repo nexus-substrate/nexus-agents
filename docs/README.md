@@ -204,6 +204,7 @@ Detailed technical documentation:
 | [deprecation-pipeline.md](./architecture/deprecation-pipeline.md) | Deprecation tracking     |
 | [redundancy-analysis.md](./architecture/redundancy-analysis.md)   | Code redundancy analysis |
 | [invocation-matrix.md](./architecture/invocation-matrix.md)       | Component invocation map |
+| [completeness-score.md](./metrics/completeness-score.md)          | CLI completeness metrics |
 
 ---
 

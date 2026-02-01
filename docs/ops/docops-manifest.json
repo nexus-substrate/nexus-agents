@@ -9,6 +9,8 @@
     "scripts/generate-docs-full.ts",
     "scripts/generate-repo-index.ts",
     "scripts/inject-governance.ts",
+    "scripts/check-docops-skill.ts",
+    "scripts/check-docs-indexed.ts",
     ".github/workflows/docs-check.yml",
     ".github/workflows/deploy-docs.yml",
     ".github/workflows/link-check.yml",
@@ -34,7 +36,9 @@
       "repo-index",
       "link-check",
       "docs-coverage",
-      "secrets-scan"
+      "secrets-scan",
+      "docops-skill-sync",
+      "canonical-index"
     ]
   },
   "enforcement_rules": {
