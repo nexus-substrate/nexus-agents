@@ -42,6 +42,7 @@ export {
   ResourceError,
   // Utility functions
   toError,
+  getErrorMessage,
   getErrorCategory,
   isRetryableError,
 } from './errors.js';

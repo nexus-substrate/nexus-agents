@@ -438,3 +438,40 @@ export function isRetryableError(error: Error): boolean {
 export function toError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error));
 }
+
+/**
+ * Extract error message from unknown error type.
+ * Safely converts any error value to a human-readable message string.
+ *
+ * @param error - Unknown error value
+ * @param fallback - Fallback message if error has no message (default: 'Unknown error')
+ * @returns Error message string
+ *
+ * @example
+ * ```typescript
+ * try {
+ *   await doSomething();
+ * } catch (error) {
+ *   console.error('Failed:', getErrorMessage(error));
+ * }
+ * ```
+ */
+export function getErrorMessage(error: unknown, fallback = 'Unknown error'): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'string') return error;
+  if (error === null || error === undefined) return fallback;
+
+  // For objects, try to extract message or stringify
+  if (typeof error === 'object') {
+    const errObj = error as Record<string, unknown>;
+    if (typeof errObj['message'] === 'string') return errObj['message'];
+    try {
+      return JSON.stringify(error);
+    } catch {
+      return fallback;
+    }
+  }
+
+  // Primitives (number, boolean, symbol, bigint)
+  return fallback;
+}

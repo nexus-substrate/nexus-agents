@@ -8,7 +8,7 @@
  */
 
 import type { Result } from '../../../core/index.js';
-import { getTimeProvider, getRandomProvider } from '../../../core/index.js';
+import { getTimeProvider, getRandomProvider, toError } from '../../../core/index.js';
 import { sleep } from '../../../utils/async-utils.js';
 
 /**
@@ -76,10 +76,6 @@ interface RetryOptions {
   initialDelayMs?: number;
   maxDelayMs?: number;
   backoffMultiplier?: number;
-}
-
-function toError(error: unknown): Error {
-  return error instanceof Error ? error : new Error(String(error));
 }
 
 /**

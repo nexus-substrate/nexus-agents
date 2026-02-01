@@ -141,10 +141,6 @@ export function buildFinalOutput(stepResults: StepResult[]): unknown {
 
 /**
  * Extract error message from unknown error type.
- *
- * @param error - Unknown error value
- * @returns Error message string
+ * Re-exported from core for backward compatibility.
  */
-export function extractErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : 'Unknown error';
-}
+export { getErrorMessage as extractErrorMessage } from '../core/index.js';
