@@ -1,0 +1,229 @@
+{
+  "version": "1.0.0",
+  "generated": "2026-02-01T19:08:33.144Z",
+  "generator": "scripts/generate-repo-index.ts",
+  "packageVersion": "2.4.0",
+  "cli": {
+    "binary": "nexus-agents",
+    "commands": [
+      {
+        "name": "config",
+        "type": "async",
+        "handler": "handleConfigCommand",
+        "file": "src/cli-commands-handlers.ts"
+      },
+      {
+        "name": "demo",
+        "type": "async",
+        "handler": "handleDemoCommand",
+        "file": "src/cli-commands-handlers.ts"
+      },
+      {
+        "name": "doctor",
+        "type": "async",
+        "handler": "handleDoctorCommand",
+        "file": "src/cli-commands-handlers.ts"
+      },
+      {
+        "name": "evaluate",
+        "type": "async",
+        "handler": "handleEvaluateCommand",
+        "file": "src/cli-commands-handlers.ts"
+      },
+      {
+        "name": "expert",
+        "type": "sync",
+        "handler": "handleExpertCommand",
+        "file": "src/cli-commands-handlers.ts"
+      },
+      {
+        "name": "fitness-audit",
+        "type": "sync",
+        "handler": "handleFitnessAuditCommand",
+        "file": "src/cli-commands-handlers.ts"
+      },
+      {
+        "name": "hello",
+        "type": "sync",
+        "handler": "handleHelloCommand",
+        "file": "src/cli-commands-handlers.ts"
+      },
+      {
+        "name": "hooks",
+        "type": "async",
+        "handler": "handleHooksCommand",
+        "file": "src/cli-commands-handlers.ts"
+      },
+      {
+        "name": "index",
+        "type": "async",
+        "handler": "handleIndexCommand",
+        "file": "src/cli-commands-handlers.ts"
+      },
+      {
+        "name": "issue",
+        "type": "sync",
+        "handler": "handleIssueCommand",
+        "file": "src/cli-commands-handlers.ts"
+      },
+      {
+        "name": "learning-metrics",
+        "type": "sync",
+        "handler": "handleLearningMetricsCommand",
+        "file": "src/cli-commands-handlers.ts"
+      },
+      {
+        "name": "orchestrate",
+        "type": "async",
+        "handler": "handleOrchestrateCommand",
+        "file": "src/cli-commands-handlers.ts"
+      },
+      {
+        "name": "research",
+        "type": "async",
+        "handler": "handleResearchCommand",
+        "file": "src/cli-commands-handlers.ts"
+      },
+      {
+        "name": "review",
+        "type": "async",
+        "handler": "handleReviewCommand",
+        "file": "src/cli-commands-handlers.ts"
+      },
+      {
+        "name": "routing-audit",
+        "type": "sync",
+        "handler": "handleRoutingAuditCommand",
+        "file": "src/cli-commands-handlers.ts"
+      },
+      {
+        "name": "server",
+        "type": "async",
+        "handler": "handleServerCommand",
+        "file": "src/cli-commands-handlers.ts"
+      },
+      {
+        "name": "session",
+        "type": "async",
+        "handler": "handleSessionCommand",
+        "file": "src/cli-commands-handlers.ts"
+      },
+      {
+        "name": "setup",
+        "type": "async",
+        "handler": "handleSetupCommandAsync",
+        "file": "src/cli-commands-handlers.ts"
+      },
+      {
+        "name": "sprint",
+        "type": "async",
+        "handler": "handleSprintCommand",
+        "file": "src/cli-commands-handlers.ts"
+      },
+      {
+        "name": "swe-bench",
+        "type": "async",
+        "handler": "handleSweBenchCommand",
+        "file": "src/cli-commands-handlers.ts"
+      },
+      {
+        "name": "system-review",
+        "type": "sync",
+        "handler": "handleSystemReviewCommand",
+        "file": "src/cli-commands-handlers.ts"
+      },
+      {
+        "name": "validation",
+        "type": "sync",
+        "handler": "handleValidationCommand",
+        "file": "src/cli-commands-handlers.ts"
+      },
+      {
+        "name": "verify",
+        "type": "async",
+        "handler": "handleVerifyCommand",
+        "file": "src/cli-commands-handlers.ts"
+      },
+      {
+        "name": "vote",
+        "type": "async",
+        "handler": "handleVoteCommand",
+        "file": "src/cli-commands-handlers.ts"
+      },
+      {
+        "name": "workflow",
+        "type": "async",
+        "handler": "handleWorkflowCommand",
+        "file": "src/cli-commands-handlers.ts"
+      }
+    ]
+  },
+  "mcp": {
+    "tools": [
+      {
+        "name": "consensus_vote",
+        "file": "src/mcp/tools/consensus-vote.ts"
+      },
+      {
+        "name": "create_expert",
+        "file": "src/mcp/tools/create-expert.ts"
+      },
+      {
+        "name": "delegate_to_model",
+        "file": "src/mcp/tools/delegate-to-model.ts"
+      },
+      {
+        "name": "execute_expert",
+        "file": "src/mcp/tools/execute-expert.ts"
+      },
+      {
+        "name": "list_experts",
+        "file": "src/mcp/tools/list-experts.ts"
+      },
+      {
+        "name": "list_workflows",
+        "file": "src/mcp/tools/list-workflows.ts"
+      },
+      {
+        "name": "orchestrate",
+        "file": "src/mcp/tools/orchestrate.ts"
+      },
+      {
+        "name": "run_workflow",
+        "file": "src/mcp/tools/run-workflow.ts"
+      }
+    ]
+  },
+  "workflows": {
+    "templates": [
+      {
+        "name": "bug-fix",
+        "file": "src/workflows/templates/bug-fix.yaml"
+      },
+      {
+        "name": "code-review",
+        "file": "src/workflows/templates/code-review.yaml"
+      },
+      {
+        "name": "documentation-update",
+        "file": "src/workflows/templates/documentation-update.yaml"
+      },
+      {
+        "name": "feature-implementation",
+        "file": "src/workflows/templates/feature-implementation.yaml"
+      },
+      {
+        "name": "refactoring",
+        "file": "src/workflows/templates/refactoring.yaml"
+      },
+      {
+        "name": "security-audit",
+        "file": "src/workflows/templates/security-audit.yaml"
+      },
+      {
+        "name": "test-generation",
+        "file": "src/workflows/templates/test-generation.yaml"
+      }
+    ]
+  }
+}
