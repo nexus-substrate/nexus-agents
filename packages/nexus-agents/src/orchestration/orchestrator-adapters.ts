@@ -128,7 +128,7 @@ export class TechLeadAdapter implements IOrchestrator {
       return Promise.resolve(err(new OrchestratorError('Not found', 'CANCELLED')));
     this.executions.set(execId, {
       state: 'cancelled',
-      cancelledAt: new Date(getTimeProvider().now()).toISOString(),
+      cancelledAt: getTimeProvider().nowIso(),
     });
     return Promise.resolve(ok(undefined));
   }
@@ -206,7 +206,7 @@ export class PuppeteerAdapter implements IOrchestrator {
       return Promise.resolve(err(new OrchestratorError('Not found', 'CANCELLED')));
     this.executions.set(execId, {
       state: 'cancelled',
-      cancelledAt: new Date(getTimeProvider().now()).toISOString(),
+      cancelledAt: getTimeProvider().nowIso(),
     });
     return Promise.resolve(ok(undefined));
   }
@@ -283,7 +283,7 @@ export class WorkflowAdapter implements IOrchestrator {
       return Promise.resolve(err(new OrchestratorError('Not found', 'CANCELLED')));
     this.executions.set(execId, {
       state: 'cancelled',
-      cancelledAt: new Date(getTimeProvider().now()).toISOString(),
+      cancelledAt: getTimeProvider().nowIso(),
     });
     return Promise.resolve(ok(undefined));
   }

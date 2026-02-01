@@ -61,7 +61,7 @@ export const defaultStubFactory: StubFactory = {
           agent: agentType,
           action,
           inputKeys: Object.keys(inputs),
-          timestamp: new Date(getTimeProvider().now()).toISOString(),
+          timestamp: getTimeProvider().nowIso(),
         }),
         durationMs: 10,
       };
@@ -119,7 +119,7 @@ export class ScenarioRunner implements IScenarioRunner {
         passed,
         stepResults: validations,
         durationMs,
-        executedAt: new Date(getTimeProvider().now()).toISOString(),
+        executedAt: getTimeProvider().nowIso(),
       };
     } catch (error) {
       const durationMs = getTimeProvider().now() - startTime;
@@ -135,7 +135,7 @@ export class ScenarioRunner implements IScenarioRunner {
         stepResults: [],
         durationMs,
         error: errorMessage,
-        executedAt: new Date(getTimeProvider().now()).toISOString(),
+        executedAt: getTimeProvider().nowIso(),
       };
     }
   }
@@ -211,7 +211,7 @@ export class ScenarioRunner implements IScenarioRunner {
       passed: true,
       stepResults: validations,
       durationMs: getTimeProvider().now() - startTime,
-      executedAt: new Date(getTimeProvider().now()).toISOString(),
+      executedAt: getTimeProvider().nowIso(),
     };
   }
 

@@ -139,7 +139,7 @@ export class ReportGenerator implements IReportGenerator {
   private generateMetadata(result: EvaluationRunResult, config: ReportConfig): ReportMetadata {
     return {
       title: config.title ?? `SWE-bench Evaluation: ${result.modelNameOrPath}`,
-      generatedAt: new Date(getTimeProvider().now()).toISOString(),
+      generatedAt: getTimeProvider().nowIso(),
       variant: result.datasetName,
       modelName: result.modelNameOrPath,
       nexusVersion: '2.2.0', // Would be dynamic in real implementation

@@ -100,7 +100,7 @@ export class SwarmObserver implements ISwarmObserver {
       from,
       to,
       interactionType,
-      timestamp: new Date(getTimeProvider().now()).toISOString(),
+      timestamp: getTimeProvider().nowIso(),
       outcome,
       traceId,
       weight: outcome === 'success' ? 1 : 0.5,
@@ -220,7 +220,7 @@ export class SwarmObserver implements ISwarmObserver {
       avgLatencyMs: recentEdges.length > 0 ? totalLatency / recentEdges.length : 0,
       bottlenecks: this.getBottlenecks(),
       clusters: this.getEmergentClusters(),
-      calculatedAt: new Date(getTimeProvider().now()).toISOString(),
+      calculatedAt: getTimeProvider().nowIso(),
     };
   }
 

@@ -127,7 +127,7 @@ export class CollaborationSession {
     this.logger.info('Expert submitted result', { expertId, taskId: result.taskId });
 
     participant.status = 'submitted';
-    participant.submittedAt = new Date(getTimeProvider().now()).toISOString();
+    participant.submittedAt = getTimeProvider().nowIso();
     this.state.results.set(expertId, result);
 
     this.logMessage({ type: 'result_submission', expertId, result });
@@ -298,7 +298,7 @@ export class CollaborationSession {
     });
 
     this.setStatus(collaborationResult.success ? 'completed' : 'failed');
-    this.state.completedAt = new Date(getTimeProvider().now()).toISOString();
+    this.state.completedAt = getTimeProvider().nowIso();
     this.logger.info('Session finalized', {
       sessionId: config.sessionId,
       success: collaborationResult.success,

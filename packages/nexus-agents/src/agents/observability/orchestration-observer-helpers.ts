@@ -103,7 +103,7 @@ export function extractSessionId(event: DomainEvent, payload: Record<string, unk
 export function createInitialSessionMetrics(sessionId: string): SessionMetrics {
   return {
     sessionId,
-    startedAt: new Date(getTimeProvider().now()).toISOString(),
+    startedAt: getTimeProvider().nowIso(),
     durationMs: 0,
     taskCount: 0,
     successCount: 0,
@@ -160,7 +160,7 @@ export function createTrackedAgent(
     role,
     state,
     currentTask,
-    lastUpdated: new Date(getTimeProvider().now()).toISOString(),
+    lastUpdated: getTimeProvider().nowIso(),
     taskCount: 0,
     errorCount: 0,
   };

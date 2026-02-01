@@ -107,7 +107,7 @@ export class EvaluationHarness implements IEvaluationHarness {
     onProgress?: EvaluationProgressCallback
   ): Promise<EvaluationRunResult> {
     this.isCancelled = false;
-    const startedAt = new Date(getTimeProvider().now()).toISOString();
+    const startedAt = getTimeProvider().nowIso();
     const effectiveConfig = { ...DEFAULT_EVALUATION_CONFIG, ...config };
 
     this.logger.info('Starting evaluation', {
@@ -136,7 +136,7 @@ export class EvaluationHarness implements IEvaluationHarness {
       onProgress
     );
 
-    const completedAt = new Date(getTimeProvider().now()).toISOString();
+    const completedAt = getTimeProvider().nowIso();
     const metrics = calculateMetrics(result.instanceResults);
     const repositoryMetrics = calculateRepositoryMetrics(result.instanceResults);
 

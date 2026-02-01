@@ -51,7 +51,7 @@ export function recordDecisionToMetrics(
   if (deps.metricsCollector === undefined) return;
 
   deps.metricsCollector.recordDecision({
-    timestamp: new Date(getTimeProvider().now()).toISOString(),
+    timestamp: getTimeProvider().nowIso(),
     traceId,
     selectedModel: decision.cliName,
     alternativeModels: decision.alternatives,
@@ -81,7 +81,7 @@ export function recordOutcomeToMetrics(
 
   // Build record inline with conditional spread for readonly interface
   deps.metricsCollector.recordOutcome({
-    timestamp: new Date(getTimeProvider().now()).toISOString(),
+    timestamp: getTimeProvider().nowIso(),
     traceId: opts.traceId,
     model: opts.cliName,
     success: opts.success,

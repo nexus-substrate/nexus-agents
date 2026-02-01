@@ -149,7 +149,7 @@ export class ResultAggregator {
         conflictCount: conflicts.length,
         averageConfidence: Math.round(avgConfidence * 100) / 100,
         totalTokensUsed,
-        aggregatedAt: new Date(getTimeProvider().now()).toISOString(),
+        aggregatedAt: getTimeProvider().nowIso(),
       },
     };
   }

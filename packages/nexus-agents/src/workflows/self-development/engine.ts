@@ -104,7 +104,7 @@ export class SelfDevWorkflowEngine implements ISelfDevWorkflowEngine {
 
   start(config: SelfDevWorkflowConfig): Promise<SelfDevWorkflowState> {
     const executionId = randomUUID();
-    const now = new Date(getTimeProvider().now()).toISOString();
+    const now = getTimeProvider().nowIso();
 
     // Create audit trail for this execution
     const auditTrail = this.deps.auditTrail ?? createAuditTrail(executionId);
@@ -164,7 +164,7 @@ export class SelfDevWorkflowEngine implements ISelfDevWorkflowEngine {
     emitEvent(this.listeners, {
       type: 'workflow_failed',
       data: { reason },
-      timestamp: new Date(getTimeProvider().now()).toISOString(),
+      timestamp: getTimeProvider().nowIso(),
     });
     return Promise.resolve();
   }
@@ -303,7 +303,7 @@ export class SelfDevWorkflowEngine implements ISelfDevWorkflowEngine {
     emitEvent(this.listeners, {
       type: 'human_review_required',
       data: { executionId },
-      timestamp: new Date(getTimeProvider().now()).toISOString(),
+      timestamp: getTimeProvider().nowIso(),
     });
     void this.deps.notifications?.reviewRequired(executionId);
 
@@ -317,7 +317,7 @@ export class SelfDevWorkflowEngine implements ISelfDevWorkflowEngine {
 
     const output: ReviewOutput = {
       decision: result.decision,
-      timestamp: new Date(getTimeProvider().now()).toISOString(),
+      timestamp: getTimeProvider().nowIso(),
       durationMs: getTimeProvider().now() - startTime,
     };
     return result.feedback !== undefined ? { ...output, feedback: result.feedback } : output;

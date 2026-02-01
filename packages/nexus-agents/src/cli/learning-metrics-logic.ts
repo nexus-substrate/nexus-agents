@@ -40,7 +40,7 @@ export function gatherLearningMetrics(
   feedbackIntegration: FeedbackIntegration | undefined,
   options: LearningMetricsOptions
 ): LearningMetricsResult {
-  const timestamp = new Date(getTimeProvider().now()).toISOString();
+  const timestamp = getTimeProvider().nowIso();
   const periodHours = options.period;
 
   // Gather bandit statistics

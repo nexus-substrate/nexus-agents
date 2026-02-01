@@ -33,7 +33,7 @@ export function serializeConfig(
 ): string {
   const data: ExportedConfigData = {
     version: VERSION,
-    exportedAt: new Date(getTimeProvider().now()).toISOString(),
+    exportedAt: getTimeProvider().nowIso(),
     entries,
   };
 

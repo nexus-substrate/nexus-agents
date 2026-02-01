@@ -172,7 +172,7 @@ export class StateManager implements IStateManager {
    * Create initial state for a task.
    */
   createInitialState(task: Task, sessionId: string, initialContext?: string): PuppeteerState {
-    const now = new Date(getTimeProvider().now()).toISOString();
+    const now = getTimeProvider().nowIso();
     return {
       step: 0,
       task,

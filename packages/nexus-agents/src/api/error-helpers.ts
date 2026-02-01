@@ -48,7 +48,7 @@ export function createApiError(options: CreateErrorOptions): ApiError {
       ...(details !== undefined && { details }),
     },
     requestId,
-    timestamp: new Date(getTimeProvider().now()).toISOString(),
+    timestamp: getTimeProvider().nowIso(),
   };
 }
 

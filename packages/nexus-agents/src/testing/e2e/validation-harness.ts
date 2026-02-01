@@ -99,7 +99,9 @@ interface CheckDefinition {
   readonly id: string;
   readonly name: string;
   readonly mode: ValidationMode;
-  readonly validate: (logger: ILogger) => Promise<{ passed: boolean; details?: Record<string, unknown> }>;
+  readonly validate: (
+    logger: ILogger
+  ) => Promise<{ passed: boolean; details?: Record<string, unknown> }>;
 }
 
 /**
@@ -131,7 +133,10 @@ const MCP_CHECKS: readonly CheckDefinition[] = [
         'consensus_vote',
         'execute_expert',
       ];
-      return Promise.resolve({ passed: true, details: { toolCount: expectedTools.length, tools: expectedTools } });
+      return Promise.resolve({
+        passed: true,
+        details: { toolCount: expectedTools.length, tools: expectedTools },
+      });
     },
   },
   {
@@ -163,8 +168,18 @@ const CLI_CHECKS: readonly CheckDefinition[] = [
     validate: () => {
       // Validate CLI commands can be parsed and routed
       const commands = [
-        'help', 'version', 'doctor', 'config', 'expert', 'workflow',
-        'orchestrate', 'vote', 'research', 'review', 'setup', 'fitness-audit',
+        'help',
+        'version',
+        'doctor',
+        'config',
+        'expert',
+        'workflow',
+        'orchestrate',
+        'vote',
+        'research',
+        'review',
+        'setup',
+        'fitness-audit',
       ];
       return Promise.resolve({ passed: true, details: { commandCount: commands.length } });
     },
@@ -368,7 +383,7 @@ export class ValidationHarness {
     const summary = this.calculateSummary(categories, totalDurationMs);
 
     const result: ValidationResult = {
-      timestamp: new Date(getTimeProvider().now()).toISOString(),
+      timestamp: getTimeProvider().nowIso(),
       categories,
       summary,
       allPassed: summary.failed === 0,

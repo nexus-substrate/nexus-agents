@@ -199,7 +199,7 @@ export function createArtifact<T>(
     data,
     metadata: {
       ...metadata,
-      createdAt: new Date(getTimeProvider().now()).toISOString(),
+      createdAt: getTimeProvider().nowIso(),
     },
   };
 }

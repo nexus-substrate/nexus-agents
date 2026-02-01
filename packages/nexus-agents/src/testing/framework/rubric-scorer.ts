@@ -108,7 +108,7 @@ export class RubricScorer {
       overallScore: Math.min(1, Math.max(0, overallScore)),
       criterionScores,
       rubricId: rubric.id,
-      timestamp: new Date(getTimeProvider().now()).toISOString(),
+      timestamp: getTimeProvider().nowIso(),
     };
   }
 
@@ -144,7 +144,7 @@ export class RubricScorer {
       overallScore: baseScore,
       criterionScores,
       rubricId: 'fallback-patterns',
-      timestamp: new Date(getTimeProvider().now()).toISOString(),
+      timestamp: getTimeProvider().nowIso(),
     };
   }
 
@@ -179,7 +179,7 @@ export class RubricScorer {
       overallScore,
       criterionScores,
       rubricId: 'fallback-patterns',
-      timestamp: new Date(getTimeProvider().now()).toISOString(),
+      timestamp: getTimeProvider().nowIso(),
     };
   }
 

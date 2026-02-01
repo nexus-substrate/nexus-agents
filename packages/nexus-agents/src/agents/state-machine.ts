@@ -260,7 +260,7 @@ export class AgentStateMachine {
       from: this.currentState,
       to,
       event,
-      timestamp: new Date(getTimeProvider().now()).toISOString(),
+      timestamp: getTimeProvider().nowIso(),
     };
     if (context !== undefined) {
       transition.context = context;

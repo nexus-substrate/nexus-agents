@@ -250,7 +250,7 @@ export function emitPuppeteerStarted(
 ): void {
   const event: PuppeteerStartedEvent = {
     eventId: randomUUID(),
-    timestamp: new Date(getTimeProvider().now()).toISOString(),
+    timestamp: getTimeProvider().nowIso(),
     topic: PuppeteerTopics.STARTED,
     sessionId,
     payload: {
@@ -275,7 +275,7 @@ export function emitPuppeteerStepCompleted(
   const probability = step.distribution.probabilities.get(step.selectedAgent) ?? 0;
   const event: PuppeteerStepCompletedEvent = {
     eventId: randomUUID(),
-    timestamp: new Date(getTimeProvider().now()).toISOString(),
+    timestamp: getTimeProvider().nowIso(),
     topic: PuppeteerTopics.STEP_COMPLETED,
     sessionId,
     payload: {
@@ -303,7 +303,7 @@ export function emitPuppeteerCompleted(
 ): void {
   const event: PuppeteerCompletedEvent = {
     eventId: randomUUID(),
-    timestamp: new Date(getTimeProvider().now()).toISOString(),
+    timestamp: getTimeProvider().nowIso(),
     topic: PuppeteerTopics.COMPLETED,
     sessionId,
     payload: {
@@ -345,7 +345,7 @@ export function emitPuppeteerError(
 
   const event: PuppeteerErrorEvent = {
     eventId: randomUUID(),
-    timestamp: new Date(getTimeProvider().now()).toISOString(),
+    timestamp: getTimeProvider().nowIso(),
     topic: PuppeteerTopics.ERROR,
     sessionId,
     payload,
@@ -363,7 +363,7 @@ export function emitPuppeteerPatternDetected(
 ): void {
   const event: PuppeteerPatternDetectedEvent = {
     eventId: randomUUID(),
-    timestamp: new Date(getTimeProvider().now()).toISOString(),
+    timestamp: getTimeProvider().nowIso(),
     topic: PuppeteerTopics.PATTERN_DETECTED,
     sessionId,
     payload: {

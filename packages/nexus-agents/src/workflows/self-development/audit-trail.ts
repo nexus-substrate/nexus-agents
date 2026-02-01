@@ -164,7 +164,7 @@ export class AuditTrail {
   async record(category: AuditCategory, event: string, options: RecordOptions = {}): Promise<void> {
     const auditEvent: AuditEvent = {
       id: generateEventId(this.executionId),
-      timestamp: new Date(getTimeProvider().now()).toISOString(),
+      timestamp: getTimeProvider().nowIso(),
       executionId: this.executionId,
       category,
       severity: options.severity ?? 'info',

@@ -105,7 +105,7 @@ export function recordServerStartup(observer: SwarmObserver): ServerEventContext
 
   observer.recordEvent({
     eventId: `startup-${startupSpanId}`,
-    timestamp: new Date(getTimeProvider().now()).toISOString(),
+    timestamp: getTimeProvider().nowIso(),
     agentId: 'mcp-server',
     eventType: 'task_started',
     traceId,
@@ -129,7 +129,7 @@ export function recordServerShutdown(observer: SwarmObserver, context: ServerEve
 
   observer.recordEvent({
     eventId: `shutdown-${shutdownSpanId}`,
-    timestamp: new Date(getTimeProvider().now()).toISOString(),
+    timestamp: getTimeProvider().nowIso(),
     agentId: 'mcp-server',
     eventType: 'task_completed',
     traceId: context.traceId,

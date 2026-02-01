@@ -102,7 +102,7 @@ export function createRoutingDecision(
 ): RoutingDecision {
   return {
     id: randomUUID(),
-    timestamp: new Date(getTimeProvider().now()).toISOString(),
+    timestamp: getTimeProvider().nowIso(),
     ...params,
   };
 }
@@ -112,7 +112,7 @@ export function createRoutingDecision(
  */
 export function createTaskOutcome(params: Omit<TaskOutcome, 'timestamp'>): TaskOutcome {
   return {
-    timestamp: new Date(getTimeProvider().now()).toISOString(),
+    timestamp: getTimeProvider().nowIso(),
     ...params,
   };
 }

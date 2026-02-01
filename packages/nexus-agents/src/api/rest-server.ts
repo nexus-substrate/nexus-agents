@@ -245,7 +245,7 @@ export class RestApiServer implements IRestApiServer {
           message: error.message,
         },
         requestId: request.id,
-        timestamp: new Date(getTimeProvider().now()).toISOString(),
+        timestamp: getTimeProvider().nowIso(),
       };
 
       void reply.status(500).send(apiError);
@@ -278,7 +278,7 @@ export class RestApiServer implements IRestApiServer {
       const error: ApiError = {
         error: { code: 'UNAUTHORIZED', message: 'API key required' },
         requestId: request.id,
-        timestamp: new Date(getTimeProvider().now()).toISOString(),
+        timestamp: getTimeProvider().nowIso(),
       };
       await reply.status(401).send(error);
       return;
@@ -289,7 +289,7 @@ export class RestApiServer implements IRestApiServer {
       const error: ApiError = {
         error: { code: 'UNAUTHORIZED', message: 'Invalid API key' },
         requestId: request.id,
-        timestamp: new Date(getTimeProvider().now()).toISOString(),
+        timestamp: getTimeProvider().nowIso(),
       };
       await reply.status(401).send(error);
       return;

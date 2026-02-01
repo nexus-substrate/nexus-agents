@@ -73,7 +73,7 @@ export class Dashboard implements IDashboard {
 
   getSnapshot(options?: DashboardUpdateOptions): DashboardSnapshot {
     const opts = this.normalizeOptions(options);
-    const now = new Date(getTimeProvider().now()).toISOString();
+    const now = getTimeProvider().nowIso();
     const health = this.observer.getHealthMetrics();
     const graph = this.observer.getCollaborationGraph();
 
@@ -182,7 +182,7 @@ export class Dashboard implements IDashboard {
     return {
       agentId,
       state: latestState,
-      lastActivity: lastEvent?.timestamp ?? new Date(getTimeProvider().now()).toISOString(),
+      lastActivity: lastEvent?.timestamp ?? getTimeProvider().nowIso(),
       messagesSent: outgoing.length,
       messagesReceived: incoming.length,
       toolsInvoked: toolEvents.length,
@@ -247,7 +247,7 @@ export class Dashboard implements IDashboard {
       avgLatencyMs: 0,
       bottlenecks: [],
       clusters: [],
-      calculatedAt: new Date(getTimeProvider().now()).toISOString(),
+      calculatedAt: getTimeProvider().nowIso(),
     };
   }
 

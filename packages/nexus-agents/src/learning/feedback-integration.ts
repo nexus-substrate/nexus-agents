@@ -180,7 +180,7 @@ export class FeedbackIntegration implements IFeedbackIntegration {
       const storedDecision: StoredRoutingDecision = {
         id,
         traceId: trace,
-        timestamp: new Date(getTimeProvider().now()).toISOString(),
+        timestamp: getTimeProvider().nowIso(),
         routerType: getDecisiveRouterType(decision),
         selectedModel: decision.cliName,
         alternativeModels: decision.alternatives,
@@ -238,7 +238,7 @@ export class FeedbackIntegration implements IFeedbackIntegration {
 
     const outcome: TaskOutcome = {
       routingDecisionId,
-      timestamp: new Date(getTimeProvider().now()).toISOString(),
+      timestamp: getTimeProvider().nowIso(),
       success,
       outcomeClass,
       qualityScore,
@@ -292,7 +292,7 @@ export class FeedbackIntegration implements IFeedbackIntegration {
     const computedReward = this.collector.computeReward(outcome);
     const storedReward: StoredReward = {
       routingDecisionId,
-      timestamp: new Date(getTimeProvider().now()).toISOString(),
+      timestamp: getTimeProvider().nowIso(),
       reward: computedReward.reward,
       baseReward: computedReward.components.baseReward,
       qualityBonus: computedReward.components.qualityBonus,

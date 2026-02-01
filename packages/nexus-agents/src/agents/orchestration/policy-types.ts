@@ -86,7 +86,7 @@ export const DEFAULT_POLICY_PARAMETERS: PolicyParameters = {
   },
   biases: {},
   metadata: {
-    created: new Date(getTimeProvider().now()).toISOString(),
+    created: getTimeProvider().nowIso(),
     trainedOnTasks: 0,
   },
 };

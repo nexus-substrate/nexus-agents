@@ -314,7 +314,7 @@ export function createEvent<T extends DomainEvent>(
 ): T {
   return {
     eventId: generateEventId(),
-    timestamp: new Date(getTimeProvider().now()).toISOString(),
+    timestamp: getTimeProvider().nowIso(),
     topic,
     payload,
     sessionId: options?.sessionId,

@@ -73,14 +73,14 @@ export function updatePhase(
   emitEvent(container.listeners, {
     type: 'phase_completed',
     phase: prevPhase,
-    timestamp: new Date(getTimeProvider().now()).toISOString(),
+    timestamp: getTimeProvider().nowIso(),
   });
   const updated: SelfDevWorkflowState = { ...state, currentPhase: phase };
   container.states.set(executionId, updated);
   emitEvent(container.listeners, {
     type: 'phase_started',
     phase,
-    timestamp: new Date(getTimeProvider().now()).toISOString(),
+    timestamp: getTimeProvider().nowIso(),
   });
 
   // Record phase transition in audit trail
@@ -113,7 +113,7 @@ export function createCheckpoint(
 
   const checkpoint: WorkflowCheckpoint = {
     phase,
-    timestamp: new Date(getTimeProvider().now()).toISOString(),
+    timestamp: getTimeProvider().nowIso(),
     inputs: {},
     outputs,
     status: 'completed',
@@ -156,7 +156,7 @@ export function completeWorkflow(
   updateStatus(container.states, executionId, 'completed');
   emitEvent(container.listeners, {
     type: 'workflow_completed',
-    timestamp: new Date(getTimeProvider().now()).toISOString(),
+    timestamp: getTimeProvider().nowIso(),
   });
 
   void container.auditTrails.get(executionId)?.workflowCompleted(true, durationMs);
@@ -196,7 +196,7 @@ export function failWorkflow(
     type: 'workflow_failed',
     phase: currentPhase,
     data: { error: errorMessage },
-    timestamp: new Date(getTimeProvider().now()).toISOString(),
+    timestamp: getTimeProvider().nowIso(),
   });
 
   const audit = container.auditTrails.get(executionId);

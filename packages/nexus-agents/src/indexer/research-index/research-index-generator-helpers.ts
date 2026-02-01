@@ -324,7 +324,7 @@ export function generateRegistryFiles(index: ResearchIndex): string {
  * Generate how to contribute section.
  */
 export function generateContributingSection(): string {
-  const dateStr = new Date(getTimeProvider().now()).toISOString().split('T')[0] ?? '';
+  const dateStr = getTimeProvider().nowIso().split('T')[0] ?? '';
   return `---
 
 ## How to Contribute

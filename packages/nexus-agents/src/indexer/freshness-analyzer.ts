@@ -257,7 +257,7 @@ export function analyzeFreshness(
   return {
     documents,
     summary,
-    analyzedAt: new Date(getTimeProvider().now()).toISOString(),
+    analyzedAt: getTimeProvider().nowIso(),
   };
 }
 

@@ -122,7 +122,7 @@ class TemplateRegistry implements ITemplateRegistry {
       category: partialMetadata?.category ?? 'custom',
       keywords: partialMetadata?.keywords ?? extractKeywordsFromWorkflow(workflow),
       builtIn: false,
-      updatedAt: new Date(getTimeProvider().now()).toISOString(),
+      updatedAt: getTimeProvider().nowIso(),
     };
     if (workflow.description !== undefined) {
       metadata.description = workflow.description;

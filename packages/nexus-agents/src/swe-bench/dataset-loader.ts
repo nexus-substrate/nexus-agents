@@ -128,8 +128,7 @@ function validateInstance(raw: RawSWEBenchInstance): SWEBenchInstance | null {
     repo: raw.repo as string,
     base_commit: raw.base_commit as string,
     problem_statement: raw.problem_statement as string,
-    created_at:
-      getOptionalString(raw.created_at) ?? new Date(getTimeProvider().now()).toISOString(),
+    created_at: getOptionalString(raw.created_at) ?? getTimeProvider().nowIso(),
   };
 
   // Build optional properties and merge

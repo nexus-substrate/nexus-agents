@@ -221,7 +221,7 @@ export class LearnablePolicy implements ILearnablePolicyEngine {
       metadata: {
         ...this.parameters.metadata,
         trainedOnTasks: trainedCount + 1,
-        lastUpdated: new Date(getTimeProvider().now()).toISOString(),
+        lastUpdated: getTimeProvider().nowIso(),
       },
     };
 

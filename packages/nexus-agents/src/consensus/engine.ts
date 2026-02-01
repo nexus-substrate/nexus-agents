@@ -194,7 +194,7 @@ export class ConsensusEngine implements IConsensusEngine {
 
   updateAgentPerformance(agentId: string, wasCorrect: boolean): void {
     const existing = this.agentPerformance.get(agentId);
-    const now = new Date(getTimeProvider().now()).toISOString();
+    const now = getTimeProvider().nowIso();
 
     if (existing === undefined) {
       this.agentPerformance.set(agentId, {
@@ -288,7 +288,7 @@ export class ConsensusEngine implements IConsensusEngine {
   private recordVote(state: ProposalState, agentId: string, vote: Vote): void {
     state.votes.set(agentId, {
       ...vote,
-      timestamp: new Date(getTimeProvider().now()).toISOString(),
+      timestamp: getTimeProvider().nowIso(),
     });
     if (state.proposal.algorithm === 'proof_of_learning') {
       const performance = this.agentPerformance.get(agentId);

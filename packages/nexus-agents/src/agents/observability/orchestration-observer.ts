@@ -271,7 +271,7 @@ export class OrchestrationObserver implements IOrchestrationObserver {
 
     const metrics = this.sessionMetrics.get(sessionId);
     if (metrics !== undefined) {
-      metrics.completedAt = new Date(getTimeProvider().now()).toISOString();
+      metrics.completedAt = getTimeProvider().nowIso();
       metrics.durationMs = durationMs;
     }
 
@@ -313,7 +313,7 @@ export class OrchestrationObserver implements IOrchestrationObserver {
     } else {
       agent.state = state;
       agent.currentTask = currentTask;
-      agent.lastUpdated = new Date(getTimeProvider().now()).toISOString();
+      agent.lastUpdated = getTimeProvider().nowIso();
       if (role !== undefined) {
         (agent as { role: string }).role = role;
       }

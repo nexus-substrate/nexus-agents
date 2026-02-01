@@ -202,7 +202,7 @@ export async function runOperationBenchmark(
     latency,
     throughput,
     resources,
-    timestamp: new Date(getTimeProvider().now()).toISOString(),
+    timestamp: getTimeProvider().nowIso(),
   };
 }
 

@@ -290,7 +290,7 @@ Provide a structured review with:
       expertCount: reviews.length,
       consensusScore,
       debateRounds: 1,
-      timestamp: new Date(getTimeProvider().now()).toISOString(),
+      timestamp: getTimeProvider().nowIso(),
     };
   }
 

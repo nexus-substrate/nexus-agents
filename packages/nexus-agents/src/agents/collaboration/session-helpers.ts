@@ -327,7 +327,7 @@ export function createSessionState(
   config: CollaborationConfig,
   roleResolver: (expertId: string) => AgentRole
 ): SessionState {
-  const now = new Date(getTimeProvider().now()).toISOString();
+  const now = getTimeProvider().nowIso();
   const participants: ExpertParticipation[] = config.experts.map((expertId) => ({
     expertId,
     role: roleResolver(expertId),

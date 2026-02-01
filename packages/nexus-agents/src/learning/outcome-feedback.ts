@@ -204,7 +204,7 @@ export class OutcomeFeedbackCollector implements IOutcomeFeedback {
       avgQualityScore: avgQuality,
       avgReward,
       decisionsByRouter,
-      lastUpdatedAt: new Date(getTimeProvider().now()).toISOString(),
+      lastUpdatedAt: getTimeProvider().nowIso(),
     };
   }
 

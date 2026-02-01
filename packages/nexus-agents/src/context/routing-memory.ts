@@ -192,7 +192,7 @@ export class RoutingMemory implements IRoutingMemory {
     const entry = this.mobimem.profile.observe(entityId, 'agent', preferenceKey, {
       model,
       performance,
-      updatedAt: new Date(getTimeProvider().now()).toISOString(),
+      updatedAt: getTimeProvider().nowIso(),
     });
 
     this.logger.debug('Stored model preference', {

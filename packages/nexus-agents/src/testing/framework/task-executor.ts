@@ -86,7 +86,7 @@ export function createFailedRubricScore(): RubricScore {
     overallScore: 0,
     criterionScores: [],
     rubricId: 'failed',
-    timestamp: new Date(getTimeProvider().now()).toISOString(),
+    timestamp: getTimeProvider().nowIso(),
   };
 }
 
@@ -161,7 +161,7 @@ export function buildTaskResult(params: TaskResultParams): TaskTestResult {
     costUsd: params.costUsd,
     rubricScore: params.rubricScore,
     success: params.success,
-    timestamp: new Date(getTimeProvider().now()).toISOString(),
+    timestamp: getTimeProvider().nowIso(),
   };
 
   // Build result with only defined optional properties
@@ -196,7 +196,7 @@ export function createErrorResult(
     rubricScore: createFailedRubricScore(),
     success: false,
     error: error instanceof Error ? error.message : String(error),
-    timestamp: new Date(getTimeProvider().now()).toISOString(),
+    timestamp: getTimeProvider().nowIso(),
   };
 }
 

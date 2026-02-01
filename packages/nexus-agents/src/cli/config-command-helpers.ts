@@ -195,7 +195,7 @@ export async function createBackup(filePath: string): Promise<string | undefined
     return undefined;
   }
 
-  const timestamp = new Date(getTimeProvider().now()).toISOString().replace(/[:.]/g, '-');
+  const timestamp = getTimeProvider().nowIso().replace(/[:.]/g, '-');
   const backupPath = `${filePath}.backup-${timestamp}`;
 
   await fs.copyFile(filePath, backupPath);

@@ -29,7 +29,7 @@ import { colors, symbols, writeLine } from './ansi-output.js';
 function generateVoteHash(role: VoterRole, vote: Vote): VoteHash {
   const data = JSON.stringify({ role, decision: vote.decision, reasoning: vote.reasoning });
   const hash = crypto.createHash('sha256').update(data).digest('hex').slice(0, 16);
-  return { role, hash, timestamp: new Date(getTimeProvider().now()).toISOString() };
+  return { role, hash, timestamp: getTimeProvider().nowIso() };
 }
 
 /**

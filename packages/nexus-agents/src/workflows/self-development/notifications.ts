@@ -158,7 +158,7 @@ export class NotificationService {
       severity: 'info',
       title: 'Workflow Started',
       message: `Processing issue #${String(issueNumber)}: ${title}`,
-      timestamp: new Date(getTimeProvider().now()).toISOString(),
+      timestamp: getTimeProvider().nowIso(),
       executionId,
       metadata: { issueNumber, issueTitle: title },
     });
@@ -175,7 +175,7 @@ export class NotificationService {
       severity: 'success',
       title: 'Workflow Completed',
       message,
-      timestamp: new Date(getTimeProvider().now()).toISOString(),
+      timestamp: getTimeProvider().nowIso(),
       executionId,
       metadata: { ...(prNumber !== undefined && { prNumber, prUrl }) },
     });
@@ -188,7 +188,7 @@ export class NotificationService {
       severity: 'error',
       title: 'Workflow Failed',
       message: error,
-      timestamp: new Date(getTimeProvider().now()).toISOString(),
+      timestamp: getTimeProvider().nowIso(),
       executionId,
       phase,
     });
@@ -202,7 +202,7 @@ export class NotificationService {
       title: 'Review Required',
       message: details ?? 'Human review needed to continue',
       phase: 'review',
-      timestamp: new Date(getTimeProvider().now()).toISOString(),
+      timestamp: getTimeProvider().nowIso(),
       executionId,
     });
   }
@@ -215,7 +215,7 @@ export class NotificationService {
       title: 'PR Created',
       message: `Pull request #${String(prNumber)} created`,
       phase: 'commit',
-      timestamp: new Date(getTimeProvider().now()).toISOString(),
+      timestamp: getTimeProvider().nowIso(),
       executionId,
       metadata: { prNumber, prUrl },
     });
@@ -229,7 +229,7 @@ export class NotificationService {
       title: 'PR Merged',
       message: `Pull request #${String(prNumber)} merged successfully`,
       phase: 'commit',
-      timestamp: new Date(getTimeProvider().now()).toISOString(),
+      timestamp: getTimeProvider().nowIso(),
       executionId,
       metadata: { prNumber },
     });
@@ -282,7 +282,7 @@ export class NotificationService {
       severity,
       title: 'Execution Summary',
       message,
-      timestamp: new Date(getTimeProvider().now()).toISOString(),
+      timestamp: getTimeProvider().nowIso(),
       executionId,
       metadata: {
         success,

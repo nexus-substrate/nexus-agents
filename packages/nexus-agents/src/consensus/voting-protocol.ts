@@ -79,7 +79,7 @@ export class VotingProtocol implements IVotingProtocol {
       currentRound: 0,
       config: sessionConfig,
       status: 'active',
-      createdAt: new Date(getTimeProvider().now()).toISOString(),
+      createdAt: getTimeProvider().nowIso(),
     };
 
     this.sessions.set(session.id, session);
@@ -137,7 +137,7 @@ export class VotingProtocol implements IVotingProtocol {
       const timestampedFinding = {
         ...validation.data,
         agentId,
-        timestamp: new Date(getTimeProvider().now()).toISOString(),
+        timestamp: getTimeProvider().nowIso(),
       };
       currentRound.findings.set(findingId, timestampedFinding);
     }
@@ -160,7 +160,7 @@ export class VotingProtocol implements IVotingProtocol {
     const analysisRound = session.rounds[0];
     if (analysisRound) {
       analysisRound.status = 'completed';
-      analysisRound.completedAt = new Date(getTimeProvider().now()).toISOString();
+      analysisRound.completedAt = getTimeProvider().nowIso();
     }
 
     if (session.config.enableAntiSycophancy) {
@@ -245,7 +245,7 @@ export class VotingProtocol implements IVotingProtocol {
     const deliberationRound = session.rounds[1];
     if (deliberationRound) {
       deliberationRound.status = 'completed';
-      deliberationRound.completedAt = new Date(getTimeProvider().now()).toISOString();
+      deliberationRound.completedAt = getTimeProvider().nowIso();
     }
 
     const round = createRound('consensus', 3);
@@ -279,7 +279,7 @@ export class VotingProtocol implements IVotingProtocol {
 
     currentRound.finalVotes.set(agentId, {
       ...validation.data,
-      timestamp: new Date(getTimeProvider().now()).toISOString(),
+      timestamp: getTimeProvider().nowIso(),
     });
 
     this.logger.debug('Final vote recorded', {
@@ -313,10 +313,10 @@ export class VotingProtocol implements IVotingProtocol {
     const result = this.buildFinalResult(session);
     session.finalResult = result;
     session.status = 'completed';
-    session.completedAt = new Date(getTimeProvider().now()).toISOString();
+    session.completedAt = getTimeProvider().nowIso();
 
     consensusRound.status = 'completed';
-    consensusRound.completedAt = new Date(getTimeProvider().now()).toISOString();
+    consensusRound.completedAt = getTimeProvider().nowIso();
 
     this.logger.info('Voting session completed', {
       sessionId,

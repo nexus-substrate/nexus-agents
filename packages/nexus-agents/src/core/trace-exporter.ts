@@ -86,7 +86,7 @@ export function exportTraceToFile(
 
   const exportData: ExportedTrace = {
     traceId,
-    exportedAt: new Date(getTimeProvider().now()).toISOString(),
+    exportedAt: getTimeProvider().nowIso(),
     spans,
     metrics,
   };
@@ -117,7 +117,7 @@ export function exportTraceToString(tracer: Tracer, format: ExportFormat = 'json
 
   const exportData: ExportedTrace = {
     traceId,
-    exportedAt: new Date(getTimeProvider().now()).toISOString(),
+    exportedAt: getTimeProvider().nowIso(),
     spans,
     metrics,
   };
@@ -210,7 +210,7 @@ export function printTrace(tracer: Tracer, options?: VisualizationOptions): void
  * @returns Filename with timestamp
  */
 export function generateTraceFilename(traceId: string): string {
-  const timestamp = new Date(getTimeProvider().now()).toISOString().replace(/[:.]/g, '-');
+  const timestamp = getTimeProvider().nowIso().replace(/[:.]/g, '-');
   const shortId = traceId.slice(0, 8);
   return `trace-${timestamp}-${shortId}.json`;
 }

@@ -137,7 +137,7 @@ export class SWEBenchRunner {
     const checkpoint: SWEBenchCheckpoint = {
       config: this.config.benchConfig,
       completed_instances: completedIds,
-      last_updated: new Date(getTimeProvider().now()).toISOString(),
+      last_updated: getTimeProvider().nowIso(),
     };
 
     try {
@@ -352,7 +352,7 @@ export class SWEBenchRunner {
       total_duration_ms: totalDuration,
       avg_duration_ms: results.length > 0 ? totalDuration / results.length : 0,
       model: this.config.modelName,
-      timestamp: new Date(getTimeProvider().now()).toISOString(),
+      timestamp: getTimeProvider().nowIso(),
     };
   }
 }

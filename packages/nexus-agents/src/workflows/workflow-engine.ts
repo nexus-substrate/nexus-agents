@@ -181,7 +181,7 @@ export class WorkflowEngine implements IWorkflowEngine {
     exec.context.abortController.abort();
     this.updateExecutionStatus(executionId, {
       state: 'cancelled',
-      cancelledAt: new Date(getTimeProvider().now()).toISOString(),
+      cancelledAt: getTimeProvider().nowIso(),
     });
     return Promise.resolve(ok(undefined));
   }

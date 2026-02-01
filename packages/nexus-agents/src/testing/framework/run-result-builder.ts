@@ -92,7 +92,7 @@ export async function getEnvironmentInfo(
     arch: os.arch(),
     frameworkVersion: VERSION,
     cliVersions,
-    capturedAt: new Date(getTimeProvider().now()).toISOString(),
+    capturedAt: getTimeProvider().nowIso(),
   };
 }
 

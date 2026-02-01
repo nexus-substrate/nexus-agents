@@ -179,7 +179,7 @@ export function enrichEvent(event: DomainEvent): DomainEvent {
   return {
     ...event,
     eventId: event.eventId || generateEventId(),
-    timestamp: event.timestamp || new Date(getTimeProvider().now()).toISOString(),
+    timestamp: event.timestamp || getTimeProvider().nowIso(),
   };
 }
 

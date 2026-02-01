@@ -132,7 +132,7 @@ export class RuleBasedPolicy implements IPolicyEngine {
       },
       biases: {},
       metadata: {
-        created: new Date(getTimeProvider().now()).toISOString(),
+        created: getTimeProvider().nowIso(),
         trainedOnTasks: 0,
       },
     };

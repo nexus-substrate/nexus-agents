@@ -188,7 +188,7 @@ export class WorkflowOrchestratorAdapter implements IOrchestrator {
 
     this.executions.set(executionId, {
       state: 'cancelled',
-      cancelledAt: new Date(getTimeProvider().now()).toISOString(),
+      cancelledAt: getTimeProvider().nowIso(),
     });
 
     this.logger.info('Cancelled execution', { executionId, reason });

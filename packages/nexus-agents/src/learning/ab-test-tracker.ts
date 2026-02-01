@@ -72,7 +72,7 @@ export class AbTestTracker implements IAbTestTracker {
     const updated: ExperimentDefinition = {
       ...experiment,
       status: 'running',
-      startedAt: experiment.startedAt ?? new Date(getTimeProvider().now()).toISOString(),
+      startedAt: experiment.startedAt ?? getTimeProvider().nowIso(),
     };
 
     this.experiments.set(experimentId, updated);
@@ -109,7 +109,7 @@ export class AbTestTracker implements IAbTestTracker {
     const updated: ExperimentDefinition = {
       ...experiment,
       status: 'completed',
-      endedAt: new Date(getTimeProvider().now()).toISOString(),
+      endedAt: getTimeProvider().nowIso(),
     };
 
     this.experiments.set(experimentId, updated);
@@ -235,7 +235,7 @@ export class AbTestTracker implements IAbTestTracker {
     }
 
     return {
-      exportedAt: new Date(getTimeProvider().now()).toISOString(),
+      exportedAt: getTimeProvider().nowIso(),
       experiments,
       outcomes: allOutcomes,
       summaries,

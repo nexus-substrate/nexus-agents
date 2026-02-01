@@ -164,7 +164,7 @@ export function generateTaskId(): string {
  * Get current timestamp in ISO format (ET timezone aware).
  */
 export function getCurrentTimestamp(): string {
-  return new Date(getTimeProvider().now()).toISOString();
+  return getTimeProvider().nowIso();
 }
 
 // ============================================================================

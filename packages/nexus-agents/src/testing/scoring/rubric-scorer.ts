@@ -88,7 +88,7 @@ export class RubricScorer {
       totalWeightedScore,
       maxWeightedScore,
       summary: this.generateSummary(criteriaScores, overallScore, passed, rubric),
-      evaluatedAt: new Date(getTimeProvider().now()).toISOString(),
+      evaluatedAt: getTimeProvider().nowIso(),
     });
   }
 

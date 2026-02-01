@@ -60,7 +60,7 @@ export interface MetricsComparison {
  */
 export function createEmptyBaseline(): BaselineSnapshot {
   return {
-    timestamp: new Date(getTimeProvider().now()).toISOString(),
+    timestamp: getTimeProvider().nowIso(),
     testCoverage: 0,
     lintErrors: 0,
     lintWarnings: 0,
@@ -125,7 +125,7 @@ export function createBaselineFromChecks(checks: readonly CheckResult[]): Baseli
   }
 
   return {
-    timestamp: new Date(getTimeProvider().now()).toISOString(),
+    timestamp: getTimeProvider().nowIso(),
     testCoverage: state.coverage,
     lintErrors: state.lint.errors,
     lintWarnings: state.lint.warnings,

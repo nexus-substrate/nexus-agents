@@ -112,7 +112,7 @@ export class HarnessExecutor implements IHarnessExecutor {
     onProgress?: HarnessProgressCallback
   ): Promise<HarnessExecutionResult> {
     this.isCancelled = false;
-    const startedAt = new Date(getTimeProvider().now()).toISOString();
+    const startedAt = getTimeProvider().nowIso();
     const effectiveConfig = { ...DEFAULT_HARNESS_EXECUTION_CONFIG, ...config };
 
     this.logger.info('Starting harness execution', {
@@ -187,7 +187,7 @@ export class HarnessExecutor implements IHarnessExecutor {
     startedAt: string,
     swebenchVersion?: string
   ): HarnessExecutionResult {
-    const completedAt = new Date(getTimeProvider().now()).toISOString();
+    const completedAt = getTimeProvider().nowIso();
     const executionResult: HarnessExecutionResult = { ...result, startedAt, completedAt };
 
     if (swebenchVersion !== undefined) {
