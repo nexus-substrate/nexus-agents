@@ -520,6 +520,44 @@ _Governance Version: YYYY-MM-DD_
 - Changing voting thresholds
 - Updating fitness requirements
 
+### Documentation Governance
+
+**Canonical Index:** [docs/README.md](./docs/README.md)
+
+This is the **single source of truth** for all documentation. All documentation must be indexed there to be valid.
+
+#### Rules (Enforced)
+
+1. **Consult First**: Before answering documentation questions, consult the canonical index
+2. **Update on Change**: When documentation changes, update the index
+3. **Index Required**: New documentation must be added to the index to be valid
+4. **No Parallel Indexes**: This is the only documentation index permitted
+5. **Classification Required**: All docs must have a status (Canonical/Supporting/Deprecated)
+
+#### Documentation Structure
+
+```
+docs/
+├── README.md              # CANONICAL INDEX - Start here
+├── INDEX.yaml             # Machine-parseable index
+├── architecture/          # System design
+├── development/           # Contributor guides
+├── research/              # Research tracking
+├── adr/                   # Architecture Decision Records
+├── guides/                # How-to guides
+└── ...
+```
+
+#### Quick Navigation
+
+| Need To...              | Go To                                        |
+| ----------------------- | -------------------------------------------- |
+| Find any documentation  | [docs/README.md](./docs/README.md)           |
+| Understand architecture | [docs/architecture/](./docs/architecture/)   |
+| Contribute code         | [docs/development/](./docs/development/)     |
+| Check research status   | [docs/research/](./docs/research/)           |
+| See API reference       | [docs/ENTRYPOINTS.md](./docs/ENTRYPOINTS.md) |
+
 ---
 
 ## Orchestration Model
@@ -1092,11 +1130,11 @@ _Auto-generated from source. 8 tools registered._
 
 <!-- GOVERNANCE:VERSION:START -->
 
-_Governance Version: 2026-01-31_
+_Governance Version: 2026-02-01_
 
 <!-- GOVERNANCE:VERSION:END -->
 
-_Last updated: 2026-01-31 (ET)_
+_Last updated: 2026-02-01 (ET)_
 _MCP Protocol: 2025-11-25_
 _Node.js: 22.x LTS_
 _TypeScript: 5.8+_
