@@ -34,7 +34,26 @@ npm install -g nexus-agents
 nexus-agents doctor
 ```
 
-You should see checks for Node.js version, configuration, and API keys. If you see errors, check the [Troubleshooting](#common-issues) section below.
+**Expected output:**
+
+```
+Nexus Agents Doctor
+===================
+
+Checking environment...
+
+✓ Node.js version: v22.x.x
+⚠ API keys configured: 0 of 3
+  Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or GOOGLE_AI_API_KEY
+✓ Configuration loaded: ./nexus-agents.yaml
+
+Checking CLI installations...
+
+✓ Claude CLI
+  Version: 2.x.x (supported)
+```
+
+If you see errors, check the [Troubleshooting](#common-issues) section below.
 
 ---
 
@@ -45,6 +64,19 @@ You should see checks for Node.js version, configuration, and API keys. If you s
 ```bash
 # Auto-configure MCP server
 nexus-agents setup
+```
+
+**Expected output:**
+
+```
+Nexus Agents Setup
+==================
+
+✓ Claude CLI detected (v2.x.x)
+✓ MCP server configured
+✓ Configuration written to ~/.claude/claude_desktop_config.json
+
+Setup complete! Restart Claude Code to use nexus-agents.
 ```
 
 Then **in Claude Code chat** (not terminal), type:
@@ -79,6 +111,19 @@ Run a task:
 nexus-agents orchestrate "Explain closures in JavaScript"
 ```
 
+**Expected output:**
+
+```
+[Orchestrator] Analyzing task...
+[Orchestrator] Selected expert: code_expert
+[Orchestrator] Delegating to Claude CLI...
+
+A closure is a function that retains access to variables from its
+enclosing scope even after the outer function has returned...
+
+[Orchestrator] Task completed successfully.
+```
+
 ---
 
 ## Next Steps
@@ -91,6 +136,25 @@ nexus-agents orchestrate "Explain closures in JavaScript"
 | Review a GitHub PR | `nexus-agents review <url>`              |
 | Debug routing      | `nexus-agents routing-audit "your task"` |
 | Full documentation | [CLAUDE.md](./CLAUDE.md)                 |
+
+---
+
+## API Key Security
+
+> **Warning:** Never commit API keys to version control.
+
+If you need to set API keys directly (not using CLI auth), use environment variables or a `.env` file:
+
+```bash
+# Option 1: Environment variable (session only)
+export ANTHROPIC_API_KEY="sk-ant-..."
+
+# Option 2: .env file (recommended for development)
+echo 'ANTHROPIC_API_KEY="sk-ant-..."' >> .env
+echo '.env' >> .gitignore   # Prevent accidental commits
+```
+
+For production, use a secrets manager (AWS Secrets Manager, HashiCorp Vault, etc.).
 
 ---
 
@@ -108,4 +172,4 @@ For more help, see [docs/TROUBLESHOOTING.md](./docs/TROUBLESHOOTING.md).
 
 ---
 
-_Last updated: 2026-01-25 (ET)_
+_Last updated: 2026-02-01 (ET)_
