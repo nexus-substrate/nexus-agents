@@ -23,7 +23,7 @@ vi.mock('yaml', () => ({
   parse: vi.fn(),
 }));
 
-// Mock core logger
+// Mock core module
 vi.mock('../core/index.js', () => ({
   createLogger: vi.fn(() => ({
     info: vi.fn(),
@@ -31,6 +31,7 @@ vi.mock('../core/index.js', () => ({
     error: vi.fn(),
     debug: vi.fn(),
   })),
+  getErrorMessage: vi.fn((e: unknown) => (e instanceof Error ? e.message : String(e))),
 }));
 
 // Mock indexer module

@@ -15,7 +15,7 @@ vi.mock('../dogfooding/index.js', () => ({
   formatReviewComment: vi.fn(),
 }));
 
-// Mock the core logger
+// Mock the core module
 vi.mock('../core/index.js', () => ({
   createLogger: vi.fn(() => ({
     info: vi.fn(),
@@ -23,6 +23,7 @@ vi.mock('../core/index.js', () => ({
     error: vi.fn(),
     debug: vi.fn(),
   })),
+  formatPercentage: vi.fn((n: number) => `${String(Math.round(n * 100))}%`),
 }));
 
 import { createPRReviewer, formatReviewComment } from '../dogfooding/index.js';

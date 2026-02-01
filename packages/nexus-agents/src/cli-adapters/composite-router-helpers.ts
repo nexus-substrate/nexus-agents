@@ -8,12 +8,11 @@
  */
 
 import type { Task } from '../core/types/agent.js';
-import { getTimeProvider } from '../core/index.js';
+import { getTimeProvider, type TaskProfile } from '../core/index.js';
 import type { CliName, CliTask, BudgetConstraint } from './types.js';
 import type { BanditContext } from './budget-router-types.js';
 import type { TopsisModelProfile, TopsisResult } from './topsis-types.js';
 import { DEFAULT_MODEL_PROFILES } from './topsis-types.js';
-import type { TaskProfile } from './task-analyzer.js';
 import type { BudgetRouter } from './budget-router.js';
 import type { TopsisRouter } from './topsis-router.js';
 import type { CompositeRouterConfig } from './composite-router-types.js';

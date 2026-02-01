@@ -9,7 +9,7 @@
 
 import { z } from 'zod';
 import type { ICliAdapter, CliName } from './types.js';
-import type { TaskProfile } from './task-analyzer.js';
+import type { TaskProfile } from '../core/index.js';
 import type { PreferenceRouterConfig } from './preference-router-types.js';
 import type { ZeroRouterConfig, DifficultyEstimate, ModelTier } from './zero-router-types.js';
 import type { LatencyTrackerConfig, LatencyTrackerStats } from './latency-tracker-types.js';

@@ -8,7 +8,10 @@
  */
 
 import type { CliName, CapabilityProfile } from './types.js';
-import type { TaskProfile, TaskType } from './task-analyzer.js';
+import type { TaskProfile, TaskTypeCategory } from '../core/index.js';
+
+// TaskType is an alias for TaskTypeCategory for backward compatibility
+type TaskType = TaskTypeCategory;
 
 /**
  * Capability matching matrix from Issue #78.

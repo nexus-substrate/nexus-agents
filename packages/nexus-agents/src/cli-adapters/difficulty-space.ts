@@ -10,7 +10,7 @@
 
 import type { CliTask } from './types-capability.js';
 import { clamp01 } from '../utils/math-utils.js';
-import type { TaskProfile } from './task-analyzer.js';
+import type { TaskProfile } from '../core/index.js';
 import {
   type DifficultySpace,
   type DifficultyDimension,

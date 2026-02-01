@@ -227,16 +227,15 @@ export class FitnessScoreCalculator {
     // 06724b5: Dead constants removed (CLAUDE/OPENAI/GEMINI_CHARS_PER_TOKEN)
     // No deduction - fully consolidated
 
-    // Check: Task analysis unified
-    // task-analyzer.ts vs SharedTaskAnalyzer - 2 implementations
-    score -= 2;
-    findings.push({
-      dimension: 'canonicalPaths',
-      severity: 'warning',
-      description: 'Task analysis has legacy and new implementation',
-      pointsDeducted: 2,
-      suggestion: 'Complete migration to SharedTaskAnalyzer (Issue #574)',
-    });
+    // Check: Task analysis unified - COMPLETE
+    // CLI routing pipeline uses SharedTaskAnalyzer via taskAnalysisResultToTaskProfile():
+    //   - composite-router-stages.ts:analyzeTaskProfile() calls createSharedTaskAnalyzer()
+    //   - composite-router-helpers.ts, composite-router-types.ts import TaskProfile from core
+    //   - router-scoring.ts, difficulty-space.ts import TaskProfile from core
+    // Legacy cli-adapters/task-analyzer.ts preserved for backward compatibility only:
+    //   - Re-exported from cli-adapters/index.ts for external consumers
+    //   - Scheduled for removal in v3.0 (Issue #574)
+    // No deduction - routing pipeline fully migrated
 
     // Check: Router implementations
     // Canonical routers (5): CompositeRouter, BudgetRouter, ZeroRouter, PreferenceRouter, TopsisRouter
