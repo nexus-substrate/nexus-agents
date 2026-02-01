@@ -212,35 +212,36 @@ function mapComplexityLevel(level: ComplexityLevel): ExpertTaskComplexity {
 
 /**
  * Extracts required capabilities from analysis.
+ * Uses capability names matching expert-defaults.ts definitions.
  */
 function extractRequiredCapabilities(analysis: SharedTaskAnalysisResult): string[] {
   const capabilities: string[] = [];
 
-  // Map capability flags to capability strings
-  if (analysis.capabilities.codeGeneration) capabilities.push('code-generation');
-  if (analysis.capabilities.multimodal) capabilities.push('multimodal');
-  if (analysis.capabilities.parallelizable) capabilities.push('parallel-execution');
-  if (analysis.capabilities.highContext) capabilities.push('large-context');
+  // Always include task_execution as base capability
+  capabilities.push('task_execution');
+
+  // Map capability flags to expert capability strings
+  if (analysis.capabilities.codeGeneration) capabilities.push('code_generation');
 
   // Map reasoning type to capabilities
   if (analysis.reasoningType === 'reasoning') {
-    capabilities.push('complex-reasoning', 'problem-solving');
+    capabilities.push('research');
   }
 
   // Map complexity to capabilities
   if (analysis.complexity === 'complex' || analysis.complexity === 'expert') {
-    capabilities.push('deep-analysis', 'collaboration');
+    capabilities.push('collaboration');
   }
 
   // Map task type to capabilities
   const taskTypeCapabilities: Record<TaskTypeCategory, string[]> = {
-    architecture: ['system-design', 'architectural-patterns'],
-    code_implementation: ['code-generation', 'implementation'],
-    code_review: ['code-analysis', 'security-review'],
-    test_generation: ['testing', 'test-generation'],
-    documentation: ['documentation', 'technical-writing'],
-    large_codebase: ['large-context', 'codebase-analysis'],
-    bulk_operations: ['batch-processing', 'automation'],
+    architecture: ['research', 'collaboration'],
+    code_implementation: ['code_generation', 'tool_use'],
+    code_review: ['code_review'],
+    test_generation: ['code_generation', 'code_review', 'tool_use'],
+    documentation: ['research', 'tool_use'],
+    large_codebase: ['tool_use'],
+    bulk_operations: ['tool_use'],
     general: [],
   };
   capabilities.push(...taskTypeCapabilities[analysis.taskType]);
@@ -260,36 +261,117 @@ function extractKeywords(analysis: SharedTaskAnalysisResult): string[] {
 }
 
 /**
+ * Strong security-related signals that indicate a security-focused task.
+ * These keywords override the base domain detection.
+ */
+const STRONG_SECURITY_SIGNALS = [
+  'security',
+  'vulnerability',
+  'vulnerabilities',
+  'audit',
+  'authentication',
+  'authorization',
+  'exploit',
+  'penetration',
+  'xss',
+  'sql injection',
+  'csrf',
+  'attack',
+  'threat',
+  'malware',
+  'encryption',
+  'cryptograph',
+];
+
+/**
+ * Detects if task is primarily security-focused based on strong signals.
+ */
+function isSecurityFocused(analysis: SharedTaskAnalysisResult): boolean {
+  const signals = analysis.matchedSignals.join(' ').toLowerCase();
+  let securityScore = 0;
+
+  for (const keyword of STRONG_SECURITY_SIGNALS) {
+    if (signals.includes(keyword)) {
+      securityScore++;
+    }
+  }
+
+  // Also check if task type suggests security review
+  if (analysis.taskType === 'code_review' && securityScore > 0) {
+    securityScore++;
+  }
+
+  // Require at least 2 security signals to override primary domain
+  return securityScore >= 2;
+}
+
+/**
+ * Checks if security should be a secondary domain.
+ */
+function shouldAddSecuritySecondary(signals: string, primaryDomain: ExpertTaskDomain): boolean {
+  return (
+    primaryDomain !== 'security' &&
+    (signals.includes('security') || signals.includes('vulnerabilit'))
+  );
+}
+
+/**
+ * Checks if testing should be a secondary domain.
+ */
+function shouldAddTestingSecondary(signals: string, taskType: TaskTypeCategory): boolean {
+  return signals.includes('test') && taskType !== 'test_generation';
+}
+
+/**
+ * Checks if documentation should be a secondary domain.
+ */
+function shouldAddDocumentationSecondary(signals: string, taskType: TaskTypeCategory): boolean {
+  return signals.includes('doc') && taskType !== 'documentation';
+}
+
+/**
+ * Checks if architecture should be a secondary domain.
+ */
+function shouldAddArchitectureSecondary(signals: string, taskType: TaskTypeCategory): boolean {
+  return (signals.includes('design') || signals.includes('pattern')) && taskType !== 'architecture';
+}
+
+/**
  * Detects secondary domains from analysis signals.
  */
-function detectSecondaryDomains(analysis: SharedTaskAnalysisResult): ExpertTaskDomain[] {
+function detectSecondaryDomains(
+  analysis: SharedTaskAnalysisResult,
+  primaryDomain: ExpertTaskDomain
+): ExpertTaskDomain[] {
   const secondary: ExpertTaskDomain[] = [];
   const signals = analysis.matchedSignals.join(' ').toLowerCase();
 
-  // Detect security-related signals
-  if (signals.includes('security') || signals.includes('vulnerabilit')) {
-    secondary.push('security');
-  }
+  if (shouldAddSecuritySecondary(signals, primaryDomain)) secondary.push('security');
+  if (shouldAddTestingSecondary(signals, analysis.taskType)) secondary.push('testing');
+  if (shouldAddDocumentationSecondary(signals, analysis.taskType)) secondary.push('documentation');
+  if (shouldAddArchitectureSecondary(signals, analysis.taskType)) secondary.push('architecture');
 
-  // Detect testing-related signals
-  if (signals.includes('test') && analysis.taskType !== 'test_generation') {
-    secondary.push('testing');
-  }
-
-  // Detect documentation-related signals
-  if (signals.includes('doc') && analysis.taskType !== 'documentation') {
-    secondary.push('documentation');
-  }
-
-  // Detect architecture-related signals
-  if (
-    (signals.includes('design') || signals.includes('pattern')) &&
-    analysis.taskType !== 'architecture'
-  ) {
-    secondary.push('architecture');
+  // If security became primary, add original domain as secondary
+  if (primaryDomain === 'security') {
+    const baseDomain = mapTaskTypeToDomain(analysis.taskType);
+    if (baseDomain !== 'security' && baseDomain !== 'general') {
+      secondary.push(baseDomain);
+    }
   }
 
   return secondary;
+}
+
+/**
+ * Determines the primary domain, promoting security when appropriate.
+ */
+function determinePrimaryDomain(analysis: SharedTaskAnalysisResult): ExpertTaskDomain {
+  // Check for strong security focus first
+  if (isSecurityFocused(analysis)) {
+    return 'security';
+  }
+
+  return mapTaskTypeToDomain(analysis.taskType);
 }
 
 /**
@@ -315,13 +397,15 @@ function detectSecondaryDomains(analysis: SharedTaskAnalysisResult): ExpertTaskD
 export function toExpertTaskAnalysisResult(
   analysis: SharedTaskAnalysisResult
 ): ExpertTaskAnalysisResult {
+  const primaryDomain = determinePrimaryDomain(analysis);
+
   return {
-    domain: mapTaskTypeToDomain(analysis.taskType),
+    domain: primaryDomain,
     complexity: mapComplexityLevel(analysis.complexity),
     requiredCapabilities: extractRequiredCapabilities(analysis),
     keywords: extractKeywords(analysis),
     estimatedEffort: clamp(Math.round(analysis.complexityScore * 10), 1, 10),
-    secondaryDomains: detectSecondaryDomains(analysis),
+    secondaryDomains: detectSecondaryDomains(analysis, primaryDomain),
     confidence: Math.max(analysis.taskTypeConfidence, analysis.reasoningConfidence),
   };
 }

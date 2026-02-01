@@ -6,14 +6,25 @@
  */
 
 import type { Task, AgentRole } from '../../core/index.js';
-import { ok, err, NexusError, ErrorCode } from '../../core/index.js';
-import type { Result } from '../../core/index.js';
+import { ok, err, NexusError, ErrorCode, createSharedTaskAnalyzer } from '../../core/index.js';
+import type { Result, ISharedTaskAnalyzer } from '../../core/index.js';
 import {
-  analyzeTask,
-  type TaskAnalysisResult,
-  type TaskDomain,
-  TaskComplexity,
-} from './task-analyzer.js';
+  toExpertTaskAnalysisResult,
+  type ExpertTaskAnalysisResult,
+  type ExpertTaskDomain,
+  type ExpertTaskComplexity,
+} from '../../core/task-analysis/task-profile-adapter.js';
+
+// Legacy type aliases for backward compatibility
+type TaskAnalysisResult = ExpertTaskAnalysisResult;
+type TaskDomain = ExpertTaskDomain;
+
+// Complexity constants matching legacy values
+const TaskComplexity = {
+  LOW: 'low' as ExpertTaskComplexity,
+  MEDIUM: 'medium' as ExpertTaskComplexity,
+  HIGH: 'high' as ExpertTaskComplexity,
+} as const;
 import { DEFAULT_EXPERTS } from './expert-defaults.js';
 import type {
   ExpertDefinition,
@@ -58,6 +69,27 @@ export class SelectionError extends NexusError {
 /** Cached default registry singleton for performance optimization. */
 let cachedDefaultRegistry: ExpertRegistry | null = null;
 
+/** Cached task analyzer singleton for performance optimization. */
+let cachedAnalyzer: ISharedTaskAnalyzer | null = null;
+
+/**
+ * Gets the cached task analyzer, creating it if needed.
+ */
+function getAnalyzer(): ISharedTaskAnalyzer {
+  cachedAnalyzer ??= createSharedTaskAnalyzer();
+  return cachedAnalyzer;
+}
+
+/**
+ * Analyzes a task using SharedTaskAnalyzer and converts to expert format.
+ * This replaces the legacy analyzeTask() call.
+ */
+function analyzeTaskForExperts(task: Task): TaskAnalysisResult {
+  const analyzer = getAnalyzer();
+  const sharedResult = analyzer.analyze(task);
+  return toExpertTaskAnalysisResult(sharedResult);
+}
+
 /**
  * Gets the cached default expert registry, creating it if needed.
  * This avoids recreating the registry on every call to quickSelect().
@@ -68,11 +100,12 @@ function getDefaultRegistry(): ExpertRegistry {
 }
 
 /**
- * Resets the cached default registry.
+ * Resets the cached default registry and analyzer.
  * Primarily useful for testing to ensure test isolation.
  */
 export function resetDefaultRegistry(): void {
   cachedDefaultRegistry = null;
+  cachedAnalyzer = null;
 }
 
 /**
@@ -103,7 +136,7 @@ const EXPERT_WEIGHT = 0.2;
 
 function calculateCapabilityScore(
   expert: ExpertDefinition,
-  requiredCapabilities: string[],
+  requiredCapabilities: readonly string[],
   customWeights?: Record<string, number>
 ): { score: number; matched: string[] } {
   if (requiredCapabilities.length === 0) return { score: 0.5, matched: [] };
@@ -124,7 +157,7 @@ function calculateCapabilityScore(
 function calculateDomainScore(
   expert: ExpertDefinition,
   primaryDomain: TaskDomain,
-  secondaryDomains: TaskDomain[],
+  secondaryDomains: readonly TaskDomain[],
   preferredDomains?: TaskDomain[]
 ): number {
   let score = 0;
@@ -346,17 +379,8 @@ export function selectExperts(
     }
   }
 
-  const analysisResult = analyzeTask(task);
-  if (!analysisResult.ok) {
-    return err(
-      new SelectionError(`Task analysis failed: ${analysisResult.error.message}`, {
-        cause: analysisResult.error,
-        context: { taskId: task.id },
-      })
-    );
-  }
-
-  const analysis = analysisResult.value;
+  // Use SharedTaskAnalyzer via adapter (never fails, returns fallback values)
+  const analysis = analyzeTaskForExperts(task);
   const experts = getFilteredExperts(registry, options?.excludeExperts);
   if (experts.length === 0) {
     return err(new SelectionError('No available experts found', { context: { taskId: task.id } }));

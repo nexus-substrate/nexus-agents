@@ -8,7 +8,10 @@
 
 import { z } from 'zod';
 import type { AgentRole } from '../../core/index.js';
-import type { TaskDomain } from './task-analyzer.js';
+import type { ExpertTaskDomain } from '../../core/task-analysis/task-profile-adapter.js';
+
+// Re-export as TaskDomain for backward compatibility with expert definitions
+export type TaskDomain = ExpertTaskDomain;
 
 // ============================================================================
 // Collaboration Patterns
