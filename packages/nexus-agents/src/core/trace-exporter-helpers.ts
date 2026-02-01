@@ -57,17 +57,40 @@ export const COLORS = {
 
 /**
  * Formats duration in human-readable form.
+ * Supports milliseconds, seconds, minutes, and hours.
+ *
+ * @param ms - Duration in milliseconds
+ * @returns Formatted string like "150ms", "2.5s", "3m 45s", or "2h 15m"
  */
 export function formatDuration(ms: number): string {
   if (ms < 1000) {
     return `${String(ms)}ms`;
   }
   if (ms < 60000) {
-    return `${(ms / 1000).toFixed(2)}s`;
+    return `${(ms / 1000).toFixed(1)}s`;
   }
-  const minutes = Math.floor(ms / 60000);
-  const seconds = ((ms % 60000) / 1000).toFixed(1);
-  return `${String(minutes)}m ${seconds}s`;
+  if (ms < 3600000) {
+    const minutes = Math.floor(ms / 60000);
+    const seconds = Math.floor((ms % 60000) / 1000);
+    return `${String(minutes)}m ${String(seconds)}s`;
+  }
+  // Hours format
+  const hours = Math.floor(ms / 3600000);
+  const remainMins = Math.floor((ms % 3600000) / 60000);
+  return `${String(hours)}h ${String(remainMins)}m`;
+}
+
+/**
+ * Formats duration in a simplified format (minutes only after 1min).
+ * Useful for compact displays.
+ *
+ * @param ms - Duration in milliseconds
+ * @returns Formatted string like "150ms", "2.5s", or "3.5min"
+ */
+export function formatDurationCompact(ms: number): string {
+  if (ms < 1000) return `${String(ms)}ms`;
+  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
+  return `${(ms / 60000).toFixed(1)}min`;
 }
 
 /**

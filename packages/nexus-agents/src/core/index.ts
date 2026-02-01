@@ -89,6 +89,14 @@ export {
 } from './trace-exporter.js';
 export type { ExportFormat, ExportedTrace, VisualizationOptions } from './trace-exporter.js';
 
+// Formatting helpers (LOOP H-K consolidation)
+export {
+  formatDuration,
+  formatDurationCompact,
+  formatCost,
+  formatTokens,
+} from './trace-exporter-helpers.js';
+
 // Artifact provenance
 export {
   ArtifactType,

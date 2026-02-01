@@ -13,7 +13,7 @@ import * as os from 'node:os';
 import type { Result } from '../core/result.js';
 import { ok, err } from '../core/result.js';
 import type { ILogger } from '../core/logger.js';
-import { createLogger, getTimeProvider } from '../core/index.js';
+import { createLogger, getTimeProvider, formatDuration, formatCost } from '../core/index.js';
 import {
   type SessionSummary,
   type SessionWithTasks,
@@ -81,22 +81,7 @@ async function getStorage(
   return ok(storage);
 }
 
-function formatDuration(ms: number): string {
-  if (ms < 1000) return String(ms) + 'ms';
-  if (ms < 60000) return (ms / 1000).toFixed(1) + 's';
-  const mins = Math.floor(ms / 60000);
-  const secs = Math.floor((ms % 60000) / 1000);
-  if (ms < 3600000) return String(mins) + 'm ' + String(secs) + 's';
-  const hours = Math.floor(ms / 3600000);
-  const remainMins = Math.floor((ms % 3600000) / 60000);
-  return String(hours) + 'h ' + String(remainMins) + 'm';
-}
-
-function formatCost(usd: number): string {
-  if (usd === 0) return '$0.00';
-  if (usd < 0.01) return '$' + usd.toFixed(4);
-  return '$' + usd.toFixed(2);
-}
+// formatDuration and formatCost imported from core/index.js
 
 function output(text: string): void {
   process.stdout.write(text + '\n');

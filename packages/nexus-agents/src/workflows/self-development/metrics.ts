@@ -7,7 +7,7 @@
  */
 
 import type { Result } from '../../core/index.js';
-import { ok, err } from '../../core/index.js';
+import { ok, err, formatDurationCompact } from '../../core/index.js';
 import type { SelfDevWorkflowResult, SelfDevWorkflowMetrics, WorkflowPhase } from './types.js';
 
 // =============================================================================
@@ -208,14 +208,8 @@ export function metricsPassQualityGates(metrics: SelfDevWorkflowMetrics): Result
 // Summary
 // =============================================================================
 
-/**
- * Format duration in human-readable format.
- */
-function formatDuration(ms: number): string {
-  if (ms < 1000) return `${String(ms)}ms`;
-  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
-  return `${(ms / 60000).toFixed(1)}min`;
-}
+// formatDuration uses formatDurationCompact from core for compact display
+const formatDuration = formatDurationCompact;
 
 /**
  * Generate human-readable metrics summary.
