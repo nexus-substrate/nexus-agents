@@ -14,6 +14,7 @@ import {
   createLogger,
   getTimeProvider,
   getTokenEstimator,
+  formatZodError,
 } from '../core/index.js';
 import type {
   ContextBudget,
@@ -70,12 +71,12 @@ export class ContextManager {
   constructor(config: ContextManagerConfig) {
     const validation = ContextManagerConfigSchema.safeParse(config);
     if (!validation.success) {
-      const issues = validation.error.issues
-        .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
-        .join('; ');
-      throw new ValidationError(`Invalid ContextManager config: ${issues}`, {
-        context: { config, validationErrors: validation.error.issues },
-      });
+      throw new ValidationError(
+        `Invalid ContextManager config: ${formatZodError(validation.error)}`,
+        {
+          context: { config, validationErrors: validation.error.issues },
+        }
+      );
     }
 
     this.maxTokens = config.maxTokens;

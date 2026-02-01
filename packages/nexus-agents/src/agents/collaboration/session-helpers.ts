@@ -6,7 +6,7 @@
  */
 
 import type { Result, TaskResult, AgentRole } from '../../core/index.js';
-import { ok, err, AgentError, getTimeProvider } from '../../core/index.js';
+import { ok, err, AgentError, getTimeProvider, formatZodError } from '../../core/index.js';
 import type {
   CollaborationConfig,
   CollaborationPattern,
@@ -300,11 +300,8 @@ export function buildAggregatedResult(input: AggregatedResultInput): AggregatedR
 export function validateConfig(config: CollaborationConfig): Result<void, AgentError> {
   const validation = CollaborationConfigSchema.safeParse(config);
   if (!validation.success) {
-    const issues = validation.error.issues
-      .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
-      .join('; ');
     return err(
-      new AgentError(`Invalid collaboration config: ${issues}`, {
+      new AgentError(`Invalid collaboration config: ${formatZodError(validation.error)}`, {
         context: { sessionId: config.sessionId, validationErrors: validation.error.issues },
       })
     );

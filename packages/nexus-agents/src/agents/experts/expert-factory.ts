@@ -6,7 +6,7 @@
  */
 
 import type { Result, IModelAdapter, AgentCapability } from '../../core/index.js';
-import { ok, err, AgentError } from '../../core/index.js';
+import { ok, err, AgentError, formatZodError } from '../../core/index.js';
 import { SimpleAgent } from '../simple-agent.js';
 import type { BaseAgentOptions } from '../base-agent.js';
 import type { ContextPrunerAgentConfig } from '../base-agent-pruning-init.js';
@@ -74,12 +74,7 @@ export class Expert extends SimpleAgent {
   }
 }
 
-/**
- * Build validation error message from Zod issues.
- */
-function buildValidationError(issues: { path: (string | number)[]; message: string }[]): string {
-  return issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; ');
-}
+// buildValidationError removed - use formatZodError from core/index.js instead
 
 /**
  * Default values for model preferences.
@@ -180,9 +175,8 @@ export function createExpert(
   const validationResult = ExpertConfigSchema.safeParse(config);
 
   if (!validationResult.success) {
-    const issues = buildValidationError(validationResult.error.issues);
     return err(
-      new FactoryError(`Invalid expert configuration: ${issues}`, {
+      new FactoryError(`Invalid expert configuration: ${formatZodError(validationResult.error)}`, {
         context: { configId: config.id, validationErrors: validationResult.error.issues },
       })
     );
@@ -302,9 +296,8 @@ export function validateExpertConfigStrict(config: unknown): Result<ExpertConfig
   const result = ExpertConfigSchema.safeParse(config);
 
   if (!result.success) {
-    const issues = buildValidationError(result.error.issues);
     return err(
-      new FactoryError(`Invalid expert configuration: ${issues}`, {
+      new FactoryError(`Invalid expert configuration: ${formatZodError(result.error)}`, {
         context: { validationErrors: result.error.issues },
       })
     );

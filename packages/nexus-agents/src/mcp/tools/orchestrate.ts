@@ -20,6 +20,7 @@ import {
   createLogger,
   getTimeProvider,
   getRandomProvider,
+  formatZodError,
 } from '../../core/index.js';
 import type { IOrchestrator, OrchestratorDefinition } from '../../core/types/orchestrator.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
@@ -334,13 +335,12 @@ function createOrchestrateHandler(deps: OrchestrateDeps) {
   return async (args: unknown, ctx: HandlerContext) => {
     const validated = OrchestrateInputSchema.safeParse(args);
     if (!validated.success) {
-      const errorMessage = validated.error.issues
-        .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
-        .join('; ');
       ctx.logger.warn('Invalid orchestrate input', { errors: validated.error.issues });
       return {
         isError: true,
-        content: [{ type: 'text' as const, text: `Validation error: ${errorMessage}` }],
+        content: [
+          { type: 'text' as const, text: `Validation error: ${formatZodError(validated.error)}` },
+        ],
       };
     }
 
