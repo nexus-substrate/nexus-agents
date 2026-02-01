@@ -1,6 +1,6 @@
 # Nexus Agents Documentation
 
-**Canonical Documentation Index** | Last Updated: 2026-02-01
+**Canonical Documentation Index** | Last Updated: 2026-02-01 (Added getting-started/, expanded guides/)
 
 This is the **single source of truth** for all nexus-agents documentation. All documentation must be indexed here to be considered valid.
 
@@ -8,12 +8,12 @@ This is the **single source of truth** for all nexus-agents documentation. All d
 
 ## Quick Start by Role
 
-| Role               | Start Here                         | Then Read                                        |
-| ------------------ | ---------------------------------- | ------------------------------------------------ |
-| **New User**       | [Quick Start](../QUICK_START.md)   | [CLI Usage](./guides/DEBUGGING_OBSERVABILITY.md) |
-| **Contributor**    | [Contributing](../CONTRIBUTING.md) | [Development Guide](./development/README.md)     |
-| **Operator**       | [ENTRYPOINTS.md](./ENTRYPOINTS.md) | [Configuration](./TROUBLESHOOTING.md)            |
-| **Agent (Claude)** | [CLAUDE.md](../CLAUDE.md)          | This index                                       |
+| Role               | Start Here                         | Then Read                                           |
+| ------------------ | ---------------------------------- | --------------------------------------------------- |
+| **New User**       | [Quick Start](../QUICK_START.md)   | [Installation](./getting-started/INSTALLATION.md)   |
+| **Contributor**    | [Contributing](../CONTRIBUTING.md) | [Development Guide](./development/README.md)        |
+| **Operator**       | [ENTRYPOINTS.md](./ENTRYPOINTS.md) | [Configuration](./getting-started/CONFIGURATION.md) |
+| **Agent (Claude)** | [CLAUDE.md](../CLAUDE.md)          | This index                                          |
 
 ---
 
@@ -24,6 +24,7 @@ docs/
 ├── README.md              # THIS FILE - Canonical index
 ├── INDEX.yaml             # Machine-parseable index
 │
+├── getting-started/       # Installation and configuration
 ├── architecture/          # System design documentation
 ├── development/           # Contributor guides
 ├── research/              # Research tracking
@@ -57,6 +58,13 @@ These documents define the system and must be kept up-to-date:
 ### Tier 2: Reference (Regularly Updated)
 
 Detailed technical documentation:
+
+#### Getting Started
+
+| Document                                               | Description                 | Status    |
+| ------------------------------------------------------ | --------------------------- | --------- |
+| [INSTALLATION.md](./getting-started/INSTALLATION.md)   | Platform installation guide | Canonical |
+| [CONFIGURATION.md](./getting-started/CONFIGURATION.md) | YAML and env configuration  | Canonical |
 
 #### Architecture
 
@@ -114,9 +122,25 @@ Detailed technical documentation:
 
 #### Guides
 
-| Document                                                          | Description            |
-| ----------------------------------------------------------------- | ---------------------- |
-| [DEBUGGING_OBSERVABILITY.md](./guides/DEBUGGING_OBSERVABILITY.md) | Debug logging, tracing |
+| Document                                                          | Description              |
+| ----------------------------------------------------------------- | ------------------------ |
+| [MCP_INTEGRATION.md](./guides/MCP_INTEGRATION.md)                 | MCP server configuration |
+| [WORKFLOW_TEMPLATES.md](./guides/WORKFLOW_TEMPLATES.md)           | Creating YAML workflows  |
+| [DEBUGGING_OBSERVABILITY.md](./guides/DEBUGGING_OBSERVABILITY.md) | Debug logging, tracing   |
+
+#### Reference
+
+| Document                                       | Description                       | Status    |
+| ---------------------------------------------- | --------------------------------- | --------- |
+| [capabilities.md](./reference/capabilities.md) | CLI/MCP/Workflow capability index | Generated |
+| [skills-index.md](./skills-index.md)           | LLM context loading index         | Canonical |
+
+#### Operational Docs
+
+| Document                                     | Description             |
+| -------------------------------------------- | ----------------------- |
+| [docs-inventory.md](./ops/docs-inventory.md) | Documentation inventory |
+| [docs-site-plan.md](./ops/docs-site-plan.md) | Site migration plan     |
 
 #### Interfaces
 
