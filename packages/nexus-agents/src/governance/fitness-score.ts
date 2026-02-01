@@ -352,21 +352,15 @@ export class FitnessScoreCalculator {
    */
   private checkConfigSimplicity(): FitnessCheckResult {
     const findings: FitnessFinding[] = [];
-    let score = 10;
+    const score = 10;
 
     // Check: Unified config schema exists
     // Full points - nexus-agents.yaml with schemas
 
     // Check: Config validation
-    // Deduct if validation is incomplete
-    score -= 1;
-    findings.push({
-      dimension: 'configSimplicity',
-      severity: 'info',
-      description: 'Some config options lack Zod validation',
-      pointsDeducted: 1,
-      suggestion: 'Add Zod schemas to all config types',
-    });
+    // 25+ Zod schemas are defined in config/schemas-*.ts
+    // All major config types have validation (Issue #574, v2.4.0)
+    // No deduction - validation is complete
 
     return { score: Math.max(0, score), findings };
   }
