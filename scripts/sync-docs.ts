@@ -54,6 +54,11 @@ const DOC_MAPPINGS: DocMapping[] = [
   { source: 'docs/architecture/MCP_PROTOCOL.md', dest: 'architecture/mcp-protocol.md' },
   { source: 'docs/architecture/SECURITY.md', dest: 'architecture/security.md' },
   {
+    source: 'docs/architecture/CONTEXT_LOAD_BALANCING.md',
+    dest: 'architecture/context-load-balancing.md',
+    titleOverride: 'Context Load Balancing',
+  },
+  {
     source: 'docs/architecture/README.md',
     dest: 'architecture/overview.md',
     titleOverride: 'Architecture Overview',

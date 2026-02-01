@@ -178,52 +178,46 @@ Hub documents for each major section:
 
 ## Gaps Identified
 
-### Missing from Website
+### Completed ✅
 
-| Content                      | Priority | Action                  |
-| ---------------------------- | -------- | ----------------------- |
-| TROUBLESHOOTING.md           | High     | Add to sync-docs.ts     |
-| Reference/capabilities index | High     | Create new (repo index) |
-| Context budgets guide        | Medium   | Create new              |
+| Gap                          | Status  | Implementation                        |
+| ---------------------------- | ------- | ------------------------------------- |
+| TROUBLESHOOTING.md sync      | ✅ Done | Added to `scripts/sync-docs.ts`       |
+| Reference/capabilities index | ✅ Done | `docs/reference/capabilities.md`      |
+| `artifacts/repo-index.json`  | ✅ Done | `scripts/generate-repo-index.ts`      |
+| CI sync check                | ✅ Done | `website-sync` job in docs-check.yml  |
+| LLMs.txt files               | ✅ Done | `docs/llms.txt`, `docs/llms-full.txt` |
 
-### Missing from Canonical Docs
+### Remaining Gaps
 
-| Content                          | Priority | Action                 |
-| -------------------------------- | -------- | ---------------------- |
-| `docs/reference/capabilities.md` | High     | Create (deterministic) |
-| `artifacts/repo-index.json`      | High     | Create (deterministic) |
-| Skills-style index for LLMs      | Medium   | Create                 |
-
-### Enforcement Gaps
-
-| Gap                              | Priority | Action                |
-| -------------------------------- | -------- | --------------------- |
-| CI sync check                    | High     | Add to GitHub Actions |
-| README freshness validator       | Medium   | Create script         |
-| ARCHITECTURE freshness validator | Medium   | Create script         |
+| Gap                                  | Priority | Issue | Action                        |
+| ------------------------------------ | -------- | ----- | ----------------------------- |
+| CONTEXT_LOAD_BALANCING.md not synced | Medium   | #633  | Add to sync-docs.ts           |
+| README freshness validator           | Medium   | #634  | Create script                 |
+| ARCHITECTURE freshness validator     | Medium   | #634  | Create script                 |
+| INDEX.yaml → README.md generator     | Medium   | #630  | Deterministic generation      |
+| Cross-reference validation           | Medium   | #632  | Validate code symbols in docs |
 
 ---
 
 ## Recommendations
 
-### Immediate (Phase 2)
+### Next Steps
 
-1. Add `docs/TROUBLESHOOTING.md` to sync-docs.ts
-2. Create `docs/reference/capabilities.md` from CLI reality map
-3. Create `artifacts/repo-index.json` generator script
-4. Add CI job for `sync-docs.ts --check`
-
-### Short-term (Phase 3)
-
-5. Create skills-style index for LLM context loading
-6. Add README/ARCHITECTURE freshness validation
-7. Visual UI/UX audit of website
+1. ~~Add `docs/TROUBLESHOOTING.md` to sync-docs.ts~~ ✅
+2. ~~Create `docs/reference/capabilities.md`~~ ✅
+3. ~~Create `artifacts/repo-index.json` generator~~ ✅
+4. ~~Add CI job for `sync-docs.ts --check`~~ ✅
+5. Add CONTEXT_LOAD_BALANCING.md to website sync (#633)
+6. Add README/ARCHITECTURE freshness validation (#634)
+7. Implement INDEX.yaml → README.md generator (#630)
+8. Implement cross-reference validation (#632)
 
 ### Long-term
 
-8. Consider syncing ADRs to website (read-only reference)
-9. Auto-generate dependency graph diagram
-10. Add search analytics to identify missing content
+9. Consider syncing ADRs to website (read-only reference)
+10. Auto-generate dependency graph diagram
+11. Add search analytics to identify missing content
 
 ---
 
