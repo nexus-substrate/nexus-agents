@@ -10,6 +10,7 @@
 import { createLogger } from '../core/index.js';
 import { createPRReviewer, formatReviewComment } from '../dogfooding/index.js';
 import type { PRReviewResult, ReviewSeverity } from '../dogfooding/index.js';
+import { capitalize } from '../utils/text-utils.js';
 
 const logger = createLogger({ component: 'ReviewCommand' });
 
@@ -120,8 +121,4 @@ function printGitHubPreview(review: PRReviewResult): void {
   process.stdout.write('=== GitHub Comment Preview ===\n');
   process.stdout.write(formatReviewComment(review));
   process.stdout.write('\n');
-}
-
-function capitalize(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1);
 }

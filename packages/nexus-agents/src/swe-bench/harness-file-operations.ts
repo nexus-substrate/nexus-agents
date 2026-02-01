@@ -13,16 +13,10 @@ import * as path from 'node:path';
 import type { ILogger } from '../core/logger.js';
 import type { HarnessExecutionConfig, HarnessExecutionProgress } from './harness-executor-types.js';
 import { PYTHON_COMMAND, HARNESS_SCRIPT, HarnessExecutorError } from './harness-executor-types.js';
+import { capitalize } from '../utils/text-utils.js';
 
-/**
- * Capitalizes the first letter of a string.
- */
-function capitalizeFirst(str: string): string {
-  if (str.length === 0) return str;
-  const first = str[0];
-  if (first === undefined) return str;
-  return first.toUpperCase() + str.slice(1);
-}
+// Alias for backward compatibility
+const capitalizeFirst = capitalize;
 
 /**
  * Builds command line arguments for swebench harness.

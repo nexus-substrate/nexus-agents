@@ -162,3 +162,100 @@ export function stringifyValue(value: unknown): string {
   if (value === null || value === undefined) return '';
   return JSON.stringify(value);
 }
+
+// ============================================================================
+// String Capitalization
+// ============================================================================
+
+/**
+ * Capitalize the first character of a string.
+ *
+ * @param str - Input string
+ * @returns String with first character uppercased
+ * @example capitalize('hello') // 'Hello'
+ */
+export function capitalize(str: string): string {
+  if (str.length === 0) return str;
+  return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
+/**
+ * Capitalize the first character of each word in a string.
+ *
+ * @param str - Input string
+ * @returns String with each word capitalized
+ * @example capitalizeWords('hello world') // 'Hello World'
+ */
+export function capitalizeWords(str: string): string {
+  return str
+    .split(' ')
+    .map((word) => capitalize(word))
+    .join(' ');
+}
+
+/**
+ * Convert a kebab-case string to Title Case.
+ *
+ * @param str - Kebab-case string
+ * @returns Title Case string with hyphens replaced by spaces
+ * @example capitalizeKebab('hello-world') // 'Hello World'
+ */
+export function capitalizeKebab(str: string): string {
+  return str
+    .split('-')
+    .map((word) => capitalize(word))
+    .join(' ');
+}
+
+// ============================================================================
+// Text Truncation
+// ============================================================================
+
+/**
+ * Truncate text to a maximum length with a suffix.
+ *
+ * @param text - Input text
+ * @param maxLength - Maximum length including suffix
+ * @param suffix - Suffix to append when truncated (default: '...')
+ * @returns Truncated text with suffix if needed
+ * @example truncateText('hello world', 8) // 'hello...'
+ */
+export function truncateText(text: string, maxLength: number, suffix = '...'): string {
+  if (text.length <= maxLength) return text;
+  return text.slice(0, maxLength - suffix.length) + suffix;
+}
+
+/**
+ * Truncate text and include byte count information.
+ * Commonly used for output truncation in CLI tools.
+ *
+ * @param text - Input text
+ * @param maxLength - Maximum length before truncation marker
+ * @returns Truncated text with byte count info
+ * @example truncateWithInfo('hello world...', 5) // 'hello\n... [truncated 9 bytes]'
+ */
+export function truncateWithInfo(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
+  const truncatedBytes = text.length - maxLength;
+  return `${text.slice(0, maxLength)}\n... [truncated ${String(truncatedBytes)} bytes]`;
+}
+
+/**
+ * Truncate to the first sentence or a maximum length.
+ * Useful for extracting descriptions from longer text.
+ *
+ * @param text - Input text
+ * @param maxLength - Maximum length (default: 150)
+ * @returns First sentence or truncated text
+ * @example truncateSentence('Hello world. More text.', 150) // 'Hello world.'
+ */
+export function truncateSentence(text: string, maxLength = 150): string {
+  // Find first sentence ending
+  const sentenceEnd = text.search(/[.!?](?:\s|$)/);
+  if (sentenceEnd !== -1 && sentenceEnd < maxLength) {
+    return text.slice(0, sentenceEnd + 1).trim();
+  }
+  // Fall back to truncation
+  if (text.length <= maxLength) return text;
+  return text.slice(0, maxLength).trim() + '...';
+}

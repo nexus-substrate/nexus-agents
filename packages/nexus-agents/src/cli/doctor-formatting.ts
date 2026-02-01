@@ -16,38 +16,11 @@ import type {
   ConfigFileCheck,
   DoctorResult,
 } from './doctor.js';
+import { colors, symbols, writeLine } from './ansi-output.js';
+import { capitalize } from '../utils/text-utils.js';
 
 /** Required Node.js major version (for warning message). */
 const REQUIRED_NODE_MAJOR = 22;
-
-/**
- * ANSI color codes for terminal output.
- */
-const colors = {
-  reset: '\x1b[0m',
-  green: '\x1b[32m',
-  yellow: '\x1b[33m',
-  red: '\x1b[31m',
-  cyan: '\x1b[36m',
-  dim: '\x1b[2m',
-  bold: '\x1b[1m',
-} as const;
-
-/**
- * Symbols for status output.
- */
-const symbols = {
-  check: process.platform === 'win32' ? '√' : '✓',
-  cross: process.platform === 'win32' ? '×' : '✗',
-  warn: process.platform === 'win32' ? '!' : '⚠',
-};
-
-/**
- * Helper to write a line to stdout.
- */
-function writeLine(text: string): void {
-  process.stdout.write(text + '\n');
-}
 
 /**
  * Formats a status symbol with color.
@@ -73,13 +46,6 @@ function formatVersionStatus(status: string): string {
     default:
       return status;
   }
-}
-
-/**
- * Capitalizes the first letter of a string.
- */
-function capitalize(str: string): string {
-  return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
 /**

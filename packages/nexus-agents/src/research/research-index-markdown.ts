@@ -10,6 +10,10 @@
 import { getTimeProvider } from '../core/index.js';
 import { TOPIC_DESCRIPTIONS, RESEARCH_TOPICS } from './research-schemas.js';
 import type { PaperWithId, TechniqueWithId, RegistryStats } from './research-index-types.js';
+import { capitalizeKebab as capitalizeTopicName } from '../utils/text-utils.js';
+
+// Re-export for backward compatibility
+export { capitalizeTopicName };
 
 // ============================================================================
 // Date Utilities
@@ -31,20 +35,6 @@ export function getETDate(): string {
   const m = parts.find((p) => p.type === 'month')?.value ?? '';
   const d = parts.find((p) => p.type === 'day')?.value ?? '';
   return `${y}-${m}-${d}`;
-}
-
-// ============================================================================
-// String Utilities
-// ============================================================================
-
-/**
- * Capitalize topic name for display (e.g., 'code-generation' -> 'Code Generation').
- */
-export function capitalizeTopicName(topic: string): string {
-  return topic
-    .split('-')
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ');
 }
 
 // ============================================================================

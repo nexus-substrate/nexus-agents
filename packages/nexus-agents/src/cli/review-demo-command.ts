@@ -22,6 +22,7 @@ import {
   updateProgress,
   getSetupInstructions,
 } from './review-demo-helpers.js';
+import { capitalize } from '../utils/text-utils.js';
 
 /**
  * Executes the review demo command with enhanced UX.
@@ -351,11 +352,4 @@ function printSuccessMessage(durationMs: number): void {
   if (durationMs < 300000) {
     process.stdout.write('Target met: <5 minute time to value\n');
   }
-}
-
-/**
- * Capitalizes a string.
- */
-function capitalize(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1);
 }

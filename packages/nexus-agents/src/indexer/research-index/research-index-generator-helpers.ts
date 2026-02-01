@@ -19,20 +19,10 @@ import {
   getTechniquesByPriority,
   getTechniquesWithIssues,
 } from './research-index-parser.js';
+import { capitalizeWords as capitalize } from '../../utils/text-utils.js';
 
-// ============================================================================
-// String Helpers
-// ============================================================================
-
-/**
- * Capitalize the first letter of each word.
- */
-export function capitalize(str: string): string {
-  return str
-    .split(' ')
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ');
-}
+// Re-export for backward compatibility
+export { capitalize };
 
 // ============================================================================
 // Header & Stats Sections
