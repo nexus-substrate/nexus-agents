@@ -20,6 +20,7 @@ import {
   type UserPromptSubmitInput,
 } from './hook-types.js';
 import { exitError, exitSuccess } from './hook-output.js';
+import { formatZodError } from '../../core/index.js';
 
 // ============================================================================
 // Handler Types
@@ -112,8 +113,7 @@ export function parseHookInput(rawInput: string): HookResult | HookInput {
 
   const result = HookInputSchema.safeParse(parsed);
   if (!result.success) {
-    const errors = result.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ');
-    return exitError(`Invalid hook input: ${errors}`);
+    return exitError(`Invalid hook input: ${formatZodError(result.error)}`);
   }
 
   return result.data;

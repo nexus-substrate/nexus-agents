@@ -11,7 +11,7 @@
 import { z } from 'zod';
 import type { Result } from '../core/result.js';
 import { ok, err } from '../core/result.js';
-import { getTimeProvider } from '../core/index.js';
+import { getTimeProvider, formatZodError } from '../core/index.js';
 import { ValidationError } from '../core/errors.js';
 import type { ILogger } from '../core/logger.js';
 import { createLogger } from '../core/logger.js';
@@ -67,12 +67,12 @@ export class HybridMemoryBackend implements IMemoryBackend {
   constructor(config: HybridMemoryConfig) {
     const validation = HybridMemoryConfigSchema.safeParse(config);
     if (!validation.success) {
-      const issues = validation.error.issues
-        .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
-        .join('; ');
-      throw new ValidationError(`Invalid HybridMemoryBackend config: ${issues}`, {
-        context: { config, validationErrors: validation.error.issues },
-      });
+      throw new ValidationError(
+        `Invalid HybridMemoryBackend config: ${formatZodError(validation.error)}`,
+        {
+          context: { config, validationErrors: validation.error.issues },
+        }
+      );
     }
 
     this.dbPath = config.dbPath;

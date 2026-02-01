@@ -10,7 +10,7 @@
 
 import type { Result } from '../core/result.js';
 import { ok, err } from '../core/result.js';
-import { getTimeProvider } from '../core/index.js';
+import { getTimeProvider, formatZodError } from '../core/index.js';
 import type { ILogger } from '../core/logger.js';
 import { createLogger } from '../core/logger.js';
 import { MemoryError } from './memory-backend-types.js';
@@ -75,9 +75,7 @@ export class HindsightBeliefMemory implements IHindsightBeliefMemory {
   constructor(config?: BeliefMemoryConfig, logger?: ILogger) {
     const validation = BeliefMemoryConfigSchema.safeParse(config ?? {});
     if (!validation.success) {
-      throw new MemoryError(
-        `Invalid BeliefMemoryConfig: ${validation.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')}`
-      );
+      throw new MemoryError(`Invalid BeliefMemoryConfig: ${formatZodError(validation.error)}`);
     }
     this.config = { ...DEFAULT_BELIEF_CONFIG, ...config };
     this.logger = logger ?? createLogger({ component: 'HindsightBeliefMemory' });

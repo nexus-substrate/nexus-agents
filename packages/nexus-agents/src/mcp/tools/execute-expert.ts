@@ -12,7 +12,12 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger, Task } from '../../core/index.js';
-import { createLogger, getTimeProvider, getRandomProvider } from '../../core/index.js';
+import {
+  createLogger,
+  getTimeProvider,
+  getRandomProvider,
+  formatZodError,
+} from '../../core/index.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
 import { wrapToolWithTimeout, toSdkCallback } from '../middleware/tool-wrapper.js';
@@ -209,12 +214,11 @@ function createExecuteExpertHandler(deps: ExecuteExpertDeps) {
     // Validate input
     const validationResult = ExecuteExpertInputSchema.safeParse(args);
     if (!validationResult.success) {
-      const errorMessage = validationResult.error.issues
-        .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
-        .join('; ');
       return {
         isError: true,
-        content: [{ type: 'text', text: `Validation error: ${errorMessage}` }],
+        content: [
+          { type: 'text', text: `Validation error: ${formatZodError(validationResult.error)}` },
+        ],
       };
     }
 

@@ -12,7 +12,7 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger } from '../../core/index.js';
-import { createLogger } from '../../core/index.js';
+import { createLogger, formatZodError } from '../../core/index.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
 import { wrapToolWithTimeout, toSdkCallback } from '../middleware/tool-wrapper.js';
@@ -154,12 +154,11 @@ function listExpertsHandler(args: unknown, ctx: HandlerContext): Promise<ListExp
   // Validate input
   const validationResult = ListExpertsInputSchema.safeParse(args);
   if (!validationResult.success) {
-    const errorMessage = validationResult.error.issues
-      .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
-      .join('; ');
     return Promise.resolve({
       isError: true,
-      content: [{ type: 'text', text: `Validation error: ${errorMessage}` }],
+      content: [
+        { type: 'text', text: `Validation error: ${formatZodError(validationResult.error)}` },
+      ],
     });
   }
 

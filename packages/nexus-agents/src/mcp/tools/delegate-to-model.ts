@@ -13,7 +13,7 @@
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { createLogger } from '../../core/index.js';
+import { createLogger, formatZodError } from '../../core/index.js';
 import { wrapToolWithTimeout, toSdkCallback } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import {
@@ -61,9 +61,8 @@ function createDelegateHandler(
   return async (args: unknown, ctx: HandlerContext): Promise<ToolResult> => {
     const validated = DelegateInputSchema.safeParse(args);
     if (!validated.success) {
-      const msg = validated.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ');
       ctx.logger.warn('Invalid delegate_to_model input', { errors: validated.error.issues });
-      return errorResult(`Validation error: ${msg}`);
+      return errorResult(`Validation error: ${formatZodError(validated.error)}`);
     }
 
     const input = validated.data;

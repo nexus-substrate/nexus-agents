@@ -13,7 +13,7 @@ import { resolve } from 'node:path';
 import * as yaml from 'yaml';
 import { AppConfigSchema, type AppConfig, defaultConfig } from './schemas.js';
 import type { Result } from '../core/index.js';
-import { ok, err } from '../core/index.js';
+import { ok, err, formatZodIssuesAsArray } from '../core/index.js';
 import type { ILogger } from '../core/index.js';
 import { createLogger } from '../core/logger.js';
 
@@ -226,7 +226,7 @@ function validateConfig(
 ): Result<ConfigLoadResult, ConfigLoadError> {
   const validation = AppConfigSchema.safeParse(configData);
   if (!validation.success) {
-    const issues = validation.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`);
+    const issues = formatZodIssuesAsArray(validation.error);
     return err(
       new ConfigLoadError(`Config validation failed:\n${issues.join('\n')}`, 'VALIDATION_ERROR')
     );

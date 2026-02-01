@@ -12,7 +12,7 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger, IWorkflowEngine } from '../../core/index.js';
-import { createLogger } from '../../core/index.js';
+import { createLogger, formatZodError } from '../../core/index.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
 import { wrapToolWithTimeout, toSdkCallback } from '../middleware/tool-wrapper.js';
@@ -135,12 +135,11 @@ function createListWorkflowsHandler(workflowEngine: IWorkflowEngine) {
     // Validate input
     const validationResult = ListWorkflowsInputSchema.safeParse(args);
     if (!validationResult.success) {
-      const errorMessage = validationResult.error.issues
-        .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
-        .join('; ');
       return {
         isError: true,
-        content: [{ type: 'text', text: `Validation error: ${errorMessage}` }],
+        content: [
+          { type: 'text', text: `Validation error: ${formatZodError(validationResult.error)}` },
+        ],
       };
     }
 
