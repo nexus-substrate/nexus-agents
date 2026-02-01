@@ -9,6 +9,7 @@
  */
 
 import { getTimeProvider } from '../core/index.js';
+import { clamp01 } from '../utils/math-utils.js';
 import type { WeightedAgentRecord, WeightedConsensusResult, Vote } from './types.js';
 import type { IEventBus } from '../agents/collaboration/event-bus-types.js';
 
@@ -193,7 +194,7 @@ export function calculateCalibratedWeight(
   initialWeight: number
 ): number {
   const relativePerformance = record.successRate / Math.max(0.01, globalSuccessRate);
-  const calibratedWeight = Math.min(1, Math.max(0, initialWeight * relativePerformance));
+  const calibratedWeight = clamp01(initialWeight * relativePerformance);
   // Smooth transition (50% old weight, 50% calibrated)
   return (record.weight + calibratedWeight) / 2;
 }

@@ -11,6 +11,7 @@
 
 import type { ILogger } from '../../core/index.js';
 import { createLogger, getTimeProvider } from '../../core/index.js';
+import { clamp01 } from '../../utils/math-utils.js';
 import type {
   DebatePosition,
   AgentTrajectory,
@@ -182,7 +183,7 @@ export class FreeMadScorer {
       : 0;
 
     const persistenceBonus = this.computePersistenceBonus(agentTrajectory, trajectory);
-    const finalScore = Math.max(0, Math.min(1, baseScore + conformityPenalty + persistenceBonus));
+    const finalScore = clamp01(baseScore + conformityPenalty + persistenceBonus);
 
     return {
       agentId: agentTrajectory.agentId,

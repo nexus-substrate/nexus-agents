@@ -13,6 +13,7 @@
  */
 
 import type { Task, ILogger, Result, TaskType } from '../core/index.js';
+import { clamp01 } from '../utils/math-utils.js';
 import {
   ok,
   err,
@@ -318,7 +319,7 @@ export class QualityRouter {
     const capabilityMatch = this.computeCapabilityMatch(complexity, capabilities);
     const complexityPenalty = complexity.score * 0.2;
     const taskTypeBonus = this.getTaskTypeBonus(cli, complexity.taskType);
-    const score = Math.max(0, Math.min(1, capabilityMatch - complexityPenalty + taskTypeBonus));
+    const score = clamp01(capabilityMatch - complexityPenalty + taskTypeBonus);
 
     const estimatedTokens = this.estimateTokens(task);
     const costs = this.costModel[cli];

@@ -10,6 +10,7 @@
  */
 
 import { getTimeProvider } from '../core/index.js';
+import { clampPercent } from '../utils/math-utils.js';
 import {
   type CapacityInfo,
   type CapacityMonitorConfig,
@@ -195,7 +196,7 @@ export class CapacityMonitor implements ICapacityMonitor {
     }
     const usedTokens = state.totalTokens - state.remainingTokens;
     const utilization = (usedTokens / state.totalTokens) * 100;
-    return Math.max(0, Math.min(100, utilization));
+    return clampPercent(utilization);
   }
 
   private checkLowCapacity(provider: string, state: ProviderCapacityState): void {

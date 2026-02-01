@@ -9,6 +9,7 @@
 
 import type { StepResult } from '../core/index.js';
 import type { IVerifier, VerificationResult, VerifierContext } from './latts-types.js';
+import { clamp01 } from '../utils/math-utils.js';
 
 // Static patterns for error detection - no user input
 const ERROR_PATTERNS: readonly RegExp[] = [
@@ -49,7 +50,7 @@ function analyzeOutput(outputStr: string): { errors: string[]; warnings: string[
  */
 function calculateQualityScore(errorCount: number, warningCount: number): number {
   const baseQuality = 1 - errorCount * 0.3 - warningCount * 0.1;
-  return Math.max(0, Math.min(1, baseQuality));
+  return clamp01(baseQuality);
 }
 
 /**

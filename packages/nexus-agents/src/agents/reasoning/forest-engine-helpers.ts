@@ -17,6 +17,7 @@ import type { ForestConfig } from './forest-config-types.js';
 import { DEFAULT_FOREST_CONFIG, ForestConfigSchema } from './forest-config-types.js';
 import { generateNodeId } from './forest-engine-ids.js';
 import { getTimeProvider } from '../../core/index.js';
+import { clamp01 } from '../../utils/math-utils.js';
 
 /** Parsed hypothesis response. */
 export interface ParsedHypothesis {
@@ -114,7 +115,7 @@ export function calculateQualityScore(
   if (stepType === 'conclusion') score += 0.1;
   if (stepType === 'verification') score += 0.05;
   score -= parentDepth * 0.02;
-  return Math.max(0, Math.min(1, score));
+  return clamp01(score);
 }
 
 /** Builds cross-tree context for sharing information. */

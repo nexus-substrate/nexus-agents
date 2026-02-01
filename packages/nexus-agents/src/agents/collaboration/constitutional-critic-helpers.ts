@@ -10,6 +10,7 @@
 
 import type { Violation, ViolationSeverity } from './constitutional-types.js';
 import { AstFixer, type AstFixResult } from './ast-fixer.js';
+import { clampScore } from '../../utils/math-utils.js';
 
 /**
  * Severity ordering for comparisons.
@@ -70,7 +71,7 @@ export function calculateScore(violations: readonly Violation[], principleCount:
 
   const maxPenalty = principleCount * 4; // Max severity * principle count
   const score = 10 * (1 - penalty / maxPenalty);
-  return Math.max(0, Math.min(10, score));
+  return clampScore(score);
 }
 
 /**

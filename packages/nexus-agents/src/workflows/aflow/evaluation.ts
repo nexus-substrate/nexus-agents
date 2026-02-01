@@ -10,6 +10,7 @@
 
 import type { WorkflowDefinition } from '../../core/index.js';
 import type { EvaluationResult, TaskSpecification } from './aflow-types.js';
+import { clamp01 } from '../../utils/math-utils.js';
 
 // Re-export types and constants for backward compatibility
 export type { EvaluationWeights } from './evaluation-types.js';
@@ -80,7 +81,7 @@ export class WorkflowEvaluator {
       redundancy * this.weights.redundancyPenalty;
 
     // Clamp to 0-1
-    return Math.max(0, Math.min(1, raw));
+    return clamp01(raw);
   }
 
   /**

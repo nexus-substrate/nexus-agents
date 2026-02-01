@@ -43,3 +43,5 @@ export {
 } from './similarity-utils.js';
 
 export { sleep, delay, withTimeout, sequence, type TimeoutResult } from './async-utils.js';
+
+export { clamp, clamp01, clampScore, clampPercent } from './math-utils.js';

@@ -10,6 +10,7 @@
  */
 
 import type { ModelCapability, ScalingTaskType } from './scaling-types.js';
+import { clamp } from '../../utils/math-utils.js';
 
 // =============================================================================
 // Capability Data
@@ -251,15 +252,4 @@ export function getSaturationThreshold(): number {
  */
 export function getKnownModelIds(): readonly string[] {
   return [...capabilityRegistry.keys()];
-}
-
-// =============================================================================
-// Utility Functions
-// =============================================================================
-
-/**
- * Clamp a value between min and max.
- */
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
 }

@@ -18,6 +18,7 @@ import type {
   ScalingTaskType,
 } from './scaling-types.js';
 import { TASK_TYPE_PERFORMANCE, COORDINATION_OVERHEAD_FACTORS } from './scaling-types.js';
+import { clamp } from '../../utils/math-utils.js';
 
 // =============================================================================
 // Topology Selection
@@ -312,12 +313,3 @@ export function metricsKey(topology: CoordinationTopology, taskType: ScalingTask
 }
 
 // =============================================================================
-// Utility Functions
-// =============================================================================
-
-/**
- * Clamp value between min and max.
- */
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}

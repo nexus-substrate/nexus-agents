@@ -10,6 +10,7 @@
 
 import type { Task } from '../../core/index.js';
 import { getTimeProvider, getTokenEstimator } from '../../core/index.js';
+import { clamp01 } from '../../utils/math-utils.js';
 import type { PuppeteerState, PuppeteerStateMetadata, AgentStepOutput } from './puppeteer-types.js';
 
 // =============================================================================
@@ -412,7 +413,7 @@ export class StateManager implements IStateManager {
     const baseRelevance = keywordRelevance * 0.6 + recencyWeight * 0.2 + agentAlignmentBonus;
 
     // Clamp to [0, 1]
-    return Math.max(0, Math.min(1, baseRelevance));
+    return clamp01(baseRelevance);
   }
 
   /**
