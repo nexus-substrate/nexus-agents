@@ -18,6 +18,7 @@ import {
   summarizeTaskProfile,
   type TaskProfile,
 } from '../core/index.js';
+import { clamp01 } from '../utils/math-utils.js';
 import { NexusError, ErrorCode } from '../core/errors.js';
 import type { ILogger } from '../core/logger.js';
 import { logger as defaultLogger } from '../core/logger.js';
@@ -295,7 +296,7 @@ export class TaskRouter implements ITaskRouter {
     score += scoreCostEfficiency(profile, capabilities, reasons, this.preferCostEfficient);
     score += scoreSpeed(profile, capabilities, reasons);
 
-    const normalizedScore = Math.min(1, Math.max(0, score));
+    const normalizedScore = clamp01(score);
     const reason = reasons.length > 0 ? reasons.join('; ') : 'Default selection';
     return { score: normalizedScore, reason };
   }

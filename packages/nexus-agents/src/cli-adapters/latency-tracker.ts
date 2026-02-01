@@ -9,6 +9,7 @@
  */
 
 import type { CliName } from './types-core.js';
+import { clamp01 } from '../utils/math-utils.js';
 import {
   LatencyTrackerConfigSchema,
   LatencyTrackerError,
@@ -250,7 +251,7 @@ export class LatencyTracker implements ILatencyTracker {
       const normalizedScore = 1 - score.weightedAvgMs / maxLatency;
       return {
         ...score,
-        score: Math.max(0, Math.min(1, normalizedScore)),
+        score: clamp01(normalizedScore),
       };
     });
   }

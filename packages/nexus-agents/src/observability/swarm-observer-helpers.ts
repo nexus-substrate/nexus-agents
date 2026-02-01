@@ -14,6 +14,7 @@ import type {
   ContributionScore,
   InteractionGraph,
 } from './swarm-observer-types.js';
+import { clamp01 } from '../utils/math-utils.js';
 
 /**
  * Queue metrics for bottleneck detection.
@@ -146,7 +147,7 @@ export function calculateContribution(agentId: AgentId, events: AgentEvent[]): C
 
   return {
     agentId,
-    score: Math.max(0, Math.min(1, score)),
+    score: clamp01(score),
     messagesSent,
     messagesReceived,
     activeTimeMs,

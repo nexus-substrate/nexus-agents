@@ -11,6 +11,7 @@
 import type { Result } from '../../../core/result.js';
 import type { ILogger } from '../../../core/index.js';
 import { ok, createLogger, getTimeProvider } from '../../../core/index.js';
+import { clamp01 } from '../../../utils/math-utils.js';
 import type {
   IRouterStage,
   RoutingContext,
@@ -288,7 +289,7 @@ export class LinUCBStage implements IRouterStage {
       reward -= latencyPenalty;
     }
 
-    return Math.max(0, Math.min(1, reward));
+    return clamp01(reward);
   }
 }
 

@@ -14,6 +14,7 @@ import type {
   DifficultyThresholds,
 } from './zero-router-types.js';
 import { classifyDifficultyLevel } from './difficulty-space.js';
+import { clamp } from '../utils/math-utils.js';
 
 /**
  * Groups outcomes by difficulty level.
@@ -160,7 +161,7 @@ export function calculateCalibrationBias(outcomes: readonly DifficultyOutcome[])
   const bias = rawBias * learningRate;
 
   // Clamp bias to reasonable range
-  return Math.max(-0.2, Math.min(0.2, bias));
+  return clamp(bias, -0.2, 0.2);
 }
 
 /**

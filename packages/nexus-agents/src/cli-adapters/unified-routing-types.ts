@@ -11,6 +11,7 @@
 import { z } from 'zod';
 import type { CliName } from './types-core.js';
 import type { ComplexityLevel } from '../core/task-analysis/shared-task-analyzer.js';
+import { clamp01 } from '../utils/math-utils.js';
 
 // ============================================================================
 // Base Routing Decision Types
@@ -157,7 +158,7 @@ export class RoutingDecisionBuilder {
    * Set the confidence score.
    */
   withConfidence(confidence: number): this {
-    this.decision.confidence = Math.max(0, Math.min(1, confidence));
+    this.decision.confidence = clamp01(confidence);
     return this;
   }
 

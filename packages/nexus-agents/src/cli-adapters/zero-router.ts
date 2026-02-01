@@ -16,6 +16,7 @@ import {
   taskAnalysisResultToTaskProfile,
   type TaskProfile,
 } from '../core/index.js';
+import { clamp01 } from '../utils/math-utils.js';
 import type { CliName, CliTask } from './types.js';
 import type { Task } from '../core/types/agent.js';
 import {
@@ -118,7 +119,7 @@ export class ZeroRouter implements IZeroRouter {
     }
 
     // Ensure bounds after calibration
-    aggregateScore = Math.max(0, Math.min(1, aggregateScore));
+    aggregateScore = clamp01(aggregateScore);
 
     const level = classifyDifficultyLevel(aggregateScore, this.config.thresholds);
     const recommendedTier = this.getTierForLevel(level);

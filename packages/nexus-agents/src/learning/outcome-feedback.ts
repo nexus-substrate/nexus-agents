@@ -9,6 +9,7 @@
  */
 
 import { createLogger, getTimeProvider } from '../core/index.js';
+import { clamp01 } from '../utils/math-utils.js';
 import type {
   FeedbackCollectorConfig,
   RoutingDecision,
@@ -175,7 +176,7 @@ export class OutcomeFeedbackCollector implements IOutcomeFeedback {
 
     // Compute final reward (clamped to 0-1)
     const rawReward = baseReward + qualityBonus + speedBonus + efficiencyBonus - retryPenalty;
-    const reward = Math.max(0, Math.min(1, rawReward));
+    const reward = clamp01(rawReward);
 
     return {
       reward,

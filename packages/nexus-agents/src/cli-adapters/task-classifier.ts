@@ -14,6 +14,7 @@
  */
 
 import { z } from 'zod';
+import { clamp01 } from '../utils/math-utils.js';
 
 /**
  * Task types for fallback chain routing.
@@ -282,7 +283,7 @@ function calculateConfidence(score: number, contentLength: number): number {
     confidence += 0.1;
   }
 
-  return Math.min(1, Math.max(0, confidence));
+  return clamp01(confidence);
 }
 
 /**
