@@ -8,19 +8,10 @@
  */
 
 import { VERSION } from '../version.js';
+import { colors } from './ansi-output.js';
 
 /** API key environment variable names. */
 const API_KEY_VARS = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GOOGLE_AI_API_KEY'] as const;
-
-/** ANSI color codes for terminal output. */
-const colors = {
-  reset: '\x1b[0m',
-  green: '\x1b[32m',
-  cyan: '\x1b[36m',
-  yellow: '\x1b[33m',
-  dim: '\x1b[2m',
-  bold: '\x1b[1m',
-} as const;
 
 /**
  * Hello command result containing system information.

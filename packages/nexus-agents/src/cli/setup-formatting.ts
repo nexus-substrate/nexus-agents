@@ -7,24 +7,7 @@
  * (Source: Issue #363 - Auto-configure Claude CLI integration)
  */
 
-/** ANSI color codes */
-const colors = {
-  reset: '\x1b[0m',
-  green: '\x1b[32m',
-  yellow: '\x1b[33m',
-  red: '\x1b[31m',
-  cyan: '\x1b[36m',
-  dim: '\x1b[2m',
-  bold: '\x1b[1m',
-} as const;
-
-/** Platform-appropriate symbols */
-const symbols = {
-  check: process.platform === 'win32' ? '√' : '✓',
-  cross: process.platform === 'win32' ? '×' : '✗',
-  warn: process.platform === 'win32' ? '!' : '⚠',
-  arrow: process.platform === 'win32' ? '->' : '→',
-};
+import { colors, symbols } from './ansi-output.js';
 
 /**
  * Formats a status indicator.

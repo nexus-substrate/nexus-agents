@@ -14,30 +14,7 @@ import type {
   IssueType,
 } from './issue-template-types.js';
 import { validateIssueBody, generateTemplateBody, getTemplate } from './issue-templates.js';
-
-// ============================================================================
-// Terminal Output Helpers
-// ============================================================================
-
-const colors = {
-  reset: '\x1b[0m',
-  green: '\x1b[32m',
-  yellow: '\x1b[33m',
-  red: '\x1b[31m',
-  cyan: '\x1b[36m',
-  dim: '\x1b[2m',
-  bold: '\x1b[1m',
-} as const;
-
-const symbols = {
-  check: process.platform === 'win32' ? 'v' : '✓',
-  cross: process.platform === 'win32' ? 'x' : '✗',
-  circle: process.platform === 'win32' ? 'o' : '○',
-};
-
-function writeLine(text: string): void {
-  process.stdout.write(text + '\n');
-}
+import { colors, symbols, writeLine } from './ansi-output.js';
 
 // ============================================================================
 // GitHub CLI Integration

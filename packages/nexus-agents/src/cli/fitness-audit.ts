@@ -13,27 +13,10 @@ import {
   type FitnessFinding,
 } from '../governance/index.js';
 import { VERSION } from '../version.js';
+import { colors, writeLine } from './ansi-output.js';
 
-/**
- * ANSI color codes for terminal output.
- */
-const COLORS = {
-  reset: '\x1b[0m',
-  bold: '\x1b[1m',
-  dim: '\x1b[2m',
-  green: '\x1b[32m',
-  yellow: '\x1b[33m',
-  red: '\x1b[31m',
-  cyan: '\x1b[36m',
-  white: '\x1b[37m',
-};
-
-/**
- * Write line to stdout.
- */
-function writeLine(text = ''): void {
-  process.stdout.write(text + '\n');
-}
+// Alias for backward compatibility within this file
+const COLORS = colors;
 
 /**
  * Format a dimension score with color based on percentage of max.

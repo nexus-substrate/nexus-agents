@@ -12,6 +12,7 @@ import { VERSION } from '../version.js';
 import { getTimeProvider } from '../core/index.js';
 import { defaultConfig } from '../config/index.js';
 import { BUILT_IN_EXPERTS } from '../agents/experts/expert-config.js';
+import { colors, symbols } from './ansi-output.js';
 
 /**
  * Verify command options.
@@ -40,27 +41,6 @@ export interface VerifyResult {
   readonly allPassed: boolean;
   readonly durationMs: number;
 }
-
-/**
- * ANSI color codes for terminal output.
- */
-const colors = {
-  reset: '\x1b[0m',
-  green: '\x1b[32m',
-  yellow: '\x1b[33m',
-  red: '\x1b[31m',
-  cyan: '\x1b[36m',
-  dim: '\x1b[2m',
-  bold: '\x1b[1m',
-} as const;
-
-/**
- * Symbols for status output.
- */
-const symbols = {
-  check: process.platform === 'win32' ? '[OK]' : '✓',
-  cross: process.platform === 'win32' ? '[!!]' : '✗',
-};
 
 /**
  * Checks if Node.js version is supported.

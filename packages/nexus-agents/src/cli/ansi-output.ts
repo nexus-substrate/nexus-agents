@@ -34,6 +34,10 @@ export const colors = {
   magenta: '\x1b[35m',
   /** Blue text */
   blue: '\x1b[34m',
+  /** White text */
+  white: '\x1b[37m',
+  /** Gray text (muted) */
+  gray: '\x1b[90m',
 } as const;
 
 /** Type for color names. */
@@ -62,6 +66,8 @@ export const symbols = {
   arrow: isWindows ? '->' : '→',
   /** Information */
   info: isWindows ? '[i]' : 'ℹ',
+  /** Circle/empty indicator */
+  circle: isWindows ? 'o' : '○',
 } as const;
 
 /** Type for symbol names. */
@@ -73,13 +79,15 @@ export type SymbolName = keyof typeof symbols;
 
 /**
  * Writes a line to stdout with newline.
+ * If no text is provided, writes an empty line.
  */
-export function writeLine(text: string): void {
+export function writeLine(text: string = ''): void {
   process.stdout.write(text + '\n');
 }
 
 /**
  * Writes an empty line to stdout.
+ * Prefer writeLine() without arguments for consistency.
  */
 export function writeEmptyLine(): void {
   process.stdout.write('\n');

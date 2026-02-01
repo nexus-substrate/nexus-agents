@@ -24,26 +24,7 @@ import { THRESHOLD_MAP, VOTER_ROLES } from './vote-types.js';
 import type { Vote, ConsensusAlgorithm, ConsensusResult, Proposal } from '../consensus/types.js';
 import { createConsensusEngine } from '../consensus/engine.js';
 import { collectRealVotes, type AgentVoteResult } from './voter-agents.js';
-
-const colors = {
-  reset: '\x1b[0m',
-  green: '\x1b[32m',
-  yellow: '\x1b[33m',
-  red: '\x1b[31m',
-  cyan: '\x1b[36m',
-  dim: '\x1b[2m',
-  bold: '\x1b[1m',
-} as const;
-
-const symbols = {
-  check: process.platform === 'win32' ? 'v' : '✓',
-  cross: process.platform === 'win32' ? 'x' : '✗',
-  bullet: process.platform === 'win32' ? '*' : '•',
-};
-
-function writeLine(text: string): void {
-  process.stdout.write(text + '\n');
-}
+import { colors, symbols, writeLine } from './ansi-output.js';
 
 function generateVoteHash(role: VoterRole, vote: Vote): VoteHash {
   const data = JSON.stringify({ role, decision: vote.decision, reasoning: vote.reasoning });

@@ -14,18 +14,7 @@ import {
   formatValidationErrors,
   type CustomExpertError,
 } from './custom-expert-loader.js';
-
-/**
- * ANSI color codes for terminal output.
- */
-const colors = {
-  reset: '\x1b[0m',
-  green: '\x1b[32m',
-  yellow: '\x1b[33m',
-  cyan: '\x1b[36m',
-  dim: '\x1b[2m',
-  bold: '\x1b[1m',
-} as const;
+import { colors } from './ansi-output.js';
 
 /**
  * Output format for expert list.
