@@ -13,12 +13,12 @@ import { getTimeProvider } from './index.js';
 import type { TraceSpan, AggregatedMetrics, Tracer } from './trace.js';
 import {
   type ResolvedVisualizationOptions,
-  COLORS,
   buildSpanTree,
   renderSpanNode,
   renderHeader,
   buildSummaryParts,
 } from './trace-exporter-helpers.js';
+import { colors } from '../cli/ansi-output.js';
 
 // =============================================================================
 // Types
@@ -177,7 +177,7 @@ export function visualizeTrace(tracer: Tracer, options?: VisualizationOptions): 
   lines.push('');
   const summary = summaryParts.join(' | ');
   if (opts.colors) {
-    lines.push(`${COLORS.dim}${summary}${COLORS.reset}`);
+    lines.push(`${colors.dim}${summary}${colors.reset}`);
   } else {
     lines.push(summary);
   }
