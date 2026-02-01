@@ -41,7 +41,8 @@
       "docops-skill-sync",
       "canonical-index",
       "markdown-lint",
-      "frontmatter-check"
+      "frontmatter-check",
+      "spell-check"
     ]
   },
   "enforcement_rules": {

@@ -519,3 +519,34 @@ jobs:
             echo "Run 'npx tsx scripts/check-frontmatter.ts --fix' to add placeholders"
             exit 1
           fi
+
+  # Job 12: Spell Check (Warning Only)
+  spell-check:
+    name: Spell Check
+    runs-on: ubuntu-latest
+    # Non-blocking - reports warnings only
+    continue-on-error: true
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - run: pnpm install
+
+      - name: Check spelling in documentation
+        run: |
+          pnpm spell 2>&1 | tee spell-results.txt
+          ERRORS=$(grep -c "Unknown word" spell-results.txt || true)
+          if [ "$ERRORS" -gt 0 ]; then
+            echo "::warning::Found $ERRORS potential spelling issues"
+            echo "Run 'pnpm spell' locally to see details"
+            echo "Add valid terms to cspell.json words array"
+          else
+            echo "✅ No spelling issues found"
+          fi

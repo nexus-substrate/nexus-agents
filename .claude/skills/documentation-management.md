@@ -136,7 +136,7 @@ npx tsx scripts/inject-governance.ts check   # CI validation
 
 ## CI Validation
 
-### docs-check.yml (11 jobs)
+### docs-check.yml (12 jobs)
 
 | Job                 | What it checks                        | Blocking?    |
 | ------------------- | ------------------------------------- | ------------ |
@@ -151,6 +151,7 @@ npx tsx scripts/inject-governance.ts check   # CI validation
 | `canonical-index`   | All docs indexed in docs/README.md    | Yes          |
 | `markdown-lint`     | Markdown style consistency            | Yes          |
 | `frontmatter-check` | Website docs have valid frontmatter   | Yes          |
+| `spell-check`       | Documentation spelling                | No (warning) |
 
 ---
 
