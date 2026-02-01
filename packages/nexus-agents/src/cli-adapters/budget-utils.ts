@@ -39,13 +39,6 @@ export function estimateCost(model: CliName, inputTokens: number, outputTokens: 
 }
 
 /**
- * Format cost as USD string.
- */
-export function formatCost(costUsd: number): string {
-  return `$${costUsd.toFixed(4)}`;
-}
-
-/**
  * Format tokens with K/M suffix for readability.
  */
 export function formatTokens(tokens: number): string {
