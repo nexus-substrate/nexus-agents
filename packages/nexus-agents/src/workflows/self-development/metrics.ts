@@ -7,7 +7,7 @@
  */
 
 import type { Result } from '../../core/index.js';
-import { ok, err, formatDurationCompact } from '../../core/index.js';
+import { ok, err, formatDurationCompact, formatPercentage } from '../../core/index.js';
 import type { SelfDevWorkflowResult, SelfDevWorkflowMetrics, WorkflowPhase } from './types.js';
 
 // =============================================================================
@@ -176,7 +176,7 @@ export function validateMetrics(metrics: SelfDevWorkflowMetrics): MetricsValidat
 
   // Check approval rate
   if (metrics.approvalRate < MIN_APPROVAL_RATE && metrics.approvalRate > 0) {
-    errors.push(`Approval rate ${(metrics.approvalRate * 100).toFixed(0)}% below threshold`);
+    errors.push(`Approval rate ${formatPercentage(metrics.approvalRate)} below threshold`);
   }
 
   // Check veto
@@ -243,9 +243,9 @@ export function summarizeMetrics(metrics: SelfDevWorkflowMetrics): MetricsSummar
   const iterations = iterParts.length > 0 ? iterParts.join(', ') : 'No iterations';
 
   // Vote summary
-  const approvalPct = (metrics.approvalRate * 100).toFixed(0);
+  const approvalPct = formatPercentage(metrics.approvalRate);
   const vetoStr = metrics.vetoCount > 0 ? ' (VETO)' : '';
-  const vote = `${approvalPct}% approval${vetoStr}`;
+  const vote = `${approvalPct} approval${vetoStr}`;
 
   // Human review summary
   const reviewTime = formatDuration(metrics.humanReviewTime);

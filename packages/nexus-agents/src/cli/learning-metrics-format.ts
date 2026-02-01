@@ -16,6 +16,7 @@ import type {
   FeedbackLoopStats,
   FeatureImportance,
 } from './learning-metrics-types.js';
+import { formatPercentage } from '../core/index.js';
 
 // =============================================================================
 // ANSI Formatting Constants
@@ -94,8 +95,8 @@ function formatSummary(result: LearningMetricsResult): string[] {
   const routings = result.summary.totalRoutings.toLocaleString();
   lines.push(boxLine(`   Total Routings: ${routings}`));
 
-  const successRate = (result.summary.overallSuccessRate * 100).toFixed(1);
-  lines.push(boxLine(`   Success Rate: ${successRate}%`));
+  const successRate = formatPercentage(result.summary.overallSuccessRate, 1);
+  lines.push(boxLine(`   Success Rate: ${successRate}`));
 
   const avgReward = result.summary.avgReward.toFixed(3);
   lines.push(boxLine(`   Avg Reward: ${avgReward}`));
@@ -128,8 +129,8 @@ function formatModelStats(models: readonly ModelLearningStats[]): string[] {
     lines.push(boxLine(`   ${model.name.padEnd(10)} ${bar} ${pct.padStart(5)}%`));
 
     const reward = model.avgReward.toFixed(2);
-    const success = (model.successRate * 100).toFixed(0);
-    lines.push(boxLine(`     reward: ${reward.padStart(5)} | success: ${success.padStart(3)}%`));
+    const success = formatPercentage(model.successRate);
+    lines.push(boxLine(`     reward: ${reward.padStart(5)} | success: ${success.padStart(4)}`));
   }
 
   lines.push(color('├' + horizontalLine() + '┤', ANSI.cyan));
@@ -150,12 +151,12 @@ function formatBanditProgress(bandit: BanditProgress): string[] {
   const pulls = bandit.totalPulls.toLocaleString();
   lines.push(boxLine(`   Total Pulls: ${pulls}`));
 
-  const expRatio = (bandit.explorationRatio * 100).toFixed(1);
+  const expRatio = formatPercentage(bandit.explorationRatio, 1);
   const expStatus =
     bandit.explorationRatio >= 0.1 && bandit.explorationRatio <= 0.3
       ? color('(healthy)', ANSI.green)
       : color('(adjust)', ANSI.yellow);
-  lines.push(boxLine(`   Exploration Ratio: ${expRatio}% ${expStatus}`));
+  lines.push(boxLine(`   Exploration Ratio: ${expRatio} ${expStatus}`));
 
   // Arm distribution
   if (bandit.armDistribution.length > 0) {
@@ -189,9 +190,9 @@ function formatFeatureImportance(features: readonly FeatureImportance[]): string
   }
 
   for (const fi of features) {
-    const importance = (fi.importance * 100).toFixed(1);
+    const importance = formatPercentage(fi.importance, 1);
     const arrow = fi.direction === 'positive' ? color('↑', ANSI.green) : color('↓', ANSI.red);
-    lines.push(boxLine(`   ${arrow} ${fi.feature.padEnd(20)} ${importance.padStart(5)}%`));
+    lines.push(boxLine(`   ${arrow} ${fi.feature.padEnd(20)} ${importance.padStart(6)}`));
   }
 
   lines.push(color('├' + horizontalLine() + '┤', ANSI.cyan));
@@ -242,21 +243,21 @@ function formatFeedbackLoop(feedback: FeedbackLoopStats): string[] {
   const outcomes = feedback.totalOutcomes.toLocaleString();
   lines.push(boxLine(`   Decisions: ${decisions} | Outcomes: ${outcomes}`));
 
-  const correlation = (feedback.correlationRate * 100).toFixed(1);
-  lines.push(boxLine(`   Correlation Rate: ${correlation}%`));
+  const correlation = formatPercentage(feedback.correlationRate, 1);
+  lines.push(boxLine(`   Correlation Rate: ${correlation}`));
 
   // Outcome distribution
   const dist = feedback.outcomeDistribution;
   const total = dist.success + dist.partial + dist.failure;
   if (total > 0) {
-    const successPct = ((dist.success / total) * 100).toFixed(0);
-    const partialPct = ((dist.partial / total) * 100).toFixed(0);
-    const failurePct = ((dist.failure / total) * 100).toFixed(0);
+    const successPct = formatPercentage(dist.success / total);
+    const partialPct = formatPercentage(dist.partial / total);
+    const failurePct = formatPercentage(dist.failure / total);
     lines.push(
       boxLine(
-        `   Outcomes: ${color(successPct + '%', ANSI.green)} ✓ | ` +
-          `${color(partialPct + '%', ANSI.yellow)} ~ | ` +
-          `${color(failurePct + '%', ANSI.red)} ✗`
+        `   Outcomes: ${color(successPct, ANSI.green)} ✓ | ` +
+          `${color(partialPct, ANSI.yellow)} ~ | ` +
+          `${color(failurePct, ANSI.red)} ✗`
       )
     );
   }

@@ -7,7 +7,7 @@
  * (Source: Issue #161, Alignment Roadmap Phase 3)
  */
 
-import { createLogger } from '../core/index.js';
+import { createLogger, formatPercentage } from '../core/index.js';
 import { createPRReviewer, formatReviewComment } from '../dogfooding/index.js';
 import type { PRReviewResult, ReviewSeverity } from '../dogfooding/index.js';
 import { capitalize } from '../utils/text-utils.js';
@@ -77,7 +77,7 @@ function printReviewResult(review: PRReviewResult, verbose: boolean, dryRun: boo
 function printSummary(review: PRReviewResult): void {
   process.stdout.write(`Decision: ${review.decision.replace('_', ' ').toUpperCase()}\n`);
   process.stdout.write(`Experts: ${String(review.expertCount)}\n`);
-  process.stdout.write(`Consensus: ${(review.consensusScore * 100).toFixed(0)}%\n`);
+  process.stdout.write(`Consensus: ${formatPercentage(review.consensusScore)}\n`);
   process.stdout.write(`Duration: ${String(review.totalDurationMs)}ms\n\n`);
 }
 

@@ -95,6 +95,7 @@ export {
   formatDurationCompact,
   formatCost,
   formatTokens,
+  formatPercentage,
 } from './trace-exporter-helpers.js';
 
 // Artifact provenance

@@ -12,7 +12,7 @@
 /* eslint-disable no-console */
 // Console output is intentional for CLI user feedback
 
-import { createLogger, getTimeProvider, type ILogger } from '../core/index.js';
+import { createLogger, getTimeProvider, formatPercentage, type ILogger } from '../core/index.js';
 import {
   createCompositeRouter,
   createAllAdapters,
@@ -231,7 +231,7 @@ function formatResultText(result: OrchestrationResult | PuppeteerOrchestrationRe
 
     if (result.routing !== undefined) {
       lines.push(`\nRouting: ${result.routing.reason}`);
-      lines.push(`Confidence: ${(result.routing.confidence * 100).toFixed(1)}%`);
+      lines.push(`Confidence: ${formatPercentage(result.routing.confidence, 1)}`);
     }
 
     lines.push(...formatPuppeteerStats(puppeteerResult.puppeteer));

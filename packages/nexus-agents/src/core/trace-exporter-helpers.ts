@@ -113,6 +113,17 @@ export function formatTokens(input: number, output: number): string {
   return `${input.toLocaleString()} in / ${output.toLocaleString()} out`;
 }
 
+/**
+ * Formats a decimal value as a percentage string.
+ *
+ * @param value - Decimal value (0-1 range, e.g., 0.85 for 85%)
+ * @param decimals - Number of decimal places (default: 0)
+ * @returns Formatted string like "85%" or "85.5%"
+ */
+export function formatPercentage(value: number, decimals: number = 0): string {
+  return `${(value * 100).toFixed(decimals)}%`;
+}
+
 // =============================================================================
 // Status Indicators
 // =============================================================================

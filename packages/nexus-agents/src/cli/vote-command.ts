@@ -17,7 +17,7 @@
  */
 
 import * as crypto from 'node:crypto';
-import { getTimeProvider } from '../core/index.js';
+import { getTimeProvider, formatPercentage } from '../core/index.js';
 import { safeExecSandboxed } from './sandbox-exec.js';
 import type { VoteCommandOptions, VoterRole, VotingResult, VoteHash } from './vote-types.js';
 import { THRESHOLD_MAP, VOTER_ROLES } from './vote-types.js';
@@ -79,7 +79,7 @@ function printVoteDetails(votes: readonly AgentVoteResult[]): void {
     const label = VOTER_ROLES[role].split(' - ')[0] ?? role;
     const sourceTag = source === 'llm' ? '' : ` ${colors.dim}[sim]${colors.reset}`;
     writeLine(
-      `  ${icon}${colors.reset} ${label}: ${vote.decision.toUpperCase()} (${(vote.confidence * 100).toFixed(0)}%)${sourceTag}`
+      `  ${icon}${colors.reset} ${label}: ${vote.decision.toUpperCase()} (${formatPercentage(vote.confidence)})${sourceTag}`
     );
   }
   writeLine('');
@@ -146,7 +146,7 @@ export function formatVoteComment(result: VotingResult): string {
     .map(({ role, vote }) => {
       const roleLabel = VOTER_ROLES[role].split(' - ')[0] ?? role;
       const decision = vote.decision.toUpperCase();
-      const confidence = `${(vote.confidence * 100).toFixed(0)}%`;
+      const confidence = formatPercentage(vote.confidence);
       return `| ${roleLabel} | ${decision} | ${confidence} |`;
     })
     .join('\n');

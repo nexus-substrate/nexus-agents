@@ -7,7 +7,7 @@
  * (Source: Issue #170, Alignment Roadmap Phase 1)
  */
 
-import { summarizeTaskProfile } from '../core/index.js';
+import { summarizeTaskProfile, formatPercentage } from '../core/index.js';
 import type { TopsisScore } from '../cli-adapters/topsis-types.js';
 import type {
   RoutingAuditOptions,
@@ -74,12 +74,12 @@ export function formatTopsisRanking(result: RoutingAuditResult): string[] {
   lines.push(boxLine(color(' TOPSIS Ranking:', ANSI.bold)));
   result.topsisResult.scores.forEach((score: TopsisScore, idx: number) => {
     const rank = idx + 1;
-    const pct = (score.closenessScore * 100).toFixed(1);
+    const pct = formatPercentage(score.closenessScore, 1);
     const q = ((score.rawValues['quality'] ?? 0) * 10).toFixed(1);
     const c = ((1 - (score.rawValues['cost'] ?? 0)) * 10).toFixed(1);
     const l = ((1 - (score.rawValues['latency'] ?? 0)) * 10).toFixed(1);
     lines.push(
-      boxLine(`   ${String(rank)}. ${score.cliName.padEnd(8)} (${pct}%) q=${q} c=${c} l=${l}`)
+      boxLine(`   ${String(rank)}. ${score.cliName.padEnd(8)} (${pct}) q=${q} c=${c} l=${l}`)
     );
   });
   lines.push(color('├' + horizontalLine() + '┤', ANSI.cyan));
@@ -158,12 +158,12 @@ function formatBanditStatsHeader(): string[] {
  */
 function formatExplorationSection(stats: BanditStats): string[] {
   const lines: string[] = [];
-  const ratio = (stats.exploration.explorationRatio * 100).toFixed(1);
+  const ratio = formatPercentage(stats.exploration.explorationRatio, 1);
   const pulls = String(stats.exploration.totalPulls);
 
   lines.push(
     color('│', ANSI.yellow) +
-      ` Exploration: ${ratio}% ratio, ${pulls} total pulls`.padEnd(BOX_WIDTH - 2) +
+      ` Exploration: ${ratio} ratio, ${pulls} total pulls`.padEnd(BOX_WIDTH - 2) +
       color('│', ANSI.yellow)
   );
 
@@ -172,11 +172,11 @@ function formatExplorationSection(stats: BanditStats): string[] {
   );
 
   for (const arm of stats.exploration.armDistribution) {
-    const pct = (arm.proportion * 100).toFixed(1);
+    const pct = formatPercentage(arm.proportion, 1);
     const bar = '█'.repeat(Math.round(arm.proportion * 20));
     lines.push(
       color('│', ANSI.yellow) +
-        `   ${arm.name.padEnd(8)} ${pct.padStart(5)}% ${bar}`.padEnd(BOX_WIDTH - 2) +
+        `   ${arm.name.padEnd(8)} ${pct.padStart(6)} ${bar}`.padEnd(BOX_WIDTH - 2) +
         color('│', ANSI.yellow)
     );
   }
@@ -205,10 +205,10 @@ function formatFeatureImportanceSection(stats: BanditStats): string[] {
     );
     const top3 = arm.featureImportance.slice(0, 3);
     for (const fi of top3) {
-      const pct = (fi.importance * 100).toFixed(1);
+      const pct = formatPercentage(fi.importance, 1);
       lines.push(
         color('│', ANSI.yellow) +
-          `     ${fi.feature.padEnd(18)} ${pct.padStart(5)}%`.padEnd(BOX_WIDTH - 2) +
+          `     ${fi.feature.padEnd(18)} ${pct.padStart(6)}`.padEnd(BOX_WIDTH - 2) +
           color('│', ANSI.yellow)
       );
     }

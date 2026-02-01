@@ -8,7 +8,7 @@
  * (Source: Issue #258 - PR Review Demo Workflow)
  */
 
-import { getTimeProvider } from '../core/index.js';
+import { getTimeProvider, formatPercentage } from '../core/index.js';
 import { createPRReviewer, formatReviewComment } from '../dogfooding/index.js';
 import type { PRReviewResult, ReviewSeverity } from '../dogfooding/index.js';
 import type { ReviewDemoOptions, ProgressStep } from './review-demo-types.js';
@@ -286,7 +286,7 @@ function printReviewResult(review: PRReviewResult, verbose: boolean, dryRun: boo
 function printSummary(review: PRReviewResult): void {
   process.stdout.write(`Decision: ${review.decision.replace('_', ' ').toUpperCase()}\n`);
   process.stdout.write(`Experts:  ${String(review.expertCount)}\n`);
-  process.stdout.write(`Consensus: ${(review.consensusScore * 100).toFixed(0)}%\n`);
+  process.stdout.write(`Consensus: ${formatPercentage(review.consensusScore)}\n`);
   process.stdout.write(`Duration: ${String(review.totalDurationMs)}ms\n\n`);
 }
 

@@ -15,6 +15,7 @@ import {
 import type { EvaluateCommandResult } from './self-eval-types.js';
 import { colors, symbols, MAX_OUTPUT_BYTES } from './self-eval-types.js';
 import { writeLine } from './ansi-output.js';
+import { formatPercentage } from '../core/index.js';
 
 // Re-export for backward compatibility
 export { writeLine };
@@ -61,13 +62,13 @@ export function getRecommendationSymbol(rec: string): string {
 export function formatResultSummary(result: AggregatedResult): string {
   const color = getRecommendationColor(result.finalRecommendation);
   const symbol = getRecommendationSymbol(result.finalRecommendation);
-  const confidence = (result.confidence * 100).toFixed(0);
+  const confidence = formatPercentage(result.confidence);
   const rec = result.finalRecommendation.toUpperCase();
 
   const lines: string[] = [
     `${color}${symbol}${colors.reset} ${colors.bold}${result.component}${colors.reset}`,
     `  Recommendation: ${color}${rec}${colors.reset}`,
-    `  Confidence: ${confidence}%`,
+    `  Confidence: ${confidence}`,
   ];
 
   // Add brief summary based on concerns
@@ -126,8 +127,8 @@ function printSummaryStats(summary: EvaluateCommandResult['summary']): void {
   writeLine(`  ${colors.yellow}Review:${colors.reset} ${String(summary.review)}`);
   writeLine(`  ${colors.yellow}Refactor:${colors.reset} ${String(summary.refactor)}`);
   writeLine(`  ${colors.red}Deprecate:${colors.reset} ${String(summary.deprecate)}`);
-  writeLine(`  Avg Confidence: ${(summary.averageConfidence * 100).toFixed(1)}%`);
-  writeLine(`  Avg Evidence Quality: ${(summary.averageEvidenceQuality * 100).toFixed(1)}%`);
+  writeLine(`  Avg Confidence: ${formatPercentage(summary.averageConfidence, 1)}`);
+  writeLine(`  Avg Evidence Quality: ${formatPercentage(summary.averageEvidenceQuality, 1)}`);
 }
 
 /**

@@ -7,15 +7,16 @@
  */
 
 import type { AggregatedResult, OutputOptions } from './aggregation-types.js';
+import { formatPercentage } from '../core/index.js';
 
 /**
  * Format a single result as summary (one line).
  */
 export function formatSummary(result: AggregatedResult): string {
-  const confidence = (result.confidence * 100).toFixed(0);
+  const confidence = formatPercentage(result.confidence);
   const dissentCount = result.dissent.length;
   const dissent = dissentCount > 0 ? ` (${String(dissentCount)} dissent)` : '';
-  return `[${result.finalRecommendation.toUpperCase()}] ${result.component} (${confidence}% confidence)${dissent}`;
+  return `[${result.finalRecommendation.toUpperCase()}] ${result.component} (${confidence} confidence)${dissent}`;
 }
 
 /**
@@ -27,16 +28,14 @@ export function formatVerbose(result: AggregatedResult, includeAuditTrail: boole
     separator,
     `Component: ${result.component}`,
     `Final Recommendation: ${result.finalRecommendation.toUpperCase()}`,
-    `Confidence: ${(result.confidence * 100).toFixed(1)}%`,
-    `Evidence Quality: ${(result.evidenceQuality * 100).toFixed(1)}%`,
+    `Confidence: ${formatPercentage(result.confidence, 1)}`,
+    `Evidence Quality: ${formatPercentage(result.evidenceQuality, 1)}`,
     ``,
     `Votes:`,
   ];
 
   for (const vote of result.votes) {
-    lines.push(
-      `  - ${vote.agent}: ${vote.recommendation} (${(vote.confidence * 100).toFixed(0)}%)`
-    );
+    lines.push(`  - ${vote.agent}: ${vote.recommendation} (${formatPercentage(vote.confidence)})`);
     for (const concern of vote.concerns) {
       lines.push(`      * ${concern}`);
     }
@@ -46,7 +45,7 @@ export function formatVerbose(result: AggregatedResult, includeAuditTrail: boole
     lines.push('');
     lines.push('Dissenting Opinions:');
     for (const d of result.dissent) {
-      lines.push(`  - ${d.agent}: ${d.recommendation} (${(d.confidence * 100).toFixed(0)}%)`);
+      lines.push(`  - ${d.agent}: ${d.recommendation} (${formatPercentage(d.confidence)})`);
     }
   }
 
