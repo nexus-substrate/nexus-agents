@@ -3,8 +3,11 @@
   "type": "module",
   "version": "0.0.1",
   "scripts": {
+    "sync-docs": "npx tsx ../scripts/sync-docs.ts",
+    "predev": "npm run sync-docs",
     "dev": "astro dev",
     "start": "astro dev",
+    "prebuild": "npm run sync-docs",
     "build": "astro build",
     "preview": "astro preview",
     "astro": "astro"

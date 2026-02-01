@@ -62,6 +62,7 @@ export default defineConfig({
             { label: 'MCP Integration', slug: 'guides/mcp-integration' },
             { label: 'Workflow Templates', slug: 'guides/workflow-templates' },
             { label: 'Debugging & Observability', slug: 'guides/debugging-observability' },
+            { label: 'Troubleshooting', slug: 'guides/troubleshooting' },
           ],
         },
         {
