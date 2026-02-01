@@ -9,6 +9,7 @@
  */
 
 import type { ICliResponseParser, TokenUsage } from '../types.js';
+import { asRecord, extractNumberField } from '../../utils/type-coercion.js';
 
 /**
  * Gemini CLI response structure.
@@ -71,7 +72,7 @@ export class GeminiResponseParser implements ICliResponseParser<GeminiCliRespons
   extractResponse(raw: string): string | null {
     try {
       const data: unknown = JSON.parse(raw);
-      const record = this.asRecord(data);
+      const record = asRecord(data);
       if (record === null) return null;
 
       const response = record.response;
@@ -92,13 +93,13 @@ export class GeminiResponseParser implements ICliResponseParser<GeminiCliRespons
   extractUsage(raw: string): TokenUsage | null {
     try {
       const data: unknown = JSON.parse(raw);
-      const record = this.asRecord(data);
+      const record = asRecord(data);
       if (record === null) return null;
 
-      const stats = this.asRecord(record.stats);
+      const stats = asRecord(record.stats);
       if (stats === null) return null;
 
-      const models = this.asRecord(stats.models);
+      const models = asRecord(stats.models);
       if (models === null) return null;
 
       return this.aggregateModelTokens(models);
@@ -116,15 +117,15 @@ export class GeminiResponseParser implements ICliResponseParser<GeminiCliRespons
     let totalCached = 0;
 
     for (const modelStats of Object.values(models)) {
-      const modelRecord = this.asRecord(modelStats);
+      const modelRecord = asRecord(modelStats);
       if (modelRecord === null) continue;
 
-      const tokens = this.asRecord(modelRecord.tokens);
+      const tokens = asRecord(modelRecord.tokens);
       if (tokens === null) continue;
 
-      const input = this.getNumber(tokens, 'input');
-      const candidates = this.getNumber(tokens, 'candidates');
-      const cached = this.getNumber(tokens, 'cached');
+      const input = extractNumberField(tokens, 'input');
+      const candidates = extractNumberField(tokens, 'candidates');
+      const cached = extractNumberField(tokens, 'cached');
 
       if (input !== null) totalInput += input;
       if (candidates !== null) totalOutput += candidates;
@@ -149,7 +150,7 @@ export class GeminiResponseParser implements ICliResponseParser<GeminiCliRespons
   extractSessionId(raw: string): string | null {
     try {
       const data: unknown = JSON.parse(raw);
-      const record = this.asRecord(data);
+      const record = asRecord(data);
       if (record === null) return null;
 
       const sessionId = record.session_id;
@@ -167,28 +168,10 @@ export class GeminiResponseParser implements ICliResponseParser<GeminiCliRespons
    * Type guard for valid response structure.
    */
   private isValidResponse(data: unknown): data is GeminiCliResponse {
-    const record = this.asRecord(data);
+    const record = asRecord(data);
     if (record === null) return false;
 
     // Only require the essential field
     return typeof record.response === 'string';
-  }
-
-  /**
-   * Safely converts unknown to record.
-   */
-  private asRecord(value: unknown): Record<string, unknown> | null {
-    if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-      return value as Record<string, unknown>;
-    }
-    return null;
-  }
-
-  /**
-   * Safely extracts a number from an object.
-   */
-  private getNumber(obj: Record<string, unknown>, key: string): number | null {
-    const value = obj[key];
-    return typeof value === 'number' ? value : null;
   }
 }

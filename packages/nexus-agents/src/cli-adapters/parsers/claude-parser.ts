@@ -9,6 +9,7 @@
  */
 
 import type { ICliResponseParser, TokenUsage } from '../types.js';
+import { asRecord, extractNumberField } from '../../utils/type-coercion.js';
 
 /**
  * Claude CLI response structure.
@@ -73,7 +74,7 @@ export class ClaudeResponseParser implements ICliResponseParser<ClaudeCliRespons
   extractResponse(raw: string): string | null {
     try {
       const data: unknown = JSON.parse(raw);
-      const record = this.asRecord(data);
+      const record = asRecord(data);
       if (record === null) return null;
 
       // Check for API errors (is_error: true indicates an error occurred)
@@ -98,20 +99,20 @@ export class ClaudeResponseParser implements ICliResponseParser<ClaudeCliRespons
   extractUsage(raw: string): TokenUsage | null {
     try {
       const data: unknown = JSON.parse(raw);
-      const record = this.asRecord(data);
+      const record = asRecord(data);
       if (record === null) return null;
 
-      const usageRecord = this.asRecord(record.usage);
+      const usageRecord = asRecord(record.usage);
       if (usageRecord === null) return null;
 
-      const inputTokens = this.getNumber(usageRecord, 'input_tokens');
-      const outputTokens = this.getNumber(usageRecord, 'output_tokens');
+      const inputTokens = extractNumberField(usageRecord, 'input_tokens');
+      const outputTokens = extractNumberField(usageRecord, 'output_tokens');
 
       if (inputTokens === null || outputTokens === null) {
         return null;
       }
 
-      const cachedInputTokens = this.getNumber(usageRecord, 'cache_read_input_tokens');
+      const cachedInputTokens = extractNumberField(usageRecord, 'cache_read_input_tokens');
 
       return {
         inputTokens,
@@ -130,7 +131,7 @@ export class ClaudeResponseParser implements ICliResponseParser<ClaudeCliRespons
   extractSessionId(raw: string): string | null {
     try {
       const data: unknown = JSON.parse(raw);
-      const record = this.asRecord(data);
+      const record = asRecord(data);
       if (record === null) return null;
 
       const sessionId = record.session_id;
@@ -148,28 +149,10 @@ export class ClaudeResponseParser implements ICliResponseParser<ClaudeCliRespons
    * Type guard for valid response structure.
    */
   private isValidResponse(data: unknown): data is ClaudeCliResponse {
-    const record = this.asRecord(data);
+    const record = asRecord(data);
     if (record === null) return false;
 
     // Only require the essential field
     return typeof record.result === 'string';
-  }
-
-  /**
-   * Safely converts unknown to record.
-   */
-  private asRecord(value: unknown): Record<string, unknown> | null {
-    if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-      return value as Record<string, unknown>;
-    }
-    return null;
-  }
-
-  /**
-   * Safely extracts a number from an object.
-   */
-  private getNumber(obj: Record<string, unknown>, key: string): number | null {
-    const value = obj[key];
-    return typeof value === 'number' ? value : null;
   }
 }

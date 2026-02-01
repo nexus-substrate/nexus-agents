@@ -9,6 +9,7 @@
  */
 
 import type { ICliResponseParser, TokenUsage } from '../types.js';
+import { asRecord, extractNumberField } from '../../utils/type-coercion.js';
 
 /**
  * Codex CLI NDJSON event types.
@@ -121,7 +122,7 @@ export class CodexResponseParser implements ICliResponseParser<CodexCliResponse>
   ): void {
     try {
       const event: unknown = JSON.parse(line);
-      const record = this.asRecord(event);
+      const record = asRecord(event);
       if (record === null) return;
 
       const eventType = record.type;
@@ -164,7 +165,7 @@ export class CodexResponseParser implements ICliResponseParser<CodexCliResponse>
 
       try {
         const event: unknown = JSON.parse(line);
-        const record = this.asRecord(event);
+        const record = asRecord(event);
         if (record === null) continue;
 
         if (record.type === 'turn.completed') {
@@ -189,7 +190,7 @@ export class CodexResponseParser implements ICliResponseParser<CodexCliResponse>
 
       try {
         const event: unknown = JSON.parse(line);
-        const record = this.asRecord(event);
+        const record = asRecord(event);
         if (record === null) continue;
 
         if (record.type === 'thread.started') {
@@ -214,7 +215,7 @@ export class CodexResponseParser implements ICliResponseParser<CodexCliResponse>
     messages: string[],
     reasoning: string[]
   ): void {
-    const item = this.asRecord(record.item);
+    const item = asRecord(record.item);
     if (item === null) return;
 
     const itemType = item.type;
@@ -233,17 +234,17 @@ export class CodexResponseParser implements ICliResponseParser<CodexCliResponse>
    * Extracts usage from a turn.completed event.
    */
   private extractUsageFromEvent(record: Record<string, unknown>): TokenUsage | null {
-    const usage = this.asRecord(record.usage);
+    const usage = asRecord(record.usage);
     if (usage === null) return null;
 
-    const inputTokens = this.getNumber(usage, 'input_tokens');
-    const outputTokens = this.getNumber(usage, 'output_tokens');
+    const inputTokens = extractNumberField(usage, 'input_tokens');
+    const outputTokens = extractNumberField(usage, 'output_tokens');
 
     if (inputTokens === null || outputTokens === null) {
       return null;
     }
 
-    const cachedInputTokens = this.getNumber(usage, 'cached_input_tokens');
+    const cachedInputTokens = extractNumberField(usage, 'cached_input_tokens');
 
     return {
       inputTokens,
@@ -251,23 +252,5 @@ export class CodexResponseParser implements ICliResponseParser<CodexCliResponse>
       totalTokens: inputTokens + outputTokens,
       ...(cachedInputTokens !== null && { cachedInputTokens }),
     };
-  }
-
-  /**
-   * Safely converts unknown to record.
-   */
-  private asRecord(value: unknown): Record<string, unknown> | null {
-    if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-      return value as Record<string, unknown>;
-    }
-    return null;
-  }
-
-  /**
-   * Safely extracts a number from an object.
-   */
-  private getNumber(obj: Record<string, unknown>, key: string): number | null {
-    const value = obj[key];
-    return typeof value === 'number' ? value : null;
   }
 }

@@ -45,3 +45,18 @@ export {
 export { sleep, delay, withTimeout, sequence, type TimeoutResult } from './async-utils.js';
 
 export { clamp, clamp01, clampScore, clampPercent } from './math-utils.js';
+
+export {
+  asRecord,
+  isRecord,
+  asString,
+  asNumber,
+  asBoolean,
+  asArray,
+  extractStringField,
+  extractNumberField,
+  extractBooleanField,
+  extractRecordField,
+  safeJsonParse,
+  safeJsonParseRecord,
+} from './type-coercion.js';

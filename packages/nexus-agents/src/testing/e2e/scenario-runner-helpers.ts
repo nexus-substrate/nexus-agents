@@ -10,13 +10,10 @@
 import type { StepResult, WorkflowDefinition } from '../../core/index.js';
 import { safeRegex } from '../../core/safe-regex.js';
 import type { ScenarioFixture, StepExpectation, StepValidation } from './types.js';
+import { isRecord } from '../../utils/type-coercion.js';
 
-/**
- * Type guard for checking if a value is a Record.
- */
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
+// Re-export for backward compatibility
+export { isRecord };
 
 /**
  * Parse raw expectation data into typed StepExpectation array.

@@ -8,35 +8,10 @@
 
 import type { TokenUsage } from '../types.js';
 import type { TokenTotals } from './gemini-parser-resilient-types.js';
+import { asRecord, extractStringField, extractNumberField } from '../../utils/type-coercion.js';
 
-/**
- * Safely casts value to Record if it's a non-null object.
- */
-export function asRecord(value: unknown): Record<string, unknown> | null {
-  if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-    return value as Record<string, unknown>;
-  }
-  return null;
-}
-
-/**
- * Extracts a string field from a record.
- */
-export function extractStringField(
-  record: Record<string, unknown>,
-  key: string
-): string | undefined {
-  const value = record[key];
-  return typeof value === 'string' ? value : undefined;
-}
-
-/**
- * Gets a number value from a record.
- */
-export function getNumber(obj: Record<string, unknown>, key: string): number | null {
-  const value = obj[key];
-  return typeof value === 'number' ? value : null;
-}
+// Re-export for backward compatibility
+export { asRecord, extractStringField };
 
 /**
  * Aggregates token counts from model stats.
@@ -53,9 +28,9 @@ export function aggregateModelTokens(models: Record<string, unknown>): TokenTota
     const tokens = asRecord(modelRecord.tokens);
     if (tokens === null) continue;
 
-    const input = getNumber(tokens, 'input');
-    const candidates = getNumber(tokens, 'candidates');
-    const cached = getNumber(tokens, 'cached');
+    const input = extractNumberField(tokens, 'input');
+    const candidates = extractNumberField(tokens, 'candidates');
+    const cached = extractNumberField(tokens, 'cached');
 
     if (input !== null) totalInput += input;
     if (candidates !== null) totalOutput += candidates;
