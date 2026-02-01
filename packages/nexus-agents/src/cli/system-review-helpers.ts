@@ -18,11 +18,11 @@ import {
   type CodeQuality,
 } from './system-review-types.js';
 import { safeExecSandboxed } from './sandbox-exec.js';
-import { colors, symbols, writeLine } from './ansi-output.js';
+import { colors, symbols, writeLine, formatStatus } from './ansi-output.js';
 import { clamp } from '../utils/math-utils.js';
 
 // Re-export for backward compatibility
-export { colors, symbols, writeLine };
+export { colors, symbols, writeLine, formatStatus };
 
 const {
   COVERAGE_TARGET_PERCENT,
@@ -38,16 +38,6 @@ const {
   LOW_COVERAGE_PENALTY,
   STALE_ISSUE_PENALTY,
 } = SYSTEM_REVIEW_CONSTANTS;
-
-/** Format a status indicator with color. */
-export function formatStatus(status: 'pass' | 'warn' | 'fail'): string {
-  const map = {
-    pass: colors.green + symbols.check,
-    warn: colors.yellow + symbols.warn,
-    fail: colors.red + symbols.cross,
-  };
-  return map[status] + colors.reset;
-}
 
 /** Calculate overall health score from review results. */
 export function calculateHealthScore(r: SystemReviewResult): number {

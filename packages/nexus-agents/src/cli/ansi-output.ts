@@ -134,15 +134,55 @@ export function dim(text: string): string {
 }
 
 /**
- * Formats a status indicator with appropriate color and symbol.
+ * Status types for formatStatus.
+ * Basic: 'pass', 'warn', 'fail' (3-state)
+ * Extended: adds 'success', 'failed', 'skipped', 'pending', 'warning' (setup command compatibility)
  */
-export function formatStatus(status: 'pass' | 'warn' | 'fail'): string {
-  const statusMap = {
+export type StatusType =
+  | 'pass'
+  | 'warn'
+  | 'fail'
+  | 'success'
+  | 'failed'
+  | 'skipped'
+  | 'pending'
+  | 'warning';
+
+/**
+ * Formats a status indicator with appropriate color and symbol.
+ *
+ * Supports both basic 3-state (pass/warn/fail) and extended 5-state
+ * (success/failed/skipped/pending/warning) status indicators.
+ */
+export function formatStatus(status: StatusType): string {
+  const statusMap: Record<StatusType, string> = {
+    // Basic 3-state (system review, fitness audit)
     pass: colors.green + symbols.check,
     warn: colors.yellow + symbols.warn,
     fail: colors.red + symbols.cross,
+    // Extended state aliases (setup command)
+    success: colors.green + symbols.check,
+    failed: colors.red + symbols.cross,
+    skipped: colors.yellow + symbols.warn,
+    pending: colors.dim + symbols.circle,
+    warning: colors.yellow + symbols.warn,
   };
   return statusMap[status] + colors.reset;
+}
+
+/**
+ * Formats a section header with bold styling.
+ */
+export function formatHeader(text: string): string {
+  return `${colors.bold}${text}${colors.reset}`;
+}
+
+/**
+ * Formats a code block with indentation and dim styling.
+ */
+export function formatCodeBlock(code: string): string {
+  const lines = code.split('\n');
+  return lines.map((line) => `  ${colors.dim}${line}${colors.reset}`).join('\n');
 }
 
 /**

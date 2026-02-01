@@ -2,46 +2,14 @@
  * nexus-agents setup output formatting
  *
  * Output formatting helpers for setup command.
+ * Re-exports from consolidated ansi-output.ts for backward compatibility.
  *
  * @module cli/setup-formatting
  * (Source: Issue #363 - Auto-configure Claude CLI integration)
  */
 
-import { colors, symbols } from './ansi-output.js';
-
-/**
- * Formats a status indicator.
- */
-export function formatStatus(
-  status: 'success' | 'failed' | 'skipped' | 'pending' | 'warning'
-): string {
-  switch (status) {
-    case 'success':
-      return `${colors.green}${symbols.check}${colors.reset}`;
-    case 'failed':
-      return `${colors.red}${symbols.cross}${colors.reset}`;
-    case 'skipped':
-    case 'warning':
-      return `${colors.yellow}${symbols.warn}${colors.reset}`;
-    case 'pending':
-      return `${colors.dim}○${colors.reset}`;
-  }
-}
-
-/**
- * Formats a section header.
- */
-export function formatHeader(text: string): string {
-  return `${colors.bold}${text}${colors.reset}`;
-}
-
-/**
- * Formats a code block for terminal output.
- */
-export function formatCodeBlock(code: string): string {
-  const lines = code.split('\n');
-  return lines.map((line) => `  ${colors.dim}${line}${colors.reset}`).join('\n');
-}
+// Re-export consolidated formatters from ansi-output.ts
+export { formatStatus, formatHeader, formatCodeBlock, colors, symbols } from './ansi-output.js';
 
 /**
  * Checks if running in interactive mode.
