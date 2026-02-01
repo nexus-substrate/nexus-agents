@@ -140,13 +140,13 @@ nexus-agents config init   # Creates nexus-agents.yaml
 
 ## Documentation
 
-| Topic              | Link                                                                |
-| ------------------ | ------------------------------------------------------------------- |
-| Full CLI Reference | [docs/ENTRYPOINTS.md](./docs/ENTRYPOINTS.md)                        |
-| Architecture       | [docs/architecture/README.md](./docs/architecture/README.md)        |
-| Contributing       | [CONTRIBUTING.md](/nexus-agents/architecture/contributing/)         |
-| Coding Standards   | [CODING_STANDARDS.md](/nexus-agents/architecture/coding-standards/) |
-| Quick Start Guide  | [QUICK_START.md](/nexus-agents/architecture/quick-start/)           |
+| Topic              | Link                                                                                                  |
+| ------------------ | ----------------------------------------------------------------------------------------------------- |
+| Full CLI Reference | [CLI Usage](/nexus-agents/guides/cli-usage/)                                                          |
+| Architecture       | [docs/architecture/README.md](./docs/architecture/README.md)                                          |
+| Contributing       | [CONTRIBUTING.md](/nexus-agents/architecture/contributing/)                                           |
+| Coding Standards   | [CODING_STANDARDS.md](https://github.com/williamzujkowski/nexus-agents/blob/main/CODING_STANDARDS.md) |
+| Quick Start Guide  | [QUICK_START.md](/nexus-agents/architecture/quick-start/)                                             |
 
 ---
 

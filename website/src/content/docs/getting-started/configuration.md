@@ -582,6 +582,6 @@ logging:
 
 ## Related Documentation
 
-- [CLI Usage](../ENTRYPOINTS.md) - Use configuration in CLI commands
+- [CLI Usage](/nexus-agents/guides/cli-usage/) - Use configuration in CLI commands
 - [Workflow Templates](../guides/WORKFLOW_TEMPLATES.md) - Create custom workflows
 - [Architecture Overview](/nexus-agents/architecture/readme/) - Understand system design

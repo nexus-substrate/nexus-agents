@@ -191,7 +191,7 @@ nexus-agents/
 └── pnpm-workspace.yaml
 ```
 
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for detailed module descriptions.
+See [ARCHITECTURE.md](../../ARCHITECTURE.md) for detailed module descriptions.
 
 ### Dependency Flow
 

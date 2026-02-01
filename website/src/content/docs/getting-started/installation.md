@@ -470,4 +470,4 @@ sudo usermod -aG docker $USER
 
 - [Configuration](/nexus-agents/architecture/configuration/) - Set up models, experts, and routing
 - [Quick Start](/nexus-agents/getting-started/quick-start/) - Try your first orchestration
-- [CLI Usage](../ENTRYPOINTS.md) - Learn all CLI commands
+- [CLI Usage](/nexus-agents/guides/cli-usage/) - Learn all CLI commands

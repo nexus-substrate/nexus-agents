@@ -403,6 +403,6 @@ await startStdioServer(server);
 
 ## Related Documentation
 
-- [CLI Usage](../ENTRYPOINTS.md) - Use nexus-agents from the command line
+- [CLI Usage](/nexus-agents/guides/cli-usage/) - Use nexus-agents from the command line
 - [Workflow Templates](/nexus-agents/architecture/workflow-templates/) - Create custom automation
 - [Agent Development](/nexus-agents/development/agent-development/) - Build custom agents

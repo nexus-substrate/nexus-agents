@@ -356,5 +356,5 @@ const weighted = new WeightedVoting({
 
 - **Agent System:** [AGENT_SYSTEM.md](/nexus-agents/architecture/agent-system/)
 - **Security:** [SECURITY.md](/nexus-agents/architecture/security/)
-- **Full Architecture:** [ARCHITECTURE.md](../../ARCHITECTURE.md)
-- **Coding Standards:** [CODING_STANDARDS.md](../../CODING_STANDARDS.md)
+- **Full Architecture:** [ARCHITECTURE.md](https://github.com/williamzujkowski/nexus-agents/blob/main/ARCHITECTURE.md)
+- **Coding Standards:** [CODING_STANDARDS.md](https://github.com/williamzujkowski/nexus-agents/blob/main/CODING_STANDARDS.md)

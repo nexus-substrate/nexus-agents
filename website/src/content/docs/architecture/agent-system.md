@@ -247,5 +247,5 @@ interface ContextPrunerConfig {
 
 - **Memory System:** [MEMORY_SYSTEM.md](/nexus-agents/architecture/memory-system/)
 - **Consensus Protocols:** [CONSENSUS_PROTOCOLS.md](/nexus-agents/architecture/consensus-protocols/)
-- **Full Architecture:** [ARCHITECTURE.md](../../ARCHITECTURE.md)
-- **Coding Standards:** [CODING_STANDARDS.md](../../CODING_STANDARDS.md)
+- **Full Architecture:** [ARCHITECTURE.md](https://github.com/williamzujkowski/nexus-agents/blob/main/ARCHITECTURE.md)
+- **Coding Standards:** [CODING_STANDARDS.md](https://github.com/williamzujkowski/nexus-agents/blob/main/CODING_STANDARDS.md)

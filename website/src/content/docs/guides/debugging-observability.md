@@ -621,7 +621,7 @@ console.log(`Average reward: ${data.avgReward.toFixed(2)}`);
 ## Related Documentation
 
 - [SWARM_OBSERVER_DESIGN.md](/nexus-agents/architecture/swarm-observer-design/) - Architecture design
-- [ARCHITECTURE.md](../../ARCHITECTURE.md) - System architecture
+- [ARCHITECTURE.md](https://github.com/williamzujkowski/nexus-agents/blob/main/ARCHITECTURE.md) - System architecture
 - [event-bus-types.ts](../../packages/nexus-agents/src/agents/collaboration/event-bus-types.ts) - Event type definitions
 
 ---

@@ -482,4 +482,4 @@ estimator.calibrate({
 
 - **Memory System:** [MEMORY_SYSTEM.md](/nexus-agents/architecture/memory-system/)
 - **Agent System:** [AGENT_SYSTEM.md](/nexus-agents/architecture/agent-system/)
-- **Full Architecture:** [ARCHITECTURE.md](../../ARCHITECTURE.md)
+- **Full Architecture:** [ARCHITECTURE.md](https://github.com/williamzujkowski/nexus-agents/blob/main/ARCHITECTURE.md)

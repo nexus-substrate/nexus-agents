@@ -406,4 +406,4 @@ description: 'Analyze files'; // Too vague
 
 - **MCP Architecture:** [MCP_PROTOCOL.md](/nexus-agents/architecture/mcp-protocol/)
 - **Security:** [SECURITY.md](/nexus-agents/architecture/security/)
-- **API Reference:** [ENTRYPOINTS.md](../ENTRYPOINTS.md)
+- **API Reference:** [CLI Usage](/nexus-agents/guides/cli-usage/)

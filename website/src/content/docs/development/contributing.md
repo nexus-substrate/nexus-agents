@@ -269,13 +269,13 @@ If CLI tools are unavailable, maintainers can:
 - Manually trigger GitHub Actions workflow (requires API keys)
 - Manually add the `cli-reviewed` label after human review
 
-See [docs/proposals/cli-pr-review-workflow.md](./docs/proposals/cli-pr-review-workflow.md) for full design rationale.
+See [cli-pr-review-workflow.md](https://github.com/williamzujkowski/nexus-agents/blob/main/docs/proposals/cli-pr-review-workflow.md) for full design rationale.
 
 ---
 
 ## Code Quality Standards
 
-All contributions must adhere to our coding standards. For complete details, see [CODING_STANDARDS.md](/nexus-agents/architecture/coding-standards/).
+All contributions must adhere to our coding standards. For complete details, see [CODING_STANDARDS.md](https://github.com/williamzujkowski/nexus-agents/blob/main/CODING_STANDARDS.md).
 
 ### Key Requirements
 
@@ -554,7 +554,7 @@ If you discover a security vulnerability, please **do not** create a public issu
 ## Getting Help
 
 - Review the [CLAUDE.md](/nexus-agents/architecture/claude/) for project architecture
-- Check [CODING_STANDARDS.md](/nexus-agents/architecture/coding-standards/) for detailed standards
+- Check [CODING_STANDARDS.md](https://github.com/williamzujkowski/nexus-agents/blob/main/CODING_STANDARDS.md) for detailed standards
 - Open a discussion for questions
 - Join our community channels (if available)
 
