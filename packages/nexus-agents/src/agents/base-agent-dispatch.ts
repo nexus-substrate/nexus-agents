@@ -8,7 +8,7 @@
  */
 
 import type { Result, AgentMessage, AgentResponse, Task, TaskResult } from '../core/index.js';
-import { err, AgentError } from '../core/index.js';
+import { err, AgentError, formatZodError } from '../core/index.js';
 import { AgentMessageSchema } from './agent-schemas.js';
 import {
   handleTaskMessage,
@@ -43,12 +43,9 @@ export function validateMessage(params: ValidateMessageParams): ValidateMessageR
   const validation = AgentMessageSchema.safeParse(msg);
 
   if (!validation.success) {
-    const issues = validation.error.issues
-      .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
-      .join('; ');
     return {
       valid: false,
-      error: new AgentError(`Invalid message: ${issues}`, {
+      error: new AgentError(`Invalid message: ${formatZodError(validation.error)}`, {
         context: { messageId: msg.id, validationErrors: validation.error.issues },
       }),
     };

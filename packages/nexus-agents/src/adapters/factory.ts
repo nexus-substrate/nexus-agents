@@ -7,7 +7,7 @@
 
 import { z } from 'zod';
 import type { Result, IModelAdapter } from '../core/index.js';
-import { ConfigError, err, ok } from '../core/index.js';
+import { ConfigError, err, ok, formatZodError } from '../core/index.js';
 
 /**
  * Zod schema for adapter configuration.
@@ -200,11 +200,8 @@ export class AdapterFactory {
   private validateConfig(config: AdapterConfig): Result<AdapterConfig, ConfigError> {
     const result = AdapterConfigSchema.safeParse(config);
     if (!result.success) {
-      const issues = result.error.issues
-        .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
-        .join('; ');
       return err(
-        new ConfigError(`Invalid adapter configuration: ${issues}`, {
+        new ConfigError(`Invalid adapter configuration: ${formatZodError(result.error)}`, {
           context: {
             config: this.sanitizeConfig(config),
             validationErrors: result.error.issues,

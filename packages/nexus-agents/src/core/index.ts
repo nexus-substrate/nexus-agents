@@ -125,6 +125,15 @@ export {
   MAX_PATTERN_LENGTH,
 } from './safe-regex.js';
 
+// Zod Helpers (LOOP H-K consolidation - 20+ duplicate implementations)
+export {
+  formatZodIssue,
+  formatZodError,
+  formatZodIssuesAsArray,
+  formatZodIssueWithRoot,
+  isZodError,
+} from './zod-helpers.js';
+
 // Task Analysis
 export {
   TaskTypeClassifier,

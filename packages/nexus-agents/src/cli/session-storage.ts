@@ -11,6 +11,7 @@
 import type { Result } from '../core/result.js';
 import { ok, err } from '../core/result.js';
 import { ValidationError, toError } from '../core/errors.js';
+import { formatZodError } from '../core/zod-helpers.js';
 import type { ILogger } from '../core/logger.js';
 import { createLogger } from '../core/logger.js';
 import {
@@ -68,12 +69,12 @@ export class SQLiteSessionStorage implements ISessionStorage {
   constructor(config: SessionStorageConfig) {
     const validation = SessionStorageConfigSchema.safeParse(config);
     if (!validation.success) {
-      const issues = validation.error.issues
-        .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
-        .join('; ');
-      throw new ValidationError(`Invalid SessionStorageConfig: ${issues}`, {
-        context: { config, validationErrors: validation.error.issues },
-      });
+      throw new ValidationError(
+        `Invalid SessionStorageConfig: ${formatZodError(validation.error)}`,
+        {
+          context: { config, validationErrors: validation.error.issues },
+        }
+      );
     }
 
     this.dbPath = config.dbPath;

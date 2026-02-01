@@ -6,7 +6,7 @@
  */
 
 import type { Result, Task, TaskResult, ILogger } from '../core/index.js';
-import { ok, err, AgentError, getTimeProvider } from '../core/index.js';
+import { ok, err, AgentError, getTimeProvider, formatZodError } from '../core/index.js';
 import { TaskSchema } from './agent-schemas.js';
 import type { AgentStateMachine } from './state-machine.js';
 import type { ITokenBudgetTracker } from '../context/token-budget-tracker.js';
@@ -18,11 +18,8 @@ import type { ITokenBudgetTracker } from '../context/token-budget-tracker.js';
 export function validateTask(task: Task): Result<Task, AgentError> {
   const result = TaskSchema.safeParse(task);
   if (!result.success) {
-    const issues = result.error.issues
-      .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
-      .join('; ');
     return err(
-      new AgentError(`Invalid task: ${issues}`, {
+      new AgentError(`Invalid task: ${formatZodError(result.error)}`, {
         context: { taskId: task.id, validationErrors: result.error.issues },
       })
     );

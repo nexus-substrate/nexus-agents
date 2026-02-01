@@ -7,31 +7,12 @@
  * (Source: MCP Protocol 2025-11-25, Zod Documentation)
  */
 
-import type { ZodSchema, ZodError, ZodIssue } from 'zod';
+import type { ZodSchema } from 'zod';
 
-import { type Result, ok, err, ValidationError } from '../../core/index.js';
+import { type Result, ok, err, ValidationError, formatZodError } from '../../core/index.js';
 
-/**
- * Formats a Zod validation error into a human-readable message.
- *
- * @param error - The Zod error to format
- * @returns A formatted error message
- */
-function formatZodError(error: ZodError): string {
-  const issues = error.issues.map(formatZodIssue);
-  return issues.join('; ');
-}
-
-/**
- * Formats a single Zod issue into a readable string.
- *
- * @param issue - The Zod issue to format
- * @returns A formatted issue message
- */
-function formatZodIssue(issue: ZodIssue): string {
-  const path = issue.path.length > 0 ? `${issue.path.join('.')}: ` : '';
-  return `${path}${issue.message}`;
-}
+// Re-export isZodError for backward compatibility
+export { isZodError } from '../../core/index.js';
 
 /**
  * Validates tool input against a Zod schema.
@@ -103,21 +84,6 @@ export function createValidator<T>(
   schema: ZodSchema<T>
 ): (args: unknown) => Result<T, ValidationError> {
   return (args: unknown) => validateToolInput(schema, args);
-}
-
-/**
- * Type guard to check if a value is a Zod error.
- *
- * @param error - The value to check
- * @returns True if the value is a ZodError
- */
-export function isZodError(error: unknown): error is ZodError {
-  return (
-    error !== null &&
-    typeof error === 'object' &&
-    'issues' in error &&
-    Array.isArray((error as ZodError).issues)
-  );
 }
 
 /**
