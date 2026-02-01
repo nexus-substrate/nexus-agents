@@ -41,6 +41,8 @@ export {
 // Re-export execution utilities for backward compatibility
 export {
   DEFAULT_VOTE_TIMEOUT_MS,
+  MAX_VOTE_TIMEOUT_MS,
+  MIN_VOTE_TIMEOUT_MS,
   DEFAULT_MAX_RETRIES,
   createErrorVoteResult,
   createSimulationVoteResult,
@@ -50,6 +52,7 @@ export {
   delay,
   extractTextFromResponse,
   executeSingleVoteAttempt,
+  validateTimeout,
   type RetryOptions,
   executeWithRetries,
 } from './voter-execution.js';

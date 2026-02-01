@@ -90,6 +90,7 @@ export interface ParsedCliArgs {
     proposal?: string;
     threshold?: 'majority' | 'supermajority' | 'unanimous';
     quick: boolean;
+    timeoutMs?: number;
     // SWE-bench command options
     variant?: 'lite' | 'verified' | 'full';
     limit?: number;
@@ -225,6 +226,10 @@ export const PARSE_ARGS_CONFIG = {
       type: 'boolean' as const,
       short: 'q',
       default: false,
+    },
+    timeout: {
+      type: 'string' as const,
+      default: '90',
     },
     // SWE-bench command options
     variant: {

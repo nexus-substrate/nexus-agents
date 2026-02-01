@@ -16,10 +16,24 @@ import { VOTER_SYSTEM_PROMPTS, SIMULATED_VOTE_REASONING } from './voter-prompts.
 import { buildVotePrompt, parseVoteResponse, SyntheticVoteError } from './voter-response.js';
 
 /**
- * Default vote execution timeout (30 seconds).
- * Reduced from CLI adapter default (60s) for faster feedback.
+ * Default vote execution timeout (90 seconds).
+ * Increased from 30s per Issue #607 - complex proposals require more time
+ * for CLI agents to analyze and respond properly.
  */
-export const DEFAULT_VOTE_TIMEOUT_MS = 30_000;
+export const DEFAULT_VOTE_TIMEOUT_MS = 90_000;
+
+/**
+ * Maximum vote execution timeout (5 minutes).
+ * Upper bound to prevent indefinite waiting for stalled agents.
+ * (Source: Issue #607)
+ */
+export const MAX_VOTE_TIMEOUT_MS = 300_000;
+
+/**
+ * Minimum vote execution timeout (30 seconds).
+ * Lower bound to ensure agents have adequate processing time.
+ */
+export const MIN_VOTE_TIMEOUT_MS = 30_000;
 
 /**
  * Maximum retries for vote execution.
@@ -30,6 +44,21 @@ export const DEFAULT_MAX_RETRIES = 2;
  * Initial retry delay in milliseconds.
  */
 const INITIAL_RETRY_DELAY_MS = 1_000;
+
+/**
+ * Validates and constrains timeout to allowed range [MIN, MAX].
+ * Returns clamped value and whether it was adjusted.
+ * (Source: Issue #607)
+ */
+export function validateTimeout(requestedMs: number): { value: number; clamped: boolean } {
+  if (requestedMs < MIN_VOTE_TIMEOUT_MS) {
+    return { value: MIN_VOTE_TIMEOUT_MS, clamped: true };
+  }
+  if (requestedMs > MAX_VOTE_TIMEOUT_MS) {
+    return { value: MAX_VOTE_TIMEOUT_MS, clamped: true };
+  }
+  return { value: requestedMs, clamped: false };
+}
 
 // ============================================================================
 // Vote Result Helpers

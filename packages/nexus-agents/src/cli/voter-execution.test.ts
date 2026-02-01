@@ -9,6 +9,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   DEFAULT_VOTE_TIMEOUT_MS,
+  MAX_VOTE_TIMEOUT_MS,
+  MIN_VOTE_TIMEOUT_MS,
   DEFAULT_MAX_RETRIES,
   createErrorVoteResult,
   createSimulationVoteResult,
@@ -19,6 +21,7 @@ import {
   extractTextFromResponse,
   executeSingleVoteAttempt,
   executeWithRetries,
+  validateTimeout,
 } from './voter-execution.js';
 import type { VoterRole } from './vote-types.js';
 import type { IModelAdapter, CompletionResponse, ILogger, Result } from '../core/index.js';
@@ -29,11 +32,52 @@ type MockCompletionResult = Result<CompletionResponse, ModelError>;
 describe('voter-execution', () => {
   describe('constants', () => {
     it('should have reasonable timeout value', () => {
-      expect(DEFAULT_VOTE_TIMEOUT_MS).toBe(30_000);
+      // Increased to 90s per Issue #607 to allow time for complex proposal analysis
+      expect(DEFAULT_VOTE_TIMEOUT_MS).toBe(90_000);
+    });
+
+    it('should have 5 minute max timeout', () => {
+      // Upper bound to prevent indefinite waiting (Issue #607)
+      expect(MAX_VOTE_TIMEOUT_MS).toBe(300_000);
+    });
+
+    it('should have 30 second min timeout', () => {
+      // Lower bound to ensure agents have adequate time
+      expect(MIN_VOTE_TIMEOUT_MS).toBe(30_000);
     });
 
     it('should have reasonable retry count', () => {
       expect(DEFAULT_MAX_RETRIES).toBe(2);
+    });
+  });
+
+  describe('validateTimeout', () => {
+    it('should accept values within range', () => {
+      const result = validateTimeout(60_000);
+      expect(result.value).toBe(60_000);
+      expect(result.clamped).toBe(false);
+    });
+
+    it('should clamp values below minimum', () => {
+      const result = validateTimeout(10_000);
+      expect(result.value).toBe(MIN_VOTE_TIMEOUT_MS);
+      expect(result.clamped).toBe(true);
+    });
+
+    it('should clamp values above maximum', () => {
+      const result = validateTimeout(600_000);
+      expect(result.value).toBe(MAX_VOTE_TIMEOUT_MS);
+      expect(result.clamped).toBe(true);
+    });
+
+    it('should accept exact boundary values', () => {
+      const minResult = validateTimeout(MIN_VOTE_TIMEOUT_MS);
+      expect(minResult.value).toBe(MIN_VOTE_TIMEOUT_MS);
+      expect(minResult.clamped).toBe(false);
+
+      const maxResult = validateTimeout(MAX_VOTE_TIMEOUT_MS);
+      expect(maxResult.value).toBe(MAX_VOTE_TIMEOUT_MS);
+      expect(maxResult.clamped).toBe(false);
     });
   });
 

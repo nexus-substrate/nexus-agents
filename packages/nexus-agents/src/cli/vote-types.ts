@@ -20,6 +20,8 @@ export interface VoteCommandOptions {
   readonly verbose?: boolean;
   readonly createIssue?: boolean;
   readonly issueNumber?: number;
+  /** Timeout per vote in milliseconds (default: 90000 per Issue #607) */
+  readonly timeoutMs?: number;
 }
 
 /**

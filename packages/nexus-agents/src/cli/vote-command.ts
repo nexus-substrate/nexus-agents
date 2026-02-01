@@ -23,7 +23,12 @@ import type { VoteCommandOptions, VoterRole, VotingResult, VoteHash } from './vo
 import { THRESHOLD_MAP, VOTER_ROLES } from './vote-types.js';
 import type { Vote, ConsensusAlgorithm, ConsensusResult, Proposal } from '../consensus/types.js';
 import { createConsensusEngine } from '../consensus/engine.js';
-import { collectRealVotes, type AgentVoteResult } from './voter-agents.js';
+import {
+  collectRealVotes,
+  validateTimeout,
+  DEFAULT_VOTE_TIMEOUT_MS,
+  type AgentVoteResult,
+} from './voter-agents.js';
 import { colors, symbols, writeLine } from './ansi-output.js';
 
 function generateVoteHash(role: VoterRole, vote: Vote): VoteHash {
@@ -39,12 +44,14 @@ function generateVoteHash(role: VoterRole, vote: Vote): VoteHash {
 async function collectVotes(
   proposal: string,
   roles: readonly VoterRole[],
-  simulateVotes: boolean
+  simulateVotes: boolean,
+  timeoutMs?: number
 ): Promise<readonly AgentVoteResult[]> {
   return collectRealVotes({
     roles,
     proposal,
     simulate: simulateVotes,
+    ...(timeoutMs !== undefined && { timeoutMs }),
   });
 }
 
@@ -182,10 +189,21 @@ async function runVote(options: VoteCommandOptions): Promise<VotingResult> {
     : ['architect', 'security', 'devex', 'ai_ml', 'pm'];
   const start = getTimeProvider().now();
 
+  // Validate and constrain timeout to allowed range (Issue #607)
+  const requestedTimeoutMs = options.timeoutMs ?? DEFAULT_VOTE_TIMEOUT_MS;
+  const { value: timeoutMs, clamped } = validateTimeout(requestedTimeoutMs);
+  const timeoutSec = timeoutMs / 1000;
+
+  if (clamped) {
+    writeLine(
+      `${colors.yellow}Timeout adjusted to ${String(timeoutSec)}s (min: 30s, max: 300s)${colors.reset}\n`
+    );
+  }
+
   writeLine(
-    `${colors.dim}Collecting votes from ${String(roles.length)} agents...${colors.reset}\n`
+    `${colors.dim}Collecting votes from ${String(roles.length)} agents (timeout: ${String(timeoutSec)}s each)...${colors.reset}\n`
   );
-  const votes = await collectVotes(options.proposal, roles, options.dryRun === true);
+  const votes = await collectVotes(options.proposal, roles, options.dryRun === true, timeoutMs);
   const engine = createConsensusEngine();
   const proposal: Proposal = {
     title: 'CLI Vote',
