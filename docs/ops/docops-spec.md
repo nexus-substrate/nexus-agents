@@ -154,17 +154,18 @@ npx tsx scripts/inject-governance.ts check   # CI validation
 
 ## CI Validation Jobs
 
-### docs-check.yml (7 Jobs)
+### docs-check.yml (8 Jobs)
 
-| Job              | Purpose                   | Blocking     | Trigger  |
-| ---------------- | ------------------------- | ------------ | -------- |
-| `typedoc-check`  | API docs drift detection  | Yes          | Push, PR |
-| `llms-txt-check` | LLM context freshness     | Yes          | Push, PR |
-| `website-sync`   | Canonical → Website sync  | Yes          | Push, PR |
-| `repo-index`     | Capabilities freshness    | Yes          | Push, PR |
-| `link-check`     | URL validation            | Yes          | Push, PR |
-| `docs-coverage`  | PR documentation updates  | No (warning) | PR only  |
-| `secrets-scan`   | Secrets in generated docs | Yes          | Push, PR |
+| Job                 | Purpose                   | Blocking     | Trigger  |
+| ------------------- | ------------------------- | ------------ | -------- |
+| `typedoc-check`     | API docs drift detection  | Yes          | Push, PR |
+| `llms-txt-check`    | LLM context freshness     | Yes          | Push, PR |
+| `website-sync`      | Canonical → Website sync  | Yes          | Push, PR |
+| `repo-index`        | Capabilities freshness    | Yes          | Push, PR |
+| `link-check`        | URL validation            | Yes          | Push, PR |
+| `docs-coverage`     | PR documentation updates  | No (warning) | PR only  |
+| `secrets-scan`      | Secrets in generated docs | Yes          | Push, PR |
+| `docops-skill-sync` | Pipeline → Skill sync     | Yes          | PR only  |
 
 ### link-check.yml (Standalone)
 

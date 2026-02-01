@@ -338,3 +338,99 @@ jobs:
           else
             echo "✅ No secrets detected in generated documentation"
           fi
+
+  # Job 6: Website Sync Check
+  website-sync:
+    name: Website Sync Verification
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - run: pnpm install
+
+      - name: Check website sync status
+        run: |
+          npx tsx scripts/sync-docs.ts --check
+          if [ $? -eq 0 ]; then
+            echo "✅ Website content is in sync with canonical docs"
+          else
+            echo "::error::Website content is out of sync with canonical docs"
+            echo "Run 'npx tsx scripts/sync-docs.ts' and commit the changes"
+            exit 1
+          fi
+
+      - name: Build website
+        run: |
+          cd website
+          npm install
+          npm run build
+          echo "✅ Website builds successfully"
+
+  # Job 7: Repository Index Check
+  repo-index:
+    name: Repository Index Verification
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - run: pnpm install
+
+      - name: Check repository index
+        run: |
+          npx tsx scripts/generate-repo-index.ts --check
+          if [ $? -eq 0 ]; then
+            echo "✅ Repository capability index is up to date"
+          else
+            echo "::error::Repository capability index is out of date"
+            echo "Run 'npx tsx scripts/generate-repo-index.ts' and commit the changes"
+            exit 1
+          fi
+
+  # Job 8: DocOps Skill Synchronization
+  docops-skill-sync:
+    name: DocOps Skill Sync
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - run: pnpm install
+
+      - name: Check DocOps skill synchronization
+        env:
+          GITHUB_BASE_REF: ${{ github.base_ref }}
+        run: |
+          npx tsx scripts/check-docops-skill.ts --verbose
+          if [ $? -eq 0 ]; then
+            echo "✅ DocOps skill sync check passed"
+          else
+            echo "::error::DocOps pipeline changed without skill update"
+            echo "Update .claude/skills/documentation-management.md to reflect pipeline changes"
+            exit 1
+          fi

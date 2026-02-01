@@ -136,17 +136,18 @@ npx tsx scripts/inject-governance.ts check   # CI validation
 
 ## CI Validation
 
-### docs-check.yml (7 jobs)
+### docs-check.yml (8 jobs)
 
-| Job              | What it checks                 | Blocking?    |
-| ---------------- | ------------------------------ | ------------ |
-| `typedoc-check`  | API docs match source          | Yes          |
-| `llms-txt-check` | llms.txt matches INDEX.yaml    | Yes          |
-| `website-sync`   | Website matches canonical      | Yes          |
-| `repo-index`     | capabilities.md matches source | Yes          |
-| `link-check`     | All URLs resolve               | Yes          |
-| `docs-coverage`  | PRs include doc updates        | No (warning) |
-| `secrets-scan`   | No secrets in generated docs   | Yes          |
+| Job                 | What it checks                        | Blocking?    |
+| ------------------- | ------------------------------------- | ------------ |
+| `typedoc-check`     | API docs match source                 | Yes          |
+| `llms-txt-check`    | llms.txt matches INDEX.yaml           | Yes          |
+| `website-sync`      | Website matches canonical             | Yes          |
+| `repo-index`        | capabilities.md matches source        | Yes          |
+| `link-check`        | All URLs resolve                      | Yes          |
+| `docs-coverage`     | PRs include doc updates               | No (warning) |
+| `secrets-scan`      | No secrets in generated docs          | Yes          |
+| `docops-skill-sync` | Pipeline changes require skill update | Yes (PRs)    |
 
 ---
 
