@@ -3,7 +3,7 @@ title: 'Architecture Overview'
 description: '┌─────────────────────────────────────────────────────────────┐'
 ---
 
-**Full Details:** [ARCHITECTURE.md](https://github.com/williamzujkowski/nexus-agents/blob/main/ARCHITECTURE.md)
+**Full Details:** [ARCHITECTURE.md](../../ARCHITECTURE.md)
 
 ---
 
@@ -139,7 +139,7 @@ packages/nexus-agents/src/
 
 ## Related Documents
 
-- **Full Architecture:** [ARCHITECTURE.md](https://github.com/williamzujkowski/nexus-agents/blob/main/ARCHITECTURE.md)
-- **Coding Standards:** [CODING_STANDARDS.md](https://github.com/williamzujkowski/nexus-agents/blob/main/CODING_STANDARDS.md)
-- **Research Index:** [Research Index](/nexus-agents/research/research-index/)
-- **API Reference:** [CLI Usage](/nexus-agents/guides/cli-usage/)
+- **Full Architecture:** [ARCHITECTURE.md](../../ARCHITECTURE.md)
+- **Coding Standards:** [CODING_STANDARDS.md](../../CODING_STANDARDS.md)
+- **Research Index:** [RESEARCH_INDEX.md](../research/RESEARCH_INDEX.md)
+- **API Reference:** [ENTRYPOINTS.md](../ENTRYPOINTS.md)

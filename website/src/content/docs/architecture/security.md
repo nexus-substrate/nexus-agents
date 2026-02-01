@@ -467,5 +467,5 @@ pnpm test src/security/sandbox-pentest.test.ts
 
 - **Consensus Protocols:** [CONSENSUS_PROTOCOLS.md](/nexus-agents/architecture/consensus-protocols/) (Byzantine detection)
 - **Routing System:** [ROUTING_SYSTEM.md](/nexus-agents/architecture/routing-system/) (Budget limits)
-- **Full Architecture:** [ARCHITECTURE.md](https://github.com/williamzujkowski/nexus-agents/blob/main/ARCHITECTURE.md)
-- **Coding Standards:** [CODING_STANDARDS.md](https://github.com/williamzujkowski/nexus-agents/blob/main/CODING_STANDARDS.md)
+- **Full Architecture:** [ARCHITECTURE.md](../../ARCHITECTURE.md)
+- **Coding Standards:** [CODING_STANDARDS.md](../../CODING_STANDARDS.md)

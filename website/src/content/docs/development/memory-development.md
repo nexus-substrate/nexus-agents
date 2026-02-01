@@ -454,4 +454,4 @@ await memory.batchWrite(batch);
 
 - **Memory Architecture:** [MEMORY_SYSTEM.md](/nexus-agents/architecture/memory-system/)
 - **Agent System:** [AGENT_SYSTEM.md](/nexus-agents/architecture/agent-system/)
-- **Research:** [Research Index](/nexus-agents/research/research-index/)
+- **Research:** [RESEARCH_INDEX.md](../research/RESEARCH_INDEX.md)

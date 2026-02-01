@@ -306,4 +306,4 @@ memory:
 
 - **Agent System:** [AGENT_SYSTEM.md](/nexus-agents/architecture/agent-system/)
 - **Routing System:** [ROUTING_SYSTEM.md](/nexus-agents/architecture/routing-system/)
-- **Full Architecture:** [ARCHITECTURE.md](https://github.com/williamzujkowski/nexus-agents/blob/main/ARCHITECTURE.md)
+- **Full Architecture:** [ARCHITECTURE.md](../../ARCHITECTURE.md)

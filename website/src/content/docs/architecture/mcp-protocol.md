@@ -395,5 +395,5 @@ nexus-agents --mode=server --verbose
 
 - **Agent System:** [AGENT_SYSTEM.md](/nexus-agents/architecture/agent-system/)
 - **Security:** [SECURITY.md](/nexus-agents/architecture/security/)
-- **Full Architecture:** [ARCHITECTURE.md](https://github.com/williamzujkowski/nexus-agents/blob/main/ARCHITECTURE.md)
-- **API Reference:** [CLI Usage](/nexus-agents/guides/cli-usage/)
+- **Full Architecture:** [ARCHITECTURE.md](../../ARCHITECTURE.md)
+- **API Reference:** [ENTRYPOINTS.md](../ENTRYPOINTS.md)

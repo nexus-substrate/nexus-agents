@@ -131,14 +131,14 @@ enclosing scope even after the outer function has returned...
 
 ## Next Steps
 
-| Goal               | Command                                                                           |
-| ------------------ | --------------------------------------------------------------------------------- |
-| See all commands   | `nexus-agents --help`                                                             |
-| List expert types  | `nexus-agents expert list`                                                        |
-| List workflows     | `nexus-agents workflow list`                                                      |
-| Review a GitHub PR | `nexus-agents review <url>`                                                       |
-| Debug routing      | `nexus-agents routing-audit "your task"`                                          |
-| Full documentation | [CLAUDE.md](https://github.com/williamzujkowski/nexus-agents/blob/main/CLAUDE.md) |
+| Goal               | Command                                         |
+| ------------------ | ----------------------------------------------- |
+| See all commands   | `nexus-agents --help`                           |
+| List expert types  | `nexus-agents expert list`                      |
+| List workflows     | `nexus-agents workflow list`                    |
+| Review a GitHub PR | `nexus-agents review <url>`                     |
+| Debug routing      | `nexus-agents routing-audit "your task"`        |
+| Full documentation | [CLAUDE.md](/nexus-agents/architecture/claude/) |
 
 ---
 
@@ -171,7 +171,7 @@ For production, use a secrets manager (AWS Secrets Manager, HashiCorp Vault, etc
 | MCP connection fails        | Run `nexus-agents setup` or verify with `claude mcp list`         |
 | Setup doesn't detect Claude | Install Claude CLI: `npm install -g @anthropic-ai/claude-code`    |
 
-For more help, see [Troubleshooting](/nexus-agents/guides/troubleshooting/).
+For more help, see [docs/TROUBLESHOOTING.md](./docs/TROUBLESHOOTING.md).
 
 ---
 

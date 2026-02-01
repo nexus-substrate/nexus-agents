@@ -562,6 +562,6 @@ output:
 
 ## Related Documentation
 
-- [CLI Usage](/nexus-agents/guides/cli-usage/) - Run workflows from command line
+- [CLI Usage](../ENTRYPOINTS.md) - Run workflows from command line
 - [Debugging & Observability](/nexus-agents/architecture/debugging-observability/) - Debug workflow execution
 - [Agent Development](/nexus-agents/development/agent-development/) - Create custom experts
