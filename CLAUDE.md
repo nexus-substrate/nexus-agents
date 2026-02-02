@@ -86,11 +86,11 @@ pnpm --version   # Must be v9.x (recommended) or npm v10.x
 ### For Claude Code Users
 
 1. **Install:** `npm install -g nexus-agents`
-2. **Setup:** `nexus-agents setup` (auto-configures MCP server)
+2. **Setup:** `nexus-agents setup` (creates `~/.claude/mcp.json` entry, sets environment)
 3. **Verify:** `nexus-agents doctor`
 4. **Test:** Ask Claude "orchestrate: What files are in this project?"
 
-**Manual MCP Configuration (if setup fails):**
+**Manual MCP Configuration (if setup fails or multiple MCP servers exist):**
 
 ```bash
 claude mcp add-json nexus-agents '{"command":"nexus-agents","args":["--mode=server"]}'
@@ -130,15 +130,19 @@ nexus-agents orchestrate "Hello World: summarize this test" --verbose
 | Orchestrator | `--mode=orchestrator` | Standalone CLI, CI/CD pipelines      |
 | Mesh         | `--mode=mesh`         | Advanced hybrid deployments          |
 
-Auto-detection works in most cases. Run `nexus-agents --verbose` to see mode selection reasoning.
+Auto-detection works when mode can be inferred from environment (Claude Desktop presence, CI environment variables). When multiple modes are valid, use explicit `--mode=` flag. Run `nexus-agents --verbose` to see mode selection reasoning.
 
 ---
 
 ## Context Budget Guidance
 
-Allocate context tokens based on task complexity. Reference: `docs/INDEX.yaml`
+Allocate context tokens based on task complexity. These are guidelines, not hard limits - adapt allocation based on task requirements. If correctness requires more context, use what's needed.
+
+Reference: `docs/INDEX.yaml`
 
 ### Token Budgets by Task Type
+
+<!-- [GUIDELINE] These are targets, not hard limits. Adapt based on task requirements. -->
 
 | Task Type          | Budget | Use For                                |
 | ------------------ | ------ | -------------------------------------- |
@@ -161,7 +165,7 @@ Allocate context tokens based on task complexity. Reference: `docs/INDEX.yaml`
 - **Use subagents** for exploratory work (keeps main context clean)
 - **Summarize large outputs** before adding to context
 - **Reference by path** rather than inlining large file contents
-- **Use `/clear`** when switching to unrelated tasks
+- **Start fresh conversation** when switching to unrelated tasks (or use `/clear` if available in your CLI)
 
 ---
 
@@ -175,7 +179,7 @@ Before any time-sensitive operation:
 
 ```bash
 date '+%Y-%m-%d %H:%M:%S %Z'  # Verify current ET time
-TZ='America/New_York' date    # Force ET if needed
+TZ='America/New_York' date    # Force ET when system timezone differs
 ```
 
 Use verified ET time for:
@@ -250,6 +254,8 @@ Before implementing any feature or making architectural decisions:
    - Create GitHub issue with research summary
    - Link to primary sources
    - Note any `Verify:` items
+
+**Time-sensitive exception:** For P1/P2 items with deadlines, abbreviated research (quick documentation check) is acceptable. Full research-first applies to architectural decisions and non-urgent features.
 
 ### 5. Research Tracking System
 
@@ -333,7 +339,7 @@ correctness > simplicity > performance > cleverness
 - **Performance**: Does it meet requirements? (not theoretical optimality)
 - **Cleverness**: Never. Clever code is maintenance debt.
 
-**The goal:** Produce boring, readable, maintainable software that survives production.
+**The goal:** Produce software with explicit error handling, observable state changes, and no silent failures.
 
 ---
 
@@ -381,6 +387,8 @@ Task → BudgetRouter → ZeroRouter → PreferenceRouter → TopsisRouter → L
 
 **If existing code is poorly structured:** Refactor it - do not fork it.
 
+**Canonical Paths override:** When a non-canonical implementation exists, migrate its logic to the canonical location, then remove the deprecated file. Canonical Paths take precedence over "modify existing files" when those files are deprecated.
+
 ### Refactor Threshold Guidance
 
 Refactoring must improve **clarity, structure, or maintainability**, not chase arbitrary metrics.
@@ -409,9 +417,13 @@ Before refactoring, answer:
 
 **Rule:** Optimize for **clarity and intent**, not mechanical line counts.
 
+**Priority when rules conflict:** First check preservation table (if situation matches, preserve). If no match, apply the 3-yes decision gate. Preservation table overrides line-count heuristics.
+
 ### Consensus Voting Protocol
 
 **When to require consensus voting:**
+
+<!-- [GATE] Changes matching these triggers MUST go through voting -->
 
 | Trigger                   | Threshold     | Agents    |
 | ------------------------- | ------------- | --------- |
@@ -430,6 +442,8 @@ Before refactoring, answer:
 | `unanimous`         | 100%                          | Critical infrastructure, irreversible changes |
 | `proof-of-learning` | Weighted by agent performance | AI-generated code approval                    |
 | `higher-order`      | Correlation-aware             | Detecting sycophancy patterns                 |
+
+**Overlapping triggers:** When multiple triggers apply, use the STRICTEST threshold. Order: `unanimous > supermajority > majority`.
 
 #### CLI Usage
 
@@ -465,16 +479,18 @@ The fitness audit measures CLI orchestration architectural quality across 8 dime
 
 #### Fitness Dimensions
 
-| Dimension               | Max Points | Description                        |
-| ----------------------- | ---------- | ---------------------------------- |
-| `canonicalPaths`        | 20         | Penalizes duplicate workflow paths |
-| `explicitBehavior`      | 15         | Penalizes hidden/magic behavior    |
-| `determinism`           | 15         | Rewards predictable execution      |
-| `observability`         | 15         | Rewards telemetry coverage         |
-| `configSimplicity`      | 10         | Penalizes config surface area      |
-| `layerSeparation`       | 10         | Penalizes cross-layer coupling     |
-| `operatorErgonomics`    | 10         | Rewards CLI usability              |
-| `governanceIntegration` | 5          | Rewards policy enforcement         |
+<!-- [SCORING] Measurement rubric for audit -->
+
+| Dimension               | Max Points | Description                              |
+| ----------------------- | ---------- | ---------------------------------------- |
+| `canonicalPaths`        | 20         | Penalizes duplicate workflow paths       |
+| `explicitBehavior`      | 15         | Penalizes undocumented implicit behavior |
+| `determinism`           | 15         | Rewards predictable execution            |
+| `observability`         | 15         | Rewards telemetry coverage               |
+| `configSimplicity`      | 10         | Penalizes config surface area            |
+| `layerSeparation`       | 10         | Penalizes cross-layer coupling           |
+| `operatorErgonomics`    | 10         | Rewards CLI usability                    |
+| `governanceIntegration` | 5          | Rewards policy enforcement               |
 
 #### Running the Audit
 
@@ -564,7 +580,7 @@ docs/
 
 ### Agent Delegation Strategy
 
-I operate as the **lead orchestrator** and delegate work to specialized subagents:
+**When acting as lead orchestrator**, delegate work to specialized subagents:
 
 | Subagent Type     | Use When                                    | Tools                   |
 | ----------------- | ------------------------------------------- | ----------------------- |
@@ -588,6 +604,8 @@ When delegating work across CLI tools, follow these routing guidelines to optimi
 
 #### Quick Routing Reference
 
+<!-- [DECISION TREE] Follow in order; first match wins -->
+
 | Task Type                        | Route To         | Reason                          |
 | -------------------------------- | ---------------- | ------------------------------- |
 | Complex reasoning, architecture  | **Claude**       | Best multi-step reasoning       |
@@ -610,13 +628,20 @@ When delegating work across CLI tools, follow these routing guidelines to optimi
 
 ```
 1. Is it multimodal (image/audio/video)? → Gemini
-2. Is context > 100K tokens? → Gemini
+2. Is context > 100K tokens? → Gemini (count source files only, exclude node_modules)
 3. Is Claude context > 60%? → Delegate (Codex for code, Gemini for other)
-4. Reasoning complexity > 7? → Claude
+4. Reasoning complexity > 7? → Claude (see scale below)
 5. Code implementation task? → Codex
 6. Budget-sensitive? → Gemini
-7. Default → Use TOPSIS multi-criteria ranking
+7. Default → Route based on best match from routing table above
 ```
+
+**Reasoning complexity scale (0-10):**
+
+- 0-3: Single-step decisions, data lookup, simple transformations
+- 4-6: Multi-step reasoning within single domain
+- 7-9: Cross-domain reasoning, tradeoff analysis, architecture decisions
+- 10: Fundamental system design, irreversible choices
 
 #### Fallback Order
 
@@ -795,6 +820,15 @@ git tag -d v2.3.0 && git push --delete origin v2.3.0
 
 **Trigger:** Critical bug or security vulnerability in production.
 
+**Hotfix criteria (ALL must be true):**
+
+- Issue is in production (deployed, not development branch)
+- Issue prevents core functionality (not feature degradation)
+- Fix cannot wait for next release cycle
+- Issue affects active users or critical systems
+
+**If criteria not met:** Use regular Bug Fix workflow.
+
 1. Create branch from latest release tag:
    ```bash
    git checkout -b hotfix/123-critical-fix v2.3.0
@@ -811,6 +845,8 @@ git tag -d v2.3.0 && git push --delete origin v2.3.0
 Before marking ANY technique or feature as "implemented", verify ALL of the following:
 
 ### Code Requirements
+
+<!-- [GATE] ALL items must pass before marking as implemented -->
 
 - [ ] Code exists in specified `integration_files`
 - [ ] All functions have explicit return types
@@ -839,6 +875,8 @@ Before marking ANY technique or feature as "implemented", verify ALL of the foll
 - Code exists but tests fail
 - Implementation is partial
 - Feature is behind a feature flag
+
+**Summary:** Mark as implemented ONLY when ALL checklist items pass AND NONE of the above conditions apply.
 
 ---
 
@@ -932,6 +970,7 @@ gh issue create --title "docs: [description]" --label "documentation,discovered"
 
 - Maximum 5 auto-created issues per hour to prevent spam
 - Check for duplicates before creating (search last 7 days)
+- **If >5 issues discovered in one hour:** Create summary issue titled "Discovered Issues: [timestamp]" with links to individual issues or inline descriptions
 
 ---
 
@@ -1038,7 +1077,7 @@ Before completing ANY implementation task:
 - [ ] Functions do ONE thing (if "and" in description, split)
 - [ ] Errors handled with timeout/retry where applicable
 - [ ] Tests cover happy path + edge cases + error cases
-- [ ] No magic constants without explanation
+- [ ] No unexplained literal values (constants have documented intent)
 - [ ] No unnecessary abstraction
 
 ---
@@ -1130,11 +1169,11 @@ _Auto-generated from source. 8 tools registered._
 
 <!-- GOVERNANCE:VERSION:START -->
 
-_Governance Version: 2026-02-01_
+_Governance Version: 2026-02-02_
 
 <!-- GOVERNANCE:VERSION:END -->
 
-_Last updated: 2026-02-01 (ET)_
+_Last updated: 2026-02-02 (ET)_
 _MCP Protocol: 2025-11-25_
 _Node.js: 22.x LTS_
 _TypeScript: 5.8+_
