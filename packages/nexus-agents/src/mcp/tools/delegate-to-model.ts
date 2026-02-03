@@ -14,7 +14,7 @@
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { createLogger, formatZodError } from '../../core/index.js';
-import { wrapToolWithTimeout, toSdkCallback } from '../middleware/tool-wrapper.js';
+import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import {
   mapCompositeDecisionToOutput,
@@ -133,12 +133,11 @@ export function registerDelegateToModelTool(server: McpServer, deps: DelegateDep
   });
 
   // Wrap with timeout protection (Issue #271, CVE-2026-0621)
-  const timeoutMs = deps.security?.timeout?.defaultTimeoutMs;
-  const wrappedHandler = wrapToolWithTimeout(
-    'delegate_to_model',
-    secureHandler,
-    timeoutMs !== undefined ? { timeoutMs, logger } : { logger }
-  );
+  const timeoutMs = getToolTimeout('delegate_to_model', deps.security);
+  const wrappedHandler = wrapToolWithTimeout('delegate_to_model', secureHandler, {
+    timeoutMs,
+    logger,
+  });
 
   server.registerTool(
     'delegate_to_model',

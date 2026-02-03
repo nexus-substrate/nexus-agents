@@ -22,7 +22,7 @@ describe('tool-wrapper', () => {
 
   describe('DEFAULT_TIMEOUT_CONFIG', () => {
     it('should have sensible defaults', () => {
-      expect(DEFAULT_TIMEOUT_CONFIG.defaultTimeoutMs).toBe(30_000);
+      expect(DEFAULT_TIMEOUT_CONFIG.defaultTimeoutMs).toBe(60_000);
       expect(DEFAULT_TIMEOUT_CONFIG.maxTimeoutMs).toBe(300_000);
       expect(DEFAULT_TIMEOUT_CONFIG.enableLogging).toBe(true);
       expect(DEFAULT_TIMEOUT_CONFIG.uriValidation).toBe(true);

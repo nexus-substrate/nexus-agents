@@ -77,7 +77,7 @@ NEVER use sleep/setTimeout/fixed delays in tests.
 
 ## Correct Waiting Approaches
 | Approach            | When to Use                             |
-|---------------------|-----------------------------------------|
+| ------------------- | --------------------------------------- |
 | Auto-wait (default) | Playwright/Cypress built-in waiting     |
 | waitForSelector     | Element appears/disappears dynamically  |
 | waitForResponse     | Wait for specific API call to complete  |
@@ -102,7 +102,7 @@ NEVER use sleep/setTimeout/fixed delays in tests.
       priority: 85,
       content: `## Common Causes and Fixes
 | Cause                  | Fix                                      |
-|------------------------|------------------------------------------|
+| ---------------------- | ---------------------------------------- |
 | Fixed sleeps           | Use auto-wait or explicit wait-for       |
 | Shared test state      | Isolate each test with fresh data        |
 | Animation interference | Disable animations in test config        |
@@ -166,7 +166,7 @@ NEVER use sleep/setTimeout/fixed delays in tests.
 
 ## Common Cross-Browser Issues
 | Issue               | Affected Browser | Mitigation                  |
-|---------------------|------------------|-----------------------------|
+| ------------------- | ---------------- | --------------------------- |
 | Date input format   | Safari           | Use custom date picker      |
 | Flexbox rendering   | Safari           | Test layout assertions      |
 | Clipboard API       | Firefox          | Feature-detect and fallback |

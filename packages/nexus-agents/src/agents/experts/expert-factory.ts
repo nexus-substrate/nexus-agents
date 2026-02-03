@@ -167,6 +167,21 @@ function copyBuiltInConfig(type: BuiltInExpertType): ExpertConfig {
  * @param config - Expert configuration
  * @param options - Creation options including adapter
  * @returns Result with Expert or FactoryError
+ *
+ * @example
+ * ```typescript
+ * const config: ExpertConfig = {
+ *   id: 'my-expert',
+ *   name: 'My Expert',
+ *   role: 'code_expert',
+ *   capabilities: ['task_execution'],
+ *   systemPrompt: 'You are a code review expert.',
+ * };
+ * const result = createExpert(config, { adapter: myAdapter });
+ * if (result.ok) {
+ *   const expert = result.value;
+ * }
+ * ```
  */
 export function createExpert(
   config: ExpertConfig,
@@ -209,6 +224,14 @@ export function createExpert(
  * @param type - Built-in expert type
  * @param options - Creation options including adapter
  * @returns Result with Expert or FactoryError
+ *
+ * @example
+ * ```typescript
+ * const result = createBuiltInExpert('security', { adapter: myAdapter });
+ * if (result.ok) {
+ *   const securityExpert = result.value;
+ * }
+ * ```
  */
 export function createBuiltInExpert(
   type: BuiltInExpertType,

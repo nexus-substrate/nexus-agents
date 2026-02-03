@@ -66,6 +66,8 @@ export const TimeoutConfigSchema = z.object({
   enableLogging: z.boolean().default(true),
   /** Enable URI validation to prevent ReDoS (default: true) */
   uriValidation: z.boolean().default(true),
+  /** Per-tool timeout overrides in milliseconds (Issue #657) */
+  perToolTimeout: z.record(z.number().positive().max(600000)).optional(),
 });
 
 export type TimeoutConfig = z.infer<typeof TimeoutConfigSchema>;

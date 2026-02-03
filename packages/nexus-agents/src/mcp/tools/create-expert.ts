@@ -14,7 +14,7 @@ import type { ILogger, AgentCapability } from '../../core/index.js';
 import { createLogger, formatZodError } from '../../core/index.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
-import { wrapToolWithTimeout, toSdkCallback } from '../middleware/tool-wrapper.js';
+import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import {
   ExpertFactory,
@@ -104,6 +104,32 @@ const ROLE_TO_EXPERT_TYPE: Record<string, BuiltInExpertType> = {
 };
 
 /**
+ * Checks if any model adapter API key is configured.
+ * Returns an error message if no keys are found, or undefined if at least one is available.
+ * (Issue #656 - Actionable API key error messages)
+ */
+function checkApiKeyAvailability(): string | undefined {
+  const keys = [
+    { name: 'ANTHROPIC_API_KEY', provider: 'Anthropic (Claude)' },
+    { name: 'OPENAI_API_KEY', provider: 'OpenAI' },
+    { name: 'GOOGLE_AI_API_KEY', provider: 'Google AI (Gemini)' },
+  ];
+  const available = keys.filter(
+    (k) => process.env[k.name] !== undefined && process.env[k.name] !== ''
+  );
+  if (available.length > 0) {
+    return undefined; // At least one key is available
+  }
+  const keyList = keys.map((k) => `  - ${k.name} (${k.provider})`).join('\n');
+  return (
+    'No model adapter API key configured. Expert creation requires at least one API key.\n\n' +
+    'Set one of the following environment variables:\n' +
+    keyList +
+    '\n\nSee: https://github.com/williamzujkowski/nexus-agents#prerequisites--environment'
+  );
+}
+
+/**
  * Validates the role and returns the corresponding expert type.
  */
 function getExpertType(role: string): BuiltInExpertType | undefined {
@@ -155,6 +181,12 @@ function handleCreateExpert(
   const expertType = getExpertType(role);
   if (expertType === undefined) {
     return { ok: false, error: `Invalid role: ${role}` };
+  }
+
+  // Validate API key availability before expert creation (Issue #656)
+  const apiKeyError = checkApiKeyAvailability();
+  if (apiKeyError !== undefined) {
+    return { ok: false, error: apiKeyError };
   }
 
   // Create expert
@@ -267,13 +299,9 @@ export function registerCreateExpertTool(server: McpServer, deps: CreateExpertDe
     logger,
   });
 
-  // Wrap with timeout protection (Issue #271, CVE-2026-0621)
-  const timeoutMs = deps.security?.timeout?.defaultTimeoutMs;
-  const wrappedHandler = wrapToolWithTimeout(
-    'create_expert',
-    secureHandler,
-    timeoutMs !== undefined ? { timeoutMs, logger } : { logger }
-  );
+  // Wrap with timeout protection (Issue #271, CVE-2026-0621, Issue #661)
+  const timeoutMs = getToolTimeout('create_expert', deps.security);
+  const wrappedHandler = wrapToolWithTimeout('create_expert', secureHandler, { timeoutMs, logger });
 
   server.registerTool(
     'create_expert',

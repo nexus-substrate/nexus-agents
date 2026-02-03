@@ -142,3 +142,17 @@ export {
   getSkillsForTask,
   getSkillSetForTask,
 } from './skill-loader.js';
+
+// External Pack Loader (Issue #654)
+export type {
+  ExternalPackManifest,
+  ExternalPackLoadResult,
+  ExternalPackSourceConfig,
+  ExternalPacksLoadSummary,
+} from './external-pack-loader.js';
+
+export {
+  ExternalPackError,
+  loadExternalPack,
+  loadAllExternalPacks,
+} from './external-pack-loader.js';

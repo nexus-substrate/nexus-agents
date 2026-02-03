@@ -177,7 +177,7 @@ ${topicList}
 ## Context Budget Guide
 
 | Task Type | Tokens | What to Load |
-|-----------|--------|--------------|
+| --------- | ------ | ------------ |
 ${budgetTable}
 
 ${getEntryPointsSection()}

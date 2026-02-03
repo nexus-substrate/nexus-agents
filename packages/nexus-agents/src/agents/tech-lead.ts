@@ -463,7 +463,18 @@ export class TechLead extends BaseAgent {
   }
 }
 
-/** Creates a new TechLead agent with the given options. */
+/**
+ * Creates a new TechLead agent with the given options.
+ *
+ * @example
+ * ```typescript
+ * const techLead = createTechLead({
+ *   adapter: myModelAdapter,
+ *   techLeadOptions: { maxSubtasks: 5 },
+ * });
+ * const result = await techLead.execute(task);
+ * ```
+ */
 export function createTechLead(
   options?: Partial<BaseAgentOptions> & { techLeadOptions?: TechLeadOptions }
 ): TechLead {

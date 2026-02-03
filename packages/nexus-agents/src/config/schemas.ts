@@ -73,10 +73,11 @@ export type { EventBusConfig, ObservabilityConfig } from './schemas-observabilit
 // Re-export skills schemas (Issue #491)
 export {
   SkillLibraryConfigSchema,
+  ExternalPackSourceSchema,
   DEFAULT_SKILL_LIBRARY_CONFIG as DEFAULT_SKILLS_CONFIG,
 } from './schemas-skills.js';
 
-export type { SkillLibraryConfig } from './schemas-skills.js';
+export type { SkillLibraryConfig, ExternalPackSource } from './schemas-skills.js';
 
 // Re-export SICA schemas (Issue #492)
 export { SicaConfigSchema, DEFAULT_SICA_CONFIG } from './schemas-sica.js';

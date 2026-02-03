@@ -445,3 +445,17 @@ export type {
 // Bluesky Client (Issue #642 - AT Protocol posting)
 export { getBlueskyConfig, createBlueskyPost } from './bluesky-client.js';
 export type { BlueskyPostResult, BlueskyConfig } from './bluesky-client.js';
+
+// Scaffold Command (Issue #653 - Scaffold command)
+export {
+  scaffoldCommand,
+  runScaffold,
+  printScaffoldResult,
+  printScaffoldUsage,
+  isValidScaffoldType,
+  validateName,
+  toPascalCase,
+  toCamelCase,
+  toScreamingSnake,
+} from './scaffold.js';
+export type { ScaffoldType, ScaffoldOptions, ScaffoldResult } from './scaffold.js';

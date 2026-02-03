@@ -64,7 +64,7 @@ export const UNIT_TESTING_PATTERNS: KnowledgeModule = {
       priority: 85,
       content: `## Types of Test Doubles (from simplest to most complex)
 | Double  | Purpose                          | When to Use                          |
-|---------|----------------------------------|--------------------------------------|
+| ------- | -------------------------------- | ------------------------------------ |
 | Dummy   | Fill parameter lists             | Value is never used in test          |
 | Stub    | Return predetermined values      | Control indirect inputs              |
 | Spy     | Record calls for later assertion | Verify side effects occurred         |
@@ -127,7 +127,7 @@ export const UNIT_TESTING_PATTERNS: KnowledgeModule = {
       priority: 70,
       content: `## Thresholds
 | Scope           | Target  | Rationale                              |
-|-----------------|---------|----------------------------------------|
+| --------------- | ------- | -------------------------------------- |
 | Overall project | ≥ 80%   | Balances confidence with effort        |
 | Critical paths  | ≥ 95%   | Payment, auth, data mutations          |
 | New code (diff) | ≥ 90%   | Prevents coverage regression           |

@@ -46,6 +46,12 @@ export const OrchestrateInputSchema = z.object({
     .optional()
     .default(10)
     .describe('Maximum iterations for orchestration'),
+  timeout: z
+    .number()
+    .min(1000)
+    .max(600000)
+    .optional()
+    .describe('Timeout in milliseconds for orchestration (default: 120000)'),
 });
 
 export type OrchestrateInput = z.infer<typeof OrchestrateInputSchema>;
@@ -183,9 +189,17 @@ function buildOutputFromOrchestratorResult(
   orchResult: import('../../core/types/orchestrator.js').OrchestratorResult,
   durationMs: number
 ): OrchestrateOutput {
-  const output = orchResult.output as Partial<ExecutionPlan>;
+  // orchResult.output may be TaskResult (from TechLeadAdapter) or ExecutionPlan directly.
+  // TaskResult has shape { taskId, output: ExecutionPlan, metadata }.
+  // ExecutionPlan has shape { taskId, analysis, subtasks, ... }.
+  // We need to handle both cases (Issue #663).
+  const raw = orchResult.output as Record<string, unknown>;
+  const executionPlan =
+    raw.output !== undefined && typeof raw.output === 'object'
+      ? (raw.output as Partial<ExecutionPlan>)
+      : (raw as Partial<ExecutionPlan>);
 
-  const analysis = output.analysis ?? {
+  const analysis = executionPlan.analysis ?? {
     taskId,
     complexity: 5,
     taskType: 'general',
@@ -326,6 +340,12 @@ const TOOL_SCHEMA = {
     .max(50)
     .optional()
     .describe('Maximum iterations for orchestration (default: 10)'),
+  timeout: z
+    .number()
+    .min(1000)
+    .max(600000)
+    .optional()
+    .describe('Timeout in milliseconds for orchestration (default: 120000)'),
 };
 
 /**
@@ -380,13 +400,11 @@ export function registerOrchestrateTool(server: McpServer, deps: OrchestrateDeps
     logger,
   });
 
+  // Orchestrate tool needs longer timeout than global default (Issue #655)
   // Wrap with timeout protection (Issue #271, CVE-2026-0621)
-  const timeoutMs = deps.security?.timeout?.defaultTimeoutMs;
-  const wrappedHandler = wrapToolWithTimeout(
-    'orchestrate',
-    secureHandler,
-    timeoutMs !== undefined ? { timeoutMs, logger } : { logger }
-  );
+  const ORCHESTRATE_DEFAULT_TIMEOUT_MS = 120_000;
+  const timeoutMs = ORCHESTRATE_DEFAULT_TIMEOUT_MS;
+  const wrappedHandler = wrapToolWithTimeout('orchestrate', secureHandler, { timeoutMs, logger });
 
   server.registerTool(
     'orchestrate',

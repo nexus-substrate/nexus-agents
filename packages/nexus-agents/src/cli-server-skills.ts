@@ -12,6 +12,7 @@ import type { ILogger } from './core/index.js';
 import { createSkillLibrary, type SkillLibrary } from './agents/skills/skill-library.js';
 import type { SkillLibraryConfig } from './config/index.js';
 import { registerStandardsSkills } from './agents/skills/bootstrap/index.js';
+import { loadAllExternalPacks } from './agents/skills/external-pack-loader.js';
 
 /**
  * Global skill library instance.
@@ -63,29 +64,26 @@ function adaptConfigToLibrary(
  *
  * Creates a skill library instance based on the configuration from nexus-agents.yaml.
  * The library is only created if enabled in config (default: true).
+ * Loads external skill packs if configured (Issue #654).
  *
  * @param options - Initialization options
  * @returns Skill library initialization result
  */
-export function initializeSkillLibrary(options: InitializeSkillsOptions): SkillsInitResult {
+export async function initializeSkillLibrary(
+  options: InitializeSkillsOptions
+): Promise<SkillsInitResult> {
   const { skillsConfig, logger } = options;
 
   // Check if already initialized
   if (globalSkillLibrary !== undefined) {
     logger.debug('Skill library already initialized');
-    return {
-      initialized: true,
-      library: globalSkillLibrary,
-    };
+    return { initialized: true, library: globalSkillLibrary };
   }
 
   // Check if disabled in config
   if (skillsConfig?.enabled === false) {
     logger.info('Skill library disabled by configuration');
-    return {
-      initialized: false,
-      reason: 'disabled in config',
-    };
+    return { initialized: false, reason: 'disabled in config' };
   }
 
   // Create the skill library with config
@@ -95,16 +93,46 @@ export function initializeSkillLibrary(options: InitializeSkillsOptions): Skills
   // Register built-in standards skills
   registerStandardsSkills(globalSkillLibrary, logger);
 
+  // Load external skill packs if configured (Issue #654)
+  await loadExternalSkillPacks(skillsConfig, globalSkillLibrary, logger);
+
   logger.info('Skill library initialized', {
     maxSkills: globalSkillLibrary.getConfig().maxSkills,
     enablePruning: globalSkillLibrary.getConfig().enablePruning,
     trackHistory: globalSkillLibrary.getConfig().trackExecutionHistory,
   });
 
-  return {
-    initialized: true,
-    library: globalSkillLibrary,
-  };
+  return { initialized: true, library: globalSkillLibrary };
+}
+
+/**
+ * Loads external skill packs from config and adds them to the library.
+ */
+async function loadExternalSkillPacks(
+  skillsConfig: SkillLibraryConfig | undefined,
+  library: SkillLibrary,
+  logger: ILogger
+): Promise<void> {
+  const externalPacks = skillsConfig?.externalPacks;
+  if (!externalPacks || externalPacks.length === 0) {
+    return;
+  }
+
+  logger.info('Loading external skill packs', { count: externalPacks.length });
+  const { loaded, errors } = await loadAllExternalPacks(externalPacks, logger);
+
+  for (const packResult of loaded) {
+    for (const skill of packResult.skills) {
+      library.addSkill(skill);
+    }
+  }
+
+  if (errors.length > 0) {
+    logger.warn('Some external packs failed to load', {
+      failedCount: errors.length,
+      failedPacks: errors.map((e) => e.packName),
+    });
+  }
 }
 
 /**

@@ -22,15 +22,56 @@ import {
 } from './middleware-chain.js';
 
 /**
- * Default timeout configuration (30s default, 5min max).
+ * Default timeout configuration (60s default, 5min max).
  * Used when no config is provided.
  */
 export const DEFAULT_TIMEOUT_CONFIG: TimeoutConfig = {
-  defaultTimeoutMs: 30_000,
+  defaultTimeoutMs: 60_000,
   maxTimeoutMs: 300_000,
   enableLogging: true,
   uriValidation: true,
 };
+
+/**
+ * Default per-tool timeout overrides.
+ * Tools not listed here use DEFAULT_TIMEOUT_CONFIG.defaultTimeoutMs.
+ * (Issue #657 - Per-tool timeout configuration)
+ */
+export const DEFAULT_TOOL_TIMEOUTS: Record<string, number> = {
+  orchestrate: 120_000,
+  consensus_vote: 300_000,
+  execute_expert: 120_000,
+  run_workflow: 120_000,
+};
+
+/**
+ * Resolves the timeout for a specific tool.
+ * Priority: explicit override > security config perToolTimeout > DEFAULT_TOOL_TIMEOUTS > global default.
+ * (Issue #657 - Per-tool timeout configuration)
+ */
+export function getToolTimeout(
+  toolName: string,
+  security?: SecurityConfig,
+  explicitMs?: number
+): number {
+  // Explicit override takes highest priority
+  if (explicitMs !== undefined) {
+    return explicitMs;
+  }
+  // Check security config per-tool overrides
+  const perToolConfig = security?.timeout?.perToolTimeout;
+  const perToolMs = perToolConfig?.[toolName];
+  if (perToolMs !== undefined) {
+    return perToolMs;
+  }
+  // Check built-in per-tool defaults
+  const builtInDefault = DEFAULT_TOOL_TIMEOUTS[toolName];
+  if (builtInDefault !== undefined) {
+    return builtInDefault;
+  }
+  // Fall back to global default
+  return security?.timeout?.defaultTimeoutMs ?? DEFAULT_TIMEOUT_CONFIG.defaultTimeoutMs;
+}
 
 /**
  * Configuration for creating a tool factory.
@@ -173,7 +214,10 @@ export function wrapToolWithTimeout(
  */
 export function toSdkCallback(
   handler: ToolHandler
-): (args: unknown, extra: unknown) => Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
+): (
+  args: unknown,
+  extra: unknown
+) => Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
   return async (args: unknown, _extra: unknown) => {
     const result = await handler(args);
     // Our ToolResult is structurally compatible with CallToolResult

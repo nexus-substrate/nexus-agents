@@ -37,8 +37,9 @@ export {
   VALID_EXPERT_DOMAINS,
   MAX_SYSTEM_PROMPT_LENGTH,
   defaultConfig,
-  // Skills schemas (Issue #491)
+  // Skills schemas (Issue #491, #654)
   SkillLibraryConfigSchema,
+  ExternalPackSourceSchema,
   DEFAULT_SKILLS_CONFIG,
   // SICA schemas (Issue #492)
   SicaConfigSchema,
@@ -75,8 +76,9 @@ export type {
   LatencyTrackerConfig,
   RoutingMemoryConfig,
   RoutingConfig,
-  // Skills types (Issue #491)
+  // Skills types (Issue #491, #654)
   SkillLibraryConfig,
+  ExternalPackSource,
   // SICA types (Issue #492)
   SicaConfig,
 } from './schemas.js';

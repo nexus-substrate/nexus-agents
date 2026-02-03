@@ -20,7 +20,7 @@ import {
 } from '../../core/index.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
-import { wrapToolWithTimeout, toSdkCallback } from '../middleware/tool-wrapper.js';
+import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import type { Expert } from '../../agents/index.js';
 
@@ -70,6 +70,32 @@ export interface ExecuteExpertResponse {
   status: 'success' | 'error';
   /** Error message if status is 'error' */
   error?: string;
+}
+
+/**
+ * Checks if any model adapter API key is configured.
+ * Returns an error message if no keys are found, or undefined if at least one is available.
+ * (Issue #656 - Actionable API key error messages)
+ */
+function checkApiKeyAvailability(): string | undefined {
+  const keys = [
+    { name: 'ANTHROPIC_API_KEY', provider: 'Anthropic (Claude)' },
+    { name: 'OPENAI_API_KEY', provider: 'OpenAI' },
+    { name: 'GOOGLE_AI_API_KEY', provider: 'Google AI (Gemini)' },
+  ];
+  const available = keys.filter(
+    (k) => process.env[k.name] !== undefined && process.env[k.name] !== ''
+  );
+  if (available.length > 0) {
+    return undefined; // At least one key is available
+  }
+  const keyList = keys.map((k) => `  - ${k.name} (${k.provider})`).join('\n');
+  return (
+    'No model adapter API key configured. Expert execution requires at least one API key.\n\n' +
+    'Set one of the following environment variables:\n' +
+    keyList +
+    '\n\nSee: https://github.com/williamzujkowski/nexus-agents#prerequisites--environment'
+  );
 }
 
 /**
@@ -163,6 +189,12 @@ async function handleExecuteExpert(
     return { ok: false, error: lookup.error };
   }
   const expert = lookup.expert;
+
+  // Validate API key availability before execution (Issue #656)
+  const apiKeyError = checkApiKeyAvailability();
+  if (apiKeyError !== undefined) {
+    return { ok: false, error: apiKeyError };
+  }
 
   const task = buildTask(args);
   deps.logger?.info('Executing expert task', { expertId, role: expert.role, taskId: task.id });
@@ -268,8 +300,8 @@ export function registerExecuteExpertTool(server: McpServer, deps: ExecuteExpert
     logger,
   });
 
-  // Wrap with timeout protection (Issue #271, CVE-2026-0621)
-  const timeoutMs = deps.security?.timeout?.defaultTimeoutMs ?? 120000; // 2 minute default for execution
+  // Wrap with timeout protection (Issue #271, CVE-2026-0621, Issue #661)
+  const timeoutMs = getToolTimeout('execute_expert', deps.security);
   const wrappedHandler = wrapToolWithTimeout('execute_expert', secureHandler, {
     timeoutMs,
     logger,

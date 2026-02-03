@@ -80,7 +80,7 @@ function generateToolIndex(tools: ToolMetadata[]): string {
     '## MCP Tools Reference',
     '',
     '| Tool | Description |',
-    '|------|-------------|',
+    '| ------ | ------------- |',
   ];
 
   for (const tool of tools) {

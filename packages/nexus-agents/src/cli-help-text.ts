@@ -47,6 +47,8 @@ COMMANDS:
   release-notes   Generate release notes from git commits
   release-validate Run expert swarm validation for releases
   release-announce Generate release announcements (blog, Bluesky)
+  scaffold        Generate project files from templates (tool, expert, workflow, command)
+  visualize       Generate Mermaid diagrams and ASCII dashboards (architecture, swarm, flow)
 
 OPTIONS:
   -h, --help           Show this help message
@@ -236,6 +238,19 @@ RELEASE-ANNOUNCE OPTIONS:
   --dry-run              Preview announcements without posting
   --verbose              Show detailed output
 
+SCAFFOLD OPTIONS:
+  scaffold <type> <name> Generate project files from templates
+  --dry-run              Show what would be created without writing files
+  Types: tool, expert, workflow, command
+
+VISUALIZE OPTIONS:
+  visualize architecture    Show Mermaid diagram of nexus-agents architecture
+  visualize swarm           Show Mermaid diagram of agent swarm topology
+  visualize orchestration   Show orchestration execution (ASCII dashboard or Mermaid)
+  visualize flow            Show task execution pipeline as Mermaid flow diagram
+  --format=<fmt>            Output: mermaid (default), ascii, markdown
+  --output=<path>           Write diagram to file instead of stdout
+
 DEMO OPTIONS:
   demo routing "task"    Show how routing would select models (mock)
   demo expert-list       Show available experts with descriptions
@@ -328,6 +343,14 @@ EXAMPLES:
   nexus-agents release-validate --verbose         Show detailed findings
   nexus-agents release-announce --dry-run         Preview announcements without posting
   nexus-agents release-announce --channels=blog   Generate blog post only
+  nexus-agents scaffold tool code-analysis        Scaffold a new MCP tool
+  nexus-agents scaffold expert performance        Scaffold an expert module
+  nexus-agents scaffold workflow deploy-check     Scaffold a workflow template
+  nexus-agents scaffold command migrate --dry-run Preview scaffold without writing
+  nexus-agents visualize architecture              Show system architecture diagram
+  nexus-agents visualize swarm --format=markdown   Agent swarm topology (markdown)
+  nexus-agents visualize orchestration --format=ascii  ASCII execution dashboard
+  nexus-agents visualize flow --output=flow.md     Save pipeline flow to file
 
 For more information, visit: https://github.com/williamzujkowski/nexus-agents
 `.trim();

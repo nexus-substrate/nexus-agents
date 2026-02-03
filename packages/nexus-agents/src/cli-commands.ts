@@ -52,6 +52,10 @@ export {
   handleReleaseValidateCommand,
   handleReleaseAnnounceCommand,
 } from './cli-release-handlers.js';
+// Issue #653: Scaffold Command
+export { handleScaffoldCommand } from './cli-scaffold-handler.js';
+// Creative: Visualize Command
+export { handleVisualizeCommand } from './cli/visualize-command.js';
 
 // Import handlers for dispatch
 import {
@@ -89,6 +93,10 @@ import {
   handleReleaseValidateCommand,
   handleReleaseAnnounceCommand,
 } from './cli-release-handlers.js';
+// Issue #653: Scaffold Command
+import { handleScaffoldCommand } from './cli-scaffold-handler.js';
+// Creative: Visualize Command
+import { handleVisualizeCommand } from './cli/visualize-command.js';
 
 /**
  * Prints help text to stdout.
@@ -116,6 +124,10 @@ const SYNC_COMMAND_HANDLERS: Record<string, ((args: ParsedCliArgs) => void) | un
   issue: handleIssueCommand,
   // System Mandate LOOP I: Fitness Audit
   'fitness-audit': handleFitnessAuditCommand,
+  // Issue #653: Scaffold Command
+  scaffold: handleScaffoldCommand,
+  // Creative: Visualize Command
+  visualize: handleVisualizeCommand,
 };
 
 /**

@@ -12,7 +12,13 @@
 /**
  * Knowledge domains aligned with expert agent specializations.
  */
-export type KnowledgeDomain = 'security' | 'testing' | 'code' | 'architecture' | 'documentation';
+export type KnowledgeDomain =
+  | 'security'
+  | 'testing'
+  | 'code'
+  | 'architecture'
+  | 'documentation'
+  | 'devops';
 
 /**
  * A section within a knowledge module containing specific guidance.

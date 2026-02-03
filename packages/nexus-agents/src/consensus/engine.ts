@@ -75,6 +75,23 @@ const DEFAULT_PROPOSAL_CACHE_CONFIG: ProposalCacheConfig = {
 
 /**
  * Consensus engine for multi-agent decision making.
+ *
+ * @example
+ * ```typescript
+ * const engine = new ConsensusEngine({ defaultTimeout: 30000 });
+ * const proposalResult = await engine.propose({
+ *   title: 'Use microservices architecture',
+ *   description: 'Proposal to adopt microservices',
+ *   algorithm: 'supermajority',
+ * });
+ * if (proposalResult.ok) {
+ *   await engine.vote(proposalResult.value, 'agent-1', {
+ *     decision: 'approve',
+ *     confidence: 0.9,
+ *     reasoning: 'Good for scalability',
+ *   });
+ * }
+ * ```
  */
 export class ConsensusEngine implements IConsensusEngine {
   private readonly proposals: Map<ProposalId, ProposalState> = new Map();
@@ -483,6 +500,14 @@ export class ConsensusEngine implements IConsensusEngine {
 
 /**
  * Create a consensus engine with the given configuration.
+ *
+ * @example
+ * ```typescript
+ * const engine = createConsensusEngine({
+ *   defaultTimeout: 60000,
+ *   maxActiveProposals: 10,
+ * });
+ * ```
  */
 export function createConsensusEngine(
   config?: Partial<ConsensusEngineConfig>,

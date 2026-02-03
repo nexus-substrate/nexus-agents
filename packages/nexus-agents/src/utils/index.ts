@@ -72,3 +72,20 @@ export {
   safeJsonParse,
   safeJsonParseRecord,
 } from './type-coercion.js';
+
+export {
+  type ModuleNode,
+  type ArchitectureComponent,
+  type SwarmAgent,
+  type FlowStep,
+  type OrchestrationStep,
+  type OrchestrationVizData,
+  generateDependencyGraph,
+  generateArchitectureDiagram,
+  generateSwarmVisualization,
+  generateFlowDiagram,
+  generateOrchestrationSequence,
+  generateAsciiDashboard,
+  generateVoteSummary,
+  wrapInMarkdownFence,
+} from './visual-output.js';

@@ -10,7 +10,8 @@
 
 import type { Result } from '../core/result.js';
 import { ok, err } from '../core/result.js';
-import { getTimeProvider } from '../core/index.js';
+import { getTimeProvider, createLogger } from '../core/index.js';
+import type { ILogger } from '../core/index.js';
 import type { Task, ExecutionStatus } from '../core/types/index.js';
 import type {
   IOrchestrator,
@@ -73,13 +74,19 @@ const COMPLETED_STATUS: ExecutionStatus = {
 
 /**
  * TechLead adapter implementing IOrchestrator.
+ * (Issue #663: Enhanced error logging — errors were previously swallowed silently)
  */
 export class TechLeadAdapter implements IOrchestrator {
   readonly id = generateId('tech-lead');
   readonly type: OrchestratorType = 'tech_lead';
   private readonly executions = new Map<string, ExecutionStatus>();
   private readonly history: OrchestratorResult[] = [];
+  private readonly logger: ILogger;
   private techLead: { execute: (task: Task) => Promise<Result<unknown, unknown>> } | null = null;
+
+  constructor(logger?: ILogger) {
+    this.logger = logger ?? createLogger({ component: 'TechLeadAdapter' });
+  }
 
   setTechLead(tl: { execute: (task: Task) => Promise<Result<unknown, unknown>> }): void {
     this.techLead = tl;
@@ -87,7 +94,7 @@ export class TechLeadAdapter implements IOrchestrator {
 
   async execute(
     definition: OrchestratorDefinition,
-    inputs: Record<string, unknown>,
+    _inputs: Record<string, unknown>,
     _options?: OrchestratorExecuteOptions
   ): Promise<Result<OrchestratorResult, OrchestratorError>> {
     if (definition.type !== 'task') {
@@ -99,7 +106,13 @@ export class TechLeadAdapter implements IOrchestrator {
       start = getTimeProvider().now();
     this.executions.set(execId, { state: 'running', currentStep: 'executing', progress: 0 });
 
-    const output = this.techLead !== null ? await this.runTechLead(definition.task) : inputs;
+    const techLeadResult = await this.runTechLead(definition.task);
+    if (!techLeadResult.ok) {
+      this.executions.set(execId, COMPLETED_STATUS);
+      return err(techLeadResult.error);
+    }
+
+    const output = techLeadResult.value;
     const step = createStep('tech-lead', 'Execute task', output, getTimeProvider().now() - start);
     const result = createResult(
       execId,
@@ -114,10 +127,21 @@ export class TechLeadAdapter implements IOrchestrator {
     return ok(result);
   }
 
-  private async runTechLead(task: Task): Promise<unknown> {
-    if (this.techLead === null) return {};
+  private async runTechLead(task: Task): Promise<Result<unknown, OrchestratorError>> {
+    if (this.techLead === null) {
+      this.logger.warn('TechLead not wired — returning empty result');
+      return ok({});
+    }
     const r = await this.techLead.execute(task);
-    return r.ok ? r.value : {};
+    if (!r.ok) {
+      const errorMsg = r.error instanceof Error ? r.error.message : String(r.error);
+      this.logger.error('TechLead execution failed', undefined, {
+        taskId: task.id,
+        error: errorMsg,
+      });
+      return err(new OrchestratorError(`TechLead execution failed: ${errorMsg}`, 'AGENT_ERROR'));
+    }
+    return ok(r.value);
   }
 
   getStatus(execId: string): ExecutionStatus {

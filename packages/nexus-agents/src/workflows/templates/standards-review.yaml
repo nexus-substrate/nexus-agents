@@ -1,0 +1,131 @@
+# Standards Review Workflow Template
+# Run lint, typecheck, fitness audit, and coding standards compliance checks
+#
+# Usage:
+#   Provide optional target directory and strictness level.
+#   Workflow runs ESLint, TypeScript type checking, fitness audit,
+#   and coding standards compliance checks, then synthesizes findings.
+
+name: standards-review
+version: '1.0.0'
+description: |
+  Standards review workflow that verifies code quality across multiple
+  dimensions. Runs ESLint linting, TypeScript type checking, fitness
+  audit scoring, and coding standards compliance checks (file length,
+  function length, naming conventions). Synthesizes all findings into
+  a unified standards compliance report.
+
+inputs:
+  - name: targetDir
+    type: string
+    description: Target directory to review (defaults to project root)
+    default: '.'
+
+  - name: strictness
+    type: string
+    description: Review strictness level (relaxed, normal, strict)
+    default: normal
+
+  - name: failOnWarnings
+    type: boolean
+    description: Whether to treat warnings as failures
+    default: false
+
+steps:
+  # Step 1: Run ESLint linting
+  - id: lint
+    agent: code_expert
+    action: run_linter
+    description: |
+      Runs ESLint to check for code quality issues:
+      - Syntax errors and potential bugs
+      - Style violations
+      - Unused variables and imports
+      - Best practice violations
+    inputs:
+      targetDir: ${{ inputs.targetDir }}
+      strictness: ${{ inputs.strictness }}
+    timeout: 120000
+    retries: 1
+
+  # Step 2: Run TypeScript type checking (parallel with lint)
+  - id: typecheck
+    agent: code_expert
+    action: run_typecheck
+    description: |
+      Runs TypeScript compiler in check mode:
+      - Type errors and mismatches
+      - Missing type annotations
+      - Strict null checks
+      - Unused locals and parameters
+    inputs:
+      targetDir: ${{ inputs.targetDir }}
+    parallel: true
+    timeout: 120000
+    retries: 1
+
+  # Step 3: Run fitness audit (parallel with lint)
+  - id: fitness
+    agent: architecture_expert
+    action: run_fitness_audit
+    description: |
+      Runs nexus-agents fitness audit to score project health:
+      - Canonical path compliance
+      - Explicit behavior scoring
+      - Determinism assessment
+      - Observability coverage
+      - Configuration simplicity
+      - Layer separation
+      - Operator ergonomics
+      - Governance integration
+    inputs:
+      targetDir: ${{ inputs.targetDir }}
+    parallel: true
+    timeout: 120000
+    retries: 1
+
+  # Step 4: Check coding standards compliance (parallel with lint)
+  - id: standards
+    agent: code_expert
+    action: check_coding_standards
+    description: |
+      Checks compliance with coding standards:
+      - File length limits (max 400 lines)
+      - Function length limits (max 50 lines)
+      - Parameter count limits (max 5)
+      - Nesting depth limits (max 4 levels)
+      - Naming conventions (interfaces, types, functions, constants)
+      - No unexplained literal values
+    inputs:
+      targetDir: ${{ inputs.targetDir }}
+      strictness: ${{ inputs.strictness }}
+    parallel: true
+    timeout: 120000
+    retries: 1
+
+  # Step 5: Synthesize all findings into standards compliance report
+  - id: report
+    agent: tech_lead
+    action: synthesize_standards_report
+    description: |
+      Combines all standards check results into a unified report:
+      - Overall compliance score
+      - Categorized findings by severity
+      - Specific remediation recommendations
+      - Comparison against fitness target (90+/100)
+      - Actionable next steps
+    inputs:
+      lint: ${{ steps.lint.output }}
+      typecheck: ${{ steps.typecheck.output }}
+      fitness: ${{ steps.fitness.output }}
+      standards: ${{ steps.standards.output }}
+      strictness: ${{ inputs.strictness }}
+      failOnWarnings: ${{ inputs.failOnWarnings }}
+    dependsOn:
+      - lint
+      - typecheck
+      - fitness
+      - standards
+    timeout: 60000
+
+timeout: 420000

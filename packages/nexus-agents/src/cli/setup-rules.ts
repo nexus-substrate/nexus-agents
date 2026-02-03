@@ -26,7 +26,7 @@ This project uses [nexus-agents](https://github.com/williamzujkowski/nexus-agent
 When running with MCP server mode, these tools are available:
 
 | Tool | Description |
-|------|-------------|
+| ---- | ----------- |
 | \`orchestrate\` | Task orchestration with TechLead coordination |
 | \`create_expert\` | Dynamic expert agent creation |
 | \`run_workflow\` | Execute workflow templates |

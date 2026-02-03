@@ -460,7 +460,7 @@ async function initializeSubsystems(
   });
 
   // Initialize skill library from configuration (Issue #491)
-  const skillsResult = initializeSkillLibrary({ skillsConfig: config.skills, logger });
+  const skillsResult = await initializeSkillLibrary({ skillsConfig: config.skills, logger });
   logger.debug('Skill library initialization', {
     initialized: skillsResult.initialized,
     reason: skillsResult.reason,

@@ -201,15 +201,28 @@ export const SubTaskSchema = z.object({
 /**
  * Zod schema for TaskAnalysis.
  */
+/**
+ * Zod schema for TaskAnalysis.
+ * Uses coercion and transforms for numeric fields because LLMs
+ * may return numbers as strings or descriptive words (Issue #663).
+ */
 export const TaskAnalysisSchema = z.object({
   taskId: z.string().min(1),
-  complexity: z.number().min(1).max(10),
+  complexity: z.union([z.number(), z.string()]).transform((v) => {
+    const n = typeof v === 'number' ? v : Number(v);
+    return Number.isFinite(n) ? Math.min(10, Math.max(1, n)) : 5;
+  }),
   taskType: z.string().min(1),
   requirements: z.array(z.string()),
   risks: z.array(z.string()),
-  needsDecomposition: z.boolean(),
+  needsDecomposition: z
+    .union([z.boolean(), z.string()])
+    .transform((v) => (typeof v === 'boolean' ? v : v === 'true')),
   approach: z.string().min(1),
-  estimatedEffort: z.number().min(0),
+  estimatedEffort: z.union([z.number(), z.string()]).transform((v) => {
+    const n = typeof v === 'number' ? v : Number(v);
+    return Number.isFinite(n) ? Math.max(0, n) : 5;
+  }),
 });
 
 /**
