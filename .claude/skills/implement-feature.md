@@ -68,3 +68,32 @@ See [CODING_STANDARDS.md](../../CODING_STANDARDS.md#10-quality-gates) for full c
 - [ ] Lint and types clean
 - [ ] Files ≤ 400 lines, functions ≤ 50 lines
 - [ ] Interface defined first
+
+## Implementation Complete Checklist
+
+Before marking ANY technique or feature as "implemented", verify ALL of the following:
+
+### Code Requirements
+
+- [ ] Code exists in specified `integration_files`
+- [ ] All functions have explicit return types
+- [ ] No `any` types (use `unknown` instead)
+
+### Quality Gates
+
+- [ ] `pnpm lint` passes with zero errors
+- [ ] `pnpm typecheck` passes
+- [ ] `pnpm test` passes (relevant tests)
+
+### Documentation Updates (if research-related)
+
+- [ ] `docs/research/registry/techniques.yaml`: `status: implemented`, `decision_history` entry
+- [ ] `docs/research/registry/papers.yaml`: `implementation_status` updated
+- [ ] `docs/research/RESEARCH_INDEX.md`: Quick Stats updated if counts changed
+
+### GitHub Tracking
+
+- [ ] Implementation issue closed with summary comment
+- [ ] PR merged (if applicable)
+
+**Do NOT mark as implemented if:** tests fail, implementation is partial, or feature is behind a flag.
