@@ -309,4 +309,4 @@ packages/nexus-agents/src/
 - MCP Protocol: modelcontextprotocol.io
 - Research Index: docs/research/RESEARCH_INDEX.md
 
-<!-- Generated: 2026-01-16 from docs/INDEX.yaml -->
+<!-- Generated: 2026-02-03 from docs/INDEX.yaml -->
