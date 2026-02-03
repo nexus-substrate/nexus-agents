@@ -16,6 +16,7 @@ import type {
   EvolutionResult,
   EvolutionType,
 } from './agentic-memory-types.js';
+import { DEFAULT_LINKING_CONFIG } from './agentic-memory-types.js';
 
 // ============================================================================
 // Similarity Calculation (FTS-based)
@@ -274,4 +275,21 @@ export function detectEvolution(
   results.sort((a, b) => b.confidence - a.confidence);
 
   return results;
+}
+
+// ============================================================================
+// Configuration Merging
+// ============================================================================
+
+/**
+ * Merge partial linking config with defaults.
+ * Canonical location per ADR-0013.
+ */
+export function mergeLinkingConfig(partial?: Partial<LinkingConfig>): LinkingConfig {
+  if (partial === undefined) return DEFAULT_LINKING_CONFIG;
+  return {
+    suggestionThreshold: partial.suggestionThreshold ?? DEFAULT_LINKING_CONFIG.suggestionThreshold,
+    maxSuggestions: partial.maxSuggestions ?? DEFAULT_LINKING_CONFIG.maxSuggestions,
+    allowedTypes: partial.allowedTypes ?? DEFAULT_LINKING_CONFIG.allowedTypes,
+  };
 }

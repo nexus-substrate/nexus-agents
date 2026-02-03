@@ -17,7 +17,7 @@ import type {
   AgenticMemoryEntry,
   LinkSuggestion,
 } from './agentic-memory-types.js';
-import { getAttributesFromRow, memoryRowToAgenticEntry } from './agentic-memory-helpers.js';
+import { getAttributesFromRow, memoryRowToAgenticEntry } from './agentic-memory-db-helpers.js';
 import { GraphMemoryBackend } from './graph-memory.js';
 
 // ============================================================================

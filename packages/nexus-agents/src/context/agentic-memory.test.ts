@@ -15,14 +15,16 @@ import {
   extractSemanticTags,
   extractEntities,
   generateContextDescription,
+  mergeExtractionConfig,
+} from './agentic-memory-extraction.js';
+import {
   calculateKeywordSimilarity,
   calculateEntitySimilarity,
   calculateOverallSimilarity,
   generateLinkSuggestions,
   detectEvolution,
-  mergeExtractionConfig,
   mergeLinkingConfig,
-} from './agentic-memory-helpers.js';
+} from './agentic-memory-linking.js';
 // Shared utilities per ADR-0013
 import { tokenize, tokenizeFiltered } from '../utils/text-utils.js';
 import type { ISQLiteDatabase, ISQLiteStatement, MemoryRow } from './memory-backend-types.js';
