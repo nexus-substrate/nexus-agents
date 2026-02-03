@@ -36,17 +36,13 @@ export {
 } from './agentic-memory-db-helpers.js';
 
 // Re-export extraction helpers for backward compatibility
-/* eslint-disable @typescript-eslint/no-deprecated -- Intentional: deprecated exports for API compatibility */
 export {
-  tokenize,
-  tokenizeFiltered,
   extractKeywords,
   extractSemanticTags,
   extractEntities,
   generateContextDescription,
   extractAttributes,
 } from './agentic-memory-extraction.js';
-/* eslint-enable @typescript-eslint/no-deprecated */
 
 // ============================================================================
 // Configuration Merging

@@ -56,11 +56,17 @@ export function mapChoiceToContentBlocks(choice: ChatCompletion.Choice): Content
   if (message.tool_calls !== undefined && message.tool_calls.length > 0) {
     for (const toolCall of message.tool_calls) {
       if (isFunctionToolCall(toolCall)) {
+        let parsedInput: unknown;
+        try {
+          parsedInput = JSON.parse(toolCall.function.arguments) as unknown;
+        } catch {
+          parsedInput = { _raw: toolCall.function.arguments };
+        }
         blocks.push({
           type: 'tool_use',
           id: toolCall.id,
           name: toolCall.function.name,
-          input: JSON.parse(toolCall.function.arguments) as unknown,
+          input: parsedInput,
         });
       }
     }
