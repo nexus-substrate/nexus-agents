@@ -32,6 +32,7 @@ import {
   parseConventionalCommit,
   groupCommitsByCategory,
 } from './release-notes-helpers.js';
+import { getBlueskyConfig, createBlueskyPost } from './bluesky-client.js';
 
 /**
  * Default options for the release-announce command.
@@ -280,9 +281,9 @@ async function announceToBluesky(
   }
 
   // Check for Bluesky credentials
-  const hasCredentials = process.env.BLUESKY_HANDLE && process.env.BLUESKY_APP_PASSWORD;
+  const config = getBlueskyConfig();
 
-  if (!hasCredentials) {
+  if (!config) {
     return {
       channel: 'bluesky',
       success: false,
@@ -291,17 +292,23 @@ async function announceToBluesky(
     };
   }
 
-  // In a real implementation, this would use the Bluesky AT Protocol API
-  // For now, output the content for manual posting
-  console.log(
-    `${colors.dim}Bluesky post content generated. Post manually or configure API.${colors.reset}`
-  );
+  // Post to Bluesky via AT Protocol
+  const result = await createBlueskyPost(config, content);
+
+  if (!result.success) {
+    return {
+      channel: 'bluesky',
+      success: false,
+      content,
+      ...(result.error !== undefined && { error: result.error }),
+    };
+  }
 
   return {
     channel: 'bluesky',
     success: true,
     content,
-    url: 'Manual posting required',
+    ...(result.url !== undefined && { url: result.url }),
   };
 }
 

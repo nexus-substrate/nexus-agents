@@ -441,3 +441,7 @@ export type {
   ChannelAnnouncementResult,
   AnnouncementChannel,
 } from './release-announce-types.js';
+
+// Bluesky Client (Issue #642 - AT Protocol posting)
+export { getBlueskyConfig, createBlueskyPost } from './bluesky-client.js';
+export type { BlueskyPostResult, BlueskyConfig } from './bluesky-client.js';

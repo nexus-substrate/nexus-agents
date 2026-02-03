@@ -16,7 +16,6 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unused-vars */
-/* eslint-disable max-lines */
 /* eslint-disable max-lines-per-function */
 /* eslint-disable complexity */
 
