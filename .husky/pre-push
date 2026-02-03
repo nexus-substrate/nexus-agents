@@ -1,0 +1,39 @@
+#!/bin/sh
+# Pre-push fitness guard
+# Runs nexus-agents fitness-audit before push to prevent score degradation.
+# Consensus-approved enhancement (3/3 votes, simple_majority strategy).
+# Skip with: git push --no-verify
+
+# Only run if the CLI is built (skip gracefully otherwise)
+CLI_PATH="packages/nexus-agents/dist/cli.js"
+if [ ! -f "$CLI_PATH" ]; then
+  echo "[fitness-guard] CLI not built, skipping fitness check"
+  exit 0
+fi
+
+echo "[fitness-guard] Running fitness audit..."
+RESULT=$(node "$CLI_PATH" fitness-audit --format=json 2>/dev/null)
+
+if [ $? -ne 0 ]; then
+  echo "[fitness-guard] Fitness audit failed to run, skipping"
+  exit 0
+fi
+
+SCORE=$(echo "$RESULT" | grep -o '"score":[0-9]*' | head -1 | grep -o '[0-9]*')
+
+if [ -z "$SCORE" ]; then
+  echo "[fitness-guard] Could not parse fitness score, skipping"
+  exit 0
+fi
+
+THRESHOLD=90
+
+if [ "$SCORE" -lt "$THRESHOLD" ]; then
+  echo ""
+  echo "[fitness-guard] BLOCKED: Fitness score $SCORE/100 < $THRESHOLD threshold"
+  echo "[fitness-guard] Run 'nexus-agents fitness-audit' for details"
+  echo "[fitness-guard] Skip with: git push --no-verify"
+  exit 1
+fi
+
+echo "[fitness-guard] Fitness score: $SCORE/100 (threshold: $THRESHOLD)"
