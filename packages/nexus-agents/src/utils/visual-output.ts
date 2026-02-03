@@ -486,6 +486,115 @@ export function generateVoteSummary(
 }
 
 // ============================================================================
+// System Summary Dashboard
+// ============================================================================
+
+/** Data for a system summary dashboard. */
+export interface SystemSummaryData {
+  /** Package version */
+  readonly version: string;
+  /** Total source files */
+  readonly sourceFiles: number;
+  /** Total test files */
+  readonly testFiles: number;
+  /** Total test count */
+  readonly testCount: number;
+  /** MCP tools registered */
+  readonly mcpTools: number;
+  /** Expert types available */
+  readonly expertTypes: number;
+  /** Workflow templates available */
+  readonly workflowTemplates: number;
+  /** Fitness audit score */
+  readonly fitnessScore: number;
+  /** CLI commands available */
+  readonly cliCommands: number;
+  /** Adapter count */
+  readonly adapters: number;
+  /** Module breakdown by layer */
+  readonly layers: ReadonlyArray<{ name: string; files: number }>;
+}
+
+/**
+ * Generate an ASCII system summary dashboard.
+ *
+ * Displays a terminal-friendly overview of the nexus-agents system
+ * with real codebase statistics organized by architectural layer.
+ *
+ * @param data - System summary statistics
+ * @returns ASCII art dashboard string
+ */
+export function generateSystemSummary(data: SystemSummaryData): string {
+  const lines: string[] = [];
+  const width = 62;
+  const border = '═'.repeat(width);
+  const thin = '─'.repeat(width);
+
+  // Header with ASCII logo
+  lines.push(`╔${border}╗`);
+  lines.push(`║${''.padEnd(width)}║`);
+  lines.push(`║${'    ╔╗╔ ╔══╗ ╔╗  ╔ ╔╗ ╔╗ ╔══╗'.padEnd(width)}║`);
+  lines.push(`║${'    ║║║ ║╔═╝ ╠╬╗ ║ ║║ ║║ ╚═╗║'.padEnd(width)}║`);
+  lines.push(`║${'    ║╚╝ ║╚═╗ ║╚╬╗║ ║║ ║║ ╔═╝║'.padEnd(width)}║`);
+  lines.push(`║${'    ╚══ ╚══╝ ╚═╝╚╝ ╚══╝╝ ╚══╝  AGENTS'.padEnd(width)}║`);
+  lines.push(`║${''.padEnd(width)}║`);
+  lines.push(`║${'    Multi-Agent Orchestration System'.padEnd(width)}║`);
+  lines.push(`╠${border}╣`);
+
+  // Version and stats
+  lines.push(`║${'  SYSTEM OVERVIEW'.padEnd(width)}║`);
+  lines.push(`║${`  ${thin.slice(0, 58)}`.padEnd(width)}║`);
+  lines.push(`║${`  Version:    v${data.version}`.padEnd(width)}║`);
+  lines.push(
+    `║${`  Fitness:    ${String(data.fitnessScore)}/100 ${'█'.repeat(Math.round(data.fitnessScore / 5))}${'░'.repeat(20 - Math.round(data.fitnessScore / 5))}`.padEnd(width)}║`
+  );
+  lines.push(`╠${border}╣`);
+
+  // Capabilities grid
+  lines.push(`║${'  CAPABILITIES'.padEnd(width)}║`);
+  lines.push(`║${`  ${thin.slice(0, 58)}`.padEnd(width)}║`);
+
+  const capabilities = [
+    ['MCP Tools', String(data.mcpTools), 'Expert Types', String(data.expertTypes)],
+    ['CLI Commands', String(data.cliCommands), 'Workflows', String(data.workflowTemplates)],
+    ['Adapters', String(data.adapters), 'Test Count', String(data.testCount)],
+  ];
+
+  for (const row of capabilities) {
+    const col1 = `  ${row[0] ?? ''}:`.padEnd(18) + (row[1] ?? '').padStart(4);
+    const col2 = `  ${row[2] ?? ''}:`.padEnd(18) + (row[3] ?? '').padStart(4);
+    lines.push(`║${(col1 + col2).padEnd(width)}║`);
+  }
+
+  lines.push(`╠${border}╣`);
+
+  // Architecture layers
+  lines.push(`║${'  ARCHITECTURE LAYERS'.padEnd(width)}║`);
+  lines.push(`║${`  ${thin.slice(0, 58)}`.padEnd(width)}║`);
+
+  const maxFiles = Math.max(...data.layers.map((l) => l.files), 1);
+  const barMaxWidth = 30;
+
+  for (const layer of data.layers) {
+    const barLen = Math.max(1, Math.round((layer.files / maxFiles) * barMaxWidth));
+    const bar = '█'.repeat(barLen) + '░'.repeat(barMaxWidth - barLen);
+    const label = layer.name.padEnd(14).slice(0, 14);
+    const count = String(layer.files).padStart(4);
+    lines.push(`║  ${label} ${bar} ${count}  ║`);
+  }
+
+  lines.push(`╠${border}╣`);
+
+  // Source breakdown
+  lines.push(
+    `║${`  Source Files: ${String(data.sourceFiles)}    Test Files: ${String(data.testFiles)}`.padEnd(width)}║`
+  );
+  lines.push(`╚${border}╝`);
+
+  return lines.join('\n');
+}
+
+// ============================================================================
 // Markdown Embedding Helper
 // ============================================================================
 
