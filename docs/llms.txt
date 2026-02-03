@@ -47,7 +47,7 @@ nexus-agents --help           # See all commands
 ## Context Budget Guide
 
 | Task Type | Tokens | What to Load |
-|-----------|--------|--------------|
+| --------- | ------ | ------------ |
 | Minimal | 800 | docs/llms.txt + Relevant topic tier2_file only |
 | Standard | 2500 | docs/llms.txt + CLAUDE.md (reduced) |
 | Research | 1500 | docs/llms-full.txt + docs/research/RESEARCH_INDEX.md |

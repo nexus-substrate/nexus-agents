@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "generated": "2026-02-03T18:34:09.633Z",
+  "generated": "2026-02-03T22:19:10.417Z",
   "generator": "scripts/generate-repo-index.ts",
   "packageVersion": "2.6.0",
   "cli": {
@@ -115,6 +115,12 @@
         "file": "src/cli-commands-handlers.ts"
       },
       {
+        "name": "scaffold",
+        "type": "sync",
+        "handler": "handleScaffoldCommand",
+        "file": "src/cli-commands-handlers.ts"
+      },
+      {
         "name": "server",
         "type": "async",
         "handler": "handleServerCommand",
@@ -160,6 +166,12 @@
         "name": "verify",
         "type": "async",
         "handler": "handleVerifyCommand",
+        "file": "src/cli-commands-handlers.ts"
+      },
+      {
+        "name": "visualize",
+        "type": "sync",
+        "handler": "handleVisualizeCommand",
         "file": "src/cli-commands-handlers.ts"
       },
       {
@@ -237,6 +249,10 @@
       {
         "name": "security-audit",
         "file": "src/workflows/templates/security-audit.yaml"
+      },
+      {
+        "name": "standards-review",
+        "file": "src/workflows/templates/standards-review.yaml"
       },
       {
         "name": "test-generation",

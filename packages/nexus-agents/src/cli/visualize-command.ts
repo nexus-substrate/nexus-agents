@@ -63,75 +63,61 @@ EXAMPLES:
 // Data generators (static analysis of the nexus-agents architecture)
 // ============================================================================
 
-/**
- * Generates architecture component data for the nexus-agents system.
- * This is a static representation of the actual architecture.
- */
-function getNexusArchitecture(): ArchitectureComponent[] {
-  return [
-    // CLI Layer
-    { name: 'CLI Parser', layer: 'CLI', connections: ['Command Dispatch'] },
-    {
-      name: 'Command Dispatch',
-      layer: 'CLI',
-      connections: ['Orchestrator', 'Expert Factory', 'Workflow Engine', 'Consensus Engine'],
-    },
-    { name: 'MCP Server', layer: 'CLI', connections: ['Tool Registry'] },
-
-    // Tool Layer
-    {
-      name: 'Tool Registry',
-      layer: 'MCP Tools',
-      connections: [
-        'Orchestrate Tool',
-        'Expert Tools',
-        'Workflow Tool',
-        'Vote Tool',
-        'Delegate Tool',
-      ],
-    },
-    { name: 'Orchestrate Tool', layer: 'MCP Tools', connections: ['Orchestrator'] },
-    { name: 'Expert Tools', layer: 'MCP Tools', connections: ['Expert Factory'] },
-    { name: 'Workflow Tool', layer: 'MCP Tools', connections: ['Workflow Engine'] },
-    { name: 'Vote Tool', layer: 'MCP Tools', connections: ['Consensus Engine'] },
-    { name: 'Delegate Tool', layer: 'MCP Tools', connections: ['Composite Router'] },
-
-    // Agent Layer
-    { name: 'Orchestrator', layer: 'Agents', connections: ['TechLead', 'Expert Factory'] },
-    { name: 'TechLead', layer: 'Agents', connections: ['Task Analyzer', 'Model Adapter'] },
-    {
-      name: 'Expert Factory',
-      layer: 'Agents',
-      connections: ['Code Expert', 'Security Expert', 'Arch Expert'],
-    },
-    { name: 'Code Expert', layer: 'Agents', connections: ['Model Adapter'] },
-    { name: 'Security Expert', layer: 'Agents', connections: ['Model Adapter'] },
-    { name: 'Arch Expert', layer: 'Agents', connections: ['Model Adapter'] },
-
-    // Core Layer
-    { name: 'Task Analyzer', layer: 'Core', connections: [] },
-    {
-      name: 'Composite Router',
-      layer: 'Core',
-      connections: ['Budget Router', 'TOPSIS Router', 'LinUCB'],
-    },
-    { name: 'Budget Router', layer: 'Core', connections: [] },
-    { name: 'TOPSIS Router', layer: 'Core', connections: [] },
-    { name: 'LinUCB', layer: 'Core', connections: [] },
-    { name: 'Consensus Engine', layer: 'Core', connections: [] },
-    { name: 'Workflow Engine', layer: 'Core', connections: ['Model Adapter'] },
-
-    // Adapter Layer
-    {
-      name: 'Model Adapter',
-      layer: 'Adapters',
-      connections: ['Claude CLI', 'Gemini CLI', 'Codex CLI'],
-    },
-    { name: 'Claude CLI', layer: 'Adapters', connections: [] },
-    { name: 'Gemini CLI', layer: 'Adapters', connections: [] },
-    { name: 'Codex CLI', layer: 'Adapters', connections: [] },
-  ];
-}
+/** Static architecture component data for the nexus-agents system. */
+const NEXUS_ARCHITECTURE: ArchitectureComponent[] = [
+  { name: 'CLI Parser', layer: 'CLI', connections: ['Command Dispatch'] },
+  {
+    name: 'Command Dispatch',
+    layer: 'CLI',
+    connections: ['Orchestrator', 'Expert Factory', 'Workflow Engine', 'Consensus Engine'],
+  },
+  { name: 'MCP Server', layer: 'CLI', connections: ['Tool Registry'] },
+  {
+    name: 'Tool Registry',
+    layer: 'MCP Tools',
+    connections: [
+      'Orchestrate Tool',
+      'Expert Tools',
+      'Workflow Tool',
+      'Vote Tool',
+      'Delegate Tool',
+    ],
+  },
+  { name: 'Orchestrate Tool', layer: 'MCP Tools', connections: ['Orchestrator'] },
+  { name: 'Expert Tools', layer: 'MCP Tools', connections: ['Expert Factory'] },
+  { name: 'Workflow Tool', layer: 'MCP Tools', connections: ['Workflow Engine'] },
+  { name: 'Vote Tool', layer: 'MCP Tools', connections: ['Consensus Engine'] },
+  { name: 'Delegate Tool', layer: 'MCP Tools', connections: ['Composite Router'] },
+  { name: 'Orchestrator', layer: 'Agents', connections: ['TechLead', 'Expert Factory'] },
+  { name: 'TechLead', layer: 'Agents', connections: ['Task Analyzer', 'Model Adapter'] },
+  {
+    name: 'Expert Factory',
+    layer: 'Agents',
+    connections: ['Code Expert', 'Security Expert', 'Arch Expert'],
+  },
+  { name: 'Code Expert', layer: 'Agents', connections: ['Model Adapter'] },
+  { name: 'Security Expert', layer: 'Agents', connections: ['Model Adapter'] },
+  { name: 'Arch Expert', layer: 'Agents', connections: ['Model Adapter'] },
+  { name: 'Task Analyzer', layer: 'Core', connections: [] },
+  {
+    name: 'Composite Router',
+    layer: 'Core',
+    connections: ['Budget Router', 'TOPSIS Router', 'LinUCB'],
+  },
+  { name: 'Budget Router', layer: 'Core', connections: [] },
+  { name: 'TOPSIS Router', layer: 'Core', connections: [] },
+  { name: 'LinUCB', layer: 'Core', connections: [] },
+  { name: 'Consensus Engine', layer: 'Core', connections: [] },
+  { name: 'Workflow Engine', layer: 'Core', connections: ['Model Adapter'] },
+  {
+    name: 'Model Adapter',
+    layer: 'Adapters',
+    connections: ['Claude CLI', 'Gemini CLI', 'Codex CLI'],
+  },
+  { name: 'Claude CLI', layer: 'Adapters', connections: [] },
+  { name: 'Gemini CLI', layer: 'Adapters', connections: [] },
+  { name: 'Codex CLI', layer: 'Adapters', connections: [] },
+];
 
 /**
  * Generates swarm agent data for the standard nexus-agents swarm topology.
@@ -159,68 +145,64 @@ function getNexusSwarmAgents(): SwarmAgent[] {
   ];
 }
 
-/**
- * Generates a sample orchestration execution for visualization.
- */
-function getSampleOrchestration(): OrchestrationVizData {
-  return {
-    executionId: 'orch-demo-001',
-    orchestratorType: 'tech_lead',
-    steps: [
-      {
-        id: 'analyze',
-        role: 'TechLead',
-        action: 'Analyze task',
-        status: 'success',
-        durationMs: 2500,
-        tokensUsed: 450,
-      },
-      {
-        id: 'decompose',
-        role: 'TechLead',
-        action: 'Decompose into subtasks',
-        status: 'success',
-        durationMs: 1800,
-        tokensUsed: 320,
-      },
-      {
-        id: 'code-impl',
-        role: 'code_expert',
-        action: 'Implement solution',
-        status: 'success',
-        durationMs: 8500,
-        tokensUsed: 1200,
-      },
-      {
-        id: 'security-review',
-        role: 'security_expert',
-        action: 'Security audit',
-        status: 'success',
-        durationMs: 4200,
-        tokensUsed: 680,
-      },
-      {
-        id: 'test-gen',
-        role: 'testing_expert',
-        action: 'Generate tests',
-        status: 'success',
-        durationMs: 5100,
-        tokensUsed: 890,
-      },
-      {
-        id: 'synthesize',
-        role: 'TechLead',
-        action: 'Synthesize results',
-        status: 'success',
-        durationMs: 1500,
-        tokensUsed: 280,
-      },
-    ],
-    totalDurationMs: 23600,
-    totalTokensUsed: 3820,
-    agentsUsed: ['TechLead', 'code_expert', 'security_expert', 'testing_expert'],
-  };
-}
+/** Sample orchestration execution for visualization. */
+const SAMPLE_ORCHESTRATION: OrchestrationVizData = {
+  executionId: 'orch-demo-001',
+  orchestratorType: 'tech_lead',
+  steps: [
+    {
+      id: 'analyze',
+      role: 'TechLead',
+      action: 'Analyze task',
+      status: 'success',
+      durationMs: 2500,
+      tokensUsed: 450,
+    },
+    {
+      id: 'decompose',
+      role: 'TechLead',
+      action: 'Decompose into subtasks',
+      status: 'success',
+      durationMs: 1800,
+      tokensUsed: 320,
+    },
+    {
+      id: 'code-impl',
+      role: 'code_expert',
+      action: 'Implement solution',
+      status: 'success',
+      durationMs: 8500,
+      tokensUsed: 1200,
+    },
+    {
+      id: 'security-review',
+      role: 'security_expert',
+      action: 'Security audit',
+      status: 'success',
+      durationMs: 4200,
+      tokensUsed: 680,
+    },
+    {
+      id: 'test-gen',
+      role: 'testing_expert',
+      action: 'Generate tests',
+      status: 'success',
+      durationMs: 5100,
+      tokensUsed: 890,
+    },
+    {
+      id: 'synthesize',
+      role: 'TechLead',
+      action: 'Synthesize results',
+      status: 'success',
+      durationMs: 1500,
+      tokensUsed: 280,
+    },
+  ],
+  totalDurationMs: 23600,
+  totalTokensUsed: 3820,
+  agentsUsed: ['TechLead', 'code_expert', 'security_expert', 'testing_expert'],
+};
 
 /**
  * Gets execution pipeline flow steps.
@@ -263,7 +245,7 @@ function generateDiagramOutput(subcommand: VisualizeSubcommand, format: OutputFo
   switch (subcommand) {
     case 'architecture':
       return formatOutput(
-        generateArchitectureDiagram(getNexusArchitecture()),
+        generateArchitectureDiagram(NEXUS_ARCHITECTURE),
         format,
         'Nexus Agents Architecture'
       );
@@ -274,9 +256,9 @@ function generateDiagramOutput(subcommand: VisualizeSubcommand, format: OutputFo
         'Agent Swarm Topology'
       );
     case 'orchestration':
-      if (format === 'ascii') return generateAsciiDashboard(getSampleOrchestration());
+      if (format === 'ascii') return generateAsciiDashboard(SAMPLE_ORCHESTRATION);
       return formatOutput(
-        generateOrchestrationSequence(getSampleOrchestration()),
+        generateOrchestrationSequence(SAMPLE_ORCHESTRATION),
         format,
         'Orchestration Execution'
       );

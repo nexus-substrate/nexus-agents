@@ -18,6 +18,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable max-lines-per-function */
 /* eslint-disable complexity */
+/* eslint-disable max-lines -- Pre-existing: needs extraction into helpers (Issue #669) */
 
 import { execSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';

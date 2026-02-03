@@ -1,6 +1,6 @@
 # Repository Capabilities Index
 
-**Generated:** 2026-02-03T18:34:09.633Z
+**Generated:** 2026-02-03T22:19:10.417Z
 **Package Version:** 2.6.0
 **Generator:** `scripts/generate-repo-index.ts`
 
@@ -9,7 +9,7 @@
 
 ---
 
-## CLI Commands (28)
+## CLI Commands (30)
 
 Binary: `nexus-agents`
 
@@ -33,6 +33,7 @@ Binary: `nexus-agents`
 | `research` | async | `handleResearchCommand` | `src/cli-commands-handlers.ts` |
 | `review` | async | `handleReviewCommand` | `src/cli-commands-handlers.ts` |
 | `routing-audit` | sync | `handleRoutingAuditCommand` | `src/cli-commands-handlers.ts` |
+| `scaffold` | sync | `handleScaffoldCommand` | `src/cli-commands-handlers.ts` |
 | `server` | async | `handleServerCommand` | `src/cli-commands-handlers.ts` |
 | `session` | async | `handleSessionCommand` | `src/cli-commands-handlers.ts` |
 | `setup` | async | `handleSetupCommandAsync` | `src/cli-commands-handlers.ts` |
@@ -41,6 +42,7 @@ Binary: `nexus-agents`
 | `system-review` | sync | `handleSystemReviewCommand` | `src/cli-commands-handlers.ts` |
 | `validation` | sync | `handleValidationCommand` | `src/cli-commands-handlers.ts` |
 | `verify` | async | `handleVerifyCommand` | `src/cli-commands-handlers.ts` |
+| `visualize` | sync | `handleVisualizeCommand` | `src/cli-commands-handlers.ts` |
 | `vote` | async | `handleVoteCommand` | `src/cli-commands-handlers.ts` |
 | `workflow` | async | `handleWorkflowCommand` | `src/cli-commands-handlers.ts` |
 
@@ -61,7 +63,7 @@ Binary: `nexus-agents`
 
 ---
 
-## Workflow Templates (7)
+## Workflow Templates (8)
 
 | Template | Source File |
 | ---------- | ------------- |
@@ -71,6 +73,7 @@ Binary: `nexus-agents`
 | `feature-implementation` | `src/workflows/templates/feature-implementation.yaml` |
 | `refactoring` | `src/workflows/templates/refactoring.yaml` |
 | `security-audit` | `src/workflows/templates/security-audit.yaml` |
+| `standards-review` | `src/workflows/templates/standards-review.yaml` |
 | `test-generation` | `src/workflows/templates/test-generation.yaml` |
 
 ---
