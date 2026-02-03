@@ -23,6 +23,8 @@ export type SkillExecutionStatus = 'success' | 'failure' | 'timeout' | 'error';
 
 /**
  * Skill categories for organization.
+ *
+ * Extended in Epic #643 to support standards absorption categories.
  */
 export type SkillCategory =
   | 'file-operations'
@@ -33,7 +35,16 @@ export type SkillCategory =
   | 'refactoring'
   | 'debugging'
   | 'deployment'
-  | 'general';
+  | 'general'
+  | 'coding-standards'
+  | 'security'
+  | 'database'
+  | 'cloud-native'
+  | 'devops'
+  | 'api'
+  | 'frontend'
+  | 'observability'
+  | 'compliance';
 
 /**
  * A single skill in the library.

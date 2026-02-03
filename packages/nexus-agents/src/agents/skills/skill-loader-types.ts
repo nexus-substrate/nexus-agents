@@ -180,6 +180,15 @@ export const SkillCategorySchema = z.enum([
   'debugging',
   'deployment',
   'general',
+  'coding-standards',
+  'security',
+  'database',
+  'cloud-native',
+  'devops',
+  'api',
+  'frontend',
+  'observability',
+  'compliance',
 ]);
 
 /**
@@ -192,6 +201,7 @@ export const AgentRoleLoaderSchema = z.enum([
   'security_expert',
   'documentation_expert',
   'testing_expert',
+  'devops_expert',
   'thinker',
   'worker',
   'verifier',
@@ -269,32 +279,51 @@ export const DEFAULT_ROLE_MAPPINGS: readonly RoleSkillMapping[] = [
   {
     role: 'code_expert',
     requiredCategories: ['code-generation', 'testing', 'file-operations'],
-    optionalCategories: ['refactoring', 'debugging'],
+    optionalCategories: ['refactoring', 'debugging', 'coding-standards', 'devops'],
   },
   {
     role: 'security_expert',
     requiredCategories: ['code-analysis', 'file-operations'],
-    optionalCategories: ['testing'],
+    optionalCategories: ['testing', 'security', 'compliance'],
   },
   {
     role: 'architecture_expert',
     requiredCategories: ['code-analysis', 'documentation'],
-    optionalCategories: ['code-generation'],
+    optionalCategories: ['code-generation', 'cloud-native', 'api'],
   },
   {
     role: 'documentation_expert',
     requiredCategories: ['file-operations', 'documentation'],
-    optionalCategories: ['code-generation'],
+    optionalCategories: ['code-generation', 'api'],
   },
   {
     role: 'testing_expert',
     requiredCategories: ['testing', 'file-operations'],
-    optionalCategories: ['code-generation', 'debugging'],
+    optionalCategories: ['code-generation', 'debugging', 'observability'],
+  },
+  {
+    role: 'devops_expert',
+    requiredCategories: ['deployment', 'file-operations'],
+    optionalCategories: ['devops', 'cloud-native', 'observability', 'security'],
   },
   {
     role: 'tech_lead',
     requiredCategories: ['general'],
-    optionalCategories: ['code-generation', 'code-analysis', 'testing', 'documentation'],
+    optionalCategories: [
+      'code-generation',
+      'code-analysis',
+      'testing',
+      'documentation',
+      'coding-standards',
+      'security',
+      'database',
+      'cloud-native',
+      'devops',
+      'api',
+      'frontend',
+      'observability',
+      'compliance',
+    ],
     maxSkills: 100, // Tech lead needs broader access
   },
   // TRINITY roles (arXiv:2512.04695)
@@ -311,7 +340,7 @@ export const DEFAULT_ROLE_MAPPINGS: readonly RoleSkillMapping[] = [
   {
     role: 'verifier',
     requiredCategories: ['code-analysis', 'testing'],
-    optionalCategories: ['documentation'],
+    optionalCategories: ['documentation', 'security'],
   },
   {
     role: 'custom',

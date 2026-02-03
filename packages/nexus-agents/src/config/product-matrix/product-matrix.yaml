@@ -1,0 +1,193 @@
+version: 1
+products:
+  - type: api
+    description: 'RESTful or GraphQL API service'
+    skillBundle:
+      - coding-standards
+      - api-security
+      - input-validation
+      - testing
+      - ci-cd
+    expertWeights:
+      - role: code_expert
+        weight: 0.9
+      - role: security_expert
+        weight: 0.7
+      - role: testing_expert
+        weight: 0.6
+      - role: architecture_expert
+        weight: 0.5
+      - role: documentation_expert
+        weight: 0.3
+    languages: [typescript, python, go, java]
+    frameworks: [express, fastify, flask, django, gin, spring]
+
+  - type: web-service
+    description: 'Full-stack web service with frontend and backend'
+    skillBundle:
+      - coding-standards
+      - api-security
+      - input-validation
+      - testing
+      - ci-cd
+      - frontend-standards
+      - accessibility
+    expertWeights:
+      - role: code_expert
+        weight: 0.9
+      - role: architecture_expert
+        weight: 0.7
+      - role: security_expert
+        weight: 0.6
+      - role: testing_expert
+        weight: 0.6
+      - role: documentation_expert
+        weight: 0.4
+      - role: devops_expert
+        weight: 0.5
+    languages: [typescript, javascript, python, go]
+    frameworks: [next, nuxt, remix, rails, django]
+
+  - type: cli
+    description: 'Command-line interface tool or utility'
+    skillBundle:
+      - coding-standards
+      - input-validation
+      - testing
+      - error-handling
+      - documentation
+    expertWeights:
+      - role: code_expert
+        weight: 0.9
+      - role: testing_expert
+        weight: 0.7
+      - role: documentation_expert
+        weight: 0.6
+      - role: devops_expert
+        weight: 0.4
+      - role: architecture_expert
+        weight: 0.3
+    languages: [typescript, python, go, rust]
+    frameworks: [commander, yargs, click, cobra, clap]
+
+  - type: frontend-web
+    description: 'Browser-based frontend application (SPA or SSR)'
+    skillBundle:
+      - coding-standards
+      - frontend-standards
+      - accessibility
+      - testing
+      - performance
+      - ci-cd
+    expertWeights:
+      - role: code_expert
+        weight: 0.9
+      - role: testing_expert
+        weight: 0.7
+      - role: architecture_expert
+        weight: 0.5
+      - role: security_expert
+        weight: 0.4
+      - role: documentation_expert
+        weight: 0.3
+    languages: [typescript, javascript]
+    frameworks: [react, vue, angular, svelte, solid]
+
+  - type: mobile
+    description: 'Native or cross-platform mobile application'
+    skillBundle:
+      - coding-standards
+      - mobile-standards
+      - testing
+      - performance
+      - accessibility
+      - ci-cd
+    expertWeights:
+      - role: code_expert
+        weight: 0.9
+      - role: testing_expert
+        weight: 0.7
+      - role: architecture_expert
+        weight: 0.6
+      - role: security_expert
+        weight: 0.5
+      - role: documentation_expert
+        weight: 0.3
+    languages: [typescript, kotlin, swift, dart]
+    frameworks: [react-native, flutter, swiftui, jetpack-compose]
+
+  - type: data-pipeline
+    description: 'ETL, streaming, or batch data processing pipeline'
+    skillBundle:
+      - coding-standards
+      - data-validation
+      - testing
+      - error-handling
+      - observability
+      - ci-cd
+    expertWeights:
+      - role: code_expert
+        weight: 0.8
+      - role: architecture_expert
+        weight: 0.8
+      - role: testing_expert
+        weight: 0.6
+      - role: devops_expert
+        weight: 0.7
+      - role: security_expert
+        weight: 0.4
+      - role: documentation_expert
+        weight: 0.4
+    languages: [python, scala, typescript, sql]
+    frameworks: [spark, airflow, dbt, kafka, flink]
+
+  - type: ml-service
+    description: 'Machine learning model serving or training pipeline'
+    skillBundle:
+      - coding-standards
+      - data-validation
+      - testing
+      - model-evaluation
+      - observability
+      - ci-cd
+      - input-validation
+    expertWeights:
+      - role: code_expert
+        weight: 0.8
+      - role: architecture_expert
+        weight: 0.7
+      - role: testing_expert
+        weight: 0.7
+      - role: security_expert
+        weight: 0.5
+      - role: devops_expert
+        weight: 0.6
+      - role: documentation_expert
+        weight: 0.5
+    languages: [python, typescript]
+    frameworks: [pytorch, tensorflow, scikit-learn, huggingface, mlflow]
+
+  - type: infra-module
+    description: 'Infrastructure-as-code module or platform component'
+    skillBundle:
+      - coding-standards
+      - infra-security
+      - testing
+      - documentation
+      - ci-cd
+      - drift-detection
+    expertWeights:
+      - role: devops_expert
+        weight: 0.9
+      - role: security_expert
+        weight: 0.8
+      - role: architecture_expert
+        weight: 0.7
+      - role: testing_expert
+        weight: 0.5
+      - role: code_expert
+        weight: 0.4
+      - role: documentation_expert
+        weight: 0.6
+    languages: [hcl, typescript, python, yaml]
+    frameworks: [terraform, pulumi, cdk, cloudformation, ansible]
