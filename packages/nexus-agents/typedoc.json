@@ -9,7 +9,25 @@
   "excludeProtected": false,
   "excludeInternal": true,
   "categorizeByGroup": true,
-  "categoryOrder": ["Core", "Agents", "Workflows", "MCP", "CLI Adapters", "Config", "*"],
+  "categoryOrder": [
+    "Core",
+    "Result",
+    "Errors",
+    "Agents",
+    "Experts",
+    "Consensus",
+    "Workflows",
+    "MCP",
+    "CLI Adapters",
+    "Config",
+    "Tracing",
+    "Testing",
+    "*"
+  ],
+  "navigationLinks": {
+    "GitHub": "https://github.com/williamzujkowski/nexus-agents",
+    "npm": "https://www.npmjs.com/package/nexus-agents"
+  },
   "navigation": {
     "includeCategories": true,
     "includeGroups": true
@@ -20,5 +38,6 @@
     "@internal": false
   },
   "plugin": [],
-  "gitRevision": "main"
+  "gitRevision": "main",
+  "searchInComments": true
 }

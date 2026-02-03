@@ -15,7 +15,7 @@ import type { ILogger } from '../../core/index.js';
 import { createLogger, formatZodError } from '../../core/index.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
-import { wrapToolWithTimeout, toSdkCallback } from '../middleware/tool-wrapper.js';
+import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import { BUILT_IN_EXPERTS, type BuiltInExpertType } from '../../agents/index.js';
 
@@ -202,12 +202,8 @@ export function registerListExpertsTool(server: McpServer, deps: ListExpertsDeps
   });
 
   // Wrap with timeout protection (Issue #271, CVE-2026-0621)
-  const timeoutMs = deps.security?.timeout?.defaultTimeoutMs;
-  const wrappedHandler = wrapToolWithTimeout(
-    'list_experts',
-    secureHandler,
-    timeoutMs !== undefined ? { timeoutMs, logger } : { logger }
-  );
+  const timeoutMs = getToolTimeout('list_experts', deps.security);
+  const wrappedHandler = wrapToolWithTimeout('list_experts', secureHandler, { timeoutMs, logger });
 
   server.registerTool(
     'list_experts',

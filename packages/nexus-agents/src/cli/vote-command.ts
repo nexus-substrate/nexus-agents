@@ -151,7 +151,7 @@ export function formatVoteComment(result: VotingResult): string {
 
 ### Vote Details
 | Agent | Decision | Confidence |
-|-------|----------|------------|
+| ----- | -------- | ---------- |
 ${voteRows}
 
 **Summary:** ${summary}

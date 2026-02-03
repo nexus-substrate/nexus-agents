@@ -271,7 +271,7 @@ All defaults can be overridden via environment variables using the NEXUS_ prefix
 ## Timeouts
 
 | Variable | Default | Description |
-|----------|---------|-------------|
+| -------- | ------- | ----------- |
 | NEXUS_TIMEOUT_CLI | ${String(t.cliMs)} | CLI execution timeout (ms) |
 | NEXUS_TIMEOUT_API | ${String(t.apiMs)} | API request timeout (ms) |
 | NEXUS_TIMEOUT_WORKFLOW | ${String(t.workflowMs)} | Workflow timeout (ms) |
@@ -280,7 +280,7 @@ All defaults can be overridden via environment variables using the NEXUS_ prefix
 ## Rate Limits
 
 | Variable | Default | Description |
-|----------|---------|-------------|
+| -------- | ------- | ----------- |
 | NEXUS_RATE_LIMIT_RPM | ${String(r.requestsPerMinute)} | Requests per minute |
 | NEXUS_RATE_LIMIT_ENABLED | ${String(r.enabled)} | Enable rate limiting |
 | NEXUS_RATE_LIMIT_CAPACITY | ${String(r.capacity)} | Token bucket capacity |
@@ -288,7 +288,7 @@ All defaults can be overridden via environment variables using the NEXUS_ prefix
 ## Retries
 
 | Variable | Default | Description |
-|----------|---------|-------------|
+| -------- | ------- | ----------- |
 | NEXUS_RETRY_MAX_RETRIES | ${String(rt.maxRetries)} | Maximum retry attempts |
 | NEXUS_RETRY_BASE_DELAY | ${String(rt.baseDelayMs)} | Base delay (ms) |
 | NEXUS_RETRY_MAX_DELAY | ${String(rt.maxDelayMs)} | Maximum delay (ms) |
@@ -297,7 +297,7 @@ All defaults can be overridden via environment variables using the NEXUS_ prefix
 ## Workers
 
 | Variable | Default | Description |
-|----------|---------|-------------|
+| -------- | ------- | ----------- |
 | NEXUS_WORKERS_MAX | ${String(w.maxWorkers)} | Maximum workers |
 | NEXUS_WORKERS_POOL_SIZE | ${String(w.poolSize)} | Worker pool size |
 | NEXUS_WORKFLOW_MAX_PARALLEL | ${String(w.workflowMaxParallel)} | Max parallel workflow steps |
@@ -306,7 +306,7 @@ All defaults can be overridden via environment variables using the NEXUS_ prefix
 ## Circuit Breaker
 
 | Variable | Default | Description |
-|----------|---------|-------------|
+| -------- | ------- | ----------- |
 | NEXUS_CIRCUIT_BREAKER_THRESHOLD | ${String(cb.failureThreshold)} | Failure threshold |
 | NEXUS_CIRCUIT_BREAKER_RESET_TIMEOUT | ${String(cb.resetTimeoutMs)} | Reset timeout (ms) |
 `;

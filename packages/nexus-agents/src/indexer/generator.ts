@@ -147,7 +147,7 @@ export function generateDiagramMarkdown(index: CodebaseIndex): string {
     lines.push(`**Purpose:** ${m.purpose}`);
     lines.push('');
     lines.push(`| Metric | Value |`);
-    lines.push(`|--------|-------|`);
+    lines.push(`| ------ | ----- |`);
     lines.push(`| Files | ${String(m.stats.fileCount)} |`);
     lines.push(`| Lines | ${m.stats.totalLines.toLocaleString()} |`);
     lines.push(`| Exports | ${String(m.stats.exportCount)} |`);

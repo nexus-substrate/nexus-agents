@@ -208,6 +208,7 @@ export const BUILT_IN_TEMPLATES = [
   'documentation-update',
   'refactoring',
   'security-audit',
+  'standards-review',
   'test-generation',
 ] as const;
 
@@ -223,6 +224,7 @@ export const TEMPLATE_CATEGORIES: Record<BuiltInTemplateName, TemplateCategory> 
   'documentation-update': 'documentation',
   refactoring: 'development',
   'security-audit': 'review',
+  'standards-review': 'review',
   'test-generation': 'testing',
 };
 
@@ -236,5 +238,6 @@ export const TEMPLATE_KEYWORDS: Record<BuiltInTemplateName, string[]> = {
   'documentation-update': ['docs', 'documentation', 'readme', 'api', 'update'],
   refactoring: ['refactor', 'clean', 'improve', 'restructure', 'simplify'],
   'security-audit': ['security', 'audit', 'vulnerability', 'owasp', 'scan'],
+  'standards-review': ['standards', 'lint', 'typecheck', 'fitness', 'compliance', 'quality'],
   'test-generation': ['test', 'generate', 'coverage', 'unit', 'integration'],
 };

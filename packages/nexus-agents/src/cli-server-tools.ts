@@ -164,7 +164,7 @@ interface ToolRegistrationContext {
   workflowConfig?: import('./config/index.js').WorkflowConfig;
 }
 
-/** Register expert tools with shared registry. */
+/** Register expert tools with shared registry (Issue #661: wire security config). */
 function registerExpertTools(ctx: ToolRegistrationContext): void {
   const sharedExpertRegistry = new Map<string, Expert>();
   const createExpertDeps = createDefaultDeps(
@@ -172,12 +172,16 @@ function registerExpertTools(ctx: ToolRegistrationContext): void {
     ctx.logger
   );
   createExpertDeps.expertRegistry = sharedExpertRegistry;
+  if (ctx.securityConfig !== undefined) {
+    createExpertDeps.security = ctx.securityConfig;
+  }
   registerCreateExpertTool(ctx.server, createExpertDeps);
 
   registerExecuteExpertTool(ctx.server, {
     expertRegistry: sharedExpertRegistry,
     logger: ctx.logger,
     rateLimiter: ctx.rateLimiterFactory.getForTool('execute_expert'),
+    ...(ctx.securityConfig !== undefined && { security: ctx.securityConfig }),
   });
 }
 
@@ -209,11 +213,12 @@ function registerWorkflowTools(ctx: ToolRegistrationContext): void {
   });
 }
 
-/** Register consensus tools (Issue #435). */
+/** Register consensus tools (Issue #435, Issue #662: wire security config for timeout). */
 function registerConsensusTools(ctx: ToolRegistrationContext): void {
   registerConsensusVoteTool(ctx.server, {
     logger: ctx.logger,
     rateLimiter: ctx.rateLimiterFactory.getForTool('consensus_vote'),
+    ...(ctx.securityConfig !== undefined && { security: ctx.securityConfig }),
   });
 }
 

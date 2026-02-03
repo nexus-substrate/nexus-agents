@@ -24,7 +24,7 @@ pnpm changeset publish
    - `patch` - Bug fixes, documentation
    - `minor` - New features, non-breaking changes
    - `major` - Breaking changes
-5. **Write Summary**: Brief description for CHANGELOG.md
+5. **Write Summary**: Brief description for the changelog entry
 6. **Commit**: Include the generated `.changeset/*.md` file with your PR
 
 ## Changeset Format
@@ -39,13 +39,34 @@ Changesets are stored as markdown files:
 Add release automation CLI commands (#637)
 ```
 
+Changeset descriptions support markdown and can include multi-line content. Use issue/PR references (e.g., `#637`) for traceability.
+
+## Two-Changelog Architecture
+
+This project maintains two changelogs:
+
+| Changelog         | Location                             | Updated By             | Format                                 |
+| ----------------- | ------------------------------------ | ---------------------- | -------------------------------------- |
+| Package CHANGELOG | `packages/nexus-agents/CHANGELOG.md` | Changesets (automatic) | Changesets format with commit links    |
+| Root CHANGELOG    | `CHANGELOG.md`                       | Maintainer (manual)    | Keep a Changelog with curated sections |
+
+**How it works:**
+
+1. Contributors add changesets with their PRs
+2. On merge to main, `changesets/action` creates a "Version Packages" PR
+3. That PR auto-updates `packages/nexus-agents/CHANGELOG.md` with changeset entries
+4. When the Version Packages PR merges, the package is published to npm
+5. The root `CHANGELOG.md` is updated by the maintainer during release prep using `nexus-agents release-notes` as a starting point
+
 ## CI Integration
 
-- PRs are checked for changesets
-- When merged to main, the Release workflow:
-  1. Creates a "Version Packages" PR (version bump + CHANGELOG.md update)
-  2. When that PR merges, publishes to npm via OIDC trusted publishing (no tokens)
-  3. Creates a GitHub Release with auto-generated notes
+When changes with changesets merge to main, the Release workflow (`release.yml`):
+
+1. Creates a "Version Packages" PR (version bump + package CHANGELOG update)
+2. When that PR merges, publishes to npm via OIDC trusted publishing (no tokens)
+3. Creates a GitHub Release with auto-generated notes
+
+The `release-validate` CLI command checks both changelogs for the current version.
 
 ## When to Add a Changeset
 

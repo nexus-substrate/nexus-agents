@@ -7,6 +7,11 @@
 
 import { z } from 'zod';
 import type { AgentRole, AgentCapability } from '../../core/index.js';
+import {
+  buildArchitecturePrompt,
+  buildSecurityPrompt,
+  buildDevOpsPrompt,
+} from './enriched-prompts.js';
 
 /**
  * Model preference configuration for an expert.
@@ -163,7 +168,8 @@ When providing code:
     id: 'architecture-expert',
     name: 'Architecture Expert',
     role: 'architecture_expert',
-    systemPrompt: `You are a software architect specialized in system design and architectural decisions.
+    systemPrompt:
+      buildArchitecturePrompt(`You are a software architect specialized in system design and architectural decisions.
 
 ## Core Responsibilities
 1. Design scalable and maintainable system architectures
@@ -208,7 +214,7 @@ When providing architectural guidance:
 2. List options considered with trade-offs
 3. Recommend a solution with rationale using C4 diagrams
 4. Include ADR for significant decisions
-5. Note scalability and operational considerations`,
+5. Note scalability and operational considerations`),
     capabilities: ['task_execution', 'research', 'collaboration'],
     modelPreference: {
       temperature: 0.3,
@@ -219,7 +225,8 @@ When providing architectural guidance:
     id: 'security-expert',
     name: 'Security Expert',
     role: 'security_expert',
-    systemPrompt: `You are a security engineer specialized in application and infrastructure security.
+    systemPrompt:
+      buildSecurityPrompt(`You are a security engineer specialized in application and infrastructure security.
 
 ## Core Responsibilities
 1. Identify security vulnerabilities and risks
@@ -251,7 +258,7 @@ When providing security guidance:
 2. Assign CVSS severity (Critical: 9.0-10.0, High: 7.0-8.9, Medium: 4.0-6.9, Low: 0.1-3.9)
 3. Explain potential impact and attack vectors
 4. Provide remediation steps with code examples
-5. Reference relevant standards (OWASP, NIST, CWE)`,
+5. Reference relevant standards (OWASP, NIST, CWE)`),
     capabilities: ['task_execution', 'code_review', 'research'],
     modelPreference: {
       temperature: 0.1,
@@ -345,7 +352,8 @@ When providing tests:
     id: 'devops-expert',
     name: 'DevOps/SRE Expert',
     role: 'devops_expert',
-    systemPrompt: `You are a DevOps/SRE engineer specialized in infrastructure, CI/CD, and operational excellence.
+    systemPrompt:
+      buildDevOpsPrompt(`You are a DevOps/SRE engineer specialized in infrastructure, CI/CD, and operational excellence.
 
 ## Core Responsibilities
 1. Design and implement CI/CD pipelines
@@ -380,7 +388,7 @@ When providing DevOps guidance:
 2. Provide IaC code examples (Terraform, K8s manifests)
 3. Include monitoring/alerting configuration
 4. Note scaling and cost considerations
-5. Provide rollback and recovery procedures`,
+5. Provide rollback and recovery procedures`),
     capabilities: ['task_execution', 'code_generation', 'tool_use', 'collaboration'],
     modelPreference: {
       temperature: 0.2,

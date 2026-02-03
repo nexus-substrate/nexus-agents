@@ -246,12 +246,21 @@ This prevents re-researching already-rejected approaches.
 
 ## Regenerating the Index
 
-After making changes, regenerate `RESEARCH_INDEX.md`:
+After making changes to `papers.yaml` or `techniques.yaml`, regenerate `RESEARCH_INDEX.md`:
 
 ```bash
-# Manual regeneration (future automation)
-# For now, manually update RESEARCH_INDEX.md to reflect changes
+# Regenerate the research index
+pnpm research:generate
+
+# Check if index is up to date (useful in CI)
+pnpm research:check
+
+# Validate cross-references between papers and techniques
+pnpm research:validate
 ```
+
+The research index is auto-generated from the YAML registry files. Do not edit
+`RESEARCH_INDEX.md` manually -- changes will be overwritten on the next generation.
 
 ---
 

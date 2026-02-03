@@ -5,6 +5,31 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.0] - 2026-02-03
+
+### Added
+
+- Release automation CLI commands: `release-notes`, `release-validate`, `release-announce` (#637)
+- Standards repository absorbed into expert system with 44 skills, 24 knowledge modules (#658)
+- Product-type routing with 8 product types (api, web-service, cli, frontend-web, mobile, data-pipeline, ml-service, infra-module)
+- 17 built-in standards skills and 5 optional lazy-loaded skill packs (27 additional skills)
+- Scaffold command for project bootstrapping (#653)
+- External Skill Packs support (#654)
+- Standards-review workflow template (#652)
+- Per-tool MCP timeout configuration (#657)
+- Changelog automation improvements with changeset validation (#634)
+
+### Changed
+
+- Changeset config cleaned up (removed deprecated experimental options)
+- Changeset README expanded with CI workflow documentation
+
+### Fixed
+
+- Orchestrator timeout handling (#655)
+- API key error handling improvements (#656)
+- MD060 table generation in markdown linting (#659)
+
 ## [2.5.0] - 2026-02-02
 
 ### Added
@@ -301,7 +326,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[unreleased]: https://github.com/williamzujkowski/nexus-agents/compare/v2.4.0...HEAD
+[unreleased]: https://github.com/williamzujkowski/nexus-agents/compare/v2.6.0...HEAD
+[2.6.0]: https://github.com/williamzujkowski/nexus-agents/compare/v2.5.0...v2.6.0
+[2.5.0]: https://github.com/williamzujkowski/nexus-agents/compare/v2.4.0...v2.5.0
 [2.4.0]: https://github.com/williamzujkowski/nexus-agents/compare/v2.3.0...v2.4.0
 [2.3.0]: https://github.com/williamzujkowski/nexus-agents/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/williamzujkowski/nexus-agents/compare/v2.1.0...v2.2.0

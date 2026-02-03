@@ -23,7 +23,7 @@ nexus-agents is a multi-agent orchestration system that coordinates AI models to
 
 ### Tier 1: Navigation
 | File | Purpose | Tokens |
-|------|---------|--------|
+| ---- | ------- | ------ |
 | docs/INDEX.yaml | Machine-parseable index | ~200 |
 | docs/llms.txt | LLM navigation (concise) | ~400 |
 | docs/llms-full.txt | This file (comprehensive) | ~1200 |
@@ -31,7 +31,7 @@ nexus-agents is a multi-agent orchestration system that coordinates AI models to
 
 ### Tier 2: Actionable Reference
 | File | Purpose | Lines |
-|------|---------|-------|
+| ---- | ------- | ----- |
 | CLAUDE.md | Project instructions, protocols, and agent behavior guidelines | ~400 |
 | docs/architecture/README.md | System design, component relationships, and technical decisions | ~400 |
 | docs/development/README.md | How to contribute, extend, and develop with the system | ~400 |
@@ -41,7 +41,7 @@ nexus-agents is a multi-agent orchestration system that coordinates AI models to
 
 ### Tier 3: Deep Detail
 | File | Purpose | Lines |
-|------|---------|-------|
+| ---- | ------- | ----- |
 | ARCHITECTURE.md | Full system architecture | ~1200 |
 | CODING_STANDARDS.md | Code style, patterns | ~600 |
 | CODING_STANDARDS.md | Component detail | TBD |
@@ -243,7 +243,7 @@ security:
 
 ### Environment Variables
 | Variable | Required For | Default |
-|----------|--------------|---------|
+| -------- | ------------ | ------- |
 | ANTHROPIC_API_KEY | Claude adapter | None |
 | OPENAI_API_KEY | OpenAI adapter | None |
 | GOOGLE_AI_API_KEY | Gemini adapter | None |

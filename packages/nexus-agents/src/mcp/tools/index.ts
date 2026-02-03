@@ -215,6 +215,11 @@ export interface ToolResult {
  *
  * @param text - The result text
  * @returns A ToolResult with the text content
+ *
+ * @example
+ * ```typescript
+ * return toolSuccess(JSON.stringify({ status: 'ok', data: result }));
+ * ```
  */
 export function toolSuccess(text: string): ToolResult {
   return {
@@ -227,6 +232,13 @@ export function toolSuccess(text: string): ToolResult {
  *
  * @param message - The error message
  * @returns A ToolResult with isError set to true
+ *
+ * @example
+ * ```typescript
+ * if (!input.ok) {
+ *   return toolError(`Validation failed: ${input.error}`);
+ * }
+ * ```
  */
 export function toolError(message: string): ToolResult {
   return {

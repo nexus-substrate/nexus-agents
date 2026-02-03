@@ -258,7 +258,7 @@ security:
 
 ### Environment Variables
 | Variable | Required For | Default |
-|----------|--------------|---------|
+| -------- | ------------ | ------- |
 | ANTHROPIC_API_KEY | Claude adapter | None |
 | OPENAI_API_KEY | OpenAI adapter | None |
 | GOOGLE_AI_API_KEY | Gemini adapter | None |
@@ -338,7 +338,7 @@ export function generateLlmsFullTxt(index: IndexYaml): string {
 
 ### Tier 1: Navigation
 | File | Purpose | Tokens |
-|------|---------|--------|
+| ---- | ------- | ------ |
 | docs/INDEX.yaml | Machine-parseable index | ~200 |
 | docs/llms.txt | LLM navigation (concise) | ~400 |
 | docs/llms-full.txt | This file (comprehensive) | ~1200 |
@@ -346,12 +346,12 @@ export function generateLlmsFullTxt(index: IndexYaml): string {
 
 ### Tier 2: Actionable Reference
 | File | Purpose | Lines |
-|------|---------|-------|
+| ---- | ------- | ----- |
 ${tier2Rows}
 
 ### Tier 3: Deep Detail
 | File | Purpose | Lines |
-|------|---------|-------|
+| ---- | ------- | ----- |
 | ARCHITECTURE.md | Full system architecture | ~1200 |
 | CODING_STANDARDS.md | Code style, patterns | ~600 |
 ${tier3Rows}`;

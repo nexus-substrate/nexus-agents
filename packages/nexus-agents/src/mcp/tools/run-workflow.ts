@@ -13,7 +13,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Result } from '../../core/index.js';
 import type { WorkflowDefinition, IWorkflowEngine } from '../../core/index.js';
 import { WorkflowError, ParseError, createLogger, getTimeProvider } from '../../core/index.js';
-import { wrapToolWithTimeout, toSdkCallback } from '../middleware/tool-wrapper.js';
+import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import type {
   RunWorkflowInput,
@@ -209,12 +209,8 @@ export function registerRunWorkflowTool(server: McpServer, deps: RunWorkflowDeps
   });
 
   // Wrap with timeout protection (Issue #271, CVE-2026-0621)
-  const timeoutMs = deps.security?.timeout?.defaultTimeoutMs;
-  const wrappedHandler = wrapToolWithTimeout(
-    'run_workflow',
-    secureHandler,
-    timeoutMs !== undefined ? { timeoutMs, logger } : { logger }
-  );
+  const timeoutMs = getToolTimeout('run_workflow', deps.security);
+  const wrappedHandler = wrapToolWithTimeout('run_workflow', secureHandler, { timeoutMs, logger });
 
   server.registerTool(
     'run_workflow',

@@ -50,7 +50,7 @@ Replace external dependencies with controlled, repeatable stand-ins during testi
 
 ## Tools by Ecosystem
 | Tool         | Language   | Use Case                          |
-|--------------|------------|-----------------------------------|
+| ------------ | ---------- | --------------------------------- |
 | WireMock     | Java/Any   | HTTP API stubbing and recording   |
 | MockServer   | Java/Any   | HTTP/HTTPS mock and proxy         |
 | Nock         | Node.js    | HTTP request interception         |
@@ -98,7 +98,7 @@ Replace external dependencies with controlled, repeatable stand-ins during testi
       priority: 80,
       content: `## Strategies
 | Strategy          | Speed  | Fidelity | Isolation |
-|-------------------|--------|----------|-----------|
+| ----------------- | ------ | -------- | --------- |
 | In-memory DB      | Fast   | Low      | High      |
 | Test container    | Medium | High     | High      |
 | Shared test DB    | Fast   | High     | Low       |
@@ -125,7 +125,7 @@ Replace external dependencies with controlled, repeatable stand-ins during testi
       priority: 75,
       content: `## Tools
 | Tool       | Language   | Purpose                           |
-|------------|------------|-----------------------------------|
+| ---------- | ---------- | --------------------------------- |
 | supertest  | Node.js    | Express/Koa/Fastify HTTP testing  |
 | httpx      | Python     | Async HTTP client for testing     |
 | REST Assured| Java      | Fluent HTTP API testing           |
@@ -156,7 +156,7 @@ Replace external dependencies with controlled, repeatable stand-ins during testi
       priority: 70,
       content: `## Strategies for Test Data
 | Strategy       | When to Use                            |
-|----------------|----------------------------------------|
+| -------------- | -------------------------------------- |
 | Factories      | Need varied but valid domain objects   |
 | Fixtures       | Need consistent reference data         |
 | Builders       | Need complex object graphs             |

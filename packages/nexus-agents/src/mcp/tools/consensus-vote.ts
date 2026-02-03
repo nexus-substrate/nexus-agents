@@ -20,7 +20,7 @@ import {
 } from '../../core/index.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
-import { wrapToolWithTimeout, toSdkCallback } from '../middleware/tool-wrapper.js';
+import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import type { ConsensusAlgorithm, Vote, ConsensusResult } from '../../consensus/types.js';
 import type { VoterRole, VotingResult, AgentVoteResult } from '../../cli/vote-types.js';
@@ -570,7 +570,7 @@ export function registerConsensusVoteTool(server: McpServer, deps: ConsensusVote
 
   // Wrap with timeout protection (Issue #271, CVE-2026-0621)
   // Longer timeout for voting (up to 5 minutes for 5 agents)
-  const timeoutMs = deps.security?.timeout?.defaultTimeoutMs ?? 300000;
+  const timeoutMs = getToolTimeout('consensus_vote', deps.security);
   const wrappedHandler = wrapToolWithTimeout('consensus_vote', secureHandler, {
     timeoutMs,
     logger,

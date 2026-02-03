@@ -19,6 +19,14 @@ export type Result<T, E> =
  * @template T - The success value type
  * @param value - The success value
  * @returns A Result in the Ok state
+ *
+ * @example
+ * ```typescript
+ * const result = ok(42);
+ * if (result.ok) {
+ *   console.log(result.value); // 42
+ * }
+ * ```
  */
 export function ok<T>(value: T): Result<T, never> {
   return { ok: true, value };
@@ -29,6 +37,14 @@ export function ok<T>(value: T): Result<T, never> {
  * @template E - The error value type
  * @param error - The error value
  * @returns A Result in the Err state
+ *
+ * @example
+ * ```typescript
+ * const result = err(new Error('not found'));
+ * if (!result.ok) {
+ *   console.error(result.error.message); // "not found"
+ * }
+ * ```
  */
 export function err<E>(error: E): Result<never, E> {
   return { ok: false, error };
@@ -117,6 +133,13 @@ export function unwrap<T, E>(result: Result<T, E>): T {
  * @param result - The Result to unwrap
  * @param defaultValue - The default value to return if Err
  * @returns The success value or the default value
+ *
+ * @example
+ * ```typescript
+ * const result = err(new Error('failed'));
+ * const value = unwrapOr(result, 'fallback');
+ * console.log(value); // "fallback"
+ * ```
  */
 export function unwrapOr<T, E>(result: Result<T, E>, defaultValue: T): T {
   if (result.ok) {

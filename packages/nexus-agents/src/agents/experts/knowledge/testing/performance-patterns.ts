@@ -21,7 +21,7 @@ export const PERFORMANCE_TESTING_PATTERNS: KnowledgeModule = {
       priority: 95,
       content: `## Profile Definitions
 | Profile    | Purpose                         | Pattern                              |
-|------------|---------------------------------|--------------------------------------|
+| ---------- | ------------------------------- | ------------------------------------ |
 | Load       | Validate expected traffic       | Ramp to target VUs, hold, ramp down  |
 | Stress     | Find breaking point             | Incrementally increase beyond target |
 | Spike      | Test sudden traffic bursts      | Instant jump to peak, then drop      |
@@ -46,7 +46,7 @@ export const PERFORMANCE_TESTING_PATTERNS: KnowledgeModule = {
       priority: 90,
       content: `## Core Metrics
 | Metric         | What It Measures              | Why It Matters                   |
-|----------------|-------------------------------|----------------------------------|
+| -------------- | ----------------------------- | -------------------------------- |
 | p50 latency    | Median response time          | Typical user experience          |
 | p95 latency    | 95th percentile response time | Majority of users experience     |
 | p99 latency    | 99th percentile response time | Worst-case user experience       |
@@ -68,7 +68,7 @@ export const PERFORMANCE_TESTING_PATTERNS: KnowledgeModule = {
       priority: 85,
       content: `## Latency Thresholds
 | Metric      | Good       | Warning     | Critical    |
-|-------------|------------|-------------|-------------|
+| ----------- | ---------- | ----------- | ----------- |
 | p50 latency | < 100ms    | 100-300ms   | > 300ms     |
 | p95 latency | < 300ms    | 300-800ms   | > 800ms     |
 | p99 latency | < 1000ms   | 1000-2000ms | > 2000ms    |
@@ -83,7 +83,7 @@ export const PERFORMANCE_TESTING_PATTERNS: KnowledgeModule = {
 
 ## Frontend Performance Budgets
 | Metric                 | Budget     |
-|------------------------|------------|
+| ---------------------- | ---------- |
 | First Contentful Paint | < 1.5s     |
 | Largest Contentful Paint | < 2.5s   |
 | Cumulative Layout Shift | < 0.1     |
@@ -102,7 +102,7 @@ export const PERFORMANCE_TESTING_PATTERNS: KnowledgeModule = {
 
 ## Common SLO Definitions
 | SLO Category   | Example Objective                      |
-|----------------|----------------------------------------|
+| -------------- | -------------------------------------- |
 | Availability   | 99.9% success rate over 30 days        |
 | Latency        | p99 < 500ms for all API endpoints      |
 | Throughput     | Handle 5000 RPS sustained              |
@@ -153,7 +153,7 @@ thresholds: {
       priority: 65,
       content: `## Profiling Types
 | Type     | What It Reveals                   | Tools                           |
-|----------|-----------------------------------|---------------------------------|
+| -------- | --------------------------------- | ------------------------------- |
 | CPU      | Hot functions, algorithmic issues | Node --prof, py-spy, perf       |
 | Memory   | Leaks, excessive allocation       | heapdump, tracemalloc, valgrind |
 | I/O      | Slow queries, file operations     | strace, slow query log, APM     |

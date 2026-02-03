@@ -64,7 +64,7 @@ function renderSummarySection(lines: string[], summary: EvaluationReport['summar
   lines.push('## Summary');
   lines.push('');
   lines.push(`| Metric | Value |`);
-  lines.push(`|--------|-------|`);
+  lines.push(`| ------ | ----- |`);
   lines.push(`| Resolution Rate | ${(summary.resolutionRate * 100).toFixed(1)}% |`);
   lines.push(`| Resolved | ${String(summary.resolvedCount)} / ${String(summary.totalCount)} |`);
   if (summary.ranking !== undefined) {
@@ -88,7 +88,7 @@ function renderMetricsSection(lines: string[], metrics: EvaluationReport['metric
   lines.push('## Metrics');
   lines.push('');
   lines.push(`| Metric | Value |`);
-  lines.push(`|--------|-------|`);
+  lines.push(`| ------ | ----- |`);
   lines.push(
     `| Total Duration | ${String(Math.round(metrics.timing.totalWallTime / 60000))} min |`
   );
@@ -108,7 +108,7 @@ function renderRepositorySection(
   lines.push('## Repository Performance');
   lines.push('');
   lines.push(`| Repository | Resolved | Rate |`);
-  lines.push(`|------------|----------|------|`);
+  lines.push(`| ---------- | -------- | ---- |`);
   for (const repo of repositoryBreakdown.repositories) {
     const resolved = `${String(repo.resolvedInstances)}/${String(repo.totalInstances)}`;
     const rate = `${(repo.resolutionRate * 100).toFixed(1)}%`;
@@ -130,7 +130,7 @@ function renderFailureSection(
   lines.push(`Total Failures: ${String(totalFailures)}`);
   lines.push('');
   lines.push(`| Category | Count |`);
-  lines.push(`|----------|-------|`);
+  lines.push(`| -------- | ----- |`);
   for (const [category, count] of Object.entries(failureAnalysis.byCategory)) {
     if (count > 0) {
       lines.push(`| ${category} | ${String(count)} |`);

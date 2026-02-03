@@ -294,7 +294,7 @@ export class OrchestratorFactory implements IOrchestratorFactory {
         return new WorkflowOrchestratorAdapter(this.workflowEngine, this.logger);
 
       case 'tech_lead': {
-        const adapter = new TechLeadAdapter();
+        const adapter = new TechLeadAdapter(this.logger);
         // Wire TechLead instance if provided (ADR-0014)
         if (this.config.techLead !== undefined) {
           adapter.setTechLead(this.config.techLead);
