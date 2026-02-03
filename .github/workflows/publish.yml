@@ -57,11 +57,7 @@ jobs:
       - name: Publish packages (dry run)
         if: ${{ inputs.dry_run == 'true' }}
         run: pnpm -r publish --access public --no-git-checks --dry-run
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish packages
         if: ${{ inputs.dry_run != 'true' }}
         run: pnpm -r publish --access public --no-git-checks
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -43,16 +43,17 @@ allowed-tools: Read, Edit, Write, Bash, Grep, Glob, Task
 
 6. **Immediate release** with patch version bump:
    ```bash
-   # Bump patch version
-   npm version patch
+   # Add changeset for patch bump
+   pnpm changeset  # select patch
+   git add . && git commit -m "chore: changeset for hotfix"
    git push origin main --tags
-   pnpm publish
-   gh release create v<new-version> --generate-notes
+   # CI handles npm publish via OIDC trusted publishing
+   # Or trigger manually: gh workflow run publish.yml
    ```
 
 ## Rollback (if needed)
 
 ```bash
-npm unpublish nexus-agents@<version>  # Within 72 hours
+npm unpublish nexus-agents@<version>  # Within 72 hours only
 git tag -d v<version> && git push --delete origin v<version>
 ```

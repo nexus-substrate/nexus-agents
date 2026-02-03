@@ -17,36 +17,38 @@ allowed-tools: Read, Edit, Write, Bash, Grep, Glob, Task
 # Verify all gates pass
 pnpm lint && pnpm typecheck && pnpm test
 
-# Check fitness score (must be ≥ 90)
+# Check fitness score (must be >= 90)
 nexus-agents fitness-audit --format=json
 ```
 
-## Release Workflow
+## Release Workflow (Changesets)
 
-1. **Update CHANGELOG.md** with version and date
+Releases are automated via changesets + GitHub Actions:
 
-2. **Version bump** in package.json (semantic versioning)
-
-3. **Create and push tag:**
+1. **Add a changeset** during development:
 
    ```bash
-   git tag -a v<version> -m "Release v<version>"
-   git push origin v<version>
+   pnpm changeset
    ```
 
-4. **Publish to npm:**
+2. **Merge PR to main** — the Release workflow will:
+   - Create a "Version Packages" PR (bumps version, updates CHANGELOG.md)
+   - When that PR merges, publish to npm via OIDC trusted publishing
+   - Create a GitHub Release with auto-generated notes
 
-   ```bash
-   pnpm publish
-   ```
+3. **No tokens required** — npm authentication uses OIDC (see `id-token: write`
+   permission in `.github/workflows/release.yml`). The trusted publisher is
+   configured on npmjs.com to accept publishes from this repo's `release.yml`.
 
-5. **Create GitHub Release:**
+## Manual Publish (emergency only)
 
-   ```bash
-   gh release create v<version> --generate-notes
-   ```
+```bash
+# Use the manual publish workflow (also uses OIDC, no tokens needed)
+gh workflow run publish.yml
 
-6. **Update ALIGNMENT_ROADMAP.md** phase status
+# Or with dry run:
+gh workflow run publish.yml -f dry_run=true
+```
 
 ## Rollback (if needed)
 

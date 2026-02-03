@@ -42,11 +42,10 @@ Add release automation CLI commands (#637)
 ## CI Integration
 
 - PRs are checked for changesets
-- When merged to main, changesets trigger:
-  1. Version bump in package.json
-  2. CHANGELOG.md update
-  3. npm publish (if configured)
-  4. GitHub Release creation
+- When merged to main, the Release workflow:
+  1. Creates a "Version Packages" PR (version bump + CHANGELOG.md update)
+  2. When that PR merges, publishes to npm via OIDC trusted publishing (no tokens)
+  3. Creates a GitHub Release with auto-generated notes
 
 ## When to Add a Changeset
 

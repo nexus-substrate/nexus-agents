@@ -59,6 +59,53 @@ For the nexus-agents custom workflow only:
 2. Create or retrieve an API key
 3. Add as repository secret: `OPENAI_API_KEY`
 
+## npm Publishing (OIDC Trusted Publishing)
+
+npm packages are published via **OIDC trusted publishing** — no stored tokens needed.
+
+### How It Works
+
+GitHub Actions authenticates directly with npm using short-lived OIDC tokens. The `id-token: write` permission in the workflow enables this. Provenance attestations are generated automatically.
+
+### Configuration (one-time setup)
+
+Trusted publishers are configured on npmjs.com. Each publishing workflow needs its own entry:
+
+1. Go to https://www.npmjs.com/package/nexus-agents/access
+2. Under **Trusted Publishers**, add entries for each workflow:
+
+| Entry | Workflow filename | Purpose                      |
+| ----- | ----------------- | ---------------------------- |
+| 1     | `release.yml`     | Automated changesets release |
+| 2     | `publish.yml`     | Manual/emergency publish     |
+
+For each entry:
+
+- **Repository owner:** `williamzujkowski`
+- **Repository name:** `nexus-agents`
+- **Workflow filename:** _(see table above)_
+- **Environment:** _(leave blank)_
+
+### Workflows That Publish
+
+| Workflow       | File          | Trigger                   |
+| -------------- | ------------- | ------------------------- |
+| Release        | `release.yml` | Push to main (changesets) |
+| Manual Publish | `publish.yml` | Manual dispatch           |
+
+### Troubleshooting npm Publish
+
+**Error: "Unable to authenticate"**
+
+- Verify trusted publisher config on npmjs.com matches the workflow filename exactly
+- Ensure `id-token: write` permission is set in the workflow
+- Check that the package exists on npm and is linked to this repo
+
+**Error: "OIDC token not available"**
+
+- Only cloud-hosted runners support OIDC (not self-hosted)
+- Verify `permissions.id-token: write` is set at the job level
+
 ## Workflows
 
 ### Claude Code Assistant (`.github/workflows/claude-review.yml`)
@@ -122,4 +169,4 @@ Average cost per interaction:
 
 ---
 
-_Last updated: 2026-01-11 (ET)_
+_Last updated: 2026-02-03 (ET)_
