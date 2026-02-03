@@ -69,29 +69,24 @@ GitHub Actions authenticates directly with npm using short-lived OIDC tokens. Th
 
 ### Configuration (one-time setup)
 
-Trusted publishers are configured on npmjs.com. Each publishing workflow needs its own entry:
+The trusted publisher is configured on npmjs.com (npm supports one trusted publisher per package):
 
 1. Go to https://www.npmjs.com/package/nexus-agents/access
-2. Under **Trusted Publishers**, add entries for each workflow:
+2. Under **Trusted Publishers**, configure GitHub Actions:
+   - **Repository owner:** `williamzujkowski`
+   - **Repository name:** `nexus-agents`
+   - **Workflow filename:** `release.yml`
+   - **Environment:** _(leave blank)_
 
-| Entry | Workflow filename | Purpose                      |
-| ----- | ----------------- | ---------------------------- |
-| 1     | `release.yml`     | Automated changesets release |
-| 2     | `publish.yml`     | Manual/emergency publish     |
+Both automated (push to main) and manual (`workflow_dispatch`) publishing use `release.yml` as the single trusted workflow.
 
-For each entry:
+### Publish Triggers
 
-- **Repository owner:** `williamzujkowski`
-- **Repository name:** `nexus-agents`
-- **Workflow filename:** _(see table above)_
-- **Environment:** _(leave blank)_
-
-### Workflows That Publish
-
-| Workflow       | File          | Trigger                   |
-| -------------- | ------------- | ------------------------- |
-| Release        | `release.yml` | Push to main (changesets) |
-| Manual Publish | `publish.yml` | Manual dispatch           |
+| Trigger          | How                                               |
+| ---------------- | ------------------------------------------------- |
+| Automated        | Push to main with changesets → version PR → merge |
+| Manual           | `gh workflow run release.yml`                     |
+| Manual (dry run) | `gh workflow run release.yml -f dry_run=true`     |
 
 ### Troubleshooting npm Publish
 

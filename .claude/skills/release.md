@@ -43,11 +43,11 @@ Releases are automated via changesets + GitHub Actions:
 ## Manual Publish (emergency only)
 
 ```bash
-# Use the manual publish workflow (also uses OIDC, no tokens needed)
-gh workflow run publish.yml
+# Manual publish via the same release workflow (uses OIDC, no tokens needed)
+gh workflow run release.yml
 
 # Or with dry run:
-gh workflow run publish.yml -f dry_run=true
+gh workflow run release.yml -f dry_run=true
 ```
 
 ## Rollback (if needed)
