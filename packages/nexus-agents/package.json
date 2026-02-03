@@ -68,7 +68,7 @@
     "@fastify/swagger-ui": "^5.2.5",
     "@google/genai": "^1.39.0",
     "@modelcontextprotocol/sdk": "^1.25.3",
-    "fastify": "^5.7.3",
+    "fastify": "^5.7.4",
     "hono": "^4.11.7",
     "ollama": "^0.6.3",
     "openai": "^6.17.0",
