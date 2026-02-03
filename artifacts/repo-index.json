@@ -1,8 +1,8 @@
 {
   "version": "1.0.0",
-  "generated": "2026-02-01T19:22:11.227Z",
+  "generated": "2026-02-03T16:41:13.639Z",
   "generator": "scripts/generate-repo-index.ts",
-  "packageVersion": "2.4.0",
+  "packageVersion": "2.5.0",
   "cli": {
     "binary": "nexus-agents",
     "commands": [
@@ -76,6 +76,24 @@
         "name": "orchestrate",
         "type": "async",
         "handler": "handleOrchestrateCommand",
+        "file": "src/cli-commands-handlers.ts"
+      },
+      {
+        "name": "release-announce",
+        "type": "async",
+        "handler": "handleReleaseAnnounceCommand",
+        "file": "src/cli-commands-handlers.ts"
+      },
+      {
+        "name": "release-notes",
+        "type": "async",
+        "handler": "handleReleaseNotesCommand",
+        "file": "src/cli-commands-handlers.ts"
+      },
+      {
+        "name": "release-validate",
+        "type": "async",
+        "handler": "handleReleaseValidateCommand",
         "file": "src/cli-commands-handlers.ts"
       },
       {

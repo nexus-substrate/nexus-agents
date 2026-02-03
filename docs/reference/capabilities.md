@@ -1,7 +1,7 @@
 # Repository Capabilities Index
 
-**Generated:** 2026-02-01T19:22:11.227Z
-**Package Version:** 2.4.0
+**Generated:** 2026-02-03T16:41:13.639Z
+**Package Version:** 2.5.0
 **Generator:** `scripts/generate-repo-index.ts`
 
 > This file is auto-generated. Do not edit manually.
@@ -9,7 +9,7 @@
 
 ---
 
-## CLI Commands (25)
+## CLI Commands (28)
 
 Binary: `nexus-agents`
 
@@ -27,6 +27,9 @@ Binary: `nexus-agents`
 | `issue`            | sync  | `handleIssueCommand`           | `src/cli-commands-handlers.ts` |
 | `learning-metrics` | sync  | `handleLearningMetricsCommand` | `src/cli-commands-handlers.ts` |
 | `orchestrate`      | async | `handleOrchestrateCommand`     | `src/cli-commands-handlers.ts` |
+| `release-announce` | async | `handleReleaseAnnounceCommand` | `src/cli-commands-handlers.ts` |
+| `release-notes`    | async | `handleReleaseNotesCommand`    | `src/cli-commands-handlers.ts` |
+| `release-validate` | async | `handleReleaseValidateCommand` | `src/cli-commands-handlers.ts` |
 | `research`         | async | `handleResearchCommand`        | `src/cli-commands-handlers.ts` |
 | `review`           | async | `handleReviewCommand`          | `src/cli-commands-handlers.ts` |
 | `routing-audit`    | sync  | `handleRoutingAuditCommand`    | `src/cli-commands-handlers.ts` |

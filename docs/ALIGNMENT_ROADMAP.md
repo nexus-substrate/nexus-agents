@@ -194,7 +194,7 @@ The following capabilities received positive assessments from multiple agents:
 
 **Success Metrics:**
 | Metric | Baseline | Target | Current |
-|--------|----------|--------|---------|
+| -------- | ---------- | -------- | --------- |
 | Interactions tracked | 0 | 100% | ✅ Event recording enabled |
 | Collaboration graph available | No | Yes | ✅ SwarmObserver provides graph |
 | Bottleneck detection | Manual | Automatic | ✅ getBottlenecks() available |
@@ -219,7 +219,7 @@ The following capabilities received positive assessments from multiple agents:
 
 **Success Metrics:**
 | Metric | Baseline | Target | Current |
-|--------|----------|--------|---------|
+| -------- | ---------- | -------- | --------- |
 | Routing decisions tracked | 0 | 100% | ✅ All recorded |
 | Model selection visible | No | Yes | ✅ Per-model metrics |
 | Learning progress traceable | No | Yes | ✅ Exploration rate, reward trends |
@@ -263,7 +263,7 @@ The following capabilities received positive assessments from multiple agents:
 
 **Success Metrics:**
 | Metric | Baseline | Target | Current |
-|--------|----------|--------|---------|
+| -------- | ---------- | -------- | --------- |
 | Routing decisions debuggable | No | Yes | ✅ CLI command available |
 | Feature importance visible | No | Yes | ✅ Per-arm analysis |
 | Exploration ratio trackable | No | Yes | ✅ Distribution metrics |
@@ -340,7 +340,7 @@ The following capabilities received positive assessments from multiple agents:
 
 **Success Metrics:**
 | Metric | Baseline | Target | Measurement Method |
-|--------|----------|--------|-------------------|
+| -------- | ---------- | -------- | ------------------- |
 | PRs reviewed by swarm | 0 | 100% | GitHub Action logs |
 | Issues caught pre-merge | 0 | > 5/month | Issue attribution |
 | Review time | Human baseline | -50% | Time tracking |
@@ -365,7 +365,7 @@ The following capabilities received positive assessments from multiple agents:
 
 **Success Metrics:**
 | Metric | Baseline | Target | Current |
-|--------|----------|--------|---------|
+| -------- | ---------- | -------- | --------- |
 | Test coverage | 80% | 90% | ⏳ Pending measurement |
 | Tests generated/week | 0 | > 10 | ⏳ CI workflow needed |
 | Test quality | N/A | < 5% false positives | ⏳ Pending validation |
@@ -405,7 +405,7 @@ The following capabilities received positive assessments from multiple agents:
 
 **Success Metrics:**
 | Metric | Baseline | Target | Current |
-|--------|----------|--------|---------|
+| -------- | ---------- | -------- | --------- |
 | Host filesystem access | Unrestricted | Designated dirs only | ✅ Container isolation ready |
 | Unauthorized network egress | Possible | Blocked | ✅ --network=none by default |
 | MCP server sandbox init | None | Automatic | ✅ Initialized at startup |
@@ -434,7 +434,7 @@ The following capabilities received positive assessments from multiple agents:
 
 **Success Metrics:**
 | Metric | Baseline | Target | Current |
-|--------|----------|--------|---------|
+| -------- | ---------- | -------- | --------- |
 | Security test coverage | 0 | 100+ tests | ✅ 113 tests |
 | CVE regression tests | None | Major CVEs | ✅ 3 CVEs covered |
 | Escape vector testing | None | All vectors | ✅ Complete |
@@ -449,7 +449,7 @@ The following capabilities received positive assessments from multiple agents:
 
 **Success Metrics:**
 | Metric | Baseline | Target | Measurement Method |
-|--------|----------|--------|-------------------|
+| -------- | ---------- | -------- | ------------------- |
 | Rate limit implemented | Policy only | Enforced | Integration tests |
 | Limit violations logged | No | Yes | Log analysis |
 | Resource exhaustion possible | Yes | No | Load testing |
@@ -486,14 +486,14 @@ The following capabilities received positive assessments from multiple agents:
 
 **Verification Results (2026-01-15):**
 | Test | Result |
-|------|--------|
+| ------ | -------- |
 | CLI adapter simple task | ✅ Working with `sonnet` model |
 | Patch generation | ✅ Correctly extracts diffs |
 | SWE-bench instance (astropy) | ✅ Agent explores codebase, ~5 min/iteration |
 
 **Success Metrics:**
 | Metric | Baseline | Target | Current |
-|--------|----------|--------|---------|
+| -------- | ---------- | -------- | --------- |
 | SWE-bench score | Unmeasured | Top 3 | ⏳ Pending benchmark run |
 | Tasks completed | N/A | > 50% without intervention | ⏳ Pending |
 | Token efficiency | Unknown | -30% vs competitors | ⏳ Pending |
@@ -517,7 +517,7 @@ The following capabilities received positive assessments from multiple agents:
 
 **Success Metrics:**
 | Metric | Baseline | Target | Current |
-|--------|----------|--------|---------|
+| -------- | ---------- | -------- | --------- |
 | Time to value | > 30 min | < 5 min | ✅ ~2 min with wizard |
 | First workflow success | Unknown | > 80% | ⏳ Pending telemetry |
 | NPS from PR authors | N/A | > 50 | ⏳ Pending survey |

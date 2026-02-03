@@ -104,7 +104,7 @@ interface CliCommandSpec {
 
 **Source Locations:**
 | Type | Source File | Extraction Method |
-|------|-------------|-------------------|
+| ------ | ------------- | ------------------- |
 | CLI Commands | `src/cli-commands.ts` | AST parsing of switch statement |
 | MCP Tools | `src/mcp/tools/index.ts` | AST parsing of tool definitions |
 | REST Endpoints | `src/api/routes/*.ts` | AST parsing of route handlers |
@@ -439,7 +439,7 @@ function sanitize(content: string, tier: SanitizationTier): string {
 
 **File-to-Tier Mapping:**
 | File | Tier | Rationale |
-|------|------|-----------|
+| ------ | ------ | ----------- |
 | `docs/.generated/entrypoints.yaml` | internal-manifest | AI agents consume |
 | `docs/.generated/research-stats.json` | internal-manifest | AI agents consume |
 | `docs/api/**/*.html` | user-facing | Public docs |
