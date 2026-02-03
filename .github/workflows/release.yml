@@ -47,18 +47,21 @@ jobs:
           commit: 'chore(release): version packages'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NPM_CONFIG_PROVENANCE: true
 
       - name: Create GitHub Release
         if: steps.changesets.outputs.published == 'true'
-        run: |
-          for pkg in ${{ steps.changesets.outputs.publishedPackages }}; do
-            name=$(echo $pkg | jq -r '.name')
-            version=$(echo $pkg | jq -r '.version')
-            gh release create "${name}@${version}" \
-              --title "${name}@${version}" \
-              --generate-notes
-          done
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const packages = JSON.parse('${{ steps.changesets.outputs.publishedPackages }}');
+            for (const pkg of packages) {
+              const tag = `${pkg.name}@${pkg.version}`;
+              await github.rest.repos.createRelease({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag_name: tag,
+                name: tag,
+                generate_release_notes: true,
+              });
+              console.log(`Created release: ${tag}`);
+            }
