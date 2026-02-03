@@ -515,6 +515,21 @@ export interface SystemSummaryData {
   readonly layers: ReadonlyArray<{ name: string; files: number }>;
 }
 
+/** Render ASCII logo header lines for the system summary. */
+function renderSummaryHeader(width: number, border: string): string[] {
+  return [
+    `╔${border}╗`,
+    `║${''.padEnd(width)}║`,
+    `║${'    ╔╗╔ ╔══╗ ╔╗  ╔ ╔╗ ╔╗ ╔══╗'.padEnd(width)}║`,
+    `║${'    ║║║ ║╔═╝ ╠╬╗ ║ ║║ ║║ ╚═╗║'.padEnd(width)}║`,
+    `║${'    ║╚╝ ║╚═╗ ║╚╬╗║ ║║ ║║ ╔═╝║'.padEnd(width)}║`,
+    `║${'    ╚══ ╚══╝ ╚═╝╚╝ ╚══╝╝ ╚══╝  AGENTS'.padEnd(width)}║`,
+    `║${''.padEnd(width)}║`,
+    `║${'    Multi-Agent Orchestration System'.padEnd(width)}║`,
+    `╠${border}╣`,
+  ];
+}
+
 /**
  * Generate an ASCII system summary dashboard.
  *
@@ -530,16 +545,7 @@ export function generateSystemSummary(data: SystemSummaryData): string {
   const border = '═'.repeat(width);
   const thin = '─'.repeat(width);
 
-  // Header with ASCII logo
-  lines.push(`╔${border}╗`);
-  lines.push(`║${''.padEnd(width)}║`);
-  lines.push(`║${'    ╔╗╔ ╔══╗ ╔╗  ╔ ╔╗ ╔╗ ╔══╗'.padEnd(width)}║`);
-  lines.push(`║${'    ║║║ ║╔═╝ ╠╬╗ ║ ║║ ║║ ╚═╗║'.padEnd(width)}║`);
-  lines.push(`║${'    ║╚╝ ║╚═╗ ║╚╬╗║ ║║ ║║ ╔═╝║'.padEnd(width)}║`);
-  lines.push(`║${'    ╚══ ╚══╝ ╚═╝╚╝ ╚══╝╝ ╚══╝  AGENTS'.padEnd(width)}║`);
-  lines.push(`║${''.padEnd(width)}║`);
-  lines.push(`║${'    Multi-Agent Orchestration System'.padEnd(width)}║`);
-  lines.push(`╠${border}╣`);
+  lines.push(...renderSummaryHeader(width, border));
 
   // Version and stats
   lines.push(`║${'  SYSTEM OVERVIEW'.padEnd(width)}║`);
