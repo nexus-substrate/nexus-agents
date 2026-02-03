@@ -1,12 +1,10 @@
 /**
  * Agentic Memory Extraction Helpers
  *
- * Attribute extraction functions for A-MEM.
- * Extracted to break circular dependency between agentic-memory-helpers
- * and agentic-memory-db-helpers.
+ * Rule-based attribute extraction for A-MEM agentic memory.
  *
  * @module context/agentic-memory-extraction
- * (Source: Issue #392 - Circular dependency resolution)
+ * (Source: Issue #122, arXiv:2502.12110)
  */
 
 import { getTimeProvider } from '../core/index.js';
@@ -16,6 +14,7 @@ import type {
   EntityType,
   ExtractionConfig,
 } from './agentic-memory-types.js';
+import { DEFAULT_EXTRACTION_CONFIG } from './agentic-memory-types.js';
 // Shared utilities per ADR-0013
 import {
   tokenizeFiltered as sharedTokenizeFiltered,
@@ -170,5 +169,19 @@ export function extractAttributes(value: unknown, config: ExtractionConfig): Mem
     contextDescription: generateContextDescription(text, config.maxContextLength),
     entities: extractEntities(text, config.maxEntities),
     attributesUpdatedAt: new Date(getTimeProvider().now()),
+  };
+}
+
+/**
+ * Merge partial extraction config with defaults.
+ * Canonical location per ADR-0013.
+ */
+export function mergeExtractionConfig(partial?: Partial<ExtractionConfig>): ExtractionConfig {
+  if (partial === undefined) return DEFAULT_EXTRACTION_CONFIG;
+  return {
+    maxKeywords: partial.maxKeywords ?? DEFAULT_EXTRACTION_CONFIG.maxKeywords,
+    maxSemanticTags: partial.maxSemanticTags ?? DEFAULT_EXTRACTION_CONFIG.maxSemanticTags,
+    maxContextLength: partial.maxContextLength ?? DEFAULT_EXTRACTION_CONFIG.maxContextLength,
+    maxEntities: partial.maxEntities ?? DEFAULT_EXTRACTION_CONFIG.maxEntities,
   };
 }

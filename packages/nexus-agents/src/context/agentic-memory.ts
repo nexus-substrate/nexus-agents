@@ -35,16 +35,17 @@ import type {
   EvolutionResult,
 } from './agentic-memory-types.js';
 import { AgenticMemoryConfigSchema } from './agentic-memory-types.js';
+import { extractAttributes, mergeExtractionConfig } from './agentic-memory-extraction.js';
 import {
-  extractAttributes,
   generateLinkSuggestions,
   detectEvolution,
-  mergeExtractionConfig,
   mergeLinkingConfig,
+} from './agentic-memory-linking.js';
+import {
   searchWithAttributes,
   getAttributeSet,
   findMatchingMemories,
-} from './agentic-memory-helpers.js';
+} from './agentic-memory-db-helpers.js';
 import {
   queryMemoriesForAnalysis,
   queryMemoryByKey,

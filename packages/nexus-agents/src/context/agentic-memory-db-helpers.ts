@@ -2,7 +2,6 @@
  * Agentic Memory Database Helpers
  *
  * Database-related helper functions for A-MEM attribute storage and retrieval.
- * Extracted from agentic-memory-helpers.ts for file size compliance.
  *
  * @module context/agentic-memory-db-helpers
  * (Source: Issue #122, arXiv:2502.12110)
