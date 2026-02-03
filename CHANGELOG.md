@@ -5,6 +5,139 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.0] - 2026-02-02
+
+### Added
+
+#### Governance & Quality Gates
+
+- CLI Orchestration Fitness Score with 8 architectural dimensions (#574)
+- `fitness-audit` command for release gate validation (requires 90+ score)
+- MCP tool index injection mechanism for CLAUDE.md auto-generation
+- Zod schemas for configuration defaults validation
+
+#### Unified Architecture (ADR-0013, ADR-0014)
+
+- `IOrchestrator` interface for unified orchestration (#573)
+- `SharedTaskAnalyzer` for unified task classification (#574)
+- `CommandResult<T>` type for CLI command consolidation (#584)
+- `TokenEstimator` service for unified token estimation (#574)
+- `RoutingContextStore` for unified routing context (ADR-0008)
+- `QuorumValidator` for unified quorum logic (#576)
+- `IRegistry` interface for unified registry APIs (#596)
+- `OrchestratorFactory` and `WorkflowAdapter` (#573)
+- Unified router stage architecture with `CascadeRouterBase` (#574)
+- ADR-0009 error class hierarchy implementation
+
+#### Safety & Validation
+
+- STPA safety framework integration into MCP tool registration (#530)
+- MCP tools output validation (#547)
+- `CapacityMonitor` integration with `CircuitBreaker` (#543)
+- End-to-end validation harness (#571)
+
+#### DocOps Automation
+
+- Documentation Management skill and DocOps specification
+- Spell checking for documentation (#631)
+- Frontmatter validation for website docs (#629)
+- Markdown linting to documentation gate (#627)
+- Canonical index validation gate (#628)
+- DocOps skill synchronization enforcement gate
+- Deterministic repository capability index generator
+- Website docs sync hooks and troubleshooting navigation
+
+#### CLI & REST
+
+- REST API server wired to CLI entry points (#524)
+- Live CLI execution in demo routing command
+- `--timeout` option for vote command
+- `NEXUS_ALLOW_MOCK_ORCHESTRATION` env var for testing (#540)
+
+### Changed
+
+#### Architecture Consolidation (60+ files refactored)
+
+- Migrated routing pipeline to `SharedTaskAnalyzer` (#586)
+- Migrated REST orchestrate endpoint to `IOrchestrator` (ADR-0014)
+- Migrated MCP orchestrate tool to unified `IOrchestrator` interface (ADR-0014)
+- Migrated expert-selector to `SharedTaskAnalyzer`
+- Wired TechLead and Puppeteer to adapters (ADR-0014)
+- Wired `OrchestrationObserver` to `CompositeRouter` (#587)
+
+#### Utility Consolidation (ADR-0013)
+
+- Consolidated 30+ duplicate `formatPercentage` patterns
+- Consolidated `formatDuration`, `formatStatus`, ANSI colors, box drawing
+- Consolidated Zod helpers, truncate functions, capitalize utilities
+- Consolidated sleep/delay, UUID generation, timestamp generation
+- Consolidated error message extraction with `getErrorMessage` helper
+- Consolidated clamp patterns across 6 batches
+- Consolidated STOPWORDS and tokenize to shared utils
+- Consolidated similarity utilities, memory utilities, ID generation
+- Consolidated ISQLiteDatabase interfaces into database-types.ts
+- Consolidated API error helpers
+
+### Fixed
+
+#### Determinism & Reliability
+
+- Proposal content caching for consensus determinism (#589)
+- Event listeners cleared on session finalize/cancel (memory leak) (#548)
+- `maxClosedProposals` limit prevents unbounded memory growth (#549)
+- Test heap OOM resolved via forks pool (#582)
+- `vi.hoisted` pattern for forks pool compatibility (#582)
+
+#### Correctness
+
+- Mock TechLead requires explicit opt-in (#554)
+- Mock workflow execution requires explicit opt-in (#551)
+- Unsafe `as any` casts removed from MCP tools (#567)
+- Cost model standardized across routers (#574)
+- Config validation fitness check corrected
+- GOOGLE_AI_API_KEY standardized in JSDoc examples (#544)
+- `NEXUS_LOG_LEVEL` env var implemented (#545)
+- GitHub API timeout added (#546)
+- Defensive error handling in `mergeStreams` (#541)
+- Discriminated union used instead of unsafe type cast in LATTS (#539)
+
+#### CI/Documentation
+
+- Broken links repaired in website content and TypeDoc
+- SEO duplicate title and a11y contrast issues resolved
+- Memory types corrected (7 not 8), consensus algorithms (5 not 11)
+- Markdown tables excluded from secrets scan
+- Lychee regex patterns and base path corrected
+
+### Refactored
+
+- Deprecated `analyzeTask` warnings suppressed pending #574
+- Deprecation markers added to task analyzer implementations
+- Routing interface facade added for layer separation (#588)
+- `IRegistry`-compatible methods added to `TemplateRegistry` (ADR-0012)
+- `IRegistry` interface implemented for `ExpertRegistry` (ADR-0012)
+- Forest-engine split into modular files (#578)
+- Consensus-vote tool execution flow simplified
+- `dryRun` renamed to `simulateVotes` for clarity
+
+### Documentation
+
+- Comprehensive governance framework added to CLAUDE.md
+- CLI orchestration architectural decision documented
+- System mandate documentation added (#561-564)
+- Research index regenerated with updated stats
+- Security topic and in-progress paper status added
+- Orphaned files removed, historical docs archived
+- Package docs migrated to canonical locations
+- TechLead/WorkflowEngine architecture consolidated
+
+### Dependencies
+
+- Bumped actions/upload-pages-artifact from 3 to 4 (#427)
+- Bumped actions/cache from 4 to 5 (#428)
+- Bumped production dependencies group with 7 updates (#585)
+- Synced hono override with package dependency version
+
 ## [2.4.0] - 2026-01-25
 
 ### Added
