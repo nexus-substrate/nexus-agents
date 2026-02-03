@@ -46,6 +46,12 @@ export {
   // System Mandate LOOP I: Fitness Audit
   handleFitnessAuditCommand,
 } from './cli-commands-handlers.js';
+// Issue #637: Release Automation Suite
+export {
+  handleReleaseNotesCommand,
+  handleReleaseValidateCommand,
+  handleReleaseAnnounceCommand,
+} from './cli-release-handlers.js';
 
 // Import handlers for dispatch
 import {
@@ -77,6 +83,12 @@ import {
   // System Mandate LOOP I: Fitness Audit
   handleFitnessAuditCommand,
 } from './cli-commands-handlers.js';
+// Issue #637: Release Automation Suite
+import {
+  handleReleaseNotesCommand,
+  handleReleaseValidateCommand,
+  handleReleaseAnnounceCommand,
+} from './cli-release-handlers.js';
 
 /**
  * Prints help text to stdout.
@@ -151,6 +163,10 @@ const ASYNC_COMMAND_HANDLERS: Record<string, ((args: ParsedCliArgs) => Promise<v
     sprint: handleSprintCommand,
     session: handleSessionCommand,
     evaluate: handleEvaluateCommand,
+    // Issue #637: Release Automation Suite
+    'release-notes': handleReleaseNotesCommand,
+    'release-validate': handleReleaseValidateCommand,
+    'release-announce': handleReleaseAnnounceCommand,
   };
 
 /**

@@ -392,3 +392,52 @@ export type { DemoSubcommand, DemoOptions } from './demo-command.js';
 // Fitness Audit (System Mandate LOOP I - CLI Orchestration Fitness Score)
 export { fitnessAuditCommand } from './fitness-audit.js';
 export type { FitnessAuditOptions } from './fitness-audit.js';
+
+// Release Automation Suite (Issue #637)
+// Release Notes (Issue #639)
+export {
+  releaseNotesCommand,
+  runReleaseNotes,
+  printReleaseNotesResult,
+} from './release-notes-command.js';
+export type {
+  ReleaseNotesOptions,
+  ReleaseNotesResult,
+  CategorizedCommit,
+  ReleaseNotesCategory,
+} from './release-notes-types.js';
+export {
+  getLatestTag,
+  getCommitsBetween,
+  parseConventionalCommit,
+  groupCommitsByCategory,
+  generateChangelogFormat,
+  suggestNextVersion,
+} from './release-notes-helpers.js';
+
+// Release Validate (Issue #640)
+export {
+  releaseValidateCommand,
+  runReleaseValidate,
+  printReleaseValidateResult,
+} from './release-validate-command.js';
+export type {
+  ReleaseValidateOptions,
+  ReleaseValidateResult,
+  ExpertValidationResult,
+  ValidationFinding,
+  ValidationSeverity,
+} from './release-validate-types.js';
+
+// Release Announce (Issue #641)
+export {
+  releaseAnnounceCommand,
+  runReleaseAnnounce,
+  printReleaseAnnounceResult,
+} from './release-announce-command.js';
+export type {
+  ReleaseAnnounceOptions,
+  ReleaseAnnounceResult,
+  ChannelAnnouncementResult,
+  AnnouncementChannel,
+} from './release-announce-types.js';

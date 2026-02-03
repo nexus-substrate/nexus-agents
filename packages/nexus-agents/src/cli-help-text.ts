@@ -44,6 +44,9 @@ COMMANDS:
   swe-bench       Run SWE-bench evaluation benchmark
   hooks           Claude CLI hook integration commands
   fitness-audit   Run CLI orchestration fitness score audit
+  release-notes   Generate release notes from git commits
+  release-validate Run expert swarm validation for releases
+  release-announce Generate release announcements (blog, Bluesky)
 
 OPTIONS:
   -h, --help           Show this help message
@@ -213,6 +216,26 @@ FITNESS-AUDIT OPTIONS:
   --format=json          Output as JSON (default: formatted text)
   --min-severity=<sev>   Filter findings: info, warning, critical (default: all)
 
+RELEASE-NOTES OPTIONS:
+  --from=<ref>           Start reference (tag or commit, default: latest tag)
+  --to=<ref>             End reference (default: HEAD)
+  --format=<fmt>         Output format: changelog, json, markdown (default: changelog)
+  --dry-run              Preview without saving
+  --verbose              Show detailed generation info
+
+RELEASE-VALIDATE OPTIONS:
+  --version=<ver>        Version to validate (default: from package.json)
+  --strict               Fail on warnings too (default: errors only)
+  --skip=<experts>       Skip validators: security,architecture,docs,devops
+  --verbose              Show detailed findings
+
+RELEASE-ANNOUNCE OPTIONS:
+  --version=<ver>        Version to announce (default: from package.json)
+  --channels=<list>      Channels: blog,bluesky (default: blog,bluesky)
+  --release-url=<url>    GitHub release URL
+  --dry-run              Preview announcements without posting
+  --verbose              Show detailed output
+
 DEMO OPTIONS:
   demo routing "task"    Show how routing would select models (mock)
   demo expert-list       Show available experts with descriptions
@@ -298,6 +321,13 @@ EXAMPLES:
   nexus-agents issue create feat                  Show feature issue template
   nexus-agents fitness-audit                      Run CLI fitness score audit (target: 90+)
   nexus-agents fitness-audit --format=json        Output fitness audit as JSON
+  nexus-agents release-notes                      Generate release notes from recent commits
+  nexus-agents release-notes --format=markdown    Output as GitHub release markdown
+  nexus-agents release-notes --verbose            Show detailed generation info
+  nexus-agents release-validate                   Run expert swarm validation
+  nexus-agents release-validate --verbose         Show detailed findings
+  nexus-agents release-announce --dry-run         Preview announcements without posting
+  nexus-agents release-announce --channels=blog   Generate blog post only
 
 For more information, visit: https://github.com/williamzujkowski/nexus-agents
 `.trim();
