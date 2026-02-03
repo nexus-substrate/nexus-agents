@@ -1,6 +1,6 @@
 ---
-title: 'Installation'
-description: 'Detailed installation instructions for nexus-agents across all platforms, Docker, and CI/CD environments.'
+title: "Installation"
+description: "Detailed installation instructions for nexus-agents across all platforms, Docker, and CI/CD environments."
 ---
 
 Detailed installation instructions for nexus-agents across all platforms, Docker, and CI/CD environments.

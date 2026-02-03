@@ -1,6 +1,6 @@
 ---
-title: 'Workflow Templates'
-description: 'Create and customize YAML workflow templates for automated multi-agent task execution.'
+title: "Workflow Templates"
+description: "Create and customize YAML workflow templates for automated multi-agent task execution."
 ---
 
 Create and customize YAML workflow templates for automated multi-agent task execution.

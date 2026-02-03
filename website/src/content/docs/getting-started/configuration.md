@@ -1,6 +1,6 @@
 ---
-title: 'Configuration'
-description: 'Configure nexus-agents with YAML files, environment variables, and programmatic options.'
+title: "Configuration"
+description: "Configure nexus-agents with YAML files, environment variables, and programmatic options."
 ---
 
 Configure nexus-agents with YAML files, environment variables, and programmatic options.

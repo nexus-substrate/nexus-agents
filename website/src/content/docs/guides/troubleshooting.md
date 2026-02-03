@@ -1,6 +1,6 @@
 ---
-title: 'Troubleshooting Guide'
-description: 'Common issues and solutions for nexus-agents.'
+title: "Troubleshooting Guide"
+description: "Common issues and solutions for nexus-agents."
 ---
 
 **Last Updated:** 2026-01-15 (ET)

@@ -1,6 +1,6 @@
 ---
-title: 'Introduction'
-description: '> Orchestrate multiple AI experts from a single interface'
+title: "Introduction"
+description: "> Orchestrate multiple AI experts from a single interface"
 ---
 
 > Orchestrate multiple AI experts from a single interface
@@ -125,10 +125,10 @@ When running as an MCP server, these tools are available:
 ## Configuration
 
 | ------------------- | --------------------------------- |
-| `ANTHROPIC_API_KEY` | Claude API key |
-| `OPENAI_API_KEY` | OpenAI API key |
-| `GOOGLE_AI_API_KEY` | Gemini API key |
-| `NEXUS_LOG_LEVEL` | Log level (debug/info/warn/error) |
+| `ANTHROPIC_API_KEY` | Claude API key                    |
+| `OPENAI_API_KEY`    | OpenAI API key                    |
+| `GOOGLE_AI_API_KEY` | Gemini API key                    |
+| `NEXUS_LOG_LEVEL`   | Log level (debug/info/warn/error) |
 
 **Generate config file:**
 
@@ -140,13 +140,13 @@ nexus-agents config init   # Creates nexus-agents.yaml
 
 ## Documentation
 
-| Topic              | Link                                                                |
-| ------------------ | ------------------------------------------------------------------- |
-| Full CLI Reference | [docs/ENTRYPOINTS.md](./docs/ENTRYPOINTS.md)                        |
-| Architecture       | [docs/architecture/README.md](./docs/architecture/README.md)        |
-| Contributing       | [CONTRIBUTING.md](/nexus-agents/architecture/contributing/)         |
-| Coding Standards   | [CODING_STANDARDS.md](/nexus-agents/architecture/coding-standards/) |
-| Quick Start Guide  | [QUICK_START.md](/nexus-agents/architecture/quick-start/)           |
+| Topic              | Link                                                         |
+| ------------------ | ------------------------------------------------------------ |
+| Full CLI Reference | [docs/ENTRYPOINTS.md](./docs/ENTRYPOINTS.md)                 |
+| Architecture       | [docs/architecture/README.md](./docs/architecture/README.md) |
+| Contributing       | [CONTRIBUTING.md](/nexus-agents/architecture/contributing/)                         |
+| Coding Standards   | [CODING_STANDARDS.md](/nexus-agents/architecture/coding-standards/)                 |
+| Quick Start Guide  | [QUICK_START.md](/nexus-agents/architecture/quick-start/)                           |
 
 ---
 

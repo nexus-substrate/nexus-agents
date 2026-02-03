@@ -1,6 +1,6 @@
 ---
-title: 'CLI Usage'
-description: 'Nexus-agents provides four interface categories:'
+title: "CLI Usage"
+description: "Nexus-agents provides four interface categories:"
 ---
 
 **Last Updated:** 2026-02-01 (ET)

@@ -1,5 +1,5 @@
 ---
-title: 'Context Load Balancing'
+title: "Context Load Balancing"
 description: "This document defines the strategy for distributing work across Claude Code, Codex CLI, and Gemini CLI to optimize context usage, cost, and response quality. The goal is to preserve Claude's contex..."
 ---
 

@@ -1,6 +1,6 @@
 ---
-title: 'Agent Development Guide'
-description: 'This guide walks through creating custom agents for nexus-agents. Agents follow the IAgent interface and can participate in collaboration protocols.'
+title: "Agent Development Guide"
+description: "This guide walks through creating custom agents for nexus-agents. Agents follow the IAgent interface and can participate in collaboration protocols."
 ---
 
 ---

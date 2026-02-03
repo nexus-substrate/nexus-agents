@@ -1,6 +1,6 @@
 ---
-title: 'Nexus Agents Quick Start'
-description: 'Orchestrate multiple AI models using specialized experts to solve complex tasks.'
+title: "Nexus Agents Quick Start"
+description: "Orchestrate multiple AI models using specialized experts to solve complex tasks."
 ---
 
 Orchestrate multiple AI models using specialized experts to solve complex tasks.
@@ -131,14 +131,14 @@ enclosing scope even after the outer function has returned...
 
 ## Next Steps
 
-| Goal               | Command                                         |
-| ------------------ | ----------------------------------------------- |
-| See all commands   | `nexus-agents --help`                           |
-| List expert types  | `nexus-agents expert list`                      |
-| List workflows     | `nexus-agents workflow list`                    |
-| Review a GitHub PR | `nexus-agents review <url>`                     |
-| Debug routing      | `nexus-agents routing-audit "your task"`        |
-| Full documentation | [CLAUDE.md](/nexus-agents/architecture/claude/) |
+| Goal               | Command                                  |
+| ------------------ | ---------------------------------------- |
+| See all commands   | `nexus-agents --help`                    |
+| List expert types  | `nexus-agents expert list`               |
+| List workflows     | `nexus-agents workflow list`             |
+| Review a GitHub PR | `nexus-agents review <url>`              |
+| Debug routing      | `nexus-agents routing-audit "your task"` |
+| Full documentation | [CLAUDE.md](/nexus-agents/architecture/claude/)                 |
 
 ---
 

@@ -1,6 +1,6 @@
 ---
-title: 'Memory Development Guide'
-description: 'This guide walks through implementing custom memory backends and integrating with the 8-type memory architecture.'
+title: "Memory Development Guide"
+description: "This guide walks through implementing custom memory backends and integrating with the 8-type memory architecture."
 ---
 
 ---

@@ -1,6 +1,6 @@
 ---
-title: 'Contributing Research'
-description: 'This guide explains how to add new research papers, techniques, and sources to the nexus-agents research tracking system.'
+title: "Contributing Research"
+description: "This guide explains how to add new research papers, techniques, and sources to the nexus-agents research tracking system."
 ---
 
 **Last Updated:** 2026-01-11 (ET)

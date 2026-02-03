@@ -1,6 +1,6 @@
 ---
-title: 'Security Architecture'
-description: 'Security-first design with 7 defense layers:'
+title: "Security Architecture"
+description: "Security-first design with 7 defense layers:"
 ---
 
 ---

@@ -1,6 +1,6 @@
 ---
-title: 'Contributing to Nexus Agents'
-description: 'This guide covers development setup, coding standards, and the contribution workflow for Nexus Agents.'
+title: "Contributing to Nexus Agents"
+description: "This guide covers development setup, coding standards, and the contribution workflow for Nexus Agents."
 ---
 
 This guide covers development setup, coding standards, and the contribution workflow for Nexus Agents.

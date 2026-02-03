@@ -1,6 +1,6 @@
 ---
-title: 'Memory Research'
-description: 'Research on memory architectures for AI agents including long-term memory, context compression, graph-based memory, and multi-type memory systems for comprehensive agent capabilities.'
+title: "Memory Research"
+description: "Research on memory architectures for AI agents including long-term memory, context compression, graph-based memory, and multi-type memory systems for comprehensive agent capabilities."
 ---
 
 **Last Updated:** 2026-01-07 (ET)

@@ -1,6 +1,6 @@
 ---
-title: 'Debugging with Observability'
-description: 'This guide covers debugging multi-agent workflows using the nexus-agents observability infrastructure.'
+title: "Debugging with Observability"
+description: "This guide covers debugging multi-agent workflows using the nexus-agents observability infrastructure."
 ---
 
 **Version:** 1.0.0

@@ -1,6 +1,6 @@
 ---
-title: 'Routing System Architecture'
-description: 'The routing system intelligently selects the optimal CLI/model for each task through a 3-stage pipeline:'
+title: "Routing System Architecture"
+description: "The routing system intelligently selects the optimal CLI/model for each task through a 3-stage pipeline:"
 ---
 
 ---
