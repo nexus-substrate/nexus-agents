@@ -140,7 +140,7 @@ jobs:
           echo "::notice::Fitness audit passed with score $SCORE/100"
 
       - name: Upload fitness report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         if: always()
         with:
           name: fitness-report
