@@ -1,6 +1,6 @@
 # Repository Capabilities Index
 
-**Generated:** 2026-02-03T16:53:13.154Z
+**Generated:** 2026-02-03T16:57:37.970Z
 **Package Version:** 2.5.0
 **Generator:** `scripts/generate-repo-index.ts`
 
@@ -14,7 +14,7 @@
 Binary: `nexus-agents`
 
 | Command | Type | Handler | Source File |
-|---------|------|---------|-------------|
+| --------- | ------ | --------- | ------------- |
 | `config` | async | `handleConfigCommand` | `src/cli-commands-handlers.ts` |
 | `demo` | async | `handleDemoCommand` | `src/cli-commands-handlers.ts` |
 | `doctor` | async | `handleDoctorCommand` | `src/cli-commands-handlers.ts` |
@@ -49,7 +49,7 @@ Binary: `nexus-agents`
 ## MCP Tools (8)
 
 | Tool | Source File |
-|------|-------------|
+| ------ | ------------- |
 | `consensus_vote` | `src/mcp/tools/consensus-vote.ts` |
 | `create_expert` | `src/mcp/tools/create-expert.ts` |
 | `delegate_to_model` | `src/mcp/tools/delegate-to-model.ts` |
@@ -64,7 +64,7 @@ Binary: `nexus-agents`
 ## Workflow Templates (7)
 
 | Template | Source File |
-|----------|-------------|
+| ---------- | ------------- |
 | `bug-fix` | `src/workflows/templates/bug-fix.yaml` |
 | `code-review` | `src/workflows/templates/code-review.yaml` |
 | `documentation-update` | `src/workflows/templates/documentation-update.yaml` |
