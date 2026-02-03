@@ -16,6 +16,7 @@ import type {
   TaskTypeCategory,
   ComplexityLevel,
 } from './shared-task-analyzer.js';
+import type { ProductType } from '../../config/product-matrix/types.js';
 import { clamp } from '../../utils/math-utils.js';
 
 /**
@@ -39,6 +40,8 @@ export interface TaskProfile {
   readonly budgetSensitive: boolean;
   /** Primary task type classification */
   readonly taskType: TaskTypeCategory;
+  /** Detected product type from task content (optional) */
+  readonly detectedProductType?: ProductType;
 }
 
 /**
@@ -61,7 +64,7 @@ export interface TaskProfile {
  * ```
  */
 export function taskAnalysisResultToTaskProfile(analysis: SharedTaskAnalysisResult): TaskProfile {
-  return {
+  const profile: TaskProfile = {
     // Token estimation - add 500 offset for legacy compatibility
     // Legacy used BASE_TOKEN_OVERHEAD=1000, new uses 500
     contextRequired: analysis.estimatedTokens + 500,
@@ -77,7 +80,14 @@ export function taskAnalysisResultToTaskProfile(analysis: SharedTaskAnalysisResu
 
     // Task type maps directly (same enum values)
     taskType: analysis.taskType,
+
+    // Product type detection (optional, only set when detected)
+    ...(analysis.detectedProductType !== undefined && {
+      detectedProductType: analysis.detectedProductType,
+    }),
   };
+
+  return profile;
 }
 
 /**
@@ -93,7 +103,10 @@ export function summarizeTaskProfile(profile: TaskProfile): string {
   if (profile.parallelizable) flags.push('parallel');
   if (profile.budgetSensitive) flags.push('budget');
 
-  return `Type: ${profile.taskType} | Complexity: ${String(profile.reasoningComplexity)}/10 | Tokens: ~${String(profile.contextRequired)}${flags.length > 0 ? ` | Flags: ${flags.join(', ')}` : ''}`;
+  const productSuffix =
+    profile.detectedProductType !== undefined ? ` | Product: ${profile.detectedProductType}` : '';
+
+  return `Type: ${profile.taskType} | Complexity: ${String(profile.reasoningComplexity)}/10 | Tokens: ~${String(profile.contextRequired)}${flags.length > 0 ? ` | Flags: ${flags.join(', ')}` : ''}${productSuffix}`;
 }
 
 /**

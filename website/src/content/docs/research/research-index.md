@@ -1,6 +1,6 @@
 ---
-title: 'Nexus-Agents Research Index'
-description: '> **Note:** Paper-level status tracking deprecated. Technique status is source of truth.'
+title: "Nexus-Agents Research Index"
+description: "> **Note:** Paper-level status tracking deprecated. Technique status is source of truth."
 ---
 
 **Generated:** 2026-01-31 (ET)

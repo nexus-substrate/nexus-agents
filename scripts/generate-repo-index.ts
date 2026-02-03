@@ -260,7 +260,7 @@ function generateMarkdown(index: RepoIndex): string {
 Binary: \`${index.cli.binary}\`
 
 | Command | Type | Handler | Source File |
-|---------|------|---------|-------------|
+| --------- | ------ | --------- | ------------- |
 `;
 
   for (const cmd of index.cli.commands) {
@@ -273,7 +273,7 @@ Binary: \`${index.cli.binary}\`
 ## MCP Tools (${toolCount})
 
 | Tool | Source File |
-|------|-------------|
+| ------ | ------------- |
 `;
 
   for (const tool of index.mcp.tools) {
@@ -286,7 +286,7 @@ Binary: \`${index.cli.binary}\`
 ## Workflow Templates (${wfCount})
 
 | Template | Source File |
-|----------|-------------|
+| ---------- | ------------- |
 `;
 
   for (const template of index.workflows.templates) {

@@ -1,6 +1,6 @@
 ---
-title: 'MCP & Claude Desktop Integration'
-description: 'Configure nexus-agents as an MCP server for Claude Desktop with full tool access.'
+title: "MCP & Claude Desktop Integration"
+description: "Configure nexus-agents as an MCP server for Claude Desktop with full tool access."
 ---
 
 Configure nexus-agents as an MCP server for Claude Desktop with full tool access.

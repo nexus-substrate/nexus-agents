@@ -78,7 +78,7 @@
 
 **Key Differences:**
 | Feature | nexus-agents | ATLAS |
-|---------|--------------|-------|
+| --------- | -------------- | ------- |
 | Initial Selection | Task analysis | Clustering |
 | Multi-step | Optional (collaboration) | Built-in (RL routing) |
 | Learning | None | Reinforcement learning |
@@ -130,7 +130,7 @@ For each expert combination:
 
 **Comparison:**
 | Aspect | nexus-agents | EvoRoute |
-|--------|--------------|----------|
+| -------- | -------------- | ---------- |
 | Optimization | Single step | Multi-objective |
 | Budget-Aware | Via options | Dynamic cost tracking |
 | Learning | None | Adaptive weighting |
@@ -179,7 +179,7 @@ if (similarityScore > 0.8) {
 
 **Comparison:**
 | Feature | nexus-agents | MCP-Zero |
-|---------|--------------|----------|
+| --------- | -------------- | ---------- |
 | Capability Matching | Exact (binary) | Semantic (continuous) |
 | Gap Detection | No | Yes (core feature) |
 | Tool Chaining | Optional | Required |
@@ -222,7 +222,7 @@ def analyze_code(code: str) -> str:
 
 **Comparison:**
 | Aspect | nexus-agents | AutoGen |
-|--------|--------------|---------|
+| -------- | -------------- | --------- |
 | Tool Definition | YAML config | Python decorators |
 | Discovery | Task analysis | Docstring parsing |
 | Selection | Scoring algorithm | LLM decision |

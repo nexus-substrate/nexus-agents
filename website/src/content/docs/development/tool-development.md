@@ -1,6 +1,6 @@
 ---
-title: 'MCP Tool Development Guide'
-description: 'This guide walks through creating new MCP tools for nexus-agents. Tools follow the MCP 2025-11-25 specification and use Zod for input validation.'
+title: "MCP Tool Development Guide"
+description: "This guide walks through creating new MCP tools for nexus-agents. Tools follow the MCP 2025-11-25 specification and use Zod for input validation."
 ---
 
 ---

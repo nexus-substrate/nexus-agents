@@ -1,6 +1,6 @@
 ---
-title: 'Agent System Architecture'
-description: 'The agent system provides the core abstraction for intelligent task execution. Agents are autonomous entities that:'
+title: "Agent System Architecture"
+description: "The agent system provides the core abstraction for intelligent task execution. Agents are autonomous entities that:"
 ---
 
 ---

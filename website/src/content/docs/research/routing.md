@@ -1,6 +1,6 @@
 ---
-title: 'Routing Research'
-description: 'Research on intelligent routing of tasks to optimal models based on cost, quality, and latency constraints. Covers quality-constrained routing, preference-trained routers, cascade strategies, and m...'
+title: "Routing Research"
+description: "Research on intelligent routing of tasks to optimal models based on cost, quality, and latency constraints. Covers quality-constrained routing, preference-trained routers, cascade strategies, and m..."
 ---
 
 **Last Updated:** 2026-01-10 (ET)

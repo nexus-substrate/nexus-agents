@@ -1,6 +1,6 @@
 ---
-title: 'MCP Protocol Architecture'
-description: 'Model Context Protocol (MCP) integration enables Claude Desktop to orchestrate nexus-agents. The system implements the MCP 2025-11-25 specification.'
+title: "MCP Protocol Architecture"
+description: "Model Context Protocol (MCP) integration enables Claude Desktop to orchestrate nexus-agents. The system implements the MCP 2025-11-25 specification."
 ---
 
 ---

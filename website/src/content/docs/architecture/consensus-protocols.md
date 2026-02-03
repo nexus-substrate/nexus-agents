@@ -1,6 +1,6 @@
 ---
-title: 'Consensus Protocols Architecture'
-description: 'The consensus system implements 5 core voting algorithms for multi-agent decisions:'
+title: "Consensus Protocols Architecture"
+description: "The consensus system implements 5 core voting algorithms for multi-agent decisions:"
 ---
 
 ---

@@ -16,7 +16,9 @@
       "Bash(gemini --help:*)",
       "mcp__github__create_issue",
       "Bash",
-      "Read"
+      "Read",
+      "mcp__nexus-agents__orchestrate",
+      "mcp__nexus-agents__create_expert"
     ]
   },
   "outputStyle": "default"

@@ -11,6 +11,7 @@
 import type { ILogger } from './core/index.js';
 import { createSkillLibrary, type SkillLibrary } from './agents/skills/skill-library.js';
 import type { SkillLibraryConfig } from './config/index.js';
+import { registerStandardsSkills } from './agents/skills/bootstrap/index.js';
 
 /**
  * Global skill library instance.
@@ -90,6 +91,9 @@ export function initializeSkillLibrary(options: InitializeSkillsOptions): Skills
   // Create the skill library with config
   const libraryConfig = skillsConfig !== undefined ? adaptConfigToLibrary(skillsConfig) : undefined;
   globalSkillLibrary = createSkillLibrary(libraryConfig, logger);
+
+  // Register built-in standards skills
+  registerStandardsSkills(globalSkillLibrary, logger);
 
   logger.info('Skill library initialized', {
     maxSkills: globalSkillLibrary.getConfig().maxSkills,

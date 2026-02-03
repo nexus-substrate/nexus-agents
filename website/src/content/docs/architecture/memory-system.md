@@ -1,6 +1,6 @@
 ---
-title: 'Memory System Architecture'
-description: 'The memory system provides 7 distinct memory types inspired by MIRIX (arXiv:2507.07957):'
+title: "Memory System Architecture"
+description: "The memory system provides 7 distinct memory types inspired by MIRIX (arXiv:2507.07957):"
 ---
 
 ---

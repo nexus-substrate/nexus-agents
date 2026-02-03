@@ -1,6 +1,6 @@
 ---
-title: 'Architecture Overview'
-description: '┌─────────────────────────────────────────────────────────────┐'
+title: "Architecture Overview"
+description: "┌─────────────────────────────────────────────────────────────┐"
 ---
 
 **Full Details:** [ARCHITECTURE.md](../../ARCHITECTURE.md)
@@ -9,8 +9,8 @@ description: '┌─────────────────────
 
 ## Quick Navigation
 
-| Topic          | Hub       | Deep Dive                                                                       |
-| -------------- | --------- | ------------------------------------------------------------------------------- |
+| Topic          | Hub       | Deep Dive                                                |
+| -------------- | --------- | -------------------------------------------------------- |
 | Agents         | This file | [AGENT_SYSTEM.md](/nexus-agents/architecture/agent-system/)                     |
 | Memory         | This file | [MEMORY_SYSTEM.md](/nexus-agents/architecture/memory-system/)                   |
 | Routing        | This file | [ROUTING_SYSTEM.md](/nexus-agents/architecture/routing-system/)                 |

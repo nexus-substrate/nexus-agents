@@ -1,6 +1,6 @@
 ---
-title: 'Consensus Research'
-description: 'Research on multi-agent consensus mechanisms for coordinating decision-making across multiple AI agents. Key focus areas include formal consensus protocols, voting mechanisms, Byzantine fault toler...'
+title: "Consensus Research"
+description: "Research on multi-agent consensus mechanisms for coordinating decision-making across multiple AI agents. Key focus areas include formal consensus protocols, voting mechanisms, Byzantine fault toler..."
 ---
 
 **Last Updated:** 2026-01-07 (ET)

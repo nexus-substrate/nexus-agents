@@ -1,0 +1,4 @@
+# Generated files (managed by scripts, not prettier)
+website/src/content/docs/
+docs/reference/capabilities.md
+packages/nexus-agents/docs/api/
