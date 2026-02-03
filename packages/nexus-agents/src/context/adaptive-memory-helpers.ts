@@ -26,12 +26,7 @@ import {
   stringifyValue as sharedStringifyValue,
 } from '../utils/text-utils.js';
 import { calculateTokenOverlap } from '../utils/similarity-utils.js';
-import {
-  memoryRowToEntry as sharedMemoryRowToEntry,
-  memoryExists as sharedMemoryExists,
-  getMemoryRow as sharedGetMemoryRow,
-  getAllMemoryRows as sharedGetAllMemoryRows,
-} from '../utils/memory-db-utils.js';
+import { memoryRowToEntry as sharedMemoryRowToEntry } from '../utils/memory-db-utils.js';
 
 // ============================================================================
 // Recency Scoring
@@ -191,18 +186,6 @@ function resolveWeights(base: ScoringWeights, overrides?: Partial<ScoringWeights
 }
 
 // ============================================================================
-// Memory Row Conversion
-// ============================================================================
-
-/**
- * Convert a MemoryRow to a MemoryEntry.
- * @deprecated Use import from '../utils/memory-db-utils.js' directly. Will be removed in v3.0.
- */
-export function memoryRowToEntry(row: MemoryRow): MemoryEntry {
-  return sharedMemoryRowToEntry(row);
-}
-
-// ============================================================================
 // Filtering
 // ============================================================================
 
@@ -251,36 +234,12 @@ export function filterScoredEntries(
 // ============================================================================
 
 /**
- * Get all memory rows from the database.
- * @deprecated Use import from '../utils/memory-db-utils.js' directly. Will be removed in v3.0.
- */
-export function getAllMemoryRows(db: ISQLiteDatabase, limit: number): MemoryRow[] {
-  return sharedGetAllMemoryRows(db, limit);
-}
-
-/**
- * Get a single memory row by key.
- * @deprecated Use import from '../utils/memory-db-utils.js' directly. Will be removed in v3.0.
- */
-export function getMemoryRow(db: ISQLiteDatabase, key: string): MemoryRow | undefined {
-  return sharedGetMemoryRow(db, key);
-}
-
-/**
  * Update the accessed_at timestamp for a memory.
  */
 export function touchMemory(db: ISQLiteDatabase, key: string): boolean {
   const stmt = db.prepare('UPDATE memories SET accessed_at = ? WHERE key = ?');
   const result = stmt.run(getTimeProvider().now(), key);
   return result.changes > 0;
-}
-
-/**
- * Check if a memory key exists.
- * @deprecated Use import from '../utils/memory-db-utils.js' directly. Will be removed in v3.0.
- */
-export function memoryExists(db: ISQLiteDatabase, key: string): boolean {
-  return sharedMemoryExists(db, key);
 }
 
 // ============================================================================

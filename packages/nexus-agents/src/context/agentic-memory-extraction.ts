@@ -18,30 +18,9 @@ import type {
 } from './agentic-memory-types.js';
 // Shared utilities per ADR-0013
 import {
-  tokenize as sharedTokenize,
   tokenizeFiltered as sharedTokenizeFiltered,
   stringifyValue as sharedStringifyValue,
 } from '../utils/text-utils.js';
-
-// ============================================================================
-// Tokenization (delegated to shared utilities)
-// ============================================================================
-
-/**
- * Tokenize text into normalized words.
- * @deprecated Use import from '../utils/text-utils.js' directly. Will be removed in v3.0.
- */
-export function tokenize(text: string): string[] {
-  return sharedTokenize(text, 2);
-}
-
-/**
- * Tokenize and filter stopwords.
- * @deprecated Use import from '../utils/text-utils.js' directly. Will be removed in v3.0.
- */
-export function tokenizeFiltered(text: string): string[] {
-  return sharedTokenizeFiltered(text, 2);
-}
 
 // ============================================================================
 // Keyword Extraction (Rule-based)

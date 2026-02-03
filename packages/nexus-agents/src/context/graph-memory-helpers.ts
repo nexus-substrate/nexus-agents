@@ -16,13 +16,9 @@ import type {
   RelationType,
 } from './graph-memory-types.js';
 import { DEFAULT_GRAPH_MEMORY_CONFIG } from './graph-memory-types.js';
-import type { MemoryEntry, MemoryRow, ISQLiteDatabase } from './memory-backend-types.js';
+import type { MemoryEntry, ISQLiteDatabase } from './memory-backend-types.js';
 // Shared utilities per ADR-0013
-import {
-  memoryRowToEntry as sharedMemoryRowToEntry,
-  memoryExists as sharedMemoryExists,
-  getMemoryEntry as sharedGetMemoryEntry,
-} from '../utils/memory-db-utils.js';
+import { getMemoryEntry as sharedGetMemoryEntry } from '../utils/memory-db-utils.js';
 
 // ============================================================================
 // SQL Schema
@@ -70,14 +66,6 @@ export function rowToEdge(row: GraphEdgeRow): GraphEdge {
     return { ...base, metadata: JSON.parse(row.metadata) as Record<string, unknown> };
   }
   return base;
-}
-
-/**
- * Convert a MemoryRow to a MemoryEntry.
- * @deprecated Use import from '../utils/memory-db-utils.js' directly. Will be removed in v3.0.
- */
-export function memoryRowToEntry(row: MemoryRow): MemoryEntry {
-  return sharedMemoryRowToEntry(row);
 }
 
 // ============================================================================
@@ -282,24 +270,4 @@ export function findShortestPath(
   }
 
   return null;
-}
-
-// ============================================================================
-// Memory Retrieval Helper
-// ============================================================================
-
-/**
- * Get a memory entry by key.
- * @deprecated Use import from '../utils/memory-db-utils.js' directly. Will be removed in v3.0.
- */
-export function getMemoryEntry(db: ISQLiteDatabase, key: string): MemoryEntry | undefined {
-  return sharedGetMemoryEntry(db, key);
-}
-
-/**
- * Check if a memory key exists.
- * @deprecated Use import from '../utils/memory-db-utils.js' directly. Will be removed in v3.0.
- */
-export function memoryExists(db: ISQLiteDatabase, key: string): boolean {
-  return sharedMemoryExists(db, key);
 }
