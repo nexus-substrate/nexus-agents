@@ -15,6 +15,17 @@
 
 import { createLogger, type ILogger } from '../logger.js';
 import type { Task } from '../types/agent.js';
+import type { ProductType } from '../../config/product-matrix/types.js';
+import { detectProductType } from './product-type-detector.js';
+import {
+  REASONING_PATTERNS,
+  KNOWLEDGE_PATTERNS,
+  TASK_TYPE_KEYWORDS,
+  HIGH_COMPLEXITY_KEYWORDS,
+  CODE_GEN_KEYWORDS,
+  MULTIMODAL_KEYWORDS,
+  PARALLEL_KEYWORDS,
+} from './task-analysis-keywords.js';
 
 // ============================================================================
 // Types
@@ -73,6 +84,10 @@ export interface TaskAnalysisResult {
   readonly estimatedTokens: number;
   /** Matched signals for observability */
   readonly matchedSignals: readonly string[];
+  /** Detected product type from task content (optional) */
+  readonly detectedProductType?: ProductType;
+  /** Confidence in the detected product type (0-1, optional) */
+  readonly productTypeConfidence?: number;
 }
 
 /**
@@ -97,179 +112,6 @@ export interface ISharedTaskAnalyzer {
   getCapabilities(task: Task | string): TaskCapabilities;
   estimateTokens(task: Task | string): number;
 }
-
-// ============================================================================
-// Unified Keyword Registry
-// ============================================================================
-
-/** Reasoning task patterns (arXiv:2502.19130) */
-const REASONING_PATTERNS: ReadonlyArray<{ pattern: RegExp; weight: number; name: string }> = [
-  { pattern: /\b(why|how come|explain why)\b/i, weight: 0.3, name: 'causal-question' },
-  { pattern: /\b(analyze|evaluate|assess|compare)\b/i, weight: 0.25, name: 'analysis-verb' },
-  { pattern: /\b(solve|calculate|compute|derive)\b/i, weight: 0.35, name: 'problem-solving' },
-  {
-    pattern: /\b(if|then|therefore|because|since|assuming)\b/i,
-    weight: 0.2,
-    name: 'logical-connector',
-  },
-  { pattern: /\b(prove|deduce|infer|conclude)\b/i, weight: 0.35, name: 'deductive-verb' },
-  { pattern: /\b(trade-?off|pros? and cons?)\b/i, weight: 0.25, name: 'tradeoff-analysis' },
-  { pattern: /\b(debug|fix|troubleshoot|diagnose)\b/i, weight: 0.3, name: 'debugging' },
-  { pattern: /\b(design|architect|plan|strategy)\b/i, weight: 0.25, name: 'design-task' },
-  { pattern: /\b(optimize|improve|enhance|refactor)\b/i, weight: 0.2, name: 'optimization' },
-];
-
-/** Knowledge task patterns (arXiv:2502.19130) */
-const KNOWLEDGE_PATTERNS: ReadonlyArray<{ pattern: RegExp; weight: number; name: string }> = [
-  { pattern: /\b(what is|what are|who is|who are)\b/i, weight: 0.3, name: 'factual-question' },
-  { pattern: /\b(define|definition of|meaning of)\b/i, weight: 0.35, name: 'definition-request' },
-  { pattern: /\b(list|enumerate|name|identify)\b/i, weight: 0.25, name: 'enumeration' },
-  { pattern: /\b(when|where|which)\b/i, weight: 0.2, name: 'specific-query' },
-  { pattern: /\b(documentation|docs|reference|api)\b/i, weight: 0.25, name: 'doc-lookup' },
-  { pattern: /\b(example|sample|template|boilerplate)\b/i, weight: 0.2, name: 'example-request' },
-  { pattern: /\b(tell me|show me|give me)\b/i, weight: 0.15, name: 'information-request' },
-];
-
-/** Task type keywords for 8-type taxonomy */
-const TASK_TYPE_KEYWORDS: Record<TaskTypeCategory, readonly string[]> = {
-  architecture: [
-    'architecture',
-    'design',
-    'system',
-    'pattern',
-    'scalability',
-    'microservice',
-    'distributed',
-    'api design',
-  ],
-  code_implementation: [
-    'implement',
-    'create',
-    'build',
-    'write code',
-    'add feature',
-    'function',
-    'class',
-    'module',
-    'component',
-  ],
-  code_review: [
-    'review',
-    'audit',
-    'check',
-    'analyze code',
-    'evaluate',
-    'inspect',
-    'security review',
-    'bugs',
-    'vulnerabilities',
-  ],
-  test_generation: [
-    'test',
-    'unit test',
-    'integration test',
-    'e2e',
-    'coverage',
-    'spec',
-    'mock',
-    'vitest',
-    'jest',
-  ],
-  documentation: [
-    'document',
-    'readme',
-    'jsdoc',
-    'comment',
-    'explain',
-    'tutorial',
-    'guide',
-    'api doc',
-    'changelog',
-  ],
-  large_codebase: [
-    'entire codebase',
-    'all files',
-    'whole project',
-    'repository',
-    'monorepo',
-    'workspace',
-    'many files',
-  ],
-  bulk_operations: [
-    'bulk',
-    'batch',
-    'mass',
-    'multiple files',
-    'refactor all',
-    'update all',
-    'rename all',
-    'migrate',
-  ],
-  general: [],
-};
-
-/** High complexity indicators */
-const HIGH_COMPLEXITY_KEYWORDS: readonly string[] = [
-  'complex',
-  'optimize',
-  'architecture',
-  'security',
-  'performance',
-  'distributed',
-  'concurrent',
-  'async',
-  'race condition',
-  'deadlock',
-  'memory leak',
-  'algorithm',
-  'trade-off',
-  'decision',
-  'design pattern',
-  'refactor',
-  'legacy',
-];
-
-/** Code generation indicators */
-const CODE_GEN_KEYWORDS: readonly string[] = [
-  'implement',
-  'create',
-  'write',
-  'generate',
-  'build',
-  'add',
-  'new',
-  'function',
-  'class',
-  'component',
-  'test',
-];
-
-/** Multimodal indicators */
-const MULTIMODAL_KEYWORDS: readonly string[] = [
-  'image',
-  'screenshot',
-  'diagram',
-  'photo',
-  'picture',
-  'audio',
-  'video',
-  'ui',
-  'visual',
-  'mockup',
-];
-
-/** Parallelizable indicators */
-const PARALLEL_KEYWORDS: readonly string[] = [
-  'multiple',
-  'batch',
-  'bulk',
-  'all files',
-  'each',
-  'every',
-  'parallel',
-  'concurrent',
-  'independent',
-];
 
 // ============================================================================
 // Implementation
@@ -302,15 +144,17 @@ export class SharedTaskAnalyzer implements ISharedTaskAnalyzer {
     const taskType = this.computeTaskType(content, matchedSignals);
     const capabilities = this.computeCapabilities(content, matchedSignals);
     const estimatedTokens = this.computeTokens(content);
+    const productType = detectProductType(content, matchedSignals);
 
     this.logger.debug('Task analyzed', {
       reasoningType: reasoning.type,
       complexity: complexity.level,
       taskType: taskType.type,
+      detectedProductType: productType?.type,
       signals: matchedSignals.length,
     });
 
-    return {
+    const result: TaskAnalysisResult = {
       reasoningType: reasoning.type,
       reasoningConfidence: reasoning.confidence,
       complexity: complexity.level,
@@ -321,6 +165,16 @@ export class SharedTaskAnalyzer implements ISharedTaskAnalyzer {
       estimatedTokens,
       matchedSignals,
     };
+
+    if (productType !== undefined) {
+      return {
+        ...result,
+        detectedProductType: productType.type,
+        productTypeConfidence: productType.confidence,
+      };
+    }
+
+    return result;
   }
 
   getReasoningType(task: Task | string): { type: ReasoningKnowledgeType; confidence: number } {
