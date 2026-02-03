@@ -77,11 +77,12 @@ jobs:
             fi
           done
 
-  # Job 3: Documentation Coverage Check
+  # Job 3: Documentation Coverage Check (non-blocking warning per DevEx amendment)
   docs-coverage:
     name: Documentation Coverage
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
+    continue-on-error: true
 
     # Skip if [skip-docs] is in PR title or body
     # Rate limited per escape hatch controls
