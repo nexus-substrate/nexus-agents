@@ -85,10 +85,14 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           TECHNIQUES_FILE="docs/research/registry/techniques.yaml"
           if [ -f "$TECHNIQUES_FILE" ]; then
-            IMPLEMENTED=$(grep -c "status: implemented" "$TECHNIQUES_FILE" || echo "0")
-            PLANNED=$(grep -c "status: planned" "$TECHNIQUES_FILE" || echo "0")
-            NOT_STARTED=$(grep -c "status: not-started" "$TECHNIQUES_FILE" || echo "0")
-            REJECTED=$(grep -c "status: rejected" "$TECHNIQUES_FILE" || echo "0")
+            IMPLEMENTED=$(grep -c "status: implemented" "$TECHNIQUES_FILE" || true)
+            IMPLEMENTED=${IMPLEMENTED:-0}
+            PLANNED=$(grep -c "status: planned" "$TECHNIQUES_FILE" || true)
+            PLANNED=${PLANNED:-0}
+            NOT_STARTED=$(grep -c "status: not-started" "$TECHNIQUES_FILE" || true)
+            NOT_STARTED=${NOT_STARTED:-0}
+            REJECTED=$(grep -c "status: rejected" "$TECHNIQUES_FILE" || true)
+            REJECTED=${REJECTED:-0}
             echo "| Status | Count |" >> $GITHUB_STEP_SUMMARY
             echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
             echo "| Implemented | $IMPLEMENTED |" >> $GITHUB_STEP_SUMMARY
