@@ -17,6 +17,7 @@ import type {
   CompositeRoutingDecision,
   ICompositeRouter,
 } from '../cli-adapters/composite-router.js';
+import type { TaskProfile } from '../core/task-analysis/task-profile-adapter.js';
 import type { TraceId } from '../observability/swarm-observer-types.js';
 import type {
   IOutcomeFeedback,
@@ -60,6 +61,13 @@ export {
 const EVICTION_THROTTLE_MS = 60000;
 
 /**
+ * Hard cap on decision map size to prevent unbounded memory growth.
+ * When exceeded, oldest entries are evicted regardless of TTL.
+ * (Source: Issue #666 - Unbounded Map growth)
+ */
+const MAX_DECISION_MAP_SIZE = 10000;
+
+/**
  * Determines the decisive routing technique from a CompositeRoutingDecision.
  * Analyzes which routing stage was most influential in the final decision.
  * (Source: Issue #464 - Improve routing technique analytics)
@@ -92,6 +100,26 @@ function getDecisiveRouterType(decision: CompositeRoutingDecision): RouterType {
 
   // Default fallback
   return 'topsis';
+}
+
+/**
+ * Safely serializes a TaskProfile to a plain Record for SQLite storage.
+ * Replaces the unsafe `as unknown as Record<string, unknown>` double-cast.
+ * (Source: Issue #667 - Unsafe double-cast patterns)
+ */
+function serializeTaskProfile(profile: TaskProfile): Record<string, unknown> {
+  return {
+    contextRequired: profile.contextRequired,
+    reasoningComplexity: profile.reasoningComplexity,
+    codeGeneration: profile.codeGeneration,
+    multimodal: profile.multimodal,
+    parallelizable: profile.parallelizable,
+    budgetSensitive: profile.budgetSensitive,
+    taskType: profile.taskType,
+    ...(profile.detectedProductType !== undefined && {
+      detectedProductType: profile.detectedProductType,
+    }),
+  };
 }
 
 /**
@@ -151,6 +179,11 @@ export class FeedbackIntegration implements IFeedbackIntegration {
     // Evict stale entries (throttled to once per minute)
     this.evictStaleEntriesThrottled(now);
 
+    // Enforce hard size cap (Issue #666)
+    if (this.decisionMap.size >= MAX_DECISION_MAP_SIZE) {
+      this.evictOldestEntries(Math.floor(MAX_DECISION_MAP_SIZE * 0.1));
+    }
+
     // Store for later outcome routing with timestamp
     this.decisionMap.set(id, {
       cliName: decision.cliName,
@@ -186,7 +219,7 @@ export class FeedbackIntegration implements IFeedbackIntegration {
         alternativeModels: decision.alternatives,
         confidence: decision.confidence,
         reason: decision.reason,
-        taskProfile: decision.taskProfile as unknown as Record<string, unknown>,
+        taskProfile: serializeTaskProfile(decision.taskProfile),
       };
       this.outcomeStorage.storeDecision(storedDecision).catch((error: unknown) => {
         this.logger.warn('Failed to persist routing decision to SQLite', { id, error });
@@ -374,6 +407,24 @@ export class FeedbackIntegration implements IFeedbackIntegration {
       this.evictStaleEntries();
       this.lastEvictionTime = now;
     }
+  }
+
+  /**
+   * Evicts the oldest N entries from the decision map by createdAt timestamp.
+   * Used when the hard size cap is exceeded (Issue #666).
+   */
+  private evictOldestEntries(count: number): void {
+    const sorted = [...this.decisionMap.entries()].sort((a, b) => a[1].createdAt - b[1].createdAt);
+    const toEvict = sorted.slice(0, count);
+    for (const [id] of toEvict) {
+      this.decisionMap.delete(id);
+    }
+    this.totalEvictedEntries += toEvict.length;
+    this.logger.debug('Evicted oldest decision entries (size cap)', {
+      evictedCount: toEvict.length,
+      remainingEntries: this.decisionMap.size,
+      maxSize: MAX_DECISION_MAP_SIZE,
+    });
   }
 
   private determineOutcomeClass(success: boolean, qualityScore: number): OutcomeClass {

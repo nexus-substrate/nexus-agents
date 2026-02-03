@@ -156,7 +156,7 @@ export class HindsightBeliefMemory implements IHindsightBeliefMemory {
         beliefId: newBelief.beliefId,
         updateType: BeliefUpdateTypeEnum.RETAIN,
         previousState: {},
-        newState: newBelief as unknown as Record<string, unknown>,
+        newState: Object.fromEntries(Object.entries(newBelief)),
         reason: 'Initial belief creation',
       });
       this.logger.debug('Belief retained', {
