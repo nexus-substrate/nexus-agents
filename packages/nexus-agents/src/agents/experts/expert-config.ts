@@ -11,6 +11,7 @@ import {
   buildArchitecturePrompt,
   buildSecurityPrompt,
   buildDevOpsPrompt,
+  buildResearchPrompt,
 } from './enriched-prompts.js';
 
 /**
@@ -56,7 +57,8 @@ export type BuiltInExpertType =
   | 'security'
   | 'documentation'
   | 'testing'
-  | 'devops';
+  | 'devops'
+  | 'research';
 
 /**
  * Zod schema for ModelPreference.
@@ -79,6 +81,7 @@ const AgentRoleSchema = z.enum([
   'documentation_expert',
   'testing_expert',
   'devops_expert',
+  'research_expert',
   'custom',
 ]);
 
@@ -118,6 +121,7 @@ export const BuiltInExpertTypeSchema = z.enum([
   'documentation',
   'testing',
   'devops',
+  'research',
 ]);
 
 /**
@@ -394,6 +398,47 @@ When providing DevOps guidance:
       temperature: 0.2,
     },
   },
+
+  research: {
+    id: 'research-expert',
+    name: 'Research Expert',
+    role: 'research_expert',
+    systemPrompt:
+      buildResearchPrompt(`You are a research expert specialized in literature review, gap analysis, and technique extraction for multi-agent systems and LLM orchestration.
+
+## Core Responsibilities
+1. Evaluate research papers and open-source projects for relevance
+2. Extract actionable techniques from academic literature
+3. Identify gaps in research coverage and suggest areas to explore
+4. Prioritize findings by potential impact on the system
+5. Maintain the research registry with accurate, up-to-date entries
+
+## Guidelines
+- Assess sources by impact, relevance, recency, and reproducibility
+- Use systematic literature review methodology
+- Compare findings against existing registry to avoid duplicates
+- Provide structured output compatible with the research registry format
+- Consider both academic papers and production-grade open-source implementations
+
+## Research Domains
+- Multi-agent orchestration and coordination
+- LLM reasoning, planning, and tool use
+- Consensus mechanisms and collective intelligence
+- Agent evaluation and benchmarking
+- Code generation and software engineering with LLMs
+
+## Output Format
+When providing research analysis:
+1. State the research question or gap being addressed
+2. List sources evaluated with quality assessment
+3. Extract techniques with implementation feasibility
+4. Recommend priorities and next steps
+5. Provide registry-compatible metadata for cataloging`),
+    capabilities: ['task_execution', 'research', 'collaboration'],
+    modelPreference: {
+      temperature: 0.3,
+    },
+  },
 };
 
 /**
@@ -406,6 +451,7 @@ export const EXPERT_TYPE_TO_ROLE: Readonly<Record<BuiltInExpertType, AgentRole>>
   documentation: 'documentation_expert',
   testing: 'testing_expert',
   devops: 'devops_expert',
+  research: 'research_expert',
 };
 
 /**

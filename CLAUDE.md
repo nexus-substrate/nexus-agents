@@ -251,18 +251,23 @@ Governance rules (voting thresholds, refactor gates, fitness audit, documentatio
 
 ## MCP Tools Reference
 
-| Tool                | Description                                                                                                 |
-| ------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `orchestrate`       | Orchestrate a task by analyzing it, breaking it into subtasks if needed, and coordinating expert agents     |
-| `create_expert`     | Create a specialized expert agent for code, architecture, security, documentation, testing, or devops tasks |
-| `execute_expert`    | Execute a task using a previously created expert agent.                                                     |
-| `run_workflow`      | run_workflow tool                                                                                           |
-| `consensus_vote`    | Execute multi-model consensus voting on a proposal.                                                         |
-| `delegate_to_model` | delegate_to_model tool                                                                                      |
-| `list_experts`      | List available expert types that can be created with create_expert.                                         |
-| `list_workflows`    | List available workflow templates that can be executed with run_workflow.                                   |
+| Tool                      | Description                                                                                                           |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `orchestrate`             | Orchestrate a task by analyzing it, breaking it into subtasks if needed, and coordinating expert agents               |
+| `create_expert`           | Create a specialized expert agent for code, architecture, security, documentation, testing, research, or devops tasks |
+| `execute_expert`          | Execute a task using a previously created expert agent.                                                               |
+| `run_workflow`            | Execute workflow templates with provided inputs.                                                                      |
+| `consensus_vote`          | Execute multi-model consensus voting on a proposal.                                                                   |
+| `delegate_to_model`       | Route a task to the optimal model based on capability matching.                                                       |
+| `list_experts`            | List available expert types that can be created with create_expert.                                                   |
+| `list_workflows`          | List available workflow templates that can be executed with run_workflow.                                             |
+| `research_query`          | Query the research registry for status, overlaps, stats, or search by keyword.                                        |
+| `research_add`            | Add a research paper to the registry by arXiv ID with metadata fetching.                                              |
+| `research_discover`       | Discover new research papers and repos from arXiv, GitHub, Google AI, Meta FAIR, Microsoft, DeepMind.                 |
+| `research_analyze`        | Analyze the research registry for gaps, trends, priorities, stale entries, or coverage.                               |
+| `research_catalog_review` | Review auto-cataloged research references found during tool execution.                                                |
 
-_Auto-generated from source. 8 tools registered._
+_Auto-generated from source. 13 tools registered._
 
 <!-- GOVERNANCE:TOOL_INDEX:END -->
 

@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "generated": "2026-02-04T01:30:47.258Z",
+  "generated": "2026-02-04T13:53:50.519Z",
   "generator": "scripts/generate-repo-index.ts",
   "packageVersion": "2.6.0",
   "cli": {
@@ -231,6 +231,26 @@
         "file": "src/mcp/tools/orchestrate.ts"
       },
       {
+        "name": "research_add",
+        "file": "src/mcp/tools/research-add.ts"
+      },
+      {
+        "name": "research_analyze",
+        "file": "src/mcp/tools/research-analyze.ts"
+      },
+      {
+        "name": "research_catalog_review",
+        "file": "src/mcp/tools/research-catalog-review.ts"
+      },
+      {
+        "name": "research_discover",
+        "file": "src/mcp/tools/research-discover.ts"
+      },
+      {
+        "name": "research_query",
+        "file": "src/mcp/tools/research-query.ts"
+      },
+      {
         "name": "run_workflow",
         "file": "src/mcp/tools/run-workflow.ts"
       }
@@ -257,6 +277,10 @@
       {
         "name": "refactoring",
         "file": "src/workflows/templates/refactoring.yaml"
+      },
+      {
+        "name": "research-review",
+        "file": "src/workflows/templates/research-review.yaml"
       },
       {
         "name": "security-audit",

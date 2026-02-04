@@ -11,6 +11,7 @@ export { TESTING_EXPERT_BASE_PROMPT } from './testing-expert.js';
 export { CODE_EXPERT_BASE_PROMPT } from './code-expert.js';
 export { ARCHITECTURE_EXPERT_BASE_PROMPT } from './architecture-expert.js';
 export { DOCUMENTATION_EXPERT_BASE_PROMPT } from './documentation-expert.js';
+export { RESEARCH_EXPERT_BASE_PROMPT } from './research-expert.js';
 
 // Prompt composer
 export { PromptComposer } from './prompt-composer.js';

@@ -32,6 +32,7 @@ import type { ExecutionPlan, Expert } from '../../agents/index.js';
 import { createTechLeadWithSica } from './orchestrate-sica.js';
 import { OrchestratorFactory } from '../../orchestration/orchestrator-factory.js';
 import { getToolMemory } from './tool-memory.js';
+import { getAutoCatalog } from './research-auto-catalog.js';
 
 /**
  * Input schema for the orchestrate tool.
@@ -299,6 +300,14 @@ function recordOrchestrationSuccess(
     });
   } catch {
     // Memory recording is best-effort; never fail orchestration for it
+  }
+
+  // Auto-catalog: scan task description for research references
+  try {
+    const catalog = getAutoCatalog();
+    catalog.scanAndRecord(taskDescription, 'orchestrate');
+  } catch {
+    // Auto-catalog is best-effort
   }
 }
 

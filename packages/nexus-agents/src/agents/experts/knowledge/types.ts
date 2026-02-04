@@ -18,7 +18,8 @@ export type KnowledgeDomain =
   | 'code'
   | 'architecture'
   | 'documentation'
-  | 'devops';
+  | 'devops'
+  | 'research';
 
 /**
  * A section within a knowledge module containing specific guidance.

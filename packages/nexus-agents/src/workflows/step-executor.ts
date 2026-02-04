@@ -55,6 +55,8 @@ export class ExpertFactoryAdapter implements IExpertFactory {
       security_expert: 'security',
       documentation_expert: 'documentation',
       testing_expert: 'testing',
+      devops_expert: 'devops',
+      research_expert: 'research',
     };
 
     const expertType = roleToType[role];
@@ -62,7 +64,14 @@ export class ExpertFactoryAdapter implements IExpertFactory {
       return err(new Error(`Unsupported agent role: ${role}`));
     }
 
-    type BuiltInType = 'code' | 'architecture' | 'security' | 'documentation' | 'testing';
+    type BuiltInType =
+      | 'code'
+      | 'architecture'
+      | 'security'
+      | 'documentation'
+      | 'testing'
+      | 'devops'
+      | 'research';
     return this.factory.createBuiltIn(expertType as BuiltInType);
   }
 }

@@ -1,0 +1,84 @@
+name: research-review
+version: '1.0.0'
+description: |
+  Automated research review workflow that discovers new papers and repositories,
+  analyzes their relevance, votes on prioritization via consensus, and catalogs
+  approved entries in the research registry. Creates GitHub issues for tracking.
+
+inputs:
+  - name: topic
+    type: string
+    description: Research topic to search for (e.g., "multi-agent orchestration")
+    required: true
+  - name: source
+    type: string
+    description: Source to search (arxiv, github, google_ai, meta_fair, microsoft, deepmind, all)
+    default: all
+  - name: maxResults
+    type: number
+    description: Maximum number of results to discover per source
+    default: 10
+  - name: autoApprove
+    type: boolean
+    description: Whether to automatically approve high-relevance findings
+    default: false
+
+steps:
+  - id: discover
+    agent: research_expert
+    action: discover_sources
+    description: |
+      Search external sources (arXiv, GitHub, etc.) for new research
+      papers, repositories, and publications related to the topic.
+      Filter out items already in the registry.
+    inputs:
+      topic: ${{ inputs.topic }}
+      source: ${{ inputs.source }}
+      maxResults: ${{ inputs.maxResults }}
+    timeout: 120000
+    retries: 1
+
+  - id: analyze
+    agent: research_expert
+    action: analyze_relevance
+    description: |
+      Analyze discovered items for relevance to the project.
+      Assess impact, applicability, recency, and reproducibility.
+      Produce structured analysis with priority assignments.
+    inputs:
+      discoveries: ${{ steps.discover.output }}
+      topic: ${{ inputs.topic }}
+    dependsOn:
+      - discover
+    timeout: 180000
+
+  - id: vote
+    agent: tech_lead
+    action: consensus_vote
+    description: |
+      Run consensus voting on which discoveries to prioritize.
+      Uses supermajority threshold for research decisions.
+      Each discovery is evaluated by specialized agent roles.
+    inputs:
+      proposal: ${{ steps.analyze.output }}
+      strategy: supermajority
+    dependsOn:
+      - analyze
+    timeout: 300000
+
+  - id: catalog
+    agent: research_expert
+    action: catalog_entries
+    description: |
+      Add approved entries to the research registry.
+      Creates structured entries with metadata, tags, and source links.
+      Records learnings in session memory for future reference.
+    inputs:
+      analysis: ${{ steps.analyze.output }}
+      voteResult: ${{ steps.vote.output }}
+      autoApprove: ${{ inputs.autoApprove }}
+    dependsOn:
+      - vote
+    timeout: 60000
+
+timeout: 600000

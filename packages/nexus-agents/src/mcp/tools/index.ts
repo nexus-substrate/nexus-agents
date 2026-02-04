@@ -103,6 +103,56 @@ export {
   type VoteDecisionStatus,
 } from './consensus-vote.js';
 
+// Research tools (Phase 1 - Research System Enhancement)
+export {
+  registerResearchQueryTool,
+  ResearchQueryInputSchema,
+  type ResearchQueryInput,
+  type ResearchQueryDeps,
+  type ResearchQueryResponse,
+} from './research-query.js';
+
+export {
+  registerResearchAddTool,
+  ResearchAddInputSchema,
+  type ResearchAddInput,
+  type ResearchAddDeps,
+  type ResearchAddResponse,
+} from './research-add.js';
+
+export {
+  registerResearchDiscoverTool,
+  ResearchDiscoverInputSchema,
+  type ResearchDiscoverInput,
+  type ResearchDiscoverDeps,
+  type ResearchDiscoverResponse,
+  type DiscoveredItem,
+  type DiscoverySource,
+} from './research-discover.js';
+
+export {
+  registerResearchAnalyzeTool,
+  ResearchAnalyzeInputSchema,
+  type ResearchAnalyzeInput,
+  type ResearchAnalyzeDeps,
+  type ResearchAnalyzeResponse,
+  type AnalysisFocus,
+} from './research-analyze.js';
+
+export {
+  registerResearchCatalogReviewTool,
+  ResearchCatalogReviewInputSchema,
+  type ResearchCatalogReviewInput,
+  type ResearchCatalogReviewDeps,
+  type ResearchCatalogReviewResponse,
+} from './research-catalog-review.js';
+
+export {
+  ResearchAutoCatalog,
+  getAutoCatalog,
+  type CatalogedReference,
+} from './research-auto-catalog.js';
+
 /**
  * Options for tool registration.
  */
@@ -188,6 +238,11 @@ export function registerTools(
       'list_experts',
       'list_workflows',
       'consensus_vote',
+      'research_query',
+      'research_add',
+      'research_discover',
+      'research_analyze',
+      'research_catalog_review',
     ],
     logger,
     rateLimiter,

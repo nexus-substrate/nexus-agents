@@ -18,6 +18,11 @@ import {
   registerListExpertsTool,
   registerListWorkflowsTool,
   registerConsensusVoteTool,
+  registerResearchQueryTool,
+  registerResearchAddTool,
+  registerResearchDiscoverTool,
+  registerResearchAnalyzeTool,
+  registerResearchCatalogReviewTool,
   createDefaultDeps,
 } from './mcp/index.js';
 // Import mock directly from source (not public API - used as fallback when no adapter)
@@ -93,6 +98,11 @@ export const REGISTERED_TOOLS = [
   'list_experts',
   'list_workflows',
   'consensus_vote',
+  'research_query',
+  'research_add',
+  'research_discover',
+  'research_analyze',
+  'research_catalog_review',
 ] as const;
 
 /**
@@ -222,6 +232,34 @@ function registerConsensusTools(ctx: ToolRegistrationContext): void {
   });
 }
 
+/** Register research tools (research system enhancement). */
+function registerResearchTools(ctx: ToolRegistrationContext): void {
+  const researchDeps = {
+    logger: ctx.logger,
+    ...(ctx.securityConfig !== undefined && { security: ctx.securityConfig }),
+  };
+  registerResearchQueryTool(ctx.server, {
+    ...researchDeps,
+    rateLimiter: ctx.rateLimiterFactory.getForTool('research_query'),
+  });
+  registerResearchAddTool(ctx.server, {
+    ...researchDeps,
+    rateLimiter: ctx.rateLimiterFactory.getForTool('research_add'),
+  });
+  registerResearchDiscoverTool(ctx.server, {
+    ...researchDeps,
+    rateLimiter: ctx.rateLimiterFactory.getForTool('research_discover'),
+  });
+  registerResearchAnalyzeTool(ctx.server, {
+    ...researchDeps,
+    rateLimiter: ctx.rateLimiterFactory.getForTool('research_analyze'),
+  });
+  registerResearchCatalogReviewTool(ctx.server, {
+    ...researchDeps,
+    rateLimiter: ctx.rateLimiterFactory.getForTool('research_catalog_review'),
+  });
+}
+
 /** Register core routing and orchestration tools. */
 function registerCoreTools(ctx: ToolRegistrationContext): void {
   registerDelegateToModelTool(ctx.server, {
@@ -330,6 +368,7 @@ export function registerMcpTools(options: RegisterMcpToolsOptions): void {
   registerExpertTools(ctx);
   registerWorkflowTools(ctx);
   registerConsensusTools(ctx);
+  registerResearchTools(ctx);
   registerListExpertsTool(server, {
     logger: ctx.logger,
     rateLimiter: rateLimiterFactory.getForTool('list_experts'),

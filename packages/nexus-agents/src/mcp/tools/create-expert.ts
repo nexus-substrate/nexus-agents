@@ -35,6 +35,7 @@ export const CreateExpertInputSchema = z.object({
       'documentation_expert',
       'testing_expert',
       'devops_expert',
+      'research_expert',
     ])
     .describe('Expert role to create'),
   modelPreference: z.string().optional().describe('Preferred model (e.g., claude-sonnet-4)'),
@@ -101,6 +102,7 @@ const ROLE_TO_EXPERT_TYPE: Record<string, BuiltInExpertType> = {
   documentation_expert: 'documentation',
   testing_expert: 'testing',
   devops_expert: 'devops',
+  research_expert: 'research',
 };
 
 /**
@@ -284,13 +286,14 @@ export function registerCreateExpertTool(server: McpServer, deps: CreateExpertDe
         'documentation_expert',
         'testing_expert',
         'devops_expert',
+        'research_expert',
       ])
       .describe('Expert role to create'),
     modelPreference: z.string().optional().describe('Preferred model (e.g., claude-sonnet-4)'),
   };
 
   const description =
-    'Create a specialized expert agent for code, architecture, security, documentation, testing, or devops tasks';
+    'Create a specialized expert agent for code, architecture, security, documentation, testing, devops, or research tasks';
 
   // Wrap handler with secure handler for rate limiting and request context (Issue #531)
   const secureHandler = createSecureHandler(createCreateExpertHandler(deps), {

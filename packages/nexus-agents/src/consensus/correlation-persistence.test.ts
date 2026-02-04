@@ -1,0 +1,446 @@
+/**
+ * Tests for Correlation Persistence module.
+ * Verifies disk persistence for CorrelationTracker voting history.
+ * (Source: Issue #514)
+ */
+
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+
+// Use vi.hoisted for ESM-compatible mocking of node:os
+const mocks = vi.hoisted(() => {
+  let testHomedir = '/tmp/nexus-test-default';
+  return {
+    homedir: vi.fn(() => testHomedir),
+    tmpdir: vi.fn(() => '/tmp'),
+    setTestHomedir: (dir: string) => {
+      testHomedir = dir;
+    },
+  };
+});
+
+vi.mock('node:os', async (importOriginal) => {
+  const original = await importOriginal<typeof import('node:os')>();
+  return {
+    ...original,
+    homedir: mocks.homedir,
+    default: {
+      ...original,
+      homedir: mocks.homedir,
+    },
+  };
+});
+
+import {
+  getCorrelationDataPath,
+  saveCorrelationData,
+  loadCorrelationData,
+  createPersistentCorrelationTracker,
+  createPersistedProposal,
+  PersistedCorrelationDataSchema,
+} from './correlation-persistence.js';
+import type { Vote } from './types-core.js';
+
+// ============================================================================
+// Test Helpers
+// ============================================================================
+
+/** Creates a test Vote with minimal required fields. */
+function makeVote(decision: 'approve' | 'reject' | 'abstain', confidence = 0.8): Vote {
+  return { decision, reasoning: `test-${decision}`, confidence };
+}
+
+/** Creates a votes map from agent-decision pairs. */
+function makeVotesMap(
+  entries: Array<[string, 'approve' | 'reject' | 'abstain']>
+): Map<string, Vote> {
+  const map = new Map<string, Vote>();
+  for (const [agentId, decision] of entries) {
+    map.set(agentId, makeVote(decision));
+  }
+  return map;
+}
+
+// ============================================================================
+// Path Tests
+// ============================================================================
+
+describe('getCorrelationDataPath', () => {
+  it('should return a path containing .nexus-agents/voting/correlations.json', () => {
+    const result = getCorrelationDataPath();
+
+    expect(result).toContain('.nexus-agents');
+    expect(result).toContain('voting');
+    expect(result).toContain('correlations.json');
+    expect(path.isAbsolute(result)).toBe(true);
+  });
+});
+
+// ============================================================================
+// createPersistedProposal Tests
+// ============================================================================
+
+describe('createPersistedProposal', () => {
+  it('should create correct structure from vote data', () => {
+    const votes = makeVotesMap([
+      ['architect', 'approve'],
+      ['security', 'reject'],
+      ['pm', 'approve'],
+    ]);
+
+    const proposal = createPersistedProposal('prop-1', votes, 'approved');
+
+    expect(proposal.proposalId).toBe('prop-1');
+    expect(proposal.outcome).toBe('approved');
+    expect(proposal.votes).toHaveLength(3);
+    expect(proposal.timestamp).toBeDefined();
+    // Verify ISO datetime format
+    expect(() => new Date(proposal.timestamp)).not.toThrow();
+  });
+
+  it('should map agent IDs correctly', () => {
+    const votes = makeVotesMap([
+      ['agent-a', 'approve'],
+      ['agent-b', 'reject'],
+    ]);
+
+    const proposal = createPersistedProposal('prop-2', votes, 'rejected');
+
+    const agentIds = proposal.votes.map((v) => v.agentId);
+    expect(agentIds).toContain('agent-a');
+    expect(agentIds).toContain('agent-b');
+  });
+
+  it('should preserve vote decisions and confidence', () => {
+    const votes = new Map<string, Vote>();
+    votes.set('agent-x', { decision: 'approve', reasoning: 'good', confidence: 0.95 });
+
+    const proposal = createPersistedProposal('prop-3', votes, 'approved');
+
+    expect(proposal.votes[0]?.decision).toBe('approve');
+    expect(proposal.votes[0]?.confidence).toBe(0.95);
+  });
+
+  it('should handle empty votes map', () => {
+    const votes = new Map<string, Vote>();
+    const proposal = createPersistedProposal('prop-empty', votes, 'rejected');
+
+    expect(proposal.proposalId).toBe('prop-empty');
+    expect(proposal.votes).toHaveLength(0);
+    expect(proposal.outcome).toBe('rejected');
+  });
+
+  it('should produce data that passes schema validation', () => {
+    const votes = makeVotesMap([['agent-1', 'approve']]);
+    const proposal = createPersistedProposal('schema-test', votes, 'approved');
+
+    const data = {
+      version: 1,
+      proposals: [proposal],
+      savedAt: new Date().toISOString(),
+    };
+
+    const result = PersistedCorrelationDataSchema.safeParse(data);
+    expect(result.success).toBe(true);
+  });
+});
+
+// ============================================================================
+// Persistence Round-Trip Tests (using temp directory)
+// ============================================================================
+
+describe('saveCorrelationData and loadCorrelationData', () => {
+  let testDir: string;
+
+  beforeEach(() => {
+    testDir = fs.mkdtempSync(path.join('/tmp', 'nexus-corr-test-'));
+    mocks.setTestHomedir(testDir);
+  });
+
+  afterEach(() => {
+    if (fs.existsSync(testDir)) {
+      fs.rmSync(testDir, { recursive: true });
+    }
+  });
+
+  it('should round-trip save and load correctly', () => {
+    const votes = makeVotesMap([
+      ['architect', 'approve'],
+      ['security', 'approve'],
+    ]);
+    const proposal = createPersistedProposal('rt-1', votes, 'approved');
+
+    const saveResult = saveCorrelationData([proposal]);
+    expect(saveResult.ok).toBe(true);
+
+    const loadResult = loadCorrelationData();
+    expect(loadResult.ok).toBe(true);
+    if (loadResult.ok) {
+      expect(loadResult.value.version).toBe(1);
+      expect(loadResult.value.proposals).toHaveLength(1);
+      expect(loadResult.value.proposals[0]?.proposalId).toBe('rt-1');
+      expect(loadResult.value.proposals[0]?.votes).toHaveLength(2);
+    }
+  });
+
+  it('should handle missing file gracefully on load', () => {
+    const result = loadCorrelationData();
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toContain('not found');
+    }
+  });
+
+  it('should handle corrupt JSON gracefully on load', () => {
+    const votingDir = path.join(testDir, '.nexus-agents', 'voting');
+    fs.mkdirSync(votingDir, { recursive: true });
+    fs.writeFileSync(path.join(votingDir, 'correlations.json'), '{ invalid json !!', 'utf-8');
+
+    const result = loadCorrelationData();
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toContain('Corrupt');
+    }
+  });
+
+  it('should handle invalid schema gracefully on load', () => {
+    const votingDir = path.join(testDir, '.nexus-agents', 'voting');
+    fs.mkdirSync(votingDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(votingDir, 'correlations.json'),
+      JSON.stringify({ version: 1, wrongField: true }),
+      'utf-8'
+    );
+
+    const result = loadCorrelationData();
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toContain('Invalid correlation data schema');
+    }
+  });
+
+  it('should merge proposals across separate saves', () => {
+    const votes1 = makeVotesMap([['agent-a', 'approve']]);
+    const votes2 = makeVotesMap([['agent-b', 'reject']]);
+
+    const proposal1 = createPersistedProposal('merge-1', votes1, 'approved');
+    const proposal2 = createPersistedProposal('merge-2', votes2, 'rejected');
+
+    // Save first proposal
+    saveCorrelationData([proposal1]);
+    // Save second proposal (should merge with first)
+    saveCorrelationData([proposal2]);
+
+    const loadResult = loadCorrelationData();
+    expect(loadResult.ok).toBe(true);
+    if (loadResult.ok) {
+      expect(loadResult.value.proposals).toHaveLength(2);
+      const ids = loadResult.value.proposals.map((p) => p.proposalId);
+      expect(ids).toContain('merge-1');
+      expect(ids).toContain('merge-2');
+    }
+  });
+
+  it('should deduplicate proposals with same ID, preferring new entry', () => {
+    const votesOld = makeVotesMap([['agent-a', 'reject']]);
+    const votesNew = makeVotesMap([
+      ['agent-a', 'approve'],
+      ['agent-b', 'approve'],
+    ]);
+
+    const proposalOld = createPersistedProposal('dedup-1', votesOld, 'rejected');
+    saveCorrelationData([proposalOld]);
+
+    // Save same proposalId with different data
+    const proposalNew = createPersistedProposal('dedup-1', votesNew, 'approved');
+    saveCorrelationData([proposalNew]);
+
+    const loadResult = loadCorrelationData();
+    expect(loadResult.ok).toBe(true);
+    if (loadResult.ok) {
+      expect(loadResult.value.proposals).toHaveLength(1);
+      // Should have the newer version with 2 votes
+      expect(loadResult.value.proposals[0]?.votes).toHaveLength(2);
+      expect(loadResult.value.proposals[0]?.outcome).toBe('approved');
+    }
+  });
+
+  it('should apply FIFO eviction when exceeding maxProposals', () => {
+    const proposals = [];
+    for (let i = 0; i < 5; i++) {
+      const votes = makeVotesMap([['agent-a', 'approve']]);
+      const proposal = createPersistedProposal(`evict-${String(i)}`, votes, 'approved');
+      proposals.push(proposal);
+    }
+
+    // Save with maxProposals=3
+    saveCorrelationData(proposals, {
+      minObservationsForCorrelation: 10,
+      correlationThreshold: 0.3,
+      correlationMaxAgeMs: 86400000,
+      independenceThreshold: 0.2,
+      fallbackToSimpleVoting: true,
+      observationDecayFactor: 0.95,
+      maxObservationsPerAgent: 1000,
+      maxProposals: 3,
+    });
+
+    const loadResult = loadCorrelationData();
+    expect(loadResult.ok).toBe(true);
+    if (loadResult.ok) {
+      // Should keep only the 3 most recent
+      expect(loadResult.value.proposals).toHaveLength(3);
+    }
+  });
+
+  it('should create directory structure on save', () => {
+    const votes = makeVotesMap([['agent-a', 'approve']]);
+    const proposal = createPersistedProposal('dir-test', votes, 'approved');
+
+    const result = saveCorrelationData([proposal]);
+    expect(result.ok).toBe(true);
+
+    const votingDir = path.join(testDir, '.nexus-agents', 'voting');
+    expect(fs.existsSync(votingDir)).toBe(true);
+  });
+});
+
+// ============================================================================
+// Persistent Tracker Factory Tests
+// ============================================================================
+
+describe('createPersistentCorrelationTracker', () => {
+  let testDir: string;
+
+  beforeEach(() => {
+    testDir = fs.mkdtempSync(path.join('/tmp', 'nexus-tracker-test-'));
+    mocks.setTestHomedir(testDir);
+  });
+
+  afterEach(() => {
+    if (fs.existsSync(testDir)) {
+      fs.rmSync(testDir, { recursive: true });
+    }
+  });
+
+  it('should return a functional tracker when no persisted data exists', () => {
+    const tracker = createPersistentCorrelationTracker();
+
+    expect(tracker).toBeDefined();
+    expect(tracker.getStats).toBeDefined();
+
+    const stats = tracker.getStats();
+    expect(stats.totalAgents).toBe(0);
+    expect(stats.totalObservations).toBe(0);
+  });
+
+  it('should record and retrieve stats after recording votes', () => {
+    const tracker = createPersistentCorrelationTracker();
+
+    const votes = makeVotesMap([
+      ['architect', 'approve'],
+      ['security', 'reject'],
+    ]);
+
+    tracker.recordProposalVotes('prop-1', votes, 'approved');
+
+    const stats = tracker.getStats();
+    expect(stats.totalAgents).toBe(2);
+    expect(stats.totalObservations).toBeGreaterThan(0);
+  });
+
+  it('should replay persisted proposals into a new tracker', () => {
+    // Save some proposals to disk first
+    const votes = makeVotesMap([
+      ['agent-a', 'approve'],
+      ['agent-b', 'reject'],
+    ]);
+    const proposal = createPersistedProposal('replay-1', votes, 'approved');
+    saveCorrelationData([proposal]);
+
+    // Create a new tracker that should replay from disk
+    const tracker = createPersistentCorrelationTracker();
+
+    const stats = tracker.getStats();
+    expect(stats.totalAgents).toBe(2);
+    expect(stats.totalObservations).toBeGreaterThan(0);
+  });
+});
+
+// ============================================================================
+// Schema Validation Tests
+// ============================================================================
+
+describe('PersistedCorrelationDataSchema', () => {
+  it('should accept valid data', () => {
+    const data = {
+      version: 1,
+      proposals: [
+        {
+          proposalId: 'test-1',
+          votes: [{ agentId: 'agent-1', decision: 'approve', confidence: 0.9 }],
+          outcome: 'approved',
+          timestamp: new Date().toISOString(),
+        },
+      ],
+      savedAt: new Date().toISOString(),
+    };
+
+    const result = PersistedCorrelationDataSchema.safeParse(data);
+    expect(result.success).toBe(true);
+  });
+
+  it('should reject data with invalid version', () => {
+    const data = {
+      version: -1,
+      proposals: [],
+      savedAt: new Date().toISOString(),
+    };
+
+    const result = PersistedCorrelationDataSchema.safeParse(data);
+    expect(result.success).toBe(false);
+  });
+
+  it('should reject data with invalid vote decision', () => {
+    const data = {
+      version: 1,
+      proposals: [
+        {
+          proposalId: 'test-1',
+          votes: [{ agentId: 'agent-1', decision: 'maybe', confidence: 0.9 }],
+          outcome: 'approved',
+          timestamp: new Date().toISOString(),
+        },
+      ],
+      savedAt: new Date().toISOString(),
+    };
+
+    const result = PersistedCorrelationDataSchema.safeParse(data);
+    expect(result.success).toBe(false);
+  });
+
+  it('should reject data with confidence out of range', () => {
+    const data = {
+      version: 1,
+      proposals: [
+        {
+          proposalId: 'test-1',
+          votes: [{ agentId: 'agent-1', decision: 'approve', confidence: 1.5 }],
+          outcome: 'approved',
+          timestamp: new Date().toISOString(),
+        },
+      ],
+      savedAt: new Date().toISOString(),
+    };
+
+    const result = PersistedCorrelationDataSchema.safeParse(data);
+    expect(result.success).toBe(false);
+  });
+
+  it('should reject missing required fields', () => {
+    const data = { version: 1 };
+    const result = PersistedCorrelationDataSchema.safeParse(data);
+    expect(result.success).toBe(false);
+  });
+});
