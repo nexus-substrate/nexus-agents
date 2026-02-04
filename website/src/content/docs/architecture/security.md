@@ -75,23 +75,23 @@ server:
 
 Every MCP tool invocation passes through a hardened middleware pipeline:
 
-| Layer               | Protection                                          |
-| ------------------- | --------------------------------------------------- |
-| CORS                | Strict origin checking for HTTP transports          |
-| Security Headers    | X-Content-Type-Options, X-Frame-Options, CSP        |
-| Body Size Limits    | Configurable max request size (default 1 MB)        |
-| Input Validation    | Size limits on tool arguments, Zod validation       |
-| Policy Firewall     | Allowlist/denylist rules per tool with enforcement  |
-| Rate Limiting       | Token bucket per tool (configurable requests/min)   |
-| Output Sanitization | Secret pattern redaction (keys, tokens, passwords)  |
-| Audit Logging       | SIEM-compatible JSON-L events for tool invocations  |
+| Layer               | Protection                                         |
+| ------------------- | -------------------------------------------------- |
+| CORS                | Strict origin checking for HTTP transports         |
+| Security Headers    | X-Content-Type-Options, X-Frame-Options, CSP       |
+| Body Size Limits    | Configurable max request size (default 1 MB)       |
+| Input Validation    | Size limits on tool arguments, Zod validation      |
+| Policy Firewall     | Allowlist/denylist rules per tool with enforcement |
+| Rate Limiting       | Token bucket per tool (configurable requests/min)  |
+| Output Sanitization | Secret pattern redaction (keys, tokens, passwords) |
+| Audit Logging       | SIEM-compatible JSON-L events for tool invocations |
 
 ### Configuration
 
 ```yaml
 security:
   policy:
-    policyMode: enforce    # enforce | warn
+    policyMode: enforce # enforce | warn
     defaultMode: read-only # read-only | read-write
 
   rateLimit:
@@ -101,8 +101,8 @@ security:
   audit:
     enabled: true
     logDir: ~/.nexus-agents/audit
-    minSeverity: info      # info | warning | critical
-    enableHashChain: false  # Tamper-evident log chain
+    minSeverity: info # info | warning | critical
+    enableHashChain: false # Tamper-evident log chain
     maxFileSizeBytes: 10485760
     maxFiles: 10
 ```
@@ -358,7 +358,7 @@ security:
   audit:
     enabled: true
     minSeverity: info
-    enableHashChain: true  # Optional tamper-evident chain
+    enableHashChain: true # Optional tamper-evident chain
 ```
 
 Each event includes: timestamp, actor, tool name, request ID, duration, and outcome. With `enableHashChain: true`, events include a SHA-256 hash chain for tamper detection.
