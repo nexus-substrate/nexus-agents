@@ -303,30 +303,36 @@ function maybeRunStpaAnalysis(options: RegisterMcpToolsOptions, logger: ILogger)
   runStpaSafetyAnalysis(logger, options.failOnHighSeverityHazards ?? false);
 }
 
+/** Copies optional properties from registration options, excluding undefined values. */
+function copyOptionalProps(opts: RegisterMcpToolsOptions): Partial<ToolRegistrationContext> {
+  const result: Partial<ToolRegistrationContext> = {};
+  if (opts.modelAdapter !== undefined) result.modelAdapter = opts.modelAdapter;
+  if (opts.useMockTechLead !== undefined) result.useMockTechLead = opts.useMockTechLead;
+  if (opts.policyFirewall !== undefined) result.policyFirewall = opts.policyFirewall;
+  if (opts.executionMode !== undefined) result.executionMode = opts.executionMode;
+  if (opts.allowedPaths !== undefined) result.allowedPaths = opts.allowedPaths;
+  if (opts.securityConfig !== undefined) result.securityConfig = opts.securityConfig;
+  if (opts.workflowConfig !== undefined) result.workflowConfig = opts.workflowConfig;
+  if (opts.feedbackIntegration !== undefined) result.feedbackIntegration = opts.feedbackIntegration;
+  return result;
+}
+
 /** Creates tool registration context from options. */
 function createToolContext(
   options: RegisterMcpToolsOptions,
   toolInfra: { logger: ILogger },
   rateLimiterFactory: ReturnType<typeof createToolRateLimiterFactory>
 ): ToolRegistrationContext {
-  const ctx: ToolRegistrationContext = {
+  return {
     server: options.server,
     logger: toolInfra.logger,
     rateLimiterFactory,
     builtInTemplates: options.builtInTemplates,
-    modelAdapter: options.modelAdapter,
-    useMockTechLead: options.useMockTechLead,
-    policyFirewall: options.policyFirewall,
-    executionMode: options.executionMode,
-    allowedPaths: options.allowedPaths,
-    securityConfig: options.securityConfig,
-    workflowConfig: options.workflowConfig,
-    feedbackIntegration: options.feedbackIntegration,
+    ...copyOptionalProps(options),
+    ...(options.securityConfig?.toolAllowlist !== undefined && {
+      toolAllowlist: new Set(options.securityConfig.toolAllowlist),
+    }),
   };
-  if (options.securityConfig?.toolAllowlist !== undefined) {
-    ctx.toolAllowlist = new Set(options.securityConfig.toolAllowlist);
-  }
-  return ctx;
 }
 
 /**
@@ -351,9 +357,9 @@ function logToolRegistration(
     rateLimiterFactory: ReturnType<typeof createToolRateLimiterFactory>;
     perToolConfig: Record<string, unknown> | undefined;
     builtInTemplates: Map<string, unknown>;
-    modelAdapter?: unknown;
-    policyFirewall?: { getMode(): string };
-    executionMode?: string;
+    modelAdapter: unknown;
+    policyFirewall: { getMode(): string } | undefined;
+    executionMode: string | undefined;
   }
 ): void {
   const activeTools = allowlist
