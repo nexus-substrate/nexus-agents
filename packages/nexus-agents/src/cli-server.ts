@@ -47,6 +47,7 @@ import {
   logRestApiConfig,
 } from './cli-server-rest.js';
 import type { RestApiServer } from './api/rest-server.js';
+import { shutdownToolMemory } from './mcp/tools/tool-memory.js';
 
 // Re-export for backward compatibility
 export { type OrchestratorModeOptions } from './cli-orchestrator.js';
@@ -272,6 +273,9 @@ function createShutdownCleanup(options: ShutdownCleanupOptions): () => Promise<v
 
     recordServerShutdown(observer, eventContext);
     logFinalHealthMetrics(observer, logger);
+
+    // Persist tool memory session to disk (Issue #690)
+    shutdownToolMemory();
 
     const closeResult = await closeServer(server, serverLogger);
     if (!closeResult.ok) {
