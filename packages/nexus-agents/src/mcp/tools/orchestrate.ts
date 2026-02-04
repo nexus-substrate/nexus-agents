@@ -31,6 +31,7 @@ import { createSecureHandler, type HandlerContext } from '../middleware/secure-h
 import type { ExecutionPlan, Expert } from '../../agents/index.js';
 import { createTechLeadWithSica } from './orchestrate-sica.js';
 import { OrchestratorFactory } from '../../orchestration/orchestrator-factory.js';
+import { getToolMemory } from './tool-memory.js';
 
 /**
  * Input schema for the orchestrate tool.
@@ -274,6 +275,57 @@ function createErrorOptions(
 }
 
 /**
+ * Records a successful orchestration to session memory.
+ * Safe to call - silently degrades if memory unavailable. (Issue #690)
+ */
+function recordOrchestrationSuccess(
+  taskId: string,
+  taskDescription: string,
+  stepsCompleted: number,
+  durationMs: number
+): void {
+  try {
+    const memory = getToolMemory();
+    memory.recordTask({
+      approach: `Orchestrated: ${taskDescription.slice(0, 100)}`,
+      challenges: [],
+      durationMs,
+    });
+    memory.recordLearning({
+      pattern: `Orchestration completed in ${String(stepsCompleted)} steps`,
+      context: `task=${taskId}`,
+      confidence: 0.7,
+      source: 'orchestrate-tool',
+    });
+  } catch {
+    // Memory recording is best-effort; never fail orchestration for it
+  }
+}
+
+/**
+ * Records an orchestration error to session memory.
+ * Safe to call - silently degrades if memory unavailable. (Issue #690)
+ */
+function recordOrchestrationError(errorMessage: string, taskDescription: string): void {
+  try {
+    const memory = getToolMemory();
+    memory.recordError({
+      error: errorMessage.slice(0, 200),
+      solution: 'Pending - orchestration failed',
+      filePattern: 'mcp/tools/orchestrate',
+    });
+    memory.recordLearning({
+      pattern: `Orchestration failure: ${errorMessage.slice(0, 80)}`,
+      context: `task=${taskDescription.slice(0, 60)}`,
+      confidence: 0.5,
+      source: 'orchestrate-tool-error',
+    });
+  } catch {
+    // Memory recording is best-effort; never fail orchestration for it
+  }
+}
+
+/**
  * Executes the orchestration logic.
  * Uses unified IOrchestrator interface via factory (Issue #595).
  */
@@ -297,6 +349,8 @@ async function executeOrchestration(
     if (!result.ok) {
       logger.error('Orchestration failed', result.error, { taskId });
       const cause = result.error instanceof Error ? result.error : undefined;
+      // Record error to session memory (Issue #690)
+      recordOrchestrationError(result.error.message, input.task);
       return err(
         new OrchestrationError(
           `Task execution failed: ${result.error.message}`,
@@ -307,6 +361,9 @@ async function executeOrchestration(
 
     const durationMs = getTimeProvider().now() - startTime;
     const output = buildOutputFromOrchestratorResult(taskId, result.value, durationMs);
+
+    // Record success to session memory (Issue #690)
+    recordOrchestrationSuccess(taskId, input.task, output.stepsCompleted, durationMs);
 
     logger.info('Orchestration completed', {
       taskId,
@@ -319,6 +376,8 @@ async function executeOrchestration(
     const message = error instanceof Error ? error.message : 'Unknown error';
     const cause = error instanceof Error ? error : undefined;
     logger.error('Orchestration exception', cause, { taskId });
+    // Record exception to session memory (Issue #690)
+    recordOrchestrationError(message, input.task);
     return err(
       new OrchestrationError(
         `Orchestration failed unexpectedly: ${message}`,

@@ -23,6 +23,7 @@ import type { SecurityConfig } from '../../config/schemas.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import type { Expert } from '../../agents/index.js';
+import { getToolMemory } from './tool-memory.js';
 
 /**
  * Input schema for execute_expert tool.
@@ -176,6 +177,38 @@ function buildSuccessResponse(
 }
 
 /**
+ * Records a successful expert execution to session memory. (Issue #690)
+ */
+function recordExpertSuccess(expertId: string, role: string, durationMs: number): void {
+  try {
+    const memory = getToolMemory();
+    memory.recordTask({
+      approach: `Expert execution: ${role} (${expertId})`,
+      challenges: [],
+      durationMs,
+    });
+  } catch {
+    // Best-effort memory recording
+  }
+}
+
+/**
+ * Records a failed expert execution to session memory. (Issue #690)
+ */
+function recordExpertError(expertId: string, role: string, errorMessage: string): void {
+  try {
+    const memory = getToolMemory();
+    memory.recordError({
+      error: `Expert ${role} (${expertId}): ${errorMessage.slice(0, 150)}`,
+      solution: 'Pending - expert execution failed',
+      filePattern: 'mcp/tools/execute-expert',
+    });
+  } catch {
+    // Best-effort memory recording
+  }
+}
+
+/**
  * Handles the execute_expert tool execution.
  */
 async function handleExecuteExpert(
@@ -205,6 +238,8 @@ async function handleExecuteExpert(
 
   if (!result.ok) {
     deps.logger?.warn('Expert execution failed', { expertId, error: result.error.message });
+    // Record error to session memory (Issue #690)
+    recordExpertError(expertId, expert.role, result.error.message);
     return {
       ok: true,
       value: buildErrorResponse(expertId, expert.role, result.error.message, durationMs),
@@ -216,6 +251,9 @@ async function handleExecuteExpert(
     durationMs,
     tokensUsed: result.value.metadata.tokensUsed,
   });
+
+  // Record success to session memory (Issue #690)
+  recordExpertSuccess(expertId, expert.role, durationMs);
 
   return {
     ok: true,
