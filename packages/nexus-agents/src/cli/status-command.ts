@@ -2,10 +2,11 @@
  * nexus-agents/cli - Status Command
  *
  * At-a-glance project health dashboard combining fitness score,
- * adapter availability, and version info into a single view.
+ * adapter availability (both CLI tools and API keys), and version info.
  *
  * @module cli/status-command
  * (Source: Issue #688)
+ * (Enhanced: Issue #691 - CLI-first adapter detection)
  */
 
 import { VERSION } from '../version.js';
@@ -13,15 +14,23 @@ import { colors, symbols } from './ansi-output.js';
 import { createFitnessScoreCalculator } from '../governance/fitness-score.js';
 import { createLogger } from '../core/index.js';
 import type { ParsedCliArgs } from '../cli-types.js';
+import { execFileSync } from 'node:child_process';
 
 // ============================================================================
 // Types
 // ============================================================================
 
-interface AdapterStatus {
+interface ApiAdapterStatus {
   readonly name: string;
   readonly envVar: string;
   readonly available: boolean;
+}
+
+interface CliToolStatus {
+  readonly name: string;
+  readonly binary: string;
+  readonly installed: boolean;
+  readonly version: string | null;
 }
 
 export interface StatusResult {
@@ -29,7 +38,9 @@ export interface StatusResult {
   readonly nodeVersion: string;
   readonly fitnessScore: number;
   readonly fitnessTarget: number;
-  readonly adapters: readonly AdapterStatus[];
+  readonly adapters: readonly ApiAdapterStatus[];
+  readonly cliTools: readonly CliToolStatus[];
+  readonly adapterStrategy: string;
   readonly timestamp: string;
 }
 
@@ -39,22 +50,63 @@ export interface StatusResult {
 
 const FITNESS_TARGET = 90;
 
-const ADAPTER_CHECKS: ReadonlyArray<{ name: string; envVar: string }> = [
+const API_ADAPTER_CHECKS: ReadonlyArray<{ name: string; envVar: string }> = [
   { name: 'Claude', envVar: 'ANTHROPIC_API_KEY' },
   { name: 'Gemini', envVar: 'GOOGLE_AI_API_KEY' },
   { name: 'OpenAI', envVar: 'OPENAI_API_KEY' },
+];
+
+const CLI_TOOL_CHECKS: ReadonlyArray<{ name: string; binary: string }> = [
+  { name: 'Claude CLI', binary: 'claude' },
+  { name: 'Gemini CLI', binary: 'gemini' },
+  { name: 'Codex CLI', binary: 'codex' },
 ];
 
 // ============================================================================
 // Core Logic
 // ============================================================================
 
-function checkAdapters(): readonly AdapterStatus[] {
-  return ADAPTER_CHECKS.map((check) => ({
+function checkApiAdapters(): readonly ApiAdapterStatus[] {
+  return API_ADAPTER_CHECKS.map((check) => ({
     name: check.name,
     envVar: check.envVar,
     available: process.env[check.envVar] !== undefined && process.env[check.envVar] !== '',
   }));
+}
+
+/**
+ * Detects installed CLI tools by checking binary availability.
+ * Uses sync subprocess to keep status command fast and deterministic.
+ */
+function detectCliTools(): readonly CliToolStatus[] {
+  return CLI_TOOL_CHECKS.map((check) => {
+    try {
+      const version = execFileSync(check.binary, ['--version'], {
+        timeout: 5000,
+        stdio: ['ignore', 'pipe', 'ignore'],
+        encoding: 'utf-8',
+      }).trim();
+      return { name: check.name, binary: check.binary, installed: true, version };
+    } catch {
+      return { name: check.name, binary: check.binary, installed: false, version: null };
+    }
+  });
+}
+
+/**
+ * Determines the effective adapter strategy based on available tools.
+ */
+function determineStrategy(
+  cliTools: readonly CliToolStatus[],
+  adapters: readonly ApiAdapterStatus[]
+): string {
+  const hasCli = cliTools.some((t) => t.installed);
+  const hasApi = adapters.some((a) => a.available);
+
+  if (hasCli && hasApi) return 'cli-first (CLI preferred, API fallback)';
+  if (hasCli) return 'cli-only (no API keys configured)';
+  if (hasApi) return 'api-only (no CLIs detected)';
+  return 'none (no adapters available)';
 }
 
 /** Exported for testing. */
@@ -62,7 +114,8 @@ export function collectStatus(): StatusResult {
   const logger = createLogger({ component: 'status', level: 'error' });
   const calculator = createFitnessScoreCalculator(logger);
   const audit = calculator.audit(VERSION);
-  const adapters = checkAdapters();
+  const adapters = checkApiAdapters();
+  const cliTools = detectCliTools();
 
   return {
     version: VERSION,
@@ -70,6 +123,8 @@ export function collectStatus(): StatusResult {
     fitnessScore: audit.score,
     fitnessTarget: FITNESS_TARGET,
     adapters,
+    cliTools,
+    adapterStrategy: determineStrategy(cliTools, adapters),
     timestamp: new Date().toISOString(),
   };
 }
@@ -95,13 +150,25 @@ function renderTable(status: StatusResult): void {
   // Node version
   w(`  Node.js:        ${c.cyan}${status.nodeVersion}${c.reset}\n`);
 
-  // Adapters
+  // Strategy
+  w(`  Strategy:       ${c.cyan}${status.adapterStrategy}${c.reset}\n`);
+
+  // CLI Tools
+  const cliParts = status.cliTools.map((t) => {
+    const color = t.installed ? c.green : c.dim;
+    const sym = t.installed ? s.check : s.cross;
+    const ver = t.installed && t.version !== null ? ` ${c.dim}(${t.version})${c.reset}` : '';
+    return `${color}${t.name} ${sym}${c.reset}${ver}`;
+  });
+  w(`  CLI Tools:      ${cliParts.join('  ')}\n`);
+
+  // API Adapters
   const adapterParts = status.adapters.map((a) => {
     const color = a.available ? c.green : c.dim;
     const sym = a.available ? s.check : s.cross;
     return `${color}${a.name} ${sym}${c.reset}`;
   });
-  w(`  API Adapters:   ${adapterParts.join('  ')}\n`);
+  w(`  API Keys:       ${adapterParts.join('  ')}\n`);
 
   w('\n');
 }
