@@ -345,15 +345,20 @@ async function queryAllSources(
   for (const src of ALL_SOURCES) {
     if (shouldQuery(src)) {
       sources.push(src);
-      items = items.concat(
-        await discoverFromExtendedSource(
-          src,
-          input.topic,
-          input.maxResults,
-          logger,
-          input.sinceDate
-        )
-      );
+      try {
+        items = items.concat(
+          await discoverFromExtendedSource(
+            src,
+            input.topic,
+            input.maxResults,
+            logger,
+            input.sinceDate
+          )
+        );
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.warn('Extended source discovery failed', { source: src, error: message });
+      }
     }
   }
   return { sources, items };

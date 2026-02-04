@@ -159,7 +159,15 @@ export async function discoverGitHubRepos(
   });
   if (!fetchResult.ok) return fetchResult;
 
-  const raw = await fetchResult.value.json();
+  let raw: unknown;
+  try {
+    raw = await fetchResult.value.json();
+  } catch {
+    return {
+      ok: false,
+      error: createError('PARSE_ERROR', 'github', 'Response is not valid JSON'),
+    };
+  }
   const parsed = GitHubSearchResponseSchema.safeParse(raw);
   if (!parsed.success) {
     return {
