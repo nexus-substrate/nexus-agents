@@ -1,5 +1,5 @@
 /**
- * Tests for status-command.ts (Issue #688)
+ * Tests for status-command.ts (Issue #688, #691)
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -7,6 +7,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 // Preload heavy modules before mocking
 await import('../version.js');
 await import('../governance/fitness-score.js');
+
+// Pre-import status module once (CLI detection runs on import/call)
+const statusModule = await import('./status-command.js');
 
 describe('status-command', () => {
   let originalEnv: NodeJS.ProcessEnv;
@@ -20,14 +23,13 @@ describe('status-command', () => {
     vi.restoreAllMocks();
   });
 
-  it('exports handleStatusCommand and collectStatus', async () => {
-    const mod = await import('./status-command.js');
-    expect(typeof mod.handleStatusCommand).toBe('function');
-    expect(typeof mod.collectStatus).toBe('function');
+  it('exports handleStatusCommand and collectStatus', () => {
+    expect(typeof statusModule.handleStatusCommand).toBe('function');
+    expect(typeof statusModule.collectStatus).toBe('function');
   });
 
-  it('collectStatus returns expected shape', async () => {
-    const { collectStatus } = await import('./status-command.js');
+  it('collectStatus returns expected shape', () => {
+    const { collectStatus } = statusModule;
     const status = collectStatus();
 
     expect(status).toHaveProperty('version');
@@ -35,11 +37,13 @@ describe('status-command', () => {
     expect(status).toHaveProperty('fitnessScore');
     expect(status).toHaveProperty('fitnessTarget');
     expect(status).toHaveProperty('adapters');
+    expect(status).toHaveProperty('cliTools');
+    expect(status).toHaveProperty('adapterStrategy');
     expect(status).toHaveProperty('timestamp');
   });
 
-  it('fitness score is between 0 and 100', async () => {
-    const { collectStatus } = await import('./status-command.js');
+  it('fitness score is between 0 and 100', () => {
+    const { collectStatus } = statusModule;
     const status = collectStatus();
 
     expect(typeof status.fitnessScore).toBe('number');
@@ -47,34 +51,34 @@ describe('status-command', () => {
     expect(status.fitnessScore).toBeLessThanOrEqual(100);
   });
 
-  it('node version matches runtime', async () => {
-    const { collectStatus } = await import('./status-command.js');
+  it('node version matches runtime', () => {
+    const { collectStatus } = statusModule;
     const status = collectStatus();
 
     expect(status.nodeVersion).toBe(process.version);
     expect(status.nodeVersion).toMatch(/^v\d+\.\d+\.\d+$/);
   });
 
-  it('fitness target is 90', async () => {
-    const { collectStatus } = await import('./status-command.js');
+  it('fitness target is 90', () => {
+    const { collectStatus } = statusModule;
     const status = collectStatus();
 
     expect(status.fitnessTarget).toBe(90);
   });
 
-  it('timestamp is valid ISO string', async () => {
-    const { collectStatus } = await import('./status-command.js');
+  it('timestamp is valid ISO string', () => {
+    const { collectStatus } = statusModule;
     const status = collectStatus();
 
     expect(new Date(status.timestamp).toISOString()).toBe(status.timestamp);
   });
 
-  it('detects available API adapters from env', async () => {
+  it('detects available API adapters from env', () => {
     process.env['ANTHROPIC_API_KEY'] = 'test-key';
     process.env['GOOGLE_AI_API_KEY'] = 'test-key';
     delete process.env['OPENAI_API_KEY'];
 
-    const { collectStatus } = await import('./status-command.js');
+    const { collectStatus } = statusModule;
     const status = collectStatus();
 
     const claude = status.adapters.find((a) => a.name === 'Claude');
@@ -86,12 +90,12 @@ describe('status-command', () => {
     expect(openai?.available).toBe(false);
   });
 
-  it('marks adapters unavailable when env vars missing', async () => {
+  it('marks adapters unavailable when env vars missing', () => {
     delete process.env['ANTHROPIC_API_KEY'];
     delete process.env['GOOGLE_AI_API_KEY'];
     delete process.env['OPENAI_API_KEY'];
 
-    const { collectStatus } = await import('./status-command.js');
+    const { collectStatus } = statusModule;
     const status = collectStatus();
 
     for (const adapter of status.adapters) {
@@ -99,11 +103,46 @@ describe('status-command', () => {
     }
   });
 
-  it('renders table output with expected sections', async () => {
+  it('cliTools contains all three CLIs', () => {
+    const { collectStatus } = statusModule;
+    const status = collectStatus();
+
+    expect(status.cliTools).toHaveLength(3);
+    const names = status.cliTools.map((t) => t.binary);
+    expect(names).toContain('claude');
+    expect(names).toContain('gemini');
+    expect(names).toContain('codex');
+  });
+
+  it('cliTools entries have correct shape', () => {
+    const { collectStatus } = statusModule;
+    const status = collectStatus();
+
+    for (const tool of status.cliTools) {
+      expect(tool).toHaveProperty('name');
+      expect(tool).toHaveProperty('binary');
+      expect(typeof tool.installed).toBe('boolean');
+      if (tool.installed) {
+        expect(typeof tool.version).toBe('string');
+      } else {
+        expect(tool.version).toBeNull();
+      }
+    }
+  });
+
+  it('adapterStrategy reflects available adapters', () => {
+    const { collectStatus } = statusModule;
+    const status = collectStatus();
+
+    expect(typeof status.adapterStrategy).toBe('string');
+    expect(status.adapterStrategy.length).toBeGreaterThan(0);
+  });
+
+  it('renders table output with CLI tools section', () => {
     const writeMock = vi.fn();
     vi.spyOn(process.stdout, 'write').mockImplementation(writeMock);
 
-    const { handleStatusCommand } = await import('./status-command.js');
+    const { handleStatusCommand } = statusModule;
     handleStatusCommand(createArgs({}));
 
     const output = (writeMock.mock.calls as unknown[][]).map((c) => String(c[0])).join('');
@@ -111,10 +150,9 @@ describe('status-command', () => {
     expect(output).toContain('Project Health Dashboard');
     expect(output).toContain('Fitness Score');
     expect(output).toContain('Node.js');
-    expect(output).toContain('API Adapters');
-    expect(output).toContain('Claude');
-    expect(output).toContain('Gemini');
-    expect(output).toContain('OpenAI');
+    expect(output).toContain('CLI Tools');
+    expect(output).toContain('API Keys');
+    expect(output).toContain('Strategy');
   });
 });
 
