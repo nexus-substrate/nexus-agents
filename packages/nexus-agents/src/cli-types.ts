@@ -57,7 +57,8 @@ export type CliCommand =
   | 'release-announce'
   | 'scaffold'
   | 'visualize'
-  | 'capabilities';
+  | 'capabilities'
+  | 'status';
 
 /**
  * Parsed CLI arguments and command.
@@ -337,6 +338,7 @@ export function isValidCommand(value: string): value is CliCommand {
     'scaffold',
     'visualize',
     'capabilities',
+    'status',
   ];
   return validCommands.includes(value as CliCommand);
 }

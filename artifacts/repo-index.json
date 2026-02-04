@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "generated": "2026-02-04T01:03:46.671Z",
+  "generated": "2026-02-04T01:30:47.258Z",
   "generator": "scripts/generate-repo-index.ts",
   "packageVersion": "2.6.0",
   "cli": {
@@ -148,6 +148,12 @@
         "name": "sprint",
         "type": "async",
         "handler": "handleSprintCommand",
+        "file": "src/cli-commands-handlers.ts"
+      },
+      {
+        "name": "status",
+        "type": "sync",
+        "handler": "handleStatusCommand",
         "file": "src/cli-commands-handlers.ts"
       },
       {
