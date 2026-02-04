@@ -50,6 +50,7 @@ COMMANDS:
   scaffold        Generate project files from templates (tool, expert, workflow, command)
   visualize       Generate Mermaid diagrams and ASCII dashboards (architecture, swarm, flow)
   capabilities    Show model capabilities matrix (modalities, tools, features)
+  status          At-a-glance project health dashboard (fitness, adapters, version)
 
 OPTIONS:
   -h, --help           Show this help message
@@ -362,6 +363,8 @@ EXAMPLES:
   nexus-agents capabilities compare claude-opus gemini-pro  Compare two models
   nexus-agents capabilities find image_png           Find models that generate images
   nexus-agents capabilities list --format=json       Output capabilities as JSON
+  nexus-agents status                                 Show project health dashboard
+  nexus-agents status --format=json                   Output status as JSON
 
 For more information, visit: https://github.com/williamzujkowski/nexus-agents
 `.trim();
