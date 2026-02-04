@@ -195,16 +195,16 @@ Detailed technical documentation:
 
 #### Operational
 
-| Document                                                          | Description              |
-| ----------------------------------------------------------------- | ------------------------ |
-| [ALIGNMENT_ROADMAP.md](./ALIGNMENT_ROADMAP.md)                    | Project phases, progress |
-| [SECRETS_SETUP.md](./SECRETS_SETUP.md)                            | Secrets configuration    |
-| [SECURITY_AUDIT_2026-01-23.md](./SECURITY_AUDIT_2026-01-23.md)    | Security audit report    |
-| [system-map.md](./architecture/system-map.md)                     | System component map     |
-| [deprecation-pipeline.md](./architecture/deprecation-pipeline.md) | Deprecation tracking     |
-| [redundancy-analysis.md](./architecture/redundancy-analysis.md)   | Code redundancy analysis |
-| [invocation-matrix.md](./architecture/invocation-matrix.md)       | Component invocation map |
-| [completeness-score.md](./metrics/completeness-score.md)          | CLI completeness metrics |
+| Document                                                          | Description                                 |
+| ----------------------------------------------------------------- | ------------------------------------------- |
+| [ALIGNMENT_ROADMAP.md](./ALIGNMENT_ROADMAP.md)                    | Project phases, progress                    |
+| [SECRETS_SETUP.md](./SECRETS_SETUP.md)                            | Secrets configuration                       |
+| [SECURITY_AUDIT_2026-01-23.md](./SECURITY_AUDIT_2026-01-23.md)    | Security audit report                       |
+| [system-map.md](./architecture/system-map.md)                     | System component map                        |
+| [deprecation-pipeline.md](./architecture/deprecation-pipeline.md) | Deprecation tracking & v3.0 migration guide |
+| [redundancy-analysis.md](./architecture/redundancy-analysis.md)   | Code redundancy analysis                    |
+| [invocation-matrix.md](./architecture/invocation-matrix.md)       | Component invocation map                    |
+| [completeness-score.md](./metrics/completeness-score.md)          | CLI completeness metrics                    |
 
 ---
 
