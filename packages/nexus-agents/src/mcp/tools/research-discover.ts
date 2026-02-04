@@ -208,21 +208,22 @@ async function discoverFromExtendedSource(
   source: string,
   topic: string,
   maxResults: number,
-  logger: ILogger
+  logger: ILogger,
+  sinceDate?: string
 ): Promise<DiscoveredItem[]> {
   let result;
   switch (source) {
     case 'google_ai':
-      result = await discoverGoogleAI(topic, maxResults);
+      result = await discoverGoogleAI(topic, maxResults, sinceDate);
       break;
     case 'meta_fair':
-      result = await discoverMetaFAIR(topic, maxResults);
+      result = await discoverMetaFAIR(topic, maxResults, sinceDate);
       break;
     case 'microsoft':
-      result = await discoverMicrosoftResearch(topic, maxResults);
+      result = await discoverMicrosoftResearch(topic, maxResults, sinceDate);
       break;
     case 'deepmind':
-      result = await discoverDeepMind(topic, maxResults);
+      result = await discoverDeepMind(topic, maxResults, sinceDate);
       break;
     case 'semantic_scholar':
       result = await discoverSemanticScholar(topic, maxResults);
@@ -234,7 +235,11 @@ async function discoverFromExtendedSource(
       return [];
   }
   if (!result.ok) {
-    logger.warn(`${source} discovery failed`, { error: result.error.message });
+    logger.warn(`${source} discovery failed`, {
+      source,
+      errorCode: result.error.code,
+      error: result.error.message,
+    });
     return [];
   }
   return toDiscoveredItems(result.value);
@@ -327,20 +332,27 @@ async function queryAllSources(
   // arXiv uses dedicated discoverArxiv() with targeted ti:/abs: queries
   if (shouldQuery('arxiv')) {
     sources.push('arxiv');
-    const r = await discoverArxiv(input.topic, input.maxResults);
+    const r = await discoverArxiv(input.topic, input.maxResults, input.sinceDate);
     if (r.ok) items = items.concat(toDiscoveredItems(r.value));
-    else logger.warn('arxiv discovery failed', { error: r.error.message });
+    else logger.warn('arxiv discovery failed', { source: 'arxiv', error: r.error.message });
   }
   if (shouldQuery('github')) {
     sources.push('github');
     const r = await discoverGitHubRepos(input.topic, input.maxResults);
     if (r.ok) items = items.concat(toDiscoveredItems(r.value));
+    else logger.warn('github discovery failed', { source: 'github', error: r.error.message });
   }
   for (const src of ALL_SOURCES) {
     if (shouldQuery(src)) {
       sources.push(src);
       items = items.concat(
-        await discoverFromExtendedSource(src, input.topic, input.maxResults, logger)
+        await discoverFromExtendedSource(
+          src,
+          input.topic,
+          input.maxResults,
+          logger,
+          input.sinceDate
+        )
       );
     }
   }
