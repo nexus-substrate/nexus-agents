@@ -403,6 +403,55 @@ describe('RestApiServer', () => {
     });
   });
 
+  describe('security hardening (Issue #740)', () => {
+    let server: RestApiServer;
+
+    beforeEach(() => {
+      server = new RestApiServer({ config: { port: getTestPort() } });
+    });
+
+    afterEach(async () => {
+      if (server?.isRunning()) {
+        await server.stop();
+      }
+    });
+
+    it('should include security headers in responses', async () => {
+      await server.start();
+      const response = await server.getInstance().inject({
+        method: 'GET',
+        url: '/health',
+      });
+
+      expect(response.headers['x-content-type-options']).toBe('nosniff');
+      expect(response.headers['x-frame-options']).toBe('DENY');
+      expect(response.headers['cache-control']).toBe('no-store');
+      expect(response.headers['content-security-policy']).toBe("default-src 'none'");
+      expect(response.headers['referrer-policy']).toBe('no-referrer');
+      expect(response.headers['x-permitted-cross-domain-policies']).toBe('none');
+    });
+
+    it('should default CORS to localhost origins', () => {
+      const config = (server as unknown as { config: { corsOrigins: string[] } }).config;
+      expect(config.corsOrigins).toContain('http://localhost:3000');
+      expect(config.corsOrigins).toContain('http://127.0.0.1:3000');
+      expect(config.corsOrigins).not.toContain('*');
+    });
+
+    it('should configure body size limit from config', () => {
+      const smallServer = new RestApiServer({
+        config: { port: getTestPort(), maxBodySize: 512 },
+      });
+      const config = (smallServer as unknown as { config: { maxBodySize: number } }).config;
+      expect(config.maxBodySize).toBe(512);
+    });
+
+    it('should default body size limit to 1MB', () => {
+      const config = (server as unknown as { config: { maxBodySize: number } }).config;
+      expect(config.maxBodySize).toBe(1_048_576);
+    });
+  });
+
   describe('metrics tracking', () => {
     let server: RestApiServer;
 

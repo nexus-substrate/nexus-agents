@@ -125,6 +125,8 @@ export const SecurityConfigSchema = z.object({
   sandbox: SandboxConfigSchema.optional(),
   /** Timeout configuration (Issue #271, CVE-2026-0621) */
   timeout: TimeoutConfigSchema.optional(),
+  /** Tool allowlist — when set, only listed tools are registered (Issue #740) */
+  toolAllowlist: z.array(z.string()).optional(),
 });
 
 export type SecurityConfig = z.infer<typeof SecurityConfigSchema>;
