@@ -164,7 +164,7 @@ function generateTaskId(): string {
 /**
  * Creates a Task object from orchestrate input.
  */
-function createTaskFromInput(input: OrchestrateInput, taskId: string): Task {
+async function createTaskFromInput(input: OrchestrateInput, taskId: string): Promise<Task> {
   const context: TaskContext = {};
 
   // Only set metadata if context is defined
@@ -172,11 +172,16 @@ function createTaskFromInput(input: OrchestrateInput, taskId: string): Task {
     context.metadata = input.context;
   }
 
-  // Inject relevant past learnings into task context (memory feedback loop)
+  // Inject relevant past learnings and beliefs into task context (memory feedback loop)
   try {
-    const learnings = getToolMemory().getRelevantLearnings(input.task);
+    const mem = getToolMemory();
+    const learnings = mem.getRelevantLearnings(input.task);
     if (learnings !== undefined) {
       context.metadata = { ...context.metadata, _pastLearnings: learnings };
+    }
+    const beliefs = await mem.getRelevantBeliefs(input.task.split(/\s+/).slice(0, 3).join(' '));
+    if (beliefs !== undefined) {
+      context.metadata = { ...context.metadata, _beliefs: beliefs };
     }
   } catch {
     // Memory retrieval is best-effort
@@ -308,6 +313,13 @@ function recordOrchestrationSuccess(
       confidence: 0.7,
       source: 'orchestrate-tool',
     });
+    // Record structured belief about successful task pattern
+    void memory.recordBelief(
+      taskDescription.split(/\s+/).slice(0, 3).join(' '),
+      'orchestrated-successfully-in',
+      `${String(stepsCompleted)} steps (${String(durationMs)}ms)`,
+      'medium'
+    );
   } catch (error: unknown) {
     // Memory recording is best-effort; never fail orchestration for it
     createLogger({ tool: 'orchestrate' }).debug('Best-effort memory recording failed', {
@@ -369,7 +381,7 @@ async function executeOrchestration(
 
   logger.info('Starting orchestration', { taskId, taskLength: input.task.length });
 
-  const task = createTaskFromInput(input, taskId);
+  const task = await createTaskFromInput(input, taskId);
   const definition: OrchestratorDefinition = { type: 'task', task };
 
   try {

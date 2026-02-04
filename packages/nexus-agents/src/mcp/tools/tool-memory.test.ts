@@ -387,3 +387,65 @@ describe('shutdownToolMemory', () => {
     // Should not throw
   });
 });
+
+// ============================================================================
+// Belief Memory Integration Tests
+// ============================================================================
+
+describe('ToolMemoryManager belief integration', () => {
+  let manager: ToolMemoryManager;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetMockDefaults();
+    shutdownToolMemory();
+    manager = new ToolMemoryManager();
+  });
+
+  afterEach(() => {
+    shutdownToolMemory();
+  });
+
+  it('should record a belief without errors', async () => {
+    await manager.recordBelief('routing', 'prefers', 'claude-for-code', 'high');
+    // No exception thrown = success
+  });
+
+  it('should return undefined for beliefs with no matching subject', async () => {
+    const result = await manager.getRelevantBeliefs('nonexistent-subject');
+    expect(result).toBeUndefined();
+  });
+
+  it('should retrieve beliefs after recording', async () => {
+    await manager.recordBelief('orchestration', 'requires', 'task-analysis', 'high');
+    const result = await manager.getRelevantBeliefs('orchestration');
+    expect(result).toBeDefined();
+    expect(result).toContain('orchestration');
+    expect(result).toContain('requires');
+    expect(result).toContain('task-analysis');
+  });
+
+  it('should auto-create belief from high-confidence learning', async () => {
+    manager.recordLearning({
+      pattern: 'SQLite requires better-sqlite3',
+      context: 'memory-backends',
+      confidence: 0.9,
+    });
+    // Give async belief creation a tick to complete
+    await new Promise((r) => setTimeout(r, 10));
+    const beliefs = await manager.getRelevantBeliefs('memory-backends');
+    expect(beliefs).toBeDefined();
+    expect(beliefs).toContain('memory-backends');
+  });
+
+  it('should NOT create belief from low-confidence learning', async () => {
+    manager.recordLearning({
+      pattern: 'uncertain pattern',
+      context: 'test-context',
+      confidence: 0.5,
+    });
+    await new Promise((r) => setTimeout(r, 10));
+    const beliefs = await manager.getRelevantBeliefs('test-context');
+    expect(beliefs).toBeUndefined();
+  });
+});

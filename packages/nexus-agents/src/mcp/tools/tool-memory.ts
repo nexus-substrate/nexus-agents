@@ -1,12 +1,12 @@
 /**
  * nexus-agents/mcp - Tool Memory Integration
  *
- * Shared session memory for MCP tools. Enables learning persistence
- * across tool calls within a session. Tools record task outcomes,
- * learnings, and error resolutions which persist to disk.
+ * Unified memory facade for MCP tools. Composes SessionMemory (episodic)
+ * and BeliefMemory (structured knowledge) behind a single interface.
+ * Enables learning persistence and belief tracking across tool calls.
  *
  * @module mcp/tools/tool-memory
- * (Source: Issue #690 - Wire memory system into MCP tool execution pipeline)
+ * (Source: Issue #690, #714 - Unified memory facade)
  */
 
 import * as os from 'node:os';
@@ -19,9 +19,12 @@ import type {
   CompletedTask,
   ResolvedError,
 } from '../../context/session-memory-types.js';
+import { HindsightBeliefMemory } from '../../context/belief-memory.js';
+import { BeliefConfidence, BeliefSourceType } from '../../context/belief-core-types.js';
+import type { Belief } from '../../context/belief-core-types.js';
 
 // Re-export types tools may need
-export type { SessionLearning, CompletedTask, ResolvedError };
+export type { SessionLearning, CompletedTask, ResolvedError, Belief };
 
 // ============================================================================
 // Constants
@@ -66,6 +69,7 @@ export function shutdownToolMemory(): void {
  */
 export class ToolMemoryManager {
   private readonly memory: SessionMemory;
+  private readonly beliefs: HindsightBeliefMemory;
   private readonly log: ILogger;
   private pastLearnings: readonly SessionLearning[] = [];
 
@@ -76,6 +80,7 @@ export class ToolMemoryManager {
       memoryDir: DEFAULT_MEMORY_DIR,
       logger: this.log,
     });
+    this.beliefs = new HindsightBeliefMemory(undefined, this.log);
 
     // Auto-start session
     const sessionId = `mcp-${String(getTimeProvider().now())}`;
@@ -114,6 +119,7 @@ export class ToolMemoryManager {
 
   /**
    * Record a learning. Safe to call even if session inactive.
+   * High-confidence learnings are also stored as beliefs for structured retrieval.
    */
   recordLearning(learning: SessionLearning): void {
     if (!this.memory.isSessionActive()) return;
@@ -121,6 +127,52 @@ export class ToolMemoryManager {
     const result = this.memory.recordLearning(learning);
     if (!result.ok) {
       this.log.debug('Failed to record learning', { error: result.error.message });
+    }
+
+    // Auto-create belief for high-confidence learnings (cross-backend sync)
+    if (learning.confidence >= 0.8) {
+      void this.retainBeliefFromLearning(learning);
+    }
+  }
+
+  /**
+   * Record a structured belief (subject-predicate-object triple).
+   * Safe to call at any time; failures are logged but not thrown.
+   */
+  async recordBelief(
+    subject: string,
+    predicate: string,
+    object: string,
+    confidence: 'high' | 'medium' | 'low' = 'medium'
+  ): Promise<void> {
+    try {
+      await this.beliefs.retain({
+        subject,
+        predicate,
+        object,
+        confidence,
+        sourceType: BeliefSourceType.OBSERVATION,
+        sourceRef: 'mcp-tool-execution',
+      });
+    } catch (error) {
+      this.log.debug('Failed to record belief', { subject, error });
+    }
+  }
+
+  /**
+   * Query beliefs relevant to a subject. Returns formatted string or undefined.
+   */
+  async getRelevantBeliefs(subject: string, limit = 5): Promise<string | undefined> {
+    try {
+      const result = await this.beliefs.recallBySubject(subject, limit);
+      if (!result.ok || result.value.length === 0) return undefined;
+      const active = result.value.filter((b) => !b.superseded);
+      if (active.length === 0) return undefined;
+      return active
+        .map((b) => `- [${b.confidence}] ${b.subject} ${b.predicate} ${b.object}`)
+        .join('\n');
+    } catch {
+      return undefined;
     }
   }
 
@@ -204,6 +256,24 @@ export class ToolMemoryManager {
         tasks: result.value.tasksCompleted.length,
         errors: result.value.errorsResolved.length,
       });
+    }
+  }
+
+  /** Convert a high-confidence learning into a structured belief. */
+  private async retainBeliefFromLearning(learning: SessionLearning): Promise<void> {
+    try {
+      const confidence =
+        learning.confidence >= 0.9 ? BeliefConfidence.HIGH : BeliefConfidence.MEDIUM;
+      await this.beliefs.retain({
+        subject: learning.context,
+        predicate: 'learned-pattern',
+        object: learning.pattern,
+        confidence,
+        sourceType: BeliefSourceType.OBSERVATION,
+        sourceRef: `session-learning`,
+      });
+    } catch {
+      // Best-effort: belief creation from learning is non-critical
     }
   }
 }
