@@ -303,7 +303,7 @@ export function registerConsensusVoteTool(server: McpServer, deps: ConsensusVote
 
   const description =
     'Execute multi-model consensus voting on a proposal. ' +
-    'Uses 5 specialized agent roles (architect, security, devex, ai_ml, pm) ' +
+    'Uses 6 specialized agent roles (architect, security, devex, ai_ml, pm, catfish) ' +
     'to vote on proposals with configurable strategies. ' +
     'Supports higher_order strategy for Bayesian-optimal aggregation with correlation awareness (Issue #514).';
 
