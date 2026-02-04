@@ -149,6 +149,14 @@ export interface SessionMemoryConfig {
   readonly maxLearningsInContext?: number;
   /** Minimum confidence threshold for learnings */
   readonly minConfidenceThreshold?: number;
+  /** Maximum learnings per session (FIFO eviction). */
+  readonly maxLearningsPerSession?: number;
+  /** Maximum tasks per session (FIFO eviction). */
+  readonly maxTasksPerSession?: number;
+  /** Maximum errors per session (FIFO eviction). */
+  readonly maxErrorsPerSession?: number;
+  /** Maximum episode files to retain on disk. Oldest are deleted. */
+  readonly maxEpisodeFiles?: number;
   /** Logger instance */
   readonly logger?: ILogger;
 }
@@ -157,4 +165,8 @@ export const DEFAULT_SESSION_MEMORY_CONFIG = {
   maxEpisodesToLoad: 10,
   maxLearningsInContext: 20,
   minConfidenceThreshold: 0.5,
+  maxLearningsPerSession: 500,
+  maxTasksPerSession: 200,
+  maxErrorsPerSession: 200,
+  maxEpisodeFiles: 50,
 } as const;

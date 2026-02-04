@@ -1,13 +1,8 @@
 /**
- * nexus-agents/context - Session Memory Manager
- *
- * Cross-session episodic memory persistence using YAML files.
- * Enables learning retention across sessions as specified in issue #130.
- *
+ * Cross-session episodic memory persistence with FIFO eviction bounds.
  * @module context/session-memory
- * (Source: Issue #130, arXiv:2303.11366 - Reflexion)
+ * (Source: Issue #130, #709 - arXiv:2303.11366 - Reflexion)
  */
-
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { Result } from '../core/result.js';
@@ -31,7 +26,6 @@ import {
   DEFAULT_SESSION_MEMORY_CONFIG,
 } from './session-memory-types.js';
 
-// Re-export types for backward compatibility
 export type {
   SessionLearning,
   CompletedTask,
@@ -47,41 +41,34 @@ export {
   SessionMemoryError,
 } from './session-memory-types.js';
 
-// ============================================================================
-// Session Memory Implementation
-// ============================================================================
-
-/**
- * Manages cross-session episodic memory persistence.
- * (Source: Issue #130, arXiv:2303.11366 - Reflexion)
- */
+/** Manages cross-session episodic memory with per-session bounds and disk retention. */
 export class SessionMemory {
   private readonly memoryDir: string;
   private readonly maxEpisodesToLoad: number;
   private readonly maxLearningsInContext: number;
   private readonly minConfidenceThreshold: number;
+  private readonly maxLearningsPerSession: number;
+  private readonly maxTasksPerSession: number;
+  private readonly maxErrorsPerSession: number;
+  private readonly maxEpisodeFiles: number;
   private readonly log: ILogger;
   private currentSession: SessionEpisode | null = null;
   private sessionStartTime: number | null = null;
 
   constructor(config: SessionMemoryConfig) {
+    const d = DEFAULT_SESSION_MEMORY_CONFIG;
     this.memoryDir = config.memoryDir;
-    this.maxEpisodesToLoad =
-      config.maxEpisodesToLoad ?? DEFAULT_SESSION_MEMORY_CONFIG.maxEpisodesToLoad;
-    this.maxLearningsInContext =
-      config.maxLearningsInContext ?? DEFAULT_SESSION_MEMORY_CONFIG.maxLearningsInContext;
-    this.minConfidenceThreshold =
-      config.minConfidenceThreshold ?? DEFAULT_SESSION_MEMORY_CONFIG.minConfidenceThreshold;
+    this.maxEpisodesToLoad = config.maxEpisodesToLoad ?? d.maxEpisodesToLoad;
+    this.maxLearningsInContext = config.maxLearningsInContext ?? d.maxLearningsInContext;
+    this.minConfidenceThreshold = config.minConfidenceThreshold ?? d.minConfidenceThreshold;
+    this.maxLearningsPerSession = config.maxLearningsPerSession ?? d.maxLearningsPerSession;
+    this.maxTasksPerSession = config.maxTasksPerSession ?? d.maxTasksPerSession;
+    this.maxErrorsPerSession = config.maxErrorsPerSession ?? d.maxErrorsPerSession;
+    this.maxEpisodeFiles = config.maxEpisodeFiles ?? d.maxEpisodeFiles;
     this.log = config.logger ?? createLogger({ component: 'SessionMemory' });
   }
 
-  // --------------------------------------------------------------------------
-  // Session Lifecycle
-  // --------------------------------------------------------------------------
-
-  /**
-   * Start a new session and load relevant memories.
-   */
+  /** Start a new session and load relevant memories. */
   startSession(sessionId: string): Result<readonly SessionLearning[], SessionMemoryError> {
     if (this.currentSession !== null) {
       return err(
@@ -111,9 +98,7 @@ export class SessionMemory {
     return ok(relevantLearnings);
   }
 
-  /**
-   * End the current session and persist episode.
-   */
+  /** End the current session and persist episode. */
   endSession(summary: string): Result<SessionEpisode, SessionMemoryError> {
     if (this.currentSession === null || this.sessionStartTime === null) {
       return err(new SessionMemoryError('No session in progress'));
@@ -142,27 +127,17 @@ export class SessionMemory {
     return ok(episode);
   }
 
-  /**
-   * Check if a session is currently active.
-   */
+  /** Check if a session is currently active. */
   isSessionActive(): boolean {
     return this.currentSession !== null;
   }
 
-  /**
-   * Get the current session ID.
-   */
+  /** Get the current session ID. */
   getCurrentSessionId(): string | null {
     return this.currentSession?.sessionId ?? null;
   }
 
-  // --------------------------------------------------------------------------
-  // Recording Methods
-  // --------------------------------------------------------------------------
-
-  /**
-   * Record a learning during the current session.
-   */
+  /** Record a learning during the current session. */
   recordLearning(learning: SessionLearning): Result<void, SessionMemoryError> {
     if (this.currentSession === null) {
       return err(new SessionMemoryError('No session in progress'));
@@ -177,18 +152,18 @@ export class SessionMemory {
       );
     }
 
-    this.currentSession = {
-      ...this.currentSession,
-      learnings: [...this.currentSession.learnings, learning],
-    };
+    const updated = [...this.currentSession.learnings, learning];
+    if (updated.length > this.maxLearningsPerSession) {
+      updated.splice(0, updated.length - this.maxLearningsPerSession);
+      this.log.debug('Learning FIFO eviction', { kept: this.maxLearningsPerSession });
+    }
+    this.currentSession = { ...this.currentSession, learnings: updated };
 
     this.log.debug('Learning recorded', { pattern: learning.pattern });
     return ok(undefined);
   }
 
-  /**
-   * Record a completed task during the current session.
-   */
+  /** Record a completed task during the current session. */
   recordTask(task: CompletedTask): Result<void, SessionMemoryError> {
     if (this.currentSession === null) {
       return err(new SessionMemoryError('No session in progress'));
@@ -203,18 +178,18 @@ export class SessionMemory {
       );
     }
 
-    this.currentSession = {
-      ...this.currentSession,
-      tasksCompleted: [...this.currentSession.tasksCompleted, task],
-    };
+    const updated = [...this.currentSession.tasksCompleted, task];
+    if (updated.length > this.maxTasksPerSession) {
+      updated.splice(0, updated.length - this.maxTasksPerSession);
+      this.log.debug('Task FIFO eviction', { kept: this.maxTasksPerSession });
+    }
+    this.currentSession = { ...this.currentSession, tasksCompleted: updated };
 
     this.log.debug('Task recorded', { issue: task.issue });
     return ok(undefined);
   }
 
-  /**
-   * Record a resolved error during the current session.
-   */
+  /** Record a resolved error during the current session. */
   recordError(error: ResolvedError): Result<void, SessionMemoryError> {
     if (this.currentSession === null) {
       return err(new SessionMemoryError('No session in progress'));
@@ -229,22 +204,18 @@ export class SessionMemory {
       );
     }
 
-    this.currentSession = {
-      ...this.currentSession,
-      errorsResolved: [...this.currentSession.errorsResolved, error],
-    };
+    const updated = [...this.currentSession.errorsResolved, error];
+    if (updated.length > this.maxErrorsPerSession) {
+      updated.splice(0, updated.length - this.maxErrorsPerSession);
+      this.log.debug('Error FIFO eviction', { kept: this.maxErrorsPerSession });
+    }
+    this.currentSession = { ...this.currentSession, errorsResolved: updated };
 
     this.log.debug('Error resolution recorded', { error: error.error });
     return ok(undefined);
   }
 
-  // --------------------------------------------------------------------------
-  // Retrieval Methods
-  // --------------------------------------------------------------------------
-
-  /**
-   * Load all episodes from the memory directory.
-   */
+  /** Load all episodes from the memory directory. */
   loadEpisodes(limit?: number): readonly SessionEpisode[] {
     this.ensureMemoryDir();
     const files = this.getEpisodeFiles();
@@ -261,9 +232,7 @@ export class SessionMemory {
     return episodes;
   }
 
-  /**
-   * Load learnings relevant to the current context.
-   */
+  /** Load learnings relevant to the current context. */
   loadRelevantLearnings(): readonly SessionLearning[] {
     const episodes = this.loadEpisodes();
     const allLearnings: SessionLearning[] = [];
@@ -282,9 +251,7 @@ export class SessionMemory {
       .slice(0, this.maxLearningsInContext);
   }
 
-  /**
-   * Search for learnings matching a query.
-   */
+  /** Search for learnings matching a query. */
   searchLearnings(query: string): readonly SessionLearning[] {
     const episodes = this.loadEpisodes();
     const queryLower = query.toLowerCase();
@@ -302,9 +269,7 @@ export class SessionMemory {
     return matches.sort((a, b) => b.confidence - a.confidence);
   }
 
-  /**
-   * Get recent errors and their solutions.
-   */
+  /** Get recent errors and their solutions. */
   getRecentErrorSolutions(limit = 10): readonly ResolvedError[] {
     const episodes = this.loadEpisodes();
     const errors: ResolvedError[] = [];
@@ -315,10 +280,6 @@ export class SessionMemory {
 
     return errors.slice(0, limit);
   }
-
-  // --------------------------------------------------------------------------
-  // Private Helpers
-  // --------------------------------------------------------------------------
 
   private ensureMemoryDir(): void {
     if (!fs.existsSync(this.memoryDir)) {
@@ -369,21 +330,36 @@ export class SessionMemory {
       const content = JSON.stringify(episode, null, 2);
       fs.writeFileSync(filepath, content, 'utf-8');
       this.log.debug('Episode persisted', { filename });
+      this.enforceEpisodeRetention();
       return ok(undefined);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       return err(new SessionMemoryError(`Failed to persist episode: ${message}`));
     }
   }
+
+  /** Delete oldest episode files when count exceeds maxEpisodeFiles. */
+  private enforceEpisodeRetention(): void {
+    try {
+      const files = this.getEpisodeFiles(); // sorted most-recent-first
+      if (files.length <= this.maxEpisodeFiles) return;
+      const toDelete = files.slice(this.maxEpisodeFiles);
+      for (const file of toDelete) {
+        fs.unlinkSync(path.join(this.memoryDir, file));
+      }
+      this.log.info('Episode retention enforced', {
+        kept: this.maxEpisodeFiles,
+        deleted: toDelete.length,
+      });
+    } catch (error: unknown) {
+      this.log.debug('Episode retention cleanup failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
 }
 
-// ============================================================================
-// Factory Function
-// ============================================================================
-
-/**
- * Create a SessionMemory instance with default configuration.
- */
+/** Create a SessionMemory instance with default configuration. */
 export function createSessionMemory(
   memoryDir: string,
   config?: Partial<Omit<SessionMemoryConfig, 'memoryDir'>>
