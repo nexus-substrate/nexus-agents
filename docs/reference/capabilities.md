@@ -1,6 +1,6 @@
 # Repository Capabilities Index
 
-**Generated:** 2026-02-04T01:30:47.258Z
+**Generated:** 2026-02-04T13:53:50.519Z
 **Package Version:** 2.6.0
 **Generator:** `scripts/generate-repo-index.ts`
 
@@ -50,7 +50,7 @@ Binary: `nexus-agents`
 
 ---
 
-## MCP Tools (8)
+## MCP Tools (13)
 
 | Tool | Source File |
 | ------ | ------------- |
@@ -61,11 +61,16 @@ Binary: `nexus-agents`
 | `list_experts` | `src/mcp/tools/list-experts.ts` |
 | `list_workflows` | `src/mcp/tools/list-workflows.ts` |
 | `orchestrate` | `src/mcp/tools/orchestrate.ts` |
+| `research_add` | `src/mcp/tools/research-add.ts` |
+| `research_analyze` | `src/mcp/tools/research-analyze.ts` |
+| `research_catalog_review` | `src/mcp/tools/research-catalog-review.ts` |
+| `research_discover` | `src/mcp/tools/research-discover.ts` |
+| `research_query` | `src/mcp/tools/research-query.ts` |
 | `run_workflow` | `src/mcp/tools/run-workflow.ts` |
 
 ---
 
-## Workflow Templates (8)
+## Workflow Templates (9)
 
 | Template | Source File |
 | ---------- | ------------- |
@@ -74,6 +79,7 @@ Binary: `nexus-agents`
 | `documentation-update` | `src/workflows/templates/documentation-update.yaml` |
 | `feature-implementation` | `src/workflows/templates/feature-implementation.yaml` |
 | `refactoring` | `src/workflows/templates/refactoring.yaml` |
+| `research-review` | `src/workflows/templates/research-review.yaml` |
 | `security-audit` | `src/workflows/templates/security-audit.yaml` |
 | `standards-review` | `src/workflows/templates/standards-review.yaml` |
 | `test-generation` | `src/workflows/templates/test-generation.yaml` |

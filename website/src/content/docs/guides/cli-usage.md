@@ -3,7 +3,7 @@ title: "CLI Usage"
 description: "Nexus-agents provides four interface categories:"
 ---
 
-**Last Updated:** 2026-02-01 (ET)
+**Last Updated:** 2026-02-04 (ET)
 **Canonical Source:** This document is the single source of truth for all entrypoints.
 **Issue:** #210 (Epic #209)
 
@@ -44,42 +44,45 @@ Most commonly used commands:
 
 **Entry Point:** `nexus-agents [command] [options]`
 
-| Command                | Subcommand      | Description                                | Mode         |
-| ---------------------- | --------------- | ------------------------------------------ | ------------ |
-| `(default)`            | -               | Start MCP server                           | server       |
-| `--help`               | -               | Display help text                          | any          |
-| `--version`            | -               | Display version                            | any          |
-| `doctor`               | -               | Check CLI health and dependencies          | any          |
-| `config`               | `init`          | Generate starter configuration file        | any          |
-| `expert`               | `list`          | List available experts (built-in + custom) | any          |
-| `workflow`             | `list`          | List available workflow templates          | any          |
-| `workflow`             | `run <name>`    | Execute a workflow template                | orchestrator |
-| `server`               | -               | Start MCP server (explicit)                | server       |
-| `server`               | `--interactive` | Start interactive REPL mode                | server       |
-| `review`               | `<url>`         | Review a GitHub PR                         | orchestrator |
-| `routing-audit`        | `<task>`        | Debug routing decisions (dry-run)          | any          |
-| `orchestrate`          | `<task>`        | Execute task standalone                    | orchestrator |
-| `system-review`        | -               | Run 5-phase system review                  | any          |
-| `vote`                 | `--proposal`    | Consensus voting with 5 agents             | any          |
-| `research`             | `status`        | Show technique implementation status       | any          |
-| `research`             | `overlap`       | Find overlapping techniques                | any          |
-| `research`             | `add`           | Add new paper from arXiv                   | any          |
-| `verify`               | -               | Quick verification check                   | any          |
-| `review-demo`          | -               | PR review demo with wizard UX              | orchestrator |
-| `validation-dashboard` | -               | A/B testing and validation dashboard       | any          |
-| `swe-bench`            | `run`           | Run SWE-bench evaluation                   | orchestrator |
-| `swe-bench`            | `evaluate`      | Evaluate predictions                       | any          |
-| `swe-bench`            | `status`        | Show evaluation status                     | any          |
-| `setup`                | -               | Configure Claude CLI integration           | any          |
-| `learning-metrics`     | -               | Show learning metrics dashboard            | any          |
-| `index`                | `generate`      | Generate codebase index                    | any          |
-| `index`                | `check`         | Validate index freshness                   | any          |
-| `index`                | `diagram`       | Generate Mermaid dependency diagram        | any          |
-| `hooks`                | `session-start` | Handle SessionStart hook events            | any          |
-| `hooks`                | `session-end`   | Handle SessionEnd hook events              | any          |
-| `hooks`                | `pre-tool`      | Handle PreToolUse hook events              | any          |
-| `hooks`                | `post-tool`     | Handle PostToolUse hook events             | any          |
-| `hooks`                | `stop`          | Handle Stop hook events                    | any          |
+| Command                | Subcommand      | Description                                 | Mode         |
+| ---------------------- | --------------- | ------------------------------------------- | ------------ |
+| `(default)`            | -               | Start MCP server                            | server       |
+| `--help`               | -               | Display help text                           | any          |
+| `--version`            | -               | Display version                             | any          |
+| `doctor`               | -               | Check CLI health and dependencies           | any          |
+| `config`               | `init`          | Generate starter configuration file         | any          |
+| `expert`               | `list`          | List available experts (built-in + custom)  | any          |
+| `workflow`             | `list`          | List available workflow templates           | any          |
+| `workflow`             | `run <name>`    | Execute a workflow template                 | orchestrator |
+| `server`               | -               | Start MCP server (explicit)                 | server       |
+| `server`               | `--interactive` | Start interactive REPL mode                 | server       |
+| `review`               | `<url>`         | Review a GitHub PR                          | orchestrator |
+| `routing-audit`        | `<task>`        | Debug routing decisions (dry-run)           | any          |
+| `orchestrate`          | `<task>`        | Execute task standalone                     | orchestrator |
+| `system-review`        | -               | Run 5-phase system review                   | any          |
+| `vote`                 | `--proposal`    | Consensus voting with 5 agents              | any          |
+| `research`             | `status`        | Show technique implementation status        | any          |
+| `research`             | `overlap`       | Find overlapping techniques                 | any          |
+| `research`             | `add`           | Add new paper from arXiv                    | any          |
+| `research`             | `discover`      | Discover papers/repos from external sources | any          |
+| `research`             | `review`        | Discover, score, and rank research findings | any          |
+| `research`             | `prioritize`    | Rank actionable techniques by priority      | any          |
+| `verify`               | -               | Quick verification check                    | any          |
+| `review-demo`          | -               | PR review demo with wizard UX               | orchestrator |
+| `validation-dashboard` | -               | A/B testing and validation dashboard        | any          |
+| `swe-bench`            | `run`           | Run SWE-bench evaluation                    | orchestrator |
+| `swe-bench`            | `evaluate`      | Evaluate predictions                        | any          |
+| `swe-bench`            | `status`        | Show evaluation status                      | any          |
+| `setup`                | -               | Configure Claude CLI integration            | any          |
+| `learning-metrics`     | -               | Show learning metrics dashboard             | any          |
+| `index`                | `generate`      | Generate codebase index                     | any          |
+| `index`                | `check`         | Validate index freshness                    | any          |
+| `index`                | `diagram`       | Generate Mermaid dependency diagram         | any          |
+| `hooks`                | `session-start` | Handle SessionStart hook events             | any          |
+| `hooks`                | `session-end`   | Handle SessionEnd hook events               | any          |
+| `hooks`                | `pre-tool`      | Handle PreToolUse hook events               | any          |
+| `hooks`                | `post-tool`     | Handle PostToolUse hook events              | any          |
+| `hooks`                | `stop`          | Handle Stop hook events                     | any          |
 
 ### Mode Selection
 
@@ -221,6 +224,14 @@ nexus-agents research status --status=implemented  # Filter by status
 nexus-agents research status aegean-consensus      # Show specific technique
 nexus-agents research overlap trinity-roles        # Find related techniques
 nexus-agents research add 2501.06322 --dry-run     # Preview adding paper
+nexus-agents research discover --topic=orchestration                # Discover from all sources
+nexus-agents research discover --topic=agents --source=github       # GitHub repos only
+nexus-agents research discover --topic=agents --source=semantic_scholar  # Semantic Scholar
+nexus-agents research discover --topic=agents --source=papers_with_code  # Papers with Code
+nexus-agents research review --topic=orchestration                  # Discover, score, rank findings
+nexus-agents research review --topic=agents --create-issues         # Auto-create GitHub issues
+nexus-agents research prioritize                                    # Show priority backlog
+nexus-agents research prioritize --topic=consensus                  # Filter by topic
 
 # Quick verification
 nexus-agents verify
@@ -288,14 +299,19 @@ nexus-agents hooks stop --check-tasks
 **Protocol:** Model Context Protocol (2025-11-25)
 **Transport:** JSON-RPC 2.0 over stdio
 
-| Tool                | Description                                     | Auth         | Rate Limit |
-| ------------------- | ----------------------------------------------- | ------------ | ---------- |
-| `orchestrate`       | Task orchestration with TechLead coordination   | None (local) | 10/min     |
-| `create_expert`     | Dynamic expert agent creation                   | None (local) | 60/min     |
-| `run_workflow`      | Execute workflow template                       | None (local) | 20/min     |
-| `delegate_to_model` | Route task to optimal model                     | None (local) | 30/min     |
-| `list_experts`      | List available expert types for discoverability | None (local) | 60/min     |
-| `list_workflows`    | List available workflow templates               | None (local) | 60/min     |
+| Tool                      | Description                                              | Auth         | Rate Limit |
+| ------------------------- | -------------------------------------------------------- | ------------ | ---------- |
+| `orchestrate`             | Task orchestration with TechLead coordination            | None (local) | 10/min     |
+| `create_expert`           | Dynamic expert agent creation                            | None (local) | 60/min     |
+| `run_workflow`            | Execute workflow template                                | None (local) | 20/min     |
+| `delegate_to_model`       | Route task to optimal model                              | None (local) | 30/min     |
+| `list_experts`            | List available expert types for discoverability          | None (local) | 60/min     |
+| `list_workflows`          | List available workflow templates                        | None (local) | 60/min     |
+| `research_query`          | Query research registry (status, overlap, stats, search) | None (local) | 30/min     |
+| `research_add`            | Add paper to registry by arXiv ID                        | None (local) | 10/min     |
+| `research_discover`       | Discover papers/repos from external sources              | None (local) | 2/min      |
+| `research_analyze`        | Analyze registry for gaps, trends, coverage              | None (local) | 10/min     |
+| `research_catalog_review` | Review auto-cataloged research references                | None (local) | 30/min     |
 
 ### Tool Schemas
 
@@ -405,15 +421,21 @@ nexus-agents hooks stop --check-tasks
 
 ### Source Files
 
-| File                                 | Purpose             |
-| ------------------------------------ | ------------------- |
-| `src/mcp/tools/index.ts`             | Tool registration   |
-| `src/mcp/tools/orchestrate.ts`       | Orchestrate tool    |
-| `src/mcp/tools/create-expert.ts`     | Create expert tool  |
-| `src/mcp/tools/run-workflow.ts`      | Run workflow tool   |
-| `src/mcp/tools/delegate-to-model.ts` | Delegate tool       |
-| `src/mcp/tools/list-experts.ts`      | List experts tool   |
-| `src/mcp/tools/list-workflows.ts`    | List workflows tool |
+| File                                       | Purpose                |
+| ------------------------------------------ | ---------------------- |
+| `src/mcp/tools/index.ts`                   | Tool registration      |
+| `src/mcp/tools/orchestrate.ts`             | Orchestrate tool       |
+| `src/mcp/tools/create-expert.ts`           | Create expert tool     |
+| `src/mcp/tools/run-workflow.ts`            | Run workflow tool      |
+| `src/mcp/tools/delegate-to-model.ts`       | Delegate tool          |
+| `src/mcp/tools/list-experts.ts`            | List experts tool      |
+| `src/mcp/tools/list-workflows.ts`          | List workflows tool    |
+| `src/mcp/tools/research-query.ts`          | Research query tool    |
+| `src/mcp/tools/research-add.ts`            | Research add tool      |
+| `src/mcp/tools/research-discover.ts`       | Research discover tool |
+| `src/mcp/tools/research-analyze.ts`        | Research analyze tool  |
+| `src/mcp/tools/research-catalog-review.ts` | Catalog review tool    |
+| `src/mcp/tools/research-auto-catalog.ts`   | Auto-catalog module    |
 
 ---
 
