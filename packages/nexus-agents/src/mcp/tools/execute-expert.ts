@@ -217,6 +217,18 @@ function recordExpertError(expertId: string, role: string, errorMessage: string)
   }
 }
 
+/** Injects past error solutions into task context (best-effort). */
+function injectErrorHints(task: Task, role: string): void {
+  try {
+    const hints = getToolMemory().getRelevantErrorHints(role);
+    if (hints !== undefined) {
+      (task.context.metadata as Record<string, unknown>)._pastErrorSolutions = hints;
+    }
+  } catch {
+    // Memory retrieval is best-effort
+  }
+}
+
 /** Scans expert output for research references (best-effort). */
 function autoCatalogScan(output: string, expertId: string, logger?: ILogger): void {
   try {
@@ -252,6 +264,7 @@ async function handleExecuteExpert(
   }
 
   const task = buildTask(args);
+  injectErrorHints(task, expert.role);
   deps.logger?.info('Executing expert task', { expertId, role: expert.role, taskId: task.id });
 
   const startTime = getTimeProvider().now();

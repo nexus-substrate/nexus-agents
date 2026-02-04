@@ -172,6 +172,16 @@ function createTaskFromInput(input: OrchestrateInput, taskId: string): Task {
     context.metadata = input.context;
   }
 
+  // Inject relevant past learnings into task context (memory feedback loop)
+  try {
+    const learnings = getToolMemory().getRelevantLearnings(input.task);
+    if (learnings !== undefined) {
+      context.metadata = { ...context.metadata, _pastLearnings: learnings };
+    }
+  } catch {
+    // Memory retrieval is best-effort
+  }
+
   return {
     id: taskId,
     description: input.task,
