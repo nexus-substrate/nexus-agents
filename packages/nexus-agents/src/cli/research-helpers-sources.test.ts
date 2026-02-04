@@ -215,6 +215,30 @@ describe('discoverArxiv', () => {
     expect(calledUrl).not.toContain('all%3A');
   });
 
+  it('should quote multi-word topics for phrase matching', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      text: () => Promise.resolve('<feed></feed>'),
+    });
+    await discoverArxiv('agent memory consolidation', 5);
+    const calledUrl = mockFetch.mock.calls[0]?.[0] as string;
+    const decoded = decodeURIComponent(calledUrl);
+    expect(decoded).toContain('ti:"agent memory consolidation"');
+    expect(decoded).toContain('abs:"agent memory consolidation"');
+  });
+
+  it('should not quote single-word topics', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      text: () => Promise.resolve('<feed></feed>'),
+    });
+    await discoverArxiv('orchestration', 5);
+    const calledUrl = mockFetch.mock.calls[0]?.[0] as string;
+    const decoded = decodeURIComponent(calledUrl);
+    expect(decoded).toContain('ti:orchestration');
+    expect(decoded).not.toContain('"orchestration"');
+  });
+
   it('should include submittedDate filter when sinceDate is provided', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,

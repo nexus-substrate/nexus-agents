@@ -117,11 +117,23 @@ export async function discoverSemanticScholar(
   const fetchResult = await fetchSource({
     url,
     source: 'semantic_scholar',
-    headers: { 'User-Agent': 'nexus-agents' },
+    headers: { 'User-Agent': 'nexus-agents', Accept: 'application/json' },
   });
   if (!fetchResult.ok) return fetchResult;
 
-  const raw = await fetchResult.value.json();
+  let raw: unknown;
+  try {
+    raw = await fetchResult.value.json();
+  } catch {
+    return {
+      ok: false,
+      error: {
+        code: 'PARSE_ERROR',
+        source: 'semantic_scholar',
+        message: 'Response is not valid JSON',
+      },
+    };
+  }
   const parsed = SemanticScholarResponseSchema.safeParse(raw);
   if (!parsed.success) {
     return {
@@ -145,12 +157,26 @@ export async function discoverSemanticScholar(
 // PAPERS WITH CODE DISCOVERY
 // =============================================================================
 
+/** Map validated PwC paper to DiscoveredSource. */
+function mapPwcPaper(paper: z.infer<typeof PapersWithCodePaperSchema>): DiscoveredSource {
+  const hasCode = (paper.repository_count ?? 0) > 0;
+  return {
+    source: 'papers_with_code',
+    title: paper.title ?? '',
+    url: paper.url_abs ?? '',
+    description: truncate(paper.abstract ?? ''),
+    relevance: hasCode ? 'high' : 'medium',
+    discoveredAt: getToday(),
+  };
+}
+
+/** Parse error for a source. */
+function pwcParseError(message: string): { ok: false; error: DiscoverError } {
+  return { ok: false, error: { code: 'PARSE_ERROR', source: 'papers_with_code', message } };
+}
+
 /**
  * Discover research papers from Papers with Code.
- *
- * @param topic - Search topic
- * @param maxResults - Maximum results (default 10)
- * @returns Result containing discovered papers with code
  */
 export async function discoverPapersWithCode(
   topic: string,
@@ -162,37 +188,22 @@ export async function discoverPapersWithCode(
   const fetchResult = await fetchSource({
     url,
     source: 'papers_with_code',
-    headers: { 'User-Agent': 'nexus-agents' },
+    headers: { 'User-Agent': 'nexus-agents', Accept: 'application/json' },
   });
   if (!fetchResult.ok) return fetchResult;
 
-  const raw = await fetchResult.value.json();
-  const parsed = PapersWithCodeResponseSchema.safeParse(raw);
-  if (!parsed.success) {
-    return {
-      ok: false,
-      error: {
-        code: 'PARSE_ERROR',
-        source: 'papers_with_code',
-        message: 'Response schema mismatch',
-      },
-    };
+  let raw: unknown;
+  try {
+    raw = await fetchResult.value.json();
+  } catch {
+    return pwcParseError('Response is not valid JSON (possible HTML error page)');
   }
+  const parsed = PapersWithCodeResponseSchema.safeParse(raw);
+  if (!parsed.success) return pwcParseError('Response schema mismatch');
 
-  const papers = parsed.data.results ?? [];
-  const items: DiscoveredSource[] = papers
+  const items = (parsed.data.results ?? [])
     .filter((p) => p.title !== undefined && p.title !== '')
-    .map((paper) => {
-      const hasCode = (paper.repository_count ?? 0) > 0;
-      return {
-        source: 'papers_with_code',
-        title: paper.title ?? '',
-        url: paper.url_abs ?? '',
-        description: truncate(paper.abstract ?? ''),
-        relevance: hasCode ? 'high' : 'medium',
-        discoveredAt: getToday(),
-      };
-    });
+    .map(mapPwcPaper);
 
   return { ok: true, value: items };
 }

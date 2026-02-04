@@ -86,6 +86,19 @@ describe('discoverSemanticScholar', () => {
     if (!result.ok) expect(result.error.code).toBe('PARSE_ERROR');
   });
 
+  it('should return PARSE_ERROR when response is HTML instead of JSON', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.reject(new SyntaxError("Unexpected token '<'")),
+    });
+    const result = await discoverSemanticScholar('test', 5);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe('PARSE_ERROR');
+      expect(result.error.source).toBe('semantic_scholar');
+    }
+  });
+
   it('should filter out papers without titles', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
@@ -145,6 +158,19 @@ describe('discoverPapersWithCode', () => {
     const result = await discoverPapersWithCode('test', 5);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe('PARSE_ERROR');
+  });
+
+  it('should return PARSE_ERROR when response is HTML error page', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.reject(new SyntaxError('Unexpected token \'<\', "<!doctype "...')),
+    });
+    const result = await discoverPapersWithCode('test', 5);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe('PARSE_ERROR');
+      expect(result.error.message).toContain('not valid JSON');
+    }
   });
 
   it('should mark papers without repos as medium relevance', async () => {

@@ -58,7 +58,6 @@ const GitHubSearchResponseSchema = z.object({
 // =============================================================================
 // HELPERS
 // =============================================================================
-
 /** Creates a discover error. */
 function createError(
   code: DiscoverErrorCode,
@@ -77,7 +76,6 @@ function getToday(): string {
 // =============================================================================
 // SHARED FETCH HELPER
 // =============================================================================
-
 /** Options for fetchSource helper. */
 interface FetchSourceOptions {
   readonly url: string;
@@ -190,7 +188,8 @@ interface ArxivQueryOptions {
  * Optionally adds a submittedDate range filter when sinceDate is provided.
  */
 function buildArxivUrl(opts: ArxivQueryOptions): string {
-  const topicQuery = `(ti:${opts.topic} OR abs:${opts.topic})`;
+  const q = opts.topic.includes(' ') ? `"${opts.topic}"` : opts.topic;
+  const topicQuery = `(ti:${q} OR abs:${q})`;
   let fullQuery = opts.authorFilter !== '' ? `${topicQuery} AND ${opts.authorFilter}` : topicQuery;
 
   // Add date range filter if sinceDate provided (format: YYYYMMDD)
