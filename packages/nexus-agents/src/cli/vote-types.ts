@@ -27,7 +27,7 @@ export interface VoteCommandOptions {
 /**
  * Voter agent role definitions.
  */
-export type VoterRole = 'architect' | 'security' | 'devex' | 'ai_ml' | 'pm';
+export type VoterRole = 'architect' | 'security' | 'devex' | 'ai_ml' | 'pm' | 'catfish';
 
 /**
  * Maps threshold names to consensus algorithms.
@@ -48,6 +48,8 @@ export const VOTER_ROLES: Record<VoterRole, string> = {
   devex: 'Developer Experience - evaluates usability, documentation, and developer workflow',
   ai_ml: 'AI/ML Engineer - evaluates AI/ML aspects, model selection, and learning capabilities',
   pm: 'Product Manager - evaluates business value, user impact, and resource allocation',
+  catfish:
+    'Contrarian Analyst - deliberately challenges proposals to prevent agreement bias (arXiv:2505.21503)',
 };
 
 /**

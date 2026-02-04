@@ -186,7 +186,7 @@ async function runVote(options: VoteCommandOptions): Promise<VotingResult> {
   const useQuick = options.quick === true;
   const roles: readonly VoterRole[] = useQuick
     ? ['architect', 'security', 'pm']
-    : ['architect', 'security', 'devex', 'ai_ml', 'pm'];
+    : ['architect', 'security', 'devex', 'ai_ml', 'pm', 'catfish'];
   const start = getTimeProvider().now();
 
   // Validate and constrain timeout to allowed range (Issue #607)
