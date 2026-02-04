@@ -66,11 +66,6 @@ export interface GeminiConfig {
   readonly enableCircuitBreaker?: boolean;
 }
 
-/**
- * @deprecated Use GeminiConfig instead
- */
-export type EnhancedGeminiConfig = GeminiConfig;
-
 /** Retry context for tracking retry state. */
 interface RetryContext {
   readonly attempt: number;
@@ -87,11 +82,6 @@ export interface GeminiExecutionResult {
   readonly complexity: TaskComplexity;
   readonly circuitState: 'closed' | 'open' | 'half-open';
 }
-
-/**
- * @deprecated Use GeminiExecutionResult instead
- */
-export type EnhancedExecutionResult = GeminiExecutionResult;
 
 const DEFAULT_CONFIG: Required<Omit<GeminiConfig, 'logger' | 'circuitBreakerConfig'>> = {
   model: 'gemini-2.5-flash',
@@ -189,16 +179,6 @@ export class GeminiCliAdapter extends SubprocessCliAdapter {
     const result = await this.executeWithRetryTracking(task, effectiveOptions);
 
     return this.buildExecutionResult(result, startTime, complexity);
-  }
-
-  /**
-   * @deprecated Use executeWithMetadata instead
-   */
-  async executeEnhanced(
-    task: CliTask,
-    options?: ExecutionOptions
-  ): Promise<Result<GeminiExecutionResult, CliError>> {
-    return this.executeWithMetadata(task, options);
   }
 
   /**
@@ -383,13 +363,7 @@ export class GeminiCliAdapter extends SubprocessCliAdapter {
   }
 }
 
-/** @deprecated Use GeminiCliAdapter instead */
-export const EnhancedGeminiCliAdapter = GeminiCliAdapter;
-
 /** Creates a Gemini CLI adapter with reliability features. */
 export function createGeminiAdapter(config?: GeminiConfig): GeminiCliAdapter {
   return new GeminiCliAdapter(config);
 }
-
-/** @deprecated Use createGeminiAdapter instead */
-export const createEnhancedGeminiAdapter = createGeminiAdapter;
