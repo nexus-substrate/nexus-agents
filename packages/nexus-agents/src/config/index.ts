@@ -155,3 +155,35 @@ export type {
   ToolRateLimitConfig,
   KnownCliName,
 } from './defaults.js';
+
+// Model Capabilities Matrix (Issue #683, Epic #682)
+export {
+  DEFAULT_MODEL_CAPABILITIES,
+  getModelCapabilities,
+  findModelsByOutputModality,
+  findModelsByInputModality,
+  findModelsByToolCapability,
+  findModelsByFeature,
+  findModelsByProvider,
+  findBestModelForOutput,
+  modelSupportsAll,
+  ModelCapabilitiesMatrixSchema,
+  ModelCapabilitySchema,
+  OUTPUT_MODALITIES,
+  INPUT_MODALITIES,
+  TOOL_CAPABILITIES,
+  SPECIAL_FEATURES,
+  PROVIDERS,
+  MODEL_IDS,
+} from './model-capabilities.js';
+
+export type {
+  ModelCapabilitiesMatrix,
+  ModelCapability,
+  ModelId,
+  OutputModality,
+  InputModality,
+  ToolCapability,
+  SpecialFeature,
+  Provider,
+} from './model-capabilities.js';
