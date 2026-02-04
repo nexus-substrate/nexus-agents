@@ -5,9 +5,14 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { RestApiServer } from './rest-server.js';
 
-/** Get a random port between 40000-50000 for testing. */
+/**
+ * Generates a test port using PID + random offset to minimize EADDRINUSE collisions
+ * in parallel test execution. Range: 10000-60000.
+ */
+let portCounter = 0;
 function getTestPort(): number {
-  return 40000 + Math.floor(Math.random() * 10000);
+  const base = 10000 + (process.pid % 50000);
+  return ((base + portCounter++) % 50000) + 10000;
 }
 
 describe('RestApiServer', () => {

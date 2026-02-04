@@ -83,8 +83,11 @@ function loadPersistedCatalog(logger: ILogger): CatalogedReference[] {
       return [];
     }
     return result.data.references;
-  } catch {
-    logger.debug('Could not load pending catalog, starting fresh');
+  } catch (error: unknown) {
+    logger.debug('Could not load pending catalog, starting fresh', {
+      error: error instanceof Error ? error.message : String(error),
+      filePath,
+    });
     return [];
   }
 }
@@ -110,7 +113,7 @@ function savePersistedCatalog(references: readonly CatalogedReference[], logger:
     try {
       fs.unlinkSync(tempPath);
     } catch {
-      /* ignore */
+      // Temp file cleanup failure is non-critical
     }
     const message = error instanceof Error ? error.message : String(error);
     logger.warn('Failed to persist pending catalog', { error: message });
@@ -228,8 +231,11 @@ export class ResearchAutoCatalog {
         confidence: 0.5,
         source: 'auto-catalog',
       });
-    } catch {
-      this.logger.debug('Failed to persist to session memory');
+    } catch (error: unknown) {
+      this.logger.debug('Failed to persist to session memory', {
+        error: error instanceof Error ? error.message : String(error),
+        identifier: entry.identifier,
+      });
     }
   }
 
@@ -295,8 +301,11 @@ export class ResearchAutoCatalog {
   private persistToDisk(): void {
     try {
       savePersistedCatalog(this.pendingReferences, this.logger);
-    } catch {
-      this.logger.debug('Failed to persist auto-catalog to disk');
+    } catch (error: unknown) {
+      this.logger.debug('Failed to persist auto-catalog to disk', {
+        error: error instanceof Error ? error.message : String(error),
+        pendingCount: this.pendingReferences.length,
+      });
     }
   }
 

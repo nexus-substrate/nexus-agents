@@ -298,16 +298,23 @@ function recordOrchestrationSuccess(
       confidence: 0.7,
       source: 'orchestrate-tool',
     });
-  } catch {
+  } catch (error: unknown) {
     // Memory recording is best-effort; never fail orchestration for it
+    createLogger({ tool: 'orchestrate' }).debug('Best-effort memory recording failed', {
+      error: error instanceof Error ? error.message : String(error),
+      taskId,
+    });
   }
 
   // Auto-catalog: scan task description for research references
   try {
     const catalog = getAutoCatalog();
     catalog.scanAndRecord(taskDescription, 'orchestrate');
-  } catch {
+  } catch (error: unknown) {
     // Auto-catalog is best-effort
+    createLogger({ tool: 'orchestrate' }).debug('Best-effort auto-catalog scan failed', {
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 }
 
@@ -329,8 +336,11 @@ function recordOrchestrationError(errorMessage: string, taskDescription: string)
       confidence: 0.5,
       source: 'orchestrate-tool-error',
     });
-  } catch {
+  } catch (error: unknown) {
     // Memory recording is best-effort; never fail orchestration for it
+    createLogger({ tool: 'orchestrate' }).debug('Best-effort error recording failed', {
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 }
 
