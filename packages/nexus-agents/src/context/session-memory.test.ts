@@ -475,3 +475,109 @@ describe('SessionMemory integration', () => {
     memory2.endSession('Session 2 complete');
   });
 });
+
+// ============================================================================
+// Memory Bounds Tests (Issue #709)
+// ============================================================================
+
+describe('SessionMemory bounds', () => {
+  describe('per-session FIFO eviction', () => {
+    it('should evict oldest learnings when limit exceeded', () => {
+      const memory = createSessionMemory(testDir, { maxLearningsPerSession: 3 });
+      memory.startSession('eviction-test');
+
+      for (let i = 0; i < 5; i++) {
+        memory.recordLearning({
+          pattern: `Pattern ${String(i)}`,
+          context: `Context ${String(i)}`,
+          confidence: 0.8,
+        });
+      }
+
+      const result = memory.endSession('Test');
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.learnings).toHaveLength(3);
+        expect(result.value.learnings[0]?.pattern).toBe('Pattern 2');
+        expect(result.value.learnings[2]?.pattern).toBe('Pattern 4');
+      }
+    });
+
+    it('should evict oldest tasks when limit exceeded', () => {
+      const memory = createSessionMemory(testDir, { maxTasksPerSession: 2 });
+      memory.startSession('task-eviction');
+
+      for (let i = 0; i < 4; i++) {
+        memory.recordTask({
+          approach: `Approach ${String(i)}`,
+          challenges: [],
+        });
+      }
+
+      const result = memory.endSession('Test');
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.tasksCompleted).toHaveLength(2);
+        expect(result.value.tasksCompleted[0]?.approach).toBe('Approach 2');
+      }
+    });
+
+    it('should evict oldest errors when limit exceeded', () => {
+      const memory = createSessionMemory(testDir, { maxErrorsPerSession: 2 });
+      memory.startSession('error-eviction');
+
+      for (let i = 0; i < 4; i++) {
+        memory.recordError({
+          error: `Error ${String(i)}`,
+          solution: `Fix ${String(i)}`,
+        });
+      }
+
+      const result = memory.endSession('Test');
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.errorsResolved).toHaveLength(2);
+        expect(result.value.errorsResolved[0]?.error).toBe('Error 2');
+      }
+    });
+  });
+
+  describe('episode file retention', () => {
+    it('should delete oldest episode files when limit exceeded', () => {
+      const memory = createSessionMemory(testDir, { maxEpisodeFiles: 3 });
+
+      for (let i = 0; i < 5; i++) {
+        memory.startSession(`retention-${String(i)}`);
+        memory.recordLearning({
+          pattern: `Pattern ${String(i)}`,
+          context: 'Retention test',
+          confidence: 0.8,
+        });
+        memory.endSession(`Session ${String(i)}`);
+      }
+
+      const files = fs.readdirSync(testDir).filter((f) => f.endsWith('.json'));
+      expect(files.length).toBe(3);
+    });
+
+    it('should keep most recent episodes when enforcing retention', () => {
+      const memory = createSessionMemory(testDir, { maxEpisodeFiles: 2 });
+
+      for (let i = 0; i < 4; i++) {
+        memory.startSession(`keep-recent-${String(i)}`);
+        memory.recordLearning({
+          pattern: `Pattern ${String(i)}`,
+          context: 'Test',
+          confidence: 0.8,
+        });
+        memory.endSession(`Session ${String(i)}`);
+      }
+
+      const episodes = memory.loadEpisodes(10);
+      expect(episodes.length).toBe(2);
+      // Most recent should be kept (sorted by filename descending)
+      expect(episodes[0]?.sessionId).toBe('keep-recent-3');
+      expect(episodes[1]?.sessionId).toBe('keep-recent-2');
+    });
+  });
+});
