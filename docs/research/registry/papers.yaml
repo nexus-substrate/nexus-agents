@@ -2077,3 +2077,41 @@ papers:
     techniques_extracted: []
     related_issues: []
     implementation_status: not-started
+  arxiv-2602.03695:
+    title: 'arXiv Query: search_query=&amp;id_list=2602.03695&amp;start=0&amp;max_results=10'
+    authors: []
+    source: arxiv
+    arxiv_id: '2602.03695'
+    url: https://arxiv.org/abs/2602.03695
+    publication_date: 2026-02
+    venue: null
+    topics:
+      - orchestration
+    tags: []
+    reviewed_date: 2026-02-04
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2602.03474:
+    title: 'arXiv Query: search_query=&amp;id_list=2602.03474&amp;start=0&amp;max_results=10'
+    authors: []
+    source: arxiv
+    arxiv_id: '2602.03474'
+    url: https://arxiv.org/abs/2602.03474
+    publication_date: 2026-02
+    venue: null
+    topics:
+      - consensus
+    tags: []
+    reviewed_date: 2026-02-04
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started

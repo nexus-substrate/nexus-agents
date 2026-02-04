@@ -8,6 +8,7 @@
  * (Source: Research System Enhancement - Phase 3)
  */
 
+import { z } from 'zod';
 import type { Result } from '../core/result.js';
 
 // =============================================================================
@@ -39,6 +40,22 @@ export interface DiscoveredSource {
 }
 
 // =============================================================================
+// ZOD SCHEMAS FOR EXTERNAL API RESPONSES
+// =============================================================================
+
+/** Zod schema for GitHub search API response. */
+const GitHubRepoSchema = z.object({
+  full_name: z.string().optional(),
+  html_url: z.string().optional(),
+  description: z.string().nullable().optional(),
+  stargazers_count: z.number().optional(),
+});
+
+const GitHubSearchResponseSchema = z.object({
+  items: z.array(GitHubRepoSchema).optional(),
+});
+
+// =============================================================================
 // HELPERS
 // =============================================================================
 
@@ -58,18 +75,56 @@ function getToday(): string {
 }
 
 // =============================================================================
+// SHARED FETCH HELPER
+// =============================================================================
+
+/** Options for fetchSource helper. */
+interface FetchSourceOptions {
+  readonly url: string;
+  readonly source: string;
+  readonly headers?: Record<string, string>;
+  readonly timeoutMs?: number;
+}
+
+/**
+ * Shared fetch-and-error-handle helper for source providers.
+ * Centralizes timeout handling, HTTP error detection, and error classification.
+ */
+export async function fetchSource(
+  options: FetchSourceOptions
+): Promise<Result<Response, DiscoverError>> {
+  const { url, source, headers, timeoutMs = SOURCE_API_TIMEOUT_MS } = options;
+  try {
+    const fetchInit: RequestInit = { signal: AbortSignal.timeout(timeoutMs) };
+    if (headers !== undefined) fetchInit.headers = headers;
+    const response = await fetch(url, fetchInit);
+    if (!response.ok) {
+      return {
+        ok: false,
+        error: createError('HTTP_ERROR', source, `API returned ${String(response.status)}`),
+      };
+    }
+    return { ok: true, value: response };
+  } catch (error) {
+    const isTimeout = error instanceof Error && error.name === 'TimeoutError';
+    return {
+      ok: false,
+      error: createError(
+        isTimeout ? 'TIMEOUT' : 'NETWORK',
+        source,
+        isTimeout ? `${source} API timed out` : `Network error querying ${source}`,
+        error
+      ),
+    };
+  }
+}
+
+// =============================================================================
 // GITHUB DISCOVERY
 // =============================================================================
 
-/** Converts GitHub API response items to DiscoveredSource[]. */
-function parseGitHubRepos(data: {
-  items?: Array<{
-    full_name?: string;
-    html_url?: string;
-    description?: string;
-    stargazers_count?: number;
-  }>;
-}): DiscoveredSource[] {
+/** Converts validated GitHub API response items to DiscoveredSource[]. */
+function parseGitHubRepos(data: z.infer<typeof GitHubSearchResponseSchema>): DiscoveredSource[] {
   return (data.items ?? []).map((repo) => ({
     source: 'github',
     title: repo.full_name ?? '',
@@ -99,37 +154,75 @@ export async function discoverGitHubRepos(
   const query = encodeURIComponent(`${topic} language:python language:typescript`);
   const url = `https://api.github.com/search/repositories?q=${query}&sort=stars&order=desc&per_page=${String(maxResults)}`;
 
-  try {
-    const response = await fetch(url, {
-      signal: AbortSignal.timeout(SOURCE_API_TIMEOUT_MS),
-      headers: { Accept: 'application/vnd.github.v3+json', 'User-Agent': 'nexus-agents' },
-    });
+  const fetchResult = await fetchSource({
+    url,
+    source: 'github',
+    headers: { Accept: 'application/vnd.github.v3+json', 'User-Agent': 'nexus-agents' },
+  });
+  if (!fetchResult.ok) return fetchResult;
 
-    if (!response.ok) {
-      return {
-        ok: false,
-        error: createError(
-          'HTTP_ERROR',
-          'github',
-          `GitHub API returned ${String(response.status)}`
-        ),
-      };
-    }
-
-    const data = (await response.json()) as Parameters<typeof parseGitHubRepos>[0];
-    return { ok: true, value: parseGitHubRepos(data) };
-  } catch (error) {
-    const isTimeout = error instanceof Error && error.name === 'TimeoutError';
+  const raw = await fetchResult.value.json();
+  const parsed = GitHubSearchResponseSchema.safeParse(raw);
+  if (!parsed.success) {
     return {
       ok: false,
-      error: createError(
-        isTimeout ? 'TIMEOUT' : 'NETWORK',
-        'github',
-        isTimeout ? 'GitHub API timed out' : 'Network error querying GitHub',
-        error
-      ),
+      error: createError('PARSE_ERROR', 'github', 'GitHub API response schema mismatch'),
     };
   }
+  return { ok: true, value: parseGitHubRepos(parsed.data) };
+}
+
+// =============================================================================
+// ARXIV-BASED DISCOVERY (shared helper)
+// =============================================================================
+
+/**
+ * Builds an arXiv API search URL with targeted field queries.
+ * Uses ti: (title) and abs: (abstract) instead of all: for better relevance.
+ */
+function buildArxivUrl(topic: string, authorFilter: string, maxResults: number): string {
+  const topicQuery = `(ti:${topic} OR abs:${topic})`;
+  const fullQuery = authorFilter !== '' ? `${topicQuery} AND ${authorFilter}` : topicQuery;
+  const encoded = encodeURIComponent(fullQuery);
+  return `https://export.arxiv.org/api/query?search_query=${encoded}&start=0&max_results=${String(maxResults)}&sortBy=submittedDate&sortOrder=descending`;
+}
+
+/**
+ * Shared arXiv-based discovery provider. Used by Google AI, Meta FAIR,
+ * Microsoft Research, and DeepMind discovery functions.
+ */
+async function discoverFromArxiv(
+  topic: string,
+  authorFilter: string,
+  source: string,
+  maxResults: number
+): Promise<Result<DiscoveredSource[], DiscoverError>> {
+  const url = buildArxivUrl(topic, authorFilter, maxResults);
+  const fetchResult = await fetchSource({ url, source });
+  if (!fetchResult.ok) return fetchResult;
+
+  const xml = await fetchResult.value.text();
+  const items = parseArxivEntries(xml, source, topic);
+  return { ok: true, value: items };
+}
+
+// =============================================================================
+// ARXIV DISCOVERY (direct, no author filter)
+// =============================================================================
+
+/**
+ * Discover papers from arXiv without author affiliation filters.
+ * Uses targeted ti:/abs: field queries for better relevance.
+ *
+ * @param topic - Search topic
+ * @param maxResults - Maximum results (default 10)
+ * @returns Result containing discovered items
+ */
+export async function discoverArxiv(
+  topic: string,
+  maxResults = 10
+): Promise<Result<DiscoveredSource[], DiscoverError>> {
+  return discoverFromArxiv(topic, '', 'arxiv', maxResults);
 }
 
 // =============================================================================
@@ -137,8 +230,7 @@ export async function discoverGitHubRepos(
 // =============================================================================
 
 /**
- * Discover Google AI research publications.
- * Uses Google AI Blog RSS/sitemap as a proxy since there's no public API.
+ * Discover Google AI research publications via arXiv with author affiliation filter.
  *
  * @param topic - Search topic
  * @param maxResults - Maximum results (default 10)
@@ -148,42 +240,12 @@ export async function discoverGoogleAI(
   topic: string,
   maxResults = 10
 ): Promise<Result<DiscoveredSource[], DiscoverError>> {
-  // Google AI doesn't have a public search API; use arXiv with Google affiliation
-  const query = encodeURIComponent(
-    `all:${topic} AND (au:"Google Research" OR au:"Google DeepMind" OR au:"Google Brain")`
+  return discoverFromArxiv(
+    topic,
+    '(au:"Google Research" OR au:"Google DeepMind" OR au:"Google Brain")',
+    'google_ai',
+    maxResults
   );
-  const url = `https://export.arxiv.org/api/query?search_query=${query}&start=0&max_results=${String(maxResults)}&sortBy=submittedDate&sortOrder=descending`;
-
-  try {
-    const response = await fetch(url, {
-      signal: AbortSignal.timeout(SOURCE_API_TIMEOUT_MS),
-    });
-    if (!response.ok) {
-      return {
-        ok: false,
-        error: createError(
-          'HTTP_ERROR',
-          'google_ai',
-          `arXiv API returned ${String(response.status)}`
-        ),
-      };
-    }
-
-    const xml = await response.text();
-    const items = parseArxivEntries(xml, 'google_ai', topic);
-    return { ok: true, value: items };
-  } catch (error) {
-    const isTimeout = error instanceof Error && error.name === 'TimeoutError';
-    return {
-      ok: false,
-      error: createError(
-        isTimeout ? 'TIMEOUT' : 'NETWORK',
-        'google_ai',
-        isTimeout ? 'Google AI discovery timed out' : 'Network error',
-        error
-      ),
-    };
-  }
 }
 
 // =============================================================================
@@ -201,41 +263,12 @@ export async function discoverMetaFAIR(
   topic: string,
   maxResults = 10
 ): Promise<Result<DiscoveredSource[], DiscoverError>> {
-  const query = encodeURIComponent(
-    `all:${topic} AND (au:"Meta AI" OR au:FAIR OR au:"Meta Research")`
+  return discoverFromArxiv(
+    topic,
+    '(au:"Meta AI" OR au:FAIR OR au:"Meta Research")',
+    'meta_fair',
+    maxResults
   );
-  const url = `https://export.arxiv.org/api/query?search_query=${query}&start=0&max_results=${String(maxResults)}&sortBy=submittedDate&sortOrder=descending`;
-
-  try {
-    const response = await fetch(url, {
-      signal: AbortSignal.timeout(SOURCE_API_TIMEOUT_MS),
-    });
-    if (!response.ok) {
-      return {
-        ok: false,
-        error: createError(
-          'HTTP_ERROR',
-          'meta_fair',
-          `arXiv API returned ${String(response.status)}`
-        ),
-      };
-    }
-
-    const xml = await response.text();
-    const items = parseArxivEntries(xml, 'meta_fair', topic);
-    return { ok: true, value: items };
-  } catch (error) {
-    const isTimeout = error instanceof Error && error.name === 'TimeoutError';
-    return {
-      ok: false,
-      error: createError(
-        isTimeout ? 'TIMEOUT' : 'NETWORK',
-        'meta_fair',
-        isTimeout ? 'Meta FAIR discovery timed out' : 'Network error',
-        error
-      ),
-    };
-  }
 }
 
 // =============================================================================
@@ -253,39 +286,7 @@ export async function discoverMicrosoftResearch(
   topic: string,
   maxResults = 10
 ): Promise<Result<DiscoveredSource[], DiscoverError>> {
-  const query = encodeURIComponent(`all:${topic} AND (au:"Microsoft Research" OR au:MSR)`);
-  const url = `https://export.arxiv.org/api/query?search_query=${query}&start=0&max_results=${String(maxResults)}&sortBy=submittedDate&sortOrder=descending`;
-
-  try {
-    const response = await fetch(url, {
-      signal: AbortSignal.timeout(SOURCE_API_TIMEOUT_MS),
-    });
-    if (!response.ok) {
-      return {
-        ok: false,
-        error: createError(
-          'HTTP_ERROR',
-          'microsoft',
-          `arXiv API returned ${String(response.status)}`
-        ),
-      };
-    }
-
-    const xml = await response.text();
-    const items = parseArxivEntries(xml, 'microsoft', topic);
-    return { ok: true, value: items };
-  } catch (error) {
-    const isTimeout = error instanceof Error && error.name === 'TimeoutError';
-    return {
-      ok: false,
-      error: createError(
-        isTimeout ? 'TIMEOUT' : 'NETWORK',
-        'microsoft',
-        isTimeout ? 'Microsoft Research discovery timed out' : 'Network error',
-        error
-      ),
-    };
-  }
+  return discoverFromArxiv(topic, '(au:"Microsoft Research" OR au:MSR)', 'microsoft', maxResults);
 }
 
 // =============================================================================
@@ -303,39 +304,7 @@ export async function discoverDeepMind(
   topic: string,
   maxResults = 10
 ): Promise<Result<DiscoveredSource[], DiscoverError>> {
-  const query = encodeURIComponent(`all:${topic} AND (au:DeepMind OR au:"Google DeepMind")`);
-  const url = `https://export.arxiv.org/api/query?search_query=${query}&start=0&max_results=${String(maxResults)}&sortBy=submittedDate&sortOrder=descending`;
-
-  try {
-    const response = await fetch(url, {
-      signal: AbortSignal.timeout(SOURCE_API_TIMEOUT_MS),
-    });
-    if (!response.ok) {
-      return {
-        ok: false,
-        error: createError(
-          'HTTP_ERROR',
-          'deepmind',
-          `arXiv API returned ${String(response.status)}`
-        ),
-      };
-    }
-
-    const xml = await response.text();
-    const items = parseArxivEntries(xml, 'deepmind', topic);
-    return { ok: true, value: items };
-  } catch (error) {
-    const isTimeout = error instanceof Error && error.name === 'TimeoutError';
-    return {
-      ok: false,
-      error: createError(
-        isTimeout ? 'TIMEOUT' : 'NETWORK',
-        'deepmind',
-        isTimeout ? 'DeepMind discovery timed out' : 'Network error',
-        error
-      ),
-    };
-  }
+  return discoverFromArxiv(topic, '(au:DeepMind OR au:"Google DeepMind")', 'deepmind', maxResults);
 }
 
 // =============================================================================

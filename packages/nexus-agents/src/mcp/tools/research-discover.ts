@@ -23,6 +23,7 @@ import {
   discoverMetaFAIR,
   discoverMicrosoftResearch,
   discoverDeepMind,
+  discoverArxiv,
 } from '../../cli/research-helpers-sources.js';
 import {
   discoverSemanticScholar,
@@ -323,12 +324,12 @@ async function queryAllSources(
   let items: DiscoveredItem[] = [];
   const shouldQuery = (src: string): boolean => input.source === 'all' || input.source === src;
 
-  // arXiv uses google_ai provider's arXiv query pattern (topic-only)
+  // arXiv uses dedicated discoverArxiv() with targeted ti:/abs: queries
   if (shouldQuery('arxiv')) {
     sources.push('arxiv');
-    items = items.concat(
-      await discoverFromExtendedSource('google_ai', input.topic, input.maxResults, logger)
-    );
+    const r = await discoverArxiv(input.topic, input.maxResults);
+    if (r.ok) items = items.concat(toDiscoveredItems(r.value));
+    else logger.warn('arxiv discovery failed', { error: r.error.message });
   }
   if (shouldQuery('github')) {
     sources.push('github');
