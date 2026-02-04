@@ -27,6 +27,7 @@ import type { Belief } from '../../context/belief-core-types.js';
 import { AgenticMemoryBackend } from '../../context/agentic-memory.js';
 import { AdaptiveMemoryBackend } from '../../context/adaptive-memory.js';
 import type { MemoryMetadata } from '../../context/memory-backend-types.js';
+import { saveBeliefSnapshot, loadBeliefSnapshot } from '../../context/belief-memory-persistence.js';
 
 // Re-export types tools may need
 export type { SessionLearning, CompletedTask, ResolvedError, Belief };
@@ -92,6 +93,7 @@ export class ToolMemoryManager {
       logger: this.log,
     });
     this.beliefs = new HindsightBeliefMemory(undefined, this.log);
+    this.loadBeliefSnapshotFromDisk();
 
     // Auto-start session
     const sessionId = `mcp-${String(getTimeProvider().now())}`;
@@ -331,6 +333,9 @@ export class ToolMemoryManager {
 
   /** End the current session and persist to disk. Closes SQLite backends. */
   endSession(): void {
+    // Persist belief memory to disk (Phase 3, Issue #714)
+    this.saveBeliefSnapshotToDisk();
+
     if (this.memory.isSessionActive()) {
       const result = this.memory.endSession('MCP session ended');
       if (result.ok) {
@@ -366,6 +371,42 @@ export class ToolMemoryManager {
       });
     } catch {
       // Best-effort: belief creation from learning is non-critical
+    }
+  }
+
+  /** Load belief snapshot from disk on startup (Phase 3, Issue #714). */
+  private loadBeliefSnapshotFromDisk(): void {
+    try {
+      const result = loadBeliefSnapshot(this.log);
+      if (!result.ok) {
+        this.log.warn('Failed to load belief snapshot', { error: result.error.message });
+        return;
+      }
+      if (result.value === null) return;
+      this.beliefs.hydrate(result.value);
+    } catch (error: unknown) {
+      this.log.debug('Belief snapshot load failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /** Save belief snapshot to disk on shutdown (Phase 3, Issue #714). */
+  private saveBeliefSnapshotToDisk(): void {
+    try {
+      const data = this.beliefs.exportData();
+      if (data.beliefs.size === 0) {
+        this.log.debug('No beliefs to persist, skipping snapshot');
+        return;
+      }
+      const result = saveBeliefSnapshot(data, this.log);
+      if (!result.ok) {
+        this.log.warn('Failed to save belief snapshot', { error: result.error.message });
+      }
+    } catch (error: unknown) {
+      this.log.debug('Belief snapshot save failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 }

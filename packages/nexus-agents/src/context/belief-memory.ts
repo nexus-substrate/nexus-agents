@@ -57,6 +57,7 @@ import {
   pruneSupersededInternal,
   type ReflectDataStores,
 } from './belief-memory-reflect.js';
+import type { BeliefMemoryData, HydratedBeliefData } from './belief-memory-persistence.js';
 
 /**
  * In-memory implementation of Hindsight Belief Memory.
@@ -336,6 +337,51 @@ export class HindsightBeliefMemory implements IHindsightBeliefMemory {
       },
       olderThan
     );
+  }
+
+  // =========================================================================
+  // Persistence (Issue #714 Phase 3)
+  // =========================================================================
+
+  /** Export all internal data for disk serialization. */
+  exportData(): BeliefMemoryData {
+    return {
+      beliefs: this.beliefs,
+      updates: this.updates,
+      counterfactuals: this.counterfactuals,
+      hindsightRecords: this.hindsightRecords,
+    };
+  }
+
+  /** Hydrate from a previously loaded snapshot. Rebuilds indexes. */
+  hydrate(data: HydratedBeliefData): void {
+    this.beliefs.clear();
+    this.updates.clear();
+    this.counterfactuals.clear();
+    this.hindsightRecords.clear();
+    this.subjectIndex.clear();
+    this.predicateIndex.clear();
+    this.domainIndex.clear();
+
+    for (const [id, belief] of data.beliefs) {
+      this.beliefs.set(id, belief);
+      this.indexBelief(belief);
+    }
+    for (const [id, records] of data.updates) {
+      this.updates.set(id, records);
+    }
+    for (const [id, cf] of data.counterfactuals) {
+      this.counterfactuals.set(id, cf);
+    }
+    for (const [id, records] of data.hindsightRecords) {
+      this.hindsightRecords.set(id, records);
+    }
+    this.logger.info('BeliefMemory hydrated from snapshot', {
+      beliefs: this.beliefs.size,
+      updates: this.updates.size,
+      counterfactuals: this.counterfactuals.size,
+      hindsightRecords: this.hindsightRecords.size,
+    });
   }
 
   // =========================================================================
