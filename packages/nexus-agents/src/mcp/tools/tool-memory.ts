@@ -42,6 +42,11 @@ import type {
 import type { AgentRole } from '../../core/types/agent.js';
 import { MobiMem } from '../../context/mobimem.js';
 import type { MobiMemStats } from '../../context/mobimem-types.js';
+import {
+  MemoryPromoter,
+  type PromotionStats,
+  type MemoryPromotionConfig,
+} from './memory-promotion.js';
 
 // Re-export types tools may need
 export type { SessionLearning, CompletedTask, ResolvedError, Belief };
@@ -72,6 +77,7 @@ export type {
 } from '../../context/memory-types.js';
 export type { AgentRole } from '../../core/types/agent.js';
 export type { MobiMemStats } from '../../context/mobimem-types.js';
+export type { PromotionStats, MemoryPromotionConfig } from './memory-promotion.js';
 
 // ============================================================================
 // Constants
@@ -686,6 +692,33 @@ export class ToolMemoryManager {
     if (keywords.length === 0) return 0.5;
     const lower = text.toLowerCase();
     return keywords.filter((k) => lower.includes(k)).length / keywords.length;
+  }
+
+  // ==========================================================================
+  // Memory Promotion Pipeline (Phase 4 #746)
+  // ==========================================================================
+
+  /**
+   * Run the memory promotion pipeline.
+   * Promotes high-confidence learnings to beliefs, and stable beliefs to AgenticMemory.
+   * Returns statistics about the promotion run.
+   */
+  async runPromotionPipeline(config?: Partial<MemoryPromotionConfig>): Promise<PromotionStats> {
+    const promoter = new MemoryPromoter(this.beliefs, this.agentic, config, this.log);
+
+    // Get current learnings and beliefs for promotion evaluation
+    const learnings = this.pastLearnings;
+    const beliefData = this.beliefs.exportData();
+    const beliefs = Array.from(beliefData.beliefs.values());
+
+    const stats = await promoter.runPromotionPipeline(learnings, beliefs);
+
+    this.log.info('Promotion pipeline completed', {
+      learningsPromoted: stats.learningsPromotedToBelief,
+      beliefsPromoted: stats.beliefsPromotedToAgentic,
+    });
+
+    return stats;
   }
 
   /** End the current session and persist to disk. Closes SQLite backends. */
