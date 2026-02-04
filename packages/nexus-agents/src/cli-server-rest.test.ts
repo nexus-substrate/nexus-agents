@@ -4,11 +4,15 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { tmpdir } from 'node:os';
 import {
   extractRestConfig,
   startRestApiServer,
   stopRestApiServer,
   logRestApiConfig,
+  loadOrGenerateApiKey,
 } from './cli-server-rest.js';
 import type { ILogger } from './core/index.js';
 
@@ -108,6 +112,45 @@ describe('cli-server-rest', () => {
       };
       logRestApiConfig(config, mockLogger);
       expect(mockLogger.info).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('loadOrGenerateApiKey (Issue #740 Phase 2)', () => {
+    const testDir = path.join(tmpdir(), 'nexus-rest-test-' + String(process.pid));
+
+    afterEach(() => {
+      if (fs.existsSync(testDir)) {
+        fs.rmSync(testDir, { recursive: true, force: true });
+      }
+    });
+
+    it('should generate a key with nxa- prefix', () => {
+      const result = loadOrGenerateApiKey(mockLogger, testDir);
+      expect(result.key).toMatch(/^nxa-[a-f0-9]{48}$/);
+      expect(result.name).toBe('auto-generated');
+    });
+
+    it('should persist key to disk', () => {
+      loadOrGenerateApiKey(mockLogger, testDir);
+
+      const keyFile = path.join(testDir, 'auth', 'rest-api-key');
+      expect(fs.existsSync(keyFile)).toBe(true);
+      const content = fs.readFileSync(keyFile, 'utf-8').trim();
+      expect(content).toMatch(/^nxa-/);
+    });
+
+    it('should reuse existing key from disk', () => {
+      const first = loadOrGenerateApiKey(mockLogger, testDir);
+      const second = loadOrGenerateApiKey(mockLogger, testDir);
+      expect(first.key).toBe(second.key);
+    });
+
+    it('should log key file location on generation', () => {
+      loadOrGenerateApiKey(mockLogger, testDir);
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        'Generated new REST API key',
+        expect.objectContaining({ keyFile: expect.stringContaining('rest-api-key') })
+      );
     });
   });
 });

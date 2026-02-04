@@ -1242,4 +1242,137 @@ describe('SecureHandler', () => {
       );
     });
   });
+
+  describe('audit logging integration (Issue #740 Phase 2)', () => {
+    let mockLogger: MockLogger;
+    let mockAuditLogger: {
+      logToolInvocation: Mock;
+      logPolicyDecision: Mock;
+      logRateLimitViolation: Mock;
+      logSecurityEvent: Mock;
+      log: Mock;
+      flush: Mock;
+      close: Mock;
+    };
+
+    beforeEach(() => {
+      mockLogger = createMockLogger();
+      mockAuditLogger = {
+        logToolInvocation: vi.fn(),
+        logPolicyDecision: vi.fn(),
+        logRateLimitViolation: vi.fn(),
+        logSecurityEvent: vi.fn(),
+        log: vi.fn(),
+        flush: vi.fn().mockResolvedValue(undefined),
+        close: vi.fn().mockResolvedValue(undefined),
+      };
+    });
+
+    it('should emit audit event on successful tool execution', async () => {
+      const handler: ToolHandler = () =>
+        Promise.resolve({ content: [{ type: 'text' as const, text: 'ok' }] });
+
+      const secureHandler = createSecureHandler(handler, {
+        toolName: 'audited_tool',
+        logger: mockLogger,
+        auditLogger: mockAuditLogger,
+      });
+
+      await secureHandler({});
+
+      expect(mockAuditLogger.logToolInvocation).toHaveBeenCalledWith(
+        expect.objectContaining({
+          toolName: 'audited_tool',
+          outcome: 'success',
+        })
+      );
+    });
+
+    it('should emit audit event on tool error', async () => {
+      const handler: ToolHandler = () =>
+        Promise.resolve({ content: [{ type: 'text' as const, text: 'fail' }], isError: true });
+
+      const secureHandler = createSecureHandler(handler, {
+        toolName: 'error_tool',
+        logger: mockLogger,
+        auditLogger: mockAuditLogger,
+      });
+
+      await secureHandler({});
+
+      expect(mockAuditLogger.logToolInvocation).toHaveBeenCalledWith(
+        expect.objectContaining({
+          toolName: 'error_tool',
+          outcome: 'failure',
+        })
+      );
+    });
+
+    it('should emit audit event on rate limit violation', async () => {
+      const handler: ToolHandler = () =>
+        Promise.resolve({ content: [{ type: 'text' as const, text: 'ok' }] });
+
+      const rateLimiter = createMockRateLimiter(false);
+      const secureHandler = createSecureHandler(handler, {
+        toolName: 'limited_tool',
+        logger: mockLogger,
+        rateLimiter: rateLimiter as unknown as RateLimiter,
+        auditLogger: mockAuditLogger,
+      });
+
+      await secureHandler({});
+
+      expect(mockAuditLogger.logRateLimitViolation).toHaveBeenCalledWith(
+        expect.objectContaining({ toolName: 'limited_tool' })
+      );
+    });
+
+    it('should emit audit event on policy denial', async () => {
+      const handler: ToolHandler = () =>
+        Promise.resolve({ content: [{ type: 'text' as const, text: 'ok' }] });
+
+      const policyFirewall: IPolicyFirewall = {
+        evaluate: (): PolicyDecision => ({
+          allowed: false,
+          reason: 'test denial',
+          ruleName: 'test-rule',
+        }),
+        addRule: vi.fn(),
+        removeRule: vi.fn(),
+        getRules: vi.fn().mockReturnValue([]),
+        getMode: vi.fn().mockReturnValue('enforce'),
+        setMode: vi.fn(),
+      };
+
+      const secureHandler = createSecureHandler(handler, {
+        toolName: 'policy_tool',
+        logger: mockLogger,
+        policyFirewall,
+        auditLogger: mockAuditLogger,
+      });
+
+      await secureHandler({});
+
+      expect(mockAuditLogger.logPolicyDecision).toHaveBeenCalledWith(
+        expect.objectContaining({
+          toolName: 'policy_tool',
+          decision: 'deny',
+        })
+      );
+    });
+
+    it('should not call audit logger when not configured', async () => {
+      const handler: ToolHandler = () =>
+        Promise.resolve({ content: [{ type: 'text' as const, text: 'ok' }] });
+
+      const secureHandler = createSecureHandler(handler, {
+        toolName: 'no_audit_tool',
+        logger: mockLogger,
+      });
+
+      await secureHandler({});
+
+      expect(mockAuditLogger.logToolInvocation).not.toHaveBeenCalled();
+    });
+  });
 });

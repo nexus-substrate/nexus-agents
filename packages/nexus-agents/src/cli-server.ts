@@ -48,6 +48,8 @@ import {
 } from './cli-server-rest.js';
 import type { RestApiServer } from './api/rest-server.js';
 import { shutdownToolMemory } from './mcp/tools/tool-memory.js';
+import { initializeAuditLogger, shutdownAuditLogger } from './cli-server-audit.js';
+import type { AuditLogger } from './audit/index.js';
 
 // Re-export for backward compatibility
 export { type OrchestratorModeOptions } from './cli-orchestrator.js';
@@ -253,18 +255,31 @@ interface ShutdownCleanupOptions {
   readonly logger: ILogger;
   /** REST API server (if started) - Issue #524 */
   readonly restServer: RestApiServer | null;
+  /** Audit logger (if enabled) - Issue #740 Phase 2 */
+  readonly auditLogger: AuditLogger | null;
 }
 
 /**
  * Creates the shutdown cleanup handler.
  */
 function createShutdownCleanup(options: ShutdownCleanupOptions): () => Promise<void> {
-  const { eventBusBridge, observer, eventContext, server, serverLogger, logger, restServer } =
-    options;
+  const {
+    eventBusBridge,
+    observer,
+    eventContext,
+    server,
+    serverLogger,
+    logger,
+    restServer,
+    auditLogger,
+  } = options;
 
   return async (): Promise<void> => {
     // Stop REST API server first (Issue #524)
     await stopRestApiServer(restServer, logger);
+
+    // Flush and close audit logger (Issue #740 Phase 2)
+    await shutdownAuditLogger(auditLogger, logger);
 
     if (eventBusBridge.initialized) {
       logFinalEventBusStats(logger);
@@ -455,6 +470,7 @@ async function initializeSubsystems(
   observer: SwarmObserver;
   eventBusBridge: EventBusBridgeResult;
   policyFirewall: ReturnType<typeof createDefaultPolicyFirewall>;
+  auditLogger: AuditLogger | null;
 }> {
   // Initialize experts from configuration (Issue #486)
   const expertResult = initializeExperts({ expertConfig: config.experts, logger });
@@ -495,6 +511,7 @@ async function initializeSubsystems(
 
   await initializeAndLogSandbox(serverLogger, config.security?.sandbox);
   const policyFirewall = logSecurityConfig(serverLogger, config);
+  const auditLogger = initializeAuditLogger(config.security, serverLogger);
   // Pass FeedbackIntegration to tools for closed-loop learning (Issue #490)
   await initializeAndRegisterTools(
     server,
@@ -504,7 +521,7 @@ async function initializeSubsystems(
     feedbackResult.feedbackIntegration
   );
 
-  return { server, serverLogger, observer, eventBusBridge, policyFirewall };
+  return { server, serverLogger, observer, eventBusBridge, policyFirewall, auditLogger };
 }
 
 /**
@@ -540,10 +557,8 @@ export async function startServer(
   applyLoggingConfig(logger, verbose, configResult.config);
 
   // Initialize all subsystems
-  const { server, serverLogger, observer, eventBusBridge } = await initializeSubsystems(
-    configResult.config,
-    logger
-  );
+  const { server, serverLogger, observer, eventBusBridge, auditLogger } =
+    await initializeSubsystems(configResult.config, logger);
 
   // Connect to transport
   await connectToStdioTransport(server, logger, serverLogger);
@@ -565,6 +580,7 @@ export async function startServer(
     serverLogger,
     logger,
     restServer,
+    auditLogger,
   });
   setupShutdownHandlers(cleanup, logger);
 
