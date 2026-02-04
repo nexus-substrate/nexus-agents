@@ -56,6 +56,8 @@ export {
 export { handleScaffoldCommand } from './cli-scaffold-handler.js';
 // Creative: Visualize Command
 export { handleVisualizeCommand } from './cli/visualize-command.js';
+// Issue #684: Capabilities Command
+export { handleCapabilitiesCommand } from './cli/capabilities-command.js';
 
 // Import handlers for dispatch
 import {
@@ -97,6 +99,8 @@ import {
 import { handleScaffoldCommand } from './cli-scaffold-handler.js';
 // Creative: Visualize Command
 import { handleVisualizeCommand } from './cli/visualize-command.js';
+// Issue #684: Capabilities Command
+import { handleCapabilitiesCommand } from './cli/capabilities-command.js';
 
 /**
  * Prints help text to stdout.
@@ -128,6 +132,8 @@ const SYNC_COMMAND_HANDLERS: Record<string, ((args: ParsedCliArgs) => void) | un
   scaffold: handleScaffoldCommand,
   // Creative: Visualize Command
   visualize: handleVisualizeCommand,
+  // Issue #684: Capabilities Command
+  capabilities: handleCapabilitiesCommand,
 };
 
 /**

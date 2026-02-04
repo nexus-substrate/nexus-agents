@@ -49,6 +49,7 @@ COMMANDS:
   release-announce Generate release announcements (blog, Bluesky)
   scaffold        Generate project files from templates (tool, expert, workflow, command)
   visualize       Generate Mermaid diagrams and ASCII dashboards (architecture, swarm, flow)
+  capabilities    Show model capabilities matrix (modalities, tools, features)
 
 OPTIONS:
   -h, --help           Show this help message
@@ -251,6 +252,12 @@ VISUALIZE OPTIONS:
   --format=<fmt>            Output: mermaid (default), ascii, markdown
   --output=<path>           Write diagram to file instead of stdout
 
+CAPABILITIES OPTIONS:
+  capabilities list                    Show all models and their capabilities
+  capabilities compare <m1> <m2>       Side-by-side model comparison
+  capabilities find <capability>       Find models supporting a capability
+  --format=<fmt>                       Output: table (default), json, markdown
+
 DEMO OPTIONS:
   demo routing "task"    Show how routing would select models (mock)
   demo expert-list       Show available experts with descriptions
@@ -351,6 +358,10 @@ EXAMPLES:
   nexus-agents visualize swarm --format=markdown   Agent swarm topology (markdown)
   nexus-agents visualize orchestration --format=ascii  ASCII execution dashboard
   nexus-agents visualize flow --output=flow.md     Save pipeline flow to file
+  nexus-agents capabilities list                    Show model capabilities matrix
+  nexus-agents capabilities compare claude-opus gemini-pro  Compare two models
+  nexus-agents capabilities find image_png           Find models that generate images
+  nexus-agents capabilities list --format=json       Output capabilities as JSON
 
 For more information, visit: https://github.com/williamzujkowski/nexus-agents
 `.trim();
