@@ -151,7 +151,7 @@ export async function discoverGitHubRepos(
   topic: string,
   maxResults = 10
 ): Promise<Result<DiscoveredSource[], DiscoverError>> {
-  const query = encodeURIComponent(`${topic} language:python language:typescript`);
+  const query = encodeURIComponent(`${topic} language:python OR language:typescript`);
   const url = `https://api.github.com/search/repositories?q=${query}&sort=stars&order=desc&per_page=${String(maxResults)}`;
 
   const fetchResult = await fetchSource({
@@ -176,15 +176,32 @@ export async function discoverGitHubRepos(
 // ARXIV-BASED DISCOVERY (shared helper)
 // =============================================================================
 
+/** Options for arXiv-based discovery. */
+interface ArxivQueryOptions {
+  readonly topic: string;
+  readonly authorFilter: string;
+  readonly maxResults: number;
+  readonly sinceDate?: string | undefined;
+}
+
 /**
  * Builds an arXiv API search URL with targeted field queries.
  * Uses ti: (title) and abs: (abstract) instead of all: for better relevance.
+ * Optionally adds a submittedDate range filter when sinceDate is provided.
  */
-function buildArxivUrl(topic: string, authorFilter: string, maxResults: number): string {
-  const topicQuery = `(ti:${topic} OR abs:${topic})`;
-  const fullQuery = authorFilter !== '' ? `${topicQuery} AND ${authorFilter}` : topicQuery;
+function buildArxivUrl(opts: ArxivQueryOptions): string {
+  const topicQuery = `(ti:${opts.topic} OR abs:${opts.topic})`;
+  let fullQuery = opts.authorFilter !== '' ? `${topicQuery} AND ${opts.authorFilter}` : topicQuery;
+
+  // Add date range filter if sinceDate provided (format: YYYYMMDD)
+  if (opts.sinceDate !== undefined && /^\d{4}-\d{2}-\d{2}$/.test(opts.sinceDate)) {
+    const dateNum = opts.sinceDate.replace(/-/g, '');
+    const today = new Date().toISOString().split('T')[0]?.replace(/-/g, '') ?? '';
+    fullQuery = `${fullQuery} AND submittedDate:[${dateNum} TO ${today}]`;
+  }
+
   const encoded = encodeURIComponent(fullQuery);
-  return `https://export.arxiv.org/api/query?search_query=${encoded}&start=0&max_results=${String(maxResults)}&sortBy=submittedDate&sortOrder=descending`;
+  return `https://export.arxiv.org/api/query?search_query=${encoded}&start=0&max_results=${String(opts.maxResults)}&sortBy=submittedDate&sortOrder=descending`;
 }
 
 /**
@@ -195,9 +212,10 @@ async function discoverFromArxiv(
   topic: string,
   authorFilter: string,
   source: string,
-  maxResults: number
+  maxResults: number,
+  sinceDate?: string
 ): Promise<Result<DiscoveredSource[], DiscoverError>> {
-  const url = buildArxivUrl(topic, authorFilter, maxResults);
+  const url = buildArxivUrl({ topic, authorFilter, maxResults, sinceDate });
   const fetchResult = await fetchSource({ url, source });
   if (!fetchResult.ok) return fetchResult;
 
@@ -216,13 +234,15 @@ async function discoverFromArxiv(
  *
  * @param topic - Search topic
  * @param maxResults - Maximum results (default 10)
+ * @param sinceDate - Optional date filter (YYYY-MM-DD)
  * @returns Result containing discovered items
  */
 export async function discoverArxiv(
   topic: string,
-  maxResults = 10
+  maxResults = 10,
+  sinceDate?: string
 ): Promise<Result<DiscoveredSource[], DiscoverError>> {
-  return discoverFromArxiv(topic, '', 'arxiv', maxResults);
+  return discoverFromArxiv(topic, '', 'arxiv', maxResults, sinceDate);
 }
 
 // =============================================================================
@@ -238,13 +258,15 @@ export async function discoverArxiv(
  */
 export async function discoverGoogleAI(
   topic: string,
-  maxResults = 10
+  maxResults = 10,
+  sinceDate?: string
 ): Promise<Result<DiscoveredSource[], DiscoverError>> {
   return discoverFromArxiv(
     topic,
     '(au:"Google Research" OR au:"Google DeepMind" OR au:"Google Brain")',
     'google_ai',
-    maxResults
+    maxResults,
+    sinceDate
   );
 }
 
@@ -261,13 +283,15 @@ export async function discoverGoogleAI(
  */
 export async function discoverMetaFAIR(
   topic: string,
-  maxResults = 10
+  maxResults = 10,
+  sinceDate?: string
 ): Promise<Result<DiscoveredSource[], DiscoverError>> {
   return discoverFromArxiv(
     topic,
     '(au:"Meta AI" OR au:FAIR OR au:"Meta Research")',
     'meta_fair',
-    maxResults
+    maxResults,
+    sinceDate
   );
 }
 
@@ -284,9 +308,16 @@ export async function discoverMetaFAIR(
  */
 export async function discoverMicrosoftResearch(
   topic: string,
-  maxResults = 10
+  maxResults = 10,
+  sinceDate?: string
 ): Promise<Result<DiscoveredSource[], DiscoverError>> {
-  return discoverFromArxiv(topic, '(au:"Microsoft Research" OR au:MSR)', 'microsoft', maxResults);
+  return discoverFromArxiv(
+    topic,
+    '(au:"Microsoft Research" OR au:MSR)',
+    'microsoft',
+    maxResults,
+    sinceDate
+  );
 }
 
 // =============================================================================
@@ -302,9 +333,16 @@ export async function discoverMicrosoftResearch(
  */
 export async function discoverDeepMind(
   topic: string,
-  maxResults = 10
+  maxResults = 10,
+  sinceDate?: string
 ): Promise<Result<DiscoveredSource[], DiscoverError>> {
-  return discoverFromArxiv(topic, '(au:DeepMind OR au:"Google DeepMind")', 'deepmind', maxResults);
+  return discoverFromArxiv(
+    topic,
+    '(au:DeepMind OR au:"Google DeepMind")',
+    'deepmind',
+    maxResults,
+    sinceDate
+  );
 }
 
 // =============================================================================

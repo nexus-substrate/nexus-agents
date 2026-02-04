@@ -111,7 +111,8 @@ export async function discoverSemanticScholar(
 ): Promise<Result<DiscoveredSource[], DiscoverError>> {
   const query = encodeURIComponent(topic);
   const fields = 'title,url,abstract,citationCount,year,isOpenAccess,externalIds';
-  const url = `https://api.semanticscholar.org/graph/v1/paper/search?query=${query}&limit=${String(maxResults)}&fields=${fields}&sort=citationCount:desc`;
+  // Note: sort parameter only works on /paper/search/bulk, not /paper/search
+  const url = `https://api.semanticscholar.org/graph/v1/paper/search?query=${query}&limit=${String(maxResults)}&fields=${fields}`;
 
   const fetchResult = await fetchSource({
     url,

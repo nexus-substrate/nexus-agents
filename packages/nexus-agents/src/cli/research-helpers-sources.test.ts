@@ -107,6 +107,18 @@ describe('discoverGitHubRepos', () => {
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe('TIMEOUT');
   });
+
+  it('should use OR logic for language filters', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ items: [] }),
+    });
+    await discoverGitHubRepos('agent orchestration', 5);
+    const calledUrl = mockFetch.mock.calls[0]?.[0] as string;
+    const decoded = decodeURIComponent(calledUrl);
+    expect(decoded).toContain('language:python OR language:typescript');
+    expect(decoded).not.toContain('language:python language:typescript');
+  });
 });
 
 describe('fetchSource', () => {
@@ -201,6 +213,28 @@ describe('discoverArxiv', () => {
     expect(calledUrl).toContain('ti%3A');
     expect(calledUrl).toContain('abs%3A');
     expect(calledUrl).not.toContain('all%3A');
+  });
+
+  it('should include submittedDate filter when sinceDate is provided', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      text: () => Promise.resolve('<feed></feed>'),
+    });
+    await discoverArxiv('agents', 5, '2025-01-15');
+    const calledUrl = mockFetch.mock.calls[0]?.[0] as string;
+    const decoded = decodeURIComponent(calledUrl);
+    expect(decoded).toContain('submittedDate:[20250115 TO');
+  });
+
+  it('should not include date filter when sinceDate is absent', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      text: () => Promise.resolve('<feed></feed>'),
+    });
+    await discoverArxiv('agents', 5);
+    const calledUrl = mockFetch.mock.calls[0]?.[0] as string;
+    const decoded = decodeURIComponent(calledUrl);
+    expect(decoded).not.toContain('submittedDate:[');
   });
 });
 
