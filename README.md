@@ -53,7 +53,7 @@ export ANTHROPIC_API_KEY=your-key
 nexus-agents orchestrate "Explain the architecture of this codebase"
 ```
 
-> **Security Note:** The server runs without authentication by default. For production deployments, set `NEXUS_AUTH_ENABLED=true`. See [SECURITY.md](./docs/architecture/SECURITY.md) for details.
+> **Security:** In default MCP mode, the server communicates only via stdio with the parent process (no network exposure). The REST API (opt-in) auto-generates an API key on first start. For network-exposed deployments, set `NEXUS_AUTH_ENABLED=true`. See [SECURITY.md](./docs/architecture/SECURITY.md).
 
 ---
 

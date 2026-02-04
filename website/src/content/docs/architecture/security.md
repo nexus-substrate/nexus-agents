@@ -19,22 +19,16 @@ Security-first design with 7 defense layers:
 
 ---
 
-## ⚠️ Critical: Authentication Disabled by Default
+## Authentication & Access Control
 
-**The CLI server runs WITHOUT authentication by default.**
+Nexus-agents uses a **secure-by-default** approach appropriate for its primary use case as a local CLI/MCP tool:
 
-### Risk Assessment
+- **MCP mode (default):** Communicates over stdio with the parent process only — no network listener, no external access possible. Authentication is not required because only the local process can communicate with the server.
+- **REST API mode (opt-in):** When enabled via `NEXUS_REST_ENABLED=true`, an API key is auto-generated and stored at `~/.nexus-agents/auth/rest-api-key` with restrictive file permissions (0600). All REST endpoints require this key via the `Authorization` header.
 
-| Environment           | Risk Level | Recommendation                    |
-| --------------------- | ---------- | --------------------------------- |
-| Local Development     | Low        | Acceptable for local-only access  |
-| CI/CD Pipelines       | Medium     | Enable auth if exposed to network |
-| Production Deployment | **HIGH**   | **MUST enable authentication**    |
-| Shared Networks       | **HIGH**   | **MUST enable authentication**    |
+### Network-Exposed Deployments
 
-### Enabling Authentication
-
-Set the environment variable before starting the server:
+If you expose the server on a network (not the default), enable full authentication:
 
 ```bash
 export NEXUS_AUTH_ENABLED=true
@@ -48,18 +42,14 @@ Or in your configuration:
 server:
   auth:
     enabled: true
-    # Configure your auth provider
 ```
 
-### Startup Warning
-
-When authentication is disabled, the server logs:
-
-```
-[WARN] Authentication is disabled. Set NEXUS_AUTH_ENABLED=true to enable.
-```
-
-**Do not ignore this warning in production environments.**
+| Environment           | Auth Needed? | Notes                                        |
+| --------------------- | ------------ | -------------------------------------------- |
+| Local MCP (stdio)     | No           | Only the parent process can reach the server |
+| Local REST API        | Auto         | API key auto-generated on first start        |
+| Network-exposed       | Yes          | Set `NEXUS_AUTH_ENABLED=true`                |
+| Production deployment | Yes          | Enable auth and use HTTPS                    |
 
 ---
 
@@ -78,6 +68,44 @@ When authentication is disabled, the server logs:
 | Byzantine Failures | Malicious agents     | Weighted voting with Byzantine detection | ✅     |
 
 **Reference:** OWASP LLM Top 10 (LLM01: Prompt Injection)
+
+---
+
+## MCP Middleware Security
+
+Every MCP tool invocation passes through a hardened middleware pipeline:
+
+| Layer               | Protection                                          |
+| ------------------- | --------------------------------------------------- |
+| CORS                | Strict origin checking for HTTP transports          |
+| Security Headers    | X-Content-Type-Options, X-Frame-Options, CSP        |
+| Body Size Limits    | Configurable max request size (default 1 MB)        |
+| Input Validation    | Size limits on tool arguments, Zod validation       |
+| Policy Firewall     | Allowlist/denylist rules per tool with enforcement  |
+| Rate Limiting       | Token bucket per tool (configurable requests/min)   |
+| Output Sanitization | Secret pattern redaction (keys, tokens, passwords)  |
+| Audit Logging       | SIEM-compatible JSON-L events for tool invocations  |
+
+### Configuration
+
+```yaml
+security:
+  policy:
+    policyMode: enforce    # enforce | warn
+    defaultMode: read-only # read-only | read-write
+
+  rateLimit:
+    enabled: true
+    requestsPerMinute: 60
+
+  audit:
+    enabled: true
+    logDir: ~/.nexus-agents/audit
+    minSeverity: info      # info | warning | critical
+    enableHashChain: false  # Tamper-evident log chain
+    maxFileSizeBytes: 10485760
+    maxFiles: 10
+```
 
 ---
 
@@ -312,26 +340,28 @@ const REDACT_PATTERNS = [
 
 ## Security Audit Logging
 
-```typescript
-interface SecurityAuditLog {
-  timestamp: string; // ISO 8601 ET
-  action: string; // What was attempted
-  actor: string; // Agent or user ID
-  resource: string; // What was accessed
-  result: 'allowed' | 'denied' | 'error';
-  reason?: string; // Why denied/error
-  metadata?: Record<string, unknown>;
-}
+Audit events are written as SIEM-compatible JSON-L to `~/.nexus-agents/audit/` (configurable).
+
+### Event Types
+
+| Event                     | Severity | Trigger                           |
+| ------------------------- | -------- | --------------------------------- |
+| `tool_invocation`         | info     | Every tool call (success/failure) |
+| `policy_decision`         | warning  | Policy firewall deny              |
+| `rate_limit_violation`    | warning  | Rate limit exceeded               |
+| `system_startup/shutdown` | info     | Server lifecycle events           |
+
+### Enabling Audit Logging
+
+```yaml
+security:
+  audit:
+    enabled: true
+    minSeverity: info
+    enableHashChain: true  # Optional tamper-evident chain
 ```
 
-### Logged Events
-
-- Secret access attempts
-- Path traversal attempts
-- Rate limit violations
-- Sandbox escapes attempts
-- Byzantine pattern detection
-- Command execution
+Each event includes: timestamp, actor, tool name, request ID, duration, and outcome. With `enableHashChain: true`, events include a SHA-256 hash chain for tamper detection.
 
 ---
 
@@ -350,14 +380,21 @@ security:
 
   allowedPaths: [./] # Directory jail
 
+  policy:
+    policyMode: enforce # enforce | warn
+    defaultMode: read-only # read-only | read-write
+
   rateLimit:
     enabled: true
     requestsPerMinute: 60
 
   audit:
-    enabled: true
-    destination: file # file | stdout | service
-    path: ./logs/audit.log
+    enabled: false # Set to true for structured audit logging
+    logDir: ~/.nexus-agents/audit
+    minSeverity: info # info | warning | critical
+    enableHashChain: false # Tamper-evident hash chain
+    maxFileSizeBytes: 10485760 # 10 MB per log file
+    maxFiles: 10 # Log rotation file count
 ```
 
 ---

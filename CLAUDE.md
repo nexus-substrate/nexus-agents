@@ -39,14 +39,14 @@ nexus-agents --help       # Full command list
 **Required:** Node.js 22.x LTS, pnpm 9.x (or npm 10.x)
 **Optional:** Docker (sandbox mode), Claude CLI (MCP mode)
 
-| Variable             | Required For       | Default               |
-| -------------------- | ------------------ | --------------------- |
-| `ANTHROPIC_API_KEY`  | Claude adapter     | None                  |
-| `OPENAI_API_KEY`     | OpenAI adapter     | None                  |
-| `GOOGLE_AI_API_KEY`  | Gemini adapter     | None                  |
-| `NEXUS_LOG_LEVEL`    | Logging verbosity  | `info`                |
-| `NEXUS_CONFIG_PATH`  | Custom config path | `./nexus-agents.yaml` |
-| `NEXUS_AUTH_ENABLED` | MCP authentication | `false` (disabled)    |
+| Variable             | Required For                        | Default                       |
+| -------------------- | ----------------------------------- | ----------------------------- |
+| `ANTHROPIC_API_KEY`  | Claude adapter                      | None                          |
+| `OPENAI_API_KEY`     | OpenAI adapter                      | None                          |
+| `GOOGLE_AI_API_KEY`  | Gemini adapter                      | None                          |
+| `NEXUS_LOG_LEVEL`    | Logging verbosity                   | `info`                        |
+| `NEXUS_CONFIG_PATH`  | Custom config path                  | `./nexus-agents.yaml`         |
+| `NEXUS_AUTH_ENABLED` | Network auth (not needed for stdio) | `false` (stdio is local-only) |
 
 **Getting started:** [docs/getting-started/INSTALLATION.md](./docs/getting-started/INSTALLATION.md) | **Configuration:** [docs/getting-started/CONFIGURATION.md](./docs/getting-started/CONFIGURATION.md)
 
