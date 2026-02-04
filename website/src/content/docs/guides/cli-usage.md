@@ -60,7 +60,7 @@ Most commonly used commands:
 | `routing-audit`        | `<task>`        | Debug routing decisions (dry-run)           | any          |
 | `orchestrate`          | `<task>`        | Execute task standalone                     | orchestrator |
 | `system-review`        | -               | Run 5-phase system review                   | any          |
-| `vote`                 | `--proposal`    | Consensus voting with 5 agents              | any          |
+| `vote`                 | `--proposal`    | Consensus voting with 6 agents              | any          |
 | `research`             | `status`        | Show technique implementation status        | any          |
 | `research`             | `overlap`       | Find overlapping techniques                 | any          |
 | `research`             | `add`           | Add new paper from arXiv                    | any          |
