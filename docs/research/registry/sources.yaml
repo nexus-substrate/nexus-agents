@@ -25,7 +25,7 @@ sources:
     reviewed_in: 'claude-code-research.md'
 
     key_info:
-      - 'Models: Opus 4.5, Sonnet 4.5, Haiku 4.5'
+      - 'Models: Claude family (Opus, Sonnet, Haiku)'
       - 'Full MCP client support'
       - 'Session resume via --continue/--resume'
       - 'Hooks system for customization'
