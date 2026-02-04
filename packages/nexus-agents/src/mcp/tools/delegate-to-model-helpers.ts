@@ -23,7 +23,11 @@ import {
   SPEED_KEYWORDS,
   CODE_KEYWORDS,
   COST_KEYWORDS,
+  IMAGE_GEN_KEYWORDS,
+  AUDIO_OUTPUT_KEYWORDS,
+  MCP_KEYWORDS,
 } from './delegate-to-model-types.js';
+import { DEFAULT_MODEL_CAPABILITIES, modelSupportsAll } from '../../config/model-capabilities.js';
 
 /**
  * Checks if any keyword from list is in the text.
@@ -46,6 +50,9 @@ export function analyzeTask(task: string): TaskRequirements {
     needsSpeed: hasKeyword(taskLower, SPEED_KEYWORDS),
     needsCodeGen: hasKeyword(taskLower, CODE_KEYWORDS),
     isCostSensitive: hasKeyword(taskLower, COST_KEYWORDS),
+    needsImageGen: hasKeyword(taskLower, IMAGE_GEN_KEYWORDS),
+    needsAudioOutput: hasKeyword(taskLower, AUDIO_OUTPUT_KEYWORDS),
+    needsMcp: hasKeyword(taskLower, MCP_KEYWORDS),
   };
 }
 
@@ -114,13 +121,20 @@ export function scoreModel(
 /**
  * Builds reasoning list from requirements.
  */
+/** Requirement flag to reason description mapping. */
+const REASON_MAP: ReadonlyArray<[keyof TaskRequirements, string]> = [
+  ['needsReasoning', 'complex reasoning required'],
+  ['needsLargeContext', 'large context needed'],
+  ['needsSpeed', 'fast response preferred'],
+  ['needsCodeGen', 'code generation task'],
+  ['isCostSensitive', 'cost-sensitive'],
+  ['needsImageGen', 'image generation required'],
+  ['needsAudioOutput', 'audio output required'],
+  ['needsMcp', 'MCP tool support required'],
+];
+
 export function buildReasons(requirements: TaskRequirements, pref?: string): string[] {
-  const reasons: string[] = [];
-  if (requirements.needsReasoning) reasons.push('complex reasoning required');
-  if (requirements.needsLargeContext) reasons.push('large context needed');
-  if (requirements.needsSpeed) reasons.push('fast response preferred');
-  if (requirements.needsCodeGen) reasons.push('code generation task');
-  if (requirements.isCostSensitive) reasons.push('cost-sensitive');
+  const reasons = REASON_MAP.filter(([key]) => requirements[key] === true).map(([, desc]) => desc);
   if (pref !== undefined && pref !== '') reasons.push(`preferred: ${pref}`);
   return reasons;
 }
@@ -137,13 +151,57 @@ export function getTradeoff(bestProfile: CapabilityProfile, altProfile: Capabili
 }
 
 /**
- * Scores and sorts all models.
+ * Builds modality requirements for capability filtering (Issue #685).
+ */
+/**
+ * Builds modality filter criteria from task requirements (Issue #685).
+ */
+function buildModalityFilter(requirements: TaskRequirements): {
+  outputModalities: Array<'image_png' | 'audio_pcm'>;
+  toolCapabilities: Array<'mcp'>;
+} | null {
+  const needsFiltering =
+    requirements.needsImageGen || requirements.needsAudioOutput || requirements.needsMcp;
+  if (!needsFiltering) return null;
+
+  const outputMods: Array<'image_png' | 'audio_pcm'> = [];
+  if (requirements.needsImageGen) outputMods.push('image_png');
+  if (requirements.needsAudioOutput) outputMods.push('audio_pcm');
+
+  return {
+    outputModalities: outputMods,
+    toolCapabilities: requirements.needsMcp ? ['mcp'] : [],
+  };
+}
+
+/**
+ * Filters models by modality requirements using the capabilities matrix (Issue #685).
+ * Returns model IDs that satisfy all detected modality needs, or null if no filtering needed.
+ */
+export function filterByModality(requirements: TaskRequirements): Set<string> | null {
+  const modalReqs = buildModalityFilter(requirements);
+  if (modalReqs === null) return null;
+
+  const eligible = new Set<string>();
+  for (const model of DEFAULT_MODEL_CAPABILITIES.models) {
+    if (modelSupportsAll(model.id, modalReqs)) {
+      eligible.add(model.id);
+    }
+  }
+  return eligible.size > 0 ? eligible : null;
+}
+
+/**
+ * Scores and sorts all models, optionally filtering by modality requirements.
  */
 export function scoreAllModels(
   requirements: TaskRequirements,
   pref?: PreferredCapability
 ): ScoredModel[] {
+  const eligible = filterByModality(requirements);
+
   return Object.entries(MODEL_CAPABILITIES)
+    .filter(([name]) => eligible === null || eligible.has(name))
     .map(([name, profile]) => ({
       name,
       profile,
