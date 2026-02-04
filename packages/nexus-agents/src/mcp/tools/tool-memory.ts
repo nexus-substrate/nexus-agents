@@ -1,13 +1,15 @@
+/* eslint-disable max-lines -- Cohesive memory facade composing 6 backends (governance: 400-600 lines OK if cohesive) */
 /**
  * nexus-agents/mcp - Tool Memory Integration
  *
  * Unified memory facade for MCP tools. Composes SessionMemory (episodic),
  * BeliefMemory (structured knowledge), and optionally AgenticMemory
- * (Zettelkasten-style) and AdaptiveMemory (priority-scored) when SQLite
- * is available. Graceful degradation when optional backends are absent.
+ * (Zettelkasten-style), AdaptiveMemory (priority-scored), TypedMemory
+ * (MIRIX-style typed access), and MobiMem (post-deployment learning)
+ * when SQLite is available. Graceful degradation when backends are absent.
  *
  * @module mcp/tools/tool-memory
- * (Source: Issue #690, #714 - Unified memory facade Phase 1+2)
+ * (Source: Issue #690, #714, #746 - Unified memory facade)
  */
 
 import * as fs from 'node:fs';
@@ -38,6 +40,8 @@ import type {
   MemoryType,
 } from '../../context/memory-types.js';
 import type { AgentRole } from '../../core/types/agent.js';
+import { MobiMem } from '../../context/mobimem.js';
+import type { MobiMemStats } from '../../context/mobimem-types.js';
 
 // Re-export types tools may need
 export type { SessionLearning, CompletedTask, ResolvedError, Belief };
@@ -48,6 +52,7 @@ export type {
   MemoryType,
 } from '../../context/memory-types.js';
 export type { AgentRole } from '../../core/types/agent.js';
+export type { MobiMemStats } from '../../context/mobimem-types.js';
 
 // ============================================================================
 // Constants
@@ -59,6 +64,7 @@ const DEFAULT_MEMORY_DIR = path.join(MEMORY_BASE, 'sessions');
 const AGENTIC_DB_PATH = path.join(MEMORY_BASE, 'agentic.db');
 const ADAPTIVE_DB_PATH = path.join(MEMORY_BASE, 'adaptive.db');
 const TYPED_DB_PATH = path.join(MEMORY_BASE, 'typed.db');
+const MOBIMEM_DB_PATH = path.join(MEMORY_BASE, 'mobimem.db');
 const MARKDOWN_DIR = path.join(MEMORY_BASE, 'markdown');
 
 // ============================================================================
@@ -104,6 +110,7 @@ export class ToolMemoryManager {
   private adaptive: AdaptiveMemoryBackend | null = null;
   private typed: ITypedMemory | null = null;
   private typedBackend: HybridMemoryBackend | null = null;
+  private mobimem: MobiMem | null = null;
 
   constructor(logger?: ILogger) {
     this.log = logger ?? createLogger({ component: 'ToolMemory' });
@@ -140,6 +147,7 @@ export class ToolMemoryManager {
     await this.initAgenticMemory();
     await this.initAdaptiveMemory();
     await this.initTypedMemory();
+    this.initMobiMem();
   }
 
   /** Initialize AgenticMemory (Phase 2). */
@@ -202,6 +210,21 @@ export class ToolMemoryManager {
       }
     } catch (error: unknown) {
       this.log.debug('TypedMemory init failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /** Initialize MobiMem (Phase 2 #746 - post-deployment learning). */
+  private initMobiMem(): void {
+    try {
+      this.mobimem = new MobiMem({
+        dbPath: MOBIMEM_DB_PATH,
+        autoEviction: true,
+      });
+      this.log.info('MobiMem activated (Phase 2 #746)');
+    } catch (error: unknown) {
+      this.log.debug('MobiMem init failed', {
         error: error instanceof Error ? error.message : String(error),
       });
     }
@@ -468,6 +491,41 @@ export class ToolMemoryManager {
     }
   }
 
+  // ==========================================================================
+  // MobiMem (Phase 2 #746 - Post-deployment learning)
+  // ==========================================================================
+
+  /** Whether MobiMem is available for post-deployment learning. */
+  isMobiMemAvailable(): boolean {
+    return this.mobimem !== null;
+  }
+
+  /**
+   * Get the MobiMem instance for direct access to profile, experience, and action cache.
+   * Returns null if MobiMem is unavailable.
+   */
+  getMobiMem(): MobiMem | null {
+    return this.mobimem;
+  }
+
+  /**
+   * Get MobiMem statistics across all three modules.
+   * Returns stats object or undefined if unavailable.
+   */
+  getMobiMemStats(): MobiMemStats | undefined {
+    if (this.mobimem === null) return undefined;
+    return this.mobimem.getStats();
+  }
+
+  /**
+   * Run MobiMem maintenance (eviction and cleanup).
+   * Safe to call even if MobiMem is unavailable.
+   */
+  runMobiMemMaintenance(): void {
+    if (this.mobimem === null) return;
+    this.mobimem.runMaintenance();
+  }
+
   /** End the current session and persist to disk. Closes SQLite backends. */
   endSession(): void {
     // Persist belief memory to disk (Phase 3, Issue #714)
@@ -497,6 +555,11 @@ export class ToolMemoryManager {
       this.typedBackend = null;
     }
     this.typed = null;
+    // MobiMem has its own close method
+    if (this.mobimem !== null) {
+      this.mobimem.close();
+      this.mobimem = null;
+    }
   }
 
   /** Convert a high-confidence learning into a structured belief. */
