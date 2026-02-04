@@ -14,9 +14,3 @@ export { CodexMcpAdapter } from './codex-mcp-adapter.js';
 // Gemini adapter with retry and circuit breaker (Issue #366, #389)
 export { GeminiCliAdapter, createGeminiAdapter } from './gemini-adapter.js';
 export type { GeminiConfig, GeminiExecutionResult } from './gemini-adapter.js';
-
-// Deprecated aliases re-exported for backward compatibility
-// eslint-disable-next-line @typescript-eslint/no-deprecated
-export { EnhancedGeminiCliAdapter, createEnhancedGeminiAdapter } from './gemini-adapter.js';
-// eslint-disable-next-line @typescript-eslint/no-deprecated
-export type { EnhancedGeminiConfig, EnhancedExecutionResult } from './gemini-adapter.js';

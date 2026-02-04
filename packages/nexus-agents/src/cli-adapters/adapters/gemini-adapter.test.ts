@@ -14,13 +14,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import {
-  GeminiCliAdapter,
-  createGeminiAdapter,
-  // Test deprecated aliases work
-  EnhancedGeminiCliAdapter,
-  createEnhancedGeminiAdapter,
-} from './gemini-adapter.js';
+import { GeminiCliAdapter, createGeminiAdapter } from './gemini-adapter.js';
 
 describe('GeminiCliAdapter', () => {
   let adapter: GeminiCliAdapter;
@@ -95,21 +89,6 @@ describe('GeminiCliAdapter', () => {
     it('should pass configuration to adapter', () => {
       const instance = createGeminiAdapter({ model: 'gemini-2.5-pro' });
       expect(instance.getModelInfo().id).toBe('gemini-2.5-pro');
-    });
-
-    it('should support deprecated createEnhancedGeminiAdapter', () => {
-      // eslint-disable-next-line @typescript-eslint/no-deprecated
-      const instance = createEnhancedGeminiAdapter();
-      expect(instance).toBeInstanceOf(GeminiCliAdapter);
-    });
-  });
-
-  describe('deprecated aliases', () => {
-    it('should work with EnhancedGeminiCliAdapter alias', () => {
-      // eslint-disable-next-line @typescript-eslint/no-deprecated
-      const enhanced = new EnhancedGeminiCliAdapter();
-      expect(enhanced.name).toBe('gemini');
-      expect(enhanced).toBeInstanceOf(GeminiCliAdapter);
     });
   });
 

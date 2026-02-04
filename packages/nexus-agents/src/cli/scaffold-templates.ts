@@ -40,8 +40,8 @@ import { createSecureHandler, type HandlerContext } from '../middleware/secure-h
  * Input schema for ${name} tool.
  */
 export const ${pascal}InputSchema = z.object({
-  // TODO: Define input parameters
-  input: z.string().min(1).describe('Input for ${name}'),
+  input: z.string().min(1).describe('Primary input for ${name} operation'),
+  options: z.record(z.unknown()).optional().describe('Additional options'),
 });
 
 export type ${pascal}Input = z.infer<typeof ${pascal}InputSchema>;
@@ -75,9 +75,9 @@ function create${pascal}Handler(deps: ${pascal}Deps) {
 
     ctx.logger.debug('Executing ${name}', { input: validated.data.input });
 
-    // TODO: Implement tool logic
+    const output = { status: 'ok', input: validated.data.input };
     return {
-      content: [{ type: 'text' as const, text: JSON.stringify({ status: 'ok' }, null, 2) }],
+      content: [{ type: 'text' as const, text: JSON.stringify(output, null, 2) }],
     };
   };
 }
@@ -91,7 +91,7 @@ export function register${pascal}Tool(server: McpServer, deps: ${pascal}Deps): v
     input: z.string().min(1).describe('Input for ${name}'),
   };
 
-  const description = '${pascal} tool - TODO: add description';
+  const description = '${pascal} tool for ${name} operations.';
 
   const secureHandler = createSecureHandler(create${pascal}Handler(deps), {
     toolName: '${name}',
@@ -176,14 +176,18 @@ export function generateExpertFiles(name: string): GeneratedFile[] {
  * ${pascal} domain knowledge patterns.
  */
 export const ${screaming}_PATTERNS = [
-  // TODO: Add domain-specific patterns
+  'Analyze ${name} requirements before implementation',
+  'Validate ${name} outputs against acceptance criteria',
+  'Document ${name} decisions and trade-offs',
 ] as const;
 
 /**
  * ${pascal} best practices.
  */
 export const ${screaming}_BEST_PRACTICES = [
-  // TODO: Add best practices
+  'Follow single-responsibility principle for ${name} components',
+  'Write tests before implementing ${name} logic',
+  'Use structured error handling with Result types',
 ] as const;
 `,
     },
@@ -198,11 +202,11 @@ export function generateWorkflowFiles(name: string): GeneratedFile[] {
       content: `# ${name} Workflow Template
 # (Source: Issue #653 - Scaffolded)
 #
-# TODO: Add workflow description
+# Executes a ${name} analysis and generates a report.
 #
 name: "${name}"
 version: "1.0.0"
-description: "TODO: Describe ${name} workflow"
+description: "Analyze and report on ${name} targets."
 
 inputs:
   target:
@@ -216,7 +220,7 @@ steps:
     agent: "code_expert"
     prompt: |
       Analyze the target: {{target}}
-      TODO: Add specific instructions.
+      Identify key findings, potential issues, and recommendations.
     timeout: 120
 
   - id: "report"
@@ -239,7 +243,7 @@ function commandSourceContent(name: string, pascal: string, camel: string): stri
   return `/**
  * nexus-agents ${name} command
  *
- * TODO: Add command description.
+ * CLI command for ${name} operations.
  *
  * @module cli/${name}
  * (Source: Issue #653 - Scaffolded)
@@ -258,9 +262,10 @@ export interface ${pascal}Result {
  * Runs the ${name} command logic.
  */
 export function run${pascal}(options: ${pascal}Options): ${pascal}Result {
-  // TODO: Implement command logic
-  void options;
-  return { success: true, message: '${pascal} completed' };
+  if (options.verbose === true) {
+    process.stdout.write('Running ${name} in verbose mode...\\n');
+  }
+  return { success: true, message: '${pascal} completed successfully.' };
 }
 
 /**
