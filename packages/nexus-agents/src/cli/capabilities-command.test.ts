@@ -7,8 +7,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { ParsedCliArgs } from '../cli-types.js';
 
 describe('handleCapabilitiesCommand', () => {
-  let stdoutSpy: ReturnType<typeof vi.spyOn>;
-  let exitSpy: ReturnType<typeof vi.spyOn>;
+  let stdoutSpy: ReturnType<(typeof vi)['spyOn']>;
+  let exitSpy: ReturnType<(typeof vi)['spyOn']>;
 
   function makeArgs(positionals: string[], options: Record<string, string> = {}): ParsedCliArgs {
     return {
@@ -18,7 +18,9 @@ describe('handleCapabilitiesCommand', () => {
   }
 
   beforeEach(() => {
+    // @ts-expect-error -- vi.spyOn overload return type mismatch (vitest typing limitation)
     stdoutSpy = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+    // @ts-expect-error -- vi.spyOn overload return type mismatch (vitest typing limitation)
     exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
       throw new Error('process.exit called');
     });

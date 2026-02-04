@@ -10,16 +10,19 @@ vi.mock('./release-validate-helpers.js', () => ({
   validateSecurity: vi.fn().mockResolvedValue({
     expert: 'security',
     passed: true,
+    confidence: 0.95,
     findings: [],
     durationMs: 10,
   }),
   validateArchitecture: vi.fn().mockResolvedValue({
     expert: 'architecture',
     passed: true,
+    confidence: 0.92,
     findings: [
       {
         title: 'Fitness score: 92/100',
         severity: 'info',
+        category: 'architecture',
         description: 'Fitness score meets threshold',
       },
     ],
@@ -28,12 +31,14 @@ vi.mock('./release-validate-helpers.js', () => ({
   validateDocumentation: vi.fn().mockResolvedValue({
     expert: 'documentation',
     passed: true,
+    confidence: 0.9,
     findings: [],
     durationMs: 10,
   }),
   validateDevOps: vi.fn().mockResolvedValue({
     expert: 'devops',
     passed: true,
+    confidence: 0.88,
     findings: [],
     durationMs: 10,
   }),
@@ -67,16 +72,19 @@ function resetValidatorMocks(): void {
   vi.mocked(validateSecurity).mockResolvedValue({
     expert: 'security',
     passed: true,
+    confidence: 0.95,
     findings: [],
     durationMs: 10,
   });
   vi.mocked(validateArchitecture).mockResolvedValue({
     expert: 'architecture',
     passed: true,
+    confidence: 0.92,
     findings: [
       {
         title: 'Fitness score: 92/100',
         severity: 'info' as const,
+        category: 'architecture',
         description: 'Fitness score meets threshold',
       },
     ],
@@ -85,12 +93,14 @@ function resetValidatorMocks(): void {
   vi.mocked(validateDocumentation).mockResolvedValue({
     expert: 'documentation',
     passed: true,
+    confidence: 0.9,
     findings: [],
     durationMs: 10,
   });
   vi.mocked(validateDevOps).mockResolvedValue({
     expert: 'devops',
     passed: true,
+    confidence: 0.88,
     findings: [],
     durationMs: 10,
   });
@@ -116,7 +126,15 @@ describe('runReleaseValidate', () => {
     vi.mocked(validateSecurity).mockResolvedValue({
       expert: 'security',
       passed: false,
-      findings: [{ title: 'Critical vuln', severity: 'error' as const }],
+      confidence: 0.95,
+      findings: [
+        {
+          title: 'Critical vuln',
+          severity: 'error' as const,
+          category: 'security',
+          description: 'Critical vulnerability found',
+        },
+      ],
       durationMs: 10,
     });
 
@@ -130,7 +148,15 @@ describe('runReleaseValidate', () => {
     vi.mocked(validateSecurity).mockResolvedValue({
       expert: 'security',
       passed: true,
-      findings: [{ title: 'Weak cipher', severity: 'warning' as const }],
+      confidence: 0.85,
+      findings: [
+        {
+          title: 'Weak cipher',
+          severity: 'warning' as const,
+          category: 'security',
+          description: 'Weak cipher detected',
+        },
+      ],
       durationMs: 10,
     });
 
@@ -174,7 +200,9 @@ describe('printReleaseValidateResult', () => {
       success: true,
       version: '2.6.0',
       passed: true,
-      experts: [{ expert: 'security', passed: true, findings: [], durationMs: 10 }],
+      experts: [
+        { expert: 'security', passed: true, confidence: 0.95, findings: [], durationMs: 10 },
+      ],
       summary: { errors: 0, warnings: 0, infos: 0 },
       durationMs: 100,
     };
@@ -197,7 +225,15 @@ describe('printReleaseValidateResult', () => {
         {
           expert: 'security',
           passed: false,
-          findings: [{ title: 'Critical issue', severity: 'error' as const }],
+          confidence: 0.95,
+          findings: [
+            {
+              title: 'Critical issue',
+              severity: 'error' as const,
+              category: 'security',
+              description: 'Critical issue found',
+            },
+          ],
           durationMs: 10,
         },
       ],
@@ -235,7 +271,15 @@ describe('releaseValidateCommand', () => {
     vi.mocked(validateSecurity).mockResolvedValue({
       expert: 'security',
       passed: false,
-      findings: [{ title: 'Error', severity: 'error' as const }],
+      confidence: 0.95,
+      findings: [
+        {
+          title: 'Error',
+          severity: 'error' as const,
+          category: 'security',
+          description: 'Validation error',
+        },
+      ],
       durationMs: 10,
     });
 

@@ -4,6 +4,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { FitnessAudit } from '../governance/fitness-score.js';
 
 vi.mock('../governance/index.js', () => ({
   calculateFitnessScore: vi.fn().mockReturnValue({
@@ -47,7 +48,7 @@ vi.mock('./ansi-output.js', () => ({
 import { fitnessAuditCommand } from './fitness-audit.js';
 import { calculateFitnessScore } from '../governance/index.js';
 
-const defaultAudit = {
+const defaultAudit: FitnessAudit = {
   score: 92,
   version: 'v2.6.0-test',
   timestamp: '2026-02-04T00:00:00Z',
@@ -61,13 +62,7 @@ const defaultAudit = {
     operatorErgonomics: 10,
     governanceIntegration: 5,
   },
-  findings: [] as Array<{
-    dimension: string;
-    severity: 'info' | 'warning' | 'critical';
-    description: string;
-    pointsDeducted: number;
-    suggestion?: string;
-  }>,
+  findings: [],
 };
 
 describe('fitnessAuditCommand', () => {
