@@ -12,6 +12,8 @@ import {
   discoverMetaFAIR,
   discoverMicrosoftResearch,
   discoverDeepMind,
+  discoverArxiv,
+  fetchSource,
   scoreRelevance,
 } from './research-helpers-sources.js';
 
@@ -107,6 +109,101 @@ describe('discoverGitHubRepos', () => {
   });
 });
 
+describe('fetchSource', () => {
+  it('should return response on success', async () => {
+    const mockResponse = { ok: true, status: 200 };
+    mockFetch.mockResolvedValueOnce(mockResponse);
+    const result = await fetchSource({ url: 'https://example.com', source: 'test' });
+    expect(result.ok).toBe(true);
+  });
+
+  it('should return HTTP_ERROR on non-ok response', async () => {
+    mockFetch.mockResolvedValueOnce({ ok: false, status: 429 });
+    const result = await fetchSource({ url: 'https://example.com', source: 'test' });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe('HTTP_ERROR');
+      expect(result.error.source).toBe('test');
+    }
+  });
+
+  it('should return TIMEOUT on timeout error', async () => {
+    const err = new Error('timed out');
+    err.name = 'TimeoutError';
+    mockFetch.mockRejectedValueOnce(err);
+    const result = await fetchSource({ url: 'https://example.com', source: 'test' });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe('TIMEOUT');
+  });
+
+  it('should return NETWORK on generic error', async () => {
+    mockFetch.mockRejectedValueOnce(new Error('DNS fail'));
+    const result = await fetchSource({ url: 'https://example.com', source: 'test' });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe('NETWORK');
+  });
+
+  it('should pass custom headers when provided', async () => {
+    mockFetch.mockResolvedValueOnce({ ok: true });
+    await fetchSource({
+      url: 'https://example.com',
+      source: 'test',
+      headers: { Authorization: 'Bearer token' },
+    });
+    const callArgs = mockFetch.mock.calls[0] as [string, RequestInit];
+    expect(callArgs[1].headers).toEqual({ Authorization: 'Bearer token' });
+  });
+});
+
+describe('discoverGitHubRepos - Zod validation', () => {
+  it('should return PARSE_ERROR on invalid schema', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve('not an object'),
+    });
+    const result = await discoverGitHubRepos('test', 5);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe('PARSE_ERROR');
+  });
+});
+
+describe('discoverArxiv', () => {
+  const arxivXml = `<?xml version="1.0" encoding="UTF-8"?>
+<feed>
+  <entry>
+    <id>http://arxiv.org/abs/2401.12345v1</id>
+    <title>Multi-Agent Orchestration</title>
+    <summary>A paper about agents.</summary>
+  </entry>
+</feed>`;
+
+  it('should discover papers without author filter', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      text: () => Promise.resolve(arxivXml),
+    });
+    const result = await discoverArxiv('orchestration', 10);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value).toHaveLength(1);
+      expect(result.value[0]?.source).toBe('arxiv');
+      expect(result.value[0]?.url).toContain('2401.12345');
+    }
+  });
+
+  it('should use ti:/abs: query prefix', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      text: () => Promise.resolve('<feed></feed>'),
+    });
+    await discoverArxiv('agent memory', 5);
+    const calledUrl = mockFetch.mock.calls[0]?.[0] as string;
+    expect(calledUrl).toContain('ti%3A');
+    expect(calledUrl).toContain('abs%3A');
+    expect(calledUrl).not.toContain('all%3A');
+  });
+});
+
 describe('arXiv-based providers', () => {
   const arxivXml = `<?xml version="1.0" encoding="UTF-8"?>
 <feed>
@@ -154,6 +251,18 @@ describe('arXiv-based providers', () => {
         const result = await fn('test', 5);
         expect(result.ok).toBe(false);
         if (!result.ok) expect(result.error.code).toBe('NETWORK');
+      });
+
+      it('should use ti:/abs: query prefix', async () => {
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          text: () => Promise.resolve('<feed></feed>'),
+        });
+        await fn('agent memory', 5);
+        const calledUrl = mockFetch.mock.calls[0]?.[0] as string;
+        expect(calledUrl).toContain('ti%3A');
+        expect(calledUrl).toContain('abs%3A');
+        expect(calledUrl).not.toContain('all%3A');
       });
     });
   }
