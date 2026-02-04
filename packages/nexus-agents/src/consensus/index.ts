@@ -177,6 +177,18 @@ export {
 
 export { CorrelationTracker, createCorrelationTracker } from './correlation-tracker.js';
 
+// Correlation persistence (disk-backed HOV state)
+export type { PersistedCorrelationData } from './correlation-persistence.js';
+
+export {
+  PersistedCorrelationDataSchema,
+  getCorrelationDataPath,
+  saveCorrelationData,
+  loadCorrelationData,
+  createPersistentCorrelationTracker,
+  createPersistedProposal,
+} from './correlation-persistence.js';
+
 export {
   OWVoting,
   createOWVoting,

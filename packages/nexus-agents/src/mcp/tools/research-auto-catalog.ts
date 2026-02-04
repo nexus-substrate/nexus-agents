@@ -9,6 +9,10 @@
  * (Source: Research System Enhancement - Phase 5)
  */
 
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import * as os from 'node:os';
+import { z } from 'zod';
 import type { ILogger } from '../../core/index.js';
 import { createLogger } from '../../core/index.js';
 import { getToolMemory } from './tool-memory.js';
@@ -31,6 +35,86 @@ export interface CatalogedReference {
   discoveredAt: string;
   /** Whether it has been reviewed */
   reviewed: boolean;
+}
+
+// =============================================================================
+// PERSISTENCE
+// =============================================================================
+
+/** Path to the persistent pending catalog file. */
+const CATALOG_DIR = path.join('.nexus-agents', 'research');
+const CATALOG_FILE = 'pending-catalog.json';
+const FILE_MODE = 0o600;
+const DIR_MODE = 0o700;
+
+/** Schema for validating persisted catalog data. */
+const CatalogedReferenceSchema = z.object({
+  type: z.enum(['arxiv', 'github', 'url']),
+  identifier: z.string(),
+  context: z.string(),
+  sourceTool: z.string(),
+  discoveredAt: z.string(),
+  reviewed: z.boolean(),
+});
+
+const PersistedCatalogSchema = z.object({
+  version: z.literal(1),
+  references: z.array(CatalogedReferenceSchema),
+  savedAt: z.string(),
+});
+
+/** Returns path to ~/.nexus-agents/research/pending-catalog.json */
+function getCatalogPath(): string {
+  return path.join(os.homedir(), CATALOG_DIR, CATALOG_FILE);
+}
+
+/** Loads pending references from disk. Returns empty array on failure. */
+function loadPersistedCatalog(logger: ILogger): CatalogedReference[] {
+  const filePath = getCatalogPath();
+  try {
+    if (!fs.existsSync(filePath)) return [];
+    const content = fs.readFileSync(filePath, { encoding: 'utf-8' });
+    const parsed = JSON.parse(content) as unknown;
+    const result = PersistedCatalogSchema.safeParse(parsed);
+    if (!result.success) {
+      logger.warn('Invalid pending catalog file, starting fresh', {
+        errors: result.error.issues.map((i) => i.message),
+      });
+      return [];
+    }
+    return result.data.references;
+  } catch {
+    logger.debug('Could not load pending catalog, starting fresh');
+    return [];
+  }
+}
+
+/** Saves pending references to disk with atomic write. */
+function savePersistedCatalog(references: readonly CatalogedReference[], logger: ILogger): void {
+  const dirPath = path.join(os.homedir(), CATALOG_DIR);
+  const filePath = getCatalogPath();
+  const tempPath = `${filePath}.tmp.${String(process.pid)}`;
+  try {
+    fs.mkdirSync(dirPath, { recursive: true, mode: DIR_MODE });
+    const data = {
+      version: 1,
+      references,
+      savedAt: new Date().toISOString(),
+    };
+    fs.writeFileSync(tempPath, JSON.stringify(data, null, 2), {
+      encoding: 'utf-8',
+      mode: FILE_MODE,
+    });
+    fs.renameSync(tempPath, filePath);
+  } catch (error: unknown) {
+    try {
+      fs.unlinkSync(tempPath);
+    } catch {
+      /* ignore */
+    }
+    const message = error instanceof Error ? error.message : String(error);
+    logger.warn('Failed to persist pending catalog', { error: message });
+  }
 }
 
 // =============================================================================
@@ -60,6 +144,12 @@ export class ResearchAutoCatalog {
 
   constructor(logger?: ILogger) {
     this.logger = logger ?? createLogger({ component: 'research-auto-catalog' });
+    // Load any persisted references from disk
+    const persisted = loadPersistedCatalog(this.logger);
+    if (persisted.length > 0) {
+      this.pendingReferences.push(...persisted.slice(0, ResearchAutoCatalog.MAX_PENDING));
+      this.logger.info('Loaded persisted auto-catalog references', { count: persisted.length });
+    }
   }
 
   /**
@@ -126,6 +216,9 @@ export class ResearchAutoCatalog {
     }
     this.pendingReferences.push(entry);
 
+    // Persist to disk for cross-restart continuity
+    this.persistToDisk();
+
     // Also persist to session memory
     try {
       const memory = getToolMemory(this.logger);
@@ -183,6 +276,7 @@ export class ResearchAutoCatalog {
     const index = this.pendingReferences.findIndex((r) => r.identifier === identifier);
     if (index >= 0) {
       this.pendingReferences.splice(index, 1);
+      this.persistToDisk();
       return true;
     }
     return false;
@@ -193,7 +287,17 @@ export class ResearchAutoCatalog {
    */
   flush(): void {
     this.pendingReferences.length = 0;
+    this.persistToDisk();
     this.logger.debug('Flushed all pending references');
+  }
+
+  /** Persist current pending references to disk. */
+  private persistToDisk(): void {
+    try {
+      savePersistedCatalog(this.pendingReferences, this.logger);
+    } catch {
+      this.logger.debug('Failed to persist auto-catalog to disk');
+    }
   }
 
   /** Check if a reference already exists in pending. */

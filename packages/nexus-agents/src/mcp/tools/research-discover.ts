@@ -36,6 +36,9 @@ import {
 /** Maximum results to return per source. */
 const MAX_RESULTS_PER_SOURCE = 20;
 
+/** Default relevance threshold when filtering is enabled. */
+const DEFAULT_RELEVANCE_THRESHOLD = 0.1;
+
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -66,6 +69,8 @@ export interface DiscoveredItem {
   alreadyInRegistry: boolean;
   /** Discovery date */
   discoveredAt: string;
+  /** Relevance score (0-1) relative to the search topic */
+  relevanceScore?: number;
 }
 
 // =============================================================================
@@ -107,6 +112,15 @@ export const ResearchDiscoverInputSchema = z.object({
     .string()
     .optional()
     .describe('Only return results after this date (YYYY-MM-DD format)'),
+  relevanceThreshold: z
+    .number()
+    .min(0)
+    .max(1)
+    .optional()
+    .default(DEFAULT_RELEVANCE_THRESHOLD)
+    .describe(
+      'Minimum relevance score (0-1) to include in results. Higher values filter more aggressively.'
+    ),
 });
 
 /**
@@ -226,6 +240,58 @@ async function discoverFromExtendedSource(
 }
 
 // =============================================================================
+// RELEVANCE SCORING
+// =============================================================================
+
+/**
+ * Computes a relevance score (0-1) for a discovered item relative to the search topic.
+ * Uses keyword matching against title and description, with title matches weighted higher.
+ *
+ * Exported for testability.
+ */
+export function computeRelevanceScore(item: DiscoveredItem, topic: string): number {
+  const keywords = topic
+    .toLowerCase()
+    .split(/[\s,;+\-/]+/)
+    .filter((w) => w.length >= 3);
+
+  if (keywords.length === 0) return 1.0; // No keywords to filter against
+
+  const titleLower = item.title.toLowerCase();
+  const descLower = item.description.toLowerCase();
+
+  let titleMatches = 0;
+  let descMatches = 0;
+
+  for (const keyword of keywords) {
+    if (titleLower.includes(keyword)) titleMatches++;
+    if (descLower.includes(keyword)) descMatches++;
+  }
+
+  // Title matches worth 2x, description matches worth 1x
+  const weightedMatches = titleMatches * 2 + descMatches;
+  const maxPossible = keywords.length * 3; // 2 (title) + 1 (desc) per keyword
+
+  return Math.min(1.0, weightedMatches / maxPossible);
+}
+
+/** Scores and filters items by relevance, returning sorted results. Exported for testability. */
+export function filterByRelevance(
+  items: DiscoveredItem[],
+  topic: string,
+  threshold: number
+): DiscoveredItem[] {
+  const scored = items.map((item) => ({
+    ...item,
+    relevanceScore: computeRelevanceScore(item, topic),
+  }));
+
+  return scored
+    .filter((item) => item.relevanceScore >= threshold)
+    .sort((a, b) => b.relevanceScore - a.relevanceScore);
+}
+
+// =============================================================================
 // ORCHESTRATION
 // =============================================================================
 
@@ -291,15 +357,31 @@ async function executeDiscovery(
 
   const totalFound = allItems.length;
   const inRegistry = allItems.filter((i) => i.alreadyInRegistry).length;
-  const newItems = allItems.filter((i) => !i.alreadyInRegistry).slice(0, input.maxResults);
+
+  // Apply relevance filtering to remove off-topic results
+  const threshold = input.relevanceThreshold;
+  const relevantItems = filterByRelevance(
+    allItems.filter((i) => !i.alreadyInRegistry),
+    input.topic,
+    threshold
+  ).slice(0, input.maxResults);
+
+  const filteredOut = totalFound - inRegistry - relevantItems.length;
+  if (filteredOut > 0) {
+    logger.debug('Filtered out irrelevant results', {
+      threshold,
+      filteredOut,
+      remaining: relevantItems.length,
+    });
+  }
 
   return {
     topic: input.topic,
     sourcesQueried: sourcesToQuery,
-    items: newItems,
+    items: relevantItems,
     totalFound,
     alreadyInRegistry: inRegistry,
-    newItems: newItems.length,
+    newItems: relevantItems.length,
   };
 }
 
@@ -375,6 +457,12 @@ export function registerResearchDiscoverTool(server: McpServer, deps: ResearchDi
       .describe('Source to search'),
     maxResults: z.number().min(1).max(MAX_RESULTS_PER_SOURCE).optional().describe('Max results'),
     sinceDate: z.string().optional().describe('Only results after this date (YYYY-MM-DD)'),
+    relevanceThreshold: z
+      .number()
+      .min(0)
+      .max(1)
+      .optional()
+      .describe('Minimum relevance score (0-1) to include results. Higher = stricter filtering.'),
   };
 
   const description =

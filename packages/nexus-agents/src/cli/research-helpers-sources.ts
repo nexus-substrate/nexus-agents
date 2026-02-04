@@ -61,6 +61,30 @@ function getToday(): string {
 // GITHUB DISCOVERY
 // =============================================================================
 
+/** Converts GitHub API response items to DiscoveredSource[]. */
+function parseGitHubRepos(data: {
+  items?: Array<{
+    full_name?: string;
+    html_url?: string;
+    description?: string;
+    stargazers_count?: number;
+  }>;
+}): DiscoveredSource[] {
+  return (data.items ?? []).map((repo) => ({
+    source: 'github',
+    title: repo.full_name ?? '',
+    url: repo.html_url ?? '',
+    description: repo.description ?? '',
+    relevance:
+      (repo.stargazers_count ?? 0) > 1000
+        ? 'high'
+        : (repo.stargazers_count ?? 0) > 100
+          ? 'medium'
+          : 'low',
+    discoveredAt: getToday(),
+  }));
+}
+
 /**
  * Discover relevant GitHub repositories for a topic.
  *
@@ -92,30 +116,8 @@ export async function discoverGitHubRepos(
       };
     }
 
-    const data = (await response.json()) as {
-      items?: Array<{
-        full_name?: string;
-        html_url?: string;
-        description?: string;
-        stargazers_count?: number;
-      }>;
-    };
-
-    const items: DiscoveredSource[] = (data.items ?? []).map((repo) => ({
-      source: 'github',
-      title: repo.full_name ?? '',
-      url: repo.html_url ?? '',
-      description: repo.description ?? '',
-      relevance:
-        (repo.stargazers_count ?? 0) > 1000
-          ? 'high'
-          : (repo.stargazers_count ?? 0) > 100
-            ? 'medium'
-            : 'low',
-      discoveredAt: getToday(),
-    }));
-
-    return { ok: true, value: items };
+    const data = (await response.json()) as Parameters<typeof parseGitHubRepos>[0];
+    return { ok: true, value: parseGitHubRepos(data) };
   } catch (error) {
     const isTimeout = error instanceof Error && error.name === 'TimeoutError';
     return {

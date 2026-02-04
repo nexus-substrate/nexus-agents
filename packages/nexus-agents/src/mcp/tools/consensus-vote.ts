@@ -32,7 +32,12 @@ import type {
   HigherOrderVotingResult,
   ICorrelationTracker,
 } from '../../consensus/higher-order-types.js';
-import { HigherOrderVotingStrategy, createCorrelationTracker } from '../../consensus/index.js';
+import { HigherOrderVotingStrategy } from '../../consensus/index.js';
+import {
+  createPersistentCorrelationTracker,
+  createPersistedProposal,
+  saveCorrelationData,
+} from '../../consensus/correlation-persistence.js';
 
 /**
  * Maximum proposal length (memory bounds per Issue #435).
@@ -41,20 +46,19 @@ const MAX_PROPOSAL_LENGTH = 4000;
 
 /**
  * Module-level persistent CorrelationTracker for Higher-Order Voting.
- * Persists across consensus_vote calls to accumulate voting history.
+ * Persists across consensus_vote calls AND across process restarts
+ * by loading/saving to ~/.nexus-agents/voting/correlations.json.
  * (Source: Issue #517 - Fix HOV never activating due to fresh tracker)
- *
- * Note: This is an in-memory store that resets on process restart.
- * For production persistence, consider Redis/database storage.
  */
 let persistentCorrelationTracker: ICorrelationTracker | undefined;
 
 /**
  * Gets or creates the persistent CorrelationTracker.
+ * On first call, loads any persisted correlation history from disk.
  * @returns The module-level CorrelationTracker instance
  */
 function getOrCreateCorrelationTracker(): ICorrelationTracker {
-  persistentCorrelationTracker ??= createCorrelationTracker();
+  persistentCorrelationTracker ??= createPersistentCorrelationTracker();
   return persistentCorrelationTracker;
 }
 
@@ -412,6 +416,18 @@ function recordVotesToTracker(
   const id = `consensus-${String(getTimeProvider().now())}-${getRandomProvider().random().toString(36).slice(2, 9)}`;
   tracker.recordProposalVotes(id, voteMap, outcome);
   logger.debug('Recorded votes to tracker', { proposalId: id, outcome });
+
+  // Persist correlation data to disk for cross-restart continuity
+  try {
+    const persisted = createPersistedProposal(id, voteMap, outcome);
+    const saveResult = saveCorrelationData([persisted]);
+    if (!saveResult.ok) {
+      logger.warn('Failed to persist correlation data', { error: saveResult.error.message });
+    }
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.warn('Error persisting correlation data', { error: message });
+  }
 }
 
 /** Executes the consensus voting process. */
