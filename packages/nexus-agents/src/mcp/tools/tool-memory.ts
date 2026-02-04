@@ -28,9 +28,26 @@ import { AgenticMemoryBackend } from '../../context/agentic-memory.js';
 import { AdaptiveMemoryBackend } from '../../context/adaptive-memory.js';
 import type { MemoryMetadata } from '../../context/memory-backend-types.js';
 import { saveBeliefSnapshot, loadBeliefSnapshot } from '../../context/belief-memory-persistence.js';
+import { HybridMemoryBackend } from '../../context/memory-backend.js';
+import { createTypedMemory } from '../../context/typed-memory.js';
+import type {
+  ITypedMemory,
+  TypedMemoryEntry,
+  TypedMemoryStats,
+  TypedMemoryPruneResult,
+  MemoryType,
+} from '../../context/memory-types.js';
+import type { AgentRole } from '../../core/types/agent.js';
 
 // Re-export types tools may need
 export type { SessionLearning, CompletedTask, ResolvedError, Belief };
+export type {
+  TypedMemoryEntry,
+  TypedMemoryStats,
+  TypedMemoryPruneResult,
+  MemoryType,
+} from '../../context/memory-types.js';
+export type { AgentRole } from '../../core/types/agent.js';
 
 // ============================================================================
 // Constants
@@ -41,6 +58,7 @@ const MEMORY_BASE = path.join(os.homedir(), '.nexus-agents', 'memory');
 const DEFAULT_MEMORY_DIR = path.join(MEMORY_BASE, 'sessions');
 const AGENTIC_DB_PATH = path.join(MEMORY_BASE, 'agentic.db');
 const ADAPTIVE_DB_PATH = path.join(MEMORY_BASE, 'adaptive.db');
+const TYPED_DB_PATH = path.join(MEMORY_BASE, 'typed.db');
 const MARKDOWN_DIR = path.join(MEMORY_BASE, 'markdown');
 
 // ============================================================================
@@ -84,6 +102,8 @@ export class ToolMemoryManager {
   private pastLearnings: readonly SessionLearning[] = [];
   private agentic: AgenticMemoryBackend | null = null;
   private adaptive: AdaptiveMemoryBackend | null = null;
+  private typed: ITypedMemory | null = null;
+  private typedBackend: HybridMemoryBackend | null = null;
 
   constructor(logger?: ILogger) {
     this.log = logger ?? createLogger({ component: 'ToolMemory' });
@@ -114,40 +134,74 @@ export class ToolMemoryManager {
     void this.initSqliteBackends();
   }
 
-  /** Try to activate AgenticMemory and AdaptiveMemory (requires better-sqlite3). */
+  /** Try to activate SQLite backends (best-effort, non-blocking). */
   private async initSqliteBackends(): Promise<void> {
+    fs.mkdirSync(MARKDOWN_DIR, { recursive: true });
+    await this.initAgenticMemory();
+    await this.initAdaptiveMemory();
+    await this.initTypedMemory();
+  }
+
+  /** Initialize AgenticMemory (Phase 2). */
+  private async initAgenticMemory(): Promise<void> {
     try {
-      fs.mkdirSync(MARKDOWN_DIR, { recursive: true });
-      const agenticBackend = new AgenticMemoryBackend({
+      const backend = new AgenticMemoryBackend({
         dbPath: AGENTIC_DB_PATH,
         markdownDir: MARKDOWN_DIR,
       });
-      const agResult = await agenticBackend.initialize();
-      if (agResult.ok) {
-        this.agentic = agenticBackend;
+      const result = await backend.initialize();
+      if (result.ok) {
+        this.agentic = backend;
         this.log.info('AgenticMemory activated (Phase 2)');
       } else {
-        this.log.info('AgenticMemory unavailable', { reason: agResult.error.message });
+        this.log.info('AgenticMemory unavailable', { reason: result.error.message });
       }
     } catch (error: unknown) {
       this.log.debug('AgenticMemory init failed', {
         error: error instanceof Error ? error.message : String(error),
       });
     }
+  }
+
+  /** Initialize AdaptiveMemory (Phase 2). */
+  private async initAdaptiveMemory(): Promise<void> {
     try {
-      const adaptiveBackend = new AdaptiveMemoryBackend({
+      const backend = new AdaptiveMemoryBackend({
         dbPath: ADAPTIVE_DB_PATH,
         markdownDir: MARKDOWN_DIR,
       });
-      const adResult = await adaptiveBackend.initialize();
-      if (adResult.ok) {
-        this.adaptive = adaptiveBackend;
+      const result = await backend.initialize();
+      if (result.ok) {
+        this.adaptive = backend;
         this.log.info('AdaptiveMemory activated (Phase 2)');
       } else {
-        this.log.info('AdaptiveMemory unavailable', { reason: adResult.error.message });
+        this.log.info('AdaptiveMemory unavailable', { reason: result.error.message });
       }
     } catch (error: unknown) {
       this.log.debug('AdaptiveMemory init failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /** Initialize TypedMemory (Phase 1 #746 - MIRIX-style typed access). */
+  private async initTypedMemory(): Promise<void> {
+    try {
+      const backend = new HybridMemoryBackend({
+        dbPath: TYPED_DB_PATH,
+        markdownDir: MARKDOWN_DIR,
+        logger: this.log,
+      });
+      const result = await backend.initialize();
+      if (result.ok) {
+        this.typedBackend = backend;
+        this.typed = createTypedMemory(backend);
+        this.log.info('TypedMemory activated (Phase 1 #746)');
+      } else {
+        this.log.info('TypedMemory unavailable', { reason: result.error.message });
+      }
+    } catch (error: unknown) {
+      this.log.debug('TypedMemory init failed', {
         error: error instanceof Error ? error.message : String(error),
       });
     }
@@ -331,6 +385,89 @@ export class ToolMemoryManager {
     }
   }
 
+  // ==========================================================================
+  // TypedMemory (Phase 1 #746 - MIRIX-style typed memory access)
+  // ==========================================================================
+
+  /** Whether TypedMemory is available (requires SQLite). */
+  isTypedMemoryAvailable(): boolean {
+    return this.typed !== null;
+  }
+
+  /**
+   * Query memories by type (core, episodic, semantic, procedural, resource, vault, belief).
+   * Returns formatted results or undefined if TypedMemory unavailable.
+   */
+  async queryByMemoryType(
+    type: MemoryType,
+    query: string,
+    limit = 10
+  ): Promise<readonly TypedMemoryEntry[] | undefined> {
+    if (this.typed === null) return undefined;
+    try {
+      const result = await this.typed.queryByType(type, query, limit);
+      if (!result.ok) {
+        this.log.debug('TypedMemory query failed', { type, error: result.error.message });
+        return undefined;
+      }
+      return result.value;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * Filter memories by relevance to an agent role.
+   * Uses MIRIX role-memory type mappings (e.g., tech_lead gets core, episodic, vault, belief).
+   * Returns filtered entries or undefined if TypedMemory unavailable.
+   */
+  async filterMemoriesForRole(
+    role: AgentRole,
+    limit = 50
+  ): Promise<readonly TypedMemoryEntry[] | undefined> {
+    if (this.typed === null) return undefined;
+    try {
+      const result = await this.typed.filterByRelevance(role, limit);
+      if (!result.ok) {
+        this.log.debug('TypedMemory filter failed', { role, error: result.error.message });
+        return undefined;
+      }
+      return result.value;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * Get statistics across all typed memory categories.
+   * Returns stats object with counts per type or undefined if unavailable.
+   */
+  async getTypedMemoryStats(): Promise<TypedMemoryStats | undefined> {
+    if (this.typed === null) return undefined;
+    try {
+      const result = await this.typed.getStats();
+      if (!result.ok) return undefined;
+      return result.value;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * Prune expired entries from TypedMemory.
+   * Returns prune result with counts per type or undefined if unavailable.
+   */
+  async pruneTypedMemory(): Promise<TypedMemoryPruneResult | undefined> {
+    if (this.typed === null) return undefined;
+    try {
+      const result = await this.typed.pruneExpired();
+      if (!result.ok) return undefined;
+      return result.value;
+    } catch {
+      return undefined;
+    }
+  }
+
   /** End the current session and persist to disk. Closes SQLite backends. */
   endSession(): void {
     // Persist belief memory to disk (Phase 3, Issue #714)
@@ -354,6 +491,12 @@ export class ToolMemoryManager {
       this.adaptive.close();
       this.adaptive = null;
     }
+    // TypedMemory uses HybridMemoryBackend which needs explicit close
+    if (this.typedBackend !== null) {
+      this.typedBackend.close();
+      this.typedBackend = null;
+    }
+    this.typed = null;
   }
 
   /** Convert a high-confidence learning into a structured belief. */
