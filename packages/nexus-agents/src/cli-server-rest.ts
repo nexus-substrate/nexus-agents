@@ -8,9 +8,14 @@
  * (Source: Issue #524 - Wire up REST API server to CLI entry points)
  */
 
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import * as crypto from 'node:crypto';
+import { homedir } from 'node:os';
 import type { ILogger } from './core/index.js';
 import { createLogger } from './core/index.js';
 import { RestApiServer, type RestApiServerOptions } from './api/rest-server.js';
+import type { ApiKeyConfig } from './api/rest-types.js';
 import type { AppConfig } from './config/index.js';
 
 /**
@@ -58,6 +63,49 @@ export function extractRestConfig(_config?: AppConfig): RestApiCliConfig {
   };
 }
 
+/** Directory for auth credentials within ~/.nexus-agents. */
+const AUTH_DIR = 'auth';
+/** Filename for the auto-generated REST API key. */
+const API_KEY_FILE = 'rest-api-key';
+
+/** Returns the path to the auth directory. */
+function getAuthDir(baseDir?: string): string {
+  const home = baseDir ?? path.join(homedir(), '.nexus-agents');
+  return path.join(home, AUTH_DIR);
+}
+
+/**
+ * Loads an existing API key from disk, or generates and persists a new one.
+ * Key file is created with mode 0o600 (owner read/write only).
+ * (Source: Issue #740 Phase 2 - auto-generated API key)
+ *
+ * @param logger - Logger instance
+ * @param baseDir - Optional base directory (defaults to ~/.nexus-agents). Used for testing.
+ */
+export function loadOrGenerateApiKey(logger: ILogger, baseDir?: string): ApiKeyConfig {
+  const authDir = getAuthDir(baseDir);
+  const keyPath = path.join(authDir, API_KEY_FILE);
+
+  // Try to load existing key
+  if (fs.existsSync(keyPath)) {
+    const key = fs.readFileSync(keyPath, 'utf-8').trim();
+    if (key.length > 0) {
+      logger.info('Loaded REST API key from disk', { keyFile: keyPath });
+      return { key, name: 'auto-generated' };
+    }
+  }
+
+  // Generate new key
+  const key = 'nxa-' + crypto.randomBytes(24).toString('hex');
+  if (!fs.existsSync(authDir)) {
+    fs.mkdirSync(authDir, { recursive: true, mode: 0o700 });
+  }
+  fs.writeFileSync(keyPath, key + '\n', { mode: 0o600 });
+  logger.info('Generated new REST API key', { keyFile: keyPath });
+  logger.warn('REST API key stored at: ' + keyPath + ' — keep this file secure');
+  return { key, name: 'auto-generated' };
+}
+
 /**
  * Creates and starts the REST API server.
  *
@@ -75,6 +123,9 @@ export async function startRestApiServer(
   }
 
   const restLogger = createLogger({ component: 'RestApiServer' });
+
+  // Auto-generate API key if none provided (Issue #740 Phase 2)
+  const apiKey = loadOrGenerateApiKey(logger);
   const serverOptions: RestApiServerOptions = {
     config: {
       port: config.port,
@@ -83,6 +134,7 @@ export async function startRestApiServer(
       enableSwagger: config.swagger,
     },
     logger: restLogger,
+    apiKeys: [apiKey],
   };
 
   const server = new RestApiServer(serverOptions);
