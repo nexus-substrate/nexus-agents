@@ -515,12 +515,13 @@ export interface SystemSummaryData {
   readonly layers: ReadonlyArray<{ name: string; files: number }>;
 }
 
-/** ASCII logo lines generated with: npx figlet -f Small "NEXUS AGENTS" */
+/** ASCII logo lines generated with: npx figlet -f "ANSI Regular" "NEXUS" */
 const NEXUS_LOGO = [
-  '  _  _ _____  ___   _ ___     _   ___ ___ _  _ _____ ___ ',
-  ' | \\| | __\\ \\/ / | | / __|   /_\\ / __| __| \\| |_   _/ __|',
-  ' | .` | _| >  <| |_| \\__ \\  / _ \\ (_ | _|| .` | | | \\__ \\',
-  ' |_|\\_|___/_/\\_\\\\___/|___/ /_/ \\_\\___|___|_|\\_| |_| |___/',
+  '  ███    ██ ███████ ██   ██ ██    ██ ███████',
+  '  ████   ██ ██       ██ ██  ██    ██ ██     ',
+  '  ██ ██  ██ █████     ███   ██    ██ ███████',
+  '  ██  ██ ██ ██       ██ ██  ██    ██      ██',
+  '  ██   ████ ███████ ██   ██  ██████  ███████',
 ];
 
 /** Render ASCII logo header lines for the system summary. */
@@ -530,6 +531,7 @@ function renderSummaryHeader(width: number, border: string): string[] {
     header.push(`║${line.padEnd(width)}║`);
   }
   header.push(`║${''.padEnd(width)}║`);
+  header.push(`║${'          A G E N T S'.padEnd(width)}║`);
   header.push(`║${'    Multi-Agent Orchestration System'.padEnd(width)}║`);
   header.push(`╠${border}╣`);
   return header;
