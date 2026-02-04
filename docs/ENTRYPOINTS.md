@@ -454,11 +454,14 @@ nexus-agents hooks stop --check-tasks
 
 ### Authentication
 
-All `/api/v1/*` endpoints require API key authentication:
+All `/api/v1/*` endpoints require API key authentication. An API key is auto-generated on first start and stored at `~/.nexus-agents/auth/rest-api-key`:
 
 ```bash
+# Read the auto-generated key
+API_KEY=$(cat ~/.nexus-agents/auth/rest-api-key)
+
 curl -X POST http://localhost:3000/api/v1/orchestrate \
-  -H "X-API-Key: your-api-key" \
+  -H "X-API-Key: $API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"task": "Review this code"}'
 ```
