@@ -9,8 +9,6 @@
  * @see Epic #261 (Automated Documentation System)
  */
 
-import * as fs from 'node:fs/promises';
-import * as path from 'node:path';
 import type {
   ResearchStatusOptions,
   ResearchOverlapOptions,
@@ -24,11 +22,27 @@ import {
   addResearchPaper,
 } from './research-helpers.js';
 import {
-  parseRegistry,
-  generateIndexMarkdown,
-  generateStatsJson,
-  generateSummaryReport,
-} from '../indexer/research-index/index.js';
+  discoverGitHubRepos,
+  discoverGoogleAI,
+  discoverMetaFAIR,
+  discoverMicrosoftResearch,
+  discoverDeepMind,
+  type DiscoveredSource,
+} from './research-helpers-sources.js';
+import {
+  discoverSemanticScholar,
+  discoverPapersWithCode,
+} from './research-helpers-sources-academic.js';
+import {
+  handleStatsCommand,
+  handleRefreshCommand,
+  handleCheckCommand,
+} from './research-helpers-index-ops.js';
+import {
+  executeReview,
+  formatReviewResults,
+  executePrioritize,
+} from './research-helpers-review.js';
 import {
   researchIndexCommand,
   parseResearchIndexArgs,
@@ -140,115 +154,137 @@ async function handleAddCommand(args: string[], options: Record<string, unknown>
 }
 
 // =============================================================================
-// INDEX GENERATION HANDLERS (Epic #261)
+// DISCOVER HANDLER (Phase 3)
 // =============================================================================
 
-/** Gets the registry path. */
-function getRegistryPath(): string {
-  return path.resolve(process.cwd(), 'docs/research/registry');
+/** Valid discover sources. */
+type DiscoverSource =
+  | 'arxiv'
+  | 'github'
+  | 'google_ai'
+  | 'meta_fair'
+  | 'microsoft'
+  | 'deepmind'
+  | 'semantic_scholar'
+  | 'papers_with_code'
+  | 'all';
+
+/** Source provider mapping for discovery. */
+const SOURCE_PROVIDERS: ReadonlyArray<{
+  key: string;
+  label: string;
+  fn: (
+    topic: string,
+    max: number
+  ) => Promise<
+    import('../core/result.js').Result<
+      DiscoveredSource[],
+      import('./research-helpers-sources.js').DiscoverError
+    >
+  >;
+}> = [
+  { key: 'github', label: 'GitHub', fn: discoverGitHubRepos },
+  { key: 'google_ai', label: 'Google AI', fn: discoverGoogleAI },
+  { key: 'meta_fair', label: 'Meta FAIR', fn: discoverMetaFAIR },
+  { key: 'microsoft', label: 'Microsoft', fn: discoverMicrosoftResearch },
+  { key: 'deepmind', label: 'DeepMind', fn: discoverDeepMind },
+  { key: 'semantic_scholar', label: 'Semantic Scholar', fn: discoverSemanticScholar },
+  { key: 'papers_with_code', label: 'Papers with Code', fn: discoverPapersWithCode },
+];
+
+/** Query all requested discovery sources. */
+async function queryDiscoverSources(
+  topic: string,
+  source: DiscoverSource,
+  maxResults: number
+): Promise<{ results: DiscoveredSource[]; errors: string[] }> {
+  const results: DiscoveredSource[] = [];
+  const errors: string[] = [];
+  for (const provider of SOURCE_PROVIDERS) {
+    if (source !== 'all' && source !== provider.key) continue;
+    const result = await provider.fn(topic, maxResults);
+    if (result.ok) results.push(...result.value);
+    else errors.push(`${provider.label}: ${result.error.message}`);
+  }
+  return { results, errors };
 }
 
-/** Gets the index output path. */
-function getIndexPath(): string {
-  return path.resolve(process.cwd(), 'docs/research/RESEARCH_INDEX.md');
+/** Format discovery results into display string. */
+function formatDiscoverResults(
+  topic: string,
+  items: readonly DiscoveredSource[],
+  errors: readonly string[],
+  maxResults: number
+): string {
+  const lines: string[] = [];
+  lines.push(`Discovery Results: "${topic}"`);
+  lines.push('='.repeat(60));
+  lines.push(`Found ${String(items.length)} items`);
+  lines.push('');
+  for (const item of items.slice(0, maxResults)) {
+    lines.push(`  [${item.source}] ${item.title}`);
+    lines.push(`    URL: ${item.url}`);
+    lines.push(`    Relevance: ${item.relevance}`);
+    if (item.description !== '') {
+      const desc =
+        item.description.length > 100 ? item.description.slice(0, 97) + '...' : item.description;
+      lines.push(`    ${desc}`);
+    }
+    lines.push('');
+  }
+  if (errors.length > 0) {
+    lines.push('Errors:');
+    for (const err of errors) lines.push(`  - ${err}`);
+  }
+  return lines.join('\n');
 }
 
-/**
- * Handle stats subcommand - show research statistics
- */
-async function handleStatsCommand(options: Record<string, unknown>): Promise<string> {
-  const registryPath = getRegistryPath();
-  const result = parseRegistry({ registryPath });
-
-  if (!result.ok) {
-    return `Error: Failed to parse registry: ${result.error.message}`;
+/** Handle discover subcommand. */
+async function handleDiscoverCommand(
+  args: string[],
+  options: Record<string, unknown>
+): Promise<string> {
+  const topic = args[0] ?? (options['topic'] as string | undefined);
+  if (topic === undefined || topic === '') {
+    return 'Error: --topic is required for discover command';
   }
-
-  const index = result.value;
-  const format = options['format'] as string | undefined;
-
-  // Ensure async compliance (future: may add async registry operations)
-  await Promise.resolve();
-
-  if (format === 'json') {
-    return generateStatsJson(index);
-  }
-
-  return generateSummaryReport(index);
+  const source = (options['source'] as DiscoverSource | undefined) ?? 'all';
+  const maxResults = (options['maxResults'] as number | undefined) ?? 10;
+  const { results, errors } = await queryDiscoverSources(topic, source, maxResults);
+  return formatDiscoverResults(topic, results, errors, maxResults);
 }
 
-/**
- * Handle refresh subcommand - regenerate RESEARCH_INDEX.md
- */
-async function handleRefreshCommand(options: Record<string, unknown>): Promise<string> {
-  const outputPath = (options['output'] as string | undefined) ?? getIndexPath();
-  const registryPath = getRegistryPath();
-  const result = parseRegistry({ registryPath });
+// =============================================================================
+// REVIEW + PRIORITIZE HANDLERS (Phase 3)
+// =============================================================================
 
-  if (!result.ok) {
-    return `Error: Failed to parse registry: ${result.error.message}`;
+/** Handle review subcommand: discover → score → rank → optionally create issues. */
+async function handleReviewCommand(
+  args: string[],
+  options: Record<string, unknown>
+): Promise<string> {
+  const topic = args[0] ?? (options['topic'] as string | undefined);
+  if (topic === undefined || topic === '') {
+    return 'Error: --topic is required for review command';
   }
+  const maxResults = (options['maxResults'] as number | undefined) ?? 10;
+  const createIssues = (options['createIssues'] as boolean | undefined) ?? false;
+  const vote = (options['vote'] as boolean | undefined) ?? false;
 
-  const index = result.value;
-  const mdResult = generateIndexMarkdown(index);
-
-  if (!mdResult.ok) {
-    return `Error: Failed to generate markdown: ${mdResult.error.message}`;
-  }
-
-  // Write the index
-  await fs.mkdir(path.dirname(outputPath), { recursive: true });
-  await fs.writeFile(outputPath, mdResult.value, 'utf-8');
-
-  const stats = index.stats;
-  return [
-    `Research index regenerated successfully`,
-    `  Output: ${outputPath}`,
-    `  Papers: ${String(stats.totalPapers)}`,
-    `  Techniques: ${String(stats.totalTechniques)}`,
-    `  Implemented: ${String(stats.techniquesByStatus.implemented)}`,
-  ].join('\n');
+  const result = await executeReview({ topic, maxResults, createIssues, vote }, (t, max) =>
+    queryDiscoverSources(t, 'all', max)
+  );
+  return formatReviewResults(result);
 }
 
-/**
- * Handle check subcommand - check if index is up to date
- */
-async function handleCheckCommand(): Promise<string> {
-  const indexPath = getIndexPath();
-
-  // Check if index exists
-  try {
-    await fs.access(indexPath);
-  } catch {
-    return `Error: Research index not found: ${indexPath}. Run 'nexus-agents research refresh' first.`;
-  }
-
-  // Parse registry and generate fresh index
-  const registryPath = getRegistryPath();
-  const result = parseRegistry({ registryPath });
-
-  if (!result.ok) {
-    return `Error: Failed to parse registry: ${result.error.message}`;
-  }
-
-  const mdResult = generateIndexMarkdown(result.value);
-  if (!mdResult.ok) {
-    return `Error: Failed to generate markdown: ${mdResult.error.message}`;
-  }
-
-  // Read existing index
-  const existingContent = await fs.readFile(indexPath, 'utf-8');
-  const freshContent = mdResult.value;
-
-  // Compare (normalize whitespace for comparison)
-  const normalize = (s: string): string => s.replace(/\s+/g, ' ').trim();
-  const isFresh = normalize(existingContent) === normalize(freshContent);
-
-  if (isFresh) {
-    return `Research index is up to date (${String(result.value.stats.totalTechniques)} techniques)`;
-  }
-
-  return `Research index is out of date. Run "nexus-agents research refresh" to update.`;
+/** Handle prioritize subcommand: load registry → rank actionable items. */
+async function handlePrioritizeCommand(
+  args: string[],
+  options: Record<string, unknown>
+): Promise<string> {
+  const topic = args[0] ?? (options['topic'] as string | undefined);
+  const vote = (options['vote'] as boolean | undefined) ?? false;
+  return executePrioritize({ topic, vote });
 }
 
 // =============================================================================
@@ -263,47 +299,66 @@ export type ResearchSubcommand =
   | 'stats'
   | 'refresh'
   | 'check'
-  | 'index';
+  | 'index'
+  | 'discover'
+  | 'review'
+  | 'prioritize';
+
+/** All valid subcommand names. */
+const VALID_SUBCOMMANDS = [
+  'status',
+  'overlap',
+  'add',
+  'stats',
+  'refresh',
+  'check',
+  'index',
+  'discover',
+  'review',
+  'prioritize',
+] as const;
 
 /** Validates that a subcommand is valid. */
 export function isValidResearchSubcommand(value: string | undefined): value is ResearchSubcommand {
-  return (
-    value !== undefined &&
-    ['status', 'overlap', 'add', 'stats', 'refresh', 'check', 'index'].includes(value)
-  );
+  return value !== undefined && (VALID_SUBCOMMANDS as readonly string[]).includes(value);
 }
 
 // Re-export index command helpers for CLI integration
 export { researchIndexCommand, parseResearchIndexArgs, getResearchIndexHelp };
 
+/** Handle index subcommand. */
+async function handleIndexCommand(args: string[]): Promise<string> {
+  const indexOptions = parseResearchIndexArgs(args);
+  const result = await researchIndexCommand(indexOptions);
+  return result.message;
+}
+
+/** Subcommand dispatch map to reduce cyclomatic complexity. */
+type SubcommandHandler = (args: string[], options: Record<string, unknown>) => Promise<string>;
+const SUBCOMMAND_HANDLERS: Record<ResearchSubcommand, SubcommandHandler> = {
+  status: handleStatusCommand,
+  overlap: handleOverlapCommand,
+  add: handleAddCommand,
+  stats: (_args, options) => handleStatsCommand(options),
+  refresh: (_args, options) => handleRefreshCommand(options),
+  check: () => handleCheckCommand(),
+  index: (args) => handleIndexCommand(args),
+  discover: handleDiscoverCommand,
+  review: handleReviewCommand,
+  prioritize: handlePrioritizeCommand,
+};
+
 /**
- * Research command subcommand handler
+ * Research command subcommand handler.
  */
 export async function researchCommand(
   subcommand: ResearchSubcommand,
   args: string[],
   options: Record<string, unknown>
 ): Promise<string> {
-  switch (subcommand) {
-    case 'status':
-      return handleStatusCommand(args, options);
-    case 'overlap':
-      return handleOverlapCommand(args, options);
-    case 'add':
-      return handleAddCommand(args, options);
-    case 'stats':
-      return handleStatsCommand(options);
-    case 'refresh':
-      return handleRefreshCommand(options);
-    case 'check':
-      return handleCheckCommand();
-    case 'index': {
-      // Handle index subcommand with --generate, --validate, --check flags
-      const indexOptions = parseResearchIndexArgs(args);
-      const result = await researchIndexCommand(indexOptions);
-      return result.message;
-    }
-    default:
-      return `Unknown subcommand: ${String(subcommand)}. Available: status, overlap, add, stats, refresh, check, index`;
+  const handler = SUBCOMMAND_HANDLERS[subcommand] as SubcommandHandler | undefined;
+  if (handler === undefined) {
+    return `Unknown subcommand: ${subcommand}. Available: ${VALID_SUBCOMMANDS.join(', ')}`;
   }
+  return handler(args, options);
 }

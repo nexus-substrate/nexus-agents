@@ -68,3 +68,57 @@ export type {
   AddPaperOptions,
   AddPaperResult,
 } from './research-helpers-registry.js';
+
+// Source discovery helpers (Phase 3)
+export {
+  discoverGitHubRepos,
+  discoverGoogleAI,
+  discoverMetaFAIR,
+  discoverMicrosoftResearch,
+  discoverDeepMind,
+} from './research-helpers-sources.js';
+export type {
+  DiscoverError,
+  DiscoverErrorCode,
+  DiscoveredSource,
+} from './research-helpers-sources.js';
+
+// Source I/O helpers (Phase 3)
+export {
+  loadSourcesRegistry,
+  saveSourcesRegistry,
+  sourceExistsInRegistry,
+  addSourceToRegistry,
+} from './research-helpers-sources-io.js';
+export type {
+  SourceEntry,
+  SourcesRegistry,
+  SourcesIOError,
+} from './research-helpers-sources-io.js';
+
+// Academic source providers (Phase 2A/2B)
+export {
+  discoverSemanticScholar,
+  discoverPapersWithCode,
+} from './research-helpers-sources-academic.js';
+
+// Quality scoring (Phase 2E)
+export { scoreDiscoveredItem, rankDiscoveredItems } from './research-helpers-scoring.js';
+export type { QualityScore } from './research-helpers-scoring.js';
+
+// Index operations (extracted from research-command.ts)
+export {
+  handleStatsCommand,
+  handleRefreshCommand,
+  handleCheckCommand,
+} from './research-helpers-index-ops.js';
+
+// Issue creation helpers (Phase 4)
+export { createResearchIssue, formatResearchIssueBody } from './research-helpers-issues.js';
+export type {
+  CreateResearchIssueOptions,
+  CreateResearchIssueResult,
+  IssueCreationError,
+  ResearchFinding,
+  VoteResultSummary,
+} from './research-helpers-issues.js';

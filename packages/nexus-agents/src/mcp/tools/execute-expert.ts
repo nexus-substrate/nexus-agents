@@ -24,6 +24,7 @@ import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middlewar
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import type { Expert } from '../../agents/index.js';
 import { getToolMemory } from './tool-memory.js';
+import { getAutoCatalog } from './research-auto-catalog.js';
 
 /**
  * Input schema for execute_expert tool.
@@ -254,6 +255,14 @@ async function handleExecuteExpert(
 
   // Record success to session memory (Issue #690)
   recordExpertSuccess(expertId, expert.role, durationMs);
+
+  // Auto-catalog: scan output for research references
+  try {
+    const catalog = getAutoCatalog();
+    catalog.scanAndRecord(result.value.output as string, 'execute_expert');
+  } catch {
+    // Auto-catalog is best-effort
+  }
 
   return {
     ok: true,

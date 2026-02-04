@@ -15,3 +15,4 @@ export * from './code/index.js';
 export * from './architecture/index.js';
 export * from './documentation/index.js';
 export * from './devops/index.js';
+export * from './research/index.js';

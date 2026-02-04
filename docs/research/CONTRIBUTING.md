@@ -318,6 +318,73 @@ Then update `implementation_issue` in techniques.yaml with the issue number.
 
 ---
 
+## Using MCP Research Tools
+
+The research system is also accessible via MCP tools, enabling programmatic integration with Claude Desktop and other MCP clients.
+
+### Available MCP Tools
+
+| Tool                      | Description                                                                                 |
+| ------------------------- | ------------------------------------------------------------------------------------------- |
+| `research_query`          | Query registry for status, overlaps, stats, or search                                       |
+| `research_add`            | Add a paper by arXiv ID with automatic metadata fetching                                    |
+| `research_discover`       | Discover papers/repos from arXiv, GitHub, Semantic Scholar, Papers with Code, and lab feeds |
+| `research_analyze`        | Analyze registry for gaps, trends, priorities, or coverage                                  |
+| `research_catalog_review` | Review auto-cataloged references found during tool use                                      |
+
+### MCP Usage Examples
+
+**Query registry status:**
+
+```json
+{ "tool": "research_query", "arguments": { "action": "status" } }
+```
+
+**Add a paper:**
+
+```json
+{ "tool": "research_add", "arguments": { "arxivId": "2401.12345", "topic": "consensus" } }
+```
+
+**Discover from specific source:**
+
+```json
+{
+  "tool": "research_discover",
+  "arguments": {
+    "topic": "multi-agent orchestration",
+    "source": "semantic_scholar",
+    "maxResults": 5
+  }
+}
+```
+
+**Analyze gaps:**
+
+```json
+{ "tool": "research_analyze", "arguments": { "action": "gaps" } }
+```
+
+### CLI Research Workflows
+
+The CLI provides end-to-end research workflows:
+
+```bash
+# Discover → score → rank findings
+nexus-agents research review --topic=orchestration
+
+# Auto-create GitHub issues for high-quality findings
+nexus-agents research review --topic=agents --create-issues
+
+# Show prioritized technique backlog
+nexus-agents research prioritize
+
+# Filter backlog by topic
+nexus-agents research prioritize --topic=consensus
+```
+
+---
+
 ## Questions?
 
 - Check existing topic READMEs for examples

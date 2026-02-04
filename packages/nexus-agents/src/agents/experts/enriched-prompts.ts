@@ -12,6 +12,7 @@
 import { getArchitectureKnowledgePrompt } from './knowledge/architecture/index.js';
 import { getSecurityKnowledgePrompt } from './knowledge/security/index.js';
 import { getDevOpsKnowledgePrompt } from './knowledge/devops/index.js';
+import { getResearchKnowledgePrompt } from './knowledge/research/index.js';
 
 /**
  * Enrich a base system prompt with domain knowledge.
@@ -53,4 +54,14 @@ export function buildSecurityPrompt(basePrompt: string): string {
  */
 export function buildDevOpsPrompt(basePrompt: string): string {
   return enrichPrompt(basePrompt, getDevOpsKnowledgePrompt());
+}
+
+/**
+ * Build an enriched research expert system prompt.
+ *
+ * @param basePrompt - The research expert's base system prompt
+ * @returns System prompt enriched with research domain knowledge
+ */
+export function buildResearchPrompt(basePrompt: string): string {
+  return enrichPrompt(basePrompt, getResearchKnowledgePrompt());
 }

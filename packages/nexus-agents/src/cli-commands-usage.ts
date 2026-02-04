@@ -80,6 +80,9 @@ export function printResearchUsage(): void {
   process.stdout.write('  stats            Show research statistics\n');
   process.stdout.write('  refresh          Regenerate RESEARCH_INDEX.md\n');
   process.stdout.write('  check            Check if index is up to date\n');
+  process.stdout.write('  discover         Discover papers/repos from external sources\n');
+  process.stdout.write('  review           Discover, score, and rank research findings\n');
+  process.stdout.write('  prioritize       Rank actionable techniques by priority\n');
 }
 
 /**
