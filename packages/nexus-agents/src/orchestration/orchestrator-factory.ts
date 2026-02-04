@@ -255,8 +255,8 @@ export interface OrchestratorFactoryConfig {
  *
  * Provides a unified entry point for all orchestration strategies:
  * - workflow: Static template-based execution
- * - tech_lead: LLM-based task decomposition (TODO: implement adapter)
- * - puppeteer: Policy-based step execution (TODO: implement adapter)
+ * - tech_lead: LLM-based task decomposition (TechLeadAdapter)
+ * - puppeteer: Policy-based step execution (PuppeteerAdapter)
  *
  * @example
  * ```typescript

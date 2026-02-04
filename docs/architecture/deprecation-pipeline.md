@@ -88,15 +88,15 @@ import { createOrchestrationObserver } from './orchestration-observer.js';
 
 ### Gemini Adapter Naming
 
-**Removed:** `EnhancedGeminiConfig`, `EnhancedExecutionResult`, `executeEnhanced()`, `EnhancedGeminiCliAdapter`, `createEnhancedGeminiAdapter`
+**Removed in v2.6.0:** `EnhancedGeminiConfig`, `EnhancedExecutionResult`, `executeEnhanced()`, `EnhancedGeminiCliAdapter`, `createEnhancedGeminiAdapter`
 **Replacement:** Drop `Enhanced` prefix
 
 ```typescript
-// BEFORE (v2.x)
+// BEFORE (deprecated)
 import { EnhancedGeminiCliAdapter, createEnhancedGeminiAdapter } from './gemini-adapter.js';
 const result = await adapter.executeEnhanced(task);
 
-// AFTER (v3.0)
+// AFTER (current)
 import { GeminiCliAdapter, createGeminiAdapter } from './gemini-adapter.js';
 const result = await adapter.executeWithMetadata(task);
 ```
@@ -188,35 +188,35 @@ const count = stats.total;
 
 ### Interfaces & Types
 
-| Item                        | Location                              | Replacement                         | Since |
-| --------------------------- | ------------------------------------- | ----------------------------------- | ----- |
-| `ITechLead`                 | `mcp/tools/orchestrate.ts:88`         | `IOrchestrator`                     | v2.5  |
-| `IExpertFactory`            | `mcp/tools/orchestrate.ts:99`         | Not used (unified orchestrator)     | v2.5  |
-| `SwarmStats`                | `orchestration-observer-types.ts:276` | `OrchestrationStats`                | v2.3  |
-| `SwarmObserverEvent`        | `orchestration-observer-types.ts:278` | `OrchestrationObserverEvent`        | v2.3  |
-| `SwarmObserverListener`     | `orchestration-observer-types.ts:280` | `OrchestrationObserverListener`     | v2.3  |
-| `SwarmObserverConfig`       | `orchestration-observer-types.ts:282` | `OrchestrationObserverConfig`       | v2.3  |
-| `SwarmObserverConfigSchema` | `orchestration-observer-types.ts:284` | `OrchestrationObserverConfigSchema` | v2.3  |
-| `ISwarmObserver`            | `orchestration-observer-types.ts:286` | `IOrchestrationObserver`            | v2.3  |
-| `SwarmObserverOptions`      | `orchestration-observer-types.ts:288` | `OrchestrationObserverOptions`      | v2.3  |
-| `EnhancedGeminiConfig`      | `gemini-adapter.ts:70`                | `GeminiConfig`                      | v2.4  |
-| `EnhancedExecutionResult`   | `gemini-adapter.ts:92`                | `GeminiExecutionResult`             | v2.4  |
+| Item                          | Location                              | Replacement                                  | Since |
+| ----------------------------- | ------------------------------------- | -------------------------------------------- | ----- |
+| `ITechLead`                   | `mcp/tools/orchestrate.ts:88`         | `IOrchestrator`                              | v2.5  |
+| `IExpertFactory`              | `mcp/tools/orchestrate.ts:99`         | Not used (unified orchestrator)              | v2.5  |
+| `SwarmStats`                  | `orchestration-observer-types.ts:276` | `OrchestrationStats`                         | v2.3  |
+| `SwarmObserverEvent`          | `orchestration-observer-types.ts:278` | `OrchestrationObserverEvent`                 | v2.3  |
+| `SwarmObserverListener`       | `orchestration-observer-types.ts:280` | `OrchestrationObserverListener`              | v2.3  |
+| `SwarmObserverConfig`         | `orchestration-observer-types.ts:282` | `OrchestrationObserverConfig`                | v2.3  |
+| `SwarmObserverConfigSchema`   | `orchestration-observer-types.ts:284` | `OrchestrationObserverConfigSchema`          | v2.3  |
+| `ISwarmObserver`              | `orchestration-observer-types.ts:286` | `IOrchestrationObserver`                     | v2.3  |
+| `SwarmObserverOptions`        | `orchestration-observer-types.ts:288` | `OrchestrationObserverOptions`               | v2.3  |
+| ~~`EnhancedGeminiConfig`~~    | ~~`gemini-adapter.ts:70`~~            | `GeminiConfig` (**removed v2.6.0**)          | v2.4  |
+| ~~`EnhancedExecutionResult`~~ | ~~`gemini-adapter.ts:92`~~            | `GeminiExecutionResult` (**removed v2.6.0**) | v2.4  |
 
 ### Functions & Methods
 
-| Item                             | Location                                | Replacement                          | Since |
-| -------------------------------- | --------------------------------------- | ------------------------------------ | ----- |
-| `fetchArxivMetadata()`           | `cli/research-helpers-arxiv.ts:138`     | `fetchArxivMetadataResult()`         | v2.4  |
-| `estimateComplexity()`           | `adapters/complexity-estimator.ts`      | `SharedTaskAnalyzer.getComplexity()` | v2.3  |
-| `createComplexityEstimator()`    | `adapters/complexity-estimator.ts:227`  | `createSharedTaskAnalyzer()`         | v2.3  |
-| `setState()`                     | `agents/base-agent.ts:198`              | `stateMachine.transition()`          | v2.2  |
-| `performLegacyStateTransition()` | `agents/base-agent-state-helpers.ts:22` | `stateMachine.transition()`          | v2.2  |
-| `createSwarmObserver`            | `orchestration-observer.ts:453`         | `createOrchestrationObserver`        | v2.3  |
-| `createMockTechLead()`           | `mcp/tools/orchestrate.ts:420`          | `createMockOrchestrator()`           | v2.5  |
-| `executeEnhanced()`              | `gemini-adapter.ts:195`                 | `executeWithMetadata()`              | v2.4  |
-| `createEnhancedGeminiAdapter`    | `gemini-adapter.ts:394`                 | `createGeminiAdapter`                | v2.4  |
-| `ExpertRegistry.list()`          | `experts/expert-registry.ts:270`        | `getAll()`                           | v2.5  |
-| `ExpertRegistry.listIds()`       | `experts/expert-registry.ts:280`        | `getAllIds()`                        | v2.5  |
+| Item                              | Location                                | Replacement                                  | Since |
+| --------------------------------- | --------------------------------------- | -------------------------------------------- | ----- |
+| `fetchArxivMetadata()`            | `cli/research-helpers-arxiv.ts:138`     | `fetchArxivMetadataResult()`                 | v2.4  |
+| `estimateComplexity()`            | `adapters/complexity-estimator.ts`      | `SharedTaskAnalyzer.getComplexity()`         | v2.3  |
+| `createComplexityEstimator()`     | `adapters/complexity-estimator.ts:227`  | `createSharedTaskAnalyzer()`                 | v2.3  |
+| `setState()`                      | `agents/base-agent.ts:198`              | `stateMachine.transition()`                  | v2.2  |
+| `performLegacyStateTransition()`  | `agents/base-agent-state-helpers.ts:22` | `stateMachine.transition()`                  | v2.2  |
+| `createSwarmObserver`             | `orchestration-observer.ts:453`         | `createOrchestrationObserver`                | v2.3  |
+| `createMockTechLead()`            | `mcp/tools/orchestrate.ts:420`          | `createMockOrchestrator()`                   | v2.5  |
+| ~~`executeEnhanced()`~~           | ~~`gemini-adapter.ts:195`~~             | `executeWithMetadata()` (**removed v2.6.0**) | v2.4  |
+| ~~`createEnhancedGeminiAdapter`~~ | ~~`gemini-adapter.ts:394`~~             | `createGeminiAdapter` (**removed v2.6.0**)   | v2.4  |
+| `ExpertRegistry.list()`           | `experts/expert-registry.ts:270`        | `getAll()`                                   | v2.5  |
+| `ExpertRegistry.listIds()`        | `experts/expert-registry.ts:280`        | `getAllIds()`                                | v2.5  |
 
 ### Modules (Entire File)
 
@@ -232,22 +232,22 @@ const count = stats.total;
 
 ### Fields & Constants
 
-| Item                            | Location                                   | Replacement                         | Since |
-| ------------------------------- | ------------------------------------------ | ----------------------------------- | ----- |
-| `outputFormat`                  | `agent-schemas.ts:44`                      | Not enforced (use prompt-level)     | v2.0  |
-| `allowedTools`                  | `agent-schemas.ts:49`                      | Not enforced (use policy firewall)  | v2.0  |
-| `outputFormat`                  | `core/types/agent.ts:86`                   | Not enforced                        | v2.0  |
-| `allowedTools`                  | `core/types/agent.ts:92`                   | Not enforced                        | v2.0  |
-| `defaultFactory`                | `adapters/factory.ts:303`                  | `new AdapterFactory()`              | v2.3  |
-| `charsPerToken`                 | `agents/orchestration/state-manager.ts:30` | `getTokenEstimator()`               | v2.4  |
-| `OrchestrateDeps.techLead`      | `mcp/tools/orchestrate.ts:116`             | `OrchestrateDeps.orchestrator`      | v2.5  |
-| `OrchestrateDeps.expertFactory` | `mcp/tools/orchestrate.ts:121`             | Not used                            | v2.5  |
-| `RegistryStats.totalExperts`    | `experts/expert-registry.ts:54`            | `RegistryStats.total`               | v2.5  |
-| `STOP_WORDS`                    | `experts/task-analyzer-keywords.ts:17`     | `import from 'utils/text-utils.js'` | v2.5  |
-| `COLORS`                        | `core/trace-exporter-helpers.ts:43`        | `import from 'cli/ansi-output.js'`  | v2.5  |
-| `uuidv4`                        | `utils/id-utils.ts:138`                    | `generateUUID()`                    | v2.5  |
-| `EnhancedGeminiCliAdapter`      | `gemini-adapter.ts:386`                    | `GeminiCliAdapter`                  | v2.4  |
-| `SwarmObserver`                 | `orchestration-observer.ts:451`            | `OrchestrationObserver`             | v2.3  |
+| Item                            | Location                                   | Replacement                             | Since |
+| ------------------------------- | ------------------------------------------ | --------------------------------------- | ----- |
+| `outputFormat`                  | `agent-schemas.ts:44`                      | Not enforced (use prompt-level)         | v2.0  |
+| `allowedTools`                  | `agent-schemas.ts:49`                      | Not enforced (use policy firewall)      | v2.0  |
+| `outputFormat`                  | `core/types/agent.ts:86`                   | Not enforced                            | v2.0  |
+| `allowedTools`                  | `core/types/agent.ts:92`                   | Not enforced                            | v2.0  |
+| `defaultFactory`                | `adapters/factory.ts:303`                  | `new AdapterFactory()`                  | v2.3  |
+| `charsPerToken`                 | `agents/orchestration/state-manager.ts:30` | `getTokenEstimator()`                   | v2.4  |
+| `OrchestrateDeps.techLead`      | `mcp/tools/orchestrate.ts:116`             | `OrchestrateDeps.orchestrator`          | v2.5  |
+| `OrchestrateDeps.expertFactory` | `mcp/tools/orchestrate.ts:121`             | Not used                                | v2.5  |
+| `RegistryStats.totalExperts`    | `experts/expert-registry.ts:54`            | `RegistryStats.total`                   | v2.5  |
+| `STOP_WORDS`                    | `experts/task-analyzer-keywords.ts:17`     | `import from 'utils/text-utils.js'`     | v2.5  |
+| `COLORS`                        | `core/trace-exporter-helpers.ts:43`        | `import from 'cli/ansi-output.js'`      | v2.5  |
+| `uuidv4`                        | `utils/id-utils.ts:138`                    | `generateUUID()`                        | v2.5  |
+| ~~`EnhancedGeminiCliAdapter`~~  | ~~`gemini-adapter.ts:386`~~                | `GeminiCliAdapter` (**removed v2.6.0**) | v2.4  |
+| `SwarmObserver`                 | `orchestration-observer.ts:451`            | `OrchestrationObserver`                 | v2.3  |
 
 ## Per ADR-0005: Router Deprecation Queue (Phase 3)
 
