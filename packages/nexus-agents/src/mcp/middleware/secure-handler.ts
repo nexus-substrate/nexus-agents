@@ -21,6 +21,8 @@ import {
 } from './request-context.js';
 import { type IPolicyFirewall, type ExecutionMode, createPolicyContext } from './policy.js';
 import type { RateLimiter } from './rate-limiter.js';
+import type { IAuditLogger } from '../../audit/audit-types.js';
+import { actorFromContext, resultToOutcome } from '../../audit/secure-handler-audit.js';
 
 /**
  * MCP tool result type.
@@ -53,6 +55,8 @@ export interface SecureHandlerConfig {
   logger?: ILogger;
   /** Caller information extractor (optional) */
   callerInfo?: CallerInfo;
+  /** Audit logger for structured audit trail (Issue #740 Phase 2) */
+  auditLogger?: IAuditLogger;
 }
 
 /**
@@ -231,6 +235,99 @@ async function executeHandler(
   return result;
 }
 
+/** Emits an audit event for a completed tool invocation. */
+function emitToolAudit(
+  auditLogger: IAuditLogger,
+  toolName: string,
+  ctx: RequestContext,
+  result: ToolResult,
+  durationMs: number
+): void {
+  const actor = actorFromContext(ctx);
+  const outcome = resultToOutcome(result.isError, false);
+  auditLogger.logToolInvocation({
+    toolName,
+    outcome,
+    actor,
+    requestId: ctx.requestId,
+    durationMs,
+  });
+}
+
+/** Emits an audit event for a policy denial. */
+function emitPolicyAudit(
+  auditLogger: IAuditLogger,
+  toolName: string,
+  ctx: RequestContext,
+  reason: string
+): void {
+  const actor = actorFromContext(ctx);
+  auditLogger.logPolicyDecision({
+    policyName: 'default',
+    decision: 'deny',
+    reason,
+    toolName,
+    actor,
+    requestId: ctx.requestId,
+  });
+}
+
+/** Emits an audit event for a rate limit violation. */
+function emitRateLimitAudit(
+  auditLogger: IAuditLogger,
+  toolName: string,
+  ctx: RequestContext
+): void {
+  const actor = actorFromContext(ctx);
+  auditLogger.logRateLimitViolation({
+    toolName,
+    actor,
+    currentRate: 0,
+    limitRate: 0,
+    requestId: ctx.requestId,
+  });
+}
+
+/** Pre-execution checks: input size, rate limit, policy. Returns error result or null. */
+function runPreChecks(
+  config: SecureHandlerConfig,
+  args: unknown,
+  mode: ExecutionMode,
+  requestContext: RequestContext,
+  logger: ILogger
+): ToolResult | null {
+  const sizeResult = checkInputSize(args, logger, requestContext.requestId);
+  if (sizeResult) return sizeResult;
+
+  if (config.rateLimiter) {
+    const rlResult = checkRateLimit(config.rateLimiter, logger);
+    if (rlResult) {
+      if (config.auditLogger)
+        emitRateLimitAudit(config.auditLogger, config.toolName, requestContext);
+      return rlResult;
+    }
+  }
+
+  if (config.policyFirewall) {
+    const pResult = checkPolicy({
+      firewall: config.policyFirewall,
+      toolName: config.toolName,
+      args,
+      mode,
+      allowedPaths: config.allowedPaths,
+      logger,
+      requestId: requestContext.requestId,
+    });
+    if (pResult) {
+      if (config.auditLogger)
+        emitPolicyAudit(config.auditLogger, config.toolName, requestContext, 'policy denied');
+      return pResult;
+    }
+  }
+
+  return null;
+}
+
 /**
  * Wraps a tool handler with security middleware.
  *
@@ -252,31 +349,12 @@ export function createSecureHandler(
     };
     const requestContext = createRequestContext(ctxOpts);
     const requestLogger = logger.child(contextForLogging(requestContext));
-
     requestLogger.info('Tool invocation started');
 
-    // Input size check (Issue #740 - defense-in-depth)
-    const sizeResult = checkInputSize(args, requestLogger, requestContext.requestId);
-    if (sizeResult) return sizeResult;
+    const preCheckResult = runPreChecks(config, args, mode, requestContext, requestLogger);
+    if (preCheckResult) return preCheckResult;
 
-    if (config.rateLimiter) {
-      const rateLimitResult = checkRateLimit(config.rateLimiter, requestLogger);
-      if (rateLimitResult) return rateLimitResult;
-    }
-
-    if (config.policyFirewall) {
-      const policyResult = checkPolicy({
-        firewall: config.policyFirewall,
-        toolName: config.toolName,
-        args,
-        mode,
-        allowedPaths: config.allowedPaths,
-        logger: requestLogger,
-        requestId: requestContext.requestId,
-      });
-      if (policyResult) return policyResult;
-    }
-
+    const execStartTime = getTimeProvider().now();
     try {
       const result = await executeHandler(
         handler,
@@ -285,6 +363,15 @@ export function createSecureHandler(
         requestLogger
       );
       sanitizeToolResult(result, requestLogger);
+      if (config.auditLogger) {
+        emitToolAudit(
+          config.auditLogger,
+          config.toolName,
+          requestContext,
+          result,
+          getTimeProvider().now() - execStartTime
+        );
+      }
       return result;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';

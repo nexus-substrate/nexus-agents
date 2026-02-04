@@ -127,6 +127,26 @@ export const SecurityConfigSchema = z.object({
   timeout: TimeoutConfigSchema.optional(),
   /** Tool allowlist — when set, only listed tools are registered (Issue #740) */
   toolAllowlist: z.array(z.string()).optional(),
+  /** Audit logging configuration (Issue #740 Phase 2) */
+  audit: z
+    .object({
+      /** Enable audit logging (default: false) */
+      enabled: z.boolean().default(false),
+      /** Log directory (default: ~/.nexus-agents/audit) */
+      logDir: z.string().optional(),
+      /** Minimum severity to log (default: 'info') */
+      minSeverity: z.enum(['info', 'warning', 'critical']).default('info'),
+      /** Enable tamper-evident hash chain (default: false) */
+      enableHashChain: z.boolean().default(false),
+      /** Maximum log file size in bytes (default: 10MB) */
+      maxFileSizeBytes: z
+        .number()
+        .positive()
+        .default(10 * 1024 * 1024),
+      /** Maximum number of log files to retain (default: 10) */
+      maxFiles: z.number().positive().default(10),
+    })
+    .optional(),
 });
 
 export type SecurityConfig = z.infer<typeof SecurityConfigSchema>;
