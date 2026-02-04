@@ -113,7 +113,7 @@ function strategyToAlgorithm(strategy: VotingStrategy): ConsensusAlgorithm {
 function getVoterRoles(quickMode: boolean): readonly VoterRole[] {
   return quickMode
     ? ['architect', 'security', 'pm']
-    : ['architect', 'security', 'devex', 'ai_ml', 'pm'];
+    : ['architect', 'security', 'devex', 'ai_ml', 'pm', 'catfish'];
 }
 
 // ============================================================================
@@ -297,7 +297,7 @@ export function registerConsensusVoteTool(server: McpServer, deps: ConsensusVote
     strategy: VotingStrategySchema.optional().describe(
       'Voting strategy: simple_majority (default), supermajority, unanimous, proof_of_learning, or higher_order'
     ),
-    quickMode: z.boolean().optional().default(false).describe('Use 3 agents instead of 5'),
+    quickMode: z.boolean().optional().default(false).describe('Use 3 agents instead of 6'),
     simulateVotes: z.boolean().optional().default(false).describe('Use simulated votes'),
   };
 

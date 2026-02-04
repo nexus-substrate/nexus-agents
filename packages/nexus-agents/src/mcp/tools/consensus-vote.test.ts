@@ -427,9 +427,9 @@ describe('Threshold mapping', () => {
 });
 
 describe('Voter roles', () => {
-  it('should use 5 roles in normal mode', () => {
-    const normalRoles = ['architect', 'security', 'devex', 'ai_ml', 'pm'];
-    expect(normalRoles).toHaveLength(5);
+  it('should use 6 roles in normal mode', () => {
+    const normalRoles = ['architect', 'security', 'devex', 'ai_ml', 'pm', 'catfish'];
+    expect(normalRoles).toHaveLength(6);
   });
 
   it('should use 3 roles in quick mode', () => {

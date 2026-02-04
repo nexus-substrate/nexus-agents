@@ -135,6 +135,7 @@ const ROLE_VOTE_DISTRIBUTIONS: Record<VoterRole, [number, number, number]> = {
   devex: [50, 30, 20], // Balanced - considers usability
   ai_ml: [55, 30, 15], // Technical focus
   pm: [55, 25, 20], // Business focus - generally supportive
+  catfish: [20, 65, 15], // Deliberately contrarian - challenges proposals (arXiv:2505.21503)
 };
 
 /**

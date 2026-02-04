@@ -31,7 +31,7 @@ COMMANDS:
   review <url>    Review a GitHub pull request (dogfooding)
   routing-audit   Debug model routing decisions
   orchestrate     Execute task using CLI tools (standalone mode)
-  vote            Run consensus vote on a proposal (5 agents)
+  vote            Run consensus vote on a proposal (6 agents)
   system-review   Run automated system review (5-phase checklist)
   sprint          Automated sprint planning from open issues
   session         Manage session persistence (list, show, export, delete, prune)
