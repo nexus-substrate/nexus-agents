@@ -389,6 +389,54 @@ describe('shutdownToolMemory', () => {
 });
 
 // ============================================================================
+// Phase 2: SQLite Backend Tests (AgenticMemory + AdaptiveMemory)
+// ============================================================================
+
+describe('ToolMemoryManager Phase 2 advanced memory', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetMockDefaults();
+    shutdownToolMemory();
+  });
+
+  afterEach(() => {
+    shutdownToolMemory();
+  });
+
+  it('should report advanced memory as unavailable when SQLite is not installed', () => {
+    const manager = new ToolMemoryManager(createMockLogger());
+    // SQLite is not installed in test environment, so advanced memory is unavailable
+    // (initSqliteBackends fires async and will fail gracefully)
+    expect(manager.isAdvancedMemoryAvailable()).toBe(false);
+  });
+
+  it('should return undefined from queryKnowledge when advanced memory is unavailable', async () => {
+    const manager = new ToolMemoryManager(createMockLogger());
+    const result = await manager.queryKnowledge('test query');
+    expect(result).toBeUndefined();
+  });
+
+  it('should silently skip recordKnowledge when advanced memory is unavailable', async () => {
+    const manager = new ToolMemoryManager(createMockLogger());
+    // Should not throw
+    await manager.recordKnowledge(
+      'key',
+      { data: 'test' },
+      {
+        importance: 'high',
+        tags: ['test'],
+      }
+    );
+  });
+
+  it('should close SQLite backends on endSession', () => {
+    const manager = new ToolMemoryManager(createMockLogger());
+    // endSession should not throw even when backends are null
+    manager.endSession();
+  });
+});
+
+// ============================================================================
 // Belief Memory Integration Tests
 // ============================================================================
 

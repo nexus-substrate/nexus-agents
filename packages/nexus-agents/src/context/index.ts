@@ -182,6 +182,21 @@ export type {
   EntityReference,
 } from './agentic-memory.js';
 
+// Hindsight Belief Memory (Issue #336, arXiv:2512.12818)
+export { HindsightBeliefMemory } from './belief-memory.js';
+export { BeliefConfidence, BeliefSourceType } from './belief-core-types.js';
+
+export type {
+  Belief,
+  BeliefMemoryConfig,
+  BeliefMemoryStats,
+  BeliefQuery,
+  BeliefUpdate,
+  Counterfactual,
+  HindsightRecord,
+  IHindsightBeliefMemory,
+} from './belief-types.js';
+
 // MobiMem Memory System (Issue #149, arXiv:2512.15784)
 export { MobiMem, createMobiMem, DEFAULT_MOBIMEM_CONFIG } from './mobimem.js';
 
