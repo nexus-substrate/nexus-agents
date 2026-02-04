@@ -135,12 +135,18 @@ jobs:
           echo "Changed source files:"
           echo "$CHANGED_SRC"
 
-          # Count changed files
-          COUNT=$(echo "$CHANGED_SRC" | grep -c . || echo 0)
-          echo "count=$COUNT" >> $GITHUB_OUTPUT
-          echo "files<<EOF" >> $GITHUB_OUTPUT
-          echo "$CHANGED_SRC" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          # Handle empty case to avoid GITHUB_OUTPUT format errors
+          if [ -z "$CHANGED_SRC" ]; then
+            echo "No source files changed"
+            echo "count=0" >> $GITHUB_OUTPUT
+            echo "files=" >> $GITHUB_OUTPUT
+          else
+            COUNT=$(echo "$CHANGED_SRC" | grep -c . || echo 0)
+            echo "count=$COUNT" >> $GITHUB_OUTPUT
+            echo "files<<EOF" >> $GITHUB_OUTPUT
+            echo "$CHANGED_SRC" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          fi
 
       - name: Check for documentation updates
         id: docs

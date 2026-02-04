@@ -14,6 +14,7 @@ allowed-tools: Read, Edit, Write, Bash, Grep, Glob, Task
 <!-- PIPELINE NOTE: generate-repo-index.ts outputs MD060-compliant tables (2026-02-03) -->
 <!-- PIPELINE NOTE: generate-docs.ts, generate-docs-full.ts, inject-governance.ts table formatting normalized (2026-02-03) -->
 <!-- PIPELINE NOTE: docs-check.yml docs-coverage job set continue-on-error:true for non-blocking (2026-02-03) -->
+<!-- PIPELINE NOTE: docs-check.yml docs-coverage handles empty CHANGED_SRC to avoid GITHUB_OUTPUT format errors (2026-02-04) -->
 
 **Full specification:** [docops-spec.md](../../docs/ops/docops-spec.md)
 
