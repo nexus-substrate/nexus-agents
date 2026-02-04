@@ -41,8 +41,8 @@ export default defineConfig({
     // Fail fast after repeated failures
     bail: 10,
 
-    // Reporter
-    reporters: ['basic'],
+    // Reporter ('basic' deprecated in Vitest v3, use 'default')
+    reporters: ['default'],
 
     // Environment
     environment: 'node',
