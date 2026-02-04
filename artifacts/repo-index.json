@@ -1,11 +1,17 @@
 {
   "version": "1.0.0",
-  "generated": "2026-02-03T22:19:10.417Z",
+  "generated": "2026-02-04T01:03:46.671Z",
   "generator": "scripts/generate-repo-index.ts",
   "packageVersion": "2.6.0",
   "cli": {
     "binary": "nexus-agents",
     "commands": [
+      {
+        "name": "capabilities",
+        "type": "sync",
+        "handler": "handleCapabilitiesCommand",
+        "file": "src/cli-commands-handlers.ts"
+      },
       {
         "name": "config",
         "type": "async",

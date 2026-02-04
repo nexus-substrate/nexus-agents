@@ -124,6 +124,9 @@ describe('delegate_to_model Tool', () => {
         needsSpeed: false,
         needsCodeGen: false,
         isCostSensitive: false,
+        needsImageGen: false,
+        needsAudioOutput: false,
+        needsMcp: false,
       };
 
       const opusScore = scoreModel('claude-opus', MODEL_CAPABILITIES['claude-opus']!, requirements);
@@ -146,6 +149,9 @@ describe('delegate_to_model Tool', () => {
         needsSpeed: false,
         needsCodeGen: false,
         isCostSensitive: false,
+        needsImageGen: false,
+        needsAudioOutput: false,
+        needsMcp: false,
       };
 
       const geminiScore = scoreModel('gemini-pro', MODEL_CAPABILITIES['gemini-pro']!, requirements);
@@ -166,6 +172,9 @@ describe('delegate_to_model Tool', () => {
         needsSpeed: false,
         needsCodeGen: false,
         isCostSensitive: false,
+        needsImageGen: false,
+        needsAudioOutput: false,
+        needsMcp: false,
       };
 
       const codeScoreWithPreference = scoreModel(
@@ -193,6 +202,9 @@ describe('delegate_to_model Tool', () => {
         needsSpeed: false,
         needsCodeGen: false,
         isCostSensitive: false,
+        needsImageGen: false,
+        needsAudioOutput: false,
+        needsMcp: false,
       };
 
       const result = selectModel(
@@ -212,6 +224,9 @@ describe('delegate_to_model Tool', () => {
         needsSpeed: false,
         needsCodeGen: false,
         isCostSensitive: false,
+        needsImageGen: false,
+        needsAudioOutput: false,
+        needsMcp: false,
       };
 
       const result = selectModel(
@@ -232,6 +247,9 @@ describe('delegate_to_model Tool', () => {
         needsSpeed: false,
         needsCodeGen: true,
         isCostSensitive: false,
+        needsImageGen: false,
+        needsAudioOutput: false,
+        needsMcp: false,
       };
 
       const result = selectModel(

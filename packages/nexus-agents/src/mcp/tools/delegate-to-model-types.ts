@@ -165,6 +165,12 @@ export interface TaskRequirements {
   needsSpeed: boolean;
   needsCodeGen: boolean;
   isCostSensitive: boolean;
+  /** Whether the task requires image generation output (Issue #685) */
+  needsImageGen: boolean;
+  /** Whether the task requires audio output (Issue #685) */
+  needsAudioOutput: boolean;
+  /** Whether the task requires MCP tool support (Issue #685) */
+  needsMcp: boolean;
 }
 
 /**
@@ -224,6 +230,34 @@ export const CODE_KEYWORDS = [
 
 /** Keywords indicating cost sensitivity. */
 export const COST_KEYWORDS = ['cheap', 'cost', 'budget', 'economical', 'free'] as const;
+
+/** Keywords indicating image generation needs (Issue #685). */
+export const IMAGE_GEN_KEYWORDS = [
+  'image',
+  'picture',
+  'photo',
+  'diagram',
+  'illustration',
+  'png',
+  'jpeg',
+  'visual',
+  'draw',
+  'render image',
+] as const;
+
+/** Keywords indicating audio output needs (Issue #685). */
+export const AUDIO_OUTPUT_KEYWORDS = [
+  'audio',
+  'speech',
+  'voice',
+  'tts',
+  'text-to-speech',
+  'read aloud',
+  'narrate',
+] as const;
+
+/** Keywords indicating MCP tool needs (Issue #685). */
+export const MCP_KEYWORDS = ['mcp', 'tool use', 'computer use', 'browse', 'interact'] as const;
 
 /**
  * Tool input schema definition.

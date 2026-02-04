@@ -1,6 +1,6 @@
 # Repository Capabilities Index
 
-**Generated:** 2026-02-03T22:19:10.417Z
+**Generated:** 2026-02-04T01:03:46.671Z
 **Package Version:** 2.6.0
 **Generator:** `scripts/generate-repo-index.ts`
 
@@ -9,12 +9,13 @@
 
 ---
 
-## CLI Commands (30)
+## CLI Commands (31)
 
 Binary: `nexus-agents`
 
 | Command | Type | Handler | Source File |
 | --------- | ------ | --------- | ------------- |
+| `capabilities` | sync | `handleCapabilitiesCommand` | `src/cli-commands-handlers.ts` |
 | `config` | async | `handleConfigCommand` | `src/cli-commands-handlers.ts` |
 | `demo` | async | `handleDemoCommand` | `src/cli-commands-handlers.ts` |
 | `doctor` | async | `handleDoctorCommand` | `src/cli-commands-handlers.ts` |
