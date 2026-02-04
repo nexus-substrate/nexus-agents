@@ -151,6 +151,47 @@ export class ToolMemoryManager {
   }
 
   /**
+   * Retrieve past learnings relevant to a task description.
+   * Searches by keywords, falls back to highest-confidence learnings.
+   * Returns formatted string or undefined if none found.
+   */
+  getRelevantLearnings(taskDescription: string, maxResults = 5): string | undefined {
+    const past = this.pastLearnings;
+    if (past.length === 0) return undefined;
+
+    const keywords = taskDescription.split(/\s+/).slice(0, 5).join(' ');
+    const searched = this.searchLearnings(keywords).slice(0, maxResults);
+    const learnings =
+      searched.length > 0
+        ? searched
+        : [...past].sort((a, b) => b.confidence - a.confidence).slice(0, 3);
+
+    if (learnings.length === 0) return undefined;
+    return learnings
+      .map((l) => `- [${String(l.confidence)}] ${l.pattern} (${l.context})`)
+      .join('\n');
+  }
+
+  /**
+   * Retrieve past error solutions relevant to a given role or context.
+   * Returns formatted string or undefined if none found.
+   */
+  getRelevantErrorHints(role: string, maxResults = 3): string | undefined {
+    const errors = this.getRecentErrorSolutions(10);
+    if (errors.length === 0) return undefined;
+
+    const relevant = errors.filter(
+      (e) => e.filePattern?.includes('execute-expert') === true || e.error.includes(role)
+    );
+    if (relevant.length === 0) return undefined;
+
+    return relevant
+      .slice(0, maxResults)
+      .map((e) => `- Error: ${e.error.slice(0, 80)} → ${e.solution.slice(0, 80)}`)
+      .join('\n');
+  }
+
+  /**
    * End the current session and persist to disk.
    */
   endSession(): void {

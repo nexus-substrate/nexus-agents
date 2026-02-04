@@ -242,6 +242,128 @@ describe('getToolMemory singleton', () => {
   });
 });
 
+describe('getRelevantLearnings', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetMockDefaults();
+    shutdownToolMemory();
+  });
+
+  afterEach(() => {
+    shutdownToolMemory();
+  });
+
+  it('should return undefined when no past learnings exist', () => {
+    const manager = new ToolMemoryManager(createMockLogger());
+    expect(manager.getRelevantLearnings('some task')).toBeUndefined();
+  });
+
+  it('should return search results when learnings match', () => {
+    const pastLearnings = [
+      { pattern: 'orchestration pattern', context: 'task=1', confidence: 0.8 },
+    ];
+    mockSessionMemory.startSession.mockReturnValueOnce({ ok: true, value: pastLearnings });
+    mockSessionMemory.searchLearnings.mockReturnValueOnce(pastLearnings);
+
+    const manager = new ToolMemoryManager(createMockLogger());
+    const result = manager.getRelevantLearnings('run orchestration');
+
+    expect(result).toContain('orchestration pattern');
+    expect(result).toContain('0.8');
+  });
+
+  it('should fall back to highest-confidence learnings when search returns empty', () => {
+    const pastLearnings = [
+      { pattern: 'low confidence', context: 'ctx1', confidence: 0.3 },
+      { pattern: 'high confidence', context: 'ctx2', confidence: 0.9 },
+    ];
+    mockSessionMemory.startSession.mockReturnValueOnce({ ok: true, value: pastLearnings });
+    mockSessionMemory.searchLearnings.mockReturnValueOnce([]);
+
+    const manager = new ToolMemoryManager(createMockLogger());
+    const result = manager.getRelevantLearnings('unrelated task');
+
+    expect(result).toContain('high confidence');
+    // High confidence should appear before low confidence
+    const highIdx = result?.indexOf('high confidence') ?? -1;
+    const lowIdx = result?.indexOf('low confidence') ?? -1;
+    expect(highIdx).toBeLessThan(lowIdx);
+  });
+
+  it('should limit results to maxResults', () => {
+    const pastLearnings = Array.from({ length: 10 }, (_, i) => ({
+      pattern: `pattern ${String(i)}`,
+      context: `ctx ${String(i)}`,
+      confidence: 0.5 + i * 0.05,
+    }));
+    mockSessionMemory.startSession.mockReturnValueOnce({ ok: true, value: pastLearnings });
+    mockSessionMemory.searchLearnings.mockReturnValueOnce(pastLearnings);
+
+    const manager = new ToolMemoryManager(createMockLogger());
+    const result = manager.getRelevantLearnings('test', 2);
+
+    const lines = result?.split('\n') ?? [];
+    expect(lines.length).toBe(2);
+  });
+});
+
+describe('getRelevantErrorHints', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetMockDefaults();
+    shutdownToolMemory();
+  });
+
+  afterEach(() => {
+    shutdownToolMemory();
+  });
+
+  it('should return undefined when no error solutions exist', () => {
+    const manager = new ToolMemoryManager(createMockLogger());
+    expect(manager.getRelevantErrorHints('code_expert')).toBeUndefined();
+  });
+
+  it('should return hints for matching role errors', () => {
+    mockSessionMemory.getRecentErrorSolutions.mockReturnValueOnce([
+      {
+        error: 'Expert code_expert failed: timeout',
+        solution: 'Increase timeout',
+        filePattern: 'execute-expert',
+      },
+    ]);
+
+    const manager = new ToolMemoryManager(createMockLogger());
+    const result = manager.getRelevantErrorHints('code_expert');
+
+    expect(result).toContain('timeout');
+    expect(result).toContain('Increase timeout');
+  });
+
+  it('should return undefined when no errors match the role', () => {
+    mockSessionMemory.getRecentErrorSolutions.mockReturnValueOnce([
+      { error: 'Unrelated error', solution: 'Fix something', filePattern: 'other-module' },
+    ]);
+
+    const manager = new ToolMemoryManager(createMockLogger());
+    expect(manager.getRelevantErrorHints('code_expert')).toBeUndefined();
+  });
+
+  it('should limit results to maxResults', () => {
+    const errors = Array.from({ length: 5 }, (_, i) => ({
+      error: `Expert code_expert error ${String(i)}`,
+      solution: `Fix ${String(i)}`,
+      filePattern: 'execute-expert',
+    }));
+    mockSessionMemory.getRecentErrorSolutions.mockReturnValueOnce(errors);
+
+    const manager = new ToolMemoryManager(createMockLogger());
+    const result = manager.getRelevantErrorHints('code_expert', 2);
+
+    const lines = result?.split('\n') ?? [];
+    expect(lines.length).toBe(2);
+  });
+});
+
 describe('shutdownToolMemory', () => {
   beforeEach(() => {
     vi.clearAllMocks();
