@@ -45,6 +45,25 @@ import type { MobiMemStats } from '../../context/mobimem-types.js';
 
 // Re-export types tools may need
 export type { SessionLearning, CompletedTask, ResolvedError, Belief };
+
+/**
+ * Result from unified cross-memory query (Phase 3 #746).
+ * Includes source attribution and relevance scoring.
+ */
+export interface UnifiedMemoryResult {
+  /** Source memory system */
+  source: 'session' | 'belief' | 'agentic' | 'typed';
+  /** Type of memory entry */
+  type: string;
+  /** Content summary (may be truncated) */
+  content: string;
+  /** Relevance score (0-1) based on keyword matching */
+  relevance: number;
+  /** When the entry was created */
+  timestamp: Date;
+  /** Additional metadata (e.g., confidence, keywords) */
+  metadata?: Record<string, unknown>;
+}
 export type {
   TypedMemoryEntry,
   TypedMemoryStats,
@@ -524,6 +543,149 @@ export class ToolMemoryManager {
   runMobiMemMaintenance(): void {
     if (this.mobimem === null) return;
     this.mobimem.runMaintenance();
+  }
+
+  // ==========================================================================
+  // Cross-Memory Query (Phase 3 #746 - Unified search across all backends)
+  // ==========================================================================
+
+  /**
+   * Unified search across all active memory systems.
+   * Returns results from SessionMemory, BeliefMemory, AgenticMemory, and TypedMemory
+   * with source attribution and relevance scoring.
+   */
+  async queryAll(query: string, limit = 10): Promise<readonly UnifiedMemoryResult[]> {
+    const keywords = query
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((k) => k.length > 2);
+    const perSource = Math.ceil(limit / 4);
+    const results = [
+      ...this.querySessionMemory(query, keywords, perSource),
+      ...(await this.queryBeliefMemory(query, keywords, perSource)),
+      ...(await this.queryAgenticMemory(query, keywords, perSource)),
+      ...(await this.queryTypedMemory(query, keywords, Math.ceil(perSource / 2))),
+    ];
+    return results.sort((a, b) => b.relevance - a.relevance).slice(0, limit);
+  }
+
+  /** Query SessionMemory for learnings. */
+  private querySessionMemory(
+    query: string,
+    keywords: readonly string[],
+    limit: number
+  ): UnifiedMemoryResult[] {
+    const results: UnifiedMemoryResult[] = [];
+    const learnings = this.searchLearnings(query);
+    const now = new Date();
+    for (const l of learnings.slice(0, limit)) {
+      results.push({
+        source: 'session',
+        type: 'learning',
+        content: `${l.pattern} (${l.context})`,
+        relevance: this.scoreRelevance(l.pattern + ' ' + l.context, keywords),
+        timestamp: now,
+        metadata: { confidence: l.confidence, source: l.source },
+      });
+    }
+    return results;
+  }
+
+  /** Query BeliefMemory for beliefs. */
+  private async queryBeliefMemory(
+    query: string,
+    keywords: readonly string[],
+    limit: number
+  ): Promise<UnifiedMemoryResult[]> {
+    const results: UnifiedMemoryResult[] = [];
+    try {
+      const beliefResult = await this.beliefs.recallBySubject(query, limit);
+      if (beliefResult.ok) {
+        for (const b of beliefResult.value.filter((x) => !x.superseded)) {
+          results.push({
+            source: 'belief',
+            type: 'belief',
+            content: `${b.subject} ${b.predicate} ${b.object}`,
+            relevance: this.scoreRelevance(
+              b.subject + ' ' + b.predicate + ' ' + b.object,
+              keywords
+            ),
+            timestamp: b.createdAt,
+            metadata: { confidence: b.confidence },
+          });
+        }
+      }
+    } catch {
+      // Best-effort: belief query failure is non-critical
+    }
+    return results;
+  }
+
+  /** Query AgenticMemory for knowledge. */
+  private async queryAgenticMemory(
+    query: string,
+    keywords: readonly string[],
+    limit: number
+  ): Promise<UnifiedMemoryResult[]> {
+    if (this.agentic === null) return [];
+    const results: UnifiedMemoryResult[] = [];
+    try {
+      const agResult = await this.agentic.searchAgentic(query, limit);
+      if (agResult.ok) {
+        for (const e of agResult.value) {
+          results.push({
+            source: 'agentic',
+            type: 'knowledge',
+            content: `${e.key}: ${JSON.stringify(e.value).slice(0, 100)}`,
+            relevance: this.scoreRelevance(e.key + ' ' + e.attributes.keywords.join(' '), keywords),
+            timestamp: e.createdAt,
+            metadata: { keywords: e.attributes.keywords },
+          });
+        }
+      }
+    } catch {
+      // Best-effort: agentic query failure is non-critical
+    }
+    return results;
+  }
+
+  /** Query TypedMemory for semantic and episodic entries. */
+  private async queryTypedMemory(
+    query: string,
+    keywords: readonly string[],
+    limitPerType: number
+  ): Promise<UnifiedMemoryResult[]> {
+    if (this.typed === null) return [];
+    const results: UnifiedMemoryResult[] = [];
+    try {
+      const [semanticResult, episodicResult] = await Promise.all([
+        this.typed.queryByType('semantic', query, limitPerType),
+        this.typed.queryByType('episodic', query, limitPerType),
+      ]);
+      for (const r of [semanticResult, episodicResult]) {
+        if (r.ok) {
+          for (const e of r.value) {
+            results.push({
+              source: 'typed',
+              type: e.type,
+              content: String(e.value).slice(0, 150),
+              relevance: this.scoreRelevance(String(e.value), keywords),
+              timestamp: e.createdAt,
+            });
+          }
+        }
+      }
+    } catch {
+      // Best-effort: typed query failure is non-critical
+    }
+    return results;
+  }
+
+  /** Calculate relevance score based on keyword matches. */
+  private scoreRelevance(text: string, keywords: readonly string[]): number {
+    if (keywords.length === 0) return 0.5;
+    const lower = text.toLowerCase();
+    return keywords.filter((k) => lower.includes(k)).length / keywords.length;
   }
 
   /** End the current session and persist to disk. Closes SQLite backends. */
