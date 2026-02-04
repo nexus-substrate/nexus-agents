@@ -188,8 +188,12 @@ function recordExpertSuccess(expertId: string, role: string, durationMs: number)
       challenges: [],
       durationMs,
     });
-  } catch {
+  } catch (error: unknown) {
     // Best-effort memory recording
+    createLogger({ tool: 'execute_expert' }).debug('Best-effort success recording failed', {
+      error: error instanceof Error ? error.message : String(error),
+      expertId,
+    });
   }
 }
 
@@ -204,8 +208,25 @@ function recordExpertError(expertId: string, role: string, errorMessage: string)
       solution: 'Pending - expert execution failed',
       filePattern: 'mcp/tools/execute-expert',
     });
-  } catch {
+  } catch (error: unknown) {
     // Best-effort memory recording
+    createLogger({ tool: 'execute_expert' }).debug('Best-effort error recording failed', {
+      error: error instanceof Error ? error.message : String(error),
+      expertId,
+    });
+  }
+}
+
+/** Scans expert output for research references (best-effort). */
+function autoCatalogScan(output: string, expertId: string, logger?: ILogger): void {
+  try {
+    const catalog = getAutoCatalog();
+    catalog.scanAndRecord(output, 'execute_expert');
+  } catch (error: unknown) {
+    logger?.debug('Best-effort auto-catalog scan failed', {
+      error: error instanceof Error ? error.message : String(error),
+      expertId,
+    });
   }
 }
 
@@ -239,7 +260,6 @@ async function handleExecuteExpert(
 
   if (!result.ok) {
     deps.logger?.warn('Expert execution failed', { expertId, error: result.error.message });
-    // Record error to session memory (Issue #690)
     recordExpertError(expertId, expert.role, result.error.message);
     return {
       ok: true,
@@ -253,16 +273,8 @@ async function handleExecuteExpert(
     tokensUsed: result.value.metadata.tokensUsed,
   });
 
-  // Record success to session memory (Issue #690)
   recordExpertSuccess(expertId, expert.role, durationMs);
-
-  // Auto-catalog: scan output for research references
-  try {
-    const catalog = getAutoCatalog();
-    catalog.scanAndRecord(result.value.output as string, 'execute_expert');
-  } catch {
-    // Auto-catalog is best-effort
-  }
+  autoCatalogScan(result.value.output as string, expertId, deps.logger);
 
   return {
     ok: true,
