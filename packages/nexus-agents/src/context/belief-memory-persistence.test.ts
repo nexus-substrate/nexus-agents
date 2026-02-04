@@ -149,7 +149,7 @@ describe('belief-memory-persistence', () => {
       /* no-op */
     });
     vi.mocked(fs.readFileSync).mockReturnValue('');
-    vi.mocked(fs.readdirSync).mockReturnValue([] as unknown as fs.Dirent[]);
+    vi.mocked(fs.readdirSync).mockReturnValue([] as unknown as ReturnType<typeof fs.readdirSync>);
     vi.mocked(fs.unlinkSync).mockImplementation(() => {
       /* no-op */
     });
@@ -208,13 +208,18 @@ describe('belief-memory-persistence', () => {
     });
 
     it('handles beliefs without optional fields', () => {
-      const belief = createTestBelief({
-        sourceRef: undefined,
-        derivedFrom: undefined,
-        supersededBy: undefined,
-        domain: undefined,
-        metadata: undefined,
-      });
+      const belief: Belief = {
+        beliefId: 'belief-bare',
+        subject: 'test',
+        predicate: 'has',
+        object: 'no-optionals',
+        confidence: 'high',
+        sourceType: 'observation',
+        version: 1,
+        createdAt: new Date('2026-01-15T12:00:00Z'),
+        updatedAt: new Date('2026-01-15T12:00:00Z'),
+        superseded: false,
+      };
       const data: BeliefMemoryData = {
         beliefs: new Map([['belief-001', belief]]),
         updates: new Map(),
@@ -353,7 +358,7 @@ describe('belief-memory-persistence', () => {
         Array.from(
           { length: 15 },
           (_, i) => `beliefs-2026-01-${String(i + 1).padStart(2, '0')}.json`
-        ) as unknown as fs.Dirent[]
+        ) as unknown as ReturnType<typeof fs.readdirSync>
       );
 
       saveBeliefSnapshot(data, logger);
@@ -367,7 +372,7 @@ describe('belief-memory-persistence', () => {
     it('returns null when no snapshot files exist', () => {
       const logger = createMockLogger();
 
-      vi.mocked(fs.readdirSync).mockReturnValue([] as unknown as fs.Dirent[]);
+      vi.mocked(fs.readdirSync).mockReturnValue([] as unknown as ReturnType<typeof fs.readdirSync>);
 
       const result = loadBeliefSnapshot(logger);
 
@@ -385,7 +390,7 @@ describe('belief-memory-persistence', () => {
 
       vi.mocked(fs.readdirSync).mockReturnValue([
         'beliefs-2026-01-15.json',
-      ] as unknown as fs.Dirent[]);
+      ] as unknown as ReturnType<typeof fs.readdirSync>);
       vi.mocked(fs.readFileSync).mockReturnValue(content);
 
       const result = loadBeliefSnapshot(logger);
@@ -403,7 +408,7 @@ describe('belief-memory-persistence', () => {
       vi.mocked(fs.readdirSync).mockReturnValue([
         'beliefs-2026-01-16.json',
         'beliefs-2026-01-15.json',
-      ] as unknown as fs.Dirent[]);
+      ] as unknown as ReturnType<typeof fs.readdirSync>);
 
       const data = createTestData();
       const validSnapshot = JSON.stringify(createSnapshot(data));
@@ -424,7 +429,7 @@ describe('belief-memory-persistence', () => {
 
       vi.mocked(fs.readdirSync).mockReturnValue([
         'beliefs-2026-01-15.json',
-      ] as unknown as fs.Dirent[]);
+      ] as unknown as ReturnType<typeof fs.readdirSync>);
       vi.mocked(fs.readFileSync).mockReturnValue('{}');
 
       const result = loadBeliefSnapshot(logger);
