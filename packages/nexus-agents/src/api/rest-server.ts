@@ -130,6 +130,7 @@ export class RestApiServer implements IRestApiServer {
     const fastify = Fastify({
       logger: false, // Use our own logger
       trustProxy: this.config.trustProxy,
+      bodyLimit: this.config.maxBodySize,
       genReqId: () => this.generateRequestId(),
     });
 
@@ -198,6 +199,28 @@ export class RestApiServer implements IRestApiServer {
   }
 
   private registerMiddleware(): void {
+    if (this.fastify === null) return;
+
+    this.registerSecurityHeaders();
+    this.registerRequestHooks();
+  }
+
+  /** Adds security headers to all responses (Issue #740). */
+  private registerSecurityHeaders(): void {
+    if (this.fastify === null) return;
+    this.fastify.addHook('onSend', (_request, reply, payload, done) => {
+      void reply.header('X-Content-Type-Options', 'nosniff');
+      void reply.header('X-Frame-Options', 'DENY');
+      void reply.header('Cache-Control', 'no-store');
+      void reply.header('Content-Security-Policy', "default-src 'none'");
+      void reply.header('X-Permitted-Cross-Domain-Policies', 'none');
+      void reply.header('Referrer-Policy', 'no-referrer');
+      done(null, payload);
+    });
+  }
+
+  /** Registers request-level hooks (logging, auth, response tracking). */
+  private registerRequestHooks(): void {
     if (this.fastify === null) return;
 
     // Request logging and timing

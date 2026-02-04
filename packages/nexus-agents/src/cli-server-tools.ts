@@ -172,6 +172,17 @@ interface ToolRegistrationContext {
   feedbackIntegration?: import('./learning/feedback-integration.js').IFeedbackIntegration;
   /** Workflow config for engine settings (Issue #487) */
   workflowConfig?: import('./config/index.js').WorkflowConfig;
+  /** Tool allowlist from security config (Issue #740) */
+  toolAllowlist?: Set<string>;
+}
+
+/**
+ * Checks whether a tool should be registered based on the allowlist.
+ * When no allowlist is set, all tools are allowed.
+ * (Source: Issue #740 - tool allowlisting)
+ */
+function isToolAllowed(toolName: string, allowlist?: Set<string>): boolean {
+  return allowlist === undefined || allowlist.has(toolName);
 }
 
 /** Register expert tools with shared registry (Issue #661: wire security config). */
@@ -298,32 +309,24 @@ function createToolContext(
   toolInfra: { logger: ILogger },
   rateLimiterFactory: ReturnType<typeof createToolRateLimiterFactory>
 ): ToolRegistrationContext {
-  const {
-    server,
-    builtInTemplates,
-    modelAdapter,
-    useMockTechLead,
-    policyFirewall,
-    executionMode,
-    allowedPaths,
-    securityConfig,
-    workflowConfig,
-    feedbackIntegration,
-  } = options;
-  return {
-    server,
+  const ctx: ToolRegistrationContext = {
+    server: options.server,
     logger: toolInfra.logger,
     rateLimiterFactory,
-    builtInTemplates,
-    ...(modelAdapter !== undefined && { modelAdapter }),
-    ...(useMockTechLead !== undefined && { useMockTechLead }),
-    ...(policyFirewall !== undefined && { policyFirewall }),
-    ...(executionMode !== undefined && { executionMode }),
-    ...(allowedPaths !== undefined && { allowedPaths }),
-    ...(securityConfig !== undefined && { securityConfig }),
-    ...(workflowConfig !== undefined && { workflowConfig }),
-    ...(feedbackIntegration !== undefined && { feedbackIntegration }),
+    builtInTemplates: options.builtInTemplates,
+    modelAdapter: options.modelAdapter,
+    useMockTechLead: options.useMockTechLead,
+    policyFirewall: options.policyFirewall,
+    executionMode: options.executionMode,
+    allowedPaths: options.allowedPaths,
+    securityConfig: options.securityConfig,
+    workflowConfig: options.workflowConfig,
+    feedbackIntegration: options.feedbackIntegration,
   };
+  if (options.securityConfig?.toolAllowlist !== undefined) {
+    ctx.toolAllowlist = new Set(options.securityConfig.toolAllowlist);
+  }
+  return ctx;
 }
 
 /**
@@ -339,6 +342,66 @@ function createToolContext(
  * (Source: Issue #296 - Complete MCP tool rate limiting integration)
  * (Source: Issue #430 - Wire up real workflow engine)
  */
+
+/** Logs tool registration summary and allowlist status. */
+function logToolRegistration(
+  logger: ILogger,
+  allowlist: Set<string> | undefined,
+  info: {
+    rateLimiterFactory: ReturnType<typeof createToolRateLimiterFactory>;
+    perToolConfig: Record<string, unknown> | undefined;
+    builtInTemplates: Map<string, unknown>;
+    modelAdapter?: unknown;
+    policyFirewall?: { getMode(): string };
+    executionMode?: string;
+  }
+): void {
+  const activeTools = allowlist
+    ? REGISTERED_TOOLS.filter((t) => allowlist.has(t))
+    : [...REGISTERED_TOOLS];
+  if (allowlist !== undefined) {
+    logger.info('Tool allowlist active', {
+      allowed: activeTools.length,
+      total: REGISTERED_TOOLS.length,
+      blocked: REGISTERED_TOOLS.filter((t) => !allowlist.has(t)),
+    });
+  }
+  logger.info('Tools registered with per-tool rate limiting', {
+    registeredTools: activeTools,
+    rateLimitingEnabled: info.rateLimiterFactory.isEnabled(),
+    customRateLimitsConfigured: info.perToolConfig !== undefined,
+    builtInTemplateCount: info.builtInTemplates.size,
+    realWorkflowExecution: info.modelAdapter !== undefined,
+    realTechLead: info.modelAdapter !== undefined,
+    policyFirewallEnabled: info.policyFirewall !== undefined,
+    policyMode: info.policyFirewall?.getMode(),
+    executionMode: info.executionMode ?? 'read-only',
+  });
+}
+
+/** Registers tool categories, skipping those blocked by allowlist. (Issue #740) */
+function registerToolCategories(
+  ctx: ToolRegistrationContext,
+  rateLimiterFactory: ReturnType<typeof createToolRateLimiterFactory>
+): void {
+  const allowlist = ctx.toolAllowlist;
+  const allowed = (name: string): boolean => isToolAllowed(name, allowlist);
+
+  if (allowed('delegate_to_model') || allowed('orchestrate')) registerCoreTools(ctx);
+  if (allowed('create_expert') || allowed('execute_expert')) registerExpertTools(ctx);
+  if (allowed('run_workflow') || allowed('list_workflows')) registerWorkflowTools(ctx);
+  if (allowed('consensus_vote')) registerConsensusTools(ctx);
+  if (REGISTERED_TOOLS.some((t) => t.startsWith('research_') && allowed(t))) {
+    registerResearchTools(ctx);
+  }
+  if (allowed('list_experts')) {
+    registerListExpertsTool(ctx.server, {
+      logger: ctx.logger,
+      rateLimiter: rateLimiterFactory.getForTool('list_experts'),
+    });
+  }
+}
+
 export function registerMcpTools(options: RegisterMcpToolsOptions): void {
   const {
     server,
@@ -362,28 +425,15 @@ export function registerMcpTools(options: RegisterMcpToolsOptions): void {
   setGlobalToolRateLimiterFactory(rateLimiterFactory);
 
   const ctx = createToolContext(options, toolInfra, rateLimiterFactory);
+  registerToolCategories(ctx, rateLimiterFactory);
 
-  // Register all tool categories
-  registerCoreTools(ctx);
-  registerExpertTools(ctx);
-  registerWorkflowTools(ctx);
-  registerConsensusTools(ctx);
-  registerResearchTools(ctx);
-  registerListExpertsTool(server, {
-    logger: ctx.logger,
-    rateLimiter: rateLimiterFactory.getForTool('list_experts'),
-  });
-
-  logger.info('Tools registered with per-tool rate limiting', {
-    registeredTools: [...REGISTERED_TOOLS],
-    rateLimitingEnabled: rateLimiterFactory.isEnabled(),
-    customRateLimitsConfigured: perToolConfig !== undefined,
-    builtInTemplateCount: builtInTemplates.size,
-    realWorkflowExecution: modelAdapter !== undefined,
-    realTechLead: modelAdapter !== undefined,
-    policyFirewallEnabled: policyFirewall !== undefined,
-    policyMode: policyFirewall?.getMode(),
-    executionMode: executionMode ?? 'read-only',
+  logToolRegistration(logger, ctx.toolAllowlist, {
+    rateLimiterFactory,
+    perToolConfig,
+    builtInTemplates,
+    modelAdapter,
+    policyFirewall,
+    executionMode,
   });
 
   // Run STPA safety analysis if enabled (Issue #530)

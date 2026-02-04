@@ -106,6 +106,63 @@ function internalError(message: string, requestId: string): ToolResult {
 }
 
 /**
+ * Maximum input size for tool arguments (10MB).
+ * Prevents memory exhaustion from oversized payloads.
+ * (Source: Issue #740 - MCP security hardening)
+ */
+const MAX_INPUT_SIZE_BYTES = 10 * 1024 * 1024;
+
+/**
+ * Patterns that indicate leaked secrets in tool output.
+ * Each pattern is tested against tool response text.
+ */
+const SECRET_PATTERNS: readonly RegExp[] = [
+  // API keys with common prefixes
+  /\b(sk-[a-zA-Z0-9]{20,})\b/,
+  /\b(pk-[a-zA-Z0-9]{20,})\b/,
+  // AWS-style keys
+  /\b(AKIA[A-Z0-9]{16})\b/,
+  // Bearer tokens in output
+  /Bearer\s+[a-zA-Z0-9_\-.~+/]+=*/,
+  // Generic long hex secrets (40+ chars)
+  /\b[0-9a-f]{40,}\b/i,
+  // password= or token= in output
+  /(?:password|token|secret|apikey|api_key)\s*[=:]\s*\S{8,}/i,
+];
+
+/** Redact detected secrets from tool output text. */
+function sanitizeOutput(text: string, logger: ILogger): string {
+  let sanitized = text;
+  for (const pattern of SECRET_PATTERNS) {
+    if (pattern.test(sanitized)) {
+      logger.warn('Potential secret detected in tool output, redacting', {
+        pattern: pattern.source.slice(0, 30),
+      });
+      sanitized = sanitized.replace(pattern, '[REDACTED]');
+    }
+  }
+  return sanitized;
+}
+
+/** Sanitize all text content in a tool result (Issue #740). */
+function sanitizeToolResult(result: ToolResult, logger: ILogger): void {
+  for (const item of result.content) {
+    item.text = sanitizeOutput(item.text, logger);
+  }
+}
+
+/** Validates input size and returns error if too large. */
+function checkInputSize(args: unknown, logger: ILogger, requestId: string): ToolResult | null {
+  if (args === undefined) return null;
+  const inputSize = JSON.stringify(args).length;
+  if (inputSize > MAX_INPUT_SIZE_BYTES) {
+    logger.warn('Input size exceeds limit', { inputSize, limit: MAX_INPUT_SIZE_BYTES });
+    return internalError('Input too large', requestId);
+  }
+  return null;
+}
+
+/**
  * Checks rate limiter and returns error if exceeded.
  */
 function checkRateLimit(rateLimiter: RateLimiter, logger: ILogger): ToolResult | null {
@@ -198,6 +255,10 @@ export function createSecureHandler(
 
     requestLogger.info('Tool invocation started');
 
+    // Input size check (Issue #740 - defense-in-depth)
+    const sizeResult = checkInputSize(args, requestLogger, requestContext.requestId);
+    if (sizeResult) return sizeResult;
+
     if (config.rateLimiter) {
       const rateLimitResult = checkRateLimit(config.rateLimiter, requestLogger);
       if (rateLimitResult) return rateLimitResult;
@@ -217,12 +278,14 @@ export function createSecureHandler(
     }
 
     try {
-      return await executeHandler(
+      const result = await executeHandler(
         handler,
         args,
         { requestContext, logger: requestLogger },
         requestLogger
       );
+      sanitizeToolResult(result, requestLogger);
+      return result;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       requestLogger.error('Tool execution failed', error instanceof Error ? error : undefined);

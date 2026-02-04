@@ -28,8 +28,11 @@ export const RestApiConfigSchema = z.object({
   basePath: z.string().optional().default('/api/v1'),
   /** Enable CORS (default: true) */
   enableCors: z.boolean().optional().default(true),
-  /** CORS allowed origins (default: *) */
-  corsOrigins: z.array(z.string()).optional().default(['*']),
+  /** CORS allowed origins (default: localhost only — configure explicitly for production) */
+  corsOrigins: z
+    .array(z.string())
+    .optional()
+    .default(['http://localhost:3000', 'http://127.0.0.1:3000']),
   /** Enable Swagger UI (default: true) */
   enableSwagger: z.boolean().optional().default(true),
   /** Rate limit: requests per minute (default: 60) */
@@ -38,6 +41,8 @@ export const RestApiConfigSchema = z.object({
   apiKeyHeader: z.string().optional().default('X-API-Key'),
   /** Trust proxy headers (default: false) */
   trustProxy: z.boolean().optional().default(false),
+  /** Maximum request body size in bytes (default: 1MB) */
+  maxBodySize: z.number().positive().optional().default(1_048_576),
 });
 export type RestApiConfig = z.infer<typeof RestApiConfigSchema>;
 

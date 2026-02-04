@@ -1186,6 +1186,37 @@ describe('SecureHandler', () => {
       expect(mockSuccessHandler).toHaveBeenCalledTimes(10);
     });
 
+    it('should redact secrets in tool output', async () => {
+      const secretHandler: ToolHandler = vi.fn(() =>
+        Promise.resolve({
+          content: [
+            { type: 'text' as const, text: 'API key is sk-abc123def456ghi789jkl012mno345pqr678' },
+          ],
+        })
+      );
+
+      const secureHandler = createSecureHandler(secretHandler, {
+        toolName: 'secret_tool',
+      });
+
+      const result = await secureHandler({});
+      expect(result.content[0]?.text).toContain('[REDACTED]');
+      expect(result.content[0]?.text).not.toContain('sk-abc123');
+    });
+
+    it('should redact password= patterns in output', async () => {
+      const pwHandler: ToolHandler = vi.fn(() =>
+        Promise.resolve({
+          content: [{ type: 'text' as const, text: 'Config: password=MyS3cretP@ss!' }],
+        })
+      );
+
+      const secureHandler = createSecureHandler(pwHandler, { toolName: 'pw_tool' });
+      const result = await secureHandler({});
+      expect(result.content[0]?.text).toContain('[REDACTED]');
+      expect(result.content[0]?.text).not.toContain('MyS3cretP@ss');
+    });
+
     it('should handle slow handler execution', async () => {
       const slowHandler: ToolHandler = vi.fn(async () => {
         await new Promise((resolve) => setTimeout(resolve, 100));
