@@ -2,11 +2,10 @@
  * nexus-agents/mcp - Consensus Vote Tool
  *
  * MCP tool for multi-model consensus voting on proposals.
- * Wraps the CLI vote command functionality for MCP clients.
+ * Types and response helpers extracted to consensus-vote-types.ts (Issue #708).
  *
  * @module mcp/tools/consensus-vote
- * (Source: Issue #435 - Add consensus_vote tool for multi-model voting)
- * (Refactored: Issue #531 - Use createSecureHandlerFactory)
+ * (Source: Issue #435, #531, #514, #708)
  */
 
 import { z } from 'zod';
@@ -22,12 +21,10 @@ import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
-import type { ConsensusAlgorithm, Vote, ConsensusResult } from '../../consensus/types.js';
-import type { VoterRole, VotingResult, AgentVoteResult } from '../../cli/vote-types.js';
-import { VOTER_ROLES } from '../../cli/vote-types.js';
+import type { ConsensusAlgorithm, Vote, ConsensusResult, Proposal } from '../../consensus/types.js';
+import type { VoterRole, AgentVoteResult } from '../../cli/vote-types.js';
 import { collectRealVotes } from '../../cli/voter-agents.js';
 import { createConsensusEngine } from '../../consensus/engine.js';
-import type { Proposal } from '../../consensus/types.js';
 import type {
   HigherOrderVotingResult,
   ICorrelationTracker,
@@ -38,198 +35,64 @@ import {
   createPersistedProposal,
   saveCorrelationData,
 } from '../../consensus/correlation-persistence.js';
+import {
+  MAX_PROPOSAL_LENGTH,
+  VotingStrategySchema,
+  ConsensusVoteInputSchema,
+  buildResponse,
+} from './consensus-vote-types.js';
+import type {
+  VotingStrategy,
+  ConsensusVoteInput,
+  ConsensusVoteResponse,
+  ExtendedVotingResult,
+} from './consensus-vote-types.js';
 
-/**
- * Maximum proposal length (memory bounds per Issue #435).
- */
-const MAX_PROPOSAL_LENGTH = 4000;
+// Re-export types for consumers
+export type {
+  VotingStrategy,
+  ConsensusVoteInput,
+  ConsensusVoteResponse,
+  AgentVoteSummary,
+  VoteDecisionStatus,
+  HigherOrderMetadata,
+  ExtendedVotingResult,
+} from './consensus-vote-types.js';
+export { VotingStrategySchema, ConsensusVoteInputSchema } from './consensus-vote-types.js';
 
-/**
- * Module-level persistent CorrelationTracker for Higher-Order Voting.
- * Persists across consensus_vote calls AND across process restarts
- * by loading/saving to ~/.nexus-agents/voting/correlations.json.
- * (Source: Issue #517 - Fix HOV never activating due to fresh tracker)
- */
+// ============================================================================
+// Correlation Tracker Singleton
+// ============================================================================
+
 let persistentCorrelationTracker: ICorrelationTracker | undefined;
 
-/**
- * Gets or creates the persistent CorrelationTracker.
- * On first call, loads any persisted correlation history from disk.
- * @returns The module-level CorrelationTracker instance
- */
+/** Gets or creates the persistent CorrelationTracker (Issue #517). */
 function getOrCreateCorrelationTracker(): ICorrelationTracker {
   persistentCorrelationTracker ??= createPersistentCorrelationTracker();
   return persistentCorrelationTracker;
 }
 
-/**
- * Resets the persistent CorrelationTracker.
- * Useful for testing or when correlation data should be cleared.
- * @internal Exported for testing only
- */
+/** Resets the persistent CorrelationTracker. @internal */
 export function resetCorrelationTracker(): void {
   persistentCorrelationTracker = undefined;
 }
 
-/**
- * Available consensus voting strategies.
- *
- * - `simple_majority`: Standard majority voting (>50%)
- * - `supermajority`: Requires >=67% approval
- * - `unanimous`: Requires 100% approval
- * - `proof_of_learning`: Weighted by agent performance (Issue #103)
- * - `higher_order`: Bayesian-optimal with correlation awareness (Issue #514)
- *
- * (Source: Issue #514 - Wire Higher-Order Voting to consensus_vote tool)
- */
-export type VotingStrategy =
-  | 'simple_majority'
-  | 'supermajority'
-  | 'unanimous'
-  | 'proof_of_learning'
-  | 'higher_order';
+// ============================================================================
+// Dependencies
+// ============================================================================
 
-/**
- * Schema for voting strategy validation.
- */
-export const VotingStrategySchema = z.enum([
-  'simple_majority',
-  'supermajority',
-  'unanimous',
-  'proof_of_learning',
-  'higher_order',
-]);
-
-/**
- * Input schema for consensus_vote tool.
- */
-export const ConsensusVoteInputSchema = z.object({
-  proposal: z.string().min(1).max(MAX_PROPOSAL_LENGTH).describe('Proposal text to vote on'),
-  threshold: z
-    .enum(['majority', 'supermajority', 'unanimous'])
-    .optional()
-    .describe(
-      'Voting threshold (legacy): majority, supermajority, unanimous. Use strategy instead.'
-    ),
-  strategy: VotingStrategySchema.optional().describe(
-    'Voting strategy: simple_majority (default), supermajority, unanimous, proof_of_learning, or higher_order (Bayesian-optimal)'
-  ),
-  quickMode: z
-    .boolean()
-    .optional()
-    .default(false)
-    .describe('Use 3 agents instead of 5 for faster execution'),
-  simulateVotes: z
-    .boolean()
-    .optional()
-    .default(false)
-    .describe('Use simulated votes instead of LLM execution'),
-});
-
-/**
- * Type for validated consensus vote input.
- */
-export type ConsensusVoteInput = z.infer<typeof ConsensusVoteInputSchema>;
-
-/**
- * Dependencies for consensus_vote tool.
- */
 export interface ConsensusVoteDeps {
-  /** Optional logger */
   logger?: ILogger;
-  /** Rate limiter for throttling tool calls (required) */
   rateLimiter: RateLimiter;
-  /** Security configuration (includes timeout settings) */
   security?: SecurityConfig | undefined;
 }
 
-/**
- * Vote result from a single agent.
- */
-export interface AgentVoteSummary {
-  /** Agent role */
-  role: string;
-  /** Vote decision */
-  decision: 'approve' | 'reject' | 'abstain';
-  /** Confidence score (0-1) */
-  confidence: number;
-  /** Reasoning for the vote */
-  reasoning: string;
-  /** Whether the vote was simulated */
-  simulated: boolean;
-}
+// ============================================================================
+// Strategy Resolution
+// ============================================================================
 
-/**
- * Final decision status for the response.
- * Maps ProposalStatus to a simpler set of outcomes.
- */
-export type VoteDecisionStatus = 'approved' | 'rejected' | 'pending' | 'timeout';
-
-/**
- * Higher-Order Voting metadata included in response when using higher_order strategy.
- * (Source: Issue #514)
- */
-export interface HigherOrderMetadata {
-  /** Posterior probability of approval (Bayesian estimate) */
-  posteriorApproval: number;
-  /** Posterior probability of rejection (Bayesian estimate) */
-  posteriorRejection: number;
-  /** Effective vote count after correlation adjustment */
-  effectiveVoteCount: number;
-  /** Method used: 'ow' (opinion-wise), 'isp' (independent subset), or 'simple' (fallback) */
-  method: 'ow' | 'isp' | 'simple';
-  /** Whether correlation data was used */
-  usedCorrelationData: boolean;
-  /** Percentage improvement over simple majority baseline */
-  improvementOverBaseline: number;
-  /** Agents that were downweighted due to correlation */
-  downweightedAgents: readonly string[];
-  /** Human-readable reasoning */
-  reasoning: string;
-}
-
-/**
- * Response from consensus_vote tool.
- */
-export interface ConsensusVoteResponse {
-  /** Proposal that was voted on (truncated if long) */
-  proposal: string;
-  /** Voting threshold used (legacy) */
-  threshold?: 'majority' | 'supermajority' | 'unanimous';
-  /** Voting strategy used */
-  strategy: VotingStrategy;
-  /** Final decision */
-  decision: VoteDecisionStatus;
-  /** Approval percentage */
-  approvalPercentage: number;
-  /** Vote breakdown */
-  voteCounts: {
-    approve: number;
-    reject: number;
-    abstain: number;
-  };
-  /** Individual agent votes */
-  votes: AgentVoteSummary[];
-  /** Execution duration in milliseconds */
-  durationMs: number;
-  /** Whether simulated votes were used */
-  simulateVotes: boolean;
-  /** Higher-Order Voting metadata (only present when strategy='higher_order') */
-  higherOrderMetadata?: HigherOrderMetadata;
-}
-
-/**
- * Resolves the voting strategy from input.
- * Strategy takes precedence over threshold if both are specified.
- * (Source: Issue #514)
- */
 function resolveStrategy(input: ConsensusVoteInput): VotingStrategy {
-  // Strategy takes precedence if specified
-  if (input.strategy !== undefined) {
-    return input.strategy;
-  }
-
-  // Map threshold to strategy for backward compatibility
+  if (input.strategy !== undefined) return input.strategy;
   if (input.threshold !== undefined) {
     switch (input.threshold) {
       case 'majority':
@@ -240,124 +103,23 @@ function resolveStrategy(input: ConsensusVoteInput): VotingStrategy {
         return 'unanimous';
     }
   }
-
-  // Default
   return 'simple_majority';
 }
 
-/**
- * Maps VotingStrategy to ConsensusAlgorithm.
- * Higher-order uses opinion_wise algorithm.
- */
 function strategyToAlgorithm(strategy: VotingStrategy): ConsensusAlgorithm {
-  switch (strategy) {
-    case 'higher_order':
-      return 'opinion_wise';
-    default:
-      return strategy as ConsensusAlgorithm;
-  }
+  return strategy === 'higher_order' ? 'opinion_wise' : (strategy as ConsensusAlgorithm);
 }
 
-/**
- * Gets voter roles based on quick mode setting.
- */
 function getVoterRoles(quickMode: boolean): readonly VoterRole[] {
   return quickMode
     ? ['architect', 'security', 'pm']
     : ['architect', 'security', 'devex', 'ai_ml', 'pm'];
 }
 
-/**
- * Converts AgentVoteResult to AgentVoteSummary for response.
- */
-function toAgentVoteSummary(result: AgentVoteResult): AgentVoteSummary {
-  const roleName = VOTER_ROLES[result.role].split(' - ')[0] ?? result.role;
-  return {
-    role: roleName,
-    decision: result.vote.decision,
-    confidence: result.vote.confidence,
-    reasoning: result.vote.reasoning,
-    simulated: result.source === 'simulation',
-  };
-}
+// ============================================================================
+// Voting Execution
+// ============================================================================
 
-/**
- * Maps ProposalStatus to VoteDecisionStatus for response.
- * 'voting' and 'closed' are mapped to 'pending' for simplicity.
- */
-function mapOutcomeToDecision(outcome: string): VoteDecisionStatus {
-  switch (outcome) {
-    case 'approved':
-      return 'approved';
-    case 'rejected':
-      return 'rejected';
-    case 'timeout':
-      return 'timeout';
-    default:
-      return 'pending';
-  }
-}
-
-/**
- * Extended voting result with optional Higher-Order metadata.
- * (Source: Issue #514)
- */
-interface ExtendedVotingResult extends VotingResult {
-  /** Strategy used for voting */
-  strategy: VotingStrategy;
-  /** Higher-Order Voting result (only present when strategy='higher_order') */
-  higherOrderResult?: HigherOrderVotingResult;
-}
-
-/**
- * Builds the response from voting result.
- * Updated for Issue #514 to include strategy and Higher-Order metadata.
- */
-function buildResponse(
-  input: ConsensusVoteInput,
-  result: ExtendedVotingResult
-): ConsensusVoteResponse {
-  const proposalTruncated =
-    input.proposal.length > 200 ? input.proposal.slice(0, 200) + '...' : input.proposal;
-
-  const response: ConsensusVoteResponse = {
-    proposal: proposalTruncated,
-    strategy: result.strategy,
-    decision: mapOutcomeToDecision(result.result.outcome),
-    approvalPercentage: result.result.approvalPercentage,
-    voteCounts: {
-      approve: result.result.voteCounts.approve,
-      reject: result.result.voteCounts.reject,
-      abstain: result.result.voteCounts.abstain,
-    },
-    votes: result.votes.map(toAgentVoteSummary),
-    durationMs: result.totalTimeMs,
-    simulateVotes: result.simulateVotes,
-  };
-
-  // Add legacy threshold if provided (for backward compatibility)
-  if (input.threshold !== undefined) {
-    response.threshold = input.threshold;
-  }
-
-  // Add Higher-Order metadata when using higher_order strategy
-  if (result.strategy === 'higher_order' && result.higherOrderResult) {
-    response.higherOrderMetadata = {
-      posteriorApproval: result.higherOrderResult.posteriorApproval,
-      posteriorRejection: result.higherOrderResult.posteriorRejection,
-      effectiveVoteCount: result.higherOrderResult.effectiveVoteCount,
-      method: result.higherOrderResult.method,
-      usedCorrelationData: result.higherOrderResult.usedCorrelationData,
-      improvementOverBaseline: result.higherOrderResult.improvementOverBaseline,
-      downweightedAgents: result.higherOrderResult.downweightedAgents,
-      reasoning: result.higherOrderResult.reasoning,
-    };
-  }
-
-  return response;
-}
-
-/** Process votes through consensus engine and return result. */
 async function processVotesThroughEngine(
   votes: readonly AgentVoteResult[],
   proposal: string,
@@ -381,7 +143,6 @@ async function processVotesThroughEngine(
   return resultRes.value;
 }
 
-/** Run Higher-Order Voting aggregation if strategy is higher_order. */
 function runHigherOrderVoting(
   strategy: VotingStrategy,
   voteMap: Map<string, Vote>,
@@ -399,7 +160,6 @@ function runHigherOrderVoting(
   return result;
 }
 
-/** Record votes to correlation tracker if all votes are real LLM votes. */
 function recordVotesToTracker(
   votes: readonly AgentVoteResult[],
   voteMap: Map<string, Vote>,
@@ -408,8 +168,9 @@ function recordVotesToTracker(
 ): void {
   const allVotesReal = votes.every((v) => v.source === 'llm');
   if (!allVotesReal) {
-    const nonReal = votes.filter((v) => v.source !== 'llm');
-    logger.warn('Skipping correlation recording due to non-LLM votes', { count: nonReal.length });
+    logger.warn('Skipping correlation recording due to non-LLM votes', {
+      count: votes.filter((v) => v.source !== 'llm').length,
+    });
     return;
   }
   const tracker = getOrCreateCorrelationTracker();
@@ -417,7 +178,6 @@ function recordVotesToTracker(
   tracker.recordProposalVotes(id, voteMap, outcome);
   logger.debug('Recorded votes to tracker', { proposalId: id, outcome });
 
-  // Persist correlation data to disk for cross-restart continuity
   try {
     const persisted = createPersistedProposal(id, voteMap, outcome);
     const saveResult = saveCorrelationData([persisted]);
@@ -430,7 +190,6 @@ function recordVotesToTracker(
   }
 }
 
-/** Executes the consensus voting process. */
 async function executeVoting(
   input: ConsensusVoteInput,
   logger: ILogger
@@ -473,15 +232,15 @@ async function executeVoting(
   return result;
 }
 
-/**
- * Handles the consensus_vote tool execution.
- */
+// ============================================================================
+// Handler & Registration
+// ============================================================================
+
 async function handleConsensusVote(
   deps: ConsensusVoteDeps,
   args: ConsensusVoteInput
 ): Promise<{ ok: true; value: ConsensusVoteResponse } | { ok: false; error: string }> {
   const logger = deps.logger ?? createLogger({ tool: 'consensus_vote' });
-
   try {
     const result = await executeVoting(args, logger);
     return { ok: true, value: buildResponse(args, result) };
@@ -493,19 +252,13 @@ async function handleConsensusVote(
   }
 }
 
-/** MCP tool response type for consensus_vote */
 type ConsensusVoteToolResponse = {
   content: Array<{ type: 'text'; text: string }>;
   isError?: boolean;
 };
 
-/**
- * Creates the core handler logic for consensus_vote tool.
- * Rate limiting is handled by createSecureHandler wrapper.
- */
 function createConsensusVoteHandler(deps: ConsensusVoteDeps) {
   return async (args: unknown, ctx: HandlerContext): Promise<ConsensusVoteToolResponse> => {
-    // Validate input
     const validationResult = ConsensusVoteInputSchema.safeParse(args);
     if (!validationResult.success) {
       return {
@@ -521,30 +274,17 @@ function createConsensusVoteHandler(deps: ConsensusVoteDeps) {
       quickMode: validationResult.data.quickMode,
     });
 
-    // Execute tool logic
     const result = await handleConsensusVote(deps, validationResult.data);
-
     if (!result.ok) {
-      return {
-        isError: true,
-        content: [{ type: 'text', text: result.error }],
-      };
+      return { isError: true, content: [{ type: 'text', text: result.error }] };
     }
-
-    return {
-      content: [{ type: 'text', text: JSON.stringify(result.value, null, 2) }],
-    };
+    return { content: [{ type: 'text', text: JSON.stringify(result.value, null, 2) }] };
   };
 }
 
 /**
  * Registers the consensus_vote tool with the MCP server.
- *
- * Uses createSecureHandler for standardized security middleware (Issue #531).
- * Includes timeout protection for CVE-2026-0621 mitigation (Issue #271).
- *
- * @param server - MCP server instance
- * @param deps - Tool dependencies
+ * Uses createSecureHandler (Issue #531) with timeout protection (Issue #271).
  */
 export function registerConsensusVoteTool(server: McpServer, deps: ConsensusVoteDeps): void {
   const logger = deps.logger ?? createLogger({ tool: 'consensus_vote' });
@@ -553,22 +293,12 @@ export function registerConsensusVoteTool(server: McpServer, deps: ConsensusVote
     threshold: z
       .enum(['majority', 'supermajority', 'unanimous'])
       .optional()
-      .describe(
-        'Voting threshold (legacy): majority (>50%), supermajority (>=67%), unanimous (100%). Use strategy instead.'
-      ),
+      .describe('Voting threshold (legacy). Use strategy instead.'),
     strategy: VotingStrategySchema.optional().describe(
-      'Voting strategy: simple_majority (default), supermajority, unanimous, proof_of_learning, or higher_order (Bayesian-optimal with correlation awareness)'
+      'Voting strategy: simple_majority (default), supermajority, unanimous, proof_of_learning, or higher_order'
     ),
-    quickMode: z
-      .boolean()
-      .optional()
-      .default(false)
-      .describe('Use 3 agents instead of 5 for faster execution'),
-    simulateVotes: z
-      .boolean()
-      .optional()
-      .default(false)
-      .describe('Use simulated votes instead of LLM execution'),
+    quickMode: z.boolean().optional().default(false).describe('Use 3 agents instead of 5'),
+    simulateVotes: z.boolean().optional().default(false).describe('Use simulated votes'),
   };
 
   const description =
@@ -577,15 +307,12 @@ export function registerConsensusVoteTool(server: McpServer, deps: ConsensusVote
     'to vote on proposals with configurable strategies. ' +
     'Supports higher_order strategy for Bayesian-optimal aggregation with correlation awareness (Issue #514).';
 
-  // Wrap handler with secure handler for rate limiting and request context (Issue #531)
   const secureHandler = createSecureHandler(createConsensusVoteHandler(deps), {
     toolName: 'consensus_vote',
     rateLimiter: deps.rateLimiter,
     logger,
   });
 
-  // Wrap with timeout protection (Issue #271, CVE-2026-0621)
-  // Longer timeout for voting (up to 5 minutes for 5 agents)
   const timeoutMs = getToolTimeout('consensus_vote', deps.security);
   const wrappedHandler = wrapToolWithTimeout('consensus_vote', secureHandler, {
     timeoutMs,
