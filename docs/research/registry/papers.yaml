@@ -2115,3 +2115,41 @@ papers:
     techniques_extracted: []
     related_issues: []
     implementation_status: not-started
+  arxiv-2505.21503:
+    title: 'arXiv Query: search_query=&amp;id_list=2505.21503&amp;start=0&amp;max_results=10'
+    authors: []
+    source: arxiv
+    arxiv_id: '2505.21503'
+    url: https://arxiv.org/abs/2505.21503
+    publication_date: 2025-05
+    venue: null
+    topics:
+      - consensus
+    tags: []
+    reviewed_date: 2026-02-04
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2502.16565:
+    title: 'arXiv Query: search_query=&amp;id_list=2502.16565&amp;start=0&amp;max_results=10'
+    authors: []
+    source: arxiv
+    arxiv_id: '2502.16565'
+    url: https://arxiv.org/abs/2502.16565
+    publication_date: 2025-02
+    venue: null
+    topics:
+      - consensus
+    tags: []
+    reviewed_date: 2026-02-04
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
