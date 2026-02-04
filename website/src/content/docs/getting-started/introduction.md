@@ -83,14 +83,16 @@ nexus-agents orchestrate "Explain the architecture of this codebase"
 
 ---
 
-## Supported Models
+## Supported Providers
 
-| Provider | Models                    | Best For                    |
-| -------- | ------------------------- | --------------------------- |
-| Claude   | Sonnet 4, Opus 4, Haiku 3 | Complex reasoning, analysis |
-| OpenAI   | GPT-4o, o1, Codex         | Code generation             |
-| Gemini   | 2.5 Pro, 2.5 Flash        | Long context, multimodal    |
-| Ollama   | Llama 3, CodeLlama, Qwen  | Local inference, privacy    |
+Nexus-agents integrates with major AI providers and routes tasks to the best available model. We test with the latest models from each provider.
+
+| Provider               | Best For                    |
+| ---------------------- | --------------------------- |
+| Anthropic (Claude)     | Complex reasoning, analysis |
+| OpenAI (GPT, o-series) | Code generation, reasoning  |
+| Google (Gemini)        | Long context, multimodal    |
+| Ollama (local models)  | Local inference, privacy    |
 
 ---
 

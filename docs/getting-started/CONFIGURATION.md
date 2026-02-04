@@ -25,10 +25,12 @@ This creates `nexus-agents.yaml` with sensible defaults.
 
 The main configuration file is `nexus-agents.yaml`:
 
+> **Note:** Model names shown below are examples. Use the latest available models from each provider (Anthropic, OpenAI, Google, Ollama). Check provider documentation for current model identifiers.
+
 ```yaml
 # nexus-agents.yaml
 
-# Model configuration
+# Model configuration — use latest models from each provider
 models:
   # Default model for general tasks
   default: claude-sonnet-4-20250514

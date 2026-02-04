@@ -193,7 +193,8 @@ Route tasks to the optimal model based on capabilities.
 Create `nexus-agents.yaml` in your project root:
 
 ```yaml
-# Model configuration
+# Model configuration — use latest models from each provider
+# Providers: Anthropic (Claude), OpenAI (GPT/o-series), Google (Gemini), Ollama (local)
 models:
   default: claude-sonnet-4
   tiers:
