@@ -16,23 +16,26 @@ import {
   generateFlowDiagram,
   generateOrchestrationSequence,
   generateAsciiDashboard,
+  generateSystemSummary,
   wrapInMarkdownFence,
   type ArchitectureComponent,
   type SwarmAgent,
   type OrchestrationVizData,
 } from '../utils/visual-output.js';
+import { gatherSystemSummary } from './visualize-summary.js';
 
 // ============================================================================
 // Subcommand types
 // ============================================================================
 
-type VisualizeSubcommand = 'architecture' | 'swarm' | 'orchestration' | 'flow';
+type VisualizeSubcommand = 'architecture' | 'swarm' | 'orchestration' | 'flow' | 'summary';
 
 const VALID_SUBCOMMANDS: readonly VisualizeSubcommand[] = [
   'architecture',
   'swarm',
   'orchestration',
   'flow',
+  'summary',
 ];
 
 // ============================================================================
@@ -47,6 +50,7 @@ SUBCOMMANDS:
   swarm          Generate a Mermaid diagram of the agent swarm topology
   orchestration  Generate an ASCII dashboard or Mermaid sequence diagram
   flow           Generate a Mermaid flow diagram of the execution pipeline
+  summary        Generate a live system overview dashboard from codebase stats
 
 OPTIONS:
   --format=<fmt>   Output format: mermaid, ascii, markdown (default: mermaid)
@@ -268,6 +272,8 @@ function generateDiagramOutput(subcommand: VisualizeSubcommand, format: OutputFo
         format,
         'Task Execution Pipeline'
       );
+    case 'summary':
+      return generateSystemSummary(gatherSystemSummary());
   }
 }
 
