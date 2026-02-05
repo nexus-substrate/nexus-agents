@@ -13,6 +13,7 @@ import type {
 import { createAgentPairKey } from './higher-order-types.js';
 import type { MutablePairwiseHistory } from './correlation-helpers.js';
 import {
+  isComparable,
   votesAgree,
   didAlignWithOutcome,
   computeCorrelationCoefficient,
@@ -62,6 +63,24 @@ function makeConfig(overrides: Partial<HigherOrderVotingConfig> = {}): HigherOrd
 // votesAgree
 // ============================================================================
 
+describe('isComparable', () => {
+  it('returns true when both are non-abstain', () => {
+    expect(isComparable(makeObs('approve'), makeObs('reject'))).toBe(true);
+  });
+
+  it('returns false when first abstains', () => {
+    expect(isComparable(makeObs('abstain'), makeObs('reject'))).toBe(false);
+  });
+
+  it('returns false when second abstains', () => {
+    expect(isComparable(makeObs('approve'), makeObs('abstain'))).toBe(false);
+  });
+
+  it('returns false when both abstain', () => {
+    expect(isComparable(makeObs('abstain'), makeObs('abstain'))).toBe(false);
+  });
+});
+
 describe('votesAgree', () => {
   it('returns true when both approve', () => {
     expect(votesAgree(makeObs('approve'), makeObs('approve'))).toBe(true);
@@ -75,16 +94,16 @@ describe('votesAgree', () => {
     expect(votesAgree(makeObs('approve'), makeObs('reject'))).toBe(false);
   });
 
-  it('returns true when first abstains', () => {
-    expect(votesAgree(makeObs('abstain'), makeObs('reject'))).toBe(true);
+  it('returns null when first abstains (neutral — Issue #763)', () => {
+    expect(votesAgree(makeObs('abstain'), makeObs('reject'))).toBeNull();
   });
 
-  it('returns true when second abstains', () => {
-    expect(votesAgree(makeObs('approve'), makeObs('abstain'))).toBe(true);
+  it('returns null when second abstains (neutral — Issue #763)', () => {
+    expect(votesAgree(makeObs('approve'), makeObs('abstain'))).toBeNull();
   });
 
-  it('returns true when both abstain', () => {
-    expect(votesAgree(makeObs('abstain'), makeObs('abstain'))).toBe(true);
+  it('returns null when both abstain (neutral — Issue #763)', () => {
+    expect(votesAgree(makeObs('abstain'), makeObs('abstain'))).toBeNull();
   });
 });
 

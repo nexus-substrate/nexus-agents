@@ -39,16 +39,29 @@ export interface MutablePairwiseHistory {
 // ============================================================================
 
 /**
+ * Check if two observations are comparable (neither is an abstain).
+ * Abstain votes should be excluded from correlation tracking.
+ *
+ * @param obsA - First observation
+ * @param obsB - Second observation
+ * @returns True if both observations have non-abstain decisions
+ */
+export function isComparable(obsA: VotingObservation, obsB: VotingObservation): boolean {
+  return obsA.decision !== 'abstain' && obsB.decision !== 'abstain';
+}
+
+/**
  * Check if two votes agree.
+ * Only call this after verifying isComparable() returns true.
  * Abstains are treated as neutral - neither agree nor disagree.
  *
  * @param obsA - First observation
  * @param obsB - Second observation
- * @returns True if votes agree
+ * @returns True if votes agree, null if either is an abstain (neutral)
  */
-export function votesAgree(obsA: VotingObservation, obsB: VotingObservation): boolean {
+export function votesAgree(obsA: VotingObservation, obsB: VotingObservation): boolean | null {
   if (obsA.decision === 'abstain' || obsB.decision === 'abstain') {
-    return true;
+    return null; // Neutral — skip this pair (Issue #763)
   }
   return obsA.decision === obsB.decision;
 }

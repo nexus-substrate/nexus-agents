@@ -24,6 +24,7 @@ import type {
 import { createAgentPairKey, DEFAULT_HIGHER_ORDER_CONFIG } from './higher-order-types.js';
 import {
   type MutablePairwiseHistory,
+  isComparable,
   votesAgree,
   didAlignWithOutcome,
   computeCorrelationCoefficient,
@@ -33,6 +34,7 @@ import {
 // Re-export helper types and functions for convenience
 export type { MutablePairwiseHistory } from './correlation-helpers.js';
 export {
+  isComparable,
   votesAgree,
   didAlignWithOutcome,
   computeCorrelationCoefficient,
@@ -324,8 +326,12 @@ export class CorrelationTracker implements ICorrelationTracker {
           this.pairwiseHistory.set(pairKey, history);
         }
 
+        // Skip abstain observations — they are neutral (Issue #763)
+        if (!isComparable(obsA, obsB)) continue;
+
         history.jointObservations++;
-        if (votesAgree(obsA, obsB)) {
+        const agreed = votesAgree(obsA, obsB);
+        if (agreed === true) {
           history.agreements++;
         } else {
           history.disagreements++;
