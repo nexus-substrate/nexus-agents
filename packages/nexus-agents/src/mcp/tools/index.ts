@@ -153,6 +153,23 @@ export {
   type CatalogedReference,
 } from './research-auto-catalog.js';
 
+// Memory observability tools (Issue #751)
+export {
+  registerMemoryQueryTool,
+  MemoryQueryInputSchema,
+  type MemoryQueryInput,
+  type MemoryQueryDeps,
+  type MemoryQueryResponse,
+} from './memory-query.js';
+
+export {
+  registerMemoryStatsTool,
+  MemoryStatsInputSchema,
+  type MemoryStatsInput,
+  type MemoryStatsDeps,
+  type MemoryStatsResponse,
+} from './memory-stats.js';
+
 /**
  * Options for tool registration.
  */
@@ -243,6 +260,8 @@ export function registerTools(
       'research_discover',
       'research_analyze',
       'research_catalog_review',
+      'memory_query',
+      'memory_stats',
     ],
     logger,
     rateLimiter,
