@@ -176,6 +176,17 @@ export {
   ResearchAutoCatalog,
   getAutoCatalog,
   type CatalogedReference,
+  // Memory observability tools (Issue #751, #753)
+  registerMemoryQueryTool,
+  MemoryQueryInputSchema,
+  type MemoryQueryInput,
+  type MemoryQueryDeps,
+  type MemoryQueryResponse,
+  registerMemoryStatsTool,
+  MemoryStatsInputSchema,
+  type MemoryStatsInput,
+  type MemoryStatsDeps,
+  type MemoryStatsResponse,
 } from './tools/index.js';
 
 // STPA Safety Analysis Framework (Issue #328)

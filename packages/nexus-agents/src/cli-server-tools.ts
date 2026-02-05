@@ -23,6 +23,8 @@ import {
   registerResearchDiscoverTool,
   registerResearchAnalyzeTool,
   registerResearchCatalogReviewTool,
+  registerMemoryQueryTool,
+  registerMemoryStatsTool,
   createDefaultDeps,
 } from './mcp/index.js';
 // Import mock directly from source (not public API - used as fallback when no adapter)
@@ -103,6 +105,8 @@ export const REGISTERED_TOOLS = [
   'research_discover',
   'research_analyze',
   'research_catalog_review',
+  'memory_query',
+  'memory_stats',
 ] as const;
 
 /**
@@ -271,6 +275,22 @@ function registerResearchTools(ctx: ToolRegistrationContext): void {
   });
 }
 
+/** Register memory observability tools (Issue #751, #753). */
+function registerMemoryTools(ctx: ToolRegistrationContext): void {
+  const memoryDeps = {
+    logger: ctx.logger,
+    ...(ctx.securityConfig !== undefined && { security: ctx.securityConfig }),
+  };
+  registerMemoryQueryTool(ctx.server, {
+    ...memoryDeps,
+    rateLimiter: ctx.rateLimiterFactory.getForTool('memory_query'),
+  });
+  registerMemoryStatsTool(ctx.server, {
+    ...memoryDeps,
+    rateLimiter: ctx.rateLimiterFactory.getForTool('memory_stats'),
+  });
+}
+
 /** Register core routing and orchestration tools. */
 function registerCoreTools(ctx: ToolRegistrationContext): void {
   registerDelegateToModelTool(ctx.server, {
@@ -385,6 +405,16 @@ function logToolRegistration(
   });
 }
 
+/** Checks if any tools in a category are allowed. */
+function isCategoryAllowed(prefix: string, allowed: (name: string) => boolean): boolean {
+  return REGISTERED_TOOLS.some((t) => t.startsWith(prefix) && allowed(t));
+}
+
+/** Checks if any of the given tool names are allowed. */
+function anyToolAllowed(names: readonly string[], allowed: (name: string) => boolean): boolean {
+  return names.some(allowed);
+}
+
 /** Registers tool categories, skipping those blocked by allowlist. (Issue #740) */
 function registerToolCategories(
   ctx: ToolRegistrationContext,
@@ -393,13 +423,12 @@ function registerToolCategories(
   const allowlist = ctx.toolAllowlist;
   const allowed = (name: string): boolean => isToolAllowed(name, allowlist);
 
-  if (allowed('delegate_to_model') || allowed('orchestrate')) registerCoreTools(ctx);
-  if (allowed('create_expert') || allowed('execute_expert')) registerExpertTools(ctx);
-  if (allowed('run_workflow') || allowed('list_workflows')) registerWorkflowTools(ctx);
+  if (anyToolAllowed(['delegate_to_model', 'orchestrate'], allowed)) registerCoreTools(ctx);
+  if (anyToolAllowed(['create_expert', 'execute_expert'], allowed)) registerExpertTools(ctx);
+  if (anyToolAllowed(['run_workflow', 'list_workflows'], allowed)) registerWorkflowTools(ctx);
   if (allowed('consensus_vote')) registerConsensusTools(ctx);
-  if (REGISTERED_TOOLS.some((t) => t.startsWith('research_') && allowed(t))) {
-    registerResearchTools(ctx);
-  }
+  if (isCategoryAllowed('research_', allowed)) registerResearchTools(ctx);
+  if (isCategoryAllowed('memory_', allowed)) registerMemoryTools(ctx);
   if (allowed('list_experts')) {
     registerListExpertsTool(ctx.server, {
       logger: ctx.logger,
