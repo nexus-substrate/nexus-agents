@@ -35,6 +35,7 @@ import {
   createPersistedProposal,
   saveCorrelationData,
 } from '../../consensus/correlation-persistence.js';
+import { getToolMemory } from './tool-memory.js';
 import {
   MAX_PROPOSAL_LENGTH,
   VotingStrategySchema,
@@ -233,6 +234,53 @@ async function executeVoting(
 }
 
 // ============================================================================
+// Memory Recording (Issue #753)
+// ============================================================================
+
+/** Records a successful consensus vote to session memory. Best-effort. */
+function recordVoteSuccess(
+  proposal: string,
+  strategy: string,
+  outcome: string,
+  duration: number
+): void {
+  try {
+    const memory = getToolMemory();
+    memory.recordTask({
+      approach: `Consensus vote: ${strategy} on "${proposal.slice(0, 50)}"`,
+      challenges: [],
+      durationMs: duration,
+    });
+    memory.recordLearning({
+      pattern: `${strategy} vote → ${outcome}`,
+      context: `proposal="${proposal.slice(0, 40)}" duration=${String(duration)}ms`,
+      confidence: 0.8,
+      source: 'consensus-vote',
+    });
+    // Fire-and-forget promotion pipeline
+    void memory.runPromotionPipeline().catch(() => {
+      /* Best-effort */
+    });
+  } catch {
+    // Best-effort memory recording
+  }
+}
+
+/** Records a failed consensus vote to session memory. Best-effort. */
+function recordVoteError(proposal: string, errorMessage: string): void {
+  try {
+    const memory = getToolMemory();
+    memory.recordError({
+      error: `Consensus vote failed: ${errorMessage.slice(0, 150)}`,
+      solution: 'Pending - vote execution failed',
+      filePattern: 'mcp/tools/consensus-vote',
+    });
+  } catch {
+    // Best-effort memory recording
+  }
+}
+
+// ============================================================================
 // Handler & Registration
 // ============================================================================
 
@@ -243,11 +291,14 @@ async function handleConsensusVote(
   const logger = deps.logger ?? createLogger({ tool: 'consensus_vote' });
   try {
     const result = await executeVoting(args, logger);
+    const strategy = args.strategy ?? 'simple_majority';
+    recordVoteSuccess(args.proposal, strategy, result.result.outcome, result.totalTimeMs);
     return { ok: true, value: buildResponse(args, result) };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const cause = error instanceof Error ? error : new Error(message);
     logger.error('Consensus vote failed', cause);
+    recordVoteError(args.proposal, message);
     return { ok: false, error: `Voting failed: ${message}` };
   }
 }

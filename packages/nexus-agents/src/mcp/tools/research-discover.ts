@@ -30,6 +30,7 @@ import {
   discoverPapersWithCode,
   discoverOpenAlex,
 } from '../../cli/research-helpers-sources-academic.js';
+import { getToolMemory } from './tool-memory.js';
 
 // =============================================================================
 // CONSTANTS
@@ -413,6 +414,28 @@ async function executeDiscovery(
 }
 
 // =============================================================================
+// Memory Recording (Issue #753)
+// =============================================================================
+
+/** Records successful research discovery. Best-effort. */
+function recordDiscoverySuccess(topic: string, newItems: number, sources: string[]): void {
+  try {
+    const memory = getToolMemory();
+    memory.recordLearning({
+      pattern: `Research discovery: ${String(newItems)} new items for "${topic}"`,
+      context: `sources=${sources.join(',')}`,
+      confidence: 0.7,
+      source: 'research-discover',
+    });
+    void memory.runPromotionPipeline().catch(() => {
+      /* Best-effort */
+    });
+  } catch {
+    // Best-effort
+  }
+}
+
+// =============================================================================
 // MCP TOOL
 // =============================================================================
 
@@ -445,6 +468,7 @@ function createResearchDiscoverHandler(deps: ResearchDiscoverDeps) {
     try {
       const logger = deps.logger ?? createLogger({ tool: 'research_discover' });
       const result = await executeDiscovery(validationResult.data, logger);
+      recordDiscoverySuccess(result.topic, result.newItems, result.sourcesQueried);
       return {
         content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
       };

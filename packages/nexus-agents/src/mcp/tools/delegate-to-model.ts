@@ -30,6 +30,7 @@ import {
   errorResult,
   scoreModel,
 } from './delegate-to-model-helpers.js';
+import { getToolMemory } from './tool-memory.js';
 
 // Re-export types for backward compatibility
 export type {
@@ -48,6 +49,28 @@ export {
   DelegateOutputSchema,
   TOOL_SCHEMA,
 } from './delegate-to-model-types.js';
+
+// ============================================================================
+// Memory Recording (Issue #753)
+// ============================================================================
+
+/** Records successful model delegation. Best-effort. */
+function recordDelegationSuccess(task: string, model: string, usedRouter: boolean): void {
+  try {
+    const memory = getToolMemory();
+    memory.recordLearning({
+      pattern: `Task routed to ${model}${usedRouter ? ' (via CompositeRouter)' : ''}`,
+      context: `task="${task.slice(0, 40)}"`,
+      confidence: usedRouter ? 0.85 : 0.7,
+      source: 'delegate-to-model',
+    });
+    void memory.runPromotionPipeline().catch(() => {
+      /* Best-effort */
+    });
+  } catch {
+    // Best-effort
+  }
+}
 
 /**
  * Creates the core handler logic for delegate_to_model tool.
@@ -94,6 +117,7 @@ function createDelegateHandler(
           stages: routingResult.decision.stagesExecuted,
           routingId: routingResult.routingId,
         });
+        recordDelegationSuccess(input.task, output.recommended_model, true);
         return successResult(JSON.stringify(output, null, 2));
       }
 
@@ -109,6 +133,7 @@ function createDelegateHandler(
     ctx.logger.info('Model recommendation complete', {
       recommendedModel: output.recommended_model,
     });
+    recordDelegationSuccess(input.task, output.recommended_model, false);
     return successResult(JSON.stringify(output, null, 2));
   };
 }

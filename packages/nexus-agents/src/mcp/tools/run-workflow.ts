@@ -32,6 +32,7 @@ import {
   createFailedResult,
   formatValidationErrors,
 } from './run-workflow-helpers.js';
+import { getToolMemory } from './tool-memory.js';
 
 // Re-export types for backward compatibility
 export type {
@@ -113,6 +114,46 @@ async function executeWorkflow(
   };
 }
 
+// ============================================================================
+// Memory Recording (Issue #753)
+// ============================================================================
+
+/** Records successful workflow execution. Best-effort. */
+function recordWorkflowSuccess(template: string, stepsCompleted: number, duration: number): void {
+  try {
+    const memory = getToolMemory();
+    memory.recordTask({
+      approach: `Workflow: ${template}`,
+      challenges: [],
+      durationMs: duration,
+    });
+    memory.recordLearning({
+      pattern: `Workflow ${template} completed in ${String(stepsCompleted)} steps`,
+      context: `duration=${String(duration)}ms`,
+      confidence: 0.75,
+      source: 'run-workflow',
+    });
+    void memory.runPromotionPipeline().catch(() => {
+      /* Best-effort */
+    });
+  } catch {
+    // Best-effort
+  }
+}
+
+/** Records workflow execution failure. Best-effort. */
+function recordWorkflowError(template: string, errorMessage: string): void {
+  try {
+    getToolMemory().recordError({
+      error: `Workflow ${template}: ${errorMessage.slice(0, 100)}`,
+      solution: 'Pending - workflow failed',
+      filePattern: 'mcp/tools/run-workflow',
+    });
+  } catch {
+    // Best-effort
+  }
+}
+
 /**
  * Handle tool execution and format response.
  *
@@ -145,9 +186,15 @@ async function handleRunWorkflow(
 
   const executeResult = await executeWorkflow(deps, workflow, inputs);
   if (!executeResult.ok) {
+    recordWorkflowError(template, executeResult.error.message);
     return createFailedResult(workflow.name, executeResult.error.message);
   }
 
+  recordWorkflowSuccess(
+    template,
+    executeResult.value.stepResults.length,
+    executeResult.value.durationMs
+  );
   return successResponse(executeResult.value);
 }
 
