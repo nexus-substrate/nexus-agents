@@ -258,8 +258,8 @@ function recordVoteSuccess(
       source: 'consensus-vote',
     });
     // Fire-and-forget promotion pipeline
-    void memory.runPromotionPipeline().catch(() => {
-      /* Best-effort */
+    void memory.runPromotionPipeline().catch((error: unknown) => {
+      createLogger({ tool: 'consensus-vote' }).debug('Promotion pipeline failed', { error });
     });
   } catch {
     // Best-effort memory recording

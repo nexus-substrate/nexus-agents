@@ -64,8 +64,8 @@ function recordDelegationSuccess(task: string, model: string, usedRouter: boolea
       confidence: usedRouter ? 0.85 : 0.7,
       source: 'delegate-to-model',
     });
-    void memory.runPromotionPipeline().catch(() => {
-      /* Best-effort */
+    void memory.runPromotionPipeline().catch((error: unknown) => {
+      createLogger({ tool: 'delegate-to-model' }).debug('Promotion pipeline failed', { error });
     });
   } catch {
     // Best-effort

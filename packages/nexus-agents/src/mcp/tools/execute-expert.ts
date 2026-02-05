@@ -174,8 +174,8 @@ function recordExpertSuccess(expertId: string, role: string, durationMs: number)
       source: 'execute-expert-success',
     });
     // Fire-and-forget promotion pipeline (Issue #753)
-    void memory.runPromotionPipeline().catch(() => {
-      /* Best-effort, ignore failures */
+    void memory.runPromotionPipeline().catch((error: unknown) => {
+      createLogger({ tool: 'execute_expert' }).debug('Promotion pipeline failed', { error });
     });
   } catch (error: unknown) {
     // Best-effort memory recording

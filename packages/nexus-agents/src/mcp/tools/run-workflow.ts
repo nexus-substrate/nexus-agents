@@ -133,8 +133,8 @@ function recordWorkflowSuccess(template: string, stepsCompleted: number, duratio
       confidence: 0.75,
       source: 'run-workflow',
     });
-    void memory.runPromotionPipeline().catch(() => {
-      /* Best-effort */
+    void memory.runPromotionPipeline().catch((error: unknown) => {
+      createLogger({ tool: 'run-workflow' }).debug('Promotion pipeline failed', { error });
     });
   } catch {
     // Best-effort

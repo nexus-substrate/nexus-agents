@@ -427,8 +427,8 @@ function recordDiscoverySuccess(topic: string, newItems: number, sources: string
       confidence: 0.7,
       source: 'research-discover',
     });
-    void memory.runPromotionPipeline().catch(() => {
-      /* Best-effort */
+    void memory.runPromotionPipeline().catch((error: unknown) => {
+      createLogger({ tool: 'research-discover' }).debug('Promotion pipeline failed', { error });
     });
   } catch {
     // Best-effort
