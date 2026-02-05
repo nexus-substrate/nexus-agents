@@ -112,7 +112,7 @@ export async function runReleaseValidate(
   const archExpert = experts.find((e) => e.expert === 'architecture');
   const fitnessFinding = archExpert?.findings.find((f) => f.title.startsWith('Fitness score:'));
   const fitnessScore = fitnessFinding
-    ? parseInt(fitnessFinding.title.match(/(\d+)/)?.[1] || '0')
+    ? parseInt(fitnessFinding.title.match(/(\d+)/)?.[1] || '0', 10)
     : undefined;
 
   return {
