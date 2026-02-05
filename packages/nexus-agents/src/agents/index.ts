@@ -27,6 +27,21 @@ export {
   type OrchestratorAgentOptions,
 } from './tech-lead.js';
 
+// Wave Scheduler (Issue #769)
+export {
+  WaveScheduler,
+  createWaveScheduler,
+  chunkByDirectory,
+  DEFAULT_WAVE_CONFIG,
+  type WaveSchedulerConfig,
+  type WaveTask,
+  type WaveTaskResult,
+  type WaveResult,
+  type WaveExecutionResult,
+  type WorkChunk,
+  type WaveTaskExecutor,
+} from './wave-scheduler.js';
+
 // Plan to Workflow conversion
 export {
   convertPlanToWorkflow,
