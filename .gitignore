@@ -1,3 +1,6 @@
+# Security discovery log (private, never committed)
+.security-discoveries.jsonl
+
 # Dependencies
 node_modules/
 .pnpm-store/

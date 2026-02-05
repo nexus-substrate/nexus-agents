@@ -133,6 +133,24 @@ When a non-canonical implementation exists, migrate its logic to the canonical l
 
 **Context load balancing** (Claude/Codex/Gemini routing): see [CONTEXT_LOAD_BALANCING.md](./docs/architecture/CONTEXT_LOAD_BALANCING.md) or use the `codex-delegator` / `gemini-delegator` skills.
 
+### Subagent Context Management
+
+Subagents share the same ~100k token context limit. Unmanaged, parallel agents exhaust context and lose work. Follow these guidelines:
+
+**Scope bounding:** Each agent prompt MUST specify a bounded scope. Prefer directory-level partitions (e.g., "scan `src/consensus/`") over codebase-wide sweeps. For whole-codebase tasks, partition by top-level directory and assign one agent per partition.
+
+**Output budgets:** Agent prompts MUST include an output constraint: "Return a prioritized summary of top-N findings. Reference files by path. Max 2000 characters." Never ask an agent to "list all" or "return everything."
+
+**Wave execution:** Launch agents in waves of 3-4 max. Wait for each wave to complete before launching the next. This prevents the parent conversation from being flooded with simultaneous large result sets.
+
+**Model selection:** Prefer `sonnet` or `opus` for all subagent work — they produce higher-quality analysis with fewer false positives (see Issue #770). Use `model="haiku"` only when the task is trivially mechanical (e.g., counting files, listing exports) AND cost/speed is a genuine constraint. When in doubt, use `sonnet`.
+
+**Prompt discipline:** Agent prompts should be under 500 words. If you need more context, the task is too big for one agent — split it into smaller scoped tasks.
+
+**Failure handling:** If an agent hits its context limit or returns truncated results, do NOT relaunch the same broad task. Instead, narrow the scope and retry on the unfinished portion only.
+
+**Discovery reporting:** All subagent prompts should include: _"If you discover bugs or issues outside your task scope, include a `## Discoveries` section at the end of your response."_ The parent agent must process these — see [Discovered Issues](#discovered-issues--see-something-say-something).
+
 ---
 
 ## Context Budget
@@ -145,6 +163,8 @@ When a non-canonical implementation exists, migrate its logic to the canonical l
 | Full (system)      | ~6,000 | System reviews, architecture decisions |
 
 **Preservation:** Use subagents for exploration. Summarize large outputs. Reference by path instead of inlining. Start fresh conversation when switching unrelated tasks.
+
+**Parent context protection:** When receiving results from multiple agents, summarize each result into 2-3 bullet points before proceeding. Do not inline full agent outputs into the parent conversation. If you need details, re-read the specific file rather than keeping the full result in context.
 
 ---
 
@@ -183,18 +203,90 @@ Before completing ANY implementation task:
 - [ ] Tests cover happy path + edge cases + error cases
 - [ ] No unexplained literal values (constants have documented intent)
 - [ ] No unnecessary abstraction
+- [ ] Discoveries documented — did I notice any bugs or issues outside my task scope? (see [Discovered Issues](#discovered-issues--see-something-say-something))
 
 ---
 
-## Discovered Issues
+## Discovered Issues — "See Something, Say Something"
 
-When finding issues during work, create a GitHub issue **IMMEDIATELY**. See the `dogfooding-issues` skill for the full protocol.
+When you encounter a bug, incorrect behavior, or significant gap **outside the scope of your current task**, create a GitHub issue to capture it. Do not fix it inline — document it and continue your assigned work.
 
-**Quick:** `gh issue create --title "{type}: {description}" --label "{label},discovered"`
+### When to Create an Issue (high-confidence findings only)
 
-Types: `bug:`, `tech-debt:`, `docs:`, `test:`, `perf:`, `security:`, `research:`
+- Code that will produce **wrong results** (math errors, logic bugs, division by zero)
+- Missing error handling that will **cause crashes** (unguarded `.length`, null deref)
+- Tests that **assert wrong behavior** (testing the bug, not the fix)
+- Documentation that **directly contradicts** code behavior
 
-Rate limit: max 5 auto-created issues per hour. Check for duplicates first.
+### When NOT to Create a Public Issue
+
+- Style preferences or subjective improvements
+- "Could be better" observations without concrete impact
+- **Security vulnerabilities** — use the [Security Discovery Protocol](#security-discovery-protocol) instead
+- Anything you're not confident about — when in doubt, skip it
+
+### Issue Template
+
+```bash
+# Check for duplicates first
+gh issue list --search "{keywords}" --state open
+
+# Create the issue
+gh issue create \
+  --title "{type}: {description}" \
+  --label "discovered,{bug|tech-debt|test|docs}" \
+  --body "$(cat <<'EOF'
+**Found during:** {what task was being performed}
+**Location:** `{file}:{line}`
+**Description:** {1-2 sentences}
+**Severity:** {critical|high|medium}
+EOF
+)"
+```
+
+Types: `bug:`, `tech-debt:`, `docs:`, `test:`, `perf:`, `research:`
+
+### Subagent Discovery Protocol
+
+Subagent prompts should include: _"If you discover bugs or issues outside your task scope, include a `## Discoveries` section at the end of your response with: file path, line number, one-sentence description, and severity."_
+
+The parent agent MUST process subagent `## Discoveries` sections: deduplicate against open issues, then create issues for confirmed findings.
+
+### Security Discovery Protocol
+
+Security findings are **never** created as public GitHub issues. Instead, use a two-tier approach:
+
+**Tier 1 — Local Security Log (ALL security findings):**
+
+Append to `.security-discoveries.jsonl` (gitignored, never committed):
+
+```bash
+echo '{"timestamp":"'$(TZ='America/New_York' date -Iseconds)'","severity":"{critical|high|medium|low}","file":"{file}:{line}","description":"{what was found}","foundDuring":"{task}","cwe":"CWE-XXX if known"}' >> .security-discoveries.jsonl
+```
+
+This file persists across conversations so findings are never lost, even if the user isn't watching chat.
+
+**Tier 2 — GitHub Security Advisory (critical/high only):**
+
+For critical or high severity findings, also create a draft security advisory:
+
+```bash
+gh api repos/{owner}/{repo}/security-advisories \
+  --method POST \
+  -f summary="{brief description}" \
+  -f description="{detailed finding}" \
+  -f severity="{critical|high}" \
+  -f "vulnerabilities[0][package][ecosystem]=pip" \
+  -f "vulnerabilities[0][package][name]={component}"
+```
+
+Draft advisories are **private by default** — only visible to repo admins.
+
+### Safeguards
+
+- **Rate limit:** max 5 auto-created issues per hour
+- **Duplicate check:** always search before creating
+- **Security findings:** always logged to `.security-discoveries.jsonl`; critical/high also get draft GitHub security advisories
 
 ---
 
@@ -275,7 +367,7 @@ _Auto-generated from source. 15 tools registered._
 
 <!-- GOVERNANCE:VERSION:START -->
 
-_Governance Version: 2026-02-05_
+_Governance Version: 2026-02-05.2_
 
 <!-- GOVERNANCE:VERSION:END -->
 
