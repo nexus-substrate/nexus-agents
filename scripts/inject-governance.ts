@@ -242,18 +242,20 @@ function extractSkills(): SkillMetadata[] {
  * Generate the MCP tools reference table.
  */
 function generateToolIndex(tools: ToolMetadata[]): string {
-  const lines = [
-    MARKERS.toolIndexStart,
-    '',
-    '## MCP Tools Reference',
-    '',
-    '| Tool                      | Description                                                                                                           |',
-    '| ------------------------- | --------------------------------------------------------------------------------------------------------------------- |',
-  ];
+  // Dynamically calculate column widths to match Prettier's formatting
+  const toolCells = tools.map((t) => '`' + t.name + '`');
+  const descCells = tools.map((t) => t.description);
+  const toolColWidth = Math.max('Tool'.length, ...toolCells.map((c) => c.length));
+  const descColWidth = Math.max('Description'.length, ...descCells.map((c) => c.length));
+
+  const header = `| ${'Tool'.padEnd(toolColWidth)} | ${'Description'.padEnd(descColWidth)} |`;
+  const separator = `| ${'-'.repeat(toolColWidth)} | ${'-'.repeat(descColWidth)} |`;
+
+  const lines = [MARKERS.toolIndexStart, '', '## MCP Tools Reference', '', header, separator];
 
   for (const tool of tools) {
-    const paddedName = ('`' + tool.name + '`').padEnd(25);
-    lines.push(`| ${paddedName} | ${tool.description.padEnd(117)} |`);
+    const paddedName = ('`' + tool.name + '`').padEnd(toolColWidth);
+    lines.push(`| ${paddedName} | ${tool.description.padEnd(descColWidth)} |`);
   }
 
   lines.push('');
