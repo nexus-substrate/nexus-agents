@@ -64,9 +64,9 @@ export function sampleWithTemperature(
     const prob = probabilities[i];
     if (prob !== undefined) {
       cumulative += prob;
-    }
-    if (r < cumulative) {
-      return actions[i] ?? null;
+      if (r < cumulative) {
+        return actions[i] ?? null;
+      }
     }
   }
 
