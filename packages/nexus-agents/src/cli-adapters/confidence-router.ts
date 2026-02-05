@@ -314,9 +314,9 @@ export class ConfidenceRouter implements IConfidenceRouter {
   ): void {
     // Enforce max cache size (LRU eviction)
     if (this.cache.size >= this.maxCacheSize) {
-      const oldestKey: string | undefined = this.cache.keys().next().value;
-      if (oldestKey !== undefined) {
-        this.cache.delete(oldestKey);
+      const firstKey = this.cache.keys().next();
+      if (firstKey.done !== true) {
+        this.cache.delete(firstKey.value);
       }
     }
 

@@ -127,8 +127,8 @@ export function selectCli(
   }
 
   // Default to first available adapter
-  const firstAdapter = adapters.keys().next().value;
-  return firstAdapter ?? 'claude';
+  const firstKey = adapters.keys().next();
+  return firstKey.done === true ? 'claude' : firstKey.value;
 }
 
 /**

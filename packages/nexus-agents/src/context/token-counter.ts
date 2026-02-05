@@ -347,9 +347,9 @@ export class TokenCounter implements ITokenCounter {
   private setCache(key: string, entry: CacheEntry): void {
     // Evict oldest entries if at capacity
     if (this.cache.size >= this.maxCacheSize) {
-      const oldestKey = this.cache.keys().next().value;
-      if (oldestKey !== undefined) {
-        this.cache.delete(oldestKey);
+      const firstKey = this.cache.keys().next();
+      if (firstKey.done !== true) {
+        this.cache.delete(firstKey.value);
       }
     }
 
