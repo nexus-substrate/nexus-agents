@@ -335,6 +335,9 @@ export function calculateMinSampleSize(
   const power = options.power ?? 0.8;
   const alpha = options.alpha ?? 0.05;
 
+  // When effect size is zero, infinite samples are needed — return safe maximum
+  if (minimumDetectableEffect === 0) return Number.MAX_SAFE_INTEGER;
+
   const p1 = baselineRate;
   const p2 = baselineRate + minimumDetectableEffect;
   const pBar = (p1 + p2) / 2;
