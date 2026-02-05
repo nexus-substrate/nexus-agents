@@ -44,9 +44,11 @@ vi.mock('../../core/index.js', async (importOriginal) => {
 
 function makeProposal(overrides: Partial<Proposal> = {}): Proposal {
   return {
-    content: 'Test proposal',
-    proposedBy: 'agent-1',
+    proposalId: 'prop-1',
     round: 1,
+    leaderId: 'agent-1',
+    value: 'Test proposal',
+    timestamp: 1000,
     ...overrides,
   };
 }
@@ -54,20 +56,22 @@ function makeProposal(overrides: Partial<Proposal> = {}): Proposal {
 function makeVote(overrides: Partial<AgentVote> = {}): AgentVote {
   return {
     agentId: 'agent-1',
-    vote: 'approve',
+    proposalId: 'prop-1',
+    status: 'accept',
     confidence: 0.8,
     reasoning: 'Looks good',
+    timestamp: 1000,
     ...overrides,
   };
 }
 
 function makeQuorumStatus(overrides: Partial<QuorumStatus> = {}): QuorumStatus {
   return {
-    totalVotes: 4,
-    approvalVotes: 3,
-    rejectionVotes: 1,
-    approvalRate: 0.75,
     required: 3,
+    accepts: 3,
+    rejects: 1,
+    pending: 0,
+    hasQuorum: true,
     consensusReached: true,
     ...overrides,
   };
@@ -164,7 +168,7 @@ describe('createRoundData', () => {
     const round = createRoundData({
       roundNumber: 3,
       leaderId: 'agent-2',
-      proposal: makeProposal({ content: 'Solution X' }),
+      proposal: makeProposal({ value: 'Solution X' }),
       votes: [makeVote(), makeVote({ agentId: 'agent-2' })],
       quorumStatus: makeQuorumStatus({ consensusReached: true }),
       startTime: 1500,
@@ -402,10 +406,12 @@ describe('validateAegeanSetup', () => {
       ['a3', makeAgent()],
       ['a4', makeAgent()],
     ]);
-    const config: CollaborationConfig = {
+    const config = {
+      sessionId: 'sess-1',
+      pattern: 'aegean' as const,
       experts: ['a1', 'a2', 'a3', 'a4'],
-      sessionConfig: { maxConcurrentTasks: 3, taskTimeoutMs: 30000, maxRetries: 2 },
-    };
+      task: { id: 'task-1', input: 'test', type: 'code' },
+    } as unknown as CollaborationConfig;
     const result = validateAegeanSetup({ config, agents, byzantineTolerance: 1 });
     expect(result.ok).toBe(true);
   });
@@ -415,10 +421,12 @@ describe('validateAegeanSetup', () => {
       ['a1', makeAgent()],
       ['a2', makeAgent()],
     ]);
-    const config: CollaborationConfig = {
+    const config = {
+      sessionId: 'sess-1',
+      pattern: 'aegean' as const,
       experts: ['a1', 'a2'],
-      sessionConfig: { maxConcurrentTasks: 3, taskTimeoutMs: 30000, maxRetries: 2 },
-    };
+      task: { id: 'task-1', input: 'test', type: 'code' },
+    } as unknown as CollaborationConfig;
     // f=1 requires 3*1+1=4 agents
     const result = validateAegeanSetup({ config, agents, byzantineTolerance: 1 });
     expect(result.ok).toBe(false);
@@ -434,10 +442,12 @@ describe('validateAegeanSetup', () => {
       ['a3', makeAgent()],
       ['a4', makeAgent()],
     ]);
-    const config: CollaborationConfig = {
+    const config = {
+      sessionId: 'sess-1',
+      pattern: 'aegean' as const,
       experts: ['a1', 'a2', 'a3', 'missing'],
-      sessionConfig: { maxConcurrentTasks: 3, taskTimeoutMs: 30000, maxRetries: 2 },
-    };
+      task: { id: 'task-1', input: 'test', type: 'code' },
+    } as unknown as CollaborationConfig;
     const result = validateAegeanSetup({ config, agents, byzantineTolerance: 1 });
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -447,10 +457,12 @@ describe('validateAegeanSetup', () => {
 
   it('works with byzantineTolerance 0 (needs 1 agent)', () => {
     const agents = new Map<string, IAgent>([['a1', makeAgent()]]);
-    const config: CollaborationConfig = {
+    const config = {
+      sessionId: 'sess-1',
+      pattern: 'aegean' as const,
       experts: ['a1'],
-      sessionConfig: { maxConcurrentTasks: 3, taskTimeoutMs: 30000, maxRetries: 2 },
-    };
+      task: { id: 'task-1', input: 'test', type: 'code' },
+    } as unknown as CollaborationConfig;
     const result = validateAegeanSetup({ config, agents, byzantineTolerance: 0 });
     expect(result.ok).toBe(true);
   });
@@ -473,10 +485,14 @@ describe('buildSessionTaskResult', () => {
     };
 
     const taskResult = buildSessionTaskResult('task-1', aegeanResult, 1000);
+    const output = taskResult.output as {
+      consensusValue: string;
+      aegean: { rounds: number; consensusReached: boolean };
+    };
     expect(taskResult.taskId).toBe('task-1');
-    expect(taskResult.output.consensusValue).toBe('final answer');
-    expect(taskResult.output.aegean.rounds).toBe(3);
-    expect(taskResult.output.aegean.consensusReached).toBe(true);
+    expect(output.consensusValue).toBe('final answer');
+    expect(output.aegean.rounds).toBe(3);
+    expect(output.aegean.consensusReached).toBe(true);
     expect(taskResult.metadata.model).toBe('aegean-protocol');
     expect(taskResult.metadata.tokensUsed).toBe(1200);
     expect(taskResult.metadata.durationMs).toBe(1000); // 2000 - 1000

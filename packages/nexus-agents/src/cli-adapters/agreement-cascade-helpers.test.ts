@@ -148,26 +148,26 @@ describe('selectBestResponse', () => {
   });
 
   it('prefers later stages', () => {
-    const stage1: StageResult = {
+    const stage1 = {
       stage: { name: 'fast', models: ['gemini'] as CliName[], costWeight: 1 },
       responses: new Map([['gemini' as CliName, makeResponse('short')]]),
       clusters: [],
       agreed: false,
-    };
-    const stage2: StageResult = {
+    } as unknown as StageResult;
+    const stage2 = {
       stage: { name: 'powerful', models: ['claude'] as CliName[], costWeight: 10 },
       responses: new Map([
         ['claude' as CliName, makeResponse('a longer and more detailed response')],
       ]),
       clusters: [],
       agreed: true,
-    };
+    } as unknown as StageResult;
     const result = selectBestResponse([stage1, stage2]);
     expect(result?.model).toBe('claude');
   });
 
   it('selects longest response within a stage', () => {
-    const stage: StageResult = {
+    const stage = {
       stage: { name: 'balanced', models: ['gemini', 'codex'] as CliName[], costWeight: 3 },
       responses: new Map([
         ['gemini' as CliName, makeResponse('short')],
@@ -175,7 +175,7 @@ describe('selectBestResponse', () => {
       ]),
       clusters: [],
       agreed: false,
-    };
+    } as unknown as StageResult;
     const result = selectBestResponse([stage]);
     expect(result?.model).toBe('codex');
   });

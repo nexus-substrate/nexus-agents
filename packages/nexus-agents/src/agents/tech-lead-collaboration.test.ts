@@ -90,6 +90,7 @@ function makeTaskResult(model: string, output: string): TaskResult {
       model,
       tokensUsed: 100,
       durationMs: 500,
+      toolsUsed: [],
     },
   };
 }
@@ -101,8 +102,9 @@ function makeAnalysis(complexity: number): TaskAnalysis {
     taskType: 'code',
     requirements: ['req-1'],
     risks: [],
-    subtasks: [],
-    estimatedDuration: '10min',
+    needsDecomposition: complexity > 5,
+    approach: 'standard',
+    estimatedEffort: complexity,
   };
 }
 

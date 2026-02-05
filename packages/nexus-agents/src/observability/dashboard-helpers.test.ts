@@ -23,12 +23,14 @@ import {
 
 function makeEvent(payload: AgentEvent['payload'], eventType?: string): AgentEvent {
   return {
+    eventId: 'evt-1',
     agentId: 'agent-1',
     eventType: eventType ?? payload.type,
-    timestamp: Date.now(),
+    timestamp: new Date().toISOString(),
     traceId: 'trace-1',
+    spanId: 'span-1',
     payload,
-  } as AgentEvent;
+  } as unknown as AgentEvent;
 }
 
 // ============================================================================
@@ -157,10 +159,10 @@ describe('summarizeMemory', () => {
   it('summarizes memory operation', () => {
     const event = makeEvent({
       type: 'memory',
-      operation: 'store',
+      operation: 'write',
       memoryType: 'belief',
     } as AgentEvent['payload']);
-    expect(summarizeMemory(event)).toBe('store belief');
+    expect(summarizeMemory(event)).toBe('write belief');
   });
 
   it('returns empty for non-memory', () => {
@@ -237,7 +239,7 @@ describe('summarizeError', () => {
   it('returns empty for non-error', () => {
     const event = makeEvent({
       type: 'memory',
-      operation: 'store',
+      operation: 'write',
       memoryType: 'belief',
     } as AgentEvent['payload']);
     expect(summarizeError(event)).toBe('');
@@ -307,7 +309,7 @@ describe('getEventSeverity', () => {
 
   it('returns info for normal events', () => {
     const event = makeEvent(
-      { type: 'memory', operation: 'store', memoryType: 'belief' } as AgentEvent['payload'],
+      { type: 'memory', operation: 'write', memoryType: 'belief' } as AgentEvent['payload'],
       'memory'
     );
     expect(getEventSeverity(event)).toBe('info');

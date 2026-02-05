@@ -239,6 +239,8 @@ describe('buildStatsResult', () => {
       prior: 0,
     },
     totalUpdates: 15,
+    totalCounterfactuals: 0,
+    totalHindsightRecords: 0,
   } as Omit<BeliefMemoryStats, 'oldestBelief' | 'newestBelief'>;
 
   it('includes both dates when provided', () => {
@@ -253,19 +255,19 @@ describe('buildStatsResult', () => {
     const oldest = new Date('2024-01-01');
     const result = buildStatsResult(baseStats, oldest, undefined);
     expect(result.oldestBelief).toEqual(oldest);
-    expect((result as Record<string, unknown>).newestBelief).toBeUndefined();
+    expect((result as unknown as Record<string, unknown>).newestBelief).toBeUndefined();
   });
 
   it('includes only newest when oldest is undefined', () => {
     const newest = new Date('2024-06-01');
     const result = buildStatsResult(baseStats, undefined, newest);
     expect(result.newestBelief).toEqual(newest);
-    expect((result as Record<string, unknown>).oldestBelief).toBeUndefined();
+    expect((result as unknown as Record<string, unknown>).oldestBelief).toBeUndefined();
   });
 
   it('includes neither date when both undefined', () => {
     const result = buildStatsResult(baseStats, undefined, undefined);
-    expect((result as Record<string, unknown>).oldestBelief).toBeUndefined();
-    expect((result as Record<string, unknown>).newestBelief).toBeUndefined();
+    expect((result as unknown as Record<string, unknown>).oldestBelief).toBeUndefined();
+    expect((result as unknown as Record<string, unknown>).newestBelief).toBeUndefined();
   });
 });

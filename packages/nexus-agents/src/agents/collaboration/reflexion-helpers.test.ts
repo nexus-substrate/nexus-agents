@@ -146,6 +146,7 @@ describe('createFinalResultPayload', () => {
       converged: true,
       terminationReason: 'converged',
       rounds: [],
+      totalDurationMs: 5000,
     };
     const result = createFinalResultPayload('task-1', reflexionResult, 5000);
     expect(result.taskId).toBe('task-1');

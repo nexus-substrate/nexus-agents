@@ -23,7 +23,7 @@ function makeEvent(payload: AgentEvent['payload'], durationMs?: number): AgentEv
     traceId: 'trace-1',
     payload,
     ...(durationMs !== undefined ? { durationMs } : {}),
-  } as AgentEvent;
+  } as unknown as AgentEvent;
 }
 
 // ============================================================================

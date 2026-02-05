@@ -21,7 +21,7 @@ import {
 // ============================================================================
 
 function makeResult(output: unknown): TaskResult {
-  return { taskId: 't1', output, success: true, agentId: 'a1' } as TaskResult;
+  return { taskId: 't1', output, success: true, agentId: 'a1' } as unknown as TaskResult;
 }
 
 function makeConfig(overrides: Partial<AgentConfiguration> = {}): AgentConfiguration {

@@ -173,7 +173,7 @@ describe('createReviewTask', () => {
       context: { metadata: { priority: 'high' } },
     });
     const review = createReviewTask(task, 'output', 'p1');
-    expect(review.context.metadata.priority).toBe('high');
+    expect(review.context.metadata!.priority).toBe('high');
   });
 
   it('adds reviewContext to metadata', () => {
@@ -208,6 +208,6 @@ describe('createVotingTask', () => {
       context: { metadata: { key: 'value' } },
     });
     const voting = createVotingTask(task);
-    expect(voting.context.metadata.key).toBe('value');
+    expect(voting.context.metadata!.key).toBe('value');
   });
 });

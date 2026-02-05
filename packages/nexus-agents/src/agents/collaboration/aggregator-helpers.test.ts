@@ -28,7 +28,11 @@ import {
 function makeResult(overrides: Partial<ExpertResult> = {}): ExpertResult {
   return {
     expertId: 'expert-1',
-    result: { output: 'test output', durationMs: 100, status: 'success' },
+    result: {
+      taskId: 'task-1',
+      output: 'test output',
+      metadata: { durationMs: 100, tokensUsed: 0, toolsUsed: [], model: 'test' },
+    },
     confidence: 0.8,
     ...overrides,
   } as ExpertResult;
@@ -47,7 +51,7 @@ describe('defaultConflictResolver', () => {
       expert2Id: 'b',
       field: 'x',
       description: 'd',
-      resolution: 'unresolved',
+      resolution: 'unresolved' as const,
     };
     expect(defaultConflictResolver(conflict, r1, r2)).toBe('expert1');
   });
@@ -60,7 +64,7 @@ describe('defaultConflictResolver', () => {
       expert2Id: 'b',
       field: 'x',
       description: 'd',
-      resolution: 'unresolved',
+      resolution: 'unresolved' as const,
     };
     expect(defaultConflictResolver(conflict, r1, r2)).toBe('expert2');
   });
@@ -73,7 +77,7 @@ describe('defaultConflictResolver', () => {
       expert2Id: 'b',
       field: 'x',
       description: 'd',
-      resolution: 'unresolved',
+      resolution: 'unresolved' as const,
     };
     expect(defaultConflictResolver(conflict, r1, r2)).toBe('expert1');
   });
@@ -282,7 +286,13 @@ describe('mergeObjects', () => {
 describe('selectBest', () => {
   it('returns single result output', () => {
     const results = [
-      makeResult({ result: { output: 'only', durationMs: 100, status: 'success' } }),
+      makeResult({
+        result: {
+          taskId: 'task-1',
+          output: 'only',
+          metadata: { durationMs: 100, tokensUsed: 0, toolsUsed: [], model: 'test' },
+        },
+      }),
     ];
     expect(selectBest(results)).toBe('only');
   });
@@ -292,12 +302,20 @@ describe('selectBest', () => {
       makeResult({
         expertId: 'low',
         confidence: 0.3,
-        result: { output: 'low', durationMs: 100, status: 'success' },
+        result: {
+          taskId: 'task-1',
+          output: 'low',
+          metadata: { durationMs: 100, tokensUsed: 0, toolsUsed: [], model: 'test' },
+        },
       }),
       makeResult({
         expertId: 'high',
         confidence: 0.9,
-        result: { output: 'high', durationMs: 100, status: 'success' },
+        result: {
+          taskId: 'task-1',
+          output: 'high',
+          metadata: { durationMs: 100, tokensUsed: 0, toolsUsed: [], model: 'test' },
+        },
       }),
     ];
     expect(selectBest(results)).toBe('high');
@@ -307,11 +325,19 @@ describe('selectBest', () => {
     const results = [
       makeResult({
         expertId: 'e1',
-        result: { output: 'from e1', durationMs: 100, status: 'success' },
+        result: {
+          taskId: 'task-1',
+          output: 'from e1',
+          metadata: { durationMs: 100, tokensUsed: 0, toolsUsed: [], model: 'test' },
+        },
       }),
       makeResult({
         expertId: 'e2',
-        result: { output: 'from e2', durationMs: 100, status: 'success' },
+        result: {
+          taskId: 'task-1',
+          output: 'from e2',
+          metadata: { durationMs: 100, tokensUsed: 0, toolsUsed: [], model: 'test' },
+        },
       }),
     ];
     const reviews = [{ requesterId: 'e1', approved: true, feedback: '' }];
@@ -326,7 +352,13 @@ describe('selectBest', () => {
 describe('buildConsensus', () => {
   it('falls back to selectBest without votes', () => {
     const results = [
-      makeResult({ result: { output: 'test', durationMs: 100, status: 'success' } }),
+      makeResult({
+        result: {
+          taskId: 'task-1',
+          output: 'test',
+          metadata: { durationMs: 100, tokensUsed: 0, toolsUsed: [], model: 'test' },
+        },
+      }),
     ];
     expect(buildConsensus(results)).toBe('test');
   });
@@ -352,7 +384,13 @@ describe('buildConsensus', () => {
 describe('chainSequential', () => {
   it('returns single result output directly', () => {
     const results = [
-      makeResult({ result: { output: 'only output', durationMs: 100, status: 'success' } }),
+      makeResult({
+        result: {
+          taskId: 'task-1',
+          output: 'only output',
+          metadata: { durationMs: 100, tokensUsed: 0, toolsUsed: [], model: 'test' },
+        },
+      }),
     ];
     expect(chainSequential(results)).toBe('only output');
   });
@@ -362,12 +400,20 @@ describe('chainSequential', () => {
       makeResult({
         expertId: 'e2',
         order: 2,
-        result: { output: 'second', durationMs: 100, status: 'success' },
+        result: {
+          taskId: 'task-1',
+          output: 'second',
+          metadata: { durationMs: 100, tokensUsed: 0, toolsUsed: [], model: 'test' },
+        },
       }),
       makeResult({
         expertId: 'e1',
         order: 1,
-        result: { output: 'first', durationMs: 100, status: 'success' },
+        result: {
+          taskId: 'task-1',
+          output: 'first',
+          metadata: { durationMs: 100, tokensUsed: 0, toolsUsed: [], model: 'test' },
+        },
       }),
     ];
     const result = chainSequential(results) as Record<string, unknown>;

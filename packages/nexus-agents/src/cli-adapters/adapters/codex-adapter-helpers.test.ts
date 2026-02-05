@@ -75,7 +75,7 @@ describe('createCodexError', () => {
   });
 
   it('creates non-retryable error for non-retryable codes', () => {
-    const error = createCodexError('INVALID_REQUEST', 'Bad input', 'codex' as CliName);
+    const error = createCodexError('PARSE_ERROR', 'Bad input', 'codex' as CliName);
     expect(error.retryable).toBe(false);
   });
 

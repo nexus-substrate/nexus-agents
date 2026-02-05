@@ -23,11 +23,12 @@ import {
 
 function makeStepResult(overrides: Partial<StepResult> = {}): StepResult {
   return {
+    stepId: 'step-1',
     status: 'success',
     output: 'result data',
     durationMs: 100,
     ...overrides,
-  } as StepResult;
+  };
 }
 
 function makeExpectation(overrides: Partial<StepExpectation> = {}): StepExpectation {
@@ -65,8 +66,8 @@ describe('parseExpectations', () => {
       },
     ];
     const result = parseExpectations(raw);
-    expect((result[0] as Record<string, unknown>).outputPattern).toBe('test.*');
-    expect((result[0] as Record<string, unknown>).maxDurationMs).toBe(5000);
+    expect((result[0] as unknown as Record<string, unknown>).outputPattern).toBe('test.*');
+    expect((result[0] as unknown as Record<string, unknown>).maxDurationMs).toBe(5000);
   });
 
   it('defaults status to success', () => {
@@ -238,7 +239,7 @@ describe('checkRequiredFields', () => {
     const failures: string[] = [];
     checkRequiredFields(
       makeStepResult({ output: { id: 1, name: 'test' } }),
-      makeExpectation({ requiredFields: ['id', 'name'] } as StepExpectation),
+      makeExpectation({ requiredFields: ['id', 'name'] }),
       failures
     );
     expect(failures).toEqual([]);
@@ -248,7 +249,7 @@ describe('checkRequiredFields', () => {
     const failures: string[] = [];
     checkRequiredFields(
       makeStepResult({ output: { id: 1 } }),
-      makeExpectation({ requiredFields: ['id', 'name'] } as StepExpectation),
+      makeExpectation({ requiredFields: ['id', 'name'] }),
       failures
     );
     expect(failures).toHaveLength(1);
@@ -290,7 +291,7 @@ describe('checkCircularDependencies', () => {
   it('returns empty for no dependencies', () => {
     const workflow = {
       steps: [{ id: 'a', agent: 'x', action: 'y', inputs: {} }],
-    } as WorkflowDefinition;
+    } as unknown as WorkflowDefinition;
     expect(checkCircularDependencies(workflow)).toEqual([]);
   });
 
@@ -300,7 +301,7 @@ describe('checkCircularDependencies', () => {
         { id: 'a', agent: 'x', action: 'y', inputs: {} },
         { id: 'b', agent: 'x', action: 'y', inputs: {}, dependsOn: ['a'] },
       ],
-    } as WorkflowDefinition;
+    } as unknown as WorkflowDefinition;
     expect(checkCircularDependencies(workflow)).toEqual([]);
   });
 
@@ -310,7 +311,7 @@ describe('checkCircularDependencies', () => {
         { id: 'a', agent: 'x', action: 'y', inputs: {}, dependsOn: ['b'] },
         { id: 'b', agent: 'x', action: 'y', inputs: {}, dependsOn: ['a'] },
       ],
-    } as WorkflowDefinition;
+    } as unknown as WorkflowDefinition;
     const errors = checkCircularDependencies(workflow);
     expect(errors.length).toBeGreaterThan(0);
     expect(errors[0]).toContain('Circular');

@@ -14,19 +14,45 @@ import { formatSummary, formatVerbose, formatResults } from './aggregation-helpe
 function makeResult(overrides: Partial<AggregatedResult> = {}): AggregatedResult {
   return {
     component: 'test-component',
-    finalRecommendation: 'approve',
+    finalRecommendation: 'retain',
     confidence: 0.85,
     evidenceQuality: 0.9,
+    isRecommendation: true as const,
+    timestamp: new Date(),
     votes: [
-      { agent: 'agent-1', recommendation: 'approve', confidence: 0.9, concerns: [] },
-      { agent: 'agent-2', recommendation: 'approve', confidence: 0.8, concerns: ['minor issue'] },
+      {
+        agent: 'code-quality',
+        recommendation: 'retain',
+        confidence: 0.9,
+        concerns: [],
+        metrics: [],
+        isRecommendation: true as const,
+        component: 'test-component',
+        timestamp: new Date(),
+      },
+      {
+        agent: 'architecture-fit',
+        recommendation: 'retain',
+        confidence: 0.8,
+        concerns: ['minor issue'],
+        metrics: [],
+        isRecommendation: true as const,
+        component: 'test-component',
+        timestamp: new Date(),
+      },
     ],
     dissent: [],
     auditTrail: [
-      { agent: 'agent-1', claim: 'Code is clean', evidence: 'lint passed', verified: true },
+      {
+        agent: 'code-quality',
+        claim: 'Code is clean',
+        evidence: 'lint passed',
+        verified: true,
+        timestamp: new Date(),
+      },
     ],
     ...overrides,
-  };
+  } as AggregatedResult;
 }
 
 // ============================================================================
@@ -36,7 +62,7 @@ function makeResult(overrides: Partial<AggregatedResult> = {}): AggregatedResult
 describe('formatSummary', () => {
   it('formats basic summary line', () => {
     const result = formatSummary(makeResult());
-    expect(result).toContain('[APPROVE]');
+    expect(result).toContain('[RETAIN]');
     expect(result).toContain('test-component');
     expect(result).toContain('confidence');
   });
@@ -44,7 +70,18 @@ describe('formatSummary', () => {
   it('includes dissent count when present', () => {
     const result = formatSummary(
       makeResult({
-        dissent: [{ agent: 'agent-3', recommendation: 'reject', confidence: 0.6, concerns: [] }],
+        dissent: [
+          {
+            agent: 'practical-value' as const,
+            recommendation: 'deprecate' as const,
+            confidence: 0.6,
+            concerns: [],
+            metrics: [],
+            isRecommendation: true as const,
+            component: 'test-component',
+            timestamp: new Date(),
+          },
+        ],
       })
     );
     expect(result).toContain('1 dissent');
@@ -56,8 +93,8 @@ describe('formatSummary', () => {
   });
 
   it('uppercases recommendation', () => {
-    const result = formatSummary(makeResult({ finalRecommendation: 'reject' }));
-    expect(result).toContain('[REJECT]');
+    const result = formatSummary(makeResult({ finalRecommendation: 'deprecate' }));
+    expect(result).toContain('[DEPRECATE]');
   });
 });
 
@@ -73,13 +110,13 @@ describe('formatVerbose', () => {
 
   it('includes recommendation', () => {
     const output = formatVerbose(makeResult(), false);
-    expect(output).toContain('APPROVE');
+    expect(output).toContain('RETAIN');
   });
 
   it('includes votes', () => {
     const output = formatVerbose(makeResult(), false);
-    expect(output).toContain('agent-1');
-    expect(output).toContain('agent-2');
+    expect(output).toContain('code-quality');
+    expect(output).toContain('architecture-fit');
   });
 
   it('includes vote concerns', () => {
@@ -90,12 +127,23 @@ describe('formatVerbose', () => {
   it('includes dissenting opinions when present', () => {
     const output = formatVerbose(
       makeResult({
-        dissent: [{ agent: 'dissenter', recommendation: 'reject', confidence: 0.7, concerns: [] }],
+        dissent: [
+          {
+            agent: 'practical-value' as const,
+            recommendation: 'deprecate' as const,
+            confidence: 0.7,
+            concerns: [],
+            metrics: [],
+            isRecommendation: true as const,
+            component: 'test-component',
+            timestamp: new Date(),
+          },
+        ],
       }),
       false
     );
     expect(output).toContain('Dissenting Opinions');
-    expect(output).toContain('dissenter');
+    expect(output).toContain('practical-value');
   });
 
   it('includes audit trail when requested', () => {

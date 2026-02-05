@@ -63,7 +63,7 @@ function makeOptions(): Required<TechLeadOptions> {
     synthesisMode: 'merge',
     maxParallelExperts: 3,
     expertTimeout: 30000,
-  } as Required<TechLeadOptions>;
+  } as unknown as Required<TechLeadOptions>;
 }
 
 // ============================================================================

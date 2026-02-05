@@ -80,7 +80,7 @@ describe('createHeuristicCoverage', () => {
     expect(coverage.branch).toBe(0);
     expect(coverage.function).toBe(0);
     expect(coverage.statement).toBe(0);
-    expect(coverage.uncoveredAreas.length).toBeGreaterThan(0);
+    expect(coverage.uncoveredAreas!.length).toBeGreaterThan(0);
   });
 });
 

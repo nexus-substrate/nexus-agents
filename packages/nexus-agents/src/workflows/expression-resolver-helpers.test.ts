@@ -227,7 +227,8 @@ describe('valueToString', () => {
 describe('resolveSingleExpression', () => {
   it('resolves valid expression', () => {
     const parse = (_expr: string): ParsedExpression | null => ({
-      source: 'inputs',
+      original: 'inputs.name',
+      type: 'inputs',
       path: ['name'],
     });
     const resolve = (_parsed: ParsedExpression, _ctx: WorkflowExecutionContext): ResolveResult => ({
@@ -247,7 +248,8 @@ describe('resolveSingleExpression', () => {
 
   it('throws for failed resolution', () => {
     const parse = (_expr: string): ParsedExpression | null => ({
-      source: 'inputs',
+      original: 'inputs.missing',
+      type: 'inputs',
       path: ['missing'],
     });
     const resolve = (): ResolveResult => ({ success: false, error: 'not found' });

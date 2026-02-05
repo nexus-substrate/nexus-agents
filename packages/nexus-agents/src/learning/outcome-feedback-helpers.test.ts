@@ -36,17 +36,17 @@ vi.mock('../core/index.js', async (importOriginal) => {
 
 function makeOutcome(overrides: Partial<TaskOutcome> = {}): TaskOutcome {
   return {
-    decisionId: 'dec-1',
+    routingDecisionId: 'dec-1',
     success: true,
     outcomeClass: 'success' as OutcomeClass,
     qualityScore: 0.85,
     durationMs: 5000,
     timestamp: '2023-11-14T22:13:20.000Z',
+    tokenUsage: 100,
+    traceId: 'trace-1',
     qualitySignals: {
       completionRatio: 1.0,
       retryCount: 0,
-      errorRecovery: false,
-      outputQuality: 0.9,
     },
     ...overrides,
   };
@@ -55,12 +55,12 @@ function makeOutcome(overrides: Partial<TaskOutcome> = {}): TaskOutcome {
 function makeDecision(overrides: Partial<RoutingDecision> = {}): RoutingDecision {
   return {
     id: 'dec-1',
-    taskDescription: 'test task',
+    query: 'test task',
     selectedModel: 'claude',
     routerType: 'linucb' as RouterType,
     confidence: 0.85,
     timestamp: '2023-11-14T22:13:20.000Z',
-    features: {},
+    traceId: 'trace-1',
     ...overrides,
   };
 }
@@ -154,8 +154,6 @@ describe('generateRewardExplanation', () => {
       qualitySignals: {
         completionRatio: 0.75,
         retryCount: 0,
-        errorRecovery: false,
-        outputQuality: 0.5,
       },
     });
     const explanation = generateRewardExplanation(outcome, 0.5);
@@ -174,8 +172,6 @@ describe('generateRewardExplanation', () => {
       qualitySignals: {
         completionRatio: 1.0,
         retryCount: 3,
-        errorRecovery: false,
-        outputQuality: 0.9,
       },
     });
     const explanation = generateRewardExplanation(outcome, 0.5);
@@ -200,15 +196,15 @@ describe('generateRewardExplanation', () => {
 describe('createRoutingDecision', () => {
   it('creates decision with generated id and timestamp', () => {
     const decision = createRoutingDecision({
-      taskDescription: 'test',
+      query: 'test',
       selectedModel: 'claude',
       routerType: 'linucb',
       confidence: 0.9,
-      features: {},
+      traceId: 'trace-1',
     });
     expect(decision.id).toBeDefined();
     expect(decision.timestamp).toBe('2023-11-14T22:13:20.000Z');
-    expect(decision.taskDescription).toBe('test');
+    expect(decision.query).toBe('test');
   });
 });
 
@@ -219,16 +215,16 @@ describe('createRoutingDecision', () => {
 describe('createTaskOutcome', () => {
   it('creates outcome with timestamp', () => {
     const outcome = createTaskOutcome({
-      decisionId: 'dec-1',
+      routingDecisionId: 'dec-1',
       success: true,
       outcomeClass: 'success',
       qualityScore: 0.9,
       durationMs: 1000,
+      tokenUsage: 100,
+      traceId: 'trace-1',
       qualitySignals: {
         completionRatio: 1.0,
         retryCount: 0,
-        errorRecovery: false,
-        outputQuality: 0.9,
       },
     });
     expect(outcome.timestamp).toBe('2023-11-14T22:13:20.000Z');

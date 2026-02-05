@@ -28,12 +28,21 @@ import {
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 function makeCI(lower: number, estimate: number, upper: number) {
-  return { lower, estimate, upper, n: 100, level: 0.95 };
+  return { lower, estimate, upper, n: 100, confidence: 0.95, standardError: 0.05 };
 }
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 function makeDistStats() {
-  return { mean: 0.8, median: 0.75, stdDev: 0.1, min: 0.5, max: 1.0, n: 100 };
+  return {
+    mean: 0.8,
+    median: 0.75,
+    stdDev: 0.1,
+    variance: 0.01,
+    min: 0.5,
+    max: 1.0,
+    n: 100,
+    percentiles: { p5: 0.55, p25: 0.65, p50: 0.75, p75: 0.85, p95: 0.95 },
+  };
 }
 
 function makeModelSummary(overrides?: Partial<ModelPerformanceSummary>): ModelPerformanceSummary {

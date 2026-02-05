@@ -24,7 +24,7 @@ import {
 // ============================================================================
 
 function makeVote(decision: 'approve' | 'reject' | 'abstain', confidence = 0.9): Vote {
-  return { agentId: 'a', decision, confidence, reasoning: 'test' };
+  return { decision, confidence, reasoning: 'test' };
 }
 
 function makeCorrelationMatrix(pairs: Array<[string, string, number]>): CorrelationMatrix {

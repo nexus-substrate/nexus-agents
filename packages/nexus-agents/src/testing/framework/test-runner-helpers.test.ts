@@ -26,14 +26,20 @@ function makeTask(overrides: Partial<EvaluationTask> = {}): EvaluationTask {
 
 function makeTaskResult(overrides: Partial<TaskTestResult> = {}): TaskTestResult {
   return {
-    taskId: 'task-1',
+    task: makeTask(),
     success: true,
     durationMs: 100,
     cli: 'claude' as CliName,
     response: 'output',
-    rubricScore: { overallScore: 0.8, criteria: [] },
+    rubricScore: {
+      overallScore: 0.8,
+      criterionScores: [],
+      rubricId: 'rubric-1',
+      timestamp: '2026-01-01T00:00:00Z',
+    },
     tokenUsage: { inputTokens: 100, outputTokens: 50 },
     costUsd: 0.01,
+    timestamp: '2026-01-01T00:00:00Z',
     ...overrides,
   } as TaskTestResult;
 }
@@ -84,13 +90,13 @@ describe('filterTasksByCli', () => {
 
 describe('createRunCompleteLog', () => {
   it('creates log with correct counts', () => {
-    const result: TestRunResult = {
+    const result = {
       runId: 'run-1',
       success: true,
       taskResults: [
         makeTaskResult({ success: true }),
-        makeTaskResult({ taskId: 't2', success: true }),
-        makeTaskResult({ taskId: 't3', success: false }),
+        makeTaskResult({ task: makeTask({ id: 't2' }), success: true }),
+        makeTaskResult({ task: makeTask({ id: 't3' }), success: false }),
       ],
       durationMs: 5000,
       summary: {
@@ -99,7 +105,7 @@ describe('createRunCompleteLog', () => {
         failureCount: 1,
         averageScore: 0.7,
       },
-    } as TestRunResult;
+    } as unknown as TestRunResult;
     const log = createRunCompleteLog('run-1', result);
     expect(log.runId).toBe('run-1');
     expect(log.success).toBe(true);
@@ -110,13 +116,13 @@ describe('createRunCompleteLog', () => {
   });
 
   it('handles empty results', () => {
-    const result: TestRunResult = {
+    const result = {
       runId: 'run-2',
       success: false,
       taskResults: [],
       durationMs: 0,
       summary: { totalTasks: 0, successCount: 0, failureCount: 0, averageScore: 0 },
-    } as TestRunResult;
+    } as unknown as TestRunResult;
     const log = createRunCompleteLog('run-2', result);
     expect(log.totalTasks).toBe(0);
     expect(log.successCount).toBe(0);

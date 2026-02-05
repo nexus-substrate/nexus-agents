@@ -19,6 +19,8 @@ import {
 
 function makeMetrics(overrides: Partial<RoutingMetrics> = {}): RoutingMetrics {
   return {
+    periodStart: '2026-01-01T00:00:00.000Z',
+    periodEnd: '2026-01-02T00:00:00.000Z',
     totalDecisions: 100,
     totalOutcomes: 90,
     explorationRate: 0.15,
@@ -34,7 +36,7 @@ function makeMetrics(overrides: Partial<RoutingMetrics> = {}): RoutingMetrics {
         avgQuality: 0.85,
         avgLatencyMs: 200,
         successRate: 0.9,
-        explorationPercent: 0.1,
+        explorationCount: 0.1,
       },
       {
         model: 'gemini',
@@ -44,7 +46,7 @@ function makeMetrics(overrides: Partial<RoutingMetrics> = {}): RoutingMetrics {
         avgQuality: 0.7,
         avgLatencyMs: 150,
         successRate: 0.85,
-        explorationPercent: 0.2,
+        explorationCount: 0.2,
       },
     ],
     ...overrides,

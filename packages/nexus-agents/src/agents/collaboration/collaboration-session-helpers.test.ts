@@ -45,7 +45,7 @@ describe('emitEventToListeners', () => {
   it('calls all listeners with the event', () => {
     const listener1 = vi.fn();
     const listener2 = vi.fn();
-    const event: SessionEvent = { type: 'status_change', status: 'active' };
+    const event: SessionEvent = { type: 'status_change', status: 'in_progress' };
     const logger = makeMockLogger();
 
     emitEventToListeners([listener1, listener2], event, logger);
@@ -83,7 +83,7 @@ describe('emitEventToListeners', () => {
       // eslint-disable-next-line @typescript-eslint/only-throw-error, no-throw-literal
       throw 'string error';
     });
-    const event: SessionEvent = { type: 'status_change', status: 'active' };
+    const event: SessionEvent = { type: 'status_change', status: 'in_progress' };
     const logger = makeMockLogger();
 
     emitEventToListeners([listener], event, logger);
@@ -102,7 +102,11 @@ describe('emitEventToListeners', () => {
 describe('dispatchTaskAssignments', () => {
   const baseInput: TaskAssignmentDispatchInput = {
     pattern: 'parallel',
-    config: { sessionId: 's1', task: 'test', pattern: 'parallel' } as CollaborationConfig,
+    config: {
+      sessionId: 's1',
+      task: 'test',
+      pattern: 'parallel',
+    } as unknown as CollaborationConfig,
     participants: [{ expertId: 'e1', role: 'code_expert' }] as ExpertParticipation[],
     results: new Map(),
   };

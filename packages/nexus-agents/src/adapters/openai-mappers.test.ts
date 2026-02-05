@@ -63,7 +63,8 @@ describe('mapChoiceToContentBlocks', () => {
       message: { content: 'Hello world', role: 'assistant' as const },
       index: 0,
       finish_reason: 'stop' as const,
-    };
+      logprobs: null,
+    } as ChatCompletion.Choice;
     const blocks = mapChoiceToContentBlocks(choice);
     expect(blocks).toHaveLength(1);
     expect(blocks[0]).toEqual({ type: 'text', text: 'Hello world' });
@@ -74,7 +75,8 @@ describe('mapChoiceToContentBlocks', () => {
       message: { content: null, role: 'assistant' as const },
       index: 0,
       finish_reason: 'stop' as const,
-    };
+      logprobs: null,
+    } as ChatCompletion.Choice;
     const blocks = mapChoiceToContentBlocks(choice);
     expect(blocks).toHaveLength(1);
     expect(blocks[0]).toEqual({ type: 'text', text: '' });
@@ -95,7 +97,8 @@ describe('mapChoiceToContentBlocks', () => {
       },
       index: 0,
       finish_reason: 'tool_calls' as const,
-    };
+      logprobs: null,
+    } as ChatCompletion.Choice;
     const blocks = mapChoiceToContentBlocks(choice);
     expect(blocks).toHaveLength(1);
     expect(blocks[0]?.type).toBe('tool_use');
@@ -116,7 +119,8 @@ describe('mapChoiceToContentBlocks', () => {
       },
       index: 0,
       finish_reason: 'tool_calls' as const,
-    };
+      logprobs: null,
+    } as ChatCompletion.Choice;
     const blocks = mapChoiceToContentBlocks(choice);
     expect(blocks).toHaveLength(1);
     expect(blocks[0]?.type).toBe('tool_use');
@@ -140,7 +144,8 @@ describe('mapChoiceToContentBlocks', () => {
       },
       index: 0,
       finish_reason: 'tool_calls' as const,
-    };
+      logprobs: null,
+    } as ChatCompletion.Choice;
     const blocks = mapChoiceToContentBlocks(choice);
     expect(blocks).toHaveLength(2);
     expect(blocks[0]?.type).toBe('text');
@@ -226,9 +231,13 @@ describe('mapTool', () => {
     };
     const result = mapTool(tool);
     expect(result.type).toBe('function');
-    expect(result.function.name).toBe('get_weather');
-    expect(result.function.description).toBe('Get weather info');
-    expect(result.function.parameters).toEqual(tool.inputSchema);
+    const fnResult = result as unknown as {
+      type: 'function';
+      function: { name: string; description: string; parameters: unknown };
+    };
+    expect(fnResult.function.name).toBe('get_weather');
+    expect(fnResult.function.description).toBe('Get weather info');
+    expect(fnResult.function.parameters).toEqual(tool.inputSchema);
   });
 });
 

@@ -128,13 +128,13 @@ describe('createParsedError', () => {
     const pattern: ErrorPattern = {
       name: 'test',
       pattern: /(\w+) error at (\S+):(\d+)/,
-      category: 'typescript',
+      category: 'type',
       groups: { message: 1, file: 2, line: 3 },
     };
     const match = 'Type error at src/index.ts:42'.match(pattern.pattern)!;
     const error = createParsedError(match, pattern, 1);
     expect(error.id).toBe('error-1');
-    expect(error.category).toBe('typescript');
+    expect(error.category).toBe('type');
     expect(error.message).toBe('Type');
     expect(error.location?.file).toBe('src/index.ts');
     expect(error.location?.line).toBe(42);
@@ -162,14 +162,14 @@ describe('buildExplanationPrompt', () => {
   it('includes error and code', () => {
     const error: ParsedError = {
       id: 'e1',
-      category: 'typescript',
+      category: 'type',
       severity: 'error',
       message: 'Type mismatch',
       rawError: 'Type mismatch',
       location: { line: 10 },
     };
     const prompt = buildExplanationPrompt('const x = 1', error);
-    expect(prompt).toContain('typescript');
+    expect(prompt).toContain('type');
     expect(prompt).toContain('line 10');
     expect(prompt).toContain('Type mismatch');
     expect(prompt).toContain('const x = 1');
@@ -192,7 +192,7 @@ describe('buildFixPrompt', () => {
   it('includes error and code', () => {
     const error: ParsedError = {
       id: 'e1',
-      category: 'typescript',
+      category: 'type',
       severity: 'error',
       message: 'missing return',
       rawError: 'missing return',
@@ -205,7 +205,7 @@ describe('buildFixPrompt', () => {
   it('includes explanation when provided', () => {
     const error: ParsedError = {
       id: 'e1',
-      category: 'typescript',
+      category: 'type',
       severity: 'error',
       message: 'err',
       rawError: 'err',
@@ -389,7 +389,7 @@ describe('parseErrorsFromOutput', () => {
   it('returns existing errors from result', () => {
     const existing: ParsedError = {
       id: 'e1',
-      category: 'test',
+      category: 'unknown',
       severity: 'error',
       message: 'pre-parsed',
       rawError: 'pre-parsed',
@@ -431,7 +431,7 @@ describe('parseErrorsFromOutput', () => {
     const pattern: ErrorPattern = {
       name: 'test',
       pattern: /FAIL: (.+)/,
-      category: 'test',
+      category: 'unknown',
       groups: { message: 1 },
     };
     const result: ExecutionResult = {

@@ -42,7 +42,7 @@ function makeMockBackend(): IMemoryBackend {
           entries.push({
             key,
             value: data.value,
-            metadata: { importance: 0, tags: [] },
+            metadata: { importance: 'low', tags: [] },
             createdAt: new Date(),
             accessedAt: new Date(),
           });
@@ -73,8 +73,9 @@ describe('CoreMemoryImpl', () => {
   it('sets and gets identity', async () => {
     const data = {
       agentId: 'a1',
-      role: 'code_expert',
-      goals: ['review code'],
+      role: 'code_expert' as const,
+      name: 'Agent A1',
+      capabilities: ['review'],
       constraints: ['be thorough'],
     };
     await core.setIdentity(data);
@@ -96,8 +97,9 @@ describe('CoreMemoryImpl', () => {
   it('getConstraints returns constraints from identity', async () => {
     const data = {
       agentId: 'a1',
-      role: 'expert',
-      goals: [],
+      role: 'code_expert' as const,
+      name: 'Agent A1',
+      capabilities: [],
       constraints: ['c1', 'c2'],
     };
     await core.setIdentity(data);
@@ -119,8 +121,9 @@ describe('CoreMemoryImpl', () => {
   it('updateConstraints modifies existing identity', async () => {
     const data = {
       agentId: 'a1',
-      role: 'expert',
-      goals: [],
+      role: 'code_expert' as const,
+      name: 'Agent A1',
+      capabilities: [],
       constraints: ['old'],
     };
     await core.setIdentity(data);
@@ -168,10 +171,10 @@ describe('EpisodicMemoryImpl', () => {
     episodeId: 'ep-1',
     agentId: 'a1',
     taskId: 'task-1',
+    action: 'test-action',
     outcome: 'success' as const,
-    actions: [],
-    startedAt: new Date(),
-    completedAt: new Date(),
+    context: {} as Record<string, unknown>,
+    timestamp: new Date(),
     ...overrides,
   });
 
@@ -294,7 +297,8 @@ describe('ProceduralMemoryImpl', () => {
   const makeProcedure = (overrides: Record<string, unknown> = {}) => ({
     procedureId: 'proc-1',
     name: 'code-review',
-    steps: [{ action: 'read', params: {} }],
+    description: 'A code review procedure',
+    steps: [{ stepId: 'step-1', action: 'read', parameters: {} }],
     triggerConditions: ['review', 'code'],
     successRate: 0.8,
     executionCount: 10,
@@ -420,6 +424,7 @@ describe('KnowledgeVaultImpl', () => {
   const makeVaultEntry = (overrides: Record<string, unknown> = {}) => ({
     vaultId: 'v-1',
     category: 'pattern' as const,
+    title: 'Dependency Injection',
     importance: 'high' as const,
     content: 'Use dependency injection',
     tags: ['architecture'],

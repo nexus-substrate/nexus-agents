@@ -107,7 +107,7 @@ describe('mapMessage', () => {
       role: 'assistant',
       content: [{ type: 'tool_use', id: 'tool-1', name: 'test', input: {} }],
     });
-    const content = result.content as Array<Record<string, unknown>>;
+    const content = result.content as unknown as Array<Record<string, unknown>>;
     expect(content[0]?.type).toBe('tool_use');
     expect(content[0]?.id).toBe('tool-1');
   });
@@ -117,7 +117,7 @@ describe('mapMessage', () => {
       role: 'user',
       content: [{ type: 'tool_result', tool_use_id: 'tool-1', content: 'result data' }],
     });
-    const content = result.content as Array<Record<string, unknown>>;
+    const content = result.content as unknown as Array<Record<string, unknown>>;
     expect(content[0]?.type).toBe('tool_result');
     expect(content[0]?.tool_use_id).toBe('tool-1');
   });
@@ -127,7 +127,7 @@ describe('mapMessage', () => {
       role: 'user',
       content: [{ type: 'tool_result', tool_use_id: 'tool-1', content: 'error', is_error: true }],
     });
-    const content = result.content as Array<Record<string, unknown>>;
+    const content = result.content as unknown as Array<Record<string, unknown>>;
     expect(content[0]?.is_error).toBe(true);
   });
 

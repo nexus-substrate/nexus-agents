@@ -5,7 +5,8 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { MemoryImportance } from './memory-backend-types.js';
-import type { ScoredMemoryEntry, MemoryEntry } from './adaptive-memory-types.js';
+import type { MemoryEntry } from './memory-backend-types.js';
+import type { ScoredMemoryEntry } from './adaptive-memory-types.js';
 import { DEFAULT_SCORING_CONFIG } from './adaptive-memory-types.js';
 import {
   calculateRecencyScore,
@@ -35,7 +36,6 @@ function makeEntry(overrides: Partial<MemoryEntry> = {}): MemoryEntry {
     metadata: {
       importance: MemoryImportance.MEDIUM,
       tags: ['test'],
-      createdAt: new Date(1700000000000 - 3600000),
     },
     accessedAt: new Date(1700000000000 - 3600000),
     createdAt: new Date(1700000000000 - 7200000),
@@ -188,10 +188,10 @@ describe('filterScoredEntries', () => {
   it('filters by importance', () => {
     const entries = [
       makeScoredEntry({
-        metadata: { importance: MemoryImportance.HIGH, tags: [], createdAt: new Date() },
+        metadata: { importance: MemoryImportance.HIGH, tags: [] },
       }),
       makeScoredEntry({
-        metadata: { importance: MemoryImportance.LOW, tags: [], createdAt: new Date() },
+        metadata: { importance: MemoryImportance.LOW, tags: [] },
       }),
     ];
     const filtered = filterScoredEntries(entries, { importanceFilter: [MemoryImportance.HIGH] });
@@ -201,10 +201,10 @@ describe('filterScoredEntries', () => {
   it('filters by tags', () => {
     const entries = [
       makeScoredEntry({
-        metadata: { importance: MemoryImportance.MEDIUM, tags: ['api'], createdAt: new Date() },
+        metadata: { importance: MemoryImportance.MEDIUM, tags: ['api'] },
       }),
       makeScoredEntry({
-        metadata: { importance: MemoryImportance.MEDIUM, tags: ['ui'], createdAt: new Date() },
+        metadata: { importance: MemoryImportance.MEDIUM, tags: ['ui'] },
       }),
     ];
     const filtered = filterScoredEntries(entries, { tagFilter: ['api'] });

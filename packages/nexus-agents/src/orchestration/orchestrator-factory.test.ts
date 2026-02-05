@@ -40,7 +40,7 @@ function makeMockWorkflowEngine(overrides: Partial<IWorkflowEngine> = {}): IWork
         name: 'test-workflow',
         steps: [{ id: 'step-1', type: 'prompt', prompt: 'test' }],
         version: '1.0',
-      } as WorkflowDefinition)
+      } as unknown as WorkflowDefinition)
     ),
     execute: vi.fn().mockResolvedValue(
       ok({
@@ -50,7 +50,7 @@ function makeMockWorkflowEngine(overrides: Partial<IWorkflowEngine> = {}): IWork
           { stepId: 'step-1', status: 'success', output: 'step output', durationMs: 100 },
         ],
         durationMs: 100,
-      } as WorkflowResult)
+      } as unknown as WorkflowResult)
     ),
     cancel: vi.fn().mockResolvedValue(ok(undefined)),
     getStatus: vi.fn().mockReturnValue({ state: 'pending' }),
@@ -174,10 +174,10 @@ describe('WorkflowOrchestratorAdapter', () => {
     });
 
     it('rejects non-workflow definitions', async () => {
-      const nonWorkflow: OrchestratorDefinition = {
-        type: 'tech_lead' as never,
+      const nonWorkflow = {
+        type: 'tech_lead',
         task: 'test',
-      };
+      } as unknown as OrchestratorDefinition;
       const result = await adapter.execute(nonWorkflow, {});
       expect(result.ok).toBe(false);
       if (!result.ok) {

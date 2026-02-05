@@ -35,16 +35,17 @@ function makePaper(overrides: Partial<ResearchPaperWithId> = {}): ResearchPaperW
     title: 'Test Paper',
     arxiv_id: '2401.12345',
     topics: ['consensus'],
-    status: 'reviewed',
+    authors: [],
+    tags: [],
+    key_findings: [],
+    techniques_extracted: [],
+    related_issues: [],
+    implementation_status: 'not-started',
     relevance: 'high',
     reviewed_date: '2026-01-15',
     summary: 'A test paper summary.',
-    key_contributions: ['contrib-1'],
-    applicability: 'Direct application',
-    implementation_notes: null,
-    metrics: null,
     ...overrides,
-  };
+  } as ResearchPaperWithId;
 }
 
 function makeTechnique(overrides: Partial<ResearchTechniqueWithId> = {}): ResearchTechniqueWithId {
@@ -59,20 +60,27 @@ function makeTechnique(overrides: Partial<ResearchTechniqueWithId> = {}): Resear
     implementation_issue: null,
     complexity: 'medium',
     decision_history: [],
+    tags: [],
+    metrics: {},
+    integration_files: [],
+    related_prs: [],
+    dependencies: [],
     ...overrides,
-  };
+  } as ResearchTechniqueWithId;
 }
 
 function makeSource(overrides: Partial<ResearchSourceWithId> = {}): ResearchSourceWithId {
   return {
     id: 'source-1',
     name: 'Test Source',
-    type: 'academic',
+    type: 'specification',
     url: 'https://example.com',
-    last_checked: '2026-01-15',
-    reliability: 'high',
+    topics: [],
+    tags: [],
+    key_info: [],
+    best_practices: [],
     ...overrides,
-  };
+  } as ResearchSourceWithId;
 }
 
 function makeIndex(overrides: Partial<ResearchIndex> = {}): ResearchIndex {
@@ -320,9 +328,9 @@ describe('getTechniquesWithIssues', () => {
   it('returns techniques with implementation issues', () => {
     const index = makeIndex({
       techniques: [
-        makeTechnique({ id: 't1', implementation_issue: '#123' }),
+        makeTechnique({ id: 't1', implementation_issue: 123 }),
         makeTechnique({ id: 't2', implementation_issue: null }),
-        makeTechnique({ id: 't3', implementation_issue: '#456' }),
+        makeTechnique({ id: 't3', implementation_issue: 456 }),
       ],
     });
 

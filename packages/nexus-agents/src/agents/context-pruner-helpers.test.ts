@@ -5,6 +5,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import type { ContextItem } from './context-manager.js';
+import { ContentPriority } from './context-manager.js';
 import {
   calculateDefaultTarget,
   calculatePriorityWeightedScore,
@@ -30,7 +31,7 @@ function makeItem(overrides: Partial<ContextItem> = {}): ContextItem {
   return {
     id: 'item-1',
     content: 'test content',
-    priority: 5,
+    priority: ContentPriority.EPHEMERAL,
     category: 'active',
     tokenCount: 100,
     addedAt: 1700000000000 - 3600000, // 1 hour ago
@@ -72,8 +73,14 @@ describe('calculateDefaultTarget', () => {
 describe('calculatePriorityWeightedScore', () => {
   it('higher priority gives higher score', () => {
     const now = 1700000000000;
-    const low = calculatePriorityWeightedScore(makeItem({ priority: 1 }), now);
-    const high = calculatePriorityWeightedScore(makeItem({ priority: 10 }), now);
+    const low = calculatePriorityWeightedScore(
+      makeItem({ priority: ContentPriority.EPHEMERAL }),
+      now
+    );
+    const high = calculatePriorityWeightedScore(
+      makeItem({ priority: ContentPriority.SYSTEM }),
+      now
+    );
     expect(high).toBeGreaterThan(low);
   });
 
@@ -92,9 +99,12 @@ describe('calculatePriorityWeightedScore', () => {
 
   it('returns priority for items added now', () => {
     const now = 1700000000000;
-    const score = calculatePriorityWeightedScore(makeItem({ priority: 5, addedAt: now }), now);
-    // ageHours = 0, so score = 5 * (1 / (0 + 1)) = 5
-    expect(score).toBe(5);
+    const score = calculatePriorityWeightedScore(
+      makeItem({ priority: ContentPriority.EPHEMERAL, addedAt: now }),
+      now
+    );
+    // ageHours = 0, so score = 20 * (1 / (0 + 1)) = 20
+    expect(score).toBe(20);
   });
 });
 
@@ -105,8 +115,12 @@ describe('calculatePriorityWeightedScore', () => {
 describe('scoreByPriorityWeightedAge', () => {
   it('sorts items by score (lowest first)', () => {
     const items = [
-      makeItem({ id: 'high', priority: 10, addedAt: 1700000000000 - 1000 }),
-      makeItem({ id: 'low', priority: 1, addedAt: 1700000000000 - 86400000 }),
+      makeItem({ id: 'high', priority: ContentPriority.SYSTEM, addedAt: 1700000000000 - 1000 }),
+      makeItem({
+        id: 'low',
+        priority: ContentPriority.EPHEMERAL,
+        addedAt: 1700000000000 - 86400000,
+      }),
     ];
     const sorted = scoreByPriorityWeightedAge(items);
     // low priority + old should have lowest score

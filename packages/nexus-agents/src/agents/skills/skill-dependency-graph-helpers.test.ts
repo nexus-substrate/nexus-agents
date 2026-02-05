@@ -29,7 +29,7 @@ function makeNode(
   for (const [depId, type] of deps) {
     dependencies.set(depId, { type });
   }
-  return { id, dependencies, dependents };
+  return { id, dependencies, dependents: new Set(dependents) } as unknown as TopologicalSortNode;
 }
 
 function makeNodes(

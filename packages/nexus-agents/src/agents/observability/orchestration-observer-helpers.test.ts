@@ -169,7 +169,7 @@ describe('createTrackedAgent', () => {
   });
 
   it('accepts custom role and task', () => {
-    const agent = createTrackedAgent('agent-1', 'busy', 'code_expert', 'fixing bug');
+    const agent = createTrackedAgent('agent-1', 'executing', 'code_expert', 'fixing bug');
     expect(agent.role).toBe('code_expert');
     expect(agent.currentTask).toBe('fixing bug');
   });

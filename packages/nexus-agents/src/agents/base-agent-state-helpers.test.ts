@@ -19,7 +19,10 @@ function makeMockStateMachine(currentState: AgentState = 'idle') {
     state: currentState,
     forceError: vi.fn(),
     canTransition: vi.fn(() => true),
-    transition: vi.fn(() => ({ ok: true as const, value: undefined })),
+    transition: vi.fn((): { ok: boolean; value?: undefined; error?: Error } => ({
+      ok: true,
+      value: undefined,
+    })),
   };
 }
 

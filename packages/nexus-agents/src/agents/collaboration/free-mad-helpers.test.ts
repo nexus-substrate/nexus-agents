@@ -25,17 +25,21 @@ function makeTrajectory(
   for (const agent of agents) {
     agentTrajectories.set(agent.id, {
       agentId: agent.id,
-      positions: agent.positions,
+      positions: agent.positions.map((p) => ({
+        ...p,
+        agentId: agent.id,
+        confidence: 0.8,
+      })),
       positionChanges: 0,
       conformedToMajority: false,
       conformityRounds: [],
-    });
+    } as unknown as AgentTrajectory);
   }
   return {
     agentTrajectories,
     roundSnapshots: [],
     totalRounds: 0,
-  } as DebateTrajectory;
+  } as unknown as DebateTrajectory;
 }
 
 function makeScore(overrides: Partial<AntiConformityScore> = {}): AntiConformityScore {

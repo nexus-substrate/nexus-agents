@@ -72,11 +72,11 @@ function makeCompletionOk(text: string, tokens = 50): Result<CompletionResponse,
   return {
     ok: true,
     value: {
-      content: text,
+      content: [{ type: 'text', text }],
       model: 'test-model',
-      usage: { promptTokens: tokens / 2, completionTokens: tokens / 2, totalTokens: tokens },
+      usage: { inputTokens: tokens / 2, outputTokens: tokens / 2, totalTokens: tokens },
     },
-  };
+  } as unknown as Result<CompletionResponse, Error>;
 }
 
 function makeCompletionErr(): Result<CompletionResponse, Error> {

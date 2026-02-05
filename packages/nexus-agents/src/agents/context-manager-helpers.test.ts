@@ -5,6 +5,7 @@
 
 import { describe, it, expect } from 'vitest';
 import type { ContextItem, ContextBudget } from './context-manager-types.js';
+import { ContentPriority } from './context-manager-types.js';
 import {
   sortItemsByPriority,
   filterAndSortByCategory,
@@ -35,7 +36,7 @@ function makeItem(overrides: Partial<ContextItem> = {}): ContextItem {
   return {
     id: 'item-1',
     content: 'test content',
-    priority: 5,
+    priority: ContentPriority.ACTIVE,
     category: 'active',
     tokenCount: 100,
     addedAt: Date.now(),
@@ -56,24 +57,30 @@ const defaultBudget: ContextBudget = {
 
 describe('sortItemsByPriority', () => {
   it('sorts by priority descending', () => {
-    const items = [makeItem({ id: 'low', priority: 1 }), makeItem({ id: 'high', priority: 10 })];
+    const items = [
+      makeItem({ id: 'low', priority: ContentPriority.EPHEMERAL }),
+      makeItem({ id: 'high', priority: ContentPriority.SYSTEM }),
+    ];
     const sorted = sortItemsByPriority(items);
     expect(sorted[0]!.id).toBe('high');
   });
 
   it('uses addedAt for same priority (FIFO)', () => {
     const items = [
-      makeItem({ id: 'newer', priority: 5, addedAt: 2000 }),
-      makeItem({ id: 'older', priority: 5, addedAt: 1000 }),
+      makeItem({ id: 'newer', priority: ContentPriority.ACTIVE, addedAt: 2000 }),
+      makeItem({ id: 'older', priority: ContentPriority.ACTIVE, addedAt: 1000 }),
     ];
     const sorted = sortItemsByPriority(items);
     expect(sorted[0]!.id).toBe('older');
   });
 
   it('does not mutate original array', () => {
-    const items = [makeItem({ priority: 1 }), makeItem({ priority: 10 })];
+    const items = [
+      makeItem({ priority: ContentPriority.EPHEMERAL }),
+      makeItem({ priority: ContentPriority.SYSTEM }),
+    ];
     sortItemsByPriority(items);
-    expect(items[0]!.priority).toBe(1);
+    expect(items[0]!.priority).toBe(ContentPriority.EPHEMERAL);
   });
 });
 
@@ -212,8 +219,12 @@ describe('calculateContextStats', () => {
 describe('buildSystemPrompt', () => {
   it('combines system items', () => {
     const items = [
-      makeItem({ category: 'system', content: 'You are a helper', priority: 10 }),
-      makeItem({ category: 'system', content: 'Be helpful', priority: 5 }),
+      makeItem({
+        category: 'system',
+        content: 'You are a helper',
+        priority: ContentPriority.SYSTEM,
+      }),
+      makeItem({ category: 'system', content: 'Be helpful', priority: ContentPriority.ACTIVE }),
       makeItem({ category: 'active', content: 'ignored' }),
     ];
     const prompt = buildSystemPrompt(items);

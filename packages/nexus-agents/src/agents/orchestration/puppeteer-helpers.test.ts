@@ -296,8 +296,8 @@ describe('buildAgentTask', () => {
     const state = { step: 2, sessionId: 'session-xyz' } as PuppeteerState;
 
     const result = buildAgentTask(task, state, '');
-    expect(result.context.metadata.puppeteerStep).toBe(2);
-    expect(result.context.metadata.puppeteerSessionId).toBe('session-xyz');
+    expect(result.context.metadata!.puppeteerStep).toBe(2);
+    expect(result.context.metadata!.puppeteerSessionId).toBe('session-xyz');
   });
 
   it('preserves constraints when present', () => {
