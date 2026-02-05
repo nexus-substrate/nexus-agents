@@ -8,7 +8,7 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { type Result, ok, err } from '../../core/result.js';
-import { getTimeProvider } from '../../core/index.js';
+import { getTimeProvider, createLogger } from '../../core/index.js';
 import { type TestRunResult, type ResultWriterConfig, TestRunResultSchema } from '../schemas.js';
 
 /**
@@ -187,7 +187,10 @@ export class ResultWriter {
         // Log but continue - best effort deletion
         if (!(isNodeError(error) && error.code === 'ENOENT')) {
           // File already deleted, that's fine
-          console.warn(`Failed to delete history file ${filepath}: ${getErrorMessage(error)}`);
+          createLogger({ component: 'ResultWriter' }).warn('Failed to delete history file', {
+            filepath,
+            error: getErrorMessage(error),
+          });
         }
       }
     }

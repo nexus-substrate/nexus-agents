@@ -9,7 +9,7 @@
 import { z } from 'zod';
 import type { Vote } from '../consensus/types.js';
 import type { VoterRole } from './vote-types.js';
-import { getErrorMessage } from '../core/index.js';
+import { getErrorMessage, createLogger } from '../core/index.js';
 
 // ============================================================================
 // Error Classes
@@ -147,9 +147,9 @@ function createFallbackVote(output: string, _role: VoterRole, reason: string): P
   }
 
   // Log warning about synthetic vote
-  console.warn(
-    `[voter-response] Creating synthetic ${decision} vote: ${reason}. ` +
-      'This vote was NOT parsed from LLM output.'
+  createLogger({ component: 'voter-response' }).warn(
+    'Creating synthetic vote (NOT parsed from LLM output)',
+    { decision, reason }
   );
 
   return {

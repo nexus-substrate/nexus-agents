@@ -6,7 +6,7 @@
  */
 
 import type { WorkflowDefinition, Result, IRegistryStats } from '../core/index.js';
-import { getTimeProvider, ok, err, AgentError } from '../core/index.js';
+import { getTimeProvider, ok, err, AgentError, createLogger } from '../core/index.js';
 import type { ITemplateRegistry, TemplateMetadata, TemplateCategory } from './template-types.js';
 import { loadTemplatesFromDirectory, getBuiltInTemplatesWithMetadata } from './template-loader.js';
 
@@ -162,8 +162,9 @@ class TemplateRegistry implements ITemplateRegistry {
 
     if (errors.length > 0) {
       // Log errors but continue with successfully loaded templates
+      const logger = createLogger({ component: 'TemplateRegistry' });
       for (const error of errors) {
-        console.warn(`Template loading warning: ${error.message}`);
+        logger.warn('Template loading warning', { error: error.message });
       }
     }
 
@@ -177,8 +178,12 @@ class TemplateRegistry implements ITemplateRegistry {
           this.register(definition, metadata);
           loadedCount++;
         }
-      } catch {
-        // Skip templates that fail to register
+      } catch (regError) {
+        const logger = createLogger({ component: 'TemplateRegistry' });
+        logger.warn('Template registration failed', {
+          template: definition.name,
+          error: regError instanceof Error ? regError.message : String(regError),
+        });
       }
     }
 
