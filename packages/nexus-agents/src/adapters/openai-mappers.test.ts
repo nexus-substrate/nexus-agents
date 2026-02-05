@@ -1,0 +1,305 @@
+/**
+ * Tests for OpenAI Message Mappers
+ * @module adapters/openai-mappers.test
+ */
+
+import { describe, it, expect } from 'vitest';
+import type { Message, ToolDefinition } from '../core/index.js';
+import type { ChatCompletion, ChatCompletionChunk } from 'openai/resources/chat/completions';
+import {
+  mapStopReason,
+  mapChoiceToContentBlocks,
+  mapMessage,
+  mapTool,
+  mapResponseUsage,
+  mapStreamChunk,
+} from './openai-mappers.js';
+
+// ============================================================================
+// mapStopReason
+// ============================================================================
+
+describe('mapStopReason', () => {
+  it('maps stop to end_turn', () => {
+    expect(mapStopReason('stop')).toBe('end_turn');
+  });
+
+  it('maps length to max_tokens', () => {
+    expect(mapStopReason('length')).toBe('max_tokens');
+  });
+
+  it('maps tool_calls to tool_use', () => {
+    expect(mapStopReason('tool_calls')).toBe('tool_use');
+  });
+
+  it('maps function_call to tool_use', () => {
+    expect(mapStopReason('function_call')).toBe('tool_use');
+  });
+
+  it('maps content_filter to end_turn', () => {
+    expect(mapStopReason('content_filter')).toBe('end_turn');
+  });
+
+  it('maps null to end_turn', () => {
+    expect(mapStopReason(null)).toBe('end_turn');
+  });
+
+  it('maps undefined to end_turn', () => {
+    expect(mapStopReason(undefined)).toBe('end_turn');
+  });
+
+  it('maps unknown string to end_turn', () => {
+    expect(mapStopReason('unknown_reason')).toBe('end_turn');
+  });
+});
+
+// ============================================================================
+// mapChoiceToContentBlocks
+// ============================================================================
+
+describe('mapChoiceToContentBlocks', () => {
+  it('maps text content', () => {
+    const choice = {
+      message: { content: 'Hello world', role: 'assistant' as const },
+      index: 0,
+      finish_reason: 'stop' as const,
+    };
+    const blocks = mapChoiceToContentBlocks(choice);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]).toEqual({ type: 'text', text: 'Hello world' });
+  });
+
+  it('returns empty text block when no content', () => {
+    const choice = {
+      message: { content: null, role: 'assistant' as const },
+      index: 0,
+      finish_reason: 'stop' as const,
+    };
+    const blocks = mapChoiceToContentBlocks(choice);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]).toEqual({ type: 'text', text: '' });
+  });
+
+  it('maps tool calls', () => {
+    const choice = {
+      message: {
+        content: null,
+        role: 'assistant' as const,
+        tool_calls: [
+          {
+            id: 'call-1',
+            type: 'function' as const,
+            function: { name: 'get_weather', arguments: '{"city":"NYC"}' },
+          },
+        ],
+      },
+      index: 0,
+      finish_reason: 'tool_calls' as const,
+    };
+    const blocks = mapChoiceToContentBlocks(choice);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]?.type).toBe('tool_use');
+  });
+
+  it('handles invalid JSON in tool call arguments', () => {
+    const choice = {
+      message: {
+        content: null,
+        role: 'assistant' as const,
+        tool_calls: [
+          {
+            id: 'call-1',
+            type: 'function' as const,
+            function: { name: 'test', arguments: '{invalid json' },
+          },
+        ],
+      },
+      index: 0,
+      finish_reason: 'tool_calls' as const,
+    };
+    const blocks = mapChoiceToContentBlocks(choice);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]?.type).toBe('tool_use');
+    // Should fallback to raw string
+    const toolBlock = blocks[0] as { type: 'tool_use'; input: { _raw: string } };
+    expect(toolBlock.input._raw).toBe('{invalid json');
+  });
+
+  it('maps both text and tool calls', () => {
+    const choice = {
+      message: {
+        content: 'Let me check',
+        role: 'assistant' as const,
+        tool_calls: [
+          {
+            id: 'call-1',
+            type: 'function' as const,
+            function: { name: 'search', arguments: '{}' },
+          },
+        ],
+      },
+      index: 0,
+      finish_reason: 'tool_calls' as const,
+    };
+    const blocks = mapChoiceToContentBlocks(choice);
+    expect(blocks).toHaveLength(2);
+    expect(blocks[0]?.type).toBe('text');
+    expect(blocks[1]?.type).toBe('tool_use');
+  });
+});
+
+// ============================================================================
+// mapMessage
+// ============================================================================
+
+describe('mapMessage', () => {
+  it('maps system message with string content', () => {
+    const message: Message = { role: 'system', content: 'You are helpful' };
+    const result = mapMessage(message);
+    expect(result.role).toBe('system');
+    expect(result.content).toBe('You are helpful');
+  });
+
+  it('maps system message with content blocks', () => {
+    const message: Message = {
+      role: 'system',
+      content: [
+        { type: 'text', text: 'Part 1' },
+        { type: 'text', text: 'Part 2' },
+      ],
+    };
+    const result = mapMessage(message);
+    expect(result.role).toBe('system');
+    expect(result.content).toBe('Part 1\nPart 2');
+  });
+
+  it('maps user message with string content', () => {
+    const message: Message = { role: 'user', content: 'Hello' };
+    const result = mapMessage(message);
+    expect(result.role).toBe('user');
+    expect(result.content).toBe('Hello');
+  });
+
+  it('maps user message with tool result', () => {
+    const message: Message = {
+      role: 'user',
+      content: [
+        {
+          type: 'tool_result',
+          tool_use_id: 'call-1',
+          content: 'Result data',
+        },
+      ],
+    };
+    const result = mapMessage(message);
+    expect(result.role).toBe('tool');
+  });
+
+  it('maps assistant message with string content', () => {
+    const message: Message = { role: 'assistant', content: 'Response text' };
+    const result = mapMessage(message);
+    expect(result.role).toBe('assistant');
+    expect(result.content).toBe('Response text');
+  });
+
+  it('maps assistant message with tool use', () => {
+    const message: Message = {
+      role: 'assistant',
+      content: [{ type: 'tool_use', id: 'call-1', name: 'test_fn', input: { key: 'val' } }],
+    };
+    const result = mapMessage(message);
+    expect(result.role).toBe('assistant');
+    expect('tool_calls' in result).toBe(true);
+  });
+});
+
+// ============================================================================
+// mapTool
+// ============================================================================
+
+describe('mapTool', () => {
+  it('maps tool definition to OpenAI format', () => {
+    const tool: ToolDefinition = {
+      name: 'get_weather',
+      description: 'Get weather info',
+      inputSchema: { type: 'object', properties: { city: { type: 'string' } } },
+    };
+    const result = mapTool(tool);
+    expect(result.type).toBe('function');
+    expect(result.function.name).toBe('get_weather');
+    expect(result.function.description).toBe('Get weather info');
+    expect(result.function.parameters).toEqual(tool.inputSchema);
+  });
+});
+
+// ============================================================================
+// mapResponseUsage
+// ============================================================================
+
+describe('mapResponseUsage', () => {
+  it('maps usage from response', () => {
+    const response = {
+      usage: { prompt_tokens: 100, completion_tokens: 200, total_tokens: 300 },
+    } as ChatCompletion;
+    const usage = mapResponseUsage(response);
+    expect(usage.inputTokens).toBe(100);
+    expect(usage.outputTokens).toBe(200);
+    expect(usage.totalTokens).toBe(300);
+  });
+
+  it('defaults to 0 for missing usage', () => {
+    const response = {} as ChatCompletion;
+    const usage = mapResponseUsage(response);
+    expect(usage.inputTokens).toBe(0);
+    expect(usage.outputTokens).toBe(0);
+    expect(usage.totalTokens).toBe(0);
+  });
+});
+
+// ============================================================================
+// mapStreamChunk
+// ============================================================================
+
+describe('mapStreamChunk', () => {
+  it('emits message_start on first chunk', () => {
+    const chunk = {
+      model: 'gpt-4',
+      choices: [{ delta: { content: 'Hi' }, index: 0, finish_reason: null }],
+    } as ChatCompletionChunk;
+    const result = mapStreamChunk(chunk, 0, false);
+    expect(result[0]?.type).toBe('message_start');
+  });
+
+  it('does not emit message_start on subsequent chunks', () => {
+    const chunk = {
+      model: 'gpt-4',
+      choices: [{ delta: { content: 'more' }, index: 0, finish_reason: null }],
+    } as ChatCompletionChunk;
+    const result = mapStreamChunk(chunk, 1, true);
+    expect(result.some((c) => c.type === 'message_start')).toBe(false);
+  });
+
+  it('handles empty choices', () => {
+    const chunk = { model: 'gpt-4', choices: [] } as unknown as ChatCompletionChunk;
+    const result = mapStreamChunk(chunk, 0, true);
+    expect(result).toEqual([]);
+  });
+
+  it('emits content_block_delta for text', () => {
+    const chunk = {
+      model: 'gpt-4',
+      choices: [{ delta: { content: 'text' }, index: 0, finish_reason: null }],
+    } as ChatCompletionChunk;
+    const result = mapStreamChunk(chunk, 0, true);
+    expect(result.some((c) => c.type === 'content_block_delta')).toBe(true);
+  });
+
+  it('emits message_stop on finish', () => {
+    const chunk = {
+      model: 'gpt-4',
+      choices: [{ delta: {}, index: 0, finish_reason: 'stop' }],
+    } as ChatCompletionChunk;
+    const result = mapStreamChunk(chunk, 0, true);
+    expect(result.some((c) => c.type === 'message_stop')).toBe(true);
+  });
+});
