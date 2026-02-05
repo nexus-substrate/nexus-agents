@@ -168,11 +168,11 @@ describe('QualityConstraintStage', () => {
       expect(() => {
         stage.recordOutcome({
           selectedCli: 'claude',
+          task: 'test task',
           success: true,
           qualityScore: 0.9,
           latencyMs: 1000,
-          tokenCount: 500,
-          costUsd: 0.02,
+          tokensUsed: 500,
         });
       }).not.toThrow();
     });
