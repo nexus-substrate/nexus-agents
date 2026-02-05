@@ -253,17 +253,17 @@ const count = stats.total;
 
 Once all routing stages are validated, these routers should be deprecated:
 
-| Router           | Stage Replacement      | Status                |
-| ---------------- | ---------------------- | --------------------- |
-| BudgetRouter     | BudgetFilterStage      | Ready to deprecate    |
-| ZeroRouter       | ZeroRouterStage        | Ready to deprecate    |
-| PreferenceRouter | PreferenceStage        | Ready to deprecate    |
-| TopsisRouter     | TopsisRouterStage      | Ready to deprecate    |
-| ConfidenceRouter | ConfidenceCascadeStage | Stage not implemented |
-| TaskRouter       | CapabilityMatchStage   | Stage not implemented |
-| QualityRouter    | QualityConstraintStage | Stage not implemented |
+| Router           | Stage Replacement      | Status                      |
+| ---------------- | ---------------------- | --------------------------- |
+| BudgetRouter     | BudgetFilterStage      | Ready to deprecate          |
+| ZeroRouter       | ZeroRouterStage        | Ready to deprecate          |
+| PreferenceRouter | PreferenceStage        | Ready to deprecate          |
+| TopsisRouter     | TopsisRouterStage      | Ready to deprecate          |
+| ConfidenceRouter | ConfidenceCascadeStage | ✅ Implemented (Issue #755) |
+| TaskRouter       | CapabilityMatchStage   | ✅ Implemented (Issue #755) |
+| QualityRouter    | QualityConstraintStage | ✅ Implemented (Issue #755) |
 
-**Action Required**: Create ConfidenceStage, CapabilityMatchStage, and QualityConstraintStage before marking old routers as deprecated.
+**Status**: All replacement stages implemented. Integration with CompositeRouter complete (disabled by default via feature flags). Ready for final deprecation of legacy routers once stages are validated in production.
 
 ## Metrics
 
@@ -272,7 +272,7 @@ Once all routing stages are validated, these routers should be deprecated:
 - **v3.0 interface/type removals**: 11
 - **v3.0 function/method removals**: 11
 - **v3.0 field/constant removals**: 14
-- **Awaiting migration (routers)**: 7
+- **Awaiting validation (routers)**: 7 (all replacement stages implemented)
 
 ## Removal Checklist
 
@@ -286,5 +286,5 @@ Before removing any deprecated item:
 
 ---
 
-_Updated: 2026-02-04 (Issue #678 - complete audit)_
+_Updated: 2026-02-05 (Issue #755 - replacement stages implemented)_
 _Next review: Before v3.0 release_
