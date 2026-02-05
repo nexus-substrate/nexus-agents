@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "generated": "2026-02-04T13:53:50.519Z",
+  "generated": "2026-02-05T03:28:41.172Z",
   "generator": "scripts/generate-repo-index.ts",
   "packageVersion": "2.6.0",
   "cli": {
@@ -76,6 +76,12 @@
         "name": "learning-metrics",
         "type": "sync",
         "handler": "handleLearningMetricsCommand",
+        "file": "src/cli-commands-handlers.ts"
+      },
+      {
+        "name": "memory-benchmark",
+        "type": "async",
+        "handler": "handleMemoryBenchmarkCommand",
         "file": "src/cli-commands-handlers.ts"
       },
       {
@@ -225,6 +231,14 @@
       {
         "name": "list_workflows",
         "file": "src/mcp/tools/list-workflows.ts"
+      },
+      {
+        "name": "memory_query",
+        "file": "src/mcp/tools/memory-query.ts"
+      },
+      {
+        "name": "memory_stats",
+        "file": "src/mcp/tools/memory-stats.ts"
       },
       {
         "name": "orchestrate",

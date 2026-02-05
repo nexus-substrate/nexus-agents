@@ -1,6 +1,6 @@
 # Repository Capabilities Index
 
-**Generated:** 2026-02-04T13:53:50.519Z
+**Generated:** 2026-02-05T03:28:41.172Z
 **Package Version:** 2.6.0
 **Generator:** `scripts/generate-repo-index.ts`
 
@@ -9,7 +9,7 @@
 
 ---
 
-## CLI Commands (32)
+## CLI Commands (33)
 
 Binary: `nexus-agents`
 
@@ -27,6 +27,7 @@ Binary: `nexus-agents`
 | `index` | async | `handleIndexCommand` | `src/cli-commands-handlers.ts` |
 | `issue` | sync | `handleIssueCommand` | `src/cli-commands-handlers.ts` |
 | `learning-metrics` | sync | `handleLearningMetricsCommand` | `src/cli-commands-handlers.ts` |
+| `memory-benchmark` | async | `handleMemoryBenchmarkCommand` | `src/cli-commands-handlers.ts` |
 | `orchestrate` | async | `handleOrchestrateCommand` | `src/cli-commands-handlers.ts` |
 | `release-announce` | async | `handleReleaseAnnounceCommand` | `src/cli-commands-handlers.ts` |
 | `release-notes` | async | `handleReleaseNotesCommand` | `src/cli-commands-handlers.ts` |
@@ -50,7 +51,7 @@ Binary: `nexus-agents`
 
 ---
 
-## MCP Tools (13)
+## MCP Tools (15)
 
 | Tool | Source File |
 | ------ | ------------- |
@@ -60,6 +61,8 @@ Binary: `nexus-agents`
 | `execute_expert` | `src/mcp/tools/execute-expert.ts` |
 | `list_experts` | `src/mcp/tools/list-experts.ts` |
 | `list_workflows` | `src/mcp/tools/list-workflows.ts` |
+| `memory_query` | `src/mcp/tools/memory-query.ts` |
+| `memory_stats` | `src/mcp/tools/memory-stats.ts` |
 | `orchestrate` | `src/mcp/tools/orchestrate.ts` |
 | `research_add` | `src/mcp/tools/research-add.ts` |
 | `research_analyze` | `src/mcp/tools/research-analyze.ts` |
