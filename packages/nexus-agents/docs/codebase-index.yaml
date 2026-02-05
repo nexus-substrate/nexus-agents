@@ -2,11 +2,11 @@
 # Generated automatically - do not edit manually
 
 schemaVersion: '1.0'
-generatedAt: 2026-02-04T13:10:54-05:00
+generatedAt: 2026-02-05T10:12:30-05:00
 stats:
-  totalFiles: 1456
-  totalLines: 396174
-  totalExports: 14405
+  totalFiles: 1481
+  totalLines: 404206
+  totalExports: 14562
   moduleCount: 27
   externalPackages:
     - '@anthropic-ai/sdk'
@@ -45,11 +45,27 @@ modules:
     name: root
     path: .
     purpose:
-      nexus-agents CLI Command Handlers - Complex Commands Handlers for commands with multiple subcommands or complex
-      argument processing.; CLI Command Handlers Integration Tests Tests for the config command routing in
-      cli-commands-handlers.ts.; nexus-agents CLI Command Handlers Individual command handler implementations extracted
-      from cli-commands.ts.
+      nexus-agents CLI Auth Handler Handler for authentication-related CLI commands.; nexus-agents CLI Command
+      Handlers - Complex Commands Handlers for commands with multiple subcommands or complex argument processing.; CLI
+      Command Handlers Integration Tests Tests for the config command routing in cli-commands-handlers.ts.
     files:
+      - path: cli-auth-handler.ts
+        lines: 23
+        category: implementation
+        exports:
+          - name: handleAuthCommand
+            kind: function
+            isReExport: false
+        dependencies:
+          - specifier: ./cli/index.js
+            isExternal: false
+            imports:
+              - authCommand
+          - specifier: ./cli-types.js
+            isExternal: false
+            imports:
+              - ParsedCliArgs
+        description: nexus-agents CLI Auth Handler Handler for authentication-related CLI commands.
       - path: cli-commands-handlers-complex.ts
         lines: 191
         category: implementation
@@ -334,7 +350,7 @@ modules:
               - IndexSubcommand
         description: nexus-agents CLI Commands - Validators Type validation functions for CLI command arguments.
       - path: cli-commands.ts
-        lines: 216
+        lines: 228
         category: implementation
         exports:
           - name: printHelp
@@ -454,6 +470,10 @@ modules:
             kind: unknown
             isReExport: true
             sourceModule: ./cli-commands-handlers.js
+          - name: handleAuthCommand
+            kind: unknown
+            isReExport: true
+            sourceModule: ./cli-auth-handler.js
           - name: handleReleaseNotesCommand
             kind: unknown
             isReExport: true
@@ -478,6 +498,10 @@ modules:
             kind: unknown
             isReExport: true
             sourceModule: ./cli/capabilities-command.js
+          - name: handleMemoryBenchmarkCommand
+            kind: unknown
+            isReExport: true
+            sourceModule: ./cli/memory-benchmark-command.js
           - name: handleStatusCommand
             kind: unknown
             isReExport: true
@@ -521,6 +545,10 @@ modules:
               - handleEvaluateCommand
               - handleIssueCommand
               - handleFitnessAuditCommand
+          - specifier: ./cli-auth-handler.js
+            isExternal: false
+            imports:
+              - handleAuthCommand
           - specifier: ./cli-release-handlers.js
             isExternal: false
             imports:
@@ -543,9 +571,13 @@ modules:
             isExternal: false
             imports:
               - handleStatusCommand
+          - specifier: ./cli/memory-benchmark-command.js
+            isExternal: false
+            imports:
+              - handleMemoryBenchmarkCommand
         description: nexus-agents CLI Commands Command dispatch and routing for the CLI.
       - path: cli-help-text.ts
-        lines: 371
+        lines: 383
         category: implementation
         exports:
           - name: HELP_TEXT
@@ -632,6 +664,76 @@ modules:
               - isValidScaffoldType
               - printScaffoldUsage
         description: Scaffold Command Handler Command handler for the scaffold CLI command.
+      - path: cli-server-audit.test.ts
+        lines: 92
+        category: test
+        exports: []
+        dependencies:
+          - specifier: vitest
+            isExternal: true
+            imports:
+              - describe
+              - it
+              - expect
+              - vi
+          - specifier: ./cli-server-audit.js
+            isExternal: false
+            imports:
+              - initializeAuditLogger
+          - specifier: ./core/index.js
+            isExternal: false
+            imports:
+              - ILogger
+        description: CLI Server Audit Integration Tests Tests for audit logger initialization from security configuration.
+      - path: cli-server-audit.ts
+        lines: 141
+        category: implementation
+        exports:
+          - name: initializeAuditLogger
+            kind: function
+            isReExport: false
+          - name: shutdownAuditLogger
+            kind: function
+            isReExport: false
+          - name: getPolicyValues
+            kind: function
+            isReExport: false
+          - name: getRateLimitValues
+            kind: function
+            isReExport: false
+          - name: logSecurityConfig
+            kind: function
+            isReExport: false
+        dependencies:
+          - specifier: node:path
+            isExternal: true
+            imports:
+              - join
+          - specifier: node:os
+            isExternal: true
+            imports:
+              - homedir
+          - specifier: ./core/index.js
+            isExternal: false
+            imports:
+              - ILogger
+          - specifier: ./audit/index.js
+            isExternal: false
+            imports:
+              - createAuditLogger
+              - AuditLogger
+          - specifier: ./config/index.js
+            isExternal: false
+            imports:
+              - SecurityConfig
+              - AppConfig
+          - specifier: ./mcp/middleware/index.js
+            isExternal: false
+            imports:
+              - createDefaultPolicyFirewall
+        description:
+          nexus-agents CLI Server Audit & Security Config Integration Initializes structured audit logging and
+          security configuration helpers.
       - path: cli-server-experts.ts
         lines: 240
         category: implementation
@@ -756,7 +858,7 @@ modules:
           nexus-agents CLI Server - Lifecycle Helpers Helper functions for server lifecycle events and SwarmObserver
           management.
       - path: cli-server-rest.test.ts
-        lines: 114
+        lines: 157
         category: test
         exports: []
         dependencies:
@@ -769,6 +871,18 @@ modules:
               - vi
               - beforeEach
               - afterEach
+          - specifier: node:fs
+            isExternal: true
+            imports:
+              - '* as fs'
+          - specifier: node:path
+            isExternal: true
+            imports:
+              - '* as path'
+          - specifier: node:os
+            isExternal: true
+            imports:
+              - tmpdir
           - specifier: ./cli-server-rest.js
             isExternal: false
             imports:
@@ -776,16 +890,20 @@ modules:
               - startRestApiServer
               - stopRestApiServer
               - logRestApiConfig
+              - loadOrGenerateApiKey
           - specifier: ./core/index.js
             isExternal: false
             imports:
               - ILogger
         description: Tests for cli-server-rest REST API integration module.
       - path: cli-server-rest.ts
-        lines: 134
+        lines: 186
         category: implementation
         exports:
           - name: extractRestConfig
+            kind: function
+            isReExport: false
+          - name: loadOrGenerateApiKey
             kind: function
             isReExport: false
           - name: startRestApiServer
@@ -801,6 +919,22 @@ modules:
             kind: interface
             isReExport: false
         dependencies:
+          - specifier: node:fs
+            isExternal: true
+            imports:
+              - '* as fs'
+          - specifier: node:path
+            isExternal: true
+            imports:
+              - '* as path'
+          - specifier: node:crypto
+            isExternal: true
+            imports:
+              - '* as crypto'
+          - specifier: node:os
+            isExternal: true
+            imports:
+              - homedir
           - specifier: ./core/index.js
             isExternal: false
             imports:
@@ -810,6 +944,10 @@ modules:
             imports:
               - RestApiServer
               - RestApiServerOptions
+          - specifier: ./api/rest-types.js
+            isExternal: false
+            imports:
+              - ApiKeyConfig
           - specifier: ./config/index.js
             isExternal: false
             imports:
@@ -958,7 +1096,7 @@ modules:
               - HazardSeverity
         description: nexus-agents CLI Server STPA Integration STPA safety analysis integration for tool registration.
       - path: cli-server-tools.ts
-        lines: 392
+        lines: 477
         category: implementation
         exports:
           - name: registerMcpTools
@@ -998,6 +1136,8 @@ modules:
               - registerResearchDiscoverTool
               - registerResearchAnalyzeTool
               - registerResearchCatalogReviewTool
+              - registerMemoryQueryTool
+              - registerMemoryStatsTool
               - createDefaultDeps
           - specifier: ./mcp/tools/orchestrate.js
             isExternal: false
@@ -1028,7 +1168,7 @@ modules:
               - setGlobalToolRateLimiterFactory
         description: nexus-agents CLI Server Tool Registration MCP tool registration and configuration.
       - path: cli-server.ts
-        lines: 573
+        lines: 530
         category: implementation
         exports:
           - name: setupShutdownHandlers
@@ -1038,9 +1178,6 @@ modules:
             kind: function
             isReExport: false
           - name: validateModeOrExit
-            kind: function
-            isReExport: false
-          - name: logSecurityConfig
             kind: function
             isReExport: false
           - name: startServer
@@ -1108,7 +1245,7 @@ modules:
           - specifier: ./mcp/middleware/index.js
             isExternal: false
             imports:
-              - createDefaultPolicyFirewall
+              - IPolicyFirewall
           - specifier: ./cli-server-lifecycle.js
             isExternal: false
             imports:
@@ -1161,9 +1298,20 @@ modules:
             isExternal: false
             imports:
               - shutdownToolMemory
+          - specifier: ./cli-server-audit.js
+            isExternal: false
+            imports:
+              - initializeAuditLogger
+              - shutdownAuditLogger
+              - logSecurityConfig
+              - getPolicyValues
+          - specifier: ./audit/index.js
+            isExternal: false
+            imports:
+              - AuditLogger
         description: nexus-agents CLI Server Server startup and shutdown handling for the CLI.
       - path: cli-types.ts
-        lines: 345
+        lines: 349
         category: types
         exports:
           - name: isValidCommand
@@ -1299,15 +1447,16 @@ modules:
         dependencies: []
         description: nexus-agents - Version constant Standalone version export to avoid loading the entire package.
     stats:
-      fileCount: 26
-      totalLines: 5785
-      exportCount: 154
-      internalDeps: 93
-      externalDeps: 9
+      fileCount: 29
+      totalLines: 6206
+      exportCount: 162
+      internalDeps: 106
+      externalDeps: 19
     dependsOn:
       - adapters
       - agents
       - api
+      - audit
       - cli
       - cli-adapters
       - config
@@ -1973,7 +2122,7 @@ modules:
               - StopReason
         description: nexus-agents/adapters - Gemini Type Utilities Type mappings and helper functions for the Gemini adapter.
       - path: adapters/index.ts
-        lines: 149
+        lines: 151
         category: index
         exports:
           - name: AdapterFactory
@@ -2592,7 +2741,7 @@ modules:
               - ModelCapability
         description: nexus-agents/adapters - OpenAI Type Helpers Type definitions and constants for OpenAI adapter.
       - path: adapters/quality-router.test.ts
-        lines: 408
+        lines: 410
         category: test
         exports: []
         dependencies:
@@ -2623,7 +2772,7 @@ modules:
               - CapabilityProfile
         description: Tests for Quality-Constrained Router.
       - path: adapters/quality-router.ts
-        lines: 424
+        lines: 438
         category: implementation
         exports:
           - name: createQualityRouter
@@ -3093,7 +3242,7 @@ modules:
         description: nexus-agents/adapters - Streaming Utilities AsyncIterator-based streaming utilities for model responses.
     stats:
       fileCount: 35
-      totalLines: 12848
+      totalLines: 12866
       exportCount: 258
       internalDeps: 74
       externalDeps: 23
@@ -22145,7 +22294,7 @@ modules:
         dependencies: []
         description: nexus-agents/api - REST API Module Fastify-based REST API gateway for non-MCP clients.
       - path: api/rest-server.test.ts
-        lines: 434
+        lines: 483
         category: test
         exports: []
         dependencies:
@@ -22163,7 +22312,7 @@ modules:
               - RestApiServer
         description: REST API Server Tests
       - path: api/rest-server.ts
-        lines: 356
+        lines: 379
         category: implementation
         exports:
           - name: createRestApiServer
@@ -22228,7 +22377,7 @@ modules:
               - registerRoutes
         description: nexus-agents/api - REST API Server Fastify-based REST API gateway exposing nexus-agents capabilities.
       - path: api/rest-types.ts
-        lines: 313
+        lines: 318
         category: types
         exports:
           - name: createApiSuccessSchema
@@ -22730,7 +22879,7 @@ modules:
         description: nexus-agents/api - Workflow Route POST /api/v1/workflow endpoint for workflow execution.
     stats:
       fileCount: 17
-      totalLines: 3779
+      totalLines: 3856
       exportCount: 78
       internalDeps: 48
       externalDeps: 26
@@ -23734,6 +23883,89 @@ modules:
             isReExport: false
         dependencies: []
         description: ANSI Output Utilities Consolidated terminal output utilities for CLI commands.
+      - path: cli/auth-command.test.ts
+        lines: 193
+        category: test
+        exports: []
+        dependencies:
+          - specifier: vitest
+            isExternal: true
+            imports:
+              - describe
+              - it
+              - expect
+              - beforeEach
+              - afterEach
+          - specifier: node:fs
+            isExternal: true
+            imports:
+              - existsSync
+              - rmSync
+          - specifier: node:path
+            isExternal: true
+            imports:
+              - join
+          - specifier: node:os
+            isExternal: true
+            imports:
+              - tmpdir
+          - specifier: ./auth-command.js
+            isExternal: false
+            imports:
+              - isValidAuthSubcommand
+              - runAuthInit
+              - runAuthShow
+              - runAuthRotate
+              - runAuthCommand
+        description: nexus-agents/cli - Auth Command Tests Tests for the authentication token management CLI command.
+      - path: cli/auth-command.ts
+        lines: 338
+        category: cli
+        exports:
+          - name: isValidAuthSubcommand
+            kind: function
+            isReExport: false
+          - name: runAuthInit
+            kind: function
+            isReExport: false
+          - name: runAuthShow
+            kind: function
+            isReExport: false
+          - name: runAuthRotate
+            kind: function
+            isReExport: false
+          - name: runAuthCommand
+            kind: function
+            isReExport: false
+          - name: printAuthResult
+            kind: function
+            isReExport: false
+          - name: authCommand
+            kind: function
+            isReExport: false
+          - name: AuthCommandOptions
+            kind: interface
+            isReExport: false
+          - name: AuthCommandResult
+            kind: interface
+            isReExport: false
+          - name: AuthSubcommand
+            kind: type
+            isReExport: false
+        dependencies:
+          - specifier: node:fs
+            isExternal: true
+            imports:
+              - existsSync
+              - statSync
+              - chmodSync
+          - specifier: ../mcp/middleware/auth-handler.js
+            isExternal: false
+            imports:
+              - AuthHandler
+              - getDefaultTokenPath
+              - readStoredToken
+        description: nexus-agents auth command Authentication token management for MCP server.
       - path: cli/bluesky-client.ts
         lines: 122
         category: implementation
@@ -25353,7 +25585,7 @@ modules:
               - IndexCommandResult
         description: nexus-agents/cli - Index Command CLI command to generate and manage the codebase index.
       - path: cli/index.ts
-        lines: 462
+        lines: 474
         category: index
         exports:
           - name: doctorCommand
@@ -26788,6 +27020,46 @@ modules:
             kind: unknown
             isReExport: true
             sourceModule: ./scaffold.js
+          - name: authCommand
+            kind: unknown
+            isReExport: true
+            sourceModule: ./auth-command.js
+          - name: runAuthCommand
+            kind: unknown
+            isReExport: true
+            sourceModule: ./auth-command.js
+          - name: runAuthInit
+            kind: unknown
+            isReExport: true
+            sourceModule: ./auth-command.js
+          - name: runAuthShow
+            kind: unknown
+            isReExport: true
+            sourceModule: ./auth-command.js
+          - name: runAuthRotate
+            kind: unknown
+            isReExport: true
+            sourceModule: ./auth-command.js
+          - name: printAuthResult
+            kind: unknown
+            isReExport: true
+            sourceModule: ./auth-command.js
+          - name: isValidAuthSubcommand
+            kind: unknown
+            isReExport: true
+            sourceModule: ./auth-command.js
+          - name: AuthSubcommand
+            kind: unknown
+            isReExport: true
+            sourceModule: ./auth-command.js
+          - name: AuthCommandOptions
+            kind: unknown
+            isReExport: true
+            sourceModule: ./auth-command.js
+          - name: AuthCommandResult
+            kind: unknown
+            isReExport: true
+            sourceModule: ./auth-command.js
         dependencies: []
         description: nexus-agents/cli - CLI utilities Command implementations for the nexus-agents CLI.
       - path: cli/issue-command.test.ts
@@ -27306,6 +27578,43 @@ modules:
             isReExport: false
         dependencies: []
         description: nexus-agents/cli - Learning Metrics Dashboard Types Type definitions for the learning metrics CLI command.
+      - path: cli/memory-benchmark-command.ts
+        lines: 221
+        category: cli
+        exports:
+          - name: handleMemoryBenchmarkCommand
+            kind: function
+            isReExport: false
+        dependencies:
+          - specifier: ../cli-types.js
+            isExternal: false
+            imports:
+              - ParsedCliArgs
+          - specifier: ./ansi-output.js
+            isExternal: false
+            imports:
+              - colors
+              - symbols
+          - specifier: ../testing/memory-benchmark.js
+            isExternal: false
+            imports:
+              - runMemoryBenchmark
+              - generateSyntheticTestCases
+              - formatBenchmarkResult
+              - validateBenchmarkResults
+              - MemoryBenchmarkResult
+              - BenchmarkThresholds
+          - specifier: ../context/memory-backend-types.js
+            isExternal: false
+            imports:
+              - IMemoryBackend
+              - MemoryEntry
+              - MemoryMetadata
+          - specifier: ../core/index.js
+            isExternal: false
+            imports:
+              - getTimeProvider
+        description: nexus-agents/cli - Memory Benchmark Command CLI command for running memory system benchmarks.
       - path: cli/mode-detector.test.ts
         lines: 370
         category: test
@@ -28042,7 +28351,7 @@ modules:
               - ResearchStatusResult
         description: Research Registry CLI Tests Tests for research command implementations.
       - path: cli/research-command.ts
-        lines: 365
+        lines: 368
         category: cli
         exports:
           - name: isValidResearchSubcommand
@@ -28220,6 +28529,7 @@ modules:
             imports:
               - discoverSemanticScholar
               - discoverPapersWithCode
+              - discoverOpenAlex
           - specifier: ./research-helpers-index-ops.js
             isExternal: false
             imports:
@@ -28660,7 +28970,7 @@ modules:
           Research Quality Scoring Scores discovered research items by relevance, impact, recency, and
           reproducibility to aid prioritization.
       - path: cli/research-helpers-sources-academic.test.ts
-        lines: 191
+        lines: 342
         category: test
         exports: []
         dependencies:
@@ -28678,15 +28988,19 @@ modules:
             imports:
               - discoverSemanticScholar
               - discoverPapersWithCode
+              - discoverOpenAlex
         description: Tests for academic source discovery providers (Semantic Scholar, Papers with Code).
       - path: cli/research-helpers-sources-academic.ts
-        lines: 210
+        lines: 331
         category: util
         exports:
           - name: discoverSemanticScholar
             kind: function
             isReExport: false
           - name: discoverPapersWithCode
+            kind: function
+            isReExport: false
+          - name: discoverOpenAlex
             kind: function
             isReExport: false
         dependencies:
@@ -28703,7 +29017,7 @@ modules:
             imports:
               - DiscoverError
               - DiscoveredSource
-        description: Academic Source Discovery Providers Semantic Scholar and Papers with Code discovery providers.
+        description: Academic Source Discovery Providers Semantic Scholar, Papers with Code, and OpenAlex discovery providers.
       - path: cli/research-helpers-sources-io.ts
         lines: 176
         category: util
@@ -28780,7 +29094,7 @@ modules:
               - scoreRelevance
         description: Tests for research source discovery providers.
       - path: cli/research-helpers-sources.ts
-        lines: 401
+        lines: 409
         category: util
         exports:
           - name: fetchSource
@@ -32100,7 +32414,7 @@ modules:
               - writeLine
         description: nexus-agents vote command Automated Consensus Voting per CLAUDE.md Voting Protocol.
       - path: cli/vote-types.ts
-        lines: 92
+        lines: 94
         category: types
         exports:
           - name: VoteCommandOptions
@@ -32367,7 +32681,7 @@ modules:
           Tests for voter-execution utilities Verifies vote execution helpers including result creation, timeout
           handling, retry logic, and simulation fallback.
       - path: cli/voter-execution.ts
-        lines: 318
+        lines: 319
         category: implementation
         exports:
           - name: validateTimeout
@@ -32453,7 +32767,7 @@ modules:
           nexus-agents voter execution utilities Vote execution helpers including result creation, timeout handling,
           retry logic, and simulation fallback.
       - path: cli/voter-prompts.ts
-        lines: 87
+        lines: 107
         category: implementation
         exports:
           - name: VOTER_SYSTEM_PROMPTS
@@ -33632,17 +33946,18 @@ modules:
           nexus-agents/cli/hooks/handlers - Stop Handler Handles Stop hook events by checking for incomplete tasks
           and optionally generating session summaries.
     stats:
-      fileCount: 192
-      totalLines: 49872
-      exportCount: 1470
-      internalDeps: 469
-      externalDeps: 164
+      fileCount: 195
+      totalLines: 50942
+      exportCount: 1492
+      internalDeps: 476
+      externalDeps: 169
     dependsOn:
       - adapters
       - agents
       - cli-adapters
       - config
       - consensus
+      - context
       - core
       - dogfooding
       - governance
@@ -33654,6 +33969,7 @@ modules:
       - security
       - self-eval
       - swe-bench
+      - testing
       - utils
       - workflows
   cli-adapters:
@@ -34885,13 +35201,22 @@ modules:
               - buildDifficultyOutcome
         description: CompositeRouter outcome recording functions.
       - path: cli-adapters/composite-router-stages.ts
-        lines: 352
+        lines: 485
         category: implementation
         exports:
           - name: analyzeTaskProfile
             kind: function
             isReExport: false
           - name: runBudgetStage
+            kind: function
+            isReExport: false
+          - name: runConfidenceCascadeStageSync
+            kind: function
+            isReExport: false
+          - name: runCapabilityMatchStageSync
+            kind: function
+            isReExport: false
+          - name: runQualityConstraintStageSync
             kind: function
             isReExport: false
           - name: runZeroRouterStage
@@ -34919,6 +35244,15 @@ modules:
             kind: interface
             isReExport: false
           - name: BudgetStageResult
+            kind: interface
+            isReExport: false
+          - name: ConfidenceCascadeStageResult
+            kind: interface
+            isReExport: false
+          - name: CapabilityMatchStageResult
+            kind: interface
+            isReExport: false
+          - name: QualityConstraintStageResult
             kind: interface
             isReExport: false
           - name: LatencyStageResult
@@ -34969,8 +35303,20 @@ modules:
             isExternal: false
             imports:
               - CompositeRoutingError
-              - CompositeRouterConfig
+              - CompositeRouterConfigWithPreference
               - PipelineResult
+          - specifier: ./routing/stages/index.js
+            isExternal: false
+            imports:
+              - ConfidenceCascadeStage
+              - CapabilityMatchStage
+              - QualityConstraintStage
+          - specifier: ./routing/router-stage.js
+            isExternal: false
+            imports:
+              - createRoutingContext
+              - getRemainingCandidates
+              - CliName
           - specifier: ./composite-router-helpers.js
             isExternal: false
             imports:
@@ -34986,7 +35332,7 @@ modules:
               - ZeroRouterStageResult
         description: CompositeRouter pipeline stage execution functions.
       - path: cli-adapters/composite-router-types.ts
-        lines: 234
+        lines: 252
         category: types
         exports:
           - name: CompositeRoutingError
@@ -35063,9 +35409,21 @@ modules:
             isExternal: false
             imports:
               - IOrchestrationObserver
+          - specifier: ./routing/stages/confidence-cascade-stage.js
+            isExternal: false
+            imports:
+              - ConfidenceCascadeConfig
+          - specifier: ./routing/stages/capability-match-stage.js
+            isExternal: false
+            imports:
+              - CapabilityMatchConfig
+          - specifier: ./routing/stages/quality-constraint-stage.js
+            isExternal: false
+            imports:
+              - QualityConstraintConfig
         description: nexus-agents/cli-adapters - CompositeRouter Types Type definitions for the CompositeRouter module.
       - path: cli-adapters/composite-router.test.ts
-        lines: 851
+        lines: 871
         category: test
         exports: []
         dependencies:
@@ -35092,7 +35450,7 @@ modules:
               - CliName
         description: 'nexus-agents/cli-adapters - CompositeRouter Tests (Source: Issue #166, Epic #164)'
       - path: cli-adapters/composite-router.ts
-        lines: 544
+        lines: 593
         category: implementation
         exports:
           - name: createCompositeRouter
@@ -35199,6 +35557,15 @@ modules:
               - IRoutingMemory
               - RoutingMemoryConfig
               - ModelPerformance
+          - specifier: ./routing/stages/index.js
+            isExternal: false
+            imports:
+              - ConfidenceCascadeStage
+              - CapabilityMatchStage
+              - QualityConstraintStage
+              - ConfidenceCascadeConfig
+              - CapabilityMatchConfig
+              - QualityConstraintConfig
           - specifier: ./composite-router-types.js
             isExternal: false
             imports:
@@ -35333,7 +35700,7 @@ modules:
           Confidence Router Types and Constants Type definitions and configuration constants for confidence-aware
           cascade routing based on SATER pattern.
       - path: cli-adapters/confidence-router.test.ts
-        lines: 391
+        lines: 393
         category: test
         exports: []
         dependencies:
@@ -35360,7 +35727,7 @@ modules:
               - CapabilityProfile
         description: Tests for confidence-aware cascade router.
       - path: cli-adapters/confidence-router.ts
-        lines: 357
+        lines: 365
         category: implementation
         exports:
           - name: createConfidenceRouter
@@ -36026,7 +36393,7 @@ modules:
           nexus-agents/cli-adapters - Fallback Chain Registry Configurable fallback chains per task type with metrics
           tracking.
       - path: cli-adapters/index.ts
-        lines: 416
+        lines: 418
         category: index
         exports:
           - name: CliName
@@ -37894,7 +38261,7 @@ modules:
               - TaskProfile
         description: nexus-agents/cli-adapters - Task Router Tests Unit tests for the capability-based task router.
       - path: cli-adapters/router.ts
-        lines: 314
+        lines: 322
         category: implementation
         exports:
           - name: createTaskRouter
@@ -40706,9 +41073,9 @@ modules:
         description: Zero Router Stage Adapts ZeroRouter to the IRouterStage interface for pipeline composition.
     stats:
       fileCount: 124
-      totalLines: 36421
-      exportCount: 1110
-      internalDeps: 347
+      totalLines: 36661
+      exportCount: 1116
+      internalDeps: 353
       externalDeps: 60
     dependsOn:
       - agents
@@ -41973,7 +42340,7 @@ modules:
               - Provider
         description: nexus-agents/config - Model Capabilities Matrix Structured capability definitions for all supported AI models.
       - path: config/routing-config-adapter.test.ts
-        lines: 263
+        lines: 271
         category: test
         exports: []
         dependencies:
@@ -42002,7 +42369,7 @@ modules:
               - RoutingConfig
         description: nexus-agents/config - Routing Config Adapter Tests Tests for adapting YAML routing config to runtime format.
       - path: config/routing-config-adapter.ts
-        lines: 240
+        lines: 244
         category: config
         exports:
           - name: adaptRoutingConfig
@@ -42154,7 +42521,7 @@ modules:
               - z
         description: nexus-agents/config - Observability Configuration Schemas Schemas for EventBus and observability configuration.
       - path: config/schemas-routing.ts
-        lines: 299
+        lines: 309
         category: config
         exports:
           - name: BudgetConstraints
@@ -42223,7 +42590,7 @@ modules:
           nexus-agents/config - Routing Configuration Schemas Zod schemas for routing configuration exposed via
           nexus-agents.yaml.
       - path: config/schemas-security.ts
-        lines: 131
+        lines: 172
         category: config
         exports:
           - name: PolicyConfig
@@ -42242,6 +42609,9 @@ modules:
             kind: type
             isReExport: false
           - name: SecurityConfig
+            kind: type
+            isReExport: false
+          - name: AuthConfig
             kind: type
             isReExport: false
           - name: PolicyConfigSchema
@@ -42747,8 +43117,8 @@ modules:
           product types to skill bundles and expert weig...
     stats:
       fileCount: 26
-      totalLines: 5665
-      exportCount: 427
+      totalLines: 5728
+      exportCount: 428
       internalDeps: 33
       externalDeps: 26
     dependsOn:
@@ -43032,7 +43402,7 @@ modules:
               - AgentPerformance
         description: nexus-agents/consensus - Unit Tests Tests for consensus engine and voting strategies.
       - path: consensus/engine.ts
-        lines: 518
+        lines: 519
         category: implementation
         exports:
           - name: createConsensusEngine
@@ -44701,7 +45071,7 @@ modules:
           weighted Byzantine fault-tolerant voting.
     stats:
       fileCount: 26
-      totalLines: 9871
+      totalLines: 9872
       exportCount: 360
       internalDeps: 64
       externalDeps: 16
@@ -45881,6 +46251,125 @@ modules:
         description:
           nexus-agents/context - Belief Memory Interface Interface definition for Hindsight Belief Memory operations,
           statistics types, and configuration option...
+      - path: context/belief-memory-persistence.test.ts
+        lines: 444
+        category: test
+        exports: []
+        dependencies:
+          - specifier: vitest
+            isExternal: true
+            imports:
+              - describe
+              - it
+              - expect
+              - vi
+              - beforeEach
+          - specifier: node:fs
+            isExternal: true
+            imports:
+              - '* as fs'
+          - specifier: ../core/logger.js
+            isExternal: false
+            imports:
+              - ILogger
+          - specifier: ./belief-core-types.js
+            isExternal: false
+            imports:
+              - Belief
+          - specifier: ./belief-update-types.js
+            isExternal: false
+            imports:
+              - BeliefUpdate
+          - specifier: ./belief-hindsight-types.js
+            isExternal: false
+            imports:
+              - Counterfactual
+              - HindsightRecord
+          - specifier: ./belief-memory-persistence.js
+            isExternal: false
+            imports:
+              - createSnapshot
+              - hydrateSnapshot
+              - saveBeliefSnapshot
+              - loadBeliefSnapshot
+              - BeliefMemoryData
+              - BeliefSnapshot
+        description: Tests for belief-memory-persistence module.
+      - path: context/belief-memory-persistence.ts
+        lines: 340
+        category: implementation
+        exports:
+          - name: createSnapshot
+            kind: function
+            isReExport: false
+          - name: hydrateSnapshot
+            kind: function
+            isReExport: false
+          - name: saveBeliefSnapshot
+            kind: function
+            isReExport: false
+          - name: loadBeliefSnapshot
+            kind: function
+            isReExport: false
+          - name: BeliefSnapshot
+            kind: unknown
+            isReExport: true
+            sourceModule: ./belief-persistence-types.js
+          - name: BeliefMemoryData
+            kind: unknown
+            isReExport: true
+            sourceModule: ./belief-persistence-types.js
+          - name: HydratedBeliefData
+            kind: unknown
+            isReExport: true
+            sourceModule: ./belief-persistence-types.js
+        dependencies:
+          - specifier: node:fs
+            isExternal: true
+            imports:
+              - '* as fs'
+          - specifier: node:os
+            isExternal: true
+            imports:
+              - '* as os'
+          - specifier: node:path
+            isExternal: true
+            imports:
+              - '* as path'
+          - specifier: ../core/result.js
+            isExternal: false
+            imports:
+              - Result
+          - specifier: ../core/logger.js
+            isExternal: false
+            imports:
+              - ILogger
+          - specifier: ./belief-core-types.js
+            isExternal: false
+            imports:
+              - Belief
+          - specifier: ./belief-update-types.js
+            isExternal: false
+            imports:
+              - BeliefUpdate
+          - specifier: ./belief-hindsight-types.js
+            isExternal: false
+            imports:
+              - Counterfactual
+              - HindsightRecord
+          - specifier: ./belief-persistence-types.js
+            isExternal: false
+            imports:
+              - BeliefSnapshotSchema
+              - BeliefSnapshot
+              - BeliefMemoryData
+              - HydratedBeliefData
+              - SerializedBelief
+              - SerializedBeliefUpdate
+              - SerializedCounterfactual
+        description:
+          nexus-agents/context - Belief Memory Persistence Handles disk serialization/deserialization for
+          HindsightBeliefMemory.
       - path: context/belief-memory-recall.ts
         lines: 183
         category: implementation
@@ -46019,7 +46508,7 @@ modules:
           nexus-agents/context - Hindsight Belief Memory Tests Comprehensive tests for the Hindsight Belief Memory
           implementation.
       - path: context/belief-memory.ts
-        lines: 396
+        lines: 442
         category: implementation
         exports:
           - name: HindsightBeliefMemory
@@ -46161,9 +46650,63 @@ modules:
               - adjustConfidenceInternal
               - pruneSupersededInternal
               - ReflectDataStores
+          - specifier: ./belief-memory-persistence.js
+            isExternal: false
+            imports:
+              - BeliefMemoryData
+              - HydratedBeliefData
         description:
           nexus-agents/context - Hindsight Belief Memory Implements the Hindsight Belief Memory layer for reasoning
           agents.
+      - path: context/belief-persistence-types.ts
+        lines: 197
+        category: types
+        exports:
+          - name: SerializedBelief
+            kind: interface
+            isReExport: false
+          - name: SerializedBeliefUpdate
+            kind: interface
+            isReExport: false
+          - name: SerializedCounterfactual
+            kind: interface
+            isReExport: false
+          - name: SerializedHindsightRecord
+            kind: interface
+            isReExport: false
+          - name: BeliefSnapshot
+            kind: interface
+            isReExport: false
+          - name: BeliefMemoryData
+            kind: interface
+            isReExport: false
+          - name: HydratedBeliefData
+            kind: interface
+            isReExport: false
+          - name: BeliefSnapshotSchema
+            kind: const
+            isReExport: false
+        dependencies:
+          - specifier: zod
+            isExternal: true
+            imports:
+              - z
+          - specifier: ./belief-core-types.js
+            isExternal: false
+            imports:
+              - Belief
+          - specifier: ./belief-update-types.js
+            isExternal: false
+            imports:
+              - BeliefUpdate
+          - specifier: ./belief-hindsight-types.js
+            isExternal: false
+            imports:
+              - Counterfactual
+              - HindsightRecord
+        description:
+          nexus-agents/context - Belief Persistence Types & Schema Type definitions, Zod validation schema, and data
+          interfaces for belief memory disk persisten...
       - path: context/belief-types.ts
         lines: 62
         category: types
@@ -49189,11 +49732,11 @@ modules:
           nexus-agents/context - Work Balancer Automatic work balancing that assigns tasks based on capability
           matching AND available capacity using a weighted...
     stats:
-      fileCount: 67
-      totalLines: 23611
-      exportCount: 696
-      internalDeps: 229
-      externalDeps: 50
+      fileCount: 70
+      totalLines: 24638
+      exportCount: 711
+      internalDeps: 244
+      externalDeps: 56
     dependsOn:
       - cli-adapters
       - core
@@ -60654,7 +61197,7 @@ modules:
           EventBus to MCP Server Bridge Bridges EventBus events to SwarmObserver for observability in Claude Desktop
           context.
       - path: mcp/index.ts
-        lines: 239
+        lines: 250
         category: index
         exports:
           - name: createServer
@@ -61213,6 +61756,46 @@ modules:
             kind: unknown
             isReExport: true
             sourceModule: ./tools/index.js
+          - name: registerMemoryQueryTool
+            kind: unknown
+            isReExport: true
+            sourceModule: ./tools/index.js
+          - name: MemoryQueryInputSchema
+            kind: unknown
+            isReExport: true
+            sourceModule: ./tools/index.js
+          - name: MemoryQueryInput
+            kind: unknown
+            isReExport: true
+            sourceModule: ./tools/index.js
+          - name: MemoryQueryDeps
+            kind: unknown
+            isReExport: true
+            sourceModule: ./tools/index.js
+          - name: MemoryQueryResponse
+            kind: unknown
+            isReExport: true
+            sourceModule: ./tools/index.js
+          - name: registerMemoryStatsTool
+            kind: unknown
+            isReExport: true
+            sourceModule: ./tools/index.js
+          - name: MemoryStatsInputSchema
+            kind: unknown
+            isReExport: true
+            sourceModule: ./tools/index.js
+          - name: MemoryStatsInput
+            kind: unknown
+            isReExport: true
+            sourceModule: ./tools/index.js
+          - name: MemoryStatsDeps
+            kind: unknown
+            isReExport: true
+            sourceModule: ./tools/index.js
+          - name: MemoryStatsResponse
+            kind: unknown
+            isReExport: true
+            sourceModule: ./tools/index.js
           - name: HazardCategory
             kind: unknown
             isReExport: true
@@ -61501,8 +62084,192 @@ modules:
             imports:
               - VERSION
         description: nexus-agents/mcp - MCP Server Main MCP server implementation for Nexus Agents orchestration.
+      - path: mcp/middleware/adapter-availability.test.ts
+        lines: 217
+        category: test
+        exports: []
+        dependencies:
+          - specifier: vitest
+            isExternal: true
+            imports:
+              - describe
+              - it
+              - expect
+              - beforeEach
+              - afterEach
+              - vi
+          - specifier: ./adapter-availability.js
+            isExternal: false
+            imports:
+              - checkAdapterAvailability
+              - requireAdapterAvailable
+              - hasApiKey
+              - getAvailableApiKeyProviders
+              - getSharedCliCache
+              - resetSharedCliCache
+          - specifier: ../../cli-adapters/factory.js
+            isExternal: false
+            imports:
+              - getAvailableClis
+        description: Tests for Adapter Availability Middleware
+      - path: mcp/middleware/adapter-availability.ts
+        lines: 265
+        category: implementation
+        exports:
+          - name: getSharedCliCache
+            kind: function
+            isReExport: false
+          - name: resetSharedCliCache
+            kind: function
+            isReExport: false
+          - name: checkAdapterAvailability
+            kind: function
+            isReExport: false
+          - name: requireAdapterAvailable
+            kind: function
+            isReExport: false
+          - name: hasApiKey
+            kind: function
+            isReExport: false
+          - name: getAvailableApiKeyProviders
+            kind: function
+            isReExport: false
+          - name: AdapterAvailabilityConfig
+            kind: interface
+            isReExport: false
+          - name: AdapterAvailabilityResult
+            kind: interface
+            isReExport: false
+        dependencies:
+          - specifier: ../../cli-adapters/factory.js
+            isExternal: false
+            imports:
+              - getAvailableClis
+          - specifier: ../../cli-adapters/cli-detection-cache.js
+            isExternal: false
+            imports:
+              - ICliDetectionCache
+          - specifier: ../../core/index.js
+            isExternal: false
+            imports:
+              - ILogger
+        description:
+          nexus-agents/mcp - Adapter Availability Middleware Centralized authentication and adapter availability
+          checking for MCP tools.
+      - path: mcp/middleware/auth-handler.test.ts
+        lines: 235
+        category: test
+        exports: []
+        dependencies:
+          - specifier: vitest
+            isExternal: true
+            imports:
+              - describe
+              - it
+              - expect
+              - beforeEach
+              - afterEach
+          - specifier: node:fs
+            isExternal: true
+            imports:
+              - existsSync
+              - rmSync
+              - mkdirSync
+          - specifier: node:path
+            isExternal: true
+            imports:
+              - join
+          - specifier: node:os
+            isExternal: true
+            imports:
+              - tmpdir
+          - specifier: ./auth-handler.js
+            isExternal: false
+            imports:
+              - AuthHandler
+              - generateSecureToken
+              - validateToken
+              - extractBearerToken
+              - readStoredToken
+              - writeToken
+              - createAuthHandler
+        description: nexus-agents/mcp - Auth Handler Tests Tests for the authentication handler middleware.
+      - path: mcp/middleware/auth-handler.ts
+        lines: 298
+        category: implementation
+        exports:
+          - name: getDefaultTokenPath
+            kind: function
+            isReExport: false
+          - name: generateSecureToken
+            kind: function
+            isReExport: false
+          - name: readStoredToken
+            kind: function
+            isReExport: false
+          - name: writeToken
+            kind: function
+            isReExport: false
+          - name: validateToken
+            kind: function
+            isReExport: false
+          - name: extractBearerToken
+            kind: function
+            isReExport: false
+          - name: createAuthHandler
+            kind: function
+            isReExport: false
+          - name: createUnauthorizedResponse
+            kind: function
+            isReExport: false
+          - name: AuthHandler
+            kind: class
+            isReExport: false
+          - name: AuthResult
+            kind: interface
+            isReExport: false
+          - name: AuthHandlerConfig
+            kind: interface
+            isReExport: false
+        dependencies:
+          - specifier: node:crypto
+            isExternal: true
+            imports:
+              - randomBytes
+              - timingSafeEqual
+          - specifier: node:fs
+            isExternal: true
+            imports:
+              - readFileSync
+              - writeFileSync
+              - existsSync
+              - mkdirSync
+          - specifier: node:path
+            isExternal: true
+            imports:
+              - join
+              - dirname
+          - specifier: node:os
+            isExternal: true
+            imports:
+              - homedir
+          - specifier: ../../core/index.js
+            isExternal: false
+            imports:
+              - ILogger
+          - specifier: ../../config/schemas-security.js
+            isExternal: false
+            imports:
+              - AuthConfig
+          - specifier: ./request-context.js
+            isExternal: false
+            imports:
+              - AuthenticatedUser
+        description:
+          nexus-agents/mcp - Authentication Handler Middleware Provides authentication middleware for network-exposed
+          MCP transports.
       - path: mcp/middleware/index.ts
-        lines: 143
+        lines: 162
         category: index
         exports:
           - name: validateToolInput
@@ -61673,6 +62440,10 @@ modules:
             kind: unknown
             isReExport: true
             sourceModule: ./policy.js
+          - name: AuthenticatedUser
+            kind: unknown
+            isReExport: true
+            sourceModule: ./request-context.js
           - name: CallerInfo
             kind: unknown
             isReExport: true
@@ -61709,6 +62480,50 @@ modules:
             kind: unknown
             isReExport: true
             sourceModule: ./request-context.js
+          - name: AuthResult
+            kind: unknown
+            isReExport: true
+            sourceModule: ./auth-handler.js
+          - name: AuthHandlerConfig
+            kind: unknown
+            isReExport: true
+            sourceModule: ./auth-handler.js
+          - name: AuthHandler
+            kind: unknown
+            isReExport: true
+            sourceModule: ./auth-handler.js
+          - name: getDefaultTokenPath
+            kind: unknown
+            isReExport: true
+            sourceModule: ./auth-handler.js
+          - name: generateSecureToken
+            kind: unknown
+            isReExport: true
+            sourceModule: ./auth-handler.js
+          - name: readStoredToken
+            kind: unknown
+            isReExport: true
+            sourceModule: ./auth-handler.js
+          - name: writeToken
+            kind: unknown
+            isReExport: true
+            sourceModule: ./auth-handler.js
+          - name: validateToken
+            kind: unknown
+            isReExport: true
+            sourceModule: ./auth-handler.js
+          - name: extractBearerToken
+            kind: unknown
+            isReExport: true
+            sourceModule: ./auth-handler.js
+          - name: createAuthHandler
+            kind: unknown
+            isReExport: true
+            sourceModule: ./auth-handler.js
+          - name: createUnauthorizedResponse
+            kind: unknown
+            isReExport: true
+            sourceModule: ./auth-handler.js
           - name: ToolResult
             kind: unknown
             isReExport: true
@@ -62207,7 +63022,7 @@ modules:
               - getTimeProvider
         description: nexus-agents/mcp - Rate Limiter Middleware Token bucket implementation for rate limiting MCP tool calls.
       - path: mcp/middleware/request-context.ts
-        lines: 190
+        lines: 207
         category: implementation
         exports:
           - name: generateRequestId
@@ -62227,6 +63042,9 @@ modules:
             isReExport: false
           - name: isRequestContext
             kind: function
+            isReExport: false
+          - name: AuthenticatedUser
+            kind: interface
             isReExport: false
           - name: CallerInfo
             kind: interface
@@ -62250,7 +63068,7 @@ modules:
           nexus-agents/mcp - Request Context Middleware Provides request ID generation and caller context tracking
           for MCP tools.
       - path: mcp/middleware/secure-handler.test.ts
-        lines: 1215
+        lines: 1379
         category: test
         exports: []
         dependencies:
@@ -62291,7 +63109,7 @@ modules:
               - RateLimiterState
         description: nexus-agents/mcp - Secure Handler Middleware Tests Comprehensive tests for the secure handler middleware.
       - path: mcp/middleware/secure-handler.ts
-        lines: 247
+        lines: 397
         category: implementation
         exports:
           - name: createSecureHandler
@@ -62337,6 +63155,15 @@ modules:
             isExternal: false
             imports:
               - RateLimiter
+          - specifier: ../../audit/audit-types.js
+            isExternal: false
+            imports:
+              - IAuditLogger
+          - specifier: ../../audit/secure-handler-audit.js
+            isExternal: false
+            imports:
+              - actorFromContext
+              - resultToOutcome
         description:
           'nexus-agents/mcp - Secure Handler Middleware Higher-order function that wraps MCP tool handlers with
           security middleware: - RequestContext creation an...'
@@ -63561,7 +64388,7 @@ modules:
               - ConsensusVoteResponse
         description: 'nexus-agents/mcp - Consensus Vote Tool Tests (Source: Issue #500 - Add missing MCP tool test files)'
       - path: mcp/tools/consensus-vote.ts
-        lines: 329
+        lines: 380
         category: implementation
         exports:
           - name: resetCorrelationTracker
@@ -63676,6 +64503,10 @@ modules:
               - createPersistentCorrelationTracker
               - createPersistedProposal
               - saveCorrelationData
+          - specifier: ./tool-memory.js
+            isExternal: false
+            imports:
+              - getToolMemory
           - specifier: ./consensus-vote-types.js
             isExternal: false
             imports:
@@ -63720,7 +64551,7 @@ modules:
               - getCapabilitiesForRole
         description: nexus-agents/mcp - Create Expert Tool Tests
       - path: mcp/tools/create-expert.ts
-        lines: 353
+        lines: 332
         category: implementation
         exports:
           - name: registerCreateExpertTool
@@ -63790,6 +64621,14 @@ modules:
               - Expert
               - BuiltInExpertType
               - BUILT_IN_EXPERTS
+          - specifier: ../../cli-adapters/cli-detection-cache.js
+            isExternal: false
+            imports:
+              - ICliDetectionCache
+          - specifier: ../middleware/adapter-availability.js
+            isExternal: false
+            imports:
+              - requireAdapterAvailable
         description: nexus-agents/mcp - Create Expert Tool MCP tool for creating expert agents dynamically.
       - path: mcp/tools/delegate-to-model-helpers.ts
         lines: 292
@@ -64020,7 +64859,7 @@ modules:
               - DelegateOutput
         description: nexus-agents/mcp - Delegate to Model Tool Tests Tests for the delegate_to_model MCP tool.
       - path: mcp/tools/delegate-to-model.ts
-        lines: 162
+        lines: 187
         category: implementation
         exports:
           - name: registerDelegateToModelTool
@@ -64117,6 +64956,10 @@ modules:
               - successResult
               - errorResult
               - scoreModel
+          - specifier: ./tool-memory.js
+            isExternal: false
+            imports:
+              - getToolMemory
         description: nexus-agents/mcp - Delegate to Model Tool MCP tool for capability-matched task routing.
       - path: mcp/tools/execute-expert.test.ts
         lines: 442
@@ -64150,7 +64993,7 @@ modules:
               - ExecuteExpertDeps
         description: 'nexus-agents/mcp - Execute Expert Tool Tests (Source: Issue #500 - Add missing MCP tool test files)'
       - path: mcp/tools/execute-expert.ts
-        lines: 389
+        lines: 379
         category: implementation
         exports:
           - name: registerExecuteExpertTool
@@ -64213,9 +65056,17 @@ modules:
             isExternal: false
             imports:
               - getAutoCatalog
+          - specifier: ../../cli-adapters/cli-detection-cache.js
+            isExternal: false
+            imports:
+              - ICliDetectionCache
+          - specifier: ../middleware/adapter-availability.js
+            isExternal: false
+            imports:
+              - requireAdapterAvailable
         description: nexus-agents/mcp - Execute Expert Tool MCP tool for executing tasks with previously created expert agents.
       - path: mcp/tools/index.ts
-        lines: 304
+        lines: 323
         category: index
         exports:
           - name: registerTools
@@ -64599,6 +65450,46 @@ modules:
             kind: unknown
             isReExport: true
             sourceModule: ./research-auto-catalog.js
+          - name: registerMemoryQueryTool
+            kind: unknown
+            isReExport: true
+            sourceModule: ./memory-query.js
+          - name: MemoryQueryInputSchema
+            kind: unknown
+            isReExport: true
+            sourceModule: ./memory-query.js
+          - name: MemoryQueryInput
+            kind: unknown
+            isReExport: true
+            sourceModule: ./memory-query.js
+          - name: MemoryQueryDeps
+            kind: unknown
+            isReExport: true
+            sourceModule: ./memory-query.js
+          - name: MemoryQueryResponse
+            kind: unknown
+            isReExport: true
+            sourceModule: ./memory-query.js
+          - name: registerMemoryStatsTool
+            kind: unknown
+            isReExport: true
+            sourceModule: ./memory-stats.js
+          - name: MemoryStatsInputSchema
+            kind: unknown
+            isReExport: true
+            sourceModule: ./memory-stats.js
+          - name: MemoryStatsInput
+            kind: unknown
+            isReExport: true
+            sourceModule: ./memory-stats.js
+          - name: MemoryStatsDeps
+            kind: unknown
+            isReExport: true
+            sourceModule: ./memory-stats.js
+          - name: MemoryStatsResponse
+            kind: unknown
+            isReExport: true
+            sourceModule: ./memory-stats.js
         dependencies:
           - specifier: '@modelcontextprotocol/sdk/server/mcp.js'
             isExternal: true
@@ -64783,6 +65674,272 @@ modules:
               - createSecureHandler
               - HandlerContext
         description: nexus-agents/mcp - List Workflows Tool MCP tool for discovering available workflow templates.
+      - path: mcp/tools/memory-decay.test.ts
+        lines: 300
+        category: test
+        exports: []
+        dependencies:
+          - specifier: vitest
+            isExternal: true
+            imports:
+              - describe
+              - it
+              - expect
+              - beforeEach
+              - afterEach
+              - vi
+          - specifier: ./memory-decay.js
+            isExternal: false
+            imports:
+              - MemoryDecayManager
+              - CrossReferenceTracker
+              - DEFAULT_DECAY_CONFIG
+              - MemoryDecayConfig
+        description: 'Tests for Coordinated Memory Decay (Phase 5 #746)'
+      - path: mcp/tools/memory-decay.ts
+        lines: 542
+        category: implementation
+        exports:
+          - name: CrossReferenceTracker
+            kind: class
+            isReExport: false
+          - name: MemoryDecayManager
+            kind: class
+            isReExport: false
+          - name: MemoryDecayConfig
+            kind: interface
+            isReExport: false
+          - name: DecayRunStats
+            kind: interface
+            isReExport: false
+          - name: DecayAggregateStats
+            kind: interface
+            isReExport: false
+          - name: CrossReference
+            kind: interface
+            isReExport: false
+          - name: DecayStrategy
+            kind: type
+            isReExport: false
+          - name: DEFAULT_DECAY_CONFIG
+            kind: const
+            isReExport: false
+        dependencies:
+          - specifier: ../../core/index.js
+            isExternal: false
+            imports:
+              - ILogger
+          - specifier: ../../context/belief-memory.js
+            isExternal: false
+            imports:
+              - HindsightBeliefMemory
+          - specifier: ../../context/agentic-memory.js
+            isExternal: false
+            imports:
+              - AgenticMemoryBackend
+          - specifier: ../../context/adaptive-memory.js
+            isExternal: false
+            imports:
+              - AdaptiveMemoryBackend
+          - specifier: ../../context/mobimem.js
+            isExternal: false
+            imports:
+              - MobiMem
+        description:
+          nexus-agents/mcp - Coordinated Memory Decay Implements FADE (Forgetting with Adaptive Decay) principles for
+          coordinated memory management across all m...
+      - path: mcp/tools/memory-promotion.ts
+        lines: 246
+        category: implementation
+        exports:
+          - name: MemoryPromoter
+            kind: class
+            isReExport: false
+          - name: MemoryPromotionConfig
+            kind: interface
+            isReExport: false
+          - name: PromotionStats
+            kind: interface
+            isReExport: false
+          - name: DEFAULT_PROMOTION_CONFIG
+            kind: const
+            isReExport: false
+        dependencies:
+          - specifier: ../../core/index.js
+            isExternal: false
+            imports:
+              - ILogger
+          - specifier: ../../context/belief-memory.js
+            isExternal: false
+            imports:
+              - HindsightBeliefMemory
+          - specifier: ../../context/belief-core-types.js
+            isExternal: false
+            imports:
+              - BeliefConfidence
+              - BeliefSourceType
+          - specifier: ../../context/agentic-memory.js
+            isExternal: false
+            imports:
+              - AgenticMemoryBackend
+          - specifier: ../../context/session-memory-types.js
+            isExternal: false
+            imports:
+              - SessionLearning
+          - specifier: ../../context/memory-backend-types.js
+            isExternal: false
+            imports:
+              - MemoryImportance
+        description:
+          'nexus-agents/mcp - Memory Promotion Pipeline Implements automatic memory promotion between layers: -
+          SessionLearning → Belief (high-confidence learnin...'
+      - path: mcp/tools/memory-query.test.ts
+        lines: 90
+        category: test
+        exports: []
+        dependencies:
+          - specifier: vitest
+            isExternal: true
+            imports:
+              - describe
+              - it
+              - expect
+          - specifier: ./memory-query.js
+            isExternal: false
+            imports:
+              - MemoryQueryInputSchema
+              - MemoryQueryInput
+        description: Tests for Memory Query Tool
+      - path: mcp/tools/memory-query.ts
+        lines: 199
+        category: implementation
+        exports:
+          - name: registerMemoryQueryTool
+            kind: function
+            isReExport: false
+          - name: MemoryQueryDeps
+            kind: interface
+            isReExport: false
+          - name: MemoryQueryResponse
+            kind: interface
+            isReExport: false
+          - name: MemoryQueryInput
+            kind: type
+            isReExport: false
+          - name: MemoryQueryInputSchema
+            kind: const
+            isReExport: false
+        dependencies:
+          - specifier: zod
+            isExternal: true
+            imports:
+              - z
+          - specifier: '@modelcontextprotocol/sdk/server/mcp.js'
+            isExternal: true
+            imports:
+              - McpServer
+          - specifier: ../../core/index.js
+            isExternal: false
+            imports:
+              - ILogger
+          - specifier: ../middleware/rate-limiter.js
+            isExternal: false
+            imports:
+              - RateLimiter
+          - specifier: ../../config/schemas.js
+            isExternal: false
+            imports:
+              - SecurityConfig
+          - specifier: ../middleware/tool-wrapper.js
+            isExternal: false
+            imports:
+              - wrapToolWithTimeout
+              - toSdkCallback
+              - getToolTimeout
+          - specifier: ../middleware/secure-handler.js
+            isExternal: false
+            imports:
+              - createSecureHandler
+              - HandlerContext
+          - specifier: ./tool-memory.js
+            isExternal: false
+            imports:
+              - getToolMemory
+              - UnifiedMemoryResult
+        description: nexus-agents/mcp - Memory Query Tool MCP tool for unified memory search across all backends.
+      - path: mcp/tools/memory-stats.test.ts
+        lines: 67
+        category: test
+        exports: []
+        dependencies:
+          - specifier: vitest
+            isExternal: true
+            imports:
+              - describe
+              - it
+              - expect
+          - specifier: ./memory-stats.js
+            isExternal: false
+            imports:
+              - MemoryStatsInputSchema
+              - MemoryStatsInput
+        description: Tests for Memory Stats Tool
+      - path: mcp/tools/memory-stats.ts
+        lines: 261
+        category: implementation
+        exports:
+          - name: registerMemoryStatsTool
+            kind: function
+            isReExport: false
+          - name: MemoryStatsDeps
+            kind: interface
+            isReExport: false
+          - name: MemoryStatsResponse
+            kind: interface
+            isReExport: false
+          - name: MemoryStatsInput
+            kind: type
+            isReExport: false
+          - name: MemoryStatsInputSchema
+            kind: const
+            isReExport: false
+        dependencies:
+          - specifier: zod
+            isExternal: true
+            imports:
+              - z
+          - specifier: '@modelcontextprotocol/sdk/server/mcp.js'
+            isExternal: true
+            imports:
+              - McpServer
+          - specifier: ../../core/index.js
+            isExternal: false
+            imports:
+              - ILogger
+          - specifier: ../middleware/rate-limiter.js
+            isExternal: false
+            imports:
+              - RateLimiter
+          - specifier: ../../config/schemas.js
+            isExternal: false
+            imports:
+              - SecurityConfig
+          - specifier: ../middleware/tool-wrapper.js
+            isExternal: false
+            imports:
+              - wrapToolWithTimeout
+              - toSdkCallback
+              - getToolTimeout
+          - specifier: ../middleware/secure-handler.js
+            isExternal: false
+            imports:
+              - createSecureHandler
+              - HandlerContext
+          - specifier: ./tool-memory.js
+            isExternal: false
+            imports:
+              - getToolMemory
+        description: nexus-agents/mcp - Memory Stats Tool MCP tool for memory system observability dashboard.
       - path: mcp/tools/orchestrate-sica.test.ts
         lines: 100
         category: test
@@ -64963,7 +66120,7 @@ modules:
               - OrchestrateInput
         description: nexus-agents/mcp - Orchestrate Tool Tests
       - path: mcp/tools/orchestrate.ts
-        lines: 329
+        lines: 348
         category: implementation
         exports:
           - name: registerOrchestrateTool
@@ -65469,7 +66626,7 @@ modules:
               - RateLimiter
         description: Tests for research_discover MCP tool.
       - path: mcp/tools/research-discover.ts
-        lines: 504
+        lines: 543
         category: implementation
         exports:
           - name: computeRelevanceScore
@@ -65549,6 +66706,11 @@ modules:
             imports:
               - discoverSemanticScholar
               - discoverPapersWithCode
+              - discoverOpenAlex
+          - specifier: ./tool-memory.js
+            isExternal: false
+            imports:
+              - getToolMemory
         description:
           nexus-agents/mcp - Research Discover Tool MCP tool for discovering new research papers and repos from
           external sources.
@@ -65814,7 +66976,7 @@ modules:
               - DryRunResult
         description: nexus-agents/mcp - Run Workflow Tool Tests
       - path: mcp/tools/run-workflow.ts
-        lines: 279
+        lines: 326
         category: implementation
         exports:
           - name: registerRunWorkflowTool
@@ -65937,6 +67099,10 @@ modules:
               - errorResponse
               - createFailedResult
               - formatValidationErrors
+          - specifier: ./tool-memory.js
+            isExternal: false
+            imports:
+              - getToolMemory
         description: nexus-agents/mcp - Run Workflow Tool MCP tool for executing workflow templates with the workflow engine.
       - path: mcp/tools/tool-memory.test.ts
         lines: 500
@@ -65970,7 +67136,7 @@ modules:
           'nexus-agents/mcp - Tool Memory Integration Tests (Source: Issue #690 - Wire memory system into MCP tool
           execution pipeline)'
       - path: mcp/tools/tool-memory.ts
-        lines: 372
+        lines: 956
         category: implementation
         exports:
           - name: getToolMemory
@@ -65979,8 +67145,17 @@ modules:
           - name: shutdownToolMemory
             kind: function
             isReExport: false
+          - name: reinitializeMemoryBackends
+            kind: function
+            isReExport: false
           - name: ToolMemoryManager
             kind: class
+            isReExport: false
+          - name: UnifiedMemoryResult
+            kind: interface
+            isReExport: false
+          - name: MemoryBackendStatus
+            kind: interface
             isReExport: false
           - name: SessionLearning
             kind: unknown
@@ -65994,6 +67169,46 @@ modules:
           - name: Belief
             kind: unknown
             isReExport: false
+          - name: TypedMemoryEntry
+            kind: unknown
+            isReExport: true
+            sourceModule: ../../context/memory-types.js
+          - name: TypedMemoryStats
+            kind: unknown
+            isReExport: true
+            sourceModule: ../../context/memory-types.js
+          - name: TypedMemoryPruneResult
+            kind: unknown
+            isReExport: true
+            sourceModule: ../../context/memory-types.js
+          - name: MemoryType
+            kind: unknown
+            isReExport: true
+            sourceModule: ../../context/memory-types.js
+          - name: AgentRole
+            kind: unknown
+            isReExport: true
+            sourceModule: ../../core/types/agent.js
+          - name: MobiMemStats
+            kind: unknown
+            isReExport: true
+            sourceModule: ../../context/mobimem-types.js
+          - name: PromotionStats
+            kind: unknown
+            isReExport: true
+            sourceModule: ./memory-promotion.js
+          - name: MemoryPromotionConfig
+            kind: unknown
+            isReExport: true
+            sourceModule: ./memory-promotion.js
+          - name: DecayRunStats
+            kind: unknown
+            isReExport: true
+            sourceModule: ./memory-decay.js
+          - name: DecayAggregateStats
+            kind: unknown
+            isReExport: true
+            sourceModule: ./memory-decay.js
         dependencies:
           - specifier: node:fs
             isExternal: true
@@ -66042,7 +67257,51 @@ modules:
             isExternal: false
             imports:
               - MemoryMetadata
-        description: nexus-agents/mcp - Tool Memory Integration Unified memory facade for MCP tools.
+          - specifier: ../../context/belief-memory-persistence.js
+            isExternal: false
+            imports:
+              - saveBeliefSnapshot
+              - loadBeliefSnapshot
+          - specifier: ../../context/memory-backend.js
+            isExternal: false
+            imports:
+              - HybridMemoryBackend
+          - specifier: ../../context/typed-memory.js
+            isExternal: false
+            imports:
+              - createTypedMemory
+          - specifier: ../../context/memory-types.js
+            isExternal: false
+            imports:
+              - ITypedMemory
+              - TypedMemoryEntry
+              - TypedMemoryStats
+              - TypedMemoryPruneResult
+              - MemoryType
+          - specifier: ../../core/types/agent.js
+            isExternal: false
+            imports:
+              - AgentRole
+          - specifier: ../../context/mobimem.js
+            isExternal: false
+            imports:
+              - MobiMem
+          - specifier: ../../context/mobimem-types.js
+            isExternal: false
+            imports:
+              - MobiMemStats
+          - specifier: ./memory-promotion.js
+            isExternal: false
+            imports:
+              - MemoryPromoter
+              - PromotionStats
+              - MemoryPromotionConfig
+          - specifier: ./memory-decay.js
+            isExternal: false
+            imports:
+              - MemoryDecayManager
+              - DecayRunStats
+              - DecayAggregateStats
       - path: mcp/middleware/__tests__/middleware-chain.test.ts
         lines: 378
         category: test
@@ -66185,14 +67444,16 @@ modules:
           STPA Validation Tests Security-critical tests for STPA validation functions that verify tools against
           safety constraints.
     stats:
-      fileCount: 91
-      totalLines: 29908
-      exportCount: 854
-      internalDeps: 282
-      externalDeps: 93
+      fileCount: 102
+      totalLines: 33742
+      exportCount: 941
+      internalDeps: 336
+      externalDeps: 109
     dependsOn:
       - agents
+      - audit
       - cli
+      - cli-adapters
       - config
       - consensus
       - context
@@ -74393,9 +75654,9 @@ modules:
     path: testing
     purpose:
       nexus-agents/testing - Testing Utilities Provides mock implementations, test helpers, and type definitions for
-      the CLI integration testing framework.; nexus-agents/testing - Comparison Schemas Zod schemas for baseline
-      comparison and regression tracking.; nexus-agents/testing - Quality Schemas Zod schemas for quality-related test
-      results.
+      the CLI integration testing framework.; Memory Benchmark Output Formatting Formatting and validation helpers for
+      memory benchmark results.; Memory Benchmark Phase 3 Metrics Advanced metrics for promotion effectiveness and decay
+      appropriateness.
     files:
       - path: testing/index.ts
         lines: 181
@@ -74885,6 +76146,156 @@ modules:
         description:
           nexus-agents/testing - Testing Utilities Provides mock implementations, test helpers, and type definitions
           for the CLI integration testing framework.
+      - path: testing/memory-benchmark-output.ts
+        lines: 150
+        category: implementation
+        exports:
+          - name: formatBenchmarkResult
+            kind: function
+            isReExport: false
+          - name: validateBenchmarkResults
+            kind: function
+            isReExport: false
+          - name: BenchmarkThresholds
+            kind: interface
+            isReExport: false
+        dependencies:
+          - specifier: ./memory-benchmark.js
+            isExternal: false
+            imports:
+              - MemoryBenchmarkResult
+        description: Memory Benchmark Output Formatting Formatting and validation helpers for memory benchmark results.
+      - path: testing/memory-benchmark-phase3.ts
+        lines: 137
+        category: implementation
+        exports:
+          - name: measurePromotionEffectiveness
+            kind: function
+            isReExport: false
+          - name: measureDecayAppropriateness
+            kind: function
+            isReExport: false
+          - name: PromotionMeasurement
+            kind: interface
+            isReExport: false
+          - name: DecayAppropriatenessMeasurement
+            kind: interface
+            isReExport: false
+        dependencies:
+          - specifier: ../core/index.js
+            isExternal: false
+            imports:
+              - ILogger
+          - specifier: ../context/memory-backend-types.js
+            isExternal: false
+            imports:
+              - IMemoryBackend
+              - MemoryMetadata
+        description: Memory Benchmark Phase 3 Metrics Advanced metrics for promotion effectiveness and decay appropriateness.
+      - path: testing/memory-benchmark-synthetic.ts
+        lines: 52
+        category: implementation
+        exports:
+          - name: generateSyntheticTestCases
+            kind: function
+            isReExport: false
+        dependencies:
+          - specifier: ../context/memory-backend-types.js
+            isExternal: false
+            imports:
+              - IMemoryBackend
+              - MemoryMetadata
+          - specifier: ./memory-benchmark.js
+            isExternal: false
+            imports:
+              - RetrievalTestCase
+        description: Memory Benchmark Synthetic Data Generation Generates synthetic test data for memory benchmark evaluation.
+      - path: testing/memory-benchmark.test.ts
+        lines: 379
+        category: test
+        exports: []
+        dependencies:
+          - specifier: vitest
+            isExternal: true
+            imports:
+              - describe
+              - it
+              - expect
+              - beforeEach
+          - specifier: ../context/memory-backend-types.js
+            isExternal: false
+            imports:
+              - IMemoryBackend
+              - MemoryEntry
+              - MemoryMetadata
+          - specifier: ./memory-benchmark.js
+            isExternal: false
+            imports:
+              - runMemoryBenchmark
+              - generateSyntheticTestCases
+              - formatBenchmarkResult
+              - validateBenchmarkResults
+              - MemoryBenchmarkResult
+              - RetrievalTestCase
+              - BenchmarkThresholds
+        description: Tests for Memory Benchmark Framework
+      - path: testing/memory-benchmark.ts
+        lines: 563
+        category: implementation
+        exports:
+          - name: runMemoryBenchmark
+            kind: function
+            isReExport: false
+          - name: MemoryBenchmarkResult
+            kind: interface
+            isReExport: false
+          - name: RetrievalTestCase
+            kind: interface
+            isReExport: false
+          - name: CrossReference
+            kind: interface
+            isReExport: false
+          - name: CoherenceConfig
+            kind: interface
+            isReExport: false
+          - name: BenchmarkConfig
+            kind: interface
+            isReExport: false
+          - name: generateSyntheticTestCases
+            kind: unknown
+            isReExport: true
+            sourceModule: ./memory-benchmark-synthetic.js
+          - name: formatBenchmarkResult
+            kind: unknown
+            isReExport: true
+            sourceModule: ./memory-benchmark-output.js
+          - name: validateBenchmarkResults
+            kind: unknown
+            isReExport: true
+            sourceModule: ./memory-benchmark-output.js
+          - name: BenchmarkThresholds
+            kind: unknown
+            isReExport: true
+            sourceModule: ./memory-benchmark-output.js
+        dependencies:
+          - specifier: ../core/index.js
+            isExternal: false
+            imports:
+              - ILogger
+          - specifier: ../context/memory-backend-types.js
+            isExternal: false
+            imports:
+              - IMemoryBackend
+              - MemoryEntry
+              - MemoryMetadata
+          - specifier: ./memory-benchmark-phase3.js
+            isExternal: false
+            imports:
+              - measurePromotionEffectiveness
+              - measureDecayAppropriateness
+        description:
+          'Memory Benchmark Framework Evaluates memory system performance across metrics: - Recall@K: Retrieval
+          accuracy for known relevant memories - Precision@...'
       - path: testing/schemas-comparison.ts
         lines: 85
         category: implementation
@@ -79311,15 +80722,16 @@ modules:
           'nexus-agents/testing/tasks/definitions - Task 015 Task 015: Integration Pattern Tests understanding of
           integration patterns.'
     stats:
-      fileCount: 104
-      totalLines: 25275
-      exportCount: 713
-      internalDeps: 269
-      externalDeps: 54
+      fileCount: 109
+      totalLines: 26556
+      exportCount: 731
+      internalDeps: 279
+      externalDeps: 55
     dependsOn:
       - agents
       - cli-adapters
       - consensus
+      - context
       - core
       - learning
       - mcp
