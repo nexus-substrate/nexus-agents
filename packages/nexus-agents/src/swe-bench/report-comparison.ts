@@ -55,7 +55,10 @@ export function identifyStrengths(
   competitors: readonly CompetitorResult[]
 ): readonly string[] {
   const strengths: string[] = [];
-  const avgRate = competitors.reduce((sum, c) => sum + c.resolutionRate, 0) / competitors.length;
+  const avgRate =
+    competitors.length > 0
+      ? competitors.reduce((sum, c) => sum + c.resolutionRate, 0) / competitors.length
+      : 0;
 
   if (result.metrics.resolutionRate > avgRate) {
     strengths.push('Above average resolution rate');
@@ -76,7 +79,10 @@ export function identifyWeaknesses(
   competitors: readonly CompetitorResult[]
 ): readonly string[] {
   const weaknesses: string[] = [];
-  const avgRate = competitors.reduce((sum, c) => sum + c.resolutionRate, 0) / competitors.length;
+  const avgRate =
+    competitors.length > 0
+      ? competitors.reduce((sum, c) => sum + c.resolutionRate, 0) / competitors.length
+      : 0;
 
   if (result.metrics.resolutionRate < avgRate) {
     weaknesses.push('Below average resolution rate');

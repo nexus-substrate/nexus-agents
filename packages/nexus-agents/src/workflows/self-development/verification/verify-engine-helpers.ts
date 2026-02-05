@@ -131,7 +131,7 @@ export function computeScores(
   }
 
   const qualityScore = totalWeight > 0 ? weightedScore / totalWeight : 0;
-  const executedRatio = checkResults.length / checks.length;
+  const executedRatio = checks.length > 0 ? checkResults.length / checks.length : 0;
   const confidence = executedRatio * (1 - checkResults.filter((r) => !r.passed).length * 0.1);
 
   return { qualityScore, confidence: Math.max(confidence, 0) };
