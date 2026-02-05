@@ -47,6 +47,11 @@ import {
   type PromotionStats,
   type MemoryPromotionConfig,
 } from './memory-promotion.js';
+import {
+  MemoryDecayManager,
+  type DecayRunStats,
+  type DecayAggregateStats,
+} from './memory-decay.js';
 
 // Re-export types tools may need
 export type { SessionLearning, CompletedTask, ResolvedError, Belief };
@@ -78,6 +83,7 @@ export type {
 export type { AgentRole } from '../../core/types/agent.js';
 export type { MobiMemStats } from '../../context/mobimem-types.js';
 export type { PromotionStats, MemoryPromotionConfig } from './memory-promotion.js';
+export type { DecayRunStats, DecayAggregateStats } from './memory-decay.js';
 
 // ============================================================================
 // Constants
@@ -136,6 +142,7 @@ export class ToolMemoryManager {
   private typed: ITypedMemory | null = null;
   private typedBackend: HybridMemoryBackend | null = null;
   private mobimem: MobiMem | null = null;
+  private decayManager: MemoryDecayManager | null = null;
 
   constructor(logger?: ILogger) {
     this.log = logger ?? createLogger({ component: 'ToolMemory' });
@@ -173,6 +180,7 @@ export class ToolMemoryManager {
     await this.initAdaptiveMemory();
     await this.initTypedMemory();
     this.initMobiMem();
+    this.initDecayManager();
   }
 
   /** Initialize AgenticMemory (Phase 2). */
@@ -250,6 +258,26 @@ export class ToolMemoryManager {
       this.log.info('MobiMem activated (Phase 2 #746)');
     } catch (error: unknown) {
       this.log.debug('MobiMem init failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /** Initialize coordinated decay manager (Phase 5 #746). */
+  private initDecayManager(): void {
+    try {
+      this.decayManager = new MemoryDecayManager({}, this.log);
+      this.decayManager.initialize({
+        beliefs: this.beliefs,
+        agentic: this.agentic,
+        adaptive: this.adaptive,
+        mobimem: this.mobimem,
+      });
+      // Start auto-decay for long-running sessions
+      this.decayManager.startAutoDecay();
+      this.log.info('MemoryDecayManager activated (Phase 5 #746)');
+    } catch (error: unknown) {
+      this.log.debug('MemoryDecayManager init failed', {
         error: error instanceof Error ? error.message : String(error),
       });
     }
@@ -721,6 +749,55 @@ export class ToolMemoryManager {
     return stats;
   }
 
+  // ==========================================================================
+  // Coordinated Decay (Phase 5 #746)
+  // ==========================================================================
+
+  /** Whether coordinated decay is available. */
+  isDecayManagerAvailable(): boolean {
+    return this.decayManager !== null;
+  }
+
+  /**
+   * Run coordinated decay across all memory systems.
+   * Implements FADE (Forgetting with Adaptive Decay) principles.
+   * Returns statistics about the decay run.
+   */
+  async runDecay(): Promise<DecayRunStats | undefined> {
+    if (this.decayManager === null) return undefined;
+    return this.decayManager.runDecay();
+  }
+
+  /**
+   * Get aggregate statistics across all decay runs.
+   */
+  getDecayStats(): DecayAggregateStats | undefined {
+    if (this.decayManager === null) return undefined;
+    return this.decayManager.getAggregateStats();
+  }
+
+  /**
+   * Get the last N decay run results.
+   */
+  getRecentDecayRuns(limit = 10): readonly DecayRunStats[] {
+    if (this.decayManager === null) return [];
+    return this.decayManager.getRecentRuns(limit);
+  }
+
+  /**
+   * Register a cross-reference between memory systems.
+   * Used to prevent orphaned references during decay.
+   */
+  registerCrossReference(
+    sourceMemory: 'session' | 'belief' | 'agentic' | 'adaptive' | 'mobimem',
+    sourceKey: string,
+    targetMemory: 'session' | 'belief' | 'agentic' | 'adaptive' | 'mobimem',
+    targetKey: string
+  ): void {
+    if (this.decayManager === null) return;
+    this.decayManager.registerCrossReference(sourceMemory, sourceKey, targetMemory, targetKey);
+  }
+
   /** End the current session and persist to disk. Closes SQLite backends. */
   endSession(): void {
     // Persist belief memory to disk (Phase 3, Issue #714)
@@ -754,6 +831,11 @@ export class ToolMemoryManager {
     if (this.mobimem !== null) {
       this.mobimem.close();
       this.mobimem = null;
+    }
+    // Shutdown decay manager (Phase 5 #746)
+    if (this.decayManager !== null) {
+      this.decayManager.shutdown();
+      this.decayManager = null;
     }
   }
 
