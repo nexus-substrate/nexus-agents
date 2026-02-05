@@ -3,6 +3,8 @@
  * (Source: Issue #128, arXiv:2406.18510)
  */
 
+/* eslint-disable @typescript-eslint/no-deprecated -- Testing deprecated router scheduled for v3.0 removal */
+
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   QualityRouter,

@@ -127,6 +127,7 @@ export {
 } from './complexity-estimator.js';
 
 // Quality-constrained routing (arXiv:2406.18510)
+/* eslint-disable @typescript-eslint/no-deprecated -- Backward compatibility, deprecated in v3.0 */
 export {
   QualityRouter,
   createQualityRouter,
@@ -137,6 +138,7 @@ export {
   type CostModel,
   type QualityRoutedResult,
 } from './quality-router.js';
+/* eslint-enable @typescript-eslint/no-deprecated */
 
 // Auto-selecting adapter factory
 export {

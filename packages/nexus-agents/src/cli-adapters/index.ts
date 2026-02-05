@@ -98,6 +98,7 @@ export { analyzeTask, summarizeProfile, TaskProfileSchema } from './task-analyze
 export type { TaskProfile, TaskType } from './task-analyzer.js';
 
 // Task Router (Issue #78)
+// eslint-disable-next-line @typescript-eslint/no-deprecated -- Backward compatibility, deprecated in v3.0
 export { TaskRouter, createTaskRouter, RoutingError, RouterConfigSchema } from './router.js';
 export type { ITaskRouter, RoutingDecision, RouterConfig } from './router.js';
 
@@ -105,6 +106,7 @@ export type { ITaskRouter, RoutingDecision, RouterConfig } from './router.js';
 export { CAPABILITY_MATRIX, SCORING_WEIGHTS, SCORING_THRESHOLDS } from './router-scoring.js';
 
 // Confidence Router (Issue #99)
+// eslint-disable-next-line @typescript-eslint/no-deprecated -- Backward compatibility, deprecated in v3.0
 export { ConfidenceRouter, createConfidenceRouter } from './confidence-router.js';
 export type {
   IConfidenceRouter,

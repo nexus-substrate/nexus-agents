@@ -3,6 +3,8 @@
  * (Source: Issue #99 - SATER pattern, arXiv:2510.05164)
  */
 
+/* eslint-disable @typescript-eslint/no-deprecated -- Testing deprecated router scheduled for v3.0 removal */
+
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ConfidenceRouter, createConfidenceRouter } from './confidence-router.js';
 import type { CliTask, CliResponse, CliName, ICliAdapter, CapabilityProfile } from './types.js';
