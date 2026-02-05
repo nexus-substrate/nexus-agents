@@ -51,6 +51,7 @@ COMMANDS:
   visualize       Generate Mermaid diagrams and ASCII dashboards (architecture, swarm, flow)
   capabilities    Show model capabilities matrix (modalities, tools, features)
   status          At-a-glance project health dashboard (fitness, adapters, version)
+  auth            Manage MCP authentication tokens (init, show, rotate)
 
 OPTIONS:
   -h, --help           Show this help message
@@ -259,6 +260,13 @@ CAPABILITIES OPTIONS:
   capabilities find <capability>       Find models supporting a capability
   --format=<fmt>                       Output: table (default), json, markdown
 
+AUTH OPTIONS:
+  auth init              Generate a new authentication token
+  auth show              Show token status (file location, permissions)
+  auth rotate            Generate new token, invalidate old one
+  --force                Overwrite existing token (for init)
+  --format=<fmt>         Output format: text, json (default: text)
+
 DEMO OPTIONS:
   demo routing "task"    Show how routing would select models (mock)
   demo expert-list       Show available experts with descriptions
@@ -365,6 +373,10 @@ EXAMPLES:
   nexus-agents capabilities list --format=json       Output capabilities as JSON
   nexus-agents status                                 Show project health dashboard
   nexus-agents status --format=json                   Output status as JSON
+  nexus-agents auth init                              Generate initial auth token
+  nexus-agents auth show                              Check token status
+  nexus-agents auth rotate                            Rotate to new token
+  nexus-agents auth init --force                      Regenerate token (overwrite existing)
 
 For more information, visit: https://github.com/williamzujkowski/nexus-agents
 `.trim();

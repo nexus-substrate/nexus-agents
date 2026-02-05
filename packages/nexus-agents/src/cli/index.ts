@@ -459,3 +459,15 @@ export {
   toScreamingSnake,
 } from './scaffold.js';
 export type { ScaffoldType, ScaffoldOptions, ScaffoldResult } from './scaffold.js';
+
+// Auth Command (Issue #739 - MCP authentication)
+export {
+  authCommand,
+  runAuthCommand,
+  runAuthInit,
+  runAuthShow,
+  runAuthRotate,
+  printAuthResult,
+  isValidAuthSubcommand,
+} from './auth-command.js';
+export type { AuthSubcommand, AuthCommandOptions, AuthCommandResult } from './auth-command.js';

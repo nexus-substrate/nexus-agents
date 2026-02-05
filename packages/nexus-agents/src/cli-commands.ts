@@ -46,6 +46,8 @@ export {
   // System Mandate LOOP I: Fitness Audit
   handleFitnessAuditCommand,
 } from './cli-commands-handlers.js';
+// Issue #739: Auth command
+export { handleAuthCommand } from './cli-auth-handler.js';
 // Issue #637: Release Automation Suite
 export {
   handleReleaseNotesCommand,
@@ -93,6 +95,8 @@ import {
   // System Mandate LOOP I: Fitness Audit
   handleFitnessAuditCommand,
 } from './cli-commands-handlers.js';
+// Issue #739: Auth command
+import { handleAuthCommand } from './cli-auth-handler.js';
 // Issue #637: Release Automation Suite
 import {
   handleReleaseNotesCommand,
@@ -136,6 +140,8 @@ const SYNC_COMMAND_HANDLERS: Record<string, ((args: ParsedCliArgs) => void) | un
   issue: handleIssueCommand,
   // System Mandate LOOP I: Fitness Audit
   'fitness-audit': handleFitnessAuditCommand,
+  // Issue #739: Auth command
+  auth: handleAuthCommand,
   // Issue #653: Scaffold Command
   scaffold: handleScaffoldCommand,
   // Creative: Visualize Command
