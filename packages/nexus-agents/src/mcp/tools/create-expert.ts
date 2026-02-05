@@ -22,6 +22,8 @@ import {
   type BuiltInExpertType,
   BUILT_IN_EXPERTS,
 } from '../../agents/index.js';
+import { getAvailableClis } from '../../cli-adapters/factory.js';
+import type { ICliDetectionCache } from '../../cli-adapters/cli-detection-cache.js';
 
 /**
  * Input schema for create_expert tool.
@@ -70,6 +72,8 @@ export interface CreateExpertDeps {
   rateLimiter: RateLimiter;
   /** Security configuration (includes timeout settings - Issue #271, CVE-2026-0621) */
   security?: SecurityConfig | undefined;
+  /** Optional CLI detection cache for checking available CLIs (Issue #747) */
+  cliCache?: ICliDetectionCache;
 }
 
 /**
@@ -106,11 +110,20 @@ const ROLE_TO_EXPERT_TYPE: Record<string, BuiltInExpertType> = {
 };
 
 /**
- * Checks if any model adapter API key is configured.
- * Returns an error message if no keys are found, or undefined if at least one is available.
+ * Checks if any model adapter is available (CLI or API key).
+ * Checks CLIs first (preferred), then API keys as fallback.
+ * Returns an error message if nothing is available, or undefined if at least one adapter exists.
  * (Issue #656 - Actionable API key error messages)
+ * (Issue #747 - CLI detection support)
  */
-function checkApiKeyAvailability(): string | undefined {
+async function checkAdapterAvailability(cache?: ICliDetectionCache): Promise<string | undefined> {
+  // Check CLIs first (preferred - OAuth-authenticated)
+  const availableClis = await getAvailableClis(cache);
+  if (availableClis.length > 0) {
+    return undefined; // CLI available, no error
+  }
+
+  // Fallback to API keys
   const keys = [
     { name: 'ANTHROPIC_API_KEY', provider: 'Anthropic (Claude)' },
     { name: 'OPENAI_API_KEY', provider: 'OpenAI' },
@@ -120,12 +133,18 @@ function checkApiKeyAvailability(): string | undefined {
     (k) => process.env[k.name] !== undefined && process.env[k.name] !== ''
   );
   if (available.length > 0) {
-    return undefined; // At least one key is available
+    return undefined; // API key available, no error
   }
+
+  // No adapters available - provide helpful error message
   const keyList = keys.map((k) => `  - ${k.name} (${k.provider})`).join('\n');
   return (
-    'No model adapter API key configured. Expert creation requires at least one API key.\n\n' +
-    'Set one of the following environment variables:\n' +
+    'No model adapter available. Expert creation requires either:\n\n' +
+    '1. An authenticated CLI (run one of these to authenticate):\n' +
+    '  - claude (run: claude login)\n' +
+    '  - gemini (run: gemini auth)\n' +
+    '  - codex (run: codex auth)\n\n' +
+    '2. An API key environment variable:\n' +
     keyList +
     '\n\nSee: https://github.com/williamzujkowski/nexus-agents#prerequisites--environment'
   );
@@ -172,11 +191,12 @@ function createExpertFromFactory(
 
 /**
  * Handles the create_expert tool execution.
+ * (Issue #747 - Now async to support CLI detection)
  */
-function handleCreateExpert(
+async function handleCreateExpert(
   deps: CreateExpertDeps,
   args: CreateExpertInput
-): { ok: true; value: CreateExpertResponse } | { ok: false; error: string } {
+): Promise<{ ok: true; value: CreateExpertResponse } | { ok: false; error: string }> {
   const { role, modelPreference } = args;
 
   // Map role to expert type
@@ -185,10 +205,10 @@ function handleCreateExpert(
     return { ok: false, error: `Invalid role: ${role}` };
   }
 
-  // Validate API key availability before expert creation (Issue #656)
-  const apiKeyError = checkApiKeyAvailability();
-  if (apiKeyError !== undefined) {
-    return { ok: false, error: apiKeyError };
+  // Validate adapter availability before expert creation (Issue #656, #747)
+  const adapterError = await checkAdapterAvailability(deps.cliCache);
+  if (adapterError !== undefined) {
+    return { ok: false, error: adapterError };
   }
 
   // Create expert
@@ -233,26 +253,26 @@ type CreateExpertToolResponse = {
  * @returns Context-aware handler function
  */
 function createCreateExpertHandler(deps: CreateExpertDeps) {
-  return (args: unknown, ctx: HandlerContext): Promise<CreateExpertToolResponse> => {
+  return async (args: unknown, ctx: HandlerContext): Promise<CreateExpertToolResponse> => {
     // Validate input
     const validationResult = CreateExpertInputSchema.safeParse(args);
     if (!validationResult.success) {
-      return Promise.resolve({
+      return {
         isError: true,
         content: [
           { type: 'text', text: `Validation error: ${formatZodError(validationResult.error)}` },
         ],
-      });
+      };
     }
 
-    // Execute tool logic
-    const result = handleCreateExpert(deps, validationResult.data);
+    // Execute tool logic (now async for CLI detection - Issue #747)
+    const result = await handleCreateExpert(deps, validationResult.data);
 
     if (!result.ok) {
-      return Promise.resolve({
+      return {
         isError: true,
         content: [{ type: 'text', text: `Failed to create expert: ${result.error}` }],
-      });
+      };
     }
 
     ctx.logger.debug('Expert created successfully', {
@@ -260,9 +280,9 @@ function createCreateExpertHandler(deps: CreateExpertDeps) {
       role: result.value.role,
     });
 
-    return Promise.resolve({
+    return {
       content: [{ type: 'text', text: JSON.stringify(result.value, null, 2) }],
-    });
+    };
   };
 }
 

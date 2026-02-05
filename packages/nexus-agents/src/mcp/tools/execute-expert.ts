@@ -25,6 +25,8 @@ import { createSecureHandler, type HandlerContext } from '../middleware/secure-h
 import type { Expert } from '../../agents/index.js';
 import { getToolMemory } from './tool-memory.js';
 import { getAutoCatalog } from './research-auto-catalog.js';
+import { getAvailableClis } from '../../cli-adapters/factory.js';
+import type { ICliDetectionCache } from '../../cli-adapters/cli-detection-cache.js';
 
 /**
  * Input schema for execute_expert tool.
@@ -52,6 +54,8 @@ export interface ExecuteExpertDeps {
   rateLimiter: RateLimiter;
   /** Security configuration (includes timeout settings - Issue #271, CVE-2026-0621) */
   security?: SecurityConfig | undefined;
+  /** Optional CLI detection cache for checking available CLIs (Issue #747) */
+  cliCache?: ICliDetectionCache;
 }
 
 /**
@@ -75,11 +79,20 @@ export interface ExecuteExpertResponse {
 }
 
 /**
- * Checks if any model adapter API key is configured.
- * Returns an error message if no keys are found, or undefined if at least one is available.
+ * Checks if any model adapter is available (CLI or API key).
+ * Checks CLIs first (preferred), then API keys as fallback.
+ * Returns an error message if nothing is available, or undefined if at least one adapter exists.
  * (Issue #656 - Actionable API key error messages)
+ * (Issue #747 - CLI detection support)
  */
-function checkApiKeyAvailability(): string | undefined {
+async function checkAdapterAvailability(cache?: ICliDetectionCache): Promise<string | undefined> {
+  // Check CLIs first (preferred - OAuth-authenticated)
+  const availableClis = await getAvailableClis(cache);
+  if (availableClis.length > 0) {
+    return undefined; // CLI available, no error
+  }
+
+  // Fallback to API keys
   const keys = [
     { name: 'ANTHROPIC_API_KEY', provider: 'Anthropic (Claude)' },
     { name: 'OPENAI_API_KEY', provider: 'OpenAI' },
@@ -89,12 +102,18 @@ function checkApiKeyAvailability(): string | undefined {
     (k) => process.env[k.name] !== undefined && process.env[k.name] !== ''
   );
   if (available.length > 0) {
-    return undefined; // At least one key is available
+    return undefined; // API key available, no error
   }
+
+  // No adapters available - provide helpful error message
   const keyList = keys.map((k) => `  - ${k.name} (${k.provider})`).join('\n');
   return (
-    'No model adapter API key configured. Expert execution requires at least one API key.\n\n' +
-    'Set one of the following environment variables:\n' +
+    'No model adapter available. Expert execution requires either:\n\n' +
+    '1. An authenticated CLI (run one of these to authenticate):\n' +
+    '  - claude (run: claude login)\n' +
+    '  - gemini (run: gemini auth)\n' +
+    '  - codex (run: codex auth)\n\n' +
+    '2. An API key environment variable:\n' +
     keyList +
     '\n\nSee: https://github.com/williamzujkowski/nexus-agents#prerequisites--environment'
   );
@@ -244,6 +263,7 @@ function autoCatalogScan(output: string, expertId: string, logger?: ILogger): vo
 
 /**
  * Handles the execute_expert tool execution.
+ * (Issue #747 - CLI detection support)
  */
 async function handleExecuteExpert(
   deps: ExecuteExpertDeps,
@@ -257,10 +277,10 @@ async function handleExecuteExpert(
   }
   const expert = lookup.expert;
 
-  // Validate API key availability before execution (Issue #656)
-  const apiKeyError = checkApiKeyAvailability();
-  if (apiKeyError !== undefined) {
-    return { ok: false, error: apiKeyError };
+  // Validate adapter availability before execution (Issue #656, #747)
+  const adapterError = await checkAdapterAvailability(deps.cliCache);
+  if (adapterError !== undefined) {
+    return { ok: false, error: adapterError };
   }
 
   const task = buildTask(args);
