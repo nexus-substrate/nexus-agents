@@ -1983,8 +1983,19 @@ papers:
       - 337
     implementation_status: implemented
   arxiv-2602.03786:
-    title: 'arXiv Query: search_query=&amp;id_list=2602.03786&amp;start=0&amp;max_results=10'
-    authors: []
+    title: 'AOrchestra: Automating Sub-Agent Creation for Agentic Orchestration'
+    authors:
+      - Jianhao Ruan
+      - Zhihao Xu
+      - Yiran Peng
+      - Fashen Ren
+      - Zhaoyang Yu
+      - Xinbing Liang
+      - Jinyu Xiang
+      - Bang Liu
+      - Chenglin Wu
+      - Yuyu Luo
+      - Jiayi Zhang
     source: arxiv
     arxiv_id: '2602.03786'
     url: https://arxiv.org/abs/2602.03786
@@ -1992,15 +2003,32 @@ papers:
     venue: null
     topics:
       - orchestration
-    tags: []
-    reviewed_date: 2026-02-04
-    reviewed_in: ''
-    summary: ''
-    key_findings: []
-    relevance: medium
-    techniques_extracted: []
-    related_issues: []
-    implementation_status: not-started
+    tags:
+      - dynamic-agent-creation
+      - ictm-tuple
+      - context-control
+      - performance-cost-tradeoff
+    reviewed_date: 2026-02-05
+    reviewed_in: 'consensus-vote-2026-02-05.md'
+    summary: |
+      Framework for dynamic sub-agent creation via unified agent abstraction.
+      Models each agent as ICTM tuple: (Instructions, Context, Tools, Model).
+      Central orchestrator synthesizes sub-agents at runtime for task-specific
+      specialization while explicitly controlling context sharing.
+    key_findings:
+      - 'ICTM tuple abstraction: Instructions, Context, Tools, Model'
+      - 'Dynamic sub-agent creation per subtask rather than static roles'
+      - 'Explicit context control to mitigate long-horizon degradation'
+      - '16.28% relative improvement on GAIA/SWE-Bench/Terminal-Bench'
+      - 'Framework-agnostic with plug-and-play agent support'
+    relevance: high
+    techniques_extracted:
+      - aorchestra-ictm-pattern
+      - dynamic-subagent-creation
+      - context-curation
+    related_issues:
+      - 756
+    implementation_status: planned
   arxiv-2602.03794:
     title: 'arXiv Query: search_query=&amp;id_list=2602.03794&amp;start=0&amp;max_results=10'
     authors: []
@@ -2179,6 +2207,63 @@ papers:
     arxiv_id: '2512.21567'
     url: https://arxiv.org/abs/2512.21567
     publication_date: 2025-12
+    venue: null
+    topics:
+      - memory
+    tags: []
+    reviewed_date: 2026-02-04
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2511.20857:
+    title: 'arXiv Query: search_query=&amp;id_list=2511.20857&amp;start=0&amp;max_results=10'
+    authors: []
+    source: arxiv
+    arxiv_id: '2511.20857'
+    url: https://arxiv.org/abs/2511.20857
+    publication_date: 2025-11
+    venue: null
+    topics:
+      - memory
+    tags: []
+    reviewed_date: 2026-02-04
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2501.13956:
+    title: 'arXiv Query: search_query=&amp;id_list=2501.13956&amp;start=0&amp;max_results=10'
+    authors: []
+    source: arxiv
+    arxiv_id: '2501.13956'
+    url: https://arxiv.org/abs/2501.13956
+    publication_date: 2025-01
+    venue: null
+    topics:
+      - memory
+    tags: []
+    reviewed_date: 2026-02-04
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2402.17753:
+    title: 'arXiv Query: search_query=&amp;id_list=2402.17753&amp;start=0&amp;max_results=10'
+    authors: []
+    source: arxiv
+    arxiv_id: '2402.17753'
+    url: https://arxiv.org/abs/2402.17753
+    publication_date: 2024-02
     venue: null
     topics:
       - memory
