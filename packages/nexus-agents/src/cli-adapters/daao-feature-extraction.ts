@@ -254,8 +254,8 @@ export function normalize(value: number, min: number, max: number): number {
  */
 export function saturate(count: number, saturationPoint: number): number {
   if (count <= 0) return 0;
-  const ratio = count / saturationPoint;
-  return Math.min(1, ratio * (2 - ratio));
+  const ratio = Math.min(count / saturationPoint, 1);
+  return ratio * (2 - ratio);
 }
 
 /**
