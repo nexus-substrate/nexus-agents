@@ -75,6 +75,26 @@ describe('CompositeRouterConfigSchema', () => {
     expect(() => CompositeRouterConfigSchema.parse({ linucbAlpha: -1 })).toThrow();
     expect(() => CompositeRouterConfigSchema.parse({ linucbAlpha: 0 })).toThrow();
   });
+
+  // Issue #755: New replacement stages config tests
+  it('should parse Issue #755 replacement stage flags with defaults', () => {
+    const result = CompositeRouterConfigSchema.parse({});
+    // New stages are disabled by default for backward compatibility
+    expect(result.enableConfidenceCascade).toBe(false);
+    expect(result.enableCapabilityMatch).toBe(false);
+    expect(result.enableQualityConstraint).toBe(false);
+  });
+
+  it('should parse Issue #755 replacement stage flags when enabled', () => {
+    const result = CompositeRouterConfigSchema.parse({
+      enableConfidenceCascade: true,
+      enableCapabilityMatch: true,
+      enableQualityConstraint: true,
+    });
+    expect(result.enableConfidenceCascade).toBe(true);
+    expect(result.enableCapabilityMatch).toBe(true);
+    expect(result.enableQualityConstraint).toBe(true);
+  });
 });
 
 describe('CompositeRoutingError', () => {

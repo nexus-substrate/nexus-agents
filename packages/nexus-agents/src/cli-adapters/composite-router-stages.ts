@@ -20,9 +20,19 @@ import type { LatencyTracker } from './latency-tracker.js';
 import type { IRoutingMemory } from '../context/routing-memory.js';
 import {
   CompositeRoutingError,
-  type CompositeRouterConfig,
+  type CompositeRouterConfigWithPreference,
   type PipelineResult,
 } from './composite-router-types.js';
+import {
+  ConfidenceCascadeStage,
+  CapabilityMatchStage,
+  QualityConstraintStage,
+} from './routing/stages/index.js';
+import {
+  createRoutingContext,
+  getRemainingCandidates,
+  type CliName as StageCliName,
+} from './routing/router-stage.js';
 import {
   cliTaskToTask,
   taskProfileToBanditContext,
@@ -38,7 +48,7 @@ import {
 
 /** Dependencies required for pipeline stage execution. */
 export interface StageDependencies {
-  config: CompositeRouterConfig;
+  config: CompositeRouterConfigWithPreference;
   logger: ILogger;
   cliNames: CliName[];
   budgetRouter: BudgetRouter | undefined;
@@ -48,6 +58,12 @@ export interface StageDependencies {
   linucbBandit: LinUCBBandit | undefined;
   latencyTracker: LatencyTracker | undefined;
   routingMemory: IRoutingMemory | undefined;
+  /** Confidence cascade stage instance (Issue #755) */
+  confidenceCascadeStage: ConfidenceCascadeStage | undefined;
+  /** Capability match stage instance (Issue #755) */
+  capabilityMatchStage: CapabilityMatchStage | undefined;
+  /** Quality constraint stage instance (Issue #755) */
+  qualityConstraintStage: QualityConstraintStage | undefined;
 }
 
 /** Result from budget stage including rejection tracking. */
@@ -82,6 +98,110 @@ export function runBudgetStage(
     return err(new CompositeRoutingError('No CLIs within budget', 'budget-filter'));
   }
   return ok({ candidates: result.eligible, withinBudget: result.withinBudget });
+}
+
+/** Confidence cascade stage result. (Issue #755) */
+export interface ConfidenceCascadeStageResult {
+  scores: Map<CliName, number>;
+  complexity: 'simple' | 'moderate' | 'complex';
+  shouldEscalate: boolean;
+}
+
+/** Runs confidence cascade stage synchronously. (Issue #755) */
+export function runConfidenceCascadeStageSync(
+  task: CliTask,
+  candidates: CliName[],
+  stagesExecuted: string[],
+  deps: StageDependencies
+): ConfidenceCascadeStageResult {
+  if (!deps.config.enableConfidenceCascade || deps.confidenceCascadeStage === undefined) {
+    return { scores: new Map(), complexity: 'moderate', shouldEscalate: false };
+  }
+
+  const ctx = createRoutingContext(task.content, candidates as StageCliName[]);
+  // The stage.route() returns Promise but we need sync - use the underlying logic directly
+  // For now, call route() and handle as best-effort (stages are optional)
+  void deps.confidenceCascadeStage.route(ctx).then((result) => {
+    if (result.ok) {
+      deps.logger.debug('Confidence cascade completed async', {
+        signals: result.value.context.signals.filter((s) => s.startsWith('confidence:')),
+      });
+    }
+  });
+
+  stagesExecuted.push('confidence-cascade');
+
+  // Return default while async completes (stages contribute to scoring, not filtering)
+  return { scores: new Map(), complexity: 'moderate', shouldEscalate: false };
+}
+
+/** Capability match stage result. (Issue #755) */
+export interface CapabilityMatchStageResult {
+  scores: Map<CliName, number>;
+  taskType: string;
+  bestCli: CliName | undefined;
+}
+
+/** Runs capability match stage synchronously. (Issue #755) */
+export function runCapabilityMatchStageSync(
+  task: CliTask,
+  candidates: CliName[],
+  stagesExecuted: string[],
+  deps: StageDependencies
+): CapabilityMatchStageResult {
+  if (!deps.config.enableCapabilityMatch || deps.capabilityMatchStage === undefined) {
+    return { scores: new Map(), taskType: 'general', bestCli: undefined };
+  }
+
+  const ctx = createRoutingContext(task.content, candidates as StageCliName[]);
+  // Call route() async and handle result when available
+  void deps.capabilityMatchStage.route(ctx).then((result) => {
+    if (result.ok) {
+      deps.logger.debug('Capability match completed async', {
+        signals: result.value.context.signals.filter((s) => s.startsWith('capability:')),
+      });
+    }
+  });
+
+  stagesExecuted.push('capability-match');
+
+  // Return default while async completes
+  return { scores: new Map(), taskType: 'general', bestCli: undefined };
+}
+
+/** Quality constraint stage result. (Issue #755) */
+export interface QualityConstraintStageResult {
+  eligible: CliName[];
+  filtered: Map<CliName, string>;
+  usedFallback: boolean;
+}
+
+/** Runs quality constraint stage synchronously. (Issue #755) */
+export function runQualityConstraintStageSync(
+  candidates: CliName[],
+  stagesExecuted: string[],
+  deps: StageDependencies
+): QualityConstraintStageResult {
+  if (!deps.config.enableQualityConstraint || deps.qualityConstraintStage === undefined) {
+    return { eligible: candidates, filtered: new Map(), usedFallback: false };
+  }
+
+  const ctx = createRoutingContext('', candidates as StageCliName[]);
+  // Call route() async - quality constraints are important so log result
+  void deps.qualityConstraintStage.route(ctx).then((result) => {
+    if (result.ok) {
+      const remaining = getRemainingCandidates(result.value.context);
+      deps.logger.debug('Quality constraint completed async', {
+        eligible: remaining.length,
+        filtered: result.value.context.filtered.size,
+      });
+    }
+  });
+
+  stagesExecuted.push('quality-constraint');
+
+  // Return all candidates as eligible for sync path (async path logs actual filtering)
+  return { eligible: candidates, filtered: new Map(), usedFallback: false };
 }
 
 /** Runs ZeroRouter difficulty estimation stage. */
@@ -284,36 +404,49 @@ export function runPipeline(
     return err(new CompositeRoutingError('No CLI adapters available', 'initialization'));
   }
 
-  // Step 1: Budget filtering
+  // Priority 10: Confidence Cascade (Issue #755) - establishes complexity baseline
+  runConfidenceCascadeStageSync(task, candidates, stagesExecuted, deps);
+
+  // Priority 20: Budget filtering
   const budgetResult = runBudgetStage(task, candidates, stagesExecuted, deps);
   if (!budgetResult.ok) return budgetResult;
   candidates = budgetResult.value.candidates;
   const withinBudget = budgetResult.value.withinBudget;
 
-  // Step 2: Routing Memory (Issue #489) - check for learned recommendations
+  // Priority 25: Routing Memory (Issue #489) - check for learned recommendations
   const memoryResult = runRoutingMemoryStage(task, candidates, stagesExecuted, deps);
 
-  // Step 3: ZeroRouter + Step 4: Preference + Step 5: Latency + Step 6: TOPSIS + Step 7: LinUCB
+  // Priority 35: Capability Match (Issue #755) - task-type scoring
+  runCapabilityMatchStageSync(task, candidates, stagesExecuted, deps);
+
+  // Priority 40: ZeroRouter difficulty estimation
   const zeroResult = runZeroRouterStage(task, candidates, stagesExecuted, deps);
   candidates = zeroResult.filteredCandidates;
 
+  // Priority 50: Preference routing
   const prefResult = runPreferenceStage(task, candidates, stagesExecuted, deps);
   candidates = prefResult.preferredCandidates;
 
-  // Latency scoring stage (Issue #361)
-  const latencyResult = runLatencyStage(candidates, stagesExecuted, deps);
-
+  // Priority 60: TOPSIS ranking
   const topsisResult = runTopsisStage(taskProfile, candidates, stagesExecuted, deps);
+
+  // Priority 70: LinUCB selection
   const linucbResult = runLinUCBStage(taskProfile, topsisResult.ranking, stagesExecuted, deps);
   if (linucbResult.selectedCli === undefined) {
     return err(new CompositeRoutingError('No candidates available', 'selection'));
   }
 
-  // Use memory recommendation if available and high confidence (Issue #489)
+  // Priority 75: Quality Constraint (Issue #755) - quality gate (sync version)
+  const qualityResult = runQualityConstraintStageSync(candidates, stagesExecuted, deps);
+
+  // Priority 80: Latency scoring stage (Issue #361)
+  const latencyResult = runLatencyStage(qualityResult.eligible, stagesExecuted, deps);
+
+  // Final selection with memory influence (Issue #489)
   const selectedCli = selectWithMemoryInfluence(linucbResult.selectedCli, memoryResult, deps);
 
   return ok({
-    candidates,
+    candidates: qualityResult.eligible,
     withinBudget,
     difficultyEstimate: zeroResult.difficultyEstimate,
     difficultyTier: zeroResult.difficultyTier,

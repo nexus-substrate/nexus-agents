@@ -33,6 +33,10 @@ describe('routing-config-adapter', () => {
           linucbSelection: false,
           latencyTracking: false,
           routingMemory: true,
+          // Issue #755: New replacement stages
+          confidenceCascade: true,
+          capabilityMatch: true,
+          qualityConstraint: true,
         },
         latencyScoreWeight: 0.5,
       };
@@ -47,6 +51,10 @@ describe('routing-config-adapter', () => {
       expect(result.enableLatencyTracking).toBe(false);
       expect(result.enableRoutingMemory).toBe(true);
       expect(result.latencyScoreWeight).toBe(0.5);
+      // Issue #755: Verify new replacement stages
+      expect(result.enableConfidenceCascade).toBe(true);
+      expect(result.enableCapabilityMatch).toBe(true);
+      expect(result.enableQualityConstraint).toBe(true);
     });
 
     it('adapts budget constraints', () => {

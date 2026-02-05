@@ -193,6 +193,12 @@ export const RoutingConfigSchema = z.object({
       latencyTracking: z.boolean().default(true),
       /** Enable routing memory for learned routing */
       routingMemory: z.boolean().default(false),
+      /** Enable confidence cascade stage (Issue #755, ADR-0005) */
+      confidenceCascade: z.boolean().default(false),
+      /** Enable capability match stage (Issue #755, ADR-0005) */
+      capabilityMatch: z.boolean().default(false),
+      /** Enable quality constraint stage (Issue #755, ADR-0005) */
+      qualityConstraint: z.boolean().default(false),
     })
     .optional(),
 
@@ -264,6 +270,10 @@ export const DEFAULT_ROUTING_CONFIG: RoutingConfig = {
     linucbSelection: true,
     latencyTracking: true,
     routingMemory: false,
+    // Issue #755: New replacement stages (disabled by default for backward compatibility)
+    confidenceCascade: false,
+    capabilityMatch: false,
+    qualityConstraint: false,
   },
   topsis: {
     minQualityThreshold: 5,

@@ -28,6 +28,14 @@ import {
   type ModelPerformance,
 } from '../context/routing-memory.js';
 import {
+  ConfidenceCascadeStage,
+  CapabilityMatchStage,
+  QualityConstraintStage,
+  type ConfidenceCascadeConfig,
+  type CapabilityMatchConfig,
+  type QualityConstraintConfig,
+} from './routing/stages/index.js';
+import {
   CompositeRouterConfigSchema,
   CompositeRoutingError,
   type CompositeRouterConfig,
@@ -108,6 +116,12 @@ export class CompositeRouter implements ICompositeRouter {
   private metricsCollector?: IRoutingMetricsCollector;
   /** Orchestration observer for routing decision tracking (Issue #587) */
   private orchestrationObserver?: IOrchestrationObserver;
+  /** Confidence cascade stage instance (Issue #755) */
+  private confidenceCascadeStage?: ConfidenceCascadeStage;
+  /** Capability match stage instance (Issue #755) */
+  private capabilityMatchStage?: CapabilityMatchStage;
+  /** Quality constraint stage instance (Issue #755) */
+  private qualityConstraintStage?: QualityConstraintStage;
   private readonly cliNames: CliName[];
 
   // Statistics tracking
@@ -132,6 +146,9 @@ export class CompositeRouter implements ICompositeRouter {
       zeroRouterConfig,
       latencyTrackerConfig,
       routingMemoryConfig,
+      confidenceCascadeConfig,
+      capabilityMatchConfig,
+      qualityConstraintConfig,
       metricsCollector,
       orchestrationObserver,
       ...baseConfig
@@ -149,49 +166,77 @@ export class CompositeRouter implements ICompositeRouter {
       this.orchestrationObserver = orchestrationObserver;
       this.logger.debug('OrchestrationObserver wired to CompositeRouter');
     }
-    this.initializeRouters(
+    this.initializeCoreRouters(
       adapters,
       preferenceRouterConfig,
       zeroRouterConfig,
-      latencyTrackerConfig,
-      routingMemoryConfig
+      latencyTrackerConfig
     );
+    this.initializeMemoryAndStages(routingMemoryConfig, {
+      confidenceCascade: confidenceCascadeConfig,
+      capabilityMatch: capabilityMatchConfig,
+      qualityConstraint: qualityConstraintConfig,
+    });
+    this.logInitialization(adapters.size);
   }
 
-  private initializeRouters(
+  private initializeCoreRouters(
     adapters: Map<CliName, ICliAdapter>,
     preferenceConfig?: Partial<PreferenceRouterConfig>,
     zeroConfig?: Partial<ZeroRouterConfig>,
-    latencyConfig?: Partial<LatencyTrackerConfig>,
-    routingMemoryConfig?: Partial<RoutingMemoryConfig>
+    latencyConfig?: Partial<LatencyTrackerConfig>
   ): void {
     if (this.config.enableBudgetFilter && adapters.size > 0) {
       this.budgetRouter = new BudgetRouter(adapters);
     }
     if (this.config.enableZeroRouter) this.zeroRouter = new ZeroRouter(zeroConfig, this.logger);
-    if (this.config.enableRoutingMemory) {
-      this.routingMemory = new RoutingMemory(routingMemoryConfig);
-      this.logger.info('RoutingMemory enabled for learned routing', {
-        minObservations: this.routingMemory.getStats().totalPreferences,
-      });
-    }
     if (this.config.enablePreferenceRouting)
       this.preferenceRouter = new PreferenceRouter(preferenceConfig);
     if (this.config.enableTopsisRanking) this.topsisRouter = new TopsisRouter();
     if (this.config.enableLinUCBSelection && this.cliNames.length > 0) {
       this.linucbBandit = new LinUCBBandit(this.cliNames, { alpha: this.config.linucbAlpha });
     }
-    if (this.config.enableLatencyTracking) {
-      this.latencyTracker = new LatencyTracker(latencyConfig);
+    if (this.config.enableLatencyTracking) this.latencyTracker = new LatencyTracker(latencyConfig);
+  }
+
+  private initializeMemoryAndStages(
+    routingMemoryConfig?: Partial<RoutingMemoryConfig>,
+    stageConfigs?: {
+      confidenceCascade?: Partial<ConfidenceCascadeConfig> | undefined;
+      capabilityMatch?: Partial<CapabilityMatchConfig> | undefined;
+      qualityConstraint?: Partial<QualityConstraintConfig> | undefined;
     }
+  ): void {
+    if (this.config.enableRoutingMemory) {
+      this.routingMemory = new RoutingMemory(routingMemoryConfig);
+      this.logger.info('RoutingMemory enabled for learned routing', {
+        minObservations: this.routingMemory.getStats().totalPreferences,
+      });
+    }
+    // Initialize Issue #755 replacement stages
+    if (this.config.enableConfidenceCascade) {
+      this.confidenceCascadeStage = new ConfidenceCascadeStage(stageConfigs?.confidenceCascade);
+    }
+    if (this.config.enableCapabilityMatch) {
+      this.capabilityMatchStage = new CapabilityMatchStage(stageConfigs?.capabilityMatch);
+    }
+    if (this.config.enableQualityConstraint) {
+      this.qualityConstraintStage = new QualityConstraintStage(stageConfigs?.qualityConstraint);
+    }
+  }
+
+  private logInitialization(adapterCount: number): void {
     this.logger.info('CompositeRouter initialized', {
-      adapterCount: adapters.size,
+      adapterCount,
       enableBudget: this.config.enableBudgetFilter,
       enableZeroRouter: this.config.enableZeroRouter,
       enablePreference: this.config.enablePreferenceRouting,
       enableTopsis: this.config.enableTopsisRanking,
       enableLinUCB: this.config.enableLinUCBSelection,
       enableLatencyTracking: this.config.enableLatencyTracking,
+      enableConfidenceCascade: this.config.enableConfidenceCascade,
+      enableCapabilityMatch: this.config.enableCapabilityMatch,
+      enableQualityConstraint: this.config.enableQualityConstraint,
     });
   }
 
@@ -353,6 +398,10 @@ export class CompositeRouter implements ICompositeRouter {
       linucbBandit: this.linucbBandit,
       latencyTracker: this.latencyTracker,
       routingMemory: this.routingMemory,
+      // Issue #755 replacement stages
+      confidenceCascadeStage: this.confidenceCascadeStage,
+      capabilityMatchStage: this.capabilityMatchStage,
+      qualityConstraintStage: this.qualityConstraintStage,
     };
   }
 

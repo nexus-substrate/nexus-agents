@@ -20,6 +20,9 @@ import type {
   RoutingMetrics,
 } from '../observability/routing-metrics-types.js';
 import type { IOrchestrationObserver } from '../agents/observability/orchestration-observer-types.js';
+import type { ConfidenceCascadeConfig } from './routing/stages/confidence-cascade-stage.js';
+import type { CapabilityMatchConfig } from './routing/stages/capability-match-stage.js';
+import type { QualityConstraintConfig } from './routing/stages/quality-constraint-stage.js';
 
 /**
  * Interface for routing metrics collection.
@@ -39,8 +42,12 @@ export interface IRoutingMetricsCollector {
  * Configuration schema for CompositeRouter.
  */
 export const CompositeRouterConfigSchema = z.object({
+  /** Enable confidence cascade stage (default: false) (Issue #755, ADR-0005) */
+  enableConfidenceCascade: z.boolean().default(false),
   /** Enable budget filtering stage (default: true) */
   enableBudgetFilter: z.boolean().default(true),
+  /** Enable capability match stage (default: false) (Issue #755, ADR-0005) */
+  enableCapabilityMatch: z.boolean().default(false),
   /** Enable ZeroRouter difficulty-based routing stage (default: true) (Issue #473) */
   enableZeroRouter: z.boolean().default(true),
   /** Enable preference-trained routing stage (default: false) */
@@ -49,6 +56,8 @@ export const CompositeRouterConfigSchema = z.object({
   enableTopsisRanking: z.boolean().default(true),
   /** Enable LinUCB selection stage (default: true) */
   enableLinUCBSelection: z.boolean().default(true),
+  /** Enable quality constraint stage (default: false) (Issue #755, ADR-0005) */
+  enableQualityConstraint: z.boolean().default(false),
   /** Enable latency tracking for routing decisions (default: true) (Issue #361) */
   enableLatencyTracking: z.boolean().default(true),
   /** Enable routing memory for learned routing (default: false) (Issue #463, #461) */
@@ -78,6 +87,12 @@ export type CompositeRouterConfig = z.infer<typeof CompositeRouterConfigSchema>;
  * Extended config type that includes preference router and ZeroRouter config.
  */
 export interface CompositeRouterConfigWithPreference extends CompositeRouterConfig {
+  /** Confidence cascade stage configuration (optional) (Issue #755) */
+  confidenceCascadeConfig?: Partial<ConfidenceCascadeConfig>;
+  /** Capability match stage configuration (optional) (Issue #755) */
+  capabilityMatchConfig?: Partial<CapabilityMatchConfig>;
+  /** Quality constraint stage configuration (optional) (Issue #755) */
+  qualityConstraintConfig?: Partial<QualityConstraintConfig>;
   /** Preference router configuration (optional, uses defaults if not provided) */
   preferenceRouterConfig?: Partial<PreferenceRouterConfig>;
   /** ZeroRouter configuration (optional, uses defaults if not provided) */
@@ -96,11 +111,14 @@ export interface CompositeRouterConfigWithPreference extends CompositeRouterConf
  * Default configuration.
  */
 export const DEFAULT_COMPOSITE_CONFIG: CompositeRouterConfig = {
+  enableConfidenceCascade: false, // Issue #755 - New replacement stage (disabled for backward compatibility)
   enableBudgetFilter: true,
+  enableCapabilityMatch: false, // Issue #755 - New replacement stage (disabled for backward compatibility)
   enableZeroRouter: true, // Issue #473 - Enable by default (699 lines of tests, fully implemented)
   enablePreferenceRouting: false,
   enableTopsisRanking: true,
   enableLinUCBSelection: true,
+  enableQualityConstraint: false, // Issue #755 - New replacement stage (disabled for backward compatibility)
   enableLatencyTracking: true,
   enableRoutingMemory: false,
   latencyScoreWeight: 0.2,

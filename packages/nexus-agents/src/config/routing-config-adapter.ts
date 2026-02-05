@@ -40,6 +40,10 @@ const ADAPTER_DEFAULTS: DefinedRoutingConfig = {
     linucbSelection: true,
     latencyTracking: true,
     routingMemory: false,
+    // Issue #755: New replacement stages (disabled by default for backward compatibility)
+    confidenceCascade: false,
+    capabilityMatch: false,
+    qualityConstraint: false,
   },
   latencyScoreWeight: 0.2,
 };
@@ -134,39 +138,39 @@ function adaptStagesConfig(
     enableLinUCBSelection: yaml.linucbSelection,
     enableLatencyTracking: yaml.latencyTracking,
     enableRoutingMemory: yaml.routingMemory,
+    // Issue #755: New replacement stages
+    enableConfidenceCascade: yaml.confidenceCascade,
+    enableCapabilityMatch: yaml.capabilityMatch,
+    enableQualityConstraint: yaml.qualityConstraint,
   };
 }
 
+/** Stage flag keys that need to be resolved with defaults. */
+const STAGE_FLAG_KEYS = [
+  'enableBudgetFilter',
+  'enableZeroRouter',
+  'enablePreferenceRouting',
+  'enableTopsisRanking',
+  'enableLinUCBSelection',
+  'enableLatencyTracking',
+  'enableRoutingMemory',
+  'enableConfidenceCascade',
+  'enableCapabilityMatch',
+  'enableQualityConstraint',
+] as const;
+
+type StageFlagKey = (typeof STAGE_FLAG_KEYS)[number];
+type StageFlagsResult = Pick<CompositeRouterConfig, StageFlagKey>;
+
 /**
- * Resolves stage flags with defaults.
+ * Resolves stage flags with defaults using a data-driven approach.
  */
-function resolveStageFlags(
-  stagesConfig: Partial<CompositeRouterConfig>
-): Pick<
-  CompositeRouterConfig,
-  | 'enableBudgetFilter'
-  | 'enableZeroRouter'
-  | 'enablePreferenceRouting'
-  | 'enableTopsisRanking'
-  | 'enableLinUCBSelection'
-  | 'enableLatencyTracking'
-  | 'enableRoutingMemory'
-> {
-  return {
-    enableBudgetFilter:
-      stagesConfig.enableBudgetFilter ?? DEFAULT_COMPOSITE_CONFIG.enableBudgetFilter,
-    enableZeroRouter: stagesConfig.enableZeroRouter ?? DEFAULT_COMPOSITE_CONFIG.enableZeroRouter,
-    enablePreferenceRouting:
-      stagesConfig.enablePreferenceRouting ?? DEFAULT_COMPOSITE_CONFIG.enablePreferenceRouting,
-    enableTopsisRanking:
-      stagesConfig.enableTopsisRanking ?? DEFAULT_COMPOSITE_CONFIG.enableTopsisRanking,
-    enableLinUCBSelection:
-      stagesConfig.enableLinUCBSelection ?? DEFAULT_COMPOSITE_CONFIG.enableLinUCBSelection,
-    enableLatencyTracking:
-      stagesConfig.enableLatencyTracking ?? DEFAULT_COMPOSITE_CONFIG.enableLatencyTracking,
-    enableRoutingMemory:
-      stagesConfig.enableRoutingMemory ?? DEFAULT_COMPOSITE_CONFIG.enableRoutingMemory,
-  };
+function resolveStageFlags(stagesConfig: Partial<CompositeRouterConfig>): StageFlagsResult {
+  const result = {} as StageFlagsResult;
+  for (const key of STAGE_FLAG_KEYS) {
+    result[key] = stagesConfig[key] ?? DEFAULT_COMPOSITE_CONFIG[key];
+  }
+  return result;
 }
 
 /**
