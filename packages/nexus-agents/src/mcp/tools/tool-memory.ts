@@ -433,6 +433,16 @@ export class ToolMemoryManager {
     return this.agentic !== null || this.adaptive !== null;
   }
 
+  /** Whether AgenticMemory backend is available. */
+  isAgenticMemoryAvailable(): boolean {
+    return this.agentic !== null;
+  }
+
+  /** Whether AdaptiveMemory backend is available. */
+  isAdaptiveMemoryAvailable(): boolean {
+    return this.adaptive !== null;
+  }
+
   /** Store knowledge with auto-extracted attributes (AgenticMemory). Best-effort. */
   async recordKnowledge(key: string, value: unknown, metadata: MemoryMetadata): Promise<void> {
     if (this.agentic === null) return;

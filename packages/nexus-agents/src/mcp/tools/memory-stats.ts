@@ -156,8 +156,8 @@ async function collectMemoryStats(
   const backends: BackendStatus = {
     session: true, // Always available
     belief: true, // Always available (in-memory)
-    agentic: typedStats !== undefined, // SQLite-backed
-    adaptive: typedStats !== undefined, // SQLite-backed
+    agentic: toolMemory.isAgenticMemoryAvailable(), // SQLite-backed
+    adaptive: toolMemory.isAdaptiveMemoryAvailable(), // SQLite-backed
     typed: typedStats !== undefined,
     mobimem: toolMemory.isMobiMemAvailable(),
     decay: toolMemory.isDecayManagerAvailable(),
