@@ -179,6 +179,55 @@ describe('memory-benchmark', () => {
       expect(Object.keys(result.recallAtK)).toEqual(['1', '3', '5', '10']);
       expect(Object.keys(result.precisionAtK)).toEqual(['1', '3', '5', '10']);
     });
+
+    it('should detect orphaned cross-references', async () => {
+      // Store one key but not the target
+      await mockBackend.store('source-key', { data: 'source' }, { importance: 'high' });
+
+      // Create cross-reference to non-existent target
+      const result = await runMemoryBenchmark(mockBackend, [], {
+        quickMode: true,
+        coherenceConfig: {
+          crossReferences: [
+            { sourceKey: 'source-key', targetKey: 'valid-target' }, // Will fail
+            { sourceKey: 'source-key', targetKey: 'missing-target' }, // Will fail
+          ],
+        },
+      });
+
+      // Both references are orphaned since targets don't exist
+      expect(result.coherenceScore).toBe(0);
+      expect(result.orphanedRefCount).toBe(2);
+    });
+
+    it('should calculate correct coherence with valid and invalid refs', async () => {
+      // Store source and one valid target
+      await mockBackend.store('source-key', { data: 'source' }, { importance: 'high' });
+      await mockBackend.store('valid-target', { data: 'target' }, { importance: 'high' });
+
+      const result = await runMemoryBenchmark(mockBackend, [], {
+        quickMode: true,
+        coherenceConfig: {
+          crossReferences: [
+            { sourceKey: 'source-key', targetKey: 'valid-target' }, // Valid
+            { sourceKey: 'source-key', targetKey: 'missing-target' }, // Invalid
+          ],
+        },
+      });
+
+      expect(result.coherenceScore).toBe(0.5); // 1 out of 2 valid
+      expect(result.orphanedRefCount).toBe(1);
+    });
+
+    it('should calculate avgBytesPerEntry', async () => {
+      await mockBackend.store('key1', { data: 'test' }, { importance: 'high' });
+      await mockBackend.store('key2', { data: 'test2' }, { importance: 'medium' });
+
+      const result = await runMemoryBenchmark(mockBackend, [], { quickMode: true });
+
+      expect(result.avgBytesPerEntry).toBeGreaterThan(0);
+      expect(result.avgBytesPerEntry).toBe(result.storageBytes / result.entryCount);
+    });
   });
 
   describe('generateSyntheticTestCases', () => {
@@ -225,6 +274,8 @@ describe('memory-benchmark', () => {
         coherenceScore: 0.98,
         timestamp: new Date('2026-02-04T12:00:00Z'),
         durationMs: 500,
+        avgBytesPerEntry: 102.4,
+        orphanedRefCount: 0,
       };
 
       const formatted = formatBenchmarkResult(result);
@@ -235,7 +286,8 @@ describe('memory-benchmark', () => {
       expect(formatted).toContain('P50: 1.50ms');
       expect(formatted).toContain('P95: 5.20ms');
       expect(formatted).toContain('Entries: 100');
-      expect(formatted).toContain('Coherence: 98.0%');
+      expect(formatted).toContain('Score: 98.0%');
+      expect(formatted).toContain('Avg bytes/entry: 102 bytes');
     });
   });
 
@@ -252,6 +304,8 @@ describe('memory-benchmark', () => {
       coherenceScore: 0.98,
       timestamp: new Date(),
       durationMs: 500,
+      avgBytesPerEntry: 102.4,
+      orphanedRefCount: 0,
     };
 
     it('should pass when all thresholds are met', () => {

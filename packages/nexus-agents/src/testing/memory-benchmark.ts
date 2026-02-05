@@ -50,6 +50,10 @@ export interface MemoryBenchmarkResult {
   readonly timestamp: Date;
   /** Duration of benchmark in milliseconds */
   readonly durationMs: number;
+  /** Average bytes per entry (capacity efficiency) */
+  readonly avgBytesPerEntry: number;
+  /** Number of orphaned references detected (coherence detail) */
+  readonly orphanedRefCount: number;
 }
 
 /**
@@ -65,6 +69,26 @@ export interface RetrievalTestCase {
 }
 
 /**
+ * A cross-reference between memory entries to validate.
+ */
+export interface CrossReference {
+  /** Source memory key */
+  readonly sourceKey: string;
+  /** Target memory key that must exist */
+  readonly targetKey: string;
+}
+
+/**
+ * Configuration for coherence checking.
+ */
+export interface CoherenceConfig {
+  /** List of cross-references to validate */
+  readonly crossReferences?: readonly CrossReference[];
+  /** Additional backend to check target keys against (for cross-backend refs) */
+  readonly targetBackend?: IMemoryBackend;
+}
+
+/**
  * Configuration for benchmark execution.
  */
 export interface BenchmarkConfig {
@@ -76,6 +100,8 @@ export interface BenchmarkConfig {
   readonly quickMode?: boolean;
   /** Logger instance */
   readonly logger?: ILogger;
+  /** Coherence checking configuration */
+  readonly coherenceConfig?: CoherenceConfig;
 }
 
 /**
@@ -298,6 +324,67 @@ async function measureStorage(
 }
 
 // ============================================================================
+// Coherence Measurement (Phase 2)
+// ============================================================================
+
+/** Coherence measurement result. */
+interface CoherenceMeasurement {
+  readonly score: number;
+  readonly totalRefs: number;
+  readonly validRefs: number;
+  readonly orphanedRefs: number;
+}
+
+/** Build coherence result from counts. */
+function buildCoherenceResult(validCount: number, totalCount: number): CoherenceMeasurement {
+  return {
+    score: totalCount > 0 ? validCount / totalCount : 1.0,
+    totalRefs: totalCount,
+    validRefs: validCount,
+    orphanedRefs: totalCount - validCount,
+  };
+}
+
+/** Self-consistency check: validate all entries can be retrieved. */
+async function measureSelfConsistency(backend: IMemoryBackend): Promise<CoherenceMeasurement> {
+  const allEntries = await backend.search('', 1000);
+  if (!allEntries.ok) return buildCoherenceResult(0, 0);
+
+  let validCount = 0;
+  for (const entry of allEntries.value) {
+    const retrieved = await backend.retrieve(entry.key);
+    if (retrieved.ok) validCount++;
+  }
+  return buildCoherenceResult(validCount, allEntries.value.length);
+}
+
+/** Validate explicit cross-references exist in target backend. */
+async function validateCrossRefs(
+  refs: readonly CrossReference[],
+  targetBackend: IMemoryBackend,
+  logger?: ILogger
+): Promise<CoherenceMeasurement> {
+  let validCount = 0;
+  for (const ref of refs) {
+    const result = await targetBackend.retrieve(ref.targetKey);
+    if (result.ok) validCount++;
+    else logger?.debug('Orphaned reference', { source: ref.sourceKey, target: ref.targetKey });
+  }
+  return buildCoherenceResult(validCount, refs.length);
+}
+
+/** Measure memory coherence by validating cross-references. */
+async function measureCoherence(
+  backend: IMemoryBackend,
+  config?: CoherenceConfig,
+  logger?: ILogger
+): Promise<CoherenceMeasurement> {
+  const refs = config?.crossReferences ?? [];
+  if (refs.length === 0) return measureSelfConsistency(backend);
+  return validateCrossRefs(refs, config?.targetBackend ?? backend, logger);
+}
+
+// ============================================================================
 // Benchmark Runner
 // ============================================================================
 
@@ -321,6 +408,7 @@ export async function runMemoryBenchmark(
   const quality = await measureRetrievalQuality(backend, testCases, kValues, logger);
   const latency = await measureLatency(backend, iterations);
   const storage = await measureStorage(backend);
+  const coherence = await measureCoherence(backend, config?.coherenceConfig, logger);
   const durationMs = getTimeProvider().now() - startTime;
 
   logger.info('Memory benchmark complete', {
@@ -328,8 +416,12 @@ export async function runMemoryBenchmark(
     latencyP50Ms: latency.p50,
     latencyP95Ms: latency.p95,
     entryCount: storage.entryCount,
+    coherenceScore: coherence.score,
+    orphanedRefs: coherence.orphanedRefs,
     durationMs,
   });
+
+  const avgBytesPerEntry = storage.entryCount > 0 ? storage.storageBytes / storage.entryCount : 0;
 
   return {
     recallAtK: quality.recallAtK,
@@ -340,9 +432,11 @@ export async function runMemoryBenchmark(
     latencyP99Ms: latency.p99,
     storageBytes: storage.storageBytes,
     entryCount: storage.entryCount,
-    coherenceScore: 1.0, // TODO: Implement reference integrity checking
+    coherenceScore: coherence.score,
     timestamp: new Date(),
     durationMs,
+    avgBytesPerEntry,
+    orphanedRefCount: coherence.orphanedRefs,
   };
 }
 
@@ -418,11 +512,17 @@ export function formatBenchmarkResult(result: MemoryBenchmarkResult): string {
     `  P50: ${result.latencyP50Ms.toFixed(2)}ms  |  P95: ${result.latencyP95Ms.toFixed(2)}ms  |  P99: ${result.latencyP99Ms.toFixed(2)}ms`
   );
   lines.push('');
-  lines.push('▸ Storage');
+  lines.push('▸ Storage & Efficiency');
   lines.push(
     `  Entries: ${String(result.entryCount)}  |  Size: ${(result.storageBytes / 1024).toFixed(2)} KB`
   );
-  lines.push(`  Coherence: ${(result.coherenceScore * 100).toFixed(1)}%`);
+  lines.push(`  Avg bytes/entry: ${result.avgBytesPerEntry.toFixed(0)} bytes`);
+  lines.push('');
+  lines.push('▸ Coherence');
+  lines.push(`  Score: ${(result.coherenceScore * 100).toFixed(1)}%`);
+  if (result.orphanedRefCount > 0) {
+    lines.push(`  ⚠ Orphaned refs: ${String(result.orphanedRefCount)}`);
+  }
   lines.push('');
   lines.push(`Duration: ${String(result.durationMs)}ms  |  ${result.timestamp.toISOString()}`);
   lines.push('╚════════════════════════════════════════╝');
