@@ -52,8 +52,11 @@ export function sampleWithTemperature(
 ): WorkflowAction | null {
   if (actions.length === 0 || actions.length !== scores.length) return null;
 
-  // Apply temperature scaling
-  const scaledScores = scores.map((s) => Math.exp(s / temperature));
+  // Apply temperature scaling with log-sum-exp trick to prevent overflow.
+  // Subtracting maxScore ensures the largest exponent is exp(0) = 1,
+  // avoiding Infinity from Math.exp(large_number).
+  const maxScore = Math.max(...scores);
+  const scaledScores = scores.map((s) => Math.exp((s - maxScore) / temperature));
   const sum = scaledScores.reduce((a, b) => a + b, 0);
   const probabilities = scaledScores.map((s) => s / sum);
 
