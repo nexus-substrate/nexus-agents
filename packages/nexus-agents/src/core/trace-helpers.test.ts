@@ -194,7 +194,7 @@ describe('trace-helpers', () => {
       startTime: Date.now(),
       status: 'success',
       attributes: {},
-      llmMetrics,
+      ...(llmMetrics !== undefined && { llmMetrics }),
     });
 
     it('aggregates tokens and cost', () => {

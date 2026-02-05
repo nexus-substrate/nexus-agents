@@ -160,7 +160,7 @@ describe('trace-exporter-helpers', () => {
       startTime: 0,
       status: 'success',
       attributes: {},
-      llmMetrics,
+      ...(llmMetrics !== undefined && { llmMetrics }),
     });
 
     const opts: ResolvedVisualizationOptions = {
@@ -206,7 +206,7 @@ describe('trace-exporter-helpers', () => {
       startTime: 0,
       status: 'success',
       attributes: {},
-      llmMetrics,
+      ...(llmMetrics !== undefined && { llmMetrics }),
     });
 
     const opts: ResolvedVisualizationOptions = {
@@ -259,7 +259,7 @@ describe('trace-exporter-helpers', () => {
       startTime: 0,
       status: 'error',
       attributes: {},
-      errorMessage,
+      ...(errorMessage !== undefined && { errorMessage }),
     });
 
     const opts: ResolvedVisualizationOptions = {
@@ -288,7 +288,7 @@ describe('trace-exporter-helpers', () => {
       parentSpanId?: string,
       startTime: number = 0
     ): TraceSpan => ({
-      context: { traceId: 't1', spanId, parentSpanId },
+      context: { traceId: 't1', spanId, ...(parentSpanId !== undefined && { parentSpanId }) },
       name: `span-${spanId}`,
       startTime,
       status: 'success',
@@ -359,18 +359,31 @@ describe('trace-exporter-helpers', () => {
       colors: false,
     };
 
-    const createNode = (span: Partial<TraceSpan> = {}, children: SpanNode[] = []): SpanNode => ({
-      span: {
+    interface CreateNodeOptions {
+      omitEndTime?: boolean;
+    }
+
+    const createNode = (
+      span: Partial<Omit<TraceSpan, 'endTime'>> & { endTime?: number } = {},
+      children: SpanNode[] = [],
+      options: CreateNodeOptions = {}
+    ): SpanNode => {
+      const baseSpan: TraceSpan = {
         context: { traceId: 't1', spanId: 's1' },
         name: 'test-span',
         startTime: 1000,
-        endTime: 2000,
         status: 'success',
         attributes: {},
         ...span,
-      },
-      children,
-    });
+      };
+
+      // Add default endTime unless explicitly omitted
+      if (options.omitEndTime !== true && span.endTime === undefined) {
+        baseSpan.endTime = 2000;
+      }
+
+      return { span: baseSpan, children };
+    };
 
     it('renders span with duration', () => {
       const node = createNode();
@@ -381,7 +394,7 @@ describe('trace-exporter-helpers', () => {
     });
 
     it('renders running span without duration', () => {
-      const node = createNode({ status: 'running', endTime: undefined });
+      const node = createNode({ status: 'running' }, [], { omitEndTime: true });
       const lines = renderSpanNode(node, '', true, opts);
       expect(lines[0]).toContain('[RUN]');
       expect(lines[0]).toContain('running');

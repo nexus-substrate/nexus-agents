@@ -215,7 +215,7 @@ describe('random-provider', () => {
 
       for (let i = 0; i < samples; i++) {
         const bucket = Math.floor(provider.random() * 10);
-        buckets[bucket]++;
+        buckets[bucket] = (buckets[bucket] ?? 0) + 1;
       }
 
       // Each bucket should have ~1000 samples (±20%)
