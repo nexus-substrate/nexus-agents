@@ -78,6 +78,9 @@ export interface AdapterCandidate {
 
 /**
  * Quality router configuration.
+ *
+ * @deprecated v3.0 - Use CompositeRouter configuration instead.
+ * See deprecation-pipeline.md for migration guide.
  */
 export interface QualityRouterConfig {
   readonly minQuality?: number;
@@ -160,6 +163,7 @@ type ResolvedConfig = {
   logger: ILogger;
 };
 
+// eslint-disable-next-line @typescript-eslint/no-deprecated -- internal helper for deprecated class
 function resolveQualityConfig(config: QualityRouterConfig | undefined): ResolvedConfig {
   const base = { ...QUALITY_DEFAULTS, logger: createLogger({ component: 'quality-router' }) };
   if (!config) return base;
@@ -176,6 +180,10 @@ function resolveQualityConfig(config: QualityRouterConfig | undefined): Resolved
 /**
  * Quality-Constrained Router.
  * Routes tasks to the cheapest model that meets quality requirements.
+ *
+ * @deprecated v3.0 - Use CompositeRouter which integrates quality-constrained
+ * routing via TopsisRouter stage. QualityRouter will be replaced by
+ * QualityConstraintStage. See deprecation-pipeline.md for migration guide.
  */
 export class QualityRouter {
   private readonly minQuality: number;
@@ -187,6 +195,7 @@ export class QualityRouter {
   private readonly complexityEstimator: TaskComplexityEstimator;
   private readonly adapters = new Map<CliName, ICliAdapter>();
 
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- constructor uses its own deprecated config type
   constructor(config?: QualityRouterConfig) {
     const resolved = resolveQualityConfig(config);
     this.minQuality = resolved.minQuality;
@@ -417,7 +426,12 @@ export class QualityRouter {
 
 /**
  * Creates a quality router with default configuration.
+ *
+ * @deprecated v3.0 - Use createCompositeRouter() instead.
+ * See deprecation-pipeline.md for migration guide.
  */
+// eslint-disable-next-line @typescript-eslint/no-deprecated -- factory for deprecated class
 export function createQualityRouter(config?: QualityRouterConfig): QualityRouter {
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- intentionally creating deprecated class
   return new QualityRouter(config);
 }

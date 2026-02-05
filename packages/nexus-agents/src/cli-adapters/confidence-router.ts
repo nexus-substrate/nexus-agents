@@ -62,6 +62,10 @@ const logger = createLogger({ component: 'confidence-router' });
 /**
  * Confidence-aware cascade router.
  * Implements SATER-style dual-mode routing with confidence-based escalation.
+ *
+ * @deprecated v3.0 - Use CompositeRouter which integrates confidence-based
+ * routing via ZeroRouter and PreferenceRouter stages. ConfidenceRouter will be
+ * replaced by ConfidenceCascadeStage. See deprecation-pipeline.md for migration.
  */
 export class ConfidenceRouter implements IConfidenceRouter {
   private readonly adapters: Map<CliName, ICliAdapter>;
@@ -350,7 +354,11 @@ export class ConfidenceRouter implements IConfidenceRouter {
 
 /**
  * Create a confidence router instance.
+ *
+ * @deprecated v3.0 - Use createCompositeRouter() instead.
+ * See deprecation-pipeline.md for migration guide.
  */
 export function createConfidenceRouter(adapters: Map<CliName, ICliAdapter>): IConfidenceRouter {
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- factory for deprecated class
   return new ConfidenceRouter(adapters);
 }

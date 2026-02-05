@@ -104,6 +104,10 @@ export interface ITaskRouter {
 
 /**
  * Capability-based task router implementation.
+ *
+ * @deprecated v3.0 - Use CompositeRouter which integrates capability matching
+ * via ZeroRouter stage. TaskRouter will be replaced by CapabilityMatchStage.
+ * See deprecation-pipeline.md for migration guide.
  */
 export class TaskRouter implements ITaskRouter {
   private readonly adapters: Map<CliName, ICliAdapter>;
@@ -304,10 +308,14 @@ export class TaskRouter implements ITaskRouter {
 
 /**
  * Creates a task router with the provided adapters.
+ *
+ * @deprecated v3.0 - Use createCompositeRouter() instead.
+ * See deprecation-pipeline.md for migration guide.
  */
 export function createTaskRouter(
   adapters: Map<CliName, ICliAdapter>,
   config?: RouterConfig
 ): ITaskRouter {
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- factory for deprecated class
   return new TaskRouter(adapters, config);
 }
