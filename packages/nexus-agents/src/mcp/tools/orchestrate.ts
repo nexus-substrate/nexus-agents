@@ -158,6 +158,23 @@ function createErrorOptions(
 // Memory Recording (Issue #690)
 // ============================================================================
 
+/** Fire-and-forget promotion pipeline runner (Issue #753). */
+function triggerPromotionPipeline(toolName: string): void {
+  void getToolMemory()
+    .runPromotionPipeline()
+    .then((stats) => {
+      if (stats.learningsPromotedToBelief > 0 || stats.beliefsPromotedToAgentic > 0) {
+        createLogger({ tool: toolName }).debug('Promotion pipeline completed', {
+          learningsPromoted: stats.learningsPromotedToBelief,
+          beliefsPromoted: stats.beliefsPromotedToAgentic,
+        });
+      }
+    })
+    .catch(() => {
+      /* Best-effort, ignore failures */
+    });
+}
+
 function recordOrchestrationSuccess(
   taskId: string,
   taskDescription: string,
@@ -197,6 +214,8 @@ function recordOrchestrationSuccess(
       error: error instanceof Error ? error.message : String(error),
     });
   }
+
+  triggerPromotionPipeline('orchestrate');
 }
 
 function recordOrchestrationError(errorMessage: string, taskDescription: string): void {

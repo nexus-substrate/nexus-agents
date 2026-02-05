@@ -166,6 +166,17 @@ function recordExpertSuccess(expertId: string, role: string, durationMs: number)
       challenges: [],
       durationMs,
     });
+    // Record learning about successful execution pattern
+    memory.recordLearning({
+      pattern: `Expert ${role} completed successfully`,
+      context: `id=${expertId} duration=${String(durationMs)}ms`,
+      confidence: 0.75,
+      source: 'execute-expert-success',
+    });
+    // Fire-and-forget promotion pipeline (Issue #753)
+    void memory.runPromotionPipeline().catch(() => {
+      /* Best-effort, ignore failures */
+    });
   } catch (error: unknown) {
     // Best-effort memory recording
     createLogger({ tool: 'execute_expert' }).debug('Best-effort success recording failed', {
