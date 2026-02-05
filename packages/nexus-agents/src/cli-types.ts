@@ -58,7 +58,8 @@ export type CliCommand =
   | 'scaffold'
   | 'visualize'
   | 'capabilities'
-  | 'status';
+  | 'status'
+  | 'memory-benchmark';
 
 /**
  * Parsed CLI arguments and command.
@@ -339,6 +340,7 @@ export function isValidCommand(value: string): value is CliCommand {
     'visualize',
     'capabilities',
     'status',
+    'memory-benchmark',
   ];
   return validCommands.includes(value as CliCommand);
 }

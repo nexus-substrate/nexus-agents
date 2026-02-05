@@ -58,6 +58,8 @@ export { handleScaffoldCommand } from './cli-scaffold-handler.js';
 export { handleVisualizeCommand } from './cli/visualize-command.js';
 // Issue #684: Capabilities Command
 export { handleCapabilitiesCommand } from './cli/capabilities-command.js';
+// Issue #748: Memory Benchmark Command
+export { handleMemoryBenchmarkCommand } from './cli/memory-benchmark-command.js';
 // Issue #688: Status Command
 export { handleStatusCommand } from './cli/status-command.js';
 
@@ -105,6 +107,8 @@ import { handleVisualizeCommand } from './cli/visualize-command.js';
 import { handleCapabilitiesCommand } from './cli/capabilities-command.js';
 // Issue #688: Status Command
 import { handleStatusCommand } from './cli/status-command.js';
+// Issue #748: Memory Benchmark Command
+import { handleMemoryBenchmarkCommand } from './cli/memory-benchmark-command.js';
 
 /**
  * Prints help text to stdout.
@@ -191,6 +195,8 @@ const ASYNC_COMMAND_HANDLERS: Record<string, ((args: ParsedCliArgs) => Promise<v
     'release-notes': handleReleaseNotesCommand,
     'release-validate': handleReleaseValidateCommand,
     'release-announce': handleReleaseAnnounceCommand,
+    // Issue #748: Memory Benchmark Command
+    'memory-benchmark': handleMemoryBenchmarkCommand,
   };
 
 /**
