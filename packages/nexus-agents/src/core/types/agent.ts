@@ -14,9 +14,14 @@ export type AgentState = 'idle' | 'thinking' | 'acting' | 'waiting' | 'error';
 
 /**
  * Predefined agent roles.
+ *
+ * @remarks
+ * 'orchestrator' is the preferred name for the coordination agent (Issue #759).
+ * 'tech_lead' is retained for backward compatibility but will be deprecated in v3.0.
  */
 export type AgentRole =
-  | 'tech_lead'
+  | 'orchestrator' // Preferred: Coordinates multi-agent workflows (Issue #759)
+  | 'tech_lead' // @deprecated Use 'orchestrator' instead. Retained for backward compatibility.
   | 'code_expert'
   | 'architecture_expert'
   | 'security_expert'
@@ -28,6 +33,12 @@ export type AgentRole =
   | 'worker' // TRINITY: Task execution
   | 'verifier' // TRINITY: Output validation
   | 'custom';
+
+/**
+ * Type alias for backward compatibility.
+ * @deprecated Use 'orchestrator' AgentRole instead.
+ */
+export type TechLeadRole = Extract<AgentRole, 'tech_lead' | 'orchestrator'>;
 
 /**
  * Agent capabilities.

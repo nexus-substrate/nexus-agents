@@ -110,7 +110,8 @@ export const InputDefinitionSchema = z.object({
  * Must match AgentRole type in core/types/agent.ts.
  */
 export const AgentRoleSchema = z.enum([
-  'tech_lead',
+  'orchestrator', // Preferred name for coordination agent (Issue #759)
+  'tech_lead', // @deprecated - use 'orchestrator'
   'code_expert',
   'architecture_expert',
   'security_expert',

@@ -326,6 +326,7 @@ export const EXPERT_DEFAULT_TEMPERATURES: Record<ExpertDomain, number> = {
  * Default capabilities for each expert role.
  */
 export const EXPERT_DEFAULT_CAPABILITIES: Record<AgentRole, readonly AgentCapability[]> = {
+  orchestrator: ['task_execution', 'delegation', 'collaboration', 'research'],
   code_expert: ['task_execution', 'code_generation', 'code_review', 'tool_use'],
   security_expert: ['task_execution', 'code_review', 'research'],
   architecture_expert: ['task_execution', 'research', 'collaboration'],
@@ -333,7 +334,7 @@ export const EXPERT_DEFAULT_CAPABILITIES: Record<AgentRole, readonly AgentCapabi
   documentation_expert: ['task_execution', 'research'],
   devops_expert: ['task_execution', 'code_generation', 'tool_use', 'collaboration'],
   research_expert: ['task_execution', 'research', 'tool_use'],
-  tech_lead: ['task_execution', 'delegation', 'collaboration', 'research'],
+  tech_lead: ['task_execution', 'delegation', 'collaboration', 'research'], // @deprecated - same as orchestrator
   custom: ['task_execution'],
   // TRINITY roles (arXiv:2512.04695)
   thinker: ['task_execution', 'research', 'collaboration'],

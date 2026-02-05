@@ -100,7 +100,8 @@ export const ContextPrunerAgentConfigSchema = z.object({
 export const BaseAgentOptionsSchema = z.object({
   id: z.string().min(1, 'Agent ID is required'),
   role: z.enum([
-    'tech_lead',
+    'orchestrator',
+    'tech_lead', // @deprecated - use 'orchestrator'
     'code_expert',
     'architecture_expert',
     'security_expert',

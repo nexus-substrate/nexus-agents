@@ -50,7 +50,8 @@ export type InputDefinitionOutput = z.output<typeof InputDefinitionSchema>;
  * Agent roles that can execute workflow steps.
  */
 export const AgentRoleSchema = z.enum([
-  'tech_lead',
+  'orchestrator',
+  'tech_lead', // @deprecated - use 'orchestrator'
   'code_expert',
   'architecture_expert',
   'security_expert',
