@@ -365,6 +365,31 @@ routing:
 - `alpha: 1.0` - Balanced exploration (default)
 - `alpha: 2.0` - Aggressive exploration, try new combinations
 
+### Advanced Routing Stages (Optional)
+
+Enable optional routing stages for specialized use cases:
+
+```yaml
+routing:
+  stages:
+    # Confidence-based cascade routing (SATER-style escalation)
+    confidenceCascade: false
+
+    # Task capability matching (matches task requirements to model capabilities)
+    capabilityMatch: false
+
+    # Quality-constrained routing (RouteLLM-style cost/quality tradeoff)
+    qualityConstraint: false
+```
+
+These stages are disabled by default for backward compatibility. Enable them to add additional routing intelligence:
+
+| Stage               | Purpose                                            | Use When                   |
+| ------------------- | -------------------------------------------------- | -------------------------- |
+| `confidenceCascade` | Escalate to more powerful models on low confidence | Quality-sensitive tasks    |
+| `capabilityMatch`   | Match task type to model capabilities              | Diverse task workloads     |
+| `qualityConstraint` | Enforce quality thresholds with cost awareness     | Balancing quality and cost |
+
 ## Memory Configuration
 
 ### Session Memory
@@ -454,6 +479,34 @@ security:
     requestsPerMinute: 60
     burstLimit: 10
 ```
+
+### Authentication (Network Transport)
+
+Configure authentication for network-exposed MCP transports:
+
+```yaml
+security:
+  auth:
+    enabled: true # Enable authentication
+    method: token # 'token' or 'oauth2'
+    tokenHeader: Authorization # Header name for bearer token
+    tokenFile: ~/.nexus-agents/auth/server-token # Token file path
+```
+
+Generate and manage auth tokens with CLI commands:
+
+```bash
+# Generate initial token
+nexus-agents auth init
+
+# Show token status
+nexus-agents auth show
+
+# Rotate token (invalidate old, generate new)
+nexus-agents auth rotate
+```
+
+> **Note:** Authentication is for network-exposed transports (HTTP, WebSocket). Stdio transport is inherently secure as it only communicates with the parent process.
 
 ## Workflow Configuration
 
