@@ -107,6 +107,7 @@ export const InputDefinitionSchema = z.object({
 
 /**
  * Agent role schema.
+ * Must match AgentRole type in core/types/agent.ts.
  */
 export const AgentRoleSchema = z.enum([
   'tech_lead',
@@ -115,6 +116,11 @@ export const AgentRoleSchema = z.enum([
   'security_expert',
   'documentation_expert',
   'testing_expert',
+  'devops_expert',
+  'research_expert',
+  'thinker', // TRINITY: High-level reasoning (arXiv:2512.04695)
+  'worker', // TRINITY: Task execution
+  'verifier', // TRINITY: Output validation
   'custom',
 ]);
 
@@ -207,6 +213,7 @@ export const BUILT_IN_TEMPLATES = [
   'bug-fix',
   'documentation-update',
   'refactoring',
+  'research-review',
   'security-audit',
   'standards-review',
   'test-generation',
@@ -223,6 +230,7 @@ export const TEMPLATE_CATEGORIES: Record<BuiltInTemplateName, TemplateCategory> 
   'bug-fix': 'development',
   'documentation-update': 'documentation',
   refactoring: 'development',
+  'research-review': 'review',
   'security-audit': 'review',
   'standards-review': 'review',
   'test-generation': 'testing',
@@ -237,6 +245,7 @@ export const TEMPLATE_KEYWORDS: Record<BuiltInTemplateName, string[]> = {
   'bug-fix': ['bug', 'fix', 'debug', 'error', 'issue', 'patch'],
   'documentation-update': ['docs', 'documentation', 'readme', 'api', 'update'],
   refactoring: ['refactor', 'clean', 'improve', 'restructure', 'simplify'],
+  'research-review': ['research', 'paper', 'arxiv', 'discover', 'catalog', 'registry'],
   'security-audit': ['security', 'audit', 'vulnerability', 'owasp', 'scan'],
   'standards-review': ['standards', 'lint', 'typecheck', 'fitness', 'compliance', 'quality'],
   'test-generation': ['test', 'generate', 'coverage', 'unit', 'integration'],

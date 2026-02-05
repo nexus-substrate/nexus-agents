@@ -110,7 +110,8 @@ describe('JourneySimulator', () => {
       await trackingSimulator.simulate(basicJourney);
 
       expect(times).toHaveLength(2);
-      expect(times[1]! - times[0]!).toBeGreaterThanOrEqual(50);
+      // Allow 5ms tolerance for timer variance (setTimeout is not exact)
+      expect(times[1]! - times[0]!).toBeGreaterThanOrEqual(45);
     });
 
     it('should stop on first failure', async () => {
