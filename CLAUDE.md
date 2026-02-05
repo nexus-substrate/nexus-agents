@@ -266,18 +266,20 @@ Governance rules (voting thresholds, refactor gates, fitness audit, documentatio
 | `research_discover`       | Discover new research papers and repos from arXiv, GitHub, Google AI, Meta FAIR, Microsoft, DeepMind.                 |
 | `research_analyze`        | Analyze the research registry for gaps, trends, priorities, stale entries, or coverage.                               |
 | `research_catalog_review` | Review auto-cataloged research references found during tool execution.                                                |
+| `memory_query`            | Query across all memory backends with unified results and relevance scoring.                                          |
+| `memory_stats`            | Get memory system statistics dashboard showing backend availability and metrics.                                      |
 
-_Auto-generated from source. 13 tools registered._
+_Auto-generated from source. 15 tools registered._
 
 <!-- GOVERNANCE:TOOL_INDEX:END -->
 
 <!-- GOVERNANCE:VERSION:START -->
 
-_Governance Version: 2026-02-03_
+_Governance Version: 2026-02-04_
 
 <!-- GOVERNANCE:VERSION:END -->
 
-_Last updated: 2026-02-03 (ET)_
+_Last updated: 2026-02-04 (ET)_
 _MCP Protocol: 2025-11-25_
 _Node.js: 22.x LTS_
 _TypeScript: 5.8+_
