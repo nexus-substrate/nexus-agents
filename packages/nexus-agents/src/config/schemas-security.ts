@@ -147,6 +147,25 @@ export const SecurityConfigSchema = z.object({
       maxFiles: z.number().positive().default(10),
     })
     .optional(),
+  /** Authentication configuration (Issue #739) */
+  auth: z
+    .object({
+      /** Enable authentication for network-exposed transports (default: false) */
+      enabled: z.boolean().default(false),
+      /** Authentication method (default: 'token') */
+      method: z.enum(['token', 'oauth2']).default('token'),
+      /** Header name for bearer token (default: 'Authorization') */
+      tokenHeader: z.string().default('Authorization'),
+      /** Token file path (default: ~/.nexus-agents/auth/server-token) */
+      tokenFile: z.string().optional(),
+    })
+    .optional(),
 });
 
 export type SecurityConfig = z.infer<typeof SecurityConfigSchema>;
+
+/**
+ * Authentication configuration type.
+ * (Source: Issue #739 - enable MCP authentication by default)
+ */
+export type AuthConfig = NonNullable<SecurityConfig['auth']>;

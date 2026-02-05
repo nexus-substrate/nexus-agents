@@ -74,6 +74,7 @@ export {
 // Request context (Issue #185 Phase 1)
 export {
   // Types
+  type AuthenticatedUser,
   type CallerInfo,
   type RequestContext,
   type CreateContextOptions,
@@ -85,6 +86,24 @@ export {
   contextForLogging,
   isRequestContext,
 } from './request-context.js';
+
+// Authentication handler (Issue #739)
+export {
+  // Types
+  type AuthResult,
+  type AuthHandlerConfig,
+  // Classes
+  AuthHandler,
+  // Functions
+  getDefaultTokenPath,
+  generateSecureToken,
+  readStoredToken,
+  writeToken,
+  validateToken,
+  extractBearerToken,
+  createAuthHandler,
+  createUnauthorizedResponse,
+} from './auth-handler.js';
 
 // Secure handler wrapper (Issue #185 Phase 1)
 export {

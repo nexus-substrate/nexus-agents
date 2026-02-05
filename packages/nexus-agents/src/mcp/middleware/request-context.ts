@@ -11,6 +11,19 @@ import { randomBytes } from 'node:crypto';
 import { getTimeProvider } from '../../core/index.js';
 
 /**
+ * Authenticated user information.
+ * (Source: Issue #739 - MCP authentication)
+ */
+export interface AuthenticatedUser {
+  /** Unique user/client identifier */
+  readonly id: string;
+  /** Human-readable name (optional) */
+  readonly name?: string;
+  /** Granted permissions/scopes (optional) */
+  readonly permissions?: readonly string[];
+}
+
+/**
  * Caller identification for audit trails.
  */
 export interface CallerInfo {
@@ -22,6 +35,10 @@ export interface CallerInfo {
   readonly sessionId?: string;
   /** IP address or transport identifier */
   readonly transport?: string;
+  /** Whether the request is authenticated (Issue #739) */
+  readonly authenticated?: boolean;
+  /** Authenticated user information (Issue #739) */
+  readonly authenticatedUser?: AuthenticatedUser;
 }
 
 /**
