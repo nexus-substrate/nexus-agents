@@ -25,8 +25,8 @@ import { createSecureHandler, type HandlerContext } from '../middleware/secure-h
 import type { Expert } from '../../agents/index.js';
 import { getToolMemory } from './tool-memory.js';
 import { getAutoCatalog } from './research-auto-catalog.js';
-import { getAvailableClis } from '../../cli-adapters/factory.js';
 import type { ICliDetectionCache } from '../../cli-adapters/cli-detection-cache.js';
+import { requireAdapterAvailable } from '../middleware/adapter-availability.js';
 
 /**
  * Input schema for execute_expert tool.
@@ -76,47 +76,6 @@ export interface ExecuteExpertResponse {
   status: 'success' | 'error';
   /** Error message if status is 'error' */
   error?: string;
-}
-
-/**
- * Checks if any model adapter is available (CLI or API key).
- * Checks CLIs first (preferred), then API keys as fallback.
- * Returns an error message if nothing is available, or undefined if at least one adapter exists.
- * (Issue #656 - Actionable API key error messages)
- * (Issue #747 - CLI detection support)
- */
-async function checkAdapterAvailability(cache?: ICliDetectionCache): Promise<string | undefined> {
-  // Check CLIs first (preferred - OAuth-authenticated)
-  const availableClis = await getAvailableClis(cache);
-  if (availableClis.length > 0) {
-    return undefined; // CLI available, no error
-  }
-
-  // Fallback to API keys
-  const keys = [
-    { name: 'ANTHROPIC_API_KEY', provider: 'Anthropic (Claude)' },
-    { name: 'OPENAI_API_KEY', provider: 'OpenAI' },
-    { name: 'GOOGLE_AI_API_KEY', provider: 'Google AI (Gemini)' },
-  ];
-  const available = keys.filter(
-    (k) => process.env[k.name] !== undefined && process.env[k.name] !== ''
-  );
-  if (available.length > 0) {
-    return undefined; // API key available, no error
-  }
-
-  // No adapters available - provide helpful error message
-  const keyList = keys.map((k) => `  - ${k.name} (${k.provider})`).join('\n');
-  return (
-    'No model adapter available. Expert execution requires either:\n\n' +
-    '1. An authenticated CLI (run one of these to authenticate):\n' +
-    '  - claude (run: claude login)\n' +
-    '  - gemini (run: gemini auth)\n' +
-    '  - codex (run: codex auth)\n\n' +
-    '2. An API key environment variable:\n' +
-    keyList +
-    '\n\nSee: https://github.com/williamzujkowski/nexus-agents#prerequisites--environment'
-  );
 }
 
 /**
@@ -277,8 +236,8 @@ async function handleExecuteExpert(
   }
   const expert = lookup.expert;
 
-  // Validate adapter availability before execution (Issue #656, #747)
-  const adapterError = await checkAdapterAvailability(deps.cliCache);
+  // Validate adapter availability before execution (Issue #656, #747, #749)
+  const adapterError = await requireAdapterAvailable(deps.cliCache);
   if (adapterError !== undefined) {
     return { ok: false, error: adapterError };
   }
