@@ -9,6 +9,7 @@ import type { PuppeteerState } from './puppeteer-types.js';
 import {
   LEARNABLE_WEIGHTS,
   computeReturns,
+  computeGradients,
   extractFeatureValues,
   normalizeWeights,
   applyGradientUpdate,
@@ -87,6 +88,20 @@ describe('computeReturns', () => {
     // return[0] = 1.0 + 0.5 * 1.0 = 1.5
     expect(returns[1]).toBeCloseTo(1.0);
     expect(returns[0]).toBeCloseTo(1.5);
+  });
+});
+
+// ============================================================================
+// computeGradients
+// ============================================================================
+
+describe('computeGradients', () => {
+  it('returns zero gradients for empty trajectory (regression: no NaN)', () => {
+    const gradients = computeGradients([], [], 0);
+    for (const key of LEARNABLE_WEIGHTS) {
+      expect(gradients[key]).toBe(0);
+      expect(Number.isNaN(gradients[key])).toBe(false);
+    }
   });
 });
 

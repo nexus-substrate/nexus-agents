@@ -59,20 +59,20 @@ describe('normalCDF', () => {
     expect(normalCDF(0)).toBeCloseTo(0.5, 4);
   });
 
-  it('returns value > 0.5 for x=1', () => {
-    // Abramowitz & Stegun approximation may differ from exact CDF
-    expect(normalCDF(1)).toBeGreaterThan(0.8);
-    expect(normalCDF(1)).toBeLessThan(1);
+  it('returns correct value for x=1 (Phi(1) ≈ 0.8413)', () => {
+    expect(normalCDF(1)).toBeCloseTo(0.8413, 3);
   });
 
-  it('returns value < 0.5 for x=-1', () => {
-    expect(normalCDF(-1)).toBeGreaterThan(0);
-    expect(normalCDF(-1)).toBeLessThan(0.2);
+  it('returns correct value for x=-1 (Phi(-1) ≈ 0.1587)', () => {
+    expect(normalCDF(-1)).toBeCloseTo(0.1587, 3);
   });
 
-  it('returns value > 0.97 for x=2', () => {
-    expect(normalCDF(2)).toBeGreaterThan(0.97);
-    expect(normalCDF(2)).toBeLessThan(1);
+  it('returns correct value for x=2 (Phi(2) ≈ 0.9772)', () => {
+    expect(normalCDF(2)).toBeCloseTo(0.9772, 3);
+  });
+
+  it('returns correct value for x=1.96 (Phi(1.96) ≈ 0.975)', () => {
+    expect(normalCDF(1.96)).toBeCloseTo(0.975, 2);
   });
 
   it('returns value near 1 for large x', () => {

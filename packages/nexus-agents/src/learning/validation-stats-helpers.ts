@@ -51,7 +51,8 @@ export function normalCDF(x: number): number {
   const p = 0.3275911;
 
   const sign = x < 0 ? -1 : 1;
-  const absX = Math.abs(x);
+  // A&S 7.1.26 approximates erf(x), so transform to standard normal: Phi(x) = 0.5*(1+erf(x/sqrt(2)))
+  const absX = Math.abs(x) / Math.SQRT2;
   const t = 1 / (1 + p * absX);
   const y = 1 - ((((a5 * t + a4) * t + a3) * t + a2) * t + a1) * t * Math.exp(-absX * absX);
 

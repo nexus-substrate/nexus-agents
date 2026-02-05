@@ -115,6 +115,13 @@ describe('renderModelDistribution', () => {
     expect(allText).toContain('claude');
     expect(allText).toContain('gemini');
   });
+
+  it('renders non-empty bar for 60% selection (regression: * 20 not * 0.2)', () => {
+    const lines = renderModelDistribution(makeMetrics(), 80);
+    const allText = lines.join('\n');
+    // selectionPercent=0.6 → barLength=12, so at least 10 filled blocks
+    expect(allText).toContain('█'.repeat(10));
+  });
 });
 
 // ============================================================================

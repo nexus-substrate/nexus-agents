@@ -132,10 +132,12 @@ export function computeGradients(
     }
   }
 
-  // Normalize by trajectory length
-  for (const key of LEARNABLE_WEIGHTS) {
-    const currentGrad = gradients[key] ?? 0;
-    gradients[key] = currentGrad / trajectory.length;
+  // Normalize by trajectory length (guard against empty trajectory)
+  if (trajectory.length > 0) {
+    for (const key of LEARNABLE_WEIGHTS) {
+      const currentGrad = gradients[key] ?? 0;
+      gradients[key] = currentGrad / trajectory.length;
+    }
   }
 
   return gradients;

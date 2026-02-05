@@ -234,6 +234,16 @@ describe('deepEquals', () => {
     expect(deepEquals(null, null)).toBe(true);
     expect(deepEquals(null, {})).toBe(false);
   });
+
+  it('distinguishes arrays from objects with numeric keys (regression)', () => {
+    expect(deepEquals([1, 2], { '0': 1, '1': 2 })).toBe(false);
+    expect(deepEquals([1], { '0': 1 })).toBe(false);
+  });
+
+  it('still compares arrays correctly', () => {
+    expect(deepEquals([1, 2, 3], [1, 2, 3])).toBe(true);
+    expect(deepEquals([1, 2], [1, 2, 3])).toBe(false);
+  });
 });
 
 // ============================================================================

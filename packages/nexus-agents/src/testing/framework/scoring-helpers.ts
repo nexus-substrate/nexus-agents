@@ -192,8 +192,10 @@ function scoreMaxLength(length: number, maxLength: number): number {
  */
 function scoreTargetLength(length: number, targetLength: number, maxLength: number): number {
   const distance = Math.abs(length - targetLength);
-  const maxDistance = Math.max(targetLength, maxLength - targetLength);
-  return maxDistance > 0 ? 1 - distance / maxDistance : 1;
+  // When maxLength is not explicitly set (MAX_SAFE_INTEGER), use targetLength*2 as reasonable bound
+  const effectiveMax = maxLength >= Number.MAX_SAFE_INTEGER ? targetLength * 2 : maxLength;
+  const maxDistance = Math.max(targetLength, effectiveMax - targetLength);
+  return maxDistance > 0 ? Math.max(0, 1 - distance / maxDistance) : 1;
 }
 
 /**

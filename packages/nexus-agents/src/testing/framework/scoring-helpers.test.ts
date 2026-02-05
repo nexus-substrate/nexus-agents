@@ -132,4 +132,16 @@ describe('scoreLengthCheck', () => {
     // length=15, distance=5, maxDistance=max(10, 20-10)=10, score=1-5/10=0.5
     expect(scoreLengthCheck(config, 'x'.repeat(15))).toBeCloseTo(0.5);
   });
+
+  it('penalizes distance from target when maxLength not set (regression)', () => {
+    const config = { targetLength: 100 };
+    // length=200, distance=100, effectiveMax=200, maxDistance=max(100,200-100)=100
+    // score=max(0, 1-100/100)=0
+    expect(scoreLengthCheck(config, 'x'.repeat(200))).toBeCloseTo(0, 1);
+  });
+
+  it('gives perfect score at target when maxLength not set', () => {
+    const config = { targetLength: 50 };
+    expect(scoreLengthCheck(config, 'x'.repeat(50))).toBe(1);
+  });
 });

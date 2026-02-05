@@ -46,7 +46,7 @@ export function renderModelDistribution(metrics: RoutingMetrics, w: number): str
   }
 
   for (const model of metrics.modelMetrics) {
-    const barLength = Math.round(model.selectionPercent * 0.2);
+    const barLength = Math.round(model.selectionPercent * 20);
     const bar = '█'.repeat(barLength) + '░'.repeat(20 - barLength);
     const pct = `${String(Math.round(model.selectionPercent * 100))}%`;
     const reward = `(avg reward: ${model.avgReward.toFixed(2)})`;

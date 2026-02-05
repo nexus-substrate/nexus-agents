@@ -131,6 +131,11 @@ export function deepEquals(a: unknown, b: unknown): boolean {
     return false;
   }
 
+  // Distinguish arrays from plain objects
+  if (Array.isArray(a) !== Array.isArray(b)) {
+    return false;
+  }
+
   const aObj = a as Record<string, unknown>;
   const bObj = b as Record<string, unknown>;
 
