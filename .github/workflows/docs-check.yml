@@ -9,6 +9,9 @@ on:
       - 'packages/nexus-agents/src/**'
       - 'packages/nexus-agents/docs/**'
       - 'docs/**'
+      - 'scripts/inject-governance.ts'
+      - 'CLAUDE.md'
+      - '.claude/skills/**'
       - '.github/workflows/docs-check.yml'
 
 concurrency:
@@ -528,7 +531,47 @@ jobs:
             exit 1
           fi
 
-  # Job 12: Spell Check (Warning Only)
+  # Job 12: Governance Registry Drift Detection
+  governance-drift:
+    name: Governance Drift Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - run: pnpm install
+
+      - name: Check governance registries
+        run: |
+          npx tsx scripts/inject-governance.ts check
+          if [ $? -eq 0 ]; then
+            echo "✅ Governance registries are in sync"
+          else
+            echo "::error::Governance registries have drifted from source code"
+            echo "Run 'npx tsx scripts/inject-governance.ts inject' and commit the changes"
+            exit 1
+          fi
+
+      - name: Verify injection idempotency
+        run: |
+          npx tsx scripts/inject-governance.ts inject
+          if git diff --exit-code CLAUDE.md; then
+            echo "✅ CLAUDE.md governance sections are up to date"
+          else
+            echo "::error::CLAUDE.md governance sections are stale"
+            echo "Run 'npx tsx scripts/inject-governance.ts inject' and commit the changes"
+            git diff CLAUDE.md
+            exit 1
+          fi
+
+  # Job 13: Spell Check (Warning Only)
   spell-check:
     name: Spell Check
     runs-on: ubuntu-latest

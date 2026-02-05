@@ -251,23 +251,23 @@ Governance rules (voting thresholds, refactor gates, fitness audit, documentatio
 
 ## MCP Tools Reference
 
-| Tool                      | Description                                                                                                           |
-| ------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `orchestrate`             | Orchestrate a task by analyzing it, breaking it into subtasks if needed, and coordinating expert agents               |
-| `create_expert`           | Create a specialized expert agent for code, architecture, security, documentation, testing, research, or devops tasks |
-| `execute_expert`          | Execute a task using a previously created expert agent.                                                               |
-| `run_workflow`            | Execute workflow templates with provided inputs.                                                                      |
-| `consensus_vote`          | Execute multi-model consensus voting on a proposal.                                                                   |
-| `delegate_to_model`       | Route a task to the optimal model based on capability matching.                                                       |
-| `list_experts`            | List available expert types that can be created with create_expert.                                                   |
-| `list_workflows`          | List available workflow templates that can be executed with run_workflow.                                             |
-| `research_query`          | Query the research registry for status, overlaps, stats, or search by keyword.                                        |
-| `research_add`            | Add a research paper to the registry by arXiv ID with metadata fetching.                                              |
-| `research_discover`       | Discover new research papers and repos from arXiv, GitHub, Google AI, Meta FAIR, Microsoft, DeepMind.                 |
-| `research_analyze`        | Analyze the research registry for gaps, trends, priorities, stale entries, or coverage.                               |
-| `research_catalog_review` | Review auto-cataloged research references found during tool execution.                                                |
-| `memory_query`            | Query across all memory backends with unified results and relevance scoring.                                          |
-| `memory_stats`            | Get memory system statistics dashboard showing backend availability and metrics.                                      |
+| Tool                      | Description                                                                                                                        |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `orchestrate`             | Orchestrate a task by analyzing it, breaking it into subtasks if needed, and coordinating expert agents                            |
+| `create_expert`           | Create a specialized expert agent for code, architecture, security, documentation, testing, devops, or research tasks              |
+| `execute_expert`          | Execute a task using a previously created expert agent. Returns the expert analysis including output, confidence, and token usage. |
+| `run_workflow`            | Execute workflow templates with provided inputs, supporting built-in templates and custom paths                                    |
+| `delegate_to_model`       | Route a task to the optimal model based on capability matching. Returns model recommendation with reasoning.                       |
+| `list_experts`            | List available expert types that can be created with create_expert. Returns role names, descriptions, and capabilities.            |
+| `list_workflows`          | List available workflow templates that can be executed with run_workflow. Returns template names and descriptions.                 |
+| `consensus_vote`          | Execute multi-model consensus voting on a proposal. Uses specialized agent roles to vote with configurable strategies.             |
+| `research_query`          | Query the research registry for technique status, overlaps, statistics, or text search.                                            |
+| `research_add`            | Add an arXiv paper to the research registry. Fetches metadata from the arXiv API and persists to the registry.                     |
+| `research_discover`       | Discover new research papers and repositories from external sources. Searches arXiv, GitHub, and other sources.                    |
+| `research_analyze`        | Analyze the research registry for gaps, trends, priorities, stale entries, or coverage.                                            |
+| `research_catalog_review` | Review auto-cataloged research references found during tool execution.                                                             |
+| `memory_query`            | Query across all memory backends with unified results and relevance scoring.                                                       |
+| `memory_stats`            | Get memory system statistics dashboard showing backend availability and metrics.                                                   |
 
 _Auto-generated from source. 15 tools registered._
 
@@ -275,11 +275,11 @@ _Auto-generated from source. 15 tools registered._
 
 <!-- GOVERNANCE:VERSION:START -->
 
-_Governance Version: 2026-02-04_
+_Governance Version: 2026-02-05_
 
 <!-- GOVERNANCE:VERSION:END -->
 
-_Last updated: 2026-02-04 (ET)_
+_Last updated: 2026-02-05 (ET)_
 _MCP Protocol: 2025-11-25_
 _Node.js: 22.x LTS_
-_TypeScript: 5.8+_
+_TypeScript: 5.9+_
