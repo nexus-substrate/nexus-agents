@@ -32,6 +32,7 @@ import {
 import {
   discoverSemanticScholar,
   discoverPapersWithCode,
+  discoverOpenAlex,
 } from './research-helpers-sources-academic.js';
 import {
   handleStatsCommand,
@@ -167,6 +168,7 @@ type DiscoverSource =
   | 'deepmind'
   | 'semantic_scholar'
   | 'papers_with_code'
+  | 'openalex'
   | 'all';
 
 /** Source provider mapping for discovery. */
@@ -190,6 +192,7 @@ const SOURCE_PROVIDERS: ReadonlyArray<{
   { key: 'deepmind', label: 'DeepMind', fn: discoverDeepMind },
   { key: 'semantic_scholar', label: 'Semantic Scholar', fn: discoverSemanticScholar },
   { key: 'papers_with_code', label: 'Papers with Code', fn: discoverPapersWithCode },
+  { key: 'openalex', label: 'OpenAlex', fn: discoverOpenAlex },
 ];
 
 /** Query all requested discovery sources. */

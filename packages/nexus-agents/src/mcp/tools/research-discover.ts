@@ -28,6 +28,7 @@ import {
 import {
   discoverSemanticScholar,
   discoverPapersWithCode,
+  discoverOpenAlex,
 } from '../../cli/research-helpers-sources-academic.js';
 
 // =============================================================================
@@ -54,6 +55,7 @@ export type DiscoverySource =
   | 'deepmind'
   | 'semantic_scholar'
   | 'papers_with_code'
+  | 'openalex'
   | 'all';
 
 /** A discovered research item. */
@@ -97,11 +99,14 @@ export const ResearchDiscoverInputSchema = z.object({
       'deepmind',
       'semantic_scholar',
       'papers_with_code',
+      'openalex',
       'all',
     ])
     .optional()
     .default('all')
-    .describe('Source to search: arxiv, github, google_ai, meta_fair, microsoft, deepmind, or all'),
+    .describe(
+      'Source to search: arxiv, github, google_ai, meta_fair, microsoft, deepmind, semantic_scholar, papers_with_code, openalex, or all'
+    ),
   maxResults: z
     .number()
     .min(1)
@@ -231,6 +236,9 @@ async function discoverFromExtendedSource(
     case 'papers_with_code':
       result = await discoverPapersWithCode(topic, maxResults);
       break;
+    case 'openalex':
+      result = await discoverOpenAlex(topic, maxResults);
+      break;
     default:
       return [];
   }
@@ -318,6 +326,7 @@ const ALL_SOURCES = [
   'deepmind',
   'semantic_scholar',
   'papers_with_code',
+  'openalex',
 ] as const;
 
 /** Query all requested sources and collect items. */
@@ -469,6 +478,7 @@ export function registerResearchDiscoverTool(server: McpServer, deps: ResearchDi
         'deepmind',
         'semantic_scholar',
         'papers_with_code',
+        'openalex',
         'all',
       ])
       .optional()

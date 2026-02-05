@@ -1,11 +1,12 @@
 /**
  * Academic Source Discovery Providers
  *
- * Semantic Scholar and Papers with Code discovery providers.
+ * Semantic Scholar, Papers with Code, and OpenAlex discovery providers.
  * Separate from research-helpers-sources.ts (anti-sprawl exception: new capability).
  *
  * @module cli/research-helpers-sources-academic
  * (Source: Research System Enhancement - Phase 2A/2B)
+ * (OpenAlex: Issue #750)
  */
 
 import { z } from 'zod';
@@ -204,6 +205,126 @@ export async function discoverPapersWithCode(
   const items = (parsed.data.results ?? [])
     .filter((p) => p.title !== undefined && p.title !== '')
     .map(mapPwcPaper);
+
+  return { ok: true, value: items };
+}
+
+// =============================================================================
+// OPENALEX DISCOVERY (Issue #750)
+// =============================================================================
+
+/** Zod schema for OpenAlex work (paper). */
+const OpenAlexWorkSchema = z.object({
+  id: z.string().optional(),
+  title: z.string().optional(),
+  doi: z.string().nullable().optional(),
+  publication_date: z.string().nullable().optional(),
+  cited_by_count: z.number().optional(),
+  is_oa: z.boolean().optional(),
+  abstract_inverted_index: z.record(z.array(z.number())).nullable().optional(),
+  primary_location: z
+    .object({
+      landing_page_url: z.string().nullable().optional(),
+    })
+    .nullable()
+    .optional(),
+  ids: z
+    .object({
+      openalex: z.string().optional(),
+      doi: z.string().optional(),
+    })
+    .optional(),
+});
+
+const OpenAlexResponseSchema = z.object({
+  results: z.array(OpenAlexWorkSchema).optional(),
+});
+
+/**
+ * Reconstruct abstract from OpenAlex inverted index format.
+ * OpenAlex stores abstracts as {word: [positions]} for compression.
+ */
+function reconstructAbstract(invertedIndex: Record<string, number[]> | null | undefined): string {
+  if (!invertedIndex) return '';
+  const words: Array<[string, number]> = [];
+  for (const [word, positions] of Object.entries(invertedIndex)) {
+    for (const pos of positions) {
+      words.push([word, pos]);
+    }
+  }
+  words.sort((a, b) => a[1] - b[1]);
+  return words.map(([w]) => w).join(' ');
+}
+
+/** Map validated OpenAlex work to DiscoveredSource. */
+function mapOpenAlexWork(work: z.infer<typeof OpenAlexWorkSchema>): DiscoveredSource {
+  const url = work.primary_location?.landing_page_url ?? work.ids?.doi ?? work.id ?? '';
+
+  return {
+    source: 'openalex',
+    title: work.title ?? '',
+    url,
+    description: truncate(reconstructAbstract(work.abstract_inverted_index)),
+    relevance: citationRelevance(work.cited_by_count ?? 0),
+    discoveredAt: getToday(),
+  };
+}
+
+/** Parse error for OpenAlex. */
+function openAlexParseError(message: string): { ok: false; error: DiscoverError } {
+  return { ok: false, error: { code: 'PARSE_ERROR', source: 'openalex', message } };
+}
+
+/**
+ * Discover research papers from OpenAlex.
+ *
+ * OpenAlex is a free, open catalog of scholarly works with 250M+ papers.
+ * Uses polite API with email parameter for higher rate limits.
+ *
+ * @param topic - Search topic
+ * @param maxResults - Maximum results (default 10)
+ * @param apiKey - Optional API key for authenticated access
+ * @returns Result containing discovered papers
+ */
+export async function discoverOpenAlex(
+  topic: string,
+  maxResults = 10,
+  apiKey?: string
+): Promise<Result<DiscoveredSource[], DiscoverError>> {
+  const query = encodeURIComponent(topic);
+  // Use polite API with mailto for better rate limits
+  const mailto = 'nexus-agents@example.com';
+  const url = `https://api.openalex.org/works?search=${query}&per_page=${String(maxResults)}&mailto=${mailto}`;
+
+  // Add API key if provided
+  const headers: Record<string, string> = {
+    'User-Agent': 'nexus-agents',
+    Accept: 'application/json',
+  };
+  if (apiKey !== undefined && apiKey !== '') {
+    headers['Authorization'] = `Bearer ${apiKey}`;
+  }
+
+  const fetchResult = await fetchSource({
+    url,
+    source: 'openalex',
+    headers,
+  });
+  if (!fetchResult.ok) return fetchResult;
+
+  let raw: unknown;
+  try {
+    raw = await fetchResult.value.json();
+  } catch {
+    return openAlexParseError('Response is not valid JSON');
+  }
+
+  const parsed = OpenAlexResponseSchema.safeParse(raw);
+  if (!parsed.success) return openAlexParseError('Response schema mismatch');
+
+  const items = (parsed.data.results ?? [])
+    .filter((w) => w.title !== undefined && w.title !== '')
+    .map(mapOpenAlexWork);
 
   return { ok: true, value: items };
 }

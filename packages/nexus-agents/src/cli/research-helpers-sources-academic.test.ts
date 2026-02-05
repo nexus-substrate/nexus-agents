@@ -8,6 +8,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   discoverSemanticScholar,
   discoverPapersWithCode,
+  discoverOpenAlex,
 } from './research-helpers-sources-academic.js';
 
 const mockFetch = vi.fn();
@@ -186,5 +187,155 @@ describe('discoverPapersWithCode', () => {
     const result = await discoverPapersWithCode('test', 10);
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.value[0]?.relevance).toBe('medium');
+  });
+});
+
+describe('discoverOpenAlex', () => {
+  it('should parse valid response with inverted index abstract', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          results: [
+            {
+              id: 'https://openalex.org/W1234567890',
+              title: 'Multi-Agent Systems',
+              doi: '10.1234/example.123',
+              publication_date: '2025-01-15',
+              cited_by_count: 150,
+              is_oa: true,
+              abstract_inverted_index: {
+                This: [0],
+                is: [1, 4],
+                a: [2],
+                paper: [3],
+                about: [5],
+                agents: [6],
+              },
+              primary_location: {
+                landing_page_url: 'https://doi.org/10.1234/example.123',
+              },
+            },
+          ],
+        }),
+    });
+
+    const result = await discoverOpenAlex('multi-agent', 10);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value).toHaveLength(1);
+      expect(result.value[0]?.source).toBe('openalex');
+      expect(result.value[0]?.title).toBe('Multi-Agent Systems');
+      expect(result.value[0]?.url).toBe('https://doi.org/10.1234/example.123');
+      expect(result.value[0]?.relevance).toBe('high');
+      expect(result.value[0]?.description).toContain('This is a paper is about agents');
+    }
+  });
+
+  it('should use mailto parameter in URL for polite API', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ results: [] }),
+    });
+    await discoverOpenAlex('test', 5);
+    const calledUrl = mockFetch.mock.calls[0]?.[0] as string;
+    expect(calledUrl).toContain('mailto=');
+    expect(calledUrl).toContain('api.openalex.org');
+  });
+
+  it('should handle HTTP errors', async () => {
+    mockFetch.mockResolvedValueOnce({ ok: false, status: 503 });
+    const result = await discoverOpenAlex('test', 5);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe('HTTP_ERROR');
+  });
+
+  it('should handle network errors', async () => {
+    mockFetch.mockRejectedValueOnce(new Error('Connection refused'));
+    const result = await discoverOpenAlex('test', 5);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe('NETWORK');
+  });
+
+  it('should return PARSE_ERROR on invalid schema', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve('invalid'),
+    });
+    const result = await discoverOpenAlex('test', 5);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe('PARSE_ERROR');
+  });
+
+  it('should return PARSE_ERROR when response is not JSON', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.reject(new SyntaxError("Unexpected token '<'")),
+    });
+    const result = await discoverOpenAlex('test', 5);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe('PARSE_ERROR');
+      expect(result.error.source).toBe('openalex');
+    }
+  });
+
+  it('should filter out works without titles', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          results: [
+            { id: 'W1', title: '', cited_by_count: 10 },
+            { id: 'W2', title: 'Valid Work', cited_by_count: 50 },
+          ],
+        }),
+    });
+    const result = await discoverOpenAlex('test', 10);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value).toHaveLength(1);
+  });
+
+  it('should handle null abstract_inverted_index', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          results: [
+            {
+              id: 'W1',
+              title: 'Paper Without Abstract',
+              cited_by_count: 5,
+              abstract_inverted_index: null,
+            },
+          ],
+        }),
+    });
+    const result = await discoverOpenAlex('test', 10);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value[0]?.description).toBe('');
+    }
+  });
+
+  it('should set relevance based on citation count', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          results: [
+            { id: 'W1', title: 'High Citations', cited_by_count: 200 },
+            { id: 'W2', title: 'Medium Citations', cited_by_count: 50 },
+            { id: 'W3', title: 'Low Citations', cited_by_count: 5 },
+          ],
+        }),
+    });
+    const result = await discoverOpenAlex('test', 10);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value[0]?.relevance).toBe('high');
+      expect(result.value[1]?.relevance).toBe('medium');
+      expect(result.value[2]?.relevance).toBe('low');
+    }
   });
 });
