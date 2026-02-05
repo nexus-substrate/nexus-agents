@@ -83,6 +83,19 @@ export type {
 export type { AgentRole } from '../../core/types/agent.js';
 export type { MobiMemStats } from '../../context/mobimem-types.js';
 export type { PromotionStats, MemoryPromotionConfig } from './memory-promotion.js';
+
+/**
+ * Status of memory backend availability (#754).
+ */
+export interface MemoryBackendStatus {
+  session: boolean;
+  belief: boolean;
+  agentic: boolean;
+  adaptive: boolean;
+  typed: boolean;
+  mobimem: boolean;
+  decay: boolean;
+}
 export type { DecayRunStats, DecayAggregateStats } from './memory-decay.js';
 
 // ============================================================================
@@ -121,6 +134,15 @@ export function shutdownToolMemory(): void {
     sharedInstance.endSession();
     sharedInstance = null;
   }
+}
+
+/**
+ * Reinitialize SQLite-based memory backends that failed during startup.
+ * Useful after installing better-sqlite3 to enable full memory functionality.
+ * @returns Status of each backend after reinitialization
+ */
+export async function reinitializeMemoryBackends(): Promise<MemoryBackendStatus> {
+  return getToolMemory().reinitializeSqliteBackends();
 }
 
 // ============================================================================
@@ -281,6 +303,34 @@ export class ToolMemoryManager {
         error: error instanceof Error ? error.message : String(error),
       });
     }
+  }
+
+  /**
+   * Re-initialize SQLite backends that failed during startup.
+   * Skips already-initialized backends. Useful after installing better-sqlite3.
+   * @returns Status of each backend after reinitialization attempt
+   */
+  async reinitializeSqliteBackends(): Promise<MemoryBackendStatus> {
+    this.log.info('Reinitializing SQLite backends');
+    if (this.agentic === null) await this.initAgenticMemory();
+    if (this.adaptive === null) await this.initAdaptiveMemory();
+    if (this.typed === null) await this.initTypedMemory();
+    if (this.mobimem === null) this.initMobiMem();
+    if (this.decayManager === null) this.initDecayManager();
+    return this.getBackendStatus();
+  }
+
+  /** Get current backend availability status. */
+  getBackendStatus(): MemoryBackendStatus {
+    return {
+      session: true,
+      belief: true,
+      agentic: this.agentic !== null,
+      adaptive: this.adaptive !== null,
+      typed: this.typed !== null,
+      mobimem: this.mobimem !== null,
+      decay: this.decayManager !== null,
+    };
   }
 
   /**
