@@ -480,3 +480,53 @@ export function createTechLead(
 ): TechLead {
   return new TechLead(options);
 }
+
+// ============================================================================
+// Orchestrator Aliases (Issue #759)
+// ============================================================================
+
+/**
+ * Orchestrator is the preferred name for the coordination agent.
+ * This is a type alias for backward compatibility during migration.
+ *
+ * @remarks
+ * Per consensus vote (83.33% approval), 'orchestrator' better describes
+ * the agent's role in multi-agent coordination, task decomposition,
+ * expert delegation, and result synthesis.
+ *
+ * TechLead is retained for backward compatibility but marked as deprecated.
+ * New code should use Orchestrator.
+ */
+export type Orchestrator = TechLead;
+
+/**
+ * Options for Orchestrator agent.
+ * Type alias for backward compatibility.
+ */
+export type OrchestratorAgentOptions = TechLeadOptions;
+
+/**
+ * Create an Orchestrator agent instance.
+ * This is the preferred factory function for creating coordination agents.
+ *
+ * @param options - Agent configuration options
+ * @returns Orchestrator agent instance
+ *
+ * @example
+ * ```typescript
+ * const orchestrator = createOrchestrator({
+ *   orchestratorOptions: { maxSubtasks: 5 }
+ * });
+ * const plan = await orchestrator.plan(task);
+ * ```
+ */
+export function createOrchestrator(
+  options?: Partial<BaseAgentOptions> & { orchestratorOptions?: OrchestratorAgentOptions }
+): Orchestrator {
+  // Map orchestratorOptions to techLeadOptions for backward compatibility
+  const { orchestratorOptions, ...restOptions } = options ?? {};
+  return new TechLead({
+    ...restOptions,
+    ...(orchestratorOptions !== undefined && { techLeadOptions: orchestratorOptions }),
+  });
+}

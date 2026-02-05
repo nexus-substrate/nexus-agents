@@ -17,8 +17,15 @@ export {
 // Simple agent implementation
 export { SimpleAgent } from './simple-agent.js';
 
-// TechLead agent
+// TechLead agent (legacy name)
 export { TechLead, createTechLead, type ExecutionPlan } from './tech-lead.js';
+
+// Orchestrator agent (preferred name - Issue #759)
+export {
+  type Orchestrator,
+  createOrchestrator,
+  type OrchestratorAgentOptions,
+} from './tech-lead.js';
 
 // Plan to Workflow conversion
 export {
