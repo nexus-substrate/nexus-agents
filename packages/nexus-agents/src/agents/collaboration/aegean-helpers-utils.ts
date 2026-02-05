@@ -25,11 +25,11 @@ export function parseVoteStatus(output: unknown): {
   confidence: number;
 } {
   const outputStr = typeof output === 'string' ? output : JSON.stringify(output);
-  const isAccept = ACCEPT_PATTERN.test(outputStr);
   const isReject = REJECT_PATTERN.test(outputStr);
+  const isAccept = !isReject && ACCEPT_PATTERN.test(outputStr);
 
   return {
-    status: isAccept ? 'accept' : isReject ? 'reject' : 'pending',
+    status: isReject ? 'reject' : isAccept ? 'accept' : 'pending',
     confidence: isAccept || isReject ? 0.8 : 0.5,
   };
 }
