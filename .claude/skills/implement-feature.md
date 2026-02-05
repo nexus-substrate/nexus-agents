@@ -55,7 +55,7 @@ git commit -m "feat(scope): description
 
 Closes #<issue>
 
-Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>"
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>"
 
 gh pr create --title "feat(scope): description" --base main
 ```

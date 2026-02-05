@@ -13,7 +13,7 @@ Research on integrating external CLI tools (Claude CLI, Gemini CLI, Codex CLI) w
 
 | CLI            | Version | Models                          | Context | Auth          | MCP Support  |
 | -------------- | ------- | ------------------------------- | ------- | ------------- | ------------ |
-| **Claude CLI** | 2.0.76  | Opus 4.5, Sonnet 4.5, Haiku 4.5 | 200K    | OAuth 2.0     | Full client  |
+| **Claude CLI** | 2.0.76  | Opus 4.6, Sonnet 4.5, Haiku 4.5 | 200K    | OAuth 2.0     | Full client  |
 | **Gemini CLI** | 0.22.5  | Gemini 2.5/3 Pro, Flash         | 1M+     | OAuth/ADC     | Experimental |
 | **Codex CLI**  | 0.77.0  | codex-mini, GPT-5 family        | ~128K   | ChatGPT OAuth | Server mode  |
 

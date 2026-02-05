@@ -114,14 +114,15 @@ Then ask Claude: **"orchestrate: Review this code for security issues"**
     **Native MCP support** for Claude Desktop and Claude CLI. All tools are discoverable and documented with Zod schemas.
 
     - `orchestrate` - Coordinate expert execution
-    - `create_expert` - Dynamic expert creation
-    - `run_workflow` - Execute YAML workflows
-    - `delegate_to_model` - Intelligent routing
+    - `create_expert` / `execute_expert` - Dynamic experts
+    - `consensus_vote` - Multi-agent voting
+    - `memory_query` / `memory_stats` - Memory system
+    - Plus 9 more tools (15 total)
   </Card>
   <Card title="CLI Adapters" icon="laptop">
     **Zero-credential OAuth** integration with external CLI tools. No API keys stored - all authentication via OAuth 2.0/PKCE.
 
-    - Claude CLI (Opus 4.5, Sonnet 4.5)
+    - Claude CLI (Opus 4.6, Sonnet 4.5)
     - Gemini CLI (2.5 Pro, Flash)
     - Codex CLI (GPT-5.x family)
   </Card>

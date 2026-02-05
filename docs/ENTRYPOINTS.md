@@ -296,19 +296,25 @@ nexus-agents hooks stop --check-tasks
 **Protocol:** Model Context Protocol (2025-11-25)
 **Transport:** JSON-RPC 2.0 over stdio
 
-| Tool                      | Description                                              | Auth         | Rate Limit |
-| ------------------------- | -------------------------------------------------------- | ------------ | ---------- |
-| `orchestrate`             | Task orchestration with TechLead coordination            | None (local) | 10/min     |
-| `create_expert`           | Dynamic expert agent creation                            | None (local) | 60/min     |
-| `run_workflow`            | Execute workflow template                                | None (local) | 20/min     |
-| `delegate_to_model`       | Route task to optimal model                              | None (local) | 30/min     |
-| `list_experts`            | List available expert types for discoverability          | None (local) | 60/min     |
-| `list_workflows`          | List available workflow templates                        | None (local) | 60/min     |
-| `research_query`          | Query research registry (status, overlap, stats, search) | None (local) | 30/min     |
-| `research_add`            | Add paper to registry by arXiv ID                        | None (local) | 10/min     |
-| `research_discover`       | Discover papers/repos from external sources              | None (local) | 2/min      |
-| `research_analyze`        | Analyze registry for gaps, trends, coverage              | None (local) | 10/min     |
-| `research_catalog_review` | Review auto-cataloged research references                | None (local) | 30/min     |
+| Tool                      | Description                                              | Auth         | Rate Limit    |
+| ------------------------- | -------------------------------------------------------- | ------------ | ------------- |
+| `orchestrate`             | Task orchestration with TechLead coordination            | None (local) | Shared bucket |
+| `create_expert`           | Dynamic expert agent creation                            | None (local) | Shared bucket |
+| `execute_expert`          | Execute a task using a created expert agent              | None (local) | Shared bucket |
+| `run_workflow`            | Execute workflow template                                | None (local) | Shared bucket |
+| `delegate_to_model`       | Route task to optimal model                              | None (local) | Shared bucket |
+| `consensus_vote`          | Multi-model consensus voting on proposals                | None (local) | Shared bucket |
+| `list_experts`            | List available expert types for discoverability          | None (local) | Shared bucket |
+| `list_workflows`          | List available workflow templates                        | None (local) | Shared bucket |
+| `research_query`          | Query research registry (status, overlap, stats, search) | None (local) | Shared bucket |
+| `research_add`            | Add paper to registry by arXiv ID                        | None (local) | Shared bucket |
+| `research_discover`       | Discover papers/repos from external sources              | None (local) | Shared bucket |
+| `research_analyze`        | Analyze registry for gaps, trends, coverage              | None (local) | Shared bucket |
+| `research_catalog_review` | Review auto-cataloged research references                | None (local) | Shared bucket |
+| `memory_query`            | Query across all memory backends with unified results    | None (local) | Shared bucket |
+| `memory_stats`            | Memory system statistics dashboard                       | None (local) | Shared bucket |
+
+**Rate limiting:** All tools share a single token bucket rate limiter (capacity: 100 tokens, refill: 10 tokens/sec). Each tool call consumes one token.
 
 ### Tool Schemas
 
@@ -341,7 +347,15 @@ nexus-agents hooks stop --check-tasks
     "properties": {
       "role": {
         "type": "string",
-        "enum": ["code", "security", "architecture", "testing", "documentation"]
+        "enum": [
+          "code_expert",
+          "architecture_expert",
+          "security_expert",
+          "documentation_expert",
+          "testing_expert",
+          "devops_expert",
+          "research_expert"
+        ]
       },
       "modelPreference": { "type": "string", "description": "Preferred model tier" }
     },
@@ -866,6 +880,22 @@ cli_commands:
   - name: hooks
     subcommands: ['session-start', 'session-end', 'pre-tool', 'post-tool', 'stop']
     mode: any
+  - name: vote
+    args: ['<proposal>']
+    flags: ['--threshold', '--quick', '--strategy']
+    mode: orchestrator
+  - name: fitness-audit
+    flags: ['--format', '--verbose']
+    mode: any
+  - name: research
+    subcommands: ['query', 'add', 'discover', 'analyze']
+    mode: any
+  - name: release-validate
+    flags: ['--version', '--verbose', '--strict', '--skip']
+    mode: any
+  - name: verify
+    flags: ['--verbose']
+    mode: any
 ```
 
 <!-- END:CLI_COMMANDS -->
@@ -874,18 +904,38 @@ cli_commands:
 
 ```yaml
 mcp_tools:
-  - name: orchestrate
-    auth: none
-    rate_limit: 10/min
-  - name: create_expert
-    auth: none
-    rate_limit: 30/min
-  - name: run_workflow
-    auth: none
-    rate_limit: 5/min
-  - name: delegate_to_model
-    auth: none
-    rate_limit: 20/min
+  rate_limiting: shared token bucket (capacity: 100, refill: 10/sec)
+  tools:
+    - name: orchestrate
+      auth: none
+    - name: create_expert
+      auth: none
+    - name: execute_expert
+      auth: none
+    - name: run_workflow
+      auth: none
+    - name: delegate_to_model
+      auth: none
+    - name: consensus_vote
+      auth: none
+    - name: list_experts
+      auth: none
+    - name: list_workflows
+      auth: none
+    - name: research_query
+      auth: none
+    - name: research_add
+      auth: none
+    - name: research_discover
+      auth: none
+    - name: research_analyze
+      auth: none
+    - name: research_catalog_review
+      auth: none
+    - name: memory_query
+      auth: none
+    - name: memory_stats
+      auth: none
 ```
 
 <!-- END:MCP_TOOLS -->

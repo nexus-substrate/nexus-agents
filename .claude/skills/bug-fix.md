@@ -49,7 +49,7 @@ allowed-tools: Read, Edit, Write, Bash, Grep, Glob, Task
 
    Closes #<issue>
 
-   Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>"
+   Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>"
 
    gh pr create --title "fix(scope): description" --base main
    ```
