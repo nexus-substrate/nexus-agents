@@ -62,24 +62,29 @@ nexus-agents orchestrate "Explain the architecture of this codebase"
 
 ## What It Does
 
-| Feature                        | Description                                                                            |
-| ------------------------------ | -------------------------------------------------------------------------------------- |
-| **Multi-Expert Orchestration** | Tech Lead coordinates Code, Security, Architecture, Testing, and Documentation experts |
-| **Model Routing**              | Routes tasks to the best model based on capability (reasoning, speed, context size)    |
-| **Workflow Automation**        | YAML templates for repeatable processes like code review                               |
-| **MCP Integration**            | Works as a tool server for Claude Desktop and Claude Code                              |
+| Feature                        | Description                                                                                              |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------- |
+| **Multi-Expert Orchestration** | Tech Lead coordinates Code, Security, Architecture, Testing, Documentation, DevOps, and Research experts |
+| **Model Routing**              | Routes tasks to the best model based on capability (reasoning, speed, context size, budget)              |
+| **Consensus Voting**           | Multi-agent voting on proposals with sycophancy detection                                                |
+| **Workflow Automation**        | 9 built-in YAML templates for code review, security audit, and more                                      |
+| **Research Registry**          | Track and discover academic papers and implementation techniques                                         |
+| **Memory System**              | Typed memory backends (core, episodic, semantic, procedural, resource)                                   |
+| **MCP Integration**            | 15 tools available for Claude Desktop and Claude Code                                                    |
 
 ---
 
 ## Available Experts
 
-| Expert        | Specialization                             |
-| ------------- | ------------------------------------------ |
-| Code          | Implementation, debugging, optimization    |
-| Architecture  | System design, patterns, scalability       |
-| Security      | Vulnerability analysis, secure coding      |
-| Testing       | Test strategies, coverage, test generation |
-| Documentation | Technical writing, API docs                |
+| Expert        | Specialization                               |
+| ------------- | -------------------------------------------- |
+| Code          | Implementation, debugging, optimization      |
+| Architecture  | System design, patterns, scalability         |
+| Security      | Vulnerability analysis, secure coding        |
+| Testing       | Test strategies, coverage, test generation   |
+| Documentation | Technical writing, API docs                  |
+| DevOps        | CI/CD, deployment, infrastructure            |
+| Research      | Literature review, state-of-the-art analysis |
 
 ---
 
@@ -103,24 +108,41 @@ nexus-agents                    # Start MCP server (default)
 nexus-agents doctor             # Check installation health
 nexus-agents setup              # Configure Claude CLI integration
 nexus-agents orchestrate "..."  # Run task with experts
+nexus-agents vote "proposal"    # Multi-agent consensus voting
 nexus-agents review <pr-url>    # Review a GitHub PR
 nexus-agents expert list        # List available experts
 nexus-agents workflow list      # List workflow templates
+nexus-agents config init        # Generate config file
+nexus-agents fitness-audit      # Run fitness score audit
+nexus-agents research query     # Query research registry
 nexus-agents --help             # Full command list
 ```
+
+See [docs/ENTRYPOINTS.md](./docs/ENTRYPOINTS.md) for the complete CLI reference (28+ commands).
 
 ---
 
 ## MCP Tools
 
-When running as an MCP server, these tools are available:
+When running as an MCP server, 15 tools are available:
 
-| Tool                | Description                                  |
-| ------------------- | -------------------------------------------- |
-| `orchestrate`       | Analyze task and coordinate expert execution |
-| `create_expert`     | Dynamically create a specialized expert      |
-| `run_workflow`      | Execute a workflow template                  |
-| `delegate_to_model` | Route task to optimal model                  |
+| Tool                      | Description                                              |
+| ------------------------- | -------------------------------------------------------- |
+| `orchestrate`             | Task orchestration with TechLead coordination            |
+| `create_expert`           | Create a specialized expert agent                        |
+| `execute_expert`          | Execute a task using a created expert                    |
+| `run_workflow`            | Execute a workflow template                              |
+| `delegate_to_model`       | Route task to optimal model                              |
+| `consensus_vote`          | Multi-model consensus voting on proposals                |
+| `list_experts`            | List available expert types                              |
+| `list_workflows`          | List available workflow templates                        |
+| `research_query`          | Query research registry (status, overlap, stats, search) |
+| `research_add`            | Add paper to registry by arXiv ID                        |
+| `research_discover`       | Discover papers/repos from external sources              |
+| `research_analyze`        | Analyze registry for gaps, trends, coverage              |
+| `research_catalog_review` | Review auto-cataloged research references                |
+| `memory_query`            | Query across all memory backends                         |
+| `memory_stats`            | Memory system statistics dashboard                       |
 
 ---
 
