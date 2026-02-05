@@ -276,6 +276,8 @@ describe('memory-benchmark', () => {
         durationMs: 500,
         avgBytesPerEntry: 102.4,
         orphanedRefCount: 0,
+        growthRateBytesPerOp: 256,
+        decayConsistencyScore: 1.0,
       };
 
       const formatted = formatBenchmarkResult(result);
@@ -306,6 +308,8 @@ describe('memory-benchmark', () => {
       durationMs: 500,
       avgBytesPerEntry: 102.4,
       orphanedRefCount: 0,
+      growthRateBytesPerOp: 256,
+      decayConsistencyScore: 1.0,
     };
 
     it('should pass when all thresholds are met', () => {
