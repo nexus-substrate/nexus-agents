@@ -7,6 +7,7 @@ on:
     branches: [main]
     paths:
       - 'packages/nexus-agents/src/**'
+      - 'packages/nexus-agents/docs/**'
       - 'docs/**'
       - '.github/workflows/docs-check.yml'
 
