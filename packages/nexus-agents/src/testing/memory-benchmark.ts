@@ -19,6 +19,10 @@ import type {
   MemoryEntry,
   MemoryMetadata,
 } from '../context/memory-backend-types.js';
+import {
+  measurePromotionEffectiveness,
+  measureDecayAppropriateness,
+} from './memory-benchmark-phase3.js';
 
 // ============================================================================
 // Types
@@ -58,6 +62,10 @@ export interface MemoryBenchmarkResult {
   readonly growthRateBytesPerOp: number;
   /** Decay consistency: ratio of items correctly decayed (Phase 2, 0-1) */
   readonly decayConsistencyScore: number;
+  /** Promotion effectiveness: retention rate of promoted memories (Phase 3, 0-1) */
+  readonly promotionRetentionRate: number;
+  /** Decay appropriateness: regret score for premature decay (Phase 3, 0-1 lower is better) */
+  readonly decayRegretScore: number;
 }
 
 /**
@@ -133,16 +141,12 @@ interface ParsedBenchmarkConfig {
 }
 
 // ============================================================================
-// Constants
+// Constants & Helpers
 // ============================================================================
 
 const DEFAULT_K_VALUES = [1, 5, 10] as const;
 const DEFAULT_LATENCY_ITERATIONS = 100;
 const QUICK_MODE_ITERATIONS = 10;
-
-// ============================================================================
-// Helper Functions
-// ============================================================================
 
 /** Parse config with defaults applied. */
 function parseConfig(config?: BenchmarkConfig): ParsedBenchmarkConfig {
@@ -474,14 +478,46 @@ async function measureDecayConsistency(
 // ============================================================================
 // Benchmark Runner
 // ============================================================================
+/** Intermediate measurements collected during benchmark. */
+interface BenchmarkMeasurements {
+  quality: RetrievalMetrics;
+  latency: LatencyMeasurement;
+  storage: { storageBytes: number; entryCount: number };
+  coherence: CoherenceMeasurement;
+  growth: GrowthMeasurement;
+  decay: DecayMeasurement;
+  promotion: { retentionRate: number };
+  appropriateness: { regretScore: number };
+  durationMs: number;
+}
+
+/** Build final result from measurements. */
+function buildBenchmarkResult(m: BenchmarkMeasurements): MemoryBenchmarkResult {
+  const avgBytesPerEntry =
+    m.storage.entryCount > 0 ? m.storage.storageBytes / m.storage.entryCount : 0;
+  return {
+    recallAtK: m.quality.recallAtK,
+    precisionAtK: m.quality.precisionAtK,
+    mrr: m.quality.mrr,
+    latencyP50Ms: m.latency.p50,
+    latencyP95Ms: m.latency.p95,
+    latencyP99Ms: m.latency.p99,
+    storageBytes: m.storage.storageBytes,
+    entryCount: m.storage.entryCount,
+    coherenceScore: m.coherence.score,
+    timestamp: new Date(),
+    durationMs: m.durationMs,
+    avgBytesPerEntry,
+    orphanedRefCount: m.coherence.orphanedRefs,
+    growthRateBytesPerOp: m.growth.bytesPerOperation,
+    decayConsistencyScore: m.decay.consistencyScore,
+    promotionRetentionRate: m.promotion.retentionRate,
+    decayRegretScore: m.appropriateness.regretScore,
+  };
+}
 
 /**
  * Run memory benchmarks on a memory backend.
- *
- * @param backend - Memory backend to benchmark
- * @param testCases - Test cases with queries and known relevant keys
- * @param config - Benchmark configuration
- * @returns Benchmark results
  */
 export async function runMemoryBenchmark(
   backend: IMemoryBackend,
@@ -496,92 +532,29 @@ export async function runMemoryBenchmark(
   const latency = await measureLatency(backend, iterations);
   const storage = await measureStorage(backend);
   const coherence = await measureCoherence(backend, config?.coherenceConfig, logger);
-
-  // Phase 2 metrics (Issue #748)
   const growthIterations = config?.quickMode === true ? 10 : 50;
   const growth = await measureGrowthRate(backend, growthIterations, logger);
   const decay = await measureDecayConsistency(backend, logger);
-
+  const promotion = await measurePromotionEffectiveness(backend, logger);
+  const appropriateness = await measureDecayAppropriateness(backend, logger);
   const durationMs = getTimeProvider().now() - startTime;
 
-  logger.info('Memory benchmark complete', {
-    mrr: quality.mrr,
-    latencyP50Ms: latency.p50,
-    latencyP95Ms: latency.p95,
-    entryCount: storage.entryCount,
-    coherenceScore: coherence.score,
-    orphanedRefs: coherence.orphanedRefs,
-    growthRateBytesPerOp: growth.bytesPerOperation,
-    decayConsistencyScore: decay.consistencyScore,
+  logger.info('Memory benchmark complete', { mrr: quality.mrr, durationMs });
+  return buildBenchmarkResult({
+    quality,
+    latency,
+    storage,
+    coherence,
+    growth,
+    decay,
+    promotion,
+    appropriateness,
     durationMs,
   });
-
-  const avgBytesPerEntry = storage.entryCount > 0 ? storage.storageBytes / storage.entryCount : 0;
-
-  return {
-    recallAtK: quality.recallAtK,
-    precisionAtK: quality.precisionAtK,
-    mrr: quality.mrr,
-    latencyP50Ms: latency.p50,
-    latencyP95Ms: latency.p95,
-    latencyP99Ms: latency.p99,
-    storageBytes: storage.storageBytes,
-    entryCount: storage.entryCount,
-    coherenceScore: coherence.score,
-    timestamp: new Date(),
-    durationMs,
-    avgBytesPerEntry,
-    orphanedRefCount: coherence.orphanedRefs,
-    growthRateBytesPerOp: growth.bytesPerOperation,
-    decayConsistencyScore: decay.consistencyScore,
-  };
 }
 
-// ============================================================================
-// Synthetic Test Data Generation
-// ============================================================================
-
-/**
- * Generate synthetic test cases for benchmarking.
- *
- * @param backend - Backend to populate with test data
- * @param count - Number of test entries to create
- * @returns Array of retrieval test cases
- */
-export async function generateSyntheticTestCases(
-  backend: IMemoryBackend,
-  count: number = 50
-): Promise<RetrievalTestCase[]> {
-  const testCases: RetrievalTestCase[] = [];
-  const topics = ['typescript', 'react', 'nodejs', 'testing', 'security', 'performance'];
-  const entriesPerTopic = Math.ceil(count / topics.length);
-
-  for (const topic of topics) {
-    const relevantKeys = new Set<string>();
-
-    for (let i = 0; i < entriesPerTopic; i++) {
-      const key = `synth-${topic}-${String(i)}`;
-      const value = {
-        topic,
-        content: `This is synthetic test content about ${topic}. Entry ${String(i)}.`,
-        keywords: [topic, 'test', 'benchmark'],
-      };
-      const metadata: MemoryMetadata = {
-        importance: i % 3 === 0 ? 'high' : 'medium',
-        tags: [topic, 'synthetic'],
-      };
-
-      await backend.store(key, value, metadata);
-      relevantKeys.add(key);
-    }
-
-    testCases.push({ query: topic, relevantKeys });
-  }
-
-  return testCases;
-}
-
-// Re-export formatting and validation from output module
+// Re-export from helper modules
+export { generateSyntheticTestCases } from './memory-benchmark-synthetic.js';
 export {
   formatBenchmarkResult,
   validateBenchmarkResults,

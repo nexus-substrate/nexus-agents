@@ -50,6 +50,9 @@ const DEFAULT_THRESHOLDS: BenchmarkThresholds = {
   minCoherenceScore: 0.9,
   maxGrowthRateBytesPerOp: 2048,
   minDecayConsistencyScore: 0.95,
+  // Phase 3 thresholds
+  minPromotionRetentionRate: 0.9,
+  maxDecayRegretScore: 0.3,
 };
 
 // ============================================================================

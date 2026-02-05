@@ -54,6 +54,13 @@ export function formatBenchmarkResult(result: MemoryBenchmarkResult): string {
   lines.push(`  Growth rate: ${result.growthRateBytesPerOp.toFixed(0)} bytes/op`);
   lines.push(`  Decay consistency: ${(result.decayConsistencyScore * 100).toFixed(1)}%`);
   lines.push('');
+  lines.push('▸ Phase 3: Promotion & Appropriateness');
+  lines.push(`  Promotion retention: ${(result.promotionRetentionRate * 100).toFixed(1)}%`);
+  lines.push(`  Decay regret: ${(result.decayRegretScore * 100).toFixed(1)}%`);
+  if (result.decayRegretScore > 0.3) {
+    lines.push('  ⚠ High regret indicates important memories being decayed');
+  }
+  lines.push('');
   lines.push(`Duration: ${String(result.durationMs)}ms  |  ${result.timestamp.toISOString()}`);
   lines.push('╚════════════════════════════════════════╝');
 
@@ -75,7 +82,19 @@ export interface BenchmarkThresholds {
   readonly maxGrowthRateBytesPerOp?: number;
   /** Minimum acceptable decay consistency score (Phase 2) */
   readonly minDecayConsistencyScore?: number;
+  /** Minimum acceptable promotion retention rate (Phase 3) */
+  readonly minPromotionRetentionRate?: number;
+  /** Maximum acceptable decay regret score (Phase 3, lower is better) */
+  readonly maxDecayRegretScore?: number;
 }
+
+/** Formatter functions for threshold display. */
+const formatters = {
+  pct: (v: number): string => `${(v * 100).toFixed(1)}%`,
+  dec: (v: number): string => v.toFixed(3),
+  ms: (v: number): string => `${v.toFixed(2)}ms`,
+  bytes: (v: number): string => `${v.toFixed(0)}B/op`,
+};
 
 /** Helper to check a single threshold condition. */
 function checkThreshold(
@@ -88,8 +107,35 @@ function checkThreshold(
   if (threshold === undefined) return null;
   const failed = comparison === 'min' ? value < threshold : value > threshold;
   if (!failed) return null;
-  const op = comparison === 'min' ? '<' : '>';
-  return `${label} ${format(value)} ${op} ${format(threshold)}`;
+  return `${label} ${format(value)} ${comparison === 'min' ? '<' : '>'} ${format(threshold)}`;
+}
+
+/** Build array of threshold checks for validation. */
+function buildThresholdChecks(r: MemoryBenchmarkResult, t: BenchmarkThresholds): (string | null)[] {
+  const { pct, dec, ms, bytes } = formatters;
+  return [
+    checkThreshold(r.recallAtK[5] ?? 0, t.minRecallAt5, 'min', 'Recall@5', pct),
+    checkThreshold(r.precisionAtK[5] ?? 0, t.minPrecisionAt5, 'min', 'Precision@5', pct),
+    checkThreshold(r.mrr, t.minMrr, 'min', 'MRR', dec),
+    checkThreshold(r.latencyP95Ms, t.maxLatencyP95Ms, 'max', 'P95 latency', ms),
+    checkThreshold(r.coherenceScore, t.minCoherenceScore, 'min', 'Coherence', pct),
+    checkThreshold(r.growthRateBytesPerOp, t.maxGrowthRateBytesPerOp, 'max', 'Growth rate', bytes),
+    checkThreshold(
+      r.decayConsistencyScore,
+      t.minDecayConsistencyScore,
+      'min',
+      'Decay consistency',
+      pct
+    ),
+    checkThreshold(
+      r.promotionRetentionRate,
+      t.minPromotionRetentionRate,
+      'min',
+      'Promotion retention',
+      pct
+    ),
+    checkThreshold(r.decayRegretScore, t.maxDecayRegretScore, 'max', 'Decay regret', pct),
+  ];
 }
 
 /** Validate benchmark results against thresholds. */
@@ -97,44 +143,7 @@ export function validateBenchmarkResults(
   result: MemoryBenchmarkResult,
   thresholds: BenchmarkThresholds
 ): { pass: boolean; failures: string[] } {
-  const failures: string[] = [];
-  const pct = (v: number): string => `${(v * 100).toFixed(1)}%`;
-  const dec = (v: number): string => v.toFixed(3);
-  const ms = (v: number): string => `${v.toFixed(2)}ms`;
-  const bytes = (v: number): string => `${v.toFixed(0)}B/op`;
-
-  const checks = [
-    checkThreshold(result.recallAtK[5] ?? 0, thresholds.minRecallAt5, 'min', 'Recall@5', pct),
-    checkThreshold(
-      result.precisionAtK[5] ?? 0,
-      thresholds.minPrecisionAt5,
-      'min',
-      'Precision@5',
-      pct
-    ),
-    checkThreshold(result.mrr, thresholds.minMrr, 'min', 'MRR', dec),
-    checkThreshold(result.latencyP95Ms, thresholds.maxLatencyP95Ms, 'max', 'P95 latency', ms),
-    checkThreshold(result.coherenceScore, thresholds.minCoherenceScore, 'min', 'Coherence', pct),
-    // Phase 2 thresholds
-    checkThreshold(
-      result.growthRateBytesPerOp,
-      thresholds.maxGrowthRateBytesPerOp,
-      'max',
-      'Growth rate',
-      bytes
-    ),
-    checkThreshold(
-      result.decayConsistencyScore,
-      thresholds.minDecayConsistencyScore,
-      'min',
-      'Decay consistency',
-      pct
-    ),
-  ];
-
-  for (const check of checks) {
-    if (check !== null) failures.push(check);
-  }
-
+  const checks = buildThresholdChecks(result, thresholds);
+  const failures = checks.filter((c): c is string => c !== null);
   return { pass: failures.length === 0, failures };
 }
