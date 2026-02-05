@@ -66,9 +66,10 @@ interface ProposalCacheEntry {
 
 /**
  * Default proposal cache configuration.
+ * Enabled by default to improve determinism (fitness audit recommendation).
  */
 const DEFAULT_PROPOSAL_CACHE_CONFIG: ProposalCacheConfig = {
-  enabled: false,
+  enabled: true,
   ttlMs: 3600000, // 1 hour
   maxEntries: 500,
 };
