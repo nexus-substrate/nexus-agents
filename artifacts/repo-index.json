@@ -1,11 +1,17 @@
 {
   "version": "1.0.0",
-  "generated": "2026-02-05T03:28:41.172Z",
+  "generated": "2026-02-05T15:16:42.618Z",
   "generator": "scripts/generate-repo-index.ts",
   "packageVersion": "2.6.0",
   "cli": {
     "binary": "nexus-agents",
     "commands": [
+      {
+        "name": "auth",
+        "type": "sync",
+        "handler": "handleAuthCommand",
+        "file": "src/cli-commands-handlers.ts"
+      },
       {
         "name": "capabilities",
         "type": "sync",

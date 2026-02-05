@@ -2009,7 +2009,7 @@ papers:
       - context-control
       - performance-cost-tradeoff
     reviewed_date: 2026-02-05
-    reviewed_in: 'consensus-vote-2026-02-05.md'
+    reviewed_in: consensus-vote-2026-02-05.md
     summary: |
       Framework for dynamic sub-agent creation via unified agent abstraction.
       Models each agent as ICTM tuple: (Instructions, Context, Tools, Model).
@@ -2017,10 +2017,10 @@ papers:
       specialization while explicitly controlling context sharing.
     key_findings:
       - 'ICTM tuple abstraction: Instructions, Context, Tools, Model'
-      - 'Dynamic sub-agent creation per subtask rather than static roles'
-      - 'Explicit context control to mitigate long-horizon degradation'
-      - '16.28% relative improvement on GAIA/SWE-Bench/Terminal-Bench'
-      - 'Framework-agnostic with plug-and-play agent support'
+      - Dynamic sub-agent creation per subtask rather than static roles
+      - Explicit context control to mitigate long-horizon degradation
+      - 16.28% relative improvement on GAIA/SWE-Bench/Terminal-Bench
+      - Framework-agnostic with plug-and-play agent support
     relevance: high
     techniques_extracted:
       - aorchestra-ictm-pattern
@@ -2269,6 +2269,44 @@ papers:
       - memory
     tags: []
     reviewed_date: 2026-02-04
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2601.19793:
+    title: 'arXiv Query: search_query=&amp;id_list=2601.19793&amp;start=0&amp;max_results=10'
+    authors: []
+    source: arxiv
+    arxiv_id: '2601.19793'
+    url: https://arxiv.org/abs/2601.19793
+    publication_date: 2026-01
+    venue: null
+    topics:
+      - routing
+    tags: []
+    reviewed_date: 2026-02-05
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2601.10560:
+    title: 'arXiv Query: search_query=&amp;id_list=2601.10560&amp;start=0&amp;max_results=10'
+    authors: []
+    source: arxiv
+    arxiv_id: '2601.10560'
+    url: https://arxiv.org/abs/2601.10560
+    publication_date: 2026-01
+    venue: null
+    topics:
+      - orchestration
+    tags: []
+    reviewed_date: 2026-02-05
     reviewed_in: ''
     summary: ''
     key_findings: []
