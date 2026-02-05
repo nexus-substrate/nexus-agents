@@ -380,7 +380,9 @@ export class ConsensusEngine implements IConsensusEngine {
   private addClosedProposal(proposalId: ProposalId, result: ConsensusResult): void {
     // Evict oldest entries if at capacity (Map maintains insertion order)
     while (this.closedProposals.size >= this.config.maxClosedProposals) {
-      const oldestKey = this.closedProposals.keys().next().value as ProposalId;
+      const firstKey = this.closedProposals.keys().next();
+      if (firstKey.done === true) break;
+      const oldestKey = firstKey.value;
       this.closedProposals.delete(oldestKey);
       this.logger.debug('Evicted oldest closed proposal', { evictedId: oldestKey });
     }
@@ -470,7 +472,9 @@ export class ConsensusEngine implements IConsensusEngine {
 
     // Evict oldest entries if at capacity (Map maintains insertion order)
     while (this.proposalContentCache.size >= this.cacheConfig.maxEntries) {
-      const oldestKey = this.proposalContentCache.keys().next().value as string;
+      const firstKey = this.proposalContentCache.keys().next();
+      if (firstKey.done === true) break;
+      const oldestKey = firstKey.value;
       this.proposalContentCache.delete(oldestKey);
       this.logger.debug('Evicted oldest cache entry', { hash: oldestKey });
     }
