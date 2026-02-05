@@ -4,7 +4,7 @@
  * @module utils/id-utils.test
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   generateId,
   generateHyphenId,
@@ -14,22 +14,24 @@ import {
   generateStepId,
   uuidv4,
 } from './id-utils.js';
-import * as coreIndex from '../core/index.js';
+import { setTimeProvider, resetTimeProvider, FixedTimeProvider } from '../core/time-provider.js';
+import {
+  setRandomProvider,
+  resetRandomProvider,
+  SeededRandomProvider,
+} from '../core/random-provider.js';
 
 describe('id-utils', () => {
   describe('generateId', () => {
     beforeEach(() => {
-      // Mock providers for deterministic testing
-      vi.spyOn(coreIndex, 'getTimeProvider').mockReturnValue({
-        now: () => 1000000,
-      });
-      vi.spyOn(coreIndex, 'getRandomProvider').mockReturnValue({
-        random: () => 0.123456789,
-      });
+      // Use fixed providers for deterministic testing
+      setTimeProvider(new FixedTimeProvider(1000000));
+      setRandomProvider(new SeededRandomProvider(12345));
     });
 
     afterEach(() => {
-      vi.restoreAllMocks();
+      resetTimeProvider();
+      resetRandomProvider();
     });
 
     it('generates ID with correct format', () => {
@@ -62,18 +64,12 @@ describe('id-utils', () => {
       expect(timestampPart).toBe((1000000).toString(36));
     });
 
-    it('generates unique IDs with different timestamps', () => {
-      let callCount = 0;
-      vi.spyOn(coreIndex, 'getTimeProvider').mockReturnValue({
-        now: () => {
-          callCount++;
-          return 1000000 + callCount;
-        },
-      });
-
+    it('generates consistent IDs with same seed', () => {
       const id1 = generateId('test');
+      setRandomProvider(new SeededRandomProvider(12345));
       const id2 = generateId('test');
-      expect(id1).not.toBe(id2);
+      // Timestamps are same, random parts should match with same seed
+      expect(id1).toBe(id2);
     });
 
     it('handles various prefixes', () => {
@@ -85,16 +81,13 @@ describe('id-utils', () => {
 
   describe('generateHyphenId', () => {
     beforeEach(() => {
-      vi.spyOn(coreIndex, 'getTimeProvider').mockReturnValue({
-        now: () => 1769876392192,
-      });
-      vi.spyOn(coreIndex, 'getRandomProvider').mockReturnValue({
-        random: () => 0.123456789,
-      });
+      setTimeProvider(new FixedTimeProvider(1769876392192));
+      setRandomProvider(new SeededRandomProvider(12345));
     });
 
     afterEach(() => {
-      vi.restoreAllMocks();
+      resetTimeProvider();
+      resetRandomProvider();
     });
 
     it('generates ID with correct format', () => {
@@ -130,17 +123,11 @@ describe('id-utils', () => {
 
   describe('generateShortUuid', () => {
     beforeEach(() => {
-      let callCount = 0;
-      vi.spyOn(coreIndex, 'getRandomProvider').mockReturnValue({
-        random: () => {
-          callCount++;
-          return callCount === 1 ? 0.123456789 : 0.987654321;
-        },
-      });
+      setRandomProvider(new SeededRandomProvider(12345));
     });
 
     afterEach(() => {
-      vi.restoreAllMocks();
+      resetRandomProvider();
     });
 
     it('generates ID with correct format', () => {
@@ -157,6 +144,13 @@ describe('id-utils', () => {
     it('handles different prefixes', () => {
       expect(generateShortUuid('task')).toMatch(/^task-/);
       expect(generateShortUuid('session')).toMatch(/^session-/);
+    });
+
+    it('generates consistent IDs with same seed', () => {
+      const id1 = generateShortUuid('test');
+      setRandomProvider(new SeededRandomProvider(12345));
+      const id2 = generateShortUuid('test');
+      expect(id1).toBe(id2);
     });
   });
 
