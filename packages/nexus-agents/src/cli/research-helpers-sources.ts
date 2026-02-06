@@ -358,7 +358,8 @@ export async function discoverDeepMind(
 
 /** Extract a tag value from XML. */
 function extractTag(entry: string, tag: string): string {
-  const regex = new RegExp(`<${tag}>(.*?)</${tag}>`, 's');
+  const escaped = tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const regex = new RegExp(`<${escaped}>(.*?)</${escaped}>`, 's');
   return regex.exec(entry)?.[1]?.trim().replace(/\s+/g, ' ') ?? '';
 }
 
