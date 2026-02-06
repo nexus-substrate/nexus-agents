@@ -92,8 +92,11 @@ const NEXUS_ARCHITECTURE: ArchitectureComponent[] = [
   { name: 'Workflow Tool', layer: 'MCP Tools', connections: ['Workflow Engine'] },
   { name: 'Vote Tool', layer: 'MCP Tools', connections: ['Consensus Engine'] },
   { name: 'Delegate Tool', layer: 'MCP Tools', connections: ['Composite Router'] },
-  { name: 'Orchestrator', layer: 'Agents', connections: ['TechLead', 'Expert Factory'] },
-  { name: 'TechLead', layer: 'Agents', connections: ['Task Analyzer', 'Model Adapter'] },
+  {
+    name: 'Orchestrator',
+    layer: 'Agents',
+    connections: ['Task Analyzer', 'Expert Factory', 'Model Adapter'],
+  },
   {
     name: 'Expert Factory',
     layer: 'Agents',
@@ -129,8 +132,8 @@ const NEXUS_ARCHITECTURE: ArchitectureComponent[] = [
 function getNexusSwarmAgents(): SwarmAgent[] {
   return [
     {
-      id: 'tech-lead',
-      role: 'TechLead',
+      id: 'orchestrator',
+      role: 'orchestrator',
       status: 'active',
       connections: [
         'code-expert',
@@ -140,23 +143,38 @@ function getNexusSwarmAgents(): SwarmAgent[] {
         'docs-expert',
       ],
     },
-    { id: 'code-expert', role: 'code_expert', status: 'idle', connections: ['tech-lead'] },
-    { id: 'security-expert', role: 'security_expert', status: 'idle', connections: ['tech-lead'] },
-    { id: 'arch-expert', role: 'architecture_expert', status: 'idle', connections: ['tech-lead'] },
-    { id: 'testing-expert', role: 'testing_expert', status: 'idle', connections: ['tech-lead'] },
-    { id: 'docs-expert', role: 'documentation_expert', status: 'idle', connections: ['tech-lead'] },
-    { id: 'devops-expert', role: 'devops_expert', status: 'idle', connections: ['tech-lead'] },
+    { id: 'code-expert', role: 'code_expert', status: 'idle', connections: ['orchestrator'] },
+    {
+      id: 'security-expert',
+      role: 'security_expert',
+      status: 'idle',
+      connections: ['orchestrator'],
+    },
+    {
+      id: 'arch-expert',
+      role: 'architecture_expert',
+      status: 'idle',
+      connections: ['orchestrator'],
+    },
+    { id: 'testing-expert', role: 'testing_expert', status: 'idle', connections: ['orchestrator'] },
+    {
+      id: 'docs-expert',
+      role: 'documentation_expert',
+      status: 'idle',
+      connections: ['orchestrator'],
+    },
+    { id: 'devops-expert', role: 'devops_expert', status: 'idle', connections: ['orchestrator'] },
   ];
 }
 
 /** Sample orchestration execution for visualization. */
 const SAMPLE_ORCHESTRATION: OrchestrationVizData = {
   executionId: 'orch-demo-001',
-  orchestratorType: 'tech_lead',
+  orchestratorType: 'orchestrator',
   steps: [
     {
       id: 'analyze',
-      role: 'TechLead',
+      role: 'orchestrator',
       action: 'Analyze task',
       status: 'success',
       durationMs: 2500,
@@ -164,7 +182,7 @@ const SAMPLE_ORCHESTRATION: OrchestrationVizData = {
     },
     {
       id: 'decompose',
-      role: 'TechLead',
+      role: 'orchestrator',
       action: 'Decompose into subtasks',
       status: 'success',
       durationMs: 1800,
@@ -196,7 +214,7 @@ const SAMPLE_ORCHESTRATION: OrchestrationVizData = {
     },
     {
       id: 'synthesize',
-      role: 'TechLead',
+      role: 'orchestrator',
       action: 'Synthesize results',
       status: 'success',
       durationMs: 1500,
@@ -205,7 +223,7 @@ const SAMPLE_ORCHESTRATION: OrchestrationVizData = {
   ],
   totalDurationMs: 23600,
   totalTokensUsed: 3820,
-  agentsUsed: ['TechLead', 'code_expert', 'security_expert', 'testing_expert'],
+  agentsUsed: ['orchestrator', 'code_expert', 'security_expert', 'testing_expert'],
 };
 
 /**
