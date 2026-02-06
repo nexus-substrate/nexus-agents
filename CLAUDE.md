@@ -101,19 +101,23 @@ Before implementing features or making architectural decisions: search official 
 
 ## Canonical Paths
 
-| Concern              | Canonical Path        | Location                                         |
-| -------------------- | --------------------- | ------------------------------------------------ |
-| **Task Analysis**    | `SharedTaskAnalyzer`  | `src/core/task-analysis/shared-task-analyzer.ts` |
-| **Task Routing**     | `CompositeRouter`     | `src/cli-adapters/composite-router.ts`           |
-| **Consensus Voting** | `ConsensusEngine`     | `src/consensus/engine.ts`                        |
-| **CLI Adapters**     | `createAllAdapters()` | `src/cli-adapters/factory.ts`                    |
-| **MCP Tools**        | `registerTools()`     | `src/mcp/tools/index.ts`                         |
+| Concern               | Canonical Path               | Location                                         |
+| --------------------- | ---------------------------- | ------------------------------------------------ |
+| **Task Analysis**     | `SharedTaskAnalyzer`         | `src/core/task-analysis/shared-task-analyzer.ts` |
+| **Task Routing**      | `CompositeRouter`            | `src/cli-adapters/composite-router.ts`           |
+| **Consensus Voting**  | `ConsensusEngine`            | `src/consensus/engine.ts`                        |
+| **CLI Adapters**      | `createAllAdapters()`        | `src/cli-adapters/factory.ts`                    |
+| **MCP Tools**         | `registerTools()`            | `src/mcp/tools/index.ts`                         |
+| **Model Registry**    | `DEFAULT_MODEL_CAPABILITIES` | `src/config/model-capabilities.ts`               |
+| **Adapter Lifecycle** | `ResilientAdapter`           | `src/adapters/resilient-adapter.ts`              |
 
 All task routing goes through: `Task → BudgetRouter → ZeroRouter → PreferenceRouter → TopsisRouter → LinUCB → Selected Model`
 
 Do NOT directly instantiate stage routers. Use `CompositeRouter.route(task)`.
 
 **Billing mode** (`NEXUS_BILLING_MODE`): When set to `plan` (default), cost is zeroed in model scoring — strongest models win. When `api`, cost-aware routing is preserved. Supported models: claude-opus, claude-sonnet, claude-haiku, gemini-pro, gemini-flash, codex-5.3, codex-5.2, codex-5.1-mini.
+
+**Model registry** (`config/model-capabilities.ts`): Single source of truth for all model metadata — pricing, quality scores, context windows, max output tokens, CLI aliases, and defaults per CLI. All consumers derive from this registry via `config/model-config-helpers.ts`. Never hardcode model data elsewhere.
 
 When a non-canonical implementation exists, migrate its logic to the canonical location, then remove the deprecated file.
 
@@ -153,6 +157,14 @@ Subagents share the same ~100k token context limit. Unmanaged, parallel agents e
 **Failure handling:** If an agent hits its context limit or returns truncated results, do NOT relaunch the same broad task. Instead, narrow the scope and retry on the unfinished portion only.
 
 **Discovery reporting:** All subagent prompts should include: _"If you discover bugs or issues outside your task scope, include a `## Discoveries` section at the end of your response."_ The parent agent must process these — see [Discovered Issues](#discovered-issues--see-something-say-something).
+
+### Orchestrator Fallback Strategy
+
+Adapter detection is now lazy (first use, not startup) with automatic failover via circuit breaker integration (#811). If all adapters fail, tools return clear `ModelError` messages. The `ResilientAdapter` re-detects on next call after failure — no manual retry needed.
+
+When using nexus-agents MCP tools (`orchestrate`, `create_expert`, `execute_expert`): expect timeouts and "No model adapter configured" errors. These tools require external model API keys that may not be available.
+
+**Rule:** If orchestrator or expert tools fail, fall back to manual analysis immediately — do not retry more than once. Use `consensus_vote` with `simulateVotes: true` as a lightweight alternative when live model adapters are unavailable. Summarize what you would have delegated and proceed directly using Claude Code's built-in Task tool for parallel work instead.
 
 ---
 
@@ -206,6 +218,8 @@ Before completing ANY implementation task:
 - [ ] Tests cover happy path + edge cases + error cases
 - [ ] No unexplained literal values (constants have documented intent)
 - [ ] No unnecessary abstraction
+- [ ] **Wiring complete** — new CLI commands/features registered in all dispatch points (validCommands, type unions, exports, router/switch cases, index barrels)
+- [ ] **Downstream tests updated** — if config values, scoring weights, or model data changed, all test assertions depending on those values identified and updated before running tests
 - [ ] Discoveries documented — did I notice any bugs or issues outside my task scope? (see [Discovered Issues](#discovered-issues--see-something-say-something))
 
 ---
@@ -341,6 +355,8 @@ Governance rules (voting thresholds, refactor gates, fitness audit, documentatio
 - `packages/nexus-agents/src/core/types/index.ts` — Core type definitions
 - `packages/nexus-agents/src/mcp/` — MCP server and tool implementations
 - `packages/nexus-agents/src/agents/` — Agent framework
+- `packages/nexus-agents/src/config/model-capabilities.ts` — Canonical model registry (pricing, quality, context windows)
+- `packages/nexus-agents/src/config/model-config-helpers.ts` — Derived helpers for model metadata consumers
 
 <!-- GOVERNANCE:TOOL_INDEX:START -->
 
@@ -370,11 +386,11 @@ _Auto-generated from source. 15 tools registered._
 
 <!-- GOVERNANCE:VERSION:START -->
 
-_Governance Version: 2026-02-05.3_
+_Governance Version: 2026-02-06.2_
 
 <!-- GOVERNANCE:VERSION:END -->
 
-_Last updated: 2026-02-05 (ET)_
+_Last updated: 2026-02-06 (ET)_
 _MCP Protocol: 2025-11-25_
 _Node.js: 22.x LTS_
 _TypeScript: 5.9+_

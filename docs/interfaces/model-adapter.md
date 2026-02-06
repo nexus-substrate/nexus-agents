@@ -91,7 +91,7 @@ const ModelCapability = {
 | ------------- | --------- | ---------------------------------------------- |
 | ClaudeAdapter | Anthropic | claude-opus-4, claude-sonnet-4, claude-haiku-3 |
 | OpenAIAdapter | OpenAI    | gpt-4o, gpt-4o-mini, o1-pro                    |
-| GeminiAdapter | Google    | gemini-pro, gemini-ultra                       |
+| GeminiAdapter | Google    | gemini-3-pro, gemini-3-flash, gemini-2.5-flash |
 | OllamaAdapter | Ollama    | llama3, mistral, codellama                     |
 
 ## Usage Example
