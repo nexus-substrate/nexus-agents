@@ -235,7 +235,7 @@ describe('delegate_to_model Tool', () => {
       );
 
       // Top-tier models should be selected for reasoning tasks
-      expect(['claude-opus', 'codex-5.2', 'claude-sonnet']).toContain(result.model);
+      expect(['claude-opus', 'codex-5.3', 'codex-5.2', 'claude-sonnet']).toContain(result.model);
       expect(result.alternatives.length).toBeGreaterThan(0);
     });
 

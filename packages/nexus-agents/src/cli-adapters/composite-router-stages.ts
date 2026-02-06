@@ -228,7 +228,7 @@ export function runZeroRouterStage(
   return result;
 }
 
-/** Runs TOPSIS ranking stage. */
+/** Runs TOPSIS ranking stage. Uses plan billing criteria when billingMode is 'plan'. */
 export function runTopsisStage(
   taskProfile: TaskProfile,
   candidates: CliName[],
@@ -238,7 +238,12 @@ export function runTopsisStage(
   if (!deps.config.enableTopsisRanking || deps.topsisRouter === undefined) {
     return { ranking: candidates, score: undefined };
   }
-  const result = applyTopsisRanking(taskProfile, candidates, deps.topsisRouter);
+  const result = applyTopsisRanking(
+    taskProfile,
+    candidates,
+    deps.topsisRouter,
+    deps.config.billingMode
+  );
   stagesExecuted.push('topsis-ranking');
   return { ranking: result.ranking, score: result.topScore };
 }

@@ -12,9 +12,10 @@ import { getTimeProvider, type TaskProfile } from '../core/index.js';
 import type { CliName, CliTask, BudgetConstraint } from './types.js';
 import type { BanditContext } from './budget-router-types.js';
 import type { TopsisModelProfile, TopsisResult } from './topsis-types.js';
-import { DEFAULT_MODEL_PROFILES } from './topsis-types.js';
+import { DEFAULT_MODEL_PROFILES, PLAN_BILLING_TOPSIS_CRITERIA } from './topsis-types.js';
+import type { BillingMode } from '../mcp/tools/delegate-to-model-types.js';
 import type { BudgetRouter } from './budget-router.js';
-import type { TopsisRouter } from './topsis-router.js';
+import { TopsisRouter } from './topsis-router.js';
 import type { CompositeRouterConfig } from './composite-router-types.js';
 import type { IZeroRouter } from './zero-router.js';
 import type { DifficultyEstimate, DifficultyOutcome, ModelTier } from './zero-router-types.js';
@@ -169,21 +170,30 @@ export interface TopsisRankingResult {
   topScore: number;
 }
 
+/** Returns a TopsisRouter with plan billing criteria when in plan mode, or the original router. */
+function selectTopsisRouter(router: TopsisRouter, billingMode: BillingMode): TopsisRouter {
+  if (billingMode !== 'plan') return router;
+  return new TopsisRouter({ criteria: PLAN_BILLING_TOPSIS_CRITERIA });
+}
+
 /**
  * Applies TOPSIS ranking to candidate CLIs.
+ * In plan billing mode, uses PLAN_BILLING_TOPSIS_CRITERIA (cost weight = 0).
  */
 export function applyTopsisRanking(
   taskProfile: TaskProfile,
   candidates: CliName[],
-  topsisRouter: TopsisRouter | undefined
+  topsisRouter: TopsisRouter | undefined,
+  billingMode: BillingMode = 'api'
 ): TopsisRankingResult {
   if (topsisRouter === undefined) {
     return { ranking: candidates, topScore: 1.0 };
   }
 
+  const router = selectTopsisRouter(topsisRouter, billingMode);
   const profiles = DEFAULT_MODEL_PROFILES.filter((p) => candidates.includes(p.cliName));
   const adjustedProfiles = profiles.map((p) => adjustProfileForTask(p, taskProfile));
-  const result: TopsisResult = topsisRouter.selectModel({ profiles: adjustedProfiles });
+  const result: TopsisResult = router.selectModel({ profiles: adjustedProfiles });
 
   const scoreMap = new Map(result.scores.map((s) => [s.cliName, s.closenessScore]));
   const ranking = [...candidates].sort((a, b) => (scoreMap.get(b) ?? 0) - (scoreMap.get(a) ?? 0));

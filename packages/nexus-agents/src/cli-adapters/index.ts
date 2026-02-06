@@ -159,6 +159,7 @@ export type {
 export {
   DEFAULT_TOPSIS_CONFIG,
   DEFAULT_TOPSIS_CRITERIA,
+  PLAN_BILLING_TOPSIS_CRITERIA,
   DEFAULT_MODEL_PROFILES,
 } from './topsis-types.js';
 

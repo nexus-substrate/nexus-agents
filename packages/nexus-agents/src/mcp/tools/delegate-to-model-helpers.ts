@@ -8,6 +8,7 @@
 
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type {
+  BillingMode,
   PreferredCapability,
   CapabilityProfile,
   DelegateInput,
@@ -58,16 +59,18 @@ export function analyzeTask(task: string): TaskRequirements {
 
 /**
  * Calculates score bonus based on task requirements.
+ * In plan billing mode, isCostSensitive bonus is suppressed (cost is irrelevant).
  */
 export function calcRequirementsScore(
   profile: CapabilityProfile,
-  requirements: TaskRequirements
+  requirements: TaskRequirements,
+  billingMode: BillingMode = 'api'
 ): number {
   let score = 0;
   if (requirements.needsReasoning) score += profile.reasoning * 2;
   if (requirements.needsSpeed) score += profile.speed * 2;
   if (requirements.needsCodeGen) score += profile.codeGeneration * 2;
-  if (requirements.isCostSensitive) score += profile.cost * 2;
+  if (requirements.isCostSensitive && billingMode !== 'plan') score += profile.cost * 2;
   return score;
 }
 
@@ -104,17 +107,20 @@ export function calcPreferenceScore(
 
 /**
  * Scores a model based on task requirements.
+ * In plan billing mode, cost component is zeroed out so quality wins.
  */
 export function scoreModel(
   _modelName: string,
   profile: CapabilityProfile,
   requirements: TaskRequirements,
-  preferredCapability?: PreferredCapability
+  preferredCapability?: PreferredCapability,
+  billingMode: BillingMode = 'api'
 ): number {
-  const reqScore = calcRequirementsScore(profile, requirements);
+  const reqScore = calcRequirementsScore(profile, requirements, billingMode);
   const ctxScore = calcContextScore(profile, requirements);
   const prefScore = calcPreferenceScore(profile, preferredCapability);
-  const baseScore = profile.reasoning + profile.speed + profile.cost;
+  const costComponent = billingMode === 'plan' ? 0 : profile.cost;
+  const baseScore = profile.reasoning + profile.speed + costComponent;
   return reqScore + ctxScore + prefScore + baseScore;
 }
 
@@ -133,9 +139,14 @@ const REASON_MAP: ReadonlyArray<[keyof TaskRequirements, string]> = [
   ['needsMcp', 'MCP tool support required'],
 ];
 
-export function buildReasons(requirements: TaskRequirements, pref?: string): string[] {
+export function buildReasons(
+  requirements: TaskRequirements,
+  pref?: string,
+  billingMode: BillingMode = 'api'
+): string[] {
   const reasons = REASON_MAP.filter(([key]) => requirements[key] === true).map(([, desc]) => desc);
   if (pref !== undefined && pref !== '') reasons.push(`preferred: ${pref}`);
+  if (billingMode === 'plan') reasons.push('plan billing (cost ignored)');
   return reasons;
 }
 
@@ -196,7 +207,8 @@ export function filterByModality(requirements: TaskRequirements): Set<string> | 
  */
 export function scoreAllModels(
   requirements: TaskRequirements,
-  pref?: PreferredCapability
+  pref?: PreferredCapability,
+  billingMode: BillingMode = 'api'
 ): ScoredModel[] {
   const eligible = filterByModality(requirements);
 
@@ -205,7 +217,7 @@ export function scoreAllModels(
     .map(([name, profile]) => ({
       name,
       profile,
-      score: scoreModel(name, profile, requirements, pref),
+      score: scoreModel(name, profile, requirements, pref, billingMode),
     }))
     .sort((a, b) => b.score - a.score);
 }
@@ -215,7 +227,8 @@ export function scoreAllModels(
  */
 export function selectModel(
   input: DelegateInput,
-  requirements: TaskRequirements
+  requirements: TaskRequirements,
+  billingMode: BillingMode = 'api'
 ): {
   model: string;
   reasoning: string;
@@ -231,7 +244,7 @@ export function selectModel(
   }
 
   const pref = input.preferred_capability;
-  const scored = scoreAllModels(requirements, pref);
+  const scored = scoreAllModels(requirements, pref, billingMode);
   const best = scored[0];
 
   if (!best) {
@@ -242,7 +255,7 @@ export function selectModel(
     };
   }
 
-  const reasons = buildReasons(requirements, input.preferred_capability);
+  const reasons = buildReasons(requirements, input.preferred_capability, billingMode);
   const reasoning =
     reasons.length > 0
       ? `Selected ${best.name} (score: ${best.score.toFixed(1)}) because: ${reasons.join(', ')}`

@@ -14,6 +14,7 @@
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { createLogger, formatZodError } from '../../core/index.js';
+import { DEFAULTS } from '../../config/defaults.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import {
@@ -125,7 +126,8 @@ function createDelegateHandler(
     }
 
     // Fall back to local model selection
-    const selection = selectModel(input, requirements);
+    const billingMode = input.billing_mode ?? DEFAULTS.PROVIDER_DEFAULTS.billingMode;
+    const selection = selectModel(input, requirements, billingMode);
     const output = buildDelegateOutput(selection, requirements);
 
     if (!output) return errorResult(`Unknown model: ${selection.model}`);

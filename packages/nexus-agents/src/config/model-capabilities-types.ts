@@ -77,6 +77,7 @@ export const MODEL_IDS = [
   'claude-haiku',
   'gemini-pro',
   'gemini-flash',
+  'codex-5.3',
   'codex-5.2',
   'codex-5.1-mini',
 ] as const;

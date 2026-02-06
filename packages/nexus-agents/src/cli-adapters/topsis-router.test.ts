@@ -8,7 +8,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { TopsisRouter, createTopsisRouter, selectModelWithTopsis } from './topsis-router.js';
 import type { TopsisModelProfile } from './topsis-types.js';
-import { DEFAULT_TOPSIS_CRITERIA } from './topsis-types.js';
+import { DEFAULT_TOPSIS_CRITERIA, PLAN_BILLING_TOPSIS_CRITERIA } from './topsis-types.js';
 
 describe('TopsisRouter', () => {
   let router: TopsisRouter;
@@ -292,5 +292,41 @@ describe('selectModelWithTopsis', () => {
     });
 
     expect(result.selectedModel).toBeDefined();
+  });
+});
+
+// ============================================================================
+// Plan Billing TOPSIS Criteria
+// ============================================================================
+
+describe('PLAN_BILLING_TOPSIS_CRITERIA', () => {
+  it('has cost weight of zero', () => {
+    const costCriterion = PLAN_BILLING_TOPSIS_CRITERIA.find((c) => c.name === 'cost');
+    expect(costCriterion?.weight).toBe(0.0);
+  });
+
+  it('weights sum to 1.0', () => {
+    const sum = PLAN_BILLING_TOPSIS_CRITERIA.reduce((acc, c) => acc + c.weight, 0);
+    expect(Math.abs(sum - 1.0)).toBeLessThan(0.01);
+  });
+
+  it('shifts cost weight to quality', () => {
+    const apiQuality = DEFAULT_TOPSIS_CRITERIA.find((c) => c.name === 'quality')?.weight ?? 0;
+    const planQuality = PLAN_BILLING_TOPSIS_CRITERIA.find((c) => c.name === 'quality')?.weight ?? 0;
+    expect(planQuality).toBeGreaterThan(apiQuality);
+  });
+
+  it('creates valid TopsisRouter', () => {
+    const router = new TopsisRouter({ criteria: PLAN_BILLING_TOPSIS_CRITERIA });
+    expect(router.getConfig().criteria).toEqual(PLAN_BILLING_TOPSIS_CRITERIA);
+  });
+
+  it('plan mode router favors quality over cost', () => {
+    const router = new TopsisRouter({ criteria: PLAN_BILLING_TOPSIS_CRITERIA });
+    const result = router.selectModel();
+    // With cost zeroed out, high-quality models (claude or codex) should win over cheap ones
+    expect(['claude', 'codex']).toContain(result.selectedModel);
+    // Gemini (cheapest) should NOT be selected
+    expect(result.selectedModel).not.toBe('gemini');
   });
 });

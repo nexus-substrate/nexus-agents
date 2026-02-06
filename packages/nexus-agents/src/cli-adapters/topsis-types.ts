@@ -51,6 +51,17 @@ export const DEFAULT_TOPSIS_CRITERIA: readonly TopsisCredential[] = [
 ] as const;
 
 /**
+ * TOPSIS criteria for plan billing mode.
+ * Cost weight is zero (monthly plan makes cost irrelevant),
+ * redistributed to quality. Sum to 1.0.
+ */
+export const PLAN_BILLING_TOPSIS_CRITERIA: readonly TopsisCredential[] = [
+  { name: 'quality', weight: 0.8, beneficial: true },
+  { name: 'cost', weight: 0.0, beneficial: false },
+  { name: 'latency', weight: 0.2, beneficial: false },
+] as const;
+
+/**
  * Configuration for TOPSIS router.
  */
 export interface TopsisConfig {

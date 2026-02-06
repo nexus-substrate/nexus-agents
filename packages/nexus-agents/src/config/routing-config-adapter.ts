@@ -184,6 +184,7 @@ function buildBaseConfig(
 
   return {
     ...stageFlags,
+    billingMode: DEFAULT_COMPOSITE_CONFIG.billingMode,
     latencyScoreWeight: config.latencyScoreWeight,
     budgetConstraints: config.budget,
     linucbAlpha: config.linucb?.alpha ?? DEFAULT_COMPOSITE_CONFIG.linucbAlpha,

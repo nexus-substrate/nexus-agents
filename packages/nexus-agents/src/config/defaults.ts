@@ -260,6 +260,8 @@ export const DEFAULTS = {
     temperatureMin: 0,
     /** Maximum temperature. */
     temperatureMax: 1,
+    /** Billing mode: 'plan' (monthly subscription) or 'api' (pay-per-token). Env: NEXUS_BILLING_MODE */
+    billingMode: 'plan' as const,
   },
 
   /**

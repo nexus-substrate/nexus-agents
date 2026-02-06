@@ -75,6 +75,8 @@ export const CompositeRouterConfigSchema = z.object({
     .optional(),
   /** LinUCB exploration parameter (default: 1.0) */
   linucbAlpha: z.number().positive().default(1.0),
+  /** Billing mode: 'plan' zeroes cost weight, 'api' preserves current behavior (default: 'plan') */
+  billingMode: z.enum(['plan', 'api']).default('plan'),
   /** Maximum routing decision time in ms (default: 50) */
   maxDecisionTimeMs: z.number().positive().default(50),
   /** Minimum preference data points before using learned routing (default: 10) */
@@ -122,6 +124,7 @@ export const DEFAULT_COMPOSITE_CONFIG: CompositeRouterConfig = {
   enableLatencyTracking: true,
   enableRoutingMemory: false,
   latencyScoreWeight: 0.2,
+  billingMode: 'plan',
   linucbAlpha: 1.0,
   maxDecisionTimeMs: 50,
   preferenceMinDataPoints: 10,

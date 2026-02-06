@@ -14,6 +14,13 @@ import type { SecurityConfig } from '../../config/schemas.js';
 import type { IFeedbackIntegration } from '../../learning/feedback-integration.js';
 
 /**
+ * Billing mode for model routing.
+ * - 'plan': CLI adapters on monthly plans (cost is irrelevant, strongest model wins)
+ * - 'api': Pay-per-token API usage (cost matters for routing decisions)
+ */
+export type BillingMode = 'plan' | 'api';
+
+/**
  * Preferred capability for task routing.
  */
 export type PreferredCapability = 'reasoning' | 'context' | 'speed' | 'code';
@@ -74,6 +81,13 @@ export const MODEL_CAPABILITIES: Record<string, CapabilityProfile> = {
     speed: 10,
     cost: 10,
   },
+  'codex-5.3': {
+    reasoning: 10,
+    contextWindow: 400_000,
+    codeGeneration: 10,
+    speed: 7,
+    cost: 5,
+  },
   'codex-5.2': {
     reasoning: 9,
     contextWindow: 400_000,
@@ -108,6 +122,10 @@ export const DelegateInputSchema = z.object({
     .optional()
     .default(false)
     .describe('If true, return token estimate only without execution'),
+  billing_mode: z
+    .enum(['plan', 'api'])
+    .optional()
+    .describe('Billing mode: plan (monthly subscription, ignore cost) or api (pay-per-token)'),
 });
 
 export type DelegateInput = z.infer<typeof DelegateInputSchema>;
@@ -270,4 +288,5 @@ export const TOOL_SCHEMA = {
     .describe('Preferred capability for routing'),
   model_hint: z.string().optional().describe('Explicit model preference'),
   estimate_tokens: z.boolean().optional().describe('Return token estimate only'),
+  billing_mode: z.enum(['plan', 'api']).optional().describe('Billing mode for cost handling'),
 };

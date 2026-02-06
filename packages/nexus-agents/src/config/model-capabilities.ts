@@ -136,6 +136,24 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
     },
     // ----- OpenAI Codex -----
     {
+      id: 'codex-5.3',
+      displayName: 'GPT-5.3-Codex',
+      provider: 'openai',
+      contextWindow: 400_000,
+      outputModalities: ['text', 'structured_json', 'code'],
+      inputModalities: ['text', 'image', 'pdf', 'code'],
+      toolCapabilities: [
+        'function_calling',
+        'code_execution_sandbox',
+        'web_search',
+        'file_operations',
+        'structured_output',
+        'apply_patch',
+      ],
+      specialFeatures: ['streaming'],
+      notes: 'Latest Codex; strongest code generation + reasoning; 400K context',
+    },
+    {
       id: 'codex-5.2',
       displayName: 'GPT-5.2-Codex',
       provider: 'openai',
