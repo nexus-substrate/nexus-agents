@@ -13,7 +13,7 @@ import type { Result } from '../../core/result.js';
 import { getTimeProvider, type TaskConstraints, type Task } from '../../core/index.js';
 import type { IOrchestrator, OrchestratorDefinition } from '../../core/types/orchestrator.js';
 import { OrchestratorFactory } from '../../orchestration/orchestrator-factory.js';
-import { createTechLeadWithSica } from '../../mcp/tools/orchestrate-sica.js';
+import { createOrchestratorWithSica } from '../../mcp/tools/orchestrate-sica.js';
 import {
   OrchestrateRequestSchema,
   type OrchestrateRequest,
@@ -129,16 +129,18 @@ function buildTaskObject(
 
 /**
  * Creates an IOrchestrator instance for REST API usage.
- * Uses factory pattern with SICA-wrapped TechLead (ADR-0014, Issue #595).
+ * Uses factory pattern with SICA-wrapped orchestrator (ADR-0014, Issue #595, #759).
  */
 function createOrchestratorForRest(logger: ILogger): IOrchestrator {
-  // Create TechLead instance (SICA-wrapped when enabled - Issue #558)
-  const techLead = createTechLeadWithSica(logger);
+  // Create orchestrator agent (SICA-wrapped when enabled - Issue #558)
+  const orchestratorAgent = createOrchestratorWithSica(logger);
 
-  // Create factory with TechLead instance wired (ADR-0014)
+  // Create factory with orchestrator agent wired (ADR-0014, Issue #759)
   const factory = new OrchestratorFactory({
     logger,
-    techLead: techLead as { execute: (task: unknown) => Promise<Result<unknown, unknown>> },
+    orchestratorAgent: orchestratorAgent as {
+      execute: (task: unknown) => Promise<Result<unknown, unknown>>;
+    },
   });
 
   // Return TechLead orchestrator adapter

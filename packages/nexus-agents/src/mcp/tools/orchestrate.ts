@@ -22,7 +22,7 @@ import type { IOrchestrator, OrchestratorDefinition } from '../../core/types/orc
 import { wrapToolWithTimeout, toSdkCallback } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import type { ExecutionPlan } from '../../agents/index.js';
-import { createTechLeadWithSica } from './orchestrate-sica.js';
+import { createOrchestratorWithSica } from './orchestrate-sica.js';
 import { OrchestratorFactory } from '../../orchestration/orchestrator-factory.js';
 import { getToolMemory } from './tool-memory.js';
 import { getAutoCatalog } from './research-auto-catalog.js';
@@ -137,7 +137,7 @@ function buildOutputFromOrchestratorResult(
 function createOrchestratorFromDeps(deps: OrchestrateDeps, logger: ILogger): IOrchestrator {
   if (deps.orchestrator !== undefined) return deps.orchestrator;
   // eslint-disable-next-line @typescript-eslint/no-deprecated -- Backwards compatibility
-  const techLead = deps.techLead ?? createTechLeadWithSica(logger);
+  const techLead = deps.techLead ?? createOrchestratorWithSica(logger);
   const factory = new OrchestratorFactory({
     logger,
     techLead: techLead as { execute: (task: unknown) => Promise<Result<unknown, unknown>> },
