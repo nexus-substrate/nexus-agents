@@ -27,6 +27,12 @@ export interface WaveSchedulerConfig {
   readonly abortOnFailure: boolean;
   /** Timeout per individual task in ms. Default: 60000. */
   readonly taskTimeoutMs: number;
+  /** Optional callback invoked after each wave completes. Used for checkpointing. */
+  readonly onWaveComplete?: (
+    waveIndex: number,
+    results: readonly import('./wave-scheduler-types.js').WaveTaskResult[],
+    cumulativeTokens: number
+  ) => Promise<void>;
 }
 
 /**

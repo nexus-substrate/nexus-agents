@@ -42,6 +42,29 @@ export {
   type WaveTaskExecutor,
 } from './wave-scheduler.js';
 
+// Wave Checkpoint Persistence (Context Exhaustion Prevention)
+export {
+  ensureCheckpointDir,
+  appendWaveCheckpoint,
+  loadCheckpoints,
+  summarizeCheckpoints,
+  cleanupCheckpoint,
+  type AppendCheckpointOptions,
+} from './wave-checkpoint-persistence.js';
+
+export {
+  WaveCheckpointEntrySchema,
+  CheckpointTaskResultSchema,
+  DEFAULT_CHECKPOINT_CONFIG,
+  type WaveCheckpointEntry,
+  type WaveCheckpointConfig,
+  type CheckpointSummary,
+  type OnWaveCompleteCallback,
+} from './wave-checkpoint-types.js';
+
+// Wave Pressure Integration (Issue #800 - Context Exhaustion Prevention)
+export { buildPressureAwareConfig, type PressureAwareConfig } from './wave-pressure-integration.js';
+
 // Plan to Workflow conversion
 export {
   convertPlanToWorkflow,

@@ -206,6 +206,15 @@ export class WaveScheduler {
         totalTokensUsed,
         durationMs: waveResult.durationMs,
       });
+
+      if (this.config.onWaveComplete !== undefined) {
+        try {
+          await this.config.onWaveComplete(waveIdx, waveResult.results, totalTokensUsed);
+        } catch (err) {
+          aborted = true;
+          abortReason = err instanceof Error ? err.message : String(err);
+        }
+      }
     }
 
     return { waves, allResults, totalTokensUsed, aborted, abortReason };
