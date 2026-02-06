@@ -70,7 +70,7 @@ export interface ParseVoteOptions {
  */
 export const VoteResponseSchema = z.object({
   decision: z.enum(['approve', 'reject', 'abstain']).describe('Your vote decision'),
-  reasoning: z.string().min(10).max(500).describe('Brief explanation for your vote (10-500 chars)'),
+  reasoning: z.string().min(10).max(2000).describe('Explanation for your vote (10-2000 chars)'),
   confidence: z.number().min(0).max(1).describe('Confidence level 0-1'),
   conditions: z.array(z.string()).optional().describe('Optional conditions for approval'),
 });
@@ -92,7 +92,7 @@ ${proposal}
 
 Respond with a JSON object containing:
 - decision: "approve", "reject", or "abstain"
-- reasoning: Brief explanation (10-500 characters)
+- reasoning: Explanation for your vote (10-2000 characters)
 - confidence: Number between 0 and 1
 - conditions: Optional array of conditions for approval
 

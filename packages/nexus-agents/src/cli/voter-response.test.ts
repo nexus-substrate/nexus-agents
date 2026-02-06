@@ -115,7 +115,7 @@ describe('VoteResponseSchema', () => {
   it('should reject reasoning too long', () => {
     const invalid = {
       decision: 'approve',
-      reasoning: 'x'.repeat(501),
+      reasoning: 'x'.repeat(2001),
       confidence: 0.8,
     };
 
@@ -231,7 +231,7 @@ describe('buildVotePrompt', () => {
   it('should specify reasoning length constraints', () => {
     const prompt = buildVotePrompt('test');
 
-    expect(prompt).toContain('10-500 characters');
+    expect(prompt).toContain('10-2000 characters');
   });
 
   it('should specify confidence range', () => {
@@ -604,14 +604,14 @@ describe('parseVoteResponse', () => {
     it('should handle reasoning at max length', () => {
       const output = JSON.stringify({
         decision: 'approve',
-        reasoning: 'x'.repeat(500),
+        reasoning: 'x'.repeat(2000),
         confidence: 0.8,
       });
 
       const result = parseVoteResponse(output, role);
 
       expect(result.source).toBe('parsed');
-      expect(result.reasoning.length).toBe(500);
+      expect(result.reasoning.length).toBe(2000);
     });
 
     it('should handle confidence at 0', () => {
