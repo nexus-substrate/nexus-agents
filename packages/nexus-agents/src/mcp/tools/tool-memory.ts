@@ -165,6 +165,7 @@ export class ToolMemoryManager {
   private typedBackend: HybridMemoryBackend | null = null;
   private mobimem: MobiMem | null = null;
   private decayManager: MemoryDecayManager | null = null;
+  private initPromise: Promise<void> | null = null;
 
   constructor(logger?: ILogger) {
     this.log = logger ?? createLogger({ component: 'ToolMemory' });
@@ -192,7 +193,7 @@ export class ToolMemoryManager {
     }
 
     // Phase 2: activate SQLite backends (best-effort, non-blocking)
-    void this.initSqliteBackends();
+    this.initPromise = this.initSqliteBackends();
   }
 
   /** Try to activate SQLite backends (best-effort, non-blocking). */
@@ -312,6 +313,11 @@ export class ToolMemoryManager {
    */
   async reinitializeSqliteBackends(): Promise<MemoryBackendStatus> {
     this.log.info('Reinitializing SQLite backends');
+    // Wait for any in-flight initialization to complete first (#794)
+    if (this.initPromise !== null) {
+      await this.initPromise;
+      this.initPromise = null;
+    }
     if (this.agentic === null) await this.initAgenticMemory();
     if (this.adaptive === null) await this.initAdaptiveMemory();
     if (this.typed === null) await this.initTypedMemory();

@@ -269,6 +269,32 @@ export class CorrelationTracker implements ICorrelationTracker {
     }
   }
 
+  /**
+   * Evict the oldest pairwise history entry (by lastUpdated) when
+   * maxTrackedPairs limit is exceeded.
+   */
+  private evictOldestPair(): void {
+    if (this.pairwiseHistory.size <= this.config.maxTrackedPairs) return;
+
+    let oldestKey: string | undefined;
+    let oldestTime = Infinity;
+    for (const [key, history] of this.pairwiseHistory) {
+      const time = history.lastUpdated.getTime();
+      if (time < oldestTime) {
+        oldestTime = time;
+        oldestKey = key;
+      }
+    }
+    if (oldestKey !== undefined) {
+      this.pairwiseHistory.delete(oldestKey);
+      logger.debug('Evicted oldest pairwise history entry', {
+        evictedKey: oldestKey,
+        reason: 'maxTrackedPairs',
+        remainingPairs: this.pairwiseHistory.size,
+      });
+    }
+  }
+
   private storeObservation(agentId: string, observation: VotingObservation): void {
     let agentObs = this.observations.get(agentId);
     if (agentObs === undefined) {
@@ -324,6 +350,7 @@ export class CorrelationTracker implements ICorrelationTracker {
             lastUpdated: new Date(getTimeProvider().now()),
           };
           this.pairwiseHistory.set(pairKey, history);
+          this.evictOldestPair();
         }
 
         // Skip abstain observations — they are neutral (Issue #763)

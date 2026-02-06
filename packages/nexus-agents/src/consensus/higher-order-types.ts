@@ -160,6 +160,8 @@ export interface HigherOrderVotingConfig {
   readonly maxObservationsPerAgent: number;
   /** Maximum total proposals to track before evicting oldest (default: 5000) */
   readonly maxProposals: number;
+  /** Maximum pairwise history entries before LRU eviction (default: 100) */
+  readonly maxTrackedPairs: number;
 }
 
 export const HigherOrderVotingConfigSchema = z.object({
@@ -171,6 +173,7 @@ export const HigherOrderVotingConfigSchema = z.object({
   observationDecayFactor: z.number().min(0).max(1).default(0.95),
   maxObservationsPerAgent: z.number().int().positive().default(1000),
   maxProposals: z.number().int().positive().default(5000),
+  maxTrackedPairs: z.number().int().positive().default(100),
 });
 
 export const DEFAULT_HIGHER_ORDER_CONFIG: HigherOrderVotingConfig = {
@@ -182,6 +185,7 @@ export const DEFAULT_HIGHER_ORDER_CONFIG: HigherOrderVotingConfig = {
   observationDecayFactor: 0.95,
   maxObservationsPerAgent: 1000,
   maxProposals: 5000,
+  maxTrackedPairs: 100,
 };
 
 // ============================================================================

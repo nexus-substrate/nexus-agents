@@ -94,7 +94,7 @@ function formatModelStats(models: readonly ModelLearningStats[]): string[] {
 
   for (const model of models) {
     const pct = model.selectionPercent.toFixed(1);
-    const barLength = Math.round(model.selectionPercent * 0.2);
+    const barLength = Math.min(20, Math.max(0, Math.round(model.selectionPercent * 0.2)));
     const bar = '█'.repeat(barLength) + '░'.repeat(20 - barLength);
     lines.push(boxLine(`   ${model.name.padEnd(10)} ${bar} ${pct.padStart(5)}%`));
 
@@ -133,7 +133,7 @@ function formatBanditProgress(bandit: BanditProgress): string[] {
     lines.push(boxLine('   Arm Distribution:'));
     for (const arm of bandit.armDistribution) {
       const armPct = arm.percent.toFixed(1);
-      const armBar = '█'.repeat(Math.round(arm.percent * 0.2));
+      const armBar = '█'.repeat(Math.min(20, Math.max(0, Math.round(arm.percent * 0.2))));
       lines.push(boxLine(`     ${arm.name.padEnd(8)} ${armPct.padStart(5)}% ${armBar}`));
     }
   }
