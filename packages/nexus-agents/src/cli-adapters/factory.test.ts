@@ -73,9 +73,9 @@ describe('createCliAdapter', () => {
     const gemini = createCliAdapter({ cli: 'gemini' });
     const codex = createCliAdapter({ cli: 'codex' });
 
-    // Adapters use CLI aliases as model IDs
-    expect(claude.getModelInfo().id).toBe('sonnet');
-    expect(gemini.getModelInfo().id).toBe('gemini-2.5-flash');
+    // Adapters use CLI aliases as model IDs — quality-first defaults (Issue #807)
+    expect(claude.getModelInfo().id).toBe('opus');
+    expect(gemini.getModelInfo().id).toBe('gemini-3-pro');
     expect(codex.getModelInfo().id).toBe('o3');
   });
 
@@ -153,7 +153,7 @@ describe('model info', () => {
     const adapter = createCliAdapter({ cli: 'gemini' });
     const info = adapter.getModelInfo();
 
-    expect(info.contextWindow).toBe(1000000);
+    expect(info.contextWindow).toBe(1_000_000);
     expect(info.maxOutput).toBe(8192);
   });
 

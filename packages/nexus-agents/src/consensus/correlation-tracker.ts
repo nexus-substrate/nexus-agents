@@ -276,7 +276,7 @@ export class CorrelationTracker implements ICorrelationTracker {
   private evictOldestPair(): void {
     if (this.pairwiseHistory.size <= this.config.maxTrackedPairs) return;
 
-    let oldestKey: string | undefined;
+    let oldestKey: AgentPairKey | undefined;
     let oldestTime = Infinity;
     for (const [key, history] of this.pairwiseHistory) {
       const time = history.lastUpdated.getTime();

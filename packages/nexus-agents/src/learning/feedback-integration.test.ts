@@ -72,6 +72,7 @@ function createMockRouter(): ICompositeRouter {
     getRoutingMemory: vi.fn().mockReturnValue(undefined),
     getMetricsCollector: vi.fn().mockReturnValue(undefined),
     getOrchestrationObserver: vi.fn().mockReturnValue(undefined),
+    getCapacityDashboard: vi.fn().mockResolvedValue(new Map()),
   };
 }
 

@@ -12,7 +12,7 @@ import { ModelCapability, getTimeProvider, getRandomProvider } from '../core/ind
  * Supported Gemini model identifiers.
  */
 export const GEMINI_MODELS = {
-  PRO_3: 'gemini-3-pro-preview',
+  PRO_3: 'gemini-3-pro',
   FLASH_3: 'gemini-3-flash',
   FLASH_2_5: 'gemini-2.5-flash',
   FLASH_2_0: 'gemini-2.0-flash',
@@ -25,8 +25,8 @@ export const GEMINI_MODELS = {
  */
 export const GEMINI_MODEL_ALIASES: Record<string, string> = {
   // Gemini 3 aliases
-  'gemini-3-pro-preview': GEMINI_MODELS.PRO_3,
   'gemini-3-pro': GEMINI_MODELS.PRO_3,
+  'gemini-3-pro-preview': GEMINI_MODELS.PRO_3,
   'gemini-3-flash': GEMINI_MODELS.FLASH_3,
   // Gemini 2.x aliases
   'gemini-2.5-flash': GEMINI_MODELS.FLASH_2_5,
@@ -34,7 +34,7 @@ export const GEMINI_MODEL_ALIASES: Record<string, string> = {
   // Gemini 1.5 aliases
   'gemini-1.5-pro': GEMINI_MODELS.PRO_1_5,
   'gemini-1.5-flash': GEMINI_MODELS.FLASH_1_5,
-  // Short aliases (point to latest versions)
+  // Short aliases (point to latest versions — Gemini 3)
   'gemini-flash': GEMINI_MODELS.FLASH_3,
   'gemini-pro': GEMINI_MODELS.PRO_3,
 } as const;
@@ -43,7 +43,7 @@ export const GEMINI_MODEL_ALIASES: Record<string, string> = {
  * Configuration specific to GeminiAdapter.
  */
 export interface GeminiAdapterConfig {
-  /** Model ID (e.g., 'gemini-2.5-flash' or full model identifier) */
+  /** Model ID (e.g., 'gemini-3-flash' or full model identifier) */
   modelId: string;
   /** API key for Google AI API (required) */
   apiKey: string;

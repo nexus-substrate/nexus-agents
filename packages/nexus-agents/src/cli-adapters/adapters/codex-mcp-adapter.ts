@@ -47,6 +47,7 @@ import {
   parseVersionFromOutput,
 } from './codex-mcp-adapter-helpers.js';
 import { CapacityTracker, createCapacityTracker } from '../capacity-tracker.js';
+import { getDefaultModelForCli, getCliModelName } from '../../config/model-config-helpers.js';
 
 /**
  * Codex CLI adapter using MCP transport.
@@ -68,7 +69,7 @@ export class CodexMcpAdapter implements ICliAdapter {
 
   constructor(options?: { model?: string; logger?: ILogger }) {
     this.logger = options?.logger ?? createLogger({ component: 'codex-mcp-adapter' });
-    this.model = options?.model ?? 'o3';
+    this.model = options?.model ?? getCliModelName(getDefaultModelForCli('codex'));
   }
 
   /**

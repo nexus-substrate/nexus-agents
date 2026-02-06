@@ -12,21 +12,36 @@ import type { ICliResponseParser, CliTask, ModelInfo, CliName } from '../types.j
 import { SubprocessCliAdapter, type CommandConfig } from '../subprocess-adapter.js';
 import { ClaudeResponseParser } from '../parsers/claude-parser.js';
 import type { ILogger } from '../../core/index.js';
+import { DEFAULT_MODEL_CAPABILITIES } from '../../config/model-capabilities.js';
+import {
+  resolveCliAlias,
+  getDefaultModelForCli,
+  getCliModelName,
+} from '../../config/model-config-helpers.js';
 
 /**
  * Maps internal model names to Claude CLI aliases.
  * CLI accepts: 'sonnet', 'opus', 'haiku' or full names like 'claude-sonnet-4-5-20250929'
+ * Built from canonical registry + legacy names for backward compatibility.
  */
-const MODEL_TO_CLI_ALIAS: Record<string, string> = {
-  'claude-sonnet-4': 'sonnet',
-  'claude-opus-4': 'opus',
-  'claude-haiku-3': 'haiku',
-  'claude-opus-4-5-20251101': 'opus',
-  // Allow direct aliases to pass through
-  sonnet: 'sonnet',
-  opus: 'opus',
-  haiku: 'haiku',
-};
+const MODEL_TO_CLI_ALIAS: Record<string, string> = buildClaudeAliasMap();
+
+/** Builds alias map from canonical registry + legacy versioned names. */
+function buildClaudeAliasMap(): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const model of DEFAULT_MODEL_CAPABILITIES.models) {
+    if (model.cliName === 'claude' && model.cliAlias !== undefined) {
+      // Allow direct alias pass-through
+      map[model.cliAlias] = model.cliAlias;
+    }
+  }
+  // Legacy versioned names
+  map['claude-sonnet-4'] = 'sonnet';
+  map['claude-opus-4'] = 'opus';
+  map['claude-haiku-3'] = 'haiku';
+  map['claude-opus-4-5-20251101'] = 'opus';
+  return map;
+}
 
 /**
  * Claude CLI adapter using subprocess transport.
@@ -40,13 +55,34 @@ export class ClaudeCliAdapter extends SubprocessCliAdapter {
 
   constructor(options?: { model?: string; logger?: ILogger }) {
     super(options?.logger);
-    this.model = options?.model ?? 'sonnet';
+    this.model = options?.model ?? getCliModelName(getDefaultModelForCli('claude'));
   }
 
   /**
    * Gets Claude model information.
+   * Resolves from canonical registry when possible, falls back to legacy lookup.
    */
   getModelInfo(): ModelInfo {
+    const resolved = resolveCliAlias(this.model);
+    if (resolved !== undefined) {
+      const cap = DEFAULT_MODEL_CAPABILITIES.models.find((m) => m.id === resolved);
+      if (cap !== undefined) {
+        const info: ModelInfo = {
+          id: this.model,
+          name: cap.displayName,
+          contextWindow: cap.contextWindow,
+        };
+        // Only set optional properties when values exist (exactOptionalPropertyTypes)
+        if (cap.maxOutputTokens !== undefined) {
+          (info as { maxOutput: number }).maxOutput = cap.maxOutputTokens;
+        }
+        if (cap.pricing !== undefined) {
+          (info as { costPerMillionInput: number }).costPerMillionInput = cap.pricing.inputPer1M;
+          (info as { costPerMillionOutput: number }).costPerMillionOutput = cap.pricing.outputPer1M;
+        }
+        return info;
+      }
+    }
     return {
       id: this.model,
       name: this.getModelDisplayName(),

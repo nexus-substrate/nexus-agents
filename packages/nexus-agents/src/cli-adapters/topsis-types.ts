@@ -128,49 +128,9 @@ export interface TopsisResult {
 
 /**
  * Default model profiles based on known CLI characteristics.
- * (Source: cli-project_plan.md Capability Matching Matrix)
+ * Derived from the canonical model registry (Issue #807).
  */
-export const DEFAULT_MODEL_PROFILES: readonly TopsisModelProfile[] = [
-  {
-    cliName: 'claude',
-    capabilities: {
-      reasoning: 10,
-      contextWindow: 200_000,
-      codeGeneration: 9,
-      speed: 7,
-      cost: 5,
-    },
-    costPerMillionInput: 3.0,
-    costPerMillionOutput: 15.0,
-    averageLatencyMs: 800,
-    qualityScore: 9.5,
-  },
-  {
-    cliName: 'gemini',
-    capabilities: {
-      reasoning: 8,
-      contextWindow: 1_000_000,
-      codeGeneration: 7,
-      speed: 8,
-      cost: 9,
-    },
-    costPerMillionInput: 1.25,
-    costPerMillionOutput: 5.0,
-    averageLatencyMs: 400,
-    qualityScore: 7.5,
-  },
-  {
-    cliName: 'codex',
-    capabilities: {
-      reasoning: 9,
-      contextWindow: 400_000,
-      codeGeneration: 10,
-      speed: 8,
-      cost: 7,
-    },
-    costPerMillionInput: 2.0,
-    costPerMillionOutput: 8.0,
-    averageLatencyMs: 500,
-    qualityScore: 9.0,
-  },
-] as const;
+
+import { buildTopsisProfiles } from '../config/model-config-helpers.js';
+
+export const DEFAULT_MODEL_PROFILES: readonly TopsisModelProfile[] = buildTopsisProfiles();

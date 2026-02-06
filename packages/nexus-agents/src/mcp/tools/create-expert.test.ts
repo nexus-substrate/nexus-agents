@@ -411,3 +411,39 @@ describe('getCapabilitiesForRole', () => {
     expect(capabilities).toBeUndefined();
   });
 });
+
+describe('modelAdapter wiring (Issue #808)', () => {
+  it('should pass adapter option to factory when modelAdapter is set', () => {
+    const mockAdapter = {
+      name: 'test-adapter',
+    } as unknown as import('../../core/index.js').IModelAdapter;
+    const factory = createMockFactory();
+    const deps = createTestDeps(factory);
+    deps.modelAdapter = mockAdapter;
+
+    // Call createBuiltIn via deps — mirrors what createExpertFromFactory does
+    deps.expertFactory.createBuiltIn('code', { modelOverrides: { modelId: 'test' } });
+
+    // Factory should have been called
+    expect(factory.createBuiltIn).toHaveBeenCalledWith('code', {
+      modelOverrides: { modelId: 'test' },
+    });
+  });
+
+  it('should include modelAdapter in deps when set', () => {
+    const mockAdapter = {
+      name: 'test-adapter',
+    } as unknown as import('../../core/index.js').IModelAdapter;
+    const deps = createTestDeps();
+    deps.modelAdapter = mockAdapter;
+
+    expect(deps.modelAdapter).toBe(mockAdapter);
+    expect(deps.modelAdapter.name).toBe('test-adapter');
+  });
+
+  it('should not have modelAdapter in default deps', () => {
+    const deps = createTestDeps();
+
+    expect(deps.modelAdapter).toBeUndefined();
+  });
+});

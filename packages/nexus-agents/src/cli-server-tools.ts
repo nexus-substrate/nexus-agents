@@ -189,7 +189,7 @@ function isToolAllowed(toolName: string, allowlist?: Set<string>): boolean {
   return allowlist === undefined || allowlist.has(toolName);
 }
 
-/** Register expert tools with shared registry (Issue #661: wire security config). */
+/** Register expert tools with shared registry (Issue #661: wire security config, #808: wire adapter). */
 function registerExpertTools(ctx: ToolRegistrationContext): void {
   const sharedExpertRegistry = new Map<string, Expert>();
   const createExpertDeps = createDefaultDeps(
@@ -199,6 +199,10 @@ function registerExpertTools(ctx: ToolRegistrationContext): void {
   createExpertDeps.expertRegistry = sharedExpertRegistry;
   if (ctx.securityConfig !== undefined) {
     createExpertDeps.security = ctx.securityConfig;
+  }
+  // Wire model adapter so experts can execute (Issue #808)
+  if (ctx.modelAdapter !== undefined) {
+    createExpertDeps.modelAdapter = ctx.modelAdapter;
   }
   registerCreateExpertTool(ctx.server, createExpertDeps);
 
@@ -293,6 +297,7 @@ function registerMemoryTools(ctx: ToolRegistrationContext): void {
 
 /** Register core routing and orchestration tools. */
 function registerCoreTools(ctx: ToolRegistrationContext): void {
+  // Register delegate_to_model independently — it doesn't need a model adapter
   registerDelegateToModelTool(ctx.server, {
     logger: ctx.logger,
     rateLimiter: ctx.rateLimiterFactory.getForTool('delegate_to_model'),
@@ -300,18 +305,32 @@ function registerCoreTools(ctx: ToolRegistrationContext): void {
     ...(ctx.feedbackIntegration !== undefined && { feedbackIntegration: ctx.feedbackIntegration }),
   });
 
-  // Issue #554: Pass useMockTechLead to require explicit opt-in for mock
-  const techLead = createTechLeadForOrchestration(
-    ctx.modelAdapter,
-    ctx.logger,
-    ctx.useMockTechLead
-  );
-  registerOrchestrateTool(ctx.server, {
-    techLead,
-    logger: ctx.logger,
-    rateLimiter: ctx.rateLimiterFactory.getForTool('orchestrate'),
-    security: ctx.securityConfig,
-  });
+  // Register orchestrate — gracefully degrade if no adapter available
+  registerOrchestrateToolSafe(ctx);
+}
+
+/** Registers orchestrate tool, logging a warning if no adapter is available. */
+function registerOrchestrateToolSafe(ctx: ToolRegistrationContext): void {
+  try {
+    // Issue #554: Pass useMockTechLead to require explicit opt-in for mock
+    const techLead = createTechLeadForOrchestration(
+      ctx.modelAdapter,
+      ctx.logger,
+      ctx.useMockTechLead
+    );
+    registerOrchestrateTool(ctx.server, {
+      techLead,
+      logger: ctx.logger,
+      rateLimiter: ctx.rateLimiterFactory.getForTool('orchestrate'),
+      security: ctx.securityConfig,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    ctx.logger.warn('Orchestrate tool unavailable — no model adapter', {
+      error: message,
+      hint: 'Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or GOOGLE_AI_API_KEY in .mcp.json env',
+    });
+  }
 }
 
 /** Runs STPA analysis if enabled in options. */

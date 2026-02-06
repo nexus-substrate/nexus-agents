@@ -77,6 +77,8 @@ export const CompositeRouterConfigSchema = z.object({
   linucbAlpha: z.number().positive().default(1.0),
   /** Billing mode: 'plan' zeroes cost weight, 'api' preserves current behavior (default: 'plan') */
   billingMode: z.enum(['plan', 'api']).default('plan'),
+  /** Enable capacity-aware load balancing (deprioritize exhausted CLIs) (default: true) (Issue #807) */
+  enableCapacityBalancing: z.boolean().default(true),
   /** Maximum routing decision time in ms (default: 50) */
   maxDecisionTimeMs: z.number().positive().default(50),
   /** Minimum preference data points before using learned routing (default: 10) */
@@ -123,6 +125,7 @@ export const DEFAULT_COMPOSITE_CONFIG: CompositeRouterConfig = {
   enableQualityConstraint: false, // Issue #755 - New replacement stage (disabled for backward compatibility)
   enableLatencyTracking: true,
   enableRoutingMemory: false,
+  enableCapacityBalancing: true, // Issue #807 - Deprioritize exhausted CLIs
   latencyScoreWeight: 0.2,
   billingMode: 'plan',
   linucbAlpha: 1.0,

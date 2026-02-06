@@ -27,6 +27,7 @@ import {
   IMAGE_GEN_KEYWORDS,
   AUDIO_OUTPUT_KEYWORDS,
   MCP_KEYWORDS,
+  EXPLORATION_KEYWORDS,
 } from './delegate-to-model-types.js';
 import { DEFAULT_MODEL_CAPABILITIES, modelSupportsAll } from '../../config/model-capabilities.js';
 
@@ -54,6 +55,7 @@ export function analyzeTask(task: string): TaskRequirements {
     needsImageGen: hasKeyword(taskLower, IMAGE_GEN_KEYWORDS),
     needsAudioOutput: hasKeyword(taskLower, AUDIO_OUTPUT_KEYWORDS),
     needsMcp: hasKeyword(taskLower, MCP_KEYWORDS),
+    needsExploration: hasKeyword(taskLower, EXPLORATION_KEYWORDS),
   };
 }
 
@@ -71,6 +73,11 @@ export function calcRequirementsScore(
   if (requirements.needsSpeed) score += profile.speed * 2;
   if (requirements.needsCodeGen) score += profile.codeGeneration * 2;
   if (requirements.isCostSensitive && billingMode !== 'plan') score += profile.cost * 2;
+  // Exploration bonus: large context models excel at research tasks (Issue #807)
+  if (requirements.needsExploration) {
+    if (profile.contextWindow >= 500_000) score += 15;
+    score += profile.reasoning;
+  }
   return score;
 }
 
@@ -137,6 +144,7 @@ const REASON_MAP: ReadonlyArray<[keyof TaskRequirements, string]> = [
   ['needsImageGen', 'image generation required'],
   ['needsAudioOutput', 'audio output required'],
   ['needsMcp', 'MCP tool support required'],
+  ['needsExploration', 'exploration/research task benefits from large context'],
 ];
 
 export function buildReasons(

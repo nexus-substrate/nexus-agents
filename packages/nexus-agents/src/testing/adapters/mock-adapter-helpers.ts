@@ -28,33 +28,12 @@ export const DEFAULT_CONFIG: MockAdapterConfig = {
 
 /**
  * Model information lookup by CLI name.
+ * Derived from the canonical model registry (Issue #807).
  */
-export const MODEL_INFO_BY_NAME: Readonly<Record<CliName, ModelInfo>> = {
-  claude: {
-    id: 'claude-sonnet-4',
-    name: 'Claude Sonnet 4',
-    contextWindow: 200_000,
-    maxOutput: 64_000,
-    costPerMillionInput: 3.0,
-    costPerMillionOutput: 15.0,
-  },
-  gemini: {
-    id: 'gemini-2.0-flash',
-    name: 'Gemini 2.0 Flash',
-    contextWindow: 1_000_000,
-    maxOutput: 8_192,
-    costPerMillionInput: 0.075,
-    costPerMillionOutput: 0.3,
-  },
-  codex: {
-    id: 'gpt-5-codex',
-    name: 'GPT-5 Codex',
-    contextWindow: 400_000,
-    maxOutput: 32_000,
-    costPerMillionInput: 2.0,
-    costPerMillionOutput: 8.0,
-  },
-};
+
+import { buildMockModelInfo } from '../../config/model-config-helpers.js';
+
+export const MODEL_INFO_BY_NAME: Readonly<Record<CliName, ModelInfo>> = buildMockModelInfo();
 
 /**
  * Error codes that are considered retryable.

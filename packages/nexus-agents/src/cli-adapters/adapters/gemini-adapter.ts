@@ -50,7 +50,7 @@ import {
 
 /** Configuration for Gemini adapter. */
 export interface GeminiConfig {
-  /** Model to use (default: gemini-2.5-flash) */
+  /** Model to use (default: gemini-3-pro) */
   readonly model?: string;
   /** Custom logger */
   readonly logger?: ILogger;
@@ -84,7 +84,7 @@ export interface GeminiExecutionResult {
 }
 
 const DEFAULT_CONFIG: Required<Omit<GeminiConfig, 'logger' | 'circuitBreakerConfig'>> = {
-  model: 'gemini-2.5-flash',
+  model: 'gemini-3-pro',
   maxRetries: 3,
   baseDelayMs: 1000,
   maxDelayMs: 30_000,

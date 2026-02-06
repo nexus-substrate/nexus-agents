@@ -202,15 +202,19 @@ async function executeScenario(
   timeoutMs: number
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
-    const result = await adapter.execute(
-      {
-        content: scenario.content,
-        systemPrompt: scenario.systemPrompt,
-        maxTokens: scenario.maxTokens,
-        timeoutMs,
-      },
-      { timeoutMs }
-    );
+    const task: Record<string, unknown> = {
+      content: scenario.content,
+      timeoutMs,
+    };
+    if (scenario.systemPrompt !== undefined) {
+      task.systemPrompt = scenario.systemPrompt;
+    }
+    if (scenario.maxTokens !== undefined) {
+      task.maxTokens = scenario.maxTokens;
+    }
+    const result = await adapter.execute(task as Parameters<typeof adapter.execute>[0], {
+      timeoutMs,
+    });
     return result.ok ? { ok: true } : { ok: false, error: result.error.message };
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);

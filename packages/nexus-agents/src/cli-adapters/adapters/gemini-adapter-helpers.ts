@@ -8,55 +8,56 @@
 import { getRandomProvider } from '../../core/index.js';
 import type { CliError, CliName } from '../types.js';
 import type { FailureCategory } from '../circuit-breaker-types.js';
+import { DEFAULT_MODEL_CAPABILITIES } from '../../config/model-capabilities.js';
 
 // -----------------------------------------------------------------------------
-// Model Information Constants
+// Model Information — Canonical Registry + Legacy Fallbacks
+// (Issue #807: Canonical models from registry, legacy for older variants)
 // -----------------------------------------------------------------------------
 
 /**
- * Model display name mappings for Gemini models.
+ * Legacy model display names for non-canonical Gemini models.
  */
-const MODEL_DISPLAY_NAMES: Readonly<Record<string, string>> = {
+const LEGACY_DISPLAY_NAMES: Readonly<Record<string, string>> = {
   'gemini-2.5-pro': 'Gemini 2.5 Pro',
   'gemini-2.5-flash': 'Gemini 2.5 Flash',
   'gemini-2.5-flash-lite': 'Gemini 2.5 Flash Lite',
 };
 
-/**
- * Context window sizes by model (tokens).
- */
-const CONTEXT_WINDOWS: Readonly<Record<string, number>> = {
+/** Legacy context windows for non-canonical models. */
+const LEGACY_CONTEXT_WINDOWS: Readonly<Record<string, number>> = {
   'gemini-2.5-pro': 1_000_000,
   'gemini-2.5-flash': 1_000_000,
   'gemini-2.5-flash-lite': 1_000_000,
 };
 
-/**
- * Cost per million input tokens by model (USD).
- */
-const INPUT_COSTS: Readonly<Record<string, number>> = {
+/** Legacy costs for non-canonical models. */
+const LEGACY_INPUT_COSTS: Readonly<Record<string, number>> = {
   'gemini-2.5-pro': 1.25,
   'gemini-2.5-flash': 0.075,
   'gemini-2.5-flash-lite': 0.015,
 };
 
-/**
- * Cost per million output tokens by model (USD).
- */
-const OUTPUT_COSTS: Readonly<Record<string, number>> = {
+const LEGACY_OUTPUT_COSTS: Readonly<Record<string, number>> = {
   'gemini-2.5-pro': 10.0,
   'gemini-2.5-flash': 0.3,
   'gemini-2.5-flash-lite': 0.06,
 };
 
-/**
- * Default values for model info lookups.
- */
 const DEFAULTS = {
   contextWindow: 1_000_000,
   inputCost: 0.075,
   outputCost: 0.3,
 } as const;
+
+/** Find a canonical model by its cliModelName (e.g., 'gemini-3-pro'). */
+function findCanonicalGeminiModel(
+  cliModelName: string
+): (typeof DEFAULT_MODEL_CAPABILITIES.models)[number] | undefined {
+  return DEFAULT_MODEL_CAPABILITIES.models.find(
+    (m) => m.cliName === 'gemini' && m.cliModelName === cliModelName
+  );
+}
 
 // -----------------------------------------------------------------------------
 // Model Information Functions
@@ -66,28 +67,36 @@ const DEFAULTS = {
  * Gets human-readable display name for a Gemini model.
  */
 export function getModelDisplayName(model: string): string {
-  return MODEL_DISPLAY_NAMES[model] ?? model;
+  const canonical = findCanonicalGeminiModel(model);
+  if (canonical !== undefined) return canonical.displayName;
+  return LEGACY_DISPLAY_NAMES[model] ?? model;
 }
 
 /**
  * Gets context window size for a Gemini model.
  */
 export function getContextWindow(model: string): number {
-  return CONTEXT_WINDOWS[model] ?? DEFAULTS.contextWindow;
+  const canonical = findCanonicalGeminiModel(model);
+  if (canonical !== undefined) return canonical.contextWindow;
+  return LEGACY_CONTEXT_WINDOWS[model] ?? DEFAULTS.contextWindow;
 }
 
 /**
  * Gets cost per million input tokens for a Gemini model.
  */
 export function getCostPerMillionInput(model: string): number {
-  return INPUT_COSTS[model] ?? DEFAULTS.inputCost;
+  const canonical = findCanonicalGeminiModel(model);
+  if (canonical?.pricing !== undefined) return canonical.pricing.inputPer1M;
+  return LEGACY_INPUT_COSTS[model] ?? DEFAULTS.inputCost;
 }
 
 /**
  * Gets cost per million output tokens for a Gemini model.
  */
 export function getCostPerMillionOutput(model: string): number {
-  return OUTPUT_COSTS[model] ?? DEFAULTS.outputCost;
+  const canonical = findCanonicalGeminiModel(model);
+  if (canonical?.pricing !== undefined) return canonical.pricing.outputPer1M;
+  return LEGACY_OUTPUT_COSTS[model] ?? DEFAULTS.outputCost;
 }
 
 // -----------------------------------------------------------------------------

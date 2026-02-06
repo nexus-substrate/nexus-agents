@@ -42,16 +42,16 @@ describe('DEFAULT_CONFIG', () => {
 
 describe('MODEL_INFO_BY_NAME', () => {
   it('contains info for claude', () => {
-    expect(MODEL_INFO_BY_NAME.claude.id).toBe('claude-sonnet-4');
+    expect(MODEL_INFO_BY_NAME.claude.id).toBe('claude-opus');
     expect(MODEL_INFO_BY_NAME.claude.contextWindow).toBe(200_000);
   });
 
   it('contains info for gemini', () => {
-    expect(MODEL_INFO_BY_NAME.gemini.id).toBe('gemini-2.0-flash');
+    expect(MODEL_INFO_BY_NAME.gemini.id).toBe('gemini-pro');
   });
 
   it('contains info for codex', () => {
-    expect(MODEL_INFO_BY_NAME.codex.id).toBe('gpt-5-codex');
+    expect(MODEL_INFO_BY_NAME.codex.id).toBe('codex-5.3');
   });
 });
 

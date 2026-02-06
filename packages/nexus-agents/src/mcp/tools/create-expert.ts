@@ -74,6 +74,8 @@ export interface CreateExpertDeps {
   security?: SecurityConfig | undefined;
   /** Optional CLI detection cache for checking available CLIs (Issue #747) */
   cliCache?: ICliDetectionCache;
+  /** Model adapter for expert execution (Issue #808) */
+  modelAdapter?: import('../../core/index.js').IModelAdapter;
 }
 
 /**
@@ -136,10 +138,20 @@ function createExpertFromFactory(
   expertType: BuiltInExpertType,
   modelPreference?: string
 ): { ok: true; value: Expert } | { ok: false; error: string } {
-  const options =
-    modelPreference !== undefined ? { modelOverrides: { modelId: modelPreference } } : undefined;
+  const options: Record<string, unknown> = {};
+  if (modelPreference !== undefined) {
+    options.modelOverrides = { modelId: modelPreference };
+  }
+  // Wire model adapter to expert so BaseAgent.complete() can use it (Issue #808)
+  if (deps.modelAdapter !== undefined) {
+    options.adapter = deps.modelAdapter;
+  }
 
-  const result = deps.expertFactory.createBuiltIn(expertType, options);
+  const factoryOptions = Object.keys(options).length > 0 ? options : undefined;
+  const result = deps.expertFactory.createBuiltIn(
+    expertType,
+    factoryOptions as Parameters<typeof deps.expertFactory.createBuiltIn>[1]
+  );
 
   if (!result.ok) {
     return { ok: false, error: result.error.message };

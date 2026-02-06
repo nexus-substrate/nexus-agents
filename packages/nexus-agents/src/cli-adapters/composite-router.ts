@@ -46,7 +46,11 @@ import {
   type PipelineResult,
   type IRoutingMetricsCollector,
 } from './composite-router-types.js';
-import { buildDecisionFields, buildPreferenceStats } from './composite-router-helpers.js';
+import {
+  buildDecisionFields,
+  buildPreferenceStats,
+  fetchCapacityData,
+} from './composite-router-helpers.js';
 import {
   analyzeTaskProfile,
   runPipeline,
@@ -98,6 +102,8 @@ export interface ICompositeRouter {
   getMetricsCollector(): IRoutingMetricsCollector | undefined;
   /** Get the orchestration observer (if configured) (Issue #587) */
   getOrchestrationObserver(): IOrchestrationObserver | undefined;
+  /** Get capacity status for all registered CLIs (Issue #807) */
+  getCapacityDashboard(): Promise<Map<CliName, import('./types.js').CapacityStatus>>;
 }
 
 /** CompositeRouter implementation. */
@@ -549,6 +555,13 @@ export class CompositeRouter implements ICompositeRouter {
    */
   getOrchestrationObserver(): IOrchestrationObserver | undefined {
     return this.orchestrationObserver;
+  }
+
+  /**
+   * Get capacity status for all registered CLIs (Issue #807).
+   */
+  async getCapacityDashboard(): Promise<Map<CliName, import('./types.js').CapacityStatus>> {
+    return fetchCapacityData(this.adapters);
   }
 
   getStats(): CompositeRouterStats {

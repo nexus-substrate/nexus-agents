@@ -229,28 +229,10 @@ export const CLI_VERSION_REQUIREMENTS: Record<CliName, VersionRequirements> = {
 
 /**
  * Default capability profiles for each CLI.
- * (Source: cli-project_plan.md Capability Matching Matrix)
+ * Derived from the canonical model registry (Issue #807).
  */
-export const DEFAULT_CAPABILITIES: Record<CliName, CapabilityProfile> = {
-  claude: {
-    reasoning: 10,
-    contextWindow: 200_000,
-    codeGeneration: 9,
-    speed: 7,
-    cost: 5,
-  },
-  gemini: {
-    reasoning: 8,
-    contextWindow: 1_000_000,
-    codeGeneration: 7,
-    speed: 8,
-    cost: 9,
-  },
-  codex: {
-    reasoning: 9,
-    contextWindow: 400_000,
-    codeGeneration: 10,
-    speed: 8,
-    cost: 7,
-  },
-} as const;
+
+import { buildCliCapabilityProfiles } from '../config/model-config-helpers.js';
+
+export const DEFAULT_CAPABILITIES: Record<CliName, CapabilityProfile> =
+  buildCliCapabilityProfiles();

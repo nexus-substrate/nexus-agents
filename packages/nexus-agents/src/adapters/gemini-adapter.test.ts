@@ -665,7 +665,7 @@ describe('createGeminiAdapter', () => {
 
 describe('GEMINI_MODELS', () => {
   it('should have correct Gemini 3 model identifiers', () => {
-    expect(GEMINI_MODELS.PRO_3).toBe('gemini-3-pro-preview');
+    expect(GEMINI_MODELS.PRO_3).toBe('gemini-3-pro');
     expect(GEMINI_MODELS.FLASH_3).toBe('gemini-3-flash');
   });
 

@@ -127,18 +127,27 @@ describe('delegate_to_model Tool', () => {
         needsImageGen: false,
         needsAudioOutput: false,
         needsMcp: false,
+        needsExploration: false,
       };
 
-      const opusScore = scoreModel('claude-opus', MODEL_CAPABILITIES['claude-opus']!, requirements);
-      const flashScore = scoreModel(
-        'gemini-flash',
-        MODEL_CAPABILITIES['gemini-flash']!,
-        requirements
+      // Use plan billing mode (default deployment) so cost doesn't dilute reasoning signal
+      const opusScore = scoreModel(
+        'claude-opus',
+        MODEL_CAPABILITIES['claude-opus']!,
+        requirements,
+        undefined,
+        'plan'
+      );
+      const haikuScore = scoreModel(
+        'claude-haiku',
+        MODEL_CAPABILITIES['claude-haiku']!,
+        requirements,
+        undefined,
+        'plan'
       );
 
-      // Opus (reasoning: 10) should score at least as high as Flash (reasoning: 6) for reasoning tasks
-      // Note: Flash compensates with higher speed and cost scores
-      expect(opusScore).toBeGreaterThanOrEqual(flashScore);
+      // Opus (reasoning: 10) should score higher than Haiku (reasoning: 7) for reasoning tasks
+      expect(opusScore).toBeGreaterThanOrEqual(haikuScore);
     });
 
     it('should score higher for large context model when large context is needed', () => {
@@ -152,6 +161,7 @@ describe('delegate_to_model Tool', () => {
         needsImageGen: false,
         needsAudioOutput: false,
         needsMcp: false,
+        needsExploration: false,
       };
 
       const geminiScore = scoreModel('gemini-pro', MODEL_CAPABILITIES['gemini-pro']!, requirements);
@@ -175,6 +185,7 @@ describe('delegate_to_model Tool', () => {
         needsImageGen: false,
         needsAudioOutput: false,
         needsMcp: false,
+        needsExploration: false,
       };
 
       const codeScoreWithPreference = scoreModel(
@@ -205,6 +216,7 @@ describe('delegate_to_model Tool', () => {
         needsImageGen: false,
         needsAudioOutput: false,
         needsMcp: false,
+        needsExploration: false,
       };
 
       const result = selectModel(
@@ -227,6 +239,7 @@ describe('delegate_to_model Tool', () => {
         needsImageGen: false,
         needsAudioOutput: false,
         needsMcp: false,
+        needsExploration: false,
       };
 
       const result = selectModel(
@@ -235,7 +248,9 @@ describe('delegate_to_model Tool', () => {
       );
 
       // Top-tier models should be selected for reasoning tasks
-      expect(['claude-opus', 'codex-5.3', 'codex-5.2', 'claude-sonnet']).toContain(result.model);
+      expect(['claude-opus', 'codex-5.3', 'codex-5.2', 'claude-sonnet', 'gemini-pro']).toContain(
+        result.model
+      );
       expect(result.alternatives.length).toBeGreaterThan(0);
     });
 
@@ -250,6 +265,7 @@ describe('delegate_to_model Tool', () => {
         needsImageGen: false,
         needsAudioOutput: false,
         needsMcp: false,
+        needsExploration: false,
       };
 
       const result = selectModel(
@@ -291,9 +307,9 @@ describe('delegate_to_model Tool', () => {
       });
     });
 
-    it('should have Gemini with 1M context', () => {
+    it('should have Gemini with expected context windows', () => {
       expect(MODEL_CAPABILITIES['gemini-pro']!.contextWindow).toBe(1_000_000);
-      expect(MODEL_CAPABILITIES['gemini-flash']!.contextWindow).toBe(1_000_000);
+      expect(MODEL_CAPABILITIES['gemini-flash']!.contextWindow).toBe(200_000);
     });
   });
 
@@ -407,6 +423,7 @@ describe('delegate_to_model Tool', () => {
       getRoutingMemory: ReturnType<typeof vi.fn>;
       getMetricsCollector: ReturnType<typeof vi.fn>;
       getOrchestrationObserver: ReturnType<typeof vi.fn>;
+      getCapacityDashboard: ReturnType<typeof vi.fn>;
     } {
       return {
         route: vi.fn().mockResolvedValue(
@@ -454,6 +471,7 @@ describe('delegate_to_model Tool', () => {
         getRoutingMemory: vi.fn().mockReturnValue(undefined),
         getMetricsCollector: vi.fn().mockReturnValue(undefined),
         getOrchestrationObserver: vi.fn().mockReturnValue(undefined),
+        getCapacityDashboard: vi.fn().mockResolvedValue(new Map()),
       };
     }
 

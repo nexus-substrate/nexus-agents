@@ -48,6 +48,7 @@ function makeRequirements(overrides: Partial<TaskRequirements> = {}): TaskRequir
     needsImageGen: false,
     needsAudioOutput: false,
     needsMcp: false,
+    needsExploration: false,
     ...overrides,
   };
 }
@@ -384,7 +385,8 @@ describe('scoreAllModels billing mode', () => {
     const req = makeRequirements();
     const planRanked = scoreAllModels(req, undefined, 'plan');
     expect(planRanked.length).toBeGreaterThan(0);
-    expect(['claude-opus', 'codex-5.3']).toContain(planRanked[0]!.name);
+    // Top models in plan mode: strong reasoning + speed (cost zeroed)
+    expect(['claude-opus', 'codex-5.3', 'gemini-pro']).toContain(planRanked[0]!.name);
   });
 
   it('ranks cheap models higher in api mode', () => {

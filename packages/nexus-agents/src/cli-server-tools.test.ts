@@ -279,11 +279,12 @@ describe('registerMcpTools', () => {
     }
   });
 
-  it('should throw TechLeadUnavailableError when no adapter and mock not enabled', () => {
+  it('should gracefully degrade when no adapter and mock not enabled', () => {
     const options = makeDefaultOptions();
+    // Should NOT throw — orchestrate tool is skipped, other tools still register
     expect(() => {
       registerMcpTools(options);
-    }).toThrow(TechLeadUnavailableError);
+    }).not.toThrow();
   });
 
   it('should succeed with useMockTechLead: true and no adapter', () => {
@@ -301,12 +302,13 @@ describe('registerMcpTools', () => {
     }).not.toThrow();
   });
 
-  it('should not enable mock when env var is not "true"', () => {
+  it('should gracefully degrade when env var is not "true"', () => {
     process.env['NEXUS_ALLOW_MOCK_ORCHESTRATION'] = 'false';
     const options = makeDefaultOptions();
+    // Should NOT throw — orchestrate tool is skipped, other tools still register
     expect(() => {
       registerMcpTools(options);
-    }).toThrow(TechLeadUnavailableError);
+    }).not.toThrow();
   });
 
   it('should succeed with a model adapter provided', () => {

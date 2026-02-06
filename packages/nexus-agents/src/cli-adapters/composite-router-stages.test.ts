@@ -57,6 +57,7 @@ function makeDeps(overrides: Partial<StageDependencies> = {}): StageDependencies
       enableQualityConstraint: false,
       enableLatencyTracking: false,
       enableRoutingMemory: false,
+      enableCapacityBalancing: true,
       billingMode: 'api',
       latencyScoreWeight: 0.2,
       linucbAlpha: 1.0,

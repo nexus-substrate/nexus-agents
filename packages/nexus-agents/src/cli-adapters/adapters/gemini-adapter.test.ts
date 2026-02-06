@@ -96,11 +96,11 @@ describe('GeminiCliAdapter', () => {
     it('should return correct capability profile', () => {
       const caps = adapter.capabilities;
 
-      expect(caps.reasoning).toBe(8);
+      expect(caps.reasoning).toBe(9);
       expect(caps.contextWindow).toBe(1_000_000);
-      expect(caps.codeGeneration).toBe(7);
+      expect(caps.codeGeneration).toBe(8);
       expect(caps.speed).toBe(8);
-      expect(caps.cost).toBe(9);
+      expect(caps.cost).toBe(7);
     });
   });
 
@@ -108,17 +108,17 @@ describe('GeminiCliAdapter', () => {
     it('should return correct model info for default model', () => {
       const info = adapter.getModelInfo();
 
-      expect(info.id).toBe('gemini-2.5-flash');
-      expect(info.name).toBe('Gemini 2.5 Flash');
+      expect(info.id).toBe('gemini-3-pro');
+      expect(info.name).toBe('Gemini 3 Pro');
       expect(info.contextWindow).toBe(1_000_000);
       expect(info.maxOutput).toBe(8_192);
     });
 
-    it('should return correct cost info for flash', () => {
+    it('should return correct cost info for pro', () => {
       const info = adapter.getModelInfo();
 
-      expect(info.costPerMillionInput).toBe(0.075);
-      expect(info.costPerMillionOutput).toBe(0.3);
+      expect(info.costPerMillionInput).toBe(1.25);
+      expect(info.costPerMillionOutput).toBe(10.0);
     });
 
     it('should return correct info for pro model', () => {
@@ -217,7 +217,7 @@ describe('GeminiCliAdapter', () => {
 
   describe('configuration defaults', () => {
     it('should have correct default model', () => {
-      expect(adapter.getModelInfo().id).toBe('gemini-2.5-flash');
+      expect(adapter.getModelInfo().id).toBe('gemini-3-pro');
     });
 
     it('should have circuit breaker in closed state initially', () => {

@@ -1,7 +1,7 @@
 /**
  * nexus-agents/adapters - Gemini/Google AI Model Adapter
  *
- * Adapter for Google's Gemini models (gemini-2.5-flash, gemini-2.0-flash, gemini-1.5-pro).
+ * Adapter for Google's Gemini models (gemini-3-pro, gemini-3-flash, gemini-2.5-flash).
  * Implements the IModelAdapter interface with streaming support, tool calling,
  * and proper error handling.
  *
@@ -54,7 +54,7 @@ export { GEMINI_MODELS, GEMINI_MODEL_ALIASES, type GeminiAdapterConfig } from '.
  * @example
  * ```typescript
  * const adapter = new GeminiAdapter({
- *   modelId: 'gemini-2.5-flash',
+ *   modelId: 'gemini-3-flash',
  *   apiKey: process.env.GOOGLE_AI_API_KEY,
  * });
  *
@@ -400,7 +400,7 @@ export class GeminiAdapter extends BaseAdapter {
  * @example
  * ```typescript
  * const adapter = createGeminiAdapter({
- *   modelId: 'gemini-2.5-flash',
+ *   modelId: 'gemini-3-flash',
  *   apiKey: process.env.GOOGLE_AI_API_KEY!,
  * });
  * ```

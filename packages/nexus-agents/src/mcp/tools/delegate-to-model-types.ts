@@ -43,66 +43,12 @@ export interface CapabilityProfile {
 
 /**
  * Available model configurations with capability profiles.
- * (Source: cli-project_plan.md v2.0.0 - Capability Matching Matrix)
+ * Derived from the canonical model registry (Issue #807).
  */
-export const MODEL_CAPABILITIES: Record<string, CapabilityProfile> = {
-  'claude-opus': {
-    reasoning: 10,
-    contextWindow: 200_000,
-    codeGeneration: 9,
-    speed: 5,
-    cost: 3,
-  },
-  'claude-sonnet': {
-    reasoning: 9,
-    contextWindow: 200_000,
-    codeGeneration: 9,
-    speed: 7,
-    cost: 6,
-  },
-  'claude-haiku': {
-    reasoning: 7,
-    contextWindow: 200_000,
-    codeGeneration: 7,
-    speed: 9,
-    cost: 9,
-  },
-  'gemini-pro': {
-    reasoning: 8,
-    contextWindow: 1_000_000,
-    codeGeneration: 7,
-    speed: 8,
-    cost: 8,
-  },
-  'gemini-flash': {
-    reasoning: 6,
-    contextWindow: 1_000_000,
-    codeGeneration: 6,
-    speed: 10,
-    cost: 10,
-  },
-  'codex-5.3': {
-    reasoning: 10,
-    contextWindow: 400_000,
-    codeGeneration: 10,
-    speed: 7,
-    cost: 5,
-  },
-  'codex-5.2': {
-    reasoning: 9,
-    contextWindow: 400_000,
-    codeGeneration: 10,
-    speed: 8,
-    cost: 7,
-  },
-  'codex-5.1-mini': {
-    reasoning: 7,
-    contextWindow: 400_000,
-    codeGeneration: 8,
-    speed: 9,
-    cost: 9,
-  },
-} as const;
+
+import { buildCapabilityProfiles } from '../../config/model-config-helpers.js';
+
+export const MODEL_CAPABILITIES: Record<string, CapabilityProfile> = buildCapabilityProfiles();
 
 /**
  * Input schema for the delegate_to_model tool.
@@ -189,6 +135,8 @@ export interface TaskRequirements {
   needsAudioOutput: boolean;
   /** Whether the task requires MCP tool support (Issue #685) */
   needsMcp: boolean;
+  /** Whether the task is exploration/research (benefits from large context) (Issue #807) */
+  needsExploration: boolean;
 }
 
 /**
@@ -276,6 +224,18 @@ export const AUDIO_OUTPUT_KEYWORDS = [
 
 /** Keywords indicating MCP tool needs (Issue #685). */
 export const MCP_KEYWORDS = ['mcp', 'tool use', 'computer use', 'browse', 'interact'] as const;
+
+/** Keywords indicating exploration/research tasks (Issue #807). */
+export const EXPLORATION_KEYWORDS = [
+  'explore',
+  'research',
+  'search',
+  'scan',
+  'browse',
+  'discover',
+  'survey',
+  'navigate',
+] as const;
 
 /**
  * Tool input schema definition.

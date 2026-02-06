@@ -179,8 +179,8 @@ describe('ClaudeCliAdapter', () => {
       expect(caps.reasoning).toBe(10);
       expect(caps.contextWindow).toBe(200_000);
       expect(caps.codeGeneration).toBe(9);
-      expect(caps.speed).toBe(7);
-      expect(caps.cost).toBe(5);
+      expect(caps.speed).toBe(5);
+      expect(caps.cost).toBe(3);
     });
   });
 
@@ -188,18 +188,18 @@ describe('ClaudeCliAdapter', () => {
     it('should return correct model info for default model', () => {
       const info = adapter.getModelInfo();
 
-      // Default is now 'sonnet' (CLI alias) instead of 'claude-sonnet-4'
-      expect(info.id).toBe('sonnet');
-      expect(info.name).toBe('Claude Sonnet 4');
+      // Default is now 'opus' (CLI alias) — quality-first (Issue #807)
+      expect(info.id).toBe('opus');
+      expect(info.name).toBe('Claude Opus 4.5');
       expect(info.contextWindow).toBe(200_000);
       expect(info.maxOutput).toBe(64_000);
     });
 
-    it('should return correct cost info for sonnet', () => {
+    it('should return correct cost info for opus', () => {
       const info = adapter.getModelInfo();
 
-      expect(info.costPerMillionInput).toBe(3.0);
-      expect(info.costPerMillionOutput).toBe(15.0);
+      expect(info.costPerMillionInput).toBe(15.0);
+      expect(info.costPerMillionOutput).toBe(75.0);
     });
 
     it('should return correct info for opus model', () => {
@@ -251,8 +251,8 @@ describe('ClaudeCliAdapter', () => {
       expect(capturedArgs).toContain('--output-format');
       expect(capturedArgs).toContain('json');
       expect(capturedArgs).toContain('--model');
-      // Default model 'sonnet' is passed directly (CLI alias)
-      expect(capturedArgs).toContain('sonnet');
+      // Default model 'opus' is passed directly (CLI alias, quality-first)
+      expect(capturedArgs).toContain('opus');
     });
 
     it('should include system prompt when provided', async () => {
