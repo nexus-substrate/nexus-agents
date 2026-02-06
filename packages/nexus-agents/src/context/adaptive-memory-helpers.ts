@@ -174,6 +174,7 @@ function resolveWeights(base: ScoringWeights, overrides?: Partial<ScoringWeights
 
   // Normalize if overrides don't sum to 1
   const sum = merged.recency + merged.importance + merged.relevance;
+  if (sum === 0) return base;
   if (Math.abs(sum - 1.0) > 0.001) {
     return {
       recency: merged.recency / sum,

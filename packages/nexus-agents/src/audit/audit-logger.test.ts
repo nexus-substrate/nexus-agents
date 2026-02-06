@@ -1,0 +1,395 @@
+/**
+ * Tests for AuditLogger and createAuditLogger
+ * @module audit/audit-logger.test
+ */
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import type { IAuditStorage, AuditEvent, AuditLogConfig } from './audit-types.js';
+
+vi.mock('../core/logger.js', () => ({
+  createLogger: vi.fn(() => ({
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  })),
+}));
+vi.mock('../core/index.js', () => ({
+  getTimeProvider: () => ({ now: () => 1718444445000 }),
+}));
+vi.mock('node:crypto', () => ({
+  randomBytes: vi.fn(() => Buffer.from('aabbccddeeff', 'hex')),
+  createHash: vi.fn(() => ({
+    update: vi.fn().mockReturnThis(),
+    digest: vi.fn(() => 'fakehash256'),
+  })),
+}));
+vi.mock('./audit-storage.js', () => ({ FileAuditStorage: vi.fn() }));
+
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+function makeConfig(overrides?: Partial<AuditLogConfig>) {
+  return {
+    logDir: '/tmp/test-audit',
+    filePrefix: 'audit',
+    maxFileSizeBytes: 10 * 1024 * 1024,
+    maxFiles: 10,
+    enableHashChain: false,
+    enableCompression: false,
+    flushIntervalMs: 1000,
+    minSeverity: 'info' as const,
+    ...overrides,
+  };
+}
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+function makeMockStorage() {
+  return {
+    write: vi.fn(() => Promise.resolve()),
+    flush: vi.fn(() => Promise.resolve()),
+    close: vi.fn(() => Promise.resolve()),
+    query: vi.fn(() => Promise.resolve([])),
+  } satisfies IAuditStorage;
+}
+const A = { type: 'agent' as const, id: 'agent-1', name: 'Test Agent' };
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+function ev(
+  action: string,
+  extra?: Partial<Parameters<InstanceType<typeof AuditLogger>['log']>[0]>
+) {
+  return {
+    category: 'system' as const,
+    severity: 'info' as const,
+    outcome: 'success' as const,
+    action,
+    actor: A,
+    ...extra,
+  };
+}
+
+const { AuditLogger, createAuditLogger } = await import('./audit-logger.js');
+
+describe('AuditLogger', () => {
+  let s: ReturnType<typeof makeMockStorage>;
+  beforeEach(() => {
+    vi.useFakeTimers();
+    s = makeMockStorage();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  describe('constructor', () => {
+    it('initializes with valid config and custom storage', () => {
+      expect(new AuditLogger(makeConfig(), s)).toBeDefined();
+    });
+    it('throws AuditError for empty logDir', () => {
+      expect(() => new AuditLogger({ logDir: '' } as AuditLogConfig, s)).toThrow(
+        'Invalid AuditLogConfig'
+      );
+    });
+    it('throws AuditError for bad minSeverity', () => {
+      expect(() => new AuditLogger(makeConfig({ minSeverity: 'extreme' as 'info' }), s)).toThrow(
+        'Invalid AuditLogConfig'
+      );
+    });
+    it('starts flush timer on construction', () => {
+      const l = new AuditLogger(makeConfig({ flushIntervalMs: 500 }), s);
+      l.log(ev('timer-test'));
+      vi.advanceTimersByTime(600);
+      expect(s.write).toHaveBeenCalled();
+    });
+  });
+
+  describe('log', () => {
+    it('queues and flushes a valid event with correct fields', async () => {
+      const l = new AuditLogger(makeConfig(), s);
+      l.log(ev('tool.invoke', { category: 'tool_invocation' }));
+      await l.flush();
+      expect(s.write).toHaveBeenCalledTimes(1);
+      const e = s.write.mock.calls[0]?.[0] as AuditEvent;
+      expect(e.category).toBe('tool_invocation');
+      expect(e.version).toBe('1.0');
+      expect(e.id).toMatch(/^aud_/);
+    });
+    it('does not log after close', async () => {
+      const l = new AuditLogger(makeConfig(), s);
+      await l.close();
+      l.log(ev('post-close'));
+      s.write.mockClear();
+      await l.flush();
+      expect(s.write).not.toHaveBeenCalled();
+    });
+    it('filters events below minSeverity', async () => {
+      const l = new AuditLogger(makeConfig({ minSeverity: 'warning' }), s);
+      l.log(ev('low-sev'));
+      await l.flush();
+      expect(s.write).not.toHaveBeenCalled();
+    });
+    it('allows events at minSeverity', async () => {
+      const l = new AuditLogger(makeConfig({ minSeverity: 'warning' }), s);
+      l.log(ev('warn-sev', { severity: 'warning' }));
+      await l.flush();
+      expect(s.write).toHaveBeenCalledTimes(1);
+    });
+    it('allows events above minSeverity', async () => {
+      const l = new AuditLogger(makeConfig({ minSeverity: 'warning' }), s);
+      l.log(ev('crit', { severity: 'critical', outcome: 'failure' }));
+      await l.flush();
+      expect(s.write).toHaveBeenCalledTimes(1);
+    });
+    it('filters events outside configured categories', async () => {
+      const l = new AuditLogger(makeConfig({ categories: ['security'] }), s);
+      l.log(ev('test', { category: 'tool_invocation' }));
+      await l.flush();
+      expect(s.write).not.toHaveBeenCalled();
+    });
+    it('allows events within configured categories', async () => {
+      const l = new AuditLogger(makeConfig({ categories: ['security', 'system'] }), s);
+      l.log(ev('test', { category: 'security' }));
+      await l.flush();
+      expect(s.write).toHaveBeenCalledTimes(1);
+    });
+    it('passes all categories when categories config is undefined', async () => {
+      const l = new AuditLogger(makeConfig(), s);
+      l.log(ev('test', { category: 'data_access' }));
+      await l.flush();
+      expect(s.write).toHaveBeenCalledTimes(1);
+    });
+    it('includes hash chain fields when enableHashChain is true', async () => {
+      const l = new AuditLogger(makeConfig({ enableHashChain: true }), s);
+      l.log(ev('hashed'));
+      await l.flush();
+      const e = s.write.mock.calls[0]?.[0] as AuditEvent;
+      expect(e.hash).toBe('fakehash256');
+    });
+    it('chains hashes across multiple events', async () => {
+      const l = new AuditLogger(makeConfig({ enableHashChain: true }), s);
+      l.log(ev('first'));
+      l.log(ev('second'));
+      await l.flush();
+      const first = s.write.mock.calls[0]?.[0] as AuditEvent;
+      const second = s.write.mock.calls[1]?.[0] as AuditEvent;
+      expect(first.previousHash).toBeUndefined();
+      expect(second.previousHash).toBe('fakehash256');
+    });
+    it('does not include hash fields when enableHashChain is false', async () => {
+      const l = new AuditLogger(makeConfig(), s);
+      l.log(ev('no-hash'));
+      await l.flush();
+      const e = s.write.mock.calls[0]?.[0] as AuditEvent;
+      expect(e.hash).toBeUndefined();
+      expect(e.previousHash).toBeUndefined();
+    });
+    it('includes optional fields from input', async () => {
+      const l = new AuditLogger(makeConfig(), s);
+      l.log(
+        ev('tool.invoke', {
+          category: 'tool_invocation',
+          requestId: 'req-1',
+          traceId: 'tr-1',
+          sessionId: 'ss-1',
+          toolName: 'myTool',
+          durationMs: 42,
+          metadata: { k: 'v' },
+          description: 'desc',
+        })
+      );
+      await l.flush();
+      const e = s.write.mock.calls[0]?.[0] as AuditEvent;
+      expect(e.requestId).toBe('req-1');
+      expect(e.toolName).toBe('myTool');
+      expect(e.durationMs).toBe(42);
+      expect(e.metadata).toEqual({ k: 'v' });
+    });
+  });
+
+  describe('logToolInvocation', () => {
+    it('logs success as info severity', async () => {
+      const l = new AuditLogger(makeConfig(), s);
+      l.logToolInvocation({
+        toolName: 'orchestrate',
+        outcome: 'success',
+        actor: A,
+        durationMs: 100,
+      });
+      await l.flush();
+      const e = s.write.mock.calls[0]?.[0] as AuditEvent;
+      expect(e.category).toBe('tool_invocation');
+      expect(e.severity).toBe('info');
+      expect(e.action).toBe('tool.invoke');
+    });
+    it('logs failure as warning with errorMessage', async () => {
+      const l = new AuditLogger(makeConfig(), s);
+      l.logToolInvocation({
+        toolName: 'orchestrate',
+        outcome: 'failure',
+        actor: A,
+        errorMessage: 'Timeout',
+      });
+      await l.flush();
+      const e = s.write.mock.calls[0]?.[0] as AuditEvent;
+      expect(e.severity).toBe('warning');
+      expect(e.description).toBe('Timeout');
+    });
+    it('logs error outcome as warning severity', async () => {
+      const l = new AuditLogger(makeConfig(), s);
+      l.logToolInvocation({ toolName: 'run_workflow', outcome: 'error', actor: A });
+      await l.flush();
+      expect((s.write.mock.calls[0]?.[0] as AuditEvent).severity).toBe('warning');
+    });
+  });
+
+  describe('logPolicyDecision', () => {
+    it('logs allow decision as info/success', async () => {
+      const l = new AuditLogger(makeConfig(), s);
+      l.logPolicyDecision({
+        policyName: 'rl',
+        decision: 'allow',
+        reason: 'ok',
+        toolName: 'o',
+        actor: A,
+      });
+      await l.flush();
+      const e = s.write.mock.calls[0]?.[0] as AuditEvent;
+      expect(e.category).toBe('authorization');
+      expect(e.severity).toBe('info');
+      expect(e.outcome).toBe('success');
+      expect(e.policyDecision).toBe('allow');
+    });
+    it('logs deny decision as warning/denied', async () => {
+      const l = new AuditLogger(makeConfig(), s);
+      l.logPolicyDecision({
+        policyName: 'sb',
+        decision: 'deny',
+        reason: 'Forbidden',
+        toolName: 'x',
+        actor: A,
+      });
+      await l.flush();
+      const e = s.write.mock.calls[0]?.[0] as AuditEvent;
+      expect(e.severity).toBe('warning');
+      expect(e.outcome).toBe('denied');
+      expect(e.description).toBe('Forbidden');
+    });
+  });
+
+  describe('logSecurityEvent', () => {
+    it('logs with correct category, outcome, and action', async () => {
+      const l = new AuditLogger(makeConfig(), s);
+      l.logSecurityEvent({
+        eventType: 'path_traversal_blocked',
+        severity: 'critical',
+        actor: A,
+        description: 'blocked',
+      });
+      await l.flush();
+      const e = s.write.mock.calls[0]?.[0] as AuditEvent;
+      expect(e.category).toBe('security');
+      expect(e.outcome).toBe('failure');
+      expect(e.action).toBe('security.path_traversal_blocked');
+      expect(e.violationType).toBe('path_traversal_blocked');
+    });
+  });
+
+  describe('logRateLimitViolation', () => {
+    it('logs rate limit with correct metadata and description', async () => {
+      const l = new AuditLogger(makeConfig(), s);
+      l.logRateLimitViolation({
+        toolName: 'orchestrate',
+        actor: A,
+        currentRate: 120,
+        limitRate: 100,
+      });
+      await l.flush();
+      const e = s.write.mock.calls[0]?.[0] as AuditEvent;
+      expect(e.category).toBe('security');
+      expect(e.outcome).toBe('denied');
+      expect(e.action).toBe('rate_limit.exceeded');
+      expect(e.description).toContain('120');
+      expect(e.metadata).toEqual({ currentRate: 120, limitRate: 100 });
+    });
+  });
+
+  describe('logSystemStartup', () => {
+    it('logs with system actor and metadata', async () => {
+      const l = new AuditLogger(makeConfig(), s);
+      l.logSystemStartup({ version: '2.3.0' });
+      await l.flush();
+      const e = s.write.mock.calls[0]?.[0] as AuditEvent;
+      expect(e.action).toBe('system.startup');
+      expect(e.actor).toEqual({ type: 'system', id: 'nexus-agents', name: 'Nexus Agents System' });
+      expect(e.metadata).toEqual({ version: '2.3.0' });
+    });
+    it('logs without metadata', async () => {
+      const l = new AuditLogger(makeConfig(), s);
+      l.logSystemStartup();
+      await l.flush();
+      expect((s.write.mock.calls[0]?.[0] as AuditEvent).metadata).toBeUndefined();
+    });
+  });
+
+  describe('logSystemShutdown', () => {
+    it('logs with system actor and metadata', async () => {
+      const l = new AuditLogger(makeConfig(), s);
+      l.logSystemShutdown({ reason: 'graceful' });
+      await l.flush();
+      const e = s.write.mock.calls[0]?.[0] as AuditEvent;
+      expect(e.action).toBe('system.shutdown');
+      expect(e.metadata).toEqual({ reason: 'graceful' });
+    });
+  });
+
+  describe('flush', () => {
+    it('writes all queued events then calls storage.flush', async () => {
+      const l = new AuditLogger(makeConfig(), s);
+      l.log(ev('a'));
+      l.log(ev('b'));
+      await l.flush();
+      expect(s.write).toHaveBeenCalledTimes(2);
+      expect(s.flush).toHaveBeenCalled();
+    });
+    it('skips write when queue is empty', async () => {
+      const l = new AuditLogger(makeConfig(), s);
+      await l.flush();
+      expect(s.write).not.toHaveBeenCalled();
+      expect(s.flush).toHaveBeenCalled();
+    });
+  });
+
+  describe('close', () => {
+    it('flushes remaining events and closes storage', async () => {
+      const l = new AuditLogger(makeConfig(), s);
+      l.log(ev('final'));
+      await l.close();
+      expect(s.write).toHaveBeenCalledTimes(1);
+      expect(s.close).toHaveBeenCalled();
+    });
+    it('is idempotent', async () => {
+      const l = new AuditLogger(makeConfig(), s);
+      await l.close();
+      await l.close();
+      expect(s.close).toHaveBeenCalledTimes(1);
+    });
+    it('clears the flush timer', async () => {
+      const l = new AuditLogger(makeConfig(), s);
+      await l.close();
+      vi.advanceTimersByTime(5000);
+      expect(s.write).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('flush timer error handling', () => {
+    it('catches errors from periodic flush without crashing', () => {
+      s.write.mockRejectedValueOnce(new Error('disk full'));
+      const l = new AuditLogger(makeConfig({ flushIntervalMs: 100 }), s);
+      l.log(ev('test'));
+      expect(() => vi.advanceTimersByTime(200)).not.toThrow();
+    });
+  });
+});
+
+describe('createAuditLogger', () => {
+  it('returns an AuditLogger instance', () => {
+    const logger = createAuditLogger(makeConfig(), makeMockStorage());
+    expect(logger).toBeInstanceOf(AuditLogger);
+  });
+});
