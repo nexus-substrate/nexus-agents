@@ -9,7 +9,7 @@
 
 The agent system provides the core abstraction for intelligent task execution. Agents are autonomous entities that:
 
-- Receive tasks from the TechLead orchestrator
+- Receive tasks from the Orchestrator (formerly TechLead)
 - Execute tasks using model adapters
 - Collaborate through protocols (consensus, reflexion, etc.)
 - Maintain state throughout their lifecycle
@@ -232,14 +232,14 @@ interface ContextPrunerConfig {
 
 ## Source Files
 
-| File                           | Purpose                       |
-| ------------------------------ | ----------------------------- |
-| `src/core/types/agent.ts`      | Core type definitions         |
-| `src/agents/base-agent.ts`     | Base agent implementation     |
-| `src/agents/tech-lead/`        | TechLead orchestrator         |
-| `src/agents/experts/`          | Domain expert implementations |
-| `src/agents/collaboration/`    | Collaboration protocols       |
-| `src/agents/context-pruner.ts` | Context management            |
+| File                           | Purpose                          |
+| ------------------------------ | -------------------------------- |
+| `src/core/types/agent.ts`      | Core type definitions            |
+| `src/agents/base-agent.ts`     | Base agent implementation        |
+| `src/agents/tech-lead/`        | Orchestrator (formerly TechLead) |
+| `src/agents/experts/`          | Domain expert implementations    |
+| `src/agents/collaboration/`    | Collaboration protocols          |
+| `src/agents/context-pruner.ts` | Context management               |
 
 ---
 

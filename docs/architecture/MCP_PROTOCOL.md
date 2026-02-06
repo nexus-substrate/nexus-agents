@@ -41,7 +41,7 @@ Model Context Protocol (MCP) integration enables Claude Desktop to orchestrate n
 │                             │                                │
 │  ┌──────────────────────────▼─────────────────────────────┐ │
 │  │              Agent Orchestration                        │ │
-│  │  TechLead │ Expert Pool │ Consensus │ Workflows        │ │
+│  │  Orchestrator │ Expert Pool │ Consensus │ Workflows    │ │
 │  └────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────┘
 ```

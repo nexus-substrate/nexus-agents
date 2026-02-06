@@ -134,7 +134,7 @@ steps:
     parallel: true
 
   - id: synthesize
-    agent: tech_lead
+    agent: orchestrator # formerly tech_lead
     action: synthesize_reviews
     inputs:
       analysis: ${{ steps.analyze.output }}

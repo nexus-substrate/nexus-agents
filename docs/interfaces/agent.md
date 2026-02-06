@@ -60,7 +60,8 @@ type AgentState = 'idle' | 'thinking' | 'acting' | 'waiting' | 'error';
 
 ```typescript
 type AgentRole =
-  | 'tech_lead'
+  | 'orchestrator' // preferred (formerly 'tech_lead')
+  | 'tech_lead' // deprecated alias
   | 'code_expert'
   | 'architecture_expert'
   | 'security_expert'
@@ -93,12 +94,12 @@ interface TaskResult {
 
 ## Implementations
 
-| Agent              | Role                | Specialization                             |
-| ------------------ | ------------------- | ------------------------------------------ |
-| TechLead           | tech_lead           | Task analysis, expert selection, synthesis |
-| CodeExpert         | code_expert         | Code generation, review, refactoring       |
-| ArchitectureExpert | architecture_expert | System design, patterns                    |
-| SecurityExpert     | security_expert     | Security review, threat modeling           |
+| Agent                   | Role                | Specialization                             |
+| ----------------------- | ------------------- | ------------------------------------------ |
+| Orchestrator (TechLead) | orchestrator        | Task analysis, expert selection, synthesis |
+| CodeExpert              | code_expert         | Code generation, review, refactoring       |
+| ArchitectureExpert      | architecture_expert | System design, patterns                    |
+| SecurityExpert          | security_expert     | Security review, threat modeling           |
 
 ## Usage Example
 

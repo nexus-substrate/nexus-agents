@@ -1,12 +1,14 @@
-# TechLead vs WorkflowEngine Architecture
+# Orchestrator vs WorkflowEngine Architecture
 
-**Version:** 2.0.1
-**Last Updated:** 2026-02-01 (ET)
+**Version:** 2.1.0
+**Last Updated:** 2026-02-05 (ET)
 **Status:** Canonical
 **Location:** `docs/architecture/TECHLEAD_WORKFLOW_ENGINE.md`
 
 > For the full system architecture, see [ARCHITECTURE.md](../../ARCHITECTURE.md) at the repository root.
-> This document focuses on the separation between dynamic planning (TechLead) and static execution (WorkflowEngine).
+> This document focuses on the separation between dynamic planning (Orchestrator, formerly TechLead) and static execution (WorkflowEngine).
+>
+> **Note:** The TechLead class has been renamed to Orchestrator (Issue #759). The old name is preserved as a deprecated alias.
 
 ---
 
@@ -27,7 +29,7 @@
 
 This document describes the separation between **planning** and **execution** concerns in Nexus Agents:
 
-1. **TechLead (Planner)** - Dynamic task analysis and execution planning
+1. **Orchestrator (Planner)** - Dynamic task analysis and execution planning (formerly TechLead)
 2. **WorkflowEngine (Executor)** - Static workflow definition execution
 
 These components are intentionally separate and serve different use cases. They can work together through an optional plan-to-workflow conversion mechanism.
@@ -36,9 +38,9 @@ These components are intentionally separate and serve different use cases. They 
 
 ## Core Separation of Concerns
 
-### TechLead = Planner
+### Orchestrator = Planner
 
-The TechLead agent is responsible for **dynamic analysis and planning**:
+The Orchestrator agent (formerly TechLead) is responsible for **dynamic analysis and planning**:
 
 - Analyzes incoming tasks for complexity and requirements
 - Breaks down complex tasks into subtasks
@@ -72,10 +74,10 @@ The WorkflowEngine is responsible for **static workflow execution**:
 
 ### Clear Handoff
 
-The handoff between TechLead and WorkflowEngine is one-way and optional:
+The handoff between Orchestrator and WorkflowEngine is one-way and optional:
 
 ```
-TechLead.execute(task)
+Orchestrator.execute(task)
     |
     v
 ExecutionPlan (dynamic, ephemeral)

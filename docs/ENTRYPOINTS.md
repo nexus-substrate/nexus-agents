@@ -298,7 +298,7 @@ nexus-agents hooks stop --check-tasks
 
 | Tool                      | Description                                              | Auth         | Rate Limit    |
 | ------------------------- | -------------------------------------------------------- | ------------ | ------------- |
-| `orchestrate`             | Task orchestration with TechLead coordination            | None (local) | Shared bucket |
+| `orchestrate`             | Task orchestration with Orchestrator coordination        | None (local) | Shared bucket |
 | `create_expert`           | Dynamic expert agent creation                            | None (local) | Shared bucket |
 | `execute_expert`          | Execute a task using a created expert agent              | None (local) | Shared bucket |
 | `run_workflow`            | Execute workflow template                                | None (local) | Shared bucket |
@@ -856,7 +856,7 @@ import {
 ```typescript
 import {
   // Core agents
-  TechLead,
+  Orchestrator, // preferred (TechLead still available as deprecated alias)
   Expert,
   ExpertFactory,
 
@@ -1032,11 +1032,11 @@ await startStdioServer({
 #### Programmatic Usage
 
 ```typescript
-import { createClaudeAdapter, TechLead } from 'nexus-agents';
+import { createClaudeAdapter, createOrchestrator } from 'nexus-agents';
 
 const adapter = createClaudeAdapter({ model: 'claude-sonnet-4-20250514' });
-const techLead = new TechLead({ adapter });
-const result = await techLead.execute({
+const orchestrator = createOrchestrator({ adapter });
+const result = await orchestrator.execute({
   description: 'Analyze this codebase for security issues',
 });
 
