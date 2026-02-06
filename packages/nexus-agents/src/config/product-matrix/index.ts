@@ -221,7 +221,7 @@ export const DEFAULT_PRODUCT_MATRIX: ProductMatrix = {
 function validateFilePath(filePath: string): string {
   const resolved = resolve(filePath);
   const cwd = process.cwd();
-  if (!resolved.startsWith(resolve(cwd)) && !resolved.startsWith('/')) {
+  if (!resolved.startsWith(resolve(cwd))) {
     throw new Error(`Path traversal detected: ${filePath} escapes ${cwd}`);
   }
   return resolved;

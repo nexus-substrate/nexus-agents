@@ -290,7 +290,21 @@ export function buildIndex(files: readonly FileEntry[]): CodebaseIndex {
   const parts = etFormatter.formatToParts(now);
   const getPart = (type: string): string => parts.find((p) => p.type === type)?.value ?? '00';
 
-  const timestamp = `${getPart('year')}-${getPart('month')}-${getPart('day')}T${getPart('hour')}:${getPart('minute')}:${getPart('second')}-05:00`;
+  // Compute the actual ET offset (EST=-05:00, EDT=-04:00) dynamically
+  const utcFormatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'UTC',
+    hour: 'numeric',
+    hour12: false,
+  });
+  const utcHour = Number(
+    utcFormatter.formatToParts(now).find((p) => p.type === 'hour')?.value ?? '0'
+  );
+  const etHour = Number(getPart('hour'));
+  const rawDiff = etHour - utcHour;
+  const offsetHours = rawDiff > 12 ? rawDiff - 24 : rawDiff < -12 ? rawDiff + 24 : rawDiff;
+  const offsetSign = offsetHours <= 0 ? '-' : '+';
+  const absOffset = String(Math.abs(offsetHours)).padStart(2, '0');
+  const timestamp = `${getPart('year')}-${getPart('month')}-${getPart('day')}T${getPart('hour')}:${getPart('minute')}:${getPart('second')}${offsetSign}${absOffset}:00`;
 
   // Convert modules map to record
   const modulesRecord: Record<string, ModuleEntry> = {};
