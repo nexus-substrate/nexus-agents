@@ -209,10 +209,11 @@ export async function executeParallel(
     abortController: new AbortController(),
   };
 
+  const abortHandler = (): void => {
+    state.abortController.abort();
+  };
   if (context.signal !== undefined) {
-    context.signal.addEventListener('abort', () => {
-      state.abortController.abort();
-    });
+    context.signal.addEventListener('abort', abortHandler);
   }
 
   try {
@@ -234,6 +235,10 @@ export async function executeParallel(
         cause: error instanceof Error ? error : new Error(String(error)),
       })
     );
+  } finally {
+    if (context.signal !== undefined) {
+      context.signal.removeEventListener('abort', abortHandler);
+    }
   }
 }
 
