@@ -7,7 +7,7 @@
  * (Source: Issue #363 - Auto-configure Claude CLI integration)
  */
 
-import { execSync } from 'node:child_process';
+import { execSync, execFileSync } from 'node:child_process';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { McpJsonConfig, McpServerEntry } from './setup-types.js';
@@ -70,7 +70,7 @@ function addMcpServer(useNpx: boolean): McpConfigResult {
   const jsonConfig = JSON.stringify(entry);
 
   try {
-    execSync(`claude mcp add-json nexus-agents '${jsonConfig}'`, {
+    execFileSync('claude', ['mcp', 'add-json', 'nexus-agents', jsonConfig], {
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
     });
@@ -347,7 +347,7 @@ export function configureHooks(force: boolean = false): HookConfigResult {
 
     // Use claude config set with merged hooks
     const configJson = JSON.stringify(mergedHooks);
-    execSync(`claude config set hooks '${configJson}'`, {
+    execFileSync('claude', ['config', 'set', 'hooks', configJson], {
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
     });
