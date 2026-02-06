@@ -106,6 +106,7 @@ export class OutcomeFeedbackCollector implements IOutcomeFeedback {
 
     this.pendingDecisions.set(decision.traceId, decision);
     this.decisionHistory.push(decision);
+    this.trimHistory();
 
     logger.debug('Routing decision recorded', {
       id: decision.id,
@@ -117,6 +118,7 @@ export class OutcomeFeedbackCollector implements IOutcomeFeedback {
 
   recordOutcome(outcome: TaskOutcome): void {
     this.outcomes.push(outcome);
+    this.trimHistory();
 
     // Find and remove matching pending decision
     const decision = this.findDecisionByRoutingId(outcome.routingDecisionId);
@@ -233,6 +235,16 @@ export class OutcomeFeedbackCollector implements IOutcomeFeedback {
     }
 
     return cleared;
+  }
+
+  private trimHistory(): void {
+    const max = this.config.maxHistorySize;
+    if (this.outcomes.length > max) {
+      this.outcomes.splice(0, this.outcomes.length - max);
+    }
+    if (this.decisionHistory.length > max) {
+      this.decisionHistory.splice(0, this.decisionHistory.length - max);
+    }
   }
 
   reset(): void {

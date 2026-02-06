@@ -211,6 +211,8 @@ export interface FeedbackCollectorConfig {
   readonly targetDurationMs: number;
   /** Target token usage for efficiency bonus */
   readonly targetTokenUsage: number;
+  /** Maximum history entries (outcomes + decisions) to retain */
+  readonly maxHistorySize: number;
 }
 
 /**
@@ -226,6 +228,7 @@ export const DEFAULT_FEEDBACK_COLLECTOR_CONFIG: FeedbackCollectorConfig = {
   retryPenalty: 0.1,
   targetDurationMs: 5000,
   targetTokenUsage: 2000,
+  maxHistorySize: 10000,
 };
 
 /**
@@ -241,6 +244,7 @@ export const FeedbackCollectorConfigSchema = z.object({
   retryPenalty: z.number().min(0).max(1).default(0.1),
   targetDurationMs: z.number().positive().default(5000),
   targetTokenUsage: z.number().positive().default(2000),
+  maxHistorySize: z.number().int().positive().default(10000),
 });
 
 /**
