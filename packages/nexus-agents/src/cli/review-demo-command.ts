@@ -204,7 +204,7 @@ function printProgress(steps: ProgressStep[], verbose: boolean): void {
  */
 function buildProgressBar(completed: number, total: number): string {
   const width = 20;
-  const filled = Math.round((completed / total) * width);
+  const filled = total > 0 ? Math.round((completed / total) * width) : 0;
   const empty = width - filled;
   return `[${'#'.repeat(filled)}${'-'.repeat(empty)}] ${String(completed)}/${String(total)}`;
 }
@@ -239,7 +239,7 @@ function getStepMessage(index: number, review: PRReviewResult): string {
     3: getExpertMessage(review, 'code_quality'),
     4: getExpertMessage(review, 'testing'),
     5: `${String(sumFindings(review.findingsBySeverity))} findings`,
-    6: review.decision.replace('_', ' '),
+    6: review.decision.replaceAll('_', ' '),
   };
   return msgMap[index] ?? 'OK';
 }
@@ -284,7 +284,7 @@ function printReviewResult(review: PRReviewResult, verbose: boolean, dryRun: boo
  * Prints the summary.
  */
 function printSummary(review: PRReviewResult): void {
-  process.stdout.write(`Decision: ${review.decision.replace('_', ' ').toUpperCase()}\n`);
+  process.stdout.write(`Decision: ${review.decision.replaceAll('_', ' ').toUpperCase()}\n`);
   process.stdout.write(`Experts:  ${String(review.expertCount)}\n`);
   process.stdout.write(`Consensus: ${formatPercentage(review.consensusScore)}\n`);
   process.stdout.write(`Duration: ${String(review.totalDurationMs)}ms\n\n`);
