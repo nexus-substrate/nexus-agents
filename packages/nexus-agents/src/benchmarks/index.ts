@@ -45,3 +45,18 @@ export {
   compareBenchmarks,
   formatComparisonResults,
 } from './memory-benchmarks.js';
+
+// Adapter latency benchmarks (Issue #694)
+export type {
+  AdapterLatencyConfig,
+  LatencyScenario,
+  AdapterScenarioResult,
+  AdapterLatencyResult,
+} from './adapter-latency-benchmark.js';
+export {
+  DEFAULT_ADAPTER_LATENCY_CONFIG,
+  DEFAULT_SCENARIOS,
+  runAdapterLatencyBenchmark,
+  formatAdapterLatencyReport,
+  toSuiteResult,
+} from './adapter-latency-benchmark.js';
