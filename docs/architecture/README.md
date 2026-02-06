@@ -18,6 +18,7 @@
 | MCP            | This file | [MCP_PROTOCOL.md](./MCP_PROTOCOL.md)                     |
 | Observability  | This file | [SWARM_OBSERVER_DESIGN.md](./SWARM_OBSERVER_DESIGN.md)   |
 | SWE-Bench      | This file | [SWE_BENCH_HARNESS.md](./SWE_BENCH_HARNESS.md)           |
+| ICTM Pattern   | This file | [ICTM_PATTERN.md](./ICTM_PATTERN.md)                     |
 
 ---
 

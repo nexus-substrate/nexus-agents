@@ -78,6 +78,7 @@ Detailed technical documentation:
 | [SECURITY.md](./architecture/SECURITY.md)                                 | Security model, sandboxing     | Canonical |
 | [MCP_PROTOCOL.md](./architecture/MCP_PROTOCOL.md)                         | MCP integration details        | Canonical |
 | [TECHLEAD_WORKFLOW_ENGINE.md](./architecture/TECHLEAD_WORKFLOW_ENGINE.md) | Orchestrator vs WorkflowEngine | Canonical |
+| [ICTM_PATTERN.md](./architecture/ICTM_PATTERN.md)                         | Dynamic sub-agent creation     | Canonical |
 | [dependency-graph.md](./architecture/dependency-graph.md)                 | Module dependency diagram      | Generated |
 
 #### Development
