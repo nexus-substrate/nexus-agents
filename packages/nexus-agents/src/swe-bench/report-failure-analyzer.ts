@@ -8,6 +8,7 @@
  */
 
 import type { InstanceEvaluationResult } from './evaluation-harness-types.js';
+import { extractRepoFromInstanceId } from './evaluation-harness-helpers.js';
 import type {
   FailureStatistics,
   FailureCategory,
@@ -136,20 +137,11 @@ export function groupFailuresByRepository(
   const byRepo: Record<string, number> = {};
 
   for (const failure of failures) {
-    const repo = extractRepo(failure.instanceId);
+    const repo = extractRepoFromInstanceId(failure.instanceId);
     byRepo[repo] = (byRepo[repo] ?? 0) + 1;
   }
 
   return byRepo;
-}
-
-/**
- * Extracts repository from instance ID.
- */
-export function extractRepo(instanceId: string): string {
-  const parts = instanceId.split('-');
-  const repoPart = parts[0];
-  return repoPart?.replace('__', '/') ?? 'unknown';
 }
 
 /**
