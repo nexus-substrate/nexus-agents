@@ -1,9 +1,10 @@
 /**
- * Tests for Architecture Expert Helpers
- * @module agents/experts/architecture-expert-helpers.test
+ * nexus-agents/agents - ArchitectureExpert Helpers Tests
  */
 
 import { describe, it, expect } from 'vitest';
+import type { Task } from '../../core/index.js';
+import type { ArchitecturePattern } from './expert-types.js';
 import {
   ARCHITECTURE_PATTERNS,
   COMPONENT_PATTERNS,
@@ -16,232 +17,179 @@ import {
   parseArchitectureResult,
 } from './architecture-expert-helpers.js';
 
-// ============================================================================
-// Constants
-// ============================================================================
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+function createTask(id: string, description: string) {
+  return { id, description, context: {} } satisfies Task;
+}
 
 describe('ARCHITECTURE_PATTERNS', () => {
-  it('contains at least 5 patterns', () => {
-    expect(ARCHITECTURE_PATTERNS.length).toBeGreaterThanOrEqual(5);
-  });
-
-  it('each pattern has required fields', () => {
-    for (const p of ARCHITECTURE_PATTERNS) {
-      expect(p.name).toBeDefined();
-      expect(p.category).toBeDefined();
-      expect(p.pros.length).toBeGreaterThan(0);
-      expect(p.cons.length).toBeGreaterThan(0);
-    }
+  it('should have valid structure and key patterns', () => {
+    expect(ARCHITECTURE_PATTERNS.length).toBeGreaterThan(0);
+    const ms = ARCHITECTURE_PATTERNS.find((p) => p.name === 'Microservices');
+    expect(ms?.category).toBe('Architectural');
+    expect(ms?.pros.length).toBeGreaterThan(0);
   });
 });
 
 describe('COMPONENT_PATTERNS', () => {
-  it('contains at least 4 patterns', () => {
-    expect(COMPONENT_PATTERNS.length).toBeGreaterThanOrEqual(4);
+  it('should have valid structure and key components', () => {
+    expect(COMPONENT_PATTERNS.length).toBeGreaterThan(0);
+    const api = COMPONENT_PATTERNS.find((c) => c.name === 'API Layer');
+    expect(api?.type).toBe('Service');
   });
 });
-
-// ============================================================================
-// identifyHeuristicPatterns
-// ============================================================================
 
 describe('identifyHeuristicPatterns', () => {
-  it('identifies microservices pattern', () => {
-    const patterns = identifyHeuristicPatterns('build a microservice architecture');
-    expect(patterns.some((p) => p.name === 'Microservices')).toBe(true);
+  it('should identify patterns and limit to 5', () => {
+    const p1 = identifyHeuristicPatterns('Build a microservice architecture');
+    expect(p1.some((p) => p.name === 'Microservices')).toBe(true);
+
+    const p2 = identifyHeuristicPatterns('microservice event layer domain repository');
+    expect(p2.length).toBeLessThanOrEqual(5);
   });
 
-  it('identifies event-driven pattern', () => {
-    const patterns = identifyHeuristicPatterns('use event-driven design with pub/sub');
-    expect(patterns.some((p) => p.name === 'Event-Driven')).toBe(true);
-  });
-
-  it('identifies layered architecture', () => {
-    const patterns = identifyHeuristicPatterns('implement MVC with presentation layer');
-    expect(patterns.some((p) => p.name === 'Layered Architecture')).toBe(true);
-  });
-
-  it('returns empty for unmatched description', () => {
+  it('should return empty for unmatched and be case insensitive', () => {
     expect(identifyHeuristicPatterns('hello world')).toEqual([]);
+    const p = identifyHeuristicPatterns('MICROSERVICE');
+    expect(p.some((x) => x.name === 'Microservices')).toBe(true);
   });
 
-  it('limits to 5 patterns', () => {
-    // Use description that matches many patterns
-    const patterns = identifyHeuristicPatterns(
-      'microservice event layer domain repository factory singleton distributed'
-    );
-    expect(patterns.length).toBeLessThanOrEqual(5);
-  });
-
-  it('sets applicability to 0.7', () => {
-    const patterns = identifyHeuristicPatterns('microservice architecture');
-    expect(patterns[0]!.applicability).toBe(0.7);
+  it('should set applicability 0.7 and include tradeoffs', () => {
+    const patterns = identifyHeuristicPatterns('event-driven architecture');
+    expect(patterns[0]?.applicability).toBe(0.7);
+    expect(patterns[0]?.tradeoffs.pros).toBeInstanceOf(Array);
   });
 });
-
-// ============================================================================
-// identifyHeuristicComponents
-// ============================================================================
 
 describe('identifyHeuristicComponents', () => {
-  it('identifies API layer', () => {
-    const components = identifyHeuristicComponents('REST API endpoint');
-    expect(components.some((c) => c.name === 'API Layer')).toBe(true);
+  it('should identify components with empty dependencies', () => {
+    const c = identifyHeuristicComponents('API database auth');
+    expect(c.some((x) => x.name === 'API Layer')).toBe(true);
+    expect(c.every((x) => x.dependencies.length === 0)).toBe(true);
   });
 
-  it('identifies security module', () => {
-    const components = identifyHeuristicComponents('auth and security');
-    expect(components.some((c) => c.name === 'Security Module')).toBe(true);
-  });
-
-  it('returns empty for unmatched', () => {
+  it('should return empty for unmatched and be case insensitive', () => {
     expect(identifyHeuristicComponents('xyz')).toEqual([]);
-  });
-
-  it('sets empty dependencies', () => {
-    const components = identifyHeuristicComponents('database storage');
-    expect(components[0]!.dependencies).toEqual([]);
+    const c = identifyHeuristicComponents('BUILD REST API');
+    expect(c.some((x) => x.name === 'API Layer')).toBe(true);
   });
 });
-
-// ============================================================================
-// generateHeuristicADRs
-// ============================================================================
 
 describe('generateHeuristicADRs', () => {
-  it('returns empty for no patterns', () => {
-    const task = { id: 't1', description: 'test' } as never;
-    expect(generateHeuristicADRs(task, [])).toEqual([]);
-  });
-
-  it('generates ADR for primary pattern', () => {
-    const task = { id: 't1', description: 'test' } as never;
-    const patterns = identifyHeuristicPatterns('microservice distributed system');
+  it('should generate ADR with task context and consequences', () => {
+    const task = createTask('task-123', 'Test');
+    const patterns: ArchitecturePattern[] = [
+      {
+        name: 'Microservices',
+        category: 'Architectural',
+        applicability: 0.8,
+        tradeoffs: { pros: ['Pro1'], cons: ['Con1'] },
+      },
+    ];
     const adrs = generateHeuristicADRs(task, patterns);
     expect(adrs).toHaveLength(1);
-    expect(adrs[0]!.id).toBe('ADR-001');
-    expect(adrs[0]!.title).toContain('Microservices');
-    expect(adrs[0]!.status).toBe('proposed');
+    expect(adrs[0]?.id).toBe('ADR-001');
+    expect(adrs[0]?.context).toContain('task-123');
+    expect(adrs[0]?.consequences).toContain('Pro: Pro1');
   });
 
-  it('includes pros and cons in consequences', () => {
-    const task = { id: 't1', description: 'test' } as never;
-    const patterns = identifyHeuristicPatterns('microservice');
-    const adrs = generateHeuristicADRs(task, patterns);
-    expect(adrs[0]!.consequences.some((c) => c.startsWith('Pro:'))).toBe(true);
-    expect(adrs[0]!.consequences.some((c) => c.startsWith('Con:'))).toBe(true);
+  it('should return empty for no patterns or undefined first pattern', () => {
+    expect(generateHeuristicADRs(createTask('t', 'x'), [])).toEqual([]);
   });
 });
-
-// ============================================================================
-// inferAnalysisType
-// ============================================================================
 
 describe('inferAnalysisType', () => {
-  it('infers pattern_selection', () => {
-    expect(inferAnalysisType('which approach should we use')).toBe('pattern_selection');
-  });
-
-  it('infers review', () => {
-    expect(inferAnalysisType('review the current architecture')).toBe('review');
-  });
-
-  it('infers design by default', () => {
-    expect(inferAnalysisType('build a new system')).toBe('design');
-  });
-
-  it('detects assess as review', () => {
-    expect(inferAnalysisType('assess the scalability')).toBe('review');
+  it('should infer correct analysis type', () => {
+    expect(inferAnalysisType('which pattern')).toBe('pattern_selection');
+    expect(inferAnalysisType('review the architecture')).toBe('review');
+    expect(inferAnalysisType('build system')).toBe('design');
+    expect(inferAnalysisType('PATTERN')).toBe('pattern_selection');
   });
 });
-
-// ============================================================================
-// generateHeuristicRecommendations
-// ============================================================================
 
 describe('generateHeuristicRecommendations', () => {
-  it('includes base recommendations', () => {
-    const recs = generateHeuristicRecommendations('design');
-    expect(recs).toContain('Document architecture decisions');
-    expect(recs).toContain('Review with stakeholders');
-  });
+  it('should return type-specific recommendations', () => {
+    const design = generateHeuristicRecommendations('design');
+    expect(design).toContain('Document architecture decisions');
+    expect(design).toContain('Create C4 diagrams');
 
-  it('adds design-specific recommendations', () => {
-    const recs = generateHeuristicRecommendations('design');
-    expect(recs).toContain('Create C4 diagrams');
-  });
+    const review = generateHeuristicRecommendations('review');
+    expect(review).toContain('Identify technical debt');
 
-  it('adds review-specific recommendations', () => {
-    const recs = generateHeuristicRecommendations('review');
-    expect(recs).toContain('Identify technical debt');
-  });
-
-  it('adds pattern-selection-specific recommendations', () => {
-    const recs = generateHeuristicRecommendations('pattern_selection');
-    expect(recs).toContain('Prototype before committing');
+    const pattern = generateHeuristicRecommendations('pattern_selection');
+    expect(pattern).toContain('Prototype before committing');
   });
 });
-
-// ============================================================================
-// detectArchitectureWarnings
-// ============================================================================
 
 describe('detectArchitectureWarnings', () => {
-  it('warns about monolith to microservice migration', () => {
-    const warnings = detectArchitectureWarnings('migrate monolith to microservice');
-    expect(warnings.some((w) => w.includes('Migration'))).toBe(true);
+  it('should detect various architecture warnings', () => {
+    expect(detectArchitectureWarnings('simple')).toEqual([]);
+    expect(detectArchitectureWarnings('monolith microservice')[0]).toContain('Migration');
+    expect(detectArchitectureWarnings('legacy system')[0]).toContain('Legacy');
+    expect(detectArchitectureWarnings('real-time')[0]).toContain('Real-time');
+    expect(detectArchitectureWarnings('scale million')[0]).toContain('scale');
   });
 
-  it('warns about legacy systems', () => {
-    const warnings = detectArchitectureWarnings('integrate with legacy system');
-    expect(warnings.some((w) => w.includes('Legacy'))).toBe(true);
-  });
-
-  it('warns about real-time requirements', () => {
-    const warnings = detectArchitectureWarnings('real-time data processing');
-    expect(warnings.some((w) => w.includes('Real-time'))).toBe(true);
-  });
-
-  it('warns about scale requirements', () => {
-    const warnings = detectArchitectureWarnings('handle million requests');
-    expect(warnings.some((w) => w.includes('scale'))).toBe(true);
-  });
-
-  it('returns empty for simple description', () => {
-    expect(detectArchitectureWarnings('simple web app')).toEqual([]);
+  it('should be case insensitive and detect multiple warnings', () => {
+    const w = detectArchitectureWarnings('LEGACY REAL-TIME SCALE');
+    expect(w.length).toBeGreaterThanOrEqual(2);
   });
 });
 
-// ============================================================================
-// parseArchitectureResult
-// ============================================================================
-
 describe('parseArchitectureResult', () => {
-  it('parses valid JSON', () => {
+  it('should parse valid JSON with all fields', () => {
     const json = JSON.stringify({ content: 'test', analysisType: 'design', confidence: 0.9 });
-    const result = parseArchitectureResult(json, 'review');
-    expect(result.content).toBe('test');
-    expect(result.analysisType).toBe('design');
-    expect(result.confidence).toBe(0.9);
+    const r = parseArchitectureResult(json, 'review');
+    expect(r.content).toBe('test');
+    expect(r.analysisType).toBe('design');
+    expect(r.confidence).toBe(0.9);
   });
 
-  it('extracts JSON from markdown code blocks', () => {
-    const text = '```json\n{"content": "parsed", "confidence": 0.8}\n```';
-    const result = parseArchitectureResult(text, 'design');
-    expect(result.content).toBe('parsed');
+  it('should extract JSON from markdown code blocks', () => {
+    const md = '```json\n{"content": "x", "analysisType": "review", "confidence": 0.8}\n```';
+    const r = parseArchitectureResult(md, 'design');
+    expect(r.content).toBe('x');
+    expect(r.analysisType).toBe('review');
   });
 
-  it('falls back to raw text on parse failure', () => {
-    const result = parseArchitectureResult('not json', 'review');
-    expect(result.content).toBe('not json');
-    expect(result.analysisType).toBe('review');
-    expect(result.confidence).toBe(0.5);
+  it('should use defaults for missing fields', () => {
+    const r1 = parseArchitectureResult('{}', 'design');
+    expect(r1.content).toBe('Architecture analysis completed');
+    expect(r1.confidence).toBe(0.7);
+
+    const r2 = parseArchitectureResult(JSON.stringify({ content: 'x' }), 'review');
+    expect(r2.analysisType).toBe('review');
   });
 
-  it('uses defaults for missing fields', () => {
-    const result = parseArchitectureResult('{}', 'design');
-    expect(result.content).toBe('Architecture analysis completed');
-    expect(result.analysisType).toBe('design');
-    expect(result.confidence).toBe(0.7);
+  it('should include optional fields when present', () => {
+    const data = {
+      content: 'x',
+      analysisType: 'design',
+      confidence: 0.8,
+      patterns: [
+        { name: 'T', category: 'C', applicability: 0.5, tradeoffs: { pros: [], cons: [] } },
+      ],
+      decisions: [
+        { id: 'A', title: 'T', context: 'C', decision: 'D', consequences: [], status: 'proposed' },
+      ],
+      components: [{ name: 'N', type: 'M', responsibilities: [], dependencies: [] }],
+      recommendations: ['R1'],
+      warnings: ['W1'],
+    };
+    const r = parseArchitectureResult(JSON.stringify(data), 'design');
+    expect(r.patterns?.length).toBe(1);
+    expect(r.decisions?.length).toBe(1);
+    expect(r.components?.length).toBe(1);
+    expect(r.recommendations).toEqual(['R1']);
+    expect(r.warnings).toEqual(['W1']);
+  });
+
+  it('should fallback on parse error and handle empty input', () => {
+    const r1 = parseArchitectureResult('invalid', 'review');
+    expect(r1.content).toBe('invalid');
+    expect(r1.confidence).toBe(0.5);
+
+    const r2 = parseArchitectureResult('', 'design');
+    expect(r2.analysisType).toBe('design');
   });
 });

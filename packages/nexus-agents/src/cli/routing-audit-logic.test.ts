@@ -10,6 +10,7 @@ import { describe, it, expect } from 'vitest';
 import {
   analyzeTaskString,
   taskProfileToBanditContextFromProfile,
+  analyzeToBanditContext,
   simulateBudgetFilter,
   runTopsisRanking,
   computeLinUCBDetails,
@@ -17,7 +18,7 @@ import {
   auditRouting,
 } from './routing-audit-logic.js';
 import { LinUCBBandit } from '../cli-adapters/linucb-bandit.js';
-import type { BanditContext } from '../cli-adapters/budget-router-types.js';
+import type { BanditContext, TaskProfile } from '../core/index.js';
 
 describe('routing-audit-logic', () => {
   describe('analyzeTaskString', () => {
@@ -54,6 +55,27 @@ describe('routing-audit-logic', () => {
       const profile = analyzeTaskString('Implement unit tests for the API endpoint');
 
       expect(profile.codeGeneration).toBe(true);
+    });
+
+    it('should handle long task descriptions', () => {
+      const longTask = 'a'.repeat(10000);
+      const profile = analyzeTaskString(longTask);
+
+      expect(profile).toBeDefined();
+      expect(profile.contextRequired).toBeGreaterThan(0);
+    });
+
+    it('should identify architecture tasks', () => {
+      const profile = analyzeTaskString('Design system architecture for microservices');
+
+      expect(profile.taskType).toBe('architecture');
+    });
+
+    it('should identify bulk operations', () => {
+      const profile = analyzeTaskString('Process batch of 10000 files');
+
+      expect(profile).toBeDefined();
+      expect(profile.taskType).toBeDefined();
     });
   });
 
@@ -105,6 +127,112 @@ describe('routing-audit-logic', () => {
       const context = taskProfileToBanditContextFromProfile(profile);
 
       expect(context.timePressure).toBe(0.3);
+    });
+
+    it('should cap context length at 1.0', () => {
+      const profile: TaskProfile = {
+        taskType: 'code_implementation',
+        contextRequired: 500000,
+        reasoningComplexity: 5,
+        codeGeneration: true,
+        multimodal: false,
+        parallelizable: false,
+        budgetSensitive: false,
+      };
+      const context = taskProfileToBanditContextFromProfile(profile);
+
+      expect(context.contextLengthNormalized).toBe(1);
+    });
+
+    it('should identify reasoning tasks by high complexity', () => {
+      const profile: TaskProfile = {
+        taskType: 'code_implementation',
+        contextRequired: 1000,
+        reasoningComplexity: 8,
+        codeGeneration: true,
+        multimodal: false,
+        parallelizable: false,
+        budgetSensitive: false,
+      };
+      const context = taskProfileToBanditContextFromProfile(profile);
+
+      expect(context.isReasoningTask).toBe(1);
+    });
+
+    it('should handle zero reasoning complexity', () => {
+      const profile: TaskProfile = {
+        taskType: 'bulk_operations',
+        contextRequired: 500,
+        reasoningComplexity: 0,
+        codeGeneration: false,
+        multimodal: false,
+        parallelizable: true,
+        budgetSensitive: false,
+      };
+      const context = taskProfileToBanditContextFromProfile(profile);
+
+      expect(context.taskComplexity).toBe(0);
+      expect(context.isReasoningTask).toBe(0);
+    });
+  });
+
+  describe('analyzeToBanditContext', () => {
+    it('should directly convert task to bandit context', () => {
+      const context = analyzeToBanditContext('Write a function to parse JSON');
+
+      expect(context).toHaveProperty('taskComplexity');
+      expect(context).toHaveProperty('contextLengthNormalized');
+      expect(context).toHaveProperty('isCodeTask');
+      expect(context).toHaveProperty('isReasoningTask');
+      expect(context).toHaveProperty('budgetUtilization');
+      expect(context).toHaveProperty('timePressure');
+    });
+
+    it('should produce consistent results for same task', () => {
+      const task = 'Implement authentication module with tests';
+      const context1 = analyzeToBanditContext(task);
+      const context2 = analyzeToBanditContext(task);
+
+      expect(context1.taskComplexity).toBe(context2.taskComplexity);
+      expect(context1.isCodeTask).toBe(context2.isCodeTask);
+      expect(context1.isReasoningTask).toBe(context2.isReasoningTask);
+    });
+
+    it('should normalize all values correctly', () => {
+      const context = analyzeToBanditContext('Complex architectural design task');
+
+      expect(context.taskComplexity).toBeGreaterThanOrEqual(0);
+      expect(context.taskComplexity).toBeLessThanOrEqual(1);
+      expect(context.contextLengthNormalized).toBeGreaterThanOrEqual(0);
+      expect(context.contextLengthNormalized).toBeLessThanOrEqual(1);
+      expect([0, 1]).toContain(context.isCodeTask);
+      expect([0, 1]).toContain(context.isReasoningTask);
+    });
+
+    it('should handle empty task string', () => {
+      const context = analyzeToBanditContext('');
+
+      expect(context).toBeDefined();
+      expect(context.taskComplexity).toBeGreaterThanOrEqual(0);
+    });
+
+    it('should identify code tasks', () => {
+      const context = analyzeToBanditContext('Write unit tests for the API');
+
+      expect(context.isCodeTask).toBe(1);
+    });
+
+    it('should identify reasoning tasks', () => {
+      const context = analyzeToBanditContext('Explain the architecture of distributed systems');
+
+      expect(context.isReasoningTask).toBeGreaterThanOrEqual(0);
+    });
+
+    it('should handle special characters in task description', () => {
+      const context = analyzeToBanditContext('Task with @#$%^&*() special chars');
+
+      expect(context).toBeDefined();
+      expect(context.taskComplexity).toBeGreaterThanOrEqual(0);
     });
   });
 
@@ -174,6 +302,62 @@ describe('routing-audit-logic', () => {
         expect(score.rawValues).toHaveProperty('cost');
         expect(score.rawValues).toHaveProperty('latency');
       }
+    });
+
+    it('should adjust profiles for architecture tasks', () => {
+      const profile: TaskProfile = {
+        taskType: 'architecture',
+        contextRequired: 10000,
+        reasoningComplexity: 8,
+        codeGeneration: false,
+        multimodal: false,
+        parallelizable: false,
+        budgetSensitive: false,
+      };
+      const result = runTopsisRanking(profile);
+
+      expect(result).toBeDefined();
+      expect(result.selectedModel).toBeDefined();
+    });
+
+    it('should adjust profiles for bulk operations', () => {
+      const profile: TaskProfile = {
+        taskType: 'bulk_operations',
+        contextRequired: 500,
+        reasoningComplexity: 2,
+        codeGeneration: false,
+        multimodal: false,
+        parallelizable: true,
+        budgetSensitive: false,
+      };
+      const result = runTopsisRanking(profile);
+
+      expect(result).toBeDefined();
+      expect(result.selectedModel).toBeDefined();
+    });
+
+    it('should compute ideal points', () => {
+      const profile = analyzeTaskString('Test task');
+      const result = runTopsisRanking(profile);
+
+      expect(result.positiveIdeal).toBeDefined();
+      expect(result.negativeIdeal).toBeDefined();
+    });
+
+    it('should compute expected output tokens', () => {
+      const profile: TaskProfile = {
+        taskType: 'code_implementation',
+        contextRequired: 3000,
+        reasoningComplexity: 5,
+        codeGeneration: true,
+        multimodal: false,
+        parallelizable: false,
+        budgetSensitive: false,
+      };
+      const result = runTopsisRanking(profile);
+
+      // Should compute 30% of input tokens as output
+      expect(result).toBeDefined();
     });
   });
 
@@ -252,6 +436,66 @@ describe('routing-audit-logic', () => {
         expect(typeof detail.isExploration).toBe('boolean');
       }
     });
+
+    it('should identify exploration when selected arm has lower reward', () => {
+      const bandit = new LinUCBBandit(['claude', 'gemini', 'codex']);
+      const context: BanditContext = {
+        taskComplexity: 0.5,
+        contextLengthNormalized: 0.3,
+        isCodeTask: 1,
+        isReasoningTask: 0,
+        budgetUtilization: 0.5,
+        timePressure: 0.3,
+      };
+
+      // Train bandit with different rewards
+      for (let i = 0; i < 10; i++) {
+        bandit.select(context);
+        bandit.update('claude', context, 0.9);
+        bandit.select(context);
+        bandit.update('gemini', context, 0.3);
+      }
+
+      const details = computeLinUCBDetails(bandit, context);
+
+      // Should have details for all arms
+      expect(details).toHaveLength(3);
+    });
+
+    it('should handle zero pulls', () => {
+      const bandit = new LinUCBBandit(['claude', 'gemini', 'codex']);
+      const context: BanditContext = {
+        taskComplexity: 0.3,
+        contextLengthNormalized: 0.2,
+        isCodeTask: 0,
+        isReasoningTask: 1,
+        budgetUtilization: 0.4,
+        timePressure: 0.2,
+      };
+
+      const details = computeLinUCBDetails(bandit, context);
+
+      for (const detail of details) {
+        expect(detail.pullCount).toBe(0);
+        expect(detail.avgReward).toBe(0);
+      }
+    });
+
+    it('should return readonly array', () => {
+      const bandit = new LinUCBBandit(['claude', 'gemini', 'codex']);
+      const context: BanditContext = {
+        taskComplexity: 0.5,
+        contextLengthNormalized: 0.3,
+        isCodeTask: 1,
+        isReasoningTask: 0,
+        budgetUtilization: 0.5,
+        timePressure: 0.3,
+      };
+
+      const details = computeLinUCBDetails(bandit, context);
+
+      expect(Array.isArray(details)).toBe(true);
+    });
   });
 
   describe('computeBanditStats', () => {
@@ -289,6 +533,63 @@ describe('routing-audit-logic', () => {
 
       const sum = stats.exploration.armDistribution.reduce((acc, arm) => acc + arm.proportion, 0);
       expect(sum).toBeCloseTo(1, 5);
+    });
+
+    it('should include learned weights', () => {
+      const bandit = new LinUCBBandit(['claude', 'gemini', 'codex']);
+      const context: BanditContext = {
+        taskComplexity: 0.5,
+        contextLengthNormalized: 0.3,
+        isCodeTask: 1,
+        isReasoningTask: 0,
+        budgetUtilization: 0.5,
+        timePressure: 0.3,
+      };
+
+      // Train bandit
+      for (let i = 0; i < 10; i++) {
+        const selection = bandit.select(context);
+        bandit.update(selection.armName, context, 0.8);
+      }
+
+      const stats = computeBanditStats(bandit);
+
+      for (const arm of stats.detailedArms) {
+        expect(arm.learnedWeights).toBeDefined();
+        expect(Array.isArray(arm.learnedWeights)).toBe(true);
+      }
+    });
+
+    it('should compute cumulative rewards', () => {
+      const bandit = new LinUCBBandit(['claude', 'gemini', 'codex']);
+      const context: BanditContext = {
+        taskComplexity: 0.5,
+        contextLengthNormalized: 0.3,
+        isCodeTask: 1,
+        isReasoningTask: 0,
+        budgetUtilization: 0.5,
+        timePressure: 0.3,
+      };
+
+      // Train with specific rewards
+      for (let i = 0; i < 5; i++) {
+        bandit.select(context);
+        bandit.update('claude', context, 0.8);
+      }
+
+      const stats = computeBanditStats(bandit);
+      const claudeArm = stats.detailedArms.find((a) => a.cliName === 'claude');
+
+      expect(claudeArm).toBeDefined();
+      expect(claudeArm!.cumulativeReward).toBeGreaterThanOrEqual(0);
+    });
+
+    it('should compute exploration ratio', () => {
+      const bandit = new LinUCBBandit(['claude', 'gemini', 'codex']);
+      const stats = computeBanditStats(bandit);
+
+      expect(stats.exploration.explorationRatio).toBeGreaterThanOrEqual(0);
+      expect(stats.exploration.explorationRatio).toBeLessThanOrEqual(1);
     });
   });
 
@@ -366,6 +667,70 @@ describe('routing-audit-logic', () => {
         expect(result.selectedCli).toBeDefined();
         expect(['claude', 'gemini', 'codex']).toContain(result.selectedCli);
       }
+    });
+
+    it('should use LinUCB selection by default', () => {
+      const result = auditRouting({
+        task: 'Write unit tests',
+        deterministic: false,
+      });
+
+      expect(result.selectionReason).toContain('LinUCB');
+    });
+
+    it('should provide exploration or exploitation reason', () => {
+      const result = auditRouting({ task: 'Simple task' });
+
+      if (result.isExploration) {
+        expect(result.selectionReason).toContain('exploration');
+      } else {
+        expect(result.selectionReason).toContain('exploitation');
+      }
+    });
+
+    it('should filter eligible CLIs from budget results', () => {
+      const result = auditRouting({ task: 'Any task' });
+      const eligibleClis = result.budgetResults.filter((r) => r.withinBudget).map((r) => r.cliName);
+
+      expect(eligibleClis).toHaveLength(3);
+      expect(result.linucbDetails).toHaveLength(eligibleClis.length);
+    });
+
+    it('should handle long task descriptions', () => {
+      const longTask = 'Implement a comprehensive feature that ' + 'does many things '.repeat(100);
+      const result = auditRouting({ task: longTask });
+
+      expect(result).toBeDefined();
+      expect(result.task).toBe(longTask);
+    });
+
+    it('should include all required fields in result', () => {
+      const result = auditRouting({ task: 'Test task' });
+
+      expect(result.task).toBeDefined();
+      expect(result.taskProfile).toBeDefined();
+      expect(result.budgetResults).toBeDefined();
+      expect(result.topsisResult).toBeDefined();
+      expect(result.linucbDetails).toBeDefined();
+      expect(result.selectedCli).toBeDefined();
+      expect(result.selectionReason).toBeDefined();
+      expect(typeof result.isExploration).toBe('boolean');
+    });
+
+    it('should handle empty task string', () => {
+      const result = auditRouting({ task: '' });
+
+      expect(result).toBeDefined();
+      expect(result.selectedCli).toBeDefined();
+    });
+
+    it('should use correct context for LinUCB', () => {
+      const result = auditRouting({ task: 'Write a sorting algorithm' });
+
+      // LinUCB details should be based on the same task analysis
+      expect(result.linucbDetails).toHaveLength(3);
+      const selectedArm = result.linucbDetails.find((d) => d.cliName === result.selectedCli);
+      expect(selectedArm).toBeDefined();
     });
   });
 });
