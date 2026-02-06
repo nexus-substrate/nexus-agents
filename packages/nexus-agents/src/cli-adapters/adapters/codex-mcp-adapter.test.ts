@@ -107,11 +107,11 @@ describe('CodexMcpAdapter', () => {
     it('should return correct capability profile', () => {
       const caps = adapter.capabilities;
 
-      expect(caps.reasoning).toBe(9);
+      expect(caps.reasoning).toBe(10);
       expect(caps.contextWindow).toBe(400_000);
       expect(caps.codeGeneration).toBe(10);
-      expect(caps.speed).toBe(8);
-      expect(caps.cost).toBe(7);
+      expect(caps.speed).toBe(7);
+      expect(caps.cost).toBe(5);
     });
   });
 

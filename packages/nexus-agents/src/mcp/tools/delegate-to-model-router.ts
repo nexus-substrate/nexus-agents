@@ -19,7 +19,7 @@ export function cliNameToModel(cliName: 'claude' | 'gemini' | 'codex'): string {
   const modelMap: Record<string, string> = {
     claude: 'claude-sonnet',
     gemini: 'gemini-pro',
-    codex: 'codex-5.2',
+    codex: 'codex-5.3',
   };
   return modelMap[cliName] ?? cliName;
 }

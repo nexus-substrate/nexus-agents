@@ -58,8 +58,8 @@ describe('cliNameToModel', () => {
     expect(cliNameToModel('gemini')).toBe('gemini-pro');
   });
 
-  it('maps codex to codex-5.2', () => {
-    expect(cliNameToModel('codex')).toBe('codex-5.2');
+  it('maps codex to codex-5.3', () => {
+    expect(cliNameToModel('codex')).toBe('codex-5.3');
   });
 });
 
@@ -112,7 +112,7 @@ describe('mapCompositeDecisionToOutput', () => {
     const output = mapCompositeDecisionToOutput(decision as never, 100);
 
     expect(output.alternatives[0]!.model).toBe('gemini-pro');
-    expect(output.alternatives[1]!.model).toBe('codex-5.2');
+    expect(output.alternatives[1]!.model).toBe('codex-5.3');
   });
 
   it('uses topsisScore for alternative scores', () => {
@@ -161,7 +161,7 @@ describe('mapCompositeDecisionToOutput', () => {
     const decision = makeDecision({ cliName: 'codex' });
     const output = mapCompositeDecisionToOutput(decision as never, 100);
 
-    expect(output.capabilities).toEqual(MODEL_CAPABILITIES['codex-5.2']);
+    expect(output.capabilities).toEqual(MODEL_CAPABILITIES['codex-5.3']);
   });
 });
 
