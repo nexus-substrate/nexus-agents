@@ -35,7 +35,7 @@ import {
   createProductionWorkflowEngine,
   type WorkflowEngineFactoryConfig,
 } from '../workflows/workflow-engine-factory.js';
-import { TechLeadAdapter, PuppeteerAdapter } from './orchestrator-adapters.js';
+import { OrchestratorAdapter, PuppeteerAdapter } from './orchestrator-adapters.js';
 
 // ============================================================================
 // Workflow Orchestrator Adapter
@@ -244,8 +244,10 @@ export interface OrchestratorFactoryConfig {
   modelAdapter?: IModelAdapter;
   /** Workflow engine config */
   workflowConfig?: WorkflowEngineFactoryConfig;
-  /** Pre-created TechLead instance for tech_lead orchestrator */
+  /** Pre-created orchestrator agent instance for tech_lead orchestrator */
   techLead?: { execute: (task: unknown) => Promise<Result<unknown, unknown>> };
+  /** Alias for techLead (preferred, Issue #759) */
+  orchestratorAgent?: { execute: (task: unknown) => Promise<Result<unknown, unknown>> };
   /** Pre-created PuppeteerOrchestrator instance */
   puppeteerOrchestrator?: { execute: (task: unknown) => Promise<Result<unknown, unknown>> };
 }
@@ -255,7 +257,7 @@ export interface OrchestratorFactoryConfig {
  *
  * Provides a unified entry point for all orchestration strategies:
  * - workflow: Static template-based execution
- * - tech_lead: LLM-based task decomposition (TechLeadAdapter)
+ * - tech_lead: LLM-based task decomposition (OrchestratorAdapter)
  * - puppeteer: Policy-based step execution (PuppeteerAdapter)
  *
  * @example
@@ -294,11 +296,12 @@ export class OrchestratorFactory implements IOrchestratorFactory {
         return new WorkflowOrchestratorAdapter(this.workflowEngine, this.logger);
 
       case 'tech_lead': {
-        const adapter = new TechLeadAdapter(this.logger);
-        // Wire TechLead instance if provided (ADR-0014)
-        if (this.config.techLead !== undefined) {
-          adapter.setTechLead(this.config.techLead);
-          this.logger.debug('TechLead instance wired to adapter');
+        const adapter = new OrchestratorAdapter(this.logger);
+        // Wire orchestrator agent if provided (ADR-0014, Issue #759)
+        const agent = this.config.orchestratorAgent ?? this.config.techLead;
+        if (agent !== undefined) {
+          adapter.setOrchestrator(agent);
+          this.logger.debug('Orchestrator agent wired to adapter');
         }
         return adapter;
       }

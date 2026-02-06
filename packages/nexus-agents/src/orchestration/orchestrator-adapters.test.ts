@@ -1,5 +1,5 @@
 /**
- * Tests for orchestrator-adapters: TechLeadAdapter, PuppeteerAdapter, WorkflowAdapter.
+ * Tests for orchestrator-adapters: OrchestratorAdapter, PuppeteerAdapter, WorkflowAdapter.
  *
  * Covers: execute (happy path, wrong definition, no engine wired, engine error),
  * getStatus, cancel, getHistory, and adapter identity properties.
@@ -12,7 +12,12 @@ import { OrchestratorError } from '../core/types/orchestrator.js';
 import type { OrchestratorDefinition } from '../core/types/orchestrator.js';
 import type { Task } from '../core/types/index.js';
 
-import { TechLeadAdapter, PuppeteerAdapter, WorkflowAdapter } from './orchestrator-adapters.js';
+import {
+  OrchestratorAdapter,
+  TechLeadAdapter,
+  PuppeteerAdapter,
+  WorkflowAdapter,
+} from './orchestrator-adapters.js';
 
 // ============================================================================
 // Mock external modules
@@ -82,23 +87,27 @@ function makeWorkflowDef(templatePath = 'templates/code-review'): OrchestratorDe
 }
 
 // ============================================================================
-// TechLeadAdapter
+// OrchestratorAdapter
 // ============================================================================
 
-describe('TechLeadAdapter', () => {
-  let adapter: TechLeadAdapter;
+describe('OrchestratorAdapter', () => {
+  let adapter: OrchestratorAdapter;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    adapter = new TechLeadAdapter(makeMockLogger());
+    adapter = new OrchestratorAdapter(makeMockLogger());
   });
 
   it('has type tech_lead and a generated id', () => {
     expect(adapter.type).toBe('tech_lead');
-    expect(adapter.id).toContain('tech-lead');
+    expect(adapter.id).toContain('orchestrator');
   });
 
-  it('returns ok with empty output when no TechLead is wired', async () => {
+  it('TechLeadAdapter is a backward-compatible alias', () => {
+    expect(TechLeadAdapter).toBe(OrchestratorAdapter);
+  });
+
+  it('returns ok with empty output when no orchestrator agent is wired', async () => {
     const result = await adapter.execute(makeTaskDef(), {});
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -115,9 +124,9 @@ describe('TechLeadAdapter', () => {
     expect(result.error.code).toBe('INVALID_DEFINITION');
   });
 
-  it('delegates to wired TechLead on success', async () => {
+  it('delegates to wired orchestrator agent on success', async () => {
     const mockTl = { execute: vi.fn(() => Promise.resolve(ok({ answer: 42 }))) };
-    adapter.setTechLead(mockTl);
+    adapter.setOrchestrator(mockTl);
 
     const result = await adapter.execute(makeTaskDef(), {});
     expect(result.ok).toBe(true);
@@ -126,11 +135,11 @@ describe('TechLeadAdapter', () => {
     expect(mockTl.execute).toHaveBeenCalledTimes(1);
   });
 
-  it('returns AGENT_ERROR when TechLead execution fails with Error', async () => {
+  it('returns AGENT_ERROR when orchestrator execution fails with Error', async () => {
     const mockTl = {
       execute: vi.fn(() => Promise.resolve(err(new Error('boom')))),
     };
-    adapter.setTechLead(mockTl);
+    adapter.setOrchestrator(mockTl);
 
     const result = await adapter.execute(makeTaskDef(), {});
     expect(result.ok).toBe(false);
@@ -139,11 +148,11 @@ describe('TechLeadAdapter', () => {
     expect(result.error.message).toContain('boom');
   });
 
-  it('returns AGENT_ERROR when TechLead fails with non-Error', async () => {
+  it('returns AGENT_ERROR when orchestrator fails with non-Error', async () => {
     const mockTl = {
       execute: vi.fn(() => Promise.resolve(err('string-error'))),
     };
-    adapter.setTechLead(mockTl);
+    adapter.setOrchestrator(mockTl);
 
     const result = await adapter.execute(makeTaskDef(), {});
     expect(result.ok).toBe(false);

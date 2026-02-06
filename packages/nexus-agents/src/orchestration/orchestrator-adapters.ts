@@ -1,7 +1,7 @@
 /**
  * nexus-agents/orchestration - Orchestrator Adapters
  *
- * Adapters wrapping TechLead, PuppeteerOrchestrator, WorkflowEngine
+ * Adapters wrapping Orchestrator, PuppeteerOrchestrator, WorkflowEngine
  * to implement the unified IOrchestrator interface.
  *
  * @module orchestration/orchestrator-adapters
@@ -73,23 +73,30 @@ const COMPLETED_STATUS: ExecutionStatus = {
 };
 
 /**
- * TechLead adapter implementing IOrchestrator.
+ * Orchestrator adapter implementing IOrchestrator.
+ * Wraps the core Orchestrator agent for task decomposition and delegation.
  * (Issue #663: Enhanced error logging — errors were previously swallowed silently)
+ * (Issue #759: Renamed from TechLeadAdapter to OrchestratorAdapter)
  */
-export class TechLeadAdapter implements IOrchestrator {
-  readonly id = generateId('tech-lead');
+export class OrchestratorAdapter implements IOrchestrator {
+  readonly id = generateId('orchestrator');
   readonly type: OrchestratorType = 'tech_lead';
   private readonly executions = new Map<string, ExecutionStatus>();
   private readonly history: OrchestratorResult[] = [];
   private readonly logger: ILogger;
-  private techLead: { execute: (task: Task) => Promise<Result<unknown, unknown>> } | null = null;
+  private agent: { execute: (task: Task) => Promise<Result<unknown, unknown>> } | null = null;
 
   constructor(logger?: ILogger) {
-    this.logger = logger ?? createLogger({ component: 'TechLeadAdapter' });
+    this.logger = logger ?? createLogger({ component: 'OrchestratorAdapter' });
   }
 
+  /** @deprecated Use setOrchestrator() instead */
   setTechLead(tl: { execute: (task: Task) => Promise<Result<unknown, unknown>> }): void {
-    this.techLead = tl;
+    this.agent = tl;
+  }
+
+  setOrchestrator(agent: { execute: (task: Task) => Promise<Result<unknown, unknown>> }): void {
+    this.agent = agent;
   }
 
   async execute(
@@ -99,21 +106,26 @@ export class TechLeadAdapter implements IOrchestrator {
   ): Promise<Result<OrchestratorResult, OrchestratorError>> {
     if (definition.type !== 'task') {
       return err(
-        new OrchestratorError('TechLead only supports task definitions', 'INVALID_DEFINITION')
+        new OrchestratorError('Orchestrator only supports task definitions', 'INVALID_DEFINITION')
       );
     }
     const execId = generateId('exec'),
       start = getTimeProvider().now();
     this.executions.set(execId, { state: 'running', currentStep: 'executing', progress: 0 });
 
-    const techLeadResult = await this.runTechLead(definition.task);
-    if (!techLeadResult.ok) {
+    const agentResult = await this.runOrchestrator(definition.task);
+    if (!agentResult.ok) {
       this.executions.set(execId, COMPLETED_STATUS);
-      return err(techLeadResult.error);
+      return err(agentResult.error);
     }
 
-    const output = techLeadResult.value;
-    const step = createStep('tech-lead', 'Execute task', output, getTimeProvider().now() - start);
+    const output = agentResult.value;
+    const step = createStep(
+      'orchestrator',
+      'Execute task',
+      output,
+      getTimeProvider().now() - start
+    );
     const result = createResult(
       execId,
       'tech_lead',
@@ -127,19 +139,21 @@ export class TechLeadAdapter implements IOrchestrator {
     return ok(result);
   }
 
-  private async runTechLead(task: Task): Promise<Result<unknown, OrchestratorError>> {
-    if (this.techLead === null) {
-      this.logger.warn('TechLead not wired — returning empty result');
+  private async runOrchestrator(task: Task): Promise<Result<unknown, OrchestratorError>> {
+    if (this.agent === null) {
+      this.logger.warn('Orchestrator agent not wired — returning empty result');
       return ok({});
     }
-    const r = await this.techLead.execute(task);
+    const r = await this.agent.execute(task);
     if (!r.ok) {
       const errorMsg = r.error instanceof Error ? r.error.message : String(r.error);
-      this.logger.error('TechLead execution failed', undefined, {
+      this.logger.error('Orchestrator execution failed', undefined, {
         taskId: task.id,
         error: errorMsg,
       });
-      return err(new OrchestratorError(`TechLead execution failed: ${errorMsg}`, 'AGENT_ERROR'));
+      return err(
+        new OrchestratorError(`Orchestrator execution failed: ${errorMsg}`, 'AGENT_ERROR')
+      );
     }
     return ok(r.value);
   }
@@ -315,5 +329,8 @@ export class WorkflowAdapter implements IOrchestrator {
     return this.history.slice(-limit);
   }
 }
+
+/** @deprecated Use OrchestratorAdapter instead (Issue #759) */
+export { OrchestratorAdapter as TechLeadAdapter };
 
 export type { IOrchestrator, OrchestratorType, OrchestratorResult };
