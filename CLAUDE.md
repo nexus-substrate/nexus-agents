@@ -47,6 +47,7 @@ nexus-agents --help       # Full command list
 | `NEXUS_LOG_LEVEL`    | Logging verbosity                   | `info`                        |
 | `NEXUS_CONFIG_PATH`  | Custom config path                  | `./nexus-agents.yaml`         |
 | `NEXUS_AUTH_ENABLED` | Network auth (not needed for stdio) | `false` (stdio is local-only) |
+| `NEXUS_BILLING_MODE` | Model routing cost handling         | `plan` (monthly subscription) |
 
 **Getting started:** [docs/getting-started/INSTALLATION.md](./docs/getting-started/INSTALLATION.md) | **Configuration:** [docs/getting-started/CONFIGURATION.md](./docs/getting-started/CONFIGURATION.md)
 
@@ -111,6 +112,8 @@ Before implementing features or making architectural decisions: search official 
 All task routing goes through: `Task → BudgetRouter → ZeroRouter → PreferenceRouter → TopsisRouter → LinUCB → Selected Model`
 
 Do NOT directly instantiate stage routers. Use `CompositeRouter.route(task)`.
+
+**Billing mode** (`NEXUS_BILLING_MODE`): When set to `plan` (default), cost is zeroed in model scoring — strongest models win. When `api`, cost-aware routing is preserved. Supported models: claude-opus, claude-sonnet, claude-haiku, gemini-pro, gemini-flash, codex-5.3, codex-5.2, codex-5.1-mini.
 
 When a non-canonical implementation exists, migrate its logic to the canonical location, then remove the deprecated file.
 
@@ -367,7 +370,7 @@ _Auto-generated from source. 15 tools registered._
 
 <!-- GOVERNANCE:VERSION:START -->
 
-_Governance Version: 2026-02-05.2_
+_Governance Version: 2026-02-05.3_
 
 <!-- GOVERNANCE:VERSION:END -->
 
