@@ -204,6 +204,7 @@ async function runVote(options: VoteCommandOptions): Promise<VotingResult> {
     `${colors.dim}Collecting votes from ${String(roles.length)} agents (timeout: ${String(timeoutSec)}s each)...${colors.reset}\n`
   );
   const votes = await collectVotes(options.proposal, roles, options.dryRun === true, timeoutMs);
+  const validVotes = votes.filter((v) => v.source !== 'error');
   const engine = createConsensusEngine();
   const proposal: Proposal = {
     title: 'CLI Vote',
@@ -213,7 +214,7 @@ async function runVote(options: VoteCommandOptions): Promise<VotingResult> {
   const proposalResult = await engine.propose(proposal);
   if (!proposalResult.ok) throw new Error(proposalResult.error.message);
   const proposalId = proposalResult.value;
-  for (const { role, vote } of votes) {
+  for (const { role, vote } of validVotes) {
     await engine.vote(proposalId, role, vote);
   }
   const resultRes = await engine.close(proposalId);

@@ -121,11 +121,34 @@ function getVoterRoles(quickMode: boolean): readonly VoterRole[] {
 // Voting Execution
 // ============================================================================
 
+/** Creates a synthetic ConsensusResult when all votes are errors (Issue #815). */
+function createEmptyConsensusResult(
+  proposal: string,
+  algorithm: ConsensusAlgorithm
+): ConsensusResult {
+  const now = new Date().toISOString();
+  return {
+    proposalId: 'no-valid-votes',
+    proposal: { title: 'MCP Consensus Vote', description: proposal, algorithm },
+    outcome: 'rejected',
+    votes: new Map<string, Vote>(),
+    voteCounts: { approve: 0, reject: 0, abstain: 0, total: 0 },
+    approvalPercentage: 0,
+    quorumReached: false,
+    startedAt: now,
+    closedAt: now,
+    durationMs: 0,
+  };
+}
+
 async function processVotesThroughEngine(
   votes: readonly AgentVoteResult[],
   proposal: string,
   algorithm: ConsensusAlgorithm
 ): Promise<ConsensusResult> {
+  const validVotes = votes.filter((v) => v.source !== 'error');
+  if (validVotes.length === 0) return createEmptyConsensusResult(proposal, algorithm);
+
   const engine = createConsensusEngine();
   const engineProposal: Proposal = {
     title: 'MCP Consensus Vote',
@@ -137,7 +160,7 @@ async function processVotesThroughEngine(
     throw new Error(`Failed to create proposal: ${proposalResult.error.message}`);
 
   const proposalId = proposalResult.value;
-  for (const { role, vote } of votes) await engine.vote(proposalId, role, vote);
+  for (const { role, vote } of validVotes) await engine.vote(proposalId, role, vote);
 
   const resultRes = await engine.close(proposalId);
   if (!resultRes.ok) throw new Error(`Failed to close proposal: ${resultRes.error.message}`);
@@ -210,7 +233,9 @@ async function executeVoting(
   const engineResult = await processVotesThroughEngine(votes, input.proposal, algorithm);
 
   const voteMap = new Map<string, Vote>();
-  for (const { role, vote } of votes) voteMap.set(role, vote);
+  for (const { role, vote, source } of votes) {
+    if (source !== 'error') voteMap.set(role, vote);
+  }
 
   const higherOrderResult = runHigherOrderVoting(strategy, voteMap, logger);
   const outcome: 'approved' | 'rejected' =

@@ -12,6 +12,9 @@ import {
   type AgentVoteSummary,
   type ConsensusVoteResponse,
 } from './consensus-vote.js';
+import { toAgentVoteSummary, buildResponse } from './consensus-vote-types.js';
+import type { AgentVoteResult } from '../../cli/vote-types.js';
+import type { ExtendedVotingResult } from './consensus-vote-types.js';
 
 /**
  * Creates a permissive rate limiter for tests.
@@ -310,12 +313,14 @@ describe('AgentVoteSummary structure', () => {
       confidence: 0.85,
       reasoning: 'This aligns with our architecture goals',
       simulated: false,
+      error: false,
     };
 
     expect(summary.decision).toBe('approve');
     expect(summary.confidence).toBeGreaterThanOrEqual(0);
     expect(summary.confidence).toBeLessThanOrEqual(1);
     expect(summary.simulated).toBe(false);
+    expect(summary.error).toBe(false);
   });
 
   it('should have correct structure for reject vote', () => {
@@ -325,6 +330,7 @@ describe('AgentVoteSummary structure', () => {
       confidence: 0.9,
       reasoning: 'Security concerns with this approach',
       simulated: false,
+      error: false,
     };
 
     expect(summary.decision).toBe('reject');
@@ -338,10 +344,25 @@ describe('AgentVoteSummary structure', () => {
       confidence: 0.5,
       reasoning: 'Not enough information to decide',
       simulated: true,
+      error: false,
     };
 
     expect(summary.decision).toBe('abstain');
     expect(summary.simulated).toBe(true);
+  });
+
+  it('should have error flag for error votes', () => {
+    const summary: AgentVoteSummary = {
+      role: 'architect',
+      decision: 'abstain',
+      confidence: 0,
+      reasoning: 'Zod validation error',
+      simulated: false,
+      error: true,
+    };
+
+    expect(summary.error).toBe(true);
+    expect(summary.simulated).toBe(false);
   });
 });
 
@@ -357,6 +378,7 @@ describe('ConsensusVoteResponse structure', () => {
         approve: 4,
         reject: 1,
         abstain: 0,
+        error: 0,
       },
       votes: [
         {
@@ -365,6 +387,7 @@ describe('ConsensusVoteResponse structure', () => {
           confidence: 0.85,
           reasoning: 'Good idea',
           simulated: false,
+          error: false,
         },
       ],
       durationMs: 5000,
@@ -376,6 +399,7 @@ describe('ConsensusVoteResponse structure', () => {
     expect(response.voteCounts.approve).toBe(4);
     expect(response.voteCounts.reject).toBe(1);
     expect(response.voteCounts.abstain).toBe(0);
+    expect(response.voteCounts.error).toBe(0);
     expect(response.votes).toHaveLength(1);
   });
 
@@ -390,6 +414,7 @@ describe('ConsensusVoteResponse structure', () => {
         approve: 3,
         reject: 2,
         abstain: 0,
+        error: 0,
       },
       votes: [],
       durationMs: 4500,
@@ -517,5 +542,160 @@ describe('Timeout configuration', () => {
     } as ConsensusVoteDeps['security'];
 
     expect(deps.security?.timeout?.defaultTimeoutMs).toBe(600000);
+  });
+});
+
+// ============================================================================
+// Error-Abstention Distinction (Issue #815)
+// ============================================================================
+
+describe('toAgentVoteSummary (Issue #815)', () => {
+  it('should set error=false for LLM votes', () => {
+    const result: AgentVoteResult = {
+      role: 'architect',
+      vote: { decision: 'approve', reasoning: 'Solid design', confidence: 0.9 },
+      processingTimeMs: 100,
+      source: 'llm',
+    };
+    const summary = toAgentVoteSummary(result);
+
+    expect(summary.error).toBe(false);
+    expect(summary.simulated).toBe(false);
+  });
+
+  it('should set error=false for simulation votes', () => {
+    const result: AgentVoteResult = {
+      role: 'security',
+      vote: { decision: 'reject', reasoning: 'Concerns', confidence: 0.7 },
+      processingTimeMs: 50,
+      source: 'simulation',
+    };
+    const summary = toAgentVoteSummary(result);
+
+    expect(summary.error).toBe(false);
+    expect(summary.simulated).toBe(true);
+  });
+
+  it('should set error=true for error votes', () => {
+    const result: AgentVoteResult = {
+      role: 'pm',
+      vote: { decision: 'abstain', reasoning: 'Zod validation error', confidence: 0 },
+      processingTimeMs: 10,
+      source: 'error',
+      error: 'Zod validation failed',
+    };
+    const summary = toAgentVoteSummary(result);
+
+    expect(summary.error).toBe(true);
+    expect(summary.simulated).toBe(false);
+    expect(summary.decision).toBe('abstain');
+  });
+});
+
+describe('buildResponse error counting (Issue #815)', () => {
+  function makeVotingResult(votes: readonly AgentVoteResult[]): ExtendedVotingResult {
+    return {
+      proposal: 'Test proposal',
+      threshold: 'simple_majority',
+      result: {
+        proposalId: 'test',
+        proposal: { title: 'Test', description: 'Test', algorithm: 'simple_majority' },
+        outcome: 'approved',
+        votes: new Map(),
+        voteCounts: { approve: 2, reject: 0, abstain: 0, total: 2 },
+        approvalPercentage: 100,
+        quorumReached: true,
+        startedAt: new Date().toISOString(),
+        closedAt: new Date().toISOString(),
+        durationMs: 100,
+      },
+      votes,
+      totalTimeMs: 200,
+      simulateVotes: false,
+      strategy: 'simple_majority',
+    };
+  }
+
+  it('should count zero errors when all votes are LLM', () => {
+    const votes: AgentVoteResult[] = [
+      {
+        role: 'architect',
+        vote: { decision: 'approve', reasoning: 'ok', confidence: 0.9 },
+        processingTimeMs: 50,
+        source: 'llm',
+      },
+      {
+        role: 'security',
+        vote: { decision: 'approve', reasoning: 'ok', confidence: 0.8 },
+        processingTimeMs: 60,
+        source: 'llm',
+      },
+    ];
+    const input = { proposal: 'Test', simulateVotes: false, quickMode: false };
+    const response = buildResponse(input, makeVotingResult(votes));
+
+    expect(response.voteCounts.error).toBe(0);
+  });
+
+  it('should count error votes separately from abstentions', () => {
+    const votes: AgentVoteResult[] = [
+      {
+        role: 'architect',
+        vote: { decision: 'approve', reasoning: 'ok', confidence: 0.9 },
+        processingTimeMs: 50,
+        source: 'llm',
+      },
+      {
+        role: 'security',
+        vote: { decision: 'abstain', reasoning: 'err', confidence: 0 },
+        processingTimeMs: 10,
+        source: 'error',
+      },
+      {
+        role: 'pm',
+        vote: { decision: 'abstain', reasoning: 'err', confidence: 0 },
+        processingTimeMs: 10,
+        source: 'error',
+      },
+    ];
+    const input = { proposal: 'Test', simulateVotes: false, quickMode: false };
+    const response = buildResponse(input, makeVotingResult(votes));
+
+    expect(response.voteCounts.error).toBe(2);
+    expect(response.votes[1].error).toBe(true);
+    expect(response.votes[2].error).toBe(true);
+    expect(response.votes[0].error).toBe(false);
+  });
+
+  it('should report all errors when every vote errored', () => {
+    const votes: AgentVoteResult[] = [
+      {
+        role: 'architect',
+        vote: { decision: 'abstain', reasoning: 'err', confidence: 0 },
+        processingTimeMs: 10,
+        source: 'error',
+      },
+      {
+        role: 'security',
+        vote: { decision: 'abstain', reasoning: 'err', confidence: 0 },
+        processingTimeMs: 10,
+        source: 'error',
+      },
+      {
+        role: 'pm',
+        vote: { decision: 'abstain', reasoning: 'err', confidence: 0 },
+        processingTimeMs: 10,
+        source: 'error',
+      },
+    ];
+    const result = makeVotingResult(votes);
+    result.result.outcome = 'rejected';
+    result.result.voteCounts = { approve: 0, reject: 0, abstain: 0, total: 0 };
+    result.result.approvalPercentage = 0;
+    const input = { proposal: 'Test', simulateVotes: false, quickMode: false };
+    const response = buildResponse(input, result);
+
+    expect(response.voteCounts.error).toBe(3);
+    expect(response.decision).toBe('rejected');
   });
 });

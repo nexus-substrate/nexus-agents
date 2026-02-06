@@ -80,6 +80,8 @@ export interface AgentVoteSummary {
   confidence: number;
   reasoning: string;
   simulated: boolean;
+  /** True when this vote was generated from an error (Issue #815). */
+  error: boolean;
 }
 
 export type VoteDecisionStatus = 'approved' | 'rejected' | 'pending' | 'timeout';
@@ -102,7 +104,7 @@ export interface ConsensusVoteResponse {
   strategy: VotingStrategy;
   decision: VoteDecisionStatus;
   approvalPercentage: number;
-  voteCounts: { approve: number; reject: number; abstain: number };
+  voteCounts: { approve: number; reject: number; abstain: number; error: number };
   votes: AgentVoteSummary[];
   durationMs: number;
   simulateVotes: boolean;
@@ -128,6 +130,7 @@ export function toAgentVoteSummary(result: AgentVoteResult): AgentVoteSummary {
     confidence: result.vote.confidence,
     reasoning: result.vote.reasoning,
     simulated: result.source === 'simulation',
+    error: result.source === 'error',
   };
 }
 
@@ -153,6 +156,8 @@ export function buildResponse(
   const proposalTruncated =
     input.proposal.length > 200 ? input.proposal.slice(0, 200) + '...' : input.proposal;
 
+  const errorCount = result.votes.filter((v) => v.source === 'error').length;
+
   const response: ConsensusVoteResponse = {
     proposal: proposalTruncated,
     strategy: result.strategy,
@@ -162,6 +167,7 @@ export function buildResponse(
       approve: result.result.voteCounts.approve,
       reject: result.result.voteCounts.reject,
       abstain: result.result.voteCounts.abstain,
+      error: errorCount,
     },
     votes: result.votes.map(toAgentVoteSummary),
     durationMs: result.totalTimeMs,
