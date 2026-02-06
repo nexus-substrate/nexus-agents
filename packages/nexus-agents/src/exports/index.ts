@@ -12,6 +12,7 @@ export * from './adapters.js';
 export * from './agents.js';
 export * from './agents-compat.js';
 export * from './agents-skills.js';
+export * from './agents-ictm.js';
 export * from './workflows.js';
 export * from './mcp.js';
 export * from './cli-adapters.js';

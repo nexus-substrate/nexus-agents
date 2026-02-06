@@ -297,3 +297,6 @@ export * from './reasoning-exports.js';
 // Puppeteer Orchestration module (Issue #335)
 // Uses explicit exports to avoid conflicts with reasoning module
 export * from './orchestration-exports.js';
+
+// ICTM module (AOrchestra pattern - Issue #756)
+export * from './ictm/index.js';
