@@ -4,10 +4,18 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { ILogger, StepResult, WorkflowDefinition, ContextBudget } from '../core/index.js';
+import type {
+  ILogger,
+  StepResult,
+  WorkflowDefinition,
+  ContextBudget,
+  ExecutionStatus,
+  WorkflowResult,
+} from '../core/index.js';
 import type { ResolvedConfig, ExecutionContext } from './workflow-engine-helpers.js';
 import { MAX_TRACKED_EXECUTIONS } from './workflow-engine-helpers.js';
 import type { ActiveExecution } from './workflow-engine-types.js';
+import type { IBudgetCircuitBreaker } from './budget-circuit-breaker-types.js';
 import type { WorkflowStep } from './workflow-types.js';
 import {
   cleanupOldExecutions,
@@ -52,6 +60,33 @@ function createResolvedConfig(overrides?: Partial<ResolvedConfig>): ResolvedConf
   };
 }
 
+const MOCK_WORKFLOW_RESULT: WorkflowResult = {
+  executionId: '',
+  workflowName: '',
+  stepResults: [],
+  output: {},
+  totalDurationMs: 0,
+};
+
+const COMPLETED_STATUS: ExecutionStatus = { state: 'completed', result: MOCK_WORKFLOW_RESULT };
+const RUNNING_STATUS: ExecutionStatus = { state: 'running', currentStep: '', progress: 0 };
+
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+function createMockCircuitBreaker(overrides: Partial<IBudgetCircuitBreaker> = {}) {
+  return {
+    checkBudget: vi.fn(),
+    recordUsage: vi.fn(),
+    allocateForStep: vi.fn(),
+    getState: vi.fn(),
+    getSnapshot: vi.fn(),
+    reset: vi.fn(),
+    forceOpen: vi.fn(),
+    addStateChangeListener: vi.fn(),
+    removeStateChangeListener: vi.fn(),
+    ...overrides,
+  } as IBudgetCircuitBreaker;
+}
+
 function createMockWorkflow(overrides?: Partial<WorkflowDefinition>): WorkflowDefinition {
   return {
     name: 'test-workflow',
@@ -82,7 +117,7 @@ describe('cleanupOldExecutions', () => {
     executions.set('exec-1', {
       executionId: 'exec-1',
       workflowName: 'wf',
-      status: { state: 'completed' },
+      status: COMPLETED_STATUS,
       context: {} as ExecutionContext,
       startTime: 1000,
     });
@@ -97,7 +132,7 @@ describe('cleanupOldExecutions', () => {
       executions.set(`exec-${String(i)}`, {
         executionId: `exec-${String(i)}`,
         workflowName: 'wf',
-        status: { state: 'completed' },
+        status: COMPLETED_STATUS,
         context: {} as ExecutionContext,
         startTime: i * 100,
       });
@@ -116,7 +151,7 @@ describe('cleanupOldExecutions', () => {
       executions.set(`exec-${String(i)}`, {
         executionId: `exec-${String(i)}`,
         workflowName: 'wf',
-        status: { state: 'running' },
+        status: RUNNING_STATUS,
         context: {} as ExecutionContext,
         startTime: i * 100,
       });
@@ -165,7 +200,7 @@ describe('cleanupOldExecutions', () => {
       executions.set(`exec-${String(i)}`, {
         executionId: `exec-${String(i)}`,
         workflowName: 'wf',
-        status: isCompleted ? { state: 'completed' } : { state: 'running' },
+        status: isCompleted ? COMPLETED_STATUS : RUNNING_STATUS,
         context: {} as ExecutionContext,
         startTime: i * 100,
       });
@@ -447,13 +482,7 @@ describe('recordPhaseUsage', () => {
       abortController: new AbortController(),
       contextManager: undefined,
       budgetEvents: [],
-      budgetCircuitBreaker: {
-        checkBudget: vi.fn(),
-        recordUsage: mockRecordUsage,
-        allocateForStep: vi.fn(),
-        getSnapshot: vi.fn(),
-        onStateChange: vi.fn(),
-      },
+      budgetCircuitBreaker: createMockCircuitBreaker({ recordUsage: mockRecordUsage }),
     };
     const results: StepResult[] = [
       { stepId: 's1', status: 'success', output: 'ok', durationMs: 200 },
@@ -477,13 +506,7 @@ describe('recordPhaseUsage', () => {
       abortController: new AbortController(),
       contextManager: undefined,
       budgetEvents: [],
-      budgetCircuitBreaker: {
-        checkBudget: vi.fn(),
-        recordUsage: mockRecordUsage,
-        allocateForStep: vi.fn(),
-        getSnapshot: vi.fn(),
-        onStateChange: vi.fn(),
-      },
+      budgetCircuitBreaker: createMockCircuitBreaker({ recordUsage: mockRecordUsage }),
     };
     recordPhaseUsage([], context);
     expect(mockRecordUsage).not.toHaveBeenCalled();

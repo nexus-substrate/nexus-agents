@@ -212,7 +212,7 @@ async function executeScenario(
     if (scenario.maxTokens !== undefined) {
       task.maxTokens = scenario.maxTokens;
     }
-    const result = await adapter.execute(task as Parameters<typeof adapter.execute>[0], {
+    const result = await adapter.execute(task as unknown as Parameters<typeof adapter.execute>[0], {
       timeoutMs,
     });
     return result.ok ? { ok: true } : { ok: false, error: result.error.message };
