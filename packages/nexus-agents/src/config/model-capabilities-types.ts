@@ -65,11 +65,15 @@ export const SPECIAL_FEATURES = [
 export type SpecialFeature = (typeof SPECIAL_FEATURES)[number];
 
 // ---------------------------------------------------------------------------
-// Provider & Model ID enums
+// Provider, CLI Name & Model ID enums
 // ---------------------------------------------------------------------------
 
 export const PROVIDERS = ['anthropic', 'google', 'openai'] as const;
 export type Provider = (typeof PROVIDERS)[number];
+
+/** CLI tool names supported by the routing system. */
+export const CLI_NAMES = ['claude', 'gemini', 'codex'] as const;
+export type CliNameLiteral = (typeof CLI_NAMES)[number];
 
 export const MODEL_IDS = [
   'claude-opus',
@@ -87,6 +91,24 @@ export type ModelId = (typeof MODEL_IDS)[number];
 // ---------------------------------------------------------------------------
 // Zod Schemas
 // ---------------------------------------------------------------------------
+
+/** Quality scores for model capability routing (0-10 scale). */
+export const QualityScoresSchema = z.object({
+  reasoning: z.number().min(0).max(10),
+  codeGeneration: z.number().min(0).max(10),
+  speed: z.number().min(0).max(10),
+  cost: z.number().min(0).max(10),
+});
+
+export type QualityScores = z.infer<typeof QualityScoresSchema>;
+
+/** Pricing information (USD per 1M tokens). */
+export const PricingSchema = z.object({
+  inputPer1M: z.number().nonnegative(),
+  outputPer1M: z.number().nonnegative(),
+});
+
+export type Pricing = z.infer<typeof PricingSchema>;
 
 export const ModelCapabilitySchema = z.object({
   /** Unique model identifier matching delegate_to_model model IDs */
@@ -109,6 +131,18 @@ export const ModelCapabilitySchema = z.object({
   constraints: z.array(z.string()).optional(),
   /** Notes about the model (e.g., beta features, pricing tier) */
   notes: z.string().optional(),
+  /** Pricing per 1M tokens (USD) */
+  pricing: PricingSchema.optional(),
+  /** Quality scores for routing (0-10 scale) */
+  qualityScores: QualityScoresSchema.optional(),
+  /** Maximum output tokens */
+  maxOutputTokens: z.number().int().positive().optional(),
+  /** Which CLI tool this model belongs to */
+  cliName: z.enum(CLI_NAMES).optional(),
+  /** Short alias used by the CLI (e.g., 'opus' for Claude CLI) */
+  cliAlias: z.string().optional(),
+  /** Model name the CLI binary expects (e.g., 'gemini-3-pro') */
+  cliModelName: z.string().optional(),
 });
 
 export type ModelCapability = z.infer<typeof ModelCapabilitySchema>;

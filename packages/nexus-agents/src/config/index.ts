@@ -159,6 +159,7 @@ export type {
 // Model Capabilities Matrix (Issue #683, Epic #682)
 export {
   DEFAULT_MODEL_CAPABILITIES,
+  DEFAULT_MODEL_PER_CLI,
   getModelCapabilities,
   findModelsByOutputModality,
   findModelsByInputModality,
@@ -175,6 +176,9 @@ export {
   SPECIAL_FEATURES,
   PROVIDERS,
   MODEL_IDS,
+  CLI_NAMES,
+  QualityScoresSchema,
+  PricingSchema,
 } from './model-capabilities.js';
 
 export type {
@@ -186,4 +190,23 @@ export type {
   ToolCapability,
   SpecialFeature,
   Provider,
+  CliNameLiteral,
+  QualityScores,
+  Pricing,
 } from './model-capabilities.js';
+
+// Model Config Helpers — derived functions from model registry (Issue #807)
+export {
+  getModelPricing,
+  getModelDisplayName,
+  getModelContextWindow,
+  getModelMaxOutput,
+  getModelQualityScores,
+  getDefaultModelForCli,
+  getCliModelName,
+  resolveCliAlias,
+  buildCapabilityProfiles,
+  buildCliCapabilityProfiles,
+  buildTopsisProfiles,
+  buildMockModelInfo,
+} from './model-config-helpers.js';

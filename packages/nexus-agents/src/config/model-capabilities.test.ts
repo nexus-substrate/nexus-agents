@@ -179,8 +179,8 @@ describe('findModelsByProvider', () => {
     expect(findModelsByProvider('google').length).toBe(2);
   });
 
-  it('finds 2 OpenAI models', () => {
-    expect(findModelsByProvider('openai').length).toBe(2);
+  it('finds 3 OpenAI models', () => {
+    expect(findModelsByProvider('openai').length).toBe(3);
   });
 });
 

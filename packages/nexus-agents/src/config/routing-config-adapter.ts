@@ -157,6 +157,7 @@ const STAGE_FLAG_KEYS = [
   'enableConfidenceCascade',
   'enableCapabilityMatch',
   'enableQualityConstraint',
+  'enableCapacityBalancing',
 ] as const;
 
 type StageFlagKey = (typeof STAGE_FLAG_KEYS)[number];
