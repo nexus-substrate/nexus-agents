@@ -132,7 +132,7 @@ export function resolveStringExpressions(
       parseExpression,
       resolveExpression
     );
-    resolvedString = resolvedString.replace(match[0], valueToString(resolved));
+    resolvedString = resolvedString.replaceAll(match[0], valueToString(resolved));
   }
 
   return resolvedString;

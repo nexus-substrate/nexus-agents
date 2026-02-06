@@ -161,6 +161,12 @@ describe('resolveStringExpressions', () => {
     expect(result).toBe('Jane Doe');
   });
 
+  it('resolves duplicate expressions in one string', () => {
+    const ctx = makeContext({ inputs: { name: 'Alice' } });
+    const result = resolveStringExpressions('${{ inputs.name }} and ${{ inputs.name }}', ctx);
+    expect(result).toBe('Alice and Alice');
+  });
+
   it('throws ValidationError for invalid expression syntax', () => {
     const ctx = makeContext();
     expect(() => resolveStringExpressions('${{ badref }}', ctx)).toThrow(ValidationError);
