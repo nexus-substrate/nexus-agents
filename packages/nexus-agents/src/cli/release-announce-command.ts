@@ -53,7 +53,7 @@ function extractHighlightsFromChangelog(version: string): string[] {
   if (!existsSync('CHANGELOG.md')) return [];
 
   const changelog = readFileSync('CHANGELOG.md', 'utf-8');
-  const versionRegex = new RegExp(`## \\[${version.replace('.', '\\.')}\\][^#]*`, 's');
+  const versionRegex = new RegExp(`## \\[${version.replace(/\./g, '\\.')}\\][^#]*`, 's');
   const match = changelog.match(versionRegex);
 
   if (!match) return [];
