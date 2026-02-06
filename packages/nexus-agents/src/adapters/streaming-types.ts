@@ -58,6 +58,7 @@ export class StreamController<T> {
   private _error: Error | undefined;
   private readonly maxBufferSize: number;
   private readonly abortHandler: (() => void) | undefined;
+  private readonly abortSignal: AbortSignal | undefined;
 
   /**
    * Creates a new StreamController.
@@ -67,6 +68,7 @@ export class StreamController<T> {
     this.maxBufferSize = options.maxBufferSize ?? 100;
 
     if (options.signal) {
+      this.abortSignal = options.signal;
       this.abortHandler = (): void => {
         this.cancel('AbortSignal triggered');
       };
@@ -139,6 +141,7 @@ export class StreamController<T> {
     }
 
     this._state = 'completed';
+    this.removeAbortListener();
     this.resolveAllWaiters();
   }
 
@@ -153,6 +156,7 @@ export class StreamController<T> {
 
     this._state = 'error';
     this._error = error;
+    this.removeAbortListener();
     this.rejectAllWaiters(error);
   }
 
@@ -167,6 +171,7 @@ export class StreamController<T> {
 
     this._state = 'cancelled';
     this._error = new StreamCancelledError(reason);
+    this.removeAbortListener();
     this.rejectAllWaiters(this._error);
   }
 
@@ -219,6 +224,12 @@ export class StreamController<T> {
     return new Promise((resolve, reject) => {
       this.waiters.push({ resolve, reject });
     });
+  }
+
+  private removeAbortListener(): void {
+    if (this.abortSignal && this.abortHandler) {
+      this.abortSignal.removeEventListener('abort', this.abortHandler);
+    }
   }
 
   private resolveAllWaiters(): void {
