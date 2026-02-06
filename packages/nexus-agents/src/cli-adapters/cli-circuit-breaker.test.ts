@@ -31,7 +31,7 @@ function createMockAdapter(
   name: CliName,
   behavior: 'success' | 'error' | 'circuit-error' = 'success'
 ) {
-  const execute = vi.fn<[CliTask], Promise<Result<CliResponse, CliError>>>();
+  const execute = vi.fn<(task: CliTask) => Promise<Result<CliResponse, CliError>>>();
 
   if (behavior === 'success') {
     execute.mockImplementation(() =>
@@ -69,7 +69,7 @@ function createMockAdapter(
   return {
     name,
     execute,
-  } as ICliAdapter;
+  } as unknown as ICliAdapter;
 }
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
@@ -78,7 +78,7 @@ function createTask(content = 'test task') {
     prompt: content,
     model: 'claude-sonnet-4',
     maxTokens: 1000,
-  } as CliTask;
+  } as unknown as CliTask;
 }
 
 // ============================================================================
@@ -116,7 +116,14 @@ describe('CliCircuitBreakerIntegration', () => {
     });
 
     it('should apply per-CLI config and custom logger', () => {
-      const mockLogger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
+      const mockLogger = {
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        debug: vi.fn(),
+        child: vi.fn(),
+        setLevel: vi.fn(),
+      };
       const config: CliCircuitBreakerConfig = {
         perCliConfig: { claude: { failureThreshold: 3 } },
       };
@@ -129,7 +136,7 @@ describe('CliCircuitBreakerIntegration', () => {
   describe('execute - success path', () => {
     it('should execute successfully and track usage', async () => {
       const task = createTask();
-      const result = await integration.execute(adapters[0], task);
+      const result = await integration.execute(adapters[0]!, task);
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -206,10 +213,10 @@ describe('CliCircuitBreakerIntegration', () => {
       const task = createTask();
 
       // Open claude circuit
-      await custom.execute(failingAdapters[0], task);
+      await custom.execute(failingAdapters[0]!, task);
 
       // Should try gemini but not codex - gemini also fails, returns CliError
-      const result = await custom.execute(failingAdapters[0], task);
+      const result = await custom.execute(failingAdapters[0]!, task);
 
       expect(result.ok).toBe(false);
       if (!result.ok) {
@@ -236,13 +243,13 @@ describe('CliCircuitBreakerIntegration', () => {
       const task = createTask();
 
       // Open claude circuit
-      await custom.execute(failingAdapters[0], task);
+      await custom.execute(failingAdapters[0]!, task);
 
       // Open gemini circuit
-      await custom.execute(failingAdapters[1], task);
+      await custom.execute(failingAdapters[1]!, task);
 
       // Should skip gemini and use codex
-      const result = await custom.execute(failingAdapters[0], task);
+      const result = await custom.execute(failingAdapters[0]!, task);
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -271,7 +278,7 @@ describe('CliCircuitBreakerIntegration', () => {
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error).toBeInstanceOf(CircuitError);
-        expect(result.error.circuitErrorCode).toBe(CircuitErrorCode.CIRCUIT_OPEN);
+        expect((result.error as CircuitError).circuitErrorCode).toBe(CircuitErrorCode.CIRCUIT_OPEN);
       }
     });
   });
@@ -332,8 +339,8 @@ describe('CliCircuitBreakerIntegration', () => {
       ];
       const custom = new CliCircuitBreakerIntegration(failingAdapters, config);
 
-      await custom.execute(failingAdapters[0], createTask());
-      await custom.execute(failingAdapters[1], createTask());
+      await custom.execute(failingAdapters[0]!, createTask());
+      await custom.execute(failingAdapters[1]!, createTask());
 
       custom.resetCircuit('claude');
 
@@ -352,8 +359,8 @@ describe('CliCircuitBreakerIntegration', () => {
       ];
       const custom = new CliCircuitBreakerIntegration(failingAdapters, config);
 
-      await custom.execute(failingAdapters[0], createTask());
-      await custom.execute(failingAdapters[1], createTask());
+      await custom.execute(failingAdapters[0]!, createTask());
+      await custom.execute(failingAdapters[1]!, createTask());
 
       custom.resetAllCircuits();
 
@@ -375,7 +382,7 @@ describe('CliCircuitBreakerIntegration', () => {
 
       expect(listener1).toHaveBeenCalled();
       expect(listener2).toHaveBeenCalled();
-      const event = listener1.mock.calls[0][0];
+      const event = listener1.mock.calls[0]![0];
       expect(event.cliName).toBe('claude');
       expect(event.previousState).toBe('closed');
       expect(event.newState).toBe('open');
@@ -387,7 +394,14 @@ describe('createCliCircuitBreakerIntegration', () => {
   it('should create integration with config and logger', () => {
     const adapters = [createMockAdapter('claude')];
     const config: CliCircuitBreakerConfig = { enableFallback: false };
-    const mockLogger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
+    const mockLogger = {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+      child: vi.fn(),
+      setLevel: vi.fn(),
+    };
 
     const integration1 = createCliCircuitBreakerIntegration(adapters);
     expect(integration1).toBeInstanceOf(CliCircuitBreakerIntegration);

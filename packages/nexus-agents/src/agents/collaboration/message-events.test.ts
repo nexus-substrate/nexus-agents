@@ -51,42 +51,42 @@ describe('emitMessageSent', () => {
     const bus = makeMockEventBus();
     emitMessageSent(bus, { message: makeMessage(), from: 'agent-a' });
     expect(bus.emit).toHaveBeenCalledOnce();
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.topic).toBe('message.sent');
   });
 
   it('includes from in payload', () => {
     const bus = makeMockEventBus();
     emitMessageSent(bus, { message: makeMessage(), from: 'agent-a' });
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.payload.from).toBe('agent-a');
   });
 
   it('includes to when provided', () => {
     const bus = makeMockEventBus();
     emitMessageSent(bus, { message: makeMessage(), from: 'a', to: 'b' });
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.payload.to).toBe('b');
   });
 
   it('omits to when undefined', () => {
     const bus = makeMockEventBus();
     emitMessageSent(bus, { message: makeMessage(), from: 'a' });
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.payload.to).toBeUndefined();
   });
 
   it('includes sessionId when provided', () => {
     const bus = makeMockEventBus();
     emitMessageSent(bus, { message: makeMessage(), from: 'a', sessionId: 's1' });
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.sessionId).toBe('s1');
   });
 
   it('includes correlationId when provided', () => {
     const bus = makeMockEventBus();
     emitMessageSent(bus, { message: makeMessage(), from: 'a', correlationId: 'c1' });
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.correlationId).toBe('c1');
   });
 
@@ -94,7 +94,7 @@ describe('emitMessageSent', () => {
     const msg = makeMessage({ type: 'response', from: 'x', to: 'y' });
     const bus = makeMockEventBus();
     emitMessageSent(bus, { message: msg, from: 'x' });
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.payload.message).toBeDefined();
   });
 });
@@ -108,28 +108,28 @@ describe('emitMessageReceived', () => {
     const bus = makeMockEventBus();
     emitMessageReceived(bus, { message: makeMessage(), by: 'agent-b' });
     expect(bus.emit).toHaveBeenCalledOnce();
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.topic).toBe('message.received');
   });
 
   it('includes by in payload', () => {
     const bus = makeMockEventBus();
     emitMessageReceived(bus, { message: makeMessage(), by: 'agent-b' });
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.payload.by).toBe('agent-b');
   });
 
   it('includes sessionId when provided', () => {
     const bus = makeMockEventBus();
     emitMessageReceived(bus, { message: makeMessage(), by: 'b', sessionId: 's2' });
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.sessionId).toBe('s2');
   });
 
   it('includes correlationId when provided', () => {
     const bus = makeMockEventBus();
     emitMessageReceived(bus, { message: makeMessage(), by: 'b', correlationId: 'c2' });
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.correlationId).toBe('c2');
   });
 });
@@ -148,7 +148,7 @@ describe('emitTaskDelegated', () => {
       priority: 'high',
     });
     expect(bus.emit).toHaveBeenCalledOnce();
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.topic).toBe('agent.task_delegated');
   });
 
@@ -160,7 +160,7 @@ describe('emitTaskDelegated', () => {
       taskDescription: 'Build feature',
       priority: 'critical',
     });
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.payload.fromAgent).toBe('lead');
     expect(event.payload.toAgent).toBe('worker');
     expect(event.payload.taskDescription).toBe('Build feature');
@@ -177,7 +177,7 @@ describe('emitTaskDelegated', () => {
       sessionId: 's3',
       correlationId: 'c3',
     });
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.sessionId).toBe('s3');
     expect(event.correlationId).toBe('c3');
   });
@@ -202,7 +202,7 @@ describe('emitResultBroadcast', () => {
       recipients: ['lead'],
     });
     expect(bus.emit).toHaveBeenCalledOnce();
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.topic).toBe('agent.result_broadcast');
   });
 
@@ -213,7 +213,7 @@ describe('emitResultBroadcast', () => {
       result: mockResult,
       recipients: ['lead', 'reviewer'],
     });
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.payload.agentId).toBe('worker');
     expect(event.payload.result).toBe(mockResult);
     expect(event.payload.recipients).toEqual(['lead', 'reviewer']);
@@ -228,7 +228,7 @@ describe('emitResultBroadcast', () => {
       sessionId: 's4',
       correlationId: 'c4',
     });
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.sessionId).toBe('s4');
     expect(event.correlationId).toBe('c4');
   });

@@ -49,7 +49,7 @@ describe('emitProtocolStarted', () => {
       } as never,
     });
     expect(bus.emit).toHaveBeenCalledOnce();
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.topic).toBe('protocol.started');
     expect(event.payload.protocolType).toBe('aegean');
   });
@@ -65,7 +65,7 @@ describe('emitProtocolStarted', () => {
         byzantineTolerance: 2,
       } as never,
     });
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.payload.config.maxRounds).toBe(10);
     expect(event.payload.config.confidenceThreshold).toBe(0.9);
     expect(event.payload.config.byzantineTolerance).toBe(2);
@@ -83,7 +83,7 @@ describe('emitProtocolStarted', () => {
         byzantineTolerance: 1,
       } as never,
     });
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.sessionId).toBe('my-session');
   });
 });
@@ -102,7 +102,7 @@ describe('emitProtocolIteration', () => {
       sessionId: 's1',
     });
     expect(bus.emit).toHaveBeenCalledOnce();
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.topic).toBe('protocol.iteration');
   });
 
@@ -114,7 +114,7 @@ describe('emitProtocolIteration', () => {
       status: 'in_progress',
       sessionId: 's1',
     });
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.payload.round).toBe(3);
   });
 
@@ -126,7 +126,7 @@ describe('emitProtocolIteration', () => {
       status: 'converged',
       sessionId: 's1',
     });
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.payload.status).toBe('converged');
     expect(event.payload.maxRounds).toBe(10);
   });
@@ -144,7 +144,7 @@ describe('emitProtocolCompleted', () => {
       startTime: 1000,
     });
     expect(bus.emit).toHaveBeenCalledOnce();
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.topic).toBe('protocol.completed');
   });
 
@@ -154,7 +154,7 @@ describe('emitProtocolCompleted', () => {
       result: { consensusReached: false, totalRounds: 5 } as never,
       startTime: 1000,
     });
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.payload.success).toBe(false);
   });
 
@@ -164,7 +164,7 @@ describe('emitProtocolCompleted', () => {
       result: { consensusReached: true, totalRounds: 7 } as never,
       startTime: 1000,
     });
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.payload.iterations).toBe(7);
   });
 
@@ -175,7 +175,7 @@ describe('emitProtocolCompleted', () => {
       startTime: 1000,
       sessionId: 's2',
     });
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.sessionId).toBe('s2');
   });
 });
@@ -194,7 +194,7 @@ describe('emitAegeanRoundStarted', () => {
       sessionId: 's1',
     });
     expect(bus.emit).toHaveBeenCalledOnce();
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.topic).toBe('protocol.aegean.round_started');
   });
 
@@ -206,7 +206,7 @@ describe('emitAegeanRoundStarted', () => {
       leaderId: 'lead-x',
       sessionId: 's1',
     });
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.payload.round).toBe(2);
     expect(event.payload.maxRounds).toBe(10);
     expect(event.payload.leaderId).toBe('lead-x');
@@ -228,7 +228,7 @@ describe('emitAegeanVoteCollected', () => {
       sessionId: 's1',
     });
     expect(bus.emit).toHaveBeenCalledOnce();
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.topic).toBe('protocol.aegean.vote_collected');
   });
 
@@ -241,7 +241,7 @@ describe('emitAegeanVoteCollected', () => {
       requiredQuorum: 6,
       sessionId: 's1',
     });
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.payload.voterId).toBe('v2');
     expect(event.payload.voteCount).toBe(5);
     expect(event.payload.requiredQuorum).toBe(6);
@@ -262,7 +262,7 @@ describe('emitAegeanQuorumDetected', () => {
       sessionId: 's1',
     });
     expect(bus.emit).toHaveBeenCalledOnce();
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.topic).toBe('protocol.aegean.quorum_detected');
   });
 
@@ -274,7 +274,7 @@ describe('emitAegeanQuorumDetected', () => {
       earlyTermination: true,
       sessionId: 's1',
     });
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.payload.round).toBe(3);
     expect(event.payload.quorumSize).toBe(5);
     expect(event.payload.earlyTermination).toBe(true);

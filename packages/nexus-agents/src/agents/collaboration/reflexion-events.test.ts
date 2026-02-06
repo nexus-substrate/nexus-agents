@@ -45,7 +45,7 @@ describe('emitReflexionStarted', () => {
       reflexionConfig: { maxIterations: 5, severityThreshold: 0.3 } as never,
     });
     expect(bus.emit).toHaveBeenCalledOnce();
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.topic).toBe('protocol.started');
     expect(event.payload.protocolType).toBe('reflexion');
   });
@@ -57,7 +57,7 @@ describe('emitReflexionStarted', () => {
       personaCount: 4,
       reflexionConfig: { maxIterations: 10, severityThreshold: 0.5 } as never,
     });
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.payload.config.maxRounds).toBe(10);
     expect(event.payload.config.confidenceThreshold).toBe(0.5);
     expect(event.payload.config.agentCount).toBe(4);
@@ -70,7 +70,7 @@ describe('emitReflexionStarted', () => {
       personaCount: 2,
       reflexionConfig: { maxIterations: 3, severityThreshold: 0.1 } as never,
     });
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.payload.config.byzantineTolerance).toBe(0);
   });
 });
@@ -89,7 +89,7 @@ describe('emitReflexionIteration', () => {
       sessionId: 's1',
     });
     expect(bus.emit).toHaveBeenCalledOnce();
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.topic).toBe('protocol.iteration');
   });
 
@@ -101,7 +101,7 @@ describe('emitReflexionIteration', () => {
       status: 'in_progress',
       sessionId: 's1',
     });
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.payload.round).toBe(1);
   });
 
@@ -113,7 +113,7 @@ describe('emitReflexionIteration', () => {
       status: 'max_reached',
       sessionId: 's1',
     });
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.payload.status).toBe('max_reached');
   });
 });
@@ -130,7 +130,7 @@ describe('emitReflexionCompleted', () => {
       startTime: 1000,
     });
     expect(bus.emit).toHaveBeenCalledOnce();
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.topic).toBe('protocol.completed');
   });
 
@@ -140,7 +140,7 @@ describe('emitReflexionCompleted', () => {
       result: { converged: false, totalIterations: 5 } as never,
       startTime: 1000,
     });
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.payload.success).toBe(false);
   });
 
@@ -150,7 +150,7 @@ describe('emitReflexionCompleted', () => {
       result: { converged: true, totalIterations: 8 } as never,
       startTime: 1000,
     });
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.payload.iterations).toBe(8);
   });
 
@@ -161,7 +161,7 @@ describe('emitReflexionCompleted', () => {
       startTime: 1000,
       sessionId: 's2',
     });
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.sessionId).toBe('s2');
   });
 });
@@ -180,7 +180,7 @@ describe('emitCritiqueStarted', () => {
       sessionId: 's1',
     });
     expect(bus.emit).toHaveBeenCalledOnce();
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.topic).toBe('protocol.reflexion.critique_started');
   });
 
@@ -192,7 +192,7 @@ describe('emitCritiqueStarted', () => {
       personaRole: 'security_reviewer',
       sessionId: 's1',
     });
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.payload.personaId).toBe('persona-sec');
     expect(event.payload.personaRole).toBe('security_reviewer');
     expect(event.payload.iteration).toBe(2);
@@ -214,7 +214,7 @@ describe('emitCritiqueCompleted', () => {
       sessionId: 's1',
     });
     expect(bus.emit).toHaveBeenCalledOnce();
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.topic).toBe('protocol.reflexion.critique_completed');
   });
 
@@ -227,7 +227,7 @@ describe('emitCritiqueCompleted', () => {
       issueCount: 5,
       sessionId: 's1',
     });
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.payload.severity).toBe(0.9);
     expect(event.payload.issueCount).toBe(5);
   });
@@ -247,7 +247,7 @@ describe('emitSynthesis', () => {
       sessionId: 's1',
     });
     expect(bus.emit).toHaveBeenCalledOnce();
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.topic).toBe('protocol.reflexion.synthesis');
   });
 
@@ -259,7 +259,7 @@ describe('emitSynthesis', () => {
       actionItemCount: 4,
       sessionId: 's1',
     });
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.payload.iteration).toBe(1);
     expect(event.payload.consensusSeverity).toBe(0.6);
     expect(event.payload.actionItemCount).toBe(4);

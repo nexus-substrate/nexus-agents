@@ -44,7 +44,7 @@ describe('emitWeightUpdated', () => {
       reason: 'flag_penalty',
     });
     expect(bus.emit).toHaveBeenCalledOnce();
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.topic).toBe('byzantine.weight_updated');
   });
 
@@ -56,7 +56,7 @@ describe('emitWeightUpdated', () => {
       newWeight: 0.3,
       reason: 'performance_update',
     });
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.payload.agentId).toBe('agent-1');
     expect(event.payload.previousWeight).toBe(1.0);
     expect(event.payload.newWeight).toBe(0.3);
@@ -73,7 +73,7 @@ describe('emitWeightUpdated', () => {
       sessionId: 's1',
       correlationId: 'c1',
     });
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.sessionId).toBe('s1');
     expect(event.correlationId).toBe('c1');
   });
@@ -86,7 +86,7 @@ describe('emitWeightUpdated', () => {
       newWeight: 0.5,
       reason: 'recalibration',
     });
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.sessionId).toBeUndefined();
     expect(event.correlationId).toBeUndefined();
   });
@@ -106,7 +106,7 @@ describe('emitPatternDetected', () => {
       details: 'Consistently disagrees',
     });
     expect(bus.emit).toHaveBeenCalledOnce();
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.topic).toBe('byzantine.pattern_detected');
   });
 
@@ -118,7 +118,7 @@ describe('emitPatternDetected', () => {
       confidence: 0.85,
       details: 'Coordinated voting',
     });
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.payload.patternType).toBe('collusion');
     expect(event.payload.agentIds).toEqual(['a1', 'a2']);
     expect(event.payload.confidence).toBe(0.85);
@@ -135,7 +135,7 @@ describe('emitPatternDetected', () => {
       sessionId: 's2',
       correlationId: 'c2',
     });
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.sessionId).toBe('s2');
     expect(event.correlationId).toBe('c2');
   });
@@ -155,7 +155,7 @@ describe('emitAgentFlagged', () => {
       canVote: false,
     });
     expect(bus.emit).toHaveBeenCalledOnce();
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.topic).toBe('byzantine.agent_flagged');
   });
 
@@ -167,7 +167,7 @@ describe('emitAgentFlagged', () => {
       previousWeight: 0.8,
       canVote: true,
     });
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.payload.agentId).toBe('bad-agent');
     expect(event.payload.reason).toBe('Suspected collusion');
     expect(event.payload.previousWeight).toBe(0.8);
@@ -184,7 +184,7 @@ describe('emitAgentFlagged', () => {
       sessionId: 's3',
       correlationId: 'c3',
     });
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.sessionId).toBe('s3');
     expect(event.correlationId).toBe('c3');
   });
@@ -204,7 +204,7 @@ describe('emitCollusionSuspected', () => {
       threshold: 0.5,
     });
     expect(bus.emit).toHaveBeenCalledOnce();
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.topic).toBe('byzantine.collusion_suspected');
   });
 
@@ -216,7 +216,7 @@ describe('emitCollusionSuspected', () => {
       votingBlock: 0.4,
       threshold: 0.3,
     });
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.payload.groupAgentIds).toEqual(['a1', 'a2']);
     expect(event.payload.groupSize).toBe(2);
     expect(event.payload.votingBlock).toBe(0.4);
@@ -233,7 +233,7 @@ describe('emitCollusionSuspected', () => {
       sessionId: 's4',
       correlationId: 'c4',
     });
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.sessionId).toBe('s4');
     expect(event.correlationId).toBe('c4');
   });

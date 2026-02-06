@@ -62,13 +62,19 @@ function makeBelief(overrides: Partial<Belief> = {}) {
   } as Belief;
 }
 
-const silentLogger = {
-  info: vi.fn(),
-  debug: vi.fn(),
-  warn: vi.fn(),
-  error: vi.fn(),
-  child: vi.fn(),
-};
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+function makeLogger() {
+  return {
+    info: vi.fn(),
+    debug: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    child: vi.fn(),
+    setLevel: vi.fn(),
+  };
+}
+
+const silentLogger = makeLogger();
 
 describe('DEFAULT_PROMOTION_CONFIG', () => {
   it('should have expected default values', () => {
@@ -160,13 +166,13 @@ describe('MemoryPromoter', () => {
 
     it('should map high confidence (>=0.9) to HIGH belief confidence', async () => {
       await promoter.promoteLearningsToBelief([makeLearning({ confidence: 0.95 })]);
-      const retainCall = (mockBeliefs.retain as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      const retainCall = (mockBeliefs.retain as ReturnType<typeof vi.fn>).mock.calls[0]![0];
       expect(retainCall.confidence).toBe(BeliefConfidence.HIGH);
     });
 
     it('should map medium confidence (0.75-0.89) to MEDIUM belief confidence', async () => {
       await promoter.promoteLearningsToBelief([makeLearning({ confidence: 0.8 })]);
-      const retainCall = (mockBeliefs.retain as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      const retainCall = (mockBeliefs.retain as ReturnType<typeof vi.fn>).mock.calls[0]![0];
       expect(retainCall.confidence).toBe(BeliefConfidence.MEDIUM);
     });
 
@@ -189,9 +195,11 @@ describe('MemoryPromoter', () => {
     });
 
     it('should use fallback sourceRef when source is undefined', async () => {
-      const learning = makeLearning({ source: undefined, confidence: 0.9 });
+      const learning = { ...makeLearning({ confidence: 0.9 }) };
+      // Remove source to simulate undefined source
+      delete (learning as Record<string, unknown>)['source'];
       await promoter.promoteLearningsToBelief([learning]);
-      const retainCall = (mockBeliefs.retain as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      const retainCall = (mockBeliefs.retain as ReturnType<typeof vi.fn>).mock.calls[0]![0];
       expect(retainCall.sourceRef).toBe('session-learning');
     });
 
@@ -284,7 +292,7 @@ describe('MemoryPromoter', () => {
     it('should construct correct key for agentic store', async () => {
       const belief = makeBelief({ subject: 'foo', predicate: 'bar' });
       await promoter.promoteBeliefToAgentic([belief]);
-      const call = (mockAgentic.storeWithAttributes as ReturnType<typeof vi.fn>).mock.calls[0];
+      const call = (mockAgentic.storeWithAttributes as ReturnType<typeof vi.fn>).mock.calls[0]!;
       expect(call[0]).toBe('belief:foo:bar');
     });
 
@@ -298,7 +306,7 @@ describe('MemoryPromoter', () => {
         beliefId: 'b-42',
       });
       await promoter.promoteBeliefToAgentic([belief]);
-      const call = (mockAgentic.storeWithAttributes as ReturnType<typeof vi.fn>).mock.calls[0];
+      const call = (mockAgentic.storeWithAttributes as ReturnType<typeof vi.fn>).mock.calls[0]!;
       expect(call[1]).toEqual({
         subject: 's',
         predicate: 'p',
@@ -312,14 +320,14 @@ describe('MemoryPromoter', () => {
     it('should map HIGH confidence to HIGH importance', async () => {
       const belief = makeBelief({ confidence: BeliefConfidence.HIGH });
       await promoter.promoteBeliefToAgentic([belief]);
-      const call = (mockAgentic.storeWithAttributes as ReturnType<typeof vi.fn>).mock.calls[0];
+      const call = (mockAgentic.storeWithAttributes as ReturnType<typeof vi.fn>).mock.calls[0]!;
       expect(call[2].importance).toBe(MemoryImportance.HIGH);
     });
 
     it('should map MEDIUM confidence to MEDIUM importance', async () => {
       const belief = makeBelief({ confidence: BeliefConfidence.MEDIUM });
       await promoter.promoteBeliefToAgentic([belief]);
-      const call = (mockAgentic.storeWithAttributes as ReturnType<typeof vi.fn>).mock.calls[0];
+      const call = (mockAgentic.storeWithAttributes as ReturnType<typeof vi.fn>).mock.calls[0]!;
       expect(call[2].importance).toBe(MemoryImportance.MEDIUM);
     });
 
@@ -332,7 +340,7 @@ describe('MemoryPromoter', () => {
       );
       const belief = makeBelief({ confidence: BeliefConfidence.LOW });
       await lowThreshold.promoteBeliefToAgentic([belief]);
-      const call = (mockAgentic.storeWithAttributes as ReturnType<typeof vi.fn>).mock.calls[0];
+      const call = (mockAgentic.storeWithAttributes as ReturnType<typeof vi.fn>).mock.calls[0]!;
       expect(call[2].importance).toBe(MemoryImportance.LOW);
     });
 
@@ -342,7 +350,7 @@ describe('MemoryPromoter', () => {
         sourceType: BeliefSourceType.INFERENCE,
       });
       await promoter.promoteBeliefToAgentic([belief]);
-      const call = (mockAgentic.storeWithAttributes as ReturnType<typeof vi.fn>).mock.calls[0];
+      const call = (mockAgentic.storeWithAttributes as ReturnType<typeof vi.fn>).mock.calls[0]!;
       expect(call[2].tags).toEqual(['learned-pattern', BeliefSourceType.INFERENCE]);
     });
 
@@ -401,13 +409,13 @@ describe('MemoryPromoter', () => {
   describe('confidence mapping boundaries', () => {
     it('should map confidence=0.9 to HIGH', async () => {
       await promoter.promoteLearningsToBelief([makeLearning({ confidence: 0.9 })]);
-      const call = (mockBeliefs.retain as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      const call = (mockBeliefs.retain as ReturnType<typeof vi.fn>).mock.calls[0]![0];
       expect(call.confidence).toBe(BeliefConfidence.HIGH);
     });
 
     it('should map confidence=0.89 to MEDIUM', async () => {
       await promoter.promoteLearningsToBelief([makeLearning({ confidence: 0.89 })]);
-      const call = (mockBeliefs.retain as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      const call = (mockBeliefs.retain as ReturnType<typeof vi.fn>).mock.calls[0]![0];
       expect(call.confidence).toBe(BeliefConfidence.MEDIUM);
     });
 
@@ -420,7 +428,7 @@ describe('MemoryPromoter', () => {
         silentLogger
       );
       await low.promoteLearningsToBelief([makeLearning({ confidence: 0.5 })]);
-      const call = (mockBeliefs.retain as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      const call = (mockBeliefs.retain as ReturnType<typeof vi.fn>).mock.calls[0]![0];
       expect(call.confidence).toBe(BeliefConfidence.LOW);
     });
 
@@ -432,7 +440,7 @@ describe('MemoryPromoter', () => {
         silentLogger
       );
       await low.promoteLearningsToBelief([makeLearning({ confidence: 0.3 })]);
-      const call = (mockBeliefs.retain as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      const call = (mockBeliefs.retain as ReturnType<typeof vi.fn>).mock.calls[0]![0];
       expect(call.confidence).toBe(BeliefConfidence.SPECULATIVE);
     });
   });

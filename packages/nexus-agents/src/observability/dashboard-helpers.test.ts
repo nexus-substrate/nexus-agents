@@ -716,11 +716,11 @@ describe('buildTopEdges', () => {
     const result = buildTopEdges(graph);
 
     expect(result).toHaveLength(1);
-    expect(result[0].from).toBe('a');
-    expect(result[0].to).toBe('b');
-    expect(result[0].count).toBe(3);
-    expect(result[0].successRate).toBeCloseTo(2 / 3);
-    expect(result[0].avgLatencyMs).toBe(200);
+    expect(result[0]!.from).toBe('a');
+    expect(result[0]!.to).toBe('b');
+    expect(result[0]!.count).toBe(3);
+    expect(result[0]!.successRate).toBeCloseTo(2 / 3);
+    expect(result[0]!.avgLatencyMs).toBe(200);
   });
 
   it('sorts edges by count descending', () => {
@@ -733,10 +733,10 @@ describe('buildTopEdges', () => {
     const graph = makeMockGraph(['a', 'b', 'c', 'd'], edges);
     const result = buildTopEdges(graph);
 
-    expect(result[0].from).toBe('c');
-    expect(result[0].count).toBe(3);
-    expect(result[1].from).toBe('a');
-    expect(result[1].count).toBe(1);
+    expect(result[0]!.from).toBe('c');
+    expect(result[0]!.count).toBe(3);
+    expect(result[1]!.from).toBe('a');
+    expect(result[1]!.count).toBe(1);
   });
 
   it('limits to 10 edges', () => {
@@ -761,7 +761,7 @@ describe('buildTopEdges', () => {
     const graph = makeMockGraph(['a', 'b'], edges);
     const result = buildTopEdges(graph);
 
-    expect(result[0].avgLatencyMs).toBe(0);
+    expect(result[0]!.avgLatencyMs).toBe(0);
   });
 
   it('calculates zero successRate when no successes', () => {
@@ -772,7 +772,7 @@ describe('buildTopEdges', () => {
     const graph = makeMockGraph(['a', 'b'], edges);
     const result = buildTopEdges(graph);
 
-    expect(result[0].successRate).toBe(0);
+    expect(result[0]!.successRate).toBe(0);
   });
 
   it('treats different direction pairs as separate edges', () => {
@@ -795,9 +795,9 @@ describe('buildTopEdges', () => {
     const result = buildTopEdges(graph);
 
     expect(result).toHaveLength(1);
-    expect(result[0].count).toBe(1);
-    expect(result[0].successRate).toBe(1);
-    expect(result[0].avgLatencyMs).toBe(42);
+    expect(result[0]!.count).toBe(1);
+    expect(result[0]!.successRate).toBe(1);
+    expect(result[0]!.avgLatencyMs).toBe(42);
   });
 
   it('returns edges with from/to as empty string when key split produces undefined', () => {
@@ -808,8 +808,8 @@ describe('buildTopEdges', () => {
 
     // The key would be "only|", split by | gives ["only", ""]
     expect(result).toHaveLength(1);
-    expect(result[0].from).toBe('only');
-    expect(result[0].to).toBe('');
+    expect(result[0]!.from).toBe('only');
+    expect(result[0]!.to).toBe('');
   });
 });
 
@@ -881,9 +881,9 @@ describe('buildGraphSummary', () => {
     const result = buildGraphSummary(graph);
 
     expect(result.centralAgents).toHaveLength(5);
-    expect(result.centralAgents[0].agentId).toBe('a');
-    expect(result.centralAgents[0].centrality).toBe(0.9);
-    expect(result.centralAgents[4].agentId).toBe('e');
+    expect(result.centralAgents[0]!.agentId).toBe('a');
+    expect(result.centralAgents[0]!.centrality).toBe(0.9);
+    expect(result.centralAgents[4]!.agentId).toBe('e');
   });
 
   it('sorts central agents by centrality descending', () => {
@@ -895,9 +895,9 @@ describe('buildGraphSummary', () => {
     const graph = makeMockGraph(['low', 'high', 'mid'], [], centrality, []);
     const result = buildGraphSummary(graph);
 
-    expect(result.centralAgents[0].agentId).toBe('high');
-    expect(result.centralAgents[1].agentId).toBe('mid');
-    expect(result.centralAgents[2].agentId).toBe('low');
+    expect(result.centralAgents[0]!.agentId).toBe('high');
+    expect(result.centralAgents[1]!.agentId).toBe('mid');
+    expect(result.centralAgents[2]!.agentId).toBe('low');
   });
 
   it('includes topEdges from buildTopEdges', () => {
@@ -906,7 +906,7 @@ describe('buildGraphSummary', () => {
     const result = buildGraphSummary(graph);
 
     expect(result.topEdges).toHaveLength(1);
-    expect(result.topEdges[0].from).toBe('a');
+    expect(result.topEdges[0]!.from).toBe('a');
   });
 });
 

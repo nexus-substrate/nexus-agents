@@ -48,6 +48,10 @@ function makeMockStorage() {
     query: vi.fn(() => Promise.resolve([])),
   } satisfies IAuditStorage;
 }
+/** Extract the first argument from a mock call at the given index. */
+function callArg(mock: ReturnType<typeof vi.fn>, callIndex: number): AuditEvent {
+  return (mock.mock.calls as unknown[][])[callIndex]![0] as AuditEvent;
+}
 const A = { type: 'agent' as const, id: 'agent-1', name: 'Test Agent' };
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 function ev(
@@ -105,7 +109,7 @@ describe('AuditLogger', () => {
       l.log(ev('tool.invoke', { category: 'tool_invocation' }));
       await l.flush();
       expect(s.write).toHaveBeenCalledTimes(1);
-      const e = s.write.mock.calls[0]?.[0] as AuditEvent;
+      const e = callArg(s.write, 0);
       expect(e.category).toBe('tool_invocation');
       expect(e.version).toBe('1.0');
       expect(e.id).toMatch(/^aud_/);
@@ -158,7 +162,7 @@ describe('AuditLogger', () => {
       const l = new AuditLogger(makeConfig({ enableHashChain: true }), s);
       l.log(ev('hashed'));
       await l.flush();
-      const e = s.write.mock.calls[0]?.[0] as AuditEvent;
+      const e = callArg(s.write, 0);
       expect(e.hash).toBe('fakehash256');
     });
     it('chains hashes across multiple events', async () => {
@@ -166,8 +170,8 @@ describe('AuditLogger', () => {
       l.log(ev('first'));
       l.log(ev('second'));
       await l.flush();
-      const first = s.write.mock.calls[0]?.[0] as AuditEvent;
-      const second = s.write.mock.calls[1]?.[0] as AuditEvent;
+      const first = callArg(s.write, 0);
+      const second = callArg(s.write, 1);
       expect(first.previousHash).toBeUndefined();
       expect(second.previousHash).toBe('fakehash256');
     });
@@ -175,7 +179,7 @@ describe('AuditLogger', () => {
       const l = new AuditLogger(makeConfig(), s);
       l.log(ev('no-hash'));
       await l.flush();
-      const e = s.write.mock.calls[0]?.[0] as AuditEvent;
+      const e = callArg(s.write, 0);
       expect(e.hash).toBeUndefined();
       expect(e.previousHash).toBeUndefined();
     });
@@ -194,7 +198,7 @@ describe('AuditLogger', () => {
         })
       );
       await l.flush();
-      const e = s.write.mock.calls[0]?.[0] as AuditEvent;
+      const e = callArg(s.write, 0);
       expect(e.requestId).toBe('req-1');
       expect(e.toolName).toBe('myTool');
       expect(e.durationMs).toBe(42);
@@ -212,7 +216,7 @@ describe('AuditLogger', () => {
         durationMs: 100,
       });
       await l.flush();
-      const e = s.write.mock.calls[0]?.[0] as AuditEvent;
+      const e = callArg(s.write, 0);
       expect(e.category).toBe('tool_invocation');
       expect(e.severity).toBe('info');
       expect(e.action).toBe('tool.invoke');
@@ -226,7 +230,7 @@ describe('AuditLogger', () => {
         errorMessage: 'Timeout',
       });
       await l.flush();
-      const e = s.write.mock.calls[0]?.[0] as AuditEvent;
+      const e = callArg(s.write, 0);
       expect(e.severity).toBe('warning');
       expect(e.description).toBe('Timeout');
     });
@@ -234,7 +238,7 @@ describe('AuditLogger', () => {
       const l = new AuditLogger(makeConfig(), s);
       l.logToolInvocation({ toolName: 'run_workflow', outcome: 'error', actor: A });
       await l.flush();
-      expect((s.write.mock.calls[0]?.[0] as AuditEvent).severity).toBe('warning');
+      expect(callArg(s.write, 0).severity).toBe('warning');
     });
   });
 
@@ -249,7 +253,7 @@ describe('AuditLogger', () => {
         actor: A,
       });
       await l.flush();
-      const e = s.write.mock.calls[0]?.[0] as AuditEvent;
+      const e = callArg(s.write, 0);
       expect(e.category).toBe('authorization');
       expect(e.severity).toBe('info');
       expect(e.outcome).toBe('success');
@@ -265,7 +269,7 @@ describe('AuditLogger', () => {
         actor: A,
       });
       await l.flush();
-      const e = s.write.mock.calls[0]?.[0] as AuditEvent;
+      const e = callArg(s.write, 0);
       expect(e.severity).toBe('warning');
       expect(e.outcome).toBe('denied');
       expect(e.description).toBe('Forbidden');
@@ -282,7 +286,7 @@ describe('AuditLogger', () => {
         description: 'blocked',
       });
       await l.flush();
-      const e = s.write.mock.calls[0]?.[0] as AuditEvent;
+      const e = callArg(s.write, 0);
       expect(e.category).toBe('security');
       expect(e.outcome).toBe('failure');
       expect(e.action).toBe('security.path_traversal_blocked');
@@ -300,7 +304,7 @@ describe('AuditLogger', () => {
         limitRate: 100,
       });
       await l.flush();
-      const e = s.write.mock.calls[0]?.[0] as AuditEvent;
+      const e = callArg(s.write, 0);
       expect(e.category).toBe('security');
       expect(e.outcome).toBe('denied');
       expect(e.action).toBe('rate_limit.exceeded');
@@ -314,7 +318,7 @@ describe('AuditLogger', () => {
       const l = new AuditLogger(makeConfig(), s);
       l.logSystemStartup({ version: '2.3.0' });
       await l.flush();
-      const e = s.write.mock.calls[0]?.[0] as AuditEvent;
+      const e = callArg(s.write, 0);
       expect(e.action).toBe('system.startup');
       expect(e.actor).toEqual({ type: 'system', id: 'nexus-agents', name: 'Nexus Agents System' });
       expect(e.metadata).toEqual({ version: '2.3.0' });
@@ -323,7 +327,7 @@ describe('AuditLogger', () => {
       const l = new AuditLogger(makeConfig(), s);
       l.logSystemStartup();
       await l.flush();
-      expect((s.write.mock.calls[0]?.[0] as AuditEvent).metadata).toBeUndefined();
+      expect(callArg(s.write, 0).metadata).toBeUndefined();
     });
   });
 
@@ -332,7 +336,7 @@ describe('AuditLogger', () => {
       const l = new AuditLogger(makeConfig(), s);
       l.logSystemShutdown({ reason: 'graceful' });
       await l.flush();
-      const e = s.write.mock.calls[0]?.[0] as AuditEvent;
+      const e = callArg(s.write, 0);
       expect(e.action).toBe('system.shutdown');
       expect(e.metadata).toEqual({ reason: 'graceful' });
     });

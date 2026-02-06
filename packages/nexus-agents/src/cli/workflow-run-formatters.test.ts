@@ -6,7 +6,7 @@
  * @module cli/workflow-run-formatters.test
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from 'vitest';
 import type { WorkflowDefinition } from '../core/index.js';
 import type { TemplateMetadata } from '../workflows/index.js';
 import {
@@ -18,7 +18,7 @@ import type { WorkflowRunResult } from './workflow-run-types.js';
 import { colors } from './workflow-run-types.js';
 
 describe('workflow-run-formatters', () => {
-  let stdoutWriteSpy: ReturnType<typeof vi.spyOn>;
+  let stdoutWriteSpy: MockInstance;
 
   beforeEach(() => {
     stdoutWriteSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
@@ -87,7 +87,7 @@ describe('workflow-run-formatters', () => {
         printWorkflowRunResult(result);
 
         expect(stdoutWriteSpy).toHaveBeenCalled();
-        const output = stdoutWriteSpy.mock.calls.map((call) => call[0]).join('');
+        const output = stdoutWriteSpy.mock.calls.map((call) => String(call[0])).join('');
         expect(output).toContain('Workflow Ready');
         expect(output).toContain('test-workflow');
         expect(output).toContain('Full execution requires the MCP server');
@@ -103,7 +103,7 @@ describe('workflow-run-formatters', () => {
 
         printWorkflowRunResult(result);
 
-        const output = stdoutWriteSpy.mock.calls.map((call) => call[0]).join('');
+        const output = stdoutWriteSpy.mock.calls.map((call) => String(call[0])).join('');
         expect(output).toContain('Dry Run Complete');
         expect(output).not.toContain('Full execution requires the MCP server');
       });
@@ -119,7 +119,7 @@ describe('workflow-run-formatters', () => {
 
         printWorkflowRunResult(result);
 
-        const output = stdoutWriteSpy.mock.calls.map((call) => call[0]).join('');
+        const output = stdoutWriteSpy.mock.calls.map((call) => String(call[0])).join('');
         expect(output).toContain('Steps: 5');
       });
 
@@ -129,12 +129,11 @@ describe('workflow-run-formatters', () => {
           message: 'Workflow ready',
           workflowName: 'test-workflow',
           dryRun: false,
-          steps: undefined,
         };
 
         printWorkflowRunResult(result);
 
-        const output = stdoutWriteSpy.mock.calls.map((call) => call[0]).join('');
+        const output = stdoutWriteSpy.mock.calls.map((call) => String(call[0])).join('');
         expect(output).not.toContain('Steps:');
       });
 
@@ -142,13 +141,12 @@ describe('workflow-run-formatters', () => {
         const result: WorkflowRunResult = {
           success: true,
           message: 'Workflow ready',
-          workflowName: undefined,
           dryRun: false,
         };
 
         printWorkflowRunResult(result);
 
-        const output = stdoutWriteSpy.mock.calls.map((call) => call[0]).join('');
+        const output = stdoutWriteSpy.mock.calls.map((call) => String(call[0])).join('');
         expect(output).toContain('unknown');
       });
 
@@ -165,19 +163,19 @@ describe('workflow-run-formatters', () => {
           version: '1.0.0',
           inputs: [],
           steps: [
-            { id: 'step-1', agent: 'agent-1', action: 'action-1' },
-            { id: 'step-2', agent: 'agent-2', action: 'action-2' },
+            { id: 'step-1', agent: 'code_expert', action: 'action-1', inputs: {} },
+            { id: 'step-2', agent: 'testing_expert', action: 'action-2', inputs: {} },
           ],
         };
 
         printWorkflowRunResult(result, { workflow, verbose: true });
 
-        const output = stdoutWriteSpy.mock.calls.map((call) => call[0]).join('');
+        const output = stdoutWriteSpy.mock.calls.map((call) => String(call[0])).join('');
         expect(output).toContain('Execution Plan:');
         expect(output).toContain('step-1');
         expect(output).toContain('step-2');
-        expect(output).toContain('agent-1::action-1');
-        expect(output).toContain('agent-2::action-2');
+        expect(output).toContain('code_expert::action-1');
+        expect(output).toContain('testing_expert::action-2');
       });
 
       it('does not print execution plan when verbose is false', () => {
@@ -192,12 +190,12 @@ describe('workflow-run-formatters', () => {
           name: 'test-workflow',
           version: '1.0.0',
           inputs: [],
-          steps: [{ id: 'step-1', agent: 'agent-1', action: 'action-1' }],
+          steps: [{ id: 'step-1', agent: 'code_expert', action: 'action-1', inputs: {} }],
         };
 
         printWorkflowRunResult(result, { workflow, verbose: false });
 
-        const output = stdoutWriteSpy.mock.calls.map((call) => call[0]).join('');
+        const output = stdoutWriteSpy.mock.calls.map((call) => String(call[0])).join('');
         expect(output).not.toContain('Execution Plan:');
         expect(output).not.toContain('step-1');
       });
@@ -212,7 +210,7 @@ describe('workflow-run-formatters', () => {
 
         printWorkflowRunResult(result, { verbose: true });
 
-        const output = stdoutWriteSpy.mock.calls.map((call) => call[0]).join('');
+        const output = stdoutWriteSpy.mock.calls.map((call) => String(call[0])).join('');
         expect(output).not.toContain('Execution Plan:');
       });
 
@@ -233,7 +231,7 @@ describe('workflow-run-formatters', () => {
 
         printWorkflowRunResult(result, { workflow, verbose: true });
 
-        const output = stdoutWriteSpy.mock.calls.map((call) => call[0]).join('');
+        const output = stdoutWriteSpy.mock.calls.map((call) => String(call[0])).join('');
         expect(output).toContain('Execution Plan:');
         // No step lines should be printed
         expect(output.split('\n').filter((line) => line.match(/^\s+\d+\./)).length).toBe(0);
@@ -249,7 +247,7 @@ describe('workflow-run-formatters', () => {
 
         printWorkflowRunResult(result);
 
-        const output = stdoutWriteSpy.mock.calls.map((call) => call[0]).join('');
+        const output = stdoutWriteSpy.mock.calls.map((call) => String(call[0])).join('');
         expect(output).toContain('Workflow Ready');
         expect(output).not.toContain('Execution Plan:');
       });
@@ -266,7 +264,7 @@ describe('workflow-run-formatters', () => {
 
         printWorkflowRunResult(result);
 
-        const output = stdoutWriteSpy.mock.calls.map((call) => call[0]).join('');
+        const output = stdoutWriteSpy.mock.calls.map((call) => String(call[0])).join('');
         expect(output).toContain('Workflow Failed');
         expect(output).toContain('Workflow failed to execute');
       });
@@ -282,7 +280,7 @@ describe('workflow-run-formatters', () => {
 
         printWorkflowRunResult(result);
 
-        const output = stdoutWriteSpy.mock.calls.map((call) => call[0]).join('');
+        const output = stdoutWriteSpy.mock.calls.map((call) => String(call[0])).join('');
         expect(output).toContain('Workflow Failed');
         expect(output).toContain('Validation Errors:');
         expect(output).toContain('Missing required input: url');
@@ -300,7 +298,7 @@ describe('workflow-run-formatters', () => {
 
         printWorkflowRunResult(result);
 
-        const output = stdoutWriteSpy.mock.calls.map((call) => call[0]).join('');
+        const output = stdoutWriteSpy.mock.calls.map((call) => String(call[0])).join('');
         expect(output).toContain('Workflow Failed');
         expect(output).not.toContain('Validation Errors:');
       });
@@ -311,12 +309,11 @@ describe('workflow-run-formatters', () => {
           message: 'Workflow failed',
           workflowName: 'test-workflow',
           dryRun: false,
-          validationErrors: undefined,
         };
 
         printWorkflowRunResult(result);
 
-        const output = stdoutWriteSpy.mock.calls.map((call) => call[0]).join('');
+        const output = stdoutWriteSpy.mock.calls.map((call) => String(call[0])).join('');
         expect(output).toContain('Workflow Failed');
         expect(output).not.toContain('Validation Errors:');
       });
@@ -332,7 +329,7 @@ describe('workflow-run-formatters', () => {
 
         printWorkflowRunResult(result);
 
-        const output = stdoutWriteSpy.mock.calls.map((call) => call[0]).join('');
+        const output = stdoutWriteSpy.mock.calls.map((call) => String(call[0])).join('');
         expect(output).toContain('Validation Errors:');
         expect(output).toContain('Missing required input: url');
       });
@@ -348,7 +345,7 @@ describe('workflow-run-formatters', () => {
 
         printWorkflowRunResult(result);
 
-        const output = stdoutWriteSpy.mock.calls.map((call) => call[0]).join('');
+        const output = stdoutWriteSpy.mock.calls.map((call) => String(call[0])).join('');
         expect(output).toContain(longMessage);
       });
     });
@@ -364,7 +361,7 @@ describe('workflow-run-formatters', () => {
 
         printWorkflowRunResult(result);
 
-        const calls = stdoutWriteSpy.mock.calls.map((call) => call[0]);
+        const calls = stdoutWriteSpy.mock.calls.map((call) => String(call[0]));
         expect(calls[0]).toBe('\n');
         expect(calls[calls.length - 1]).toBe('\n');
       });
@@ -379,7 +376,7 @@ describe('workflow-run-formatters', () => {
 
         printWorkflowRunResult(result);
 
-        const output = stdoutWriteSpy.mock.calls.map((call) => call[0]).join('');
+        const output = stdoutWriteSpy.mock.calls.map((call) => String(call[0])).join('');
         expect(output).toContain(colors.green);
         expect(output).toContain(colors.bold);
         expect(output).toContain(colors.reset);
@@ -391,7 +388,7 @@ describe('workflow-run-formatters', () => {
     it('prints empty list message when no templates', () => {
       printWorkflowTemplateList([]);
 
-      const output = stdoutWriteSpy.mock.calls.map((call) => call[0]).join('');
+      const output = stdoutWriteSpy.mock.calls.map((call) => String(call[0])).join('');
       expect(output).toContain('Available Workflow Templates:');
       expect(output).toContain('No templates found');
     });
@@ -406,12 +403,13 @@ describe('workflow-run-formatters', () => {
           category: 'development',
           keywords: ['test'],
           builtIn: true,
+          path: 'templates/test.yaml',
         },
       ];
 
       printWorkflowTemplateList(templates);
 
-      const output = stdoutWriteSpy.mock.calls.map((call) => call[0]).join('');
+      const output = stdoutWriteSpy.mock.calls.map((call) => String(call[0])).join('');
       expect(output).toContain('Available Workflow Templates:');
       expect(output).toContain('development:');
       expect(output).toContain('test-template');
@@ -429,6 +427,7 @@ describe('workflow-run-formatters', () => {
           category: 'development',
           keywords: [],
           builtIn: true,
+          path: 'templates/test.yaml',
         },
         {
           id: 'template-2',
@@ -438,12 +437,13 @@ describe('workflow-run-formatters', () => {
           category: 'development',
           keywords: [],
           builtIn: false,
+          path: 'templates/test.yaml',
         },
       ];
 
       printWorkflowTemplateList(templates);
 
-      const output = stdoutWriteSpy.mock.calls.map((call) => call[0]).join('');
+      const output = stdoutWriteSpy.mock.calls.map((call) => String(call[0])).join('');
       expect(output).toContain('development:');
       expect(output).toContain('template-1');
       expect(output).toContain('template-2');
@@ -460,6 +460,7 @@ describe('workflow-run-formatters', () => {
           category: 'development',
           keywords: [],
           builtIn: true,
+          path: 'templates/test.yaml',
         },
         {
           id: 'test-template',
@@ -468,6 +469,7 @@ describe('workflow-run-formatters', () => {
           category: 'testing',
           keywords: [],
           builtIn: true,
+          path: 'templates/test.yaml',
         },
         {
           id: 'doc-template',
@@ -476,12 +478,13 @@ describe('workflow-run-formatters', () => {
           category: 'documentation',
           keywords: [],
           builtIn: true,
+          path: 'templates/test.yaml',
         },
       ];
 
       printWorkflowTemplateList(templates);
 
-      const output = stdoutWriteSpy.mock.calls.map((call) => call[0]).join('');
+      const output = stdoutWriteSpy.mock.calls.map((call) => String(call[0])).join('');
       expect(output).toContain('development:');
       expect(output).toContain('testing:');
       expect(output).toContain('documentation:');
@@ -499,12 +502,13 @@ describe('workflow-run-formatters', () => {
           category: 'development',
           keywords: [],
           builtIn: true,
+          path: 'templates/test.yaml',
         },
       ];
 
       printWorkflowTemplateList(templates);
 
-      const output = stdoutWriteSpy.mock.calls.map((call) => call[0]).join('');
+      const output = stdoutWriteSpy.mock.calls.map((call) => String(call[0])).join('');
       expect(output).toContain('(built-in)');
     });
 
@@ -517,12 +521,13 @@ describe('workflow-run-formatters', () => {
           category: 'custom',
           keywords: [],
           builtIn: false,
+          path: 'templates/test.yaml',
         },
       ];
 
       printWorkflowTemplateList(templates);
 
-      const output = stdoutWriteSpy.mock.calls.map((call) => call[0]).join('');
+      const output = stdoutWriteSpy.mock.calls.map((call) => String(call[0])).join('');
       expect(output).not.toContain('(built-in)');
     });
 
@@ -537,12 +542,13 @@ describe('workflow-run-formatters', () => {
           category: 'development',
           keywords: [],
           builtIn: true,
+          path: 'templates/test.yaml',
         },
       ];
 
       printWorkflowTemplateList(templates);
 
-      const output = stdoutWriteSpy.mock.calls.map((call) => call[0]).join('');
+      const output = stdoutWriteSpy.mock.calls.map((call) => String(call[0])).join('');
       // Description should be truncated to 60 chars
       expect(output).toContain('A'.repeat(60));
       expect(output).not.toContain('A'.repeat(61));
@@ -558,12 +564,13 @@ describe('workflow-run-formatters', () => {
           category: 'development',
           keywords: [],
           builtIn: true,
+          path: 'templates/test.yaml',
         },
       ];
 
       printWorkflowTemplateList(templates);
 
-      const output = stdoutWriteSpy.mock.calls.map((call) => call[0]).join('');
+      const output = stdoutWriteSpy.mock.calls.map((call) => String(call[0])).join('');
       expect(output).toContain('First line');
       expect(output).not.toContain('Second line');
       expect(output).not.toContain('Third line');
@@ -575,16 +582,16 @@ describe('workflow-run-formatters', () => {
           id: 'template',
           name: 'template',
           version: '1.0.0',
-          description: undefined,
           category: 'development',
           keywords: [],
           builtIn: true,
+          path: 'templates/test.yaml',
         },
       ];
 
       printWorkflowTemplateList(templates);
 
-      const output = stdoutWriteSpy.mock.calls.map((call) => call[0]).join('');
+      const output = stdoutWriteSpy.mock.calls.map((call) => String(call[0])).join('');
       expect(output).toContain('template');
       // Should not crash, just won't show description line
     });
@@ -599,12 +606,13 @@ describe('workflow-run-formatters', () => {
           category: 'development',
           keywords: [],
           builtIn: true,
+          path: 'templates/test.yaml',
         },
       ];
 
       printWorkflowTemplateList(templates);
 
-      const output = stdoutWriteSpy.mock.calls.map((call) => call[0]).join('');
+      const output = stdoutWriteSpy.mock.calls.map((call) => String(call[0])).join('');
       expect(output).toContain('template');
     });
 
@@ -617,6 +625,7 @@ describe('workflow-run-formatters', () => {
           category: 'development',
           keywords: [],
           builtIn: true,
+          path: 'templates/test.yaml',
         },
         {
           id: 'test-template',
@@ -625,12 +634,13 @@ describe('workflow-run-formatters', () => {
           category: 'testing',
           keywords: [],
           builtIn: true,
+          path: 'templates/test.yaml',
         },
       ];
 
       printWorkflowTemplateList(templates);
 
-      const calls = stdoutWriteSpy.mock.calls.map((call) => call[0]);
+      const calls = stdoutWriteSpy.mock.calls.map((call) => String(call[0]));
       // Each category should be followed by a blank line
       const blankLines = calls.filter((call) => call === '\n');
       expect(blankLines.length).toBeGreaterThan(2);
@@ -652,11 +662,12 @@ describe('workflow-run-formatters', () => {
         category,
         keywords: [],
         builtIn: true,
+        path: 'templates/test.yaml',
       }));
 
       printWorkflowTemplateList(templates);
 
-      const output = stdoutWriteSpy.mock.calls.map((call) => call[0]).join('');
+      const output = stdoutWriteSpy.mock.calls.map((call) => String(call[0])).join('');
       for (const category of categories) {
         expect(output).toContain(`${category}:`);
       }

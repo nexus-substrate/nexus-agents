@@ -43,7 +43,7 @@ describe('emitTrinityStarted', () => {
       trinityConfig: { maxIterations: 5 } as never,
     });
     expect(bus.emit).toHaveBeenCalledOnce();
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.topic).toBe('protocol.started');
     expect(event.payload.protocolType).toBe('trinity');
   });
@@ -54,7 +54,7 @@ describe('emitTrinityStarted', () => {
       sessionId: 's1',
       trinityConfig: { maxIterations: 3 } as never,
     });
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.payload.config.agentCount).toBe(3);
   });
 
@@ -64,7 +64,7 @@ describe('emitTrinityStarted', () => {
       sessionId: 's1',
       trinityConfig: { maxIterations: 10 } as never,
     });
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.payload.config.maxRounds).toBe(10);
   });
 
@@ -74,7 +74,7 @@ describe('emitTrinityStarted', () => {
       sessionId: 'my-session',
       trinityConfig: { maxIterations: 5 } as never,
     });
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.sessionId).toBe('my-session');
   });
 });
@@ -93,7 +93,7 @@ describe('emitTrinityIteration', () => {
       sessionId: 's1',
     });
     expect(bus.emit).toHaveBeenCalledOnce();
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.topic).toBe('protocol.iteration');
   });
 
@@ -105,7 +105,7 @@ describe('emitTrinityIteration', () => {
       status: 'in_progress',
       sessionId: 's1',
     });
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.payload.round).toBe(1);
   });
 
@@ -117,7 +117,7 @@ describe('emitTrinityIteration', () => {
       status: 'converged',
       sessionId: 's1',
     });
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.payload.status).toBe('converged');
   });
 });
@@ -134,7 +134,7 @@ describe('emitTrinityCompleted', () => {
       startTime: 1000,
     });
     expect(bus.emit).toHaveBeenCalledOnce();
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.topic).toBe('protocol.completed');
   });
 
@@ -144,7 +144,7 @@ describe('emitTrinityCompleted', () => {
       result: { success: false, iterations: 5 } as never,
       startTime: 1000,
     });
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.payload.success).toBe(false);
     expect(event.payload.iterations).toBe(5);
   });
@@ -156,7 +156,7 @@ describe('emitTrinityCompleted', () => {
       startTime: 1000,
       sessionId: 's2',
     });
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.sessionId).toBe('s2');
   });
 
@@ -166,7 +166,7 @@ describe('emitTrinityCompleted', () => {
       result: { success: true, iterations: 1 } as never,
       startTime: 1000,
     });
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(typeof event.payload.durationMs).toBe('number');
   });
 });
@@ -180,14 +180,14 @@ describe('emitPhaseStarted', () => {
     const bus = makeMockEventBus();
     emitPhaseStarted(bus, { iteration: 0, phase: 'thinker', sessionId: 's1' });
     expect(bus.emit).toHaveBeenCalledOnce();
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.topic).toBe('protocol.trinity.phase_started');
   });
 
   it('includes iteration and phase', () => {
     const bus = makeMockEventBus();
     emitPhaseStarted(bus, { iteration: 2, phase: 'worker', sessionId: 's1' });
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.payload.iteration).toBe(2);
     expect(event.payload.phase).toBe('worker');
   });
@@ -208,7 +208,7 @@ describe('emitPhaseCompleted', () => {
       sessionId: 's1',
     });
     expect(bus.emit).toHaveBeenCalledOnce();
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.topic).toBe('protocol.trinity.phase_completed');
   });
 
@@ -221,7 +221,7 @@ describe('emitPhaseCompleted', () => {
       tokensUsed: 350,
       sessionId: 's1',
     });
-    const event = bus.emit.mock.calls[0][0];
+    const event = bus.emit.mock.calls[0]![0];
     expect(event.payload.durationMs).toBe(1200);
     expect(event.payload.tokensUsed).toBe(350);
   });

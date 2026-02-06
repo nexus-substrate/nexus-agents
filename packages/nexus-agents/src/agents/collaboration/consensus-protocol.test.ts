@@ -72,7 +72,12 @@ function createMockAgent(taskId: string, voteOutput: unknown) {
   return {
     id: `agent-${taskId}`,
     role: 'custom' as const,
+    state: 'idle' as const,
+    capabilities: [] as string[],
     execute: vi.fn(() => Promise.resolve(ok(createTestResult(taskId, voteOutput)))),
+    handleMessage: vi.fn(() =>
+      Promise.resolve(ok({ messageId: `msg-${taskId}`, status: 'completed' as const, data: {} }))
+    ),
     initialize: vi.fn(() => Promise.resolve(ok(undefined))),
     cleanup: vi.fn(() => Promise.resolve(ok(undefined))),
   };
@@ -437,12 +442,17 @@ describe('ConsensusProtocol', () => {
       const agentWithCapture = {
         id: 'capture-agent',
         role: 'custom' as const,
+        state: 'idle' as const,
+        capabilities: [] as string[],
         execute: vi.fn((task: Task) => {
           capturedTask(task);
           return Promise.resolve(
             ok(createTestResult(task.id, { decision: 'approve', reasoning: 'Good' }))
           );
         }),
+        handleMessage: vi.fn(() =>
+          Promise.resolve(ok({ messageId: 'msg', status: 'completed' as const, data: {} }))
+        ),
         initialize: vi.fn(() => Promise.resolve(ok(undefined))),
         cleanup: vi.fn(() => Promise.resolve(ok(undefined))),
       };
@@ -456,7 +466,7 @@ describe('ConsensusProtocol', () => {
       await protocol.execute(config, agents);
 
       expect(capturedTask).toHaveBeenCalled();
-      const task = capturedTask.mock.calls[0][0] as Task;
+      const task = capturedTask.mock.calls[0]![0] as Task;
       expect(task.description).toContain('vote');
     });
   });

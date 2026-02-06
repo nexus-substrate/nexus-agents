@@ -68,7 +68,7 @@ describe('setupStateMachine', () => {
     // Trigger a state transition
     sm.transition('task_assigned');
 
-    expect(eventBus.emit).toHaveBeenCalled();
+    expect((eventBus as unknown as { emit: ReturnType<typeof vi.fn> }).emit).toHaveBeenCalled();
   });
 
   it('logs debug on state transition', () => {
@@ -97,7 +97,7 @@ describe('setupStateMachine', () => {
       agentId: 'agent-1',
       logger: makeLogger(),
       eventBus: makeEventBus(),
-      options: { maxRetries: 5 },
+      options: { maxErrorCount: 5 },
     };
 
     const sm = setupStateMachine(params);
@@ -114,7 +114,7 @@ describe('initializeInfrastructure', () => {
   it('returns pruning and memory infrastructure', () => {
     const params: InfrastructureInitParams = {
       agentId: 'agent-1',
-      role: 'executor',
+      role: 'code_expert',
       logger: makeLogger(),
       adapter: undefined,
       pruningConfig: undefined,
@@ -130,7 +130,7 @@ describe('initializeInfrastructure', () => {
   it('memory is disabled when no backend configured', () => {
     const params: InfrastructureInitParams = {
       agentId: 'agent-1',
-      role: 'executor',
+      role: 'code_expert',
       logger: makeLogger(),
       adapter: undefined,
       pruningConfig: undefined,
@@ -145,7 +145,7 @@ describe('initializeInfrastructure', () => {
   it('pruning is enabled by default', () => {
     const params: InfrastructureInitParams = {
       agentId: 'agent-1',
-      role: 'executor',
+      role: 'code_expert',
       logger: makeLogger(),
       adapter: undefined,
       pruningConfig: undefined,
@@ -160,7 +160,7 @@ describe('initializeInfrastructure', () => {
   it('pruning can be explicitly disabled', () => {
     const params: InfrastructureInitParams = {
       agentId: 'agent-1',
-      role: 'executor',
+      role: 'code_expert',
       logger: makeLogger(),
       adapter: undefined,
       pruningConfig: { enabled: false },
@@ -176,7 +176,7 @@ describe('initializeInfrastructure', () => {
     const adapter = { providerId: 'test' } as never;
     const params: InfrastructureInitParams = {
       agentId: 'agent-1',
-      role: 'executor',
+      role: 'code_expert',
       logger: makeLogger(),
       adapter,
       pruningConfig: undefined,
@@ -192,7 +192,7 @@ describe('initializeInfrastructure', () => {
   it('passes memory config when provided', () => {
     const params: InfrastructureInitParams = {
       agentId: 'agent-1',
-      role: 'executor',
+      role: 'code_expert',
       logger: makeLogger(),
       adapter: undefined,
       pruningConfig: undefined,
