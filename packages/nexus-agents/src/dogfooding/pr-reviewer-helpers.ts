@@ -200,7 +200,7 @@ export function generateSummary(
 
   return `Reviewed PR #${String(pr.number)}: ${pr.title}
 
-**Decision:** ${decision.replace('_', ' ')}
+**Decision:** ${decision.replaceAll('_', ' ')}
 **Experts consulted:** ${String(reviews.length)}
 
 ${expertSummaries}`;
@@ -215,7 +215,7 @@ ${expertSummaries}`;
  */
 export function formatReviewComment(result: PRReviewResult): string {
   const emoji = DECISION_EMOJI[result.decision];
-  const decisionText = result.decision.replace('_', ' ').toUpperCase();
+  const decisionText = result.decision.replaceAll('_', ' ').toUpperCase();
 
   const findingsSection = formatFindingsSection(result);
   const statsSection = formatStatsSection(result);

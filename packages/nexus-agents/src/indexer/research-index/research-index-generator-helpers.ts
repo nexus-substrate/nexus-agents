@@ -80,7 +80,7 @@ export function generateTopicsTable(index: ResearchIndex): string {
 
   const rows = topicStats.map((stat) => {
     const description = topicDescriptions[stat.topic];
-    const topicLink = `[${capitalize(stat.topic.replace('-', ' '))}](topics/${stat.topic}/README.md)`;
+    const topicLink = `[${capitalize(stat.topic.replaceAll('-', ' '))}](topics/${stat.topic}/README.md)`;
     return `| ${topicLink} | ${String(stat.paperCount)} | ${String(stat.techniqueCount)} | ${description} |`;
   });
 
@@ -230,7 +230,7 @@ export function generatePapersByTopic(index: ResearchIndex): string {
       })
       .join('\n');
 
-    return `### ${capitalize(topic.replace('-', ' '))} (${String(papers.length)} papers)
+    return `### ${capitalize(topic.replaceAll('-', ' '))} (${String(papers.length)} papers)
 
 ${paperList}`;
   });

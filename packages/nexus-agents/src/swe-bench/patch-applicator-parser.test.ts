@@ -218,7 +218,7 @@ describe('parsePatch', () => {
   });
 
   it('includes warnings in result', () => {
-    const patchWithCrlf = GIT_PATCH.replace('\n', '\r\n');
+    const patchWithCrlf = GIT_PATCH.replaceAll('\n', '\r\n');
     const result = parsePatch(patchWithCrlf);
     expect(result.warnings.some((w) => w.includes('CRLF'))).toBe(true);
   });
