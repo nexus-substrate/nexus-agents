@@ -51,7 +51,7 @@ function parseExecError(error: unknown): ParsedExecError {
     killed?: boolean;
   };
 
-  const isTimeout = execError.killed === true && execError.code === 'ETIMEDOUT';
+  const isTimeout = execError.killed === true;
   const exitCode = typeof execError.code === 'number' ? execError.code : 1;
 
   return {
