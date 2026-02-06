@@ -196,8 +196,14 @@ interface ArxivQueryOptions {
  * Optionally adds a submittedDate range filter when sinceDate is provided.
  */
 function buildArxivUrl(opts: ArxivQueryOptions): string {
-  const q = opts.topic.includes(' ') ? `"${opts.topic}"` : opts.topic;
-  const topicQuery = `(ti:${q} OR abs:${q})`;
+  // Use AND-joined keywords for multi-word queries instead of exact phrase matching.
+  // Exact phrases like "multi-agent orchestration consensus voting" rarely appear in papers,
+  // but individual keywords joined with AND return relevant results.
+  const words = opts.topic.split(/\s+/).filter((w) => w.length > 0);
+  const topicQuery =
+    words.length <= 1
+      ? `(ti:${opts.topic} OR abs:${opts.topic})`
+      : `(${words.map((w) => `(ti:${w} OR abs:${w})`).join(' AND ')})`;
   let fullQuery = opts.authorFilter !== '' ? `${topicQuery} AND ${opts.authorFilter}` : topicQuery;
 
   // Add date range filter if sinceDate provided (format: YYYYMMDD)
