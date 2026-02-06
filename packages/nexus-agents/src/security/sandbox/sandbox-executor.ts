@@ -9,7 +9,7 @@
 
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { resolve, normalize } from 'node:path';
+import { resolve, normalize, sep } from 'node:path';
 import { createLogger, getTimeProvider } from '../../core/index.js';
 import type {
   ISandboxExecutor,
@@ -175,7 +175,9 @@ export class PolicySandboxExecutor implements ISandboxExecutor {
     // Check if cwd is allowed by path rules
     const isAllowed = policy.pathRules.some((rule) => {
       const normalizedRule = normalize(resolve(rule.path));
-      return normalizedCwd.startsWith(normalizedRule) && rule.access !== 'none';
+      const isUnderRule =
+        normalizedCwd === normalizedRule || normalizedCwd.startsWith(normalizedRule + sep);
+      return isUnderRule && rule.access !== 'none';
     });
 
     if (!isAllowed) {

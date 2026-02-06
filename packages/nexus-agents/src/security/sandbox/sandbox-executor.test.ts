@@ -70,6 +70,48 @@ describe('PolicySandboxExecutor - validate', () => {
 });
 
 // ============================================================================
+// PolicySandboxExecutor - path traversal prevention
+// ============================================================================
+
+describe('PolicySandboxExecutor - path traversal prevention', () => {
+  const executor = new PolicySandboxExecutor();
+
+  it('rejects cwd with prefix-matching path that is not a subdirectory', () => {
+    const opts = makeOptions({
+      policy: {
+        ...STANDARD_POLICY,
+        pathRules: [{ path: '/tmp/safe', access: 'write' }],
+      },
+    });
+    // /tmp/safe-evil should NOT match /tmp/safe
+    const result = executor.validate('echo', [], { ...opts, cwd: '/tmp/safe-evil' });
+    expect(result.allowed).toBe(false);
+  });
+
+  it('allows exact cwd match', () => {
+    const opts = makeOptions({
+      policy: {
+        ...STANDARD_POLICY,
+        pathRules: [{ path: '/tmp/safe', access: 'write' }],
+      },
+    });
+    const result = executor.validate('echo', [], { ...opts, cwd: '/tmp/safe' });
+    expect(result.allowed).toBe(true);
+  });
+
+  it('allows cwd inside allowed directory', () => {
+    const opts = makeOptions({
+      policy: {
+        ...STANDARD_POLICY,
+        pathRules: [{ path: '/tmp/safe', access: 'write' }],
+      },
+    });
+    const result = executor.validate('echo', [], { ...opts, cwd: '/tmp/safe/subdir' });
+    expect(result.allowed).toBe(true);
+  });
+});
+
+// ============================================================================
 // PolicySandboxExecutor.execute - denied
 // ============================================================================
 
