@@ -83,9 +83,10 @@ export function generateSummaryReport(index: ResearchIndex): string {
   const { stats } = index;
   const { techniquesByStatus } = stats;
 
-  const implementedPercent = Math.round(
-    (techniquesByStatus.implemented / stats.totalTechniques) * 100
-  );
+  const implementedPercent =
+    stats.totalTechniques > 0
+      ? Math.round((techniquesByStatus.implemented / stats.totalTechniques) * 100)
+      : 0;
 
   const topicLines = stats.topicStats
     .map(
