@@ -37,7 +37,7 @@ export const CoreMemoryDataSchema = z.object({
   name: z.string().min(1),
   constraints: z.array(z.string()),
   capabilities: z.array(z.string()),
-  systemPrompt: z.string().optional(),
+  systemPrompt: z.string().max(50_000).optional(),
   temperament: z.enum(['cautious', 'balanced', 'exploratory']).optional(),
 });
 
@@ -184,8 +184,8 @@ export const ProcedureStepSchema = z.object({
 export const ProcedureSchema = z.object({
   procedureId: z.string().min(1),
   name: z.string().min(1),
-  description: z.string(),
-  steps: z.array(ProcedureStepSchema),
+  description: z.string().max(10_000),
+  steps: z.array(ProcedureStepSchema).max(100),
   triggerConditions: z.array(z.string()),
   successRate: z.number().min(0).max(1),
   executionCount: z.number().int().min(0),

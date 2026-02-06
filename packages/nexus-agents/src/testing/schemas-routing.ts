@@ -24,7 +24,7 @@ export type RoutingResult = z.infer<typeof RoutingResultSchema>;
  * Schema for category routing metrics.
  */
 export const CategoryRoutingMetricsSchema = z.object({
-  taskCount: z.number().nonnegative().describe('Number of tasks in category'),
+  taskCount: z.number().int().nonnegative().describe('Number of tasks in category'),
   optimalRate: z.number().min(0).max(1).describe('Optimal routing rate'),
   acceptableRate: z.number().min(0).max(1).describe('Acceptable routing rate'),
   averageConfidence: z.number().min(0).max(1).describe('Average routing confidence'),
@@ -36,8 +36,8 @@ export type CategoryRoutingMetrics = z.infer<typeof CategoryRoutingMetricsSchema
  * Schema for CLI routing metrics.
  */
 export const CliRoutingMetricsSchema = z.object({
-  selectedCount: z.number().nonnegative().describe('Times this CLI was selected'),
-  optimalCount: z.number().nonnegative().describe('Times this CLI was optimal choice'),
+  selectedCount: z.number().int().nonnegative().describe('Times this CLI was selected'),
+  optimalCount: z.number().int().nonnegative().describe('Times this CLI was optimal choice'),
   selectionRate: z.number().min(0).max(1).describe('Selection rate'),
   accuracyWhenSelected: z.number().min(0).max(1).describe('Accuracy when selected'),
 });
@@ -48,7 +48,7 @@ export type CliRoutingMetrics = z.infer<typeof CliRoutingMetricsSchema>;
  * Schema for CLI-specific latency metrics.
  */
 export const CliLatencyMetricsSchema = z.object({
-  requestCount: z.number().nonnegative().describe('Number of requests'),
+  requestCount: z.number().int().nonnegative().describe('Number of requests'),
   p50: z.number().nonnegative().describe('50th percentile in milliseconds'),
   p95: z.number().nonnegative().describe('95th percentile in milliseconds'),
   mean: z.number().nonnegative().describe('Mean latency in milliseconds'),

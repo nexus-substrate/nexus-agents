@@ -144,7 +144,7 @@ export const LatencyTrackerConfigSchema = z
     /** Maximum age of samples in milliseconds before forced eviction */
     maxSampleAgeMs: z.number().int().positive().default(3600000),
     /** Percentiles to calculate */
-    percentiles: z.array(z.number().min(0).max(100)).default([50, 95, 99]),
+    percentiles: z.array(z.number().min(0).max(100)).max(20).default([50, 95, 99]),
   })
   .optional();
 

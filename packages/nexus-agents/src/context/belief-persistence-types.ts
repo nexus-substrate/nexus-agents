@@ -154,8 +154,8 @@ export const BeliefSnapshotSchema = z.object({
           updateType: BeliefUpdateTypeSchema,
           previousState: z.record(z.unknown()).optional(),
           newState: z.record(z.unknown()),
-          reason: z.string(),
-          evidence: z.string().optional(),
+          reason: z.string().max(10_000),
+          evidence: z.string().max(10_000).optional(),
           timestamp: z.string(),
           updatedBy: z.string().optional(),
         })
@@ -165,7 +165,7 @@ export const BeliefSnapshotSchema = z.object({
   counterfactuals: z.array(
     z.object({
       counterfactualId: z.string(),
-      hypothesis: z.string(),
+      hypothesis: z.string().max(10_000),
       affectedBeliefs: z.array(z.string()),
       predictedOutcomes: z.array(z.string()),
       actualOutcomes: z.array(z.string()).optional(),
@@ -182,8 +182,8 @@ export const BeliefSnapshotSchema = z.object({
           hindsightId: z.string(),
           taskId: z.string(),
           priorBeliefs: z.array(z.string()),
-          expectedOutcome: z.string(),
-          actualOutcome: z.string(),
+          expectedOutcome: z.string().max(10_000),
+          actualOutcome: z.string().max(10_000),
           outcomeMatched: z.boolean(),
           correctedBeliefs: z.array(z.string()),
           newBeliefs: z.array(z.string()),
