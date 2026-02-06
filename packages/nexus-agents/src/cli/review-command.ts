@@ -75,7 +75,7 @@ function printReviewResult(review: PRReviewResult, verbose: boolean, dryRun: boo
 }
 
 function printSummary(review: PRReviewResult): void {
-  process.stdout.write(`Decision: ${review.decision.replace('_', ' ').toUpperCase()}\n`);
+  process.stdout.write(`Decision: ${review.decision.replaceAll('_', ' ').toUpperCase()}\n`);
   process.stdout.write(`Experts: ${String(review.expertCount)}\n`);
   process.stdout.write(`Consensus: ${formatPercentage(review.consensusScore)}\n`);
   process.stdout.write(`Duration: ${String(review.totalDurationMs)}ms\n\n`);
