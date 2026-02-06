@@ -148,3 +148,19 @@ export {
   type AdapterSelection,
   type AdapterPriority,
 } from './auto-adapter.js';
+
+// Resilient adapter (Issue #811 — lazy detection, failover, health monitoring)
+export { createResilientAdapter, ResilientAdapter } from './resilient-adapter.js';
+export type {
+  IResilientAdapter,
+  AdapterHealthInfo,
+  AdapterHealthState,
+  ResilientAdapterConfig,
+} from './resilient-adapter-types.js';
+
+// Stdin lifecycle monitoring (Issue #810 — zombie process prevention)
+export {
+  StdinLifecycleMonitor,
+  getStdinLifecycleMonitor,
+  resetStdinLifecycleMonitor,
+} from './stdin-lifecycle.js';

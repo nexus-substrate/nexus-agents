@@ -13,8 +13,8 @@ import {
   type EventBusBridgeResult,
 } from './mcp/index.js';
 import { initializeBuiltInTemplates } from './workflows/index.js';
-import { createAutoAdapter } from './adapters/auto-adapter.js';
-import type { IModelAdapter } from './core/index.js';
+import { createResilientAdapter } from './adapters/resilient-adapter.js';
+import { getStdinLifecycleMonitor } from './adapters/stdin-lifecycle.js';
 import { registerMcpTools } from './cli-server-tools.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -306,28 +306,15 @@ async function connectToStdioTransport(
 }
 
 /**
- * Attempts to auto-detect a model adapter for real workflow execution.
- * Returns undefined if no adapter is available.
- * (Source: Issue #554 - Updated to not suggest mock fallback)
+ * Creates a resilient model adapter with lazy detection and automatic failover.
+ * Detection happens on first use, not at startup.
+ * (Source: Issue #811 - Resilient model adapter architecture)
+ * (Supersedes: Issue #554 - tryDetectModelAdapter one-shot detection)
  */
-async function tryDetectModelAdapter(logger: ILogger): Promise<IModelAdapter | undefined> {
-  try {
-    logger.info('Auto-detecting model adapter for workflow execution');
-    const result = await createAutoAdapter({ logger });
-    logger.info('Model adapter detected', { source: result.source, name: result.name });
-    return result.adapter;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    // Issue #554: Don't suggest mock - real adapter is required unless explicitly configured
-    logger.warn(
-      'No model adapter available - orchestration and workflows will fail unless configured',
-      {
-        error: message,
-        hint: 'Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or GOOGLE_AI_API_KEY',
-      }
-    );
-    return undefined;
-  }
+function createResilientModelAdapter(
+  logger: ILogger
+): import('./adapters/resilient-adapter-types.js').IResilientAdapter {
+  return createResilientAdapter({ logger });
 }
 
 /**
@@ -351,7 +338,8 @@ async function initializeAndRegisterTools(
   const builtInTemplates = await initializeBuiltInTemplates();
   logger.info('Loaded built-in templates', { count: builtInTemplates.size });
 
-  const modelAdapter = await tryDetectModelAdapter(logger);
+  // Issue #811: Resilient adapter — detection is lazy (first use, not startup)
+  const modelAdapter = createResilientModelAdapter(logger);
   const policyVals = getPolicyValues(config);
   const allowedPaths = config.security?.allowedPaths;
   const securityConfig = config.security;
@@ -362,8 +350,8 @@ async function initializeAndRegisterTools(
     builtInTemplates,
     policyFirewall,
     executionMode: policyVals.defaultExec,
+    modelAdapter,
     ...(allowedPaths !== undefined && { allowedPaths }),
-    ...(modelAdapter !== undefined && { modelAdapter }),
     ...(securityConfig !== undefined && { securityConfig }),
     ...(workflowConfig !== undefined && { workflowConfig }),
     ...(feedbackIntegration !== undefined && { feedbackIntegration }),
@@ -511,6 +499,14 @@ export async function startServer(
 
   // Record server startup event for observability
   const eventContext = recordServerStartup(observer);
+
+  // Issue #810: Monitor stdin for parent process death to prevent zombie processes
+  const stdinMonitor = getStdinLifecycleMonitor();
+  stdinMonitor.start();
+  stdinMonitor.onClose(() => {
+    logger.warn('Parent process closed stdin, shutting down');
+    process.exit(0);
+  });
 
   // Setup graceful shutdown with observer, EventBus, and REST API cleanup
   const cleanup = createShutdownCleanup({
