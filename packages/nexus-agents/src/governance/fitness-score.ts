@@ -239,18 +239,19 @@ export class FitnessScoreCalculator {
 
     // Check: Router implementations
     // Canonical routers (5): CompositeRouter, BudgetRouter, ZeroRouter, PreferenceRouter, TopsisRouter
-    // Deprecated routers (3, v3.0 removal): TaskRouter, ConfidenceRouter, QualityRouter
+    // Deprecated routers (1, v3.0 removal): TaskRouter (kept for ITaskRouter interface used by test framework)
+    // Removed: ConfidenceRouter (use ConfidenceCascadeStage), QualityRouter (use TopsisRouter)
     // Separate patterns (not counted): AgreementCascadeRouter (ensemble), AgentMessageRouter (collaboration)
     const canonicalRouterCount = 5;
-    const deprecatedRouterCount = 3; // Set to 0 when deprecated routers removed in v3.0
-    // Deduct 1 point while deprecated routers exist (incentivizes removal in v3.0)
+    const deprecatedRouterCount = 1; // TaskRouter kept for ITaskRouter interface
+    // Deduct 1 point while deprecated routers exist (set to 0 and remove deduction when TaskRouter removed)
     score -= 1;
     findings.push({
       dimension: 'canonicalPaths',
       severity: 'info',
       description: `${String(canonicalRouterCount)} canonical routers + ${String(deprecatedRouterCount)} deprecated (v3.0 removal)`,
       pointsDeducted: 1,
-      suggestion: 'Remove deprecated routers in v3.0: TaskRouter, ConfidenceRouter, QualityRouter',
+      suggestion: 'Remove deprecated TaskRouter in v3.0 (migrate ITaskRouter to shared types)',
     });
 
     // Consolidated: toError utility (ecdf0e3) - no deduction

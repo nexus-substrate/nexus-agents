@@ -126,19 +126,8 @@ export {
   type ComplexityFactors,
 } from './complexity-estimator.js';
 
-// Quality-constrained routing (arXiv:2406.18510)
-/* eslint-disable @typescript-eslint/no-deprecated -- Backward compatibility, deprecated in v3.0 */
-export {
-  QualityRouter,
-  createQualityRouter,
-  type QualityEstimate,
-  type RoutingDecision,
-  type AdapterCandidate,
-  type QualityRouterConfig,
-  type CostModel,
-  type QualityRoutedResult,
-} from './quality-router.js';
-/* eslint-enable @typescript-eslint/no-deprecated */
+// Quality-constrained routing removed — use CompositeRouter with TopsisRouter stage
+// QualityRouter class removed in v3.0 cleanup
 
 // Auto-selecting adapter factory
 export {
