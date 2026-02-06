@@ -7,6 +7,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import type { AgentRole } from '../../core/types/agent.js';
 import {
   evaluateStructure,
   hasValidSteps,
@@ -82,7 +83,7 @@ describe('evaluateStructure', () => {
 
   it('returns less than 1.0 for invalid agent roles', () => {
     const wf = makeWorkflow({
-      steps: [{ id: 's1', agent: 'invalid_role', action: 'Do', inputs: {} }],
+      steps: [{ id: 's1', agent: 'invalid_role' as AgentRole, action: 'Do', inputs: {} }],
     });
     expect(evaluateStructure(wf)).toBeLessThan(1.0);
   });
@@ -187,7 +188,7 @@ describe('hasValidAgentRoles', () => {
 
   it('returns false for invalid role', () => {
     const wf = makeWorkflow({
-      steps: [{ id: 's1', agent: 'nonexistent', action: 'Do', inputs: {} }],
+      steps: [{ id: 's1', agent: 'nonexistent' as AgentRole, action: 'Do', inputs: {} }],
     });
     expect(hasValidAgentRoles(wf)).toBe(false);
   });

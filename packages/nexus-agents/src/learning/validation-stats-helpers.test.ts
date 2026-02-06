@@ -131,7 +131,7 @@ describe('normalCDF', () => {
   it('is monotonically increasing', () => {
     const values = [-3, -2, -1, 0, 1, 2, 3];
     for (let i = 0; i < values.length - 1; i++) {
-      expect(normalCDF(values[i])).toBeLessThan(normalCDF(values[i + 1]));
+      expect(normalCDF(values[i]!)).toBeLessThan(normalCDF(values[i + 1]!));
     }
   });
 

@@ -48,9 +48,9 @@ import type { TaskResult } from '../../core/types/index.js';
 
 function makeTaskResult(): TaskResult {
   return {
+    taskId: 'task-1',
     output: 'test output',
-    confidence: 0.9,
-    tokenUsage: { input: 100, output: 50 },
+    metadata: { tokensUsed: 150, executionTimeMs: 100, toolsUsed: [] },
   };
 }
 

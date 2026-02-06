@@ -66,7 +66,7 @@ describe('schemas-expert', () => {
         const result = CustomExpertDefinitionSchema.safeParse(expert);
         expect(result.success).toBe(false);
         if (!result.success) {
-          expect(result.error.issues[0].message).toContain('required');
+          expect(result.error.issues[0]!.message).toContain('required');
         }
       });
 
@@ -76,7 +76,7 @@ describe('schemas-expert', () => {
         const result = CustomExpertDefinitionSchema.safeParse(expert);
         expect(result.success).toBe(false);
         if (!result.success) {
-          expect(result.error.issues[0].message).toContain('at most 4000 characters');
+          expect(result.error.issues[0]!.message).toContain('at most 4000 characters');
         }
       });
 

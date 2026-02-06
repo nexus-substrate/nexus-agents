@@ -38,7 +38,7 @@ function makeIndex(overrides: Partial<ResearchIndex> = {}): ResearchIndex {
       ],
     },
     ...overrides,
-  } as ResearchIndex;
+  } as unknown as ResearchIndex;
 }
 
 // ============================================================================

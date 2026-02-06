@@ -261,7 +261,7 @@ describe('ReviewProtocol', () => {
       expect(reviewerAgent.execute).toHaveBeenCalled();
 
       // Verify review task structure
-      const reviewTaskCall = (reviewerAgent.execute as ReturnType<typeof vi.fn>).mock.calls[0];
+      const reviewTaskCall = (reviewerAgent.execute as ReturnType<typeof vi.fn>).mock.calls[0]!;
       const reviewTask = reviewTaskCall[0] as Task;
       expect(reviewTask.id).toBe('test-task-1-review');
       expect(reviewTask.description).toContain('Review the following work');
@@ -529,7 +529,7 @@ describe('ReviewProtocol', () => {
       expect(result.ok).toBe(true);
 
       // Verify complex output was passed to review task
-      const reviewTaskCall = (reviewerAgent.execute as ReturnType<typeof vi.fn>).mock.calls[0];
+      const reviewTaskCall = (reviewerAgent.execute as ReturnType<typeof vi.fn>).mock.calls[0]!;
       const reviewTask = reviewTaskCall[0] as Task;
       expect(reviewTask.description).toContain(JSON.stringify(complexOutput, null, 2));
     });
@@ -554,7 +554,7 @@ describe('ReviewProtocol', () => {
       expect(result.ok).toBe(true);
 
       // Verify context preserved
-      const reviewTaskCall = (reviewerAgent.execute as ReturnType<typeof vi.fn>).mock.calls[0];
+      const reviewTaskCall = (reviewerAgent.execute as ReturnType<typeof vi.fn>).mock.calls[0]!;
       const reviewTask = reviewTaskCall[0] as Task;
       expect(reviewTask.context.metadata).toBeDefined();
     });

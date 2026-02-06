@@ -178,6 +178,7 @@ describe('createProposalTask', () => {
   const baseTask: Task = {
     id: 'task-1',
     description: 'Solve the problem',
+    context: {},
   };
 
   it('creates task with round-specific ID', () => {

@@ -24,7 +24,7 @@ function makeOutput(agentId: string, output: string, step = 0): AgentStepOutput 
 function makeState(overrides: Partial<PuppeteerState> = {}): PuppeteerState {
   return {
     step: 0,
-    task: { id: 't1', description: 'implement a sorting algorithm', type: 'code' },
+    task: { id: 't1', description: 'implement a sorting algorithm', context: {} },
     agentOutputs: [],
     context: '',
     metadata: { progress: 0.5, totalCost: 0, totalTokens: 0, elapsedMs: 0, startedAt: '' },
@@ -182,7 +182,6 @@ describe('extractFeatures', () => {
 
   it('extracts progress from metadata', () => {
     const state = makeState();
-    state.metadata = { ...state.metadata, progress: 0.75 };
     const features = extractFeatures({ ...state, metadata: { ...state.metadata, progress: 0.75 } });
     expect(features.progress).toBe(0.75);
   });

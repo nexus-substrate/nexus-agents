@@ -104,7 +104,7 @@ describe('recordDecisionToMetrics', () => {
     recordDecisionToMetrics(decision, traceId, deps);
 
     expect(metricsCollector.recordDecision).toHaveBeenCalledOnce();
-    const call = vi.mocked(metricsCollector.recordDecision).mock.calls[0][0];
+    const call = vi.mocked(metricsCollector.recordDecision).mock.calls[0]![0];
     expect(call).toMatchObject({
       traceId: 'test-trace-123',
       selectedModel: 'claude',
@@ -122,7 +122,7 @@ describe('recordDecisionToMetrics', () => {
 
     recordDecisionToMetrics(decision, 'trace-1', deps);
 
-    const call = vi.mocked(metricsCollector.recordDecision).mock.calls[0][0];
+    const call = vi.mocked(metricsCollector.recordDecision).mock.calls[0]![0];
     expect(call.isExploration).toBe(true);
   });
 
@@ -131,7 +131,7 @@ describe('recordDecisionToMetrics', () => {
 
     recordDecisionToMetrics(decision, 'trace-2', deps);
 
-    const call = vi.mocked(metricsCollector.recordDecision).mock.calls[0][0];
+    const call = vi.mocked(metricsCollector.recordDecision).mock.calls[0]![0];
     expect(call.isExploration).toBe(false);
   });
 
@@ -140,7 +140,7 @@ describe('recordDecisionToMetrics', () => {
 
     recordDecisionToMetrics(decision, 'trace-3', deps);
 
-    const call = vi.mocked(metricsCollector.recordDecision).mock.calls[0][0];
+    const call = vi.mocked(metricsCollector.recordDecision).mock.calls[0]![0];
     expect(call.isExploration).toBe(false);
   });
 
@@ -171,7 +171,7 @@ describe('recordDecisionToMetrics', () => {
 
     recordDecisionToMetrics(decision, 'trace-6', deps);
 
-    const call = vi.mocked(metricsCollector.recordDecision).mock.calls[0][0];
+    const call = vi.mocked(metricsCollector.recordDecision).mock.calls[0]![0];
     expect(call.taskType).toBe('architecture');
   });
 
@@ -182,7 +182,7 @@ describe('recordDecisionToMetrics', () => {
 
     recordDecisionToMetrics(decision, 'trace-7', deps);
 
-    const call = vi.mocked(metricsCollector.recordDecision).mock.calls[0][0];
+    const call = vi.mocked(metricsCollector.recordDecision).mock.calls[0]![0];
     expect(call.contextTokens).toBe(100000);
   });
 });
@@ -220,7 +220,7 @@ describe('recordOutcomeToMetrics', () => {
 
     recordOutcomeToMetrics(opts, deps);
 
-    const call = vi.mocked(metricsCollector.recordOutcome).mock.calls[0][0];
+    const call = vi.mocked(metricsCollector.recordOutcome).mock.calls[0]![0];
     expect(call).toMatchObject({
       traceId: 'trace-outcome-1',
       model: 'claude',
@@ -242,7 +242,7 @@ describe('recordOutcomeToMetrics', () => {
 
     recordOutcomeToMetrics(opts, deps);
 
-    const call = vi.mocked(metricsCollector.recordOutcome).mock.calls[0][0];
+    const call = vi.mocked(metricsCollector.recordOutcome).mock.calls[0]![0];
     expect(call).toMatchObject({
       traceId: 'trace-outcome-2',
       model: 'gemini',
@@ -262,7 +262,7 @@ describe('recordOutcomeToMetrics', () => {
       qualityScore: 7.0,
     };
     recordOutcomeToMetrics(opts, deps);
-    const call = vi.mocked(metricsCollector.recordOutcome).mock.calls[0][0];
+    const call = vi.mocked(metricsCollector.recordOutcome).mock.calls[0]![0];
     expect(call.qualityScore).toBe(7.0);
     expect(call.latencyMs).toBeUndefined();
   });
@@ -276,7 +276,7 @@ describe('recordOutcomeToMetrics', () => {
       latencyMs: 500,
     };
     recordOutcomeToMetrics(opts, deps);
-    const call = vi.mocked(metricsCollector.recordOutcome).mock.calls[0][0];
+    const call = vi.mocked(metricsCollector.recordOutcome).mock.calls[0]![0];
     expect(call.latencyMs).toBe(500);
     expect(call.qualityScore).toBeUndefined();
   });
@@ -317,7 +317,7 @@ describe('recordOutcomeToMetrics', () => {
       reward: 0,
     };
     recordOutcomeToMetrics(opts, deps);
-    const call = vi.mocked(metricsCollector.recordOutcome).mock.calls[0][0];
+    const call = vi.mocked(metricsCollector.recordOutcome).mock.calls[0]![0];
     expect(call.reward).toBe(0);
   });
 
@@ -329,7 +329,7 @@ describe('recordOutcomeToMetrics', () => {
       reward: -0.5,
     };
     recordOutcomeToMetrics(opts, deps);
-    const call = vi.mocked(metricsCollector.recordOutcome).mock.calls[0][0];
+    const call = vi.mocked(metricsCollector.recordOutcome).mock.calls[0]![0];
     expect(call.reward).toBe(-0.5);
   });
 });

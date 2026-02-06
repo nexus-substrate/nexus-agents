@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { ZodError, ZodIssueCode } from 'zod';
+import { ZodError, type ZodIssue, type ZodIssueCode } from 'zod';
 import { resolve, sep } from 'node:path';
 import {
   validateConfigPath,
@@ -229,7 +229,7 @@ describe('formatZodError', () => {
   const createZodError = (
     issues: Array<{ path: (string | number)[]; message: string; code: ZodIssueCode }>
   ): ZodError => {
-    return new ZodError(issues);
+    return new ZodError(issues as ZodIssue[]);
   };
 
   describe('single error', () => {
@@ -288,9 +288,9 @@ describe('formatZodError', () => {
 
       const errors = formatZodError('test-expert', zodError);
       expect(errors).toHaveLength(2);
-      expect(errors[0].field).toBe('tier');
-      expect(errors[1].field).toBe('temperature');
-      expect(errors[1].suggestion).toBe('Value must be between 0 and 1');
+      expect(errors[0]!.field).toBe('tier');
+      expect(errors[1]!.field).toBe('temperature');
+      expect(errors[1]!.suggestion).toBe('Value must be between 0 and 1');
     });
   });
 
@@ -306,9 +306,9 @@ describe('formatZodError', () => {
 
       const errors = formatZodError('test-expert', zodError);
       expect(errors).toHaveLength(1);
-      expect(errors[0].field).toBe('config.model.temperature');
+      expect(errors[0]!.field).toBe('config.model.temperature');
       // Nested paths don't get suggestions because getSuggestion checks field name exactly
-      expect(errors[0].suggestion).toBeUndefined();
+      expect(errors[0]!.suggestion).toBeUndefined();
     });
 
     it('should handle array indices in paths', () => {
@@ -322,7 +322,7 @@ describe('formatZodError', () => {
 
       const errors = formatZodError('test-expert', zodError);
       expect(errors).toHaveLength(1);
-      expect(errors[0].field).toBe('capabilities.0');
+      expect(errors[0]!.field).toBe('capabilities.0');
     });
   });
 
@@ -338,7 +338,7 @@ describe('formatZodError', () => {
 
       const errors = formatZodError('test-expert', zodError);
       expect(errors).toHaveLength(1);
-      expect(errors[0].field).toBe('unknown');
+      expect(errors[0]!.field).toBe('unknown');
     });
 
     it('should preserve expertId for all errors', () => {
@@ -413,7 +413,7 @@ describe('formatValidationErrors', () => {
     });
 
     it('should omit suggestion when undefined', () => {
-      const errors = [createError({ suggestion: undefined })];
+      const errors = [createError()];
       const output = formatValidationErrors(errors);
 
       expect(output).toContain('Error: Invalid value');

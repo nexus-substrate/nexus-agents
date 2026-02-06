@@ -43,7 +43,7 @@ function makeAgentState(overrides: Partial<AgentContextState> = {}) {
     memoryConfig: {
       autoLoadOnInit: true,
       maxInitialLoadEntries: 100,
-      persistenceMode: MemoryPersistenceMode.ON_FLUSH,
+      persistenceMode: MemoryPersistenceMode.MANUAL,
     },
     memoryState: { agentId: 'agent-1', taskLearnings: [] },
     contextPruningEnabled: true,
@@ -190,7 +190,7 @@ describe('buildTaskMemoryContext', () => {
     expect(ctx.memoryEnabled).toBe(true);
     expect(ctx.memoryBackend).toBeDefined();
     expect(ctx.memoryState).toBeDefined();
-    expect(ctx.persistenceMode).toBe(MemoryPersistenceMode.ON_FLUSH);
+    expect(ctx.persistenceMode).toBe(MemoryPersistenceMode.MANUAL);
   });
 
   it('handles disabled memory', () => {

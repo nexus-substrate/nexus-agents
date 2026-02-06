@@ -6,6 +6,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { getDefaultConfig, mergeConfig } from './self-debug-config.js';
+import type { ErrorPattern } from './self-debug-types.js';
 
 // ============================================================================
 // getDefaultConfig
@@ -84,7 +85,9 @@ describe('mergeConfig', () => {
     const customPatterns = [
       { pattern: /custom/, category: 'custom' as const, severity: 'error' as const },
     ];
-    const result = mergeConfig({ errorPatterns: customPatterns });
+    const result = mergeConfig({
+      errorPatterns: customPatterns as unknown as readonly ErrorPattern[],
+    });
     expect(result.errorPatterns).toHaveLength(1);
   });
 });

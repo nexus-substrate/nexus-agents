@@ -10,6 +10,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { executeResearch, ResearchUnavailableError } from './research.js';
 import type { SelfDevWorkflowDependencies } from '../interfaces.js';
 import type { SelfDevWorkflowState, AnalyzeOutput, AnalyzedIssue } from '../types.js';
+import { ModelError } from '../../../core/index.js';
 import type { IModelAdapter } from '../../../core/index.js';
 
 // ============================================================================
@@ -197,11 +198,11 @@ describe('executeResearch', () => {
 
     await executeResearch(deps, state, analyze);
 
-    const call = vi.mocked(deps.modelAdapter.complete).mock.calls[0][0];
+    const call = vi.mocked(deps.modelAdapter.complete).mock.calls[0]![0];
     expect(call.systemPrompt).toContain('research agent');
-    expect(call.messages[0].role).toBe('user');
-    expect(call.messages[0].content).toContain('#42');
-    expect(call.messages[0].content).toContain('Fix authentication bug');
+    expect(call.messages[0]!.role).toBe('user');
+    expect(call.messages[0]!.content).toContain('#42');
+    expect(call.messages[0]!.content).toContain('Fix authentication bug');
     expect(call.maxTokens).toBe(2000);
   });
 
@@ -220,7 +221,7 @@ describe('executeResearch', () => {
 
     await executeResearch(deps, state, analyze);
 
-    const prompt = vi.mocked(deps.modelAdapter.complete).mock.calls[0][0].messages[0]
+    const prompt = vi.mocked(deps.modelAdapter.complete).mock.calls[0]![0].messages[0]!
       .content as string;
     expect(prompt).toContain('api, security');
   });
@@ -241,7 +242,7 @@ describe('executeResearch', () => {
 
     await executeResearch(deps, state, analyze);
 
-    const prompt = vi.mocked(deps.modelAdapter.complete).mock.calls[0][0].messages[0]
+    const prompt = vi.mocked(deps.modelAdapter.complete).mock.calls[0]![0].messages[0]!
       .content as string;
     expect(prompt).toContain('Keywords: none');
   });
@@ -262,7 +263,7 @@ describe('executeResearch', () => {
 
     await executeResearch(deps, state, analyze);
 
-    const prompt = vi.mocked(deps.modelAdapter.complete).mock.calls[0][0].messages[0]
+    const prompt = vi.mocked(deps.modelAdapter.complete).mock.calls[0]![0].messages[0]!
       .content as string;
     // Empty body is passed through; the prompt just includes the empty string
     expect(prompt).toContain('Description:');
@@ -276,7 +277,7 @@ describe('executeResearch', () => {
     vi.mocked(deps.modelAdapter.complete).mockImplementation(() =>
       Promise.resolve({
         ok: false as const,
-        error: { message: 'rate limited', name: 'ModelError' },
+        error: new ModelError('rate limited'),
       })
     );
 
@@ -287,7 +288,7 @@ describe('executeResearch', () => {
     vi.mocked(deps.modelAdapter.complete).mockImplementation(() =>
       Promise.resolve({
         ok: false as const,
-        error: { message: 'API key invalid', name: 'ModelError' },
+        error: new ModelError('API key invalid'),
       })
     );
 
@@ -308,7 +309,7 @@ describe('executeResearch', () => {
     vi.mocked(deps.modelAdapter.complete).mockImplementation(() =>
       Promise.resolve({
         ok: false as const,
-        error: { message: 'unavailable', name: 'ModelError' },
+        error: new ModelError('unavailable'),
       })
     );
 
@@ -329,7 +330,7 @@ describe('executeResearch', () => {
     vi.mocked(deps.modelAdapter.complete).mockImplementation(() =>
       Promise.resolve({
         ok: false as const,
-        error: { message: 'fail', name: 'ModelError' },
+        error: new ModelError('fail'),
       })
     );
 
@@ -350,7 +351,7 @@ describe('executeResearch', () => {
     vi.mocked(deps.modelAdapter.complete).mockImplementation(() =>
       Promise.resolve({
         ok: false as const,
-        error: { message: 'fail', name: 'ModelError' },
+        error: new ModelError('fail'),
       })
     );
 
@@ -379,7 +380,7 @@ describe('executeResearch', () => {
     vi.mocked(deps.modelAdapter.complete).mockImplementation(() =>
       Promise.resolve({
         ok: false as const,
-        error: { message: 'fail', name: 'ModelError' },
+        error: new ModelError('fail'),
       })
     );
 
@@ -552,7 +553,7 @@ describe('executeResearch', () => {
     vi.mocked(deps.modelAdapter.complete).mockImplementation(() =>
       Promise.resolve({
         ok: false as const,
-        error: { message: 'fail', name: 'ModelError' },
+        error: new ModelError('fail'),
       })
     );
 
@@ -574,7 +575,7 @@ describe('executeResearch', () => {
     vi.mocked(deps.modelAdapter.complete).mockImplementation(() =>
       Promise.resolve({
         ok: false as const,
-        error: { message: 'fail', name: 'ModelError' },
+        error: new ModelError('fail'),
       })
     );
 
@@ -596,7 +597,7 @@ describe('executeResearch', () => {
     vi.mocked(deps.modelAdapter.complete).mockImplementation(() =>
       Promise.resolve({
         ok: false as const,
-        error: { message: 'fail', name: 'ModelError' },
+        error: new ModelError('fail'),
       })
     );
 
@@ -625,7 +626,7 @@ describe('executeResearch', () => {
     vi.mocked(deps.modelAdapter.complete).mockImplementation(() =>
       Promise.resolve({
         ok: false as const,
-        error: { message: 'fail', name: 'ModelError' },
+        error: new ModelError('fail'),
       })
     );
 
@@ -650,7 +651,7 @@ describe('executeResearch', () => {
     vi.mocked(deps.modelAdapter.complete).mockImplementation(() =>
       Promise.resolve({
         ok: false as const,
-        error: { message: 'fail', name: 'ModelError' },
+        error: new ModelError('fail'),
       })
     );
 
@@ -675,7 +676,7 @@ describe('executeResearch', () => {
     vi.mocked(deps.modelAdapter.complete).mockImplementation(() =>
       Promise.resolve({
         ok: false as const,
-        error: { message: 'fail', name: 'ModelError' },
+        error: new ModelError('fail'),
       })
     );
 
@@ -700,7 +701,7 @@ describe('executeResearch', () => {
     vi.mocked(deps.modelAdapter.complete).mockImplementation(() =>
       Promise.resolve({
         ok: false as const,
-        error: { message: 'fail', name: 'ModelError' },
+        error: new ModelError('fail'),
       })
     );
 
@@ -723,7 +724,7 @@ describe('executeResearch', () => {
     vi.mocked(deps.modelAdapter.complete).mockImplementation(() =>
       Promise.resolve({
         ok: false as const,
-        error: { message: 'fail', name: 'ModelError' },
+        error: new ModelError('fail'),
       })
     );
 

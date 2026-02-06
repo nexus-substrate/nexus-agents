@@ -72,10 +72,13 @@ function createMockAdapter() {
 }
 
 function createDeps(githubClient?: IGitHubClient): SelfDevWorkflowDependencies {
-  return {
+  const deps: SelfDevWorkflowDependencies = {
     modelAdapter: createMockAdapter(),
-    githubClient,
   };
+  if (githubClient !== undefined) {
+    return { ...deps, githubClient };
+  }
+  return deps;
 }
 
 function createState(overrides: Partial<SelfDevWorkflowState> = {}): SelfDevWorkflowState {
@@ -231,7 +234,7 @@ describe('executeAnalyze', () => {
       const result = await executeAnalyze(deps, state);
 
       expect(result.selectedIssue.number).toBe(2);
-      expect(result.prioritizedIssues[0].number).toBe(2);
+      expect(result.prioritizedIssues[0]!.number).toBe(2);
     });
 
     it('should assign bug type from labels', async () => {

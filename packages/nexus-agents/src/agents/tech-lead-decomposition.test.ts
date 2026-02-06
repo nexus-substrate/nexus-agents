@@ -17,7 +17,7 @@ function makeTask(id = 'task-1'): Task {
   return {
     id,
     description: 'Test task',
-  } as Task;
+  } as unknown as Task;
 }
 
 function makeAnalysis(taskType: TaskAnalysis['taskType'], complexity = 5): TaskAnalysis {
@@ -27,7 +27,7 @@ function makeAnalysis(taskType: TaskAnalysis['taskType'], complexity = 5): TaskA
     requiredCapabilities: [],
     estimatedSteps: 3,
     parallelizable: false,
-  } as TaskAnalysis;
+  } as unknown as TaskAnalysis;
 }
 
 // ============================================================================

@@ -284,6 +284,7 @@ describe('saveCorrelationData and loadCorrelationData', () => {
       observationDecayFactor: 0.95,
       maxObservationsPerAgent: 1000,
       maxProposals: 3,
+      maxTrackedPairs: 100,
     });
 
     const loadResult = loadCorrelationData();

@@ -91,7 +91,7 @@ describe('emitMessageSent', () => {
   });
 
   it('converts message to payload format', () => {
-    const msg = makeMessage({ type: 'response', from: 'x', to: 'y' });
+    const msg = makeMessage({ type: 'result', from: 'x', to: 'y' });
     const bus = makeMockEventBus();
     emitMessageSent(bus, { message: msg, from: 'x' });
     const event = bus.emit.mock.calls[0]![0];
@@ -192,7 +192,7 @@ describe('emitResultBroadcast', () => {
     taskId: 't1',
     success: true,
     output: 'done',
-  } as TaskResult;
+  } as unknown as TaskResult;
 
   it('emits event with correct topic', () => {
     const bus = makeMockEventBus();

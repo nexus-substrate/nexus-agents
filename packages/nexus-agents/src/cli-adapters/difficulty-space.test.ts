@@ -85,7 +85,6 @@ describe('estimateDifficultySpace', () => {
     const task: CliTask = {
       content: 'Analyze this system',
       systemPrompt: ' with careful reasoning',
-      apiKey: 'test-key',
     };
 
     estimateDifficultySpace(task);
@@ -99,12 +98,12 @@ describe('estimateDifficultySpace', () => {
   });
 
   it('passes task profile to estimators when provided', () => {
-    const task: CliTask = { content: 'test task', apiKey: 'test-key' };
-    const profile: TaskProfile = {
+    const task: CliTask = { content: 'test task' };
+    const profile = {
       complexity: 5,
       domain: 'test',
       estimatedTokens: 100,
-    } as TaskProfile;
+    } as unknown as TaskProfile;
 
     estimateDifficultySpace(task, profile);
 
@@ -112,7 +111,7 @@ describe('estimateDifficultySpace', () => {
   });
 
   it('returns difficulty space with all dimensions', () => {
-    const task: CliTask = { content: 'test', apiKey: 'test-key' };
+    const task: CliTask = { content: 'test' };
     const space = estimateDifficultySpace(task);
 
     expect(space).toEqual({
@@ -125,7 +124,7 @@ describe('estimateDifficultySpace', () => {
   });
 
   it('handles empty system prompt', () => {
-    const task: CliTask = { content: 'test content', apiKey: 'test-key' };
+    const task: CliTask = { content: 'test content' };
     estimateDifficultySpace(task);
 
     expect(estimateReasoningDifficulty).toHaveBeenCalledWith('test content', undefined);

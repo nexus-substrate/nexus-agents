@@ -204,8 +204,8 @@ describe('createAutoAdapter', () => {
       vi.mocked(getAvailableClis).mockReturnValue(Promise.resolve(['claude']));
       const result = await createAutoAdapter({
         priority: 'cli-first',
-        cache: mockCache as unknown as AutoAdapterConfig['cache'],
-      });
+        cache: mockCache,
+      } as unknown as AutoAdapterConfig);
       expect(result.cache).toBe(mockCache);
     });
 

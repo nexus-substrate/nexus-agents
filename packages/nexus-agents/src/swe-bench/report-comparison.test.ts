@@ -50,7 +50,7 @@ function makeCompetitor(name: string, rate: number): CompetitorResult {
     variant: 'lite',
     resolutionRate: rate,
     resolvedInstances: Math.round(rate * 100),
-  } as CompetitorResult;
+  } as unknown as CompetitorResult;
 }
 
 // ============================================================================

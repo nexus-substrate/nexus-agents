@@ -11,6 +11,8 @@ import {
   formatResultSummary,
 } from './self-eval-format.js';
 import { colors, symbols } from './self-eval-types.js';
+import type { AggregatedResult } from '../self-eval/aggregation-logic.js';
+import type { EvaluationResult } from '../self-eval/evaluation-agents.js';
 
 // ============================================================================
 // getRecommendationColor
@@ -78,13 +80,25 @@ describe('formatResultSummary', () => {
       isRecommendation: true,
       votes: [],
       dissent: [],
-    });
+      auditTrail: [],
+      timestamp: new Date(),
+    } satisfies AggregatedResult);
 
     expect(result).toContain('src/core/engine.ts');
     expect(result).toContain('RETAIN');
   });
 
   it('includes dissenting opinion count', () => {
+    const dissenter: EvaluationResult = {
+      component: 'src/utils/helper.ts',
+      agent: 'architecture-fit',
+      recommendation: 'refactor',
+      confidence: 0.8,
+      concerns: [],
+      metrics: [],
+      isRecommendation: true,
+      timestamp: new Date(),
+    };
     const result = formatResultSummary({
       component: 'src/utils/helper.ts',
       finalRecommendation: 'review',
@@ -92,13 +106,35 @@ describe('formatResultSummary', () => {
       evidenceQuality: 0.6,
       isRecommendation: true,
       votes: [],
-      dissent: [{ agent: 'security', recommendation: 'refactor', confidence: 0.8, concerns: [] }],
-    });
+      dissent: [dissenter],
+      auditTrail: [],
+      timestamp: new Date(),
+    } satisfies AggregatedResult);
 
     expect(result).toContain('1 dissenting opinion');
   });
 
   it('pluralizes dissenting opinions', () => {
+    const dissenter1: EvaluationResult = {
+      component: 'src/api/routes.ts',
+      agent: 'architecture-fit',
+      recommendation: 'deprecate',
+      confidence: 0.9,
+      concerns: [],
+      metrics: [],
+      isRecommendation: true,
+      timestamp: new Date(),
+    };
+    const dissenter2: EvaluationResult = {
+      component: 'src/api/routes.ts',
+      agent: 'code-quality',
+      recommendation: 'retain',
+      confidence: 0.7,
+      concerns: [],
+      metrics: [],
+      isRecommendation: true,
+      timestamp: new Date(),
+    };
     const result = formatResultSummary({
       component: 'src/api/routes.ts',
       finalRecommendation: 'refactor',
@@ -106,11 +142,10 @@ describe('formatResultSummary', () => {
       evidenceQuality: 0.5,
       isRecommendation: true,
       votes: [],
-      dissent: [
-        { agent: 'security', recommendation: 'deprecate', confidence: 0.9, concerns: [] },
-        { agent: 'code', recommendation: 'retain', confidence: 0.7, concerns: [] },
-      ],
-    });
+      dissent: [dissenter1, dissenter2],
+      auditTrail: [],
+      timestamp: new Date(),
+    } satisfies AggregatedResult);
 
     expect(result).toContain('2 dissenting opinions');
   });
@@ -124,7 +159,9 @@ describe('formatResultSummary', () => {
       isRecommendation: true,
       votes: [],
       dissent: [],
-    });
+      auditTrail: [],
+      timestamp: new Date(),
+    } satisfies AggregatedResult);
 
     expect(result).not.toContain('dissenting');
   });

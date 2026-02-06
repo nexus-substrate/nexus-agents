@@ -27,7 +27,7 @@ function makeContext(overrides: Partial<VerifierContext> = {}) {
 }
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-function makeResult(overrides: Partial<StepResult> = {}) {
+function makeResult(overrides: Record<string, unknown> = {}) {
   return {
     stepId: 'step-1',
     output: 'clean output',

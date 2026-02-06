@@ -448,12 +448,12 @@ describe('routing-audit-logic', () => {
         timePressure: 0.3,
       };
 
-      // Train bandit with different rewards
+      // Train bandit with different rewards (0=claude, 1=gemini)
       for (let i = 0; i < 10; i++) {
         bandit.select(context);
-        bandit.update('claude', context, 0.9);
+        bandit.update(0, context, 0.9);
         bandit.select(context);
-        bandit.update('gemini', context, 0.3);
+        bandit.update(1, context, 0.3);
       }
 
       const details = computeLinUCBDetails(bandit, context);
@@ -549,7 +549,7 @@ describe('routing-audit-logic', () => {
       // Train bandit
       for (let i = 0; i < 10; i++) {
         const selection = bandit.select(context);
-        bandit.update(selection.armName, context, 0.8);
+        bandit.update(selection.armIndex, context, 0.8);
       }
 
       const stats = computeBanditStats(bandit);
@@ -574,7 +574,7 @@ describe('routing-audit-logic', () => {
       // Train with specific rewards
       for (let i = 0; i < 5; i++) {
         bandit.select(context);
-        bandit.update('claude', context, 0.8);
+        bandit.update(0, context, 0.8);
       }
 
       const stats = computeBanditStats(bandit);

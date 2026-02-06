@@ -25,7 +25,7 @@ import type { PuppeteerState } from './puppeteer-state-types.js';
 function makeState(step = 0): PuppeteerState {
   return {
     step,
-    task: { id: 't1', description: 'test', type: 'code' },
+    task: { id: 't1', description: 'test', context: {} },
     agentOutputs: [],
     context: '',
     metadata: { progress: 0, totalCost: 0, totalTokens: 0, elapsedMs: 0, startedAt: '' },

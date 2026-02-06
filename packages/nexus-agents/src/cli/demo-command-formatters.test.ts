@@ -242,7 +242,7 @@ describe('formatAvailableWorkflows', () => {
 
 describe('formatLiveRoutingDemo', () => {
   // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-  function makeLiveResult(overrides: Partial<LiveRoutingResult> = {}) {
+  function makeLiveResult(overrides: Record<string, unknown> = {}) {
     return {
       ...makeRoutingResult(),
       mode: 'live' as const,

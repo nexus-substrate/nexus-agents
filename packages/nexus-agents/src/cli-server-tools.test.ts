@@ -181,7 +181,7 @@ function makeMockServer() {
 }
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-function makeDefaultOptions(overrides: Partial<RegisterMcpToolsOptions> = {}) {
+function makeDefaultOptions(overrides: Record<string, unknown> = {}) {
   return {
     server: makeMockServer(),
     logger: makeMockLogger(),

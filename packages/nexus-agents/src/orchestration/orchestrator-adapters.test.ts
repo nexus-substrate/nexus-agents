@@ -230,7 +230,7 @@ describe('PuppeteerAdapter', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.output).toEqual({ inputKey: 'inputVal', stateKey: 'stateVal' });
-    expect(result.value.steps[0].action).toBe('Policy: p1');
+    expect(result.value.steps[0]!.action).toBe('Policy: p1');
   });
 
   it('delegates to wired puppeteer on success', async () => {
@@ -301,7 +301,7 @@ describe('WorkflowAdapter', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.output).toEqual(inputs);
-    expect(result.value.steps[0].action).toBe('Template: templates/code-review');
+    expect(result.value.steps[0]!.action).toBe('Template: templates/code-review');
   });
 
   it('delegates to wired engine on success', async () => {

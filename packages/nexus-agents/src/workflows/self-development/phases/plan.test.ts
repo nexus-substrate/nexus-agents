@@ -411,7 +411,7 @@ describe('executePlan fallback (no TRINITY)', () => {
     const result = await executePlan(deps, state, createAnalyzeOutput(), research);
 
     expect(result.plan.files).toHaveLength(2);
-    expect(result.plan.files[0].action).toBe('modify');
+    expect(result.plan.files[0]!.action).toBe('modify');
     expect(result.plan.interfaces).toEqual(['IAuth']);
   });
 

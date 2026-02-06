@@ -30,7 +30,7 @@ function makeItem(
   return {
     id,
     content: `content-${id}`,
-    priority: ContentPriority.NORMAL,
+    priority: ContentPriority.ACTIVE,
     category,
     tokenCount,
     addedAt: Date.now(),
@@ -56,9 +56,9 @@ describe('findDominantCategory', () => {
   });
 
   it('returns the most common category', () => {
-    const items = [makeItem('1', 'history'), makeItem('2', 'history'), makeItem('3', 'active')];
+    const items = [makeItem('1', 'system'), makeItem('2', 'system'), makeItem('3', 'active')];
     const result = findDominantCategory(items);
-    expect(result).toBe('history');
+    expect(result).toBe('system');
   });
 
   it('returns active when all items are active', () => {
@@ -68,9 +68,9 @@ describe('findDominantCategory', () => {
   });
 
   it('handles single item', () => {
-    const items = [makeItem('1', 'history')];
+    const items = [makeItem('1', 'task')];
     const result = findDominantCategory(items);
-    expect(result).toBe('history');
+    expect(result).toBe('task');
   });
 });
 

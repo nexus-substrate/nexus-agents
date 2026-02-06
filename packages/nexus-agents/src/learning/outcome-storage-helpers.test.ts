@@ -90,14 +90,14 @@ describe('createDecisionsTable', () => {
     const db = makeMockDb();
     createDecisionsTable(db);
     expect(db.exec).toHaveBeenCalledOnce();
-    const sql = (db.exec as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    const sql = (db.exec as ReturnType<typeof vi.fn>).mock.calls[0]![0] as string;
     expect(sql).toContain('CREATE TABLE IF NOT EXISTS routing_decisions');
   });
 
   it('includes all required columns', () => {
     const db = makeMockDb();
     createDecisionsTable(db);
-    const sql = (db.exec as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    const sql = (db.exec as ReturnType<typeof vi.fn>).mock.calls[0]![0] as string;
     const columns = [
       'id TEXT PRIMARY KEY',
       'trace_id TEXT NOT NULL',
@@ -135,14 +135,14 @@ describe('createOutcomesTable', () => {
     const db = makeMockDb();
     createOutcomesTable(db);
     expect(db.exec).toHaveBeenCalledOnce();
-    const sql = (db.exec as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    const sql = (db.exec as ReturnType<typeof vi.fn>).mock.calls[0]![0] as string;
     expect(sql).toContain('CREATE TABLE IF NOT EXISTS task_outcomes');
   });
 
   it('includes all required columns', () => {
     const db = makeMockDb();
     createOutcomesTable(db);
-    const sql = (db.exec as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    const sql = (db.exec as ReturnType<typeof vi.fn>).mock.calls[0]![0] as string;
     const columns = [
       'routing_decision_id TEXT PRIMARY KEY',
       'timestamp INTEGER NOT NULL',
@@ -161,7 +161,7 @@ describe('createOutcomesTable', () => {
   it('includes foreign key constraint', () => {
     const db = makeMockDb();
     createOutcomesTable(db);
-    const sql = (db.exec as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    const sql = (db.exec as ReturnType<typeof vi.fn>).mock.calls[0]![0] as string;
     expect(sql).toContain('FOREIGN KEY (routing_decision_id) REFERENCES routing_decisions(id)');
   });
 
@@ -185,14 +185,14 @@ describe('createRewardsTable', () => {
     const db = makeMockDb();
     createRewardsTable(db);
     expect(db.exec).toHaveBeenCalledOnce();
-    const sql = (db.exec as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    const sql = (db.exec as ReturnType<typeof vi.fn>).mock.calls[0]![0] as string;
     expect(sql).toContain('CREATE TABLE IF NOT EXISTS computed_rewards');
   });
 
   it('includes reward-specific columns', () => {
     const db = makeMockDb();
     createRewardsTable(db);
-    const sql = (db.exec as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    const sql = (db.exec as ReturnType<typeof vi.fn>).mock.calls[0]![0] as string;
     const columns = [
       'routing_decision_id TEXT PRIMARY KEY',
       'reward REAL NOT NULL',
@@ -210,7 +210,7 @@ describe('createRewardsTable', () => {
   it('includes foreign key constraint', () => {
     const db = makeMockDb();
     createRewardsTable(db);
-    const sql = (db.exec as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    const sql = (db.exec as ReturnType<typeof vi.fn>).mock.calls[0]![0] as string;
     expect(sql).toContain('FOREIGN KEY (routing_decision_id) REFERENCES routing_decisions(id)');
   });
 });
@@ -230,28 +230,28 @@ describe('createIndexes', () => {
     const db = makeMockDb();
     createIndexes(db);
     const calls = (db.exec as ReturnType<typeof vi.fn>).mock.calls as string[][];
-    expect(calls.some((c) => c[0].includes('idx_decisions_timestamp'))).toBe(true);
+    expect(calls.some((c) => c[0]!.includes('idx_decisions_timestamp'))).toBe(true);
   });
 
   it('creates index on decisions model', () => {
     const db = makeMockDb();
     createIndexes(db);
     const calls = (db.exec as ReturnType<typeof vi.fn>).mock.calls as string[][];
-    expect(calls.some((c) => c[0].includes('idx_decisions_model'))).toBe(true);
+    expect(calls.some((c) => c[0]!.includes('idx_decisions_model'))).toBe(true);
   });
 
   it('creates index on decisions request_id', () => {
     const db = makeMockDb();
     createIndexes(db);
     const calls = (db.exec as ReturnType<typeof vi.fn>).mock.calls as string[][];
-    expect(calls.some((c) => c[0].includes('idx_decisions_request_id'))).toBe(true);
+    expect(calls.some((c) => c[0]!.includes('idx_decisions_request_id'))).toBe(true);
   });
 
   it('creates index on outcomes timestamp', () => {
     const db = makeMockDb();
     createIndexes(db);
     const calls = (db.exec as ReturnType<typeof vi.fn>).mock.calls as string[][];
-    expect(calls.some((c) => c[0].includes('idx_outcomes_timestamp'))).toBe(true);
+    expect(calls.some((c) => c[0]!.includes('idx_outcomes_timestamp'))).toBe(true);
   });
 
   it('uses CREATE INDEX IF NOT EXISTS', () => {

@@ -38,7 +38,7 @@ function makeTask(overrides: Partial<EvaluationTask> = {}): EvaluationTask {
     description: 'Test description',
     category: 'code_generation',
     difficulty: 'medium',
-    expectedTaskType: 'code_generation',
+    expectedTaskType: 'code_implementation',
     ...overrides,
   };
 }

@@ -7,7 +7,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { AdapterSelection } from './auto-adapter.js';
-import type { CompletionResponse, ModelCapability } from '../core/types/model.js';
+import type { ModelCapability } from '../core/types/model.js';
 import { ok } from '../core/result.js';
 import { ModelError } from '../core/errors.js';
 import type { CircuitStateChangeEvent } from '../cli-adapters/circuit-breaker-types.js';
@@ -59,7 +59,7 @@ function makeSelection(name = 'claude') {
 function setupDefaultMocks(): void {
   mockComplete.mockReturnValue(
     Promise.resolve(
-      ok<CompletionResponse, ModelError>({
+      ok({
         content: [{ type: 'text', text: 'hello' }],
         usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
         stopReason: 'end_turn',

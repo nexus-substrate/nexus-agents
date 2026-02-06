@@ -24,7 +24,7 @@ function makeStep(id: string, dependsOn?: string[]): WorkflowStep {
     action: `action-${id}`,
     agent: 'test-agent',
     dependsOn,
-  } as WorkflowStep;
+  } as unknown as WorkflowStep;
 }
 
 function makeWorkflow(steps: WorkflowStep[]): WorkflowDefinition {

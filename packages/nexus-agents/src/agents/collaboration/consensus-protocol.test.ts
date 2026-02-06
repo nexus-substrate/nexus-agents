@@ -80,7 +80,7 @@ function createMockAgent(taskId: string, voteOutput: unknown) {
     ),
     initialize: vi.fn(() => Promise.resolve(ok(undefined))),
     cleanup: vi.fn(() => Promise.resolve(ok(undefined))),
-  };
+  } as unknown as IAgent;
 }
 
 describe('ConsensusProtocol', () => {
@@ -455,7 +455,7 @@ describe('ConsensusProtocol', () => {
         ),
         initialize: vi.fn(() => Promise.resolve(ok(undefined))),
         cleanup: vi.fn(() => Promise.resolve(ok(undefined))),
-      };
+      } as unknown as IAgent;
 
       const agents = new Map<string, IAgent>([
         ['expert-1', agentWithCapture],

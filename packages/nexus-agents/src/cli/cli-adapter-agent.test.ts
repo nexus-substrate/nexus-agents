@@ -17,13 +17,16 @@ import { setTimeProvider, resetTimeProvider } from '../core/index.js';
 // ============================================================================
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-function makeMockAdapter(overrides: Partial<ICliAdapter> = {}) {
+function makeMockAdapter(overrides: Record<string, unknown> = {}) {
   return {
     name: 'claude' as const,
     execute: vi.fn(() =>
       Promise.resolve({
         ok: true as const,
-        value: { text: 'response text', usage: { totalTokens: 100 } },
+        value: {
+          text: 'response text',
+          usage: { inputTokens: 50, outputTokens: 50, totalTokens: 100 },
+        },
       })
     ),
     dispose: vi.fn(() => Promise.resolve()),
@@ -45,12 +48,12 @@ function makeTask(overrides: Partial<AgentTask> = {}) {
 }
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-function makeCliResponse(overrides: Partial<CliResponse> = {}) {
+function makeCliResponse(overrides: Record<string, unknown> = {}) {
   return {
     text: 'Test response',
     usage: {
-      promptTokens: 10,
-      completionTokens: 20,
+      inputTokens: 10,
+      outputTokens: 20,
       totalTokens: 30,
     },
     ...overrides,
@@ -58,22 +61,22 @@ function makeCliResponse(overrides: Partial<CliResponse> = {}) {
 }
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-function makeAgentMessage(overrides: Partial<AgentMessage> = {}) {
+function makeAgentMessage(overrides: Record<string, unknown> = {}) {
   return {
     id: 'msg-123',
-    role: 'user' as const,
-    content: 'Test message',
+    from: 'agent-1',
+    to: 'agent-2',
+    type: 'task' as const,
+    payload: { content: 'Test message' },
     timestamp: '2026-02-05T10:00:00.000Z',
     ...overrides,
   } as AgentMessage;
 }
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-function makeAgentContext(overrides: Partial<AgentContext> = {}) {
+function makeAgentContext(overrides: Record<string, unknown> = {}) {
   return {
-    agentId: 'agent-123',
-    sessionId: 'session-123',
-    metadata: {},
+    config: { modelId: 'claude-sonnet-4' },
     ...overrides,
   } as AgentContext;
 }
@@ -286,7 +289,7 @@ describe('CliAdapterAgent - execute', () => {
         Promise.resolve({
           ok: true as const,
           value: makeCliResponse({
-            usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+            usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
           }),
         })
       ),
@@ -306,7 +309,7 @@ describe('CliAdapterAgent - execute', () => {
         Promise.resolve({
           ok: true as const,
           value: makeCliResponse({
-            usage: { promptTokens: 50000, completionTokens: 50000, totalTokens: 100000 },
+            usage: { inputTokens: 50000, outputTokens: 50000, totalTokens: 100000 },
           }),
         })
       ),
@@ -354,7 +357,7 @@ describe('CliAdapterAgent - handleMessage', () => {
     const agent = new CliAdapterAgent('gemini', makeMockAdapter());
     const message = makeAgentMessage({
       id: 'msg-789',
-      content: 'Complex message content',
+      payload: { content: 'Complex message content' },
     });
     const result = await agent.handleMessage(message);
 
@@ -366,7 +369,7 @@ describe('CliAdapterAgent - handleMessage', () => {
 
   it('handles user role messages', async () => {
     const agent = new CliAdapterAgent('codex', makeMockAdapter());
-    const message = makeAgentMessage({ id: 'msg-1', role: 'user' });
+    const message = makeAgentMessage({ id: 'msg-1', type: 'query' });
     const result = await agent.handleMessage(message);
 
     expect(result.ok).toBe(true);
@@ -374,7 +377,7 @@ describe('CliAdapterAgent - handleMessage', () => {
 
   it('handles assistant role messages', async () => {
     const agent = new CliAdapterAgent('claude', makeMockAdapter());
-    const message = makeAgentMessage({ id: 'msg-2', role: 'assistant' });
+    const message = makeAgentMessage({ id: 'msg-2', type: 'result' });
     const result = await agent.handleMessage(message);
 
     expect(result.ok).toBe(true);
@@ -382,7 +385,7 @@ describe('CliAdapterAgent - handleMessage', () => {
 
   it('handles system role messages', async () => {
     const agent = new CliAdapterAgent('gemini', makeMockAdapter());
-    const message = makeAgentMessage({ id: 'msg-3', role: 'system' });
+    const message = makeAgentMessage({ id: 'msg-3', type: 'feedback' });
     const result = await agent.handleMessage(message);
 
     expect(result.ok).toBe(true);
@@ -407,7 +410,7 @@ describe('CliAdapterAgent - initialize', () => {
 
   it('ignores context parameter', async () => {
     const agent = new CliAdapterAgent('gemini', makeMockAdapter());
-    const context = makeAgentContext({ metadata: { custom: 'data' } });
+    const context = makeAgentContext({ sharedState: { custom: 'data' } });
     const result = await agent.initialize(context);
 
     expect(result.ok).toBe(true);
@@ -426,7 +429,7 @@ describe('CliAdapterAgent - initialize', () => {
 
   it('accepts various context structures', async () => {
     const agent = new CliAdapterAgent('claude', makeMockAdapter());
-    const minimalContext = makeAgentContext({ metadata: {} });
+    const minimalContext = makeAgentContext({ sharedState: {} });
     const result = await agent.initialize(minimalContext);
 
     expect(result.ok).toBe(true);

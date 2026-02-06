@@ -393,7 +393,7 @@ describe('TaskQueue - backpressure', () => {
     expect(q.getQueuedCount()).toBe(2);
 
     // Complete first task
-    gates[0].resolve(0);
+    gates[0]!.resolve(0);
     await promises[0];
     await delay(1);
     // Now 2 running (slot freed and filled), 1 queued
@@ -401,9 +401,9 @@ describe('TaskQueue - backpressure', () => {
     expect(q.getQueuedCount()).toBe(1);
 
     // Complete remaining
-    gates[1].resolve(1);
-    gates[2].resolve(2);
-    gates[3].resolve(3);
+    gates[1]!.resolve(1);
+    gates[2]!.resolve(2);
+    gates[3]!.resolve(3);
     await Promise.all(promises);
   });
 });

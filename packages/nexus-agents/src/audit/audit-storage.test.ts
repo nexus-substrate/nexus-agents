@@ -250,9 +250,7 @@ describe('FileAuditStorage constructor', () => {
 
   it('resumes existing file below max size', () => {
     const mockStream = setupFsMocks();
-    vi.mocked(fs.readdirSync).mockReturnValue([
-      'audit-2025-06-15-10-30-45.jsonl' as unknown as fs.Dirent,
-    ]);
+    vi.mocked(fs.readdirSync).mockReturnValue(['audit-2025-06-15-10-30-45.jsonl'] as never);
     vi.mocked(fs.statSync).mockReturnValue({ size: 100 } as fs.Stats);
 
     new FileAuditStorage(makeConfig());
@@ -266,9 +264,7 @@ describe('FileAuditStorage constructor', () => {
 
   it('rotates when existing file exceeds max size', () => {
     setupFsMocks();
-    vi.mocked(fs.readdirSync).mockReturnValue([
-      'audit-2025-06-15-10-30-45.jsonl' as unknown as fs.Dirent,
-    ]);
+    vi.mocked(fs.readdirSync).mockReturnValue(['audit-2025-06-15-10-30-45.jsonl'] as never);
     vi.mocked(fs.statSync).mockReturnValue({
       size: 2 * 1024 * 1024,
     } as fs.Stats);
@@ -419,11 +415,11 @@ describe('FileAuditStorage.query()', () => {
     vi.mocked(readAuditFile).mockImplementation(() => Promise.resolve([event]));
     // Return files for query but not for constructor init
     let callCount = 0;
-    vi.mocked(fs.readdirSync).mockImplementation(() => {
+    vi.mocked(fs.readdirSync).mockImplementation((() => {
       callCount++;
       if (callCount <= 1) return [];
-      return ['audit-2025-06-15.jsonl' as unknown as fs.Dirent];
-    });
+      return ['audit-2025-06-15.jsonl'];
+    }) as unknown as typeof fs.readdirSync);
 
     const storage = new FileAuditStorage(makeConfig(), undefined, true);
     const results = await storage.query({ limit: 10, offset: 0 });
@@ -442,11 +438,11 @@ describe('FileAuditStorage.query()', () => {
     ];
     vi.mocked(readAuditFile).mockImplementation(() => Promise.resolve(events));
     let callCount = 0;
-    vi.mocked(fs.readdirSync).mockImplementation(() => {
+    vi.mocked(fs.readdirSync).mockImplementation((() => {
       callCount++;
       if (callCount <= 1) return [];
-      return ['audit-2025-06-15.jsonl' as unknown as fs.Dirent];
-    });
+      return ['audit-2025-06-15.jsonl'];
+    }) as unknown as typeof fs.readdirSync);
 
     const storage = new FileAuditStorage(makeConfig(), undefined, true);
     const results = await storage.query({ limit: 10, offset: 2 });
@@ -465,11 +461,11 @@ describe('FileAuditStorage.query()', () => {
     ];
     vi.mocked(readAuditFile).mockImplementation(() => Promise.resolve(events));
     let callCount = 0;
-    vi.mocked(fs.readdirSync).mockImplementation(() => {
+    vi.mocked(fs.readdirSync).mockImplementation((() => {
       callCount++;
       if (callCount <= 1) return [];
-      return ['audit-2025-06-15.jsonl' as unknown as fs.Dirent];
-    });
+      return ['audit-2025-06-15.jsonl'];
+    }) as unknown as typeof fs.readdirSync);
 
     const storage = new FileAuditStorage(makeConfig(), undefined, true);
     const results = await storage.query({ limit: 2, offset: 0 });
@@ -489,17 +485,13 @@ describe('file pruning', () => {
 
     // Constructor init: no files, creates new one
     let callCount = 0;
-    vi.mocked(fs.readdirSync).mockImplementation(() => {
+    vi.mocked(fs.readdirSync).mockImplementation((() => {
       callCount++;
       // First call (initCurrentFile): no files
       if (callCount <= 1) return [];
       // Subsequent calls (pruneOldFiles after rotation): 3 files
-      return [
-        'audit-2025-06-15-c.jsonl',
-        'audit-2025-06-15-b.jsonl',
-        'audit-2025-06-15-a.jsonl',
-      ] as unknown as fs.Dirent[];
-    });
+      return ['audit-2025-06-15-c.jsonl', 'audit-2025-06-15-b.jsonl', 'audit-2025-06-15-a.jsonl'];
+    }) as unknown as typeof fs.readdirSync);
 
     const storage = new FileAuditStorage(config, undefined, true);
 

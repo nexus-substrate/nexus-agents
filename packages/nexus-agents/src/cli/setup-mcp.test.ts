@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { execSync } from 'node:child_process';
+import { execSync, execFileSync } from 'node:child_process';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -32,6 +32,7 @@ import type { HookSettingsConfig } from './setup-mcp.js';
 
 vi.mock('node:child_process', () => ({
   execSync: vi.fn(),
+  execFileSync: vi.fn(),
 }));
 
 vi.mock('node:os', () => ({
@@ -39,6 +40,7 @@ vi.mock('node:os', () => ({
 }));
 
 const mockedExecSync = vi.mocked(execSync);
+const mockedExecFileSync = vi.mocked(execFileSync);
 const mockedHomedir = vi.mocked(homedir);
 
 // ============================================================================
@@ -136,13 +138,12 @@ describe('configureMcpServer', () => {
   });
 
   it('should add server when not configured', () => {
-    // First call: isMcpServerConfigured returns error (not configured)
-    mockedExecSync
-      .mockImplementationOnce(() => {
-        throw new Error('not found');
-      })
-      // Second call: addMcpServer succeeds
-      .mockReturnValueOnce('added');
+    // isMcpServerConfigured: throws (not configured)
+    mockedExecSync.mockImplementationOnce(() => {
+      throw new Error('not found');
+    });
+    // addMcpServer uses execFileSync
+    mockedExecFileSync.mockReturnValueOnce(Buffer.from('added'));
 
     const result = configureMcpServer(false, false);
 
@@ -152,42 +153,47 @@ describe('configureMcpServer', () => {
   });
 
   it('should use npx entry when useNpx=true', () => {
-    mockedExecSync
-      .mockImplementationOnce(() => {
-        throw new Error('not found');
-      })
-      .mockReturnValueOnce('added');
+    mockedExecSync.mockImplementationOnce(() => {
+      throw new Error('not found');
+    });
+    mockedExecFileSync.mockReturnValueOnce(Buffer.from('added'));
 
     configureMcpServer(true, false);
 
-    const addCall = mockedExecSync.mock.calls[1];
-    expect(addCall[0]).toContain('npx');
+    // addMcpServer uses execFileSync with 'claude' as first arg
+    const addCall = mockedExecFileSync.mock.calls[0]!;
+    // Args include the npx JSON config
+    const jsonArg = addCall[1] as string[];
+    expect(jsonArg).toBeDefined();
+    expect(JSON.stringify(jsonArg)).toContain('npx');
   });
 
   it('should remove and re-add when force=true and already configured', () => {
     // isMcpServerConfigured: returns true
     mockedExecSync
       .mockReturnValueOnce('nexus-agents: configured')
-      // removeExistingMcpServer
-      .mockReturnValueOnce('removed')
-      // addMcpServer
-      .mockReturnValueOnce('added');
+      // removeExistingMcpServer uses execSync
+      .mockReturnValueOnce('removed');
+    // addMcpServer uses execFileSync
+    mockedExecFileSync.mockReturnValueOnce(Buffer.from('added'));
 
     const result = configureMcpServer(false, true);
 
     expect(result.success).toBe(true);
     expect(result.alreadyConfigured).toBe(false);
-    expect(mockedExecSync).toHaveBeenCalledTimes(3);
+    expect(mockedExecSync).toHaveBeenCalledTimes(2);
+    expect(mockedExecFileSync).toHaveBeenCalledTimes(1);
   });
 
   it('should return failure when add command throws', () => {
-    mockedExecSync
-      .mockImplementationOnce(() => {
-        throw new Error('not found');
-      })
-      .mockImplementationOnce(() => {
-        throw new Error('Permission denied');
-      });
+    // isMcpServerConfigured: not configured
+    mockedExecSync.mockImplementationOnce(() => {
+      throw new Error('not found');
+    });
+    // addMcpServer (execFileSync) throws
+    mockedExecFileSync.mockImplementationOnce(() => {
+      throw new Error('Permission denied');
+    });
 
     const result = configureMcpServer(false, false);
 
@@ -197,15 +203,13 @@ describe('configureMcpServer', () => {
   });
 
   it('should handle non-Error throw from add command', () => {
-    mockedExecSync
-      .mockImplementationOnce(() => {
-        throw new Error('not found');
-      })
-      .mockImplementationOnce(() => {
-        // Simulate a non-Error thrown value (e.g. from native code)
-        const err: unknown = 'string error';
-        throw err;
-      });
+    mockedExecSync.mockImplementationOnce(() => {
+      throw new Error('not found');
+    });
+    mockedExecFileSync.mockImplementationOnce(() => {
+      const err: unknown = 'string error';
+      throw err;
+    });
 
     const result = configureMcpServer(false, false);
 
@@ -286,14 +290,14 @@ describe('generateHookConfig', () => {
     const config = generateHookConfig();
     const preToolUse = config.hooks.PreToolUse!;
 
-    expect(preToolUse[0].matcher).toBe('Bash');
+    expect(preToolUse[0]!.matcher).toBe('Bash');
   });
 
   it('should set PostToolUse matcher to wildcard', () => {
     const config = generateHookConfig();
     const postToolUse = config.hooks.PostToolUse!;
 
-    expect(postToolUse[0].matcher).toBe('*');
+    expect(postToolUse[0]!.matcher).toBe('*');
   });
 
   it('should use command type for all hook entries', () => {
@@ -500,9 +504,9 @@ describe('configureHooks', () => {
       // areHooksConfigured: no nexus-agents
       .mockReturnValueOnce('{}')
       // getExistingHooks: no existing hooks
-      .mockReturnValueOnce('null')
-      // config set hooks: success
-      .mockReturnValueOnce('ok');
+      .mockReturnValueOnce('null');
+    // config set hooks uses execFileSync
+    mockedExecFileSync.mockReturnValueOnce(Buffer.from('ok'));
 
     const result = configureHooks(false);
 
@@ -517,9 +521,9 @@ describe('configureHooks', () => {
       // areHooksConfigured: no nexus-agents
       .mockReturnValueOnce('{}')
       // getExistingHooks: has existing hooks
-      .mockReturnValueOnce(JSON.stringify(existingHooks))
-      // config set hooks: success
-      .mockReturnValueOnce('ok');
+      .mockReturnValueOnce(JSON.stringify(existingHooks));
+    // config set hooks uses execFileSync
+    mockedExecFileSync.mockReturnValueOnce(Buffer.from('ok'));
 
     const result = configureHooks(false);
 
@@ -532,9 +536,9 @@ describe('configureHooks', () => {
       // areHooksConfigured: has nexus-agents
       .mockReturnValueOnce('nexus-agents hooks')
       // getExistingHooks
-      .mockReturnValueOnce('null')
-      // config set hooks
-      .mockReturnValueOnce('ok');
+      .mockReturnValueOnce('null');
+    // config set hooks uses execFileSync
+    mockedExecFileSync.mockReturnValueOnce(Buffer.from('ok'));
 
     const result = configureHooks(true);
 
@@ -547,11 +551,11 @@ describe('configureHooks', () => {
       // areHooksConfigured
       .mockReturnValueOnce('{}')
       // getExistingHooks
-      .mockReturnValueOnce('null')
-      // config set hooks throws
-      .mockImplementationOnce(() => {
-        throw new Error('write failed');
-      });
+      .mockReturnValueOnce('null');
+    // config set hooks (execFileSync) throws
+    mockedExecFileSync.mockImplementationOnce(() => {
+      throw new Error('write failed');
+    });
 
     const result = configureHooks(false);
 

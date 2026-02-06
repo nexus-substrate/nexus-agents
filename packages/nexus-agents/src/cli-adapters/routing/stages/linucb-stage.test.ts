@@ -40,7 +40,16 @@ function makeOutcome(overrides: Partial<RoutingOutcome> = {}) {
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 function mockLogger() {
-  return { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+  const logger = {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    setLevel: vi.fn(),
+    child: vi.fn(),
+  };
+  logger.child.mockReturnValue(logger);
+  return logger;
 }
 
 describe('LinUCBStage construction', () => {

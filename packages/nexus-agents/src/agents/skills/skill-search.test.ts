@@ -27,8 +27,8 @@ function makeSkill(overrides: Partial<Skill> = {}): Skill {
     id: 'skill-1',
     name: 'Code Review',
     description: 'Reviews code for quality and security',
-    category: 'analysis',
-    complexity: 'medium',
+    category: 'code-analysis',
+    complexity: 'moderate',
     code: '',
     parameters: [],
     outputType: 'string',
@@ -172,15 +172,15 @@ describe('matchesCategory', () => {
   });
 
   it('matches when category equals', () => {
-    expect(matchesCategory(makeSkill({ category: 'analysis' }), { category: 'analysis' })).toBe(
-      true
-    );
+    expect(
+      matchesCategory(makeSkill({ category: 'code-analysis' }), { category: 'code-analysis' })
+    ).toBe(true);
   });
 
   it('rejects when category differs', () => {
-    expect(matchesCategory(makeSkill({ category: 'analysis' }), { category: 'generation' })).toBe(
-      false
-    );
+    expect(
+      matchesCategory(makeSkill({ category: 'code-analysis' }), { category: 'code-generation' })
+    ).toBe(false);
   });
 });
 
@@ -194,15 +194,15 @@ describe('matchesComplexity', () => {
   });
 
   it('matches when complexity equals', () => {
-    expect(matchesComplexity(makeSkill({ complexity: 'medium' }), { complexity: 'medium' })).toBe(
-      true
-    );
+    expect(
+      matchesComplexity(makeSkill({ complexity: 'moderate' }), { complexity: 'moderate' })
+    ).toBe(true);
   });
 
   it('rejects when complexity differs', () => {
-    expect(matchesComplexity(makeSkill({ complexity: 'medium' }), { complexity: 'high' })).toBe(
-      false
-    );
+    expect(
+      matchesComplexity(makeSkill({ complexity: 'moderate' }), { complexity: 'complex' })
+    ).toBe(false);
   });
 });
 
@@ -294,20 +294,28 @@ describe('matchesAllCriteria', () => {
   const noMetrics = (): SkillMetrics | undefined => undefined;
 
   it('matches when all criteria pass', () => {
-    const skill = makeSkill({ category: 'analysis', complexity: 'medium', tags: ['review'] });
-    const query: SkillQuery = { category: 'analysis', complexity: 'medium', tags: ['review'] };
+    const skill = makeSkill({
+      category: 'code-analysis',
+      complexity: 'moderate',
+      tags: ['review'],
+    });
+    const query: SkillQuery = {
+      category: 'code-analysis',
+      complexity: 'moderate',
+      tags: ['review'],
+    };
     expect(matchesAllCriteria(skill, query, noMetrics)).toBe(true);
   });
 
   it('rejects when category fails', () => {
-    const skill = makeSkill({ category: 'generation' });
-    const query: SkillQuery = { category: 'analysis' };
+    const skill = makeSkill({ category: 'code-generation' });
+    const query: SkillQuery = { category: 'code-analysis' };
     expect(matchesAllCriteria(skill, query, noMetrics)).toBe(false);
   });
 
   it('rejects when complexity fails', () => {
-    const skill = makeSkill({ complexity: 'low' });
-    const query: SkillQuery = { complexity: 'high' };
+    const skill = makeSkill({ complexity: 'simple' });
+    const query: SkillQuery = { complexity: 'complex' };
     expect(matchesAllCriteria(skill, query, noMetrics)).toBe(false);
   });
 

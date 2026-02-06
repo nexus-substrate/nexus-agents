@@ -3,7 +3,7 @@
  * @module cli-server.test
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, type MockInstance } from 'vitest';
 import type { ILogger } from './core/index.js';
 import type { ModeDetectionResult, ServerMode } from './cli/index.js';
 import { EXIT_CODES } from './cli-types.js';
@@ -172,8 +172,8 @@ function createMockDetectionResult(overrides?: Partial<ModeDetectionResult>): Mo
 
 describe('setupShutdownHandlers', () => {
   let mockLogger: ILogger;
-  let processOnSpy: ReturnType<typeof vi.spyOn>;
-  let processExitSpy: ReturnType<typeof vi.spyOn>;
+  let processOnSpy: MockInstance;
+  let processExitSpy: MockInstance;
 
   beforeEach(() => {
     vi.resetAllMocks();
@@ -384,7 +384,7 @@ describe('logStartupInfo', () => {
 
 describe('validateModeOrExit', () => {
   let mockLogger: ILogger;
-  let processExitSpy: ReturnType<typeof vi.spyOn>;
+  let processExitSpy: MockInstance;
 
   beforeEach(() => {
     vi.resetAllMocks();
@@ -440,7 +440,7 @@ describe('validateModeOrExit', () => {
 // ============================================================================
 
 describe('startServer', () => {
-  let processExitSpy: ReturnType<typeof vi.spyOn>;
+  let processExitSpy: MockInstance;
 
   beforeEach(async () => {
     vi.resetAllMocks();

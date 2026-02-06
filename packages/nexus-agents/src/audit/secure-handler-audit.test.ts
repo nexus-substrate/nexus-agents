@@ -29,7 +29,7 @@ function makeContext(clientId?: string, userAgent?: string) {
     },
     startTime: Date.now(),
     toolName: 'test-tool',
-  } as RequestContext;
+  } as unknown as RequestContext;
 }
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type

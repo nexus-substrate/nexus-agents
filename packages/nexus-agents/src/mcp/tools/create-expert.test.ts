@@ -438,7 +438,7 @@ describe('modelAdapter wiring (Issue #808)', () => {
     deps.modelAdapter = mockAdapter;
 
     expect(deps.modelAdapter).toBe(mockAdapter);
-    expect(deps.modelAdapter.name).toBe('test-adapter');
+    expect((deps.modelAdapter as unknown as { name: string }).name).toBe('test-adapter');
   });
 
   it('should not have modelAdapter in default deps', () => {

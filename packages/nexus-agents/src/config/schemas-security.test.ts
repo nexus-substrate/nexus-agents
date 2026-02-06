@@ -438,7 +438,7 @@ describe('Nested schema validation', () => {
         },
       },
     });
-    expect(result.rateLimit.perTool?.orchestrate.capacity).toBe(15);
+    expect(result.rateLimit.perTool?.orchestrate!.capacity).toBe(15);
   });
 });
 

@@ -186,11 +186,11 @@ describe('createTimer', () => {
 describe('withLogging', () => {
   it('wraps handler and returns result', async () => {
     const logger = makeMockLogger();
-    const handler = vi.fn<[{ x: number }], Promise<string>>();
+    const handler = vi.fn<(args: { x: number }) => Promise<string>>();
     handler.mockImplementation(() => Promise.resolve('result'));
 
-    const wrapped = withLogging('my_tool', handler, logger);
-    const result = await wrapped({ x: 1 });
+    const wrapped = withLogging('my_tool', handler as (args: never) => Promise<unknown>, logger);
+    const result = await wrapped({ x: 1 } as never);
 
     expect(result).toBe('result');
     expect(handler).toHaveBeenCalledWith({ x: 1 });

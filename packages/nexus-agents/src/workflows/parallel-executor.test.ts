@@ -89,7 +89,7 @@ describe('getFailedSteps', () => {
 
 describe('withRetries', () => {
   it('returns success on first attempt', async () => {
-    const base: StepExecutor = vi.fn<[WorkflowStep, ExecutionContext], Promise<StepResult>>();
+    const base: StepExecutor = vi.fn() as unknown as StepExecutor;
     (base as ReturnType<typeof vi.fn>).mockImplementation((step: WorkflowStep) =>
       Promise.resolve(successResult(step.id))
     );

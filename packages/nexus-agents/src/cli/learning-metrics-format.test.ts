@@ -357,8 +357,8 @@ describe('learning-metrics-format', () => {
       const output = formatJsonOutput(result);
       const parsed = JSON.parse(output) as LearningMetricsResult;
       expect(parsed.models).toHaveLength(2);
-      expect(parsed.models[0].name).toBe('claude');
-      expect(parsed.models[1].avgReward).toBe(0.65);
+      expect(parsed.models[0]!.name).toBe('claude');
+      expect(parsed.models[1]!.avgReward).toBe(0.65);
     });
   });
 });

@@ -204,7 +204,7 @@ describe('CliToModelAdapter.complete', () => {
 
   it('returns ModelError on CLI failure', async () => {
     const cliError: CliError = {
-      code: 'CLI_EXECUTION_ERROR',
+      code: 'EXECUTION_ERROR',
       message: 'CLI process crashed',
       cli: 'claude',
       retryable: false,
@@ -228,7 +228,7 @@ describe('CliToModelAdapter.complete', () => {
   it('preserves cause from CLI error', async () => {
     const cause = new Error('underlying issue');
     const cliError: CliError = {
-      code: 'CLI_EXECUTION_ERROR',
+      code: 'EXECUTION_ERROR',
       message: 'CLI failed',
       cli: 'claude',
       retryable: false,

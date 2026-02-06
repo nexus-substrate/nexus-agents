@@ -40,7 +40,7 @@ function makeConfig(overrides: Partial<BudgetEnforcementConfig> = {}): BudgetEnf
       info: () => undefined,
       warn: () => undefined,
       error: () => undefined,
-    } as BudgetEnforcementConfig['logger'],
+    } as unknown as BudgetEnforcementConfig['logger'],
     ...overrides,
   };
 }
@@ -51,7 +51,7 @@ function makeStep(id: string, contextBudget?: Partial<ContextBudget>): WorkflowS
     action: `action-${id}`,
     agent: 'test-agent',
     contextBudget,
-  } as WorkflowStep;
+  } as unknown as WorkflowStep;
 }
 
 // ============================================================================

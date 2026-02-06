@@ -29,7 +29,7 @@ function makeMockAdapter(
   latencyMs = 10,
   shouldFail = false
 ) {
-  const executeFn = vi.fn<Parameters<ICliAdapter['execute']>, ReturnType<ICliAdapter['execute']>>();
+  const executeFn = vi.fn<ICliAdapter['execute']>();
   executeFn.mockImplementation(
     () =>
       new Promise<Result<CliResponse, CliError>>((resolve) => {

@@ -429,7 +429,7 @@ describe('generateBudgetWarnings', () => {
     // Cost projected: (0.1 + 0.01) / 1.0 = 11% -> null
     const warnings = generateBudgetWarnings(budget, 500, 0.01, {});
     expect(warnings).toHaveLength(1);
-    expect(warnings[0].constraint).toBe('tokens');
+    expect(warnings[0]!.constraint).toBe('tokens');
   });
 
   it('generates only cost warning when tokens are low', () => {
@@ -443,7 +443,7 @@ describe('generateBudgetWarnings', () => {
     // Cost projected: (0.85 + 0.1) / 1.0 = 95% -> critical
     const warnings = generateBudgetWarnings(budget, 100, 0.1, {});
     expect(warnings).toHaveLength(1);
-    expect(warnings[0].constraint).toBe('cost');
+    expect(warnings[0]!.constraint).toBe('cost');
   });
 
   it('uses default thresholds when partial config provided', () => {

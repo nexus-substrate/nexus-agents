@@ -111,6 +111,7 @@ function makeLogger() {
     error: vi.fn(),
     debug: vi.fn(),
     child: vi.fn(),
+    setLevel: vi.fn(),
   };
 }
 

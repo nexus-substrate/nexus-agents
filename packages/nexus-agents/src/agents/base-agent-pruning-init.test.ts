@@ -63,7 +63,7 @@ describe('resolvePruningConfig', () => {
   });
 
   it('ignores undefined values in config', () => {
-    const config = resolvePruningConfig({ enabled: undefined, maxTokens: 200_000 });
+    const config = resolvePruningConfig({ maxTokens: 200_000 });
     expect(config.enabled).toBe(DEFAULT_PRUNING_CONFIG.enabled);
     expect(config.maxTokens).toBe(200_000);
   });

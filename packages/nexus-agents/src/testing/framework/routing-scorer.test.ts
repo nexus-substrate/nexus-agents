@@ -12,7 +12,7 @@ import {
   DEFAULT_ROUTING_SCORER_CONFIG,
 } from './routing-scorer.js';
 import type { EvaluationTask, RoutingDecisionDetails, TaskTestResult } from './types.js';
-import type { TaskProfile } from '../../cli-adapters/types.js';
+import type { TaskProfile } from '../../core/index.js';
 
 // ============================================================================
 // Helpers
@@ -68,7 +68,7 @@ describe('RoutingScorer.score', () => {
 
   it('treats no preferredClis as matching any CLI', () => {
     const scorer = new RoutingScorer();
-    const task = makeTask({ preferredClis: undefined });
+    const task = makeTask();
     const decision = makeDecision({ selectedCli: 'gemini' });
     const result = scorer.score(task, decision);
     expect(result.matchedPreferred).toBe(true);

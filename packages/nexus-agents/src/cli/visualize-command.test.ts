@@ -208,7 +208,7 @@ describe('handleVisualizeCommand', () => {
 
       handleVisualizeCommand(makeArgs(['visualize', 'swarm']));
 
-      const call = vi.mocked(generateSwarmVisualization).mock.calls[0];
+      const call = vi.mocked(generateSwarmVisualization).mock.calls[0]!;
       expect(call).toBeDefined();
       expect(call[0]).toHaveLength(7);
     });
@@ -276,7 +276,7 @@ describe('handleVisualizeCommand', () => {
 
       handleVisualizeCommand(makeArgs(['visualize', 'flow']));
 
-      const call = vi.mocked(generateFlowDiagram).mock.calls[0];
+      const call = vi.mocked(generateFlowDiagram).mock.calls[0]!;
       expect(call).toBeDefined();
       expect(call[0]).toHaveLength(11);
     });

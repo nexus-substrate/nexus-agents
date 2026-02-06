@@ -194,8 +194,8 @@ describe('generateLinkSuggestions', () => {
       cfg
     );
     expect(result.length).toBe(1);
-    expect(result[0].from).toBe('k1');
-    expect(result[0].to).toBe('k2');
+    expect(result[0]!.from).toBe('k1');
+    expect(result[0]!.to).toBe('k2');
   });
   it('respects maxSuggestions limit', () => {
     const a = makeAttrs({ keywords: ['react', 'hooks'] });
@@ -218,7 +218,7 @@ describe('generateLinkSuggestions', () => {
     ];
     const result = generateLinkSuggestions('k1', a, now, candidates, lowCfg);
     expect(result.length).toBe(2);
-    expect(result[0].confidence).toBeGreaterThanOrEqual(result[1].confidence);
+    expect(result[0]!.confidence).toBeGreaterThanOrEqual(result[1]!.confidence);
   });
   it('filters out disallowed relation types', () => {
     const ent = [{ name: 'React', type: ENT_CONCEPT }];
@@ -245,7 +245,7 @@ describe('generateLinkSuggestions', () => {
       [{ key: 'k2', attrs: b, createdAt: new Date('2025-07-01') }],
       cfg
     );
-    expect(result[0].reason).toContain('Shared keywords');
+    expect(result[0]!.reason).toContain('Shared keywords');
   });
   it('includes reason with shared entity when no shared keywords', () => {
     const ent = [{ name: 'React', type: ENT_CONCEPT }];
@@ -259,7 +259,7 @@ describe('generateLinkSuggestions', () => {
       [{ key: 'k2', attrs: b, createdAt: now }],
       lowCfg
     );
-    if (result.length > 0) expect(result[0].reason).toContain('Shared entity');
+    if (result.length > 0) expect(result[0]!.reason).toContain('Shared entity');
   });
   it('includes similarity percentage in reason when no shared keywords or entities', () => {
     const a = makeAttrs({ keywords: ['a', 'b'] });
@@ -273,7 +273,7 @@ describe('generateLinkSuggestions', () => {
       lowCfg
     );
     // 'a' is shared, so reason will show "Shared keywords: a"
-    expect(result[0].reason).toMatch(/Shared keywords|Similarity/);
+    expect(result[0]!.reason).toMatch(/Shared keywords|Similarity/);
   });
 });
 
@@ -370,7 +370,7 @@ describe('detectEvolution', () => {
     ];
     const results = detectEvolution('k1', newAttrs, new Date('2025-06-01'), existing);
     if (results.length >= 2) {
-      expect(results[0].confidence).toBeGreaterThanOrEqual(results[1].confidence);
+      expect(results[0]!.confidence).toBeGreaterThanOrEqual(results[1]!.confidence);
     }
   });
   it('excludes candidates below similarity threshold of 0.5', () => {

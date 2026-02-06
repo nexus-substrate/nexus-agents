@@ -12,45 +12,78 @@ import type { EvaluationReport } from './evaluation-report-types.js';
 // Helpers
 // ============================================================================
 
-// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-function makeReport(overrides: Partial<EvaluationReport> = {}) {
+function makeReport(overrides: Partial<EvaluationReport> = {}): EvaluationReport {
+  const djangoRepo = {
+    repository: 'django/django',
+    totalInstances: 3,
+    resolvedInstances: 2,
+    resolutionRate: 0.667,
+  };
+  const flaskRepo = {
+    repository: 'flask/flask',
+    totalInstances: 1,
+    resolvedInstances: 1,
+    resolutionRate: 1.0,
+  };
+
   return {
     metadata: {
       title: 'Test Report',
       generatedAt: '2026-01-15T12:00:00Z',
       modelName: 'claude-3',
       variant: 'lite' as const,
-      harnessVersion: '1.0.0',
+      nexusVersion: '2.3.0',
+      reportVersion: '1.0.0',
     },
     summary: {
       resolutionRate: 0.75,
       resolvedCount: 3,
       totalCount: 4,
       highlights: ['Good performance on Django'],
+      improvementAreas: [],
     },
     metrics: {
+      evaluation: {
+        totalInstances: 4,
+        predictedInstances: 4,
+        resolvedInstances: 3,
+        resolutionRate: 0.75,
+        patchesApplied: 4,
+        patchApplicationRate: 1.0,
+        timeouts: 0,
+        errors: 0,
+        avgDurationMs: 30000,
+        totalDurationMs: 120000,
+      },
       timing: {
         totalWallTime: 120000,
-        instanceDuration: { mean: 30000, median: 28000, p95: 45000, min: 10000, max: 50000 },
-        setupDuration: { mean: 5000, median: 4500, p95: 8000, min: 2000, max: 10000 },
-        evaluationDuration: { mean: 25000, median: 23000, p95: 40000, min: 8000, max: 45000 },
+        instanceDuration: {
+          mean: 30000,
+          median: 28000,
+          p95: 45000,
+          min: 10000,
+          max: 50000,
+          stdDev: 8000,
+          p25: 20000,
+          p75: 38000,
+          p90: 43000,
+          count: 4,
+        },
+        patchApplicationTime: 5000,
+        testExecutionTime: 25000,
       },
       resources: {
-        peakMemoryMb: 512,
-        avgCpuPercent: 45,
-        diskUsageGb: 2.1,
+        peakMemory: 536870912,
+        avgMemory: 268435456,
+        diskSpaceUsed: 2254857830,
+        containersCreated: 4,
       },
     },
     repositoryBreakdown: {
-      repositories: [
-        {
-          repository: 'django/django',
-          totalInstances: 3,
-          resolvedInstances: 2,
-          resolutionRate: 0.667,
-        },
-        { repository: 'flask/flask', totalInstances: 1, resolvedInstances: 1, resolutionRate: 1.0 },
-      ],
+      repositories: [djangoRepo, flaskRepo],
+      bestRepository: flaskRepo,
+      worstRepository: djangoRepo,
+      performanceVariance: 0.111,
     },
     failureAnalysis: {
       byCategory: {
@@ -126,7 +159,7 @@ function makeReport(overrides: Partial<EvaluationReport> = {}) {
       },
     },
     ...overrides,
-  } satisfies EvaluationReport;
+  } as EvaluationReport;
 }
 
 // ============================================================================
@@ -159,10 +192,9 @@ describe('renderMarkdown', () => {
 
   it('includes ranking when present', () => {
     const report = makeReport();
-    const withRanking = {
-      ...report,
+    const withRanking = makeReport({
       summary: { ...report.summary, ranking: 5 },
-    };
+    });
     const md = renderMarkdown(withRanking);
     expect(md).toContain('#5');
   });
@@ -239,10 +271,9 @@ describe('renderCsv', () => {
 
   it('handles empty instances', () => {
     const report = makeReport();
-    const empty = {
-      ...report,
+    const empty = makeReport({
       rawResult: { ...report.rawResult, instanceResults: [] },
-    };
+    });
     const csv = renderCsv(empty);
     expect(csv.split('\n')).toHaveLength(1); // header only
   });

@@ -408,7 +408,6 @@ describe('Edge cases', () => {
     const result = await createSandbox({
       mode: 'container',
       fallbackToPolicy: true,
-      dockerConfig: undefined,
     });
 
     expect(result.actualMode).toBe('policy');

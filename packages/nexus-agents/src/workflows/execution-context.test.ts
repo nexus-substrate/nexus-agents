@@ -47,7 +47,7 @@ function makeStepResult(output: unknown = 'done') {
     startedAt: new Date(FIXED_TIME).toISOString(),
     completedAt: new Date(FIXED_TIME).toISOString(),
     durationMs: 100,
-  } as StepResult;
+  } as unknown as StepResult;
 }
 
 // ============================================================================

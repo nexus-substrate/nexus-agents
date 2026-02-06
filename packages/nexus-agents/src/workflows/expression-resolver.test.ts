@@ -210,7 +210,7 @@ describe('resolveInput', () => {
   it('resolves nested objects recursively', () => {
     const ctx = makeContext({ inputs: { v: 42 } });
     const result = resolveInput({ outer: { inner: '${{ inputs.v }}' } }, ctx);
-    expect((result as Record<string, Record<string, unknown>>).outer.inner).toBe(42);
+    expect((result as Record<string, Record<string, unknown>>).outer!.inner).toBe(42);
   });
 
   it('returns primitives unchanged', () => {
