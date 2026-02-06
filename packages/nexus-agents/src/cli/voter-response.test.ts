@@ -526,13 +526,13 @@ describe('parseVoteResponse', () => {
       expect(result.decision).toBe('reject');
     });
 
-    it('should detect disagree keyword as approve due to agree substring', () => {
+    it('should detect disagree keyword as reject', () => {
       const output = 'I disagree with this direction';
 
       const result = parseVoteResponse(output, role, options);
 
-      // Note: "disagree" contains "agree" so it matches approve first
-      expect(result.decision).toBe('approve');
+      // Reject keywords are checked first to avoid "agree" substring matching
+      expect(result.decision).toBe('reject');
     });
 
     it('should be case insensitive', () => {

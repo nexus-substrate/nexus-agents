@@ -140,10 +140,11 @@ function createFallbackVote(output: string, _role: VoterRole, reason: string): P
   let decision: Vote['decision'] = 'abstain';
 
   // Simple keyword detection - heuristic only
-  if (lower.includes('approve') || lower.includes('accept') || lower.includes('agree')) {
-    decision = 'approve';
-  } else if (lower.includes('reject') || lower.includes('decline') || lower.includes('disagree')) {
+  // Check reject keywords FIRST since "disagree" contains "agree" substring
+  if (lower.includes('reject') || lower.includes('decline') || lower.includes('disagree')) {
     decision = 'reject';
+  } else if (lower.includes('approve') || lower.includes('accept') || lower.includes('agree')) {
+    decision = 'approve';
   }
 
   // Log warning about synthetic vote
