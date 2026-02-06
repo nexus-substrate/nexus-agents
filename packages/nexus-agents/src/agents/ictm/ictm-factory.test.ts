@@ -223,7 +223,6 @@ describe('inferICTM', () => {
   it('confidence increases with more info', () => {
     const minimal = makeSubTask({
       requiredCapabilities: [],
-      assignedRole: undefined,
     });
     const rich = makeSubTask({
       requiredCapabilities: ['code_review'],

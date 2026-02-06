@@ -243,7 +243,7 @@ describe('curateContext', () => {
     const filter = makeFilter({ relevanceThreshold: 0.5 });
     const result = curateContext(items, filter, BASE_TIME);
     expect(result.items).toHaveLength(1);
-    expect(result.items[0].id).toBe('high');
+    expect(result.items[0]!.id).toBe('high');
     expect(result.filteredCount).toBe(1);
   });
 
@@ -263,8 +263,8 @@ describe('curateContext', () => {
     ];
     const filter = makeFilter({ pruneStrategy: 'recency' });
     const result = curateContext(items, filter, BASE_TIME);
-    expect(result.items[0].id).toBe('new');
-    expect(result.items[1].id).toBe('old');
+    expect(result.items[0]!.id).toBe('new');
+    expect(result.items[1]!.id).toBe('old');
   });
 
   it('ranks by importance strategy', () => {
@@ -274,8 +274,8 @@ describe('curateContext', () => {
     ];
     const filter = makeFilter({ pruneStrategy: 'importance' });
     const result = curateContext(items, filter, BASE_TIME);
-    expect(result.items[0].id).toBe('high');
-    expect(result.items[1].id).toBe('low');
+    expect(result.items[0]!.id).toBe('high');
+    expect(result.items[1]!.id).toBe('low');
   });
 
   it('ranks by hybrid strategy', () => {
@@ -292,7 +292,7 @@ describe('curateContext', () => {
     const result = curateContext(items, filter, BASE_TIME);
     // old-high hybrid: 0.4*0.5 + 0.6*0.95 = 0.77
     // recent-low hybrid: 0.4*1.0 + 0.6*0.35 = 0.61
-    expect(result.items[0].id).toBe('old-high');
+    expect(result.items[0]!.id).toBe('old-high');
   });
 
   // -- Token budget trimming --
@@ -326,7 +326,7 @@ describe('curateContext', () => {
     });
     const result = curateContext(items, filter, BASE_TIME);
     expect(result.items).toHaveLength(1);
-    expect(result.items[0].id).toBe('big');
+    expect(result.items[0]!.id).toBe('big');
     expect(result.trimmedCount).toBe(2);
   });
 
@@ -364,7 +364,7 @@ describe('curateContext', () => {
     // h filtered by history (1), low filtered by relevance (1)
     expect(result.filteredCount).toBe(2);
     expect(result.items).toHaveLength(1);
-    expect(result.items[0].id).toBe('ok');
+    expect(result.items[0]!.id).toBe('ok');
   });
 
   it('uses default relevance threshold when not specified', () => {
@@ -381,7 +381,7 @@ describe('curateContext', () => {
     };
     const result = curateContext(items, filter, BASE_TIME);
     expect(result.items).toHaveLength(1);
-    expect(result.items[0].id).toBe('above');
+    expect(result.items[0]!.id).toBe('above');
   });
 
   it('does not mutate the original items array', () => {

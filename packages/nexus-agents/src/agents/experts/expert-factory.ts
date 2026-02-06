@@ -7,6 +7,8 @@
 
 import type { Result, IModelAdapter, AgentCapability } from '../../core/index.js';
 import { ok, err, AgentError, formatZodError } from '../../core/index.js';
+import type { ICTMConfig } from '../ictm/ictm-types.js';
+import { ictmToExpertConfig } from '../ictm/ictm-factory.js';
 import { SimpleAgent } from '../simple-agent.js';
 import type { BaseAgentOptions } from '../base-agent.js';
 import type { ContextPrunerAgentConfig } from '../base-agent-pruning-init.js';
@@ -356,6 +358,26 @@ export function getBuiltInExpertConfig(
 }
 
 /**
+ * Create an expert agent from an ICTM configuration (Issue #756).
+ *
+ * Bridges the ICTM pattern to the existing expert factory by converting
+ * the ICTM config to an ExpertConfig and delegating to createExpert().
+ *
+ * @param ictm - ICTM configuration with instructions, context, tools, model
+ * @param subtaskId - Subtask identifier used for naming
+ * @param options - Creation options including adapter
+ * @returns Result with Expert or FactoryError
+ */
+export function createFromICTM(
+  ictm: ICTMConfig,
+  subtaskId: string,
+  options?: CreateExpertOptions
+): Result<Expert, FactoryError> {
+  const expertConfig = ictmToExpertConfig(ictm, subtaskId);
+  return createExpert(expertConfig, options);
+}
+
+/**
  * Factory namespace for creating expert agents.
  * Provides static methods for backward compatibility.
  */
@@ -366,4 +388,5 @@ export const ExpertFactory = {
   createAllBuiltIn: createAllBuiltInExperts,
   validate: validateExpertConfigStrict,
   getBuiltInConfig: getBuiltInExpertConfig,
+  createFromICTM,
 } as const;

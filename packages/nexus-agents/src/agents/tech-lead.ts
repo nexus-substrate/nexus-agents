@@ -39,6 +39,7 @@ import {
   extractTextContent,
 } from './tech-lead-helpers.js';
 import { heuristicDecomposition } from './tech-lead-decomposition.js';
+import { enrichAssignmentsWithICTM } from './tech-lead-ictm-integration.js';
 import type { WorkflowDefinition } from '../core/index.js';
 import {
   convertPlanToWorkflow,
@@ -194,7 +195,10 @@ export class TechLead extends BaseAgent {
       subtasks = decomposeResult.value;
     }
 
-    const assignments = this.selectExperts(subtasks);
+    const baseAssignments = this.selectExperts(subtasks);
+
+    // Enrich assignments with ICTM configurations (Issue #756)
+    const { assignments } = enrichAssignmentsWithICTM(baseAssignments, subtasks, analysis);
     const output = this.buildExecutionPlan(task, analysis, subtasks, assignments);
 
     return ok({

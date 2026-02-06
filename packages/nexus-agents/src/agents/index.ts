@@ -188,6 +188,7 @@ export {
   ExpertFactory,
   Expert,
   FactoryError,
+  createFromICTM,
   type CreateExpertOptions,
   // Registry
   ExpertRegistry,
@@ -300,3 +301,9 @@ export * from './orchestration-exports.js';
 
 // ICTM module (AOrchestra pattern - Issue #756)
 export * from './ictm/index.js';
+
+// ICTM integration with TechLead (Issue #756 Phase 2)
+export {
+  enrichAssignmentsWithICTM,
+  type ICTMEnrichmentResult,
+} from './tech-lead-ictm-integration.js';

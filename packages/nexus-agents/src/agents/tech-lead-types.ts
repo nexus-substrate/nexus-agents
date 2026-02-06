@@ -7,6 +7,8 @@
 
 import { z } from 'zod';
 import type { AgentRole } from '../core/index.js';
+import type { ICTMConfig } from './ictm/ictm-types.js';
+import { ICTMConfigSchema } from './ictm/ictm-types.js';
 
 /**
  * Subtask priority levels.
@@ -78,6 +80,8 @@ export interface ExpertAssignment {
   selectionReason: string;
   /** Confidence in the assignment (0-1) */
   confidence: number;
+  /** ICTM configuration for dynamic sub-agent creation (Issue #756) */
+  ictmConfig?: ICTMConfig;
 }
 
 /**
@@ -243,6 +247,7 @@ export const ExpertAssignmentSchema = z.object({
   ]),
   selectionReason: z.string().min(1),
   confidence: z.number().min(0).max(1),
+  ictmConfig: ICTMConfigSchema.optional(),
 });
 
 /**

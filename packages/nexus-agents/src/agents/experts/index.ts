@@ -97,7 +97,13 @@ export {
 } from './expert-config.js';
 
 // Factory for creating experts
-export { ExpertFactory, Expert, FactoryError, type CreateExpertOptions } from './expert-factory.js';
+export {
+  ExpertFactory,
+  Expert,
+  FactoryError,
+  createFromICTM,
+  type CreateExpertOptions,
+} from './expert-factory.js';
 
 // Registry for managing experts
 export {
