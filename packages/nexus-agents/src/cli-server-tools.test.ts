@@ -1,0 +1,559 @@
+/**
+ * Tests for cli-server-tools.ts
+ *
+ * Covers: REGISTERED_TOOLS constant, TechLeadUnavailableError, isToolAllowed,
+ * createTechLeadForOrchestration, copyOptionalProps, createToolContext,
+ * registerMcpTools (with mocked sub-registrations), tool allowlisting,
+ * STPA safety analysis integration.
+ */
+
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+import { ErrorCode } from './core/index.js';
+import {
+  REGISTERED_TOOLS,
+  TechLeadUnavailableError,
+  registerMcpTools,
+} from './cli-server-tools.js';
+import type { RegisterMcpToolsOptions } from './cli-server-tools.js';
+
+// ============================================================================
+// Mock external modules (vi.hoisted so they are available in vi.mock factories)
+// ============================================================================
+
+const {
+  mockRegisterTools,
+  mockRegisterDelegateToModelTool,
+  mockRegisterOrchestrateTool,
+  mockRegisterCreateExpertTool,
+  mockRegisterExecuteExpertTool,
+  mockRegisterRunWorkflowTool,
+  mockRegisterListExpertsTool,
+  mockRegisterListWorkflowsTool,
+  mockRegisterConsensusVoteTool,
+  mockRegisterResearchQueryTool,
+  mockRegisterResearchAddTool,
+  mockRegisterResearchDiscoverTool,
+  mockRegisterResearchAnalyzeTool,
+  mockRegisterResearchCatalogReviewTool,
+  mockRegisterMemoryQueryTool,
+  mockRegisterMemoryStatsTool,
+  mockCreateDefaultDeps,
+  mockCreateRealWorkflowEngine,
+  mockCreateToolRateLimiterFactory,
+  mockSetGlobalToolRateLimiterFactory,
+  mockRunStpaSafetyAnalysis,
+} = vi.hoisted(() => ({
+  mockRegisterTools: vi.fn().mockReturnValue({
+    logger: {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      child: vi.fn().mockReturnThis(),
+      setLevel: vi.fn(),
+    },
+  }),
+  mockRegisterDelegateToModelTool: vi.fn(),
+  mockRegisterOrchestrateTool: vi.fn(),
+  mockRegisterCreateExpertTool: vi.fn(),
+  mockRegisterExecuteExpertTool: vi.fn(),
+  mockRegisterRunWorkflowTool: vi.fn(),
+  mockRegisterListExpertsTool: vi.fn(),
+  mockRegisterListWorkflowsTool: vi.fn(),
+  mockRegisterConsensusVoteTool: vi.fn(),
+  mockRegisterResearchQueryTool: vi.fn(),
+  mockRegisterResearchAddTool: vi.fn(),
+  mockRegisterResearchDiscoverTool: vi.fn(),
+  mockRegisterResearchAnalyzeTool: vi.fn(),
+  mockRegisterResearchCatalogReviewTool: vi.fn(),
+  mockRegisterMemoryQueryTool: vi.fn(),
+  mockRegisterMemoryStatsTool: vi.fn(),
+  mockCreateDefaultDeps: vi.fn().mockReturnValue({
+    logger: {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      child: vi.fn().mockReturnThis(),
+      setLevel: vi.fn(),
+    },
+    rateLimiter: { tryAcquire: vi.fn().mockReturnValue(true) },
+  }),
+  mockCreateRealWorkflowEngine: vi.fn().mockReturnValue({
+    loadTemplate: vi.fn(),
+    execute: vi.fn(),
+    cancel: vi.fn(),
+    getStatus: vi.fn(),
+    listTemplates: vi.fn(),
+  }),
+  mockCreateToolRateLimiterFactory: vi.fn().mockReturnValue({
+    getForTool: vi.fn().mockReturnValue({
+      tryAcquire: vi.fn().mockReturnValue(true),
+    }),
+    isEnabled: vi.fn().mockReturnValue(true),
+  }),
+  mockSetGlobalToolRateLimiterFactory: vi.fn(),
+  mockRunStpaSafetyAnalysis: vi.fn(),
+}));
+
+vi.mock('./mcp/index.js', () => ({
+  registerTools: mockRegisterTools,
+  registerDelegateToModelTool: mockRegisterDelegateToModelTool,
+  registerOrchestrateTool: mockRegisterOrchestrateTool,
+  registerCreateExpertTool: mockRegisterCreateExpertTool,
+  registerExecuteExpertTool: mockRegisterExecuteExpertTool,
+  registerRunWorkflowTool: mockRegisterRunWorkflowTool,
+  registerListExpertsTool: mockRegisterListExpertsTool,
+  registerListWorkflowsTool: mockRegisterListWorkflowsTool,
+  registerConsensusVoteTool: mockRegisterConsensusVoteTool,
+  registerResearchQueryTool: mockRegisterResearchQueryTool,
+  registerResearchAddTool: mockRegisterResearchAddTool,
+  registerResearchDiscoverTool: mockRegisterResearchDiscoverTool,
+  registerResearchAnalyzeTool: mockRegisterResearchAnalyzeTool,
+  registerResearchCatalogReviewTool: mockRegisterResearchCatalogReviewTool,
+  registerMemoryQueryTool: mockRegisterMemoryQueryTool,
+  registerMemoryStatsTool: mockRegisterMemoryStatsTool,
+  createDefaultDeps: mockCreateDefaultDeps,
+}));
+
+vi.mock('./mcp/tools/orchestrate.js', () => ({
+  createMockTechLead: vi.fn().mockReturnValue({
+    execute: vi
+      .fn()
+      .mockImplementation(() =>
+        Promise.resolve({ ok: true, value: { taskId: 'mock', output: {}, metadata: {} } })
+      ),
+  }),
+}));
+
+vi.mock('./agents/index.js', () => ({
+  createTechLead: vi.fn().mockReturnValue({
+    execute: vi
+      .fn()
+      .mockImplementation(() =>
+        Promise.resolve({ ok: true, value: { taskId: 'real', output: {}, metadata: {} } })
+      ),
+  }),
+}));
+
+vi.mock('./workflows/index.js', () => ({
+  createRealWorkflowEngine: mockCreateRealWorkflowEngine,
+}));
+
+vi.mock('./mcp/middleware/index.js', () => ({
+  createToolRateLimiterFactory: mockCreateToolRateLimiterFactory,
+  setGlobalToolRateLimiterFactory: mockSetGlobalToolRateLimiterFactory,
+}));
+
+vi.mock('./cli-server-stpa.js', () => ({
+  runStpaSafetyAnalysis: mockRunStpaSafetyAnalysis,
+  StpaSafetyError: class StpaSafetyError extends Error {
+    constructor(message: string) {
+      super(message);
+      this.name = 'StpaSafetyError';
+    }
+  },
+}));
+
+// ============================================================================
+// Mock helpers
+// ============================================================================
+
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+function makeMockLogger() {
+  return {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    child: vi.fn().mockReturnThis(),
+    setLevel: vi.fn(),
+  };
+}
+
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+function makeMockServer() {
+  return {
+    tool: vi.fn(),
+    connect: vi.fn(),
+  } as unknown as RegisterMcpToolsOptions['server'];
+}
+
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+function makeDefaultOptions(overrides: Partial<RegisterMcpToolsOptions> = {}) {
+  return {
+    server: makeMockServer(),
+    logger: makeMockLogger(),
+    builtInTemplates: new Map(),
+    ...overrides,
+  } as RegisterMcpToolsOptions;
+}
+
+// ============================================================================
+// REGISTERED_TOOLS constant
+// ============================================================================
+
+describe('REGISTERED_TOOLS', () => {
+  it('should contain exactly 15 tool names', () => {
+    expect(REGISTERED_TOOLS).toHaveLength(15);
+  });
+
+  it('should include all expected tool names', () => {
+    const expected = [
+      'delegate_to_model',
+      'orchestrate',
+      'create_expert',
+      'execute_expert',
+      'run_workflow',
+      'list_experts',
+      'list_workflows',
+      'consensus_vote',
+      'research_query',
+      'research_add',
+      'research_discover',
+      'research_analyze',
+      'research_catalog_review',
+      'memory_query',
+      'memory_stats',
+    ];
+    expect([...REGISTERED_TOOLS]).toEqual(expected);
+  });
+
+  it('should have no duplicate entries', () => {
+    const asSet = new Set(REGISTERED_TOOLS);
+    expect(asSet.size).toBe(REGISTERED_TOOLS.length);
+  });
+});
+
+// ============================================================================
+// TechLeadUnavailableError
+// ============================================================================
+
+describe('TechLeadUnavailableError', () => {
+  it('should have correct name', () => {
+    const error = new TechLeadUnavailableError('test message');
+    expect(error.name).toBe('TechLeadUnavailableError');
+  });
+
+  it('should have MODEL_UNAVAILABLE error code', () => {
+    const error = new TechLeadUnavailableError('no adapter');
+    expect(error.code).toBe(ErrorCode.MODEL_UNAVAILABLE);
+  });
+
+  it('should preserve the message', () => {
+    const msg = 'No model adapter available';
+    const error = new TechLeadUnavailableError(msg);
+    expect(error.message).toBe(msg);
+  });
+
+  it('should be an instance of Error', () => {
+    const error = new TechLeadUnavailableError('test');
+    expect(error).toBeInstanceOf(Error);
+  });
+
+  it('should work with empty message', () => {
+    const error = new TechLeadUnavailableError('');
+    expect(error.message).toBe('');
+    expect(error.code).toBe(ErrorCode.MODEL_UNAVAILABLE);
+  });
+});
+
+// ============================================================================
+// registerMcpTools - basic registration
+// ============================================================================
+
+describe('registerMcpTools', () => {
+  const originalEnv = process.env['NEXUS_ALLOW_MOCK_ORCHESTRATION'];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    delete process.env['NEXUS_ALLOW_MOCK_ORCHESTRATION'];
+  });
+
+  afterEach(() => {
+    if (originalEnv !== undefined) {
+      process.env['NEXUS_ALLOW_MOCK_ORCHESTRATION'] = originalEnv;
+    } else {
+      delete process.env['NEXUS_ALLOW_MOCK_ORCHESTRATION'];
+    }
+  });
+
+  it('should throw TechLeadUnavailableError when no adapter and mock not enabled', () => {
+    const options = makeDefaultOptions();
+    expect(() => {
+      registerMcpTools(options);
+    }).toThrow(TechLeadUnavailableError);
+  });
+
+  it('should succeed with useMockTechLead: true and no adapter', () => {
+    const options = makeDefaultOptions({ useMockTechLead: true });
+    expect(() => {
+      registerMcpTools(options);
+    }).not.toThrow();
+  });
+
+  it('should succeed with NEXUS_ALLOW_MOCK_ORCHESTRATION env var', () => {
+    process.env['NEXUS_ALLOW_MOCK_ORCHESTRATION'] = 'true';
+    const options = makeDefaultOptions();
+    expect(() => {
+      registerMcpTools(options);
+    }).not.toThrow();
+  });
+
+  it('should not enable mock when env var is not "true"', () => {
+    process.env['NEXUS_ALLOW_MOCK_ORCHESTRATION'] = 'false';
+    const options = makeDefaultOptions();
+    expect(() => {
+      registerMcpTools(options);
+    }).toThrow(TechLeadUnavailableError);
+  });
+
+  it('should succeed with a model adapter provided', () => {
+    const mockAdapter = {
+      generate: vi.fn(),
+    } as unknown as RegisterMcpToolsOptions['modelAdapter'];
+    const options = makeDefaultOptions({ modelAdapter: mockAdapter });
+    expect(() => {
+      registerMcpTools(options);
+    }).not.toThrow();
+  });
+
+  it('should call registerTools with server and logger', () => {
+    const options = makeDefaultOptions({ useMockTechLead: true });
+    registerMcpTools(options);
+    expect(mockRegisterTools).toHaveBeenCalledWith(options.server, { logger: options.logger });
+  });
+
+  it('should call setGlobalToolRateLimiterFactory', () => {
+    const options = makeDefaultOptions({ useMockTechLead: true });
+    registerMcpTools(options);
+    expect(mockSetGlobalToolRateLimiterFactory).toHaveBeenCalledTimes(1);
+  });
+
+  it('should log registration info', () => {
+    const logger = makeMockLogger();
+    const options = makeDefaultOptions({ logger, useMockTechLead: true });
+    registerMcpTools(options);
+    expect(logger.info).toHaveBeenCalled();
+  });
+});
+
+// ============================================================================
+// registerMcpTools - STPA safety analysis
+// ============================================================================
+
+describe('registerMcpTools - STPA safety analysis', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env['NEXUS_ALLOW_MOCK_ORCHESTRATION'] = 'true';
+  });
+
+  afterEach(() => {
+    delete process.env['NEXUS_ALLOW_MOCK_ORCHESTRATION'];
+  });
+
+  it('should not run STPA analysis by default', () => {
+    const options = makeDefaultOptions();
+    registerMcpTools(options);
+    expect(mockRunStpaSafetyAnalysis).not.toHaveBeenCalled();
+  });
+
+  it('should run STPA analysis when enableStpaSafetyAnalysis is true', () => {
+    const options = makeDefaultOptions({ enableStpaSafetyAnalysis: true });
+    registerMcpTools(options);
+    expect(mockRunStpaSafetyAnalysis).toHaveBeenCalledTimes(1);
+  });
+
+  it('should pass failOnHighSeverityHazards flag to STPA', () => {
+    const options = makeDefaultOptions({
+      enableStpaSafetyAnalysis: true,
+      failOnHighSeverityHazards: true,
+    });
+    registerMcpTools(options);
+    expect(mockRunStpaSafetyAnalysis).toHaveBeenCalledWith(expect.anything(), true);
+  });
+
+  it('should default failOnHighSeverityHazards to false', () => {
+    const options = makeDefaultOptions({ enableStpaSafetyAnalysis: true });
+    registerMcpTools(options);
+    expect(mockRunStpaSafetyAnalysis).toHaveBeenCalledWith(expect.anything(), false);
+  });
+});
+
+// ============================================================================
+// registerMcpTools - tool allowlisting (Issue #740)
+// ============================================================================
+
+describe('registerMcpTools - tool allowlisting', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env['NEXUS_ALLOW_MOCK_ORCHESTRATION'] = 'true';
+  });
+
+  afterEach(() => {
+    delete process.env['NEXUS_ALLOW_MOCK_ORCHESTRATION'];
+  });
+
+  it('should register all tool categories when no allowlist', () => {
+    const options = makeDefaultOptions();
+    registerMcpTools(options);
+    expect(mockRegisterDelegateToModelTool).toHaveBeenCalled();
+    expect(mockRegisterOrchestrateTool).toHaveBeenCalled();
+    expect(mockRegisterConsensusVoteTool).toHaveBeenCalled();
+    expect(mockRegisterResearchQueryTool).toHaveBeenCalled();
+    expect(mockRegisterMemoryQueryTool).toHaveBeenCalled();
+  });
+
+  it('should skip categories when allowlist excludes them', () => {
+    const options = makeDefaultOptions({
+      securityConfig: {
+        toolAllowlist: ['delegate_to_model', 'orchestrate'],
+      } as RegisterMcpToolsOptions['securityConfig'],
+    });
+    registerMcpTools(options);
+
+    expect(mockRegisterConsensusVoteTool).not.toHaveBeenCalled();
+    expect(mockRegisterResearchQueryTool).not.toHaveBeenCalled();
+    expect(mockRegisterMemoryQueryTool).not.toHaveBeenCalled();
+  });
+
+  it('should log allowlist info when active', () => {
+    const logger = makeMockLogger();
+    const options = makeDefaultOptions({
+      logger,
+      securityConfig: {
+        toolAllowlist: ['delegate_to_model'],
+      } as RegisterMcpToolsOptions['securityConfig'],
+    });
+    registerMcpTools(options);
+
+    const allowlistCall = logger.info.mock.calls.find(
+      (call: unknown[]) => call[0] === 'Tool allowlist active'
+    );
+    expect(allowlistCall).toBeDefined();
+  });
+});
+
+// ============================================================================
+// registerMcpTools - rate limiting config
+// ============================================================================
+
+describe('registerMcpTools - rate limiting', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env['NEXUS_ALLOW_MOCK_ORCHESTRATION'] = 'true';
+  });
+
+  afterEach(() => {
+    delete process.env['NEXUS_ALLOW_MOCK_ORCHESTRATION'];
+  });
+
+  it('should create rate limiter factory with enabled=true by default', () => {
+    const options = makeDefaultOptions();
+    registerMcpTools(options);
+    expect(mockCreateToolRateLimiterFactory).toHaveBeenCalledWith(
+      expect.objectContaining({ enabled: true })
+    );
+  });
+
+  it('should respect rateLimit.enabled=false from security config', () => {
+    const options = makeDefaultOptions({
+      securityConfig: {
+        rateLimit: { enabled: false },
+      } as RegisterMcpToolsOptions['securityConfig'],
+    });
+    registerMcpTools(options);
+    expect(mockCreateToolRateLimiterFactory).toHaveBeenCalledWith(
+      expect.objectContaining({ enabled: false })
+    );
+  });
+});
+
+// ============================================================================
+// registerMcpTools - workflow config wiring
+// ============================================================================
+
+describe('registerMcpTools - workflow config', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env['NEXUS_ALLOW_MOCK_ORCHESTRATION'] = 'true';
+  });
+
+  afterEach(() => {
+    delete process.env['NEXUS_ALLOW_MOCK_ORCHESTRATION'];
+  });
+
+  it('should pass workflow config to workflow engine creation', () => {
+    const options = makeDefaultOptions({
+      workflowConfig: {
+        timeout: 30000,
+        maxParallel: 4,
+        templatesDir: '/tmp/templates',
+      } as RegisterMcpToolsOptions['workflowConfig'],
+    });
+    registerMcpTools(options);
+    expect(mockCreateRealWorkflowEngine).toHaveBeenCalledWith(
+      expect.objectContaining({
+        defaultTimeoutMs: 30000,
+        maxConcurrency: 4,
+        templatePaths: ['/tmp/templates'],
+      })
+    );
+  });
+});
+
+// ============================================================================
+// registerMcpTools - policy firewall wiring
+// ============================================================================
+
+describe('registerMcpTools - policy firewall', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env['NEXUS_ALLOW_MOCK_ORCHESTRATION'] = 'true';
+  });
+
+  afterEach(() => {
+    delete process.env['NEXUS_ALLOW_MOCK_ORCHESTRATION'];
+  });
+
+  it('should log policy firewall info when provided', () => {
+    const logger = makeMockLogger();
+    const mockFirewall = {
+      getMode: vi.fn().mockReturnValue('enforce'),
+    } as unknown as RegisterMcpToolsOptions['policyFirewall'];
+
+    const options = makeDefaultOptions({
+      logger,
+      policyFirewall: mockFirewall,
+      executionMode: 'read-write' as RegisterMcpToolsOptions['executionMode'],
+    });
+    registerMcpTools(options);
+
+    const regCall = logger.info.mock.calls.find(
+      (call: unknown[]) => call[0] === 'Tools registered with per-tool rate limiting'
+    );
+    expect(regCall).toBeDefined();
+    expect((regCall as unknown[])[1]).toEqual(
+      expect.objectContaining({
+        policyFirewallEnabled: true,
+        policyMode: 'enforce',
+        executionMode: 'read-write',
+      })
+    );
+  });
+
+  it('should log executionMode as read-only when not provided', () => {
+    const logger = makeMockLogger();
+    const options = makeDefaultOptions({ logger });
+    registerMcpTools(options);
+
+    const regCall = logger.info.mock.calls.find(
+      (call: unknown[]) => call[0] === 'Tools registered with per-tool rate limiting'
+    );
+    expect(regCall).toBeDefined();
+    expect((regCall as unknown[])[1]).toEqual(
+      expect.objectContaining({ executionMode: 'read-only' })
+    );
+  });
+});
