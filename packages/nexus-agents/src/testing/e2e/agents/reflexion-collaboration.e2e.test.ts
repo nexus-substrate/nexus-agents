@@ -32,17 +32,15 @@ function createMockAgent(id: string, outputGen?: (task: Task) => string): IAgent
     role: 'code_expert' as AgentRole,
     state: 'idle' as AgentState,
     capabilities: ['code_generation', 'code_review'],
-    execute: vi
-      .fn()
-      .mockImplementation((task: Task) =>
-        Promise.resolve(
-          ok({
-            taskId: task.id,
-            output: genOutput(task),
-            metadata: { durationMs: 100, tokensUsed: 50, toolsUsed: [], model: 'test' },
-          } as TaskResult)
-        )
-      ),
+    execute: vi.fn().mockImplementation((task: Task) =>
+      Promise.resolve(
+        ok({
+          taskId: task.id,
+          output: genOutput(task),
+          metadata: { durationMs: 100, tokensUsed: 50, toolsUsed: [], model: 'test' },
+        } as TaskResult)
+      )
+    ),
     handleMessage: vi
       .fn()
       .mockResolvedValue(ok({ messageId: `msg-${id}`, status: 'completed', data: {} })),
@@ -109,7 +107,12 @@ describe('Reflexion Collaboration E2E', () => {
   describe('Single Critic E2E', () => {
     it('should generate critique and calculate severity scores', async () => {
       const protocol = createReflexionProtocol({
-        reflexionConfig: { personas: TEST_PERSONAS, maxIterations: 1, severityThreshold: 0.9 },
+        reflexionConfig: {
+          personas: TEST_PERSONAS,
+          maxIterations: 1,
+          severityThreshold: 0.9,
+          allowSyntheticCritiques: true,
+        },
       });
       const producer = createMockAgent('producer');
       const result = await protocol.execute(
@@ -147,7 +150,11 @@ describe('Reflexion Collaboration E2E', () => {
 
     it('should emit protocol events during execution', async () => {
       const protocol = createReflexionProtocol({
-        reflexionConfig: { personas: TEST_PERSONAS, maxIterations: 1 },
+        reflexionConfig: {
+          personas: TEST_PERSONAS,
+          maxIterations: 1,
+          allowSyntheticCritiques: true,
+        },
         eventBus,
       });
       const producer = createMockAgent('producer');
@@ -172,7 +179,11 @@ describe('Reflexion Collaboration E2E', () => {
         { id: 'low', role: 'Minor', systemPrompt: 'Minor.', focusAreas: ['minor'], weight: 0.2 },
       ];
       const protocol = createReflexionProtocol({
-        reflexionConfig: { personas: weightedPersonas, maxIterations: 1 },
+        reflexionConfig: {
+          personas: weightedPersonas,
+          maxIterations: 1,
+          allowSyntheticCritiques: true,
+        },
       });
       const producer = createMockAgent('producer');
       const result = await protocol.execute(
@@ -188,6 +199,7 @@ describe('Reflexion Collaboration E2E', () => {
           personas: DEFAULT_CODE_REVIEW_PERSONAS,
           maxIterations: 2,
           severityThreshold: 0.3,
+          allowSyntheticCritiques: true,
         },
       });
       const producer = createMockAgent('producer');
@@ -213,7 +225,12 @@ describe('Reflexion Collaboration E2E', () => {
           : 'Comprehensive output with security, performance, and best practices.';
       });
       const protocol = createReflexionProtocol({
-        reflexionConfig: { personas: TEST_PERSONAS, maxIterations: 5, severityThreshold: 0.3 },
+        reflexionConfig: {
+          personas: TEST_PERSONAS,
+          maxIterations: 5,
+          severityThreshold: 0.3,
+          allowSyntheticCritiques: true,
+        },
       });
       const result = await protocol.execute(
         createConfig('producer', createTestTask()),
@@ -226,7 +243,12 @@ describe('Reflexion Collaboration E2E', () => {
     it('should respect max iterations limit', async () => {
       const producer = createMockAgent('producer', () => 'short'); // Never converges
       const protocol = createReflexionProtocol({
-        reflexionConfig: { personas: TEST_PERSONAS, maxIterations: 2, severityThreshold: 0.01 },
+        reflexionConfig: {
+          personas: TEST_PERSONAS,
+          maxIterations: 2,
+          severityThreshold: 0.01,
+          allowSyntheticCritiques: true,
+        },
       });
       const result = await protocol.execute(
         createConfig('producer', createTestTask()),
@@ -241,7 +263,12 @@ describe('Reflexion Collaboration E2E', () => {
         () => 'Excellent output with security, performance, SOLID principles, and documentation.'
       );
       const protocol = createReflexionProtocol({
-        reflexionConfig: { personas: TEST_PERSONAS, maxIterations: 5, severityThreshold: 0.3 },
+        reflexionConfig: {
+          personas: TEST_PERSONAS,
+          maxIterations: 5,
+          severityThreshold: 0.3,
+          allowSyntheticCritiques: true,
+        },
       });
       const { result, ms } = await measureLatency(() =>
         protocol.execute(
@@ -269,6 +296,7 @@ describe('Reflexion Collaboration E2E', () => {
           personas: DEFAULT_CODE_REVIEW_PERSONAS,
           maxIterations: 3,
           severityThreshold: 0.3,
+          allowSyntheticCritiques: true,
         },
       });
       const result = await protocol.execute(
@@ -302,7 +330,11 @@ describe('Reflexion Collaboration E2E', () => {
     it('should complete within timeout and support cancellation', async () => {
       const producer = createMockAgent('producer');
       const protocol = createReflexionProtocol({
-        reflexionConfig: { personas: TEST_PERSONAS, maxIterations: 2 },
+        reflexionConfig: {
+          personas: TEST_PERSONAS,
+          maxIterations: 2,
+          allowSyntheticCritiques: true,
+        },
       });
       const result = await withTimeout(
         protocol.execute(
@@ -332,7 +364,11 @@ describe('Reflexion Collaboration E2E', () => {
         cleanup: vi.fn(),
       };
       const proto2 = createReflexionProtocol({
-        reflexionConfig: { personas: TEST_PERSONAS, maxIterations: 10 },
+        reflexionConfig: {
+          personas: TEST_PERSONAS,
+          maxIterations: 10,
+          allowSyntheticCritiques: true,
+        },
       });
       const promise = proto2.execute(
         createConfig('producer', createTestTask()),
@@ -347,7 +383,11 @@ describe('Reflexion Collaboration E2E', () => {
   describe('Performance and Edge Cases', () => {
     it('should execute efficiently and handle sequential sessions', async () => {
       const protocol = createReflexionProtocol({
-        reflexionConfig: { personas: TEST_PERSONAS, maxIterations: 1 },
+        reflexionConfig: {
+          personas: TEST_PERSONAS,
+          maxIterations: 1,
+          allowSyntheticCritiques: true,
+        },
       });
       const producer = createMockAgent('producer');
       const agents = new Map([['producer', producer]]);
@@ -397,7 +437,11 @@ describe('Reflexion Collaboration E2E', () => {
 
     it('should handle edge case outputs', async () => {
       const protocol = createReflexionProtocol({
-        reflexionConfig: { personas: TEST_PERSONAS, maxIterations: 1 },
+        reflexionConfig: {
+          personas: TEST_PERSONAS,
+          maxIterations: 1,
+          allowSyntheticCritiques: true,
+        },
       });
 
       // Empty output
