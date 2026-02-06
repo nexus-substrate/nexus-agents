@@ -794,8 +794,8 @@ describe('Backpropagation', () => {
       tree.backpropagate(child!.id, 0.5);
 
       const stats = tree.getStats();
-      // Each backprop from child increments both child and root = 2 per call
-      expect(stats.totalSimulations).toBe(4);
+      // Each backprop call = one simulation, regardless of path length
+      expect(stats.totalSimulations).toBe(2);
     });
   });
 });

@@ -167,10 +167,11 @@ export class MCTSTree {
       node.visitCount++;
       node.totalValue += value;
       node.avgValue = node.totalValue / node.visitCount;
-      this.totalSimulations++;
 
       currentId = node.parentId;
     }
+
+    this.totalSimulations++;
   }
 
   /**
