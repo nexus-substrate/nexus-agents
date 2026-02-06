@@ -235,8 +235,9 @@ export class RoutingPipeline implements IRoutingPipeline {
       StageError
     >
   > {
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
     const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => {
+      timeoutId = setTimeout(() => {
         reject(new Error('Stage timeout'));
       }, this.timeoutMs);
     });
@@ -254,6 +255,8 @@ export class RoutingPipeline implements IRoutingPipeline {
           error instanceof Error ? error : undefined
         ),
       };
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 
