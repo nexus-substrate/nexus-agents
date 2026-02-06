@@ -69,7 +69,7 @@ export async function cloneRepository(
   const { promisify } = await import('node:util');
   const exec = promisify(childProcess.exec);
 
-  const repoDir = path.join(workDir, repo.replace('/', '__'));
+  const repoDir = path.join(workDir, repo.replaceAll('/', '__'));
 
   try {
     await fs.mkdir(workDir, { recursive: true });
