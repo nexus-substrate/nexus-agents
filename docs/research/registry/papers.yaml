@@ -2314,3 +2314,45 @@ papers:
     techniques_extracted: []
     related_issues: []
     implementation_status: not-started
+  arxiv-2602.02050:
+    title: 'Rethinking the Role of Entropy in Optimizing Tool-Use Behaviors for Large Language Model Agents'
+    authors: []
+    source: arxiv
+    arxiv_id: '2602.02050'
+    url: https://arxiv.org/abs/2602.02050
+    publication_date: 2026-02
+    venue: null
+    topics:
+      - orchestration
+    tags: []
+    reviewed_date: 2026-02-06
+    reviewed_in: ''
+    summary: 'Entropy reduction correlates with higher-quality tool invocations. Dense process-based rewards improve performance by 22%.'
+    key_findings:
+      - 'Sparse outcome rewards reduce tool calls by 72%'
+      - 'Dense process rewards improve performance by 22%'
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2602.05073:
+    title: 'Towards Reducible Uncertainty Modeling for Reliable Large Language Model Agents'
+    authors: []
+    source: arxiv
+    arxiv_id: '2602.05073'
+    url: https://arxiv.org/abs/2602.05073
+    publication_date: 2026-02
+    venue: null
+    topics:
+      - orchestration
+    tags: []
+    reviewed_date: 2026-02-06
+    reviewed_in: ''
+    summary: 'Framework for uncertainty quantification in LLM agents using conditional uncertainty reduction across trajectories.'
+    key_findings:
+      - 'Reducible uncertainty modeling across agent trajectories'
+      - 'Environmental feedback reduces uncertainty at decision gates'
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started

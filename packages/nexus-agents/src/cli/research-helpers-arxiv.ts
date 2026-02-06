@@ -36,12 +36,23 @@ export interface ArxivFetchError {
 // =============================================================================
 
 /**
+ * Extracts the first &lt;entry&gt; block from arXiv Atom XML to avoid
+ * matching feed-level metadata (e.g., feed title "arXiv Query: ...").
+ */
+function extractEntryXml(xml: string): string {
+  const entryMatch = xml.match(/<entry>([\s\S]*?)<\/entry>/);
+  return entryMatch?.[1] ?? xml;
+}
+
+/**
  * Parse arXiv XML response into metadata.
  */
 function parseArxivXml(arxivId: string, xml: string): ArxivMetadata | null {
-  const titleMatch = xml.match(/<title>([^<]+)<\/title>/);
-  const summaryMatch = xml.match(/<summary>([^<]+)<\/summary>/s);
-  const publishedMatch = xml.match(/<published>([^<]+)<\/published>/);
+  const entryXml = extractEntryXml(xml);
+
+  const titleMatch = entryXml.match(/<title>([^<]+)<\/title>/);
+  const summaryMatch = entryXml.match(/<summary>([^<]+)<\/summary>/s);
+  const publishedMatch = entryXml.match(/<published>([^<]+)<\/published>/);
 
   const titleContent = titleMatch?.[1];
   if (titleContent === undefined || titleContent === '') return null;
