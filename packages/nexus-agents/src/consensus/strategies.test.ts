@@ -47,39 +47,35 @@ describe('SimpleMajorityStrategy', () => {
     expect(strategy.algorithm).toBe('simple_majority');
   });
 
-  it('approves with clear majority', () => {
-    const outcome = strategy.calculateOutcome(makeVotes(4, 1, 0));
-    expect(outcome.approved).toBe(true);
-    expect(outcome.approvalPercentage).toBe(80);
+  it('approves with clear majority (>50%)', () => {
+    expect(strategy.calculateOutcome(makeVotes(4, 1, 0)).approved).toBe(true);
+    expect(strategy.calculateOutcome(makeVotes(3, 2, 0)).approvalPercentage).toBe(60);
   });
 
-  it('rejects when minority approves', () => {
-    const outcome = strategy.calculateOutcome(makeVotes(1, 4, 0));
-    expect(outcome.approved).toBe(false);
-  });
-
-  it('rejects at exactly 50% (needs >50%)', () => {
-    const outcome = strategy.calculateOutcome(makeVotes(2, 2, 0));
-    expect(outcome.approved).toBe(false);
+  it('rejects at exactly 50% or below', () => {
+    expect(strategy.calculateOutcome(makeVotes(2, 2, 0)).approved).toBe(false);
+    expect(strategy.calculateOutcome(makeVotes(1, 4, 0)).approved).toBe(false);
   });
 
   it('excludes abstentions from vote count', () => {
-    // 3 approve, 1 reject, 5 abstain => 75% approval
     const outcome = strategy.calculateOutcome(makeVotes(3, 1, 5));
     expect(outcome.approved).toBe(true);
     expect(outcome.approvalPercentage).toBe(75);
   });
 
-  it('rejects when all votes are abstentions', () => {
-    const outcome = strategy.calculateOutcome(makeVotes(0, 0, 5));
-    expect(outcome.approved).toBe(false);
-    expect(outcome.reason).toContain('No votes cast');
+  it('rejects when no votes cast (all abstentions or empty)', () => {
+    expect(strategy.calculateOutcome(makeVotes(0, 0, 5)).approved).toBe(false);
+    expect(strategy.calculateOutcome(new Map()).voteCounts.total).toBe(0);
   });
 
-  it('handles empty votes', () => {
-    const outcome = strategy.calculateOutcome(new Map());
-    expect(outcome.approved).toBe(false);
-    expect(outcome.voteCounts.total).toBe(0);
+  it('includes correct reason messages', () => {
+    expect(strategy.calculateOutcome(makeVotes(4, 1, 0)).reason).toContain('>50%');
+    expect(strategy.calculateOutcome(makeVotes(2, 3, 0)).reason).toContain('<=50%');
+  });
+
+  it('handles single vote edge cases', () => {
+    expect(strategy.calculateOutcome(makeVotes(1, 0, 0)).approvalPercentage).toBe(100);
+    expect(strategy.calculateOutcome(makeVotes(0, 1, 0)).approvalPercentage).toBe(0);
   });
 });
 
@@ -95,32 +91,23 @@ describe('SupermajorityStrategy', () => {
   });
 
   it('approves with supermajority (>=67%)', () => {
-    const outcome = strategy.calculateOutcome(makeVotes(3, 1, 0));
-    // 75% >= 67% => approved
-    expect(outcome.approved).toBe(true);
+    expect(strategy.calculateOutcome(makeVotes(3, 1, 0)).approved).toBe(true);
+    expect(strategy.calculateOutcome(makeVotes(67, 33, 0)).approved).toBe(true);
   });
 
-  it('rejects below supermajority', () => {
-    // 60% < 67%
-    const outcome = strategy.calculateOutcome(makeVotes(3, 2, 0));
-    expect(outcome.approved).toBe(false);
+  it('rejects below supermajority threshold', () => {
+    expect(strategy.calculateOutcome(makeVotes(2, 1, 0)).approved).toBe(false);
+    expect(strategy.calculateOutcome(makeVotes(3, 2, 0)).approved).toBe(false);
   });
 
-  it('rejects at 66.7% (needs >=67%)', () => {
-    // 2/3 = 66.67% which is < 0.67
-    const outcome = strategy.calculateOutcome(makeVotes(2, 1, 0));
-    expect(outcome.approved).toBe(false);
+  it('handles edge cases and abstentions', () => {
+    expect(strategy.calculateOutcome(makeVotes(0, 0, 3)).approved).toBe(false);
+    expect(strategy.calculateOutcome(makeVotes(1, 0, 0)).approvalPercentage).toBe(100);
   });
 
-  it('approves at 75%', () => {
-    // 3/4 = 75% which is >= 67%
-    const outcome = strategy.calculateOutcome(makeVotes(3, 1, 0));
-    expect(outcome.approved).toBe(true);
-  });
-
-  it('handles all abstentions', () => {
-    const outcome = strategy.calculateOutcome(makeVotes(0, 0, 3));
-    expect(outcome.approved).toBe(false);
+  it('includes correct reason messages', () => {
+    expect(strategy.calculateOutcome(makeVotes(3, 1, 0)).reason).toContain('>=67%');
+    expect(strategy.calculateOutcome(makeVotes(2, 1, 0)).reason).toContain('<67%');
   });
 });
 
@@ -135,38 +122,30 @@ describe('UnanimousStrategy', () => {
     expect(strategy.algorithm).toBe('unanimous');
   });
 
-  it('approves when all approve', () => {
-    const outcome = strategy.calculateOutcome(makeVotes(5, 0, 0));
-    expect(outcome.approved).toBe(true);
-    expect(outcome.reason).toContain('Unanimously approved');
+  it('approves when all approve or approve+abstain', () => {
+    const outcome1 = strategy.calculateOutcome(makeVotes(5, 0, 0));
+    expect(outcome1.approved).toBe(true);
+    expect(outcome1.reason).toContain('Unanimously approved');
+
+    const outcome2 = strategy.calculateOutcome(makeVotes(3, 0, 2));
+    expect(outcome2.approved).toBe(true);
+    expect(outcome2.approvalPercentage).toBe(60);
   });
 
-  it('rejects with any rejection', () => {
-    const outcome = strategy.calculateOutcome(makeVotes(4, 1, 0));
-    expect(outcome.approved).toBe(false);
-    expect(outcome.reason).toContain('rejection');
+  it('rejects with any rejection or no approvals', () => {
+    expect(strategy.calculateOutcome(makeVotes(4, 1, 0)).approved).toBe(false);
+    expect(strategy.calculateOutcome(makeVotes(0, 0, 5)).approved).toBe(false);
+    expect(strategy.calculateOutcome(new Map()).approved).toBe(false);
   });
 
-  it('approves with approvals and abstentions (no rejections)', () => {
-    const outcome = strategy.calculateOutcome(makeVotes(3, 0, 2));
-    expect(outcome.approved).toBe(true);
+  it('calculates approval percentage correctly', () => {
+    expect(strategy.calculateOutcome(makeVotes(4, 1, 0)).approvalPercentage).toBe(80);
+    expect(strategy.calculateOutcome(makeVotes(2, 0, 3)).approvalPercentage).toBe(40);
   });
 
-  it('rejects when only abstentions (no approvals)', () => {
-    const outcome = strategy.calculateOutcome(makeVotes(0, 0, 5));
-    expect(outcome.approved).toBe(false);
-    expect(outcome.reason).toContain('No approvals');
-  });
-
-  it('rejects empty votes', () => {
-    const outcome = strategy.calculateOutcome(new Map());
-    expect(outcome.approved).toBe(false);
-    expect(outcome.reason).toContain('No votes cast');
-  });
-
-  it('reports correct approval percentage', () => {
-    const outcome = strategy.calculateOutcome(makeVotes(3, 0, 2));
-    expect(outcome.approvalPercentage).toBe(60); // 3/5 = 60%
+  it('handles single vote edge cases', () => {
+    expect(strategy.calculateOutcome(makeVotes(1, 0, 0)).approved).toBe(true);
+    expect(strategy.calculateOutcome(makeVotes(0, 1, 0)).approved).toBe(false);
   });
 });
 
@@ -187,33 +166,79 @@ describe('ProofOfLearningStrategy', () => {
     expect(outcome.weightedCounts).toBeDefined();
   });
 
-  it('applies custom weights', () => {
+  it('applies custom weights correctly', () => {
     const votes = makeVotes(1, 2, 0);
-    // Give the approver a massive weight
-    const weights = new Map<string, number>();
-    weights.set('agent-a0', 10.0);
-    weights.set('agent-r0', 1.0);
-    weights.set('agent-r1', 1.0);
+    const weights = new Map([
+      ['agent-a0', 10.0],
+      ['agent-r0', 1.0],
+      ['agent-r1', 1.0],
+    ]);
+    expect(strategy.calculateOutcome(votes, weights).approved).toBe(true);
+
+    const votes2 = makeVotes(2, 1, 0);
+    const weights2 = new Map([
+      ['agent-a0', 1.0],
+      ['agent-a1', 1.0],
+      ['agent-r0', 10.0],
+    ]);
+    expect(strategy.calculateOutcome(votes2, weights2).approved).toBe(false);
+  });
+
+  it('defaults to weight 1.0 for missing agents', () => {
+    const votes = makeVotes(2, 1, 0);
+    const weights = new Map([['agent-a0', 2.0]]);
     const outcome = strategy.calculateOutcome(votes, weights);
-    // 10 / (10+2) = 83.3% > 50% => approved
     expect(outcome.approved).toBe(true);
   });
 
-  it('rejects when weighted rejects dominate', () => {
+  it('handles fractional and zero weights', () => {
     const votes = makeVotes(2, 1, 0);
-    const weights = new Map<string, number>();
-    weights.set('agent-a0', 1.0);
-    weights.set('agent-a1', 1.0);
-    weights.set('agent-r0', 10.0);
-    const outcome = strategy.calculateOutcome(votes, weights);
-    // 2 / (2+10) = 16.7% < 50% => rejected
-    expect(outcome.approved).toBe(false);
+    const weights1 = new Map([
+      ['agent-a0', 0.3],
+      ['agent-a1', 0.2],
+      ['agent-r0', 0.6],
+    ]);
+    expect(strategy.calculateOutcome(votes, weights1).approved).toBe(false);
+
+    const weights2 = new Map([
+      ['agent-a0', 0],
+      ['agent-a1', 5.0],
+      ['agent-r0', 0],
+    ]);
+    expect(strategy.calculateOutcome(votes, weights2).approved).toBe(true);
   });
 
-  it('handles all abstentions with weights', () => {
-    const votes = makeVotes(0, 0, 3);
-    const outcome = strategy.calculateOutcome(votes);
-    expect(outcome.approved).toBe(false);
+  it('handles 50% weighted boundary (needs >50%)', () => {
+    const votes = makeVotes(1, 1, 0);
+    const weights = new Map([
+      ['agent-a0', 2.0],
+      ['agent-r0', 2.0],
+    ]);
+    expect(strategy.calculateOutcome(votes, weights).approved).toBe(false);
+  });
+
+  it('includes detailed weighted counts in outcome', () => {
+    const votes = makeVotes(2, 1, 1);
+    const weights = new Map([
+      ['agent-a0', 1.5],
+      ['agent-a1', 2.5],
+      ['agent-r0', 1.0],
+      ['agent-b0', 0.5],
+    ]);
+    const outcome = strategy.calculateOutcome(votes, weights);
+    expect(outcome.weightedCounts?.approve).toBe(4.0);
+    expect(outcome.weightedCounts?.reject).toBe(1.0);
+    expect(outcome.weightedCounts?.abstain).toBe(0.5);
+    expect(outcome.weightedCounts?.totalWeight).toBe(5.5);
+  });
+
+  it('handles all abstentions and empty weights', () => {
+    expect(strategy.calculateOutcome(makeVotes(0, 0, 3)).approved).toBe(false);
+    expect(strategy.calculateOutcome(makeVotes(3, 1, 0), new Map()).approved).toBe(true);
+  });
+
+  it('includes reason message', () => {
+    expect(strategy.calculateOutcome(makeVotes(3, 1, 0)).reason).toContain('weighted approval');
   });
 });
 
@@ -222,24 +247,49 @@ describe('ProofOfLearningStrategy', () => {
 // ============================================================================
 
 describe('calculateVoteWeight', () => {
-  it('returns 1.0 for undefined performance', () => {
+  it('returns 1.0 for undefined or zero totalVotes', () => {
     expect(calculateVoteWeight(undefined)).toBe(1.0);
-  });
-
-  it('returns 1.0 for agent with no votes', () => {
     expect(calculateVoteWeight({ totalVotes: 0, successRate: 0 } as never)).toBe(1.0);
   });
 
-  it('returns 1.0 for perfect success rate', () => {
+  it('calculates weight as 0.5 + successRate * 0.5', () => {
     expect(calculateVoteWeight({ totalVotes: 10, successRate: 1.0 } as never)).toBe(1.0);
-  });
-
-  it('returns 0.5 for zero success rate', () => {
     expect(calculateVoteWeight({ totalVotes: 10, successRate: 0 } as never)).toBe(0.5);
+    expect(calculateVoteWeight({ totalVotes: 10, successRate: 0.5 } as never)).toBe(0.75);
   });
 
-  it('returns 0.75 for 50% success rate', () => {
-    expect(calculateVoteWeight({ totalVotes: 10, successRate: 0.5 } as never)).toBe(0.75);
+  it('handles various success rates', () => {
+    const testCases = [
+      { rate: 0, expected: 0.5 },
+      { rate: 0.1, expected: 0.55 },
+      { rate: 0.75, expected: 0.875 },
+      { rate: 1.0, expected: 1.0 },
+    ];
+
+    testCases.forEach(({ rate, expected }) => {
+      const weight = calculateVoteWeight({
+        agentId: 'test',
+        totalVotes: 100,
+        correctVotes: Math.round(rate * 100),
+        successRate: rate,
+        lastUpdated: '2025-01-01T00:00:00Z',
+      });
+      expect(weight).toBe(expected);
+    });
+  });
+
+  it('ensures weight stays in range [0.5, 1.0]', () => {
+    for (let rate = 0; rate <= 1; rate += 0.1) {
+      const weight = calculateVoteWeight({
+        agentId: 'test',
+        totalVotes: 10,
+        correctVotes: Math.round(rate * 10),
+        successRate: rate,
+        lastUpdated: '2025-01-01T00:00:00Z',
+      });
+      expect(weight).toBeGreaterThanOrEqual(0.5);
+      expect(weight).toBeLessThanOrEqual(1.0);
+    }
   });
 });
 
@@ -248,7 +298,7 @@ describe('calculateVoteWeight', () => {
 // ============================================================================
 
 describe('VotingStrategyFactory', () => {
-  it('creates with default strategies', () => {
+  it('creates with all default strategies', () => {
     const factory = createStrategyFactory();
     const algorithms = factory.getAvailableAlgorithms();
     expect(algorithms).toContain('simple_majority');
@@ -257,11 +307,12 @@ describe('VotingStrategyFactory', () => {
     expect(algorithms).toContain('proof_of_learning');
   });
 
-  it('returns correct strategy by algorithm', () => {
+  it('returns correct strategy instances', () => {
     const factory = createStrategyFactory();
     expect(factory.getStrategy('simple_majority').algorithm).toBe('simple_majority');
     expect(factory.getStrategy('supermajority').algorithm).toBe('supermajority');
     expect(factory.getStrategy('unanimous').algorithm).toBe('unanimous');
+    expect(factory.getStrategy('proof_of_learning').algorithm).toBe('proof_of_learning');
   });
 
   it('throws for unknown algorithm', () => {
@@ -269,7 +320,7 @@ describe('VotingStrategyFactory', () => {
     expect(() => factory.getStrategy('invalid' as never)).toThrow('Unknown voting algorithm');
   });
 
-  it('allows registering custom strategy', () => {
+  it('allows registering and overwriting strategies', () => {
     const factory = createStrategyFactory();
     const custom = {
       algorithm: 'custom' as never,
@@ -282,5 +333,19 @@ describe('VotingStrategyFactory', () => {
     };
     factory.registerStrategy(custom);
     expect(factory.getAvailableAlgorithms()).toContain('custom');
+
+    const override = {
+      algorithm: 'simple_majority' as never,
+      calculateOutcome: () => ({
+        approved: false,
+        approvalPercentage: 0,
+        voteCounts: { approve: 0, reject: 0, abstain: 0, total: 0 },
+        reason: 'Overridden',
+      }),
+    };
+    factory.registerStrategy(override);
+    expect(factory.getStrategy('simple_majority').calculateOutcome(makeVotes(5, 0, 0)).reason).toBe(
+      'Overridden'
+    );
   });
 });
