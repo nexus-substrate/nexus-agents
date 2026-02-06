@@ -206,6 +206,8 @@ All configuration can be overridden with environment variables:
 | -------------------- | ------------------- | -------- |
 | `NEXUS_SANDBOX_MODE` | Sandbox mode        | `policy` |
 | `NEXUS_RATE_LIMIT`   | Requests per minute | `60`     |
+| `NEXUS_AUTH_ENABLED` | Enable MCP auth     | `false`  |
+| `NEXUS_AUTH_METHOD`  | Auth method         | `token`  |
 
 ### API Variables
 
