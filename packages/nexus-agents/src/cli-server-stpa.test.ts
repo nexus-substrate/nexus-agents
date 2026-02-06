@@ -6,8 +6,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { runStpaSafetyAnalysis, StpaSafetyError, TOOL_DEFINITIONS } from './cli-server-stpa.js';
 import type { ILogger } from './core/index.js';
+import { NexusError } from './core/index.js';
+import { err } from './core/result.js';
 import type { StpaAnalysisResult } from './mcp/safety/index.js';
-import { HazardCategory, RiskLevel } from './mcp/safety/index.js';
+import { HazardCategory, RiskLevel, StpaAnalysisError } from './mcp/safety/index.js';
+import * as safetyModule from './mcp/safety/index.js';
 
 /** Creates a valid mock StpaAnalysisResult for testing. */
 function createMockAnalysisResult(): StpaAnalysisResult {
@@ -123,6 +126,34 @@ describe('cli-server-stpa', () => {
       );
       expect(infoCall).toBeDefined();
       expect(infoCall?.[1]?.toolsAnalyzed).toBe(8);
+    });
+  });
+
+  describe('analysis failure handling', () => {
+    it('should warn and return when analysis fails and failOnHighSeverity is false', () => {
+      const analysisError = new StpaAnalysisError('analyzer crashed', 'test-tool');
+      vi.spyOn(safetyModule, 'analyzeTools').mockReturnValue(err(analysisError));
+
+      expect(() => {
+        runStpaSafetyAnalysis(mockLogger, false);
+      }).not.toThrow();
+
+      expect(mockLogger.warn).toHaveBeenCalledWith('STPA safety analysis failed', {
+        error: 'analyzer crashed',
+      });
+
+      vi.restoreAllMocks();
+    });
+
+    it('should throw NexusError when analysis fails and failOnHighSeverity is true', () => {
+      const analysisError = new StpaAnalysisError('analyzer crashed', 'test-tool');
+      vi.spyOn(safetyModule, 'analyzeTools').mockReturnValue(err(analysisError));
+
+      expect(() => {
+        runStpaSafetyAnalysis(mockLogger, true);
+      }).toThrow(NexusError);
+
+      vi.restoreAllMocks();
     });
   });
 

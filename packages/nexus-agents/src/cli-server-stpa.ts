@@ -192,7 +192,13 @@ export function runStpaSafetyAnalysis(logger: ILogger, failOnHighSeverity: boole
   const analysisResult = analyzeTools(TOOL_DEFINITIONS);
 
   if (!analysisResult.ok) {
-    logger.warn('STPA safety analysis failed', { error: analysisResult.error.message });
+    const errorMsg = analysisResult.error.message;
+    if (failOnHighSeverity) {
+      throw new NexusError(`STPA safety analysis failed: ${errorMsg}`, {
+        code: ErrorCode.SECURITY_ERROR,
+      });
+    }
+    logger.warn('STPA safety analysis failed', { error: errorMsg });
     return;
   }
 
