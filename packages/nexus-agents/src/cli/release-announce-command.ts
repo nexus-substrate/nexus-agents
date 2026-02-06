@@ -69,7 +69,7 @@ function extractHighlightsFromChangelog(version: string): string[] {
       .map((l) =>
         l
           .replace(/^- /, '')
-          .replace(/\(#\d+\)/, '')
+          .replace(/\(#\d+\)/g, '')
           .trim()
       );
   }
