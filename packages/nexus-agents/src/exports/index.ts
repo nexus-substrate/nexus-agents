@@ -23,3 +23,4 @@ export * from './api.js';
 export * from './security.js';
 export * from './consensus.js';
 export * from './observability.js';
+export * from './orchestration.js';
