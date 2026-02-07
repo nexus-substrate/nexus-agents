@@ -76,6 +76,8 @@ export interface ExecuteExpertResponse {
   status: 'success' | 'error';
   /** Error message if status is 'error' */
   error?: string;
+  /** Model used for execution (Issue #817) */
+  modelUsed?: string;
 }
 
 /**
@@ -137,22 +139,30 @@ function buildErrorResponse(
 /**
  * Build success response from execution result.
  */
-function buildSuccessResponse(
-  expertId: string,
-  role: string,
-  output: unknown,
-  durationMs: number,
-  tokensUsed: number
-): ExecuteExpertResponse {
-  const outputStr = typeof output === 'string' ? output : JSON.stringify(output, null, 2);
-  return {
-    expertId,
-    role,
+interface SuccessResponseParams {
+  expertId: string;
+  role: string;
+  output: unknown;
+  durationMs: number;
+  tokensUsed: number;
+  modelUsed?: string;
+}
+
+function buildSuccessResponse(params: SuccessResponseParams): ExecuteExpertResponse {
+  const outputStr =
+    typeof params.output === 'string' ? params.output : JSON.stringify(params.output, null, 2);
+  const response: ExecuteExpertResponse = {
+    expertId: params.expertId,
+    role: params.role,
     output: outputStr,
-    durationMs,
-    tokensUsed,
+    durationMs: params.durationMs,
+    tokensUsed: params.tokensUsed,
     status: 'success',
   };
+  if (params.modelUsed !== undefined) {
+    response.modelUsed = params.modelUsed;
+  }
+  return response;
 }
 
 /**
@@ -281,13 +291,14 @@ async function handleExecuteExpert(
 
   return {
     ok: true,
-    value: buildSuccessResponse(
+    value: buildSuccessResponse({
       expertId,
-      expert.role,
-      result.value.output,
+      role: expert.role,
+      output: result.value.output,
       durationMs,
-      result.value.metadata.tokensUsed
-    ),
+      tokensUsed: result.value.metadata.tokensUsed,
+      modelUsed: expert.expertConfig.modelPreference?.modelId,
+    }),
   };
 }
 

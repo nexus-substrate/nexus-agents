@@ -82,6 +82,8 @@ export interface AgentVoteSummary {
   simulated: boolean;
   /** True when this vote was generated from an error (Issue #815). */
   error: boolean;
+  /** Model used for this agent's vote (Issue #817). */
+  modelUsed?: string;
 }
 
 export type VoteDecisionStatus = 'approved' | 'rejected' | 'pending' | 'timeout';

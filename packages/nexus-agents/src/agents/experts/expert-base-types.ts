@@ -40,4 +40,6 @@ export interface ExpertOutput {
   warnings?: string[] | undefined;
   /** Confidence score (0-1) */
   confidence: number;
+  /** Model used for this expert's execution (Issue #817) */
+  modelUsed?: string | undefined;
 }
