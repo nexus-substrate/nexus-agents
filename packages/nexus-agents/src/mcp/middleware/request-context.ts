@@ -9,6 +9,7 @@
 
 import { randomBytes } from 'node:crypto';
 import { getTimeProvider } from '../../core/index.js';
+import type { TrustTier } from '../../security/trust-types.js';
 
 /**
  * Authenticated user information.
@@ -54,6 +55,15 @@ export interface RequestContext {
   readonly toolName: string;
   /** Caller information for audit */
   readonly caller: CallerInfo;
+  /**
+   * Trust tier for this request (Issue #828).
+   * Derived from caller authentication state:
+   * - '1' = Authenticated + known client, or stdio (local-only)
+   * - '2' = Authenticated via network
+   * - '3' = Unauthenticated network request
+   * - '4' = Request with detected injection patterns (set by sanitizer)
+   */
+  readonly trustTier: TrustTier;
   /** Trace ID for distributed tracing correlation */
   readonly traceId?: string;
   /** Parent span ID if part of a larger trace */
@@ -68,6 +78,8 @@ export interface CreateContextOptions {
   toolName: string;
   /** Optional caller information */
   caller?: CallerInfo;
+  /** Optional explicit trust tier override (defaults to derived from caller) */
+  trustTier?: TrustTier;
   /** Optional trace ID for correlation */
   traceId?: string;
   /** Optional parent span ID */
@@ -116,17 +128,42 @@ function formatTimestamp(): string {
 }
 
 /**
+ * Derives trust tier from caller authentication state (Issue #828).
+ *
+ * - Authenticated + known CLI client (claude, gemini, codex) → Tier 1
+ * - stdio transport (local-only, no network) → Tier 1
+ * - Authenticated via network → Tier 2
+ * - Unauthenticated → Tier 3
+ */
+export function deriveTrustTier(caller: CallerInfo): TrustTier {
+  const knownClients = ['claude-cli', 'gemini-cli', 'codex-cli'];
+
+  if (caller.transport === 'stdio') return '1';
+
+  if (caller.authenticated === true) {
+    if (caller.clientId !== undefined && knownClients.includes(caller.clientId)) {
+      return '1';
+    }
+    return '2';
+  }
+
+  return '3';
+}
+
+/**
  * Creates an immutable request context for an MCP tool invocation.
  *
  * @param options - Context creation options
  * @returns Immutable request context
  */
 export function createRequestContext(options: CreateContextOptions): RequestContext {
+  const caller = options.caller ?? {};
   const context: RequestContext = {
     requestId: generateRequestId(),
     timestamp: formatTimestamp(),
     toolName: options.toolName,
-    caller: options.caller ?? {},
+    caller,
+    trustTier: options.trustTier ?? deriveTrustTier(caller),
     ...(options.traceId !== undefined && { traceId: options.traceId }),
     ...(options.parentSpanId !== undefined && { parentSpanId: options.parentSpanId }),
   };
@@ -189,6 +226,7 @@ export function contextForLogging(ctx: RequestContext): Record<string, unknown> 
   return {
     requestId: ctx.requestId,
     toolName: ctx.toolName,
+    trustTier: ctx.trustTier,
     ...(ctx.caller.clientId !== undefined && { clientId: ctx.caller.clientId }),
     ...(ctx.traceId !== undefined && { traceId: ctx.traceId }),
   };
@@ -207,6 +245,8 @@ export function isRequestContext(value: unknown): value is RequestContext {
     obj['requestId'].startsWith('req_') &&
     typeof obj['timestamp'] === 'string' &&
     typeof obj['toolName'] === 'string' &&
-    typeof obj['caller'] === 'object'
+    typeof obj['caller'] === 'object' &&
+    typeof obj['trustTier'] === 'string' &&
+    ['1', '2', '3', '4'].includes(obj['trustTier'])
   );
 }

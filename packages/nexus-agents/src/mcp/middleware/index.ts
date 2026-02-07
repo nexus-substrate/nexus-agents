@@ -82,6 +82,7 @@ export {
   generateRequestId,
   generateSessionId,
   createRequestContext,
+  deriveTrustTier,
   extractCallerInfo,
   contextForLogging,
   isRequestContext,

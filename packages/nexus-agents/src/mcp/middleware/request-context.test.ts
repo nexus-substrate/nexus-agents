@@ -10,6 +10,7 @@ import {
   generateRequestId,
   generateSessionId,
   createRequestContext,
+  deriveTrustTier,
   extractCallerInfo,
   contextForLogging,
   isRequestContext,
@@ -54,6 +55,37 @@ describe('generateSessionId', () => {
 });
 
 // ============================================================================
+// deriveTrustTier (Issue #828)
+// ============================================================================
+
+describe('deriveTrustTier', () => {
+  it('returns Tier 1 for stdio transport', () => {
+    expect(deriveTrustTier({ transport: 'stdio' })).toBe('1');
+  });
+
+  it('returns Tier 1 for authenticated known CLI client', () => {
+    expect(deriveTrustTier({ authenticated: true, clientId: 'claude-cli' })).toBe('1');
+    expect(deriveTrustTier({ authenticated: true, clientId: 'gemini-cli' })).toBe('1');
+    expect(deriveTrustTier({ authenticated: true, clientId: 'codex-cli' })).toBe('1');
+  });
+
+  it('returns Tier 2 for authenticated unknown client', () => {
+    expect(deriveTrustTier({ authenticated: true, clientId: 'custom-client' })).toBe('2');
+    expect(deriveTrustTier({ authenticated: true })).toBe('2');
+  });
+
+  it('returns Tier 3 for unauthenticated requests', () => {
+    expect(deriveTrustTier({})).toBe('3');
+    expect(deriveTrustTier({ authenticated: false })).toBe('3');
+    expect(deriveTrustTier({ clientId: 'claude-cli' })).toBe('3');
+  });
+
+  it('prioritizes stdio over authentication', () => {
+    expect(deriveTrustTier({ transport: 'stdio', authenticated: false })).toBe('1');
+  });
+});
+
+// ============================================================================
 // createRequestContext
 // ============================================================================
 
@@ -64,6 +96,7 @@ describe('createRequestContext', () => {
     expect(ctx.timestamp).toBeDefined();
     expect(ctx.toolName).toBe('orchestrate');
     expect(ctx.caller).toBeDefined();
+    expect(ctx.trustTier).toBeDefined();
   });
 
   it('includes caller info when provided', () => {
@@ -202,6 +235,12 @@ describe('contextForLogging', () => {
     const log = contextForLogging(ctx);
     expect(log['traceId']).toBe('trace-1');
   });
+
+  it('includes trustTier', () => {
+    const ctx = createRequestContext({ toolName: 'test' });
+    const log = contextForLogging(ctx);
+    expect(log['trustTier']).toBeDefined();
+  });
 });
 
 // ============================================================================
@@ -247,7 +286,29 @@ describe('isRequestContext', () => {
       timestamp: '2026-01-01T00:00:00-05:00',
       toolName: 'orchestrate',
       caller: {},
+      trustTier: '1',
     };
     expect(isRequestContext(valid)).toBe(true);
+  });
+
+  it('returns false for missing trustTier', () => {
+    const missing: Record<string, unknown> = {
+      requestId: 'req_1234567890abcdef',
+      timestamp: '2026-01-01T00:00:00-05:00',
+      toolName: 'orchestrate',
+      caller: {},
+    };
+    expect(isRequestContext(missing)).toBe(false);
+  });
+
+  it('returns false for invalid trustTier', () => {
+    const invalid: Record<string, unknown> = {
+      requestId: 'req_1234567890abcdef',
+      timestamp: '2026-01-01T00:00:00-05:00',
+      toolName: 'orchestrate',
+      caller: {},
+      trustTier: '5',
+    };
+    expect(isRequestContext(invalid)).toBe(false);
   });
 });
