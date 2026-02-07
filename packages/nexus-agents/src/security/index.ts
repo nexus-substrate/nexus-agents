@@ -45,3 +45,11 @@ export type { PolicyDecision, ActionContext, Violation } from './policy-gate.js'
 export { ViolationSchema } from './policy-gate.js';
 export { validateCorroboration, getCorroborationRules } from './corroboration-validator.js';
 export type { CorroborationResult, CorroborationRule } from './corroboration-validator.js';
+
+// Untrusted input hardening — Phase 3 (Epic #818)
+export { assessReputation, ReputationCache, SuspiciousSignalSchema } from './reputation-model.js';
+export type {
+  ReputationAssessment,
+  GitHubUserMetadata,
+  SuspiciousSignal,
+} from './reputation-model.js';
