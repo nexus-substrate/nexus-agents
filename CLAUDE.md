@@ -439,14 +439,15 @@ Governance rules (voting thresholds, refactor gates, fitness audit, documentatio
 | `memory_query`            | Query across all memory backends with unified results and relevance scoring.                                                       |
 | `memory_stats`            | Get memory system statistics dashboard showing backend availability and metrics.                                                   |
 | `issue_triage`            | Triage a GitHub issue using the full security pipeline. Classifies, assesses trust/reputation, proposes actions.                   |
+| `run_graph_workflow`      | Execute a predefined graph-based workflow with checkpointing, event streaming, and audit trail support.                            |
 
-_Auto-generated from source. 16 tools registered._
+_Auto-generated from source. 17 tools registered._
 
 <!-- GOVERNANCE:TOOL_INDEX:END -->
 
 <!-- GOVERNANCE:VERSION:START -->
 
-_Governance Version: 2026-02-07.2_
+_Governance Version: 2026-02-07.3_
 
 <!-- GOVERNANCE:VERSION:END -->
 
