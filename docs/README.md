@@ -68,18 +68,19 @@ Detailed technical documentation:
 
 #### Architecture
 
-| Document                                                                  | Description                    | Status    |
-| ------------------------------------------------------------------------- | ------------------------------ | --------- |
-| [AGENT_SYSTEM.md](./architecture/AGENT_SYSTEM.md)                         | Agent framework design         | Canonical |
-| [MEMORY_SYSTEM.md](./architecture/MEMORY_SYSTEM.md)                       | 7-type memory architecture     | Canonical |
-| [ROUTING_SYSTEM.md](./architecture/ROUTING_SYSTEM.md)                     | Model routing pipeline         | Canonical |
-| [CONSENSUS_PROTOCOLS.md](./architecture/CONSENSUS_PROTOCOLS.md)           | 5 consensus algorithms         | Canonical |
-| [CONTEXT_LOAD_BALANCING.md](./architecture/CONTEXT_LOAD_BALANCING.md)     | Claude/Gemini/Codex routing    | Canonical |
-| [SECURITY.md](./architecture/SECURITY.md)                                 | Security model, sandboxing     | Canonical |
-| [MCP_PROTOCOL.md](./architecture/MCP_PROTOCOL.md)                         | MCP integration details        | Canonical |
-| [TECHLEAD_WORKFLOW_ENGINE.md](./architecture/TECHLEAD_WORKFLOW_ENGINE.md) | Orchestrator vs WorkflowEngine | Canonical |
-| [ICTM_PATTERN.md](./architecture/ICTM_PATTERN.md)                         | Dynamic sub-agent creation     | Canonical |
-| [dependency-graph.md](./architecture/dependency-graph.md)                 | Module dependency diagram      | Generated |
+| Document                                                                    | Description                    | Status    |
+| --------------------------------------------------------------------------- | ------------------------------ | --------- |
+| [AGENT_SYSTEM.md](./architecture/AGENT_SYSTEM.md)                           | Agent framework design         | Canonical |
+| [MEMORY_SYSTEM.md](./architecture/MEMORY_SYSTEM.md)                         | 7-type memory architecture     | Canonical |
+| [ROUTING_SYSTEM.md](./architecture/ROUTING_SYSTEM.md)                       | Model routing pipeline         | Canonical |
+| [CONSENSUS_PROTOCOLS.md](./architecture/CONSENSUS_PROTOCOLS.md)             | 5 consensus algorithms         | Canonical |
+| [CONTEXT_LOAD_BALANCING.md](./architecture/CONTEXT_LOAD_BALANCING.md)       | Claude/Gemini/Codex routing    | Canonical |
+| [SECURITY.md](./architecture/SECURITY.md)                                   | Security model, sandboxing     | Canonical |
+| [MCP_PROTOCOL.md](./architecture/MCP_PROTOCOL.md)                           | MCP integration details        | Canonical |
+| [TECHLEAD_WORKFLOW_ENGINE.md](./architecture/TECHLEAD_WORKFLOW_ENGINE.md)   | Orchestrator vs WorkflowEngine | Canonical |
+| [ICTM_PATTERN.md](./architecture/ICTM_PATTERN.md)                           | Dynamic sub-agent creation     | Canonical |
+| [UNTRUSTED_INPUT_HARDENING.md](./architecture/UNTRUSTED_INPUT_HARDENING.md) | Input trust & sanitization     | Canonical |
+| [dependency-graph.md](./architecture/dependency-graph.md)                   | Module dependency diagram      | Generated |
 
 #### Development
 

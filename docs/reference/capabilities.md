@@ -1,6 +1,6 @@
 # Repository Capabilities Index
 
-**Generated:** 2026-02-05T16:38:01.735Z
+**Generated:** 2026-02-07T23:52:44.747Z
 **Package Version:** 2.6.0
 **Generator:** `scripts/generate-repo-index.ts`
 
@@ -52,7 +52,7 @@ Binary: `nexus-agents`
 
 ---
 
-## MCP Tools (15)
+## MCP Tools (18)
 
 | Tool | Source File |
 | ------ | ------------- |
@@ -60,6 +60,8 @@ Binary: `nexus-agents`
 | `create_expert` | `src/mcp/tools/create-expert.ts` |
 | `delegate_to_model` | `src/mcp/tools/delegate-to-model.ts` |
 | `execute_expert` | `src/mcp/tools/execute-expert.ts` |
+| `execute_spec` | `src/mcp/tools/execute-spec.ts` |
+| `issue_triage` | `src/mcp/tools/issue-triage.ts` |
 | `list_experts` | `src/mcp/tools/list-experts.ts` |
 | `list_workflows` | `src/mcp/tools/list-workflows.ts` |
 | `memory_query` | `src/mcp/tools/memory-query.ts` |
@@ -70,6 +72,7 @@ Binary: `nexus-agents`
 | `research_catalog_review` | `src/mcp/tools/research-catalog-review.ts` |
 | `research_discover` | `src/mcp/tools/research-discover.ts` |
 | `research_query` | `src/mcp/tools/research-query.ts` |
+| `run_graph_workflow` | `src/mcp/tools/run-graph-workflow.ts` |
 | `run_workflow` | `src/mcp/tools/run-workflow.ts` |
 
 ---
