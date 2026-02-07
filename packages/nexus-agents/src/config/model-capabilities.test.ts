@@ -1,11 +1,16 @@
 /**
- * Tests for model capabilities matrix.
+ * Tests for config/model-capabilities.ts
+ *
+ * Pure function tests against constant data — no mocks needed.
+ *
  * @module config/model-capabilities.test
  */
 
 import { describe, it, expect } from 'vitest';
+
 import {
   DEFAULT_MODEL_CAPABILITIES,
+  DEFAULT_MODEL_PER_CLI,
   getModelCapabilities,
   findModelsByOutputModality,
   findModelsByInputModality,
@@ -14,30 +19,72 @@ import {
   findModelsByProvider,
   findBestModelForOutput,
   modelSupportsAll,
-  ModelCapabilitiesMatrixSchema,
-  MODEL_IDS,
 } from './model-capabilities.js';
 
 // ---------------------------------------------------------------------------
-// Schema validation
+// DEFAULT_MODEL_CAPABILITIES
 // ---------------------------------------------------------------------------
 
-describe('ModelCapabilitiesMatrix schema', () => {
-  it('validates the default matrix', () => {
-    const result = ModelCapabilitiesMatrixSchema.safeParse(DEFAULT_MODEL_CAPABILITIES);
-    expect(result.success).toBe(true);
+describe('DEFAULT_MODEL_CAPABILITIES', () => {
+  it('should contain exactly 8 models', () => {
+    expect(DEFAULT_MODEL_CAPABILITIES.models).toHaveLength(8);
   });
 
-  it('contains all MODEL_IDS', () => {
-    const ids = DEFAULT_MODEL_CAPABILITIES.models.map((m) => m.id);
-    for (const id of MODEL_IDS) {
-      expect(ids).toContain(id);
+  it('should have version 1', () => {
+    expect(DEFAULT_MODEL_CAPABILITIES.version).toBe(1);
+  });
+
+  it('all models should have required fields', () => {
+    for (const model of DEFAULT_MODEL_CAPABILITIES.models) {
+      expect(model.id).toBeTruthy();
+      expect(model.displayName).toBeTruthy();
+      expect(model.provider).toBeTruthy();
+      expect(model.contextWindow).toBeGreaterThan(0);
+      expect(model.pricing).toBeDefined();
+      expect(model.pricing?.inputPer1M).toBeGreaterThanOrEqual(0);
+      expect(model.pricing?.outputPer1M).toBeGreaterThanOrEqual(0);
+      expect(model.qualityScores).toBeDefined();
     }
   });
 
-  it('has version 1 and updatedAt date', () => {
-    expect(DEFAULT_MODEL_CAPABILITIES.version).toBe(1);
-    expect(DEFAULT_MODEL_CAPABILITIES.updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  it('all providers should be represented', () => {
+    const providers = new Set(DEFAULT_MODEL_CAPABILITIES.models.map((m) => m.provider));
+    expect(providers).toEqual(new Set(['anthropic', 'google', 'openai']));
+  });
+
+  it('all quality scores should be in range 1-10', () => {
+    for (const model of DEFAULT_MODEL_CAPABILITIES.models) {
+      const scores = model.qualityScores;
+      expect(scores).toBeDefined();
+      if (scores) {
+        expect(scores.reasoning).toBeGreaterThanOrEqual(1);
+        expect(scores.reasoning).toBeLessThanOrEqual(10);
+        expect(scores.codeGeneration).toBeGreaterThanOrEqual(1);
+        expect(scores.codeGeneration).toBeLessThanOrEqual(10);
+        expect(scores.speed).toBeGreaterThanOrEqual(1);
+        expect(scores.speed).toBeLessThanOrEqual(10);
+        expect(scores.cost).toBeGreaterThanOrEqual(1);
+        expect(scores.cost).toBeLessThanOrEqual(10);
+      }
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// DEFAULT_MODEL_PER_CLI
+// ---------------------------------------------------------------------------
+
+describe('DEFAULT_MODEL_PER_CLI', () => {
+  it('should map claude to claude-opus', () => {
+    expect(DEFAULT_MODEL_PER_CLI.claude).toBe('claude-opus');
+  });
+
+  it('should map gemini to gemini-pro', () => {
+    expect(DEFAULT_MODEL_PER_CLI.gemini).toBe('gemini-pro');
+  });
+
+  it('should map codex to codex-5.3', () => {
+    expect(DEFAULT_MODEL_PER_CLI.codex).toBe('codex-5.3');
   });
 });
 
@@ -46,27 +93,22 @@ describe('ModelCapabilitiesMatrix schema', () => {
 // ---------------------------------------------------------------------------
 
 describe('getModelCapabilities', () => {
-  it('returns capability data for valid model ID', () => {
-    const cap = getModelCapabilities('claude-opus');
-    expect(cap).toBeDefined();
-    expect(cap?.provider).toBe('anthropic');
-    expect(cap?.contextWindow).toBe(200_000);
+  it('returns model for valid ID', () => {
+    const result = getModelCapabilities('claude-opus');
+    expect(result).toBeDefined();
+    expect(result?.id).toBe('claude-opus');
+    expect(result?.provider).toBe('anthropic');
   });
 
-  it('returns undefined for unknown model ID', () => {
-    expect(getModelCapabilities('nonexistent')).toBeUndefined();
+  it('returns undefined for invalid ID', () => {
+    const result = getModelCapabilities('nonexistent-model');
+    expect(result).toBeUndefined();
   });
 
-  it('returns Gemini Pro with 1M context', () => {
-    const cap = getModelCapabilities('gemini-pro');
-    expect(cap?.contextWindow).toBe(1_000_000);
-    expect(cap?.provider).toBe('google');
-  });
-
-  it('returns Codex 5.2 with 400K context', () => {
-    const cap = getModelCapabilities('codex-5.2');
-    expect(cap?.contextWindow).toBe(400_000);
-    expect(cap?.provider).toBe('openai');
+  it('uses default matrix when none provided', () => {
+    const withDefault = getModelCapabilities('claude-sonnet');
+    const withExplicit = getModelCapabilities('claude-sonnet', DEFAULT_MODEL_CAPABILITIES);
+    expect(withDefault).toEqual(withExplicit);
   });
 });
 
@@ -75,28 +117,17 @@ describe('getModelCapabilities', () => {
 // ---------------------------------------------------------------------------
 
 describe('findModelsByOutputModality', () => {
-  it('finds all models for text output', () => {
-    const models = findModelsByOutputModality('text');
-    expect(models.length).toBe(DEFAULT_MODEL_CAPABILITIES.models.length);
+  it('returns models supporting text output', () => {
+    const results = findModelsByOutputModality('text');
+    expect(results).toHaveLength(8);
   });
 
-  it('finds only Gemini models for image_png output', () => {
-    const models = findModelsByOutputModality('image_png');
-    expect(models.length).toBeGreaterThan(0);
-    for (const m of models) {
-      expect(m.provider).toBe('google');
-    }
-  });
-
-  it('finds only Gemini Pro for audio_pcm output', () => {
-    const models = findModelsByOutputModality('audio_pcm');
-    expect(models.length).toBe(1);
-    expect(models[0]?.id).toBe('gemini-pro');
-  });
-
-  it('returns empty for unsupported modality', () => {
-    const models = findModelsByOutputModality('video_mp4');
-    expect(models.length).toBe(0);
+  it('returns subset for image_png (only gemini models)', () => {
+    const results = findModelsByOutputModality('image_png');
+    expect(results).toHaveLength(2);
+    const ids = results.map((m) => m.id);
+    expect(ids).toContain('gemini-pro');
+    expect(ids).toContain('gemini-flash');
   });
 });
 
@@ -105,17 +136,17 @@ describe('findModelsByOutputModality', () => {
 // ---------------------------------------------------------------------------
 
 describe('findModelsByInputModality', () => {
-  it('finds all models for text input', () => {
-    const models = findModelsByInputModality('text');
-    expect(models.length).toBe(DEFAULT_MODEL_CAPABILITIES.models.length);
+  it('all models support text input', () => {
+    const results = findModelsByInputModality('text');
+    expect(results).toHaveLength(8);
   });
 
-  it('finds only Gemini models for video input', () => {
-    const models = findModelsByInputModality('video');
-    expect(models.length).toBeGreaterThan(0);
-    for (const m of models) {
-      expect(m.provider).toBe('google');
-    }
+  it('only gemini supports video input', () => {
+    const results = findModelsByInputModality('video');
+    expect(results).toHaveLength(2);
+    const ids = results.map((m) => m.id);
+    expect(ids).toContain('gemini-pro');
+    expect(ids).toContain('gemini-flash');
   });
 });
 
@@ -124,24 +155,16 @@ describe('findModelsByInputModality', () => {
 // ---------------------------------------------------------------------------
 
 describe('findModelsByToolCapability', () => {
-  it('finds models with MCP support', () => {
-    const models = findModelsByToolCapability('mcp');
-    expect(models.length).toBeGreaterThan(0);
-    for (const m of models) {
-      expect(m.provider).toBe('anthropic');
-    }
+  it('all models support function_calling', () => {
+    const results = findModelsByToolCapability('function_calling');
+    expect(results).toHaveLength(8);
   });
 
-  it('finds models with code_execution_sandbox', () => {
-    const models = findModelsByToolCapability('code_execution_sandbox');
-    expect(models.length).toBeGreaterThanOrEqual(3);
-  });
-
-  it('finds models with apply_patch', () => {
-    const models = findModelsByToolCapability('apply_patch');
-    expect(models.length).toBeGreaterThan(0);
-    for (const m of models) {
-      expect(m.provider).toBe('openai');
+  it('only claude models support mcp', () => {
+    const results = findModelsByToolCapability('mcp');
+    expect(results).toHaveLength(3);
+    for (const model of results) {
+      expect(model.provider).toBe('anthropic');
     }
   });
 });
@@ -151,18 +174,15 @@ describe('findModelsByToolCapability', () => {
 // ---------------------------------------------------------------------------
 
 describe('findModelsByFeature', () => {
-  it('finds models with extended_thinking', () => {
-    const models = findModelsByFeature('extended_thinking');
-    expect(models.length).toBeGreaterThan(0);
-    for (const m of models) {
-      expect(m.provider).toBe('anthropic');
-    }
+  it('multiple models support streaming', () => {
+    const results = findModelsByFeature('streaming');
+    expect(results).toHaveLength(8);
   });
 
-  it('finds models with deep_research', () => {
-    const models = findModelsByFeature('deep_research');
-    expect(models.length).toBe(1);
-    expect(models[0]?.id).toBe('gemini-pro');
+  it('only gemini-pro supports deep_research', () => {
+    const results = findModelsByFeature('deep_research');
+    expect(results).toHaveLength(1);
+    expect(results[0].id).toBe('gemini-pro');
   });
 });
 
@@ -171,16 +191,30 @@ describe('findModelsByFeature', () => {
 // ---------------------------------------------------------------------------
 
 describe('findModelsByProvider', () => {
-  it('finds 3 Anthropic models', () => {
-    expect(findModelsByProvider('anthropic').length).toBe(3);
+  it('returns 3 anthropic models', () => {
+    const results = findModelsByProvider('anthropic');
+    expect(results).toHaveLength(3);
+    const ids = results.map((m) => m.id);
+    expect(ids).toContain('claude-opus');
+    expect(ids).toContain('claude-sonnet');
+    expect(ids).toContain('claude-haiku');
   });
 
-  it('finds 2 Google models', () => {
-    expect(findModelsByProvider('google').length).toBe(2);
+  it('returns 2 google models', () => {
+    const results = findModelsByProvider('google');
+    expect(results).toHaveLength(2);
+    const ids = results.map((m) => m.id);
+    expect(ids).toContain('gemini-pro');
+    expect(ids).toContain('gemini-flash');
   });
 
-  it('finds 3 OpenAI models', () => {
-    expect(findModelsByProvider('openai').length).toBe(3);
+  it('returns 3 openai models', () => {
+    const results = findModelsByProvider('openai');
+    expect(results).toHaveLength(3);
+    const ids = results.map((m) => m.id);
+    expect(ids).toContain('codex-5.3');
+    expect(ids).toContain('codex-5.2');
+    expect(ids).toContain('codex-5.1-mini');
   });
 });
 
@@ -189,20 +223,16 @@ describe('findModelsByProvider', () => {
 // ---------------------------------------------------------------------------
 
 describe('findBestModelForOutput', () => {
-  it('returns model with largest context for text', () => {
-    const best = findBestModelForOutput('text');
-    expect(best).toBeDefined();
-    expect(best?.contextWindow).toBe(1_000_000);
+  it('returns gemini-pro for text (1M context)', () => {
+    const result = findBestModelForOutput('text');
+    expect(result).toBeDefined();
+    expect(result?.id).toBe('gemini-pro');
+    expect(result?.contextWindow).toBe(1_000_000);
   });
 
-  it('returns gemini for image_png', () => {
-    const best = findBestModelForOutput('image_png');
-    expect(best).toBeDefined();
-    expect(best?.provider).toBe('google');
-  });
-
-  it('returns undefined for video_mp4', () => {
-    expect(findBestModelForOutput('video_mp4')).toBeUndefined();
+  it('returns undefined for nonexistent modality', () => {
+    const result = findBestModelForOutput('hologram' as never);
+    expect(result).toBeUndefined();
   });
 });
 
@@ -211,44 +241,40 @@ describe('findBestModelForOutput', () => {
 // ---------------------------------------------------------------------------
 
 describe('modelSupportsAll', () => {
-  it('claude-opus supports text + image input + MCP', () => {
-    expect(
-      modelSupportsAll('claude-opus', {
-        outputModalities: ['text'],
-        inputModalities: ['text', 'image'],
-        toolCapabilities: ['mcp'],
-      })
-    ).toBe(true);
-  });
-
-  it('claude-opus does not support image_png output', () => {
-    expect(
-      modelSupportsAll('claude-opus', {
-        outputModalities: ['image_png'],
-      })
-    ).toBe(false);
-  });
-
-  it('gemini-pro supports image output + deep research', () => {
-    expect(
-      modelSupportsAll('gemini-pro', {
-        outputModalities: ['image_png'],
-        specialFeatures: ['deep_research'],
-      })
-    ).toBe(true);
-  });
-
-  it('codex-5.2 supports 400K context requirement', () => {
-    expect(modelSupportsAll('codex-5.2', { minContextWindow: 400_000 })).toBe(true);
-  });
-
-  it('claude-haiku fails 500K context requirement', () => {
-    expect(modelSupportsAll('claude-haiku', { minContextWindow: 500_000 })).toBe(false);
+  it('returns true when all requirements met', () => {
+    const result = modelSupportsAll('claude-opus', {
+      outputModalities: ['text', 'code'],
+      inputModalities: ['text', 'image'],
+      toolCapabilities: ['mcp', 'function_calling'],
+      specialFeatures: ['streaming'],
+      minContextWindow: 100_000,
+    });
+    expect(result).toBe(true);
   });
 
   it('returns false for unknown model', () => {
-    expect(modelSupportsAll('nonexistent' as 'claude-opus', { outputModalities: ['text'] })).toBe(
-      false
-    );
+    const result = modelSupportsAll('nonexistent' as never, {
+      outputModalities: ['text'],
+    });
+    expect(result).toBe(false);
+  });
+
+  it('returns false when context window too small', () => {
+    const result = modelSupportsAll('claude-opus', {
+      minContextWindow: 500_000,
+    });
+    expect(result).toBe(false);
+  });
+
+  it('returns false when missing tool capability', () => {
+    const result = modelSupportsAll('gemini-pro', {
+      toolCapabilities: ['mcp'],
+    });
+    expect(result).toBe(false);
+  });
+
+  it('returns true when no requirements specified', () => {
+    const result = modelSupportsAll('claude-haiku', {});
+    expect(result).toBe(true);
   });
 });
