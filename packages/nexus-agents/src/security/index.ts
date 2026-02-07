@@ -38,3 +38,10 @@ export type {
   SourceCitation,
   ActionValidationResult,
 } from './action-schema.js';
+
+// Untrusted input hardening — Phase 2 (Epic #818)
+export { evaluatePolicy, canProceed } from './policy-gate.js';
+export type { PolicyDecision, ActionContext, Violation } from './policy-gate.js';
+export { ViolationSchema } from './policy-gate.js';
+export { validateCorroboration, getCorroborationRules } from './corroboration-validator.js';
+export type { CorroborationResult, CorroborationRule } from './corroboration-validator.js';
