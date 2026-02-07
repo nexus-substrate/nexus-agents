@@ -23,6 +23,52 @@ import type { CompiledGraph, GraphState } from '../../orchestration/graph/index.
 
 type GraphFactory = () => CompiledGraph | undefined;
 
+export interface GraphWorkflowInfo {
+  readonly name: string;
+  readonly description: string;
+  readonly inputFields: readonly string[];
+  readonly nodeCount: number;
+  readonly hasConditionalEdges: boolean;
+}
+
+const WORKFLOW_METADATA: readonly GraphWorkflowInfo[] = [
+  {
+    name: 'echo',
+    description: 'Simple input echo (demo). Returns the input prefixed with "echo: ".',
+    inputFields: ['input'],
+    nodeCount: 1,
+    hasConditionalEdges: false,
+  },
+  {
+    name: 'pipeline',
+    description: 'Two-step validate-process pipeline (demo). Validates then processes input data.',
+    inputFields: ['input'],
+    nodeCount: 2,
+    hasConditionalEdges: false,
+  },
+  {
+    name: 'code-review',
+    description:
+      'Complexity-based code review. Routes through deep or quick review based on complexity score.',
+    inputFields: ['code'],
+    nodeCount: 4,
+    hasConditionalEdges: true,
+  },
+  {
+    name: 'security-scan',
+    description:
+      'Multi-step security analysis. Scans imports and patterns, routes to critical or standard report.',
+    inputFields: ['code'],
+    nodeCount: 4,
+    hasConditionalEdges: true,
+  },
+];
+
+/** Returns metadata about all available graph workflows. */
+export function getGraphWorkflowList(): readonly GraphWorkflowInfo[] {
+  return WORKFLOW_METADATA;
+}
+
 /** Registry of all predefined graph workflows. */
 export function getGraphRegistry(): ReadonlyMap<string, GraphFactory> {
   return new Map<string, GraphFactory>([

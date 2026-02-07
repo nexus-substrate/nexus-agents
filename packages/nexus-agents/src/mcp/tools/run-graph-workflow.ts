@@ -15,7 +15,7 @@ import { createLogger, getTimeProvider } from '../../core/index.js';
 import { executeGraph } from '../../orchestration/graph/index.js';
 import type { CompiledGraph, GraphEvent, GraphState } from '../../orchestration/graph/index.js';
 import { createCheckpointStore } from '../../orchestration/graph/index.js';
-import { getGraphRegistry } from './run-graph-workflow-templates.js';
+import { getGraphRegistry, getGraphWorkflowList } from './run-graph-workflow-templates.js';
 import { createAuditTrail, createGraphAuditBridge } from '../../security/audit-trail.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
@@ -189,6 +189,9 @@ export function registerRunGraphWorkflowTool(server: McpServer, deps: RunGraphWo
         content: [{ type: 'text', text: `Invalid input: ${parsed.error.message}` }],
       };
     }
+    if (parsed.data.workflow === 'list') {
+      return { content: [{ type: 'text', text: JSON.stringify(getGraphWorkflowList(), null, 2) }] };
+    }
     const result = await handleRunGraphWorkflow(parsed.data, logger);
     return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
   };
@@ -207,7 +210,9 @@ export function registerRunGraphWorkflowTool(server: McpServer, deps: RunGraphWo
       .string()
       .min(1)
       .max(100)
-      .describe('Workflow name: echo, pipeline, code-review, security-scan'),
+      .describe(
+        'Workflow name: echo, pipeline, code-review, security-scan. Use "list" for available workflows.'
+      ),
     inputs: z.record(z.unknown()).optional().describe('Input values for the workflow'),
     enableCheckpointing: z.boolean().optional().describe('Enable checkpoint saving'),
     enableAuditTrail: z.boolean().optional().describe('Enable audit trail logging'),

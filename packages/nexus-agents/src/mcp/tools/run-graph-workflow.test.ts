@@ -128,6 +128,48 @@ describe('registerRunGraphWorkflowTool', () => {
 });
 
 // ============================================================================
+// List Action (Discoverability)
+// ============================================================================
+
+describe('list action', () => {
+  it('returns available workflows when workflow is "list"', async () => {
+    const handler = registerAndGetHandler();
+    const response = await handler({ workflow: 'list' });
+
+    expect(response.isError).toBeUndefined();
+    const workflows = JSON.parse(response.content[0]?.text ?? '[]') as Array<{
+      name: string;
+      description: string;
+    }>;
+    expect(workflows.length).toBe(4);
+    expect(workflows.map((w) => w.name)).toEqual([
+      'echo',
+      'pipeline',
+      'code-review',
+      'security-scan',
+    ]);
+  });
+
+  it('includes descriptions and metadata', async () => {
+    const handler = registerAndGetHandler();
+    const response = await handler({ workflow: 'list' });
+
+    const workflows = JSON.parse(response.content[0]?.text ?? '[]') as Array<{
+      name: string;
+      description: string;
+      inputFields: string[];
+      nodeCount: number;
+      hasConditionalEdges: boolean;
+    }>;
+    for (const wf of workflows) {
+      expect(wf.description.length).toBeGreaterThan(0);
+      expect(wf.inputFields.length).toBeGreaterThan(0);
+      expect(wf.nodeCount).toBeGreaterThan(0);
+    }
+  });
+});
+
+// ============================================================================
 // Echo Workflow (Happy Path)
 // ============================================================================
 

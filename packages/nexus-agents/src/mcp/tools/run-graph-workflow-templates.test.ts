@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { getGraphRegistry } from './run-graph-workflow-templates.js';
+import { getGraphRegistry, getGraphWorkflowList } from './run-graph-workflow-templates.js';
 import { executeGraph } from '../../orchestration/graph/index.js';
 
 // ============================================================================
@@ -47,6 +47,44 @@ describe('getGraphRegistry', () => {
       const graph = factory();
       expect(graph, `${name} factory returned undefined`).toBeDefined();
     }
+  });
+});
+
+// ============================================================================
+// Workflow List (Discoverability)
+// ============================================================================
+
+describe('getGraphWorkflowList', () => {
+  it('returns metadata for all registered workflows', () => {
+    const list = getGraphWorkflowList();
+    const registry = getGraphRegistry();
+    expect(list.length).toBe(registry.size);
+  });
+
+  it('includes name, description, and input fields for each workflow', () => {
+    const list = getGraphWorkflowList();
+    for (const info of list) {
+      expect(info.name.length).toBeGreaterThan(0);
+      expect(info.description.length).toBeGreaterThan(0);
+      expect(info.inputFields.length).toBeGreaterThan(0);
+      expect(info.nodeCount).toBeGreaterThan(0);
+    }
+  });
+
+  it('marks workflows with conditional edges correctly', () => {
+    const list = getGraphWorkflowList();
+    const echo = list.find((w) => w.name === 'echo');
+    const codeReview = list.find((w) => w.name === 'code-review');
+    expect(echo?.hasConditionalEdges).toBe(false);
+    expect(codeReview?.hasConditionalEdges).toBe(true);
+  });
+
+  it('names match registry keys', () => {
+    const list = getGraphWorkflowList();
+    const registry = getGraphRegistry();
+    const listNames = list.map((w) => w.name);
+    const registryNames = [...registry.keys()];
+    expect(listNames).toEqual(registryNames);
   });
 });
 
