@@ -93,7 +93,7 @@ export type SourceCitation = z.infer<typeof SourceCitationSchema>;
 const SummarizeIssueAction = z.object({
   type: z.literal('SummarizeIssue'),
   summary: z.string().min(10).max(2000),
-  sources: z.array(SourceCitationSchema).min(1),
+  sources: z.array(SourceCitationSchema).min(1).max(20),
 });
 
 /** Suggest labels for an issue (max 5, must match existing label set). */
@@ -101,7 +101,7 @@ const ProposeLabelsAction = z.object({
   type: z.literal('ProposeLabels'),
   labels: z.array(z.string()).min(1).max(5),
   reason: z.string().min(10).max(500),
-  sources: z.array(SourceCitationSchema).min(1),
+  sources: z.array(SourceCitationSchema).min(1).max(20),
 });
 
 /** Draft a reply comment (always requires human approval before posting). */
@@ -109,7 +109,7 @@ const DraftReplyAction = z.object({
   type: z.literal('DraftReply'),
   body: z.string().min(10).max(2000),
   requiresApproval: z.literal(true),
-  sources: z.array(SourceCitationSchema).min(1),
+  sources: z.array(SourceCitationSchema).min(1).max(20),
 });
 
 /** Explicit escalation to a human maintainer with reason and context. */
@@ -137,7 +137,7 @@ const GeneratePatchPlanAction = z.object({
     .max(10),
   rationale: z.string().min(10).max(1000),
   requiresApproval: z.literal(true),
-  sources: z.array(SourceCitationSchema).min(2),
+  sources: z.array(SourceCitationSchema).min(2).max(20),
 });
 
 /** Categorize an issue by type with confidence score. */
@@ -145,7 +145,7 @@ const ClassifyIssueAction = z.object({
   type: z.literal('ClassifyIssue'),
   category: z.enum(['bug', 'feature', 'question', 'documentation', 'security', 'performance']),
   confidence: z.number().min(0).max(1),
-  sources: z.array(SourceCitationSchema).min(1),
+  sources: z.array(SourceCitationSchema).min(1).max(20),
 });
 
 /** Identify potential duplicate issues with similarity scores. */
@@ -153,7 +153,7 @@ const IdentifyDuplicatesAction = z.object({
   type: z.literal('IdentifyDuplicates'),
   candidates: z.array(z.number().int().positive()).min(1).max(10),
   similarity: z.array(z.number().min(0).max(1)),
-  sources: z.array(SourceCitationSchema).min(1),
+  sources: z.array(SourceCitationSchema).min(1).max(20),
 });
 
 /** Explicit refusal to act, with escalation target. */
