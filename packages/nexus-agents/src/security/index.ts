@@ -53,3 +53,23 @@ export type {
   GitHubUserMetadata,
   SuspiciousSignal,
 } from './reputation-model.js';
+
+// Security audit trail (Issue #832)
+export {
+  AuditTrail,
+  createAuditTrail,
+  emitTrustEvent,
+  emitPolicyEvent,
+  emitCorroborationEvent,
+  emitReputationEvent,
+  emitSanitizationEvent,
+} from './audit-trail.js';
+export type {
+  AuditEvent,
+  AuditQuery,
+  TrustClassificationEvent,
+  PolicyGateEvent,
+  CorroborationEvent,
+  ReputationEvent,
+  SanitizationEvent,
+} from './audit-trail.js';
