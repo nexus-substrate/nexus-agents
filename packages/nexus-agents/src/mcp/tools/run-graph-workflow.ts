@@ -124,48 +124,69 @@ function createPipelineGraph(): CompiledGraph | undefined {
 // Handler
 // ============================================================================
 
+/** Resolves a compiled graph from the registry by workflow name. */
+function resolveGraph(
+  workflow: string,
+  startTime: number
+): { ok: true; graph: CompiledGraph } | { ok: false; error: RunGraphWorkflowResponse } {
+  const registry = getGraphRegistry();
+  const factory = registry.get(workflow);
+
+  if (factory === undefined) {
+    const available = [...registry.keys()].join(', ');
+    return {
+      ok: false,
+      error: createErrorResponse({
+        workflow,
+        startTime,
+        error: `Unknown workflow '${workflow}'. Available: ${available}`,
+      }),
+    };
+  }
+
+  const graph = factory();
+  if (graph === undefined) {
+    return {
+      ok: false,
+      error: createErrorResponse({
+        workflow,
+        startTime,
+        error: `Failed to compile workflow '${workflow}'`,
+      }),
+    };
+  }
+
+  return { ok: true, graph };
+}
+
 /** Executes a named graph workflow with full integration. */
 async function handleRunGraphWorkflow(
   input: RunGraphWorkflowInput,
   logger: ILogger
 ): Promise<RunGraphWorkflowResponse> {
   const startTime = getTimeProvider().now();
-  const registry = getGraphRegistry();
-  const factory = registry.get(input.workflow);
-
-  if (factory === undefined) {
-    const available = [...registry.keys()].join(', ');
-    return createErrorResponse({
-      workflow: input.workflow,
-      startTime,
-      error: `Unknown workflow '${input.workflow}'. Available: ${available}`,
-    });
-  }
-
-  const graph = factory();
-  if (graph === undefined) {
-    return createErrorResponse({
-      workflow: input.workflow,
-      startTime,
-      error: `Failed to compile workflow '${input.workflow}'`,
-    });
-  }
+  const resolved = resolveGraph(input.workflow, startTime);
+  if (!resolved.ok) return resolved.error;
 
   const events: GraphEventSummary[] = [];
   const checkpointStore = input.enableCheckpointing ? createCheckpointStore() : undefined;
-  const auditTrail = input.enableAuditTrail ? createAuditTrail() : undefined;
-  const auditBridge = auditTrail !== undefined ? createGraphAuditBridge(auditTrail) : undefined;
-
+  const auditBridge = input.enableAuditTrail
+    ? createGraphAuditBridge(createAuditTrail())
+    : undefined;
   const onEvent = (event: GraphEvent): void => {
     events.push(toEventSummary(event));
     auditBridge?.(event);
   };
 
   const executionId = `graph-${input.workflow}-${String(Date.now())}`;
+  logger.info('Executing graph workflow', {
+    workflow: input.workflow,
+    executionId,
+    checkpointing: input.enableCheckpointing,
+    auditTrail: input.enableAuditTrail,
+  });
 
-  logger.info('Executing graph workflow', { workflow: input.workflow, executionId });
-
-  const result = await executeGraph(graph, input.inputs, {
+  const result = await executeGraph(resolved.graph, input.inputs, {
     ...(checkpointStore !== undefined ? { checkpointStore } : {}),
     executionId,
     onEvent,

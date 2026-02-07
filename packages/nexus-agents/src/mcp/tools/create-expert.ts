@@ -285,9 +285,10 @@ function createCreateExpertHandler(deps: CreateExpertDeps) {
       };
     }
 
-    ctx.logger.debug('Expert created successfully', {
+    ctx.logger.info('Expert created', {
       expertId: result.value.expertId,
       role: result.value.role,
+      model: validationResult.data.modelPreference ?? 'default',
     });
 
     return {

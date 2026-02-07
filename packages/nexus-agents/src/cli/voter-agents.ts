@@ -110,6 +110,8 @@ export async function executeAgentVote(
   const maxRetries = options?.maxRetries ?? DEFAULT_MAX_RETRIES;
   const allowSimulation = options?.allowSimulation ?? false;
 
+  logger.info('Executing vote', { role, model: adapter.modelId, provider: adapter.providerId });
+
   const result = await executeWithRetries({
     role,
     proposal,
@@ -121,12 +123,14 @@ export async function executeAgentVote(
   const processingTimeMs = getTimeProvider().now() - start;
 
   if (result.ok) {
+    logger.info('Vote completed', { role, model: adapter.modelId, decision: result.vote.decision });
     return { role, vote: result.vote, processingTimeMs, source: 'llm' };
   }
 
   // All retries exhausted
   logger.error('Vote execution failed after all retries', undefined, {
     role,
+    model: adapter.modelId,
     errorMessage: result.error,
   });
 
@@ -217,7 +221,12 @@ export async function collectRealVotes(
     );
   }
 
-  logger.info('Using adapter for voting', { timeoutMs, maxRetries });
+  logger.info('Using adapter for voting', {
+    model: adapterResult.adapter.modelId,
+    provider: adapterResult.adapter.providerId,
+    timeoutMs,
+    maxRetries,
+  });
   const voteOptions = { timeoutMs, maxRetries, allowSimulation: allowSimulation ?? false };
   const votePromises = roles.map((role) =>
     executeAgentVote(role, proposal, adapterResult.adapter, logger, voteOptions)

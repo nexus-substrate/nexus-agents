@@ -223,6 +223,8 @@ export class ResilientAdapter implements IResilientAdapter {
     this.logger.info('Adapter selected', {
       source: selection.source,
       name: selection.name,
+      model: selection.adapter.modelId,
+      provider: selection.adapter.providerId,
       failover: isFailover,
     });
 

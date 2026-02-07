@@ -327,7 +327,10 @@ function createExecuteExpertHandler(deps: ExecuteExpertDeps) {
       };
     }
 
-    ctx.logger.debug('Executing expert task', { expertId: validationResult.data.expertId });
+    ctx.logger.info('Executing expert task', {
+      expertId: validationResult.data.expertId,
+      taskLength: validationResult.data.task.length,
+    });
 
     // Execute tool logic
     const result = await handleExecuteExpert(deps, validationResult.data);

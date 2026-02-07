@@ -223,7 +223,13 @@ async function executeVoting(
   const roles = getVoterRoles(input.quickMode);
   const startTime = getTimeProvider().now();
 
-  logger.info('Starting consensus vote', { strategy, algorithm, roleCount: roles.length });
+  logger.info('Starting consensus vote', {
+    strategy,
+    algorithm,
+    roleCount: roles.length,
+    roles: roles.join(', '),
+    simulated: input.simulateVotes,
+  });
 
   const votes = await collectRealVotes({
     roles,
@@ -243,7 +249,13 @@ async function executeVoting(
   recordVotesToTracker(votes, voteMap, outcome, logger);
 
   const totalTimeMs = getTimeProvider().now() - startTime;
-  logger.info('Consensus vote completed', { strategy, outcome, durationMs: totalTimeMs });
+  const voteSummary = votes.map((v) => `${v.role}:${v.source}`).join(', ');
+  logger.info('Consensus vote completed', {
+    strategy,
+    outcome,
+    durationMs: totalTimeMs,
+    voteSummary,
+  });
 
   const result: ExtendedVotingResult = {
     proposal: input.proposal,
