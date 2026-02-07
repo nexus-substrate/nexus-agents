@@ -116,6 +116,10 @@ export {
   ComplexityLevelSchema,
 } from './spec-decomposer-types.js';
 
+// Spec Pipeline (Issue #849)
+export { compileSpecToGraph } from './spec-pipeline.js';
+export type { PipelineError, PipelineStage } from './spec-pipeline-types.js';
+
 // Checkpointing (Issue #833)
 export {
   InMemoryCheckpointStore,
