@@ -31,3 +31,12 @@ export { GraphBuilder, overwrite, append, customReducer } from './graph-builder.
 
 // Executor
 export { executeGraph } from './graph-executor.js';
+
+// Checkpointing (Issue #833)
+export type { Checkpoint, CheckpointSummary, ICheckpointStore } from './checkpoint-types.js';
+export { CHECKPOINT_SCHEMA_VERSION } from './checkpoint-types.js';
+export {
+  InMemoryCheckpointStore,
+  createCheckpoint,
+  createCheckpointStore,
+} from './checkpoint-store.js';

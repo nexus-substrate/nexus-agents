@@ -56,3 +56,12 @@ export type {
   GraphCompileError,
   CompileResult,
 } from './graph/index.js';
+
+// Checkpointing (Issue #833)
+export {
+  InMemoryCheckpointStore,
+  createCheckpoint,
+  createCheckpointStore,
+  CHECKPOINT_SCHEMA_VERSION,
+} from './graph/index.js';
+export type { Checkpoint, CheckpointSummary, ICheckpointStore } from './graph/index.js';
