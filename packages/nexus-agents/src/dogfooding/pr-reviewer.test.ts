@@ -79,6 +79,7 @@ function createMockPRMetadata(): PRMetadata {
     title: 'Test PR',
     body: 'This is a test pull request',
     author: 'testuser',
+    authorAssociation: 'CONTRIBUTOR',
     base: 'main',
     head: 'feature-branch',
     headSha: 'abc123def456',

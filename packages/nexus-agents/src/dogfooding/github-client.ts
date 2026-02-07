@@ -90,6 +90,7 @@ export class GitHubClient {
       title: pr.title as string,
       body: (pr.body as string | null) ?? '',
       author: (pr.user as { login: string }).login,
+      authorAssociation: (pr.author_association as string | undefined) ?? 'NONE',
       base: (pr.base as { ref: string }).ref,
       head: (pr.head as { ref: string; sha: string }).ref,
       headSha: (pr.head as { sha: string }).sha,

@@ -10,6 +10,10 @@
 import type { Result, Task, TaskResult, IModelAdapter } from '../core/index.js';
 import { ok, err, createLogger, getTimeProvider } from '../core/index.js';
 import { sanitizeInput } from '../security/input-sanitizer.js';
+import { classifyTrust } from '../security/trust-classifier.js';
+import type { ClassifyResult } from '../security/trust-classifier.js';
+import { evaluatePolicy } from '../security/policy-gate.js';
+import type { ActionContext } from '../security/policy-gate.js';
 import { createSecurityExpert } from '../agents/experts/security-expert.js';
 import { createCodeExpert } from '../agents/experts/code-expert.js';
 import { createTestingExpert } from '../agents/experts/testing-expert.js';
@@ -75,11 +79,21 @@ export class PRReviewer {
     const prResult = await clientResult.value.getPullRequest(owner, repo, prNumber);
     if (!prResult.ok) return err(prResult.error);
 
+    // Classify PR author trust tier (Issue #828 — defense-in-depth)
+    const trustResult = this.classifyPRAuthor(prResult.value);
+    logger.info('PR author trust classified', {
+      prNumber,
+      author: prResult.value.author,
+      trustTier: trustResult.trustTier,
+      userRole: trustResult.userRole,
+      isAllowlisted: trustResult.isAllowlisted,
+    });
+
     const expertReviews = await this.runExpertReviews(prResult.value, traceId);
     const result = this.aggregateReviews(prResult.value, expertReviews, startTime);
 
     if (!this.config.dryRun) {
-      await this.postReviewToGitHub(clientResult.value, owner, repo, prNumber, result);
+      await this.postReviewToGitHub(clientResult.value, parseResult.value, result, trustResult);
     }
 
     logger.info('PR review completed', {
@@ -180,6 +194,17 @@ export class PRReviewer {
       context: { files: pr.files.map((f) => f.filename) },
       constraints: { maxTokens: this.config.modelConfig?.maxTokens ?? 8192 },
     };
+  }
+
+  /**
+   * Classifies the PR author's trust tier using GitHub author_association.
+   * (Source: Issue #828 — Wire security modules into production pipeline)
+   */
+  private classifyPRAuthor(pr: PRMetadata): ClassifyResult {
+    return classifyTrust({
+      username: pr.author,
+      authorAssociation: pr.authorAssociation,
+    });
   }
 
   /**
@@ -319,21 +344,75 @@ Provide a structured review with:
   }
 
   /**
-   * Posts review to GitHub.
+   * Posts review to GitHub after policy gate validation.
+   * The policy gate audits the action but only blocks on Rule of Two
+   * violations — the review itself is our internal analysis, not content
+   * from the untrusted PR author.
+   * (Source: Issue #828 — Wire policy gate into production pipeline)
    */
   private async postReviewToGitHub(
     client: GitHubClient,
-    owner: string,
-    repo: string,
-    prNumber: number,
-    result: PRReviewResult
+    pr: { owner: string; repo: string; prNumber: number },
+    result: PRReviewResult,
+    trustResult: ClassifyResult
   ): Promise<void> {
+    const policyResult = this.auditReviewAction(trustResult);
+    if (policyResult.hasRuleOfTwoViolation) {
+      logger.warn('Rule of Two: review posting blocked', {
+        prNumber: pr.prNumber,
+        violations: policyResult.violations,
+      });
+      return;
+    }
+    if (policyResult.violations.length > 0) {
+      logger.info('Policy gate warnings for review posting', {
+        prNumber: pr.prNumber,
+        violations: policyResult.violations,
+      });
+    }
+
     const { formatReviewComment } = await import('./pr-reviewer-helpers.js');
     const body = formatReviewComment(result);
-    const postResult = await client.createReview(owner, repo, prNumber, body, result.decision);
+    const postResult = await client.createReview(
+      pr.owner,
+      pr.repo,
+      pr.prNumber,
+      body,
+      result.decision
+    );
     if (!postResult.ok) {
       logger.error('Failed to post review', postResult.error);
     }
+  }
+
+  /** Audits review posting against the policy gate for logging. */
+  private auditReviewAction(trustResult: ClassifyResult): {
+    hasRuleOfTwoViolation: boolean;
+    violations: readonly { rule: string; message: string }[];
+  } {
+    const context: ActionContext = {
+      inputTrustTier: trustResult.trustTier,
+      hasWriteAccess: true,
+      hasSecretAccess: true,
+    };
+    const decision = evaluatePolicy(
+      {
+        type: 'DraftReply',
+        body: 'PR review comment',
+        requiresApproval: true,
+        sources: [
+          {
+            type: 'repoFile',
+            path: 'packages/nexus-agents/src/dogfooding/pr-reviewer.ts',
+          },
+        ],
+      },
+      context
+    );
+    return {
+      hasRuleOfTwoViolation: decision.violations.some((v) => v.rule === 'RULE_OF_TWO'),
+      violations: decision.violations,
+    };
   }
 
   /**

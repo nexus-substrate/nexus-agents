@@ -725,6 +725,7 @@ function createMockPRMetadata(overrides: Partial<PRMetadata> = {}): PRMetadata {
     title: 'Test PR',
     body: 'Test body',
     author: 'testuser',
+    authorAssociation: 'CONTRIBUTOR',
     base: 'main',
     head: 'feature',
     headSha: 'abc123',

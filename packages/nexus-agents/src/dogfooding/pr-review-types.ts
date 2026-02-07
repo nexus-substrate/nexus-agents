@@ -40,6 +40,8 @@ export interface PRMetadata {
   readonly body: string;
   /** Author username */
   readonly author: string;
+  /** GitHub API author_association (e.g., 'OWNER', 'COLLABORATOR', 'NONE') */
+  readonly authorAssociation: string;
   /** Base branch */
   readonly base: string;
   /** Head branch */
