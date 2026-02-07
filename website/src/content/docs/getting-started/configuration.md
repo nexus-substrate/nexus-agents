@@ -43,15 +43,15 @@ models:
     fast:
       - claude-haiku-3
       - gpt-4o-mini
-      - gemini-2.5-flash
+      - gemini-3-flash
     balanced:
       - claude-sonnet-4-20250514
       - gpt-4o
-      - gemini-2.5-pro
+      - gemini-3-pro
     powerful:
       - claude-opus-4
       - o1-pro
-      - gemini-2.5-pro
+      - gemini-3-pro
 
 # Expert configuration
 experts:
@@ -209,6 +209,8 @@ All configuration can be overridden with environment variables:
 | -------------------- | ------------------- | -------- |
 | `NEXUS_SANDBOX_MODE` | Sandbox mode        | `policy` |
 | `NEXUS_RATE_LIMIT`   | Requests per minute | `60`     |
+| `NEXUS_AUTH_ENABLED` | Enable MCP auth     | `false`  |
+| `NEXUS_AUTH_METHOD`  | Auth method         | `token`  |
 
 ### API Variables
 

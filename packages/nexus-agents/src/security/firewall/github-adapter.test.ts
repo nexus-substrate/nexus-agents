@@ -41,8 +41,10 @@ describe('GitHubInputSchema', () => {
       username: 'alice',
       authorAssociation: 'OWNER',
     });
-    expect(input.title).toBe('');
-    expect(input.body).toBe('');
+    if (input.type === 'issue') {
+      expect(input.title).toBe('');
+      expect(input.body).toBe('');
+    }
   });
 
   it('rejects unknown type', () => {

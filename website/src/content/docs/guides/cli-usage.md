@@ -3,7 +3,7 @@ title: "CLI Usage"
 description: "Nexus-agents provides four interface categories:"
 ---
 
-**Last Updated:** 2026-02-04 (ET)
+**Last Updated:** 2026-02-05 (ET)
 **Canonical Source:** This document is the single source of truth for all entrypoints.
 **Issue:** #210 (Epic #209)
 
@@ -301,7 +301,7 @@ nexus-agents hooks stop --check-tasks
 
 | Tool                      | Description                                              | Auth         | Rate Limit    |
 | ------------------------- | -------------------------------------------------------- | ------------ | ------------- |
-| `orchestrate`             | Task orchestration with TechLead coordination            | None (local) | Shared bucket |
+| `orchestrate`             | Task orchestration with Orchestrator coordination        | None (local) | Shared bucket |
 | `create_expert`           | Dynamic expert agent creation                            | None (local) | Shared bucket |
 | `execute_expert`          | Execute a task using a created expert agent              | None (local) | Shared bucket |
 | `run_workflow`            | Execute workflow template                                | None (local) | Shared bucket |
@@ -316,6 +316,8 @@ nexus-agents hooks stop --check-tasks
 | `research_catalog_review` | Review auto-cataloged research references                | None (local) | Shared bucket |
 | `memory_query`            | Query across all memory backends with unified results    | None (local) | Shared bucket |
 | `memory_stats`            | Memory system statistics dashboard                       | None (local) | Shared bucket |
+| `issue_triage`            | Triage GitHub issue using full security pipeline         | None (local) | Shared bucket |
+| `run_graph_workflow`      | Execute predefined graph workflow with checkpointing     | None (local) | Shared bucket |
 
 **Rate limiting:** All tools share a single token bucket rate limiter (capacity: 100 tokens, refill: 10 tokens/sec). Each tool call consumes one token.
 
@@ -433,6 +435,301 @@ nexus-agents hooks stop --check-tasks
 }
 ```
 
+#### execute_expert
+
+```json
+{
+  "name": "execute_expert",
+  "description": "Execute a task using a previously created expert agent",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "expertId": { "type": "string", "description": "Expert ID from create_expert tool" },
+      "task": { "type": "string", "description": "Task description for the expert to execute" },
+      "context": { "type": "object", "description": "Additional context metadata" }
+    },
+    "required": ["expertId", "task"]
+  }
+}
+```
+
+#### consensus_vote
+
+```json
+{
+  "name": "consensus_vote",
+  "description": "Execute multi-model consensus voting on a proposal",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "proposal": { "type": "string", "description": "Proposal text to vote on" },
+      "threshold": {
+        "type": "string",
+        "enum": ["majority", "supermajority", "unanimous"],
+        "description": "Legacy threshold (use strategy instead)"
+      },
+      "strategy": {
+        "type": "string",
+        "enum": [
+          "simple_majority",
+          "supermajority",
+          "unanimous",
+          "proof_of_learning",
+          "higher_order"
+        ]
+      },
+      "quickMode": {
+        "type": "boolean",
+        "default": false,
+        "description": "Use 3 agents instead of 5"
+      },
+      "simulateVotes": { "type": "boolean", "default": false, "description": "Use simulated votes" }
+    },
+    "required": ["proposal"]
+  }
+}
+```
+
+#### research_query
+
+```json
+{
+  "name": "research_query",
+  "description": "Query the research registry for technique status, overlaps, statistics, or text search",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "enum": ["status", "overlap", "stats", "search"] },
+      "techniqueId": { "type": "string", "description": "Technique ID for status/overlap queries" },
+      "query": { "type": "string", "description": "Search query string for search action" },
+      "status": {
+        "type": "string",
+        "enum": ["implemented", "planned", "not-started", "rejected", "all"],
+        "default": "all"
+      },
+      "threshold": { "type": "number", "description": "Overlap threshold (0-1) for overlap action" }
+    },
+    "required": ["action"]
+  }
+}
+```
+
+#### research_add
+
+```json
+{
+  "name": "research_add",
+  "description": "Add an arXiv paper to the research registry",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "arxivId": {
+        "type": "string",
+        "pattern": "^\\d{4}\\.\\d{4,5}$",
+        "description": "arXiv paper ID (e.g., \"2401.12345\")"
+      },
+      "topic": { "type": "string", "description": "Research topic to categorize the paper under" },
+      "priority": { "type": "string", "enum": ["P1", "P2", "P3", "P4"] },
+      "dryRun": { "type": "boolean", "default": false, "description": "Preview without persisting" }
+    },
+    "required": ["arxivId"]
+  }
+}
+```
+
+#### research_discover
+
+```json
+{
+  "name": "research_discover",
+  "description": "Discover new research papers and repositories from external sources",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "topic": { "type": "string", "description": "Research topic to search for" },
+      "source": {
+        "type": "string",
+        "enum": [
+          "arxiv",
+          "github",
+          "google_ai",
+          "meta_fair",
+          "microsoft",
+          "deepmind",
+          "semantic_scholar",
+          "papers_with_code",
+          "openalex",
+          "all"
+        ]
+      },
+      "maxResults": { "type": "number", "description": "Max results (1-20)" },
+      "sinceDate": { "type": "string", "description": "Only results after this date (YYYY-MM-DD)" },
+      "relevanceThreshold": { "type": "number", "description": "Minimum relevance score (0-1)" }
+    },
+    "required": ["topic"]
+  }
+}
+```
+
+#### research_analyze
+
+```json
+{
+  "name": "research_analyze",
+  "description": "Analyze the research registry for gaps, trends, priorities, stale entries, or coverage",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "focus": { "type": "string", "enum": ["gaps", "trends", "priorities", "stale", "coverage"] },
+      "topic": { "type": "string", "description": "Optional topic filter" }
+    },
+    "required": ["focus"]
+  }
+}
+```
+
+#### research_catalog_review
+
+```json
+{
+  "name": "research_catalog_review",
+  "description": "Review auto-cataloged research references found during tool execution",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "enum": ["list", "approve", "dismiss", "flush"] },
+      "identifier": { "type": "string", "description": "Reference identifier for approve/dismiss" },
+      "topic": { "type": "string", "description": "Topic for approved papers" },
+      "createIssue": {
+        "type": "boolean",
+        "default": false,
+        "description": "Create GitHub issue when approving"
+      }
+    },
+    "required": ["action"]
+  }
+}
+```
+
+#### memory_query
+
+```json
+{
+  "name": "memory_query",
+  "description": "Query across all memory backends with unified results",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "query": { "type": "string", "description": "Search query to match against memory contents" },
+      "limit": { "type": "number", "default": 10, "description": "Maximum results (1-50)" },
+      "source": {
+        "type": "string",
+        "enum": ["session", "belief", "agentic", "typed", "all"],
+        "default": "all"
+      }
+    },
+    "required": ["query"]
+  }
+}
+```
+
+#### memory_stats
+
+```json
+{
+  "name": "memory_stats",
+  "description": "Memory system statistics dashboard",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "includeDecay": {
+        "type": "boolean",
+        "default": true,
+        "description": "Include decay statistics"
+      },
+      "includePromotion": {
+        "type": "boolean",
+        "default": true,
+        "description": "Include promotion pipeline stats"
+      }
+    }
+  }
+}
+```
+
+#### issue_triage
+
+```json
+{
+  "name": "issue_triage",
+  "description": "Triage a GitHub issue using the full security pipeline",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "issueUrl": {
+        "type": "string",
+        "description": "GitHub issue URL (e.g., https://github.com/owner/repo/issues/123)"
+      },
+      "dryRun": {
+        "type": "boolean",
+        "default": true,
+        "description": "If true, returns proposed actions without executing them"
+      }
+    },
+    "required": ["issueUrl"]
+  }
+}
+```
+
+#### run_graph_workflow
+
+```json
+{
+  "name": "run_graph_workflow",
+  "description": "Execute a predefined graph-based workflow with checkpointing, event streaming, and audit trail support",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "workflow": {
+        "type": "string",
+        "description": "Workflow name: echo, pipeline, code-review, security-scan"
+      },
+      "inputs": {
+        "type": "object",
+        "description": "Input values for the workflow"
+      },
+      "enableCheckpointing": {
+        "type": "boolean",
+        "default": true,
+        "description": "Enable checkpoint saving between steps"
+      },
+      "enableAuditTrail": {
+        "type": "boolean",
+        "default": false,
+        "description": "Enable audit trail event logging"
+      }
+    },
+    "required": ["workflow"]
+  }
+}
+```
+
+### Built-in Workflow Templates
+
+9 built-in templates are available (source: `src/workflows/template-types.ts`):
+
+| Template                 | Category      | Keywords                                            |
+| ------------------------ | ------------- | --------------------------------------------------- |
+| `code-review`            | review        | review, quality, security, analysis, code           |
+| `feature-implementation` | development   | feature, implement, develop, create, build          |
+| `bug-fix`                | development   | bug, fix, debug, error, issue, patch                |
+| `documentation-update`   | documentation | docs, documentation, readme, api, update            |
+| `refactoring`            | development   | refactor, clean, improve, restructure, simplify     |
+| `research-review`        | review        | research, paper, arxiv, discover, catalog, registry |
+| `security-audit`         | review        | security, audit, vulnerability, owasp, scan         |
+| `standards-review`       | review        | standards, lint, typecheck, fitness, compliance     |
+| `test-generation`        | testing       | test, generate, coverage, unit, integration         |
+
 ### Source Files
 
 | File                                       | Purpose                |
@@ -450,6 +747,11 @@ nexus-agents hooks stop --check-tasks
 | `src/mcp/tools/research-analyze.ts`        | Research analyze tool  |
 | `src/mcp/tools/research-catalog-review.ts` | Catalog review tool    |
 | `src/mcp/tools/research-auto-catalog.ts`   | Auto-catalog module    |
+| `src/mcp/tools/execute-expert.ts`          | Execute expert tool    |
+| `src/mcp/tools/consensus-vote.ts`          | Consensus vote tool    |
+| `src/mcp/tools/consensus-vote-types.ts`    | Consensus vote schemas |
+| `src/mcp/tools/memory-query.ts`            | Memory query tool      |
+| `src/mcp/tools/memory-stats.ts`            | Memory stats tool      |
 
 ---
 
@@ -616,7 +918,7 @@ import {
 ```typescript
 import {
   // Core agents
-  TechLead,
+  Orchestrator, // preferred (TechLead still available as deprecated alias)
   Expert,
   ExpertFactory,
 
@@ -792,11 +1094,11 @@ await startStdioServer({
 #### Programmatic Usage
 
 ```typescript
-import { createClaudeAdapter, TechLead } from 'nexus-agents';
+import { createClaudeAdapter, createOrchestrator } from 'nexus-agents';
 
 const adapter = createClaudeAdapter({ model: 'claude-sonnet-4-20250514' });
-const techLead = new TechLead({ adapter });
-const result = await techLead.execute({
+const orchestrator = createOrchestrator({ adapter });
+const result = await orchestrator.execute({
   description: 'Analyze this codebase for security issues',
 });
 
@@ -938,6 +1240,10 @@ mcp_tools:
     - name: memory_query
       auth: none
     - name: memory_stats
+      auth: none
+    - name: issue_triage
+      auth: none
+    - name: run_graph_workflow
       auth: none
 ```
 

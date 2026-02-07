@@ -26,30 +26,60 @@ Nexus-agents uses a **secure-by-default** approach appropriate for its primary u
 - **MCP mode (default):** Communicates over stdio with the parent process only — no network listener, no external access possible. Authentication is not required because only the local process can communicate with the server.
 - **REST API mode (opt-in):** When enabled via `NEXUS_REST_ENABLED=true`, an API key is auto-generated and stored at `~/.nexus-agents/auth/rest-api-key` with restrictive file permissions (0600). All REST endpoints require this key via the `Authorization` header.
 
-### Network-Exposed Deployments
-
-If you expose the server on a network (not the default), enable full authentication:
-
-```bash
-export NEXUS_AUTH_ENABLED=true
-nexus-agents --mode=server
-```
-
-Or in your configuration:
-
-```yaml
-# nexus-agents.yaml
-server:
-  auth:
-    enabled: true
-```
-
 | Environment           | Auth Needed? | Notes                                        |
 | --------------------- | ------------ | -------------------------------------------- |
 | Local MCP (stdio)     | No           | Only the parent process can reach the server |
 | Local REST API        | Auto         | API key auto-generated on first start        |
 | Network-exposed       | Yes          | Set `NEXUS_AUTH_ENABLED=true`                |
 | Production deployment | Yes          | Enable auth and use HTTPS                    |
+
+### Token-Based Authentication (Issue #739)
+
+For network-exposed deployments, nexus-agents provides token-based authentication via the `AuthHandler` middleware (`src/mcp/middleware/auth-handler.ts`).
+
+**Token management CLI commands:**
+
+```bash
+nexus-agents auth init          # Generate new auth token
+nexus-agents auth show          # Show token status (file path, permissions)
+nexus-agents auth rotate        # Rotate token (invalidate old, generate new)
+nexus-agents auth init --force  # Regenerate token (overwrite existing)
+```
+
+**Security properties:**
+
+- Tokens are 64-character hex strings (32 bytes of `crypto.randomBytes`)
+- Stored at `~/.nexus-agents/auth/server-token` with `0600` permissions (owner read/write only)
+- Directory created with `0700` permissions
+- Timing-safe comparison (`crypto.timingSafeEqual`) prevents timing attacks
+- Token shown only once on generation (not recoverable — rotate if lost)
+
+**Enabling authentication:**
+
+```yaml
+# nexus-agents.yaml
+security:
+  auth:
+    enabled: true
+    method: token # 'token' (default) or 'oauth2' (future)
+    tokenHeader: Authorization # Header name for Bearer token
+    tokenFile: ~/.nexus-agents/auth/server-token # Token storage path
+```
+
+Or via environment variables:
+
+```bash
+export NEXUS_AUTH_ENABLED=true
+nexus-agents --mode=server
+```
+
+**Client usage:**
+
+```bash
+# Include token in Authorization header
+curl -H "Authorization: Bearer $(cat ~/.nexus-agents/auth/server-token)" \
+  http://localhost:3000/api/orchestrate
+```
 
 ---
 
@@ -77,6 +107,7 @@ Every MCP tool invocation passes through a hardened middleware pipeline:
 
 | Layer               | Protection                                         |
 | ------------------- | -------------------------------------------------- |
+| Authentication      | Bearer token validation with timing-safe compare   |
 | CORS                | Strict origin checking for HTTP transports         |
 | Security Headers    | X-Content-Type-Options, X-Frame-Options, CSP       |
 | Body Size Limits    | Configurable max request size (default 1 MB)       |
@@ -463,19 +494,22 @@ const summary = getSafetyTaxonomySummary();
 
 ## Source Files
 
-| File                                             | Purpose                   |
-| ------------------------------------------------ | ------------------------- |
-| `src/security/sandbox-manager.ts`                | Sandbox orchestration     |
-| `src/security/docker-sandbox.ts`                 | Container isolation       |
-| `src/security/secrets-vault.ts`                  | Secrets management        |
-| `src/security/rate-limiter.ts`                   | Rate limiting             |
-| `src/security/path-validator.ts`                 | Path traversal prevention |
-| `src/security/input-sanitizer.ts`                | Input validation          |
-| `src/security/audit-logger.ts`                   | Security logging          |
-| `src/security/safety-bench/`                     | SafetyBench evaluation    |
-| `src/security/safety-bench/safety-categories.ts` | Category taxonomy         |
-| `src/security/safety-bench/safety-enums.ts`      | Risk levels, outcomes     |
-| `src/security/safety-bench/safety-schemas.ts`    | Validation schemas        |
+| File                                             | Purpose                     |
+| ------------------------------------------------ | --------------------------- |
+| `src/mcp/middleware/auth-handler.ts`             | Token-based authentication  |
+| `src/mcp/middleware/secure-handler.ts`           | Tool-level security wrapper |
+| `src/mcp/middleware/request-context.ts`          | Request tracking and auth   |
+| `src/security/sandbox-manager.ts`                | Sandbox orchestration       |
+| `src/security/docker-sandbox.ts`                 | Container isolation         |
+| `src/security/secrets-vault.ts`                  | Secrets management          |
+| `src/security/rate-limiter.ts`                   | Rate limiting               |
+| `src/security/path-validator.ts`                 | Path traversal prevention   |
+| `src/security/input-sanitizer.ts`                | Input validation            |
+| `src/security/audit-logger.ts`                   | Security logging            |
+| `src/security/safety-bench/`                     | SafetyBench evaluation      |
+| `src/security/safety-bench/safety-categories.ts` | Category taxonomy           |
+| `src/security/safety-bench/safety-enums.ts`      | Risk levels, outcomes       |
+| `src/security/safety-bench/safety-schemas.ts`    | Validation schemas          |
 
 ---
 

@@ -9,17 +9,19 @@ description: "┌─────────────────────
 
 ## Quick Navigation
 
-| Topic          | Hub       | Deep Dive                                                |
-| -------------- | --------- | -------------------------------------------------------- |
-| Agents         | This file | [AGENT_SYSTEM.md](/nexus-agents/architecture/agent-system/)                     |
-| Memory         | This file | [MEMORY_SYSTEM.md](/nexus-agents/architecture/memory-system/)                   |
-| Routing        | This file | [ROUTING_SYSTEM.md](/nexus-agents/architecture/routing-system/)                 |
-| Load Balancing | This file | [CONTEXT_LOAD_BALANCING.md](/nexus-agents/architecture/context-load-balancing/) |
-| Consensus      | This file | [CONSENSUS_PROTOCOLS.md](/nexus-agents/architecture/consensus-protocols/)       |
-| Security       | This file | [SECURITY.md](/nexus-agents/architecture/security/)                             |
-| MCP            | This file | [MCP_PROTOCOL.md](/nexus-agents/architecture/mcp-protocol/)                     |
-| Observability  | This file | [SWARM_OBSERVER_DESIGN.md](/nexus-agents/architecture/swarm-observer-design/)   |
-| SWE-Bench      | This file | [SWE_BENCH_HARNESS.md](/nexus-agents/architecture/swe-bench-harness/)           |
+| Topic           | Hub       | Deep Dive                                                      |
+| --------------- | --------- | -------------------------------------------------------------- |
+| Agents          | This file | [AGENT_SYSTEM.md](/nexus-agents/architecture/agent-system/)                           |
+| Memory          | This file | [MEMORY_SYSTEM.md](/nexus-agents/architecture/memory-system/)                         |
+| Routing         | This file | [ROUTING_SYSTEM.md](/nexus-agents/architecture/routing-system/)                       |
+| Load Balancing  | This file | [CONTEXT_LOAD_BALANCING.md](/nexus-agents/architecture/context-load-balancing/)       |
+| Consensus       | This file | [CONSENSUS_PROTOCOLS.md](/nexus-agents/architecture/consensus-protocols/)             |
+| Security        | This file | [SECURITY.md](/nexus-agents/architecture/security/)                                   |
+| Input Hardening | This file | [UNTRUSTED_INPUT_HARDENING.md](/nexus-agents/architecture/untrusted-input-hardening/) |
+| MCP             | This file | [MCP_PROTOCOL.md](/nexus-agents/architecture/mcp-protocol/)                           |
+| Observability   | This file | [SWARM_OBSERVER_DESIGN.md](/nexus-agents/architecture/swarm-observer-design/)         |
+| SWE-Bench       | This file | [SWE_BENCH_HARNESS.md](/nexus-agents/architecture/swe-bench-harness/)                 |
+| ICTM Pattern    | This file | [ICTM_PATTERN.md](/nexus-agents/architecture/ictm-pattern/)                           |
 
 ---
 
