@@ -12,16 +12,10 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger } from '../../core/index.js';
 import { createLogger, getTimeProvider } from '../../core/index.js';
-import {
-  GraphBuilder,
-  executeGraph,
-  overwrite,
-  append,
-  START,
-  END,
-} from '../../orchestration/graph/index.js';
+import { executeGraph } from '../../orchestration/graph/index.js';
 import type { CompiledGraph, GraphEvent, GraphState } from '../../orchestration/graph/index.js';
 import { createCheckpointStore } from '../../orchestration/graph/index.js';
+import { getGraphRegistry } from './run-graph-workflow-templates.js';
 import { createAuditTrail, createGraphAuditBridge } from '../../security/audit-trail.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
@@ -74,53 +68,6 @@ interface GraphEventSummary {
 }
 
 // ============================================================================
-// Predefined Graph Registry
-// ============================================================================
-
-type GraphFactory = () => CompiledGraph | undefined;
-
-/** Registry of predefined graph workflows. */
-function getGraphRegistry(): ReadonlyMap<string, GraphFactory> {
-  return new Map<string, GraphFactory>([
-    ['echo', createEchoGraph],
-    ['pipeline', createPipelineGraph],
-  ]);
-}
-
-function createEchoGraph(): CompiledGraph | undefined {
-  const result = new GraphBuilder()
-    .addState('input', overwrite(''))
-    .addState('output', overwrite(''))
-    .addNode('echo', (state) => Promise.resolve({ output: `echo: ${String(state['input'])}` }))
-    .addEdge(START, 'echo')
-    .addEdge('echo', END)
-    .compile();
-  return result.ok ? result.value : undefined;
-}
-
-function createPipelineGraph(): CompiledGraph | undefined {
-  const result = new GraphBuilder()
-    .addState('input', overwrite(''))
-    .addState('steps', append<string>())
-    .addState('output', overwrite(''))
-    .addNode('validate', (state) =>
-      Promise.resolve({ steps: [`validated: ${String(state['input'])}`] })
-    )
-    .addNode('process', (state) => {
-      const steps = state['steps'] as string[];
-      return Promise.resolve({
-        steps: [`processed ${String(steps.length)} inputs`],
-        output: `done: ${String(state['input'])}`,
-      });
-    })
-    .addEdge(START, 'validate')
-    .addEdge('validate', 'process')
-    .addEdge('process', END)
-    .compile();
-  return result.ok ? result.value : undefined;
-}
-
-// ============================================================================
 // Handler
 // ============================================================================
 
@@ -159,6 +106,18 @@ function resolveGraph(
   return { ok: true, graph };
 }
 
+/** Creates the event listener that collects summaries and optionally bridges to audit trail. */
+function createEventCollector(
+  events: GraphEventSummary[],
+  enableAuditTrail: boolean
+): (event: GraphEvent) => void {
+  const auditBridge = enableAuditTrail ? createGraphAuditBridge(createAuditTrail()) : undefined;
+  return (event: GraphEvent): void => {
+    events.push(toEventSummary(event));
+    auditBridge?.(event);
+  };
+}
+
 /** Executes a named graph workflow with full integration. */
 async function handleRunGraphWorkflow(
   input: RunGraphWorkflowInput,
@@ -170,15 +129,9 @@ async function handleRunGraphWorkflow(
 
   const events: GraphEventSummary[] = [];
   const checkpointStore = input.enableCheckpointing ? createCheckpointStore() : undefined;
-  const auditBridge = input.enableAuditTrail
-    ? createGraphAuditBridge(createAuditTrail())
-    : undefined;
-  const onEvent = (event: GraphEvent): void => {
-    events.push(toEventSummary(event));
-    auditBridge?.(event);
-  };
-
+  const onEvent = createEventCollector(events, input.enableAuditTrail);
   const executionId = `graph-${input.workflow}-${String(Date.now())}`;
+
   logger.info('Executing graph workflow', {
     workflow: input.workflow,
     executionId,
@@ -250,7 +203,11 @@ export function registerRunGraphWorkflowTool(server: McpServer, deps: RunGraphWo
   const wrapped = wrapToolWithTimeout('run_graph_workflow', secureHandler, { timeoutMs, logger });
 
   const toolSchema = {
-    workflow: z.string().min(1).max(100).describe('Workflow name (e.g., "echo", "pipeline")'),
+    workflow: z
+      .string()
+      .min(1)
+      .max(100)
+      .describe('Workflow name: echo, pipeline, code-review, security-scan'),
     inputs: z.record(z.unknown()).optional().describe('Input values for the workflow'),
     enableCheckpointing: z.boolean().optional().describe('Enable checkpoint saving'),
     enableAuditTrail: z.boolean().optional().describe('Enable audit trail logging'),

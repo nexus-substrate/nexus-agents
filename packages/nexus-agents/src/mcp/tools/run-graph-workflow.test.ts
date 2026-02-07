@@ -238,6 +238,8 @@ describe('error handling', () => {
     expect(result.error).toContain('nonexistent');
     expect(result.error).toContain('echo');
     expect(result.error).toContain('pipeline');
+    expect(result.error).toContain('code-review');
+    expect(result.error).toContain('security-scan');
   });
 
   it('returns validation error for invalid input', async () => {

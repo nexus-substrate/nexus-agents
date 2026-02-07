@@ -689,7 +689,7 @@ nexus-agents hooks stop --check-tasks
     "properties": {
       "workflow": {
         "type": "string",
-        "description": "Workflow name (e.g., \"echo\", \"pipeline\")"
+        "description": "Workflow name: echo, pipeline, code-review, security-scan"
       },
       "inputs": {
         "type": "object",
