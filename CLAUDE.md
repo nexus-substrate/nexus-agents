@@ -110,6 +110,8 @@ Before implementing features or making architectural decisions: search official 
 | **MCP Tools**         | `registerTools()`            | `src/mcp/tools/index.ts`                         |
 | **Model Registry**    | `DEFAULT_MODEL_CAPABILITIES` | `src/config/model-capabilities.ts`               |
 | **Adapter Lifecycle** | `ResilientAdapter`           | `src/adapters/resilient-adapter.ts`              |
+| **Graph Workflows**   | `GraphBuilder`               | `src/orchestration/graph/graph-builder.ts`       |
+| **Security Pipeline** | `src/security/`              | `src/security/index.ts`                          |
 
 All task routing goes through: `Task → BudgetRouter → ZeroRouter → PreferenceRouter → TopsisRouter → LinUCB → Selected Model`
 
@@ -447,7 +449,7 @@ _Auto-generated from source. 17 tools registered._
 
 <!-- GOVERNANCE:VERSION:START -->
 
-_Governance Version: 2026-02-07.3_
+_Governance Version: 2026-02-07.4_
 
 <!-- GOVERNANCE:VERSION:END -->
 
