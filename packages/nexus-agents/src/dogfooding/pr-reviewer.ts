@@ -9,6 +9,7 @@
 
 import type { Result, Task, TaskResult, IModelAdapter } from '../core/index.js';
 import { ok, err, createLogger, getTimeProvider } from '../core/index.js';
+import { sanitizeInput } from '../security/input-sanitizer.js';
 import { createSecurityExpert } from '../agents/experts/security-expert.js';
 import { createCodeExpert } from '../agents/experts/code-expert.js';
 import { createTestingExpert } from '../agents/experts/testing-expert.js';
@@ -182,6 +183,25 @@ export class PRReviewer {
   }
 
   /**
+   * Sanitizes untrusted PR content (body/title) before embedding in expert tasks.
+   * Uses the security/input-sanitizer pipeline to strip injection vectors.
+   * (Source: Issue #828 — Wire security modules into production pipeline)
+   */
+  private sanitizePRContent(text: string, author: string): string {
+    if (text.length === 0) return text;
+    const result = sanitizeInput(text, 'unknown', author);
+    if (result.wasModified) {
+      logger.warn('PR content sanitized before expert review', {
+        author,
+        strippedCount: result.strippedElements.length,
+        injectionFlags: result.injectionFlags,
+        trustTier: result.trustTier,
+      });
+    }
+    return result.content;
+  }
+
+  /**
    * Builds the task description for an expert.
    */
   private buildTaskDescription(pr: PRMetadata, category: ReviewCategory): string {
@@ -189,16 +209,20 @@ export class PRReviewer {
       .map((f) => `- ${f.filename} (+${String(f.additions)}/-${String(f.deletions)})`)
       .join('\n');
 
+    // Sanitize untrusted PR content before embedding in expert task (Issue #828)
+    const safeTitle = this.sanitizePRContent(pr.title, pr.author);
+    const safeBody = this.sanitizePRContent(pr.body, pr.author);
+
     return `Review this pull request for ${CATEGORY_DISPLAY_NAMES[category]} concerns:
 
-## PR: ${pr.title}
+## PR: ${safeTitle}
 
 **Author:** ${pr.author}
 **Branch:** ${pr.head} → ${pr.base}
 **Changes:** +${String(pr.additions)} / -${String(pr.deletions)} lines
 
 ### Description
-${pr.body || 'No description provided.'}
+${safeBody || 'No description provided.'}
 
 ### Changed Files
 ${filesSummary}
