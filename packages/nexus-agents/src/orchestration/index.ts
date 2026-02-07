@@ -180,6 +180,20 @@ export type {
   ParallelExplorationConfig,
 } from './parallel-exploration-types.js';
 
+// Triangulated Code Review (Issue #864)
+export { executeTriangulatedReview } from './triangulated-review.js';
+export type { ReviewOptions } from './triangulated-review.js';
+export {
+  createDefaultReviewConfig,
+  TriangulatedReviewConfigSchema,
+} from './triangulated-review-types.js';
+export type {
+  CliReviewPartition,
+  DeduplicatedFinding,
+  TriangulatedReviewResult,
+  TriangulatedReviewConfig,
+} from './triangulated-review-types.js';
+
 // Checkpointing (Issue #833)
 export {
   InMemoryCheckpointStore,
