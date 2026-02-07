@@ -82,6 +82,22 @@ export type {
   PatternMetrics,
 } from './workflow-router-types.js';
 
+// Spec Parser (Issue #847)
+export { parseSpec } from './spec-parser.js';
+export type {
+  ParsedSpec,
+  SpecParseError,
+  IssueReference,
+  FileReference,
+  KnownSection,
+} from './spec-parser-types.js';
+export {
+  ParsedSpecSchema,
+  IssueReferenceSchema,
+  FileReferenceSchema,
+  KNOWN_SECTIONS,
+} from './spec-parser-types.js';
+
 // Checkpointing (Issue #833)
 export {
   InMemoryCheckpointStore,
