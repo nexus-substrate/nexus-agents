@@ -147,6 +147,12 @@ const ACTION_CORROBORATION_RULES: Readonly<Record<AgentActionType, readonly Corr
     ],
     RequestHumanApproval: [],
     RefuseAction: [],
+    HandoffMessage: [
+      {
+        description: 'At least one source citation for trust tier propagation',
+        isSatisfied: (s) => s.length > 0,
+      },
+    ],
   };
 
 // ============================================================================

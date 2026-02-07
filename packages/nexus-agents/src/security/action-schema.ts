@@ -163,6 +163,15 @@ const RefuseActionAction = z.object({
   escalateTo: z.enum(['maintainer', 'security']),
 });
 
+/** Handoff delegation from one agent to another by capability. (Issue #834) */
+const HandoffMessageAction = z.object({
+  type: z.literal('HandoffMessage'),
+  targetCapability: z.string().min(1).max(100),
+  reason: z.string().min(5).max(500),
+  inputTrustTier: z.enum(['1', '2', '3', '4']),
+  sources: z.array(SourceCitationSchema).min(1).max(20),
+});
+
 /**
  * Discriminated union of all valid agent actions.
  * This is the ONLY schema agents may emit when processing untrusted input.
@@ -176,6 +185,7 @@ export const AgentActionSchema = z.discriminatedUnion('type', [
   ClassifyIssueAction,
   IdentifyDuplicatesAction,
   RefuseActionAction,
+  HandoffMessageAction,
 ]);
 
 /** Inferred TypeScript type for an agent action. */
@@ -198,6 +208,7 @@ const READ_ONLY_ACTIONS: ReadonlySet<AgentActionType> = new Set<AgentActionType>
   'IdentifyDuplicates',
   'RefuseAction',
   'RequestHumanApproval',
+  'HandoffMessage',
 ]);
 
 /**
@@ -221,6 +232,7 @@ const CITATION_REQUIRED_ACTIONS: ReadonlySet<AgentActionType> = new Set<AgentAct
   'GeneratePatchPlan',
   'ClassifyIssue',
   'IdentifyDuplicates',
+  'HandoffMessage',
 ]);
 
 // ============================================================================
