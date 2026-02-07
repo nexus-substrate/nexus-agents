@@ -162,6 +162,15 @@ export {
   type IssueTriageResponse,
 } from './issue-triage-tool.js';
 
+// Graph workflow tool (Issue #840 — Expose graph workflows via MCP)
+export {
+  registerRunGraphWorkflowTool,
+  RunGraphWorkflowInputSchema,
+  type RunGraphWorkflowInput,
+  type RunGraphWorkflowDeps,
+  type RunGraphWorkflowResponse,
+} from './run-graph-workflow.js';
+
 // Memory observability tools (Issue #751)
 export {
   registerMemoryQueryTool,
@@ -272,6 +281,7 @@ export function registerTools(
       'memory_query',
       'memory_stats',
       'issue_triage',
+      'run_graph_workflow',
     ],
     logger,
     rateLimiter,

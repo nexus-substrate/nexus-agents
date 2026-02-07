@@ -23,6 +23,14 @@ import type {
   StateFieldSchema,
 } from './graph-types.js';
 import { END } from './graph-types.js';
+import { createCheckpoint } from './checkpoint-store.js';
+import {
+  emitNodeStarted,
+  emitNodeResults,
+  emitStateUpdated,
+  emitStepCompleted,
+  emitExecutionComplete,
+} from './graph-events.js';
 
 const logger = createLogger({ component: 'GraphExecutor' });
 
@@ -54,25 +62,32 @@ export async function executeGraph(
   options?: GraphExecuteOptions
 ): Promise<Result<GraphExecutionResult, Error>> {
   const startTime = getTimeProvider().now();
+  const initialState = initializeState(graph, initialInputs);
   const ctx: ExecutionContext = {
-    state: initializeState(graph, initialInputs),
+    state: initialState,
     allResults: [],
     stepsExecuted: 0,
-    runnableIds: resolveEntryNodes(graph, initializeState(graph, initialInputs)),
+    runnableIds: resolveEntryNodes(graph, initialState),
   };
+
+  tryResumeFromCheckpoint(ctx, options);
 
   const loopResult = await runSuperStepLoop(graph, ctx, startTime, options);
   if (loopResult !== undefined) return loopResult;
 
+  const totalDurationMs = getTimeProvider().now() - startTime;
+
   logger.info('Graph execution complete', {
     stepsExecuted: ctx.stepsExecuted,
-    durationMs: getTimeProvider().now() - startTime,
+    durationMs: totalDurationMs,
   });
+
+  emitExecutionComplete(ctx.stepsExecuted, ctx.allResults.length, totalDurationMs, options);
 
   return ok({
     finalState: ctx.state,
     nodeResults: ctx.allResults,
-    totalDurationMs: getTimeProvider().now() - startTime,
+    totalDurationMs,
     stepsExecuted: ctx.stepsExecuted,
   });
 }
@@ -118,6 +133,7 @@ async function executeSuperStep(
   ctx: ExecutionContext,
   options?: GraphExecuteOptions
 ): Promise<void> {
+  emitNodeStarted(ctx, options);
   const results = await executeNodes(graph, ctx.runnableIds, ctx.state, options);
   ctx.allResults.push(...results);
   ctx.stepsExecuted += results.length;
@@ -129,6 +145,52 @@ async function executeSuperStep(
   for (const result of results) {
     options?.onNodeComplete?.(result);
   }
+
+  emitNodeResults(ctx, results, options);
+  emitStateUpdated(ctx, results, options);
+  emitStepCompleted(ctx, results.length, options);
+  saveCheckpointIfConfigured(ctx, options);
+}
+
+// ============================================================================
+// Checkpointing (Issue #837)
+// ============================================================================
+
+/** Attempts to resume execution from a checkpoint. */
+function tryResumeFromCheckpoint(ctx: ExecutionContext, options?: GraphExecuteOptions): void {
+  const store = options?.checkpointStore;
+  const execId = options?.executionId;
+  if (store === undefined || execId === undefined) return;
+
+  const latest = store.latest(execId);
+  if (latest === undefined) return;
+
+  ctx.state = { ...latest.state };
+  ctx.allResults = [...latest.completedResults];
+  ctx.stepsExecuted = latest.stepNumber;
+  ctx.runnableIds = [...latest.pendingNodeIds];
+
+  logger.info('Resumed from checkpoint', {
+    executionId: execId,
+    stepNumber: latest.stepNumber,
+    checkpointId: latest.id,
+  });
+}
+
+/** Saves a checkpoint after a super-step if configured. */
+function saveCheckpointIfConfigured(ctx: ExecutionContext, options?: GraphExecuteOptions): void {
+  const store = options?.checkpointStore;
+  const execId = options?.executionId;
+  if (store === undefined || execId === undefined) return;
+
+  const checkpoint = createCheckpoint({
+    executionId: execId,
+    stepNumber: ctx.stepsExecuted,
+    state: ctx.state,
+    pendingNodeIds: ctx.runnableIds,
+    completedResults: ctx.allResults,
+  });
+  store.save(checkpoint);
 }
 
 // ============================================================================

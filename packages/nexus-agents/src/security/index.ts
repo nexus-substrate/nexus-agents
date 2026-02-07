@@ -63,6 +63,8 @@ export {
   emitCorroborationEvent,
   emitReputationEvent,
   emitSanitizationEvent,
+  emitGraphExecutionEvent,
+  createGraphAuditBridge,
 } from './audit-trail.js';
 export type {
   AuditEvent,
@@ -72,4 +74,5 @@ export type {
   CorroborationEvent,
   ReputationEvent,
   SanitizationEvent,
+  GraphExecutionAuditEvent,
 } from './audit-trail.js';

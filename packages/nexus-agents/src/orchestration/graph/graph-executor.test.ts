@@ -7,7 +7,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { GraphBuilder, overwrite, append, START, END } from './graph-builder.js';
 import { executeGraph } from './graph-executor.js';
-import type { GraphState, NodeResult } from './graph-types.js';
+import { InMemoryCheckpointStore } from './checkpoint-store.js';
+import type { GraphState, NodeResult, GraphEvent } from './graph-types.js';
 
 describe('executeGraph', () => {
   describe('linear execution', () => {
@@ -268,6 +269,292 @@ describe('executeGraph', () => {
       if (!result.ok) return;
 
       expect(result.value.finalState['output']).toBe('echo:hello');
+    });
+  });
+
+  describe('checkpointing (Issue #837)', () => {
+    it('saves checkpoints after each super-step', async () => {
+      const store = new InMemoryCheckpointStore();
+
+      const graph = new GraphBuilder()
+        .addState('value', overwrite(0))
+        .addNode('A', () => Promise.resolve({ value: 1 }))
+        .addNode('B', (s) => Promise.resolve({ value: (s['value'] as number) + 10 }))
+        .addEdge(START, 'A')
+        .addEdge('A', 'B')
+        .addEdge('B', END)
+        .compile();
+
+      expect(graph.ok).toBe(true);
+      if (!graph.ok) return;
+
+      await executeGraph(
+        graph.value,
+        {},
+        {
+          checkpointStore: store,
+          executionId: 'exec-1',
+        }
+      );
+
+      // Two super-steps → two checkpoints
+      expect(store.size()).toBe(2);
+      const summaries = store.list('exec-1');
+      expect(summaries.length).toBe(2);
+    });
+
+    it('resumes execution from a checkpoint', async () => {
+      const store = new InMemoryCheckpointStore();
+      const executedNodes: string[] = [];
+
+      const graph = new GraphBuilder()
+        .addState('value', overwrite(0))
+        .addNode('A', () => {
+          executedNodes.push('A');
+          return Promise.resolve({ value: 1 });
+        })
+        .addNode('B', (s) => {
+          executedNodes.push('B');
+          return Promise.resolve({ value: (s['value'] as number) + 10 });
+        })
+        .addEdge(START, 'A')
+        .addEdge('A', 'B')
+        .addEdge('B', END)
+        .compile();
+
+      expect(graph.ok).toBe(true);
+      if (!graph.ok) return;
+
+      // First run: complete execution, creates checkpoints
+      await executeGraph(
+        graph.value,
+        {},
+        {
+          checkpointStore: store,
+          executionId: 'exec-resume',
+        }
+      );
+
+      expect(executedNodes).toEqual(['A', 'B']);
+      executedNodes.length = 0;
+
+      // Manually create a checkpoint at step A completed
+      const { createCheckpoint: createCp } = await import('./checkpoint-store.js');
+      store.clear();
+      store.save(
+        createCp({
+          executionId: 'exec-resume-2',
+          stepNumber: 1,
+          state: { value: 1 },
+          pendingNodeIds: ['B'],
+          completedResults: [
+            {
+              nodeId: 'A',
+              stateUpdates: { value: 1 },
+              durationMs: 5,
+              status: 'success',
+            },
+          ],
+        })
+      );
+
+      // Resume: should only execute B
+      const result = await executeGraph(
+        graph.value,
+        {},
+        {
+          checkpointStore: store,
+          executionId: 'exec-resume-2',
+        }
+      );
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(executedNodes).toEqual(['B']);
+      expect(result.value.finalState['value']).toBe(11);
+    });
+
+    it('skips checkpointing when no store configured', async () => {
+      const graph = new GraphBuilder()
+        .addNode('A', noop)
+        .addEdge(START, 'A')
+        .addEdge('A', END)
+        .compile();
+
+      expect(graph.ok).toBe(true);
+      if (!graph.ok) return;
+
+      // No store — should not throw
+      const result = await executeGraph(graph.value, {});
+      expect(result.ok).toBe(true);
+    });
+
+    it('stores correct state in each checkpoint', async () => {
+      const store = new InMemoryCheckpointStore();
+
+      const graph = new GraphBuilder()
+        .addState('value', overwrite(0))
+        .addNode('A', () => Promise.resolve({ value: 10 }))
+        .addNode('B', () => Promise.resolve({ value: 20 }))
+        .addEdge(START, 'A')
+        .addEdge('A', 'B')
+        .addEdge('B', END)
+        .compile();
+
+      expect(graph.ok).toBe(true);
+      if (!graph.ok) return;
+
+      await executeGraph(
+        graph.value,
+        {},
+        {
+          checkpointStore: store,
+          executionId: 'exec-state',
+        }
+      );
+
+      const summaries = store.list('exec-state');
+      expect(summaries.length).toBe(2);
+
+      // First checkpoint: after A executed
+      const cp1 = store.load(summaries[0]!.id);
+      expect(cp1?.state['value']).toBe(10);
+
+      // Second checkpoint: after B executed
+      const cp2 = store.load(summaries[1]!.id);
+      expect(cp2?.state['value']).toBe(20);
+    });
+  });
+
+  describe('event streaming (Issue #838)', () => {
+    it('emits all event types for a linear graph', async () => {
+      const events: GraphEvent[] = [];
+
+      const graph = new GraphBuilder()
+        .addState('value', overwrite(0))
+        .addNode('A', () => Promise.resolve({ value: 1 }))
+        .addNode('B', () => Promise.resolve({ value: 2 }))
+        .addEdge(START, 'A')
+        .addEdge('A', 'B')
+        .addEdge('B', END)
+        .compile();
+
+      expect(graph.ok).toBe(true);
+      if (!graph.ok) return;
+
+      await executeGraph(graph.value, {}, { onEvent: (e) => events.push(e) });
+
+      const types = events.map((e) => e.type);
+      expect(types).toContain('node_started');
+      expect(types).toContain('node_completed');
+      expect(types).toContain('state_updated');
+      expect(types).toContain('step_completed');
+      expect(types).toContain('execution_complete');
+    });
+
+    it('emits node_started before node_completed', async () => {
+      const events: GraphEvent[] = [];
+
+      const graph = new GraphBuilder()
+        .addNode('A', noop)
+        .addEdge(START, 'A')
+        .addEdge('A', END)
+        .compile();
+
+      expect(graph.ok).toBe(true);
+      if (!graph.ok) return;
+
+      await executeGraph(graph.value, {}, { onEvent: (e) => events.push(e) });
+
+      const startIdx = events.findIndex((e) => e.type === 'node_started' && e.nodeId === 'A');
+      const completeIdx = events.findIndex((e) => e.type === 'node_completed' && e.nodeId === 'A');
+      expect(startIdx).toBeLessThan(completeIdx);
+    });
+
+    it('emits node_error for failed nodes', async () => {
+      const events: GraphEvent[] = [];
+
+      const graph = new GraphBuilder()
+        .addNode('fail', () => Promise.reject(new Error('boom')))
+        .addEdge(START, 'fail')
+        .addEdge('fail', END)
+        .compile();
+
+      expect(graph.ok).toBe(true);
+      if (!graph.ok) return;
+
+      await executeGraph(graph.value, {}, { onEvent: (e) => events.push(e) });
+
+      const errorEvent = events.find((e) => e.type === 'node_error');
+      expect(errorEvent).toBeDefined();
+      if (errorEvent?.type === 'node_error') {
+        expect(errorEvent.nodeId).toBe('fail');
+        expect(errorEvent.error).toBe('boom');
+      }
+    });
+
+    it('emits execution_complete with correct totals', async () => {
+      const events: GraphEvent[] = [];
+
+      const graph = new GraphBuilder()
+        .addNode('A', noop)
+        .addNode('B', noop)
+        .addEdge(START, 'A')
+        .addEdge('A', 'B')
+        .addEdge('B', END)
+        .compile();
+
+      expect(graph.ok).toBe(true);
+      if (!graph.ok) return;
+
+      await executeGraph(graph.value, {}, { onEvent: (e) => events.push(e) });
+
+      const complete = events.find((e) => e.type === 'execution_complete');
+      expect(complete).toBeDefined();
+      if (complete?.type === 'execution_complete') {
+        expect(complete.totalSteps).toBe(2);
+        expect(complete.totalNodes).toBe(2);
+        expect(complete.durationMs).toBeGreaterThanOrEqual(0);
+      }
+    });
+
+    it('emits state_updated with correct keys', async () => {
+      const events: GraphEvent[] = [];
+
+      const graph = new GraphBuilder()
+        .addState('x', overwrite(0))
+        .addState('y', overwrite(0))
+        .addNode('A', () => Promise.resolve({ x: 1, y: 2 }))
+        .addEdge(START, 'A')
+        .addEdge('A', END)
+        .compile();
+
+      expect(graph.ok).toBe(true);
+      if (!graph.ok) return;
+
+      await executeGraph(graph.value, {}, { onEvent: (e) => events.push(e) });
+
+      const stateEvent = events.find((e) => e.type === 'state_updated');
+      expect(stateEvent).toBeDefined();
+      if (stateEvent?.type === 'state_updated') {
+        expect(stateEvent.updatedKeys).toContain('x');
+        expect(stateEvent.updatedKeys).toContain('y');
+      }
+    });
+
+    it('does not emit events when onEvent not provided', async () => {
+      const graph = new GraphBuilder()
+        .addNode('A', noop)
+        .addEdge(START, 'A')
+        .addEdge('A', END)
+        .compile();
+
+      expect(graph.ok).toBe(true);
+      if (!graph.ok) return;
+
+      // Should not throw even without onEvent
+      const result = await executeGraph(graph.value, {});
+      expect(result.ok).toBe(true);
     });
   });
 });

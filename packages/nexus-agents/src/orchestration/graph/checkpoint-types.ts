@@ -40,7 +40,7 @@ export interface Checkpoint {
   /** ISO timestamp when checkpoint was created. */
   readonly createdAt: string;
   /** Optional metadata for debugging. */
-  readonly metadata?: Record<string, unknown>;
+  readonly metadata?: Record<string, unknown> | undefined;
 }
 
 /**

@@ -10,6 +10,7 @@
  */
 
 import type { Result } from '../../core/index.js';
+import type { ICheckpointStore } from './checkpoint-types.js';
 
 // ============================================================================
 // State & Reducers
@@ -58,8 +59,8 @@ export type NodeHandler = (state: Readonly<GraphState>) => Promise<Partial<Graph
 export interface GraphNode {
   readonly id: string;
   readonly handler: NodeHandler;
-  readonly timeout?: number;
-  readonly retries?: number;
+  readonly timeout?: number | undefined;
+  readonly retries?: number | undefined;
 }
 
 /** Special sentinel for the graph entry point. */
@@ -124,7 +125,60 @@ export interface GraphExecuteOptions {
   readonly timeout?: number;
   readonly maxSteps?: number;
   readonly onNodeComplete?: (result: NodeResult) => void;
+  /** Optional checkpoint store for durable execution (Issue #837). */
+  readonly checkpointStore?: ICheckpointStore;
+  /** Execution ID for checkpoint grouping. Required with checkpointStore. */
+  readonly executionId?: string;
+  /** Event listener for streaming observation (Issue #838). */
+  readonly onEvent?: (event: GraphEvent) => void;
 }
+
+// ============================================================================
+// Graph Events (Issue #838)
+// ============================================================================
+
+/** Discriminated union of graph lifecycle events for streaming observation. */
+export type GraphEvent =
+  | {
+      readonly type: 'node_started';
+      readonly nodeId: string;
+      readonly stepNumber: number;
+      readonly timestamp: number;
+    }
+  | {
+      readonly type: 'node_completed';
+      readonly nodeId: string;
+      readonly stepNumber: number;
+      readonly durationMs: number;
+      readonly resultKeys: readonly string[];
+      readonly timestamp: number;
+    }
+  | {
+      readonly type: 'node_error';
+      readonly nodeId: string;
+      readonly stepNumber: number;
+      readonly error: string;
+      readonly timestamp: number;
+    }
+  | {
+      readonly type: 'state_updated';
+      readonly stepNumber: number;
+      readonly updatedKeys: readonly string[];
+      readonly timestamp: number;
+    }
+  | {
+      readonly type: 'step_completed';
+      readonly stepNumber: number;
+      readonly nodesExecuted: number;
+      readonly timestamp: number;
+    }
+  | {
+      readonly type: 'execution_complete';
+      readonly totalSteps: number;
+      readonly totalNodes: number;
+      readonly durationMs: number;
+      readonly timestamp: number;
+    };
 
 // ============================================================================
 // Builder Error

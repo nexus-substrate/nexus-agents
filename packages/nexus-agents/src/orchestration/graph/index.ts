@@ -23,8 +23,18 @@ export type {
   GraphExecuteOptions,
   GraphCompileError,
   CompileResult,
+  GraphEvent,
 } from './graph-types.js';
 export { START, END, formatCompileError } from './graph-types.js';
+
+// Events (Issue #838)
+export {
+  emitNodeStarted,
+  emitNodeResults,
+  emitStateUpdated,
+  emitStepCompleted,
+  emitExecutionComplete,
+} from './graph-events.js';
 
 // Builder
 export { GraphBuilder, overwrite, append, customReducer } from './graph-builder.js';

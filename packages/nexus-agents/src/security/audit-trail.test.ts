@@ -13,6 +13,8 @@ import {
   emitCorroborationEvent,
   emitReputationEvent,
   emitSanitizationEvent,
+  emitGraphExecutionEvent,
+  createGraphAuditBridge,
 } from './audit-trail.js';
 
 describe('AuditTrail', () => {
@@ -254,6 +256,100 @@ describe('AuditTrail', () => {
       trail.clear();
       expect(trail.size).toBe(0);
       expect(trail.query()).toHaveLength(0);
+    });
+  });
+
+  describe('graph execution events (Issue #839)', () => {
+    it('records graph execution events via emitter', () => {
+      emitGraphExecutionEvent(trail, {
+        graphEvent: 'node_completed',
+        nodeId: 'classify',
+        stepNumber: 1,
+        detail: 'Node classify completed in 5ms',
+      });
+
+      const events = trail.query({ type: 'graph_execution' });
+      expect(events).toHaveLength(1);
+      if (events[0]?.type === 'graph_execution') {
+        expect(events[0].graphEvent).toBe('node_completed');
+        expect(events[0].nodeId).toBe('classify');
+        expect(events[0].stepNumber).toBe(1);
+      }
+    });
+
+    it('bridges graph events to audit trail', () => {
+      const bridge = createGraphAuditBridge(trail);
+
+      bridge({ type: 'node_started', nodeId: 'A', stepNumber: 0, timestamp: Date.now() });
+      bridge({
+        type: 'node_completed',
+        nodeId: 'A',
+        stepNumber: 1,
+        durationMs: 10,
+        resultKeys: ['value'],
+        timestamp: Date.now(),
+      });
+      bridge({
+        type: 'node_error',
+        nodeId: 'B',
+        stepNumber: 1,
+        error: 'fail',
+        timestamp: Date.now(),
+      });
+      bridge({
+        type: 'execution_complete',
+        totalSteps: 2,
+        totalNodes: 3,
+        durationMs: 50,
+        timestamp: Date.now(),
+      });
+
+      const events = trail.query({ type: 'graph_execution' });
+      expect(events).toHaveLength(4);
+
+      const nodeStarted = events[0];
+      if (nodeStarted?.type === 'graph_execution') {
+        expect(nodeStarted.graphEvent).toBe('node_started');
+        expect(nodeStarted.nodeId).toBe('A');
+      }
+
+      const nodeError = events[2];
+      if (nodeError?.type === 'graph_execution') {
+        expect(nodeError.graphEvent).toBe('node_error');
+        expect(nodeError.detail).toContain('fail');
+      }
+    });
+
+    it('bridge handles events without nodeId', () => {
+      const bridge = createGraphAuditBridge(trail);
+      bridge({ type: 'step_completed', stepNumber: 3, nodesExecuted: 2, timestamp: Date.now() });
+
+      const events = trail.query({ type: 'graph_execution' });
+      expect(events).toHaveLength(1);
+      if (events[0]?.type === 'graph_execution') {
+        expect(events[0].nodeId).toBeUndefined();
+        expect(events[0].stepNumber).toBe(3);
+      }
+    });
+
+    it('bridge works as onEvent callback with executeGraph', async () => {
+      const { GraphBuilder, overwrite, START, END, executeGraph } =
+        await import('../orchestration/graph/index.js');
+      const bridge = createGraphAuditBridge(trail);
+
+      const graph = new GraphBuilder()
+        .addState('v', overwrite(0))
+        .addNode('X', () => Promise.resolve({ v: 42 }))
+        .addEdge(START, 'X')
+        .addEdge('X', END)
+        .compile();
+
+      if (!graph.ok) return;
+
+      await executeGraph(graph.value, {}, { onEvent: bridge });
+
+      const events = trail.query({ type: 'graph_execution' });
+      expect(events.length).toBeGreaterThanOrEqual(3); // started, completed, step_completed, execution_complete
     });
   });
 });

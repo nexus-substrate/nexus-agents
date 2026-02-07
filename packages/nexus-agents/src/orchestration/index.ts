@@ -55,6 +55,16 @@ export type {
   GraphExecuteOptions,
   GraphCompileError,
   CompileResult,
+  GraphEvent,
+} from './graph/index.js';
+
+// Event streaming (Issue #838)
+export {
+  emitNodeStarted,
+  emitNodeResults,
+  emitStateUpdated,
+  emitStepCompleted,
+  emitExecutionComplete,
 } from './graph/index.js';
 
 // Checkpointing (Issue #833)

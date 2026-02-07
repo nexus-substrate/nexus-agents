@@ -32,7 +32,8 @@ export type AuditEvent =
   | PolicyGateEvent
   | CorroborationEvent
   | ReputationEvent
-  | SanitizationEvent;
+  | SanitizationEvent
+  | GraphExecutionAuditEvent;
 
 /** Base fields shared by all audit events. */
 interface AuditEventBase {
@@ -88,6 +89,15 @@ export interface SanitizationEvent extends AuditEventBase {
   readonly wasModified: boolean;
   readonly strippedCount: number;
   readonly injectionFlagCount: number;
+}
+
+/** Graph execution lifecycle event (Issue #839). */
+export interface GraphExecutionAuditEvent extends AuditEventBase {
+  readonly type: 'graph_execution';
+  readonly graphEvent: string;
+  readonly nodeId?: string;
+  readonly stepNumber: number;
+  readonly detail: string;
 }
 
 /** Query filter for retrieving audit events. */
@@ -262,6 +272,68 @@ export function emitSanitizationEvent(
     component: 'input-sanitizer',
     ...data,
   });
+}
+
+/**
+ * Records a graph execution lifecycle event.
+ */
+export function emitGraphExecutionEvent(
+  trail: AuditTrail,
+  data: Omit<GraphExecutionAuditEvent, 'id' | 'timestamp' | 'type' | 'component'>
+): string {
+  return trail.append({
+    type: 'graph_execution',
+    component: 'graph-executor',
+    ...data,
+  });
+}
+
+/**
+ * Creates an onEvent callback that bridges graph events to the audit trail.
+ * Pass the returned function as `onEvent` in GraphExecuteOptions.
+ *
+ * @example
+ * const trail = createAuditTrail();
+ * await executeGraph(graph, inputs, { onEvent: createGraphAuditBridge(trail) });
+ */
+export function createGraphAuditBridge(
+  trail: AuditTrail
+): (event: { readonly type: string; readonly [key: string]: unknown }) => void {
+  return (event) => {
+    const nodeId = typeof event['nodeId'] === 'string' ? event['nodeId'] : undefined;
+    const stepNumber = typeof event['stepNumber'] === 'number' ? event['stepNumber'] : 0;
+    trail.append({
+      type: 'graph_execution',
+      component: 'graph-executor',
+      graphEvent: event.type,
+      nodeId,
+      stepNumber,
+      detail: formatGraphEventDetail(event),
+    });
+  };
+}
+
+/** Formats a brief detail string from a graph event. */
+function formatGraphEventDetail(event: {
+  readonly type: string;
+  readonly [key: string]: unknown;
+}): string {
+  switch (event.type) {
+    case 'node_started':
+      return `Node ${String(event['nodeId'])} starting`;
+    case 'node_completed':
+      return `Node ${String(event['nodeId'])} completed in ${String(event['durationMs'])}ms`;
+    case 'node_error':
+      return `Node ${String(event['nodeId'])} failed: ${String(event['error'])}`;
+    case 'state_updated':
+      return `State updated: ${String(event['updatedKeys'])}`;
+    case 'step_completed':
+      return `Step ${String(event['stepNumber'])}: ${String(event['nodesExecuted'])} nodes`;
+    case 'execution_complete':
+      return `Complete: ${String(event['totalSteps'])} steps, ${String(event['durationMs'])}ms`;
+    default:
+      return event.type;
+  }
 }
 
 /** Creates a new AuditTrail instance. */
