@@ -13,7 +13,7 @@ import { getTimeProvider } from '../../core/index.js';
 import type { ILogger } from '../../core/logger.js';
 import { logger as defaultLogger } from '../../core/logger.js';
 import type { ICliAdapter, CliName } from '../../cli-adapters/types.js';
-import type { ITaskRouter } from '../../cli-adapters/router.js';
+import type { ITaskRouter } from '../../cli-adapters/router-types.js';
 import type {
   EvaluationTask,
   TaskFilter,

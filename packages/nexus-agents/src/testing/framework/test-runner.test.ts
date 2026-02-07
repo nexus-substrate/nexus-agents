@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import type { CliName, ICliAdapter } from '../../cli-adapters/types.js';
 import { DEFAULT_CAPABILITIES } from '../../cli-adapters/types.js';
-import type { ITaskRouter, RoutingDecision } from '../../cli-adapters/router.js';
+import type { ITaskRouter, RoutingDecision } from '../../cli-adapters/router-types.js';
 import type { Task } from '../../core/types/agent.js';
 import type { TaskProfile } from '../../cli-adapters/task-analyzer.js';
 import { createTestRunner, TestRunError } from './test-runner.js';

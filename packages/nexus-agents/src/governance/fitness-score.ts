@@ -219,7 +219,7 @@ export class FitnessScoreCalculator {
    */
   private checkCanonicalPaths(): FitnessCheckResult {
     const findings: FitnessFinding[] = [];
-    let score = 20;
+    const score = 20;
 
     // Check: Token estimation unified - COMPLETE
     // All adapters now use unified TokenEstimator from core/token-estimator.ts
@@ -239,20 +239,10 @@ export class FitnessScoreCalculator {
 
     // Check: Router implementations
     // Canonical routers (5): CompositeRouter, BudgetRouter, ZeroRouter, PreferenceRouter, TopsisRouter
-    // Deprecated routers (1, v3.0 removal): TaskRouter (kept for ITaskRouter interface used by test framework)
+    // Removed: TaskRouter (class removed, ITaskRouter interface migrated to router-types.ts)
     // Removed: ConfidenceRouter (use ConfidenceCascadeStage), QualityRouter (use TopsisRouter)
     // Separate patterns (not counted): AgreementCascadeRouter (ensemble), AgentMessageRouter (collaboration)
-    const canonicalRouterCount = 5;
-    const deprecatedRouterCount = 1; // TaskRouter kept for ITaskRouter interface
-    // Deduct 1 point while deprecated routers exist (set to 0 and remove deduction when TaskRouter removed)
-    score -= 1;
-    findings.push({
-      dimension: 'canonicalPaths',
-      severity: 'info',
-      description: `${String(canonicalRouterCount)} canonical routers + ${String(deprecatedRouterCount)} deprecated (v3.0 removal)`,
-      pointsDeducted: 1,
-      suggestion: 'Remove deprecated TaskRouter in v3.0 (migrate ITaskRouter to shared types)',
-    });
+    // No deduction - all deprecated router implementations removed
 
     // Consolidated: toError utility (ecdf0e3) - no deduction
     // Consolidated: STPA safety framework (7bbf6e5) - no deduction

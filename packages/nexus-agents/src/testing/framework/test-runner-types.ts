@@ -8,7 +8,7 @@
 
 import type { ILogger } from '../../core/logger.js';
 import type { ICliAdapter, CliName } from '../../cli-adapters/types.js';
-import type { ITaskRouter } from '../../cli-adapters/router.js';
+import type { ITaskRouter } from '../../cli-adapters/router-types.js';
 import type { TaskRegistry } from './task-registry.js';
 import type { RubricScorer } from './rubric-scorer.js';
 import type { RoutingScorer } from './routing-scorer.js';

@@ -13,7 +13,7 @@ import {
 } from '../../core/index.js';
 import type { CliName, CliTask, ICliAdapter } from '../../cli-adapters/types.js';
 import type { Task } from '../../core/types/agent.js';
-import type { ITaskRouter, RoutingDecision } from '../../cli-adapters/router.js';
+import type { ITaskRouter, RoutingDecision } from '../../cli-adapters/router-types.js';
 import type {
   EvaluationTask,
   TaskTestResult,
