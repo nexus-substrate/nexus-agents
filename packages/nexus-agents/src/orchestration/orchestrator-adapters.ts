@@ -67,6 +67,29 @@ function createResult(
   };
 }
 
+/** Maximum history entries retained per adapter to prevent unbounded memory growth. */
+const MAX_HISTORY = 100;
+/** Maximum completed/cancelled executions retained in the status map. */
+const MAX_EXECUTIONS = 200;
+
+/** Trims an array to keep only the last N entries. */
+function trimArray(arr: unknown[], max: number): void {
+  if (arr.length > max) {
+    arr.splice(0, arr.length - max);
+  }
+}
+
+/** Evicts completed/cancelled entries from an executions map when over limit. */
+function evictCompletedExecutions(map: Map<string, ExecutionStatus>, max: number): void {
+  if (map.size <= max) return;
+  for (const [id, status] of map) {
+    if (status.state === 'completed' || status.state === 'cancelled') {
+      map.delete(id);
+    }
+    if (map.size <= max) return;
+  }
+}
+
 const COMPLETED_STATUS: ExecutionStatus = {
   state: 'completed',
   result: { executionId: '', workflowName: '', stepResults: [], output: {}, totalDurationMs: 0 },
@@ -136,6 +159,8 @@ export class OrchestratorAdapter implements IOrchestrator {
 
     this.executions.set(execId, COMPLETED_STATUS);
     this.history.push(result);
+    trimArray(this.history, MAX_HISTORY);
+    evictCompletedExecutions(this.executions, MAX_EXECUTIONS);
     return ok(result);
   }
 
@@ -224,6 +249,8 @@ export class PuppeteerAdapter implements IOrchestrator {
 
     this.executions.set(execId, COMPLETED_STATUS);
     this.history.push(result);
+    trimArray(this.history, MAX_HISTORY);
+    evictCompletedExecutions(this.executions, MAX_EXECUTIONS);
     return ok(result);
   }
 
@@ -302,6 +329,8 @@ export class WorkflowAdapter implements IOrchestrator {
 
     this.executions.set(execId, COMPLETED_STATUS);
     this.history.push(result);
+    trimArray(this.history, MAX_HISTORY);
+    evictCompletedExecutions(this.executions, MAX_EXECUTIONS);
     return ok(result);
   }
 

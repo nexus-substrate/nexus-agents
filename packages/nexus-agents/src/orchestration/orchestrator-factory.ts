@@ -156,6 +156,18 @@ export class WorkflowOrchestratorAdapter implements IOrchestrator {
     if (this.history.length > 100) {
       this.history.shift();
     }
+    this.evictCompletedExecutions();
+  }
+
+  /** Evicts completed/cancelled entries from executions map to prevent unbounded growth. */
+  private evictCompletedExecutions(): void {
+    if (this.executions.size <= 200) return;
+    for (const [id, status] of this.executions) {
+      if (status.state === 'completed' || status.state === 'cancelled') {
+        this.executions.delete(id);
+      }
+      if (this.executions.size <= 200) return;
+    }
   }
 
   getStatus(executionId: string): ExecutionStatus {
