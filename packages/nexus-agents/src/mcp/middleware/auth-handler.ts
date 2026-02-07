@@ -245,6 +245,17 @@ export class AuthHandler {
   }
 
   /**
+   * Returns the stored token for integration with other auth systems.
+   * Used by REST API to accept bearer tokens as valid API keys.
+   * (Source: Issue #739 - unified auth)
+   *
+   * @returns Stored token or undefined if not loaded
+   */
+  getStoredTokenForIntegration(): string | undefined {
+    return this.storedToken;
+  }
+
+  /**
    * Generates and stores a new token.
    * Returns the generated token (only time it's shown to user).
    *

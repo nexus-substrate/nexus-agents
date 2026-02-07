@@ -218,6 +218,32 @@ describe('auth-handler', () => {
         expect(readStoredToken(testTokenFile)).toBe(token2);
       });
     });
+
+    describe('getStoredTokenForIntegration', () => {
+      it('returns undefined when no token is loaded (auth disabled)', () => {
+        const handler = new AuthHandler({ enabled: false });
+        expect(handler.getStoredTokenForIntegration()).toBeUndefined();
+      });
+
+      it('returns the stored token when auth is enabled and token exists', () => {
+        const token = generateSecureToken();
+        writeToken(testTokenFile, token);
+        const handler = new AuthHandler({
+          enabled: true,
+          tokenFile: testTokenFile,
+        });
+        expect(handler.getStoredTokenForIntegration()).toBe(token);
+      });
+
+      it('returns token after generateToken() is called', () => {
+        const handler = new AuthHandler({
+          enabled: true,
+          tokenFile: testTokenFile,
+        });
+        const token = handler.generateToken();
+        expect(handler.getStoredTokenForIntegration()).toBe(token);
+      });
+    });
   });
 
   describe('createAuthHandler', () => {

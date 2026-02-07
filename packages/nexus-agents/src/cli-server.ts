@@ -47,6 +47,7 @@ import {
   logRestApiConfig,
 } from './cli-server-rest.js';
 import type { RestApiServer } from './api/rest-server.js';
+import { initializeAuth, type AuthInitResult } from './cli-server-auth.js';
 import { shutdownToolMemory } from './mcp/tools/tool-memory.js';
 import {
   initializeAuditLogger,
@@ -400,6 +401,7 @@ async function initializeSubsystems(
   eventBusBridge: EventBusBridgeResult;
   policyFirewall: IPolicyFirewall;
   auditLogger: AuditLogger | null;
+  authInit: AuthInitResult;
 }> {
   // Initialize experts from configuration (Issue #486)
   const expertResult = initializeExperts({ expertConfig: config.experts, logger });
@@ -441,6 +443,9 @@ async function initializeSubsystems(
   await initializeAndLogSandbox(serverLogger, config.security?.sandbox);
   const policyFirewall = logSecurityConfig(serverLogger, config);
   const auditLogger = initializeAuditLogger(config.security, serverLogger);
+
+  // Initialize authentication handler (Issue #739)
+  const authInit = initializeAuth(config, serverLogger);
   // Pass FeedbackIntegration to tools for closed-loop learning (Issue #490)
   await initializeAndRegisterTools(
     server,
@@ -450,7 +455,7 @@ async function initializeSubsystems(
     feedbackResult.feedbackIntegration
   );
 
-  return { server, serverLogger, observer, eventBusBridge, policyFirewall, auditLogger };
+  return { server, serverLogger, observer, eventBusBridge, policyFirewall, auditLogger, authInit };
 }
 
 /**
@@ -486,7 +491,7 @@ export async function startServer(
   applyLoggingConfig(logger, verbose, configResult.config);
 
   // Initialize all subsystems
-  const { server, serverLogger, observer, eventBusBridge, auditLogger } =
+  const { server, serverLogger, observer, eventBusBridge, auditLogger, authInit } =
     await initializeSubsystems(configResult.config, logger);
 
   // Connect to transport
@@ -495,7 +500,7 @@ export async function startServer(
   // Start REST API server if enabled (Issue #524)
   const restConfig = extractRestConfig(configResult.config);
   logRestApiConfig(restConfig, logger);
-  const restServer = await startRestApiServer(restConfig, logger);
+  const restServer = await startRestApiServer(restConfig, logger, authInit.handler);
 
   // Record server startup event for observability
   const eventContext = recordServerStartup(observer);

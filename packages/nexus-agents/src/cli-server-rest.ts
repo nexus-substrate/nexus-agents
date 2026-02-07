@@ -17,6 +17,7 @@ import { createLogger } from './core/index.js';
 import { RestApiServer, type RestApiServerOptions } from './api/rest-server.js';
 import type { ApiKeyConfig } from './api/rest-types.js';
 import type { AppConfig } from './config/index.js';
+import type { AuthHandler } from './mcp/middleware/auth-handler.js';
 
 /**
  * REST API configuration extracted from AppConfig.
@@ -107,15 +108,46 @@ export function loadOrGenerateApiKey(logger: ILogger, baseDir?: string): ApiKeyC
 }
 
 /**
+ * Options for starting the REST API server.
+ */
+export interface StartRestApiOptions {
+  /** REST API configuration */
+  config: RestApiCliConfig;
+  /** Parent logger */
+  logger: ILogger;
+  /** Optional auth handler for bearer token validation (Issue #739) */
+  authHandler?: AuthHandler;
+}
+
+/**
+ * Builds the API key list from auto-generated key and optional auth handler token.
+ * When an AuthHandler is provided and enabled, its bearer token is also accepted
+ * as a valid API key, unifying the auth paths.
+ */
+function buildApiKeys(logger: ILogger, authHandler?: AuthHandler): ApiKeyConfig[] {
+  const keys: ApiKeyConfig[] = [loadOrGenerateApiKey(logger)];
+  if (authHandler?.isEnabled() === true && authHandler.hasToken()) {
+    const token = authHandler.getStoredTokenForIntegration();
+    if (token !== undefined) {
+      keys.push({ key: token, name: 'mcp-bearer-token' });
+      logger.info('REST API also accepts MCP bearer token for authentication');
+    }
+  }
+  return keys;
+}
+
+/**
  * Creates and starts the REST API server.
  *
  * @param config - REST API configuration
  * @param logger - Parent logger
+ * @param authHandler - Optional auth handler for bearer token support (Issue #739)
  * @returns The started REST API server, or null if disabled
  */
 export async function startRestApiServer(
   config: RestApiCliConfig,
-  logger: ILogger
+  logger: ILogger,
+  authHandler?: AuthHandler
 ): Promise<RestApiServer | null> {
   if (!config.enabled) {
     logger.debug('REST API disabled (set NEXUS_REST_ENABLED=true to enable)');
@@ -124,8 +156,8 @@ export async function startRestApiServer(
 
   const restLogger = createLogger({ component: 'RestApiServer' });
 
-  // Auto-generate API key if none provided (Issue #740 Phase 2)
-  const apiKey = loadOrGenerateApiKey(logger);
+  // Build API keys: auto-generated + optional MCP bearer token (Issue #739)
+  const apiKeys = buildApiKeys(logger, authHandler);
   const serverOptions: RestApiServerOptions = {
     config: {
       port: config.port,
@@ -134,7 +166,7 @@ export async function startRestApiServer(
       enableSwagger: config.swagger,
     },
     logger: restLogger,
-    apiKeys: [apiKey],
+    apiKeys,
   };
 
   const server = new RestApiServer(serverOptions);

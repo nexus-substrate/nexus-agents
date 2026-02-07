@@ -102,6 +102,15 @@ function createConfiguredPolicyFirewall(
   return createDefaultPolicyFirewall({ mode: policyVals.mode, logger });
 }
 
+/** Resolves auth state from env var and config. (Issue #739) */
+function getAuthValues(config?: AppConfig): { enabled: boolean; method: string } {
+  const envAuth = process.env['NEXUS_AUTH_ENABLED'];
+  const configAuth = config?.security?.auth;
+  const enabled = envAuth === 'true' || (configAuth?.enabled ?? false);
+  const method = configAuth?.method ?? process.env['NEXUS_AUTH_METHOD'] ?? 'none';
+  return { enabled, method };
+}
+
 /**
  * Logs security configuration at startup.
  * Returns the configured policy firewall for use in tool registration.
@@ -113,7 +122,7 @@ export function logSecurityConfig(
   config?: AppConfig
 ): ReturnType<typeof createDefaultPolicyFirewall> {
   const policyFirewall = createConfiguredPolicyFirewall(logger, config);
-  const authEnabled = process.env['NEXUS_AUTH_ENABLED'] === 'true';
+  const authVals = getAuthValues(config);
   const policyVals = getPolicyValues(config);
   const rateLimitVals = getRateLimitValues(config);
 
@@ -121,15 +130,17 @@ export function logSecurityConfig(
     policyMode: policyVals.mode,
     defaultExecutionMode: policyVals.defaultExec,
     policyRuleCount: policyFirewall.getRules().length,
-    authEnabled,
-    authMethod: process.env['NEXUS_AUTH_METHOD'] ?? 'none',
+    authEnabled: authVals.enabled,
+    authMethod: authVals.method,
     rateLimitEnabled: rateLimitVals.enabled,
     rateLimitRequestsPerMinute: rateLimitVals.rpm,
     allowedPaths: config?.security?.allowedPaths ?? ['./'],
   });
 
-  if (!authEnabled) {
-    logger.warn('Authentication is disabled. Set NEXUS_AUTH_ENABLED=true to enable.');
+  if (!authVals.enabled) {
+    logger.warn(
+      'Authentication is disabled. Set NEXUS_AUTH_ENABLED=true or configure security.auth.enabled.'
+    );
   }
 
   logger.debug('Policy firewall rules', {

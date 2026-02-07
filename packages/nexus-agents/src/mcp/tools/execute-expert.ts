@@ -145,7 +145,7 @@ interface SuccessResponseParams {
   output: unknown;
   durationMs: number;
   tokensUsed: number;
-  modelUsed?: string;
+  modelUsed?: string | undefined;
 }
 
 function buildSuccessResponse(params: SuccessResponseParams): ExecuteExpertResponse {
