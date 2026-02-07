@@ -116,15 +116,22 @@ export {
   ComplexityLevelSchema,
 } from './spec-decomposer-types.js';
 
-// Spec Pipeline (Issue #849)
-export { compileSpecToGraph } from './spec-pipeline.js';
-export type { PipelineError, PipelineStage } from './spec-pipeline-types.js';
+// Spec Pipeline (Issue #849, #857)
+export { compileSpecToGraph, createDryRunHandler } from './spec-pipeline.js';
+export type {
+  PipelineError,
+  PipelineStage,
+  NodeHandler,
+  NodeHandlerFactory,
+  CompileOptions,
+} from './spec-pipeline-types.js';
 
-// Spec Executor (Issue #851)
+// Spec Executor (Issue #851, #857)
 export { executeSpec } from './spec-executor.js';
 export type {
   SpecExecutionResult,
   SpecExecutionError,
+  SpecExecutionOptions,
   ExecutionStage,
 } from './spec-executor-types.js';
 

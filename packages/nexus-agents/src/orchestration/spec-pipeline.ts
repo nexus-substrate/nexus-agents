@@ -15,14 +15,36 @@ import { decomposeSpec } from './spec-decomposer.js';
 import { GraphBuilder, START, END, append } from './graph/index.js';
 import type { CompiledGraph, GraphState } from './graph/index.js';
 import type { SubtaskNode } from './spec-decomposer-types.js';
-import type { PipelineError } from './spec-pipeline-types.js';
+import type { PipelineError, CompileOptions, NodeHandlerFactory } from './spec-pipeline-types.js';
+
+/**
+ * Creates the default dry-run node handler for a subtask.
+ * Returns a placeholder string describing the subtask.
+ */
+export function createDryRunHandler(
+  node: SubtaskNode
+): (state: Readonly<GraphState>) => Promise<Partial<GraphState>> {
+  return () =>
+    Promise.resolve({
+      results: [`[${node.type}] ${node.description}`],
+    });
+}
+
+/** Default dry-run handler factory. */
+const DRY_RUN_FACTORY: NodeHandlerFactory = createDryRunHandler;
 
 /**
  * Compiles a markdown specification into an executable graph.
  *
  * Pipeline: markdown → parseSpec → decomposeSpec → GraphBuilder → CompiledGraph
+ *
+ * @param markdown - Raw markdown specification text
+ * @param options - Optional compile options (handler factory, etc.)
  */
-export function compileSpecToGraph(markdown: string): Result<CompiledGraph, PipelineError> {
+export function compileSpecToGraph(
+  markdown: string,
+  options?: CompileOptions
+): Result<CompiledGraph, PipelineError> {
   const parseResult = parseSpec(markdown);
   if (!parseResult.ok) {
     return err({ message: parseResult.error.message, stage: 'parse' });
@@ -34,12 +56,13 @@ export function compileSpecToGraph(markdown: string): Result<CompiledGraph, Pipe
   }
 
   const dag = dagResult.value;
+  const handlerFactory = options?.handlerFactory ?? DRY_RUN_FACTORY;
   const builder = new GraphBuilder();
   builder.addState('results', append<string>([]));
 
   // Add all subtask nodes
   for (const node of dag.nodes) {
-    builder.addNode(node.id, createNodeHandler(node));
+    builder.addNode(node.id, handlerFactory(node));
   }
 
   // Wire START → root nodes (no dependencies)
@@ -68,16 +91,6 @@ export function compileSpecToGraph(markdown: string): Result<CompiledGraph, Pipe
   }
 
   return ok(compiled.value);
-}
-
-/** Creates a graph node handler for a subtask. */
-function createNodeHandler(
-  node: SubtaskNode
-): (state: Readonly<GraphState>) => Promise<Partial<GraphState>> {
-  return () =>
-    Promise.resolve({
-      results: [`[${node.type}] ${node.description}`],
-    });
 }
 
 /** Finds nodes that have no outgoing dependency edges. */

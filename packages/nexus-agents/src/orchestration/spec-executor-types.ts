@@ -9,6 +9,7 @@
 
 import type { TaskDag } from './spec-decomposer-types.js';
 import type { ScenarioResult } from './scenario-validator-types.js';
+import type { CompileOptions } from './spec-pipeline-types.js';
 
 /**
  * Which stage of execution failed.
@@ -22,6 +23,12 @@ export interface SpecExecutionError {
   readonly message: string;
   readonly stage: ExecutionStage;
 }
+
+/**
+ * Options for spec execution.
+ * (Source: Issue #857 — Pluggable node execution)
+ */
+export type SpecExecutionOptions = CompileOptions;
 
 /**
  * Result of executing a spec end-to-end.

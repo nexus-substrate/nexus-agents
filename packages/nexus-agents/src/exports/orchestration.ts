@@ -120,15 +120,22 @@ export type {
   ComplexityLevel,
 } from '../orchestration/index.js';
 
-// Spec Pipeline (Issue #849)
-export { compileSpecToGraph } from '../orchestration/index.js';
-export type { PipelineError, PipelineStage } from '../orchestration/index.js';
+// Spec Pipeline (Issue #849, #857)
+export { compileSpecToGraph, createDryRunHandler } from '../orchestration/index.js';
+export type {
+  PipelineError,
+  PipelineStage,
+  NodeHandler,
+  NodeHandlerFactory,
+  CompileOptions,
+} from '../orchestration/index.js';
 
-// Spec Executor (Issue #851)
+// Spec Executor (Issue #851, #857)
 export { executeSpec } from '../orchestration/index.js';
 export type {
   SpecExecutionResult,
   SpecExecutionError,
+  SpecExecutionOptions,
   ExecutionStage,
 } from '../orchestration/index.js';
 

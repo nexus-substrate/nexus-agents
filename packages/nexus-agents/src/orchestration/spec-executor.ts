@@ -11,80 +11,67 @@
 import type { Result } from '../core/index.js';
 import { ok, err, getTimeProvider } from '../core/index.js';
 import { parseSpec } from './spec-parser.js';
+import type { ParsedSpec } from './spec-parser-types.js';
 import { decomposeSpec } from './spec-decomposer.js';
 import { compileSpecToGraph } from './spec-pipeline.js';
 import { executeGraph } from './graph/index.js';
 import { validateScenario } from './scenario-validator.js';
-import type { SpecExecutionResult, SpecExecutionError } from './spec-executor-types.js';
+import type {
+  SpecExecutionResult,
+  SpecExecutionError,
+  SpecExecutionOptions,
+} from './spec-executor-types.js';
+import type { ScenarioResult } from './scenario-validator-types.js';
 
-/**
- * Executes a markdown specification end-to-end.
- *
- * Pipeline: markdown → parse → decompose → compile → execute → validate
- */
+/** Validation result when no acceptance criteria are defined. */
+const NO_CRITERIA_VALIDATION: ScenarioResult = {
+  satisfaction: 1,
+  totalCriteria: 0,
+  metCount: 0,
+  criteria: [],
+  allMet: true,
+};
+
+/** Executes a markdown specification end-to-end. */
 export async function executeSpec(
-  markdown: string
+  markdown: string,
+  options?: SpecExecutionOptions
 ): Promise<Result<SpecExecutionResult, SpecExecutionError>> {
   const startTime = getTimeProvider().now();
 
-  // Parse
   const parseResult = parseSpec(markdown);
-  if (!parseResult.ok) {
-    return err({ message: parseResult.error.message, stage: 'parse' });
-  }
+  if (!parseResult.ok) return err({ message: parseResult.error.message, stage: 'parse' });
   const spec = parseResult.value;
 
-  // Decompose
   const dagResult = decomposeSpec(spec);
-  if (!dagResult.ok) {
-    return err({ message: dagResult.error.message, stage: 'decompose' });
-  }
+  if (!dagResult.ok) return err({ message: dagResult.error.message, stage: 'decompose' });
 
-  // Compile
-  const compileResult = compileSpecToGraph(markdown);
-  if (!compileResult.ok) {
-    return err({ message: compileResult.error.message, stage: 'compile' });
-  }
+  const compileResult = compileSpecToGraph(markdown, options);
+  if (!compileResult.ok) return err({ message: compileResult.error.message, stage: 'compile' });
 
-  // Execute
   const execResult = await executeGraph(compileResult.value, { results: [] });
-  if (!execResult.ok) {
-    return err({ message: execResult.error.message, stage: 'execute' });
+  if (!execResult.ok) return err({ message: execResult.error.message, stage: 'execute' });
+
+  const outputs = extractOutputs(execResult.value.finalState);
+  const validation =
+    spec.acceptanceCriteria.length === 0 ? NO_CRITERIA_VALIDATION : validateOrErr(spec, outputs);
+
+  if (validation === null) {
+    return err({ message: 'Scenario validation failed', stage: 'validate' });
   }
 
-  // Extract outputs from final state
-  const finalState = execResult.value.finalState;
-  const outputs = extractOutputs(finalState);
-
-  // Validate (only if there are acceptance criteria)
-  if (spec.acceptanceCriteria.length === 0) {
-    const durationMs = getTimeProvider().now() - startTime;
-    return ok({
-      dag: dagResult.value,
-      outputs,
-      validation: {
-        satisfaction: 1,
-        totalCriteria: 0,
-        metCount: 0,
-        criteria: [],
-        allMet: true,
-      },
-      durationMs,
-    });
-  }
-
-  const validationResult = validateScenario(spec, outputs);
-  if (!validationResult.ok) {
-    return err({ message: validationResult.error.message, stage: 'validate' });
-  }
-
-  const durationMs = getTimeProvider().now() - startTime;
   return ok({
     dag: dagResult.value,
     outputs,
-    validation: validationResult.value,
-    durationMs,
+    validation,
+    durationMs: getTimeProvider().now() - startTime,
   });
+}
+
+/** Validates scenario, returning result or null on error. */
+function validateOrErr(spec: ParsedSpec, outputs: readonly string[]): ScenarioResult | null {
+  const result = validateScenario(spec, outputs);
+  return result.ok ? result.value : null;
 }
 
 /** Extracts string outputs from graph final state. */

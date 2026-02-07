@@ -4,8 +4,10 @@
  * (Source: Issue #849 — Phase 2 of AI Software Factory Epic #843)
  */
 
-import { describe, it, expect } from 'vitest';
-import { compileSpecToGraph } from './spec-pipeline.js';
+import { describe, it, expect, vi } from 'vitest';
+import { compileSpecToGraph, createDryRunHandler } from './spec-pipeline.js';
+import type { NodeHandlerFactory } from './spec-pipeline-types.js';
+import type { SubtaskNode } from './spec-decomposer-types.js';
 
 // ============================================================================
 // Success Cases
@@ -93,6 +95,57 @@ Implement OAuth2 login.
 
     expect(result.value.stateSchema).toBeDefined();
     expect(result.value.stateSchema['results']).toBeDefined();
+  });
+});
+
+// ============================================================================
+// Error Cases
+// ============================================================================
+
+// ============================================================================
+// Custom Handler Factory
+// ============================================================================
+
+describe('compileSpecToGraph with custom handler factory', () => {
+  const SIMPLE_SPEC = `# Feature
+
+## Requirements
+- Build API
+
+## Acceptance Criteria
+- [ ] API works
+`;
+
+  it('uses custom handler factory when provided', () => {
+    const factory: NodeHandlerFactory = vi.fn(
+      (node: SubtaskNode) => () => Promise.resolve({ results: [`custom:${node.id}`] })
+    );
+
+    const result = compileSpecToGraph(SIMPLE_SPEC, { handlerFactory: factory });
+
+    expect(result.ok).toBe(true);
+    expect(factory).toHaveBeenCalled();
+  });
+
+  it('uses dry-run handler by default', () => {
+    const result = compileSpecToGraph(SIMPLE_SPEC);
+
+    expect(result.ok).toBe(true);
+  });
+
+  it('createDryRunHandler returns placeholder output', async () => {
+    const node = {
+      id: 'test-1',
+      type: 'code' as const,
+      description: 'Build API',
+      complexity: 'simple' as const,
+      capabilities: [],
+      sourceRequirement: 'Build API',
+    };
+    const handler = createDryRunHandler(node);
+    const state = await handler({ results: [] });
+
+    expect(state.results).toEqual(['[code] Build API']);
   });
 });
 
