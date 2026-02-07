@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { GraphBuilder, overwrite, append, START, END } from './graph-builder.js';
+import { GraphBuilder, overwrite, append, customReducer, START, END } from './graph-builder.js';
 import { executeGraph } from './graph-executor.js';
 import { InMemoryCheckpointStore } from './checkpoint-store.js';
 import type { GraphState, NodeResult, GraphEvent } from './graph-types.js';
@@ -556,6 +556,69 @@ describe('executeGraph', () => {
       const result = await executeGraph(graph.value, {});
       expect(result.ok).toBe(true);
     });
+  });
+});
+
+describe('edge case hardening', () => {
+  it('custom reducer exception falls back to overwrite', async () => {
+    const throwingReducer = customReducer(0, () => {
+      throw new Error('reducer boom');
+    });
+    const compiled = new GraphBuilder()
+      .addState('count', throwingReducer)
+      .addNode('A', () => Promise.resolve({ count: 42 }))
+      .addEdge(START, 'A')
+      .addEdge('A', END)
+      .compile();
+    expect(compiled.ok).toBe(true);
+    if (!compiled.ok) return;
+
+    const result = await executeGraph(compiled.value, {});
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // Falls back to overwrite — value should be 42
+    expect(result.value.finalState['count']).toBe(42);
+  });
+
+  it('conditional router returning invalid node ID is skipped', async () => {
+    const compiled = new GraphBuilder()
+      .addState('value', overwrite(''))
+      .addNode('A', () => Promise.resolve({ value: 'done' }))
+      .addEdge(START, 'A')
+      .addConditionalEdge('A', () => 'nonexistent_node', ['nonexistent_node', END])
+      .addEdge('A', END)
+      .compile();
+    // Note: compile allows conditional targets that aren't real nodes
+    // since they could be dynamically valid at runtime
+    if (!compiled.ok) return;
+
+    const result = await executeGraph(compiled.value, {});
+    expect(result.ok).toBe(true);
+  });
+
+  it('conditional router that throws produces graceful END', async () => {
+    const compiled = new GraphBuilder()
+      .addState('value', overwrite(''))
+      .addNode('A', () => Promise.resolve({ value: 'done' }))
+      .addNode('B', () => Promise.resolve({ value: 'never reached' }))
+      .addEdge(START, 'A')
+      .addConditionalEdge(
+        'A',
+        () => {
+          throw new Error('router boom');
+        },
+        ['B', END]
+      )
+      .addEdge('B', END)
+      .compile();
+    if (!compiled.ok) return;
+
+    const result = await executeGraph(compiled.value, {});
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // Router threw, so it returned END, B was never executed
+    expect(result.value.finalState['value']).toBe('done');
+    expect(result.value.nodeResults.length).toBe(1);
   });
 });
 

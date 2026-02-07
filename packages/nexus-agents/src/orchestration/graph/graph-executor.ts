@@ -37,10 +37,6 @@ const logger = createLogger({ component: 'GraphExecutor' });
 const DEFAULT_MAX_STEPS = 100;
 const DEFAULT_TIMEOUT_MS = 120_000;
 
-// ============================================================================
-// Executor
-// ============================================================================
-
 /** Mutable execution context threaded through the super-step loop. */
 interface ExecutionContext {
   state: GraphState;
@@ -152,11 +148,7 @@ async function executeSuperStep(
   saveCheckpointIfConfigured(ctx, options);
 }
 
-// ============================================================================
-// Checkpointing (Issue #837)
-// ============================================================================
-
-/** Attempts to resume execution from a checkpoint. */
+/** Attempts to resume execution from a checkpoint (Issue #837). */
 function tryResumeFromCheckpoint(ctx: ExecutionContext, options?: GraphExecuteOptions): void {
   const store = options?.checkpointStore;
   const execId = options?.executionId;
@@ -192,10 +184,6 @@ function saveCheckpointIfConfigured(ctx: ExecutionContext, options?: GraphExecut
   });
   store.save(checkpoint);
 }
-
-// ============================================================================
-// State Management
-// ============================================================================
 
 /** Initializes graph state from schema defaults + provided inputs. */
 function initializeState(graph: CompiledGraph, inputs: Readonly<GraphState>): GraphState {
@@ -258,17 +246,19 @@ function applyStateUpdates(
         break;
       }
       case 'custom':
-        newState[field] = schema.reducer.merge(newState[field], value);
+        try {
+          newState[field] = schema.reducer.merge(newState[field], value);
+        } catch (error: unknown) {
+          const msg = error instanceof Error ? error.message : String(error);
+          logger.warn('Custom reducer failed, falling back to overwrite', { field, error: msg });
+          newState[field] = value;
+        }
         break;
     }
   }
 
   return newState;
 }
-
-// ============================================================================
-// Node Execution
-// ============================================================================
 
 /** Executes a set of nodes in parallel. */
 async function executeNodes(
@@ -323,10 +313,6 @@ async function executeSingleNode(
   }
 }
 
-// ============================================================================
-// Edge Resolution
-// ============================================================================
-
 /** Resolves entry nodes from START edges. */
 function resolveEntryNodes(graph: CompiledGraph, state: Readonly<GraphState>): string[] {
   const nodeIds: string[] = [];
@@ -335,12 +321,12 @@ function resolveEntryNodes(graph: CompiledGraph, state: Readonly<GraphState>): s
     if (edge.type === 'fixed') {
       if (edge.to !== END) nodeIds.push(edge.to);
     } else {
-      const target = edge.router(state);
+      const target = safeRouterCall(edge.router, state);
       if (target !== END) nodeIds.push(target);
     }
   }
 
-  return dedupe(nodeIds);
+  return filterValidNodes(graph, dedupe(nodeIds));
 }
 
 /** Resolves next runnable nodes based on completed nodes and edges. */
@@ -358,18 +344,38 @@ function resolveNextNodes(
       if (edge.type === 'fixed') {
         if (edge.to !== END) nodeIds.push(edge.to);
       } else {
-        const target = edge.router(state);
+        const target = safeRouterCall(edge.router, state);
         if (target !== END) nodeIds.push(target);
       }
     }
   }
 
-  return dedupe(nodeIds);
+  return filterValidNodes(graph, dedupe(nodeIds));
 }
 
-// ============================================================================
-// Utilities
-// ============================================================================
+/** Safely calls a router function, returning END on error. */
+function safeRouterCall(
+  router: (state: Readonly<GraphState>) => string,
+  state: Readonly<GraphState>
+): string {
+  try {
+    return router(state);
+  } catch (error: unknown) {
+    logger.warn('Conditional router threw', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return END;
+  }
+}
+
+/** Filters node IDs to only include nodes present in the graph. */
+function filterValidNodes(graph: CompiledGraph, ids: string[]): string[] {
+  return ids.filter((id) => {
+    const valid = graph.nodes.has(id);
+    if (!valid) logger.warn('Unknown node from router', { nodeId: id });
+    return valid;
+  });
+}
 
 function isTimedOut(startTime: number, timeout: number): boolean {
   return getTimeProvider().now() - startTime > timeout;
