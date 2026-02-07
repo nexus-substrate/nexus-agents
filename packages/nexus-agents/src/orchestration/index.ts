@@ -120,6 +120,14 @@ export {
 export { compileSpecToGraph } from './spec-pipeline.js';
 export type { PipelineError, PipelineStage } from './spec-pipeline-types.js';
 
+// Spec Executor (Issue #851)
+export { executeSpec } from './spec-executor.js';
+export type {
+  SpecExecutionResult,
+  SpecExecutionError,
+  ExecutionStage,
+} from './spec-executor-types.js';
+
 // Scenario Validator (Issue #850)
 export { validateScenario } from './scenario-validator.js';
 export type { ScenarioResult, CriterionResult, ScenarioError } from './scenario-validator-types.js';
