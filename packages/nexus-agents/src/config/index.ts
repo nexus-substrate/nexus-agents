@@ -210,3 +210,20 @@ export {
   buildTopsisProfiles,
   buildMockModelInfo,
 } from './model-config-helpers.js';
+
+// Task Specialization Matrix — model-to-task mapping (Issue #858)
+export {
+  TASK_SPECIALIZATION_MATRIX,
+  TASK_CATEGORIES,
+  TaskCategorySchema,
+  TaskSpecializationSchema,
+  getSpecialization,
+  detectTaskCategory,
+  getTaskCategories,
+} from './task-specialization.js';
+
+export type {
+  TaskSpecialization,
+  TaskCategory,
+  SpecializationMatch,
+} from './task-specialization.js';

@@ -188,7 +188,7 @@ describe('scoreModel', () => {
   it('includes requirement and preference bonuses', () => {
     const profile = makeProfile({ reasoning: 9, speed: 5, cost: 4 });
     const req = makeRequirements({ needsReasoning: true });
-    const score = scoreModel('test', profile, req, 'reasoning');
+    const score = scoreModel('test', profile, req, { preferredCapability: 'reasoning' });
     // base(18) + req(18) + pref(27) = 63
     expect(score).toBe(63);
   });
@@ -297,7 +297,7 @@ describe('checkRateLimit', () => {
 describe('scoreModel billing mode', () => {
   it('zeroes cost in plan mode', () => {
     const profile = makeProfile({ reasoning: 9, speed: 5, cost: 4 });
-    const planScore = scoreModel('test', profile, makeRequirements(), undefined, 'plan');
+    const planScore = scoreModel('test', profile, makeRequirements(), { billingMode: 'plan' });
     // base = 9 + 5 + 0 = 14
     expect(planScore).toBe(14);
   });
@@ -307,8 +307,7 @@ describe('scoreModel billing mode', () => {
       'test',
       makeProfile({ reasoning: 9, speed: 5, cost: 4 }),
       makeRequirements(),
-      undefined,
-      'api'
+      { billingMode: 'api' }
     );
     // base = 9 + 5 + 4 = 18
     expect(apiScore).toBe(18);
@@ -317,7 +316,7 @@ describe('scoreModel billing mode', () => {
   it('defaults to api mode', () => {
     const profile = makeProfile({ reasoning: 9, speed: 5, cost: 4 });
     const defaultScore = scoreModel('test', profile, makeRequirements());
-    const apiScore = scoreModel('test', profile, makeRequirements(), undefined, 'api');
+    const apiScore = scoreModel('test', profile, makeRequirements(), { billingMode: 'api' });
     expect(defaultScore).toBe(apiScore);
   });
 
@@ -325,10 +324,8 @@ describe('scoreModel billing mode', () => {
     const opus = MODEL_CAPABILITIES['claude-opus']!;
     const haiku = MODEL_CAPABILITIES['claude-haiku']!;
     const req = makeRequirements({ needsReasoning: true });
-    const opusScore = scoreModel('claude-opus', opus, req, undefined, 'plan');
-    const haikuScore = scoreModel('claude-haiku', haiku, req, undefined, 'plan');
-    // Opus: base(10+5+0) + reasoning(10*2) = 35
-    // Haiku: base(7+9+0) + reasoning(7*2) = 30
+    const opusScore = scoreModel('claude-opus', opus, req, { billingMode: 'plan' });
+    const haikuScore = scoreModel('claude-haiku', haiku, req, { billingMode: 'plan' });
     expect(opusScore).toBeGreaterThan(haikuScore);
   });
 
@@ -336,8 +333,8 @@ describe('scoreModel billing mode', () => {
     const opus = MODEL_CAPABILITIES['claude-opus']!;
     const haiku = MODEL_CAPABILITIES['claude-haiku']!;
     const req = makeRequirements();
-    const opusScore = scoreModel('claude-opus', opus, req, undefined, 'api');
-    const haikuScore = scoreModel('claude-haiku', haiku, req, undefined, 'api');
+    const opusScore = scoreModel('claude-opus', opus, req, { billingMode: 'api' });
+    const haikuScore = scoreModel('claude-haiku', haiku, req, { billingMode: 'api' });
     expect(haikuScore).toBeGreaterThan(opusScore);
   });
 });

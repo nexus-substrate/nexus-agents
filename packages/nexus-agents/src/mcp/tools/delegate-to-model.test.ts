@@ -135,15 +135,13 @@ describe('delegate_to_model Tool', () => {
         'claude-opus',
         MODEL_CAPABILITIES['claude-opus']!,
         requirements,
-        undefined,
-        'plan'
+        { billingMode: 'plan' }
       );
       const haikuScore = scoreModel(
         'claude-haiku',
         MODEL_CAPABILITIES['claude-haiku']!,
         requirements,
-        undefined,
-        'plan'
+        { billingMode: 'plan' }
       );
 
       // Opus (reasoning: 10) should score higher than Haiku (reasoning: 7) for reasoning tasks
@@ -192,7 +190,7 @@ describe('delegate_to_model Tool', () => {
         'codex-5.2',
         MODEL_CAPABILITIES['codex-5.2']!,
         requirements,
-        'code'
+        { preferredCapability: 'code' }
       );
       const codeScoreWithoutPreference = scoreModel(
         'codex-5.2',

@@ -30,6 +30,8 @@ import {
   EXPLORATION_KEYWORDS,
 } from './delegate-to-model-types.js';
 import { DEFAULT_MODEL_CAPABILITIES, modelSupportsAll } from '../../config/model-capabilities.js';
+import type { SpecializationMatch } from '../../config/task-specialization-types.js';
+import { detectTaskCategory } from '../../config/task-specialization.js';
 
 /**
  * Checks if any keyword from list is in the text.
@@ -112,23 +114,51 @@ export function calcPreferenceScore(
   return bonusMap[pref];
 }
 
+/** Look up the CLI name for a model ID from the capabilities matrix. */
+export function getCliForModel(modelId: string): string | undefined {
+  return DEFAULT_MODEL_CAPABILITIES.models.find((m) => m.id === modelId)?.cliName;
+}
+
+/**
+ * Calculates bonus from task specialization matrix (Issue #858).
+ * Models whose CLI matches the preferred CLI get the bonus.
+ */
+export function calcSpecializationBonus(
+  modelName: string,
+  match: SpecializationMatch | null
+): number {
+  if (match === null) return 0;
+  const cli = getCliForModel(modelName);
+  if (cli === match.primaryCli) return match.bonus;
+  if (cli === match.secondaryCli) return Math.floor(match.bonus / 2);
+  return 0;
+}
+
+/** Options for scoreModel beyond the required model/profile/requirements. */
+export interface ScoreModelOptions {
+  readonly preferredCapability?: PreferredCapability;
+  readonly billingMode?: BillingMode;
+  readonly specialization?: SpecializationMatch | null;
+}
+
 /**
  * Scores a model based on task requirements.
  * In plan billing mode, cost component is zeroed out so quality wins.
  */
 export function scoreModel(
-  _modelName: string,
+  modelName: string,
   profile: CapabilityProfile,
   requirements: TaskRequirements,
-  preferredCapability?: PreferredCapability,
-  billingMode: BillingMode = 'api'
+  options: ScoreModelOptions = {}
 ): number {
+  const billingMode = options.billingMode ?? 'api';
   const reqScore = calcRequirementsScore(profile, requirements, billingMode);
   const ctxScore = calcContextScore(profile, requirements);
-  const prefScore = calcPreferenceScore(profile, preferredCapability);
+  const prefScore = calcPreferenceScore(profile, options.preferredCapability);
+  const specScore = calcSpecializationBonus(modelName, options.specialization ?? null);
   const costComponent = billingMode === 'plan' ? 0 : profile.cost;
   const baseScore = profile.reasoning + profile.speed + costComponent;
-  return reqScore + ctxScore + prefScore + baseScore;
+  return reqScore + ctxScore + prefScore + specScore + baseScore;
 }
 
 /**
@@ -150,9 +180,12 @@ const REASON_MAP: ReadonlyArray<[keyof TaskRequirements, string]> = [
 export function buildReasons(
   requirements: TaskRequirements,
   pref?: string,
-  billingMode: BillingMode = 'api'
+  billingMode: BillingMode = 'api',
+  specialization: SpecializationMatch | null = null
 ): string[] {
   const reasons = REASON_MAP.filter(([key]) => requirements[key] === true).map(([, desc]) => desc);
+  if (specialization !== null)
+    reasons.push(`${specialization.category} task (prefer ${specialization.primaryCli})`);
   if (pref !== undefined && pref !== '') reasons.push(`preferred: ${pref}`);
   if (billingMode === 'plan') reasons.push('plan billing (cost ignored)');
   return reasons;
@@ -212,20 +245,23 @@ export function filterByModality(requirements: TaskRequirements): Set<string> | 
 
 /**
  * Scores and sorts all models, optionally filtering by modality requirements.
+ * When specialization is provided, models matching the preferred CLI get a bonus.
  */
 export function scoreAllModels(
   requirements: TaskRequirements,
   pref?: PreferredCapability,
-  billingMode: BillingMode = 'api'
+  billingMode: BillingMode = 'api',
+  specialization: SpecializationMatch | null = null
 ): ScoredModel[] {
   const eligible = filterByModality(requirements);
 
+  const opts: ScoreModelOptions = { preferredCapability: pref, billingMode, specialization };
   return Object.entries(MODEL_CAPABILITIES)
     .filter(([name]) => eligible === null || eligible.has(name))
     .map(([name, profile]) => ({
       name,
       profile,
-      score: scoreModel(name, profile, requirements, pref, billingMode),
+      score: scoreModel(name, profile, requirements, opts),
     }))
     .sort((a, b) => b.score - a.score);
 }
@@ -252,7 +288,8 @@ export function selectModel(
   }
 
   const pref = input.preferred_capability;
-  const scored = scoreAllModels(requirements, pref, billingMode);
+  const specialization = detectTaskCategory(input.task);
+  const scored = scoreAllModels(requirements, pref, billingMode, specialization);
   const best = scored[0];
 
   if (!best) {
@@ -263,7 +300,12 @@ export function selectModel(
     };
   }
 
-  const reasons = buildReasons(requirements, input.preferred_capability, billingMode);
+  const reasons = buildReasons(
+    requirements,
+    input.preferred_capability,
+    billingMode,
+    specialization
+  );
   const reasoning =
     reasons.length > 0
       ? `Selected ${best.name} (score: ${best.score.toFixed(1)}) because: ${reasons.join(', ')}`
