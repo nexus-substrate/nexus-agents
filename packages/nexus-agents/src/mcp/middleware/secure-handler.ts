@@ -23,6 +23,7 @@ import { type IPolicyFirewall, type ExecutionMode, createPolicyContext } from '.
 import type { RateLimiter } from './rate-limiter.js';
 import type { IAuditLogger } from '../../audit/audit-types.js';
 import { actorFromContext, resultToOutcome } from '../../audit/secure-handler-audit.js';
+import { sanitizeToolInput, logSanitizationResult } from './tool-input-sanitizer.js';
 
 /**
  * MCP tool result type.
@@ -288,23 +289,28 @@ function emitRateLimitAudit(
   });
 }
 
-/** Pre-execution checks: input size, rate limit, policy. Returns error result or null. */
+/** Pre-execution checks: input size, input sanitization, rate limit, policy. */
 function runPreChecks(
   config: SecureHandlerConfig,
   args: unknown,
   mode: ExecutionMode,
   requestContext: RequestContext,
   logger: ILogger
-): ToolResult | null {
+): { error: ToolResult | null; sanitizedArgs: unknown } {
   const sizeResult = checkInputSize(args, logger, requestContext.requestId);
-  if (sizeResult) return sizeResult;
+  if (sizeResult) return { error: sizeResult, sanitizedArgs: args };
+
+  // Sanitize tool input: strip XML injection tags, detect injection patterns (Issue #828)
+  const sanitizeResult = sanitizeToolInput(args);
+  logSanitizationResult(sanitizeResult, logger, config.toolName);
+  const sanitizedArgs = sanitizeResult.wasModified ? sanitizeResult.sanitized : args;
 
   if (config.rateLimiter) {
     const rlResult = checkRateLimit(config.rateLimiter, logger);
     if (rlResult) {
       if (config.auditLogger)
         emitRateLimitAudit(config.auditLogger, config.toolName, requestContext);
-      return rlResult;
+      return { error: rlResult, sanitizedArgs };
     }
   }
 
@@ -312,7 +318,7 @@ function runPreChecks(
     const pResult = checkPolicy({
       firewall: config.policyFirewall,
       toolName: config.toolName,
-      args,
+      args: sanitizedArgs,
       mode,
       allowedPaths: config.allowedPaths,
       logger,
@@ -321,11 +327,11 @@ function runPreChecks(
     if (pResult) {
       if (config.auditLogger)
         emitPolicyAudit(config.auditLogger, config.toolName, requestContext, 'policy denied');
-      return pResult;
+      return { error: pResult, sanitizedArgs };
     }
   }
 
-  return null;
+  return { error: null, sanitizedArgs };
 }
 
 /**
@@ -351,14 +357,20 @@ export function createSecureHandler(
     const requestLogger = logger.child(contextForLogging(requestContext));
     requestLogger.info('Tool invocation started');
 
-    const preCheckResult = runPreChecks(config, args, mode, requestContext, requestLogger);
-    if (preCheckResult) return preCheckResult;
+    const { error: preCheckError, sanitizedArgs } = runPreChecks(
+      config,
+      args,
+      mode,
+      requestContext,
+      requestLogger
+    );
+    if (preCheckError) return preCheckError;
 
     const execStartTime = getTimeProvider().now();
     try {
       const result = await executeHandler(
         handler,
-        args,
+        sanitizedArgs,
         { requestContext, logger: requestLogger },
         requestLogger
       );

@@ -147,6 +147,15 @@ export {
   toSdkCallback,
 } from './tool-wrapper.js';
 
+// Tool input sanitizer (Issue #828 — untrusted input hardening)
+export {
+  // Types
+  type SanitizeToolInputResult,
+  // Functions
+  sanitizeToolInput,
+  logSanitizationResult,
+} from './tool-input-sanitizer.js';
+
 // Per-tool rate limiter factory (Issue #274 Phase 2)
 export {
   // Types
