@@ -275,11 +275,17 @@ export class RestApiServer implements IRestApiServer {
     });
   }
 
+  /** Checks if a URL path matches a public (unauthenticated) endpoint. */
+  private isPublicPath(url: string): boolean {
+    const publicPaths = ['health', 'metrics', 'docs'];
+    const pathname = url.split('?')[0] ?? url;
+    const segments = pathname.split('/').filter(Boolean);
+    return publicPaths.some((p) => segments.includes(p));
+  }
+
   private async authenticateRequest(request: FastifyRequest, reply: FastifyReply): Promise<void> {
-    // Skip auth for health, metrics, and docs (including API-prefixed variants)
-    const publicPaths = ['/health', '/metrics', '/docs'];
-    const url = request.url;
-    if (publicPaths.some((p) => url.startsWith(p) || url.includes(p))) {
+    // Skip auth for public endpoints (health, metrics, docs)
+    if (this.isPublicPath(request.url)) {
       (request as FastifyRequest & { authContext: AuthContext }).authContext = {
         authenticated: false,
         clientId: this.getClientId(request),

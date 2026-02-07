@@ -195,6 +195,28 @@ describe('RestApiServer', () => {
       expect(response.statusCode).toBe(200);
     });
 
+    it('should not bypass auth via query string containing public path name', async () => {
+      await server.start();
+      const response = await server.getInstance().inject({
+        method: 'POST',
+        url: '/api/v1/orchestrate?redirect=/health',
+        payload: { task: 'test' },
+      });
+
+      expect(response.statusCode).toBe(401);
+    });
+
+    it('should not bypass auth via query string containing docs', async () => {
+      await server.start();
+      const response = await server.getInstance().inject({
+        method: 'POST',
+        url: '/api/v1/orchestrate?docs=1',
+        payload: { task: 'test' },
+      });
+
+      expect(response.statusCode).toBe(401);
+    });
+
     it('should reject non-public routes when no API keys configured (fail closed)', async () => {
       const noKeysServer = new RestApiServer({ config: { port: getTestPort() } });
       await noKeysServer.start();
