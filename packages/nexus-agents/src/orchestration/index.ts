@@ -98,6 +98,24 @@ export {
   KNOWN_SECTIONS,
 } from './spec-parser-types.js';
 
+// Spec Decomposer (Issue #848)
+export { decomposeSpec } from './spec-decomposer.js';
+export type {
+  TaskDag,
+  SubtaskNode,
+  DagEdge,
+  DecomposeError,
+  SubtaskType,
+  ComplexityLevel,
+} from './spec-decomposer-types.js';
+export {
+  TaskDagSchema,
+  SubtaskNodeSchema,
+  DagEdgeSchema,
+  SubtaskTypeSchema,
+  ComplexityLevelSchema,
+} from './spec-decomposer-types.js';
+
 // Checkpointing (Issue #833)
 export {
   InMemoryCheckpointStore,
