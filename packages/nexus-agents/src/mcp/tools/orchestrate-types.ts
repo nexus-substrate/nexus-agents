@@ -9,7 +9,8 @@ import { z } from 'zod';
 import type { Result, ILogger, Task } from '../../core/index.js';
 import { ok, AgentError } from '../../core/index.js';
 import { clamp } from '../../utils/math-utils.js';
-import type { IOrchestrator } from '../../core/types/orchestrator.js';
+import type { IOrchestrator, OrchestratorType } from '../../core/types/orchestrator.js';
+import type { WorkflowPattern } from '../../orchestration/workflow-router-types.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
 import type { ExecutionPlan, Expert } from '../../agents/index.js';
@@ -51,6 +52,15 @@ export const OrchestrateOutputSchema = z.object({
     approach: z.string(),
     estimatedEffort: z.number(),
   }),
+  routing: z
+    .object({
+      pattern: z.string().describe('Selected workflow pattern'),
+      reasoning: z.string().describe('Why this pattern was selected'),
+      confidence: z.number().min(0).max(1).describe('Routing confidence'),
+      orchestratorType: z.string().describe('Mapped OrchestratorType used'),
+    })
+    .optional()
+    .describe('Workflow routing decision (Issue #846)'),
   result: z.unknown().describe('Final execution result'),
   stepsCompleted: z.number().describe('Number of steps completed'),
   metadata: z.object({
@@ -116,6 +126,24 @@ export interface OrchestrateDeps {
   security?: SecurityConfig | undefined;
   /** Model adapter for fallback orchestration path (Issue #827) */
   modelAdapter?: import('../../core/index.js').IModelAdapter;
+}
+
+// ============================================================================
+// Routing Helpers (Issue #846)
+// ============================================================================
+
+/** Routing info included in orchestrate output. */
+export interface RoutingInfo {
+  readonly pattern: string;
+  readonly reasoning: string;
+  readonly confidence: number;
+  readonly orchestratorType: string;
+}
+
+/** Maps WorkflowPattern to OrchestratorType. */
+export function mapPatternToOrchestratorType(pattern: WorkflowPattern): OrchestratorType {
+  if (pattern === 'puppeteer') return 'puppeteer';
+  return 'tech_lead';
 }
 
 // ============================================================================

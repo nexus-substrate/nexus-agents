@@ -1,11 +1,7 @@
 /**
- * nexus-agents/mcp - Orchestrate Tool
- *
- * MCP tool for task orchestration using TechLead agent.
- * Types and schemas extracted to orchestrate-types.ts (Issue #708).
- *
+ * MCP tool for task orchestration with intelligent workflow pattern routing.
+ * Types/schemas in orchestrate-types.ts (Issue #708). Routing via Issue #846.
  * @module mcp/tools/orchestrate
- * (Source: MCP Protocol 2025-11-25, Issue #531, #595, #708)
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -18,32 +14,45 @@ import {
   getRandomProvider,
   formatZodError,
 } from '../../core/index.js';
-import type { IOrchestrator, OrchestratorDefinition } from '../../core/types/orchestrator.js';
+import type {
+  IOrchestrator,
+  OrchestratorDefinition,
+  OrchestratorType,
+} from '../../core/types/orchestrator.js';
 import { wrapToolWithTimeout, toSdkCallback } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import type { ExecutionPlan } from '../../agents/index.js';
 import { createOrchestratorWithSica } from './orchestrate-sica.js';
 import { OrchestratorFactory } from '../../orchestration/orchestrator-factory.js';
+import { createWorkflowRouter, type IWorkflowRouter } from '../../orchestration/workflow-router.js';
 import { getToolMemory } from './tool-memory.js';
 import { getAutoCatalog } from './research-auto-catalog.js';
 import {
   OrchestrateInputSchema,
   ORCHESTRATE_TOOL_SCHEMA,
   OrchestrationError,
+  mapPatternToOrchestratorType,
+  type OrchestrateInput,
+  type OrchestrateOutput,
+  type OrchestrateDeps,
+  type RoutingInfo,
 } from './orchestrate-types.js';
-import type { OrchestrateInput, OrchestrateOutput, OrchestrateDeps } from './orchestrate-types.js';
 
-// Re-export types for consumers
-export type { OrchestrateInput, OrchestrateOutput, OrchestrateDeps } from './orchestrate-types.js';
-// eslint-disable-next-line @typescript-eslint/no-deprecated -- Re-exporting deprecated types for backwards compat
-export type { ITechLead, IExpertFactory } from './orchestrate-types.js';
+// Re-export types and values for consumers
 export {
   OrchestrateInputSchema,
   OrchestrateOutputSchema,
   OrchestrationError,
   OrchestrationUnavailableError,
   createMockOrchestrator,
+  mapPatternToOrchestratorType,
+  type OrchestrateInput,
+  type OrchestrateOutput,
+  type OrchestrateDeps,
+  type RoutingInfo,
 } from './orchestrate-types.js';
+// eslint-disable-next-line @typescript-eslint/no-deprecated -- Re-exporting deprecated types for backwards compat
+export type { ITechLead, IExpertFactory } from './orchestrate-types.js';
 // eslint-disable-next-line @typescript-eslint/no-deprecated -- Re-exporting deprecated API for backwards compat
 export { createMockTechLead } from './orchestrate-types.js';
 
@@ -89,7 +98,8 @@ async function createTaskFromInput(input: OrchestrateInput, taskId: string): Pro
 function buildOutputFromOrchestratorResult(
   taskId: string,
   orchResult: import('../../core/types/orchestrator.js').OrchestratorResult,
-  durationMs: number
+  durationMs: number,
+  routing?: RoutingInfo
 ): OrchestrateOutput {
   const raw = orchResult.output as Record<string, unknown>;
   const executionPlan =
@@ -120,6 +130,7 @@ function buildOutputFromOrchestratorResult(
       approach: analysis.approach,
       estimatedEffort: analysis.estimatedEffort,
     },
+    routing,
     result: orchResult.output,
     stepsCompleted: orchResult.steps.length,
     metadata: {
@@ -134,7 +145,11 @@ function buildOutputFromOrchestratorResult(
 // Orchestrator Factory & Error Helpers
 // ============================================================================
 
-function createOrchestratorFromDeps(deps: OrchestrateDeps, logger: ILogger): IOrchestrator {
+function createOrchestratorFromDeps(
+  deps: OrchestrateDeps,
+  logger: ILogger,
+  orchestratorType?: OrchestratorType
+): IOrchestrator {
   if (deps.orchestrator !== undefined) return deps.orchestrator;
   // eslint-disable-next-line @typescript-eslint/no-deprecated -- Backwards compatibility
   const techLead = deps.techLead ?? createOrchestratorWithSica(logger, deps.modelAdapter);
@@ -142,7 +157,7 @@ function createOrchestratorFromDeps(deps: OrchestrateDeps, logger: ILogger): IOr
     logger,
     techLead: techLead as { execute: (task: unknown) => Promise<Result<unknown, unknown>> },
   });
-  return factory.create('tech_lead');
+  return factory.create(orchestratorType ?? 'tech_lead');
 }
 
 function createErrorOptions(
@@ -243,12 +258,47 @@ function recordOrchestrationError(errorMessage: string, taskDescription: string)
 // Execution & Registration
 // ============================================================================
 
+/** Routes task and creates routing context for executeOrchestration (Issue #846). */
+function routeAndPrepare(
+  input: OrchestrateInput,
+  deps: OrchestrateDeps,
+  router?: IWorkflowRouter
+): {
+  workflowRouter: IWorkflowRouter;
+  decision: import('../../orchestration/workflow-router-types.js').RoutingDecision;
+  orchestrator: IOrchestrator;
+  logger: ILogger;
+} {
+  const logger = deps.logger ?? createLogger({ tool: 'orchestrate' });
+  const workflowRouter = router ?? createWorkflowRouter({ logger });
+  const decision = workflowRouter.route({ description: input.task });
+  const orchType = mapPatternToOrchestratorType(decision.pattern);
+  logger.info('Workflow pattern selected', {
+    pattern: decision.pattern,
+    orchestratorType: orchType,
+  });
+  const orchestrator = createOrchestratorFromDeps(deps, logger, orchType);
+  return { workflowRouter, decision, orchestrator, logger };
+}
+
+/** Builds RoutingInfo from decision + mapped type. */
+function buildRoutingInfo(
+  decision: import('../../orchestration/workflow-router-types.js').RoutingDecision
+): RoutingInfo {
+  return {
+    pattern: decision.pattern,
+    reasoning: decision.reasoning,
+    confidence: decision.confidence,
+    orchestratorType: mapPatternToOrchestratorType(decision.pattern),
+  };
+}
+
 async function executeOrchestration(
   input: OrchestrateInput,
-  deps: OrchestrateDeps
+  deps: OrchestrateDeps,
+  router?: IWorkflowRouter
 ): Promise<Result<OrchestrateOutput, OrchestrationError>> {
-  const logger = deps.logger ?? createLogger({ tool: 'orchestrate' });
-  const orchestrator = createOrchestratorFromDeps(deps, logger);
+  const { workflowRouter, decision, orchestrator, logger } = routeAndPrepare(input, deps, router);
   const taskId = generateTaskId();
   const startTime = getTimeProvider().now();
 
@@ -259,9 +309,17 @@ async function executeOrchestration(
   try {
     const result = await orchestrator.execute(definition, {});
     if (!result.ok) {
+      const failDuration = getTimeProvider().now() - startTime;
       logger.error('Orchestration failed', result.error, { taskId });
       const cause = result.error instanceof Error ? result.error : undefined;
       recordOrchestrationError(result.error.message, input.task);
+      workflowRouter.recordOutcome({
+        pattern: decision.pattern,
+        taskType: decision.analysis.taskType,
+        success: false,
+        durationMs: failDuration,
+        timestamp: getTimeProvider().now(),
+      });
       return err(
         new OrchestrationError(
           `Task execution failed: ${result.error.message}`,
@@ -271,12 +329,25 @@ async function executeOrchestration(
     }
 
     const durationMs = getTimeProvider().now() - startTime;
-    const output = buildOutputFromOrchestratorResult(taskId, result.value, durationMs);
+    const output = buildOutputFromOrchestratorResult(
+      taskId,
+      result.value,
+      durationMs,
+      buildRoutingInfo(decision)
+    );
     recordOrchestrationSuccess(taskId, input.task, output.stepsCompleted, durationMs);
+    workflowRouter.recordOutcome({
+      pattern: decision.pattern,
+      taskType: decision.analysis.taskType,
+      success: true,
+      durationMs,
+      timestamp: getTimeProvider().now(),
+    });
     logger.info('Orchestration completed', {
       taskId,
       durationMs,
       stepsCompleted: output.stepsCompleted,
+      pattern: decision.pattern,
     });
     return ok(output);
   } catch (error) {

@@ -13,6 +13,7 @@ import {
   OrchestrateOutputSchema,
   OrchestrationError,
   createMockTechLead,
+  mapPatternToOrchestratorType,
   type ITechLead,
   type OrchestrateDeps,
   type OrchestrateInput,
@@ -645,6 +646,68 @@ describe('Input Validation Edge Cases', () => {
 
     // Note: min(1) checks length, not trimmed length
     const result = OrchestrateInputSchema.safeParse(input);
+    expect(result.success).toBe(true);
+  });
+});
+
+describe('Workflow Routing Integration (Issue #846)', () => {
+  it('maps puppeteer pattern to puppeteer orchestrator type', () => {
+    expect(mapPatternToOrchestratorType('puppeteer')).toBe('puppeteer');
+  });
+
+  it('maps non-puppeteer patterns to tech_lead', () => {
+    expect(mapPatternToOrchestratorType('sequential')).toBe('tech_lead');
+    expect(mapPatternToOrchestratorType('wave')).toBe('tech_lead');
+    expect(mapPatternToOrchestratorType('graph')).toBe('tech_lead');
+    expect(mapPatternToOrchestratorType('consensus')).toBe('tech_lead');
+    expect(mapPatternToOrchestratorType('aflow')).toBe('tech_lead');
+  });
+
+  it('validates output with routing field', () => {
+    const output = {
+      taskId: 'orch-abc123',
+      analysis: {
+        taskId: 'orch-abc123',
+        complexity: 5,
+        taskType: 'implementation',
+        requirements: [],
+        risks: [],
+        needsDecomposition: false,
+        approach: 'Direct',
+        estimatedEffort: 1,
+      },
+      routing: {
+        pattern: 'sequential',
+        reasoning: 'Simple task — sequential execution',
+        confidence: 0.85,
+        orchestratorType: 'tech_lead',
+      },
+      result: null,
+      stepsCompleted: 1,
+      metadata: { durationMs: 100, tokensUsed: 0, expertsUsed: [] },
+    };
+    const result = OrchestrateOutputSchema.safeParse(output);
+    expect(result.success).toBe(true);
+  });
+
+  it('validates output without routing field (backwards compat)', () => {
+    const output = {
+      taskId: 'orch-abc123',
+      analysis: {
+        taskId: 'orch-abc123',
+        complexity: 5,
+        taskType: 'implementation',
+        requirements: [],
+        risks: [],
+        needsDecomposition: false,
+        approach: 'Direct',
+        estimatedEffort: 1,
+      },
+      result: null,
+      stepsCompleted: 0,
+      metadata: { durationMs: 50, tokensUsed: 0, expertsUsed: [] },
+    };
+    const result = OrchestrateOutputSchema.safeParse(output);
     expect(result.success).toBe(true);
   });
 });
