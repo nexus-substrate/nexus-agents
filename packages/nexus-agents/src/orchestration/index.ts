@@ -120,6 +120,11 @@ export {
 export { compileSpecToGraph } from './spec-pipeline.js';
 export type { PipelineError, PipelineStage } from './spec-pipeline-types.js';
 
+// Scenario Validator (Issue #850)
+export { validateScenario } from './scenario-validator.js';
+export type { ScenarioResult, CriterionResult, ScenarioError } from './scenario-validator-types.js';
+export { ScenarioResultSchema, CriterionResultSchema } from './scenario-validator-types.js';
+
 // Checkpointing (Issue #833)
 export {
   InMemoryCheckpointStore,
