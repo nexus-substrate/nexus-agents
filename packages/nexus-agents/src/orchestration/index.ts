@@ -67,6 +67,21 @@ export {
   emitExecutionComplete,
 } from './graph/index.js';
 
+// Workflow Pattern Router (Issue #844)
+export { createWorkflowRouter } from './workflow-router.js';
+export type { IWorkflowRouter } from './workflow-router.js';
+export type {
+  WorkflowPattern,
+  DependencyStructure,
+  TimeConstraint,
+  QualityRequirement,
+  TaskSignals,
+  RoutingDecision,
+  WorkflowRouterOptions,
+  PatternOutcome,
+  PatternMetrics,
+} from './workflow-router-types.js';
+
 // Checkpointing (Issue #833)
 export {
   InMemoryCheckpointStore,
