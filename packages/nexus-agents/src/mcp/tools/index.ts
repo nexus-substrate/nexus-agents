@@ -153,6 +153,15 @@ export {
   type CatalogedReference,
 } from './research-auto-catalog.js';
 
+// Issue triage tool (Issue #828 — Wire remaining security modules)
+export {
+  registerIssueTriageTool,
+  IssueTriageInputSchema,
+  type IssueTriageInput,
+  type IssueTriageDeps,
+  type IssueTriageResponse,
+} from './issue-triage-tool.js';
+
 // Memory observability tools (Issue #751)
 export {
   registerMemoryQueryTool,
@@ -262,6 +271,7 @@ export function registerTools(
       'research_catalog_review',
       'memory_query',
       'memory_stats',
+      'issue_triage',
     ],
     logger,
     rateLimiter,

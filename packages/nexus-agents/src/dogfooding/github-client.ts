@@ -12,6 +12,7 @@
 import type { Result } from '../core/index.js';
 import { ok, err, createLogger } from '../core/index.js';
 import type { PRMetadata, PRFileChange, ReviewDecision } from './pr-review-types.js';
+import type { IssueMetadata, IssueComment } from './issue-triage-types.js';
 
 const logger = createLogger({ component: 'GitHubClient' });
 
@@ -161,6 +162,91 @@ export class GitHubClient {
     }
 
     return result;
+  }
+
+  /**
+   * Fetches issue metadata from GitHub API.
+   */
+  async getIssue(
+    owner: string,
+    repo: string,
+    issueNumber: number
+  ): Promise<Result<IssueMetadata, GitHubError>> {
+    const result = await this.request<Record<string, unknown>>(
+      'GET',
+      `/repos/${owner}/${repo}/issues/${String(issueNumber)}`
+    );
+
+    if (!result.ok) return result;
+
+    const issue = result.value;
+    const metadata: IssueMetadata = {
+      number: issue.number as number,
+      title: issue.title as string,
+      body: (issue.body as string | null) ?? '',
+      author: (issue.user as { login: string }).login,
+      authorAssociation: (issue.author_association as string | undefined) ?? 'NONE',
+      owner,
+      repo,
+      url: issue.html_url as string,
+      state: issue.state as string,
+      labels: Array.isArray(issue.labels)
+        ? (issue.labels as Array<{ name: string }>).map((l) => l.name)
+        : [],
+      createdAt: issue.created_at as string,
+    };
+
+    logger.info('Fetched issue metadata', { issueNumber, state: metadata.state });
+    return ok(metadata);
+  }
+
+  /**
+   * Fetches comments on a GitHub issue.
+   */
+  async listIssueComments(
+    owner: string,
+    repo: string,
+    issueNumber: number
+  ): Promise<Result<IssueComment[], GitHubError>> {
+    const result = await this.request<Array<Record<string, unknown>>>(
+      'GET',
+      `/repos/${owner}/${repo}/issues/${String(issueNumber)}/comments`
+    );
+
+    if (!result.ok) return result;
+
+    const comments: IssueComment[] = result.value.map((c) => ({
+      id: c.id as number,
+      body: (c.body as string | null) ?? '',
+      author: (c.user as { login: string }).login,
+      authorAssociation: (c.author_association as string | undefined) ?? 'NONE',
+      createdAt: c.created_at as string,
+    }));
+
+    logger.info('Fetched issue comments', { issueNumber, count: comments.length });
+    return ok(comments);
+  }
+
+  /**
+   * Adds labels to a GitHub issue.
+   */
+  async addLabels(
+    owner: string,
+    repo: string,
+    issueNumber: number,
+    labels: readonly string[]
+  ): Promise<Result<readonly string[], GitHubError>> {
+    const result = await this.request<Array<{ name: string }>>(
+      'POST',
+      `/repos/${owner}/${repo}/issues/${String(issueNumber)}/labels`,
+      { labels: [...labels] }
+    );
+
+    if (!result.ok) return result;
+
+    const addedLabels = result.value.map((l) => l.name);
+    logger.info('Added labels to issue', { issueNumber, labels: addedLabels });
+    return ok(addedLabels);
   }
 
   /**
@@ -338,6 +424,47 @@ export function parsePRUrl(url: string): Result<
   }
 
   return ok({ owner, repo, prNumber });
+}
+
+/**
+ * Parses an issue URL into owner, repo, and number.
+ */
+export function parseIssueUrl(url: string): Result<
+  {
+    owner: string;
+    repo: string;
+    issueNumber: number;
+  },
+  Error
+> {
+  // Handle formats:
+  // https://github.com/owner/repo/issues/123
+  // owner/repo#123
+
+  const httpPattern = /github\.com\/([^/]+)\/([^/]+)\/issues\/(\d+)/;
+  const shortPattern = /^([^/]+)\/([^/#]+)#(\d+)$/;
+
+  const match = httpPattern.exec(url) ?? shortPattern.exec(url);
+
+  if (match === null) {
+    return err(new Error(`Invalid issue URL format: ${url}`));
+  }
+
+  const owner = match[1];
+  const repo = match[2];
+  const numberStr = match[3];
+
+  if (owner === undefined || repo === undefined || numberStr === undefined) {
+    return err(new Error(`Invalid issue URL format: ${url}`));
+  }
+
+  const issueNumber = parseInt(numberStr, 10);
+
+  if (isNaN(issueNumber)) {
+    return err(new Error(`Invalid issue URL format: ${url}`));
+  }
+
+  return ok({ owner, repo, issueNumber });
 }
 
 /**

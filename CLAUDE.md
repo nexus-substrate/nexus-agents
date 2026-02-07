@@ -438,14 +438,15 @@ Governance rules (voting thresholds, refactor gates, fitness audit, documentatio
 | `research_catalog_review` | Review auto-cataloged research references found during tool execution.                                                             |
 | `memory_query`            | Query across all memory backends with unified results and relevance scoring.                                                       |
 | `memory_stats`            | Get memory system statistics dashboard showing backend availability and metrics.                                                   |
+| `issue_triage`            | Triage a GitHub issue using the full security pipeline. Classifies, assesses trust/reputation, proposes actions.                   |
 
-_Auto-generated from source. 15 tools registered._
+_Auto-generated from source. 16 tools registered._
 
 <!-- GOVERNANCE:TOOL_INDEX:END -->
 
 <!-- GOVERNANCE:VERSION:START -->
 
-_Governance Version: 2026-02-07.1_
+_Governance Version: 2026-02-07.2_
 
 <!-- GOVERNANCE:VERSION:END -->
 

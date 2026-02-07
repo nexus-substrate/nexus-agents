@@ -29,14 +29,41 @@ export {
   DECISION_EMOJI,
 } from './pr-review-types.js';
 
+// Issue Triage Types (Issue #828)
+export type {
+  IssueMetadata,
+  IssueComment,
+  IssueCategory,
+  IssueTriageConfig,
+  IssueTriageResult,
+  ProposedAction,
+  TrustAssessment,
+} from './issue-triage-types.js';
+
+export {
+  DEFAULT_ISSUE_TRIAGE_CONFIG,
+  IssueTriageConfigSchema,
+  CATEGORY_DISPLAY_NAMES as ISSUE_CATEGORY_DISPLAY_NAMES,
+  CATEGORY_EMOJI,
+} from './issue-triage-types.js';
+
 // GitHub Client
 export {
   GitHubClient,
   GitHubError,
   parsePRUrl,
+  parseIssueUrl,
   createGitHubClientFromEnv,
 } from './github-client.js';
 export type { GitHubClientConfig } from './github-client.js';
 
 // PR Reviewer
 export { PRReviewer, createPRReviewer, formatReviewComment } from './pr-reviewer.js';
+
+// Issue Triage (Issue #828)
+export { IssueTriage, createIssueTriage } from './issue-triage.js';
+export {
+  formatTriageComment,
+  categorizeIssue,
+  extractLabelsFromBody,
+} from './issue-triage-helpers.js';

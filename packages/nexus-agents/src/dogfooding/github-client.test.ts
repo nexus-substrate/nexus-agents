@@ -11,6 +11,7 @@ import {
   GitHubClient,
   GitHubError,
   parsePRUrl,
+  parseIssueUrl,
   createGitHubClientFromEnv,
   type GitHubClientConfig,
 } from './github-client.js';
@@ -670,6 +671,223 @@ describe('createGitHubClientFromEnv', () => {
       expect(result.error.message).toContain('GITHUB_TOKEN');
       expect(result.error.message).toContain('GH_TOKEN');
     }
+  });
+});
+
+describe('GitHubClient issue methods', () => {
+  let originalFetch: typeof global.fetch;
+  let mockFetch: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    originalFetch = global.fetch;
+    mockFetch = vi.fn();
+    global.fetch = mockFetch;
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  describe('getIssue', () => {
+    it('should fetch issue metadata', async () => {
+      const issueData = {
+        number: 42,
+        title: 'Test issue',
+        body: 'Issue description',
+        user: { login: 'testuser' },
+        author_association: 'CONTRIBUTOR',
+        html_url: 'https://github.com/owner/repo/issues/42',
+        state: 'open',
+        labels: [{ name: 'bug' }],
+        created_at: '2026-01-01T00:00:00Z',
+      };
+
+      mockFetch.mockResolvedValueOnce(createMockResponse(issueData));
+
+      const client = new GitHubClient({ token: 'test-token' });
+      const result = await client.getIssue('owner', 'repo', 42);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.number).toBe(42);
+        expect(result.value.title).toBe('Test issue');
+        expect(result.value.author).toBe('testuser');
+        expect(result.value.state).toBe('open');
+        expect(result.value.labels).toContain('bug');
+      }
+    });
+
+    it('should handle issue with null body', async () => {
+      const issueData = {
+        number: 42,
+        title: 'No body',
+        body: null,
+        user: { login: 'testuser' },
+        html_url: 'https://github.com/owner/repo/issues/42',
+        state: 'open',
+        labels: [],
+        created_at: '2026-01-01T00:00:00Z',
+      };
+
+      mockFetch.mockResolvedValueOnce(createMockResponse(issueData));
+
+      const client = new GitHubClient({ token: 'test-token' });
+      const result = await client.getIssue('owner', 'repo', 42);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.body).toBe('');
+      }
+    });
+
+    it('should return error on API failure', async () => {
+      mockFetch.mockResolvedValueOnce(
+        createMockResponse(
+          { message: 'Not Found' },
+          { ok: false, status: 404, statusText: 'Not Found' }
+        )
+      );
+
+      const client = new GitHubClient({ token: 'test-token' });
+      const result = await client.getIssue('owner', 'repo', 999);
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.statusCode).toBe(404);
+      }
+    });
+  });
+
+  describe('listIssueComments', () => {
+    it('should fetch issue comments', async () => {
+      const commentsData = [
+        {
+          id: 1,
+          body: 'First comment',
+          user: { login: 'helper' },
+          author_association: 'CONTRIBUTOR',
+          created_at: '2026-01-02T00:00:00Z',
+        },
+        {
+          id: 2,
+          body: 'Second comment',
+          user: { login: 'owner' },
+          author_association: 'OWNER',
+          created_at: '2026-01-03T00:00:00Z',
+        },
+      ];
+
+      mockFetch.mockResolvedValueOnce(createMockResponse(commentsData));
+
+      const client = new GitHubClient({ token: 'test-token' });
+      const result = await client.listIssueComments('owner', 'repo', 42);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value).toHaveLength(2);
+        expect(result.value[0]?.author).toBe('helper');
+        expect(result.value[1]?.author).toBe('owner');
+      }
+    });
+
+    it('should handle empty comments', async () => {
+      mockFetch.mockResolvedValueOnce(createMockResponse([]));
+
+      const client = new GitHubClient({ token: 'test-token' });
+      const result = await client.listIssueComments('owner', 'repo', 42);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value).toHaveLength(0);
+      }
+    });
+  });
+
+  describe('addLabels', () => {
+    it('should add labels to an issue', async () => {
+      mockFetch.mockResolvedValueOnce(
+        createMockResponse([{ name: 'bug' }, { name: 'enhancement' }])
+      );
+
+      const client = new GitHubClient({ token: 'test-token' });
+      const result = await client.addLabels('owner', 'repo', 42, ['bug', 'enhancement']);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value).toEqual(['bug', 'enhancement']);
+      }
+
+      const callArgs = mockFetch.mock.calls[0] as [string, RequestInit];
+      expect(callArgs[0]).toContain('/repos/owner/repo/issues/42/labels');
+    });
+
+    it('should handle label addition failure', async () => {
+      mockFetch.mockResolvedValueOnce(
+        createMockResponse(
+          { message: 'Validation Failed' },
+          { ok: false, status: 422, statusText: 'Unprocessable Entity' }
+        )
+      );
+
+      const client = new GitHubClient({ token: 'test-token' });
+      const result = await client.addLabels('owner', 'repo', 42, ['invalid-label']);
+
+      expect(result.ok).toBe(false);
+    });
+  });
+});
+
+describe('parseIssueUrl', () => {
+  describe('valid URLs', () => {
+    it('should parse full GitHub issue URL', () => {
+      const result = parseIssueUrl('https://github.com/owner/repo/issues/123');
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.owner).toBe('owner');
+        expect(result.value.repo).toBe('repo');
+        expect(result.value.issueNumber).toBe(123);
+      }
+    });
+
+    it('should parse short format with hash', () => {
+      const result = parseIssueUrl('owner/repo#456');
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.owner).toBe('owner');
+        expect(result.value.repo).toBe('repo');
+        expect(result.value.issueNumber).toBe(456);
+      }
+    });
+
+    it('should handle repos with hyphens', () => {
+      const result = parseIssueUrl('https://github.com/my-org/my-repo/issues/55');
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.owner).toBe('my-org');
+        expect(result.value.repo).toBe('my-repo');
+      }
+    });
+  });
+
+  describe('invalid URLs', () => {
+    it('should reject empty string', () => {
+      const result = parseIssueUrl('');
+      expect(result.ok).toBe(false);
+    });
+
+    it('should reject PR URL', () => {
+      const result = parseIssueUrl('https://github.com/owner/repo/pull/123');
+      expect(result.ok).toBe(false);
+    });
+
+    it('should reject partial format', () => {
+      const result = parseIssueUrl('owner/repo');
+      expect(result.ok).toBe(false);
+    });
   });
 });
 
