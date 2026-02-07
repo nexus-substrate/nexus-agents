@@ -194,6 +194,26 @@ export type {
   TriangulatedReviewConfig,
 } from './triangulated-review-types.js';
 
+// Consensus Planning (Issue #863)
+export { executeConsensusPlan } from './consensus-plan.js';
+export type { PlanOptions } from './consensus-plan.js';
+export {
+  createDefaultPlanConfig,
+  ConsensusPlanConfigSchema,
+  PlanStepSchema,
+  PlanRiskSchema,
+} from './consensus-plan-types.js';
+export type {
+  PlanStep,
+  PlanRisk,
+  CliPlan,
+  CliPlanPartition,
+  AgreedStep,
+  Divergence,
+  ConsensusPlanResult,
+  ConsensusPlanConfig,
+} from './consensus-plan-types.js';
+
 // Checkpointing (Issue #833)
 export {
   InMemoryCheckpointStore,
