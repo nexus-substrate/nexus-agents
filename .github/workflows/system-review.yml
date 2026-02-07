@@ -245,6 +245,8 @@ jobs:
       (github.event.inputs.create_issue == 'true' || github.event_name != 'workflow_dispatch')
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v6
+
       - name: Create System Review Issue
         run: |
           TRIGGER="${{ needs.check-trigger.outputs.trigger_type }}"
