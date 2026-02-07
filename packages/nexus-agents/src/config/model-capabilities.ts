@@ -118,7 +118,7 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
     // ----- Google Gemini -----
     {
       id: 'gemini-pro',
-      displayName: 'Gemini 3 Pro',
+      displayName: 'Gemini 2.5 Pro',
       provider: 'google',
       contextWindow: 1_000_000,
       outputModalities: [
@@ -138,18 +138,18 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
         'structured_output',
       ],
       specialFeatures: ['deep_research', 'streaming', 'grounding', 'live_api'],
-      notes: 'Largest context (1M tokens); complex reasoning; native image gen; audio TTS',
+      notes: 'Largest context (1M tokens); complex reasoning; native multimodal output',
       pricing: { inputPer1M: 1.25, outputPer1M: 10.0 },
       qualityScores: { reasoning: 9, codeGeneration: 8, speed: 8, cost: 7 },
       maxOutputTokens: 8_192,
       cliName: 'gemini',
-      cliModelName: 'gemini-3-pro',
+      cliModelName: 'gemini-2.5-pro',
     },
     {
       id: 'gemini-flash',
-      displayName: 'Gemini 3 Flash',
+      displayName: 'Gemini 2.5 Flash',
       provider: 'google',
-      contextWindow: 200_000,
+      contextWindow: 1_000_000,
       outputModalities: ['text', 'image_png', 'image_jpeg', 'structured_json', 'code'],
       inputModalities: ['text', 'image', 'audio', 'video', 'pdf', 'code'],
       toolCapabilities: [
@@ -159,12 +159,12 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
         'structured_output',
       ],
       specialFeatures: ['streaming', 'grounding'],
-      notes: 'Ultra-fast Gemini 3; 200K context; agents and streaming optimized',
+      notes: 'Ultra-fast Gemini 2.5; 1M context; agents and streaming optimized',
       pricing: { inputPer1M: 0.15, outputPer1M: 0.6 },
       qualityScores: { reasoning: 7, codeGeneration: 7, speed: 10, cost: 9 },
       maxOutputTokens: 8_192,
       cliName: 'gemini',
-      cliModelName: 'gemini-3-flash',
+      cliModelName: 'gemini-2.5-flash',
     },
     // ----- OpenAI Codex -----
     {

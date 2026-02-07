@@ -55,7 +55,7 @@ export function getDefaultModelForCli(cli: CliNameLiteral): ModelId {
   return DEFAULT_MODEL_PER_CLI[cli];
 }
 
-/** Get the model name the CLI binary expects (e.g., 'gemini-3-pro'). */
+/** Get the model name the CLI binary expects (e.g., 'gemini-2.5-pro'). */
 export function getCliModelName(modelId: ModelId): string {
   const cap = getModelCapabilities(modelId);
   return cap?.cliModelName ?? cap?.cliAlias ?? modelId;

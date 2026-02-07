@@ -50,7 +50,7 @@ const DEFAULTS = {
   outputCost: 0.3,
 } as const;
 
-/** Find a canonical model by its cliModelName (e.g., 'gemini-3-pro'). */
+/** Find a canonical model by its cliModelName (e.g., 'gemini-2.5-pro'). */
 function findCanonicalGeminiModel(
   cliModelName: string
 ): (typeof DEFAULT_MODEL_CAPABILITIES.models)[number] | undefined {

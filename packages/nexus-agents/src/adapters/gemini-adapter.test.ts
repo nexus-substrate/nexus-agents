@@ -66,8 +66,8 @@ describe('GeminiAdapter', () => {
         modelId: 'gemini-pro',
       });
 
-      // Short alias 'gemini-pro' now maps to latest (Gemini 3 Pro)
-      expect(adapter.modelId).toBe(GEMINI_MODELS.PRO_3);
+      // Short alias 'gemini-pro' now maps to latest (Gemini 2.5 Pro)
+      expect(adapter.modelId).toBe(GEMINI_MODELS.PRO_2_5);
     });
 
     it('should use full model ID when not an alias', () => {
@@ -141,18 +141,18 @@ describe('GeminiAdapter', () => {
       expect(adapter.hasCapability(ModelCapability.EXTENDED_THINKING)).toBe(false);
     });
 
-    it('should have extended_thinking for Gemini 3 Pro', () => {
+    it('should have extended_thinking for Gemini 2.5 Pro', () => {
       const adapter = new GeminiAdapter({
         ...validConfig,
-        modelId: 'gemini-3-pro-preview',
+        modelId: 'gemini-2.5-pro',
       });
       expect(adapter.hasCapability(ModelCapability.EXTENDED_THINKING)).toBe(true);
     });
 
-    it('should have extended_thinking for Gemini 3 Flash', () => {
+    it('should have extended_thinking for Gemini 2.5 Flash', () => {
       const adapter = new GeminiAdapter({
         ...validConfig,
-        modelId: 'gemini-3-flash',
+        modelId: 'gemini-2.5-flash',
       });
       expect(adapter.hasCapability(ModelCapability.EXTENDED_THINKING)).toBe(true);
     });
@@ -664,9 +664,9 @@ describe('createGeminiAdapter', () => {
 });
 
 describe('GEMINI_MODELS', () => {
-  it('should have correct Gemini 3 model identifiers', () => {
-    expect(GEMINI_MODELS.PRO_3).toBe('gemini-3-pro');
-    expect(GEMINI_MODELS.FLASH_3).toBe('gemini-3-flash');
+  it('should have correct Gemini 2.5 model identifiers', () => {
+    expect(GEMINI_MODELS.PRO_2_5).toBe('gemini-2.5-pro');
+    expect(GEMINI_MODELS.FLASH_2_5).toBe('gemini-2.5-flash');
   });
 
   it('should have correct Gemini 2.x model identifiers', () => {
@@ -681,10 +681,9 @@ describe('GEMINI_MODELS', () => {
 });
 
 describe('GEMINI_MODEL_ALIASES', () => {
-  it('should map Gemini 3 aliases to full model IDs', () => {
-    expect(GEMINI_MODEL_ALIASES['gemini-3-pro-preview']).toBe(GEMINI_MODELS.PRO_3);
-    expect(GEMINI_MODEL_ALIASES['gemini-3-pro']).toBe(GEMINI_MODELS.PRO_3);
-    expect(GEMINI_MODEL_ALIASES['gemini-3-flash']).toBe(GEMINI_MODELS.FLASH_3);
+  it('should map Gemini 2.5 aliases to full model IDs', () => {
+    expect(GEMINI_MODEL_ALIASES['gemini-2.5-pro']).toBe(GEMINI_MODELS.PRO_2_5);
+    expect(GEMINI_MODEL_ALIASES['gemini-2.5-flash']).toBe(GEMINI_MODELS.FLASH_2_5);
   });
 
   it('should map Gemini 2.x aliases to full model IDs', () => {
@@ -698,7 +697,7 @@ describe('GEMINI_MODEL_ALIASES', () => {
   });
 
   it('should map short aliases to latest versions', () => {
-    expect(GEMINI_MODEL_ALIASES['gemini-flash']).toBe(GEMINI_MODELS.FLASH_3);
-    expect(GEMINI_MODEL_ALIASES['gemini-pro']).toBe(GEMINI_MODELS.PRO_3);
+    expect(GEMINI_MODEL_ALIASES['gemini-flash']).toBe(GEMINI_MODELS.FLASH_2_5);
+    expect(GEMINI_MODEL_ALIASES['gemini-pro']).toBe(GEMINI_MODELS.PRO_2_5);
   });
 });

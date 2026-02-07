@@ -141,7 +141,7 @@ export const ModelCapabilitySchema = z.object({
   cliName: z.enum(CLI_NAMES).optional(),
   /** Short alias used by the CLI (e.g., 'opus' for Claude CLI) */
   cliAlias: z.string().optional(),
-  /** Model name the CLI binary expects (e.g., 'gemini-3-pro') */
+  /** Model name the CLI binary expects (e.g., 'gemini-2.5-pro') */
   cliModelName: z.string().optional(),
 });
 

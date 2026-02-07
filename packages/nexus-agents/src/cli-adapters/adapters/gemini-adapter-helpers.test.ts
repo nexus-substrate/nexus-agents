@@ -57,7 +57,7 @@ describe('getCostPerMillionInput', () => {
   });
 
   it('returns cost for flash model', () => {
-    expect(getCostPerMillionInput('gemini-2.5-flash')).toBe(0.075);
+    expect(getCostPerMillionInput('gemini-2.5-flash')).toBe(0.15);
   });
 
   it('returns default for unknown', () => {

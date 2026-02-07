@@ -12,8 +12,7 @@ import { ModelCapability, getTimeProvider, getRandomProvider } from '../core/ind
  * Supported Gemini model identifiers.
  */
 export const GEMINI_MODELS = {
-  PRO_3: 'gemini-3-pro',
-  FLASH_3: 'gemini-3-flash',
+  PRO_2_5: 'gemini-2.5-pro',
   FLASH_2_5: 'gemini-2.5-flash',
   FLASH_2_0: 'gemini-2.0-flash',
   PRO_1_5: 'gemini-1.5-pro',
@@ -24,26 +23,24 @@ export const GEMINI_MODELS = {
  * Model aliases for convenience.
  */
 export const GEMINI_MODEL_ALIASES: Record<string, string> = {
-  // Gemini 3 aliases
-  'gemini-3-pro': GEMINI_MODELS.PRO_3,
-  'gemini-3-pro-preview': GEMINI_MODELS.PRO_3,
-  'gemini-3-flash': GEMINI_MODELS.FLASH_3,
-  // Gemini 2.x aliases
+  // Gemini 2.5 aliases (current latest)
+  'gemini-2.5-pro': GEMINI_MODELS.PRO_2_5,
   'gemini-2.5-flash': GEMINI_MODELS.FLASH_2_5,
+  // Gemini 2.0 aliases
   'gemini-2.0-flash': GEMINI_MODELS.FLASH_2_0,
   // Gemini 1.5 aliases
   'gemini-1.5-pro': GEMINI_MODELS.PRO_1_5,
   'gemini-1.5-flash': GEMINI_MODELS.FLASH_1_5,
-  // Short aliases (point to latest versions — Gemini 3)
-  'gemini-flash': GEMINI_MODELS.FLASH_3,
-  'gemini-pro': GEMINI_MODELS.PRO_3,
+  // Short aliases (point to latest versions — Gemini 2.5)
+  'gemini-flash': GEMINI_MODELS.FLASH_2_5,
+  'gemini-pro': GEMINI_MODELS.PRO_2_5,
 } as const;
 
 /**
  * Configuration specific to GeminiAdapter.
  */
 export interface GeminiAdapterConfig {
-  /** Model ID (e.g., 'gemini-3-flash' or full model identifier) */
+  /** Model ID (e.g., 'gemini-2.5-flash' or full model identifier) */
   modelId: string;
   /** API key for Google AI API (required) */
   apiKey: string;
@@ -200,7 +197,7 @@ export function getModelCapabilities(modelId: string): readonly ModelCapability[
 
   // Gemini 2.0+, 2.5+, and 3.x models support extended thinking
   const resolvedId = resolveModelId(modelId);
-  if (resolvedId.includes('2.5') || resolvedId.includes('2.0') || resolvedId.includes('gemini-3')) {
+  if (resolvedId.includes('2.5') || resolvedId.includes('2.0')) {
     capabilities.push(ModelCapability.EXTENDED_THINKING);
   }
 
