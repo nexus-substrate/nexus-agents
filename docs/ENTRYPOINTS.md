@@ -313,6 +313,8 @@ nexus-agents hooks stop --check-tasks
 | `research_catalog_review` | Review auto-cataloged research references                | None (local) | Shared bucket |
 | `memory_query`            | Query across all memory backends with unified results    | None (local) | Shared bucket |
 | `memory_stats`            | Memory system statistics dashboard                       | None (local) | Shared bucket |
+| `issue_triage`            | Triage GitHub issue using full security pipeline         | None (local) | Shared bucket |
+| `run_graph_workflow`      | Execute predefined graph workflow with checkpointing     | None (local) | Shared bucket |
 
 **Rate limiting:** All tools share a single token bucket rate limiter (capacity: 100 tokens, refill: 10 tokens/sec). Each tool call consumes one token.
 
@@ -648,6 +650,63 @@ nexus-agents hooks stop --check-tasks
         "description": "Include promotion pipeline stats"
       }
     }
+  }
+}
+```
+
+#### issue_triage
+
+```json
+{
+  "name": "issue_triage",
+  "description": "Triage a GitHub issue using the full security pipeline",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "issueUrl": {
+        "type": "string",
+        "description": "GitHub issue URL (e.g., https://github.com/owner/repo/issues/123)"
+      },
+      "dryRun": {
+        "type": "boolean",
+        "default": true,
+        "description": "If true, returns proposed actions without executing them"
+      }
+    },
+    "required": ["issueUrl"]
+  }
+}
+```
+
+#### run_graph_workflow
+
+```json
+{
+  "name": "run_graph_workflow",
+  "description": "Execute a predefined graph-based workflow with checkpointing, event streaming, and audit trail support",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "workflow": {
+        "type": "string",
+        "description": "Workflow name (e.g., \"echo\", \"pipeline\")"
+      },
+      "inputs": {
+        "type": "object",
+        "description": "Input values for the workflow"
+      },
+      "enableCheckpointing": {
+        "type": "boolean",
+        "default": true,
+        "description": "Enable checkpoint saving between steps"
+      },
+      "enableAuditTrail": {
+        "type": "boolean",
+        "default": false,
+        "description": "Enable audit trail event logging"
+      }
+    },
+    "required": ["workflow"]
   }
 }
 ```
@@ -1178,6 +1237,10 @@ mcp_tools:
     - name: memory_query
       auth: none
     - name: memory_stats
+      auth: none
+    - name: issue_triage
+      auth: none
+    - name: run_graph_workflow
       auth: none
 ```
 
