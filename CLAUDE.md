@@ -68,6 +68,16 @@ correctness > simplicity > performance > cleverness
 
 Produce software with explicit error handling, observable state changes, and no silent failures.
 
+### Development Disciplines
+
+These three principles are **non-negotiable** across all building, reviewing, and architecture work:
+
+**Red/Green TDD** — Write a failing test first (red), then write the minimum code to make it pass (green), then refactor. Never write production code without a corresponding test. Tests define the spec; code satisfies it.
+
+**YAGNI (You Aren't Gonna Need It)** — Do not build for hypothetical future requirements. Implement only what is needed right now. Speculative abstractions, unused parameters, and "just in case" code are banned. If a requirement emerges later, add it then.
+
+**DRY (Don't Repeat Yourself)** — Every piece of knowledge must have a single, unambiguous, authoritative representation. When you see the same logic in two places, extract it. But do not DRY prematurely — two instances is a coincidence, three is a pattern worth extracting.
+
 ### Documentation Style
 
 Write like a technically precise engineer. Be direct, honest, and clear. No marketing fluff.
@@ -215,6 +225,9 @@ After: `RESULT: [what happened]  MATCHES: yes/no  THEREFORE: [conclusion]`
 
 Before completing ANY implementation task:
 
+- [ ] **TDD verified** — tests were written before or alongside production code, not after
+- [ ] **YAGNI enforced** — no speculative code, unused parameters, or "just in case" abstractions
+- [ ] **DRY checked** — no logic duplicated; shared logic extracted (but only when 3+ occurrences)
 - [ ] Names reflect intent (no abbreviations except standard: id, url)
 - [ ] Functions do ONE thing (if "and" in description, split)
 - [ ] Errors handled with timeout/retry where applicable
