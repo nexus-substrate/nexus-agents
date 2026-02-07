@@ -29,3 +29,30 @@ export type {
   OrchestratorErrorCode,
 } from '../core/types/orchestrator.js';
 export { OrchestratorError } from '../core/types/orchestrator.js';
+
+// Graph-based workflow orchestration (Issue #831)
+export {
+  GraphBuilder,
+  executeGraph,
+  overwrite,
+  append,
+  customReducer,
+  START,
+  END,
+  formatCompileError,
+} from './graph/index.js';
+export type {
+  StateReducer,
+  StateFieldSchema,
+  StateSchema,
+  GraphState,
+  NodeHandler,
+  GraphNode,
+  GraphEdge,
+  CompiledGraph,
+  NodeResult,
+  GraphExecutionResult,
+  GraphExecuteOptions,
+  GraphCompileError,
+  CompileResult,
+} from './graph/index.js';
