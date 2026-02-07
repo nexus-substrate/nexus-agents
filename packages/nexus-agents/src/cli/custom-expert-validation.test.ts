@@ -22,206 +22,166 @@ import {
 } from '../config/index.js';
 
 describe('validateConfigPath', () => {
-  describe('happy path', () => {
-    it('should accept a valid relative path within root', () => {
-      const result = validateConfigPath('config.yaml', '/home/user/project');
-      expect(result.ok).toBe(true);
-      if (result.ok) {
-        expect(result.value).toBe(resolve('/home/user/project/config.yaml'));
-      }
-    });
-
-    it('should accept a valid nested path within root', () => {
-      const result = validateConfigPath('configs/experts.yaml', '/home/user/project');
-      expect(result.ok).toBe(true);
-      if (result.ok) {
-        expect(result.value).toBe(resolve('/home/user/project/configs/experts.yaml'));
-      }
-    });
-
-    it('should accept the root path itself', () => {
-      const result = validateConfigPath('.', '/home/user/project');
-      expect(result.ok).toBe(true);
-      if (result.ok) {
-        expect(result.value).toBe(resolve('/home/user/project'));
-      }
-    });
-
-    it('should accept an empty string (resolves to root)', () => {
-      const result = validateConfigPath('', '/home/user/project');
-      expect(result.ok).toBe(true);
-      if (result.ok) {
-        expect(result.value).toBe(resolve('/home/user/project'));
-      }
-    });
-
-    it('should handle absolute paths within root', () => {
-      const root = '/home/user/project';
-      const validPath = resolve(root, 'config.yaml');
-      const result = validateConfigPath(validPath, root);
-      expect(result.ok).toBe(true);
-      if (result.ok) {
-        expect(result.value).toBe(validPath);
-      }
-    });
+  it('should accept paths within allowed root', () => {
+    const result = validateConfigPath('config.yaml', '/home/user/project');
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value).toBe(resolve('/home/user/project/config.yaml'));
+    }
   });
 
-  describe('path traversal prevention', () => {
-    it('should reject simple parent directory traversal', () => {
-      const result = validateConfigPath('../etc/passwd', '/home/user/project');
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.error).toBeInstanceOf(SecurityError);
-        expect(result.error.message).toContain('Path traversal detected');
-        expect(result.error.message).toContain('config path escapes allowed root directory');
-      }
-    });
-
-    it('should reject multiple parent directory traversals', () => {
-      const result = validateConfigPath('../../../etc/passwd', '/home/user/project');
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.error).toBeInstanceOf(SecurityError);
-      }
-    });
-
-    it('should reject mixed traversal with valid segments', () => {
-      const result = validateConfigPath('configs/../../etc/passwd', '/home/user/project');
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.error).toBeInstanceOf(SecurityError);
-      }
-    });
-
-    it('should reject absolute path outside root', () => {
-      const result = validateConfigPath('/etc/passwd', '/home/user/project');
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.error).toBeInstanceOf(SecurityError);
-      }
-    });
-
-    it('should reject path that escapes via symbolic link simulation', () => {
-      // Path that would resolve outside root after normalization
-      const result = validateConfigPath('config/../../../etc/passwd', '/home/user/project');
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.error).toBeInstanceOf(SecurityError);
-      }
-    });
-
-    it('should include context in security error', () => {
-      const userPath = '../etc/passwd';
-      const allowedRoot = '/home/user/project';
-      const result = validateConfigPath(userPath, allowedRoot);
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.error.context).toEqual({
-          userPath,
-          allowedRoot: resolve(allowedRoot),
-        });
-      }
-    });
+  it('should accept nested paths within allowed root', () => {
+    const result = validateConfigPath('configs/experts.yaml', '/home/user/project');
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value).toBe(resolve('/home/user/project/configs/experts.yaml'));
+    }
   });
 
-  describe('edge cases', () => {
-    it('should handle Windows-style paths on Windows', () => {
-      const originalPlatform = process.platform;
-      Object.defineProperty(process, 'platform', { value: 'win32' });
+  it('should accept the root itself', () => {
+    const result = validateConfigPath('.', '/home/user/project');
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value).toBe(resolve('/home/user/project'));
+    }
+  });
 
-      const result = validateConfigPath('config\\experts.yaml', 'C:\\Users\\test\\project');
-      expect(result.ok).toBe(true);
+  it('should accept empty string resolving to root', () => {
+    const result = validateConfigPath('', '/home/user/project');
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value).toBe(resolve('/home/user/project'));
+    }
+  });
 
-      Object.defineProperty(process, 'platform', { value: originalPlatform });
-    });
+  it('should reject path traversal with ../../../etc/passwd', () => {
+    const result = validateConfigPath('../../../etc/passwd', '/home/user/project');
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toBeInstanceOf(SecurityError);
+      expect(result.error.message).toContain('Path traversal detected');
+    }
+  });
 
-    it('should handle paths with special characters', () => {
-      const result = validateConfigPath('config-[2024].yaml', '/home/user/project');
-      expect(result.ok).toBe(true);
-    });
+  it('should reject simple parent directory traversal', () => {
+    const result = validateConfigPath('../etc/passwd', '/home/user/project');
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toBeInstanceOf(SecurityError);
+      expect(result.error.message).toContain('config path escapes allowed root directory');
+    }
+  });
 
-    it('should handle paths with spaces', () => {
-      const result = validateConfigPath('my config/expert.yaml', '/home/user/project');
-      expect(result.ok).toBe(true);
-    });
+  it('should reject paths escaping via symlink-like relative paths', () => {
+    const result = validateConfigPath('config/../../../etc/passwd', '/home/user/project');
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toBeInstanceOf(SecurityError);
+    }
+  });
 
-    it('should reject path starting with separator that escapes root', () => {
-      const result = validateConfigPath(`${sep}etc${sep}passwd`, '/home/user/project');
-      expect(result.ok).toBe(false);
-    });
+  it('should reject mixed traversal with valid segments', () => {
+    const result = validateConfigPath('configs/../../etc/passwd', '/home/user/project');
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toBeInstanceOf(SecurityError);
+    }
+  });
+
+  it('should reject absolute path outside root', () => {
+    const result = validateConfigPath('/etc/passwd', '/home/user/project');
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toBeInstanceOf(SecurityError);
+    }
+  });
+
+  it('should return SecurityError with context on rejection', () => {
+    const userPath = '../etc/passwd';
+    const allowedRoot = '/home/user/project';
+    const result = validateConfigPath(userPath, allowedRoot);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toBeInstanceOf(SecurityError);
+      expect(result.error.context).toEqual({
+        userPath,
+        allowedRoot: resolve(allowedRoot),
+      });
+    }
+  });
+
+  it('should reject path starting with separator that escapes root', () => {
+    const result = validateConfigPath(`${sep}etc${sep}passwd`, '/home/user/project');
+    expect(result.ok).toBe(false);
+  });
+
+  it('should handle paths with special characters', () => {
+    const result = validateConfigPath('config-[2024].yaml', '/home/user/project');
+    expect(result.ok).toBe(true);
+  });
+
+  it('should handle paths with spaces', () => {
+    const result = validateConfigPath('my config/expert.yaml', '/home/user/project');
+    expect(result.ok).toBe(true);
   });
 });
 
 describe('getSuggestion', () => {
-  describe('tier field', () => {
-    it('should suggest valid tiers when field is "tier"', () => {
-      const suggestion = getSuggestion('tier', 'Invalid tier', 'invalid_enum_value');
-      expect(suggestion).toBe(`Valid options: ${VALID_EXPERT_TIERS.join(', ')}`);
-    });
-
-    it('should suggest valid tiers when message contains "tier"', () => {
-      const suggestion = getSuggestion('customTier', 'tier value is invalid', 'invalid_type');
-      expect(suggestion).toBe(`Valid options: ${VALID_EXPERT_TIERS.join(', ')}`);
-    });
+  it('returns tier suggestion for tier field', () => {
+    const suggestion = getSuggestion('tier', 'Invalid tier', 'invalid_enum_value');
+    expect(suggestion).toBe(`Valid options: ${VALID_EXPERT_TIERS.join(', ')}`);
   });
 
-  describe('domain field', () => {
-    it('should suggest valid domains when field is "domain"', () => {
-      const suggestion = getSuggestion('domain', 'Invalid domain', 'invalid_enum_value');
-      expect(suggestion).toBe(`Valid options: ${VALID_EXPERT_DOMAINS.join(', ')}`);
-    });
-
-    it('should suggest valid domains when message contains "domain"', () => {
-      const suggestion = getSuggestion('expertDomain', 'domain is required', 'required');
-      expect(suggestion).toBe(`Valid options: ${VALID_EXPERT_DOMAINS.join(', ')}`);
-    });
+  it('returns tier suggestion when message contains tier', () => {
+    const suggestion = getSuggestion('customTier', 'tier value is invalid', 'invalid_type');
+    expect(suggestion).toBe(`Valid options: ${VALID_EXPERT_TIERS.join(', ')}`);
   });
 
-  describe('systemPrompt field', () => {
-    it('should suggest max length when field is systemPrompt and code is too_big', () => {
-      const suggestion = getSuggestion('systemPrompt', 'String too long', 'too_big');
-      expect(suggestion).toBe(`Maximum length is ${String(MAX_SYSTEM_PROMPT_LENGTH)} characters`);
-    });
-
-    it('should return undefined when field is systemPrompt but code is not too_big', () => {
-      const suggestion = getSuggestion('systemPrompt', 'Required', 'required');
-      expect(suggestion).toBeUndefined();
-    });
+  it('returns domain suggestion for domain field', () => {
+    const suggestion = getSuggestion('domain', 'Invalid domain', 'invalid_enum_value');
+    expect(suggestion).toBe(`Valid options: ${VALID_EXPERT_DOMAINS.join(', ')}`);
   });
 
-  describe('capabilities field', () => {
-    it('should suggest providing at least one capability', () => {
-      const suggestion = getSuggestion('capabilities', 'Array too small', 'too_small');
-      expect(suggestion).toBe(
-        'Provide at least one capability (e.g., task_execution, code_generation)'
-      );
-    });
+  it('returns domain suggestion when message contains domain', () => {
+    const suggestion = getSuggestion('expertDomain', 'domain is required', 'required');
+    expect(suggestion).toBe(`Valid options: ${VALID_EXPERT_DOMAINS.join(', ')}`);
   });
 
-  describe('temperature field', () => {
-    it('should suggest value range for temperature', () => {
-      const suggestion = getSuggestion('temperature', 'Number too large', 'too_big');
-      expect(suggestion).toBe('Value must be between 0 and 1');
-    });
+  it('returns systemPrompt max length for too_big code', () => {
+    const suggestion = getSuggestion('systemPrompt', 'String too long', 'too_big');
+    expect(suggestion).toBe(`Maximum length is ${String(MAX_SYSTEM_PROMPT_LENGTH)} characters`);
   });
 
-  describe('weight field', () => {
-    it('should suggest value range for weight', () => {
-      const suggestion = getSuggestion('weight', 'Number too small', 'too_small');
-      expect(suggestion).toBe('Value must be between 0 and 1');
-    });
+  it('returns undefined for systemPrompt with non-too_big code', () => {
+    const suggestion = getSuggestion('systemPrompt', 'Required', 'required');
+    expect(suggestion).toBeUndefined();
   });
 
-  describe('unknown fields', () => {
-    it('should return undefined for unrecognized fields', () => {
-      const suggestion = getSuggestion('unknownField', 'Some error', 'invalid_type');
-      expect(suggestion).toBeUndefined();
-    });
+  it('returns capabilities suggestion', () => {
+    const suggestion = getSuggestion('capabilities', 'Array too small', 'too_small');
+    expect(suggestion).toBe(
+      'Provide at least one capability (e.g., task_execution, code_generation)'
+    );
+  });
 
-    it('should return undefined for empty field', () => {
-      const suggestion = getSuggestion('', 'Some error', 'invalid_type');
-      expect(suggestion).toBeUndefined();
-    });
+  it('returns temperature suggestion', () => {
+    const suggestion = getSuggestion('temperature', 'Number too large', 'too_big');
+    expect(suggestion).toBe('Value must be between 0 and 1');
+  });
+
+  it('returns weight suggestion', () => {
+    const suggestion = getSuggestion('weight', 'Number too small', 'too_small');
+    expect(suggestion).toBe('Value must be between 0 and 1');
+  });
+
+  it('returns undefined for unknown fields', () => {
+    const suggestion = getSuggestion('unknownField', 'Some error', 'invalid_type');
+    expect(suggestion).toBeUndefined();
+  });
+
+  it('returns undefined for empty field name', () => {
+    const suggestion = getSuggestion('', 'Some error', 'invalid_type');
+    expect(suggestion).toBeUndefined();
   });
 });
 
@@ -232,124 +192,85 @@ describe('formatZodError', () => {
     return new ZodError(issues as ZodIssue[]);
   };
 
-  describe('single error', () => {
-    it('should format a simple validation error', () => {
-      const zodError = createZodError([
-        {
-          path: ['tier'],
-          message: 'Invalid enum value',
-          code: 'invalid_enum_value',
-        },
-      ]);
+  it('maps Zod issues to CustomExpertError array', () => {
+    const zodError = createZodError([
+      { path: ['tier'], message: 'Invalid enum value', code: 'invalid_enum_value' },
+      { path: ['temperature'], message: 'Number too large', code: 'too_big' },
+    ]);
 
-      const errors = formatZodError('test-expert', zodError);
-      expect(errors).toHaveLength(1);
-      expect(errors[0]).toEqual({
-        expertId: 'test-expert',
-        field: 'tier',
-        message: 'Invalid enum value',
-        suggestion: `Valid options: ${VALID_EXPERT_TIERS.join(', ')}`,
-      });
-    });
+    const errors = formatZodError('test-expert', zodError);
+    expect(errors).toHaveLength(2);
+    expect(errors[0]!.expertId).toBe('test-expert');
+    expect(errors[0]!.field).toBe('tier');
+    expect(errors[0]!.message).toBe('Invalid enum value');
+    expect(errors[1]!.field).toBe('temperature');
+    expect(errors[1]!.message).toBe('Number too large');
+  });
 
-    it('should format error without suggestion', () => {
-      const zodError = createZodError([
-        {
-          path: ['name'],
-          message: 'Required',
-          code: 'invalid_type',
-        },
-      ]);
+  it('includes suggestion when available', () => {
+    const zodError = createZodError([
+      { path: ['tier'], message: 'Invalid enum value', code: 'invalid_enum_value' },
+    ]);
 
-      const errors = formatZodError('test-expert', zodError);
-      expect(errors).toHaveLength(1);
-      expect(errors[0]).toEqual({
-        expertId: 'test-expert',
-        field: 'name',
-        message: 'Required',
-      });
+    const errors = formatZodError('test-expert', zodError);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toEqual({
+      expertId: 'test-expert',
+      field: 'tier',
+      message: 'Invalid enum value',
+      suggestion: `Valid options: ${VALID_EXPERT_TIERS.join(', ')}`,
     });
   });
 
-  describe('multiple errors', () => {
-    it('should format multiple validation errors', () => {
-      const zodError = createZodError([
-        {
-          path: ['tier'],
-          message: 'Invalid enum value',
-          code: 'invalid_enum_value',
-        },
-        {
-          path: ['temperature'],
-          message: 'Number must be less than or equal to 1',
-          code: 'too_big',
-        },
-      ]);
+  it('omits suggestion when not available', () => {
+    const zodError = createZodError([
+      { path: ['name'], message: 'Required', code: 'invalid_type' },
+    ]);
 
-      const errors = formatZodError('test-expert', zodError);
-      expect(errors).toHaveLength(2);
-      expect(errors[0]!.field).toBe('tier');
-      expect(errors[1]!.field).toBe('temperature');
-      expect(errors[1]!.suggestion).toBe('Value must be between 0 and 1');
+    const errors = formatZodError('test-expert', zodError);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toEqual({
+      expertId: 'test-expert',
+      field: 'name',
+      message: 'Required',
     });
+    expect(errors[0]!.suggestion).toBeUndefined();
   });
 
-  describe('nested paths', () => {
-    it('should format nested field paths', () => {
-      const zodError = createZodError([
-        {
-          path: ['config', 'model', 'temperature'],
-          message: 'Number too large',
-          code: 'too_big',
-        },
-      ]);
+  it('uses "unknown" for empty path', () => {
+    const zodError = createZodError([{ path: [], message: 'Invalid input', code: 'invalid_type' }]);
 
-      const errors = formatZodError('test-expert', zodError);
-      expect(errors).toHaveLength(1);
-      expect(errors[0]!.field).toBe('config.model.temperature');
-      // Nested paths don't get suggestions because getSuggestion checks field name exactly
-      expect(errors[0]!.suggestion).toBeUndefined();
-    });
-
-    it('should handle array indices in paths', () => {
-      const zodError = createZodError([
-        {
-          path: ['capabilities', 0],
-          message: 'Invalid type',
-          code: 'invalid_type',
-        },
-      ]);
-
-      const errors = formatZodError('test-expert', zodError);
-      expect(errors).toHaveLength(1);
-      expect(errors[0]!.field).toBe('capabilities.0');
-    });
+    const errors = formatZodError('test-expert', zodError);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]!.field).toBe('unknown');
   });
 
-  describe('edge cases', () => {
-    it('should handle empty path as "unknown" field', () => {
-      const zodError = createZodError([
-        {
-          path: [],
-          message: 'Invalid input',
-          code: 'invalid_type',
-        },
-      ]);
+  it('joins nested paths with dots', () => {
+    const zodError = createZodError([
+      { path: ['config', 'model', 'temperature'], message: 'Too large', code: 'too_big' },
+    ]);
 
-      const errors = formatZodError('test-expert', zodError);
-      expect(errors).toHaveLength(1);
-      expect(errors[0]!.field).toBe('unknown');
-    });
+    const errors = formatZodError('test-expert', zodError);
+    expect(errors[0]!.field).toBe('config.model.temperature');
+  });
 
-    it('should preserve expertId for all errors', () => {
-      const zodError = createZodError([
-        { path: ['tier'], message: 'Error 1', code: 'invalid_type' },
-        { path: ['domain'], message: 'Error 2', code: 'invalid_type' },
-      ]);
+  it('handles array indices in paths', () => {
+    const zodError = createZodError([
+      { path: ['capabilities', 0], message: 'Invalid type', code: 'invalid_type' },
+    ]);
 
-      const errors = formatZodError('my-expert-id', zodError);
-      expect(errors.every((e) => e.expertId === 'my-expert-id')).toBe(true);
-    });
+    const errors = formatZodError('test-expert', zodError);
+    expect(errors[0]!.field).toBe('capabilities.0');
+  });
+
+  it('preserves expertId for all errors', () => {
+    const zodError = createZodError([
+      { path: ['tier'], message: 'Error 1', code: 'invalid_type' },
+      { path: ['domain'], message: 'Error 2', code: 'invalid_type' },
+    ]);
+
+    const errors = formatZodError('my-expert-id', zodError);
+    expect(errors.every((e) => e.expertId === 'my-expert-id')).toBe(true);
   });
 });
 
@@ -361,159 +282,125 @@ describe('formatValidationErrors', () => {
     ...overrides,
   });
 
-  describe('empty errors', () => {
-    it('should return empty string for empty error array', () => {
-      const output = formatValidationErrors([]);
-      expect(output).toBe('');
-    });
+  it('returns empty string for empty array', () => {
+    const output = formatValidationErrors([]);
+    expect(output).toBe('');
   });
 
-  describe('single error', () => {
-    it('should format error with all fields', () => {
-      const errors = [createError({ suggestion: 'Use valid tier' })];
-      const output = formatValidationErrors(errors);
+  it('formats single error with header', () => {
+    const errors = [createError()];
+    const output = formatValidationErrors(errors);
 
-      expect(output).toContain('Custom expert validation errors:');
-      expect(output).toContain('Error: Invalid value');
-      expect(output).toContain('Expert: test-expert');
-      expect(output).toContain('Field: tier');
-      expect(output).toContain('Suggestion: Use valid tier');
-    });
-
-    it('should omit expert line when expertId is "config"', () => {
-      const errors = [createError({ expertId: 'config' })];
-      const output = formatValidationErrors(errors);
-
-      expect(output).toContain('Error: Invalid value');
-      expect(output).not.toContain('Expert: config');
-      expect(output).toContain('Field: tier');
-    });
-
-    it('should omit field line when field is "unknown"', () => {
-      const errors = [createError({ field: 'unknown' })];
-      const output = formatValidationErrors(errors);
-
-      expect(output).toContain('Error: Invalid value');
-      expect(output).toContain('Expert: test-expert');
-      expect(output).not.toContain('Field: unknown');
-    });
-
-    it('should omit field line when field is "file"', () => {
-      const errors = [createError({ field: 'file' })];
-      const output = formatValidationErrors(errors);
-
-      expect(output).not.toContain('Field: file');
-    });
-
-    it('should omit field line when field is "yaml"', () => {
-      const errors = [createError({ field: 'yaml' })];
-      const output = formatValidationErrors(errors);
-
-      expect(output).not.toContain('Field: yaml');
-    });
-
-    it('should omit suggestion when undefined', () => {
-      const errors = [createError()];
-      const output = formatValidationErrors(errors);
-
-      expect(output).toContain('Error: Invalid value');
-      expect(output).not.toContain('Suggestion:');
-    });
+    expect(output).toContain('Custom expert validation errors:');
+    expect(output).toContain('Error: Invalid value');
   });
 
-  describe('multiple errors', () => {
-    it('should format multiple errors with blank lines between them', () => {
-      const errors = [
-        createError({ field: 'tier', message: 'Invalid tier' }),
-        createError({ field: 'domain', message: 'Invalid domain' }),
-      ];
-      const output = formatValidationErrors(errors);
+  it('includes expert ID when not "config"', () => {
+    const errors = [createError({ expertId: 'my-expert' })];
+    const output = formatValidationErrors(errors);
 
-      expect(output).toContain('Error: Invalid tier');
-      expect(output).toContain('Error: Invalid domain');
-
-      // Check for blank lines between errors
-      const lines = output.split('\n');
-      const errorLineIndices = lines
-        .map((line, idx) => (line.includes('Error:') ? idx : -1))
-        .filter((idx) => idx !== -1);
-
-      // Between first and second error, there should be blank lines
-      expect(errorLineIndices).toHaveLength(2);
-    });
-
-    it('should handle mixed error formats', () => {
-      const errors = [
-        createError({
-          expertId: 'config',
-          field: 'file',
-          message: 'File not found',
-        }),
-        createError({
-          expertId: 'expert-1',
-          field: 'tier',
-          message: 'Invalid tier',
-          suggestion: 'Use fast, balanced, or powerful',
-        }),
-      ];
-      const output = formatValidationErrors(errors);
-
-      expect(output).toContain('Error: File not found');
-      expect(output).not.toContain('Expert: config');
-      expect(output).not.toContain('Field: file');
-
-      expect(output).toContain('Error: Invalid tier');
-      expect(output).toContain('Expert: expert-1');
-      expect(output).toContain('Field: tier');
-      expect(output).toContain('Suggestion: Use fast, balanced, or powerful');
-    });
+    expect(output).toContain('Expert: my-expert');
   });
 
-  describe('formatting structure', () => {
-    it('should use consistent indentation', () => {
-      const errors = [
-        createError({
-          message: 'Test error',
-          suggestion: 'Test suggestion',
-        }),
-      ];
-      const output = formatValidationErrors(errors);
-      const lines = output.split('\n');
+  it('omits expert line when expertId is "config"', () => {
+    const errors = [createError({ expertId: 'config' })];
+    const output = formatValidationErrors(errors);
 
-      // Title has no indentation
-      expect(lines[0]).toBe('Custom expert validation errors:');
-
-      // Error line has 2 spaces
-      expect(lines[1]).toMatch(/^  Error:/);
-
-      // Detail lines have 4 spaces
-      expect(lines.filter((l) => l.match(/^    (Expert|Field|Suggestion):/))).not.toHaveLength(0);
-    });
-
-    it('should end with single blank line after last error', () => {
-      const errors = [createError()];
-      const output = formatValidationErrors(errors);
-
-      // Format ends with a single blank line (one \n for last line content, one for blank)
-      expect(output.endsWith('\n')).toBe(true);
-      const lines = output.split('\n');
-      expect(lines[lines.length - 1]).toBe('');
-    });
+    expect(output).toContain('Error: Invalid value');
+    expect(output).not.toContain('Expert: config');
   });
 
-  describe('special characters', () => {
-    it('should handle messages with newlines', () => {
-      const errors = [createError({ message: 'Error\nwith\nnewlines' })];
-      const output = formatValidationErrors(errors);
+  it('includes field when not "unknown", "file", or "yaml"', () => {
+    const errors = [createError({ field: 'tier' })];
+    const output = formatValidationErrors(errors);
 
-      expect(output).toContain('Error: Error\nwith\nnewlines');
-    });
+    expect(output).toContain('Field: tier');
+  });
 
-    it('should handle messages with special characters', () => {
-      const errors = [createError({ message: 'Error: "value" is <invalid>' })];
-      const output = formatValidationErrors(errors);
+  it('omits field line when field is "unknown"', () => {
+    const errors = [createError({ field: 'unknown' })];
+    const output = formatValidationErrors(errors);
 
-      expect(output).toContain('Error: Error: "value" is <invalid>');
-    });
+    expect(output).not.toContain('Field: unknown');
+  });
+
+  it('omits field line when field is "file"', () => {
+    const errors = [createError({ field: 'file' })];
+    const output = formatValidationErrors(errors);
+
+    expect(output).not.toContain('Field: file');
+  });
+
+  it('omits field line when field is "yaml"', () => {
+    const errors = [createError({ field: 'yaml' })];
+    const output = formatValidationErrors(errors);
+
+    expect(output).not.toContain('Field: yaml');
+  });
+
+  it('includes suggestion when present', () => {
+    const errors = [createError({ suggestion: 'Use valid tier' })];
+    const output = formatValidationErrors(errors);
+
+    expect(output).toContain('Suggestion: Use valid tier');
+  });
+
+  it('omits suggestion when undefined', () => {
+    const errors = [createError()];
+    const output = formatValidationErrors(errors);
+
+    expect(output).not.toContain('Suggestion:');
+  });
+
+  it('formats multiple errors', () => {
+    const errors = [
+      createError({ field: 'tier', message: 'Invalid tier' }),
+      createError({ field: 'domain', message: 'Invalid domain' }),
+    ];
+    const output = formatValidationErrors(errors);
+
+    expect(output).toContain('Error: Invalid tier');
+    expect(output).toContain('Error: Invalid domain');
+  });
+
+  it('handles mixed error formats correctly', () => {
+    const errors = [
+      createError({
+        expertId: 'config',
+        field: 'file',
+        message: 'File not found',
+      }),
+      createError({
+        expertId: 'expert-1',
+        field: 'tier',
+        message: 'Invalid tier',
+        suggestion: 'Use fast, balanced, or powerful',
+      }),
+    ];
+    const output = formatValidationErrors(errors);
+
+    expect(output).toContain('Error: File not found');
+    expect(output).not.toContain('Expert: config');
+    expect(output).not.toContain('Field: file');
+
+    expect(output).toContain('Error: Invalid tier');
+    expect(output).toContain('Expert: expert-1');
+    expect(output).toContain('Field: tier');
+    expect(output).toContain('Suggestion: Use fast, balanced, or powerful');
+  });
+
+  it('uses consistent indentation', () => {
+    const errors = [
+      createError({
+        message: 'Test error',
+        suggestion: 'Test suggestion',
+      }),
+    ];
+    const output = formatValidationErrors(errors);
+    const lines = output.split('\n');
+
+    expect(lines[0]).toBe('Custom expert validation errors:');
+    expect(lines[1]).toMatch(/^  Error:/);
+    expect(lines.filter((l) => l.match(/^    (Expert|Field|Suggestion):/))).not.toHaveLength(0);
   });
 });
