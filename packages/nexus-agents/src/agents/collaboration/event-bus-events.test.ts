@@ -50,7 +50,7 @@ function makeTaskResult(): TaskResult {
   return {
     taskId: 'task-1',
     output: 'test output',
-    metadata: { tokensUsed: 150, executionTimeMs: 100, toolsUsed: [] },
+    metadata: { tokensUsed: 150, durationMs: 100, toolsUsed: [], model: 'test-model' },
   };
 }
 

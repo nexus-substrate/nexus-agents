@@ -254,10 +254,15 @@ describe('ConsensusProtocol', () => {
       const failingAgent = {
         id: 'failing-agent',
         role: 'custom' as const,
+        state: 'idle' as const,
+        capabilities: [] as string[],
         execute: vi.fn(() => Promise.resolve(err(new AgentError('Execution failed')))),
+        handleMessage: vi.fn(() =>
+          Promise.resolve(ok({ messageId: 'msg', status: 'completed' as const, data: {} }))
+        ),
         initialize: vi.fn(() => Promise.resolve(ok(undefined))),
         cleanup: vi.fn(() => Promise.resolve(ok(undefined))),
-      };
+      } as unknown as IAgent;
 
       const agents = new Map<string, IAgent>([
         ['expert-1', createMockAgent('task-1', { decision: 'approve', reasoning: 'Good' })],
@@ -280,24 +285,39 @@ describe('ConsensusProtocol', () => {
       const failingAgent1 = {
         id: 'failing-agent-1',
         role: 'custom' as const,
+        state: 'idle' as const,
+        capabilities: [] as string[],
         execute: vi.fn(() => Promise.resolve(err(new AgentError('Execution failed')))),
+        handleMessage: vi.fn(() =>
+          Promise.resolve(ok({ messageId: 'msg', status: 'completed' as const, data: {} }))
+        ),
         initialize: vi.fn(() => Promise.resolve(ok(undefined))),
         cleanup: vi.fn(() => Promise.resolve(ok(undefined))),
-      };
+      } as unknown as IAgent;
       const failingAgent2 = {
         id: 'failing-agent-2',
         role: 'custom' as const,
+        state: 'idle' as const,
+        capabilities: [] as string[],
         execute: vi.fn(() => Promise.resolve(err(new AgentError('Execution failed')))),
+        handleMessage: vi.fn(() =>
+          Promise.resolve(ok({ messageId: 'msg', status: 'completed' as const, data: {} }))
+        ),
         initialize: vi.fn(() => Promise.resolve(ok(undefined))),
         cleanup: vi.fn(() => Promise.resolve(ok(undefined))),
-      };
+      } as unknown as IAgent;
       const failingAgent3 = {
         id: 'failing-agent-3',
         role: 'custom' as const,
+        state: 'idle' as const,
+        capabilities: [] as string[],
         execute: vi.fn(() => Promise.resolve(err(new AgentError('Execution failed')))),
+        handleMessage: vi.fn(() =>
+          Promise.resolve(ok({ messageId: 'msg', status: 'completed' as const, data: {} }))
+        ),
         initialize: vi.fn(() => Promise.resolve(ok(undefined))),
         cleanup: vi.fn(() => Promise.resolve(ok(undefined))),
-      };
+      } as unknown as IAgent;
 
       const agents = new Map<string, IAgent>([
         ['expert-1', failingAgent1],
@@ -319,6 +339,8 @@ describe('ConsensusProtocol', () => {
       const slowAgent = {
         id: 'slow-agent',
         role: 'custom' as const,
+        state: 'idle' as const,
+        capabilities: [] as string[],
         execute: vi.fn(() => {
           // Check if protocol was cancelled
           if (cancelledDuringExecution) {
@@ -328,9 +350,12 @@ describe('ConsensusProtocol', () => {
             ok(createTestResult('task-1', { decision: 'approve', reasoning: 'Good' }))
           );
         }),
+        handleMessage: vi.fn(() =>
+          Promise.resolve(ok({ messageId: 'msg', status: 'completed' as const, data: {} }))
+        ),
         initialize: vi.fn(() => Promise.resolve(ok(undefined))),
         cleanup: vi.fn(() => Promise.resolve(ok(undefined))),
-      };
+      } as unknown as IAgent;
 
       const agents = new Map<string, IAgent>([
         ['expert-1', slowAgent],

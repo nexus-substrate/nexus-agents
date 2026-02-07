@@ -140,6 +140,7 @@ describe('compileSpecToGraph with custom handler factory', () => {
       description: 'Build API',
       complexity: 'simple' as const,
       capabilities: [],
+      dependsOn: [],
       sourceRequirement: 'Build API',
     };
     const handler = createDryRunHandler(node);

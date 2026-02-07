@@ -73,7 +73,7 @@ describe('setup-environment functions', () => {
       });
 
       mockReadFileSync.mockReturnValue('invalid json');
-      expect(setupHelpers.detectMcpConfig('/home/user/.claude/mcp.json').hasNexusAgents).toBe(
+      expect(setupHelpers.detectMcpConfig('/home/user/.claude/mcp.json')!.hasNexusAgents).toBe(
         false
       );
     });

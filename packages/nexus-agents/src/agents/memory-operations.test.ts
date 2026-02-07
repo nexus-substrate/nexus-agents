@@ -281,7 +281,7 @@ describe('loadRelevantTypedMemories', () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.value).toHaveLength(1);
-      expect(result.value[0].id).toBe('mem-1');
+      expect(result.value[0]!.id).toBe('mem-1');
     }
     expect(typedMemory.filterByRelevance).toHaveBeenCalledWith('code_expert', 10);
   });

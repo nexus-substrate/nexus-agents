@@ -52,30 +52,37 @@ vi.mock('../testing/memory-benchmark.js', () => ({
 // Test Helpers
 // ============================================================================
 
-function createMockArgs(overrides: Partial<ParsedCliArgs> = {}): ParsedCliArgs {
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+function createMockArgs(overrides: Record<string, unknown> = {}) {
   return {
     command: 'memory-benchmark',
     subcommand: undefined,
     positionals: [],
     options: {},
-    flags: {},
     ...overrides,
-  };
+  } as unknown as ParsedCliArgs;
 }
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 function createMockBenchmarkResult() {
   return {
-    recall_at_5: 0.85,
-    precision_at_5: 0.75,
+    recallAtK: { 5: 0.85 },
+    precisionAtK: { 5: 0.75 },
     mrr: 0.7,
-    latency_p95_ms: 35,
-    coherence_score: 0.95,
-    growth_rate_bytes_per_op: 1500,
-    decay_consistency_score: 0.97,
-    promotion_retention_rate: 0.92,
-    decay_regret_score: 0.2,
-    timestamp: '2026-02-06T12:00:00Z',
+    latencyP50Ms: 20,
+    latencyP95Ms: 35,
+    latencyP99Ms: 50,
+    storageBytes: 10240,
+    entryCount: 100,
+    coherenceScore: 0.95,
+    timestamp: new Date('2026-02-06T12:00:00Z'),
+    durationMs: 500,
+    avgBytesPerEntry: 102,
+    orphanedRefCount: 0,
+    growthRateBytesPerOp: 1500,
+    decayConsistencyScore: 0.97,
+    promotionRetentionRate: 0.92,
+    decayRegretScore: 0.2,
   };
 }
 
@@ -84,8 +91,8 @@ function createMockBenchmarkResult() {
 // ============================================================================
 
 describe('memory-benchmark-command', () => {
-  let stdoutSpy: ReturnType<typeof vi.spyOn>;
-  let stderrSpy: ReturnType<typeof vi.spyOn>;
+  let stdoutSpy: { mockRestore: () => void; mock: { calls: unknown[][] } };
+  let stderrSpy: { mockRestore: () => void; mock: { calls: unknown[][] } };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -94,7 +101,7 @@ describe('memory-benchmark-command', () => {
     process.exitCode = 0;
 
     vi.mocked(generateSyntheticTestCases).mockImplementation(() =>
-      Promise.resolve([{ query: 'test', relevantKeys: ['key1'] }])
+      Promise.resolve([{ query: 'test', relevantKeys: new Set(['key1']) }])
     );
     vi.mocked(runMemoryBenchmark).mockImplementation(() =>
       Promise.resolve(createMockBenchmarkResult())
@@ -165,8 +172,8 @@ describe('memory-benchmark-command', () => {
 
       await handleMemoryBenchmarkCommand(args);
 
-      const jsonOutput = stdoutSpy.mock.calls.find((call) =>
-        String(call[0]).includes('"recall_at_5"')
+      const jsonOutput = stdoutSpy.mock.calls.find((call: unknown[]) =>
+        String(call[0]).includes('"recallAtK"')
       );
       expect(jsonOutput).toBeDefined();
       expect(vi.mocked(formatBenchmarkResult)).not.toHaveBeenCalled();
@@ -257,9 +264,9 @@ describe('memory-benchmark-command', () => {
 
       await handleMemoryBenchmarkCommand(args);
 
-      const calls = stdoutSpy.mock.calls.map((call) => String(call[0]));
-      const hasHeader = calls.some((c) => c.includes('nexus-agents memory-benchmark'));
-      const hasFooter = calls.some((c) => c.includes('Total time'));
+      const calls = stdoutSpy.mock.calls.map((call: unknown[]) => String(call[0]));
+      const hasHeader = calls.some((c: string) => c.includes('nexus-agents memory-benchmark'));
+      const hasFooter = calls.some((c: string) => c.includes('Total time'));
 
       expect(hasHeader).toBe(false);
       expect(hasFooter).toBe(false);
@@ -311,7 +318,7 @@ describe('memory-benchmark-command', () => {
 
       await handleMemoryBenchmarkCommand(args);
 
-      const backend = vi.mocked(generateSyntheticTestCases).mock.calls[0][0];
+      const backend = vi.mocked(generateSyntheticTestCases).mock.calls[0]![0];
       expect(backend).toHaveProperty('store');
       expect(backend).toHaveProperty('retrieve');
       expect(backend).toHaveProperty('search');
@@ -323,12 +330,12 @@ describe('memory-benchmark-command', () => {
 
       await handleMemoryBenchmarkCommand(args);
 
-      const backend = vi.mocked(generateSyntheticTestCases).mock.calls[0][0];
+      const backend = vi.mocked(generateSyntheticTestCases).mock.calls[0]![0];
 
       // Test store
       const storeResult = await backend.store('key1', 'value1', {
         tags: [],
-        importance: 1,
+        importance: 'low' as const,
       });
       expect(storeResult.ok).toBe(true);
 
@@ -356,7 +363,7 @@ describe('memory-benchmark-command', () => {
 
       await handleMemoryBenchmarkCommand(args);
 
-      const backend = vi.mocked(generateSyntheticTestCases).mock.calls[0][0];
+      const backend = vi.mocked(generateSyntheticTestCases).mock.calls[0]![0];
       const retrieveResult = await backend.retrieve('nonexistent');
 
       expect(retrieveResult.ok).toBe(false);
@@ -367,12 +374,12 @@ describe('memory-benchmark-command', () => {
 
       await handleMemoryBenchmarkCommand(args);
 
-      const backend = vi.mocked(generateSyntheticTestCases).mock.calls[0][0];
+      const backend = vi.mocked(generateSyntheticTestCases).mock.calls[0]![0];
 
       // Store multiple entries
-      await backend.store('key1', 'test value 1', { tags: [], importance: 1 });
-      await backend.store('key2', 'test value 2', { tags: [], importance: 1 });
-      await backend.store('key3', 'test value 3', { tags: [], importance: 1 });
+      await backend.store('key1', 'test value 1', { tags: [], importance: 'low' as const });
+      await backend.store('key2', 'test value 2', { tags: [], importance: 'low' as const });
+      await backend.store('key3', 'test value 3', { tags: [], importance: 'low' as const });
 
       const searchResult = await backend.search('test', 2);
       expect(searchResult.ok).toBe(true);

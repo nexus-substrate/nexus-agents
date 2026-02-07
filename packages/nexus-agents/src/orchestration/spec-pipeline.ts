@@ -12,7 +12,7 @@ import type { Result } from '../core/index.js';
 import { ok, err } from '../core/index.js';
 import { parseSpec } from './spec-parser.js';
 import { decomposeSpec } from './spec-decomposer.js';
-import { GraphBuilder, START, END, append } from './graph/index.js';
+import { GraphBuilder, START, END, append, formatCompileError } from './graph/index.js';
 import type { CompiledGraph, GraphState } from './graph/index.js';
 import type { SubtaskNode } from './spec-decomposer-types.js';
 import type { PipelineError, CompileOptions, NodeHandlerFactory } from './spec-pipeline-types.js';
@@ -86,8 +86,7 @@ export function compileSpecToGraph(
 
   const compiled = builder.compile();
   if (!compiled.ok) {
-    const compileError: { message: string } = compiled.error;
-    return err({ message: compileError.message, stage: 'compile' });
+    return err({ message: formatCompileError(compiled.error), stage: 'compile' });
   }
 
   return ok(compiled.value);

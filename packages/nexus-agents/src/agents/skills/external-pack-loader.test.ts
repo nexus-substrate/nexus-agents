@@ -20,6 +20,8 @@ const createMockLogger = (): ILogger => ({
   info: vi.fn(),
   warn: vi.fn(),
   error: vi.fn(),
+  child: vi.fn().mockReturnThis(),
+  setLevel: vi.fn(),
 });
 
 // Test fixtures directory
@@ -233,7 +235,7 @@ describe('loadExternalPack', () => {
       expect(result.value.packName).toBe('valid-pack');
       expect(result.value.skillCount).toBe(1);
       expect(result.value.skills).toHaveLength(1);
-      expect(result.value.skills[0].name).toBe('test-skill');
+      expect(result.value.skills[0]!.name).toBe('test-skill');
     }
   });
 
@@ -480,8 +482,8 @@ describe('loadAllExternalPacks', () => {
 
     expect(result.loaded).toHaveLength(2);
     expect(result.errors).toHaveLength(0);
-    expect(result.loaded[0].skillCount).toBe(0);
-    expect(result.loaded[1].skillCount).toBe(0);
+    expect(result.loaded[0]!.skillCount).toBe(0);
+    expect(result.loaded[1]!.skillCount).toBe(0);
   });
 
   it('should separate loaded packs and errors', async () => {
@@ -515,8 +517,8 @@ describe('loadAllExternalPacks', () => {
 
     expect(result.loaded).toHaveLength(1);
     expect(result.errors).toHaveLength(1);
-    expect(result.loaded[0].packName).toBe('valid');
-    expect(result.errors[0].packName).toBe('failing');
+    expect(result.loaded[0]!.packName).toBe('valid');
+    expect(result.errors[0]!.packName).toBe('failing');
     expect(mockLogger.warn).toHaveBeenCalledWith('Failed to load external pack', {
       name: 'failing',
       error: expect.stringContaining('Failed to load pack'),
@@ -588,8 +590,8 @@ describe('loadAllExternalPacks', () => {
       errors: 0,
       totalSkills: 3,
     });
-    expect(result.loaded[0].skillCount).toBe(2);
-    expect(result.loaded[1].skillCount).toBe(1);
+    expect(result.loaded[0]!.skillCount).toBe(2);
+    expect(result.loaded[1]!.skillCount).toBe(1);
   });
 
   it('should log completion summary with correct counts', async () => {

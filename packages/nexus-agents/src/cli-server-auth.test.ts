@@ -38,7 +38,9 @@ describe('cli-server-auth', () => {
       warn: vi.fn(),
       error: vi.fn(),
       debug: vi.fn(),
-    };
+      child: vi.fn(),
+      setLevel: vi.fn(),
+    } as unknown as ILogger;
     mockHandler = {
       isEnabled: vi.fn(),
       hasToken: vi.fn(),

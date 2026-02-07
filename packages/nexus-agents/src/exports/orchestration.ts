@@ -80,7 +80,7 @@ export type {
   TimeConstraint,
   QualityRequirement,
   TaskSignals,
-  RoutingDecision,
+  RoutingDecision as WorkflowRoutingDecision,
   WorkflowRouterOptions,
   PatternOutcome,
   PatternMetrics,
@@ -125,7 +125,6 @@ export { compileSpecToGraph, createDryRunHandler } from '../orchestration/index.
 export type {
   PipelineError,
   PipelineStage,
-  NodeHandler,
   NodeHandlerFactory,
   CompileOptions,
 } from '../orchestration/index.js';
@@ -154,5 +153,5 @@ export type {
   CriterionFailure,
   ImprovementSuggestion,
   FailureType,
-  AnalysisError,
+  AnalysisError as FailureAnalysisError,
 } from '../orchestration/index.js';

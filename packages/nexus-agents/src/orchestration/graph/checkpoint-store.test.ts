@@ -22,7 +22,7 @@ function makeCheckpoint(overrides: Partial<Checkpoint> = {}): Checkpoint {
     completedResults: overrides.completedResults ?? [
       { nodeId: 'nodeA', stateUpdates: { value: 42 }, durationMs: 10, status: 'success' },
     ],
-    metadata: overrides.metadata,
+    ...(overrides.metadata !== undefined ? { metadata: overrides.metadata } : {}),
   });
 }
 

@@ -148,6 +148,9 @@ describe('printStatus', () => {
   beforeEach(() => {
     vi.spyOn(coreModule, 'getTimeProvider').mockReturnValue({
       now: () => new Date('2024-01-15T10:05:30Z').getTime(),
+      nowIso: () => '2024-01-15T10:05:30.000Z',
+      nowDate: () => new Date('2024-01-15T10:05:30Z'),
+      nowDateString: () => '2024-01-15',
     });
   });
 
@@ -200,6 +203,9 @@ describe('printStatus', () => {
   it('handles zero uptime', () => {
     vi.spyOn(coreModule, 'getTimeProvider').mockReturnValue({
       now: () => new Date('2024-01-15T10:00:00Z').getTime(),
+      nowIso: () => '2024-01-15T10:00:00.000Z',
+      nowDate: () => new Date('2024-01-15T10:00:00Z'),
+      nowDateString: () => '2024-01-15',
     });
     const session = createMockSession();
     printStatus(session);
@@ -210,6 +216,9 @@ describe('printStatus', () => {
   it('handles uptime over 60 minutes', () => {
     vi.spyOn(coreModule, 'getTimeProvider').mockReturnValue({
       now: () => new Date('2024-01-15T11:30:45Z').getTime(),
+      nowIso: () => '2024-01-15T11:30:45.000Z',
+      nowDate: () => new Date('2024-01-15T11:30:45Z'),
+      nowDateString: () => '2024-01-15',
     });
     const session = createMockSession();
     printStatus(session);

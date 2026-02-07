@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { initializeSkillLibrary, getSkillLibrary, resetSkillLibrary } from './cli-server-skills.js';
 import type { ILogger } from './core/index.js';
+import type { SkillLibraryConfig } from './config/index.js';
 
 vi.mock('./agents/skills/skill-library.js', () => ({
   createSkillLibrary: vi.fn(() => ({
@@ -41,7 +42,7 @@ describe('cli-server-skills', () => {
 
     it('should not initialize when disabled', async () => {
       await initializeSkillLibrary({
-        skillsConfig: { enabled: false },
+        skillsConfig: { enabled: false } as SkillLibraryConfig,
         logger: createMockLogger(),
       });
       expect(getSkillLibrary()).toBeUndefined();
@@ -56,10 +57,15 @@ describe('cli-server-skills', () => {
     it('should load external packs when configured', async () => {
       const { loadAllExternalPacks } = await import('./agents/skills/external-pack-loader.js');
       await initializeSkillLibrary({
-        skillsConfig: { externalPacks: ['pack1'] },
+        skillsConfig: {
+          externalPacks: [{ name: 'pack1', enabled: true, source: 'pack1' }],
+        } as SkillLibraryConfig,
         logger: createMockLogger(),
       });
-      expect(loadAllExternalPacks).toHaveBeenCalledWith(['pack1'], expect.anything());
+      expect(loadAllExternalPacks).toHaveBeenCalledWith(
+        [{ name: 'pack1', enabled: true, source: 'pack1' }],
+        expect.anything()
+      );
     });
 
     it('should not load external packs when not configured', async () => {
@@ -88,7 +94,7 @@ describe('cli-server-skills', () => {
     it('should return library when initialized', async () => {
       await initializeSkillLibrary({ logger: createMockLogger() });
       expect(getSkillLibrary()).toBeDefined();
-      expect(getSkillLibrary()?.id).toBe('skill-library');
+      expect((getSkillLibrary() as unknown as { id: string })?.id).toBe('skill-library');
     });
   });
 

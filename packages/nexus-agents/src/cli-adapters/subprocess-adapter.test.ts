@@ -56,10 +56,13 @@ function createMockChildProcess() {
  * Concrete test implementation of SubprocessCliAdapter
  */
 class TestSubprocessAdapter extends SubprocessCliAdapter {
-  readonly name = 'test-cli' as const;
+  override readonly name = 'claude' as const;
   readonly version = '1.0.0';
 
   protected readonly parser: ICliResponseParser = {
+    name: 'test-parser',
+    supportedVersionRange: '>=1.0.0',
+    parse: (raw: string) => raw,
     extractResponse: (output: string) => output.trim() || null,
     extractUsage: () => null,
     extractSessionId: () => null,
@@ -102,7 +105,7 @@ describe('SubprocessCliAdapter', () => {
 
   describe('constructor and identity', () => {
     it('should have correct name', () => {
-      expect(adapter.name).toBe('test-cli');
+      expect(adapter.name).toBe('claude');
     });
 
     it('should have correct version', () => {
@@ -156,7 +159,7 @@ describe('SubprocessCliAdapter', () => {
   describe('executeTask() - success cases', () => {
     it('should spawn command and return ok result', async () => {
       adapter.setCommandConfig({ command: 'echo', args: ['hello'] });
-      const task: CliTask = { content: 'test', prompt: 'hello' };
+      const task: CliTask = { content: 'test' };
       const options: Required<ExecutionOptions> = {
         timeoutMs: 5000,
         allowRetry: true,
@@ -408,7 +411,7 @@ describe('SubprocessCliAdapter', () => {
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error.code).toBe('NOT_FOUND');
-        expect(result.error.message).toContain('test-cli CLI not found');
+        expect(result.error.message).toContain('claude CLI not found');
       }
     });
 
@@ -473,7 +476,10 @@ describe('SubprocessCliAdapter', () => {
     it('should return PARSE_ERROR when parser returns null', async () => {
       // Create adapter with parser that returns null
       class FailingParserAdapter extends TestSubprocessAdapter {
-        protected readonly parser: ICliResponseParser = {
+        protected override readonly parser: ICliResponseParser = {
+          name: 'failing-parser',
+          supportedVersionRange: '>=1.0.0',
+          parse: () => null,
           extractResponse: () => null,
           extractUsage: () => null,
           extractSessionId: () => null,
@@ -545,7 +551,10 @@ describe('SubprocessCliAdapter', () => {
     it('should extract usage when parser returns usage', async () => {
       // Create adapter with parser that returns usage
       class UsageParserAdapter extends TestSubprocessAdapter {
-        protected readonly parser: ICliResponseParser = {
+        protected override readonly parser: ICliResponseParser = {
+          name: 'usage-parser',
+          supportedVersionRange: '>=1.0.0',
+          parse: (raw: string) => raw,
           extractResponse: (output: string) => output.trim(),
           extractUsage: () => ({
             inputTokens: 100,
@@ -592,7 +601,10 @@ describe('SubprocessCliAdapter', () => {
     it('should extract sessionId when parser returns sessionId', async () => {
       // Create adapter with parser that returns sessionId
       class SessionParserAdapter extends TestSubprocessAdapter {
-        protected readonly parser: ICliResponseParser = {
+        protected override readonly parser: ICliResponseParser = {
+          name: 'session-parser',
+          supportedVersionRange: '>=1.0.0',
+          parse: (raw: string) => raw,
           extractResponse: (output: string) => output.trim(),
           extractUsage: () => null,
           extractSessionId: () => 'session-123',

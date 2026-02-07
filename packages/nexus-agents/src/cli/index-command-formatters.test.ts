@@ -289,7 +289,6 @@ describe('index-command-formatters', () => {
         message: 'Done',
         data: {
           filesIndexed: 10,
-          validationResult: undefined,
         },
       };
       const output = formatIndexResult(result);

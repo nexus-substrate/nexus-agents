@@ -662,9 +662,9 @@ describe('buildResponse error counting (Issue #815)', () => {
     const response = buildResponse(input, makeVotingResult(votes));
 
     expect(response.voteCounts.error).toBe(2);
-    expect(response.votes[1].error).toBe(true);
-    expect(response.votes[2].error).toBe(true);
-    expect(response.votes[0].error).toBe(false);
+    expect(response.votes[1]!.error).toBe(true);
+    expect(response.votes[2]!.error).toBe(true);
+    expect(response.votes[0]!.error).toBe(false);
   });
 
   it('should report all errors when every vote errored', () => {

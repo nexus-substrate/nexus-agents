@@ -427,7 +427,10 @@ describe('findOverlaps', () => {
   });
 
   it('returns failure when registry load fails', async () => {
-    vi.mocked(ioHelpers.loadTechniquesRegistry).mockResolvedValue(err(new Error('Failed to load')));
+    vi.mocked(ioHelpers.loadTechniquesRegistry).mockResolvedValue(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument
+      err(new Error('Failed to load')) as any
+    );
 
     const result = await findOverlaps({
       techniqueId: 'tech-1',

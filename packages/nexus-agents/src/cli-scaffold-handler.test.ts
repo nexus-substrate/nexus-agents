@@ -17,9 +17,9 @@ function createArgs(positionals: string[], options: Record<string, unknown> = {}
 }
 
 describe('handleScaffoldCommand', () => {
-  const mockExit = vi.spyOn(process, 'exit').mockImplementation((code?: number) => {
+  const mockExit = vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
     throw new Error(`process.exit(${String(code)})`);
-  });
+  }) as unknown as typeof process.exit);
 
   afterEach(() => {
     vi.clearAllMocks();

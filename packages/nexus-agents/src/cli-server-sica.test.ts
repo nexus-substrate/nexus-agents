@@ -7,6 +7,7 @@ import {
   resetSica,
 } from './cli-server-sica.js';
 import type { ILogger, IAgent } from './core/index.js';
+import type { SicaConfig } from './config/index.js';
 import type { SicaAgent } from './agents/self-improving/sica-agent.js';
 
 vi.mock('./agents/self-improving/sica-agent.js', () => ({
@@ -27,12 +28,12 @@ describe('cli-server-sica', () => {
 
   describe('initializeSica', () => {
     it('should initialize when enabled', () => {
-      initializeSica({ sicaConfig: { enabled: true }, logger: createMockLogger() });
+      initializeSica({ sicaConfig: { enabled: true } as SicaConfig, logger: createMockLogger() });
       expect(isSicaEnabled()).toBe(true);
     });
 
     it('should not initialize when disabled', () => {
-      initializeSica({ sicaConfig: { enabled: false }, logger: createMockLogger() });
+      initializeSica({ sicaConfig: { enabled: false } as SicaConfig, logger: createMockLogger() });
       expect(isSicaEnabled()).toBe(false);
     });
 
@@ -42,7 +43,7 @@ describe('cli-server-sica', () => {
     });
 
     it('should store config when enabled', () => {
-      const config = { enabled: true, threshold: 0.8 };
+      const config = { enabled: true, threshold: 0.8 } as unknown as SicaConfig;
       initializeSica({ sicaConfig: config, logger: createMockLogger() });
       expect(getSicaConfig()).toEqual(config);
     });
@@ -54,7 +55,7 @@ describe('cli-server-sica', () => {
     });
 
     it('should return config when initialized', () => {
-      const config = { enabled: true };
+      const config = { enabled: true } as SicaConfig;
       initializeSica({ sicaConfig: config, logger: createMockLogger() });
       expect(getSicaConfig()).toEqual(config);
     });
@@ -67,7 +68,7 @@ describe('cli-server-sica', () => {
     }
 
     it('should return undefined when disabled', () => {
-      initializeSica({ sicaConfig: { enabled: false }, logger: createMockLogger() });
+      initializeSica({ sicaConfig: { enabled: false } as SicaConfig, logger: createMockLogger() });
       const result = wrapAgentWithSica(createMockAgent(), 'prompt', createMockLogger());
       expect(result).toBeUndefined();
     });
@@ -82,7 +83,7 @@ describe('cli-server-sica', () => {
       const mockAgent = { id: 'sica-agent' };
       vi.mocked(createSicaAgent).mockReturnValue(mockAgent as unknown as SicaAgent);
 
-      initializeSica({ sicaConfig: { enabled: true }, logger: createMockLogger() });
+      initializeSica({ sicaConfig: { enabled: true } as SicaConfig, logger: createMockLogger() });
       const result = wrapAgentWithSica(createMockAgent(), 'prompt', createMockLogger());
 
       expect(createSicaAgent).toHaveBeenCalled();
@@ -92,7 +93,7 @@ describe('cli-server-sica', () => {
 
   describe('resetSica', () => {
     it('should clear initialized state', () => {
-      initializeSica({ sicaConfig: { enabled: true }, logger: createMockLogger() });
+      initializeSica({ sicaConfig: { enabled: true } as SicaConfig, logger: createMockLogger() });
       expect(isSicaEnabled()).toBe(true);
 
       resetSica();

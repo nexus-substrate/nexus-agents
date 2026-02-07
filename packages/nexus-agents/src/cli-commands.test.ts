@@ -75,12 +75,14 @@ function createArgs(command: string, overrides: Record<string, unknown> = {}): P
 
 describe('cli-commands', () => {
   let writeSpy: ReturnType<typeof vi.spyOn>;
-  vi.spyOn(process, 'exit').mockImplementation((code?: number) => {
+  vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
     throw new Error(`process.exit(${String(code)})`);
-  });
+  }) as unknown as typeof process.exit);
 
   beforeEach(() => {
-    writeSpy = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+    writeSpy = vi.spyOn(process.stdout, 'write').mockReturnValue(true) as unknown as ReturnType<
+      typeof vi.spyOn
+    >;
   });
 
   afterEach(() => {

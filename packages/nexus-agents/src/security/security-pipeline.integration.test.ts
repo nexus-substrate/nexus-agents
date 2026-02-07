@@ -85,7 +85,7 @@ describe('security pipeline integration', () => {
         type: 'DraftReply',
         body: 'Responding to suspicious content',
         requiresApproval: true,
-        sources: [{ type: 'repoFile', path: 'CLAUDE.md', section: 'untrusted' }],
+        sources: [{ type: 'repoFile', path: 'CLAUDE.md' }],
       };
       const context: ActionContext = {
         inputTrustTier: trust.trustTier,

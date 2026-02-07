@@ -125,7 +125,7 @@ export interface OrchestrateDeps {
   rateLimiter: RateLimiter;
   security?: SecurityConfig | undefined;
   /** Model adapter for fallback orchestration path (Issue #827) */
-  modelAdapter?: import('../../core/index.js').IModelAdapter;
+  modelAdapter?: import('../../core/index.js').IModelAdapter | undefined;
 }
 
 // ============================================================================

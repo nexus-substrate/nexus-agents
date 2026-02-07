@@ -285,7 +285,7 @@ describe('getCorroborationRules', () => {
   it('returns 1 rule for SummarizeIssue', () => {
     const rules = getCorroborationRules('SummarizeIssue');
     expect(rules).toHaveLength(1);
-    expect(rules[0].description).toContain('Tier 1/2 source');
+    expect(rules[0]!.description).toContain('Tier 1/2 source');
   });
 
   it('returns 2 rules for GeneratePatchPlan', () => {

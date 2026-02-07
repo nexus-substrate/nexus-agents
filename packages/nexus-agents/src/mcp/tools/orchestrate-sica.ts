@@ -27,7 +27,7 @@ import type { ITechLead } from './orchestrate.js';
  */
 // eslint-disable-next-line @typescript-eslint/no-deprecated -- Intentional: backwards compat (Issue #595)
 export function createOrchestratorWithSica(logger: ILogger, adapter?: IModelAdapter): ITechLead {
-  const techLead = new TechLead({ logger, adapter });
+  const techLead = new TechLead({ logger, ...(adapter !== undefined ? { adapter } : {}) });
 
   if (!isSicaEnabled()) {
     logger.debug('SICA not enabled, using plain orchestrator');

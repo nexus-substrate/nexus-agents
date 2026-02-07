@@ -283,9 +283,9 @@ describe('generateInstanceDetails', () => {
     format: 'markdown',
     detailLevel: 'detailed',
     includeInstanceDetails: true,
-    includeTimingAnalysis: false,
-    includeCostEstimate: false,
     includeComparison: false,
+    includeCharts: false,
+    outputPath: '/tmp/report.md',
   };
 
   it('returns undefined when includeInstanceDetails is false', () => {

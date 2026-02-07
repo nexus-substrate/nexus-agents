@@ -144,7 +144,7 @@ describe('memory-query', () => {
       const result = await registeredHandler({ query: 'test search' }, {});
 
       expect(result.isError).toBeUndefined();
-      const parsed = JSON.parse(result.content[0].text);
+      const parsed = JSON.parse(result.content[0]!.text);
       expect(parsed.query).toBe('test search');
       expect(parsed.count).toBe(2);
       expect(parsed.source).toBe('all');
@@ -172,7 +172,7 @@ describe('memory-query', () => {
       const result = await registeredHandler({ query: 'test', source: 'session' }, {});
 
       expect(result.isError).toBeUndefined();
-      const parsed = JSON.parse(result.content[0].text);
+      const parsed = JSON.parse(result.content[0]!.text);
       expect(parsed.count).toBe(1);
       expect(parsed.source).toBe('session');
     });
@@ -181,7 +181,7 @@ describe('memory-query', () => {
       const result = await registeredHandler({ query: '' }, {});
 
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Validation error');
+      expect(result.content[0]!.text).toContain('Validation error');
     });
 
     it('returns error when queryAll throws', async () => {
@@ -190,7 +190,7 @@ describe('memory-query', () => {
       const result = await registeredHandler({ query: 'test' }, {});
 
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Memory query failed');
+      expect(result.content[0]!.text).toContain('Memory query failed');
     });
 
     it('returns empty results when no matches', async () => {
@@ -199,7 +199,7 @@ describe('memory-query', () => {
       const result = await registeredHandler({ query: 'nonexistent' }, {});
 
       expect(result.isError).toBeUndefined();
-      const parsed = JSON.parse(result.content[0].text);
+      const parsed = JSON.parse(result.content[0]!.text);
       expect(parsed.count).toBe(0);
       expect(parsed.results).toEqual([]);
     });

@@ -11,7 +11,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { RichText } from '@atproto/api';
-import { createBlueskyPost, getBlueskyConfig, type BlueskyConfig } from './bluesky-client';
+import { createBlueskyPost, getBlueskyConfig, type BlueskyConfig } from './bluesky-client.js';
 
 // Mock @atproto/api module
 vi.mock('@atproto/api', () => {
@@ -187,12 +187,12 @@ describe('bluesky-client', () => {
       );
 
       // Mock RichText to return facets
-      vi.mocked(RichText).mockImplementation((options: { text: string }) => ({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (vi.mocked(RichText) as any).mockImplementation((options: { text: string }) => ({
         text: options.text,
         facets: mockFacets,
         detectFacets: mockAtpModule.__mockDetectFacets,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      })) as any;
+      }));
 
       await createBlueskyPost(mockConfig, 'Test');
 

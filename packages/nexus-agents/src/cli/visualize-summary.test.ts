@@ -67,16 +67,17 @@ describe('visualize-summary', () => {
       return Object.keys(structure).includes(pStr);
     });
 
-    mockFs.readdirSync.mockImplementation((p: fs.PathLike) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call
+    (mockFs.readdirSync as any).mockImplementation((p: fs.PathLike) => {
       const pStr = String(p);
       const contents = structure[pStr];
       if (contents) {
         return contents.map((name) => {
           const isDir = !name.endsWith('.ts');
           return createMockDirent(name, isDir);
-        }) as unknown as string[];
+        });
       }
-      return [] as unknown as string[];
+      return [];
     });
 
     mockFs.readFileSync.mockReturnValue(JSON.stringify({ version: pkgVersion }));

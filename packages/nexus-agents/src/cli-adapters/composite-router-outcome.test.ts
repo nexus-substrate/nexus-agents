@@ -74,7 +74,7 @@ function createBaseDeps(overrides: Partial<OutcomeDependencies> = {}) {
 }
 
 function createCliTask(content = 'test task'): CliTask {
-  return { content, maxTokens: 1000, temperature: 0.7 };
+  return { content, maxTokens: 1000 };
 }
 
 describe('composite-router-outcome', () => {

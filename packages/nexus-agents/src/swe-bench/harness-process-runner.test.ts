@@ -174,7 +174,7 @@ describe('handleStdoutChunk', () => {
 
     handleStdoutChunk('line1\n', progress, 1000, onProgress);
 
-    const callArg = onProgress.mock.calls[0][0] as HarnessExecutionProgress;
+    const callArg = onProgress.mock.calls[0]![0] as HarnessExecutionProgress;
     expect(callArg).not.toHaveProperty('estimatedRemainingMs');
   });
 

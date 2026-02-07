@@ -182,7 +182,7 @@ describe('findModelsByFeature', () => {
   it('only gemini-pro supports deep_research', () => {
     const results = findModelsByFeature('deep_research');
     expect(results).toHaveLength(1);
-    expect(results[0].id).toBe('gemini-pro');
+    expect(results[0]!.id).toBe('gemini-pro');
   });
 });
 

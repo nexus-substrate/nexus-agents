@@ -58,7 +58,21 @@ function createMockRoutingDecision(
   return {
     selectedTier: 'strong' as const,
     selectedCli,
-    prediction: { strongModelProbability: probability, confidence },
+    prediction: {
+      strongModelProbability: probability,
+      confidence,
+      features: {
+        tokenCount: 10,
+        complexity: 0.5,
+        requiresReasoning: false,
+        requiresCode: false,
+        requiresCreativity: false,
+        hasAmbiguity: false,
+        domain: 'general',
+        keywordSignature: 'test',
+      },
+      supportingDataPoints: 5,
+    },
     reason: 'Test reason',
     routingLatencyMs: 10,
     estimatedCostSavings: 0.5,
@@ -91,7 +105,7 @@ describe('PreferenceStage', () => {
     it('should create stage via factory', () => {
       const stage = createPreferenceStage({ scoreWeight: 0.3 });
       expect(stage).toBeInstanceOf(PreferenceStage);
-      expect(stage.getStats().config.scoreWeight).toBe(0.3);
+      expect((stage.getStats().config as { scoreWeight: number }).scoreWeight).toBe(0.3);
     });
   });
 

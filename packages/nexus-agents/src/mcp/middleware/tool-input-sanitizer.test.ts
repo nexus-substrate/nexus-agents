@@ -157,8 +157,8 @@ describe('tool-input-sanitizer', () => {
           items: [{ text: '<system>1</system>' }, { text: 'clean' }],
         });
         const sanitized = result.sanitized as { items: Array<{ text: string }> };
-        expect(sanitized.items[0].text).toBe('1');
-        expect(sanitized.items[1].text).toBe('clean');
+        expect(sanitized.items[0]!.text).toBe('1');
+        expect(sanitized.items[1]!.text).toBe('clean');
         expect(result.modifiedCount).toBe(1);
       });
     });
@@ -219,7 +219,7 @@ describe('tool-input-sanitizer', () => {
         warn: vi.fn(),
         error: vi.fn(),
         debug: vi.fn(),
-      } satisfies ILogger;
+      } as unknown as ILogger;
     }
 
     it('logs warning when input was modified', () => {
@@ -230,7 +230,7 @@ describe('tool-input-sanitizer', () => {
         modifiedCount: 2,
         detectedPatterns: [],
       };
-      logSanitizationResult(result, logger, 'orchestrate');
+      logSanitizationResult(result, logger as unknown as ILogger, 'orchestrate');
       expect(logger.warn).toHaveBeenCalledWith(
         'Tool input sanitized — XML injection tags stripped',
         { tool: 'orchestrate', modifiedFields: 2 }
@@ -245,7 +245,7 @@ describe('tool-input-sanitizer', () => {
         modifiedCount: 0,
         detectedPatterns: ['system_prompt_override'],
       };
-      logSanitizationResult(result, logger, 'run_workflow');
+      logSanitizationResult(result, logger as unknown as ILogger, 'run_workflow');
       expect(logger.warn).toHaveBeenCalledWith('Injection patterns detected in tool input', {
         tool: 'run_workflow',
         patterns: ['system_prompt_override'],
@@ -260,7 +260,7 @@ describe('tool-input-sanitizer', () => {
         modifiedCount: 0,
         detectedPatterns: [],
       };
-      logSanitizationResult(result, logger, 'test_tool');
+      logSanitizationResult(result, logger as unknown as ILogger, 'test_tool');
       expect(logger.warn).not.toHaveBeenCalled();
     });
 
@@ -272,7 +272,7 @@ describe('tool-input-sanitizer', () => {
         modifiedCount: 1,
         detectedPatterns: ['role_impersonation'],
       };
-      logSanitizationResult(result, logger, 'execute_expert');
+      logSanitizationResult(result, logger as unknown as ILogger, 'execute_expert');
       expect(logger.warn).toHaveBeenCalledTimes(2);
     });
   });

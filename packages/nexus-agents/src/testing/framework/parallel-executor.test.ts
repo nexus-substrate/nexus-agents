@@ -23,7 +23,7 @@ function mkTask(id: string) {
     category: 'code_generation' as const,
     difficulty: 'easy' as const,
     expectedTaskType: 'code_generation' as const,
-  } as EvaluationTask;
+  } as unknown as EvaluationTask;
 }
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
@@ -61,7 +61,7 @@ describe('createProgressReporter', () => {
     const cb = vi.fn();
     createProgressReporter(cb, [mkTask('1')], [], { count: 1, successCount: 1 }, 0)();
     expect(cb).toHaveBeenCalledTimes(1);
-    const arg = cb.mock.calls[0][0] as Record<string, unknown>;
+    const arg = cb.mock.calls[0]![0] as Record<string, unknown>;
     expect(arg['completed']).toBe(1);
     expect(arg['currentTask']).toBe('Complete');
   });

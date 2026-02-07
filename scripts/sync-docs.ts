@@ -133,7 +133,7 @@ interface SyncOptions {
  */
 function extractTitle(content: string): string {
   const match = content.match(/^#\s+(.+)$/m);
-  if (match) {
+  if (match?.[1] !== undefined) {
     // Remove any trailing badges like "**Tier 3** |"
     let title = match[1].trim();
     title = title.replace(/\*\*Tier \d\*\*\s*\|?\s*/g, '').trim();

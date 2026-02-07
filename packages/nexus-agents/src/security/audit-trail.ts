@@ -302,11 +302,9 @@ export function createGraphAuditBridge(
   return (event) => {
     const nodeId = typeof event['nodeId'] === 'string' ? event['nodeId'] : undefined;
     const stepNumber = typeof event['stepNumber'] === 'number' ? event['stepNumber'] : 0;
-    trail.append({
-      type: 'graph_execution',
-      component: 'graph-executor',
+    emitGraphExecutionEvent(trail, {
       graphEvent: event.type,
-      nodeId,
+      ...(nodeId !== undefined ? { nodeId } : {}),
       stepNumber,
       detail: formatGraphEventDetail(event),
     });

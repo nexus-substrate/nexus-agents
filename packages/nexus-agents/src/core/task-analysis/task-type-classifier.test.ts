@@ -81,7 +81,13 @@ describe('TaskTypeClassifier', () => {
       id: 'test',
       description: 'help',
       context: {
-        history: [{ role: 'user', content: 'Why does this algorithm fail? Debug it.' }],
+        history: [
+          {
+            role: 'user',
+            content: 'Why does this algorithm fail? Debug it.',
+            timestamp: '2024-01-01T00:00:00Z',
+          },
+        ],
       },
     };
     const result = classifier.classify(task);

@@ -121,7 +121,6 @@ export { compileSpecToGraph, createDryRunHandler } from './spec-pipeline.js';
 export type {
   PipelineError,
   PipelineStage,
-  NodeHandler,
   NodeHandlerFactory,
   CompileOptions,
 } from './spec-pipeline-types.js';

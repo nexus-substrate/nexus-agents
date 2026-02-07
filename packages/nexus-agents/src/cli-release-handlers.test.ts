@@ -29,9 +29,9 @@ import {
 } from './cli/index.js';
 
 // Mock process.exit to throw so tests can catch the exit call
-const mockExit = vi.spyOn(process, 'exit').mockImplementation((code?: number) => {
+const mockExit = vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
   throw new Error(`process.exit(${String(code)})`);
-});
+}) as unknown as typeof process.exit);
 
 /**
  * Creates a ParsedCliArgs object with sensible defaults for release handler tests.
@@ -74,9 +74,9 @@ afterEach(() => {
   vi.clearAllMocks();
   mockExit.mockRestore();
   // Re-apply the mock for the next test
-  vi.spyOn(process, 'exit').mockImplementation((code?: number) => {
+  vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
     throw new Error(`process.exit(${String(code)})`);
-  });
+  }) as unknown as typeof process.exit);
 });
 
 describe('handleReleaseNotesCommand', () => {

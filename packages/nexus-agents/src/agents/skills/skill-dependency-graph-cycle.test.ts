@@ -28,9 +28,9 @@ function buildGraph(adjacency: Record<string, string[]>) {
   const nodes = new Map<string, CycleDetectionNode>();
 
   for (const [id, deps] of Object.entries(adjacency)) {
-    const depMap = new Map<string, { skillId: string; type: 'required' }>();
+    const depMap = new Map<string, { skillId: string; dependsOn: string; type: 'required' }>();
     for (const dep of deps) {
-      depMap.set(dep, { skillId: dep, type: 'required' });
+      depMap.set(dep, { skillId: id, dependsOn: dep, type: 'required' });
     }
     nodes.set(id, { id, dependencies: depMap });
   }

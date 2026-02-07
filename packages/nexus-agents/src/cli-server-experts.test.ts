@@ -35,8 +35,12 @@ function createMockLogger(): ILogger {
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 function createMockRegistry() {
   return {
-    register: vi.fn(() => ({ ok: true, value: undefined })),
-    registerMany: vi.fn(() => ({ ok: true, value: undefined })),
+    register: vi.fn(
+      () => ({ ok: true, value: undefined }) as { ok: boolean; value?: unknown; error?: Error }
+    ),
+    registerMany: vi.fn(
+      () => ({ ok: true, value: undefined }) as { ok: boolean; value?: unknown; error?: Error }
+    ),
   };
 }
 
@@ -100,14 +104,14 @@ describe('initializeExperts', () => {
       systemPrompt: 'You are a custom expert',
       capabilities: ['code_generation'],
       temperature: 0.7,
-      tier: 1,
+      tier: 'fast' as const,
       weight: 1.0,
       available: true,
     };
 
     const logger = createMockLogger();
     const result = initializeExperts({
-      expertConfig: { custom: { my_expert: customDef } },
+      expertConfig: { builtin: true, custom: { my_expert: customDef } },
       logger,
     });
 
@@ -126,14 +130,15 @@ describe('initializeExperts', () => {
       domain: 'code',
       systemPrompt: 'Test',
       capabilities: [],
-      tier: 1,
+      tier: 'fast' as const,
+      temperature: 0.3,
       weight: 1.0,
       available: false,
     };
 
     const logger = createMockLogger();
     const result = initializeExperts({
-      expertConfig: { custom: { unavailable: customDef } },
+      expertConfig: { builtin: true, custom: { unavailable: customDef } },
       logger,
     });
 
@@ -156,18 +161,19 @@ describe('initializeExperts', () => {
       domain: 'code',
       systemPrompt: 'Test',
       capabilities: ['code_generation', 'invalid_capability', 'tool_use'],
-      tier: 1,
+      tier: 'fast' as const,
+      temperature: 0.3,
       weight: 1.0,
       available: true,
     };
 
     const logger = createMockLogger();
     initializeExperts({
-      expertConfig: { custom: { expert: customDef } },
+      expertConfig: { builtin: true, custom: { expert: customDef } },
       logger,
     });
 
-    const createCall = (ExpertFactory.create as ReturnType<typeof vi.fn>).mock.calls[0];
+    const createCall = (ExpertFactory.create as ReturnType<typeof vi.fn>).mock.calls[0]!;
     const config = createCall[0];
     expect(config.capabilities).toEqual(['code_generation', 'tool_use']);
   });
@@ -237,7 +243,7 @@ describe('initializeExperts', () => {
 
     const logger = createMockLogger();
     const result = initializeExperts({
-      expertConfig: { custom: {} },
+      expertConfig: { builtin: true, custom: {} },
       logger,
     });
 
@@ -259,14 +265,15 @@ describe('initializeExperts', () => {
       domain: 'code',
       systemPrompt: 'Test',
       capabilities: [],
-      tier: 1,
+      tier: 'fast' as const,
+      temperature: 0.3,
       weight: 1.0,
       available: true,
     };
 
     const logger = createMockLogger();
     initializeExperts({
-      expertConfig: { custom: { failing_expert: customDef } },
+      expertConfig: { builtin: true, custom: { failing_expert: customDef } },
       logger,
     });
 
@@ -292,14 +299,15 @@ describe('initializeExperts', () => {
       domain: 'code',
       systemPrompt: 'Test',
       capabilities: [],
-      tier: 1,
+      tier: 'fast' as const,
+      temperature: 0.3,
       weight: 1.0,
       available: true,
     };
 
     const logger = createMockLogger();
     const result = initializeExperts({
-      expertConfig: { custom: { custom1: customDef } },
+      expertConfig: { builtin: true, custom: { custom1: customDef } },
       logger,
     });
 

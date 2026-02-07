@@ -333,7 +333,7 @@ describe('DockerSandboxExecutor - error handling', () => {
         stdout: '',
         stderr: 'command not found',
       });
-      (callback as (err: NodeJS.ErrnoException) => void)(error);
+      (callback as (err: unknown) => void)(error);
       return undefined as never;
     });
 
@@ -389,7 +389,7 @@ describe('DockerSandboxExecutor - error handling', () => {
         stdout: '',
         stderr: 'File not found',
       });
-      (callback as (err: NodeJS.ErrnoException) => void)(error);
+      (callback as (err: unknown) => void)(error);
       return undefined as never;
     });
 

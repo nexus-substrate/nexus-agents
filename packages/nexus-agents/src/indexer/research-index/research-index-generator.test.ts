@@ -117,7 +117,7 @@ describe('generateSummaryReport', () => {
         techniquesByPriority: { P1: 0, P2: 0, P3: 0, P4: 0 },
         topicStats: [],
       },
-    } as Partial<ResearchIndex>);
+    } as unknown as Partial<ResearchIndex>);
     const report = generateSummaryReport(index);
     expect(report).not.toContain('NaN');
     expect(report).toContain('**Implementation Rate:** 0%');

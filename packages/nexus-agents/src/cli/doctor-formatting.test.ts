@@ -11,6 +11,7 @@ import type {
   ConfigFileCheck,
   CliCheckResult,
 } from './doctor.js';
+import type { CliName } from '../cli-adapters/index.js';
 import * as ansiOutput from './ansi-output.js';
 import type { CapacityStatus } from '../cli-adapters/types.js';
 
@@ -68,6 +69,11 @@ vi.mock('../cli-adapters/types.js', () => ({
 describe('doctor-formatting', () => {
   let writeLineMock: MockedFunction<typeof ansiOutput.writeLine>;
 
+  /** Get all writeLine calls as flat string array for assertion convenience. */
+  function getCalls(): string[] {
+    return writeLineMock.mock.calls.flat().filter((c): c is string => typeof c === 'string');
+  }
+
   beforeEach(() => {
     writeLineMock = ansiOutput.writeLine as MockedFunction<typeof ansiOutput.writeLine>;
     writeLineMock.mockClear();
@@ -76,6 +82,7 @@ describe('doctor-formatting', () => {
   const createNodeVersionCheck = (supported: boolean, version: string): NodeVersionCheck => ({
     supported,
     version,
+    major: Number.parseInt(version.replace('v', '').split('.')[0]!, 10),
   });
 
   const createApiKeyCheck = (name: string, configured: boolean): ApiKeyCheck => ({
@@ -92,7 +99,7 @@ describe('doctor-formatting', () => {
     name: string,
     installed: boolean,
     authenticated: boolean,
-    versionStatus: string,
+    versionStatus: 'supported' | 'outdated' | 'breaking' | 'unsupported',
     options: {
       version?: string;
       authMethod?: string;
@@ -101,15 +108,15 @@ describe('doctor-formatting', () => {
       fix?: string;
     } = {}
   ): CliCheckResult => ({
-    name,
+    name: name as CliName,
     installed,
     authenticated,
     versionStatus,
-    version: options.version,
-    authMethod: options.authMethod,
-    capacity: options.capacity,
-    error: options.error,
-    fix: options.fix,
+    version: options.version ?? '',
+    ...(options.authMethod !== undefined && { authMethod: options.authMethod }),
+    ...(options.capacity !== undefined && { capacity: options.capacity }),
+    ...(options.error !== undefined && { error: options.error }),
+    ...(options.fix !== undefined && { fix: options.fix }),
   });
 
   const createDoctorResult = (
@@ -130,6 +137,7 @@ describe('doctor-formatting', () => {
     clis: options.clis ?? [],
     mcpServerReady: options.mcpServerReady ?? true,
     mcpClientReady: options.mcpClientReady ?? true,
+    timestamp: new Date('2024-01-01T00:00:00Z'),
   });
 
   describe('printDoctorResults', () => {
@@ -137,7 +145,7 @@ describe('doctor-formatting', () => {
       const result = createDoctorResult();
       printDoctorResults(result);
 
-      const calls = writeLineMock.mock.calls.flat();
+      const calls = getCalls();
       expect(calls.some((call) => call.includes('Nexus Agents Doctor'))).toBe(true);
       expect(calls.some((call) => call.includes('Checking environment'))).toBe(true);
       expect(calls.some((call) => call.includes('Checking CLI installations'))).toBe(true);
@@ -152,7 +160,7 @@ describe('doctor-formatting', () => {
       });
       printDoctorResults(result);
 
-      const calls = writeLineMock.mock.calls.flat();
+      const calls = getCalls();
       expect(calls.some((call) => call.includes('Status: Ready'))).toBe(true);
     });
 
@@ -165,7 +173,7 @@ describe('doctor-formatting', () => {
       });
       printDoctorResults(result);
 
-      const calls = writeLineMock.mock.calls.flat();
+      const calls = getCalls();
       expect(calls.some((call) => call.includes('issue(s) found'))).toBe(true);
     });
 
@@ -181,7 +189,7 @@ describe('doctor-formatting', () => {
           nodeVersion: createNodeVersionCheck(tc.supported, tc.version),
         });
         printDoctorResults(result);
-        const calls = writeLineMock.mock.calls.flat();
+        const calls = getCalls();
         const nodeCall = calls.find((call) => call.includes('Node.js version'));
         expect(nodeCall).toBeDefined();
         expect(nodeCall).toContain(tc.color);
@@ -217,7 +225,7 @@ describe('doctor-formatting', () => {
         writeLineMock.mockClear();
         const result = createDoctorResult({ apiKeys: tc.keys });
         printDoctorResults(result);
-        const calls = writeLineMock.mock.calls.flat();
+        const calls = getCalls();
         expect(calls.some((call) => call.includes(`API keys configured: ${tc.expectCount}`))).toBe(
           true
         );
@@ -248,7 +256,7 @@ describe('doctor-formatting', () => {
         writeLineMock.mockClear();
         const result = createDoctorResult({ configFile: createConfigFileCheck(tc.found, tc.path) });
         printDoctorResults(result);
-        const calls = writeLineMock.mock.calls.flat();
+        const calls = getCalls();
         expect(calls.some((call) => call.includes(tc.expectFound))).toBe(true);
         if (tc.expectInit)
           expect(calls.some((call) => call.includes('nexus-agents config init'))).toBe(true);
@@ -266,7 +274,7 @@ describe('doctor-formatting', () => {
       });
       printDoctorResults(result);
 
-      const calls = writeLineMock.mock.calls.flat();
+      const calls = getCalls();
       expect(calls.some((call) => call.includes('Claude CLI'))).toBe(true);
       expect(calls.some((call) => call.includes('Version: 0.2.0'))).toBe(true);
       expect(calls.some((call) => call.includes('supported'))).toBe(true);
@@ -291,7 +299,7 @@ describe('doctor-formatting', () => {
         writeLineMock.mockClear();
         const result = createDoctorResult({ clis: [tc.cli] });
         printDoctorResults(result);
-        const calls = writeLineMock.mock.calls.flat();
+        const calls = getCalls();
         expect(calls.some((call) => call.includes(tc.expect))).toBe(true);
         if (tc.color !== '')
           expect(calls.some((call) => call.includes(tc.expect) && call.includes(tc.color))).toBe(
@@ -311,7 +319,7 @@ describe('doctor-formatting', () => {
       });
       printDoctorResults(result);
 
-      const calls = writeLineMock.mock.calls.flat();
+      const calls = getCalls();
       expect(calls.some((call) => call.includes('Command not found'))).toBe(true);
       expect(calls.some((call) => call.includes('npm install -g @anthropic-ai/claude-code'))).toBe(
         true
@@ -328,9 +336,11 @@ describe('doctor-formatting', () => {
       for (const tc of testCases) {
         writeLineMock.mockClear();
         const capacity: CapacityStatus = {
-          tokensUsed: tc.util * 1000,
-          tokensLimit: 100000,
+          remainingTokens: (100 - tc.util) * 1000,
+          remainingRequests: 100,
+          resetTime: new Date(),
           utilizationPercent: tc.util,
+          exhausted: tc.util >= 100,
         };
         const result = createDoctorResult({
           clis: [
@@ -338,7 +348,7 @@ describe('doctor-formatting', () => {
           ],
         });
         printDoctorResults(result);
-        const calls = writeLineMock.mock.calls.flat();
+        const calls = getCalls();
         expect(
           calls.some((call) => call.includes(tc.expected)),
           `${tc.desc} capacity`
@@ -366,7 +376,7 @@ describe('doctor-formatting', () => {
         writeLineMock.mockClear();
         const result = createDoctorResult({ mcpServerReady: tc.server, mcpClientReady: tc.client });
         printDoctorResults(result);
-        const calls = writeLineMock.mock.calls.flat();
+        const calls = getCalls();
         expect(calls.some((call) => call.includes(tc.serverExpect))).toBe(true);
         expect(calls.some((call) => call.includes(tc.clientExpect))).toBe(true);
       }
@@ -382,7 +392,7 @@ describe('doctor-formatting', () => {
       });
       printDoctorResults(result);
 
-      const calls = writeLineMock.mock.calls.flat();
+      const calls = getCalls();
       // Note: output includes ANSI codes like \x1b[1m for bold
       expect(
         calls.some((call) => call.includes('Complex reasoning:') && call.includes('Claude'))
@@ -404,7 +414,7 @@ describe('doctor-formatting', () => {
       });
       printDoctorResults(result);
 
-      const calls = writeLineMock.mock.calls.flat();
+      const calls = getCalls();
       expect(calls.some((call) => call.includes('No CLIs installed'))).toBe(true);
     });
 
@@ -436,7 +446,7 @@ describe('doctor-formatting', () => {
         writeLineMock.mockClear();
         const result = createDoctorResult({ clis: [tc.cli] });
         printDoctorResults(result);
-        const calls = writeLineMock.mock.calls.flat();
+        const calls = getCalls();
         if (tc.noExpect !== '')
           expect(calls.some((call) => call.includes(tc.noExpect))).toBe(false);
         if (tc.expect !== '' && tc.color !== '')
@@ -458,7 +468,7 @@ describe('doctor-formatting', () => {
       });
       printDoctorResults(result);
 
-      const calls = writeLineMock.mock.calls.flat();
+      const calls = getCalls();
       // 2 unhealthy CLIs + 1 Node issue + 1 MCP issue = 4 total
       expect(calls.some((call) => call.includes('4 issue(s) found'))).toBe(true);
     });

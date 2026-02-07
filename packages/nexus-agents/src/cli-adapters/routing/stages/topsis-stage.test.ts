@@ -26,12 +26,18 @@ beforeEach(() => {
 // Helpers
 // ============================================================================
 
-const mockLogger = (): ILogger => ({
-  debug: vi.fn(),
-  info: vi.fn(),
-  warn: vi.fn(),
-  error: vi.fn(),
-});
+const mockLogger = (): ILogger => {
+  const logger = {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    child: vi.fn(),
+    setLevel: vi.fn(),
+  };
+  logger.child.mockReturnValue(logger);
+  return logger as unknown as ILogger;
+};
 
 const createMockContext = (
   clis: readonly CliName[] = ['claude', 'gemini', 'codex'],
@@ -215,9 +221,9 @@ describe('TopsisRouterStage - route', () => {
     if (result.ok) {
       const trace = result.value.context.trace;
       expect(trace).toHaveLength(1);
-      expect(trace[0].stageName).toBe('topsis');
-      expect(trace[0].action).toBe('score');
-      expect(trace[0].durationMs).toBeGreaterThanOrEqual(0);
+      expect(trace[0]!.stageName).toBe('topsis');
+      expect(trace[0]!.action).toBe('score');
+      expect(trace[0]!.durationMs).toBeGreaterThanOrEqual(0);
     }
   });
 

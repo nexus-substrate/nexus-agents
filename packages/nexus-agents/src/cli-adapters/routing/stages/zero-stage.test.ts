@@ -164,8 +164,8 @@ describe('ZeroRouterStage.route', () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.value.context.trace).toHaveLength(1);
-      expect(result.value.context.trace[0].stageName).toBe('zero-difficulty');
-      expect(result.value.context.trace[0].action).toBe('score');
+      expect(result.value.context.trace[0]!.stageName).toBe('zero-difficulty');
+      expect(result.value.context.trace[0]!.action).toBe('score');
     }
   });
 
@@ -173,7 +173,7 @@ describe('ZeroRouterStage.route', () => {
     const result = await new ZeroRouterStage().route(makeCtx());
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.value.context.trace[0].details).toContain('Difficulty:');
+      expect(result.value.context.trace[0]!.details).toContain('Difficulty:');
     }
   });
 

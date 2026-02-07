@@ -46,7 +46,12 @@ import { CliAdapterAgent } from './cli-adapter-agent.js';
 import type { ILogger } from '../core/index.js';
 import type { ICliAdapter, CliName } from '../cli-adapters/index.js';
 import type { OrchestrateOptions } from './orchestrate-types.js';
-import type { PolicyParameters } from '../agents/orchestration/index.js';
+import type {
+  IPolicyEngine,
+  ILearnablePolicyEngine,
+  PolicyParameters,
+} from '../agents/orchestration/index.js';
+import type { IAgent } from '../core/types/agent.js';
 
 function createMockLogger(): ILogger {
   return {
@@ -54,6 +59,8 @@ function createMockLogger(): ILogger {
     info: vi.fn(),
     warn: vi.fn(),
     error: vi.fn(),
+    child: vi.fn().mockReturnThis(),
+    setLevel: vi.fn(),
   };
 }
 
@@ -94,7 +101,12 @@ describe('orchestrate-puppeteer', () => {
 
   describe('loadPolicyParameters', () => {
     it('should load parameters from existing file', () => {
-      const params: PolicyParameters = { weights: [0.1, 0.2], bias: 0.3 };
+      const params: PolicyParameters = {
+        version: '1.0',
+        weights: { a: 0.1, b: 0.2 },
+        biases: {},
+        metadata: {},
+      };
       (fs.existsSync as Mock).mockReturnValue(true);
       (fs.readFileSync as Mock).mockReturnValue(JSON.stringify(params));
 
@@ -143,7 +155,12 @@ describe('orchestrate-puppeteer', () => {
 
   describe('savePolicyParameters', () => {
     it('should save parameters to file', () => {
-      const params: PolicyParameters = { weights: [0.5, 0.6], bias: 0.7 };
+      const params: PolicyParameters = {
+        version: '1.0',
+        weights: { a: 0.5, b: 0.6 },
+        biases: {},
+        metadata: {},
+      };
 
       savePolicyParameters('/path/to/policy.json', params, mockLogger);
 
@@ -157,7 +174,12 @@ describe('orchestrate-puppeteer', () => {
     });
 
     it('should log warning on write error', () => {
-      const params: PolicyParameters = { weights: [0.5], bias: 0.1 };
+      const params: PolicyParameters = {
+        version: '1.0',
+        weights: { a: 0.5 },
+        biases: {},
+        metadata: {},
+      };
       (fs.writeFileSync as Mock).mockImplementation(() => {
         throw new Error('Write failed');
       });
@@ -206,7 +228,12 @@ describe('orchestrate-puppeteer', () => {
     it('should load saved parameters for learnable policy', () => {
       const mockPolicy = { loadParameters: vi.fn() };
       (createLearnablePolicy as Mock).mockReturnValue(mockPolicy);
-      const params: PolicyParameters = { weights: [0.1], bias: 0.2 };
+      const params: PolicyParameters = {
+        version: '1.0',
+        weights: { a: 0.1 },
+        biases: {},
+        metadata: {},
+      };
       (fs.existsSync as Mock).mockReturnValue(true);
       (fs.readFileSync as Mock).mockReturnValue(JSON.stringify(params));
 
@@ -228,7 +255,11 @@ describe('orchestrate-puppeteer', () => {
 
   describe('createOrchestrator', () => {
     it('should create orchestrator with learning enabled', () => {
-      createOrchestrator({}, [{}, {}], { learn: true, task: 'test', maxSteps: 10 });
+      createOrchestrator(
+        {} as unknown as IPolicyEngine,
+        [{} as unknown as IAgent, {} as unknown as IAgent],
+        { learn: true, task: 'test', maxSteps: 10 }
+      );
 
       expect(PuppeteerOrchestrator).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -239,7 +270,10 @@ describe('orchestrate-puppeteer', () => {
     });
 
     it('should create orchestrator without learning', () => {
-      createOrchestrator({}, [{}], { learn: false, task: 'test' });
+      createOrchestrator({} as unknown as IPolicyEngine, [{} as unknown as IAgent], {
+        learn: false,
+        task: 'test',
+      });
 
       expect(PuppeteerOrchestrator).toHaveBeenCalledWith(
         expect.objectContaining({ config: { maxSteps: 5, timeoutMs: 300_000 } })
@@ -247,7 +281,9 @@ describe('orchestrate-puppeteer', () => {
     });
 
     it('should use default maxSteps of 5 when not specified', () => {
-      createOrchestrator({}, [{}], { task: 'test' });
+      createOrchestrator({} as unknown as IPolicyEngine, [{} as unknown as IAgent], {
+        task: 'test',
+      });
 
       expect(PuppeteerOrchestrator).toHaveBeenCalledWith(
         expect.objectContaining({ config: { maxSteps: 5, timeoutMs: 300_000 } })
@@ -266,7 +302,12 @@ describe('orchestrate-puppeteer', () => {
       };
       mockTimeProvider.now.mockReturnValue(2000);
 
-      const result = buildPuppeteerResult(puppeteerResult, 1000, {}, false);
+      const result = buildPuppeteerResult(
+        puppeteerResult,
+        1000,
+        {} as unknown as IPolicyEngine,
+        false
+      );
 
       expect(result).toEqual({
         success: true,
@@ -287,9 +328,14 @@ describe('orchestrate-puppeteer', () => {
       };
       mockTimeProvider.now.mockReturnValue(1500);
 
-      const result = buildPuppeteerResult(puppeteerResult, 1000, {}, false);
+      const result = buildPuppeteerResult(
+        puppeteerResult,
+        1000,
+        {} as unknown as IPolicyEngine,
+        false
+      );
 
-      expect(result.response.text).toBe('{"key":"value"}');
+      expect(result.response!.text).toBe('{"key":"value"}');
     });
 
     it('should include policy stats for learnable policy', () => {
@@ -300,7 +346,9 @@ describe('orchestrate-puppeteer', () => {
         trajectory: [1, 2, 3, 4],
         totalDurationMs: 600,
       };
-      const mockPolicy = { getStats: vi.fn(() => ({ updates: 5, episodes: 2 })) };
+      const mockPolicy = {
+        getStats: vi.fn(() => ({ updates: 5, episodes: 2 })),
+      } as unknown as ILearnablePolicyEngine;
       mockTimeProvider.now.mockReturnValue(2000);
 
       const result = buildPuppeteerResult(puppeteerResult, 1000, mockPolicy, true);
@@ -315,7 +363,7 @@ describe('orchestrate-puppeteer', () => {
       const adapters = new Map<CliName, ICliAdapter>([['claude' as CliName, createMockAdapter()]]);
       const options: OrchestrateOptions = { learn: true, task: 'test', policyPath: '/policy.json' };
       const mockPolicy = {
-        getParameters: vi.fn(() => ({ weights: [0.1], bias: 0.2 })),
+        getParameters: vi.fn(() => ({ weights: { a: 0.1 }, bias: 0.2 })),
         getStats: vi.fn(() => ({ updates: 5, episodes: 2 })),
       };
       const mockOrchestrator = {
@@ -337,7 +385,7 @@ describe('orchestrate-puppeteer', () => {
       expect(result.model).toBe('puppeteer');
       expect(fs.writeFileSync).toHaveBeenCalledWith(
         '/policy.json',
-        JSON.stringify({ weights: [0.1], bias: 0.2 }, null, 2)
+        JSON.stringify({ weights: { a: 0.1 }, bias: 0.2 }, null, 2)
       );
     });
 
@@ -363,7 +411,7 @@ describe('orchestrate-puppeteer', () => {
       };
 
       (CliAdapterAgent as unknown as Mock).mockReturnValue({ id: 'agent-1' });
-      (createRuleBasedPolicy as Mock).mockReturnValue({});
+      (createRuleBasedPolicy as Mock).mockReturnValue({} as unknown as IPolicyEngine);
       (PuppeteerOrchestrator as unknown as Mock).mockReturnValue(mockOrchestrator);
 
       let callCount = 0;
@@ -391,7 +439,7 @@ describe('orchestrate-puppeteer', () => {
       };
 
       (CliAdapterAgent as unknown as Mock).mockReturnValue({ id: 'agent-1' });
-      (createRuleBasedPolicy as Mock).mockReturnValue({});
+      (createRuleBasedPolicy as Mock).mockReturnValue({} as unknown as IPolicyEngine);
       (PuppeteerOrchestrator as unknown as Mock).mockReturnValue(mockOrchestrator);
       (fs.writeFileSync as Mock).mockClear();
       mockTimeProvider.now.mockReturnValue(1000);
@@ -413,7 +461,7 @@ describe('orchestrate-puppeteer', () => {
       };
 
       (CliAdapterAgent as unknown as Mock).mockReturnValue({ id: 'agent-1' });
-      (createRuleBasedPolicy as Mock).mockReturnValue({});
+      (createRuleBasedPolicy as Mock).mockReturnValue({} as unknown as IPolicyEngine);
       (PuppeteerOrchestrator as unknown as Mock).mockReturnValue(mockOrchestrator);
       mockTimeProvider.now.mockReturnValue(1234567890);
 

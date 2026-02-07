@@ -131,7 +131,7 @@ describe('initializeEventBus', () => {
   });
 
   it('respects config.enabled when provided', () => {
-    const config: EventBusConfig = { enabled: false };
+    const config = { enabled: false } as EventBusConfig;
 
     initializeEventBus(mockObserver, mockLogger, config);
 
@@ -142,7 +142,7 @@ describe('initializeEventBus', () => {
 
   it('env override takes precedence over config', () => {
     process.env['NEXUS_EVENTBUS_ENABLED'] = 'false';
-    const config: EventBusConfig = { enabled: true };
+    const config = { enabled: true } as EventBusConfig;
 
     initializeEventBus(mockObserver, mockLogger, config);
 

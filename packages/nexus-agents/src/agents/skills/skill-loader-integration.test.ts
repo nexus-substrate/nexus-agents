@@ -62,10 +62,10 @@ function createMockLoader(overrides: Partial<ISkillLoader> = {}): ISkillLoader {
 }
 
 function createMockError(): SkillLoaderError {
-  const error = {
-    type: 'validation_error',
+  const error: SkillLoaderError = {
+    code: 'VALIDATION_ERROR',
     message: 'test error',
-  } as SkillLoaderError;
+  };
   return error;
 }
 

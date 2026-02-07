@@ -409,7 +409,7 @@ describe('executePatch', () => {
 
   it('includes reverse flag in command when reverse is true', async () => {
     await executePatch('/tmp/p.patch', makeOptions(), true, makeLogger());
-    const command = mockExecAsync.mock.calls[0][0] as string;
+    const command = (mockExecAsync.mock.calls[0] as unknown as [string])[0];
     expect(command).toContain('-R');
   });
 

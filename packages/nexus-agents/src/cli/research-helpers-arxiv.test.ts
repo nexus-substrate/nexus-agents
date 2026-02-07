@@ -263,17 +263,21 @@ describe('research-helpers-arxiv', () => {
       vi.mocked(loadPapersRegistry).mockResolvedValue({
         ok: true,
         value: {
+          schema_version: '1.0',
           papers: {
             'arxiv-2401.12345': {
-              id: 'arxiv-2401.12345',
               title: 'Existing Paper',
+              authors: [],
+              source: 'arxiv',
+              arxiv_id: '2401.12345',
               url: 'https://arxiv.org/abs/2401.12345',
+              publication_date: '2024-01-01',
+              venue: null,
               topics: ['ai'],
+              tags: [],
             },
           },
-          topics: {},
-          metadata: { version: 1, lastUpdated: '' },
-        },
+        } as unknown as import('./research-types.js').PapersRegistry,
       });
 
       const exists = await paperExists('2401.12345');
@@ -286,9 +290,8 @@ describe('research-helpers-arxiv', () => {
       vi.mocked(loadPapersRegistry).mockResolvedValue({
         ok: true,
         value: {
+          schema_version: '1.0',
           papers: {},
-          topics: {},
-          metadata: { version: 1, lastUpdated: '' },
         },
       });
 
@@ -300,7 +303,9 @@ describe('research-helpers-arxiv', () => {
     it('should return false when registry cannot be loaded', async () => {
       vi.mocked(loadPapersRegistry).mockResolvedValue({
         ok: false,
-        error: new Error('Registry not found'),
+        error: new Error(
+          'Registry not found'
+        ) as unknown as import('../core/types/workflow.js').ParseError,
       });
 
       const exists = await paperExists('2401.12345');
@@ -329,14 +334,14 @@ describe('research-helpers-arxiv', () => {
         },
       });
 
-      const result = await addResearchPaper({ arxivId: '2401.12345' });
+      const result = await addResearchPaper({ arxivId: '2401.12345', dryRun: false });
 
       expect(result.success).toBe(true);
       expect(result.paperId).toBe('arxiv-2401.12345');
       expect(result.title).toBe('Test Paper');
       expect(addPaperToRegistry).toHaveBeenCalledWith({
         metadata: expect.objectContaining({ id: '2401.12345' }),
-        dryRun: undefined,
+        dryRun: false,
       });
     });
 
@@ -389,6 +394,7 @@ describe('research-helpers-arxiv', () => {
 
       await addResearchPaper({
         arxivId: '2401.12345',
+        dryRun: false,
         topic: 'multi-agent',
       });
 
@@ -400,7 +406,7 @@ describe('research-helpers-arxiv', () => {
     it('should return failure when metadata fetch fails', async () => {
       vi.mocked(global.fetch).mockRejectedValue(new Error('Network error'));
 
-      const result = await addResearchPaper({ arxivId: '2401.12345' });
+      const result = await addResearchPaper({ arxivId: '2401.12345', dryRun: false });
 
       expect(result.success).toBe(false);
       expect(result.paperId).toBe('arxiv-2401.12345');
@@ -420,10 +426,10 @@ describe('research-helpers-arxiv', () => {
 
       vi.mocked(addPaperToRegistry).mockResolvedValue({
         ok: false,
-        error: { message: 'Registry write failed', code: 'WRITE_ERROR' },
+        error: { message: 'Registry write failed', code: 'SAVE_ERROR' as const },
       });
 
-      const result = await addResearchPaper({ arxivId: '2401.12345' });
+      const result = await addResearchPaper({ arxivId: '2401.12345', dryRun: false });
 
       expect(result.success).toBe(false);
       expect(result.title).toBe('Test');
@@ -444,7 +450,7 @@ describe('research-helpers-arxiv', () => {
         error: { message: 'Duplicate entry', code: 'DUPLICATE' },
       });
 
-      const result = await addResearchPaper({ arxivId: '2401.12345' });
+      const result = await addResearchPaper({ arxivId: '2401.12345', dryRun: false });
 
       expect(result.success).toBe(false);
       expect(result.title).toBe('Important Paper Title');

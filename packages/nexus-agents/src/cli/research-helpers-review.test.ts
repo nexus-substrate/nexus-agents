@@ -15,6 +15,8 @@ import {
 } from './research-helpers-review.js';
 import type { DiscoveredSource } from './research-helpers-sources.js';
 import type { QualityScore } from './research-helpers-scoring.js';
+import type { TechniqueEntry } from './research-types.js';
+import { ParseError } from '../core/types/workflow.js';
 
 // =============================================================================
 // MOCKS
@@ -34,6 +36,32 @@ vi.mock('./research-helpers-io.js', () => ({
 }));
 
 // =============================================================================
+// HELPERS
+// =============================================================================
+
+/** Create a minimal TechniqueEntry with required fields, allowing partial overrides. */
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+function makeTechnique(
+  overrides: Partial<TechniqueEntry> & Pick<TechniqueEntry, 'name' | 'topic' | 'status'>
+) {
+  return {
+    description: '',
+    source_papers: [],
+    tags: [],
+    metrics: {},
+    priority: 'P2' as const,
+    complexity: 'medium' as const,
+    integration_files: [],
+    implementation_issue: null,
+    related_prs: [],
+    notes: '',
+    dependencies: [],
+    decision_history: [],
+    ...overrides,
+  } satisfies TechniqueEntry;
+}
+
+// =============================================================================
 // TEST DATA
 // =============================================================================
 
@@ -43,7 +71,7 @@ const mockDiscoveredItem: DiscoveredSource = {
   url: 'https://arxiv.org/abs/2401.12345',
   description: 'Novel approach to multi-agent coordination',
   relevance: 'high',
-  metadata: { arxivId: '2401.12345' },
+  discoveredAt: '2024-01-01T00:00:00Z',
 };
 
 const mockQualityScore: QualityScore = {
@@ -216,7 +244,7 @@ describe('executeReview', () => {
     );
     vi.mocked(rankDiscoveredItems).mockReturnValue([highScoreItem]);
     vi.mocked(formatResearchIssueBody).mockImplementation((findings) => {
-      expect(findings[0].priority).toBe('P1');
+      expect(findings[0]!.priority).toBe('P1');
       return 'Body';
     });
     vi.mocked(createResearchIssue).mockResolvedValue({
@@ -250,7 +278,7 @@ describe('executeReview', () => {
     );
     vi.mocked(rankDiscoveredItems).mockReturnValue([midScoreItem]);
     vi.mocked(formatResearchIssueBody).mockImplementation((findings) => {
-      expect(findings[0].priority).toBe('P2');
+      expect(findings[0]!.priority).toBe('P2');
       return 'Body';
     });
     vi.mocked(createResearchIssue).mockResolvedValue({
@@ -284,7 +312,7 @@ describe('executeReview', () => {
     vi.mocked(rankDiscoveredItems).mockReturnValue([highQualityItem]);
     vi.mocked(createResearchIssue).mockResolvedValue({
       ok: false,
-      error: new Error('GitHub API error'),
+      error: { code: 'GH_ERROR' as const, message: 'GitHub API error' },
     });
 
     const options: ReviewOptions = {
@@ -412,7 +440,7 @@ describe('executePrioritize', () => {
     const { loadTechniquesRegistry } = await import('./research-helpers-io.js');
     vi.mocked(loadTechniquesRegistry).mockResolvedValue({
       ok: false,
-      error: new Error('File not found'),
+      error: new ParseError('File not found'),
     });
 
     const options: PrioritizeOptions = { vote: false };
@@ -425,7 +453,7 @@ describe('executePrioritize', () => {
     const { loadTechniquesRegistry } = await import('./research-helpers-io.js');
     vi.mocked(loadTechniquesRegistry).mockResolvedValue({
       ok: true,
-      value: { techniques: {}, papers: {} },
+      value: { schema_version: '1.0', techniques: {} },
     });
 
     const options: PrioritizeOptions = { vote: false };
@@ -438,7 +466,7 @@ describe('executePrioritize', () => {
     const { loadTechniquesRegistry } = await import('./research-helpers-io.js');
     vi.mocked(loadTechniquesRegistry).mockResolvedValue({
       ok: true,
-      value: { techniques: {}, papers: {} },
+      value: { schema_version: '1.0', techniques: {} },
     });
 
     const options: PrioritizeOptions = { topic: 'consensus', vote: false };
@@ -452,21 +480,21 @@ describe('executePrioritize', () => {
     vi.mocked(loadTechniquesRegistry).mockResolvedValue({
       ok: true,
       value: {
+        schema_version: '1.0',
         techniques: {
-          tech1: {
+          tech1: makeTechnique({
             name: 'Technique One',
             topic: 'consensus',
             status: 'planned',
             priority: 'P1',
-          },
-          tech2: {
+          }),
+          tech2: makeTechnique({
             name: 'Technique Two',
             topic: 'consensus',
             status: 'not-started',
             priority: 'P2',
-          },
+          }),
         },
-        papers: {},
       },
     });
 
@@ -485,16 +513,21 @@ describe('executePrioritize', () => {
     vi.mocked(loadTechniquesRegistry).mockResolvedValue({
       ok: true,
       value: {
+        schema_version: '1.0',
         techniques: {
-          tech1: {
+          tech1: makeTechnique({
             name: 'Implemented Tech',
             topic: 'consensus',
             status: 'implemented',
             priority: 'P1',
-          },
-          tech2: { name: 'Planned Tech', topic: 'consensus', status: 'planned', priority: 'P1' },
+          }),
+          tech2: makeTechnique({
+            name: 'Planned Tech',
+            topic: 'consensus',
+            status: 'planned',
+            priority: 'P1',
+          }),
         },
-        papers: {},
       },
     });
 
@@ -510,11 +543,21 @@ describe('executePrioritize', () => {
     vi.mocked(loadTechniquesRegistry).mockResolvedValue({
       ok: true,
       value: {
+        schema_version: '1.0',
         techniques: {
-          tech1: { name: 'Rejected Tech', topic: 'consensus', status: 'rejected', priority: 'P1' },
-          tech2: { name: 'Planned Tech', topic: 'consensus', status: 'planned', priority: 'P1' },
+          tech1: makeTechnique({
+            name: 'Rejected Tech',
+            topic: 'consensus',
+            status: 'rejected',
+            priority: 'P1',
+          }),
+          tech2: makeTechnique({
+            name: 'Planned Tech',
+            topic: 'consensus',
+            status: 'planned',
+            priority: 'P1',
+          }),
         },
-        papers: {},
       },
     });
 
@@ -530,11 +573,21 @@ describe('executePrioritize', () => {
     vi.mocked(loadTechniquesRegistry).mockResolvedValue({
       ok: true,
       value: {
+        schema_version: '1.0',
         techniques: {
-          tech1: { name: 'Consensus Tech', topic: 'consensus', status: 'planned', priority: 'P1' },
-          tech2: { name: 'Memory Tech', topic: 'memory', status: 'planned', priority: 'P1' },
+          tech1: makeTechnique({
+            name: 'Consensus Tech',
+            topic: 'consensus',
+            status: 'planned',
+            priority: 'P1',
+          }),
+          tech2: makeTechnique({
+            name: 'Memory Tech',
+            topic: 'memory',
+            status: 'planned',
+            priority: 'P1',
+          }),
         },
-        papers: {},
       },
     });
 
@@ -550,13 +603,33 @@ describe('executePrioritize', () => {
     vi.mocked(loadTechniquesRegistry).mockResolvedValue({
       ok: true,
       value: {
+        schema_version: '1.0',
         techniques: {
-          tech1: { name: 'P3 Tech', topic: 'test', status: 'planned', priority: 'P3' },
-          tech2: { name: 'P1 Tech', topic: 'test', status: 'planned', priority: 'P1' },
-          tech3: { name: 'Unset Tech', topic: 'test', status: 'planned' },
-          tech4: { name: 'P2 Tech', topic: 'test', status: 'planned', priority: 'P2' },
+          tech1: makeTechnique({
+            name: 'P3 Tech',
+            topic: 'test',
+            status: 'planned',
+            priority: 'P3',
+          }),
+          tech2: makeTechnique({
+            name: 'P1 Tech',
+            topic: 'test',
+            status: 'planned',
+            priority: 'P1',
+          }),
+          tech3: makeTechnique({
+            name: 'Unset Tech',
+            topic: 'test',
+            status: 'planned',
+            priority: null,
+          }),
+          tech4: makeTechnique({
+            name: 'P2 Tech',
+            topic: 'test',
+            status: 'planned',
+            priority: 'P2',
+          }),
         },
-        papers: {},
       },
     });
 
@@ -565,10 +638,10 @@ describe('executePrioritize', () => {
 
     const lines = result.split('\n');
     const techLines = lines.filter((l) => l.includes('Tech (planned)'));
-    expect(techLines[0]).toContain('[P1] P1 Tech');
-    expect(techLines[1]).toContain('[P2] P2 Tech');
-    expect(techLines[2]).toContain('[P3] P3 Tech');
-    expect(techLines[3]).toContain('[unset] Unset Tech');
+    expect(techLines[0]!).toContain('[P1] P1 Tech');
+    expect(techLines[1]!).toContain('[P2] P2 Tech');
+    expect(techLines[2]!).toContain('[P3] P3 Tech');
+    expect(techLines[3]!).toContain('[unset] Unset Tech');
   });
 
   it('should group techniques by topic', async () => {
@@ -576,12 +649,27 @@ describe('executePrioritize', () => {
     vi.mocked(loadTechniquesRegistry).mockResolvedValue({
       ok: true,
       value: {
+        schema_version: '1.0',
         techniques: {
-          tech1: { name: 'Tech A', topic: 'consensus', status: 'planned', priority: 'P1' },
-          tech2: { name: 'Tech B', topic: 'memory', status: 'planned', priority: 'P1' },
-          tech3: { name: 'Tech C', topic: 'consensus', status: 'planned', priority: 'P2' },
+          tech1: makeTechnique({
+            name: 'Tech A',
+            topic: 'consensus',
+            status: 'planned',
+            priority: 'P1',
+          }),
+          tech2: makeTechnique({
+            name: 'Tech B',
+            topic: 'memory',
+            status: 'planned',
+            priority: 'P1',
+          }),
+          tech3: makeTechnique({
+            name: 'Tech C',
+            topic: 'consensus',
+            status: 'planned',
+            priority: 'P2',
+          }),
         },
-        papers: {},
       },
     });
 

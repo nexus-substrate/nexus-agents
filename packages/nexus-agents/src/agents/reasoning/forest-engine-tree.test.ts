@@ -43,7 +43,7 @@ function makeNode(overrides: Partial<ReasoningNode> = {}): ReasoningNode {
     parentId: 'node-0-0-test',
     children: [],
     depth: 1,
-    stepType: 'reasoning',
+    stepType: 'inference',
     content: 'A reasoning step',
     metadata: {},
     state: 'active',

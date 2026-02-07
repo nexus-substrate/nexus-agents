@@ -142,7 +142,7 @@ describe('calculateAvgQualityByLevel', () => {
     expect(calculateAvgQualityByLevel(emptyGroups)).toEqual({ easy: 0, medium: 0, hard: 0 });
 
     const noQualityGroups = {
-      easy: [makeOutcome({ qualityScore: undefined })],
+      easy: [makeOutcome()],
       medium: [],
       hard: [],
     };
@@ -151,11 +151,7 @@ describe('calculateAvgQualityByLevel', () => {
 
   it('calculates average quality scores and ignores undefined', () => {
     const groups = {
-      easy: [
-        makeOutcome({ qualityScore: 0.9 }),
-        makeOutcome({ qualityScore: undefined }),
-        makeOutcome({ qualityScore: 0.7 }),
-      ],
+      easy: [makeOutcome({ qualityScore: 0.9 }), makeOutcome(), makeOutcome({ qualityScore: 0.7 })],
       medium: [makeOutcome({ qualityScore: 0.6 })],
       hard: [makeOutcome({ qualityScore: 0.3 }), makeOutcome({ qualityScore: 0.5 })],
     };

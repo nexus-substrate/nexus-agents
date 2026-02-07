@@ -13,7 +13,7 @@ import {
   handleCheckCommand,
 } from './research-helpers-index-ops.js';
 import * as indexer from '../indexer/research-index/index.js';
-import type { ResearchIndex } from '../indexer/research-index/types.js';
+import type { ResearchIndex } from '../indexer/research-index/index.js';
 
 vi.mock('node:fs/promises');
 vi.mock('node:path');
@@ -48,7 +48,7 @@ describe('research-helpers-index-ops', () => {
   });
 
   describe('handleStatsCommand', () => {
-    const mockIndex: ResearchIndex = {
+    const mockIndex = {
       papers: [],
       techniques: [],
       stats: {
@@ -57,17 +57,18 @@ describe('research-helpers-index-ops', () => {
         techniquesByStatus: {
           implemented: 5,
           planned: 10,
-          'not-started': 8,
+          notStarted: 8,
+          inProgress: 0,
           rejected: 2,
         },
-        techniquesByPriority: { P1: 5, P2: 10, P3: 8, P4: 2 },
+        techniquesByPriority: { P1: 5, P2: 10, P3: 8, P4: 2, none: 0 },
         topicDistribution: { 'multi-agent': 15, reasoning: 10 },
       },
       metadata: {
         generatedAt: '2026-02-06T10:00:00Z',
         registryPath: mockRegistryPath,
       },
-    };
+    } as unknown as ResearchIndex;
 
     it('should return summary report by default', async () => {
       mockIndexer.parseRegistry.mockReturnValue({
@@ -101,7 +102,7 @@ describe('research-helpers-index-ops', () => {
     it('should return error message when registry parsing fails', async () => {
       mockIndexer.parseRegistry.mockReturnValue({
         ok: false,
-        error: new Error('Registry not found'),
+        error: Object.assign(new Error('Registry not found'), { file: '' }),
       });
 
       const result = await handleStatsCommand({});
@@ -112,7 +113,7 @@ describe('research-helpers-index-ops', () => {
   });
 
   describe('handleRefreshCommand', () => {
-    const mockIndex: ResearchIndex = {
+    const mockIndex = {
       papers: [],
       techniques: [],
       stats: {
@@ -121,7 +122,8 @@ describe('research-helpers-index-ops', () => {
         techniquesByStatus: {
           implemented: 8,
           planned: 12,
-          'not-started': 8,
+          notStarted: 8,
+          inProgress: 0,
           rejected: 2,
         },
         techniquesByPriority: { P1: 8, P2: 12, P3: 8, P4: 2 },
@@ -131,7 +133,7 @@ describe('research-helpers-index-ops', () => {
         generatedAt: '2026-02-06T10:00:00Z',
         registryPath: mockRegistryPath,
       },
-    };
+    } as unknown as ResearchIndex;
 
     beforeEach(() => {
       mockFs.mkdir.mockImplementation(() => Promise.resolve(undefined));
@@ -184,7 +186,7 @@ describe('research-helpers-index-ops', () => {
     it('should return error when registry parsing fails', async () => {
       mockIndexer.parseRegistry.mockReturnValue({
         ok: false,
-        error: new Error('Invalid registry format'),
+        error: Object.assign(new Error('Invalid registry format'), { file: '' }),
       });
 
       const result = await handleRefreshCommand({});
@@ -211,7 +213,7 @@ describe('research-helpers-index-ops', () => {
   });
 
   describe('handleCheckCommand', () => {
-    const mockIndex: ResearchIndex = {
+    const mockIndex = {
       papers: [],
       techniques: [],
       stats: {
@@ -230,7 +232,7 @@ describe('research-helpers-index-ops', () => {
         generatedAt: '2026-02-06T10:00:00Z',
         registryPath: mockRegistryPath,
       },
-    };
+    } as unknown as ResearchIndex;
 
     it('should return error when index file does not exist', async () => {
       mockFs.access.mockImplementation(() => Promise.reject(new Error('ENOENT')));
@@ -302,7 +304,7 @@ describe('research-helpers-index-ops', () => {
       mockFs.access.mockImplementation(() => Promise.resolve());
       mockIndexer.parseRegistry.mockReturnValue({
         ok: false,
-        error: new Error('Registry corrupted'),
+        error: Object.assign(new Error('Registry corrupted'), { file: '' }),
       });
 
       const result = await handleCheckCommand();

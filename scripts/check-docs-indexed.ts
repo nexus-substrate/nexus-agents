@@ -116,7 +116,9 @@ function extractIndexedFiles(indexContent: string): IndexedFiles {
   let match;
 
   while ((match = linkPattern.exec(indexContent)) !== null) {
-    let filePath = match[2];
+    const rawPath = match[2];
+    if (rawPath === undefined) continue;
+    let filePath = rawPath;
 
     // Normalize path (remove leading ./ but NOT ../)
     if (filePath.startsWith('./') && !filePath.startsWith('../')) {

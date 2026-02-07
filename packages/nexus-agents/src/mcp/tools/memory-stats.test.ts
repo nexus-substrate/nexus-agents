@@ -143,7 +143,7 @@ describe('memory-stats', () => {
       const result = await registeredHandler({}, {});
 
       expect(result.isError).toBeUndefined();
-      const parsed = JSON.parse(result.content[0].text);
+      const parsed = JSON.parse(result.content[0]!.text);
       expect(parsed.backends.session).toBe(true);
       expect(parsed.backends.belief).toBe(true);
       expect(parsed.backends.agentic).toBe(false);
@@ -158,7 +158,7 @@ describe('memory-stats', () => {
       const result = await registeredHandler({}, {});
 
       expect(result.isError).toBeUndefined();
-      const parsed = JSON.parse(result.content[0].text);
+      const parsed = JSON.parse(result.content[0]!.text);
       expect(parsed.backends.agentic).toBe(true);
       expect(parsed.backends.mobimem).toBe(true);
       expect(parsed.backends.decay).toBe(true);
@@ -171,7 +171,7 @@ describe('memory-stats', () => {
       const result = await registeredHandler({}, {});
 
       expect(result.isError).toBeUndefined();
-      const parsed = JSON.parse(result.content[0].text);
+      const parsed = JSON.parse(result.content[0]!.text);
       expect(parsed.typed).toEqual(typedStats);
       expect(parsed.backends.typed).toBe(true);
     });
@@ -184,7 +184,7 @@ describe('memory-stats', () => {
       const result = await registeredHandler({ includeDecay: true }, {});
 
       expect(result.isError).toBeUndefined();
-      const parsed = JSON.parse(result.content[0].text);
+      const parsed = JSON.parse(result.content[0]!.text);
       expect(parsed.decay).toEqual(decayStats);
     });
 
@@ -194,7 +194,7 @@ describe('memory-stats', () => {
       const result = await registeredHandler({ includeDecay: false }, {});
 
       expect(result.isError).toBeUndefined();
-      const parsed = JSON.parse(result.content[0].text);
+      const parsed = JSON.parse(result.content[0]!.text);
       expect(parsed.decay).toBeNull();
     });
 
@@ -202,7 +202,7 @@ describe('memory-stats', () => {
       const result = await registeredHandler({ includeDecay: 'not-a-boolean' }, {});
 
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Validation error');
+      expect(result.content[0]!.text).toContain('Validation error');
     });
 
     it('counts learnings from session memory', async () => {
@@ -211,7 +211,7 @@ describe('memory-stats', () => {
       const result = await registeredHandler({}, {});
 
       expect(result.isError).toBeUndefined();
-      const parsed = JSON.parse(result.content[0].text);
+      const parsed = JSON.parse(result.content[0]!.text);
       expect(parsed.session.learningsCount).toBe(3);
     });
   });

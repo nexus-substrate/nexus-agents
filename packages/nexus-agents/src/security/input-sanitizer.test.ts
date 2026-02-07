@@ -52,8 +52,8 @@ describe('sanitizeInput', () => {
       const result = sanitizeInput(content, 'unknown', 'someone');
       expect(result.strippedElements.length).toBe(1);
       // Tag in audit trail is truncated to 30 chars + "..."
-      expect(result.strippedElements[0].tag.length).toBeLessThanOrEqual(33);
-      expect(result.strippedElements[0].reason).toContain('Trail of Bits');
+      expect(result.strippedElements[0]!.tag.length).toBeLessThanOrEqual(33);
+      expect(result.strippedElements[0]!.reason).toContain('Trail of Bits');
     });
   });
 

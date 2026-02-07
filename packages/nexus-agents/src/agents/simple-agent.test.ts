@@ -17,7 +17,7 @@ import type {
   StreamChunk,
   ModelCapability,
 } from '../core/index.js';
-import { ok, err, ModelError, ErrorCode } from '../core/index.js';
+import { ok, err, ModelError } from '../core/index.js';
 import { SimpleAgent } from './simple-agent.js';
 import type { BaseAgentOptions } from './base-agent-types.js';
 
@@ -243,7 +243,6 @@ describe('SimpleAgent', () => {
       const adapter = createMockAdapter();
       adapter.completeResult = err(
         new ModelError('API rate limit exceeded', {
-          code: ErrorCode.RATE_LIMITED,
           context: { retryAfterMs: 5000 },
         })
       );
