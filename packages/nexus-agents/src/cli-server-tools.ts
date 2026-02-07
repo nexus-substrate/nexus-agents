@@ -323,6 +323,8 @@ function registerOrchestrateToolSafe(ctx: ToolRegistrationContext): void {
       logger: ctx.logger,
       rateLimiter: ctx.rateLimiterFactory.getForTool('orchestrate'),
       security: ctx.securityConfig,
+      // Wire model adapter for fallback orchestration path (Issue #827)
+      modelAdapter: ctx.modelAdapter,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

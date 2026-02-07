@@ -24,6 +24,10 @@ import {
 } from '../../agents/index.js';
 import type { ICliDetectionCache } from '../../cli-adapters/cli-detection-cache.js';
 import { requireAdapterAvailable } from '../middleware/adapter-availability.js';
+import { DEFAULT_MODEL_CAPABILITIES } from '../../config/model-capabilities.js';
+import { createResilientAdapter } from '../../adapters/resilient-adapter.js';
+import type { CliName } from '../../cli-adapters/types.js';
+import type { IModelAdapter } from '../../core/index.js';
 
 /**
  * Input schema for create_expert tool.
@@ -131,6 +135,36 @@ function buildResponse(expert: Expert): CreateExpertResponse {
 }
 
 /**
+ * Resolves a model preference string to the correct CLI-specific adapter.
+ * Looks up the model in the capabilities registry and creates a ResilientAdapter
+ * with the matching CLI set as preferred. Falls back to the default adapter.
+ * (Issue #827)
+ */
+function resolveAdapterForModelPreference(
+  modelPreference: string,
+  fallbackAdapter: IModelAdapter | undefined,
+  logger: ILogger
+): IModelAdapter | undefined {
+  const model = DEFAULT_MODEL_CAPABILITIES.models.find(
+    (m) =>
+      m.id === modelPreference ||
+      m.cliAlias === modelPreference ||
+      m.cliModelName === modelPreference ||
+      modelPreference.startsWith(m.id)
+  );
+  if (model === undefined) {
+    logger.debug('Model preference not in registry, using default adapter', { modelPreference });
+    return fallbackAdapter;
+  }
+  logger.info('Routing expert to CLI for model preference', {
+    modelPreference,
+    resolvedModel: model.id,
+    cliName: model.cliName,
+  });
+  return createResilientAdapter({ logger, preferredCli: model.cliName as CliName });
+}
+
+/**
  * Creates an expert using the factory.
  */
 function createExpertFromFactory(
@@ -138,13 +172,18 @@ function createExpertFromFactory(
   expertType: BuiltInExpertType,
   modelPreference?: string
 ): { ok: true; value: Expert } | { ok: false; error: string } {
+  const logger = deps.logger ?? createLogger({ tool: 'create_expert' });
   const options: Record<string, unknown> = {};
   if (modelPreference !== undefined) {
     options.modelOverrides = { modelId: modelPreference };
   }
-  // Wire model adapter to expert so BaseAgent.complete() can use it (Issue #808)
-  if (deps.modelAdapter !== undefined) {
-    options.adapter = deps.modelAdapter;
+  // Wire model adapter — use CLI-specific adapter when modelPreference given (Issue #827)
+  const adapter =
+    modelPreference !== undefined
+      ? resolveAdapterForModelPreference(modelPreference, deps.modelAdapter, logger)
+      : deps.modelAdapter;
+  if (adapter !== undefined) {
+    options.adapter = adapter;
   }
 
   const factoryOptions = Object.keys(options).length > 0 ? options : undefined;

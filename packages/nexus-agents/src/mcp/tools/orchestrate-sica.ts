@@ -9,7 +9,7 @@
  * (Issue #759 - Renamed functions to use Orchestrator terminology)
  */
 
-import type { Result, ILogger, Task, AgentError } from '../../core/index.js';
+import type { Result, ILogger, Task, AgentError, IModelAdapter } from '../../core/index.js';
 import { TechLead } from '../../agents/index.js';
 import { SicaAgent, createSicaAgent } from '../../agents/self-improving/sica-agent.js';
 import { isSicaEnabled, getSicaConfig } from '../../cli-server-sica.js';
@@ -22,11 +22,12 @@ import type { ITechLead } from './orchestrate.js';
  * self-improvement capabilities. Otherwise, returns a plain orchestrator.
  *
  * @param logger - Logger instance
+ * @param adapter - Optional model adapter for LLM-based analysis (Issue #827)
  * @returns ITechLead-compatible agent
  */
 // eslint-disable-next-line @typescript-eslint/no-deprecated -- Intentional: backwards compat (Issue #595)
-export function createOrchestratorWithSica(logger: ILogger): ITechLead {
-  const techLead = new TechLead({ logger });
+export function createOrchestratorWithSica(logger: ILogger, adapter?: IModelAdapter): ITechLead {
+  const techLead = new TechLead({ logger, adapter });
 
   if (!isSicaEnabled()) {
     logger.debug('SICA not enabled, using plain orchestrator');

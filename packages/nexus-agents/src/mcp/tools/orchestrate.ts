@@ -137,7 +137,7 @@ function buildOutputFromOrchestratorResult(
 function createOrchestratorFromDeps(deps: OrchestrateDeps, logger: ILogger): IOrchestrator {
   if (deps.orchestrator !== undefined) return deps.orchestrator;
   // eslint-disable-next-line @typescript-eslint/no-deprecated -- Backwards compatibility
-  const techLead = deps.techLead ?? createOrchestratorWithSica(logger);
+  const techLead = deps.techLead ?? createOrchestratorWithSica(logger, deps.modelAdapter);
   const factory = new OrchestratorFactory({
     logger,
     techLead: techLead as { execute: (task: unknown) => Promise<Result<unknown, unknown>> },
