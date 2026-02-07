@@ -247,12 +247,12 @@ describe('auth-handler', () => {
   });
 
   describe('createAuthHandler', () => {
-    it('creates handler with defaults', () => {
+    it('creates handler with defaults (auth enabled by default)', () => {
       const handler = createAuthHandler();
-      expect(handler.isEnabled()).toBe(false);
+      expect(handler.isEnabled()).toBe(true);
     });
 
-    it('creates handler with config', () => {
+    it('creates handler with auth explicitly disabled', () => {
       const handler = createAuthHandler({ enabled: false });
       expect(handler.isEnabled()).toBe(false);
     });

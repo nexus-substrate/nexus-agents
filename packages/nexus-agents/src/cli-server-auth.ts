@@ -38,7 +38,7 @@ function resolveAuthEnabled(config?: AppConfig): boolean {
   if (envValue !== undefined) {
     return envValue === 'true';
   }
-  return config?.security?.auth?.enabled ?? false;
+  return config?.security?.auth?.enabled ?? true;
 }
 
 /**

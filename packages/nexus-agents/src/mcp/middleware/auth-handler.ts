@@ -159,7 +159,7 @@ export function extractBearerToken(header: string | undefined): string | undefin
 function resolveAuthConfig(config: Partial<AuthConfig> | undefined): AuthHandlerConfig {
   const resolved = config ?? {};
   return {
-    enabled: resolved.enabled ?? false,
+    enabled: resolved.enabled ?? true,
     method: resolved.method ?? 'token',
     tokenHeader: resolved.tokenHeader ?? 'Authorization',
     tokenFile: resolved.tokenFile ?? getDefaultTokenPath(),

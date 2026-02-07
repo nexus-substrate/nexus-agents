@@ -52,15 +52,18 @@ describe('cli-server-auth', () => {
   });
 
   describe('initializeAuth', () => {
-    it('returns disabled auth when no config provided', () => {
-      mockHandler.isEnabled.mockReturnValue(false);
+    it('returns enabled auth when no config provided (auth-by-default)', () => {
+      mockHandler.isEnabled.mockReturnValue(true);
+      mockHandler.hasToken.mockReturnValue(false);
 
       const result = initializeAuth(undefined, mockLogger);
 
-      expect(result.enabled).toBe(false);
-      expect(result.tokenGenerated).toBe(false);
+      expect(result.enabled).toBe(true);
       expect(result.handler).toBe(mockHandler);
-      expect(mockHandler.generateToken).not.toHaveBeenCalled();
+      expect(AuthHandler).toHaveBeenCalledWith(
+        expect.objectContaining({ enabled: true }),
+        expect.any(Object)
+      );
     });
 
     it('returns disabled auth when config has auth disabled', () => {

@@ -46,7 +46,7 @@ nexus-agents --help       # Full command list
 | `GOOGLE_AI_API_KEY`  | Gemini adapter                      | None                          |
 | `NEXUS_LOG_LEVEL`    | Logging verbosity                   | `info`                        |
 | `NEXUS_CONFIG_PATH`  | Custom config path                  | `./nexus-agents.yaml`         |
-| `NEXUS_AUTH_ENABLED` | Network auth (not needed for stdio) | `false` (stdio is local-only) |
+| `NEXUS_AUTH_ENABLED` | Network auth (not needed for stdio) | `true` (auto-generates token) |
 | `NEXUS_BILLING_MODE` | Model routing cost handling         | `plan` (monthly subscription) |
 
 **Getting started:** [docs/getting-started/INSTALLATION.md](./docs/getting-started/INSTALLATION.md) | **Configuration:** [docs/getting-started/CONFIGURATION.md](./docs/getting-started/CONFIGURATION.md)

@@ -150,8 +150,8 @@ export const SecurityConfigSchema = z.object({
   /** Authentication configuration (Issue #739) */
   auth: z
     .object({
-      /** Enable authentication for network-exposed transports (default: false) */
-      enabled: z.boolean().default(false),
+      /** Enable authentication for network-exposed transports (default: true) */
+      enabled: z.boolean().default(true),
       /** Authentication method (default: 'token') */
       method: z.enum(['token', 'oauth2']).default('token'),
       /** Header name for bearer token (default: 'Authorization') */

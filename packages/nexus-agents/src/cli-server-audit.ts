@@ -139,7 +139,7 @@ export function logSecurityConfig(
 
   if (!authVals.enabled) {
     logger.warn(
-      'Authentication is disabled. Set NEXUS_AUTH_ENABLED=true or configure security.auth.enabled.'
+      'Authentication explicitly disabled — network-exposed endpoints are unprotected. Remove NEXUS_AUTH_ENABLED=false to re-enable.'
     );
   }
 

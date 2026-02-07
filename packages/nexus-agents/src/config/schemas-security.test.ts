@@ -327,7 +327,7 @@ describe('SecurityConfigSchema', () => {
       auth: {},
     });
     expect(result.auth).toEqual({
-      enabled: false,
+      enabled: true,
       method: 'token',
       tokenHeader: 'Authorization',
     });

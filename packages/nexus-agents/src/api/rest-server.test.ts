@@ -15,6 +15,10 @@ function getTestPort(): number {
   return ((base + portCounter++) % 50000) + 10000;
 }
 
+/** Standard test API key for authenticated endpoints. */
+const TEST_API_KEY = 'test-api-key-for-tests';
+const TEST_API_KEYS = [{ key: TEST_API_KEY, name: 'test' }];
+
 describe('RestApiServer', () => {
   describe('lifecycle', () => {
     let server: RestApiServer;
@@ -190,13 +194,29 @@ describe('RestApiServer', () => {
 
       expect(response.statusCode).toBe(200);
     });
+
+    it('should reject non-public routes when no API keys configured (fail closed)', async () => {
+      const noKeysServer = new RestApiServer({ config: { port: getTestPort() } });
+      await noKeysServer.start();
+      const response = await noKeysServer.getInstance().inject({
+        method: 'POST',
+        url: '/api/v1/orchestrate',
+        payload: { task: 'test' },
+      });
+
+      expect(response.statusCode).toBe(401);
+      const body = JSON.parse(response.body) as { error: { code: string; message: string } };
+      expect(body.error.code).toBe('UNAUTHORIZED');
+      expect(body.error.message).toContain('No API keys configured');
+      await noKeysServer.stop();
+    });
   });
 
   describe('orchestrate endpoint', () => {
     let server: RestApiServer;
 
     beforeEach(() => {
-      server = new RestApiServer({ config: { port: getTestPort() } });
+      server = new RestApiServer({ config: { port: getTestPort() }, apiKeys: TEST_API_KEYS });
     });
 
     afterEach(async () => {
@@ -211,6 +231,7 @@ describe('RestApiServer', () => {
         method: 'POST',
         url: '/api/v1/orchestrate',
         payload: { task: 'Analyze the code structure' },
+        headers: { 'x-api-key': TEST_API_KEY },
       });
 
       expect(response.statusCode).toBe(200);
@@ -225,6 +246,7 @@ describe('RestApiServer', () => {
         method: 'POST',
         url: '/api/v1/orchestrate',
         payload: {},
+        headers: { 'x-api-key': TEST_API_KEY },
       });
 
       // Missing required 'task' field - should return error (400 or 500)
@@ -237,6 +259,7 @@ describe('RestApiServer', () => {
         method: 'POST',
         url: '/api/v1/orchestrate',
         payload: { task: '' },
+        headers: { 'x-api-key': TEST_API_KEY },
       });
 
       // Empty task validated by Zod inside handler - should return error (400 or 500)
@@ -250,7 +273,7 @@ describe('RestApiServer', () => {
     let server: RestApiServer;
 
     beforeEach(() => {
-      server = new RestApiServer({ config: { port: getTestPort() } });
+      server = new RestApiServer({ config: { port: getTestPort() }, apiKeys: TEST_API_KEYS });
     });
 
     afterEach(async () => {
@@ -265,6 +288,7 @@ describe('RestApiServer', () => {
         method: 'POST',
         url: '/api/v1/delegate',
         payload: { task: 'Write unit tests' },
+        headers: { 'x-api-key': TEST_API_KEY },
       });
 
       expect(response.statusCode).toBe(200);
@@ -278,6 +302,7 @@ describe('RestApiServer', () => {
         method: 'POST',
         url: '/api/v1/delegate',
         payload: { task: 'Generate code', preferredModel: 'gemini' },
+        headers: { 'x-api-key': TEST_API_KEY },
       });
 
       expect(response.statusCode).toBe(200);
@@ -290,7 +315,7 @@ describe('RestApiServer', () => {
     let server: RestApiServer;
 
     beforeEach(() => {
-      server = new RestApiServer({ config: { port: getTestPort() } });
+      server = new RestApiServer({ config: { port: getTestPort() }, apiKeys: TEST_API_KEYS });
     });
 
     afterEach(async () => {
@@ -305,6 +330,7 @@ describe('RestApiServer', () => {
         method: 'POST',
         url: '/api/v1/workflow',
         payload: { workflowId: 'test-workflow' },
+        headers: { 'x-api-key': TEST_API_KEY },
       });
 
       expect(response.statusCode).toBe(200);
@@ -319,6 +345,7 @@ describe('RestApiServer', () => {
         method: 'POST',
         url: '/api/v1/workflow',
         payload: { workflowYaml: 'name: test\nsteps: []' },
+        headers: { 'x-api-key': TEST_API_KEY },
       });
 
       expect(response.statusCode).toBe(200);
@@ -330,6 +357,7 @@ describe('RestApiServer', () => {
         method: 'POST',
         url: '/api/v1/workflow',
         payload: {},
+        headers: { 'x-api-key': TEST_API_KEY },
       });
 
       expect(response.statusCode).toBe(400);
@@ -340,7 +368,7 @@ describe('RestApiServer', () => {
     let server: RestApiServer;
 
     beforeEach(() => {
-      server = new RestApiServer({ config: { port: getTestPort() } });
+      server = new RestApiServer({ config: { port: getTestPort() }, apiKeys: TEST_API_KEYS });
     });
 
     afterEach(async () => {
@@ -355,6 +383,7 @@ describe('RestApiServer', () => {
         method: 'POST',
         url: '/api/v1/expert',
         payload: { type: 'code', task: 'Review this function' },
+        headers: { 'x-api-key': TEST_API_KEY },
       });
 
       expect(response.statusCode).toBe(200);
@@ -368,6 +397,7 @@ describe('RestApiServer', () => {
       const response = await server.getInstance().inject({
         method: 'GET',
         url: '/api/v1/expert/types',
+        headers: { 'x-api-key': TEST_API_KEY },
       });
 
       expect(response.statusCode).toBe(200);

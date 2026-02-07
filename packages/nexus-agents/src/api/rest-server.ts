@@ -276,9 +276,10 @@ export class RestApiServer implements IRestApiServer {
   }
 
   private async authenticateRequest(request: FastifyRequest, reply: FastifyReply): Promise<void> {
-    // Skip auth for health, metrics, and docs
+    // Skip auth for health, metrics, and docs (including API-prefixed variants)
     const publicPaths = ['/health', '/metrics', '/docs'];
-    if (publicPaths.some((p) => request.url.startsWith(p))) {
+    const url = request.url;
+    if (publicPaths.some((p) => url.startsWith(p) || url.includes(p))) {
       (request as FastifyRequest & { authContext: AuthContext }).authContext = {
         authenticated: false,
         clientId: this.getClientId(request),
@@ -286,12 +287,17 @@ export class RestApiServer implements IRestApiServer {
       return;
     }
 
-    // Skip auth if no API keys configured
+    // Fail closed: reject if no API keys configured (Issue #739 - security by default)
     if (this.apiKeys.size === 0) {
-      (request as FastifyRequest & { authContext: AuthContext }).authContext = {
-        authenticated: true,
-        clientId: this.getClientId(request),
+      const error: ApiError = {
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'No API keys configured — server cannot authenticate requests',
+        },
+        requestId: request.id,
+        timestamp: getTimeProvider().nowIso(),
       };
+      await reply.status(401).send(error);
       return;
     }
 
