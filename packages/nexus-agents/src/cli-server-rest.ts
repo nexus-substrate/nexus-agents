@@ -46,6 +46,15 @@ const DEFAULT_REST_CONFIG: RestApiCliConfig = {
   swagger: true,
 };
 
+/** Parses and validates a port number from string. Returns default port on invalid input. */
+function parseValidPort(value: string): number {
+  const port = parseInt(value, 10);
+  if (isNaN(port) || port < 1 || port > 65535) {
+    return DEFAULT_REST_CONFIG.port;
+  }
+  return port;
+}
+
 /**
  * Extracts REST API configuration from AppConfig.
  * Currently uses environment variables; AppConfig integration is planned.
@@ -57,7 +66,7 @@ export function extractRestConfig(_config?: AppConfig): RestApiCliConfig {
 
   return {
     enabled: process.env['NEXUS_REST_ENABLED'] === 'true',
-    port: portEnv !== undefined ? parseInt(portEnv, 10) : DEFAULT_REST_CONFIG.port,
+    port: portEnv !== undefined ? parseValidPort(portEnv) : DEFAULT_REST_CONFIG.port,
     host: hostEnv ?? DEFAULT_REST_CONFIG.host,
     cors: DEFAULT_REST_CONFIG.cors,
     swagger: DEFAULT_REST_CONFIG.swagger,

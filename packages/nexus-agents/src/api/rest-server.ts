@@ -277,10 +277,11 @@ export class RestApiServer implements IRestApiServer {
 
   /** Checks if a URL path matches a public (unauthenticated) endpoint. */
   private isPublicPath(url: string): boolean {
-    const publicPaths = ['health', 'metrics', 'docs'];
+    // SECURITY: Explicit allowlist of public path prefixes.
+    // Only pathname is checked — query strings are stripped to prevent bypass.
+    const publicPrefixes = ['/health', '/metrics', '/docs', '/api/v1/health', '/api/v1/metrics'];
     const pathname = url.split('?')[0] ?? url;
-    const segments = pathname.split('/').filter(Boolean);
-    return publicPaths.some((p) => segments.includes(p));
+    return publicPrefixes.some((p) => pathname === p || pathname.startsWith(p + '/'));
   }
 
   private async authenticateRequest(request: FastifyRequest, reply: FastifyReply): Promise<void> {
