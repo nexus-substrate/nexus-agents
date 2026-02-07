@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { createTechLeadWithSica } from './orchestrate-sica.js';
+import { createOrchestratorWithSica } from './orchestrate-sica.js';
 import { createLogger } from '../../core/logger.js';
 import * as sicaModule from '../../cli-server-sica.js';
 
@@ -24,11 +24,11 @@ describe('orchestrate-sica', () => {
     vi.restoreAllMocks();
   });
 
-  describe('createTechLeadWithSica', () => {
+  describe('createOrchestratorWithSica', () => {
     it('returns plain TechLead when SICA is disabled', () => {
       vi.mocked(sicaModule.isSicaEnabled).mockReturnValue(false);
 
-      const techLead = createTechLeadWithSica(logger);
+      const techLead = createOrchestratorWithSica(logger);
 
       expect(techLead).toBeDefined();
       expect(techLead.execute).toBeDefined();
@@ -40,7 +40,7 @@ describe('orchestrate-sica', () => {
       vi.mocked(sicaModule.isSicaEnabled).mockReturnValue(true);
       vi.mocked(sicaModule.getSicaConfig).mockReturnValue(undefined);
 
-      const techLead = createTechLeadWithSica(logger);
+      const techLead = createOrchestratorWithSica(logger);
 
       expect(techLead).toBeDefined();
       expect(sicaModule.getSicaConfig).toHaveBeenCalled();
@@ -58,7 +58,7 @@ describe('orchestrate-sica', () => {
         enableObservability: true,
       });
 
-      const techLead = createTechLeadWithSica(logger);
+      const techLead = createOrchestratorWithSica(logger);
 
       expect(techLead).toBeDefined();
       expect(techLead.execute).toBeDefined();
@@ -79,7 +79,7 @@ describe('orchestrate-sica', () => {
         enableObservability: true,
       });
 
-      const techLead = createTechLeadWithSica(logger);
+      const techLead = createOrchestratorWithSica(logger);
 
       // Execute a simple task (will use heuristic analysis without adapter)
       const result = await techLead.execute({

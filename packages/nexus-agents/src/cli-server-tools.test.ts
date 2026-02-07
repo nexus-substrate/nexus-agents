@@ -160,6 +160,30 @@ vi.mock('./cli-server-stpa.js', () => ({
 // Mock helpers
 // ============================================================================
 
+/** Re-sets mock return values after vi.clearAllMocks() wipes them. */
+function resetMockReturnValues(): void {
+  mockRegisterTools.mockReturnValue({
+    logger: makeMockLogger(),
+  });
+  mockCreateDefaultDeps.mockReturnValue({
+    logger: makeMockLogger(),
+    rateLimiter: { tryAcquire: vi.fn().mockReturnValue(true) },
+  });
+  mockCreateRealWorkflowEngine.mockReturnValue({
+    loadTemplate: vi.fn(),
+    execute: vi.fn(),
+    cancel: vi.fn(),
+    getStatus: vi.fn(),
+    listTemplates: vi.fn(),
+  });
+  mockCreateToolRateLimiterFactory.mockReturnValue({
+    getForTool: vi.fn().mockReturnValue({
+      tryAcquire: vi.fn().mockReturnValue(true),
+    }),
+    isEnabled: vi.fn().mockReturnValue(true),
+  });
+}
+
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 function makeMockLogger() {
   return {
@@ -268,6 +292,7 @@ describe('registerMcpTools', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    resetMockReturnValues();
     delete process.env['NEXUS_ALLOW_MOCK_ORCHESTRATION'];
   });
 
@@ -348,6 +373,7 @@ describe('registerMcpTools', () => {
 describe('registerMcpTools - STPA safety analysis', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetMockReturnValues();
     process.env['NEXUS_ALLOW_MOCK_ORCHESTRATION'] = 'true';
   });
 
@@ -390,6 +416,7 @@ describe('registerMcpTools - STPA safety analysis', () => {
 describe('registerMcpTools - tool allowlisting', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetMockReturnValues();
     process.env['NEXUS_ALLOW_MOCK_ORCHESTRATION'] = 'true';
   });
 
@@ -444,6 +471,7 @@ describe('registerMcpTools - tool allowlisting', () => {
 describe('registerMcpTools - rate limiting', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetMockReturnValues();
     process.env['NEXUS_ALLOW_MOCK_ORCHESTRATION'] = 'true';
   });
 
@@ -479,6 +507,7 @@ describe('registerMcpTools - rate limiting', () => {
 describe('registerMcpTools - workflow config', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetMockReturnValues();
     process.env['NEXUS_ALLOW_MOCK_ORCHESTRATION'] = 'true';
   });
 
@@ -512,6 +541,7 @@ describe('registerMcpTools - workflow config', () => {
 describe('registerMcpTools - policy firewall', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetMockReturnValues();
     process.env['NEXUS_ALLOW_MOCK_ORCHESTRATION'] = 'true';
   });
 

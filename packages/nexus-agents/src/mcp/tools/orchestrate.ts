@@ -293,6 +293,22 @@ function buildRoutingInfo(
   };
 }
 
+/** Records a workflow outcome to the router. */
+function recordRouterOutcome(
+  workflowRouter: IWorkflowRouter,
+  decision: import('../../orchestration/workflow-router-types.js').RoutingDecision,
+  success: boolean,
+  durationMs: number
+): void {
+  workflowRouter.recordOutcome({
+    pattern: decision.pattern,
+    taskType: decision.analysis.taskType,
+    success,
+    durationMs,
+    timestamp: getTimeProvider().now(),
+  });
+}
+
 async function executeOrchestration(
   input: OrchestrateInput,
   deps: OrchestrateDeps,
@@ -313,13 +329,7 @@ async function executeOrchestration(
       logger.error('Orchestration failed', result.error, { taskId });
       const cause = result.error instanceof Error ? result.error : undefined;
       recordOrchestrationError(result.error.message, input.task);
-      workflowRouter.recordOutcome({
-        pattern: decision.pattern,
-        taskType: decision.analysis.taskType,
-        success: false,
-        durationMs: failDuration,
-        timestamp: getTimeProvider().now(),
-      });
+      recordRouterOutcome(workflowRouter, decision, false, failDuration);
       return err(
         new OrchestrationError(
           `Task execution failed: ${result.error.message}`,
@@ -336,13 +346,7 @@ async function executeOrchestration(
       buildRoutingInfo(decision)
     );
     recordOrchestrationSuccess(taskId, input.task, output.stepsCompleted, durationMs);
-    workflowRouter.recordOutcome({
-      pattern: decision.pattern,
-      taskType: decision.analysis.taskType,
-      success: true,
-      durationMs,
-      timestamp: getTimeProvider().now(),
-    });
+    recordRouterOutcome(workflowRouter, decision, true, durationMs);
     logger.info('Orchestration completed', {
       taskId,
       durationMs,
