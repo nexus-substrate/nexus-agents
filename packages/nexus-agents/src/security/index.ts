@@ -76,3 +76,6 @@ export type {
   SanitizationEvent,
   GraphExecutionAuditEvent,
 } from './audit-trail.js';
+
+// Hostile input firewall (Issue #826)
+export * from './firewall/index.js';
