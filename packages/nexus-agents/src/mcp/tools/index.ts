@@ -171,6 +171,14 @@ export {
   type RunGraphWorkflowResponse,
 } from './run-graph-workflow.js';
 
+// Spec execution tool (Issue #853 — AI Software Factory)
+export {
+  registerExecuteSpecTool,
+  ExecuteSpecInputSchema,
+  type ExecuteSpecInput,
+  type ExecuteSpecDeps,
+} from './execute-spec-tool.js';
+
 // Memory observability tools (Issue #751)
 export {
   registerMemoryQueryTool,
@@ -282,6 +290,7 @@ export function registerTools(
       'memory_stats',
       'issue_triage',
       'run_graph_workflow',
+      'execute_spec',
     ],
     logger,
     rateLimiter,
