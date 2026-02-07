@@ -149,6 +149,23 @@ export { validateScenario } from './scenario-validator.js';
 export type { ScenarioResult, CriterionResult, ScenarioError } from './scenario-validator-types.js';
 export { ScenarioResultSchema, CriterionResultSchema } from './scenario-validator-types.js';
 
+// Task Outcome Tracking (Issue #861)
+export type {
+  TaskOutcome,
+  OutcomeQuery,
+  OutcomeSource,
+  PerformanceSummary,
+  GroupStats,
+} from './outcomes/index.js';
+export {
+  TaskOutcomeSchema,
+  OutcomeQuerySchema,
+  OutcomeStore,
+  getOutcomeStore,
+  resetOutcomeStore,
+} from './outcomes/index.js';
+export type { OutcomeStoreConfig } from './outcomes/index.js';
+
 // Checkpointing (Issue #833)
 export {
   InMemoryCheckpointStore,

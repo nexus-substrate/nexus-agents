@@ -13,7 +13,7 @@
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { createLogger, formatZodError } from '../../core/index.js';
+import { createLogger, formatZodError, getTimeProvider } from '../../core/index.js';
 import { DEFAULTS } from '../../config/defaults.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
@@ -30,8 +30,12 @@ import {
   successResult,
   errorResult,
   scoreModel,
+  getCliForModel,
 } from './delegate-to-model-helpers.js';
 import { getToolMemory } from './tool-memory.js';
+import { getOutcomeStore } from '../../orchestration/outcomes/index.js';
+import { detectTaskCategory } from '../../config/task-specialization.js';
+import type { CliName } from '../../cli-adapters/types-core.js';
 
 // Re-export types for backward compatibility
 export type {
@@ -55,8 +59,8 @@ export {
 // Memory Recording (Issue #753)
 // ============================================================================
 
-/** Records successful model delegation. Best-effort. */
-function recordDelegationSuccess(task: string, model: string, usedRouter: boolean): void {
+/** Records successful delegation to memory and outcome store. Best-effort. */
+function recordDelegation(task: string, model: string, usedRouter: boolean, startMs: number): void {
   try {
     const memory = getToolMemory();
     memory.recordLearning({
@@ -71,6 +75,25 @@ function recordDelegationSuccess(task: string, model: string, usedRouter: boolea
   } catch {
     // Best-effort
   }
+
+  // Outcome tracking (Issue #861)
+  try {
+    const cli = getCliForModel(model) as CliName | undefined;
+    if (cli === undefined) return;
+    const match = detectTaskCategory(task);
+    getOutcomeStore().append({
+      id: `del-${String(Date.now())}-${Math.random().toString(36).slice(2, 8)}`,
+      cli,
+      category: match?.category ?? 'exploration',
+      model,
+      success: true,
+      durationMs: Date.now() - startMs,
+      timestamp: new Date(getTimeProvider().now()).toISOString(),
+      source: 'delegate',
+    });
+  } catch {
+    // Best-effort — never block the tool response
+  }
 }
 
 /**
@@ -83,6 +106,7 @@ function createDelegateHandler(
   deps: DelegateDeps
 ): (args: unknown, ctx: HandlerContext) => Promise<ToolResult> {
   return async (args: unknown, ctx: HandlerContext): Promise<ToolResult> => {
+    const startMs = Date.now();
     const validated = DelegateInputSchema.safeParse(args);
     if (!validated.success) {
       ctx.logger.warn('Invalid delegate_to_model input', { errors: validated.error.issues });
@@ -90,14 +114,8 @@ function createDelegateHandler(
     }
 
     const input = validated.data;
-    ctx.logger.info('Analyzing task for model routing', {
-      taskLength: input.task.length,
-      hasRouter: deps.router !== undefined,
-    });
-
+    ctx.logger.info('Analyzing task for model routing', { taskLength: input.task.length });
     const requirements = analyzeTask(input.task);
-    ctx.logger.debug('Task requirements analyzed', { ...requirements });
-
     // Try CompositeRouter first if available (Issue #169)
     if (deps.router !== undefined) {
       const routingResult = await routeViaCompositeRouter(
@@ -118,13 +136,12 @@ function createDelegateHandler(
           stages: routingResult.decision.stagesExecuted,
           routingId: routingResult.routingId,
         });
-        recordDelegationSuccess(input.task, output.recommended_model, true);
+        recordDelegation(input.task, output.recommended_model, true, startMs);
         return successResult(JSON.stringify(output, null, 2));
       }
 
       ctx.logger.info('Falling back to local model selection');
     }
-
     // Fall back to local model selection
     const billingMode = input.billing_mode ?? DEFAULTS.PROVIDER_DEFAULTS.billingMode;
     const selection = selectModel(input, requirements, billingMode);
@@ -135,7 +152,7 @@ function createDelegateHandler(
     ctx.logger.info('Model recommendation complete', {
       recommendedModel: output.recommended_model,
     });
-    recordDelegationSuccess(input.task, output.recommended_model, false);
+    recordDelegation(input.task, output.recommended_model, false, startMs);
     return successResult(JSON.stringify(output, null, 2));
   };
 }
