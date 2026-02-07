@@ -136,9 +136,9 @@ export function calcSpecializationBonus(
 
 /** Options for scoreModel beyond the required model/profile/requirements. */
 export interface ScoreModelOptions {
-  readonly preferredCapability?: PreferredCapability;
-  readonly billingMode?: BillingMode;
-  readonly specialization?: SpecializationMatch | null;
+  readonly preferredCapability?: PreferredCapability | undefined;
+  readonly billingMode?: BillingMode | undefined;
+  readonly specialization?: SpecializationMatch | null | undefined;
 }
 
 /**
