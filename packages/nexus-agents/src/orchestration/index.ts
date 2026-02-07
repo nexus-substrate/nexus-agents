@@ -128,6 +128,16 @@ export type {
   ExecutionStage,
 } from './spec-executor-types.js';
 
+// Failure Analyzer (Issue #852)
+export { analyzeFailures } from './failure-analyzer.js';
+export type {
+  FailureAnalysis,
+  CriterionFailure,
+  ImprovementSuggestion,
+  FailureType,
+  AnalysisError,
+} from './failure-analyzer-types.js';
+
 // Scenario Validator (Issue #850)
 export { validateScenario } from './scenario-validator.js';
 export type { ScenarioResult, CriterionResult, ScenarioError } from './scenario-validator-types.js';
