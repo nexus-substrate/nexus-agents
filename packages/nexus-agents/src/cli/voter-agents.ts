@@ -21,6 +21,8 @@ import { VOTER_ROLES } from './vote-types.js';
 import type { IModelAdapter, ILogger } from '../core/index.js';
 import { createLogger, getTimeProvider, getErrorMessage } from '../core/index.js';
 import { createAutoAdapter } from '../adapters/auto-adapter.js';
+import { getAvailableClis } from '../cli-adapters/factory.js';
+import type { CliName } from '../cli-adapters/types.js';
 
 // Re-export prompts for backward compatibility
 export { VOTER_SYSTEM_PROMPTS, SIMULATED_VOTE_REASONING } from './voter-prompts.js';
@@ -186,11 +188,84 @@ async function resolveAdapter(
   }
 }
 
+/** Assigns a single adapter to all roles (fallback path). */
+function assignUniformAdapter(
+  roles: readonly VoterRole[],
+  adapter: IModelAdapter
+): Map<VoterRole, IModelAdapter> {
+  const adapters = new Map<VoterRole, IModelAdapter>();
+  for (const role of roles) adapters.set(role, adapter);
+  return adapters;
+}
+
+/** Creates CLI-specific adapters for available CLIs. */
+async function createCliAdapterMap(
+  clis: readonly CliName[],
+  logger: ILogger
+): Promise<Map<CliName, IModelAdapter>> {
+  const result = new Map<CliName, IModelAdapter>();
+  for (const cli of clis) {
+    try {
+      const selection = await createAutoAdapter({ preferredCli: cli, logger });
+      result.set(cli, selection.adapter);
+    } catch {
+      logger.warn('Failed to create adapter for CLI', { cli });
+    }
+  }
+  return result;
+}
+
+/**
+ * Creates diverse per-role adapters using all available CLIs (Issue #845).
+ * Distributes roles across CLIs in round-robin fashion for model diversity.
+ * Falls back to single adapter if only one CLI is available.
+ */
+async function resolveDiverseAdapters(
+  roles: readonly VoterRole[],
+  logger: ILogger,
+  fallbackAdapter: IModelAdapter
+): Promise<Map<VoterRole, IModelAdapter>> {
+  let availableClis: CliName[];
+  try {
+    availableClis = await getAvailableClis();
+  } catch {
+    availableClis = [];
+  }
+
+  if (availableClis.length <= 1) {
+    logger.info('Using single adapter for all roles', { cliCount: availableClis.length });
+    return assignUniformAdapter(roles, fallbackAdapter);
+  }
+
+  const cliAdapters = await createCliAdapterMap(availableClis, logger);
+  if (cliAdapters.size <= 1) return assignUniformAdapter(roles, fallbackAdapter);
+
+  // Round-robin assign roles to diverse CLIs
+  const cliList = [...cliAdapters.entries()];
+  const adapters = new Map<VoterRole, IModelAdapter>();
+  const assignments: Record<string, string> = {};
+  for (let i = 0; i < roles.length; i++) {
+    const role = roles[i];
+    const entry = cliList[i % cliList.length];
+    if (role === undefined || entry === undefined) continue;
+    adapters.set(role, entry[1]);
+    assignments[role] = entry[0];
+  }
+
+  logger.info('Diverse adapters assigned', {
+    cliCount: cliAdapters.size,
+    clis: [...cliAdapters.keys()],
+    roleAssignments: assignments,
+  });
+  return adapters;
+}
+
 /**
  * Collects votes from multiple voter agents.
  *
  * Per Issue #280: No automatic simulation fallback. If no adapter is
  * available and simulation is not explicitly enabled, throws NoAdapterError.
+ * Per Issue #845: Uses diverse CLIs when multiple are available.
  */
 export async function collectRealVotes(
   options: CollectRealVotesOptions
@@ -221,16 +296,16 @@ export async function collectRealVotes(
     );
   }
 
-  logger.info('Using adapter for voting', {
-    model: adapterResult.adapter.modelId,
-    provider: adapterResult.adapter.providerId,
-    timeoutMs,
-    maxRetries,
-  });
+  // Per Issue #845: Use diverse adapters when no explicit adapter is provided
+  const roleAdapters =
+    options.adapter !== undefined
+      ? assignUniformAdapter(roles, adapterResult.adapter)
+      : await resolveDiverseAdapters(roles, logger, adapterResult.adapter);
   const voteOptions = { timeoutMs, maxRetries, allowSimulation: allowSimulation ?? false };
-  const votePromises = roles.map((role) =>
-    executeAgentVote(role, proposal, adapterResult.adapter, logger, voteOptions)
-  );
+  const votePromises = roles.map((role) => {
+    const adapter = roleAdapters.get(role) ?? adapterResult.adapter;
+    return executeAgentVote(role, proposal, adapter, logger, voteOptions);
+  });
 
   return Promise.all(votePromises);
 }
