@@ -166,6 +166,20 @@ export {
 } from './outcomes/index.js';
 export type { OutcomeStoreConfig } from './outcomes/index.js';
 
+// Parallel Exploration (Issue #862)
+export { executeParallelExploration } from './parallel-exploration.js';
+export type { ExploreOptions } from './parallel-exploration.js';
+export {
+  isParallelEligible,
+  createDefaultConfig as createParallelExplorationConfig,
+  ParallelExplorationConfigSchema,
+} from './parallel-exploration-types.js';
+export type {
+  PartitionResult,
+  ExplorationResult,
+  ParallelExplorationConfig,
+} from './parallel-exploration-types.js';
+
 // Checkpointing (Issue #833)
 export {
   InMemoryCheckpointStore,
