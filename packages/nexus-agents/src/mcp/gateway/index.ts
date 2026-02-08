@@ -11,3 +11,12 @@ export {
   TOOL_TIER_MAP,
   type TierOverrides,
 } from './tier-classifier.js';
+
+export {
+  createGateway,
+  type GatewayConfig,
+  type GatewayInstance,
+  type GatewayToolHandler,
+  type GatewayToolResult,
+  type GatewayLogEntry,
+} from './gateway-middleware.js';

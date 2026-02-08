@@ -204,12 +204,18 @@ export {
   type GraphWorkflowInfo,
 } from './tools/index.js';
 
-// Gateway — Tiered Orchestration Routing (Issue #888, #892)
+// Gateway — Tiered Orchestration Routing (Issue #888, #892, #893)
 export {
   classifyRequestTier,
   RequestTier,
   TOOL_TIER_MAP,
   type TierOverrides,
+  createGateway,
+  type GatewayConfig,
+  type GatewayInstance,
+  type GatewayToolHandler,
+  type GatewayToolResult,
+  type GatewayLogEntry,
 } from './gateway/index.js';
 
 // STPA Safety Analysis Framework (Issue #328)
