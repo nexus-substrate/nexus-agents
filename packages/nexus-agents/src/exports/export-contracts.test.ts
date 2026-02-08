@@ -133,6 +133,9 @@ import {
   StageResultSchema,
   PLUGIN_TRUST_LEVELS,
   PluginRegistry,
+  PIPELINE_EVENT_TYPES,
+  EventBus,
+  ArtifactStore,
 } from '../index.js';
 
 describe('Export contracts — MCP tool registration', () => {
@@ -343,6 +346,25 @@ describe('Export contracts — pipeline V2 types', () => {
     expect(typeof registry.register).toBe('function');
     expect(typeof registry.resolve).toBe('function');
     expect(typeof registry.freeze).toBe('function');
+  });
+
+  it('exports EventBus class and event constants', () => {
+    expect(typeof EventBus).toBe('function');
+    const bus = new EventBus();
+    expect(typeof bus.emit).toBe('function');
+    expect(typeof bus.subscribe).toBe('function');
+    expect(typeof bus.query).toBe('function');
+    expect(PIPELINE_EVENT_TYPES).toContain('task.created');
+    expect(PIPELINE_EVENT_TYPES).toContain('stage.completed');
+  });
+
+  it('exports ArtifactStore class', () => {
+    expect(typeof ArtifactStore).toBe('function');
+    const store = new ArtifactStore();
+    expect(typeof store.put).toBe('function');
+    expect(typeof store.get).toBe('function');
+    expect(typeof store.query).toBe('function');
+    expect(typeof store.provenance).toBe('function');
   });
 });
 

@@ -50,4 +50,21 @@ export {
   // Plugin registry
   PluginRegistry,
   type PluginRegistryOptions,
+  // Event bus
+  PIPELINE_EVENT_TYPES,
+  EventBus,
+  type PipelineEvent,
+  type PipelineEventType,
+  type EventFilter,
+  type EventHandler,
+  type Unsubscribe,
+  type IEventBus,
+  type EventBusOptions,
+  // Artifact store
+  ArtifactStore,
+  type Artifact,
+  type ArtifactFilter,
+  type ProvenanceEntry,
+  type IArtifactStore,
+  type ArtifactStoreOptions,
 } from '../pipeline/index.js';

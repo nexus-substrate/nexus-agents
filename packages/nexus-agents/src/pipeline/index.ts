@@ -61,3 +61,24 @@ export {
 } from './plugin-types.js';
 
 export { PluginRegistry, type PluginRegistryOptions } from './plugin-registry.js';
+
+export {
+  PIPELINE_EVENT_TYPES,
+  type PipelineEvent,
+  type PipelineEventType,
+  type EventFilter,
+  type EventHandler,
+  type Unsubscribe,
+  type IEventBus,
+} from './event-types.js';
+
+export { EventBus, type EventBusOptions } from './event-bus.js';
+
+export {
+  ArtifactStore,
+  type Artifact,
+  type ArtifactFilter,
+  type ProvenanceEntry,
+  type IArtifactStore,
+  type ArtifactStoreOptions,
+} from './artifact-store.js';
