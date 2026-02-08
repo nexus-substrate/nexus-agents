@@ -82,3 +82,13 @@ export {
   type IArtifactStore,
   type ArtifactStoreOptions,
 } from './artifact-store.js';
+
+export {
+  PolicyEngine,
+  createDefaultPolicyEngine,
+  BUILT_IN_RULES,
+  type PolicyDecision,
+  type PolicyContext,
+  type PolicyRule,
+  type IPolicyEngine,
+} from './policy-engine.js';

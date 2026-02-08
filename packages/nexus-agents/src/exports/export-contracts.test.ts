@@ -136,6 +136,9 @@ import {
   PIPELINE_EVENT_TYPES,
   EventBus,
   ArtifactStore,
+  PolicyEngine,
+  createDefaultPolicyEngine,
+  BUILT_IN_RULES,
 } from '../index.js';
 
 describe('Export contracts — MCP tool registration', () => {
@@ -365,6 +368,14 @@ describe('Export contracts — pipeline V2 types', () => {
     expect(typeof store.get).toBe('function');
     expect(typeof store.query).toBe('function');
     expect(typeof store.provenance).toBe('function');
+  });
+
+  it('exports PolicyEngine and built-in rules', () => {
+    expect(typeof PolicyEngine).toBe('function');
+    expect(typeof createDefaultPolicyEngine).toBe('function');
+    expect(BUILT_IN_RULES).toHaveLength(5);
+    const engine = createDefaultPolicyEngine();
+    expect(engine.listRules()).toHaveLength(5);
   });
 });
 

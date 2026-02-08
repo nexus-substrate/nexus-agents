@@ -67,4 +67,12 @@ export {
   type ProvenanceEntry,
   type IArtifactStore,
   type ArtifactStoreOptions,
+  // Policy engine
+  PolicyEngine,
+  createDefaultPolicyEngine,
+  BUILT_IN_RULES,
+  type PolicyDecision,
+  type PolicyContext,
+  type PolicyRule,
+  type IPolicyEngine,
 } from '../pipeline/index.js';
