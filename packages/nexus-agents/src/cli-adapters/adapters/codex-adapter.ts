@@ -39,6 +39,8 @@ import { createLogger } from '../../core/index.js';
 import { CodexResponseParser } from '../parsers/codex-parser.js';
 import {
   getModelDisplayName,
+  getContextWindow,
+  getMaxOutput,
   getCostPerMillionInput,
   getCostPerMillionOutput,
   createCodexError,
@@ -46,10 +48,21 @@ import {
   delay,
 } from './codex-adapter-helpers.js';
 import { CapacityTracker, createCapacityTracker } from '../capacity-tracker.js';
+import {
+  DEFAULT_MODEL_PER_CLI,
+  DEFAULT_MODEL_CAPABILITIES,
+} from '../../config/model-capabilities.js';
+
+/** Derive the CLI model name for the default Codex model from the canonical registry. */
+const DEFAULT_CODEX_CLI_MODEL: string =
+  DEFAULT_MODEL_CAPABILITIES.models.find((m) => m.id === DEFAULT_MODEL_PER_CLI.codex)
+    ?.cliModelName ?? DEFAULT_MODEL_PER_CLI.codex;
 
 // Re-export helpers for backward compatibility
 export {
   getModelDisplayName,
+  getContextWindow,
+  getMaxOutput,
   getCostPerMillionInput,
   getCostPerMillionOutput,
   createCodexError,
@@ -87,8 +100,7 @@ export class CodexCliAdapter implements ICliAdapter {
 
   constructor(options?: { model?: string; logger?: ILogger }) {
     this.logger = options?.logger ?? createLogger({ component: 'codex-adapter' });
-    // Use CLI's default model (avoid specifying unsupported models)
-    this.model = options?.model ?? '';
+    this.model = options?.model ?? DEFAULT_CODEX_CLI_MODEL;
   }
 
   /**
@@ -105,8 +117,8 @@ export class CodexCliAdapter implements ICliAdapter {
     return {
       id: this.model,
       name: getModelDisplayName(this.model),
-      contextWindow: 400_000,
-      maxOutput: 100_000,
+      contextWindow: getContextWindow(this.model),
+      maxOutput: getMaxOutput(this.model),
       costPerMillionInput: getCostPerMillionInput(this.model),
       costPerMillionOutput: getCostPerMillionOutput(this.model),
     };

@@ -32,6 +32,10 @@ vi.mock('node:child_process', () => ({
 const Client = mocks.mockClient;
 
 import { CodexMcpAdapter } from './codex-mcp-adapter.js';
+import { getDefaultModelForCli, getCliModelName } from '../../config/model-config-helpers.js';
+
+/** Expected default CLI model name, derived from the canonical registry. */
+const EXPECTED_DEFAULT_ID = getCliModelName(getDefaultModelForCli('codex'));
 
 describe('CodexMcpAdapter', () => {
   let adapter: CodexMcpAdapter;
@@ -116,30 +120,30 @@ describe('CodexMcpAdapter', () => {
   });
 
   describe('getModelInfo()', () => {
-    it('should return correct model info for default model', () => {
+    it('should return correct model info for default model (from registry)', () => {
       const info = adapter.getModelInfo();
 
-      expect(info.id).toBe('o3');
-      expect(info.name).toBe('O3');
+      expect(info.id).toBe(EXPECTED_DEFAULT_ID);
       expect(info.contextWindow).toBe(400_000);
       expect(info.maxOutput).toBe(100_000);
     });
 
-    it('should return correct cost info', () => {
+    it('should return registry-derived cost info for default model', () => {
       const info = adapter.getModelInfo();
 
-      expect(info.costPerMillionInput).toBe(10.0);
-      expect(info.costPerMillionOutput).toBe(40.0);
+      // o3 maps to codex-5.3 in registry: pricing {2.0, 8.0}
+      expect(info.costPerMillionInput).toBe(2.0);
+      expect(info.costPerMillionOutput).toBe(8.0);
     });
 
-    it('should return correct info for o3-mini model', () => {
+    it('should return correct info for o3-mini model (from registry)', () => {
       const miniAdapter = new CodexMcpAdapter({ model: 'o3-mini' });
       const info = miniAdapter.getModelInfo();
 
       expect(info.id).toBe('o3-mini');
-      expect(info.name).toBe('O3 Mini');
-      expect(info.costPerMillionInput).toBe(1.1);
-      expect(info.costPerMillionOutput).toBe(4.4);
+      // o3-mini maps to codex-5.1-mini in registry: pricing {0.5, 2.0}
+      expect(info.costPerMillionInput).toBe(0.5);
+      expect(info.costPerMillionOutput).toBe(2.0);
     });
   });
 

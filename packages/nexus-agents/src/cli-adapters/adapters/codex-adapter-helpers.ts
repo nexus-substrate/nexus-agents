@@ -5,33 +5,48 @@
  */
 
 import type { CliError, CliName, TokenUsage, CliResponse } from '../types.js';
+import { DEFAULT_MODEL_CAPABILITIES } from '../../config/model-capabilities.js';
 
-/**
- * Model display name mappings for Codex models.
- */
-const MODEL_DISPLAY_NAMES: Record<string, string> = {
+// -----------------------------------------------------------------------------
+// Model Information — Canonical Registry + Legacy Fallbacks
+// (Issue #885: Canonical models from registry, legacy for older variants)
+// -----------------------------------------------------------------------------
+
+/** Find a canonical Codex model by its cliModelName (e.g., 'o3'). */
+function findCanonicalCodexModel(
+  cliModelName: string
+): (typeof DEFAULT_MODEL_CAPABILITIES.models)[number] | undefined {
+  return DEFAULT_MODEL_CAPABILITIES.models.find(
+    (m) => m.cliName === 'codex' && m.cliModelName === cliModelName
+  );
+}
+
+/** Legacy model display names for non-canonical Codex models. */
+const LEGACY_DISPLAY_NAMES: Readonly<Record<string, string>> = {
   o3: 'O3',
   'o3-mini': 'O3 Mini',
   'o4-mini': 'O4 Mini',
 };
 
-/**
- * Cost per million input tokens by model.
- */
-const INPUT_COSTS: Record<string, number> = {
+/** Legacy costs for non-canonical models. */
+const LEGACY_INPUT_COSTS: Readonly<Record<string, number>> = {
   o3: 10.0,
   'o3-mini': 1.1,
   'o4-mini': 1.1,
 };
 
-/**
- * Cost per million output tokens by model.
- */
-const OUTPUT_COSTS: Record<string, number> = {
+const LEGACY_OUTPUT_COSTS: Readonly<Record<string, number>> = {
   o3: 40.0,
   'o3-mini': 4.4,
   'o4-mini': 4.4,
 };
+
+const DEFAULTS = {
+  contextWindow: 400_000,
+  maxOutput: 100_000,
+  inputCost: 1.1,
+  outputCost: 4.4,
+} as const;
 
 /**
  * Error codes that are retryable.
@@ -42,25 +57,53 @@ const RETRYABLE_ERROR_CODES: ReadonlySet<CliError['code']> = new Set([
   'CONNECTION_ERROR',
 ]);
 
+// -----------------------------------------------------------------------------
+// Model Information Functions
+// -----------------------------------------------------------------------------
+
 /**
- * Gets model display name.
+ * Gets human-readable display name for a Codex model.
  */
 export function getModelDisplayName(model: string): string {
-  return MODEL_DISPLAY_NAMES[model] ?? model;
+  const canonical = findCanonicalCodexModel(model);
+  if (canonical !== undefined) return canonical.displayName;
+  return LEGACY_DISPLAY_NAMES[model] ?? model;
 }
 
 /**
- * Gets cost per million input tokens.
+ * Gets context window size for a Codex model.
+ */
+export function getContextWindow(model: string): number {
+  const canonical = findCanonicalCodexModel(model);
+  if (canonical !== undefined) return canonical.contextWindow;
+  return DEFAULTS.contextWindow;
+}
+
+/**
+ * Gets max output tokens for a Codex model.
+ */
+export function getMaxOutput(model: string): number {
+  const canonical = findCanonicalCodexModel(model);
+  if (canonical?.maxOutputTokens !== undefined) return canonical.maxOutputTokens;
+  return DEFAULTS.maxOutput;
+}
+
+/**
+ * Gets cost per million input tokens for a Codex model.
  */
 export function getCostPerMillionInput(model: string): number {
-  return INPUT_COSTS[model] ?? 1.1;
+  const canonical = findCanonicalCodexModel(model);
+  if (canonical?.pricing !== undefined) return canonical.pricing.inputPer1M;
+  return LEGACY_INPUT_COSTS[model] ?? DEFAULTS.inputCost;
 }
 
 /**
- * Gets cost per million output tokens.
+ * Gets cost per million output tokens for a Codex model.
  */
 export function getCostPerMillionOutput(model: string): number {
-  return OUTPUT_COSTS[model] ?? 4.4;
+  const canonical = findCanonicalCodexModel(model);
+  if (canonical?.pricing !== undefined) return canonical.pricing.outputPer1M;
+  return LEGACY_OUTPUT_COSTS[model] ?? DEFAULTS.outputCost;
 }
 
 /**

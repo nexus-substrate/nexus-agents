@@ -37,6 +37,8 @@ import {
   DEFAULT_CODEX_MCP_OPTIONS,
   type McpToolResult,
   getModelDisplayName,
+  getContextWindow,
+  getMaxOutput,
   getCostPerMillionInput,
   getCostPerMillionOutput,
   extractTextFromContent,
@@ -86,8 +88,8 @@ export class CodexMcpAdapter implements ICliAdapter {
     return {
       id: this.model,
       name: getModelDisplayName(this.model),
-      contextWindow: 400_000,
-      maxOutput: 100_000,
+      contextWindow: getContextWindow(this.model),
+      maxOutput: getMaxOutput(this.model),
       costPerMillionInput: getCostPerMillionInput(this.model),
       costPerMillionOutput: getCostPerMillionOutput(this.model),
     };

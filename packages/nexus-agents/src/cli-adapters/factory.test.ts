@@ -11,10 +11,19 @@ import { GeminiCliAdapter } from './adapters/gemini-adapter.js';
 import { CodexCliAdapter } from './adapters/codex-adapter.js';
 import { CodexMcpAdapter } from './adapters/codex-mcp-adapter.js';
 import { getDefaultModelForCli, getCliModelName } from '../config/model-config-helpers.js';
+import { DEFAULT_MODEL_CAPABILITIES } from '../config/model-capabilities.js';
 
 /** Derive the expected default model ID for a CLI from the canonical registry. */
 function expectedDefaultModelId(cli: 'claude' | 'gemini' | 'codex'): string {
   return getCliModelName(getDefaultModelForCli(cli));
+}
+
+/** Derive display name for a CLI model name by searching the registry. */
+function expectedDisplayName(cliName: string, cliModelName: string): string {
+  const model = DEFAULT_MODEL_CAPABILITIES.models.find(
+    (m) => m.cliName === cliName && m.cliModelName === cliModelName
+  );
+  return model?.displayName ?? cliModelName;
 }
 
 describe('createCliAdapter', () => {
@@ -71,7 +80,7 @@ describe('createCliAdapter', () => {
     const info = adapter.getModelInfo();
 
     expect(info.id).toBe('o3');
-    expect(info.name).toBe('O3');
+    expect(info.name).toBe(expectedDisplayName('codex', 'o3'));
   });
 
   it('should use default models when not specified', () => {
