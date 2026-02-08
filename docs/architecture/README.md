@@ -33,7 +33,7 @@
                            │
 ┌──────────────────────────▼──────────────────────────────────┐
 │                  Orchestration Layer                         │
-│   TechLead │ Expert Pool │ Event Bus │ Consensus Engine     │
+│   Orchestrator │ Expert Pool │ Event Bus │ Consensus Engine │
 └──────────────────────────┬──────────────────────────────────┘
                            │
 ┌──────────────────────────▼──────────────────────────────────┐
@@ -50,7 +50,7 @@
 
 The agent framework provides:
 
-- **TechLead**: Orchestrates expert pool, delegates tasks
+- **Orchestrator**: Orchestrates expert pool, delegates tasks
 - **Experts**: Specialized domain agents (Code, Security, Architecture, etc.)
 - **State Machine**: idle → thinking → acting → waiting → error
 

@@ -19,7 +19,7 @@
 3. [Architecture Diagram](#architecture-diagram)
 4. [Component Responsibilities](#component-responsibilities)
 5. [Data Flow](#data-flow)
-6. [TechLead vs WorkflowEngine](#techlead-vs-workflowengine)
+6. [Orchestrator vs WorkflowEngine](#orchestrator-vs-workflowengine)
 7. [Plan-to-Workflow Conversion](#plan-to-workflow-conversion)
 8. [Integration Patterns](#integration-patterns)
 
@@ -91,7 +91,7 @@ WorkflowEngine.execute(workflow, inputs)
 
 **When to use each:**
 
-| Scenario                   | Use TechLead        | Use WorkflowEngine |
+| Scenario                   | Use Orchestrator    | Use WorkflowEngine |
 | -------------------------- | ------------------- | ------------------ |
 | One-off complex task       | Yes                 | No                 |
 | Repeatable process         | No                  | Yes                |
@@ -121,7 +121,7 @@ WorkflowEngine.execute(workflow, inputs)
          |                 |                  |                     |
          v                 |                  v                     v
 +------------------+       |         +------------------+   +------------------+
-|    TechLead      |       |         | WorkflowEngine   |   |  Model Router    |
+|   Orchestrator   |       |         | WorkflowEngine   |   |  Model Router    |
 |    (Planner)     |       |         | (Executor)       |   |  (Delegation)    |
 +--------+---------+       |         +--------+---------+   +--------+---------+
          |                 |                  |                     |
@@ -160,7 +160,7 @@ WorkflowEngine.execute(workflow, inputs)
 +--------------------------------------------------------------------------------+
 ```
 
-### TechLead Planning Flow
+### Orchestrator Planning Flow
 
 ```
 +-------------+     +-----------------+     +------------------+
@@ -222,9 +222,9 @@ WorkflowEngine.execute(workflow, inputs)
 | Component                      | Responsibility          | Inputs                      | Outputs            | Dependencies                 |
 | ------------------------------ | ----------------------- | --------------------------- | ------------------ | ---------------------------- |
 | **MCP Server**                 | External interface      | MCP requests                | MCP responses      | Tools                        |
-| **orchestrate tool**           | Task coordination       | Task description            | Execution result   | TechLead                     |
+| **orchestrate tool**           | Task coordination       | Task description            | Execution result   | Orchestrator                 |
 | **run_workflow tool**          | Workflow execution      | Template + inputs           | Workflow result    | WorkflowEngine               |
-| **TechLead**                   | Planning & coordination | Task                        | ExecutionPlan      | ExpertSelector, BaseAgent    |
+| **Orchestrator**               | Planning & coordination | Task                        | ExecutionPlan      | ExpertSelector, BaseAgent    |
 | **WorkflowEngine**             | Workflow execution      | WorkflowDefinition + inputs | WorkflowResult     | StepExecutor                 |
 | **ExpertSelector**             | Expert matching         | Task                        | SelectionResult    | TaskAnalyzer, ExpertRegistry |
 | **Expert (Code/Security/etc)** | Domain expertise        | Task                        | TaskResult         | BaseAgent, Adapter           |
@@ -257,7 +257,7 @@ src/
 |
 +-- agents/             # AGENT LAYER - Depends on core, adapters
 |   +-- base-agent.ts   # Abstract agent interface
-|   +-- tech-lead.ts    # TechLead (Planner)
+|   +-- tech-lead.ts    # Orchestrator (Planner)
 |   +-- experts/        # Expert implementations
 |   +-- collaboration/  # Multi-agent protocols
 |
@@ -309,15 +309,15 @@ src/
    |
 3. orchestrate tool creates Task object
    |
-4. TechLead.execute(task) is called
+4. Orchestrator.execute(task) is called
    |
-5. TechLead.analyzeTask() returns TaskAnalysis
+5. Orchestrator.analyzeTask() returns TaskAnalysis
    |
-6. If complex: TechLead.decomposeTask() returns SubTask[]
+6. If complex: Orchestrator.decomposeTask() returns SubTask[]
    |
-7. TechLead.selectExperts() returns ExpertAssignment[]
+7. Orchestrator.selectExperts() returns ExpertAssignment[]
    |
-8. TechLead builds ExecutionPlan
+8. Orchestrator builds ExecutionPlan
    |
 9. (Optional) ExecutionPlan can be converted to WorkflowDefinition
    |
@@ -350,13 +350,13 @@ src/
 
 ---
 
-## TechLead vs WorkflowEngine
+## Orchestrator vs WorkflowEngine
 
 ### Conceptual Comparison
 
 ```
-                TechLead                    WorkflowEngine
-                --------                    --------------
+                Orchestrator                WorkflowEngine
+                ------------                --------------
 Purpose:        Dynamic planning            Static execution
 Input:          Free-form task description  Structured workflow definition
 Output:         ExecutionPlan               WorkflowResult
@@ -369,7 +369,7 @@ Traceability:   In-memory only              Execution IDs, status tracking
 ### Interface Comparison
 
 ```typescript
-// TechLead produces ExecutionPlan
+// Orchestrator produces ExecutionPlan
 interface ExecutionPlan {
   taskId: string;
   analysis: TaskAnalysis;
@@ -392,7 +392,7 @@ interface WorkflowDefinition {
 
 ### When to Use Each
 
-**Use TechLead when:**
+**Use Orchestrator when:**
 
 - Task requirements are ambiguous or complex
 - You need adaptive expert selection
@@ -412,7 +412,7 @@ interface WorkflowDefinition {
 
 ### Purpose
 
-Sometimes you want to "crystallize" a TechLead-generated plan into a reusable workflow. This is an **optional** feature that bridges the two systems.
+Sometimes you want to "crystallize" an Orchestrator-generated plan into a reusable workflow. This is an **optional** feature that bridges the two systems.
 
 ### Conversion Function
 
@@ -470,11 +470,11 @@ estimatedDuration   -->          timeout (optional)
 ### Usage Example
 
 ```typescript
-import { TechLead, WorkflowEngine } from 'nexus-agents';
+import { Orchestrator, WorkflowEngine } from 'nexus-agents';
 
-// Step 1: TechLead creates a dynamic plan
-const techLead = new TechLead({ adapter });
-const result = await techLead.execute(task);
+// Step 1: Orchestrator creates a dynamic plan
+const orchestrator = new Orchestrator({ adapter });
+const result = await orchestrator.execute(task);
 const plan = result.value.output as ExecutionPlan;
 
 // Step 2: (Optional) Convert to reusable workflow
@@ -482,7 +482,7 @@ if (plan.asWorkflowDefinition) {
   const workflow = plan.asWorkflowDefinition({
     name: 'code-review-workflow',
     version: '1.0.0',
-    description: 'Generated from TechLead analysis',
+    description: 'Generated from Orchestrator analysis',
   });
 
   // Step 3: Save workflow for future use
@@ -510,10 +510,10 @@ Not all ExecutionPlans can be cleanly converted:
 
 ## Integration Patterns
 
-### Pattern 1: TechLead-Only (Dynamic)
+### Pattern 1: Orchestrator-Only (Dynamic)
 
 ```
-Task -> TechLead -> ExecutionPlan -> (execute manually or discard)
+Task -> Orchestrator -> ExecutionPlan -> (execute manually or discard)
 ```
 
 Best for: One-off complex tasks, exploration, prototyping
@@ -526,10 +526,10 @@ Template -> WorkflowEngine -> WorkflowResult
 
 Best for: Well-defined processes, CI/CD integration, audit requirements
 
-### Pattern 3: TechLead + Crystallization (Hybrid)
+### Pattern 3: Orchestrator + Crystallization (Hybrid)
 
 ```
-Task -> TechLead -> ExecutionPlan -> asWorkflowDefinition() -> Template
+Task -> Orchestrator -> ExecutionPlan -> asWorkflowDefinition() -> Template
                                             |
                                             v
                         WorkflowEngine.execute() -> WorkflowResult
@@ -540,7 +540,7 @@ Best for: Learning from ad-hoc tasks, creating reusable workflows from analysis
 ### Pattern 4: Collaboration Protocol
 
 ```
-Task -> TechLead -> Expert Selection -> CollaborationSession
+Task -> Orchestrator -> Expert Selection -> CollaborationSession
                                               |
                     +---------+-------+-------+
                     v         v       v       v
@@ -560,7 +560,7 @@ Best for: Complex tasks requiring multiple expert perspectives
 
 ## Appendix: Key Type Definitions
 
-### ExecutionPlan (TechLead Output)
+### ExecutionPlan (Orchestrator Output)
 
 ```typescript
 interface ExecutionPlan {

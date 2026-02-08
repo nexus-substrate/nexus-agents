@@ -178,7 +178,7 @@ CONSOLIDATE INTO:
 
 | System                | Location                                         | Model              | Lines |
 | --------------------- | ------------------------------------------------ | ------------------ | ----- |
-| TechLead              | `agents/tech-lead.ts`                            | LLM-based planning | 472   |
+| Orchestrator          | `agents/tech-lead.ts`                            | LLM-based planning | 472   |
 | PuppeteerOrchestrator | `agents/orchestration/puppeteer-orchestrator.ts` | Learned policies   | 401   |
 | WorkflowEngine        | `workflows/workflow-engine.ts`                   | Static definitions | 305   |
 
@@ -196,7 +196,7 @@ CONSOLIDATE INTO:
 
 ### 4.3 Duplicate Subsystems
 
-| Subsystem       | TechLead                      | Puppeteer                   | Workflow         | Lines |
+| Subsystem       | Orchestrator                  | Puppeteer                   | Workflow         | Lines |
 | --------------- | ----------------------------- | --------------------------- | ---------------- | ----- |
 | Decomposition   | tech-lead-decomposition.ts    | trajectory-based            | phase-based      | 320   |
 | Context         | implicit                      | PuppeteerState              | ExecutionContext | 480   |
@@ -208,7 +208,7 @@ CONSOLIDATE INTO:
 ```
 CANONICAL: Define IOrchestrator interface
 IMPLEMENTATIONS:
-  - TechLeadOrchestrator (planning-based)
+  - Orchestrator (planning-based)
   - PuppeteerOrchestrator (policy-based)
   - WorkflowOrchestrator (definition-based)
 
@@ -230,7 +230,7 @@ Per mandate, each core function must have ONE canonical implementation:
 | Routing Layer        | CompositeRouter          | TaskRouter, QualityRouter (wrap)                        |
 | Memory Persistence   | HybridMemoryBackend      | SessionMemory (deprecate)                               |
 | Voting/Consensus     | ConsensusEngine          | VotingProtocol (specialized), WeightedVoting (strategy) |
-| Orchestration        | IOrchestrator interface  | TechLead, Puppeteer, Workflow (implementations)         |
+| Orchestration        | IOrchestrator interface  | Orchestrator, Puppeteer, Workflow (implementations)     |
 | Governance Injection | TBD (Issue #569)         | -                                                       |
 
 ---

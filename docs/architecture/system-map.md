@@ -28,7 +28,7 @@
 ├──────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
 │  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐          │
-│  │    TechLead     │◄───│  Expert System  │───►│ Workflow Engine │          │
+│  │   Orchestrator  │◄───│  Expert System  │───►│ Workflow Engine │          │
 │  │                 │    │                 │    │                 │          │
 │  │ Master          │    │ • Factory       │    │ • Parser        │          │
 │  │ Orchestrator    │    │ • Registry      │    │ • Planner       │          │
@@ -202,7 +202,7 @@ Entry points for all system interactions:
 
 Agent coordination and task decomposition:
 
-- **TechLead**: Master orchestrator, decomposes tasks, assigns experts
+- **Orchestrator**: Master orchestrator, decomposes tasks, assigns experts
 - **Expert System**: 5 built-in experts with factory/registry pattern
 - **Workflow Engine**: YAML-based workflow execution with parallelism
 - **Consensus Engine**: Multi-agent voting and agreement protocols
@@ -281,7 +281,7 @@ User Request
          │
          ▼
 ┌──────────────────┐
-│  Orchestration   │ (TechLead → Expert Selection → Task Decomposition)
+│  Orchestration   │ (Orchestrator → Expert Selection → Task Decomposition)
 └────────┬─────────┘
          │
          ▼

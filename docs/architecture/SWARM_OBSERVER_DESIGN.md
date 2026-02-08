@@ -220,7 +220,7 @@ The SwarmObserver should be injected at these integration points:
 | Component              | Integration Point          | What to Observe      |
 | ---------------------- | -------------------------- | -------------------- |
 | `CollaborationSession` | `submitResult()`, `vote()` | Expert interactions  |
-| `TechLead`             | `delegateToExpert()`       | Delegation events    |
+| `Orchestrator`         | `delegateToExpert()`       | Delegation events    |
 | `BaseAgent`            | `handleMessage()`          | Inter-agent messages |
 | `WorkflowEngine`       | Step execution             | Sequential handoffs  |
 

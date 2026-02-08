@@ -17,7 +17,7 @@ Component call patterns for nexus-agents. Cross-reference with [wiring-graph.jso
 
 ```
 MCP Server
-    ├─→ orchestrate tool ──→ TechLead
+    ├─→ orchestrate tool ──→ Orchestrator
     ├─→ create_expert ──→ ExpertFactory
     ├─→ execute_expert ──→ ExpertRegistry
     ├─→ run_workflow ──→ WorkflowEngine
@@ -29,7 +29,7 @@ MCP Server
 
 | From         | To              | Type |
 | ------------ | --------------- | ---- |
-| TechLead     | CompositeRouter | uses |
+| Orchestrator | CompositeRouter | uses |
 | ExpertSystem | CompositeRouter | uses |
 
 ### Routing → Execution
@@ -54,7 +54,7 @@ MCP Server
 
 | From           | To             | Type |
 | -------------- | -------------- | ---- |
-| TechLead       | ContextManager | uses |
+| Orchestrator   | ContextManager | uses |
 | ContextManager | ContextPruner  | uses |
 
 ## Cross-Cutting Concerns
@@ -64,14 +64,14 @@ MCP Server
 | MCPServer      | EventBusBridge  | uses      |
 | EventBusBridge | SwarmObserver   | publishes |
 | MCPTools       | PolicyFirewall  | validates |
-| TechLead       | SICAIntegration | uses      |
+| Orchestrator   | SICAIntegration | uses      |
 
 ## CLI Command Flows
 
 ### `nexus-agents orchestrate`
 
 ```
-CLI → parseArgs → Orchestrator → TechLead
+CLI → parseArgs → Orchestrator → Orchestrator
                                    ├─→ TaskDecomposition
                                    ├─→ ExpertSelection
                                    ├─→ CompositeRouter → ModelAdapter
@@ -99,22 +99,22 @@ CLI → WorkflowParser → ExecutionPlanner
 
 ## MCP Tool Invocations
 
-| Tool              | Dependencies           | Purpose                       |
-| ----------------- | ---------------------- | ----------------------------- |
-| orchestrate       | TechLead, ExpertSystem | Multi-agent task coordination |
-| create_expert     | ExpertFactory          | Dynamic expert creation       |
-| execute_expert    | ExpertRegistry         | Expert execution              |
-| run_workflow      | WorkflowEngine         | Workflow template execution   |
-| consensus_vote    | ConsensusEngine        | Multi-agent voting            |
-| delegate_to_model | CompositeRouter        | Model routing                 |
-| list_experts      | ExpertRegistry         | Discoverability               |
-| list_workflows    | WorkflowRegistry       | Discoverability               |
+| Tool              | Dependencies               | Purpose                       |
+| ----------------- | -------------------------- | ----------------------------- |
+| orchestrate       | Orchestrator, ExpertSystem | Multi-agent task coordination |
+| create_expert     | ExpertFactory              | Dynamic expert creation       |
+| execute_expert    | ExpertRegistry             | Expert execution              |
+| run_workflow      | WorkflowEngine             | Workflow template execution   |
+| consensus_vote    | ConsensusEngine            | Multi-agent voting            |
+| delegate_to_model | CompositeRouter            | Model routing                 |
+| list_experts      | ExpertRegistry             | Discoverability               |
+| list_workflows    | WorkflowRegistry           | Discoverability               |
 
 ## Event Bus Topics
 
 | Topic            | Publishers      | Subscribers           |
 | ---------------- | --------------- | --------------------- |
-| agent.started    | TechLead        | OrchestrationObserver |
+| agent.started    | Orchestrator    | OrchestrationObserver |
 | agent.completed  | All Experts     | OrchestrationObserver |
 | routing.decision | CompositeRouter | FeedbackIntegration   |
 | model.response   | ModelAdapters   | OrchestrationObserver |

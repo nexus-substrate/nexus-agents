@@ -118,7 +118,7 @@ flowchart LR
 
 ### agents
 
-**Purpose:** Agent framework, TechLead, Experts, collaboration
+**Purpose:** Agent framework, Orchestrator, Experts, collaboration
 
 | Metric        | Value  |
 | ------------- | ------ |

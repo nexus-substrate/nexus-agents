@@ -73,8 +73,8 @@ Nexus-agents adopts a **hybrid architecture** combining:
 │  └───────────────────────┬─────────────────────────┘    │
 │                          │                               │
 │  ┌──────────┐  ┌─────────▼──────┐  ┌───────────────┐    │
-│  │ TechLead │  │  Expert Pool   │  │  Consensus    │    │
-│  │ Router   │  │ (Code,Sec,etc) │  │  Engine       │    │
+│  │Orchestrtr│  │  Expert Pool   │  │  Consensus    │    │
+│  │  Router  │  │ (Code,Sec,etc) │  │  Engine       │    │
 │  └──────────┘  └────────────────┘  └───────────────┘    │
 └─────────────────────────────────────────────────────────┘
                           │

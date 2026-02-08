@@ -52,7 +52,7 @@ Task Analysis
      │
      ▼
 ┌──────────────────────────────┐
-│   Orchestrator (TechLead)    │
+│   Orchestrator               │
 │   decomposeTask() → subtasks │
 │   selectExperts()            │
 └───────────┬──────────────────┘
