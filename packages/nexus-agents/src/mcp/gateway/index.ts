@@ -28,3 +28,10 @@ export {
   type GovernanceDomain,
   type VotingThreshold,
 } from './governance-enforcer.js';
+
+export {
+  generateTierRecommendations,
+  type TierRecommendation,
+  type TierRecommenderConfig,
+  type TierDirection,
+} from './tier-recommender.js';

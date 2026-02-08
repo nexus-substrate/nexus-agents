@@ -76,6 +76,17 @@ export interface AdaptiveBonus {
   readonly sufficient: boolean;
 }
 
+/** Tier recommendation surfaced in the weather report (#895). */
+export interface TierRecommendationEntry {
+  readonly category: string;
+  readonly direction: 'promote' | 'demote';
+  readonly currentTier: number;
+  readonly recommendedTier: number;
+  readonly successRate: number;
+  readonly sampleCount: number;
+  readonly reason: string;
+}
+
 /** Full weather report response. */
 export interface WeatherReportResponse {
   readonly overall: {
@@ -85,6 +96,8 @@ export interface WeatherReportResponse {
   };
   readonly cliWeather: readonly CliWeather[];
   readonly adaptiveBonuses: readonly AdaptiveBonus[];
+  /** Outcome-driven tier change recommendations (#895). */
+  readonly tierRecommendations: readonly TierRecommendationEntry[];
   readonly explorationRate: number;
   readonly coldStartThreshold: number;
   readonly collectedAt: string;

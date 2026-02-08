@@ -221,6 +221,10 @@ export {
   type GovernanceClassification,
   type GovernanceDomain,
   type VotingThreshold,
+  generateTierRecommendations,
+  type TierRecommendation,
+  type TierRecommenderConfig,
+  type TierDirection,
 } from './gateway/index.js';
 
 // STPA Safety Analysis Framework (Issue #328)

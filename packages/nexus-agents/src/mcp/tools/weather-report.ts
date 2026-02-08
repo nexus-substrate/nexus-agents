@@ -20,8 +20,10 @@ import type {
   CliWeather,
   AdaptiveBonus,
   WeatherReportConfig,
+  TierRecommendationEntry,
 } from './weather-report-types.js';
 import { createDefaultWeatherConfig } from './weather-report-types.js';
+import { generateTierRecommendations } from '../gateway/tier-recommender.js';
 
 // ============================================================================
 // Public API
@@ -44,6 +46,7 @@ export function generateWeatherReport(
 
   const cliWeather = buildCliWeather(summary, input);
   const adaptiveBonuses = includeAdaptive ? computeAdaptiveBonuses(cfg) : [];
+  const tierRecommendations = buildTierRecommendations(summary);
 
   return {
     overall: {
@@ -53,6 +56,7 @@ export function generateWeatherReport(
     },
     cliWeather,
     adaptiveBonuses,
+    tierRecommendations,
     explorationRate: cfg.explorationRate,
     coldStartThreshold: cfg.coldStartThreshold,
     collectedAt: new Date().toISOString(),
@@ -185,4 +189,17 @@ function getStaticBonusForCli(
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+/** Generates tier recommendations from outcome summary (#895). */
+function buildTierRecommendations(summary: PerformanceSummary): readonly TierRecommendationEntry[] {
+  return generateTierRecommendations(summary).map((r) => ({
+    category: r.category,
+    direction: r.direction,
+    currentTier: r.currentTier,
+    recommendedTier: r.recommendedTier,
+    successRate: r.successRate,
+    sampleCount: r.sampleCount,
+    reason: r.reason,
+  }));
 }
