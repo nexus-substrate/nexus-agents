@@ -46,6 +46,29 @@ export {
   formatComparisonResults,
 } from './memory-benchmarks.js';
 
+// Token benchmarks (Issue #462)
+export type { TokenBenchmarkResult } from './token-benchmark.js';
+export { estimateTokens, calculateTokenMetrics, runTokenBenchmark } from './token-benchmark.js';
+
+// Consolidation benchmarks (Issue #462)
+export type {
+  ConsolidationOperation,
+  ConsolidationBenchmarkResult,
+} from './consolidation-benchmark.js';
+export {
+  runConsolidationBenchmark,
+  createPromotionOp,
+  createDecayOp,
+} from './consolidation-benchmark.js';
+
+// Benchmark report (Issue #462)
+export type { ClaimValidation, BenchmarkReport, ReportOptions } from './benchmark-report.js';
+export {
+  MEM0_TARGETS,
+  generateBenchmarkReport,
+  formatBenchmarkReport,
+} from './benchmark-report.js';
+
 // Adapter latency benchmarks (Issue #694)
 export type {
   AdapterLatencyConfig,
