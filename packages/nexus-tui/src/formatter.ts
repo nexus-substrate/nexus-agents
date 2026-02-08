@@ -31,3 +31,20 @@ export function formatTable(rows: ReadonlyArray<readonly [string, string]>): str
   const maxKey = Math.max(...rows.map(([k]) => k.length));
   return rows.map(([k, v]) => `  ${k.padEnd(maxKey)}  ${v}`).join('\n');
 }
+
+const BAR_WIDTH = 20;
+const BAR_FILL = '#';
+const BAR_EMPTY = '-';
+
+/** Format an ASCII progress bar for a percentage (0-1). */
+export function formatBar(ratio: number, width: number = BAR_WIDTH): string {
+  const clamped = Math.max(0, Math.min(1, ratio));
+  const filled = Math.round(clamped * width);
+  const pct = `${String(Math.round(clamped * 100))}%`;
+  return `[${BAR_FILL.repeat(filled)}${BAR_EMPTY.repeat(width - filled)}] ${pct}`;
+}
+
+/** Format a labeled bar chart row. */
+export function formatBarRow(label: string, ratio: number, maxLabel: number): string {
+  return `  ${label.padEnd(maxLabel)}  ${formatBar(ratio)}`;
+}

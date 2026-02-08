@@ -5,6 +5,8 @@ import { createVoteCommand } from './vote.js';
 import { createExpertCommand } from './expert.js';
 import { createStatusCommand } from './status.js';
 import { createWorkflowCommand } from './workflow.js';
+import { createOutcomesCommand } from './outcomes.js';
+import { createWatchCommand } from './watch.js';
 
 describe('delegate command', () => {
   const cmd = createDelegateCommand();
@@ -134,5 +136,78 @@ describe('workflow command', () => {
     const result = await cmd.execute(['run']);
     expect(result.isError).toBe(true);
     expect(result.output).toContain('Usage');
+  });
+});
+
+describe('outcomes command', () => {
+  const cmd = createOutcomesCommand();
+
+  it('has correct name and description', () => {
+    expect(cmd.name).toBe('outcomes');
+    expect(cmd.description).toContain('outcome');
+  });
+
+  it('returns outcomes data (may be empty)', async () => {
+    const result = await cmd.execute([]);
+    expect(result.isError).toBeUndefined();
+    expect(result.output).toContain('Task Outcomes');
+  });
+
+  it('accepts --cli filter flag', async () => {
+    const result = await cmd.execute(['--cli=claude']);
+    expect(result.isError).toBeUndefined();
+    expect(result.output).toContain('Task Outcomes');
+  });
+
+  it('accepts --category filter flag', async () => {
+    const result = await cmd.execute(['--category=code_generation']);
+    expect(result.isError).toBeUndefined();
+    expect(result.output).toContain('Task Outcomes');
+  });
+
+  it('accepts --limit flag', async () => {
+    const result = await cmd.execute(['--limit=5']);
+    expect(result.isError).toBeUndefined();
+    expect(result.output).toContain('Task Outcomes');
+  });
+});
+
+describe('watch command', () => {
+  const cmd = createWatchCommand();
+
+  it('has correct name and description', () => {
+    expect(cmd.name).toBe('watch');
+    expect(cmd.description).toContain('weather');
+  });
+
+  it('returns error for no target', async () => {
+    const result = await cmd.execute([]);
+    expect(result.isError).toBe(true);
+    expect(result.output).toContain('Usage');
+  });
+
+  it('returns error for invalid target', async () => {
+    const result = await cmd.execute(['invalid']);
+    expect(result.isError).toBe(true);
+    expect(result.output).toContain('weather');
+    expect(result.output).toContain('outcomes');
+  });
+
+  it('shows weather snapshot', async () => {
+    const result = await cmd.execute(['weather']);
+    expect(result.isError).toBeUndefined();
+    expect(result.output).toContain('Weather Snapshot');
+  });
+
+  it('shows outcomes snapshot', async () => {
+    const result = await cmd.execute(['outcomes']);
+    expect(result.isError).toBeUndefined();
+    expect(result.output).toContain('Outcomes Snapshot');
+  });
+
+  it('accepts --refresh flag', async () => {
+    const result = await cmd.execute(['weather', '--refresh=10']);
+    expect(result.isError).toBeUndefined();
+    expect(result.output).toContain('10s');
   });
 });

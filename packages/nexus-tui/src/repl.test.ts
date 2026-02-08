@@ -81,6 +81,8 @@ describe('command registry', () => {
       'delegate',
       'expert',
       'status',
+      'outcomes',
+      'watch',
       'help',
     ];
     for (const name of expected) {

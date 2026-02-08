@@ -15,6 +15,8 @@ import { createVoteCommand } from './vote.js';
 import { createWorkflowCommand } from './workflow.js';
 import { createOrchestrateCommand } from './orchestrate.js';
 import { createExpertCommand } from './expert.js';
+import { createOutcomesCommand } from './outcomes.js';
+import { createWatchCommand } from './watch.js';
 
 /** Build the command registry with all available commands. */
 export function createCommandRegistry(): Map<string, CommandHandler> {
@@ -28,6 +30,8 @@ export function createCommandRegistry(): Map<string, CommandHandler> {
     createDelegateCommand(),
     createExpertCommand(),
     createStatusCommand(),
+    createOutcomesCommand(),
+    createWatchCommand(),
   ];
 
   for (const cmd of commands) {
@@ -49,3 +53,5 @@ export { createVoteCommand } from './vote.js';
 export { createWorkflowCommand } from './workflow.js';
 export { createOrchestrateCommand } from './orchestrate.js';
 export { createExpertCommand } from './expert.js';
+export { createOutcomesCommand } from './outcomes.js';
+export { createWatchCommand } from './watch.js';
