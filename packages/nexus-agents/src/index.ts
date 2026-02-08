@@ -69,3 +69,6 @@ export * from './exports/consensus.js';
 
 // Observability - Swarm-level observability for multi-agent systems (Issue #351)
 export * from './exports/observability.js';
+
+// SWE-Bench - Evaluation framework for GitHub issue resolution (Issue #257)
+export * from './exports/swe-bench.js';

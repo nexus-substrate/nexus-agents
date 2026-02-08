@@ -215,7 +215,7 @@ describe('discoverArxiv', () => {
     expect(calledUrl).not.toContain('all%3A');
   });
 
-  it('should quote multi-word topics for phrase matching', async () => {
+  it('should AND-join multi-word topics for keyword matching', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       text: () => Promise.resolve('<feed></feed>'),
@@ -223,8 +223,11 @@ describe('discoverArxiv', () => {
     await discoverArxiv('agent memory consolidation', 5);
     const calledUrl = mockFetch.mock.calls[0]?.[0] as string;
     const decoded = decodeURIComponent(calledUrl);
-    expect(decoded).toContain('ti:"agent memory consolidation"');
-    expect(decoded).toContain('abs:"agent memory consolidation"');
+    // Multi-word topics use AND-joined keywords (not phrase matching)
+    expect(decoded).toContain('(ti:agent OR abs:agent)');
+    expect(decoded).toContain('(ti:memory OR abs:memory)');
+    expect(decoded).toContain('(ti:consolidation OR abs:consolidation)');
+    expect(decoded).toContain(' AND ');
   });
 
   it('should not quote single-word topics', async () => {

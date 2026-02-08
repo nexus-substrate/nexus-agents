@@ -48,8 +48,9 @@ vi.mock('../cli-adapters/cli-detection-cache.js', () => ({
 }));
 
 // Import mocked functions for assertions
-import { isCliAvailable, getAvailableClis } from '../cli-adapters/factory.js';
+import { createCliAdapter, isCliAvailable, getAvailableClis } from '../cli-adapters/factory.js';
 import { createClaudeAdapter } from './claude-adapter.js';
+import { createCliDetectionCache } from '../cli-adapters/cli-detection-cache.js';
 
 // ============================================================================
 // Tests
@@ -61,6 +62,17 @@ describe('createAutoAdapter', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     delete process.env.ANTHROPIC_API_KEY;
+    // Re-setup mock return values after clearAllMocks (vitest 3.x clears them)
+    vi.mocked(createCliAdapter).mockReturnValue({
+      initialize: vi.fn().mockReturnValue(Promise.resolve()),
+      execute: vi.fn(),
+      name: 'mock-cli',
+    } as never);
+    vi.mocked(createCliDetectionCache).mockReturnValue({
+      get: vi.fn(),
+      set: vi.fn(),
+      clear: vi.fn(),
+    } as never);
   });
 
   afterEach(() => {
@@ -232,6 +244,16 @@ describe('createAutoAdapter', () => {
 
 describe('getAvailableAdapters', () => {
   const originalEnv = process.env.ANTHROPIC_API_KEY;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Re-setup mock return values after clearAllMocks
+    vi.mocked(createCliDetectionCache).mockReturnValue({
+      get: vi.fn(),
+      set: vi.fn(),
+      clear: vi.fn(),
+    } as never);
+  });
 
   afterEach(() => {
     if (originalEnv !== undefined) {
