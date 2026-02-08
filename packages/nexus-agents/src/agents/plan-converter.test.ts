@@ -295,7 +295,7 @@ describe('convertPlanToWorkflow', () => {
         includeAnalysis: true,
       });
 
-      expect(workflow.description).toContain('Generated from TechLead analysis');
+      expect(workflow.description).toContain('Generated from Orchestrator analysis');
       expect(workflow.description).toContain('Task type: implementation');
       expect(workflow.description).toContain('Complexity: 5/10');
     });
@@ -307,7 +307,7 @@ describe('convertPlanToWorkflow', () => {
       });
 
       expect(workflow.description).toContain('My workflow');
-      expect(workflow.description).toContain('Generated from TechLead analysis');
+      expect(workflow.description).toContain('Generated from Orchestrator analysis');
     });
   });
 

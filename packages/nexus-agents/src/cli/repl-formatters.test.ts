@@ -114,7 +114,7 @@ describe('printReplHelp', () => {
     printReplHelp();
     const output = stdoutOutput.join('');
     expect(output).toContain('Task Orchestration:');
-    expect(output).toContain('TechLead agent');
+    expect(output).toContain('Orchestrator agent');
   });
 
   it('provides usage example', () => {

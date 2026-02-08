@@ -96,9 +96,9 @@ describe('GeminiCliAdapter', () => {
     it('should return correct capability profile', () => {
       const caps = adapter.capabilities;
 
-      expect(caps.reasoning).toBe(9);
+      expect(caps.reasoning).toBe(10);
       expect(caps.contextWindow).toBe(1_000_000);
-      expect(caps.codeGeneration).toBe(8);
+      expect(caps.codeGeneration).toBe(9);
       expect(caps.speed).toBe(8);
       expect(caps.cost).toBe(7);
     });

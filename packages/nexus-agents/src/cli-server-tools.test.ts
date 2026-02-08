@@ -1,8 +1,8 @@
 /**
  * Tests for cli-server-tools.ts
  *
- * Covers: REGISTERED_TOOLS constant, TechLeadUnavailableError, isToolAllowed,
- * createTechLeadForOrchestration, copyOptionalProps, createToolContext,
+ * Covers: REGISTERED_TOOLS constant, OrchestratorUnavailableError, isToolAllowed,
+ * createOrchestratorForOrchestration, copyOptionalProps, createToolContext,
  * registerMcpTools (with mocked sub-registrations), tool allowlisting,
  * STPA safety analysis integration.
  */
@@ -12,7 +12,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ErrorCode } from './core/index.js';
 import {
   REGISTERED_TOOLS,
-  TechLeadUnavailableError,
+  OrchestratorUnavailableError,
   registerMcpTools,
 } from './cli-server-tools.js';
 import type { RegisterMcpToolsOptions } from './cli-server-tools.js';
@@ -254,33 +254,33 @@ describe('REGISTERED_TOOLS', () => {
 });
 
 // ============================================================================
-// TechLeadUnavailableError
+// OrchestratorUnavailableError
 // ============================================================================
 
-describe('TechLeadUnavailableError', () => {
+describe('OrchestratorUnavailableError', () => {
   it('should have correct name', () => {
-    const error = new TechLeadUnavailableError('test message');
-    expect(error.name).toBe('TechLeadUnavailableError');
+    const error = new OrchestratorUnavailableError('test message');
+    expect(error.name).toBe('OrchestratorUnavailableError');
   });
 
   it('should have MODEL_UNAVAILABLE error code', () => {
-    const error = new TechLeadUnavailableError('no adapter');
+    const error = new OrchestratorUnavailableError('no adapter');
     expect(error.code).toBe(ErrorCode.MODEL_UNAVAILABLE);
   });
 
   it('should preserve the message', () => {
     const msg = 'No model adapter available';
-    const error = new TechLeadUnavailableError(msg);
+    const error = new OrchestratorUnavailableError(msg);
     expect(error.message).toBe(msg);
   });
 
   it('should be an instance of Error', () => {
-    const error = new TechLeadUnavailableError('test');
+    const error = new OrchestratorUnavailableError('test');
     expect(error).toBeInstanceOf(Error);
   });
 
   it('should work with empty message', () => {
-    const error = new TechLeadUnavailableError('');
+    const error = new OrchestratorUnavailableError('');
     expect(error.message).toBe('');
     expect(error.code).toBe(ErrorCode.MODEL_UNAVAILABLE);
   });
