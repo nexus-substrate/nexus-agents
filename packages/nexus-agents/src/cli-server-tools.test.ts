@@ -38,6 +38,7 @@ const {
   mockRegisterResearchCatalogReviewTool,
   mockRegisterMemoryQueryTool,
   mockRegisterMemoryStatsTool,
+  mockRegisterWeatherReportTool,
   mockCreateDefaultDeps,
   mockCreateRealWorkflowEngine,
   mockCreateToolRateLimiterFactory,
@@ -69,6 +70,7 @@ const {
   mockRegisterResearchCatalogReviewTool: vi.fn(),
   mockRegisterMemoryQueryTool: vi.fn(),
   mockRegisterMemoryStatsTool: vi.fn(),
+  mockRegisterWeatherReportTool: vi.fn(),
   mockCreateDefaultDeps: vi.fn().mockReturnValue({
     logger: {
       debug: vi.fn(),
@@ -114,6 +116,7 @@ vi.mock('./mcp/index.js', () => ({
   registerResearchCatalogReviewTool: mockRegisterResearchCatalogReviewTool,
   registerMemoryQueryTool: mockRegisterMemoryQueryTool,
   registerMemoryStatsTool: mockRegisterMemoryStatsTool,
+  registerWeatherReportTool: mockRegisterWeatherReportTool,
   createDefaultDeps: mockCreateDefaultDeps,
 }));
 

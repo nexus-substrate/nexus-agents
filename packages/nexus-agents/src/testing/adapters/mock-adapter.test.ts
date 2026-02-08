@@ -407,8 +407,8 @@ describe('MockCliAdapter', () => {
 
       const info = geminiAdapter.getModelInfo();
 
-      expect(info.id).toBe('gemini-pro');
-      expect(info.name).toBe('Gemini 2.5 Pro');
+      expect(info.id).toBe('gemini-3-pro');
+      expect(info.name).toBe('Gemini 3 Pro (Preview)');
       expect(info.contextWindow).toBe(1_000_000);
     });
 

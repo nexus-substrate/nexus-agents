@@ -309,6 +309,25 @@ function recordRouterOutcome(
   });
 }
 
+/** Handles unexpected exceptions during orchestration. */
+function handleOrchestrationException(
+  error: unknown,
+  taskId: string,
+  task: string,
+  logger: import('../../core/index.js').ILogger
+): Result<OrchestrateOutput, OrchestrationError> {
+  const message = error instanceof Error ? error.message : 'Unknown error';
+  const cause = error instanceof Error ? error : undefined;
+  logger.error('Orchestration exception', cause, { taskId });
+  recordOrchestrationError(message, task);
+  return err(
+    new OrchestrationError(
+      `Orchestration failed unexpectedly: ${message}`,
+      createErrorOptions(taskId, cause)
+    )
+  );
+}
+
 async function executeOrchestration(
   input: OrchestrateInput,
   deps: OrchestrateDeps,
@@ -355,16 +374,7 @@ async function executeOrchestration(
     });
     return ok(output);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    const cause = error instanceof Error ? error : undefined;
-    logger.error('Orchestration exception', cause, { taskId });
-    recordOrchestrationError(message, input.task);
-    return err(
-      new OrchestrationError(
-        `Orchestration failed unexpectedly: ${message}`,
-        createErrorOptions(taskId, cause)
-      )
-    );
+    return handleOrchestrationException(error, taskId, input.task, logger);
   }
 }
 
