@@ -9,6 +9,7 @@
  */
 
 import type { TaskAnalysisResult } from '../core/task-analysis/shared-task-analyzer.js';
+import type { CapabilityGapReport } from '../core/task-analysis/capability-gap-detector.js';
 
 /**
  * Orchestration patterns available in nexus-agents.
@@ -76,6 +77,8 @@ export interface RoutingDecision {
   readonly needsClarification?: boolean;
   /** Suggested clarification questions when needsClarification is true */
   readonly suggestedQuestions?: readonly string[];
+  /** Capability gap report — what's available vs what's needed (Issue #906) */
+  readonly capabilityGaps?: CapabilityGapReport;
 }
 
 /**

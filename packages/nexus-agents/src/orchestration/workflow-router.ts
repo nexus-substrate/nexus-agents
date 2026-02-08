@@ -18,6 +18,7 @@ import type {
   ISharedTaskAnalyzer,
   TaskAnalysisResult,
 } from '../core/task-analysis/shared-task-analyzer.js';
+import { detectCapabilityGaps } from '../core/task-analysis/capability-gap-detector.js';
 import type {
   TaskSignals,
   WorkflowPattern,
@@ -96,6 +97,33 @@ const ROUTING_RULES: readonly RoutingRule[] = [
   ruleBulkOperations,
 ];
 
+interface DecisionInput {
+  result: RuleResult;
+  matchedRules: readonly string[];
+  alternatives: readonly WorkflowPattern[];
+  analysis: TaskAnalysisResult;
+}
+
+function buildDecision(input: DecisionInput): RoutingDecision {
+  const base: RoutingDecision = {
+    pattern: input.result.pattern,
+    reasoning: input.result.reasoning,
+    confidence: input.result.confidence,
+    matchedRules: input.matchedRules,
+    alternatives: input.alternatives,
+    analysis: input.analysis,
+    capabilityGaps: detectCapabilityGaps(input.analysis.requiredCapabilities),
+  };
+  if (input.result.needsClarification === true) {
+    return {
+      ...base,
+      needsClarification: true,
+      suggestedQuestions: input.result.suggestedQuestions ?? [],
+    };
+  }
+  return base;
+}
+
 function routeTask(
   signals: TaskSignals,
   analyzer: ISharedTaskAnalyzer,
@@ -119,35 +147,23 @@ function routeTask(
         taskType: analysis.taskType,
         complexity: analysis.complexity,
       });
-      const decision: RoutingDecision = {
-        pattern: result.pattern,
-        reasoning: result.reasoning,
-        confidence: result.confidence,
-        matchedRules,
-        alternatives,
-        analysis,
-      };
-      if (result.needsClarification === true) {
-        return {
-          ...decision,
-          needsClarification: true,
-          suggestedQuestions: result.suggestedQuestions ?? [],
-        };
-      }
-      return decision;
+      return buildDecision({ result, matchedRules, alternatives, analysis });
     }
   }
 
   // Fallback: Graph DAG as most general pattern (per Architect feedback)
   logger.info('Using fallback pattern', { pattern: 'graph', taskType: analysis.taskType });
-  return {
+  const fallback: RuleResult = {
     pattern: 'graph',
     reasoning: 'No specific rule matched — using Graph DAG as the most general pattern',
     confidence: 0.5,
+  };
+  return buildDecision({
+    result: fallback,
     matchedRules: ['fallback'],
     alternatives: ['sequential', 'wave'],
     analysis,
-  };
+  });
 }
 
 /**

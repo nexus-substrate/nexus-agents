@@ -39,6 +39,18 @@ export {
   inferRequiredCapabilities,
 } from './task-analysis-advocate.js';
 
+// Capability gap detection (Issue #906)
+export type {
+  CapabilityGapReport,
+  CapabilityGap,
+  AvailableCapabilities,
+} from './capability-gap-detector.js';
+export {
+  detectCapabilityGaps,
+  getAvailableToolCount,
+  getAvailableExpertCount,
+} from './capability-gap-detector.js';
+
 // Task profile adapter for legacy compatibility (Issue #586)
 export type { TaskProfile, BanditContext } from './task-profile-adapter.js';
 export {
