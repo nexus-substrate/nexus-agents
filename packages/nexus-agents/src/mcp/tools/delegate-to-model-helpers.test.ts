@@ -383,14 +383,18 @@ describe('scoreAllModels billing mode', () => {
     const planRanked = scoreAllModels(req, undefined, 'plan');
     expect(planRanked.length).toBeGreaterThan(0);
     // Top models in plan mode: strong reasoning + speed (cost zeroed)
-    expect(['claude-opus', 'codex-5.3', 'gemini-pro']).toContain(planRanked[0]!.name);
+    expect(['claude-opus', 'codex-5.3', 'gemini-3-pro', 'gemini-pro']).toContain(
+      planRanked[0]!.name
+    );
   });
 
   it('ranks cheap models higher in api mode', () => {
     const req = makeRequirements();
     const apiRanked = scoreAllModels(req, undefined, 'api');
     expect(apiRanked.length).toBeGreaterThan(0);
-    expect(['gemini-flash', 'claude-haiku', 'codex-5.1-mini']).toContain(apiRanked[0]!.name);
+    expect(['gemini-flash', 'gemini-3-flash', 'claude-haiku', 'codex-5.1-mini']).toContain(
+      apiRanked[0]!.name
+    );
   });
 });
 

@@ -27,7 +27,7 @@ import {
 
 describe('DEFAULT_MODEL_CAPABILITIES', () => {
   it('should contain exactly 8 models', () => {
-    expect(DEFAULT_MODEL_CAPABILITIES.models).toHaveLength(8);
+    expect(DEFAULT_MODEL_CAPABILITIES.models).toHaveLength(10);
   });
 
   it('should have version 1', () => {
@@ -79,8 +79,8 @@ describe('DEFAULT_MODEL_PER_CLI', () => {
     expect(DEFAULT_MODEL_PER_CLI.claude).toBe('claude-opus');
   });
 
-  it('should map gemini to gemini-pro', () => {
-    expect(DEFAULT_MODEL_PER_CLI.gemini).toBe('gemini-pro');
+  it('should map gemini to gemini-3-pro', () => {
+    expect(DEFAULT_MODEL_PER_CLI.gemini).toBe('gemini-3-pro');
   });
 
   it('should map codex to codex-5.3', () => {
@@ -119,14 +119,16 @@ describe('getModelCapabilities', () => {
 describe('findModelsByOutputModality', () => {
   it('returns models supporting text output', () => {
     const results = findModelsByOutputModality('text');
-    expect(results).toHaveLength(8);
+    expect(results).toHaveLength(10);
   });
 
   it('returns subset for image_png (only gemini models)', () => {
     const results = findModelsByOutputModality('image_png');
-    expect(results).toHaveLength(2);
+    expect(results).toHaveLength(4);
     const ids = results.map((m) => m.id);
+    expect(ids).toContain('gemini-3-pro');
     expect(ids).toContain('gemini-pro');
+    expect(ids).toContain('gemini-3-flash');
     expect(ids).toContain('gemini-flash');
   });
 });
@@ -138,14 +140,16 @@ describe('findModelsByOutputModality', () => {
 describe('findModelsByInputModality', () => {
   it('all models support text input', () => {
     const results = findModelsByInputModality('text');
-    expect(results).toHaveLength(8);
+    expect(results).toHaveLength(10);
   });
 
   it('only gemini supports video input', () => {
     const results = findModelsByInputModality('video');
-    expect(results).toHaveLength(2);
+    expect(results).toHaveLength(4);
     const ids = results.map((m) => m.id);
+    expect(ids).toContain('gemini-3-pro');
     expect(ids).toContain('gemini-pro');
+    expect(ids).toContain('gemini-3-flash');
     expect(ids).toContain('gemini-flash');
   });
 });
@@ -157,7 +161,7 @@ describe('findModelsByInputModality', () => {
 describe('findModelsByToolCapability', () => {
   it('all models support function_calling', () => {
     const results = findModelsByToolCapability('function_calling');
-    expect(results).toHaveLength(8);
+    expect(results).toHaveLength(10);
   });
 
   it('only claude models support mcp', () => {
@@ -176,13 +180,15 @@ describe('findModelsByToolCapability', () => {
 describe('findModelsByFeature', () => {
   it('multiple models support streaming', () => {
     const results = findModelsByFeature('streaming');
-    expect(results).toHaveLength(8);
+    expect(results).toHaveLength(10);
   });
 
-  it('only gemini-pro supports deep_research', () => {
+  it('gemini pro models support deep_research', () => {
     const results = findModelsByFeature('deep_research');
-    expect(results).toHaveLength(1);
-    expect(results[0]!.id).toBe('gemini-pro');
+    expect(results).toHaveLength(2);
+    const ids = results.map((m) => m.id);
+    expect(ids).toContain('gemini-3-pro');
+    expect(ids).toContain('gemini-pro');
   });
 });
 
@@ -200,11 +206,13 @@ describe('findModelsByProvider', () => {
     expect(ids).toContain('claude-haiku');
   });
 
-  it('returns 2 google models', () => {
+  it('returns 4 google models', () => {
     const results = findModelsByProvider('google');
-    expect(results).toHaveLength(2);
+    expect(results).toHaveLength(4);
     const ids = results.map((m) => m.id);
+    expect(ids).toContain('gemini-3-pro');
     expect(ids).toContain('gemini-pro');
+    expect(ids).toContain('gemini-3-flash');
     expect(ids).toContain('gemini-flash');
   });
 
@@ -223,10 +231,10 @@ describe('findModelsByProvider', () => {
 // ---------------------------------------------------------------------------
 
 describe('findBestModelForOutput', () => {
-  it('returns gemini-pro for text (1M context)', () => {
+  it('returns a gemini model for text (1M context)', () => {
     const result = findBestModelForOutput('text');
     expect(result).toBeDefined();
-    expect(result?.id).toBe('gemini-pro');
+    expect(result?.id).toBe('gemini-3-pro');
     expect(result?.contextWindow).toBe(1_000_000);
   });
 

@@ -246,9 +246,14 @@ describe('delegate_to_model Tool', () => {
       );
 
       // Top-tier models should be selected for reasoning tasks
-      expect(['claude-opus', 'codex-5.3', 'codex-5.2', 'claude-sonnet', 'gemini-pro']).toContain(
-        result.model
-      );
+      expect([
+        'claude-opus',
+        'codex-5.3',
+        'codex-5.2',
+        'claude-sonnet',
+        'gemini-3-pro',
+        'gemini-pro',
+      ]).toContain(result.model);
       expect(result.alternatives.length).toBeGreaterThan(0);
     });
 
@@ -392,7 +397,7 @@ describe('delegate_to_model Tool', () => {
       const content = result.content as Array<{ type: string; text: string }>;
       const output = JSON.parse(content[0]!.text) as DelegateOutput;
       // Should select a fast model (gemini-flash or claude-haiku)
-      expect(['gemini-flash', 'claude-haiku', 'codex-5.1-mini']).toContain(
+      expect(['gemini-flash', 'gemini-3-flash', 'claude-haiku', 'codex-5.1-mini']).toContain(
         output.recommended_model
       );
     });

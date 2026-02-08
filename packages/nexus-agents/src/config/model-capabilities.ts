@@ -64,7 +64,7 @@ export {
  */
 export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
   version: 1,
-  updatedAt: '2026-02-03',
+  updatedAt: '2026-02-07',
   models: [
     // ----- Anthropic Claude -----
     {
@@ -117,6 +117,35 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
     },
     // ----- Google Gemini -----
     {
+      id: 'gemini-3-pro',
+      displayName: 'Gemini 3 Pro (Preview)',
+      provider: 'google',
+      contextWindow: 1_000_000,
+      outputModalities: [
+        'text',
+        'image_png',
+        'image_jpeg',
+        'audio_pcm',
+        'audio_wav',
+        'structured_json',
+        'code',
+      ],
+      inputModalities: ['text', 'image', 'audio', 'video', 'pdf', 'code'],
+      toolCapabilities: [
+        'function_calling',
+        'code_execution_sandbox',
+        'web_search',
+        'structured_output',
+      ],
+      specialFeatures: ['deep_research', 'streaming', 'grounding', 'live_api'],
+      notes: 'Next-gen Gemini; improved reasoning over 2.5 Pro; 1M context',
+      pricing: { inputPer1M: 1.25, outputPer1M: 10.0 },
+      qualityScores: { reasoning: 10, codeGeneration: 9, speed: 8, cost: 7 },
+      maxOutputTokens: 65_536,
+      cliName: 'gemini',
+      cliModelName: 'gemini-3-pro-preview',
+    },
+    {
       id: 'gemini-pro',
       displayName: 'Gemini 2.5 Pro',
       provider: 'google',
@@ -144,6 +173,27 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
       maxOutputTokens: 8_192,
       cliName: 'gemini',
       cliModelName: 'gemini-2.5-pro',
+    },
+    {
+      id: 'gemini-3-flash',
+      displayName: 'Gemini 3 Flash (Preview)',
+      provider: 'google',
+      contextWindow: 1_000_000,
+      outputModalities: ['text', 'image_png', 'image_jpeg', 'structured_json', 'code'],
+      inputModalities: ['text', 'image', 'audio', 'video', 'pdf', 'code'],
+      toolCapabilities: [
+        'function_calling',
+        'code_execution_sandbox',
+        'web_search',
+        'structured_output',
+      ],
+      specialFeatures: ['streaming', 'grounding'],
+      notes: 'Next-gen fast Gemini; improved over 2.5 Flash; 1M context',
+      pricing: { inputPer1M: 0.15, outputPer1M: 0.6 },
+      qualityScores: { reasoning: 8, codeGeneration: 8, speed: 10, cost: 9 },
+      maxOutputTokens: 65_536,
+      cliName: 'gemini',
+      cliModelName: 'gemini-3-flash-preview',
     },
     {
       id: 'gemini-flash',
@@ -249,7 +299,7 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
  */
 export const DEFAULT_MODEL_PER_CLI: Record<CliNameLiteral, ModelId> = {
   claude: 'claude-opus',
-  gemini: 'gemini-pro',
+  gemini: 'gemini-3-pro',
   codex: 'codex-5.3',
 };
 
