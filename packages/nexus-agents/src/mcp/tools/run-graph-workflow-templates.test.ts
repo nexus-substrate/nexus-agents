@@ -35,10 +35,18 @@ async function runWorkflow(name: string, inputs: Record<string, unknown>) {
 // ============================================================================
 
 describe('getGraphRegistry', () => {
-  it('contains 4 predefined workflows', () => {
+  it('contains 7 workflows (4 built-in + 3 multi-CLI)', () => {
     const registry = getGraphRegistry();
-    expect(registry.size).toBe(4);
-    expect([...registry.keys()]).toEqual(['echo', 'pipeline', 'code-review', 'security-scan']);
+    expect(registry.size).toBe(7);
+    expect([...registry.keys()]).toEqual([
+      'echo',
+      'pipeline',
+      'code-review',
+      'security-scan',
+      'security-audit',
+      'test-generation',
+      'documentation',
+    ]);
   });
 
   it('all factories produce valid compiled graphs', () => {

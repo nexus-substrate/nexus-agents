@@ -141,12 +141,15 @@ describe('list action', () => {
       name: string;
       description: string;
     }>;
-    expect(workflows.length).toBe(4);
+    expect(workflows.length).toBe(7);
     expect(workflows.map((w) => w.name)).toEqual([
       'echo',
       'pipeline',
       'code-review',
       'security-scan',
+      'security-audit',
+      'test-generation',
+      'documentation',
     ]);
   });
 

@@ -171,6 +171,17 @@ export {
   type RunGraphWorkflowResponse,
 } from './run-graph-workflow.js';
 
+// Multi-CLI graph workflow templates (Issue #866)
+export {
+  getMultiCliTemplates,
+  getMultiCliRegistry,
+  SECURITY_AUDIT_ASSIGNMENTS,
+  TEST_GENERATION_ASSIGNMENTS,
+  DOCUMENTATION_ASSIGNMENTS,
+  type CliAssignment,
+  type MultiCliTemplate,
+} from './run-graph-workflow-multicli-templates.js';
+
 // Spec execution tool (Issue #853 — AI Software Factory)
 export {
   registerExecuteSpecTool,

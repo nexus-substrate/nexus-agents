@@ -16,6 +16,10 @@
 
 import { GraphBuilder, overwrite, append, START, END } from '../../orchestration/graph/index.js';
 import type { CompiledGraph, GraphState } from '../../orchestration/graph/index.js';
+import {
+  getMultiCliTemplates,
+  getMultiCliRegistry,
+} from './run-graph-workflow-multicli-templates.js';
 
 // ============================================================================
 // Registry
@@ -64,18 +68,19 @@ const WORKFLOW_METADATA: readonly GraphWorkflowInfo[] = [
   },
 ];
 
-/** Returns metadata about all available graph workflows. */
+/** Returns metadata about all available graph workflows (built-in + multi-CLI). */
 export function getGraphWorkflowList(): readonly GraphWorkflowInfo[] {
-  return WORKFLOW_METADATA;
+  return [...WORKFLOW_METADATA, ...getMultiCliTemplates().map((t) => t.metadata)];
 }
 
-/** Registry of all predefined graph workflows. */
+/** Registry of all predefined graph workflows (built-in + multi-CLI). */
 export function getGraphRegistry(): ReadonlyMap<string, GraphFactory> {
   return new Map<string, GraphFactory>([
     ['echo', createEchoGraph],
     ['pipeline', createPipelineGraph],
     ['code-review', createCodeReviewGraph],
     ['security-scan', createSecurityScanGraph],
+    ...getMultiCliRegistry(),
   ]);
 }
 
