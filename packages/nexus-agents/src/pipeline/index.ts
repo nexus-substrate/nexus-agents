@@ -92,3 +92,5 @@ export {
   type PolicyRule,
   type IPolicyEngine,
 } from './policy-engine.js';
+
+export { createFeedbackSubscriber } from './feedback-subscriber.js';

@@ -75,4 +75,6 @@ export {
   type PolicyContext,
   type PolicyRule,
   type IPolicyEngine,
+  // Feedback loop
+  createFeedbackSubscriber,
 } from '../pipeline/index.js';

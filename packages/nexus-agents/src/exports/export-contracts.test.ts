@@ -139,6 +139,7 @@ import {
   PolicyEngine,
   createDefaultPolicyEngine,
   BUILT_IN_RULES,
+  createFeedbackSubscriber,
 } from '../index.js';
 
 describe('Export contracts — MCP tool registration', () => {
@@ -376,6 +377,10 @@ describe('Export contracts — pipeline V2 types', () => {
     expect(BUILT_IN_RULES).toHaveLength(5);
     const engine = createDefaultPolicyEngine();
     expect(engine.listRules()).toHaveLength(5);
+  });
+
+  it('exports createFeedbackSubscriber', () => {
+    expect(typeof createFeedbackSubscriber).toBe('function');
   });
 });
 
