@@ -194,6 +194,13 @@ export {
   type WeatherReportInput,
   type WeatherReportResponse,
   generateWeatherReport,
+  // Registry import tool (Issue #889)
+  registerRegistryImportTool,
+  type RegistryImportDeps,
+  RegistryImportInputSchema,
+  type RegistryImportInput,
+  type RegistryImportResponse,
+  generateRegistryEntry,
   // Delegate helpers (Issue #872 — TUI)
   analyzeTask,
   selectModel,

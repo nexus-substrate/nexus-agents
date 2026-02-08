@@ -230,6 +230,15 @@ export {
 } from './weather-report-types.js';
 export { generateWeatherReport, getAdaptiveBonus, shouldExplore } from './weather-report.js';
 
+// Registry import tool (Issue #889)
+export { registerRegistryImportTool, type RegistryImportDeps } from './registry-import-tool.js';
+export {
+  RegistryImportInputSchema,
+  type RegistryImportInput,
+  type RegistryImportResponse,
+} from './registry-import-types.js';
+export { generateRegistryEntry } from './registry-import.js';
+
 /**
  * Options for tool registration.
  */
@@ -326,6 +335,7 @@ export function registerTools(
       'issue_triage',
       'run_graph_workflow',
       'execute_spec',
+      'registry_import',
     ],
     logger,
     rateLimiter,

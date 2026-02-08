@@ -1,0 +1,103 @@
+/**
+ * nexus-agents/mcp - Registry Import MCP Tool
+ *
+ * Generates draft ModelCapability entries for adding new models
+ * to the canonical registry. Quality scores default to 5/10
+ * and require human review before routing trusts them.
+ *
+ * @module mcp/tools/registry-import-tool
+ * (Source: Issue #889, Epic #888)
+ */
+
+import { z } from 'zod';
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { ILogger } from '../../core/index.js';
+import { createLogger, formatZodError } from '../../core/index.js';
+import type { RateLimiter } from '../middleware/rate-limiter.js';
+import type { SecurityConfig } from '../../config/schemas.js';
+import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
+import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
+import { RegistryImportInputSchema } from './registry-import-types.js';
+import { generateRegistryEntry } from './registry-import.js';
+
+// ============================================================================
+// Dependencies
+// ============================================================================
+
+export interface RegistryImportDeps {
+  readonly logger?: ILogger;
+  readonly rateLimiter: RateLimiter;
+  readonly security?: SecurityConfig | undefined;
+}
+
+// ============================================================================
+// Handler
+// ============================================================================
+
+type ToolResponse = {
+  content: Array<{ type: 'text'; text: string }>;
+  isError?: boolean;
+};
+
+function registryImportHandler(args: unknown, ctx: HandlerContext): Promise<ToolResponse> {
+  const parsed = RegistryImportInputSchema.safeParse(args);
+  if (!parsed.success) {
+    return Promise.resolve({
+      isError: true,
+      content: [{ type: 'text', text: `Validation error: ${formatZodError(parsed.error)}` }],
+    });
+  }
+
+  try {
+    const result = generateRegistryEntry(parsed.data);
+    return Promise.resolve({
+      content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+    });
+  } catch (caught) {
+    const e = caught instanceof Error ? caught : new Error(String(caught));
+    ctx.logger.error('Registry import failed', e);
+    return Promise.resolve({
+      isError: true,
+      content: [{ type: 'text', text: `Registry import failed: ${e.message}` }],
+    });
+  }
+}
+
+// ============================================================================
+// Registration
+// ============================================================================
+
+export function registerRegistryImportTool(server: McpServer, deps: RegistryImportDeps): void {
+  const logger = deps.logger ?? createLogger({ tool: 'registry_import' });
+  const toolSchema = {
+    provider: z
+      .enum(['anthropic', 'google', 'openai'])
+      .describe('Model provider (anthropic, google, openai)'),
+    modelId: z.string().min(1).describe('Provider model identifier'),
+    dryRun: z.boolean().optional().describe('Preview without persisting (default: true)'),
+  };
+
+  const description =
+    'Add an AI model to the registry. Generates a draft ModelCapability entry ' +
+    'with conservative quality scores (5/10) for human review. Use dryRun=true ' +
+    '(default) to preview the entry without saving.';
+
+  const secureHandler = createSecureHandler(registryImportHandler, {
+    toolName: 'registry_import',
+    rateLimiter: deps.rateLimiter,
+    logger,
+  });
+
+  const timeoutMs = getToolTimeout('registry_import', deps.security);
+  const wrappedHandler = wrapToolWithTimeout('registry_import', secureHandler, {
+    timeoutMs,
+    logger,
+  });
+
+  server.registerTool(
+    'registry_import',
+    { description, inputSchema: toolSchema },
+    toSdkCallback(wrappedHandler)
+  );
+  logger.info('Registered registry_import tool');
+}

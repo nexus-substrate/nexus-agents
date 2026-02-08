@@ -454,12 +454,13 @@ Governance rules (voting thresholds, refactor gates, fitness audit, documentatio
 | `research_catalog_review` | Review auto-cataloged research references found during tool execution.                                                             |
 | `memory_query`            | Query across all memory backends with unified results and relevance scoring.                                                       |
 | `memory_stats`            | Get memory system statistics dashboard showing backend availability and metrics.                                                   |
-| `weather_report`          | weather_report tool                                                                                                                |
-| `issue_triage`            | issue_triage tool                                                                                                                  |
-| `run_graph_workflow`      | run_graph_workflow tool                                                                                                            |
-| `execute_spec`            | execute_spec tool                                                                                                                  |
+| `weather_report`          | Get multi-CLI performance weather report with per-CLI success rates and adaptive routing bonuses.                                  |
+| `issue_triage`            | Triage GitHub issues with trust classification and typed action recommendations.                                                   |
+| `run_graph_workflow`      | Execute graph-based workflow templates with checkpoint and rollback support.                                                       |
+| `execute_spec`            | Execute an AI software factory spec through the full pipeline (parse, decompose, compile, execute, validate).                      |
+| `registry_import`         | Generate a draft model registry entry for a new AI model. Returns a template with conservative defaults for human review.          |
 
-_Auto-generated from source. 19 tools registered._
+_Auto-generated from source. 20 tools registered._
 
 <!-- GOVERNANCE:TOOL_INDEX:END -->
 
