@@ -73,6 +73,10 @@ const SECURITY_KEYWORDS = [
   'penetration',
   'threat',
   'malware',
+  'credentials',
+  'secrets',
+  'encryption',
+  'certificate',
 ] as const;
 
 /** Keywords that indicate architecture-related work (case-insensitive). */
@@ -80,11 +84,16 @@ const ARCHITECTURE_KEYWORDS = [
   'architecture',
   'breaking change',
   'breaking api',
+  'api change',
   'migration',
   'refactor.*system',
   'redesign',
   'microservice',
   'monolith',
+  'deprecation',
+  'schema change',
+  'database',
+  'infrastructure',
 ] as const;
 
 /** Roles that always promote to Tier 3. */

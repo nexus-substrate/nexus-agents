@@ -20,3 +20,11 @@ export {
   type GatewayToolResult,
   type GatewayLogEntry,
 } from './gateway-middleware.js';
+
+export {
+  classifyWithGovernance,
+  auditGovernancePromotion,
+  type GovernanceClassification,
+  type GovernanceDomain,
+  type VotingThreshold,
+} from './governance-enforcer.js';
