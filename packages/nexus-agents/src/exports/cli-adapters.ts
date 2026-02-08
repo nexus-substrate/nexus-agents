@@ -21,6 +21,7 @@ export {
   type ICliAdapter,
   type ICliResponseParser,
   type VersionRequirements,
+  type BaseAdapterOptions,
   CLI_VERSION_REQUIREMENTS,
   DEFAULT_CAPABILITIES as CLI_DEFAULT_CAPABILITIES,
   // Base adapter

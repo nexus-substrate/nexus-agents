@@ -22,6 +22,7 @@ import type {
   ModelInfo,
   CliName,
   ExecutionOptions,
+  BaseAdapterOptions,
 } from '../types.js';
 import { SubprocessCliAdapter, type CommandConfig } from '../subprocess-adapter.js';
 import { ResilientGeminiParser } from '../parsers/gemini-parser-resilient.js';
@@ -55,12 +56,8 @@ const DEFAULT_GEMINI_CLI_MODEL: string =
   DEFAULT_MODEL_CAPABILITIES.models.find((m) => m.id === DEFAULT_MODEL_PER_CLI.gemini)
     ?.cliModelName ?? DEFAULT_MODEL_PER_CLI.gemini;
 
-/** Configuration for Gemini adapter. */
-export interface GeminiConfig {
-  /** Model to use (default: from DEFAULT_MODEL_PER_CLI) */
-  readonly model?: string;
-  /** Custom logger */
-  readonly logger?: ILogger;
+/** Configuration for Gemini adapter. Extends BaseAdapterOptions with retry/circuit breaker. */
+export interface GeminiConfig extends BaseAdapterOptions {
   /** Maximum retry attempts (default: 3) */
   readonly maxRetries?: number;
   /** Base delay for exponential backoff in ms (default: 1000) */
@@ -114,22 +111,22 @@ export class GeminiCliAdapter extends SubprocessCliAdapter {
   private readonly circuitBreaker: CliCircuitBreaker | null;
   private readonly adapterLogger: ILogger;
 
-  constructor(config?: GeminiConfig) {
-    const mergedConfig = { ...DEFAULT_CONFIG, ...config };
-    super(config?.logger);
+  constructor(options?: GeminiConfig) {
+    const mergedConfig = { ...DEFAULT_CONFIG, ...options };
+    super(options?.logger);
 
     this.model = mergedConfig.model;
     this.maxRetries = mergedConfig.maxRetries;
     this.baseDelayMs = mergedConfig.baseDelayMs;
     this.maxDelayMs = mergedConfig.maxDelayMs;
     this.parser = new ResilientGeminiParser();
-    this.adapterLogger = config?.logger ?? createLogger({ component: 'gemini-adapter' });
+    this.adapterLogger = options?.logger ?? createLogger({ component: 'gemini-adapter' });
 
     // Initialize circuit breaker if enabled
     if (mergedConfig.enableCircuitBreaker) {
       const cbConfig: CircuitBreakerConfig = {
         ...DEFAULT_CIRCUIT_BREAKER_CONFIG,
-        ...config?.circuitBreakerConfig,
+        ...options?.circuitBreakerConfig,
       };
       this.circuitBreaker = new CliCircuitBreaker('gemini', cbConfig);
     } else {
@@ -380,6 +377,6 @@ export class GeminiCliAdapter extends SubprocessCliAdapter {
 }
 
 /** Creates a Gemini CLI adapter with reliability features. */
-export function createGeminiAdapter(config?: GeminiConfig): GeminiCliAdapter {
-  return new GeminiCliAdapter(config);
+export function createGeminiAdapter(options?: GeminiConfig): GeminiCliAdapter {
+  return new GeminiCliAdapter(options);
 }

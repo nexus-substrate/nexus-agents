@@ -30,11 +30,11 @@ import type {
   ModelInfo,
   CapabilityProfile,
   ExecutionOptions,
+  BaseAdapterOptions,
 } from '../types.js';
 import { DEFAULT_CAPABILITIES } from '../types.js';
-import type { Result } from '../../core/index.js';
+import type { Result, ILogger } from '../../core/index.js';
 import { ok, err, getTimeProvider } from '../../core/index.js';
-import type { ILogger } from '../../core/index.js';
 import { createLogger } from '../../core/index.js';
 import { CodexResponseParser } from '../parsers/codex-parser.js';
 import {
@@ -45,15 +45,10 @@ import {
 } from './codex-adapter-helpers.js';
 import { CapacityTracker, createCapacityTracker } from '../capacity-tracker.js';
 import {
-  DEFAULT_MODEL_PER_CLI,
-  DEFAULT_MODEL_CAPABILITIES,
-} from '../../config/model-capabilities.js';
-import { buildModelInfo } from '../../config/model-config-helpers.js';
-
-/** Derive the CLI model name for the default Codex model from the canonical registry. */
-const DEFAULT_CODEX_CLI_MODEL: string =
-  DEFAULT_MODEL_CAPABILITIES.models.find((m) => m.id === DEFAULT_MODEL_PER_CLI.codex)
-    ?.cliModelName ?? DEFAULT_MODEL_PER_CLI.codex;
+  getDefaultModelForCli,
+  getCliModelName,
+  buildModelInfo,
+} from '../../config/model-config-helpers.js';
 
 // Re-export CLI-specific helpers for backward compatibility
 export { createCodexError, normalizeCodexResponse, delay } from './codex-adapter-helpers.js';
@@ -86,9 +81,9 @@ export class CodexCliAdapter implements ICliAdapter {
   private cachedVersion?: string;
   private capacityTracker: CapacityTracker | null = null;
 
-  constructor(options?: { model?: string; logger?: ILogger }) {
+  constructor(options?: BaseAdapterOptions) {
     this.logger = options?.logger ?? createLogger({ component: 'codex-adapter' });
-    this.model = options?.model ?? DEFAULT_CODEX_CLI_MODEL;
+    this.model = options?.model ?? getCliModelName(getDefaultModelForCli('codex'));
   }
 
   /**

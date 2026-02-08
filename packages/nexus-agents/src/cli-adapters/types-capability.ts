@@ -7,7 +7,7 @@
  * (Source: docs/research/cli-integration-architecture.md)
  */
 
-import type { Result } from '../core/index.js';
+import type { Result, ILogger } from '../core/index.js';
 import type {
   CliName,
   CliTransport,
@@ -34,6 +34,17 @@ export interface ModelInfo {
   readonly costPerMillionInput?: number;
   /** Cost per 1M output tokens */
   readonly costPerMillionOutput?: number;
+}
+
+/**
+ * Base adapter constructor options shared by all CLI adapters.
+ * CLI-specific adapters extend this with additional fields.
+ */
+export interface BaseAdapterOptions {
+  /** Model to use (defaults to the CLI's default from the canonical registry) */
+  readonly model?: string;
+  /** Custom logger instance */
+  readonly logger?: ILogger;
 }
 
 /**

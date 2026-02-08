@@ -10,6 +10,7 @@
 
 // Types
 export type {
+  BaseAdapterOptions,
   CliName,
   CliTransport,
   TokenUsage,

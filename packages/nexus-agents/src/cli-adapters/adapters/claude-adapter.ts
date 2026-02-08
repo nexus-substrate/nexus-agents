@@ -8,13 +8,17 @@
  * (Source: docs/research/cli-integration-architecture.md)
  */
 
-import type { ICliResponseParser, CliTask, ModelInfo, CliName } from '../types.js';
+import type {
+  ICliResponseParser,
+  CliTask,
+  ModelInfo,
+  CliName,
+  BaseAdapterOptions,
+} from '../types.js';
 import { SubprocessCliAdapter, type CommandConfig } from '../subprocess-adapter.js';
 import { ClaudeResponseParser } from '../parsers/claude-parser.js';
-import type { ILogger } from '../../core/index.js';
 import { DEFAULT_MODEL_CAPABILITIES } from '../../config/model-capabilities.js';
 import {
-  resolveCliAlias,
   getDefaultModelForCli,
   getCliModelName,
   buildModelInfo,
@@ -87,42 +91,20 @@ export class ClaudeCliAdapter extends SubprocessCliAdapter {
 
   private readonly model: string;
 
-  constructor(options?: { model?: string; logger?: ILogger }) {
+  constructor(options?: BaseAdapterOptions) {
     super(options?.logger);
     this.model = options?.model ?? getCliModelName(getDefaultModelForCli('claude'));
   }
 
   /**
    * Gets Claude model information.
-   * Tries buildModelInfo with the CLI alias first. If the model string is
-   * an alias (e.g., 'opus'), resolves to ModelId and retries via the registry.
-   * Falls back to legacy inline lookup for unrecognized models.
+   * buildModelInfo matches both cliModelName and cliAlias, so a single
+   * call handles 'opus', 'sonnet', 'haiku', and full model names.
+   * Falls back to legacy lookup for unrecognized models.
    */
   getModelInfo(): ModelInfo {
-    // Try direct CLI model name lookup (e.g., 'opus' → cliAlias match)
     const fromRegistry = buildModelInfo('claude', this.model);
     if (fromRegistry !== undefined) return fromRegistry;
-
-    // Try resolving alias → ModelId → registry entry
-    const resolved = resolveCliAlias(this.model);
-    if (resolved !== undefined) {
-      const cap = DEFAULT_MODEL_CAPABILITIES.models.find((m) => m.id === resolved);
-      if (cap !== undefined) {
-        const info: ModelInfo = {
-          id: this.model,
-          name: cap.displayName,
-          contextWindow: cap.contextWindow,
-        };
-        if (cap.maxOutputTokens !== undefined) {
-          (info as { maxOutput: number }).maxOutput = cap.maxOutputTokens;
-        }
-        if (cap.pricing !== undefined) {
-          (info as { costPerMillionInput: number }).costPerMillionInput = cap.pricing.inputPer1M;
-          (info as { costPerMillionOutput: number }).costPerMillionOutput = cap.pricing.outputPer1M;
-        }
-        return info;
-      }
-    }
 
     return {
       id: this.model,

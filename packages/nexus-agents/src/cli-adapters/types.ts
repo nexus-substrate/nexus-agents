@@ -26,6 +26,7 @@ export type {
 
 // Capability types
 export type {
+  BaseAdapterOptions,
   ModelInfo,
   CapabilityProfile,
   CliTask,

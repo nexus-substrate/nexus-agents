@@ -19,11 +19,11 @@ import type {
   ModelInfo,
   CapabilityProfile,
   ExecutionOptions,
+  BaseAdapterOptions,
 } from '../types.js';
 import { DEFAULT_CAPABILITIES } from '../types.js';
-import type { Result } from '../../core/index.js';
+import type { Result, ILogger } from '../../core/index.js';
 import { ok, err, getTimeProvider } from '../../core/index.js';
-import type { ILogger } from '../../core/index.js';
 import { createLogger } from '../../core/index.js';
 import {
   DEFAULT_CODEX_MCP_OPTIONS,
@@ -61,7 +61,7 @@ export class CodexMcpAdapter implements ICliAdapter {
   private cachedVersion: string | undefined;
   private capacityTracker: CapacityTracker | null = null;
 
-  constructor(options?: { model?: string; logger?: ILogger }) {
+  constructor(options?: BaseAdapterOptions) {
     this.logger = options?.logger ?? createLogger({ component: 'codex-mcp-adapter' });
     this.model = options?.model ?? getCliModelName(getDefaultModelForCli('codex'));
   }
