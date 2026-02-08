@@ -27,12 +27,17 @@ vi.mock('./ansi-output.js', () => ({
   },
 }));
 
-vi.mock('./release-notes-helpers.js', () => ({
-  getLatestTag: vi.fn().mockReturnValue('v2.5.0'),
-  getCommitsBetween: vi
+const {
+  mockGetLatestTag,
+  mockGetCommitsBetween,
+  mockParseConventionalCommit,
+  mockGroupCommitsByCategory,
+} = vi.hoisted(() => ({
+  mockGetLatestTag: vi.fn().mockReturnValue('v2.5.0'),
+  mockGetCommitsBetween: vi
     .fn()
     .mockReturnValue(['abc1234 feat: add orchestration', 'def5678 fix: resolve timeout']),
-  parseConventionalCommit: vi.fn().mockImplementation((_hash: string, msg: string) => ({
+  mockParseConventionalCommit: vi.fn().mockImplementation((_hash: string, msg: string) => ({
     hash: 'abc1234',
     type: msg.startsWith('feat') ? 'feat' : 'fix',
     subject: msg.replace(/^(feat|fix): /, ''),
@@ -40,7 +45,7 @@ vi.mock('./release-notes-helpers.js', () => ({
     breaking: false,
     issues: [],
   })),
-  groupCommitsByCategory: vi.fn().mockReturnValue([
+  mockGroupCommitsByCategory: vi.fn().mockReturnValue([
     {
       name: 'Added',
       commits: [
@@ -68,6 +73,13 @@ vi.mock('./release-notes-helpers.js', () => ({
       ],
     },
   ]),
+}));
+
+vi.mock('./release-notes-helpers.js', () => ({
+  getLatestTag: mockGetLatestTag,
+  getCommitsBetween: mockGetCommitsBetween,
+  parseConventionalCommit: mockParseConventionalCommit,
+  groupCommitsByCategory: mockGroupCommitsByCategory,
 }));
 
 vi.mock('./bluesky-client.js', () => ({

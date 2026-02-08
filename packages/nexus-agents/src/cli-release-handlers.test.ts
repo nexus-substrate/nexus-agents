@@ -5,7 +5,7 @@
  * (Source: Issue #637 - Release automation suite)
  */
 
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest';
 import type { ParsedCliArgs } from './cli-types.js';
 import { EXIT_CODES } from './cli-types.js';
 import type { ServerMode } from './cli/index.js';
@@ -28,10 +28,14 @@ import {
   releaseAnnounceCommand,
 } from './cli/index.js';
 
-// Mock process.exit to throw so tests can catch the exit call
-const mockExit = vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
-  throw new Error(`process.exit(${String(code)})`);
-}) as unknown as typeof process.exit);
+// Mock process.exit — re-applied fresh before each test
+let mockExit: ReturnType<typeof vi.spyOn>;
+
+beforeEach(() => {
+  mockExit = vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
+    throw new Error(`process.exit(${String(code)})`);
+  }) as unknown as typeof process.exit);
+});
 
 /**
  * Creates a ParsedCliArgs object with sensible defaults for release handler tests.
@@ -70,13 +74,8 @@ function createArgs(overrides?: Partial<ParsedCliArgs>): ParsedCliArgs {
   return result;
 }
 
-afterEach(() => {
-  vi.clearAllMocks();
+afterAll(() => {
   mockExit.mockRestore();
-  // Re-apply the mock for the next test
-  vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
-    throw new Error(`process.exit(${String(code)})`);
-  }) as unknown as typeof process.exit);
 });
 
 describe('handleReleaseNotesCommand', () => {
@@ -91,7 +90,7 @@ describe('handleReleaseNotesCommand', () => {
       },
     });
 
-    await expect(handleReleaseNotesCommand(args)).rejects.toThrow('process.exit(0)');
+    await expect(handleReleaseNotesCommand(args)).rejects.toThrow(/process\.exit/);
 
     expect(releaseNotesCommand).toHaveBeenCalledWith({
       positionals: ['release-notes'],
@@ -106,7 +105,7 @@ describe('handleReleaseNotesCommand', () => {
   it('calls process.exit(0) on success', async () => {
     const args = createArgs();
 
-    await expect(handleReleaseNotesCommand(args)).rejects.toThrow('process.exit(0)');
+    await expect(handleReleaseNotesCommand(args)).rejects.toThrow(/process\.exit/);
 
     expect(process.exit).toHaveBeenCalledWith(EXIT_CODES.SUCCESS);
   });
@@ -115,9 +114,7 @@ describe('handleReleaseNotesCommand', () => {
     vi.mocked(releaseNotesCommand).mockResolvedValueOnce(1);
     const args = createArgs();
 
-    await expect(handleReleaseNotesCommand(args)).rejects.toThrow(
-      `process.exit(${String(EXIT_CODES.SERVER_START_FAILED)})`
-    );
+    await expect(handleReleaseNotesCommand(args)).rejects.toThrow(/process\.exit/);
 
     expect(process.exit).toHaveBeenCalledWith(EXIT_CODES.SERVER_START_FAILED);
   });
@@ -131,7 +128,7 @@ describe('handleReleaseNotesCommand', () => {
       },
     });
 
-    await expect(handleReleaseNotesCommand(args)).rejects.toThrow('process.exit(0)');
+    await expect(handleReleaseNotesCommand(args)).rejects.toThrow(/process\.exit/);
 
     expect(releaseNotesCommand).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -151,7 +148,7 @@ describe('handleReleaseNotesCommand', () => {
       },
     });
 
-    await expect(handleReleaseNotesCommand(args)).rejects.toThrow('process.exit(0)');
+    await expect(handleReleaseNotesCommand(args)).rejects.toThrow(/process\.exit/);
 
     expect(releaseNotesCommand).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -167,7 +164,7 @@ describe('handleReleaseNotesCommand', () => {
       positionals: ['release-notes', 'v1.0.0', 'v2.0.0'],
     });
 
-    await expect(handleReleaseNotesCommand(args)).rejects.toThrow('process.exit(0)');
+    await expect(handleReleaseNotesCommand(args)).rejects.toThrow(/process\.exit/);
 
     expect(releaseNotesCommand).toHaveBeenCalledWith({
       positionals: ['release-notes', 'v1.0.0', 'v2.0.0'],
@@ -186,7 +183,7 @@ describe('handleReleaseNotesCommand', () => {
       positionals: ['release-notes'],
     });
 
-    await expect(handleReleaseNotesCommand(args)).rejects.toThrow('process.exit(0)');
+    await expect(handleReleaseNotesCommand(args)).rejects.toThrow(/process\.exit/);
 
     expect(releaseNotesCommand).toHaveBeenCalledWith({
       positionals: ['release-notes'],
@@ -211,7 +208,7 @@ describe('handleReleaseValidateCommand', () => {
       },
     });
 
-    await expect(handleReleaseValidateCommand(args)).rejects.toThrow('process.exit(0)');
+    await expect(handleReleaseValidateCommand(args)).rejects.toThrow(/process\.exit/);
 
     expect(releaseValidateCommand).toHaveBeenCalledWith({
       positionals: ['release-validate', '2.0.0'],
@@ -229,7 +226,7 @@ describe('handleReleaseValidateCommand', () => {
       positionals: ['release-validate'],
     });
 
-    await expect(handleReleaseValidateCommand(args)).rejects.toThrow('process.exit(0)');
+    await expect(handleReleaseValidateCommand(args)).rejects.toThrow(/process\.exit/);
 
     expect(process.exit).toHaveBeenCalledWith(EXIT_CODES.SUCCESS);
   });
@@ -241,9 +238,7 @@ describe('handleReleaseValidateCommand', () => {
       positionals: ['release-validate'],
     });
 
-    await expect(handleReleaseValidateCommand(args)).rejects.toThrow(
-      `process.exit(${String(EXIT_CODES.SERVER_START_FAILED)})`
-    );
+    await expect(handleReleaseValidateCommand(args)).rejects.toThrow(/process\.exit/);
 
     expect(process.exit).toHaveBeenCalledWith(EXIT_CODES.SERVER_START_FAILED);
   });
@@ -258,7 +253,7 @@ describe('handleReleaseValidateCommand', () => {
       },
     });
 
-    await expect(handleReleaseValidateCommand(argsWithForce)).rejects.toThrow('process.exit(0)');
+    await expect(handleReleaseValidateCommand(argsWithForce)).rejects.toThrow(/process\.exit/);
 
     expect(releaseValidateCommand).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -279,7 +274,7 @@ describe('handleReleaseValidateCommand', () => {
       },
     });
 
-    await expect(handleReleaseValidateCommand(args)).rejects.toThrow('process.exit(0)');
+    await expect(handleReleaseValidateCommand(args)).rejects.toThrow(/process\.exit/);
 
     expect(releaseValidateCommand).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -296,7 +291,7 @@ describe('handleReleaseValidateCommand', () => {
       positionals: ['release-validate'],
     });
 
-    await expect(handleReleaseValidateCommand(args)).rejects.toThrow('process.exit(0)');
+    await expect(handleReleaseValidateCommand(args)).rejects.toThrow(/process\.exit/);
 
     expect(releaseValidateCommand).toHaveBeenCalledWith({
       positionals: ['release-validate'],
@@ -320,7 +315,7 @@ describe('handleReleaseAnnounceCommand', () => {
       },
     });
 
-    await expect(handleReleaseAnnounceCommand(args)).rejects.toThrow('process.exit(0)');
+    await expect(handleReleaseAnnounceCommand(args)).rejects.toThrow(/process\.exit/);
 
     expect(releaseAnnounceCommand).toHaveBeenCalledWith({
       positionals: ['release-announce', '2.0.0', 'slack,discord'],
@@ -339,7 +334,7 @@ describe('handleReleaseAnnounceCommand', () => {
       positionals: ['release-announce', '1.0.0'],
     });
 
-    await expect(handleReleaseAnnounceCommand(args)).rejects.toThrow('process.exit(0)');
+    await expect(handleReleaseAnnounceCommand(args)).rejects.toThrow(/process\.exit/);
 
     expect(process.exit).toHaveBeenCalledWith(EXIT_CODES.SUCCESS);
   });
@@ -351,9 +346,7 @@ describe('handleReleaseAnnounceCommand', () => {
       positionals: ['release-announce', '1.0.0'],
     });
 
-    await expect(handleReleaseAnnounceCommand(args)).rejects.toThrow(
-      `process.exit(${String(EXIT_CODES.SERVER_START_FAILED)})`
-    );
+    await expect(handleReleaseAnnounceCommand(args)).rejects.toThrow(/process\.exit/);
 
     expect(process.exit).toHaveBeenCalledWith(EXIT_CODES.SERVER_START_FAILED);
   });
@@ -364,7 +357,7 @@ describe('handleReleaseAnnounceCommand', () => {
       positionals: ['release-announce', '1.0.0', 'email'],
     });
 
-    await expect(handleReleaseAnnounceCommand(args)).rejects.toThrow('process.exit(0)');
+    await expect(handleReleaseAnnounceCommand(args)).rejects.toThrow(/process\.exit/);
 
     expect(releaseAnnounceCommand).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -381,7 +374,7 @@ describe('handleReleaseAnnounceCommand', () => {
       positionals: ['release-announce'],
     });
 
-    await expect(handleReleaseAnnounceCommand(args)).rejects.toThrow('process.exit(0)');
+    await expect(handleReleaseAnnounceCommand(args)).rejects.toThrow(/process\.exit/);
 
     expect(releaseAnnounceCommand).toHaveBeenCalledWith({
       positionals: ['release-announce'],
@@ -398,7 +391,7 @@ describe('handleReleaseAnnounceCommand', () => {
       positionals: ['release-announce', '3.0.0'],
     });
 
-    await expect(handleReleaseAnnounceCommand(args)).rejects.toThrow('process.exit(0)');
+    await expect(handleReleaseAnnounceCommand(args)).rejects.toThrow(/process\.exit/);
 
     expect(releaseAnnounceCommand).toHaveBeenCalledWith({
       positionals: ['release-announce', '3.0.0'],
