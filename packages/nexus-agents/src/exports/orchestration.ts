@@ -146,6 +146,18 @@ export {
 } from '../orchestration/index.js';
 export type { ScenarioResult, CriterionResult, ScenarioError } from '../orchestration/index.js';
 
+// Task Outcome Tracking (Issue #861)
+export {
+  getOutcomeStore,
+  OutcomeStore,
+  TaskOutcomeSchema as OutcomeTaskSchema,
+} from '../orchestration/index.js';
+export type {
+  TaskOutcome as OutcomeTaskRecord,
+  PerformanceSummary,
+  OutcomeStoreConfig,
+} from '../orchestration/index.js';
+
 // Failure Analyzer (Issue #852)
 export { analyzeFailures } from '../orchestration/index.js';
 export type {

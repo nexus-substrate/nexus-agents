@@ -61,6 +61,9 @@ export * from './exports/api.js';
 // Security - Sandboxing, safety evaluation, and security components (Issue #332)
 export * from './exports/security.js';
 
+// Orchestration - Graph workflows, spec execution, outcome tracking (Issue #831)
+export * from './exports/orchestration.js';
+
 // Consensus - Voting protocols, consensus engine, and strategies (Issue #351)
 export * from './exports/consensus.js';
 

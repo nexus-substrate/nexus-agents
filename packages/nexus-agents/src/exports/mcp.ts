@@ -109,11 +109,20 @@ export {
   DelegateInputSchema,
   DelegateOutputSchema,
   MODEL_CAPABILITIES,
+  analyzeTask as analyzeDelegateTask,
+  selectModel,
   type DelegateInput,
   type DelegateOutput,
   type DelegateDeps,
   type CapabilityProfile,
   type PreferredCapability,
+  type TaskRequirements,
+  // Weather report tool (Issue #865)
+  generateWeatherReport,
+  // Graph workflow templates (Issue #841, #866)
+  getGraphWorkflowList,
+  getGraphRegistry,
+  type GraphWorkflowInfo,
   // list_experts tool (Issue #436, #538)
   registerListExpertsTool,
   ListExpertsInputSchema,

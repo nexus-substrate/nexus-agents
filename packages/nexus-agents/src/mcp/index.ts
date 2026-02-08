@@ -193,6 +193,15 @@ export {
   WeatherReportInputSchema,
   type WeatherReportInput,
   type WeatherReportResponse,
+  generateWeatherReport,
+  // Delegate helpers (Issue #872 — TUI)
+  analyzeTask,
+  selectModel,
+  type TaskRequirements,
+  // Graph workflow templates (Issue #841, #866)
+  getGraphWorkflowList,
+  getGraphRegistry,
+  type GraphWorkflowInfo,
 } from './tools/index.js';
 
 // STPA Safety Analysis Framework (Issue #328)

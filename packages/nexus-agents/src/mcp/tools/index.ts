@@ -67,6 +67,17 @@ export {
   type PreferredCapability,
 } from './delegate-to-model.js';
 
+// Delegate helpers for direct consumption (Issue #872 — TUI)
+export { analyzeTask, selectModel } from './delegate-to-model-helpers.js';
+export type { TaskRequirements } from './delegate-to-model-types.js';
+
+// Graph workflow templates (Issue #841, #866)
+export {
+  getGraphWorkflowList,
+  getGraphRegistry,
+  type GraphWorkflowInfo,
+} from './run-graph-workflow-templates.js';
+
 export {
   registerListExpertsTool,
   ListExpertsInputSchema,
