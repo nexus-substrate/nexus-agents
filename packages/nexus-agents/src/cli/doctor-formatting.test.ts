@@ -137,6 +137,12 @@ describe('doctor-formatting', () => {
     clis: options.clis ?? [],
     mcpServerReady: options.mcpServerReady ?? true,
     mcpClientReady: options.mcpClientReady ?? true,
+    registryAdvisory: {
+      totalModels: 10,
+      availableModels: 10,
+      unavailableModels: 0,
+      models: [],
+    },
     timestamp: new Date('2024-01-01T00:00:00Z'),
   });
 

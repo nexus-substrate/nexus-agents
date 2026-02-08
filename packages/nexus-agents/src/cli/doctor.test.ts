@@ -74,6 +74,12 @@ function createMockDoctorResult(overrides: Partial<DoctorResult> = {}): DoctorRe
     configFile: { found: false, path: null },
     mcpServerReady: true,
     mcpClientReady: true,
+    registryAdvisory: {
+      totalModels: 10,
+      availableModels: 10,
+      unavailableModels: 0,
+      models: [],
+    },
     allHealthy: true,
     timestamp: new Date(),
     ...overrides,
@@ -528,6 +534,105 @@ describe('Doctor Command', () => {
       expect(claudeResult?.authMethod).toBe('CLI auth');
       const geminiResult = result.clis.find((c) => c.name === 'gemini');
       expect(geminiResult?.authMethod).toBe('ADC/CLI auth');
+    });
+  });
+
+  describe('registryAdvisory', () => {
+    it('should include registry advisory in results', async () => {
+      const mockAdapter = {
+        healthCheck: vi.fn().mockResolvedValue({
+          healthy: true,
+          version: '2.0.76',
+          versionStatus: 'supported',
+          lastChecked: new Date(),
+        }),
+        getCapacity: vi.fn().mockResolvedValue({
+          remainingTokens: 100000,
+          remainingRequests: 100,
+          resetTime: new Date(),
+          utilizationPercent: 15,
+          exhausted: false,
+        }),
+      };
+      const mockAdapters = new Map([
+        ['claude', { ...mockAdapter, name: 'claude' }],
+        ['gemini', { ...mockAdapter, name: 'gemini' }],
+        ['codex', { ...mockAdapter, name: 'codex' }],
+      ]);
+      vi.mocked(createAllAdapters).mockReturnValue(mockAdapters as never);
+
+      const result = await runDoctor();
+
+      expect(result.registryAdvisory).toBeDefined();
+      expect(result.registryAdvisory.totalModels).toBeGreaterThan(0);
+      expect(result.registryAdvisory.availableModels).toBe(result.registryAdvisory.totalModels);
+      expect(result.registryAdvisory.unavailableModels).toBe(0);
+    });
+
+    it('should mark models unavailable when CLI missing', async () => {
+      const mockAdapters = new Map([
+        [
+          'claude',
+          {
+            name: 'claude',
+            healthCheck: vi.fn().mockResolvedValue({
+              healthy: true,
+              version: '2.0.76',
+              versionStatus: 'supported',
+              lastChecked: new Date(),
+            }),
+            getCapacity: vi.fn().mockResolvedValue({
+              remainingTokens: 100000,
+              remainingRequests: 100,
+              resetTime: new Date(),
+              utilizationPercent: 15,
+              exhausted: false,
+            }),
+          },
+        ],
+      ]);
+      vi.mocked(createAllAdapters).mockReturnValue(mockAdapters as never);
+
+      const result = await runDoctor();
+      const advisory = result.registryAdvisory;
+
+      expect(advisory.unavailableModels).toBeGreaterThan(0);
+      const unavailableModels = advisory.models.filter((m) => !m.available);
+      expect(unavailableModels.length).toBe(advisory.unavailableModels);
+      // All unavailable should be gemini/codex
+      for (const m of unavailableModels) {
+        expect(['gemini', 'codex']).toContain(m.cliName);
+        expect(m.reason).toContain('not installed');
+      }
+    });
+
+    it('should report all models available when all CLIs installed', async () => {
+      const mockAdapter = {
+        healthCheck: vi.fn().mockResolvedValue({
+          healthy: true,
+          version: '1.0.0',
+          versionStatus: 'supported',
+          lastChecked: new Date(),
+        }),
+        getCapacity: vi.fn().mockResolvedValue({
+          remainingTokens: 100000,
+          remainingRequests: 100,
+          resetTime: new Date(),
+          utilizationPercent: 15,
+          exhausted: false,
+        }),
+      };
+      const mockAdapters = new Map([
+        ['claude', { ...mockAdapter, name: 'claude' }],
+        ['gemini', { ...mockAdapter, name: 'gemini' }],
+        ['codex', { ...mockAdapter, name: 'codex' }],
+      ]);
+      vi.mocked(createAllAdapters).mockReturnValue(mockAdapters as never);
+
+      const result = await runDoctor();
+
+      expect(result.registryAdvisory.availableModels).toBe(result.registryAdvisory.totalModels);
+      expect(result.registryAdvisory.unavailableModels).toBe(0);
     });
   });
 

@@ -14,6 +14,7 @@ import type {
   NodeVersionCheck,
   ApiKeyCheck,
   ConfigFileCheck,
+  RegistryAdvisory,
   DoctorResult,
 } from './doctor.js';
 import { colors, symbols, writeLine } from './ansi-output.js';
@@ -184,6 +185,21 @@ function printConfigFileCheck(check: ConfigFileCheck): void {
 }
 
 /**
+ * Prints model registry advisory (#890).
+ */
+function printRegistryAdvisory(advisory: RegistryAdvisory): void {
+  const allAvailable = advisory.unavailableModels === 0;
+  const countText = `${String(advisory.availableModels)} of ${String(advisory.totalModels)}`;
+  writeLine(`${formatStatus(allAvailable, !allAvailable)} Models available: ${countText}`);
+  if (advisory.unavailableModels > 0) {
+    const missing = advisory.models.filter((m) => !m.available);
+    for (const m of missing) {
+      writeLine(`  ${colors.dim}${m.displayName} — ${m.reason}${colors.reset}`);
+    }
+  }
+}
+
+/**
  * Prints the doctor results to stdout.
  */
 export function printDoctorResults(result: DoctorResult): void {
@@ -218,6 +234,11 @@ export function printDoctorResults(result: DoctorResult): void {
   writeLine(`${colors.cyan}Checking capabilities...${colors.reset}`);
   writeLine('');
   printCapabilities(result.clis);
+  writeLine('');
+
+  writeLine(`${colors.cyan}Checking model registry...${colors.reset}`);
+  writeLine('');
+  printRegistryAdvisory(result.registryAdvisory);
   writeLine('');
 
   const unhealthyCount = result.clis.filter((c) => !c.installed || !c.authenticated).length;

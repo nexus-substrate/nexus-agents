@@ -13,6 +13,7 @@ import { existsSync } from 'node:fs';
 import { getTimeProvider, getErrorMessage } from '../core/index.js';
 import { createAllAdapters } from '../cli-adapters/factory.js';
 import type { CliName, HealthStatus, CapacityStatus } from '../cli-adapters/types.js';
+import { DEFAULT_MODEL_CAPABILITIES } from '../config/model-capabilities.js';
 import { createServer } from '../mcp/server.js';
 import { printDoctorResults } from './doctor-formatting.js';
 
@@ -66,6 +67,27 @@ export interface ConfigFileCheck {
 }
 
 /**
+ * Model availability advisory entry (#890).
+ */
+export interface ModelAdvisory {
+  readonly modelId: string;
+  readonly displayName: string;
+  readonly cliName: string;
+  readonly available: boolean;
+  readonly reason: string;
+}
+
+/**
+ * Registry advisory summary (#890).
+ */
+export interface RegistryAdvisory {
+  readonly totalModels: number;
+  readonly availableModels: number;
+  readonly unavailableModels: number;
+  readonly models: readonly ModelAdvisory[];
+}
+
+/**
  * Complete doctor check results.
  */
 export interface DoctorResult {
@@ -75,6 +97,8 @@ export interface DoctorResult {
   readonly configFile: ConfigFileCheck;
   readonly mcpServerReady: boolean;
   readonly mcpClientReady: boolean;
+  /** Model registry advisory — which models are available (#890). */
+  readonly registryAdvisory: RegistryAdvisory;
   readonly allHealthy: boolean;
   readonly timestamp: Date;
 }
@@ -244,6 +268,29 @@ function checkMcpServerReady(): boolean {
 }
 
 /**
+ * Builds model registry advisory based on detected CLI availability (#890).
+ */
+function buildRegistryAdvisory(cliResults: CliCheckResult[]): RegistryAdvisory {
+  const installedClis = new Set(cliResults.filter((c) => c.installed).map((c) => c.name));
+
+  const models: ModelAdvisory[] = DEFAULT_MODEL_CAPABILITIES.models
+    .filter((m) => m.cliName !== undefined)
+    .map((m) => {
+      const cliName = m.cliName as string;
+      const available = installedClis.has(cliName as CliName);
+      const reason = available ? `${cliName} CLI is installed` : `${cliName} CLI is not installed`;
+      return { modelId: m.id, displayName: m.displayName, cliName, available, reason };
+    });
+
+  return {
+    totalModels: models.length,
+    availableModels: models.filter((m) => m.available).length,
+    unavailableModels: models.filter((m) => !m.available).length,
+    models,
+  };
+}
+
+/**
  * Runs the complete doctor check.
  */
 export async function runDoctor(): Promise<DoctorResult> {
@@ -254,6 +301,7 @@ export async function runDoctor(): Promise<DoctorResult> {
   const mcpServerReady = checkMcpServerReady();
   const codexCheck = clis.find((c) => c.name === 'codex');
   const mcpClientReady = codexCheck?.installed ?? false;
+  const registryAdvisory = buildRegistryAdvisory(clis);
 
   // At least one API key configured or one CLI authenticated
   const hasAuthMethod =
@@ -272,6 +320,7 @@ export async function runDoctor(): Promise<DoctorResult> {
     configFile,
     mcpServerReady,
     mcpClientReady,
+    registryAdvisory,
     allHealthy,
     timestamp: new Date(getTimeProvider().now()),
   };
