@@ -209,6 +209,23 @@ export {
   getGraphWorkflowList,
   getGraphRegistry,
   type GraphWorkflowInfo,
+  // Issue triage tool (Issue #828)
+  registerIssueTriageTool,
+  IssueTriageInputSchema,
+  type IssueTriageInput,
+  type IssueTriageDeps,
+  type IssueTriageResponse,
+  // Graph workflow tool (Issue #840)
+  registerRunGraphWorkflowTool,
+  RunGraphWorkflowInputSchema,
+  type RunGraphWorkflowInput,
+  type RunGraphWorkflowDeps,
+  type RunGraphWorkflowResponse,
+  // Execute spec tool (Issue #853)
+  registerExecuteSpecTool,
+  ExecuteSpecInputSchema,
+  type ExecuteSpecInput,
+  type ExecuteSpecDeps,
 } from './tools/index.js';
 
 // Gateway — Tiered Orchestration Routing (Issue #888, #892, #893, #894)

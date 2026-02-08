@@ -27,6 +27,9 @@ import {
   registerMemoryStatsTool,
   registerWeatherReportTool,
   registerRegistryImportTool,
+  registerIssueTriageTool,
+  registerRunGraphWorkflowTool,
+  registerExecuteSpecTool,
   createDefaultDeps,
 } from './mcp/index.js';
 // Import mock directly from source (not public API - used as fallback when no adapter)
@@ -118,6 +121,9 @@ export const REGISTERED_TOOLS = [
   'memory_query',
   'memory_stats',
   'weather_report',
+  'issue_triage',
+  'run_graph_workflow',
+  'execute_spec',
   'registry_import',
 ] as const;
 
@@ -255,15 +261,6 @@ function registerWorkflowTools(ctx: ToolRegistrationContext): void {
   });
 }
 
-/** Register consensus tools (Issue #435, Issue #662: wire security config for timeout). */
-function registerConsensusTools(ctx: ToolRegistrationContext): void {
-  registerConsensusVoteTool(ctx.server, {
-    logger: ctx.logger,
-    rateLimiter: ctx.rateLimiterFactory.getForTool('consensus_vote'),
-    ...(ctx.securityConfig !== undefined && { security: ctx.securityConfig }),
-  });
-}
-
 /** Register research tools (research system enhancement). */
 function registerResearchTools(ctx: ToolRegistrationContext): void {
   const researchDeps = {
@@ -305,24 +302,6 @@ function registerMemoryTools(ctx: ToolRegistrationContext): void {
   registerMemoryStatsTool(ctx.server, {
     ...memoryDeps,
     rateLimiter: ctx.rateLimiterFactory.getForTool('memory_stats'),
-  });
-}
-
-/** Register weather report tool (Issue #865). */
-function registerWeatherReportTools(ctx: ToolRegistrationContext): void {
-  registerWeatherReportTool(ctx.server, {
-    logger: ctx.logger,
-    rateLimiter: ctx.rateLimiterFactory.getForTool('weather_report'),
-    ...(ctx.securityConfig !== undefined && { security: ctx.securityConfig }),
-  });
-}
-
-/** Register registry import tool (Issue #889). */
-function registerRegistryImportTools(ctx: ToolRegistrationContext): void {
-  registerRegistryImportTool(ctx.server, {
-    logger: ctx.logger,
-    rateLimiter: ctx.rateLimiterFactory.getForTool('registry_import'),
-    ...(ctx.securityConfig !== undefined && { security: ctx.securityConfig }),
   });
 }
 
@@ -467,27 +446,48 @@ function anyToolAllowed(names: readonly string[], allowed: (name: string) => boo
   return names.some(allowed);
 }
 
-/** Registers tool categories, skipping those blocked by allowlist. (Issue #740) */
-function registerToolCategories(
+/** Builds standard deps for standalone tool registration. */
+function buildStandardDeps(
   ctx: ToolRegistrationContext,
-  rateLimiterFactory: ReturnType<typeof createToolRateLimiterFactory>
-): void {
+  toolName: string
+): {
+  logger: ILogger;
+  rateLimiter: ReturnType<ReturnType<typeof createToolRateLimiterFactory>['getForTool']>;
+  security?: import('./config/index.js').SecurityConfig;
+} {
+  return {
+    logger: ctx.logger,
+    rateLimiter: ctx.rateLimiterFactory.getForTool(toolName),
+    ...(ctx.securityConfig !== undefined && { security: ctx.securityConfig }),
+  };
+}
+
+/** Standalone tools: single tool name → single register function. */
+const STANDALONE_TOOLS: ReadonlyArray<{
+  readonly name: string;
+  readonly register: (server: McpServer, deps: never) => void;
+}> = [
+  { name: 'consensus_vote', register: registerConsensusVoteTool as never },
+  { name: 'weather_report', register: registerWeatherReportTool as never },
+  { name: 'registry_import', register: registerRegistryImportTool as never },
+  { name: 'issue_triage', register: registerIssueTriageTool as never },
+  { name: 'run_graph_workflow', register: registerRunGraphWorkflowTool as never },
+  { name: 'execute_spec', register: registerExecuteSpecTool as never },
+  { name: 'list_experts', register: registerListExpertsTool as never },
+];
+
+/** Registers tool categories, skipping those blocked by allowlist. (Issue #740) */
+function registerToolCategories(ctx: ToolRegistrationContext): void {
   const allowlist = ctx.toolAllowlist;
   const allowed = (name: string): boolean => isToolAllowed(name, allowlist);
 
   if (anyToolAllowed(['delegate_to_model', 'orchestrate'], allowed)) registerCoreTools(ctx);
   if (anyToolAllowed(['create_expert', 'execute_expert'], allowed)) registerExpertTools(ctx);
   if (anyToolAllowed(['run_workflow', 'list_workflows'], allowed)) registerWorkflowTools(ctx);
-  if (allowed('consensus_vote')) registerConsensusTools(ctx);
   if (isCategoryAllowed('research_', allowed)) registerResearchTools(ctx);
   if (isCategoryAllowed('memory_', allowed)) registerMemoryTools(ctx);
-  if (allowed('weather_report')) registerWeatherReportTools(ctx);
-  if (allowed('registry_import')) registerRegistryImportTools(ctx);
-  if (allowed('list_experts')) {
-    registerListExpertsTool(ctx.server, {
-      logger: ctx.logger,
-      rateLimiter: rateLimiterFactory.getForTool('list_experts'),
-    });
+  for (const tool of STANDALONE_TOOLS) {
+    if (allowed(tool.name)) tool.register(ctx.server, buildStandardDeps(ctx, tool.name) as never);
   }
 }
 
@@ -522,7 +522,7 @@ export function registerMcpTools(options: RegisterMcpToolsOptions): void {
   // Use gateway-wrapped server in context so all registerTool calls get wrapped
   const gatewayOptions = { ...options, server: gatewayServer };
   const ctx = createToolContext(gatewayOptions, toolInfra, rateLimiterFactory);
-  registerToolCategories(ctx, rateLimiterFactory);
+  registerToolCategories(ctx);
 
   logToolRegistration(logger, ctx.toolAllowlist, {
     rateLimiterFactory,
