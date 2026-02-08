@@ -2,7 +2,7 @@
  * nexus-agents/mcp - SICA Integration for Orchestrate Tool
  *
  * Wraps Orchestrator with SICA self-improvement capabilities when enabled.
- * Provides ITechLead-compatible interface for seamless integration.
+ * Provides IOrchestrator-compatible interface for seamless integration.
  *
  * @module mcp/tools/orchestrate-sica
  * (Source: Issue #558 - Wire SICA wrapping to Orchestrator)
@@ -23,7 +23,7 @@ import type { ITechLead } from './orchestrate.js';
  *
  * @param logger - Logger instance
  * @param adapter - Optional model adapter for LLM-based analysis (Issue #827)
- * @returns ITechLead-compatible agent
+ * @returns Orchestrator-compatible agent
  */
 // eslint-disable-next-line @typescript-eslint/no-deprecated -- Intentional: backwards compat (Issue #595)
 export function createOrchestratorWithSica(logger: ILogger, adapter?: IModelAdapter): ITechLead {
@@ -71,7 +71,7 @@ export function createOrchestratorWithSica(logger: ILogger, adapter?: IModelAdap
 export const createTechLeadWithSica = createOrchestratorWithSica;
 
 /**
- * Adapts SicaAgent to ITechLead interface.
+ * Adapts SicaAgent to orchestrator interface.
  *
  * Transforms SicaExecutionResult to the shape expected by orchestrate tool.
  */
@@ -119,7 +119,7 @@ function createSicaOrchestratorAdapter(sicaAgent: SicaAgent, _logger: ILogger): 
  * version management and improvement history.
  */
 // eslint-disable-next-line @typescript-eslint/no-deprecated -- Intentional: backwards compat (Issue #595)
-export function getSicaAgentFromOrchestrator(_techLead: ITechLead): SicaAgent | undefined {
+export function getSicaAgentFromOrchestrator(_orchestrator: ITechLead): SicaAgent | undefined {
   // This function exists for future extensibility when we need
   // to access SICA internals from the wrapped agent.
   // Currently returns undefined as we don't store the reference.

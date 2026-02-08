@@ -27,7 +27,7 @@ When running with MCP server mode, these tools are available:
 
 | Tool | Description |
 | ---- | ----------- |
-| \`orchestrate\` | Task orchestration with TechLead coordination |
+| \`orchestrate\` | Task orchestration with Orchestrator coordination |
 | \`create_expert\` | Dynamic expert agent creation |
 | \`run_workflow\` | Execute workflow templates |
 | \`delegate_to_model\` | Route task to optimal model |

@@ -1,11 +1,11 @@
 /**
- * TechLead Collaboration Integration
+ * Orchestrator Collaboration Integration
  *
- * Wires collaboration protocols (consensus, aegean, reflexion) into TechLead
+ * Wires collaboration protocols (consensus, aegean, reflexion) into Orchestrator
  * for enhanced synthesis and complex task coordination.
  *
  * @module agents/tech-lead-collaboration
- * (Source: Issue #488 - Wire collaboration protocols to TechLead)
+ * (Source: Issue #488 - Wire collaboration protocols to Orchestrator)
  */
 
 import type { Result, Task, TaskResult, IAgent, ILogger } from '../core/index.js';
@@ -56,7 +56,7 @@ const DEFAULT_COLLAB_CONFIG: Required<OrchestratorCollaborationConfig> = {
   enableCollaborativeSynthesis: true,
   minExpertsForCollaboration: 3,
   complexityThreshold: 7,
-  logger: createLogger({ component: 'TechLeadCollab' }),
+  logger: createLogger({ component: 'OrchestratorCollab' }),
 };
 
 /**

@@ -147,7 +147,7 @@ function handleTask(input: string, session: ReplSession, logger: ILogger): void 
   process.stdout.write(
     `${colors.yellow}Note:${colors.reset} Full task orchestration requires MCP server mode.\n`
   );
-  process.stdout.write(`${colors.dim}In MCP mode, the TechLead agent would:${colors.reset}\n`);
+  process.stdout.write(`${colors.dim}In MCP mode, the Orchestrator agent would:${colors.reset}\n`);
   process.stdout.write(`  1. Analyze this task\n`);
   process.stdout.write(`  2. Select appropriate expert agents\n`);
   process.stdout.write(`  3. Coordinate expert collaboration\n`);

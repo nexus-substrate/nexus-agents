@@ -53,7 +53,7 @@ export {
   type IExpertFactory as IOrchestrateExpertFactory,
 } from './orchestrate.js';
 
-// Note: createMockTechLead is available for testing via direct import from orchestrate.js
+// Note: createMockOrchestrator is available for testing via direct import from orchestrate.js
 
 export {
   registerDelegateToModelTool,
@@ -259,7 +259,7 @@ export interface ToolRegistrationResult {
  * Individual tools require their specific dependencies and should be
  * registered using their respective register functions:
  *
- * - `registerOrchestrateTool(server, { techLead, logger, rateLimiter })`
+ * - `registerOrchestrateTool(server, { orchestrator, logger, rateLimiter })`
  * - `registerCreateExpertTool(server, { expertFactory, expertRegistry, logger, rateLimiter })`
  * - `registerRunWorkflowTool(server, { workflowEngine, logger, rateLimiter })`
  *
@@ -278,7 +278,7 @@ export interface ToolRegistrationResult {
  *   const { rateLimiter } = registerTools(server, { logger });
  *
  *   // Register individual tools with their dependencies and rate limiter
- *   registerOrchestrateTool(server, { techLead, logger, rateLimiter });
+ *   registerOrchestrateTool(server, { orchestrator, logger, rateLimiter });
  *   registerCreateExpertTool(server, { expertFactory, expertRegistry, logger, rateLimiter });
  *   registerRunWorkflowTool(server, { workflowEngine, logger, rateLimiter });
  * }
@@ -295,7 +295,7 @@ export function registerTools(
 
   // Note: Individual tools are registered separately with their specific dependencies.
   // The available tools are:
-  // - orchestrate: Task orchestration with TechLead agent
+  // - orchestrate: Task orchestration with Orchestrator agent
   // - create_expert: Dynamic expert agent creation
   // - run_workflow: Workflow template execution
   // - delegate_to_model: Capability-matched task routing (Phase 1 CLI integration)

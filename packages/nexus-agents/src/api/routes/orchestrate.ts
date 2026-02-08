@@ -34,7 +34,7 @@ function extractAnalysis(output: unknown): OrchestrateResponse['analysis'] {
     complexity: 5,
     taskType: 'general',
     requirements: [] as string[],
-    approach: 'TechLead orchestration',
+    approach: 'Orchestrator',
   };
 
   if (typeof output !== 'object' || output === null) {
@@ -143,7 +143,7 @@ function createOrchestratorForRest(logger: ILogger): IOrchestrator {
     },
   });
 
-  // Return TechLead orchestrator adapter
+  // Return orchestrator adapter
   return factory.create('tech_lead');
 }
 
@@ -156,7 +156,7 @@ function buildOrchestratorDefinition(task: Task): OrchestratorDefinition {
 
 /** Orchestrate route schema. */
 const ORCHESTRATE_SCHEMA = {
-  description: 'Orchestrate a task using TechLead agent',
+  description: 'Orchestrate a task using Orchestrator agent',
   tags: ['Orchestration'],
   body: {
     type: 'object',

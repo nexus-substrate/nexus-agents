@@ -1,7 +1,7 @@
 /**
  * nexus-agents/agents - Plan to Workflow Converter
  *
- * Converts TechLead ExecutionPlans to WorkflowEngine WorkflowDefinitions.
+ * Converts Orchestrator ExecutionPlans to WorkflowEngine WorkflowDefinitions.
  * This "crystallizes" dynamic plans into reusable, static workflows.
  *
  * (Source: ARCHITECTURE.md, Plan-to-Workflow Conversion)
@@ -18,7 +18,7 @@ import type { SubTask, TaskAnalysis, ExpertAssignment } from './tech-lead-types.
 
 /**
  * Core execution plan data (without methods).
- * This represents the pure data from TechLead analysis.
+ * This represents the pure data from Orchestrator analysis.
  */
 export interface ExecutionPlanData {
   /** The original task ID this plan was created for */
@@ -98,7 +98,7 @@ function generateDescription(
   }
 
   if (includeAnalysis === true) {
-    parts.push(`Generated from TechLead analysis.`);
+    parts.push(`Generated from Orchestrator analysis.`);
     parts.push(`Task type: ${analysis.taskType}`);
     parts.push(`Complexity: ${String(analysis.complexity)}/10`);
     parts.push(`Approach: ${analysis.approach}`);
@@ -266,7 +266,7 @@ function addTimeout(workflow: WorkflowDefinition, estimatedDuration: number): vo
 
 /**
  * Creates a single default step when no subtasks are present.
- * This handles the case where TechLead didn't decompose the task.
+ * This handles the case where Orchestrator didn't decompose the task.
  */
 function createDefaultStep(plan: ExecutionPlanData): WorkflowStep {
   // Find the primary expert from assignments, or default to code_expert
@@ -287,10 +287,10 @@ function createDefaultStep(plan: ExecutionPlanData): WorkflowStep {
 /**
  * Converts an ExecutionPlan to a WorkflowDefinition.
  *
- * This function "crystallizes" a dynamic TechLead plan into a static,
+ * This function "crystallizes" a dynamic Orchestrator plan into a static,
  * reusable workflow definition that can be executed by WorkflowEngine.
  *
- * @param plan - The ExecutionPlan from TechLead
+ * @param plan - The ExecutionPlan from Orchestrator
  * @param options - Optional conversion configuration
  * @returns A valid WorkflowDefinition
  *

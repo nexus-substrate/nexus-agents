@@ -120,7 +120,7 @@ export function getSicaConfig(): ConfigSicaConfig | undefined {
  * If SICA is not enabled, returns undefined and the caller should use the
  * original agent directly.
  *
- * @param baseAgent - The agent to wrap (e.g., TechLead)
+ * @param baseAgent - The agent to wrap (e.g., Orchestrator)
  * @param systemPrompt - Initial system prompt for the agent
  * @param logger - Logger instance
  * @returns SicaAgent wrapper if enabled, undefined otherwise

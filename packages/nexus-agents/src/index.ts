@@ -34,7 +34,7 @@ export * from './exports/config.js';
 // Adapters - Model adapters (Claude, OpenAI, Gemini, Ollama)
 export * from './exports/adapters.js';
 
-// Agents - Agent framework, TechLead, Experts
+// Agents - Agent framework, Orchestrator, Experts
 export * from './exports/agents.js';
 
 // Workflows - Workflow engine with parallel execution

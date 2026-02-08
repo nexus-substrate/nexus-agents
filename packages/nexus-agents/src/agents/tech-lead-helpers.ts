@@ -1,7 +1,7 @@
 /**
- * nexus-agents/agents - TechLead Helper Functions
+ * nexus-agents/agents - Orchestrator Helper Functions
  *
- * Helper functions for TechLead task analysis, decomposition, and synthesis.
+ * Helper functions for Orchestrator task analysis, decomposition, and synthesis.
  */
 
 import type { Task, TaskResult } from '../core/index.js';
@@ -10,7 +10,7 @@ import type {
   TaskAnalysis,
   SynthesizedResult,
   ResultSummary,
-  TechLeadOptions,
+  OrchestratorOptions,
 } from './tech-lead-types.js';
 
 /**
@@ -102,7 +102,10 @@ export function suggestApproach(taskType: string, complexity: number): string {
 /**
  * Perform heuristic task analysis without model adapter.
  */
-export function heuristicAnalysis(task: Task, options: Required<TechLeadOptions>): TaskAnalysis {
+export function heuristicAnalysis(
+  task: Task,
+  options: Required<OrchestratorOptions>
+): TaskAnalysis {
   const description = task.description.toLowerCase();
   const wordCount = task.description.split(/\s+/).length;
 

@@ -52,7 +52,7 @@ ${colors.bold}Workflow Commands:${colors.reset}
 
 ${colors.bold}Task Orchestration:${colors.reset}
 
-  Any other input is treated as a task for the TechLead agent.
+  Any other input is treated as a task for the Orchestrator agent.
   Example: "Review the authentication module for security issues"
 
 ${colors.dim}Tip: Tasks are analyzed and delegated to appropriate experts.${colors.reset}

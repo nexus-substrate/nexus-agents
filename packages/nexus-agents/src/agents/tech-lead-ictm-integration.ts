@@ -1,8 +1,8 @@
 /**
- * nexus-agents/agents - TechLead ICTM Integration
+ * nexus-agents/agents - Orchestrator ICTM Integration
  *
  * Enriches expert assignments with ICTM configurations for
- * dynamic sub-agent creation. Bridges the TechLead orchestration
+ * dynamic sub-agent creation. Bridges the Orchestrator orchestration
  * loop with the ICTM pattern.
  *
  * @see Issue #756

@@ -2,7 +2,7 @@
  * nexus-agents/orchestration - Orchestration Module
  *
  * Unified orchestration layer providing canonical IOrchestrator interface
- * for all orchestration strategies (workflow, tech_lead, puppeteer).
+ * for all orchestration strategies (workflow, orchestrator, puppeteer).
  *
  * @module orchestration
  * @see docs/adr/0002-orchestrator-interface.md

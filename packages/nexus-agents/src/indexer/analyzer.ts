@@ -23,7 +23,7 @@ const MODULE_PURPOSES: Record<string, string> = {
   core: 'Types, Result<T,E>, errors, logger',
   config: 'Configuration loading, validation, Zod schemas',
   adapters: 'Model adapters (Claude, OpenAI, Gemini, Ollama)',
-  agents: 'Agent framework, TechLead, Experts, collaboration',
+  agents: 'Agent framework, Orchestrator, Experts, collaboration',
   workflows: 'Workflow engine, templates, execution',
   mcp: 'MCP server, tool definitions',
   cli: 'CLI interface, mode detection, commands',

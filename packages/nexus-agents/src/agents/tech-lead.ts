@@ -91,14 +91,14 @@ recommendations[].`;
 /**
  * Execution plan output structure.
  *
- * The ExecutionPlan represents the TechLead's analysis and decomposition
+ * The ExecutionPlan represents the Orchestrator's analysis and decomposition
  * of a task. It can optionally be converted to a WorkflowDefinition for
  * replayable, static execution via the WorkflowEngine.
  *
  * ExecutionPlan extends ExecutionPlanData (the pure data) with the
  * asWorkflowDefinition conversion method.
  *
- * @see ARCHITECTURE.md for the separation of concerns between TechLead and WorkflowEngine
+ * @see ARCHITECTURE.md for the separation of concerns between Orchestrator and WorkflowEngine
  */
 export interface ExecutionPlan extends ExecutionPlanData {
   /**
