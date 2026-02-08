@@ -10,6 +10,7 @@
 
 import type { CommandHandler, CommandResult } from '../types.js';
 import { formatHeader, formatTable, formatBarRow } from '../formatter.js';
+import { safeParseInt } from '../sanitize.js';
 
 /** Minimal shape of a task outcome for display. */
 interface OutcomeEntry {
@@ -76,7 +77,8 @@ function buildQuery(flags: Record<string, string>): Record<string, unknown> {
   const query: Record<string, unknown> = {};
   if (flags['cli'] !== undefined) query['cli'] = flags['cli'];
   if (flags['category'] !== undefined) query['category'] = flags['category'];
-  if (flags['limit'] !== undefined) query['limit'] = parseInt(flags['limit'], 10);
+  const limit = safeParseInt(flags['limit'], 1, 1000);
+  if (limit !== undefined) query['limit'] = limit;
   return query;
 }
 

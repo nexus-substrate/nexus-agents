@@ -8,6 +8,7 @@
 
 import type { CommandHandler, CommandResult } from '../types.js';
 import { formatHeader, formatTable } from '../formatter.js';
+import { safeParseInt } from '../sanitize.js';
 
 interface OutcomeRecord {
   readonly cli: string;
@@ -41,8 +42,7 @@ export function createStatusCommand(): CommandHandler {
 function extractLimit(args: readonly string[]): number {
   for (const arg of args) {
     if (arg.startsWith('--limit=')) {
-      const n = parseInt(arg.slice(8), 10);
-      if (!isNaN(n) && n > 0) return n;
+      return safeParseInt(arg.slice(8), 1, 1000) ?? 10;
     }
   }
   return 10;

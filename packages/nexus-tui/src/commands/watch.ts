@@ -12,6 +12,7 @@
 
 import type { CommandHandler, CommandResult } from '../types.js';
 import { formatHeader, formatBarRow, formatTable } from '../formatter.js';
+import { safeParseInt } from '../sanitize.js';
 
 const DEFAULT_REFRESH_SEC = 5;
 const VALID_TARGETS = ['weather', 'outcomes'] as const;
@@ -43,7 +44,7 @@ export function createWatchCommand(): CommandHandler {
         };
       }
       const flags = extractFlags(args);
-      const refresh = parseInt(flags['refresh'] ?? String(DEFAULT_REFRESH_SEC), 10);
+      const refresh = safeParseInt(flags['refresh'], 1, 3600) ?? DEFAULT_REFRESH_SEC;
       try {
         const output =
           target === 'weather'

@@ -7,6 +7,7 @@
  */
 
 import type { CommandHandler, CommandResult } from '../types.js';
+import { sanitizeOutput } from '../sanitize.js';
 
 /** Create the orchestrate command handler. */
 export function createOrchestrateCommand(): CommandHandler {
@@ -24,7 +25,7 @@ export function createOrchestrateCommand(): CommandHandler {
         const requirements = analyzeDelegateTask(task);
         const result = selectModel({ task, estimate_tokens: false }, requirements);
         const lines = [
-          `Task: ${task}`,
+          `Task: ${sanitizeOutput(task)}`,
           `Routed to: ${result.model}`,
           `Reasoning: ${result.reasoning}`,
           '',

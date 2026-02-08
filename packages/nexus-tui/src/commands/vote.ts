@@ -7,6 +7,7 @@
  */
 
 import type { CommandHandler, CommandResult } from '../types.js';
+import { sanitizeOutput } from '../sanitize.js';
 
 /** Create the vote command handler. */
 export function createVoteCommand(): CommandHandler {
@@ -24,7 +25,7 @@ export function createVoteCommand(): CommandHandler {
           args.find((a) => a.startsWith('--strategy='))?.slice(11) ?? 'simple_majority';
         const quick = args.includes('--quick');
         const lines = [
-          `Proposal: ${proposal}`,
+          `Proposal: ${sanitizeOutput(proposal)}`,
           `Strategy: ${strategy}`,
           `Mode: ${quick ? 'quick (3 agents)' : 'full (6 agents)'}`,
           '',
