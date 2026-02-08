@@ -204,6 +204,14 @@ export {
   type GraphWorkflowInfo,
 } from './tools/index.js';
 
+// Gateway — Tiered Orchestration Routing (Issue #888, #892)
+export {
+  classifyRequestTier,
+  RequestTier,
+  TOOL_TIER_MAP,
+  type TierOverrides,
+} from './gateway/index.js';
+
 // STPA Safety Analysis Framework (Issue #328)
 export {
   // Types and Enums
