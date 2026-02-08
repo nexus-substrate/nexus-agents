@@ -29,8 +29,11 @@ export function createWeatherCommand(): CommandHandler {
       try {
         const { generateWeatherReport } = await import('nexus-agents');
         const flags = extractFlags(args);
+        const validClis = ['claude', 'codex', 'gemini'] as const;
+        type CliName = (typeof validClis)[number];
+        const cli = validClis.find((v): v is CliName => v === flags.cli);
         const report = generateWeatherReport({
-          ...(flags.cli !== undefined && { cli: flags.cli }),
+          ...(cli !== undefined && { cli }),
           ...(flags.category !== undefined && { category: flags.category }),
           includeAdaptive: true,
         }) as WeatherSummary;

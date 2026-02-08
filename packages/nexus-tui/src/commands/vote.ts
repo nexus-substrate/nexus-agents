@@ -17,7 +17,7 @@ export function createVoteCommand(): CommandHandler {
     execute(args: readonly string[]): Promise<CommandResult> {
       const proposal = args.filter((a) => !a.startsWith('--')).join(' ');
       if (proposal.length === 0) {
-        return { output: 'Usage: vote <proposal text>', isError: true };
+        return Promise.resolve({ output: 'Usage: vote <proposal text>', isError: true });
       }
       try {
         const strategy =
@@ -30,10 +30,10 @@ export function createVoteCommand(): CommandHandler {
           '',
           'Submitting vote to consensus engine...',
         ];
-        return { output: lines.join('\n') };
+        return Promise.resolve({ output: lines.join('\n') });
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
-        return { output: `Vote failed: ${msg}`, isError: true };
+        return Promise.resolve({ output: `Vote failed: ${msg}`, isError: true });
       }
     },
   };
