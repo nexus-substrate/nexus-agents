@@ -140,6 +140,7 @@ import {
   createDefaultPolicyEngine,
   BUILT_IN_RULES,
   createFeedbackSubscriber,
+  createDelegatePipeline,
 } from '../index.js';
 
 describe('Export contracts — MCP tool registration', () => {
@@ -381,6 +382,10 @@ describe('Export contracts — pipeline V2 types', () => {
 
   it('exports createFeedbackSubscriber', () => {
     expect(typeof createFeedbackSubscriber).toBe('function');
+  });
+
+  it('exports createDelegatePipeline', () => {
+    expect(typeof createDelegatePipeline).toBe('function');
   });
 });
 

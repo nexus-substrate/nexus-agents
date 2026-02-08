@@ -77,4 +77,6 @@ export {
   type IPolicyEngine,
   // Feedback loop
   createFeedbackSubscriber,
+  // V2 delegate
+  createDelegatePipeline,
 } from '../pipeline/index.js';

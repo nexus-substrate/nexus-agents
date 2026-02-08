@@ -94,3 +94,5 @@ export {
 } from './policy-engine.js';
 
 export { createFeedbackSubscriber } from './feedback-subscriber.js';
+
+export { createDelegatePipeline } from './v2-delegate.js';
