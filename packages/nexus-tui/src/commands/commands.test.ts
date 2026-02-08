@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { createDelegateCommand } from './delegate.js';
 import { createOrchestrateCommand } from './orchestrate.js';
 import { createVoteCommand } from './vote.js';
@@ -7,6 +7,20 @@ import { createStatusCommand } from './status.js';
 import { createWorkflowCommand } from './workflow.js';
 import { createOutcomesCommand } from './outcomes.js';
 import { createWatchCommand } from './watch.js';
+
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+const mockVotes = () =>
+  Promise.resolve([
+    { role: 'architect', vote: { decision: 'APPROVE', reasoning: 'Good' }, source: 'simulation' },
+    { role: 'security', vote: { decision: 'APPROVE', reasoning: 'Safe' }, source: 'simulation' },
+    { role: 'pm', vote: { decision: 'APPROVE', reasoning: 'Value' }, source: 'simulation' },
+  ]);
+
+vi.mock('nexus-agents', async (importOriginal) => {
+  const orig: Record<string, unknown> = await importOriginal();
+
+  return { ...orig, collectRealVotes: vi.fn().mockImplementation(mockVotes) };
+});
 
 describe('delegate command', () => {
   const cmd = createDelegateCommand();

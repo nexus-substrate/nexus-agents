@@ -146,3 +146,8 @@ export {
   createHigherOrderVotingStrategy,
   type OWVotingOptions,
 } from '../consensus/index.js';
+
+// Voter agents — real CLI-based voting
+export type { CollectRealVotesOptions, AgentVoteResult } from '../cli/voter-agents.js';
+
+export { collectRealVotes, NoAdapterError } from '../cli/voter-agents.js';

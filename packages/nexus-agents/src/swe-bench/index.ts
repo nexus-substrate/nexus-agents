@@ -135,7 +135,7 @@ export type {
   FailurePattern as SWEBenchFailurePattern,
   TokenUsageBreakdown,
   TokensByPhase,
-  CostEstimate,
+  CostEstimate as SWEBenchCostEstimate,
   ModelPricing,
   ReportSummary,
   ReportMetrics,
