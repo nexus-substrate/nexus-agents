@@ -78,6 +78,19 @@ These three principles are **non-negotiable** across all building, reviewing, an
 
 **DRY (Don't Repeat Yourself)** — Every piece of knowledge must have a single, unambiguous, authoritative representation. When you see the same logic in two places, extract it. But do not DRY prematurely — two instances is a coincidence, three is a pattern worth extracting.
 
+### Type Safety — Zero `any` Policy
+
+**`any` is banned.** Use `unknown` and narrow with type guards or Zod. ESLint enforces `@typescript-eslint/no-explicit-any: 'error'`.
+
+| Instead of            | Use                           |
+| --------------------- | ----------------------------- |
+| `any` parameter       | `unknown` + type guard or Zod |
+| `as any` cast         | `as unknown as TargetType`    |
+| `Record<string, any>` | `Record<string, unknown>`     |
+| `any` in mocks        | `as unknown as MockedType`    |
+
+**Rare exceptions** (with `eslint-disable` + documented reason): third-party SDK generic boundaries, test mock hoisting, variadic forwarding. See `.claude/rules/typescript.md` for the full policy.
+
 ### Documentation Style
 
 Write like a technically precise engineer. Be direct, honest, and clear. No marketing fluff.
