@@ -72,6 +72,10 @@ export interface RoutingDecision {
   readonly alternatives: readonly WorkflowPattern[];
   /** Analysis result from SharedTaskAnalyzer */
   readonly analysis: TaskAnalysisResult;
+  /** Whether the task should be clarified before execution (Issue #904) */
+  readonly needsClarification?: boolean;
+  /** Suggested clarification questions when needsClarification is true */
+  readonly suggestedQuestions?: readonly string[];
 }
 
 /**

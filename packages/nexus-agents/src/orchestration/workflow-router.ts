@@ -29,11 +29,20 @@ import type {
 
 const MAX_OUTCOMES = 200;
 
+/** Default ambiguity threshold for triggering clarification */
+const AMBIGUITY_THRESHOLD = 0.7;
+
+/** Rule result type */
+interface RuleResult {
+  pattern: WorkflowPattern;
+  reasoning: string;
+  confidence: number;
+  needsClarification?: boolean;
+  suggestedQuestions?: readonly string[];
+}
+
 /** Rule function that returns a pattern + reasoning if it matches, or undefined. */
-type RoutingRule = (
-  signals: TaskSignals,
-  analysis: TaskAnalysisResult
-) => { pattern: WorkflowPattern; reasoning: string; confidence: number } | undefined;
+type RoutingRule = (signals: TaskSignals, analysis: TaskAnalysisResult) => RuleResult | undefined;
 
 /**
  * Creates a workflow pattern router.
@@ -75,12 +84,14 @@ export interface IWorkflowRouter {
 /** Ordered rules — first match wins. */
 const ROUTING_RULES: readonly RoutingRule[] = [
   ruleForcePattern,
+  ruleHighAmbiguity,
   ruleConsensusRequired,
   ruleIndependentSubtasks,
   ruleLinearDependencies,
   ruleDagDependencies,
   ruleNovelTask,
   ruleComplexArchitecture,
+  ruleReasoningHeavy,
   ruleSimpleTask,
   ruleBulkOperations,
 ];
@@ -92,11 +103,12 @@ function routeTask(
   _opts?: WorkflowRouterOptions
 ): RoutingDecision {
   const analysis = analyzer.analyze(signals.description);
+  const enriched = enrichSignals(signals, analysis);
   const matchedRules: string[] = [];
   const alternatives: WorkflowPattern[] = [];
 
   for (const rule of ROUTING_RULES) {
-    const result = rule(signals, analysis);
+    const result = rule(enriched, analysis);
     if (result !== undefined) {
       matchedRules.push(rule.name);
       collectAlternatives(alternatives, result.pattern);
@@ -107,7 +119,7 @@ function routeTask(
         taskType: analysis.taskType,
         complexity: analysis.complexity,
       });
-      return {
+      const decision: RoutingDecision = {
         pattern: result.pattern,
         reasoning: result.reasoning,
         confidence: result.confidence,
@@ -115,6 +127,14 @@ function routeTask(
         alternatives,
         analysis,
       };
+      if (result.needsClarification === true) {
+        return {
+          ...decision,
+          needsClarification: true,
+          suggestedQuestions: result.suggestedQuestions ?? [],
+        };
+      }
+      return decision;
     }
   }
 
@@ -128,6 +148,58 @@ function routeTask(
     alternatives: ['sequential', 'wave'],
     analysis,
   };
+}
+
+/**
+ * Auto-derive missing TaskSignals from analysis constraints (Issue #904).
+ * If the caller didn't provide timeConstraint, infer from extracted constraints.
+ */
+function enrichSignals(signals: TaskSignals, analysis: TaskAnalysisResult): TaskSignals {
+  if (signals.timeConstraint !== undefined) return signals;
+  const time = analysis.constraints.time;
+  if (time === undefined) return signals;
+  const lower = time.toLowerCase();
+  const isUrgent = /\b(asap|urgent|immediately|right now)\b/.test(lower);
+  if (isUrgent) return { ...signals, timeConstraint: 'urgent' };
+  return { ...signals, timeConstraint: 'normal' };
+}
+
+function ruleHighAmbiguity(
+  signals: TaskSignals,
+  analysis: TaskAnalysisResult
+): ReturnType<RoutingRule> {
+  if (analysis.ambiguityScore < AMBIGUITY_THRESHOLD) return undefined;
+  // Skip if caller provided explicit structural hints — they know what they want
+  const hasStructuralHints =
+    signals.dependencyStructure !== undefined ||
+    signals.requiresConsensus !== undefined ||
+    signals.subtaskCount !== undefined;
+  if (hasStructuralHints) return undefined;
+  const questions = buildClarificationQuestions(analysis);
+  return {
+    pattern: 'sequential',
+    reasoning: 'High ambiguity detected — clarification recommended before execution',
+    confidence: 0.6,
+    needsClarification: true,
+    suggestedQuestions: questions,
+  };
+}
+
+function buildClarificationQuestions(analysis: TaskAnalysisResult): string[] {
+  const questions: string[] = [];
+  if (analysis.constraints.scope.length === 0) {
+    questions.push('Which files or modules should this change affect?');
+  }
+  if (analysis.requiredCapabilities.experts.length > 1) {
+    questions.push('Should this be a thorough review or a quick pass?');
+  }
+  if (analysis.constraints.quality === undefined) {
+    questions.push('What quality level is needed — prototype, MVP, or production-ready?');
+  }
+  if (questions.length === 0) {
+    questions.push('Can you provide more details about the expected outcome?');
+  }
+  return questions;
 }
 
 function ruleForcePattern(signals: TaskSignals): ReturnType<RoutingRule> {
@@ -206,6 +278,19 @@ function ruleComplexArchitecture(
     pattern: 'graph',
     reasoning: 'Expert-level architecture task — graph DAG with checkpointing',
     confidence: 0.8,
+  };
+}
+
+function ruleReasoningHeavy(
+  _signals: TaskSignals,
+  analysis: TaskAnalysisResult
+): ReturnType<RoutingRule> {
+  if (analysis.reasoningType !== 'reasoning') return undefined;
+  if (analysis.complexity !== 'complex' && analysis.complexity !== 'expert') return undefined;
+  return {
+    pattern: 'graph',
+    reasoning: 'Reasoning-heavy complex task — graph DAG for structured problem decomposition',
+    confidence: 0.75,
   };
 }
 

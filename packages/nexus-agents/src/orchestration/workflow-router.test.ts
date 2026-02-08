@@ -337,6 +337,83 @@ describe('performance tracking', () => {
 });
 
 // ============================================================================
+// High Ambiguity → Clarification (Issue #904)
+// ============================================================================
+
+describe('high ambiguity routing', () => {
+  it('flags needsClarification for highly ambiguous input', () => {
+    const decision = route({ description: 'fix it' });
+    expect(decision.needsClarification).toBe(true);
+    expect(decision.suggestedQuestions).toBeDefined();
+    const questions = decision.suggestedQuestions ?? [];
+    expect(questions.length).toBeGreaterThan(0);
+  });
+
+  it('suggests scope question when no files referenced', () => {
+    const decision = route({ description: 'make it better' });
+    expect(decision.needsClarification).toBe(true);
+    const questions = decision.suggestedQuestions ?? [];
+    expect(
+      questions.some(
+        (q) => q.toLowerCase().includes('files') || q.toLowerCase().includes('modules')
+      )
+    ).toBe(true);
+  });
+
+  it('does not flag clarification for specific tasks', () => {
+    const decision = route({
+      description:
+        'implement the validateInput function in src/utils/validator.ts with Zod schema validation for PR #123',
+    });
+    expect(decision.needsClarification).toBeUndefined();
+  });
+
+  it('skips ambiguity rule when structural hints provided', () => {
+    const decision = route({
+      description: 'do stuff',
+      dependencyStructure: 'dag',
+    });
+    expect(decision.pattern).toBe('graph');
+    expect(decision.needsClarification).toBeUndefined();
+  });
+});
+
+// ============================================================================
+// Reasoning-Heavy → Graph (Issue #904)
+// ============================================================================
+
+describe('reasoning-heavy routing', () => {
+  it('routes complex reasoning tasks to graph', () => {
+    const decision = route({
+      description:
+        'first analyze the complex distributed architecture security performance trade-off in src/core/. ' +
+        'then evaluate and compare concurrent algorithm patterns with race condition analysis. ' +
+        'after that, deduce and prove the optimal design pattern for the legacy refactor. ' +
+        'finally derive conclusions and infer recommendations for PR #42. ' +
+        'why is the deadlock occurring? how can we solve the memory leak?',
+    });
+    expect(decision.pattern).toBe('graph');
+    expect(decision.matchedRules).toContain('ruleReasoningHeavy');
+  });
+});
+
+// ============================================================================
+// Auto-derived Time Constraints (Issue #904)
+// ============================================================================
+
+describe('auto-derived constraints', () => {
+  it('auto-detects urgent time constraint from description', () => {
+    const decision = route({
+      description: 'deploy the fix ASAP to production using the existing pipeline',
+      isNovel: true,
+    });
+    // If time is urgent, ruleNovelTask should skip (it returns undefined for urgent)
+    // This validates the enrichSignals auto-derivation works
+    expect(decision.matchedRules).not.toContain('ruleNovelTask');
+  });
+});
+
+// ============================================================================
 // Fallback Behavior
 // ============================================================================
 
