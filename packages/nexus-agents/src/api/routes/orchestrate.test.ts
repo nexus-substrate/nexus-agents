@@ -10,13 +10,21 @@ import type { OrchestrateRequest, OrchestrateResponse } from '../rest-types.js';
 
 // Use vi.hoisted to ensure proper hoisting with forks pool (Issue #582)
 const mocks = vi.hoisted(() => {
-  const mockTechLead = vi.fn();
-  return { mockTechLead };
+  const mockExecute = vi.fn();
+  const mockCreate = vi.fn();
+  const mockOrchestratorFactory = vi.fn();
+  const mockCreateOrchestratorWithSica = vi.fn();
+  return { mockExecute, mockCreate, mockOrchestratorFactory, mockCreateOrchestratorWithSica };
 });
 
-// Mock the TechLead agent
-vi.mock('../../agents/index.js', () => ({
-  TechLead: mocks.mockTechLead,
+// Mock OrchestratorFactory (used by orchestrate route since #759)
+vi.mock('../../orchestration/orchestrator-factory.js', () => ({
+  OrchestratorFactory: mocks.mockOrchestratorFactory,
+}));
+
+// Mock createOrchestratorWithSica
+vi.mock('../../mcp/tools/orchestrate-sica.js', () => ({
+  createOrchestratorWithSica: mocks.mockCreateOrchestratorWithSica,
 }));
 
 import { registerOrchestrateRoutes } from './orchestrate.js';
@@ -56,18 +64,28 @@ describe('Orchestrate Routes', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
 
-    // Set up default TechLead mock (Issue #582)
-    mocks.mockTechLead.mockImplementation(() => ({
-      execute: vi.fn().mockResolvedValue({
-        ok: true,
-        value: {
-          taskId: 'test-task-id',
-          output: {
-            analysis: { complexity: 5, taskType: 'general' },
-            subtasks: [],
-          },
+    // Set up OrchestratorFactory mock chain
+    mocks.mockCreateOrchestratorWithSica.mockReturnValue({
+      execute: vi.fn(),
+    });
+
+    mocks.mockExecute.mockResolvedValue({
+      ok: true,
+      value: {
+        executionId: 'test-task-id',
+        output: {
+          analysis: { complexity: 5, taskType: 'general' },
+          subtasks: [],
         },
-      }),
+      },
+    });
+
+    mocks.mockCreate.mockReturnValue({
+      execute: mocks.mockExecute,
+    });
+
+    mocks.mockOrchestratorFactory.mockImplementation(() => ({
+      create: mocks.mockCreate,
     }));
 
     mockLogger = createMockLogger();

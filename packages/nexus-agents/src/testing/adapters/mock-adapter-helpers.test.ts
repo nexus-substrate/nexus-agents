@@ -47,7 +47,7 @@ describe('MODEL_INFO_BY_NAME', () => {
   });
 
   it('contains info for gemini', () => {
-    expect(MODEL_INFO_BY_NAME.gemini.id).toBe('gemini-pro');
+    expect(MODEL_INFO_BY_NAME.gemini.id).toBe('gemini-3-pro');
   });
 
   it('contains info for codex', () => {

@@ -5,7 +5,7 @@
 
 import { describe, it, expect } from 'vitest';
 import type { Task, TaskResult } from '../core/index.js';
-import type { SubTask, TechLeadOptions } from './tech-lead-types.js';
+import type { SubTask, OrchestratorOptions } from './tech-lead-types.js';
 import {
   inferTaskType,
   extractRequirements,
@@ -56,14 +56,14 @@ function makeResult(overrides: Partial<TaskResult> = {}): TaskResult {
   } as TaskResult;
 }
 
-function makeOptions(): Required<TechLeadOptions> {
+function makeOptions(): Required<OrchestratorOptions> {
   return {
     maxSubtasks: 10,
     decompositionThreshold: 5,
     synthesisMode: 'merge',
     maxParallelExperts: 3,
     expertTimeout: 30000,
-  } as unknown as Required<TechLeadOptions>;
+  } as unknown as Required<OrchestratorOptions>;
 }
 
 // ============================================================================
