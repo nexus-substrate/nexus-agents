@@ -81,6 +81,15 @@ export class ToolRateLimiterFactory {
       ...(factoryConfig.perTool ?? {}),
     };
 
+    // Validate that the fallback category exists in merged config
+    if (this.config['orchestrate'] === undefined) {
+      this.logger.warn(
+        'Rate limiter config missing fallback category "orchestrate". ' +
+          'Using DEFAULT_TOOL_RATE_LIMITS.orchestrate as final fallback.',
+        { availableCategories: Object.keys(this.config) }
+      );
+    }
+
     this.logger.debug('Tool rate limiter factory initialized', {
       enabled: this.enabled,
       categories: Object.keys(this.config),
@@ -127,6 +136,9 @@ export class ToolRateLimiterFactory {
     }
 
     // Return default (orchestrate limits as fallback)
+    this.logger.debug('No category match for tool, using fallback limits', {
+      tool: toolName,
+    });
     return this.config['orchestrate'] ?? DEFAULT_TOOL_RATE_LIMITS.orchestrate;
   }
 

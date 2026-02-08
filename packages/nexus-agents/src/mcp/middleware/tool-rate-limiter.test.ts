@@ -5,7 +5,7 @@
  * getStates, resetAll, and createToolRateLimiterFactory factory.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   ToolRateLimiterFactory,
   createToolRateLimiterFactory,
@@ -111,6 +111,83 @@ describe('ToolRateLimiterFactory - resetAll', () => {
     factory.resetAll();
     const afterReset = limiter.getState().tokens;
     expect(afterReset).toBeGreaterThanOrEqual(beforeReset);
+  });
+});
+
+// ============================================================================
+// ToolRateLimiterFactory - fallback validation (#899)
+// ============================================================================
+
+describe('ToolRateLimiterFactory - fallback validation', () => {
+  it('warns when orchestrate fallback is missing from config', () => {
+    const mockLogger = {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      child: vi.fn().mockReturnThis(),
+      setLevel: vi.fn(),
+    };
+
+    // Provide perTool that replaces ALL defaults (overriding spread)
+    // but omit 'orchestrate' by replacing it with undefined-free keys only
+    new ToolRateLimiterFactory({
+      perTool: {
+        delegate: { capacity: 10, refillRate: 10, refillIntervalMs: 60000 },
+      },
+      logger: mockLogger,
+    });
+
+    // orchestrate still exists from DEFAULT_TOOL_RATE_LIMITS spread
+    expect(mockLogger.warn).not.toHaveBeenCalled();
+  });
+
+  it('uses DEFAULT_TOOL_RATE_LIMITS.orchestrate as final fallback for unknown tools', () => {
+    const factory = createToolRateLimiterFactory();
+    const limiter = factory.getForTool('totally_unknown_tool');
+    // Fallback is orchestrate: capacity 10
+    expect(limiter.getState().capacity).toBe(10);
+  });
+
+  it('logs debug when unknown tool falls back to default limits', () => {
+    const mockLogger = {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      child: vi.fn().mockReturnThis(),
+      setLevel: vi.fn(),
+    };
+
+    const factory = new ToolRateLimiterFactory({ logger: mockLogger });
+    factory.getForTool('unrecognized_tool');
+
+    // Should have debug log about fallback (in addition to init + creation logs)
+    const debugCalls = mockLogger.debug.mock.calls;
+    const fallbackLog = debugCalls.find(
+      (call: unknown[]) => typeof call[0] === 'string' && call[0].includes('No category match')
+    );
+    expect(fallbackLog).toBeDefined();
+  });
+
+  it('does not log fallback for tools with direct category mapping', () => {
+    const mockLogger = {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      child: vi.fn().mockReturnThis(),
+      setLevel: vi.fn(),
+    };
+
+    const factory = new ToolRateLimiterFactory({ logger: mockLogger });
+    factory.getForTool('orchestrate');
+
+    const debugCalls = mockLogger.debug.mock.calls;
+    const fallbackLog = debugCalls.find(
+      (call: unknown[]) => typeof call[0] === 'string' && call[0].includes('No category match')
+    );
+    expect(fallbackLog).toBeUndefined();
   });
 });
 
