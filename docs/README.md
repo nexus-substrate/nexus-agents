@@ -169,12 +169,19 @@ Detailed technical documentation:
 
 #### Design Documents
 
-| Document                                                                        | Description           |
-| ------------------------------------------------------------------------------- | --------------------- |
-| [scaling-coordination-predictor.md](./design/scaling-coordination-predictor.md) | Scaling design        |
-| [EXECUTION_DASHBOARD_DESIGN.md](./architecture/EXECUTION_DASHBOARD_DESIGN.md)   | Dashboard design      |
-| [SWARM_OBSERVER_DESIGN.md](./architecture/SWARM_OBSERVER_DESIGN.md)             | Swarm observer design |
-| [SWE_BENCH_HARNESS.md](./architecture/SWE_BENCH_HARNESS.md)                     | SWE-Bench integration |
+| Document                                                                        | Description                     | Status    |
+| ------------------------------------------------------------------------------- | ------------------------------- | --------- |
+| [as-is.md](./design/as-is.md)                                                   | Current system state assessment | Canonical |
+| [v2-proposal.md](./design/v2-proposal.md)                                       | V2 pipeline OS architecture     | Canonical |
+| [components.md](./design/components.md)                                         | Component inventory             | Canonical |
+| [interfaces.md](./design/interfaces.md)                                         | Key interfaces and contracts    | Canonical |
+| [flows.md](./design/flows.md)                                                   | Dataflow traces                 | Canonical |
+| [gaps.md](./design/gaps.md)                                                     | Intended vs actual gaps         | Canonical |
+| [ARCHITECTURE_MAP.json](./design/ARCHITECTURE_MAP.json)                         | Machine-readable component map  | Generated |
+| [scaling-coordination-predictor.md](./design/scaling-coordination-predictor.md) | Scaling design                  | Canonical |
+| [EXECUTION_DASHBOARD_DESIGN.md](./architecture/EXECUTION_DASHBOARD_DESIGN.md)   | Dashboard design                | Canonical |
+| [SWARM_OBSERVER_DESIGN.md](./architecture/SWARM_OBSERVER_DESIGN.md)             | Swarm observer design           | Canonical |
+| [SWE_BENCH_HARNESS.md](./architecture/SWE_BENCH_HARNESS.md)                     | SWE-Bench integration           | Canonical |
 
 #### Proposals
 

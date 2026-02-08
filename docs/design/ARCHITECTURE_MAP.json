@@ -1,0 +1,298 @@
+{
+  "version": "1.0.0",
+  "generated": "2026-02-08",
+  "base_path": "packages/nexus-agents/src",
+  "modules": {
+    "core": {
+      "path": "src/core/",
+      "purpose": "Foundational types, error hierarchy, logging, tracing, task analysis",
+      "ts_files": 39,
+      "test_files": 31,
+      "barrel": "src/core/index.ts",
+      "layer": 0,
+      "depends_on": [],
+      "key_exports": [
+        "Result<T,E>",
+        "NexusError",
+        "createLogger",
+        "getTracer",
+        "SharedTaskAnalyzer",
+        "TaskAnalysisResult",
+        "TokenEstimator",
+        "ICompositeRouter"
+      ],
+      "canonical_paths": {
+        "task_analysis": "src/core/task-analysis/shared-task-analyzer.ts",
+        "error_types": "src/core/types/index.ts",
+        "logger": "src/core/logger.ts"
+      }
+    },
+    "security": {
+      "path": "src/security/",
+      "purpose": "Input sanitization, trust classification, policy gates, reputation, firewall",
+      "ts_files": 35,
+      "test_files": 38,
+      "barrel": "src/security/index.ts",
+      "layer": 0,
+      "depends_on": ["core"],
+      "key_exports": [
+        "sanitizeInput",
+        "classifyTrust",
+        "TrustTier",
+        "evaluatePolicy",
+        "validateCorroboration",
+        "assessReputation",
+        "HostileInputFirewall"
+      ],
+      "canonical_paths": {
+        "trust_types": "src/security/trust/trust-types.ts",
+        "firewall": "src/security/firewall/hostile-input-firewall.ts",
+        "policy_gate": "src/security/policy/policy-gate.ts"
+      }
+    },
+    "config": {
+      "path": "src/config/",
+      "purpose": "Application config, model registry, routing config, specialization matrix",
+      "ts_files": 25,
+      "test_files": 15,
+      "barrel": "src/config/index.ts",
+      "layer": 1,
+      "depends_on": ["core"],
+      "key_exports": [
+        "AppConfigSchema",
+        "DEFAULT_MODEL_CAPABILITIES",
+        "loadConfig",
+        "getModelPricing",
+        "buildModelInfo",
+        "findCanonicalModel",
+        "TASK_SPECIALIZATION_MATRIX",
+        "DEFAULTS"
+      ],
+      "canonical_paths": {
+        "model_registry": "src/config/model-capabilities.ts",
+        "model_helpers": "src/config/model-config-helpers.ts",
+        "app_config": "src/config/schemas.ts",
+        "defaults": "src/config/defaults.ts"
+      }
+    },
+    "consensus": {
+      "path": "src/consensus/",
+      "purpose": "Multi-agent voting strategies, quorum validation, correlation tracking",
+      "ts_files": 20,
+      "test_files": 14,
+      "barrel": "src/consensus/index.ts",
+      "layer": 1,
+      "depends_on": ["core"],
+      "key_exports": [
+        "ConsensusEngine",
+        "createConsensusEngine",
+        "SimpleMajority",
+        "Supermajority",
+        "Unanimous",
+        "ProofOfLearning",
+        "HigherOrderVotingStrategy",
+        "QuorumValidator"
+      ],
+      "canonical_paths": {
+        "engine": "src/consensus/engine.ts",
+        "strategies": "src/consensus/strategies/"
+      }
+    },
+    "agents": {
+      "path": "src/agents/",
+      "purpose": "Agent framework — base agents, experts, orchestrator, wave scheduler, skills",
+      "ts_files": 287,
+      "test_files": 144,
+      "barrel": "src/agents/index.ts",
+      "layer": 2,
+      "depends_on": ["core", "config"],
+      "key_exports": [
+        "BaseAgent",
+        "SimpleAgent",
+        "Orchestrator",
+        "WaveScheduler",
+        "ExpertFactory",
+        "AgentStateMachine",
+        "ContextManager"
+      ],
+      "canonical_paths": {
+        "orchestrator": "src/agents/tech-lead.ts",
+        "expert_factory": "src/agents/experts/expert-factory.ts",
+        "wave_scheduler": "src/agents/wave-scheduler.ts"
+      },
+      "notes": "Largest module (44% of source). Contains 9 sub-export barrels."
+    },
+    "adapters": {
+      "path": "src/adapters/",
+      "purpose": "Direct API adapters (Claude, OpenAI, Ollama, Gemini), resilient wrapper",
+      "ts_files": 26,
+      "test_files": 19,
+      "barrel": "src/adapters/index.ts",
+      "layer": 2,
+      "depends_on": ["core", "config"],
+      "key_exports": [
+        "AdapterFactory",
+        "BaseAdapter",
+        "ResilientAdapter",
+        "createAutoAdapter",
+        "RateLimiter",
+        "StdinLifecycleMonitor"
+      ],
+      "canonical_paths": {
+        "resilient": "src/adapters/resilient-adapter.ts",
+        "factory": "src/adapters/adapter-factory.ts"
+      },
+      "notes": "API-level adapters for direct model calls. Separate from CLI subprocess adapters."
+    },
+    "cli-adapters": {
+      "path": "src/cli-adapters/",
+      "purpose": "CLI subprocess adapters (Claude, Gemini, Codex), composite router, circuit breakers",
+      "ts_files": 90,
+      "test_files": 68,
+      "barrel": "src/cli-adapters/index.ts",
+      "layer": 3,
+      "depends_on": ["core", "config", "agents"],
+      "key_exports": [
+        "ClaudeCliAdapter",
+        "GeminiCliAdapter",
+        "CodexCliAdapter",
+        "CodexMcpAdapter",
+        "CompositeRouter",
+        "BudgetRouter",
+        "TopsisRouter",
+        "PreferenceRouter",
+        "ZeroRouter",
+        "createAllAdapters",
+        "CliCircuitBreaker"
+      ],
+      "canonical_paths": {
+        "composite_router": "src/cli-adapters/composite-router.ts",
+        "adapter_factory": "src/cli-adapters/factory.ts",
+        "circuit_breaker": "src/cli-adapters/circuit-breaker.ts"
+      },
+      "notes": "Routing pipeline: BudgetRouter -> ZeroRouter -> PreferenceRouter -> TopsisRouter -> LinUCB"
+    },
+    "learning": {
+      "path": "src/learning/",
+      "purpose": "Outcome feedback, reward computation, A/B testing, persistence",
+      "ts_files": 14,
+      "test_files": 9,
+      "barrel": "src/learning/index.ts",
+      "layer": 3,
+      "depends_on": ["core", "cli-adapters"],
+      "key_exports": [
+        "OutcomeFeedbackCollector",
+        "FeedbackIntegration",
+        "SQLiteOutcomeStorage",
+        "ValidationStats",
+        "AbTestTracker"
+      ],
+      "canonical_paths": {
+        "feedback": "src/learning/outcome-feedback-collector.ts"
+      }
+    },
+    "orchestration": {
+      "path": "src/orchestration/",
+      "purpose": "Workflow patterns, graph execution, spec factory, outcome tracking, router",
+      "ts_files": 33,
+      "test_files": 17,
+      "barrel": "src/orchestration/index.ts",
+      "layer": 4,
+      "depends_on": ["core", "config", "cli-adapters", "agents"],
+      "key_exports": [
+        "GraphBuilder",
+        "executeGraph",
+        "WorkflowRouter",
+        "createWorkflowRouter",
+        "parseSpec",
+        "decomposeSpec",
+        "compileSpecToGraph",
+        "OutcomeStore",
+        "executeParallelExploration",
+        "executeTriangulatedReview",
+        "executeConsensusPlan"
+      ],
+      "canonical_paths": {
+        "graph": "src/orchestration/graph/graph-builder.ts",
+        "workflow_router": "src/orchestration/workflow-router.ts",
+        "spec_pipeline": "src/orchestration/spec/"
+      }
+    },
+    "mcp": {
+      "path": "src/mcp/",
+      "purpose": "MCP protocol server, 20 tool handlers, gateway middleware, rate limiting",
+      "ts_files": 81,
+      "test_files": 71,
+      "barrel": "src/mcp/index.ts",
+      "layer": 4,
+      "depends_on": ["core", "config", "agents", "cli-adapters", "orchestration", "consensus"],
+      "key_exports": ["createServer", "startStdioServer", "registerTools"],
+      "canonical_paths": {
+        "server": "src/mcp/server.ts",
+        "tools": "src/mcp/tools/index.ts",
+        "gateway": "src/mcp/gateway/"
+      },
+      "tools_registered": 20,
+      "notes": "Top of dependency hierarchy. Gateway middleware wraps all tool dispatch."
+    }
+  },
+  "entrypoints": {
+    "cli": {
+      "binary": "nexus-agents",
+      "source": "src/cli.ts",
+      "commands": 31,
+      "dispatch": "src/cli-commands.ts"
+    },
+    "mcp_server": {
+      "startup": "src/cli-server.ts",
+      "transport": "stdio",
+      "protocol": "MCP 2025-11-25"
+    },
+    "library": {
+      "main": "src/index.ts",
+      "barrel_count": 16
+    },
+    "tui": {
+      "package": "packages/nexus-tui/",
+      "binary": "nexus-tui",
+      "phase": 1
+    }
+  },
+  "dependency_layers": [
+    {
+      "layer": 0,
+      "modules": ["core", "security"],
+      "description": "Foundation — no cross-dependencies"
+    },
+    {
+      "layer": 1,
+      "modules": ["config", "consensus"],
+      "description": "Configuration and voting — depend on core"
+    },
+    {
+      "layer": 2,
+      "modules": ["agents", "adapters"],
+      "description": "Agent framework and API adapters"
+    },
+    {
+      "layer": 3,
+      "modules": ["cli-adapters", "learning"],
+      "description": "CLI subprocess adapters and feedback loops"
+    },
+    {
+      "layer": 4,
+      "modules": ["orchestration", "mcp"],
+      "description": "Orchestration patterns and MCP server — top of stack"
+    }
+  ],
+  "statistics": {
+    "total_source_files": 650,
+    "total_test_files": 426,
+    "total_mcp_tools": 20,
+    "total_cli_commands": 31,
+    "total_expert_roles": 9,
+    "total_workflow_templates": 9,
+    "total_skills": 13,
+    "total_export_barrels": 16
+  }
+}
