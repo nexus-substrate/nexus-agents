@@ -72,3 +72,6 @@ export * from './exports/observability.js';
 
 // SWE-Bench - Evaluation framework for GitHub issue resolution (Issue #257)
 export * from './exports/swe-bench.js';
+
+// Pipeline - V2 Pipeline OS core types and execution (#907)
+export * from './exports/pipeline.js';

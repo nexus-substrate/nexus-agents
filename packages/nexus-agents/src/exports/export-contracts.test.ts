@@ -116,6 +116,19 @@ import {
   filterAvailableModels,
 } from '../index.js';
 
+// ============================================================================
+// Pipeline — V2 core types (Issue #909)
+// ============================================================================
+import {
+  TaskContractSchema,
+  PlanContractSchema,
+  TASK_STATUSES,
+  STAGE_TYPES,
+  ARTIFACT_TYPES,
+  analysisToTaskContract,
+  taskContractToToolResponse,
+} from '../index.js';
+
 describe('Export contracts — MCP tool registration', () => {
   it('exports all tool registration functions', () => {
     expect(typeof registerTools).toBe('function');
@@ -274,6 +287,30 @@ describe('Export contracts — routing', () => {
 describe('Export contracts — consensus', () => {
   it('exports ConsensusEngine', () => {
     expect(typeof ConsensusEngine).toBe('function');
+  });
+});
+
+describe('Export contracts — pipeline V2 types', () => {
+  it('exports TaskContractSchema', () => {
+    expect(TaskContractSchema).toBeDefined();
+    expect(typeof TaskContractSchema.safeParse).toBe('function');
+  });
+
+  it('exports PlanContractSchema', () => {
+    expect(PlanContractSchema).toBeDefined();
+    expect(typeof PlanContractSchema.safeParse).toBe('function');
+  });
+
+  it('exports V2 constants', () => {
+    expect(TASK_STATUSES).toContain('intake');
+    expect(TASK_STATUSES).toContain('done');
+    expect(STAGE_TYPES).toContain('execute');
+    expect(ARTIFACT_TYPES).toContain('code');
+  });
+
+  it('exports V1↔V2 adapter functions', () => {
+    expect(typeof analysisToTaskContract).toBe('function');
+    expect(typeof taskContractToToolResponse).toBe('function');
   });
 });
 
