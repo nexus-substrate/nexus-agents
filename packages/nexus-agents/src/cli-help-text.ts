@@ -61,7 +61,6 @@ OPTIONS:
   -m, --mode <mode>    Server mode: server, orchestrator (default: server)
                        - server:       MCP server only (for Claude CLI integration)
                        - orchestrator: CLI orchestrator (calls Gemini/Codex CLIs)
-                       - mesh:         Planned — not yet implemented
 
 SETUP OPTIONS:
   --interactive        Run interactive setup wizard with guided prompts
@@ -297,7 +296,6 @@ EXAMPLES:
   nexus-agents expert list      List available experts
   nexus-agents workflow list    List workflow templates
   nexus-agents workflow run code-review --dry-run
-  nexus-agents --mode=mesh      (planned — not yet implemented)
   nexus-agents review https://github.com/owner/repo/pull/123
   nexus-agents review owner/repo#123 --dry-run
   nexus-agents routing-audit "Implement sorting algorithm"

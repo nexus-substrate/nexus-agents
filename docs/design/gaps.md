@@ -93,13 +93,13 @@ _Generated: 2026-02-08_
 
 ---
 
-### Gap #6: Skills Count Discrepancy
+### Gap #6: Skills Count Discrepancy — RESOLVED
 
-**Claimed:** CLAUDE.md Governance section states "Skills (12)".
+**Claimed:** CLAUDE.md Governance section stated "Skills (12)".
 
 **Actual:** 13 skill files exist in `.claude/skills/` (requirements-gathering was added in Issue #905).
 
-**Impact:** Cosmetic. Update documentation.
+**Resolution:** CLAUDE.md updated. Workflows table now lists all 13 skills.
 
 ---
 

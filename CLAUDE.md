@@ -136,6 +136,12 @@ Before implementing features or making architectural decisions: search official 
 | **Graph Workflows**   | `GraphBuilder`               | `src/orchestration/graph/graph-builder.ts`       |
 | **Security Pipeline** | `src/security/`              | `src/security/index.ts`                          |
 | **Workflow Router**   | `createWorkflowRouter`       | `src/orchestration/workflow-router.ts`           |
+| **Pipeline Runner**   | `PipelineRunner`             | `src/pipeline/pipeline-runner.ts`                |
+| **Plugin Registry**   | `PluginRegistry`             | `src/pipeline/plugin-registry.ts`                |
+| **Policy Engine**     | `PolicyEngine`               | `src/pipeline/policy-engine.ts`                  |
+| **Event Bus**         | `EventBus`                   | `src/pipeline/event-bus.ts`                      |
+| **Artifact Store**    | `ArtifactStore`              | `src/pipeline/artifact-store.ts`                 |
+| **Task Contract**     | `TaskContractSchema`         | `src/pipeline/task-contract.ts`                  |
 
 All task routing goes through: `Task → BudgetRouter → ZeroRouter → PreferenceRouter → TopsisRouter → LinUCB → Selected Model`
 
@@ -484,7 +490,7 @@ _Governance Version: 2026-02-08_
 
 <!-- GOVERNANCE:VERSION:END -->
 
-_Last updated: 2026-02-07 (ET)_
+_Last updated: 2026-02-08 (ET)_
 _MCP Protocol: 2025-11-25_
 _Node.js: 22.x LTS_
 _TypeScript: 5.9+_

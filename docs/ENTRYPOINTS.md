@@ -87,7 +87,7 @@ Most commonly used commands:
 | -------------- | --------------------- | --------------------------------------- |
 | `server`       | `--mode=server`       | MCP server for Claude Desktop (default) |
 | `orchestrator` | `--mode=orchestrator` | Standalone CLI, CI/CD pipelines         |
-| `mesh`         | `--mode=mesh`         | Hybrid bidirectional mode               |
+| `mesh`         | `--mode=mesh`         | Planned — not yet implemented           |
 
 ### Global Options
 
