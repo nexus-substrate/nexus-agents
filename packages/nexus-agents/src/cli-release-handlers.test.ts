@@ -29,7 +29,7 @@ import {
 } from './cli/index.js';
 
 // Mock process.exit — re-applied fresh before each test
-let mockExit: ReturnType<typeof vi.spyOn>;
+let mockExit: { mockRestore: () => void };
 
 beforeEach(() => {
   mockExit = vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {

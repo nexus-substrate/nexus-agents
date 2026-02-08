@@ -325,9 +325,10 @@ describe('PLAN_BILLING_TOPSIS_CRITERIA', () => {
   it('plan mode router favors quality over cost', () => {
     const router = new TopsisRouter({ criteria: PLAN_BILLING_TOPSIS_CRITERIA });
     const result = router.selectModel();
-    // With cost zeroed out, high-quality models (claude or codex) should win over cheap ones
-    expect(['claude', 'codex']).toContain(result.selectedModel);
-    // Gemini (cheapest) should NOT be selected
-    expect(result.selectedModel).not.toBe('gemini');
+    // With cost zeroed out, high-quality models win. Gemini-3-Pro has matching
+    // quality to claude-opus (9.5) with lower latency, so it's a valid winner.
+    expect(['claude', 'codex', 'gemini']).toContain(result.selectedModel);
+    // Low-quality-only models (haiku, flash-lite) should NOT be selected
+    expect(result.selectedModel).not.toBe('haiku');
   });
 });

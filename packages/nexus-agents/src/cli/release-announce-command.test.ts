@@ -27,59 +27,11 @@ vi.mock('./ansi-output.js', () => ({
   },
 }));
 
-const {
-  mockGetLatestTag,
-  mockGetCommitsBetween,
-  mockParseConventionalCommit,
-  mockGroupCommitsByCategory,
-} = vi.hoisted(() => ({
-  mockGetLatestTag: vi.fn().mockReturnValue('v2.5.0'),
-  mockGetCommitsBetween: vi
-    .fn()
-    .mockReturnValue(['abc1234 feat: add orchestration', 'def5678 fix: resolve timeout']),
-  mockParseConventionalCommit: vi.fn().mockImplementation((_hash: string, msg: string) => ({
-    hash: 'abc1234',
-    type: msg.startsWith('feat') ? 'feat' : 'fix',
-    subject: msg.replace(/^(feat|fix): /, ''),
-    message: msg,
-    breaking: false,
-    issues: [],
-  })),
-  mockGroupCommitsByCategory: vi.fn().mockReturnValue([
-    {
-      name: 'Added',
-      commits: [
-        {
-          hash: 'abc1234',
-          type: 'feat',
-          scope: 'core',
-          subject: 'add orchestration',
-          breaking: false,
-          issues: [],
-        },
-      ],
-    },
-    {
-      name: 'Fixed',
-      commits: [
-        {
-          hash: 'def5678',
-          type: 'fix',
-          scope: undefined,
-          subject: 'resolve timeout',
-          breaking: false,
-          issues: [],
-        },
-      ],
-    },
-  ]),
-}));
-
 vi.mock('./release-notes-helpers.js', () => ({
-  getLatestTag: mockGetLatestTag,
-  getCommitsBetween: mockGetCommitsBetween,
-  parseConventionalCommit: mockParseConventionalCommit,
-  groupCommitsByCategory: mockGroupCommitsByCategory,
+  getLatestTag: vi.fn(),
+  getCommitsBetween: vi.fn(),
+  parseConventionalCommit: vi.fn(),
+  groupCommitsByCategory: vi.fn(),
 }));
 
 vi.mock('./bluesky-client.js', () => ({
@@ -98,6 +50,62 @@ import {
   releaseAnnounceCommand,
 } from './release-announce-command.js';
 import { getBlueskyConfig, createBlueskyPost } from './bluesky-client.js';
+import {
+  getLatestTag,
+  getCommitsBetween,
+  parseConventionalCommit,
+  groupCommitsByCategory,
+} from './release-notes-helpers.js';
+
+/** Configure release-notes-helpers mocks with default return values. */
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+function setupReleaseNotesMocks() {
+  vi.mocked(getLatestTag).mockReturnValue('v2.5.0');
+  vi.mocked(getCommitsBetween).mockReturnValue([
+    'abc1234 feat: add orchestration',
+    'def5678 fix: resolve timeout',
+  ]);
+  vi.mocked(parseConventionalCommit).mockImplementation(
+    (_hash: string, msg: string) =>
+      ({
+        hash: 'abc1234',
+        type: msg.startsWith('feat') ? 'feat' : 'fix',
+        subject: msg.replace(/^(feat|fix): /, ''),
+        message: msg,
+        breaking: false,
+        issues: [],
+      }) as ReturnType<typeof parseConventionalCommit>
+  );
+  vi.mocked(groupCommitsByCategory).mockReturnValue([
+    {
+      name: 'Added',
+      commits: [
+        {
+          hash: 'abc1234',
+          type: 'feat',
+          scope: 'core',
+          subject: 'add orchestration',
+          message: 'feat: add orchestration',
+          breaking: false,
+          issues: [],
+        },
+      ],
+    },
+    {
+      name: 'Fixed',
+      commits: [
+        {
+          hash: 'def5678',
+          type: 'fix',
+          subject: 'resolve timeout',
+          message: 'fix: resolve timeout',
+          breaking: false,
+          issues: [],
+        },
+      ],
+    },
+  ]);
+}
 
 // ============================================================================
 // Helpers
@@ -133,6 +141,7 @@ function makeChannelResult(overrides: Partial<ChannelAnnouncementResult> = {}) {
 describe('runReleaseAnnounce', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    setupReleaseNotesMocks();
     vi.mocked(existsSync).mockReturnValue(false);
     vi.mocked(getBlueskyConfig).mockReturnValue(undefined);
   });
@@ -419,6 +428,7 @@ describe('printReleaseAnnounceResult', () => {
 describe('releaseAnnounceCommand', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    setupReleaseNotesMocks();
     vi.mocked(existsSync).mockReturnValue(false);
     vi.mocked(getBlueskyConfig).mockReturnValue(undefined);
     vi.spyOn(console, 'log').mockImplementation(() => {});
