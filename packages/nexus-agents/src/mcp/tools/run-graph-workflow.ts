@@ -11,7 +11,7 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger } from '../../core/index.js';
-import { createLogger, getTimeProvider } from '../../core/index.js';
+import { createLogger, formatZodError, getTimeProvider } from '../../core/index.js';
 import { executeGraph } from '../../orchestration/graph/index.js';
 import type { CompiledGraph, GraphEvent, GraphState } from '../../orchestration/graph/index.js';
 import { createCheckpointStore } from '../../orchestration/graph/index.js';
@@ -186,7 +186,7 @@ export function registerRunGraphWorkflowTool(server: McpServer, deps: RunGraphWo
     if (!parsed.success) {
       return {
         isError: true,
-        content: [{ type: 'text', text: `Invalid input: ${parsed.error.message}` }],
+        content: [{ type: 'text', text: `Validation error: ${formatZodError(parsed.error)}` }],
       };
     }
     if (parsed.data.workflow === 'list') {

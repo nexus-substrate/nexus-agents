@@ -292,7 +292,7 @@ describe('error handling', () => {
     const response = await handler({ workflow: '' });
 
     expect(response.isError).toBe(true);
-    expect(response.content[0]?.text).toContain('Invalid input');
+    expect(response.content[0]?.text).toContain('Validation error');
   });
 
   it('returns validation error for missing workflow', async () => {
@@ -300,7 +300,7 @@ describe('error handling', () => {
     const response = await handler({});
 
     expect(response.isError).toBe(true);
-    expect(response.content[0]?.text).toContain('Invalid input');
+    expect(response.content[0]?.text).toContain('Validation error');
   });
 
   it('returns failed status with error details in response', async () => {
