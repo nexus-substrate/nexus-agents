@@ -23,8 +23,8 @@ const mockLogger = {
 // ============================================================================
 
 describe('ROLE_TO_TASK_CATEGORY', () => {
-  it('maps all 7 expert roles', () => {
-    expect(Object.keys(ROLE_TO_TASK_CATEGORY)).toHaveLength(7);
+  it('maps all 9 expert roles', () => {
+    expect(Object.keys(ROLE_TO_TASK_CATEGORY)).toHaveLength(9);
   });
 
   it('maps code_expert to code_generation', () => {

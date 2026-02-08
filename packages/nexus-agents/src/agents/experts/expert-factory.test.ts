@@ -349,11 +349,13 @@ describe('ExpertFactory', () => {
 
       expect(result.ok).toBe(true);
       if (result.ok) {
-        expect(result.value).toHaveLength(5);
+        expect(result.value).toHaveLength(9);
 
         const ids = result.value.map((e) => e.id);
         expect(ids).toContain('code-expert');
         expect(ids).toContain('architecture-expert');
+        expect(ids).toContain('pm-expert');
+        expect(ids).toContain('ux-expert');
         expect(ids).toContain('security-expert');
         expect(ids).toContain('documentation-expert');
         expect(ids).toContain('testing-expert');

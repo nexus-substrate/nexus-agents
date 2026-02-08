@@ -29,6 +29,8 @@ export type AgentRole =
   | 'testing_expert'
   | 'devops_expert'
   | 'research_expert'
+  | 'pm_expert' // Product manager: requirements, user stories, acceptance criteria (Issue #902)
+  | 'ux_expert' // UX designer: interaction design, usability, user journeys (Issue #902)
   | 'thinker' // TRINITY: High-level reasoning (arXiv:2512.04695)
   | 'worker' // TRINITY: Task execution
   | 'verifier' // TRINITY: Output validation

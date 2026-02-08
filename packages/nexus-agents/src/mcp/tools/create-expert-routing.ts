@@ -28,6 +28,8 @@ export const ROLE_TO_TASK_CATEGORY: Record<string, TaskCategory> = {
   testing_expert: 'testing',
   devops_expert: 'devops',
   research_expert: 'research',
+  pm_expert: 'planning',
+  ux_expert: 'planning',
 };
 
 /**

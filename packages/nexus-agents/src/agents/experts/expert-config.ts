@@ -13,6 +13,8 @@ import {
   buildDevOpsPrompt,
   buildResearchPrompt,
 } from './enriched-prompts.js';
+import { PM_EXPERT_BASE_PROMPT } from './expert-prompts/pm-expert.js';
+import { UX_EXPERT_BASE_PROMPT } from './expert-prompts/ux-expert.js';
 
 /**
  * Model preference configuration for an expert.
@@ -58,7 +60,9 @@ export type BuiltInExpertType =
   | 'documentation'
   | 'testing'
   | 'devops'
-  | 'research';
+  | 'research'
+  | 'pm'
+  | 'ux';
 
 /**
  * Zod schema for ModelPreference.
@@ -82,6 +86,8 @@ const AgentRoleSchema = z.enum([
   'testing_expert',
   'devops_expert',
   'research_expert',
+  'pm_expert',
+  'ux_expert',
   'custom',
 ]);
 
@@ -122,6 +128,8 @@ export const BuiltInExpertTypeSchema = z.enum([
   'testing',
   'devops',
   'research',
+  'pm',
+  'ux',
 ]);
 
 /**
@@ -439,6 +447,28 @@ When providing research analysis:
       temperature: 0.3,
     },
   },
+
+  pm: {
+    id: 'pm-expert',
+    name: 'Product Manager Expert',
+    role: 'pm_expert',
+    systemPrompt: PM_EXPERT_BASE_PROMPT,
+    capabilities: ['task_execution', 'collaboration', 'research'],
+    modelPreference: {
+      temperature: 0.4,
+    },
+  },
+
+  ux: {
+    id: 'ux-expert',
+    name: 'UX Designer Expert',
+    role: 'ux_expert',
+    systemPrompt: UX_EXPERT_BASE_PROMPT,
+    capabilities: ['task_execution', 'collaboration', 'research'],
+    modelPreference: {
+      temperature: 0.4,
+    },
+  },
 };
 
 /**
@@ -452,6 +482,8 @@ export const EXPERT_TYPE_TO_ROLE: Readonly<Record<BuiltInExpertType, AgentRole>>
   testing: 'testing_expert',
   devops: 'devops_expert',
   research: 'research_expert',
+  pm: 'pm_expert',
+  ux: 'ux_expert',
 };
 
 /**

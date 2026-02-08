@@ -2,7 +2,7 @@
  * nexus-agents/mcp - Create Expert Tool
  *
  * MCP tool for creating expert agents dynamically.
- * Supports built-in expert types: code, architecture, security, documentation, testing, devops.
+ * Supports built-in expert types: code, architecture, security, documentation, testing, devops, research, pm, ux.
  *
  * @module mcp/tools/create-expert
  * (Refactored: Issue #531 - Use createSecureHandlerFactory)
@@ -43,6 +43,8 @@ export const CreateExpertInputSchema = z.object({
       'testing_expert',
       'devops_expert',
       'research_expert',
+      'pm_expert',
+      'ux_expert',
     ])
     .describe('Expert role to create'),
   modelPreference: z.string().optional().describe('Preferred model (e.g., claude-sonnet-4)'),
@@ -114,6 +116,8 @@ const ROLE_TO_EXPERT_TYPE: Record<string, BuiltInExpertType> = {
   testing_expert: 'testing',
   devops_expert: 'devops',
   research_expert: 'research',
+  pm_expert: 'pm',
+  ux_expert: 'ux',
 };
 
 /**
@@ -297,13 +301,15 @@ export function registerCreateExpertTool(server: McpServer, deps: CreateExpertDe
         'testing_expert',
         'devops_expert',
         'research_expert',
+        'pm_expert',
+        'ux_expert',
       ])
       .describe('Expert role to create'),
     modelPreference: z.string().optional().describe('Preferred model (e.g., claude-sonnet-4)'),
   };
 
   const description =
-    'Create a specialized expert agent for code, architecture, security, documentation, testing, devops, or research tasks';
+    'Create a specialized expert agent for code, architecture, security, documentation, testing, devops, research, product management, or UX tasks';
 
   // Wrap handler with secure handler for rate limiting and request context (Issue #531)
   const secureHandler = createSecureHandler(createCreateExpertHandler(deps), {

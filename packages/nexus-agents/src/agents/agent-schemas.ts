@@ -107,6 +107,13 @@ export const BaseAgentOptionsSchema = z.object({
     'security_expert',
     'documentation_expert',
     'testing_expert',
+    'devops_expert',
+    'research_expert',
+    'pm_expert',
+    'ux_expert',
+    'thinker',
+    'worker',
+    'verifier',
     'custom',
   ]),
   capabilities: z.array(

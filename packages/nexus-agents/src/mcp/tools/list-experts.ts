@@ -83,6 +83,8 @@ const EXPERT_TYPE_TO_ROLE: Record<BuiltInExpertType, string> = {
   testing: 'testing_expert',
   devops: 'devops_expert',
   research: 'research_expert',
+  pm: 'pm_expert',
+  ux: 'ux_expert',
 };
 
 /**

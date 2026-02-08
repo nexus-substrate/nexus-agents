@@ -296,6 +296,10 @@ export function createAllBuiltInExperts(
     'security',
     'documentation',
     'testing',
+    'devops',
+    'research',
+    'pm',
+    'ux',
   ];
 
   const experts: Expert[] = [];
