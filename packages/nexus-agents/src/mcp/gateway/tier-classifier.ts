@@ -14,6 +14,8 @@
  * (Source: Issue #892, Epic #888)
  */
 
+import { SECURITY_KEYWORDS, ARCHITECTURE_KEYWORDS, PROMOTED_ROLES } from './gateway-keywords.js';
+
 /** Request processing tier. Higher = more orchestration overhead. */
 export enum RequestTier {
   /** Direct dispatch with structured logging. */
@@ -60,8 +62,6 @@ export const TOOL_TIER_MAP: Readonly<Record<string, RequestTier>> = {
   run_graph_workflow: RequestTier.ORCHESTRATED,
   issue_triage: RequestTier.ORCHESTRATED,
 };
-
-import { SECURITY_KEYWORDS, ARCHITECTURE_KEYWORDS, PROMOTED_ROLES } from './gateway-keywords.js';
 
 /**
  * Classifies an MCP tool request into a processing tier.
