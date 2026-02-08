@@ -29,6 +29,8 @@ export const PIPELINE_EVENT_TYPES = [
   'artifact.created',
   'model.called',
   'routing.decision',
+  'learning.threshold_updated',
+  'learning.trend_detected',
 ] as const;
 
 export type PipelineEventType = (typeof PIPELINE_EVENT_TYPES)[number];
@@ -151,6 +153,24 @@ interface RoutingDecisionEvent extends BaseEvent {
   readonly selectedModel: string;
 }
 
+/** Learning loop events (Issue #901, Phase 4). */
+interface LearningThresholdUpdatedEvent extends BaseEvent {
+  readonly type: 'learning.threshold_updated';
+  readonly cli: string;
+  readonly category: string;
+  readonly oldBaseline: number;
+  readonly newBaseline: number;
+  readonly trend: string;
+}
+
+interface LearningTrendDetectedEvent extends BaseEvent {
+  readonly type: 'learning.trend_detected';
+  readonly cli: string;
+  readonly category: string;
+  readonly trend: string;
+  readonly confidence: number;
+}
+
 // ============================================================================
 // Union Type
 // ============================================================================
@@ -171,7 +191,9 @@ export type PipelineEvent =
   | PolicyEvaluatedEvent
   | ArtifactCreatedEvent
   | ModelCalledEvent
-  | RoutingDecisionEvent;
+  | RoutingDecisionEvent
+  | LearningThresholdUpdatedEvent
+  | LearningTrendDetectedEvent;
 
 // ============================================================================
 // Event Bus Interface

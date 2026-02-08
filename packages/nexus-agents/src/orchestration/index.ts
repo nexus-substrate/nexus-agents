@@ -166,6 +166,12 @@ export {
 } from './outcomes/index.js';
 export type { OutcomeStoreConfig } from './outcomes/index.js';
 
+// Adaptive Thresholds — Learning Loop (Issue #901, Phase 4)
+export { computeAdaptiveThresholds, detectTrend } from './outcomes/index.js';
+export type { Trend, AdaptiveThresholdResult } from './outcomes/index.js';
+export { emitThresholdUpdate, emitTrendDetected } from './outcomes/index.js';
+export type { ThresholdUpdateDetail, TrendDetectedDetail } from './outcomes/index.js';
+
 // Parallel Exploration (Issue #862)
 export { executeParallelExploration } from './parallel-exploration.js';
 export type { ExploreOptions } from './parallel-exploration.js';

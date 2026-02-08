@@ -139,6 +139,6 @@ function matchesType(event: PipelineEvent, filter: EventFilter): boolean {
 
 function matchesField(event: PipelineEvent, field: string, value: string | undefined): boolean {
   if (value === undefined) return true;
-  const record = event as Record<string, unknown>;
+  const record = event as unknown as Record<string, unknown>;
   return record[field] === value;
 }

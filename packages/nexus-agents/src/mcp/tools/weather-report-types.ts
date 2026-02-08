@@ -87,6 +87,16 @@ export interface TierRecommendationEntry {
   readonly reason: string;
 }
 
+/** Learning insight for a CLI+category pair (Issue #901, Phase 4). */
+export interface LearningInsight {
+  readonly cli: string;
+  readonly category: TaskCategory;
+  readonly trend: 'improving' | 'declining' | 'stable';
+  readonly confidence: number;
+  readonly adjustedBaseline: number;
+  readonly sampleCount: number;
+}
+
 /** Full weather report response. */
 export interface WeatherReportResponse {
   readonly overall: {
@@ -98,6 +108,8 @@ export interface WeatherReportResponse {
   readonly adaptiveBonuses: readonly AdaptiveBonus[];
   /** Outcome-driven tier change recommendations (#895). */
   readonly tierRecommendations: readonly TierRecommendationEntry[];
+  /** Adaptive learning insights per CLI+category (#901). */
+  readonly learningInsights?: readonly LearningInsight[];
   readonly explorationRate: number;
   readonly coldStartThreshold: number;
   readonly collectedAt: string;

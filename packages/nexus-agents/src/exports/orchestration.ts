@@ -158,6 +158,12 @@ export type {
   OutcomeStoreConfig,
 } from '../orchestration/index.js';
 
+// Adaptive Thresholds — Learning Loop (Issue #901, Phase 4)
+export { computeAdaptiveThresholds, detectTrend } from '../orchestration/index.js';
+export type { Trend, AdaptiveThresholdResult } from '../orchestration/index.js';
+export { emitThresholdUpdate, emitTrendDetected } from '../orchestration/index.js';
+export type { ThresholdUpdateDetail, TrendDetectedDetail } from '../orchestration/index.js';
+
 // Failure Analyzer (Issue #852)
 export { analyzeFailures } from '../orchestration/index.js';
 export type {

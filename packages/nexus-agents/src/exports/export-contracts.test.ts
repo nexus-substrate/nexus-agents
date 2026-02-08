@@ -84,6 +84,16 @@ import {
 import { getOutcomeStore, OutcomeStore } from '../index.js';
 
 // ============================================================================
+// Adaptive thresholds — Learning loop (Issue #901)
+// ============================================================================
+import {
+  computeAdaptiveThresholds,
+  detectTrend,
+  emitThresholdUpdate,
+  emitTrendDetected,
+} from '../index.js';
+
+// ============================================================================
 // Orchestration — spec pipeline (Issue #843)
 // ============================================================================
 import { parseSpec, decomposeSpec, executeSpec } from '../index.js';
@@ -386,6 +396,18 @@ describe('Export contracts — pipeline V2 types', () => {
 
   it('exports createDelegatePipeline', () => {
     expect(typeof createDelegatePipeline).toBe('function');
+  });
+});
+
+describe('Export contracts — adaptive thresholds (Issue #901)', () => {
+  it('exports computeAdaptiveThresholds and detectTrend', () => {
+    expect(typeof computeAdaptiveThresholds).toBe('function');
+    expect(typeof detectTrend).toBe('function');
+  });
+
+  it('exports learning event emitters', () => {
+    expect(typeof emitThresholdUpdate).toBe('function');
+    expect(typeof emitTrendDetected).toBe('function');
   });
 });
 

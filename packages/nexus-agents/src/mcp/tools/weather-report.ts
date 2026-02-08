@@ -21,9 +21,11 @@ import type {
   AdaptiveBonus,
   WeatherReportConfig,
   TierRecommendationEntry,
+  LearningInsight,
 } from './weather-report-types.js';
 import { createDefaultWeatherConfig } from './weather-report-types.js';
 import { generateTierRecommendations } from '../gateway/tier-recommender.js';
+import { computeAdaptiveThresholds } from '../../orchestration/outcomes/adaptive-thresholds.js';
 
 // ============================================================================
 // Public API
@@ -47,8 +49,7 @@ export function generateWeatherReport(
   const cliWeather = buildCliWeather(summary, input);
   const adaptiveBonuses = includeAdaptive ? computeAdaptiveBonuses(cfg) : [];
   const tierRecommendations = buildTierRecommendations(summary);
-
-  return {
+  const base = {
     overall: {
       totalTasks: summary.totalTasks,
       successRate: summary.successRate,
@@ -61,6 +62,12 @@ export function generateWeatherReport(
     coldStartThreshold: cfg.coldStartThreshold,
     collectedAt: new Date().toISOString(),
   };
+
+  if (includeAdaptive) {
+    return { ...base, learningInsights: buildLearningInsights() };
+  }
+
+  return base;
 }
 
 /**
@@ -78,17 +85,19 @@ export function getAdaptiveBonus(
 ): number {
   const cfg = { ...createDefaultWeatherConfig(), ...config };
   const store = getOutcomeStore();
+  const cliName = cli as 'claude' | 'gemini' | 'codex';
 
-  const outcomes = store.query({ cli: cli as 'claude' | 'gemini' | 'codex', category });
+  const outcomes = store.query({ cli: cliName, category });
   if (outcomes.length < cfg.coldStartThreshold) return 0;
 
+  const thresholds = computeAdaptiveThresholds(store, cliName, category);
   const successRate = outcomes.filter((o) => o.success).length / outcomes.length;
-  const baseline = 0.7; // Expected baseline success rate
-  const delta = successRate - baseline;
+  const delta = successRate - thresholds.baseline;
 
-  // Scale: +30% above baseline → +maxBonusAdjustment
-  const scaled = (delta / 0.3) * cfg.maxBonusAdjustment;
-  return clamp(scaled, -cfg.maxBonusAdjustment, cfg.maxBonusAdjustment);
+  // Scale: +30% above baseline → +maxBonus (adaptive, not hardcoded)
+  const maxBonus = thresholds.maxBonus > 0 ? thresholds.maxBonus : cfg.maxBonusAdjustment;
+  const scaled = (delta / 0.3) * maxBonus;
+  return clamp(scaled, -maxBonus, maxBonus);
 }
 
 /**
@@ -189,6 +198,30 @@ function getStaticBonusForCli(
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+/** Builds learning insights from adaptive thresholds (#901). */
+function buildLearningInsights(): readonly LearningInsight[] {
+  const store = getOutcomeStore();
+  const insights: LearningInsight[] = [];
+
+  for (const cli of CLI_NAMES) {
+    for (const category of TASK_CATEGORIES) {
+      const thresholds = computeAdaptiveThresholds(store, cli, category);
+      if (thresholds.sampleCount > 0) {
+        insights.push({
+          cli,
+          category,
+          trend: thresholds.trend,
+          confidence: thresholds.confidence,
+          adjustedBaseline: thresholds.baseline,
+          sampleCount: thresholds.sampleCount,
+        });
+      }
+    }
+  }
+
+  return insights;
 }
 
 /** Generates tier recommendations from outcome summary (#895). */
