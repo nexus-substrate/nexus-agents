@@ -2,7 +2,7 @@
 /**
  * nexus-tui — CLI entry point
  *
- * Starts the interactive REPL or runs a single command.
+ * Starts the Ink TUI (default), readline REPL (--repl), or runs a single command.
  *
  * @module cli
  */
@@ -19,6 +19,8 @@ const { values } = parseArgs({
     version: { type: 'boolean', short: 'v', default: false },
     help: { type: 'boolean', short: 'h', default: false },
     exec: { type: 'string', short: 'e' },
+    tui: { type: 'boolean', default: false },
+    repl: { type: 'boolean', default: false },
   },
   strict: false,
   allowPositionals: true,
@@ -34,6 +36,8 @@ if (values['help'] === true) {
   process.stdout.write('Usage: nexus-tui [options]\n\n');
   process.stdout.write('Options:\n');
   process.stdout.write('  -e, --exec <command>  Execute a single command and exit\n');
+  process.stdout.write('  --tui                 Start Ink-based TUI (default)\n');
+  process.stdout.write('  --repl                Start readline REPL (classic)\n');
   process.stdout.write('  --json                Output in JSON format\n');
   process.stdout.write('  -v, --version         Show version\n');
   process.stdout.write('  -h, --help            Show help\n');
@@ -42,6 +46,7 @@ if (values['help'] === true) {
 
 const jsonMode = values['json'] === true;
 const exec = values['exec'] as string | undefined;
+const useRepl = values['repl'] === true;
 
 if (exec !== undefined) {
   // Single command mode
@@ -51,7 +56,18 @@ if (exec !== undefined) {
       process.stdout.write(output + '\n');
     }
   });
-} else {
-  // Interactive REPL mode
+} else if (useRepl) {
+  // Classic readline REPL
   startRepl({ jsonMode });
+} else {
+  // Default: Ink TUI
+  void startTui(jsonMode);
+}
+
+async function startTui(json: boolean): Promise<void> {
+  const { render } = await import('ink');
+  const { createElement } = await import('react');
+  const { App } = await import('./tui/app.js');
+  const registry = createCommandRegistry();
+  render(createElement(App, { registry, jsonMode: json }));
 }

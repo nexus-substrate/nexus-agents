@@ -11,3 +11,7 @@ export { createCommandRegistry } from './commands/index.js';
 export { parseInput } from './parse-input.js';
 export { formatResult, formatHeader, formatTable } from './formatter.js';
 export type { CommandResult, CommandHandler, ReplConfig, ParsedInput } from './types.js';
+
+// TUI components (Ink-based)
+export { App } from './tui/app.js';
+export type { AppState, PanelId, AppAction } from './tui/state.js';
