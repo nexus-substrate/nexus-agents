@@ -7,8 +7,15 @@
 import { describe, it, expect } from 'vitest';
 import type { PanelId } from '../state.js';
 
-// Test the nextPanel logic directly (extracted for testability)
-const PANEL_ORDER: readonly PanelId[] = ['command', 'output', 'agents', 'weather'];
+// Test the nextPanel logic directly (matches implementation)
+const PANEL_ORDER: readonly PanelId[] = [
+  'command',
+  'output',
+  'agents',
+  'weather',
+  'task',
+  'outcomes',
+];
 
 function nextPanel(current: PanelId): PanelId {
   const idx = PANEL_ORDER.indexOf(current);
@@ -30,7 +37,26 @@ describe('keyboard navigation', () => {
     expect(nextPanel('agents')).toBe('weather');
   });
 
-  it('wraps from weather back to command', () => {
-    expect(nextPanel('weather')).toBe('command');
+  it('cycles from weather to task', () => {
+    expect(nextPanel('weather')).toBe('task');
+  });
+
+  it('cycles from task to outcomes', () => {
+    expect(nextPanel('task')).toBe('outcomes');
+  });
+
+  it('wraps from outcomes back to command', () => {
+    expect(nextPanel('outcomes')).toBe('command');
+  });
+
+  it('covers all 6 panels in order', () => {
+    const visited: PanelId[] = [];
+    let current: PanelId = 'command';
+    for (let i = 0; i < 6; i++) {
+      visited.push(current);
+      current = nextPanel(current);
+    }
+    expect(visited).toEqual(['command', 'output', 'agents', 'weather', 'task', 'outcomes']);
+    expect(current).toBe('command'); // wraps back
   });
 });

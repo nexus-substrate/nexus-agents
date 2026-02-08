@@ -24,10 +24,44 @@ export interface AppState {
   readonly showHelp: boolean;
   readonly isLoading: boolean;
   readonly error: string | null;
+  readonly activeTask: ActiveTaskState | null;
+  readonly activeVote: ActiveVoteState | null;
+  readonly activeWorkflow: ActiveWorkflowState | null;
 }
 
 /** Identifiers for focusable panels. */
-export type PanelId = 'command' | 'output' | 'agents' | 'weather';
+export type PanelId = 'command' | 'output' | 'agents' | 'weather' | 'task' | 'outcomes';
+
+/** Active task state derived from pipeline events. */
+export interface ActiveTaskState {
+  readonly taskId: string;
+  readonly executionId: string;
+  readonly stages: readonly {
+    stageId: string;
+    status: 'pending' | 'running' | 'completed' | 'failed';
+  }[];
+  readonly startedAt: number;
+}
+
+/** Active vote state for the VotePanel. */
+export interface ActiveVoteState {
+  readonly proposal: string;
+  readonly votes: readonly {
+    role: string;
+    decision: 'APPROVE' | 'REJECT' | 'PENDING';
+    confidence: number;
+  }[];
+  readonly outcome: string | null;
+}
+
+/** Active workflow state for the WorkflowPanel. */
+export interface ActiveWorkflowState {
+  readonly name: string;
+  readonly nodes: readonly {
+    nodeId: string;
+    status: 'pending' | 'running' | 'completed' | 'failed';
+  }[];
+}
 
 /** Actions that can mutate state. */
 export type AppAction =
@@ -37,10 +71,30 @@ export type AppAction =
   | { type: 'TOGGLE_HELP' }
   | { type: 'SET_LOADING'; loading: boolean }
   | { type: 'SET_ERROR'; error: string | null }
-  | { type: 'CLEAR_OUTPUT' };
+  | { type: 'CLEAR_OUTPUT' }
+  | { type: 'SET_ACTIVE_TASK'; task: ActiveTaskState | null }
+  | { type: 'SET_ACTIVE_VOTE'; vote: ActiveVoteState | null }
+  | { type: 'SET_ACTIVE_WORKFLOW'; workflow: ActiveWorkflowState | null };
+
+/** Handle panel-related actions. */
+function reducePanelAction(state: AppState, action: AppAction): AppState | null {
+  switch (action.type) {
+    case 'SET_ACTIVE_TASK':
+      return { ...state, activeTask: action.task };
+    case 'SET_ACTIVE_VOTE':
+      return { ...state, activeVote: action.vote };
+    case 'SET_ACTIVE_WORKFLOW':
+      return { ...state, activeWorkflow: action.workflow };
+    default:
+      return null;
+  }
+}
 
 /** Reduce state transitions. */
 export function appReducer(state: AppState, action: AppAction): AppState {
+  const panelResult = reducePanelAction(state, action);
+  if (panelResult !== null) return panelResult;
+
   switch (action.type) {
     case 'ADD_OUTPUT':
       return {
@@ -62,6 +116,8 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, error: action.error };
     case 'CLEAR_OUTPUT':
       return { ...state, commandOutput: [] };
+    default:
+      return state; // panel actions handled by reducePanelAction above
   }
 }
 
@@ -73,6 +129,9 @@ export const INITIAL_STATE: AppState = {
   showHelp: false,
   isLoading: false,
   error: null,
+  activeTask: null,
+  activeVote: null,
+  activeWorkflow: null,
 };
 
 /** Dispatch context for state mutations. */

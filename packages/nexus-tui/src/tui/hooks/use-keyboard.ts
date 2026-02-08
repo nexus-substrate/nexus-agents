@@ -13,7 +13,14 @@ import { useInput, useApp } from 'ink';
 import { useDispatch, useAppState } from '../state.js';
 import type { PanelId } from '../state.js';
 
-const PANEL_ORDER: readonly PanelId[] = ['command', 'output', 'agents', 'weather'];
+const PANEL_ORDER: readonly PanelId[] = [
+  'command',
+  'output',
+  'agents',
+  'weather',
+  'task',
+  'outcomes',
+];
 
 /** Cycle to the next panel in tab order. */
 function nextPanel(current: PanelId): PanelId {

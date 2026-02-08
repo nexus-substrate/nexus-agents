@@ -64,4 +64,36 @@ describe('appReducer', () => {
     const cleared = appReducer(withOutput, { type: 'CLEAR_OUTPUT' });
     expect(cleared.commandOutput).toHaveLength(0);
   });
+
+  it('SET_ACTIVE_TASK sets task', () => {
+    const task = { taskId: 't1', executionId: 'e1', stages: [], startedAt: 1000 };
+    const next = appReducer(INITIAL_STATE, { type: 'SET_ACTIVE_TASK', task });
+    expect(next.activeTask).toEqual(task);
+  });
+
+  it('SET_ACTIVE_TASK clears with null', () => {
+    const task = { taskId: 't1', executionId: 'e1', stages: [], startedAt: 1000 };
+    const withTask = appReducer(INITIAL_STATE, { type: 'SET_ACTIVE_TASK', task });
+    const cleared = appReducer(withTask, { type: 'SET_ACTIVE_TASK', task: null });
+    expect(cleared.activeTask).toBeNull();
+  });
+
+  it('SET_ACTIVE_VOTE sets vote state', () => {
+    const vote = { proposal: 'test', votes: [], outcome: null };
+    const next = appReducer(INITIAL_STATE, { type: 'SET_ACTIVE_VOTE', vote });
+    expect(next.activeVote).toEqual(vote);
+  });
+
+  it('SET_ACTIVE_WORKFLOW sets workflow state', () => {
+    const wf = { name: 'code-review', nodes: [] };
+    const next = appReducer(INITIAL_STATE, { type: 'SET_ACTIVE_WORKFLOW', workflow: wf });
+    expect(next.activeWorkflow).toEqual(wf);
+  });
+
+  it('SET_FOCUS works with new panel IDs', () => {
+    const s1 = appReducer(INITIAL_STATE, { type: 'SET_FOCUS', panel: 'task' });
+    expect(s1.focusedPanel).toBe('task');
+    const s2 = appReducer(INITIAL_STATE, { type: 'SET_FOCUS', panel: 'outcomes' });
+    expect(s2.focusedPanel).toBe('outcomes');
+  });
 });
