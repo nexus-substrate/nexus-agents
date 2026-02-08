@@ -352,6 +352,8 @@ async function initializeAndRegisterTools(
     policyFirewall,
     executionMode: policyVals.defaultExec,
     modelAdapter,
+    // Gateway middleware for tier-aware dispatch logging (Issue #896)
+    gatewayConfig: { enabled: true, logger },
     ...(allowedPaths !== undefined && { allowedPaths }),
     ...(securityConfig !== undefined && { securityConfig }),
     ...(workflowConfig !== undefined && { workflowConfig }),
