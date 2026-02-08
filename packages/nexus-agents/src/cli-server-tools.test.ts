@@ -473,6 +473,9 @@ describe('registerMcpTools - tool allowlisting', () => {
     expect(mockRegisterConsensusVoteTool).not.toHaveBeenCalled();
     expect(mockRegisterResearchQueryTool).not.toHaveBeenCalled();
     expect(mockRegisterMemoryQueryTool).not.toHaveBeenCalled();
+    expect(mockRegisterIssueTriageTool).not.toHaveBeenCalled();
+    expect(mockRegisterRunGraphWorkflowTool).not.toHaveBeenCalled();
+    expect(mockRegisterExecuteSpecTool).not.toHaveBeenCalled();
   });
 
   it('should log allowlist info when active', () => {
