@@ -33,3 +33,12 @@ export {
   taskContractToToolResponse,
   type TaskToolResponse,
 } from './v1-adapters.js';
+
+export { compilePlan } from './plan-compiler.js';
+
+export {
+  PipelineRunner,
+  type CompiledPipeline,
+  type PipelineResult,
+  type PipelineExecuteOptions,
+} from './pipeline-runner.js';

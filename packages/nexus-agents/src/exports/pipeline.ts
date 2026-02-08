@@ -28,4 +28,11 @@ export {
   type ArtifactRef,
   type ArtifactType,
   type TaskToolResponse,
+  // Plan compiler
+  compilePlan,
+  // Pipeline runner
+  PipelineRunner,
+  type CompiledPipeline,
+  type PipelineResult,
+  type PipelineExecuteOptions,
 } from '../pipeline/index.js';

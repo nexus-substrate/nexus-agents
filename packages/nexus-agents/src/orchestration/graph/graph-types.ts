@@ -73,12 +73,18 @@ export const END = '__END__' as const;
  * Edge types in the graph.
  */
 export type GraphEdge =
-  | { readonly type: 'fixed'; readonly from: string; readonly to: string }
+  | {
+      readonly type: 'fixed';
+      readonly from: string;
+      readonly to: string;
+      readonly maxTraversals?: number;
+    }
   | {
       readonly type: 'conditional';
       readonly from: string;
       readonly router: (state: Readonly<GraphState>) => string;
       readonly targets: readonly string[];
+      readonly maxTraversals?: number;
     };
 
 // ============================================================================

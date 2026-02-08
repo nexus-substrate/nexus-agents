@@ -127,6 +127,8 @@ import {
   ARTIFACT_TYPES,
   analysisToTaskContract,
   taskContractToToolResponse,
+  compilePlan,
+  PipelineRunner,
 } from '../index.js';
 
 describe('Export contracts — MCP tool registration', () => {
@@ -311,6 +313,17 @@ describe('Export contracts — pipeline V2 types', () => {
   it('exports V1↔V2 adapter functions', () => {
     expect(typeof analysisToTaskContract).toBe('function');
     expect(typeof taskContractToToolResponse).toBe('function');
+  });
+
+  it('exports compilePlan function', () => {
+    expect(typeof compilePlan).toBe('function');
+  });
+
+  it('exports PipelineRunner class', () => {
+    expect(typeof PipelineRunner).toBe('function');
+    const runner = new PipelineRunner();
+    expect(typeof runner.compile).toBe('function');
+    expect(typeof runner.execute).toBe('function');
   });
 });
 

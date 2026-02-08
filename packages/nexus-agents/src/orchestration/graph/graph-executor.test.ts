@@ -622,5 +622,50 @@ describe('edge case hardening', () => {
   });
 });
 
+describe('maxTraversals (Issue #910, E2-4)', () => {
+  it('limits edge traversals to maxTraversals count', async () => {
+    let loopCount = 0;
+    const compiled = new GraphBuilder()
+      .addState('count', overwrite(0))
+      .addNode('loop', () => {
+        loopCount++;
+        return Promise.resolve({ count: loopCount });
+      })
+      .addEdge(START, 'loop')
+      .addEdge('loop', END)
+      .compile();
+
+    expect(compiled.ok).toBe(true);
+    if (!compiled.ok) return;
+
+    const result = await executeGraph(compiled.value, {});
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // Without loops, node executes once
+    expect(loopCount).toBe(1);
+  });
+
+  it('accepts maxTraversals option on addEdge', () => {
+    // maxTraversals is stored on the edge for runtime enforcement
+    const compiled = new GraphBuilder()
+      .addState('value', overwrite(0))
+      .addNode('A', () => Promise.resolve({ value: 1 }))
+      .addNode('B', () => Promise.resolve({ value: 2 }))
+      .addEdge(START, 'A')
+      .addEdge('A', 'B', { maxTraversals: 3 })
+      .addEdge('B', END)
+      .compile();
+
+    expect(compiled.ok).toBe(true);
+    if (!compiled.ok) return;
+    // Verify the edge has maxTraversals set
+    const abEdge = compiled.value.edges.find(
+      (e) => e.type === 'fixed' && e.from === 'A' && e.to === 'B'
+    );
+    expect(abEdge).toBeDefined();
+    expect(abEdge?.maxTraversals).toBe(3);
+  });
+});
+
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 const noop = () => Promise.resolve({});

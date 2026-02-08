@@ -17,6 +17,7 @@ import type {
   CompiledGraph,
   GraphState,
   GraphNode,
+  GraphEdge,
   NodeResult,
   GraphExecutionResult,
   GraphExecuteOptions,
@@ -43,6 +44,8 @@ interface ExecutionContext {
   allResults: NodeResult[];
   stepsExecuted: number;
   runnableIds: string[];
+  /** Per-edge traversal counts for maxTraversals enforcement. */
+  edgeTraversals: Map<string, number>;
 }
 
 /**
@@ -64,6 +67,7 @@ export async function executeGraph(
     allResults: [],
     stepsExecuted: 0,
     runnableIds: resolveEntryNodes(graph, initialState),
+    edgeTraversals: new Map(),
   };
 
   tryResumeFromCheckpoint(ctx, options);
@@ -136,7 +140,7 @@ async function executeSuperStep(
   ctx.state = mergeNodeResults(graph, ctx.state, results);
 
   const completedIds = results.filter((r) => r.status === 'success').map((r) => r.nodeId);
-  ctx.runnableIds = resolveNextNodes(graph, completedIds, ctx.state);
+  ctx.runnableIds = resolveNextNodes(graph, completedIds, ctx.state, ctx);
 
   for (const result of results) {
     options?.onNodeComplete?.(result);
@@ -333,13 +337,28 @@ function resolveEntryNodes(graph: CompiledGraph, state: Readonly<GraphState>): s
 function resolveNextNodes(
   graph: CompiledGraph,
   completedIds: readonly string[],
-  state: Readonly<GraphState>
+  state: Readonly<GraphState>,
+  ctx: ExecutionContext
 ): string[] {
   const nodeIds: string[] = [];
 
   for (const completedId of completedIds) {
     for (const edge of graph.edges) {
       if (edge.from !== completedId) continue;
+
+      // Check maxTraversals limit
+      if (edge.maxTraversals !== undefined) {
+        const edgeKey = edgeId(edge);
+        const count = ctx.edgeTraversals.get(edgeKey) ?? 0;
+        if (count >= edge.maxTraversals) {
+          logger.warn('Edge traversal limit reached', {
+            edge: edgeKey,
+            maxTraversals: edge.maxTraversals,
+          });
+          continue;
+        }
+        ctx.edgeTraversals.set(edgeKey, count + 1);
+      }
 
       if (edge.type === 'fixed') {
         if (edge.to !== END) nodeIds.push(edge.to);
@@ -351,6 +370,12 @@ function resolveNextNodes(
   }
 
   return filterValidNodes(graph, dedupe(nodeIds));
+}
+
+/** Generates a stable identifier for an edge. */
+function edgeId(edge: GraphEdge): string {
+  if (edge.type === 'fixed') return `${edge.from}→${edge.to}`;
+  return `${edge.from}→[conditional]`;
 }
 
 /** Safely calls a router function, returning END on error. */

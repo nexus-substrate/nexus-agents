@@ -68,8 +68,13 @@ export class GraphBuilder {
   /**
    * Adds a fixed edge between two nodes.
    */
-  addEdge(from: string, to: string): this {
-    this.edges.push({ type: 'fixed', from, to });
+  addEdge(from: string, to: string, options?: { maxTraversals?: number }): this {
+    const edge: GraphEdge = { type: 'fixed', from, to };
+    if (options?.maxTraversals !== undefined) {
+      this.edges.push({ ...edge, maxTraversals: options.maxTraversals });
+    } else {
+      this.edges.push(edge);
+    }
     return this;
   }
 
