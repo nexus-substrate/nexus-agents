@@ -543,7 +543,7 @@ describe('delegate_to_model Tool', () => {
 
       const content = result.content as Array<{ type: string; text: string }>;
       const output = JSON.parse(content[0]!.text) as DelegateOutput;
-      expect(output.recommended_model).toBe('gemini-pro');
+      expect(output.recommended_model).toBe('gemini-3-pro');
       expect(output.reasoning).toContain('CompositeRouter');
     });
 

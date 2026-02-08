@@ -50,15 +50,15 @@ function makeDecision(overrides: Record<string, unknown> = {}) {
 // ============================================================================
 
 describe('cliNameToModel', () => {
-  it('maps claude to claude-sonnet', () => {
-    expect(cliNameToModel('claude')).toBe('claude-sonnet');
+  it('maps claude to default model from registry', () => {
+    expect(cliNameToModel('claude')).toBe('claude-opus');
   });
 
-  it('maps gemini to gemini-pro', () => {
-    expect(cliNameToModel('gemini')).toBe('gemini-pro');
+  it('maps gemini to default model from registry', () => {
+    expect(cliNameToModel('gemini')).toBe('gemini-3-pro');
   });
 
-  it('maps codex to codex-5.3', () => {
+  it('maps codex to default model from registry', () => {
     expect(cliNameToModel('codex')).toBe('codex-5.3');
   });
 });
@@ -72,7 +72,7 @@ describe('mapCompositeDecisionToOutput', () => {
     const decision = makeDecision();
     const output = mapCompositeDecisionToOutput(decision as never, 500);
 
-    expect(output.recommended_model).toBe('claude-sonnet');
+    expect(output.recommended_model).toBe('claude-opus');
     expect(output.reasoning).toBe('Best model for reasoning tasks');
     expect(output.estimated_tokens).toBe(500);
   });
@@ -80,7 +80,7 @@ describe('mapCompositeDecisionToOutput', () => {
   it('includes capabilities from MODEL_CAPABILITIES', () => {
     const decision = makeDecision();
     const output = mapCompositeDecisionToOutput(decision as never, 100);
-    const expected = MODEL_CAPABILITIES['claude-sonnet'];
+    const expected = MODEL_CAPABILITIES['claude-opus'];
 
     expect(output.capabilities).toEqual(expected);
   });
@@ -111,7 +111,7 @@ describe('mapCompositeDecisionToOutput', () => {
     const decision = makeDecision({ alternatives: ['gemini', 'codex'] });
     const output = mapCompositeDecisionToOutput(decision as never, 100);
 
-    expect(output.alternatives[0]!.model).toBe('gemini-pro');
+    expect(output.alternatives[0]!.model).toBe('gemini-3-pro');
     expect(output.alternatives[1]!.model).toBe('codex-5.3');
   });
 
@@ -154,7 +154,7 @@ describe('mapCompositeDecisionToOutput', () => {
     const decision = makeDecision({ cliName: 'gemini' });
     const output = mapCompositeDecisionToOutput(decision as never, 100);
 
-    expect(output.capabilities).toEqual(MODEL_CAPABILITIES['gemini-pro']);
+    expect(output.capabilities).toEqual(MODEL_CAPABILITIES['gemini-3-pro']);
   });
 
   it('produces codex capabilities for codex decision', () => {
