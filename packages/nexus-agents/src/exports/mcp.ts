@@ -30,12 +30,12 @@ export {
   withLogging,
   type McpLogContext,
   // Policy firewall (Issue #538)
-  type Artifact,
+  type Artifact as FirewallArtifact, // Renamed: pipeline.ts exports pipeline Artifact
   type ExecutionMode,
   type PolicyMode,
-  type PolicyDecision,
-  type PolicyContext,
-  type PolicyRule,
+  type PolicyDecision as FirewallPolicyDecision, // Renamed: pipeline.ts exports pipeline PolicyDecision
+  type PolicyContext as FirewallPolicyContext, // Renamed: pipeline.ts exports pipeline PolicyContext
+  type PolicyRule as FirewallPolicyRule, // Renamed: pipeline.ts exports pipeline PolicyRule
   type IPolicyFirewall,
   type PolicyFirewallConfig,
   type PolicyConfig,

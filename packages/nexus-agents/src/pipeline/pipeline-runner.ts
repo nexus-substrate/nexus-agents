@@ -112,15 +112,23 @@ function buildGraphOptions(
   pipeline: CompiledPipeline,
   options?: PipelineExecuteOptions
 ): GraphExecuteOptions {
-  return {
-    signal: options?.signal,
-    maxSteps: options?.maxSteps,
+  const base: GraphExecuteOptions = {
     timeout: options?.timeout ?? pipeline.plan.timeoutMs,
-    onNodeComplete: options?.onStageComplete
-      ? (result) => {
-          options.onStageComplete?.(result.nodeId);
+  };
+  const signal = options?.signal;
+  const maxSteps = options?.maxSteps;
+  const onStage = options?.onStageComplete;
+  return {
+    ...base,
+    ...(signal !== undefined ? { signal } : {}),
+    ...(maxSteps !== undefined ? { maxSteps } : {}),
+    ...(onStage !== undefined
+      ? {
+          onNodeComplete: (r: { nodeId: string }) => {
+            onStage(r.nodeId);
+          },
         }
-      : undefined,
+      : {}),
   };
 }
 

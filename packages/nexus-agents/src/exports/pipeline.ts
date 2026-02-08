@@ -44,7 +44,7 @@ export {
   type PipelinePlugin,
   type StageContext,
   type StageResult,
-  type ValidationError,
+  type ValidationError as PluginValidationError, // Renamed: core.ts exports class ValidationError
   type RegistrationError,
   type IPluginRegistry,
   // Plugin registry
