@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "generated": "2026-02-07T23:59:56.078Z",
+  "generated": "2026-02-08T05:42:27.912Z",
   "generator": "scripts/generate-repo-index.ts",
   "packageVersion": "2.6.0",
   "cli": {
@@ -257,6 +257,10 @@
       {
         "name": "orchestrate",
         "file": "src/mcp/tools/orchestrate.ts"
+      },
+      {
+        "name": "registry_import",
+        "file": "src/mcp/tools/registry-import.ts"
       },
       {
         "name": "research_add",
