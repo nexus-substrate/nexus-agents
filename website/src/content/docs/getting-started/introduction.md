@@ -128,7 +128,7 @@ When running as an MCP server, 15 tools are available:
 
 | Tool                      | Description                                              |
 | ------------------------- | -------------------------------------------------------- |
-| `orchestrate`             | Task orchestration with TechLead coordination            |
+| `orchestrate`             | Task orchestration with Orchestrator coordination        |
 | `create_expert`           | Create a specialized expert agent                        |
 | `execute_expert`          | Execute a task using a created expert                    |
 | `run_workflow`            | Execute a workflow template                              |
