@@ -147,9 +147,13 @@ export interface Conflict {
 }
 
 /**
- * Options for TechLead agent.
+ * Options for the Orchestrator agent (coordination, decomposition, delegation).
+ *
+ * @remarks
+ * Renamed from TechLeadOptions in Issue #759.
+ * The old name is retained as a deprecated type alias.
  */
-export interface TechLeadOptions {
+export interface OrchestratorOptions {
   /** Maximum number of subtasks to create */
   maxSubtasks?: number;
   /** Minimum complexity to trigger decomposition */
@@ -159,6 +163,11 @@ export interface TechLeadOptions {
   /** Custom expert selection weights */
   expertWeights?: Partial<Record<AgentRole, number>>;
 }
+
+/**
+ * @deprecated Use {@link OrchestratorOptions} instead. Will be removed in v3.0.
+ */
+export type TechLeadOptions = OrchestratorOptions;
 
 /**
  * Zod schema for SubtaskPriority.
@@ -294,14 +303,19 @@ export const SynthesizedResultSchema = z.object({
 });
 
 /**
- * Zod schema for TechLeadOptions.
+ * Zod schema for OrchestratorOptions.
  */
-export const TechLeadOptionsSchema = z.object({
+export const OrchestratorOptionsSchema = z.object({
   maxSubtasks: z.number().min(1).max(20).optional(),
   decompositionThreshold: z.number().min(1).max(10).optional(),
   enableParallelHints: z.boolean().optional(),
   expertWeights: z.record(z.number().min(0).max(10)).optional(),
 });
+
+/**
+ * @deprecated Use {@link OrchestratorOptionsSchema} instead. Will be removed in v3.0.
+ */
+export const TechLeadOptionsSchema = OrchestratorOptionsSchema;
 
 /**
  * Expert role capabilities mapping.

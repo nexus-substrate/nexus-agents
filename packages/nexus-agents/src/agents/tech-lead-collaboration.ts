@@ -28,9 +28,12 @@ import type {
 import { generateUUID } from '../utils/index.js';
 
 /**
- * Configuration for TechLead collaboration integration.
+ * Configuration for Orchestrator collaboration integration.
+ *
+ * @remarks
+ * Renamed from TechLeadCollaborationConfig in Issue #759.
  */
-export interface TechLeadCollaborationConfig {
+export interface OrchestratorCollaborationConfig {
   /** Enable collaboration protocols for synthesis */
   readonly enableCollaborativeSynthesis?: boolean;
   /** Minimum number of experts to trigger collaborative synthesis */
@@ -42,9 +45,14 @@ export interface TechLeadCollaborationConfig {
 }
 
 /**
+ * @deprecated Use {@link OrchestratorCollaborationConfig} instead. Will be removed in v3.0.
+ */
+export type TechLeadCollaborationConfig = OrchestratorCollaborationConfig;
+
+/**
  * Default configuration.
  */
-const DEFAULT_COLLAB_CONFIG: Required<TechLeadCollaborationConfig> = {
+const DEFAULT_COLLAB_CONFIG: Required<OrchestratorCollaborationConfig> = {
   enableCollaborativeSynthesis: true,
   minExpertsForCollaboration: 3,
   complexityThreshold: 7,
@@ -52,18 +60,21 @@ const DEFAULT_COLLAB_CONFIG: Required<TechLeadCollaborationConfig> = {
 };
 
 /**
- * TechLead collaboration helper.
+ * Orchestrator collaboration helper.
  *
  * Provides methods to use collaboration protocols for:
  * - Synthesizing results from multiple experts
  * - Coordinating complex multi-expert tasks
+ *
+ * @remarks
+ * Renamed from TechLeadCollaborationHelper in Issue #759.
  */
-export class TechLeadCollaborationHelper {
-  private readonly config: Required<TechLeadCollaborationConfig>;
+export class OrchestratorCollaborationHelper {
+  private readonly config: Required<OrchestratorCollaborationConfig>;
   private readonly protocolSelector: AdaptiveProtocolSelector;
   private readonly logger: ILogger;
 
-  constructor(config?: TechLeadCollaborationConfig) {
+  constructor(config?: OrchestratorCollaborationConfig) {
     this.config = { ...DEFAULT_COLLAB_CONFIG, ...config };
     this.logger = this.config.logger;
     this.protocolSelector = createAdaptiveProtocolSelector({
@@ -325,10 +336,20 @@ function generateRecommendations(collab: CollaborationResult): string[] {
 }
 
 /**
- * Create a TechLead collaboration helper.
+ * Create an Orchestrator collaboration helper.
  */
-export function createTechLeadCollaborationHelper(
-  config?: TechLeadCollaborationConfig
-): TechLeadCollaborationHelper {
-  return new TechLeadCollaborationHelper(config);
+export function createOrchestratorCollaborationHelper(
+  config?: OrchestratorCollaborationConfig
+): OrchestratorCollaborationHelper {
+  return new OrchestratorCollaborationHelper(config);
 }
+
+/**
+ * @deprecated Use {@link createOrchestratorCollaborationHelper} instead. Will be removed in v3.0.
+ */
+export const createTechLeadCollaborationHelper = createOrchestratorCollaborationHelper;
+
+/**
+ * @deprecated Use {@link OrchestratorCollaborationHelper} instead. Will be removed in v3.0.
+ */
+export type TechLeadCollaborationHelper = OrchestratorCollaborationHelper;

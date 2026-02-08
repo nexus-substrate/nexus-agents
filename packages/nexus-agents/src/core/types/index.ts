@@ -34,6 +34,9 @@ export type {
   AgentConfig,
   AgentState,
   AgentRole,
+  OrchestratorRole,
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- Intentional: public API backward compat
+  TechLeadRole,
 } from './agent.js';
 export { AgentCapability } from './agent.js';
 

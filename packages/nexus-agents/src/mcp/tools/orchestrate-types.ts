@@ -96,13 +96,20 @@ export const ORCHESTRATE_TOOL_SCHEMA = {
 
 /**
  * @deprecated Use IOrchestrator from core/types/orchestrator.js instead.
- * Will be removed in v3.0. (Issue #595)
+ * Will be removed in v3.0. (Issue #595, #759)
  */
 export interface ITechLead {
   execute(
     task: Task
   ): Promise<Result<{ taskId: string; output: unknown; metadata: unknown }, AgentError>>;
 }
+
+/**
+ * Preferred alias for ITechLead.
+ * @deprecated Use IOrchestrator from core/types/orchestrator.js for new code.
+ */
+// eslint-disable-next-line @typescript-eslint/no-deprecated -- Intentional: backward compat alias
+export type IOrchestratorLegacy = ITechLead;
 
 /**
  * @deprecated Not used with unified orchestrator pattern.

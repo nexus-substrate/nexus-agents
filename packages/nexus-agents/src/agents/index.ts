@@ -17,15 +17,13 @@ export {
 // Simple agent implementation
 export { SimpleAgent } from './simple-agent.js';
 
-// TechLead agent (legacy name)
-export { TechLead, createTechLead, type ExecutionPlan } from './tech-lead.js';
-
 // Orchestrator agent (preferred name - Issue #759)
-export {
-  type Orchestrator,
-  createOrchestrator,
-  type OrchestratorAgentOptions,
-} from './tech-lead.js';
+export { Orchestrator, createOrchestrator, type ExecutionPlan } from './tech-lead.js';
+
+// Deprecated aliases (Issue #759) — intentional re-exports for backward compatibility
+/* eslint-disable @typescript-eslint/no-deprecated -- Intentional: public API backward compat */
+export { type TechLead, createTechLead, type OrchestratorAgentOptions } from './tech-lead.js';
+/* eslint-enable @typescript-eslint/no-deprecated */
 
 // Wave Scheduler (Issue #769)
 export {
@@ -76,7 +74,7 @@ export {
   type ExecutionPlanData,
 } from './plan-converter.js';
 
-// TechLead types and schemas
+// Orchestrator types and schemas (preferred names - Issue #759)
 export type {
   SubTask,
   TaskAnalysis,
@@ -84,22 +82,28 @@ export type {
   SynthesizedResult,
   ResultSummary,
   Conflict,
-  TechLeadOptions,
+  OrchestratorOptions,
   SubtaskPriority,
   SubtaskStatus,
 } from './tech-lead-types.js';
+
+// eslint-disable-next-line @typescript-eslint/no-deprecated -- Intentional: public API backward compat
+export type { TechLeadOptions } from './tech-lead-types.js';
 
 export {
   SubTaskSchema,
   TaskAnalysisSchema,
   ExpertAssignmentSchema,
   SynthesizedResultSchema,
-  TechLeadOptionsSchema,
+  OrchestratorOptionsSchema,
   SubtaskPrioritySchema,
   SubtaskStatusSchema,
   EXPERT_CAPABILITIES,
   TASK_TYPE_EXPERTS,
 } from './tech-lead-types.js';
+
+// eslint-disable-next-line @typescript-eslint/no-deprecated -- Intentional: public API backward compat
+export { TechLeadOptionsSchema } from './tech-lead-types.js';
 
 // State machine
 export {

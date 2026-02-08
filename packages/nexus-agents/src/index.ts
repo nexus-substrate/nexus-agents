@@ -6,14 +6,14 @@
  *
  * @example
  * ```typescript
- * import { createServer, startStdioServer, TechLead, createClaudeAdapter } from 'nexus-agents';
+ * import { createServer, startStdioServer, Orchestrator, createClaudeAdapter } from 'nexus-agents';
  *
  * // Start MCP server
  * const result = await startStdioServer({ name: 'my-server', version: '1.0.0' });
  *
  * // Or use programmatically
  * const adapter = createClaudeAdapter({ model: 'claude-sonnet-4-20250514' });
- * const techLead = new TechLead({ adapter });
+ * const orchestrator = new Orchestrator({ adapter });
  * ```
  *
  * @packageDocumentation

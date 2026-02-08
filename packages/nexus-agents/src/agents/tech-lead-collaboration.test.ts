@@ -7,9 +7,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Task, TaskResult, IAgent } from '../core/index.js';
 import type { TaskAnalysis } from './tech-lead-types.js';
 import {
-  TechLeadCollaborationHelper,
-  createTechLeadCollaborationHelper,
+  OrchestratorCollaborationHelper,
+  createOrchestratorCollaborationHelper,
 } from './tech-lead-collaboration.js';
+
+// Backward compatibility: old names are type aliases now
+const TechLeadCollaborationHelper = OrchestratorCollaborationHelper;
+const createTechLeadCollaborationHelper = createOrchestratorCollaborationHelper;
 
 // ============================================================================
 // Mocks

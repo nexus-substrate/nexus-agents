@@ -10,7 +10,7 @@
  */
 
 import type { Result, ILogger, Task, AgentError, IModelAdapter } from '../../core/index.js';
-import { TechLead } from '../../agents/index.js';
+import { Orchestrator } from '../../agents/index.js';
 import { SicaAgent, createSicaAgent } from '../../agents/self-improving/sica-agent.js';
 import { isSicaEnabled, getSicaConfig } from '../../cli-server-sica.js';
 import type { ITechLead } from './orchestrate.js';
@@ -27,17 +27,17 @@ import type { ITechLead } from './orchestrate.js';
  */
 // eslint-disable-next-line @typescript-eslint/no-deprecated -- Intentional: backwards compat (Issue #595)
 export function createOrchestratorWithSica(logger: ILogger, adapter?: IModelAdapter): ITechLead {
-  const techLead = new TechLead({ logger, ...(adapter !== undefined ? { adapter } : {}) });
+  const orchestrator = new Orchestrator({ logger, ...(adapter !== undefined ? { adapter } : {}) });
 
   if (!isSicaEnabled()) {
     logger.debug('SICA not enabled, using plain orchestrator');
-    return techLead;
+    return orchestrator;
   }
 
   const sicaConfig = getSicaConfig();
   if (sicaConfig === undefined) {
     logger.debug('SICA config unavailable, using plain orchestrator');
-    return techLead;
+    return orchestrator;
   }
 
   logger.info('Creating SICA-wrapped orchestrator', {
@@ -46,7 +46,7 @@ export function createOrchestratorWithSica(logger: ILogger, adapter?: IModelAdap
   });
 
   const sicaAgent = createSicaAgent({
-    baseAgent: techLead,
+    baseAgent: orchestrator,
     initialConfig: {
       systemPrompt: 'Orchestrator agent',
       temperature: 0.3,

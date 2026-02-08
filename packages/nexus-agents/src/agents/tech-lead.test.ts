@@ -14,7 +14,11 @@ import type {
   StreamChunk,
 } from '../core/index.js';
 import { ok, err, AgentError, ModelError } from '../core/index.js';
-import { TechLead, createTechLead, type ExecutionPlan } from './tech-lead.js';
+
+import { Orchestrator, createTechLead, type ExecutionPlan } from './tech-lead.js';
+
+// Backward compatibility: TechLead is now a type alias for Orchestrator
+const TechLead = Orchestrator;
 import type { SubTask, TaskAnalysis } from './tech-lead-types.js';
 
 /**
@@ -1065,6 +1069,7 @@ describe('TechLead', () => {
 
   describe('createTechLead factory', () => {
     it('should create TechLead with default options', () => {
+      // eslint-disable-next-line @typescript-eslint/no-deprecated -- Testing backward compat
       const techLead = createTechLead();
 
       expect(techLead).toBeInstanceOf(TechLead);
@@ -1073,6 +1078,7 @@ describe('TechLead', () => {
     });
 
     it('should create TechLead with custom options', () => {
+      // eslint-disable-next-line @typescript-eslint/no-deprecated -- Testing backward compat
       const techLead = createTechLead({
         id: 'custom-tech-lead',
         techLeadOptions: {

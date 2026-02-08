@@ -33,7 +33,7 @@ import { createMockTechLead } from './mcp/tools/orchestrate.js';
 import type { Expert } from './agents/index.js';
 import { createRealWorkflowEngine } from './workflows/index.js';
 import type { IModelAdapter, WorkflowDefinition } from './core/index.js';
-import { createTechLead } from './agents/index.js';
+import { Orchestrator } from './agents/index.js';
 import type { ILogger } from './core/index.js';
 import { NexusError, ErrorCode } from './core/index.js';
 import { runStpaSafetyAnalysis, StpaSafetyError } from './cli-server-stpa.js';
@@ -42,15 +42,20 @@ import { runStpaSafetyAnalysis, StpaSafetyError } from './cli-server-stpa.js';
 export { StpaSafetyError };
 
 /**
- * Error thrown when TechLead orchestration is unavailable.
- * (Source: Issue #554 - Fix silent mock TechLead fallback)
+ * Error thrown when Orchestrator is unavailable (no model adapter configured).
+ * (Source: Issue #554, renamed in Issue #759)
  */
-export class TechLeadUnavailableError extends NexusError {
+export class OrchestratorUnavailableError extends NexusError {
   constructor(message: string) {
     super(message, { code: ErrorCode.MODEL_UNAVAILABLE });
-    this.name = 'TechLeadUnavailableError';
+    this.name = 'OrchestratorUnavailableError';
   }
 }
+
+/**
+ * @deprecated Use {@link OrchestratorUnavailableError} instead. Will be removed in v3.0.
+ */
+export const TechLeadUnavailableError = OrchestratorUnavailableError;
 import {
   createToolRateLimiterFactory,
   setGlobalToolRateLimiterFactory,
@@ -118,22 +123,23 @@ export const REGISTERED_TOOLS = [
 const MOCK_ORCHESTRATION_ENV = 'NEXUS_ALLOW_MOCK_ORCHESTRATION';
 
 /**
- * Creates the TechLead instance for orchestration.
- * Uses real TechLead with model adapter when available.
- * (Source: Issue #442 - Wire up real TechLead)
- * (Source: Issue #554 - Require explicit opt-in for mock TechLead)
+ * Creates the Orchestrator instance for task orchestration.
+ * Uses real Orchestrator with model adapter when available.
+ * (Source: Issue #442 - Wire up real orchestrator)
+ * (Source: Issue #554 - Require explicit opt-in for mock)
  * (Source: Issue #540 - Add environment variable support)
+ * (Source: Issue #759 - Renamed from createTechLeadForOrchestration)
  *
- * @throws {TechLeadUnavailableError} When no adapter and mock not explicitly requested
+ * @throws {OrchestratorUnavailableError} When no adapter and mock not explicitly requested
  */
 /* eslint-disable @typescript-eslint/no-deprecated -- Intentional: backwards compat, will migrate to IOrchestrator (Issue #595) */
-function createTechLeadForOrchestration(
+function createOrchestratorForOrchestration(
   modelAdapter: IModelAdapter | undefined,
   logger: ILogger,
   useMockTechLead?: boolean
 ): import('./mcp/tools/orchestrate.js').ITechLead {
   if (modelAdapter !== undefined) {
-    return createTechLead({ adapter: modelAdapter, logger });
+    return new Orchestrator({ adapter: modelAdapter, logger });
   }
 
   // Issue #554/#540: Check both config option and environment variable
@@ -143,13 +149,13 @@ function createTechLeadForOrchestration(
   if (mockEnabled) {
     const source = envMockEnabled ? `${MOCK_ORCHESTRATION_ENV} env var` : 'config';
     logger.warn(
-      `Using mock TechLead as explicitly configured via ${source} (no real adapter available)`
+      `Using mock orchestrator as explicitly configured via ${source} (no real adapter available)`
     );
     return createMockTechLead();
   }
 
-  throw new TechLeadUnavailableError(
-    'No model adapter available and mock TechLead not explicitly enabled. ' +
+  throw new OrchestratorUnavailableError(
+    'No model adapter available and mock orchestrator not explicitly enabled. ' +
       `Set useMockTechLead: true in config, or ${MOCK_ORCHESTRATION_ENV}=true, ` +
       'or configure an API key (ANTHROPIC_API_KEY, OPENAI_API_KEY, or GOOGLE_AI_API_KEY).'
   );
@@ -323,13 +329,13 @@ function registerCoreTools(ctx: ToolRegistrationContext): void {
 function registerOrchestrateToolSafe(ctx: ToolRegistrationContext): void {
   try {
     // Issue #554: Pass useMockTechLead to require explicit opt-in for mock
-    const techLead = createTechLeadForOrchestration(
+    const orchestrator = createOrchestratorForOrchestration(
       ctx.modelAdapter,
       ctx.logger,
       ctx.useMockTechLead
     );
     registerOrchestrateTool(ctx.server, {
-      techLead,
+      techLead: orchestrator,
       logger: ctx.logger,
       rateLimiter: ctx.rateLimiterFactory.getForTool('orchestrate'),
       security: ctx.securityConfig,

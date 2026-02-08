@@ -1,11 +1,15 @@
 /**
- * nexus-agents/agents - TechLead Agent
+ * nexus-agents/agents - Orchestrator Agent
  *
- * The TechLead agent is responsible for:
+ * The Orchestrator agent is responsible for:
  * - Analyzing incoming tasks for complexity and requirements
  * - Breaking down complex tasks into subtasks
  * - Selecting appropriate expert agents for subtasks
  * - Synthesizing results from multiple experts
+ *
+ * @remarks
+ * Renamed from TechLead in Issue #759. The old class name is retained
+ * as a deprecated type alias for backward compatibility.
  *
  * (Source: Nexus Agents CLAUDE.md, Agent Architecture)
  */
@@ -26,7 +30,7 @@ import type {
   TaskAnalysis,
   ExpertAssignment,
   SynthesizedResult,
-  TechLeadOptions,
+  OrchestratorOptions,
 } from './tech-lead-types.js';
 import { TaskAnalysisSchema, SubTaskSchema, SynthesizedResultSchema } from './tech-lead-types.js';
 import {
@@ -47,40 +51,40 @@ import {
   type ExecutionPlanData,
 } from './plan-converter.js';
 import {
-  TechLeadCollaborationHelper,
-  createTechLeadCollaborationHelper,
-  type TechLeadCollaborationConfig,
+  OrchestratorCollaborationHelper,
+  createOrchestratorCollaborationHelper,
+  type OrchestratorCollaborationConfig,
 } from './tech-lead-collaboration.js';
 
-/** Default TechLead options. */
-const DEFAULT_OPTIONS: Required<TechLeadOptions> = {
+/** Default Orchestrator options. */
+const DEFAULT_OPTIONS: Required<OrchestratorOptions> = {
   maxSubtasks: 10,
   decompositionThreshold: 5,
   enableParallelHints: true,
   expertWeights: {},
 };
 
-/** Extended options for TechLead with collaboration. */
-interface TechLeadExtendedOptions {
+/** Extended options for Orchestrator with collaboration. */
+interface OrchestratorExtendedOptions {
   /** Collaboration configuration (Issue #488) */
-  collaborationConfig?: TechLeadCollaborationConfig;
+  collaborationConfig?: OrchestratorCollaborationConfig;
   /** Map of available expert agents for collaboration */
   expertAgents?: Map<string, IAgent>;
 }
 
 /** System prompt for task analysis. */
-const ANALYSIS_PROMPT = `You are a technical lead analyzing a software development task.
+const ANALYSIS_PROMPT = `You are an orchestrator analyzing a software development task.
 Analyze the task and provide a structured JSON assessment with: taskId, complexity (1-10),
 taskType, requirements[], risks[], needsDecomposition, approach, estimatedEffort.`;
 
 /** System prompt for task decomposition. */
-const DECOMPOSITION_PROMPT = `You are a technical lead breaking down a complex task.
+const DECOMPOSITION_PROMPT = `You are an orchestrator breaking down a complex task.
 Create subtasks as JSON array with: id, parentTaskId, description, expectedOutput,
 dependencies[], priority (critical/high/medium/low), status: "pending", complexity (1-10),
 requiredCapabilities[].`;
 
 /** System prompt for result synthesis. */
-const SYNTHESIS_PROMPT = `You are a technical lead synthesizing results from multiple experts.
+const SYNTHESIS_PROMPT = `You are an orchestrator synthesizing results from multiple experts.
 Respond with JSON: combinedOutput, summary, resultSummaries[], conflicts[], qualityScore (0-1),
 recommendations[].`;
 
@@ -121,18 +125,22 @@ export interface ExecutionPlan extends ExecutionPlanData {
 }
 
 /**
- * TechLead Agent - orchestrates task execution by analyzing, decomposing,
+ * Orchestrator Agent - orchestrates task execution by analyzing, decomposing,
  * delegating, and synthesizing results from expert agents.
+ *
+ * @remarks
+ * Renamed from TechLead in Issue #759. The old name is retained as a
+ * deprecated type alias for backward compatibility.
  */
-export class TechLead extends BaseAgent {
-  private readonly techLeadOptions: Required<TechLeadOptions>;
-  private readonly collaborationHelper: TechLeadCollaborationHelper;
+export class Orchestrator extends BaseAgent {
+  private readonly orchestratorOptions: Required<OrchestratorOptions>;
+  private readonly collaborationHelper: OrchestratorCollaborationHelper;
   private expertAgents: Map<string, IAgent>;
   private lastAnalysis?: TaskAnalysis;
 
   constructor(
     options: Partial<BaseAgentOptions> &
-      TechLeadExtendedOptions & { techLeadOptions?: TechLeadOptions } = {}
+      OrchestratorExtendedOptions & { techLeadOptions?: OrchestratorOptions } = {}
   ) {
     const baseOptions: BaseAgentOptions = {
       id: options.id ?? 'tech-lead',
@@ -154,8 +162,8 @@ export class TechLead extends BaseAgent {
 
     super(baseOptions);
 
-    this.techLeadOptions = { ...DEFAULT_OPTIONS, ...options.techLeadOptions };
-    this.collaborationHelper = createTechLeadCollaborationHelper(options.collaborationConfig);
+    this.orchestratorOptions = { ...DEFAULT_OPTIONS, ...options.techLeadOptions };
+    this.collaborationHelper = createOrchestratorCollaborationHelper(options.collaborationConfig);
     this.expertAgents = options.expertAgents ?? new Map<string, IAgent>();
   }
 
@@ -221,7 +229,7 @@ export class TechLead extends BaseAgent {
   /** Analyze a task to understand its complexity and requirements. */
   async analyzeTask(task: Task): Promise<Result<TaskAnalysis, AgentError>> {
     if (this.adapter === undefined) {
-      return ok(heuristicAnalysis(task, this.techLeadOptions));
+      return ok(heuristicAnalysis(task, this.orchestratorOptions));
     }
 
     const request: CompletionRequest = {
@@ -243,7 +251,7 @@ export class TechLead extends BaseAgent {
       this.logger.warn('Failed to parse analysis response, using heuristic', {
         error: parseResult.error.message,
       });
-      return ok(heuristicAnalysis(task, this.techLeadOptions));
+      return ok(heuristicAnalysis(task, this.orchestratorOptions));
     }
 
     return ok(parseResult.value);
@@ -252,14 +260,14 @@ export class TechLead extends BaseAgent {
   /** Decompose a task into subtasks. */
   async decomposeTask(task: Task, analysis: TaskAnalysis): Promise<Result<SubTask[], AgentError>> {
     if (this.adapter === undefined) {
-      return ok(heuristicDecomposition(task, analysis, this.techLeadOptions.maxSubtasks));
+      return ok(heuristicDecomposition(task, analysis, this.orchestratorOptions.maxSubtasks));
     }
 
     const request: CompletionRequest = {
       messages: [
         {
           role: 'user',
-          content: `Task: ${task.description}\nAnalysis: ${JSON.stringify(analysis)}\nMax: ${String(this.techLeadOptions.maxSubtasks)}`,
+          content: `Task: ${task.description}\nAnalysis: ${JSON.stringify(analysis)}\nMax: ${String(this.orchestratorOptions.maxSubtasks)}`,
         },
       ],
       systemPrompt: DECOMPOSITION_PROMPT,
@@ -279,18 +287,18 @@ export class TechLead extends BaseAgent {
 
       return ok(
         subtasks.length > 0
-          ? subtasks.slice(0, this.techLeadOptions.maxSubtasks)
-          : heuristicDecomposition(task, analysis, this.techLeadOptions.maxSubtasks)
+          ? subtasks.slice(0, this.orchestratorOptions.maxSubtasks)
+          : heuristicDecomposition(task, analysis, this.orchestratorOptions.maxSubtasks)
       );
     } catch {
       this.logger.warn('Failed to parse decomposition response, using heuristic');
-      return ok(heuristicDecomposition(task, analysis, this.techLeadOptions.maxSubtasks));
+      return ok(heuristicDecomposition(task, analysis, this.orchestratorOptions.maxSubtasks));
     }
   }
 
   /** Select appropriate expert agents for each subtask. */
   selectExperts(subtasks: SubTask[]): ExpertAssignment[] {
-    return subtasks.map((st) => selectExpertForSubtask(st, this.techLeadOptions.expertWeights));
+    return subtasks.map((st) => selectExpertForSubtask(st, this.orchestratorOptions.expertWeights));
   }
 
   /**
@@ -400,13 +408,13 @@ export class TechLead extends BaseAgent {
   /**
    * Get the collaboration helper for external use.
    */
-  getCollaborationHelper(): TechLeadCollaborationHelper {
+  getCollaborationHelper(): OrchestratorCollaborationHelper {
     return this.collaborationHelper;
   }
 
-  /** Get the TechLead options. */
-  getOptions(): Readonly<Required<TechLeadOptions>> {
-    return { ...this.techLeadOptions };
+  /** Get the Orchestrator options. */
+  getOptions(): Readonly<Required<OrchestratorOptions>> {
+    return { ...this.orchestratorOptions };
   }
 
   private buildExecutionPlan(
@@ -415,7 +423,7 @@ export class TechLead extends BaseAgent {
     subtasks: SubTask[],
     assignments: ExpertAssignment[]
   ): ExecutionPlan {
-    const parallelGroups = this.techLeadOptions.enableParallelHints
+    const parallelGroups = this.orchestratorOptions.enableParallelHints
       ? identifyParallelGroups(subtasks)
       : [];
     const estimatedDuration = estimateDuration(subtasks);
@@ -468,49 +476,41 @@ export class TechLead extends BaseAgent {
 }
 
 /**
- * Creates a new TechLead agent with the given options.
+ * @deprecated Use {@link createOrchestrator} instead. Will be removed in v3.0.
  *
  * @example
  * ```typescript
- * const techLead = createTechLead({
- *   adapter: myModelAdapter,
- *   techLeadOptions: { maxSubtasks: 5 },
+ * const orchestrator = createOrchestrator({
+ *   orchestratorOptions: { maxSubtasks: 5 },
  * });
- * const result = await techLead.execute(task);
+ * const result = await orchestrator.execute(task);
  * ```
  */
 export function createTechLead(
-  options?: Partial<BaseAgentOptions> & { techLeadOptions?: TechLeadOptions }
-): TechLead {
-  return new TechLead(options);
+  options?: Partial<BaseAgentOptions> & { techLeadOptions?: OrchestratorOptions }
+): Orchestrator {
+  return new Orchestrator(options);
 }
 
 // ============================================================================
-// Orchestrator Aliases (Issue #759)
+// Deprecated TechLead Aliases (Issue #759)
 // ============================================================================
 
 /**
- * Orchestrator is the preferred name for the coordination agent.
- * This is a type alias for backward compatibility during migration.
+ * @deprecated Use {@link Orchestrator} instead. Will be removed in v3.0.
  *
- * @remarks
- * Per consensus vote (83.33% approval), 'orchestrator' better describes
- * the agent's role in multi-agent coordination, task decomposition,
- * expert delegation, and result synthesis.
- *
- * TechLead is retained for backward compatibility but marked as deprecated.
+ * TechLead is retained as a type alias for backward compatibility.
  * New code should use Orchestrator.
  */
-export type Orchestrator = TechLead;
+export type TechLead = Orchestrator;
 
 /**
- * Options for Orchestrator agent.
- * Type alias for backward compatibility.
+ * @deprecated Use {@link OrchestratorOptions} instead. Will be removed in v3.0.
  */
-export type OrchestratorAgentOptions = TechLeadOptions;
+export type OrchestratorAgentOptions = OrchestratorOptions;
 
 /**
- * Create an Orchestrator agent instance.
+ * Creates a new Orchestrator agent with the given options.
  * This is the preferred factory function for creating coordination agents.
  *
  * @param options - Agent configuration options
@@ -521,15 +521,14 @@ export type OrchestratorAgentOptions = TechLeadOptions;
  * const orchestrator = createOrchestrator({
  *   orchestratorOptions: { maxSubtasks: 5 }
  * });
- * const plan = await orchestrator.plan(task);
+ * const result = await orchestrator.execute(task);
  * ```
  */
 export function createOrchestrator(
-  options?: Partial<BaseAgentOptions> & { orchestratorOptions?: OrchestratorAgentOptions }
+  options?: Partial<BaseAgentOptions> & { orchestratorOptions?: OrchestratorOptions }
 ): Orchestrator {
-  // Map orchestratorOptions to techLeadOptions for backward compatibility
   const { orchestratorOptions, ...restOptions } = options ?? {};
-  return new TechLead({
+  return new Orchestrator({
     ...restOptions,
     ...(orchestratorOptions !== undefined && { techLeadOptions: orchestratorOptions }),
   });

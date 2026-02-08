@@ -35,10 +35,15 @@ export type AgentRole =
   | 'custom';
 
 /**
- * Type alias for backward compatibility.
- * @deprecated Use 'orchestrator' AgentRole instead.
+ * Role type for the orchestration/coordination agent.
+ * Includes both 'orchestrator' (preferred) and 'tech_lead' (deprecated).
  */
-export type TechLeadRole = Extract<AgentRole, 'tech_lead' | 'orchestrator'>;
+export type OrchestratorRole = Extract<AgentRole, 'orchestrator' | 'tech_lead'>;
+
+/**
+ * @deprecated Use {@link OrchestratorRole} instead. Will be removed in v3.0.
+ */
+export type TechLeadRole = OrchestratorRole;
 
 /**
  * Agent capabilities.
