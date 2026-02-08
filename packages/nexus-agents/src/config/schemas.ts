@@ -84,6 +84,11 @@ export { SicaConfigSchema, DEFAULT_SICA_CONFIG } from './schemas-sica.js';
 
 export type { SicaConfig } from './schemas-sica.js';
 
+// Re-export gateway schemas (Issue #897)
+export { GatewayConfigSchema } from './schemas-gateway.js';
+
+export type { GatewayConfigType } from './schemas-gateway.js';
+
 // Re-export routing schemas (Issue #475)
 export {
   BudgetConstraintsSchema,
@@ -118,6 +123,7 @@ import { ObservabilityConfigSchema } from './schemas-observability.js';
 import { RoutingConfigSchema } from './schemas-routing.js';
 import { SkillLibraryConfigSchema } from './schemas-skills.js';
 import { SicaConfigSchema } from './schemas-sica.js';
+import { GatewayConfigSchema } from './schemas-gateway.js';
 
 /**
  * Complete application configuration schema.
@@ -136,6 +142,8 @@ export const AppConfigSchema = z.object({
   skills: SkillLibraryConfigSchema.optional(),
   /** SICA self-improvement configuration (Issue #492) */
   sica: SicaConfigSchema.optional(),
+  /** Gateway middleware configuration (Issue #897) */
+  gateway: GatewayConfigSchema.optional(),
 });
 
 export type AppConfig = z.infer<typeof AppConfigSchema>;

@@ -9,6 +9,7 @@ import {
   classifyRequestTier,
   RequestTier,
   TOOL_TIER_MAP,
+  parseTierOverrides,
   type TierOverrides,
 } from './tier-classifier.js';
 
@@ -178,6 +179,55 @@ describe('tier overrides', () => {
     );
     // Security promotion overrides the override
     expect(result).toBe(RequestTier.ORCHESTRATED);
+  });
+});
+
+// ============================================================================
+// TOOL_TIER_MAP coverage
+// ============================================================================
+
+// ============================================================================
+// parseTierOverrides — config string → enum conversion
+// ============================================================================
+
+describe('parseTierOverrides', () => {
+  it('returns undefined for undefined input', () => {
+    expect(parseTierOverrides(undefined)).toBeUndefined();
+  });
+
+  it('returns undefined for empty object', () => {
+    expect(parseTierOverrides({})).toBeUndefined();
+  });
+
+  it('converts valid tier name strings to RequestTier enums', () => {
+    const result = parseTierOverrides({
+      memory_query: 'ANALYZED',
+      orchestrate: 'DIRECT',
+      delegate_to_model: 'ORCHESTRATED',
+    });
+    expect(result).toEqual({
+      memory_query: RequestTier.ANALYZED,
+      orchestrate: RequestTier.DIRECT,
+      delegate_to_model: RequestTier.ORCHESTRATED,
+    });
+  });
+
+  it('ignores entries with invalid tier names', () => {
+    const result = parseTierOverrides({
+      memory_query: 'ANALYZED',
+      bad_tool: 'INVALID_TIER',
+    });
+    expect(result).toEqual({
+      memory_query: RequestTier.ANALYZED,
+    });
+  });
+
+  it('returns undefined when all entries are invalid', () => {
+    const result = parseTierOverrides({
+      tool_a: 'NOPE',
+      tool_b: 'ALSO_NOPE',
+    });
+    expect(result).toBeUndefined();
   });
 });
 

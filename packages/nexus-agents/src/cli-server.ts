@@ -16,6 +16,7 @@ import { initializeBuiltInTemplates } from './workflows/index.js';
 import { createResilientAdapter } from './adapters/resilient-adapter.js';
 import { getStdinLifecycleMonitor } from './adapters/stdin-lifecycle.js';
 import { registerMcpTools } from './cli-server-tools.js';
+import { parseTierOverrides, type GatewayConfig } from './mcp/gateway/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { createLogger, type ILogger } from './core/index.js';
@@ -319,6 +320,22 @@ function createResilientModelAdapter(
 }
 
 /**
+ * Builds gateway config from application config + runtime logger.
+ * Converts schema-level string tier names to RequestTier enum values.
+ * (Source: Issue #897)
+ */
+function buildGatewayConfig(config: AppConfig, logger: ILogger): GatewayConfig {
+  const gatewaySection = config.gateway;
+  const enabled = gatewaySection?.enabled !== false;
+  const tierOverrides = parseTierOverrides(gatewaySection?.tierOverrides);
+  return {
+    enabled,
+    logger,
+    ...(tierOverrides !== undefined && { tierOverrides }),
+  };
+}
+
+/**
  * Initializes and registers MCP tools with the server.
  * Handles template loading, model adapter detection, and tool registration.
  *
@@ -352,8 +369,8 @@ async function initializeAndRegisterTools(
     policyFirewall,
     executionMode: policyVals.defaultExec,
     modelAdapter,
-    // Gateway middleware for tier-aware dispatch logging (Issue #896)
-    gatewayConfig: { enabled: true, logger },
+    // Gateway middleware for tier-aware dispatch logging (Issue #896, #897)
+    gatewayConfig: buildGatewayConfig(config, logger),
     ...(allowedPaths !== undefined && { allowedPaths }),
     ...(securityConfig !== undefined && { securityConfig }),
     ...(workflowConfig !== undefined && { workflowConfig }),

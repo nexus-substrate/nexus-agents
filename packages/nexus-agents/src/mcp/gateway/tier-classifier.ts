@@ -151,6 +151,34 @@ function shouldPromote(params: Record<string, unknown>): boolean {
   return false;
 }
 
+/** Map from config string tier names to RequestTier enum values. */
+const TIER_NAME_TO_ENUM: Readonly<Record<string, RequestTier>> = {
+  DIRECT: RequestTier.DIRECT,
+  ANALYZED: RequestTier.ANALYZED,
+  ORCHESTRATED: RequestTier.ORCHESTRATED,
+};
+
+/**
+ * Converts string tier override map (from config schema) to RequestTier enum map.
+ * Ignores entries with invalid tier names.
+ *
+ * @param overrides - String-keyed tier names from GatewayConfigSchema
+ * @returns Enum-valued TierOverrides, or undefined if empty/undefined
+ */
+export function parseTierOverrides(
+  overrides: Record<string, string> | undefined
+): TierOverrides | undefined {
+  if (overrides === undefined) return undefined;
+  const result: TierOverrides = {};
+  for (const [tool, tierName] of Object.entries(overrides)) {
+    const tier = TIER_NAME_TO_ENUM[tierName];
+    if (tier !== undefined) {
+      result[tool] = tier;
+    }
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
 /** Checks if text contains any security or architecture promotion keyword. */
 function containsPromotionKeyword(text: string): boolean {
   const lower = text.toLowerCase();

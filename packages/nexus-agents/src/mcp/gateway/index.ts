@@ -9,6 +9,7 @@ export {
   classifyRequestTier,
   RequestTier,
   TOOL_TIER_MAP,
+  parseTierOverrides,
   type TierOverrides,
 } from './tier-classifier.js';
 
