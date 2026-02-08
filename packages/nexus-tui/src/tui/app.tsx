@@ -13,6 +13,9 @@ import type { CommandHandler } from '../types.js';
 import { Layout } from './layout.js';
 import { appReducer, INITIAL_STATE, StateContext, DispatchContext } from './state.js';
 import { useCommand } from './hooks/use-command.js';
+import { useKeyboard } from './hooks/use-keyboard.js';
+import { HelpOverlay } from './components/help-overlay.js';
+import { useAppState } from './state.js';
 
 interface AppProps {
   readonly registry: ReadonlyMap<string, CommandHandler>;
@@ -55,6 +58,9 @@ async function loadBus(setBus: (b: BusLike | null) => void): Promise<void> {
 function AppInner({ registry, jsonMode }: AppProps): React.ReactElement {
   const { execute } = useCommand(registry, jsonMode);
   const eventBus = useEventBusLoader();
+  const { showHelp } = useAppState();
+
+  useKeyboard();
 
   const handleCommand = useCallback(
     (line: string) => {
@@ -69,7 +75,7 @@ function AppInner({ registry, jsonMode }: AppProps): React.ReactElement {
         {'  Nexus Agents TUI v0.1.0'}
       </Text>
       <Text dimColor>{"  Type 'help' for commands. Press ? for keybindings."}</Text>
-      <Layout onCommand={handleCommand} eventBus={eventBus} />
+      {showHelp ? <HelpOverlay /> : <Layout onCommand={handleCommand} eventBus={eventBus} />}
     </Box>
   );
 }
