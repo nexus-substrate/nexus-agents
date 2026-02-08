@@ -75,7 +75,11 @@ export { NexusAgentExecutor, createNexusExecutorFromEnv } from './nexus-agent-ex
 export type { NexusAgentExecutorConfig } from './nexus-agent-executor.js';
 
 // CLI agent executor (subprocess-based)
-export { CliAgentExecutor, createCliExecutor, isCliAvailable } from './cli-agent-executor.js';
+export {
+  CliAgentExecutor,
+  createCliExecutor,
+  isCliAvailable as isSWEBenchCliAvailable,
+} from './cli-agent-executor.js';
 
 export type { CliAgentExecutorConfig } from './cli-agent-executor.js';
 
@@ -126,9 +130,9 @@ export type {
   TimingStatistics,
   ResourceStatistics,
   FailureCategory,
-  FailureAnalysis,
+  FailureAnalysis as SWEBenchFailureAnalysis,
   FailureStatistics,
-  FailurePattern,
+  FailurePattern as SWEBenchFailurePattern,
   TokenUsageBreakdown,
   TokensByPhase,
   CostEstimate,
