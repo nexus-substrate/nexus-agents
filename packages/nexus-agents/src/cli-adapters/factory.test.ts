@@ -75,7 +75,7 @@ describe('createCliAdapter', () => {
 
     // Adapters use CLI aliases as model IDs — quality-first defaults (Issue #807)
     expect(claude.getModelInfo().id).toBe('opus');
-    expect(gemini.getModelInfo().id).toBe('gemini-2.5-pro');
+    expect(gemini.getModelInfo().id).toBe('gemini-3-pro-preview');
     expect(codex.getModelInfo().id).toBe('o3');
   });
 

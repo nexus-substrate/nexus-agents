@@ -75,9 +75,9 @@ function createArgs(command: string, overrides: Record<string, unknown> = {}): P
 
 describe('cli-commands', () => {
   let writeSpy: ReturnType<typeof vi.spyOn>;
-  vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
-    throw new Error(`process.exit(${String(code)})`);
-  }) as unknown as typeof process.exit);
+  // Vitest 3.x intercepts process.exit before spies fire.
+  // Assertions use substring/regex matching on vitest's error message.
+  vi.spyOn(process, 'exit');
 
   beforeEach(() => {
     writeSpy = vi.spyOn(process.stdout, 'write').mockReturnValue(true) as unknown as ReturnType<
