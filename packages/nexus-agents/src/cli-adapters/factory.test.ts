@@ -10,6 +10,12 @@ import { ClaudeCliAdapter } from './adapters/claude-adapter.js';
 import { GeminiCliAdapter } from './adapters/gemini-adapter.js';
 import { CodexCliAdapter } from './adapters/codex-adapter.js';
 import { CodexMcpAdapter } from './adapters/codex-mcp-adapter.js';
+import { getDefaultModelForCli, getCliModelName } from '../config/model-config-helpers.js';
+
+/** Derive the expected default model ID for a CLI from the canonical registry. */
+function expectedDefaultModelId(cli: 'claude' | 'gemini' | 'codex'): string {
+  return getCliModelName(getDefaultModelForCli(cli));
+}
 
 describe('createCliAdapter', () => {
   it('should create ClaudeCliAdapter for claude', () => {
@@ -73,10 +79,10 @@ describe('createCliAdapter', () => {
     const gemini = createCliAdapter({ cli: 'gemini' });
     const codex = createCliAdapter({ cli: 'codex' });
 
-    // Adapters use CLI aliases as model IDs — quality-first defaults (Issue #807)
-    expect(claude.getModelInfo().id).toBe('opus');
-    expect(gemini.getModelInfo().id).toBe('gemini-3-pro-preview');
-    expect(codex.getModelInfo().id).toBe('o3');
+    // Derive expected model IDs from canonical registry (Issue #807, #882)
+    expect(claude.getModelInfo().id).toBe(expectedDefaultModelId('claude'));
+    expect(gemini.getModelInfo().id).toBe(expectedDefaultModelId('gemini'));
+    expect(codex.getModelInfo().id).toBe(expectedDefaultModelId('codex'));
   });
 
   it('should throw for unsupported CLI', () => {

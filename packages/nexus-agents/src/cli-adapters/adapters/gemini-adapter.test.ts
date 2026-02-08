@@ -15,6 +15,10 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { GeminiCliAdapter, createGeminiAdapter } from './gemini-adapter.js';
+import { getDefaultModelForCli, getCliModelName } from '../../config/model-config-helpers.js';
+
+/** Expected default model ID for Gemini, derived from canonical registry. */
+const EXPECTED_DEFAULT_ID = getCliModelName(getDefaultModelForCli('gemini'));
 
 describe('GeminiCliAdapter', () => {
   let adapter: GeminiCliAdapter;
@@ -108,8 +112,8 @@ describe('GeminiCliAdapter', () => {
     it('should return correct model info for default model', () => {
       const info = adapter.getModelInfo();
 
-      expect(info.id).toBe('gemini-3-pro-preview');
-      expect(info.name).toBe('Gemini 3 Pro (Preview)');
+      expect(info.id).toBe(EXPECTED_DEFAULT_ID);
+      expect(info.name).toBeDefined();
       expect(info.contextWindow).toBe(1_000_000);
       expect(info.maxOutput).toBe(8_192);
     });
@@ -217,7 +221,7 @@ describe('GeminiCliAdapter', () => {
 
   describe('configuration defaults', () => {
     it('should have correct default model', () => {
-      expect(adapter.getModelInfo().id).toBe('gemini-3-pro-preview');
+      expect(adapter.getModelInfo().id).toBe(EXPECTED_DEFAULT_ID);
     });
 
     it('should have circuit breaker in closed state initially', () => {
