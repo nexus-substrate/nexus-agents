@@ -63,8 +63,8 @@ export {
  * - OpenAI: platform.openai.com (Codex/GPT model cards)
  */
 export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
-  version: 1,
-  updatedAt: '2026-02-07',
+  version: 2,
+  updatedAt: '2026-02-08',
   models: [
     // ----- Anthropic Claude -----
     {

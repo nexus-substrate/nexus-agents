@@ -32,6 +32,7 @@ import {
 import {
   DEFAULT_MODEL_CAPABILITIES,
   DEFAULT_MODEL_PER_CLI,
+  getModelCapabilities,
   modelSupportsAll,
 } from '../../config/model-capabilities.js';
 import type { SpecializationMatch } from '../../config/task-specialization-types.js';
@@ -162,6 +163,8 @@ export interface ScoreModelOptions {
   readonly preferredCapability?: PreferredCapability | undefined;
   readonly billingMode?: BillingMode | undefined;
   readonly specialization?: SpecializationMatch | null | undefined;
+  /** Apply scoring penalty for deprecated models (#891). */
+  readonly deprecated?: boolean | undefined;
 }
 
 /**
@@ -181,7 +184,8 @@ export function scoreModel(
   const specScore = calcSpecializationBonus(modelName, options.specialization ?? null);
   const costComponent = billingMode === 'plan' ? 0 : profile.cost;
   const baseScore = profile.reasoning + profile.speed + costComponent;
-  return reqScore + ctxScore + prefScore + specScore + baseScore;
+  const deprecationPenalty = options.deprecated === true ? -20 : 0;
+  return reqScore + ctxScore + prefScore + specScore + baseScore + deprecationPenalty;
 }
 
 /**
@@ -280,15 +284,19 @@ export function scoreAllModels(
   const eligible = filterByModality(requirements);
   const availCache = getAvailabilityCache();
 
-  const opts: ScoreModelOptions = { preferredCapability: pref, billingMode, specialization };
   return Object.entries(MODEL_CAPABILITIES)
     .filter(([name]) => eligible === null || eligible.has(name))
     .filter(([name]) => !availCache.isKnownUnavailable(name as ModelId))
-    .map(([name, profile]) => ({
-      name,
-      profile,
-      score: scoreModel(name, profile, requirements, opts),
-    }))
+    .map(([name, profile]) => {
+      const cap = getModelCapabilities(name as ModelId);
+      const opts: ScoreModelOptions = {
+        preferredCapability: pref,
+        billingMode,
+        specialization,
+        deprecated: cap?.deprecated,
+      };
+      return { name, profile, score: scoreModel(name, profile, requirements, opts) };
+    })
     .sort((a, b) => b.score - a.score);
 }
 

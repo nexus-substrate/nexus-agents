@@ -419,6 +419,36 @@ describe('selectModel billing mode', () => {
 });
 
 // ============================================================================
+// Deprecation Penalty — scoreModel (#891)
+// ============================================================================
+
+describe('scoreModel deprecation penalty', () => {
+  it('applies -20 penalty for deprecated models', () => {
+    const profile = makeProfile({ reasoning: 9, speed: 5, cost: 4 });
+    const req = makeRequirements();
+    const normal = scoreModel('test', profile, req);
+    const deprecated = scoreModel('test', profile, req, { deprecated: true });
+    expect(deprecated).toBe(normal - 20);
+  });
+
+  it('does not apply penalty when deprecated is false', () => {
+    const profile = makeProfile({ reasoning: 9, speed: 5, cost: 4 });
+    const req = makeRequirements();
+    const normal = scoreModel('test', profile, req);
+    const notDeprecated = scoreModel('test', profile, req, { deprecated: false });
+    expect(notDeprecated).toBe(normal);
+  });
+
+  it('does not apply penalty when deprecated is undefined', () => {
+    const profile = makeProfile({ reasoning: 9, speed: 5, cost: 4 });
+    const req = makeRequirements();
+    const normal = scoreModel('test', profile, req);
+    const noFlag = scoreModel('test', profile, req, {});
+    expect(noFlag).toBe(normal);
+  });
+});
+
+// ============================================================================
 // codex-5.3 model capabilities
 // ============================================================================
 

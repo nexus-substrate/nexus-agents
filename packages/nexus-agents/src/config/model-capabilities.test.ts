@@ -19,6 +19,7 @@ import {
   findModelsByProvider,
   findBestModelForOutput,
   modelSupportsAll,
+  ModelCapabilitySchema,
 } from './model-capabilities.js';
 
 // ---------------------------------------------------------------------------
@@ -30,8 +31,8 @@ describe('DEFAULT_MODEL_CAPABILITIES', () => {
     expect(DEFAULT_MODEL_CAPABILITIES.models).toHaveLength(10);
   });
 
-  it('should have version 1', () => {
-    expect(DEFAULT_MODEL_CAPABILITIES.version).toBe(1);
+  it('should have version 2', () => {
+    expect(DEFAULT_MODEL_CAPABILITIES.version).toBe(2);
   });
 
   it('all models should have required fields', () => {
@@ -284,5 +285,50 @@ describe('modelSupportsAll', () => {
   it('returns true when no requirements specified', () => {
     const result = modelSupportsAll('claude-haiku', {});
     expect(result).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Schema Deprecation Fields (#891)
+// ---------------------------------------------------------------------------
+
+describe('deprecation schema fields', () => {
+  it('accepts model without deprecation fields', () => {
+    const base = DEFAULT_MODEL_CAPABILITIES.models[0];
+    const result = ModelCapabilitySchema.safeParse(base);
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts model with deprecated: true', () => {
+    const base = { ...DEFAULT_MODEL_CAPABILITIES.models[0], deprecated: true };
+    const result = ModelCapabilitySchema.safeParse(base);
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts model with all deprecation fields', () => {
+    const base = {
+      ...DEFAULT_MODEL_CAPABILITIES.models[0],
+      deprecated: true,
+      deprecatedAt: '2026-01-15',
+      replacedBy: 'claude-sonnet' as const,
+    };
+    const result = ModelCapabilitySchema.safeParse(base);
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects invalid replacedBy value', () => {
+    const base = {
+      ...DEFAULT_MODEL_CAPABILITIES.models[0],
+      deprecated: true,
+      replacedBy: 'nonexistent-model',
+    };
+    const result = ModelCapabilitySchema.safeParse(base);
+    expect(result.success).toBe(false);
+  });
+
+  it('no current models are deprecated', () => {
+    for (const model of DEFAULT_MODEL_CAPABILITIES.models) {
+      expect(model.deprecated).toBeUndefined();
+    }
   });
 });

@@ -145,6 +145,12 @@ export const ModelCapabilitySchema = z.object({
   cliAlias: z.string().optional(),
   /** Model name the CLI binary expects (e.g., 'gemini-2.5-pro') */
   cliModelName: z.string().optional(),
+  /** Whether this model is deprecated and should receive a scoring penalty */
+  deprecated: z.boolean().optional(),
+  /** ISO date when the model was deprecated (informational) */
+  deprecatedAt: z.string().optional(),
+  /** Model ID to migrate to (informational guidance) */
+  replacedBy: z.enum(MODEL_IDS).optional(),
 });
 
 export type ModelCapability = z.infer<typeof ModelCapabilitySchema>;
