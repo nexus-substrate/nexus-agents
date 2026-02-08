@@ -28,7 +28,7 @@ export enum RequestTier {
 export type TierOverrides = Record<string, RequestTier>;
 
 /**
- * Default tier assignment for all 19 registered MCP tools.
+ * Default tier assignment for all 20 registered MCP tools.
  * Tier 1: read-only, no model invocation needed.
  * Tier 2: requires model selection or expert creation.
  * Tier 3: requires full orchestration, decomposition, or consensus.
@@ -50,6 +50,7 @@ export const TOOL_TIER_MAP: Readonly<Record<string, RequestTier>> = {
   execute_expert: RequestTier.ANALYZED,
   research_add: RequestTier.ANALYZED,
   research_discover: RequestTier.ANALYZED,
+  registry_import: RequestTier.ANALYZED,
 
   // Tier 3 — Full orchestration
   orchestrate: RequestTier.ORCHESTRATED,

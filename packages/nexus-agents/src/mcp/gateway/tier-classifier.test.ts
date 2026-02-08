@@ -44,6 +44,7 @@ describe('classifyRequestTier', () => {
       'execute_expert',
       'research_add',
       'research_discover',
+      'registry_import',
     ];
 
     for (const tool of tier2Tools) {
@@ -236,8 +237,8 @@ describe('parseTierOverrides', () => {
 // ============================================================================
 
 describe('TOOL_TIER_MAP', () => {
-  it('contains entries for all 19 registered tools', () => {
-    expect(Object.keys(TOOL_TIER_MAP).length).toBe(19);
+  it('contains entries for all 20 registered tools', () => {
+    expect(Object.keys(TOOL_TIER_MAP).length).toBe(20);
   });
 
   it('only contains valid RequestTier values', () => {
