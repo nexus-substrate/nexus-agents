@@ -131,6 +131,15 @@ security:
   # Path to secrets file (optional)
   # secretsFile: ./.nexus-secrets.yaml
 
+# Gateway middleware configuration (Issue #896, #897)
+# gateway:
+#   enabled: true
+#   # Per-tool tier overrides (DIRECT, ANALYZED, or ORCHESTRATED)
+#   tierOverrides:
+#     memory_query: DIRECT
+#     delegate_to_model: ANALYZED
+#     orchestrate: ORCHESTRATED
+
 # Logging configuration
 logging:
   # Log level: debug, info, warn, error

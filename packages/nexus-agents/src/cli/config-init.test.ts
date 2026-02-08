@@ -193,6 +193,11 @@ describe('config-init', () => {
         expect.stringContaining('logging:'),
         'utf-8'
       );
+      expect(writeFile).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.stringContaining('gateway'),
+        'utf-8'
+      );
     });
 
     it('should include model tiers configuration', async () => {
