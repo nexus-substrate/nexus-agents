@@ -26,9 +26,18 @@ export type {
   ComplexityLevel,
   TaskTypeCategory,
   TaskCapabilities,
+  TaskConstraints,
+  RequiredCapabilities,
 } from './shared-task-analyzer.js';
 
 export { SharedTaskAnalyzer, createSharedTaskAnalyzer } from './shared-task-analyzer.js';
+
+// Advocate analysis functions (Issue #903)
+export {
+  computeAmbiguityScore,
+  extractConstraints,
+  inferRequiredCapabilities,
+} from './task-analysis-advocate.js';
 
 // Task profile adapter for legacy compatibility (Issue #586)
 export type { TaskProfile, BanditContext } from './task-profile-adapter.js';

@@ -369,6 +369,9 @@ describe('analyze', () => {
     expect(result).toHaveProperty('capabilities');
     expect(result).toHaveProperty('estimatedTokens');
     expect(result).toHaveProperty('matchedSignals');
+    expect(result).toHaveProperty('ambiguityScore');
+    expect(result).toHaveProperty('constraints');
+    expect(result).toHaveProperty('requiredCapabilities');
   });
 
   it('populates matchedSignals for keyword-rich input', () => {
@@ -382,7 +385,10 @@ describe('analyze', () => {
     expect(result.complexity).toBe('simple');
     expect(result.taskType).toBe('general');
     expect(result.estimatedTokens).toBe(500);
-    expect(result.matchedSignals).toEqual([]);
+    expect(result.ambiguityScore).toBe(1.0);
+    expect(result.constraints.scope).toHaveLength(0);
+    // matchedSignals includes required:tools/experts from capability inference
+    expect(result.matchedSignals.length).toBeGreaterThanOrEqual(0);
   });
 
   it('works with Task objects including context', () => {

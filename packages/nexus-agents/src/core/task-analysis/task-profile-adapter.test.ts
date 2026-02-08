@@ -48,6 +48,9 @@ function makeAnalysis(overrides: Partial<TaskAnalysisResult> = {}): TaskAnalysis
     capabilities: makeCapabilities(),
     estimatedTokens: 1000,
     matchedSignals: [],
+    ambiguityScore: 0.5,
+    constraints: { scope: [] },
+    requiredCapabilities: { tools: ['delegate_to_model'], experts: ['pm_expert'] },
     ...overrides,
   };
 }

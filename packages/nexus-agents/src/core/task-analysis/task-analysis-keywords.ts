@@ -192,3 +192,67 @@ export const PARALLEL_KEYWORDS: readonly string[] = [
   'concurrent',
   'independent',
 ];
+
+// ============================================================================
+// Advocate Analysis Keywords (Issue #903)
+// ============================================================================
+
+/** Vague verbs that increase ambiguity score */
+export const VAGUE_VERBS: readonly string[] = [
+  'improve',
+  'fix',
+  'help',
+  'update',
+  'change',
+  'make better',
+  'handle',
+  'deal with',
+  'look at',
+  'work on',
+  'do something',
+  'clean up',
+  'take care of',
+];
+
+/** Time constraint patterns */
+export const TIME_CONSTRAINT_PATTERNS: readonly WeightedPattern[] = [
+  { pattern: /\b(asap|urgent|immediately|right now)\b/i, weight: 1.0, name: 'urgent' },
+  {
+    pattern: /\bby (friday|monday|tuesday|wednesday|thursday|saturday|sunday)\b/i,
+    weight: 0.8,
+    name: 'deadline-day',
+  },
+  {
+    pattern: /\bby (today|tomorrow|end of day|eod|end of week|eow)\b/i,
+    weight: 0.9,
+    name: 'deadline-relative',
+  },
+  { pattern: /\b(quick|fast|hurry|rush)\b/i, weight: 0.6, name: 'speed' },
+  { pattern: /\bwithin \d+ (hours?|days?|weeks?)\b/i, weight: 0.8, name: 'deadline-duration' },
+];
+
+/** Quality constraint patterns */
+export const QUALITY_CONSTRAINT_PATTERNS: readonly WeightedPattern[] = [
+  {
+    pattern: /\b(production[- ]ready|prod[- ]ready|ship[- ]ready)\b/i,
+    weight: 1.0,
+    name: 'production',
+  },
+  { pattern: /\b(proof of concept|poc|prototype|spike)\b/i, weight: 0.8, name: 'prototype' },
+  {
+    pattern: /\b(quick hack|quick fix|workaround|temporary|temp fix)\b/i,
+    weight: 0.6,
+    name: 'hack',
+  },
+  { pattern: /\b(robust|thorough|comprehensive|complete)\b/i, weight: 0.9, name: 'thorough' },
+  { pattern: /\b(mvp|minimum viable|bare minimum)\b/i, weight: 0.7, name: 'mvp' },
+];
+
+/** Scope indicator patterns — match file paths, directories, modules */
+export const SCOPE_PATTERNS: readonly RegExp[] = [
+  /\b[\w-]+\.(ts|js|tsx|jsx|py|rs|go|java|rb|md|json|yaml|yml)\b/i,
+  /\bsrc\/[\w/-]+/,
+  /\b(packages|modules|components|services)\/[\w-]+/,
+  /\b(file|directory|folder|module|package|component)\s+[`"']?[\w./-]+/i,
+  /\b(PR|pull request|issue)\s*#?\d+/i,
+];

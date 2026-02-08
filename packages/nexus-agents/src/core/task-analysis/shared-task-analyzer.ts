@@ -1,14 +1,6 @@
 /**
- * Shared Task Analyzer
- *
- * Unified task analysis providing multiple classification views:
- * - ReasoningKnowledge: reasoning vs knowledge tasks (arXiv:2502.19130)
- * - Complexity: simple/moderate/complex/expert (RouteLLM)
- * - TaskType: 8-type taxonomy for capability routing
- * - Capabilities: parallelizable, multimodal, code generation flags
- *
- * Consolidates 5 independent task analyzers per ADR-0004.
- *
+ * Unified task analysis — classification views for routing.
+ * Consolidates 5 independent analyzers per ADR-0004.
  * @module core/task-analysis/shared-task-analyzer
  * (Source: Issue #574, ADR-0004)
  */
@@ -26,6 +18,14 @@ import {
   MULTIMODAL_KEYWORDS,
   PARALLEL_KEYWORDS,
 } from './task-analysis-keywords.js';
+import {
+  type TaskConstraints,
+  type RequiredCapabilities,
+  computeAmbiguityScore,
+  extractConstraints,
+  inferRequiredCapabilities,
+} from './task-analysis-advocate.js';
+export type { TaskConstraints, RequiredCapabilities } from './task-analysis-advocate.js';
 
 // ============================================================================
 // Types
@@ -84,6 +84,12 @@ export interface TaskAnalysisResult {
   readonly estimatedTokens: number;
   /** Matched signals for observability */
   readonly matchedSignals: readonly string[];
+  /** Ambiguity score (0=clear, 1=highly ambiguous). Issue #903. */
+  readonly ambiguityScore: number;
+  /** Extracted constraints (time, quality, scope). Issue #903. */
+  readonly constraints: TaskConstraints;
+  /** Inferred required capabilities (tools, experts). Issue #903. */
+  readonly requiredCapabilities: RequiredCapabilities;
   /** Detected product type from task content (optional) */
   readonly detectedProductType?: ProductType;
   /** Confidence in the detected product type (0-1, optional) */
@@ -145,11 +151,19 @@ export class SharedTaskAnalyzer implements ISharedTaskAnalyzer {
     const capabilities = this.computeCapabilities(content, matchedSignals);
     const estimatedTokens = this.computeTokens(content);
     const productType = detectProductType(content, matchedSignals);
+    const ambiguityScore = computeAmbiguityScore(content, matchedSignals);
+    const constraints = extractConstraints(content, matchedSignals);
+    const requiredCapabilities = inferRequiredCapabilities(
+      taskType.type,
+      capabilities,
+      matchedSignals
+    );
 
     this.logger.debug('Task analyzed', {
       reasoningType: reasoning.type,
       complexity: complexity.level,
       taskType: taskType.type,
+      ambiguityScore,
       detectedProductType: productType?.type,
       signals: matchedSignals.length,
     });
@@ -164,6 +178,9 @@ export class SharedTaskAnalyzer implements ISharedTaskAnalyzer {
       capabilities,
       estimatedTokens,
       matchedSignals,
+      ambiguityScore,
+      constraints,
+      requiredCapabilities,
     };
 
     if (productType !== undefined) {
