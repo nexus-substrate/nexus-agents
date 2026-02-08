@@ -80,7 +80,14 @@ export function createGitHubAdapter(): ISourceAdapter {
   return {
     platform: 'github',
     extractMetadata(input: unknown): SourceMetadata {
-      const parsed = GitHubInputSchema.parse(input);
+      const result = GitHubInputSchema.safeParse(input);
+      if (!result.success) {
+        const issues = result.error.issues
+          .map((i) => `${i.path.join('.')}: ${i.message}`)
+          .join('; ');
+        throw new Error(`GitHub input validation failed: ${issues}`);
+      }
+      const parsed = result.data;
       const role = mapAuthorAssociation(parsed.authorAssociation);
       return {
         username: parsed.username,

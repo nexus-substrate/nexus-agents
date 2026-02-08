@@ -58,6 +58,21 @@ describe('LatencySampler', () => {
       // Second end should throw since start time was removed
       expect(() => sampler.end('op-1')).toThrow('No start time for op-1');
     });
+
+    it('should clamp negative durations to zero', () => {
+      // Simulate clock adjustment by mocking hrtime.bigint
+      const hrtimeSpy = vi.spyOn(process.hrtime, 'bigint');
+      hrtimeSpy.mockReturnValueOnce(BigInt(200_000_000)); // start: 200ms
+      hrtimeSpy.mockReturnValueOnce(BigInt(100_000_000)); // end: 100ms (before start)
+
+      sampler.start('clock-adj');
+      const duration = sampler.end('clock-adj');
+
+      expect(duration).toBe(0);
+      expect(sampler.getMetrics().min).toBe(0);
+
+      hrtimeSpy.mockRestore();
+    });
   });
 
   describe('record', () => {

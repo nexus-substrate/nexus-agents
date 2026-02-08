@@ -165,18 +165,24 @@ describe('createGitHubAdapter', () => {
   });
 
   describe('extractMetadata - validation', () => {
-    it('throws for invalid input', () => {
-      expect(() => adapter.extractMetadata({ type: 'invalid' })).toThrow();
+    it('throws for invalid input with descriptive message', () => {
+      expect(() => adapter.extractMetadata({ type: 'invalid' })).toThrow(
+        'GitHub input validation failed'
+      );
     });
 
-    it('throws for missing username', () => {
+    it('throws for missing username with field path', () => {
       expect(() =>
         adapter.extractMetadata({
           type: 'comment',
           authorAssociation: 'NONE',
           body: 'test',
         })
-      ).toThrow();
+      ).toThrow('username');
+    });
+
+    it('includes all validation issues in error message', () => {
+      expect(() => adapter.extractMetadata({})).toThrow('GitHub input validation failed');
     });
   });
 });

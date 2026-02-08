@@ -48,7 +48,7 @@ export class LatencySampler {
 
     const endTime = process.hrtime.bigint();
     const durationNs = Number(endTime - startTime);
-    const durationMs = durationNs / 1_000_000;
+    const durationMs = Math.max(0, durationNs / 1_000_000);
 
     this.samples.push(durationMs);
     this.startTimes.delete(id);

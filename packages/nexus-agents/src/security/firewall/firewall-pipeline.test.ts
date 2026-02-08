@@ -177,7 +177,7 @@ describe('HostileInputFirewall', () => {
   });
 
   describe('error handling', () => {
-    it('returns extraction error for invalid input', () => {
+    it('returns extraction error for invalid input with validation details', () => {
       const fw = createFirewall();
       const result = fw.process({ type: 'invalid' });
       expect(result.ok).toBe(false);
@@ -185,6 +185,7 @@ describe('HostileInputFirewall', () => {
 
       expect(result.error.code).toBe('EXTRACTION_FAILED');
       expect(result.error.stage).toBe('extraction');
+      expect(result.error.message).toContain('GitHub input validation failed');
     });
 
     it('returns extraction error for null input', () => {
