@@ -14,4 +14,6 @@ export type { CommandResult, CommandHandler, ReplConfig, ParsedInput } from './t
 
 // TUI components (Ink-based)
 export { App } from './tui/app.js';
+export { ErrorBoundary } from './tui/components/error-boundary.js';
+export { Spinner } from './tui/components/spinner.js';
 export type { AppState, PanelId, AppAction } from './tui/state.js';

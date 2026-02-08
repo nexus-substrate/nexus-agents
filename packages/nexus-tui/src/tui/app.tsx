@@ -16,6 +16,7 @@ import { useCommand } from './hooks/use-command.js';
 import { useKeyboard } from './hooks/use-keyboard.js';
 import { HelpOverlay } from './components/help-overlay.js';
 import { useAppState } from './state.js';
+import { ErrorBoundary } from './components/error-boundary.js';
 
 interface AppProps {
   readonly registry: ReadonlyMap<string, CommandHandler>;
@@ -84,10 +85,12 @@ export function App({ registry, jsonMode }: AppProps): React.ReactElement {
   const [state, dispatch] = useReducer(appReducer, INITIAL_STATE);
 
   return (
-    <StateContext.Provider value={state}>
-      <DispatchContext.Provider value={dispatch}>
-        <AppInner registry={registry} jsonMode={jsonMode} />
-      </DispatchContext.Provider>
-    </StateContext.Provider>
+    <ErrorBoundary>
+      <StateContext.Provider value={state}>
+        <DispatchContext.Provider value={dispatch}>
+          <AppInner registry={registry} jsonMode={jsonMode} />
+        </DispatchContext.Provider>
+      </StateContext.Provider>
+    </ErrorBoundary>
   );
 }
