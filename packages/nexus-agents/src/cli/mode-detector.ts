@@ -12,7 +12,7 @@
  * Server mode for nexus-agents.
  * - server: MCP server only (responds to MCP client calls)
  * - orchestrator: CLI orchestrator (calls external CLIs like Gemini, Codex)
- * - mesh: Full bidirectional (both server and orchestrator)
+ * - mesh: Planned — not yet implemented (both server and orchestrator)
  */
 export type ServerMode = 'server' | 'orchestrator' | 'mesh';
 

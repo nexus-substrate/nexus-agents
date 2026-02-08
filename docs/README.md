@@ -183,6 +183,31 @@ Detailed technical documentation:
 | [SWARM_OBSERVER_DESIGN.md](./architecture/SWARM_OBSERVER_DESIGN.md)             | Swarm observer design           | Canonical |
 | [SWE_BENCH_HARNESS.md](./architecture/SWE_BENCH_HARNESS.md)                     | SWE-Bench integration           | Canonical |
 
+#### V2 Rearchitecture (Pipeline OS)
+
+| Document                                                                        | Description                             | Status   |
+| ------------------------------------------------------------------------------- | --------------------------------------- | -------- |
+| [04-v2-architecture-pipeline-os.md](./v2/04-v2-architecture-pipeline-os.md)     | **Final V2 specification**              | Approved |
+| [00-executive-summary.md](./v2/00-executive-summary.md)                         | Executive summary                       | Approved |
+| [01-as-is-architecture.md](./v2/01-as-is-architecture.md)                       | Current architecture analysis           | Approved |
+| [02-system-goals-non-goals.md](./v2/02-system-goals-non-goals.md)               | Goals and non-goals                     | Approved |
+| [03-user-story-user-journey.md](./v2/03-user-story-user-journey.md)             | User stories and journeys               | Approved |
+| [05-plugin-system-spec.md](./v2/05-plugin-system-spec.md)                       | Plugin system specification             | Approved |
+| [06-graph-execution-model.md](./v2/06-graph-execution-model.md)                 | Graph execution model                   | Approved |
+| [07-policy-governance-gates.md](./v2/07-policy-governance-gates.md)             | Policy engine and governance gates      | Approved |
+| [08-observability-eventing.md](./v2/08-observability-eventing.md)               | Event bus and observability             | Approved |
+| [09-context-store-turn-dag-option.md](./v2/09-context-store-turn-dag-option.md) | Context store options                   | Approved |
+| [10-migration-plan-v1-to-v2.md](./v2/10-migration-plan-v1-to-v2.md)             | Migration plan                          | Approved |
+| [api-contracts.md](./v2/api-contracts.md)                                       | TypeScript API contracts                | Approved |
+| [threat-model.md](./v2/threat-model.md)                                         | V2 threat model                         | Approved |
+| [epics-and-issues.md](./v2/epics-and-issues.md)                                 | Work breakdown with acceptance criteria | Approved |
+| [ADR-0001](./v2/adrs/ADR-0001-pipeline-os-plugins.md)                           | Pipeline OS as orchestration primitive  | Proposed |
+| [ADR-0002](./v2/adrs/ADR-0002-unified-task-plan-artifact.md)                    | Unified TaskContract + PlanContract     | Proposed |
+| [ADR-0003](./v2/adrs/ADR-0003-graph-execution-langgraph.md)                     | Extend GraphBuilder (LangGraph-aligned) | Proposed |
+| [ADR-0004](./v2/adrs/ADR-0004-structural-plugin-flags.md)                       | Structural plugin flags                 | Proposed |
+| [ADR-0005](./v2/adrs/ADR-0005-unified-adapter-boundary.md)                      | Unified adapter boundary                | Proposed |
+| [ADR-0006](./v2/adrs/ADR-0006-observability-first-class.md)                     | Observability as first-class            | Proposed |
+
 #### Proposals
 
 | Document                                                                             | Description           | Status      |

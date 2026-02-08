@@ -151,7 +151,7 @@ export function logStartupInfo(
  */
 export function validateModeOrExit(logger: ILogger, mode: ServerMode): void {
   if (mode === 'mesh') {
-    logger.error('Mesh mode is not yet implemented. Use --mode=server instead.');
+    logger.error('Mesh mode is planned for a future release. Use --mode=server instead.');
     process.exit(EXIT_CODES.INVALID_ARGS);
   }
   // Orchestrator mode is now implemented (Issue #446)
@@ -481,7 +481,7 @@ async function initializeSubsystems(
  * Starts the MCP server with stdio transport.
  *
  * @param verbose - Whether to enable verbose logging
- * @param mode - Server mode (server, orchestrator, mesh)
+ * @param mode - Server mode (server, orchestrator; mesh is planned)
  * @param modeWasExplicit - Whether mode was explicitly set via --mode flag
  * @param orchestratorOptions - Options for orchestrator mode (when mode is 'orchestrator')
  */
