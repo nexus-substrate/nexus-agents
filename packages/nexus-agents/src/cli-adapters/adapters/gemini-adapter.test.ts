@@ -108,8 +108,8 @@ describe('GeminiCliAdapter', () => {
     it('should return correct model info for default model', () => {
       const info = adapter.getModelInfo();
 
-      expect(info.id).toBe('gemini-2.5-pro');
-      expect(info.name).toBe('Gemini 2.5 Pro');
+      expect(info.id).toBe('gemini-3-pro-preview');
+      expect(info.name).toBe('Gemini 3 Pro (Preview)');
       expect(info.contextWindow).toBe(1_000_000);
       expect(info.maxOutput).toBe(8_192);
     });
@@ -217,7 +217,7 @@ describe('GeminiCliAdapter', () => {
 
   describe('configuration defaults', () => {
     it('should have correct default model', () => {
-      expect(adapter.getModelInfo().id).toBe('gemini-2.5-pro');
+      expect(adapter.getModelInfo().id).toBe('gemini-3-pro-preview');
     });
 
     it('should have circuit breaker in closed state initially', () => {

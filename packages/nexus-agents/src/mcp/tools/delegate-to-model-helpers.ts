@@ -29,7 +29,11 @@ import {
   MCP_KEYWORDS,
   EXPLORATION_KEYWORDS,
 } from './delegate-to-model-types.js';
-import { DEFAULT_MODEL_CAPABILITIES, modelSupportsAll } from '../../config/model-capabilities.js';
+import {
+  DEFAULT_MODEL_CAPABILITIES,
+  DEFAULT_MODEL_PER_CLI,
+  modelSupportsAll,
+} from '../../config/model-capabilities.js';
 import type { SpecializationMatch } from '../../config/task-specialization-types.js';
 import type { TaskCategory } from '../../config/task-specialization-types.js';
 import { detectTaskCategory } from '../../config/task-specialization.js';
@@ -333,8 +337,8 @@ export function selectModel(
 
   if (!best) {
     return {
-      model: 'claude-sonnet',
-      reasoning: 'Default fallback to Claude Sonnet',
+      model: DEFAULT_MODEL_PER_CLI.claude,
+      reasoning: 'Default fallback to Claude Opus',
       alternatives: [],
     };
   }

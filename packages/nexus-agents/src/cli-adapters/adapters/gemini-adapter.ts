@@ -47,10 +47,19 @@ import {
   createCircuitOpenError,
   delay,
 } from './gemini-adapter-helpers.js';
+import {
+  DEFAULT_MODEL_PER_CLI,
+  DEFAULT_MODEL_CAPABILITIES,
+} from '../../config/model-capabilities.js';
+
+/** Derive the CLI model name for the default Gemini model from the canonical registry. */
+const DEFAULT_GEMINI_CLI_MODEL: string =
+  DEFAULT_MODEL_CAPABILITIES.models.find((m) => m.id === DEFAULT_MODEL_PER_CLI.gemini)
+    ?.cliModelName ?? DEFAULT_MODEL_PER_CLI.gemini;
 
 /** Configuration for Gemini adapter. */
 export interface GeminiConfig {
-  /** Model to use (default: gemini-2.5-pro) */
+  /** Model to use (default: from DEFAULT_MODEL_PER_CLI) */
   readonly model?: string;
   /** Custom logger */
   readonly logger?: ILogger;
@@ -84,7 +93,7 @@ export interface GeminiExecutionResult {
 }
 
 const DEFAULT_CONFIG: Required<Omit<GeminiConfig, 'logger' | 'circuitBreakerConfig'>> = {
-  model: 'gemini-2.5-pro',
+  model: DEFAULT_GEMINI_CLI_MODEL,
   maxRetries: 3,
   baseDelayMs: 1000,
   maxDelayMs: 30_000,

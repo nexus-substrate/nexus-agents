@@ -17,9 +17,10 @@ function createArgs(positionals: string[], options: Record<string, unknown> = {}
 }
 
 describe('handleScaffoldCommand', () => {
-  const mockExit = vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
-    throw new Error(`process.exit(${String(code)})`);
-  }) as unknown as typeof process.exit);
+  // Vitest 3.x intercepts process.exit before spies fire, so we verify
+  // exit codes via the thrown error message format:
+  // "process.exit unexpectedly called with \"N\""
+  vi.spyOn(process, 'exit');
 
   afterEach(() => {
     vi.clearAllMocks();
@@ -40,7 +41,7 @@ describe('handleScaffoldCommand', () => {
   it('should exit SUCCESS when scaffoldCommand returns 0', () => {
     expect(() => {
       handleScaffoldCommand(createArgs(['scaffold', 'expert', 'test']));
-    }).toThrow('process.exit(0)');
+    }).toThrow(/process\.exit.*"0"/);
   });
 
   it('should exit SERVER_START_FAILED when scaffoldCommand returns non-zero', async () => {
@@ -48,14 +49,14 @@ describe('handleScaffoldCommand', () => {
     vi.mocked(scaffoldCommand).mockReturnValue(1);
     expect(() => {
       handleScaffoldCommand(createArgs(['scaffold', 'expert', 'test']));
-    }).toThrow('process.exit(1)');
+    }).toThrow(/process\.exit.*"1"/);
   });
 
   it('should print usage and exit when type is missing', async () => {
     const { printScaffoldUsage } = await import('./cli/index.js');
     expect(() => {
       handleScaffoldCommand(createArgs(['scaffold']));
-    }).toThrow('process.exit(3)');
+    }).toThrow(/process\.exit.*"3"/);
     expect(printScaffoldUsage).toHaveBeenCalled();
   });
 
@@ -63,7 +64,7 @@ describe('handleScaffoldCommand', () => {
     const { printScaffoldUsage } = await import('./cli/index.js');
     expect(() => {
       handleScaffoldCommand(createArgs(['scaffold', 'expert']));
-    }).toThrow('process.exit(3)');
+    }).toThrow(/process\.exit.*"3"/);
     expect(printScaffoldUsage).toHaveBeenCalled();
   });
 
@@ -71,7 +72,7 @@ describe('handleScaffoldCommand', () => {
     const { printScaffoldUsage } = await import('./cli/index.js');
     expect(() => {
       handleScaffoldCommand(createArgs(['scaffold', 'invalid-type', 'name']));
-    }).toThrow('process.exit(3)');
+    }).toThrow(/process\.exit.*"3"/);
     expect(printScaffoldUsage).toHaveBeenCalled();
   });
 
@@ -85,9 +86,5 @@ describe('handleScaffoldCommand', () => {
       name: 'my-wf',
       dryRun: true,
     });
-  });
-
-  afterEach(() => {
-    mockExit.mockClear();
   });
 });
