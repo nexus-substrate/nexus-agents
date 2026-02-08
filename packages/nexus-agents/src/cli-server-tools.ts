@@ -61,6 +61,7 @@ import {
   createToolRateLimiterFactory,
   setGlobalToolRateLimiterFactory,
 } from './mcp/middleware/index.js';
+import { createGatewayServerProxy, type GatewayConfig } from './mcp/gateway/index.js';
 
 /**
  * Options for MCP tool registration.
@@ -93,6 +94,8 @@ export interface RegisterMcpToolsOptions {
   enableStpaSafetyAnalysis?: boolean;
   /** Fail registration if high-severity hazards are found (Issue #530) */
   failOnHighSeverityHazards?: boolean;
+  /** Gateway config for tier-aware dispatch logging (Issue #896) */
+  gatewayConfig?: GatewayConfig;
 }
 
 /**
@@ -497,8 +500,14 @@ export function registerMcpTools(options: RegisterMcpToolsOptions): void {
     policyFirewall,
     executionMode,
     securityConfig,
+    gatewayConfig,
   } = options;
-  const toolInfra = registerTools(server, { logger });
+
+  // Wrap server with gateway proxy for tier-aware dispatch logging (Issue #896)
+  const gatewayServer =
+    gatewayConfig !== undefined ? createGatewayServerProxy(server, gatewayConfig) : server;
+
+  const toolInfra = registerTools(gatewayServer, { logger });
 
   const rateLimitConfig = securityConfig?.rateLimit;
   const perToolConfig = rateLimitConfig?.perTool;
@@ -510,7 +519,9 @@ export function registerMcpTools(options: RegisterMcpToolsOptions): void {
   });
   setGlobalToolRateLimiterFactory(rateLimiterFactory);
 
-  const ctx = createToolContext(options, toolInfra, rateLimiterFactory);
+  // Use gateway-wrapped server in context so all registerTool calls get wrapped
+  const gatewayOptions = { ...options, server: gatewayServer };
+  const ctx = createToolContext(gatewayOptions, toolInfra, rateLimiterFactory);
   registerToolCategories(ctx, rateLimiterFactory);
 
   logToolRegistration(logger, ctx.toolAllowlist, {

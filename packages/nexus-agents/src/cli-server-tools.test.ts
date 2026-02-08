@@ -45,6 +45,7 @@ const {
   mockCreateToolRateLimiterFactory,
   mockSetGlobalToolRateLimiterFactory,
   mockRunStpaSafetyAnalysis,
+  mockCreateGatewayServerProxy,
 } = vi.hoisted(() => ({
   mockRegisterTools: vi.fn().mockReturnValue({
     logger: {
@@ -99,6 +100,7 @@ const {
   }),
   mockSetGlobalToolRateLimiterFactory: vi.fn(),
   mockRunStpaSafetyAnalysis: vi.fn(),
+  mockCreateGatewayServerProxy: vi.fn(),
 }));
 
 vi.mock('./mcp/index.js', () => ({
@@ -162,6 +164,10 @@ vi.mock('./cli-server-stpa.js', () => ({
   },
 }));
 
+vi.mock('./mcp/gateway/index.js', () => ({
+  createGatewayServerProxy: mockCreateGatewayServerProxy,
+}));
+
 // ============================================================================
 // Mock helpers
 // ============================================================================
@@ -188,6 +194,8 @@ function resetMockReturnValues(): void {
     }),
     isEnabled: vi.fn().mockReturnValue(true),
   });
+  // Gateway mock returns whatever server is passed (identity by default)
+  mockCreateGatewayServerProxy.mockImplementation((server: unknown) => server);
 }
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
@@ -595,5 +603,44 @@ describe('registerMcpTools - policy firewall', () => {
     expect((regCall as unknown[])[1]).toEqual(
       expect.objectContaining({ executionMode: 'read-only' })
     );
+  });
+});
+
+// ============================================================================
+// registerMcpTools - gateway middleware wiring (Issue #896)
+// ============================================================================
+
+describe('registerMcpTools - gateway wiring', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetMockReturnValues();
+    process.env['NEXUS_ALLOW_MOCK_ORCHESTRATION'] = 'true';
+  });
+
+  afterEach(() => {
+    delete process.env['NEXUS_ALLOW_MOCK_ORCHESTRATION'];
+  });
+
+  it('should not create gateway proxy when gatewayConfig is omitted', () => {
+    const options = makeDefaultOptions();
+    registerMcpTools(options);
+    expect(mockCreateGatewayServerProxy).not.toHaveBeenCalled();
+  });
+
+  it('should create gateway proxy when gatewayConfig is provided', () => {
+    const gwConfig = { enabled: true };
+    const options = makeDefaultOptions({ gatewayConfig: gwConfig });
+    registerMcpTools(options);
+    expect(mockCreateGatewayServerProxy).toHaveBeenCalledWith(options.server, gwConfig);
+  });
+
+  it('should pass gateway-wrapped server to registerTools', () => {
+    const proxyServer = { registerTool: vi.fn() };
+    mockCreateGatewayServerProxy.mockReturnValue(proxyServer);
+    const gwConfig = { enabled: true };
+    const options = makeDefaultOptions({ gatewayConfig: gwConfig });
+    registerMcpTools(options);
+    // registerTools should receive the proxy, not the original server
+    expect(mockRegisterTools).toHaveBeenCalledWith(proxyServer, expect.anything());
   });
 });

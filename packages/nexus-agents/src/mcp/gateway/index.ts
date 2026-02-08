@@ -35,3 +35,5 @@ export {
   type TierRecommenderConfig,
   type TierDirection,
 } from './tier-recommender.js';
+
+export { createGatewayServerProxy } from './gateway-server-proxy.js';
