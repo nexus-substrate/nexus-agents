@@ -34,6 +34,8 @@ import type { SpecializationMatch } from '../../config/task-specialization-types
 import type { TaskCategory } from '../../config/task-specialization-types.js';
 import { detectTaskCategory } from '../../config/task-specialization.js';
 import { getAdaptiveBonus } from './weather-report.js';
+import { getAvailabilityCache, resolveFallback } from '../../config/model-availability.js';
+import type { ModelId } from '../../config/model-capabilities-types.js';
 
 /**
  * Checks if any keyword from list is in the text.
@@ -261,8 +263,9 @@ export function filterByModality(requirements: TaskRequirements): Set<string> | 
 }
 
 /**
- * Scores and sorts all models, optionally filtering by modality requirements.
+ * Scores and sorts all models, filtering by modality and availability.
  * When specialization is provided, models matching the preferred CLI get a bonus.
+ * Known-unavailable models (from availability cache) are excluded.
  */
 export function scoreAllModels(
   requirements: TaskRequirements,
@@ -271,16 +274,42 @@ export function scoreAllModels(
   specialization: SpecializationMatch | null = null
 ): ScoredModel[] {
   const eligible = filterByModality(requirements);
+  const availCache = getAvailabilityCache();
 
   const opts: ScoreModelOptions = { preferredCapability: pref, billingMode, specialization };
   return Object.entries(MODEL_CAPABILITIES)
     .filter(([name]) => eligible === null || eligible.has(name))
+    .filter(([name]) => !availCache.isKnownUnavailable(name as ModelId))
     .map(([name, profile]) => ({
       name,
       profile,
       score: scoreModel(name, profile, requirements, opts),
     }))
     .sort((a, b) => b.score - a.score);
+}
+
+/** Selection result type. */
+type SelectionResult = {
+  model: string;
+  reasoning: string;
+  alternatives: Array<{ model: string; score: number; tradeoff: string }>;
+};
+
+/** Resolves a model hint, falling back if the hinted model is unavailable. */
+function resolveModelHint(hint: string): SelectionResult | null {
+  if (hint === '' || MODEL_CAPABILITIES[hint] === undefined) return null;
+  const availCache = getAvailabilityCache();
+  if (availCache.isKnownUnavailable(hint as ModelId)) {
+    const fb = resolveFallback(hint as ModelId, availCache);
+    if (fb !== null) {
+      return {
+        model: fb.modelId,
+        reasoning: `${fb.reason}. Hint model ${hint} is currently unavailable.`,
+        alternatives: [],
+      };
+    }
+  }
+  return { model: hint, reasoning: `Using explicitly requested model: ${hint}`, alternatives: [] };
 }
 
 /**
@@ -290,18 +319,11 @@ export function selectModel(
   input: DelegateInput,
   requirements: TaskRequirements,
   billingMode: BillingMode = 'api'
-): {
-  model: string;
-  reasoning: string;
-  alternatives: Array<{ model: string; score: number; tradeoff: string }>;
-} {
+): SelectionResult {
   const hint = input.model_hint;
-  if (hint !== undefined && hint !== '' && MODEL_CAPABILITIES[hint] !== undefined) {
-    return {
-      model: hint,
-      reasoning: `Using explicitly requested model: ${hint}`,
-      alternatives: [],
-    };
+  if (hint !== undefined) {
+    const hintResult = resolveModelHint(hint);
+    if (hintResult !== null) return hintResult;
   }
 
   const pref = input.preferred_capability;

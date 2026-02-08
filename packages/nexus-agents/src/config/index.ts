@@ -227,3 +227,21 @@ export type {
   TaskCategory,
   SpecializationMatch,
 } from './task-specialization.js';
+
+// Model Availability — runtime probes & fallback chains (Issue #869)
+export {
+  AvailabilityCache,
+  getAvailabilityCache,
+  resetAvailabilityCache,
+  resolveFallback,
+  getFallbackChain,
+  getCliForModelId,
+  filterAvailableModels,
+} from './model-availability.js';
+
+export type {
+  ProbeResult,
+  AvailabilityCacheConfig,
+  ProbeFn,
+  FallbackEntry,
+} from './model-availability.js';

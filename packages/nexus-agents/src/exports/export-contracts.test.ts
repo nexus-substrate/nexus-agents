@@ -98,6 +98,18 @@ import { CompositeRouter } from '../index.js';
 // ============================================================================
 import { ConsensusEngine } from '../index.js';
 
+// ============================================================================
+// Model Availability — probes & fallback chains (Issue #869)
+// ============================================================================
+import {
+  AvailabilityCache,
+  getAvailabilityCache,
+  resetAvailabilityCache,
+  resolveFallback,
+  getFallbackChain,
+  filterAvailableModels,
+} from '../index.js';
+
 describe('Export contracts — MCP tool registration', () => {
   it('exports all tool registration functions', () => {
     expect(typeof registerTools).toBe('function');
@@ -250,5 +262,22 @@ describe('Export contracts — routing', () => {
 describe('Export contracts — consensus', () => {
   it('exports ConsensusEngine', () => {
     expect(typeof ConsensusEngine).toBe('function');
+  });
+});
+
+describe('Export contracts — model availability', () => {
+  it('exports AvailabilityCache class', () => {
+    expect(typeof AvailabilityCache).toBe('function');
+  });
+
+  it('exports singleton accessors', () => {
+    expect(typeof getAvailabilityCache).toBe('function');
+    expect(typeof resetAvailabilityCache).toBe('function');
+  });
+
+  it('exports fallback chain functions', () => {
+    expect(typeof resolveFallback).toBe('function');
+    expect(typeof getFallbackChain).toBe('function');
+    expect(typeof filterAvailableModels).toBe('function');
   });
 });

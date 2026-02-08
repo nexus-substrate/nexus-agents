@@ -24,3 +24,18 @@ export {
   type SecurityConfig,
   type LoggingConfig,
 } from '../config/index.js';
+
+// Model Availability — probes & fallback chains (Issue #869)
+export {
+  AvailabilityCache,
+  getAvailabilityCache,
+  resetAvailabilityCache,
+  resolveFallback,
+  getFallbackChain,
+  getCliForModelId,
+  filterAvailableModels,
+  type ProbeResult,
+  type AvailabilityCacheConfig,
+  type ProbeFn,
+  type FallbackEntry,
+} from '../config/index.js';
