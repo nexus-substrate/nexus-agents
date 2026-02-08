@@ -17,6 +17,7 @@ import {
   resolveCliAlias,
   getDefaultModelForCli,
   getCliModelName,
+  buildModelInfo,
 } from '../../config/model-config-helpers.js';
 
 /**
@@ -43,6 +44,39 @@ function buildClaudeAliasMap(): Record<string, string> {
   return map;
 }
 
+/** Legacy fallback values for Claude models not in the canonical registry. */
+const CLAUDE_LEGACY_DEFAULTS = {
+  displayNames: {
+    'claude-opus-4': 'Claude Opus 4',
+    'claude-sonnet-4': 'Claude Sonnet 4',
+    'claude-haiku-3': 'Claude Haiku 3',
+    'claude-opus-4-5-20251101': 'Claude Opus 4.5',
+    opus: 'Claude Opus 4',
+    sonnet: 'Claude Sonnet 4',
+    haiku: 'Claude Haiku 3',
+  } as Readonly<Record<string, string>>,
+  inputCosts: {
+    'claude-opus-4': 15.0,
+    'claude-opus-4-5-20251101': 15.0,
+    'claude-sonnet-4': 3.0,
+    'claude-haiku-3': 0.25,
+    opus: 15.0,
+    sonnet: 3.0,
+    haiku: 0.25,
+  } as Readonly<Record<string, number>>,
+  outputCosts: {
+    'claude-opus-4': 75.0,
+    'claude-opus-4-5-20251101': 75.0,
+    'claude-sonnet-4': 15.0,
+    'claude-haiku-3': 1.25,
+    opus: 75.0,
+    sonnet: 15.0,
+    haiku: 1.25,
+  } as Readonly<Record<string, number>>,
+  inputCost: 3.0,
+  outputCost: 15.0,
+} as const;
+
 /**
  * Claude CLI adapter using subprocess transport.
  * Executes: claude -p --output-format json "<task>"
@@ -60,9 +94,16 @@ export class ClaudeCliAdapter extends SubprocessCliAdapter {
 
   /**
    * Gets Claude model information.
-   * Resolves from canonical registry when possible, falls back to legacy lookup.
+   * Tries buildModelInfo with the CLI alias first. If the model string is
+   * an alias (e.g., 'opus'), resolves to ModelId and retries via the registry.
+   * Falls back to legacy inline lookup for unrecognized models.
    */
   getModelInfo(): ModelInfo {
+    // Try direct CLI model name lookup (e.g., 'opus' → cliAlias match)
+    const fromRegistry = buildModelInfo('claude', this.model);
+    if (fromRegistry !== undefined) return fromRegistry;
+
+    // Try resolving alias → ModelId → registry entry
     const resolved = resolveCliAlias(this.model);
     if (resolved !== undefined) {
       const cap = DEFAULT_MODEL_CAPABILITIES.models.find((m) => m.id === resolved);
@@ -72,7 +113,6 @@ export class ClaudeCliAdapter extends SubprocessCliAdapter {
           name: cap.displayName,
           contextWindow: cap.contextWindow,
         };
-        // Only set optional properties when values exist (exactOptionalPropertyTypes)
         if (cap.maxOutputTokens !== undefined) {
           (info as { maxOutput: number }).maxOutput = cap.maxOutputTokens;
         }
@@ -83,13 +123,16 @@ export class ClaudeCliAdapter extends SubprocessCliAdapter {
         return info;
       }
     }
+
     return {
       id: this.model,
-      name: this.getModelDisplayName(),
+      name: CLAUDE_LEGACY_DEFAULTS.displayNames[this.model] ?? this.model,
       contextWindow: 200_000,
       maxOutput: 64_000,
-      costPerMillionInput: this.getCostPerMillionInput(),
-      costPerMillionOutput: this.getCostPerMillionOutput(),
+      costPerMillionInput:
+        CLAUDE_LEGACY_DEFAULTS.inputCosts[this.model] ?? CLAUDE_LEGACY_DEFAULTS.inputCost,
+      costPerMillionOutput:
+        CLAUDE_LEGACY_DEFAULTS.outputCosts[this.model] ?? CLAUDE_LEGACY_DEFAULTS.outputCost,
     };
   }
 
@@ -128,56 +171,5 @@ export class ClaudeCliAdapter extends SubprocessCliAdapter {
 
     // Pass prompt via stdin to avoid argument escaping issues
     return { command: 'claude', args, stdin: task.content };
-  }
-
-  /**
-   * Gets model display name.
-   */
-  private getModelDisplayName(): string {
-    const displayNames: Record<string, string> = {
-      'claude-opus-4': 'Claude Opus 4',
-      'claude-sonnet-4': 'Claude Sonnet 4',
-      'claude-haiku-3': 'Claude Haiku 3',
-      'claude-opus-4-5-20251101': 'Claude Opus 4.5',
-      opus: 'Claude Opus 4',
-      sonnet: 'Claude Sonnet 4',
-      haiku: 'Claude Haiku 3',
-    };
-
-    return displayNames[this.model] ?? this.model;
-  }
-
-  /**
-   * Gets cost per million input tokens.
-   */
-  private getCostPerMillionInput(): number {
-    const costs: Record<string, number> = {
-      'claude-opus-4': 15.0,
-      'claude-opus-4-5-20251101': 15.0,
-      'claude-sonnet-4': 3.0,
-      'claude-haiku-3': 0.25,
-      opus: 15.0,
-      sonnet: 3.0,
-      haiku: 0.25,
-    };
-
-    return costs[this.model] ?? 3.0;
-  }
-
-  /**
-   * Gets cost per million output tokens.
-   */
-  private getCostPerMillionOutput(): number {
-    const costs: Record<string, number> = {
-      'claude-opus-4': 75.0,
-      'claude-opus-4-5-20251101': 75.0,
-      'claude-sonnet-4': 15.0,
-      'claude-haiku-3': 1.25,
-      opus: 75.0,
-      sonnet: 15.0,
-      haiku: 1.25,
-    };
-
-    return costs[this.model] ?? 15.0;
   }
 }

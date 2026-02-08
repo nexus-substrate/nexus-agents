@@ -37,10 +37,7 @@ import {
   type CircuitBreakerSnapshot,
 } from '../circuit-breaker.js';
 import {
-  getModelDisplayName,
-  getContextWindow,
-  getCostPerMillionInput,
-  getCostPerMillionOutput,
+  GEMINI_LEGACY_DEFAULTS,
   calculateBackoffDelay,
   isRetryableError,
   categorizeError,
@@ -51,6 +48,7 @@ import {
   DEFAULT_MODEL_PER_CLI,
   DEFAULT_MODEL_CAPABILITIES,
 } from '../../config/model-capabilities.js';
+import { buildModelInfo } from '../../config/model-config-helpers.js';
 
 /** Derive the CLI model name for the default Gemini model from the canonical registry. */
 const DEFAULT_GEMINI_CLI_MODEL: string =
@@ -141,15 +139,24 @@ export class GeminiCliAdapter extends SubprocessCliAdapter {
 
   /**
    * Gets Gemini model information.
+   * Resolves from canonical registry when possible, falls back to legacy lookup.
+   * Note: maxOutput is capped at 8_192 (Gemini CLI constraint).
    */
   getModelInfo(): ModelInfo {
+    const fromRegistry = buildModelInfo('gemini', this.model);
+    if (fromRegistry !== undefined) {
+      return { ...fromRegistry, maxOutput: 8_192 };
+    }
     return {
       id: this.model,
-      name: getModelDisplayName(this.model),
-      contextWindow: getContextWindow(this.model),
+      name: GEMINI_LEGACY_DEFAULTS.displayNames[this.model] ?? this.model,
+      contextWindow:
+        GEMINI_LEGACY_DEFAULTS.contextWindows[this.model] ?? GEMINI_LEGACY_DEFAULTS.contextWindow,
       maxOutput: 8_192,
-      costPerMillionInput: getCostPerMillionInput(this.model),
-      costPerMillionOutput: getCostPerMillionOutput(this.model),
+      costPerMillionInput:
+        GEMINI_LEGACY_DEFAULTS.inputCosts[this.model] ?? GEMINI_LEGACY_DEFAULTS.inputCost,
+      costPerMillionOutput:
+        GEMINI_LEGACY_DEFAULTS.outputCosts[this.model] ?? GEMINI_LEGACY_DEFAULTS.outputCost,
     };
   }
 

@@ -1,16 +1,8 @@
 /**
  * nexus-agents/cli-adapters - Codex MCP Adapter
  *
- * MCP-based adapter for Codex CLI using MCP server mode.
- * This is the preferred transport for Codex integration.
- *
- * (Source: cli-project_plan.md v2.1.0, Issue #90)
- * (Source: docs/research/cli-integration-architecture.md)
- *
- * SECURITY NOTE (shell: true in getVersion):
- * Uses shell: true only for version check command.
- * This is acceptable because the command and args are hardcoded constants.
- * See codex-adapter.ts for detailed security rationale.
+ * MCP-based adapter for Codex CLI. Preferred transport for Codex integration.
+ * SECURITY NOTE: shell: true used only for version check (hardcoded command).
  */
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -35,12 +27,8 @@ import type { ILogger } from '../../core/index.js';
 import { createLogger } from '../../core/index.js';
 import {
   DEFAULT_CODEX_MCP_OPTIONS,
+  CODEX_LEGACY_DEFAULTS,
   type McpToolResult,
-  getModelDisplayName,
-  getContextWindow,
-  getMaxOutput,
-  getCostPerMillionInput,
-  getCostPerMillionOutput,
   extractTextFromContent,
   createCliError,
   delay,
@@ -49,7 +37,11 @@ import {
   parseVersionFromOutput,
 } from './codex-mcp-adapter-helpers.js';
 import { CapacityTracker, createCapacityTracker } from '../capacity-tracker.js';
-import { getDefaultModelForCli, getCliModelName } from '../../config/model-config-helpers.js';
+import {
+  getDefaultModelForCli,
+  getCliModelName,
+  buildModelInfo,
+} from '../../config/model-config-helpers.js';
 
 /**
  * Codex CLI adapter using MCP transport.
@@ -83,15 +75,20 @@ export class CodexMcpAdapter implements ICliAdapter {
 
   /**
    * Gets Codex model information.
+   * Resolves from canonical registry when possible, falls back to legacy lookup.
    */
   getModelInfo(): ModelInfo {
+    const fromRegistry = buildModelInfo('codex', this.model);
+    if (fromRegistry !== undefined) return fromRegistry;
     return {
       id: this.model,
-      name: getModelDisplayName(this.model),
-      contextWindow: getContextWindow(this.model),
-      maxOutput: getMaxOutput(this.model),
-      costPerMillionInput: getCostPerMillionInput(this.model),
-      costPerMillionOutput: getCostPerMillionOutput(this.model),
+      name: CODEX_LEGACY_DEFAULTS.displayNames[this.model] ?? this.model,
+      contextWindow: CODEX_LEGACY_DEFAULTS.contextWindow,
+      maxOutput: CODEX_LEGACY_DEFAULTS.maxOutput,
+      costPerMillionInput:
+        CODEX_LEGACY_DEFAULTS.inputCosts[this.model] ?? CODEX_LEGACY_DEFAULTS.inputCost,
+      costPerMillionOutput:
+        CODEX_LEGACY_DEFAULTS.outputCosts[this.model] ?? CODEX_LEGACY_DEFAULTS.outputCost,
     };
   }
 
@@ -229,11 +226,6 @@ export class CodexMcpAdapter implements ICliAdapter {
 
   /**
    * Calls the codex or codex-reply tool on Codex MCP server.
-   *
-   * The Codex MCP server exposes two tools:
-   * - `codex` - Initiates a new session
-   * - `codex-reply` - Continues an existing session using threadId
-   *
    * @see https://developers.openai.com/codex/mcp/
    */
   private async callCodexTool(task: CliTask): Promise<McpToolResult> {

@@ -1,63 +1,36 @@
 /**
  * Tests for Codex CLI Adapter Helpers
+ *
+ * Model info lookup functions consolidated into config/model-config-helpers.ts (#886).
+ * Tests here cover CLI-specific helpers only.
+ *
  * @module cli-adapters/adapters/codex-adapter-helpers.test
  */
 
 import { describe, it, expect } from 'vitest';
 import type { CliName } from '../types.js';
 import {
-  getModelDisplayName,
-  getCostPerMillionInput,
-  getCostPerMillionOutput,
+  CODEX_LEGACY_DEFAULTS,
   createCodexError,
   normalizeCodexResponse,
 } from './codex-adapter-helpers.js';
 
 // ============================================================================
-// getModelDisplayName
+// CODEX_LEGACY_DEFAULTS
 // ============================================================================
 
-describe('getModelDisplayName', () => {
-  it('returns display name for known models', () => {
-    expect(getModelDisplayName('o3')).toBe('O3');
-    expect(getModelDisplayName('o3-mini')).toBe('O3 Mini');
-    expect(getModelDisplayName('o4-mini')).toBe('O4 Mini');
+describe('CODEX_LEGACY_DEFAULTS', () => {
+  it('has display names for known models', () => {
+    expect(CODEX_LEGACY_DEFAULTS.displayNames['o3']).toBe('O3');
+    expect(CODEX_LEGACY_DEFAULTS.displayNames['o3-mini']).toBe('O3 Mini');
+    expect(CODEX_LEGACY_DEFAULTS.displayNames['o4-mini']).toBe('O4 Mini');
   });
 
-  it('returns raw model name for unknown models', () => {
-    expect(getModelDisplayName('custom-model')).toBe('custom-model');
-  });
-});
-
-// ============================================================================
-// getCostPerMillionInput
-// ============================================================================
-
-describe('getCostPerMillionInput', () => {
-  it('returns cost for known models', () => {
-    expect(getCostPerMillionInput('o3')).toBe(10.0);
-    expect(getCostPerMillionInput('o3-mini')).toBe(1.1);
-    expect(getCostPerMillionInput('o4-mini')).toBe(1.1);
-  });
-
-  it('returns default cost for unknown model', () => {
-    expect(getCostPerMillionInput('unknown')).toBe(1.1);
-  });
-});
-
-// ============================================================================
-// getCostPerMillionOutput
-// ============================================================================
-
-describe('getCostPerMillionOutput', () => {
-  it('returns cost for known models', () => {
-    expect(getCostPerMillionOutput('o3')).toBe(40.0);
-    expect(getCostPerMillionOutput('o3-mini')).toBe(4.4);
-    expect(getCostPerMillionOutput('o4-mini')).toBe(4.4);
-  });
-
-  it('returns default cost for unknown model', () => {
-    expect(getCostPerMillionOutput('unknown')).toBe(4.4);
+  it('has fallback cost values', () => {
+    expect(CODEX_LEGACY_DEFAULTS.inputCost).toBe(1.1);
+    expect(CODEX_LEGACY_DEFAULTS.outputCost).toBe(4.4);
+    expect(CODEX_LEGACY_DEFAULTS.contextWindow).toBe(400_000);
+    expect(CODEX_LEGACY_DEFAULTS.maxOutput).toBe(100_000);
   });
 });
 

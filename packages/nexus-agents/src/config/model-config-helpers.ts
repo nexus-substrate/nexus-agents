@@ -16,6 +16,7 @@ import {
 } from './model-capabilities.js';
 import type {
   ModelId,
+  ModelCapability,
   CliNameLiteral,
   Pricing,
   QualityScores,
@@ -180,13 +181,56 @@ export function buildTopsisProfiles(): readonly TopsisProfileShape[] {
 /**
  * ModelInfo shape matching the ModelInfo interface in types-capability.ts.
  */
-interface ModelInfoShape {
+export interface ModelInfoShape {
   readonly id: string;
   readonly name: string;
   readonly contextWindow: number;
   readonly maxOutput?: number;
   readonly costPerMillionInput?: number;
   readonly costPerMillionOutput?: number;
+}
+
+// ---------------------------------------------------------------------------
+// CLI-Model Lookups — shared helpers for adapter getModelInfo()
+// ---------------------------------------------------------------------------
+
+/**
+ * Search the canonical registry by CLI name + CLI model identifier.
+ * Matches against both cliModelName (e.g., 'o3', 'gemini-2.5-pro')
+ * and cliAlias (e.g., 'opus', 'sonnet') for CLI tools that use aliases.
+ */
+export function findCanonicalModel(
+  cli: CliNameLiteral,
+  cliModelName: string
+): ModelCapability | undefined {
+  return DEFAULT_MODEL_CAPABILITIES.models.find(
+    (m) => m.cliName === cli && (m.cliModelName === cliModelName || m.cliAlias === cliModelName)
+  );
+}
+
+/**
+ * Build a ModelInfoShape from the canonical registry for a given CLI model name.
+ * Returns undefined if the model is not in the registry.
+ */
+export function buildModelInfo(
+  cli: CliNameLiteral,
+  cliModelName: string
+): ModelInfoShape | undefined {
+  const cap = findCanonicalModel(cli, cliModelName);
+  if (cap === undefined) return undefined;
+  const info: ModelInfoShape = {
+    id: cliModelName,
+    name: cap.displayName,
+    contextWindow: cap.contextWindow,
+  };
+  if (cap.maxOutputTokens !== undefined) {
+    (info as { maxOutput: number }).maxOutput = cap.maxOutputTokens;
+  }
+  if (cap.pricing !== undefined) {
+    (info as { costPerMillionInput: number }).costPerMillionInput = cap.pricing.inputPer1M;
+    (info as { costPerMillionOutput: number }).costPerMillionOutput = cap.pricing.outputPer1M;
+  }
+  return info;
 }
 
 /**

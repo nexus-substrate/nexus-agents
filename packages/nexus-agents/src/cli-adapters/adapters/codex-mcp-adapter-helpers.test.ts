@@ -1,5 +1,9 @@
 /**
  * Tests for Codex MCP Adapter Helpers
+ *
+ * Model info lookup functions consolidated into config/model-config-helpers.ts (#886).
+ * Tests here cover CLI-specific helpers only.
+ *
  * @module cli-adapters/adapters/codex-mcp-adapter-helpers.test
  */
 
@@ -7,9 +11,7 @@ import { describe, it, expect } from 'vitest';
 import type { CliName } from '../types.js';
 import {
   DEFAULT_CODEX_MCP_OPTIONS,
-  getModelDisplayName,
-  getCostPerMillionInput,
-  getCostPerMillionOutput,
+  CODEX_LEGACY_DEFAULTS,
   extractTextFromContent,
   isRetryableErrorCode,
   createCliError,
@@ -31,50 +33,13 @@ describe('DEFAULT_CODEX_MCP_OPTIONS', () => {
 });
 
 // ============================================================================
-// getModelDisplayName
+// CODEX_LEGACY_DEFAULTS (re-exported from codex-adapter-helpers)
 // ============================================================================
 
-describe('getModelDisplayName', () => {
-  it('returns display name for known models', () => {
-    expect(getModelDisplayName('o3')).toBe('O3');
-    expect(getModelDisplayName('o3-mini')).toBe('O3 Mini');
-    expect(getModelDisplayName('o4-mini')).toBe('O4 Mini');
-  });
-
-  it('returns model string for unknown models', () => {
-    expect(getModelDisplayName('custom-model')).toBe('custom-model');
-  });
-});
-
-// ============================================================================
-// getCostPerMillionInput
-// ============================================================================
-
-describe('getCostPerMillionInput', () => {
-  it('returns known input costs', () => {
-    expect(getCostPerMillionInput('o3')).toBe(10.0);
-    expect(getCostPerMillionInput('o3-mini')).toBe(1.1);
-    expect(getCostPerMillionInput('o4-mini')).toBe(1.1);
-  });
-
-  it('returns default for unknown models', () => {
-    expect(getCostPerMillionInput('unknown')).toBe(1.1);
-  });
-});
-
-// ============================================================================
-// getCostPerMillionOutput
-// ============================================================================
-
-describe('getCostPerMillionOutput', () => {
-  it('returns known output costs', () => {
-    expect(getCostPerMillionOutput('o3')).toBe(40.0);
-    expect(getCostPerMillionOutput('o3-mini')).toBe(4.4);
-    expect(getCostPerMillionOutput('o4-mini')).toBe(4.4);
-  });
-
-  it('returns default for unknown models', () => {
-    expect(getCostPerMillionOutput('unknown')).toBe(4.4);
+describe('CODEX_LEGACY_DEFAULTS', () => {
+  it('is re-exported from codex-adapter-helpers', () => {
+    expect(CODEX_LEGACY_DEFAULTS).toBeDefined();
+    expect(CODEX_LEGACY_DEFAULTS.displayNames['o3']).toBe('O3');
   });
 });
 

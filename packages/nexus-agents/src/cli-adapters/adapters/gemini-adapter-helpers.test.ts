@@ -1,77 +1,42 @@
 /**
  * Tests for Gemini Adapter Helpers
+ *
+ * Model info lookup functions consolidated into config/model-config-helpers.ts (#886).
+ * Tests here cover CLI-specific helpers only.
+ *
  * @module cli-adapters/adapters/gemini-adapter-helpers.test
  */
 
 import { describe, it, expect } from 'vitest';
 import type { CliError, CliName } from '../types.js';
 import {
-  getModelDisplayName,
-  getContextWindow,
-  getCostPerMillionInput,
-  getCostPerMillionOutput,
+  GEMINI_LEGACY_DEFAULTS,
   isRetryableError,
   categorizeError,
   createCircuitOpenError,
 } from './gemini-adapter-helpers.js';
 
 // ============================================================================
-// getModelDisplayName
+// GEMINI_LEGACY_DEFAULTS
 // ============================================================================
 
-describe('getModelDisplayName', () => {
-  it('returns display name for known model', () => {
-    expect(getModelDisplayName('gemini-2.5-pro')).toBe('Gemini 2.5 Pro');
+describe('GEMINI_LEGACY_DEFAULTS', () => {
+  it('has display names for known models', () => {
+    expect(GEMINI_LEGACY_DEFAULTS.displayNames['gemini-2.5-pro']).toBe('Gemini 2.5 Pro');
+    expect(GEMINI_LEGACY_DEFAULTS.displayNames['gemini-2.5-flash']).toBe('Gemini 2.5 Flash');
+    expect(GEMINI_LEGACY_DEFAULTS.displayNames['gemini-2.5-flash-lite']).toBe(
+      'Gemini 2.5 Flash Lite'
+    );
   });
 
-  it('returns display name for flash', () => {
-    expect(getModelDisplayName('gemini-2.5-flash')).toBe('Gemini 2.5 Flash');
+  it('has context windows for known models', () => {
+    expect(GEMINI_LEGACY_DEFAULTS.contextWindows['gemini-2.5-pro']).toBe(1_000_000);
   });
 
-  it('returns model string for unknown model', () => {
-    expect(getModelDisplayName('unknown-model')).toBe('unknown-model');
-  });
-});
-
-// ============================================================================
-// getContextWindow
-// ============================================================================
-
-describe('getContextWindow', () => {
-  it('returns context window for known model', () => {
-    expect(getContextWindow('gemini-2.5-pro')).toBe(1_000_000);
-  });
-
-  it('returns default for unknown model', () => {
-    expect(getContextWindow('unknown')).toBe(1_000_000);
-  });
-});
-
-// ============================================================================
-// getCostPerMillionInput / getCostPerMillionOutput
-// ============================================================================
-
-describe('getCostPerMillionInput', () => {
-  it('returns cost for pro model', () => {
-    expect(getCostPerMillionInput('gemini-2.5-pro')).toBe(1.25);
-  });
-
-  it('returns cost for flash model', () => {
-    expect(getCostPerMillionInput('gemini-2.5-flash')).toBe(0.15);
-  });
-
-  it('returns default for unknown', () => {
-    expect(getCostPerMillionInput('unknown')).toBe(0.075);
-  });
-});
-
-describe('getCostPerMillionOutput', () => {
-  it('returns cost for pro model', () => {
-    expect(getCostPerMillionOutput('gemini-2.5-pro')).toBe(10.0);
-  });
-
-  it('returns default for unknown', () => {
-    expect(getCostPerMillionOutput('unknown')).toBe(0.3);
+  it('has fallback cost values', () => {
+    expect(GEMINI_LEGACY_DEFAULTS.inputCost).toBe(0.075);
+    expect(GEMINI_LEGACY_DEFAULTS.outputCost).toBe(0.3);
+    expect(GEMINI_LEGACY_DEFAULTS.contextWindow).toBe(1_000_000);
   });
 });
 

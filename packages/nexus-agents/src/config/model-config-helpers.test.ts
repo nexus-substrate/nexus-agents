@@ -15,6 +15,8 @@ import {
   getDefaultModelForCli,
   getCliModelName,
   resolveCliAlias,
+  findCanonicalModel,
+  buildModelInfo,
   buildCapabilityProfiles,
   buildCliCapabilityProfiles,
   buildTopsisProfiles,
@@ -128,6 +130,73 @@ describe('resolveCliAlias', () => {
   it('returns undefined for unknown alias', () => {
     const resolved = resolveCliAlias('totally-fake');
     expect(resolved).toBeUndefined();
+  });
+});
+
+// ============================================================================
+// CLI-Model Lookups (Issue #886)
+// ============================================================================
+
+describe('findCanonicalModel', () => {
+  it('finds codex model by cliModelName', () => {
+    const model = findCanonicalModel('codex', 'o3');
+    expect(model).toBeDefined();
+    expect(model?.id).toBe('codex-5.3');
+  });
+
+  it('finds gemini model by cliModelName', () => {
+    const model = findCanonicalModel('gemini', 'gemini-2.5-flash');
+    expect(model).toBeDefined();
+    expect(model?.id).toBe('gemini-flash');
+  });
+
+  it('finds claude model by cliAlias', () => {
+    const model = findCanonicalModel('claude', 'opus');
+    expect(model).toBeDefined();
+    expect(model?.id).toBe('claude-opus');
+  });
+
+  it('returns undefined for unknown model', () => {
+    expect(findCanonicalModel('codex', 'nonexistent')).toBeUndefined();
+  });
+
+  it('returns undefined when cli does not match', () => {
+    // 'o3' is a codex model, not gemini
+    expect(findCanonicalModel('gemini', 'o3')).toBeUndefined();
+  });
+});
+
+describe('buildModelInfo', () => {
+  it('builds model info for codex model', () => {
+    const info = buildModelInfo('codex', 'o3');
+    expect(info).toBeDefined();
+    expect(info?.id).toBe('o3');
+    expect(info?.name).toBe('GPT-5.3-Codex');
+    expect(info?.contextWindow).toBe(400_000);
+    expect(info?.maxOutput).toBe(100_000);
+    expect(info?.costPerMillionInput).toBe(2.0);
+    expect(info?.costPerMillionOutput).toBe(8.0);
+  });
+
+  it('builds model info for gemini model', () => {
+    const info = buildModelInfo('gemini', 'gemini-2.5-flash');
+    expect(info).toBeDefined();
+    expect(info?.id).toBe('gemini-2.5-flash');
+    expect(info?.name).toBe('Gemini 2.5 Flash');
+    expect(info?.contextWindow).toBe(1_000_000);
+  });
+
+  it('builds model info for claude model via cliAlias', () => {
+    const info = buildModelInfo('claude', 'opus');
+    expect(info).toBeDefined();
+    expect(info?.id).toBe('opus');
+    expect(info?.name).toBe('Claude Opus 4.5');
+    expect(info?.contextWindow).toBe(200_000);
+    expect(info?.maxOutput).toBe(64_000);
+  });
+
+  it('returns undefined for unknown model', () => {
+    expect(buildModelInfo('codex', 'nonexistent')).toBeUndefined();
   });
 });
 

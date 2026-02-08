@@ -38,11 +38,7 @@ import type { ILogger } from '../../core/index.js';
 import { createLogger } from '../../core/index.js';
 import { CodexResponseParser } from '../parsers/codex-parser.js';
 import {
-  getModelDisplayName,
-  getContextWindow,
-  getMaxOutput,
-  getCostPerMillionInput,
-  getCostPerMillionOutput,
+  CODEX_LEGACY_DEFAULTS,
   createCodexError,
   normalizeCodexResponse,
   delay,
@@ -52,23 +48,15 @@ import {
   DEFAULT_MODEL_PER_CLI,
   DEFAULT_MODEL_CAPABILITIES,
 } from '../../config/model-capabilities.js';
+import { buildModelInfo } from '../../config/model-config-helpers.js';
 
 /** Derive the CLI model name for the default Codex model from the canonical registry. */
 const DEFAULT_CODEX_CLI_MODEL: string =
   DEFAULT_MODEL_CAPABILITIES.models.find((m) => m.id === DEFAULT_MODEL_PER_CLI.codex)
     ?.cliModelName ?? DEFAULT_MODEL_PER_CLI.codex;
 
-// Re-export helpers for backward compatibility
-export {
-  getModelDisplayName,
-  getContextWindow,
-  getMaxOutput,
-  getCostPerMillionInput,
-  getCostPerMillionOutput,
-  createCodexError,
-  normalizeCodexResponse,
-  delay,
-} from './codex-adapter-helpers.js';
+// Re-export CLI-specific helpers for backward compatibility
+export { createCodexError, normalizeCodexResponse, delay } from './codex-adapter-helpers.js';
 
 /**
  * Default execution options for Codex.
@@ -112,15 +100,20 @@ export class CodexCliAdapter implements ICliAdapter {
 
   /**
    * Gets Codex model information.
+   * Resolves from canonical registry when possible, falls back to legacy lookup.
    */
   getModelInfo(): ModelInfo {
+    const fromRegistry = buildModelInfo('codex', this.model);
+    if (fromRegistry !== undefined) return fromRegistry;
     return {
       id: this.model,
-      name: getModelDisplayName(this.model),
-      contextWindow: getContextWindow(this.model),
-      maxOutput: getMaxOutput(this.model),
-      costPerMillionInput: getCostPerMillionInput(this.model),
-      costPerMillionOutput: getCostPerMillionOutput(this.model),
+      name: CODEX_LEGACY_DEFAULTS.displayNames[this.model] ?? this.model,
+      contextWindow: CODEX_LEGACY_DEFAULTS.contextWindow,
+      maxOutput: CODEX_LEGACY_DEFAULTS.maxOutput,
+      costPerMillionInput:
+        CODEX_LEGACY_DEFAULTS.inputCosts[this.model] ?? CODEX_LEGACY_DEFAULTS.inputCost,
+      costPerMillionOutput:
+        CODEX_LEGACY_DEFAULTS.outputCosts[this.model] ?? CODEX_LEGACY_DEFAULTS.outputCost,
     };
   }
 
