@@ -190,7 +190,7 @@ describe('buildModelInfo', () => {
     const info = buildModelInfo('claude', 'opus');
     expect(info).toBeDefined();
     expect(info?.id).toBe('opus');
-    expect(info?.name).toBe('Claude Opus 4.5');
+    expect(info?.name).toBe('Claude Opus 4.6');
     expect(info?.contextWindow).toBe(200_000);
     expect(info?.maxOutput).toBe(64_000);
   });

@@ -55,6 +55,7 @@ const CLAUDE_LEGACY_DEFAULTS = {
     'claude-sonnet-4': 'Claude Sonnet 4',
     'claude-haiku-3': 'Claude Haiku 3',
     'claude-opus-4-5-20251101': 'Claude Opus 4.5',
+    'claude-opus-4-6': 'Claude Opus 4.6',
     opus: 'Claude Opus 4',
     sonnet: 'Claude Sonnet 4',
     haiku: 'Claude Haiku 3',
@@ -62,6 +63,7 @@ const CLAUDE_LEGACY_DEFAULTS = {
   inputCosts: {
     'claude-opus-4': 15.0,
     'claude-opus-4-5-20251101': 15.0,
+    'claude-opus-4-6': 15.0,
     'claude-sonnet-4': 3.0,
     'claude-haiku-3': 0.25,
     opus: 15.0,
@@ -71,6 +73,7 @@ const CLAUDE_LEGACY_DEFAULTS = {
   outputCosts: {
     'claude-opus-4': 75.0,
     'claude-opus-4-5-20251101': 75.0,
+    'claude-opus-4-6': 75.0,
     'claude-sonnet-4': 15.0,
     'claude-haiku-3': 1.25,
     opus: 75.0,

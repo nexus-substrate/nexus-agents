@@ -69,7 +69,7 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
     // ----- Anthropic Claude -----
     {
       id: 'claude-opus',
-      displayName: 'Claude Opus 4.5',
+      displayName: 'Claude Opus 4.6',
       provider: 'anthropic',
       contextWindow: 200_000,
       outputModalities: ['text', 'structured_json', 'code'],
