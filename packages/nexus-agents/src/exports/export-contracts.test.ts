@@ -26,6 +26,9 @@ import {
   registerListExpertsTool,
   registerListWorkflowsTool,
   registerConsensusVoteTool,
+  registerIssueTriageTool,
+  registerRunGraphWorkflowTool,
+  registerExecuteSpecTool,
 } from '../index.js';
 
 // ============================================================================
@@ -40,6 +43,9 @@ import {
   ListExpertsInputSchema,
   ListWorkflowsInputSchema,
   ConsensusVoteInputSchema,
+  IssueTriageInputSchema,
+  RunGraphWorkflowInputSchema,
+  ExecuteSpecInputSchema,
   MODEL_CAPABILITIES,
   toolSuccess,
   toolError,
@@ -121,6 +127,9 @@ describe('Export contracts — MCP tool registration', () => {
     expect(typeof registerListExpertsTool).toBe('function');
     expect(typeof registerListWorkflowsTool).toBe('function');
     expect(typeof registerConsensusVoteTool).toBe('function');
+    expect(typeof registerIssueTriageTool).toBe('function');
+    expect(typeof registerRunGraphWorkflowTool).toBe('function');
+    expect(typeof registerExecuteSpecTool).toBe('function');
   });
 
   it('exports tool input schemas', () => {
@@ -132,6 +141,9 @@ describe('Export contracts — MCP tool registration', () => {
     expect(ListExpertsInputSchema).toBeDefined();
     expect(ListWorkflowsInputSchema).toBeDefined();
     expect(ConsensusVoteInputSchema).toBeDefined();
+    expect(IssueTriageInputSchema).toBeDefined();
+    expect(RunGraphWorkflowInputSchema).toBeDefined();
+    expect(ExecuteSpecInputSchema).toBeDefined();
   });
 
   it('exports tool result helpers', () => {

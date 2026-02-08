@@ -137,4 +137,21 @@ export {
   type ListWorkflowsDeps,
   type ListWorkflowsResponse,
   type WorkflowInfo,
+  // Issue triage tool (Issue #828, #900)
+  registerIssueTriageTool,
+  IssueTriageInputSchema,
+  type IssueTriageInput,
+  type IssueTriageDeps,
+  type IssueTriageResponse,
+  // Graph workflow tool (Issue #840, #900)
+  registerRunGraphWorkflowTool,
+  RunGraphWorkflowInputSchema,
+  type RunGraphWorkflowInput,
+  type RunGraphWorkflowDeps,
+  type RunGraphWorkflowResponse,
+  // Execute spec tool (Issue #853, #900)
+  registerExecuteSpecTool,
+  ExecuteSpecInputSchema,
+  type ExecuteSpecInput,
+  type ExecuteSpecDeps,
 } from '../mcp/index.js';
