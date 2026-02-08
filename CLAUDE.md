@@ -454,11 +454,12 @@ Governance rules (voting thresholds, refactor gates, fitness audit, documentatio
 | `research_catalog_review` | Review auto-cataloged research references found during tool execution.                                                             |
 | `memory_query`            | Query across all memory backends with unified results and relevance scoring.                                                       |
 | `memory_stats`            | Get memory system statistics dashboard showing backend availability and metrics.                                                   |
+| `weather_report`          | weather_report tool                                                                                                                |
 | `issue_triage`            | issue_triage tool                                                                                                                  |
 | `run_graph_workflow`      | run_graph_workflow tool                                                                                                            |
 | `execute_spec`            | execute_spec tool                                                                                                                  |
 
-_Auto-generated from source. 18 tools registered._
+_Auto-generated from source. 19 tools registered._
 
 <!-- GOVERNANCE:TOOL_INDEX:END -->
 

@@ -187,6 +187,12 @@ export {
   type MemoryStatsInput,
   type MemoryStatsDeps,
   type MemoryStatsResponse,
+  // Weather report tool (Issue #865)
+  registerWeatherReportTool,
+  type WeatherReportDeps,
+  WeatherReportInputSchema,
+  type WeatherReportInput,
+  type WeatherReportResponse,
 } from './tools/index.js';
 
 // STPA Safety Analysis Framework (Issue #328)

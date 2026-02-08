@@ -196,6 +196,18 @@ export {
   type MemoryStatsResponse,
 } from './memory-stats.js';
 
+// Weather report tool (Issue #865)
+export { registerWeatherReportTool, type WeatherReportDeps } from './weather-report-tool.js';
+export {
+  WeatherReportInputSchema,
+  type WeatherReportInput,
+  type WeatherReportOptions,
+  type WeatherReportResponse,
+  type CliWeather,
+  type AdaptiveBonus,
+} from './weather-report-types.js';
+export { generateWeatherReport, getAdaptiveBonus, shouldExplore } from './weather-report.js';
+
 /**
  * Options for tool registration.
  */
@@ -288,6 +300,7 @@ export function registerTools(
       'research_catalog_review',
       'memory_query',
       'memory_stats',
+      'weather_report',
       'issue_triage',
       'run_graph_workflow',
       'execute_spec',

@@ -31,7 +31,9 @@ import {
 } from './delegate-to-model-types.js';
 import { DEFAULT_MODEL_CAPABILITIES, modelSupportsAll } from '../../config/model-capabilities.js';
 import type { SpecializationMatch } from '../../config/task-specialization-types.js';
+import type { TaskCategory } from '../../config/task-specialization-types.js';
 import { detectTaskCategory } from '../../config/task-specialization.js';
+import { getAdaptiveBonus } from './weather-report.js';
 
 /**
  * Checks if any keyword from list is in the text.
@@ -119,9 +121,19 @@ export function getCliForModel(modelId: string): string | undefined {
   return DEFAULT_MODEL_CAPABILITIES.models.find((m) => m.id === modelId)?.cliName;
 }
 
+/** Best-effort adaptive bonus lookup. Never throws. */
+function safeGetAdaptiveBonus(cli: string, category: TaskCategory): number {
+  try {
+    return getAdaptiveBonus(cli, category);
+  } catch {
+    return 0;
+  }
+}
+
 /**
  * Calculates bonus from task specialization matrix (Issue #858).
  * Models whose CLI matches the preferred CLI get the bonus.
+ * When sufficient outcomes exist, an adaptive adjustment is applied (#865).
  */
 export function calcSpecializationBonus(
   modelName: string,
@@ -129,9 +141,14 @@ export function calcSpecializationBonus(
 ): number {
   if (match === null) return 0;
   const cli = getCliForModel(modelName);
-  if (cli === match.primaryCli) return match.bonus;
-  if (cli === match.secondaryCli) return Math.floor(match.bonus / 2);
-  return 0;
+  let base = 0;
+  if (cli === match.primaryCli) base = match.bonus;
+  else if (cli === match.secondaryCli) base = Math.floor(match.bonus / 2);
+  if (base === 0 || cli === undefined) return base;
+
+  // Adaptive adjustment from outcome data (Issue #865)
+  const adaptive = safeGetAdaptiveBonus(cli, match.category);
+  return Math.round(base + adaptive);
 }
 
 /** Options for scoreModel beyond the required model/profile/requirements. */

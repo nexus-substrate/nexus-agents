@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "generated": "2026-02-07T23:52:44.747Z",
+  "generated": "2026-02-07T23:59:56.078Z",
   "generator": "scripts/generate-repo-index.ts",
   "packageVersion": "2.6.0",
   "cli": {
@@ -285,6 +285,10 @@
       {
         "name": "run_workflow",
         "file": "src/mcp/tools/run-workflow.ts"
+      },
+      {
+        "name": "weather_report",
+        "file": "src/mcp/tools/weather-report.ts"
       }
     ]
   },
