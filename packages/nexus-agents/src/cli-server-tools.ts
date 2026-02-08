@@ -26,6 +26,7 @@ import {
   registerMemoryQueryTool,
   registerMemoryStatsTool,
   registerWeatherReportTool,
+  registerRegistryImportTool,
   createDefaultDeps,
 } from './mcp/index.js';
 // Import mock directly from source (not public API - used as fallback when no adapter)
@@ -113,6 +114,8 @@ export const REGISTERED_TOOLS = [
   'research_catalog_review',
   'memory_query',
   'memory_stats',
+  'weather_report',
+  'registry_import',
 ] as const;
 
 /**
@@ -311,6 +314,15 @@ function registerWeatherReportTools(ctx: ToolRegistrationContext): void {
   });
 }
 
+/** Register registry import tool (Issue #889). */
+function registerRegistryImportTools(ctx: ToolRegistrationContext): void {
+  registerRegistryImportTool(ctx.server, {
+    logger: ctx.logger,
+    rateLimiter: ctx.rateLimiterFactory.getForTool('registry_import'),
+    ...(ctx.securityConfig !== undefined && { security: ctx.securityConfig }),
+  });
+}
+
 /** Register core routing and orchestration tools. */
 function registerCoreTools(ctx: ToolRegistrationContext): void {
   // Register delegate_to_model independently — it doesn't need a model adapter
@@ -467,6 +479,7 @@ function registerToolCategories(
   if (isCategoryAllowed('research_', allowed)) registerResearchTools(ctx);
   if (isCategoryAllowed('memory_', allowed)) registerMemoryTools(ctx);
   if (allowed('weather_report')) registerWeatherReportTools(ctx);
+  if (allowed('registry_import')) registerRegistryImportTools(ctx);
   if (allowed('list_experts')) {
     registerListExpertsTool(ctx.server, {
       logger: ctx.logger,
