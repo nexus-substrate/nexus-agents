@@ -34,43 +34,11 @@ export interface GovernanceClassification {
   promotionReason: string | null;
 }
 
-/** Security keywords that trigger governance enforcement. */
-const SECURITY_KEYWORDS = [
-  'security',
-  'vulnerabilit',
-  'cve-',
-  'exploit',
-  'injection',
-  'xss',
-  'csrf',
-  'auth',
-  'penetration',
-  'threat',
-  'malware',
-  'credentials',
-  'secrets',
-  'encryption',
-  'certificate',
-] as const;
-
-/** Architecture keywords that trigger governance enforcement. */
-const ARCHITECTURE_KEYWORDS = [
-  'architecture',
-  'breaking change',
-  'breaking api',
-  'api change',
-  'migration',
-  'deprecation',
-  'schema change',
-  'redesign',
-  'microservice',
-  'monolith',
-  'database',
-  'infrastructure',
-] as const;
-
-/** Roles that always trigger governance enforcement. */
-const GOVERNANCE_ROLES = new Set(['security_expert', 'architecture_expert']);
+import {
+  SECURITY_KEYWORDS,
+  ARCHITECTURE_KEYWORDS,
+  PROMOTED_ROLES as GOVERNANCE_ROLES,
+} from './gateway-keywords.js';
 
 /** Voting thresholds per governance.md. */
 const DOMAIN_THRESHOLDS: Record<GovernanceDomain, VotingThreshold | null> = {

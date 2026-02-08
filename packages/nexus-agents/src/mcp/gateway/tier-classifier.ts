@@ -61,44 +61,7 @@ export const TOOL_TIER_MAP: Readonly<Record<string, RequestTier>> = {
   issue_triage: RequestTier.ORCHESTRATED,
 };
 
-/** Keywords that indicate security-related work (case-insensitive). */
-const SECURITY_KEYWORDS = [
-  'security',
-  'vulnerabilit',
-  'cve-',
-  'exploit',
-  'injection',
-  'xss',
-  'csrf',
-  'auth',
-  'penetration',
-  'threat',
-  'malware',
-  'credentials',
-  'secrets',
-  'encryption',
-  'certificate',
-] as const;
-
-/** Keywords that indicate architecture-related work (case-insensitive). */
-const ARCHITECTURE_KEYWORDS = [
-  'architecture',
-  'breaking change',
-  'breaking api',
-  'api change',
-  'migration',
-  'refactor.*system',
-  'redesign',
-  'microservice',
-  'monolith',
-  'deprecation',
-  'schema change',
-  'database',
-  'infrastructure',
-] as const;
-
-/** Roles that always promote to Tier 3. */
-const PROMOTED_ROLES = new Set(['security_expert', 'architecture_expert']);
+import { SECURITY_KEYWORDS, ARCHITECTURE_KEYWORDS, PROMOTED_ROLES } from './gateway-keywords.js';
 
 /**
  * Classifies an MCP tool request into a processing tier.
