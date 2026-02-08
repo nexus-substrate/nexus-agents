@@ -42,3 +42,22 @@ export {
   type PipelineResult,
   type PipelineExecuteOptions,
 } from './pipeline-runner.js';
+
+export {
+  // Schemas
+  PluginManifestSchema,
+  StageResultSchema,
+  // Constants
+  PLUGIN_TRUST_LEVELS,
+  // Types
+  type PluginManifest,
+  type PluginTrustLevel,
+  type PipelinePlugin,
+  type StageContext,
+  type StageResult,
+  type ValidationError,
+  type RegistrationError,
+  type IPluginRegistry,
+} from './plugin-types.js';
+
+export { PluginRegistry, type PluginRegistryOptions } from './plugin-registry.js';

@@ -129,6 +129,10 @@ import {
   taskContractToToolResponse,
   compilePlan,
   PipelineRunner,
+  PluginManifestSchema,
+  StageResultSchema,
+  PLUGIN_TRUST_LEVELS,
+  PluginRegistry,
 } from '../index.js';
 
 describe('Export contracts — MCP tool registration', () => {
@@ -324,6 +328,21 @@ describe('Export contracts — pipeline V2 types', () => {
     const runner = new PipelineRunner();
     expect(typeof runner.compile).toBe('function');
     expect(typeof runner.execute).toBe('function');
+  });
+
+  it('exports plugin type schemas and constants', () => {
+    expect(PluginManifestSchema).toBeDefined();
+    expect(StageResultSchema).toBeDefined();
+    expect(PLUGIN_TRUST_LEVELS).toContain('core');
+    expect(PLUGIN_TRUST_LEVELS).toContain('experimental');
+  });
+
+  it('exports PluginRegistry class', () => {
+    expect(typeof PluginRegistry).toBe('function');
+    const registry = new PluginRegistry();
+    expect(typeof registry.register).toBe('function');
+    expect(typeof registry.resolve).toBe('function');
+    expect(typeof registry.freeze).toBe('function');
   });
 });
 

@@ -35,4 +35,19 @@ export {
   type CompiledPipeline,
   type PipelineResult,
   type PipelineExecuteOptions,
+  // Plugin types
+  PluginManifestSchema,
+  StageResultSchema,
+  PLUGIN_TRUST_LEVELS,
+  type PluginManifest,
+  type PluginTrustLevel,
+  type PipelinePlugin,
+  type StageContext,
+  type StageResult,
+  type ValidationError,
+  type RegistrationError,
+  type IPluginRegistry,
+  // Plugin registry
+  PluginRegistry,
+  type PluginRegistryOptions,
 } from '../pipeline/index.js';
