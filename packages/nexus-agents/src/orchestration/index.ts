@@ -220,6 +220,10 @@ export type {
   ConsensusPlanConfig,
 } from './consensus-plan-types.js';
 
+// AOrchestra — Dynamic Sub-Agent Creation (Issue #699)
+export { planAgentTeam } from './aorchestra/index.js';
+export type { AgentPlan, AgentPlanEntry } from './aorchestra/index.js';
+
 // Checkpointing (Issue #833)
 export {
   InMemoryCheckpointStore,
