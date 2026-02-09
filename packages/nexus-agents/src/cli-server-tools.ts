@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- Cohesive tool registration module (governance: 400-600 OK if cohesive) */
 /**
  * nexus-agents CLI Server Tool Registration
  *
@@ -42,6 +43,9 @@ import type { ILogger } from './core/index.js';
 import { NexusError, ErrorCode } from './core/index.js';
 import { runStpaSafetyAnalysis, StpaSafetyError } from './cli-server-stpa.js';
 import { createCorePluginRegistry } from './pipeline/core-plugins.js';
+import { EventBus as PipelineEventBus } from './pipeline/event-bus.js';
+import { ArtifactStore } from './pipeline/artifact-store.js';
+import { createEventBusBridge } from './pipeline/event-bus-bridge.js';
 
 // Re-export for public API
 export { StpaSafetyError };
@@ -520,11 +524,15 @@ export function registerMcpTools(options: RegisterMcpToolsOptions): void {
   });
   setGlobalToolRateLimiterFactory(rateLimiterFactory);
 
-  // Initialize V2 PluginRegistry with core plugins (Phase B, Issue #921)
+  // Initialize V2 Pipeline OS subsystems (Phases B-C, Issues #921-#922)
   const pluginRegistry = createCorePluginRegistry();
-  logger.info('V2 PluginRegistry initialized', {
+  const pipelineEventBus = new PipelineEventBus();
+  const pipelineArtifactStore = new ArtifactStore();
+  const bridge = createEventBusBridge({ source: pipelineEventBus });
+  logger.info('V2 Pipeline OS initialized', {
     plugins: pluginRegistry.listEnabled().length,
-    frozen: pluginRegistry.frozen,
+    artifacts: pipelineArtifactStore.size,
+    bridged: bridge.forwarded(),
   });
 
   // Use gateway-wrapped server in context so all registerTool calls get wrapped

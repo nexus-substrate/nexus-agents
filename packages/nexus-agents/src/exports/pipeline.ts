@@ -88,4 +88,8 @@ export {
   registerCorePlugins,
   createCorePluginRegistry,
   type CorePluginRegistrationResult,
+  // EventBus bridge (Issue #922, Phase C)
+  createEventBusBridge,
+  type EventBusBridgeOptions,
+  type PipelineBridgeResult,
 } from '../pipeline/index.js';

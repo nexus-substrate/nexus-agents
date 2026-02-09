@@ -156,6 +156,7 @@ import {
   CORE_PLUGINS,
   registerCorePlugins,
   createCorePluginRegistry,
+  createEventBusBridge,
 } from '../index.js';
 
 describe('Export contracts — MCP tool registration', () => {
@@ -422,6 +423,10 @@ describe('Export contracts — pipeline V2 types', () => {
 
   it('exports createCorePluginRegistry (Issue #921)', () => {
     expect(typeof createCorePluginRegistry).toBe('function');
+  });
+
+  it('exports createEventBusBridge (Issue #922)', () => {
+    expect(typeof createEventBusBridge).toBe('function');
   });
 });
 

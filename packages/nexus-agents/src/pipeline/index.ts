@@ -111,3 +111,9 @@ export {
   createCorePluginRegistry,
 } from './core-plugins.js';
 export type { CorePluginRegistrationResult } from './core-plugins.js';
+
+export {
+  createEventBusBridge,
+  type EventBusBridgeOptions,
+  type PipelineBridgeResult,
+} from './event-bus-bridge.js';
