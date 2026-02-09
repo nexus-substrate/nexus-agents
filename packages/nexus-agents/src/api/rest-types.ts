@@ -20,8 +20,8 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
  * REST API server configuration.
  */
 export const RestApiConfigSchema = z.object({
-  /** Server port (default: 3000) */
-  port: z.number().min(1).max(65535).optional().default(3000),
+  /** Server port. 0 = OS-assigned ephemeral port (useful for tests). Default: 3000. */
+  port: z.number().min(0).max(65535).optional().default(3000),
   /** Host to bind to (default: 0.0.0.0) */
   host: z.string().optional().default('0.0.0.0'),
   /** API base path (default: /api/v1) */

@@ -6,13 +6,11 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { RestApiServer } from './rest-server.js';
 
 /**
- * Generates a test port using PID + random offset to minimize EADDRINUSE collisions
- * in parallel test execution. Range: 10000-60000.
+ * Returns port 0 so the OS assigns a random available ephemeral port.
+ * Eliminates EADDRINUSE collisions during parallel test execution.
  */
-let portCounter = 0;
 function getTestPort(): number {
-  const base = 10000 + (process.pid % 50000);
-  return ((base + portCounter++) % 50000) + 10000;
+  return 0;
 }
 
 /** Standard test API key for authenticated endpoints. */
