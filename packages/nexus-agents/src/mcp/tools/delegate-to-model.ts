@@ -13,7 +13,7 @@
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { createLogger, formatZodError, getTimeProvider } from '../../core/index.js';
+import { createLogger, formatZodError, getTimeProvider, type ILogger } from '../../core/index.js';
 import { DEFAULTS } from '../../config/defaults.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
@@ -36,6 +36,10 @@ import { getToolMemory } from './tool-memory.js';
 import { getOutcomeStore } from '../../orchestration/outcomes/index.js';
 import { detectTaskCategory } from '../../config/task-specialization.js';
 import type { CliName } from '../../cli-adapters/types-core.js';
+import {
+  delegateInputToTaskContract,
+  executeDelegatePipeline,
+} from '../../pipeline/v2-delegate.js';
 
 // Re-export types for backward compatibility
 export type {
@@ -96,11 +100,17 @@ function recordDelegation(task: string, model: string, usedRouter: boolean, star
   }
 }
 
+/** Fire-and-forget V2 pipeline instrumentation (Phase A, Issue #920). */
+function instrumentV2Pipeline(input: { task: string }, logger: ILogger): void {
+  const tc = delegateInputToTaskContract(input);
+  void executeDelegatePipeline(tc).then((m) => {
+    logger.info('V2 delegate pipeline', { ...m });
+  });
+}
+
 /**
  * Creates the core handler logic for delegate_to_model tool.
- * Rate limiting is handled by createSecureHandler wrapper.
- * Uses CompositeRouter when available for intelligent routing.
- * Falls back to local model selection when router is not provided.
+ * Uses CompositeRouter when available, falls back to local model selection.
  */
 function createDelegateHandler(
   deps: DelegateDeps
@@ -109,14 +119,14 @@ function createDelegateHandler(
     const startMs = Date.now();
     const validated = DelegateInputSchema.safeParse(args);
     if (!validated.success) {
-      ctx.logger.warn('Invalid delegate_to_model input', { errors: validated.error.issues });
+      ctx.logger.warn('Invalid input', { errors: validated.error.issues });
       return errorResult(`Validation error: ${formatZodError(validated.error)}`);
     }
-
     const input = validated.data;
     ctx.logger.info('Analyzing task for model routing', { taskLength: input.task.length });
     const requirements = analyzeTask(input.task);
-    // Try CompositeRouter first if available (Issue #169)
+    if (process.env['NEXUS_V2_DELEGATE'] === 'true') instrumentV2Pipeline(input, ctx.logger);
+    // Try CompositeRouter first if available
     if (deps.router !== undefined) {
       const routingResult = await routeViaCompositeRouter(
         input.task,
@@ -124,34 +134,22 @@ function createDelegateHandler(
         deps.feedbackIntegration,
         ctx.logger
       );
-
       if (routingResult !== null) {
         const output = mapCompositeDecisionToOutput(
           routingResult.decision,
           requirements.estimatedTokens
         );
-        ctx.logger.info('Model recommendation via CompositeRouter', {
-          recommendedModel: output.recommended_model,
-          confidence: routingResult.decision.confidence,
-          stages: routingResult.decision.stagesExecuted,
-          routingId: routingResult.routingId,
-        });
+        ctx.logger.info('Routed via CompositeRouter', { model: output.recommended_model });
         recordDelegation(input.task, output.recommended_model, true, startMs);
         return successResult(JSON.stringify(output, null, 2));
       }
-
       ctx.logger.info('Falling back to local model selection');
     }
-    // Fall back to local model selection
     const billingMode = input.billing_mode ?? DEFAULTS.PROVIDER_DEFAULTS.billingMode;
     const selection = selectModel(input, requirements, billingMode);
     const output = buildDelegateOutput(selection, requirements);
-
     if (!output) return errorResult(`Unknown model: ${selection.model}`);
-
-    ctx.logger.info('Model recommendation complete', {
-      recommendedModel: output.recommended_model,
-    });
+    ctx.logger.info('Model recommendation complete', { model: output.recommended_model });
     recordDelegation(input.task, output.recommended_model, false, startMs);
     return successResult(JSON.stringify(output, null, 2));
   };

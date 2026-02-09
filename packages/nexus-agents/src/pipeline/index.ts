@@ -95,4 +95,9 @@ export {
 
 export { createFeedbackSubscriber } from './feedback-subscriber.js';
 
-export { createDelegatePipeline } from './v2-delegate.js';
+export {
+  createDelegatePipeline,
+  delegateInputToTaskContract,
+  executeDelegatePipeline,
+} from './v2-delegate.js';
+export type { DelegateInputLike, PipelineMetrics } from './v2-delegate.js';

@@ -2,10 +2,16 @@
  * V2 delegate pipeline tests (Issue #914, Phase 6-1)
  *
  * Tests the V2 pipeline path for delegate_to_model.
+ * Phase A (Issue #920): Tests DelegateInput→TaskContract conversion and pipeline metrics.
  */
 import { describe, it, expect } from 'vitest';
 
-import { createDelegatePipeline } from './v2-delegate.js';
+import {
+  createDelegatePipeline,
+  delegateInputToTaskContract,
+  executeDelegatePipeline,
+} from './v2-delegate.js';
+import type { DelegateInputLike } from './v2-delegate.js';
 import type { TaskContract } from './task-contract.js';
 
 // ============================================================================
@@ -85,5 +91,85 @@ describe('createDelegatePipeline', () => {
     if (result.ok) {
       expect(result.value.success).toBe(true);
     }
+  });
+});
+
+// ============================================================================
+// Phase A: DelegateInput → TaskContract (Issue #920)
+// ============================================================================
+
+describe('delegateInputToTaskContract', () => {
+  it('converts minimal input to TaskContract', () => {
+    const input: DelegateInputLike = { task: 'Analyze code' };
+    const contract = delegateInputToTaskContract(input);
+    expect(contract.description).toBe('Analyze code');
+    expect(contract.status).toBe('approved');
+    expect(contract.analysis.taskType).toBe('routing');
+    expect(contract.id).toMatch(/^delegate-/);
+  });
+
+  it('preserves preferred_capability in metadata', () => {
+    const input: DelegateInputLike = {
+      task: 'Review auth module',
+      preferred_capability: 'reasoning',
+    };
+    const contract = delegateInputToTaskContract(input);
+    expect(contract.metadata['preferredCapability']).toBe('reasoning');
+  });
+
+  it('preserves model_hint in metadata', () => {
+    const input: DelegateInputLike = {
+      task: 'Write tests',
+      model_hint: 'claude-opus',
+    };
+    const contract = delegateInputToTaskContract(input);
+    expect(contract.metadata['modelHint']).toBe('claude-opus');
+  });
+
+  it('preserves billing_mode in metadata', () => {
+    const input: DelegateInputLike = {
+      task: 'Quick query',
+      billing_mode: 'plan',
+    };
+    const contract = delegateInputToTaskContract(input);
+    expect(contract.metadata['billingMode']).toBe('plan');
+  });
+
+  it('preserves estimate_tokens flag in metadata', () => {
+    const input: DelegateInputLike = {
+      task: 'Count tokens',
+      estimate_tokens: true,
+    };
+    const contract = delegateInputToTaskContract(input);
+    expect(contract.metadata['estimateTokens']).toBe(true);
+  });
+
+  it('omits undefined optional fields from metadata', () => {
+    const input: DelegateInputLike = { task: 'Simple task' };
+    const contract = delegateInputToTaskContract(input);
+    expect(contract.metadata).toEqual({ source: 'delegate_to_model' });
+  });
+
+  it('generates unique IDs', () => {
+    const a = delegateInputToTaskContract({ task: 'Task A' });
+    const b = delegateInputToTaskContract({ task: 'Task B' });
+    expect(a.id).not.toBe(b.id);
+  });
+});
+
+describe('executeDelegatePipeline', () => {
+  it('returns success metrics for valid task', async () => {
+    const contract = delegateInputToTaskContract({ task: 'Route this task' });
+    const metrics = await executeDelegatePipeline(contract);
+    expect(metrics.compiled).toBe(true);
+    expect(metrics.executed).toBe(true);
+    expect(metrics.durationMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it('reports non-negative duration', async () => {
+    const contract = delegateInputToTaskContract({ task: 'Measure timing' });
+    const metrics = await executeDelegatePipeline(contract);
+    expect(metrics.compiled).toBe(true);
+    expect(metrics.stepsExecuted).toBeGreaterThanOrEqual(0);
   });
 });

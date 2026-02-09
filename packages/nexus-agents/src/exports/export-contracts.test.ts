@@ -151,6 +151,8 @@ import {
   BUILT_IN_RULES,
   createFeedbackSubscriber,
   createDelegatePipeline,
+  delegateInputToTaskContract,
+  executeDelegatePipeline,
 } from '../index.js';
 
 describe('Export contracts — MCP tool registration', () => {
@@ -396,6 +398,14 @@ describe('Export contracts — pipeline V2 types', () => {
 
   it('exports createDelegatePipeline', () => {
     expect(typeof createDelegatePipeline).toBe('function');
+  });
+
+  it('exports delegateInputToTaskContract (Issue #920)', () => {
+    expect(typeof delegateInputToTaskContract).toBe('function');
+  });
+
+  it('exports executeDelegatePipeline (Issue #920)', () => {
+    expect(typeof executeDelegatePipeline).toBe('function');
   });
 });
 

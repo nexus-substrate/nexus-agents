@@ -79,4 +79,8 @@ export {
   createFeedbackSubscriber,
   // V2 delegate
   createDelegatePipeline,
+  delegateInputToTaskContract,
+  executeDelegatePipeline,
+  type DelegateInputLike,
+  type PipelineMetrics,
 } from '../pipeline/index.js';
