@@ -8,14 +8,25 @@
  * Phase A (Issue #920): Adds DelegateInput→TaskContract conversion and
  * pipeline execution metrics for config-flag-gated V2 instrumentation.
  *
+ * Phase 1 (#927): Wires PolicyEvaluator into pipeline execution so
+ * block mode halts execution on policy violations.
+ *
  * @module pipeline/v2-delegate
  */
 import { randomUUID } from 'node:crypto';
 
+import { createLogger } from '../core/index.js';
+
 import { PipelineRunner } from './pipeline-runner.js';
+import { createDefaultPolicyEngine } from './policy-engine.js';
+import { evaluatePolicy, getPolicyMode } from './policy-evaluator.js';
 
 import type { CompiledPipeline } from './pipeline-runner.js';
 import type { TaskContract, PlanContract } from './task-contract.js';
+import type { PolicyContext } from './policy-engine.js';
+import type { PolicyEvalResult, PolicyViolation } from './policy-evaluator.js';
+
+const logger = createLogger({ component: 'V2Delegate' });
 
 /** Result of creating a delegate pipeline. */
 type DelegatePipelineResult =
@@ -58,6 +69,8 @@ export interface PipelineMetrics {
   readonly executed: boolean;
   readonly stepsExecuted: number;
   readonly durationMs: number;
+  readonly policyBlocked?: boolean;
+  readonly policyViolations?: readonly string[];
 }
 
 /**
@@ -104,9 +117,15 @@ export function delegateInputToTaskContract(input: DelegateInputLike): TaskContr
 
 /**
  * Compiles and executes a V2 pipeline for the given TaskContract.
+ * Evaluates policy before execution — block mode halts the pipeline.
  * Returns metrics for observability — never throws.
  */
 export async function executeDelegatePipeline(task: TaskContract): Promise<PipelineMetrics> {
+  const policyResult = checkPipelinePolicy(task, 'route');
+  if (!policyResult.allowed) {
+    return policyBlockedMetrics(policyResult);
+  }
+
   const compiled = createDelegatePipeline(task);
   if (!compiled.ok) {
     return { compiled: false, executed: false, stepsExecuted: 0, durationMs: 0 };
@@ -124,6 +143,57 @@ export async function executeDelegatePipeline(task: TaskContract): Promise<Pipel
     stepsExecuted: result.value.stepsExecuted,
     durationMs,
   };
+}
+
+// ============================================================================
+// Policy Enforcement (#927, Phase 1)
+// ============================================================================
+
+/**
+ * Evaluates pipeline policy before execution.
+ * Builds PolicyContext from TaskContract metadata and stage type.
+ * Uses the default PolicyEngine with 5 built-in rules.
+ */
+export function checkPipelinePolicy(task: TaskContract, stageType: string): PolicyEvalResult {
+  const mode = getPolicyMode();
+  if (mode === 'off') {
+    return { allowed: true, violations: [], mode };
+  }
+
+  const engine = createDefaultPolicyEngine();
+  const context: PolicyContext = {
+    taskId: task.id,
+    stageId: `pre-execution-${stageType}`,
+    stageType,
+    pipelineState: task.metadata,
+  };
+
+  const result = evaluatePolicy({ engine, mode }, context);
+  if (!result.allowed) {
+    logger.warn('Pipeline blocked by policy', {
+      taskId: task.id,
+      violations: result.violations.map((v) => v.ruleId),
+    });
+  }
+  return result;
+}
+
+/** Creates PipelineMetrics for a policy-blocked execution. */
+function policyBlockedMetrics(result: PolicyEvalResult): PipelineMetrics {
+  const violations = result.violations.map(formatViolation);
+  return {
+    compiled: false,
+    executed: false,
+    stepsExecuted: 0,
+    durationMs: 0,
+    policyBlocked: true,
+    policyViolations: violations,
+  };
+}
+
+/** Formats a PolicyViolation for metrics output. */
+function formatViolation(v: PolicyViolation): string {
+  return `${v.ruleId}: ${v.reason}`;
 }
 
 // ============================================================================

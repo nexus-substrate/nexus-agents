@@ -153,6 +153,7 @@ import {
   createDelegatePipeline,
   delegateInputToTaskContract,
   executeDelegatePipeline,
+  checkPipelinePolicy,
   CORE_PLUGINS,
   registerCorePlugins,
   createCorePluginRegistry,
@@ -415,6 +416,10 @@ describe('Export contracts — pipeline V2 types', () => {
 
   it('exports executeDelegatePipeline (Issue #920)', () => {
     expect(typeof executeDelegatePipeline).toBe('function');
+  });
+
+  it('exports checkPipelinePolicy (#927)', () => {
+    expect(typeof checkPipelinePolicy).toBe('function');
   });
 
   it('exports CORE_PLUGINS (Issue #921)', () => {

@@ -5,6 +5,9 @@
  * PlanContract (analyze → route → execute → validate), then executes
  * through PipelineRunner with policy evaluation at each stage boundary.
  *
+ * Phase 1 (#927): Wires PolicyEvaluator into pipeline execution so
+ * block mode halts execution on policy violations.
+ *
  * Runs fire-and-forget alongside V1 orchestration when
  * NEXUS_V2_ORCHESTRATE=true.
  *
@@ -12,7 +15,7 @@
  */
 import { randomUUID } from 'node:crypto';
 
-import { createDelegatePipeline } from './v2-delegate.js';
+import { createDelegatePipeline, checkPipelinePolicy } from './v2-delegate.js';
 import { PipelineRunner } from './pipeline-runner.js';
 
 import type { TaskContract } from './task-contract.js';
@@ -61,6 +64,19 @@ export function orchestrateInputToTaskContract(input: OrchestrateInputLike): Tas
 
 /** Executes the V2 orchestrate pipeline and returns metrics. */
 export async function executeOrchestratePipeline(task: TaskContract): Promise<PipelineMetrics> {
+  const policyResult = checkPipelinePolicy(task, 'execute');
+  if (!policyResult.allowed) {
+    const violations = policyResult.violations.map((v) => `${v.ruleId}: ${v.reason}`);
+    return {
+      compiled: false,
+      executed: false,
+      stepsExecuted: 0,
+      durationMs: 0,
+      policyBlocked: true,
+      policyViolations: violations,
+    };
+  }
+
   const compiled = createDelegatePipeline(task);
   if (!compiled.ok) {
     return { compiled: false, executed: false, stepsExecuted: 0, durationMs: 0 };

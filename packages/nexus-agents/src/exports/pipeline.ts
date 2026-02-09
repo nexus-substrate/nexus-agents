@@ -81,6 +81,7 @@ export {
   createDelegatePipeline,
   delegateInputToTaskContract,
   executeDelegatePipeline,
+  checkPipelinePolicy,
   type DelegateInputLike,
   type PipelineMetrics,
   // Core plugins (Issue #921, Phase B)

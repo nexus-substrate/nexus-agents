@@ -99,6 +99,7 @@ export {
   createDelegatePipeline,
   delegateInputToTaskContract,
   executeDelegatePipeline,
+  checkPipelinePolicy,
 } from './v2-delegate.js';
 export type { DelegateInputLike, PipelineMetrics } from './v2-delegate.js';
 

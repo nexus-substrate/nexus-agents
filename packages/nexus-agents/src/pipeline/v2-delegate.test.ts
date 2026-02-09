@@ -3,13 +3,15 @@
  *
  * Tests the V2 pipeline path for delegate_to_model.
  * Phase A (Issue #920): Tests DelegateInput→TaskContract conversion and pipeline metrics.
+ * Phase 1 (#927): Tests PolicyEvaluator enforcement in pipeline execution.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 
 import {
   createDelegatePipeline,
   delegateInputToTaskContract,
   executeDelegatePipeline,
+  checkPipelinePolicy,
 } from './v2-delegate.js';
 import type { DelegateInputLike } from './v2-delegate.js';
 import type { TaskContract } from './task-contract.js';
@@ -171,5 +173,101 @@ describe('executeDelegatePipeline', () => {
     const metrics = await executeDelegatePipeline(contract);
     expect(metrics.compiled).toBe(true);
     expect(metrics.stepsExecuted).toBeGreaterThanOrEqual(0);
+  });
+});
+
+// ============================================================================
+// Phase 1: Policy Enforcement (#927)
+// ============================================================================
+
+describe('checkPipelinePolicy', () => {
+  const savedPolicy = process.env['NEXUS_V2_POLICY_MODE'];
+  const savedMode = process.env['NEXUS_V2_MODE'];
+
+  afterEach(() => {
+    if (savedPolicy !== undefined) process.env['NEXUS_V2_POLICY_MODE'] = savedPolicy;
+    else delete process.env['NEXUS_V2_POLICY_MODE'];
+    if (savedMode !== undefined) process.env['NEXUS_V2_MODE'] = savedMode;
+    else delete process.env['NEXUS_V2_MODE'];
+  });
+
+  it('allows execution when policy mode is off', () => {
+    process.env['NEXUS_V2_POLICY_MODE'] = 'off';
+    const result = checkPipelinePolicy(makeTask(), 'route');
+    expect(result.allowed).toBe(true);
+    expect(result.mode).toBe('off');
+  });
+
+  it('allows execution when no violations in block mode', () => {
+    process.env['NEXUS_V2_POLICY_MODE'] = 'block';
+    const result = checkPipelinePolicy(makeTask(), 'route');
+    expect(result.allowed).toBe(true);
+    expect(result.violations).toHaveLength(0);
+  });
+
+  it('blocks when trust tier 3+ attempts execute stage', () => {
+    process.env['NEXUS_V2_POLICY_MODE'] = 'block';
+    const task = makeTask({ metadata: { trustTier: 3 } });
+    const result = checkPipelinePolicy(task, 'execute');
+    expect(result.allowed).toBe(false);
+    expect(result.violations.length).toBeGreaterThan(0);
+    expect(result.violations[0]!.ruleId).toBe('trust-tier');
+  });
+
+  it('warns but allows in warn mode with violations', () => {
+    process.env['NEXUS_V2_POLICY_MODE'] = 'warn';
+    const task = makeTask({ metadata: { trustTier: 3 } });
+    const result = checkPipelinePolicy(task, 'execute');
+    expect(result.allowed).toBe(true);
+    expect(result.violations.length).toBeGreaterThan(0);
+    expect(result.mode).toBe('warn');
+  });
+
+  it('blocks high-risk unapproved tasks', () => {
+    process.env['NEXUS_V2_POLICY_MODE'] = 'block';
+    const task = makeTask({ metadata: { highRisk: true } });
+    const result = checkPipelinePolicy(task, 'execute');
+    expect(result.allowed).toBe(false);
+    const ruleIds = result.violations.map((v) => v.ruleId);
+    expect(ruleIds).toContain('high-risk-approval');
+  });
+
+  it('allows high-risk tasks when user approved', () => {
+    process.env['NEXUS_V2_POLICY_MODE'] = 'block';
+    const task = makeTask({ metadata: { highRisk: true, userApproved: true } });
+    const result = checkPipelinePolicy(task, 'execute');
+    const ruleIds = result.violations.map((v) => v.ruleId);
+    expect(ruleIds).not.toContain('high-risk-approval');
+  });
+});
+
+describe('executeDelegatePipeline — policy enforcement', () => {
+  const savedPolicy = process.env['NEXUS_V2_POLICY_MODE'];
+  const savedMode = process.env['NEXUS_V2_MODE'];
+
+  afterEach(() => {
+    if (savedPolicy !== undefined) process.env['NEXUS_V2_POLICY_MODE'] = savedPolicy;
+    else delete process.env['NEXUS_V2_POLICY_MODE'];
+    if (savedMode !== undefined) process.env['NEXUS_V2_MODE'] = savedMode;
+    else delete process.env['NEXUS_V2_MODE'];
+  });
+
+  it('blocks and returns violation metrics when policy denies', async () => {
+    process.env['NEXUS_V2_POLICY_MODE'] = 'block';
+    const task = makeTask({ metadata: { highRisk: true } });
+    const metrics = await executeDelegatePipeline(task);
+    expect(metrics.policyBlocked).toBe(true);
+    expect(metrics.compiled).toBe(false);
+    expect(metrics.executed).toBe(false);
+    expect(metrics.policyViolations).toBeDefined();
+    expect(metrics.policyViolations!.length).toBeGreaterThan(0);
+  });
+
+  it('proceeds normally when policy allows', async () => {
+    process.env['NEXUS_V2_POLICY_MODE'] = 'off';
+    const contract = delegateInputToTaskContract({ task: 'Safe task' });
+    const metrics = await executeDelegatePipeline(contract);
+    expect(metrics.policyBlocked).toBeUndefined();
+    expect(metrics.compiled).toBe(true);
   });
 });
