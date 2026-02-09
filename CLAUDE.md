@@ -457,28 +457,28 @@ Governance rules (voting thresholds, refactor gates, fitness audit, documentatio
 
 ## MCP Tools Reference
 
-| Tool                      | Description                                                                                                                                   |
-| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `orchestrate`             | Orchestrate a task by analyzing it, breaking it into subtasks if needed, and coordinating expert agents                                       |
-| `create_expert`           | Create a specialized expert agent for code, architecture, security, documentation, testing, devops, research, product management, or UX tasks |
-| `execute_expert`          | Execute a task using a previously created expert agent. Returns the expert analysis including output, confidence, and token usage.            |
-| `run_workflow`            | Execute workflow templates with provided inputs, supporting built-in templates and custom paths                                               |
-| `delegate_to_model`       | Route a task to the optimal model based on capability matching. Returns model recommendation with reasoning.                                  |
-| `list_experts`            | List available expert types that can be created with create_expert. Returns role names, descriptions, and capabilities.                       |
-| `list_workflows`          | List available workflow templates that can be executed with run_workflow. Returns template names and descriptions.                            |
-| `consensus_vote`          | Execute multi-model consensus voting on a proposal. Uses specialized agent roles to vote with configurable strategies.                        |
-| `research_query`          | Query the research registry for technique status, overlaps, statistics, or text search.                                                       |
-| `research_add`            | Add an arXiv paper to the research registry. Fetches metadata from the arXiv API and persists to the registry.                                |
-| `research_discover`       | Discover new research papers and repositories from external sources. Searches arXiv, GitHub, and other sources.                               |
-| `research_analyze`        | Analyze the research registry for gaps, trends, priorities, stale entries, or coverage.                                                       |
-| `research_catalog_review` | Review auto-cataloged research references found during tool execution.                                                                        |
-| `memory_query`            | Query across all memory backends with unified results and relevance scoring.                                                                  |
-| `memory_stats`            | Get memory system statistics dashboard showing backend availability and metrics.                                                              |
-| `weather_report`          | Get multi-CLI performance weather report with per-CLI success rates and adaptive routing bonuses.                                             |
-| `issue_triage`            | Triage GitHub issues with trust classification and typed action recommendations.                                                              |
-| `run_graph_workflow`      | Execute graph-based workflow templates with checkpoint and rollback support.                                                                  |
-| `execute_spec`            | Execute an AI software factory spec through the full pipeline (parse, decompose, compile, execute, validate).                                 |
-| `registry_import`         | Generate a draft model registry entry for a new AI model. Returns a template with conservative defaults for human review.                     |
+| Tool                      | Description                                                                                                                        |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `orchestrate`             | Orchestrate a task by analyzing it, breaking it into subtasks if needed, and coordinating expert agents                            |
+| `create_expert`           | Create a specialized expert agent for code, architecture, security, documentation, testing, devops, or research tasks              |
+| `execute_expert`          | Execute a task using a previously created expert agent. Returns the expert analysis including output, confidence, and token usage. |
+| `run_workflow`            | Execute workflow templates with provided inputs, supporting built-in templates and custom paths                                    |
+| `delegate_to_model`       | Route a task to the optimal model based on capability matching. Returns model recommendation with reasoning.                       |
+| `list_experts`            | List available expert types that can be created with create_expert. Returns role names, descriptions, and capabilities.            |
+| `list_workflows`          | List available workflow templates that can be executed with run_workflow. Returns template names and descriptions.                 |
+| `consensus_vote`          | Execute multi-model consensus voting on a proposal. Uses specialized agent roles to vote with configurable strategies.             |
+| `research_query`          | Query the research registry for technique status, overlaps, statistics, or text search.                                            |
+| `research_add`            | Add an arXiv paper to the research registry. Fetches metadata from the arXiv API and persists to the registry.                     |
+| `research_discover`       | Discover new research papers and repositories from external sources. Searches arXiv, GitHub, and other sources.                    |
+| `research_analyze`        | Analyze the research registry for gaps, trends, priorities, stale entries, or coverage.                                            |
+| `research_catalog_review` | Review auto-cataloged research references found during tool execution.                                                             |
+| `memory_query`            | Query across all memory backends with unified results and relevance scoring.                                                       |
+| `memory_stats`            | Get memory system statistics dashboard showing backend availability and metrics.                                                   |
+| `weather_report`          | Get multi-CLI performance weather report with per-CLI success rates and adaptive routing bonuses.                                  |
+| `issue_triage`            | Triage GitHub issues with trust classification and typed action recommendations.                                                   |
+| `run_graph_workflow`      | Execute graph-based workflow templates with checkpoint and rollback support.                                                       |
+| `execute_spec`            | Execute an AI software factory spec through the full pipeline (parse, decompose, compile, execute, validate).                      |
+| `registry_import`         | Generate a draft model registry entry for a new AI model. Returns a template with conservative defaults for human review.          |
 
 _Auto-generated from source. 20 tools registered._
 
@@ -486,7 +486,7 @@ _Auto-generated from source. 20 tools registered._
 
 <!-- GOVERNANCE:VERSION:START -->
 
-_Governance Version: 2026-02-08_
+_Governance Version: 2026-02-09_
 
 <!-- GOVERNANCE:VERSION:END -->
 
