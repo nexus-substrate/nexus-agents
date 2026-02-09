@@ -2,7 +2,7 @@
 
 _Honest assessment of what's documented/claimed versus what actually exists and works._
 
-_Generated: 2026-02-08_
+_Generated: 2026-02-08 (Updated: 2026-02-08 — Epic #926 resolutions)_
 
 ---
 
@@ -20,10 +20,10 @@ _Generated: 2026-02-08_
 | Security pipeline (8 modules)      |     Yes     |     Yes      |          Yes           | All wired, firewall composition |
 | Expert agents (9 roles)            |     Yes     |     Yes      |          Yes           | Including pm/ux                 |
 | Task analysis (SharedTaskAnalyzer) |     Yes     |     Yes      |          Yes           | ADR-0004 consolidation          |
-| Gateway middleware                 |     Yes     |     Yes      |          Yes           | Observe-only, no enforcement    |
+| Gateway middleware                 |     Yes     |     Yes      |          Yes           | Gap #7 resolved (Epic #926)     |
 | Outcome tracking                   |     Yes     |     Yes      |          Yes           | Bounded store, FIFO eviction    |
 | Weather report                     |     Yes     |     Yes      |          Yes           | Per-CLI success rates           |
-| Learning/feedback loop             |   Partial   |   Partial    |        Partial         | See gap #3                      |
+| Learning/feedback loop             |     Yes     |     Yes      |          Yes           | Gap #3 resolved (Epic #926)     |
 | TUI/REPL                           |     Yes     |     Yes      |          Yes           | All phases complete (gap #4)    |
 | SWE-bench integration              |     Yes     |     Yes      |          Yes           | 92 files                        |
 | REST API                           |     Yes     |   Partial    |        Partial         | See gap #5                      |
@@ -57,19 +57,21 @@ _Generated: 2026-02-08_
 
 ---
 
-### Gap #3: Learning/Feedback Loop
+### Gap #3: Learning/Feedback Loop — RESOLVED
 
 **Claimed:** Outcome feedback, reward computation, A/B testing, and closed-loop learning are documented.
 
-**Actual:** The learning module exists with `OutcomeFeedbackCollector`, `FeedbackIntegration`, and `SQLiteOutcomeStorage`. However:
+**Previous state:** The feedback loop was not wired end-to-end. LinUCB bandit received binary 1/0 rewards without quality data.
 
-- The feedback loop is **not wired end-to-end** in production. Outcome recording in `delegate_to_model` is "best-effort" (non-blocking, swallows errors).
-- Learning data does not currently influence routing decisions at runtime. The `LinUCB` bandit in the routing pipeline exists but its exploration/exploitation behavior is not fed by the outcome store.
-- `AbTestTracker` exists but no experiments are actively running.
+**Resolution (Epic #926, Phase 3, Issue #929):**
 
-**Impact:** Medium. The infrastructure exists but the loop isn't closed. Routing improvements from feedback are not realized.
+- `computeQualityReward()` replaces binary rewards with continuous 0.1-0.8 rewards incorporating OutcomeStore historical success rate and latency penalty
+- `CompositeRouter.autoRecordFeedback()` now calls `computeQualityReward()` for quality-enriched LinUCB updates
+- PolicyEvaluator wired into V2 pipeline execution (Issue #927)
+- Governance-enforcer wired into delegate routing output and outcome recording (Issue #928)
+- Adaptive thresholds + trend detection already delivered in Epic #901 Phase 4
 
-**Recommendation:** Wire OutcomeStore -> LinUCB feedback path. Create a periodic aggregation job.
+**Remaining:** `AbTestTracker` exists but no experiments are actively running (low priority).
 
 ---
 
@@ -103,15 +105,18 @@ _Generated: 2026-02-08_
 
 ---
 
-### Gap #7: Gateway Enforcement
+### Gap #7: Gateway Enforcement — RESOLVED
 
 **Claimed:** Gateway middleware with tier classification is described as part of the orchestration governance (Epic #888).
 
-**Actual:** The gateway classifies and logs but does NOT enforce any policies. It's observe-only. The governance enforcement module (`governance-enforcer.ts`) exists but is not actively blocking requests.
+**Previous state:** The gateway classified and logged but did NOT enforce policies. Governance enforcement was observe-only.
 
-**Impact:** Medium. Policy enforcement is infrastructure without teeth. If governance decisions are needed (rate limits per tier, approval requirements for tier 3), they must be activated.
+**Resolution (Epic #926, Phases 1-2):**
 
-**Recommendation:** This is intentional for Phase 1 (observe before enforce). Phase 2 should wire enforcement.
+- **Phase 1 (Issue #927):** PolicyEvaluator wired into V2 delegate and orchestrate pipelines. Block mode halts execution on policy violations (5 built-in rules: trust-tier, security-review, bounded-iteration, cost-budget, high-risk-approval). 18 tests added.
+- **Phase 2 (Issue #928):** Governance-enforcer wired into `delegate_to_model` routing. Security/architecture tasks are classified and output enriched with governance metadata (domain, voting threshold, promotion reason). Governance domain recorded to OutcomeStore quality signals. 6 tests added.
+
+**Impact:** None. Enforcement is now active in block mode (default for V2 full mode).
 
 ---
 
