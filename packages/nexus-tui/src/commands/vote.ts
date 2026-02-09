@@ -75,7 +75,6 @@ const ALGORITHM_MAP: Record<string, string> = {
 
 /** Load voting dependencies from nexus-agents. */
 async function loadVoteDeps(): Promise<VoteDeps> {
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
   const mod = await import('nexus-agents');
   return mod as unknown as VoteDeps;
 }
