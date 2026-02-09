@@ -157,6 +157,8 @@ import {
   registerCorePlugins,
   createCorePluginRegistry,
   createEventBusBridge,
+  evaluatePipelinePolicy,
+  getPolicyMode,
 } from '../index.js';
 
 describe('Export contracts — MCP tool registration', () => {
@@ -427,6 +429,14 @@ describe('Export contracts — pipeline V2 types', () => {
 
   it('exports createEventBusBridge (Issue #922)', () => {
     expect(typeof createEventBusBridge).toBe('function');
+  });
+
+  it('exports evaluatePipelinePolicy (Issue #923)', () => {
+    expect(typeof evaluatePipelinePolicy).toBe('function');
+  });
+
+  it('exports getPolicyMode (Issue #923)', () => {
+    expect(typeof getPolicyMode).toBe('function');
   });
 });
 

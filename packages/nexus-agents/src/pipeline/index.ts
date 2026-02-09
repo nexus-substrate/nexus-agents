@@ -117,3 +117,12 @@ export {
   type EventBusBridgeOptions,
   type PipelineBridgeResult,
 } from './event-bus-bridge.js';
+
+export {
+  evaluatePolicy,
+  getPolicyMode,
+  type PolicyMode,
+  type PolicyEvaluatorOptions,
+  type PolicyEvalResult,
+  type PolicyViolation,
+} from './policy-evaluator.js';

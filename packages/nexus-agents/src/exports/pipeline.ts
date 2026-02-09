@@ -92,4 +92,11 @@ export {
   createEventBusBridge,
   type EventBusBridgeOptions,
   type PipelineBridgeResult,
+  // Policy evaluator (Issue #923, Phase D)
+  evaluatePolicy as evaluatePipelinePolicy, // Renamed: mcp.ts exports evaluatePolicy
+  getPolicyMode,
+  type PolicyMode as PipelinePolicyMode, // Renamed: mcp.ts exports PolicyMode
+  type PolicyEvaluatorOptions,
+  type PolicyEvalResult,
+  type PolicyViolation as PipelinePolicyViolation, // Renamed: security.ts exports PolicyViolation
 } from '../pipeline/index.js';
