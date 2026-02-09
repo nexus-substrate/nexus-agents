@@ -235,7 +235,9 @@ describe('AgentPlanner', () => {
       const plan = planFor('architecture', 'complex');
 
       for (let i = 0; i < plan.entries.length; i++) {
-        expect(plan.entries[i].priority).toBe(i + 1);
+        const entry = plan.entries[i];
+        if (entry === undefined) throw new Error('Missing entry');
+        expect(entry.priority).toBe(i + 1);
       }
     });
 

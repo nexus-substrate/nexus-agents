@@ -1,6 +1,6 @@
 # Nexus Agents Documentation
 
-**Canonical Documentation Index** | Last Updated: 2026-02-01 (Added getting-started/, expanded guides/)
+**Canonical Documentation Index** | Last Updated: 2026-02-08 (V2 pipeline + AOrchestra complete, all gaps resolved)
 
 This is the **single source of truth** for all nexus-agents documentation. All documentation must be indexed here to be considered valid.
 

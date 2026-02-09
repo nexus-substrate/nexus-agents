@@ -5,6 +5,37 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- AOrchestra dynamic sub-agent creation — task-adaptive expert team composition (#935, #936, #937)
+  - `planAgentTeam()` maps `TaskAnalysisResult` to 1-5 experts from 9 built-in types
+  - Wired into orchestrate pipeline behind `NEXUS_AORCHESTRA` flag
+- V2 Pipeline Integration — 6 phases with delegate, orchestrate, policy, and event bus (#919-#925)
+  - `NEXUS_V2_MODE` umbrella flag (off/partial/full, default: full)
+  - PolicyEvaluator with off/warn/block mode and 5 built-in rules
+  - EventBus bridge (V2 to V1) and ArtifactStore wired
+- V2 Gap Closure — governance-enforcer in routing, quality rewards in LinUCB (#926-#930)
+- User Advocate Pipeline — pm_expert, ux_expert roles, requirements-gathering skill (#901)
+- MCP integration tests — 28 tests covering all 20 tools via InMemoryTransport
+
+### Fixed
+
+- REST API server port contention in tests — use port 0 for OS-assigned ephemeral ports (#938)
+- Mesh mode auto-detection — TTY now routes to orchestrator, not mesh (#932)
+- CLI command audit — confirmed 36 commands with handlers (#933)
+
+### Removed
+
+- Dead integration test files (`test/integration/`) — excluded from vitest, used deprecated APIs
+
+### Documentation
+
+- Gap #8 resolved by design — adapter layers serve distinct purposes (#934)
+- All 8 architectural gaps resolved (7 by implementation, 1 by design)
+- Alignment roadmap and gaps.md updated
+
 ## [2.6.0] - 2026-02-03
 
 ### Added
