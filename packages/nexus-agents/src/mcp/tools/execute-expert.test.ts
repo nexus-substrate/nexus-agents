@@ -231,7 +231,7 @@ describe('Expert execution', () => {
         id: 'test-task',
         description: 'Review this code',
         context: { metadata: {} },
-        constraints: { maxTokens: 4096, maxDuration: 120000 },
+        constraints: { maxTokens: 4096, maxDuration: 240_000 },
       });
 
       expect(result.ok).toBe(true);
@@ -250,7 +250,7 @@ describe('Expert execution', () => {
         id: 'test-task',
         description: 'Test task',
         context: { metadata: {} },
-        constraints: { maxTokens: 4096, maxDuration: 120000 },
+        constraints: { maxTokens: 4096, maxDuration: 240_000 },
       });
       const durationMs = Date.now() - startTime;
 
@@ -268,7 +268,7 @@ describe('Expert execution', () => {
         id: 'test-task',
         description: 'Complex task',
         context: { metadata: {} },
-        constraints: { maxTokens: 4096, maxDuration: 120000 },
+        constraints: { maxTokens: 4096, maxDuration: 240_000 },
       });
 
       expect(result.ok).toBe(false);

@@ -442,7 +442,7 @@ export function registerOrchestrateTool(server: McpServer, deps: OrchestrateDeps
     logger,
   });
 
-  const ORCHESTRATE_DEFAULT_TIMEOUT_MS = 120_000;
+  const ORCHESTRATE_DEFAULT_TIMEOUT_MS = 300_000;
   const wrappedHandler = wrapToolWithTimeout('orchestrate', secureHandler, {
     timeoutMs: ORCHESTRATE_DEFAULT_TIMEOUT_MS,
     logger,

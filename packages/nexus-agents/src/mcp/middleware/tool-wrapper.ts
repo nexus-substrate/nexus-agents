@@ -38,10 +38,10 @@ export const DEFAULT_TIMEOUT_CONFIG: TimeoutConfig = {
  * (Issue #657 - Per-tool timeout configuration)
  */
 export const DEFAULT_TOOL_TIMEOUTS: Record<string, number> = {
-  orchestrate: 120_000,
+  orchestrate: 300_000,
   consensus_vote: 300_000,
-  execute_expert: 120_000,
-  run_workflow: 120_000,
+  execute_expert: 300_000,
+  run_workflow: 300_000,
 };
 
 /**

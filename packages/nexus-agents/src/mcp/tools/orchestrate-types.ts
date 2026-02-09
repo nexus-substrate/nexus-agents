@@ -35,7 +35,7 @@ export const OrchestrateInputSchema = z.object({
     .min(1000)
     .max(600000)
     .optional()
-    .describe('Timeout in milliseconds for orchestration (default: 120000)'),
+    .describe('Timeout in milliseconds for orchestration (default: 300000)'),
 });
 
 export type OrchestrateInput = z.infer<typeof OrchestrateInputSchema>;
@@ -87,7 +87,7 @@ export const ORCHESTRATE_TOOL_SCHEMA = {
     .min(1000)
     .max(600000)
     .optional()
-    .describe('Timeout in milliseconds for orchestration (default: 120000)'),
+    .describe('Timeout in milliseconds for orchestration (default: 300000)'),
 };
 
 // ============================================================================

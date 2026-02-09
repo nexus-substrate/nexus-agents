@@ -92,7 +92,7 @@ function buildTask(input: ExecuteExpertInput): Task {
     },
     constraints: {
       maxTokens: 4096,
-      maxDuration: 120000, // 2 minute timeout for task execution
+      maxDuration: 240_000, // 4 minute inner timeout (outer MCP wrapper is 5 min)
     },
   };
 }
