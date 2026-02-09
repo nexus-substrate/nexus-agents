@@ -81,7 +81,7 @@ describe('Mode Detector', () => {
           env: { MCP_CLIENT_NAME: '' },
         });
 
-        expect(result.mode).toBe('mesh');
+        expect(result.mode).toBe('orchestrator');
         expect(result.signals.mcpClientName).toBe('');
       });
     });
@@ -100,14 +100,14 @@ describe('Mode Detector', () => {
         expect(result.signals.stdinIsTty).toBe(false);
       });
 
-      it('should detect mesh mode when stdin is a TTY (interactive)', () => {
+      it('should detect orchestrator mode when stdin is a TTY (interactive)', () => {
         const result = detectMode({
           stdinIsTty: true,
           stdoutIsTty: true,
           env: {},
         });
 
-        expect(result.mode).toBe('mesh');
+        expect(result.mode).toBe('orchestrator');
         expect(result.source).toBe('auto');
         expect(result.reason).toContain('Interactive terminal');
         expect(result.signals.stdinIsTty).toBe(true);
@@ -153,7 +153,7 @@ describe('Mode Detector', () => {
           env: { CI: 'false' },
         });
 
-        expect(result.mode).toBe('mesh');
+        expect(result.mode).toBe('orchestrator');
         expect(result.signals.isCI).toBe(false);
       });
 
@@ -164,7 +164,7 @@ describe('Mode Detector', () => {
           env: { CI: '' },
         });
 
-        expect(result.mode).toBe('mesh');
+        expect(result.mode).toBe('orchestrator');
         expect(result.signals.isCI).toBe(false);
       });
     });
@@ -183,15 +183,15 @@ describe('Mode Detector', () => {
         expect(result.signals.isContainer).toBe(true);
       });
 
-      it('should detect mesh mode in container with TTY output', () => {
+      it('should detect orchestrator mode in container with TTY output', () => {
         const result = detectMode({
           stdinIsTty: true,
           stdoutIsTty: true,
           env: { KUBERNETES_SERVICE_HOST: '10.0.0.1' },
         });
 
-        // Container with TTY is still interactive
-        expect(result.mode).toBe('mesh');
+        // Container with TTY is still interactive → orchestrator
+        expect(result.mode).toBe('orchestrator');
         expect(result.signals.isContainer).toBe(true);
       });
 
@@ -353,7 +353,7 @@ describe('Mode Detector', () => {
         },
       });
 
-      expect(result.mode).toBe('mesh');
+      expect(result.mode).toBe('orchestrator');
       expect(result.signals.mcpClientName).toBeUndefined();
       expect(result.signals.isCI).toBe(false);
     });

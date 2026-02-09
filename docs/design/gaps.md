@@ -12,7 +12,7 @@ _Generated: 2026-02-08 (Updated: 2026-02-08 — Epic #926 resolutions)_
 | ---------------------------------- | :---------: | :----------: | :--------------------: | ------------------------------- |
 | MCP server (stdio)                 |     Yes     |     Yes      |          Yes           | 20 tools, all wired             |
 | CLI (45 commands)                  |     Yes     |   Partial    |        Partial         | See gap #1                      |
-| Mesh mode                          |     Yes     |    **No**    | Tests verify rejection | See gap #2                      |
+| Mesh mode                          |     Yes     |    **No**    | Tests verify rejection | Gap #2 resolved (Epic #931)     |
 | Model routing pipeline             |     Yes     |     Yes      |          Yes           | 5-stage composite router        |
 | Consensus voting (6 strategies)    |     Yes     |     Yes      |          Yes           | Real multi-CLI votes            |
 | Graph workflows (7 templates)      |     Yes     |     Yes      |          Yes           | Checkpointing works             |
@@ -45,15 +45,20 @@ _Generated: 2026-02-08 (Updated: 2026-02-08 — Epic #926 resolutions)_
 
 ---
 
-### Gap #2: Mesh Mode (Critical)
+### Gap #2: Mesh Mode — RESOLVED
 
-**Claimed:** Help text (`cli-help-text.ts:64`) states: `mesh: Full bidirectional (both modes)`. CLAUDE.md lists server modes as "server (default), orchestrator, mesh."
+**Claimed:** Help text and auto-detection defaulted to mesh mode for interactive terminals.
 
-**Actual:** Server startup explicitly rejects mesh mode with error: `"Mesh mode is not yet implemented. Use --mode=server instead"` (cli-server.ts:154). Tests verify this rejection (cli-server.test.ts:395-464).
+**Previous state:** Mode detector auto-detected TTY → `'mesh'`, which was immediately rejected at runtime by `validateModeOrExit()`. Users running interactively hit a confusing error.
 
-**Impact:** Medium. Users who try `--mode=mesh` get an error. The help text is misleading.
+**Resolution (Epic #931, Phase 1, Issue #932):**
 
-**Recommendation:** Remove mesh from help text until implemented. Document as planned future feature only.
+- Auto-detection changed: interactive TTY now defaults to `'orchestrator'` (which IS implemented)
+- Help text already omitted mesh (verified)
+- CLAUDE.md already omitted mesh (verified)
+- `--mode=mesh` explicit flag still accepted by parser but rejected at runtime with clear error message
+- `ServerMode` type retains `'mesh'` for forward-compatibility
+- 7 tests updated to reflect new default behavior
 
 ---
 

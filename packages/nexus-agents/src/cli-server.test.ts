@@ -398,7 +398,7 @@ describe('validateModeOrExit', () => {
     validateModeOrExit(mockLogger, 'mesh');
 
     expect(mockLogger.error).toHaveBeenCalledWith(
-      expect.stringContaining('Mesh mode is planned for a future release')
+      expect.stringContaining('Mesh mode is not yet implemented')
     );
     expect(processExitSpy).toHaveBeenCalledWith(EXIT_CODES.INVALID_ARGS);
   });

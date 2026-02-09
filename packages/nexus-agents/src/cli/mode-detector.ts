@@ -12,7 +12,7 @@
  * Server mode for nexus-agents.
  * - server: MCP server only (responds to MCP client calls)
  * - orchestrator: CLI orchestrator (calls external CLIs like Gemini, Codex)
- * - mesh: Planned — not yet implemented (both server and orchestrator)
+ * - mesh: Not yet implemented — reserved for future bidirectional mode
  */
 export type ServerMode = 'server' | 'orchestrator' | 'mesh';
 
@@ -180,7 +180,7 @@ function gatherSignals(options: DetectModeOptions): DetectionSignals {
  * 1. MCP client detected -> server mode (we're being called by Claude/other MCP client)
  * 2. Non-interactive stdin -> server mode (piped input, likely MCP)
  * 3. CI environment -> orchestrator mode (we orchestrate other CLIs)
- * 4. Interactive terminal -> mesh mode (full capabilities)
+ * 4. Interactive terminal -> orchestrator mode (CLI orchestration)
  *
  * @param signals - Detection signals
  * @returns Mode and reason tuple
@@ -219,9 +219,9 @@ function determineMode(signals: DetectionSignals): { mode: ServerMode; reason: s
     };
   }
 
-  // Default: Interactive terminal gets full mesh capabilities
+  // Default: Interactive terminal gets orchestrator capabilities
   return {
-    mode: 'mesh',
+    mode: 'orchestrator',
     reason: 'Interactive terminal detected (TTY)',
   };
 }
