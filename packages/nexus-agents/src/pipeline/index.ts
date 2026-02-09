@@ -101,3 +101,13 @@ export {
   executeDelegatePipeline,
 } from './v2-delegate.js';
 export type { DelegateInputLike, PipelineMetrics } from './v2-delegate.js';
+
+export {
+  CORE_PLUGINS,
+  TASK_ANALYZER_PLUGIN,
+  MODEL_ROUTER_PLUGIN,
+  CLI_EXECUTOR_PLUGIN,
+  registerCorePlugins,
+  createCorePluginRegistry,
+} from './core-plugins.js';
+export type { CorePluginRegistrationResult } from './core-plugins.js';

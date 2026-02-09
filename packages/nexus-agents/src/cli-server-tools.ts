@@ -41,6 +41,7 @@ import { Orchestrator } from './agents/index.js';
 import type { ILogger } from './core/index.js';
 import { NexusError, ErrorCode } from './core/index.js';
 import { runStpaSafetyAnalysis, StpaSafetyError } from './cli-server-stpa.js';
+import { createCorePluginRegistry } from './pipeline/core-plugins.js';
 
 // Re-export for public API
 export { StpaSafetyError };
@@ -518,6 +519,13 @@ export function registerMcpTools(options: RegisterMcpToolsOptions): void {
     logger: toolInfra.logger,
   });
   setGlobalToolRateLimiterFactory(rateLimiterFactory);
+
+  // Initialize V2 PluginRegistry with core plugins (Phase B, Issue #921)
+  const pluginRegistry = createCorePluginRegistry();
+  logger.info('V2 PluginRegistry initialized', {
+    plugins: pluginRegistry.listEnabled().length,
+    frozen: pluginRegistry.frozen,
+  });
 
   // Use gateway-wrapped server in context so all registerTool calls get wrapped
   const gatewayOptions = { ...options, server: gatewayServer };

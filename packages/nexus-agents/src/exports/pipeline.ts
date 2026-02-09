@@ -83,4 +83,9 @@ export {
   executeDelegatePipeline,
   type DelegateInputLike,
   type PipelineMetrics,
+  // Core plugins (Issue #921, Phase B)
+  CORE_PLUGINS,
+  registerCorePlugins,
+  createCorePluginRegistry,
+  type CorePluginRegistrationResult,
 } from '../pipeline/index.js';

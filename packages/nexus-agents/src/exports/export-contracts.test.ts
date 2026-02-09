@@ -153,6 +153,9 @@ import {
   createDelegatePipeline,
   delegateInputToTaskContract,
   executeDelegatePipeline,
+  CORE_PLUGINS,
+  registerCorePlugins,
+  createCorePluginRegistry,
 } from '../index.js';
 
 describe('Export contracts — MCP tool registration', () => {
@@ -406,6 +409,19 @@ describe('Export contracts — pipeline V2 types', () => {
 
   it('exports executeDelegatePipeline (Issue #920)', () => {
     expect(typeof executeDelegatePipeline).toBe('function');
+  });
+
+  it('exports CORE_PLUGINS (Issue #921)', () => {
+    expect(Array.isArray(CORE_PLUGINS)).toBe(true);
+    expect(CORE_PLUGINS.length).toBe(3);
+  });
+
+  it('exports registerCorePlugins (Issue #921)', () => {
+    expect(typeof registerCorePlugins).toBe('function');
+  });
+
+  it('exports createCorePluginRegistry (Issue #921)', () => {
+    expect(typeof createCorePluginRegistry).toBe('function');
   });
 });
 
