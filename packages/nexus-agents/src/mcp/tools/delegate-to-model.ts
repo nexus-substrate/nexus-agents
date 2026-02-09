@@ -41,6 +41,11 @@ import {
   executeDelegatePipeline,
 } from '../../pipeline/v2-delegate.js';
 import { resolveV2Config } from '../../pipeline/v2-config.js';
+import {
+  classifyWithGovernance,
+  auditGovernancePromotion,
+} from '../gateway/governance-enforcer.js';
+import type { GovernanceClassification } from '../gateway/governance-enforcer.js';
 
 // Re-export types for backward compatibility
 export type {
@@ -65,7 +70,19 @@ export {
 // ============================================================================
 
 /** Records successful delegation to memory and outcome store. Best-effort. */
-function recordDelegation(task: string, model: string, usedRouter: boolean, startMs: number): void {
+function recordDelegation(
+  task: string,
+  model: string,
+  usedRouter: boolean,
+  startMs: number,
+  governance?: GovernanceClassification
+): void {
+  recordToMemory(task, model, usedRouter);
+  recordToOutcomeStore(task, model, startMs, governance);
+}
+
+/** Records delegation to tool memory. Best-effort, never throws. */
+function recordToMemory(task: string, model: string, usedRouter: boolean): void {
   try {
     const memory = getToolMemory();
     memory.recordLearning({
@@ -80,12 +97,23 @@ function recordDelegation(task: string, model: string, usedRouter: boolean, star
   } catch {
     // Best-effort
   }
+}
 
-  // Outcome tracking (Issue #861)
+/** Records delegation outcome. Best-effort, never throws. */
+function recordToOutcomeStore(
+  task: string,
+  model: string,
+  startMs: number,
+  governance?: GovernanceClassification
+): void {
   try {
     const cli = getCliForModel(model) as CliName | undefined;
     if (cli === undefined) return;
     const match = detectTaskCategory(task);
+    const qualitySignals: Record<string, unknown> = {};
+    if (governance?.promoted === true) {
+      qualitySignals['governanceDomain'] = governance.domain;
+    }
     getOutcomeStore().append({
       id: `del-${String(Date.now())}-${Math.random().toString(36).slice(2, 8)}`,
       cli,
@@ -95,10 +123,41 @@ function recordDelegation(task: string, model: string, usedRouter: boolean, star
       durationMs: Date.now() - startMs,
       timestamp: new Date(getTimeProvider().now()).toISOString(),
       source: 'delegate',
+      ...(Object.keys(qualitySignals).length > 0 ? { qualitySignals } : {}),
     });
   } catch {
     // Best-effort — never block the tool response
   }
+}
+
+// ============================================================================
+// Governance Classification (#928, Phase 2)
+// ============================================================================
+
+/** Classifies a delegate request for governance promotion. */
+function classifyDelegateGovernance(
+  input: { task: string },
+  logger: ILogger
+): GovernanceClassification {
+  const classification = classifyWithGovernance('delegate_to_model', { task: input.task });
+  auditGovernancePromotion(classification, 'delegate_to_model', logger);
+  return classification;
+}
+
+/** Enriches output with governance metadata when promoted. */
+function enrichWithGovernance(
+  output: Record<string, unknown>,
+  governance: GovernanceClassification
+): Record<string, unknown> {
+  if (!governance.promoted) return output;
+  return {
+    ...output,
+    governance: {
+      domain: governance.domain,
+      votingThreshold: governance.votingThreshold,
+      promotionReason: governance.promotionReason,
+    },
+  };
 }
 
 /** Fire-and-forget V2 pipeline instrumentation (Phase A, Issue #920). */
@@ -126,6 +185,7 @@ function createDelegateHandler(
     const input = validated.data;
     ctx.logger.info('Analyzing task for model routing', { taskLength: input.task.length });
     const requirements = analyzeTask(input.task);
+    const governance = classifyDelegateGovernance(input, ctx.logger);
     if (resolveV2Config().delegateEnabled) instrumentV2Pipeline(input, ctx.logger);
     // Try CompositeRouter first if available
     if (deps.router !== undefined) {
@@ -141,8 +201,8 @@ function createDelegateHandler(
           requirements.estimatedTokens
         );
         ctx.logger.info('Routed via CompositeRouter', { model: output.recommended_model });
-        recordDelegation(input.task, output.recommended_model, true, startMs);
-        return successResult(JSON.stringify(output, null, 2));
+        recordDelegation(input.task, output.recommended_model, true, startMs, governance);
+        return successResult(JSON.stringify(enrichWithGovernance(output, governance), null, 2));
       }
       ctx.logger.info('Falling back to local model selection');
     }
@@ -151,8 +211,8 @@ function createDelegateHandler(
     const output = buildDelegateOutput(selection, requirements);
     if (!output) return errorResult(`Unknown model: ${selection.model}`);
     ctx.logger.info('Model recommendation complete', { model: output.recommended_model });
-    recordDelegation(input.task, output.recommended_model, false, startMs);
-    return successResult(JSON.stringify(output, null, 2));
+    recordDelegation(input.task, output.recommended_model, false, startMs, governance);
+    return successResult(JSON.stringify(enrichWithGovernance(output, governance), null, 2));
   };
 }
 
@@ -201,4 +261,6 @@ export const _testing = {
   analyzeTask,
   scoreModel,
   selectModel,
+  classifyDelegateGovernance,
+  enrichWithGovernance,
 };
