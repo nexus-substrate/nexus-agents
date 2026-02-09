@@ -20,6 +20,7 @@ import {
   registerConsensusVoteTool,
   registerWeatherReportTool,
 } from './tools/index.js';
+import type { IWorkflowEngine } from '../core/index.js';
 
 // ============================================================================
 // Test Infrastructure
@@ -49,6 +50,11 @@ async function setupMcpServer(): Promise<TestContext> {
   // Initialize shared tool infrastructure (logger, rate limiter)
   const infra = registerTools(server, { logger });
 
+  // Stub workflow engine that returns empty template list
+  const stubEngine = {
+    listTemplates: () => Promise.resolve({ ok: true, value: [] }),
+  } as unknown as IWorkflowEngine;
+
   // Register lightweight tools that work without model adapters
   registerDelegateToModelTool(server, {
     logger: infra.logger,
@@ -61,6 +67,7 @@ async function setupMcpServer(): Promise<TestContext> {
   registerListWorkflowsTool(server, {
     logger: infra.logger,
     rateLimiter: infra.rateLimiter,
+    workflowEngine: stubEngine,
   });
   registerConsensusVoteTool(server, {
     logger: infra.logger,
@@ -154,7 +161,9 @@ describe('MCP Server Integration', () => {
     expect(result.isError).not.toBe(true);
     const content = result.content as Array<{ type: string; text: string }>;
     expect(content).toHaveLength(1);
-    const parsed = JSON.parse(content[0].text) as Record<string, unknown>;
+    const first = content[0];
+    expect(first).toBeDefined();
+    const parsed = JSON.parse(first?.text ?? '') as Record<string, unknown>;
     expect(parsed).toHaveProperty('recommended_model');
     expect(parsed).toHaveProperty('reasoning');
   });
@@ -170,7 +179,9 @@ describe('MCP Server Integration', () => {
     });
     expect(result.isError).not.toBe(true);
     const content = result.content as Array<{ type: string; text: string }>;
-    const parsed = JSON.parse(content[0].text) as Record<string, unknown>;
+    const first = content[0];
+    expect(first).toBeDefined();
+    const parsed = JSON.parse(first?.text ?? '') as Record<string, unknown>;
     expect(parsed).toHaveProperty('experts');
     const experts = parsed['experts'] as unknown[];
     expect(experts.length).toBeGreaterThanOrEqual(7);
@@ -188,7 +199,9 @@ describe('MCP Server Integration', () => {
     // Response may be success or error depending on engine availability
     const content = result.content as Array<{ type: string; text: string }>;
     expect(content.length).toBeGreaterThan(0);
-    expect(content[0].text.length).toBeGreaterThan(0);
+    const first = content[0];
+    expect(first).toBeDefined();
+    expect(first?.text.length).toBeGreaterThan(0);
   });
 
   // --------------------------------------------------------------------------
@@ -202,7 +215,9 @@ describe('MCP Server Integration', () => {
     });
     expect(result.isError).not.toBe(true);
     const content = result.content as Array<{ type: string; text: string }>;
-    const parsed = JSON.parse(content[0].text) as Record<string, unknown>;
+    const first = content[0];
+    expect(first).toBeDefined();
+    const parsed = JSON.parse(first?.text ?? '') as Record<string, unknown>;
     // Weather report returns serialized report with CLI weather entries
     expect(parsed).toHaveProperty('cliWeather');
   });
