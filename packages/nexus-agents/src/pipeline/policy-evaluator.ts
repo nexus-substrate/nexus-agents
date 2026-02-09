@@ -12,6 +12,7 @@
  */
 import { createLogger } from '../core/index.js';
 
+import { resolveV2Config } from './v2-config.js';
 import type { PolicyEngine, PolicyDecision, PolicyContext } from './policy-engine.js';
 import type { IEventBus, PipelineEvent } from './event-types.js';
 
@@ -50,12 +51,11 @@ export interface PolicyViolation {
 // ============================================================================
 
 /**
- * Reads `NEXUS_V2_POLICY_MODE` from env, defaulting to 'warn'.
+ * Reads policy mode from V2 config (umbrella + individual override).
+ * Default: `block` in full mode, `warn` in partial, `off` when V2 is off.
  */
 export function getPolicyMode(): PolicyMode {
-  const env = process.env['NEXUS_V2_POLICY_MODE'];
-  if (env === 'off' || env === 'block') return env;
-  return 'warn';
+  return resolveV2Config().policyMode;
 }
 
 /**

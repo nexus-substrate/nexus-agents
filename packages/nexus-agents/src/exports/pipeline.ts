@@ -103,4 +103,8 @@ export {
   orchestrateInputToTaskContract,
   executeOrchestratePipeline,
   type OrchestrateInputLike,
+  // V2 config (Issue #925, Phase F)
+  resolveV2Config,
+  type V2Mode,
+  type V2Config,
 } from '../pipeline/index.js';

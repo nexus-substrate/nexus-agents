@@ -10,6 +10,7 @@ import {
   orchestrateInputToTaskContract,
   executeOrchestratePipeline,
 } from '../../pipeline/v2-orchestrate.js';
+import { resolveV2Config } from '../../pipeline/v2-config.js';
 import {
   ok,
   err,
@@ -403,8 +404,7 @@ function createOrchestrateHandler(deps: OrchestrateDeps) {
       };
     }
     ctx.logger.debug('Starting orchestration', { taskLength: validated.data.task.length });
-    if (process.env['NEXUS_V2_ORCHESTRATE'] === 'true')
-      instrumentV2Orchestrate(validated.data, ctx.logger);
+    if (resolveV2Config().orchestrateEnabled) instrumentV2Orchestrate(validated.data, ctx.logger);
     const result = await executeOrchestration(validated.data, deps);
     if (!result.ok) {
       return {

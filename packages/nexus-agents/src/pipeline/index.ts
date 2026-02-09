@@ -129,3 +129,5 @@ export {
 
 export { orchestrateInputToTaskContract, executeOrchestratePipeline } from './v2-orchestrate.js';
 export type { OrchestrateInputLike } from './v2-orchestrate.js';
+
+export { resolveV2Config, type V2Mode, type V2Config } from './v2-config.js';

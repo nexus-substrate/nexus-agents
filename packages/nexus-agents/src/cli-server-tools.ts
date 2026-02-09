@@ -47,7 +47,7 @@ import { EventBus as PipelineEventBus } from './pipeline/event-bus.js';
 import { ArtifactStore } from './pipeline/artifact-store.js';
 import { createEventBusBridge } from './pipeline/event-bus-bridge.js';
 import { createDefaultPolicyEngine } from './pipeline/policy-engine.js';
-import { getPolicyMode } from './pipeline/policy-evaluator.js';
+import { resolveV2Config } from './pipeline/v2-config.js';
 
 // Re-export for public API
 export { StpaSafetyError };
@@ -532,13 +532,14 @@ export function registerMcpTools(options: RegisterMcpToolsOptions): void {
   const pipelineArtifactStore = new ArtifactStore();
   const bridge = createEventBusBridge({ source: pipelineEventBus });
   const policyEngine = createDefaultPolicyEngine();
-  const policyMode = getPolicyMode();
+  const v2Config = resolveV2Config();
   logger.info('V2 Pipeline OS initialized', {
     plugins: pluginRegistry.listEnabled().length,
     artifacts: pipelineArtifactStore.size,
     bridged: bridge.forwarded(),
     policyRules: policyEngine.listRules().length,
-    policyMode,
+    v2Mode: v2Config.mode,
+    policyMode: v2Config.policyMode,
   });
 
   // Use gateway-wrapped server in context so all registerTool calls get wrapped

@@ -140,19 +140,20 @@ describe('evaluatePolicy', () => {
 });
 
 describe('getPolicyMode', () => {
-  const originalEnv = process.env['NEXUS_V2_POLICY_MODE'];
+  const savedPolicy = process.env['NEXUS_V2_POLICY_MODE'];
+  const savedMode = process.env['NEXUS_V2_MODE'];
 
   afterEach(() => {
-    if (originalEnv !== undefined) {
-      process.env['NEXUS_V2_POLICY_MODE'] = originalEnv;
-    } else {
-      delete process.env['NEXUS_V2_POLICY_MODE'];
-    }
+    if (savedPolicy !== undefined) process.env['NEXUS_V2_POLICY_MODE'] = savedPolicy;
+    else delete process.env['NEXUS_V2_POLICY_MODE'];
+    if (savedMode !== undefined) process.env['NEXUS_V2_MODE'] = savedMode;
+    else delete process.env['NEXUS_V2_MODE'];
   });
 
-  it('defaults to warn', () => {
+  it('defaults to block in full mode', () => {
     delete process.env['NEXUS_V2_POLICY_MODE'];
-    expect(getPolicyMode()).toBe('warn');
+    delete process.env['NEXUS_V2_MODE'];
+    expect(getPolicyMode()).toBe('block');
   });
 
   it('reads off from env', () => {
@@ -165,8 +166,9 @@ describe('getPolicyMode', () => {
     expect(getPolicyMode()).toBe('block');
   });
 
-  it('falls back to warn for invalid values', () => {
-    process.env['NEXUS_V2_POLICY_MODE'] = 'invalid';
+  it('defaults to warn in partial mode', () => {
+    delete process.env['NEXUS_V2_POLICY_MODE'];
+    process.env['NEXUS_V2_MODE'] = 'partial';
     expect(getPolicyMode()).toBe('warn');
   });
 });

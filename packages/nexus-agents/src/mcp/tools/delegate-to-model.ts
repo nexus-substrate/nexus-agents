@@ -40,6 +40,7 @@ import {
   delegateInputToTaskContract,
   executeDelegatePipeline,
 } from '../../pipeline/v2-delegate.js';
+import { resolveV2Config } from '../../pipeline/v2-config.js';
 
 // Re-export types for backward compatibility
 export type {
@@ -125,7 +126,7 @@ function createDelegateHandler(
     const input = validated.data;
     ctx.logger.info('Analyzing task for model routing', { taskLength: input.task.length });
     const requirements = analyzeTask(input.task);
-    if (process.env['NEXUS_V2_DELEGATE'] === 'true') instrumentV2Pipeline(input, ctx.logger);
+    if (resolveV2Config().delegateEnabled) instrumentV2Pipeline(input, ctx.logger);
     // Try CompositeRouter first if available
     if (deps.router !== undefined) {
       const routingResult = await routeViaCompositeRouter(

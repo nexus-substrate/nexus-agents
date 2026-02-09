@@ -161,6 +161,7 @@ import {
   getPolicyMode,
   orchestrateInputToTaskContract,
   executeOrchestratePipeline,
+  resolveV2Config,
 } from '../index.js';
 
 describe('Export contracts — MCP tool registration', () => {
@@ -447,6 +448,10 @@ describe('Export contracts — pipeline V2 types', () => {
 
   it('exports executeOrchestratePipeline (Issue #924)', () => {
     expect(typeof executeOrchestratePipeline).toBe('function');
+  });
+
+  it('exports resolveV2Config (Issue #925)', () => {
+    expect(typeof resolveV2Config).toBe('function');
   });
 });
 
