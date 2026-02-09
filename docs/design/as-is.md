@@ -171,7 +171,7 @@ Despite extensive infrastructure, routing decisions today are based on static mo
 | Source files       | 650                      |
 | Test files         | 426                      |
 | MCP tools          | 20                       |
-| CLI commands       | 31                       |
+| CLI commands       | 36                       |
 | Expert roles       | 9                        |
 | Workflow templates | 9 (workflow) + 7 (graph) |
 | Skills             | 13                       |

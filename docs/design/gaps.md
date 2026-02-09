@@ -11,7 +11,7 @@ _Generated: 2026-02-08 (Updated: 2026-02-08 — Epic #926 resolutions)_
 | Feature                            | Documented? | Implemented? |        Tested?         | Notes                           |
 | ---------------------------------- | :---------: | :----------: | :--------------------: | ------------------------------- |
 | MCP server (stdio)                 |     Yes     |     Yes      |          Yes           | 20 tools, all wired             |
-| CLI (45 commands)                  |     Yes     |   Partial    |        Partial         | See gap #1                      |
+| CLI (36 commands)                  |     Yes     |     Yes      |          Yes           | Gap #1 resolved (Epic #931)     |
 | Mesh mode                          |     Yes     |    **No**    | Tests verify rejection | Gap #2 resolved (Epic #931)     |
 | Model routing pipeline             |     Yes     |     Yes      |          Yes           | 5-stage composite router        |
 | Consensus voting (6 strategies)    |     Yes     |     Yes      |          Yes           | Real multi-CLI votes            |
@@ -35,13 +35,18 @@ _Generated: 2026-02-08 (Updated: 2026-02-08 — Epic #926 resolutions)_
 
 ## Gap Details
 
-### Gap #1: CLI Command Coverage
+### Gap #1: CLI Command Coverage — RESOLVED
 
-**Claimed:** 45 commands in CLAUDE.md, 31 in validCommands (cli-types.ts).
+**Previous claim:** 45 commands in documentation, 31 in validCommands.
 
-**Actual:** All 31 validated commands have dispatch handlers. However, many commands are thin wrappers that delegate to MCP tool calls or print help text. Several "demo" and "benchmark" commands exist primarily for development use.
+**Actual state:** 36 commands in `CliCommand` type (cli-types.ts). All 36 have dispatch handlers in cli-commands.ts (12 sync + 24 async). No orphaned or stale commands found.
 
-**Impact:** Low. The MCP server is the primary interface; CLI is secondary.
+**Resolution (Epic #931, Phase 2, Issue #933):**
+
+- Audit confirmed all 36 commands have working handlers
+- `demo` and `memory-benchmark` are active features (not stale)
+- Documentation updated to reflect actual count of 36
+- as-is.md corrected from 31 to 36
 
 ---
 
