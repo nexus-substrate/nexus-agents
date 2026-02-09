@@ -110,9 +110,9 @@ function recordToOutcomeStore(
     const cli = getCliForModel(model) as CliName | undefined;
     if (cli === undefined) return;
     const match = detectTaskCategory(task);
-    const qualitySignals: Record<string, unknown> = {};
+    const qualitySignals: string[] = [];
     if (governance?.promoted === true) {
-      qualitySignals['governanceDomain'] = governance.domain;
+      qualitySignals.push(`governance:${governance.domain}`);
     }
     getOutcomeStore().append({
       id: `del-${String(Date.now())}-${Math.random().toString(36).slice(2, 8)}`,
@@ -123,7 +123,7 @@ function recordToOutcomeStore(
       durationMs: Date.now() - startMs,
       timestamp: new Date(getTimeProvider().now()).toISOString(),
       source: 'delegate',
-      ...(Object.keys(qualitySignals).length > 0 ? { qualitySignals } : {}),
+      ...(qualitySignals.length > 0 ? { qualitySignals } : {}),
     });
   } catch {
     // Best-effort — never block the tool response
