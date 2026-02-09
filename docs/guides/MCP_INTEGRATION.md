@@ -45,7 +45,7 @@ Claude will use the nexus-agents orchestration tool to analyze and respond.
 
 ## MCP Tools Reference
 
-Nexus-agents provides four MCP tools that Claude can use:
+Nexus-agents provides 20 MCP tools that Claude can use. The most commonly used tools are documented below. See [ENTRYPOINTS.md](../ENTRYPOINTS.md) for the complete list.
 
 ### orchestrate
 
@@ -95,7 +95,17 @@ Create a specialized expert agent for specific domains.
     "properties": {
       "role": {
         "type": "string",
-        "enum": ["code", "security", "architecture", "testing", "documentation"]
+        "enum": [
+          "code_expert",
+          "security_expert",
+          "architecture_expert",
+          "testing_expert",
+          "documentation_expert",
+          "devops_expert",
+          "research_expert",
+          "pm_expert",
+          "ux_expert"
+        ]
       },
       "modelPreference": {
         "type": "string",
@@ -109,11 +119,15 @@ Create a specialized expert agent for specific domains.
 
 **Available roles:**
 
-- `code` - Code analysis and implementation
-- `security` - Security vulnerability detection
-- `architecture` - System design and patterns
-- `testing` - Test generation and coverage
-- `documentation` - API docs and technical writing
+- `code_expert` - Code analysis and implementation
+- `security_expert` - Security vulnerability detection
+- `architecture_expert` - System design and patterns
+- `testing_expert` - Test generation and coverage
+- `documentation_expert` - API docs and technical writing
+- `devops_expert` - CI/CD, deployment, infrastructure
+- `research_expert` - Literature review, technique evaluation
+- `pm_expert` - Product management, requirements, priorities
+- `ux_expert` - User experience, usability, accessibility
 
 ### run_workflow
 
@@ -147,9 +161,14 @@ Execute predefined workflow templates.
 **Built-in templates:**
 
 - `code-review` - Review code with security focus
-- `pr-review` - GitHub PR analysis
-- `test-gen` - Generate test cases
-- `doc-gen` - Generate documentation
+- `feature-implementation` - Feature development workflow
+- `bug-fix` - Bug diagnosis and fix
+- `documentation-update` - Documentation maintenance
+- `refactoring` - Code refactoring workflow
+- `research-review` - Research paper analysis
+- `security-audit` - Security vulnerability audit
+- `standards-review` - Standards compliance check
+- `test-generation` - Test case generation
 
 ### delegate_to_model
 
@@ -309,16 +328,7 @@ Claude uses run_workflow:
 
 ## Rate Limits
 
-MCP tools have rate limits to prevent abuse:
-
-| Tool                | Rate Limit |
-| ------------------- | ---------- |
-| `orchestrate`       | 10/min     |
-| `create_expert`     | 30/min     |
-| `run_workflow`      | 5/min      |
-| `delegate_to_model` | 20/min     |
-
-Rate limit headers are included in responses.
+All MCP tools share a single token bucket rate limiter (capacity: 100 tokens, refill: 10 tokens/sec). Each tool call consumes one token.
 
 ## Troubleshooting
 

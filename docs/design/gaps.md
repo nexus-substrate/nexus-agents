@@ -24,7 +24,7 @@ _Generated: 2026-02-08_
 | Outcome tracking                   |     Yes     |     Yes      |          Yes           | Bounded store, FIFO eviction    |
 | Weather report                     |     Yes     |     Yes      |          Yes           | Per-CLI success rates           |
 | Learning/feedback loop             |   Partial   |   Partial    |        Partial         | See gap #3                      |
-| TUI/REPL                           |     Yes     | Phase 1 only |          Yes           | See gap #4                      |
+| TUI/REPL                           |     Yes     |     Yes      |          Yes           | All phases complete (gap #4)    |
 | SWE-bench integration              |     Yes     |     Yes      |          Yes           | 92 files                        |
 | REST API                           |     Yes     |   Partial    |        Partial         | See gap #5                      |
 | Direct API adapters                |     Yes     |     Yes      |          Yes           | Claude, OpenAI, Ollama, Gemini  |
@@ -73,13 +73,13 @@ _Generated: 2026-02-08_
 
 ---
 
-### Gap #4: TUI/REPL
+### Gap #4: TUI/REPL — RESOLVED
 
-**Claimed:** Epic #871 describes a 3-phase TUI plan. Phase 1 REPL is documented as complete.
+**Claimed:** Epic #871 describes a 3-phase TUI plan plus security hardening.
 
-**Actual:** Phase 1 (REPL with 8 commands) is complete and tested (50 tests). Phases 2 (observable dashboard) and 3 (Ink-based TUI) are not started. Security phase not started.
+**Actual:** All phases complete. Phase 1 (REPL, 10 commands), Phase 2 (observable dashboard), Phase 3 (Ink-based TUI with 28 files, 43 components), and Security hardening are all implemented and tested (20 test files, 169 tests). Epic #871 is closed.
 
-**Impact:** Low. The REPL works. Advanced TUI is a nice-to-have.
+**Impact:** None. Fully delivered.
 
 ---
 

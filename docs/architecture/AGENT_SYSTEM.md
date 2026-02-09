@@ -144,13 +144,17 @@ Specialized agents with domain expertise.
 
 ### Built-in Expert Types
 
-| Expert          | Domain            | Capabilities                       |
-| --------------- | ----------------- | ---------------------------------- |
-| `code`          | Code generation   | Write, refactor, explain code      |
-| `security`      | Security analysis | Vulnerability detection, hardening |
-| `architecture`  | System design     | Design patterns, trade-offs        |
-| `testing`       | Test development  | Unit, integration, E2E tests       |
-| `documentation` | Technical writing | API docs, guides, comments         |
+| Expert          | Domain             | Capabilities                         |
+| --------------- | ------------------ | ------------------------------------ |
+| `code`          | Code generation    | Write, refactor, explain code        |
+| `security`      | Security analysis  | Vulnerability detection, hardening   |
+| `architecture`  | System design      | Design patterns, trade-offs          |
+| `testing`       | Test development   | Unit, integration, E2E tests         |
+| `documentation` | Technical writing  | API docs, guides, comments           |
+| `devops`        | Infrastructure     | CI/CD, deployment, containerization  |
+| `research`      | Literature review  | Paper analysis, technique evaluation |
+| `pm`            | Product management | Requirements, priorities, roadmaps   |
+| `ux`            | User experience    | Usability, accessibility, design     |
 
 ### Custom Expert Configuration
 

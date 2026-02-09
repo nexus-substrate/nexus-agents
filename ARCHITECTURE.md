@@ -1,7 +1,7 @@
 # Nexus Agents Architecture
 
-**Version:** 2.1.0
-**Last Updated:** 2026-01-15 (ET)
+**Version:** 2.3.0
+**Last Updated:** 2026-02-08 (ET)
 **Status:** Current
 
 ---

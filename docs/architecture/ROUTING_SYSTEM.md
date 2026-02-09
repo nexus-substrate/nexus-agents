@@ -7,14 +7,14 @@
 
 ## Overview
 
-The routing system intelligently selects the optimal CLI/model for each task through a 3-stage pipeline:
+The routing system intelligently selects the optimal CLI/model for each task through a multi-stage pipeline:
 
 ```
-Task → TaskAnalyzer → BudgetRouter → TopsisRouter → LinUCBBandit → Decision
-       (profile)      (filter)        (rank)         (learn)
+Task → BudgetRouter → ZeroRouter → PreferenceRouter → TopsisRouter → LinUCB → Selected Model
+       (filter)        (fallback)   (preference)        (rank)         (learn)
 ```
 
-This achieves 43.9% cost reduction while maintaining quality thresholds.
+This achieves 43.9% cost reduction while maintaining quality thresholds. Use `CompositeRouter.route(task)` — do NOT directly instantiate stage routers.
 
 ---
 
