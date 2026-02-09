@@ -3,7 +3,7 @@ title: "CLI Usage"
 description: "Nexus-agents provides four interface categories:"
 ---
 
-**Last Updated:** 2026-02-05 (ET)
+**Last Updated:** 2026-02-08 (ET)
 **Canonical Source:** This document is the single source of truth for all entrypoints.
 **Issue:** #210 (Epic #209)
 
@@ -90,7 +90,7 @@ Most commonly used commands:
 | -------------- | --------------------- | --------------------------------------- |
 | `server`       | `--mode=server`       | MCP server for Claude Desktop (default) |
 | `orchestrator` | `--mode=orchestrator` | Standalone CLI, CI/CD pipelines         |
-| `mesh`         | `--mode=mesh`         | Hybrid bidirectional mode               |
+| `mesh`         | `--mode=mesh`         | Planned — not yet implemented           |
 
 ### Global Options
 
@@ -318,6 +318,9 @@ nexus-agents hooks stop --check-tasks
 | `memory_stats`            | Memory system statistics dashboard                       | None (local) | Shared bucket |
 | `issue_triage`            | Triage GitHub issue using full security pipeline         | None (local) | Shared bucket |
 | `run_graph_workflow`      | Execute predefined graph workflow with checkpointing     | None (local) | Shared bucket |
+| `weather_report`          | Multi-CLI performance weather report                     | None (local) | Shared bucket |
+| `execute_spec`            | Execute AI software factory spec pipeline                | None (local) | Shared bucket |
+| `registry_import`         | Generate draft model registry entry                      | None (local) | Shared bucket |
 
 **Rate limiting:** All tools share a single token bucket rate limiter (capacity: 100 tokens, refill: 10 tokens/sec). Each tool call consumes one token.
 
@@ -359,7 +362,9 @@ nexus-agents hooks stop --check-tasks
           "documentation_expert",
           "testing_expert",
           "devops_expert",
-          "research_expert"
+          "research_expert",
+          "pm_expert",
+          "ux_expert"
         ]
       },
       "modelPreference": { "type": "string", "description": "Preferred model tier" }
@@ -714,6 +719,84 @@ nexus-agents hooks stop --check-tasks
 }
 ```
 
+#### weather_report
+
+```json
+{
+  "name": "weather_report",
+  "description": "Get multi-CLI performance weather report with per-CLI success rates and adaptive routing bonuses",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "cli": {
+        "type": "string",
+        "enum": ["claude", "gemini", "codex"],
+        "description": "Filter by CLI"
+      },
+      "category": {
+        "type": "string",
+        "enum": [
+          "architecture",
+          "code_generation",
+          "code_review",
+          "research",
+          "security_review",
+          "planning",
+          "documentation",
+          "testing",
+          "devops",
+          "exploration"
+        ]
+      },
+      "includeAdaptive": {
+        "type": "boolean",
+        "default": true,
+        "description": "Include adaptive routing bonuses"
+      }
+    }
+  }
+}
+```
+
+#### execute_spec
+
+```json
+{
+  "name": "execute_spec",
+  "description": "Execute an AI software factory spec through the full pipeline (parse, decompose, compile, execute, validate)",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "spec": { "type": "string", "description": "Spec content in markdown format" },
+      "dryRun": { "type": "boolean", "default": false, "description": "Validate without executing" }
+    },
+    "required": ["spec"]
+  }
+}
+```
+
+#### registry_import
+
+```json
+{
+  "name": "registry_import",
+  "description": "Add an AI model to the registry. Generates a draft ModelCapability entry with conservative quality scores for human review",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "provider": {
+        "type": "string",
+        "enum": ["anthropic", "google", "openai"],
+        "description": "Model provider"
+      },
+      "modelId": { "type": "string", "description": "Provider model identifier" },
+      "dryRun": { "type": "boolean", "default": true, "description": "Preview without persisting" }
+    },
+    "required": ["provider", "modelId"]
+  }
+}
+```
+
 ### Built-in Workflow Templates
 
 9 built-in templates are available (source: `src/workflows/template-types.ts`):
@@ -752,6 +835,11 @@ nexus-agents hooks stop --check-tasks
 | `src/mcp/tools/consensus-vote-types.ts`    | Consensus vote schemas |
 | `src/mcp/tools/memory-query.ts`            | Memory query tool      |
 | `src/mcp/tools/memory-stats.ts`            | Memory stats tool      |
+| `src/mcp/tools/weather-report.ts`          | Weather report tool    |
+| `src/mcp/tools/issue-triage.ts`            | Issue triage tool      |
+| `src/mcp/tools/run-graph-workflow.ts`      | Graph workflow tool    |
+| `src/mcp/tools/execute-spec.ts`            | Execute spec tool      |
+| `src/mcp/tools/registry-import.ts`         | Registry import tool   |
 
 ---
 
@@ -1244,6 +1332,12 @@ mcp_tools:
     - name: issue_triage
       auth: none
     - name: run_graph_workflow
+      auth: none
+    - name: weather_report
+      auth: none
+    - name: execute_spec
+      auth: none
+    - name: registry_import
       auth: none
 ```
 

@@ -89,6 +89,21 @@ Task → TaskAnalyzer → BudgetRouter → TopsisRouter → LinUCB → Decision
 - Multi-criteria ranking (quality vs cost)
 - Contextual learning from outcomes
 
+### Adapter Layers
+
+Two adapter layers serve distinct purposes:
+
+| Layer              | Interface       | Purpose                               | Location            |
+| ------------------ | --------------- | ------------------------------------- | ------------------- |
+| **Model Adapters** | `IModelAdapter` | Protocol translation (HTTP API calls) | `src/adapters/`     |
+| **CLI Adapters**   | `ICliAdapter`   | Subprocess lifecycle and routing      | `src/cli-adapters/` |
+
+These are **sequential, not parallel**: `CompositeRouter` selects a CLI → CLI adapter executes the subprocess → response is returned. When model-layer semantics are needed, `CliToModelAdapter` bridges `ICliAdapter → IModelAdapter`.
+
+- `ResilientAdapter` wraps API adapters with lazy init and circuit-breaker failover
+- `CliCircuitBreaker` provides subprocess-level resilience for CLI adapters
+- `CompositeRouter` chains 5 routing stages: Budget → ZeroRouter → Preference → TOPSIS → LinUCB
+
 ### Consensus Protocols
 
 5 core voting algorithms for multi-agent decisions:

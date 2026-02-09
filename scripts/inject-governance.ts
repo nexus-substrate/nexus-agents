@@ -71,7 +71,7 @@ const TOOL_DESCRIPTIONS: Record<string, string> = {
   orchestrate:
     'Orchestrate a task by analyzing it, breaking it into subtasks if needed, and coordinating expert agents',
   create_expert:
-    'Create a specialized expert agent for code, architecture, security, documentation, testing, devops, or research tasks',
+    'Create a specialized expert agent for code, architecture, security, documentation, testing, devops, research, product management, or UX tasks',
   execute_expert:
     'Execute a task using a previously created expert agent. Returns the expert analysis including output, confidence, and token usage.',
   run_workflow:

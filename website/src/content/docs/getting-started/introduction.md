@@ -70,7 +70,7 @@ nexus-agents orchestrate "Explain the architecture of this codebase"
 | **Workflow Automation**        | 9 built-in YAML templates for code review, security audit, and more                                      |
 | **Research Registry**          | Track and discover academic papers and implementation techniques                                         |
 | **Memory System**              | Typed memory backends (core, episodic, semantic, procedural, resource)                                   |
-| **MCP Integration**            | 15 tools available for Claude Desktop and Claude Code                                                    |
+| **MCP Integration**            | 20 tools available for Claude Desktop and Claude Code                                                    |
 
 ---
 
@@ -85,6 +85,8 @@ nexus-agents orchestrate "Explain the architecture of this codebase"
 | Documentation | Technical writing, API docs                  |
 | DevOps        | CI/CD, deployment, infrastructure            |
 | Research      | Literature review, state-of-the-art analysis |
+| PM            | Product management, requirements, priorities |
+| UX            | User experience, usability, accessibility    |
 
 ---
 
@@ -124,7 +126,7 @@ See [docs/ENTRYPOINTS.md](./docs/ENTRYPOINTS.md) for the complete CLI reference 
 
 ## MCP Tools
 
-When running as an MCP server, 15 tools are available:
+When running as an MCP server, 20 tools are available:
 
 | Tool                      | Description                                              |
 | ------------------------- | -------------------------------------------------------- |
@@ -143,6 +145,11 @@ When running as an MCP server, 15 tools are available:
 | `research_catalog_review` | Review auto-cataloged research references                |
 | `memory_query`            | Query across all memory backends                         |
 | `memory_stats`            | Memory system statistics dashboard                       |
+| `weather_report`          | Multi-CLI performance weather report                     |
+| `issue_triage`            | Triage GitHub issues with trust classification           |
+| `run_graph_workflow`      | Execute graph-based workflows with checkpointing         |
+| `execute_spec`            | Execute AI software factory spec pipeline                |
+| `registry_import`         | Generate draft model registry entry                      |
 
 ---
 

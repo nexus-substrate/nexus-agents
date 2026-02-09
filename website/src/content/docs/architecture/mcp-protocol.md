@@ -127,13 +127,28 @@ type ToolContentBlock =
 
 ## Registered Tools
 
-| Tool          | Description                  | Key Parameters           |
-| ------------- | ---------------------------- | ------------------------ |
-| `orchestrate` | Main task orchestration      | task, context, maxTurns  |
-| `delegate`    | Route task to specific model | task, targetModel        |
-| `expert`      | Create domain expert         | type, customPrompt       |
-| `workflow`    | Execute workflow template    | template, inputs, dryRun |
-| `review`      | Review GitHub PR             | url, focus               |
+| Tool                      | Description                                      | Key Parameters                 |
+| ------------------------- | ------------------------------------------------ | ------------------------------ |
+| `orchestrate`             | Task orchestration with expert coordination      | task, context, maxIterations   |
+| `create_expert`           | Create a specialized expert agent                | role, modelPreference          |
+| `execute_expert`          | Execute a task using a created expert            | expertId, task, context        |
+| `run_workflow`            | Execute a workflow template                      | template, inputs, dryRun       |
+| `delegate_to_model`       | Route task to optimal model                      | task, preferredCapability      |
+| `consensus_vote`          | Multi-model consensus voting                     | proposal, strategy, quickMode  |
+| `list_experts`            | List available expert types                      | format                         |
+| `list_workflows`          | List available workflow templates                | category, format               |
+| `research_query`          | Query research registry                          | action, techniqueId, query     |
+| `research_add`            | Add paper to registry by arXiv ID                | arxivId, topic, priority       |
+| `research_discover`       | Discover papers/repos from external sources      | topic, source, maxResults      |
+| `research_analyze`        | Analyze registry for gaps, trends, coverage      | focus, topic                   |
+| `research_catalog_review` | Review auto-cataloged research references        | action, identifier, topic      |
+| `memory_query`            | Query across all memory backends                 | query, limit, source           |
+| `memory_stats`            | Memory system statistics dashboard               | includeDecay, includePromotion |
+| `weather_report`          | Multi-CLI performance weather report             | cli, category, includeAdaptive |
+| `issue_triage`            | Triage GitHub issues with trust classification   | issueUrl, dryRun               |
+| `run_graph_workflow`      | Execute graph-based workflows with checkpointing | workflow, inputs               |
+| `execute_spec`            | Execute AI software factory spec pipeline        | spec, dryRun                   |
+| `registry_import`         | Generate draft model registry entry              | provider, modelId, dryRun      |
 
 ### Tool Examples
 

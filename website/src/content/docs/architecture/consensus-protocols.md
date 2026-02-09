@@ -1,13 +1,13 @@
 ---
 title: "Consensus Protocols Architecture"
-description: "The consensus system implements 5 core voting algorithms for multi-agent decisions:"
+description: "The consensus system implements 6 core voting algorithms for multi-agent decisions:"
 ---
 
 ---
 
 ## Overview
 
-The consensus system implements 5 core voting algorithms for multi-agent decisions:
+The consensus system implements 6 core voting algorithms for multi-agent decisions:
 
 **Implemented Algorithms:**
 
@@ -15,6 +15,7 @@ The consensus system implements 5 core voting algorithms for multi-agent decisio
 - **supermajority**: ≥67% approval threshold
 - **unanimous**: 100% approval required
 - **proof_of_learning**: Weighted by agent performance
+- **higher_order**: Bayesian-optimal aggregation with correlation awareness (Issue #514)
 - **opinion_wise**: Opinion-based aggregation
 
 **Research-Based Protocols (Referenced):**
@@ -55,6 +56,7 @@ type ConsensusAlgorithm =
   | 'supermajority' // ≥67%
   | 'unanimous' // 100%
   | 'proof_of_learning' // Weighted by agent performance
+  | 'higher_order' // Bayesian-optimal with correlation awareness
   | 'opinion_wise'; // Opinion-based aggregation
 
 interface Vote {
