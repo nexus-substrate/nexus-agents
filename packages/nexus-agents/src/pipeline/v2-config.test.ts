@@ -15,12 +15,14 @@ const savedMode = process.env['NEXUS_V2_MODE'];
 const savedDelegate = process.env['NEXUS_V2_DELEGATE'];
 const savedOrchestrate = process.env['NEXUS_V2_ORCHESTRATE'];
 const savedPolicy = process.env['NEXUS_V2_POLICY_MODE'];
+const savedAorchestra = process.env['NEXUS_AORCHESTRA'];
 
 function clearV2Env(): void {
   delete process.env['NEXUS_V2_MODE'];
   delete process.env['NEXUS_V2_DELEGATE'];
   delete process.env['NEXUS_V2_ORCHESTRATE'];
   delete process.env['NEXUS_V2_POLICY_MODE'];
+  delete process.env['NEXUS_AORCHESTRA'];
 }
 
 function setEnv(overrides: Record<string, string>): void {
@@ -36,6 +38,7 @@ function restoreEnv(): void {
   if (savedDelegate !== undefined) process.env['NEXUS_V2_DELEGATE'] = savedDelegate;
   if (savedOrchestrate !== undefined) process.env['NEXUS_V2_ORCHESTRATE'] = savedOrchestrate;
   if (savedPolicy !== undefined) process.env['NEXUS_V2_POLICY_MODE'] = savedPolicy;
+  if (savedAorchestra !== undefined) process.env['NEXUS_AORCHESTRA'] = savedAorchestra;
 }
 
 afterEach(() => {
@@ -54,6 +57,7 @@ describe('resolveV2Config', () => {
     expect(config.delegateEnabled).toBe(true);
     expect(config.orchestrateEnabled).toBe(true);
     expect(config.policyMode).toBe('block');
+    expect(config.aorchestraEnabled).toBe(false);
   });
 
   it('partial mode: delegate on, orchestrate off, warn policy', () => {
@@ -111,5 +115,23 @@ describe('resolveV2Config', () => {
     setEnv({ NEXUS_V2_POLICY_MODE: 'warn' });
     const config = resolveV2Config();
     expect(config.policyMode).toBe('warn');
+  });
+
+  it('aorchestra defaults to false', () => {
+    setEnv({});
+    const config = resolveV2Config();
+    expect(config.aorchestraEnabled).toBe(false);
+  });
+
+  it('aorchestra enabled via NEXUS_AORCHESTRA=true', () => {
+    setEnv({ NEXUS_AORCHESTRA: 'true' });
+    const config = resolveV2Config();
+    expect(config.aorchestraEnabled).toBe(true);
+  });
+
+  it('aorchestra disabled via NEXUS_AORCHESTRA=false', () => {
+    setEnv({ NEXUS_AORCHESTRA: 'false' });
+    const config = resolveV2Config();
+    expect(config.aorchestraEnabled).toBe(false);
   });
 });

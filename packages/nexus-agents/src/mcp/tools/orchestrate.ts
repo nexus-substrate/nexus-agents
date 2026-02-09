@@ -32,6 +32,7 @@ import { OrchestratorFactory } from '../../orchestration/orchestrator-factory.js
 import { createWorkflowRouter, type IWorkflowRouter } from '../../orchestration/workflow-router.js';
 import { getToolMemory } from './tool-memory.js';
 import { getAutoCatalog } from './research-auto-catalog.js';
+import { computeAgentPlan } from './orchestrate-aorchestra.js';
 import {
   OrchestrateInputSchema,
   ORCHESTRATE_TOOL_SCHEMA,
@@ -404,7 +405,14 @@ function createOrchestrateHandler(deps: OrchestrateDeps) {
       };
     }
     ctx.logger.debug('Starting orchestration', { taskLength: validated.data.task.length });
-    if (resolveV2Config().orchestrateEnabled) instrumentV2Orchestrate(validated.data, ctx.logger);
+    const v2Config = resolveV2Config();
+    if (v2Config.orchestrateEnabled) instrumentV2Orchestrate(validated.data, ctx.logger);
+
+    // AOrchestra: compute agent plan when enabled (Issue #935)
+    const agentPlan = v2Config.aorchestraEnabled
+      ? computeAgentPlan(validated.data.task, ctx.logger)
+      : undefined;
+
     const result = await executeOrchestration(validated.data, deps);
     if (!result.ok) {
       return {
@@ -412,7 +420,10 @@ function createOrchestrateHandler(deps: OrchestrateDeps) {
         content: [{ type: 'text' as const, text: `Orchestration error: ${result.error.message}` }],
       };
     }
-    return { content: [{ type: 'text' as const, text: JSON.stringify(result.value, null, 2) }] };
+
+    // Merge agent plan into output when available
+    const output = agentPlan !== undefined ? { ...result.value, agentPlan } : result.value;
+    return { content: [{ type: 'text' as const, text: JSON.stringify(output, null, 2) }] };
   };
 }
 
