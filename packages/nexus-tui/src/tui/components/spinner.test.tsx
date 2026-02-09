@@ -13,8 +13,9 @@ describe('Spinner', () => {
   it('renders without label', () => {
     const { lastFrame } = render(<Spinner />);
     const frame = lastFrame();
+    expect(frame).toBeDefined();
     // Should render one of the frame characters
-    expect(frame.length).toBeGreaterThan(0);
+    expect(frame?.length).toBeGreaterThan(0);
   });
 
   it('renders with label', () => {
