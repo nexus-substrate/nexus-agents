@@ -130,22 +130,22 @@ _Generated: 2026-02-08 (Updated: 2026-02-08 — Epic #926 resolutions)_
 
 ---
 
-### Gap #8: Two Adapter Layers
+### Gap #8: Two Adapter Layers — RESOLVED (by design)
 
-**Actual state:** The system has two adapter abstraction layers:
+**Observed:** Two adapter abstraction layers exist:
 
-1. `src/adapters/` — Direct API adapters (call model APIs directly via HTTP)
-2. `src/cli-adapters/` — CLI subprocess adapters (invoke `claude`, `gemini`, `codex` as child processes)
+1. `src/adapters/` — Direct API adapters (`IModelAdapter`: protocol translation via HTTP)
+2. `src/cli-adapters/` — CLI subprocess adapters (`ICliAdapter`: subprocess lifecycle and routing)
 
-These serve different purposes but create confusion:
+**Assessment (Issue #934, consensus vote 3-0):**
 
-- The `ResilientAdapter` in `src/adapters/` wraps API adapters with retry/failover
-- The `CliCircuitBreaker` in `src/cli-adapters/` provides similar resilience for CLI adapters
-- The `CompositeRouter` routes between CLI adapters specifically, not API adapters
+The dual-layer design is **architecturally correct**. API adapters translate protocols (Claude/OpenAI message formats); CLI adapters manage subprocess lifecycle and routing policy. These are distinct concerns with different failure modes and testing strategies.
 
-**Impact:** Architectural complexity. New developers must understand which adapter layer to use when.
+- `CliToModelAdapter` (cli-to-model-adapter.ts) already bridges `ICliAdapter → IModelAdapter` when model-layer semantics are needed
+- Refactor gate scored **0/5** — unification would blur concerns, not clarify them
+- Architecture docs updated with "Adapter Layers" section explaining the design
 
-**Recommendation:** Consider unifying under a single `IModelAdapter` interface that both API and CLI adapters implement, with the router operating on the unified interface.
+**Impact:** None. Design is intentional; bridge exists for interoperability.
 
 ---
 
