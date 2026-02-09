@@ -57,3 +57,7 @@ packages/nexus-agents/coverage.json
 .mcp.json
 nexus-agents.yaml
 .claude/settings.local.json
+
+# Generated artifacts
+repomix-output.xml
+report.html
