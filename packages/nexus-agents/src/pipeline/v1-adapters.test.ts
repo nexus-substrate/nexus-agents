@@ -20,17 +20,18 @@ import type {
 
 function makeAnalysisResult(): TaskAnalysisResult {
   return {
-    reasoningType: 'factual',
+    reasoningType: 'reasoning',
     reasoningConfidence: 0.85,
     complexity: 'moderate',
     complexityScore: 0.6,
     taskType: 'code_implementation',
     taskTypeConfidence: 0.9,
     capabilities: {
-      needsCodeGeneration: true,
-      needsAnalysis: false,
-      needsResearch: false,
-      needsMultiStep: false,
+      codeGeneration: true,
+      parallelizable: false,
+      multimodal: false,
+      budgetSensitive: false,
+      highContext: false,
     },
     estimatedTokens: 5000,
     matchedSignals: ['implement', 'function'],
@@ -87,17 +88,18 @@ describe('analysisToTaskContract', () => {
 
   it('handles missing optional fields', () => {
     const analysis: TaskAnalysisResult = {
-      reasoningType: 'factual',
+      reasoningType: 'knowledge',
       reasoningConfidence: 0.5,
       complexity: 'simple',
       complexityScore: 0.2,
       taskType: 'general',
       taskTypeConfidence: 0.7,
       capabilities: {
-        needsCodeGeneration: false,
-        needsAnalysis: false,
-        needsResearch: false,
-        needsMultiStep: false,
+        codeGeneration: false,
+        parallelizable: false,
+        multimodal: false,
+        budgetSensitive: false,
+        highContext: false,
       },
       estimatedTokens: 1000,
       matchedSignals: [],
@@ -165,6 +167,8 @@ describe('taskContractToToolResponse', () => {
     const response = taskContractToToolResponse(contract);
 
     expect(response.artifacts).toHaveLength(1);
-    expect(response.artifacts[0].id).toBe('art-1');
+    const firstArtifact = response.artifacts[0];
+    expect(firstArtifact).toBeDefined();
+    expect(firstArtifact?.id).toBe('art-1');
   });
 });
