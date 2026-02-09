@@ -822,7 +822,10 @@ describe('CompositeRouter ZeroRouter integration (Issue #347)', () => {
       const task: CliTask = { content: 'Test task' };
       await router.executeTask(task);
 
-      expect(recordOutcomeSpy).toHaveBeenCalledWith(expect.any(String), task, 1.0);
+      // Quality-enriched reward: base 0.5 - latency penalty (Issue #929)
+      const reward = recordOutcomeSpy.mock.calls[0]?.[2] as number;
+      expect(reward).toBeGreaterThan(0.3);
+      expect(reward).toBeLessThanOrEqual(0.8);
       expect(recordDifficultySpy).toHaveBeenCalledWith(task, true);
     });
 
@@ -840,7 +843,8 @@ describe('CompositeRouter ZeroRouter integration (Issue #347)', () => {
       const result = await router.executeTask(task);
 
       expect(result.ok).toBe(false);
-      expect(recordOutcomeSpy).toHaveBeenCalledWith(expect.any(String), task, 0.0);
+      // Quality-enriched reward: 0.1 for failure (Issue #929)
+      expect(recordOutcomeSpy).toHaveBeenCalledWith(expect.any(String), task, 0.1);
       expect(recordDifficultySpy).toHaveBeenCalledWith(task, false);
     });
 

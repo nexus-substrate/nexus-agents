@@ -12,6 +12,8 @@ import type { LinUCBBandit } from './linucb-bandit.js';
 import type { PreferenceRouter } from './preference-router.js';
 import type { IZeroRouter } from './zero-router.js';
 import { cliTaskToTask, buildDifficultyOutcome } from './composite-router-helpers.js';
+import { getOutcomeStore } from '../orchestration/outcomes/index.js';
+import { clamp01 } from '../utils/math-utils.js';
 
 /** Last routed task info for difficulty outcome recording. */
 export interface LastRoutedTaskInfo {
@@ -120,4 +122,47 @@ export function recordZeroRouterOutcome(
 export function hasMinimumPreferenceData(deps: OutcomeDependencies): boolean {
   if (deps.preferenceRouter === undefined) return false;
   return deps.preferenceRouter.hasMinimumData();
+}
+
+// ============================================================================
+// Quality-Enriched Rewards (Issue #929)
+// ============================================================================
+
+/** Number of recent outcomes to consider for quality calculation. */
+const QUALITY_HISTORY_LIMIT = 20;
+
+/** Maximum latency (ms) for normalization in reward calculation. */
+const MAX_LATENCY_MS = 30_000;
+
+/**
+ * Computes a quality-enriched reward using OutcomeStore history.
+ *
+ * Instead of binary 1/0 rewards, produces continuous rewards (0.1-0.8)
+ * that incorporate historical success rate and latency. This enables
+ * LinUCB to learn more nuanced model preferences.
+ *
+ * @param cli - CLI that executed the task
+ * @param success - Whether the task succeeded
+ * @param durationMs - Task execution duration in ms
+ * @returns Reward value in [0, 1] range
+ */
+export function computeQualityReward(cli: CliName, success: boolean, durationMs: number): number {
+  if (!success) return 0.1;
+
+  let reward = 0.5;
+
+  try {
+    const recent = getOutcomeStore().query({ cli, limit: QUALITY_HISTORY_LIMIT });
+    if (recent.length > 0) {
+      const rate = recent.filter((o) => o.success).length / recent.length;
+      reward += rate * 0.3;
+    }
+  } catch {
+    // Best-effort — don't block routing on store errors
+  }
+
+  const latencyPenalty = Math.min(0.2, (durationMs / MAX_LATENCY_MS) * 0.2);
+  reward -= latencyPenalty;
+
+  return clamp01(reward);
 }

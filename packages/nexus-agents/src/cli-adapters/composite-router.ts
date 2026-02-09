@@ -61,6 +61,7 @@ import {
   recordPreferenceSignal,
   recordZeroRouterOutcome,
   hasMinimumPreferenceData,
+  computeQualityReward,
   type LastRoutedTaskInfo,
   type OutcomeDependencies,
 } from './composite-router-outcome.js';
@@ -294,8 +295,8 @@ export class CompositeRouter implements ICompositeRouter {
     success: boolean,
     durationMs: number
   ): void {
-    // Record bandit outcome (reward: 1 for success, 0 for failure)
-    const reward = success ? 1.0 : 0.0;
+    // Record bandit outcome with quality-enriched reward (Issue #929)
+    const reward = computeQualityReward(decision.cliName, success, durationMs);
     this.recordOutcome(decision.cliName, task, reward);
 
     // Record difficulty outcome for ZeroRouter learning

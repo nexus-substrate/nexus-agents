@@ -2,7 +2,7 @@
  * Tests for CompositeRouter outcome recording functions.
  * @module cli-adapters/composite-router-outcome.test
  */
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { ILogger } from '../core/index.js';
 import type { CliName, CliTask } from './types.js';
 import type { LinUCBBandit } from './linucb-bandit.js';
@@ -14,9 +14,11 @@ import {
   getDifficultyInfo,
   recordZeroRouterOutcome,
   hasMinimumPreferenceData,
+  computeQualityReward,
   type LastRoutedTaskInfo,
   type OutcomeDependencies,
 } from './composite-router-outcome.js';
+import { getOutcomeStore, resetOutcomeStore } from '../orchestration/outcomes/index.js';
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 function createMockLogger() {
@@ -326,6 +328,52 @@ describe('composite-router-outcome', () => {
 
       vi.mocked(router.hasMinimumData).mockReturnValue(false);
       expect(hasMinimumPreferenceData(deps)).toBe(false);
+    });
+  });
+
+  describe('computeQualityReward (Issue #929)', () => {
+    beforeEach(() => {
+      resetOutcomeStore();
+    });
+
+    it('returns 0.1 for failure regardless of history', () => {
+      expect(computeQualityReward('claude', false, 1000)).toBe(0.1);
+    });
+
+    it('returns ~0.5 base for success with no history', () => {
+      const reward = computeQualityReward('claude', true, 0);
+      expect(reward).toBeCloseTo(0.5, 1);
+    });
+
+    it('incorporates historical success rate from OutcomeStore', () => {
+      const store = getOutcomeStore();
+      for (let i = 0; i < 10; i++) {
+        store.append({
+          id: `test-${String(i)}`,
+          cli: 'claude',
+          category: 'code_generation',
+          model: 'claude-opus',
+          success: true,
+          durationMs: 500,
+          timestamp: new Date().toISOString(),
+          source: 'delegate',
+        });
+      }
+      const reward = computeQualityReward('claude', true, 0);
+      // 0.5 base + 1.0 * 0.3 = 0.8
+      expect(reward).toBeCloseTo(0.8, 1);
+    });
+
+    it('applies latency penalty for slow responses', () => {
+      const fast = computeQualityReward('claude', true, 0);
+      const slow = computeQualityReward('claude', true, 30_000);
+      expect(slow).toBeLessThan(fast);
+      expect(fast - slow).toBeCloseTo(0.2, 1);
+    });
+
+    it('clamps reward to [0, 1] range', () => {
+      expect(computeQualityReward('codex', true, 100_000)).toBeGreaterThanOrEqual(0);
+      expect(computeQualityReward('codex', true, 0)).toBeLessThanOrEqual(1);
     });
   });
 
