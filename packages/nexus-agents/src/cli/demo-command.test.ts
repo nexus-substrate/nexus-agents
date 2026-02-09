@@ -100,7 +100,7 @@ describe('demo-command', () => {
       expect(result).toContain('Security Expert');
     });
 
-    it('should include all 5 built-in experts', () => {
+    it('should include core built-in experts', () => {
       const result = runExpertListDemo();
 
       expect(result).toContain('Code Expert');
