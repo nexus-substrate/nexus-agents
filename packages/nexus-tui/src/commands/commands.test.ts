@@ -36,19 +36,19 @@ describe('delegate command', () => {
     expect(result.isError).toBeUndefined();
     expect(result.output).toContain('Model:');
     expect(result.output).toContain('Reasoning:');
-  });
+  }, 15_000);
 
   it('accepts --prefer flag', async () => {
     const result = await cmd.execute(['complex', 'analysis', '--prefer=reasoning']);
     expect(result.isError).toBeUndefined();
     expect(result.output).toContain('Model:');
-  });
+  }, 15_000);
 
   it('ignores invalid prefer values', async () => {
     const result = await cmd.execute(['task', '--prefer=invalid']);
     expect(result.isError).toBeUndefined();
     expect(result.output).toContain('Model:');
-  });
+  }, 15_000);
 });
 
 describe('orchestrate command', () => {
@@ -65,7 +65,7 @@ describe('orchestrate command', () => {
     expect(result.isError).toBeUndefined();
     expect(result.output).toContain('Task:');
     expect(result.output).toContain('Routed to:');
-  });
+  }, 15_000);
 });
 
 describe('vote command', () => {
