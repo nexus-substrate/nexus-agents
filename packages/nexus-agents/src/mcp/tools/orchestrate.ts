@@ -5,7 +5,11 @@
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import type { Result, ILogger, Task, TaskContext } from '../../core/index.js';
+import type { ILogger, Result, Task, TaskContext } from '../../core/index.js';
+import {
+  orchestrateInputToTaskContract,
+  executeOrchestratePipeline,
+} from '../../pipeline/v2-orchestrate.js';
 import {
   ok,
   err,
@@ -378,6 +382,14 @@ async function executeOrchestration(
   }
 }
 
+/** Fire-and-forget V2 pipeline instrumentation (Phase E, Issue #924). */
+function instrumentV2Orchestrate(input: { task: string }, logger: ILogger): void {
+  const tc = orchestrateInputToTaskContract(input);
+  void executeOrchestratePipeline(tc).then((m) => {
+    logger.info('V2 orchestrate pipeline', { ...m });
+  });
+}
+
 function createOrchestrateHandler(deps: OrchestrateDeps) {
   return async (args: unknown, ctx: HandlerContext) => {
     const validated = OrchestrateInputSchema.safeParse(args);
@@ -391,6 +403,8 @@ function createOrchestrateHandler(deps: OrchestrateDeps) {
       };
     }
     ctx.logger.debug('Starting orchestration', { taskLength: validated.data.task.length });
+    if (process.env['NEXUS_V2_ORCHESTRATE'] === 'true')
+      instrumentV2Orchestrate(validated.data, ctx.logger);
     const result = await executeOrchestration(validated.data, deps);
     if (!result.ok) {
       return {

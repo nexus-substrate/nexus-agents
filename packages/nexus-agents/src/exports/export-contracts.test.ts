@@ -159,6 +159,8 @@ import {
   createEventBusBridge,
   evaluatePipelinePolicy,
   getPolicyMode,
+  orchestrateInputToTaskContract,
+  executeOrchestratePipeline,
 } from '../index.js';
 
 describe('Export contracts — MCP tool registration', () => {
@@ -437,6 +439,14 @@ describe('Export contracts — pipeline V2 types', () => {
 
   it('exports getPolicyMode (Issue #923)', () => {
     expect(typeof getPolicyMode).toBe('function');
+  });
+
+  it('exports orchestrateInputToTaskContract (Issue #924)', () => {
+    expect(typeof orchestrateInputToTaskContract).toBe('function');
+  });
+
+  it('exports executeOrchestratePipeline (Issue #924)', () => {
+    expect(typeof executeOrchestratePipeline).toBe('function');
   });
 });
 

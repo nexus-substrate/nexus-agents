@@ -99,4 +99,8 @@ export {
   type PolicyEvaluatorOptions,
   type PolicyEvalResult,
   type PolicyViolation as PipelinePolicyViolation, // Renamed: security.ts exports PolicyViolation
+  // V2 orchestrate (Issue #924, Phase E)
+  orchestrateInputToTaskContract,
+  executeOrchestratePipeline,
+  type OrchestrateInputLike,
 } from '../pipeline/index.js';
