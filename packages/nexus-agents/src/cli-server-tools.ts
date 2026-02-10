@@ -72,6 +72,7 @@ import {
   setGlobalToolRateLimiterFactory,
 } from './mcp/middleware/index.js';
 import { createGatewayServerProxy, type GatewayConfig } from './mcp/gateway/index.js';
+import { getSharedCliCache } from './mcp/middleware/adapter-availability.js';
 
 /**
  * Options for MCP tool registration.
@@ -236,6 +237,7 @@ function registerExpertTools(ctx: ToolRegistrationContext): void {
     expertRegistry: sharedExpertRegistry,
     logger: ctx.logger,
     rateLimiter: ctx.rateLimiterFactory.getForTool('execute_expert'),
+    cliCache: getSharedCliCache(),
     ...(ctx.securityConfig !== undefined && { security: ctx.securityConfig }),
   });
 }

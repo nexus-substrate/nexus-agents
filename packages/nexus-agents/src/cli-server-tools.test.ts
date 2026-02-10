@@ -49,6 +49,7 @@ const {
   mockSetGlobalToolRateLimiterFactory,
   mockRunStpaSafetyAnalysis,
   mockCreateGatewayServerProxy,
+  mockGetSharedCliCache,
 } = vi.hoisted(() => ({
   mockRegisterTools: vi.fn().mockReturnValue({
     logger: {
@@ -107,6 +108,7 @@ const {
   mockSetGlobalToolRateLimiterFactory: vi.fn(),
   mockRunStpaSafetyAnalysis: vi.fn(),
   mockCreateGatewayServerProxy: vi.fn(),
+  mockGetSharedCliCache: vi.fn().mockReturnValue({ get: vi.fn(), set: vi.fn() }),
 }));
 
 vi.mock('./mcp/index.js', () => ({
@@ -175,6 +177,10 @@ vi.mock('./cli-server-stpa.js', () => ({
 
 vi.mock('./mcp/gateway/index.js', () => ({
   createGatewayServerProxy: mockCreateGatewayServerProxy,
+}));
+
+vi.mock('./mcp/middleware/adapter-availability.js', () => ({
+  getSharedCliCache: mockGetSharedCliCache,
 }));
 
 // ============================================================================
@@ -391,6 +397,18 @@ describe('registerMcpTools', () => {
     const options = makeDefaultOptions({ logger, useMockTechLead: true });
     registerMcpTools(options);
     expect(logger.info).toHaveBeenCalled();
+  });
+
+  it('should wire cliCache into execute_expert deps (Issue #945)', () => {
+    const options = makeDefaultOptions({ useMockTechLead: true });
+    registerMcpTools(options);
+    expect(mockRegisterExecuteExpertTool).toHaveBeenCalledTimes(1);
+    const call = mockRegisterExecuteExpertTool.mock.calls[0];
+    expect(call).toBeDefined();
+
+    const deps = call![1] as Record<string, unknown>;
+    expect(deps).toHaveProperty('cliCache');
+    expect(deps.cliCache).toBe(mockGetSharedCliCache());
   });
 });
 
