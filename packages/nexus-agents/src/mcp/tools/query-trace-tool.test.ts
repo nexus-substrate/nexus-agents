@@ -96,7 +96,9 @@ describe('queryTraceFromDisk', () => {
     expect(result.source).toBe('disk');
     expect(result.totalEvents).toBe(2);
     expect(result.events).toHaveLength(2);
-    expect(result.events[0]['agentId']).toBe('code_expert');
+    const first = result.events[0];
+    expect(first).toBeDefined();
+    expect(first?.['agentId']).toBe('code_expert');
   });
 
   it('filters by eventType', async () => {

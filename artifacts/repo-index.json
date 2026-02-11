@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "generated": "2026-02-08T14:42:09.154Z",
+  "generated": "2026-02-11T02:39:33.469Z",
   "generator": "scripts/generate-repo-index.ts",
   "packageVersion": "2.6.0",
   "cli": {
@@ -139,6 +139,12 @@
         "file": "src/cli-commands-handlers.ts"
       },
       {
+        "name": "scenario",
+        "type": "async",
+        "handler": "handleScenarioCommand",
+        "file": "src/cli-commands-handlers.ts"
+      },
+      {
         "name": "server",
         "type": "async",
         "handler": "handleServerCommand",
@@ -257,6 +263,10 @@
       {
         "name": "orchestrate",
         "file": "src/mcp/tools/orchestrate.ts"
+      },
+      {
+        "name": "query_trace",
+        "file": "src/mcp/tools/query-trace.ts"
       },
       {
         "name": "registry_import",

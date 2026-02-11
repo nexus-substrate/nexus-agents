@@ -17,14 +17,9 @@ import { join, resolve } from 'node:path';
 
 const SKILLS_DIR = resolve(import.meta.dirname, '../../../../../.claude/skills');
 
-/** Parse YAML frontmatter from a skill markdown file */
+/** Parse simple YAML key-value pairs from a string */
 
-function parseSkillFrontmatter(filePath: string): Record<string, string> {
-  const content = readFileSync(filePath, 'utf-8');
-  const match = /^---\n([\s\S]*?)\n---/.exec(content);
-  if (!match) return {};
-
-  const yaml = match[1];
+function parseYamlLines(yaml: string): Record<string, string> {
   const result: Record<string, string> = {};
   let currentKey = '';
   let currentValue = '';
@@ -32,20 +27,23 @@ function parseSkillFrontmatter(filePath: string): Record<string, string> {
   for (const line of yaml.split('\n')) {
     const keyMatch = /^(\w[\w-]*):(.*)/.exec(line);
     if (keyMatch && !line.startsWith('  ')) {
-      if (currentKey) {
-        result[currentKey] = currentValue.trim();
-      }
-      currentKey = keyMatch[1];
-      currentValue = keyMatch[2];
+      if (currentKey) result[currentKey] = currentValue.trim();
+      currentKey = keyMatch[1] ?? '';
+      currentValue = keyMatch[2] ?? '';
     } else if (currentKey) {
       currentValue += ' ' + line.trim();
     }
   }
-  if (currentKey) {
-    result[currentKey] = currentValue.trim();
-  }
-
+  if (currentKey) result[currentKey] = currentValue.trim();
   return result;
+}
+
+/** Parse YAML frontmatter from a skill markdown file */
+function parseSkillFrontmatter(filePath: string): Record<string, string> {
+  const content = readFileSync(filePath, 'utf-8');
+  const match = /^---\n([\s\S]*?)\n---/.exec(content);
+  if (!match) return {};
+  return parseYamlLines(match[1] ?? '');
 }
 
 // ============================================================================

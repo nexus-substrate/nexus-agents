@@ -104,6 +104,8 @@ const TOOL_DESCRIPTIONS: Record<string, string> = {
     'Execute an AI software factory spec through the full pipeline (parse, decompose, compile, execute, validate).',
   registry_import:
     'Generate a draft model registry entry for a new AI model. Returns a template with conservative defaults for human review.',
+  query_trace:
+    'Query execution trace JSONL files from disk for a given run ID. Supports filtering by event type and pagination.',
 };
 
 /**

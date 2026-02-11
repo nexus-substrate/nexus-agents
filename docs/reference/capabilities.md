@@ -1,6 +1,6 @@
 # Repository Capabilities Index
 
-**Generated:** 2026-02-08T14:42:09.154Z
+**Generated:** 2026-02-11T02:39:33.469Z
 **Package Version:** 2.6.0
 **Generator:** `scripts/generate-repo-index.ts`
 
@@ -9,7 +9,7 @@
 
 ---
 
-## CLI Commands (34)
+## CLI Commands (35)
 
 Binary: `nexus-agents`
 
@@ -37,6 +37,7 @@ Binary: `nexus-agents`
 | `review` | async | `handleReviewCommand` | `src/cli-commands-handlers.ts` |
 | `routing-audit` | sync | `handleRoutingAuditCommand` | `src/cli-commands-handlers.ts` |
 | `scaffold` | sync | `handleScaffoldCommand` | `src/cli-commands-handlers.ts` |
+| `scenario` | async | `handleScenarioCommand` | `src/cli-commands-handlers.ts` |
 | `server` | async | `handleServerCommand` | `src/cli-commands-handlers.ts` |
 | `session` | async | `handleSessionCommand` | `src/cli-commands-handlers.ts` |
 | `setup` | async | `handleSetupCommandAsync` | `src/cli-commands-handlers.ts` |
@@ -52,7 +53,7 @@ Binary: `nexus-agents`
 
 ---
 
-## MCP Tools (20)
+## MCP Tools (21)
 
 | Tool | Source File |
 | ------ | ------------- |
@@ -67,6 +68,7 @@ Binary: `nexus-agents`
 | `memory_query` | `src/mcp/tools/memory-query.ts` |
 | `memory_stats` | `src/mcp/tools/memory-stats.ts` |
 | `orchestrate` | `src/mcp/tools/orchestrate.ts` |
+| `query_trace` | `src/mcp/tools/query-trace.ts` |
 | `registry_import` | `src/mcp/tools/registry-import.ts` |
 | `research_add` | `src/mcp/tools/research-add.ts` |
 | `research_analyze` | `src/mcp/tools/research-analyze.ts` |
