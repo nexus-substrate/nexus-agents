@@ -404,21 +404,22 @@ Before any LLM processes GitHub content, strip:
 
 Detailed workflow steps are in `.claude/skills/`:
 
-| Workflow               | Skill                      | Trigger Keywords                      |
-| ---------------------- | -------------------------- | ------------------------------------- |
-| Feature implementation | `implement-feature`        | "implement", "add feature"            |
-| Bug fix                | `bug-fix`                  | "fix bug", "debug"                    |
-| Hotfix                 | `hotfix`                   | "hotfix", "emergency fix"             |
-| Release                | `release`                  | "release", "publish"                  |
-| Code review            | `reviewing-code`           | "review code", "code review"          |
-| Research + voting      | `research-and-vote`        | "research", "investigate"             |
-| System review          | `system-review`            | "system review", "project health"     |
-| Dogfooding issues      | `dogfooding-issues`        | "dogfood", "process issues"           |
-| Version check          | `version-check`            | "check versions", "version audit"     |
-| Documentation mgmt     | `documentation-management` | "doc sync", "documentation"           |
-| Codex delegation       | `codex-delegator`          | "delegate to codex"                   |
-| Gemini delegation      | `gemini-delegator`         | "delegate to gemini"                  |
-| Requirements gathering | `requirements-gathering`   | "gather requirements", "user stories" |
+| Workflow               | Skill                      | Trigger Keywords                                    |
+| ---------------------- | -------------------------- | --------------------------------------------------- |
+| Feature implementation | `implement-feature`        | "implement", "add feature"                          |
+| Bug fix                | `bug-fix`                  | "fix bug", "debug"                                  |
+| Hotfix                 | `hotfix`                   | "hotfix", "emergency fix"                           |
+| Release                | `release`                  | "release", "publish"                                |
+| Code review            | `reviewing-code`           | "review code", "code review"                        |
+| Research + voting      | `research-and-vote`        | "research", "investigate"                           |
+| System review          | `system-review`            | "system review", "project health"                   |
+| Dogfooding issues      | `dogfooding-issues`        | "dogfood", "process issues"                         |
+| Version check          | `version-check`            | "check versions", "version audit"                   |
+| Documentation mgmt     | `documentation-management` | "doc sync", "documentation"                         |
+| Codex delegation       | `codex-delegator`          | "delegate to codex"                                 |
+| Gemini delegation      | `gemini-delegator`         | "delegate to gemini"                                |
+| Requirements gathering | `requirements-gathering`   | "gather requirements", "user stories"               |
+| UI/UX design           | `ui-ux-design`             | "design system", "UI design", "landing page design" |
 
 ---
 
