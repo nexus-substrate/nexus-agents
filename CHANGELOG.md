@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.8.0] - 2026-02-11
+
+### Added
+
+- MCP logging notifications for Claude Code observability (#974, Epic #973)
+  - `IMcpNotifier` interface with info/debug/warn methods and fire-and-forget semantics
+  - `createMcpNotifier(server)` and `NOOP_NOTIFIER` for testing
+  - Declare `logging` capability in MCP server options
+  - 6 tools instrumented: delegate_to_model, consensus_vote, orchestrate, execute_expert, run_workflow, run_graph_workflow
+  - Events: routing_start, model_selected, vote_start/collected/complete, orchestrate/expert/workflow start/complete
+- Claude Code observability guide with hooks and status line examples (#977)
+  - `docs/guides/claude-code-observability/` — comprehensive 3-layer guide
+  - `nexus-hook.sh` — PreToolUse/PostToolUse hook script with session stats
+  - `nexus-statusline.sh` — ANSI-colored status bar showing active tools/models
+
+### Deprecated
+
+- `packages/nexus-tui/` package — superseded by Claude Code observability features (#979)
+  - Marked deprecated in package.json
+  - Scheduled for removal in v3.0
+
+### Changed
+
+- Updated stale MCP tool count references from 20 to 21 across 12 documentation files (#971)
+
 ## [2.7.1] - 2026-02-11
 
 ### Fixed
@@ -371,7 +396,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[unreleased]: https://github.com/williamzujkowski/nexus-agents/compare/v2.6.0...HEAD
+[unreleased]: https://github.com/williamzujkowski/nexus-agents/compare/v2.8.0...HEAD
+[2.8.0]: https://github.com/williamzujkowski/nexus-agents/compare/v2.7.1...v2.8.0
+[2.7.1]: https://github.com/williamzujkowski/nexus-agents/compare/v2.7.0...v2.7.1
+[2.7.0]: https://github.com/williamzujkowski/nexus-agents/compare/v2.6.0...v2.7.0
 [2.6.0]: https://github.com/williamzujkowski/nexus-agents/compare/v2.5.0...v2.6.0
 [2.5.0]: https://github.com/williamzujkowski/nexus-agents/compare/v2.4.0...v2.5.0
 [2.4.0]: https://github.com/williamzujkowski/nexus-agents/compare/v2.3.0...v2.4.0
