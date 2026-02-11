@@ -2,6 +2,7 @@
   "name": "nexus-tui",
   "version": "0.1.0",
   "description": "Interactive REPL and terminal UI for nexus-agents orchestration",
+  "deprecated": "Use Claude Code observability features instead. See docs/guides/claude-code-observability/",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",

@@ -249,6 +249,14 @@ const count = stats.total;
 | ~~`EnhancedGeminiCliAdapter`~~  | ~~`gemini-adapter.ts:386`~~                | `GeminiCliAdapter` (**removed v2.6.0**) | v2.4  |
 | `SwarmObserver`                 | `orchestration-observer.ts:451`            | `OrchestrationObserver`                 | v2.3  |
 
+### nexus-tui Package (Issue #979, Epic #973)
+
+**Deprecated:** `packages/nexus-tui/` (entire package)
+**Replacement:** Claude Code observability features (MCP logging, hooks, status line)
+**Since:** v2.7.1
+
+The standalone TUI is superseded by Claude Code's native observability integration. See `docs/guides/claude-code-observability/` for the replacement.
+
 ## Per ADR-0005: Router Deprecation Queue (Phase 3)
 
 Once all routing stages are validated, these routers should be deprecated:
@@ -267,7 +275,8 @@ Once all routing stages are validated, these routers should be deprecated:
 
 ## Metrics
 
-- **Total deprecated items**: 43
+- **Total deprecated items**: 44
+- **v3.0 package removals**: 1 (nexus-tui)
 - **v3.0 module removals**: 7
 - **v3.0 interface/type removals**: 11
 - **v3.0 function/method removals**: 11
@@ -286,5 +295,5 @@ Before removing any deprecated item:
 
 ---
 
-_Updated: 2026-02-05 (Issue #755 - replacement stages implemented)_
+_Updated: 2026-02-11 (Issue #979 - nexus-tui deprecated)_
 _Next review: Before v3.0 release_
