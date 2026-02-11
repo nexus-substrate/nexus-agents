@@ -96,10 +96,17 @@ export function createServer(config?: ServerConfig): Result<ServerInstance, Serv
       version: serverVersion,
     });
 
-    const server = new McpServer({
-      name: serverName,
-      version: serverVersion,
-    });
+    const server = new McpServer(
+      {
+        name: serverName,
+        version: serverVersion,
+      },
+      {
+        capabilities: {
+          logging: {},
+        },
+      }
+    );
 
     logger.debug('MCP server created successfully');
 

@@ -21,6 +21,8 @@ import {
 } from '../../core/index.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
+import type { IMcpNotifier } from '../mcp-notifier.js';
+import { createMcpNotifier, NOOP_NOTIFIER } from '../mcp-notifier.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import type { ConsensusAlgorithm, Vote, ConsensusResult, Proposal } from '../../consensus/types.js';
@@ -88,6 +90,8 @@ export interface ConsensusVoteDeps {
   logger?: ILogger;
   rateLimiter: RateLimiter;
   security?: SecurityConfig | undefined;
+  /** MCP notifier for client-visible logging (Issue #974) */
+  notifier?: IMcpNotifier | undefined;
 }
 
 // ============================================================================
@@ -352,6 +356,7 @@ type ConsensusVoteToolResponse = {
 };
 
 function createConsensusVoteHandler(deps: ConsensusVoteDeps) {
+  const notifier = deps.notifier ?? NOOP_NOTIFIER;
   return async (args: unknown, ctx: HandlerContext): Promise<ConsensusVoteToolResponse> => {
     const validationResult = ConsensusVoteInputSchema.safeParse(args);
     if (!validationResult.success) {
@@ -363,15 +368,35 @@ function createConsensusVoteHandler(deps: ConsensusVoteDeps) {
       };
     }
 
+    const strategy = validationResult.data.strategy ?? 'simple_majority';
     ctx.logger.debug('Starting consensus vote', {
-      strategy: validationResult.data.strategy ?? 'simple_majority',
+      strategy,
       quickMode: validationResult.data.quickMode,
+    });
+    notifier.info('consensus_vote', {
+      event: 'vote_start',
+      proposalLength: validationResult.data.proposal.length,
+      strategy,
     });
 
     const result = await handleConsensusVote(deps, validationResult.data);
     if (!result.ok) {
       return { isError: true, content: [{ type: 'text', text: result.error }] };
     }
+
+    for (const vote of result.value.votes) {
+      notifier.debug('consensus_vote', {
+        event: 'vote_collected',
+        role: vote.role,
+        decision: vote.decision,
+      });
+    }
+    notifier.info('consensus_vote', {
+      event: 'vote_complete',
+      decision: result.value.decision,
+      approvalPercentage: result.value.approvalPercentage,
+      voteCount: result.value.votes.length,
+    });
     return { content: [{ type: 'text', text: JSON.stringify(result.value, null, 2) }] };
   };
 }
@@ -382,6 +407,8 @@ function createConsensusVoteHandler(deps: ConsensusVoteDeps) {
  */
 export function registerConsensusVoteTool(server: McpServer, deps: ConsensusVoteDeps): void {
   const logger = deps.logger ?? createLogger({ tool: 'consensus_vote' });
+  const notifier = deps.notifier ?? createMcpNotifier(server);
+  const depsWithNotifier = { ...deps, notifier };
   const toolSchema = {
     proposal: z.string().min(1).max(MAX_PROPOSAL_LENGTH).describe('Proposal text to vote on'),
     threshold: z
@@ -401,7 +428,7 @@ export function registerConsensusVoteTool(server: McpServer, deps: ConsensusVote
     'to vote on proposals with configurable strategies. ' +
     'Supports higher_order strategy for Bayesian-optimal aggregation with correlation awareness (Issue #514).';
 
-  const secureHandler = createSecureHandler(createConsensusVoteHandler(deps), {
+  const secureHandler = createSecureHandler(createConsensusVoteHandler(depsWithNotifier), {
     toolName: 'consensus_vote',
     rateLimiter: deps.rateLimiter,
     logger,

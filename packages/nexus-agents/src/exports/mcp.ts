@@ -47,6 +47,11 @@ export {
   createDefaultPolicyFirewall,
   evaluatePolicy,
   createPolicyContext,
+  // MCP Notifier (Issue #974 — Claude Code Observability)
+  createMcpNotifier,
+  NOOP_NOTIFIER,
+  type IMcpNotifier,
+  type McpLogLevel,
   // EventBus Bridge (Issue #307, #538)
   initializeEventBusBridge,
   getEventBusStats,

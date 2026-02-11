@@ -22,6 +22,8 @@ import {
 } from '../../core/index.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
+import type { IMcpNotifier } from '../mcp-notifier.js';
+import { createMcpNotifier, NOOP_NOTIFIER } from '../mcp-notifier.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import type { Expert } from '../../agents/index.js';
@@ -58,6 +60,8 @@ export interface ExecuteExpertDeps {
   security?: SecurityConfig | undefined;
   /** Optional CLI detection cache for checking available CLIs (Issue #747) */
   cliCache?: ICliDetectionCache;
+  /** MCP notifier for client-visible logging (Issue #974) */
+  notifier?: IMcpNotifier | undefined;
 }
 
 /**
@@ -320,6 +324,7 @@ type ExecuteExpertToolResponse = {
  * @returns Context-aware handler function
  */
 function createExecuteExpertHandler(deps: ExecuteExpertDeps) {
+  const notifier = deps.notifier ?? NOOP_NOTIFIER;
   return async (args: unknown, ctx: HandlerContext): Promise<ExecuteExpertToolResponse> => {
     // Validate input
     const validationResult = ExecuteExpertInputSchema.safeParse(args);
@@ -337,6 +342,11 @@ function createExecuteExpertHandler(deps: ExecuteExpertDeps) {
       taskLength: validationResult.data.task.length,
     });
 
+    // Look up expert role for notification
+    const expert = deps.expertRegistry.get(validationResult.data.expertId);
+    const role = expert?.role ?? 'unknown';
+    notifier.info('execute_expert', { event: 'expert_start', role });
+
     // Execute tool logic
     const result = await handleExecuteExpert(deps, validationResult.data);
 
@@ -346,6 +356,13 @@ function createExecuteExpertHandler(deps: ExecuteExpertDeps) {
         content: [{ type: 'text', text: `Failed to execute expert: ${result.error}` }],
       };
     }
+
+    notifier.info('execute_expert', {
+      event: 'expert_complete',
+      role: result.value.role,
+      confidence: result.value.status === 'success' ? 1 : 0,
+      tokenUsage: result.value.tokensUsed,
+    });
 
     return {
       content: [{ type: 'text', text: JSON.stringify(result.value, null, 2) }],
@@ -364,6 +381,8 @@ function createExecuteExpertHandler(deps: ExecuteExpertDeps) {
  */
 export function registerExecuteExpertTool(server: McpServer, deps: ExecuteExpertDeps): void {
   const logger = deps.logger ?? createLogger({ tool: 'execute_expert' });
+  const notifier = deps.notifier ?? createMcpNotifier(server);
+  const depsWithNotifier = { ...deps, notifier };
   const toolSchema = {
     expertId: z.string().min(1).describe('Expert ID from create_expert tool'),
     task: z.string().min(1).describe('Task description for the expert to execute'),
@@ -375,7 +394,7 @@ export function registerExecuteExpertTool(server: McpServer, deps: ExecuteExpert
     'Returns the expert analysis including output, confidence, and token usage.';
 
   // Wrap handler with secure handler for rate limiting and request context (Issue #531)
-  const secureHandler = createSecureHandler(createExecuteExpertHandler(deps), {
+  const secureHandler = createSecureHandler(createExecuteExpertHandler(depsWithNotifier), {
     toolName: 'execute_expert',
     rateLimiter: deps.rateLimiter,
     logger,

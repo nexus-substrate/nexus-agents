@@ -58,6 +58,14 @@ export {
   createPolicyContext,
 } from './middleware/index.js';
 
+// MCP Notifier (Issue #974 — Claude Code Observability)
+export {
+  createMcpNotifier,
+  NOOP_NOTIFIER,
+  type IMcpNotifier,
+  type McpLogLevel,
+} from './mcp-notifier.js';
+
 // EventBus Bridge (Issue #307)
 export {
   initializeEventBusBridge,

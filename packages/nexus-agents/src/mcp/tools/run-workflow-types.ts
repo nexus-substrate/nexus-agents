@@ -10,6 +10,7 @@ import { z } from 'zod';
 import type { IWorkflowEngine, ILogger } from '../../core/index.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
+import type { IMcpNotifier } from '../mcp-notifier.js';
 
 // ============================================================================
 // Input Schema
@@ -79,4 +80,6 @@ export interface RunWorkflowDeps {
   rateLimiter: RateLimiter;
   /** Security configuration (includes timeout settings - Issue #271, CVE-2026-0621) */
   security?: SecurityConfig | undefined;
+  /** MCP notifier for client-visible logging (Issue #974) */
+  notifier?: IMcpNotifier | undefined;
 }
