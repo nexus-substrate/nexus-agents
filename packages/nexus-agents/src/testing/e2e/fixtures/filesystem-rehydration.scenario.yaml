@@ -1,0 +1,20 @@
+id: filesystem-rehydration
+name: Filesystem Rehydration
+description: >
+  Run writes state to disk, second run resumes from checkpoint.
+  Proves that checkpoint→resume round-trip works correctly.
+workflow: echo
+classification: internal
+timeoutMs: 30000
+tags:
+  - checkpoint
+  - rehydration
+  - persistence
+inputs:
+  task: 'Echo test for checkpoint validation'
+  context:
+    enableCheckpoint: true
+expectedOutputs:
+  - stepId: echo
+    status: success
+    outputPattern: '.*echo.*'

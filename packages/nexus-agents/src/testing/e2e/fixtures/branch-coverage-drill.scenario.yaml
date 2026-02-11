@@ -1,0 +1,22 @@
+id: branch-coverage-drill
+name: Branch Coverage Drill
+description: >
+  Synthetic inputs that trigger rare graph branches, outputs a
+  branch coverage report showing which conditional edges were taken.
+workflow: code-review
+classification: internal
+timeoutMs: 30000
+tags:
+  - coverage
+  - graph
+  - drill
+inputs:
+  task: 'Analyze a complex multi-module refactoring'
+  context:
+    complexity: high
+    urgent: true
+expectedOutputs:
+  - stepId: analyze
+    status: success
+  - stepId: review
+    status: success

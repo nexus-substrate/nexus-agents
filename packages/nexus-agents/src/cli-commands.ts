@@ -64,6 +64,8 @@ export { handleCapabilitiesCommand } from './cli/capabilities-command.js';
 export { handleMemoryBenchmarkCommand } from './cli/memory-benchmark-command.js';
 // Issue #688: Status Command
 export { handleStatusCommand } from './cli/status-command.js';
+// Epic #952: Scenario Command
+export { handleScenarioCommand } from './cli/scenario-command.js';
 
 // Import handlers for dispatch
 import {
@@ -113,6 +115,8 @@ import { handleCapabilitiesCommand } from './cli/capabilities-command.js';
 import { handleStatusCommand } from './cli/status-command.js';
 // Issue #748: Memory Benchmark Command
 import { handleMemoryBenchmarkCommand } from './cli/memory-benchmark-command.js';
+// Epic #952: Scenario Command
+import { handleScenarioCommand } from './cli/scenario-command.js';
 
 /**
  * Prints help text to stdout.
@@ -203,6 +207,8 @@ const ASYNC_COMMAND_HANDLERS: Record<string, ((args: ParsedCliArgs) => Promise<v
     'release-announce': handleReleaseAnnounceCommand,
     // Issue #748: Memory Benchmark Command
     'memory-benchmark': handleMemoryBenchmarkCommand,
+    // Epic #952: Scenario Command
+    scenario: handleScenarioCommand,
   };
 
 /**

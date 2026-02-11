@@ -1,0 +1,19 @@
+id: mcp-front-end-flow
+name: MCP Front-End Flow
+description: >
+  Task submission→execution→trace query end-to-end flow.
+  Validates that the MCP front-end produces queryable execution traces.
+workflow: echo
+classification: internal
+timeoutMs: 30000
+tags:
+  - mcp
+  - trace
+  - front-end
+inputs:
+  task: 'Delegate a simple task and verify trace output'
+  context:
+    traceEnabled: true
+expectedOutputs:
+  - stepId: echo
+    status: success
