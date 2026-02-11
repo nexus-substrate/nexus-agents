@@ -97,6 +97,15 @@ export interface LearningInsight {
   readonly sampleCount: number;
 }
 
+/** Recommended CLI→category mapping for LinUCB cold-start (Epic #952, Phase 6). */
+export interface RecommendedMapping {
+  readonly category: TaskCategory;
+  readonly recommendedCli: string;
+  readonly successRate: number;
+  readonly sampleCount: number;
+  readonly confidence: 'high' | 'medium' | 'low';
+}
+
 /** Full weather report response. */
 export interface WeatherReportResponse {
   readonly overall: {
@@ -110,6 +119,8 @@ export interface WeatherReportResponse {
   readonly tierRecommendations: readonly TierRecommendationEntry[];
   /** Adaptive learning insights per CLI+category (#901). */
   readonly learningInsights?: readonly LearningInsight[];
+  /** Recommended CLI mappings per category for LinUCB priors (Epic #952). */
+  readonly recommendedMappings?: readonly RecommendedMapping[];
   readonly explorationRate: number;
   readonly coldStartThreshold: number;
   readonly collectedAt: string;

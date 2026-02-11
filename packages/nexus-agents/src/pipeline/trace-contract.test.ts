@@ -127,7 +127,9 @@ describe('ModelCalledEvent attribution', () => {
     bus.emit(event);
     expect(handler).toHaveBeenCalledWith(event);
 
-    const emitted = handler.mock.calls[0][0] as PipelineEvent;
+    const firstCall = handler.mock.calls[0];
+    expect(firstCall).toBeDefined();
+    const emitted = firstCall?.[0] as PipelineEvent;
     expect(emitted.type).toBe('model.called');
     if (emitted.type === 'model.called') {
       expect(emitted.agentId).toBe('code_expert');
@@ -152,7 +154,9 @@ describe('RoutingDecisionEvent attribution', () => {
     };
 
     bus.emit(event);
-    const emitted = handler.mock.calls[0][0] as PipelineEvent;
+    const firstCall = handler.mock.calls[0];
+    expect(firstCall).toBeDefined();
+    const emitted = firstCall?.[0] as PipelineEvent;
     if (emitted.type === 'routing.decision') {
       expect(emitted.reasoning).toBe('Highest TOPSIS score (0.92) for code generation');
       expect(emitted.decisionPath).toEqual(['budget:pass', 'topsis:0.92']);
@@ -176,7 +180,9 @@ describe('StageFailedEvent error taxonomy', () => {
     };
 
     bus.emit(event);
-    const emitted = handler.mock.calls[0][0] as PipelineEvent;
+    const firstCall = handler.mock.calls[0];
+    expect(firstCall).toBeDefined();
+    const emitted = firstCall?.[0] as PipelineEvent;
     if (emitted.type === 'stage.failed') {
       expect(emitted.errorTaxonomy).toBe('retriable');
     }
@@ -225,7 +231,9 @@ describe('TraceWriter', () => {
     const lines = content.trim().split('\n');
     expect(lines).toHaveLength(1);
 
-    const parsed: unknown = JSON.parse(lines[0]);
+    const firstLine = lines[0];
+    expect(firstLine).toBeDefined();
+    const parsed: unknown = JSON.parse(firstLine ?? '');
     const entry = parsed as Record<string, unknown>;
     expect(entry['runId']).toBe('test-run-1');
     expect(entry['agentId']).toBe('code_expert');

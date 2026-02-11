@@ -221,6 +221,40 @@ export class LinUCBBandit {
   }
 
   /**
+   * Seed priors for cold-start improvement (Epic #952, Phase 6).
+   *
+   * Simulates `observationCount` synthetic observations per arm using
+   * a neutral context and the provided reward hint. This gives arms
+   * a head start based on known quality signals while still allowing
+   * LinUCB exploration to override the seeded priors.
+   *
+   * @param priors - Map of arm name to initial reward hint (0-1)
+   * @param observationCount - Number of synthetic observations (default: 5, max: 20)
+   */
+  seedPriors(priors: ReadonlyMap<string, number>, observationCount = 5): void {
+    const count = Math.min(observationCount, 20);
+    const neutralContext: BanditContext = {
+      taskComplexity: 0.5,
+      contextLengthNormalized: 0.5,
+      isCodeTask: 0,
+      isReasoningTask: 0,
+      budgetUtilization: 0.5,
+      timePressure: 0.5,
+    };
+
+    for (let i = 0; i < this.armNames.length; i++) {
+      const armName = this.armNames[i];
+      if (armName === undefined) continue;
+      const reward = priors.get(armName);
+      if (reward === undefined) continue;
+      const clampedReward = Math.max(0, Math.min(1, reward));
+      for (let j = 0; j < count; j++) {
+        this.update(i, neutralContext, clampedReward);
+      }
+    }
+  }
+
+  /**
    * Reset all arm statistics.
    */
   reset(): void {

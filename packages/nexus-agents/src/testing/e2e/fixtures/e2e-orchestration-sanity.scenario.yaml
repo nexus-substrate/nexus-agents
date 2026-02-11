@@ -1,0 +1,24 @@
+id: e2e-orchestration-sanity
+name: End-to-End Orchestration Sanity
+description: >
+  Validates the full spec→plan→agent assignment→execution→artifacts pipeline.
+  Includes a failure+retry branch to verify error taxonomy handling.
+workflow: code-review
+classification: internal
+timeoutMs: 30000
+tags:
+  - orchestration
+  - sanity
+  - e2e
+inputs:
+  task: 'Review the authentication module for security issues'
+  context:
+    repository: 'nexus-agents'
+    branch: 'main'
+expectedOutputs:
+  - stepId: analyze
+    status: success
+    outputPattern: '.*'
+  - stepId: review
+    status: success
+    outputPattern: '.*'

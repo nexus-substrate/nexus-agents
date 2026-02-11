@@ -11,11 +11,14 @@
 // Types
 export type {
   DataClassification,
+  ExecutionMode,
   E2ETestConfig,
   ScenarioFixture,
   ScenarioResult,
   StepExpectation,
   StepValidation,
+  BranchCoverageReport,
+  ITraceOutput,
   AccuracyEvalConfig,
   AccuracyEvalResult,
   EvaluationFeedback,
@@ -54,6 +57,14 @@ export {
   DefaultActionExecutor,
   type IActionExecutor,
 } from './journey-simulator.js';
+
+// Live Graph Executor (Epic #952, Phase 3)
+export {
+  executeLiveGraph,
+  computeBranchCoverage,
+  type LiveExecutorConfig,
+  type LiveExecutionResult,
+} from './scenario-live-executor.js';
 
 // Validation Harness (Layer 4 - System Integrity)
 export {

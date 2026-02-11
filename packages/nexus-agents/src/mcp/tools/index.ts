@@ -227,6 +227,7 @@ export {
   type WeatherReportResponse,
   type CliWeather,
   type AdaptiveBonus,
+  type RecommendedMapping,
 } from './weather-report-types.js';
 export { generateWeatherReport, getAdaptiveBonus, shouldExplore } from './weather-report.js';
 
@@ -238,6 +239,15 @@ export {
   type RegistryImportResponse,
 } from './registry-import-types.js';
 export { generateRegistryEntry } from './registry-import.js';
+// Query trace tool (Epic #952, Phase 5)
+export {
+  registerQueryTraceTool,
+  QueryTraceInputSchema,
+  queryTraceFromDisk,
+  type QueryTraceDeps,
+  type QueryTraceInput,
+  type QueryTraceResponse,
+} from './query-trace-tool.js';
 
 /**
  * Options for tool registration.
@@ -336,6 +346,7 @@ export function registerTools(
       'run_graph_workflow',
       'execute_spec',
       'registry_import',
+      'query_trace',
     ],
     logger,
     rateLimiter,
