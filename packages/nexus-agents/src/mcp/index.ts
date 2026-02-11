@@ -226,6 +226,13 @@ export {
   ExecuteSpecInputSchema,
   type ExecuteSpecInput,
   type ExecuteSpecDeps,
+  // Query trace tool (Epic #952, Phase 5)
+  registerQueryTraceTool,
+  QueryTraceInputSchema,
+  queryTraceFromDisk,
+  type QueryTraceDeps,
+  type QueryTraceInput,
+  type QueryTraceResponse,
 } from './tools/index.js';
 
 // Gateway — Tiered Orchestration Routing (Issue #888, #892, #893, #894)

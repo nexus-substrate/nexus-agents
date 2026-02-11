@@ -238,6 +238,15 @@ export {
   type RegistryImportResponse,
 } from './registry-import-types.js';
 export { generateRegistryEntry } from './registry-import.js';
+// Query trace tool (Epic #952, Phase 5)
+export {
+  registerQueryTraceTool,
+  QueryTraceInputSchema,
+  queryTraceFromDisk,
+  type QueryTraceDeps,
+  type QueryTraceInput,
+  type QueryTraceResponse,
+} from './query-trace-tool.js';
 
 /**
  * Options for tool registration.
