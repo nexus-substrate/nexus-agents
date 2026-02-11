@@ -94,8 +94,10 @@ function recordToMemory(task: string, model: string, usedRouter: boolean): void 
     void memory.runPromotionPipeline().catch((error: unknown) => {
       createLogger({ tool: 'delegate-to-model' }).debug('Promotion pipeline failed', { error });
     });
-  } catch {
-    // Best-effort
+  } catch (error: unknown) {
+    createLogger({ tool: 'delegate-to-model' }).warn('Failed to record delegation to memory', {
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 }
 
@@ -125,8 +127,11 @@ function recordToOutcomeStore(
       source: 'delegate',
       ...(qualitySignals.length > 0 ? { qualitySignals } : {}),
     });
-  } catch {
-    // Best-effort — never block the tool response
+  } catch (error: unknown) {
+    createLogger({ tool: 'delegate-to-model' }).warn('Failed to record delegation outcome', {
+      error: error instanceof Error ? error.message : String(error),
+      model,
+    });
   }
 }
 

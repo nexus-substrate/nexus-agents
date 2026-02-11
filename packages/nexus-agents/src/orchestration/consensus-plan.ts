@@ -450,7 +450,10 @@ function recordPlanOutcomes(partitions: readonly CliPlanPartition[]): void {
         source: 'delegate',
       });
     }
-  } catch {
-    // Best-effort
+  } catch (error: unknown) {
+    createLogger({ component: 'consensus-plan' }).warn('Failed to record plan outcomes', {
+      error: error instanceof Error ? error.message : String(error),
+      partitionCount: partitions.length,
+    });
   }
 }
