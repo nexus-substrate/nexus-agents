@@ -8,6 +8,8 @@
  */
 
 import type { Result, WorkflowDefinition, StepResult, IModelAdapter } from '../core/index.js';
+import { getErrorMessage } from '../core/index.js';
+
 import type { WorkflowStep as CoreWorkflowStep } from '../core/index.js';
 import {
   ok,
@@ -534,7 +536,7 @@ async function tryAutoDetectAdapter(logger: ILogger): Promise<IModelAdapter | un
     logger.info('Auto-detected model adapter', { source, name, reason });
     return adapter;
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = getErrorMessage(error);
     logger.warn('No model adapter available, using mock executor', { error: message });
     return undefined;
   }

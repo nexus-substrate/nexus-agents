@@ -105,7 +105,7 @@ describe('CliCircuitBreaker', () => {
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error).toBeInstanceOf(CircuitError);
-        expect(result.error.message).toContain('null');
+        expect(result.error.message).toContain('Unknown error');
       }
     });
   });

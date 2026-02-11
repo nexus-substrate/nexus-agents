@@ -13,7 +13,7 @@ import type { PolicyTrajectoryStep, ILearnablePolicyEngine } from './policy-type
 import type { ExperienceBuffer } from './experience-buffer.js';
 import { convertTrajectory } from './trajectory-converter.js';
 import { isLearnablePolicyEngine } from './learnable-policy.js';
-import { createLogger, isErr } from '../../core/index.js';
+import { getErrorMessage, createLogger, isErr } from '../../core/index.js';
 
 // =============================================================================
 // Types
@@ -64,7 +64,7 @@ function tryConvertTrajectory(
     return trajectory;
   } catch (error) {
     logger.warn('Failed to convert trajectory', {
-      error: error instanceof Error ? error.message : String(error),
+      error: getErrorMessage(error),
       sessionId,
       trajectoryLength: steps.length,
     });
@@ -91,7 +91,7 @@ function tryAddEpisode(
     return episodeId;
   } catch (error) {
     logger.warn('Failed to add episode to buffer', {
-      error: error instanceof Error ? error.message : String(error),
+      error: getErrorMessage(error),
       sessionId,
       trajectoryLength: trajectory.length,
     });
@@ -132,7 +132,7 @@ async function tryUpdatePolicy(
     });
   } catch (error) {
     logger.warn('Unexpected error during policy update', {
-      error: error instanceof Error ? error.message : String(error),
+      error: getErrorMessage(error),
       sessionId,
       episodeId,
     });

@@ -10,7 +10,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as yaml from 'yaml';
-import { getTimeProvider } from '../../core/index.js';
+import { getErrorMessage, getTimeProvider } from '../../core/index.js';
 import type { Result } from '../../core/result.js';
 import {
   type ResearchIndex,
@@ -70,7 +70,7 @@ function readYamlFile<T>(
     return {
       ok: false,
       error: new ResearchIndexParseError(
-        `Failed to parse ${filePath}: ${error instanceof Error ? error.message : String(error)}`,
+        `Failed to parse ${filePath}: ${getErrorMessage(error)}`,
         filePath,
         error
       ),

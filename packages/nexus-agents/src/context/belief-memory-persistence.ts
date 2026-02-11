@@ -27,6 +27,7 @@ import {
   type SerializedBeliefUpdate,
   type SerializedCounterfactual,
 } from './belief-persistence-types.js';
+import { getErrorMessage } from '../core/index.js';
 
 // Re-export types for consumers
 export type {
@@ -278,7 +279,7 @@ function enforceRetention(logger: ILogger): void {
     });
   } catch (error: unknown) {
     logger.debug('Belief snapshot retention cleanup failed', {
-      error: error instanceof Error ? error.message : String(error),
+      error: getErrorMessage(error),
     });
   }
 }
@@ -296,7 +297,7 @@ export function saveBeliefSnapshot(data: BeliefMemoryData, logger: ILogger): Res
     enforceRetention(logger);
     return ok(filepath);
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = getErrorMessage(error);
     return err(new Error(`Failed to save belief snapshot: ${message}`));
   }
 }
@@ -326,14 +327,14 @@ export function loadBeliefSnapshot(logger: ILogger): Result<HydratedBeliefData |
       } catch (error: unknown) {
         logger.warn('Failed to load belief snapshot file', {
           file,
-          error: error instanceof Error ? error.message : String(error),
+          error: getErrorMessage(error),
         });
       }
     }
     logger.warn('All recent belief snapshots are invalid');
     return ok(null);
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = getErrorMessage(error);
     return err(new Error(`Failed to load belief snapshot: ${message}`));
   }
 }

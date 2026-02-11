@@ -7,7 +7,7 @@
 
 import { z } from 'zod';
 import type { Result, IModelAdapter } from '../core/index.js';
-import { ConfigError, err, ok, formatZodError } from '../core/index.js';
+import { getErrorMessage, ConfigError, err, ok, formatZodError } from '../core/index.js';
 
 /**
  * Zod schema for adapter configuration.
@@ -230,7 +230,7 @@ export class AdapterFactory {
    * Handles errors thrown by adapter creator functions.
    */
   private handleCreatorError(error: unknown, config: AdapterConfig): Result<never, ConfigError> {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = getErrorMessage(error);
     const baseOptions = {
       context: { providerId: config.providerId, modelId: config.modelId },
     };

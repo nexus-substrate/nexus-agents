@@ -11,7 +11,8 @@
  */
 
 import type { Result, ILogger } from '../core/index.js';
-import { ok, err, createLogger, getTimeProvider } from '../core/index.js';
+import { getErrorMessage, ok, err, createLogger, getTimeProvider } from '../core/index.js';
+
 import type { ICliAdapter, CliName, CliResponse, CliError } from '../cli-adapters/types.js';
 import { getOutcomeStore } from './outcomes/index.js';
 import type {
@@ -184,7 +185,7 @@ async function dispatchPlans(
         : { cli, success: true, plan, rawOutput, durationMs };
     } catch (error) {
       const durationMs = getTimeProvider().now() - startTime;
-      const message = error instanceof Error ? error.message : String(error);
+      const message = getErrorMessage(error);
       logger.warn('Plan CLI threw', { cli, error: message });
       return { cli, success: false, plan: null, rawOutput: '', durationMs, error: message };
     }
@@ -452,7 +453,7 @@ function recordPlanOutcomes(partitions: readonly CliPlanPartition[]): void {
     }
   } catch (error: unknown) {
     createLogger({ component: 'consensus-plan' }).warn('Failed to record plan outcomes', {
-      error: error instanceof Error ? error.message : String(error),
+      error: getErrorMessage(error),
       partitionCount: partitions.length,
     });
   }

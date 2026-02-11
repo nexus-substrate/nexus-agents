@@ -12,6 +12,8 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger, Task } from '../../core/index.js';
+import { getErrorMessage } from '../../core/index.js';
+
 import {
   createLogger,
   getTimeProvider,
@@ -190,7 +192,7 @@ function recordExpertSuccess(expertId: string, role: string, durationMs: number)
   } catch (error: unknown) {
     // Best-effort memory recording
     createLogger({ tool: 'execute_expert' }).debug('Best-effort success recording failed', {
-      error: error instanceof Error ? error.message : String(error),
+      error: getErrorMessage(error),
       expertId,
     });
   }
@@ -210,7 +212,7 @@ function recordExpertError(expertId: string, role: string, errorMessage: string)
   } catch (error: unknown) {
     // Best-effort memory recording
     createLogger({ tool: 'execute_expert' }).debug('Best-effort error recording failed', {
-      error: error instanceof Error ? error.message : String(error),
+      error: getErrorMessage(error),
       expertId,
     });
   }
@@ -225,7 +227,7 @@ function injectErrorHints(task: Task, role: string): void {
     }
   } catch (error: unknown) {
     createLogger({ tool: 'execute_expert' }).warn('Failed to inject error hints', {
-      error: error instanceof Error ? error.message : String(error),
+      error: getErrorMessage(error),
       role,
     });
   }
@@ -238,7 +240,7 @@ function autoCatalogScan(output: string, expertId: string, logger?: ILogger): vo
     catalog.scanAndRecord(output, 'execute_expert');
   } catch (error: unknown) {
     logger?.debug('Best-effort auto-catalog scan failed', {
-      error: error instanceof Error ? error.message : String(error),
+      error: getErrorMessage(error),
       expertId,
     });
   }

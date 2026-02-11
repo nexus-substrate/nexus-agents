@@ -1,3 +1,5 @@
+import { getErrorMessage } from '../core/index.js';
+
 /**
  * Async Utilities
  *
@@ -88,7 +90,7 @@ export async function withTimeout<T>(
     return { ok: true, value: result };
   } catch (error) {
     if (timeoutId !== undefined) clearTimeout(timeoutId);
-    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    return { ok: false, error: getErrorMessage(error) };
   }
 }
 

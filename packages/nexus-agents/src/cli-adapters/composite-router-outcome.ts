@@ -3,6 +3,7 @@
  * @module cli-adapters/composite-router-outcome
  */
 import {
+  getErrorMessage,
   type ILogger,
   createLogger,
   createSharedTaskAnalyzer,
@@ -162,7 +163,7 @@ export function computeQualityReward(cli: CliName, success: boolean, durationMs:
     createLogger({ component: 'composite-router' }).warn(
       'Failed to query outcome store for quality reward',
       {
-        error: error instanceof Error ? error.message : String(error),
+        error: getErrorMessage(error),
         cli,
       }
     );

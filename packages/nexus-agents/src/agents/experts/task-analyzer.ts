@@ -13,7 +13,8 @@
  */
 
 import type { Task, Result } from '../../core/index.js';
-import { ok, err } from '../../core/index.js';
+import { getErrorMessage, ok, err } from '../../core/index.js';
+
 import { clamp } from '../../utils/math-utils.js';
 import {
   type TaskAnalysisResult,
@@ -353,7 +354,7 @@ export function analyzeTask(task: Task): Result<TaskAnalysisResult, AnalysisErro
 
     return ok(result);
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = getErrorMessage(error);
     const options: { cause?: Error; context: { taskId: string } } = {
       context: { taskId: task.id },
     };

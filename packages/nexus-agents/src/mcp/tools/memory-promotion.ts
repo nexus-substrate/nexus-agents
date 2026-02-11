@@ -10,7 +10,8 @@
  */
 
 import type { ILogger } from '../../core/index.js';
-import { createLogger } from '../../core/index.js';
+import { getErrorMessage, createLogger } from '../../core/index.js';
+
 import type { HindsightBeliefMemory } from '../../context/belief-memory.js';
 import { BeliefConfidence, BeliefSourceType } from '../../context/belief-core-types.js';
 import type { Belief } from '../../context/belief-core-types.js';
@@ -173,7 +174,7 @@ export class MemoryPromoter {
     } catch (error) {
       this.log.debug('Failed to promote learning to belief', {
         pattern: learning.pattern,
-        error: error instanceof Error ? error.message : String(error),
+        error: getErrorMessage(error),
       });
       return false;
     }
@@ -204,7 +205,7 @@ export class MemoryPromoter {
     } catch (error) {
       this.log.debug('Failed to promote belief to AgenticMemory', {
         beliefId: belief.beliefId,
-        error: error instanceof Error ? error.message : String(error),
+        error: getErrorMessage(error),
       });
       return false;
     }

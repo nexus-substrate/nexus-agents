@@ -460,18 +460,20 @@ export function getErrorMessage(error: unknown, fallback = 'Unknown error'): str
   if (error instanceof Error) return error.message;
   if (typeof error === 'string') return error;
   if (error === null || error === undefined) return fallback;
-
-  // For objects, try to extract message or stringify
-  if (typeof error === 'object') {
-    const errObj = error as Record<string, unknown>;
-    if (typeof errObj['message'] === 'string') return errObj['message'];
-    try {
-      return JSON.stringify(error);
-    } catch {
-      return fallback;
-    }
+  if (typeof error === 'object') return extractObjectMessage(error, fallback);
+  if (typeof error === 'number' || typeof error === 'boolean' || typeof error === 'bigint') {
+    return String(error);
   }
-
-  // Primitives (number, boolean, symbol, bigint)
   return fallback;
+}
+
+/** Extract message from an error-like object, falling back to JSON serialization. */
+function extractObjectMessage(error: object, fallback: string): string {
+  const errObj = error as Record<string, unknown>;
+  if (typeof errObj['message'] === 'string') return errObj['message'];
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return fallback;
+  }
 }

@@ -10,8 +10,9 @@
 
 import { z } from 'zod';
 import type { ILogger } from '../../core/index.js';
+import { getErrorMessage, ok, err } from '../../core/index.js';
+
 import type { Result } from '../../core/index.js';
-import { ok, err } from '../../core/index.js';
 import type { CreateSkillOptions } from './skill-types.js';
 
 /**
@@ -183,7 +184,7 @@ export async function loadExternalPack(
       skills: manifest.skills as unknown as readonly CreateSkillOptions[],
     });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = getErrorMessage(error);
     return err(
       new ExternalPackError(
         `Failed to load pack "${name}" from "${source}": ${message}`,

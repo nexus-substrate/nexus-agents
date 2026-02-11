@@ -12,7 +12,8 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger } from '../../core/index.js';
-import { createLogger, formatZodError } from '../../core/index.js';
+import { getErrorMessage, createLogger, formatZodError } from '../../core/index.js';
+
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
@@ -377,7 +378,7 @@ async function queryAllSources(
         items = items.concat(found);
       } catch (error: unknown) {
         failedSources.push(src);
-        const message = error instanceof Error ? error.message : String(error);
+        const message = getErrorMessage(error);
         logger.warn('Extended source discovery failed', { source: src, error: message });
       }
     }
@@ -448,7 +449,7 @@ function recordDiscoverySuccess(topic: string, newItems: number, sources: string
     });
   } catch (error: unknown) {
     createLogger({ tool: 'research-discover' }).warn('Failed to record successful discovery', {
-      error: error instanceof Error ? error.message : String(error),
+      error: getErrorMessage(error),
       topic,
     });
   }
@@ -492,7 +493,7 @@ function createResearchDiscoverHandler(deps: ResearchDiscoverDeps) {
         content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
       };
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = getErrorMessage(error);
       return {
         isError: true,
         content: [{ type: 'text', text: `Discovery failed: ${message}` }],

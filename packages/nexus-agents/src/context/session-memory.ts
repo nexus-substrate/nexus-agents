@@ -7,7 +7,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { Result } from '../core/result.js';
 import { ok, err } from '../core/result.js';
-import { getTimeProvider } from '../core/index.js';
+import { getErrorMessage, getTimeProvider } from '../core/index.js';
 import type { ILogger } from '../core/logger.js';
 import { createLogger } from '../core/logger.js';
 import type {
@@ -333,7 +333,7 @@ export class SessionMemory {
       this.enforceEpisodeRetention();
       return ok(undefined);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = getErrorMessage(error);
       return err(new SessionMemoryError(`Failed to persist episode: ${message}`));
     }
   }
@@ -353,7 +353,7 @@ export class SessionMemory {
       });
     } catch (error: unknown) {
       this.log.debug('Episode retention cleanup failed', {
-        error: error instanceof Error ? error.message : String(error),
+        error: getErrorMessage(error),
       });
     }
   }

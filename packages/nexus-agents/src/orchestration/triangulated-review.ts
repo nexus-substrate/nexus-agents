@@ -10,7 +10,8 @@
  */
 
 import type { Result, ILogger } from '../core/index.js';
-import { ok, err, createLogger, getTimeProvider } from '../core/index.js';
+import { getErrorMessage, ok, err, createLogger, getTimeProvider } from '../core/index.js';
+
 import type { ICliAdapter, CliName, CliResponse, CliError } from '../cli-adapters/types.js';
 import type { ReviewFinding } from '../dogfooding/pr-review-types.js';
 import { SEVERITY_ORDER } from '../dogfooding/pr-review-types.js';
@@ -203,7 +204,7 @@ async function dispatchReviews(
         : { cli, success: true, findings, summary: text, durationMs };
     } catch (error) {
       const durationMs = getTimeProvider().now() - startTime;
-      const message = error instanceof Error ? error.message : String(error);
+      const message = getErrorMessage(error);
       logger.warn('Review CLI threw', { cli, error: message });
       return { cli, success: false, findings: [], summary: '', durationMs, error: message };
     }
@@ -423,7 +424,7 @@ function recordReviewOutcomes(partitions: readonly CliReviewPartition[]): void {
     }
   } catch (error: unknown) {
     createLogger({ component: 'triangulated-review' }).warn('Failed to record review outcomes', {
-      error: error instanceof Error ? error.message : String(error),
+      error: getErrorMessage(error),
       partitionCount: partitions.length,
     });
   }

@@ -12,6 +12,7 @@ import type {
   TraceSpan as TraceSpanType,
   AggregatedMetrics as AggregatedMetricsType,
 } from './trace-types.js';
+import { getErrorMessage } from './errors.js';
 
 // =============================================================================
 // ID Generation
@@ -174,7 +175,7 @@ export async function withSpan<T>(
     tracer.endSpan(span.context.spanId, 'success');
     return result;
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorMessage = getErrorMessage(error);
     tracer.endSpan(span.context.spanId, 'error', errorMessage);
     throw error;
   }

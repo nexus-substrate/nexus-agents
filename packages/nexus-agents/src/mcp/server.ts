@@ -12,7 +12,14 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 
-import { createLogger, type Result, ok, err, type ILogger } from '../core/index.js';
+import {
+  getErrorMessage,
+  createLogger,
+  type Result,
+  ok,
+  err,
+  type ILogger,
+} from '../core/index.js';
 import { VERSION } from '../version.js';
 
 /**
@@ -98,7 +105,7 @@ export function createServer(config?: ServerConfig): Result<ServerInstance, Serv
 
     return ok({ server, logger });
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorMessage = getErrorMessage(error);
     logger.error('Failed to create MCP server', error instanceof Error ? error : undefined);
     return err(
       createServerError(
@@ -131,7 +138,7 @@ export async function connectTransport(
     log.debug('Server connected to transport successfully');
     return ok(undefined);
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorMessage = getErrorMessage(error);
     log.error('Failed to connect to transport', error instanceof Error ? error : undefined);
     return err(
       createServerError(
@@ -183,7 +190,7 @@ export async function startStdioServer(
     logger.info('MCP server running with stdio transport');
     return ok({ server, logger });
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorMessage = getErrorMessage(error);
     logger.error('Failed to start stdio server', error instanceof Error ? error : undefined);
     return err(
       createServerError(
@@ -214,7 +221,7 @@ export async function closeServer(
     log.info('MCP server closed successfully');
     return ok(undefined);
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorMessage = getErrorMessage(error);
     log.error('Failed to close server', error instanceof Error ? error : undefined);
     return err(
       createServerError('SERVER_STOP_FAILED', `Failed to close server: ${errorMessage}`, error)

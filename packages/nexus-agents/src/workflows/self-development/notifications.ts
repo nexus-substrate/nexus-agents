@@ -7,7 +7,7 @@
  * @module workflows/self-development/notifications
  */
 
-import { createLogger, getTimeProvider } from '../../core/index.js';
+import { getErrorMessage, createLogger, getTimeProvider } from '../../core/index.js';
 import type { WorkflowPhase, SelfDevWorkflowMetrics } from './types.js';
 import type { MetricsSummary } from './metrics.js';
 
@@ -119,7 +119,7 @@ export class WebhookNotificationHandler implements INotificationHandler {
       }
     } catch (error) {
       logger.warn('Webhook notification error', {
-        error: error instanceof Error ? error.message : String(error),
+        error: getErrorMessage(error),
       });
     }
   }

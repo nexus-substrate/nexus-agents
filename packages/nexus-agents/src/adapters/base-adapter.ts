@@ -15,6 +15,8 @@ import type {
   ILogger,
   ModelCapability,
 } from '../core/index.js';
+import { getErrorMessage } from '../core/index.js';
+
 import {
   ok,
   err,
@@ -262,7 +264,7 @@ export abstract class BaseAdapter implements IModelAdapter {
       return error;
     }
 
-    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorMessage = getErrorMessage(error);
     const errorCode = this.determineErrorCode(error);
 
     // Create a NexusError with the specific code, then use ModelError for standard cases

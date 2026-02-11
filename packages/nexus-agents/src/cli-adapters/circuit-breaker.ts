@@ -9,7 +9,8 @@
  */
 
 import type { Result } from '../core/index.js';
-import { err, ok, getTimeProvider } from '../core/index.js';
+import { getErrorMessage, err, ok, getTimeProvider } from '../core/index.js';
+
 import type { CliName, CliErrorCode } from './types.js';
 import {
   CircuitError,
@@ -255,7 +256,7 @@ export class CliCircuitBreaker implements ICircuitBreaker {
   }
 
   private createExecutionError(error: unknown, category: FailureCategory): CircuitError {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = getErrorMessage(error);
     const cause = error instanceof Error ? error : new Error(String(error));
     return new CircuitError(`CLI execution failed: ${message}`, {
       circuitErrorCode: CircuitErrorCode.EXECUTION_FAILED,
@@ -451,7 +452,9 @@ const DEFAULT_CAPACITY_INTEGRATION_CONFIG: Required<CapacityMonitorIntegrationCo
  * ```
  */
 export function integrateCapacityMonitorWithCircuitBreaker(
-  monitor: { onLowCapacity: (callback: (provider: string, remaining: number) => void) => () => void },
+  monitor: {
+    onLowCapacity: (callback: (provider: string, remaining: number) => void) => () => void;
+  },
   registry: CircuitBreakerRegistry,
   config?: CapacityMonitorIntegrationConfig,
   logger?: { warn: (message: string, context?: Record<string, unknown>) => void }

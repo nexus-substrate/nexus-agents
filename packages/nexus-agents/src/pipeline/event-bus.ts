@@ -7,7 +7,7 @@
  * @see docs/v2/08-observability-eventing.md
  * @module pipeline/event-bus
  */
-import { createLogger } from '../core/index.js';
+import { getErrorMessage, createLogger } from '../core/index.js';
 
 import type {
   PipelineEvent,
@@ -108,7 +108,7 @@ export class EventBus implements IEventBus {
       try {
         sub.handler(event);
       } catch (error: unknown) {
-        const msg = error instanceof Error ? error.message : String(error);
+        const msg = getErrorMessage(error);
         logger.warn('Event handler error', { eventType: event.type, error: msg });
       }
     }

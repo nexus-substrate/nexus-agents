@@ -6,7 +6,7 @@
  */
 
 import { escapeRegex, validatePattern } from '../../core/safe-regex.js';
-import { getTimeProvider } from '../../core/index.js';
+import { getErrorMessage, getTimeProvider } from '../../core/index.js';
 import type {
   ParsedError,
   ErrorExplanation,
@@ -212,7 +212,7 @@ export async function executeCode(executor: CodeExecutor, code: string): Promise
   try {
     return await executor(code);
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = getErrorMessage(error);
     return { success: false, exitCode: 1, stdout: '', stderr: message, durationMs: 0, errors: [] };
   }
 }

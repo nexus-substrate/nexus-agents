@@ -9,7 +9,7 @@
  */
 
 import type { ComponentInfo } from './component-scanner.js';
-import { createLogger, getTimeProvider } from '../core/index.js';
+import { getErrorMessage, createLogger, getTimeProvider } from '../core/index.js';
 import { clamp01 } from '../utils/math-utils.js';
 import type {
   Recommendation,
@@ -62,7 +62,7 @@ export abstract class BaseEvaluator {
         'review',
         0.3,
         [],
-        [`Evaluation failed: ${error instanceof Error ? error.message : String(error)}`]
+        [`Evaluation failed: ${getErrorMessage(error)}`]
       );
     }
   }

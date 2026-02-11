@@ -11,7 +11,8 @@
  */
 
 import type { ILogger } from '../core/index.js';
-import { createLogger, getTimeProvider } from '../core/index.js';
+import { getErrorMessage, createLogger, getTimeProvider } from '../core/index.js';
+
 import { truncateWithInfo } from '../utils/text-utils.js';
 import type {
   WaveSchedulerConfig,
@@ -307,7 +308,7 @@ export class WaveScheduler {
         durationMs,
       };
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = getErrorMessage(error);
       const durationMs = getTimeProvider().now() - taskStart;
 
       this.logger.warn('Task failed', { taskId: task.id, error: message, durationMs });

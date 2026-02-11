@@ -6,7 +6,15 @@
  */
 
 import type { Result, Task, TaskResult, ILogger } from '../core/index.js';
-import { ok, err, AgentError, getTimeProvider, formatZodError } from '../core/index.js';
+import {
+  getErrorMessage,
+  ok,
+  err,
+  AgentError,
+  getTimeProvider,
+  formatZodError,
+} from '../core/index.js';
+
 import { TaskSchema } from './agent-schemas.js';
 import type { AgentStateMachine } from './state-machine.js';
 import type { ITokenBudgetTracker } from '../context/token-budget-tracker.js';
@@ -92,7 +100,7 @@ export function executeWithTimeout(
  */
 export function transformTaskError(error: unknown, agentId: string, taskId: string): AgentError {
   if (error instanceof AgentError) return error;
-  const message = error instanceof Error ? error.message : String(error);
+  const message = getErrorMessage(error);
   const cause = error instanceof Error ? error : undefined;
   const opts: { context: Record<string, unknown>; cause?: Error } = {
     context: { agentId, taskId },

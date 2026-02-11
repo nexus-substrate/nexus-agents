@@ -20,7 +20,8 @@
  */
 
 import type { ILogger } from '../../core/index.js';
-import { createLogger, getTimeProvider } from '../../core/index.js';
+import { getErrorMessage, createLogger, getTimeProvider } from '../../core/index.js';
+
 import type { HindsightBeliefMemory } from '../../context/belief-memory.js';
 import type { AgenticMemoryBackend } from '../../context/agentic-memory.js';
 import type { AdaptiveMemoryBackend } from '../../context/adaptive-memory.js';
@@ -370,7 +371,7 @@ export class MemoryDecayManager {
         preserved: result.preserved,
       };
     } catch (error) {
-      const msg = `${name} decay failed: ${error instanceof Error ? error.message : String(error)}`;
+      const msg = `${name} decay failed: ${getErrorMessage(error)}`;
       this.log.warn(msg);
       return { pruned: 0, evicted: 0, preserved: 0, error: msg };
     }
@@ -383,7 +384,7 @@ export class MemoryDecayManager {
       this.mobimem.runMaintenance();
       return this.mobimem.getStats().action.totalEntries > 0 ? 1 : 0;
     } catch (error) {
-      const msg = `MobiMem decay failed: ${error instanceof Error ? error.message : String(error)}`;
+      const msg = `MobiMem decay failed: ${getErrorMessage(error)}`;
       errors.push(msg);
       this.log.warn(msg);
       return 0;

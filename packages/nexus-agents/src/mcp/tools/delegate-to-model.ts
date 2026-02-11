@@ -13,7 +13,13 @@
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { createLogger, formatZodError, getTimeProvider, type ILogger } from '../../core/index.js';
+import {
+  getErrorMessage,
+  createLogger,
+  formatZodError,
+  getTimeProvider,
+  type ILogger,
+} from '../../core/index.js';
 import { DEFAULTS } from '../../config/defaults.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
@@ -96,7 +102,7 @@ function recordToMemory(task: string, model: string, usedRouter: boolean): void 
     });
   } catch (error: unknown) {
     createLogger({ tool: 'delegate-to-model' }).warn('Failed to record delegation to memory', {
-      error: error instanceof Error ? error.message : String(error),
+      error: getErrorMessage(error),
     });
   }
 }
@@ -129,7 +135,7 @@ function recordToOutcomeStore(
     });
   } catch (error: unknown) {
     createLogger({ tool: 'delegate-to-model' }).warn('Failed to record delegation outcome', {
-      error: error instanceof Error ? error.message : String(error),
+      error: getErrorMessage(error),
       model,
     });
   }

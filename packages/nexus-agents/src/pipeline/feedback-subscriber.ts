@@ -7,7 +7,7 @@
  * @see docs/v2/08-observability-eventing.md (Feedback Loop section)
  * @module pipeline/feedback-subscriber
  */
-import { createLogger } from '../core/index.js';
+import { getErrorMessage, createLogger } from '../core/index.js';
 
 import type { PipelineEvent, Unsubscribe, IEventBus } from './event-types.js';
 import type { OutcomeStore } from '../orchestration/outcomes/outcome-store.js';
@@ -30,7 +30,7 @@ export function createFeedbackSubscriber(bus: IEventBus, store: OutcomeStore): U
     try {
       handleEvent(event, store);
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : String(error);
+      const msg = getErrorMessage(error);
       logger.warn('Feedback subscriber error', { error: msg });
     }
   });

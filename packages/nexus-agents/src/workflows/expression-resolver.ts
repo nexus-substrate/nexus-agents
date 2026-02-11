@@ -29,6 +29,7 @@ import {
   valueToString,
   resolveSingleExpression,
 } from './expression-resolver-helpers.js';
+import { getErrorMessage } from '../core/index.js';
 
 /**
  * Regular expression to match ${{ expression }} patterns.
@@ -192,7 +193,7 @@ export function validateExpressions(input: unknown, context: WorkflowExecutionCo
       try {
         resolveStringExpressions(value, context);
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
+        const message = getErrorMessage(error);
         errors.push(message);
       }
     } else if (Array.isArray(value)) {
