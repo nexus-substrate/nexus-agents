@@ -1,7 +1,9 @@
+/* eslint-disable @typescript-eslint/no-deprecated -- Tests exercise backward-compat re-exports */
 /**
  * nexus-agents/config/defaults - Unit Tests
  *
  * Tests for the centralized defaults configuration module.
+ * Includes backward-compat tests for deprecated re-exports.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -101,10 +103,10 @@ describe('TIMEOUT_PROFILES', () => {
     expect(TIMEOUT_PROFILES.claude.complex).toBe(120_000);
   });
 
-  it('should have correct Gemini profile values', () => {
-    expect(TIMEOUT_PROFILES.gemini.simple).toBe(15_000);
-    expect(TIMEOUT_PROFILES.gemini.standard).toBe(45_000);
-    expect(TIMEOUT_PROFILES.gemini.complex).toBe(120_000);
+  it('should have correct Gemini profile values (Issue #366/#984)', () => {
+    expect(TIMEOUT_PROFILES.gemini.simple).toBe(30_000);
+    expect(TIMEOUT_PROFILES.gemini.standard).toBe(60_000);
+    expect(TIMEOUT_PROFILES.gemini.complex).toBe(180_000);
   });
 
   it('should have correct Codex profile values', () => {
@@ -303,8 +305,8 @@ describe('getTimeoutForCli', () => {
     expect(getTimeoutForCli('claude', 'complex')).toBe(120_000);
   });
 
-  it('should return correct timeout for Gemini complex task', () => {
-    expect(getTimeoutForCli('gemini', 'complex')).toBe(120_000);
+  it('should return correct timeout for Gemini complex task (Issue #366/#984)', () => {
+    expect(getTimeoutForCli('gemini', 'complex')).toBe(180_000);
   });
 
   it('should use default profile for unknown CLI', () => {
@@ -403,14 +405,15 @@ describe('backward compatibility', () => {
     expect(DEFAULTS.TOOL_RATE_LIMITS.expert.capacity).toBe(30);
   });
 
-  it('should match existing CLI_TIMEOUT_PROFILES values', () => {
-    // These values should match cli-adapters/cli-timeout-profiles.ts
+  it('should match canonical CLI_TIMEOUTS values (Issue #984)', () => {
+    // These values now come from config/timeouts.ts (canonical source)
     expect(TIMEOUT_PROFILES.claude.simple).toBe(30_000);
     expect(TIMEOUT_PROFILES.claude.standard).toBe(60_000);
     expect(TIMEOUT_PROFILES.claude.complex).toBe(120_000);
-    expect(TIMEOUT_PROFILES.gemini.simple).toBe(15_000);
-    expect(TIMEOUT_PROFILES.gemini.standard).toBe(45_000);
-    expect(TIMEOUT_PROFILES.gemini.complex).toBe(120_000);
+    // Gemini values resolved to Issue #366 values (30/60/180)
+    expect(TIMEOUT_PROFILES.gemini.simple).toBe(30_000);
+    expect(TIMEOUT_PROFILES.gemini.standard).toBe(60_000);
+    expect(TIMEOUT_PROFILES.gemini.complex).toBe(180_000);
     expect(TIMEOUT_PROFILES.codex.simple).toBe(10_000);
     expect(TIMEOUT_PROFILES.codex.standard).toBe(30_000);
     expect(TIMEOUT_PROFILES.codex.complex).toBe(90_000);

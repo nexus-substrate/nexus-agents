@@ -90,6 +90,7 @@ export { adaptRoutingConfig, getTopsisConfigFromYaml } from './routing-config-ad
 export {
   // Main defaults object
   DEFAULTS,
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- backward-compatible re-export
   TIMEOUT_PROFILES,
   // Environment override functions
   getTimeout,
@@ -98,7 +99,9 @@ export {
   getWorkerConfig,
   getCircuitBreakerConfig,
   // Convenience accessors
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- backward-compatible re-export
   getTimeoutProfile,
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- backward-compatible re-export
   getTimeoutForCli,
   getToolRateLimit,
   // Type guards
@@ -110,6 +113,22 @@ export {
   parseBoolEnv,
   // Documentation
   getEnvVarDocumentation,
+  // Canonical timeout modules (Issue #984)
+  CLI_TIMEOUTS,
+  VOTE_TIMEOUTS,
+  MCP_TIMEOUTS,
+  WORKFLOW_TIMEOUTS,
+  GRAPH_TIMEOUTS,
+  PER_CLI_TASK_TIMEOUTS,
+  API_TIMEOUTS,
+  INTERNAL_TIMEOUTS,
+  TEST_TIMEOUTS,
+  TIMEOUT_ENV_VARS,
+  getCliTimeoutProfile,
+  getCliTimeout,
+  resolveVoteTimeout,
+  resolveEnvTimeout,
+  validateTimeout as validateTimeoutCentral,
 } from './defaults.js';
 
 // ConfigManager (Issue #360)

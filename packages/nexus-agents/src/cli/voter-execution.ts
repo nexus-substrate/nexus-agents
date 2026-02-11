@@ -15,47 +15,38 @@ import { delay, withTimeout } from '../utils/async-utils.js';
 import { VOTER_SYSTEM_PROMPTS, SIMULATED_VOTE_REASONING } from './voter-prompts.js';
 import { buildVotePrompt, parseVoteResponse, SyntheticVoteError } from './voter-response.js';
 
+// Import timeout constants from canonical source (Issue #984)
+import {
+  VOTE_TIMEOUTS,
+  resolveVoteTimeout as _resolveVoteTimeout,
+  validateTimeout as _validateTimeout,
+} from '../config/timeouts.js';
+
 /**
- * Default vote execution timeout (120 seconds).
- * Increased from 90s per Issue #983 - complex proposals with 6 agents
- * need adequate time, especially on slower CLIs (Gemini/Codex).
- * Override with NEXUS_VOTE_TIMEOUT_MS environment variable.
+ * @deprecated Use `VOTE_TIMEOUTS.defaultMs` from `config/timeouts.js` instead.
  */
-export const DEFAULT_VOTE_TIMEOUT_MS = 120_000;
+export const DEFAULT_VOTE_TIMEOUT_MS = VOTE_TIMEOUTS.defaultMs;
 
 /**
  * Resolves vote timeout from env var or returns default.
- * NEXUS_VOTE_TIMEOUT_MS env var overrides the default, clamped to [MIN, MAX].
- * (Source: Issue #983)
+ * @deprecated Use `resolveVoteTimeout()` from `config/timeouts.js` instead.
  */
-export function resolveVoteTimeout(): number {
-  const envVal = process.env['NEXUS_VOTE_TIMEOUT_MS'];
-  if (envVal !== undefined) {
-    const parsed = Number(envVal);
-    if (!Number.isNaN(parsed) && parsed > 0) {
-      return validateTimeout(parsed).value;
-    }
-  }
-  return DEFAULT_VOTE_TIMEOUT_MS;
-}
+export const resolveVoteTimeout = _resolveVoteTimeout;
 
 /**
- * Maximum vote execution timeout (5 minutes).
- * Upper bound to prevent indefinite waiting for stalled agents.
- * (Source: Issue #607)
+ * @deprecated Use `VOTE_TIMEOUTS.maxMs` from `config/timeouts.js` instead.
  */
-export const MAX_VOTE_TIMEOUT_MS = 300_000;
+export const MAX_VOTE_TIMEOUT_MS = VOTE_TIMEOUTS.maxMs;
 
 /**
- * Minimum vote execution timeout (30 seconds).
- * Lower bound to ensure agents have adequate processing time.
+ * @deprecated Use `VOTE_TIMEOUTS.minMs` from `config/timeouts.js` instead.
  */
-export const MIN_VOTE_TIMEOUT_MS = 30_000;
+export const MIN_VOTE_TIMEOUT_MS = VOTE_TIMEOUTS.minMs;
 
 /**
- * Maximum retries for vote execution.
+ * @deprecated Use `VOTE_TIMEOUTS.maxRetries` from `config/timeouts.js` instead.
  */
-export const DEFAULT_MAX_RETRIES = 2;
+export const DEFAULT_MAX_RETRIES = VOTE_TIMEOUTS.maxRetries;
 
 /**
  * Initial retry delay in milliseconds.
@@ -64,18 +55,9 @@ const INITIAL_RETRY_DELAY_MS = 1_000;
 
 /**
  * Validates and constrains timeout to allowed range [MIN, MAX].
- * Returns clamped value and whether it was adjusted.
- * (Source: Issue #607)
+ * @deprecated Use `validateTimeout()` from `config/timeouts.js` instead.
  */
-export function validateTimeout(requestedMs: number): { value: number; clamped: boolean } {
-  if (requestedMs < MIN_VOTE_TIMEOUT_MS) {
-    return { value: MIN_VOTE_TIMEOUT_MS, clamped: true };
-  }
-  if (requestedMs > MAX_VOTE_TIMEOUT_MS) {
-    return { value: MAX_VOTE_TIMEOUT_MS, clamped: true };
-  }
-  return { value: requestedMs, clamped: false };
-}
+export const validateTimeout = _validateTimeout;
 
 // ============================================================================
 // Vote Result Helpers

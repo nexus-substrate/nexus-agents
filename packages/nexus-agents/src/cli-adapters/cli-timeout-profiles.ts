@@ -1,107 +1,60 @@
 /**
  * CLI Timeout Profiles - Configurable timeouts per CLI tool.
  *
- * Based on real-world testing:
- * - Claude: 30-120s depending on complexity
- * - Gemini: 15-90s (times out on complex file analysis >60s)
- * - Codex: 10-60s (optimized for code generation)
+ * @deprecated Import from `config/timeouts.js` instead (Issue #984).
+ * This file re-exports from the canonical source for backward compatibility.
  *
  * @module cli-adapters/cli-timeout-profiles
  * (Source: Issue #357, CLI delegation testing 2026-01-18)
  */
 
-/** Timeout profile for a CLI tool. */
-export interface TimeoutProfile {
-  /** Timeout for simple tasks (single function, quick analysis). */
-  simple: number;
-  /** Timeout for standard tasks (multi-file changes, moderate analysis). */
-  standard: number;
-  /** Timeout for complex tasks (codebase-wide changes, deep analysis). */
-  complex: number;
-}
+import {
+  CLI_TIMEOUTS,
+  getCliTimeout,
+  type TaskComplexity,
+  type TimeoutProfile,
+} from '../config/timeouts.js';
+import { estimateTaskComplexity as _estimateTaskComplexity } from './cli-timeout-helpers.js';
+
+// Re-export types for backward compatibility
+export type { TimeoutProfile, TaskComplexity };
 
 /**
- * Timeout profiles per CLI tool based on real-world performance testing.
- *
- * Gemini timeouts increased per Issue #366:
- * - Previous: 15s/45s/90s caused frequent timeouts on complex file analysis
- * - New: 30s/60s/180s provides buffer for large context processing
+ * @deprecated Use `CLI_TIMEOUTS` from `config/timeouts.js` instead.
  */
 export const CLI_TIMEOUT_PROFILES: Record<string, TimeoutProfile> = {
-  claude: { simple: 30_000, standard: 60_000, complex: 120_000 },
-  gemini: { simple: 30_000, standard: 60_000, complex: 180_000 },
-  codex: { simple: 10_000, standard: 30_000, complex: 90_000 },
+  claude: CLI_TIMEOUTS.claude,
+  gemini: CLI_TIMEOUTS.gemini,
+  codex: CLI_TIMEOUTS.codex,
 };
-
-/** Default profile used when CLI is unknown. */
-export const DEFAULT_TIMEOUT_PROFILE: TimeoutProfile = {
-  simple: 30_000,
-  standard: 60_000,
-  complex: 120_000,
-};
-
-/** Task complexity levels for timeout selection. */
-export type TaskComplexity = 'simple' | 'standard' | 'complex';
 
 /**
- * Get timeout for a task based on CLI and complexity.
- *
- * @param cli - CLI tool name (claude, gemini, codex)
- * @param complexity - Task complexity level
- * @returns Timeout in milliseconds
+ * @deprecated Use `CLI_TIMEOUTS.default` from `config/timeouts.js` instead.
+ */
+export const DEFAULT_TIMEOUT_PROFILE: TimeoutProfile = CLI_TIMEOUTS.default;
+
+/**
+ * @deprecated Use `getCliTimeout()` from `config/timeouts.js` instead.
  */
 export function getTimeoutForTask(cli: string, complexity: TaskComplexity): number {
-  const profile = CLI_TIMEOUT_PROFILES[cli] ?? DEFAULT_TIMEOUT_PROFILE;
-  return profile[complexity];
+  return getCliTimeout(cli, complexity);
 }
 
 /**
  * Estimate task complexity from task description.
  *
- * Heuristics based on testing:
- * - Simple: Single function, quick query, < 5 files
- * - Standard: Multi-file changes, moderate analysis
- * - Complex: Codebase-wide, deep analysis, architecture
- *
- * @param taskDescription - Description of the task
- * @returns Estimated complexity
+ * @deprecated Use `estimateTaskComplexity()` from `cli-timeout-helpers.js` instead.
  */
 export function estimateTaskComplexity(taskDescription: string): TaskComplexity {
-  const lower = taskDescription.toLowerCase();
-
-  // Complex indicators
-  const complexIndicators = [
-    'codebase',
-    'architecture',
-    'refactor',
-    'all files',
-    'entire',
-    'comprehensive',
-    'deep analysis',
-    'system-wide',
-  ];
-  if (complexIndicators.some((indicator) => lower.includes(indicator))) {
-    return 'complex';
-  }
-
-  // Simple indicators
-  const simpleIndicators = ['single', 'quick', 'one function', 'simple', 'small', 'brief', 'short'];
-  if (simpleIndicators.some((indicator) => lower.includes(indicator))) {
-    return 'simple';
-  }
-
-  // Default to standard
-  return 'standard';
+  return _estimateTaskComplexity(taskDescription);
 }
 
 /**
  * Get timeout with automatic complexity estimation.
  *
- * @param cli - CLI tool name
- * @param taskDescription - Task description for complexity estimation
- * @returns Timeout in milliseconds
+ * @deprecated Use `getCliTimeout()` + `estimateTaskComplexity()` from canonical modules.
  */
 export function getTimeoutForTaskAuto(cli: string, taskDescription: string): number {
-  const complexity = estimateTaskComplexity(taskDescription);
-  return getTimeoutForTask(cli, complexity);
+  const complexity = _estimateTaskComplexity(taskDescription);
+  return getCliTimeout(cli, complexity);
 }

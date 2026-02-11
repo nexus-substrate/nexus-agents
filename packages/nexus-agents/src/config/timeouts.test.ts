@@ -1,0 +1,263 @@
+/**
+ * Tests for centralized timeout configuration.
+ *
+ * @module config/timeouts.test
+ * (Source: Issue #984 — Centralize timeout configuration)
+ */
+
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import {
+  CLI_TIMEOUTS,
+  VOTE_TIMEOUTS,
+  MCP_TIMEOUTS,
+  WORKFLOW_TIMEOUTS,
+  GRAPH_TIMEOUTS,
+  PER_CLI_TASK_TIMEOUTS,
+  API_TIMEOUTS,
+  INTERNAL_TIMEOUTS,
+  TEST_TIMEOUTS,
+  TIMEOUT_ENV_VARS,
+  getCliTimeoutProfile,
+  getCliTimeout,
+  resolveVoteTimeout,
+  resolveEnvTimeout,
+  validateTimeout,
+} from './timeouts.js';
+
+describe('Centralized Timeout Configuration', () => {
+  describe('CLI_TIMEOUTS', () => {
+    it('has correct claude timeouts', () => {
+      expect(CLI_TIMEOUTS.claude).toEqual({
+        simple: 30_000,
+        standard: 60_000,
+        complex: 120_000,
+      });
+    });
+
+    it('has correct gemini timeouts (Issue #366 values)', () => {
+      expect(CLI_TIMEOUTS.gemini).toEqual({
+        simple: 30_000,
+        standard: 60_000,
+        complex: 180_000,
+      });
+    });
+
+    it('has correct codex timeouts (Issue #983 values)', () => {
+      expect(CLI_TIMEOUTS.codex).toEqual({
+        simple: 10_000,
+        standard: 30_000,
+        complex: 90_000,
+      });
+    });
+
+    it('has a default profile', () => {
+      expect(CLI_TIMEOUTS.default).toEqual({
+        simple: 30_000,
+        standard: 60_000,
+        complex: 120_000,
+      });
+    });
+  });
+
+  describe('VOTE_TIMEOUTS', () => {
+    it('has correct defaults', () => {
+      expect(VOTE_TIMEOUTS.defaultMs).toBe(120_000);
+      expect(VOTE_TIMEOUTS.minMs).toBe(30_000);
+      expect(VOTE_TIMEOUTS.maxMs).toBe(300_000);
+      expect(VOTE_TIMEOUTS.maxRetries).toBe(2);
+    });
+  });
+
+  describe('MCP_TIMEOUTS', () => {
+    it('has correct defaults', () => {
+      expect(MCP_TIMEOUTS.defaultMs).toBe(60_000);
+      expect(MCP_TIMEOUTS.maxMs).toBe(300_000);
+    });
+
+    it('has per-tool overrides for long-running tools', () => {
+      expect(MCP_TIMEOUTS.perTool['orchestrate']).toBe(300_000);
+      expect(MCP_TIMEOUTS.perTool['consensus_vote']).toBe(300_000);
+      expect(MCP_TIMEOUTS.perTool['execute_expert']).toBe(300_000);
+      expect(MCP_TIMEOUTS.perTool['run_workflow']).toBe(300_000);
+    });
+  });
+
+  describe('WORKFLOW_TIMEOUTS', () => {
+    it('has correct defaults', () => {
+      expect(WORKFLOW_TIMEOUTS.stepMs).toBe(300_000);
+      expect(WORKFLOW_TIMEOUTS.workflowMs).toBe(300_000);
+      expect(WORKFLOW_TIMEOUTS.workflowMaxMs).toBe(1_800_000);
+      expect(WORKFLOW_TIMEOUTS.maxRetryDelayMs).toBe(30_000);
+    });
+  });
+
+  describe('GRAPH_TIMEOUTS', () => {
+    it('has correct defaults', () => {
+      expect(GRAPH_TIMEOUTS.defaultMs).toBe(120_000);
+      expect(GRAPH_TIMEOUTS.maxSteps).toBe(100);
+    });
+  });
+
+  describe('PER_CLI_TASK_TIMEOUTS', () => {
+    it('has correct defaults', () => {
+      expect(PER_CLI_TASK_TIMEOUTS.defaultMs).toBe(120_000);
+      expect(PER_CLI_TASK_TIMEOUTS.minMs).toBe(1_000);
+      expect(PER_CLI_TASK_TIMEOUTS.maxMs).toBe(300_000);
+      expect(PER_CLI_TASK_TIMEOUTS.explorationMs).toBe(60_000);
+    });
+  });
+
+  describe('API_TIMEOUTS', () => {
+    it('has correct defaults', () => {
+      expect(API_TIMEOUTS.defaultMs).toBe(30_000);
+      expect(API_TIMEOUTS.maxMs).toBe(300_000);
+      expect(API_TIMEOUTS.arxivMs).toBe(30_000);
+      expect(API_TIMEOUTS.sourceMs).toBe(30_000);
+      expect(API_TIMEOUTS.v2DelegateMs).toBe(30_000);
+      expect(API_TIMEOUTS.providerMs).toBe(30_000);
+    });
+  });
+
+  describe('INTERNAL_TIMEOUTS', () => {
+    it('has correct defaults', () => {
+      expect(INTERNAL_TIMEOUTS.healthCheckMs).toBe(5_000);
+      expect(INTERNAL_TIMEOUTS.circuitBreakerResetMs).toBe(30_000);
+      expect(INTERNAL_TIMEOUTS.selfEvalMs).toBe(120_000);
+      expect(INTERNAL_TIMEOUTS.waveTaskMs).toBe(60_000);
+      expect(INTERNAL_TIMEOUTS.puppeteerMs).toBe(300_000);
+    });
+  });
+
+  describe('TEST_TIMEOUTS', () => {
+    it('has correct defaults', () => {
+      expect(TEST_TIMEOUTS.globalMs).toBe(600_000);
+      expect(TEST_TIMEOUTS.taskMs).toBe(120_000);
+    });
+  });
+
+  describe('getCliTimeoutProfile()', () => {
+    it('returns profile for known CLIs', () => {
+      expect(getCliTimeoutProfile('claude')).toEqual(CLI_TIMEOUTS.claude);
+      expect(getCliTimeoutProfile('gemini')).toEqual(CLI_TIMEOUTS.gemini);
+      expect(getCliTimeoutProfile('codex')).toEqual(CLI_TIMEOUTS.codex);
+    });
+
+    it('returns default for unknown CLIs', () => {
+      expect(getCliTimeoutProfile('unknown')).toEqual(CLI_TIMEOUTS.default);
+      expect(getCliTimeoutProfile('')).toEqual(CLI_TIMEOUTS.default);
+    });
+  });
+
+  describe('getCliTimeout()', () => {
+    it('returns correct timeout by CLI and complexity', () => {
+      expect(getCliTimeout('claude', 'simple')).toBe(30_000);
+      expect(getCliTimeout('claude', 'complex')).toBe(120_000);
+      expect(getCliTimeout('gemini', 'complex')).toBe(180_000);
+      expect(getCliTimeout('codex', 'standard')).toBe(30_000);
+    });
+
+    it('returns default for unknown CLI', () => {
+      expect(getCliTimeout('unknown', 'complex')).toBe(120_000);
+    });
+  });
+
+  describe('resolveVoteTimeout()', () => {
+    const envKey = 'NEXUS_VOTE_TIMEOUT_MS';
+    const originalEnv = process.env[envKey];
+
+    afterEach(() => {
+      if (originalEnv !== undefined) {
+        process.env[envKey] = originalEnv;
+      } else {
+        delete process.env.NEXUS_VOTE_TIMEOUT_MS;
+      }
+    });
+
+    it('returns default when env var not set', () => {
+      delete process.env.NEXUS_VOTE_TIMEOUT_MS;
+      expect(resolveVoteTimeout()).toBe(120_000);
+    });
+
+    it('reads from env var', () => {
+      process.env[envKey] = '150000';
+      expect(resolveVoteTimeout()).toBe(150_000);
+    });
+
+    it('clamps to minimum', () => {
+      process.env[envKey] = '1000';
+      expect(resolveVoteTimeout()).toBe(30_000);
+    });
+
+    it('clamps to maximum', () => {
+      process.env[envKey] = '999999';
+      expect(resolveVoteTimeout()).toBe(300_000);
+    });
+
+    it('ignores invalid values', () => {
+      process.env[envKey] = 'not_a_number';
+      expect(resolveVoteTimeout()).toBe(120_000);
+    });
+  });
+
+  describe('resolveEnvTimeout()', () => {
+    const testVar = 'NEXUS_TEST_TIMEOUT_MS';
+
+    beforeEach(() => {
+      delete process.env.NEXUS_TEST_TIMEOUT_MS;
+    });
+
+    afterEach(() => {
+      delete process.env.NEXUS_TEST_TIMEOUT_MS;
+    });
+
+    it('returns default when env var not set', () => {
+      expect(resolveEnvTimeout(testVar, 60_000, 1_000, 300_000)).toBe(60_000);
+    });
+
+    it('parses valid env var', () => {
+      process.env[testVar] = '90000';
+      expect(resolveEnvTimeout(testVar, 60_000, 1_000, 300_000)).toBe(90_000);
+    });
+
+    it('clamps below minimum', () => {
+      process.env[testVar] = '500';
+      expect(resolveEnvTimeout(testVar, 60_000, 1_000, 300_000)).toBe(1_000);
+    });
+
+    it('clamps above maximum', () => {
+      process.env[testVar] = '999999';
+      expect(resolveEnvTimeout(testVar, 60_000, 1_000, 300_000)).toBe(300_000);
+    });
+  });
+
+  describe('validateTimeout()', () => {
+    it('returns value unchanged when in range', () => {
+      const result = validateTimeout(60_000);
+      expect(result).toEqual({ value: 60_000, clamped: false });
+    });
+
+    it('clamps below minimum', () => {
+      const result = validateTimeout(1_000);
+      expect(result).toEqual({ value: 30_000, clamped: true });
+    });
+
+    it('clamps above maximum', () => {
+      const result = validateTimeout(999_999);
+      expect(result).toEqual({ value: 300_000, clamped: true });
+    });
+
+    it('accepts custom min/max', () => {
+      const result = validateTimeout(50, 100, 200);
+      expect(result).toEqual({ value: 100, clamped: true });
+    });
+  });
+
+  describe('TIMEOUT_ENV_VARS', () => {
+    it('has correct env var names', () => {
+      expect(TIMEOUT_ENV_VARS.vote).toBe('NEXUS_VOTE_TIMEOUT_MS');
+      expect(TIMEOUT_ENV_VARS.mcp).toBe('NEXUS_MCP_TIMEOUT_MS');
+      expect(TIMEOUT_ENV_VARS.workflow).toBe('NEXUS_WORKFLOW_TIMEOUT_MS');
+      expect(TIMEOUT_ENV_VARS.graph).toBe('NEXUS_GRAPH_TIMEOUT_MS');
+    });
+  });
+});
