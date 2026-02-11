@@ -34,7 +34,7 @@
 
 - CLI command audit confirms 36 commands ([#933](https://github.com/williamzujkowski/nexus-agents/issues/933))
 - Gap #8 resolved by design — adapter layers are correct ([#934](https://github.com/williamzujkowski/nexus-agents/issues/934))
-- Software Factory hardening report ([docs/architecture/SOFTWARE_FACTORY_REPORT.md](docs/architecture/SOFTWARE_FACTORY_REPORT.md))
+- Software Factory hardening report ([SOFTWARE_FACTORY_REPORT.md](../../docs/architecture/SOFTWARE_FACTORY_REPORT.md))
 
 ### Dependencies
 
