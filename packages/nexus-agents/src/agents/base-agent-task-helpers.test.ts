@@ -35,7 +35,7 @@ describe('transformTaskError', () => {
   it('wraps undefined error', () => {
     const result = transformTaskError(undefined, 'agent-1', 'task-1');
     expect(result).toBeInstanceOf(AgentError);
-    expect(result.message).toContain('undefined');
+    expect(result.message).toContain('Unknown error');
   });
 
   it('includes agentId and taskId in context', () => {

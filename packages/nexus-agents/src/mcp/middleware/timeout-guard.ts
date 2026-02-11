@@ -12,6 +12,7 @@
  */
 
 import {
+  getErrorMessage,
   createLogger,
   type ILogger,
   type Result,
@@ -104,7 +105,7 @@ function createTimeoutError(operationName: string, timeoutMs: number): TimeoutEr
 function createGuardError(error: unknown, operationName: string): TimeoutError {
   const guardError: TimeoutError = {
     code: 'GUARD_ERROR',
-    message: error instanceof Error ? error.message : String(error),
+    message: getErrorMessage(error),
     operation: operationName,
   };
   if (error instanceof Error) {

@@ -11,6 +11,8 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger } from '../../core/index.js';
+import { getErrorMessage } from '../../core/index.js';
+
 import {
   createLogger,
   getTimeProvider,
@@ -209,7 +211,7 @@ function recordVotesToTracker(
       logger.warn('Failed to persist correlation data', { error: saveResult.error.message });
     }
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = getErrorMessage(error);
     logger.warn('Error persisting correlation data', { error: message });
   }
 }
@@ -300,7 +302,7 @@ function recordVoteSuccess(
     });
   } catch (error: unknown) {
     createLogger({ tool: 'consensus-vote' }).warn('Failed to record vote success', {
-      error: error instanceof Error ? error.message : String(error),
+      error: getErrorMessage(error),
     });
   }
 }
@@ -316,7 +318,7 @@ function recordVoteError(proposal: string, errorMessage: string): void {
     });
   } catch (error: unknown) {
     createLogger({ tool: 'consensus-vote' }).warn('Failed to record vote error', {
-      error: error instanceof Error ? error.message : String(error),
+      error: getErrorMessage(error),
     });
   }
 }
@@ -336,7 +338,7 @@ async function handleConsensusVote(
     recordVoteSuccess(args.proposal, strategy, result.result.outcome, result.totalTimeMs);
     return { ok: true, value: buildResponse(args, result) };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = getErrorMessage(error);
     const cause = error instanceof Error ? error : new Error(message);
     logger.error('Consensus vote failed', cause);
     recordVoteError(args.proposal, message);

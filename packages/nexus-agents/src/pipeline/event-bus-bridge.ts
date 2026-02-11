@@ -8,7 +8,7 @@
  *
  * @module pipeline/event-bus-bridge
  */
-import { createLogger } from '../core/index.js';
+import { getErrorMessage, createLogger } from '../core/index.js';
 import { getGlobalEventBus, createEvent, type DomainEvent } from '../agents/collaboration/index.js';
 
 import type { EventBus } from './event-bus.js';
@@ -98,7 +98,7 @@ export function createEventBusBridge(options: EventBusBridgeOptions): PipelineBr
       v1Bus.emit(domainEvent);
       forwardCount++;
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : String(error);
+      const msg = getErrorMessage(error);
       logger.warn('Failed to forward pipeline event', { type: event.type, error: msg });
     }
   });

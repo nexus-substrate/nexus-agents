@@ -10,7 +10,8 @@
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import type { ILogger } from '../../../core/index.js';
-import { createLogger, getTimeProvider } from '../../../core/index.js';
+import { getErrorMessage, createLogger, getTimeProvider } from '../../../core/index.js';
+
 import type {
   CheckDefinition,
   CheckResult,
@@ -169,7 +170,7 @@ export class VerifyEngine implements IVerifyEngine {
         error instanceof Error
           ? ((error as { stdout?: string; stderr?: string }).stdout ?? '')
           : '';
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = getErrorMessage(error);
       const { passed, score, issues } = analyzeCheckOutput(check, errorOutput, errorMessage);
 
       return {

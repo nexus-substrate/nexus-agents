@@ -16,6 +16,7 @@ import {
   type FeedbackIntegrationConfig,
 } from './learning/feedback-integration.js';
 import type { ICompositeRouter } from './cli-adapters/composite-router.js';
+import { getErrorMessage } from './core/index.js';
 
 /**
  * Options for FeedbackIntegration initialization.
@@ -81,7 +82,7 @@ export function initializeFeedbackIntegration(
       reason: 'FeedbackIntegration created successfully',
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = getErrorMessage(error);
     logger.warn('FeedbackIntegration initialization failed', { error: message });
 
     return {

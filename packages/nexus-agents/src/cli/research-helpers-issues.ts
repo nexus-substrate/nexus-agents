@@ -11,6 +11,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { Result } from '../core/result.js';
+import { getErrorMessage } from '../core/index.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -149,7 +150,7 @@ export async function createResearchIssue(
     const url = stdout.trim();
     return { ok: true, value: { success: true, url, message: `Issue created: ${url}` } };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = getErrorMessage(error);
     return { ok: false, error: mapGhError(message) };
   }
 }

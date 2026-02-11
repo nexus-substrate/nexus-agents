@@ -37,6 +37,7 @@ import {
   type ExperienceAccumulator,
   type SerializedStoreData,
 } from './routing-context-helpers.js';
+import { getErrorMessage } from '../errors.js';
 
 // ============================================================================
 // Default Configuration
@@ -410,7 +411,7 @@ export class RoutingContextStore implements IRoutingContextStore {
     } catch (error) {
       return err({
         type: 'INVALID_DATA',
-        message: `Failed to parse JSON: ${error instanceof Error ? error.message : String(error)}`,
+        message: `Failed to parse JSON: ${getErrorMessage(error)}`,
       });
     }
   }

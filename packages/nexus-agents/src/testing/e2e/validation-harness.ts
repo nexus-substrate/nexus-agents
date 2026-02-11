@@ -9,7 +9,7 @@
  */
 
 import type { ILogger } from '../../core/index.js';
-import { createLogger, getTimeProvider } from '../../core/index.js';
+import { getErrorMessage, createLogger, getTimeProvider } from '../../core/index.js';
 
 // ============================================================================
 // Types
@@ -477,7 +477,7 @@ export class ValidationHarness {
         mode: check.mode,
         passed: false,
         durationMs: getTimeProvider().now() - startTime,
-        error: error instanceof Error ? error.message : String(error),
+        error: getErrorMessage(error),
       };
     }
   }

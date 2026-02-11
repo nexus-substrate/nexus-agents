@@ -5,7 +5,15 @@
  * (Source: Issue #166, Epic #164, Issue #347, arXiv:2509.07571)
  */
 import type { Result } from '../core/index.js';
-import { ok, err, createLogger, getTimeProvider, getRandomProvider } from '../core/index.js';
+import {
+  getErrorMessage,
+  ok,
+  err,
+  createLogger,
+  getTimeProvider,
+  getRandomProvider,
+} from '../core/index.js';
+
 import type { ILogger } from '../core/index.js';
 import type { ICliAdapter, CliName, CliTask, CliResponse, CliError } from './types.js';
 import type {
@@ -499,7 +507,7 @@ export class CompositeRouter implements ICompositeRouter {
     stagesExecuted: string[]
   ): Result<CompositeRoutingDecision, CompositeRoutingError> {
     const stage = stagesExecuted[stagesExecuted.length - 1] ?? 'unknown';
-    const msg = 'Routing failed: ' + (error instanceof Error ? error.message : String(error));
+    const msg = 'Routing failed: ' + getErrorMessage(error);
     return err(new CompositeRoutingError(msg, stage, error instanceof Error ? error : undefined));
   }
 

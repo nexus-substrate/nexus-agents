@@ -10,7 +10,8 @@
  */
 
 import type { Result, ILogger } from '../core/index.js';
-import { ok, err, createLogger, getTimeProvider } from '../core/index.js';
+import { getErrorMessage, ok, err, createLogger, getTimeProvider } from '../core/index.js';
+
 import type {
   ICliAdapter,
   CliName,
@@ -203,7 +204,7 @@ async function dispatchPartitions(
         : { cli, success: true, output, durationMs };
     } catch (error) {
       const durationMs = getTimeProvider().now() - startTime;
-      const message = error instanceof Error ? error.message : String(error);
+      const message = getErrorMessage(error);
       logger.warn('CLI partition threw', { cli, error: message });
       return { cli, success: false, output: '', durationMs, error: message };
     }
@@ -267,7 +268,7 @@ function recordOutcomes(partitions: readonly PartitionResult[], category: TaskCa
     createLogger({ component: 'parallel-exploration' }).warn(
       'Failed to record exploration outcomes',
       {
-        error: error instanceof Error ? error.message : String(error),
+        error: getErrorMessage(error),
         partitionCount: partitions.length,
       }
     );

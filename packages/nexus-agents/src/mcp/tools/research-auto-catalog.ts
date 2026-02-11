@@ -14,7 +14,8 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import { z } from 'zod';
 import type { ILogger } from '../../core/index.js';
-import { createLogger } from '../../core/index.js';
+import { getErrorMessage, createLogger } from '../../core/index.js';
+
 import { getToolMemory } from './tool-memory.js';
 
 // =============================================================================
@@ -85,7 +86,7 @@ function loadPersistedCatalog(logger: ILogger): CatalogedReference[] {
     return result.data.references;
   } catch (error: unknown) {
     logger.debug('Could not load pending catalog, starting fresh', {
-      error: error instanceof Error ? error.message : String(error),
+      error: getErrorMessage(error),
       filePath,
     });
     return [];
@@ -115,7 +116,7 @@ function savePersistedCatalog(references: readonly CatalogedReference[], logger:
     } catch {
       // Temp file cleanup failure is non-critical
     }
-    const message = error instanceof Error ? error.message : String(error);
+    const message = getErrorMessage(error);
     logger.warn('Failed to persist pending catalog', { error: message });
   }
 }
@@ -233,7 +234,7 @@ export class ResearchAutoCatalog {
       });
     } catch (error: unknown) {
       this.logger.debug('Failed to persist to session memory', {
-        error: error instanceof Error ? error.message : String(error),
+        error: getErrorMessage(error),
         identifier: entry.identifier,
       });
     }
@@ -303,7 +304,7 @@ export class ResearchAutoCatalog {
       savePersistedCatalog(this.pendingReferences, this.logger);
     } catch (error: unknown) {
       this.logger.debug('Failed to persist auto-catalog to disk', {
-        error: error instanceof Error ? error.message : String(error),
+        error: getErrorMessage(error),
         pendingCount: this.pendingReferences.length,
       });
     }

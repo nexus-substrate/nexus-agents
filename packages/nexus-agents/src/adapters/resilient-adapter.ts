@@ -23,7 +23,8 @@ import type { Result } from '../core/result.js';
 import { ok, err } from '../core/result.js';
 import { ModelError, ConfigError } from '../core/errors.js';
 import type { ILogger } from '../core/index.js';
-import { createLogger } from '../core/index.js';
+import { getErrorMessage, createLogger } from '../core/index.js';
+
 import { createAutoAdapter, type AdapterSelection } from './auto-adapter.js';
 import type { CliName } from '../cli-adapters/types.js';
 import type {
@@ -191,7 +192,7 @@ export class ResilientAdapter implements IResilientAdapter {
       this.applySelection(selection);
       return this.currentAdapter;
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = getErrorMessage(error);
       this.logger.warn('No model adapter available', { error: message });
       this.health = {
         source: 'api',

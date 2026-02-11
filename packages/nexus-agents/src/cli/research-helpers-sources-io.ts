@@ -12,6 +12,7 @@ import * as path from 'node:path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import type { Result } from '../core/result.js';
 import { REGISTRY_PATH, getProjectRoot } from './research-helpers-io.js';
+import { getErrorMessage } from '../core/index.js';
 
 // =============================================================================
 // TYPES
@@ -97,7 +98,7 @@ export async function loadSourcesRegistry(
       ok: false,
       error: {
         code: 'PARSE_ERROR',
-        message: `Failed to load sources: ${error instanceof Error ? error.message : String(error)}`,
+        message: `Failed to load sources: ${getErrorMessage(error)}`,
       },
     };
   }
@@ -128,7 +129,7 @@ export async function saveSourcesRegistry(
       ok: false,
       error: {
         code: 'WRITE_ERROR',
-        message: `Failed to save sources: ${error instanceof Error ? error.message : String(error)}`,
+        message: `Failed to save sources: ${getErrorMessage(error)}`,
       },
     };
   }

@@ -11,7 +11,8 @@
 import { readFile } from 'node:fs/promises';
 import * as yaml from 'yaml';
 import type { WorkflowDefinition, StepResult } from '../../core/index.js';
-import { getTimeProvider } from '../../core/index.js';
+import { getErrorMessage, getTimeProvider } from '../../core/index.js';
+
 import { WorkflowDefinitionSchema } from '../../workflows/workflow-types.js';
 import { logger } from '../../core/logger.js';
 import type {
@@ -123,7 +124,7 @@ export class ScenarioRunner implements IScenarioRunner {
       };
     } catch (error) {
       const durationMs = getTimeProvider().now() - startTime;
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = getErrorMessage(error);
 
       this.log.error('Scenario failed', error instanceof Error ? error : new Error(String(error)), {
         scenarioId: scenario.id,

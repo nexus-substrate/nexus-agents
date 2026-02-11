@@ -10,7 +10,7 @@
 
 import { readFile } from 'node:fs/promises';
 import * as yaml from 'yaml';
-import { logger, getTimeProvider } from '../../core/index.js';
+import { getErrorMessage, logger, getTimeProvider } from '../../core/index.js';
 import type {
   IJourneySimulator,
   UserJourney,
@@ -52,7 +52,7 @@ export class DefaultActionExecutor implements IActionExecutor {
         index: 0,
         succeeded: false,
         durationMs: time.now() - startTime,
-        error: error instanceof Error ? error.message : String(error),
+        error: getErrorMessage(error),
       };
     }
   }

@@ -12,7 +12,8 @@
  */
 
 import type { Result } from '../../core/index.js';
-import { ok, err, createLogger, getTimeProvider } from '../../core/index.js';
+import { getErrorMessage, ok, err, createLogger, getTimeProvider } from '../../core/index.js';
+
 import type {
   CompiledGraph,
   GraphState,
@@ -253,7 +254,7 @@ function applyStateUpdates(
         try {
           newState[field] = schema.reducer.merge(newState[field], value);
         } catch (error: unknown) {
-          const msg = error instanceof Error ? error.message : String(error);
+          const msg = getErrorMessage(error);
           logger.warn('Custom reducer failed, falling back to overwrite', { field, error: msg });
           newState[field] = value;
         }
@@ -305,7 +306,7 @@ async function executeSingleNode(
       status: 'success',
     };
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = getErrorMessage(error);
     logger.warn('Node execution failed', { nodeId, error: message });
     return {
       nodeId,
@@ -387,7 +388,7 @@ function safeRouterCall(
     return router(state);
   } catch (error: unknown) {
     logger.warn('Conditional router threw', {
-      error: error instanceof Error ? error.message : String(error),
+      error: getErrorMessage(error),
     });
     return END;
   }

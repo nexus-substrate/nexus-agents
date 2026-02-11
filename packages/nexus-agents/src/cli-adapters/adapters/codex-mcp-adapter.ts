@@ -23,8 +23,8 @@ import type {
 } from '../types.js';
 import { DEFAULT_CAPABILITIES } from '../types.js';
 import type { Result, ILogger } from '../../core/index.js';
-import { ok, err, getTimeProvider } from '../../core/index.js';
-import { createLogger } from '../../core/index.js';
+import { getErrorMessage, ok, err, getTimeProvider, createLogger } from '../../core/index.js';
+
 import {
   DEFAULT_CODEX_MCP_OPTIONS,
   CODEX_LEGACY_DEFAULTS,
@@ -285,7 +285,7 @@ export class CodexMcpAdapter implements ICliAdapter {
    * Handles execution errors.
    */
   private handleExecutionError(error: unknown): Result<CliResponse, CliError> {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = getErrorMessage(error);
     const errorCode = determineErrorCode(message);
 
     if (errorCode === 'CONNECTION_ERROR') {

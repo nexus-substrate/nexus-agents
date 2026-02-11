@@ -11,6 +11,8 @@
 
 import type { SkillLibrary } from '../skill-library.js';
 import type { ILogger } from '../../../core/index.js';
+import { getErrorMessage } from '../../../core/index.js';
+
 import { SECURITY_SKILLS } from './security-standards.js';
 import { TESTING_SKILLS } from './testing-standards.js';
 import { CODING_SKILLS } from './coding-standards.js';
@@ -41,7 +43,7 @@ export function registerStandardsSkills(library: SkillLibrary, logger: ILogger):
       library.addSkill(skillDef);
       registered++;
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = getErrorMessage(error);
       logger.warn(`Failed to register skill "${skillDef.name}": ${message}`);
     }
   }

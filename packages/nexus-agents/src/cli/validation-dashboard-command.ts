@@ -9,7 +9,7 @@
  * (Source: Issue #273 - Learning Validation Dashboard)
  */
 
-import { createLogger } from '../core/index.js';
+import { getErrorMessage, createLogger } from '../core/index.js';
 import { ValidationDashboard } from '../observability/validation-dashboard.js';
 import type {
   DashboardFilter,
@@ -88,7 +88,7 @@ export function runValidationDashboard(
       warnings: [...summary.healthIndicators.warnings],
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = getErrorMessage(error);
     logger.error(
       'Validation dashboard command failed',
       error instanceof Error ? error : new Error(message)
@@ -126,7 +126,7 @@ export function validationDashboardCommand(options: ValidationDashboardOptions =
     }
     return result.success ? 0 : 1;
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = getErrorMessage(error);
     process.stderr.write(`Error: ${message}\n`);
     logger.error(
       'Validation dashboard command failed',

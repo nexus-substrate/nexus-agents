@@ -20,7 +20,7 @@ import {
   type UserPromptSubmitInput,
 } from './hook-types.js';
 import { exitError, exitSuccess } from './hook-output.js';
-import { formatZodError } from '../../core/index.js';
+import { getErrorMessage, formatZodError } from '../../core/index.js';
 
 // ============================================================================
 // Handler Types
@@ -172,7 +172,7 @@ export async function processHook(handlers: HookHandlers): Promise<HookResult> {
 
     return await routeHook(parseResult, handlers);
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = getErrorMessage(error);
     return exitError(`Hook processing error: ${message}`);
   }
 }

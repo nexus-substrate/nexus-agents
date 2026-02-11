@@ -39,9 +39,10 @@ import { createMockTechLead } from './mcp/tools/orchestrate.js';
 import type { Expert } from './agents/index.js';
 import { createRealWorkflowEngine } from './workflows/index.js';
 import type { IModelAdapter, WorkflowDefinition } from './core/index.js';
+import { getErrorMessage, NexusError, ErrorCode } from './core/index.js';
+
 import { Orchestrator } from './agents/index.js';
 import type { ILogger } from './core/index.js';
-import { NexusError, ErrorCode } from './core/index.js';
 import { runStpaSafetyAnalysis, StpaSafetyError } from './cli-server-stpa.js';
 import { createCorePluginRegistry } from './pipeline/core-plugins.js';
 import { EventBus as PipelineEventBus } from './pipeline/event-bus.js';
@@ -348,7 +349,7 @@ function registerOrchestrateToolSafe(ctx: ToolRegistrationContext): void {
       modelAdapter: ctx.modelAdapter,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = getErrorMessage(error);
     ctx.logger.warn('Orchestrate tool unavailable — no model adapter', {
       error: message,
       hint: 'Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or GOOGLE_AI_API_KEY in .mcp.json env',

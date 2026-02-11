@@ -16,7 +16,8 @@
 import { ok, err } from '../../core/result.js';
 import type { Result } from '../../core/result.js';
 import type { IAgent, Task } from '../../core/index.js';
-import { getTimeProvider } from '../../core/index.js';
+import { getErrorMessage, getTimeProvider } from '../../core/index.js';
+
 import type { IEventBus } from '../collaboration/event-bus-types.js';
 import type {
   PuppeteerConfig,
@@ -344,7 +345,7 @@ export class PuppeteerOrchestrator {
   private wrapError(error: unknown): PuppeteerError {
     if (error instanceof PuppeteerError) return error;
     if (error instanceof StepExecutionError) return PuppeteerError.fromStepError(error);
-    const message = error instanceof Error ? error.message : String(error);
+    const message = getErrorMessage(error);
     return new PuppeteerError(message, 'UNKNOWN_ERROR');
   }
 

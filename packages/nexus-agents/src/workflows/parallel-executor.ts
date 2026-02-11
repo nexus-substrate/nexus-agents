@@ -6,7 +6,8 @@
  */
 
 import type { Result } from '../core/index.js';
-import { ok, err, WorkflowError, getTimeProvider } from '../core/index.js';
+import { getErrorMessage, ok, err, WorkflowError, getTimeProvider } from '../core/index.js';
+
 import type { WorkflowStep, StepResult } from '../core/index.js';
 import { TaskQueue } from './task-queue.js';
 
@@ -79,7 +80,7 @@ function createErrorResult(stepId: string, durationMs: number, error: unknown): 
     output: null,
     durationMs,
     status: 'failed',
-    error: error instanceof Error ? error.message : String(error),
+    error: getErrorMessage(error),
   };
 }
 

@@ -11,6 +11,7 @@ import { execSync, execFileSync } from 'node:child_process';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { McpJsonConfig, McpServerEntry } from './setup-types.js';
+import { getErrorMessage } from '../core/index.js';
 
 /** MCP entry for nexus-agents */
 export const NEXUS_AGENTS_MCP_ENTRY: McpServerEntry = {
@@ -80,7 +81,7 @@ function addMcpServer(useNpx: boolean): McpConfigResult {
       message: 'Added nexus-agents MCP server to Claude Code',
     };
   } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : String(error);
+    const errorMsg = getErrorMessage(error);
     return {
       success: false,
       alreadyConfigured: false,
@@ -359,7 +360,7 @@ export function configureHooks(force: boolean = false): HookConfigResult {
         : 'Configured nexus-agents hooks in Claude Code settings',
     };
   } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : String(error);
+    const errorMsg = getErrorMessage(error);
     return {
       success: false,
       alreadyConfigured: false,

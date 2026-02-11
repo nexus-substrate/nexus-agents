@@ -24,7 +24,7 @@ import type {
   MemoryMetadata,
 } from '../context/memory-backend-types.js';
 import { MemoryError } from '../context/memory-backend-types.js';
-import { getTimeProvider } from '../core/index.js';
+import { getErrorMessage, getTimeProvider } from '../core/index.js';
 
 // ============================================================================
 // Types
@@ -211,7 +211,7 @@ export async function handleMemoryBenchmarkCommand(args: ParsedCliArgs): Promise
       printFooter(getTimeProvider().now() - startTime);
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = getErrorMessage(error);
     process.stderr.write(
       `${colors.red}${symbols.cross} Benchmark failed: ${message}${colors.reset}\n`
     );

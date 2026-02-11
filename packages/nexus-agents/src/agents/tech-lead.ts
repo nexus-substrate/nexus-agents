@@ -23,7 +23,7 @@ import type {
   Message,
   IAgent,
 } from '../core/index.js';
-import { ok, err, AgentError, getTimeProvider } from '../core/index.js';
+import { getErrorMessage, ok, err, AgentError, getTimeProvider } from '../core/index.js';
 import { BaseAgent, type BaseAgentOptions } from './base-agent.js';
 import type {
   SubTask,
@@ -466,11 +466,7 @@ export class Orchestrator extends BaseAgent {
       }
       return ok(validation.data as T);
     } catch (error) {
-      return err(
-        new AgentError(
-          `JSON parse failed: ${error instanceof Error ? error.message : String(error)}`
-        )
-      );
+      return err(new AgentError(`JSON parse failed: ${getErrorMessage(error)}`));
     }
   }
 }

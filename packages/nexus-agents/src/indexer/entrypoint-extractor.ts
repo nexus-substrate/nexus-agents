@@ -10,7 +10,7 @@
 import { Project } from 'ts-morph';
 import * as path from 'node:path';
 import * as yaml from 'yaml';
-import { getTimeProvider } from '../core/index.js';
+import { getErrorMessage, getTimeProvider } from '../core/index.js';
 import type {
   EntrypointManifest,
   EntrypointExtractionResult,
@@ -107,7 +107,7 @@ export function extractEntrypoints(
     };
     return { success: true, manifest, errors, warnings };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = getErrorMessage(error);
     errors.push(`Extraction failed: ${message}`);
     return { success: false, errors, warnings };
   }

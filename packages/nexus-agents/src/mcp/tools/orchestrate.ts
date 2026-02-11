@@ -6,6 +6,8 @@
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger, Result, Task, TaskContext } from '../../core/index.js';
+import { getErrorMessage } from '../../core/index.js';
+
 import {
   orchestrateInputToTaskContract,
   executeOrchestratePipeline,
@@ -223,7 +225,7 @@ function recordOrchestrationSuccess(
     );
   } catch (error: unknown) {
     createLogger({ tool: 'orchestrate' }).debug('Best-effort memory recording failed', {
-      error: error instanceof Error ? error.message : String(error),
+      error: getErrorMessage(error),
       taskId,
     });
   }
@@ -232,7 +234,7 @@ function recordOrchestrationSuccess(
     getAutoCatalog().scanAndRecord(taskDescription, 'orchestrate');
   } catch (error: unknown) {
     createLogger({ tool: 'orchestrate' }).debug('Best-effort auto-catalog scan failed', {
-      error: error instanceof Error ? error.message : String(error),
+      error: getErrorMessage(error),
     });
   }
 
@@ -255,7 +257,7 @@ function recordOrchestrationError(errorMessage: string, taskDescription: string)
     });
   } catch (error: unknown) {
     createLogger({ tool: 'orchestrate' }).debug('Best-effort error recording failed', {
-      error: error instanceof Error ? error.message : String(error),
+      error: getErrorMessage(error),
     });
   }
 }

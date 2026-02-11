@@ -16,7 +16,8 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import type { ILogger } from '../../core/index.js';
-import { createLogger, getTimeProvider } from '../../core/index.js';
+import { getErrorMessage, createLogger, getTimeProvider } from '../../core/index.js';
+
 import { SessionMemory } from '../../context/session-memory.js';
 import type {
   SessionLearning,
@@ -222,7 +223,7 @@ export class ToolMemoryManager {
       }
     } catch (error: unknown) {
       this.log.debug('AgenticMemory init failed', {
-        error: error instanceof Error ? error.message : String(error),
+        error: getErrorMessage(error),
       });
     }
   }
@@ -243,7 +244,7 @@ export class ToolMemoryManager {
       }
     } catch (error: unknown) {
       this.log.debug('AdaptiveMemory init failed', {
-        error: error instanceof Error ? error.message : String(error),
+        error: getErrorMessage(error),
       });
     }
   }
@@ -266,7 +267,7 @@ export class ToolMemoryManager {
       }
     } catch (error: unknown) {
       this.log.debug('TypedMemory init failed', {
-        error: error instanceof Error ? error.message : String(error),
+        error: getErrorMessage(error),
       });
     }
   }
@@ -281,7 +282,7 @@ export class ToolMemoryManager {
       this.log.info('MobiMem activated (Phase 2 #746)');
     } catch (error: unknown) {
       this.log.debug('MobiMem init failed', {
-        error: error instanceof Error ? error.message : String(error),
+        error: getErrorMessage(error),
       });
     }
   }
@@ -301,7 +302,7 @@ export class ToolMemoryManager {
       this.log.info('MemoryDecayManager activated (Phase 5 #746)');
     } catch (error: unknown) {
       this.log.debug('MemoryDecayManager init failed', {
-        error: error instanceof Error ? error.message : String(error),
+        error: getErrorMessage(error),
       });
     }
   }
@@ -510,7 +511,7 @@ export class ToolMemoryManager {
     } catch (error: unknown) {
       this.log.debug('Knowledge recording failed', {
         key,
-        error: error instanceof Error ? error.message : String(error),
+        error: getErrorMessage(error),
       });
     }
   }
@@ -935,7 +936,7 @@ export class ToolMemoryManager {
       this.beliefs.hydrate(result.value);
     } catch (error: unknown) {
       this.log.debug('Belief snapshot load failed', {
-        error: error instanceof Error ? error.message : String(error),
+        error: getErrorMessage(error),
       });
     }
   }
@@ -954,7 +955,7 @@ export class ToolMemoryManager {
       }
     } catch (error: unknown) {
       this.log.debug('Belief snapshot save failed', {
-        error: error instanceof Error ? error.message : String(error),
+        error: getErrorMessage(error),
       });
     }
   }

@@ -11,8 +11,15 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Result } from '../../core/index.js';
+import {
+  getErrorMessage,
+  WorkflowError,
+  ParseError,
+  createLogger,
+  getTimeProvider,
+} from '../../core/index.js';
+
 import type { WorkflowDefinition, IWorkflowEngine } from '../../core/index.js';
-import { WorkflowError, ParseError, createLogger, getTimeProvider } from '../../core/index.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import type {
@@ -138,7 +145,7 @@ function recordWorkflowSuccess(template: string, stepsCompleted: number, duratio
     });
   } catch (error: unknown) {
     createLogger({ tool: 'run-workflow' }).warn('Failed to record workflow success', {
-      error: error instanceof Error ? error.message : String(error),
+      error: getErrorMessage(error),
       template,
     });
   }
@@ -154,7 +161,7 @@ function recordWorkflowError(template: string, errorMessage: string): void {
     });
   } catch (error: unknown) {
     createLogger({ tool: 'run-workflow' }).warn('Failed to record workflow error', {
-      error: error instanceof Error ? error.message : String(error),
+      error: getErrorMessage(error),
       template,
     });
   }

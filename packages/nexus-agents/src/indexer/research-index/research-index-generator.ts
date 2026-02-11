@@ -22,6 +22,7 @@ import {
   generateSearchTags,
   generateTopicsTable,
 } from './research-index-generator-helpers.js';
+import { getErrorMessage } from '../../core/index.js';
 
 // ============================================================================
 // Main Generator Functions
@@ -54,7 +55,7 @@ export function generateIndexMarkdown(
     return {
       ok: false,
       error: new ResearchIndexGeneratorError(
-        `Failed to generate markdown: ${error instanceof Error ? error.message : String(error)}`,
+        `Failed to generate markdown: ${getErrorMessage(error)}`,
         error
       ),
     };

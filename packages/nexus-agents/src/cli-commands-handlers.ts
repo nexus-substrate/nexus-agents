@@ -54,6 +54,7 @@ import {
   printIndexUsage,
   printResearchUsage,
 } from './cli-commands-usage.js';
+import { getErrorMessage } from './core/index.js';
 
 // Re-export complex handlers for backward compatibility
 export {
@@ -277,7 +278,7 @@ export async function handleResearchCommand(args: ParsedCliArgs): Promise<void> 
     process.stdout.write(result + '\n');
     process.exit(EXIT_CODES.SUCCESS);
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = getErrorMessage(error);
     process.stdout.write(`Error: ${message}\n`);
     process.exit(EXIT_CODES.SERVER_START_FAILED);
   }

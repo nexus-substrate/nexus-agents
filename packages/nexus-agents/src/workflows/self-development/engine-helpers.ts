@@ -6,7 +6,7 @@
  * @module workflows/self-development/engine-helpers
  */
 
-import { getTimeProvider } from '../../core/index.js';
+import { getErrorMessage, getTimeProvider } from '../../core/index.js';
 import type {
   SelfDevWorkflowState,
   SelfDevWorkflowResult,
@@ -174,7 +174,7 @@ export function failWorkflow(
   startTime: number,
   notifications?: NotificationDeps
 ): void {
-  const errorMessage = error instanceof Error ? error.message : String(error);
+  const errorMessage = getErrorMessage(error);
   const currentPhase = getPhase(container.states, executionId) ?? 'analyze';
   const state = container.states.get(executionId);
   const durationMs = getTimeProvider().now() - startTime;

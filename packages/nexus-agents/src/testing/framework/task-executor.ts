@@ -7,6 +7,7 @@
  */
 
 import {
+  getErrorMessage,
   getTimeProvider,
   createSharedTaskAnalyzer,
   taskAnalysisResultToTaskProfile,
@@ -195,7 +196,7 @@ export function createErrorResult(
     costUsd: 0,
     rubricScore: createFailedRubricScore(),
     success: false,
-    error: error instanceof Error ? error.message : String(error),
+    error: getErrorMessage(error),
     timestamp: getTimeProvider().nowIso(),
   };
 }

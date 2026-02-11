@@ -35,11 +35,15 @@ vi.mock('./ansi-output.js', () => ({
   },
 }));
 
-vi.mock('../core/index.js', () => ({
-  getTimeProvider: vi.fn(() => ({
-    now: vi.fn(() => 1000),
-  })),
-}));
+vi.mock('../core/index.js', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return {
+    ...actual,
+    getTimeProvider: vi.fn(() => ({
+      now: vi.fn(() => 1000),
+    })),
+  };
+});
 
 vi.mock('../testing/memory-benchmark.js', () => ({
   runMemoryBenchmark: vi.fn(),
