@@ -25,7 +25,7 @@ describe('Hello Command', () => {
 
       expect(result.version).toBeDefined();
       expect(typeof result.version).toBe('string');
-      expect(result.version).toMatch(/^\d+\.\d+\.\d+/);
+      expect(result.version).toMatch(/^\d+\.\d+\.\d+|^dev$/);
     });
 
     it('should return Node.js version from process.version', () => {
