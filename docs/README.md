@@ -80,6 +80,7 @@ Detailed technical documentation:
 | [TECHLEAD_WORKFLOW_ENGINE.md](./architecture/TECHLEAD_WORKFLOW_ENGINE.md)   | Orchestrator vs WorkflowEngine | Canonical |
 | [ICTM_PATTERN.md](./architecture/ICTM_PATTERN.md)                           | Dynamic sub-agent creation     | Canonical |
 | [UNTRUSTED_INPUT_HARDENING.md](./architecture/UNTRUSTED_INPUT_HARDENING.md) | Input trust & sanitization     | Canonical |
+| [SOFTWARE_FACTORY_REPORT.md](./architecture/SOFTWARE_FACTORY_REPORT.md)     | Factory hardening review       | Canonical |
 | [dependency-graph.md](./architecture/dependency-graph.md)                   | Module dependency diagram      | Generated |
 
 #### Development
