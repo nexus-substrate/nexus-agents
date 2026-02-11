@@ -207,6 +207,30 @@ function notifyAndRecord(opts: NotifyRecordOpts): void {
   );
 }
 
+/** Attempts routing via CompositeRouter. Returns result or null. */
+async function tryCompositeRoute(
+  deps: DelegateDeps,
+  ctx: HandlerContext,
+  opts: NotifyRecordOpts
+): Promise<ToolResult | null> {
+  if (deps.router === undefined) return null;
+  const requirements = analyzeTask(opts.task);
+  const routerResult = await routeViaCompositeRouter(
+    opts.task,
+    deps.router,
+    deps.feedbackIntegration,
+    ctx.logger
+  );
+  if (routerResult === null) {
+    ctx.logger.info('Falling back to local model selection');
+    return null;
+  }
+  const output = mapCompositeDecisionToOutput(routerResult.decision, requirements.estimatedTokens);
+  ctx.logger.info('Routed via CompositeRouter', { model: output.recommended_model });
+  notifyAndRecord({ ...opts, model: output.recommended_model, router: 'CompositeRouter' });
+  return successResult(JSON.stringify(enrichWithGovernance(output, opts.governance), null, 2));
+}
+
 /**
  * Creates the core handler logic for delegate_to_model tool.
  * Uses CompositeRouter when available, falls back to local model selection.
@@ -225,48 +249,25 @@ function createDelegateHandler(
     const input = validated.data;
     notifier.info('delegate', { event: 'routing_start', taskLength: input.task.length });
     ctx.logger.info('Analyzing task for model routing', { taskLength: input.task.length });
-    const requirements = analyzeTask(input.task);
     const governance = classifyDelegateGovernance(input, ctx.logger);
     if (resolveV2Config().delegateEnabled) instrumentV2Pipeline(input, ctx.logger);
-    // Try CompositeRouter first if available
-    if (deps.router !== undefined) {
-      const routerResult = await routeViaCompositeRouter(
-        input.task,
-        deps.router,
-        deps.feedbackIntegration,
-        ctx.logger
-      );
-      if (routerResult !== null) {
-        const output = mapCompositeDecisionToOutput(
-          routerResult.decision,
-          requirements.estimatedTokens
-        );
-        ctx.logger.info('Routed via CompositeRouter', { model: output.recommended_model });
-        notifyAndRecord({
-          notifier,
-          task: input.task,
-          model: output.recommended_model,
-          router: 'CompositeRouter',
-          startMs,
-          governance,
-        });
-        return successResult(JSON.stringify(enrichWithGovernance(output, governance), null, 2));
-      }
-      ctx.logger.info('Falling back to local model selection');
-    }
+    const baseOpts: NotifyRecordOpts = {
+      notifier,
+      task: input.task,
+      model: '',
+      router: '',
+      startMs,
+      governance,
+    };
+    const compositeResult = await tryCompositeRoute(deps, ctx, baseOpts);
+    if (compositeResult !== null) return compositeResult;
+    const requirements = analyzeTask(input.task);
     const billingMode = input.billing_mode ?? DEFAULTS.PROVIDER_DEFAULTS.billingMode;
     const selection = selectModel(input, requirements, billingMode);
     const output = buildDelegateOutput(selection, requirements);
     if (!output) return errorResult(`Unknown model: ${selection.model}`);
     ctx.logger.info('Model recommendation complete', { model: output.recommended_model });
-    notifyAndRecord({
-      notifier,
-      task: input.task,
-      model: output.recommended_model,
-      router: 'local',
-      startMs,
-      governance,
-    });
+    notifyAndRecord({ ...baseOpts, model: output.recommended_model, router: 'local' });
     return successResult(JSON.stringify(enrichWithGovernance(output, governance), null, 2));
   };
 }
