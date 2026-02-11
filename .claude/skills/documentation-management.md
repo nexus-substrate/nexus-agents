@@ -129,7 +129,8 @@ npx tsx scripts/generate-repo-index.ts --check # CI validation
 
 ### inject-governance.ts
 
-Injects MCP tool table into CLAUDE.md.
+Injects MCP tool table into CLAUDE.md. Tool descriptions are defined in the
+`TOOL_DESCRIPTIONS` map — add an entry there when registering a new MCP tool.
 
 ```bash
 npx tsx scripts/inject-governance.ts inject  # Update CLAUDE.md
