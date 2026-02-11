@@ -70,6 +70,7 @@ const AVAILABLE_TOOLS: ReadonlySet<string> = new Set([
   'run_graph_workflow',
   'execute_spec',
   'registry_import',
+  'query_trace',
 ]);
 
 /** All 9 expert role names */

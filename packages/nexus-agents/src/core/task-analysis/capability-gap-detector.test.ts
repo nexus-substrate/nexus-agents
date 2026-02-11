@@ -96,7 +96,7 @@ describe('detectCapabilityGaps', () => {
     expect(report.available.experts).toHaveLength(0);
   });
 
-  it('recognizes all 20 MCP tools', () => {
+  it('recognizes all 21 MCP tools', () => {
     const allTools = [
       'orchestrate',
       'create_expert',
@@ -118,10 +118,11 @@ describe('detectCapabilityGaps', () => {
       'run_graph_workflow',
       'execute_spec',
       'registry_import',
+      'query_trace',
     ];
     const report = detectCapabilityGaps({ tools: allTools, experts: [] });
     expect(report.allSatisfied).toBe(true);
-    expect(report.available.tools).toHaveLength(20);
+    expect(report.available.tools).toHaveLength(21);
   });
 
   it('recognizes all 9 expert roles', () => {
@@ -147,8 +148,8 @@ describe('detectCapabilityGaps', () => {
 // ============================================================================
 
 describe('registry counts', () => {
-  it('has 20 available tools', () => {
-    expect(getAvailableToolCount()).toBe(20);
+  it('has 21 available tools', () => {
+    expect(getAvailableToolCount()).toBe(21);
   });
 
   it('has 9 available experts', () => {

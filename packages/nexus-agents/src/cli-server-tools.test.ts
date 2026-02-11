@@ -43,6 +43,7 @@ const {
   mockRegisterIssueTriageTool,
   mockRegisterRunGraphWorkflowTool,
   mockRegisterExecuteSpecTool,
+  mockRegisterQueryTraceTool,
   mockCreateDefaultDeps,
   mockCreateRealWorkflowEngine,
   mockCreateToolRateLimiterFactory,
@@ -81,6 +82,7 @@ const {
   mockRegisterIssueTriageTool: vi.fn(),
   mockRegisterRunGraphWorkflowTool: vi.fn(),
   mockRegisterExecuteSpecTool: vi.fn(),
+  mockRegisterQueryTraceTool: vi.fn(),
   mockCreateDefaultDeps: vi.fn().mockReturnValue({
     logger: {
       debug: vi.fn(),
@@ -133,6 +135,7 @@ vi.mock('./mcp/index.js', () => ({
   registerIssueTriageTool: mockRegisterIssueTriageTool,
   registerRunGraphWorkflowTool: mockRegisterRunGraphWorkflowTool,
   registerExecuteSpecTool: mockRegisterExecuteSpecTool,
+  registerQueryTraceTool: mockRegisterQueryTraceTool,
   createDefaultDeps: mockCreateDefaultDeps,
 }));
 
@@ -248,8 +251,8 @@ function makeDefaultOptions(overrides: Record<string, unknown> = {}) {
 // ============================================================================
 
 describe('REGISTERED_TOOLS', () => {
-  it('should contain exactly 20 tool names', () => {
-    expect(REGISTERED_TOOLS).toHaveLength(20);
+  it('should contain exactly 21 tool names', () => {
+    expect(REGISTERED_TOOLS).toHaveLength(21);
   });
 
   it('should include all expected tool names', () => {
@@ -274,6 +277,7 @@ describe('REGISTERED_TOOLS', () => {
       'run_graph_workflow',
       'execute_spec',
       'registry_import',
+      'query_trace',
     ];
     expect([...REGISTERED_TOOLS]).toEqual(expected);
   });

@@ -134,6 +134,7 @@ export const REGISTERED_TOOLS = [
   'run_graph_workflow',
   'execute_spec',
   'registry_import',
+  'query_trace',
 ] as const;
 
 /**

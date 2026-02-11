@@ -346,6 +346,7 @@ export function registerTools(
       'run_graph_workflow',
       'execute_spec',
       'registry_import',
+      'query_trace',
     ],
     logger,
     rateLimiter,
