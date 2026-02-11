@@ -32,7 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - EventBus bridge (V2 to V1) and ArtifactStore wired
 - V2 Gap Closure — governance-enforcer in routing, quality rewards in LinUCB (#926-#930)
 - User Advocate Pipeline — pm_expert, ux_expert roles, requirements-gathering skill (#901)
-- MCP integration tests — 28 tests covering all 20 tools via InMemoryTransport
+- MCP integration tests — 28 tests covering all 21 tools via InMemoryTransport
 
 ### Fixed
 

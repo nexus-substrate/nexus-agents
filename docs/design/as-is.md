@@ -8,7 +8,7 @@ _Generated: 2026-02-08_
 
 ## What This System Actually Is
 
-Nexus-agents is a **multi-agent orchestration server** that coordinates AI model CLIs (Claude, Gemini, Codex) via the Model Context Protocol (MCP). It provides 20 MCP tools for task orchestration, consensus voting, model routing, research tracking, and workflow execution.
+Nexus-agents is a **multi-agent orchestration server** that coordinates AI model CLIs (Claude, Gemini, Codex) via the Model Context Protocol (MCP). It provides 21 MCP tools for task orchestration, consensus voting, model routing, research tracking, and workflow execution.
 
 **Primary interface:** MCP stdio server (invoked by Claude Code, Gemini CLI, or any MCP client).
 **Secondary interfaces:** CLI binary (31 commands), REST API (partial).
@@ -30,7 +30,7 @@ Nexus-agents is a **multi-agent orchestration server** that coordinates AI model
                     │   (tier-classifier)  │
                     ├─────────────────────┤
                     │    MCP Server        │
-                    │   (20 tool handlers) │
+                    │   (21 tool handlers) │
                     └──────────┬──────────┘
                                │
           ┌────────────────────┼────────────────────┐
@@ -64,9 +64,9 @@ Nexus-agents is a **multi-agent orchestration server** that coordinates AI model
 
 ### 1. MCP Tool Dispatch (Solid)
 
-All 20 tools are registered, validated with Zod, wrapped with timeouts, and dispatched through the gateway middleware. The registration is consistent — every tool uses `formatZodError()` and follows the same handler pattern.
+All 21 tools are registered, validated with Zod, wrapped with timeouts, and dispatched through the gateway middleware. The registration is consistent — every tool uses `formatZodError()` and follows the same handler pattern.
 
-**Evidence:** `src/mcp/tools/index.ts` — `REGISTERED_TOOLS` array has 20 entries. Export contract tests verify all 20 at runtime (`src/exports/export-contracts.test.ts`).
+**Evidence:** `src/mcp/tools/index.ts` — `REGISTERED_TOOLS` array has 21 entries. Export contract tests verify all 21 at runtime (`src/exports/export-contracts.test.ts`).
 
 ### 2. Model Registry (Solid)
 

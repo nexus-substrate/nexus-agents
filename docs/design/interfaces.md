@@ -207,7 +207,7 @@ enum RequestTier {
 }
 ```
 
-**Purpose:** Wraps all 20 MCP tool handlers with tier classification and logging.
+**Purpose:** Wraps all 21 MCP tool handlers with tier classification and logging.
 
 ---
 

@@ -270,7 +270,7 @@ No stage may iterate more than its max. If a stage exhausts iterations without m
 
 ## What We Are NOT Doing
 
-1. **Not rewriting from scratch.** Every phase is additive or wrapping. Existing 20 MCP tools continue to work.
+1. **Not rewriting from scratch.** Every phase is additive or wrapping. Existing 21 MCP tools continue to work.
 2. **Not adding ML/RL yet.** V2 is still rule-based. Adaptive routing is Phase 4, and it uses the existing LinUCB bandit.
 3. **Not changing the MCP protocol.** The external interface stays the same.
 4. **Not merging adapter layers yet.** API and CLI adapters remain separate. A unified `IModelAdapter` is a future consideration.
