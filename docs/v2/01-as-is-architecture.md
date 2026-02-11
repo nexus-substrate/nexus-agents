@@ -125,7 +125,7 @@ There is no single type that a task "is" throughout its lifecycle.
 
 ## What Works Well
 
-1. **MCP tool dispatch** — 20 tools, Zod-validated, timeout-wrapped, consistently registered.
+1. **MCP tool dispatch** — 21 tools, Zod-validated, timeout-wrapped, consistently registered.
 2. **Model registry** — Single source of truth (`model-capabilities.ts`). All adapters derive from it.
 3. **Graph execution** — Compile step (cycle detection, reachability), BSP super-steps, state reducers, checkpointing, bounded iteration (maxSteps=100, timeout=120s), conditional edges.
 4. **Security pipeline** — 8 modules fully wired, firewall composition, ATL labels.

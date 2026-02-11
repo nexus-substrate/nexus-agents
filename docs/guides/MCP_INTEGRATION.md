@@ -45,7 +45,7 @@ Claude will use the nexus-agents orchestration tool to analyze and respond.
 
 ## MCP Tools Reference
 
-Nexus-agents provides 20 MCP tools that Claude can use. The most commonly used tools are documented below. See [ENTRYPOINTS.md](../ENTRYPOINTS.md) for the complete list.
+Nexus-agents provides 21 MCP tools that Claude can use. The most commonly used tools are documented below. See [ENTRYPOINTS.md](../ENTRYPOINTS.md) for the complete list.
 
 ### orchestrate
 

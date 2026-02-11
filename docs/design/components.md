@@ -172,10 +172,10 @@ MCP protocol server and tool handlers.
 **Key components:**
 
 - **Server** (`mcp/server.ts`): MCP 2025-11-25 protocol server
-- **Tool Registration** (`mcp/tools/index.ts`): `registerTools()` — 20 tools total
+- **Tool Registration** (`mcp/tools/index.ts`): `registerTools()` — 21 tools total
 - **Gateway** (`mcp/gateway/`, Issue #888): Tier classifier + middleware. Wraps all tool dispatch with classification (DIRECT, ANALYZED, ORCHESTRATED) and logging.
 - **Rate Limiter** (`mcp/rate-limiter.ts`): Single shared bucket (capacity: 100, refill: 10/sec)
 - **Tool handlers**: Each tool in `mcp/tools/*.ts`
 
-**Registered tools (20):**
+**Registered tools (21):**
 orchestrate, create_expert, execute_expert, run_workflow, delegate_to_model, list_experts, list_workflows, consensus_vote, research_query, research_add, research_discover, research_analyze, research_catalog_review, memory_query, memory_stats, weather_report, issue_triage, run_graph_workflow, execute_spec, registry_import

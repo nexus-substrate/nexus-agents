@@ -10,7 +10,7 @@ _Generated: 2026-02-08 (Updated: 2026-02-08 — Epic #926 resolutions)_
 
 | Feature                            | Documented? | Implemented? |        Tested?         | Notes                           |
 | ---------------------------------- | :---------: | :----------: | :--------------------: | ------------------------------- |
-| MCP server (stdio)                 |     Yes     |     Yes      |          Yes           | 20 tools, all wired             |
+| MCP server (stdio)                 |     Yes     |     Yes      |          Yes           | 21 tools, all wired             |
 | CLI (36 commands)                  |     Yes     |     Yes      |          Yes           | Gap #1 resolved (Epic #931)     |
 | Mesh mode                          |     Yes     |    **No**    | Tests verify rejection | Gap #2 resolved (Epic #931)     |
 | Model routing pipeline             |     Yes     |     Yes      |          Yes           | 5-stage composite router        |
@@ -156,4 +156,4 @@ The dual-layer design is **architecturally correct**. API adapters translate pro
 3. **Module boundaries** — Clean barrel exports, layered dependencies, no circular imports.
 4. **Security pipeline** — All 8 modules wired and tested. Firewall composition layer works.
 5. **Model registry** — Single source of truth. All adapters derive from it.
-6. **MCP tool registration** — All 20 tools consistently use Zod validation, `formatZodError()`, timeout wrapping.
+6. **MCP tool registration** — All 21 tools consistently use Zod validation, `formatZodError()`, timeout wrapping.
