@@ -20,6 +20,13 @@ import type { WorkflowDefinition, StepResult } from '../../core/index.js';
 export type DataClassification = 'public' | 'internal' | 'sensitive';
 
 /**
+ * Execution mode for scenario tests (Epic #952, Phase 3).
+ * - 'stub': Use mock dependencies (fast, deterministic)
+ * - 'live': Execute via GraphBuilder with real graph workflows
+ */
+export type ExecutionMode = 'stub' | 'live';
+
+/**
  * E2E test configuration.
  */
 export interface E2ETestConfig {
@@ -35,6 +42,36 @@ export interface E2ETestConfig {
   readonly costBudgetUsd?: number;
   /** Data classification for security controls */
   readonly dataClassification: DataClassification;
+  /** Execution mode: stub (default) or live graph execution (Epic #952). */
+  readonly executionMode?: ExecutionMode;
+  /** Directory for writing execution traces in live mode (Epic #952). */
+  readonly runsDir?: string;
+}
+
+/**
+ * Branch coverage report for graph workflow execution (Epic #952, Phase 3).
+ */
+export interface BranchCoverageReport {
+  /** Total number of edges in the graph */
+  readonly totalEdges: number;
+  /** Edge identifiers that were traversed (e.g., "A→B") */
+  readonly traversedEdges: readonly string[];
+  /** Conditional edge identifiers */
+  readonly conditionalEdges: readonly string[];
+  /** Conditional edges that were traversed */
+  readonly traversedConditionalEdges: readonly string[];
+  /** Coverage percentage (0-100) */
+  readonly coveragePercent: number;
+}
+
+/**
+ * Narrow trace output interface for scenario→trace decoupling (Epic #952).
+ */
+export interface ITraceOutput {
+  /** Write a single trace event. */
+  writeEvent(entry: Record<string, unknown>): void;
+  /** Flush buffered events to disk. */
+  flush(): Promise<void>;
 }
 
 /**
@@ -265,6 +302,7 @@ export const DEFAULT_E2E_CONFIG: E2ETestConfig = {
   sandboxMode: 'policy',
   timeoutMs: 300000, // 5 minutes
   dataClassification: 'internal',
+  executionMode: 'stub',
 } as const;
 
 /**
