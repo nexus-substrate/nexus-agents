@@ -38,7 +38,7 @@ describe('getTimeoutForTask', () => {
     it('should return correct timeouts for codex', () => {
       expect(getTimeoutForTask('codex', 'simple')).toBe(10_000);
       expect(getTimeoutForTask('codex', 'standard')).toBe(30_000);
-      expect(getTimeoutForTask('codex', 'complex')).toBe(60_000);
+      expect(getTimeoutForTask('codex', 'complex')).toBe(90_000);
     });
   });
 
@@ -227,7 +227,7 @@ describe('getTimeoutForTaskAuto', () => {
     it('should work correctly for codex', () => {
       expect(getTimeoutForTaskAuto('codex', 'Simple function')).toBe(10_000);
       expect(getTimeoutForTaskAuto('codex', 'Normal implementation')).toBe(30_000);
-      expect(getTimeoutForTaskAuto('codex', 'Architecture design')).toBe(60_000);
+      expect(getTimeoutForTaskAuto('codex', 'Architecture design')).toBe(90_000);
     });
   });
 

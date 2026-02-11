@@ -30,7 +30,7 @@ export interface TimeoutProfile {
 export const CLI_TIMEOUT_PROFILES: Record<string, TimeoutProfile> = {
   claude: { simple: 30_000, standard: 60_000, complex: 120_000 },
   gemini: { simple: 30_000, standard: 60_000, complex: 180_000 },
-  codex: { simple: 10_000, standard: 30_000, complex: 60_000 },
+  codex: { simple: 10_000, standard: 30_000, complex: 90_000 },
 };
 
 /** Default profile used when CLI is unknown. */

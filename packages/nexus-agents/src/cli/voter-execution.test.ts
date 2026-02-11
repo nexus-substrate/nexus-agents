@@ -22,6 +22,7 @@ import {
   executeSingleVoteAttempt,
   executeWithRetries,
   validateTimeout,
+  resolveVoteTimeout,
 } from './voter-execution.js';
 import type { VoterRole } from './vote-types.js';
 import type { IModelAdapter, CompletionResponse, ILogger, Result } from '../core/index.js';
@@ -32,8 +33,8 @@ type MockCompletionResult = Result<CompletionResponse, ModelError>;
 describe('voter-execution', () => {
   describe('constants', () => {
     it('should have reasonable timeout value', () => {
-      // Increased to 90s per Issue #607 to allow time for complex proposal analysis
-      expect(DEFAULT_VOTE_TIMEOUT_MS).toBe(90_000);
+      // Increased to 120s per Issue #983 to allow time for complex proposal analysis
+      expect(DEFAULT_VOTE_TIMEOUT_MS).toBe(120_000);
     });
 
     it('should have 5 minute max timeout', () => {
@@ -78,6 +79,43 @@ describe('voter-execution', () => {
       const maxResult = validateTimeout(MAX_VOTE_TIMEOUT_MS);
       expect(maxResult.value).toBe(MAX_VOTE_TIMEOUT_MS);
       expect(maxResult.clamped).toBe(false);
+    });
+  });
+
+  describe('resolveVoteTimeout (Issue #983)', () => {
+    const originalEnv = process.env['NEXUS_VOTE_TIMEOUT_MS'];
+
+    afterEach(() => {
+      if (originalEnv !== undefined) {
+        process.env['NEXUS_VOTE_TIMEOUT_MS'] = originalEnv;
+      } else {
+        delete process.env['NEXUS_VOTE_TIMEOUT_MS'];
+      }
+    });
+
+    it('should return default when env var is not set', () => {
+      delete process.env['NEXUS_VOTE_TIMEOUT_MS'];
+      expect(resolveVoteTimeout()).toBe(DEFAULT_VOTE_TIMEOUT_MS);
+    });
+
+    it('should use env var value when set', () => {
+      process.env['NEXUS_VOTE_TIMEOUT_MS'] = '180000';
+      expect(resolveVoteTimeout()).toBe(180_000);
+    });
+
+    it('should clamp env var to min', () => {
+      process.env['NEXUS_VOTE_TIMEOUT_MS'] = '5000';
+      expect(resolveVoteTimeout()).toBe(MIN_VOTE_TIMEOUT_MS);
+    });
+
+    it('should clamp env var to max', () => {
+      process.env['NEXUS_VOTE_TIMEOUT_MS'] = '999999';
+      expect(resolveVoteTimeout()).toBe(MAX_VOTE_TIMEOUT_MS);
+    });
+
+    it('should ignore invalid env var values', () => {
+      process.env['NEXUS_VOTE_TIMEOUT_MS'] = 'not-a-number';
+      expect(resolveVoteTimeout()).toBe(DEFAULT_VOTE_TIMEOUT_MS);
     });
   });
 

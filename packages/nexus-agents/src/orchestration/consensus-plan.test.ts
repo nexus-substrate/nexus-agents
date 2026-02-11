@@ -86,7 +86,7 @@ describe('createDefaultPlanConfig', () => {
   it('returns expected defaults', () => {
     const config = createDefaultPlanConfig();
     expect(config.maxClis).toBe(3);
-    expect(config.perCliTimeoutMs).toBe(90_000);
+    expect(config.perCliTimeoutMs).toBe(120_000);
     expect(config.maxOutputCharsPerCli).toBe(8000);
   });
 });

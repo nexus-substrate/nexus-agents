@@ -16,11 +16,28 @@ import { VOTER_SYSTEM_PROMPTS, SIMULATED_VOTE_REASONING } from './voter-prompts.
 import { buildVotePrompt, parseVoteResponse, SyntheticVoteError } from './voter-response.js';
 
 /**
- * Default vote execution timeout (90 seconds).
- * Increased from 30s per Issue #607 - complex proposals require more time
- * for CLI agents to analyze and respond properly.
+ * Default vote execution timeout (120 seconds).
+ * Increased from 90s per Issue #983 - complex proposals with 6 agents
+ * need adequate time, especially on slower CLIs (Gemini/Codex).
+ * Override with NEXUS_VOTE_TIMEOUT_MS environment variable.
  */
-export const DEFAULT_VOTE_TIMEOUT_MS = 90_000;
+export const DEFAULT_VOTE_TIMEOUT_MS = 120_000;
+
+/**
+ * Resolves vote timeout from env var or returns default.
+ * NEXUS_VOTE_TIMEOUT_MS env var overrides the default, clamped to [MIN, MAX].
+ * (Source: Issue #983)
+ */
+export function resolveVoteTimeout(): number {
+  const envVal = process.env['NEXUS_VOTE_TIMEOUT_MS'];
+  if (envVal !== undefined) {
+    const parsed = Number(envVal);
+    if (!Number.isNaN(parsed) && parsed > 0) {
+      return validateTimeout(parsed).value;
+    }
+  }
+  return DEFAULT_VOTE_TIMEOUT_MS;
+}
 
 /**
  * Maximum vote execution timeout (5 minutes).
