@@ -227,6 +227,7 @@ export {
   type WeatherReportResponse,
   type CliWeather,
   type AdaptiveBonus,
+  type RecommendedMapping,
 } from './weather-report-types.js';
 export { generateWeatherReport, getAdaptiveBonus, shouldExplore } from './weather-report.js';
 

@@ -22,6 +22,7 @@ import type {
   WeatherReportConfig,
   TierRecommendationEntry,
   LearningInsight,
+  RecommendedMapping,
 } from './weather-report-types.js';
 import { createDefaultWeatherConfig } from './weather-report-types.js';
 import { generateTierRecommendations } from '../gateway/tier-recommender.js';
@@ -64,7 +65,11 @@ export function generateWeatherReport(
   };
 
   if (includeAdaptive) {
-    return { ...base, learningInsights: buildLearningInsights() };
+    return {
+      ...base,
+      learningInsights: buildLearningInsights(),
+      recommendedMappings: buildRecommendedMappings(),
+    };
   }
 
   return base;
@@ -222,6 +227,42 @@ function buildLearningInsights(): readonly LearningInsight[] {
   }
 
   return insights;
+}
+
+/** Builds recommended CLI mappings per category for LinUCB cold-start (#952). */
+function buildRecommendedMappings(): readonly RecommendedMapping[] {
+  const store = getOutcomeStore();
+  const mappings: RecommendedMapping[] = [];
+
+  for (const category of TASK_CATEGORIES) {
+    let bestCli = '';
+    let bestRate = -1;
+    let bestCount = 0;
+
+    for (const cli of CLI_NAMES) {
+      const outcomes = store.query({ cli, category });
+      if (outcomes.length === 0) continue;
+      const rate = outcomes.filter((o) => o.success).length / outcomes.length;
+      if (rate > bestRate || (rate === bestRate && outcomes.length > bestCount)) {
+        bestCli = cli;
+        bestRate = rate;
+        bestCount = outcomes.length;
+      }
+    }
+
+    if (bestCli !== '') {
+      const confidence = bestCount >= 20 ? 'high' : bestCount >= 10 ? 'medium' : 'low';
+      mappings.push({
+        category,
+        recommendedCli: bestCli,
+        successRate: bestRate,
+        sampleCount: bestCount,
+        confidence: confidence,
+      });
+    }
+  }
+
+  return mappings;
 }
 
 /** Generates tier recommendations from outcome summary (#895). */
