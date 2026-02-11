@@ -11,7 +11,7 @@ nexus-agents provides three layers of observability for Claude Code users:
 | --------------- | ---------------------------------- | ------------------------------------------------- |
 | **MCP Logging** | `notifications/message` (built-in) | Structured events in Claude Code's verbose output |
 | **Hooks**       | Claude Code hooks config           | Tool invocation logging to a state file           |
-| **Status Line** | Claude Code status line            | Persistent bottom bar showing active tools/models |
+| **Status Line** | Claude Code status line            | 2-line dashboard with swarm health and weather    |
 
 ## Layer 1: MCP Logging Notifications (Built-in)
 
@@ -50,6 +50,17 @@ chmod +x .claude/nexus-hook.sh
 ```json
 {
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/nexus-hook.sh session",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "mcp__nexus-agents__.*",
@@ -78,22 +89,41 @@ chmod +x .claude/nexus-hook.sh
 }
 ```
 
-The hook script logs tool invocations to `/tmp/nexus-agents-session.json`, which the
-status line script reads.
+The hook script logs tool invocations to `/tmp/nexus-agents-{session_id}.json` with
+`0600` permissions and `flock` for atomic updates.
 
-### What Gets Logged
+### State File Schema (v2)
 
-Each tool invocation records:
+Each session gets its own state file tracking:
 
-- Tool name (e.g., `orchestrate`, `consensus_vote`)
-- Timestamp
-- Duration (for PostToolUse events)
-- Cumulative session statistics (total calls, calls per tool)
+| Field        | Description                                                                                       |
+| ------------ | ------------------------------------------------------------------------------------------------- |
+| `toolCounts` | Per-group counters: delegate, vote, orchestrate, expert, workflow, graph, research, memory, other |
+| `lastModel`  | Most recent model routed by `delegate_to_model`                                                   |
+| `experts`    | Active and completed expert types                                                                 |
+| `vote`       | Current/last vote: proposal, agents voted, approve/reject counts, strategy                        |
+| `graph`      | Graph pipeline: workflow name, total steps, completed nodes                                       |
+| `cliUsage`   | Per-CLI (claude/gemini/codex) call counts and success/failure                                     |
+| `activity`   | Rolling buffer of last 5 tool invocations with status                                             |
+
+### Tool Group Mapping
+
+| Tools                             | Group       |
+| --------------------------------- | ----------- |
+| `delegate_to_model`               | delegate    |
+| `consensus_vote`                  | vote        |
+| `orchestrate`                     | orchestrate |
+| `create_expert`, `execute_expert` | expert      |
+| `run_workflow`, `execute_spec`    | workflow    |
+| `run_graph_workflow`              | graph       |
+| `research_*`                      | research    |
+| `memory_*`                        | memory      |
+| Everything else                   | other       |
 
 ## Layer 3: Status Line
 
-The status line shows a persistent bar at the bottom of Claude Code with
-nexus-agents activity.
+The status line shows a persistent 2-line dashboard at the bottom of Claude Code
+with real-time swarm monitoring.
 
 ### Setup
 
@@ -117,26 +147,56 @@ chmod +x .claude/nexus-statusline.sh
 
 ### What It Shows
 
+**Line 1 — Primary (identity, activity, budget):**
+
 ```
-[nexus] orchestrate | claude-opus | 3 tools | 2 experts | 1 vote
+● claude-opus  → orchestrate  tools 12  experts 3  votes 1 (5:0)  $1.24  ctx ▓▓▓▓▓▓░░░░ 67%
 ```
 
-- **Active tool**: Currently running nexus-agents tool (or last completed)
-- **Last model**: Most recent model routed by delegate_to_model
-- **Tool count**: Total nexus-agents tool calls this session
-- **Expert count**: Number of expert executions
-- **Vote count**: Number of consensus votes
+- **Health dot**: Green (healthy), yellow (CLI failures), red (last tool errored)
+- **Model**: Last model routed by delegate_to_model (or session model)
+- **Active tool**: Currently running tool (yellow) or last completed (dim)
+- **Counters**: Total tools, experts, votes (with approve:reject ratio)
+- **Graph**: Step X/N when a graph workflow is running
+- **Cost**: Session cost from Claude Code
+- **Context gauge**: 10-char bar with color thresholds (green <60%, yellow 60-84%, red ≥85%)
+
+**Line 2 — Secondary (weather, session):**
+
+```
+weather  claude █████ 100%   gemini ████░ 80%   codex ███░░ 60%  session 14m · 38 calls
+```
+
+- **Per-CLI weather**: Success rate bars (5-char) with color coding
+- **Session**: Uptime and total tool calls
+
+### Color Thresholds
+
+| Metric        | Green   | Yellow   | Red   |
+| ------------- | ------- | -------- | ----- |
+| Health dot    | Healthy | CLI fail | Error |
+| CLI success   | ≥ 80%   | 60-79%   | < 60% |
+| Context usage | < 60%   | 60-84%   | ≥ 85% |
+
+### Graceful Degradation
+
+The status line adapts to available data:
+
+- **No state file**: Shows minimal `● nexus model $cost ctx X%`
+- **No routing data**: Shows `weather  no routing data` on line 2
+- **No graph running**: Graph section omitted
+- **No votes/experts**: Counter sections omitted
 
 ## Combining All Three
 
 For maximum observability, use all three layers together. MCP logging provides
 detailed events for debugging, hooks capture tool lifecycle data, and the status
-line gives at-a-glance awareness.
+line gives at-a-glance awareness of the multi-agent swarm.
 
 ## Files in This Directory
 
-| File                  | Purpose                                          |
-| --------------------- | ------------------------------------------------ |
-| `nexus-hook.sh`       | Hook script for PreToolUse/PostToolUse events    |
-| `nexus-statusline.sh` | Status line script showing nexus-agents activity |
-| `README.md`           | This guide                                       |
+| File                  | Purpose                                             |
+| --------------------- | --------------------------------------------------- |
+| `nexus-hook.sh`       | Hook script for SessionStart/PreToolUse/PostToolUse |
+| `nexus-statusline.sh` | 2-line status line dashboard                        |
+| `README.md`           | This guide                                          |
