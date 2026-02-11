@@ -55,18 +55,19 @@ export {
   extractTextFromResponse,
   executeSingleVoteAttempt,
   validateTimeout,
+  resolveVoteTimeout,
   type RetryOptions,
   executeWithRetries,
 } from './voter-execution.js';
 
 // Import from execution module for internal use
 import {
-  DEFAULT_VOTE_TIMEOUT_MS,
   DEFAULT_MAX_RETRIES,
   createErrorVoteResult,
   createSimulationVoteResult,
   createSimulatedVotes,
   executeWithRetries,
+  resolveVoteTimeout,
 } from './voter-execution.js';
 
 // ============================================================================
@@ -81,7 +82,7 @@ export interface VoterAgentOptions {
   readonly logger?: ILogger;
   /** Model adapter to use (auto-selected if not provided) */
   readonly adapter?: IModelAdapter;
-  /** Timeout per vote in milliseconds (default: 30000) */
+  /** Timeout per vote in milliseconds (default: 120000, override via NEXUS_VOTE_TIMEOUT_MS) */
   readonly timeoutMs?: number;
   /** Maximum retries per vote (default: 2) */
   readonly maxRetries?: number;
@@ -108,7 +109,7 @@ export async function executeAgentVote(
   options?: { timeoutMs?: number; maxRetries?: number; allowSimulation?: boolean }
 ): Promise<AgentVoteResult> {
   const start = getTimeProvider().now();
-  const timeoutMs = options?.timeoutMs ?? DEFAULT_VOTE_TIMEOUT_MS;
+  const timeoutMs = options?.timeoutMs ?? resolveVoteTimeout();
   const maxRetries = options?.maxRetries ?? DEFAULT_MAX_RETRIES;
   const allowSimulation = options?.allowSimulation ?? false;
 
@@ -272,7 +273,7 @@ export async function collectRealVotes(
 ): Promise<readonly AgentVoteResult[]> {
   const logger = options.logger ?? defaultLogger;
   const { roles, proposal, simulate, allowSimulation } = options;
-  const timeoutMs = options.timeoutMs ?? DEFAULT_VOTE_TIMEOUT_MS;
+  const timeoutMs = options.timeoutMs ?? resolveVoteTimeout();
   const maxRetries = options.maxRetries ?? DEFAULT_MAX_RETRIES;
 
   if (simulate === true) {

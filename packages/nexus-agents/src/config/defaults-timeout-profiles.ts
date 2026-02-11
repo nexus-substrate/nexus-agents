@@ -23,8 +23,8 @@ import { isKnownCliName } from './defaults-types.js';
  */
 export const TIMEOUT_PROFILES = {
   claude: { simple: 30_000, standard: 60_000, complex: 120_000 },
-  gemini: { simple: 15_000, standard: 45_000, complex: 90_000 },
-  codex: { simple: 10_000, standard: 30_000, complex: 60_000 },
+  gemini: { simple: 15_000, standard: 45_000, complex: 120_000 },
+  codex: { simple: 10_000, standard: 30_000, complex: 90_000 },
   /** Default profile for unknown CLIs */
   default: { simple: 30_000, standard: 60_000, complex: 120_000 },
 } as const satisfies Record<KnownCliName, TimeoutProfile>;

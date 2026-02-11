@@ -104,13 +104,13 @@ describe('TIMEOUT_PROFILES', () => {
   it('should have correct Gemini profile values', () => {
     expect(TIMEOUT_PROFILES.gemini.simple).toBe(15_000);
     expect(TIMEOUT_PROFILES.gemini.standard).toBe(45_000);
-    expect(TIMEOUT_PROFILES.gemini.complex).toBe(90_000);
+    expect(TIMEOUT_PROFILES.gemini.complex).toBe(120_000);
   });
 
   it('should have correct Codex profile values', () => {
     expect(TIMEOUT_PROFILES.codex.simple).toBe(10_000);
     expect(TIMEOUT_PROFILES.codex.standard).toBe(30_000);
-    expect(TIMEOUT_PROFILES.codex.complex).toBe(60_000);
+    expect(TIMEOUT_PROFILES.codex.complex).toBe(90_000);
   });
 });
 
@@ -304,7 +304,7 @@ describe('getTimeoutForCli', () => {
   });
 
   it('should return correct timeout for Gemini complex task', () => {
-    expect(getTimeoutForCli('gemini', 'complex')).toBe(90_000);
+    expect(getTimeoutForCli('gemini', 'complex')).toBe(120_000);
   });
 
   it('should use default profile for unknown CLI', () => {
@@ -410,10 +410,10 @@ describe('backward compatibility', () => {
     expect(TIMEOUT_PROFILES.claude.complex).toBe(120_000);
     expect(TIMEOUT_PROFILES.gemini.simple).toBe(15_000);
     expect(TIMEOUT_PROFILES.gemini.standard).toBe(45_000);
-    expect(TIMEOUT_PROFILES.gemini.complex).toBe(90_000);
+    expect(TIMEOUT_PROFILES.gemini.complex).toBe(120_000);
     expect(TIMEOUT_PROFILES.codex.simple).toBe(10_000);
     expect(TIMEOUT_PROFILES.codex.standard).toBe(30_000);
-    expect(TIMEOUT_PROFILES.codex.complex).toBe(60_000);
+    expect(TIMEOUT_PROFILES.codex.complex).toBe(90_000);
   });
 
   it('should match existing DEFAULT_TEST_RUNNER_CONFIG values', () => {

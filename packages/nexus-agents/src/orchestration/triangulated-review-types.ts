@@ -77,8 +77,8 @@ export interface TriangulatedReviewResult {
 export const TriangulatedReviewConfigSchema = z.object({
   /** Max CLIs to dispatch to (default: 3). */
   maxClis: z.number().int().min(1).max(4).default(3),
-  /** Per-CLI timeout in ms (default: 90_000). */
-  perCliTimeoutMs: z.number().int().min(1000).max(300_000).default(90_000),
+  /** Per-CLI timeout in ms (default: 120_000, increased per Issue #983). */
+  perCliTimeoutMs: z.number().int().min(1000).max(300_000).default(120_000),
   /** Max chars per CLI response (default: 8000). */
   maxOutputCharsPerCli: z.number().int().min(100).max(30_000).default(8000),
   /** Line proximity for dedup: findings within N lines are considered same (default: 5). */
