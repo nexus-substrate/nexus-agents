@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.7.1] - 2026-02-11
+
+### Fixed
+
+- Add observable warn-level logging to 12 silent best-effort catch blocks across 9 files (#966)
+  - Catches in consensus-plan, triangulated-review, parallel-exploration, delegate-to-model, run-workflow, consensus-vote, composite-router-outcome, execute-expert, and research-discover now log error details
+
+### Changed
+
+- Replace 110+ inline `error instanceof Error ? error.message : String(error)` patterns with canonical `getErrorMessage()` utility (#968)
+- Improve `getErrorMessage()` to handle primitives (number/boolean/bigint) and extract helper for ESLint complexity compliance
+
+## [2.7.0] - 2026-02-11
+
 ### Added
 
 - AOrchestra dynamic sub-agent creation — task-adaptive expert team composition (#935, #936, #937)
