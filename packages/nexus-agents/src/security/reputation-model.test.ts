@@ -245,4 +245,27 @@ describe('ReputationCache', () => {
 
     vi.useRealTimers();
   });
+
+  it('enforces max size and evicts oldest entry', () => {
+    const cache = new ReputationCache(60000, 3);
+    assessReputation(makeMetadata({ username: 'user1' }), cache);
+    assessReputation(makeMetadata({ username: 'user2' }), cache);
+    assessReputation(makeMetadata({ username: 'user3' }), cache);
+    expect(cache.size).toBe(3);
+
+    assessReputation(makeMetadata({ username: 'user4' }), cache);
+    expect(cache.size).toBe(3);
+    expect(cache.get('user1')).toBeUndefined();
+    expect(cache.get('user4')).toBeDefined();
+  });
+
+  it('does not evict when updating existing entry', () => {
+    const cache = new ReputationCache(60000, 2);
+    assessReputation(makeMetadata({ username: 'user1' }), cache);
+    assessReputation(makeMetadata({ username: 'user2' }), cache);
+    assessReputation(makeMetadata({ username: 'user1' }), cache);
+    expect(cache.size).toBe(2);
+    expect(cache.get('user1')).toBeDefined();
+    expect(cache.get('user2')).toBeDefined();
+  });
 });

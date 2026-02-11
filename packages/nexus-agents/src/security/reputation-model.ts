@@ -83,17 +83,21 @@ interface CacheEntry {
 }
 
 const DEFAULT_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const DEFAULT_MAX_SIZE = 1000;
 
 /**
- * In-memory reputation cache with TTL.
+ * In-memory reputation cache with TTL and max size.
  * Reduces redundant assessments for the same user within a short window.
+ * Evicts oldest entries when max size is exceeded.
  */
 export class ReputationCache {
   private readonly cache = new Map<string, CacheEntry>();
   private readonly ttlMs: number;
+  private readonly maxSize: number;
 
-  constructor(ttlMs = DEFAULT_TTL_MS) {
+  constructor(ttlMs = DEFAULT_TTL_MS, maxSize = DEFAULT_MAX_SIZE) {
     this.ttlMs = ttlMs;
+    this.maxSize = maxSize;
   }
 
   get(username: string): ReputationAssessment | undefined {
@@ -107,10 +111,20 @@ export class ReputationCache {
   }
 
   set(username: string, assessment: ReputationAssessment): void {
+    if (this.cache.size >= this.maxSize && !this.cache.has(username)) {
+      this.evictOldest();
+    }
     this.cache.set(username, {
       assessment,
       expiresAt: Date.now() + this.ttlMs,
     });
+  }
+
+  private evictOldest(): void {
+    const firstKey = this.cache.keys().next();
+    if (firstKey.done !== true) {
+      this.cache.delete(firstKey.value);
+    }
   }
 
   clear(): void {
