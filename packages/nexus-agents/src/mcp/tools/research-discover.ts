@@ -40,7 +40,7 @@ import { getToolMemory } from './tool-memory.js';
 const MAX_RESULTS_PER_SOURCE = 20;
 
 /** Default relevance threshold when filtering is enabled. */
-const DEFAULT_RELEVANCE_THRESHOLD = 0.1;
+const DEFAULT_RELEVANCE_THRESHOLD = 0.3;
 
 // =============================================================================
 // TYPES
@@ -163,6 +163,8 @@ export interface ResearchDiscoverResponse {
   topic: string;
   /** Sources queried */
   sourcesQueried: string[];
+  /** Sources that failed during discovery */
+  failedSources: string[];
   /** Discovered items */
   items: DiscoveredItem[];
   /** Total items found (before filtering) */
@@ -334,8 +336,9 @@ const ALL_SOURCES = [
 async function queryAllSources(
   input: ResearchDiscoverInput,
   logger: ILogger
-): Promise<{ sources: string[]; items: DiscoveredItem[] }> {
+): Promise<{ sources: string[]; failedSources: string[]; items: DiscoveredItem[] }> {
   const sources: string[] = [];
+  const failedSources: string[] = [];
   let items: DiscoveredItem[] = [];
   const shouldQuery = (src: string): boolean => input.source === 'all' || input.source === src;
 
@@ -344,34 +347,41 @@ async function queryAllSources(
     sources.push('arxiv');
     const r = await discoverArxiv(input.topic, input.maxResults, input.sinceDate);
     if (r.ok) items = items.concat(toDiscoveredItems(r.value));
-    else logger.warn('arxiv discovery failed', { source: 'arxiv', error: r.error.message });
+    else {
+      failedSources.push('arxiv');
+      logger.warn('arxiv discovery failed', { source: 'arxiv', error: r.error.message });
+    }
   }
   if (shouldQuery('github')) {
     sources.push('github');
     const r = await discoverGitHubRepos(input.topic, input.maxResults);
     if (r.ok) items = items.concat(toDiscoveredItems(r.value));
-    else logger.warn('github discovery failed', { source: 'github', error: r.error.message });
+    else {
+      failedSources.push('github');
+      logger.warn('github discovery failed', { source: 'github', error: r.error.message });
+    }
   }
   for (const src of ALL_SOURCES) {
     if (shouldQuery(src)) {
       sources.push(src);
       try {
-        items = items.concat(
-          await discoverFromExtendedSource(
-            src,
-            input.topic,
-            input.maxResults,
-            logger,
-            input.sinceDate
-          )
+        const found = await discoverFromExtendedSource(
+          src,
+          input.topic,
+          input.maxResults,
+          logger,
+          input.sinceDate
         );
+        if (found.length === 0) failedSources.push(src);
+        items = items.concat(found);
       } catch (error: unknown) {
+        failedSources.push(src);
         const message = error instanceof Error ? error.message : String(error);
         logger.warn('Extended source discovery failed', { source: src, error: message });
       }
     }
   }
-  return { sources, items };
+  return { sources, failedSources, items };
 }
 
 /** Runs discovery across selected sources. */
@@ -380,7 +390,11 @@ async function executeDiscovery(
   logger: ILogger
 ): Promise<ResearchDiscoverResponse> {
   const existingIds = await getExistingArxivIds();
-  const { sources: sourcesToQuery, items: allItems } = await queryAllSources(input, logger);
+  const {
+    sources: sourcesToQuery,
+    failedSources,
+    items: allItems,
+  } = await queryAllSources(input, logger);
   markExistingItems(allItems, existingIds);
 
   const totalFound = allItems.length;
@@ -406,6 +420,7 @@ async function executeDiscovery(
   return {
     topic: input.topic,
     sourcesQueried: sourcesToQuery,
+    failedSources,
     items: relevantItems,
     totalFound,
     alreadyInRegistry: inRegistry,

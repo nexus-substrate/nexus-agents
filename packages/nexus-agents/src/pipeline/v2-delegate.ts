@@ -193,7 +193,8 @@ function policyBlockedMetrics(result: PolicyEvalResult): PipelineMetrics {
 
 /** Formats a PolicyViolation for metrics output. */
 function formatViolation(v: PolicyViolation): string {
-  return `${v.ruleId}: ${v.reason}`;
+  const base = `${v.ruleId}: ${v.reason}`;
+  return v.escalateTo !== undefined ? `${base} [escalate: ${v.escalateTo}]` : base;
 }
 
 // ============================================================================
