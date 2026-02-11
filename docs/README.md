@@ -126,11 +126,12 @@ Detailed technical documentation:
 
 #### Guides
 
-| Document                                                          | Description              |
-| ----------------------------------------------------------------- | ------------------------ |
-| [MCP_INTEGRATION.md](./guides/MCP_INTEGRATION.md)                 | MCP server configuration |
-| [WORKFLOW_TEMPLATES.md](./guides/WORKFLOW_TEMPLATES.md)           | Creating YAML workflows  |
-| [DEBUGGING_OBSERVABILITY.md](./guides/DEBUGGING_OBSERVABILITY.md) | Debug logging, tracing   |
+| Document                                                          | Description                                     |
+| ----------------------------------------------------------------- | ----------------------------------------------- |
+| [MCP_INTEGRATION.md](./guides/MCP_INTEGRATION.md)                 | MCP server configuration                        |
+| [WORKFLOW_TEMPLATES.md](./guides/WORKFLOW_TEMPLATES.md)           | Creating YAML workflows                         |
+| [DEBUGGING_OBSERVABILITY.md](./guides/DEBUGGING_OBSERVABILITY.md) | Debug logging, tracing                          |
+| [Claude Code Observability](./guides/claude-code-observability/)  | Hooks, status line, MCP logging for Claude Code |
 
 #### Reference
 
