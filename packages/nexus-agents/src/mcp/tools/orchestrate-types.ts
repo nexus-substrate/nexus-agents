@@ -13,6 +13,7 @@ import type { IOrchestrator, OrchestratorType } from '../../core/types/orchestra
 import type { WorkflowPattern } from '../../orchestration/workflow-router-types.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
+import type { IMcpNotifier } from '../mcp-notifier.js';
 import type { ExecutionPlan, Expert } from '../../agents/index.js';
 import { OrchestratorFactory } from '../../orchestration/orchestrator-factory.js';
 
@@ -133,6 +134,8 @@ export interface OrchestrateDeps {
   security?: SecurityConfig | undefined;
   /** Model adapter for fallback orchestration path (Issue #827) */
   modelAdapter?: import('../../core/index.js').IModelAdapter | undefined;
+  /** MCP notifier for client-visible logging (Issue #974) */
+  notifier?: IMcpNotifier | undefined;
 }
 
 // ============================================================================

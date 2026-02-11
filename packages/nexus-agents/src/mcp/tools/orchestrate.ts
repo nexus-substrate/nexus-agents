@@ -28,6 +28,7 @@ import type {
 } from '../../core/types/orchestrator.js';
 import { wrapToolWithTimeout, toSdkCallback } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
+import { createMcpNotifier, NOOP_NOTIFIER } from '../mcp-notifier.js';
 import type { ExecutionPlan } from '../../agents/index.js';
 import { createOrchestratorWithSica } from './orchestrate-sica.js';
 import { OrchestratorFactory } from '../../orchestration/orchestrator-factory.js';
@@ -395,6 +396,7 @@ function instrumentV2Orchestrate(input: { task: string }, logger: ILogger): void
 }
 
 function createOrchestrateHandler(deps: OrchestrateDeps) {
+  const notifier = deps.notifier ?? NOOP_NOTIFIER;
   return async (args: unknown, ctx: HandlerContext) => {
     const validated = OrchestrateInputSchema.safeParse(args);
     if (!validated.success) {
@@ -407,6 +409,11 @@ function createOrchestrateHandler(deps: OrchestrateDeps) {
       };
     }
     ctx.logger.debug('Starting orchestration', { taskLength: validated.data.task.length });
+    notifier.info('orchestrate', {
+      event: 'orchestrate_start',
+      taskLength: validated.data.task.length,
+    });
+    const startMs = getTimeProvider().now();
     const v2Config = resolveV2Config();
     if (v2Config.orchestrateEnabled) instrumentV2Orchestrate(validated.data, ctx.logger);
 
@@ -423,6 +430,12 @@ function createOrchestrateHandler(deps: OrchestrateDeps) {
       };
     }
 
+    notifier.info('orchestrate', {
+      event: 'orchestrate_complete',
+      subtaskCount: result.value.stepsCompleted,
+      durationMs: getTimeProvider().now() - startMs,
+    });
+
     // Merge agent plan into output when available
     const output = agentPlan !== undefined ? { ...result.value, agentPlan } : result.value;
     return { content: [{ type: 'text' as const, text: JSON.stringify(output, null, 2) }] };
@@ -435,10 +448,12 @@ function createOrchestrateHandler(deps: OrchestrateDeps) {
  */
 export function registerOrchestrateTool(server: McpServer, deps: OrchestrateDeps): void {
   const logger = deps.logger ?? createLogger({ tool: 'orchestrate' });
+  const notifier = deps.notifier ?? createMcpNotifier(server);
+  const depsWithNotifier = { ...deps, notifier };
   const description =
     'Orchestrate a task by analyzing it, breaking it into subtasks if needed, and coordinating expert agents';
 
-  const secureHandler = createSecureHandler(createOrchestrateHandler(deps), {
+  const secureHandler = createSecureHandler(createOrchestrateHandler(depsWithNotifier), {
     toolName: 'orchestrate',
     rateLimiter: deps.rateLimiter,
     logger,

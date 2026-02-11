@@ -39,6 +39,7 @@ import {
   getCliForModel,
 } from './delegate-to-model-helpers.js';
 import { getToolMemory } from './tool-memory.js';
+import { createMcpNotifier, NOOP_NOTIFIER, type IMcpNotifier } from '../mcp-notifier.js';
 import { getOutcomeStore } from '../../orchestration/outcomes/index.js';
 import { detectTaskCategory } from '../../config/task-specialization.js';
 import type { CliName } from '../../cli-adapters/types-core.js';
@@ -179,6 +180,33 @@ function instrumentV2Pipeline(input: { task: string }, logger: ILogger): void {
   });
 }
 
+/** Options for notifyAndRecord. */
+interface NotifyRecordOpts {
+  notifier: IMcpNotifier;
+  task: string;
+  model: string;
+  router: string;
+  startMs: number;
+  governance: GovernanceClassification;
+}
+
+/** Notifies model selection and records delegation. */
+function notifyAndRecord(opts: NotifyRecordOpts): void {
+  opts.notifier.info('delegate', {
+    event: 'model_selected',
+    model: opts.model,
+    router: opts.router,
+    durationMs: Date.now() - opts.startMs,
+  });
+  recordDelegation(
+    opts.task,
+    opts.model,
+    opts.router === 'CompositeRouter',
+    opts.startMs,
+    opts.governance
+  );
+}
+
 /**
  * Creates the core handler logic for delegate_to_model tool.
  * Uses CompositeRouter when available, falls back to local model selection.
@@ -186,6 +214,7 @@ function instrumentV2Pipeline(input: { task: string }, logger: ILogger): void {
 function createDelegateHandler(
   deps: DelegateDeps
 ): (args: unknown, ctx: HandlerContext) => Promise<ToolResult> {
+  const notifier = deps.notifier ?? NOOP_NOTIFIER;
   return async (args: unknown, ctx: HandlerContext): Promise<ToolResult> => {
     const startMs = Date.now();
     const validated = DelegateInputSchema.safeParse(args);
@@ -194,25 +223,33 @@ function createDelegateHandler(
       return errorResult(`Validation error: ${formatZodError(validated.error)}`);
     }
     const input = validated.data;
+    notifier.info('delegate', { event: 'routing_start', taskLength: input.task.length });
     ctx.logger.info('Analyzing task for model routing', { taskLength: input.task.length });
     const requirements = analyzeTask(input.task);
     const governance = classifyDelegateGovernance(input, ctx.logger);
     if (resolveV2Config().delegateEnabled) instrumentV2Pipeline(input, ctx.logger);
     // Try CompositeRouter first if available
     if (deps.router !== undefined) {
-      const routingResult = await routeViaCompositeRouter(
+      const routerResult = await routeViaCompositeRouter(
         input.task,
         deps.router,
         deps.feedbackIntegration,
         ctx.logger
       );
-      if (routingResult !== null) {
+      if (routerResult !== null) {
         const output = mapCompositeDecisionToOutput(
-          routingResult.decision,
+          routerResult.decision,
           requirements.estimatedTokens
         );
         ctx.logger.info('Routed via CompositeRouter', { model: output.recommended_model });
-        recordDelegation(input.task, output.recommended_model, true, startMs, governance);
+        notifyAndRecord({
+          notifier,
+          task: input.task,
+          model: output.recommended_model,
+          router: 'CompositeRouter',
+          startMs,
+          governance,
+        });
         return successResult(JSON.stringify(enrichWithGovernance(output, governance), null, 2));
       }
       ctx.logger.info('Falling back to local model selection');
@@ -222,7 +259,14 @@ function createDelegateHandler(
     const output = buildDelegateOutput(selection, requirements);
     if (!output) return errorResult(`Unknown model: ${selection.model}`);
     ctx.logger.info('Model recommendation complete', { model: output.recommended_model });
-    recordDelegation(input.task, output.recommended_model, false, startMs, governance);
+    notifyAndRecord({
+      notifier,
+      task: input.task,
+      model: output.recommended_model,
+      router: 'local',
+      startMs,
+      governance,
+    });
     return successResult(JSON.stringify(enrichWithGovernance(output, governance), null, 2));
   };
 }
@@ -238,9 +282,11 @@ function createDelegateHandler(
  */
 export function registerDelegateToModelTool(server: McpServer, deps: DelegateDeps): void {
   const logger = deps.logger ?? createLogger({ tool: 'delegate_to_model' });
+  const notifier = deps.notifier ?? createMcpNotifier(server);
 
   // Wrap handler with secure handler for rate limiting and request context (Issue #531)
-  const secureHandler = createSecureHandler(createDelegateHandler(deps), {
+  const depsWithNotifier = { ...deps, notifier };
+  const secureHandler = createSecureHandler(createDelegateHandler(depsWithNotifier), {
     toolName: 'delegate_to_model',
     rateLimiter: deps.rateLimiter,
     logger,

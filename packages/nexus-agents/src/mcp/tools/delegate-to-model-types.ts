@@ -12,6 +12,7 @@ import type { ILogger, ICompositeRouter } from '../../core/index.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
 import type { IFeedbackIntegration } from '../../learning/feedback-integration.js';
+import type { IMcpNotifier } from '../mcp-notifier.js';
 
 /**
  * Billing mode for model routing.
@@ -117,6 +118,8 @@ export interface DelegateDeps {
   feedbackIntegration?: IFeedbackIntegration | undefined;
   /** Security configuration (includes timeout settings - Issue #271) */
   security?: SecurityConfig | undefined;
+  /** MCP notifier for client-visible logging (Issue #974) */
+  notifier?: IMcpNotifier | undefined;
 }
 
 /**

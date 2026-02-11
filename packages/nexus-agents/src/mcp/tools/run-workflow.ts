@@ -22,6 +22,7 @@ import {
 import type { WorkflowDefinition, IWorkflowEngine } from '../../core/index.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
+import { createMcpNotifier, NOOP_NOTIFIER } from '../mcp-notifier.js';
 import type {
   RunWorkflowInput,
   WorkflowToolResult,
@@ -228,6 +229,7 @@ const toolInputSchema = {
 function createRunWorkflowHandler(
   deps: RunWorkflowDeps
 ): (args: unknown, ctx: HandlerContext) => Promise<ToolResponse> {
+  const notifier = deps.notifier ?? NOOP_NOTIFIER;
   return async (args: unknown, ctx: HandlerContext): Promise<ToolResponse> => {
     const validated = RunWorkflowInputSchema.safeParse(args);
     if (!validated.success) {
@@ -244,8 +246,21 @@ function createRunWorkflowHandler(
       template: validated.data.template,
       dryRun: validated.data.dryRun,
     });
+    notifier.info('run_workflow', { event: 'workflow_start', template: validated.data.template });
+    const startMs = getTimeProvider().now();
 
-    return handleRunWorkflow(deps, validated.data);
+    const result = await handleRunWorkflow(deps, validated.data);
+
+    // Notify on completion (only for non-error responses)
+    if (result.isError !== true) {
+      notifier.info('run_workflow', {
+        event: 'workflow_complete',
+        template: validated.data.template,
+        durationMs: getTimeProvider().now() - startMs,
+      });
+    }
+
+    return result;
   };
 }
 
@@ -260,9 +275,11 @@ function createRunWorkflowHandler(
  */
 export function registerRunWorkflowTool(server: McpServer, deps: RunWorkflowDeps): void {
   const logger = deps.logger ?? createLogger({ tool: 'run_workflow' });
+  const notifier = deps.notifier ?? createMcpNotifier(server);
+  const depsWithNotifier = { ...deps, notifier };
 
   // Wrap handler with secure handler for rate limiting and request context (Issue #531)
-  const secureHandler = createSecureHandler(createRunWorkflowHandler(deps), {
+  const secureHandler = createSecureHandler(createRunWorkflowHandler(depsWithNotifier), {
     toolName: 'run_workflow',
     rateLimiter: deps.rateLimiter,
     logger,

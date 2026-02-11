@@ -21,6 +21,8 @@ import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middlewar
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
+import type { IMcpNotifier } from '../mcp-notifier.js';
+import { createMcpNotifier } from '../mcp-notifier.js';
 
 // ============================================================================
 // Types & Schema
@@ -47,6 +49,8 @@ export interface RunGraphWorkflowDeps {
   readonly logger?: ILogger | undefined;
   readonly rateLimiter: RateLimiter;
   readonly security?: SecurityConfig | undefined;
+  /** MCP notifier for client-visible logging (Issue #974) */
+  readonly notifier?: IMcpNotifier | undefined;
 }
 
 export interface RunGraphWorkflowResponse {
@@ -175,13 +179,30 @@ async function handleRunGraphWorkflow(
 // Registration
 // ============================================================================
 
-/** Registers the run_graph_workflow tool with an MCP server. */
-export function registerRunGraphWorkflowTool(server: McpServer, deps: RunGraphWorkflowDeps): void {
-  const logger = deps.logger ?? createLogger({ tool: 'run_graph_workflow' });
+type ToolResponse = { content: Array<{ type: 'text'; text: string }>; isError?: boolean };
 
-  type ToolResponse = { content: Array<{ type: 'text'; text: string }>; isError?: boolean };
+const GRAPH_WORKFLOW_DESCRIPTION =
+  'Execute a predefined graph-based workflow with checkpointing, event streaming, and audit trail support';
 
-  const handler = async (args: unknown, _ctx: HandlerContext): Promise<ToolResponse> => {
+const GRAPH_WORKFLOW_SCHEMA = {
+  workflow: z
+    .string()
+    .min(1)
+    .max(100)
+    .describe(
+      'Workflow name: echo, pipeline, code-review, security-scan. Use "list" for available workflows.'
+    ),
+  inputs: z.record(z.unknown()).optional().describe('Input values for the workflow'),
+  enableCheckpointing: z.boolean().optional().describe('Enable checkpoint saving'),
+  enableAuditTrail: z.boolean().optional().describe('Enable audit trail logging'),
+};
+
+/** Creates the handler for run_graph_workflow tool. */
+function createGraphWorkflowHandler(
+  logger: ILogger,
+  notifier: IMcpNotifier
+): (args: unknown, ctx: HandlerContext) => Promise<ToolResponse> {
+  return async (args: unknown, _ctx: HandlerContext): Promise<ToolResponse> => {
     const parsed = RunGraphWorkflowInputSchema.safeParse(args);
     if (!parsed.success) {
       return {
@@ -192,9 +213,26 @@ export function registerRunGraphWorkflowTool(server: McpServer, deps: RunGraphWo
     if (parsed.data.workflow === 'list') {
       return { content: [{ type: 'text', text: JSON.stringify(getGraphWorkflowList(), null, 2) }] };
     }
+    notifier.info('run_graph_workflow', {
+      event: 'graph_workflow_start',
+      workflow: parsed.data.workflow,
+    });
     const result = await handleRunGraphWorkflow(parsed.data, logger);
+    notifier.info('run_graph_workflow', {
+      event: 'graph_workflow_complete',
+      workflow: result.workflow,
+      nodeCount: result.nodesExecuted,
+      durationMs: result.durationMs,
+    });
     return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
   };
+}
+
+/** Registers the run_graph_workflow tool with an MCP server. */
+export function registerRunGraphWorkflowTool(server: McpServer, deps: RunGraphWorkflowDeps): void {
+  const logger = deps.logger ?? createLogger({ tool: 'run_graph_workflow' });
+  const notifier = deps.notifier ?? createMcpNotifier(server);
+  const handler = createGraphWorkflowHandler(logger, notifier);
 
   const secureHandler = createSecureHandler(handler, {
     toolName: 'run_graph_workflow',
@@ -205,28 +243,11 @@ export function registerRunGraphWorkflowTool(server: McpServer, deps: RunGraphWo
   const timeoutMs = getToolTimeout('run_graph_workflow', deps.security);
   const wrapped = wrapToolWithTimeout('run_graph_workflow', secureHandler, { timeoutMs, logger });
 
-  const toolSchema = {
-    workflow: z
-      .string()
-      .min(1)
-      .max(100)
-      .describe(
-        'Workflow name: echo, pipeline, code-review, security-scan. Use "list" for available workflows.'
-      ),
-    inputs: z.record(z.unknown()).optional().describe('Input values for the workflow'),
-    enableCheckpointing: z.boolean().optional().describe('Enable checkpoint saving'),
-    enableAuditTrail: z.boolean().optional().describe('Enable audit trail logging'),
-  };
-
-  const description =
-    'Execute a predefined graph-based workflow with checkpointing, event streaming, and audit trail support';
-
   server.registerTool(
     'run_graph_workflow',
-    { description, inputSchema: toolSchema },
+    { description: GRAPH_WORKFLOW_DESCRIPTION, inputSchema: GRAPH_WORKFLOW_SCHEMA },
     toSdkCallback(wrapped)
   );
-
   logger.info('Registered run_graph_workflow tool');
 }
 
