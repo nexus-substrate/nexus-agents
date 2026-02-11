@@ -298,8 +298,10 @@ function recordVoteSuccess(
     void memory.runPromotionPipeline().catch((error: unknown) => {
       createLogger({ tool: 'consensus-vote' }).debug('Promotion pipeline failed', { error });
     });
-  } catch {
-    // Best-effort memory recording
+  } catch (error: unknown) {
+    createLogger({ tool: 'consensus-vote' }).warn('Failed to record vote success', {
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 }
 
@@ -312,8 +314,10 @@ function recordVoteError(proposal: string, errorMessage: string): void {
       solution: 'Pending - vote execution failed',
       filePattern: 'mcp/tools/consensus-vote',
     });
-  } catch {
-    // Best-effort memory recording
+  } catch (error: unknown) {
+    createLogger({ tool: 'consensus-vote' }).warn('Failed to record vote error', {
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 }
 

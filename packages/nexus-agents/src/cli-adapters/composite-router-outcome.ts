@@ -4,6 +4,7 @@
  */
 import {
   type ILogger,
+  createLogger,
   createSharedTaskAnalyzer,
   taskAnalysisResultToBanditContext,
 } from '../core/index.js';
@@ -157,8 +158,14 @@ export function computeQualityReward(cli: CliName, success: boolean, durationMs:
       const rate = recent.filter((o) => o.success).length / recent.length;
       reward += rate * 0.3;
     }
-  } catch {
-    // Best-effort — don't block routing on store errors
+  } catch (error: unknown) {
+    createLogger({ component: 'composite-router' }).warn(
+      'Failed to query outcome store for quality reward',
+      {
+        error: error instanceof Error ? error.message : String(error),
+        cli,
+      }
+    );
   }
 
   const latencyPenalty = Math.min(0.2, (durationMs / MAX_LATENCY_MS) * 0.2);

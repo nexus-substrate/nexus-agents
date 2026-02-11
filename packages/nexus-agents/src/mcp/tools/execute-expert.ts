@@ -223,8 +223,11 @@ function injectErrorHints(task: Task, role: string): void {
     if (hints !== undefined) {
       (task.context.metadata as Record<string, unknown>)._pastErrorSolutions = hints;
     }
-  } catch {
-    // Memory retrieval is best-effort
+  } catch (error: unknown) {
+    createLogger({ tool: 'execute_expert' }).warn('Failed to inject error hints', {
+      error: error instanceof Error ? error.message : String(error),
+      role,
+    });
   }
 }
 

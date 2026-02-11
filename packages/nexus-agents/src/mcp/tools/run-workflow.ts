@@ -136,8 +136,11 @@ function recordWorkflowSuccess(template: string, stepsCompleted: number, duratio
     void memory.runPromotionPipeline().catch((error: unknown) => {
       createLogger({ tool: 'run-workflow' }).debug('Promotion pipeline failed', { error });
     });
-  } catch {
-    // Best-effort
+  } catch (error: unknown) {
+    createLogger({ tool: 'run-workflow' }).warn('Failed to record workflow success', {
+      error: error instanceof Error ? error.message : String(error),
+      template,
+    });
   }
 }
 
@@ -149,8 +152,11 @@ function recordWorkflowError(template: string, errorMessage: string): void {
       solution: 'Pending - workflow failed',
       filePattern: 'mcp/tools/run-workflow',
     });
-  } catch {
-    // Best-effort
+  } catch (error: unknown) {
+    createLogger({ tool: 'run-workflow' }).warn('Failed to record workflow error', {
+      error: error instanceof Error ? error.message : String(error),
+      template,
+    });
   }
 }
 

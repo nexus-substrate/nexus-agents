@@ -263,7 +263,13 @@ function recordOutcomes(partitions: readonly PartitionResult[], category: TaskCa
         ...(p.success ? {} : {}),
       });
     }
-  } catch {
-    // Best-effort — never block the response
+  } catch (error: unknown) {
+    createLogger({ component: 'parallel-exploration' }).warn(
+      'Failed to record exploration outcomes',
+      {
+        error: error instanceof Error ? error.message : String(error),
+        partitionCount: partitions.length,
+      }
+    );
   }
 }

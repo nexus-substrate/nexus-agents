@@ -421,7 +421,10 @@ function recordReviewOutcomes(partitions: readonly CliReviewPartition[]): void {
         source: 'delegate',
       });
     }
-  } catch {
-    // Best-effort
+  } catch (error: unknown) {
+    createLogger({ component: 'triangulated-review' }).warn('Failed to record review outcomes', {
+      error: error instanceof Error ? error.message : String(error),
+      partitionCount: partitions.length,
+    });
   }
 }
