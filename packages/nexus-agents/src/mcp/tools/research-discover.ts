@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- 404 lines, cohesive single-tool module per governance */
 /**
  * nexus-agents/mcp - Research Discover Tool
  *
