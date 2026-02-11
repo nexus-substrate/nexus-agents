@@ -132,3 +132,12 @@ export { orchestrateInputToTaskContract, executeOrchestratePipeline } from './v2
 export type { OrchestrateInputLike } from './v2-orchestrate.js';
 
 export { resolveV2Config, type V2Mode, type V2Config } from './v2-config.js';
+
+export {
+  ExecutionTraceEntrySchema,
+  ErrorTaxonomy,
+  type ExecutionTraceEntry,
+  type ErrorTaxonomyType,
+} from './trace-schema.js';
+
+export { TraceWriter, type TraceWriterOptions } from './trace-writer.js';

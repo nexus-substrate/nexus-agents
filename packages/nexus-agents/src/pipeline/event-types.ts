@@ -110,6 +110,8 @@ interface StageFailedEvent extends BaseEvent {
   readonly executionId: string;
   readonly stageId: string;
   readonly error: string;
+  /** Error classification: retriable (transient) or fatal (permanent) (Epic #952). */
+  readonly errorTaxonomy?: 'retriable' | 'fatal';
 }
 
 interface StageRetryingEvent extends BaseEvent {
@@ -144,6 +146,10 @@ interface ModelCalledEvent extends BaseEvent {
   readonly tokensIn: number;
   readonly tokensOut: number;
   readonly durationMs: number;
+  /** Agent that initiated this model call (Epic #952). */
+  readonly agentId?: string;
+  /** Agent role (e.g., code_expert, security_expert) (Epic #952). */
+  readonly role?: string;
 }
 
 /** Routing decision events. */
@@ -151,6 +157,10 @@ interface RoutingDecisionEvent extends BaseEvent {
   readonly type: 'routing.decision';
   readonly taskId: string;
   readonly selectedModel: string;
+  /** Human-readable reasoning for model selection (Epic #952). */
+  readonly reasoning?: string;
+  /** Routing decision path (stage:result pairs) (Epic #952). */
+  readonly decisionPath?: readonly string[];
 }
 
 /** Learning loop events (Issue #901, Phase 4). */
