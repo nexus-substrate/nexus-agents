@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.10.0] - 2026-02-11
+
+### Added
+
+- MemR3 reflective memory retrieval (arXiv:2512.20237) (#988, #736)
+  - `ReflectiveRetriever` module with LLM-guided keyword expansion
+  - Zod-validated `ReflectionCriteria` schema for structured output
+  - LRU cache (50 entries, 5min TTL) for reflection results
+  - Aggressive 2s timeout with graceful fallback to keyword retrieval
+  - Feature flag: `NEXUS_REFLECTIVE_MEMORY` (true|shadow|unset)
+  - Shadow mode for offline comparison of reflection vs keyword retrieval
+  - Wired into `memory_query` MCP tool
+  - 23 new tests
+
+### Changed
+
+- Wire parallel-executor retry delay to `WORKFLOW_TIMEOUTS.maxRetryDelayMs` (#984 follow-up)
+
 ## [2.9.0] - 2026-02-11
 
 ### Added
