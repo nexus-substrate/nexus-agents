@@ -72,13 +72,13 @@ if [ "$CTX_INT" -lt 0 ] 2>/dev/null; then
   CTX_DISPLAY="N/A"
   CTX_COLOR="$CYAN"
 elif [ "$CTX_INT" -ge 85 ]; then
-  CTX_DISPLAY="${CTX_INT}%%"
+  CTX_DISPLAY="${CTX_INT}%"
   CTX_COLOR="$RED"
 elif [ "$CTX_INT" -ge 60 ]; then
-  CTX_DISPLAY="${CTX_INT}%%"
+  CTX_DISPLAY="${CTX_INT}%"
   CTX_COLOR="$YELLOW"
 else
-  CTX_DISPLAY="${CTX_INT}%%"
+  CTX_DISPLAY="${CTX_INT}%"
   CTX_COLOR="$GREEN"
 fi
 
@@ -95,13 +95,28 @@ if [ "$EXCEEDS_200K" = "true" ]; then
   CTX_COLOR="$RED"
 fi
 
-# ── Format: Cost ─────────────────────────────────────────────────────
-COST_FMT=$(printf "%.4f" "$COST_USD" 2>/dev/null || printf "0.0000")
+# ── Format: Cost (adaptive precision: $0.0012 vs $12.34 vs $384.89) ──
+COST_INT=${COST_USD%.*}
+COST_INT=${COST_INT:-0}
+if [ "$COST_INT" -ge 10 ] 2>/dev/null; then
+  COST_FMT=$(printf "%.2f" "$COST_USD" 2>/dev/null || printf "0.00")
+elif [ "$COST_INT" -ge 1 ] 2>/dev/null; then
+  COST_FMT=$(printf "%.2f" "$COST_USD" 2>/dev/null || printf "0.00")
+else
+  COST_FMT=$(printf "%.4f" "$COST_USD" 2>/dev/null || printf "0.0000")
+fi
 
-# ── Format: Duration (minutes) ───────────────────────────────────────
-DUR_MIN=0
+# ── Format: Duration (minutes, or hours if > 60m) ────────────────────
+DUR_DISPLAY="0m"
 if [ "${DURATION_MS:-0}" -gt 0 ] 2>/dev/null; then
   DUR_MIN=$((DURATION_MS / 60000))
+  if [ "$DUR_MIN" -ge 60 ]; then
+    DUR_HR=$((DUR_MIN / 60))
+    DUR_REMAIN=$((DUR_MIN % 60))
+    DUR_DISPLAY="${DUR_HR}h${DUR_REMAIN}m"
+  else
+    DUR_DISPLAY="${DUR_MIN}m"
+  fi
 fi
 
 # ── Format: Code delta (+N/-M) ───────────────────────────────────────
@@ -128,7 +143,7 @@ if [ "$CACHE_TOTAL" -gt 0 ]; then
   else
     CACHE_COLOR="$RED"
   fi
-  CACHE_PART=$(printf '%b' "${DIM}|${RESET} ${DIM}cache${RESET} ${CACHE_COLOR}${CACHE_HIT}%%${RESET} ")
+  CACHE_PART=$(printf '%b' "${DIM}|${RESET} ${DIM}cache${RESET} ${CACHE_COLOR}${CACHE_HIT}%${RESET} ")
 fi
 
 # ── Format: API efficiency (only show if > 0) ────────────────────────
@@ -143,7 +158,7 @@ if [ "${API_DURATION_MS:-0}" -gt 0 ] && [ "${DURATION_MS:-0}" -gt 0 ] 2>/dev/nul
     else
       API_COLOR="$GREEN"
     fi
-    API_PART=$(printf '%b' "${DIM}|${RESET} ${DIM}api${RESET} ${API_COLOR}${API_PCT}%%${RESET} ")
+    API_PART=$(printf '%b' "${DIM}|${RESET} ${DIM}api${RESET} ${API_COLOR}${API_PCT}%${RESET} ")
   fi
 fi
 
@@ -181,7 +196,7 @@ printf '%b' "${MAGENTA}${MODEL_DISPLAY}${RESET} "
 printf '%b' "${AGENT_PART}"
 printf '%b' "${DIM}|${RESET} ${DIM}${CTX_LABEL}${RESET} ${CTX_COLOR}${CTX_DISPLAY}${RESET} "
 printf '%b' "${DIM}|${RESET} ${YELLOW}\$${COST_FMT}${RESET} "
-printf '%b' "${DIM}|${RESET} ${CYAN}${DUR_MIN}m${RESET} "
+printf '%b' "${DIM}|${RESET} ${CYAN}${DUR_DISPLAY}${RESET} "
 printf '%b' "${DIM}|${RESET} ${GREEN}${DELTA_DISPLAY}${RESET} "
 printf '%b' "${CACHE_PART}"
 printf '%b' "${API_PART}"
@@ -292,7 +307,7 @@ if [ -f "$STATE_FILE" ]; then
       if [ "$pct" -lt 60 ]; then color="$RED"
       elif [ "$pct" -lt 80 ]; then color="$YELLOW"
       fi
-      printf '%b' "${DIM}${name}${RESET}${color}${pct}%%${RESET}"
+      printf '%b' "${DIM}${name}${RESET}${color}${pct}%${RESET}"
     }
 
     CLI_TOTAL=$(( ${N_CL_CALLS:-0} + ${N_GE_CALLS:-0} + ${N_CX_CALLS:-0} ))
