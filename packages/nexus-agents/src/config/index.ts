@@ -110,6 +110,22 @@ export {
   parseBoolEnv,
   // Documentation
   getEnvVarDocumentation,
+  // Canonical timeout modules (Issue #984)
+  CLI_TIMEOUTS,
+  VOTE_TIMEOUTS,
+  MCP_TIMEOUTS,
+  WORKFLOW_TIMEOUTS,
+  GRAPH_TIMEOUTS,
+  PER_CLI_TASK_TIMEOUTS,
+  API_TIMEOUTS,
+  INTERNAL_TIMEOUTS,
+  TEST_TIMEOUTS,
+  TIMEOUT_ENV_VARS,
+  getCliTimeoutProfile,
+  getCliTimeout,
+  resolveVoteTimeout,
+  resolveEnvTimeout,
+  validateTimeout as validateTimeoutCentral,
 } from './defaults.js';
 
 // ConfigManager (Issue #360)

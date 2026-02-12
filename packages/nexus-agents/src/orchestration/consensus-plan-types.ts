@@ -11,6 +11,7 @@
 
 import { z } from 'zod';
 import type { CliName } from '../cli-adapters/types-core.js';
+import { PER_CLI_TASK_TIMEOUTS } from '../config/timeouts.js';
 
 // ============================================================================
 // Plan Structure
@@ -108,8 +109,13 @@ export interface ConsensusPlanResult {
 export const ConsensusPlanConfigSchema = z.object({
   /** Max CLIs to dispatch to (default: 3). */
   maxClis: z.number().int().min(1).max(4).default(3),
-  /** Per-CLI timeout in ms (default: 120_000, increased per Issue #983). */
-  perCliTimeoutMs: z.number().int().min(1000).max(300_000).default(120_000),
+  /** Per-CLI timeout in ms (default from config/timeouts.ts, Issue #984). */
+  perCliTimeoutMs: z
+    .number()
+    .int()
+    .min(PER_CLI_TASK_TIMEOUTS.minMs)
+    .max(PER_CLI_TASK_TIMEOUTS.maxMs)
+    .default(PER_CLI_TASK_TIMEOUTS.defaultMs),
   /** Max chars per CLI response (default: 8000). */
   maxOutputCharsPerCli: z.number().int().min(100).max(30_000).default(8000),
 });

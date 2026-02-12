@@ -62,13 +62,12 @@ export {
 
 // Import from execution module for internal use
 import {
-  DEFAULT_MAX_RETRIES,
   createErrorVoteResult,
   createSimulationVoteResult,
   createSimulatedVotes,
   executeWithRetries,
-  resolveVoteTimeout,
 } from './voter-execution.js';
+import { resolveVoteTimeout, VOTE_TIMEOUTS } from '../config/timeouts.js';
 
 // ============================================================================
 // Agent Vote Execution
@@ -110,7 +109,7 @@ export async function executeAgentVote(
 ): Promise<AgentVoteResult> {
   const start = getTimeProvider().now();
   const timeoutMs = options?.timeoutMs ?? resolveVoteTimeout();
-  const maxRetries = options?.maxRetries ?? DEFAULT_MAX_RETRIES;
+  const maxRetries = options?.maxRetries ?? VOTE_TIMEOUTS.maxRetries;
   const allowSimulation = options?.allowSimulation ?? false;
 
   logger.info('Executing vote', { role, model: adapter.modelId, provider: adapter.providerId });
@@ -274,7 +273,7 @@ export async function collectRealVotes(
   const logger = options.logger ?? defaultLogger;
   const { roles, proposal, simulate, allowSimulation } = options;
   const timeoutMs = options.timeoutMs ?? resolveVoteTimeout();
-  const maxRetries = options.maxRetries ?? DEFAULT_MAX_RETRIES;
+  const maxRetries = options.maxRetries ?? VOTE_TIMEOUTS.maxRetries;
 
   if (simulate === true) {
     logger.info('Using simulation mode (explicitly requested)');

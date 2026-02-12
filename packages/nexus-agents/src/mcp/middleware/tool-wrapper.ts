@@ -20,28 +20,25 @@ import {
   type ContextAwareToolHandler,
   type MiddlewareChainConfig,
 } from './middleware-chain.js';
+import { MCP_TIMEOUTS } from '../../config/timeouts.js';
 
 /**
- * Default timeout configuration (60s default, 5min max).
- * Used when no config is provided.
+ * Default timeout configuration.
+ * Values sourced from config/timeouts.ts (Issue #984).
  */
 export const DEFAULT_TIMEOUT_CONFIG: TimeoutConfig = {
-  defaultTimeoutMs: 60_000,
-  maxTimeoutMs: 300_000,
+  defaultTimeoutMs: MCP_TIMEOUTS.defaultMs,
+  maxTimeoutMs: MCP_TIMEOUTS.maxMs,
   enableLogging: true,
   uriValidation: true,
 };
 
 /**
  * Default per-tool timeout overrides.
- * Tools not listed here use DEFAULT_TIMEOUT_CONFIG.defaultTimeoutMs.
- * (Issue #657 - Per-tool timeout configuration)
+ * Sourced from config/timeouts.ts (Issue #984).
  */
 export const DEFAULT_TOOL_TIMEOUTS: Record<string, number> = {
-  orchestrate: 300_000,
-  consensus_vote: 300_000,
-  execute_expert: 300_000,
-  run_workflow: 300_000,
+  ...MCP_TIMEOUTS.perTool,
 };
 
 /**

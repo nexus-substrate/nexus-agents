@@ -30,12 +30,31 @@ export type {
 
 export { isTaskComplexity, isKnownCliName } from './defaults-types.js';
 
-// Re-export timeout profiles
+// Re-export timeout profiles (delegates to config/timeouts.ts)
 export {
   TIMEOUT_PROFILES,
   getTimeoutProfile,
   getTimeoutForCli,
 } from './defaults-timeout-profiles.js';
+
+// Re-export canonical timeout modules (Issue #984)
+export {
+  CLI_TIMEOUTS,
+  VOTE_TIMEOUTS,
+  MCP_TIMEOUTS,
+  WORKFLOW_TIMEOUTS,
+  GRAPH_TIMEOUTS,
+  PER_CLI_TASK_TIMEOUTS,
+  API_TIMEOUTS,
+  INTERNAL_TIMEOUTS,
+  TEST_TIMEOUTS,
+  TIMEOUT_ENV_VARS,
+  getCliTimeoutProfile,
+  getCliTimeout,
+  resolveVoteTimeout,
+  resolveEnvTimeout,
+  validateTimeout,
+} from './timeouts.js';
 
 // Re-export env helpers (internal use)
 export { parseIntEnv, parseFloatEnv, parseBoolEnv } from './defaults-env.js';
@@ -49,6 +68,14 @@ import {
   createGetToolRateLimit,
   createGetEnvVarDocumentation,
 } from './defaults-env.js';
+import {
+  API_TIMEOUTS as _API,
+  WORKFLOW_TIMEOUTS as _WF,
+  MCP_TIMEOUTS as _MCP,
+  INTERNAL_TIMEOUTS as _INT,
+  TEST_TIMEOUTS as _TEST,
+  CLI_TIMEOUTS as _CLI,
+} from './timeouts.js';
 
 // ============================================================================
 // Central Defaults Object
@@ -60,36 +87,37 @@ import {
 export const DEFAULTS = {
   /**
    * Default timeout settings in milliseconds.
+   * Values sourced from config/timeouts.ts (Issue #984).
    */
   TIMEOUT_DEFAULTS: {
     /** CLI tool execution timeout in milliseconds. */
-    cliMs: 60_000,
+    cliMs: _CLI.default.standard,
     /** Simple CLI task timeout (single function, quick query). */
-    cliSimpleMs: 30_000,
+    cliSimpleMs: _CLI.default.simple,
     /** Complex CLI task timeout (codebase-wide, deep analysis). */
-    cliComplexMs: 120_000,
+    cliComplexMs: _CLI.default.complex,
     /** API request timeout in milliseconds. */
-    apiMs: 30_000,
+    apiMs: _API.defaultMs,
     /** Maximum API timeout in milliseconds. */
-    apiMaxMs: 300_000,
+    apiMaxMs: _API.maxMs,
     /** Workflow-level timeout in milliseconds (5 minutes). */
-    workflowMs: 5 * 60_000,
+    workflowMs: _WF.workflowMs,
     /** Maximum workflow timeout in milliseconds (30 minutes). */
-    workflowMaxMs: 30 * 60_000,
+    workflowMaxMs: _WF.workflowMaxMs,
     /** Step-level timeout in milliseconds. */
-    stepMs: 2 * 60_000,
-    /** MCP operation default timeout in milliseconds. */
-    mcpMs: 30_000,
+    stepMs: _INT.selfEvalMs,
+    /** MCP operation default timeout in milliseconds (generic, not per-tool). */
+    mcpMs: _API.defaultMs,
     /** MCP operation maximum timeout in milliseconds. */
-    mcpMaxMs: 300_000,
+    mcpMaxMs: _MCP.maxMs as number,
     /** Health check timeout in milliseconds. */
-    healthCheckMs: 5_000,
+    healthCheckMs: _INT.healthCheckMs,
     /** Global test run timeout in milliseconds (10 minutes). */
-    testGlobalMs: 10 * 60_000,
+    testGlobalMs: _TEST.globalMs,
     /** Per-task test timeout in milliseconds. */
-    testTaskMs: 2 * 60_000,
+    testTaskMs: _TEST.taskMs,
     /** Circuit breaker reset timeout in milliseconds. */
-    circuitBreakerResetMs: 30_000,
+    circuitBreakerResetMs: _INT.circuitBreakerResetMs,
   },
 
   /**
