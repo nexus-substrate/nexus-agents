@@ -122,16 +122,24 @@ Each session gets its own state file tracking:
 
 ## Layer 3: Status Line
 
-The status line shows a persistent 2-line dashboard at the bottom of Claude Code
-with real-time swarm monitoring.
+The status line shows a persistent dashboard at the bottom of Claude Code with
+real-time session metrics and optional nexus-agents swarm monitoring.
 
-### Setup
+Two versions are available:
 
-1. Copy the status line script:
+| Version                  | Lines | Features                                               |
+| ------------------------ | ----- | ------------------------------------------------------ |
+| `nexus-statusline.sh`    | 2     | Nexus-agents focused (health, counters, weather)       |
+| `nexus-statusline-v3.sh` | 1-2   | Full metrics (cache, API%, tokens, delta) + nexus line |
+
+### Setup (v3 — recommended)
+
+1. Copy the status line script and hook script:
 
 ```bash
-cp docs/guides/claude-code-observability/nexus-statusline.sh .claude/
-chmod +x .claude/nexus-statusline.sh
+cp docs/guides/claude-code-observability/nexus-statusline-v3.sh .claude/
+cp docs/guides/claude-code-observability/nexus-hook.sh .claude/
+chmod +x .claude/nexus-statusline-v3.sh .claude/nexus-hook.sh
 ```
 
 2. Add to your Claude Code settings (`~/.claude/settings.json`):
@@ -140,63 +148,79 @@ chmod +x .claude/nexus-statusline.sh
 {
   "statusLine": {
     "type": "command",
-    "command": ".claude/nexus-statusline.sh"
+    "command": ".claude/nexus-statusline-v3.sh"
   }
 }
 ```
 
-### What It Shows
+### What v3 Shows
 
-**Line 1 — Primary (identity, activity, budget):**
+**Line 1 — Session metrics (always shown):**
 
 ```
-● claude-opus  → orchestrate  tools 12  experts 3  votes 1 (5:0)  $1.24  ctx ▓▓▓▓▓▓░░░░ 67%
+/project | main | Opus [agent] | ctx 62% | $2.15 | 25m | +220/-45 | cache 84% | api 40% | tok 124k/8k
 ```
 
-- **Health dot**: Green (healthy), yellow (CLI failures), red (last tool errored)
-- **Model**: Last model routed by delegate_to_model (or session model)
+| Field         | Source                           | Condition         |
+| ------------- | -------------------------------- | ----------------- |
+| CWD           | `workspace.current_dir`          | Always            |
+| Git branch    | `git rev-parse`                  | Always            |
+| Model         | `model.display_name`             | Always            |
+| Agent badge   | `agent.name`                     | Only when set     |
+| Context %     | `context_window.used_percentage` | Always            |
+| Context OVER  | `exceeds_200k_tokens`            | When true         |
+| Extended ctx+ | `context_window_size > 200k`     | When extended     |
+| Cost          | `cost.total_cost_usd`            | Always            |
+| Duration      | `cost.total_duration_ms`         | Always            |
+| Code delta    | `lines_added / lines_removed`    | Always            |
+| Cache hit %   | `cache_read / (read+create)`     | When cache active |
+| API time %    | `api_duration / total_duration`  | When > 0          |
+| Token counts  | `total_input / total_output`     | When > 0          |
+
+**Line 2 — Nexus-agents swarm (conditional, requires hook):**
+
+```
+* > execute_expert  tools 18  exp 4  vote 2 (5:1)  graph 3/5  | cl:100% ge:75% cx:66%
+```
+
+- **Health indicator**: Green (healthy), yellow (CLI failures), red (last tool errored)
 - **Active tool**: Currently running tool (yellow) or last completed (dim)
 - **Counters**: Total tools, experts, votes (with approve:reject ratio)
 - **Graph**: Step X/N when a graph workflow is running
-- **Cost**: Session cost from Claude Code
-- **Context gauge**: 10-char bar with color thresholds (green <60%, yellow 60-84%, red ≥85%)
+- **Per-CLI weather**: Success rate with color coding (green ≥80%, yellow 60-79%, red <60%)
 
-**Line 2 — Secondary (weather, session):**
-
-```
-weather  claude █████ 100%   gemini ████░ 80%   codex ███░░ 60%  session 14m · 38 calls
-```
-
-- **Per-CLI weather**: Success rate bars (5-char) with color coding
-- **Session**: Uptime and total tool calls
+Line 2 only appears when a nexus-agents hook state file exists.
 
 ### Color Thresholds
 
 | Metric        | Green   | Yellow   | Red   |
 | ------------- | ------- | -------- | ----- |
-| Health dot    | Healthy | CLI fail | Error |
-| CLI success   | ≥ 80%   | 60-79%   | < 60% |
 | Context usage | < 60%   | 60-84%   | ≥ 85% |
+| Cache hit %   | ≥ 80%   | 50-79%   | < 50% |
+| API time %    | < 50%   | 50-79%   | ≥ 80% |
+| CLI success   | ≥ 80%   | 60-79%   | < 60% |
+| Health dot    | Healthy | CLI fail | Error |
 
 ### Graceful Degradation
 
-The status line adapts to available data:
-
-- **No state file**: Shows minimal `● nexus model $cost ctx X%`
-- **No routing data**: Shows `weather  no routing data` on line 2
-- **No graph running**: Graph section omitted
-- **No votes/experts**: Counter sections omitted
+- **No nexus state file**: Line 2 omitted entirely (single-line mode)
+- **No agent**: Agent badge omitted
+- **No cache data**: Cache % omitted
+- **No API duration**: API % omitted
+- **No tokens**: Token counts omitted
+- **No CLI weather**: Weather section omitted
 
 ## Combining All Three
 
 For maximum observability, use all three layers together. MCP logging provides
 detailed events for debugging, hooks capture tool lifecycle data, and the status
-line gives at-a-glance awareness of the multi-agent swarm.
+line gives at-a-glance awareness of session health and the multi-agent swarm.
 
 ## Files in This Directory
 
-| File                  | Purpose                                             |
-| --------------------- | --------------------------------------------------- |
-| `nexus-hook.sh`       | Hook script for SessionStart/PreToolUse/PostToolUse |
-| `nexus-statusline.sh` | 2-line status line dashboard                        |
-| `README.md`           | This guide                                          |
+| File                     | Purpose                                             |
+| ------------------------ | --------------------------------------------------- |
+| `nexus-hook.sh`          | Hook script for SessionStart/PreToolUse/PostToolUse |
+| `nexus-statusline.sh`    | v2 status line (nexus-focused)                      |
+| `nexus-statusline-v3.sh` | v3 status line (full metrics + nexus integration)   |
+| `README.md`              | This guide                                          |
