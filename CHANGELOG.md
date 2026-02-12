@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.9.0] - 2026-02-11
+
+### Added
+
+- Centralized timeout configuration module `config/timeouts.ts` (#984)
+  - 9 typed const categories: CLI_TIMEOUTS, VOTE_TIMEOUTS, MCP_TIMEOUTS, WORKFLOW_TIMEOUTS, GRAPH_TIMEOUTS, PER_CLI_TASK_TIMEOUTS, API_TIMEOUTS, INTERNAL_TIMEOUTS, TEST_TIMEOUTS
+  - Environment variable overrides (NEXUS_VOTE_TIMEOUT_MS, NEXUS_MCP_TIMEOUT_MS, etc.)
+  - Accessor functions: `resolveVoteTimeout()`, `resolveEnvTimeout()`, `validateTimeout()`, `getCliTimeoutProfile()`, `getCliTimeout()`
+  - 31 tests covering all categories, env var resolution, and clamping behavior
+- Enhanced Claude Code status line and hooks for swarm monitoring (#982)
+  - `nexus-statusline.sh` v2 with 9 tool groups, per-CLI weather tracking, vote counters
+  - `nexus-hook.sh` v2 with SessionStart support, state schema v2, context gauge
+- Extracted `cli-timeout-helpers.ts` with `estimateTaskComplexity()` business logic
+
+### Fixed
+
+- Increase agent timeouts for complex tasks (#983)
+  - Gemini complex timeout: 120s → 180s (based on observed production failures)
+  - Codex complex timeout: 60s → 90s
+- Resolve Gemini timeout conflict between two files (Issue #366 values take precedence)
+
+### Changed
+
+- All timeout consumers now delegate to canonical `config/timeouts.ts` source
+- Backward-compatible re-exports maintained in all existing import paths
+
 ## [2.8.0] - 2026-02-11
 
 ### Added
