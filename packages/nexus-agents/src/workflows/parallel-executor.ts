@@ -10,6 +10,7 @@ import { getErrorMessage, ok, err, WorkflowError, getTimeProvider } from '../cor
 
 import type { WorkflowStep, StepResult } from '../core/index.js';
 import { TaskQueue } from './task-queue.js';
+import { WORKFLOW_TIMEOUTS } from '../config/timeouts.js';
 
 /**
  * Options for parallel execution.
@@ -326,7 +327,7 @@ export function withRetries(baseExecutor: StepExecutor, defaultRetries = 0): Ste
 
       if (attempt <= maxRetries) {
         // Exponential backoff: 100ms, 200ms, 400ms, etc.
-        const delay = Math.min(100 * Math.pow(2, attempt - 1), 5000);
+        const delay = Math.min(100 * Math.pow(2, attempt - 1), WORKFLOW_TIMEOUTS.maxRetryDelayMs);
         await new Promise((resolve) => setTimeout(resolve, delay));
       }
     }
