@@ -1,8 +1,8 @@
 /**
  * CLI Timeout Profiles
  *
- * @deprecated Import from `config/timeouts.js` instead (Issue #984).
- * This file re-exports from the canonical source for backward compatibility.
+ * Delegates to `config/timeouts.ts` (canonical source, Issue #984).
+ * This file provides backward-compatible re-exports.
  *
  * @module config/defaults-timeout-profiles
  */
@@ -10,20 +10,14 @@
 import { CLI_TIMEOUTS, getCliTimeoutProfile, getCliTimeout } from './timeouts.js';
 
 // ============================================================================
-// Backward-compatible re-exports (deprecated)
+// Backward-compatible re-exports — delegates to config/timeouts.ts
 // ============================================================================
 
-/**
- * @deprecated Use `CLI_TIMEOUTS` from `config/timeouts.js` instead.
- */
+/** CLI-specific timeout profiles. Canonical source: `config/timeouts.ts`. */
 export const TIMEOUT_PROFILES = CLI_TIMEOUTS;
 
-/**
- * @deprecated Use `getCliTimeoutProfile()` from `config/timeouts.js` instead.
- */
+/** Gets timeout profile for a CLI. Canonical source: `config/timeouts.ts`. */
 export const getTimeoutProfile = getCliTimeoutProfile;
 
-/**
- * @deprecated Use `getCliTimeout()` from `config/timeouts.js` instead.
- */
+/** Gets timeout by CLI and complexity. Canonical source: `config/timeouts.ts`. */
 export const getTimeoutForCli = getCliTimeout;

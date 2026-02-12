@@ -22,30 +22,19 @@ import {
   validateTimeout as _validateTimeout,
 } from '../config/timeouts.js';
 
-/**
- * @deprecated Use `VOTE_TIMEOUTS.defaultMs` from `config/timeouts.js` instead.
- */
+/** Default vote timeout. Canonical source: `config/timeouts.ts`. */
 export const DEFAULT_VOTE_TIMEOUT_MS = VOTE_TIMEOUTS.defaultMs;
 
-/**
- * Resolves vote timeout from env var or returns default.
- * @deprecated Use `resolveVoteTimeout()` from `config/timeouts.js` instead.
- */
+/** Resolves vote timeout with env var override. Canonical: `config/timeouts.ts`. */
 export const resolveVoteTimeout = _resolveVoteTimeout;
 
-/**
- * @deprecated Use `VOTE_TIMEOUTS.maxMs` from `config/timeouts.js` instead.
- */
+/** Maximum vote timeout. Canonical source: `config/timeouts.ts`. */
 export const MAX_VOTE_TIMEOUT_MS = VOTE_TIMEOUTS.maxMs;
 
-/**
- * @deprecated Use `VOTE_TIMEOUTS.minMs` from `config/timeouts.js` instead.
- */
+/** Minimum vote timeout. Canonical source: `config/timeouts.ts`. */
 export const MIN_VOTE_TIMEOUT_MS = VOTE_TIMEOUTS.minMs;
 
-/**
- * @deprecated Use `VOTE_TIMEOUTS.maxRetries` from `config/timeouts.js` instead.
- */
+/** Maximum retries per vote. Canonical source: `config/timeouts.ts`. */
 export const DEFAULT_MAX_RETRIES = VOTE_TIMEOUTS.maxRetries;
 
 /**
@@ -53,10 +42,7 @@ export const DEFAULT_MAX_RETRIES = VOTE_TIMEOUTS.maxRetries;
  */
 const INITIAL_RETRY_DELAY_MS = 1_000;
 
-/**
- * Validates and constrains timeout to allowed range [MIN, MAX].
- * @deprecated Use `validateTimeout()` from `config/timeouts.js` instead.
- */
+/** Validates and clamps timeout. Canonical source: `config/timeouts.ts`. */
 export const validateTimeout = _validateTimeout;
 
 // ============================================================================

@@ -1,9 +1,7 @@
-/* eslint-disable @typescript-eslint/no-deprecated -- Tests exercise backward-compat re-exports */
 /**
  * nexus-agents/config/defaults - Unit Tests
  *
  * Tests for the centralized defaults configuration module.
- * Includes backward-compat tests for deprecated re-exports.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';

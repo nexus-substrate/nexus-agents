@@ -30,13 +30,12 @@ export type {
 
 export { isTaskComplexity, isKnownCliName } from './defaults-types.js';
 
-// Re-export timeout profiles (deprecated — use config/timeouts.js directly)
-// eslint-disable-next-line @typescript-eslint/no-deprecated -- backward-compatible re-export
-export { TIMEOUT_PROFILES } from './defaults-timeout-profiles.js';
-// eslint-disable-next-line @typescript-eslint/no-deprecated -- backward-compatible re-export
-export { getTimeoutProfile } from './defaults-timeout-profiles.js';
-// eslint-disable-next-line @typescript-eslint/no-deprecated -- backward-compatible re-export
-export { getTimeoutForCli } from './defaults-timeout-profiles.js';
+// Re-export timeout profiles (delegates to config/timeouts.ts)
+export {
+  TIMEOUT_PROFILES,
+  getTimeoutProfile,
+  getTimeoutForCli,
+} from './defaults-timeout-profiles.js';
 
 // Re-export canonical timeout modules (Issue #984)
 export {

@@ -78,7 +78,7 @@ export {
   type ActionRecord,
   type RoutingMemoryExport,
   type RoutingMemoryStats,
-  // CLI Timeout Profiles (Issue #357)
+  // CLI Timeout Profiles (Issue #357, delegates to config/timeouts.ts)
   getTimeoutForTask,
   getTimeoutForTaskAuto,
   estimateTaskComplexity,

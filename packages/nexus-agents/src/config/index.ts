@@ -90,7 +90,6 @@ export { adaptRoutingConfig, getTopsisConfigFromYaml } from './routing-config-ad
 export {
   // Main defaults object
   DEFAULTS,
-  // eslint-disable-next-line @typescript-eslint/no-deprecated -- backward-compatible re-export
   TIMEOUT_PROFILES,
   // Environment override functions
   getTimeout,
@@ -99,9 +98,7 @@ export {
   getWorkerConfig,
   getCircuitBreakerConfig,
   // Convenience accessors
-  // eslint-disable-next-line @typescript-eslint/no-deprecated -- backward-compatible re-export
   getTimeoutProfile,
-  // eslint-disable-next-line @typescript-eslint/no-deprecated -- backward-compatible re-export
   getTimeoutForCli,
   getToolRateLimit,
   // Type guards
