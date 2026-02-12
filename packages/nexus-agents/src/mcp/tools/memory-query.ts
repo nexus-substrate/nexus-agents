@@ -17,6 +17,15 @@ import type { SecurityConfig } from '../../config/schemas.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import { getToolMemory, type UnifiedMemoryResult } from './tool-memory.js';
+import {
+  ReflectiveRetriever,
+  ReflectionCache,
+  isReflectiveMemoryEnabled,
+  isReflectiveShadowMode,
+  type ReflectionResult,
+} from './reflective-retriever.js';
+import type { IModelAdapter } from '../../core/index.js';
+import { createAutoAdapter } from '../../adapters/auto-adapter.js';
 
 // ============================================================================
 // Schema & Types
@@ -77,8 +86,44 @@ export interface MemoryQueryResponse {
 // Handler
 // ============================================================================
 
+/** Shared reflection cache (persists across tool calls). */
+let reflectionCache: ReflectionCache | undefined;
+
+/** Shared adapter for reflection (lazy-initialized). */
+let reflectionAdapter: IModelAdapter | undefined;
+
+/**
+ * Get or create the reflective retriever.
+ * Returns undefined if reflection is disabled or adapter unavailable.
+ */
+async function getReflectiveRetriever(logger: ILogger): Promise<ReflectiveRetriever | undefined> {
+  const enabled = isReflectiveMemoryEnabled();
+  const shadow = isReflectiveShadowMode();
+  if (!enabled && !shadow) return undefined;
+
+  if (reflectionAdapter === undefined) {
+    try {
+      const selection = await createAutoAdapter({ logger });
+      reflectionAdapter = selection.adapter;
+    } catch {
+      logger.warn('No adapter for reflection, using keyword retrieval');
+      return undefined;
+    }
+  }
+
+  reflectionCache ??= new ReflectionCache();
+
+  return new ReflectiveRetriever({
+    adapter: reflectionAdapter,
+    logger,
+    shadowMode: shadow,
+    cache: reflectionCache,
+  });
+}
+
 /**
  * Handles the memory_query tool execution.
+ * Optionally uses MemR3 reflective enhancement when enabled.
  */
 async function executeMemoryQuery(
   input: MemoryQueryInput,
@@ -86,8 +131,19 @@ async function executeMemoryQuery(
 ): Promise<MemoryQueryResponse> {
   const toolMemory = getToolMemory();
 
+  // MemR3: Optionally enhance query with reflective reasoning
+  let reflection: ReflectionResult | undefined;
+  const retriever = await getReflectiveRetriever(logger);
+  if (retriever !== undefined) {
+    reflection = await retriever.enhance(input.query);
+  }
+
+  // Use enhanced query if reflection succeeded, otherwise original
+  const effectiveQuery =
+    reflection?.reflected === true ? reflection.keywords.join(' ') : input.query;
+
   // Query all memory backends
-  let results = await toolMemory.queryAll(input.query, input.limit);
+  let results = await toolMemory.queryAll(effectiveQuery, input.limit);
 
   // Filter by source if specified
   if (input.source !== 'all') {
@@ -96,8 +152,11 @@ async function executeMemoryQuery(
 
   logger.debug('Memory query executed', {
     query: input.query,
+    effectiveQuery: effectiveQuery !== input.query ? effectiveQuery : undefined,
     resultCount: results.length,
     source: input.source,
+    reflectionSource: reflection?.source,
+    reflectionDurationMs: reflection?.durationMs,
   });
 
   return {
