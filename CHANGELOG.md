@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.11.0] - 2026-02-11
+
+### Added
+
+- Enhanced status line v3 (`nexus-statusline-v3.sh`) (#990)
+  - Surfaces all available Claude Code status line API data: code delta (+N/-M), cache hit ratio, API time %, token counts, agent name badge, exceeds-200k warning, extended context indicator
+  - Conditional nexus-agents swarm monitoring line (health, active tool, expert/vote counters, per-CLI weather)
+  - Adaptive cost formatting ($0.0012 for small, $384.89 for large costs)
+  - Hours+minutes duration display for long sessions (70h1m instead of 4201m)
+  - Single-jq-call pattern for performance, `printf '%b'` per official best practices
+  - Graceful degradation: metrics appear only when data is available
+- Updated observability guide with v3 setup instructions and field reference table
+
 ## [2.10.0] - 2026-02-11
 
 ### Added
