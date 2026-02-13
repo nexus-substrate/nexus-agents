@@ -67,4 +67,7 @@ export {
   computeScoreAdjustments,
   type ResourceStrategyConfig,
   type ResourceTier,
+  DistilledRuleStage,
+  createDistilledRuleStage,
+  type DistilledRuleStageConfig,
 } from './stages/index.js';

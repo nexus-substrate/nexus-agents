@@ -201,6 +201,8 @@ export const RoutingConfigSchema = z.object({
       qualityConstraint: z.boolean().default(false),
       /** Enable resource strategy stage for budget-aware oscillation (Issue #998) */
       resourceStrategy: z.boolean().default(true),
+      /** Enable strategy distillation for learned routing rules (Issue #999) */
+      strategyDistillation: z.boolean().default(false),
     })
     .optional(),
 
@@ -278,6 +280,8 @@ export const DEFAULT_ROUTING_CONFIG: RoutingConfig = {
     qualityConstraint: false,
     // Issue #998: Resource strategy (enabled by default)
     resourceStrategy: true,
+    // Issue #999: Strategy distillation (opt-in)
+    strategyDistillation: false,
   },
   topsis: {
     minQualityThreshold: 5,

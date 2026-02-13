@@ -46,6 +46,8 @@ const ADAPTER_DEFAULTS: DefinedRoutingConfig = {
     qualityConstraint: false,
     // Issue #998: Resource strategy (enabled by default)
     resourceStrategy: true,
+    // Issue #999: Strategy distillation (opt-in)
+    strategyDistillation: false,
   },
   latencyScoreWeight: 0.2,
 };
@@ -146,6 +148,8 @@ function adaptStagesConfig(
     enableQualityConstraint: yaml.qualityConstraint,
     // Issue #998: Resource strategy
     enableResourceStrategy: yaml.resourceStrategy,
+    // Issue #999: Strategy distillation
+    enableStrategyDistillation: yaml.strategyDistillation,
   };
 }
 
@@ -162,6 +166,7 @@ const STAGE_FLAG_KEYS = [
   'enableCapabilityMatch',
   'enableQualityConstraint',
   'enableResourceStrategy',
+  'enableStrategyDistillation',
   'enableCapacityBalancing',
 ] as const;
 

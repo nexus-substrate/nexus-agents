@@ -17,6 +17,7 @@ import {
   runCapabilityMatchStageSync,
   runQualityConstraintStageSync,
   runResourceStrategyStageSync,
+  runDistilledRuleStageSync,
   runZeroRouterStage,
   runTopsisStage,
   runLinUCBStage,
@@ -57,6 +58,7 @@ function makeDeps(overrides: Partial<StageDependencies> = {}): StageDependencies
       enableLinUCBSelection: false,
       enableQualityConstraint: false,
       enableResourceStrategy: false,
+      enableStrategyDistillation: false,
       enableLatencyTracking: false,
       enableRoutingMemory: false,
       enableCapacityBalancing: true,
@@ -79,6 +81,7 @@ function makeDeps(overrides: Partial<StageDependencies> = {}): StageDependencies
     capabilityMatchStage: undefined,
     qualityConstraintStage: undefined,
     resourceStrategyStage: undefined,
+    distilledRuleStage: undefined,
     ...overrides,
   };
 }
@@ -314,6 +317,46 @@ describe('runResourceStrategyStageSync', () => {
     const result = runResourceStrategyStageSync(mockTask, candidates, stages, deps);
     expect(stages).toContain('resource-strategy');
     expect(result.tier).toBe('balanced');
+  });
+});
+
+// ============================================================================
+// runDistilledRuleStageSync
+// ============================================================================
+
+describe('runDistilledRuleStageSync', () => {
+  const candidates: CliName[] = ['claude', 'gemini', 'codex'];
+
+  it('returns defaults when disabled', () => {
+    const stages: string[] = [];
+    const result = runDistilledRuleStageSync(mockTask, candidates, stages, makeDeps());
+    expect(result.rulesApplied).toBe(0);
+    expect(stages).not.toContain('distilled-rule');
+  });
+
+  it('returns defaults when stage instance is undefined', () => {
+    const stages: string[] = [];
+    const deps = makeDeps({
+      config: { ...makeDeps().config, enableStrategyDistillation: true },
+      distilledRuleStage: undefined,
+    });
+    const result = runDistilledRuleStageSync(mockTask, candidates, stages, deps);
+    expect(result.rulesApplied).toBe(0);
+    expect(stages).not.toContain('distilled-rule');
+  });
+
+  it('tracks stage when enabled and instance present', () => {
+    const stages: string[] = [];
+    const mockStage = {
+      route: vi.fn().mockResolvedValue(ok({ context: { signals: [] } })),
+    };
+    const deps = makeDeps({
+      config: { ...makeDeps().config, enableStrategyDistillation: true },
+      distilledRuleStage: mockStage as unknown as StageDependencies['distilledRuleStage'],
+    });
+    const result = runDistilledRuleStageSync(mockTask, candidates, stages, deps);
+    expect(stages).toContain('distilled-rule');
+    expect(result.rulesApplied).toBe(0);
   });
 });
 
