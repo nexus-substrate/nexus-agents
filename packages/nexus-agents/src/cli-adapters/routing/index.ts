@@ -61,4 +61,10 @@ export {
   LatencyStage,
   createLatencyStage,
   type LatencyStageConfig,
+  ResourceStrategyStage,
+  createResourceStrategyStage,
+  computeResourceTier,
+  computeScoreAdjustments,
+  type ResourceStrategyConfig,
+  type ResourceTier,
 } from './stages/index.js';

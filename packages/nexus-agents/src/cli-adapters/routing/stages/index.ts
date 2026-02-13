@@ -48,5 +48,15 @@ export {
   type QualityConstraintConfig,
 } from './quality-constraint-stage.js';
 
+// Resource strategy stage (priority: 55)
+export {
+  ResourceStrategyStage,
+  createResourceStrategyStage,
+  computeResourceTier,
+  computeScoreAdjustments,
+  type ResourceStrategyConfig,
+  type ResourceTier,
+} from './resource-strategy-stage.js';
+
 // Latency performance stage (priority: 80)
 export { LatencyStage, createLatencyStage, type LatencyStageConfig } from './latency-stage.js';

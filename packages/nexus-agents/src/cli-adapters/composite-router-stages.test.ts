@@ -16,6 +16,7 @@ import {
   runConfidenceCascadeStageSync,
   runCapabilityMatchStageSync,
   runQualityConstraintStageSync,
+  runResourceStrategyStageSync,
   runZeroRouterStage,
   runTopsisStage,
   runLinUCBStage,
@@ -55,6 +56,7 @@ function makeDeps(overrides: Partial<StageDependencies> = {}): StageDependencies
       enableTopsisRanking: false,
       enableLinUCBSelection: false,
       enableQualityConstraint: false,
+      enableResourceStrategy: false,
       enableLatencyTracking: false,
       enableRoutingMemory: false,
       enableCapacityBalancing: true,
@@ -76,6 +78,7 @@ function makeDeps(overrides: Partial<StageDependencies> = {}): StageDependencies
     confidenceCascadeStage: undefined,
     capabilityMatchStage: undefined,
     qualityConstraintStage: undefined,
+    resourceStrategyStage: undefined,
     ...overrides,
   };
 }
@@ -270,6 +273,47 @@ describe('runQualityConstraintStageSync', () => {
     });
     runQualityConstraintStageSync(candidates, stages, deps);
     expect(stages).toContain('quality-constraint');
+  });
+});
+
+// ============================================================================
+// runResourceStrategyStageSync
+// ============================================================================
+
+describe('runResourceStrategyStageSync', () => {
+  const candidates: CliName[] = ['claude', 'gemini', 'codex'];
+
+  it('returns defaults when disabled', () => {
+    const stages: string[] = [];
+    const result = runResourceStrategyStageSync(mockTask, candidates, stages, makeDeps());
+    expect(result.tier).toBe('balanced');
+    expect(result.resourceLevel).toBeUndefined();
+    expect(stages).not.toContain('resource-strategy');
+  });
+
+  it('returns defaults when stage instance is undefined', () => {
+    const stages: string[] = [];
+    const deps = makeDeps({
+      config: { ...makeDeps().config, enableResourceStrategy: true },
+      resourceStrategyStage: undefined,
+    });
+    const result = runResourceStrategyStageSync(mockTask, candidates, stages, deps);
+    expect(result.tier).toBe('balanced');
+    expect(stages).not.toContain('resource-strategy');
+  });
+
+  it('tracks stage when enabled and instance present', () => {
+    const stages: string[] = [];
+    const mockStage = {
+      route: vi.fn().mockResolvedValue(ok({ context: { signals: [] } })),
+    };
+    const deps = makeDeps({
+      config: { ...makeDeps().config, enableResourceStrategy: true },
+      resourceStrategyStage: mockStage as unknown as StageDependencies['resourceStrategyStage'],
+    });
+    const result = runResourceStrategyStageSync(mockTask, candidates, stages, deps);
+    expect(stages).toContain('resource-strategy');
+    expect(result.tier).toBe('balanced');
   });
 });
 

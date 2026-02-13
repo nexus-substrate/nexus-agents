@@ -23,6 +23,7 @@ import type { IOrchestrationObserver } from '../agents/observability/orchestrati
 import type { ConfidenceCascadeConfig } from './routing/stages/confidence-cascade-stage.js';
 import type { CapabilityMatchConfig } from './routing/stages/capability-match-stage.js';
 import type { QualityConstraintConfig } from './routing/stages/quality-constraint-stage.js';
+import type { ResourceStrategyConfig } from './routing/stages/resource-strategy-stage.js';
 
 /**
  * Interface for routing metrics collection.
@@ -58,6 +59,8 @@ export const CompositeRouterConfigSchema = z.object({
   enableLinUCBSelection: z.boolean().default(true),
   /** Enable quality constraint stage (default: false) (Issue #755, ADR-0005) */
   enableQualityConstraint: z.boolean().default(false),
+  /** Enable resource strategy stage for budget-aware oscillation (default: true) (Issue #998) */
+  enableResourceStrategy: z.boolean().default(true),
   /** Enable latency tracking for routing decisions (default: true) (Issue #361) */
   enableLatencyTracking: z.boolean().default(true),
   /** Enable routing memory for learned routing (default: false) (Issue #463, #461) */
@@ -97,6 +100,8 @@ export interface CompositeRouterConfigWithPreference extends CompositeRouterConf
   capabilityMatchConfig?: Partial<CapabilityMatchConfig>;
   /** Quality constraint stage configuration (optional) (Issue #755) */
   qualityConstraintConfig?: Partial<QualityConstraintConfig>;
+  /** Resource strategy stage configuration (optional) (Issue #998) */
+  resourceStrategyConfig?: Partial<ResourceStrategyConfig>;
   /** Preference router configuration (optional, uses defaults if not provided) */
   preferenceRouterConfig?: Partial<PreferenceRouterConfig>;
   /** ZeroRouter configuration (optional, uses defaults if not provided) */
@@ -123,6 +128,7 @@ export const DEFAULT_COMPOSITE_CONFIG: CompositeRouterConfig = {
   enableTopsisRanking: true,
   enableLinUCBSelection: true,
   enableQualityConstraint: false, // Issue #755 - New replacement stage (disabled for backward compatibility)
+  enableResourceStrategy: true, // Issue #998 - Budget-aware strategy oscillation
   enableLatencyTracking: true,
   enableRoutingMemory: false,
   enableCapacityBalancing: true, // Issue #807 - Deprioritize exhausted CLIs

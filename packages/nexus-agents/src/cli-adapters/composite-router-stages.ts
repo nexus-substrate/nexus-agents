@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 /**
  * CompositeRouter pipeline stage execution functions.
  * @module cli-adapters/composite-router-stages
@@ -27,6 +28,7 @@ import {
   ConfidenceCascadeStage,
   CapabilityMatchStage,
   QualityConstraintStage,
+  ResourceStrategyStage,
 } from './routing/stages/index.js';
 import {
   createRoutingContext,
@@ -64,6 +66,8 @@ export interface StageDependencies {
   capabilityMatchStage: CapabilityMatchStage | undefined;
   /** Quality constraint stage instance (Issue #755) */
   qualityConstraintStage: QualityConstraintStage | undefined;
+  /** Resource strategy stage instance (Issue #998) */
+  resourceStrategyStage: ResourceStrategyStage | undefined;
 }
 
 /** Result from budget stage including rejection tracking. */
@@ -202,6 +206,36 @@ export function runQualityConstraintStageSync(
 
   // Return all candidates as eligible for sync path (async path logs actual filtering)
   return { eligible: candidates, filtered: new Map(), usedFallback: false };
+}
+
+/** Resource strategy stage result. (Issue #998) */
+export interface ResourceStrategyStageResult {
+  tier: string;
+  resourceLevel: number | undefined;
+}
+
+/** Runs resource strategy stage synchronously. (Issue #998) */
+export function runResourceStrategyStageSync(
+  task: CliTask,
+  candidates: CliName[],
+  stagesExecuted: string[],
+  deps: StageDependencies
+): ResourceStrategyStageResult {
+  if (!deps.config.enableResourceStrategy || deps.resourceStrategyStage === undefined) {
+    return { tier: 'balanced', resourceLevel: undefined };
+  }
+
+  const ctx = createRoutingContext(task.content, candidates as StageCliName[]);
+  void deps.resourceStrategyStage.route(ctx).then((result) => {
+    if (result.ok) {
+      deps.logger.debug('Resource strategy completed async', {
+        signals: result.value.context.signals.filter((s) => s.startsWith('resource-strategy:')),
+      });
+    }
+  });
+
+  stagesExecuted.push('resource-strategy');
+  return { tier: 'balanced', resourceLevel: undefined };
 }
 
 /** Runs ZeroRouter difficulty estimation stage. */
@@ -431,6 +465,9 @@ export function runPipeline(
   // Priority 50: Preference routing
   const prefResult = runPreferenceStage(task, candidates, stagesExecuted, deps);
   candidates = prefResult.preferredCandidates;
+
+  // Priority 55: Resource strategy oscillation (Issue #998)
+  runResourceStrategyStageSync(task, candidates, stagesExecuted, deps);
 
   // Priority 60: TOPSIS ranking
   const topsisResult = runTopsisStage(taskProfile, candidates, stagesExecuted, deps);

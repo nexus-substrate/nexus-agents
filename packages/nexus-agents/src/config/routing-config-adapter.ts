@@ -44,6 +44,8 @@ const ADAPTER_DEFAULTS: DefinedRoutingConfig = {
     confidenceCascade: false,
     capabilityMatch: false,
     qualityConstraint: false,
+    // Issue #998: Resource strategy (enabled by default)
+    resourceStrategy: true,
   },
   latencyScoreWeight: 0.2,
 };
@@ -142,6 +144,8 @@ function adaptStagesConfig(
     enableConfidenceCascade: yaml.confidenceCascade,
     enableCapabilityMatch: yaml.capabilityMatch,
     enableQualityConstraint: yaml.qualityConstraint,
+    // Issue #998: Resource strategy
+    enableResourceStrategy: yaml.resourceStrategy,
   };
 }
 
@@ -157,6 +161,7 @@ const STAGE_FLAG_KEYS = [
   'enableConfidenceCascade',
   'enableCapabilityMatch',
   'enableQualityConstraint',
+  'enableResourceStrategy',
   'enableCapacityBalancing',
 ] as const;
 
