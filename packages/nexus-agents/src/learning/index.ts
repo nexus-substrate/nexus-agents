@@ -89,6 +89,25 @@ export {
   calculateMinSampleSize,
 } from './validation-stats.js';
 
+// Strategy Distiller (Issue #999)
+export type {
+  RuleStatus,
+  PatternType,
+  StrategyAction,
+  DistilledRule,
+  DistillerConfig,
+  DistillerStats,
+} from './strategy-distiller-types.js';
+export { DEFAULT_DISTILLER_CONFIG } from './strategy-distiller-types.js';
+export {
+  StrategyDistiller,
+  createStrategyDistiller,
+  sigmoidConfidence,
+  detectFailurePatterns,
+  detectSuccessPatterns,
+  detectLatencyPatterns,
+} from './strategy-distiller.js';
+
 // A/B Test Tracker (Issue #273)
 export type {
   ExperimentStatus,

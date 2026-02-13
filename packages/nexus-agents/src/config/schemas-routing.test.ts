@@ -454,6 +454,7 @@ describe('DEFAULT_ROUTING_CONFIG', () => {
       capabilityMatch: false,
       qualityConstraint: false,
       resourceStrategy: true,
+      strategyDistillation: false,
     });
   });
 

@@ -58,5 +58,12 @@ export {
   type ResourceTier,
 } from './resource-strategy-stage.js';
 
+// Distilled rule stage (priority: 45)
+export {
+  DistilledRuleStage,
+  createDistilledRuleStage,
+  type DistilledRuleStageConfig,
+} from './distilled-rule-stage.js';
+
 // Latency performance stage (priority: 80)
 export { LatencyStage, createLatencyStage, type LatencyStageConfig } from './latency-stage.js';

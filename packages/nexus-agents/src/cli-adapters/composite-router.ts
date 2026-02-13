@@ -40,11 +40,15 @@ import {
   CapabilityMatchStage,
   QualityConstraintStage,
   ResourceStrategyStage,
+  DistilledRuleStage,
   type ConfidenceCascadeConfig,
   type CapabilityMatchConfig,
   type QualityConstraintConfig,
   type ResourceStrategyConfig,
+  type DistilledRuleStageConfig,
 } from './routing/stages/index.js';
+import { StrategyDistiller } from '../learning/strategy-distiller.js';
+import { getOutcomeStore } from '../orchestration/outcomes/outcome-store.js';
 import {
   CompositeRouterConfigSchema,
   CompositeRoutingError,
@@ -141,6 +145,10 @@ export class CompositeRouter implements ICompositeRouter {
   private qualityConstraintStage?: QualityConstraintStage;
   /** Resource strategy stage instance (Issue #998) */
   private resourceStrategyStage?: ResourceStrategyStage;
+  /** Distilled rule stage instance (Issue #999) */
+  private distilledRuleStage?: DistilledRuleStage;
+  /** Strategy distiller instance (Issue #999) */
+  private strategyDistiller?: StrategyDistiller;
   private readonly cliNames: CliName[];
 
   // Statistics tracking
@@ -169,6 +177,7 @@ export class CompositeRouter implements ICompositeRouter {
       capabilityMatchConfig,
       qualityConstraintConfig,
       resourceStrategyConfig,
+      distilledRuleStageConfig,
       metricsCollector,
       orchestrationObserver,
       ...baseConfig
@@ -197,6 +206,7 @@ export class CompositeRouter implements ICompositeRouter {
       capabilityMatch: capabilityMatchConfig,
       qualityConstraint: qualityConstraintConfig,
       resourceStrategy: resourceStrategyConfig,
+      distilledRule: distilledRuleStageConfig,
     });
     this.logInitialization(adapters.size);
   }
@@ -227,6 +237,7 @@ export class CompositeRouter implements ICompositeRouter {
       capabilityMatch?: Partial<CapabilityMatchConfig> | undefined;
       qualityConstraint?: Partial<QualityConstraintConfig> | undefined;
       resourceStrategy?: Partial<ResourceStrategyConfig> | undefined;
+      distilledRule?: Partial<DistilledRuleStageConfig> | undefined;
     }
   ): void {
     if (this.config.enableRoutingMemory) {
@@ -235,19 +246,36 @@ export class CompositeRouter implements ICompositeRouter {
         minObservations: this.routingMemory.getStats().totalPreferences,
       });
     }
-    // Initialize Issue #755 replacement stages
+    this.initializeOptionalStages(stageConfigs);
+  }
+
+  private initializeOptionalStages(
+    stageConfigs: {
+      confidenceCascade?: Partial<ConfidenceCascadeConfig> | undefined;
+      capabilityMatch?: Partial<CapabilityMatchConfig> | undefined;
+      qualityConstraint?: Partial<QualityConstraintConfig> | undefined;
+      resourceStrategy?: Partial<ResourceStrategyConfig> | undefined;
+      distilledRule?: Partial<DistilledRuleStageConfig> | undefined;
+    } = {}
+  ): void {
     if (this.config.enableConfidenceCascade) {
-      this.confidenceCascadeStage = new ConfidenceCascadeStage(stageConfigs?.confidenceCascade);
+      this.confidenceCascadeStage = new ConfidenceCascadeStage(stageConfigs.confidenceCascade);
     }
     if (this.config.enableCapabilityMatch) {
-      this.capabilityMatchStage = new CapabilityMatchStage(stageConfigs?.capabilityMatch);
+      this.capabilityMatchStage = new CapabilityMatchStage(stageConfigs.capabilityMatch);
     }
     if (this.config.enableQualityConstraint) {
-      this.qualityConstraintStage = new QualityConstraintStage(stageConfigs?.qualityConstraint);
+      this.qualityConstraintStage = new QualityConstraintStage(stageConfigs.qualityConstraint);
     }
-    // Initialize Issue #998 resource strategy stage
     if (this.config.enableResourceStrategy) {
-      this.resourceStrategyStage = new ResourceStrategyStage(stageConfigs?.resourceStrategy);
+      this.resourceStrategyStage = new ResourceStrategyStage(stageConfigs.resourceStrategy);
+    }
+    if (this.config.enableStrategyDistillation) {
+      this.strategyDistiller = new StrategyDistiller(getOutcomeStore(), this.logger);
+      this.distilledRuleStage = new DistilledRuleStage(
+        this.strategyDistiller,
+        stageConfigs.distilledRule
+      );
     }
   }
 
@@ -264,6 +292,7 @@ export class CompositeRouter implements ICompositeRouter {
       enableCapabilityMatch: this.config.enableCapabilityMatch,
       enableQualityConstraint: this.config.enableQualityConstraint,
       enableResourceStrategy: this.config.enableResourceStrategy,
+      enableStrategyDistillation: this.config.enableStrategyDistillation,
     });
   }
 
@@ -431,6 +460,8 @@ export class CompositeRouter implements ICompositeRouter {
       qualityConstraintStage: this.qualityConstraintStage,
       // Issue #998 resource strategy
       resourceStrategyStage: this.resourceStrategyStage,
+      // Issue #999 distilled rule stage
+      distilledRuleStage: this.distilledRuleStage,
     };
   }
 

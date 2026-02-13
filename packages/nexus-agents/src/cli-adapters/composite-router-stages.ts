@@ -29,6 +29,7 @@ import {
   CapabilityMatchStage,
   QualityConstraintStage,
   ResourceStrategyStage,
+  DistilledRuleStage,
 } from './routing/stages/index.js';
 import {
   createRoutingContext,
@@ -68,6 +69,8 @@ export interface StageDependencies {
   qualityConstraintStage: QualityConstraintStage | undefined;
   /** Resource strategy stage instance (Issue #998) */
   resourceStrategyStage: ResourceStrategyStage | undefined;
+  /** Distilled rule stage instance (Issue #999) */
+  distilledRuleStage: DistilledRuleStage | undefined;
 }
 
 /** Result from budget stage including rejection tracking. */
@@ -236,6 +239,35 @@ export function runResourceStrategyStageSync(
 
   stagesExecuted.push('resource-strategy');
   return { tier: 'balanced', resourceLevel: undefined };
+}
+
+/** Distilled rule stage result. (Issue #999) */
+export interface DistilledRuleStageResult {
+  rulesApplied: number;
+}
+
+/** Runs distilled rule stage synchronously. (Issue #999) */
+export function runDistilledRuleStageSync(
+  task: CliTask,
+  candidates: CliName[],
+  stagesExecuted: string[],
+  deps: StageDependencies
+): DistilledRuleStageResult {
+  if (!deps.config.enableStrategyDistillation || deps.distilledRuleStage === undefined) {
+    return { rulesApplied: 0 };
+  }
+
+  const ctx = createRoutingContext(task.content, candidates as StageCliName[]);
+  void deps.distilledRuleStage.route(ctx).then((result) => {
+    if (result.ok) {
+      deps.logger.debug('Distilled rule stage completed async', {
+        signals: result.value.context.signals.filter((s) => s.startsWith('distilled-rule:')),
+      });
+    }
+  });
+
+  stagesExecuted.push('distilled-rule');
+  return { rulesApplied: 0 };
 }
 
 /** Runs ZeroRouter difficulty estimation stage. */
@@ -461,6 +493,9 @@ export function runPipeline(
   // Priority 40: ZeroRouter difficulty estimation
   const zeroResult = runZeroRouterStage(task, candidates, stagesExecuted, deps);
   candidates = zeroResult.filteredCandidates;
+
+  // Priority 45: Distilled rule scoring (Issue #999)
+  runDistilledRuleStageSync(task, candidates, stagesExecuted, deps);
 
   // Priority 50: Preference routing
   const prefResult = runPreferenceStage(task, candidates, stagesExecuted, deps);

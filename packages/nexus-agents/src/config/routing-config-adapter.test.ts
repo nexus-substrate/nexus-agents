@@ -39,6 +39,8 @@ describe('routing-config-adapter', () => {
           qualityConstraint: true,
           // Issue #998: Resource strategy
           resourceStrategy: false,
+          // Issue #999: Strategy distillation
+          strategyDistillation: true,
         },
         latencyScoreWeight: 0.5,
       };
@@ -59,6 +61,8 @@ describe('routing-config-adapter', () => {
       expect(result.enableQualityConstraint).toBe(true);
       // Issue #998: Resource strategy
       expect(result.enableResourceStrategy).toBe(false);
+      // Issue #999: Strategy distillation
+      expect(result.enableStrategyDistillation).toBe(true);
     });
 
     it('adapts budget constraints', () => {

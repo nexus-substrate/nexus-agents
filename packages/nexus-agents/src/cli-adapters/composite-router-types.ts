@@ -24,6 +24,7 @@ import type { ConfidenceCascadeConfig } from './routing/stages/confidence-cascad
 import type { CapabilityMatchConfig } from './routing/stages/capability-match-stage.js';
 import type { QualityConstraintConfig } from './routing/stages/quality-constraint-stage.js';
 import type { ResourceStrategyConfig } from './routing/stages/resource-strategy-stage.js';
+import type { DistilledRuleStageConfig } from './routing/stages/distilled-rule-stage.js';
 
 /**
  * Interface for routing metrics collection.
@@ -61,6 +62,8 @@ export const CompositeRouterConfigSchema = z.object({
   enableQualityConstraint: z.boolean().default(false),
   /** Enable resource strategy stage for budget-aware oscillation (default: true) (Issue #998) */
   enableResourceStrategy: z.boolean().default(true),
+  /** Enable strategy distillation for learned routing rules (default: false) (Issue #999) */
+  enableStrategyDistillation: z.boolean().default(false),
   /** Enable latency tracking for routing decisions (default: true) (Issue #361) */
   enableLatencyTracking: z.boolean().default(true),
   /** Enable routing memory for learned routing (default: false) (Issue #463, #461) */
@@ -102,6 +105,8 @@ export interface CompositeRouterConfigWithPreference extends CompositeRouterConf
   qualityConstraintConfig?: Partial<QualityConstraintConfig>;
   /** Resource strategy stage configuration (optional) (Issue #998) */
   resourceStrategyConfig?: Partial<ResourceStrategyConfig>;
+  /** Distilled rule stage configuration (optional) (Issue #999) */
+  distilledRuleStageConfig?: Partial<DistilledRuleStageConfig>;
   /** Preference router configuration (optional, uses defaults if not provided) */
   preferenceRouterConfig?: Partial<PreferenceRouterConfig>;
   /** ZeroRouter configuration (optional, uses defaults if not provided) */
@@ -129,6 +134,7 @@ export const DEFAULT_COMPOSITE_CONFIG: CompositeRouterConfig = {
   enableLinUCBSelection: true,
   enableQualityConstraint: false, // Issue #755 - New replacement stage (disabled for backward compatibility)
   enableResourceStrategy: true, // Issue #998 - Budget-aware strategy oscillation
+  enableStrategyDistillation: false, // Issue #999 - Automatic strategy distillation (opt-in)
   enableLatencyTracking: true,
   enableRoutingMemory: false,
   enableCapacityBalancing: true, // Issue #807 - Deprioritize exhausted CLIs
