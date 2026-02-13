@@ -342,6 +342,46 @@ const rateLimiter = new TokenBucket({
 });
 ```
 
+### 5.4 Tool Response Honesty Contract
+
+Every MCP tool MUST accurately report whether its operation succeeded or failed. Silent failures and misleading success responses erode trust and cause cascading debugging costs.
+
+**Rules:**
+
+1. **Never report success when the action failed or was a no-op.** If a tool returns without `isError: true`, the caller is entitled to assume the operation completed as described. If the underlying action threw, returned an error, or produced no state change when one was expected, the tool MUST return `isError: true`.
+
+2. **Partial success must be explicit.** When a batch operation partially completes, the response MUST clearly distinguish completed items from failed items with reasons. Never report aggregate success when individual items failed.
+
+3. **Error propagation, not absorption.** Inner `Result<T, E>` errors from domain logic MUST propagate to the MCP response as `isError: true`. Never wrap a domain error inside `ok: true` to avoid "ugly" error responses — the caller needs accurate signals.
+
+4. **Notification accuracy.** MCP logging notifications (e.g., `notifier.info()`) MUST reflect actual outcome. A `*_complete` event should only fire on success; use `*_failed` for failures.
+
+```typescript
+// BAD — masks failure behind success wrapper
+if (!result.ok) {
+  return { ok: true, value: buildErrorResponse(result.error) };
+}
+
+// GOOD — propagates failure accurately
+if (!result.ok) {
+  return { ok: false, error: result.error.message };
+}
+
+// BAD — always reports completion regardless of outcome
+notifier.info('tool', { event: 'complete' });
+return { content: [{ type: 'text', text: JSON.stringify(result) }] };
+
+// GOOD — notification matches actual outcome
+const succeeded = result.status === 'completed';
+notifier.info('tool', { event: succeeded ? 'complete' : 'failed' });
+return {
+  content: [{ type: 'text', text: JSON.stringify(result) }],
+  ...(succeeded ? {} : { isError: true }),
+};
+```
+
+**Enforcement:** Integration tests MUST verify that tool error paths return `isError: true`. See Section 8 for the honesty verification test pattern.
+
 ---
 
 ## 6. Agent & Skill Standards

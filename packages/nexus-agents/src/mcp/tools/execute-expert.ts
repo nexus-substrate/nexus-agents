@@ -123,26 +123,6 @@ function lookupExpert(
 }
 
 /**
- * Build error response for failed execution.
- */
-function buildErrorResponse(
-  expertId: string,
-  role: string,
-  errorMessage: string,
-  durationMs: number
-): ExecuteExpertResponse {
-  return {
-    expertId,
-    role,
-    output: '',
-    durationMs,
-    tokensUsed: 0,
-    status: 'error',
-    error: errorMessage,
-  };
-}
-
-/**
  * Build success response from execution result.
  */
 interface SuccessResponseParams {
@@ -284,8 +264,8 @@ async function handleExecuteExpert(
     deps.logger?.warn('Expert execution failed', { expertId, error: result.error.message });
     recordExpertError(expertId, expert.role, result.error.message);
     return {
-      ok: true,
-      value: buildErrorResponse(expertId, expert.role, result.error.message, durationMs),
+      ok: false,
+      error: `Expert execution failed: ${result.error.message}`,
     };
   }
 

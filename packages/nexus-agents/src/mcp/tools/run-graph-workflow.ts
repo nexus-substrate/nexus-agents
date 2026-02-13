@@ -218,13 +218,17 @@ function createGraphWorkflowHandler(
       workflow: parsed.data.workflow,
     });
     const result = await handleRunGraphWorkflow(parsed.data, logger);
+    const succeeded = result.status === 'completed';
     notifier.info('run_graph_workflow', {
-      event: 'graph_workflow_complete',
+      event: succeeded ? 'graph_workflow_complete' : 'graph_workflow_failed',
       workflow: result.workflow,
       nodeCount: result.nodesExecuted,
       durationMs: result.durationMs,
     });
-    return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+    return {
+      content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+      ...(succeeded ? {} : { isError: true }),
+    };
   };
 }
 
