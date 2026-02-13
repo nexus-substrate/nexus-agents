@@ -230,6 +230,7 @@ export class CompositeRouter implements ICompositeRouter {
     if (this.config.enableTopsisRanking) this.topsisRouter = new TopsisRouter();
     if (this.config.enableLinUCBSelection && this.cliNames.length > 0) {
       this.linucbBandit = new LinUCBBandit(this.cliNames, { alpha: this.config.linucbAlpha });
+      this.warmStartBandit();
     }
     if (this.config.enableLatencyTracking) this.latencyTracker = new LatencyTracker(latencyConfig);
   }
@@ -282,6 +283,24 @@ export class CompositeRouter implements ICompositeRouter {
         this.strategyDistiller,
         stageConfigs.distilledRule
       );
+    }
+  }
+
+  /** Warm-start LinUCB bandit from persisted outcomes (Issue #1015). Best-effort. */
+  private warmStartBandit(): void {
+    if (this.linucbBandit === undefined || !isPersistenceEnabled()) return;
+    try {
+      const outcomes = getOutcomeStore().query();
+      if (outcomes.length === 0) return;
+      const replayed = this.linucbBandit.warmStart(outcomes);
+      this.logger.info('LinUCB warm-started from persisted outcomes', {
+        outcomesAvailable: outcomes.length,
+        outcomesReplayed: replayed,
+      });
+    } catch (error: unknown) {
+      this.logger.warn('LinUCB warm-start failed, starting cold', {
+        error: getErrorMessage(error),
+      });
     }
   }
 
