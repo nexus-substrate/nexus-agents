@@ -24,6 +24,7 @@ import type {
   LearningInsight,
   RecommendedMapping,
   ToolPerformanceEntry,
+  FailureBreakdownEntry,
 } from './weather-report-types.js';
 import type { RateLimitReport } from './weather-report-types.js';
 import { createDefaultWeatherConfig } from './weather-report-types.js';
@@ -56,6 +57,7 @@ export function generateWeatherReport(
   const tierRecommendations = buildTierRecommendations(summary);
   const rateLimits = buildRateLimitReport();
   const toolPerformance = buildToolPerformance();
+  const failureBreakdown = buildFailureBreakdown(input);
   const base = {
     overall: {
       totalTasks: summary.totalTasks,
@@ -67,6 +69,7 @@ export function generateWeatherReport(
     tierRecommendations,
     ...(rateLimits.length > 0 ? { rateLimits } : {}),
     ...(toolPerformance.length > 0 ? { toolPerformance } : {}),
+    ...(failureBreakdown.length > 0 ? { failureBreakdown } : {}),
     explorationRate: cfg.explorationRate,
     coldStartThreshold: cfg.coldStartThreshold,
     collectedAt: new Date().toISOString(),
@@ -281,6 +284,30 @@ function buildRecommendedMappings(): readonly RecommendedMapping[] {
   }
 
   return mappings;
+}
+
+/** Builds failure breakdown from failed outcomes (Issue #1025). */
+function buildFailureBreakdown(input: WeatherReportOptions): readonly FailureBreakdownEntry[] {
+  const store = getOutcomeStore();
+  const outcomes = store.query(buildQuery(input.cli, input.category));
+  const failed = outcomes.filter((o) => !o.success);
+  if (failed.length === 0) return [];
+
+  const counts = new Map<string, number>();
+  for (const o of failed) {
+    const cat = o.failureCategory ?? 'unknown';
+    counts.set(cat, (counts.get(cat) ?? 0) + 1);
+  }
+
+  const entries: FailureBreakdownEntry[] = [];
+  for (const [category, count] of counts) {
+    entries.push({
+      category,
+      count,
+      percentage: Math.round((count / failed.length) * 1000) / 10,
+    });
+  }
+  return entries.sort((a, b) => b.count - a.count);
 }
 
 /** Builds per-tool performance stats from recorded metrics (#1022). */

@@ -167,12 +167,16 @@ export type {
   TaskOutcome,
   OutcomeQuery,
   OutcomeSource,
+  OutcomeFailureCategory,
   PerformanceSummary,
   GroupStats,
 } from './outcomes/index.js';
 export {
   TaskOutcomeSchema,
   OutcomeQuerySchema,
+  OutcomeFailureCategorySchema,
+  categorizeOutcomeError,
+  categorizeOutcomeErrorMessage,
   OutcomeStore,
   getOutcomeStore,
   resetOutcomeStore,

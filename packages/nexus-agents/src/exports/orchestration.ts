@@ -168,10 +168,14 @@ export {
   getOutcomeStore,
   OutcomeStore,
   TaskOutcomeSchema as OutcomeTaskSchema,
+  OutcomeFailureCategorySchema,
+  categorizeOutcomeError,
+  categorizeOutcomeErrorMessage,
   PersistentOutcomeStore,
 } from '../orchestration/index.js';
 export type {
   TaskOutcome as OutcomeTaskRecord,
+  OutcomeFailureCategory,
   PerformanceSummary,
   OutcomeStoreConfig,
   PersistentOutcomeStoreConfig,

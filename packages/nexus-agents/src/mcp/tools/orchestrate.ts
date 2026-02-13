@@ -37,7 +37,11 @@ import { createWorkflowRouter, type IWorkflowRouter } from '../../orchestration/
 import { getToolMemory } from './tool-memory.js';
 import { getAutoCatalog } from './research-auto-catalog.js';
 import { computeAgentPlan } from './orchestrate-aorchestra.js';
-import { getOutcomeStore } from '../../orchestration/outcomes/index.js';
+import {
+  getOutcomeStore,
+  categorizeOutcomeErrorMessage,
+} from '../../orchestration/outcomes/index.js';
+import type { OutcomeFailureCategory } from '../../orchestration/outcomes/index.js';
 import { detectTaskCategory } from '../../config/task-specialization.js';
 import {
   OrchestrateInputSchema,
@@ -203,7 +207,12 @@ function triggerPromotionPipeline(toolName: string): void {
 }
 
 /** Records orchestration outcome to OutcomeStore (Issue #1014). Best-effort, never throws. */
-function recordToOutcomeStore(taskDescription: string, success: boolean, durationMs: number): void {
+function recordToOutcomeStore(
+  taskDescription: string,
+  success: boolean,
+  durationMs: number,
+  failureCategory?: OutcomeFailureCategory
+): void {
   try {
     const match = detectTaskCategory(taskDescription);
     getOutcomeStore().append({
@@ -215,6 +224,7 @@ function recordToOutcomeStore(taskDescription: string, success: boolean, duratio
       durationMs,
       timestamp: new Date(getTimeProvider().now()).toISOString(),
       source: 'delegate',
+      ...(failureCategory !== undefined ? { failureCategory } : {}),
     });
   } catch (error: unknown) {
     createLogger({ tool: 'orchestrate' }).debug('Best-effort outcome recording failed', {
@@ -290,7 +300,8 @@ function recordOrchestrationError(
       error: getErrorMessage(error),
     });
   }
-  recordToOutcomeStore(taskDescription, false, durationMs ?? 0);
+  const fc = categorizeOutcomeErrorMessage(errorMessage);
+  recordToOutcomeStore(taskDescription, false, durationMs ?? 0, fc);
 }
 
 // ============================================================================

@@ -12,10 +12,17 @@ export type {
   TaskOutcome,
   OutcomeQuery,
   OutcomeSource,
+  OutcomeFailureCategory,
   PerformanceSummary,
   GroupStats,
 } from './outcome-types.js';
-export { TaskOutcomeSchema, OutcomeQuerySchema } from './outcome-types.js';
+export {
+  TaskOutcomeSchema,
+  OutcomeQuerySchema,
+  OutcomeFailureCategorySchema,
+  categorizeOutcomeError,
+  categorizeOutcomeErrorMessage,
+} from './outcome-types.js';
 export {
   OutcomeStore,
   getOutcomeStore,
