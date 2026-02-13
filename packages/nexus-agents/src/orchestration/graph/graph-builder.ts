@@ -22,6 +22,8 @@ import type {
   StateReducer,
   CompileResult,
   GraphCompileError,
+  PreconditionConfig,
+  NodeHook,
 } from './graph-types.js';
 import { START, END } from './graph-types.js';
 
@@ -59,9 +61,27 @@ export class GraphBuilder {
 
   /**
    * Adds a node to the graph.
+   * Supports optional precondition hooks (Issue #997) and verify hook (Issue #994).
    */
-  addNode(id: string, handler: NodeHandler, opts?: { timeout?: number; retries?: number }): this {
-    this.nodes.set(id, { id, handler, timeout: opts?.timeout, retries: opts?.retries });
+  addNode(
+    id: string,
+    handler: NodeHandler,
+    opts?: {
+      timeout?: number;
+      retries?: number;
+      preconditions?: readonly PreconditionConfig[];
+      verify?: NodeHook;
+    }
+  ): this {
+    const node: GraphNode = {
+      id,
+      handler,
+      ...(opts?.timeout !== undefined ? { timeout: opts.timeout } : {}),
+      ...(opts?.retries !== undefined ? { retries: opts.retries } : {}),
+      ...(opts?.preconditions !== undefined ? { preconditions: opts.preconditions } : {}),
+      ...(opts?.verify !== undefined ? { verify: opts.verify } : {}),
+    };
+    this.nodes.set(id, node);
     return this;
   }
 

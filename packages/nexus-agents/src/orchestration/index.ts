@@ -56,7 +56,20 @@ export type {
   GraphCompileError,
   CompileResult,
   GraphEvent,
+  NodeHookContext,
+  HookError,
+  NodeHook,
+  PreconditionConfig,
 } from './graph/index.js';
+
+// Node Hooks (Issue #994 + #997)
+export {
+  runPreconditions,
+  runVerification,
+  createStateComparisonVerifier,
+  createStateGuard,
+} from './graph/index.js';
+export type { PreconditionResult, PreconditionOutcome, VerificationResult } from './graph/index.js';
 
 // Event streaming (Issue #838)
 export {
