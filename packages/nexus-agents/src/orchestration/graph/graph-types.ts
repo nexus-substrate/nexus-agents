@@ -13,6 +13,46 @@ import type { Result } from '../../core/index.js';
 import type { ICheckpointStore } from './checkpoint-types.js';
 
 // ============================================================================
+// Node Hooks (Issue #994 + #997)
+// ============================================================================
+
+/**
+ * Context passed to node hooks (preconditions and verification).
+ * Provides read-only access to current execution state.
+ */
+export interface NodeHookContext {
+  readonly nodeId: string;
+  readonly state: Readonly<GraphState>;
+  readonly stepNumber: number;
+}
+
+/**
+ * Error type for hook failures — identifies which hook failed and why.
+ */
+export interface HookError {
+  readonly hookName: string;
+  readonly nodeId: string;
+  readonly message: string;
+}
+
+/**
+ * Hook function signature. Returns ok(void) on success, err(HookError) on failure.
+ */
+export type NodeHook = (ctx: NodeHookContext) => Promise<Result<void, HookError>>;
+
+/**
+ * Configuration for a precondition hook.
+ * Preconditions run before node execution.
+ * If a required precondition fails, the node is skipped.
+ */
+export interface PreconditionConfig {
+  readonly name: string;
+  readonly hook: NodeHook;
+  /** If true (default), failure prevents node execution. */
+  readonly required?: boolean | undefined;
+}
+
+// ============================================================================
 // State & Reducers
 // ============================================================================
 
@@ -61,6 +101,10 @@ export interface GraphNode {
   readonly handler: NodeHandler;
   readonly timeout?: number | undefined;
   readonly retries?: number | undefined;
+  /** Precondition hooks run before node execution (Issue #997). */
+  readonly preconditions?: readonly PreconditionConfig[] | undefined;
+  /** Post-step verification hook run after node execution (Issue #994). */
+  readonly verify?: NodeHook | undefined;
 }
 
 /** Special sentinel for the graph entry point. */
@@ -183,6 +227,32 @@ export type GraphEvent =
       readonly totalSteps: number;
       readonly totalNodes: number;
       readonly durationMs: number;
+      readonly timestamp: number;
+    }
+  | {
+      readonly type: 'hook_started';
+      readonly nodeId: string;
+      readonly hookName: string;
+      readonly hookPhase: 'precondition' | 'verify';
+      readonly stepNumber: number;
+      readonly timestamp: number;
+    }
+  | {
+      readonly type: 'hook_completed';
+      readonly nodeId: string;
+      readonly hookName: string;
+      readonly hookPhase: 'precondition' | 'verify';
+      readonly durationMs: number;
+      readonly stepNumber: number;
+      readonly timestamp: number;
+    }
+  | {
+      readonly type: 'hook_failed';
+      readonly nodeId: string;
+      readonly hookName: string;
+      readonly hookPhase: 'precondition' | 'verify';
+      readonly error: string;
+      readonly stepNumber: number;
       readonly timestamp: number;
     };
 

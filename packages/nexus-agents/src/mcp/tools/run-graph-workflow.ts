@@ -277,6 +277,12 @@ function formatDetail(event: GraphEvent): string {
       return `${String(event.totalSteps)} steps, ${String(event.durationMs)}ms`;
     case 'state_updated':
       return event.updatedKeys.join(', ');
+    case 'hook_started':
+      return `${event.hookPhase}: ${event.hookName} on ${event.nodeId}`;
+    case 'hook_completed':
+      return `${event.hookPhase}: ${event.hookName} on ${event.nodeId} in ${String(event.durationMs)}ms`;
+    case 'hook_failed':
+      return `${event.hookPhase}: ${event.hookName} on ${event.nodeId}: ${event.error}`;
   }
 }
 

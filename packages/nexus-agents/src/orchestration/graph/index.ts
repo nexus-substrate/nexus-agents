@@ -24,6 +24,10 @@ export type {
   GraphCompileError,
   CompileResult,
   GraphEvent,
+  NodeHookContext,
+  HookError,
+  NodeHook,
+  PreconditionConfig,
 } from './graph-types.js';
 export { START, END, formatCompileError } from './graph-types.js';
 
@@ -41,6 +45,15 @@ export { GraphBuilder, overwrite, append, customReducer } from './graph-builder.
 
 // Executor
 export { executeGraph } from './graph-executor.js';
+
+// Hooks (Issue #994 + #997)
+export type { PreconditionResult, PreconditionOutcome, VerificationResult } from './graph-hooks.js';
+export {
+  runPreconditions,
+  runVerification,
+  createStateComparisonVerifier,
+  createStateGuard,
+} from './graph-hooks.js';
 
 // Checkpointing (Issue #833)
 export type { Checkpoint, CheckpointSummary, ICheckpointStore } from './checkpoint-types.js';

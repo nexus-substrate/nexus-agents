@@ -33,6 +33,7 @@ import {
   emitStepCompleted,
   emitExecutionComplete,
 } from './graph-events.js';
+import { runPreconditions, runVerification } from './graph-hooks.js';
 
 const logger = createLogger({ component: 'GraphExecutor' });
 
@@ -276,7 +277,51 @@ async function executeNodes(
   return Promise.all(promises);
 }
 
-/** Executes a single node with timeout and error handling. */
+/** Returns a skipped NodeResult for a failed precondition. */
+function preconditionFailedResult(
+  nodeId: string,
+  results: readonly import('./graph-hooks.js').PreconditionOutcome[],
+  startTime: number
+): NodeResult {
+  const failed = results.find((r) => !r.passed);
+  return {
+    nodeId,
+    stateUpdates: {},
+    durationMs: getTimeProvider().now() - startTime,
+    status: 'skipped',
+    error: `Precondition '${failed?.name ?? 'unknown'}' failed: ${failed?.error ?? 'unknown'}`,
+  };
+}
+
+/** Executes node handler with verification, returning the NodeResult. */
+async function executeWithVerification(
+  node: GraphNode,
+  nodeId: string,
+  state: Readonly<GraphState>,
+  startTime: number,
+  options?: GraphExecuteOptions
+): Promise<NodeResult> {
+  const nodeTimeout = node.timeout ?? options?.timeout ?? DEFAULT_TIMEOUT_MS;
+  const result = await withTimeout(node.handler(state), nodeTimeout);
+  const handlerDuration = getTimeProvider().now() - startTime;
+
+  const mergedState = { ...state, ...result };
+  const verifyResult = await runVerification(node, mergedState, 0, options);
+  if (!verifyResult.passed) {
+    logger.warn('Post-step verification failed', { nodeId, error: verifyResult.error });
+    return {
+      nodeId,
+      stateUpdates: {},
+      durationMs: getTimeProvider().now() - startTime,
+      status: 'failed',
+      error: `Verification failed: ${verifyResult.error ?? 'unknown'}`,
+    };
+  }
+
+  return { nodeId, stateUpdates: result, durationMs: handlerDuration, status: 'success' };
+}
+
+/** Executes a single node with preconditions, timeout, verification, and error handling. */
 async function executeSingleNode(
   graph: CompiledGraph,
   nodeId: string,
@@ -295,16 +340,13 @@ async function executeSingleNode(
   }
 
   const startTime = getTimeProvider().now();
-  const nodeTimeout = node.timeout ?? options?.timeout ?? DEFAULT_TIMEOUT_MS;
+  const preResult = await runPreconditions(node, state, 0, options);
+  if (!preResult.passed) {
+    return preconditionFailedResult(nodeId, preResult.results, startTime);
+  }
 
   try {
-    const result = await withTimeout(node.handler(state), nodeTimeout);
-    return {
-      nodeId,
-      stateUpdates: result,
-      durationMs: getTimeProvider().now() - startTime,
-      status: 'success',
-    };
+    return await executeWithVerification(node, nodeId, state, startTime, options);
   } catch (error: unknown) {
     const message = getErrorMessage(error);
     logger.warn('Node execution failed', { nodeId, error: message });

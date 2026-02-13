@@ -51,6 +51,23 @@ export type {
   GraphCompileError,
   CompileResult,
   GraphEvent,
+  NodeHookContext,
+  HookError,
+  NodeHook,
+  PreconditionConfig,
+} from '../orchestration/index.js';
+
+// Node Hooks (Issue #994 + #997)
+export {
+  runPreconditions,
+  runVerification,
+  createStateComparisonVerifier,
+  createStateGuard,
+} from '../orchestration/index.js';
+export type {
+  PreconditionResult,
+  PreconditionOutcome,
+  VerificationResult,
 } from '../orchestration/index.js';
 
 // Event streaming (Issue #838)
