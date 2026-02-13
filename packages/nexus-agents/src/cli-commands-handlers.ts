@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 /**
  * nexus-agents CLI Command Handlers
  *
@@ -37,6 +38,7 @@ import {
   fitnessAuditCommand,
 } from './cli/index.js';
 import { hookCommand, printHookHelp } from './cli/hooks/index.js';
+import { runWarmUp } from './cli/warm-up.js';
 import { EXIT_CODES, type ParsedCliArgs } from './cli-types.js';
 import { startServer, type OrchestratorModeOptions } from './cli-server.js';
 import {
@@ -577,4 +579,21 @@ export function handleFitnessAuditCommand(args: ParsedCliArgs): void {
     json: args.options.format === 'json',
   });
   process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
+}
+
+// ============================================================================
+// Issue #1023: Warm-Up Command
+// ============================================================================
+
+/**
+ * Handles warm-up command for LinUCB bandit cold-start seeding.
+ * (Source: Issue #1023 — Bootstrap LinUCB with synthetic outcomes)
+ */
+export function handleWarmUpCommand(_args: ParsedCliArgs): void {
+  const result = runWarmUp();
+  const msg = result.skipped
+    ? `Warm-up skipped: ${result.reason ?? 'already seeded'}`
+    : `Seeded with ${String(result.seeded)} synthetic observations`;
+  process.stdout.write(msg + '\n');
+  process.exit(EXIT_CODES.SUCCESS);
 }

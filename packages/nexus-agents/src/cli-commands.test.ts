@@ -31,6 +31,7 @@ vi.mock('./cli-commands-handlers.js', () => ({
   handleEvaluateCommand: vi.fn(() => Promise.resolve()),
   handleIssueCommand: vi.fn(),
   handleFitnessAuditCommand: vi.fn(),
+  handleWarmUpCommand: vi.fn(),
 }));
 
 vi.mock('./cli-auth-handler.js', () => ({

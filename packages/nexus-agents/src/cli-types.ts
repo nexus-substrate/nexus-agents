@@ -61,7 +61,8 @@ export type CliCommand =
   | 'status'
   | 'memory-benchmark'
   | 'auth'
-  | 'scenario';
+  | 'scenario'
+  | 'warm-up';
 
 /**
  * Parsed CLI arguments and command.
@@ -345,6 +346,7 @@ export function isValidCommand(value: string): value is CliCommand {
     'memory-benchmark',
     'auth',
     'scenario',
+    'warm-up',
   ];
   return validCommands.includes(value as CliCommand);
 }
