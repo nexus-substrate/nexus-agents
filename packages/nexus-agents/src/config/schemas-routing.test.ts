@@ -453,6 +453,7 @@ describe('DEFAULT_ROUTING_CONFIG', () => {
       confidenceCascade: false,
       capabilityMatch: false,
       qualityConstraint: false,
+      resourceStrategy: true,
     });
   });
 

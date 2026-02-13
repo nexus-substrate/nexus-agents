@@ -228,7 +228,21 @@ export class BudgetFilterStage implements IRouterStage {
       signals.push(`budget:cheapest-${cheapest.cli}`);
     }
 
+    // Emit budget utilization for ResourceStrategyStage (Issue #998)
+    const avgCost = this.computeAverageCost(estimates);
+    if (this.config.maxCostUsd > 0) {
+      const utilization = Math.min(1, avgCost / this.config.maxCostUsd);
+      signals.push(`budget:utilization=${utilization.toFixed(4)}`);
+    }
+
     return signals;
+  }
+
+  /** Computes average cost across all estimates. */
+  private computeAverageCost(estimates: CostEstimate[]): number {
+    if (estimates.length === 0) return 0;
+    const total = estimates.reduce((sum, e) => sum + e.cost, 0);
+    return total / estimates.length;
   }
 
   /**

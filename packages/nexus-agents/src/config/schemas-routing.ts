@@ -199,6 +199,8 @@ export const RoutingConfigSchema = z.object({
       capabilityMatch: z.boolean().default(false),
       /** Enable quality constraint stage (Issue #755, ADR-0005) */
       qualityConstraint: z.boolean().default(false),
+      /** Enable resource strategy stage for budget-aware oscillation (Issue #998) */
+      resourceStrategy: z.boolean().default(true),
     })
     .optional(),
 
@@ -274,6 +276,8 @@ export const DEFAULT_ROUTING_CONFIG: RoutingConfig = {
     confidenceCascade: false,
     capabilityMatch: false,
     qualityConstraint: false,
+    // Issue #998: Resource strategy (enabled by default)
+    resourceStrategy: true,
   },
   topsis: {
     minQualityThreshold: 5,

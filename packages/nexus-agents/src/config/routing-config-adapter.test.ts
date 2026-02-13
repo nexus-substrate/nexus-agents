@@ -37,6 +37,8 @@ describe('routing-config-adapter', () => {
           confidenceCascade: true,
           capabilityMatch: true,
           qualityConstraint: true,
+          // Issue #998: Resource strategy
+          resourceStrategy: false,
         },
         latencyScoreWeight: 0.5,
       };
@@ -55,6 +57,8 @@ describe('routing-config-adapter', () => {
       expect(result.enableConfidenceCascade).toBe(true);
       expect(result.enableCapabilityMatch).toBe(true);
       expect(result.enableQualityConstraint).toBe(true);
+      // Issue #998: Resource strategy
+      expect(result.enableResourceStrategy).toBe(false);
     });
 
     it('adapts budget constraints', () => {

@@ -39,9 +39,11 @@ import {
   ConfidenceCascadeStage,
   CapabilityMatchStage,
   QualityConstraintStage,
+  ResourceStrategyStage,
   type ConfidenceCascadeConfig,
   type CapabilityMatchConfig,
   type QualityConstraintConfig,
+  type ResourceStrategyConfig,
 } from './routing/stages/index.js';
 import {
   CompositeRouterConfigSchema,
@@ -137,6 +139,8 @@ export class CompositeRouter implements ICompositeRouter {
   private capabilityMatchStage?: CapabilityMatchStage;
   /** Quality constraint stage instance (Issue #755) */
   private qualityConstraintStage?: QualityConstraintStage;
+  /** Resource strategy stage instance (Issue #998) */
+  private resourceStrategyStage?: ResourceStrategyStage;
   private readonly cliNames: CliName[];
 
   // Statistics tracking
@@ -164,6 +168,7 @@ export class CompositeRouter implements ICompositeRouter {
       confidenceCascadeConfig,
       capabilityMatchConfig,
       qualityConstraintConfig,
+      resourceStrategyConfig,
       metricsCollector,
       orchestrationObserver,
       ...baseConfig
@@ -191,6 +196,7 @@ export class CompositeRouter implements ICompositeRouter {
       confidenceCascade: confidenceCascadeConfig,
       capabilityMatch: capabilityMatchConfig,
       qualityConstraint: qualityConstraintConfig,
+      resourceStrategy: resourceStrategyConfig,
     });
     this.logInitialization(adapters.size);
   }
@@ -220,6 +226,7 @@ export class CompositeRouter implements ICompositeRouter {
       confidenceCascade?: Partial<ConfidenceCascadeConfig> | undefined;
       capabilityMatch?: Partial<CapabilityMatchConfig> | undefined;
       qualityConstraint?: Partial<QualityConstraintConfig> | undefined;
+      resourceStrategy?: Partial<ResourceStrategyConfig> | undefined;
     }
   ): void {
     if (this.config.enableRoutingMemory) {
@@ -238,6 +245,10 @@ export class CompositeRouter implements ICompositeRouter {
     if (this.config.enableQualityConstraint) {
       this.qualityConstraintStage = new QualityConstraintStage(stageConfigs?.qualityConstraint);
     }
+    // Initialize Issue #998 resource strategy stage
+    if (this.config.enableResourceStrategy) {
+      this.resourceStrategyStage = new ResourceStrategyStage(stageConfigs?.resourceStrategy);
+    }
   }
 
   private logInitialization(adapterCount: number): void {
@@ -252,6 +263,7 @@ export class CompositeRouter implements ICompositeRouter {
       enableConfidenceCascade: this.config.enableConfidenceCascade,
       enableCapabilityMatch: this.config.enableCapabilityMatch,
       enableQualityConstraint: this.config.enableQualityConstraint,
+      enableResourceStrategy: this.config.enableResourceStrategy,
     });
   }
 
@@ -417,6 +429,8 @@ export class CompositeRouter implements ICompositeRouter {
       confidenceCascadeStage: this.confidenceCascadeStage,
       capabilityMatchStage: this.capabilityMatchStage,
       qualityConstraintStage: this.qualityConstraintStage,
+      // Issue #998 resource strategy
+      resourceStrategyStage: this.resourceStrategyStage,
     };
   }
 
