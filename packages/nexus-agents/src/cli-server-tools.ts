@@ -75,6 +75,7 @@ import {
 } from './mcp/middleware/index.js';
 import { createGatewayServerProxy, type GatewayConfig } from './mcp/gateway/index.js';
 import { getSharedCliCache } from './mcp/middleware/adapter-availability.js';
+import { createAnnotationsProxy } from './mcp/tools/annotation-proxy.js';
 
 /**
  * Options for MCP tool registration.
@@ -504,35 +505,8 @@ function registerToolCategories(ctx: ToolRegistrationContext): void {
   }
 }
 
-export function registerMcpTools(options: RegisterMcpToolsOptions): void {
-  const {
-    server,
-    logger,
-    builtInTemplates,
-    modelAdapter,
-    policyFirewall,
-    executionMode,
-    securityConfig,
-    gatewayConfig,
-  } = options;
-
-  // Wrap server with gateway proxy for tier-aware dispatch logging (Issue #896)
-  const gatewayServer =
-    gatewayConfig !== undefined ? createGatewayServerProxy(server, gatewayConfig) : server;
-
-  const toolInfra = registerTools(gatewayServer, { logger });
-
-  const rateLimitConfig = securityConfig?.rateLimit;
-  const perToolConfig = rateLimitConfig?.perTool;
-  const rateLimitEnabled = rateLimitConfig?.enabled ?? true;
-  const rateLimiterFactory = createToolRateLimiterFactory({
-    enabled: rateLimitEnabled,
-    ...(perToolConfig !== undefined && { perTool: perToolConfig }),
-    logger: toolInfra.logger,
-  });
-  setGlobalToolRateLimiterFactory(rateLimiterFactory);
-
-  // Initialize V2 Pipeline OS subsystems (Phases B-C, Issues #921-#922)
+/** Initializes V2 Pipeline OS subsystems and logs summary. (Phases B-C, Issues #921-#922) */
+function initV2PipelineSubsystems(logger: ILogger): void {
   const pluginRegistry = createCorePluginRegistry();
   const pipelineEventBus = new PipelineEventBus();
   const pipelineArtifactStore = new ArtifactStore();
@@ -547,9 +521,39 @@ export function registerMcpTools(options: RegisterMcpToolsOptions): void {
     v2Mode: v2Config.mode,
     policyMode: v2Config.policyMode,
   });
+}
 
-  // Use gateway-wrapped server in context so all registerTool calls get wrapped
-  const gatewayOptions = { ...options, server: gatewayServer };
+export function registerMcpTools(options: RegisterMcpToolsOptions): void {
+  const {
+    server,
+    logger,
+    builtInTemplates,
+    modelAdapter,
+    policyFirewall,
+    executionMode,
+    securityConfig,
+    gatewayConfig,
+  } = options;
+
+  // Wrap server with gateway proxy (Issue #896) then annotations proxy (Issue #993)
+  const gatewayServer =
+    gatewayConfig !== undefined ? createGatewayServerProxy(server, gatewayConfig) : server;
+  const annotatedServer = createAnnotationsProxy(gatewayServer);
+
+  const toolInfra = registerTools(annotatedServer, { logger });
+
+  const rateLimitConfig = securityConfig?.rateLimit;
+  const perToolConfig = rateLimitConfig?.perTool;
+  const rateLimiterFactory = createToolRateLimiterFactory({
+    enabled: rateLimitConfig?.enabled ?? true,
+    ...(perToolConfig !== undefined && { perTool: perToolConfig }),
+    logger: toolInfra.logger,
+  });
+  setGlobalToolRateLimiterFactory(rateLimiterFactory);
+
+  initV2PipelineSubsystems(logger);
+
+  const gatewayOptions = { ...options, server: annotatedServer };
   const ctx = createToolContext(gatewayOptions, toolInfra, rateLimiterFactory);
   registerToolCategories(ctx);
 
@@ -562,6 +566,5 @@ export function registerMcpTools(options: RegisterMcpToolsOptions): void {
     executionMode,
   });
 
-  // Run STPA safety analysis if enabled (Issue #530)
   maybeRunStpaAnalysis(options, logger);
 }
