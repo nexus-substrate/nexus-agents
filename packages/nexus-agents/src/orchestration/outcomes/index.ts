@@ -25,6 +25,9 @@ export {
 } from './outcome-store.js';
 
 // Persistence (Issue #1009)
+// Side-effect import: registers PersistentOutcomeStoreFactory so getOutcomeStore()
+// returns the persistent variant when NEXUS_PERSIST_LEARNING=true. Do not remove.
+import './outcome-store-persistence.js';
 export {
   PersistentOutcomeStore,
   type PersistentOutcomeStoreConfig,

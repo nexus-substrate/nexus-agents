@@ -209,6 +209,17 @@ All configuration can be overridden with environment variables:
 | `NEXUS_AUTH_ENABLED` | Enable MCP auth     | `false`  |
 | `NEXUS_AUTH_METHOD`  | Auth method         | `token`  |
 
+### Learning Variables
+
+| Variable                 | Description                        | Default |
+| ------------------------ | ---------------------------------- | ------- |
+| `NEXUS_PERSIST_LEARNING` | Cross-session learning persistence | `false` |
+
+When enabled, outcomes and distilled routing rules persist to `~/.nexus-agents/learning/`:
+
+- `outcomes.jsonl` — Append-only JSONL of task outcomes
+- `rules.json` — Atomic JSON snapshot of distilled routing rules
+
 ### API Variables
 
 | Variable            | Description            | Default |
