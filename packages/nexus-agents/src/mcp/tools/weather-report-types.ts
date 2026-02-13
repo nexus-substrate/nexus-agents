@@ -106,6 +106,14 @@ export interface RecommendedMapping {
   readonly confidence: 'high' | 'medium' | 'low';
 }
 
+/** Rate limit stats per provider (Issue #996). */
+export interface RateLimitReport {
+  readonly provider: string;
+  readonly totalHits: number;
+  readonly lastHitAt: number;
+  readonly avgRetryAfterMs: number | undefined;
+}
+
 /** Full weather report response. */
 export interface WeatherReportResponse {
   readonly overall: {
@@ -121,6 +129,8 @@ export interface WeatherReportResponse {
   readonly learningInsights?: readonly LearningInsight[];
   /** Recommended CLI mappings per category for LinUCB priors (Epic #952). */
   readonly recommendedMappings?: readonly RecommendedMapping[];
+  /** Rate limit utilization per provider (Issue #996). */
+  readonly rateLimits?: readonly RateLimitReport[];
   readonly explorationRate: number;
   readonly coldStartThreshold: number;
   readonly collectedAt: string;

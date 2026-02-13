@@ -325,12 +325,33 @@ export class TimeoutError extends NexusError {
 }
 
 /**
- * Rate limit error for rate limiting violations.
+ * Options for creating a rate limit error with actionable context.
+ * (Source: Issue #996 — Rate limit error surfacing)
+ */
+export interface RateLimitErrorOptions extends Partial<Omit<NexusErrorOptions, 'code'>> {
+  /** Milliseconds until the rate limit window resets. */
+  readonly retryAfterMs?: number;
+  /** ISO timestamp when the rate limit window resets. */
+  readonly windowResetAt?: string;
+  /** Provider or adapter that was rate-limited. */
+  readonly provider?: string;
+}
+
+/**
+ * Rate limit error with actionable backoff context.
+ * (Source: Issue #996 — Rate limit error surfacing)
  */
 export class RateLimitError extends NexusError {
-  constructor(message: string, options?: Partial<Omit<NexusErrorOptions, 'code'>>) {
+  readonly retryAfterMs: number | undefined;
+  readonly windowResetAt: string | undefined;
+  readonly provider: string | undefined;
+
+  constructor(message: string, options?: RateLimitErrorOptions) {
     super(message, { code: ErrorCode.RATE_LIMIT_ERROR, ...options });
     this.name = 'RateLimitError';
+    this.retryAfterMs = options?.retryAfterMs;
+    this.windowResetAt = options?.windowResetAt;
+    this.provider = options?.provider;
   }
 }
 
