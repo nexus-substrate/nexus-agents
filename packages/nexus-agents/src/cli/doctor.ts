@@ -9,8 +9,14 @@
  * (Source: Issue #422 - Doctor command validations)
  */
 
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync, accessSync, constants as fsConstants } from 'node:fs';
 import { getTimeProvider, getErrorMessage } from '../core/index.js';
+import {
+  isPersistenceEnabled,
+  LEARNING_DIR,
+  OUTCOMES_FILE,
+  RULES_FILE,
+} from '../config/learning-persistence.js';
 import { createAllAdapters } from '../cli-adapters/factory.js';
 import type { CliName, HealthStatus, CapacityStatus } from '../cli-adapters/types.js';
 import { DEFAULT_MODEL_CAPABILITIES } from '../config/model-capabilities.js';
@@ -78,6 +84,19 @@ export interface ModelAdvisory {
 }
 
 /**
+ * Learning persistence health check result (#1017).
+ */
+export interface LearningPersistenceCheck {
+  readonly enabled: boolean;
+  readonly dirExists: boolean;
+  readonly dirWritable: boolean;
+  readonly outcomeCount: number;
+  readonly ruleCount: number;
+  readonly rulesLastSaved: string | null;
+  readonly error: string | null;
+}
+
+/**
  * Registry advisory summary (#890).
  */
 export interface RegistryAdvisory {
@@ -99,6 +118,8 @@ export interface DoctorResult {
   readonly mcpClientReady: boolean;
   /** Model registry advisory — which models are available (#890). */
   readonly registryAdvisory: RegistryAdvisory;
+  /** Learning persistence health check (#1017). */
+  readonly learningPersistence: LearningPersistenceCheck;
   readonly allHealthy: boolean;
   readonly timestamp: Date;
 }
@@ -290,6 +311,77 @@ function buildRegistryAdvisory(cliResults: CliCheckResult[]): RegistryAdvisory {
   };
 }
 
+/** Counts non-empty lines in a JSONL file. Returns 0 if file doesn't exist. */
+function countJsonlLines(filePath: string): number {
+  if (!existsSync(filePath)) return 0;
+  return readFileSync(filePath, 'utf-8')
+    .split('\n')
+    .filter((l) => l.trim().length > 0).length;
+}
+
+/** Reads rules snapshot metadata. Returns count and savedAt. */
+function readRulesMetadata(filePath: string): { count: number; savedAt: string | null } {
+  if (!existsSync(filePath)) return { count: 0, savedAt: null };
+  const raw = JSON.parse(readFileSync(filePath, 'utf-8')) as Record<string, unknown>;
+  const rules = raw['rules'];
+  const saved = raw['savedAt'];
+  return {
+    count: Array.isArray(rules) ? rules.length : 0,
+    savedAt: typeof saved === 'string' ? saved : null,
+  };
+}
+
+/** Checks if a directory exists and is writable. */
+function checkDirAccess(dir: string): { exists: boolean; writable: boolean } {
+  const exists = existsSync(dir);
+  if (!exists) return { exists: false, writable: false };
+  try {
+    accessSync(dir, fsConstants.W_OK);
+    return { exists: true, writable: true };
+  } catch {
+    return { exists: true, writable: false };
+  }
+}
+
+const DISABLED_CHECK: LearningPersistenceCheck = {
+  enabled: false,
+  dirExists: false,
+  dirWritable: false,
+  outcomeCount: 0,
+  ruleCount: 0,
+  rulesLastSaved: null,
+  error: null,
+};
+
+/** Checks learning persistence health (#1017). */
+function checkLearningPersistence(): LearningPersistenceCheck {
+  if (!isPersistenceEnabled()) return DISABLED_CHECK;
+  try {
+    const { exists: dirExists, writable: dirWritable } = checkDirAccess(LEARNING_DIR);
+    const outcomeCount = countJsonlLines(OUTCOMES_FILE);
+    const { count: ruleCount, savedAt: rulesLastSaved } = readRulesMetadata(RULES_FILE);
+    return {
+      enabled: true,
+      dirExists,
+      dirWritable,
+      outcomeCount,
+      ruleCount,
+      rulesLastSaved,
+      error: null,
+    };
+  } catch (error: unknown) {
+    return {
+      enabled: true,
+      dirExists: false,
+      dirWritable: false,
+      outcomeCount: 0,
+      ruleCount: 0,
+      rulesLastSaved: null,
+      error: getErrorMessage(error),
+    };
+  }
+}
+
 /**
  * Runs the complete doctor check.
  */
@@ -302,6 +394,7 @@ export async function runDoctor(): Promise<DoctorResult> {
   const codexCheck = clis.find((c) => c.name === 'codex');
   const mcpClientReady = codexCheck?.installed ?? false;
   const registryAdvisory = buildRegistryAdvisory(clis);
+  const learningPersistence = checkLearningPersistence();
 
   // At least one API key configured or one CLI authenticated
   const hasAuthMethod =
@@ -321,6 +414,7 @@ export async function runDoctor(): Promise<DoctorResult> {
     mcpServerReady,
     mcpClientReady,
     registryAdvisory,
+    learningPersistence,
     allHealthy,
     timestamp: new Date(getTimeProvider().now()),
   };

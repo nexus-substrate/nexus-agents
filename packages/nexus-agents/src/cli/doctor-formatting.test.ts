@@ -143,6 +143,15 @@ describe('doctor-formatting', () => {
       unavailableModels: 0,
       models: [],
     },
+    learningPersistence: {
+      enabled: false,
+      dirExists: false,
+      dirWritable: false,
+      outcomeCount: 0,
+      ruleCount: 0,
+      rulesLastSaved: null,
+      error: null,
+    },
     timestamp: new Date('2024-01-01T00:00:00Z'),
   });
 
