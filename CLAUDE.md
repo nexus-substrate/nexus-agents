@@ -488,7 +488,7 @@ _Auto-generated from source. 21 tools registered._
 
 <!-- GOVERNANCE:VERSION:START -->
 
-_Governance Version: 2026-02-11_
+_Governance Version: 2026-02-13_
 
 <!-- GOVERNANCE:VERSION:END -->
 
