@@ -77,6 +77,7 @@ const NexusEnvSchema = z.object({
   NEXUS_RATE_LIMIT_REFILL_INTERVAL: positiveIntStr.optional(),
 
   // --- Workers & Concurrency ---
+  NEXUS_MAX_CONCURRENT_EXPERTS: positiveIntStr.optional(),
   NEXUS_WORKERS_MAX: positiveIntStr.optional(),
   NEXUS_WORKERS_POOL_SIZE: positiveIntStr.optional(),
   NEXUS_WORKERS_IDLE_TIMEOUT: positiveIntStr.optional(),
