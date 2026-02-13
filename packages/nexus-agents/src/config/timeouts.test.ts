@@ -16,9 +16,11 @@ import {
   API_TIMEOUTS,
   INTERNAL_TIMEOUTS,
   TEST_TIMEOUTS,
+  EXPERT_TIMEOUTS,
   TIMEOUT_ENV_VARS,
   getCliTimeoutProfile,
   getCliTimeout,
+  getExpertTaskTimeout,
   resolveVoteTimeout,
   resolveEnvTimeout,
   validateTimeout,
@@ -77,7 +79,7 @@ describe('Centralized Timeout Configuration', () => {
     it('has per-tool overrides for long-running tools', () => {
       expect(MCP_TIMEOUTS.perTool['orchestrate']).toBe(300_000);
       expect(MCP_TIMEOUTS.perTool['consensus_vote']).toBe(300_000);
-      expect(MCP_TIMEOUTS.perTool['execute_expert']).toBe(300_000);
+      expect(MCP_TIMEOUTS.perTool['execute_expert']).toBe(600_000);
       expect(MCP_TIMEOUTS.perTool['run_workflow']).toBe(300_000);
     });
   });
@@ -252,12 +254,74 @@ describe('Centralized Timeout Configuration', () => {
     });
   });
 
+  describe('EXPERT_TIMEOUTS', () => {
+    it('has correct complexity tiers', () => {
+      expect(EXPERT_TIMEOUTS.complexMs).toBe(180_000);
+      expect(EXPERT_TIMEOUTS.standardMs).toBe(90_000);
+    });
+
+    it('has correct bounds', () => {
+      expect(EXPERT_TIMEOUTS.minMs).toBe(30_000);
+      expect(EXPERT_TIMEOUTS.maxMs).toBe(600_000);
+    });
+
+    it('lists complex categories', () => {
+      expect(EXPERT_TIMEOUTS.complexCategories).toContain('architecture');
+      expect(EXPERT_TIMEOUTS.complexCategories).toContain('security_review');
+      expect(EXPERT_TIMEOUTS.complexCategories).toHaveLength(2);
+    });
+  });
+
+  describe('getExpertTaskTimeout()', () => {
+    const envKey = 'NEXUS_EXPERT_TIMEOUT_MS';
+
+    afterEach(() => {
+      delete process.env.NEXUS_EXPERT_TIMEOUT_MS;
+    });
+
+    it('returns complex timeout for architecture tasks', () => {
+      expect(getExpertTaskTimeout('Review the system architecture')).toBe(180_000);
+    });
+
+    it('returns complex timeout for security tasks', () => {
+      expect(getExpertTaskTimeout('Perform a security review of auth')).toBe(180_000);
+    });
+
+    it('returns standard timeout for code generation tasks', () => {
+      expect(getExpertTaskTimeout('Generate unit tests for the API')).toBe(90_000);
+    });
+
+    it('returns standard timeout for documentation tasks', () => {
+      expect(getExpertTaskTimeout('Write documentation for this module')).toBe(90_000);
+    });
+
+    it('returns standard timeout for unrecognized tasks', () => {
+      expect(getExpertTaskTimeout('do something random')).toBe(90_000);
+    });
+
+    it('respects env override', () => {
+      process.env[envKey] = '200000';
+      expect(getExpertTaskTimeout('architecture review')).toBe(200_000);
+    });
+
+    it('clamps env override to minimum', () => {
+      process.env[envKey] = '1000';
+      expect(getExpertTaskTimeout('any task')).toBe(30_000);
+    });
+
+    it('clamps env override to maximum', () => {
+      process.env[envKey] = '9999999';
+      expect(getExpertTaskTimeout('any task')).toBe(600_000);
+    });
+  });
+
   describe('TIMEOUT_ENV_VARS', () => {
     it('has correct env var names', () => {
       expect(TIMEOUT_ENV_VARS.vote).toBe('NEXUS_VOTE_TIMEOUT_MS');
       expect(TIMEOUT_ENV_VARS.mcp).toBe('NEXUS_MCP_TIMEOUT_MS');
       expect(TIMEOUT_ENV_VARS.workflow).toBe('NEXUS_WORKFLOW_TIMEOUT_MS');
       expect(TIMEOUT_ENV_VARS.graph).toBe('NEXUS_GRAPH_TIMEOUT_MS');
+      expect(TIMEOUT_ENV_VARS.expert).toBe('NEXUS_EXPERT_TIMEOUT_MS');
     });
   });
 });

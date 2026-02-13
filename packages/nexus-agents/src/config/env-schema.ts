@@ -60,6 +60,7 @@ const NexusEnvSchema = z.object({
   NEXUS_WORKFLOW_TIMEOUT_MS: positiveIntStr.optional(),
   NEXUS_GRAPH_TIMEOUT_MS: positiveIntStr.optional(),
   NEXUS_TEST_TIMEOUT_MS: positiveIntStr.optional(),
+  NEXUS_EXPERT_TIMEOUT_MS: positiveIntStr.optional(),
 
   // --- Retry ---
   NEXUS_RETRY_MAX_RETRIES: positiveIntStr.optional(),

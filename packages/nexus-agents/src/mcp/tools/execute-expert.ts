@@ -35,6 +35,7 @@ import {
 } from '../../orchestration/outcomes/index.js';
 import type { OutcomeFailureCategory } from '../../orchestration/outcomes/index.js';
 import { detectTaskCategory } from '../../config/task-specialization.js';
+import { getExpertTaskTimeout } from '../../config/timeouts.js';
 import type { ICliDetectionCache } from '../../cli-adapters/cli-detection-cache.js';
 import { requireAdapterAvailable } from '../middleware/adapter-availability.js';
 
@@ -96,6 +97,7 @@ export interface ExecuteExpertResponse {
  * Builds a task object from the tool input.
  */
 function buildTask(input: ExecuteExpertInput): Task {
+  const timeoutMs = getExpertTaskTimeout(input.task);
   return {
     id: `exec-${String(getTimeProvider().now())}-${getRandomProvider().random().toString(36).slice(2, 9)}`,
     description: input.task,
@@ -104,7 +106,7 @@ function buildTask(input: ExecuteExpertInput): Task {
     },
     constraints: {
       maxTokens: 4096,
-      maxDuration: 90_000, // 90s inner timeout — must complete before MCP client timeout (120s)
+      maxDuration: timeoutMs, // Dynamic timeout based on task complexity (Issue #1028)
     },
   };
 }
