@@ -111,6 +111,9 @@ export {
 } from './strategy-distiller.js';
 
 // Strategy Distiller Persistence (Issue #1009)
+// Side-effect import: registers PersistentDistillerFactory so CompositeRouter
+// uses the persistent variant when NEXUS_PERSIST_LEARNING=true. Do not remove.
+import './strategy-distiller-persistence.js';
 export {
   PersistentStrategyDistiller,
   RulesSnapshotSchema,

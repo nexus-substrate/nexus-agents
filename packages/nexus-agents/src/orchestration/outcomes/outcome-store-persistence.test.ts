@@ -331,5 +331,18 @@ describe('PersistentOutcomeStore', () => {
       const store = getOutcomeStore();
       expect(store).toBeInstanceOf(PersistentOutcomeStore);
     });
+
+    it('factory is auto-registered by side-effect import from barrel', async () => {
+      // Import the barrel — the side-effect import in outcomes/index.ts
+      // should trigger outcome-store-persistence.ts module load,
+      // which calls registerPersistentOutcomeStoreFactory() at module scope.
+      await import('./index.js');
+
+      process.env['NEXUS_PERSIST_LEARNING'] = 'true';
+      resetOutcomeStore();
+      // Factory should already be registered from the barrel import
+      const store = getOutcomeStore();
+      expect(store).toBeInstanceOf(PersistentOutcomeStore);
+    });
   });
 });
