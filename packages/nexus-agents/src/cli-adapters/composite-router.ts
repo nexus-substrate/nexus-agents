@@ -47,8 +47,12 @@ import {
   type ResourceStrategyConfig,
   type DistilledRuleStageConfig,
 } from './routing/stages/index.js';
-import { StrategyDistiller } from '../learning/strategy-distiller.js';
+import {
+  StrategyDistiller,
+  createPersistentDistillerOrFallback,
+} from '../learning/strategy-distiller.js';
 import { getOutcomeStore } from '../orchestration/outcomes/outcome-store.js';
+import { isPersistenceEnabled } from '../config/learning-persistence.js';
 import {
   CompositeRouterConfigSchema,
   CompositeRoutingError,
@@ -271,7 +275,9 @@ export class CompositeRouter implements ICompositeRouter {
       this.resourceStrategyStage = new ResourceStrategyStage(stageConfigs.resourceStrategy);
     }
     if (this.config.enableStrategyDistillation) {
-      this.strategyDistiller = new StrategyDistiller(getOutcomeStore(), this.logger);
+      this.strategyDistiller = isPersistenceEnabled()
+        ? createPersistentDistillerOrFallback(getOutcomeStore(), this.logger)
+        : new StrategyDistiller(getOutcomeStore(), this.logger);
       this.distilledRuleStage = new DistilledRuleStage(
         this.strategyDistiller,
         stageConfigs.distilledRule

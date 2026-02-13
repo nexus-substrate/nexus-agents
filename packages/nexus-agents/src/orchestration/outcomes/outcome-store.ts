@@ -10,6 +10,7 @@
  */
 
 import type { TaskOutcome, OutcomeQuery, PerformanceSummary, GroupStats } from './outcome-types.js';
+import { isPersistenceEnabled } from '../../config/learning-persistence.js';
 
 // ============================================================================
 // Constants
@@ -101,15 +102,41 @@ export class OutcomeStore {
 
 let singletonStore: OutcomeStore | undefined;
 
-/** Get the shared OutcomeStore singleton. */
+/**
+ * Get the shared OutcomeStore singleton.
+ * Returns PersistentOutcomeStore when NEXUS_PERSIST_LEARNING=true
+ * and the factory has been registered (import outcome-store-persistence first).
+ */
 export function getOutcomeStore(): OutcomeStore {
-  singletonStore ??= new OutcomeStore();
+  if (singletonStore === undefined) {
+    if (isPersistenceEnabled() && persistentFactory !== undefined) {
+      singletonStore = persistentFactory();
+    } else {
+      singletonStore = new OutcomeStore();
+    }
+  }
   return singletonStore;
 }
 
 /** Reset the singleton (for testing). */
 export function resetOutcomeStore(): void {
   singletonStore = undefined;
+}
+
+// ============================================================================
+// Persistent factory registration (Issue #1009)
+// ============================================================================
+
+type OutcomeStoreFactory = () => OutcomeStore;
+let persistentFactory: OutcomeStoreFactory | undefined;
+
+/**
+ * Register a factory for creating PersistentOutcomeStore instances.
+ * Called from outcome-store-persistence.ts at import time to break
+ * the circular dependency.
+ */
+export function registerPersistentOutcomeStoreFactory(factory: OutcomeStoreFactory): void {
+  persistentFactory = factory;
 }
 
 // ============================================================================

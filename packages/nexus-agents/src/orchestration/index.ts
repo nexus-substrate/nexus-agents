@@ -176,8 +176,9 @@ export {
   OutcomeStore,
   getOutcomeStore,
   resetOutcomeStore,
+  PersistentOutcomeStore,
 } from './outcomes/index.js';
-export type { OutcomeStoreConfig } from './outcomes/index.js';
+export type { OutcomeStoreConfig, PersistentOutcomeStoreConfig } from './outcomes/index.js';
 
 // Adaptive Thresholds — Learning Loop (Issue #901, Phase 4)
 export { computeAdaptiveThresholds, detectTrend } from './outcomes/index.js';
