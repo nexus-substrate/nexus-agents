@@ -23,6 +23,7 @@
 
 import type { TaskComplexity, KnownCliName, TimeoutProfile } from './defaults-types.js';
 import { isKnownCliName } from './defaults-types.js';
+import { detectTaskCategory } from './task-specialization.js';
 
 // Re-export types that consumers need
 export type { TaskComplexity, KnownCliName, TimeoutProfile };
@@ -79,7 +80,7 @@ export const MCP_TIMEOUTS = {
   perTool: {
     orchestrate: 300_000,
     consensus_vote: 300_000,
-    execute_expert: 300_000,
+    execute_expert: 600_000, // Increased to support complex expert tasks (Issue #1028)
     run_workflow: 300_000,
   } as Readonly<Record<string, number>>,
 } as const;
@@ -158,6 +159,25 @@ export const INTERNAL_TIMEOUTS = {
 } as const;
 
 /**
+ * Expert execution timeouts by inferred task complexity.
+ * Complex reasoning tasks (architecture, security) need longer timeouts
+ * than standard code generation or documentation tasks.
+ * (Source: Issue #1028 — Dynamic expert timeout)
+ */
+export const EXPERT_TIMEOUTS = {
+  /** Complex reasoning tasks: architecture, security_review. */
+  complexMs: 180_000,
+  /** Standard tasks: code_generation, testing, code_review, etc. */
+  standardMs: 90_000,
+  /** Minimum allowed expert timeout. */
+  minMs: 30_000,
+  /** Maximum allowed expert timeout. */
+  maxMs: 600_000,
+  /** Categories considered complex (longer timeout). */
+  complexCategories: ['architecture', 'security_review'] as readonly string[],
+} as const;
+
+/**
  * Test framework timeouts (not for production code).
  */
 export const TEST_TIMEOUTS = {
@@ -195,6 +215,31 @@ export function getCliTimeout(cli: string, complexity: TaskComplexity): number {
   return getCliTimeoutProfile(cli)[complexity];
 }
 
+/**
+ * Gets the timeout for an expert task based on task description complexity.
+ *
+ * Uses `detectTaskCategory()` to infer category, then maps to timeout tier.
+ * Supports `NEXUS_EXPERT_TIMEOUT_MS` env override.
+ *
+ * @param taskDescription - Task text to analyze for complexity
+ * @returns Timeout in milliseconds
+ * (Source: Issue #1028 — Dynamic expert timeout)
+ */
+export function getExpertTaskTimeout(taskDescription: string): number {
+  const envOverride = resolveEnvTimeout(
+    'NEXUS_EXPERT_TIMEOUT_MS',
+    0,
+    EXPERT_TIMEOUTS.minMs,
+    EXPERT_TIMEOUTS.maxMs
+  );
+  if (envOverride > 0) return envOverride;
+
+  const match = detectTaskCategory(taskDescription);
+  const category = match?.category ?? 'exploration';
+  const isComplex = EXPERT_TIMEOUTS.complexCategories.includes(category);
+  return isComplex ? EXPERT_TIMEOUTS.complexMs : EXPERT_TIMEOUTS.standardMs;
+}
+
 // ============================================================================
 // Environment Variable Resolution
 // ============================================================================
@@ -205,6 +250,7 @@ export const TIMEOUT_ENV_VARS = {
   mcp: 'NEXUS_MCP_TIMEOUT_MS',
   workflow: 'NEXUS_WORKFLOW_TIMEOUT_MS',
   graph: 'NEXUS_GRAPH_TIMEOUT_MS',
+  expert: 'NEXUS_EXPERT_TIMEOUT_MS',
 } as const;
 
 /**
