@@ -62,7 +62,8 @@ export type CliCommand =
   | 'memory-benchmark'
   | 'auth'
   | 'scenario'
-  | 'warm-up';
+  | 'warm-up'
+  | 'e2e-eval';
 
 /**
  * Parsed CLI arguments and command.
@@ -347,6 +348,7 @@ export function isValidCommand(value: string): value is CliCommand {
     'auth',
     'scenario',
     'warm-up',
+    'e2e-eval',
   ];
   return validCommands.includes(value as CliCommand);
 }
