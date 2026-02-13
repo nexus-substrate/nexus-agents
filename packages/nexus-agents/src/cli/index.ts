@@ -464,6 +464,10 @@ export type { ScaffoldType, ScaffoldOptions, ScaffoldResult } from './scaffold.j
 export { generateSyntheticPriors, runWarmUp, SYNTHETIC_MARKER } from './warm-up.js';
 export type { WarmUpResult } from './warm-up.js';
 
+// E2E Evaluation Runner (Issue #1030 — Learning loop validation)
+export { runE2EEval, formatE2EEvalResult, E2E_EVAL_MARKER } from './e2e-eval.js';
+export type { E2EEvalConfig, E2EEvalResult } from './e2e-eval.js';
+
 // Auth Command (Issue #739 - MCP authentication)
 export {
   authCommand,

@@ -39,6 +39,7 @@ import {
 } from './cli/index.js';
 import { hookCommand, printHookHelp } from './cli/hooks/index.js';
 import { runWarmUp } from './cli/warm-up.js';
+import { runE2EEval, formatE2EEvalResult } from './cli/e2e-eval.js';
 import { EXIT_CODES, type ParsedCliArgs } from './cli-types.js';
 import { startServer, type OrchestratorModeOptions } from './cli-server.js';
 import {
@@ -596,4 +597,17 @@ export function handleWarmUpCommand(_args: ParsedCliArgs): void {
     : `Seeded with ${String(result.seeded)} synthetic observations`;
   process.stdout.write(msg + '\n');
   process.exit(EXIT_CODES.SUCCESS);
+}
+
+/**
+ * Handles e2e-eval command for learning loop validation.
+ * (Source: Issue #1030 — E2E scenario runner)
+ */
+export function handleE2EEvalCommand(args: ParsedCliArgs): void {
+  const countArg = args.positionals[1];
+  const taskCount = countArg !== undefined ? parseInt(countArg, 10) : 50;
+  const count = Number.isNaN(taskCount) || taskCount <= 0 ? 50 : taskCount;
+  const result = runE2EEval({ taskCount: count });
+  process.stdout.write(formatE2EEvalResult(result) + '\n');
+  process.exit(result.passed ? EXIT_CODES.SUCCESS : 1);
 }
