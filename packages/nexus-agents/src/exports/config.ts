@@ -25,6 +25,15 @@ export {
   type LoggingConfig,
 } from '../config/index.js';
 
+// Environment variable validation (Issue #1016)
+export {
+  validateNexusEnv,
+  getKnownNexusVarNames,
+  type EnvValidationResult,
+  type UnknownVar,
+  type InvalidVar,
+} from '../config/index.js';
+
 // Model Availability — probes & fallback chains (Issue #869)
 export {
   AvailabilityCache,

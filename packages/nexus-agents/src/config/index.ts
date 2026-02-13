@@ -172,6 +172,10 @@ export type {
   KnownCliName,
 } from './defaults.js';
 
+// Environment variable validation (Issue #1016)
+export { validateNexusEnv, getKnownNexusVarNames } from './env-schema.js';
+export type { EnvValidationResult, UnknownVar, InvalidVar } from './env-schema.js';
+
 // Model Capabilities Matrix (Issue #683, Epic #682)
 export {
   DEFAULT_MODEL_CAPABILITIES,
