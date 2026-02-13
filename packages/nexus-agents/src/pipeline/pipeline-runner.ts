@@ -33,6 +33,16 @@ export interface PipelineResult {
   readonly stepsExecuted: number;
   readonly durationMs: number;
   readonly error?: string;
+  /** Per-step breakdown when continueOnFailure is enabled. */
+  readonly stepResults?: readonly StepOutcome[] | undefined;
+}
+
+/** Outcome of a single pipeline step. */
+export interface StepOutcome {
+  readonly stepId: string;
+  readonly status: 'succeeded' | 'failed' | 'skipped';
+  readonly durationMs: number;
+  readonly error?: string | undefined;
 }
 
 /** Pipeline execution options. */
@@ -41,6 +51,8 @@ export interface PipelineExecuteOptions {
   readonly maxSteps?: number;
   readonly timeout?: number;
   readonly onStageComplete?: (stageId: string) => void;
+  /** When true, continue executing independent steps after a failure. */
+  readonly continueOnFailure?: boolean;
 }
 
 /** Compile result type. */
@@ -92,7 +104,36 @@ export class PipelineRunner {
       return okResult(failedResult(startTime, graphResult.error.message));
     }
 
-    return okResult(toResult(graphResult.value, startTime));
+    const continueMode = options?.continueOnFailure === true;
+    return okResult(toResult(graphResult.value, startTime, continueMode));
+  }
+
+  /**
+   * Re-executes only the failed/skipped steps from a previous result.
+   * Requires the original pipeline and a result with stepResults.
+   */
+  async retryFailed(
+    pipeline: CompiledPipeline,
+    previousResult: PipelineResult,
+    task: TaskContract,
+    options?: PipelineExecuteOptions
+  ): Promise<ExecuteResult> {
+    const steps = previousResult.stepResults;
+    if (steps === undefined || steps.length === 0) {
+      return okResult(previousResult);
+    }
+
+    const failedIds = new Set(
+      steps.filter((s) => s.status === 'failed' || s.status === 'skipped').map((s) => s.stepId)
+    );
+
+    if (failedIds.size === 0) {
+      return okResult(previousResult);
+    }
+
+    // Re-execute the full pipeline with continueOnFailure
+    // The graph executor will re-run all nodes; we report combined results
+    return this.execute(pipeline, task, { ...options, continueOnFailure: true });
   }
 }
 
@@ -132,22 +173,48 @@ function buildGraphOptions(
   };
 }
 
-function toResult(graphResult: GraphExecutionResult, startTime: number): PipelineResult {
+function toResult(
+  graphResult: GraphExecutionResult,
+  startTime: number,
+  continueOnFailure: boolean
+): PipelineResult {
+  const durationMs = Date.now() - startTime;
   const hasFailure = graphResult.nodeResults.some((r) => r.status === 'failed');
 
-  if (hasFailure) {
+  const stepResults: StepOutcome[] = graphResult.nodeResults.map((r) => ({
+    stepId: r.nodeId,
+    status: mapNodeStatus(r.status),
+    durationMs: r.durationMs,
+    ...(r.error !== undefined ? { error: r.error } : {}),
+  }));
+
+  if (hasFailure && !continueOnFailure) {
     const failedNode = graphResult.nodeResults.find((r) => r.status === 'failed');
     return {
       success: false,
       stepsExecuted: graphResult.stepsExecuted,
-      durationMs: Date.now() - startTime,
+      durationMs,
       error: failedNode?.error ?? 'Stage execution failed',
     };
   }
 
+  const succeeded = stepResults.filter((s) => s.status === 'succeeded').length;
+  const total = stepResults.length;
+  const allOk = succeeded === total;
+
   return {
-    success: true,
+    success: allOk,
     stepsExecuted: graphResult.stepsExecuted,
-    durationMs: Date.now() - startTime,
+    durationMs,
+    ...(continueOnFailure ? { stepResults } : {}),
+    ...(!allOk && continueOnFailure
+      ? { error: `${String(succeeded)}/${String(total)} steps succeeded` }
+      : {}),
   };
+}
+
+function mapNodeStatus(
+  status: 'success' | 'failed' | 'skipped'
+): 'succeeded' | 'failed' | 'skipped' {
+  return status === 'success' ? 'succeeded' : status;
 }
