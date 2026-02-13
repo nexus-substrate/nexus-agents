@@ -78,6 +78,11 @@ export {
   detectFailurePatterns,
   detectSuccessPatterns,
   detectLatencyPatterns,
+  // Strategy Distiller Persistence (Issue #1009)
+  PersistentStrategyDistiller,
+  RulesSnapshotSchema,
+  type RulesSnapshot,
+  type PersistentDistillerConfig,
   // A/B Test Tracker (Issue #273)
   type ExperimentStatus,
   type ExperimentVariant,

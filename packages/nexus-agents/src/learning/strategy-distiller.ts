@@ -284,6 +284,17 @@ export class StrategyDistiller {
   }
 
   // ==========================================================================
+  // Protected — for subclass hydration (Issue #1009)
+  // ==========================================================================
+
+  /** Load pre-existing rules (e.g., from disk). Used by PersistentStrategyDistiller. */
+  protected loadRules(rules: readonly DistilledRule[]): void {
+    for (const rule of rules) {
+      this.rules.set(rule.id, rule);
+    }
+  }
+
+  // ==========================================================================
   // Private
   // ==========================================================================
 
@@ -380,4 +391,34 @@ export function createStrategyDistiller(
   config?: Partial<DistillerConfig>
 ): StrategyDistiller {
   return new StrategyDistiller(outcomeStore, logger, config);
+}
+
+// ============================================================================
+// Persistent factory registration (Issue #1009)
+// ============================================================================
+
+type DistillerFactory = (outcomeStore: OutcomeStore, logger: ILogger) => StrategyDistiller;
+let persistentDistillerFactory: DistillerFactory | undefined;
+
+/**
+ * Register a factory for creating PersistentStrategyDistiller instances.
+ * Called from strategy-distiller-persistence.ts at import time to break
+ * the circular dependency with composite-router.
+ */
+export function registerPersistentDistillerFactory(factory: DistillerFactory): void {
+  persistentDistillerFactory = factory;
+}
+
+/**
+ * Create a persistent distiller if the factory is registered, else a plain one.
+ * Used by CompositeRouter when NEXUS_PERSIST_LEARNING=true.
+ */
+export function createPersistentDistillerOrFallback(
+  outcomeStore: OutcomeStore,
+  logger: ILogger
+): StrategyDistiller {
+  if (persistentDistillerFactory !== undefined) {
+    return persistentDistillerFactory(outcomeStore, logger);
+  }
+  return new StrategyDistiller(outcomeStore, logger);
 }

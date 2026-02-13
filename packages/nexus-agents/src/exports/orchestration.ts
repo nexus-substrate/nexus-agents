@@ -168,11 +168,13 @@ export {
   getOutcomeStore,
   OutcomeStore,
   TaskOutcomeSchema as OutcomeTaskSchema,
+  PersistentOutcomeStore,
 } from '../orchestration/index.js';
 export type {
   TaskOutcome as OutcomeTaskRecord,
   PerformanceSummary,
   OutcomeStoreConfig,
+  PersistentOutcomeStoreConfig,
 } from '../orchestration/index.js';
 
 // Adaptive Thresholds — Learning Loop (Issue #901, Phase 4)

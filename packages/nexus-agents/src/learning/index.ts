@@ -102,11 +102,20 @@ export { DEFAULT_DISTILLER_CONFIG } from './strategy-distiller-types.js';
 export {
   StrategyDistiller,
   createStrategyDistiller,
+  createPersistentDistillerOrFallback,
+  registerPersistentDistillerFactory,
   sigmoidConfidence,
   detectFailurePatterns,
   detectSuccessPatterns,
   detectLatencyPatterns,
 } from './strategy-distiller.js';
+
+// Strategy Distiller Persistence (Issue #1009)
+export {
+  PersistentStrategyDistiller,
+  RulesSnapshotSchema,
+} from './strategy-distiller-persistence.js';
+export type { RulesSnapshot, PersistentDistillerConfig } from './strategy-distiller-persistence.js';
 
 // A/B Test Tracker (Issue #273)
 export type {

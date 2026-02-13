@@ -20,8 +20,15 @@ export {
   OutcomeStore,
   getOutcomeStore,
   resetOutcomeStore,
+  registerPersistentOutcomeStoreFactory,
   type OutcomeStoreConfig,
 } from './outcome-store.js';
+
+// Persistence (Issue #1009)
+export {
+  PersistentOutcomeStore,
+  type PersistentOutcomeStoreConfig,
+} from './outcome-store-persistence.js';
 
 // Adaptive thresholds — Learning loop (Issue #901, Phase 4)
 export { computeAdaptiveThresholds, detectTrend } from './adaptive-thresholds.js';
