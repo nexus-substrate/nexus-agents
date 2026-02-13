@@ -26,6 +26,11 @@ import type { ILogger } from '../core/index.js';
 import { getErrorMessage, createLogger } from '../core/index.js';
 
 import { createAutoAdapter, type AdapterSelection } from './auto-adapter.js';
+import {
+  isRateLimitLikeError,
+  toRateLimitError,
+  recordRateLimitEvent,
+} from './rate-limit-detector.js';
 import type { CliName } from '../cli-adapters/types.js';
 import type {
   IResilientAdapter,
@@ -99,7 +104,20 @@ export class ResilientAdapter implements IResilientAdapter {
     if (adapter === undefined) {
       return err(new ModelError('No model adapter available'));
     }
-    return adapter.complete(request);
+    const result = await adapter.complete(request);
+    if (!result.ok && isRateLimitLikeError(result.error)) {
+      const rlError = toRateLimitError(result.error, adapter.providerId);
+      recordRateLimitEvent({
+        provider: adapter.providerId,
+        timestamp: Date.now(),
+        retryAfterMs: rlError.retryAfterMs,
+      });
+      this.logger.warn('Rate limit detected', {
+        provider: adapter.providerId,
+        retryAfterMs: rlError.retryAfterMs,
+      });
+    }
+    return result;
   }
 
   async *stream(request: CompletionRequest): AsyncIterable<StreamChunk> {

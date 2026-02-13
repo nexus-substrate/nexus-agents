@@ -24,9 +24,11 @@ import type {
   LearningInsight,
   RecommendedMapping,
 } from './weather-report-types.js';
+import type { RateLimitReport } from './weather-report-types.js';
 import { createDefaultWeatherConfig } from './weather-report-types.js';
 import { generateTierRecommendations } from '../gateway/tier-recommender.js';
 import { computeAdaptiveThresholds } from '../../orchestration/outcomes/adaptive-thresholds.js';
+import { getRateLimitStats } from '../../adapters/rate-limit-detector.js';
 
 // ============================================================================
 // Public API
@@ -50,6 +52,7 @@ export function generateWeatherReport(
   const cliWeather = buildCliWeather(summary, input);
   const adaptiveBonuses = includeAdaptive ? computeAdaptiveBonuses(cfg) : [];
   const tierRecommendations = buildTierRecommendations(summary);
+  const rateLimits = buildRateLimitReport();
   const base = {
     overall: {
       totalTasks: summary.totalTasks,
@@ -59,6 +62,7 @@ export function generateWeatherReport(
     cliWeather,
     adaptiveBonuses,
     tierRecommendations,
+    ...(rateLimits.length > 0 ? { rateLimits } : {}),
     explorationRate: cfg.explorationRate,
     coldStartThreshold: cfg.coldStartThreshold,
     collectedAt: new Date().toISOString(),
@@ -73,6 +77,16 @@ export function generateWeatherReport(
   }
 
   return base;
+}
+
+/** Builds rate limit report from tracked events (Issue #996). */
+function buildRateLimitReport(): readonly RateLimitReport[] {
+  return getRateLimitStats().map((s) => ({
+    provider: s.provider,
+    totalHits: s.totalHits,
+    lastHitAt: s.lastHitAt,
+    avgRetryAfterMs: s.avgRetryAfterMs,
+  }));
 }
 
 /**
