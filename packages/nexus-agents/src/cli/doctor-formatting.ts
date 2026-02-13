@@ -15,6 +15,7 @@ import type {
   ApiKeyCheck,
   ConfigFileCheck,
   RegistryAdvisory,
+  LearningPersistenceCheck,
   DoctorResult,
 } from './doctor.js';
 import { colors, symbols, writeLine } from './ansi-output.js';
@@ -200,6 +201,37 @@ function printRegistryAdvisory(advisory: RegistryAdvisory): void {
 }
 
 /**
+ * Prints learning persistence health check (#1017).
+ */
+function printLearningPersistence(check: LearningPersistenceCheck): void {
+  if (!check.enabled) {
+    writeLine(`${formatStatus(true)} Learning persistence: ${colors.dim}Disabled${colors.reset}`);
+    writeLine(`  ${colors.dim}Set NEXUS_PERSIST_LEARNING=true to enable${colors.reset}`);
+    return;
+  }
+
+  const healthy = check.dirExists && check.dirWritable && check.error === null;
+  writeLine(`${formatStatus(healthy, !healthy)} Learning persistence: Enabled`);
+
+  if (check.error !== null) {
+    writeLine(`  ${colors.red}Error: ${check.error}${colors.reset}`);
+    return;
+  }
+
+  const dirStatus = check.dirExists
+    ? check.dirWritable
+      ? `${colors.green}writable${colors.reset}`
+      : `${colors.red}not writable${colors.reset}`
+    : `${colors.yellow}not created yet${colors.reset}`;
+  writeLine(`  Data directory: ${dirStatus}`);
+  writeLine(`  Outcomes: ${String(check.outcomeCount)} recorded`);
+  writeLine(`  Distilled rules: ${String(check.ruleCount)} active`);
+  if (check.rulesLastSaved !== null) {
+    writeLine(`  Rules last saved: ${check.rulesLastSaved}`);
+  }
+}
+
+/**
  * Prints the doctor results to stdout.
  */
 export function printDoctorResults(result: DoctorResult): void {
@@ -239,6 +271,11 @@ export function printDoctorResults(result: DoctorResult): void {
   writeLine(`${colors.cyan}Checking model registry...${colors.reset}`);
   writeLine('');
   printRegistryAdvisory(result.registryAdvisory);
+  writeLine('');
+
+  writeLine(`${colors.cyan}Checking learning subsystem...${colors.reset}`);
+  writeLine('');
+  printLearningPersistence(result.learningPersistence);
   writeLine('');
 
   const unhealthyCount = result.clis.filter((c) => !c.installed || !c.authenticated).length;
