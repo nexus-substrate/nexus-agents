@@ -186,6 +186,11 @@ vi.mock('./mcp/middleware/adapter-availability.js', () => ({
   getSharedCliCache: mockGetSharedCliCache,
 }));
 
+// Mock annotation proxy as identity (tested separately in annotation-proxy.test.ts)
+vi.mock('./mcp/tools/annotation-proxy.js', () => ({
+  createAnnotationsProxy: (server: unknown) => server,
+}));
+
 // ============================================================================
 // Mock helpers
 // ============================================================================

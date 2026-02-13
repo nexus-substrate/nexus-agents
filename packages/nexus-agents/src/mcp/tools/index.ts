@@ -249,6 +249,20 @@ export {
   type QueryTraceResponse,
 } from './query-trace-tool.js';
 
+// Tool annotations and side effects (Issue #993)
+export {
+  TOOL_ANNOTATIONS,
+  getToolAnnotations,
+  getMcpAnnotations,
+  getSideEffectsByCategory,
+  type ToolAnnotations as McpToolAnnotations,
+  type ToolSideEffectsEntry,
+  type SideEffect,
+  type SideEffectCategory,
+} from './tool-annotations.js';
+
+export { createAnnotationsProxy } from './annotation-proxy.js';
+
 /**
  * Options for tool registration.
  */
