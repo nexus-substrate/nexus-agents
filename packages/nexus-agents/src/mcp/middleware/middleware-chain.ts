@@ -16,6 +16,7 @@ import { RateLimiter, type RateLimiterConfig } from './rate-limiter.js';
 import { type IPolicyFirewall, type ExecutionMode, createPolicyContext } from './policy.js';
 import { TimeoutGuard, type TimeoutGuardConfig } from './timeout-guard.js';
 import { createRequestContext, contextForLogging, type RequestContext } from './request-context.js';
+import { createMetricsMiddleware } from './tool-metrics.js';
 
 /**
  * MCP tool result type.
@@ -313,6 +314,7 @@ function buildMiddlewareStack(config: MiddlewareChainConfig): Middleware[] {
   const skip = config.skip ?? {};
   const middlewares: Middleware[] = [];
 
+  middlewares.push(createMetricsMiddleware()); // Tool usage analytics (#1022)
   addAuditMiddleware(middlewares, skip);
   addRateLimitMiddleware(middlewares, config, skip);
   addValidationMiddleware(middlewares, config, skip);
