@@ -123,6 +123,13 @@ export interface ToolPerformanceEntry {
   readonly errorCount: number;
 }
 
+/** Failure breakdown entry for the weather report (Issue #1025). */
+export interface FailureBreakdownEntry {
+  readonly category: string;
+  readonly count: number;
+  readonly percentage: number;
+}
+
 /** Full weather report response. */
 export interface WeatherReportResponse {
   readonly overall: {
@@ -142,6 +149,8 @@ export interface WeatherReportResponse {
   readonly rateLimits?: readonly RateLimitReport[];
   /** Per-tool invocation metrics (Issue #1022). */
   readonly toolPerformance?: readonly ToolPerformanceEntry[];
+  /** Failure breakdown by category (Issue #1025). */
+  readonly failureBreakdown?: readonly FailureBreakdownEntry[];
   readonly explorationRate: number;
   readonly coldStartThreshold: number;
   readonly collectedAt: string;

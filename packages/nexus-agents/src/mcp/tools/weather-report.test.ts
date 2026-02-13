@@ -129,6 +129,38 @@ describe('generateWeatherReport', () => {
     expect(report.adaptiveBonuses).toHaveLength(0);
   });
 
+  it('includes failureBreakdown when failures have categories', () => {
+    getOutcomeStore().append(makeOutcome({ success: false, failureCategory: 'timeout' }));
+    getOutcomeStore().append(makeOutcome({ success: false, failureCategory: 'timeout' }));
+    getOutcomeStore().append(makeOutcome({ success: false, failureCategory: 'rate_limit' }));
+    seedOutcomes(3); // successes
+
+    const report = generateWeatherReport({});
+
+    expect(report.failureBreakdown).toBeDefined();
+    const breakdown = report.failureBreakdown ?? [];
+    expect(breakdown).toHaveLength(2);
+    const timeoutEntry = breakdown.find((e) => e.category === 'timeout');
+    expect(timeoutEntry?.count).toBe(2);
+    expect(timeoutEntry?.percentage).toBeCloseTo(66.7, 0);
+    const rateLimitEntry = breakdown.find((e) => e.category === 'rate_limit');
+    expect(rateLimitEntry?.count).toBe(1);
+  });
+
+  it('omits failureBreakdown when no failures', () => {
+    seedOutcomes(5);
+    const report = generateWeatherReport({});
+    expect(report.failureBreakdown).toBeUndefined();
+  });
+
+  it('assigns unknown category to failures without failureCategory', () => {
+    getOutcomeStore().append(makeOutcome({ success: false }));
+    const report = generateWeatherReport({});
+    const breakdown = report.failureBreakdown ?? [];
+    expect(breakdown).toHaveLength(1);
+    expect(breakdown[0]?.category).toBe('unknown');
+  });
+
   it('reports exploration rate and cold start threshold', () => {
     const report = generateWeatherReport({});
 

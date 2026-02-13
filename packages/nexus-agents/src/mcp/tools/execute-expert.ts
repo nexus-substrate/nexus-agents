@@ -29,7 +29,11 @@ import { createSecureHandler, type HandlerContext } from '../middleware/secure-h
 import type { Expert } from '../../agents/index.js';
 import { getToolMemory } from './tool-memory.js';
 import { getAutoCatalog } from './research-auto-catalog.js';
-import { getOutcomeStore } from '../../orchestration/outcomes/index.js';
+import {
+  getOutcomeStore,
+  categorizeOutcomeErrorMessage,
+} from '../../orchestration/outcomes/index.js';
+import type { OutcomeFailureCategory } from '../../orchestration/outcomes/index.js';
 import { detectTaskCategory } from '../../config/task-specialization.js';
 import type { ICliDetectionCache } from '../../cli-adapters/cli-detection-cache.js';
 import { requireAdapterAvailable } from '../middleware/adapter-availability.js';
@@ -154,23 +158,25 @@ function buildSuccessResponse(params: SuccessResponseParams): ExecuteExpertRespo
 }
 
 /** Records expert execution outcome to OutcomeStore (Issue #1014). Best-effort. */
-function recordExpertOutcome(
-  task: string,
-  success: boolean,
-  durationMs: number,
-  model?: string
-): void {
+function recordExpertOutcome(opts: {
+  task: string;
+  success: boolean;
+  durationMs: number;
+  model?: string;
+  failureCategory?: OutcomeFailureCategory;
+}): void {
   try {
-    const match = detectTaskCategory(task);
+    const match = detectTaskCategory(opts.task);
     getOutcomeStore().append({
       id: `exp-${String(Date.now())}-${Math.random().toString(36).slice(2, 8)}`,
       cli: 'claude',
       category: match?.category ?? 'exploration',
-      model: model ?? 'expert',
-      success,
-      durationMs,
+      model: opts.model ?? 'expert',
+      success: opts.success,
+      durationMs: opts.durationMs,
       timestamp: new Date(getTimeProvider().now()).toISOString(),
       source: 'delegate',
+      ...(opts.failureCategory !== undefined ? { failureCategory: opts.failureCategory } : {}),
     });
   } catch (error: unknown) {
     createLogger({ tool: 'execute_expert' }).debug('Best-effort outcome recording failed', {
@@ -258,6 +264,40 @@ function autoCatalogScan(output: string, expertId: string, logger?: ILogger): vo
   }
 }
 
+/** Records failure outcome and returns error result. */
+function handleExpertFailure(
+  args: ExecuteExpertInput,
+  expert: { expertId: string; role: string; modelId?: string },
+  errorMsg: string,
+  durationMs: number
+): { ok: false; error: string } {
+  recordExpertError(expert.expertId, expert.role, errorMsg);
+  const fc = categorizeOutcomeErrorMessage(errorMsg);
+  recordExpertOutcome({
+    task: args.task,
+    success: false,
+    durationMs,
+    failureCategory: fc,
+    ...(expert.modelId !== undefined ? { model: expert.modelId } : {}),
+  });
+  return { ok: false, error: `Expert execution failed: ${errorMsg}` };
+}
+
+/** Records success outcome and tracking. */
+function handleExpertSuccess(
+  args: ExecuteExpertInput,
+  expert: { expertId: string; role: string; modelId?: string },
+  durationMs: number
+): void {
+  recordExpertSuccess(expert.expertId, expert.role, durationMs);
+  recordExpertOutcome({
+    task: args.task,
+    success: true,
+    durationMs,
+    ...(expert.modelId !== undefined ? { model: expert.modelId } : {}),
+  });
+}
+
 /**
  * Handles the execute_expert tool execution.
  * (Issue #747 - CLI detection support)
@@ -269,16 +309,11 @@ async function handleExecuteExpert(
   const { expertId } = args;
 
   const lookup = lookupExpert(deps.expertRegistry, expertId);
-  if (!lookup.ok) {
-    return { ok: false, error: lookup.error };
-  }
+  if (!lookup.ok) return { ok: false, error: lookup.error };
   const expert = lookup.expert;
 
-  // Validate adapter availability before execution (Issue #656, #747, #749)
   const adapterError = await requireAdapterAvailable(deps.cliCache);
-  if (adapterError !== undefined) {
-    return { ok: false, error: adapterError };
-  }
+  if (adapterError !== undefined) return { ok: false, error: adapterError };
 
   const task = buildTask(args);
   injectErrorHints(task, expert.role);
@@ -287,25 +322,20 @@ async function handleExecuteExpert(
   const startTime = getTimeProvider().now();
   const result = await expert.execute(task);
   const durationMs = getTimeProvider().now() - startTime;
+  const modelId = expert.expertConfig.modelPreference?.modelId;
+  const info = {
+    expertId,
+    role: expert.role,
+    ...(modelId !== undefined ? { modelId } : {}),
+  };
 
   if (!result.ok) {
     deps.logger?.warn('Expert execution failed', { expertId, error: result.error.message });
-    recordExpertError(expertId, expert.role, result.error.message);
-    recordExpertOutcome(args.task, false, durationMs, expert.expertConfig.modelPreference?.modelId);
-    return {
-      ok: false,
-      error: `Expert execution failed: ${result.error.message}`,
-    };
+    return handleExpertFailure(args, info, result.error.message, durationMs);
   }
 
-  deps.logger?.info('Expert execution completed', {
-    expertId,
-    durationMs,
-    tokensUsed: result.value.metadata.tokensUsed,
-  });
-
-  recordExpertSuccess(expertId, expert.role, durationMs);
-  recordExpertOutcome(args.task, true, durationMs, expert.expertConfig.modelPreference?.modelId);
+  deps.logger?.info('Expert execution completed', { expertId, durationMs });
+  handleExpertSuccess(args, info, durationMs);
   autoCatalogScan(result.value.output as string, expertId, deps.logger);
 
   return {
