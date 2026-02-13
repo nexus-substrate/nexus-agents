@@ -36,7 +36,12 @@ import {
   type ServerEventContext,
 } from './cli-server-lifecycle.js';
 import { startOrchestratorMode, type OrchestratorModeOptions } from './cli-orchestrator.js';
-import { loadConfig, type ConfigLoadResult, type AppConfig } from './config/index.js';
+import {
+  loadConfig,
+  validateNexusEnv,
+  type ConfigLoadResult,
+  type AppConfig,
+} from './config/index.js';
 import { initializeExperts } from './cli-server-experts.js';
 import { initializeSkillLibrary } from './cli-server-skills.js';
 import { initializeSica } from './cli-server-sica.js';
@@ -509,6 +514,8 @@ export async function startServer(
   // Load and validate configuration (Issue #472)
   const configResult = loadAndLogConfig(logger);
   applyLoggingConfig(logger, verbose, configResult.config);
+
+  validateNexusEnv(logger); // Warn-only env var validation (Issue #1016)
 
   // Initialize all subsystems
   const { server, serverLogger, observer, eventBusBridge, auditLogger, authInit } =
