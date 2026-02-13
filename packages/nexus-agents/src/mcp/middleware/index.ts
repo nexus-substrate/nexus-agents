@@ -157,6 +157,19 @@ export {
   logSanitizationResult,
 } from './tool-input-sanitizer.js';
 
+// Tool usage metrics (Issue #1022)
+export {
+  // Types
+  type ToolMetric,
+  type ToolStats,
+  // Functions
+  recordToolMetric,
+  getToolMetrics,
+  getToolStats,
+  clearToolMetrics,
+  createMetricsMiddleware,
+} from './tool-metrics.js';
+
 // Per-tool rate limiter factory (Issue #274 Phase 2)
 export {
   // Types

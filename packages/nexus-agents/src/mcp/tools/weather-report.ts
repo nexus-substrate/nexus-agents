@@ -23,12 +23,14 @@ import type {
   TierRecommendationEntry,
   LearningInsight,
   RecommendedMapping,
+  ToolPerformanceEntry,
 } from './weather-report-types.js';
 import type { RateLimitReport } from './weather-report-types.js';
 import { createDefaultWeatherConfig } from './weather-report-types.js';
 import { generateTierRecommendations } from '../gateway/tier-recommender.js';
 import { computeAdaptiveThresholds } from '../../orchestration/outcomes/adaptive-thresholds.js';
 import { getRateLimitStats } from '../../adapters/rate-limit-detector.js';
+import { getToolStats } from '../middleware/tool-metrics.js';
 
 // ============================================================================
 // Public API
@@ -53,6 +55,7 @@ export function generateWeatherReport(
   const adaptiveBonuses = includeAdaptive ? computeAdaptiveBonuses(cfg) : [];
   const tierRecommendations = buildTierRecommendations(summary);
   const rateLimits = buildRateLimitReport();
+  const toolPerformance = buildToolPerformance();
   const base = {
     overall: {
       totalTasks: summary.totalTasks,
@@ -63,6 +66,7 @@ export function generateWeatherReport(
     adaptiveBonuses,
     tierRecommendations,
     ...(rateLimits.length > 0 ? { rateLimits } : {}),
+    ...(toolPerformance.length > 0 ? { toolPerformance } : {}),
     explorationRate: cfg.explorationRate,
     coldStartThreshold: cfg.coldStartThreshold,
     collectedAt: new Date().toISOString(),
@@ -277,6 +281,17 @@ function buildRecommendedMappings(): readonly RecommendedMapping[] {
   }
 
   return mappings;
+}
+
+/** Builds per-tool performance stats from recorded metrics (#1022). */
+function buildToolPerformance(): readonly ToolPerformanceEntry[] {
+  return getToolStats().map((s) => ({
+    toolName: s.toolName,
+    totalCalls: s.totalCalls,
+    successRate: Math.round(s.successRate * 1000) / 1000,
+    avgDurationMs: Math.round(s.avgDurationMs),
+    errorCount: s.errorCount,
+  }));
 }
 
 /** Generates tier recommendations from outcome summary (#895). */

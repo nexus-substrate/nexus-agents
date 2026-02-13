@@ -114,6 +114,15 @@ export interface RateLimitReport {
   readonly avgRetryAfterMs: number | undefined;
 }
 
+/** Per-tool performance stats (Issue #1022). */
+export interface ToolPerformanceEntry {
+  readonly toolName: string;
+  readonly totalCalls: number;
+  readonly successRate: number;
+  readonly avgDurationMs: number;
+  readonly errorCount: number;
+}
+
 /** Full weather report response. */
 export interface WeatherReportResponse {
   readonly overall: {
@@ -131,6 +140,8 @@ export interface WeatherReportResponse {
   readonly recommendedMappings?: readonly RecommendedMapping[];
   /** Rate limit utilization per provider (Issue #996). */
   readonly rateLimits?: readonly RateLimitReport[];
+  /** Per-tool invocation metrics (Issue #1022). */
+  readonly toolPerformance?: readonly ToolPerformanceEntry[];
   readonly explorationRate: number;
   readonly coldStartThreshold: number;
   readonly collectedAt: string;
