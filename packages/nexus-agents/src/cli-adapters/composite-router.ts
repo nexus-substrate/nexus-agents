@@ -53,6 +53,7 @@ import {
 } from '../learning/strategy-distiller.js';
 import { getOutcomeStore } from '../orchestration/outcomes/outcome-store.js';
 import { isPersistenceEnabled } from '../config/learning-persistence.js';
+import { generateSyntheticPriors } from '../cli/warm-up.js';
 import {
   CompositeRouterConfigSchema,
   CompositeRoutingError,
@@ -288,15 +289,25 @@ export class CompositeRouter implements ICompositeRouter {
 
   /** Warm-start LinUCB bandit from persisted outcomes (Issue #1015). Best-effort. */
   private warmStartBandit(): void {
-    if (this.linucbBandit === undefined || !isPersistenceEnabled()) return;
+    if (this.linucbBandit === undefined) return;
     try {
-      const outcomes = getOutcomeStore().query();
-      if (outcomes.length === 0) return;
-      const replayed = this.linucbBandit.warmStart(outcomes);
-      this.logger.info('LinUCB warm-started from persisted outcomes', {
-        outcomesAvailable: outcomes.length,
-        outcomesReplayed: replayed,
-      });
+      let replayed = 0;
+      if (isPersistenceEnabled()) {
+        const outcomes = getOutcomeStore().query();
+        if (outcomes.length > 0) {
+          replayed = this.linucbBandit.warmStart(outcomes);
+          this.logger.info('LinUCB warm-started from persisted outcomes', {
+            outcomesAvailable: outcomes.length,
+            outcomesReplayed: replayed,
+          });
+        }
+      }
+      // Cold-start fallback: seed from specialization matrix (Issue #1023)
+      if (replayed === 0) {
+        const priors = generateSyntheticPriors();
+        this.linucbBandit.seedPriors(priors, 3);
+        this.logger.info('LinUCB cold-start seeded from specialization matrix');
+      }
     } catch (error: unknown) {
       this.logger.warn('LinUCB warm-start failed, starting cold', {
         error: getErrorMessage(error),

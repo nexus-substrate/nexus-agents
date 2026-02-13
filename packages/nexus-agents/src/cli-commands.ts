@@ -45,6 +45,8 @@ export {
   handleIssueCommand,
   // System Mandate LOOP I: Fitness Audit
   handleFitnessAuditCommand,
+  // Issue #1023: Warm-Up Command
+  handleWarmUpCommand,
 } from './cli-commands-handlers.js';
 // Issue #739: Auth command
 export { handleAuthCommand } from './cli-auth-handler.js';
@@ -96,6 +98,8 @@ import {
   handleIssueCommand,
   // System Mandate LOOP I: Fitness Audit
   handleFitnessAuditCommand,
+  // Issue #1023: Warm-Up Command
+  handleWarmUpCommand,
 } from './cli-commands-handlers.js';
 // Issue #739: Auth command
 import { handleAuthCommand } from './cli-auth-handler.js';
@@ -154,6 +158,8 @@ const SYNC_COMMAND_HANDLERS: Record<string, ((args: ParsedCliArgs) => void) | un
   capabilities: handleCapabilitiesCommand,
   // Issue #688: Status Command
   status: handleStatusCommand,
+  // Issue #1023: Warm-Up Command
+  'warm-up': handleWarmUpCommand,
 };
 
 /**

@@ -460,6 +460,10 @@ export {
 } from './scaffold.js';
 export type { ScaffoldType, ScaffoldOptions, ScaffoldResult } from './scaffold.js';
 
+// Warm-Up Command (Issue #1023 - LinUCB cold-start seeding)
+export { generateSyntheticPriors, runWarmUp, SYNTHETIC_MARKER } from './warm-up.js';
+export type { WarmUpResult } from './warm-up.js';
+
 // Auth Command (Issue #739 - MCP authentication)
 export {
   authCommand,
