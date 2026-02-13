@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- Cohesive orchestration tool (types already extracted to orchestrate-types.ts) */
 /**
  * MCP tool for task orchestration with intelligent workflow pattern routing.
  * Types/schemas in orchestrate-types.ts (Issue #708). Routing via Issue #846.
@@ -36,6 +37,8 @@ import { createWorkflowRouter, type IWorkflowRouter } from '../../orchestration/
 import { getToolMemory } from './tool-memory.js';
 import { getAutoCatalog } from './research-auto-catalog.js';
 import { computeAgentPlan } from './orchestrate-aorchestra.js';
+import { getOutcomeStore } from '../../orchestration/outcomes/index.js';
+import { detectTaskCategory } from '../../config/task-specialization.js';
 import {
   OrchestrateInputSchema,
   ORCHESTRATE_TOOL_SCHEMA,
@@ -199,6 +202,27 @@ function triggerPromotionPipeline(toolName: string): void {
     });
 }
 
+/** Records orchestration outcome to OutcomeStore (Issue #1014). Best-effort, never throws. */
+function recordToOutcomeStore(taskDescription: string, success: boolean, durationMs: number): void {
+  try {
+    const match = detectTaskCategory(taskDescription);
+    getOutcomeStore().append({
+      id: `orch-${String(Date.now())}-${Math.random().toString(36).slice(2, 8)}`,
+      cli: 'claude',
+      category: match?.category ?? 'exploration',
+      model: 'orchestrator',
+      success,
+      durationMs,
+      timestamp: new Date(getTimeProvider().now()).toISOString(),
+      source: 'delegate',
+    });
+  } catch (error: unknown) {
+    createLogger({ tool: 'orchestrate' }).debug('Best-effort outcome recording failed', {
+      error: getErrorMessage(error),
+    });
+  }
+}
+
 function recordOrchestrationSuccess(
   taskId: string,
   taskDescription: string,
@@ -239,10 +263,15 @@ function recordOrchestrationSuccess(
     });
   }
 
+  recordToOutcomeStore(taskDescription, true, durationMs);
   triggerPromotionPipeline('orchestrate');
 }
 
-function recordOrchestrationError(errorMessage: string, taskDescription: string): void {
+function recordOrchestrationError(
+  errorMessage: string,
+  taskDescription: string,
+  durationMs?: number
+): void {
   try {
     const memory = getToolMemory();
     memory.recordError({
@@ -261,6 +290,7 @@ function recordOrchestrationError(errorMessage: string, taskDescription: string)
       error: getErrorMessage(error),
     });
   }
+  recordToOutcomeStore(taskDescription, false, durationMs ?? 0);
 }
 
 // ============================================================================
@@ -356,7 +386,7 @@ async function executeOrchestration(
       const failDuration = getTimeProvider().now() - startTime;
       logger.error('Orchestration failed', result.error, { taskId });
       const cause = result.error instanceof Error ? result.error : undefined;
-      recordOrchestrationError(result.error.message, input.task);
+      recordOrchestrationError(result.error.message, input.task, failDuration);
       recordRouterOutcome(workflowRouter, decision, false, failDuration);
       return err(
         new OrchestrationError(

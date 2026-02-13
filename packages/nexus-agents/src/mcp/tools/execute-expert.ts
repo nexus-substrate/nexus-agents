@@ -29,6 +29,8 @@ import { createSecureHandler, type HandlerContext } from '../middleware/secure-h
 import type { Expert } from '../../agents/index.js';
 import { getToolMemory } from './tool-memory.js';
 import { getAutoCatalog } from './research-auto-catalog.js';
+import { getOutcomeStore } from '../../orchestration/outcomes/index.js';
+import { detectTaskCategory } from '../../config/task-specialization.js';
 import type { ICliDetectionCache } from '../../cli-adapters/cli-detection-cache.js';
 import { requireAdapterAvailable } from '../middleware/adapter-availability.js';
 
@@ -151,6 +153,32 @@ function buildSuccessResponse(params: SuccessResponseParams): ExecuteExpertRespo
   return response;
 }
 
+/** Records expert execution outcome to OutcomeStore (Issue #1014). Best-effort. */
+function recordExpertOutcome(
+  task: string,
+  success: boolean,
+  durationMs: number,
+  model?: string
+): void {
+  try {
+    const match = detectTaskCategory(task);
+    getOutcomeStore().append({
+      id: `exp-${String(Date.now())}-${Math.random().toString(36).slice(2, 8)}`,
+      cli: 'claude',
+      category: match?.category ?? 'exploration',
+      model: model ?? 'expert',
+      success,
+      durationMs,
+      timestamp: new Date(getTimeProvider().now()).toISOString(),
+      source: 'delegate',
+    });
+  } catch (error: unknown) {
+    createLogger({ tool: 'execute_expert' }).debug('Best-effort outcome recording failed', {
+      error: getErrorMessage(error),
+    });
+  }
+}
+
 /**
  * Records a successful expert execution to session memory. (Issue #690)
  */
@@ -263,6 +291,7 @@ async function handleExecuteExpert(
   if (!result.ok) {
     deps.logger?.warn('Expert execution failed', { expertId, error: result.error.message });
     recordExpertError(expertId, expert.role, result.error.message);
+    recordExpertOutcome(args.task, false, durationMs, expert.expertConfig.modelPreference?.modelId);
     return {
       ok: false,
       error: `Expert execution failed: ${result.error.message}`,
@@ -276,6 +305,7 @@ async function handleExecuteExpert(
   });
 
   recordExpertSuccess(expertId, expert.role, durationMs);
+  recordExpertOutcome(args.task, true, durationMs, expert.expertConfig.modelPreference?.modelId);
   autoCatalogScan(result.value.output as string, expertId, deps.logger);
 
   return {
