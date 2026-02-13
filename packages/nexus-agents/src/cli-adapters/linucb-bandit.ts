@@ -10,6 +10,7 @@
 
 import type { BanditContext, LinUCBConfig } from './budget-router-types.js';
 import { DEFAULT_LINUCB_CONFIG, LinUCBConfigSchema } from './budget-router-types.js';
+import type { TaskOutcome } from '../orchestration/outcomes/outcome-types.js';
 import {
   createIdentityMatrix,
   createIdentityMatrixInverse,
@@ -252,6 +253,37 @@ export class LinUCBBandit {
         this.update(i, neutralContext, clampedReward);
       }
     }
+  }
+
+  /**
+   * Warm-start bandit from persisted task outcomes (Issue #1015).
+   *
+   * Replays historical outcomes through update() to reconstruct arm weights
+   * from persisted data. Uses a neutral context (same as seedPriors) since
+   * the original task context is not stored in TaskOutcome.
+   *
+   * @param outcomes - Persisted task outcomes to replay
+   * @returns Number of outcomes successfully replayed
+   */
+  warmStart(outcomes: readonly TaskOutcome[]): number {
+    const neutralContext: BanditContext = {
+      taskComplexity: 0.5,
+      contextLengthNormalized: 0.5,
+      isCodeTask: 0,
+      isReasoningTask: 0,
+      budgetUtilization: 0.5,
+      timePressure: 0.5,
+    };
+
+    let replayed = 0;
+    for (const outcome of outcomes) {
+      const armIndex = this.armNames.indexOf(outcome.cli);
+      if (armIndex < 0) continue;
+      const reward = outcome.success ? 0.7 : 0.1;
+      this.update(armIndex, neutralContext, reward);
+      replayed++;
+    }
+    return replayed;
   }
 
   /**
