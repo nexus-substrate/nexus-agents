@@ -334,3 +334,13 @@ export {
   enrichAssignmentsWithICTM,
   type ICTMEnrichmentResult,
 } from './tech-lead-ictm-integration.js';
+
+// Expert Pool — concurrent admission control (Issue #1029)
+export {
+  ExpertPool,
+  getExpertPool,
+  resetExpertPool,
+  type ExpertPermit,
+  type ExpertPoolStatus,
+  type ExpertPoolConfig,
+} from './expert-pool.js';

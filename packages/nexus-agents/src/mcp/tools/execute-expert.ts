@@ -38,6 +38,7 @@ import { detectTaskCategory } from '../../config/task-specialization.js';
 import { getExpertTaskTimeout } from '../../config/timeouts.js';
 import type { ICliDetectionCache } from '../../cli-adapters/cli-detection-cache.js';
 import { requireAdapterAvailable } from '../middleware/adapter-availability.js';
+import { getExpertPool } from '../../agents/expert-pool.js';
 
 /**
  * Input schema for execute_expert tool.
@@ -300,23 +301,15 @@ function handleExpertSuccess(
   });
 }
 
-/**
- * Handles the execute_expert tool execution.
- * (Issue #747 - CLI detection support)
- */
-async function handleExecuteExpert(
+type ExpertResult = { ok: true; value: ExecuteExpertResponse } | { ok: false; error: string };
+
+/** Runs the expert task and records outcomes. Assumes permit is held. */
+async function runExpertTask(
   deps: ExecuteExpertDeps,
-  args: ExecuteExpertInput
-): Promise<{ ok: true; value: ExecuteExpertResponse } | { ok: false; error: string }> {
+  args: ExecuteExpertInput,
+  expert: Expert
+): Promise<ExpertResult> {
   const { expertId } = args;
-
-  const lookup = lookupExpert(deps.expertRegistry, expertId);
-  if (!lookup.ok) return { ok: false, error: lookup.error };
-  const expert = lookup.expert;
-
-  const adapterError = await requireAdapterAvailable(deps.cliCache);
-  if (adapterError !== undefined) return { ok: false, error: adapterError };
-
   const task = buildTask(args);
   injectErrorHints(task, expert.role);
   deps.logger?.info('Executing expert task', { expertId, role: expert.role, taskId: task.id });
@@ -325,11 +318,7 @@ async function handleExecuteExpert(
   const result = await expert.execute(task);
   const durationMs = getTimeProvider().now() - startTime;
   const modelId = expert.expertConfig.modelPreference?.modelId;
-  const info = {
-    expertId,
-    role: expert.role,
-    ...(modelId !== undefined ? { modelId } : {}),
-  };
+  const info = { expertId, role: expert.role, ...(modelId !== undefined ? { modelId } : {}) };
 
   if (!result.ok) {
     deps.logger?.warn('Expert execution failed', { expertId, error: result.error.message });
@@ -351,6 +340,35 @@ async function handleExecuteExpert(
       modelUsed: expert.expertConfig.modelPreference?.modelId,
     }),
   };
+}
+
+/**
+ * Handles the execute_expert tool execution.
+ * (Issue #747 - CLI detection, Issue #1029 - admission control)
+ */
+async function handleExecuteExpert(
+  deps: ExecuteExpertDeps,
+  args: ExecuteExpertInput
+): Promise<ExpertResult> {
+  const lookup = lookupExpert(deps.expertRegistry, args.expertId);
+  if (!lookup.ok) return { ok: false, error: lookup.error };
+
+  const adapterError = await requireAdapterAvailable(deps.cliCache);
+  if (adapterError !== undefined) return { ok: false, error: adapterError };
+
+  const pool = getExpertPool();
+  let permit;
+  try {
+    permit = await pool.acquire();
+  } catch (acquireErr: unknown) {
+    return { ok: false, error: getErrorMessage(acquireErr) };
+  }
+
+  try {
+    return await runExpertTask(deps, args, lookup.expert);
+  } finally {
+    pool.release(permit);
+  }
 }
 
 /** MCP tool response type for execute_expert */
