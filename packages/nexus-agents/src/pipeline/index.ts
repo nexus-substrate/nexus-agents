@@ -41,6 +41,7 @@ export {
   type CompiledPipeline,
   type PipelineResult,
   type PipelineExecuteOptions,
+  type StepOutcome,
 } from './pipeline-runner.js';
 
 export {

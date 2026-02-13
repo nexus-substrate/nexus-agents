@@ -16,6 +16,12 @@ import { createServer, connectTransport } from '../server.js';
 import { registerTools, registerExecuteExpertTool, registerRunGraphWorkflowTool } from './index.js';
 import type { Expert } from '../../agents/index.js';
 
+// Mock adapter availability — this test is about honesty contracts, not adapter detection
+vi.mock('../middleware/adapter-availability.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../middleware/adapter-availability.js')>();
+  return { ...actual, requireAdapterAvailable: () => Promise.resolve(undefined) };
+});
+
 // ============================================================================
 // Test Infrastructure
 // ============================================================================
