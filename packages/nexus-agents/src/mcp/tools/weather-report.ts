@@ -32,6 +32,8 @@ import { generateTierRecommendations } from '../gateway/tier-recommender.js';
 import { computeAdaptiveThresholds } from '../../orchestration/outcomes/adaptive-thresholds.js';
 import { getRateLimitStats } from '../../adapters/rate-limit-detector.js';
 import { getToolStats } from '../middleware/tool-metrics.js';
+import { getHeartbeatMonitor } from '../../agents/heartbeat-monitor.js';
+import type { AgentHealthSummary } from './weather-report-types.js';
 
 // ============================================================================
 // Public API
@@ -58,6 +60,7 @@ export function generateWeatherReport(
   const rateLimits = buildRateLimitReport();
   const toolPerformance = buildToolPerformance();
   const failureBreakdown = buildFailureBreakdown(input);
+  const agentHealth = buildAgentHealth();
   const base = {
     overall: {
       totalTasks: summary.totalTasks,
@@ -70,6 +73,7 @@ export function generateWeatherReport(
     ...(rateLimits.length > 0 ? { rateLimits } : {}),
     ...(toolPerformance.length > 0 ? { toolPerformance } : {}),
     ...(failureBreakdown.length > 0 ? { failureBreakdown } : {}),
+    ...(agentHealth !== undefined ? { agentHealth } : {}),
     explorationRate: cfg.explorationRate,
     coldStartThreshold: cfg.coldStartThreshold,
     collectedAt: new Date().toISOString(),
@@ -84,6 +88,25 @@ export function generateWeatherReport(
   }
 
   return base;
+}
+
+/** Builds agent health from heartbeat monitor (Issue #1032). */
+function buildAgentHealth(): AgentHealthSummary | undefined {
+  const monitor = getHeartbeatMonitor();
+  if (monitor.activeCount === 0) return undefined;
+  const health = monitor.getHealth();
+  return {
+    activeSessions: health.activeSessions,
+    stalledSessions: health.stalledSessions,
+    sessions: health.sessions.map((s) => ({
+      sessionId: s.sessionId,
+      expertId: s.expertId,
+      health: s.health,
+      elapsedMs: s.elapsedMs,
+      timeSinceHeartbeatMs: s.timeSinceHeartbeatMs,
+      heartbeatCount: s.heartbeatCount,
+    })),
+  };
 }
 
 /** Builds rate limit report from tracked events (Issue #996). */

@@ -344,3 +344,14 @@ export {
   type ExpertPoolStatus,
   type ExpertPoolConfig,
 } from './expert-pool.js';
+
+// Heartbeat Monitor — liveness detection (Issue #1032)
+export {
+  HeartbeatMonitor,
+  getHeartbeatMonitor,
+  resetHeartbeatMonitor,
+  type ExpertSessionSnapshot,
+  type AgentHealthReport,
+  type HeartbeatConfig,
+  type SessionHealth,
+} from './heartbeat-monitor.js';
