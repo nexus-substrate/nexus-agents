@@ -15,6 +15,7 @@ import { createServer, connectTransport } from './server.js';
 import {
   registerTools,
   registerRegistryImportTool,
+  registerRepoAnalyzeTool,
   registerIssueTriageTool,
   registerRunGraphWorkflowTool,
   registerExecuteSpecTool,
@@ -40,6 +41,7 @@ interface TestContext {
 
 const TOOL_NAMES = [
   'registry_import',
+  'repo_analyze',
   'issue_triage',
   'run_graph_workflow',
   'execute_spec',
@@ -63,6 +65,7 @@ async function setupServer(): Promise<TestContext> {
 
   // Register all standalone tools (logger + rateLimiter only)
   registerRegistryImportTool(server, deps);
+  registerRepoAnalyzeTool(server, deps);
   registerIssueTriageTool(server, deps);
   registerRunGraphWorkflowTool(server, deps);
   registerExecuteSpecTool(server, deps);

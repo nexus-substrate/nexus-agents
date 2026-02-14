@@ -239,6 +239,14 @@ export {
   type RegistryImportResponse,
 } from './registry-import-types.js';
 export { generateRegistryEntry } from './registry-import.js';
+// Repo analyze tool (Issue #1074)
+export { registerRepoAnalyzeTool, type RepoAnalyzeDeps } from './repo-analyze-tool.js';
+export {
+  RepoAnalyzeInputSchema,
+  type RepoAnalyzeInput,
+  type RepoAnalysis,
+} from './repo-analyze-types.js';
+export { analyzeRepo, analyzeGitHubRepo, normalizeRepoId } from './repo-analyze.js';
 // Query trace tool (Epic #952, Phase 5)
 export {
   registerQueryTraceTool,
@@ -361,6 +369,7 @@ export function registerTools(
       'execute_spec',
       'registry_import',
       'query_trace',
+      'repo_analyze',
     ],
     logger,
     rateLimiter,

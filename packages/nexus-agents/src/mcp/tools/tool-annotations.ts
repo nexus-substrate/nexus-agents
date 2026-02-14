@@ -311,6 +311,22 @@ export const TOOL_ANNOTATIONS: Readonly<Record<string, ToolSideEffectsEntry>> = 
       { category: 'implicit', description: 'Reads execution trace JSONL files from disk' },
     ],
   },
+  repo_analyze: {
+    annotations: {
+      title: 'Repo Analyze',
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+    sideEffects: [
+      {
+        category: 'implicit',
+        description: 'Fetches repository metadata from GitHub API via gh CLI',
+      },
+      { category: 'implicit', description: 'Consumes rate limit quota' },
+    ],
+  },
 };
 
 /**

@@ -29,6 +29,7 @@ import {
   registerIssueTriageTool,
   registerRunGraphWorkflowTool,
   registerExecuteSpecTool,
+  registerRepoAnalyzeTool,
 } from '../index.js';
 
 // ============================================================================
@@ -46,6 +47,7 @@ import {
   IssueTriageInputSchema,
   RunGraphWorkflowInputSchema,
   ExecuteSpecInputSchema,
+  RepoAnalyzeInputSchema,
   MODEL_CAPABILITIES,
   toolSuccess,
   toolError,
@@ -179,6 +181,7 @@ describe('Export contracts — MCP tool registration', () => {
     expect(typeof registerIssueTriageTool).toBe('function');
     expect(typeof registerRunGraphWorkflowTool).toBe('function');
     expect(typeof registerExecuteSpecTool).toBe('function');
+    expect(typeof registerRepoAnalyzeTool).toBe('function');
   });
 
   it('exports tool input schemas', () => {
@@ -193,6 +196,7 @@ describe('Export contracts — MCP tool registration', () => {
     expect(IssueTriageInputSchema).toBeDefined();
     expect(RunGraphWorkflowInputSchema).toBeDefined();
     expect(ExecuteSpecInputSchema).toBeDefined();
+    expect(RepoAnalyzeInputSchema).toBeDefined();
   });
 
   it('exports tool result helpers', () => {

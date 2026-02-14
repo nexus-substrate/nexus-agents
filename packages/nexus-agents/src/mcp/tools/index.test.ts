@@ -32,6 +32,7 @@ import {
   registerExecuteSpecTool,
   registerRegistryImportTool,
   registerQueryTraceTool,
+  registerRepoAnalyzeTool,
   // Zod schemas
   OrchestrateInputSchema,
   CreateExpertInputSchema,
@@ -54,9 +55,10 @@ import {
   ExecuteSpecInputSchema,
   RegistryImportInputSchema,
   QueryTraceInputSchema,
+  RepoAnalyzeInputSchema,
 } from './index.js';
 
-const EXPECTED_TOOL_COUNT = 21;
+const EXPECTED_TOOL_COUNT = 22;
 
 const EXPECTED_TOOL_NAMES = [
   'orchestrate',
@@ -80,11 +82,12 @@ const EXPECTED_TOOL_NAMES = [
   'execute_spec',
   'registry_import',
   'query_trace',
+  'repo_analyze',
 ];
 
 describe('MCP tools index', () => {
   describe('registerTools', () => {
-    it('returns exactly 21 tool names', () => {
+    it('returns exactly 22 tool names', () => {
       const server = { tool: () => undefined } as never;
       const result = registerTools(server);
       expect(result.tools).toHaveLength(EXPECTED_TOOL_COUNT);
@@ -133,13 +136,14 @@ describe('MCP tools index', () => {
       ['registerExecuteSpecTool', registerExecuteSpecTool],
       ['registerRegistryImportTool', registerRegistryImportTool],
       ['registerQueryTraceTool', registerQueryTraceTool],
+      ['registerRepoAnalyzeTool', registerRepoAnalyzeTool],
     ] as const;
 
     it.each(registerFunctions)('%s is a function', (_name, fn) => {
       expect(typeof fn).toBe('function');
     });
 
-    it('exports 21 register functions', () => {
+    it('exports 22 register functions', () => {
       expect(registerFunctions).toHaveLength(EXPECTED_TOOL_COUNT);
     });
   });
@@ -167,13 +171,14 @@ describe('MCP tools index', () => {
       ['ExecuteSpecInputSchema', ExecuteSpecInputSchema],
       ['RegistryImportInputSchema', RegistryImportInputSchema],
       ['QueryTraceInputSchema', QueryTraceInputSchema],
+      ['RepoAnalyzeInputSchema', RepoAnalyzeInputSchema],
     ] as const;
 
     it.each(schemas)('%s has a parse method', (_name, schema) => {
       expect(typeof schema.parse).toBe('function');
     });
 
-    it('exports 21 schemas', () => {
+    it('exports 22 schemas', () => {
       expect(schemas).toHaveLength(EXPECTED_TOOL_COUNT);
     });
   });

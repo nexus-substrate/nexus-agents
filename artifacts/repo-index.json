@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "generated": "2026-02-14T11:51:57.132Z",
+  "generated": "2026-02-14T12:44:53.565Z",
   "generator": "scripts/generate-repo-index.ts",
   "packageVersion": "2.15.0",
   "cli": {
@@ -295,6 +295,10 @@
       {
         "name": "registry_import",
         "file": "src/mcp/tools/registry-import.ts"
+      },
+      {
+        "name": "repo_analyze",
+        "file": "src/mcp/tools/repo-analyze.ts"
       },
       {
         "name": "research_add",

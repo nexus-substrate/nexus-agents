@@ -159,4 +159,13 @@ export {
   ExecuteSpecInputSchema,
   type ExecuteSpecInput,
   type ExecuteSpecDeps,
+  // Repo analyze tool (Issue #1074)
+  registerRepoAnalyzeTool,
+  RepoAnalyzeInputSchema,
+  type RepoAnalyzeInput,
+  type RepoAnalysis,
+  type RepoAnalyzeDeps,
+  analyzeRepo,
+  analyzeGitHubRepo,
+  normalizeRepoId,
 } from '../mcp/index.js';

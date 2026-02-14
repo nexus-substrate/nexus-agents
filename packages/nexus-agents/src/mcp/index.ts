@@ -209,6 +209,15 @@ export {
   type RegistryImportInput,
   type RegistryImportResponse,
   generateRegistryEntry,
+  // Repo analyze tool (Issue #1074)
+  registerRepoAnalyzeTool,
+  type RepoAnalyzeDeps,
+  RepoAnalyzeInputSchema,
+  type RepoAnalyzeInput,
+  type RepoAnalysis,
+  analyzeRepo,
+  analyzeGitHubRepo,
+  normalizeRepoId,
   // Delegate helpers (Issue #872 — TUI)
   analyzeTask,
   selectModel,

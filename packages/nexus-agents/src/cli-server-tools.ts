@@ -28,6 +28,7 @@ import {
   registerMemoryStatsTool,
   registerWeatherReportTool,
   registerRegistryImportTool,
+  registerRepoAnalyzeTool,
   registerIssueTriageTool,
   registerRunGraphWorkflowTool,
   registerExecuteSpecTool,
@@ -137,6 +138,7 @@ export const REGISTERED_TOOLS = [
   'execute_spec',
   'registry_import',
   'query_trace',
+  'repo_analyze',
 ] as const;
 
 /**
@@ -483,6 +485,7 @@ const STANDALONE_TOOLS: ReadonlyArray<{
   { name: 'consensus_vote', register: registerConsensusVoteTool as never },
   { name: 'weather_report', register: registerWeatherReportTool as never },
   { name: 'registry_import', register: registerRegistryImportTool as never },
+  { name: 'repo_analyze', register: registerRepoAnalyzeTool as never },
   { name: 'issue_triage', register: registerIssueTriageTool as never },
   { name: 'run_graph_workflow', register: registerRunGraphWorkflowTool as never },
   { name: 'execute_spec', register: registerExecuteSpecTool as never },
