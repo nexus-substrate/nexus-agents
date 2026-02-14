@@ -93,6 +93,7 @@ const ManifestSchema = z.object({
 interface CacheEntry {
   manifest: ScannerRegistryManifest;
   fetchedAt: number;
+  releaseTag: string;
 }
 
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
@@ -110,11 +111,64 @@ export function clearRegistryCache(): void {
 const REGISTRY_REPO = 'williamzujkowski/vulnerability-scanner-registry';
 const FETCH_TIMEOUT_MS = 10_000;
 
+/** Promisified execFile signature used by fetcher helpers. */
+type ExecFileAsync = (
+  file: string,
+  args: readonly string[],
+  options: { timeout?: number; maxBuffer?: number }
+) => Promise<{ stdout: string; stderr: string }>;
+
 const logger = createLogger({ component: 'scanner-registry-fetcher' });
+
+/** Get the latest release tag name (lightweight check, no download). */
+async function getLatestReleaseTag(execFileAsync: ExecFileAsync): Promise<string | null> {
+  const { stdout } = await execFileAsync(
+    'gh',
+    ['release', 'view', '--repo', REGISTRY_REPO, '--json', 'tagName', '--jq', '.tagName'],
+    { timeout: FETCH_TIMEOUT_MS }
+  );
+  return stdout.trim() || null;
+}
+
+/** Download and parse the full manifest. */
+async function downloadManifest(
+  execFileAsync: ExecFileAsync
+): Promise<ScannerRegistryManifest | null> {
+  const { stdout } = await execFileAsync(
+    'gh',
+    [
+      'release',
+      'download',
+      '--repo',
+      REGISTRY_REPO,
+      '--pattern',
+      'scanner-registry.json',
+      '--output',
+      '-',
+    ],
+    { timeout: FETCH_TIMEOUT_MS, maxBuffer: 1024 * 1024 }
+  );
+
+  const parsed = ManifestSchema.safeParse(JSON.parse(stdout));
+  if (!parsed.success) {
+    logger.warn('Registry manifest failed schema validation', {
+      errors: parsed.error.issues.slice(0, 3),
+    });
+    return null;
+  }
+
+  logger.info('Fetched scanner registry manifest', {
+    version: parsed.data.version,
+    scanners: parsed.data.scanners.length,
+    languages: Object.keys(parsed.data.languageMatrix).length,
+  });
+  return parsed.data;
+}
 
 /**
  * Fetch the scanner registry manifest from GitHub Releases.
- * Returns the parsed manifest or null on failure.
+ * If we have a cached version and the release tag hasn't changed,
+ * just refreshes the cache timer (no download).
  */
 async function fetchManifestFromGitHub(): Promise<ScannerRegistryManifest | null> {
   try {
@@ -122,62 +176,28 @@ async function fetchManifestFromGitHub(): Promise<ScannerRegistryManifest | null
     const { promisify } = await import('node:util');
     const execFileAsync = promisify(execFile);
 
-    // Use gh CLI to get the latest release asset URL
-    const { stdout } = await execFileAsync(
-      'gh',
-      [
-        'release',
-        'view',
-        '--repo',
-        REGISTRY_REPO,
-        '--json',
-        'assets',
-        '--jq',
-        '.assets[] | select(.name == "scanner-registry.json") | .url',
-      ],
-      { timeout: FETCH_TIMEOUT_MS }
-    );
-
-    const assetUrl = stdout.trim();
-    if (!assetUrl) {
-      logger.warn('No scanner-registry.json found in latest release');
+    const tag = await getLatestReleaseTag(execFileAsync);
+    if (tag === null) {
+      logger.warn('No releases found in scanner registry');
       return null;
     }
 
-    // Download the manifest
-    const { stdout: manifest } = await execFileAsync(
-      'gh',
-      [
-        'release',
-        'download',
-        '--repo',
-        REGISTRY_REPO,
-        '--pattern',
-        'scanner-registry.json',
-        '--output',
-        '-',
-      ],
-      { timeout: FETCH_TIMEOUT_MS, maxBuffer: 1024 * 1024 }
-    );
-
-    const parsed = ManifestSchema.safeParse(JSON.parse(manifest));
-    if (!parsed.success) {
-      logger.warn('Registry manifest failed schema validation', {
-        errors: parsed.error.issues.slice(0, 3),
-      });
-      return null;
+    // If cached version matches the latest tag, refresh timer only
+    if (cachedEntry !== null && cachedEntry.releaseTag === tag) {
+      logger.debug('Scanner registry unchanged, refreshing cache timer', { tag });
+      cachedEntry = { ...cachedEntry, fetchedAt: Date.now() };
+      return cachedEntry.manifest;
     }
 
-    logger.info('Fetched scanner registry manifest', {
-      version: parsed.data.version,
-      scanners: parsed.data.scanners.length,
-      languages: Object.keys(parsed.data.languageMatrix).length,
-    });
-
-    return parsed.data;
+    // New release — download full manifest
+    const manifest = await downloadManifest(execFileAsync);
+    if (manifest !== null) {
+      cachedEntry = { manifest, fetchedAt: Date.now(), releaseTag: tag };
+    }
+    return manifest;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    logger.debug('Failed to fetch scanner registry manifest', { error: msg });
+    logger.debug('Failed to fetch scanner registry', { error: msg });
     return null;
   }
 }
@@ -195,10 +215,9 @@ export async function getRegistryManifest(): Promise<ScannerRegistryManifest | n
     }
   }
 
-  // Fetch fresh
+  // Fetch fresh (also handles cache-refresh-only when tag unchanged)
   const manifest = await fetchManifestFromGitHub();
   if (manifest !== null) {
-    cachedEntry = { manifest, fetchedAt: Date.now() };
     return manifest;
   }
 
