@@ -181,7 +181,7 @@ export interface WeatherReportResponse {
 
 export const WeatherReportConfigSchema = z.object({
   /** Minimum observations before adjusting bonuses. */
-  coldStartThreshold: z.number().int().min(1).max(1000).default(10),
+  coldStartThreshold: z.number().int().min(1).max(1000).default(5),
   /** Exploration rate: fraction of random routing (0.0-1.0). */
   explorationRate: z.number().min(0).max(1).default(0.1),
   /** Max adaptive bonus adjustment (+/-). */

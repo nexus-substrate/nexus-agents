@@ -54,7 +54,7 @@ export interface RoutingConvergence {
 // ============================================================================
 
 const CLI_NAMES = ['claude', 'gemini', 'codex'] as const;
-const COLD_START_THRESHOLD = 10;
+const COLD_START_THRESHOLD = 5;
 
 // ============================================================================
 // Diagnostics

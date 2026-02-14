@@ -45,7 +45,7 @@ beforeEach(() => {
 describe('createDefaultWeatherConfig', () => {
   it('returns expected defaults', () => {
     const config = createDefaultWeatherConfig();
-    expect(config.coldStartThreshold).toBe(10);
+    expect(config.coldStartThreshold).toBe(5);
     expect(config.explorationRate).toBe(0.1);
     expect(config.maxBonusAdjustment).toBe(5);
   });
@@ -165,13 +165,13 @@ describe('generateWeatherReport', () => {
     const report = generateWeatherReport({});
 
     expect(report.explorationRate).toBe(0.1);
-    expect(report.coldStartThreshold).toBe(10);
+    expect(report.coldStartThreshold).toBe(5);
   });
 });
 
 describe('getAdaptiveBonus', () => {
   it('returns 0 below cold-start threshold', () => {
-    seedOutcomes(5, { cli: 'claude', category: 'code_generation', success: true });
+    seedOutcomes(3, { cli: 'claude', category: 'code_generation', success: true });
 
     const bonus = getAdaptiveBonus('claude', 'code_generation');
     expect(bonus).toBe(0);

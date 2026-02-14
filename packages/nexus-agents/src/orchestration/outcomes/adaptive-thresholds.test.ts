@@ -43,16 +43,16 @@ describe('computeAdaptiveThresholds', () => {
   });
 
   it('returns defaults below cold start threshold', () => {
-    seedStore(store, 5, { cli: 'claude', category: 'code_generation' });
+    seedStore(store, 3, { cli: 'claude', category: 'code_generation' });
 
     const result = computeAdaptiveThresholds(store, 'claude', 'code_generation');
 
     expect(result.baseline).toBe(0.7);
     expect(result.maxBonus).toBe(5);
-    expect(result.coldStart).toBe(10);
+    expect(result.coldStart).toBe(5);
     expect(result.trend).toBe('stable');
     expect(result.confidence).toBe(0);
-    expect(result.sampleCount).toBe(5);
+    expect(result.sampleCount).toBe(3);
   });
 
   it('returns defaults for empty store', () => {

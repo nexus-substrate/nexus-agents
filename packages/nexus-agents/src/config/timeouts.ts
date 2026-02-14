@@ -160,13 +160,16 @@ export const INTERNAL_TIMEOUTS = {
 
 /**
  * Expert execution timeouts by inferred task complexity.
- * Complex reasoning tasks (architecture, security) need longer timeouts
- * than standard code generation or documentation tasks.
+ * Complex reasoning tasks (architecture, security, planning) need longer
+ * timeouts than standard code generation or documentation tasks.
  * (Source: Issue #1028 — Dynamic expert timeout)
+ * (Updated: Issue #1045 — E2E testing revealed 180s insufficient for
+ *  architecture design tasks; consensus_vote proves 94s is normal for
+ *  complex deliberation, so 300s gives adequate headroom)
  */
 export const EXPERT_TIMEOUTS = {
-  /** Complex reasoning tasks: architecture, security_review. */
-  complexMs: 180_000,
+  /** Complex reasoning tasks: architecture, security_review, planning. */
+  complexMs: 300_000,
   /** Standard tasks: code_generation, testing, code_review, etc. */
   standardMs: 90_000,
   /** Minimum allowed expert timeout. */
@@ -174,7 +177,7 @@ export const EXPERT_TIMEOUTS = {
   /** Maximum allowed expert timeout. */
   maxMs: 600_000,
   /** Categories considered complex (longer timeout). */
-  complexCategories: ['architecture', 'security_review'] as readonly string[],
+  complexCategories: ['architecture', 'security_review', 'planning'] as readonly string[],
 } as const;
 
 /**
