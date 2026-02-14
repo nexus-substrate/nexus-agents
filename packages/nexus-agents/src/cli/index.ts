@@ -489,6 +489,10 @@ export type {
   AllocationDiffEntry,
 } from './routing-ab.js';
 
+// Comparative Memory Evaluation (Issue #1034 — MemR3 benchmark)
+export { runMemoryEval, formatMemoryEvalReport, generateEvalDataset } from './memory-eval.js';
+export type { MemoryEvalReport, EvalMetrics, EvalImprovement, EvalPair } from './memory-eval.js';
+
 // Auth Command (Issue #739 - MCP authentication)
 export {
   authCommand,

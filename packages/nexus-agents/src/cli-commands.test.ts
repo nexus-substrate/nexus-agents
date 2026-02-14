@@ -34,6 +34,7 @@ vi.mock('./cli-commands-handlers.js', () => ({
   handleWarmUpCommand: vi.fn(),
   handleE2EEvalCommand: vi.fn(),
   handleRoutingABCommand: vi.fn(),
+  handleMemoryEvalCommand: vi.fn(),
 }));
 
 vi.mock('./cli-auth-handler.js', () => ({

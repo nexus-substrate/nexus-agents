@@ -64,7 +64,8 @@ export type CliCommand =
   | 'scenario'
   | 'warm-up'
   | 'e2e-eval'
-  | 'routing-ab';
+  | 'routing-ab'
+  | 'memory-eval';
 
 /**
  * Parsed CLI arguments and command.
@@ -358,6 +359,7 @@ export function isValidCommand(value: string): value is CliCommand {
     'warm-up',
     'e2e-eval',
     'routing-ab',
+    'memory-eval',
   ];
   return validCommands.includes(value as CliCommand);
 }
