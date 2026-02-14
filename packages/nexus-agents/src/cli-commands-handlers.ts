@@ -40,6 +40,7 @@ import {
 import { hookCommand, printHookHelp } from './cli/hooks/index.js';
 import { runWarmUp } from './cli/warm-up.js';
 import { runE2EEval, formatE2EEvalResult } from './cli/e2e-eval.js';
+import { runRoutingAB, formatABReport } from './cli/routing-ab.js';
 import { EXIT_CODES, type ParsedCliArgs } from './cli-types.js';
 import { startServer, type OrchestratorModeOptions } from './cli-server.js';
 import {
@@ -615,4 +616,17 @@ export function handleE2EEvalCommand(args: ParsedCliArgs): void {
   const result = runE2EEval({ taskCount: count });
   process.stdout.write(formatE2EEvalResult(result) + '\n');
   process.exit(result.passed ? EXIT_CODES.SUCCESS : 1);
+}
+
+/**
+ * Handles routing-ab command for A/B comparison of routing strategies.
+ * (Source: Issue #1033 — Routing strategy A/B framework)
+ */
+export function handleRoutingABCommand(args: ParsedCliArgs): void {
+  const countArg = args.positionals[1];
+  const taskCount = countArg !== undefined ? parseInt(countArg, 10) : 30;
+  const count = Number.isNaN(taskCount) || taskCount <= 0 ? 30 : taskCount;
+  const result = runRoutingAB({ taskCount: count });
+  process.stdout.write(formatABReport(result) + '\n');
+  process.exit(EXIT_CODES.SUCCESS);
 }
