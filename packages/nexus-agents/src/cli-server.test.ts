@@ -92,6 +92,7 @@ vi.mock('./config/index.js', () => ({
       warnings: [],
     },
   })),
+  validateNexusEnv: vi.fn(),
 }));
 
 vi.mock('./cli-server-experts.js', () => ({
