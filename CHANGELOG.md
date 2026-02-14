@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.14.0] - 2026-02-13
+
+### Added
+
+- **E2E test projects Batch 3** (Epic #1055) — 2 multi-tool composition projects:
+  - `research-to-action` — 71 tests chaining research_discover → research_add → research_analyze → consensus_vote → memory_query
+  - `model-showdown` — 54 tests chaining delegate_to_model → create_expert → execute_expert → consensus_vote (5 strategies)
+- **E2E test projects Batch 4** (#1058) — Final MCP tool coverage:
+  - `nexus-toolkit` — 47 tests covering orchestrate, research_catalog_review, registry_import
+- **Full MCP tool E2E coverage** — All 21 MCP tools now have dedicated E2E test projects (344 tests across 6 repos)
+
+### Fixed
+
+- **run_workflow built-in template resolution** — Fixed "Unsupported file extension" error when running built-in templates by name; added `getTemplateByName()` to `IWorkflowEngine` interface (#1057)
+- **DelegateOutputSchema governance field** — Added optional `governance` field to Zod schema matching runtime enrichment (#1056)
+
 ## [2.13.0] - 2026-02-13
 
 ### Added
