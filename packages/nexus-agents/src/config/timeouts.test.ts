@@ -17,6 +17,11 @@ import {
   INTERNAL_TIMEOUTS,
   TEST_TIMEOUTS,
   EXPERT_TIMEOUTS,
+  HEARTBEAT_TIMEOUTS,
+  TIMEOUT_GUARD,
+  REFLECTIVE_TIMEOUTS,
+  STEP_EXECUTOR_TIMEOUTS,
+  CACHE_TIMEOUTS,
   TIMEOUT_ENV_VARS,
   getCliTimeoutProfile,
   getCliTimeout,
@@ -313,6 +318,43 @@ describe('Centralized Timeout Configuration', () => {
     it('clamps env override to maximum', () => {
       process.env[envKey] = '9999999';
       expect(getExpertTaskTimeout('any task')).toBe(600_000);
+    });
+  });
+
+  describe('HEARTBEAT_TIMEOUTS', () => {
+    it('has correct thresholds', () => {
+      expect(HEARTBEAT_TIMEOUTS.slowThresholdMs).toBe(30_000);
+      expect(HEARTBEAT_TIMEOUTS.stalledThresholdMs).toBe(60_000);
+      expect(HEARTBEAT_TIMEOUTS.absoluteMaxMs).toBe(600_000);
+    });
+  });
+
+  describe('TIMEOUT_GUARD', () => {
+    it('has correct defaults', () => {
+      expect(TIMEOUT_GUARD.defaultMs).toBe(30_000);
+      expect(TIMEOUT_GUARD.maxMs).toBe(300_000);
+      expect(TIMEOUT_GUARD.nearTimeoutThreshold).toBe(0.8);
+    });
+  });
+
+  describe('REFLECTIVE_TIMEOUTS', () => {
+    it('has correct values', () => {
+      expect(REFLECTIVE_TIMEOUTS.reflectionMs).toBe(2_000);
+      expect(REFLECTIVE_TIMEOUTS.cacheTtlMs).toBe(300_000);
+    });
+  });
+
+  describe('STEP_EXECUTOR_TIMEOUTS', () => {
+    it('has correct defaults', () => {
+      expect(STEP_EXECUTOR_TIMEOUTS.defaultMs).toBe(300_000);
+      expect(STEP_EXECUTOR_TIMEOUTS.retryDelayMs).toBe(1_000);
+    });
+  });
+
+  describe('CACHE_TIMEOUTS', () => {
+    it('has correct values', () => {
+      expect(CACHE_TIMEOUTS.reputationTtlMs).toBe(300_000);
+      expect(CACHE_TIMEOUTS.rateLimitRefillMs).toBe(1_000);
     });
   });
 

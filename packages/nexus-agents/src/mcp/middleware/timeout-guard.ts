@@ -77,9 +77,12 @@ export interface ExecuteOptions {
   readonly onTimeout?: () => void;
 }
 
-const DEFAULT_TIMEOUT_MS = 30_000;
-const MAX_TIMEOUT_MS = 300_000;
-const NEAR_TIMEOUT_THRESHOLD = 0.8;
+// Canonical source: config/timeouts.ts (Issue #1046)
+import { TIMEOUT_GUARD } from '../../config/timeouts.js';
+
+const DEFAULT_TIMEOUT_MS = TIMEOUT_GUARD.defaultMs;
+const MAX_TIMEOUT_MS = TIMEOUT_GUARD.maxMs;
+const NEAR_TIMEOUT_THRESHOLD = TIMEOUT_GUARD.nearTimeoutThreshold;
 
 /** Internal state for tracking timeout. */
 interface TimeoutState {

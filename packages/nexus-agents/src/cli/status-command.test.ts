@@ -183,6 +183,7 @@ function createArgs(overrides: Record<string, unknown>): {
     skipRules: boolean;
     skipHooks: boolean;
     mock: boolean;
+    deep: boolean;
   };
   positionals: string[];
 } {
@@ -209,6 +210,7 @@ function createArgs(overrides: Record<string, unknown>): {
       skipRules: false,
       skipHooks: false,
       mock: false,
+      deep: false,
     },
     positionals: [],
   };

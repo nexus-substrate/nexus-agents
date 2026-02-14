@@ -123,6 +123,8 @@ interface ParsedValues {
   scope?: string;
   // Demo command options
   mock: boolean;
+  // Doctor command options (Issue #1031)
+  deep: boolean;
 }
 
 /** Builds orchestrate-specific options. */
@@ -262,6 +264,7 @@ function buildOptions(values: ParsedValues): ParsedCliArgs['options'] {
     fix: values.fix,
     quick: values.quick,
     mock: values.mock,
+    deep: values.deep,
     ...(values.output !== undefined && { output: values.output }),
     ...(values.input !== undefined && { input: values.input }),
     ...buildOrchestrateOptions(values),
