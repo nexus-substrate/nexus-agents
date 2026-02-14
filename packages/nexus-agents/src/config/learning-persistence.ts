@@ -16,8 +16,17 @@ import { homedir } from 'node:os';
 // Constants
 // ============================================================================
 
+/** Resolve home directory with fallback for mocked environments. */
+function safeHomedir(): string {
+  try {
+    return homedir() || '/tmp';
+  } catch {
+    return '/tmp';
+  }
+}
+
 /** Base directory for learning persistence data. */
-export const LEARNING_DIR = join(homedir(), '.nexus-agents', 'learning');
+export const LEARNING_DIR = join(safeHomedir(), '.nexus-agents', 'learning');
 
 /** JSONL file for persisted task outcomes. */
 export const OUTCOMES_FILE = join(LEARNING_DIR, 'outcomes.jsonl');
