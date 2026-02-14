@@ -42,9 +42,15 @@ export interface CheckAvailabilityParams {
   stateMachine: AgentStateMachine;
 }
 
-/** Checks if an agent is available to execute a task. */
+/** Checks if an agent is available to execute a task. Auto-recovers from error state. */
 export function checkAgentAvailability(params: CheckAvailabilityParams): Result<void, AgentError> {
   const { agentId, taskId, stateMachine } = params;
+
+  // Auto-recover from error state so agents don't get permanently stuck (#1060)
+  if (stateMachine.hasError()) {
+    stateMachine.reset();
+  }
+
   if (!stateMachine.isAvailable()) {
     return err(
       new AgentError(`Agent is not idle (current state: ${stateMachine.state})`, {
