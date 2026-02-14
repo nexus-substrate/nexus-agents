@@ -49,9 +49,12 @@ export interface HeartbeatConfig {
 // Constants
 // ============================================================================
 
-const DEFAULT_SLOW_THRESHOLD_MS = 30_000;
-const DEFAULT_STALLED_THRESHOLD_MS = 60_000;
-const DEFAULT_ABSOLUTE_MAX_MS = 600_000; // 10 minutes
+// Canonical source: config/timeouts.ts (Issue #1046)
+import { HEARTBEAT_TIMEOUTS } from '../config/timeouts.js';
+
+const DEFAULT_SLOW_THRESHOLD_MS = HEARTBEAT_TIMEOUTS.slowThresholdMs;
+const DEFAULT_STALLED_THRESHOLD_MS = HEARTBEAT_TIMEOUTS.stalledThresholdMs;
+const DEFAULT_ABSOLUTE_MAX_MS = HEARTBEAT_TIMEOUTS.absoluteMaxMs;
 
 // ============================================================================
 // Internal Session State

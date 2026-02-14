@@ -22,14 +22,15 @@ import {
   isNonRetryableError,
 } from './step-executor-helpers.js';
 
-/** Default timeout for step execution (5 minutes). */
-const DEFAULT_TIMEOUT_MS = 300_000;
+// Canonical source: config/timeouts.ts (Issue #1046)
+import { STEP_EXECUTOR_TIMEOUTS } from '../config/timeouts.js';
+
+const DEFAULT_TIMEOUT_MS: number = STEP_EXECUTOR_TIMEOUTS.defaultMs;
 
 /** Default number of retries. */
 const DEFAULT_RETRIES = 0;
 
-/** Delay between retries in milliseconds. */
-const DEFAULT_RETRY_DELAY_MS = 1000;
+const DEFAULT_RETRY_DELAY_MS = STEP_EXECUTOR_TIMEOUTS.retryDelayMs;
 
 /**
  * Interface for expert factory dependency.

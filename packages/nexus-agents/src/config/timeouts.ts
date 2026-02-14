@@ -181,6 +181,65 @@ export const EXPERT_TIMEOUTS = {
 } as const;
 
 /**
+ * Agent heartbeat monitoring thresholds.
+ * (Source: Issue #1046 — Centralize scattered timeouts)
+ */
+export const HEARTBEAT_TIMEOUTS = {
+  /** Agent is considered slow after this duration. */
+  slowThresholdMs: 30_000,
+  /** Agent is considered stalled (no heartbeat) after this duration. */
+  stalledThresholdMs: 60_000,
+  /** Absolute maximum agent execution time. */
+  absoluteMaxMs: 600_000,
+} as const;
+
+/**
+ * MCP middleware timeout guard defaults.
+ * (Source: Issue #1046 — Centralize scattered timeouts)
+ */
+export const TIMEOUT_GUARD = {
+  /** Default operation timeout for the guard middleware. */
+  defaultMs: 30_000,
+  /** Maximum allowed timeout for any guarded operation. */
+  maxMs: 300_000,
+  /** Fraction of timeout at which to emit near-timeout warning. */
+  nearTimeoutThreshold: 0.8,
+} as const;
+
+/**
+ * Reflective memory retriever timeouts and cache settings.
+ * (Source: Issue #1046 — Centralize scattered timeouts)
+ */
+export const REFLECTIVE_TIMEOUTS = {
+  /** Timeout for reflection LLM call (aggressive — keeps retrieval fast). */
+  reflectionMs: 2_000,
+  /** Cache TTL in milliseconds. */
+  cacheTtlMs: 300_000,
+} as const;
+
+/**
+ * Workflow step executor defaults.
+ * (Source: Issue #1046 — Centralize scattered timeouts)
+ */
+export const STEP_EXECUTOR_TIMEOUTS = {
+  /** Default step timeout. */
+  defaultMs: 300_000,
+  /** Default retry delay between step attempts. */
+  retryDelayMs: 1_000,
+} as const;
+
+/**
+ * Cache TTL and rate limiter intervals.
+ * (Source: Issue #1046 — Centralize scattered timeouts)
+ */
+export const CACHE_TIMEOUTS = {
+  /** Reputation model cache TTL. */
+  reputationTtlMs: 300_000,
+  /** Rate limiter token refill interval. */
+  rateLimitRefillMs: 1_000,
+} as const;
+
+/**
  * Test framework timeouts (not for production code).
  */
 export const TEST_TIMEOUTS = {

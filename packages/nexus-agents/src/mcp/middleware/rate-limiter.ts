@@ -37,7 +37,10 @@ export interface RateLimiterState {
   readonly nextTokenMs: number;
 }
 
-const DEFAULT_REFILL_INTERVAL_MS = 1000;
+// Canonical source: config/timeouts.ts (Issue #1046)
+import { CACHE_TIMEOUTS } from '../../config/timeouts.js';
+
+const DEFAULT_REFILL_INTERVAL_MS = CACHE_TIMEOUTS.rateLimitRefillMs;
 
 /**
  * Token bucket rate limiter implementation.

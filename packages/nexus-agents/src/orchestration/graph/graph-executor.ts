@@ -37,8 +37,11 @@ import { runPreconditions, runVerification } from './graph-hooks.js';
 
 const logger = createLogger({ component: 'GraphExecutor' });
 
-const DEFAULT_MAX_STEPS = 100;
-const DEFAULT_TIMEOUT_MS = 120_000;
+// Canonical source: config/timeouts.ts (Issue #1046)
+import { GRAPH_TIMEOUTS } from '../../config/timeouts.js';
+
+const DEFAULT_MAX_STEPS = GRAPH_TIMEOUTS.maxSteps;
+const DEFAULT_TIMEOUT_MS = GRAPH_TIMEOUTS.defaultMs;
 
 /** Mutable execution context threaded through the super-step loop. */
 interface ExecutionContext {

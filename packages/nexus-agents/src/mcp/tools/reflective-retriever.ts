@@ -21,14 +21,15 @@ import { withTimeout } from '../../utils/async-utils.js';
 // Configuration
 // ============================================================================
 
-/** Default timeout for reflection LLM call (aggressive — 2s). */
-const REFLECTION_TIMEOUT_MS = 2_000;
+// Canonical source: config/timeouts.ts (Issue #1046)
+import { REFLECTIVE_TIMEOUTS } from '../../config/timeouts.js';
+
+const REFLECTION_TIMEOUT_MS = REFLECTIVE_TIMEOUTS.reflectionMs;
 
 /** Maximum LRU cache entries. */
 const MAX_CACHE_ENTRIES = 50;
 
-/** Cache TTL in milliseconds (5 minutes). */
-const CACHE_TTL_MS = 5 * 60_000;
+const CACHE_TTL_MS: number = REFLECTIVE_TIMEOUTS.cacheTtlMs;
 
 /** Maximum tokens for reflection prompt output. */
 const REFLECTION_MAX_TOKENS = 100;

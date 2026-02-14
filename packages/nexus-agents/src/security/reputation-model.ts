@@ -82,7 +82,10 @@ interface CacheEntry {
   expiresAt: number;
 }
 
-const DEFAULT_TTL_MS = 5 * 60 * 1000; // 5 minutes
+// Canonical source: config/timeouts.ts (Issue #1046)
+import { CACHE_TIMEOUTS } from '../config/timeouts.js';
+
+const DEFAULT_TTL_MS: number = CACHE_TIMEOUTS.reputationTtlMs;
 const DEFAULT_MAX_SIZE = 1000;
 
 /**

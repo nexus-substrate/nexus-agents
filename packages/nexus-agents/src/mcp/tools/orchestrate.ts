@@ -8,6 +8,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger, Result, Task, TaskContext } from '../../core/index.js';
 import { getErrorMessage } from '../../core/index.js';
+import { MCP_TIMEOUTS } from '../../config/timeouts.js';
 
 import {
   orchestrateInputToTaskContract,
@@ -500,9 +501,9 @@ export function registerOrchestrateTool(server: McpServer, deps: OrchestrateDeps
     logger,
   });
 
-  const ORCHESTRATE_DEFAULT_TIMEOUT_MS = 300_000;
+  // Canonical source: config/timeouts.ts (Issue #1046)
   const wrappedHandler = wrapToolWithTimeout('orchestrate', secureHandler, {
-    timeoutMs: ORCHESTRATE_DEFAULT_TIMEOUT_MS,
+    timeoutMs: MCP_TIMEOUTS.perTool['orchestrate'] ?? MCP_TIMEOUTS.defaultMs,
     logger,
   });
 
