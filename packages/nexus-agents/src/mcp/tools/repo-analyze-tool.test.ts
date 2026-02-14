@@ -16,6 +16,7 @@ import {
   detectSecurityTooling,
   detectFramework,
   identifyGaps,
+  getLanguageRecommendations,
   analyzeRepo,
 } from './repo-analyze.js';
 import type { GhRepoMetadata } from './repo-analyze.js';
@@ -196,6 +197,123 @@ describe('identifyGaps', () => {
     );
     expect(gaps).toHaveLength(0);
   });
+
+  it('adds language-specific SAST recommendations for Python', () => {
+    const gaps = identifyGaps(
+      ['src', 'README.md', 'SECURITY.md', 'CODEOWNERS', 'LICENSE', 'tests', '.gitignore'],
+      'github-actions',
+      'Python',
+      []
+    );
+    expect(gaps).toContain('No SAST/SCA security scanning configured');
+    const sastGap = gaps.find((g) => g.includes('Python') && g.includes('SAST'));
+    expect(sastGap).toContain('bandit');
+    expect(sastGap).toContain('semgrep');
+  });
+
+  it('adds language-specific SCA recommendations for Java', () => {
+    const gaps = identifyGaps(
+      ['src', 'README.md', 'SECURITY.md', 'CODEOWNERS', 'LICENSE', 'tests', '.gitignore'],
+      'github-actions',
+      'Java',
+      []
+    );
+    const scaGap = gaps.find((g) => g.includes('Java') && g.includes('SCA'));
+    expect(scaGap).toContain('OWASP dependency-check');
+  });
+
+  it('skips language recommendations when SAST/SCA already present', () => {
+    const gaps = identifyGaps(
+      ['.github', 'SECURITY.md', 'CODEOWNERS', 'LICENSE', '.semgrep.yml', 'tests', '.gitignore'],
+      'github-actions',
+      'Python',
+      ['semgrep']
+    );
+    expect(gaps.some((g) => g.includes('Python'))).toBe(false);
+  });
+
+  it('handles unknown language gracefully', () => {
+    const gaps = identifyGaps(
+      ['src', 'README.md', 'SECURITY.md', 'CODEOWNERS', 'LICENSE', 'tests', '.gitignore'],
+      'github-actions',
+      'Fortran',
+      []
+    );
+    expect(gaps.some((g) => g.includes('Fortran'))).toBe(false);
+  });
+});
+
+// ============================================================================
+// getLanguageRecommendations
+// ============================================================================
+
+describe('getLanguageRecommendations', () => {
+  it('returns SAST+SCA recommendations for Python with no tools', () => {
+    const recs = getLanguageRecommendations('Python', []);
+    expect(recs).toHaveLength(2);
+    expect(recs[0]).toContain('SAST');
+    expect(recs[0]).toContain('bandit');
+    expect(recs[1]).toContain('SCA');
+    expect(recs[1]).toContain('pip-audit');
+  });
+
+  it('skips SAST when semgrep is present', () => {
+    const recs = getLanguageRecommendations('Python', ['semgrep']);
+    expect(recs.some((r) => r.includes('SAST'))).toBe(false);
+    expect(recs.some((r) => r.includes('SCA'))).toBe(true);
+  });
+
+  it('skips SCA when trivy is present', () => {
+    const recs = getLanguageRecommendations('Go', ['trivy']);
+    expect(recs.some((r) => r.includes('SCA'))).toBe(false);
+    expect(recs.some((r) => r.includes('SAST'))).toBe(true);
+  });
+
+  it('returns empty for null language', () => {
+    expect(getLanguageRecommendations(null, [])).toEqual([]);
+  });
+
+  it('returns empty for unknown language', () => {
+    expect(getLanguageRecommendations('COBOL', [])).toEqual([]);
+  });
+
+  it('recommends shellcheck for Shell', () => {
+    const recs = getLanguageRecommendations('Shell', []);
+    expect(recs[0]).toContain('shellcheck');
+  });
+
+  it('recommends brakeman for Ruby', () => {
+    const recs = getLanguageRecommendations('Ruby', []);
+    expect(recs[0]).toContain('brakeman');
+  });
+
+  it('skips SCA for Shell (no SCA tools)', () => {
+    const recs = getLanguageRecommendations('Shell', []);
+    expect(recs.some((r) => r.includes('SCA'))).toBe(false);
+  });
+
+  it('covers all 14 supported languages', () => {
+    const langs = [
+      'TypeScript',
+      'JavaScript',
+      'Python',
+      'Java',
+      'Go',
+      'Rust',
+      'C++',
+      'C',
+      'Kotlin',
+      'Swift',
+      'Ruby',
+      'PHP',
+      'Shell',
+      'HCL',
+    ];
+    for (const lang of langs) {
+      const recs = getLanguageRecommendations(lang, []);
+      expect(recs.length).toBeGreaterThan(0);
+    }
+  });
 });
 
 // ============================================================================
@@ -252,6 +370,12 @@ describe('analyzeRepo', () => {
     expect(result.gaps).toContain('No SECURITY.md policy');
     expect(result.gaps).toContain('No LICENSE file');
     expect(result.license).toBeNull();
+  });
+
+  it('includes language-specific SAST recs for Shell repo without scanning', () => {
+    const result = analyzeRepo(baseMetadata, ['src', 'README.md', 'LICENSE', '.gitignore']);
+    const shellGap = result.gaps.find((g) => g.includes('Shell') && g.includes('SAST'));
+    expect(shellGap).toContain('shellcheck');
   });
 
   it('detects Docker and Helm support', () => {

@@ -88,16 +88,120 @@ const GAP_RULES: ReadonlyArray<readonly [readonly string[], string]> = [
   [['.gitignore'], 'No .gitignore file'],
 ];
 
+/** Scanner recommendation per language. Canonical source: secure-language-stacks. */
+interface LanguageScanners {
+  readonly sast: readonly string[];
+  readonly sca: readonly string[];
+}
+
+const LANGUAGE_SCANNER_MATRIX: Readonly<Record<string, LanguageScanners>> = {
+  TypeScript: {
+    sast: ['semgrep (p/typescript, p/nodejs)', 'eslint-plugin-security'],
+    sca: ['trivy', 'npm audit'],
+  },
+  JavaScript: {
+    sast: ['semgrep (p/javascript, p/nodejs)', 'eslint-plugin-security'],
+    sca: ['trivy', 'npm audit'],
+  },
+  Python: {
+    sast: ['semgrep (p/python)', 'bandit'],
+    sca: ['trivy', 'pip-audit'],
+  },
+  Java: {
+    sast: ['semgrep (p/java)', 'spotbugs + find-sec-bugs'],
+    sca: ['trivy', 'OWASP dependency-check'],
+  },
+  Go: {
+    sast: ['semgrep (p/golang)', 'gosec'],
+    sca: ['trivy', 'govulncheck'],
+  },
+  Rust: {
+    sast: ['semgrep (p/rust)'],
+    sca: ['trivy', 'cargo-audit'],
+  },
+  'C++': {
+    sast: ['semgrep (p/c)', 'cppcheck'],
+    sca: ['trivy'],
+  },
+  C: {
+    sast: ['semgrep (p/c)', 'cppcheck'],
+    sca: ['trivy'],
+  },
+  Kotlin: {
+    sast: ['semgrep (p/kotlin)', 'detekt'],
+    sca: ['trivy', 'OWASP dependency-check'],
+  },
+  Swift: {
+    sast: ['semgrep (p/swift)'],
+    sca: ['trivy'],
+  },
+  Ruby: {
+    sast: ['semgrep (p/ruby)', 'brakeman'],
+    sca: ['trivy', 'bundler-audit'],
+  },
+  PHP: {
+    sast: ['semgrep (p/php)', 'phpstan'],
+    sca: ['trivy', 'composer audit'],
+  },
+  Shell: {
+    sast: ['semgrep (p/bash)', 'shellcheck'],
+    sca: [],
+  },
+  HCL: {
+    sast: ['semgrep (p/terraform)', 'tfsec'],
+    sca: ['trivy'],
+  },
+};
+
+/** Generate language-specific scanner recommendations when SAST/SCA is missing. */
+export function getLanguageRecommendations(
+  language: string | null,
+  securityTooling: readonly string[]
+): readonly string[] {
+  if (language === null) return [];
+  const scanners = LANGUAGE_SCANNER_MATRIX[language];
+  if (scanners === undefined) return [];
+
+  const hasSast = securityTooling.includes('semgrep') || securityTooling.includes('snyk');
+  const hasSca = securityTooling.includes('trivy') || securityTooling.includes('snyk');
+
+  const recs: string[] = [];
+  if (!hasSast && scanners.sast.length > 0) {
+    const tools = scanners.sast.join(', ');
+    recs.push(`${language} project missing SAST: ${tools}`);
+  }
+  if (!hasSca && scanners.sca.length > 0) {
+    const tools = scanners.sca.join(', ');
+    recs.push(`${language} project missing SCA: ${tools}`);
+  }
+  return recs;
+}
+
 /** Identify gaps in repository best practices. */
 export function identifyGaps(
   entries: readonly string[],
-  ciProvider: string | null
+  ciProvider: string | null,
+  language?: string | null,
+  securityTooling?: readonly string[]
 ): readonly string[] {
   const gaps: string[] = [];
   if (ciProvider === null) gaps.push('No CI/CD configuration detected');
   for (const [files, message] of GAP_RULES) {
     if (!files.some((f) => entries.includes(f))) gaps.push(message);
   }
+
+  // Language-specific recommendations when generic SAST/SCA gap detected
+  const hasGenericSecGap = gaps.includes('No SAST/SCA security scanning configured');
+  if (
+    hasGenericSecGap &&
+    language !== null &&
+    language !== undefined &&
+    securityTooling !== undefined
+  ) {
+    const langRecs = getLanguageRecommendations(language, securityTooling);
+    gaps.push(...langRecs);
+  }
+
   return gaps;
 }
 
@@ -122,6 +226,7 @@ export function analyzeRepo(
   topLevelEntries: readonly string[]
 ): RepoAnalysis {
   const ciProvider = detectCiProvider(topLevelEntries);
+  const secTooling = detectSecurityTooling(topLevelEntries);
   const hasTests =
     topLevelEntries.includes('tests') ||
     topLevelEntries.includes('test') ||
@@ -134,7 +239,7 @@ export function analyzeRepo(
     framework: detectFramework(topLevelEntries),
     packageManager: detectPackageManager(topLevelEntries),
     ciProvider,
-    securityTooling: detectSecurityTooling(topLevelEntries),
+    securityTooling: secTooling,
     hasDockerfile:
       topLevelEntries.includes('Dockerfile') ||
       topLevelEntries.includes('docker-compose.yml') ||
@@ -150,7 +255,7 @@ export function analyzeRepo(
     defaultBranch: metadata.default_branch,
     stars: metadata.stargazers_count,
     topLevelEntries: [...topLevelEntries],
-    gaps: identifyGaps(topLevelEntries, ciProvider),
+    gaps: identifyGaps(topLevelEntries, ciProvider, metadata.language, secTooling),
   };
 }
 
