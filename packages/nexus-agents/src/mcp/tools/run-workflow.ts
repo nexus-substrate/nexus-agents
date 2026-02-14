@@ -351,5 +351,9 @@ export function createMockWorkflowEngine(): IWorkflowEngine {
     listTemplates() {
       return Promise.resolve([]);
     },
+
+    getTemplateByName() {
+      return Promise.resolve(undefined);
+    },
   };
 }

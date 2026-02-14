@@ -182,6 +182,7 @@ describe('getAllowedWorkflowDirs', () => {
     getStatus: () => ({ state: 'pending' as const }),
     cancel: () => Promise.resolve({ ok: true as const, value: undefined }),
     listTemplates: () => Promise.resolve([]),
+    getTemplateByName: () => Promise.resolve(undefined),
   };
 
   it('should include built-in templates directory', () => {

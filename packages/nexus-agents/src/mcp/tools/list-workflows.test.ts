@@ -71,6 +71,7 @@ function createMockWorkflowEngine(): IWorkflowEngine {
     execute: vi.fn(),
     getStatus: vi.fn(),
     cancel: vi.fn(),
+    getTemplateByName: vi.fn().mockResolvedValue(undefined),
   };
 }
 

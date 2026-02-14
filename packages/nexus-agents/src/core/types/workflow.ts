@@ -203,4 +203,11 @@ export interface IWorkflowEngine {
    * @returns Array of available templates
    */
   listTemplates(): Promise<WorkflowTemplate[]>;
+
+  /**
+   * Get a built-in or registered template definition by name.
+   * @param name - Template name (e.g., 'code-review')
+   * @returns The workflow definition, or undefined if not found
+   */
+  getTemplateByName(name: string): Promise<WorkflowDefinition | undefined>;
 }

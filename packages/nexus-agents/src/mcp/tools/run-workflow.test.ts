@@ -171,7 +171,9 @@ function createMockWorkflowEngine(options?: {
   const cancel = vi.fn().mockResolvedValue({ ok: true, value: undefined });
   const listTemplates = vi.fn().mockResolvedValue(options?.templates ?? createDefaultTemplates());
 
-  return { loadTemplate, execute, getStatus, cancel, listTemplates };
+  const getTemplateByName = vi.fn().mockResolvedValue(defaultWorkflow);
+
+  return { loadTemplate, execute, getStatus, cancel, listTemplates, getTemplateByName };
 }
 
 /** Create a mock logger for testing */

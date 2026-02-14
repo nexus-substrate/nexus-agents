@@ -208,6 +208,19 @@ export class WorkflowEngine implements IWorkflowEngine {
     return t;
   }
 
+  getTemplateByName(name: string): Promise<WorkflowDefinition | undefined> {
+    // Check custom templates first
+    const custom = this.customTemplates.get(name);
+    if (custom !== undefined) return Promise.resolve(custom);
+
+    // Check built-in templates
+    const builtIn = this.deps.getBuiltInTemplates();
+    for (const [, workflow] of builtIn) {
+      if (workflow.name === name) return Promise.resolve(workflow);
+    }
+    return Promise.resolve(undefined);
+  }
+
   registerTemplate(id: string, workflow: WorkflowDefinition): void {
     this.customTemplates.set(id, workflow);
   }

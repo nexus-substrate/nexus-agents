@@ -281,17 +281,17 @@ async function loadWorkflowFromName(
     };
   }
 
-  // Built-in templates are pre-validated, load directly
-  const result = await workflowEngine.loadTemplate(found.path);
-  if (!result.ok) {
+  // Resolve built-in/custom templates by name (avoids synthetic path issue)
+  const definition = await workflowEngine.getTemplateByName(found.name);
+  if (definition === undefined) {
     return {
       ok: false,
-      error: new WorkflowError(`Failed to load template: ${result.error.message}`, {
+      error: new WorkflowError(`Failed to load template: ${name}`, {
         context: { template: name, path: found.path },
       }),
     };
   }
-  return result;
+  return { ok: true, value: definition };
 }
 
 /**
