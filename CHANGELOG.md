@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.13.0] - 2026-02-13
+
+### Added
+
+- **Cold-start warm-up wiring** — `CompositeRouter.warmStartBandit()` now writes synthetic outcomes to OutcomeStore during cold-start fallback, making warm-up data visible in weather report (#1023)
+- **E2E test projects Batch 2** (Epic #1050) — 4 new standalone E2E projects covering 10 MCP tools:
+  - `arxiv-scout` — 55 tests exercising all 5 `research_*` tools
+  - `memory-bench` — 45 tests for `memory_query` and `memory_stats`
+  - `issue-sentinel` — 38 tests for `issue_triage` with trust tier validation
+  - `spec-factory` — 44 tests for `execute_spec`, `query_trace`, `registry_import`
+
+### Fixed
+
+- `execute_spec` schema description now documents required `## Requirements` and `## Acceptance Criteria` sections (#1051)
+- `issue_triage` tool description now documents `GITHUB_TOKEN`/`GH_TOKEN` requirement (#1052)
+
+### Security
+
+- Patched `markdown-it` 14.1.0 → 14.1.1 (ReDoS, Dependabot alert #13) via pnpm override
+
 ## [2.12.0] - 2026-02-13
 
 ### Added

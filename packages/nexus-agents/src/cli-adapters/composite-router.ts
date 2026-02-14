@@ -53,7 +53,7 @@ import {
 } from '../learning/strategy-distiller.js';
 import { getOutcomeStore } from '../orchestration/outcomes/outcome-store.js';
 import { isPersistenceEnabled } from '../config/learning-persistence.js';
-import { generateSyntheticPriors } from '../cli/warm-up.js';
+import { generateSyntheticPriors, runWarmUp } from '../cli/warm-up.js';
 import {
   CompositeRouterConfigSchema,
   CompositeRoutingError,
@@ -304,9 +304,16 @@ export class CompositeRouter implements ICompositeRouter {
       }
       // Cold-start fallback: seed from specialization matrix (Issue #1023)
       if (replayed === 0) {
+        const result = runWarmUp(this.logger);
+        if (!result.skipped) {
+          const outcomes = getOutcomeStore().query();
+          this.linucbBandit.warmStart(outcomes);
+        }
         const priors = generateSyntheticPriors();
         this.linucbBandit.seedPriors(priors, 3);
-        this.logger.info('LinUCB cold-start seeded from specialization matrix');
+        this.logger.info('LinUCB cold-start seeded from specialization matrix', {
+          syntheticOutcomes: result.seeded,
+        });
       }
     } catch (error: unknown) {
       this.logger.warn('LinUCB warm-start failed, starting cold', {
