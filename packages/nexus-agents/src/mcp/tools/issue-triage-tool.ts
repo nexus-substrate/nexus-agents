@@ -146,7 +146,8 @@ export function registerIssueTriageTool(server: McpServer, deps: IssueTriageDeps
     'Triage a GitHub issue using the full security pipeline. ' +
     'Classifies the issue, assesses author trust and reputation, ' +
     'proposes labels and actions, and validates all outputs through ' +
-    'policy gate and corroboration checks. Read-only by default.';
+    'policy gate and corroboration checks. Read-only by default. ' +
+    'Requires GITHUB_TOKEN or GH_TOKEN environment variable.';
 
   const secureHandler = createSecureHandler(createIssueTriageHandler(deps), {
     toolName: 'issue_triage',

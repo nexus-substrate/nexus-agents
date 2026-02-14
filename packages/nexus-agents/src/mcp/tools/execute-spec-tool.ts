@@ -128,7 +128,14 @@ export function registerExecuteSpecTool(server: McpServer, deps: ExecuteSpecDeps
   const wrapped = wrapToolWithTimeout('execute_spec', secureHandler, { timeoutMs, logger });
 
   const toolSchema = {
-    spec: z.string().min(1).max(50_000).describe('Markdown specification to execute'),
+    spec: z
+      .string()
+      .min(1)
+      .max(50_000)
+      .describe(
+        'Markdown specification to execute. ' +
+          'Must contain "## Requirements" and "## Acceptance Criteria" sections.'
+      ),
     dryRun: z.boolean().optional().describe('Parse and decompose only (no execution)'),
   };
 
