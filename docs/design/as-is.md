@@ -94,7 +94,7 @@ Real multi-model voting with 6 agent personas. Round-robin CLI assignment ensure
 
 ### 6. Graph Workflows (Solid)
 
-DAG-based execution with checkpointing, rollback, conditional edges. 7 templates. Super-step execution model. Multi-CLI routing per node (#866).
+DAG-based execution with checkpointing, rollback, conditional edges. 10 templates. Super-step execution model. Multi-CLI routing per node (#866).
 
 **Evidence:** `src/orchestration/graph/` — GraphBuilder, 126+ tests.
 

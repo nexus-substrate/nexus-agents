@@ -20,6 +20,10 @@ import {
   getMultiCliTemplates,
   getMultiCliRegistry,
 } from './run-graph-workflow-multicli-templates.js';
+import {
+  SECURITY_SETUP_TEMPLATES,
+  getSecuritySetupRegistry,
+} from './run-graph-workflow-security-setup.js';
 
 // ============================================================================
 // Registry
@@ -68,12 +72,16 @@ const WORKFLOW_METADATA: readonly GraphWorkflowInfo[] = [
   },
 ];
 
-/** Returns metadata about all available graph workflows (built-in + multi-CLI). */
+/** Returns metadata about all available graph workflows (built-in + multi-CLI + security setup). */
 export function getGraphWorkflowList(): readonly GraphWorkflowInfo[] {
-  return [...WORKFLOW_METADATA, ...getMultiCliTemplates().map((t) => t.metadata)];
+  return [
+    ...WORKFLOW_METADATA,
+    ...getMultiCliTemplates().map((t) => t.metadata),
+    ...SECURITY_SETUP_TEMPLATES,
+  ];
 }
 
-/** Registry of all predefined graph workflows (built-in + multi-CLI). */
+/** Registry of all predefined graph workflows (built-in + multi-CLI + security setup). */
 export function getGraphRegistry(): ReadonlyMap<string, GraphFactory> {
   return new Map<string, GraphFactory>([
     ['echo', createEchoGraph],
@@ -81,6 +89,7 @@ export function getGraphRegistry(): ReadonlyMap<string, GraphFactory> {
     ['code-review', createCodeReviewGraph],
     ['security-scan', createSecurityScanGraph],
     ...getMultiCliRegistry(),
+    ...getSecuritySetupRegistry(),
   ]);
 }
 

@@ -15,7 +15,7 @@ _Generated: 2026-02-08 (Updated: 2026-02-08 — Epic #926 resolutions)_
 | Mesh mode                          |     Yes     |    **No**    | Tests verify rejection | Gap #2 resolved (Epic #931)     |
 | Model routing pipeline             |     Yes     |     Yes      |          Yes           | 5-stage composite router        |
 | Consensus voting (6 strategies)    |     Yes     |     Yes      |          Yes           | Real multi-CLI votes            |
-| Graph workflows (7 templates)      |     Yes     |     Yes      |          Yes           | Checkpointing works             |
+| Graph workflows (10 templates)     |     Yes     |     Yes      |          Yes           | Checkpointing works             |
 | AI Software Factory                |     Yes     |     Yes      |          Yes           | Full 6-stage pipeline           |
 | Security pipeline (8 modules)      |     Yes     |     Yes      |          Yes           | All wired, firewall composition |
 | Expert agents (9 roles)            |     Yes     |     Yes      |          Yes           | Including pm/ux                 |

@@ -177,7 +177,12 @@ export const EXPERT_TIMEOUTS = {
   /** Maximum allowed expert timeout. */
   maxMs: 600_000,
   /** Categories considered complex (longer timeout). */
-  complexCategories: ['architecture', 'security_review', 'planning'] as readonly string[],
+  complexCategories: [
+    'architecture',
+    'security_review',
+    'planning',
+    'research',
+  ] as readonly string[],
 } as const;
 
 /**

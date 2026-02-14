@@ -141,7 +141,7 @@ describe('list action', () => {
       name: string;
       description: string;
     }>;
-    expect(workflows.length).toBe(7);
+    expect(workflows.length).toBe(10);
     expect(workflows.map((w) => w.name)).toEqual([
       'echo',
       'pipeline',
@@ -150,6 +150,9 @@ describe('list action', () => {
       'security-audit',
       'test-generation',
       'documentation',
+      'security-setup-semgrep',
+      'security-setup-zap',
+      'security-setup-trivy',
     ]);
   });
 

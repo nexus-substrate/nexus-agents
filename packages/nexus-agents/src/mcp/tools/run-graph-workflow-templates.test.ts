@@ -35,9 +35,9 @@ async function runWorkflow(name: string, inputs: Record<string, unknown>) {
 // ============================================================================
 
 describe('getGraphRegistry', () => {
-  it('contains 7 workflows (4 built-in + 3 multi-CLI)', () => {
+  it('contains 10 workflows (4 built-in + 3 multi-CLI + 3 security-setup)', () => {
     const registry = getGraphRegistry();
-    expect(registry.size).toBe(7);
+    expect(registry.size).toBe(10);
     expect([...registry.keys()]).toEqual([
       'echo',
       'pipeline',
@@ -46,6 +46,9 @@ describe('getGraphRegistry', () => {
       'security-audit',
       'test-generation',
       'documentation',
+      'security-setup-semgrep',
+      'security-setup-zap',
+      'security-setup-trivy',
     ]);
   });
 
