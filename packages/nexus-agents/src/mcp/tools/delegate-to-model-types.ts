@@ -100,6 +100,14 @@ export const DelegateOutputSchema = z.object({
       })
     )
     .describe('Alternative model options with tradeoffs'),
+  governance: z
+    .object({
+      domain: z.string().describe('Governance domain (e.g., security, architecture)'),
+      votingThreshold: z.string().describe('Required voting threshold (e.g., supermajority)'),
+      promotionReason: z.string().describe('Why governance was promoted'),
+    })
+    .optional()
+    .describe('Present when task triggers governance promotion'),
 });
 
 export type DelegateOutput = z.infer<typeof DelegateOutputSchema>;
