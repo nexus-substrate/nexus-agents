@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.12.0] - 2026-02-13
+
+### Added
+
+- **Cross-session learning loop** (Epic #1027)
+  - Automatic strategy distillation to routing pipeline (#999)
+  - Resource-aware strategy oscillation (#998)
+  - Cross-session persistence for StrategyDistiller and OutcomeStore (#1009)
+  - LinUCB bandit seeding from persisted outcomes on startup (#1015)
+  - LinUCB bandit bootstrap with synthetic priors from specialization matrix (#1023)
+  - Learning persistence health check in `doctor` command (#1017)
+  - E2E scenario runner to validate learning loop (#1030)
+  - Structured error taxonomy for task outcomes (#1025)
+- **Operational hardening** (Epic #1027)
+  - Agent heartbeat health monitor for liveness detection (#1032)
+  - Concurrent expert admission control with semaphore pool (#1029)
+  - Dynamic expert timeout based on task complexity (#1028)
+  - MCP tool usage analytics in weather report (#1022)
+  - Centralized Zod schema for NEXUS\_\* environment variables (#1016)
+- **Observability improvements**
+  - Enhanced `doctor --deep` diagnostics (#1031)
+  - Routing strategy A/B comparison framework (#1033)
+  - Comparative memory evaluation benchmark for MemR3 (#1034)
+- **Pipeline and MCP improvements**
+  - MCP tool annotations and side effects registry (#993)
+  - MCP tool response honesty contract (#992)
+  - Continue-on-failure mode for PipelineRunner (#995)
+  - Precondition and verification hooks for graph workflows (#1000)
+  - Surface rate limit errors with actionable context (#996)
+
+### Fixed
+
+- Centralize all timeout values into `config/timeouts.ts` — 12 scattered constants from 8 files consolidated (#1046)
+- Increase expert complex timeout and reduce cold-start threshold (#1045, #1047)
+- Record orchestrate and execute-expert outcomes to OutcomeStore (#1014)
+- Add side-effect imports for persistence factory registration (#1011)
+- Resolve 2 test failures from missing mocks and module-scope `homedir()` (#1043)
+
 ## [2.11.0] - 2026-02-11
 
 ### Added

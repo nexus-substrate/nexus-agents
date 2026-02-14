@@ -1,7 +1,7 @@
 # Repository Capabilities Index
 
-**Generated:** 2026-02-12T01:14:12.002Z
-**Package Version:** 2.11.0
+**Generated:** 2026-02-14T01:24:21.333Z
+**Package Version:** 2.12.0
 **Generator:** `scripts/generate-repo-index.ts`
 
 > This file is auto-generated. Do not edit manually.
@@ -9,7 +9,7 @@
 
 ---
 
-## CLI Commands (35)
+## CLI Commands (39)
 
 Binary: `nexus-agents`
 
@@ -20,6 +20,7 @@ Binary: `nexus-agents`
 | `config` | async | `handleConfigCommand` | `src/cli-commands-handlers.ts` |
 | `demo` | async | `handleDemoCommand` | `src/cli-commands-handlers.ts` |
 | `doctor` | async | `handleDoctorCommand` | `src/cli-commands-handlers.ts` |
+| `e2e-eval` | sync | `handleE2EEvalCommand` | `src/cli-commands-handlers.ts` |
 | `evaluate` | async | `handleEvaluateCommand` | `src/cli-commands-handlers.ts` |
 | `expert` | sync | `handleExpertCommand` | `src/cli-commands-handlers.ts` |
 | `fitness-audit` | sync | `handleFitnessAuditCommand` | `src/cli-commands-handlers.ts` |
@@ -29,12 +30,14 @@ Binary: `nexus-agents`
 | `issue` | sync | `handleIssueCommand` | `src/cli-commands-handlers.ts` |
 | `learning-metrics` | sync | `handleLearningMetricsCommand` | `src/cli-commands-handlers.ts` |
 | `memory-benchmark` | async | `handleMemoryBenchmarkCommand` | `src/cli-commands-handlers.ts` |
+| `memory-eval` | sync | `handleMemoryEvalCommand` | `src/cli-commands-handlers.ts` |
 | `orchestrate` | async | `handleOrchestrateCommand` | `src/cli-commands-handlers.ts` |
 | `release-announce` | async | `handleReleaseAnnounceCommand` | `src/cli-commands-handlers.ts` |
 | `release-notes` | async | `handleReleaseNotesCommand` | `src/cli-commands-handlers.ts` |
 | `release-validate` | async | `handleReleaseValidateCommand` | `src/cli-commands-handlers.ts` |
 | `research` | async | `handleResearchCommand` | `src/cli-commands-handlers.ts` |
 | `review` | async | `handleReviewCommand` | `src/cli-commands-handlers.ts` |
+| `routing-ab` | sync | `handleRoutingABCommand` | `src/cli-commands-handlers.ts` |
 | `routing-audit` | sync | `handleRoutingAuditCommand` | `src/cli-commands-handlers.ts` |
 | `scaffold` | sync | `handleScaffoldCommand` | `src/cli-commands-handlers.ts` |
 | `scenario` | async | `handleScenarioCommand` | `src/cli-commands-handlers.ts` |
@@ -49,6 +52,7 @@ Binary: `nexus-agents`
 | `verify` | async | `handleVerifyCommand` | `src/cli-commands-handlers.ts` |
 | `visualize` | sync | `handleVisualizeCommand` | `src/cli-commands-handlers.ts` |
 | `vote` | async | `handleVoteCommand` | `src/cli-commands-handlers.ts` |
+| `warm-up` | sync | `handleWarmUpCommand` | `src/cli-commands-handlers.ts` |
 | `workflow` | async | `handleWorkflowCommand` | `src/cli-commands-handlers.ts` |
 
 ---
