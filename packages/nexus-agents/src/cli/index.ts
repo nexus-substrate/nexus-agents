@@ -479,6 +479,16 @@ export type {
   CliDataStatus,
 } from './doctor-deep.js';
 
+// Routing A/B Framework (Issue #1033 — Routing strategy comparison)
+export { runRoutingAB, formatABReport, PRESET_VARIANTS } from './routing-ab.js';
+export type {
+  RoutingVariant,
+  ABComparisonReport,
+  ABRunConfig,
+  VariantSummary,
+  AllocationDiffEntry,
+} from './routing-ab.js';
+
 // Auth Command (Issue #739 - MCP authentication)
 export {
   authCommand,
