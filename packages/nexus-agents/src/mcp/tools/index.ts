@@ -260,7 +260,22 @@ export {
   type ConflictWarning,
   type CoverageAnalysis,
 } from './repo-security-plan-types.js';
-export { buildPlanFromAnalysis, generateSecurityPlan } from './repo-security-plan.js';
+export {
+  buildPlanFromAnalysis,
+  generateSecurityPlan,
+  resolveScannerData,
+  FALLBACK_SCANNER_DATA,
+  type ScannerEntry,
+  type ScannerData,
+} from './repo-security-plan.js';
+export {
+  getRegistryManifest,
+  clearRegistryCache,
+  type RegistryScanner,
+  type RegistryRelationship,
+  type LanguageMatrixEntry,
+  type ScannerRegistryManifest,
+} from './scanner-registry-fetcher.js';
 // Query trace tool (Epic #952, Phase 5)
 export {
   registerQueryTraceTool,

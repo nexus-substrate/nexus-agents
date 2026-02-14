@@ -179,4 +179,15 @@ export {
   type CoverageAnalysis,
   buildPlanFromAnalysis,
   generateSecurityPlan,
+  resolveScannerData,
+  FALLBACK_SCANNER_DATA,
+  type ScannerEntry,
+  type ScannerData,
+  // Scanner registry fetcher (externalization vote 6-0)
+  getRegistryManifest,
+  clearRegistryCache,
+  type RegistryScanner,
+  type RegistryRelationship,
+  type LanguageMatrixEntry,
+  type ScannerRegistryManifest,
 } from '../mcp/index.js';
