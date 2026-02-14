@@ -325,8 +325,13 @@ export async function handleVerifyCommand(args: ParsedCliArgs): Promise<void> {
 /**
  * Handles doctor command (extracted for dispatch table).
  */
-export async function handleDoctorCommand(_args: ParsedCliArgs): Promise<void> {
+export async function handleDoctorCommand(args: ParsedCliArgs): Promise<void> {
   const exitCode = await doctorCommand();
+  if (args.options.deep) {
+    const { runDeepDiagnostics, formatDeepDiagnostics } = await import('./cli/doctor-deep.js');
+    const diag = runDeepDiagnostics();
+    process.stdout.write(formatDeepDiagnostics(diag) + '\n');
+  }
   process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
 }
 
