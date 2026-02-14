@@ -110,9 +110,9 @@ describe('doctor-deep', () => {
       expect(diag.routingConvergence.converged).toBe(false);
     });
 
-    it('should report coldStartThreshold as 10', () => {
+    it('should report coldStartThreshold as 5', () => {
       const diag = runDeepDiagnostics();
-      expect(diag.dataSufficiency.coldStartThreshold).toBe(10);
+      expect(diag.dataSufficiency.coldStartThreshold).toBe(5);
     });
   });
 

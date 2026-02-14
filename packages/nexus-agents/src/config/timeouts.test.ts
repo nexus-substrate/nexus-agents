@@ -256,7 +256,7 @@ describe('Centralized Timeout Configuration', () => {
 
   describe('EXPERT_TIMEOUTS', () => {
     it('has correct complexity tiers', () => {
-      expect(EXPERT_TIMEOUTS.complexMs).toBe(180_000);
+      expect(EXPERT_TIMEOUTS.complexMs).toBe(300_000);
       expect(EXPERT_TIMEOUTS.standardMs).toBe(90_000);
     });
 
@@ -268,7 +268,8 @@ describe('Centralized Timeout Configuration', () => {
     it('lists complex categories', () => {
       expect(EXPERT_TIMEOUTS.complexCategories).toContain('architecture');
       expect(EXPERT_TIMEOUTS.complexCategories).toContain('security_review');
-      expect(EXPERT_TIMEOUTS.complexCategories).toHaveLength(2);
+      expect(EXPERT_TIMEOUTS.complexCategories).toContain('planning');
+      expect(EXPERT_TIMEOUTS.complexCategories).toHaveLength(3);
     });
   });
 
@@ -280,11 +281,11 @@ describe('Centralized Timeout Configuration', () => {
     });
 
     it('returns complex timeout for architecture tasks', () => {
-      expect(getExpertTaskTimeout('Review the system architecture')).toBe(180_000);
+      expect(getExpertTaskTimeout('Review the system architecture')).toBe(300_000);
     });
 
     it('returns complex timeout for security tasks', () => {
-      expect(getExpertTaskTimeout('Perform a security review of auth')).toBe(180_000);
+      expect(getExpertTaskTimeout('Perform a security review of auth')).toBe(300_000);
     });
 
     it('returns standard timeout for code generation tasks', () => {
