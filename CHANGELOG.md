@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.15.0] - 2026-02-14
+
+### Added
+
+- **E2E pipeline integration test** — 13 tests covering full Task→Route→Execute→Outcome→Learn feedback loop (#1070)
+- **MCP tool registration index tests** — 52 tests verifying all 21 tools are properly registered and wired (#1064)
+
+### Fixed
+
+- **Agent state machine stuck in error state** — auto-recovery via `hasError()`/`reset()` prevents agents from becoming permanently unavailable (#1060)
+- **qs DoS vulnerability** — pnpm override pins qs 6.14.1→6.14.2 (#1069)
+- **BanditContext type mismatch in pipeline E2E test** — use proper typed context instead of raw features array
+- **Base agent execute flow mock** — added missing `hasError`/`reset` methods to state machine mock
+
+### Changed
+
+- Bumped turbo 2.8.3→2.8.8, typescript-eslint 8.54→8.55 (#1063)
+- Removed vestigial `predictions.jsonl`, updated `.gitignore` (#1068)
+
 ## [2.14.0] - 2026-02-13
 
 ### Added

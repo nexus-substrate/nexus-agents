@@ -28,6 +28,8 @@ function makeContext(overrides: Partial<ExecuteFlowContext> = {}) {
     agentId: 'agent-1',
     stateMachine: {
       isAvailable: vi.fn().mockReturnValue(true),
+      hasError: vi.fn().mockReturnValue(false),
+      reset: vi.fn(),
       startTask: vi.fn(),
       forceError: vi.fn(),
     },

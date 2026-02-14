@@ -489,11 +489,11 @@ _Auto-generated from source. 21 tools registered._
 
 <!-- GOVERNANCE:VERSION:START -->
 
-_Governance Version: 2026-02-13_
+_Governance Version: 2026-02-14_
 
 <!-- GOVERNANCE:VERSION:END -->
 
-_Last updated: 2026-02-13 (ET)_
+_Last updated: 2026-02-14 (ET)_
 _MCP Protocol: 2025-11-25_
 _Node.js: 22.x LTS_
 _TypeScript: 5.9+_

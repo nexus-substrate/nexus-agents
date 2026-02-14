@@ -18,6 +18,7 @@ import { OutcomeStore } from '../orchestration/outcomes/outcome-store.js';
 import { LinUCBBandit } from './linucb-bandit.js';
 import { computeQualityReward } from './composite-router-outcome.js';
 import type { ICliAdapter, CliName, CliTask } from './types.js';
+import type { BanditContext } from './budget-router-types.js';
 import type { TaskOutcome } from '../orchestration/outcomes/outcome-types.js';
 
 // ============================================================================
@@ -179,38 +180,45 @@ describe('E2E Pipeline Integration', () => {
   });
 
   describe('Stage 5: Learning (LinUCB Bandit)', () => {
+    const banditContext: BanditContext = {
+      taskComplexity: 0.5,
+      contextLengthNormalized: 0.3,
+      isCodeTask: 1,
+      isReasoningTask: 0,
+      budgetUtilization: 0.2,
+      timePressure: 0,
+    };
+
     it('updates bandit with quality reward signal', () => {
       const bandit = new LinUCBBandit(['claude', 'gemini', 'codex']);
-      const context = { features: [1, 0, 0, 0, 0] };
 
       // Record a successful outcome for claude
       const reward = computeQualityReward('claude', true, 500);
       expect(reward).toBeGreaterThan(0);
 
-      bandit.update(0, context, reward);
+      bandit.update(0, banditContext, reward);
 
       // Record a failed outcome for gemini
       const failReward = computeQualityReward('gemini', false, 5000);
       expect(failReward).toBeLessThan(reward);
 
-      bandit.update(1, context, failReward);
+      bandit.update(1, banditContext, failReward);
     });
 
     it('bandit selection changes after learning', () => {
       const bandit = new LinUCBBandit(['claude', 'gemini', 'codex'], {
         alpha: 0.1,
       });
-      const context = { features: [1, 0, 0, 0, 0] };
 
       // Heavily reward claude, penalize others
       for (let i = 0; i < 20; i++) {
-        bandit.update(0, context, 0.9); // claude gets high reward
-        bandit.update(1, context, 0.1); // gemini gets low reward
-        bandit.update(2, context, 0.1); // codex gets low reward
+        bandit.update(0, banditContext, 0.9); // claude gets high reward
+        bandit.update(1, banditContext, 0.1); // gemini gets low reward
+        bandit.update(2, banditContext, 0.1); // codex gets low reward
       }
 
       // After training, claude should have highest UCB score
-      const selection = bandit.select(context);
+      const selection = bandit.select(banditContext);
       expect(selection.armName).toBe('claude');
     });
   });
