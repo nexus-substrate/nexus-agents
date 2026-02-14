@@ -39,6 +39,7 @@ import { getExpertTaskTimeout } from '../../config/timeouts.js';
 import type { ICliDetectionCache } from '../../cli-adapters/cli-detection-cache.js';
 import { requireAdapterAvailable } from '../middleware/adapter-availability.js';
 import { getExpertPool } from '../../agents/expert-pool.js';
+import { getHeartbeatMonitor } from '../../agents/heartbeat-monitor.js';
 
 /**
  * Input schema for execute_expert tool.
@@ -314,8 +315,15 @@ async function runExpertTask(
   injectErrorHints(task, expert.role);
   deps.logger?.info('Executing expert task', { expertId, role: expert.role, taskId: task.id });
 
+  const monitor = getHeartbeatMonitor();
+  const sessionId = monitor.startSession(expertId);
   const startTime = getTimeProvider().now();
-  const result = await expert.execute(task);
+  let result;
+  try {
+    result = await expert.execute(task);
+  } finally {
+    monitor.endSession(sessionId);
+  }
   const durationMs = getTimeProvider().now() - startTime;
   const modelId = expert.expertConfig.modelPreference?.modelId;
   const info = { expertId, role: expert.role, ...(modelId !== undefined ? { modelId } : {}) };

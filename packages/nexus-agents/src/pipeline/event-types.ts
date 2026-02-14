@@ -31,6 +31,8 @@ export const PIPELINE_EVENT_TYPES = [
   'routing.decision',
   'learning.threshold_updated',
   'learning.trend_detected',
+  'expert.heartbeat',
+  'expert.stalled',
 ] as const;
 
 export type PipelineEventType = (typeof PIPELINE_EVENT_TYPES)[number];

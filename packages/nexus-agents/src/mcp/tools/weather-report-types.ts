@@ -130,6 +130,23 @@ export interface FailureBreakdownEntry {
   readonly percentage: number;
 }
 
+/** Agent health summary from heartbeat monitor (Issue #1032). */
+export interface AgentHealthSummary {
+  readonly activeSessions: number;
+  readonly stalledSessions: number;
+  readonly sessions: readonly AgentSessionEntry[];
+}
+
+/** Single agent session health entry. */
+export interface AgentSessionEntry {
+  readonly sessionId: string;
+  readonly expertId: string;
+  readonly health: 'alive' | 'slow' | 'stalled';
+  readonly elapsedMs: number;
+  readonly timeSinceHeartbeatMs: number;
+  readonly heartbeatCount: number;
+}
+
 /** Full weather report response. */
 export interface WeatherReportResponse {
   readonly overall: {
@@ -151,6 +168,8 @@ export interface WeatherReportResponse {
   readonly toolPerformance?: readonly ToolPerformanceEntry[];
   /** Failure breakdown by category (Issue #1025). */
   readonly failureBreakdown?: readonly FailureBreakdownEntry[];
+  /** Agent health from heartbeat monitor (Issue #1032). */
+  readonly agentHealth?: AgentHealthSummary;
   readonly explorationRate: number;
   readonly coldStartThreshold: number;
   readonly collectedAt: string;
