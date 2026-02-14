@@ -5,7 +5,110 @@
 
 import { describe, it, expect } from 'vitest';
 import { AgentError } from '../core/index.js';
-import { transformTaskError } from './base-agent-task-helpers.js';
+import { transformTaskError, checkAgentAvailability } from './base-agent-task-helpers.js';
+import { AgentStateMachine } from './state-machine.js';
+
+// ============================================================================
+// checkAgentAvailability
+// ============================================================================
+
+describe('checkAgentAvailability', () => {
+  it('returns ok when agent is idle', () => {
+    const sm = new AgentStateMachine();
+    const result = checkAgentAvailability({
+      agentId: 'a1',
+      taskId: 't1',
+      stateMachine: sm,
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it('returns error when agent is thinking', () => {
+    const sm = new AgentStateMachine();
+    sm.transition('task_assigned');
+    const result = checkAgentAvailability({
+      agentId: 'a1',
+      taskId: 't1',
+      stateMachine: sm,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toContain('not idle');
+      expect(result.error.message).toContain('thinking');
+    }
+  });
+
+  it('returns error when agent is acting', () => {
+    const sm = new AgentStateMachine();
+    sm.transition('task_assigned');
+    sm.transition('plan_completed');
+    const result = checkAgentAvailability({
+      agentId: 'a1',
+      taskId: 't1',
+      stateMachine: sm,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toContain('acting');
+    }
+  });
+
+  it('auto-recovers from error state and returns ok', () => {
+    const sm = new AgentStateMachine();
+    sm.transition('task_assigned');
+    sm.transition('failure');
+    expect(sm.state).toBe('error');
+
+    const result = checkAgentAvailability({
+      agentId: 'a1',
+      taskId: 't1',
+      stateMachine: sm,
+    });
+    expect(result.ok).toBe(true);
+    expect(sm.state).toBe('idle');
+  });
+
+  it('auto-recovers from error state even when maxErrorCount exceeded', () => {
+    const sm = new AgentStateMachine({ maxErrorCount: 1 });
+    // Error 1
+    sm.transition('task_assigned');
+    sm.transition('failure');
+    expect(sm.errors).toBe(1);
+    expect(sm.state).toBe('error');
+    // recover() would fail here due to maxErrorCount, but reset() should work
+    const recoverResult = sm.recover();
+    expect(recoverResult.ok).toBe(false);
+
+    // checkAgentAvailability should still auto-recover via reset()
+    const result = checkAgentAvailability({
+      agentId: 'a1',
+      taskId: 't1',
+      stateMachine: sm,
+    });
+    expect(result.ok).toBe(true);
+    expect(sm.state).toBe('idle');
+    expect(sm.errors).toBe(0);
+  });
+
+  it('resets error count after auto-recovery', () => {
+    const sm = new AgentStateMachine();
+    // Accumulate 2 errors
+    sm.transition('task_assigned');
+    sm.transition('failure');
+    sm.recover();
+    sm.transition('task_assigned');
+    sm.transition('failure');
+    expect(sm.errors).toBe(2);
+
+    const result = checkAgentAvailability({
+      agentId: 'a1',
+      taskId: 't1',
+      stateMachine: sm,
+    });
+    expect(result.ok).toBe(true);
+    expect(sm.errors).toBe(0);
+  });
+});
 
 // ============================================================================
 // transformTaskError
