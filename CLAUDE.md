@@ -483,8 +483,9 @@ Governance rules (voting thresholds, refactor gates, fitness audit, documentatio
 | `registry_import`         | Generate a draft model registry entry for a new AI model. Returns a template with conservative defaults for human review.                     |
 | `query_trace`             | Query execution trace JSONL files from disk for a given run ID. Supports filtering by event type and pagination.                              |
 | `repo_analyze`            | Analyze a GitHub repository structure. Returns language, framework, CI provider, security tooling, and gap identification.                    |
+| `repo_security_plan`      | Generate a security scanning pipeline recommendation for a repository with language-aware scanner selection and CI config snippets.           |
 
-_Auto-generated from source. 22 tools registered._
+_Auto-generated from source. 23 tools registered._
 
 <!-- GOVERNANCE:TOOL_INDEX:END -->
 

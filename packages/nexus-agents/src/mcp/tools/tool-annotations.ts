@@ -327,6 +327,22 @@ export const TOOL_ANNOTATIONS: Readonly<Record<string, ToolSideEffectsEntry>> = 
       { category: 'implicit', description: 'Consumes rate limit quota' },
     ],
   },
+  repo_security_plan: {
+    annotations: {
+      title: 'Repo Security Plan',
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+    sideEffects: [
+      {
+        category: 'implicit',
+        description: 'Fetches repository metadata from GitHub API via gh CLI',
+      },
+      { category: 'implicit', description: 'Consumes rate limit quota' },
+    ],
+  },
 };
 
 /**

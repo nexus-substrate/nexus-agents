@@ -247,6 +247,20 @@ export {
   type RepoAnalysis,
 } from './repo-analyze-types.js';
 export { analyzeRepo, analyzeGitHubRepo, normalizeRepoId } from './repo-analyze.js';
+// Repo security plan tool (Issue #1079)
+export {
+  registerRepoSecurityPlanTool,
+  type RepoSecurityPlanDeps,
+} from './repo-security-plan-tool.js';
+export {
+  RepoSecurityPlanInputSchema,
+  type RepoSecurityPlanInput,
+  type RepoSecurityPlan,
+  type ScannerRecommendation,
+  type ConflictWarning,
+  type CoverageAnalysis,
+} from './repo-security-plan-types.js';
+export { buildPlanFromAnalysis, generateSecurityPlan } from './repo-security-plan.js';
 // Query trace tool (Epic #952, Phase 5)
 export {
   registerQueryTraceTool,
@@ -370,6 +384,7 @@ export function registerTools(
       'registry_import',
       'query_trace',
       'repo_analyze',
+      'repo_security_plan',
     ],
     logger,
     rateLimiter,

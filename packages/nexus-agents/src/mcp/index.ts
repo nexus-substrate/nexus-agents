@@ -218,6 +218,17 @@ export {
   analyzeRepo,
   analyzeGitHubRepo,
   normalizeRepoId,
+  // Repo security plan tool (Issue #1079)
+  registerRepoSecurityPlanTool,
+  type RepoSecurityPlanDeps,
+  RepoSecurityPlanInputSchema,
+  type RepoSecurityPlanInput,
+  type RepoSecurityPlan,
+  type ScannerRecommendation,
+  type ConflictWarning,
+  type CoverageAnalysis,
+  buildPlanFromAnalysis,
+  generateSecurityPlan,
   // Delegate helpers (Issue #872 — TUI)
   analyzeTask,
   selectModel,

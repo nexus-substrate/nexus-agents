@@ -168,4 +168,15 @@ export {
   analyzeRepo,
   analyzeGitHubRepo,
   normalizeRepoId,
+  // Repo security plan tool (Issue #1079)
+  registerRepoSecurityPlanTool,
+  RepoSecurityPlanInputSchema,
+  type RepoSecurityPlanInput,
+  type RepoSecurityPlan,
+  type RepoSecurityPlanDeps,
+  type ScannerRecommendation,
+  type ConflictWarning,
+  type CoverageAnalysis,
+  buildPlanFromAnalysis,
+  generateSecurityPlan,
 } from '../mcp/index.js';

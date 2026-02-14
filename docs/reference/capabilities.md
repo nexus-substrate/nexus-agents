@@ -57,7 +57,7 @@ Binary: `nexus-agents`
 
 ---
 
-## MCP Tools (22)
+## MCP Tools (23)
 
 | Tool | Source File |
 | ------ | ------------- |
@@ -75,6 +75,7 @@ Binary: `nexus-agents`
 | `query_trace` | `src/mcp/tools/query-trace.ts` |
 | `registry_import` | `src/mcp/tools/registry-import.ts` |
 | `repo_analyze` | `src/mcp/tools/repo-analyze.ts` |
+| `repo_security_plan` | `src/mcp/tools/repo-security-plan.ts` |
 | `research_add` | `src/mcp/tools/research-add.ts` |
 | `research_analyze` | `src/mcp/tools/research-analyze.ts` |
 | `research_catalog_review` | `src/mcp/tools/research-catalog-review.ts` |
