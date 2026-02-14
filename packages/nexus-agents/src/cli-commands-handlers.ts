@@ -41,6 +41,7 @@ import { hookCommand, printHookHelp } from './cli/hooks/index.js';
 import { runWarmUp } from './cli/warm-up.js';
 import { runE2EEval, formatE2EEvalResult } from './cli/e2e-eval.js';
 import { runRoutingAB, formatABReport } from './cli/routing-ab.js';
+import { runMemoryEval, formatMemoryEvalReport } from './cli/memory-eval.js';
 import { EXIT_CODES, type ParsedCliArgs } from './cli-types.js';
 import { startServer, type OrchestratorModeOptions } from './cli-server.js';
 import {
@@ -628,5 +629,18 @@ export function handleRoutingABCommand(args: ParsedCliArgs): void {
   const count = Number.isNaN(taskCount) || taskCount <= 0 ? 30 : taskCount;
   const result = runRoutingAB({ taskCount: count });
   process.stdout.write(formatABReport(result) + '\n');
+  process.exit(EXIT_CODES.SUCCESS);
+}
+
+/**
+ * Handles memory-eval command for comparative memory evaluation.
+ * (Source: Issue #1034 — Comparative memory evaluation benchmark)
+ */
+export function handleMemoryEvalCommand(args: ParsedCliArgs): void {
+  const sizeArg = args.positionals[1];
+  const size = sizeArg !== undefined ? parseInt(sizeArg, 10) : 50;
+  const count = Number.isNaN(size) || size <= 0 ? 50 : size;
+  const result = runMemoryEval(count);
+  process.stdout.write(formatMemoryEvalReport(result) + '\n');
   process.exit(EXIT_CODES.SUCCESS);
 }

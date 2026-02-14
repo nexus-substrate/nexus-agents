@@ -49,6 +49,7 @@ export {
   handleWarmUpCommand,
   handleE2EEvalCommand,
   handleRoutingABCommand,
+  handleMemoryEvalCommand,
 } from './cli-commands-handlers.js';
 // Issue #739: Auth command
 export { handleAuthCommand } from './cli-auth-handler.js';
@@ -104,6 +105,7 @@ import {
   handleWarmUpCommand,
   handleE2EEvalCommand,
   handleRoutingABCommand,
+  handleMemoryEvalCommand,
 } from './cli-commands-handlers.js';
 // Issue #739: Auth command
 import { handleAuthCommand } from './cli-auth-handler.js';
@@ -166,6 +168,7 @@ const SYNC_COMMAND_HANDLERS: Record<string, ((args: ParsedCliArgs) => void) | un
   'warm-up': handleWarmUpCommand,
   'e2e-eval': handleE2EEvalCommand,
   'routing-ab': handleRoutingABCommand,
+  'memory-eval': handleMemoryEvalCommand,
 };
 
 /**
