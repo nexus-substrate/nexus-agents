@@ -12,6 +12,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { Result } from '../core/result.js';
 import { getErrorMessage } from '../core/index.js';
+import { CLI_SUBPROCESS_TIMEOUTS } from '../config/timeouts.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -146,7 +147,9 @@ export async function createResearchIssue(
   options: CreateResearchIssueOptions
 ): Promise<Result<CreateResearchIssueResult, IssueCreationError>> {
   try {
-    const { stdout } = await execFileAsync('gh', buildIssueArgs(options), { timeout: 30_000 });
+    const { stdout } = await execFileAsync('gh', buildIssueArgs(options), {
+      timeout: CLI_SUBPROCESS_TIMEOUTS.ghCommandMs,
+    });
     const url = stdout.trim();
     return { ok: true, value: { success: true, url, message: `Issue created: ${url}` } };
   } catch (error) {

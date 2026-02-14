@@ -12,6 +12,7 @@
 import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import semver from 'semver';
+import { CLI_SUBPROCESS_TIMEOUTS } from '../config/timeouts.js';
 
 import type { Result } from '../core/index.js';
 import { err, getTimeProvider } from '../core/index.js';
@@ -243,7 +244,7 @@ export abstract class BaseCliAdapter implements ICliAdapter {
 
     try {
       const { stdout } = await execAsync(`${this.name} --version`, {
-        timeout: 10_000,
+        timeout: CLI_SUBPROCESS_TIMEOUTS.spawnMs,
       });
 
       // Extract version number from output

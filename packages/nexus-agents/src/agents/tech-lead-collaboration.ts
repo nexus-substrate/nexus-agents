@@ -26,6 +26,7 @@ import type {
   Conflict,
 } from './tech-lead-types.js';
 import { generateUUID } from '../utils/index.js';
+import { CLI_SUBPROCESS_TIMEOUTS } from '../config/timeouts.js';
 
 /**
  * Configuration for Orchestrator collaboration integration.
@@ -144,7 +145,7 @@ export class OrchestratorCollaborationHelper {
         pattern: 'consensus',
         experts: expertIds,
         task: synthesisTask,
-        timeout: 60000,
+        timeout: CLI_SUBPROCESS_TIMEOUTS.collaborationMs,
         minVotes: Math.ceil(expertIds.length * 0.7),
       },
     };

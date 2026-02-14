@@ -42,6 +42,7 @@ import {
   getCliModelName,
   buildModelInfo,
 } from '../../config/model-config-helpers.js';
+import { CLI_SUBPROCESS_TIMEOUTS } from '../../config/timeouts.js';
 
 /**
  * Codex CLI adapter using MCP transport.
@@ -338,7 +339,7 @@ export class CodexMcpAdapter implements ICliAdapter {
     return new Promise((resolve, reject) => {
       const childProcess = spawn('codex', ['--version'], {
         shell: true,
-        timeout: 10_000,
+        timeout: CLI_SUBPROCESS_TIMEOUTS.spawnMs,
       });
 
       let stdout = '';

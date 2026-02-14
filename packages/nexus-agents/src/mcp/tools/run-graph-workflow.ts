@@ -18,6 +18,7 @@ import { createCheckpointStore } from '../../orchestration/graph/index.js';
 import { getGraphRegistry, getGraphWorkflowList } from './run-graph-workflow-templates.js';
 import { createAuditTrail, createGraphAuditBridge } from '../../security/audit-trail.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
+import { CLI_SUBPROCESS_TIMEOUTS } from '../../config/timeouts.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
@@ -147,7 +148,7 @@ async function handleRunGraphWorkflow(
     ...(checkpointStore !== undefined ? { checkpointStore } : {}),
     executionId,
     onEvent,
-    timeout: 60_000,
+    timeout: CLI_SUBPROCESS_TIMEOUTS.graphWorkflowMs,
   });
 
   const durationMs = getTimeProvider().now() - startTime;

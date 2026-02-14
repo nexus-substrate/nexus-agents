@@ -12,9 +12,10 @@ import type { Result } from '../core/result.js';
 import type { ArxivMetadata, ResearchAddOptions, ResearchAddResult } from './research-types.js';
 import { loadPapersRegistry } from './research-helpers-io.js';
 import { addPaperToRegistry } from './research-helpers-registry.js';
+import { API_TIMEOUTS } from '../config/timeouts.js';
 
-/** Timeout for arXiv API requests in milliseconds (30 seconds). */
-const ARXIV_API_TIMEOUT_MS = 30_000;
+/** Timeout for arXiv API requests in milliseconds. */
+const ARXIV_API_TIMEOUT_MS = API_TIMEOUTS.arxivMs;
 
 /**
  * Error codes for arXiv API operations.

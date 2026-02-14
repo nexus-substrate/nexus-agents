@@ -20,6 +20,7 @@
 import { execSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import type { ExpertValidationResult, ValidationFinding } from './release-validate-types.js';
+import { CLI_SUBPROCESS_TIMEOUTS } from '../config/timeouts.js';
 
 /** Options passed to each expert validator. */
 export interface ValidatorOptions {
@@ -252,7 +253,7 @@ export async function validateDevOps(options: ValidatorOptions): Promise<ExpertV
     execSync('pnpm build 2>/dev/null', {
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
-      timeout: 120000,
+      timeout: CLI_SUBPROCESS_TIMEOUTS.releaseValidateMs,
     });
     findings.push({
       severity: 'info',
@@ -275,7 +276,7 @@ export async function validateDevOps(options: ValidatorOptions): Promise<ExpertV
     execSync('pnpm lint 2>/dev/null', {
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
-      timeout: 180000,
+      timeout: CLI_SUBPROCESS_TIMEOUTS.releaseBuildMs,
     });
     findings.push({
       severity: 'info',
@@ -298,7 +299,7 @@ export async function validateDevOps(options: ValidatorOptions): Promise<ExpertV
     execSync('pnpm typecheck 2>/dev/null', {
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
-      timeout: 120000,
+      timeout: CLI_SUBPROCESS_TIMEOUTS.releaseValidateMs,
     });
     findings.push({
       severity: 'info',

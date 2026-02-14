@@ -11,6 +11,7 @@ import { execSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, basename } from 'node:path';
+import { CLI_SUBPROCESS_TIMEOUTS } from '../config/timeouts.js';
 import type {
   ClaudeCliInfo,
   McpConfigInfo,
@@ -40,7 +41,7 @@ export function detectClaudeCli(): ClaudeCliInfo {
     const result = execSync('claude --version', {
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
-      timeout: 3000, // 3 second timeout to avoid hanging
+      timeout: CLI_SUBPROCESS_TIMEOUTS.envSetupMs,
     });
     const version = parseClaudeVersion(result);
 

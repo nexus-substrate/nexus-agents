@@ -12,6 +12,7 @@ import { promisify } from 'node:util';
 import type { Result } from '../../core/index.js';
 import { ok, err, createLogger, getTimeProvider } from '../../core/index.js';
 import { truncateWithInfo } from '../../utils/text-utils.js';
+import { CLI_SUBPROCESS_TIMEOUTS } from '../../config/timeouts.js';
 
 const execFileAsync = promisify(execFile);
 const logger = createLogger({ component: 'docker-sandbox' });
@@ -95,7 +96,7 @@ function truncateOutput(output: string, maxSize: number = MAX_OUTPUT_SIZE): stri
  */
 export async function isDockerAvailable(): Promise<boolean> {
   try {
-    await execFileAsync('docker', ['version'], { timeout: 5000 });
+    await execFileAsync('docker', ['version'], { timeout: CLI_SUBPROCESS_TIMEOUTS.dockerCheckMs });
     return true;
   } catch {
     return false;

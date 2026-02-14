@@ -13,6 +13,7 @@ import type { SelfDevWorkflowState, RefineOutput, VoteOutput } from '../types.js
 import { SELF_DEV_PERSONAS } from '../types.js';
 import { createSimpleAgent, checkFailFast } from './shared.js';
 import { findPersonaRole } from './refine.js';
+import { CLI_SUBPROCESS_TIMEOUTS } from '../../../config/timeouts.js';
 
 const logger = createLogger({ component: 'self-dev-phase-vote' });
 
@@ -30,7 +31,7 @@ function buildVotingTask(refine: RefineOutput): Task {
         severity: refine.finalSeverity,
       },
     },
-    constraints: { maxTokens: 2000, maxDuration: 120000 },
+    constraints: { maxTokens: 2000, maxDuration: CLI_SUBPROCESS_TIMEOUTS.selfDevVoteMs },
   };
 }
 

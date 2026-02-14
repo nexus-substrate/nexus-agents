@@ -262,7 +262,7 @@ describe('Centralized Timeout Configuration', () => {
   describe('EXPERT_TIMEOUTS', () => {
     it('has correct complexity tiers', () => {
       expect(EXPERT_TIMEOUTS.complexMs).toBe(300_000);
-      expect(EXPERT_TIMEOUTS.standardMs).toBe(90_000);
+      expect(EXPERT_TIMEOUTS.standardMs).toBe(180_000);
     });
 
     it('has correct bounds', () => {
@@ -299,15 +299,15 @@ describe('Centralized Timeout Configuration', () => {
     });
 
     it('returns standard timeout for code generation tasks', () => {
-      expect(getExpertTaskTimeout('Generate unit tests for the API')).toBe(90_000);
+      expect(getExpertTaskTimeout('Generate unit tests for the API')).toBe(180_000);
     });
 
     it('returns standard timeout for documentation tasks', () => {
-      expect(getExpertTaskTimeout('Write documentation for this module')).toBe(90_000);
+      expect(getExpertTaskTimeout('Write documentation for this module')).toBe(180_000);
     });
 
     it('returns standard timeout for unrecognized tasks', () => {
-      expect(getExpertTaskTimeout('do something random')).toBe(90_000);
+      expect(getExpertTaskTimeout('do something random')).toBe(180_000);
     });
 
     it('respects env override', () => {

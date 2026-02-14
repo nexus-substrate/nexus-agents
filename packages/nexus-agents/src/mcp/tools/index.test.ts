@@ -33,6 +33,7 @@ import {
   registerRegistryImportTool,
   registerQueryTraceTool,
   registerRepoAnalyzeTool,
+  registerRepoSecurityPlanTool,
   // Zod schemas
   OrchestrateInputSchema,
   CreateExpertInputSchema,
@@ -56,9 +57,10 @@ import {
   RegistryImportInputSchema,
   QueryTraceInputSchema,
   RepoAnalyzeInputSchema,
+  RepoSecurityPlanInputSchema,
 } from './index.js';
 
-const EXPECTED_TOOL_COUNT = 22;
+const EXPECTED_TOOL_COUNT = 23;
 
 const EXPECTED_TOOL_NAMES = [
   'orchestrate',
@@ -83,6 +85,7 @@ const EXPECTED_TOOL_NAMES = [
   'registry_import',
   'query_trace',
   'repo_analyze',
+  'repo_security_plan',
 ];
 
 describe('MCP tools index', () => {
@@ -137,13 +140,14 @@ describe('MCP tools index', () => {
       ['registerRegistryImportTool', registerRegistryImportTool],
       ['registerQueryTraceTool', registerQueryTraceTool],
       ['registerRepoAnalyzeTool', registerRepoAnalyzeTool],
+      ['registerRepoSecurityPlanTool', registerRepoSecurityPlanTool],
     ] as const;
 
     it.each(registerFunctions)('%s is a function', (_name, fn) => {
       expect(typeof fn).toBe('function');
     });
 
-    it('exports 22 register functions', () => {
+    it('exports 23 register functions', () => {
       expect(registerFunctions).toHaveLength(EXPECTED_TOOL_COUNT);
     });
   });
@@ -172,13 +176,14 @@ describe('MCP tools index', () => {
       ['RegistryImportInputSchema', RegistryImportInputSchema],
       ['QueryTraceInputSchema', QueryTraceInputSchema],
       ['RepoAnalyzeInputSchema', RepoAnalyzeInputSchema],
+      ['RepoSecurityPlanInputSchema', RepoSecurityPlanInputSchema],
     ] as const;
 
     it.each(schemas)('%s has a parse method', (_name, schema) => {
       expect(typeof schema.parse).toBe('function');
     });
 
-    it('exports 22 schemas', () => {
+    it('exports 23 schemas', () => {
       expect(schemas).toHaveLength(EXPECTED_TOOL_COUNT);
     });
   });

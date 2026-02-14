@@ -12,6 +12,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { ResourceUsage, PolicyEvaluation } from './sandbox-types.js';
 import { truncateWithInfo } from '../../utils/text-utils.js';
+import { CLI_SUBPROCESS_TIMEOUTS } from '../../config/timeouts.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -33,7 +34,7 @@ export async function isDockerAvailable(): Promise<boolean> {
   }
 
   try {
-    await execFileAsync('docker', ['version'], { timeout: 5000 });
+    await execFileAsync('docker', ['version'], { timeout: CLI_SUBPROCESS_TIMEOUTS.dockerCheckMs });
     dockerAvailableCache = true;
     return true;
   } catch {

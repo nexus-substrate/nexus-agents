@@ -14,9 +14,10 @@ import type {
   PreflightCheck,
 } from './review-demo-types.js';
 import { safeExecSandboxed } from './sandbox-exec.js';
+import { API_TIMEOUTS } from '../config/timeouts.js';
 
-/** Timeout for GitHub API requests in milliseconds (10 seconds). */
-const GITHUB_API_TIMEOUT_MS = 10_000;
+/** Timeout for GitHub API requests in milliseconds. */
+const GITHUB_API_TIMEOUT_MS = API_TIMEOUTS.githubApiMs;
 
 /**
  * Checks setup status for the review command.

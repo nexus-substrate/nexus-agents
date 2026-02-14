@@ -15,6 +15,7 @@ import { createFitnessScoreCalculator } from '../governance/fitness-score.js';
 import { createLogger } from '../core/index.js';
 import type { ParsedCliArgs } from '../cli-types.js';
 import { execFileSync } from 'node:child_process';
+import { CLI_SUBPROCESS_TIMEOUTS } from '../config/timeouts.js';
 
 // ============================================================================
 // Types
@@ -82,7 +83,7 @@ function detectCliTools(): readonly CliToolStatus[] {
   return CLI_TOOL_CHECKS.map((check) => {
     try {
       const version = execFileSync(check.binary, ['--version'], {
-        timeout: 5000,
+        timeout: CLI_SUBPROCESS_TIMEOUTS.statusProbeMs,
         stdio: ['ignore', 'pipe', 'ignore'],
         encoding: 'utf-8',
       }).trim();

@@ -18,6 +18,7 @@ import type {
   ImplementationPlan,
 } from '../types.js';
 import { createSimpleAgent, checkFailFast } from './shared.js';
+import { CLI_SUBPROCESS_TIMEOUTS } from '../../../config/timeouts.js';
 
 const logger = createLogger({ component: 'self-dev-phase-plan' });
 
@@ -198,7 +199,7 @@ function buildTrinityTask(
     },
     constraints: {
       maxTokens: 4000,
-      maxDuration: 300000,
+      maxDuration: CLI_SUBPROCESS_TIMEOUTS.selfDevPlanMs,
     },
   };
 }

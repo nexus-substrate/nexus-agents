@@ -140,6 +140,8 @@ export const API_TIMEOUTS = {
   v2DelegateMs: 30_000,
   /** Provider API call timeout. */
   providerMs: 30_000,
+  /** GitHub API request timeout. */
+  githubApiMs: 10_000,
 } as const;
 
 /**
@@ -166,12 +168,14 @@ export const INTERNAL_TIMEOUTS = {
  * (Updated: Issue #1045 — E2E testing revealed 180s insufficient for
  *  architecture design tasks; consensus_vote proves 94s is normal for
  *  complex deliberation, so 300s gives adequate headroom)
+ * (Updated: RCA — real model API calls take 30-60s/turn; even standard
+ *  expert tasks need 2-3 turns minimum, so 90s caused universal timeouts)
  */
 export const EXPERT_TIMEOUTS = {
   /** Complex reasoning tasks: architecture, security_review, planning. */
   complexMs: 300_000,
   /** Standard tasks: code_generation, testing, code_review, etc. */
-  standardMs: 90_000,
+  standardMs: 180_000,
   /** Minimum allowed expert timeout. */
   minMs: 30_000,
   /** Maximum allowed expert timeout. */
@@ -242,6 +246,42 @@ export const CACHE_TIMEOUTS = {
   reputationTtlMs: 300_000,
   /** Rate limiter token refill interval. */
   rateLimitRefillMs: 1_000,
+} as const;
+
+/**
+ * CLI subprocess spawn and command timeouts.
+ * Used when spawning external processes (gh, docker, CLI adapters).
+ * (Source: Timeout audit — centralize scattered hardcoded values)
+ */
+export const CLI_SUBPROCESS_TIMEOUTS = {
+  /** CLI adapter spawn timeout (detect/startup). */
+  spawnMs: 10_000,
+  /** Docker version check timeout. */
+  dockerCheckMs: 5_000,
+  /** gh CLI command timeout. */
+  ghCommandMs: 30_000,
+  /** CLI status probe timeout. */
+  statusProbeMs: 5_000,
+  /** Environment setup timeout. */
+  envSetupMs: 3_000,
+  /** Release validation (long-running). */
+  releaseValidateMs: 120_000,
+  /** Release build (longest-running). */
+  releaseBuildMs: 180_000,
+  /** Graph workflow execution timeout. */
+  graphWorkflowMs: 60_000,
+  /** Self-development plan phase duration. */
+  selfDevPlanMs: 300_000,
+  /** Self-development refine phase duration. */
+  selfDevRefineMs: 180_000,
+  /** Self-development vote phase duration. */
+  selfDevVoteMs: 120_000,
+  /** Collaboration protocol session timeout. */
+  collaborationMs: 60_000,
+  /** Maximum wait time for CI checks (auto-merge). */
+  ciWaitMaxMs: 300_000,
+  /** CI check polling interval (auto-merge). */
+  ciPollIntervalMs: 15_000,
 } as const;
 
 /**

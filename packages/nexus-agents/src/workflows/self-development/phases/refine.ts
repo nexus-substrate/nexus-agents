@@ -12,6 +12,7 @@ import type { SelfDevWorkflowDependencies } from '../interfaces.js';
 import type { SelfDevWorkflowState, PlanOutput, RefineOutput } from '../types.js';
 import { SELF_DEV_PERSONAS } from '../types.js';
 import { createSimpleAgent, checkFailFast } from './shared.js';
+import { CLI_SUBPROCESS_TIMEOUTS } from '../../../config/timeouts.js';
 
 const logger = createLogger({ component: 'self-dev-phase-refine' });
 
@@ -68,7 +69,7 @@ export function buildRefinementTask(plan: PlanOutput): Task {
         successCriteria: plan.plan.successCriteria,
       },
     },
-    constraints: { maxTokens: 3000, maxDuration: 180000 },
+    constraints: { maxTokens: 3000, maxDuration: CLI_SUBPROCESS_TIMEOUTS.selfDevRefineMs },
   };
 }
 

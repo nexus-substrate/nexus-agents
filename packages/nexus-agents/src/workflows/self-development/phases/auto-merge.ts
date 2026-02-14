@@ -8,14 +8,15 @@
 
 import { createLogger, getTimeProvider } from '../../../core/index.js';
 import type { SelfDevWorkflowDependencies } from '../interfaces.js';
+import { CLI_SUBPROCESS_TIMEOUTS } from '../../../config/timeouts.js';
 
 const logger = createLogger({ component: 'self-dev-auto-merge' });
 
-/** Maximum wait time for CI checks (5 minutes). */
-const MAX_CI_WAIT_MS = 5 * 60 * 1000;
+/** Maximum wait time for CI checks. */
+const MAX_CI_WAIT_MS = CLI_SUBPROCESS_TIMEOUTS.ciWaitMaxMs;
 
-/** Poll interval for CI checks (15 seconds). */
-const CI_POLL_INTERVAL_MS = 15 * 1000;
+/** Poll interval for CI checks. */
+const CI_POLL_INTERVAL_MS = CLI_SUBPROCESS_TIMEOUTS.ciPollIntervalMs;
 
 /**
  * Wait for PR checks to pass before merging.
