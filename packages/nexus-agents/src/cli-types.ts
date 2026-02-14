@@ -120,6 +120,8 @@ export interface ParsedCliArgs {
     scope?: 'user' | 'project';
     // Demo command options
     mock: boolean;
+    // Doctor command options (Issue #1031)
+    deep: boolean;
   };
   positionals: string[];
 }
@@ -294,6 +296,11 @@ export const PARSE_ARGS_CONFIG = {
     },
     // Demo command options
     mock: {
+      type: 'boolean' as const,
+      default: false,
+    },
+    // Doctor command options (Issue #1031)
+    deep: {
       type: 'boolean' as const,
       default: false,
     },

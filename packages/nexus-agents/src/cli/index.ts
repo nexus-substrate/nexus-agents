@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 /**
  * nexus-agents/cli - CLI utilities
  *
@@ -467,6 +468,16 @@ export type { WarmUpResult } from './warm-up.js';
 // E2E Evaluation Runner (Issue #1030 — Learning loop validation)
 export { runE2EEval, formatE2EEvalResult, E2E_EVAL_MARKER } from './e2e-eval.js';
 export type { E2EEvalConfig, E2EEvalResult } from './e2e-eval.js';
+
+// Deep Diagnostics (Issue #1031 — Enhanced doctor --deep)
+export { runDeepDiagnostics, formatDeepDiagnostics } from './doctor-deep.js';
+export type {
+  DeepDiagnostics,
+  LearningLoopHealth,
+  DataSufficiency,
+  RoutingConvergence,
+  CliDataStatus,
+} from './doctor-deep.js';
 
 // Auth Command (Issue #739 - MCP authentication)
 export {
