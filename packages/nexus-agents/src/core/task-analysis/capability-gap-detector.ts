@@ -73,7 +73,7 @@ const AVAILABLE_TOOLS: ReadonlySet<string> = new Set([
   'query_trace',
 ]);
 
-/** All 9 expert role names */
+/** All 10 expert role names */
 const AVAILABLE_EXPERTS: ReadonlySet<string> = new Set([
   'code_expert',
   'architecture_expert',
@@ -84,6 +84,7 @@ const AVAILABLE_EXPERTS: ReadonlySet<string> = new Set([
   'research_expert',
   'pm_expert',
   'ux_expert',
+  'infrastructure_expert',
 ]);
 
 /** Suggestions for common gaps */

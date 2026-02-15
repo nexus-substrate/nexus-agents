@@ -1,8 +1,10 @@
+/* eslint-disable max-lines */
 /**
  * nexus-agents/agents - Expert Configuration
  *
  * Configuration schema and types for dynamically creating expert agents.
  * Experts are specialized agents with specific capabilities and prompts.
+ * 10 built-in expert definitions — cohesive, single-concern file.
  */
 
 import { z } from 'zod';
@@ -15,6 +17,7 @@ import {
 } from './enriched-prompts.js';
 import { PM_EXPERT_BASE_PROMPT } from './expert-prompts/pm-expert.js';
 import { UX_EXPERT_BASE_PROMPT } from './expert-prompts/ux-expert.js';
+import { INFRASTRUCTURE_EXPERT_BASE_PROMPT } from './expert-prompts/infrastructure-expert.js';
 
 /**
  * Model preference configuration for an expert.
@@ -62,7 +65,8 @@ export type BuiltInExpertType =
   | 'devops'
   | 'research'
   | 'pm'
-  | 'ux';
+  | 'ux'
+  | 'infrastructure';
 
 /**
  * Zod schema for ModelPreference.
@@ -88,6 +92,7 @@ const AgentRoleSchema = z.enum([
   'research_expert',
   'pm_expert',
   'ux_expert',
+  'infrastructure_expert',
   'custom',
 ]);
 
@@ -130,6 +135,7 @@ export const BuiltInExpertTypeSchema = z.enum([
   'research',
   'pm',
   'ux',
+  'infrastructure',
 ]);
 
 /**
@@ -469,6 +475,17 @@ When providing research analysis:
       temperature: 0.4,
     },
   },
+
+  infrastructure: {
+    id: 'infrastructure-expert',
+    name: 'Infrastructure Expert',
+    role: 'infrastructure_expert',
+    systemPrompt: INFRASTRUCTURE_EXPERT_BASE_PROMPT,
+    capabilities: ['task_execution', 'code_generation', 'tool_use', 'collaboration'],
+    modelPreference: {
+      temperature: 0.2,
+    },
+  },
 };
 
 /**
@@ -484,6 +501,7 @@ export const EXPERT_TYPE_TO_ROLE: Readonly<Record<BuiltInExpertType, AgentRole>>
   research: 'research_expert',
   pm: 'pm_expert',
   ux: 'ux_expert',
+  infrastructure: 'infrastructure_expert',
 };
 
 /**

@@ -354,7 +354,8 @@ describe('getAvailableRoles', () => {
     expect(roles).toContain('testing_expert');
     expect(roles).toContain('devops_expert');
     expect(roles).toContain('research_expert');
-    expect(roles).toHaveLength(9);
+    expect(roles).toContain('infrastructure_expert');
+    expect(roles).toHaveLength(10);
   });
 });
 

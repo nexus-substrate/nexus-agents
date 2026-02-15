@@ -125,7 +125,7 @@ describe('detectCapabilityGaps', () => {
     expect(report.available.tools).toHaveLength(21);
   });
 
-  it('recognizes all 9 expert roles', () => {
+  it('recognizes all 10 expert roles', () => {
     const allExperts = [
       'code_expert',
       'architecture_expert',
@@ -136,10 +136,11 @@ describe('detectCapabilityGaps', () => {
       'research_expert',
       'pm_expert',
       'ux_expert',
+      'infrastructure_expert',
     ];
     const report = detectCapabilityGaps({ tools: [], experts: allExperts });
     expect(report.allSatisfied).toBe(true);
-    expect(report.available.experts).toHaveLength(9);
+    expect(report.available.experts).toHaveLength(10);
   });
 });
 
@@ -152,7 +153,7 @@ describe('registry counts', () => {
     expect(getAvailableToolCount()).toBe(21);
   });
 
-  it('has 9 available experts', () => {
-    expect(getAvailableExpertCount()).toBe(9);
+  it('has 10 available experts', () => {
+    expect(getAvailableExpertCount()).toBe(10);
   });
 });

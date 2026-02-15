@@ -96,6 +96,7 @@ const SUBTASK_TEMPLATES: Record<BuiltInExpertType, string> = {
   research: 'Research approaches and best practices for: {task}',
   pm: 'Analyze requirements and acceptance criteria for: {task}',
   ux: 'Evaluate user experience impact of: {task}',
+  infrastructure: 'Assess physical infrastructure and hardware management for: {task}',
 };
 
 // ============================================================================
@@ -188,9 +189,16 @@ function mapHintToRole(hint: string): BuiltInExpertType | undefined {
     ['research', 'research'],
     ['architecture', 'architecture'],
     ['arch', 'architecture'],
+    ['infrastructure', 'infrastructure'],
+    ['bare metal', 'infrastructure'],
+    ['hardware', 'infrastructure'],
+    ['ipmi', 'infrastructure'],
+    ['idrac', 'infrastructure'],
+    ['server rack', 'infrastructure'],
+    ['oob', 'infrastructure'],
     ['devops', 'devops'],
     ['deploy', 'devops'],
-    ['infra', 'devops'],
+    ['infra', 'infrastructure'],
     ['implement', 'code'],
     ['code', 'code'],
     ['product', 'pm'],

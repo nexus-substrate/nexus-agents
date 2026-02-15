@@ -1,0 +1,123 @@
+# Infrastructure Audit Workflow Template
+# Physical server and SBC health check, connectivity, and OOB management
+#
+# Usage:
+#   Provide host IPs/hostnames to audit.
+#   Workflow checks connectivity, hardware health, and OOB access.
+
+name: infrastructure-audit
+version: '1.0.0'
+description: |
+  Infrastructure audit workflow for physical servers and SBCs.
+  Checks SSH connectivity, OOB management access (iDRAC/iLO/IPMI),
+  hardware health sensors, disk status, and generates a status report
+  with recovery recommendations.
+
+inputs:
+  - name: hosts
+    type: array
+    description: List of host IPs or hostnames to audit
+    required: true
+
+  - name: oobHosts
+    type: array
+    description: List of OOB management IPs (iDRAC/iLO/IPMI) to check
+    default: []
+
+  - name: checkDocker
+    type: boolean
+    description: Check Docker daemon and container status on each host
+    default: true
+
+steps:
+  # Step 1: SSH connectivity check
+  - id: connectivity
+    agent: infrastructure_expert
+    action: check_ssh_connectivity
+    description: |
+      Tests SSH access to each host:
+      - Key-based authentication
+      - Password fallback detection
+      - Connection timeout (2s per host)
+      - Uptime and load average
+    inputs:
+      hosts: ${{ inputs.hosts }}
+    timeout: 60000
+    retries: 1
+
+  # Step 2: OOB management check (runs in parallel)
+  - id: oob_check
+    agent: infrastructure_expert
+    action: check_oob_management
+    description: |
+      Tests out-of-band management access:
+      - iDRAC REST API reachability
+      - IPMI over LAN connectivity
+      - Power state query
+      - Firmware version detection
+    inputs:
+      oobHosts: ${{ inputs.oobHosts }}
+    parallel: true
+    timeout: 60000
+    retries: 1
+
+  # Step 3: Hardware health (runs in parallel)
+  - id: hardware_health
+    agent: infrastructure_expert
+    action: check_hardware_health
+    description: |
+      Queries hardware sensors on reachable hosts:
+      - CPU temperature
+      - Disk SMART status
+      - Memory usage
+      - Fan status (via OOB if available)
+      - System Event Log entries
+    inputs:
+      hosts: ${{ inputs.hosts }}
+      oobHosts: ${{ inputs.oobHosts }}
+    parallel: true
+    timeout: 120000
+    retries: 1
+
+  # Step 4: Docker status check (runs in parallel)
+  - id: docker_check
+    agent: infrastructure_expert
+    action: check_docker_status
+    description: |
+      Checks Docker daemon and container health:
+      - Daemon running status
+      - Container count and state
+      - Swarm membership (if applicable)
+      - Disk usage for Docker volumes
+    inputs:
+      hosts: ${{ inputs.hosts }}
+      checkDocker: ${{ inputs.checkDocker }}
+    parallel: true
+    timeout: 60000
+    retries: 1
+
+  # Step 5: Generate infrastructure report
+  - id: report
+    agent: infrastructure_expert
+    action: generate_infrastructure_report
+    description: |
+      Generates infrastructure status report:
+      - Host reachability matrix
+      - Hardware health summary
+      - OOB management status
+      - Docker/service status
+      - Boot time estimates per host type
+      - Recovery recommendations for unreachable hosts
+    inputs:
+      connectivity: ${{ steps.connectivity.output }}
+      oob_check: ${{ steps.oob_check.output }}
+      hardware_health: ${{ steps.hardware_health.output }}
+      docker_check: ${{ steps.docker_check.output }}
+    dependsOn:
+      - connectivity
+      - oob_check
+      - hardware_health
+      - docker_check
+    timeout: 60000
+
+timeout: 600000

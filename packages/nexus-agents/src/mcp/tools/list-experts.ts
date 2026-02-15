@@ -85,6 +85,7 @@ const EXPERT_TYPE_TO_ROLE: Record<BuiltInExpertType, string> = {
   research: 'research_expert',
   pm: 'pm_expert',
   ux: 'ux_expert',
+  infrastructure: 'infrastructure_expert',
 };
 
 /**

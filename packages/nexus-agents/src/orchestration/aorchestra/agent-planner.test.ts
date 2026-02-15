@@ -327,7 +327,7 @@ describe('AgentPlanner', () => {
       { hint: 'architecture_review', expectedRole: 'architecture' },
       { hint: 'devops_pipeline', expectedRole: 'devops' },
       { hint: 'deployment', expectedRole: 'devops' },
-      { hint: 'infrastructure', expectedRole: 'devops' },
+      { hint: 'infrastructure', expectedRole: 'infrastructure' },
       { hint: 'research_analysis', expectedRole: 'research' },
       { hint: 'code_generation', expectedRole: 'code' },
       { hint: 'implement_feature', expectedRole: 'code' },

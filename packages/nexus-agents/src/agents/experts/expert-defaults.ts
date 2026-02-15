@@ -98,4 +98,16 @@ export const DEFAULT_EXPERTS: ExpertDefinition[] = [
     weight: 0.9,
     available: true,
   },
+  {
+    id: 'infrastructure-expert',
+    role: 'infrastructure_expert',
+    name: 'Infrastructure Expert',
+    description:
+      'Specialized in physical server management, bare metal ops, OOB management, and hardware lifecycle',
+    capabilities: ['task_execution', 'code_generation', 'tool_use', 'collaboration'],
+    primaryDomain: 'infrastructure',
+    secondaryDomains: ['security', 'code'],
+    weight: 1.0,
+    available: true,
+  },
 ];

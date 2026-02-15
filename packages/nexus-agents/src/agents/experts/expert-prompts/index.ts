@@ -14,6 +14,7 @@ export { DOCUMENTATION_EXPERT_BASE_PROMPT } from './documentation-expert.js';
 export { RESEARCH_EXPERT_BASE_PROMPT } from './research-expert.js';
 export { PM_EXPERT_BASE_PROMPT } from './pm-expert.js';
 export { UX_EXPERT_BASE_PROMPT } from './ux-expert.js';
+export { INFRASTRUCTURE_EXPERT_BASE_PROMPT } from './infrastructure-expert.js';
 
 // Prompt composer
 export { PromptComposer } from './prompt-composer.js';

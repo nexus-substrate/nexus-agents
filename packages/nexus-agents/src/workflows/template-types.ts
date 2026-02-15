@@ -119,6 +119,7 @@ export const AgentRoleSchema = z.enum([
   'testing_expert',
   'devops_expert',
   'research_expert',
+  'infrastructure_expert', // Physical server, bare metal, OOB management (Issue #1082)
   'thinker', // TRINITY: High-level reasoning (arXiv:2512.04695)
   'worker', // TRINITY: Task execution
   'verifier', // TRINITY: Output validation
@@ -213,6 +214,7 @@ export const BUILT_IN_TEMPLATES = [
   'feature-implementation',
   'bug-fix',
   'documentation-update',
+  'infrastructure-audit',
   'refactoring',
   'research-review',
   'security-audit',
@@ -230,6 +232,7 @@ export const TEMPLATE_CATEGORIES: Record<BuiltInTemplateName, TemplateCategory> 
   'feature-implementation': 'development',
   'bug-fix': 'development',
   'documentation-update': 'documentation',
+  'infrastructure-audit': 'review',
   refactoring: 'development',
   'research-review': 'review',
   'security-audit': 'review',
@@ -245,6 +248,15 @@ export const TEMPLATE_KEYWORDS: Record<BuiltInTemplateName, string[]> = {
   'feature-implementation': ['feature', 'implement', 'develop', 'create', 'build'],
   'bug-fix': ['bug', 'fix', 'debug', 'error', 'issue', 'patch'],
   'documentation-update': ['docs', 'documentation', 'readme', 'api', 'update'],
+  'infrastructure-audit': [
+    'infrastructure',
+    'hardware',
+    'server',
+    'idrac',
+    'ipmi',
+    'bare-metal',
+    'oob',
+  ],
   refactoring: ['refactor', 'clean', 'improve', 'restructure', 'simplify'],
   'research-review': ['research', 'paper', 'arxiv', 'discover', 'catalog', 'registry'],
   'security-audit': ['security', 'audit', 'vulnerability', 'owasp', 'scan'],
