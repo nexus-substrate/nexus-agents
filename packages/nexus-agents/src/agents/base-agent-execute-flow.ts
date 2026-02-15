@@ -22,9 +22,9 @@ import {
   handleTaskFailure,
 } from './base-agent-task-helpers.js';
 import { recordFailedTaskError, persistMemoryAfterTask } from './base-agent-execution-helpers.js';
+import { HEARTBEAT_TIMEOUTS } from '../config/timeouts.js';
 
 const MAX_HISTORY_ITEMS = 100;
-const DEFAULT_MAX_DURATION_MS = 5 * 60 * 1000;
 
 /**
  * Context for execute flow operations.
@@ -87,7 +87,7 @@ export async function runTaskWithTimeout(
   agentId: string,
   executeTask: (task: Task) => Promise<Result<TaskResult, AgentError>>
 ): Promise<Result<TaskResult, AgentError>> {
-  const maxDuration = task.constraints?.maxDuration ?? DEFAULT_MAX_DURATION_MS;
+  const maxDuration = task.constraints?.maxDuration ?? HEARTBEAT_TIMEOUTS.absoluteMaxMs;
   return executeWithTimeout({
     task,
     maxDurationMs: maxDuration,
