@@ -39,7 +39,7 @@ describe('DEFAULTS', () => {
     });
 
     it('should have valid timeout values', () => {
-      expect(DEFAULTS.TIMEOUT_DEFAULTS.cliMs).toBe(60_000);
+      expect(DEFAULTS.TIMEOUT_DEFAULTS.cliMs).toBe(120_000);
       expect(DEFAULTS.TIMEOUT_DEFAULTS.apiMs).toBe(30_000);
       expect(DEFAULTS.TIMEOUT_DEFAULTS.apiMaxMs).toBe(300_000);
       expect(DEFAULTS.TIMEOUT_DEFAULTS.workflowMs).toBe(5 * 60_000);
@@ -97,20 +97,20 @@ describe('TIMEOUT_PROFILES', () => {
 
   it('should have correct Claude profile values', () => {
     expect(TIMEOUT_PROFILES.claude.simple).toBe(30_000);
-    expect(TIMEOUT_PROFILES.claude.standard).toBe(60_000);
-    expect(TIMEOUT_PROFILES.claude.complex).toBe(120_000);
+    expect(TIMEOUT_PROFILES.claude.standard).toBe(120_000);
+    expect(TIMEOUT_PROFILES.claude.complex).toBe(600_000);
   });
 
-  it('should have correct Gemini profile values (Issue #366/#984)', () => {
+  it('should have correct Gemini profile values', () => {
     expect(TIMEOUT_PROFILES.gemini.simple).toBe(30_000);
-    expect(TIMEOUT_PROFILES.gemini.standard).toBe(60_000);
-    expect(TIMEOUT_PROFILES.gemini.complex).toBe(180_000);
+    expect(TIMEOUT_PROFILES.gemini.standard).toBe(120_000);
+    expect(TIMEOUT_PROFILES.gemini.complex).toBe(600_000);
   });
 
   it('should have correct Codex profile values', () => {
     expect(TIMEOUT_PROFILES.codex.simple).toBe(10_000);
-    expect(TIMEOUT_PROFILES.codex.standard).toBe(30_000);
-    expect(TIMEOUT_PROFILES.codex.complex).toBe(90_000);
+    expect(TIMEOUT_PROFILES.codex.standard).toBe(60_000);
+    expect(TIMEOUT_PROFILES.codex.complex).toBe(300_000);
   });
 });
 
@@ -127,7 +127,7 @@ describe('getTimeout', () => {
 
   it('should return default value for valid key', () => {
     const timeout = getTimeout('cliMs');
-    expect(timeout).toBe(60_000);
+    expect(timeout).toBe(120_000);
   });
 
   it('should return API timeout default', () => {
@@ -144,13 +144,13 @@ describe('getTimeout', () => {
   it('should ignore invalid environment variable', () => {
     process.env['NEXUS_TIMEOUT_CLI'] = 'invalid';
     const timeout = getTimeout('cliMs');
-    expect(timeout).toBe(60_000); // Falls back to default
+    expect(timeout).toBe(120_000); // Falls back to default
   });
 
   it('should ignore negative environment variable', () => {
     process.env['NEXUS_TIMEOUT_CLI'] = '-1000';
     const timeout = getTimeout('cliMs');
-    expect(timeout).toBe(60_000); // Falls back to default
+    expect(timeout).toBe(120_000); // Falls back to default
   });
 });
 
@@ -280,8 +280,8 @@ describe('getTimeoutProfile', () => {
   it('should return profile for known CLI', () => {
     const profile = getTimeoutProfile('claude');
     expect(profile.simple).toBe(30_000);
-    expect(profile.standard).toBe(60_000);
-    expect(profile.complex).toBe(120_000);
+    expect(profile.standard).toBe(120_000);
+    expect(profile.complex).toBe(600_000);
   });
 
   it('should return default profile for unknown CLI', () => {
@@ -296,19 +296,19 @@ describe('getTimeoutForCli', () => {
   });
 
   it('should return correct timeout for Claude standard task', () => {
-    expect(getTimeoutForCli('claude', 'standard')).toBe(60_000);
+    expect(getTimeoutForCli('claude', 'standard')).toBe(120_000);
   });
 
   it('should return correct timeout for Claude complex task', () => {
-    expect(getTimeoutForCli('claude', 'complex')).toBe(120_000);
+    expect(getTimeoutForCli('claude', 'complex')).toBe(600_000);
   });
 
-  it('should return correct timeout for Gemini complex task (Issue #366/#984)', () => {
-    expect(getTimeoutForCli('gemini', 'complex')).toBe(180_000);
+  it('should return correct timeout for Gemini complex task', () => {
+    expect(getTimeoutForCli('gemini', 'complex')).toBe(600_000);
   });
 
   it('should use default profile for unknown CLI', () => {
-    expect(getTimeoutForCli('unknown', 'standard')).toBe(60_000);
+    expect(getTimeoutForCli('unknown', 'standard')).toBe(120_000);
   });
 });
 
@@ -369,7 +369,7 @@ describe('getEnvVarDocumentation', () => {
 
   it('should include actual default values', () => {
     const docs = getEnvVarDocumentation();
-    expect(docs).toContain('60000'); // CLI timeout
+    expect(docs).toContain('120000'); // CLI timeout
     expect(docs).toContain('30000'); // API timeout
     expect(docs).toContain('60'); // requests per minute
     expect(docs).toContain('5'); // workflow maxParallel
@@ -403,18 +403,17 @@ describe('backward compatibility', () => {
     expect(DEFAULTS.TOOL_RATE_LIMITS.expert.capacity).toBe(30);
   });
 
-  it('should match canonical CLI_TIMEOUTS values (Issue #984)', () => {
+  it('should match canonical CLI_TIMEOUTS values', () => {
     // These values now come from config/timeouts.ts (canonical source)
     expect(TIMEOUT_PROFILES.claude.simple).toBe(30_000);
-    expect(TIMEOUT_PROFILES.claude.standard).toBe(60_000);
-    expect(TIMEOUT_PROFILES.claude.complex).toBe(120_000);
-    // Gemini values resolved to Issue #366 values (30/60/180)
+    expect(TIMEOUT_PROFILES.claude.standard).toBe(120_000);
+    expect(TIMEOUT_PROFILES.claude.complex).toBe(600_000);
     expect(TIMEOUT_PROFILES.gemini.simple).toBe(30_000);
-    expect(TIMEOUT_PROFILES.gemini.standard).toBe(60_000);
-    expect(TIMEOUT_PROFILES.gemini.complex).toBe(180_000);
+    expect(TIMEOUT_PROFILES.gemini.standard).toBe(120_000);
+    expect(TIMEOUT_PROFILES.gemini.complex).toBe(600_000);
     expect(TIMEOUT_PROFILES.codex.simple).toBe(10_000);
-    expect(TIMEOUT_PROFILES.codex.standard).toBe(30_000);
-    expect(TIMEOUT_PROFILES.codex.complex).toBe(90_000);
+    expect(TIMEOUT_PROFILES.codex.standard).toBe(60_000);
+    expect(TIMEOUT_PROFILES.codex.complex).toBe(300_000);
   });
 
   it('should match existing DEFAULT_TEST_RUNNER_CONFIG values', () => {

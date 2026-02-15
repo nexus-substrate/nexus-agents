@@ -36,41 +36,41 @@ describe('Centralized Timeout Configuration', () => {
     it('has correct claude timeouts', () => {
       expect(CLI_TIMEOUTS.claude).toEqual({
         simple: 30_000,
-        standard: 60_000,
-        complex: 120_000,
+        standard: 120_000,
+        complex: 600_000,
       });
     });
 
-    it('has correct gemini timeouts (Issue #366 values)', () => {
+    it('has correct gemini timeouts', () => {
       expect(CLI_TIMEOUTS.gemini).toEqual({
         simple: 30_000,
-        standard: 60_000,
-        complex: 180_000,
+        standard: 120_000,
+        complex: 600_000,
       });
     });
 
-    it('has correct codex timeouts (Issue #983 values)', () => {
+    it('has correct codex timeouts', () => {
       expect(CLI_TIMEOUTS.codex).toEqual({
         simple: 10_000,
-        standard: 30_000,
-        complex: 90_000,
+        standard: 60_000,
+        complex: 300_000,
       });
     });
 
     it('has a default profile', () => {
       expect(CLI_TIMEOUTS.default).toEqual({
         simple: 30_000,
-        standard: 60_000,
-        complex: 120_000,
+        standard: 120_000,
+        complex: 600_000,
       });
     });
   });
 
   describe('VOTE_TIMEOUTS', () => {
     it('has correct defaults', () => {
-      expect(VOTE_TIMEOUTS.defaultMs).toBe(120_000);
+      expect(VOTE_TIMEOUTS.defaultMs).toBe(180_000);
       expect(VOTE_TIMEOUTS.minMs).toBe(30_000);
-      expect(VOTE_TIMEOUTS.maxMs).toBe(300_000);
+      expect(VOTE_TIMEOUTS.maxMs).toBe(600_000);
       expect(VOTE_TIMEOUTS.maxRetries).toBe(2);
     });
   });
@@ -78,14 +78,14 @@ describe('Centralized Timeout Configuration', () => {
   describe('MCP_TIMEOUTS', () => {
     it('has correct defaults', () => {
       expect(MCP_TIMEOUTS.defaultMs).toBe(60_000);
-      expect(MCP_TIMEOUTS.maxMs).toBe(300_000);
+      expect(MCP_TIMEOUTS.maxMs).toBe(900_000);
     });
 
     it('has per-tool overrides for long-running tools', () => {
-      expect(MCP_TIMEOUTS.perTool['orchestrate']).toBe(300_000);
-      expect(MCP_TIMEOUTS.perTool['consensus_vote']).toBe(300_000);
-      expect(MCP_TIMEOUTS.perTool['execute_expert']).toBe(600_000);
-      expect(MCP_TIMEOUTS.perTool['run_workflow']).toBe(300_000);
+      expect(MCP_TIMEOUTS.perTool['orchestrate']).toBe(900_000);
+      expect(MCP_TIMEOUTS.perTool['consensus_vote']).toBe(600_000);
+      expect(MCP_TIMEOUTS.perTool['execute_expert']).toBe(900_000);
+      expect(MCP_TIMEOUTS.perTool['run_workflow']).toBe(900_000);
     });
   });
 
@@ -107,10 +107,10 @@ describe('Centralized Timeout Configuration', () => {
 
   describe('PER_CLI_TASK_TIMEOUTS', () => {
     it('has correct defaults', () => {
-      expect(PER_CLI_TASK_TIMEOUTS.defaultMs).toBe(120_000);
+      expect(PER_CLI_TASK_TIMEOUTS.defaultMs).toBe(300_000);
       expect(PER_CLI_TASK_TIMEOUTS.minMs).toBe(1_000);
-      expect(PER_CLI_TASK_TIMEOUTS.maxMs).toBe(300_000);
-      expect(PER_CLI_TASK_TIMEOUTS.explorationMs).toBe(60_000);
+      expect(PER_CLI_TASK_TIMEOUTS.maxMs).toBe(600_000);
+      expect(PER_CLI_TASK_TIMEOUTS.explorationMs).toBe(120_000);
     });
   });
 
@@ -158,13 +158,13 @@ describe('Centralized Timeout Configuration', () => {
   describe('getCliTimeout()', () => {
     it('returns correct timeout by CLI and complexity', () => {
       expect(getCliTimeout('claude', 'simple')).toBe(30_000);
-      expect(getCliTimeout('claude', 'complex')).toBe(120_000);
-      expect(getCliTimeout('gemini', 'complex')).toBe(180_000);
-      expect(getCliTimeout('codex', 'standard')).toBe(30_000);
+      expect(getCliTimeout('claude', 'complex')).toBe(600_000);
+      expect(getCliTimeout('gemini', 'complex')).toBe(600_000);
+      expect(getCliTimeout('codex', 'standard')).toBe(60_000);
     });
 
     it('returns default for unknown CLI', () => {
-      expect(getCliTimeout('unknown', 'complex')).toBe(120_000);
+      expect(getCliTimeout('unknown', 'complex')).toBe(600_000);
     });
   });
 
@@ -182,12 +182,12 @@ describe('Centralized Timeout Configuration', () => {
 
     it('returns default when env var not set', () => {
       delete process.env.NEXUS_VOTE_TIMEOUT_MS;
-      expect(resolveVoteTimeout()).toBe(120_000);
+      expect(resolveVoteTimeout()).toBe(180_000);
     });
 
     it('reads from env var', () => {
-      process.env[envKey] = '150000';
-      expect(resolveVoteTimeout()).toBe(150_000);
+      process.env[envKey] = '250000';
+      expect(resolveVoteTimeout()).toBe(250_000);
     });
 
     it('clamps to minimum', () => {
@@ -197,12 +197,12 @@ describe('Centralized Timeout Configuration', () => {
 
     it('clamps to maximum', () => {
       process.env[envKey] = '999999';
-      expect(resolveVoteTimeout()).toBe(300_000);
+      expect(resolveVoteTimeout()).toBe(600_000);
     });
 
     it('ignores invalid values', () => {
       process.env[envKey] = 'not_a_number';
-      expect(resolveVoteTimeout()).toBe(120_000);
+      expect(resolveVoteTimeout()).toBe(180_000);
     });
   });
 
@@ -250,7 +250,7 @@ describe('Centralized Timeout Configuration', () => {
 
     it('clamps above maximum', () => {
       const result = validateTimeout(999_999);
-      expect(result).toEqual({ value: 300_000, clamped: true });
+      expect(result).toEqual({ value: 600_000, clamped: true });
     });
 
     it('accepts custom min/max', () => {
@@ -261,13 +261,13 @@ describe('Centralized Timeout Configuration', () => {
 
   describe('EXPERT_TIMEOUTS', () => {
     it('has correct complexity tiers', () => {
-      expect(EXPERT_TIMEOUTS.complexMs).toBe(300_000);
-      expect(EXPERT_TIMEOUTS.standardMs).toBe(180_000);
+      expect(EXPERT_TIMEOUTS.complexMs).toBe(600_000);
+      expect(EXPERT_TIMEOUTS.standardMs).toBe(300_000);
     });
 
     it('has correct bounds', () => {
       expect(EXPERT_TIMEOUTS.minMs).toBe(30_000);
-      expect(EXPERT_TIMEOUTS.maxMs).toBe(600_000);
+      expect(EXPERT_TIMEOUTS.maxMs).toBe(900_000);
     });
 
     it('lists complex categories', () => {
@@ -287,27 +287,27 @@ describe('Centralized Timeout Configuration', () => {
     });
 
     it('returns complex timeout for architecture tasks', () => {
-      expect(getExpertTaskTimeout('Review the system architecture')).toBe(300_000);
+      expect(getExpertTaskTimeout('Review the system architecture')).toBe(600_000);
     });
 
     it('returns complex timeout for security tasks', () => {
-      expect(getExpertTaskTimeout('Perform a security review of auth')).toBe(300_000);
+      expect(getExpertTaskTimeout('Perform a security review of auth')).toBe(600_000);
     });
 
     it('returns complex timeout for research tasks', () => {
-      expect(getExpertTaskTimeout('Research the vulnerability scanner landscape')).toBe(300_000);
+      expect(getExpertTaskTimeout('Research the vulnerability scanner landscape')).toBe(600_000);
     });
 
     it('returns standard timeout for code generation tasks', () => {
-      expect(getExpertTaskTimeout('Generate unit tests for the API')).toBe(180_000);
+      expect(getExpertTaskTimeout('Generate unit tests for the API')).toBe(300_000);
     });
 
     it('returns standard timeout for documentation tasks', () => {
-      expect(getExpertTaskTimeout('Write documentation for this module')).toBe(180_000);
+      expect(getExpertTaskTimeout('Write documentation for this module')).toBe(300_000);
     });
 
     it('returns standard timeout for unrecognized tasks', () => {
-      expect(getExpertTaskTimeout('do something random')).toBe(180_000);
+      expect(getExpertTaskTimeout('do something random')).toBe(300_000);
     });
 
     it('respects env override', () => {
@@ -322,22 +322,22 @@ describe('Centralized Timeout Configuration', () => {
 
     it('clamps env override to maximum', () => {
       process.env[envKey] = '9999999';
-      expect(getExpertTaskTimeout('any task')).toBe(600_000);
+      expect(getExpertTaskTimeout('any task')).toBe(900_000);
     });
   });
 
   describe('HEARTBEAT_TIMEOUTS', () => {
     it('has correct thresholds', () => {
-      expect(HEARTBEAT_TIMEOUTS.slowThresholdMs).toBe(30_000);
-      expect(HEARTBEAT_TIMEOUTS.stalledThresholdMs).toBe(60_000);
-      expect(HEARTBEAT_TIMEOUTS.absoluteMaxMs).toBe(600_000);
+      expect(HEARTBEAT_TIMEOUTS.slowThresholdMs).toBe(60_000);
+      expect(HEARTBEAT_TIMEOUTS.stalledThresholdMs).toBe(120_000);
+      expect(HEARTBEAT_TIMEOUTS.absoluteMaxMs).toBe(900_000);
     });
   });
 
   describe('TIMEOUT_GUARD', () => {
     it('has correct defaults', () => {
-      expect(TIMEOUT_GUARD.defaultMs).toBe(30_000);
-      expect(TIMEOUT_GUARD.maxMs).toBe(300_000);
+      expect(TIMEOUT_GUARD.defaultMs).toBe(60_000);
+      expect(TIMEOUT_GUARD.maxMs).toBe(900_000);
       expect(TIMEOUT_GUARD.nearTimeoutThreshold).toBe(0.8);
     });
   });

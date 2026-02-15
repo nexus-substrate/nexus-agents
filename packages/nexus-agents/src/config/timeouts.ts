@@ -46,10 +46,10 @@ export { isKnownCliName };
  * take precedence.
  */
 export const CLI_TIMEOUTS = {
-  claude: { simple: 30_000, standard: 60_000, complex: 120_000 },
-  gemini: { simple: 30_000, standard: 60_000, complex: 180_000 },
-  codex: { simple: 10_000, standard: 30_000, complex: 90_000 },
-  default: { simple: 30_000, standard: 60_000, complex: 120_000 },
+  claude: { simple: 30_000, standard: 120_000, complex: 600_000 },
+  gemini: { simple: 30_000, standard: 120_000, complex: 600_000 },
+  codex: { simple: 10_000, standard: 60_000, complex: 300_000 },
+  default: { simple: 30_000, standard: 120_000, complex: 600_000 },
 } as const satisfies Record<KnownCliName, TimeoutProfile>;
 
 /**
@@ -58,11 +58,11 @@ export const CLI_TIMEOUTS = {
  */
 export const VOTE_TIMEOUTS = {
   /** Default per-agent vote timeout. */
-  defaultMs: 120_000,
+  defaultMs: 180_000,
   /** Minimum allowed vote timeout (floor for env override). */
   minMs: 30_000,
   /** Maximum allowed vote timeout (cap for env override). */
-  maxMs: 300_000,
+  maxMs: 600_000,
   /** Default max retries per agent. */
   maxRetries: 2,
 } as const;
@@ -75,13 +75,13 @@ export const MCP_TIMEOUTS = {
   /** Default timeout for MCP tool handlers. */
   defaultMs: 60_000,
   /** Maximum allowed MCP tool timeout. */
-  maxMs: 300_000,
+  maxMs: 900_000,
   /** Per-tool timeout overrides for long-running tools. */
   perTool: {
-    orchestrate: 300_000,
-    consensus_vote: 300_000,
-    execute_expert: 600_000, // Increased to support complex expert tasks (Issue #1028)
-    run_workflow: 300_000,
+    orchestrate: 900_000, // 15 min — multi-step agent orchestration
+    consensus_vote: 600_000, // 10 min — 5-6 agents voting sequentially
+    execute_expert: 900_000, // 15 min — complex expert reasoning tasks
+    run_workflow: 900_000, // 15 min — multi-step workflow execution
   } as Readonly<Record<string, number>>,
 } as const;
 
@@ -115,13 +115,13 @@ export const GRAPH_TIMEOUTS = {
  */
 export const PER_CLI_TASK_TIMEOUTS = {
   /** Default per-CLI timeout for parallel dispatch. */
-  defaultMs: 120_000,
+  defaultMs: 300_000,
   /** Minimum per-CLI timeout. */
   minMs: 1_000,
   /** Maximum per-CLI timeout. */
-  maxMs: 300_000,
+  maxMs: 600_000,
   /** Parallel exploration per-CLI timeout (shorter for quick scans). */
-  explorationMs: 60_000,
+  explorationMs: 120_000,
 } as const;
 
 /**
@@ -173,13 +173,13 @@ export const INTERNAL_TIMEOUTS = {
  */
 export const EXPERT_TIMEOUTS = {
   /** Complex reasoning tasks: architecture, security_review, planning. */
-  complexMs: 300_000,
+  complexMs: 600_000,
   /** Standard tasks: code_generation, testing, code_review, etc. */
-  standardMs: 180_000,
+  standardMs: 300_000,
   /** Minimum allowed expert timeout. */
   minMs: 30_000,
   /** Maximum allowed expert timeout. */
-  maxMs: 600_000,
+  maxMs: 900_000,
   /** Categories considered complex (longer timeout). */
   complexCategories: [
     'architecture',
@@ -194,12 +194,12 @@ export const EXPERT_TIMEOUTS = {
  * (Source: Issue #1046 — Centralize scattered timeouts)
  */
 export const HEARTBEAT_TIMEOUTS = {
-  /** Agent is considered slow after this duration. */
-  slowThresholdMs: 30_000,
+  /** Agent is considered slow after this duration without heartbeat. */
+  slowThresholdMs: 60_000,
   /** Agent is considered stalled (no heartbeat) after this duration. */
-  stalledThresholdMs: 60_000,
-  /** Absolute maximum agent execution time. */
-  absoluteMaxMs: 600_000,
+  stalledThresholdMs: 120_000,
+  /** Absolute maximum agent execution time (safety cap). */
+  absoluteMaxMs: 900_000,
 } as const;
 
 /**
@@ -208,9 +208,9 @@ export const HEARTBEAT_TIMEOUTS = {
  */
 export const TIMEOUT_GUARD = {
   /** Default operation timeout for the guard middleware. */
-  defaultMs: 30_000,
+  defaultMs: 60_000,
   /** Maximum allowed timeout for any guarded operation. */
-  maxMs: 300_000,
+  maxMs: 900_000,
   /** Fraction of timeout at which to emit near-timeout warning. */
   nearTimeoutThreshold: 0.8,
 } as const;

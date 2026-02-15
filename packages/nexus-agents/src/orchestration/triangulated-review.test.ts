@@ -86,7 +86,7 @@ describe('createDefaultReviewConfig', () => {
   it('returns expected defaults', () => {
     const config = createDefaultReviewConfig();
     expect(config.maxClis).toBe(3);
-    expect(config.perCliTimeoutMs).toBe(120_000);
+    expect(config.perCliTimeoutMs).toBe(300_000);
     expect(config.maxOutputCharsPerCli).toBe(8000);
     expect(config.lineProximity).toBe(5);
   });

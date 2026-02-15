@@ -24,21 +24,20 @@ describe('getTimeoutForTask', () => {
   describe('returns correct timeout for each CLI and complexity', () => {
     it('should return correct timeouts for claude', () => {
       expect(getTimeoutForTask('claude', 'simple')).toBe(30_000);
-      expect(getTimeoutForTask('claude', 'standard')).toBe(60_000);
-      expect(getTimeoutForTask('claude', 'complex')).toBe(120_000);
+      expect(getTimeoutForTask('claude', 'standard')).toBe(120_000);
+      expect(getTimeoutForTask('claude', 'complex')).toBe(600_000);
     });
 
     it('should return correct timeouts for gemini', () => {
-      // Updated per Issue #366 (30s/60s/180s)
       expect(getTimeoutForTask('gemini', 'simple')).toBe(30_000);
-      expect(getTimeoutForTask('gemini', 'standard')).toBe(60_000);
-      expect(getTimeoutForTask('gemini', 'complex')).toBe(180_000);
+      expect(getTimeoutForTask('gemini', 'standard')).toBe(120_000);
+      expect(getTimeoutForTask('gemini', 'complex')).toBe(600_000);
     });
 
     it('should return correct timeouts for codex', () => {
       expect(getTimeoutForTask('codex', 'simple')).toBe(10_000);
-      expect(getTimeoutForTask('codex', 'standard')).toBe(30_000);
-      expect(getTimeoutForTask('codex', 'complex')).toBe(90_000);
+      expect(getTimeoutForTask('codex', 'standard')).toBe(60_000);
+      expect(getTimeoutForTask('codex', 'complex')).toBe(300_000);
     });
   });
 
@@ -50,12 +49,12 @@ describe('getTimeoutForTask', () => {
 
     it('should return default timeout for unknown CLI with standard complexity', () => {
       expect(getTimeoutForTask('unknown-cli', 'standard')).toBe(DEFAULT_TIMEOUT_PROFILE.standard);
-      expect(getTimeoutForTask('unknown-cli', 'standard')).toBe(60_000);
+      expect(getTimeoutForTask('unknown-cli', 'standard')).toBe(120_000);
     });
 
     it('should return default timeout for unknown CLI with complex complexity', () => {
       expect(getTimeoutForTask('unknown-cli', 'complex')).toBe(DEFAULT_TIMEOUT_PROFILE.complex);
-      expect(getTimeoutForTask('unknown-cli', 'complex')).toBe(120_000);
+      expect(getTimeoutForTask('unknown-cli', 'complex')).toBe(600_000);
     });
 
     it('should handle empty string as unknown CLI', () => {
@@ -204,7 +203,7 @@ describe('getTimeoutForTaskAuto', () => {
       // Using getTimeoutForTask to get expected value for type safety
       const expected = getTimeoutForTask('claude', 'complex');
       expect(timeout).toBe(expected);
-      expect(timeout).toBe(120_000);
+      expect(timeout).toBe(600_000);
     });
 
     it('should return standard timeout for standard task description', () => {
@@ -212,7 +211,7 @@ describe('getTimeoutForTaskAuto', () => {
       // Using getTimeoutForTask to get expected value for type safety
       const expected = getTimeoutForTask('claude', 'standard');
       expect(timeout).toBe(expected);
-      expect(timeout).toBe(60_000);
+      expect(timeout).toBe(120_000);
     });
   });
 
@@ -220,22 +219,22 @@ describe('getTimeoutForTaskAuto', () => {
     it('should work correctly for gemini', () => {
       // Gemini timeouts increased per Issue #366 (30s/60s/180s)
       expect(getTimeoutForTaskAuto('gemini', 'Quick check')).toBe(30_000);
-      expect(getTimeoutForTaskAuto('gemini', 'Standard task')).toBe(60_000);
-      expect(getTimeoutForTaskAuto('gemini', 'Comprehensive review')).toBe(180_000);
+      expect(getTimeoutForTaskAuto('gemini', 'Standard task')).toBe(120_000);
+      expect(getTimeoutForTaskAuto('gemini', 'Comprehensive review')).toBe(600_000);
     });
 
     it('should work correctly for codex', () => {
       expect(getTimeoutForTaskAuto('codex', 'Simple function')).toBe(10_000);
-      expect(getTimeoutForTaskAuto('codex', 'Normal implementation')).toBe(30_000);
-      expect(getTimeoutForTaskAuto('codex', 'Architecture design')).toBe(90_000);
+      expect(getTimeoutForTaskAuto('codex', 'Normal implementation')).toBe(60_000);
+      expect(getTimeoutForTaskAuto('codex', 'Architecture design')).toBe(300_000);
     });
   });
 
   describe('uses default profile for unknown CLI', () => {
     it('should use default profile for unknown CLI', () => {
       expect(getTimeoutForTaskAuto('unknown', 'Quick task')).toBe(30_000);
-      expect(getTimeoutForTaskAuto('unknown', 'Normal task')).toBe(60_000);
-      expect(getTimeoutForTaskAuto('unknown', 'Comprehensive analysis')).toBe(120_000);
+      expect(getTimeoutForTaskAuto('unknown', 'Normal task')).toBe(120_000);
+      expect(getTimeoutForTaskAuto('unknown', 'Comprehensive analysis')).toBe(600_000);
     });
   });
 });
@@ -290,7 +289,7 @@ describe('DEFAULT_TIMEOUT_PROFILE', () => {
   it('should have reasonable timeout values', () => {
     // Simple should be at least 10 seconds
     expect(DEFAULT_TIMEOUT_PROFILE.simple).toBeGreaterThanOrEqual(10_000);
-    // Complex should be at most 5 minutes
-    expect(DEFAULT_TIMEOUT_PROFILE.complex).toBeLessThanOrEqual(300_000);
+    // Complex should be at most 15 minutes
+    expect(DEFAULT_TIMEOUT_PROFILE.complex).toBeLessThanOrEqual(900_000);
   });
 });

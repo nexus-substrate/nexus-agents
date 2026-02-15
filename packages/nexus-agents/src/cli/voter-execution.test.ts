@@ -33,13 +33,11 @@ type MockCompletionResult = Result<CompletionResponse, ModelError>;
 describe('voter-execution', () => {
   describe('constants', () => {
     it('should have reasonable timeout value', () => {
-      // Increased to 120s per Issue #983 to allow time for complex proposal analysis
-      expect(DEFAULT_VOTE_TIMEOUT_MS).toBe(120_000);
+      expect(DEFAULT_VOTE_TIMEOUT_MS).toBe(180_000);
     });
 
-    it('should have 5 minute max timeout', () => {
-      // Upper bound to prevent indefinite waiting (Issue #607)
-      expect(MAX_VOTE_TIMEOUT_MS).toBe(300_000);
+    it('should have 10 minute max timeout', () => {
+      expect(MAX_VOTE_TIMEOUT_MS).toBe(600_000);
     });
 
     it('should have 30 second min timeout', () => {
@@ -66,7 +64,7 @@ describe('voter-execution', () => {
     });
 
     it('should clamp values above maximum', () => {
-      const result = validateTimeout(600_000);
+      const result = validateTimeout(900_000);
       expect(result.value).toBe(MAX_VOTE_TIMEOUT_MS);
       expect(result.clamped).toBe(true);
     });
