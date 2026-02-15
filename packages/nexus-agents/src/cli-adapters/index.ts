@@ -164,7 +164,11 @@ export {
 } from './topsis-types.js';
 
 // CLI-to-Model Adapter Bridge
-export { CliToModelAdapter, createCliToModelAdapter } from './cli-to-model-adapter.js';
+export {
+  CliToModelAdapter,
+  createCliToModelAdapter,
+  type CliToModelAdapterConfig,
+} from './cli-to-model-adapter.js';
 
 // CLI Detection Cache (Issue #165)
 export {

@@ -14,6 +14,7 @@ import {
 } from './mcp/index.js';
 import { initializeBuiltInTemplates } from './workflows/index.js';
 import { createResilientAdapter } from './adapters/resilient-adapter.js';
+import { MCP_TIMEOUTS } from './config/timeouts.js';
 import { getStdinLifecycleMonitor } from './adapters/stdin-lifecycle.js';
 import { registerMcpTools } from './cli-server-tools.js';
 import { parseTierOverrides, type GatewayConfig } from './mcp/gateway/index.js';
@@ -322,7 +323,12 @@ async function connectToStdioTransport(
 function createResilientModelAdapter(
   logger: ILogger
 ): import('./adapters/resilient-adapter-types.js').IResilientAdapter {
-  return createResilientAdapter({ logger });
+  // Use orchestrate tool timeout (300s) for CLI subprocess calls
+  // to prevent premature timeouts on complex orchestration tasks
+  return createResilientAdapter({
+    logger,
+    defaultCliTimeoutMs: MCP_TIMEOUTS.perTool['orchestrate'] ?? MCP_TIMEOUTS.defaultMs,
+  });
 }
 
 /**

@@ -38,6 +38,8 @@ export interface ResilientAdapterConfig {
   readonly logger?: import('../core/index.js').ILogger;
   /** Preferred CLI to use */
   readonly preferredCli?: CliName;
+  /** Default timeout for CLI subprocess calls (ms). Overrides auto-detection. */
+  readonly defaultCliTimeoutMs?: number;
 }
 
 /**

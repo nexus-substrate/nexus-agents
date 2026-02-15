@@ -42,6 +42,8 @@ export interface AutoAdapterConfig {
   readonly cache?: ICliDetectionCache;
   /** Whether to create and use cache if not provided (default: true) */
   readonly enableCache?: boolean;
+  /** Default timeout for CLI subprocess calls (ms). Overrides auto-detection. */
+  readonly defaultCliTimeoutMs?: number;
 }
 
 /**
@@ -85,13 +87,18 @@ async function tryCliAdapter(
 ): Promise<AdapterSelection | null> {
   const preferredCli = config.preferredCli;
 
+  const bridgeConfig =
+    config.defaultCliTimeoutMs !== undefined
+      ? { defaultTimeoutMs: config.defaultCliTimeoutMs }
+      : undefined;
+
   // If preferred CLI specified, try that first
   if (preferredCli !== undefined && (await isCliAvailable(preferredCli, cache))) {
     logger.info('Using preferred CLI', { cli: preferredCli });
     const cliAdapter = createCliAdapter({ cli: preferredCli, logger });
     await cliAdapter.initialize();
     return {
-      adapter: createCliToModelAdapter(cliAdapter),
+      adapter: createCliToModelAdapter(cliAdapter, bridgeConfig),
       source: 'cli',
       name: preferredCli,
       reason: `Preferred CLI '${preferredCli}' is available (model selection handled by CLI)`,
@@ -119,7 +126,7 @@ async function tryCliAdapter(
   await cliAdapter.initialize();
 
   return {
-    adapter: createCliToModelAdapter(cliAdapter),
+    adapter: createCliToModelAdapter(cliAdapter, bridgeConfig),
     source: 'cli',
     name: selectedCli,
     reason: `Using '${selectedCli}' CLI (model selection handled by CLI)`,

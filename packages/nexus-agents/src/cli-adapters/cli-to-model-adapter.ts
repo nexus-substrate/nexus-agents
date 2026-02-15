@@ -15,8 +15,14 @@ import type {
   ModelCapability,
 } from '../core/index.js';
 import { ModelCapability as MC, ok, err, ModelError, ConfigError } from '../core/index.js';
-import type { ICliAdapter, CliTask, CliResponse, CliError } from './types.js';
+import type { ICliAdapter, CliTask, CliResponse, CliError, ExecutionOptions } from './types.js';
 import type { StreamChunk } from '../core/types/model.js';
+
+/** Configuration for CliToModelAdapter. */
+export interface CliToModelAdapterConfig {
+  /** Default timeout for CLI calls (ms). Overrides auto-detection. */
+  readonly defaultTimeoutMs?: number;
+}
 
 /**
  * Bridge adapter that wraps ICliAdapter to implement IModelAdapter.
@@ -41,14 +47,17 @@ export class CliToModelAdapter implements IModelAdapter {
   readonly capabilities: readonly ModelCapability[];
 
   private readonly cliAdapter: ICliAdapter;
+  private readonly defaultTimeoutMs: number | undefined;
 
   /**
    * Creates a bridge from CLI adapter to model adapter.
    *
    * @param cliAdapter - The CLI adapter to wrap
+   * @param config - Optional configuration (e.g. timeout override)
    */
-  constructor(cliAdapter: ICliAdapter) {
+  constructor(cliAdapter: ICliAdapter, config?: CliToModelAdapterConfig) {
     this.cliAdapter = cliAdapter;
+    this.defaultTimeoutMs = config?.defaultTimeoutMs;
     this.providerId = `cli-${cliAdapter.name}`;
     this.modelId = cliAdapter.getModelInfo().id;
     this.capabilities = this.deriveCapabilities();
@@ -128,7 +137,9 @@ export class CliToModelAdapter implements IModelAdapter {
    */
   async complete(request: CompletionRequest): Promise<Result<CompletionResponse, ModelError>> {
     const task = this.toCliTask(request);
-    const result = await this.cliAdapter.execute(task);
+    const opts: ExecutionOptions | undefined =
+      this.defaultTimeoutMs !== undefined ? { timeoutMs: this.defaultTimeoutMs } : undefined;
+    const result = await this.cliAdapter.execute(task, opts);
 
     if (!result.ok) {
       return err(this.toModelError(result.error));
@@ -210,6 +221,9 @@ export class CliToModelAdapter implements IModelAdapter {
  * @param cliAdapter - The CLI adapter to wrap
  * @returns IModelAdapter implementation
  */
-export function createCliToModelAdapter(cliAdapter: ICliAdapter): CliToModelAdapter {
-  return new CliToModelAdapter(cliAdapter);
+export function createCliToModelAdapter(
+  cliAdapter: ICliAdapter,
+  config?: CliToModelAdapterConfig
+): CliToModelAdapter {
+  return new CliToModelAdapter(cliAdapter, config);
 }

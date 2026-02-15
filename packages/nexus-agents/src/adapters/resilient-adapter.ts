@@ -77,10 +77,12 @@ export class ResilientAdapter implements IResilientAdapter {
   private circuitBreakerRegistry: CircuitBreakerRegistry | undefined;
   private circuitListener: ((event: CircuitStateChangeEvent) => void) | undefined;
   private disposed = false;
+  private readonly defaultCliTimeoutMs: number | undefined;
 
   constructor(config?: ResilientAdapterConfig) {
     this.logger = config?.logger ?? createLogger({ component: 'resilient-adapter' });
     this.preferredCli = config?.preferredCli;
+    this.defaultCliTimeoutMs = config?.defaultCliTimeoutMs;
   }
 
   // --- IModelAdapter properties (forwarded) ---
@@ -202,10 +204,13 @@ export class ResilientAdapter implements IResilientAdapter {
   private async detectAdapter(): Promise<IModelAdapter | undefined> {
     try {
       this.logger.info('Detecting model adapter (lazy)');
-      const config =
-        this.preferredCli !== undefined
-          ? { logger: this.logger, preferredCli: this.preferredCli }
-          : { logger: this.logger };
+      const config = {
+        logger: this.logger,
+        ...(this.preferredCli !== undefined && { preferredCli: this.preferredCli }),
+        ...(this.defaultCliTimeoutMs !== undefined && {
+          defaultCliTimeoutMs: this.defaultCliTimeoutMs,
+        }),
+      };
       const selection = await createAutoAdapter(config);
       this.applySelection(selection);
       return this.currentAdapter;
