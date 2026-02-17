@@ -1,6 +1,6 @@
 # Repository Capabilities Index
 
-**Generated:** 2026-02-14T12:44:53.565Z
+**Generated:** 2026-02-17T12:57:12.884Z
 **Package Version:** 2.15.0
 **Generator:** `scripts/generate-repo-index.ts`
 
@@ -57,7 +57,7 @@ Binary: `nexus-agents`
 
 ---
 
-## MCP Tools (23)
+## MCP Tools (24)
 
 | Tool | Source File |
 | ------ | ------------- |
@@ -71,6 +71,7 @@ Binary: `nexus-agents`
 | `list_workflows` | `src/mcp/tools/list-workflows.ts` |
 | `memory_query` | `src/mcp/tools/memory-query.ts` |
 | `memory_stats` | `src/mcp/tools/memory-stats.ts` |
+| `memory_write` | `src/mcp/tools/memory-write.ts` |
 | `orchestrate` | `src/mcp/tools/orchestrate.ts` |
 | `query_trace` | `src/mcp/tools/query-trace.ts` |
 | `registry_import` | `src/mcp/tools/registry-import.ts` |
@@ -87,14 +88,16 @@ Binary: `nexus-agents`
 
 ---
 
-## Workflow Templates (9)
+## Workflow Templates (11)
 
 | Template | Source File |
 | ---------- | ------------- |
 | `bug-fix` | `src/workflows/templates/bug-fix.yaml` |
 | `code-review` | `src/workflows/templates/code-review.yaml` |
+| `docs-audit` | `src/workflows/templates/docs-audit.yaml` |
 | `documentation-update` | `src/workflows/templates/documentation-update.yaml` |
 | `feature-implementation` | `src/workflows/templates/feature-implementation.yaml` |
+| `infrastructure-audit` | `src/workflows/templates/infrastructure-audit.yaml` |
 | `refactoring` | `src/workflows/templates/refactoring.yaml` |
 | `research-review` | `src/workflows/templates/research-review.yaml` |
 | `security-audit` | `src/workflows/templates/security-audit.yaml` |

@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "generated": "2026-02-14T12:44:53.565Z",
+  "generated": "2026-02-17T12:57:12.884Z",
   "generator": "scripts/generate-repo-index.ts",
   "packageVersion": "2.15.0",
   "cli": {
@@ -285,6 +285,10 @@
         "file": "src/mcp/tools/memory-stats.ts"
       },
       {
+        "name": "memory_write",
+        "file": "src/mcp/tools/memory-write.ts"
+      },
+      {
         "name": "orchestrate",
         "file": "src/mcp/tools/orchestrate.ts"
       },
@@ -299,6 +303,10 @@
       {
         "name": "repo_analyze",
         "file": "src/mcp/tools/repo-analyze.ts"
+      },
+      {
+        "name": "repo_security_plan",
+        "file": "src/mcp/tools/repo-security-plan.ts"
       },
       {
         "name": "research_add",
@@ -345,12 +353,20 @@
         "file": "src/workflows/templates/code-review.yaml"
       },
       {
+        "name": "docs-audit",
+        "file": "src/workflows/templates/docs-audit.yaml"
+      },
+      {
         "name": "documentation-update",
         "file": "src/workflows/templates/documentation-update.yaml"
       },
       {
         "name": "feature-implementation",
         "file": "src/workflows/templates/feature-implementation.yaml"
+      },
+      {
+        "name": "infrastructure-audit",
+        "file": "src/workflows/templates/infrastructure-audit.yaml"
       },
       {
         "name": "refactoring",
