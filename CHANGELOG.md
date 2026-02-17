@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.16.0] - 2026-02-17
+
+### Added
+
+- **`repo_analyze` MCP tool** — Analyze GitHub repository structure, detect languages/frameworks, CI providers, security tooling, and identify gaps (#1074)
+- **`repo_security_plan` MCP tool** — Generate security scanning pipeline recommendations with CI config snippets, powered by externalized vulnerability scanner registry (#1079)
+- **`memory_write` MCP tool** — Manual memory injection for session, belief, and agentic memory backends (#1090)
+- **`infrastructure_expert` role** — New expert type with skill and workflow for bare-metal server management, iDRAC, BOSH, and homelab infrastructure (#1082)
+- **`docs-audit` workflow template** — Documentation verification workflow for freshness, completeness, and cross-reference validation (#1091)
+- **Security-setup graph workflows** — 15 language-specific security scanning templates with CI config generation (#1077)
+- **Heartbeat monitor wiring** — Liveness tracking integrated into agent execution lifecycle (#1087)
+- **Centralized timeout configuration** — All hardcoded timeouts consolidated to `config/timeouts.ts` with configurable upper bounds (#1081)
+- **Scanner registry externalization** — Vulnerability scanner data moved to `williamzujkowski/vulnerability-scanner-registry` with cached downloads (#1079)
+
+### Fixed
+
+- **`infrastructure_expert` missing from MCP tool schema** — Hardcoded 9-role enum in `registerCreateExpertTool` now includes all 10 expert roles (#1093)
+- **CLI timeout propagation** — MCP server timeout now flows through adapter chain to prevent premature kills (#1081)
+- **DevSecOps task categorization** — Expanded keyword matching for security-related task routing (#1073)
+- **Scanner registry download optimization** — Skip full download when release tag is unchanged
+
+### Changed
+
+- Language-specific security gap recommendations in `repo_analyze` output (#1078)
+- Infrastructure expert prompt enhanced with real-world operational patterns (#1092)
+- MCP tool count: 21 → 24 (added repo_analyze, repo_security_plan, memory_write)
+
 ## [2.15.0] - 2026-02-14
 
 ### Added
