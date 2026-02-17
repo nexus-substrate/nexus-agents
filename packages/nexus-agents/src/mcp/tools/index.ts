@@ -218,6 +218,15 @@ export {
   type MemoryStatsResponse,
 } from './memory-stats.js';
 
+// Memory write tool (Issue #1090)
+export {
+  registerMemoryWriteTool,
+  MemoryWriteInputSchema,
+  type MemoryWriteInput,
+  type MemoryWriteDeps,
+  type MemoryWriteResponse,
+} from './memory-write.js';
+
 // Weather report tool (Issue #865)
 export { registerWeatherReportTool, type WeatherReportDeps } from './weather-report-tool.js';
 export {
@@ -392,6 +401,7 @@ export function registerTools(
       'research_catalog_review',
       'memory_query',
       'memory_stats',
+      'memory_write',
       'weather_report',
       'issue_triage',
       'run_graph_workflow',

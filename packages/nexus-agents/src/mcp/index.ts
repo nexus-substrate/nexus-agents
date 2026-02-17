@@ -195,6 +195,12 @@ export {
   type MemoryStatsInput,
   type MemoryStatsDeps,
   type MemoryStatsResponse,
+  // Memory write tool (Issue #1090)
+  registerMemoryWriteTool,
+  MemoryWriteInputSchema,
+  type MemoryWriteInput,
+  type MemoryWriteDeps,
+  type MemoryWriteResponse,
   // Weather report tool (Issue #865)
   registerWeatherReportTool,
   type WeatherReportDeps,

@@ -477,22 +477,23 @@ Governance rules (voting thresholds, refactor gates, fitness audit, documentatio
 | `research_catalog_review` | Review auto-cataloged research references found during tool execution.                                                                        |
 | `memory_query`            | Query across all memory backends with unified results and relevance scoring.                                                                  |
 | `memory_stats`            | Get memory system statistics dashboard showing backend availability and metrics.                                                              |
+| `memory_write`            | memory_write tool                                                                                                                             |
 | `weather_report`          | Get multi-CLI performance weather report with per-CLI success rates and adaptive routing bonuses.                                             |
 | `issue_triage`            | Triage GitHub issues with trust classification and typed action recommendations.                                                              |
 | `run_graph_workflow`      | Execute graph-based workflow templates with checkpoint and rollback support.                                                                  |
 | `execute_spec`            | Execute an AI software factory spec through the full pipeline (parse, decompose, compile, execute, validate).                                 |
 | `registry_import`         | Generate a draft model registry entry for a new AI model. Returns a template with conservative defaults for human review.                     |
 | `query_trace`             | Query execution trace JSONL files from disk for a given run ID. Supports filtering by event type and pagination.                              |
-| `repo_analyze`            | Analyze a GitHub repository structure. Returns language, framework, CI provider, security tooling, and gap identification.                    |
-| `repo_security_plan`      | Generate a security scanning pipeline recommendation for a repository with language-aware scanner selection and CI config snippets.           |
+| `repo_analyze`            | repo_analyze tool                                                                                                                             |
+| `repo_security_plan`      | repo_security_plan tool                                                                                                                       |
 
-_Auto-generated from source. 23 tools registered._
+_Auto-generated from source. 24 tools registered._
 
 <!-- GOVERNANCE:TOOL_INDEX:END -->
 
 <!-- GOVERNANCE:VERSION:START -->
 
-_Governance Version: 2026-02-14_
+_Governance Version: 2026-02-17_
 
 <!-- GOVERNANCE:VERSION:END -->
 

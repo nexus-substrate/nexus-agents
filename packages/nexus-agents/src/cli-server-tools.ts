@@ -26,6 +26,7 @@ import {
   registerResearchCatalogReviewTool,
   registerMemoryQueryTool,
   registerMemoryStatsTool,
+  registerMemoryWriteTool,
   registerWeatherReportTool,
   registerRegistryImportTool,
   registerRepoAnalyzeTool,
@@ -133,6 +134,7 @@ export const REGISTERED_TOOLS = [
   'research_catalog_review',
   'memory_query',
   'memory_stats',
+  'memory_write',
   'weather_report',
   'issue_triage',
   'run_graph_workflow',
@@ -319,6 +321,10 @@ function registerMemoryTools(ctx: ToolRegistrationContext): void {
   registerMemoryStatsTool(ctx.server, {
     ...memoryDeps,
     rateLimiter: ctx.rateLimiterFactory.getForTool('memory_stats'),
+  });
+  registerMemoryWriteTool(ctx.server, {
+    ...memoryDeps,
+    rateLimiter: ctx.rateLimiterFactory.getForTool('memory_write'),
   });
 }
 

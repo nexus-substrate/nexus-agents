@@ -238,6 +238,19 @@ export const TOOL_ANNOTATIONS: Readonly<Record<string, ToolSideEffectsEntry>> = 
     },
     sideEffects: [{ category: 'implicit', description: 'Consumes rate limit quota' }],
   },
+  memory_write: {
+    annotations: {
+      title: 'Memory Write',
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: false,
+    },
+    sideEffects: [
+      { category: 'explicit', description: 'Writes data to memory backend' },
+      { category: 'implicit', description: 'Consumes rate limit quota' },
+    ],
+  },
   weather_report: {
     annotations: {
       title: 'Weather Report',

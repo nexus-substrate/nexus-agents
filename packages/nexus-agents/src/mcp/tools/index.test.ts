@@ -26,6 +26,7 @@ import {
   registerResearchCatalogReviewTool,
   registerMemoryQueryTool,
   registerMemoryStatsTool,
+  registerMemoryWriteTool,
   registerWeatherReportTool,
   registerIssueTriageTool,
   registerRunGraphWorkflowTool,
@@ -50,6 +51,7 @@ import {
   ResearchCatalogReviewInputSchema,
   MemoryQueryInputSchema,
   MemoryStatsInputSchema,
+  MemoryWriteInputSchema,
   WeatherReportInputSchema,
   IssueTriageInputSchema,
   RunGraphWorkflowInputSchema,
@@ -60,7 +62,7 @@ import {
   RepoSecurityPlanInputSchema,
 } from './index.js';
 
-const EXPECTED_TOOL_COUNT = 23;
+const EXPECTED_TOOL_COUNT = 24;
 
 const EXPECTED_TOOL_NAMES = [
   'orchestrate',
@@ -78,6 +80,7 @@ const EXPECTED_TOOL_NAMES = [
   'research_catalog_review',
   'memory_query',
   'memory_stats',
+  'memory_write',
   'weather_report',
   'issue_triage',
   'run_graph_workflow',
@@ -133,6 +136,7 @@ describe('MCP tools index', () => {
       ['registerResearchCatalogReviewTool', registerResearchCatalogReviewTool],
       ['registerMemoryQueryTool', registerMemoryQueryTool],
       ['registerMemoryStatsTool', registerMemoryStatsTool],
+      ['registerMemoryWriteTool', registerMemoryWriteTool],
       ['registerWeatherReportTool', registerWeatherReportTool],
       ['registerIssueTriageTool', registerIssueTriageTool],
       ['registerRunGraphWorkflowTool', registerRunGraphWorkflowTool],
@@ -169,6 +173,7 @@ describe('MCP tools index', () => {
       ['ResearchCatalogReviewInputSchema', ResearchCatalogReviewInputSchema],
       ['MemoryQueryInputSchema', MemoryQueryInputSchema],
       ['MemoryStatsInputSchema', MemoryStatsInputSchema],
+      ['MemoryWriteInputSchema', MemoryWriteInputSchema],
       ['WeatherReportInputSchema', WeatherReportInputSchema],
       ['IssueTriageInputSchema', IssueTriageInputSchema],
       ['RunGraphWorkflowInputSchema', RunGraphWorkflowInputSchema],

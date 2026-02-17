@@ -26,6 +26,7 @@ import {
   registerResearchCatalogReviewTool,
   registerMemoryQueryTool,
   registerMemoryStatsTool,
+  registerMemoryWriteTool,
   registerRunWorkflowTool,
 } from './tools/index.js';
 import type { IWorkflowEngine } from '../core/index.js';
@@ -52,6 +53,7 @@ const TOOL_NAMES = [
   'research_catalog_review',
   'memory_query',
   'memory_stats',
+  'memory_write',
   'run_workflow',
 ] as const;
 
@@ -76,6 +78,7 @@ async function setupServer(): Promise<TestContext> {
   registerResearchCatalogReviewTool(server, deps);
   registerMemoryQueryTool(server, deps);
   registerMemoryStatsTool(server, deps);
+  registerMemoryWriteTool(server, deps);
 
   // run_workflow needs a stub workflow engine
   const stubEngine = {
