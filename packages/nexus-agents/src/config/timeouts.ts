@@ -200,6 +200,8 @@ export const HEARTBEAT_TIMEOUTS = {
   stalledThresholdMs: 120_000,
   /** Absolute maximum agent execution time (safety cap). */
   absoluteMaxMs: 900_000,
+  /** Periodic heartbeat emission interval (Issue #1087). */
+  heartbeatIntervalMs: 15_000,
 } as const;
 
 /**

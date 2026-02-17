@@ -64,7 +64,14 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
         stdio: ['pipe', 'pipe', 'pipe'],
       });
 
-      const state = this.setupChildProcessHandlers(child, startTime, options.timeoutMs, resolve);
+      const onProgress = options.onProgress;
+      const state = this.setupChildProcessHandlers(
+        child,
+        startTime,
+        options.timeoutMs,
+        resolve,
+        onProgress
+      );
 
       // Write stdin content if provided and close stdin
       if (cmdConfig.stdin !== undefined) {
@@ -84,7 +91,8 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
     child: ReturnType<typeof spawn>,
     startTime: number,
     timeoutMs: number,
-    resolve: (result: Result<CliResponse, CliError>) => void
+    resolve: (result: Result<CliResponse, CliError>) => void,
+    onProgress?: () => void
   ): { stdout: string; stderr: string; resolved: boolean } {
     const state = { stdout: '', stderr: '', resolved: false };
 
@@ -99,6 +107,7 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
     if (child.stdout !== null) {
       child.stdout.on('data', (data: Buffer) => {
         state.stdout += data.toString();
+        onProgress?.();
       });
     }
     if (child.stderr !== null) {

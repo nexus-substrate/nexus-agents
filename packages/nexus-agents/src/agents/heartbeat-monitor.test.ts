@@ -159,6 +159,70 @@ describe('heartbeat-monitor', () => {
     });
   });
 
+  describe('periodic heartbeat pattern (Issue #1087)', () => {
+    it('should stay alive with periodic heartbeats', () => {
+      const monitor = new HeartbeatMonitor({
+        slowThresholdMs: 30_000,
+        stalledThresholdMs: 60_000,
+      });
+      const sid = monitor.startSession('expert-1');
+
+      // Simulate periodic heartbeats every 15s for 90s
+      for (let i = 0; i < 6; i++) {
+        vi.advanceTimersByTime(15_000);
+        monitor.heartbeat(sid);
+      }
+
+      expect(monitor.isStalled(sid)).toBe(false);
+      const health = monitor.getHealth();
+      const session = health.sessions.find((s) => s.sessionId === sid);
+      expect(session?.health).toBe('alive');
+      expect(session?.heartbeatCount).toBe(6);
+    });
+
+    it('should detect stall when heartbeats stop', () => {
+      const monitor = new HeartbeatMonitor({
+        slowThresholdMs: 30_000,
+        stalledThresholdMs: 60_000,
+      });
+      const sid = monitor.startSession('expert-1');
+
+      // Heartbeat for a while
+      vi.advanceTimersByTime(15_000);
+      monitor.heartbeat(sid);
+      vi.advanceTimersByTime(15_000);
+      monitor.heartbeat(sid);
+
+      // Then stop heartbeating
+      vi.advanceTimersByTime(65_000);
+
+      expect(monitor.isStalled(sid)).toBe(true);
+    });
+
+    it('should transition through health states', () => {
+      const monitor = new HeartbeatMonitor({
+        slowThresholdMs: 20_000,
+        stalledThresholdMs: 40_000,
+      });
+      const sid = monitor.startSession('expert-1');
+
+      // Initially alive
+      expect(monitor.getHealth().sessions[0]?.health).toBe('alive');
+
+      // After slow threshold
+      vi.advanceTimersByTime(25_000);
+      expect(monitor.getHealth().sessions[0]?.health).toBe('slow');
+
+      // After stalled threshold
+      vi.advanceTimersByTime(20_000);
+      expect(monitor.getHealth().sessions[0]?.health).toBe('stalled');
+
+      // Heartbeat resets to alive
+      monitor.heartbeat(sid);
+      expect(monitor.getHealth().sessions[0]?.health).toBe('alive');
+    });
+  });
+
   describe('singleton', () => {
     it('should return same instance', () => {
       const a = getHeartbeatMonitor();

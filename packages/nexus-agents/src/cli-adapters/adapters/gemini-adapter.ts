@@ -257,6 +257,7 @@ export class GeminiCliAdapter extends SubprocessCliAdapter {
       allowRetry: options?.allowRetry ?? true,
       maxRetries: options?.maxRetries ?? this.maxRetries,
       trackUsage: options?.trackUsage ?? true,
+      onProgress: options?.onProgress,
     };
   }
 

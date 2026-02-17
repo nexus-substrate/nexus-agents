@@ -35,7 +35,7 @@ import {
 } from '../../orchestration/outcomes/index.js';
 import type { OutcomeFailureCategory } from '../../orchestration/outcomes/index.js';
 import { detectTaskCategory } from '../../config/task-specialization.js';
-import { getExpertTaskTimeout } from '../../config/timeouts.js';
+import { getExpertTaskTimeout, HEARTBEAT_TIMEOUTS } from '../../config/timeouts.js';
 import type { ICliDetectionCache } from '../../cli-adapters/cli-detection-cache.js';
 import { requireAdapterAvailable } from '../middleware/adapter-availability.js';
 import { getExpertPool } from '../../agents/expert-pool.js';
@@ -318,10 +318,20 @@ async function runExpertTask(
   const monitor = getHeartbeatMonitor();
   const sessionId = monitor.startSession(expertId);
   const startTime = getTimeProvider().now();
+
+  // Periodic heartbeat + stall detection (Issue #1087)
+  const heartbeatTimer = setInterval(() => {
+    monitor.heartbeat(sessionId);
+    if (monitor.isStalled(sessionId)) {
+      deps.logger?.warn('Expert session stalled', { expertId, sessionId });
+    }
+  }, HEARTBEAT_TIMEOUTS.heartbeatIntervalMs);
+
   let result;
   try {
     result = await expert.execute(task);
   } finally {
+    clearInterval(heartbeatTimer);
     monitor.endSession(sessionId);
   }
   const durationMs = getTimeProvider().now() - startTime;

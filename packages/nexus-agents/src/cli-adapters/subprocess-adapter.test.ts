@@ -165,6 +165,7 @@ describe('SubprocessCliAdapter', () => {
         allowRetry: true,
         maxRetries: 1,
         trackUsage: true,
+        onProgress: undefined,
       };
 
       const { mockChild, stdout } = createMockChildProcess();
@@ -197,6 +198,7 @@ describe('SubprocessCliAdapter', () => {
         allowRetry: true,
         maxRetries: 1,
         trackUsage: true,
+        onProgress: undefined,
       };
 
       const { mockChild, stdout } = createMockChildProcess();
@@ -228,6 +230,7 @@ describe('SubprocessCliAdapter', () => {
         allowRetry: true,
         maxRetries: 1,
         trackUsage: true,
+        onProgress: undefined,
       };
 
       const { mockChild, stdout } = createMockChildProcess();
@@ -265,6 +268,7 @@ describe('SubprocessCliAdapter', () => {
         allowRetry: true,
         maxRetries: 1,
         trackUsage: true,
+        onProgress: undefined,
       };
 
       const { mockChild, stdin, stdout } = createMockChildProcess();
@@ -295,6 +299,7 @@ describe('SubprocessCliAdapter', () => {
         allowRetry: true,
         maxRetries: 1,
         trackUsage: true,
+        onProgress: undefined,
       };
 
       const { mockChild, stdin, stdout } = createMockChildProcess();
@@ -326,6 +331,7 @@ describe('SubprocessCliAdapter', () => {
         allowRetry: true,
         maxRetries: 1,
         trackUsage: true,
+        onProgress: undefined,
       };
 
       const { mockChild } = createMockChildProcess();
@@ -363,6 +369,7 @@ describe('SubprocessCliAdapter', () => {
         allowRetry: true,
         maxRetries: 1,
         trackUsage: true,
+        onProgress: undefined,
       };
 
       const { mockChild, stdout } = createMockChildProcess();
@@ -395,6 +402,7 @@ describe('SubprocessCliAdapter', () => {
         allowRetry: true,
         maxRetries: 1,
         trackUsage: true,
+        onProgress: undefined,
       };
 
       const { mockChild } = createMockChildProcess();
@@ -423,6 +431,7 @@ describe('SubprocessCliAdapter', () => {
         allowRetry: true,
         maxRetries: 1,
         trackUsage: true,
+        onProgress: undefined,
       };
 
       const { mockChild, stderr } = createMockChildProcess();
@@ -454,6 +463,7 @@ describe('SubprocessCliAdapter', () => {
         allowRetry: true,
         maxRetries: 1,
         trackUsage: true,
+        onProgress: undefined,
       };
 
       const { mockChild } = createMockChildProcess();
@@ -495,6 +505,7 @@ describe('SubprocessCliAdapter', () => {
         allowRetry: true,
         maxRetries: 1,
         trackUsage: true,
+        onProgress: undefined,
       };
 
       const { mockChild, stdout } = createMockChildProcess();
@@ -526,6 +537,7 @@ describe('SubprocessCliAdapter', () => {
         allowRetry: true,
         maxRetries: 1,
         trackUsage: true,
+        onProgress: undefined,
       };
 
       const { mockChild, stderr } = createMockChildProcess();
@@ -574,6 +586,7 @@ describe('SubprocessCliAdapter', () => {
         allowRetry: true,
         maxRetries: 1,
         trackUsage: true,
+        onProgress: undefined,
       };
 
       const { mockChild, stdout } = createMockChildProcess();
@@ -620,6 +633,7 @@ describe('SubprocessCliAdapter', () => {
         allowRetry: true,
         maxRetries: 1,
         trackUsage: true,
+        onProgress: undefined,
       };
 
       const { mockChild, stdout } = createMockChildProcess();
@@ -650,6 +664,7 @@ describe('SubprocessCliAdapter', () => {
         allowRetry: true,
         maxRetries: 1,
         trackUsage: true,
+        onProgress: undefined,
       };
 
       const { mockChild } = createMockChildProcess();
@@ -677,6 +692,7 @@ describe('SubprocessCliAdapter', () => {
         allowRetry: true,
         maxRetries: 1,
         trackUsage: true,
+        onProgress: undefined,
       };
 
       const { mockChild } = createMockChildProcess();
@@ -703,6 +719,7 @@ describe('SubprocessCliAdapter', () => {
         allowRetry: true,
         maxRetries: 1,
         trackUsage: true,
+        onProgress: undefined,
       };
 
       const { mockChild } = createMockChildProcess();
@@ -730,6 +747,7 @@ describe('SubprocessCliAdapter', () => {
         allowRetry: true,
         maxRetries: 1,
         trackUsage: true,
+        onProgress: undefined,
       };
 
       const { mockChild } = createMockChildProcess();
@@ -747,6 +765,62 @@ describe('SubprocessCliAdapter', () => {
         expect(result.error.code).toBe('EXECUTION_ERROR');
         expect(result.error.message).toBe('Unknown error');
       }
+    });
+  });
+
+  describe('onProgress callback (Issue #1087)', () => {
+    it('should call onProgress on stdout data', async () => {
+      adapter.setCommandConfig({ command: 'echo', args: ['test'] });
+      const task: CliTask = { content: 'test' };
+      const onProgress = vi.fn();
+      const options: Required<ExecutionOptions> = {
+        timeoutMs: 5000,
+        allowRetry: true,
+        maxRetries: 1,
+        trackUsage: true,
+        onProgress,
+      };
+
+      const { mockChild, stdout } = createMockChildProcess();
+      mockSpawn.mockReturnValue(mockChild);
+
+      const promise = adapter.executeTask(task, options);
+
+      setImmediate(() => {
+        stdout.emit('data', Buffer.from('chunk1'));
+        stdout.emit('data', Buffer.from('chunk2'));
+        stdout.emit('data', Buffer.from('chunk3'));
+        mockChild.emit('close', 0);
+      });
+
+      await promise;
+
+      expect(onProgress).toHaveBeenCalledTimes(3);
+    });
+
+    it('should not throw when onProgress is undefined', async () => {
+      adapter.setCommandConfig({ command: 'echo', args: ['test'] });
+      const task: CliTask = { content: 'test' };
+      const options: Required<ExecutionOptions> = {
+        timeoutMs: 5000,
+        allowRetry: true,
+        maxRetries: 1,
+        trackUsage: true,
+        onProgress: undefined,
+      };
+
+      const { mockChild, stdout } = createMockChildProcess();
+      mockSpawn.mockReturnValue(mockChild);
+
+      const promise = adapter.executeTask(task, options);
+
+      setImmediate(() => {
+        stdout.emit('data', Buffer.from('test\n'));
+        mockChild.emit('close', 0);
+      });
+
+      const result = await promise;
+      expect(result.ok).toBe(true);
     });
   });
 

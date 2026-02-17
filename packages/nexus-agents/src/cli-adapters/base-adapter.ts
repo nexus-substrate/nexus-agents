@@ -52,6 +52,7 @@ const DEFAULT_OPTIONS: Required<ExecutionOptions> = {
   allowRetry: true,
   maxRetries: 1, // Reduced from 2 to prevent 3+ minute total wait
   trackUsage: true,
+  onProgress: undefined,
 };
 
 /**

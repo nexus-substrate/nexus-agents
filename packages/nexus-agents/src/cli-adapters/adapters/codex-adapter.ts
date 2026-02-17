@@ -62,6 +62,7 @@ const DEFAULT_OPTIONS: Required<ExecutionOptions> = {
   allowRetry: true,
   maxRetries: 2,
   trackUsage: true,
+  onProgress: undefined,
 };
 
 /**

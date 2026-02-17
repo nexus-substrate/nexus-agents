@@ -96,6 +96,8 @@ export interface ExecutionOptions {
   readonly maxRetries?: number;
   /** Whether to track usage */
   readonly trackUsage?: boolean;
+  /** Progress callback invoked on subprocess stdout activity (Issue #1087). */
+  readonly onProgress?: (() => void) | undefined;
 }
 
 /**

@@ -8,7 +8,8 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger, Result, Task, TaskContext } from '../../core/index.js';
 import { getErrorMessage } from '../../core/index.js';
-import { MCP_TIMEOUTS } from '../../config/timeouts.js';
+import { MCP_TIMEOUTS, HEARTBEAT_TIMEOUTS } from '../../config/timeouts.js';
+import { getHeartbeatMonitor } from '../../agents/heartbeat-monitor.js';
 
 import {
   orchestrateInputToTaskContract,
@@ -379,6 +380,24 @@ function handleOrchestrationException(
   );
 }
 
+/** Starts a heartbeat session with periodic stall detection (Issue #1087). */
+function startHeartbeatTracking(label: string, logger: ILogger): { cleanup: () => void } {
+  const monitor = getHeartbeatMonitor();
+  const sessionId = monitor.startSession(label);
+  const timer = setInterval(() => {
+    monitor.heartbeat(sessionId);
+    if (monitor.isStalled(sessionId)) {
+      logger.warn('Orchestration session stalled', { label, sessionId });
+    }
+  }, HEARTBEAT_TIMEOUTS.heartbeatIntervalMs);
+  return {
+    cleanup: (): void => {
+      clearInterval(timer);
+      monitor.endSession(sessionId);
+    },
+  };
+}
+
 async function executeOrchestration(
   input: OrchestrateInput,
   deps: OrchestrateDeps,
@@ -391,6 +410,7 @@ async function executeOrchestration(
   logger.info('Starting orchestration', { taskId, taskLength: input.task.length });
   const task = await createTaskFromInput(input, taskId);
   const definition: OrchestratorDefinition = { type: 'task', task };
+  const hb = startHeartbeatTracking(`orchestrate-${taskId}`, logger);
 
   try {
     const result = await orchestrator.execute(definition, {});
@@ -426,6 +446,8 @@ async function executeOrchestration(
     return ok(output);
   } catch (error) {
     return handleOrchestrationException(error, taskId, input.task, logger);
+  } finally {
+    hb.cleanup();
   }
 }
 

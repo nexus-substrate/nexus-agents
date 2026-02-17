@@ -20,6 +20,7 @@ export const DEFAULT_CODEX_MCP_OPTIONS: Required<ExecutionOptions> = {
   allowRetry: true,
   maxRetries: 2,
   trackUsage: true,
+  onProgress: undefined,
 };
 
 /**
