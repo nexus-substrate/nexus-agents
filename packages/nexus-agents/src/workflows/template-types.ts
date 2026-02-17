@@ -211,6 +211,7 @@ export const TemplateMetadataSchema = z.object({
  */
 export const BUILT_IN_TEMPLATES = [
   'code-review',
+  'docs-audit',
   'feature-implementation',
   'bug-fix',
   'documentation-update',
@@ -229,6 +230,7 @@ export type BuiltInTemplateName = (typeof BUILT_IN_TEMPLATES)[number];
  */
 export const TEMPLATE_CATEGORIES: Record<BuiltInTemplateName, TemplateCategory> = {
   'code-review': 'review',
+  'docs-audit': 'review',
   'feature-implementation': 'development',
   'bug-fix': 'development',
   'documentation-update': 'documentation',
@@ -245,6 +247,7 @@ export const TEMPLATE_CATEGORIES: Record<BuiltInTemplateName, TemplateCategory> 
  */
 export const TEMPLATE_KEYWORDS: Record<BuiltInTemplateName, string[]> = {
   'code-review': ['review', 'quality', 'security', 'analysis', 'code'],
+  'docs-audit': ['docs', 'audit', 'verify', 'accuracy', 'drift', 'documentation', 'fact-check'],
   'feature-implementation': ['feature', 'implement', 'develop', 'create', 'build'],
   'bug-fix': ['bug', 'fix', 'debug', 'error', 'issue', 'patch'],
   'documentation-update': ['docs', 'documentation', 'readme', 'api', 'update'],

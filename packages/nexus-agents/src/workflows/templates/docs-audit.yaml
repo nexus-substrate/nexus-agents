@@ -1,0 +1,108 @@
+# Documentation Audit Workflow Template
+# Verifies documentation claims against live system state
+#
+# Usage:
+#   Provide a repo to audit. Workflow discovers docs, extracts claims,
+#   verifies them, and generates a diff report with corrections.
+
+name: docs-audit
+version: '1.0.0'
+description: |
+  Documentation audit workflow that systematically verifies documentation
+  against live system state. Discovers markdown files, extracts verifiable
+  claims (version numbers, file counts, tool references), checks them
+  against reality, and generates a structured diff report with corrections.
+
+inputs:
+  - name: repo
+    type: string
+    description: Repository path or owner/name to audit
+    required: true
+
+  - name: scope
+    type: string
+    description: Audit scope (readme, docs, all)
+    default: all
+
+  - name: verifyCommands
+    type: array
+    description: Shell commands to gather live facts for verification
+    default: []
+
+steps:
+  # Step 1: Discover documentation files
+  - id: discover
+    agent: documentation_expert
+    action: discover_documentation
+    description: |
+      Finds all documentation files in the repository:
+      - README.md, CLAUDE.md, CONTRIBUTING.md
+      - docs/ directory markdown files
+      - Inline code documentation references
+      Returns file list with last-modified dates.
+    inputs:
+      repo: ${{ inputs.repo }}
+      scope: ${{ inputs.scope }}
+    timeout: 60000
+
+  # Step 2: Extract verifiable claims
+  - id: extract_claims
+    agent: documentation_expert
+    action: extract_verifiable_claims
+    description: |
+      Parses each doc file and extracts verifiable claims:
+      - Version numbers (software versions, API versions)
+      - Counts (VMs, services, tests, files)
+      - Tool references (CLI tools, frameworks)
+      - File/directory paths
+      - Architecture claims (components, dependencies)
+      - Command examples (do they actually work?)
+    inputs:
+      files: ${{ steps.discover.output }}
+      repo: ${{ inputs.repo }}
+    dependsOn:
+      - discover
+    timeout: 120000
+
+  # Step 3: Verify claims against live state
+  - id: verify
+    agent: infrastructure_expert
+    action: verify_documentation_claims
+    description: |
+      Checks extracted claims against reality:
+      - File existence checks
+      - Tool availability (which, --version)
+      - Count verification (actual vs documented)
+      - Version verification
+      - Command execution (do examples work?)
+      Uses provided verifyCommands plus auto-detected checks.
+    inputs:
+      claims: ${{ steps.extract_claims.output }}
+      verifyCommands: ${{ inputs.verifyCommands }}
+      repo: ${{ inputs.repo }}
+    dependsOn:
+      - extract_claims
+    timeout: 180000
+    retries: 1
+
+  # Step 4: Generate diff report
+  - id: report
+    agent: documentation_expert
+    action: generate_audit_report
+    description: |
+      Generates structured audit report:
+      - Per-file accuracy score
+      - List of inaccuracies with severity
+      - Suggested corrections
+      - Claims that could not be verified
+      Severity levels: critical (factually wrong), outdated
+      (was true, no longer), minor (imprecise but not wrong).
+    inputs:
+      claims: ${{ steps.extract_claims.output }}
+      verification: ${{ steps.verify.output }}
+      repo: ${{ inputs.repo }}
+    dependsOn:
+      - verify
+    timeout: 120000
+
+timeout: 480000
