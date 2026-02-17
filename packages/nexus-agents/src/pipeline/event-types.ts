@@ -183,6 +183,24 @@ interface LearningTrendDetectedEvent extends BaseEvent {
   readonly confidence: number;
 }
 
+/** Expert heartbeat events (Issue #1088 Phase 4). */
+export interface ExpertHeartbeatEvent extends BaseEvent {
+  readonly type: 'expert.heartbeat';
+  readonly sessionId: string;
+  readonly agentId: string;
+  readonly health: 'alive' | 'slow' | 'stalled';
+  readonly elapsedMs: number;
+  readonly heartbeatCount: number;
+}
+
+export interface ExpertStalledEvent extends BaseEvent {
+  readonly type: 'expert.stalled';
+  readonly sessionId: string;
+  readonly agentId: string;
+  readonly elapsedMs: number;
+  readonly reason: 'stalled' | 'expired';
+}
+
 // ============================================================================
 // Union Type
 // ============================================================================
@@ -205,7 +223,9 @@ export type PipelineEvent =
   | ModelCalledEvent
   | RoutingDecisionEvent
   | LearningThresholdUpdatedEvent
-  | LearningTrendDetectedEvent;
+  | LearningTrendDetectedEvent
+  | ExpertHeartbeatEvent
+  | ExpertStalledEvent;
 
 // ============================================================================
 // Event Bus Interface

@@ -354,4 +354,5 @@ export {
   type AgentHealthReport,
   type HeartbeatConfig,
   type SessionHealth,
+  type HealthTransition,
 } from './heartbeat-monitor.js';

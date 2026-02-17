@@ -319,12 +319,14 @@ async function runExpertTask(
   const sessionId = monitor.startSession(expertId);
   const startTime = getTimeProvider().now();
 
-  // Periodic heartbeat + stall detection (Issue #1087)
+  // Periodic heartbeat + expiry detection (Issue #1087, #1088 Phase 2)
+  // Note: Check health BEFORE emitting heartbeat — checking after would
+  // always show 'alive' since heartbeat() resets the timer.
   const heartbeatTimer = setInterval(() => {
-    monitor.heartbeat(sessionId);
-    if (monitor.isStalled(sessionId)) {
-      deps.logger?.warn('Expert session stalled', { expertId, sessionId });
+    if (monitor.isExpired(sessionId)) {
+      deps.logger?.warn('Expert session expired', { expertId, sessionId });
     }
+    monitor.heartbeat(sessionId);
   }, HEARTBEAT_TIMEOUTS.heartbeatIntervalMs);
 
   let result;

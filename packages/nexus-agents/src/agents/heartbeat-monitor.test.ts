@@ -10,6 +10,7 @@ import {
   HeartbeatMonitor,
   getHeartbeatMonitor,
   resetHeartbeatMonitor,
+  type HealthTransition,
 } from './heartbeat-monitor.js';
 
 describe('heartbeat-monitor', () => {
@@ -220,6 +221,95 @@ describe('heartbeat-monitor', () => {
       // Heartbeat resets to alive
       monitor.heartbeat(sid);
       expect(monitor.getHealth().sessions[0]?.health).toBe('alive');
+    });
+  });
+
+  describe('getSessionHealth (Issue #1088 Phase 4)', () => {
+    it('returns undefined for unknown session', () => {
+      const monitor = new HeartbeatMonitor();
+      expect(monitor.getSessionHealth('nope')).toBeUndefined();
+    });
+
+    it('returns alive with no transition for new session', () => {
+      const monitor = new HeartbeatMonitor();
+      const sid = monitor.startSession('expert-1');
+      const t = monitor.getSessionHealth(sid) as HealthTransition;
+      expect(t.health).toBe('alive');
+      expect(t.previousHealth).toBe('alive');
+      expect(t.changed).toBe(false);
+    });
+
+    it('detects alive → slow transition', () => {
+      const monitor = new HeartbeatMonitor({ slowThresholdMs: 10_000 });
+      const sid = monitor.startSession('expert-1');
+      // First check — alive
+      monitor.getSessionHealth(sid);
+
+      vi.advanceTimersByTime(15_000);
+      const t = monitor.getSessionHealth(sid) as HealthTransition;
+      expect(t.health).toBe('slow');
+      expect(t.previousHealth).toBe('alive');
+      expect(t.changed).toBe(true);
+    });
+
+    it('detects slow → stalled transition', () => {
+      const monitor = new HeartbeatMonitor({
+        slowThresholdMs: 10_000,
+        stalledThresholdMs: 20_000,
+      });
+      const sid = monitor.startSession('expert-1');
+
+      vi.advanceTimersByTime(15_000);
+      monitor.getSessionHealth(sid); // alive → slow
+
+      vi.advanceTimersByTime(10_000);
+      const t = monitor.getSessionHealth(sid) as HealthTransition;
+      expect(t.health).toBe('stalled');
+      expect(t.previousHealth).toBe('slow');
+      expect(t.changed).toBe(true);
+    });
+
+    it('does not report change when health is stable', () => {
+      const monitor = new HeartbeatMonitor({ slowThresholdMs: 10_000 });
+      const sid = monitor.startSession('expert-1');
+
+      vi.advanceTimersByTime(15_000);
+      monitor.getSessionHealth(sid); // alive → slow
+
+      vi.advanceTimersByTime(1_000);
+      const t = monitor.getSessionHealth(sid) as HealthTransition;
+      expect(t.health).toBe('slow');
+      expect(t.changed).toBe(false);
+    });
+
+    it('detects recovery: stalled → alive after heartbeat', () => {
+      const monitor = new HeartbeatMonitor({
+        slowThresholdMs: 10_000,
+        stalledThresholdMs: 20_000,
+      });
+      const sid = monitor.startSession('expert-1');
+
+      vi.advanceTimersByTime(25_000);
+      monitor.getSessionHealth(sid); // alive → stalled
+
+      monitor.heartbeat(sid);
+      const t = monitor.getSessionHealth(sid) as HealthTransition;
+      expect(t.health).toBe('alive');
+      expect(t.previousHealth).toBe('stalled');
+      expect(t.changed).toBe(true);
+    });
+
+    it('includes correct elapsedMs and heartbeatCount', () => {
+      const monitor = new HeartbeatMonitor();
+      const sid = monitor.startSession('expert-1');
+      monitor.heartbeat(sid);
+      monitor.heartbeat(sid);
+
+      vi.advanceTimersByTime(5_000);
+      const t = monitor.getSessionHealth(sid) as HealthTransition;
+      expect(t.elapsedMs).toBe(5_000);
+      expect(t.heartbeatCount).toBe(2);
+      expect(t.agentId).toBe('expert-1');
     });
   });
 

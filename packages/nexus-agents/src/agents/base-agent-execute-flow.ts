@@ -23,8 +23,11 @@ import {
 } from './base-agent-task-helpers.js';
 import { recordFailedTaskError, persistMemoryAfterTask } from './base-agent-execution-helpers.js';
 import { HEARTBEAT_TIMEOUTS } from '../config/timeouts.js';
+import { getHeartbeatMonitor } from './heartbeat-monitor.js';
+import { createLogger } from '../core/index.js';
 
 const MAX_HISTORY_ITEMS = 100;
+const heartbeatLogger = createLogger({ component: 'heartbeat' });
 
 /**
  * Context for execute flow operations.
@@ -80,7 +83,11 @@ export function setupExecute(ctx: ExecuteFlowContext, task: Task): ExecuteSetupR
 }
 
 /**
- * Runs task with configured timeout.
+ * Runs task with configured timeout and heartbeat-aware cancellation.
+ *
+ * Phase 2 (Issue #1088): Integrates HeartbeatMonitor for session tracking
+ * and AbortController for cooperative cancellation when session expires.
+ * The safety-cap timeout in executeWithTimeout remains as a fallback.
  */
 export async function runTaskWithTimeout(
   task: Task,
@@ -88,12 +95,42 @@ export async function runTaskWithTimeout(
   executeTask: (task: Task) => Promise<Result<TaskResult, AgentError>>
 ): Promise<Result<TaskResult, AgentError>> {
   const maxDuration = task.constraints?.maxDuration ?? HEARTBEAT_TIMEOUTS.absoluteMaxMs;
-  return executeWithTimeout({
-    task,
-    maxDurationMs: maxDuration,
-    executeTask,
-    transformError: (error, taskId) => transformTaskError(error, agentId, taskId),
-  });
+
+  // Phase 2: Heartbeat session + AbortController (Issue #1088)
+  const controller = new AbortController();
+  const monitor = getHeartbeatMonitor();
+  const sessionId = monitor.startSession(agentId);
+
+  // Periodic health check — log transitions, abort on expiry (Phase 4)
+  const healthCheckTimer = setInterval(() => {
+    const transition = monitor.getSessionHealth(sessionId);
+    if (transition?.changed === true) {
+      const msg = `Agent health: ${transition.previousHealth} → ${transition.health}`;
+      if (transition.health === 'stalled') {
+        heartbeatLogger.warn(msg, { agentId, sessionId, elapsedMs: transition.elapsedMs });
+      } else if (transition.health === 'slow') {
+        heartbeatLogger.info(msg, { agentId, sessionId, elapsedMs: transition.elapsedMs });
+      }
+    }
+    monitor.heartbeat(sessionId);
+    if (monitor.isExpired(sessionId)) {
+      heartbeatLogger.warn('Agent session expired — aborting', { agentId, sessionId });
+      controller.abort();
+    }
+  }, HEARTBEAT_TIMEOUTS.heartbeatIntervalMs);
+
+  try {
+    return await executeWithTimeout({
+      task,
+      maxDurationMs: maxDuration,
+      executeTask,
+      transformError: (error, taskId) => transformTaskError(error, agentId, taskId),
+      signal: controller.signal,
+    });
+  } finally {
+    clearInterval(healthCheckTimer);
+    monitor.endSession(sessionId);
+  }
 }
 
 /**

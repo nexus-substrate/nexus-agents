@@ -4,10 +4,17 @@
  * @module agents/base-agent-execute-flow.test
  */
 
-import { describe, it, expect, vi } from 'vitest';
-import { setupExecute, addToHistory, getHistoryCopy } from './base-agent-execute-flow.js';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import {
+  setupExecute,
+  addToHistory,
+  getHistoryCopy,
+  runTaskWithTimeout,
+} from './base-agent-execute-flow.js';
 import type { ExecuteFlowContext } from './base-agent-execute-flow.js';
-import type { Task, Message } from '../core/index.js';
+import type { Task, TaskResult, Message, Result } from '../core/index.js';
+import { AgentError } from '../core/index.js';
+import { resetHeartbeatMonitor, getHeartbeatMonitor } from './heartbeat-monitor.js';
 
 // ============================================================================
 // Helpers
@@ -156,5 +163,101 @@ describe('getHistoryCopy', () => {
   it('returns empty array for empty history', () => {
     const copy = getHistoryCopy([]);
     expect(copy).toEqual([]);
+  });
+});
+
+// ============================================================================
+// runTaskWithTimeout — Heartbeat integration (Issue #1088 Phase 2)
+// ============================================================================
+
+describe('runTaskWithTimeout', () => {
+  beforeEach(() => {
+    resetHeartbeatMonitor();
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('resolves with task result on success', async () => {
+    const task = makeTask();
+    const executeTask = vi.fn().mockResolvedValue({
+      ok: true,
+      value: { output: 'done', metadata: { tokensUsed: 10 } },
+    } satisfies Result<TaskResult, AgentError>);
+
+    const promise = runTaskWithTimeout(task, 'agent-1', executeTask);
+    // Let the microtask queue flush
+    await vi.advanceTimersByTimeAsync(0);
+    const result = await promise;
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.output).toBe('done');
+    }
+  });
+
+  it('starts and ends heartbeat session', async () => {
+    const monitor = getHeartbeatMonitor();
+    const task = makeTask();
+    const executeTask = vi.fn().mockResolvedValue({
+      ok: true,
+      value: { output: 'done', metadata: { tokensUsed: 0 } },
+    });
+
+    expect(monitor.activeCount).toBe(0);
+    const promise = runTaskWithTimeout(task, 'agent-hb', executeTask);
+    // During execution, session is active
+    expect(monitor.activeCount).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(0);
+    await promise;
+    // After completion, session is cleaned up
+    expect(monitor.activeCount).toBe(0);
+  });
+
+  it('cleans up session on task failure', async () => {
+    const monitor = getHeartbeatMonitor();
+    const task = makeTask();
+    const executeTask = vi.fn().mockRejectedValue(new Error('boom'));
+
+    const promise = runTaskWithTimeout(task, 'agent-fail', executeTask);
+    await vi.advanceTimersByTimeAsync(0);
+    const result = await promise;
+
+    expect(result.ok).toBe(false);
+    expect(monitor.activeCount).toBe(0);
+  });
+
+  it('cancels via abort when session expires', async () => {
+    const task = makeTask();
+    // Task that never resolves — will be cancelled by heartbeat monitor
+    const executeTask = vi.fn().mockReturnValue(new Promise(() => {}));
+
+    const promise = runTaskWithTimeout(task, 'agent-expire', executeTask);
+
+    // Advance past absoluteMaxMs (900s) in heartbeat interval steps
+    await vi.advanceTimersByTimeAsync(910_000);
+    const result = await promise;
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toContain('cancelled');
+    }
+  });
+
+  it('uses task constraints maxDuration when provided', async () => {
+    const task = makeTask({ constraints: { maxDuration: 1000 } });
+    const executeTask = vi.fn().mockReturnValue(new Promise(() => {}));
+
+    const promise = runTaskWithTimeout(task, 'agent-short', executeTask);
+    await vi.advanceTimersByTimeAsync(1100);
+    const result = await promise;
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toContain('timed out');
+    }
   });
 });

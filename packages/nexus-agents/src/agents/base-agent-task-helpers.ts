@@ -67,20 +67,42 @@ export interface ExecuteWithTimeoutParams {
   maxDurationMs: number;
   executeTask: (task: Task) => Promise<Result<TaskResult, AgentError>>;
   transformError: (error: unknown, taskId: string) => AgentError;
+  /** Optional AbortSignal for cooperative cancellation (Issue #1088 Phase 2). */
+  signal?: AbortSignal;
+}
+
+/** Creates a cancellation error for aborted tasks (Issue #1088 Phase 2). */
+function makeCancelError(taskId: string): Result<TaskResult, AgentError> {
+  return err(
+    new AgentError('Task cancelled: agent session expired', {
+      context: { taskId, reason: 'abort_signal' },
+    })
+  );
 }
 
 /**
- * Executes a task with a timeout.
- * Returns a timeout error if the task exceeds the maximum duration.
+ * Executes a task with a timeout and optional abort signal.
+ * Returns a timeout error if the task exceeds the maximum duration,
+ * or a cancellation error if the abort signal fires.
+ * (Issue #1088 Phase 2: AbortController support for heartbeat-aware cancellation)
  */
 export function executeWithTimeout(
   params: ExecuteWithTimeoutParams
 ): Promise<Result<TaskResult, AgentError>> {
-  const { task, maxDurationMs, executeTask, transformError } = params;
+  const { task, maxDurationMs, executeTask, transformError, signal } = params;
 
   return new Promise((resolve) => {
+    let settled = false;
+
+    const settle = (result: Result<TaskResult, AgentError>): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeoutId);
+      resolve(result);
+    };
+
     const timeoutId = setTimeout(() => {
-      resolve(
+      settle(
         err(
           new AgentError(`Task execution timed out after ${String(maxDurationMs)}ms`, {
             context: { taskId: task.id, maxDurationMs },
@@ -89,14 +111,27 @@ export function executeWithTimeout(
       );
     }, maxDurationMs);
 
+    // AbortSignal cancellation (Issue #1088 Phase 2)
+    if (signal !== undefined) {
+      if (signal.aborted) {
+        settle(makeCancelError(task.id));
+        return;
+      }
+      signal.addEventListener(
+        'abort',
+        () => {
+          settle(makeCancelError(task.id));
+        },
+        { once: true }
+      );
+    }
+
     executeTask(task)
       .then((result) => {
-        clearTimeout(timeoutId);
-        resolve(result);
+        settle(result);
       })
       .catch((error: unknown) => {
-        clearTimeout(timeoutId);
-        resolve(err(transformError(error, task.id)));
+        settle(err(transformError(error, task.id)));
       });
   });
 }

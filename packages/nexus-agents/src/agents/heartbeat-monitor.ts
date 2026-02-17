@@ -65,6 +65,19 @@ interface SessionEntry {
   readonly startedAt: number;
   lastHeartbeat: number;
   heartbeatCount: number;
+  /** Previous health state for transition detection (Issue #1088 Phase 4). */
+  previousHealth: SessionHealth;
+}
+
+/** Health transition info returned by getSessionHealth(). */
+export interface HealthTransition {
+  readonly sessionId: string;
+  readonly agentId: string;
+  readonly health: SessionHealth;
+  readonly previousHealth: SessionHealth;
+  readonly changed: boolean;
+  readonly elapsedMs: number;
+  readonly heartbeatCount: number;
 }
 
 // ============================================================================
@@ -101,6 +114,7 @@ export class HeartbeatMonitor {
       startedAt: now,
       lastHeartbeat: now,
       heartbeatCount: 0,
+      previousHealth: 'alive',
     });
     return sessionId;
   }
@@ -161,6 +175,31 @@ export class HeartbeatMonitor {
       stalledSessions: stalledCount,
       sessions,
     };
+  }
+
+  /**
+   * Get health state with transition detection for a session.
+   * Updates previousHealth on each call to track transitions.
+   * (Issue #1088 Phase 4 — observability)
+   */
+  getSessionHealth(sessionId: string): HealthTransition | undefined {
+    const entry = this.sessions.get(sessionId);
+    if (entry === undefined) return undefined;
+    const now = Date.now();
+    const timeSince = now - entry.lastHeartbeat;
+    const health = this.classifyHealth(timeSince);
+    const changed = health !== entry.previousHealth;
+    const result: HealthTransition = {
+      sessionId,
+      agentId: entry.expertId,
+      health,
+      previousHealth: entry.previousHealth,
+      changed,
+      elapsedMs: now - entry.startedAt,
+      heartbeatCount: entry.heartbeatCount,
+    };
+    entry.previousHealth = health;
+    return result;
   }
 
   /** Number of currently tracked sessions. */
