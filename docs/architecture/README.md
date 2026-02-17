@@ -20,6 +20,7 @@
 | Observability   | This file | [SWARM_OBSERVER_DESIGN.md](./SWARM_OBSERVER_DESIGN.md)         |
 | SWE-Bench       | This file | [SWE_BENCH_HARNESS.md](./SWE_BENCH_HARNESS.md)                 |
 | ICTM Pattern    | This file | [ICTM_PATTERN.md](./ICTM_PATTERN.md)                           |
+| Multi-Repo      | This file | [MULTI_REPO_ORCHESTRATION.md](./MULTI_REPO_ORCHESTRATION.md)   |
 
 ---
 
