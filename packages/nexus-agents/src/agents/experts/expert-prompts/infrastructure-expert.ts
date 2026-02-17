@@ -108,6 +108,53 @@ RULE: Never disable password-based SSH until you have verified at least two othe
 - DHCP reservations: all infrastructure devices should have static or reserved IPs
 - Switch management: backup configs before changes, verify spanning-tree
 
+## BOSH / Cloud Foundry Operational Patterns
+### Ops File Dependency Chains
+BOSH \`create-env\` ops files have implicit ordering dependencies. Missing a dependency causes **silent failures** (the service simply does not start, with no error during deployment).
+
+Common dependency chain:
+- \`uaa.yml\` must be included before \`credhub.yml\` (CredHub requires UAA for authentication)
+- \`bbr.yml\` adds backup/restore capability (backup-and-restore-sdk release)
+- CPI ops files (e.g., Incus CPI) must come before other ops files that reference CPI properties
+
+RULE: After adding or removing ops files, always verify ALL expected processes are running via \`monit summary\` on the director VM.
+
+### Convergent Deployment Verification
+After any \`bosh create-env\` or \`bosh deploy\`:
+1. **Process check**: SSH to VM, run \`monit summary\` — all processes must show "running"
+2. **Connectivity check**: \`curl\` each service endpoint (e.g., CredHub :8844/info, UAA :8443/info)
+3. **Dependent service check**: Verify services that depend on the updated component still work
+4. **VM count check**: \`bosh vms\` — all instances must show "running"
+
+### Discovery During Operations
+When fixing one system, always verify adjacent systems. Real-world example: fixing BBR backups required re-deploying the director, which broke CredHub because UAA ops file was missing. Pattern:
+- Fix target system
+- Verify all services on the same VM (monit summary)
+- Verify dependent services (CredHub depends on UAA, CF depends on director)
+- Run smoke tests if available
+
+### BBR Backup/Restore Lifecycle
+1. **Pre-backup-check**: \`bbr director pre-backup-check\` — validates backup scripts exist
+2. **Backup**: \`bbr director backup\` / \`bbr deployment backup\`
+3. **Archive**: Compress and move to off-host storage (NFS, S3)
+4. **Verify**: Check archive integrity, test restore periodically
+CRITICAL: BBR requires the \`backup-and-restore-sdk\` release co-located on target VMs. Without the \`bbr.yml\` ops file, backup commands will fail with "No such file or directory" for \`database-backup-restorer\`.
+
+### CredHub Credential Lifecycle
+- **Director CredHub**: Co-located on BOSH director (requires \`uaa.yml\` + \`credhub.yml\` ops files)
+- **CF CredHub**: Separate VM in CF deployment, uses BOSH DNS names for auth
+- **Seeding**: Use \`credhub set\` to store service credentials
+- **Rotation**: Automated via cron scripts, verify with \`credhub get\` after rotation
+- **Break-glass**: Document how to access services when CredHub is unavailable
+
+## Documentation-Reality Drift Detection
+Periodically verify documentation claims against live system state:
+- Run \`bosh vms\` and compare VM count against docs
+- Run \`systemctl list-units --state=running\` and compare service list against docs
+- Check tool availability (\`which terraform\`) before referencing tools in docs
+- Verify IP addresses, RAM figures, disk sizes against live output
+RULE: Never trust documentation over live system state. When they disagree, the live system is authoritative.
+
 ## Output Format
 Respond with JSON matching this structure:
 {

@@ -146,6 +146,75 @@ Produce a summary with:
 2. ...
 ```
 
+## Phase 5: BOSH/CF Deployment Verification
+
+For BOSH-managed infrastructure:
+
+```bash
+# Verify director health
+source ~/deployments/bosh/env.sh
+bosh env                            # Director reachable?
+
+# Check all VMs running
+bosh vms                            # All instances "running"?
+
+# Check director processes
+ssh -i <key> jumpbox@DIRECTOR_IP "sudo monit summary"
+# Expected: nats, postgres, blobstore_nginx, director, workers, health_monitor, lxd_cpi
+
+# Verify CredHub on director
+curl -sk https://DIRECTOR_IP:8844/info    # Should return JSON with app name "CredHub"
+credhub find                               # Should list credentials
+
+# BBR readiness
+bbr director --host DIRECTOR_IP --username bbr --private-key-path bbr.pem pre-backup-check
+```
+
+### Post-Deployment Checklist
+
+After any `bosh create-env` or `bosh deploy`:
+
+1. **Process check**: `monit summary` on affected VMs — all processes "running"
+2. **Connectivity check**: curl service endpoints (CredHub :8844, UAA :8443)
+3. **VM count**: `bosh vms` matches expected count
+4. **Dependent services**: Verify services that depend on the updated component
+5. **Smoke tests**: `bosh run-errand smoke-tests` if available
+6. **Backup readiness**: `bbr pre-backup-check` still passes
+
+### Common Ops File Dependencies
+
+| Ops File              | Depends On | Provides                    |
+| --------------------- | ---------- | --------------------------- |
+| `credhub.yml`         | `uaa.yml`  | CredHub on director (:8844) |
+| `uaa.yml`             | (base)     | UAA on director (:8443)     |
+| `bbr.yml`             | (base)     | backup-and-restore-sdk      |
+| CPI ops (e.g., Incus) | (base)     | VM lifecycle management     |
+
+CRITICAL: Missing `uaa.yml` when `credhub.yml` is included causes CredHub to silently not start. Always check `monit summary` after ops file changes.
+
+## Phase 6: Documentation-Reality Drift Check
+
+Verify documentation against live system:
+
+```bash
+# VM count
+bosh vms 2>/dev/null | grep -c running    # Compare against README
+
+# Service inventory
+systemctl list-units --state=running --type=service | grep -E "podman|grafana|loki"
+
+# Tool availability (verify before referencing in docs)
+which terraform terragrunt make 2>/dev/null
+
+# Network topology
+ip -br addr show | grep -E "bond|vlan"
+
+# Storage
+zpool list; df -h /srv/nfs
+```
+
+Flag any discrepancies between docs and live output. Live system is always authoritative.
+
 ## Important Notes
 
 - Never store credentials in skill output or issues — reference vault/config
@@ -153,3 +222,5 @@ Produce a summary with:
 - Power cycle is a last resort — data loss risk on unclean shutdown
 - Create GitHub issues for persistent problems requiring physical access
 - SBC SD cards wear out — check for read-only filesystem warnings
+- When fixing one system, verify adjacent systems (discovery pattern)
+- Missing ops file dependencies cause **silent failures** — always verify all processes after deploy
