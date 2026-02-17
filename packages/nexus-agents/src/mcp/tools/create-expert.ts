@@ -305,6 +305,7 @@ export function registerCreateExpertTool(server: McpServer, deps: CreateExpertDe
         'research_expert',
         'pm_expert',
         'ux_expert',
+        'infrastructure_expert',
       ])
       .describe('Expert role to create'),
     modelPreference: z.string().optional().describe('Preferred model (e.g., claude-sonnet-4)'),
