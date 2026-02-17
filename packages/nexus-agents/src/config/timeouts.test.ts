@@ -331,6 +331,7 @@ describe('Centralized Timeout Configuration', () => {
       expect(HEARTBEAT_TIMEOUTS.slowThresholdMs).toBe(60_000);
       expect(HEARTBEAT_TIMEOUTS.stalledThresholdMs).toBe(120_000);
       expect(HEARTBEAT_TIMEOUTS.absoluteMaxMs).toBe(900_000);
+      expect(HEARTBEAT_TIMEOUTS.heartbeatIntervalMs).toBe(15_000);
     });
   });
 
