@@ -246,6 +246,39 @@ describe('security-scan workflow', () => {
     // eval=5 from scan_imports + password=5 from check_patterns = 10
     expect(Number(result.finalState['severity'])).toBeGreaterThanOrEqual(10);
   });
+
+  it('detects CWE-89 (SQL injection via template literal) (#1137)', async () => {
+    const code = 'const q = `SELECT * FROM users WHERE id = ${req.params.id}`;';
+    const result = await runWorkflow('security-scan', { code });
+
+    const vulns = result.finalState['vulnerabilities'] as string[];
+    expect(vulns.some((v) => v.includes('CWE-89'))).toBe(true);
+    expect(Number(result.finalState['severity'])).toBeGreaterThanOrEqual(5);
+  });
+
+  it('detects CWE-78 (command injection via template literal) (#1137)', async () => {
+    const code = 'exec(`rm -rf ${userInput}`);';
+    const result = await runWorkflow('security-scan', { code });
+
+    const vulns = result.finalState['vulnerabilities'] as string[];
+    expect(vulns.some((v) => v.includes('CWE-78'))).toBe(true);
+  });
+
+  it('detects CWE-79 (XSS via dangerouslySetInnerHTML) (#1137)', async () => {
+    const code = '<div dangerouslySetInnerHTML={{ __html: userInput }} />';
+    const result = await runWorkflow('security-scan', { code });
+
+    const vulns = result.finalState['vulnerabilities'] as string[];
+    expect(vulns.some((v) => v.includes('CWE-79'))).toBe(true);
+  });
+
+  it('detects CWE-22 (path traversal) (#1137)', async () => {
+    const code = 'fs.readFile(req.params.path, cb);';
+    const result = await runWorkflow('security-scan', { code });
+
+    const vulns = result.finalState['vulnerabilities'] as string[];
+    expect(vulns.some((v) => v.includes('CWE-22'))).toBe(true);
+  });
 });
 
 // ============================================================================

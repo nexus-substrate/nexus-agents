@@ -259,22 +259,46 @@ function scanImportsHandler(state: Readonly<GraphState>): Promise<Partial<GraphS
   return Promise.resolve({ vulnerabilities: vulns, severity });
 }
 
+/** Pattern rules for check_patterns node. Each rule is [regex, label, severity]. */
+const PATTERN_RULES: ReadonlyArray<readonly [RegExp, string, number]> = [
+  [/password\s*=\s*['"]/, 'CWE-798: Hardcoded credentials', 5],
+  [/http:\/\//, 'CWE-319: Cleartext HTTP transmission', 2],
+  [/new RegExp\(/, 'CWE-1333: Potential ReDoS risk', 3],
+  // SQL injection (#1137)
+  [
+    /(?:SELECT|INSERT|UPDATE|DELETE|DROP)\b.*\$\{/,
+    'CWE-89: SQL injection via string interpolation',
+    8,
+  ],
+  [
+    /(?:SELECT|INSERT|UPDATE|DELETE|DROP)\b.*\+\s*(?:req|request|params|query|input|args)/,
+    'CWE-89: SQL injection via string concatenation',
+    8,
+  ],
+  // Command injection (#1137)
+  [/exec\(.*\$\{/, 'CWE-78: Command injection via string interpolation', 8],
+  [/spawn\(.*\$\{/, 'CWE-78: Command injection via spawn interpolation', 8],
+  // XSS (#1137)
+  [/dangerouslySetInnerHTML/, 'CWE-79: XSS via dangerouslySetInnerHTML', 4],
+  // Path traversal (#1137)
+  [
+    /(?:readFile|writeFile|createReadStream)\(.*(?:req|params|query|input)/,
+    'CWE-22: Path traversal via user input in file operations',
+    6,
+  ],
+] as const;
+
 function checkPatternsHandler(state: Readonly<GraphState>): Promise<Partial<GraphState>> {
   const code = String(state['code']);
   const vulns: string[] = [];
   let addedSeverity = 0;
-  if (/password\s*=\s*['"]/.test(code)) {
-    vulns.push('CWE-798: Hardcoded credentials');
-    addedSeverity += 5;
+  for (const [pattern, label, severity] of PATTERN_RULES) {
+    if (pattern.test(code)) {
+      vulns.push(label);
+      addedSeverity += severity;
+    }
   }
-  if (code.includes('http://')) {
-    vulns.push('CWE-319: Cleartext HTTP transmission');
-    addedSeverity += 2;
-  }
-  if (/new RegExp\(/.test(code)) {
-    vulns.push('CWE-1333: Potential ReDoS risk');
-    addedSeverity += 3;
-  }
+  // Special case: JSON.parse without try needs two checks (not a simple regex match)
   if (code.includes('JSON.parse(') && !code.includes('try')) {
     vulns.push('CWE-20: Unvalidated JSON.parse');
     addedSeverity += 2;
