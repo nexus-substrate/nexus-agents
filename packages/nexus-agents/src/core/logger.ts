@@ -256,14 +256,17 @@ function formatEntry(
   return entry;
 }
 
-/** ANSI color codes for pretty format. */
+/** Whether color output is enabled (respects NO_COLOR standard). */
+const loggerColorsEnabled = !('NO_COLOR' in process.env) && process.stderr.isTTY;
+
+/** ANSI color codes for pretty format. Empty strings when NO_COLOR set. */
 const COLORS = {
-  reset: '\x1b[0m',
-  dim: '\x1b[2m',
-  debug: '\x1b[36m', // cyan
-  info: '\x1b[32m', // green
-  warn: '\x1b[33m', // yellow
-  error: '\x1b[31m', // red
+  reset: loggerColorsEnabled ? '\x1b[0m' : '',
+  dim: loggerColorsEnabled ? '\x1b[2m' : '',
+  debug: loggerColorsEnabled ? '\x1b[36m' : '', // cyan
+  info: loggerColorsEnabled ? '\x1b[32m' : '', // green
+  warn: loggerColorsEnabled ? '\x1b[33m' : '', // yellow
+  error: loggerColorsEnabled ? '\x1b[31m' : '', // red
 } as const;
 
 /** Formats a log entry in pretty human-readable format. */

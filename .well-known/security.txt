@@ -1,0 +1,8 @@
+# Security Contact Information — RFC 9116
+# https://securitytxt.org/
+
+Contact: https://github.com/williamzujkowski/nexus-agents/security/advisories/new
+Expires: 2027-02-20T00:00:00.000Z
+Preferred-Languages: en
+Canonical: https://github.com/williamzujkowski/nexus-agents/blob/main/.well-known/security.txt
+Policy: https://github.com/williamzujkowski/nexus-agents/blob/main/CLAUDE.md#security-discovery-protocol

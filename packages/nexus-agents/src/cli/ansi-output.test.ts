@@ -8,6 +8,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   colors,
+  colorsEnabled,
   symbols,
   colorize,
   color,
@@ -25,7 +26,7 @@ import {
 
 describe('colors', () => {
   it('has reset code', () => {
-    expect(colors.reset).toBe('\x1b[0m');
+    expect(colors.reset).toBe(colorsEnabled ? '\x1b[0m' : '');
   });
 
   it('has all expected color codes', () => {
@@ -78,7 +79,7 @@ describe('colorize', () => {
 describe('color', () => {
   it('wraps text in raw ANSI code', () => {
     const result = color('test', '\x1b[35m');
-    expect(result).toBe('\x1b[35mtest\x1b[0m');
+    expect(result).toBe(`\x1b[35mtest${colors.reset}`);
   });
 });
 
