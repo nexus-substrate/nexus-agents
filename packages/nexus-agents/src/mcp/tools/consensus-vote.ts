@@ -22,7 +22,7 @@ import {
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
 import type { IMcpNotifier } from '../mcp-notifier.js';
-import { createMcpNotifier, NOOP_NOTIFIER } from '../mcp-notifier.js';
+import { createMcpNotifier, NOOP_NOTIFIER, withProgressHeartbeat } from '../mcp-notifier.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import type { ConsensusAlgorithm, Vote, ConsensusResult, Proposal } from '../../consensus/types.js';
@@ -379,7 +379,9 @@ function createConsensusVoteHandler(deps: ConsensusVoteDeps) {
       strategy,
     });
 
-    const result = await handleConsensusVote(deps, validationResult.data);
+    const result = await withProgressHeartbeat('consensus_vote', notifier, () =>
+      handleConsensusVote(deps, validationResult.data)
+    );
     if (!result.ok) {
       return { isError: true, content: [{ type: 'text', text: result.error }] };
     }

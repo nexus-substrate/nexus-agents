@@ -31,7 +31,7 @@ import type {
 } from '../../core/types/orchestrator.js';
 import { wrapToolWithTimeout, toSdkCallback } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
-import { createMcpNotifier, NOOP_NOTIFIER } from '../mcp-notifier.js';
+import { createMcpNotifier, NOOP_NOTIFIER, withProgressHeartbeat } from '../mcp-notifier.js';
 import type { ExecutionPlan } from '../../agents/index.js';
 import { createOrchestratorWithSica } from './orchestrate-sica.js';
 import { OrchestratorFactory } from '../../orchestration/orchestrator-factory.js';
@@ -486,7 +486,9 @@ function createOrchestrateHandler(deps: OrchestrateDeps) {
       ? computeAgentPlan(validated.data.task, ctx.logger)
       : undefined;
 
-    const result = await executeOrchestration(validated.data, deps);
+    const result = await withProgressHeartbeat('orchestrate', notifier, () =>
+      executeOrchestration(validated.data, deps)
+    );
     if (!result.ok) {
       return {
         isError: true,

@@ -23,7 +23,7 @@ import {
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
 import type { IMcpNotifier } from '../mcp-notifier.js';
-import { createMcpNotifier, NOOP_NOTIFIER } from '../mcp-notifier.js';
+import { createMcpNotifier, NOOP_NOTIFIER, withProgressHeartbeat } from '../mcp-notifier.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import type { Expert } from '../../agents/index.js';
@@ -427,8 +427,10 @@ function createExecuteExpertHandler(deps: ExecuteExpertDeps) {
     const role = expert?.role ?? 'unknown';
     notifier.info('execute_expert', { event: 'expert_start', role });
 
-    // Execute tool logic
-    const result = await handleExecuteExpert(deps, validationResult.data);
+    // Execute tool logic (heartbeat provides observability during long runs)
+    const result = await withProgressHeartbeat('execute_expert', notifier, () =>
+      handleExecuteExpert(deps, validationResult.data)
+    );
 
     if (!result.ok) {
       return {

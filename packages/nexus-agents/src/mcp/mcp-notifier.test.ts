@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { createMcpNotifier, NOOP_NOTIFIER } from './mcp-notifier.js';
+import { createMcpNotifier, NOOP_NOTIFIER, withProgressHeartbeat } from './mcp-notifier.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 // ============================================================================
@@ -109,5 +109,89 @@ describe('NOOP_NOTIFIER', () => {
     NOOP_NOTIFIER.warn('test', {});
     // No-op: methods complete without error
     expect(true).toBe(true);
+  });
+});
+
+describe('withProgressHeartbeat', () => {
+  it('returns the operation result', async () => {
+    const result = await withProgressHeartbeat('test_tool', NOOP_NOTIFIER, () =>
+      Promise.resolve(42)
+    );
+    expect(result).toBe(42);
+  });
+
+  it('sends heartbeat notifications during long operations', async () => {
+    vi.useFakeTimers();
+    const debugCalls: Record<string, unknown>[] = [];
+    const notifier = {
+      info: vi.fn(),
+      debug: vi.fn((_logger: string, data: Record<string, unknown>) => {
+        debugCalls.push(data);
+      }),
+      warn: vi.fn(),
+    };
+
+    // Start a long operation
+    let resolve: (v: string) => void = () => undefined;
+    const promise = withProgressHeartbeat(
+      'test_tool',
+      notifier,
+      () =>
+        new Promise<string>((r) => {
+          resolve = r;
+        }),
+      100 // 100ms interval for test speed
+    );
+
+    // Advance past 3 heartbeats
+    await vi.advanceTimersByTimeAsync(350);
+    expect(debugCalls.length).toBe(3);
+    expect(debugCalls[0]).toEqual(
+      expect.objectContaining({
+        event: 'heartbeat',
+        beatCount: 1,
+      })
+    );
+    expect(debugCalls[2]).toEqual(
+      expect.objectContaining({
+        event: 'heartbeat',
+        beatCount: 3,
+      })
+    );
+
+    // Resolve and verify cleanup
+    resolve('done');
+    const result = await promise;
+    expect(result).toBe('done');
+
+    // No more heartbeats after resolution
+    await vi.advanceTimersByTimeAsync(200);
+    expect(debugCalls.length).toBe(3);
+
+    vi.useRealTimers();
+  });
+
+  it('cleans up timer on operation error', async () => {
+    vi.useFakeTimers();
+    const notifier = {
+      info: vi.fn(),
+      debug: vi.fn(),
+      warn: vi.fn(),
+    };
+
+    const promise = withProgressHeartbeat(
+      'test_tool',
+      notifier,
+      () => Promise.reject(new Error('boom')),
+      100
+    );
+
+    await expect(promise).rejects.toThrow('boom');
+
+    // Timer cleaned up — no heartbeats after error
+    await vi.advanceTimersByTimeAsync(500);
+    expect(notifier.debug).not.toHaveBeenCalled();
+
+    vi.useRealTimers();
   });
 });

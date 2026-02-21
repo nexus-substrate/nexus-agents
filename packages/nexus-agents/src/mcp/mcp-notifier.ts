@@ -79,3 +79,44 @@ export const NOOP_NOTIFIER: IMcpNotifier = {
   debug: () => undefined,
   warn: () => undefined,
 };
+
+/**
+ * Wraps an async operation with periodic heartbeat notifications.
+ * Sends "still working" logging messages every `intervalMs` to provide
+ * observability into long-running tool execution.
+ *
+ * Note: These are logging notifications (notifications/message), not
+ * progress notifications (notifications/progress with progressToken).
+ * Full progressToken support tracked in Issue #976.
+ *
+ * @param toolName - Name of the tool for notification context
+ * @param notifier - MCP notifier instance
+ * @param operation - The async operation to wrap
+ * @param intervalMs - Heartbeat interval (default: 15000ms)
+ * @returns The operation result
+ */
+export async function withProgressHeartbeat<T>(
+  toolName: string,
+  notifier: IMcpNotifier,
+  operation: () => Promise<T>,
+  intervalMs = 15_000
+): Promise<T> {
+  const startTime = Date.now();
+  let beatCount = 0;
+
+  const timer = setInterval(() => {
+    beatCount++;
+    const elapsed = Math.round((Date.now() - startTime) / 1000);
+    notifier.debug(toolName, {
+      event: 'heartbeat',
+      elapsedSeconds: elapsed,
+      beatCount,
+    });
+  }, intervalMs);
+
+  try {
+    return await operation();
+  } finally {
+    clearInterval(timer);
+  }
+}
