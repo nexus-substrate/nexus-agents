@@ -251,14 +251,25 @@ export class SessionMemory {
       .slice(0, this.maxLearningsInContext);
   }
 
-  /** Search for learnings matching a query. */
+  /** Search for learnings matching a query (includes current session). */
   searchLearnings(query: string): readonly SessionLearning[] {
     const episodes = this.loadEpisodes();
     const queryLower = query.toLowerCase();
     const matches: SessionLearning[] = [];
 
+    // Search persisted episodes
     for (const episode of episodes) {
       for (const learning of episode.learnings) {
+        const text = `${learning.pattern} ${learning.context}`.toLowerCase();
+        if (text.includes(queryLower)) {
+          matches.push(learning);
+        }
+      }
+    }
+
+    // Include current (unpersisted) session learnings (#1126)
+    if (this.currentSession !== null) {
+      for (const learning of this.currentSession.learnings) {
         const text = `${learning.pattern} ${learning.context}`.toLowerCase();
         if (text.includes(queryLower)) {
           matches.push(learning);

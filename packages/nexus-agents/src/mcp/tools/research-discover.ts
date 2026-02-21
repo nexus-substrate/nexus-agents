@@ -175,6 +175,8 @@ export interface ResearchDiscoverResponse {
   alreadyInRegistry: number;
   /** New items not yet in registry */
   newItems: number;
+  /** Items filtered out by relevance threshold */
+  filteredByRelevance: number;
 }
 
 // =============================================================================
@@ -427,6 +429,7 @@ async function executeDiscovery(
     totalFound,
     alreadyInRegistry: inRegistry,
     newItems: relevantItems.length,
+    filteredByRelevance: filteredOut,
   };
 }
 

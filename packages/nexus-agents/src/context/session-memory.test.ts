@@ -297,6 +297,22 @@ describe('SessionMemory', () => {
       expect(results[0]?.pattern).toContain('Result type');
     });
 
+    it('should search current session learnings before endSession (#1126)', () => {
+      const memory = createTestMemory();
+      memory.startSession('live-search');
+      memory.recordLearning({
+        pattern: 'OpenCode supports 75+ models',
+        context: 'Integration research',
+        confidence: 0.85,
+      });
+
+      // Search without ending the session — should find the in-memory learning
+      const results = memory.searchLearnings('OpenCode');
+
+      expect(results.length).toBe(1);
+      expect(results[0]?.pattern).toContain('75+ models');
+    });
+
     it('should get recent error solutions', () => {
       const memory1 = createTestMemory();
       memory1.startSession('error-solutions');
