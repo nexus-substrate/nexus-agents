@@ -48,6 +48,13 @@ export const ExecuteExpertInputSchema = z.object({
   expertId: z.string().min(1).describe('Expert ID from create_expert tool'),
   task: z.string().min(1).describe('Task description for the expert to execute'),
   context: z.record(z.unknown()).optional().describe('Additional context metadata for the task'),
+  timeoutMs: z
+    .number()
+    .int()
+    .min(10_000)
+    .max(900_000)
+    .optional()
+    .describe('Optional timeout in ms (10s-900s). Overrides auto-detected timeout.'),
 });
 
 /**
@@ -99,7 +106,7 @@ export interface ExecuteExpertResponse {
  * Builds a task object from the tool input.
  */
 function buildTask(input: ExecuteExpertInput): Task {
-  const timeoutMs = getExpertTaskTimeout(input.task);
+  const timeoutMs = input.timeoutMs ?? getExpertTaskTimeout(input.task);
   return {
     id: `exec-${String(getTimeProvider().now())}-${getRandomProvider().random().toString(36).slice(2, 9)}`,
     description: input.task,
@@ -108,7 +115,7 @@ function buildTask(input: ExecuteExpertInput): Task {
     },
     constraints: {
       maxTokens: 4096,
-      maxDuration: timeoutMs, // Dynamic timeout based on task complexity (Issue #1028)
+      maxDuration: timeoutMs, // Caller override or dynamic detection (Issue #1028, #1129)
     },
   };
 }
@@ -268,7 +275,7 @@ function autoCatalogScan(output: string, expertId: string, logger?: ILogger): vo
   }
 }
 
-/** Records failure outcome and returns error result. */
+/** Records failure outcome and returns error result with observability data (#1129). */
 function handleExpertFailure(
   args: ExecuteExpertInput,
   expert: { expertId: string; role: string; modelId?: string },
@@ -284,7 +291,12 @@ function handleExpertFailure(
     failureCategory: fc,
     ...(expert.modelId !== undefined ? { model: expert.modelId } : {}),
   });
-  return { ok: false, error: `Expert execution failed: ${errorMsg}` };
+  const durationSec = Math.round(durationMs / 1000);
+  const model = expert.modelId ?? 'default';
+  return {
+    ok: false,
+    error: `Expert execution failed after ${String(durationSec)}s (role=${expert.role}, model=${model}): ${errorMsg}`,
+  };
 }
 
 /** Records success outcome and tracking. */
@@ -469,6 +481,13 @@ export function registerExecuteExpertTool(server: McpServer, deps: ExecuteExpert
     expertId: z.string().min(1).describe('Expert ID from create_expert tool'),
     task: z.string().min(1).describe('Task description for the expert to execute'),
     context: z.record(z.unknown()).optional().describe('Additional context metadata for the task'),
+    timeoutMs: z
+      .number()
+      .int()
+      .min(10_000)
+      .max(900_000)
+      .optional()
+      .describe('Optional timeout in ms (10s-900s). Overrides auto-detected timeout.'),
   };
 
   const description =
