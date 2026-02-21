@@ -10,7 +10,7 @@
  * (Source: Issue #1136 — Centralized SCM Provider Module)
  */
 
-// Types
+// Core types
 export type {
   ScmPlatform,
   TokenStrategy,
@@ -24,6 +24,19 @@ export type {
   PRStatus,
   IssueFilters,
   IScmProvider,
+  // Extended entity types (trait support)
+  ScmFileChange,
+  ScmPullRequestDetail,
+  ScmIssueDetail,
+  ScmCommentDetail,
+  ScmReviewDecision,
+  ScmUserMetadata,
+  // Trait interfaces (ISP)
+  IScmReviewer,
+  IScmUserInfo,
+  // Convenience composite types
+  ReviewCapableProvider,
+  FullCapableProvider,
 } from './types.js';
 export { ScmError } from './types.js';
 
@@ -32,6 +45,13 @@ export { resolveToken, hasToken, getTokenEnvVars } from './token-resolver.js';
 
 // Provider implementations
 export { GitHubProvider } from './github-provider.js';
+
+// Trait implementations
+export {
+  GitHubReviewer,
+  GitHubUserInfo,
+  createFullGitHubProvider,
+} from './github-provider-traits.js';
 
 // Factory
 export { createScmProvider, createGitHubProvider } from './factory.js';

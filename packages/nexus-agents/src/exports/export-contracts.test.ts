@@ -505,6 +505,9 @@ import {
   hasToken,
   getTokenEnvVars,
   GitHubProvider,
+  GitHubReviewer,
+  GitHubUserInfo,
+  createFullGitHubProvider,
   createScmProvider,
   createGitHubProvider,
 } from '../index.js';
@@ -536,5 +539,24 @@ describe('Export contracts — SCM provider module (#1136)', () => {
     expect(typeof createGitHubProvider).toBe('function');
     const provider = createGitHubProvider('test/repo');
     expect(provider.platform).toBe('github');
+  });
+
+  it('exports trait implementations', () => {
+    expect(typeof GitHubReviewer).toBe('function');
+    expect(typeof GitHubUserInfo).toBe('function');
+    expect(typeof createFullGitHubProvider).toBe('function');
+  });
+
+  it('creates full provider with all trait methods', () => {
+    const provider = createFullGitHubProvider('test/repo');
+    expect(provider.platform).toBe('github');
+    expect(provider.repo).toBe('test/repo');
+    // Core IScmProvider methods
+    expect(typeof provider.getIssue).toBe('function');
+    // IScmReviewer trait methods
+    expect(typeof provider.getPullRequestDetail).toBe('function');
+    expect(typeof provider.createReview).toBe('function');
+    // IScmUserInfo trait methods
+    expect(typeof provider.fetchUserMetadata).toBe('function');
   });
 });

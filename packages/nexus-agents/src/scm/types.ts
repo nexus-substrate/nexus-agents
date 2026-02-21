@@ -121,11 +121,62 @@ export class ScmError extends Error {
 }
 
 // ============================================================================
-// Provider Interface
+// Extended Entity Types (Trait support)
+// ============================================================================
+
+/** File change in a pull request. */
+export interface ScmFileChange {
+  readonly filename: string;
+  readonly status: 'added' | 'removed' | 'modified' | 'renamed' | 'copied';
+  readonly additions: number;
+  readonly deletions: number;
+  readonly patch?: string;
+  readonly previousFilename?: string;
+}
+
+/** Extended PR with file diffs and stats. Used by IScmReviewer. */
+export interface ScmPullRequestDetail extends ScmPullRequest {
+  readonly draft: boolean;
+  readonly authorAssociation: string;
+  readonly labels: readonly string[];
+  readonly files: readonly ScmFileChange[];
+  readonly additions: number;
+  readonly deletions: number;
+  readonly headSha: string;
+}
+
+/** Extended issue with association and state. Used by IScmReviewer. */
+export interface ScmIssueDetail extends ScmIssue {
+  readonly authorAssociation: string;
+  readonly state: string;
+  readonly url: string;
+}
+
+/** Extended comment with author association. */
+export interface ScmCommentDetail extends ScmComment {
+  readonly authorAssociation: string;
+}
+
+/** Review decision for a pull request. */
+export type ScmReviewDecision = 'approve' | 'request_changes' | 'comment';
+
+/** User metadata for reputation assessment. */
+export interface ScmUserMetadata {
+  readonly login: string;
+  readonly name: string | null;
+  readonly company: string | null;
+  readonly followers: number;
+  readonly following: number;
+  readonly publicRepos: number;
+  readonly createdAt: string;
+}
+
+// ============================================================================
+// Provider Interface (Core)
 // ============================================================================
 
 /**
- * Unified SCM provider interface.
+ * Core SCM provider interface.
  *
  * All methods return `Result<T, ScmError>` for consistent error handling
  * across GitHub REST API, gh CLI, and future GitLab/Gitea backends.
@@ -151,3 +202,54 @@ export interface IScmProvider {
   addComment(issueNumber: number, body: string): Promise<Result<void, ScmError>>;
   listComments(issueNumber: number): Promise<Result<readonly ScmComment[], ScmError>>;
 }
+
+// ============================================================================
+// Trait Interfaces (ISP — Interface Segregation Principle)
+// ============================================================================
+
+/**
+ * Review trait — PR review capabilities.
+ *
+ * Implemented by platforms supporting code review workflows.
+ * Consumers declare this trait when they need PR file diffs or review posting.
+ */
+export interface IScmReviewer {
+  /** Fetch PR with full file diffs and stats. */
+  getPullRequestDetail(prNumber: number): Promise<Result<ScmPullRequestDetail, ScmError>>;
+
+  /** Post a review on a pull request. */
+  createReview(
+    prNumber: number,
+    body: string,
+    decision: ScmReviewDecision
+  ): Promise<Result<void, ScmError>>;
+
+  /** Fetch issue with author association and state. */
+  getIssueDetail(issueNumber: number): Promise<Result<ScmIssueDetail, ScmError>>;
+
+  /** List comments with author associations. */
+  listCommentDetails(issueNumber: number): Promise<Result<readonly ScmCommentDetail[], ScmError>>;
+}
+
+/**
+ * User info trait — user metadata for reputation assessment.
+ *
+ * Implemented by platforms supporting user profile queries.
+ * Consumers declare this trait when they need author reputation data.
+ */
+export interface IScmUserInfo {
+  /** Fetch user metadata for reputation assessment. */
+  fetchUserMetadata(username: string): Promise<Result<ScmUserMetadata, ScmError>>;
+}
+
+/**
+ * Convenience type: provider with review capabilities.
+ * Used by PR review workflows.
+ */
+export type ReviewCapableProvider = IScmProvider & IScmReviewer;
+
+/**
+ * Convenience type: provider with all capabilities.
+ * Used by full triage workflows that need review + user info.
+ */
+export type FullCapableProvider = IScmProvider & IScmReviewer & IScmUserInfo;
