@@ -190,6 +190,38 @@ describe('identifyGaps', () => {
     expect(gaps).not.toContain('No test directory detected');
   });
 
+  it('does not flag tests for monorepo with vitest config (#1130)', () => {
+    const gaps = identifyGaps(
+      [
+        'packages',
+        'package.json',
+        'vitest.config.ts',
+        'SECURITY.md',
+        'CODEOWNERS',
+        'LICENSE',
+        '.gitignore',
+      ],
+      'github-actions'
+    );
+    expect(gaps).not.toContain('No test directory detected');
+  });
+
+  it('does not flag tests for monorepo with packages dir (#1130)', () => {
+    const gaps = identifyGaps(
+      [
+        'packages',
+        'package.json',
+        'tsconfig.json',
+        'SECURITY.md',
+        'CODEOWNERS',
+        'LICENSE',
+        '.gitignore',
+      ],
+      'github-actions'
+    );
+    expect(gaps).not.toContain('No test directory detected');
+  });
+
   it('returns empty array for well-configured repo', () => {
     const gaps = identifyGaps(
       ['.github', 'SECURITY.md', 'CODEOWNERS', 'LICENSE', '.semgrep.yml', 'tests', '.gitignore'],
@@ -395,12 +427,12 @@ describe('analyzeRepo', () => {
     expect(result.license).toBeNull();
   });
 
-  it('detects tests in monorepo with packages dir', () => {
+  it('detects tests in monorepo with packages dir (#1130)', () => {
     const entries = ['packages', 'package.json', 'tsconfig.json', 'LICENSE', '.gitignore'];
     const result = analyzeRepo(baseMetadata, entries);
-    // analyzeRepo itself doesn't call detectTestInfra (that's in analyzeGitHubRepo)
-    // but it does check top-level test dirs, so hasTests=false here
-    expect(result.hasTests).toBe(false);
+    // analyzeRepo now uses detectTestInfra which recognizes monorepo patterns
+    expect(result.hasTests).toBe(true);
+    expect(result.gaps).not.toContain('No test directory detected');
   });
 });
 

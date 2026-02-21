@@ -84,7 +84,7 @@ const GAP_RULES: ReadonlyArray<readonly [readonly string[], string]> = [
   [['CODEOWNERS'], 'No CODEOWNERS file'],
   [['LICENSE', 'LICENSE.md'], 'No LICENSE file'],
   [['.semgrep.yml', '.semgrep', '.trivyignore'], 'No SAST/SCA security scanning configured'],
-  [['tests', 'test', '__tests__', 'spec'], 'No test directory detected'],
+  // Test detection handled separately via detectTestInfra (supports monorepo + co-located patterns)
   [['.gitignore'], 'No .gitignore file'],
 ];
 
@@ -189,6 +189,8 @@ export function identifyGaps(
   for (const [files, message] of GAP_RULES) {
     if (!files.some((f) => entries.includes(f))) gaps.push(message);
   }
+  // Test detection: uses detectTestInfra for monorepo + co-located pattern support (#1130)
+  if (!detectTestInfra(entries)) gaps.push('No test directory detected');
 
   // Language-specific recommendations when generic SAST/SCA gap detected
   const hasGenericSecGap = gaps.includes('No SAST/SCA security scanning configured');
@@ -227,11 +229,7 @@ export function analyzeRepo(
 ): RepoAnalysis {
   const ciProvider = detectCiProvider(topLevelEntries);
   const secTooling = detectSecurityTooling(topLevelEntries);
-  const hasTests =
-    topLevelEntries.includes('tests') ||
-    topLevelEntries.includes('test') ||
-    topLevelEntries.includes('__tests__') ||
-    topLevelEntries.includes('spec');
+  const hasTests = detectTestInfra(topLevelEntries);
 
   return {
     name: metadata.full_name,
@@ -415,9 +413,5 @@ export async function analyzeGitHubRepo(input: RepoAnalyzeInput): Promise<RepoAn
     if (resolved !== null) enhanced.license = { spdx_id: resolved };
   }
 
-  const analysis = analyzeRepo(enhanced, entries);
-  if (!analysis.hasTests && detectTestInfra(entries)) {
-    return { ...analysis, hasTests: true };
-  }
-  return analysis;
+  return analyzeRepo(enhanced, entries);
 }
