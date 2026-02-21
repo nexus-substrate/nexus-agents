@@ -33,7 +33,7 @@ function makeOutcome(overrides?: Partial<TaskOutcome>): TaskOutcome {
     id: `out-${String(Date.now())}-${Math.random().toString(36).slice(2)}`,
     cli: 'claude',
     category: 'code_generation',
-    model: 'claude-sonnet-4-5',
+    model: 'claude-sonnet-4-5-20250929',
     success: false,
     durationMs: 1200,
     timestamp: '2026-02-07T10:00:00Z',

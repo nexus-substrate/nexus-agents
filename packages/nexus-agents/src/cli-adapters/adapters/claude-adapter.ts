@@ -40,11 +40,14 @@ function buildClaudeAliasMap(): Record<string, string> {
       map[model.cliAlias] = model.cliAlias;
     }
   }
-  // Legacy versioned names
+  // Legacy versioned names → short CLI aliases
   map['claude-sonnet-4'] = 'sonnet';
+  map['claude-sonnet-4-5-20250929'] = 'sonnet';
   map['claude-opus-4'] = 'opus';
-  map['claude-haiku-3'] = 'haiku';
+  map['claude-opus-4-6'] = 'opus';
   map['claude-opus-4-5-20251101'] = 'opus';
+  map['claude-haiku-3'] = 'haiku';
+  map['claude-haiku-4-5-20251001'] = 'haiku';
   return map;
 }
 
@@ -55,33 +58,30 @@ const CLAUDE_LEGACY_DEFAULTS = {
     'claude-sonnet-4': 'Claude Sonnet 4',
     'claude-haiku-3': 'Claude Haiku 3',
     'claude-opus-4-5-20251101': 'Claude Opus 4.5',
-    'claude-opus-4-6': 'Claude Opus 4.6',
-    opus: 'Claude Opus 4',
-    sonnet: 'Claude Sonnet 4',
-    haiku: 'Claude Haiku 3',
+    opus: 'Claude Opus 4.6',
+    sonnet: 'Claude Sonnet 4.6',
+    haiku: 'Claude Haiku 4.5',
   } as Readonly<Record<string, string>>,
   inputCosts: {
     'claude-opus-4': 15.0,
-    'claude-opus-4-5-20251101': 15.0,
-    'claude-opus-4-6': 15.0,
+    'claude-opus-4-5-20251101': 5.0,
     'claude-sonnet-4': 3.0,
     'claude-haiku-3': 0.25,
-    opus: 15.0,
+    opus: 5.0,
     sonnet: 3.0,
-    haiku: 0.25,
+    haiku: 1.0,
   } as Readonly<Record<string, number>>,
   outputCosts: {
     'claude-opus-4': 75.0,
-    'claude-opus-4-5-20251101': 75.0,
-    'claude-opus-4-6': 75.0,
+    'claude-opus-4-5-20251101': 25.0,
     'claude-sonnet-4': 15.0,
     'claude-haiku-3': 1.25,
-    opus: 75.0,
+    opus: 25.0,
     sonnet: 15.0,
-    haiku: 1.25,
+    haiku: 5.0,
   } as Readonly<Record<string, number>>,
-  inputCost: 3.0,
-  outputCost: 15.0,
+  inputCost: 5.0,
+  outputCost: 25.0,
 } as const;
 
 /**

@@ -180,7 +180,7 @@ describe('ClaudeCliAdapter', () => {
       expect(caps.contextWindow).toBe(200_000);
       expect(caps.codeGeneration).toBe(9);
       expect(caps.speed).toBe(5);
-      expect(caps.cost).toBe(3);
+      expect(caps.cost).toBe(6);
     });
   });
 
@@ -188,8 +188,8 @@ describe('ClaudeCliAdapter', () => {
     it('should return correct model info for default model', () => {
       const info = adapter.getModelInfo();
 
-      // Default is now 'opus' (CLI alias) — quality-first (Issue #807)
-      expect(info.id).toBe('opus');
+      // Default model resolves to cliModelName from registry (Issue #1095)
+      expect(info.id).toBe('claude-opus-4-6');
       expect(info.name).toBe('Claude Opus 4.6');
       expect(info.contextWindow).toBe(200_000);
       expect(info.maxOutput).toBe(64_000);
@@ -198,8 +198,8 @@ describe('ClaudeCliAdapter', () => {
     it('should return correct cost info for opus', () => {
       const info = adapter.getModelInfo();
 
-      expect(info.costPerMillionInput).toBe(15.0);
-      expect(info.costPerMillionOutput).toBe(75.0);
+      expect(info.costPerMillionInput).toBe(5.0);
+      expect(info.costPerMillionOutput).toBe(25.0);
     });
 
     it('should return correct info for opus model', () => {
@@ -226,8 +226,8 @@ describe('ClaudeCliAdapter', () => {
       const unknownAdapter = new ClaudeCliAdapter({ model: 'claude-unknown' });
       const info = unknownAdapter.getModelInfo();
 
-      expect(info.costPerMillionInput).toBe(3.0);
-      expect(info.costPerMillionOutput).toBe(15.0);
+      expect(info.costPerMillionInput).toBe(5.0);
+      expect(info.costPerMillionOutput).toBe(25.0);
     });
   });
 

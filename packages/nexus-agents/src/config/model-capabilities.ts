@@ -64,7 +64,7 @@ export {
  */
 export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
   version: 2,
-  updatedAt: '2026-02-08',
+  updatedAt: '2026-02-21',
   models: [
     // ----- Anthropic Claude -----
     {
@@ -77,15 +77,16 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
       toolCapabilities: ['mcp', 'function_calling', 'computer_use', 'structured_output'],
       specialFeatures: ['extended_thinking', 'streaming', 'citations'],
       notes: 'Strongest reasoning; ideal for architecture and complex analysis',
-      pricing: { inputPer1M: 15.0, outputPer1M: 75.0 },
-      qualityScores: { reasoning: 10, codeGeneration: 9, speed: 5, cost: 3 },
+      pricing: { inputPer1M: 5.0, outputPer1M: 25.0 },
+      qualityScores: { reasoning: 10, codeGeneration: 9, speed: 5, cost: 6 },
       maxOutputTokens: 64_000,
       cliName: 'claude',
       cliAlias: 'opus',
+      cliModelName: 'claude-opus-4-6',
     },
     {
       id: 'claude-sonnet',
-      displayName: 'Claude Sonnet 4',
+      displayName: 'Claude Sonnet 4.6',
       provider: 'anthropic',
       contextWindow: 200_000,
       outputModalities: ['text', 'structured_json', 'code'],
@@ -98,10 +99,11 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
       maxOutputTokens: 64_000,
       cliName: 'claude',
       cliAlias: 'sonnet',
+      cliModelName: 'claude-sonnet-4-5-20250929',
     },
     {
       id: 'claude-haiku',
-      displayName: 'Claude Haiku 3.5',
+      displayName: 'Claude Haiku 4.5',
       provider: 'anthropic',
       contextWindow: 200_000,
       outputModalities: ['text', 'structured_json', 'code'],
@@ -109,11 +111,12 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
       toolCapabilities: ['mcp', 'function_calling', 'structured_output'],
       specialFeatures: ['streaming'],
       notes: 'Fastest Claude model; optimized for speed and cost',
-      pricing: { inputPer1M: 0.25, outputPer1M: 1.25 },
+      pricing: { inputPer1M: 1.0, outputPer1M: 5.0 },
       qualityScores: { reasoning: 7, codeGeneration: 7, speed: 9, cost: 9 },
       maxOutputTokens: 64_000,
       cliName: 'claude',
       cliAlias: 'haiku',
+      cliModelName: 'claude-haiku-4-5-20251001',
     },
     // ----- Google Gemini -----
     {
