@@ -14,7 +14,7 @@ import {
   toSdkCallback,
   DEFAULT_TIMEOUT_CONFIG,
 } from './tool-wrapper.js';
-import { progressContextStorage } from '../mcp-notifier.js';
+import { progressContextStorage, abortSignalStorage } from '../mcp-notifier.js';
 import type { SecurityConfig } from '../../config/schemas.js';
 
 describe('tool-wrapper', () => {
@@ -288,5 +288,62 @@ describe('toSdkCallback progress context', () => {
       method: 'notifications/progress',
       params: { progressToken: 'tok-1', progress: 5 },
     });
+  });
+});
+
+describe('toSdkCallback abort signal context', () => {
+  it('sets abort signal when extra has signal', async () => {
+    vi.useRealTimers();
+    let capturedSignal: AbortSignal | undefined;
+    const handler = vi.fn(() => {
+      capturedSignal = abortSignalStorage.getStore();
+      return Promise.resolve({ content: [{ type: 'text' as const, text: 'ok' }] });
+    });
+
+    const controller = new AbortController();
+    const callback = toSdkCallback(handler);
+    await callback({}, { signal: controller.signal });
+
+    expect(capturedSignal).toBeDefined();
+    expect(capturedSignal?.aborted).toBe(false);
+  });
+
+  it('does not set abort signal when extra has no signal', async () => {
+    vi.useRealTimers();
+    let capturedSignal: AbortSignal | undefined;
+    const handler = vi.fn(() => {
+      capturedSignal = abortSignalStorage.getStore();
+      return Promise.resolve({ content: [{ type: 'text' as const, text: 'ok' }] });
+    });
+
+    const callback = toSdkCallback(handler);
+    await callback({}, {});
+
+    expect(capturedSignal).toBeUndefined();
+  });
+
+  it('nests both progress and abort contexts', async () => {
+    vi.useRealTimers();
+    let hasProgress = false;
+    let hasSignal = false;
+    const handler = vi.fn(() => {
+      hasProgress = progressContextStorage.getStore() !== undefined;
+      hasSignal = abortSignalStorage.getStore() !== undefined;
+      return Promise.resolve({ content: [{ type: 'text' as const, text: 'ok' }] });
+    });
+
+    const controller = new AbortController();
+    const callback = toSdkCallback(handler);
+    await callback(
+      {},
+      {
+        signal: controller.signal,
+        _meta: { progressToken: 99 },
+        sendNotification: vi.fn(() => Promise.resolve()),
+      }
+    );
+
+    expect(hasProgress).toBe(true);
+    expect(hasSignal).toBe(true);
   });
 });

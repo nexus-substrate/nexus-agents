@@ -21,7 +21,11 @@ import {
   type MiddlewareChainConfig,
 } from './middleware-chain.js';
 import { MCP_TIMEOUTS } from '../../config/timeouts.js';
-import { progressContextStorage, type ProgressContext } from '../mcp-notifier.js';
+import {
+  progressContextStorage,
+  abortSignalStorage,
+  type ProgressContext,
+} from '../mcp-notifier.js';
 import { createLogger as createInternalLogger, getErrorMessage } from '../../core/index.js';
 
 /**
@@ -201,6 +205,7 @@ interface SdkMeta {
 /** Shape of the MCP SDK's extra object passed to tool handlers. */
 interface SdkExtra {
   readonly _meta?: SdkMeta;
+  readonly signal?: AbortSignal;
   readonly sendNotification?: (notification: {
     method: string;
     params?: Record<string, unknown>;
@@ -234,11 +239,35 @@ function extractProgressContext(extra: unknown): ProgressContext | undefined {
 }
 
 /**
+ * Runs handler within nested AsyncLocalStorage contexts for progress + abort.
+ */
+function runWithContexts(
+  handler: ToolHandler,
+  args: unknown,
+  progressCtx: ProgressContext | undefined,
+  signal: AbortSignal | undefined
+): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
+  const run = (): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> =>
+    handler(args);
+
+  // Nest contexts: abort signal outer, progress inner
+  if (signal !== undefined && progressCtx !== undefined) {
+    return abortSignalStorage.run(signal, () => progressContextStorage.run(progressCtx, run));
+  }
+  if (signal !== undefined) {
+    return abortSignalStorage.run(signal, run);
+  }
+  if (progressCtx !== undefined) {
+    return progressContextStorage.run(progressCtx, run);
+  }
+  return run();
+}
+
+/**
  * Adapts a ToolHandler to the MCP SDK's expected callback signature.
  *
- * When the client provides a progressToken in _meta, runs the handler
- * within an AsyncLocalStorage context so withProgressHeartbeat can
- * send real progress notifications that reset the client timeout.
+ * Extracts progressToken and AbortSignal from extra, runs the handler
+ * within AsyncLocalStorage contexts so middleware can access them.
  *
  * @param handler - Our internal ToolHandler
  * @returns SDK-compatible callback function
@@ -249,15 +278,10 @@ export function toSdkCallback(
   args: unknown,
   extra: unknown
 ) => Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
-  return async (args: unknown, extra: unknown) => {
+  return (args: unknown, extra: unknown) => {
     const progressCtx = extractProgressContext(extra);
-
-    // Run within progress context if progressToken is available
-    if (progressCtx !== undefined) {
-      return progressContextStorage.run(progressCtx, () => handler(args));
-    }
-
-    return handler(args);
+    const signal = (extra as SdkExtra | undefined)?.signal;
+    return runWithContexts(handler, args, progressCtx, signal);
   };
 }
 

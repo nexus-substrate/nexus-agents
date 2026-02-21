@@ -112,6 +112,18 @@ export interface ProgressContext {
  */
 export const progressContextStorage = new AsyncLocalStorage<ProgressContext>();
 
+// ============================================================================
+// Abort Signal Support (MCP SDK cancellation)
+// ============================================================================
+
+/**
+ * AsyncLocalStorage for MCP abort signal.
+ * Set by toSdkCallback when the SDK provides an AbortSignal.
+ * Allows middleware (e.g., TimeoutGuard) to race client cancellation
+ * alongside server-side timeouts.
+ */
+export const abortSignalStorage = new AsyncLocalStorage<AbortSignal>();
+
 /**
  * Wraps an async operation with periodic heartbeat notifications.
  *

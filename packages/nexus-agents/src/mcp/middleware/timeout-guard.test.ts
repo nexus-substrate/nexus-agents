@@ -148,6 +148,28 @@ describe('TimeoutGuard', () => {
         expect(result.error.code).toBe('GUARD_ERROR');
       }
     });
+
+    it('should cancel on AbortSignal', async () => {
+      vi.useRealTimers();
+      const guard = new TimeoutGuard({ defaultTimeoutMs: 10_000 });
+      const controller = new AbortController();
+
+      const resultPromise = guard.execute(
+        () => new Promise<string>(() => {}), // never resolves
+        { operationName: 'abort-test', signal: controller.signal }
+      );
+
+      // Abort after a short delay
+      setTimeout(() => {
+        controller.abort();
+      }, 50);
+      const result = await resultPromise;
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe('OPERATION_CANCELLED');
+      }
+    });
   });
 
   describe('guard', () => {

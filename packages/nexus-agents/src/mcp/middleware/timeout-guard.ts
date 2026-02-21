@@ -75,6 +75,8 @@ export interface ExecuteOptions {
   readonly operationName?: string;
   /** Cleanup function to call on timeout */
   readonly onTimeout?: () => void;
+  /** AbortSignal for client-initiated cancellation */
+  readonly signal?: AbortSignal;
 }
 
 // Canonical source: config/timeouts.ts (Issue #1046)
@@ -152,6 +154,17 @@ export class TimeoutGuard {
     this.logger = config?.logger ?? createLogger({ component: 'timeout-guard' });
   }
 
+  /** Resolves effective timeout and operation name from options. */
+  private resolveOptions(options?: ExecuteOptions): {
+    timeoutMs: number;
+    operationName: string;
+  } {
+    return {
+      timeoutMs: Math.min(options?.timeoutMs ?? this.defaultTimeoutMs, this.maxTimeoutMs),
+      operationName: options?.operationName ?? 'unknown',
+    };
+  }
+
   /**
    * Executes an async operation with timeout protection.
    */
@@ -159,23 +172,41 @@ export class TimeoutGuard {
     operation: () => Promise<T>,
     options?: ExecuteOptions
   ): Promise<Result<GuardedResult<T>, TimeoutError>> {
-    const timeoutMs = Math.min(options?.timeoutMs ?? this.defaultTimeoutMs, this.maxTimeoutMs);
-    const operationName = options?.operationName ?? 'unknown';
+    const { timeoutMs, operationName } = this.resolveOptions(options);
 
     const validationError = this.validateTimeout(timeoutMs, operationName);
     if (validationError !== null) {
       return err(validationError);
     }
 
+    return this.runGuarded(operation, timeoutMs, operationName, options);
+  }
+
+  /** Runs the operation with timeout and optional abort signal. */
+  private async runGuarded<T>(
+    operation: () => Promise<T>,
+    timeoutMs: number,
+    operationName: string,
+    options?: ExecuteOptions
+  ): Promise<Result<GuardedResult<T>, TimeoutError>> {
     this.logStart(operationName, timeoutMs);
     const startTime = getTimeProvider().now();
     const state: TimeoutState = { timeoutId: undefined, timedOut: false };
 
     try {
-      const result = await this.runWithTimeout(operation, timeoutMs, state, options?.onTimeout);
+      const result = await this.runWithTimeout(
+        operation,
+        timeoutMs,
+        state,
+        options?.onTimeout,
+        options?.signal
+      );
       return this.handleSuccess(result, startTime, timeoutMs, operationName);
     } catch {
-      return err(this.handleFailure(state.timedOut, operationName, timeoutMs, startTime));
+      const cancelled = options?.signal?.aborted === true && !state.timedOut;
+      return err(
+        this.handleFailure(state.timedOut, operationName, timeoutMs, startTime, cancelled)
+      );
     } finally {
       if (state.timeoutId !== undefined) {
         clearTimeout(state.timeoutId);
@@ -204,7 +235,8 @@ export class TimeoutGuard {
     operation: () => Promise<T>,
     timeoutMs: number,
     state: TimeoutState,
-    onTimeout?: () => void
+    onTimeout?: () => void,
+    signal?: AbortSignal
   ): Promise<T> {
     const timeoutPromise = new Promise<never>((_resolve, reject) => {
       state.timeoutId = setTimeout(() => {
@@ -214,7 +246,23 @@ export class TimeoutGuard {
       }, timeoutMs);
     });
 
-    return Promise.race([operation(), timeoutPromise]);
+    const promises: Array<Promise<T>> = [operation(), timeoutPromise];
+
+    // Race against client AbortSignal if provided
+    if (signal !== undefined && !signal.aborted) {
+      const abortPromise = new Promise<never>((_resolve, reject) => {
+        signal.addEventListener(
+          'abort',
+          () => {
+            reject(new Error('Operation cancelled by client'));
+          },
+          { once: true }
+        );
+      });
+      promises.push(abortPromise);
+    }
+
+    return Promise.race(promises);
   }
 
   private handleSuccess<T>(
@@ -246,9 +294,22 @@ export class TimeoutGuard {
     timedOut: boolean,
     operationName: string,
     timeoutMs: number,
-    startTime: number
+    startTime: number,
+    cancelled = false
   ): TimeoutError {
     const durationMs = getTimeProvider().now() - startTime;
+
+    if (cancelled) {
+      this.logger.info('Operation cancelled by client', {
+        operation: operationName,
+        durationMs,
+      });
+      return {
+        code: 'OPERATION_CANCELLED',
+        message: `Operation '${operationName}' cancelled by client`,
+        operation: operationName,
+      };
+    }
 
     if (timedOut) {
       this.logger.error('Operation timed out', undefined, {

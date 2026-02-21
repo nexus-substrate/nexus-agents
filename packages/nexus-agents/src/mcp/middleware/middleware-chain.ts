@@ -17,6 +17,7 @@ import { type IPolicyFirewall, type ExecutionMode, createPolicyContext } from '.
 import { TimeoutGuard, type TimeoutGuardConfig } from './timeout-guard.js';
 import { createRequestContext, contextForLogging, type RequestContext } from './request-context.js';
 import { createMetricsMiddleware } from './tool-metrics.js';
+import { abortSignalStorage } from '../mcp-notifier.js';
 
 /**
  * MCP tool result type.
@@ -179,10 +180,15 @@ function createRateLimitMiddleware(limiter: RateLimiter): Middleware {
 
 /**
  * Creates timeout middleware.
+ * Reads AbortSignal from AsyncLocalStorage for client cancellation support.
  */
 function createTimeoutMiddleware(guard: TimeoutGuard, toolName: string): Middleware {
   return async (args, ctx, next) => {
-    const result = await guard.execute(() => next(args, ctx), { operationName: toolName });
+    const signal = abortSignalStorage.getStore();
+    const result = await guard.execute(() => next(args, ctx), {
+      operationName: toolName,
+      signal,
+    });
 
     if (!result.ok) {
       ctx.logger.error('Operation timed out', undefined, {
