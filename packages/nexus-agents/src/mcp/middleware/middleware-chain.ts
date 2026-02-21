@@ -31,6 +31,8 @@ export interface ToolResult {
   content: Array<{ type: 'text'; text: string }>;
   /** Whether this represents an error result */
   isError?: boolean;
+  /** Structured output for SDK outputSchema validation (Issue #1117) */
+  structuredContent?: Record<string, unknown>;
 }
 
 /**
@@ -187,7 +189,7 @@ function createTimeoutMiddleware(guard: TimeoutGuard, toolName: string): Middlew
     const signal = abortSignalStorage.getStore();
     const result = await guard.execute(() => next(args, ctx), {
       operationName: toolName,
-      signal,
+      ...(signal !== undefined ? { signal } : {}),
     });
 
     if (!result.ok) {

@@ -78,6 +78,7 @@ export {
   // Tool registration
   registerTools,
   toolSuccess,
+  toolSuccessStructured,
   toolError,
   type ToolRegistrationOptions,
   type ToolRegistrationResult,

@@ -283,7 +283,8 @@ function detectPrimaryLanguage(
   const sorted = Object.entries(languages)
     .filter(([lang]) => !MARKUP_LANGUAGES.has(lang))
     .sort((a, b) => b[1] - a[1]);
-  return sorted.length > 0 ? sorted[0][0] : fallback;
+  const top = sorted[0];
+  return top !== undefined ? top[0] : fallback;
 }
 
 /** Check for test infrastructure beyond top-level directories. */

@@ -162,7 +162,11 @@ export interface ScoredModel {
 /**
  * Tool result type.
  */
-export type ToolResult = { isError?: boolean; content: Array<{ type: 'text'; text: string }> };
+export type ToolResult = {
+  isError?: boolean;
+  content: Array<{ type: 'text'; text: string }>;
+  structuredContent?: Record<string, unknown>;
+};
 
 /** Keywords indicating reasoning needs. */
 export const REASONING_KEYWORDS = [

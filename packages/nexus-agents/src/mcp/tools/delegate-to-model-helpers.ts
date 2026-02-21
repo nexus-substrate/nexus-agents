@@ -381,6 +381,14 @@ export function successResult(text: string): ToolResult {
   return { content: [{ type: 'text', text }] };
 }
 
+/** Creates success result with structured content for outputSchema (Issue #1117). */
+export function successResultStructured(data: Record<string, unknown>): ToolResult {
+  return {
+    content: [{ type: 'text', text: JSON.stringify(data, null, 2) }],
+    structuredContent: data,
+  };
+}
+
 /** Checks rate limit, returns error result if exceeded. */
 export function checkRateLimit(rateLimiter: RateLimiter): ToolResult | null {
   if (rateLimiter.tryAcquire()) return null;

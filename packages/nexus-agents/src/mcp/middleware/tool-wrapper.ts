@@ -241,14 +241,20 @@ function extractProgressContext(extra: unknown): ProgressContext | undefined {
 /**
  * Runs handler within nested AsyncLocalStorage contexts for progress + abort.
  */
+/** SDK-compatible tool result with optional structuredContent (Issue #1117). */
+type SdkToolResult = {
+  content: Array<{ type: 'text'; text: string }>;
+  isError?: boolean;
+  structuredContent?: Record<string, unknown>;
+};
+
 function runWithContexts(
   handler: ToolHandler,
   args: unknown,
   progressCtx: ProgressContext | undefined,
   signal: AbortSignal | undefined
-): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
-  const run = (): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> =>
-    handler(args);
+): Promise<SdkToolResult> {
+  const run = (): Promise<SdkToolResult> => handler(args);
 
   // Nest contexts: abort signal outer, progress inner
   if (signal !== undefined && progressCtx !== undefined) {
@@ -274,10 +280,7 @@ function runWithContexts(
  */
 export function toSdkCallback(
   handler: ToolHandler
-): (
-  args: unknown,
-  extra: unknown
-) => Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
+): (args: unknown, extra: unknown) => Promise<SdkToolResult> {
   return (args: unknown, extra: unknown) => {
     const progressCtx = extractProgressContext(extra);
     const signal = (extra as SdkExtra | undefined)?.signal;

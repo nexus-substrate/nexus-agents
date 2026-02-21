@@ -353,6 +353,7 @@ async function handleConsensusVote(
 type ConsensusVoteToolResponse = {
   content: Array<{ type: 'text'; text: string }>;
   isError?: boolean;
+  structuredContent?: Record<string, unknown>;
 };
 
 function createConsensusVoteHandler(deps: ConsensusVoteDeps) {
@@ -399,9 +400,37 @@ function createConsensusVoteHandler(deps: ConsensusVoteDeps) {
       approvalPercentage: result.value.approvalPercentage,
       voteCount: result.value.votes.length,
     });
-    return { content: [{ type: 'text', text: JSON.stringify(result.value, null, 2) }] };
+    const data = result.value as unknown as Record<string, unknown>;
+    return {
+      content: [{ type: 'text', text: JSON.stringify(result.value, null, 2) }],
+      structuredContent: data,
+    };
   };
 }
+
+/** Output schema for consensus_vote tool (Issue #1117). */
+const CONSENSUS_VOTE_OUTPUT_SCHEMA = {
+  proposal: z.string(),
+  strategy: VotingStrategySchema,
+  decision: z.enum(['approved', 'rejected', 'no_quorum']),
+  approvalPercentage: z.number(),
+  voteCounts: z.object({
+    approve: z.number(),
+    reject: z.number(),
+    abstain: z.number(),
+    error: z.number(),
+  }),
+  votes: z.array(
+    z.object({
+      role: z.string(),
+      decision: z.enum(['approve', 'reject', 'abstain']),
+      confidence: z.number(),
+      reasoning: z.string(),
+    })
+  ),
+  durationMs: z.number(),
+  simulateVotes: z.boolean(),
+};
 
 /**
  * Registers the consensus_vote tool with the MCP server.
@@ -444,7 +473,7 @@ export function registerConsensusVoteTool(server: McpServer, deps: ConsensusVote
 
   server.registerTool(
     'consensus_vote',
-    { description, inputSchema: toolSchema },
+    { description, inputSchema: toolSchema, outputSchema: CONSENSUS_VOTE_OUTPUT_SCHEMA },
     toSdkCallback(wrappedHandler)
   );
   logger.info('Registered consensus_vote tool with secure handler and timeout protection');

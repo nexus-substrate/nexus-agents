@@ -123,6 +123,7 @@ async function handleListWorkflows(
 type ListWorkflowsToolResponse = {
   content: Array<{ type: 'text'; text: string }>;
   isError?: boolean;
+  structuredContent?: Record<string, unknown>;
 };
 
 /**
@@ -153,8 +154,10 @@ function createListWorkflowsHandler(workflowEngine: IWorkflowEngine) {
         category: validationResult.data.category,
       });
 
+      const data = result as unknown as Record<string, unknown>;
       return {
         content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+        structuredContent: data,
       };
     } catch (error) {
       const message = getErrorMessage(error);
@@ -204,9 +207,22 @@ export function registerListWorkflowsTool(server: McpServer, deps: ListWorkflows
     timeoutMs !== undefined ? { timeoutMs, logger } : { logger }
   );
 
+  const outputSchema = {
+    workflows: z.array(
+      z.object({
+        name: z.string(),
+        version: z.string(),
+        description: z.string().optional(),
+        category: z.string().optional(),
+      })
+    ),
+    count: z.number(),
+    categories: z.array(z.string()).optional(),
+  };
+
   server.registerTool(
     'list_workflows',
-    { description, inputSchema: toolSchema },
+    { description, inputSchema: toolSchema, outputSchema },
     toSdkCallback(wrappedHandler)
   );
   logger.info('Registered list_workflows tool with secure handler and timeout protection');

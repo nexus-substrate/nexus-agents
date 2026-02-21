@@ -64,6 +64,7 @@ function serializeBonus(b: AdaptiveBonus): unknown {
 type ToolResponse = {
   content: Array<{ type: 'text'; text: string }>;
   isError?: boolean;
+  structuredContent?: Record<string, unknown>;
 };
 
 function weatherReportHandler(args: unknown, ctx: HandlerContext): Promise<ToolResponse> {
@@ -84,8 +85,10 @@ function weatherReportHandler(args: unknown, ctx: HandlerContext): Promise<ToolR
     };
     const report = generateWeatherReport(opts);
     const serialized = serializeReport(report);
+    const data = serialized as Record<string, unknown>;
     return Promise.resolve({
       content: [{ type: 'text', text: JSON.stringify(serialized, null, 2) }],
+      structuredContent: data,
     });
   } catch (caught) {
     const e = caught instanceof Error ? caught : new Error(String(caught));
@@ -143,6 +146,8 @@ export function registerWeatherReportTool(server: McpServer, deps: WeatherReport
     logger,
   });
 
+  // Note: outputSchema deferred for weather_report due to complex dynamic shape
+  // with 12+ optional fields. structuredContent is still returned for future use.
   server.registerTool(
     'weather_report',
     { description, inputSchema: toolSchema },

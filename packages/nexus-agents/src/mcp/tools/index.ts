@@ -430,6 +430,8 @@ export interface TextContent {
 export interface ToolResult {
   readonly content: readonly TextContent[];
   readonly isError?: boolean;
+  /** Structured output for SDK outputSchema validation (Issue #1117) */
+  readonly structuredContent?: Record<string, unknown>;
 }
 
 /**
@@ -446,6 +448,27 @@ export interface ToolResult {
 export function toolSuccess(text: string): ToolResult {
   return {
     content: [{ type: 'text', text }],
+  };
+}
+
+/**
+ * Creates a successful tool result with structured content for outputSchema validation.
+ *
+ * When a tool is registered with outputSchema, the SDK validates structuredContent
+ * against the schema. This helper returns both text (for display) and structured data.
+ *
+ * @param data - The structured result data (must match the tool's outputSchema)
+ * @returns A ToolResult with both text content and structuredContent
+ *
+ * @example
+ * ```typescript
+ * return toolSuccessStructured({ experts: [...], count: 10 });
+ * ```
+ */
+export function toolSuccessStructured(data: Record<string, unknown>): ToolResult {
+  return {
+    content: [{ type: 'text', text: JSON.stringify(data, null, 2) }],
+    structuredContent: data,
   };
 }
 

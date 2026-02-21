@@ -9,6 +9,7 @@ import { describe, it, expect } from 'vitest';
 import {
   registerTools,
   toolSuccess,
+  toolSuccessStructured,
   toolError,
   // All register functions must be re-exported from index
   registerOrchestrateTool,
@@ -206,6 +207,23 @@ describe('MCP tools index', () => {
     });
   });
 
+  describe('toolSuccessStructured', () => {
+    it('returns both content and structuredContent (Issue #1117)', () => {
+      const data = { experts: [{ role: 'code' }], count: 1 };
+      const result = toolSuccessStructured(data);
+      expect(result.content).toHaveLength(1);
+      expect(result.structuredContent).toEqual(data);
+      expect(result.isError).toBeUndefined();
+    });
+
+    it('serializes data to JSON text content', () => {
+      const data = { foo: 'bar', num: 42 };
+      const result = toolSuccessStructured(data);
+      const text = result.content[0]?.text ?? '';
+      expect(JSON.parse(text)).toEqual(data);
+    });
+  });
+
   describe('toolError', () => {
     it('returns content with error message', () => {
       const result = toolError('bad input');
@@ -216,6 +234,11 @@ describe('MCP tools index', () => {
     it('sets isError to true', () => {
       const result = toolError('fail');
       expect(result.isError).toBe(true);
+    });
+
+    it('does not include structuredContent', () => {
+      const result = toolError('fail');
+      expect(result.structuredContent).toBeUndefined();
     });
   });
 });

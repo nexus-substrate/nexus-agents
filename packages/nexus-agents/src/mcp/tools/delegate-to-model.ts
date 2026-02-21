@@ -28,12 +28,16 @@ import {
   routeViaCompositeRouter,
 } from './delegate-to-model-router.js';
 import type { DelegateDeps, ToolResult } from './delegate-to-model-types.js';
-import { DelegateInputSchema, TOOL_SCHEMA } from './delegate-to-model-types.js';
+import {
+  DelegateInputSchema,
+  DelegateOutputSchema,
+  TOOL_SCHEMA,
+} from './delegate-to-model-types.js';
 import {
   analyzeTask,
   selectModel,
   buildDelegateOutput,
-  successResult,
+  successResultStructured,
   errorResult,
   scoreModel,
   getCliForModel,
@@ -228,7 +232,7 @@ async function tryCompositeRoute(
   const output = mapCompositeDecisionToOutput(routerResult.decision, requirements.estimatedTokens);
   ctx.logger.info('Routed via CompositeRouter', { model: output.recommended_model });
   notifyAndRecord({ ...opts, model: output.recommended_model, router: 'CompositeRouter' });
-  return successResult(JSON.stringify(enrichWithGovernance(output, opts.governance), null, 2));
+  return successResultStructured(enrichWithGovernance(output, opts.governance));
 }
 
 /**
@@ -268,7 +272,7 @@ function createDelegateHandler(
     if (!output) return errorResult(`Unknown model: ${selection.model}`);
     ctx.logger.info('Model recommendation complete', { model: output.recommended_model });
     notifyAndRecord({ ...baseOpts, model: output.recommended_model, router: 'local' });
-    return successResult(JSON.stringify(enrichWithGovernance(output, governance), null, 2));
+    return successResultStructured(enrichWithGovernance(output, governance));
   };
 }
 
@@ -306,6 +310,7 @@ export function registerDelegateToModelTool(server: McpServer, deps: DelegateDep
       description:
         'Route a task to the optimal model based on capability matching. Returns model recommendation with reasoning.',
       inputSchema: TOOL_SCHEMA,
+      outputSchema: DelegateOutputSchema.shape,
     },
     toSdkCallback(wrappedHandler)
   );

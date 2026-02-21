@@ -176,5 +176,39 @@ describe('list_experts tool', () => {
       expect(result.isError).toBe(true);
       expect(result.content[0]?.text).toContain('Validation error');
     });
+
+    it('should register with outputSchema (Issue #1117)', () => {
+      registerListExpertsTool(
+        mockServer as unknown as Parameters<typeof registerListExpertsTool>[0],
+        deps
+      );
+
+      const config = mockServer.registerTool.mock.calls[0]?.[1] as Record<string, unknown>;
+      expect(config).toHaveProperty('outputSchema');
+      const schema = config['outputSchema'] as Record<string, unknown>;
+      expect(schema).toHaveProperty('experts');
+      expect(schema).toHaveProperty('count');
+    });
+
+    it('should return structuredContent alongside content (Issue #1117)', async () => {
+      registerListExpertsTool(
+        mockServer as unknown as Parameters<typeof registerListExpertsTool>[0],
+        deps
+      );
+
+      type StructuredResult = {
+        content: Array<{ text: string }>;
+        structuredContent?: Record<string, unknown>;
+      };
+      const handler = mockServer.registerTool.mock.calls[0]?.[2] as (
+        args: unknown
+      ) => Promise<StructuredResult>;
+      const result = await handler({});
+
+      expect(result.structuredContent).toBeDefined();
+      const sc = result.structuredContent as Record<string, unknown>;
+      expect(sc['count']).toBe(10);
+      expect(Array.isArray(sc['experts'])).toBe(true);
+    });
   });
 });

@@ -50,6 +50,7 @@ import {
   RepoAnalyzeInputSchema,
   MODEL_CAPABILITIES,
   toolSuccess,
+  toolSuccessStructured,
   toolError,
 } from '../index.js';
 
@@ -202,6 +203,8 @@ describe('Export contracts — MCP tool registration', () => {
   it('exports tool result helpers', () => {
     const success = toolSuccess('ok');
     expect(success.content[0]?.text).toBe('ok');
+    const structured = toolSuccessStructured({ count: 5 });
+    expect(structured.structuredContent).toEqual({ count: 5 });
     const error = toolError('bad');
     expect(error.isError).toBe(true);
   });

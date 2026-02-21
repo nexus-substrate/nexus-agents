@@ -145,6 +145,7 @@ function handleListExperts(args: ListExpertsInput): ListExpertsResponse {
 type ListExpertsToolResponse = {
   content: Array<{ type: 'text'; text: string }>;
   isError?: boolean;
+  structuredContent?: Record<string, unknown>;
 };
 
 /**
@@ -171,8 +172,10 @@ function listExpertsHandler(args: unknown, ctx: HandlerContext): Promise<ListExp
 
   ctx.logger.debug('Listed available experts', { count: result.count });
 
+  const data = result as unknown as Record<string, unknown>;
   return Promise.resolve({
     content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+    structuredContent: data,
   });
 }
 
@@ -209,9 +212,21 @@ export function registerListExpertsTool(server: McpServer, deps: ListExpertsDeps
   const timeoutMs = getToolTimeout('list_experts', deps.security);
   const wrappedHandler = wrapToolWithTimeout('list_experts', secureHandler, { timeoutMs, logger });
 
+  const outputSchema = {
+    experts: z.array(
+      z.object({
+        role: z.string(),
+        name: z.string(),
+        description: z.string(),
+        capabilities: z.array(z.string()),
+      })
+    ),
+    count: z.number(),
+  };
+
   server.registerTool(
     'list_experts',
-    { description, inputSchema: toolSchema },
+    { description, inputSchema: toolSchema, outputSchema },
     toSdkCallback(wrappedHandler)
   );
   logger.info('Registered list_experts tool with secure handler and timeout protection');
