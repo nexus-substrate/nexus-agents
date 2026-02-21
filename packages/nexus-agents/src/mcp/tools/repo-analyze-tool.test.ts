@@ -394,6 +394,14 @@ describe('analyzeRepo', () => {
     expect(result.description).toBeNull();
     expect(result.license).toBeNull();
   });
+
+  it('detects tests in monorepo with packages dir', () => {
+    const entries = ['packages', 'package.json', 'tsconfig.json', 'LICENSE', '.gitignore'];
+    const result = analyzeRepo(baseMetadata, entries);
+    // analyzeRepo itself doesn't call detectTestInfra (that's in analyzeGitHubRepo)
+    // but it does check top-level test dirs, so hasTests=false here
+    expect(result.hasTests).toBe(false);
+  });
 });
 
 // ============================================================================

@@ -290,11 +290,13 @@ function detectPrimaryLanguage(
 function detectTestInfra(entries: readonly string[]): boolean {
   const testDirs = ['tests', 'test', '__tests__', 'spec'];
   if (testDirs.some((d) => entries.includes(d))) return true;
-  // Check for test config files (co-located test pattern)
+  // Check for test config files (co-located test pattern, monorepos)
   const testConfigs = [
     'vitest.config.ts',
     'vitest.config.js',
     'vitest.config.mts',
+    'vitest.workspace.ts',
+    'vitest.workspace.js',
     'jest.config.ts',
     'jest.config.js',
     'jest.config.mjs',
@@ -304,7 +306,24 @@ function detectTestInfra(entries: readonly string[]): boolean {
     '.mocharc.yml',
     '.mocharc.json',
   ];
-  return testConfigs.some((c) => entries.includes(c));
+  if (testConfigs.some((c) => entries.includes(c))) return true;
+  // Monorepo: packages/ dir + package.json implies co-located tests
+  return entries.includes('packages') && entries.includes('package.json');
+}
+
+/** Infer code language from project files when GitHub reports markup. */
+function inferLanguageFromEntries(
+  entries: readonly string[],
+  fallback: string | null
+): string | null {
+  if (entries.includes('tsconfig.json')) return 'TypeScript';
+  if (entries.includes('Cargo.toml')) return 'Rust';
+  if (entries.includes('go.mod')) return 'Go';
+  if (entries.includes('pyproject.toml') || entries.includes('setup.py')) return 'Python';
+  if (entries.includes('pom.xml') || entries.includes('build.gradle')) return 'Java';
+  if (entries.includes('Gemfile')) return 'Ruby';
+  if (entries.includes('package.json')) return 'JavaScript';
+  return fallback;
 }
 
 type ExecFileFn = (cmd: string, args: string[]) => Promise<{ stdout: string }>;
@@ -357,13 +376,13 @@ async function resolveLicense(repoId: string, exec: ExecFileFn): Promise<string 
   return null;
 }
 
-/** Fetch repo data from GitHub and produce analysis. */
-export async function analyzeGitHubRepo(input: RepoAnalyzeInput): Promise<RepoAnalysis> {
-  const repoId = normalizeRepoId(input.repo);
-  const exec = await getExecFile();
-  const { metadata, entries } = await fetchRepoData(repoId, exec);
-
-  // Accurate language detection (excludes markup languages)
+/** Resolve primary language, falling back to entry inference for markup repos. */
+async function resolveLanguage(
+  repoId: string,
+  entries: readonly string[],
+  metadata: GhRepoMetadata,
+  exec: ExecFileFn
+): Promise<string | null> {
   let languages: Record<string, number> = {};
   try {
     const { stdout } = await exec('gh', ['api', `repos/${repoId}/languages`]);
@@ -371,15 +390,26 @@ export async function analyzeGitHubRepo(input: RepoAnalyzeInput): Promise<RepoAn
   } catch {
     /* fall back to metadata.language */
   }
+  const primary = detectPrimaryLanguage(languages, metadata.language);
+  if (primary === null || MARKUP_LANGUAGES.has(primary)) {
+    return inferLanguageFromEntries(entries, primary);
+  }
+  return primary;
+}
 
-  const primaryLang = detectPrimaryLanguage(languages, metadata.language);
+/** Fetch repo data from GitHub and produce analysis. */
+export async function analyzeGitHubRepo(input: RepoAnalyzeInput): Promise<RepoAnalysis> {
+  const repoId = normalizeRepoId(input.repo);
+  const exec = await getExecFile();
+  const { metadata, entries } = await fetchRepoData(repoId, exec);
+
+  const primaryLang = await resolveLanguage(repoId, entries, metadata, exec);
   const enhanced = { ...metadata, language: primaryLang };
 
-  // Resolve NOASSERTION license
-  const needsLicenseResolve =
-    enhanced.license?.spdx_id === 'NOASSERTION' &&
-    (entries.includes('LICENSE') || entries.includes('LICENSE.md'));
-  if (needsLicenseResolve) {
+  // Resolve null or NOASSERTION license when LICENSE file exists
+  const hasLicenseFile = entries.includes('LICENSE') || entries.includes('LICENSE.md');
+  const licenseUnresolved = enhanced.license === null || enhanced.license.spdx_id === 'NOASSERTION';
+  if (licenseUnresolved && hasLicenseFile) {
     const resolved = await resolveLicense(repoId, exec);
     if (resolved !== null) enhanced.license = { spdx_id: resolved };
   }
