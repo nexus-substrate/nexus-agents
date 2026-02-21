@@ -495,3 +495,46 @@ describe('Export contracts — model availability', () => {
     expect(typeof filterAvailableModels).toBe('function');
   });
 });
+
+// ============================================================================
+// SCM — Centralized SCM Provider Module (Issue #1136)
+// ============================================================================
+import {
+  ScmError,
+  resolveToken,
+  hasToken,
+  getTokenEnvVars,
+  GitHubProvider,
+  createScmProvider,
+  createGitHubProvider,
+} from '../index.js';
+
+describe('Export contracts — SCM provider module (#1136)', () => {
+  it('exports ScmError class', () => {
+    expect(typeof ScmError).toBe('function');
+    const error = new ScmError('test', 'github');
+    expect(error.platform).toBe('github');
+    expect(error.message).toBe('test');
+    expect(error.name).toBe('ScmError');
+  });
+
+  it('exports token resolver functions', () => {
+    expect(typeof resolveToken).toBe('function');
+    expect(typeof hasToken).toBe('function');
+    expect(typeof getTokenEnvVars).toBe('function');
+  });
+
+  it('exports GitHubProvider class', () => {
+    expect(typeof GitHubProvider).toBe('function');
+    const provider = new GitHubProvider('test/repo');
+    expect(provider.platform).toBe('github');
+    expect(provider.repo).toBe('test/repo');
+  });
+
+  it('exports factory functions', () => {
+    expect(typeof createScmProvider).toBe('function');
+    expect(typeof createGitHubProvider).toBe('function');
+    const provider = createGitHubProvider('test/repo');
+    expect(provider.platform).toBe('github');
+  });
+});

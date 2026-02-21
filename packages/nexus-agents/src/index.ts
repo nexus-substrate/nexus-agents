@@ -75,3 +75,6 @@ export * from './exports/swe-bench.js';
 
 // Pipeline - V2 Pipeline OS core types and execution (#907)
 export * from './exports/pipeline.js';
+
+// SCM - Centralized Source Control Management providers (#1136)
+export * from './exports/scm.js';
