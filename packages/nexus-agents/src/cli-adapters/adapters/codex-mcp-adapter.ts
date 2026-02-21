@@ -2,7 +2,7 @@
  * nexus-agents/cli-adapters - Codex MCP Adapter
  *
  * MCP-based adapter for Codex CLI. Preferred transport for Codex integration.
- * SECURITY NOTE: shell: true used only for version check (hardcoded command).
+ * SECURITY: All spawn() calls use array-based args without shell interpolation.
  */
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -338,7 +338,6 @@ export class CodexMcpAdapter implements ICliAdapter {
 
     return new Promise((resolve, reject) => {
       const childProcess = spawn('codex', ['--version'], {
-        shell: true,
         timeout: CLI_SUBPROCESS_TIMEOUTS.spawnMs,
       });
 

@@ -1,0 +1,23 @@
+# Gitleaks configuration for nexus-agents
+# Scans staged files for accidental secret commits.
+# Issue #1102 — security: Secret scanning in pre-commit hooks
+
+title = "nexus-agents secret scanning"
+
+[extend]
+# Use the default gitleaks ruleset as baseline
+useDefault = true
+
+# Allowlist: test fixtures with obviously-fake keys
+[allowlist]
+  description = "Test fixtures and documentation examples"
+  paths = [
+    '''\.test\.ts$''',
+    '''\.test\.js$''',
+    '''__tests__''',
+    '''__mocks__''',
+    '''\.md$''',
+    '''CLAUDE\.md$''',
+    '''docs/''',
+    '''\.well-known/security\.txt$''',
+  ]

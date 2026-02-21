@@ -56,6 +56,12 @@ describe('sanitize', () => {
     expect(sanitize(text)).not.toContain('my-secret');
   });
 
+  it('redacts Google AI API keys', () => {
+    const text = 'key: AIzaSyA1B2C3D4E5F6G7H8I9J0K1L2M3N4O5P6Q';
+    expect(sanitize(text)).toContain('[REDACTED]');
+    expect(sanitize(text)).not.toContain('AIzaSy');
+  });
+
   it('preserves non-secret text', () => {
     const text = 'This is a normal log message with no secrets.';
     expect(sanitize(text)).toBe(text);
@@ -105,6 +111,11 @@ describe('sanitizeDeep', () => {
     expect(sanitized.user?.apiKey).toBe('[REDACTED]');
     expect(sanitized.user?.name).toBe('John');
     expect(sanitized.user?.level).toBe(5);
+  });
+
+  it('redacts x-api-key field names', () => {
+    const result = sanitizeDeep({ 'x-api-key': 'some-key-value' });
+    expect(result).toEqual({ 'x-api-key': '[REDACTED]' });
   });
 
   it('handles circular references', () => {

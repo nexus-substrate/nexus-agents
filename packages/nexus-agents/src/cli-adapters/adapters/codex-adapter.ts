@@ -7,14 +7,8 @@
  * (Source: cli-project_plan.md v2.1.0)
  * (Source: docs/research/cli-integration-architecture.md)
  *
- * SECURITY NOTE (shell: true):
- * spawn() uses shell: true to ensure the CLI tool is found via PATH.
- * This is acceptable because:
- * 1. The command ('codex') is hardcoded, not user-provided
- * 2. All arguments are validated and constructed internally
- * 3. User task content is passed via --print flag with shell escaping
- * If shell: false is preferred, ensure 'codex' is in PATH or use full path.
- * See: https://nodejs.org/api/child_process.html#child_processspawncommand-args-options
+ * SECURITY: All spawn() calls use array-based args without shell: true.
+ * User task content is passed as a single argv element (no shell interpolation).
  */
 
 import { spawn } from 'node:child_process';
@@ -194,7 +188,6 @@ export class CodexCliAdapter implements ICliAdapter {
     return new Promise((resolve) => {
       const args = this.buildArgs(task);
       const childProcess = spawn('codex', args, {
-        // Note: shell: true removed - causes argument splitting issues
         timeout: options.timeoutMs,
       });
 
@@ -324,7 +317,6 @@ export class CodexCliAdapter implements ICliAdapter {
 
     return new Promise((resolve, reject) => {
       const childProcess = spawn('codex', ['--version'], {
-        shell: true,
         timeout: CLI_SUBPROCESS_TIMEOUTS.spawnMs,
       });
 

@@ -49,8 +49,10 @@ export interface ILogger {
 
 /** Patterns to sanitize from logs */
 const SECRET_PATTERNS = [
-  // API keys (OpenAI, Anthropic)
+  // API keys (OpenAI sk-*, Anthropic sk-ant-*)
   /sk-[a-zA-Z0-9-_]{20,}/g,
+  // Google AI / Gemini API keys (AIza prefix)
+  /AIza[0-9A-Za-z_-]{35}/g,
   // Bearer tokens
   /Bearer [a-zA-Z0-9-_.]+/g,
   // Generic credential patterns
@@ -119,6 +121,9 @@ const SENSITIVE_FIELD_NAMES = new Set([
   'cvv',
   'cvc',
   'pin',
+  'x-api-key',
+  'xapikey',
+  'x_api_key',
 ]);
 
 const LEVEL_PRIORITY: Record<LogLevel, number> = {
