@@ -21,6 +21,8 @@ import {
   type MiddlewareChainConfig,
 } from './middleware-chain.js';
 import { MCP_TIMEOUTS } from '../../config/timeouts.js';
+import { progressContextStorage, type ProgressContext } from '../mcp-notifier.js';
+import { createLogger as createInternalLogger, getErrorMessage } from '../../core/index.js';
 
 /**
  * Default timeout configuration.
@@ -191,23 +193,55 @@ export function wrapToolWithTimeout(
   });
 }
 
+/** Shape of the MCP SDK's extra._meta for progress tokens. */
+interface SdkMeta {
+  readonly progressToken?: string | number;
+}
+
+/** Shape of the MCP SDK's extra object passed to tool handlers. */
+interface SdkExtra {
+  readonly _meta?: SdkMeta;
+  readonly sendNotification?: (notification: {
+    method: string;
+    params?: Record<string, unknown>;
+  }) => Promise<void>;
+}
+
+const wrapperLogger = createInternalLogger({ component: 'tool-wrapper' });
+
+/** Extract progress context from MCP SDK extra if progressToken present. */
+function extractProgressContext(extra: unknown): ProgressContext | undefined {
+  const sdk = extra as SdkExtra | undefined;
+  const token = sdk?._meta?.progressToken;
+  const sendFn = sdk?.sendNotification;
+  if (token === undefined || sendFn === undefined) return undefined;
+
+  return {
+    progressToken: token,
+    sendNotification: (progress: number, total?: number) => {
+      const params: Record<string, unknown> = {
+        progressToken: token,
+        progress,
+      };
+      if (total !== undefined) params['total'] = total;
+      sendFn({ method: 'notifications/progress', params }).catch((err: unknown) => {
+        wrapperLogger.debug('Failed to send progress notification', {
+          error: getErrorMessage(err),
+        });
+      });
+    },
+  };
+}
+
 /**
  * Adapts a ToolHandler to the MCP SDK's expected callback signature.
  *
- * The MCP SDK's registerTool expects a callback that receives (args, extra)
- * and returns CallToolResult. Our ToolHandler receives just args and returns
- * ToolResult. This adapter bridges the two types safely.
+ * When the client provides a progressToken in _meta, runs the handler
+ * within an AsyncLocalStorage context so withProgressHeartbeat can
+ * send real progress notifications that reset the client timeout.
  *
  * @param handler - Our internal ToolHandler
  * @returns SDK-compatible callback function
- *
- * @example
- * ```typescript
- * const handler = wrapToolWithTimeout('my_tool', async (args) => {
- *   return { content: [{ type: 'text', text: 'Done' }] };
- * });
- * server.registerTool('my_tool', config, toSdkCallback(handler));
- * ```
  */
 export function toSdkCallback(
   handler: ToolHandler
@@ -215,10 +249,15 @@ export function toSdkCallback(
   args: unknown,
   extra: unknown
 ) => Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
-  return async (args: unknown, _extra: unknown) => {
-    const result = await handler(args);
-    // Our ToolResult is structurally compatible with CallToolResult
-    return result;
+  return async (args: unknown, extra: unknown) => {
+    const progressCtx = extractProgressContext(extra);
+
+    // Run within progress context if progressToken is available
+    if (progressCtx !== undefined) {
+      return progressContextStorage.run(progressCtx, () => handler(args));
+    }
+
+    return handler(args);
   };
 }
 

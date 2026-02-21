@@ -6,11 +6,16 @@
  * Clients (e.g., Claude Code) can display these for real-time
  * observability of orchestration events.
  *
+ * Also provides progress notification support via AsyncLocalStorage
+ * for resetting client-side request timeouts (MCP SDK resetTimeoutOnProgress).
+ *
  * @module mcp/mcp-notifier
  * (Source: Issue #973, #974 — Claude Code Observability)
+ * (Source: Issue #1108 — Progress heartbeat timeout reset)
  * (Source: MCP Protocol 2025-11-25, Logging Specification)
  */
 
+import { AsyncLocalStorage } from 'node:async_hooks';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { createLogger, getErrorMessage } from '../core/index.js';
 
@@ -80,14 +85,41 @@ export const NOOP_NOTIFIER: IMcpNotifier = {
   warn: () => undefined,
 };
 
+// ============================================================================
+// Progress Notification Support (MCP SDK resetTimeoutOnProgress)
+// ============================================================================
+
+/**
+ * Callback to send a progress notification to the MCP client.
+ * When the client sets resetTimeoutOnProgress=true, each notification
+ * resets the client's 60s request timeout.
+ */
+export type ProgressSender = (progress: number, total?: number) => void;
+
+/**
+ * Progress context stored via AsyncLocalStorage.
+ * Set by toSdkCallbackWithProgress when a progressToken is available.
+ */
+export interface ProgressContext {
+  readonly progressToken: string | number;
+  readonly sendNotification: ProgressSender;
+}
+
+/**
+ * AsyncLocalStorage for MCP progress context.
+ * Allows withProgressHeartbeat to access the progress sender without
+ * threading it through the entire middleware chain.
+ */
+export const progressContextStorage = new AsyncLocalStorage<ProgressContext>();
+
 /**
  * Wraps an async operation with periodic heartbeat notifications.
- * Sends "still working" logging messages every `intervalMs` to provide
- * observability into long-running tool execution.
  *
- * Note: These are logging notifications (notifications/message), not
- * progress notifications (notifications/progress with progressToken).
- * Full progressToken support tracked in Issue #976.
+ * When a progressToken is available (via AsyncLocalStorage from the MCP
+ * request handler), sends real `notifications/progress` that reset the
+ * client's request timeout (MCP SDK resetTimeoutOnProgress feature).
+ *
+ * Always sends logging notifications for observability regardless.
  *
  * @param toolName - Name of the tool for notification context
  * @param notifier - MCP notifier instance
@@ -103,14 +135,23 @@ export async function withProgressHeartbeat<T>(
 ): Promise<T> {
   const startTime = Date.now();
   let beatCount = 0;
+  const progressCtx = progressContextStorage.getStore();
 
   const timer = setInterval(() => {
     beatCount++;
     const elapsed = Math.round((Date.now() - startTime) / 1000);
+
+    // Send real progress notification if client provided progressToken
+    if (progressCtx !== undefined) {
+      progressCtx.sendNotification(beatCount);
+    }
+
+    // Always send logging notification for observability
     notifier.debug(toolName, {
       event: 'heartbeat',
       elapsedSeconds: elapsed,
       beatCount,
+      hasProgressToken: progressCtx !== undefined,
     });
   }, intervalMs);
 

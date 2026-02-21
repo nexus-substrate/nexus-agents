@@ -8,7 +8,13 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { createToolFactory, wrapToolWithTimeout, DEFAULT_TIMEOUT_CONFIG } from './tool-wrapper.js';
+import {
+  createToolFactory,
+  wrapToolWithTimeout,
+  toSdkCallback,
+  DEFAULT_TIMEOUT_CONFIG,
+} from './tool-wrapper.js';
+import { progressContextStorage } from '../mcp-notifier.js';
 import type { SecurityConfig } from '../../config/schemas.js';
 
 describe('tool-wrapper', () => {
@@ -216,6 +222,71 @@ describe('tool-wrapper', () => {
 
       expect(result.isError).toBe(true);
       expect(result.content[0]?.text).toBeDefined();
+    });
+  });
+});
+
+describe('toSdkCallback progress context', () => {
+  it('sets progress context when extra has progressToken', async () => {
+    vi.useRealTimers();
+    let capturedCtx: unknown = 'not-set';
+    const handler = vi.fn(() => {
+      capturedCtx = progressContextStorage.getStore();
+      return Promise.resolve({ content: [{ type: 'text' as const, text: 'ok' }] });
+    });
+
+    const callback = toSdkCallback(handler);
+    const extra = {
+      _meta: { progressToken: 42 },
+      sendNotification: vi.fn(() => Promise.resolve()),
+    };
+
+    await callback({ input: 'test' }, extra);
+
+    expect(capturedCtx).toBeDefined();
+    const ctx = capturedCtx as { progressToken: number };
+    expect(ctx.progressToken).toBe(42);
+  });
+
+  it('does not set progress context when no progressToken', async () => {
+    vi.useRealTimers();
+    let capturedCtx: unknown = 'not-set';
+    const handler = vi.fn(() => {
+      capturedCtx = progressContextStorage.getStore();
+      return Promise.resolve({ content: [{ type: 'text' as const, text: 'ok' }] });
+    });
+
+    const callback = toSdkCallback(handler);
+    await callback({ input: 'test' }, {});
+
+    expect(capturedCtx).toBeUndefined();
+  });
+
+  it('progress sender calls sendNotification with correct params', async () => {
+    vi.useRealTimers();
+    const sendFn = vi.fn(() => Promise.resolve());
+    let capturedSender: ((n: number) => void) | undefined;
+    const handler = vi.fn(() => {
+      const ctx = progressContextStorage.getStore();
+      capturedSender = ctx?.sendNotification;
+      return Promise.resolve({ content: [{ type: 'text' as const, text: 'ok' }] });
+    });
+
+    const callback = toSdkCallback(handler);
+    await callback(
+      {},
+      {
+        _meta: { progressToken: 'tok-1' },
+        sendNotification: sendFn,
+      }
+    );
+
+    expect(capturedSender).toBeDefined();
+    capturedSender?.(5);
+
+    expect(sendFn).toHaveBeenCalledWith({
+      method: 'notifications/progress',
+      params: { progressToken: 'tok-1', progress: 5 },
     });
   });
 });
