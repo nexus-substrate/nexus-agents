@@ -9,6 +9,7 @@
  * (Source: GitHub REST API v2022-11-28)
  */
 
+import { execFileSync } from 'node:child_process';
 import type { Result } from '../core/index.js';
 import { ok, err, createLogger } from '../core/index.js';
 import type { PRMetadata, PRFileChange, ReviewDecision } from './pr-review-types.js';
@@ -468,13 +469,36 @@ export function parseIssueUrl(url: string): Result<
 }
 
 /**
+ * Try to resolve token from `gh auth token` CLI (synchronous).
+ * Returns the token string or undefined if gh CLI is unavailable.
+ */
+function tryGhCliToken(): string | undefined {
+  try {
+    const stdout = execFileSync('gh', ['auth', 'token'], {
+      timeout: 5_000,
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    const trimmed = stdout.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Creates a GitHub client from environment variables.
+ * Falls back to `gh auth token` CLI when env vars are not set (#1131).
  */
 export function createGitHubClientFromEnv(): Result<GitHubClient, Error> {
-  const token = process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN;
+  const token = process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN ?? tryGhCliToken();
 
   if (token === undefined) {
-    return err(new Error('GITHUB_TOKEN or GH_TOKEN environment variable is required'));
+    return err(
+      new Error(
+        'GitHub token not found. Set GITHUB_TOKEN or GH_TOKEN, or authenticate with `gh auth login`.'
+      )
+    );
   }
 
   return ok(
