@@ -221,14 +221,17 @@ function computeAdaptiveBonuses(cfg: WeatherReportConfig): readonly AdaptiveBonu
       const sufficient = sampleCount >= cfg.coldStartThreshold;
       const adaptiveAdj = sufficient ? getAdaptiveBonus(cli, category, cfg) : 0;
 
-      bonuses.push({
-        cli,
-        category,
-        staticBonus,
-        adaptiveBonus: Math.round(adaptiveAdj * 10) / 10,
-        sampleCount,
-        sufficient,
-      });
+      // Only include entries with actual data or non-zero bonuses
+      if (sampleCount > 0 || staticBonus > 0 || adaptiveAdj !== 0) {
+        bonuses.push({
+          cli,
+          category,
+          staticBonus,
+          adaptiveBonus: Math.round(adaptiveAdj * 10) / 10,
+          sampleCount,
+          sufficient,
+        });
+      }
     }
   }
 

@@ -259,32 +259,134 @@ export function analyzeRepo(
   };
 }
 
-/** Fetch repo data from GitHub and produce analysis. */
-export async function analyzeGitHubRepo(input: RepoAnalyzeInput): Promise<RepoAnalysis> {
-  const repoId = normalizeRepoId(input.repo);
+/** Non-code languages to exclude when detecting primary language. */
+const MARKUP_LANGUAGES = new Set([
+  'HTML',
+  'CSS',
+  'SCSS',
+  'Less',
+  'Markdown',
+  'Roff',
+  'SVG',
+  'XML',
+  'XSLT',
+  'Mustache',
+  'Handlebars',
+  'EJS',
+]);
 
-  // Use gh CLI for API access (available in nexus-agents environment)
+/** Detect primary language from GitHub languages API (byte counts). */
+function detectPrimaryLanguage(
+  languages: Record<string, number>,
+  fallback: string | null
+): string | null {
+  const sorted = Object.entries(languages)
+    .filter(([lang]) => !MARKUP_LANGUAGES.has(lang))
+    .sort((a, b) => b[1] - a[1]);
+  return sorted.length > 0 ? sorted[0][0] : fallback;
+}
+
+/** Check for test infrastructure beyond top-level directories. */
+function detectTestInfra(entries: readonly string[]): boolean {
+  const testDirs = ['tests', 'test', '__tests__', 'spec'];
+  if (testDirs.some((d) => entries.includes(d))) return true;
+  // Check for test config files (co-located test pattern)
+  const testConfigs = [
+    'vitest.config.ts',
+    'vitest.config.js',
+    'vitest.config.mts',
+    'jest.config.ts',
+    'jest.config.js',
+    'jest.config.mjs',
+    'cypress.config.ts',
+    'cypress.config.js',
+    'playwright.config.ts',
+    '.mocharc.yml',
+    '.mocharc.json',
+  ];
+  return testConfigs.some((c) => entries.includes(c));
+}
+
+type ExecFileFn = (cmd: string, args: string[]) => Promise<{ stdout: string }>;
+
+/** Lazy-load promisified execFile. */
+async function getExecFile(): Promise<ExecFileFn> {
   const { execFile } = await import('node:child_process');
   const { promisify } = await import('node:util');
-  const execFileAsync = promisify(execFile);
+  return promisify(execFile);
+}
 
-  // Fetch repo metadata
-  const { stdout: metaJson } = await execFileAsync('gh', [
+/** Fetch repo metadata and languages via GitHub API. */
+async function fetchRepoData(
+  repoId: string,
+  exec: ExecFileFn
+): Promise<{ metadata: GhRepoMetadata; entries: string[] }> {
+  const { stdout: metaJson } = await exec('gh', [
     'api',
     `repos/${repoId}`,
     '--jq',
     '{name: .name, full_name: .full_name, description: .description, language: .language, default_branch: .default_branch, stargazers_count: .stargazers_count, license: .license}',
   ]);
   const metadata = JSON.parse(metaJson.trim()) as GhRepoMetadata;
-
-  // Fetch top-level directory listing
-  const { stdout: contentsJson } = await execFileAsync('gh', [
+  const { stdout: contentsJson } = await exec('gh', [
     'api',
     `repos/${repoId}/contents`,
     '--jq',
     '[.[].name]',
   ]);
   const entries = JSON.parse(contentsJson.trim()) as string[];
+  return { metadata, entries };
+}
 
-  return analyzeRepo(metadata, entries);
+/** Resolve NOASSERTION license via the GitHub license API. */
+async function resolveLicense(repoId: string, exec: ExecFileFn): Promise<string | null> {
+  try {
+    const { stdout } = await exec('gh', [
+      'api',
+      `repos/${repoId}/license`,
+      '--jq',
+      '.license.spdx_id',
+    ]);
+    const spdxId = stdout.trim();
+    if (spdxId !== '' && spdxId !== 'null' && spdxId !== 'NOASSERTION') {
+      return spdxId;
+    }
+  } catch {
+    // Keep NOASSERTION if license API also fails
+  }
+  return null;
+}
+
+/** Fetch repo data from GitHub and produce analysis. */
+export async function analyzeGitHubRepo(input: RepoAnalyzeInput): Promise<RepoAnalysis> {
+  const repoId = normalizeRepoId(input.repo);
+  const exec = await getExecFile();
+  const { metadata, entries } = await fetchRepoData(repoId, exec);
+
+  // Accurate language detection (excludes markup languages)
+  let languages: Record<string, number> = {};
+  try {
+    const { stdout } = await exec('gh', ['api', `repos/${repoId}/languages`]);
+    languages = JSON.parse(stdout.trim()) as Record<string, number>;
+  } catch {
+    /* fall back to metadata.language */
+  }
+
+  const primaryLang = detectPrimaryLanguage(languages, metadata.language);
+  const enhanced = { ...metadata, language: primaryLang };
+
+  // Resolve NOASSERTION license
+  const needsLicenseResolve =
+    enhanced.license?.spdx_id === 'NOASSERTION' &&
+    (entries.includes('LICENSE') || entries.includes('LICENSE.md'));
+  if (needsLicenseResolve) {
+    const resolved = await resolveLicense(repoId, exec);
+    if (resolved !== null) enhanced.license = { spdx_id: resolved };
+  }
+
+  const analysis = analyzeRepo(enhanced, entries);
+  if (!analysis.hasTests && detectTestInfra(entries)) {
+    return { ...analysis, hasTests: true };
+  }
+  return analysis;
 }

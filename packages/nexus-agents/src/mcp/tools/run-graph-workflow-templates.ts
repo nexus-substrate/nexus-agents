@@ -256,7 +256,6 @@ function scanImportsHandler(state: Readonly<GraphState>): Promise<Partial<GraphS
     vulns.push('CWE-1321: Prototype pollution');
     severity += 4;
   }
-  if (vulns.length === 0) vulns.push('No import-level vulnerabilities detected');
   return Promise.resolve({ vulnerabilities: vulns, severity });
 }
 
@@ -280,7 +279,6 @@ function checkPatternsHandler(state: Readonly<GraphState>): Promise<Partial<Grap
     vulns.push('CWE-20: Unvalidated JSON.parse');
     addedSeverity += 2;
   }
-  if (vulns.length === 0) vulns.push('No pattern-level vulnerabilities detected');
   const currentSeverity = Number(state['severity']);
   return Promise.resolve({ vulnerabilities: vulns, severity: currentSeverity + addedSeverity });
 }
@@ -293,17 +291,21 @@ function severityRouter(state: Readonly<GraphState>): string {
 function criticalReportHandler(state: Readonly<GraphState>): Promise<Partial<GraphState>> {
   const vulns = state['vulnerabilities'] as string[];
   const severity = Number(state['severity']);
+  const findings = vulns.length > 0 ? vulns.join('; ') : 'No vulnerabilities detected';
   const report =
     `CRITICAL: ${String(vulns.length)} vulnerabilities found (severity: ${String(severity)}). ` +
-    `Findings: ${vulns.join('; ')}. Immediate remediation required.`;
+    `Findings: ${findings}. Immediate remediation required.`;
   return Promise.resolve({ report });
 }
 
 function standardReportHandler(state: Readonly<GraphState>): Promise<Partial<GraphState>> {
   const vulns = state['vulnerabilities'] as string[];
   const severity = Number(state['severity']);
+  const findings = vulns.length > 0 ? vulns.join('; ') : 'No vulnerabilities detected';
   const report =
-    `PASS: ${String(vulns.length)} findings (severity: ${String(severity)}). ` +
-    `Details: ${vulns.join('; ')}. No critical issues.`;
+    vulns.length === 0
+      ? 'PASS: No vulnerabilities detected.'
+      : `PASS: ${String(vulns.length)} findings (severity: ${String(severity)}). ` +
+        `Details: ${findings}. No critical issues.`;
   return Promise.resolve({ report });
 }

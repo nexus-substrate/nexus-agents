@@ -161,13 +161,16 @@ export async function isCliAvailable(cli: CliName, cache?: ICliDetectionCache): 
  */
 export async function getAvailableClis(cache?: ICliDetectionCache): Promise<CliName[]> {
   const clis: CliName[] = ['claude', 'gemini', 'codex'];
-  const available: CliName[] = [];
 
-  for (const cli of clis) {
-    if (await isCliAvailable(cli, cache)) {
-      available.push(cli);
-    }
-  }
+  // Check all CLIs in parallel to avoid sequential timeout penalties
+  const results = await Promise.allSettled(
+    clis.map(async (cli) => ({ cli, available: await isCliAvailable(cli, cache) }))
+  );
 
-  return available;
+  return results
+    .filter(
+      (r): r is PromiseFulfilledResult<{ cli: CliName; available: boolean }> =>
+        r.status === 'fulfilled' && r.value.available
+    )
+    .map((r) => r.value.cli);
 }

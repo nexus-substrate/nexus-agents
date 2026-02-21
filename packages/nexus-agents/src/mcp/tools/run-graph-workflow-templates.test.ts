@@ -183,7 +183,7 @@ describe('security-scan workflow', () => {
     expect(Number(result.finalState['severity'])).toBeLessThan(5);
     const report = String(result.finalState['report']);
     expect(report).toContain('PASS');
-    expect(report).toContain('No critical issues');
+    expect(report).toContain('No vulnerabilities detected');
   });
 
   it('routes dangerous code through critical_report', async () => {

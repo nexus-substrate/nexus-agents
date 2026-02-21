@@ -149,7 +149,7 @@ function buildOutputFromOrchestratorResult(
       estimatedEffort: analysis.estimatedEffort,
     },
     routing,
-    result: orchResult.output,
+    result: orchResult.steps.length > 0 ? orchResult.steps[orchResult.steps.length - 1] : undefined,
     stepsCompleted: orchResult.steps.length,
     metadata: {
       durationMs,
