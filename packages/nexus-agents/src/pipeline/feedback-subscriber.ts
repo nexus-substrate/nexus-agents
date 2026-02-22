@@ -74,7 +74,7 @@ function recordStageFailed(
 ): void {
   const outcome: TaskOutcome = {
     id: `fb-fail-${event.executionId}-${String(event.timestamp)}`,
-    cli: 'claude',
+    cli: 'claude', // Stage failures don't carry CLI info; default to claude
     category: 'code_generation',
     model: 'unknown',
     success: false,

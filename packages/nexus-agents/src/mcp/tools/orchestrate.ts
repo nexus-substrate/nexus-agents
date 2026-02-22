@@ -219,7 +219,7 @@ function recordToOutcomeStore(
     const match = detectTaskCategory(taskDescription);
     getOutcomeStore().append({
       id: `orch-${String(Date.now())}-${Math.random().toString(36).slice(2, 8)}`,
-      cli: 'claude',
+      cli: match?.primaryCli ?? 'claude',
       category: match?.category ?? 'exploration',
       model: 'orchestrator',
       success,
@@ -467,6 +467,33 @@ function handleOrchestratorFailure(ctx: {
   );
 }
 
+/** Builds output and records success outcome. */
+function handleOrchestratorSuccess(ctx: {
+  orchResult: import('../../core/types/orchestrator.js').OrchestratorResult;
+  taskId: string;
+  taskDescription: string;
+  decision: import('../../orchestration/workflow-router-types.js').RoutingDecision;
+  workflowRouter: IWorkflowRouter;
+  startTime: number;
+  logger: ILogger;
+}): Result<OrchestrateOutput, OrchestrationError> {
+  const durationMs = getTimeProvider().now() - ctx.startTime;
+  const output = buildOutputFromOrchestratorResult(
+    ctx.taskId,
+    ctx.orchResult,
+    durationMs,
+    buildRoutingInfo(ctx.decision)
+  );
+  recordOrchestrationSuccess(ctx.taskId, ctx.taskDescription, output.stepsCompleted, durationMs);
+  recordRouterOutcome(ctx.workflowRouter, ctx.decision, true, durationMs);
+  ctx.logger.info('Orchestration completed', {
+    taskId: ctx.taskId,
+    durationMs,
+    stepsCompleted: output.stepsCompleted,
+  });
+  return ok(output);
+}
+
 async function executeOrchestration(
   input: OrchestrateInput,
   deps: OrchestrateDeps,
@@ -501,21 +528,15 @@ async function executeOrchestration(
         logger,
       });
     }
-    const durationMs = getTimeProvider().now() - startTime;
-    const output = buildOutputFromOrchestratorResult(
+    return handleOrchestratorSuccess({
+      orchResult: result.value,
       taskId,
-      result.value,
-      durationMs,
-      buildRoutingInfo(decision)
-    );
-    recordOrchestrationSuccess(taskId, input.task, output.stepsCompleted, durationMs);
-    recordRouterOutcome(workflowRouter, decision, true, durationMs);
-    logger.info('Orchestration completed', {
-      taskId,
-      durationMs,
-      stepsCompleted: output.stepsCompleted,
+      taskDescription: input.task,
+      decision,
+      workflowRouter,
+      startTime,
+      logger,
     });
-    return ok(output);
   } catch (error) {
     return handleOrchestrationException(error, taskId, input.task, logger);
   } finally {

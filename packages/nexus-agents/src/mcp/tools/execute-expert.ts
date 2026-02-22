@@ -180,7 +180,7 @@ function recordExpertOutcome(opts: {
     const match = detectTaskCategory(opts.task);
     getOutcomeStore().append({
       id: `exp-${String(Date.now())}-${Math.random().toString(36).slice(2, 8)}`,
-      cli: 'claude',
+      cli: match?.primaryCli ?? 'claude',
       category: match?.category ?? 'exploration',
       model: opts.model ?? 'expert',
       success: opts.success,

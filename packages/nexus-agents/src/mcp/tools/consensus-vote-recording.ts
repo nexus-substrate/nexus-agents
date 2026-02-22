@@ -70,7 +70,7 @@ export function recordVoteOutcomes(votes: readonly AgentVoteResult[]): void {
       if (vote.source === 'simulation') continue;
       store.append({
         id: `vote-${String(Date.now())}-${Math.random().toString(36).slice(2, 8)}`,
-        cli: 'claude',
+        cli: 'claude', // Votes don't carry CLI info yet; see voter-agents round-robin
         category: 'planning',
         model: 'consensus',
         success: vote.source === 'llm',
