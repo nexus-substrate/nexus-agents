@@ -21,21 +21,17 @@ import {
 // ============================================================================
 
 describe('GEMINI_LEGACY_DEFAULTS', () => {
-  it('has display names for known models', () => {
-    expect(GEMINI_LEGACY_DEFAULTS.displayNames['gemini-2.5-pro']).toBe('Gemini 2.5 Pro');
-    expect(GEMINI_LEGACY_DEFAULTS.displayNames['gemini-2.5-flash']).toBe('Gemini 2.5 Flash');
-    expect(GEMINI_LEGACY_DEFAULTS.displayNames['gemini-2.5-flash-lite']).toBe(
-      'Gemini 2.5 Flash Lite'
-    );
+  it('has no per-model overrides (all models in canonical registry)', () => {
+    // All current models are in model-capabilities.ts
+    expect(Object.keys(GEMINI_LEGACY_DEFAULTS.displayNames)).toHaveLength(0);
+    expect(Object.keys(GEMINI_LEGACY_DEFAULTS.contextWindows)).toHaveLength(0);
+    expect(Object.keys(GEMINI_LEGACY_DEFAULTS.inputCosts)).toHaveLength(0);
+    expect(Object.keys(GEMINI_LEGACY_DEFAULTS.outputCosts)).toHaveLength(0);
   });
 
-  it('has context windows for known models', () => {
-    expect(GEMINI_LEGACY_DEFAULTS.contextWindows['gemini-2.5-pro']).toBe(1_000_000);
-  });
-
-  it('has fallback cost values', () => {
-    expect(GEMINI_LEGACY_DEFAULTS.inputCost).toBe(0.075);
-    expect(GEMINI_LEGACY_DEFAULTS.outputCost).toBe(0.3);
+  it('has sensible fallback values for unknown models', () => {
+    expect(GEMINI_LEGACY_DEFAULTS.inputCost).toBe(0.15);
+    expect(GEMINI_LEGACY_DEFAULTS.outputCost).toBe(0.6);
     expect(GEMINI_LEGACY_DEFAULTS.contextWindow).toBe(1_000_000);
   });
 });

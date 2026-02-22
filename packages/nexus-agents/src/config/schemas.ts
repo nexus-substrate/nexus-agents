@@ -153,11 +153,11 @@ export type AppConfig = z.infer<typeof AppConfigSchema>;
  */
 export const defaultConfig: Partial<AppConfig> = {
   models: {
-    default: 'claude-sonnet-4',
+    default: 'claude-sonnet',
     tiers: {
-      fast: ['claude-haiku-3', 'gpt-4o-mini'],
-      balanced: ['claude-sonnet-4', 'gpt-4o'],
-      powerful: ['claude-opus-4', 'o1-pro'],
+      fast: ['claude-haiku', 'gemini-flash'],
+      balanced: ['claude-sonnet', 'gemini-pro'],
+      powerful: ['claude-opus', 'codex-5.3'],
     },
   },
   logging: {

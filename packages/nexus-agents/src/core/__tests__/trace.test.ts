@@ -43,24 +43,25 @@ describe('trace', () => {
   });
 
   describe('calculateCost', () => {
-    it('calculates cost for known Claude model', () => {
-      const cost = calculateCost('claude-sonnet-4', 1000, 500);
+    it('calculates cost for canonical Claude model', () => {
+      const cost = calculateCost('claude-sonnet', 1000, 500);
       expect(cost).toBeDefined();
-      // claude-sonnet-4: $3/1M input, $15/1M output
+      // claude-sonnet: $3/1M input, $15/1M output
       // Expected: (1000/1M * 3) + (500/1M * 15) = 0.003 + 0.0075 = 0.0105
       expect(cost).toBeCloseTo(0.0105, 6);
     });
 
-    it('calculates cost for known OpenAI model', () => {
-      const cost = calculateCost('gpt-4o', 10000, 5000);
+    it('calculates cost for canonical Codex model', () => {
+      const cost = calculateCost('codex-5.3', 10000, 5000);
       expect(cost).toBeDefined();
-      // gpt-4o: $2.5/1M input, $10/1M output
-      // Expected: (10000/1M * 2.5) + (5000/1M * 10) = 0.025 + 0.05 = 0.075
-      expect(cost).toBeCloseTo(0.075, 6);
+      // codex-5.3: $2/1M input, $8/1M output
+      // Expected: (10000/1M * 2) + (5000/1M * 8) = 0.02 + 0.04 = 0.06
+      expect(cost).toBeCloseTo(0.06, 6);
     });
 
     it('handles partial model name matches', () => {
-      const cost = calculateCost('claude-sonnet-4-20250514', 1000, 500);
+      // claude-sonnet matches by id prefix
+      const cost = calculateCost('claude-sonnet-extra', 1000, 500);
       expect(cost).toBeDefined();
       expect(cost).toBeCloseTo(0.0105, 6);
     });
@@ -71,15 +72,15 @@ describe('trace', () => {
     });
 
     it('handles zero tokens', () => {
-      const cost = calculateCost('claude-sonnet-4', 0, 0);
+      const cost = calculateCost('claude-sonnet', 0, 0);
       expect(cost).toBe(0);
     });
 
     it('handles large token counts', () => {
-      const cost = calculateCost('gpt-4o', 1_000_000, 500_000);
+      const cost = calculateCost('codex-5.3', 1_000_000, 500_000);
       expect(cost).toBeDefined();
-      // Expected: (1M/1M * 2.5) + (500K/1M * 10) = 2.5 + 5 = 7.5
-      expect(cost).toBeCloseTo(7.5, 2);
+      // Expected: (1M/1M * 2) + (500K/1M * 8) = 2 + 4 = 6
+      expect(cost).toBeCloseTo(6, 2);
     });
   });
 

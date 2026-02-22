@@ -135,22 +135,12 @@ describe('GeminiCliAdapter', () => {
       expect(info.costPerMillionOutput).toBe(10.0);
     });
 
-    it('should return correct info for flash-lite model', () => {
-      const liteAdapter = new GeminiCliAdapter({ model: 'gemini-2.5-flash-lite' });
-      const info = liteAdapter.getModelInfo();
-
-      expect(info.id).toBe('gemini-2.5-flash-lite');
-      expect(info.name).toBe('Gemini 2.5 Flash Lite');
-      expect(info.costPerMillionInput).toBe(0.015);
-      expect(info.costPerMillionOutput).toBe(0.06);
-    });
-
     it('should use default costs for unknown model', () => {
       const unknownAdapter = new GeminiCliAdapter({ model: 'gemini-unknown' });
       const info = unknownAdapter.getModelInfo();
 
-      expect(info.costPerMillionInput).toBe(0.075);
-      expect(info.costPerMillionOutput).toBe(0.3);
+      expect(info.costPerMillionInput).toBe(0.15);
+      expect(info.costPerMillionOutput).toBe(0.6);
       expect(info.contextWindow).toBe(1_000_000);
     });
   });

@@ -10,34 +10,25 @@ import type { CliError, CliName } from '../types.js';
 import type { FailureCategory } from '../circuit-breaker-types.js';
 
 // -----------------------------------------------------------------------------
-// Legacy Fallback Defaults (for non-canonical models)
+// Fallback Defaults (for unknown models not in canonical registry)
 // -----------------------------------------------------------------------------
 
-/** Legacy fallback values for Gemini models not in the canonical registry. */
+/**
+ * Fallback defaults for Gemini models not in the canonical registry.
+ * All current models are in model-capabilities.ts and served by
+ * buildModelInfo('gemini', model). This provides sensible defaults
+ * when an unknown model name is encountered at runtime.
+ *
+ * @see config/model-capabilities.ts — single source of truth for current models
+ */
 export const GEMINI_LEGACY_DEFAULTS = {
-  displayNames: {
-    'gemini-2.5-pro': 'Gemini 2.5 Pro',
-    'gemini-2.5-flash': 'Gemini 2.5 Flash',
-    'gemini-2.5-flash-lite': 'Gemini 2.5 Flash Lite',
-  } as Readonly<Record<string, string>>,
-  contextWindows: {
-    'gemini-2.5-pro': 1_000_000,
-    'gemini-2.5-flash': 1_000_000,
-    'gemini-2.5-flash-lite': 1_000_000,
-  } as Readonly<Record<string, number>>,
-  inputCosts: {
-    'gemini-2.5-pro': 1.25,
-    'gemini-2.5-flash': 0.075,
-    'gemini-2.5-flash-lite': 0.015,
-  } as Readonly<Record<string, number>>,
-  outputCosts: {
-    'gemini-2.5-pro': 10.0,
-    'gemini-2.5-flash': 0.3,
-    'gemini-2.5-flash-lite': 0.06,
-  } as Readonly<Record<string, number>>,
+  displayNames: {} as Readonly<Record<string, string>>,
+  contextWindows: {} as Readonly<Record<string, number>>,
+  inputCosts: {} as Readonly<Record<string, number>>,
+  outputCosts: {} as Readonly<Record<string, number>>,
   contextWindow: 1_000_000,
-  inputCost: 0.075,
-  outputCost: 0.3,
+  inputCost: 0.15,
+  outputCost: 0.6,
 } as const;
 
 // -----------------------------------------------------------------------------

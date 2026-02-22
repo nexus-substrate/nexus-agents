@@ -11,9 +11,10 @@
 
 import type { ModelCapability, ScalingTaskType } from './scaling-types.js';
 import { clamp } from '../../utils/math-utils.js';
+import { DEFAULT_MODEL_CAPABILITIES } from '../../config/model-capabilities.js';
 
 // =============================================================================
-// Capability Data
+// Capability Data — derived from canonical model registry
 // =============================================================================
 
 /**
@@ -26,27 +27,48 @@ interface BaseCapability {
   readonly avgLatencyMs: number;
 }
 
+/** Avg latency estimates per provider (ms). Not in canonical registry. */
+const PROVIDER_AVG_LATENCY: Record<string, number> = {
+  anthropic: 3000,
+  google: 1500,
+  openai: 2500,
+};
+
 /**
- * Known model capabilities.
- * Accuracy values are approximate and vary by task type.
+ * Derive BaseCapability from canonical registry quality scores.
+ * Maps quality scores (1-10) to the 0-1 accuracy/cost scale used here.
+ */
+function deriveFromCanonical(): Record<string, BaseCapability> {
+  const result: Record<string, BaseCapability> = {};
+  for (const m of DEFAULT_MODEL_CAPABILITIES.models) {
+    const q = m.qualityScores;
+    if (q === undefined) continue;
+    const avgQuality = (q.reasoning + q.codeGeneration) / 2;
+    const baseLatency = PROVIDER_AVG_LATENCY[m.provider] ?? 2000;
+    const speedFactor = q.speed / 10;
+    result[m.id] = {
+      estimatedAccuracy: clamp(avgQuality / 10, 0, 1),
+      relativeCost: clamp(1 - q.cost / 10, 0, 1),
+      avgLatencyMs: Math.round(baseLatency * (1.5 - speedFactor)),
+    };
+    // Also register by cliModelName for versioned lookups
+    if (m.cliModelName !== undefined) {
+      result[m.cliModelName] = result[m.id];
+    }
+  }
+  return result;
+}
+
+/**
+ * Known model capabilities — derived from canonical model-capabilities.ts registry.
+ * Open-source models included for multi-agent scaling comparisons.
+ *
+ * @see config/model-capabilities.ts — single source of truth for current models
  */
 const MODEL_CAPABILITIES: Record<string, BaseCapability> = {
-  // Claude models
-  'claude-opus-4': { estimatedAccuracy: 0.9, relativeCost: 1.0, avgLatencyMs: 6000 },
-  'claude-3-opus': { estimatedAccuracy: 0.85, relativeCost: 1.0, avgLatencyMs: 5000 },
-  'claude-3.5-sonnet': { estimatedAccuracy: 0.82, relativeCost: 0.5, avgLatencyMs: 2500 },
-  'claude-3-sonnet': { estimatedAccuracy: 0.75, relativeCost: 0.6, avgLatencyMs: 3000 },
-  'claude-3-haiku': { estimatedAccuracy: 0.65, relativeCost: 0.2, avgLatencyMs: 1000 },
-  // GPT models
-  'gpt-4o': { estimatedAccuracy: 0.85, relativeCost: 0.8, avgLatencyMs: 3500 },
-  'gpt-4': { estimatedAccuracy: 0.82, relativeCost: 0.9, avgLatencyMs: 4000 },
-  'gpt-4-turbo': { estimatedAccuracy: 0.8, relativeCost: 0.7, avgLatencyMs: 2500 },
-  'gpt-3.5-turbo': { estimatedAccuracy: 0.55, relativeCost: 0.1, avgLatencyMs: 800 },
-  // Gemini models
-  'gemini-2.0-flash': { estimatedAccuracy: 0.78, relativeCost: 0.4, avgLatencyMs: 1500 },
-  'gemini-1.5-pro': { estimatedAccuracy: 0.75, relativeCost: 0.5, avgLatencyMs: 2000 },
-  'gemini-pro': { estimatedAccuracy: 0.7, relativeCost: 0.5, avgLatencyMs: 2000 },
-  // Open source models
+  // Canonical models (derived from registry)
+  ...deriveFromCanonical(),
+  // Open source models (not in canonical registry — kept for scaling comparisons)
   'llama-3.1-405b': { estimatedAccuracy: 0.78, relativeCost: 0.3, avgLatencyMs: 3000 },
   'llama-3.1-70b': { estimatedAccuracy: 0.68, relativeCost: 0.15, avgLatencyMs: 1500 },
   'mixtral-8x7b': { estimatedAccuracy: 0.62, relativeCost: 0.1, avgLatencyMs: 1200 },

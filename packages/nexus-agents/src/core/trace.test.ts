@@ -553,7 +553,7 @@ describe('Tracer', () => {
       t.recordLLMMetrics(span!.context.spanId, {
         inputTokens: 1000,
         outputTokens: 500,
-        model: 'gpt-4o',
+        model: 'codex-5.3',
         provider: 'openai',
       });
 
@@ -561,7 +561,7 @@ describe('Tracer', () => {
         spanId: span!.context.spanId,
         inputTokens: 1000,
         outputTokens: 500,
-        model: 'gpt-4o',
+        model: 'codex-5.3',
         provider: 'openai',
         costUsd: expect.any(Number),
       });
@@ -847,7 +847,7 @@ describe('Tracer', () => {
       tracer.recordLLMMetrics(s2!.context.spanId, {
         inputTokens: 2000,
         outputTokens: 1000,
-        model: 'gpt-4o',
+        model: 'codex-5.3',
         provider: 'openai',
       });
 
@@ -863,20 +863,20 @@ describe('Tracer', () => {
       tracer.recordLLMMetrics(s1!.context.spanId, {
         inputTokens: 1_000_000,
         outputTokens: 500_000,
-        model: 'claude-sonnet-4',
+        model: 'claude-sonnet',
         provider: 'anthropic',
       });
       tracer.recordLLMMetrics(s2!.context.spanId, {
         inputTokens: 1_000_000,
         outputTokens: 500_000,
-        model: 'gpt-4o',
+        model: 'codex-5.3',
         provider: 'openai',
       });
 
       const metrics = tracer.getAggregatedMetrics();
-      // claude-sonnet-4: 1M * 3 + 0.5M * 15 = 10.5
-      // gpt-4o: 1M * 2.5 + 0.5M * 10 = 7.5
-      expect(metrics.totalCostUsd).toBeCloseTo(18.0, 2);
+      // claude-sonnet: 1M * 3 + 0.5M * 15 = 10.5
+      // codex-5.3: 1M * 2 + 0.5M * 8 = 6
+      expect(metrics.totalCostUsd).toBeCloseTo(16.5, 2);
     });
 
     it('should calculate duration from earliest start to latest end', () => {
@@ -914,7 +914,7 @@ describe('Tracer', () => {
       tracer.recordLLMMetrics(s3!.context.spanId, {
         inputTokens: 500,
         outputTokens: 250,
-        model: 'gpt-4o',
+        model: 'codex-5.3',
         provider: 'openai',
       });
 
@@ -924,7 +924,7 @@ describe('Tracer', () => {
         outputTokens: 1500,
         costUsd: expect.any(Number),
       });
-      expect(metrics.byModel['gpt-4o']).toEqual({
+      expect(metrics.byModel['codex-5.3']).toEqual({
         inputTokens: 500,
         outputTokens: 250,
         costUsd: expect.any(Number),
@@ -944,7 +944,7 @@ describe('Tracer', () => {
       tracer.recordLLMMetrics(s2!.context.spanId, {
         inputTokens: 2000,
         outputTokens: 1000,
-        model: 'gpt-4o',
+        model: 'codex-5.3',
         provider: 'openai',
       });
 
@@ -1188,46 +1188,46 @@ describe('Tracer', () => {
   // ===========================================================================
 
   describe('cost calculation', () => {
-    it('should calculate correct cost for claude-opus-4', () => {
+    it('should calculate correct cost for claude-opus', () => {
       const span = tracer.startSpan('opus');
       tracer.recordLLMMetrics(span!.context.spanId, {
         inputTokens: 1_000_000,
         outputTokens: 1_000_000,
-        model: 'claude-opus-4',
+        model: 'claude-opus',
         provider: 'anthropic',
       });
 
-      // claude-opus-4: $15/1M input, $75/1M output
-      // 1M * 15 + 1M * 75 = 90
-      expect(tracer.getSpan(span!.context.spanId)?.llmMetrics?.costUsd).toBeCloseTo(90.0, 2);
+      // claude-opus: $5/1M input, $25/1M output
+      // 1M * 5 + 1M * 25 = 30
+      expect(tracer.getSpan(span!.context.spanId)?.llmMetrics?.costUsd).toBeCloseTo(30.0, 2);
     });
 
-    it('should calculate correct cost for gpt-4o-mini', () => {
+    it('should calculate correct cost for codex-5.1-mini', () => {
       const span = tracer.startSpan('mini');
       tracer.recordLLMMetrics(span!.context.spanId, {
         inputTokens: 10_000_000,
         outputTokens: 5_000_000,
-        model: 'gpt-4o-mini',
+        model: 'codex-5.1-mini',
         provider: 'openai',
       });
 
-      // gpt-4o-mini: $0.15/1M input, $0.6/1M output
-      // 10M * 0.15 + 5M * 0.6 = 1.5 + 3.0 = 4.5
-      expect(tracer.getSpan(span!.context.spanId)?.llmMetrics?.costUsd).toBeCloseTo(4.5, 2);
+      // codex-5.1-mini: $0.5/1M input, $2/1M output
+      // 10M * 0.5 + 5M * 2 = 5 + 10 = 15
+      expect(tracer.getSpan(span!.context.spanId)?.llmMetrics?.costUsd).toBeCloseTo(15.0, 2);
     });
 
-    it('should calculate correct cost for gemini-2.0-flash', () => {
+    it('should calculate correct cost for gemini-flash', () => {
       const span = tracer.startSpan('flash');
       tracer.recordLLMMetrics(span!.context.spanId, {
         inputTokens: 10_000_000,
         outputTokens: 5_000_000,
-        model: 'gemini-2.0-flash',
+        model: 'gemini-flash',
         provider: 'google',
       });
 
-      // gemini-2.0-flash: $0.1/1M input, $0.4/1M output
-      // 10M * 0.1 + 5M * 0.4 = 1.0 + 2.0 = 3.0
-      expect(tracer.getSpan(span!.context.spanId)?.llmMetrics?.costUsd).toBeCloseTo(3.0, 2);
+      // gemini-flash: $0.15/1M input, $0.6/1M output
+      // 10M * 0.15 + 5M * 0.6 = 1.5 + 3.0 = 4.5
+      expect(tracer.getSpan(span!.context.spanId)?.llmMetrics?.costUsd).toBeCloseTo(4.5, 2);
     });
   });
 });

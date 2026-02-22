@@ -21,6 +21,8 @@ import { SdkAdapter } from './sdk/index.js';
 import type { CliName } from '../cli-adapters/types.js';
 import type { ICliDetectionCache } from '../cli-adapters/cli-detection-cache.js';
 import { createCliDetectionCache } from '../cli-adapters/cli-detection-cache.js';
+import { getCliModelName } from '../config/model-config-helpers.js';
+import { DEFAULT_MODEL_PER_CLI } from '../config/model-capabilities.js';
 
 /**
  * Adapter selection priority.
@@ -153,43 +155,48 @@ function resolveApiKeyFromEnv(configKey: string | undefined, envVar: string): st
  * This is a fallback when no CLIs are available.
  */
 function tryApiAdapter(config: AutoAdapterConfig, logger: ILogger): AdapterSelection | null {
+  // Derive default model IDs from canonical registry instead of hardcoding
+  const claudeModelId = getCliModelName(DEFAULT_MODEL_PER_CLI['claude']);
+  const codexModelId = getCliModelName(DEFAULT_MODEL_PER_CLI['codex']);
+  const geminiModelId = getCliModelName(DEFAULT_MODEL_PER_CLI['gemini']);
+
   // 1. Anthropic — use native ClaudeAdapter (battle-tested)
   const anthropicKey = resolveApiKeyFromEnv(config.anthropicApiKey, 'ANTHROPIC_API_KEY');
   if (anthropicKey !== undefined) {
-    logger.info('Using Anthropic API adapter');
+    logger.info('Using Anthropic API adapter', { model: claudeModelId });
     return {
-      adapter: createClaudeAdapter({ modelId: 'claude-sonnet-4-20250514', apiKey: anthropicKey }),
+      adapter: createClaudeAdapter({ modelId: claudeModelId, apiKey: anthropicKey }),
       source: 'api',
       name: 'anthropic',
-      reason: 'Using Anthropic API (native adapter)',
+      reason: `Using Anthropic API (native adapter, model: ${claudeModelId})`,
     };
   }
 
   // 2. OpenAI — use AI SDK adapter
   const openaiKey = resolveApiKeyFromEnv(config.openaiApiKey, 'OPENAI_API_KEY');
   if (openaiKey !== undefined) {
-    logger.info('Using OpenAI API adapter (AI SDK)');
+    logger.info('Using OpenAI API adapter (AI SDK)', { model: codexModelId });
     return {
-      adapter: new SdkAdapter({ providerId: 'openai', modelId: 'gpt-4o', apiKey: openaiKey }),
+      adapter: new SdkAdapter({ providerId: 'openai', modelId: codexModelId, apiKey: openaiKey }),
       source: 'api',
       name: 'openai',
-      reason: 'Using OpenAI API via AI SDK',
+      reason: `Using OpenAI API via AI SDK (model: ${codexModelId})`,
     };
   }
 
   // 3. Google — use AI SDK adapter
   const googleKey = resolveApiKeyFromEnv(config.googleApiKey, 'GOOGLE_AI_API_KEY');
   if (googleKey !== undefined) {
-    logger.info('Using Google AI API adapter (AI SDK)');
+    logger.info('Using Google AI API adapter (AI SDK)', { model: geminiModelId });
     return {
       adapter: new SdkAdapter({
         providerId: 'google',
-        modelId: 'gemini-2.5-pro',
+        modelId: geminiModelId,
         apiKey: googleKey,
       }),
       source: 'api',
       name: 'google',
-      reason: 'Using Google AI API via AI SDK',
+      reason: `Using Google AI API via AI SDK (model: ${geminiModelId})`,
     };
   }
 
