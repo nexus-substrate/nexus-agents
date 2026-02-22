@@ -46,11 +46,6 @@ export interface OrchestratorCollaborationConfig {
 }
 
 /**
- * @deprecated Use {@link OrchestratorCollaborationConfig} instead. Will be removed in v3.0.
- */
-export type TechLeadCollaborationConfig = OrchestratorCollaborationConfig;
-
-/**
  * Default configuration.
  */
 const DEFAULT_COLLAB_CONFIG: Required<OrchestratorCollaborationConfig> = {
@@ -344,13 +339,3 @@ export function createOrchestratorCollaborationHelper(
 ): OrchestratorCollaborationHelper {
   return new OrchestratorCollaborationHelper(config);
 }
-
-/**
- * @deprecated Use {@link createOrchestratorCollaborationHelper} instead. Will be removed in v3.0.
- */
-export const createTechLeadCollaborationHelper = createOrchestratorCollaborationHelper;
-
-/**
- * @deprecated Use {@link OrchestratorCollaborationHelper} instead. Will be removed in v3.0.
- */
-export type TechLeadCollaborationHelper = OrchestratorCollaborationHelper;

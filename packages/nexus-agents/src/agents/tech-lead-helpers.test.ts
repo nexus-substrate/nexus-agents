@@ -1,5 +1,5 @@
 /**
- * Tests for TechLead Helpers
+ * Tests for Orchestrator Helpers
  * @module agents/tech-lead-helpers.test
  */
 

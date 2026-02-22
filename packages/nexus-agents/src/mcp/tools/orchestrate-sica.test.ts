@@ -1,6 +1,6 @@
 /**
  * Tests for SICA integration with orchestrate tool.
- * (Source: Issue #558 - Wire SICA wrapping to TechLead)
+ * (Source: Issue #558 - Wire SICA wrapping to Orchestrator)
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -25,28 +25,28 @@ describe('orchestrate-sica', () => {
   });
 
   describe('createOrchestratorWithSica', () => {
-    it('returns plain TechLead when SICA is disabled', () => {
+    it('returns plain Orchestrator when SICA is disabled', () => {
       vi.mocked(sicaModule.isSicaEnabled).mockReturnValue(false);
 
-      const techLead = createOrchestratorWithSica(logger);
+      const orchestrator = createOrchestratorWithSica(logger);
 
-      expect(techLead).toBeDefined();
-      expect(techLead.execute).toBeDefined();
-      // Plain TechLead should be returned
+      expect(orchestrator).toBeDefined();
+      expect(orchestrator.execute).toBeDefined();
+      // Plain Orchestrator should be returned
       expect(sicaModule.isSicaEnabled).toHaveBeenCalled();
     });
 
-    it('returns plain TechLead when SICA config is undefined', () => {
+    it('returns plain Orchestrator when SICA config is undefined', () => {
       vi.mocked(sicaModule.isSicaEnabled).mockReturnValue(true);
       vi.mocked(sicaModule.getSicaConfig).mockReturnValue(undefined);
 
-      const techLead = createOrchestratorWithSica(logger);
+      const orchestrator = createOrchestratorWithSica(logger);
 
-      expect(techLead).toBeDefined();
+      expect(orchestrator).toBeDefined();
       expect(sicaModule.getSicaConfig).toHaveBeenCalled();
     });
 
-    it('returns SICA-wrapped TechLead when SICA is enabled', () => {
+    it('returns SICA-wrapped Orchestrator when SICA is enabled', () => {
       vi.mocked(sicaModule.isSicaEnabled).mockReturnValue(true);
       vi.mocked(sicaModule.getSicaConfig).mockReturnValue({
         enabled: true,
@@ -58,16 +58,16 @@ describe('orchestrate-sica', () => {
         enableObservability: true,
       });
 
-      const techLead = createOrchestratorWithSica(logger);
+      const orchestrator = createOrchestratorWithSica(logger);
 
-      expect(techLead).toBeDefined();
-      expect(techLead.execute).toBeDefined();
-      // SICA-wrapped TechLead should be returned
+      expect(orchestrator).toBeDefined();
+      expect(orchestrator.execute).toBeDefined();
+      // SICA-wrapped Orchestrator should be returned
       expect(sicaModule.isSicaEnabled).toHaveBeenCalled();
       expect(sicaModule.getSicaConfig).toHaveBeenCalled();
     });
 
-    it('wrapped TechLead execute method transforms result correctly', async () => {
+    it('wrapped Orchestrator execute method transforms result correctly', async () => {
       vi.mocked(sicaModule.isSicaEnabled).mockReturnValue(true);
       vi.mocked(sicaModule.getSicaConfig).mockReturnValue({
         enabled: true,
@@ -79,10 +79,10 @@ describe('orchestrate-sica', () => {
         enableObservability: true,
       });
 
-      const techLead = createOrchestratorWithSica(logger);
+      const orchestrator = createOrchestratorWithSica(logger);
 
       // Execute a simple task (will use heuristic analysis without adapter)
-      const result = await techLead.execute({
+      const result = await orchestrator.execute({
         id: 'test-task-1',
         description: 'Simple test task',
         context: {},

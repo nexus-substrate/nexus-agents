@@ -68,10 +68,6 @@ export class OrchestratorUnavailableError extends NexusError {
   }
 }
 
-/**
- * @deprecated Use {@link OrchestratorUnavailableError} instead. Will be removed in v3.0.
- */
-export const TechLeadUnavailableError = OrchestratorUnavailableError;
 import {
   createToolRateLimiterFactory,
   setGlobalToolRateLimiterFactory,

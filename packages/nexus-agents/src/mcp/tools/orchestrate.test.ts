@@ -2,8 +2,6 @@
  * nexus-agents/mcp - Orchestrate Tool Tests
  */
 
-/* eslint-disable @typescript-eslint/no-deprecated -- Test file: intentionally tests deprecated APIs for backwards compat */
-
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import type { Result, ILogger, Task, TaskResult } from '../../core/index.js';
 import { ok, err, AgentError } from '../../core/index.js';
@@ -12,12 +10,18 @@ import {
   OrchestrateInputSchema,
   OrchestrateOutputSchema,
   OrchestrationError,
-  createMockTechLead,
+  createMockOrchestrator,
   mapPatternToOrchestratorType,
-  type ITechLead,
   type OrchestrateDeps,
   type OrchestrateInput,
 } from './orchestrate.js';
+
+/** Minimal mock-orchestrator type used within this test file. */
+interface MockOrchestrator {
+  execute: (
+    task: Task
+  ) => Promise<Result<{ taskId: string; output: unknown; metadata: unknown }, AgentError>>;
+}
 
 /**
  * Creates a permissive rate limiter for tests.
@@ -56,11 +60,11 @@ function createMockLogger(): MockLogger {
 }
 
 /**
- * Creates a mock TechLead that returns a custom result.
+ * Creates a mock Orchestrator that returns a custom result.
  */
-function createCustomMockTechLead(
+function createCustomMockOrchestrator(
   executeResult: Result<{ taskId: string; output: unknown; metadata: unknown }, AgentError>
-): ITechLead {
+): MockOrchestrator {
   return {
     execute: vi.fn().mockResolvedValue(executeResult),
   };
@@ -322,26 +326,27 @@ describe('OrchestrationError', () => {
   });
 });
 
-describe('createMockTechLead', () => {
+describe('createMockOrchestrator', () => {
   it('should create a functional mock', async () => {
-    const mockLead = createMockTechLead();
+    const mockOrch = createMockOrchestrator();
     const task: Task = {
       id: 'test-task',
       description: 'Test task description',
       context: {},
     };
 
-    const result = await mockLead.execute(task);
+    const result = await mockOrch.execute({ type: 'task', task }, {});
 
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.value.taskId).toBe('test-task');
+      expect(result.value.executionId).toBeDefined();
       expect(result.value.output).toBeDefined();
+      expect(result.value.orchestratorType).toBe('tech_lead');
     }
   });
 
   it('should calculate complexity based on description length', async () => {
-    const mockLead = createMockTechLead();
+    const mockOrch = createMockOrchestrator();
 
     const shortTask: Task = {
       id: 'short',
@@ -355,40 +360,44 @@ describe('createMockTechLead', () => {
       context: {},
     };
 
-    const shortResult = await mockLead.execute(shortTask);
-    const longResult = await mockLead.execute(longTask);
+    const shortResult = await mockOrch.execute({ type: 'task', task: shortTask }, {});
+    const longResult = await mockOrch.execute({ type: 'task', task: longTask }, {});
 
     expect(shortResult.ok && longResult.ok).toBe(true);
 
     if (shortResult.ok && longResult.ok) {
-      type AnalysisOutput = { analysis: { complexity: number } };
-      const shortAnalysis = shortResult.value.output as AnalysisOutput;
-      const longAnalysis = longResult.value.output as AnalysisOutput;
+      // The mock tech lead output is nested inside the OrchestratorResult.output
+      type MockOutput = { output: { analysis: { complexity: number } } };
+      const shortAnalysis = shortResult.value.output as MockOutput;
+      const longAnalysis = longResult.value.output as MockOutput;
 
-      expect(longAnalysis.analysis.complexity).toBeGreaterThanOrEqual(
-        shortAnalysis.analysis.complexity
+      expect(longAnalysis.output.analysis.complexity).toBeGreaterThanOrEqual(
+        shortAnalysis.output.analysis.complexity
       );
     }
   });
 
   it('should set needsDecomposition for complex tasks', async () => {
-    const mockLead = createMockTechLead();
+    const mockOrch = createMockOrchestrator();
     const complexTask: Task = {
       id: 'complex',
       description: 'A'.repeat(300), // Long enough to trigger high complexity
       context: {},
     };
 
-    const result = await mockLead.execute(complexTask);
+    const result = await mockOrch.execute({ type: 'task', task: complexTask }, {});
 
     expect(result.ok).toBe(true);
     if (result.ok) {
-      type AnalysisOutput = { analysis: { needsDecomposition: boolean; complexity: number } };
-      const output = result.value.output as AnalysisOutput;
+      // The mock tech lead output is nested inside the OrchestratorResult.output
+      type MockOutput = {
+        output: { analysis: { needsDecomposition: boolean; complexity: number } };
+      };
+      const output = result.value.output as MockOutput;
 
       // Complexity > 5 should trigger decomposition
-      if (output.analysis.complexity > 5) {
-        expect(output.analysis.needsDecomposition).toBe(true);
+      if (output.output.analysis.complexity > 5) {
+        expect(output.output.analysis.needsDecomposition).toBe(true);
       }
     }
   });
@@ -396,16 +405,16 @@ describe('createMockTechLead', () => {
 
 describe('Orchestration Logic', () => {
   let mockLogger: MockLogger;
-  let mockTechLead: ITechLead & { execute: Mock };
+  let mockOrchestrator: MockOrchestrator & { execute: Mock };
   let deps: OrchestrateDeps;
 
   beforeEach(() => {
     mockLogger = createMockLogger();
-    mockTechLead = createCustomMockTechLead(createSuccessResult('test-task')) as ITechLead & {
-      execute: Mock;
-    };
+    mockOrchestrator = createCustomMockOrchestrator(
+      createSuccessResult('test-task')
+    ) as MockOrchestrator & { execute: Mock };
     deps = {
-      techLead: mockTechLead,
+      orchestrator: mockOrchestrator as unknown as OrchestrateDeps['orchestrator'],
       logger: mockLogger,
       rateLimiter: createTestRateLimiter(),
     };
@@ -424,10 +433,10 @@ describe('Orchestration Logic', () => {
       context: {},
     };
 
-    // techLead is defined in this test via beforeEach
-    const techLead = deps.techLead;
-    expect(techLead).toBeDefined();
-    const result = await techLead!.execute(task);
+    // orchestrator is defined in this test via beforeEach
+    const orchestrator = deps.orchestrator as unknown as MockOrchestrator;
+    expect(orchestrator).toBeDefined();
+    const result = await orchestrator.execute(task);
 
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -441,8 +450,10 @@ describe('Orchestration Logic', () => {
     }
   });
 
-  it('should handle TechLead execution failure', async () => {
-    const failingTechLead = createCustomMockTechLead(err(new AgentError('Model rate limited')));
+  it('should handle Orchestrator execution failure', async () => {
+    const failingOrchestrator = createCustomMockOrchestrator(
+      err(new AgentError('Model rate limited'))
+    );
 
     const task: Task = {
       id: 'failing-task',
@@ -450,7 +461,7 @@ describe('Orchestration Logic', () => {
       context: {},
     };
 
-    const result = await failingTechLead.execute(task);
+    const result = await failingOrchestrator.execute(task);
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -459,7 +470,7 @@ describe('Orchestration Logic', () => {
   });
 
   it('should extract experts from assignments', async () => {
-    const result = await mockTechLead.execute({
+    const result = await mockOrchestrator.execute({
       id: 'test',
       description: 'Test',
       context: {},
@@ -477,7 +488,7 @@ describe('Orchestration Logic', () => {
   });
 
   it('should count subtasks as steps completed', async () => {
-    const result = await mockTechLead.execute({
+    const result = await mockOrchestrator.execute({
       id: 'test',
       description: 'Test',
       context: {},
@@ -493,14 +504,14 @@ describe('Orchestration Logic', () => {
   });
 
   it('should log orchestration start and completion', async () => {
-    await mockTechLead.execute({
+    await mockOrchestrator.execute({
       id: 'test',
       description: 'Test task',
       context: {},
     });
 
-    // The mock TechLead doesn't log, but we verify it was called
-    expect(mockTechLead.execute).toHaveBeenCalled();
+    // The mock Orchestrator doesn't log, but we verify it was called
+    expect(mockOrchestrator.execute).toHaveBeenCalled();
   });
 
   it('should handle context being passed through', () => {
@@ -518,8 +529,8 @@ describe('Orchestration Logic', () => {
 });
 
 describe('Edge Cases', () => {
-  it('should handle empty output from TechLead', async () => {
-    const emptyTechLead = createCustomMockTechLead(
+  it('should handle empty output from Orchestrator', async () => {
+    const emptyOrchestrator = createCustomMockOrchestrator(
       ok({
         taskId: 'empty-task',
         output: {},
@@ -527,7 +538,7 @@ describe('Edge Cases', () => {
       })
     );
 
-    const result = await emptyTechLead.execute({
+    const result = await emptyOrchestrator.execute({
       id: 'empty-task',
       description: 'Empty result task',
       context: {},
@@ -540,7 +551,7 @@ describe('Edge Cases', () => {
   });
 
   it('should handle null values in output', async () => {
-    const nullTechLead = createCustomMockTechLead(
+    const nullOrchestrator = createCustomMockOrchestrator(
       ok({
         taskId: 'null-task',
         output: {
@@ -552,7 +563,7 @@ describe('Edge Cases', () => {
       })
     );
 
-    const result = await nullTechLead.execute({
+    const result = await nullOrchestrator.execute({
       id: 'null-task',
       description: 'Null values task',
       context: {},
@@ -562,34 +573,33 @@ describe('Edge Cases', () => {
   });
 
   it('should handle very long task descriptions', async () => {
-    const mockLead = createMockTechLead();
+    const mockOrch = createMockOrchestrator();
     const longDescription = 'A'.repeat(10000);
 
-    const result = await mockLead.execute({
-      id: 'long-task',
-      description: longDescription,
-      context: {},
-    });
+    const result = await mockOrch.execute(
+      { type: 'task', task: { id: 'long-task', description: longDescription, context: {} } },
+      {}
+    );
 
     expect(result.ok).toBe(true);
     if (result.ok) {
-      type AnalysisOutput = { analysis: { complexity: number } };
-      const output = result.value.output as AnalysisOutput;
+      // The mock tech lead output is nested inside the OrchestratorResult.output
+      type MockOutput = { output: { analysis: { complexity: number } } };
+      const output = result.value.output as MockOutput;
 
       // Complexity should be capped at 10
-      expect(output.analysis.complexity).toBeLessThanOrEqual(10);
+      expect(output.output.analysis.complexity).toBeLessThanOrEqual(10);
     }
   });
 
   it('should handle special characters in task description', async () => {
-    const mockLead = createMockTechLead();
+    const mockOrch = createMockOrchestrator();
     const specialChars = 'Task with "quotes", <tags>, & ampersands, newlines\n\t and tabs';
 
-    const result = await mockLead.execute({
-      id: 'special-task',
-      description: specialChars,
-      context: {},
-    });
+    const result = await mockOrch.execute(
+      { type: 'task', task: { id: 'special-task', description: specialChars, context: {} } },
+      {}
+    );
 
     expect(result.ok).toBe(true);
   });
@@ -714,7 +724,7 @@ describe('Workflow Routing Integration (Issue #846)', () => {
 
 describe('Concurrent Execution', () => {
   it('should handle multiple concurrent orchestrations', async () => {
-    const mockLead = createMockTechLead();
+    const mockOrch = createMockOrchestrator();
 
     const tasks = Array.from({ length: 5 }, (_, i) => ({
       id: `concurrent-${String(i)}`,
@@ -722,14 +732,16 @@ describe('Concurrent Execution', () => {
       context: {},
     }));
 
-    const results = await Promise.all(tasks.map((task) => mockLead.execute(task)));
+    const results = await Promise.all(
+      tasks.map((task) => mockOrch.execute({ type: 'task', task }, {}))
+    );
 
     expect(results.every((r) => r.ok)).toBe(true);
 
     // Verify each task has unique result
     const taskIds = results.map((r) => {
       if (r.ok) {
-        return r.value.taskId;
+        return r.value.executionId;
       }
       return null;
     });

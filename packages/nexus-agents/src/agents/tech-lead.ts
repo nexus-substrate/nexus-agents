@@ -488,23 +488,6 @@ export function createTechLead(
   return new Orchestrator(options);
 }
 
-// ============================================================================
-// Deprecated TechLead Aliases (Issue #759)
-// ============================================================================
-
-/**
- * @deprecated Use {@link Orchestrator} instead. Will be removed in v3.0.
- *
- * TechLead is retained as a type alias for backward compatibility.
- * New code should use Orchestrator.
- */
-export type TechLead = Orchestrator;
-
-/**
- * @deprecated Use {@link OrchestratorOptions} instead. Will be removed in v3.0.
- */
-export type OrchestratorAgentOptions = OrchestratorOptions;
-
 /**
  * Creates a new Orchestrator agent with the given options.
  * This is the preferred factory function for creating coordination agents.

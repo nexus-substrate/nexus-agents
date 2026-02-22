@@ -44,11 +44,6 @@ export type AgentRole =
 export type OrchestratorRole = Extract<AgentRole, 'orchestrator' | 'tech_lead'>;
 
 /**
- * @deprecated Use {@link OrchestratorRole} instead. Will be removed in v3.0.
- */
-export type TechLeadRole = OrchestratorRole;
-
-/**
  * Agent capabilities.
  */
 export const AgentCapability = {

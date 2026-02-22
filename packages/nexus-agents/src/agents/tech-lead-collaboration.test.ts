@@ -1,5 +1,5 @@
 /**
- * Tests for TechLead Collaboration Helper
+ * Tests for OrchestratorCollaborationHelper
  * @module agents/tech-lead-collaboration.test
  */
 
@@ -10,10 +10,6 @@ import {
   OrchestratorCollaborationHelper,
   createOrchestratorCollaborationHelper,
 } from './tech-lead-collaboration.js';
-
-// Backward compatibility: old names are type aliases now
-const TechLeadCollaborationHelper = OrchestratorCollaborationHelper;
-const createTechLeadCollaborationHelper = createOrchestratorCollaborationHelper;
 
 // ============================================================================
 // Mocks
@@ -134,33 +130,33 @@ function makeAgentsMap(): Map<string, IAgent> {
 
 describe('shouldUseCollaboration', () => {
   it('returns true when all conditions met', () => {
-    const helper = new TechLeadCollaborationHelper();
+    const helper = new OrchestratorCollaborationHelper();
     expect(helper.shouldUseCollaboration(makeAnalysis(8), 3)).toBe(true);
   });
 
   it('returns false when collaboration disabled', () => {
-    const helper = new TechLeadCollaborationHelper({ enableCollaborativeSynthesis: false });
+    const helper = new OrchestratorCollaborationHelper({ enableCollaborativeSynthesis: false });
     expect(helper.shouldUseCollaboration(makeAnalysis(8), 3)).toBe(false);
   });
 
   it('returns false when too few results', () => {
-    const helper = new TechLeadCollaborationHelper();
+    const helper = new OrchestratorCollaborationHelper();
     expect(helper.shouldUseCollaboration(makeAnalysis(8), 2)).toBe(false);
   });
 
   it('returns false when complexity below threshold', () => {
-    const helper = new TechLeadCollaborationHelper();
+    const helper = new OrchestratorCollaborationHelper();
     expect(helper.shouldUseCollaboration(makeAnalysis(3), 5)).toBe(false);
   });
 
   it('respects custom minExpertsForCollaboration', () => {
-    const helper = new TechLeadCollaborationHelper({ minExpertsForCollaboration: 5 });
+    const helper = new OrchestratorCollaborationHelper({ minExpertsForCollaboration: 5 });
     expect(helper.shouldUseCollaboration(makeAnalysis(8), 4)).toBe(false);
     expect(helper.shouldUseCollaboration(makeAnalysis(8), 5)).toBe(true);
   });
 
   it('respects custom complexityThreshold', () => {
-    const helper = new TechLeadCollaborationHelper({ complexityThreshold: 5 });
+    const helper = new OrchestratorCollaborationHelper({ complexityThreshold: 5 });
     expect(helper.shouldUseCollaboration(makeAnalysis(4), 3)).toBe(false);
     expect(helper.shouldUseCollaboration(makeAnalysis(5), 3)).toBe(true);
   });
@@ -176,7 +172,7 @@ describe('collaborativeSynthesis', () => {
   });
 
   it('returns error when too few results', async () => {
-    const helper = new TechLeadCollaborationHelper();
+    const helper = new OrchestratorCollaborationHelper();
     const result = await helper.collaborativeSynthesis(
       [makeTaskResult('e1', 'output 1'), makeTaskResult('e2', 'output 2')],
       makeAgentsMap(),
@@ -189,7 +185,7 @@ describe('collaborativeSynthesis', () => {
   });
 
   it('synthesizes results using collaboration protocol', async () => {
-    const helper = new TechLeadCollaborationHelper();
+    const helper = new OrchestratorCollaborationHelper();
     const results = [
       makeTaskResult('e1', 'Code review complete'),
       makeTaskResult('e2', 'Security audit done'),
@@ -206,7 +202,7 @@ describe('collaborativeSynthesis', () => {
   });
 
   it('includes collaboration metadata', async () => {
-    const helper = new TechLeadCollaborationHelper();
+    const helper = new OrchestratorCollaborationHelper();
     const results = [
       makeTaskResult('e1', 'out1'),
       makeTaskResult('e2', 'out2'),
@@ -229,7 +225,7 @@ describe('collaborativeSynthesis', () => {
 
 describe('getProtocolSelector', () => {
   it('returns the protocol selector instance', () => {
-    const helper = new TechLeadCollaborationHelper();
+    const helper = new OrchestratorCollaborationHelper();
     const selector = helper.getProtocolSelector();
     expect(selector).toBeDefined();
     expect(selector.getRecommendation).toBeDefined();
@@ -237,17 +233,17 @@ describe('getProtocolSelector', () => {
 });
 
 // ============================================================================
-// createTechLeadCollaborationHelper factory
+// createOrchestratorCollaborationHelper factory
 // ============================================================================
 
-describe('createTechLeadCollaborationHelper', () => {
+describe('createOrchestratorCollaborationHelper', () => {
   it('creates helper with default config', () => {
-    const helper = createTechLeadCollaborationHelper();
-    expect(helper).toBeInstanceOf(TechLeadCollaborationHelper);
+    const helper = createOrchestratorCollaborationHelper();
+    expect(helper).toBeInstanceOf(OrchestratorCollaborationHelper);
   });
 
   it('creates helper with custom config', () => {
-    const helper = createTechLeadCollaborationHelper({
+    const helper = createOrchestratorCollaborationHelper({
       enableCollaborativeSynthesis: false,
       minExpertsForCollaboration: 5,
     });

@@ -359,7 +359,4 @@ export class WorkflowAdapter implements IOrchestrator {
   }
 }
 
-/** @deprecated Use OrchestratorAdapter instead (Issue #759) */
-export { OrchestratorAdapter as TechLeadAdapter };
-
 export type { IOrchestrator, OrchestratorType, OrchestratorResult };

@@ -20,11 +20,6 @@ export { SimpleAgent } from './simple-agent.js';
 // Orchestrator agent (preferred name - Issue #759)
 export { Orchestrator, createOrchestrator, type ExecutionPlan } from './tech-lead.js';
 
-// Deprecated aliases (Issue #759) — intentional re-exports for backward compatibility
-/* eslint-disable @typescript-eslint/no-deprecated -- Intentional: public API backward compat */
-export { type TechLead, createTechLead, type OrchestratorAgentOptions } from './tech-lead.js';
-/* eslint-enable @typescript-eslint/no-deprecated */
-
 // Wave Scheduler (Issue #769)
 export {
   WaveScheduler,
@@ -87,9 +82,6 @@ export type {
   SubtaskStatus,
 } from './tech-lead-types.js';
 
-// eslint-disable-next-line @typescript-eslint/no-deprecated -- Intentional: public API backward compat
-export type { TechLeadOptions } from './tech-lead-types.js';
-
 export {
   SubTaskSchema,
   TaskAnalysisSchema,
@@ -101,9 +93,6 @@ export {
   EXPERT_CAPABILITIES,
   TASK_TYPE_EXPERTS,
 } from './tech-lead-types.js';
-
-// eslint-disable-next-line @typescript-eslint/no-deprecated -- Intentional: public API backward compat
-export { TechLeadOptionsSchema } from './tech-lead-types.js';
 
 // State machine
 export {

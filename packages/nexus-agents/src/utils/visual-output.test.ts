@@ -90,12 +90,12 @@ describe('visual-output', () => {
   describe('generateSwarmVisualization', () => {
     it('should render agents with role labels and connections', () => {
       const result = generateSwarmVisualization([
-        { id: 'lead', role: 'TechLead', status: 'active', connections: ['dev1'] },
+        { id: 'lead', role: 'Orchestrator', status: 'active', connections: ['dev1'] },
         { id: 'dev1', role: 'code_expert', status: 'idle', connections: [] },
       ]);
 
       expect(result).toContain('graph LR');
-      expect(result).toContain('lead[lead: TechLead]');
+      expect(result).toContain('lead[lead: Orchestrator]');
       expect(result).toContain('dev1[dev1: code_expert]');
       expect(result).toContain('lead <--> dev1');
     });
@@ -219,7 +219,7 @@ describe('visual-output', () => {
       steps: [
         {
           id: 'analyze',
-          role: 'TechLead',
+          role: 'Orchestrator',
           action: 'Analyze task',
           status: 'success',
           durationMs: 2500,
@@ -244,7 +244,7 @@ describe('visual-output', () => {
       ],
       totalDurationMs: 13500,
       totalTokensUsed: 2150,
-      agentsUsed: ['TechLead', 'code_expert', 'security_expert'],
+      agentsUsed: ['Orchestrator', 'code_expert', 'security_expert'],
     };
 
     it('should generate a valid Mermaid sequence diagram', () => {
@@ -252,15 +252,15 @@ describe('visual-output', () => {
 
       expect(result).toContain('sequenceDiagram');
       expect(result).toContain('participant O as Orchestrator');
-      expect(result).toContain('participant TechLead as TechLead');
+      expect(result).toContain('participant Orchestrator as Orchestrator');
       expect(result).toContain('participant code_expert as code_expert');
     });
 
     it('should show step interactions with timing', () => {
       const result = generateOrchestrationSequence(sampleData);
 
-      expect(result).toContain('O->>TechLead: Analyze task');
-      expect(result).toContain('TechLead->>O: + Done (2500ms)');
+      expect(result).toContain('O->>Orchestrator: Analyze task');
+      expect(result).toContain('Orchestrator->>O: + Done (2500ms)');
       expect(result).toContain('O->>code_expert: Implement');
     });
 
@@ -299,7 +299,7 @@ describe('visual-output', () => {
       steps: [
         {
           id: 'a',
-          role: 'TechLead',
+          role: 'Orchestrator',
           action: 'Analyze',
           status: 'success',
           durationMs: 2000,
@@ -324,7 +324,7 @@ describe('visual-output', () => {
       ],
       totalDurationMs: 10500,
       totalTokensUsed: 1600,
-      agentsUsed: ['TechLead', 'code_expert', 'security'],
+      agentsUsed: ['Orchestrator', 'code_expert', 'security'],
     };
 
     it('should contain dashboard header', () => {

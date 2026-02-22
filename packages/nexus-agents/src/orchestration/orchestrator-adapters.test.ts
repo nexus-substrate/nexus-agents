@@ -12,12 +12,7 @@ import { OrchestratorError } from '../core/types/orchestrator.js';
 import type { OrchestratorDefinition } from '../core/types/orchestrator.js';
 import type { Task } from '../core/types/index.js';
 
-import {
-  OrchestratorAdapter,
-  TechLeadAdapter,
-  PuppeteerAdapter,
-  WorkflowAdapter,
-} from './orchestrator-adapters.js';
+import { OrchestratorAdapter, PuppeteerAdapter, WorkflowAdapter } from './orchestrator-adapters.js';
 
 // ============================================================================
 // Mock external modules
@@ -103,8 +98,8 @@ describe('OrchestratorAdapter', () => {
     expect(adapter.id).toContain('orchestrator');
   });
 
-  it('TechLeadAdapter is a backward-compatible alias', () => {
-    expect(TechLeadAdapter).toBe(OrchestratorAdapter);
+  it('has canonical class name OrchestratorAdapter', () => {
+    expect(OrchestratorAdapter.name).toBe('OrchestratorAdapter');
   });
 
   it('returns ok with empty output when no orchestrator agent is wired', async () => {

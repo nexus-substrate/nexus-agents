@@ -1,5 +1,5 @@
 /**
- * nexus-agents/agents - TechLead Tests
+ * nexus-agents/agents - Orchestrator Tests
  */
 
 import { describe, it, expect, vi, type Mock } from 'vitest';
@@ -15,10 +15,8 @@ import type {
 } from '../core/index.js';
 import { ok, err, AgentError, ModelError } from '../core/index.js';
 
-import { Orchestrator, createTechLead, type ExecutionPlan } from './tech-lead.js';
+import { Orchestrator, createOrchestrator, type ExecutionPlan } from './tech-lead.js';
 
-// Backward compatibility: TechLead is now a type alias for Orchestrator
-const TechLead = Orchestrator;
 import type { SubTask, TaskAnalysis } from './tech-lead-types.js';
 
 /**
@@ -106,30 +104,30 @@ function createTestTaskResult(taskId: string, output: unknown = 'Test output'): 
   };
 }
 
-describe('TechLead', () => {
+describe('Orchestrator', () => {
   describe('constructor', () => {
     it('should initialize with default options', () => {
-      const techLead = new TechLead();
+      const orchestrator = new Orchestrator();
 
-      expect(techLead.id).toBe('tech-lead');
-      expect(techLead.role).toBe('tech_lead');
-      expect(techLead.state).toBe('idle');
-      expect(techLead.capabilities).toContain('task_execution');
-      expect(techLead.capabilities).toContain('delegation');
+      expect(orchestrator.id).toBe('tech-lead');
+      expect(orchestrator.role).toBe('tech_lead');
+      expect(orchestrator.state).toBe('idle');
+      expect(orchestrator.capabilities).toContain('task_execution');
+      expect(orchestrator.capabilities).toContain('delegation');
     });
 
     it('should accept custom id and options', () => {
-      const techLead = new TechLead({
+      const orchestrator = new Orchestrator({
         id: 'custom-lead',
         temperature: 0.5,
         maxTokens: 8192,
       });
 
-      expect(techLead.id).toBe('custom-lead');
+      expect(orchestrator.id).toBe('custom-lead');
     });
 
     it('should accept custom techLeadOptions', () => {
-      const techLead = new TechLead({
+      const orchestrator = new Orchestrator({
         techLeadOptions: {
           maxSubtasks: 5,
           decompositionThreshold: 3,
@@ -137,7 +135,7 @@ describe('TechLead', () => {
         },
       });
 
-      const options = techLead.getOptions();
+      const options = orchestrator.getOptions();
       expect(options.maxSubtasks).toBe(5);
       expect(options.decompositionThreshold).toBe(3);
       expect(options.enableParallelHints).toBe(false);
@@ -145,7 +143,7 @@ describe('TechLead', () => {
 
     it('should use custom logger when provided', () => {
       const mockLogger = createMockLogger();
-      new TechLead({ logger: mockLogger });
+      new Orchestrator({ logger: mockLogger });
 
       // Logger is used internally, verify it was accepted
       expect(mockLogger).toBeDefined();
@@ -153,15 +151,15 @@ describe('TechLead', () => {
 
     it('should enforce tech_lead role', () => {
       // Even if we try to pass a different role via options, constructor overrides
-      const techLead = new TechLead();
-      expect(techLead.role).toBe('tech_lead');
+      const orchestrator = new Orchestrator();
+      expect(orchestrator.role).toBe('tech_lead');
     });
   });
 
   describe('getOptions', () => {
     it('should return default options when none provided', () => {
-      const techLead = new TechLead();
-      const options = techLead.getOptions();
+      const orchestrator = new Orchestrator();
+      const options = orchestrator.getOptions();
 
       expect(options.maxSubtasks).toBe(10);
       expect(options.decompositionThreshold).toBe(5);
@@ -170,23 +168,23 @@ describe('TechLead', () => {
     });
 
     it('should return merged options', () => {
-      const techLead = new TechLead({
+      const orchestrator = new Orchestrator({
         techLeadOptions: {
           maxSubtasks: 15,
           expertWeights: { code_expert: 2 },
         },
       });
 
-      const options = techLead.getOptions();
+      const options = orchestrator.getOptions();
       expect(options.maxSubtasks).toBe(15);
       expect(options.decompositionThreshold).toBe(5); // default
       expect(options.expertWeights).toEqual({ code_expert: 2 });
     });
 
     it('should return a copy of options (immutability)', () => {
-      const techLead = new TechLead();
-      const options1 = techLead.getOptions();
-      const options2 = techLead.getOptions();
+      const orchestrator = new Orchestrator();
+      const options1 = orchestrator.getOptions();
+      const options2 = orchestrator.getOptions();
 
       expect(options1).not.toBe(options2);
       expect(options1).toEqual(options2);
@@ -195,12 +193,12 @@ describe('TechLead', () => {
 
   describe('analyzeTask', () => {
     it('should analyze a simple task with heuristics (no adapter)', async () => {
-      const techLead = new TechLead();
+      const orchestrator = new Orchestrator();
       const task = createTestTask({
         description: 'Fix a small bug in the login form',
       });
 
-      const result = await techLead.analyzeTask(task);
+      const result = await orchestrator.analyzeTask(task);
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -213,12 +211,12 @@ describe('TechLead', () => {
     });
 
     it('should identify implementation task type', async () => {
-      const techLead = new TechLead();
+      const orchestrator = new Orchestrator();
       const task = createTestTask({
         description: 'Implement a new caching layer for the database queries',
       });
 
-      const result = await techLead.analyzeTask(task);
+      const result = await orchestrator.analyzeTask(task);
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -227,12 +225,12 @@ describe('TechLead', () => {
     });
 
     it('should identify security_audit task type', async () => {
-      const techLead = new TechLead();
+      const orchestrator = new Orchestrator();
       const task = createTestTask({
         description: 'Perform a security audit of the authentication system',
       });
 
-      const result = await techLead.analyzeTask(task);
+      const result = await orchestrator.analyzeTask(task);
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -241,12 +239,12 @@ describe('TechLead', () => {
     });
 
     it('should identify architecture task type', async () => {
-      const techLead = new TechLead();
+      const orchestrator = new Orchestrator();
       const task = createTestTask({
         description: 'Design a new microservices architecture for the payment system',
       });
 
-      const result = await techLead.analyzeTask(task);
+      const result = await orchestrator.analyzeTask(task);
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -255,12 +253,12 @@ describe('TechLead', () => {
     });
 
     it('should identify testing task type', async () => {
-      const techLead = new TechLead();
+      const orchestrator = new Orchestrator();
       const task = createTestTask({
         description: 'Write unit tests for the user service with 90% coverage',
       });
 
-      const result = await techLead.analyzeTask(task);
+      const result = await orchestrator.analyzeTask(task);
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -269,13 +267,13 @@ describe('TechLead', () => {
     });
 
     it('should extract requirements from task description', async () => {
-      const techLead = new TechLead();
+      const orchestrator = new Orchestrator();
       const task = createTestTask({
         description:
           'The system must handle 1000 requests per second. It should be horizontally scalable. We need to ensure data consistency.',
       });
 
-      const result = await techLead.analyzeTask(task);
+      const result = await orchestrator.analyzeTask(task);
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -284,12 +282,12 @@ describe('TechLead', () => {
     });
 
     it('should identify risks based on keywords', async () => {
-      const techLead = new TechLead();
+      const orchestrator = new Orchestrator();
       const task = createTestTask({
         description: 'Migrate the database schema and update the API interface',
       });
 
-      const result = await techLead.analyzeTask(task);
+      const result = await orchestrator.analyzeTask(task);
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -299,7 +297,7 @@ describe('TechLead', () => {
     });
 
     it('should increase complexity for longer descriptions', async () => {
-      const techLead = new TechLead();
+      const orchestrator = new Orchestrator();
       const shortTask = createTestTask({
         description: 'Fix bug',
       });
@@ -316,8 +314,8 @@ describe('TechLead', () => {
         `,
       });
 
-      const shortResult = await techLead.analyzeTask(shortTask);
-      const longResult = await techLead.analyzeTask(longTask);
+      const shortResult = await orchestrator.analyzeTask(shortTask);
+      const longResult = await orchestrator.analyzeTask(longTask);
 
       expect(shortResult.ok && longResult.ok).toBe(true);
       if (shortResult.ok && longResult.ok) {
@@ -327,7 +325,7 @@ describe('TechLead', () => {
     });
 
     it('should set needsDecomposition based on threshold', async () => {
-      const techLead = new TechLead({
+      const orchestrator = new Orchestrator({
         techLeadOptions: { decompositionThreshold: 3 },
       });
 
@@ -342,8 +340,8 @@ describe('TechLead', () => {
         `,
       });
 
-      const simpleResult = await techLead.analyzeTask(simpleTask);
-      const complexResult = await techLead.analyzeTask(complexTask);
+      const simpleResult = await orchestrator.analyzeTask(simpleTask);
+      const complexResult = await orchestrator.analyzeTask(complexTask);
 
       expect(simpleResult.ok && complexResult.ok).toBe(true);
       if (simpleResult.ok && complexResult.ok) {
@@ -374,10 +372,10 @@ describe('TechLead', () => {
         model: 'test-model',
       });
 
-      const techLead = new TechLead({ adapter: mockAdapter });
+      const orchestrator = new Orchestrator({ adapter: mockAdapter });
       const task = createTestTask();
 
-      const result = await techLead.analyzeTask(task);
+      const result = await orchestrator.analyzeTask(task);
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -399,10 +397,10 @@ describe('TechLead', () => {
         model: 'test-model',
       });
 
-      const techLead = new TechLead({ adapter: mockAdapter, logger: mockLogger });
+      const orchestrator = new Orchestrator({ adapter: mockAdapter, logger: mockLogger });
       const task = createTestTask();
 
-      const result = await techLead.analyzeTask(task);
+      const result = await orchestrator.analyzeTask(task);
 
       expect(result.ok).toBe(true);
       expect(mockLogger.warn).toHaveBeenCalledWith(
@@ -414,7 +412,7 @@ describe('TechLead', () => {
 
   describe('decomposeTask', () => {
     it('should decompose implementation task into subtasks', async () => {
-      const techLead = new TechLead();
+      const orchestrator = new Orchestrator();
       const task = createTestTask();
       const analysis: TaskAnalysis = {
         taskId: task.id,
@@ -427,7 +425,7 @@ describe('TechLead', () => {
         estimatedEffort: 8,
       };
 
-      const result = await techLead.decomposeTask(task, analysis);
+      const result = await orchestrator.decomposeTask(task, analysis);
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -441,7 +439,7 @@ describe('TechLead', () => {
     });
 
     it('should decompose architecture task differently', async () => {
-      const techLead = new TechLead();
+      const orchestrator = new Orchestrator();
       const task = createTestTask({
         description: 'Design new system architecture',
       });
@@ -456,7 +454,7 @@ describe('TechLead', () => {
         estimatedEffort: 12,
       };
 
-      const result = await techLead.decomposeTask(task, analysis);
+      const result = await orchestrator.decomposeTask(task, analysis);
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -466,7 +464,7 @@ describe('TechLead', () => {
     });
 
     it('should decompose security_audit task appropriately', async () => {
-      const techLead = new TechLead();
+      const orchestrator = new Orchestrator();
       const task = createTestTask();
       const analysis: TaskAnalysis = {
         taskId: task.id,
@@ -479,7 +477,7 @@ describe('TechLead', () => {
         estimatedEffort: 10,
       };
 
-      const result = await techLead.decomposeTask(task, analysis);
+      const result = await orchestrator.decomposeTask(task, analysis);
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -491,7 +489,7 @@ describe('TechLead', () => {
     });
 
     it('should respect maxSubtasks limit', async () => {
-      const techLead = new TechLead({
+      const orchestrator = new Orchestrator({
         techLeadOptions: { maxSubtasks: 3 },
       });
       const task = createTestTask();
@@ -506,7 +504,7 @@ describe('TechLead', () => {
         estimatedEffort: 20,
       };
 
-      const result = await techLead.decomposeTask(task, analysis);
+      const result = await orchestrator.decomposeTask(task, analysis);
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -515,7 +513,7 @@ describe('TechLead', () => {
     });
 
     it('should create subtasks with proper dependencies', async () => {
-      const techLead = new TechLead();
+      const orchestrator = new Orchestrator();
       const task = createTestTask();
       const analysis: TaskAnalysis = {
         taskId: task.id,
@@ -528,7 +526,7 @@ describe('TechLead', () => {
         estimatedEffort: 8,
       };
 
-      const result = await techLead.decomposeTask(task, analysis);
+      const result = await orchestrator.decomposeTask(task, analysis);
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -564,7 +562,7 @@ describe('TechLead', () => {
         model: 'test-model',
       });
 
-      const techLead = new TechLead({ adapter: mockAdapter });
+      const orchestrator = new Orchestrator({ adapter: mockAdapter });
       const task = createTestTask();
       const analysis: TaskAnalysis = {
         taskId: task.id,
@@ -577,7 +575,7 @@ describe('TechLead', () => {
         estimatedEffort: 8,
       };
 
-      const result = await techLead.decomposeTask(task, analysis);
+      const result = await orchestrator.decomposeTask(task, analysis);
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -589,7 +587,7 @@ describe('TechLead', () => {
 
   describe('selectExperts', () => {
     it('should select code_expert for code-related subtasks', () => {
-      const techLead = new TechLead();
+      const orchestrator = new Orchestrator();
       const subtasks: SubTask[] = [
         {
           id: 'sub-1',
@@ -604,7 +602,7 @@ describe('TechLead', () => {
         },
       ];
 
-      const assignments = techLead.selectExperts(subtasks);
+      const assignments = orchestrator.selectExperts(subtasks);
 
       expect(assignments).toHaveLength(1);
       expect(assignments[0]?.expertRole).toBe('code_expert');
@@ -612,7 +610,7 @@ describe('TechLead', () => {
     });
 
     it('should select security_expert for security-related subtasks', () => {
-      const techLead = new TechLead();
+      const orchestrator = new Orchestrator();
       const subtasks: SubTask[] = [
         {
           id: 'sub-1',
@@ -627,13 +625,13 @@ describe('TechLead', () => {
         },
       ];
 
-      const assignments = techLead.selectExperts(subtasks);
+      const assignments = orchestrator.selectExperts(subtasks);
 
       expect(assignments[0]?.expertRole).toBe('security_expert');
     });
 
     it('should select architecture_expert for design subtasks', () => {
-      const techLead = new TechLead();
+      const orchestrator = new Orchestrator();
       const subtasks: SubTask[] = [
         {
           id: 'sub-1',
@@ -648,13 +646,13 @@ describe('TechLead', () => {
         },
       ];
 
-      const assignments = techLead.selectExperts(subtasks);
+      const assignments = orchestrator.selectExperts(subtasks);
 
       expect(assignments[0]?.expertRole).toBe('architecture_expert');
     });
 
     it('should select testing_expert for test subtasks', () => {
-      const techLead = new TechLead();
+      const orchestrator = new Orchestrator();
       const subtasks: SubTask[] = [
         {
           id: 'sub-1',
@@ -669,13 +667,13 @@ describe('TechLead', () => {
         },
       ];
 
-      const assignments = techLead.selectExperts(subtasks);
+      const assignments = orchestrator.selectExperts(subtasks);
 
       expect(assignments[0]?.expertRole).toBe('testing_expert');
     });
 
     it('should select documentation_expert for documentation subtasks', () => {
-      const techLead = new TechLead();
+      const orchestrator = new Orchestrator();
       const subtasks: SubTask[] = [
         {
           id: 'sub-1',
@@ -690,13 +688,13 @@ describe('TechLead', () => {
         },
       ];
 
-      const assignments = techLead.selectExperts(subtasks);
+      const assignments = orchestrator.selectExperts(subtasks);
 
       expect(assignments[0]?.expertRole).toBe('documentation_expert');
     });
 
     it('should respect pre-assigned roles', () => {
-      const techLead = new TechLead();
+      const orchestrator = new Orchestrator();
       const subtasks: SubTask[] = [
         {
           id: 'sub-1',
@@ -712,14 +710,14 @@ describe('TechLead', () => {
         },
       ];
 
-      const assignments = techLead.selectExperts(subtasks);
+      const assignments = orchestrator.selectExperts(subtasks);
 
       expect(assignments[0]?.expertRole).toBe('custom');
       expect(assignments[0]?.confidence).toBe(1.0);
     });
 
     it('should apply custom expert weights', () => {
-      const techLead = new TechLead({
+      const orchestrator = new Orchestrator({
         techLeadOptions: {
           expertWeights: { architecture_expert: 10 },
         },
@@ -738,13 +736,13 @@ describe('TechLead', () => {
         },
       ];
 
-      const assignments = techLead.selectExperts(subtasks);
+      const assignments = orchestrator.selectExperts(subtasks);
 
       expect(assignments[0]?.expertRole).toBe('architecture_expert');
     });
 
     it('should handle multiple subtasks', () => {
-      const techLead = new TechLead();
+      const orchestrator = new Orchestrator();
       const subtasks: SubTask[] = [
         {
           id: 'sub-1',
@@ -781,7 +779,7 @@ describe('TechLead', () => {
         },
       ];
 
-      const assignments = techLead.selectExperts(subtasks);
+      const assignments = orchestrator.selectExperts(subtasks);
 
       expect(assignments).toHaveLength(3);
       expect(assignments[0]?.subtaskId).toBe('sub-1');
@@ -790,7 +788,7 @@ describe('TechLead', () => {
     });
 
     it('should include selection reason in assignments', () => {
-      const techLead = new TechLead();
+      const orchestrator = new Orchestrator();
       const subtasks: SubTask[] = [
         {
           id: 'sub-1',
@@ -805,7 +803,7 @@ describe('TechLead', () => {
         },
       ];
 
-      const assignments = techLead.selectExperts(subtasks);
+      const assignments = orchestrator.selectExperts(subtasks);
 
       expect(assignments[0]?.selectionReason).toBeDefined();
       expect(assignments[0]?.selectionReason.length).toBeGreaterThan(0);
@@ -814,10 +812,10 @@ describe('TechLead', () => {
 
   describe('synthesizeResults', () => {
     it('should handle empty results array', async () => {
-      const techLead = new TechLead();
+      const orchestrator = new Orchestrator();
       const results: TaskResult[] = [];
 
-      const result = await techLead.synthesizeResults(results);
+      const result = await orchestrator.synthesizeResults(results);
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -828,10 +826,10 @@ describe('TechLead', () => {
     });
 
     it('should handle single result', async () => {
-      const techLead = new TechLead();
+      const orchestrator = new Orchestrator();
       const results = [createTestTaskResult('task-1', 'Single output')];
 
-      const result = await techLead.synthesizeResults(results);
+      const result = await orchestrator.synthesizeResults(results);
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -842,14 +840,14 @@ describe('TechLead', () => {
     });
 
     it('should combine multiple results', async () => {
-      const techLead = new TechLead();
+      const orchestrator = new Orchestrator();
       const results = [
         createTestTaskResult('task-1', 'Output from task 1'),
         createTestTaskResult('task-2', 'Output from task 2'),
         createTestTaskResult('task-3', 'Output from task 3'),
       ];
 
-      const result = await techLead.synthesizeResults(results);
+      const result = await orchestrator.synthesizeResults(results);
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -861,13 +859,13 @@ describe('TechLead', () => {
     });
 
     it('should handle non-string outputs', async () => {
-      const techLead = new TechLead();
+      const orchestrator = new Orchestrator();
       const results = [
         createTestTaskResult('task-1', { key: 'value', nested: { a: 1 } }),
         createTestTaskResult('task-2', ['item1', 'item2']),
       ];
 
-      const result = await techLead.synthesizeResults(results);
+      const result = await orchestrator.synthesizeResults(results);
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -905,13 +903,13 @@ describe('TechLead', () => {
         model: 'test-model',
       });
 
-      const techLead = new TechLead({ adapter: mockAdapter });
+      const orchestrator = new Orchestrator({ adapter: mockAdapter });
       const results = [
         createTestTaskResult('task-1', 'Output 1'),
         createTestTaskResult('task-2', 'Output 2'),
       ];
 
-      const result = await techLead.synthesizeResults(results);
+      const result = await orchestrator.synthesizeResults(results);
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -923,12 +921,12 @@ describe('TechLead', () => {
 
   describe('execute', () => {
     it('should execute task and return execution plan', async () => {
-      const techLead = new TechLead();
+      const orchestrator = new Orchestrator();
       const task = createTestTask({
         description: 'Implement a complex feature with multiple components',
       });
 
-      const result = await techLead.execute(task);
+      const result = await orchestrator.execute(task);
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -940,10 +938,10 @@ describe('TechLead', () => {
     });
 
     it('should include analysis in output', async () => {
-      const techLead = new TechLead();
+      const orchestrator = new Orchestrator();
       const task = createTestTask();
 
-      const result = await techLead.execute(task);
+      const result = await orchestrator.execute(task);
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -954,7 +952,7 @@ describe('TechLead', () => {
     });
 
     it('should include subtasks when decomposition is needed', async () => {
-      const techLead = new TechLead({
+      const orchestrator = new Orchestrator({
         techLeadOptions: { decompositionThreshold: 1 }, // Low threshold to trigger decomposition
       });
       const task = createTestTask({
@@ -966,7 +964,7 @@ describe('TechLead', () => {
         `,
       });
 
-      const result = await techLead.execute(task);
+      const result = await orchestrator.execute(task);
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -977,7 +975,7 @@ describe('TechLead', () => {
     });
 
     it('should include parallel groups when enabled', async () => {
-      const techLead = new TechLead({
+      const orchestrator = new Orchestrator({
         techLeadOptions: {
           decompositionThreshold: 1,
           enableParallelHints: true,
@@ -987,7 +985,7 @@ describe('TechLead', () => {
         description: 'Complex multi-step implementation task',
       });
 
-      const result = await techLead.execute(task);
+      const result = await orchestrator.execute(task);
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -999,10 +997,10 @@ describe('TechLead', () => {
 
     it('should log task analysis', async () => {
       const mockLogger = createMockLogger();
-      const techLead = new TechLead({ logger: mockLogger });
+      const orchestrator = new Orchestrator({ logger: mockLogger });
       const task = createTestTask();
 
-      await techLead.execute(task);
+      await orchestrator.execute(task);
 
       expect(mockLogger.info).toHaveBeenCalledWith(
         'Task analyzed',
@@ -1013,22 +1011,22 @@ describe('TechLead', () => {
     });
 
     it('should return to idle state after execution', async () => {
-      const techLead = new TechLead();
+      const orchestrator = new Orchestrator();
       const task = createTestTask();
 
-      await techLead.execute(task);
+      await orchestrator.execute(task);
 
-      expect(techLead.state).toBe('idle');
+      expect(orchestrator.state).toBe('idle');
     });
 
     it('should handle adapter errors gracefully', async () => {
       const mockAdapter = createMockAdapter();
       mockAdapter.completeResult = err(new ModelError('API rate limited'));
 
-      const techLead = new TechLead({ adapter: mockAdapter });
+      const orchestrator = new Orchestrator({ adapter: mockAdapter });
       const task = createTestTask();
 
-      const result = await techLead.execute(task);
+      const result = await orchestrator.execute(task);
 
       expect(result.ok).toBe(false);
       if (!result.ok) {
@@ -1037,10 +1035,10 @@ describe('TechLead', () => {
     });
 
     it('should validate task before execution', async () => {
-      const techLead = new TechLead();
+      const orchestrator = new Orchestrator();
       const invalidTask = { id: '', description: '', context: {} } as Task;
 
-      const result = await techLead.execute(invalidTask);
+      const result = await orchestrator.execute(invalidTask);
 
       expect(result.ok).toBe(false);
       if (!result.ok) {
@@ -1050,13 +1048,13 @@ describe('TechLead', () => {
 
     it('should not execute if not in idle state', async () => {
       const mockAdapter = createMockAdapter();
-      const techLead = new TechLead({ adapter: mockAdapter });
+      const orchestrator = new Orchestrator({ adapter: mockAdapter });
 
       // Start first execution (don't await)
-      const firstExec = techLead.execute(createTestTask({ id: 'task-1' }));
+      const firstExec = orchestrator.execute(createTestTask({ id: 'task-1' }));
 
       // Immediately try second execution
-      const secondExec = techLead.execute(createTestTask({ id: 'task-2' }));
+      const secondExec = orchestrator.execute(createTestTask({ id: 'task-2' }));
 
       const [, secondResult] = await Promise.all([firstExec, secondExec]);
 
@@ -1067,34 +1065,32 @@ describe('TechLead', () => {
     });
   });
 
-  describe('createTechLead factory', () => {
-    it('should create TechLead with default options', () => {
-      // eslint-disable-next-line @typescript-eslint/no-deprecated -- Testing backward compat
-      const techLead = createTechLead();
+  describe('createOrchestrator factory', () => {
+    it('should create Orchestrator with default options', () => {
+      const orchestrator = createOrchestrator();
 
-      expect(techLead).toBeInstanceOf(TechLead);
-      expect(techLead.id).toBe('tech-lead');
-      expect(techLead.role).toBe('tech_lead');
+      expect(orchestrator).toBeInstanceOf(Orchestrator);
+      expect(orchestrator.id).toBe('tech-lead');
+      expect(orchestrator.role).toBe('tech_lead');
     });
 
-    it('should create TechLead with custom options', () => {
-      // eslint-disable-next-line @typescript-eslint/no-deprecated -- Testing backward compat
-      const techLead = createTechLead({
+    it('should create Orchestrator with custom options', () => {
+      const orchestrator = createOrchestrator({
         id: 'custom-tech-lead',
         techLeadOptions: {
           maxSubtasks: 5,
         },
       });
 
-      expect(techLead.id).toBe('custom-tech-lead');
-      expect(techLead.getOptions().maxSubtasks).toBe(5);
+      expect(orchestrator.id).toBe('custom-tech-lead');
+      expect(orchestrator.getOptions().maxSubtasks).toBe(5);
     });
   });
 });
 
-describe('TechLead integration scenarios', () => {
+describe('Orchestrator integration scenarios', () => {
   it('should handle end-to-end task orchestration', async () => {
-    const techLead = new TechLead({
+    const orchestrator = new Orchestrator({
       techLeadOptions: {
         decompositionThreshold: 3,
         maxSubtasks: 5,
@@ -1116,7 +1112,7 @@ describe('TechLead integration scenarios', () => {
     });
 
     // Execute the task
-    const result = await techLead.execute(task);
+    const result = await orchestrator.execute(task);
 
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -1146,7 +1142,7 @@ describe('TechLead integration scenarios', () => {
   });
 
   it('should handle simple tasks without decomposition', async () => {
-    const techLead = new TechLead({
+    const orchestrator = new Orchestrator({
       techLeadOptions: {
         decompositionThreshold: 8, // High threshold
       },
@@ -1157,7 +1153,7 @@ describe('TechLead integration scenarios', () => {
       description: 'Fix a typo in the login button label',
     });
 
-    const result = await techLead.execute(task);
+    const result = await orchestrator.execute(task);
 
     expect(result.ok).toBe(true);
     if (result.ok) {

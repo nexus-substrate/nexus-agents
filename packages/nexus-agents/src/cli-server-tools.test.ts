@@ -149,6 +149,14 @@ vi.mock('./mcp/index.js', () => ({
 }));
 
 vi.mock('./mcp/tools/orchestrate.js', () => ({
+  createMockOrchestrator: vi.fn().mockReturnValue({
+    execute: vi
+      .fn()
+      .mockImplementation(() =>
+        Promise.resolve({ ok: true, value: { taskId: 'mock', output: {}, metadata: {} } })
+      ),
+  }),
+
   createMockTechLead: vi.fn().mockReturnValue({
     execute: vi
       .fn()
@@ -159,7 +167,14 @@ vi.mock('./mcp/tools/orchestrate.js', () => ({
 }));
 
 vi.mock('./agents/index.js', () => ({
-  createTechLead: vi.fn().mockReturnValue({
+  Orchestrator: vi.fn().mockImplementation(() => ({
+    execute: vi
+      .fn()
+      .mockImplementation(() =>
+        Promise.resolve({ ok: true, value: { taskId: 'real', output: {}, metadata: {} } })
+      ),
+  })),
+  createOrchestrator: vi.fn().mockReturnValue({
     execute: vi
       .fn()
       .mockImplementation(() =>

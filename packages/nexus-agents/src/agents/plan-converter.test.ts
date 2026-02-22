@@ -470,12 +470,12 @@ describe('generated workflow validity', () => {
 });
 
 // ============================================================================
-// Tests: Integration with TechLead pattern
+// Tests: Integration with Orchestrator pattern
 // ============================================================================
 
-describe('TechLead integration pattern', () => {
+describe('Orchestrator integration pattern', () => {
   it('should support the documented usage pattern', () => {
-    // Simulate TechLead output - use makeConvertible to add the method
+    // Simulate Orchestrator output - use makeConvertible to add the method
     const planData = createMockExecutionPlan();
     const plan = makeConvertible(planData);
 

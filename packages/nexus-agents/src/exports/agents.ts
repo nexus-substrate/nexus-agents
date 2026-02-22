@@ -3,7 +3,6 @@
  * Split from index.ts for file size compliance (Issue #285)
  */
 
-/* eslint-disable @typescript-eslint/no-deprecated -- Intentional: re-exporting deprecated aliases for public API backward compat */
 export {
   // Base agent
   BaseAgent,
@@ -17,10 +16,6 @@ export {
   Orchestrator,
   createOrchestrator,
   type ExecutionPlan,
-  // TechLead (deprecated alias - Issue #759)
-  type OrchestratorAgentOptions,
-  type TechLead,
-  createTechLead,
   // Orchestrator types
   type SubTask,
   type TaskAnalysis,
@@ -29,7 +24,6 @@ export {
   type ResultSummary,
   type Conflict,
   type OrchestratorOptions,
-  type TechLeadOptions,
   type SubtaskPriority,
   type SubtaskStatus,
   SubTaskSchema,
@@ -37,7 +31,6 @@ export {
   ExpertAssignmentSchema,
   SynthesizedResultSchema,
   OrchestratorOptionsSchema,
-  TechLeadOptionsSchema,
   SubtaskPrioritySchema,
   SubtaskStatusSchema,
   EXPERT_CAPABILITIES,
@@ -333,7 +326,6 @@ export {
   type WorkChunk,
   type WaveTaskExecutor,
 } from '../agents/index.js';
-/* eslint-enable @typescript-eslint/no-deprecated */
 
 // Backward compatibility aliases: agents-compat.ts
 // Skills module exports: agents-skills.ts

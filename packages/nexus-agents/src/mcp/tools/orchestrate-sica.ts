@@ -67,9 +67,6 @@ export function createOrchestratorWithSica(logger: ILogger, adapter?: IModelAdap
   return createSicaOrchestratorAdapter(sicaAgent, logger);
 }
 
-/** @deprecated Use createOrchestratorWithSica instead (Issue #759) */
-export const createTechLeadWithSica = createOrchestratorWithSica;
-
 /**
  * Adapts SicaAgent to orchestrator interface.
  *
@@ -125,6 +122,3 @@ export function getSicaAgentFromOrchestrator(_orchestrator: ITechLead): SicaAgen
   // Currently returns undefined as we don't store the reference.
   return undefined;
 }
-
-/** @deprecated Use getSicaAgentFromOrchestrator instead (Issue #759) */
-export const getSicaAgentFromTechLead = getSicaAgentFromOrchestrator;

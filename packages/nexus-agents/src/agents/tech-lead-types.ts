@@ -165,11 +165,6 @@ export interface OrchestratorOptions {
 }
 
 /**
- * @deprecated Use {@link OrchestratorOptions} instead. Will be removed in v3.0.
- */
-export type TechLeadOptions = OrchestratorOptions;
-
-/**
  * Zod schema for SubtaskPriority.
  */
 export const SubtaskPrioritySchema = z.enum(['critical', 'high', 'medium', 'low']);
@@ -311,11 +306,6 @@ export const OrchestratorOptionsSchema = z.object({
   enableParallelHints: z.boolean().optional(),
   expertWeights: z.record(z.number().min(0).max(10)).optional(),
 });
-
-/**
- * @deprecated Use {@link OrchestratorOptionsSchema} instead. Will be removed in v3.0.
- */
-export const TechLeadOptionsSchema = OrchestratorOptionsSchema;
 
 /**
  * Expert role capabilities mapping.
