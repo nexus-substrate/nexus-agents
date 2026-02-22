@@ -26,6 +26,7 @@ import { createSecureHandler, type HandlerContext } from '../middleware/secure-h
 import {
   mapCompositeDecisionToOutput,
   routeViaCompositeRouter,
+  recordRoutingOutcome,
 } from './delegate-to-model-router.js';
 import type { DelegateDeps, ToolResult } from './delegate-to-model-types.js';
 import {
@@ -232,6 +233,8 @@ async function tryCompositeRoute(
   const output = mapCompositeDecisionToOutput(routerResult.decision, requirements.estimatedTokens);
   ctx.logger.info('Routed via CompositeRouter', { model: output.recommended_model });
   notifyAndRecord({ ...opts, model: output.recommended_model, router: 'CompositeRouter' });
+  // Close the feedback loop so pending decisions don't accumulate (#1160)
+  recordRoutingOutcome(routerResult, Date.now() - opts.startMs, ctx.logger);
   return successResultStructured(enrichWithGovernance(output, opts.governance));
 }
 
@@ -264,7 +267,9 @@ function createDelegateHandler(
       governance,
     };
     const compositeResult = await tryCompositeRoute(deps, ctx, baseOpts);
-    if (compositeResult !== null) return compositeResult;
+    if (compositeResult !== null) {
+      return compositeResult;
+    }
     const requirements = analyzeTask(input.task);
     const billingMode = input.billing_mode ?? DEFAULTS.PROVIDER_DEFAULTS.billingMode;
     const selection = selectModel(input, requirements, billingMode);

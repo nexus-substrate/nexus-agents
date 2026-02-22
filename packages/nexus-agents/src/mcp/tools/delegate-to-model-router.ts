@@ -61,6 +61,7 @@ export function mapCompositeDecisionToOutput(
 export interface CompositeRoutingResult {
   decision: CompositeRoutingDecision;
   routingId?: string | undefined;
+  feedbackIntegration?: IFeedbackIntegration | undefined;
 }
 
 /**
@@ -88,5 +89,30 @@ export async function routeViaCompositeRouter(
     logger.debug('Recorded routing decision', { routingId, cliName: decision.cliName });
   }
 
-  return { decision, routingId };
+  return { decision, routingId, feedbackIntegration };
+}
+
+/**
+ * Records the outcome of a routing decision to close the feedback loop.
+ * Without this, pending decisions accumulate and degrade LinUCB learning.
+ * (Source: Issue #1160 — delegate-to-model outcome recording gap)
+ */
+export function recordRoutingOutcome(
+  result: CompositeRoutingResult,
+  durationMs: number,
+  logger: ILogger
+): void {
+  if (result.routingId === undefined || result.feedbackIntegration === undefined) return;
+  try {
+    result.feedbackIntegration.recordOutcome({
+      routingDecisionId: result.routingId,
+      success: true,
+      qualityScore: result.decision.topsisScore ?? 0.75,
+      durationMs,
+      tokenUsage: 0, // delegate-to-model is a recommendation, not execution
+    });
+    logger.debug('Recorded routing outcome', { routingId: result.routingId });
+  } catch (error: unknown) {
+    logger.warn('Failed to record routing outcome', { error: String(error) });
+  }
 }
