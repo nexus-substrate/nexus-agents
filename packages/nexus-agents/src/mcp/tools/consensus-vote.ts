@@ -1,20 +1,14 @@
 /**
  * nexus-agents/mcp - Consensus Vote Tool
- *
- * MCP tool for multi-model consensus voting on proposals.
- * Types and response helpers extracted to consensus-vote-types.ts (Issue #708).
- *
  * @module mcp/tools/consensus-vote
- * (Source: Issue #435, #531, #514, #708)
  */
 
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger } from '../../core/index.js';
-import { getErrorMessage } from '../../core/index.js';
-
 import {
   createLogger,
+  getErrorMessage,
   getTimeProvider,
   getRandomProvider,
   formatZodError,
@@ -39,13 +33,17 @@ import {
   createPersistedProposal,
   saveCorrelationData,
 } from '../../consensus/correlation-persistence.js';
-import { getToolMemory } from './tool-memory.js';
 import {
   MAX_PROPOSAL_LENGTH,
   VotingStrategySchema,
   ConsensusVoteInputSchema,
   buildResponse,
 } from './consensus-vote-types.js';
+import {
+  recordVoteSuccess,
+  recordVoteError,
+  recordVoteOutcomes,
+} from './consensus-vote-recording.js';
 import type {
   VotingStrategy,
   ConsensusVoteInput,
@@ -53,7 +51,6 @@ import type {
   ExtendedVotingResult,
 } from './consensus-vote-types.js';
 
-// Re-export types for consumers
 export type {
   VotingStrategy,
   ConsensusVoteInput,
@@ -65,10 +62,7 @@ export type {
 } from './consensus-vote-types.js';
 export { VotingStrategySchema, ConsensusVoteInputSchema } from './consensus-vote-types.js';
 
-// ============================================================================
-// Correlation Tracker Singleton
-// ============================================================================
-
+// --- Correlation Tracker Singleton ---
 let persistentCorrelationTracker: ICorrelationTracker | undefined;
 
 /** Gets or creates the persistent CorrelationTracker (Issue #517). */
@@ -82,10 +76,7 @@ export function resetCorrelationTracker(): void {
   persistentCorrelationTracker = undefined;
 }
 
-// ============================================================================
-// Dependencies
-// ============================================================================
-
+// --- Dependencies ---
 export interface ConsensusVoteDeps {
   logger?: ILogger;
   rateLimiter: RateLimiter;
@@ -94,10 +85,7 @@ export interface ConsensusVoteDeps {
   notifier?: IMcpNotifier | undefined;
 }
 
-// ============================================================================
-// Strategy Resolution
-// ============================================================================
-
+// --- Strategy Resolution ---
 function resolveStrategy(input: ConsensusVoteInput): VotingStrategy {
   if (input.strategy !== undefined) return input.strategy;
   if (input.threshold !== undefined) {
@@ -123,10 +111,7 @@ function getVoterRoles(quickMode: boolean): readonly VoterRole[] {
     : ['architect', 'security', 'devex', 'ai_ml', 'pm', 'catfish'];
 }
 
-// ============================================================================
-// Voting Execution
-// ============================================================================
-
+// --- Voting Execution ---
 /** Creates a synthetic ConsensusResult when all votes are errors (Issue #815). */
 function createEmptyConsensusResult(
   proposal: string,
@@ -229,13 +214,7 @@ async function executeVoting(
   const roles = getVoterRoles(input.quickMode);
   const startTime = getTimeProvider().now();
 
-  logger.info('Starting consensus vote', {
-    strategy,
-    algorithm,
-    roleCount: roles.length,
-    roles: roles.join(', '),
-    simulated: input.simulateVotes,
-  });
+  logger.info('Starting consensus vote', { strategy, algorithm, roleCount: roles.length });
 
   const votes = await collectRealVotes({
     roles,
@@ -255,13 +234,7 @@ async function executeVoting(
   recordVotesToTracker(votes, voteMap, outcome, logger);
 
   const totalTimeMs = getTimeProvider().now() - startTime;
-  const voteSummary = votes.map((v) => `${v.role}:${v.source}`).join(', ');
-  logger.info('Consensus vote completed', {
-    strategy,
-    outcome,
-    durationMs: totalTimeMs,
-    voteSummary,
-  });
+  logger.info('Consensus vote completed', { strategy, outcome, durationMs: totalTimeMs });
 
   const result: ExtendedVotingResult = {
     proposal: input.proposal,
@@ -276,61 +249,7 @@ async function executeVoting(
   return result;
 }
 
-// ============================================================================
-// Memory Recording (Issue #753)
-// ============================================================================
-
-/** Records a successful consensus vote to session memory. Best-effort. */
-function recordVoteSuccess(
-  proposal: string,
-  strategy: string,
-  outcome: string,
-  duration: number
-): void {
-  try {
-    const memory = getToolMemory();
-    memory.recordTask({
-      approach: `Consensus vote: ${strategy} on "${proposal.slice(0, 50)}"`,
-      challenges: [],
-      durationMs: duration,
-    });
-    memory.recordLearning({
-      pattern: `${strategy} vote → ${outcome}`,
-      context: `proposal="${proposal.slice(0, 40)}" duration=${String(duration)}ms`,
-      confidence: 0.8,
-      source: 'consensus-vote',
-    });
-    // Fire-and-forget promotion pipeline
-    void memory.runPromotionPipeline().catch((error: unknown) => {
-      createLogger({ tool: 'consensus-vote' }).debug('Promotion pipeline failed', { error });
-    });
-  } catch (error: unknown) {
-    createLogger({ tool: 'consensus-vote' }).warn('Failed to record vote success', {
-      error: getErrorMessage(error),
-    });
-  }
-}
-
-/** Records a failed consensus vote to session memory. Best-effort. */
-function recordVoteError(proposal: string, errorMessage: string): void {
-  try {
-    const memory = getToolMemory();
-    memory.recordError({
-      error: `Consensus vote failed: ${errorMessage.slice(0, 150)}`,
-      solution: 'Pending - vote execution failed',
-      filePattern: 'mcp/tools/consensus-vote',
-    });
-  } catch (error: unknown) {
-    createLogger({ tool: 'consensus-vote' }).warn('Failed to record vote error', {
-      error: getErrorMessage(error),
-    });
-  }
-}
-
-// ============================================================================
-// Handler & Registration
-// ============================================================================
-
+// --- Handler & Registration ---
 async function handleConsensusVote(
   deps: ConsensusVoteDeps,
   args: ConsensusVoteInput
@@ -340,6 +259,7 @@ async function handleConsensusVote(
     const result = await executeVoting(args, logger);
     const strategy = args.strategy ?? 'simple_majority';
     recordVoteSuccess(args.proposal, strategy, result.result.outcome, result.totalTimeMs);
+    recordVoteOutcomes(result.votes);
     return { ok: true, value: buildResponse(args, result) };
   } catch (error) {
     const message = getErrorMessage(error);

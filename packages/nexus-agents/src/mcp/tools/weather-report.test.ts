@@ -45,7 +45,7 @@ beforeEach(() => {
 describe('createDefaultWeatherConfig', () => {
   it('returns expected defaults', () => {
     const config = createDefaultWeatherConfig();
-    expect(config.coldStartThreshold).toBe(5);
+    expect(config.coldStartThreshold).toBe(3);
     expect(config.explorationRate).toBe(0.1);
     expect(config.maxBonusAdjustment).toBe(5);
   });
@@ -165,13 +165,13 @@ describe('generateWeatherReport', () => {
     const report = generateWeatherReport({});
 
     expect(report.explorationRate).toBe(0.1);
-    expect(report.coldStartThreshold).toBe(5);
+    expect(report.coldStartThreshold).toBe(3);
   });
 });
 
 describe('getAdaptiveBonus', () => {
   it('returns 0 below cold-start threshold', () => {
-    seedOutcomes(3, { cli: 'claude', category: 'code_generation', success: true });
+    seedOutcomes(2, { cli: 'claude', category: 'code_generation', success: true });
 
     const bonus = getAdaptiveBonus('claude', 'code_generation');
     expect(bonus).toBe(0);
@@ -200,12 +200,12 @@ describe('getAdaptiveBonus', () => {
   });
 
   it('respects custom cold-start threshold', () => {
-    seedOutcomes(3, { cli: 'claude', category: 'testing', success: true });
+    seedOutcomes(2, { cli: 'claude', category: 'testing', success: true });
 
-    // Default threshold is 10, so 3 samples = cold start
+    // Default threshold is 3, so 2 samples = cold start
     expect(getAdaptiveBonus('claude', 'testing')).toBe(0);
 
-    // With threshold of 2, 3 samples is sufficient
+    // With threshold of 2, 2 samples is sufficient
     const bonus = getAdaptiveBonus('claude', 'testing', { coldStartThreshold: 2 });
     expect(bonus).toBeGreaterThan(0);
   });

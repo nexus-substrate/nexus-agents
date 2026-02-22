@@ -41,9 +41,9 @@ export interface AdaptiveThresholdResult {
 
 const DEFAULT_BASELINE = 0.7;
 const DEFAULT_MAX_BONUS = 5;
-// Reduced from 10 to 5 per E2E findings (#1047): real interactive sessions
-// generate too few outcomes to ever reach 10, leaving adaptive bonuses dead.
-const COLD_START_THRESHOLD = 5;
+// Reduced from 10→5→3 per E2E findings (#1047, #1134): real interactive sessions
+// generate too few outcomes per CLI×category pair for higher thresholds.
+const COLD_START_THRESHOLD = 3;
 const DEFAULT_WINDOW_SIZE = 25;
 const FULL_CONFIDENCE_SAMPLES = 50;
 const TREND_DELTA_THRESHOLD = 0.05;
