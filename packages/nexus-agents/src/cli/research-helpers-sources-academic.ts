@@ -176,8 +176,18 @@ function pwcParseError(message: string): { ok: false; error: DiscoverError } {
   return { ok: false, error: { code: 'PARSE_ERROR', source: 'papers_with_code', message } };
 }
 
+/** Check if a Response has a non-JSON content type (e.g., HTML from redirect). */
+function isNonJsonResponse(response: Response): boolean {
+  const contentType = response.headers.get('content-type') ?? '';
+  return contentType !== '' && !contentType.includes('application/json');
+}
+
 /**
  * Discover research papers from Papers with Code.
+ *
+ * NOTE: As of 2026-02, the PwC API redirects to HuggingFace and returns HTML
+ * instead of JSON. This function handles that gracefully by detecting non-JSON
+ * responses and returning an empty result set rather than a failure.
  */
 export async function discoverPapersWithCode(
   topic: string,
@@ -192,6 +202,9 @@ export async function discoverPapersWithCode(
     headers: { 'User-Agent': 'nexus-agents', Accept: 'application/json' },
   });
   if (!fetchResult.ok) return fetchResult;
+
+  // PwC API may redirect to HuggingFace and return HTML instead of JSON.
+  if (isNonJsonResponse(fetchResult.value)) return { ok: true, value: [] };
 
   let raw: unknown;
   try {

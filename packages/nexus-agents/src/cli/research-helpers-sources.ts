@@ -283,13 +283,9 @@ export async function discoverGoogleAI(
   maxResults = 10,
   sinceDate?: string
 ): Promise<Result<DiscoveredSource[], DiscoverError>> {
-  return discoverFromArxiv(
-    topic,
-    '(au:"Google Research" OR au:"Google DeepMind" OR au:"Google Brain")',
-    'google_ai',
-    maxResults,
-    sinceDate
-  );
+  // arXiv au: field only searches author names, not affiliations.
+  // Drop author filter — use topic-only search (same quality as direct arxiv).
+  return discoverFromArxiv(topic, '', 'google_ai', maxResults, sinceDate);
 }
 
 // =============================================================================
@@ -308,13 +304,9 @@ export async function discoverMetaFAIR(
   maxResults = 10,
   sinceDate?: string
 ): Promise<Result<DiscoveredSource[], DiscoverError>> {
-  return discoverFromArxiv(
-    topic,
-    '(au:"Meta AI" OR au:FAIR OR au:"Meta Research")',
-    'meta_fair',
-    maxResults,
-    sinceDate
-  );
+  // arXiv au: field only searches author names, not affiliations.
+  // Drop author filter — use topic-only search (same quality as direct arxiv).
+  return discoverFromArxiv(topic, '', 'meta_fair', maxResults, sinceDate);
 }
 
 // =============================================================================
@@ -333,13 +325,9 @@ export async function discoverMicrosoftResearch(
   maxResults = 10,
   sinceDate?: string
 ): Promise<Result<DiscoveredSource[], DiscoverError>> {
-  return discoverFromArxiv(
-    topic,
-    '(au:"Microsoft Research" OR au:MSR)',
-    'microsoft',
-    maxResults,
-    sinceDate
-  );
+  // arXiv au: field only searches author names, not affiliations.
+  // Drop author filter — use topic-only search (same quality as direct arxiv).
+  return discoverFromArxiv(topic, '', 'microsoft', maxResults, sinceDate);
 }
 
 // =============================================================================
@@ -358,13 +346,9 @@ export async function discoverDeepMind(
   maxResults = 10,
   sinceDate?: string
 ): Promise<Result<DiscoveredSource[], DiscoverError>> {
-  return discoverFromArxiv(
-    topic,
-    '(au:DeepMind OR au:"Google DeepMind")',
-    'deepmind',
-    maxResults,
-    sinceDate
-  );
+  // arXiv au: field only searches author names, not affiliations.
+  // Drop author filter — use topic-only search (same quality as direct arxiv).
+  return discoverFromArxiv(topic, '', 'deepmind', maxResults, sinceDate);
 }
 
 // =============================================================================

@@ -215,6 +215,12 @@ function toDiscoveredItems(
   }));
 }
 
+/** Result of an extended source query — distinguishes API failure from zero results. */
+interface ExtendedSourceResult {
+  items: DiscoveredItem[];
+  failed: boolean;
+}
+
 /** Discovers from extended sources using the source providers. */
 async function discoverFromExtendedSource(
   source: string,
@@ -222,7 +228,7 @@ async function discoverFromExtendedSource(
   maxResults: number,
   logger: ILogger,
   sinceDate?: string
-): Promise<DiscoveredItem[]> {
+): Promise<ExtendedSourceResult> {
   let result;
   switch (source) {
     case 'google_ai':
@@ -247,7 +253,7 @@ async function discoverFromExtendedSource(
       result = await discoverOpenAlex(topic, maxResults);
       break;
     default:
-      return [];
+      return { items: [], failed: true };
   }
   if (!result.ok) {
     logger.warn(`${source} discovery failed`, {
@@ -255,9 +261,9 @@ async function discoverFromExtendedSource(
       errorCode: result.error.code,
       error: result.error.message,
     });
-    return [];
+    return { items: [], failed: true };
   }
-  return toDiscoveredItems(result.value);
+  return { items: toDiscoveredItems(result.value), failed: false };
 }
 
 // =============================================================================
@@ -325,67 +331,86 @@ function markExistingItems(items: DiscoveredItem[], existingIds: Set<string>): v
   }
 }
 
-/** All source keys that route through discoverFromExtendedSource. */
-const ALL_SOURCES = [
-  'google_ai',
-  'meta_fair',
-  'microsoft',
-  'deepmind',
-  'semantic_scholar',
-  'papers_with_code',
-  'openalex',
-] as const;
+/**
+ * arXiv-based org sources that no longer have author filters.
+ * When `source: 'all'`, these are skipped because they'd return identical
+ * results to the main `arxiv` source (arXiv doesn't support affiliation search).
+ * When queried individually, they still work via a single arXiv call.
+ */
+const ARXIV_ORG_SOURCES = new Set(['google_ai', 'meta_fair', 'microsoft', 'deepmind']);
+
+/** Independent academic sources with their own APIs. */
+const INDEPENDENT_SOURCES = ['semantic_scholar', 'papers_with_code', 'openalex'] as const;
+
+/** Accumulated query results. */
+interface QueryAccumulator {
+  sources: string[];
+  failedSources: string[];
+  items: DiscoveredItem[];
+}
+
+/** Query a single extended source and accumulate results. */
+async function queryExtendedSource(
+  src: string,
+  input: ResearchDiscoverInput,
+  logger: ILogger,
+  acc: QueryAccumulator
+): Promise<void> {
+  acc.sources.push(src);
+  try {
+    const result = await discoverFromExtendedSource(
+      src,
+      input.topic,
+      input.maxResults,
+      logger,
+      input.sinceDate
+    );
+    if (result.failed) acc.failedSources.push(src);
+    acc.items = acc.items.concat(result.items);
+  } catch (error: unknown) {
+    acc.failedSources.push(src);
+    logger.warn('Source discovery failed', { source: src, error: getErrorMessage(error) });
+  }
+}
 
 /** Query all requested sources and collect items. */
 async function queryAllSources(
   input: ResearchDiscoverInput,
   logger: ILogger
-): Promise<{ sources: string[]; failedSources: string[]; items: DiscoveredItem[] }> {
-  const sources: string[] = [];
-  const failedSources: string[] = [];
-  let items: DiscoveredItem[] = [];
-  const shouldQuery = (src: string): boolean => input.source === 'all' || input.source === src;
+): Promise<QueryAccumulator> {
+  const acc: QueryAccumulator = { sources: [], failedSources: [], items: [] };
+  const isAll = input.source === 'all';
+  const shouldQuery = (src: string): boolean => isAll || input.source === src;
 
-  // arXiv uses dedicated discoverArxiv() with targeted ti:/abs: queries
   if (shouldQuery('arxiv')) {
-    sources.push('arxiv');
+    acc.sources.push('arxiv');
     const r = await discoverArxiv(input.topic, input.maxResults, input.sinceDate);
-    if (r.ok) items = items.concat(toDiscoveredItems(r.value));
+    if (r.ok) acc.items = acc.items.concat(toDiscoveredItems(r.value));
     else {
-      failedSources.push('arxiv');
-      logger.warn('arxiv discovery failed', { source: 'arxiv', error: r.error.message });
+      acc.failedSources.push('arxiv');
+      logger.warn('arxiv discovery failed', { error: r.error.message });
     }
   }
+
+  // Org sources: skip when 'all' (identical to arxiv); query individually
+  for (const src of ARXIV_ORG_SOURCES) {
+    if (!isAll && input.source === src) await queryExtendedSource(src, input, logger, acc);
+  }
+
   if (shouldQuery('github')) {
-    sources.push('github');
+    acc.sources.push('github');
     const r = await discoverGitHubRepos(input.topic, input.maxResults);
-    if (r.ok) items = items.concat(toDiscoveredItems(r.value));
+    if (r.ok) acc.items = acc.items.concat(toDiscoveredItems(r.value));
     else {
-      failedSources.push('github');
-      logger.warn('github discovery failed', { source: 'github', error: r.error.message });
+      acc.failedSources.push('github');
+      logger.warn('github discovery failed', { error: r.error.message });
     }
   }
-  for (const src of ALL_SOURCES) {
-    if (shouldQuery(src)) {
-      sources.push(src);
-      try {
-        const found = await discoverFromExtendedSource(
-          src,
-          input.topic,
-          input.maxResults,
-          logger,
-          input.sinceDate
-        );
-        if (found.length === 0) failedSources.push(src);
-        items = items.concat(found);
-      } catch (error: unknown) {
-        failedSources.push(src);
-        const message = getErrorMessage(error);
-        logger.warn('Extended source discovery failed', { source: src, error: message });
-      }
-    }
+
+  for (const src of INDEPENDENT_SOURCES) {
+    if (shouldQuery(src)) await queryExtendedSource(src, input, logger, acc);
   }
-  return { sources, failedSources, items };
+  return acc;
 }
 
 /** Runs discovery across selected sources. */

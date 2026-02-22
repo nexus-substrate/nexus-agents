@@ -13,6 +13,11 @@ import {
 
 const mockFetch = vi.fn();
 
+/** Headers mock that returns 'application/json' for content-type. */
+const jsonHeaders = {
+  get: (name: string) => (name === 'content-type' ? 'application/json' : null),
+};
+
 beforeEach(() => {
   vi.stubGlobal('fetch', mockFetch);
 });
@@ -121,6 +126,7 @@ describe('discoverPapersWithCode', () => {
   it('should parse valid response', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
+      headers: jsonHeaders,
       json: () =>
         Promise.resolve({
           results: [
@@ -154,6 +160,7 @@ describe('discoverPapersWithCode', () => {
   it('should return PARSE_ERROR on invalid schema', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
+      headers: jsonHeaders,
       json: () => Promise.resolve(42),
     });
     const result = await discoverPapersWithCode('test', 5);
@@ -161,9 +168,18 @@ describe('discoverPapersWithCode', () => {
     if (!result.ok) expect(result.error.code).toBe('PARSE_ERROR');
   });
 
-  it('should return PARSE_ERROR when response is HTML error page', async () => {
+  it('should return empty result when response is HTML (API redirect)', async () => {
+    const htmlHeaders = { get: (name: string) => (name === 'content-type' ? 'text/html' : null) };
+    mockFetch.mockResolvedValueOnce({ ok: true, headers: htmlHeaders });
+    const result = await discoverPapersWithCode('test', 5);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value).toHaveLength(0);
+  });
+
+  it('should return PARSE_ERROR when JSON parse fails', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
+      headers: jsonHeaders,
       json: () => Promise.reject(new SyntaxError('Unexpected token \'<\', "<!doctype "...')),
     });
     const result = await discoverPapersWithCode('test', 5);
@@ -177,6 +193,7 @@ describe('discoverPapersWithCode', () => {
   it('should mark papers without repos as medium relevance', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
+      headers: jsonHeaders,
       json: () =>
         Promise.resolve({
           results: [
