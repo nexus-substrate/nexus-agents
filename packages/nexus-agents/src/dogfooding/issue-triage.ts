@@ -28,7 +28,8 @@ import type { CorroborationResult } from '../security/corroboration-validator.js
 import { assessReputation, ReputationCache } from '../security/reputation-model.js';
 import type { ReputationAssessment, GitHubUserMetadata } from '../security/reputation-model.js';
 import type { AgentAction, SourceCitation } from '../security/action-schema.js';
-import { GitHubClient, parseIssueUrl, createGitHubClientFromEnv } from './github-client.js';
+import { parseIssueUrl } from './github-client.js';
+import { createFullGitHubProvider } from '../scm/github-provider-traits.js';
 import { categorizeIssue, extractLabelsFromBody } from './issue-triage-helpers.js';
 import type {
   IssueMetadata,
@@ -80,31 +81,25 @@ export class IssueTriage {
 
     const { owner, repo, issueNumber } = parseResult.value;
 
-    const clientResult = this.getGitHubClient();
-    if (!clientResult.ok) return clientResult;
+    const fetchResult = await this.fetchIssueData(owner, repo, issueNumber);
+    if (!fetchResult.ok) return fetchResult;
 
-    const client = clientResult.value;
-
-    const issueResult = await client.getIssue(owner, repo, issueNumber);
-    if (!issueResult.ok) return err(issueResult.error);
-
-    const commentsResult = await client.listIssueComments(owner, repo, issueNumber);
-    const comments = commentsResult.ok ? commentsResult.value : [];
+    const { issue: issueResult, comments } = fetchResult.value;
 
     // Sanitize untrusted content (Issue #828 — input-sanitizer wiring)
-    const safeTitle = this.sanitizeContent(issueResult.value.title, issueResult.value.author);
-    const safeBody = this.sanitizeContent(issueResult.value.body, issueResult.value.author);
+    const safeTitle = this.sanitizeContent(issueResult.title, issueResult.author);
+    const safeBody = this.sanitizeContent(issueResult.body, issueResult.author);
 
     // Classify trust + assess reputation (Issue #828 — new wiring)
-    const trustResult = this.classifyAuthor(issueResult.value);
-    const reputation = this.assessAuthorReputation(issueResult.value, comments);
+    const trustResult = this.classifyAuthor(issueResult);
+    const reputation = this.assessAuthorReputation(issueResult, comments);
 
     // Generate and validate actions
-    const actions = this.generateActions(safeTitle, safeBody, issueResult.value, trustResult);
+    const actions = this.generateActions(safeTitle, safeBody, issueResult, trustResult);
     const validatedActions = this.validateActions(actions, trustResult);
 
     const result = this.buildResult({
-      issue: issueResult.value,
+      issue: issueResult,
       actions: validatedActions,
       trustResult,
       reputation,
@@ -305,13 +300,45 @@ export class IssueTriage {
   }
 
   /**
-   * Gets or creates a GitHub client.
+   * Fetches issue data from the SCM provider and maps to dogfooding types.
    */
-  private getGitHubClient(): Result<GitHubClient, Error> {
-    if (this.config.githubToken !== undefined) {
-      return ok(new GitHubClient({ token: this.config.githubToken }));
-    }
-    return createGitHubClientFromEnv();
+  private async fetchIssueData(
+    owner: string,
+    repo: string,
+    issueNumber: number
+  ): Promise<Result<{ issue: IssueMetadata; comments: IssueComment[] }, Error>> {
+    const provider = createFullGitHubProvider(`${owner}/${repo}`);
+
+    const detailResult = await provider.getIssueDetail(issueNumber);
+    if (!detailResult.ok) return err(detailResult.error);
+
+    const detail = detailResult.value;
+    const issue: IssueMetadata = {
+      number: detail.number,
+      title: detail.title,
+      body: detail.body,
+      author: detail.author,
+      authorAssociation: detail.authorAssociation,
+      owner,
+      repo,
+      url: detail.url,
+      state: detail.state,
+      labels: [...detail.labels],
+      createdAt: detail.createdAt,
+    };
+
+    const commentsResult = await provider.listCommentDetails(issueNumber);
+    const comments: IssueComment[] = commentsResult.ok
+      ? commentsResult.value.map((c) => ({
+          id: c.id,
+          body: c.body,
+          author: c.author,
+          authorAssociation: c.authorAssociation,
+          createdAt: c.createdAt,
+        }))
+      : [];
+
+    return ok({ issue, comments });
   }
 }
 

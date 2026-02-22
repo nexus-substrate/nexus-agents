@@ -26,7 +26,9 @@ import type {
   ReviewCategory,
 } from './pr-review-types.js';
 import { DEFAULT_PR_REVIEW_CONFIG, CATEGORY_DISPLAY_NAMES } from './pr-review-types.js';
-import { GitHubClient, parsePRUrl, createGitHubClientFromEnv } from './github-client.js';
+import { parsePRUrl } from './github-client.js';
+import { createFullGitHubProvider } from '../scm/github-provider-traits.js';
+import type { FullCapableProvider } from '../scm/types.js';
 import {
   parseFindings,
   extractSummary,
@@ -73,27 +75,26 @@ export class PRReviewer {
 
     const { owner, repo, prNumber } = parseResult.value;
 
-    const clientResult = this.getGitHubClient();
-    if (!clientResult.ok) return clientResult;
+    const fetchResult = await this.fetchPRData(owner, repo, prNumber);
+    if (!fetchResult.ok) return fetchResult;
 
-    const prResult = await clientResult.value.getPullRequest(owner, repo, prNumber);
-    if (!prResult.ok) return err(prResult.error);
+    const { metadata: prMetadata, provider } = fetchResult.value;
 
     // Classify PR author trust tier (Issue #828 — defense-in-depth)
-    const trustResult = this.classifyPRAuthor(prResult.value);
+    const trustResult = this.classifyPRAuthor(prMetadata);
     logger.info('PR author trust classified', {
       prNumber,
-      author: prResult.value.author,
+      author: prMetadata.author,
       trustTier: trustResult.trustTier,
       userRole: trustResult.userRole,
       isAllowlisted: trustResult.isAllowlisted,
     });
 
-    const expertReviews = await this.runExpertReviews(prResult.value, traceId);
-    const result = this.aggregateReviews(prResult.value, expertReviews, startTime);
+    const expertReviews = await this.runExpertReviews(prMetadata, traceId);
+    const result = this.aggregateReviews(prMetadata, expertReviews, startTime);
 
     if (!this.config.dryRun) {
-      await this.postReviewToGitHub(clientResult.value, parseResult.value, result, trustResult);
+      await this.postReviewToGitHub(provider, parseResult.value, result, trustResult);
     }
 
     logger.info('PR review completed', {
@@ -351,7 +352,7 @@ Provide a structured review with:
    * (Source: Issue #828 — Wire policy gate into production pipeline)
    */
   private async postReviewToGitHub(
-    client: GitHubClient,
+    provider: FullCapableProvider,
     pr: { owner: string; repo: string; prNumber: number },
     result: PRReviewResult,
     trustResult: ClassifyResult
@@ -373,13 +374,7 @@ Provide a structured review with:
 
     const { formatReviewComment } = await import('./pr-reviewer-helpers.js');
     const body = formatReviewComment(result);
-    const postResult = await client.createReview(
-      pr.owner,
-      pr.repo,
-      pr.prNumber,
-      body,
-      result.decision
-    );
+    const postResult = await provider.createReview(pr.prNumber, body, result.decision);
     if (!postResult.ok) {
       logger.error('Failed to post review', postResult.error);
     }
@@ -416,13 +411,46 @@ Provide a structured review with:
   }
 
   /**
-   * Gets or creates GitHub client.
+   * Fetches PR data from the SCM provider and maps to dogfooding types.
    */
-  private getGitHubClient(): Result<GitHubClient, Error> {
-    if (this.config.githubToken !== undefined) {
-      return ok(new GitHubClient({ token: this.config.githubToken }));
-    }
-    return createGitHubClientFromEnv();
+  private async fetchPRData(
+    owner: string,
+    repo: string,
+    prNumber: number
+  ): Promise<Result<{ metadata: PRMetadata; provider: FullCapableProvider }, Error>> {
+    const provider = createFullGitHubProvider(`${owner}/${repo}`);
+
+    const detailResult = await provider.getPullRequestDetail(prNumber);
+    if (!detailResult.ok) return err(detailResult.error);
+
+    const detail = detailResult.value;
+    const metadata: PRMetadata = {
+      number: detail.number,
+      title: detail.title,
+      body: detail.body,
+      author: detail.author,
+      authorAssociation: detail.authorAssociation,
+      base: detail.base,
+      head: detail.head,
+      headSha: detail.headSha,
+      owner,
+      repo,
+      url: detail.url,
+      draft: detail.draft,
+      labels: [...detail.labels],
+      files: detail.files.map((f) => ({
+        filename: f.filename,
+        status: f.status,
+        additions: f.additions,
+        deletions: f.deletions,
+        ...(f.patch !== undefined ? { patch: f.patch } : {}),
+        ...(f.previousFilename !== undefined ? { previousFilename: f.previousFilename } : {}),
+      })),
+      additions: detail.additions,
+      deletions: detail.deletions,
+    };
+
+    return ok({ metadata, provider });
   }
 
   /**

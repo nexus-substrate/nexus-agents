@@ -9,41 +9,24 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { PRMetadata } from './pr-review-types.js';
 import { ok, err } from '../core/index.js';
-import { GitHubError, parsePRUrl } from './github-client.js';
+import { ScmError } from '../scm/types.js';
+import type { ScmPullRequestDetail } from '../scm/types.js';
+import { parsePRUrl } from './github-client.js';
 
-// Use vi.hoisted to declare mocks before they are used in vi.mock
-const {
-  mockGetPullRequest,
-  mockCreateReview,
-  mockCreateComment,
-  mockCreateGitHubClientFromEnv,
-  MockGitHubClient,
-  mockRecordInteraction,
-  mockGenerateTraceId,
-} = vi.hoisted(() => ({
-  mockGetPullRequest: vi.fn(),
-  mockCreateReview: vi.fn(),
-  mockCreateComment: vi.fn(),
-  mockCreateGitHubClientFromEnv: vi.fn(),
-  MockGitHubClient: vi.fn(),
-  mockRecordInteraction: vi.fn(),
-  mockGenerateTraceId: vi.fn(() => 'test-trace-id-12345'),
+// Mock SCM provider traits
+const mockGetPullRequestDetail = vi.fn();
+const mockCreateReview = vi.fn();
+const mockCreateFullGitHubProvider = vi.fn();
+
+vi.mock('../scm/github-provider-traits.js', () => ({
+  createFullGitHubProvider: (...args: unknown[]): unknown => mockCreateFullGitHubProvider(...args),
 }));
 
-// Mock the GitHub client module
-vi.mock('./github-client.js', async () => {
-  const actual = await vi.importActual<typeof import('./github-client.js')>('./github-client.js');
-
-  return {
-    ...actual,
-    GitHubClient: MockGitHubClient,
-    createGitHubClientFromEnv: mockCreateGitHubClientFromEnv,
-  };
-});
-
 // Mock SwarmObserver
+const mockRecordInteraction = vi.fn();
+const mockGenerateTraceId = vi.fn(() => 'test-trace-id-12345');
+
 vi.mock('../observability/swarm-observer.js', () => {
   const MockSwarmObserver = vi.fn().mockImplementation(() => ({
     recordInteraction: mockRecordInteraction,
@@ -72,8 +55,8 @@ vi.mock('../core/index.js', async () => {
   };
 });
 
-// Helper to create mock PR metadata
-function createMockPRMetadata(): PRMetadata {
+/** Creates a mock SCM PR detail that the provider would return. */
+function createMockPRDetail(): ScmPullRequestDetail {
   return {
     number: 123,
     title: 'Test PR',
@@ -83,8 +66,6 @@ function createMockPRMetadata(): PRMetadata {
     base: 'main',
     head: 'feature-branch',
     headSha: 'abc123def456',
-    owner: 'owner',
-    repo: 'repo',
     url: 'https://github.com/owner/repo/pull/123',
     draft: false,
     labels: ['enhancement'],
@@ -106,18 +87,17 @@ describe('PRReviewer', () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
-    // Set up default mock implementations
-    const mockGitHubClient = {
-      getPullRequest: mockGetPullRequest,
+    mockCreateFullGitHubProvider.mockReturnValue({
+      platform: 'github',
+      repo: 'owner/repo',
+      getPullRequestDetail: mockGetPullRequestDetail,
       createReview: mockCreateReview,
-      createComment: mockCreateComment,
-    };
-
-    MockGitHubClient.mockImplementation(() => mockGitHubClient);
-    mockCreateGitHubClientFromEnv.mockReturnValue(ok(mockGitHubClient));
-    mockGetPullRequest.mockResolvedValue(ok(createMockPRMetadata()));
-    mockCreateReview.mockResolvedValue(ok({ id: 123 }));
-    mockCreateComment.mockResolvedValue(ok({ id: 456 }));
+      getIssueDetail: vi.fn(),
+      listCommentDetails: vi.fn(),
+      fetchUserMetadata: vi.fn(),
+    });
+    mockGetPullRequestDetail.mockResolvedValue(ok(createMockPRDetail()));
+    mockCreateReview.mockResolvedValue(ok(undefined));
   });
 
   afterEach(() => {
@@ -162,7 +142,7 @@ describe('PRReviewer', () => {
   describe('reviewPR - URL parsing', () => {
     it('should accept valid GitHub PR URL', async () => {
       const { PRReviewer } = await import('./pr-reviewer.js');
-      const reviewer = new PRReviewer({ dryRun: true, githubToken: 'test-token' });
+      const reviewer = new PRReviewer({ dryRun: true });
 
       const result = await reviewer.reviewPR('https://github.com/owner/repo/pull/123');
 
@@ -171,7 +151,7 @@ describe('PRReviewer', () => {
 
     it('should accept short format PR URL', async () => {
       const { PRReviewer } = await import('./pr-reviewer.js');
-      const reviewer = new PRReviewer({ dryRun: true, githubToken: 'test-token' });
+      const reviewer = new PRReviewer({ dryRun: true });
 
       const result = await reviewer.reviewPR('owner/repo#123');
 
@@ -180,7 +160,7 @@ describe('PRReviewer', () => {
 
     it('should return error for invalid PR URL', async () => {
       const { PRReviewer } = await import('./pr-reviewer.js');
-      const reviewer = new PRReviewer({ dryRun: true, githubToken: 'test-token' });
+      const reviewer = new PRReviewer({ dryRun: true });
 
       const result = await reviewer.reviewPR('invalid-url');
 
@@ -192,7 +172,7 @@ describe('PRReviewer', () => {
 
     it('should return error for empty URL', async () => {
       const { PRReviewer } = await import('./pr-reviewer.js');
-      const reviewer = new PRReviewer({ dryRun: true, githubToken: 'test-token' });
+      const reviewer = new PRReviewer({ dryRun: true });
 
       const result = await reviewer.reviewPR('');
 
@@ -201,26 +181,19 @@ describe('PRReviewer', () => {
   });
 
   describe('reviewPR - GitHub client', () => {
-    it('should use provided GitHub token', async () => {
-      const { PRReviewer } = await import('./pr-reviewer.js');
-      const reviewer = new PRReviewer({ dryRun: true, githubToken: 'my-token' });
-
-      await reviewer.reviewPR('https://github.com/owner/repo/pull/123');
-
-      expect(MockGitHubClient).toHaveBeenCalledWith({ token: 'my-token' });
-    });
-
-    it('should fall back to createGitHubClientFromEnv when no token provided', async () => {
+    it('should create SCM provider with parsed repo', async () => {
       const { PRReviewer } = await import('./pr-reviewer.js');
       const reviewer = new PRReviewer({ dryRun: true });
 
       await reviewer.reviewPR('https://github.com/owner/repo/pull/123');
 
-      expect(mockCreateGitHubClientFromEnv).toHaveBeenCalled();
+      expect(mockCreateFullGitHubProvider).toHaveBeenCalledWith('owner/repo');
     });
 
-    it('should return error when no GitHub token available', async () => {
-      mockCreateGitHubClientFromEnv.mockReturnValue(err(new Error('GITHUB_TOKEN not set')));
+    it('should return error on SCM API failure', async () => {
+      mockGetPullRequestDetail.mockResolvedValue(
+        err(new ScmError('gh api failed: Not Found', 'github', 404))
+      );
 
       const { PRReviewer } = await import('./pr-reviewer.js');
       const reviewer = new PRReviewer({ dryRun: true });
@@ -228,50 +201,37 @@ describe('PRReviewer', () => {
       const result = await reviewer.reviewPR('https://github.com/owner/repo/pull/123');
 
       expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.error.message).toContain('GITHUB_TOKEN');
-      }
     });
   });
 
-  describe('reviewPR - GitHub API rate limits', () => {
-    it('should handle GitHub API rate limit (403)', async () => {
-      mockGetPullRequest.mockResolvedValue(err(new GitHubError('API rate limit exceeded', 403)));
+  describe('reviewPR - SCM API errors', () => {
+    it('should handle SCM rate limit error', async () => {
+      mockGetPullRequestDetail.mockResolvedValue(
+        err(new ScmError('gh api failed: rate limit exceeded', 'github', 403))
+      );
 
       const { PRReviewer } = await import('./pr-reviewer.js');
-      const reviewer = new PRReviewer({ dryRun: true, githubToken: 'test-token' });
+      const reviewer = new PRReviewer({ dryRun: true });
       const result = await reviewer.reviewPR('https://github.com/owner/repo/pull/123');
 
       expect(result.ok).toBe(false);
       if (!result.ok) {
-        expect(result.error).toBeInstanceOf(GitHubError);
-        expect((result.error as GitHubError).statusCode).toBe(403);
+        expect(result.error).toBeInstanceOf(ScmError);
       }
     });
 
-    it('should handle GitHub API rate limit (429)', async () => {
-      mockGetPullRequest.mockResolvedValue(err(new GitHubError('Too many requests', 429)));
+    it('should handle SCM not found error', async () => {
+      mockGetPullRequestDetail.mockResolvedValue(
+        err(new ScmError('gh api failed: Not Found', 'github', 404))
+      );
 
       const { PRReviewer } = await import('./pr-reviewer.js');
-      const reviewer = new PRReviewer({ dryRun: true, githubToken: 'test-token' });
-      const result = await reviewer.reviewPR('https://github.com/owner/repo/pull/123');
-
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect((result.error as GitHubError).statusCode).toBe(429);
-      }
-    });
-
-    it('should handle GitHub API not found error', async () => {
-      mockGetPullRequest.mockResolvedValue(err(new GitHubError('Not Found', 404)));
-
-      const { PRReviewer } = await import('./pr-reviewer.js');
-      const reviewer = new PRReviewer({ dryRun: true, githubToken: 'test-token' });
+      const reviewer = new PRReviewer({ dryRun: true });
       const result = await reviewer.reviewPR('https://github.com/owner/repo/pull/999');
 
       expect(result.ok).toBe(false);
       if (!result.ok) {
-        expect((result.error as GitHubError).statusCode).toBe(404);
+        expect(result.error).toBeInstanceOf(ScmError);
       }
     });
   });
