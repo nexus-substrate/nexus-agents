@@ -6,11 +6,13 @@
  */
 
 import type { Result } from '../core/result.js';
+import type { CliNameLiteral } from '../config/model-capabilities-types.js';
 
 /**
  * Supported CLI names for testing.
+ * Derived from canonical source: config/model-capabilities-types.ts CliNameLiteral
  */
-export type CliName = 'claude' | 'gemini' | 'codex';
+export type CliName = CliNameLiteral;
 
 /**
  * CLI transport mechanism.

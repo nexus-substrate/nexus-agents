@@ -7,6 +7,8 @@
  * (Source: Issue #257 - SWE-Bench Evaluation)
  */
 
+import type { CliNameLiteral } from '../config/model-capabilities-types.js';
+
 /**
  * SWE-bench dataset variants.
  */
@@ -123,7 +125,7 @@ export interface SWEBenchConfig {
   /** Dataset variant. */
   readonly variant: SWEBenchVariant;
   /** Model to use. */
-  readonly model: 'claude' | 'gemini' | 'codex' | 'auto';
+  readonly model: CliNameLiteral | 'auto';
   /** Maximum instances to run (for testing). */
   readonly limit?: number;
   /** Output path for predictions. */

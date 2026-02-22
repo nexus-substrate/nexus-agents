@@ -8,10 +8,11 @@
 
 import type { Result, Task } from '../../../core/index.js';
 import { ok, err, AgentError, getRandomProvider } from '../../../core/index.js';
+import type { CliNameLiteral } from '../../../config/model-capabilities-types.js';
 import { clamp01 } from '../../../utils/math-utils.js';
 
 export interface MockCliAdapterConfig {
-  name: 'claude' | 'gemini' | 'codex';
+  name: CliNameLiteral;
   available?: boolean;
   version?: string;
   responseDelay?: number;
@@ -31,7 +32,7 @@ export interface MockCliResponse {
  * Provides controllable behavior for testing routing, fallback, and error handling.
  */
 export class MockCliAdapter {
-  readonly name: 'claude' | 'gemini' | 'codex';
+  readonly name: CliNameLiteral;
   private _available: boolean;
   private _version: string;
   private responseDelay: number;

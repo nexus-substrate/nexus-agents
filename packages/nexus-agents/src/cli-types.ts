@@ -7,6 +7,7 @@
  */
 
 import type { ServerMode } from './cli/index.js';
+import type { CliNameLiteral } from './config/model-capabilities-types.js';
 
 // Re-export help text from extracted module for backward compatibility
 export { HELP_TEXT } from './cli-help-text.js';
@@ -90,7 +91,7 @@ export interface ParsedCliArgs {
     skipChecks: boolean;
     // Orchestrate command options (also used in orchestrator mode)
     task?: string;
-    model?: 'claude' | 'gemini' | 'codex';
+    model?: CliNameLiteral;
     maxTokens?: number;
     maxCostUsd?: number;
     engine?: 'router' | 'puppeteer';

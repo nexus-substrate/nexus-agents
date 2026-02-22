@@ -25,6 +25,7 @@ import {
 } from './demo-command-formatters.js';
 import { createAllAdapters } from '../cli-adapters/factory.js';
 import type { CliName } from '../cli-adapters/types.js';
+import { DEFAULT_CLI } from '../config/model-capabilities-types.js';
 
 // Re-export types and validators for external use
 export type { DemoSubcommand, DemoOptions } from './demo-command-types.js';
@@ -156,7 +157,7 @@ function analyzeTaskForDemo(task: string): MockRoutingResult {
   const estimatedTokens = isComplexTask ? 50000 : isCodeTask ? 20000 : 5000;
 
   // Determine best model based on task
-  let selectedModel = 'claude';
+  let selectedModel: string = DEFAULT_CLI;
   let selectionReason = 'Best reasoning for complex tasks';
 
   if (isCodeTask && !isReasoningTask) {

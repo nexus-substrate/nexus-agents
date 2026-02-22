@@ -7,6 +7,7 @@
  */
 
 import type { CliName } from '../../cli-adapters/types.js';
+import { DEFAULT_CLI } from '../../config/model-capabilities-types.js';
 import type {
   TaskTestResult,
   AggregatedMetrics,
@@ -140,7 +141,7 @@ export function computeCategoryMetrics(
       }
     }
 
-    let bestCli: CliName = 'claude';
+    let bestCli: CliName = DEFAULT_CLI;
     let bestAvg = -1;
     for (const [cli, cliResultScores] of cliScores) {
       const avg = mean(cliResultScores);

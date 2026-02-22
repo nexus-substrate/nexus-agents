@@ -20,6 +20,7 @@ import {
   type ParsedCliArgs,
 } from './cli-types.js';
 import { dispatchCommand } from './cli-commands.js';
+import { CLI_NAMES, type CliNameLiteral } from './config/model-capabilities-types.js';
 
 // Re-export types and constants for external use
 export { EXIT_CODES, type CliCommand, type ParsedCliArgs } from './cli-types.js';
@@ -57,11 +58,9 @@ function parseNumericOption(value: string | undefined): number | undefined {
 /**
  * Validates orchestrate model option.
  */
-function parseOrchestrateModel(
-  value: string | undefined
-): 'claude' | 'gemini' | 'codex' | undefined {
-  if (value === 'claude' || value === 'gemini' || value === 'codex') {
-    return value;
+function parseOrchestrateModel(value: string | undefined): CliNameLiteral | undefined {
+  if (value !== undefined && (CLI_NAMES as readonly string[]).includes(value)) {
+    return value as CliNameLiteral;
   }
   return undefined;
 }

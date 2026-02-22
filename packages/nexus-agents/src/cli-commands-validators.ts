@@ -8,6 +8,8 @@
  */
 
 import type { ExpertListFormat, IndexSubcommand } from './cli/index.js';
+import type { CliNameLiteral } from './config/model-capabilities-types.js';
+import { CLI_NAMES } from './config/model-capabilities-types.js';
 
 /**
  * Validates and coerces format to ExpertListFormat.
@@ -19,8 +21,8 @@ export function isValidExpertListFormat(value: string): value is ExpertListForma
 /**
  * Validates model option for orchestrate command.
  */
-export function isValidOrchestrateModel(value: string): value is 'claude' | 'gemini' | 'codex' {
-  return ['claude', 'gemini', 'codex'].includes(value);
+export function isValidOrchestrateModel(value: string): value is CliNameLiteral {
+  return (CLI_NAMES as readonly string[]).includes(value);
 }
 
 /**

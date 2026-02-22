@@ -11,6 +11,7 @@
 
 import type { LearnablePolicyStats } from '../agents/orchestration/index.js';
 import type { CommandResult } from '../core/index.js';
+import type { CliNameLiteral } from '../config/model-capabilities-types.js';
 
 /** Engine type for orchestration */
 export type OrchestrateEngine = 'router' | 'puppeteer';
@@ -20,7 +21,7 @@ export interface OrchestrateOptions {
   /** Task to execute */
   task: string;
   /** Specific model to use (bypasses routing) */
-  model?: 'claude' | 'gemini' | 'codex' | undefined;
+  model?: CliNameLiteral | undefined;
   /** Output format */
   format?: 'text' | 'json' | undefined;
   /** Enable verbose output */

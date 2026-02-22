@@ -8,6 +8,7 @@
  */
 
 import { z } from 'zod';
+import type { CliNameLiteral } from './model-capabilities-types.js';
 
 // ============================================================================
 // CLI Timeout Types
@@ -32,8 +33,9 @@ export interface TimeoutProfile {
 
 /**
  * Known CLI names for timeout profiles.
+ * Extends CliNameLiteral with 'default' for fallback timeout profiles.
  */
-export type KnownCliName = 'claude' | 'gemini' | 'codex' | 'default';
+export type KnownCliName = CliNameLiteral | 'default';
 
 // ============================================================================
 // Defaults Type Definitions

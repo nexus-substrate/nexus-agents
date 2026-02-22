@@ -12,12 +12,13 @@ import type { IFeedbackIntegration } from '../../learning/feedback-integration.j
 import type { CapabilityProfile, DelegateOutput } from './delegate-to-model-types.js';
 import { MODEL_CAPABILITIES } from './delegate-to-model-types.js';
 import { DEFAULT_MODEL_PER_CLI } from '../../config/model-capabilities.js';
+import type { CliNameLiteral } from '../../config/model-capabilities-types.js';
 
 /**
  * Maps CLI name to default model ID for output.
  * Derives from {@link DEFAULT_MODEL_PER_CLI} to stay in sync with the model registry.
  */
-export function cliNameToModel(cliName: 'claude' | 'gemini' | 'codex'): string {
+export function cliNameToModel(cliName: CliNameLiteral): string {
   return DEFAULT_MODEL_PER_CLI[cliName];
 }
 

@@ -7,10 +7,13 @@
  * (Source: docs/research/cli-integration-architecture.md)
  */
 
+import type { CliNameLiteral } from '../config/model-capabilities-types.js';
+
 /**
  * Supported CLI names.
+ * Derived from canonical source: config/model-capabilities-types.ts CliNameLiteral
  */
-export type CliName = 'claude' | 'gemini' | 'codex';
+export type CliName = CliNameLiteral;
 
 /**
  * Transport type for CLI communication.

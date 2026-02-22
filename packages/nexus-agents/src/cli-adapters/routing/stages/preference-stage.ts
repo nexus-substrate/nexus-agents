@@ -11,6 +11,7 @@
 import type { Result } from '../../../core/result.js';
 import type { ILogger } from '../../../core/index.js';
 import { ok, createLogger, getTimeProvider } from '../../../core/index.js';
+import { DEFAULT_CLI } from '../../../config/model-capabilities-types.js';
 import type {
   IRouterStage,
   RoutingContext,
@@ -202,7 +203,7 @@ export class PreferenceStage implements IRouterStage {
 
     // If successful with good quality, current selection was appropriate
     // Strong models (claude) indicate strong preference when selected successfully
-    return outcome.selectedCli === 'claude';
+    return outcome.selectedCli === DEFAULT_CLI;
   }
 }
 

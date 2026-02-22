@@ -13,6 +13,7 @@
 
 import { z } from 'zod';
 import type { Result } from '../../core/result.js';
+import type { CliNameLiteral } from '../../config/model-capabilities-types.js';
 
 // ============================================================================
 // Types
@@ -20,8 +21,9 @@ import type { Result } from '../../core/result.js';
 
 /**
  * CLI adapter names for routing.
+ * Derived from canonical source: config/model-capabilities-types.ts CliNameLiteral
  */
-export type CliName = 'claude' | 'gemini' | 'codex';
+export type CliName = CliNameLiteral;
 
 /**
  * Routing context passed through pipeline stages.

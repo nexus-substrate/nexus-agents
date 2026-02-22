@@ -11,7 +11,7 @@
 import { z } from 'zod';
 import type { TaskCategory } from '../../config/task-specialization-types.js';
 import type { GroupStats } from '../../orchestration/outcomes/outcome-types.js';
-import { CLI_NAMES } from '../../config/model-capabilities-types.js';
+import { CLI_NAMES, type CliNameLiteral } from '../../config/model-capabilities-types.js';
 
 // ============================================================================
 // Input Schema
@@ -49,7 +49,7 @@ export type WeatherReportInput = z.infer<typeof WeatherReportInputSchema>;
 
 /** Options for generateWeatherReport (all fields optional). */
 export interface WeatherReportOptions {
-  readonly cli?: 'claude' | 'gemini' | 'codex';
+  readonly cli?: CliNameLiteral;
   readonly category?: string;
   readonly includeAdaptive?: boolean;
 }

@@ -14,6 +14,7 @@ import { getOutcomeStore } from '../../orchestration/outcomes/index.js';
 import type { TaskCategory } from '../../config/task-specialization-types.js';
 import { TASK_CATEGORIES } from '../../config/task-specialization-types.js';
 import { getSpecialization } from '../../config/task-specialization.js';
+import type { CliNameLiteral } from '../../config/model-capabilities-types.js';
 import type {
   WeatherReportOptions,
   WeatherReportResponse,
@@ -134,7 +135,7 @@ export function getAdaptiveBonus(
 ): number {
   const cfg = { ...createDefaultWeatherConfig(), ...config };
   const store = getOutcomeStore();
-  const cliName = cli as 'claude' | 'gemini' | 'codex';
+  const cliName = cli as CliNameLiteral;
 
   const outcomes = store.query({ cli: cliName, category });
   if (outcomes.length < cfg.coldStartThreshold) return 0;
@@ -165,9 +166,9 @@ export function shouldExplore(config?: Partial<WeatherReportConfig>): boolean {
 function buildQuery(
   cli?: string,
   category?: string
-): { cli?: 'claude' | 'gemini' | 'codex'; category?: TaskCategory } {
-  const query: { cli?: 'claude' | 'gemini' | 'codex'; category?: TaskCategory } = {};
-  if (cli !== undefined) query.cli = cli as 'claude' | 'gemini' | 'codex';
+): { cli?: CliNameLiteral; category?: TaskCategory } {
+  const query: { cli?: CliNameLiteral; category?: TaskCategory } = {};
+  if (cli !== undefined) query.cli = cli as CliNameLiteral;
   if (category !== undefined) query.category = category as TaskCategory;
   return query;
 }
