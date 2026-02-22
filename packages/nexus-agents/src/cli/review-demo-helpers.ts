@@ -2,9 +2,11 @@
  * nexus-agents/cli - Review Demo Helpers
  *
  * Helper functions for the PR review demo workflow.
+ * Uses centralized SCM token resolver for GitHub authentication.
  *
  * @module cli/review-demo-helpers
  * (Source: Issue #258 - PR Review Demo Workflow)
+ * (Source: Issue #1136 — SCM token consolidation)
  */
 
 import type {
@@ -15,6 +17,7 @@ import type {
 } from './review-demo-types.js';
 import { safeExecSandboxed } from './sandbox-exec.js';
 import { API_TIMEOUTS } from '../config/timeouts.js';
+import { resolveToken } from '../scm/token-resolver.js';
 
 /** Timeout for GitHub API requests in milliseconds. */
 const GITHUB_API_TIMEOUT_MS = API_TIMEOUTS.githubApiMs;
@@ -23,7 +26,8 @@ const GITHUB_API_TIMEOUT_MS = API_TIMEOUTS.githubApiMs;
  * Checks setup status for the review command.
  */
 export async function checkSetupStatus(): Promise<SetupStatus> {
-  const token = process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN;
+  const tokenResult = await resolveToken({ platform: 'github' });
+  const token = tokenResult.ok ? tokenResult.value.value : undefined;
   const hasGitHubToken = token !== undefined && token.length > 0;
 
   // Check if gh CLI is available using sandbox-aware execution
@@ -113,7 +117,8 @@ export async function runPreflightChecks(prUrl: string): Promise<PreflightResult
  * Checks if GitHub token is present.
  */
 async function checkToken(): Promise<PreflightCheck> {
-  const token = process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN;
+  const tokenResult = await resolveToken({ platform: 'github' });
+  const token = tokenResult.ok ? tokenResult.value.value : undefined;
 
   if (token === undefined || token.length === 0) {
     return {
@@ -197,7 +202,8 @@ Examples:
  * Checks if token has required scopes.
  */
 async function checkTokenScopes(): Promise<PreflightCheck> {
-  const token = process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN;
+  const tokenResult = await resolveToken({ platform: 'github' });
+  const token = tokenResult.ok ? tokenResult.value.value : undefined;
 
   if (token === undefined) {
     return {
