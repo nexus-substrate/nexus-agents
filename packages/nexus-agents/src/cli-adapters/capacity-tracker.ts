@@ -23,6 +23,7 @@ export const DEFAULT_TOKEN_LIMITS: Record<CliName, number> = {
   claude: 100_000, // Claude API Build tier
   gemini: 1_000_000, // Gemini Pro generous limits
   codex: 500_000, // OpenAI tier 1
+  opencode: 500_000, // Multi-provider proxy
 };
 
 /**
@@ -33,6 +34,7 @@ export const DEFAULT_REQUEST_LIMITS: Record<CliName, number> = {
   claude: 50, // Claude API Build tier
   gemini: 60, // Gemini Pro
   codex: 500, // OpenAI tier 1
+  opencode: 300, // Multi-provider proxy
 };
 
 /**

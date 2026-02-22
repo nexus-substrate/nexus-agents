@@ -84,6 +84,6 @@ Follow REST best practices:
   },
   timeoutMs: 75000,
   optimalCli: 'claude',
-  acceptableClis: ['claude', 'gemini', 'codex'],
+  acceptableClis: ['claude', 'gemini', 'codex', 'opencode'],
   tags: ['api-design', 'rest', 'architecture', 'crud'],
 };

@@ -57,6 +57,7 @@ const CLI_CAPABILITIES: Record<CliName, CapabilityProfile> = {
   claude: { reasoning: 10, codeGeneration: 8, speed: 5, costEfficiency: 3 },
   gemini: { reasoning: 7, codeGeneration: 7, speed: 9, costEfficiency: 9 },
   codex: { reasoning: 6, codeGeneration: 10, speed: 8, costEfficiency: 7 },
+  opencode: { reasoning: 7, codeGeneration: 8, speed: 7, costEfficiency: 6 },
 };
 
 /**

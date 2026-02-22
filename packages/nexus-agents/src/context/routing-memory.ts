@@ -207,7 +207,7 @@ export class RoutingMemory implements IRoutingMemory {
     const preferenceKey = `model_preference:${taskType}`;
     const preferences: ModelPreference[] = [];
 
-    for (const model of ['claude', 'gemini', 'codex'] as const) {
+    for (const model of ['claude', 'gemini', 'codex', 'opencode'] as const) {
       const entityId = `routing:${model}`;
       const entry = this.mobimem.profile.getPreference(entityId, preferenceKey);
 
@@ -293,7 +293,7 @@ export class RoutingMemory implements IRoutingMemory {
   getCachedAction(action: string): CachedActionResult | undefined {
     // Look up using the same input structure used for caching
     // Note: We try with undefined model first, then specific models
-    for (const model of ['claude', 'gemini', 'codex'] as const) {
+    for (const model of ['claude', 'gemini', 'codex', 'opencode'] as const) {
       const input = { actionSignature: action, model };
       const entry = this.mobimem.action.get(input);
 

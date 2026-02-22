@@ -272,5 +272,5 @@ export const CategoryAcceptableClis: Readonly<Record<TaskCategory, readonly CliN
   quick_task: ['codex', 'gemini'],
   testing: ['codex', 'claude', 'gemini'],
   bulk_operation: ['gemini', 'codex'],
-  general: ['claude', 'gemini', 'codex'],
+  general: ['claude', 'gemini', 'codex', 'opencode'],
 } as const;

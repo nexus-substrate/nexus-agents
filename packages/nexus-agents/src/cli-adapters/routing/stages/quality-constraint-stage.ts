@@ -41,6 +41,7 @@ const CLI_QUALITY_PROFILES: Record<CliName, QualityProfile> = {
   claude: { qualityScore: 0.95, costPer1kTokens: 0.045, avgLatencyMs: 2000 },
   gemini: { qualityScore: 0.8, costPer1kTokens: 0.003, avgLatencyMs: 1500 },
   codex: { qualityScore: 0.85, costPer1kTokens: 0.009, avgLatencyMs: 1000 },
+  opencode: { qualityScore: 0.82, costPer1kTokens: 0.008, avgLatencyMs: 1500 },
 };
 
 /**

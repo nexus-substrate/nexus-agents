@@ -117,6 +117,12 @@ export const DEFAULT_COST_MODELS: Readonly<Record<string, AdapterCostModel>> = {
     avgLatencyMs: 1000,
     qualityScore: 0.8,
   },
+  opencode: {
+    inputTokenCost: 0.003,
+    outputTokenCost: 0.012,
+    avgLatencyMs: 1500,
+    qualityScore: 0.82,
+  },
 };
 
 /**
@@ -156,7 +162,7 @@ export interface LinUCBConfig {
  * Default LinUCB configuration.
  */
 export const DEFAULT_LINUCB_CONFIG: LinUCBConfig = {
-  numArms: 3,
+  numArms: 4,
   featureDim: 6,
   alpha: 1.0,
   lambda: 1.0,
@@ -166,7 +172,7 @@ export const DEFAULT_LINUCB_CONFIG: LinUCBConfig = {
  * Zod schema for LinUCB config validation.
  */
 export const LinUCBConfigSchema = z.object({
-  numArms: z.number().int().positive().default(3),
+  numArms: z.number().int().positive().default(4),
   featureDim: z.number().int().positive().default(6),
   alpha: z.number().positive().default(1.0),
   lambda: z.number().positive().default(1.0),

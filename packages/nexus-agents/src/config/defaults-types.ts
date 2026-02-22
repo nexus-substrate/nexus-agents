@@ -133,7 +133,13 @@ export function isTaskComplexity(value: unknown): value is TaskComplexity {
  * Type guard for known CLI names.
  */
 export function isKnownCliName(cli: string): cli is KnownCliName {
-  return cli === 'claude' || cli === 'gemini' || cli === 'codex' || cli === 'default';
+  return (
+    cli === 'claude' ||
+    cli === 'gemini' ||
+    cli === 'codex' ||
+    cli === 'opencode' ||
+    cli === 'default'
+  );
 }
 
 // ============================================================================

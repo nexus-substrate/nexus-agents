@@ -40,7 +40,7 @@ import type { AgentHealthSummary } from './weather-report-types.js';
 // Public API
 // ============================================================================
 
-const CLI_NAMES = ['claude', 'gemini', 'codex'] as const;
+const CLI_NAMES = ['claude', 'gemini', 'codex', 'opencode'] as const;
 
 /**
  * Generates the weather report from current outcome data.

@@ -6,6 +6,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
+import { CLI_NAMES } from '../config/model-capabilities-types.js';
 import {
   getFallbackChain,
   filterAvailableClis,
@@ -59,10 +60,10 @@ describe('fallback-chains', () => {
       ];
       for (const type of types) {
         const chain = DEFAULT_FALLBACK_CHAINS[type];
-        expect(chain).toContain('claude');
-        expect(chain).toContain('gemini');
-        expect(chain).toContain('codex');
-        expect(chain).toHaveLength(3);
+        for (const cli of CLI_NAMES) {
+          expect(chain).toContain(cli);
+        }
+        expect(chain).toHaveLength(CLI_NAMES.length);
       }
     });
   });

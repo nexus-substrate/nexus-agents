@@ -62,7 +62,7 @@ export interface ICliCircuitBreakerIntegration {
   addStateChangeListener(listener: CircuitStateChangeListener): void;
 }
 
-const DEFAULT_FALLBACK_CHAIN: ReadonlyArray<CliName> = ['claude', 'gemini', 'codex'];
+const DEFAULT_FALLBACK_CHAIN: ReadonlyArray<CliName> = ['claude', 'gemini', 'codex', 'opencode'];
 const DEFAULT_CONFIG: Required<CliCircuitBreakerConfig> = {
   perCliConfig: {},
   fallbackChain: DEFAULT_FALLBACK_CHAIN,

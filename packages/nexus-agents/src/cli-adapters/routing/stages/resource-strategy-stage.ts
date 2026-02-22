@@ -61,6 +61,7 @@ const DEFAULT_CONFIG: ResourceStrategyConfig = {
 const CLI_QUALITY_RANK: Record<CliName, number> = {
   claude: 3,
   codex: 2,
+  opencode: 1.5,
   gemini: 1,
 };
 
@@ -70,6 +71,7 @@ const CLI_QUALITY_RANK: Record<CliName, number> = {
 const CLI_COST_RANK: Record<CliName, number> = {
   gemini: 3,
   codex: 2,
+  opencode: 2,
   claude: 1,
 };
 

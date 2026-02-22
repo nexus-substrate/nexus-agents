@@ -7,6 +7,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { runRoutingAB, formatABReport, PRESET_VARIANTS, type ABRunConfig } from './routing-ab.js';
+import { CLI_NAMES } from '../config/model-capabilities-types.js';
 
 describe('routing-ab', () => {
   describe('runRoutingAB', () => {
@@ -66,8 +67,7 @@ describe('routing-ab', () => {
 
     it('should allocate tasks to all CLIs', () => {
       const report = runRoutingAB({ taskCount: 100 });
-      const allClis = ['claude', 'gemini', 'codex'];
-      for (const cli of allClis) {
+      for (const cli of CLI_NAMES) {
         const aCount = report.variantA.cliAllocation.get(cli) ?? 0;
         expect(aCount).toBeGreaterThan(0);
       }
@@ -75,9 +75,9 @@ describe('routing-ab', () => {
 
     it('should report allocation diffs', () => {
       const report = runRoutingAB();
-      expect(report.allocationDiff.length).toBe(3);
+      expect(report.allocationDiff.length).toBe(CLI_NAMES.length);
       for (const d of report.allocationDiff) {
-        expect(['claude', 'gemini', 'codex']).toContain(d.cli);
+        expect([...CLI_NAMES]).toContain(d.cli);
         expect(d.diff).toBe(d.variantACount - d.variantBCount);
       }
     });

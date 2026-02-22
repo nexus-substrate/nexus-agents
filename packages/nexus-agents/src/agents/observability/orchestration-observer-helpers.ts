@@ -179,7 +179,7 @@ export function createTrackedAgent(
 export function calculateRoutingDistribution(
   routingHistory: readonly RoutingDecision[]
 ): Record<CliName, number> {
-  const distribution: Record<CliName, number> = { claude: 0, gemini: 0, codex: 0 };
+  const distribution: Record<CliName, number> = { claude: 0, gemini: 0, codex: 0, opencode: 0 };
   for (const decision of routingHistory) {
     distribution[decision.selectedCli]++;
   }

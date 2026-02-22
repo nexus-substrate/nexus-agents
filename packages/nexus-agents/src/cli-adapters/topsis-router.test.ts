@@ -9,6 +9,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { TopsisRouter, createTopsisRouter, selectModelWithTopsis } from './topsis-router.js';
 import type { TopsisModelProfile } from './topsis-types.js';
 import { DEFAULT_TOPSIS_CRITERIA, PLAN_BILLING_TOPSIS_CRITERIA } from './topsis-types.js';
+import { CLI_NAMES } from '../config/model-capabilities-types.js';
 
 describe('TopsisRouter', () => {
   let router: TopsisRouter;
@@ -48,8 +49,8 @@ describe('TopsisRouter', () => {
       const result = router.selectModel();
 
       expect(result.selectedModel).toBeDefined();
-      expect(['claude', 'gemini', 'codex']).toContain(result.selectedModel);
-      expect(result.scores.length).toBe(3);
+      expect([...CLI_NAMES]).toContain(result.selectedModel);
+      expect(result.scores.length).toBe(CLI_NAMES.length);
     });
 
     it('should return scores in ranked order', () => {

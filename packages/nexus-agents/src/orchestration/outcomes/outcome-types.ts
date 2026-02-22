@@ -16,7 +16,7 @@ import { TaskCategorySchema } from '../../config/task-specialization-types.js';
 // ============================================================================
 
 /** Valid CLI names for outcome tracking. */
-const CliNameSchema = z.enum(['claude', 'gemini', 'codex']);
+const CliNameSchema = z.enum(['claude', 'gemini', 'codex', 'opencode']);
 
 /** Source of the task outcome. */
 const OutcomeSourceSchema = z.enum(['delegate', 'consensus', 'manual']);

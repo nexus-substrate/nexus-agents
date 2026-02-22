@@ -103,7 +103,7 @@ function weatherReportHandler(args: unknown, ctx: HandlerContext): Promise<ToolR
 export function registerWeatherReportTool(server: McpServer, deps: WeatherReportDeps): void {
   const logger = deps.logger ?? createLogger({ tool: 'weather_report' });
   const toolSchema = {
-    cli: z.enum(['claude', 'gemini', 'codex']).optional().describe('Filter by CLI'),
+    cli: z.enum(['claude', 'gemini', 'codex', 'opencode']).optional().describe('Filter by CLI'),
     category: z
       .enum([
         'architecture',

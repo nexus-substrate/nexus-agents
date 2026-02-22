@@ -46,7 +46,7 @@ const DEFAULT_CONFIG: LinUCBStageConfig = {
 };
 
 /** Available CLIs for bandit arms */
-const CLI_ARMS: readonly CliName[] = ['claude', 'gemini', 'codex'];
+const CLI_ARMS: readonly CliName[] = ['claude', 'gemini', 'codex', 'opencode'];
 
 // ============================================================================
 // Stage Implementation

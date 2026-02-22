@@ -238,6 +238,11 @@ export const CLI_VERSION_REQUIREMENTS: Record<CliName, VersionRequirements> = {
     recommended: '0.77.0',
     breaking: [],
   },
+  opencode: {
+    minimum: '0.1.0',
+    recommended: '0.1.0',
+    breaking: [],
+  },
 } as const;
 
 /**

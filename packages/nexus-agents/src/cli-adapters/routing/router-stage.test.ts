@@ -27,8 +27,8 @@ describe('createRoutingContext', () => {
   it('creates context with defaults', () => {
     const ctx = createRoutingContext('test task');
     expect(ctx.task).toBe('test task');
-    expect(ctx.availableClis).toEqual(['claude', 'gemini', 'codex']);
-    expect(ctx.scores.size).toBe(3);
+    expect(ctx.availableClis).toEqual(['claude', 'gemini', 'codex', 'opencode']);
+    expect(ctx.scores.size).toBe(4);
     expect(ctx.filtered.size).toBe(0);
     expect(ctx.signals).toEqual([]);
     expect(ctx.trace).toEqual([]);
@@ -155,14 +155,14 @@ describe('updateScore', () => {
 describe('getRemainingCandidates', () => {
   it('returns all CLIs when none filtered', () => {
     const ctx = createRoutingContext('task');
-    expect(getRemainingCandidates(ctx)).toEqual(['claude', 'gemini', 'codex']);
+    expect(getRemainingCandidates(ctx)).toEqual(['claude', 'gemini', 'codex', 'opencode']);
   });
 
   it('excludes filtered CLIs', () => {
     const ctx = createRoutingContext('task');
     const filtered = filterCandidate(ctx, 'claude', 'reason');
     const remaining = getRemainingCandidates(filtered);
-    expect(remaining).toEqual(['gemini', 'codex']);
+    expect(remaining).toEqual(['gemini', 'codex', 'opencode']);
   });
 
   it('returns empty when all filtered', () => {
@@ -170,6 +170,7 @@ describe('getRemainingCandidates', () => {
     ctx = filterCandidate(ctx, 'claude', 'r');
     ctx = filterCandidate(ctx, 'gemini', 'r');
     ctx = filterCandidate(ctx, 'codex', 'r');
+    ctx = filterCandidate(ctx, 'opencode', 'r');
     expect(getRemainingCandidates(ctx)).toEqual([]);
   });
 });
@@ -184,6 +185,7 @@ describe('selectBestCandidate', () => {
     ctx = filterCandidate(ctx, 'claude', 'r');
     ctx = filterCandidate(ctx, 'gemini', 'r');
     ctx = filterCandidate(ctx, 'codex', 'r');
+    ctx = filterCandidate(ctx, 'opencode', 'r');
     expect(selectBestCandidate(ctx)).toBeUndefined();
   });
 
@@ -245,6 +247,7 @@ describe('CliNameSchema', () => {
     expect(CliNameSchema.parse('claude')).toBe('claude');
     expect(CliNameSchema.parse('gemini')).toBe('gemini');
     expect(CliNameSchema.parse('codex')).toBe('codex');
+    expect(CliNameSchema.parse('opencode')).toBe('opencode');
   });
 
   it('rejects invalid CLI names', () => {

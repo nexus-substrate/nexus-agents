@@ -169,7 +169,8 @@ describe('LinUCBStage.route', () => {
       const sig = result.value.context.signals.find((s) => s.startsWith('linucb:selected-'));
       const selectedCli = sig!.replace('linucb:selected-', '');
       const scores = result.value.context.scores;
-      const selectedScore = scores.get(selectedCli as 'claude' | 'gemini' | 'codex') ?? 0;
+      const selectedScore =
+        scores.get(selectedCli as 'claude' | 'gemini' | 'codex' | 'opencode') ?? 0;
       for (const [cli, score] of scores) {
         if (cli !== selectedCli) expect(score).toBeLessThanOrEqual(selectedScore);
       }
@@ -319,14 +320,16 @@ describe('LinUCBStage.getStats', () => {
     expect(stats.config.minPullsForConfidence).toBe(5);
   });
 
-  it('includes arm stats for all three CLIs', () => {
+  it('includes arm stats for all four CLIs', () => {
     const arms = (
       new LinUCBStage().getStats() as {
         bandit: { armStats: Array<{ name: string }> };
       }
     ).bandit.armStats;
-    expect(arms).toHaveLength(3);
-    expect(arms.map((a) => a.name)).toEqual(expect.arrayContaining(['claude', 'gemini', 'codex']));
+    expect(arms).toHaveLength(4);
+    expect(arms.map((a) => a.name)).toEqual(
+      expect.arrayContaining(['claude', 'gemini', 'codex', 'opencode'])
+    );
   });
 
   it('updates avgReward after outcomes', () => {

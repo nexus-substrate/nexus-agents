@@ -40,29 +40,50 @@ const SCORES_WITH_DATA = [
     weightedAvgMs: 800,
   },
   { cli: 'codex' as const, score: 0.3, confidence: 0.4, hasReliableData: false, weightedAvgMs: 0 },
+  {
+    cli: 'opencode' as const,
+    score: 0.4,
+    confidence: 0.5,
+    hasReliableData: false,
+    weightedAvgMs: 0,
+  },
 ];
 
 const SCORES_NO_DATA = [
   { cli: 'claude' as const, score: 0, confidence: 0, hasReliableData: false, weightedAvgMs: 0 },
   { cli: 'gemini' as const, score: 0, confidence: 0, hasReliableData: false, weightedAvgMs: 0 },
   { cli: 'codex' as const, score: 0, confidence: 0, hasReliableData: false, weightedAvgMs: 0 },
+  { cli: 'opencode' as const, score: 0, confidence: 0, hasReliableData: false, weightedAvgMs: 0 },
 ];
+
+const STATS_WITH_DATA = {
+  totalSamples: 10,
+  totalRecordings: 10,
+  perCli: {
+    claude: { count: 5, avg: 2000 },
+    gemini: { count: 3, avg: 800 },
+    codex: { count: 2, avg: 1500 },
+    opencode: { count: 1, avg: 1200 },
+  },
+};
+
+const STATS_NO_DATA = {
+  totalSamples: 0,
+  totalRecordings: 0,
+  perCli: {
+    claude: { count: 0, avg: 0 },
+    gemini: { count: 0, avg: 0 },
+    codex: { count: 0, avg: 0 },
+    opencode: { count: 0, avg: 0 },
+  },
+};
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 function createMockTracker(hasData = false) {
-  const samples = hasData ? 10 : 0;
   return {
     getScores: vi.fn().mockReturnValue(hasData ? SCORES_WITH_DATA : SCORES_NO_DATA),
     record: vi.fn(),
-    getTrackerStats: vi.fn().mockReturnValue({
-      totalSamples: samples,
-      totalRecordings: samples,
-      perCli: {
-        claude: { count: hasData ? 5 : 0, avg: hasData ? 2000 : 0 },
-        gemini: { count: hasData ? 3 : 0, avg: hasData ? 800 : 0 },
-        codex: { count: hasData ? 2 : 0, avg: hasData ? 1500 : 0 },
-      },
-    }),
+    getTrackerStats: vi.fn().mockReturnValue(hasData ? STATS_WITH_DATA : STATS_NO_DATA),
   } as unknown as ILatencyTracker;
 }
 

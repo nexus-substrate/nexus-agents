@@ -49,6 +49,7 @@ export const CLI_TIMEOUTS = {
   claude: { simple: 30_000, standard: 120_000, complex: 600_000 },
   gemini: { simple: 30_000, standard: 120_000, complex: 600_000 },
   codex: { simple: 10_000, standard: 60_000, complex: 300_000 },
+  opencode: { simple: 30_000, standard: 120_000, complex: 600_000 },
   default: { simple: 30_000, standard: 120_000, complex: 600_000 },
 } as const satisfies Record<KnownCliName, TimeoutProfile>;
 

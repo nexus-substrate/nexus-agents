@@ -78,7 +78,7 @@ export interface ABRunConfig {
 // Constants
 // ============================================================================
 
-const CLI_NAMES = ['claude', 'gemini', 'codex'] as const;
+const CLI_NAMES = ['claude', 'gemini', 'codex', 'opencode'] as const;
 type CliName = (typeof CLI_NAMES)[number];
 
 const DEFAULT_TASK_COUNT = 30;
@@ -216,17 +216,18 @@ function baseQuality(cli: CliName, cat: TaskCategory): number {
     claude: ['architecture', 'security_review', 'planning', 'devops'],
     gemini: ['research', 'documentation', 'exploration'],
     codex: ['code_generation', 'code_review', 'testing'],
+    opencode: ['code_generation', 'code_review', 'exploration'],
   };
   return map[cli].includes(cat) ? 0.85 : 0.55;
 }
 
 function baseCost(cli: CliName): number {
-  const costs: Record<CliName, number> = { claude: 0.7, gemini: 0.4, codex: 0.5 };
+  const costs: Record<CliName, number> = { claude: 0.7, gemini: 0.4, codex: 0.5, opencode: 0.6 };
   return costs[cli];
 }
 
 function baseLatency(cli: CliName): number {
-  const lat: Record<CliName, number> = { claude: 0.5, gemini: 0.3, codex: 0.4 };
+  const lat: Record<CliName, number> = { claude: 0.5, gemini: 0.3, codex: 0.4, opencode: 0.4 };
   return lat[cli];
 }
 

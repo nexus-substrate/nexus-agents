@@ -169,6 +169,14 @@ function getRoleContext(cli: CliName, category: TaskCategory): string {
         'You are researching a topic. Focus on implementation approaches and code examples.',
       code_review: 'You are reviewing code. Focus on code quality, performance, and test coverage.',
     },
+    opencode: {
+      exploration:
+        'You are exploring a codebase. Focus on cross-provider insights, patterns, and practical usage.',
+      research:
+        'You are researching a topic. Focus on practical applications and comparative analysis.',
+      code_review:
+        'You are reviewing code. Focus on best practices, readability, and maintainability.',
+    },
   };
 
   return roleMap[cli][category] ?? `You are performing ${category} analysis.`;

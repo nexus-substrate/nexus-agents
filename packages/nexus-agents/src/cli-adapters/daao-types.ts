@@ -203,9 +203,9 @@ export const DEFAULT_DAAO_THRESHOLDS: DAAOThresholds = {
  * Default tier to CLI mapping for DAAO.
  */
 export const DEFAULT_DAAO_TIER_TO_CLIS: Record<ModelTier, CliName[]> = {
-  fast: ['gemini', 'codex', 'claude'],
-  balanced: ['codex', 'gemini', 'claude'],
-  powerful: ['claude', 'codex', 'gemini'],
+  fast: ['gemini', 'codex', 'opencode', 'claude'],
+  balanced: ['codex', 'opencode', 'gemini', 'claude'],
+  powerful: ['claude', 'codex', 'opencode', 'gemini'],
 } as const;
 
 /**
@@ -225,7 +225,7 @@ export const DAAOConfigSchema = z.object({
   tierToClis: z
     .record(
       z.enum(['fast', 'balanced', 'powerful']),
-      z.array(z.enum(['claude', 'gemini', 'codex']))
+      z.array(z.enum(['claude', 'gemini', 'codex', 'opencode']))
     )
     .default(DEFAULT_DAAO_TIER_TO_CLIS),
   /** Enable adaptive calibration from outcomes */

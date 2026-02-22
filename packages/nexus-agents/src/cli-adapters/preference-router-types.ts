@@ -149,13 +149,13 @@ export const DEFAULT_PREFERENCE_ROUTER_CONFIG: PreferenceRouterConfig = {
 export const PreferenceRouterConfigSchema = z.object({
   strongModel: z.object({
     tier: z.literal('strong'),
-    cli: z.enum(['claude', 'gemini', 'codex']),
+    cli: z.enum(['claude', 'gemini', 'codex', 'opencode']),
     costPerMillionTokens: z.number().positive(),
     qualityBaseline: z.number().min(0).max(1),
   }),
   weakModel: z.object({
     tier: z.literal('weak'),
-    cli: z.enum(['claude', 'gemini', 'codex']),
+    cli: z.enum(['claude', 'gemini', 'codex', 'opencode']),
     costPerMillionTokens: z.number().positive(),
     qualityBaseline: z.number().min(0).max(1),
   }),

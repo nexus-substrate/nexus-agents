@@ -65,7 +65,7 @@ export class RoutingPipeline implements IRoutingPipeline {
 
   constructor(config?: RoutingPipelineConfig) {
     this.logger = config?.logger ?? createLogger({ component: 'RoutingPipeline' });
-    this.availableClis = config?.availableClis ?? ['claude', 'gemini', 'codex'];
+    this.availableClis = config?.availableClis ?? ['claude', 'gemini', 'codex', 'opencode'];
     this.defaultCli = config?.defaultCli ?? 'claude';
     this.timeoutMs = config?.timeoutMs ?? 5000;
   }

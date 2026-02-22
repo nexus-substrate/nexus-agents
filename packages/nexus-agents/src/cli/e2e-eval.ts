@@ -21,7 +21,7 @@ import { createLogger, type ILogger } from '../core/index.js';
 // Constants
 // ============================================================================
 
-const CLI_NAMES = ['claude', 'gemini', 'codex'] as const;
+const CLI_NAMES = ['claude', 'gemini', 'codex', 'opencode'] as const;
 type CliName = (typeof CLI_NAMES)[number];
 
 /** E2E eval marker in qualitySignals for identification. */

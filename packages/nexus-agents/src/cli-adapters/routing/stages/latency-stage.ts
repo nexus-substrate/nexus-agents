@@ -167,6 +167,10 @@ export class LatencyStage implements IRouterStage {
             avgMs: trackerStats.perCli.gemini.avg,
           },
           codex: { count: trackerStats.perCli.codex.count, avgMs: trackerStats.perCli.codex.avg },
+          opencode: {
+            count: trackerStats.perCli.opencode.count,
+            avgMs: trackerStats.perCli.opencode.avg,
+          },
         },
       },
       config: {

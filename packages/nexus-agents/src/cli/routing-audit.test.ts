@@ -6,6 +6,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from 'vitest';
 import { auditRouting, routingAuditCommand, type RoutingAuditOptions } from './routing-audit.js';
+import { CLI_NAMES } from '../config/model-capabilities-types.js';
 
 describe('routing-audit', () => {
   describe('auditRouting', () => {
@@ -20,12 +21,12 @@ describe('routing-audit', () => {
       expect(result.task).toBe(options.task);
       expect(result.taskProfile).toBeDefined();
       expect(result.budgetResults).toBeDefined();
-      expect(result.budgetResults.length).toBe(3); // claude, gemini, codex
+      expect(result.budgetResults.length).toBe(CLI_NAMES.length);
       expect(result.topsisResult).toBeDefined();
       expect(result.topsisResult.scores).toBeDefined();
       expect(result.linucbDetails).toBeDefined();
       expect(result.selectedCli).toBeDefined();
-      expect(['claude', 'gemini', 'codex']).toContain(result.selectedCli);
+      expect([...CLI_NAMES]).toContain(result.selectedCli);
       expect(result.selectionReason).toBeDefined();
       expect(typeof result.isExploration).toBe('boolean');
     });
@@ -60,7 +61,7 @@ describe('routing-audit', () => {
     it('should include LinUCB details for all arms', () => {
       const result = auditRouting({ task: 'Generate unit tests' });
 
-      expect(result.linucbDetails.length).toBe(3);
+      expect(result.linucbDetails.length).toBe(CLI_NAMES.length);
       for (const arm of result.linucbDetails) {
         expect(arm.cliName).toBeDefined();
         expect(typeof arm.ucbScore).toBe('number');
@@ -107,7 +108,7 @@ describe('routing-audit', () => {
 
       expect(result.banditStats).toBeDefined();
       expect(result.banditStats?.detailedArms).toBeDefined();
-      expect(result.banditStats?.detailedArms.length).toBe(3);
+      expect(result.banditStats?.detailedArms.length).toBe(CLI_NAMES.length);
       expect(result.banditStats?.exploration).toBeDefined();
     });
 
@@ -152,7 +153,7 @@ describe('routing-audit', () => {
 
       const stats = result.banditStats;
       expect(stats).toBeDefined();
-      expect(stats!.exploration.armDistribution.length).toBe(3);
+      expect(stats!.exploration.armDistribution.length).toBe(CLI_NAMES.length);
 
       let totalProportion = 0;
       for (const arm of stats!.exploration.armDistribution) {

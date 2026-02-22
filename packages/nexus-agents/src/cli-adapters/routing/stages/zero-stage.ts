@@ -51,6 +51,7 @@ const DEFAULT_CONFIG: ZeroStageConfig = {
  */
 const CLI_TIER_RANK: Record<CliName, number> = {
   gemini: 1, // Fast, cheap
+  opencode: 2, // Multi-provider proxy
   codex: 2, // Code-specialized
   claude: 3, // Most capable
 };

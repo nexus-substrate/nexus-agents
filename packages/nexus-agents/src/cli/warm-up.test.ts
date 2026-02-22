@@ -9,6 +9,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { generateSyntheticPriors, runWarmUp, SYNTHETIC_MARKER } from './warm-up.js';
 import { resetOutcomeStore, getOutcomeStore } from '../orchestration/outcomes/outcome-store.js';
 import { TASK_CATEGORIES } from '../config/task-specialization-types.js';
+import { CLI_NAMES } from '../config/model-capabilities-types.js';
 
 describe('warm-up', () => {
   beforeEach(() => {
@@ -16,12 +17,12 @@ describe('warm-up', () => {
   });
 
   describe('generateSyntheticPriors', () => {
-    it('should return exactly 3 CLI entries', () => {
+    it('should return entries for all CLIs', () => {
       const priors = generateSyntheticPriors();
-      expect(priors.size).toBe(3);
-      expect(priors.has('claude')).toBe(true);
-      expect(priors.has('gemini')).toBe(true);
-      expect(priors.has('codex')).toBe(true);
+      expect(priors.size).toBe(CLI_NAMES.length);
+      for (const cli of CLI_NAMES) {
+        expect(priors.has(cli)).toBe(true);
+      }
     });
 
     it('should produce rewards between 0 and 1', () => {
@@ -62,9 +63,9 @@ describe('warm-up', () => {
   });
 
   describe('runWarmUp', () => {
-    it('should seed 30 synthetic outcomes (3 CLIs x 10 categories)', () => {
+    it(`should seed ${String(CLI_NAMES.length)} CLIs x 10 categories synthetic outcomes`, () => {
       const result = runWarmUp();
-      expect(result.seeded).toBe(3 * TASK_CATEGORIES.length);
+      expect(result.seeded).toBe(CLI_NAMES.length * TASK_CATEGORIES.length);
       expect(result.skipped).toBe(false);
     });
 
@@ -74,7 +75,7 @@ describe('warm-up', () => {
       const synthetic = outcomes.filter(
         (o) => o.qualitySignals?.includes(SYNTHETIC_MARKER) === true
       );
-      expect(synthetic.length).toBe(30);
+      expect(synthetic.length).toBe(CLI_NAMES.length * TASK_CATEGORIES.length);
     });
 
     it('should record outcomes with source manual', () => {
@@ -98,7 +99,7 @@ describe('warm-up', () => {
     it('should be idempotent — second call returns skipped', () => {
       const first = runWarmUp();
       expect(first.skipped).toBe(false);
-      expect(first.seeded).toBe(30);
+      expect(first.seeded).toBe(CLI_NAMES.length * TASK_CATEGORIES.length);
 
       const second = runWarmUp();
       expect(second.skipped).toBe(true);

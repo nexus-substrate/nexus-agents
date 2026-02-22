@@ -32,6 +32,7 @@ const COST_PER_1K_TOKENS: Record<CliName, { input: number; output: number }> = {
   claude: { input: 0.015, output: 0.075 },
   gemini: { input: 0.00125, output: 0.005 },
   codex: { input: 0.003, output: 0.015 },
+  opencode: { input: 0.003, output: 0.012 },
 };
 
 /**

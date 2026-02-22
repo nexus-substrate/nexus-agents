@@ -220,7 +220,7 @@ export interface PipelineStats {
 // Zod Schemas
 // ============================================================================
 
-export const CliNameSchema = z.enum(['claude', 'gemini', 'codex']);
+export const CliNameSchema = z.enum(['claude', 'gemini', 'codex', 'opencode']);
 
 export const StageConfigSchema = z.object({
   enabled: z.boolean().default(true),
@@ -246,7 +246,7 @@ export const RoutingOutcomeSchema = z.object({
  */
 export function createRoutingContext(
   task: string,
-  availableClis: readonly CliName[] = ['claude', 'gemini', 'codex'],
+  availableClis: readonly CliName[] = ['claude', 'gemini', 'codex', 'opencode'],
   metadata?: Record<string, unknown>
 ): RoutingContext {
   return {

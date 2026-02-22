@@ -27,8 +27,8 @@ import {
 // ---------------------------------------------------------------------------
 
 describe('DEFAULT_MODEL_CAPABILITIES', () => {
-  it('should contain exactly 8 models', () => {
-    expect(DEFAULT_MODEL_CAPABILITIES.models).toHaveLength(10);
+  it('should contain exactly 11 models', () => {
+    expect(DEFAULT_MODEL_CAPABILITIES.models).toHaveLength(11);
   });
 
   it('should have version 2', () => {
@@ -120,7 +120,7 @@ describe('getModelCapabilities', () => {
 describe('findModelsByOutputModality', () => {
   it('returns models supporting text output', () => {
     const results = findModelsByOutputModality('text');
-    expect(results).toHaveLength(10);
+    expect(results).toHaveLength(11);
   });
 
   it('returns subset for image_png (only gemini models)', () => {
@@ -141,7 +141,7 @@ describe('findModelsByOutputModality', () => {
 describe('findModelsByInputModality', () => {
   it('all models support text input', () => {
     const results = findModelsByInputModality('text');
-    expect(results).toHaveLength(10);
+    expect(results).toHaveLength(11);
   });
 
   it('only gemini supports video input', () => {
@@ -162,12 +162,12 @@ describe('findModelsByInputModality', () => {
 describe('findModelsByToolCapability', () => {
   it('all models support function_calling', () => {
     const results = findModelsByToolCapability('function_calling');
-    expect(results).toHaveLength(10);
+    expect(results).toHaveLength(11);
   });
 
   it('only claude models support mcp', () => {
     const results = findModelsByToolCapability('mcp');
-    expect(results).toHaveLength(3);
+    expect(results).toHaveLength(4);
     for (const model of results) {
       expect(model.provider).toBe('anthropic');
     }
@@ -181,7 +181,7 @@ describe('findModelsByToolCapability', () => {
 describe('findModelsByFeature', () => {
   it('multiple models support streaming', () => {
     const results = findModelsByFeature('streaming');
-    expect(results).toHaveLength(10);
+    expect(results).toHaveLength(11);
   });
 
   it('gemini pro models support deep_research', () => {
@@ -198,13 +198,14 @@ describe('findModelsByFeature', () => {
 // ---------------------------------------------------------------------------
 
 describe('findModelsByProvider', () => {
-  it('returns 3 anthropic models', () => {
+  it('returns 4 anthropic models', () => {
     const results = findModelsByProvider('anthropic');
-    expect(results).toHaveLength(3);
+    expect(results).toHaveLength(4);
     const ids = results.map((m) => m.id);
     expect(ids).toContain('claude-opus');
     expect(ids).toContain('claude-sonnet');
     expect(ids).toContain('claude-haiku');
+    expect(ids).toContain('opencode-default');
   });
 
   it('returns 4 google models', () => {

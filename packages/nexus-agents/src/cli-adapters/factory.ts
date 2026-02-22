@@ -15,6 +15,7 @@ import { ClaudeCliAdapter } from './adapters/claude-adapter.js';
 import { GeminiCliAdapter } from './adapters/gemini-adapter.js';
 import { CodexCliAdapter } from './adapters/codex-adapter.js';
 import { CodexMcpAdapter } from './adapters/codex-mcp-adapter.js';
+import { OpenCodeCliAdapter } from './adapters/opencode-adapter.js';
 import type { ILogger } from '../core/index.js';
 import type { ICliDetectionCache } from './cli-detection-cache.js';
 import { CliDetectionCache } from './cli-detection-cache.js';
@@ -62,6 +63,9 @@ export function createCliAdapter(config: CliAdapterConfig): ICliAdapter {
     case 'codex':
       return createCodexAdapter(config.transport, options);
 
+    case 'opencode':
+      return new OpenCodeCliAdapter(options);
+
     default: {
       const exhaustiveCheck: never = config.cli;
       throw new Error(`Unsupported CLI: ${String(exhaustiveCheck)}`);
@@ -106,6 +110,7 @@ export function createAllAdapters(
   adapters.set('claude', new ClaudeCliAdapter(options));
   adapters.set('gemini', new GeminiCliAdapter(options));
   adapters.set('codex', createCodexAdapter(codexTransport, options ?? {}));
+  adapters.set('opencode', new OpenCodeCliAdapter(options));
 
   return adapters;
 }
@@ -160,7 +165,7 @@ export async function isCliAvailable(cli: CliName, cache?: ICliDetectionCache): 
  * @returns Array of available CLI names
  */
 export async function getAvailableClis(cache?: ICliDetectionCache): Promise<CliName[]> {
-  const clis: CliName[] = ['claude', 'gemini', 'codex'];
+  const clis: CliName[] = ['claude', 'gemini', 'codex', 'opencode'];
 
   // Check all CLIs in parallel to avoid sequential timeout penalties
   const results = await Promise.allSettled(

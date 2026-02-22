@@ -88,6 +88,6 @@ Use PostgreSQL syntax. Include TypeScript types for the final schema.`,
   },
   timeoutMs: 75000,
   optimalCli: 'claude',
-  acceptableClis: ['claude', 'gemini', 'codex'],
+  acceptableClis: ['claude', 'gemini', 'codex', 'opencode'],
   tags: ['database', 'migration', 'postgresql', 'schema'],
 };

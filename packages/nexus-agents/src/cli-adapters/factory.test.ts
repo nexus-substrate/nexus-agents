@@ -12,6 +12,7 @@ import { CodexCliAdapter } from './adapters/codex-adapter.js';
 import { CodexMcpAdapter } from './adapters/codex-mcp-adapter.js';
 import { getDefaultModelForCli, getCliModelName } from '../config/model-config-helpers.js';
 import { DEFAULT_MODEL_CAPABILITIES } from '../config/model-capabilities.js';
+import { CLI_NAMES } from '../config/model-capabilities-types.js';
 
 /** Derive the expected default model ID for a CLI from the canonical registry. */
 function expectedDefaultModelId(cli: 'claude' | 'gemini' | 'codex'): string {
@@ -101,13 +102,13 @@ describe('createCliAdapter', () => {
 });
 
 describe('createAllAdapters', () => {
-  it('should create all three adapters', () => {
+  it('should create all adapters', () => {
     const adapters = createAllAdapters();
 
-    expect(adapters.size).toBe(3);
-    expect(adapters.has('claude')).toBe(true);
-    expect(adapters.has('gemini')).toBe(true);
-    expect(adapters.has('codex')).toBe(true);
+    expect(adapters.size).toBe(CLI_NAMES.length);
+    for (const cli of CLI_NAMES) {
+      expect(adapters.has(cli)).toBe(true);
+    }
   });
 
   it('should create correct adapter types with MCP for codex by default', () => {
@@ -127,7 +128,7 @@ describe('createAllAdapters', () => {
   it('should work with undefined logger', () => {
     const adapters = createAllAdapters(undefined);
 
-    expect(adapters.size).toBe(3);
+    expect(adapters.size).toBe(CLI_NAMES.length);
   });
 });
 

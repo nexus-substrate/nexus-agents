@@ -97,9 +97,9 @@ export const DEFAULT_DIFFICULTY_TO_TIER: Record<DifficultyLevel, ModelTier> = {
  * Mapping from model tier to CLI preference order.
  */
 export const DEFAULT_TIER_TO_CLIS: Record<ModelTier, CliName[]> = {
-  fast: ['gemini', 'codex', 'claude'],
-  balanced: ['codex', 'gemini', 'claude'],
-  powerful: ['claude', 'codex', 'gemini'],
+  fast: ['gemini', 'codex', 'opencode', 'claude'],
+  balanced: ['codex', 'opencode', 'gemini', 'claude'],
+  powerful: ['claude', 'codex', 'opencode', 'gemini'],
 };
 
 /**
@@ -204,7 +204,7 @@ export const ZeroRouterConfigSchema = z.object({
   tierToClis: z
     .record(
       z.enum(['fast', 'balanced', 'powerful']),
-      z.array(z.enum(['claude', 'gemini', 'codex']))
+      z.array(z.enum(['claude', 'gemini', 'codex', 'opencode']))
     )
     .default(DEFAULT_TIER_TO_CLIS),
   /** Enable adaptive calibration from outcomes */

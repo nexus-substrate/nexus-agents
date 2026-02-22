@@ -65,7 +65,7 @@ describe('EVALUATION_TASKS', () => {
   });
 
   it('should have valid CLI names', () => {
-    const validClis: CliName[] = ['claude', 'gemini', 'codex'];
+    const validClis: CliName[] = ['claude', 'gemini', 'codex', 'opencode'];
 
     for (const task of EVALUATION_TASKS) {
       expect(validClis).toContain(task.optimalCli);

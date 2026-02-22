@@ -19,6 +19,7 @@ import {
 } from './routing-audit-logic.js';
 import { LinUCBBandit } from '../cli-adapters/linucb-bandit.js';
 import type { BanditContext, TaskProfile } from '../core/index.js';
+import { CLI_NAMES } from '../config/model-capabilities-types.js';
 
 describe('routing-audit-logic', () => {
   describe('analyzeTaskString', () => {
@@ -237,13 +238,13 @@ describe('routing-audit-logic', () => {
   });
 
   describe('simulateBudgetFilter', () => {
-    it('should return results for all three CLIs', () => {
+    it('should return results for all CLIs', () => {
       const results = simulateBudgetFilter();
 
-      expect(results).toHaveLength(3);
-      expect(results.map((r) => r.cliName)).toContain('claude');
-      expect(results.map((r) => r.cliName)).toContain('gemini');
-      expect(results.map((r) => r.cliName)).toContain('codex');
+      expect(results).toHaveLength(CLI_NAMES.length);
+      for (const cli of CLI_NAMES) {
+        expect(results.map((r) => r.cliName)).toContain(cli);
+      }
     });
 
     it('should mark all CLIs as within budget', () => {
@@ -375,7 +376,7 @@ describe('routing-audit-logic', () => {
 
       const details = computeLinUCBDetails(bandit, context);
 
-      expect(details).toHaveLength(3);
+      expect(details).toHaveLength(3); // bandit was created with 3 arms
       expect(details.map((d) => d.cliName)).toContain('claude');
       expect(details.map((d) => d.cliName)).toContain('gemini');
       expect(details.map((d) => d.cliName)).toContain('codex');
@@ -459,7 +460,7 @@ describe('routing-audit-logic', () => {
       const details = computeLinUCBDetails(bandit, context);
 
       // Should have details for all arms
-      expect(details).toHaveLength(3);
+      expect(details).toHaveLength(3); // bandit was created with 3 arms
     });
 
     it('should handle zero pulls', () => {
@@ -505,7 +506,7 @@ describe('routing-audit-logic', () => {
 
       expect(stats).toHaveProperty('detailedArms');
       expect(stats).toHaveProperty('exploration');
-      expect(stats.detailedArms).toHaveLength(3);
+      expect(stats.detailedArms).toHaveLength(3); // bandit was created with 3 arms
     });
 
     it('should include feature importance', () => {
@@ -637,7 +638,7 @@ describe('routing-audit-logic', () => {
       });
 
       expect(result.banditStats).toBeDefined();
-      expect(result.banditStats?.detailedArms).toHaveLength(3);
+      expect(result.banditStats?.detailedArms).toHaveLength(CLI_NAMES.length);
     });
 
     it('should analyze code tasks correctly', () => {
@@ -692,7 +693,7 @@ describe('routing-audit-logic', () => {
       const result = auditRouting({ task: 'Any task' });
       const eligibleClis = result.budgetResults.filter((r) => r.withinBudget).map((r) => r.cliName);
 
-      expect(eligibleClis).toHaveLength(3);
+      expect(eligibleClis).toHaveLength(CLI_NAMES.length);
       expect(result.linucbDetails).toHaveLength(eligibleClis.length);
     });
 
@@ -728,7 +729,7 @@ describe('routing-audit-logic', () => {
       const result = auditRouting({ task: 'Write a sorting algorithm' });
 
       // LinUCB details should be based on the same task analysis
-      expect(result.linucbDetails).toHaveLength(3);
+      expect(result.linucbDetails).toHaveLength(CLI_NAMES.length);
       const selectedArm = result.linucbDetails.find((d) => d.cliName === result.selectedCli);
       expect(selectedArm).toBeDefined();
     });

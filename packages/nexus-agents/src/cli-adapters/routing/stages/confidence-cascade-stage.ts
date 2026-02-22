@@ -37,6 +37,7 @@ const CLI_CONFIDENCE_PROFILES: Record<CliName, { simpleScore: number; complexSco
   claude: { simpleScore: 0.7, complexScore: 1.0 }, // Best for complex reasoning
   gemini: { simpleScore: 1.0, complexScore: 0.6 }, // Fast for simple tasks
   codex: { simpleScore: 0.8, complexScore: 0.9 }, // Good for code tasks
+  opencode: { simpleScore: 0.8, complexScore: 0.7 }, // Multi-provider proxy
 };
 
 /**

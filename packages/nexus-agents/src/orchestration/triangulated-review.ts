@@ -129,6 +129,7 @@ const CLI_REVIEW_BONUS: Readonly<Record<CliName, number>> = {
   codex: 0.15,
   claude: 0.1,
   gemini: 0.05,
+  opencode: 0.08,
 };
 
 function getCliBonus(cli: CliName): number {
@@ -141,6 +142,7 @@ function buildReviewPrompt(diff: string, cli: CliName): string {
     codex: 'Focus on: code logic bugs, performance issues, test coverage gaps.',
     claude: 'Focus on: security vulnerabilities, architectural concerns, edge cases.',
     gemini: 'Focus on: documentation quality, API misuse, naming conventions.',
+    opencode: 'Focus on: cross-provider best practices, code quality, and maintainability.',
   };
 
   const perspective = perspectives[cli];

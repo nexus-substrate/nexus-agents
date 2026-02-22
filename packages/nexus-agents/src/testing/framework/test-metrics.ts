@@ -232,6 +232,7 @@ export function estimateCost(
     claude: { input: 3.0, output: 15.0 },
     gemini: { input: 0.075, output: 0.3 },
     codex: { input: 2.0, output: 8.0 },
+    opencode: { input: 2.0, output: 8.0 },
   };
 
   const rate = costs[cli];

@@ -144,6 +144,11 @@ function getFixCommand(name: CliName, issue: 'install' | 'upgrade' | 'auth'): st
       upgrade: 'npm update -g @openai/codex-cli',
       auth: 'codex auth login',
     },
+    opencode: {
+      install: 'npm install -g opencode',
+      upgrade: 'npm update -g opencode',
+      auth: 'opencode auth login',
+    },
   };
   return commands[name][issue] ?? '';
 }
@@ -173,6 +178,7 @@ function detectAuthMethod(name: CliName): string {
     claude: 'CLI auth',
     gemini: 'ADC/CLI auth',
     codex: 'CLI auth',
+    opencode: 'CLI auth',
   };
   return authMethods[name];
 }
@@ -386,7 +392,12 @@ function checkLearningPersistence(): LearningPersistenceCheck {
  * Runs the complete doctor check.
  */
 export async function runDoctor(): Promise<DoctorResult> {
-  const clis = await Promise.all([checkCli('claude'), checkCli('gemini'), checkCli('codex')]);
+  const clis = await Promise.all([
+    checkCli('claude'),
+    checkCli('gemini'),
+    checkCli('codex'),
+    checkCli('opencode'),
+  ]);
   const nodeVersion = checkNodeVersion();
   const apiKeys = checkApiKeys();
   const configFile = checkConfigFile();

@@ -6,6 +6,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { CLI_NAMES } from './model-capabilities-types.js';
 import {
   getModelPricing,
   getModelDisplayName,
@@ -225,11 +226,11 @@ describe('buildCapabilityProfiles', () => {
 });
 
 describe('buildCliCapabilityProfiles', () => {
-  it('returns profiles for all three CLIs', () => {
+  it('returns profiles for all CLIs', () => {
     const profiles = buildCliCapabilityProfiles();
-    expect(profiles.claude).toBeDefined();
-    expect(profiles.gemini).toBeDefined();
-    expect(profiles.codex).toBeDefined();
+    for (const cli of CLI_NAMES) {
+      expect(profiles[cli]).toBeDefined();
+    }
   });
 
   it('has valid capability values', () => {
@@ -243,9 +244,9 @@ describe('buildCliCapabilityProfiles', () => {
 });
 
 describe('buildTopsisProfiles', () => {
-  it('returns profiles for all three CLIs', () => {
+  it('returns profiles for all CLIs', () => {
     const profiles = buildTopsisProfiles();
-    expect(profiles.length).toBe(3);
+    expect(profiles.length).toBe(CLI_NAMES.length);
   });
 
   it('has valid TOPSIS profile structure', () => {
@@ -270,11 +271,11 @@ describe('buildTopsisProfiles', () => {
 });
 
 describe('buildMockModelInfo', () => {
-  it('returns info for all three CLIs', () => {
+  it('returns info for all CLIs', () => {
     const info = buildMockModelInfo();
-    expect(info.claude).toBeDefined();
-    expect(info.gemini).toBeDefined();
-    expect(info.codex).toBeDefined();
+    for (const cli of CLI_NAMES) {
+      expect(info[cli]).toBeDefined();
+    }
   });
 
   it('has valid model info structure', () => {

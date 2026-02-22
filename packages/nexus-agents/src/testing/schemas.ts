@@ -148,7 +148,7 @@ export type TestCaseResult = z.infer<typeof TestCaseResultSchema>;
 export const TestSuiteResultSchema = z.object({
   name: z.string().describe('Test suite name'),
   description: z.string().optional().describe('Test suite description'),
-  adapter: z.enum(['claude', 'gemini', 'codex']).describe('CLI adapter used'),
+  adapter: z.enum(['claude', 'gemini', 'codex', 'opencode']).describe('CLI adapter used'),
   testCases: z.array(TestCaseResultSchema).describe('Individual test results'),
   durationMs: z.number().nonnegative().describe('Total suite duration'),
   passed: z.number().nonnegative().describe('Number of passed tests'),
@@ -173,7 +173,7 @@ export const EnvironmentInfoSchema = z.object({
   arch: z.string().describe('Architecture'),
   timezone: z.string().describe('Timezone (should be America/New_York)'),
   cliVersions: z
-    .record(z.enum(['claude', 'gemini', 'codex']), z.string().nullable())
+    .record(z.enum(['claude', 'gemini', 'codex', 'opencode']), z.string().nullable())
     .describe('CLI versions'),
   packageVersion: z.string().describe('Package version'),
   gitCommit: z.string().optional().describe('Git commit hash'),
@@ -192,7 +192,9 @@ export const TestRunConfigSchema = z.object({
   parallel: z.boolean().describe('Whether to run in parallel'),
   parallelWorkers: z.number().int().positive().describe('Number of parallel workers'),
   includeCategories: z.array(z.string()).describe('Categories included'),
-  targetClis: z.array(z.enum(['claude', 'gemini', 'codex'])).describe('CLIs being tested'),
+  targetClis: z
+    .array(z.enum(['claude', 'gemini', 'codex', 'opencode']))
+    .describe('CLIs being tested'),
   baselineRunId: z.string().optional().describe('Baseline run ID for comparison'),
 });
 
@@ -283,7 +285,7 @@ export const DetailedTaskResultSchema = z.object({
   category: z.string().describe('Task category'),
   difficulty: z.enum(['simple', 'moderate', 'complex']).describe('Task difficulty'),
   status: z.enum(['passed', 'failed', 'error', 'timeout', 'skipped']).describe('Task status'),
-  routedCli: z.enum(['claude', 'gemini', 'codex']).describe('CLI that was routed to'),
+  routedCli: z.enum(['claude', 'gemini', 'codex', 'opencode']).describe('CLI that was routed to'),
   routing: RoutingResultSchema.describe('Routing evaluation result'),
   quality: QualityResultSchema.describe('Quality evaluation result'),
   performance: PerformanceResultSchema.describe('Performance metrics'),
@@ -309,8 +311,11 @@ export const TaskTestResultSchema = z.object({
     routingAccuracy: z.number().min(0).max(100).describe('Routing accuracy (0-100)'),
     reliability: z.number().min(0).max(100).describe('Reliability score (0-100)'),
   }),
-  cli: z.enum(['claude', 'gemini', 'codex']).describe('CLI that executed the task'),
-  expectedCli: z.enum(['claude', 'gemini', 'codex']).optional().describe('Expected optimal CLI'),
+  cli: z.enum(['claude', 'gemini', 'codex', 'opencode']).describe('CLI that executed the task'),
+  expectedCli: z
+    .enum(['claude', 'gemini', 'codex', 'opencode'])
+    .optional()
+    .describe('Expected optimal CLI'),
   retryCount: z.number().int().nonnegative().default(0).describe('Number of retries'),
   error: z.string().optional().describe('Error message if failed'),
 });

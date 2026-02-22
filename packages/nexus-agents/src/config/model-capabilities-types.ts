@@ -72,7 +72,7 @@ export const PROVIDERS = ['anthropic', 'google', 'openai'] as const;
 export type Provider = (typeof PROVIDERS)[number];
 
 /** CLI tool names supported by the routing system. */
-export const CLI_NAMES = ['claude', 'gemini', 'codex'] as const;
+export const CLI_NAMES = ['claude', 'gemini', 'codex', 'opencode'] as const;
 export type CliNameLiteral = (typeof CLI_NAMES)[number];
 
 /** Default CLI used as fallback when task category detection yields no match. */
@@ -89,6 +89,7 @@ export const MODEL_IDS = [
   'codex-5.3',
   'codex-5.2',
   'codex-5.1-mini',
+  'opencode-default',
 ] as const;
 
 export type ModelId = (typeof MODEL_IDS)[number];

@@ -18,6 +18,7 @@ export const TOKEN_COSTS: Record<CliName, { input: number; output: number }> = {
   claude: { input: 3.0, output: 15.0 },
   gemini: { input: 0.075, output: 0.3 },
   codex: { input: 2.5, output: 10.0 },
+  opencode: { input: 2.0, output: 8.0 },
 };
 
 /**

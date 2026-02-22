@@ -23,7 +23,7 @@ function buildDelegateResponse(
   selectedModel: string,
   preferredModel: string | undefined
 ): DelegateResponse {
-  const alternatives = ['claude', 'gemini', 'codex'].filter((m) => m !== selectedModel);
+  const alternatives = ['claude', 'gemini', 'codex', 'opencode'].filter((m) => m !== selectedModel);
   return {
     selectedModel,
     confidence: 0.85,
@@ -46,7 +46,7 @@ const DELEGATE_SCHEMA = {
       task: { type: 'string', minLength: 1, description: 'Task to delegate' },
       preferredModel: {
         type: 'string',
-        enum: ['claude', 'gemini', 'codex'],
+        enum: ['claude', 'gemini', 'codex', 'opencode'],
         description: 'Preferred model (optional)',
       },
       constraints: {

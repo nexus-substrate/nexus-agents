@@ -294,6 +294,23 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
       cliName: 'codex',
       cliModelName: 'o3-mini',
     },
+    // ----- OpenCode (multi-provider proxy) -----
+    {
+      id: 'opencode-default',
+      displayName: 'OpenCode Default',
+      provider: 'anthropic',
+      contextWindow: 200_000,
+      outputModalities: ['text', 'structured_json', 'code'],
+      inputModalities: ['text', 'image', 'code'],
+      toolCapabilities: ['mcp', 'function_calling', 'file_operations', 'structured_output'],
+      specialFeatures: ['streaming'],
+      notes: 'OpenCode multi-provider proxy; model selected via --model flag',
+      pricing: { inputPer1M: 3.0, outputPer1M: 15.0 },
+      qualityScores: { reasoning: 9, codeGeneration: 9, speed: 7, cost: 6 },
+      maxOutputTokens: 64_000,
+      cliName: 'opencode',
+      cliModelName: 'anthropic/claude-sonnet-4-5',
+    },
   ],
 };
 
@@ -305,6 +322,7 @@ export const DEFAULT_MODEL_PER_CLI: Record<CliNameLiteral, ModelId> = {
   claude: 'claude-opus',
   gemini: 'gemini-3-pro',
   codex: 'codex-5.3',
+  opencode: 'opencode-default',
 };
 
 // ---------------------------------------------------------------------------

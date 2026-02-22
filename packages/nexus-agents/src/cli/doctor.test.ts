@@ -75,8 +75,8 @@ function createMockDoctorResult(overrides: Partial<DoctorResult> = {}): DoctorRe
     mcpServerReady: true,
     mcpClientReady: true,
     registryAdvisory: {
-      totalModels: 10,
-      availableModels: 10,
+      totalModels: 11,
+      availableModels: 11,
       unavailableModels: 0,
       models: [],
     },
@@ -131,6 +131,7 @@ describe('Doctor Command', () => {
         ['claude', { ...mockAdapter, name: 'claude' }],
         ['gemini', { ...mockAdapter, name: 'gemini' }],
         ['codex', { ...mockAdapter, name: 'codex' }],
+        ['opencode', { ...mockAdapter, name: 'opencode' }],
       ]);
 
       vi.mocked(createAllAdapters).mockReturnValue(mockAdapters as never);
@@ -140,7 +141,7 @@ describe('Doctor Command', () => {
       expect(result.allHealthy).toBe(true);
       expect(result.mcpServerReady).toBe(true);
       expect(result.mcpClientReady).toBe(true);
-      expect(result.clis).toHaveLength(3);
+      expect(result.clis).toHaveLength(4);
       expect(result.nodeVersion).toBeDefined();
       expect(result.apiKeys).toHaveLength(3);
       expect(result.configFile).toBeDefined();
@@ -406,6 +407,19 @@ describe('Doctor Command', () => {
             getCapacity: vi.fn().mockRejectedValue(new Error('Capacity unavailable')),
           },
         ],
+        [
+          'opencode',
+          {
+            name: 'opencode',
+            healthCheck: vi.fn().mockResolvedValue({
+              healthy: true,
+              version: '1.2.10',
+              versionStatus: 'supported',
+              lastChecked: new Date(),
+            }),
+            getCapacity: vi.fn().mockRejectedValue(new Error('Capacity unavailable')),
+          },
+        ],
       ]);
 
       vi.mocked(createAllAdapters).mockReturnValue(mockAdapters as never);
@@ -567,6 +581,7 @@ describe('Doctor Command', () => {
         ['claude', { ...mockAdapter, name: 'claude' }],
         ['gemini', { ...mockAdapter, name: 'gemini' }],
         ['codex', { ...mockAdapter, name: 'codex' }],
+        ['opencode', { ...mockAdapter, name: 'opencode' }],
       ]);
       vi.mocked(createAllAdapters).mockReturnValue(mockAdapters as never);
 
@@ -608,9 +623,9 @@ describe('Doctor Command', () => {
       expect(advisory.unavailableModels).toBeGreaterThan(0);
       const unavailableModels = advisory.models.filter((m) => !m.available);
       expect(unavailableModels.length).toBe(advisory.unavailableModels);
-      // All unavailable should be gemini/codex
+      // All unavailable should be gemini/codex/opencode
       for (const m of unavailableModels) {
-        expect(['gemini', 'codex']).toContain(m.cliName);
+        expect(['gemini', 'codex', 'opencode']).toContain(m.cliName);
         expect(m.reason).toContain('not installed');
       }
     });
@@ -635,6 +650,7 @@ describe('Doctor Command', () => {
         ['claude', { ...mockAdapter, name: 'claude' }],
         ['gemini', { ...mockAdapter, name: 'gemini' }],
         ['codex', { ...mockAdapter, name: 'codex' }],
+        ['opencode', { ...mockAdapter, name: 'opencode' }],
       ]);
       vi.mocked(createAllAdapters).mockReturnValue(mockAdapters as never);
 
@@ -941,6 +957,7 @@ describe('Doctor Command', () => {
         ['claude', { ...mockAdapter, name: 'claude' }],
         ['gemini', { ...mockAdapter, name: 'gemini' }],
         ['codex', { ...mockAdapter, name: 'codex' }],
+        ['opencode', { ...mockAdapter, name: 'opencode' }],
       ]);
 
       vi.mocked(createAllAdapters).mockReturnValue(mockAdapters as never);
@@ -1010,6 +1027,7 @@ describe('Doctor Command', () => {
         ['claude', { ...mockAdapter, name: 'claude' }],
         ['gemini', { ...mockAdapter, name: 'gemini' }],
         ['codex', { ...mockAdapter, name: 'codex' }],
+        ['opencode', { ...mockAdapter, name: 'opencode' }],
       ]);
 
       vi.mocked(createAllAdapters).mockReturnValue(mockAdapters as never);

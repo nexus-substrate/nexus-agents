@@ -8,6 +8,7 @@ import { resetOutcomeStore, getOutcomeStore } from '../../orchestration/outcomes
 import type { TaskOutcome } from '../../orchestration/outcomes/outcome-types.js';
 import { generateWeatherReport, getAdaptiveBonus, shouldExplore } from './weather-report.js';
 import { createDefaultWeatherConfig } from './weather-report-types.js';
+import { CLI_NAMES } from '../../config/model-capabilities-types.js';
 
 // ============================================================================
 // Helpers
@@ -57,7 +58,7 @@ describe('generateWeatherReport', () => {
 
     expect(report.overall.totalTasks).toBe(0);
     expect(report.overall.successRate).toBe(0);
-    expect(report.cliWeather).toHaveLength(3); // claude, gemini, codex
+    expect(report.cliWeather).toHaveLength(CLI_NAMES.length);
     expect(report.collectedAt).toBeDefined();
   });
 

@@ -292,11 +292,12 @@ export class LatencyTracker implements ILatencyTracker {
       claude: EMPTY_LATENCY_STATS,
       gemini: EMPTY_LATENCY_STATS,
       codex: EMPTY_LATENCY_STATS,
+      opencode: EMPTY_LATENCY_STATS,
     };
 
     let totalSamples = 0;
 
-    for (const cli of ['claude', 'gemini', 'codex'] as const) {
+    for (const cli of ['claude', 'gemini', 'codex', 'opencode'] as const) {
       const stats = this.getStats(cli);
       perCli[cli] = stats;
       totalSamples += stats.count;

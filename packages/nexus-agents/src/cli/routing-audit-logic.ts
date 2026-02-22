@@ -37,7 +37,7 @@ const logger = createLogger({ component: 'routing-audit' });
 // Constants
 // =============================================================================
 
-const CLI_NAMES: readonly CliName[] = ['claude', 'gemini', 'codex'];
+const CLI_NAMES: readonly CliName[] = ['claude', 'gemini', 'codex', 'opencode'];
 
 // =============================================================================
 // Helper Functions

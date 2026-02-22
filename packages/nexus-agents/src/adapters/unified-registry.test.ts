@@ -261,7 +261,7 @@ describe('UnifiedAdapterRegistry', () => {
 
     it('should report model count', () => {
       const snapshot = registry.getSnapshot();
-      expect(snapshot.availableModels).toBe(10);
+      expect(snapshot.availableModels).toBe(11);
     });
   });
 });

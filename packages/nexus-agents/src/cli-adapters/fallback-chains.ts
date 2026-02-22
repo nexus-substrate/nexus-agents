@@ -59,7 +59,7 @@ export interface FallbackOutcome {
  * Zod schema for fallback chain validation.
  */
 export const FallbackChainSchema = z
-  .array(z.enum(['claude', 'gemini', 'codex']))
+  .array(z.enum(['claude', 'gemini', 'codex', 'opencode']))
   .min(1)
   .readonly();
 
@@ -84,11 +84,11 @@ export const FallbackChainRegistrySchema = z.object({
  * - general: Balanced fallback order
  */
 export const DEFAULT_FALLBACK_CHAINS: FallbackChainRegistry = {
-  code: ['claude', 'codex', 'gemini'],
-  research: ['claude', 'gemini', 'codex'],
-  documentation: ['claude', 'gemini', 'codex'],
-  analysis: ['claude', 'gemini', 'codex'],
-  general: ['claude', 'gemini', 'codex'],
+  code: ['claude', 'codex', 'opencode', 'gemini'],
+  research: ['claude', 'gemini', 'opencode', 'codex'],
+  documentation: ['claude', 'gemini', 'opencode', 'codex'],
+  analysis: ['claude', 'gemini', 'opencode', 'codex'],
+  general: ['claude', 'gemini', 'codex', 'opencode'],
 } as const;
 
 /**
@@ -97,7 +97,7 @@ export const DEFAULT_FALLBACK_CHAINS: FallbackChainRegistry = {
 function createEmptyMetrics(): FallbackChainMetrics {
   return {
     totalAttempts: 0,
-    successByPosition: [0, 0, 0],
+    successByPosition: [0, 0, 0, 0],
     avgSuccessPosition: 0,
     exhaustedCount: 0,
   };

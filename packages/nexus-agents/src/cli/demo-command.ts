@@ -48,7 +48,7 @@ async function getCliAvailability(): Promise<readonly CliAvailability[]> {
   }
 
   const adapters = createAllAdapters();
-  const cliNames: CliName[] = ['claude', 'gemini', 'codex'];
+  const cliNames: CliName[] = ['claude', 'gemini', 'codex', 'opencode'];
   const results: CliAvailability[] = [];
 
   for (const name of cliNames) {

@@ -19,7 +19,7 @@ import { TaskCategory as TaskCategoryEnum } from '../types.js';
 /**
  * All available CLI names for iteration.
  */
-const ALL_CLIS: readonly CliName[] = ['claude', 'gemini', 'codex'] as const;
+const ALL_CLIS: readonly CliName[] = ['claude', 'gemini', 'codex', 'opencode'] as const;
 
 /**
  * All available task categories for iteration.

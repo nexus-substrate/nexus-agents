@@ -31,7 +31,7 @@ const OTHER_REWARD = 0.35;
 export const SYNTHETIC_MARKER = 'synthetic:warm-up';
 
 /** All known CLI names for bandit arms. */
-const CLI_NAMES = ['claude', 'gemini', 'codex'] as const;
+const CLI_NAMES = ['claude', 'gemini', 'codex', 'opencode'] as const;
 
 // ============================================================================
 // Types

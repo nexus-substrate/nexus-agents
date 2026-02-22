@@ -145,6 +145,7 @@ const CLI_AVG_LATENCY: Record<CliNameLiteral, number> = {
   claude: 800,
   gemini: 400,
   codex: 500,
+  opencode: 600,
 };
 
 /**

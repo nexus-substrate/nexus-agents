@@ -37,9 +37,9 @@ export const TaskSpecializationSchema = z.object({
   /** Task category identifier */
   category: TaskCategorySchema,
   /** Primary CLI recommendation */
-  primaryCli: z.enum(['claude', 'gemini', 'codex']),
+  primaryCli: z.enum(['claude', 'gemini', 'codex', 'opencode']),
   /** Secondary CLI fallback */
-  secondaryCli: z.enum(['claude', 'gemini', 'codex']),
+  secondaryCli: z.enum(['claude', 'gemini', 'codex', 'opencode']),
   /** Why this CLI is preferred for this task type */
   reasoning: z.string(),
   /** Keywords that trigger this category detection */

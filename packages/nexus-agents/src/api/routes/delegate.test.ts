@@ -72,7 +72,7 @@ describe('Delegate Routes', () => {
       expect(body.selectedModel).toBe('claude');
       expect(body.confidence).toBe(0.85);
       expect(body.reason).toBe('Default routing based on task analysis');
-      expect(body.alternatives).toEqual(['gemini', 'codex']);
+      expect(body.alternatives).toEqual(['gemini', 'codex', 'opencode']);
     });
 
     it('should use preferred model when specified', async () => {
@@ -93,7 +93,7 @@ describe('Delegate Routes', () => {
 
       expect(body.selectedModel).toBe('codex');
       expect(body.reason).toBe('User preferred model: codex');
-      expect(body.alternatives).toEqual(['claude', 'gemini']);
+      expect(body.alternatives).toEqual(['claude', 'gemini', 'opencode']);
     });
 
     it('should handle gemini as preferred model', async () => {
@@ -113,7 +113,7 @@ describe('Delegate Routes', () => {
       const body = JSON.parse(response.payload) as DelegateResponse;
 
       expect(body.selectedModel).toBe('gemini');
-      expect(body.alternatives).toEqual(['claude', 'codex']);
+      expect(body.alternatives).toEqual(['claude', 'codex', 'opencode']);
     });
 
     it('should accept constraints in request', async () => {

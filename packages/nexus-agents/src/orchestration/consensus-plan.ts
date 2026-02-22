@@ -129,6 +129,7 @@ function buildPlanPrompt(task: string, cli: CliName): string {
     claude: 'Focus on: architectural trade-offs, design patterns, risk assessment.',
     codex: 'Focus on: implementation steps, dependency management, testing strategy.',
     gemini: 'Focus on: broad context, alternative approaches, documentation needs.',
+    opencode: 'Focus on: practical implementation, code quality, and cross-provider insights.',
   };
 
   return [

@@ -10,8 +10,10 @@ import { z } from 'zod';
  * Schema for routing result.
  */
 export const RoutingResultSchema = z.object({
-  selectedCli: z.enum(['claude', 'gemini', 'codex']).describe('CLI that was selected'),
-  optimalCli: z.enum(['claude', 'gemini', 'codex']).describe('Optimal CLI for this task'),
+  selectedCli: z.enum(['claude', 'gemini', 'codex', 'opencode']).describe('CLI that was selected'),
+  optimalCli: z
+    .enum(['claude', 'gemini', 'codex', 'opencode'])
+    .describe('Optimal CLI for this task'),
   isOptimal: z.boolean().describe('Whether routing was optimal'),
   isAcceptable: z.boolean().describe('Whether routing was acceptable'),
   confidence: z.number().min(0).max(1).describe('Routing confidence score (0.0 - 1.0)'),

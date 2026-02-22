@@ -158,7 +158,12 @@ export class CompositeRouter implements ICompositeRouter {
 
   // Statistics tracking
   private totalDecisions = 0;
-  private decisionsPerCli: Record<CliName, number> = { claude: 0, gemini: 0, codex: 0 };
+  private decisionsPerCli: Record<CliName, number> = {
+    claude: 0,
+    gemini: 0,
+    codex: 0,
+    opencode: 0,
+  };
   private totalDecisionTimeMs = 0;
   private budgetRejections = 0;
 

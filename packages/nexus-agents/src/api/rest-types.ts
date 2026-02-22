@@ -167,7 +167,7 @@ export type OrchestrateResponse = z.infer<typeof OrchestrateResponseSchema>;
  */
 export const DelegateRequestSchema = z.object({
   task: z.string().min(1).describe('Task to delegate'),
-  preferredModel: z.enum(['claude', 'gemini', 'codex']).optional(),
+  preferredModel: z.enum(['claude', 'gemini', 'codex', 'opencode']).optional(),
   constraints: z
     .object({
       maxTokens: z.number().positive().optional(),

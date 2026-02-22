@@ -148,7 +148,7 @@ describe('BudgetFilterStage.route', () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       // All should be filtered (1500 tokens > 1)
-      expect(result.value.context.filtered.size).toBe(3);
+      expect(result.value.context.filtered.size).toBe(4);
       expect(result.value.continuesPipeline).toBe(false);
     }
   });

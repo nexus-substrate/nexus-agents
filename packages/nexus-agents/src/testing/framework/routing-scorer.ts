@@ -204,17 +204,22 @@ export class RoutingScorer {
 
     // Use task type heuristics for reasonable CLI choices
     const reasonableByType: Record<string, readonly CliName[]> = {
-      architecture: ['claude', 'gemini'],
-      code_generation: ['codex', 'claude', 'gemini'],
-      code_review: ['claude', 'codex'],
-      debugging: ['codex', 'claude'],
-      documentation: ['claude', 'gemini'],
-      refactoring: ['codex', 'claude'],
-      testing: ['codex', 'claude'],
-      large_context: ['gemini', 'claude'],
+      architecture: ['claude', 'gemini', 'opencode'],
+      code_generation: ['codex', 'claude', 'opencode', 'gemini'],
+      code_review: ['claude', 'codex', 'opencode'],
+      debugging: ['codex', 'claude', 'opencode'],
+      documentation: ['claude', 'gemini', 'opencode'],
+      refactoring: ['codex', 'claude', 'opencode'],
+      testing: ['codex', 'claude', 'opencode'],
+      large_context: ['gemini', 'claude', 'opencode'],
     };
 
-    const reasonableClis = reasonableByType[task.category] ?? ['claude', 'gemini', 'codex'];
+    const reasonableClis = reasonableByType[task.category] ?? [
+      'claude',
+      'gemini',
+      'codex',
+      'opencode',
+    ];
     return reasonableClis.includes(selectedCli);
   }
 
