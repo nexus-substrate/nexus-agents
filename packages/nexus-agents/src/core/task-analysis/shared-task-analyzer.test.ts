@@ -197,6 +197,13 @@ describe('getComplexity', () => {
     expect(result.score).toBeGreaterThan(0.25);
   });
 
+  it('classifies short architecture tasks as at least moderate (#1152)', () => {
+    // Short but inherently complex: should NOT be classified as simple
+    const result = analyzer.getComplexity('refactor the architecture of the adapter system');
+    expect(result.level).not.toBe('simple');
+    expect(result.score).toBeGreaterThanOrEqual(0.25);
+  });
+
   it('detects multi-step patterns', () => {
     const single = analyzer.getComplexity('do one thing');
     const multi = analyzer.getComplexity('first do this, then do that, finally verify');

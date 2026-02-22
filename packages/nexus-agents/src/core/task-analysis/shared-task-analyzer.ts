@@ -282,9 +282,10 @@ export class SharedTaskAnalyzer implements ISharedTaskAnalyzer {
     const lengthScore = Math.min(content.length / 2000, 1) * 0.25;
     score += lengthScore;
 
-    // Complexity keywords (0-0.4)
+    // Complexity keywords (0-0.4) — divisor of 3 ensures even 2 keyword hits
+    // produce meaningful signal (0.27) instead of being lost in noise
     const complexityMatches = HIGH_COMPLEXITY_KEYWORDS.filter((k) => lower.includes(k));
-    const keywordScore = Math.min(complexityMatches.length / 5, 1) * 0.4;
+    const keywordScore = Math.min(complexityMatches.length / 3, 1) * 0.4;
     score += keywordScore;
     complexityMatches.forEach((k) => signals.push(`complexity:${k}`));
 

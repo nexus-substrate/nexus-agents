@@ -149,6 +149,12 @@ export const HIGH_COMPLEXITY_KEYWORDS: readonly string[] = [
   'design pattern',
   'refactor',
   'legacy',
+  'centralize',
+  'consolidate',
+  'migrate',
+  'integrate',
+  'system-wide',
+  'cross-cutting',
 ];
 
 /** Code generation indicators */
