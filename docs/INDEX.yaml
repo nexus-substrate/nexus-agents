@@ -1,10 +1,10 @@
 # docs/INDEX.yaml - Machine-parseable documentation index
-# Tiered Documentation System (Issue #283)
-# Generated: 2026-01-15T00:00:00-05:00
+# Tiered Documentation System (Issue #283, updated #1157)
+# Generated: 2026-02-22T00:00:00-05:00
 # See: docs/proposals/TIERED_DOCS_PLAN.md
 
-schema_version: '1.0'
-last_updated: '2026-01-15'
+schema_version: '1.1'
+last_updated: '2026-02-22'
 
 # =============================================================================
 # TIER 1: Navigation Layer - Always loaded for discovery
@@ -16,6 +16,7 @@ navigation:
   llm_comprehensive: 'docs/llms-full.txt'
   human_quickstart: 'QUICK_START.md'
   troubleshooting: 'docs/TROUBLESHOOTING.md'
+  skills_index: 'docs/skills-index.md'
 
 # =============================================================================
 # TOPICS - Each topic maps to Tier 2 hub and Tier 3 detailed docs
@@ -23,7 +24,7 @@ navigation:
 
 topics:
   project_context:
-    summary: 'Project instructions, protocols, and agent behavior guidelines'
+    summary: 'Project instructions, protocols, agent behavior, and governance rules'
     tier2_file: 'CLAUDE.md'
     tier3_files:
       - 'CODING_STANDARDS.md'
@@ -34,6 +35,7 @@ topics:
       - 'protocols'
       - 'guidelines'
       - 'conventions'
+      - 'governance'
 
   architecture:
     summary: 'System design, component relationships, and technical decisions'
@@ -46,8 +48,9 @@ topics:
       - 'docs/architecture/CONSENSUS_PROTOCOLS.md'
       - 'docs/architecture/SECURITY.md'
       - 'docs/architecture/MCP_PROTOCOL.md'
+      - 'docs/architecture/CONTEXT_LOAD_BALANCING.md'
       - 'docs/architecture/SWARM_OBSERVER_DESIGN.md'
-      - 'docs/architecture/EXECUTION_DASHBOARD_DESIGN.md'
+      - 'docs/architecture/UNTRUSTED_INPUT_HARDENING.md'
     keywords:
       - 'agents'
       - 'memory'
@@ -57,6 +60,7 @@ topics:
       - 'mcp'
       - 'swarm'
       - 'design'
+      - 'pipeline'
 
   development:
     summary: 'How to contribute, extend, and develop with the system'
@@ -66,6 +70,7 @@ topics:
       - 'docs/development/AGENT_DEVELOPMENT.md'
       - 'docs/development/TOOL_DEVELOPMENT.md'
       - 'docs/development/MEMORY_DEVELOPMENT.md'
+      - 'docs/development/CONTRIBUTION_GUIDE.md'
       - 'docs/guides/DEBUGGING_OBSERVABILITY.md'
     keywords:
       - 'contributing'
@@ -101,18 +106,108 @@ topics:
       - 'techniques'
       - 'academic'
       - 'implementation'
+      - 'arxiv'
+
+  pipeline:
+    summary: 'V2 Pipeline architecture — TaskContract, PipelineRunner, EventBus, PolicyEngine, PluginRegistry, ArtifactStore'
+    tier2_file: 'docs/architecture/README.md'
+    tier3_files:
+      - 'docs/architecture/PIPELINE_ARCHITECTURE.md'
+    keywords:
+      - 'pipeline'
+      - 'task-contract'
+      - 'plugin'
+      - 'policy'
+      - 'event-bus'
+      - 'artifact'
+
+  adapters:
+    summary: 'Model adapter system — UnifiedAdapterRegistry, ResilientAdapter, Claude/Gemini/Codex adapters'
+    tier2_file: 'docs/architecture/README.md'
+    tier3_files:
+      - 'docs/architecture/ROUTING_SYSTEM.md'
+    keywords:
+      - 'adapter'
+      - 'registry'
+      - 'resilient'
+      - 'claude'
+      - 'gemini'
+      - 'codex'
+      - 'model'
+      - 'unified'
+
+  orchestration:
+    summary: 'Task orchestration — AOrchestra, graph workflows, scenario validator'
+    tier2_file: 'docs/architecture/README.md'
+    tier3_files:
+      - 'docs/architecture/AGENT_SYSTEM.md'
+    keywords:
+      - 'orchestrate'
+      - 'graph'
+      - 'workflow'
+      - 'aorchestra'
+      - 'scenario'
+      - 'template'
+
+  security:
+    summary: 'Security pipeline — sanitizer, trust classifier, policy gate, corroboration, reputation model'
+    tier2_file: 'docs/architecture/SECURITY.md'
+    tier3_files:
+      - 'docs/architecture/UNTRUSTED_INPUT_HARDENING.md'
+    keywords:
+      - 'security'
+      - 'trust'
+      - 'sanitize'
+      - 'policy'
+      - 'injection'
+      - 'byzantine'
+      - 'reputation'
+
+  mcp_tools:
+    summary: '24 MCP tools — orchestrate, experts, workflows, consensus, research, memory, tracing'
+    tier2_file: 'docs/guides/MCP_INTEGRATION.md'
+    tier3_files:
+      - 'docs/ENTRYPOINTS.md'
+      - 'docs/reference/capabilities.md'
+    keywords:
+      - 'mcp'
+      - 'tool'
+      - 'server'
+      - 'claude-desktop'
+      - 'stdio'
 
   roadmap:
     summary: 'Project alignment, phases, and progress tracking'
     tier2_file: 'docs/ALIGNMENT_ROADMAP.md'
-    tier3_files:
-      - 'docs/proposals/TIERED_DOCS_PLAN.md'
+    tier3_files: []
     keywords:
       - 'roadmap'
       - 'alignment'
       - 'phases'
       - 'progress'
       - 'milestones'
+
+# =============================================================================
+# CANONICAL SOURCE CODE PATHS - Where key systems live
+# =============================================================================
+
+source_map:
+  core: 'packages/nexus-agents/src/core/'
+  config: 'packages/nexus-agents/src/config/'
+  adapters: 'packages/nexus-agents/src/adapters/'
+  cli_adapters: 'packages/nexus-agents/src/cli-adapters/'
+  agents: 'packages/nexus-agents/src/agents/'
+  consensus: 'packages/nexus-agents/src/consensus/'
+  context: 'packages/nexus-agents/src/context/'
+  mcp: 'packages/nexus-agents/src/mcp/'
+  workflows: 'packages/nexus-agents/src/workflows/'
+  pipeline: 'packages/nexus-agents/src/pipeline/'
+  orchestration: 'packages/nexus-agents/src/orchestration/'
+  security: 'packages/nexus-agents/src/security/'
+  learning: 'packages/nexus-agents/src/learning/'
+  observability: 'packages/nexus-agents/src/observability/'
+  swe_bench: 'packages/nexus-agents/src/swe-bench/'
+  testing: 'packages/nexus-agents/src/testing/'
 
 # =============================================================================
 # CONTEXT BUDGETS - Token allocation guidance per task type
@@ -175,3 +270,11 @@ quick_reference:
   add_research:
     start: 'docs/research/CONTRIBUTING.md'
     then: 'docs/research/registry/techniques.yaml'
+
+  add_mcp_tool:
+    start: 'docs/development/TOOL_DEVELOPMENT.md'
+    then: 'docs/guides/MCP_INTEGRATION.md'
+
+  security_review:
+    start: 'docs/architecture/SECURITY.md'
+    then: 'docs/architecture/UNTRUSTED_INPUT_HARDENING.md'

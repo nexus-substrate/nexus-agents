@@ -34,10 +34,50 @@ function buildTier2Rows(topics: Record<string, TopicEntry>): string {
     .join('\n');
 }
 
+/** Known descriptions for tier3 files. Falls back to topic-derived description. */
+const TIER3_DESCRIPTIONS: Record<string, string> = {
+  'CODING_STANDARDS.md': 'Code style, patterns, and TypeScript rules',
+  'docs/ENTRYPOINTS.md': 'CLI commands, MCP tools, and REST API reference',
+  'ARCHITECTURE.md': 'Full system architecture overview',
+  'CONTRIBUTING.md': 'How to contribute to the project',
+  'docs/architecture/AGENT_SYSTEM.md': 'Agent types, lifecycle, and delegation',
+  'docs/architecture/MEMORY_SYSTEM.md': '8-type memory architecture (MIRIX)',
+  'docs/architecture/ROUTING_SYSTEM.md': 'CompositeRouter pipeline and model selection',
+  'docs/architecture/CONSENSUS_PROTOCOLS.md': '11 consensus protocols and voting strategies',
+  'docs/architecture/SECURITY.md': 'Security pipeline, threat model, sandboxing',
+  'docs/architecture/MCP_PROTOCOL.md': 'MCP server, tool registration, SDK integration',
+  'docs/architecture/CONTEXT_LOAD_BALANCING.md': 'Multi-CLI context distribution',
+  'docs/architecture/SWARM_OBSERVER_DESIGN.md': 'Swarm metrics and observability',
+  'docs/architecture/UNTRUSTED_INPUT_HARDENING.md': 'Input sanitization and trust tiers',
+  'docs/architecture/PIPELINE_ARCHITECTURE.md': 'V2 pipeline: TaskContract, EventBus, PolicyEngine',
+  'docs/development/AGENT_DEVELOPMENT.md': 'Creating new agents and experts',
+  'docs/development/TOOL_DEVELOPMENT.md': 'Adding MCP tools',
+  'docs/development/MEMORY_DEVELOPMENT.md': 'Extending memory backends',
+  'docs/development/CONTRIBUTION_GUIDE.md': 'Git workflow, branch naming, PR process',
+  'docs/guides/DEBUGGING_OBSERVABILITY.md': 'Debugging, logging, and tracing guide',
+  'docs/guides/MCP_INTEGRATION.md': 'MCP server setup and tool usage',
+  'docs/research/CONTRIBUTING.md': 'Research tracking and paper registry',
+  'docs/research/registry/papers.yaml': 'Tracked research papers (arXiv)',
+  'docs/research/registry/techniques.yaml': 'Technique implementation status',
+  'docs/research/registry/sources.yaml': 'External research sources',
+  'docs/reference/capabilities.md': 'Auto-generated CLI/MCP/workflow index',
+};
+
 function buildTier3Rows(topics: Record<string, TopicEntry>): string {
-  return Object.values(topics)
-    .flatMap((topic) => topic.tier3_files.map((f) => `| ${f} | Component detail | TBD |`))
-    .slice(0, 10)
+  const seen = new Set<string>();
+  return Object.entries(topics)
+    .flatMap(([topicName, topic]) =>
+      topic.tier3_files
+        .filter((f) => {
+          if (seen.has(f)) return false;
+          seen.add(f);
+          return true;
+        })
+        .map((f) => {
+          const desc = TIER3_DESCRIPTIONS[f] ?? `${topicName.replace(/_/g, ' ')} detail`;
+          return `| ${f} | ${desc} | ~400 |`;
+        })
+    )
     .join('\n');
 }
 
@@ -172,36 +212,47 @@ nexus-agents --verbose             # Verbose output
 }
 
 function getMcpToolsReference(): string {
-  return `## MCP Tools Reference
+  return `## MCP Tools Reference (24 tools)
 
-### orchestrate
-Analyze task, select experts, coordinate execution.
-\`\`\`typescript
-{
-  task: string,           // Task description
-  context?: object,       // Additional context
-  maxIterations?: number  // Max refinement rounds
-}
-\`\`\`
+### Task Orchestration
+- **orchestrate** — Analyze task, decompose into subtasks, coordinate experts
+- **create_expert** — Spawn specialized agent (10 roles: code, architecture, security, docs, testing, devops, research, pm, ux, infrastructure)
+- **execute_expert** — Run task on a created expert, returns analysis + confidence
+- **delegate_to_model** — Route task to optimal model based on capability matching
 
-### create_expert
-Spawn specialized agent for specific domain.
-\`\`\`typescript
-{
-  type: 'code' | 'security' | 'architecture' | ...,
-  config?: ExpertConfig
-}
-\`\`\`
+### Discovery
+- **list_experts** — List available expert roles and capabilities
+- **list_workflows** — List available workflow templates
 
-### run_workflow
-Execute YAML workflow template.
-\`\`\`typescript
-{
-  template: string,       // Template name
-  inputs: object,         // Template inputs
-  dryRun?: boolean        // Preview only
-}
-\`\`\``;
+### Workflows & Graphs
+- **run_workflow** — Execute YAML workflow template (11 templates)
+- **run_graph_workflow** — Execute graph-based workflow with checkpointing
+- **execute_spec** — Execute markdown specification through full pipeline
+
+### Consensus
+- **consensus_vote** — Multi-model voting (6 agent roles, 5 strategies including higher_order)
+
+### Research
+- **research_query** — Query research registry (status, overlap, stats, search)
+- **research_add** — Add arXiv paper to registry
+- **research_discover** — Discover papers from arXiv, GitHub, and other sources
+- **research_analyze** — Analyze registry for gaps, trends, priorities
+- **research_catalog_review** — Review auto-cataloged references
+
+### Memory
+- **memory_query** — Unified search across all memory backends
+- **memory_write** — Write to session, belief, or agentic memory
+- **memory_stats** — Memory system statistics dashboard
+
+### Observability
+- **weather_report** — Multi-CLI performance metrics and adaptive routing
+- **query_trace** — Query execution traces by run ID
+
+### Security & DevOps
+- **issue_triage** — GitHub issue triage with trust classification
+- **repo_analyze** — Analyze repository structure and tooling
+- **repo_security_plan** — Generate security scanning pipeline
+- **registry_import** — Add AI model to capability registry`;
 }
 
 function getResearchSection(): string {
@@ -270,46 +321,23 @@ function getSourceMapSection(): string {
 
 \`\`\`
 packages/nexus-agents/src/
-├── core/              # Foundation layer
-│   ├── types/         # IAgent, IModelAdapter, Result<T,E>
-│   ├── errors/        # NexusError, AgentError
-│   └── logger/        # Structured logging
-├── config/            # Zod schemas, loading
-├── adapters/          # Claude, OpenAI, Gemini, Ollama
-├── agents/            # Agent framework
-│   ├── tech-lead/     # Orchestration
-│   ├── experts/       # Domain experts
-│   ├── collaboration/ # Consensus protocols
-│   ├── skills/        # Voyager skill library
-│   └── self-improving/ # SICA implementation
-├── cli-adapters/      # External CLI integration
-│   ├── claude-adapter.ts
-│   ├── gemini-adapter.ts
-│   ├── codex-adapter.ts
-│   ├── composite-router.ts
-│   ├── budget-router.ts
-│   ├── topsis-router.ts
-│   └── linucb-bandit.ts
-├── context/           # Memory management
-│   ├── typed-memory.ts
-│   ├── graph-memory.ts
-│   ├── adaptive-memory.ts
-│   ├── agentic-memory.ts
-│   └── session-memory.ts
-├── consensus/         # Voting protocols
-│   ├── voting-protocol.ts
-│   └── weighted-voting.ts
-├── mcp/               # MCP server
-│   └── tools/         # Tool definitions
-├── workflows/         # Template engine
-│   ├── parser.ts
-│   ├── executor.ts
-│   └── latts.ts       # Adaptive compute
-├── learning/          # Feedback loop
-│   └── feedback-integration.ts
-└── observability/     # Metrics, tracing
-    ├── swarm-observer.ts
-    └── routing-metrics.ts
+├── core/              # Foundation: types, Result<T,E>, errors, logger
+├── config/            # Model registry, Zod schemas, timeouts, task specialization
+├── adapters/          # UnifiedAdapterRegistry, ResilientAdapter, provider adapters
+├── agents/            # Agent framework, experts, collaboration, skills
+├── cli-adapters/      # CLI integration: CompositeRouter, Budget/TOPSIS/LinUCB
+├── context/           # Memory: typed, graph, adaptive, agentic, session, belief
+├── consensus/         # 11 voting protocols, engine, voter-agents
+├── mcp/               # MCP server, 24 tools, middleware, SDK integration
+├── pipeline/          # V2: TaskContract, PipelineRunner, EventBus, PolicyEngine
+├── orchestration/     # AOrchestra, graph workflows (7 templates), scenarios
+├── security/          # Sanitizer, trust classifier, policy gate, reputation
+├── workflows/         # YAML template engine, 11 templates, LATTS compute
+├── learning/          # Feedback loop, strategy distiller, outcome tracking
+├── observability/     # Swarm observer, routing metrics, tracing
+├── swe-bench/         # SWE-Bench evaluation harness
+├── testing/           # E2E test framework, schemas, evaluation
+└── indexer/           # Codebase indexing and category detection
 \`\`\``;
 }
 

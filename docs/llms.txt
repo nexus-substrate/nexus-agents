@@ -29,13 +29,19 @@ nexus-agents --help           # See all commands
 - docs/llms-full.txt - llm comprehensive
 - QUICK_START.md - human quickstart
 - docs/TROUBLESHOOTING.md - troubleshooting
+- docs/skills-index.md - skills index
 
 ### Tier 2: Actionable Reference (load when relevant)
-- CLAUDE.md - Project instructions, protocols, and agent behavior guidelines
+- CLAUDE.md - Project instructions, protocols, agent behavior, and governance rules
 - docs/architecture/README.md - System design, component relationships, and technical decisions
 - docs/development/README.md - How to contribute, extend, and develop with the system
 - docs/TROUBLESHOOTING.md - Common issues, error resolution, and FAQ
 - docs/research/RESEARCH_INDEX.md - Research tracking, papers, and technique implementations
+- docs/architecture/README.md - V2 Pipeline architecture — TaskContract, PipelineRunner, EventBus, PolicyEngine, PluginRegistry, ArtifactStore
+- docs/architecture/README.md - Model adapter system — UnifiedAdapterRegistry, ResilientAdapter, Claude/Gemini/Codex adapters
+- docs/architecture/README.md - Task orchestration — AOrchestra, graph workflows, scenario validator
+- docs/architecture/SECURITY.md - Security pipeline — sanitizer, trust classifier, policy gate, corroboration, reputation model
+- docs/guides/MCP_INTEGRATION.md - 24 MCP tools — orchestrate, experts, workflows, consensus, research, memory, tracing
 - docs/ALIGNMENT_ROADMAP.md - Project alignment, phases, and progress tracking
 
 ### Tier 3: Deep Detail (load on demand)
@@ -100,4 +106,4 @@ packages/nexus-agents/src/
 - Architecture: ARCHITECTURE.md
 - Contributing: CONTRIBUTING.md
 
-<!-- Generated: 2026-02-03 from docs/INDEX.yaml -->
+<!-- Generated: 2026-02-22 from docs/INDEX.yaml -->

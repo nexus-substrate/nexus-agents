@@ -37,9 +37,14 @@
 ### Core Systems
 
 - **Agent system:** `packages/nexus-agents/src/agents/`
-- **Memory system:** `packages/nexus-agents/src/memory/`
-- **Routing system:** `packages/nexus-agents/src/routing/`
+- **Memory system:** `packages/nexus-agents/src/context/`
+- **Routing system:** `packages/nexus-agents/src/cli-adapters/`
 - **Consensus engine:** `packages/nexus-agents/src/consensus/`
+- **Pipeline:** `packages/nexus-agents/src/pipeline/`
+- **Orchestration:** `packages/nexus-agents/src/orchestration/`
+- **Security:** `packages/nexus-agents/src/security/`
+- **Adapters:** `packages/nexus-agents/src/adapters/`
+- **Config/Models:** `packages/nexus-agents/src/config/`
 
 ### Configuration
 
@@ -88,9 +93,9 @@
 
 ## Capability Quick Reference
 
-**CLI Commands:** 25 total
-**MCP Tools:** 8 total
-**Workflow Templates:** 7 built-in
+**CLI Commands:** 39 total
+**MCP Tools:** 24 total
+**Workflow Templates:** 11 built-in
 
 For full list: [reference/capabilities.md](./reference/capabilities.md)
 
