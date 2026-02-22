@@ -12,6 +12,7 @@ import {
   GitHubReviewer,
   GitHubUserInfo,
   createFullGitHubProvider,
+  resetGhTokenCache,
 } from './github-provider-traits.js';
 
 // Mock child_process.execFile
@@ -34,6 +35,9 @@ describe('GitHubReviewer', () => {
     const provider = new GitHubProvider('owner/repo');
     reviewer = new GitHubReviewer(provider);
     mockExecFile.mockReset();
+    resetGhTokenCache();
+    // Set GH_TOKEN so resolveGhToken doesn't spawn `gh auth token`
+    process.env['GH_TOKEN'] = 'test-token';
   });
 
   describe('getPullRequestDetail', () => {

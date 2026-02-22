@@ -87,6 +87,39 @@ interface GhApiUserJson {
 // gh API executor
 // ============================================================================
 
+/**
+ * Resolves a GitHub token from env vars or `gh auth token`.
+ * Caches the result to avoid repeated subprocess calls.
+ */
+let cachedGhToken: string | undefined | null = null;
+
+/** Reset the cached token (for testing). */
+export function resetGhTokenCache(): void {
+  cachedGhToken = null;
+}
+
+async function resolveGhToken(): Promise<string | undefined> {
+  if (cachedGhToken !== null) return cachedGhToken;
+
+  const envToken = process.env['GITHUB_TOKEN'] ?? process.env['GH_TOKEN'];
+  if (envToken !== undefined && envToken.length > 0) {
+    cachedGhToken = envToken;
+    return envToken;
+  }
+
+  try {
+    const { execFile } = await import('node:child_process');
+    const { promisify } = await import('node:util');
+    const exec = promisify(execFile);
+    const { stdout } = await exec('gh', ['auth', 'token'], { timeout: 5_000 });
+    const token = stdout.trim();
+    cachedGhToken = token.length > 0 ? token : undefined;
+  } catch {
+    cachedGhToken = undefined;
+  }
+  return cachedGhToken;
+}
+
 async function execGhApi(endpoint: string, method?: string): Promise<Result<string, ScmError>> {
   const { execFile } = await import('node:child_process');
   const { promisify } = await import('node:util');
@@ -95,10 +128,15 @@ async function execGhApi(endpoint: string, method?: string): Promise<Result<stri
   const args = ['api', endpoint];
   if (method !== undefined) args.push('--method', method);
 
+  // Inject token into subprocess environment to prevent keyring access failures
+  const token = await resolveGhToken();
+  const env = token !== undefined ? { ...process.env, GH_TOKEN: token } : undefined;
+
   try {
     const { stdout } = await exec('gh', args, {
       maxBuffer: 10 * 1024 * 1024,
       timeout: 30_000,
+      ...(env !== undefined ? { env } : {}),
     });
     return ok(stdout.trim());
   } catch (error) {
