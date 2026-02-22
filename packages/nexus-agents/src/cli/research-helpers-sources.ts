@@ -6,10 +6,12 @@
  *
  * @module cli/research-helpers-sources
  * (Source: Research System Enhancement - Phase 3)
+ * (Source: Issue #1136 — SCM token for GitHub search auth)
  */
 
 import { z } from 'zod';
 import type { Result } from '../core/result.js';
+import { resolveToken } from '../scm/token-resolver.js';
 
 // =============================================================================
 // TYPES
@@ -152,11 +154,18 @@ export async function discoverGitHubRepos(
   const query = encodeURIComponent(`${topic} language:python OR language:typescript`);
   const url = `https://api.github.com/search/repositories?q=${query}&sort=stars&order=desc&per_page=${String(maxResults)}`;
 
-  const fetchResult = await fetchSource({
-    url,
-    source: 'github',
-    headers: { Accept: 'application/vnd.github.v3+json', 'User-Agent': 'nexus-agents' },
-  });
+  // Use SCM token-resolver for optional auth (Issue #1136)
+  // Authenticated: 5000 req/hr; unauthenticated: 60 req/hr
+  const headers: Record<string, string> = {
+    Accept: 'application/vnd.github.v3+json',
+    'User-Agent': 'nexus-agents',
+  };
+  const tokenResult = await resolveToken({ platform: 'github' });
+  if (tokenResult.ok) {
+    headers['Authorization'] = `Bearer ${tokenResult.value.value}`;
+  }
+
+  const fetchResult = await fetchSource({ url, source: 'github', headers });
   if (!fetchResult.ok) return fetchResult;
 
   let raw: unknown;
