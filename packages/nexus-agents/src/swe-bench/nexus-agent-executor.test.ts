@@ -61,7 +61,8 @@ describe('nexus-agent-executor', () => {
 
         const executor = new NexusAgentExecutor(config);
 
-        expect(executor.getModelId()).toBe('claude-sonnet-4');
+        // Default model derived from canonical registry (DEFAULT_MODEL_PER_CLI['claude'])
+        expect(executor.getModelId()).toBe('claude-opus-4-6');
       });
 
       it('uses custom modelId when provided', () => {

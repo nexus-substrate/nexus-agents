@@ -79,7 +79,7 @@ export const MCP_TIMEOUTS = {
   /** Per-tool timeout overrides for long-running tools. */
   perTool: {
     orchestrate: 900_000, // 15 min — multi-step agent orchestration
-    consensus_vote: 600_000, // 10 min — 5-6 agents voting sequentially
+    consensus_vote: 600_000, // 10 min — 5-6 agents voting in parallel via Promise.all
     execute_expert: 900_000, // 15 min — complex expert reasoning tasks
     run_workflow: 900_000, // 15 min — multi-step workflow execution
   } as Readonly<Record<string, number>>,

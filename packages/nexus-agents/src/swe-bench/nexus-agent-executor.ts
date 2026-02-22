@@ -13,6 +13,7 @@ import { ClaudeAdapter } from '../adapters/claude-adapter.js';
 import type { ClaudeAdapterConfig } from '../adapters/claude-adapter-types.js';
 import type { IAgentExecutor, AgentContext, AgentExecutionResult } from './agent-runner.js';
 import { AgentRunnerError } from './agent-runner.js';
+import { getCliModelName, getDefaultModelForCli } from '../config/model-config-helpers.js';
 
 /**
  * Configuration for the Nexus agent executor.
@@ -20,7 +21,7 @@ import { AgentRunnerError } from './agent-runner.js';
 export interface NexusAgentExecutorConfig {
   /** Anthropic API key. */
   readonly apiKey: string;
-  /** Model ID to use (default: claude-sonnet-4). */
+  /** Model ID to use (default: derived from canonical registry). */
   readonly modelId?: string | undefined;
   /** Maximum tokens for response (default: 16384). */
   readonly maxTokens?: number | undefined;
@@ -32,9 +33,10 @@ export interface NexusAgentExecutorConfig {
 
 /**
  * Default values for executor configuration.
+ * Model derived from canonical registry (default Claude model).
  */
 const EXECUTOR_DEFAULTS = {
-  modelId: 'claude-sonnet-4',
+  modelId: getCliModelName(getDefaultModelForCli('claude')),
   maxTokens: 16384,
   temperature: 0.2,
 } as const;
@@ -43,7 +45,9 @@ const EXECUTOR_DEFAULTS = {
  * Real agent executor using nexus-agents ClaudeAdapter.
  *
  * This implements the IAgentExecutor interface to run actual
- * model inference for SWE-bench tasks.
+ * model inference for SWE-bench tasks. Uses ClaudeAdapter directly
+ * (not UnifiedAdapterRegistry) because SWE-bench evaluation is
+ * Claude-specific and requires direct API key configuration.
  */
 export class NexusAgentExecutor implements IAgentExecutor {
   private readonly adapter: ClaudeAdapter;
