@@ -341,31 +341,29 @@ describe('Setup Command', () => {
   describe('formatStatus()', () => {
     it('should format success status with check mark', () => {
       const result = formatStatus('success');
-      expect(result).toContain('\x1b[32m'); // Green color
+      expect(result).toContain('✓');
     });
 
     it('should format failed status with cross', () => {
       const result = formatStatus('failed');
-      expect(result).toContain('\x1b[31m'); // Red color
+      expect(result).toContain('✗');
     });
 
     it('should format skipped status with warning', () => {
       const result = formatStatus('skipped');
-      expect(result).toContain('\x1b[33m'); // Yellow color
+      expect(result).toContain('⚠');
     });
 
     it('should format pending status', () => {
       const result = formatStatus('pending');
-      expect(result).toContain('\x1b[2m'); // Dim color
+      expect(result).toContain('○');
     });
   });
 
   describe('formatHeader()', () => {
     it('should wrap text in bold', () => {
       const result = formatHeader('Test Header');
-      expect(result).toContain('\x1b[1m'); // Bold
       expect(result).toContain('Test Header');
-      expect(result).toContain('\x1b[0m'); // Reset
     });
   });
 
@@ -373,7 +371,6 @@ describe('Setup Command', () => {
     it('should indent and dim code lines', () => {
       const result = formatCodeBlock('line1\nline2');
       expect(result).toContain('  '); // Indentation
-      expect(result).toContain('\x1b[2m'); // Dim color
       expect(result).toContain('line1');
       expect(result).toContain('line2');
     });

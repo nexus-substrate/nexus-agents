@@ -35,8 +35,27 @@ export interface SpanNode {
 }
 
 // =============================================================================
-// ANSI Colors (re-exported for backward compatibility)
+// ANSI Colors
 // =============================================================================
+
+/**
+ * Raw ANSI codes for trace visualization.
+ * Used when opts.colors is true, bypassing TTY detection.
+ */
+const RAW_ANSI = {
+  reset: '\x1b[0m',
+  green: '\x1b[32m',
+  yellow: '\x1b[33m',
+  red: '\x1b[31m',
+  cyan: '\x1b[36m',
+  bold: '\x1b[1m',
+} as const;
+
+/** Get color code — uses raw ANSI when forceColors is true, else module-level detection. */
+function c(code: keyof typeof RAW_ANSI, useColors: boolean): string {
+  if (useColors) return RAW_ANSI[code];
+  return colors[code];
+}
 
 /**
  * ANSI color codes for terminal output.
@@ -128,11 +147,11 @@ export function getStatusIndicator(status: string, useColors: boolean): string {
   if (useColors) {
     switch (status) {
       case 'success':
-        return `${colors.green}✓${colors.reset}`;
+        return `${c('green', true)}✓${c('reset', true)}`;
       case 'error':
-        return `${colors.red}✗${colors.reset}`;
+        return `${c('red', true)}✗${c('reset', true)}`;
       case 'running':
-        return `${colors.yellow}●${colors.reset}`;
+        return `${c('yellow', true)}●${c('reset', true)}`;
       default:
         return '?';
     }
@@ -166,7 +185,7 @@ export function appendTokenInfo(
   }
   const tokenStr = formatTokens(span.llmMetrics.inputTokens, span.llmMetrics.outputTokens);
   if (opts.colors) {
-    return `${mainLine} ${colors.cyan}[${tokenStr}]${colors.reset}`;
+    return `${mainLine} ${c('cyan', true)}[${tokenStr}]${c('reset', true)}`;
   }
   return `${mainLine} [${tokenStr}]`;
 }
@@ -184,7 +203,7 @@ export function appendCostInfo(
   }
   const costStr = formatCost(span.llmMetrics.costUsd);
   if (opts.colors) {
-    return `${mainLine} ${colors.yellow}${costStr}${colors.reset}`;
+    return `${mainLine} ${c('yellow', true)}${costStr}${c('reset', true)}`;
   }
   return `${mainLine} ${costStr}`;
 }
@@ -201,7 +220,7 @@ export function renderErrorLine(
     return null;
   }
   if (opts.colors) {
-    return `${errorPrefix}${colors.red}Error: ${span.errorMessage}${colors.reset}`;
+    return `${errorPrefix}${c('red', true)}Error: ${span.errorMessage}${c('reset', true)}`;
   }
   return `${errorPrefix}Error: ${span.errorMessage}`;
 }
@@ -314,7 +333,7 @@ export function renderSpanNode(
  */
 export function renderHeader(traceId: string, useColors: boolean): string {
   if (useColors) {
-    return `${colors.bold}🔍 Trace: ${traceId}${colors.reset}`;
+    return `${c('bold', true)}🔍 Trace: ${traceId}${c('reset', true)}`;
   }
   return `Trace: ${traceId}`;
 }
@@ -342,7 +361,7 @@ export function buildSummaryParts(
   if (metrics.errorSpans > 0) {
     const errCount = String(metrics.errorSpans);
     if (opts.colors) {
-      parts.push(`${colors.red}Errors: ${errCount}${colors.reset}`);
+      parts.push(`${c('red', true)}Errors: ${errCount}${c('reset', true)}`);
     } else {
       parts.push(`Errors: ${errCount}`);
     }
