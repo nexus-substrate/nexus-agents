@@ -25,6 +25,15 @@ export function computeAgentPlan(task: string, logger: ILogger): AgentPlan | und
   try {
     const analyzer = new SharedTaskAnalyzer();
     const analysis = analyzer.analyze(task);
+
+    // Skip planning for simple tasks — AOrchestra adds overhead without value (Issue #1132)
+    if (analysis.complexity === 'simple') {
+      logger.debug('Skipping AOrchestra planning for simple task', {
+        taskType: analysis.taskType,
+      });
+      return undefined;
+    }
+
     const plan = planAgentTeam(analysis, task);
     logger.info('AOrchestra plan', {
       experts: plan.totalExperts,
