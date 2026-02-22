@@ -5,9 +5,11 @@
  *
  * @module security/sandbox/env-sanitizer
  * (Source: Issue #162, Alignment Roadmap Phase 4)
+ * (Source: Issue #1136 — SCM token name linkage)
  */
 
 import type { PolicyViolation } from './sandbox-types.js';
+import { getTokenEnvVars } from '../../scm/token-resolver.js';
 
 /**
  * Environment variables that are always safe to pass.
@@ -94,9 +96,10 @@ export const DENIED_ENV_PREFIXES: readonly string[] = [
   'POSTGRES_',
   'MYSQL_',
 
-  // VCS
-  'GITHUB_TOKEN',
-  'GH_TOKEN',
+  // VCS — token var names derived from SCM module (Issue #1136)
+  ...getTokenEnvVars('github'),
+  ...getTokenEnvVars('gitlab'),
+  ...getTokenEnvVars('gitea'),
   'GITLAB_',
   'BITBUCKET_',
 
