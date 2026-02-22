@@ -146,13 +146,21 @@ describe('GhCliGitHubClient', () => {
         createMockExecFile(null, new Error('Issue not found'))
       );
 
-      await expect(client.getIssue(999)).rejects.toThrow('Failed to get issue #999');
+      await expect(client.getIssue(999)).rejects.toThrow('gh command failed: Issue not found');
     });
   });
 
   describe('createPR', () => {
     it('returns PR details on success', async () => {
-      const mockPr = { number: 100, url: 'https://github.com/test/repo/pull/100' };
+      const mockPr = {
+        number: 100,
+        title: 'New Feature',
+        body: 'Description',
+        url: 'https://github.com/test/repo/pull/100',
+        author: { login: 'testuser' },
+        baseRefName: 'main',
+        headRefName: 'feature-branch',
+      };
 
       vi.mocked(childProcess.execFile).mockImplementation(
         createMockExecFile({ stdout: JSON.stringify(mockPr), stderr: '' })
@@ -181,7 +189,7 @@ describe('GhCliGitHubClient', () => {
           head: 'feature-branch',
           base: 'main',
         })
-      ).rejects.toThrow('Failed to create PR');
+      ).rejects.toThrow('gh command failed: PR creation failed');
     });
   });
 
@@ -199,7 +207,9 @@ describe('GhCliGitHubClient', () => {
         createMockExecFile(null, new Error('Comment failed'))
       );
 
-      await expect(client.addComment(1, 'Test')).rejects.toThrow('Failed to add comment');
+      await expect(client.addComment(1, 'Test')).rejects.toThrow(
+        'gh command failed: Comment failed'
+      );
     });
   });
 
@@ -217,7 +227,9 @@ describe('GhCliGitHubClient', () => {
         createMockExecFile(null, new Error('Labels failed'))
       );
 
-      await expect(client.addLabels(1, ['bug'])).rejects.toThrow('Failed to add labels');
+      await expect(client.addLabels(1, ['bug'])).rejects.toThrow(
+        'gh command failed: Labels failed'
+      );
     });
   });
 
@@ -257,7 +269,7 @@ describe('GhCliGitHubClient', () => {
         createMockExecFile(null, new Error('Merge conflict'))
       );
 
-      await expect(client.mergePR(123)).rejects.toThrow('Failed to merge PR #123');
+      await expect(client.mergePR(123)).rejects.toThrow('gh command failed: Merge conflict');
     });
   });
 
@@ -351,7 +363,7 @@ describe('GhCliGitHubClient', () => {
         createMockExecFile(null, new Error('Not found'))
       );
 
-      await expect(client.getPRStatus(999)).rejects.toThrow('Failed to get PR #999 status');
+      await expect(client.getPRStatus(999)).rejects.toThrow('gh command failed: Not found');
     });
   });
 });
