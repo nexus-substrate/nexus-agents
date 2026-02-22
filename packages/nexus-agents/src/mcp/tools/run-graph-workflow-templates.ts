@@ -286,6 +286,23 @@ const PATTERN_RULES: ReadonlyArray<readonly [RegExp, string, number]> = [
     'CWE-22: Path traversal via user input in file operations',
     6,
   ],
+  // Path traversal via env var (#1156)
+  [
+    /(?:readFile|writeFile|createReadStream|readFileSync|writeFileSync)\(.*process\.env/,
+    'CWE-22: Path traversal via environment variable in file operations',
+    4,
+  ],
+  // Secrets in URL query parameters (#1156)
+  [
+    /(?:fetch|axios|http\.get|request)\(.*\?.*(?:key|token|secret|password|apiKey|api_key)=/,
+    'CWE-598: Sensitive data in URL query string',
+    5,
+  ],
+  [
+    /\$\{.*(?:key|token|secret|password|apiKey|api_key).*\}/,
+    'CWE-598: Potential secret interpolated into string',
+    3,
+  ],
 ] as const;
 
 function checkPatternsHandler(state: Readonly<GraphState>): Promise<Partial<GraphState>> {

@@ -279,6 +279,30 @@ describe('security-scan workflow', () => {
     const vulns = result.finalState['vulnerabilities'] as string[];
     expect(vulns.some((v) => v.includes('CWE-22'))).toBe(true);
   });
+
+  it('detects CWE-22 (path traversal via env var) (#1156)', async () => {
+    const code = "readFileSync(process.env.CONFIG_PATH || '/etc/config.json', 'utf8');";
+    const result = await runWorkflow('security-scan', { code });
+
+    const vulns = result.finalState['vulnerabilities'] as string[];
+    expect(vulns.some((v) => v.includes('CWE-22'))).toBe(true);
+  });
+
+  it('detects CWE-598 (API key in URL query string) (#1156)', async () => {
+    const code = 'fetch(`https://api.example.com/data?key=${apiKey}`)';
+    const result = await runWorkflow('security-scan', { code });
+
+    const vulns = result.finalState['vulnerabilities'] as string[];
+    expect(vulns.some((v) => v.includes('CWE-598'))).toBe(true);
+  });
+
+  it('detects CWE-598 (secret interpolation in string) (#1156)', async () => {
+    const code = 'const url = `https://api.example.com?token=${secret}`;';
+    const result = await runWorkflow('security-scan', { code });
+
+    const vulns = result.finalState['vulnerabilities'] as string[];
+    expect(vulns.some((v) => v.includes('CWE-598'))).toBe(true);
+  });
 });
 
 // ============================================================================
