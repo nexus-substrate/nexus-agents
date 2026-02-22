@@ -5,10 +5,36 @@
  *
  * @module mcp/tools/issue-triage-tool.test
  * (Source: Issue #828)
+ * (Source: Issue #1136 — Updated mocks for SCM provider migration)
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { ok } from '../../core/index.js';
+import type { ScmIssueDetail, ScmCommentDetail } from '../../scm/types.js';
 import { IssueTriageInputSchema } from './issue-triage-tool.js';
+
+// Mock SCM provider traits (same pattern as issue-triage.test.ts)
+const mockGetIssueDetail = vi.fn();
+const mockListCommentDetails = vi.fn();
+const mockCreateFullGitHubProvider = vi.fn();
+
+vi.mock('../../scm/github-provider-traits.js', () => ({
+  createFullGitHubProvider: (...args: unknown[]): unknown => mockCreateFullGitHubProvider(...args),
+}));
+
+// Mock logger to suppress output
+vi.mock('../../core/index.js', async () => {
+  const actual = await vi.importActual<typeof import('../../core/index.js')>('../../core/index.js');
+  return {
+    ...actual,
+    createLogger: vi.fn(() => ({
+      info: vi.fn(),
+      debug: vi.fn(),
+      error: vi.fn(),
+      warn: vi.fn(),
+    })),
+  };
+});
 
 describe('IssueTriageInputSchema', () => {
   it('should validate a valid issue URL', () => {
@@ -54,54 +80,41 @@ describe('IssueTriageInputSchema', () => {
 });
 
 describe('issue_triage tool integration', () => {
-  let originalFetch: typeof global.fetch;
-  let mockFetch: ReturnType<typeof vi.fn>;
-
   beforeEach(() => {
-    originalFetch = global.fetch;
-    mockFetch = vi.fn();
-    global.fetch = mockFetch;
+    vi.clearAllMocks();
+    mockCreateFullGitHubProvider.mockReturnValue({
+      platform: 'github',
+      repo: 'owner/repo',
+      getIssueDetail: mockGetIssueDetail,
+      listCommentDetails: mockListCommentDetails,
+      fetchUserMetadata: vi.fn(),
+    });
   });
 
   afterEach(() => {
-    global.fetch = originalFetch;
     vi.restoreAllMocks();
   });
 
   it('should handle the full triage flow via IssueTriage', async () => {
-    // This test verifies the tool creates IssueTriage and calls triageIssue
-    // The full integration is tested in issue-triage.test.ts
-    const { IssueTriage } = await import('../../dogfooding/issue-triage.js');
-
-    const issueData = {
+    const issueDetail: ScmIssueDetail = {
       number: 42,
       title: 'Bug: crash on startup',
       body: 'The app fails to start with an error',
-      user: { login: 'testuser' },
-      author_association: 'NONE',
-      html_url: 'https://github.com/owner/repo/issues/42',
+      author: 'testuser',
+      authorAssociation: 'NONE',
+      url: 'https://github.com/owner/repo/issues/42',
       state: 'open',
       labels: [],
-      created_at: '2026-01-01T00:00:00Z',
+      createdAt: '2026-01-01T00:00:00Z',
     };
 
-    mockFetch
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        statusText: 'OK',
-        json: vi.fn().mockResolvedValue(issueData),
-        text: vi.fn().mockResolvedValue(JSON.stringify(issueData)),
-      } as unknown as Response)
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        statusText: 'OK',
-        json: vi.fn().mockResolvedValue([]),
-        text: vi.fn().mockResolvedValue('[]'),
-      } as unknown as Response);
+    const comments: ScmCommentDetail[] = [];
 
-    const triage = new IssueTriage({ githubToken: 'test-token' });
+    mockGetIssueDetail.mockResolvedValue(ok(issueDetail));
+    mockListCommentDetails.mockResolvedValue(ok(comments));
+
+    const { IssueTriage } = await import('../../dogfooding/issue-triage.js');
+    const triage = new IssueTriage();
     const result = await triage.triageIssue('https://github.com/owner/repo/issues/42');
 
     expect(result.ok).toBe(true);
