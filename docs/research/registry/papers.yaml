@@ -2315,7 +2315,7 @@ papers:
     related_issues: []
     implementation_status: not-started
   arxiv-2602.02050:
-    title: 'Rethinking the Role of Entropy in Optimizing Tool-Use Behaviors for Large Language Model Agents'
+    title: Rethinking the Role of Entropy in Optimizing Tool-Use Behaviors for Large Language Model Agents
     authors: []
     source: arxiv
     arxiv_id: '2602.02050'
@@ -2327,16 +2327,17 @@ papers:
     tags: []
     reviewed_date: 2026-02-06
     reviewed_in: ''
-    summary: 'Entropy reduction correlates with higher-quality tool invocations. Dense process-based rewards improve performance by 22%.'
+    summary: Entropy reduction correlates with higher-quality tool invocations. Dense process-based
+      rewards improve performance by 22%.
     key_findings:
-      - 'Sparse outcome rewards reduce tool calls by 72%'
-      - 'Dense process rewards improve performance by 22%'
+      - Sparse outcome rewards reduce tool calls by 72%
+      - Dense process rewards improve performance by 22%
     relevance: medium
     techniques_extracted: []
     related_issues: []
     implementation_status: not-started
   arxiv-2602.05073:
-    title: 'Towards Reducible Uncertainty Modeling for Reliable Large Language Model Agents'
+    title: Towards Reducible Uncertainty Modeling for Reliable Large Language Model Agents
     authors: []
     source: arxiv
     arxiv_id: '2602.05073'
@@ -2348,10 +2349,53 @@ papers:
     tags: []
     reviewed_date: 2026-02-06
     reviewed_in: ''
-    summary: 'Framework for uncertainty quantification in LLM agents using conditional uncertainty reduction across trajectories.'
+    summary: Framework for uncertainty quantification in LLM agents using conditional uncertainty
+      reduction across trajectories.
     key_findings:
-      - 'Reducible uncertainty modeling across agent trajectories'
-      - 'Environmental feedback reduces uncertainty at decision gates'
+      - Reducible uncertainty modeling across agent trajectories
+      - Environmental feedback reduces uncertainty at decision gates
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2602.16873:
+    title: 'AdaptOrch: Task-Adaptive Multi-Agent Orchestration in the Era of LLM Performance Convergence'
+    authors: []
+    source: arxiv
+    arxiv_id: '2602.16873'
+    url: https://arxiv.org/abs/2602.16873
+    publication_date: 2026-02
+    venue: null
+    topics:
+      - routing
+    tags:
+      - multi-agent
+      - llm
+    reviewed_date: 2026-02-21
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2506.06579:
+    title: 'Towards Efficient Multi-LLM Inference: Characterization and Analysis of LLM Routing and
+      Hierarchical Techniques'
+    authors: []
+    source: arxiv
+    arxiv_id: '2506.06579'
+    url: https://arxiv.org/abs/2506.06579
+    publication_date: 2025-06
+    venue: null
+    topics:
+      - model routing
+    tags:
+      - llm
+    reviewed_date: 2026-02-22
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
     relevance: medium
     techniques_extracted: []
     related_issues: []
