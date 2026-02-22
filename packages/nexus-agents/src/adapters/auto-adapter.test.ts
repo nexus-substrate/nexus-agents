@@ -38,6 +38,16 @@ vi.mock('./claude-adapter.js', () => ({
   }),
 }));
 
+// Mock SDK adapter
+vi.mock('./sdk/index.js', () => ({
+  SdkAdapter: vi.fn().mockImplementation((config: Record<string, unknown>) => ({
+    execute: vi.fn(),
+    name: `sdk-${String(config['providerId'])}`,
+    providerId: `sdk-${String(config['providerId'])}`,
+    modelId: config['modelId'],
+  })),
+}));
+
 // Mock CLI detection cache
 vi.mock('../cli-adapters/cli-detection-cache.js', () => ({
   createCliDetectionCache: vi.fn().mockReturnValue({
@@ -57,11 +67,15 @@ import { createCliDetectionCache } from '../cli-adapters/cli-detection-cache.js'
 // ============================================================================
 
 describe('createAutoAdapter', () => {
-  const originalEnv = process.env.ANTHROPIC_API_KEY;
+  const originalAnthropicKey = process.env.ANTHROPIC_API_KEY;
+  const originalOpenaiKey = process.env.OPENAI_API_KEY;
+  const originalGoogleKey = process.env.GOOGLE_AI_API_KEY;
 
   beforeEach(() => {
     vi.clearAllMocks();
     delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.GOOGLE_AI_API_KEY;
     // Re-setup mock return values after clearAllMocks (vitest 3.x clears them)
     vi.mocked(createCliAdapter).mockReturnValue({
       initialize: vi.fn().mockReturnValue(Promise.resolve()),
@@ -76,10 +90,20 @@ describe('createAutoAdapter', () => {
   });
 
   afterEach(() => {
-    if (originalEnv !== undefined) {
-      process.env.ANTHROPIC_API_KEY = originalEnv;
+    if (originalAnthropicKey !== undefined) {
+      process.env.ANTHROPIC_API_KEY = originalAnthropicKey;
     } else {
       delete process.env.ANTHROPIC_API_KEY;
+    }
+    if (originalOpenaiKey !== undefined) {
+      process.env.OPENAI_API_KEY = originalOpenaiKey;
+    } else {
+      delete process.env.OPENAI_API_KEY;
+    }
+    if (originalGoogleKey !== undefined) {
+      process.env.GOOGLE_AI_API_KEY = originalGoogleKey;
+    } else {
+      delete process.env.GOOGLE_AI_API_KEY;
     }
   });
 
@@ -160,6 +184,8 @@ describe('createAutoAdapter', () => {
 
     it('throws when no API key', async () => {
       delete process.env.ANTHROPIC_API_KEY;
+      delete process.env.OPENAI_API_KEY;
+      delete process.env.GOOGLE_AI_API_KEY;
       await expect(createAutoAdapter({ priority: 'api-only' })).rejects.toThrow(
         'No API key available'
       );
@@ -204,6 +230,54 @@ describe('createAutoAdapter', () => {
     });
   });
 
+  describe('multi-provider API fallback', () => {
+    it('falls back to OpenAI when no Anthropic key', async () => {
+      vi.mocked(getAvailableClis).mockReturnValue(Promise.resolve([]));
+      process.env.OPENAI_API_KEY = 'openai-test-key';
+      const result = await createAutoAdapter({ priority: 'api-first' });
+      expect(result.source).toBe('api');
+      expect(result.name).toBe('openai');
+      expect(result.reason).toContain('OpenAI');
+    });
+
+    it('falls back to Google when no Anthropic or OpenAI key', async () => {
+      vi.mocked(getAvailableClis).mockReturnValue(Promise.resolve([]));
+      process.env.GOOGLE_AI_API_KEY = 'google-test-key';
+      const result = await createAutoAdapter({ priority: 'api-first' });
+      expect(result.source).toBe('api');
+      expect(result.name).toBe('google');
+      expect(result.reason).toContain('Google');
+    });
+
+    it('prefers Anthropic over OpenAI when both available', async () => {
+      vi.mocked(getAvailableClis).mockReturnValue(Promise.resolve([]));
+      process.env.ANTHROPIC_API_KEY = 'anthropic-key';
+      process.env.OPENAI_API_KEY = 'openai-key';
+      const result = await createAutoAdapter({ priority: 'api-first' });
+      expect(result.name).toBe('anthropic');
+    });
+
+    it('uses openaiApiKey from config', async () => {
+      vi.mocked(getAvailableClis).mockReturnValue(Promise.resolve([]));
+      const result = await createAutoAdapter({
+        priority: 'api-first',
+        openaiApiKey: 'config-openai-key',
+      });
+      expect(result.source).toBe('api');
+      expect(result.name).toBe('openai');
+    });
+
+    it('uses googleApiKey from config', async () => {
+      vi.mocked(getAvailableClis).mockReturnValue(Promise.resolve([]));
+      const result = await createAutoAdapter({
+        priority: 'api-first',
+        googleApiKey: 'config-google-key',
+      });
+      expect(result.source).toBe('api');
+      expect(result.name).toBe('google');
+    });
+  });
+
   describe('cache behavior', () => {
     it('creates cache by default', async () => {
       vi.mocked(getAvailableClis).mockReturnValue(Promise.resolve(['claude']));
@@ -243,10 +317,15 @@ describe('createAutoAdapter', () => {
 });
 
 describe('getAvailableAdapters', () => {
-  const originalEnv = process.env.ANTHROPIC_API_KEY;
+  const originalAnthropicKey = process.env.ANTHROPIC_API_KEY;
+  const originalOpenaiKey = process.env.OPENAI_API_KEY;
+  const originalGoogleKey = process.env.GOOGLE_AI_API_KEY;
 
   beforeEach(() => {
     vi.clearAllMocks();
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.GOOGLE_AI_API_KEY;
     // Re-setup mock return values after clearAllMocks
     vi.mocked(createCliDetectionCache).mockReturnValue({
       get: vi.fn(),
@@ -256,28 +335,42 @@ describe('getAvailableAdapters', () => {
   });
 
   afterEach(() => {
-    if (originalEnv !== undefined) {
-      process.env.ANTHROPIC_API_KEY = originalEnv;
+    if (originalAnthropicKey !== undefined) {
+      process.env.ANTHROPIC_API_KEY = originalAnthropicKey;
     } else {
       delete process.env.ANTHROPIC_API_KEY;
     }
+    if (originalOpenaiKey !== undefined) {
+      process.env.OPENAI_API_KEY = originalOpenaiKey;
+    } else {
+      delete process.env.OPENAI_API_KEY;
+    }
+    if (originalGoogleKey !== undefined) {
+      process.env.GOOGLE_AI_API_KEY = originalGoogleKey;
+    } else {
+      delete process.env.GOOGLE_AI_API_KEY;
+    }
   });
 
-  it('returns available CLIs', async () => {
+  it('returns available CLIs and API key status', async () => {
     vi.mocked(getAvailableClis).mockReturnValue(Promise.resolve(['claude', 'gemini']));
     process.env.ANTHROPIC_API_KEY = 'test-key';
+    process.env.OPENAI_API_KEY = 'openai-key';
     const result = await getAvailableAdapters();
     expect(result.clis).toEqual(['claude', 'gemini']);
     expect(result.hasAnthropicKey).toBe(true);
+    expect(result.hasOpenaiKey).toBe(true);
+    expect(result.hasGoogleKey).toBe(false);
     expect(result.cache).toBeDefined();
   });
 
-  it('reports no API key when not set', async () => {
+  it('reports no API keys when none set', async () => {
     vi.mocked(getAvailableClis).mockReturnValue(Promise.resolve([]));
-    delete process.env.ANTHROPIC_API_KEY;
     const result = await getAvailableAdapters();
     expect(result.clis).toEqual([]);
     expect(result.hasAnthropicKey).toBe(false);
+    expect(result.hasOpenaiKey).toBe(false);
+    expect(result.hasGoogleKey).toBe(false);
   });
 
   it('reports no API key when empty string', async () => {

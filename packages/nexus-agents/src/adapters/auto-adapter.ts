@@ -17,6 +17,7 @@ import { createLogger } from '../core/index.js';
 import { createCliAdapter, isCliAvailable, getAvailableClis } from '../cli-adapters/factory.js';
 import { createCliToModelAdapter } from '../cli-adapters/cli-to-model-adapter.js';
 import { createClaudeAdapter } from './claude-adapter.js';
+import { SdkAdapter } from './sdk/index.js';
 import type { CliName } from '../cli-adapters/types.js';
 import type { ICliDetectionCache } from '../cli-adapters/cli-detection-cache.js';
 import { createCliDetectionCache } from '../cli-adapters/cli-detection-cache.js';
@@ -36,6 +37,10 @@ export interface AutoAdapterConfig {
   readonly preferredCli?: CliName;
   /** API key for Anthropic (optional, for fallback) */
   readonly anthropicApiKey?: string;
+  /** API key for OpenAI (optional, for fallback via AI SDK) */
+  readonly openaiApiKey?: string;
+  /** API key for Google AI (optional, for fallback via AI SDK) */
+  readonly googleApiKey?: string;
   /** Logger instance */
   readonly logger?: ILogger;
   /** CLI detection cache (optional, creates new if not provided) */
@@ -135,30 +140,61 @@ async function tryCliAdapter(
 }
 
 /**
+ * Resolves an API key from config or environment variable.
+ */
+function resolveApiKeyFromEnv(configKey: string | undefined, envVar: string): string | undefined {
+  const key = configKey ?? process.env[envVar];
+  return key !== undefined && key.length > 0 ? key : undefined;
+}
+
+/**
  * Attempts to create an API-based model adapter.
+ * Tries providers in order: Anthropic (native), OpenAI (SDK), Google (SDK).
  * This is a fallback when no CLIs are available.
  */
 function tryApiAdapter(config: AutoAdapterConfig, logger: ILogger): AdapterSelection | null {
-  // Check for Anthropic API key
-  const apiKey = config.anthropicApiKey ?? process.env.ANTHROPIC_API_KEY;
-
-  if (apiKey === undefined || apiKey.length === 0) {
-    logger.info('No API key available for Anthropic');
-    return null;
+  // 1. Anthropic — use native ClaudeAdapter (battle-tested)
+  const anthropicKey = resolveApiKeyFromEnv(config.anthropicApiKey, 'ANTHROPIC_API_KEY');
+  if (anthropicKey !== undefined) {
+    logger.info('Using Anthropic API adapter');
+    return {
+      adapter: createClaudeAdapter({ modelId: 'claude-sonnet-4-20250514', apiKey: anthropicKey }),
+      source: 'api',
+      name: 'anthropic',
+      reason: 'Using Anthropic API (native adapter)',
+    };
   }
 
-  logger.info('Using Anthropic API adapter (fallback)');
-  const adapter = createClaudeAdapter({
-    modelId: 'claude-sonnet-4-20250514',
-    apiKey,
-  });
+  // 2. OpenAI — use AI SDK adapter
+  const openaiKey = resolveApiKeyFromEnv(config.openaiApiKey, 'OPENAI_API_KEY');
+  if (openaiKey !== undefined) {
+    logger.info('Using OpenAI API adapter (AI SDK)');
+    return {
+      adapter: new SdkAdapter({ providerId: 'openai', modelId: 'gpt-4o', apiKey: openaiKey }),
+      source: 'api',
+      name: 'openai',
+      reason: 'Using OpenAI API via AI SDK',
+    };
+  }
 
-  return {
-    adapter,
-    source: 'api',
-    name: 'anthropic',
-    reason: 'Using Anthropic API as fallback (no CLIs available)',
-  };
+  // 3. Google — use AI SDK adapter
+  const googleKey = resolveApiKeyFromEnv(config.googleApiKey, 'GOOGLE_AI_API_KEY');
+  if (googleKey !== undefined) {
+    logger.info('Using Google AI API adapter (AI SDK)');
+    return {
+      adapter: new SdkAdapter({
+        providerId: 'google',
+        modelId: 'gemini-2.5-pro',
+        apiKey: googleKey,
+      }),
+      source: 'api',
+      name: 'google',
+      reason: 'Using Google AI API via AI SDK',
+    };
+  }
+
+  logger.info('No API keys available for any provider');
+  return null;
 }
 
 /** Try CLI first, then API as fallback. */
@@ -172,7 +208,7 @@ async function selectCliFirst(
   const apiResult = tryApiAdapter(config, logger);
   if (apiResult !== null) return apiResult;
   throw new Error(
-    'No adapters available. Install a CLI (claude/gemini/codex) or set ANTHROPIC_API_KEY.'
+    'No adapters available. Install a CLI (claude/gemini/codex) or set ANTHROPIC_API_KEY, OPENAI_API_KEY, or GOOGLE_AI_API_KEY.'
   );
 }
 
@@ -187,7 +223,7 @@ async function selectApiFirst(
   const cliResult = await tryCliAdapter(config, logger, cache);
   if (cliResult !== null) return cliResult;
   throw new Error(
-    'No adapters available. Set ANTHROPIC_API_KEY or install a CLI (claude/gemini/codex).'
+    'No adapters available. Set ANTHROPIC_API_KEY/OPENAI_API_KEY/GOOGLE_AI_API_KEY or install a CLI (claude/gemini/codex).'
   );
 }
 
@@ -208,7 +244,9 @@ async function selectCliOnly(
 function selectApiOnly(config: AutoAdapterConfig, logger: ILogger): AdapterSelection {
   const apiResult = tryApiAdapter(config, logger);
   if (apiResult !== null) return apiResult;
-  throw new Error('No API key available. Set ANTHROPIC_API_KEY environment variable.');
+  throw new Error(
+    'No API key available. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or GOOGLE_AI_API_KEY.'
+  );
 }
 
 /**
@@ -259,17 +297,23 @@ export async function createAutoAdapter(config: AutoAdapterConfig = {}): Promise
  * Uses caching to avoid repeated CLI health checks.
  *
  * @param cache - Optional cache to use
- * @returns Available CLIs and whether Anthropic API key is set
+ * @returns Available CLIs and which API keys are set
  */
 export async function getAvailableAdapters(cache?: ICliDetectionCache): Promise<{
   clis: CliName[];
   hasAnthropicKey: boolean;
+  hasOpenaiKey: boolean;
+  hasGoogleKey: boolean;
   cache?: ICliDetectionCache;
 }> {
   const effectiveCache = cache ?? createCliDetectionCache();
   const clis = await getAvailableClis(effectiveCache);
-  const hasAnthropicKey =
-    process.env.ANTHROPIC_API_KEY !== undefined && process.env.ANTHROPIC_API_KEY.length > 0;
 
-  return { clis, hasAnthropicKey, cache: effectiveCache };
+  return {
+    clis,
+    hasAnthropicKey: resolveApiKeyFromEnv(undefined, 'ANTHROPIC_API_KEY') !== undefined,
+    hasOpenaiKey: resolveApiKeyFromEnv(undefined, 'OPENAI_API_KEY') !== undefined,
+    hasGoogleKey: resolveApiKeyFromEnv(undefined, 'GOOGLE_AI_API_KEY') !== undefined,
+    cache: effectiveCache,
+  };
 }
