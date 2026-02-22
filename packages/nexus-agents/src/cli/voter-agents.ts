@@ -20,7 +20,7 @@ import type { VoterRole, AgentVoteResult } from './vote-types.js';
 import { VOTER_ROLES } from './vote-types.js';
 import type { IModelAdapter, ILogger } from '../core/index.js';
 import { createLogger, getTimeProvider, getErrorMessage } from '../core/index.js';
-import { createAutoAdapter } from '../adapters/auto-adapter.js';
+import { getGlobalRegistry } from '../adapters/unified-registry.js';
 import { getAvailableClis } from '../cli-adapters/factory.js';
 import type { CliName } from '../cli-adapters/types.js';
 
@@ -173,16 +173,14 @@ export class NoAdapterError extends Error {
 /**
  * Resolves the model adapter, handling errors per Issue #280.
  */
-async function resolveAdapter(
+function resolveAdapter(
   options: CollectRealVotesOptions,
   logger: ILogger
-): Promise<{ adapter: IModelAdapter } | { error: string }> {
+): { adapter: IModelAdapter } | { error: string } {
   try {
-    const selection =
-      options.adapter !== undefined
-        ? { adapter: options.adapter, source: 'provided' as const }
-        : await createAutoAdapter({ logger });
-    return { adapter: selection.adapter };
+    if (options.adapter !== undefined) return { adapter: options.adapter };
+    const registry = getGlobalRegistry({ logger });
+    return { adapter: registry.getDefault() };
   } catch (error) {
     return { error: getErrorMessage(error) };
   }
@@ -198,19 +196,15 @@ function assignUniformAdapter(
   return adapters;
 }
 
-/** Creates CLI-specific adapters for available CLIs. */
-async function createCliAdapterMap(
+/** Creates CLI-specific adapters for available CLIs via the unified registry. */
+function createCliAdapterMap(
   clis: readonly CliName[],
   logger: ILogger
-): Promise<Map<CliName, IModelAdapter>> {
+): Map<CliName, IModelAdapter> {
+  const registry = getGlobalRegistry({ logger });
   const result = new Map<CliName, IModelAdapter>();
   for (const cli of clis) {
-    try {
-      const selection = await createAutoAdapter({ preferredCli: cli, logger });
-      result.set(cli, selection.adapter);
-    } catch {
-      logger.warn('Failed to create adapter for CLI', { cli });
-    }
+    result.set(cli, registry.getAdapterForCli(cli));
   }
   return result;
 }
@@ -237,7 +231,7 @@ async function resolveDiverseAdapters(
     return assignUniformAdapter(roles, fallbackAdapter);
   }
 
-  const cliAdapters = await createCliAdapterMap(availableClis, logger);
+  const cliAdapters = createCliAdapterMap(availableClis, logger);
   if (cliAdapters.size <= 1) return assignUniformAdapter(roles, fallbackAdapter);
 
   // Round-robin assign roles to diverse CLIs
@@ -280,7 +274,7 @@ export async function collectRealVotes(
     return createSimulatedVotes(roles, proposal);
   }
 
-  const adapterResult = await resolveAdapter(options, logger);
+  const adapterResult = resolveAdapter(options, logger);
 
   if ('error' in adapterResult) {
     logger.error('No adapter available for voting', undefined, { error: adapterResult.error });

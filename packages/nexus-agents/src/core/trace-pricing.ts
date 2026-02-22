@@ -38,14 +38,17 @@ function toPricing(
 
 /** Checks if the query matches a registry entry by exact id, cliModelName, or cliAlias. */
 function isExactMatch(
-  entry: { id: string; cliModelName?: string; cliAlias?: string },
+  entry: { id: string; cliModelName?: string | undefined; cliAlias?: string | undefined },
   query: string
 ): boolean {
   return entry.id === query || entry.cliModelName === query || entry.cliAlias === query;
 }
 
 /** Checks if the query starts with a registry entry's id or cliModelName. */
-function isPrefixMatch(entry: { id: string; cliModelName?: string }, query: string): boolean {
+function isPrefixMatch(
+  entry: { id: string; cliModelName?: string | undefined },
+  query: string
+): boolean {
   const id = entry.id;
   const cliName = entry.cliModelName ?? '';
   return (

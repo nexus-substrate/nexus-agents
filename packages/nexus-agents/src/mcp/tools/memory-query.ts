@@ -26,7 +26,7 @@ import {
   type ReflectionResult,
 } from './reflective-retriever.js';
 import type { IModelAdapter } from '../../core/index.js';
-import { createAutoAdapter } from '../../adapters/auto-adapter.js';
+import { getGlobalRegistry } from '../../adapters/unified-registry.js';
 
 // ============================================================================
 // Schema & Types
@@ -97,15 +97,15 @@ let reflectionAdapter: IModelAdapter | undefined;
  * Get or create the reflective retriever.
  * Returns undefined if reflection is disabled or adapter unavailable.
  */
-async function getReflectiveRetriever(logger: ILogger): Promise<ReflectiveRetriever | undefined> {
+function getReflectiveRetriever(logger: ILogger): ReflectiveRetriever | undefined {
   const enabled = isReflectiveMemoryEnabled();
   const shadow = isReflectiveShadowMode();
   if (!enabled && !shadow) return undefined;
 
   if (reflectionAdapter === undefined) {
     try {
-      const selection = await createAutoAdapter({ logger });
-      reflectionAdapter = selection.adapter;
+      const registry = getGlobalRegistry({ logger });
+      reflectionAdapter = registry.getDefault();
     } catch {
       logger.warn('No adapter for reflection, using keyword retrieval');
       return undefined;
@@ -134,7 +134,7 @@ async function executeMemoryQuery(
 
   // MemR3: Optionally enhance query with reflective reasoning
   let reflection: ReflectionResult | undefined;
-  const retriever = await getReflectiveRetriever(logger);
+  const retriever = getReflectiveRetriever(logger);
   if (retriever !== undefined) {
     reflection = await retriever.enhance(input.query);
   }

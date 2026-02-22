@@ -46,14 +46,15 @@ function deriveFromCanonical(): Record<string, BaseCapability> {
     const avgQuality = (q.reasoning + q.codeGeneration) / 2;
     const baseLatency = PROVIDER_AVG_LATENCY[m.provider] ?? 2000;
     const speedFactor = q.speed / 10;
-    result[m.id] = {
+    const cap: BaseCapability = {
       estimatedAccuracy: clamp(avgQuality / 10, 0, 1),
       relativeCost: clamp(1 - q.cost / 10, 0, 1),
       avgLatencyMs: Math.round(baseLatency * (1.5 - speedFactor)),
     };
+    result[m.id] = cap;
     // Also register by cliModelName for versioned lookups
     if (m.cliModelName !== undefined) {
-      result[m.cliModelName] = result[m.id];
+      result[m.cliModelName] = cap;
     }
   }
   return result;

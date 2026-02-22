@@ -13,7 +13,7 @@ import {
   type EventBusBridgeResult,
 } from './mcp/index.js';
 import { initializeBuiltInTemplates } from './workflows/index.js';
-import { createResilientAdapter } from './adapters/resilient-adapter.js';
+import { createUnifiedRegistry, type UnifiedAdapterRegistry } from './adapters/unified-registry.js';
 import { MCP_TIMEOUTS } from './config/timeouts.js';
 import { getStdinLifecycleMonitor } from './adapters/stdin-lifecycle.js';
 import { registerMcpTools } from './cli-server-tools.js';
@@ -315,17 +315,13 @@ async function connectToStdioTransport(
 }
 
 /**
- * Creates a resilient model adapter with lazy detection and automatic failover.
- * Detection happens on first use, not at startup.
- * (Source: Issue #811 - Resilient model adapter architecture)
- * (Supersedes: Issue #554 - tryDetectModelAdapter one-shot detection)
+ * Creates the unified adapter registry with pre-computed task routing.
+ * Adapter detection is still lazy (first use), but routing decisions
+ * are computed once at startup from the canonical model registry.
+ * (Source: Issue #1149 - Unified Adapter Registry)
  */
-function createResilientModelAdapter(
-  logger: ILogger
-): import('./adapters/resilient-adapter-types.js').IResilientAdapter {
-  // Use orchestrate tool timeout (300s) for CLI subprocess calls
-  // to prevent premature timeouts on complex orchestration tasks
-  return createResilientAdapter({
+function createAdapterRegistry(logger: ILogger): UnifiedAdapterRegistry {
+  return createUnifiedRegistry({
     logger,
     defaultCliTimeoutMs: MCP_TIMEOUTS.perTool['orchestrate'] ?? MCP_TIMEOUTS.defaultMs,
   });
@@ -368,8 +364,9 @@ async function initializeAndRegisterTools(
   const builtInTemplates = await initializeBuiltInTemplates();
   logger.info('Loaded built-in templates', { count: builtInTemplates.size });
 
-  // Issue #811: Resilient adapter — detection is lazy (first use, not startup)
-  const modelAdapter = createResilientModelAdapter(logger);
+  // Issue #1149: Unified registry — task routing computed at startup, detection lazy
+  const adapterRegistry = createAdapterRegistry(logger);
+  const modelAdapter = adapterRegistry.getDefault();
   const policyVals = getPolicyValues(config);
   const allowedPaths = config.security?.allowedPaths;
   const securityConfig = config.security;

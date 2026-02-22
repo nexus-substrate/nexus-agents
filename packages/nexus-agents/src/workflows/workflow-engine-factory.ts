@@ -54,7 +54,7 @@ import type { IWorkflowEngine } from '../core/index.js';
 import { ExpertFactory } from '../agents/index.js';
 import { createStepExecutor, ExpertFactoryAdapter, type IExpertFactory } from './step-executor.js';
 import type { WorkflowExecutionContext } from './execution-context.js';
-import { createAutoAdapter } from '../adapters/auto-adapter.js';
+import { getGlobalRegistry } from '../adapters/unified-registry.js';
 
 /**
  * Configuration for the workflow engine factory.
@@ -529,11 +529,12 @@ function shouldSkipAdapterDetection(config: WorkflowEngineFactoryConfig | undefi
  * Attempts to auto-detect a model adapter.
  * Returns the adapter on success, or undefined on failure.
  */
-async function tryAutoDetectAdapter(logger: ILogger): Promise<IModelAdapter | undefined> {
+function tryAutoDetectAdapter(logger: ILogger): IModelAdapter | undefined {
   try {
     logger.info('Auto-detecting model adapter for workflow execution');
-    const { adapter, source, name, reason } = await createAutoAdapter({ logger });
-    logger.info('Auto-detected model adapter', { source, name, reason });
+    const registry = getGlobalRegistry({ logger });
+    const adapter = registry.getDefault();
+    logger.info('Using unified registry default adapter');
     return adapter;
   } catch (error) {
     const message = getErrorMessage(error);
@@ -565,31 +566,32 @@ async function tryAutoDetectAdapter(logger: ILogger): Promise<IModelAdapter | un
  * });
  * ```
  */
-export async function createWorkflowEngineDepsAsync(
+export function createWorkflowEngineDepsAsync(
   config?: WorkflowEngineFactoryConfig
 ): Promise<WorkflowEngineDeps> {
   const logger = config?.logger ?? createLogger({ component: 'WorkflowEngine' });
 
   if (shouldSkipAdapterDetection(config)) {
     logger.debug('Skipping adapter detection - using provided config');
-    return createWorkflowEngineDeps(config);
+    return Promise.resolve(createWorkflowEngineDeps(config));
   }
 
-  const adapter = await tryAutoDetectAdapter(logger);
+  const adapter = tryAutoDetectAdapter(logger);
   if (adapter !== undefined) {
-    return createWorkflowEngineDeps({ ...config, modelAdapter: adapter, logger });
+    return Promise.resolve(createWorkflowEngineDeps({ ...config, modelAdapter: adapter, logger }));
   }
 
   // Issue #551: Do NOT silently enable mock executor - require explicit opt-in
-  // If useMockExecutor was explicitly set, honor it; otherwise throw
   if (config?.useMockExecutor === true) {
     logger.warn('Using mock executor as explicitly configured (no real adapter available)');
-    return createWorkflowEngineDeps({ ...config, useMockExecutor: true, logger });
+    return Promise.resolve(createWorkflowEngineDeps({ ...config, useMockExecutor: true, logger }));
   }
 
-  throw new WorkflowExecutionUnavailableError(
-    'No model adapter available and mock execution not explicitly enabled. ' +
-      'Set useMockExecutor: true in config to use mock mode, or configure an API key.'
+  return Promise.reject(
+    new WorkflowExecutionUnavailableError(
+      'No model adapter available and mock execution not explicitly enabled. ' +
+        'Set useMockExecutor: true in config to use mock mode, or configure an API key.'
+    )
   );
 }
 

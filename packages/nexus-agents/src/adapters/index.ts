@@ -154,6 +154,17 @@ export {
   resetStdinLifecycleMonitor,
 } from './stdin-lifecycle.js';
 
+// Unified adapter registry (Issue #1149 — centralized model access & task routing)
+export {
+  UnifiedAdapterRegistry,
+  createUnifiedRegistry,
+  getGlobalRegistry,
+  resetGlobalRegistry,
+  type UnifiedRegistryConfig,
+  type TaskRoutingEntry,
+  type RegistrySnapshot,
+} from './unified-registry.js';
+
 // AI SDK adapter (Issue #1123 — unified provider layer via Vercel AI SDK)
 export { SdkAdapter } from './sdk/index.js';
 export type { SdkAdapterConfig, SdkProviderId } from './sdk/index.js';

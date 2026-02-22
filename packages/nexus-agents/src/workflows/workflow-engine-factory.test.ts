@@ -207,9 +207,11 @@ describe('Workflow Engine Factory', () => {
     });
 
     it('should throw when no adapter available and mock not explicitly enabled (Issue #551)', async () => {
-      // Mock createAutoAdapter to throw an error
-      vi.mock('../adapters/auto-adapter.js', () => ({
-        createAutoAdapter: vi.fn().mockRejectedValue(new Error('No adapter available')),
+      // Mock unified registry to throw an error
+      vi.mock('../adapters/unified-registry.js', () => ({
+        getGlobalRegistry: vi.fn().mockImplementation(() => {
+          throw new Error('No adapter available');
+        }),
       }));
 
       // Issue #551: Should throw instead of silently enabling mock
@@ -219,9 +221,11 @@ describe('Workflow Engine Factory', () => {
     });
 
     it('should allow mock executor when explicitly enabled', async () => {
-      // Mock createAutoAdapter to throw an error
-      vi.mock('../adapters/auto-adapter.js', () => ({
-        createAutoAdapter: vi.fn().mockRejectedValue(new Error('No adapter available')),
+      // Mock unified registry to throw an error
+      vi.mock('../adapters/unified-registry.js', () => ({
+        getGlobalRegistry: vi.fn().mockImplementation(() => {
+          throw new Error('No adapter available');
+        }),
       }));
 
       // With explicit useMockExecutor: true, should succeed
