@@ -79,13 +79,37 @@
     "zod": "^3.24.0"
   },
   "devDependencies": {
+    "@ai-sdk/anthropic": "^3.0.46",
+    "@ai-sdk/google": "^3.0.30",
+    "@ai-sdk/openai": "^3.0.30",
     "@types/better-sqlite3": "^7.6.13",
     "@types/semver": "^7.7.1",
+    "ai": "^6.0.97",
     "ts-morph": "^27.0.2",
     "tsup": "^8.3.0",
     "typedoc": "0.28.16"
   },
   "optionalDependencies": {
     "better-sqlite3": "^12.6.2"
+  },
+  "peerDependencies": {
+    "@ai-sdk/anthropic": "^2.0.0",
+    "@ai-sdk/google": "^2.0.0",
+    "@ai-sdk/openai": "^2.0.0",
+    "ai": "^6.0.0"
+  },
+  "peerDependenciesMeta": {
+    "ai": {
+      "optional": true
+    },
+    "@ai-sdk/anthropic": {
+      "optional": true
+    },
+    "@ai-sdk/openai": {
+      "optional": true
+    },
+    "@ai-sdk/google": {
+      "optional": true
+    }
   }
 }

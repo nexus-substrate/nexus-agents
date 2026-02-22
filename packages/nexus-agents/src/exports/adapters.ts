@@ -75,4 +75,9 @@ export {
   GEMINI_MODELS,
   GEMINI_MODEL_ALIASES,
   type GeminiAdapterConfig,
+  // AI SDK adapter (Issue #1123)
+  SdkAdapter,
+  PROVIDER_ENV_KEYS as SDK_PROVIDER_ENV_KEYS,
+  type SdkAdapterConfig,
+  type SdkProviderId,
 } from '../adapters/index.js';

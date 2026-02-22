@@ -153,3 +153,8 @@ export {
   getStdinLifecycleMonitor,
   resetStdinLifecycleMonitor,
 } from './stdin-lifecycle.js';
+
+// AI SDK adapter (Issue #1123 — unified provider layer via Vercel AI SDK)
+export { SdkAdapter } from './sdk/index.js';
+export type { SdkAdapterConfig, SdkProviderId } from './sdk/index.js';
+export { PROVIDER_ENV_KEYS } from './sdk/index.js';
