@@ -30,7 +30,6 @@ import {
   CODEX_LEGACY_DEFAULTS,
   type McpToolResult,
   extractTextFromContent,
-  createCliError,
   createTimeout,
   determineErrorCode,
 } from './codex-mcp-adapter-helpers.js';
@@ -182,14 +181,12 @@ export class CodexMcpAdapter extends BaseCliAdapter {
   private parseToolResult(result: McpToolResult, startTime: number): Result<CliResponse, CliError> {
     if (result.isError === true) {
       const errorText = extractTextFromContent(result.content);
-      return err(
-        createCliError('EXECUTION_ERROR', errorText ?? 'Tool execution failed', this.name)
-      );
+      return err(this.createError('EXECUTION_ERROR', errorText ?? 'Tool execution failed'));
     }
 
     const text = extractTextFromContent(result.content);
     if (text === null) {
-      return err(createCliError('PARSE_ERROR', 'No text content in response', this.name));
+      return err(this.createError('PARSE_ERROR', 'No text content in response'));
     }
 
     return ok({
@@ -210,7 +207,7 @@ export class CodexMcpAdapter extends BaseCliAdapter {
       this.connected = false;
     }
 
-    return err(createCliError(errorCode, message, this.name, error as Error));
+    return err(this.createError(errorCode, message, error as Error));
   }
 
   /**
