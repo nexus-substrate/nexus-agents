@@ -111,9 +111,6 @@ nexus-agents fitness-audit
 # Generate docs index
 npx tsx scripts/generate-repo-index.ts
 
-# Sync website docs
-npx tsx scripts/sync-docs.ts
-
 # Generate llms.txt
 npx tsx scripts/generate-docs.ts
 ```

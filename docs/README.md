@@ -279,15 +279,6 @@ Documents kept for historical reference only:
 
 ---
 
-## Website Documentation
-
-The documentation website at `/website/` renders this canonical documentation. Website content **must** be sourced from these canonical docs.
-
-**Website source:** `/website/src/content/docs/`
-**Build:** `cd website && npm run build`
-
----
-
 ## Machine-Parseable Index
 
 For programmatic access, see [INDEX.yaml](./INDEX.yaml).
@@ -310,7 +301,6 @@ The following are excluded from this index:
 
 - `.claude/rules/` - Agent-specific configuration (loaded automatically)
 - `.claude/skills/` - Agent skill definitions (loaded automatically)
-- `website/node_modules/` - Dependencies
 - `coverage/` - Test coverage reports (generated)
 - `node_modules/` - Dependencies
 - `packages/nexus-agents/docs/api/` - Generated TypeDoc output

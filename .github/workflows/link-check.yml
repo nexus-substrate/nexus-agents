@@ -14,7 +14,6 @@ on:
     paths:
       - '**.md'
       - '**.mdx'
-      - 'website/**'
       - 'docs/**'
       - '.github/workflows/link-check.yml'
       - 'lychee.toml'
@@ -22,7 +21,6 @@ on:
     paths:
       - '**.md'
       - '**.mdx'
-      - 'website/**'
       - 'docs/**'
   schedule:
     # Run weekly on Sundays at midnight UTC
@@ -86,43 +84,3 @@ jobs:
               repo: context.repo.repo,
               body: `## 🔗 Link Check Report\n\nBroken links were found:\n\n\`\`\`\n${truncatedReport}\n\`\`\`\n\nPlease fix these links before merging.`
             });
-
-  docs-site-check:
-    name: Check Docs Site Links
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '22'
-
-      - name: Install website dependencies
-        working-directory: website
-        run: npm ci
-
-      - name: Build website
-        working-directory: website
-        run: npm run build
-
-      - name: Check internal links in built site
-        uses: lycheeverse/lychee-action@v2
-        with:
-          args: >-
-            --offline
-            --base-url file://${{ github.workspace }}/website/dist
-            --include-verbatim
-            'website/dist'
-          fail: true
-          failIfEmpty: false
-          output: ./docs-site-report.md
-
-      - name: Upload docs site report
-        uses: actions/upload-artifact@v6
-        if: always()
-        with:
-          name: docs-site-report
-          path: ./docs-site-report.md
-          retention-days: 7

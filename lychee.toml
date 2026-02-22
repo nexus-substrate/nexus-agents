@@ -22,11 +22,6 @@ exclude_path = [
   ".pnpm-store",
   "packages/nexus-agents/src/**/*.test.ts",
   "packages/nexus-agents/docs/api",
-  "website/node_modules",
-  "website/dist",
-  # Website content has relative links designed for the live site,
-  # not the file system. Check canonical docs instead.
-  "website/src/content/docs",
 ]
 
 # Exclude specific URLs
@@ -76,9 +71,6 @@ insecure = false
 
 # Output format
 format = "detailed"
-
-# Base URL for relative links (for docs site)
-# base = "https://williamzujkowski.github.io/nexus-agents"
 
 # File types to check (regex patterns)
 include = [

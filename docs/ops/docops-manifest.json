@@ -4,25 +4,20 @@
   "description": "DocOps pipeline manifest for enforcement gates",
   "created": "2026-02-01",
   "pipeline_files": [
-    "scripts/sync-docs.ts",
     "scripts/generate-docs.ts",
     "scripts/generate-docs-full.ts",
     "scripts/generate-repo-index.ts",
     "scripts/inject-governance.ts",
     "scripts/check-docops-skill.ts",
     "scripts/check-docs-indexed.ts",
-    "scripts/check-frontmatter.ts",
     ".github/workflows/docs-check.yml",
-    ".github/workflows/deploy-docs.yml",
     ".github/workflows/link-check.yml",
-    "website/astro.config.mjs",
     "docs/ops/docops-spec.md"
   ],
   "skill_file": ".claude/skills/documentation-management.md",
   "canonical_index": "docs/README.md",
   "machine_index": "docs/INDEX.yaml",
   "generated_outputs": {
-    "website_content": "website/src/content/docs/",
     "llms_txt": "docs/llms.txt",
     "llms_full_txt": "docs/llms-full.txt",
     "capabilities": "docs/reference/capabilities.md",
@@ -33,7 +28,6 @@
     "jobs": [
       "typedoc-check",
       "llms-txt-check",
-      "website-sync",
       "repo-index",
       "link-check",
       "docs-coverage",
@@ -41,7 +35,6 @@
       "docops-skill-sync",
       "canonical-index",
       "markdown-lint",
-      "frontmatter-check",
       "spell-check"
     ]
   },

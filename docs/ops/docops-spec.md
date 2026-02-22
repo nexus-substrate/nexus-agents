@@ -1,7 +1,8 @@
 # Documentation Operations Specification
 
-**Version:** 1.0.0
+**Version:** 1.1.0
 **Created:** 2026-02-01
+**Updated:** 2026-02-22
 **Status:** Canonical
 **Governance:** This document defines the canonical DocOps pipeline. Changes require Documentation Management skill update.
 
@@ -26,7 +27,6 @@ This specification defines the **single canonical documentation pipeline** for n
                          ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                    GENERATION LAYER                              │
-│  sync-docs.ts → Website content (website/src/content/docs/)     │
 │  generate-docs.ts → LLM context (docs/llms.txt, llms-full.txt)  │
 │  generate-repo-index.ts → Capabilities (docs/reference/)         │
 │  inject-governance.ts → CLAUDE.md tool index                    │
@@ -35,10 +35,9 @@ This specification defines the **single canonical documentation pipeline** for n
                          ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                    VALIDATION LAYER                              │
-│  docs-check.yml (12 CI jobs)                                    │
+│  docs-check.yml (10 CI jobs)                                    │
 │  - typedoc-check: API docs drift                                │
 │  - llms-txt-check: Generated context freshness                  │
-│  - website-sync: Canonical → Website sync                       │
 │  - repo-index: Capabilities freshness                           │
 │  - link-check: URL validation                                   │
 │  - docs-coverage: PR documentation updates                      │
@@ -46,15 +45,7 @@ This specification defines the **single canonical documentation pipeline** for n
 │  - docops-skill-sync: Pipeline → Skill sync                     │
 │  - canonical-index: All docs indexed                            │
 │  - markdown-lint: Markdown style consistency                    │
-│  - frontmatter-check: Website frontmatter validation            │
 │  - spell-check: Documentation spelling (warning)                │
-└────────────────────────┬────────────────────────────────────────┘
-                         │
-                         ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    DEPLOYMENT LAYER                              │
-│  deploy-docs.yml → GitHub Pages (Astro/Starlight)               │
-│  Site: https://williamzujkowski.github.io/nexus-agents/         │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -73,14 +64,14 @@ This specification defines the **single canonical documentation pipeline** for n
 
 ### Canonical Documentation
 
-| Location                | Content                           | Synced to Website |
-| ----------------------- | --------------------------------- | ----------------- |
-| `docs/architecture/`    | System design                     | Yes (7 files)     |
-| `docs/development/`     | Contributor guides                | Yes (4 files)     |
-| `docs/research/`        | Research tracking                 | Yes (5 files)     |
-| `docs/guides/`          | How-to guides                     | Yes (3 files)     |
-| `docs/getting-started/` | Installation, config              | Yes (2 files)     |
-| Root level              | README, QUICK_START, CONTRIBUTING | Yes (3 files)     |
+| Location                | Content              |
+| ----------------------- | -------------------- |
+| `docs/architecture/`    | System design        |
+| `docs/development/`     | Contributor guides   |
+| `docs/research/`        | Research tracking    |
+| `docs/guides/`          | How-to guides        |
+| `docs/getting-started/` | Installation, config |
+| Root level              | README, QUICK_START  |
 
 ### Internal-Only Documentation
 
@@ -95,26 +86,6 @@ This specification defines the **single canonical documentation pipeline** for n
 ---
 
 ## Generation Scripts
-
-### sync-docs.ts (Canonical → Website)
-
-```bash
-# Usage
-npx tsx scripts/sync-docs.ts           # Sync all docs
-npx tsx scripts/sync-docs.ts --dry-run # Preview changes
-npx tsx scripts/sync-docs.ts --check   # CI validation (fails if out of sync)
-npx tsx scripts/sync-docs.ts --verbose # Detailed output
-```
-
-**Mappings:** 25 canonical files → website content
-
-**Transformation:**
-
-1. Extract title from H1 heading
-2. Extract description from first paragraph
-3. Remove frontmatter and metadata lines
-4. Fix relative links for website context
-5. Generate Starlight-compatible YAML frontmatter
 
 ### generate-docs.ts (INDEX.yaml → LLM Context)
 
@@ -159,13 +130,12 @@ npx tsx scripts/inject-governance.ts check   # CI validation
 
 ## CI Validation Jobs
 
-### docs-check.yml (12 Jobs)
+### docs-check.yml (10 Jobs)
 
 | Job                 | Purpose                    | Blocking     | Trigger  |
 | ------------------- | -------------------------- | ------------ | -------- |
 | `typedoc-check`     | API docs drift detection   | Yes          | Push, PR |
 | `llms-txt-check`    | LLM context freshness      | Yes          | Push, PR |
-| `website-sync`      | Canonical → Website sync   | Yes          | Push, PR |
 | `repo-index`        | Capabilities freshness     | Yes          | Push, PR |
 | `link-check`        | URL validation             | Yes          | Push, PR |
 | `docs-coverage`     | PR documentation updates   | No (warning) | PR only  |
@@ -173,35 +143,12 @@ npx tsx scripts/inject-governance.ts check   # CI validation
 | `docops-skill-sync` | Pipeline → Skill sync      | Yes          | PR only  |
 | `canonical-index`   | All docs in README.md      | Yes          | Push, PR |
 | `markdown-lint`     | Markdown style consistency | Yes          | Push, PR |
-| `frontmatter-check` | Website frontmatter valid  | Yes          | Push, PR |
 | `spell-check`       | Documentation spelling     | No (warning) | Push, PR |
 
 ### link-check.yml (Standalone)
 
 - **Trigger:** Weekly (Sunday midnight UTC), manual
-- **Scope:** All markdown files + website
-
----
-
-## Website Configuration
-
-### Astro/Starlight
-
-- **Config:** `website/astro.config.mjs`
-- **Content:** `website/src/content/docs/`
-- **Base URL:** `/nexus-agents`
-- **Site:** `https://williamzujkowski.github.io/nexus-agents/`
-
-### Sidebar Navigation
-
-Defined in `website/astro.config.mjs`:
-
-- Getting Started (4 items)
-- Architecture (7 items)
-- Guides (5 items)
-- Development (4 items)
-- Research (5 items)
-- API Reference (autogenerated)
+- **Scope:** All markdown files
 
 ---
 
@@ -222,7 +169,6 @@ All documentation MUST be indexed in `docs/README.md`.
 ### Rule 3: Generated Files Must Match Source
 
 - `docs/llms.txt` must match `docs/INDEX.yaml`
-- Website content must match canonical docs
 - `docs/reference/capabilities.md` must match source code
 
 **Enforcement:** CI `--check` modes
@@ -231,13 +177,10 @@ All documentation MUST be indexed in `docs/README.md`.
 
 Changes to ANY of these files require updating the Documentation Management skill:
 
-- `scripts/sync-docs.ts`
 - `scripts/generate-docs.ts`
 - `scripts/generate-repo-index.ts`
 - `scripts/inject-governance.ts`
 - `.github/workflows/docs-check.yml`
-- `.github/workflows/deploy-docs.yml`
-- `website/astro.config.mjs`
 - `docs/ops/docops-spec.md`
 
 **Enforcement:** CI gate (see docops-manifest.json)
@@ -252,15 +195,12 @@ The following files constitute the DocOps pipeline. Changes to these files trigg
 {
   "version": "1.0.0",
   "pipeline_files": [
-    "scripts/sync-docs.ts",
     "scripts/generate-docs.ts",
     "scripts/generate-docs-full.ts",
     "scripts/generate-repo-index.ts",
     "scripts/inject-governance.ts",
     ".github/workflows/docs-check.yml",
-    ".github/workflows/deploy-docs.yml",
     ".github/workflows/link-check.yml",
-    "website/astro.config.mjs",
     "docs/ops/docops-spec.md"
   ],
   "skill_file": ".claude/skills/documentation-management.md",
@@ -275,18 +215,16 @@ The following files constitute the DocOps pipeline. Changes to these files trigg
 ### "I want to update documentation content"
 
 1. Edit canonical source in `docs/` or root
-2. Run `npx tsx scripts/sync-docs.ts` to sync to website
-3. Run `npx tsx scripts/generate-docs.ts` if INDEX.yaml changed
-4. Commit and push
+2. Run `npx tsx scripts/generate-docs.ts` if INDEX.yaml changed
+3. Commit and push
 
 ### "I want to add a new document"
 
 1. Create file in appropriate `docs/` directory
 2. Add entry to `docs/README.md` (required)
-3. If public-facing, add mapping to `scripts/sync-docs.ts`
-4. Update `docs/INDEX.yaml` if it should appear in LLM context
-5. Run generation scripts
-6. Commit and push
+3. Update `docs/INDEX.yaml` if it should appear in LLM context
+4. Run generation scripts
+5. Commit and push
 
 ### "I want to change the doc pipeline"
 
@@ -300,11 +238,9 @@ The following files constitute the DocOps pipeline. Changes to these files trigg
 
 ```bash
 # Run all checks locally
-npx tsx scripts/sync-docs.ts --check
 npx tsx scripts/generate-docs.ts --check
 npx tsx scripts/generate-repo-index.ts --check
 npx tsx scripts/inject-governance.ts check
-cd website && npm run build && cd ..
 ```
 
 ---
@@ -315,4 +251,3 @@ cd website && npm run build && cd ..
 - **Documentation Index:** `docs/README.md`
 - **Machine Index:** `docs/INDEX.yaml`
 - **Inventory:** `docs/ops/docs-inventory.md`
-- **Website Config:** `website/astro.config.mjs`
