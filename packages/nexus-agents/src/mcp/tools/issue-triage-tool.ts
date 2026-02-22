@@ -147,7 +147,7 @@ export function registerIssueTriageTool(server: McpServer, deps: IssueTriageDeps
     'Classifies the issue, assesses author trust and reputation, ' +
     'proposes labels and actions, and validates all outputs through ' +
     'policy gate and corroboration checks. Read-only by default. ' +
-    'Requires GITHUB_TOKEN or GH_TOKEN environment variable.';
+    'Requires GITHUB_TOKEN or GH_TOKEN environment variable, or gh CLI auth.';
 
   const secureHandler = createSecureHandler(createIssueTriageHandler(deps), {
     toolName: 'issue_triage',
