@@ -2,6 +2,7 @@
  * Tests for Codex MCP Adapter
  *
  * Verifies MCP-based Codex adapter functionality.
+ * Now extends BaseCliAdapter (Issue #1140).
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -10,8 +11,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 const mocks = vi.hoisted(() => {
   const mockClient = vi.fn();
   const mockTransport = vi.fn();
-  const mockSpawn = vi.fn();
-  return { mockClient, mockTransport, mockSpawn };
+  const mockExecAsync = vi.fn();
+  return { mockClient, mockTransport, mockExecAsync };
 });
 
 // Mock the MCP SDK modules
@@ -23,9 +24,14 @@ vi.mock('@modelcontextprotocol/sdk/client/stdio.js', () => ({
   StdioClientTransport: mocks.mockTransport,
 }));
 
-// Mock child_process for version check
+// Mock child_process and util for BaseCliAdapter.getVersion()
 vi.mock('node:child_process', () => ({
-  spawn: mocks.mockSpawn,
+  spawn: vi.fn(),
+  exec: vi.fn(),
+}));
+
+vi.mock('node:util', () => ({
+  promisify: vi.fn((_fn: unknown) => mocks.mockExecAsync),
 }));
 
 // Re-export for test access
@@ -54,39 +60,8 @@ describe('CodexMcpAdapter', () => {
       close: vi.fn().mockResolvedValue(undefined),
     }));
 
-    // Set up default spawn mock for version check
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    type EventCallback = (...args: any[]) => void;
-    mocks.mockSpawn.mockImplementation(() => {
-      const events: Record<string, EventCallback[]> = {};
-
-      return {
-        stdout: {
-          on: vi.fn((event: string, cb: EventCallback) => {
-            const key = `stdout_${event}`;
-            events[key] ??= [];
-            events[key].push(cb);
-            if (event === 'data') {
-              setTimeout(() => {
-                cb(Buffer.from('codex version 0.77.0'));
-              }, 0);
-            }
-          }),
-        },
-        stderr: {
-          on: vi.fn(),
-        },
-        on: vi.fn((event: string, cb: EventCallback) => {
-          events[event] ??= [];
-          events[event].push(cb);
-          if (event === 'close') {
-            setTimeout(() => {
-              cb(0);
-            }, 10);
-          }
-        }),
-      };
-    });
+    // Set up default exec mock for version check (via BaseCliAdapter)
+    mocks.mockExecAsync.mockResolvedValue({ stdout: 'codex version 0.77.0' });
 
     adapter = new CodexMcpAdapter();
   });
@@ -291,6 +266,7 @@ describe('CodexMcpAdapter', () => {
       const version2 = await adapter.getVersion();
 
       expect(version1).toBe(version2);
+      expect(mocks.mockExecAsync).toHaveBeenCalledTimes(1);
     });
   });
 

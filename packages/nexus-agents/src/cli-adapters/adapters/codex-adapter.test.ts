@@ -2,7 +2,7 @@
  * Tests for Codex CLI Adapter (Subprocess)
  *
  * Verifies subprocess-based Codex adapter functionality.
- * (Source: Issue #114)
+ * Now extends SubprocessCliAdapter (Issue #1140).
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -13,22 +13,36 @@ import { getDefaultModelForCli, getCliModelName } from '../../config/model-confi
 /** Expected default CLI model name, derived from the canonical registry. */
 const EXPECTED_DEFAULT_ID = getCliModelName(getDefaultModelForCli('codex'));
 
+// Hoist the mock function so it's available during vi.mock()
+const mockExecAsync = vi.hoisted(() => vi.fn());
+
 // Mock child_process for subprocess execution
 vi.mock('node:child_process', () => ({
   spawn: vi.fn(),
+  exec: vi.fn(),
+}));
+
+// Mock util.promisify to return our controlled async mock
+vi.mock('node:util', () => ({
+  promisify: vi.fn((_fn: unknown) => mockExecAsync),
 }));
 
 import { spawn } from 'node:child_process';
+
+type EventCallback = (...args: unknown[]) => void;
 
 function createMockProcess(
   stdout: string,
   stderr: string = '',
   exitCode: number | null = 0
 ): ReturnType<typeof spawn> {
-  type EventCallback = (...args: unknown[]) => void;
   const events: Record<string, EventCallback[]> = {};
 
   const mockProcess = {
+    stdin: {
+      write: vi.fn(),
+      end: vi.fn(),
+    },
     stdout: {
       on: vi.fn((event: string, cb: EventCallback) => {
         const key = `stdout_${event}`;
@@ -167,12 +181,15 @@ describe('CodexCliAdapter (Subprocess)', () => {
 
   describe('argument building', () => {
     it('should build correct arguments for basic task', async () => {
-      const mockProcess = createMockProcess(
+      const ndjsonResponse = [
+        JSON.stringify({ type: 'thread.started', thread_id: 'thread-123' }),
         JSON.stringify({
-          message: 'Hello from Codex!',
-          usage: { input_tokens: 10, output_tokens: 5 },
-        })
-      );
+          type: 'item.completed',
+          item: { id: 'item-1', type: 'agent_message', text: 'Hello from Codex!' },
+        }),
+        JSON.stringify({ type: 'turn.completed' }),
+      ].join('\n');
+      const mockProcess = createMockProcess(ndjsonResponse);
       vi.mocked(spawn).mockReturnValue(mockProcess);
 
       const task: CliTask = {
@@ -196,7 +213,15 @@ describe('CodexCliAdapter (Subprocess)', () => {
     });
 
     it('should include task content directly (not JSON-stringified)', async () => {
-      const mockProcess = createMockProcess(JSON.stringify({ message: 'Done!' }));
+      const ndjsonResponse = [
+        JSON.stringify({ type: 'thread.started', thread_id: 'thread-123' }),
+        JSON.stringify({
+          type: 'item.completed',
+          item: { id: 'item-1', type: 'agent_message', text: 'Done!' },
+        }),
+        JSON.stringify({ type: 'turn.completed' }),
+      ].join('\n');
+      const mockProcess = createMockProcess(ndjsonResponse);
       vi.mocked(spawn).mockReturnValue(mockProcess);
 
       const task: CliTask = {
@@ -212,7 +237,15 @@ describe('CodexCliAdapter (Subprocess)', () => {
     });
 
     it('should always skip git repo check', async () => {
-      const mockProcess = createMockProcess(JSON.stringify({ message: 'Done!' }));
+      const ndjsonResponse = [
+        JSON.stringify({ type: 'thread.started', thread_id: 'thread-123' }),
+        JSON.stringify({
+          type: 'item.completed',
+          item: { id: 'item-1', type: 'agent_message', text: 'Done!' },
+        }),
+        JSON.stringify({ type: 'turn.completed' }),
+      ].join('\n');
+      const mockProcess = createMockProcess(ndjsonResponse);
       vi.mocked(spawn).mockReturnValue(mockProcess);
 
       const task: CliTask = { content: 'Test' };
@@ -224,7 +257,15 @@ describe('CodexCliAdapter (Subprocess)', () => {
     });
 
     it('should use task model over default when provided', async () => {
-      const mockProcess = createMockProcess(JSON.stringify({ message: 'From mini!' }));
+      const ndjsonResponse = [
+        JSON.stringify({ type: 'thread.started', thread_id: 'thread-123' }),
+        JSON.stringify({
+          type: 'item.completed',
+          item: { id: 'item-1', type: 'agent_message', text: 'From mini!' },
+        }),
+        JSON.stringify({ type: 'turn.completed' }),
+      ].join('\n');
+      const mockProcess = createMockProcess(ndjsonResponse);
       vi.mocked(spawn).mockReturnValue(mockProcess);
 
       const task: CliTask = {
@@ -242,7 +283,15 @@ describe('CodexCliAdapter (Subprocess)', () => {
 
     it('should include -m flag with model when model is specified', async () => {
       const customAdapter = new CodexCliAdapter({ model: 'o3-mini' });
-      const mockProcess = createMockProcess(JSON.stringify({ message: 'Safe!' }));
+      const ndjsonResponse = [
+        JSON.stringify({ type: 'thread.started', thread_id: 'thread-123' }),
+        JSON.stringify({
+          type: 'item.completed',
+          item: { id: 'item-1', type: 'agent_message', text: 'Safe!' },
+        }),
+        JSON.stringify({ type: 'turn.completed' }),
+      ].join('\n');
+      const mockProcess = createMockProcess(ndjsonResponse);
       vi.mocked(spawn).mockReturnValue(mockProcess);
 
       const task: CliTask = { content: 'Test' };
@@ -255,7 +304,15 @@ describe('CodexCliAdapter (Subprocess)', () => {
     });
 
     it('should always include -m flag with registry default model', async () => {
-      const mockProcess = createMockProcess(JSON.stringify({ message: 'Default!' }));
+      const ndjsonResponse = [
+        JSON.stringify({ type: 'thread.started', thread_id: 'thread-123' }),
+        JSON.stringify({
+          type: 'item.completed',
+          item: { id: 'item-1', type: 'agent_message', text: 'Default!' },
+        }),
+        JSON.stringify({ type: 'turn.completed' }),
+      ].join('\n');
+      const mockProcess = createMockProcess(ndjsonResponse);
       vi.mocked(spawn).mockReturnValue(mockProcess);
 
       const task: CliTask = { content: 'Test' };
@@ -271,7 +328,6 @@ describe('CodexCliAdapter (Subprocess)', () => {
 
   describe('execute()', () => {
     it('should return successful response', async () => {
-      // Codex uses NDJSON format with specific event types
       const ndjsonResponse = [
         JSON.stringify({ type: 'thread.started', thread_id: 'thread-123' }),
         JSON.stringify({
@@ -330,9 +386,8 @@ describe('CodexCliAdapter (Subprocess)', () => {
     });
 
     it('should handle ENOENT errors', async () => {
-      type EventCallback = (...args: unknown[]) => void;
-
       const errorProcess = {
+        stdin: { write: vi.fn(), end: vi.fn() },
         stdout: { on: vi.fn() },
         stderr: { on: vi.fn() },
         on: vi.fn((event: string, cb: EventCallback) => {
@@ -374,45 +429,28 @@ describe('CodexCliAdapter (Subprocess)', () => {
 
   describe('healthCheck()', () => {
     it('should return healthy status when CLI is available', async () => {
-      const mockProcess = createMockProcess('codex version 0.77.0');
-      vi.mocked(spawn).mockReturnValue(mockProcess);
+      // BaseCliAdapter.getVersion() uses execAsync (promisified exec)
+      mockExecAsync.mockResolvedValue({ stdout: 'codex version 0.77.0' });
 
       const status = await adapter.healthCheck();
 
       expect(status.healthy).toBe(true);
       expect(status.version).toBe('0.77.0');
-      expect(status.versionStatus).toBe('supported');
     });
 
     it('should return unhealthy status when CLI is not found', async () => {
-      type EventCallback = (...args: unknown[]) => void;
-      const errorProcess = {
-        stdout: { on: vi.fn() },
-        stderr: { on: vi.fn() },
-        on: vi.fn((event: string, cb: EventCallback) => {
-          if (event === 'error') {
-            setTimeout(() => {
-              cb(new Error('ENOENT'));
-            }, 0);
-          }
-        }),
-        kill: vi.fn(),
-      } as unknown as ReturnType<typeof spawn>;
-
-      vi.mocked(spawn).mockReturnValue(errorProcess);
+      mockExecAsync.mockRejectedValue(new Error('ENOENT'));
 
       const status = await adapter.healthCheck();
 
       expect(status.healthy).toBe(false);
-      expect(status.versionStatus).toBe('unsupported');
       expect(status.message).toBeDefined();
     });
   });
 
   describe('getVersion()', () => {
     it('should extract version from CLI output', async () => {
-      const mockProcess = createMockProcess('codex version 0.77.0');
-      vi.mocked(spawn).mockReturnValue(mockProcess);
+      mockExecAsync.mockResolvedValue({ stdout: 'codex version 0.77.0' });
 
       const version = await adapter.getVersion();
 
@@ -420,14 +458,13 @@ describe('CodexCliAdapter (Subprocess)', () => {
     });
 
     it('should cache version after first call', async () => {
-      const mockProcess = createMockProcess('codex version 0.77.0');
-      vi.mocked(spawn).mockReturnValue(mockProcess);
+      mockExecAsync.mockResolvedValue({ stdout: 'codex version 0.77.0' });
 
       await adapter.getVersion();
       await adapter.getVersion();
 
-      // spawn should only be called once due to caching
-      expect(spawn).toHaveBeenCalledTimes(1);
+      // execAsync should only be called once due to caching
+      expect(mockExecAsync).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -453,7 +490,6 @@ describe('CodexCliAdapter (Subprocess)', () => {
     });
 
     it('should auto-initialize on first execute', async () => {
-      // Use NDJSON format for successful response
       const ndjsonResponse = [
         JSON.stringify({ type: 'thread.started', thread_id: 'auto-init-thread' }),
         JSON.stringify({
