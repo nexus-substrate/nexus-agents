@@ -6,6 +6,7 @@
  */
 
 import { z } from 'zod';
+import { CLI_NAMES } from '../config/model-capabilities-types.js';
 
 // Re-export from split files for backward compatibility
 export {
@@ -68,12 +69,12 @@ export const TestStatus = {
 export type TestStatusType = (typeof TestStatus)[keyof typeof TestStatus];
 
 /**
- * CLI adapter identifiers.
+ * CLI adapter identifiers. Derived from canonical CLI_NAMES.
  */
 export const CliAdapter = {
-  CLAUDE: 'claude',
-  GEMINI: 'gemini',
-  CODEX: 'codex',
+  CLAUDE: CLI_NAMES[0],
+  GEMINI: CLI_NAMES[1],
+  CODEX: CLI_NAMES[2],
 } as const;
 
 export type CliAdapterType = (typeof CliAdapter)[keyof typeof CliAdapter];

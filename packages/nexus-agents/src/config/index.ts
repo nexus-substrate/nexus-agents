@@ -197,6 +197,7 @@ export {
   PROVIDERS,
   MODEL_IDS,
   CLI_NAMES,
+  DEFAULT_CLI,
   QualityScoresSchema,
   PricingSchema,
 } from './model-capabilities.js';

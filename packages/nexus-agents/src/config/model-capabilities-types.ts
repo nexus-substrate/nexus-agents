@@ -75,6 +75,9 @@ export type Provider = (typeof PROVIDERS)[number];
 export const CLI_NAMES = ['claude', 'gemini', 'codex'] as const;
 export type CliNameLiteral = (typeof CLI_NAMES)[number];
 
+/** Default CLI used as fallback when task category detection yields no match. */
+export const DEFAULT_CLI: CliNameLiteral = 'claude';
+
 export const MODEL_IDS = [
   'claude-opus',
   'claude-sonnet',

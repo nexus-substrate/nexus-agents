@@ -10,8 +10,8 @@ import type {
   SessionBudget,
   BudgetExceededError,
   BudgetRoutingResult,
-  CliName,
 } from './types.js';
+import { DEFAULT_CLI } from '../config/model-capabilities-types.js';
 
 /**
  * Determine which constraint was exceeded.
@@ -74,7 +74,7 @@ export function createBudgetExceededError(
   return {
     code: 'BUDGET_EXCEEDED',
     message: `Budget constraint exceeded: ${constraint}`,
-    cli: 'claude' as CliName,
+    cli: DEFAULT_CLI,
     retryable: false,
     constraint,
     limit,

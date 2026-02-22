@@ -35,6 +35,7 @@ import {
 } from '../../orchestration/outcomes/index.js';
 import type { OutcomeFailureCategory } from '../../orchestration/outcomes/index.js';
 import { detectTaskCategory } from '../../config/task-specialization.js';
+import { DEFAULT_CLI } from '../../config/model-capabilities-types.js';
 import { getExpertTaskTimeout, HEARTBEAT_TIMEOUTS } from '../../config/timeouts.js';
 import type { ICliDetectionCache } from '../../cli-adapters/cli-detection-cache.js';
 import { requireAdapterAvailable } from '../middleware/adapter-availability.js';
@@ -180,7 +181,7 @@ function recordExpertOutcome(opts: {
     const match = detectTaskCategory(opts.task);
     getOutcomeStore().append({
       id: `exp-${String(Date.now())}-${Math.random().toString(36).slice(2, 8)}`,
-      cli: match?.primaryCli ?? 'claude',
+      cli: match?.primaryCli ?? DEFAULT_CLI,
       category: match?.category ?? 'exploration',
       model: opts.model ?? 'expert',
       success: opts.success,

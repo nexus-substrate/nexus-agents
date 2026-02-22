@@ -12,10 +12,12 @@ import { getErrorMessage, createLogger } from '../core/index.js';
 import type { PipelineEvent, Unsubscribe, IEventBus } from './event-types.js';
 import type { OutcomeStore } from '../orchestration/outcomes/outcome-store.js';
 import type { TaskOutcome } from '../orchestration/outcomes/outcome-types.js';
+import { CLI_NAMES, DEFAULT_CLI } from '../config/model-capabilities-types.js';
+import type { CliNameLiteral } from '../config/model-capabilities-types.js';
 
 const logger = createLogger({ component: 'FeedbackSubscriber' });
 
-const VALID_CLIS = new Set(['claude', 'gemini', 'codex']);
+const VALID_CLIS: ReadonlySet<string> = new Set<string>(CLI_NAMES);
 
 /**
  * Creates a subscriber that bridges EventBus events to OutcomeStore.
@@ -74,7 +76,7 @@ function recordStageFailed(
 ): void {
   const outcome: TaskOutcome = {
     id: `fb-fail-${event.executionId}-${String(event.timestamp)}`,
-    cli: 'claude', // Stage failures don't carry CLI info; default to claude
+    cli: DEFAULT_CLI, // Stage failures don't carry CLI info; default to canonical fallback
     category: 'code_generation',
     model: 'unknown',
     success: false,
@@ -85,9 +87,9 @@ function recordStageFailed(
   store.append(outcome);
 }
 
-function normalizeCli(cli: string): 'claude' | 'gemini' | 'codex' | undefined {
+function normalizeCli(cli: string): CliNameLiteral | undefined {
   if (VALID_CLIS.has(cli)) {
-    return cli as 'claude' | 'gemini' | 'codex';
+    return cli as CliNameLiteral;
   }
   logger.warn('Unknown CLI in event', { cli });
   return undefined;

@@ -11,6 +11,7 @@
 import type { TaskOutcome } from './outcome-types.js';
 import type { OutcomeStore } from './outcome-store.js';
 import type { TaskCategory } from '../../config/task-specialization-types.js';
+import type { CliNameLiteral } from '../../config/model-capabilities-types.js';
 
 // ============================================================================
 // Types
@@ -61,7 +62,7 @@ const TREND_DELTA_THRESHOLD = 0.05;
  */
 export function computeAdaptiveThresholds(
   store: OutcomeStore,
-  cli: 'claude' | 'gemini' | 'codex',
+  cli: CliNameLiteral,
   category: TaskCategory
 ): AdaptiveThresholdResult {
   const outcomes = store.query({ cli, category });

@@ -48,6 +48,7 @@ export {
   PROVIDERS,
   MODEL_IDS,
   CLI_NAMES,
+  DEFAULT_CLI,
 } from './model-capabilities-types.js';
 
 // ---------------------------------------------------------------------------

@@ -45,6 +45,7 @@ import {
 } from '../../orchestration/outcomes/index.js';
 import type { OutcomeFailureCategory } from '../../orchestration/outcomes/index.js';
 import { detectTaskCategory } from '../../config/task-specialization.js';
+import { DEFAULT_CLI } from '../../config/model-capabilities-types.js';
 import {
   OrchestrateInputSchema,
   ORCHESTRATE_TOOL_SCHEMA,
@@ -219,7 +220,7 @@ function recordToOutcomeStore(
     const match = detectTaskCategory(taskDescription);
     getOutcomeStore().append({
       id: `orch-${String(Date.now())}-${Math.random().toString(36).slice(2, 8)}`,
-      cli: match?.primaryCli ?? 'claude',
+      cli: match?.primaryCli ?? DEFAULT_CLI,
       category: match?.category ?? 'exploration',
       model: 'orchestrator',
       success,

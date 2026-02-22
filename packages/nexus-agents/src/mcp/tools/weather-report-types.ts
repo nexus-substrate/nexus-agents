@@ -11,6 +11,7 @@
 import { z } from 'zod';
 import type { TaskCategory } from '../../config/task-specialization-types.js';
 import type { GroupStats } from '../../orchestration/outcomes/outcome-types.js';
+import { CLI_NAMES } from '../../config/model-capabilities-types.js';
 
 // ============================================================================
 // Input Schema
@@ -18,7 +19,7 @@ import type { GroupStats } from '../../orchestration/outcomes/outcome-types.js';
 
 export const WeatherReportInputSchema = z.object({
   /** Filter by CLI name. */
-  cli: z.enum(['claude', 'gemini', 'codex']).optional().describe('Filter by CLI'),
+  cli: z.enum(CLI_NAMES).optional().describe('Filter by CLI'),
   /** Filter by task category. */
   category: z
     .enum([

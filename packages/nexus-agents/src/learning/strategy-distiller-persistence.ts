@@ -12,6 +12,7 @@
 import { writeFileSync, readFileSync, renameSync, unlinkSync, existsSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { z } from 'zod';
+import { CLI_NAMES } from '../config/model-capabilities-types.js';
 
 import type { ILogger } from '../core/index.js';
 import { createLogger } from '../core/index.js';
@@ -27,7 +28,7 @@ import { ensureLearningDir, RULES_FILE } from '../config/learning-persistence.js
 const DistilledRuleSchema = z.object({
   id: z.string(),
   patternType: z.enum(['failure-rate', 'success-rate', 'latency-spike']),
-  cli: z.enum(['claude', 'gemini', 'codex']),
+  cli: z.enum(CLI_NAMES),
   category: z.string(),
   action: z.enum(['penalize', 'boost', 'avoid']),
   confidence: z.number(),

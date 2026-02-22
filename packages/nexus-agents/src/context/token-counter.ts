@@ -31,6 +31,7 @@ import {
   DEFAULT_MAX_CACHE_SIZE,
   DEFAULT_CACHE_TTL_MS,
   TIKTOKEN_MODEL_MAP,
+  DEFAULT_TIKTOKEN_MODEL,
 } from './token-counter-types.js';
 import {
   generateCacheKey,
@@ -52,6 +53,7 @@ export {
   DEFAULT_MAX_CACHE_SIZE,
   DEFAULT_CACHE_TTL_MS,
   TIKTOKEN_MODEL_MAP,
+  DEFAULT_TIKTOKEN_MODEL,
 } from './token-counter-types.js';
 
 // ============================================================================
@@ -223,7 +225,10 @@ export class TokenCounter implements ITokenCounter {
   /**
    * Count tokens for OpenAI models using local tiktoken.
    */
-  countOpenAI(text: string, model: string = 'gpt-4o'): Result<TokenCountResult, TokenCountError> {
+  countOpenAI(
+    text: string,
+    model: string = DEFAULT_TIKTOKEN_MODEL
+  ): Result<TokenCountResult, TokenCountError> {
     // Check cache first
     const cacheKey = generateCacheKey(text, TokenCounterProvider.OPENAI, model);
     const cached = this.getCached(cacheKey);
@@ -301,7 +306,7 @@ export class TokenCounter implements ITokenCounter {
    */
   private getOrCreateTiktokenEncoder(model: string): Tiktoken {
     // Map model to tiktoken model name
-    const tiktokenModel = TIKTOKEN_MODEL_MAP[model] ?? 'gpt-4o';
+    const tiktokenModel = TIKTOKEN_MODEL_MAP[model] ?? DEFAULT_TIKTOKEN_MODEL;
 
     // Reuse encoder if same model
     if (this.tiktokenEncoder !== undefined && this.currentTiktokenModel === tiktokenModel) {
