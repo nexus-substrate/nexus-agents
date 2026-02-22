@@ -13,6 +13,7 @@ import { createLogger } from './core/index.js';
 import { VERSION } from './version.js';
 import { EXIT_CODES } from './cli-types.js';
 import { orchestrateCommand, type OrchestrateOptions } from './cli/orchestrate-command.js';
+import type { CliNameLiteral } from './config/model-capabilities-types.js';
 
 /**
  * Options for orchestrator mode.
@@ -22,7 +23,7 @@ export interface OrchestratorModeOptions {
   verbose: boolean;
   task?: string;
   format?: 'text' | 'json';
-  model?: 'claude' | 'gemini' | 'codex';
+  model?: CliNameLiteral;
   dryRun?: boolean;
   maxTokens?: number;
   maxCostUsd?: number;

@@ -17,6 +17,7 @@ import {
   ErrorCode,
   getRandomProvider,
 } from '../core/index.js';
+import { DEFAULTS } from '../config/defaults.js';
 import { sleep } from '../utils/async-utils.js';
 
 /**
@@ -35,12 +36,13 @@ export interface RetryConfig {
 
 /**
  * Default retry configuration.
+ * Derived from canonical source: config/defaults.ts RETRY_DEFAULTS
  */
 export const DEFAULT_RETRY_CONFIG: Readonly<RetryConfig> = {
-  maxRetries: 3,
-  baseDelayMs: 1000,
-  maxDelayMs: 30000,
-  jitterFactor: 0.1,
+  maxRetries: DEFAULTS.RETRY_DEFAULTS.maxRetries,
+  baseDelayMs: DEFAULTS.RETRY_DEFAULTS.baseDelayMs,
+  maxDelayMs: DEFAULTS.RETRY_DEFAULTS.maxDelayMs,
+  jitterFactor: DEFAULTS.RETRY_DEFAULTS.jitterFactor,
 } as const;
 
 /**

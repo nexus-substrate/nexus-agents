@@ -164,12 +164,16 @@ export const DEFAULT_CACHE_TTL_MS = 5 * 60 * 1000;
 
 /**
  * Default tiktoken model for encoding fallback (uses o200k_base encoding).
+ * NOTE: This is a tiktoken library model name, not a nexus-agents model ID.
+ * It maps to the o200k_base encoding used for token counting.
  */
 export const DEFAULT_TIKTOKEN_MODEL = 'gpt-4o';
 
 /**
- * Tiktoken model mappings for OpenAI.
- * Maps model names to tiktoken encoding names.
+ * Tiktoken model mappings for OpenAI token counting.
+ * Maps OpenAI model names to tiktoken encoding model names.
+ * NOTE: These are tiktoken library identifiers, not nexus-agents model IDs.
+ * They exist outside the canonical model registry intentionally.
  */
 export const TIKTOKEN_MODEL_MAP: Record<string, string> = {
   'gpt-4o': 'gpt-4o',

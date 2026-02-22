@@ -11,6 +11,8 @@
 
 import type { Result, ILogger } from '../core/index.js';
 import { getErrorMessage, ok, err, createLogger, getTimeProvider } from '../core/index.js';
+// CLI_NAMES canonical source: config/model-capabilities-types.ts
+// CliName type ensures these stay in sync with the canonical list
 
 import type {
   ICliAdapter,
