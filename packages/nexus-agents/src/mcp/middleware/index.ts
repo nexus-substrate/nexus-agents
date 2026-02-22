@@ -170,6 +170,9 @@ export {
   createMetricsMiddleware,
 } from './tool-metrics.js';
 
+// Tool error handler (Issue #1144 — DRY error handling)
+export { toolErrorResponse, withToolError } from './tool-error-handler.js';
+
 // Per-tool rate limiter factory (Issue #274 Phase 2)
 export {
   // Types

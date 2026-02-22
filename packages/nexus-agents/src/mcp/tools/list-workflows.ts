@@ -12,7 +12,8 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger, IWorkflowEngine } from '../../core/index.js';
-import { getErrorMessage, createLogger, formatZodError } from '../../core/index.js';
+import { createLogger, formatZodError } from '../../core/index.js';
+import { withToolError } from '../middleware/tool-error-handler.js';
 
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
@@ -145,8 +146,7 @@ function createListWorkflowsHandler(workflowEngine: IWorkflowEngine) {
       };
     }
 
-    try {
-      // Execute tool logic
+    return withToolError('Failed to list workflows', ctx.logger, async () => {
       const result = await handleListWorkflows(workflowEngine, validationResult.data);
 
       ctx.logger.debug('Listed available workflows', {
@@ -159,13 +159,7 @@ function createListWorkflowsHandler(workflowEngine: IWorkflowEngine) {
         content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
         structuredContent: data,
       };
-    } catch (error) {
-      const message = getErrorMessage(error);
-      return {
-        isError: true,
-        content: [{ type: 'text', text: `Failed to list workflows: ${message}` }],
-      };
-    }
+    });
   };
 }
 

@@ -12,6 +12,7 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger } from '../../core/index.js';
 import { createLogger, formatZodError } from '../../core/index.js';
+import { toolErrorResponse } from '../middleware/tool-error-handler.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
@@ -91,12 +92,7 @@ function weatherReportHandler(args: unknown, ctx: HandlerContext): Promise<ToolR
       structuredContent: data,
     });
   } catch (caught) {
-    const e = caught instanceof Error ? caught : new Error(String(caught));
-    ctx.logger.error('Weather report generation failed', e);
-    return Promise.resolve({
-      isError: true,
-      content: [{ type: 'text', text: `Weather report failed: ${e.message}` }],
-    });
+    return Promise.resolve(toolErrorResponse('Weather report failed', caught, ctx.logger));
   }
 }
 

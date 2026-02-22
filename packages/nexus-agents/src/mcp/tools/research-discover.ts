@@ -13,6 +13,7 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger } from '../../core/index.js';
 import { getErrorMessage, createLogger, formatZodError } from '../../core/index.js';
+import { withToolError } from '../middleware/tool-error-handler.js';
 
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
@@ -513,20 +514,14 @@ function createResearchDiscoverHandler(deps: ResearchDiscoverDeps) {
       source: validationResult.data.source,
     });
 
-    try {
-      const logger = deps.logger ?? createLogger({ tool: 'research_discover' });
+    const logger = deps.logger ?? createLogger({ tool: 'research_discover' });
+    return withToolError('Discovery failed', logger, async () => {
       const result = await executeDiscovery(validationResult.data, logger);
       recordDiscoverySuccess(result.topic, result.newItems, result.sourcesQueried);
       return {
         content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
       };
-    } catch (error) {
-      const message = getErrorMessage(error);
-      return {
-        isError: true,
-        content: [{ type: 'text', text: `Discovery failed: ${message}` }],
-      };
-    }
+    });
   };
 }
 

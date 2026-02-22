@@ -11,12 +11,13 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger } from '../../core/index.js';
-import { getErrorMessage, createLogger, formatZodError } from '../../core/index.js';
+import { createLogger, formatZodError } from '../../core/index.js';
 
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
+import { withToolError } from '../middleware/tool-error-handler.js';
 import { addResearchPaper, paperExists } from '../../cli/research-helpers.js';
 import { getToolMemory } from './tool-memory.js';
 
@@ -161,8 +162,8 @@ function createResearchAddHandler(deps: ResearchAddDeps) {
 
     ctx.logger.debug('Adding research paper', { arxivId: validationResult.data.arxivId });
 
-    try {
-      const logger = deps.logger ?? createLogger({ tool: 'research_add' });
+    const logger = deps.logger ?? createLogger({ tool: 'research_add' });
+    return withToolError('Failed to add paper', logger, async () => {
       const result = await executeResearchAdd(validationResult.data, logger);
 
       if (!result.success) {
@@ -175,13 +176,7 @@ function createResearchAddHandler(deps: ResearchAddDeps) {
       return {
         content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
       };
-    } catch (error) {
-      const message = getErrorMessage(error);
-      return {
-        isError: true,
-        content: [{ type: 'text', text: `Failed to add paper: ${message}` }],
-      };
-    }
+    });
   };
 }
 

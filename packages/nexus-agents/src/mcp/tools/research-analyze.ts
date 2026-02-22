@@ -11,7 +11,8 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger } from '../../core/index.js';
-import { getErrorMessage, createLogger, formatZodError } from '../../core/index.js';
+import { createLogger, formatZodError } from '../../core/index.js';
+import { withToolError } from '../middleware/tool-error-handler.js';
 
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
@@ -377,20 +378,13 @@ function createResearchAnalyzeHandler(deps: ResearchAnalyzeDeps) {
       focus: validationResult.data.focus,
     });
 
-    try {
+    const logger = deps.logger ?? createLogger({ tool: 'research_analyze' });
+    return withToolError('Analysis failed', logger, async () => {
       const result = await executeAnalysis(validationResult.data);
       return {
         content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
       };
-    } catch (error) {
-      const message = getErrorMessage(error);
-      const logger = deps.logger ?? createLogger({ tool: 'research_analyze' });
-      logger.error('Research analysis failed', error instanceof Error ? error : new Error(message));
-      return {
-        isError: true,
-        content: [{ type: 'text', text: `Analysis failed: ${message}` }],
-      };
-    }
+    });
   };
 }
 

@@ -12,6 +12,7 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger } from '../../core/index.js';
 import { createLogger, formatZodError } from '../../core/index.js';
+import { toolErrorResponse } from '../middleware/tool-error-handler.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
@@ -53,12 +54,7 @@ async function handler(args: unknown, ctx: HandlerContext): Promise<ToolResponse
       content: [{ type: 'text', text: JSON.stringify(plan, null, 2) }],
     };
   } catch (caught) {
-    const e = caught instanceof Error ? caught : new Error(String(caught));
-    ctx.logger.error('Security plan generation failed', e);
-    return {
-      isError: true,
-      content: [{ type: 'text', text: `Security plan generation failed: ${e.message}` }],
-    };
+    return toolErrorResponse('Security plan generation failed', caught, ctx.logger);
   }
 }
 

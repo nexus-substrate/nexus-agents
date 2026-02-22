@@ -11,7 +11,8 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger } from '../../core/index.js';
-import { getErrorMessage, createLogger, formatZodError } from '../../core/index.js';
+import { createLogger, formatZodError } from '../../core/index.js';
+import { withToolError } from '../middleware/tool-error-handler.js';
 
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
@@ -253,8 +254,8 @@ function createCatalogReviewHandler(deps: ResearchCatalogReviewDeps) {
 
     ctx.logger.debug('Catalog review', { action: validationResult.data.action });
 
-    try {
-      const logger = deps.logger ?? createLogger({ tool: 'research_catalog_review' });
+    const logger = deps.logger ?? createLogger({ tool: 'research_catalog_review' });
+    return withToolError('Catalog review failed', logger, async () => {
       const result = await executeCatalogReview(validationResult.data, logger);
 
       if (!result.success) {
@@ -267,13 +268,7 @@ function createCatalogReviewHandler(deps: ResearchCatalogReviewDeps) {
       return {
         content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
       };
-    } catch (error) {
-      const message = getErrorMessage(error);
-      return {
-        isError: true,
-        content: [{ type: 'text', text: `Catalog review failed: ${message}` }],
-      };
-    }
+    });
   };
 }
 

@@ -13,6 +13,7 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger } from '../../core/index.js';
 import { createLogger, formatZodError } from '../../core/index.js';
+import { toolErrorResponse } from '../middleware/tool-error-handler.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
@@ -59,12 +60,7 @@ async function repoAnalyzeHandler(args: unknown, ctx: HandlerContext): Promise<T
       content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
     };
   } catch (caught) {
-    const e = caught instanceof Error ? caught : new Error(String(caught));
-    ctx.logger.error('Repository analysis failed', e);
-    return {
-      isError: true,
-      content: [{ type: 'text', text: `Repository analysis failed: ${e.message}` }],
-    };
+    return toolErrorResponse('Repository analysis failed', caught, ctx.logger);
   }
 }
 

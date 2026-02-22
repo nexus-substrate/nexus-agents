@@ -11,7 +11,8 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger } from '../../core/index.js';
-import { getErrorMessage, createLogger, formatZodError } from '../../core/index.js';
+import { createLogger, formatZodError } from '../../core/index.js';
+import { withToolError } from '../middleware/tool-error-handler.js';
 
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
@@ -208,20 +209,13 @@ function createResearchQueryHandler(deps: ResearchQueryDeps) {
 
     ctx.logger.debug('Executing research query', { action: validationResult.data.action });
 
-    try {
+    const logger = deps.logger ?? createLogger({ tool: 'research_query' });
+    return withToolError('Research query failed', logger, async () => {
       const result = await executeQuery(validationResult.data);
       return {
         content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
       };
-    } catch (error) {
-      const message = getErrorMessage(error);
-      const logger = deps.logger ?? createLogger({ tool: 'research_query' });
-      logger.error('Research query failed', error instanceof Error ? error : new Error(message));
-      return {
-        isError: true,
-        content: [{ type: 'text', text: `Research query failed: ${message}` }],
-      };
-    }
+    });
   };
 }
 

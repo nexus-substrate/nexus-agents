@@ -12,6 +12,7 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger } from '../../core/index.js';
 import { createLogger, formatZodError } from '../../core/index.js';
+import { withToolError } from '../middleware/tool-error-handler.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
@@ -191,19 +192,12 @@ async function memoryQueryHandler(
     };
   }
 
-  try {
+  return withToolError('Memory query failed', ctx.logger, async () => {
     const result = await executeMemoryQuery(validationResult.data, ctx.logger);
     return {
       content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
     };
-  } catch (err) {
-    const error = err instanceof Error ? err : new Error(String(err));
-    ctx.logger.error('Memory query failed', error);
-    return {
-      isError: true,
-      content: [{ type: 'text', text: `Memory query failed: ${error.message}` }],
-    };
-  }
+  });
 }
 
 // ============================================================================
