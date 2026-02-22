@@ -1,3 +1,17 @@
+---
+title: Architecture Overview
+description: System design, component relationships, pipeline, adapters, and orchestration
+tier: 2
+keywords: [agents, memory, routing, consensus, security, mcp, pipeline, design]
+related_files:
+  - ARCHITECTURE.md
+  - docs/architecture/AGENT_SYSTEM.md
+  - docs/architecture/MEMORY_SYSTEM.md
+  - docs/architecture/ROUTING_SYSTEM.md
+  - docs/architecture/CONSENSUS_PROTOCOLS.md
+  - docs/architecture/PIPELINE_ARCHITECTURE.md
+---
+
 # Architecture Overview
 
 **Tier 2 Hub** | Load for architecture understanding

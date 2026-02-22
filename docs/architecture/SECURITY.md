@@ -1,3 +1,13 @@
+---
+title: Security Architecture
+description: Security pipeline, threat model, sandboxing, trust classification, and input hardening
+tier: 2
+keywords: [security, trust, sanitize, policy, injection, byzantine, reputation]
+related_files:
+  - docs/architecture/UNTRUSTED_INPUT_HARDENING.md
+  - CLAUDE.md
+---
+
 # Security Architecture
 
 **Tier 3** | Deep technical documentation for security implementation

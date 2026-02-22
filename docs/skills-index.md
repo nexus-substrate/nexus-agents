@@ -1,3 +1,11 @@
+---
+title: Skills Index
+description: Quick navigation for common tasks and key file paths
+tier: 1
+keywords: [navigation, tasks, skills, entry-points, quick-start]
+related_files: [docs/INDEX.yaml, docs/llms.txt, docs/reference/capabilities.md]
+---
+
 # Skills Index
 
 **Purpose:** Quick navigation for common tasks. Load this file first for context efficiency.

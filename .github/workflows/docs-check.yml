@@ -264,9 +264,9 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "No source files changed (or only test/type files changed)." >> $GITHUB_STEP_SUMMARY
 
-  # Job 4: LLMs.txt Generation Check
+  # Job 4: LLMs.txt Generation + Frontmatter Check
   llms-txt-check:
-    name: LLMs.txt Verification
+    name: LLMs.txt & Frontmatter Verification
     runs-on: ubuntu-latest
 
     steps:
@@ -281,13 +281,13 @@ jobs:
 
       - run: pnpm install
 
-      - name: Check llms.txt generation
+      - name: Check llms.txt generation and frontmatter
         run: |
           npx tsx scripts/generate-docs.ts --check
           if [ $? -eq 0 ]; then
-            echo "✅ llms.txt files are up to date"
+            echo "✅ llms.txt files and frontmatter are valid"
           else
-            echo "::error::llms.txt files are out of date"
+            echo "::error::llms.txt or frontmatter validation failed"
             echo "Run 'npx tsx scripts/generate-docs.ts' and commit the changes"
             exit 1
           fi

@@ -204,6 +204,69 @@ function stripGenerationDate(content: string): string {
   return content.replace(/<!-- Generated: .* -->/g, '').trim();
 }
 
+/** Files that require YAML frontmatter (tier 1/2 human-maintained docs) */
+const FRONTMATTER_REQUIRED_FILES = [
+  'CLAUDE.md',
+  'QUICK_START.md',
+  'docs/TROUBLESHOOTING.md',
+  'docs/skills-index.md',
+  'docs/architecture/README.md',
+  'docs/development/README.md',
+  'docs/architecture/SECURITY.md',
+  'docs/guides/MCP_INTEGRATION.md',
+  'docs/ALIGNMENT_ROADMAP.md',
+];
+
+const REQUIRED_FRONTMATTER_FIELDS = ['title', 'description', 'tier', 'keywords'];
+
+interface FrontmatterData {
+  title?: string;
+  description?: string;
+  tier?: number;
+  keywords?: string[];
+  related_files?: string[];
+}
+
+function parseFrontmatter(content: string): FrontmatterData | null {
+  const match = /^---\n([\s\S]*?)\n---/.exec(content);
+  const yamlBlock = match?.[1];
+  if (yamlBlock === undefined || yamlBlock === '') return null;
+  try {
+    return parse(yamlBlock) as FrontmatterData;
+  } catch {
+    return null;
+  }
+}
+
+function verifyFrontmatter(): boolean {
+  let allValid = true;
+  for (const file of FRONTMATTER_REQUIRED_FILES) {
+    const filePath = join(ROOT, file);
+    if (!existsSync(filePath)) {
+      logError(`  ✗ ${file} — file not found`);
+      allValid = false;
+      continue;
+    }
+    const content = readFileSync(filePath, 'utf-8');
+    const fm = parseFrontmatter(content);
+    if (!fm) {
+      logError(`  ✗ ${file} — missing YAML frontmatter`);
+      allValid = false;
+      continue;
+    }
+    const missing = REQUIRED_FRONTMATTER_FIELDS.filter(
+      (f) => !(f in fm) || fm[f as keyof FrontmatterData] === undefined
+    );
+    if (missing.length > 0) {
+      logError(`  ✗ ${file} — missing fields: ${missing.join(', ')}`);
+      allValid = false;
+    } else {
+      log(`  ✓ ${file}`);
+    }
+  }
+  return allValid;
+}
+
 function verifyFiles(
   llmsPath: string,
   llmsTxt: string,
@@ -247,8 +310,13 @@ function main(): void {
   const llmsFullPath = join(ROOT, 'docs/llms-full.txt');
 
   if (checkMode) {
-    const success = verifyFiles(llmsPath, llmsTxt, llmsFullPath, llmsFullTxt);
-    if (!success) process.exit(1);
+    const filesOk = verifyFiles(llmsPath, llmsTxt, llmsFullPath, llmsFullTxt);
+
+    log('\nFrontmatter validation:');
+    const fmOk = verifyFrontmatter();
+    if (fmOk) log('\n✓ All frontmatter valid');
+
+    if (!filesOk || !fmOk) process.exit(1);
   } else {
     writeFileSync(llmsPath, llmsTxt);
     log(`✓ Generated ${llmsPath}`);

@@ -1,3 +1,11 @@
+---
+title: Quick Start Guide
+description: Get nexus-agents running in 5-10 minutes with MCP or CLI mode
+tier: 1
+keywords: [installation, setup, getting-started, mcp, cli]
+related_files: [docs/getting-started/INSTALLATION.md, docs/getting-started/CONFIGURATION.md]
+---
+
 # Nexus Agents Quick Start
 
 Orchestrate multiple AI models using specialized experts to solve complex tasks.

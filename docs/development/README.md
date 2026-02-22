@@ -1,3 +1,16 @@
+---
+title: Development Guide
+description: How to contribute, extend, and develop with nexus-agents
+tier: 2
+keywords: [contributing, development, testing, coding, standards, debugging]
+related_files:
+  - CONTRIBUTING.md
+  - docs/development/AGENT_DEVELOPMENT.md
+  - docs/development/TOOL_DEVELOPMENT.md
+  - docs/development/MEMORY_DEVELOPMENT.md
+  - docs/guides/DEBUGGING_OBSERVABILITY.md
+---
+
 # Development Guide
 
 **Tier 2 Hub** | Load for development tasks

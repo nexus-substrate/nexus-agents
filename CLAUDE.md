@@ -1,3 +1,11 @@
+---
+title: Project Instructions
+description: Claude Code instructions, protocols, agent behavior, governance rules, and canonical paths
+tier: 2
+keywords: [claude, instructions, protocols, guidelines, conventions, governance]
+related_files: [CODING_STANDARDS.md, docs/ENTRYPOINTS.md]
+---
+
 # Nexus Agents - Claude Code Instructions
 
 **Project:** Multi-agent orchestration MCP server

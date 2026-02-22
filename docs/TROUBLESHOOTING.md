@@ -1,3 +1,11 @@
+---
+title: Troubleshooting Guide
+description: Common issues, error resolution, and FAQ for nexus-agents
+tier: 2
+keywords: [errors, debugging, faq, issues, problems, help]
+related_files: [docs/guides/DEBUGGING_OBSERVABILITY.md]
+---
+
 # Troubleshooting Guide
 
 **Last Updated:** 2026-01-15 (ET)

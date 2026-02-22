@@ -39,8 +39,10 @@ npx tsx scripts/generate-docs.ts --check
 ### Add New Document
 
 1. Create file in appropriate `docs/` directory
-2. **REQUIRED:** Add entry to `docs/README.md`
-3. Commit and push
+2. **REQUIRED:** Add YAML frontmatter (`title`, `description`, `tier`, `keywords`, `related_files`)
+3. **REQUIRED:** Add entry to `docs/README.md`
+4. If tier 1/2, add to `FRONTMATTER_REQUIRED_FILES` in `scripts/generate-docs.ts`
+5. Commit and push
 
 ### Change Doc Pipeline
 

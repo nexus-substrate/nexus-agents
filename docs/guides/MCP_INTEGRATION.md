@@ -1,3 +1,11 @@
+---
+title: MCP & Claude Desktop Integration
+description: 24 MCP tools for orchestration, experts, workflows, consensus, research, memory, and tracing
+tier: 2
+keywords: [mcp, tool, server, claude-desktop, stdio, integration]
+related_files: [docs/ENTRYPOINTS.md, docs/reference/capabilities.md]
+---
+
 # MCP & Claude Desktop Integration
 
 Configure nexus-agents as an MCP server for Claude Desktop with full tool access.

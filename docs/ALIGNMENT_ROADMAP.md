@@ -1,3 +1,11 @@
+---
+title: Alignment Roadmap
+description: Project alignment phases, progress tracking, and milestone planning
+tier: 2
+keywords: [roadmap, alignment, phases, progress, milestones]
+related_files: [CHANGELOG.md]
+---
+
 # Nexus-Agents Alignment Roadmap
 
 **Assessment Date:** 2026-01-09 (ET)
