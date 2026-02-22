@@ -398,6 +398,75 @@ function startHeartbeatTracking(label: string, logger: ILogger): { cleanup: () =
   };
 }
 
+/** Fast-path for simple tasks: return structural analysis without LLM call (Issue #1132). */
+function buildSimpleTaskResult(
+  taskId: string,
+  decision: import('../../orchestration/workflow-router-types.js').RoutingDecision,
+  durationMs: number
+): OrchestrateOutput {
+  return {
+    taskId,
+    analysis: {
+      taskId,
+      complexity: Math.round(decision.analysis.complexityScore * 10) || 1,
+      taskType: decision.analysis.taskType,
+      requirements: [],
+      risks: [],
+      needsDecomposition: false,
+      approach: `Low complexity ${decision.analysis.taskType} task. Direct implementation with basic validation.`,
+      estimatedEffort: decision.analysis.estimatedTokens,
+    },
+    routing: buildRoutingInfo(decision),
+    result: undefined,
+    stepsCompleted: 0,
+    metadata: { durationMs, tokensUsed: 0, expertsUsed: [] },
+  };
+}
+
+/** Fast-path: simple tasks skip expensive LLM orchestration (Issue #1132). */
+function trySimpleTaskFastPath(ctx: {
+  taskId: string;
+  task: string;
+  decision: import('../../orchestration/workflow-router-types.js').RoutingDecision;
+  workflowRouter: IWorkflowRouter;
+  startTime: number;
+  logger: ILogger;
+}): Result<OrchestrateOutput, OrchestrationError> | undefined {
+  if (ctx.decision.analysis.complexity !== 'simple') return undefined;
+  const durationMs = getTimeProvider().now() - ctx.startTime;
+  ctx.logger.info('Simple task fast-path', {
+    taskId: ctx.taskId,
+    taskType: ctx.decision.analysis.taskType,
+    durationMs,
+  });
+  recordOrchestrationSuccess(ctx.taskId, ctx.task, 0, durationMs);
+  recordRouterOutcome(ctx.workflowRouter, ctx.decision, true, durationMs);
+  return ok(buildSimpleTaskResult(ctx.taskId, ctx.decision, durationMs));
+}
+
+/** Handles orchestrator.execute() returning a failure Result. */
+function handleOrchestratorFailure(ctx: {
+  error: Error;
+  taskId: string;
+  task: string;
+  decision: import('../../orchestration/workflow-router-types.js').RoutingDecision;
+  workflowRouter: IWorkflowRouter;
+  startTime: number;
+  logger: ILogger;
+}): Result<OrchestrateOutput, OrchestrationError> {
+  const failDuration = getTimeProvider().now() - ctx.startTime;
+  ctx.logger.error('Orchestration failed', ctx.error, { taskId: ctx.taskId });
+  recordOrchestrationError(ctx.error.message, ctx.task, failDuration);
+  recordRouterOutcome(ctx.workflowRouter, ctx.decision, false, failDuration);
+  const cause = ctx.error instanceof Error ? ctx.error : undefined;
+  return err(
+    new OrchestrationError(
+      `Task execution failed: ${ctx.error.message}`,
+      createErrorOptions(ctx.taskId, cause)
+    )
+  );
+}
+
 async function executeOrchestration(
   input: OrchestrateInput,
   deps: OrchestrateDeps,
@@ -406,28 +475,32 @@ async function executeOrchestration(
   const { workflowRouter, decision, orchestrator, logger } = routeAndPrepare(input, deps, router);
   const taskId = generateTaskId();
   const startTime = getTimeProvider().now();
-
+  const fastResult = trySimpleTaskFastPath({
+    taskId,
+    task: input.task,
+    decision,
+    workflowRouter,
+    startTime,
+    logger,
+  });
+  if (fastResult !== undefined) return fastResult;
   logger.info('Starting orchestration', { taskId, taskLength: input.task.length });
   const task = await createTaskFromInput(input, taskId);
   const definition: OrchestratorDefinition = { type: 'task', task };
   const hb = startHeartbeatTracking(`orchestrate-${taskId}`, logger);
-
   try {
     const result = await orchestrator.execute(definition, {});
     if (!result.ok) {
-      const failDuration = getTimeProvider().now() - startTime;
-      logger.error('Orchestration failed', result.error, { taskId });
-      const cause = result.error instanceof Error ? result.error : undefined;
-      recordOrchestrationError(result.error.message, input.task, failDuration);
-      recordRouterOutcome(workflowRouter, decision, false, failDuration);
-      return err(
-        new OrchestrationError(
-          `Task execution failed: ${result.error.message}`,
-          createErrorOptions(taskId, cause)
-        )
-      );
+      return handleOrchestratorFailure({
+        error: result.error,
+        taskId,
+        task: input.task,
+        decision,
+        workflowRouter,
+        startTime,
+        logger,
+      });
     }
-
     const durationMs = getTimeProvider().now() - startTime;
     const output = buildOutputFromOrchestratorResult(
       taskId,
@@ -441,7 +514,6 @@ async function executeOrchestration(
       taskId,
       durationMs,
       stepsCompleted: output.stepsCompleted,
-      pattern: decision.pattern,
     });
     return ok(output);
   } catch (error) {
