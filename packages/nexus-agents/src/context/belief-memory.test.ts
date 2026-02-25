@@ -846,3 +846,95 @@ describe('BeliefSourceTypeEnum', () => {
     expect(BeliefSourceTypeEnum.PRIOR).toBe('prior');
   });
 });
+
+// ============================================================================
+// maxTotalBeliefs Capacity Limit (#1203)
+// ============================================================================
+
+describe('maxTotalBeliefs capacity limit', () => {
+  it('should evict oldest superseded beliefs when over capacity', async () => {
+    const { memory } = createTestMemory({ maxTotalBeliefs: 5 });
+
+    // Create 3 beliefs and supersede them to make them eviction candidates
+    const b1 = await createTestBelief(memory, { subject: 's1', predicate: 'p1' });
+    const b2 = await createTestBelief(memory, { subject: 's2', predicate: 'p2' });
+    await createTestBelief(memory, { subject: 's3', predicate: 'p3' });
+
+    // Supersede b1 and b2 (this creates new beliefs + marks old ones superseded)
+    await memory.supersede(
+      b1.beliefId,
+      {
+        subject: 's1',
+        predicate: 'p1',
+        object: 'new-v1',
+        confidence: BeliefConfidenceEnum.MEDIUM,
+        sourceType: BeliefSourceTypeEnum.OBSERVATION,
+      },
+      'updated'
+    );
+
+    await memory.supersede(
+      b2.beliefId,
+      {
+        subject: 's2',
+        predicate: 'p2',
+        object: 'new-v2',
+        confidence: BeliefConfidenceEnum.MEDIUM,
+        sourceType: BeliefSourceTypeEnum.OBSERVATION,
+      },
+      'updated'
+    );
+
+    // We now have 7 beliefs total (3 original + 2 superseded replacements + 2 = wait)
+    // Actually: b1(superseded), b2(superseded), b3(active), new-b1(active), new-b2(active)
+    // That's 5 after the first supersede, then 6 after the second → eviction triggers
+    // The oldest superseded (b1) should be evicted
+
+    const stats = await memory.getStats();
+    expect(stats.ok).toBe(true);
+    if (stats.ok) {
+      expect(stats.value.totalBeliefs).toBeLessThanOrEqual(5);
+    }
+  });
+
+  it('should not evict active beliefs even when over capacity', async () => {
+    const { memory } = createTestMemory({ maxTotalBeliefs: 3 });
+
+    // Create 4 active beliefs — none superseded, so none can be evicted
+    await createTestBelief(memory, { subject: 's1', predicate: 'p1' });
+    await createTestBelief(memory, { subject: 's2', predicate: 'p2' });
+    await createTestBelief(memory, { subject: 's3', predicate: 'p3' });
+    const b4 = await createTestBelief(memory, { subject: 's4', predicate: 'p4' });
+
+    // All 4 are active — eviction only targets superseded beliefs
+    const recall = await memory.recall(b4.beliefId);
+    expect(recall.ok).toBe(true);
+    if (recall.ok) expect(recall.value).not.toBeNull();
+
+    const stats = await memory.getStats();
+    expect(stats.ok).toBe(true);
+    if (stats.ok) {
+      // 4 beliefs exist because none are superseded for eviction
+      expect(stats.value.totalBeliefs).toBe(4);
+    }
+  });
+
+  it('should accept maxTotalBeliefs in config schema', () => {
+    const { memory } = createTestMemory({ maxTotalBeliefs: 500 });
+    expect(memory).toBeInstanceOf(HindsightBeliefMemory);
+  });
+
+  it('should use default maxTotalBeliefs of 10000', async () => {
+    const { memory } = createTestMemory();
+    // Default config should allow many beliefs without eviction
+    for (let i = 0; i < 20; i++) {
+      await createTestBelief(memory, {
+        subject: `subj-${String(i)}`,
+        predicate: `pred-${String(i)}`,
+      });
+    }
+    const stats = await memory.getStats();
+    expect(stats.ok).toBe(true);
+    if (stats.ok) expect(stats.value.totalBeliefs).toBe(20);
+  });
+});

@@ -204,6 +204,8 @@ export const BeliefMemoryStatsSchema = z.object({
 export interface BeliefMemoryConfig {
   /** Maximum beliefs to retain per subject */
   readonly maxBeliefsPerSubject?: number;
+  /** Maximum total beliefs across all subjects (prevents unbounded growth) */
+  readonly maxTotalBeliefs?: number;
   /** Auto-prune superseded beliefs older than this (ms) */
   readonly autoPruneAge?: number;
   /** Enable belief inference from observations */
@@ -216,6 +218,7 @@ export interface BeliefMemoryConfig {
 
 export const BeliefMemoryConfigSchema = z.object({
   maxBeliefsPerSubject: z.number().int().positive().optional(),
+  maxTotalBeliefs: z.number().int().positive().optional(),
   autoPruneAge: z.number().positive().optional(),
   enableInference: z.boolean().optional(),
   defaultConfidence: BeliefConfidenceSchema.optional(),
@@ -227,6 +230,7 @@ export const BeliefMemoryConfigSchema = z.object({
  */
 export const DEFAULT_BELIEF_CONFIG: Required<BeliefMemoryConfig> = {
   maxBeliefsPerSubject: 100,
+  maxTotalBeliefs: 10_000,
   autoPruneAge: 30 * 24 * 60 * 60 * 1000, // 30 days
   enableInference: true,
   defaultConfidence: BeliefConfidenceConst.MEDIUM,

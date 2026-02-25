@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 /**
  * nexus-agents/context - Hindsight Belief Memory
  *
@@ -160,6 +161,7 @@ export class HindsightBeliefMemory implements IHindsightBeliefMemory {
         newState: Object.fromEntries(Object.entries(newBelief)),
         reason: 'Initial belief creation',
       });
+      this.evictIfOverCapacity();
       this.logger.debug('Belief retained', {
         beliefId: newBelief.beliefId,
         subject: newBelief.subject,
@@ -387,6 +389,52 @@ export class HindsightBeliefMemory implements IHindsightBeliefMemory {
   // =========================================================================
   // Private Helpers
   // =========================================================================
+
+  /** Evicts oldest superseded beliefs when total beliefs exceed maxTotalBeliefs. */
+  private evictIfOverCapacity(): void {
+    const max = this.config.maxTotalBeliefs;
+    if (this.beliefs.size <= max) return;
+
+    // Collect superseded beliefs sorted by updatedAt (oldest first)
+    const superseded: Belief[] = [];
+    for (const belief of this.beliefs.values()) {
+      if (belief.superseded) superseded.push(belief);
+    }
+    superseded.sort((a, b) => a.updatedAt.getTime() - b.updatedAt.getTime());
+
+    const toEvict = this.beliefs.size - max;
+    const evicted = Math.min(toEvict, superseded.length);
+    for (let i = 0; i < evicted; i++) {
+      const belief = superseded[i];
+      if (belief !== undefined) this.removeBelief(belief.beliefId);
+    }
+    if (evicted > 0) {
+      this.logger.debug('Evicted superseded beliefs for capacity', {
+        evicted,
+        remaining: this.beliefs.size,
+        maxTotalBeliefs: max,
+      });
+    }
+  }
+
+  /** Removes a belief and cleans up all indexes. */
+  private removeBelief(beliefId: string): void {
+    const belief = this.beliefs.get(beliefId);
+    if (belief === undefined) return;
+    this.beliefs.delete(beliefId);
+    this.removeFromIndex(this.subjectIndex, belief.subject, beliefId);
+    this.removeFromIndex(this.predicateIndex, belief.predicate, beliefId);
+    if (belief.domain !== undefined) {
+      this.removeFromIndex(this.domainIndex, belief.domain, beliefId);
+    }
+  }
+
+  private removeFromIndex(index: Map<string, Set<string>>, key: string, id: string): void {
+    const set = index.get(key);
+    if (set === undefined) return;
+    set.delete(id);
+    if (set.size === 0) index.delete(key);
+  }
 
   private indexBelief(belief: Belief): void {
     const subjectSet = this.subjectIndex.get(belief.subject) ?? new Set();
