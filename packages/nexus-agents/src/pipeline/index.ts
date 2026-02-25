@@ -72,8 +72,6 @@ export {
   type EventHandler,
   type Unsubscribe,
   type IEventBus,
-  type ExpertHeartbeatEvent,
-  type ExpertStalledEvent,
 } from './event-types.js';
 
 export { EventBus, type EventBusOptions } from './event-bus.js';
