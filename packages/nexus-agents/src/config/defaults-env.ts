@@ -40,18 +40,22 @@ export function parseFloatEnv(envKey: string, fallback: number): number {
     return fallback;
   }
   const parsed = parseFloat(envValue);
-  return isNaN(parsed) ? fallback : parsed;
+  return isNaN(parsed) || !isFinite(parsed) ? fallback : parsed;
 }
 
 /**
  * Parses a boolean from an environment variable with fallback.
+ * Only 'true'/'1' are truthy, 'false'/'0' are falsy.
+ * Any other value returns the fallback.
  */
 export function parseBoolEnv(envKey: string, fallback: boolean): boolean {
-  const envValue = process.env[envKey];
+  const envValue = process.env[envKey]?.toLowerCase();
   if (envValue === undefined) {
     return fallback;
   }
-  return envValue !== 'false';
+  if (envValue === 'true' || envValue === '1') return true;
+  if (envValue === 'false' || envValue === '0') return false;
+  return fallback;
 }
 
 // ============================================================================

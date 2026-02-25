@@ -103,13 +103,22 @@ describe('parseBoolEnv', () => {
     expect(parseBoolEnv(TEST_KEY, false)).toBe(true);
   });
 
-  it('returns true for any non-"false" string', () => {
+  it('returns true for "1" string', () => {
     process.env[TEST_KEY] = '1';
     expect(parseBoolEnv(TEST_KEY, false)).toBe(true);
   });
 
-  it('returns true for empty string', () => {
+  it('returns false for "0" string', () => {
+    process.env[TEST_KEY] = '0';
+    expect(parseBoolEnv(TEST_KEY, true)).toBe(false);
+  });
+
+  it('returns fallback for unrecognized values', () => {
+    process.env[TEST_KEY] = 'yes';
+    expect(parseBoolEnv(TEST_KEY, false)).toBe(false);
     process.env[TEST_KEY] = '';
-    expect(parseBoolEnv(TEST_KEY, false)).toBe(true);
+    expect(parseBoolEnv(TEST_KEY, false)).toBe(false);
+    process.env[TEST_KEY] = 'garbage';
+    expect(parseBoolEnv(TEST_KEY, true)).toBe(true);
   });
 });

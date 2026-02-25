@@ -106,7 +106,12 @@ function parseEnvValue<T>(envValue: string, defaultValue: T): T | undefined {
     const parsed = Number(envValue);
     return !isNaN(parsed) && isFinite(parsed) ? (parsed as T) : undefined;
   }
-  if (typeof defaultValue === 'boolean') return (envValue.toLowerCase() !== 'false') as T;
+  if (typeof defaultValue === 'boolean') {
+    const lower = envValue.toLowerCase();
+    if (lower === 'true' || lower === '1') return true as T;
+    if (lower === 'false' || lower === '0') return false as T;
+    return undefined; // Unknown value — use default
+  }
   if (typeof defaultValue === 'string') return envValue as T;
   return undefined;
 }
