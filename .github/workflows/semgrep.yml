@@ -1,0 +1,28 @@
+name: Semgrep
+
+on:
+  pull_request: {}
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  scan:
+    name: semgrep-oss/scan
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep
+    if: github.actor != 'dependabot[bot]'
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Run Semgrep
+        run: semgrep scan --config p/typescript --config p/nodejs --sarif > semgrep.sarif
+
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: semgrep.sarif
+        if: always()
