@@ -17,6 +17,7 @@ import { randomUUID } from 'node:crypto';
 
 import { createDelegatePipeline, checkPipelinePolicy } from './v2-delegate.js';
 import { PipelineRunner } from './pipeline-runner.js';
+import { getPipelineEventBus } from './event-bus.js';
 
 import type { TaskContract } from './task-contract.js';
 import type { PipelineMetrics } from './v2-delegate.js';
@@ -83,7 +84,9 @@ export async function executeOrchestratePipeline(task: TaskContract): Promise<Pi
   }
   const runner = new PipelineRunner();
   const startMs = Date.now();
-  const result = await runner.execute(compiled.value, task);
+  const result = await runner.execute(compiled.value, task, {
+    eventBus: getPipelineEventBus(),
+  });
   const durationMs = Date.now() - startMs;
   if (!result.ok) {
     return { compiled: true, executed: false, stepsExecuted: 0, durationMs };

@@ -48,8 +48,7 @@ import { Orchestrator } from './agents/index.js';
 import type { ILogger } from './core/index.js';
 import { runStpaSafetyAnalysis, StpaSafetyError } from './cli-server-stpa.js';
 import { createCorePluginRegistry } from './pipeline/core-plugins.js';
-import { EventBus as PipelineEventBus } from './pipeline/event-bus.js';
-import { ArtifactStore } from './pipeline/artifact-store.js';
+import { getPipelineEventBus } from './pipeline/event-bus.js';
 import { createEventBusBridge } from './pipeline/event-bus-bridge.js';
 import { createDefaultPolicyEngine } from './pipeline/policy-engine.js';
 import { resolveV2Config } from './pipeline/v2-config.js';
@@ -516,14 +515,12 @@ function registerToolCategories(ctx: ToolRegistrationContext): void {
 /** Initializes V2 Pipeline OS subsystems and logs summary. (Phases B-C, Issues #921-#922) */
 function initV2PipelineSubsystems(logger: ILogger): void {
   const pluginRegistry = createCorePluginRegistry();
-  const pipelineEventBus = new PipelineEventBus();
-  const pipelineArtifactStore = new ArtifactStore();
+  const pipelineEventBus = getPipelineEventBus();
   const bridge = createEventBusBridge({ source: pipelineEventBus });
   const policyEngine = createDefaultPolicyEngine();
   const v2Config = resolveV2Config();
   logger.info('V2 Pipeline OS initialized', {
     plugins: pluginRegistry.listEnabled().length,
-    artifacts: pipelineArtifactStore.size,
     bridged: bridge.forwarded(),
     policyRules: policyEngine.listRules().length,
     v2Mode: v2Config.mode,

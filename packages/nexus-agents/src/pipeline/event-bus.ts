@@ -142,3 +142,20 @@ function matchesField(event: PipelineEvent, field: string, value: string | undef
   const record = event as unknown as Record<string, unknown>;
   return record[field] === value;
 }
+
+// ============================================================================
+// Global Pipeline EventBus Singleton (#1173)
+// ============================================================================
+
+let globalPipelineEventBus: IEventBus | undefined;
+
+/** Returns the global pipeline EventBus (created lazily on first call). */
+export function getPipelineEventBus(): IEventBus {
+  globalPipelineEventBus ??= new EventBus();
+  return globalPipelineEventBus;
+}
+
+/** Resets the global pipeline EventBus (for testing). */
+export function resetPipelineEventBus(): void {
+  globalPipelineEventBus = undefined;
+}

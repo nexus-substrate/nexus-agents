@@ -18,6 +18,7 @@ import { randomUUID } from 'node:crypto';
 import { createLogger } from '../core/index.js';
 
 import { PipelineRunner } from './pipeline-runner.js';
+import { getPipelineEventBus } from './event-bus.js';
 import { createDefaultPolicyEngine } from './policy-engine.js';
 import { evaluatePolicy, getPolicyMode } from './policy-evaluator.js';
 
@@ -132,7 +133,9 @@ export async function executeDelegatePipeline(task: TaskContract): Promise<Pipel
   }
   const runner = new PipelineRunner();
   const startMs = Date.now();
-  const result = await runner.execute(compiled.value, task);
+  const result = await runner.execute(compiled.value, task, {
+    eventBus: getPipelineEventBus(),
+  });
   const durationMs = Date.now() - startMs;
   if (!result.ok) {
     return { compiled: true, executed: false, stepsExecuted: 0, durationMs };

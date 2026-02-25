@@ -74,7 +74,12 @@ export {
   type IEventBus,
 } from './event-types.js';
 
-export { EventBus, type EventBusOptions } from './event-bus.js';
+export {
+  EventBus,
+  getPipelineEventBus,
+  resetPipelineEventBus,
+  type EventBusOptions,
+} from './event-bus.js';
 
 export {
   ArtifactStore,
