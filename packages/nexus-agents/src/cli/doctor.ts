@@ -328,13 +328,17 @@ function countJsonlLines(filePath: string): number {
 /** Reads rules snapshot metadata. Returns count and savedAt. */
 function readRulesMetadata(filePath: string): { count: number; savedAt: string | null } {
   if (!existsSync(filePath)) return { count: 0, savedAt: null };
-  const raw = JSON.parse(readFileSync(filePath, 'utf-8')) as Record<string, unknown>;
-  const rules = raw['rules'];
-  const saved = raw['savedAt'];
-  return {
-    count: Array.isArray(rules) ? rules.length : 0,
-    savedAt: typeof saved === 'string' ? saved : null,
-  };
+  try {
+    const raw = JSON.parse(readFileSync(filePath, 'utf-8')) as Record<string, unknown>;
+    const rules = raw['rules'];
+    const saved = raw['savedAt'];
+    return {
+      count: Array.isArray(rules) ? rules.length : 0,
+      savedAt: typeof saved === 'string' ? saved : null,
+    };
+  } catch {
+    return { count: 0, savedAt: null };
+  }
 }
 
 /** Checks if a directory exists and is writable. */

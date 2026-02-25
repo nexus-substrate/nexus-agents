@@ -327,15 +327,26 @@ export class ReflectiveRetriever {
 
   /** Parse and validate LLM output as ReflectionCriteria. */
   private parseCriteria(text: string): ReflectionCriteria {
-    // Extract JSON from response (may have markdown fences)
-    const jsonMatch = /\{[\s\S]*\}/.exec(text);
-    if (jsonMatch === null) {
+    // Try direct parse first (most common case: clean JSON output)
+    const trimmed = text.trim();
+    if (trimmed.startsWith('{')) {
+      try {
+        const parsed: unknown = JSON.parse(trimmed);
+        return ReflectionCriteriaSchema.parse(parsed);
+      } catch {
+        // Fall through to extraction
+      }
+    }
+
+    // Extract JSON from response (may have markdown fences or preamble)
+    const start = text.indexOf('{');
+    const end = text.lastIndexOf('}');
+    if (start === -1 || end === -1 || end <= start) {
       throw new Error('No JSON object found in reflection response');
     }
 
-    const parsed: unknown = JSON.parse(jsonMatch[0]);
-    const validated = ReflectionCriteriaSchema.parse(parsed);
-    return validated;
+    const parsed: unknown = JSON.parse(text.slice(start, end + 1));
+    return ReflectionCriteriaSchema.parse(parsed);
   }
 }
 
