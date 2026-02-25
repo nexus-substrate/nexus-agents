@@ -166,6 +166,10 @@ import {
   orchestrateInputToTaskContract,
   executeOrchestratePipeline,
   resolveV2Config,
+  getPipelinePluginRegistry,
+  resetPipelinePluginRegistry,
+  getPipelineArtifactStore,
+  resetPipelineArtifactStore,
 } from '../index.js';
 
 describe('Export contracts — MCP tool registration', () => {
@@ -390,15 +394,24 @@ describe('Export contracts — pipeline V2 types', () => {
     expect(typeof bus.query).toBe('function');
     expect(PIPELINE_EVENT_TYPES).toContain('task.created');
     expect(PIPELINE_EVENT_TYPES).toContain('stage.completed');
+    expect(PIPELINE_EVENT_TYPES).toContain('tool.invoked');
+    expect(PIPELINE_EVENT_TYPES).toContain('tool.completed');
   });
 
-  it('exports ArtifactStore class', () => {
+  it('exports ArtifactStore class and singleton (#1179)', () => {
     expect(typeof ArtifactStore).toBe('function');
     const store = new ArtifactStore();
     expect(typeof store.put).toBe('function');
     expect(typeof store.get).toBe('function');
     expect(typeof store.query).toBe('function');
     expect(typeof store.provenance).toBe('function');
+    expect(typeof getPipelineArtifactStore).toBe('function');
+    expect(typeof resetPipelineArtifactStore).toBe('function');
+  });
+
+  it('exports PluginRegistry singleton (#1179)', () => {
+    expect(typeof getPipelinePluginRegistry).toBe('function');
+    expect(typeof resetPipelinePluginRegistry).toBe('function');
   });
 
   it('exports PolicyEngine and built-in rules', () => {
