@@ -17,6 +17,9 @@ import type {
 // Shared utilities per ADR-0013
 import { memoryRowToEntry } from '../utils/memory-db-utils.js';
 import { extractAttributes } from './agentic-memory-extraction.js';
+import { createLogger } from '../core/index.js';
+
+const logger = createLogger({ component: 'AgenticMemoryDbHelpers' });
 
 // ============================================================================
 // Database Helpers
@@ -51,7 +54,16 @@ export function memoryRowToAgenticEntry(
   extractionConfig: ExtractionConfig
 ): AgenticMemoryEntry {
   const baseEntry = memoryRowToEntry(row);
-  const parsedMeta = JSON.parse(row.metadata) as Record<string, unknown>;
+
+  let parsedMeta: Record<string, unknown> = {};
+  try {
+    parsedMeta = JSON.parse(row.metadata) as Record<string, unknown>;
+  } catch {
+    logger.warn('Corrupt metadata JSON in memory row, using fallback extraction', {
+      key: row.key,
+    });
+  }
+
   const attributes =
     parseAmemAttributes(parsedMeta) ?? extractAttributes(baseEntry.value, extractionConfig);
 
@@ -107,7 +119,15 @@ export function getAttributesFromRow(
   row: MemoryRow,
   extractionConfig: ExtractionConfig
 ): MemoryAttributes {
-  const meta = JSON.parse(row.metadata) as Record<string, unknown>;
+  let meta: Record<string, unknown> = {};
+  try {
+    meta = JSON.parse(row.metadata) as Record<string, unknown>;
+  } catch {
+    logger.warn('Corrupt metadata JSON in getAttributesFromRow, using value extraction', {
+      key: row.key,
+    });
+  }
+
   if (meta.amem !== undefined) {
     const amem = meta.amem as Record<string, unknown>;
     return {
@@ -118,7 +138,17 @@ export function getAttributesFromRow(
       attributesUpdatedAt: new Date(amem.attributesUpdatedAt as number),
     };
   }
-  return extractAttributes(JSON.parse(row.value) as unknown, extractionConfig);
+
+  let parsedValue: unknown = row.value;
+  try {
+    parsedValue = JSON.parse(row.value);
+  } catch {
+    logger.warn('Corrupt value JSON in getAttributesFromRow, using raw string', {
+      key: row.key,
+    });
+  }
+
+  return extractAttributes(parsedValue, extractionConfig);
 }
 
 /**

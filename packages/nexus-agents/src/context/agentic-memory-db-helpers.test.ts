@@ -195,6 +195,20 @@ describe('memoryRowToAgenticEntry', () => {
     expect(entry.attributes.keywords).toBeDefined();
   });
 
+  it('should handle corrupt metadata JSON gracefully (#1187)', () => {
+    const row = createMemoryRow({
+      key: 'corrupt-meta',
+      value: JSON.stringify('valid value'),
+      metadata: '{not valid json!!!',
+    });
+
+    const entry = memoryRowToAgenticEntry(row, DEFAULT_EXTRACTION_CONFIG);
+
+    expect(entry.key).toBe('corrupt-meta');
+    expect(entry.attributes).toBeDefined();
+    expect(entry.attributes.keywords).toBeDefined();
+  });
+
   it('should handle complex nested values', () => {
     const row = createMemoryRow({
       key: 'complex-key',
@@ -381,6 +395,32 @@ describe('getAttributesFromRow', () => {
 
     expect(result.keywords).toBeDefined();
     expect(Array.isArray(result.keywords)).toBe(true);
+  });
+
+  it('should handle corrupt metadata JSON gracefully (#1187)', () => {
+    const row = createMemoryRow({
+      key: 'corrupt-meta',
+      value: JSON.stringify('valid string value'),
+      metadata: 'NOT_JSON',
+    });
+
+    const result = getAttributesFromRow(row, DEFAULT_EXTRACTION_CONFIG);
+
+    expect(result).toBeDefined();
+    expect(result.keywords).toBeDefined();
+  });
+
+  it('should handle corrupt value JSON gracefully (#1187)', () => {
+    const row = createMemoryRow({
+      key: 'corrupt-value',
+      value: '{broken json',
+      metadata: JSON.stringify({ importance: 'medium' }),
+    });
+
+    const result = getAttributesFromRow(row, DEFAULT_EXTRACTION_CONFIG);
+
+    expect(result).toBeDefined();
+    expect(result.keywords).toBeDefined();
   });
 
   it('should handle string values', () => {

@@ -78,6 +78,20 @@ describe('memoryRowToEntry', () => {
     const entry = memoryRowToEntry(row);
     expect(entry.metadata).toEqual(metadata);
   });
+
+  it('handles corrupt value JSON gracefully (#1187)', () => {
+    const row = makeRow({ value: '{broken json' });
+    const entry = memoryRowToEntry(row);
+    expect(entry.key).toBe('test-key');
+    expect(entry.value).toBe('{broken json');
+  });
+
+  it('handles corrupt metadata JSON gracefully (#1187)', () => {
+    const row = makeRow({ metadata: 'NOT_JSON' });
+    const entry = memoryRowToEntry(row);
+    expect(entry.key).toBe('test-key');
+    expect(entry.metadata.importance).toBe('medium');
+  });
 });
 
 // ============================================================================

@@ -7,6 +7,7 @@
  * @module pipeline/pipeline-runner
  */
 import { executeGraph } from '../orchestration/graph/graph-executor.js';
+import { createLogger } from '../core/index.js';
 
 import { compilePlan } from './plan-compiler.js';
 import type { PlanCompileOptions } from './plan-compiler.js';
@@ -21,6 +22,8 @@ import type {
 } from '../orchestration/graph/graph-types.js';
 import type { IEventBus } from './event-types.js';
 import type { PlanContract, TaskContract } from './task-contract.js';
+
+const pipelineLogger = createLogger({ component: 'PipelineRunner' });
 
 // ============================================================================
 // Types
@@ -316,6 +319,9 @@ function emitStageEvent(bus: IEventBus | undefined, executionId: string, result:
 
 async function flushTrace(ctx: TraceContext): Promise<void> {
   if (ctx.writer === undefined) return;
-  await ctx.writer.flush().catch(() => undefined);
+  await ctx.writer.flush().catch((err: unknown) => {
+    const msg = err instanceof Error ? err.message : String(err);
+    pipelineLogger.warn('Trace flush failed — trace data may be lost', { error: msg });
+  });
   ctx.writer.stop();
 }

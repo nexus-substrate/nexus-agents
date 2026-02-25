@@ -12,16 +12,37 @@
  * @see docs/adr/0013-memory-helpers-consolidation.md
  */
 
-import type { MemoryEntry, MemoryRow, ISQLiteDatabase } from '../context/memory-backend-types.js';
+import {
+  type MemoryEntry,
+  type MemoryRow,
+  type ISQLiteDatabase,
+  MemoryImportance,
+} from '../context/memory-backend-types.js';
+import { createLogger } from '../core/index.js';
+
+const logger = createLogger({ component: 'MemoryDbUtils' });
 
 // ============================================================================
 // Row Conversion
 // ============================================================================
 
 /**
+ * Safely parse JSON, returning fallback on corrupt data instead of throwing.
+ */
+function safeJsonParse<T>(json: string, fallback: T, context: string): T {
+  try {
+    return JSON.parse(json) as T;
+  } catch {
+    logger.warn('Corrupt JSON in memory database row', { context });
+    return fallback;
+  }
+}
+
+/**
  * Convert a database MemoryRow to a MemoryEntry.
  *
  * Parses JSON fields (value, metadata) and converts timestamps to Date objects.
+ * Handles corrupt JSON gracefully by returning safe defaults.
  *
  * @param row - Database row from memories table
  * @returns Parsed MemoryEntry object
@@ -29,8 +50,12 @@ import type { MemoryEntry, MemoryRow, ISQLiteDatabase } from '../context/memory-
 export function memoryRowToEntry(row: MemoryRow): MemoryEntry {
   return {
     key: row.key,
-    value: JSON.parse(row.value) as unknown,
-    metadata: JSON.parse(row.metadata) as MemoryEntry['metadata'],
+    value: safeJsonParse<unknown>(row.value, row.value, `value for key="${row.key}"`),
+    metadata: safeJsonParse<MemoryEntry['metadata']>(
+      row.metadata,
+      { importance: MemoryImportance.MEDIUM },
+      `metadata for key="${row.key}"`
+    ),
     createdAt: new Date(row.created_at),
     accessedAt: new Date(row.accessed_at),
   };

@@ -72,11 +72,23 @@ function parseInputs(inputArg: string): ParsedInputs {
       );
     }
     const content = fs.readFileSync(validatedPath, 'utf-8');
-    return JSON.parse(content) as ParsedInputs;
+    try {
+      return JSON.parse(content) as ParsedInputs;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      throw new Error(`Invalid JSON in input file "${inputArg}": ${msg}`);
+    }
   }
 
   // Otherwise parse as JSON string
-  return JSON.parse(inputArg) as ParsedInputs;
+  try {
+    return JSON.parse(inputArg) as ParsedInputs;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new Error(
+      `Invalid JSON input: ${msg}\nHint: Provide a valid JSON string or path to a .json file.`
+    );
+  }
 }
 
 /**
