@@ -8,7 +8,7 @@
  */
 
 import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger } from '../../core/index.js';
@@ -24,8 +24,18 @@ import { createSecureHandler, type HandlerContext } from '../middleware/secure-h
 // ============================================================================
 
 export const QueryTraceInputSchema = z.object({
-  runId: z.string().min(1).describe('Run ID to query traces for'),
-  eventType: z.string().optional().describe('Filter by event type'),
+  runId: z
+    .string()
+    .min(1)
+    .max(128)
+    .regex(/^[a-zA-Z0-9_-]+$/, 'runId must be alphanumeric, hyphens, or underscores')
+    .describe('Run ID to query traces for'),
+  eventType: z
+    .string()
+    .max(100)
+    .regex(/^[a-zA-Z0-9._-]+$/, 'eventType must be alphanumeric with dots, hyphens, or underscores')
+    .optional()
+    .describe('Filter by event type'),
   limit: z.number().min(1).max(500).optional().describe('Max events to return (default: 100)'),
 });
 
@@ -65,12 +75,31 @@ export async function queryTraceFromDisk(
   const dir = runsDir ?? DEFAULT_RUNS_DIR;
   const tracePath = join(dir, input.runId, 'trace.jsonl');
 
+  // Path traversal guard: resolved path must stay within runs directory
+  const resolvedDir = resolve(dir);
+  const resolvedTrace = resolve(tracePath);
+  if (!resolvedTrace.startsWith(resolvedDir)) {
+    return {
+      runId: input.runId,
+      events: [],
+      totalEvents: 0,
+      truncated: false,
+      source: 'not_found',
+    };
+  }
+
   try {
     const content = await readFile(tracePath, 'utf-8');
     const lines = content.trim().split('\n').filter(Boolean);
     const limit = input.limit ?? 100;
 
-    let parsed = lines.map((line) => JSON.parse(line) as Record<string, unknown>);
+    let parsed = lines.flatMap((line) => {
+      try {
+        return [JSON.parse(line) as Record<string, unknown>];
+      } catch {
+        return []; // Skip malformed JSONL lines
+      }
+    });
 
     if (input.eventType !== undefined) {
       parsed = parsed.filter((e) => e['eventType'] === input.eventType);
@@ -141,8 +170,18 @@ function queryTraceHandler(args: unknown, ctx: HandlerContext): Promise<ToolResp
 export function registerQueryTraceTool(server: McpServer, deps: QueryTraceDeps): void {
   const logger = deps.logger ?? createLogger({ tool: 'query_trace' });
   const toolSchema = {
-    runId: z.string().min(1).describe('Run ID to query traces for'),
-    eventType: z.string().optional().describe('Filter by event type (e.g., model.called)'),
+    runId: z
+      .string()
+      .min(1)
+      .max(128)
+      .regex(/^[a-zA-Z0-9_-]+$/, 'runId must be alphanumeric, hyphens, or underscores')
+      .describe('Run ID to query traces for'),
+    eventType: z
+      .string()
+      .max(100)
+      .regex(/^[a-zA-Z0-9._-]+$/)
+      .optional()
+      .describe('Filter by event type (e.g., model.called)'),
     limit: z.number().min(1).max(500).optional().describe('Max events to return (default: 100)'),
   };
 

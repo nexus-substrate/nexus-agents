@@ -149,7 +149,18 @@ async function downloadManifest(
     { timeout: FETCH_TIMEOUT_MS, maxBuffer: 1024 * 1024 }
   );
 
-  const parsed = ManifestSchema.safeParse(JSON.parse(stdout));
+  let jsonData: unknown;
+  try {
+    jsonData = JSON.parse(stdout);
+  } catch {
+    logger.warn('Registry manifest is not valid JSON', {
+      stdoutLength: stdout.length,
+      preview: stdout.slice(0, 100),
+    });
+    return null;
+  }
+
+  const parsed = ManifestSchema.safeParse(jsonData);
   if (!parsed.success) {
     logger.warn('Registry manifest failed schema validation', {
       errors: parsed.error.issues.slice(0, 3),

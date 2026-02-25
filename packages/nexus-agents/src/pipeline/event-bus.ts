@@ -133,8 +133,8 @@ function matchesType(event: PipelineEvent, filter: EventFilter): boolean {
   if (typeof filter.type === 'string') {
     return event.type === filter.type;
   }
-  const types = filter.type as readonly string[];
-  return types.includes(event.type);
+  if (!Array.isArray(filter.type)) return false;
+  return (filter.type as readonly string[]).includes(event.type);
 }
 
 function matchesField(event: PipelineEvent, field: string, value: string | undefined): boolean {

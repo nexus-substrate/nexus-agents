@@ -28,6 +28,23 @@ describe('QueryTraceInputSchema', () => {
     expect(result.success).toBe(false);
   });
 
+  it('rejects runId with path traversal characters', () => {
+    expect(QueryTraceInputSchema.safeParse({ runId: '../etc/passwd' }).success).toBe(false);
+    expect(QueryTraceInputSchema.safeParse({ runId: '../../root' }).success).toBe(false);
+    expect(QueryTraceInputSchema.safeParse({ runId: 'run/../../etc' }).success).toBe(false);
+  });
+
+  it('rejects runId exceeding max length', () => {
+    const result = QueryTraceInputSchema.safeParse({ runId: 'a'.repeat(129) });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects eventType with special characters', () => {
+    expect(
+      QueryTraceInputSchema.safeParse({ runId: 'run-1', eventType: 'model.called; rm -rf' }).success
+    ).toBe(false);
+  });
+
   it('accepts optional eventType filter', () => {
     const result = QueryTraceInputSchema.safeParse({
       runId: 'run-123',
@@ -151,6 +168,36 @@ describe('queryTraceFromDisk', () => {
 
     const result = await queryTraceFromDisk({ runId: 'run-empty' }, tempDir);
 
+    expect(result.events).toHaveLength(0);
+  });
+
+  it('skips malformed JSONL lines without crashing', async () => {
+    const runDir = join(tempDir, 'run-malformed');
+    await mkdir(runDir, { recursive: true });
+
+    const traces = [
+      JSON.stringify({ eventType: 'model.called', agentId: 'a1' }),
+      'NOT VALID JSON {{{',
+      JSON.stringify({ eventType: 'routing.decision', modelId: 'm1' }),
+      '',
+      '{{broken}}',
+    ].join('\n');
+
+    await writeFile(join(runDir, 'trace.jsonl'), traces + '\n');
+
+    const result = await queryTraceFromDisk({ runId: 'run-malformed' }, tempDir);
+
+    // Should parse 2 valid lines, skip 2 malformed ones
+    expect(result.source).toBe('disk');
+    expect(result.totalEvents).toBe(2);
+    expect(result.events).toHaveLength(2);
+  });
+
+  it('blocks path traversal at runtime via resolve guard', async () => {
+    // Even if schema validation were bypassed, the resolve guard should block
+    const result = await queryTraceFromDisk({ runId: '..\\..\\etc' } as never, tempDir);
+
+    expect(result.source).toBe('not_found');
     expect(result.events).toHaveLength(0);
   });
 });
