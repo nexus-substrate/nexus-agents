@@ -185,9 +185,8 @@ This is preamble text before any section.
     const result = parseSpec(md);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.value.overview).toBe('');
-    // Preamble is above first heading, but first heading IS the title
-    // so it doesn't count as overview unless it's a named section
+    // H1 is treated as document title, text before ## sections is preamble → overview
+    expect(result.value.overview).toBe('This is preamble text before any section.');
   });
 });
 

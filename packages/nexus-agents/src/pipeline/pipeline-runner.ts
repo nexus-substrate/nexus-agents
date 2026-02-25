@@ -15,6 +15,7 @@ import type {
   CompiledGraph,
   GraphExecutionResult,
   GraphExecuteOptions,
+  NodeResult,
 } from '../orchestration/graph/graph-types.js';
 import type { IEventBus } from './event-types.js';
 import type { PlanContract, TaskContract } from './task-contract.js';
@@ -178,17 +179,16 @@ function buildGraphOptions(
   const signal = options?.signal;
   const maxSteps = options?.maxSteps;
   const onStage = options?.onStageComplete;
+  const bus = options?.eventBus;
+  const execId = pipeline.plan.taskId;
   return {
     ...base,
     ...(signal !== undefined ? { signal } : {}),
     ...(maxSteps !== undefined ? { maxSteps } : {}),
-    ...(onStage !== undefined
-      ? {
-          onNodeComplete: (r: { nodeId: string }) => {
-            onStage(r.nodeId);
-          },
-        }
-      : {}),
+    onNodeComplete: (r) => {
+      onStage?.(r.nodeId);
+      emitStageEvent(bus, execId, r);
+    },
   };
 }
 
@@ -283,6 +283,30 @@ function emitPipelineCompleted(
     durationMs,
     timestamp: Date.now(),
   });
+}
+
+/** Emit stage.completed or stage.failed based on node result (#1179). */
+function emitStageEvent(bus: IEventBus | undefined, executionId: string, result: NodeResult): void {
+  if (bus === undefined) return;
+  const now = Date.now();
+  if (result.status === 'failed') {
+    bus.emit({
+      type: 'stage.failed',
+      executionId,
+      stageId: result.nodeId,
+      error: result.error ?? 'Unknown error',
+      timestamp: now,
+    });
+  } else {
+    bus.emit({
+      type: 'stage.completed',
+      executionId,
+      stageId: result.nodeId,
+      durationMs: result.durationMs,
+      success: result.status === 'success',
+      timestamp: now,
+    });
+  }
 }
 
 async function flushTrace(ctx: TraceContext): Promise<void> {

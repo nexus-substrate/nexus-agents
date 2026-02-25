@@ -91,6 +91,8 @@ function extractSections(lines: string[]): Map<string, string[]> {
   for (const line of lines) {
     const match = HEADING_PATTERN.exec(line.trim());
     if (match?.[2] !== undefined) {
+      // Skip H1 headings — they are document titles, not content sections
+      if (match[1] === '#') continue;
       currentSection = match[2].trim().toLowerCase();
       if (!sections.has(currentSection)) {
         sections.set(currentSection, []);

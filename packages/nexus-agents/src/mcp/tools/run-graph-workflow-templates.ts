@@ -252,6 +252,10 @@ function scanImportsHandler(state: Readonly<GraphState>): Promise<Partial<GraphS
     vulns.push('CWE-79: XSS via innerHTML');
     severity += 3;
   }
+  if (code.includes('document.write')) {
+    vulns.push('CWE-79: XSS via document.write');
+    severity += 4;
+  }
   if (code.includes('__proto__')) {
     vulns.push('CWE-1321: Prototype pollution');
     severity += 4;
@@ -278,8 +282,16 @@ const PATTERN_RULES: ReadonlyArray<readonly [RegExp, string, number]> = [
   // Command injection (#1137)
   [/exec\(.*\$\{/, 'CWE-78: Command injection via string interpolation', 8],
   [/spawn\(.*\$\{/, 'CWE-78: Command injection via spawn interpolation', 8],
-  // XSS (#1137)
+  // XSS (#1137, #1178)
   [/dangerouslySetInnerHTML/, 'CWE-79: XSS via dangerouslySetInnerHTML', 4],
+  [/document\.write\s*\(/, 'CWE-79: XSS via document.write', 7],
+  [/\.outerHTML\s*=/, 'CWE-79: XSS via outerHTML assignment', 6],
+  [/insertAdjacentHTML\s*\(/, 'CWE-79: XSS via insertAdjacentHTML', 6],
+  [
+    /res\.(?:send|write)\s*\(\s*[`'"].*\$\{/,
+    'CWE-79: Reflected XSS via template literal in response',
+    8,
+  ],
   // Path traversal (#1137)
   [
     /(?:readFile|writeFile|createReadStream)\(.*(?:req|params|query|input)/,

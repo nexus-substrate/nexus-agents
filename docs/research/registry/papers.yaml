@@ -1857,7 +1857,7 @@ papers:
       - forest-of-thought
     related_issues:
       - 331
-    implementation_status: in-progress
+    implementation_status: partial
   arxiv-2412.14470:
     title: 'Agent-SafetyBench: Comprehensive Safety Evaluation for AI Agents'
     authors: []
@@ -1888,7 +1888,7 @@ papers:
       - agent-safety-bench
     related_issues:
       - 332
-    implementation_status: in-progress
+    implementation_status: partial
   arxiv-2509.11079:
     title: 'DAAO: Difficulty-Aware Agent Orchestration via VAE'
     authors: []
@@ -2389,7 +2389,7 @@ papers:
     publication_date: 2025-06
     venue: null
     topics:
-      - model routing
+      - routing
     tags:
       - llm
     reviewed_date: 2026-02-22

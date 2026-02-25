@@ -73,13 +73,40 @@ function convertRegistryScanner(s: RegistryScanner): ScannerEntry {
   };
 }
 
+/** Known PascalCase language names from GitHub API. Handles registry keys like "typescript" → "TypeScript". */
+const LANGUAGE_PASCAL_MAP: Readonly<Record<string, string>> = {
+  typescript: 'TypeScript',
+  javascript: 'JavaScript',
+  python: 'Python',
+  java: 'Java',
+  csharp: 'C#',
+  'c#': 'C#',
+  cpp: 'C++',
+  'c++': 'C++',
+  go: 'Go',
+  rust: 'Rust',
+  ruby: 'Ruby',
+  php: 'PHP',
+  swift: 'Swift',
+  kotlin: 'Kotlin',
+  scala: 'Scala',
+  hcl: 'HCL',
+  shell: 'Shell',
+  dockerfile: 'Dockerfile',
+};
+
+function normalizeLangName(lang: string): string {
+  const lower = lang.toLowerCase();
+  return LANGUAGE_PASCAL_MAP[lower] ?? lang.charAt(0).toUpperCase() + lang.slice(1);
+}
+
 function convertLanguageMatrix(
   matrix: Readonly<Record<string, LanguageMatrixEntry>>
 ): Record<string, LanguageMapping> {
   const result: Record<string, LanguageMapping> = {};
   for (const [lang, entry] of Object.entries(matrix)) {
-    // Normalize language name: capitalize first letter
-    const normalized = lang.charAt(0).toUpperCase() + lang.slice(1);
+    // Normalize language name to PascalCase (GitHub API returns PascalCase like "TypeScript")
+    const normalized = normalizeLangName(lang);
     result[normalized] = {
       sast: entry.sast ?? [],
       sca: entry.sca ?? [],
@@ -338,31 +365,12 @@ export async function generateSecurityPlan(
   return buildPlanFromAnalysis(analysis, input, data);
 }
 
-/** Pure function: build plan from analysis + scanner data (testable). */
-export function buildPlanFromAnalysis(
+/** Collect infrastructure-specific scanner recommendations. */
+function collectInfraRecs(
   analysis: RepoAnalysis,
-  input: BuildPlanOptions,
-  data?: ScannerData
-): RepoSecurityPlan {
-  const resolved = data ?? FALLBACK_SCANNER_DATA;
-  const maxScanners = input.maxScanners ?? 10;
-  const categoryFilter = input.categories ? new Set(input.categories) : null;
-  const ctx: RecContext = {
-    existing: analysis.securityTooling,
-    ciProvider: analysis.ciProvider,
-    language: analysis.language,
-    categoryFilter,
-    maxScanners,
-    scanners: resolved.scanners,
-  };
-
-  const recs: ScannerRecommendation[] = [];
-  const langMap = analysis.language !== null ? resolved.languageMap[analysis.language] : undefined;
-
-  if (langMap) {
-    collectLanguageRecs(langMap, recs, ctx);
-  }
-
+  recs: ScannerRecommendation[],
+  ctx: RecContext
+): void {
   if (analysis.hasDockerfile) {
     tryAddScanner(
       'trivy',
@@ -372,7 +380,6 @@ export function buildPlanFromAnalysis(
       ctx
     );
   }
-
   if (analysis.hasHelmCharts) {
     tryAddScanner(
       'checkov',
@@ -382,14 +389,32 @@ export function buildPlanFromAnalysis(
       ctx
     );
   }
+}
+
+/** Pure function: build plan from analysis + scanner data (testable). */
+export function buildPlanFromAnalysis(
+  analysis: RepoAnalysis,
+  input: BuildPlanOptions,
+  data?: ScannerData
+): RepoSecurityPlan {
+  const resolved = data ?? FALLBACK_SCANNER_DATA;
+  const ctx: RecContext = {
+    existing: analysis.securityTooling,
+    ciProvider: analysis.ciProvider,
+    language: analysis.language,
+    categoryFilter: input.categories ? new Set(input.categories) : null,
+    maxScanners: input.maxScanners ?? 10,
+    scanners: resolved.scanners,
+  };
+
+  const recs: ScannerRecommendation[] = [];
+  const langMap = analysis.language !== null ? resolved.languageMap[analysis.language] : undefined;
+  if (langMap) collectLanguageRecs(langMap, recs, ctx);
+  collectInfraRecs(analysis, recs, ctx);
 
   const conflicts = detectConflicts(recs, resolved.scanners);
   const coverage = buildCoverage(recs, analysis.securityTooling, resolved.scanners);
   const uncovered = coverage.filter((c) => !c.covered).map((c) => c.category);
-  const gapsSummary = [
-    ...analysis.gaps,
-    ...(uncovered.length > 0 ? [`Uncovered categories: ${uncovered.join(', ')}`] : []),
-  ];
 
   return {
     repo: analysis.name,
@@ -400,6 +425,9 @@ export function buildPlanFromAnalysis(
     recommendations: recs,
     conflicts,
     coverage,
-    gapsSummary,
+    gapsSummary: [
+      ...analysis.gaps,
+      ...(uncovered.length > 0 ? [`Uncovered categories: ${uncovered.join(', ')}`] : []),
+    ],
   };
 }

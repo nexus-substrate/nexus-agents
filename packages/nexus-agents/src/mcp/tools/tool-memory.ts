@@ -637,6 +637,12 @@ export class ToolMemoryManager {
     return this.mobimem.getStats();
   }
 
+  /** Returns the count of beliefs in the belief memory backend. */
+  getBeliefCount(): number {
+    const data = this.beliefs.exportData();
+    return data.beliefs.size;
+  }
+
   /**
    * Run MobiMem maintenance (eviction and cleanup).
    * Safe to call even if MobiMem is unavailable.

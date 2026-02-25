@@ -23,6 +23,7 @@ const mockIsAgenticMemoryAvailable = vi.fn();
 const mockIsAdaptiveMemoryAvailable = vi.fn();
 const mockIsMobiMemAvailable = vi.fn();
 const mockIsDecayManagerAvailable = vi.fn();
+const mockGetBeliefCount = vi.fn();
 
 vi.mock('./tool-memory.js', () => ({
   getToolMemory: () => ({
@@ -34,6 +35,7 @@ vi.mock('./tool-memory.js', () => ({
     isAdaptiveMemoryAvailable: mockIsAdaptiveMemoryAvailable,
     isMobiMemAvailable: mockIsMobiMemAvailable,
     isDecayManagerAvailable: mockIsDecayManagerAvailable,
+    getBeliefCount: mockGetBeliefCount,
   }),
 }));
 
@@ -109,6 +111,7 @@ describe('memory-stats', () => {
       mockIsAdaptiveMemoryAvailable.mockReset();
       mockIsMobiMemAvailable.mockReset();
       mockIsDecayManagerAvailable.mockReset();
+      mockGetBeliefCount.mockReset();
 
       // Defaults: no backends available
       mockGetRelevantLearnings.mockReturnValue(undefined);
@@ -119,6 +122,7 @@ describe('memory-stats', () => {
       mockIsAdaptiveMemoryAvailable.mockReturnValue(false);
       mockIsMobiMemAvailable.mockReturnValue(false);
       mockIsDecayManagerAvailable.mockReturnValue(false);
+      mockGetBeliefCount.mockReturnValue(0);
 
       const mockServer = {
         registerTool: (_name: string, _schema: unknown, handler: SdkCallback) => {

@@ -272,6 +272,30 @@ describe('security-scan workflow', () => {
     expect(vulns.some((v) => v.includes('CWE-79'))).toBe(true);
   });
 
+  it('detects CWE-79 (XSS via document.write) (#1178)', async () => {
+    const code = 'document.write(userInput);\n';
+    const result = await runWorkflow('security-scan', { code });
+
+    const vulns = result.finalState['vulnerabilities'] as string[];
+    expect(vulns.some((v) => v.includes('CWE-79'))).toBe(true);
+  });
+
+  it('detects CWE-79 (XSS via outerHTML) (#1178)', async () => {
+    const code = 'element.outerHTML = userInput;\n';
+    const result = await runWorkflow('security-scan', { code });
+
+    const vulns = result.finalState['vulnerabilities'] as string[];
+    expect(vulns.some((v) => v.includes('CWE-79'))).toBe(true);
+  });
+
+  it('detects CWE-79 (reflected XSS in res.send) (#1178)', async () => {
+    const code = 'res.send(`<h1>${name}</h1>`);\n';
+    const result = await runWorkflow('security-scan', { code });
+
+    const vulns = result.finalState['vulnerabilities'] as string[];
+    expect(vulns.some((v) => v.includes('CWE-79'))).toBe(true);
+  });
+
   it('detects CWE-22 (path traversal) (#1137)', async () => {
     const code = 'fs.readFile(req.params.path, cb);';
     const result = await runWorkflow('security-scan', { code });

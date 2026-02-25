@@ -230,6 +230,27 @@ describe('PipelineRunner trace integration', () => {
     expect(parsed['eventType']).toBe('pipeline.started');
   });
 
+  it('emits stage.completed events for each node (#1179)', async () => {
+    const runner = new PipelineRunner();
+    const bus = new EventBus();
+    const task = makeTask();
+    const plan = makePlan();
+    const compileResult = runner.compile(plan);
+    expect(compileResult.ok).toBe(true);
+    if (!compileResult.ok) return;
+
+    await runner.execute(compileResult.value, task, {
+      eventBus: bus,
+      runsDir: tempDir,
+    });
+
+    const stageEvents = bus.query({ type: 'stage.completed' });
+    expect(stageEvents.length).toBeGreaterThanOrEqual(1);
+    const first = stageEvents[0];
+    expect(first).toBeDefined();
+    expect(first?.type).toBe('stage.completed');
+  });
+
   it('does not write trace when eventBus is not provided', async () => {
     const runner = new PipelineRunner();
     const task = makeTask();

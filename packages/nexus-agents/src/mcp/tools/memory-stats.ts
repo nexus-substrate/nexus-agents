@@ -132,9 +132,9 @@ async function collectMemoryStats(
     sessionStats.learningsCount = learnings.split('\n').filter((l) => l.trim() !== '').length;
   }
 
-  // Collect belief stats
+  // Collect belief stats — read actual count from belief backend
   const beliefStats: BeliefStats = {
-    beliefsCount: 0,
+    beliefsCount: toolMemory.getBeliefCount(),
     available: true,
   };
 
