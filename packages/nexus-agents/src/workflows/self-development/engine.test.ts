@@ -83,17 +83,17 @@ describe('event listeners', () => {
 
   it('adds event listener', () => {
     const listener = vi.fn();
-    engine.addEventListener(listener);
-    // No way to check internally, but should not throw
-    expect(true).toBe(true);
+    expect(() => {
+      engine.addEventListener(listener);
+    }).not.toThrow();
   });
 
   it('removes event listener', () => {
     const listener = vi.fn();
     engine.addEventListener(listener);
-    engine.removeEventListener(listener);
-    // No way to check internally, but should not throw
-    expect(true).toBe(true);
+    expect(() => {
+      engine.removeEventListener(listener);
+    }).not.toThrow();
   });
 
   it('calls listener on workflow start', async () => {

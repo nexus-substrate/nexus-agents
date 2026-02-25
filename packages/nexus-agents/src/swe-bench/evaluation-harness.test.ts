@@ -111,10 +111,7 @@ describe('EvaluationHarness', () => {
 
   describe('cancel', () => {
     it('should cancel evaluation', async () => {
-      await harness.cancel();
-
-      // Should not throw
-      expect(true).toBe(true);
+      await expect(harness.cancel()).resolves.toBeUndefined();
     });
   });
 });

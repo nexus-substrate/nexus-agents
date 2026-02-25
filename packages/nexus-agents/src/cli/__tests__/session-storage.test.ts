@@ -273,8 +273,9 @@ describe('SQLiteSessionStorage', () => {
 
     it('should be idempotent', () => {
       storage.close();
-      storage.close();
-      expect(true).toBe(true);
+      expect(() => {
+        storage.close();
+      }).not.toThrow();
     });
   });
 });

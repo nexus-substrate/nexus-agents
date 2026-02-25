@@ -298,9 +298,7 @@ describe('voter-execution', () => {
     });
 
     it('should resolve without value', async () => {
-      await delay(1);
-      // delay returns void Promise, just verify it resolves
-      expect(true).toBe(true);
+      await expect(delay(1)).resolves.toBeUndefined();
     });
   });
 

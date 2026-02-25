@@ -422,8 +422,7 @@ describe('AuditLogger', () => {
   describe('close', () => {
     it('should be idempotent', async () => {
       await logger.close();
-      await logger.close();
-      expect(true).toBe(true);
+      await expect(logger.close()).resolves.toBeUndefined();
     });
 
     it('should flush pending events on close', async () => {

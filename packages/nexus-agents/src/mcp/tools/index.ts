@@ -308,6 +308,10 @@ export {
 } from './tool-annotations.js';
 
 export { createAnnotationsProxy } from './annotation-proxy.js';
+export {
+  createToolObservabilityProxy,
+  resetInvocationCounter,
+} from './tool-observability-proxy.js';
 
 /**
  * Options for tool registration.

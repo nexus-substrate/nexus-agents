@@ -926,9 +926,9 @@ describe('HybridMemoryBackend', () => {
       const { backend } = createTestBackend({ markdownDir: tmpDir });
 
       backend.close();
-      backend.close(); // Should not throw
-
-      expect(true).toBe(true);
+      expect(() => {
+        backend.close();
+      }).not.toThrow();
     });
   });
 

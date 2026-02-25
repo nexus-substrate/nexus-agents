@@ -103,10 +103,9 @@ describe('TestRunner', () => {
 
   describe('cancel', () => {
     it('should set cancelled flag', () => {
-      runner.cancel();
-
-      // Cannot directly check internal state, but cancel should not throw
-      expect(true).toBe(true);
+      expect(() => {
+        runner.cancel();
+      }).not.toThrow();
     });
   });
 });

@@ -104,11 +104,15 @@ describe('createMcpNotifier', () => {
 
 describe('NOOP_NOTIFIER', () => {
   it('has info/debug/warn methods that do nothing', () => {
-    NOOP_NOTIFIER.info('test', {});
-    NOOP_NOTIFIER.debug('test', {});
-    NOOP_NOTIFIER.warn('test', {});
-    // No-op: methods complete without error
-    expect(true).toBe(true);
+    expect(() => {
+      NOOP_NOTIFIER.info('test', {});
+    }).not.toThrow();
+    expect(() => {
+      NOOP_NOTIFIER.debug('test', {});
+    }).not.toThrow();
+    expect(() => {
+      NOOP_NOTIFIER.warn('test', {});
+    }).not.toThrow();
   });
 });
 

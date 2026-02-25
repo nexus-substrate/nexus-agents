@@ -72,6 +72,8 @@ export {
   type EventHandler,
   type Unsubscribe,
   type IEventBus,
+  type ToolInvokedEvent,
+  type ToolCompletedEvent,
 } from './event-types.js';
 
 export {

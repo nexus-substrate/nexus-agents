@@ -584,7 +584,7 @@ describe('Symlink Following (Documentation)', () => {
     // In production, call fs.realpath AFTER path validation
     // fs.realpath would resolve symlinks to their actual target
     // This allows detecting if a "safe" symlink points to a dangerous location
-    expect(true).toBe(true); // Documentation test
+    expect(typeof path.resolve).toBe('function'); // Documentation test — fs.realpath needed for symlink resolution
   });
 });
 

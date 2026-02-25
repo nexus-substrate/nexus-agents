@@ -215,6 +215,11 @@ vi.mock('./mcp/tools/annotation-proxy.js', () => ({
   createAnnotationsProxy: (server: unknown) => server,
 }));
 
+// Mock observability proxy as identity (tested separately in tool-observability-proxy.test.ts)
+vi.mock('./mcp/tools/tool-observability-proxy.js', () => ({
+  createToolObservabilityProxy: (server: unknown) => server,
+}));
+
 // ============================================================================
 // Mock helpers
 // ============================================================================

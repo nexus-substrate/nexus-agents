@@ -61,6 +61,8 @@ export {
   type Unsubscribe,
   type IEventBus,
   type EventBusOptions,
+  type ToolInvokedEvent,
+  type ToolCompletedEvent,
   // Artifact store
   ArtifactStore,
   getPipelineArtifactStore,

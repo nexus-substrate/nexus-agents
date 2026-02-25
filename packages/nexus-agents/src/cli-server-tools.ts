@@ -74,6 +74,7 @@ import {
 import { createGatewayServerProxy, type GatewayConfig } from './mcp/gateway/index.js';
 import { getSharedCliCache } from './mcp/middleware/adapter-availability.js';
 import { createAnnotationsProxy } from './mcp/tools/annotation-proxy.js';
+import { createToolObservabilityProxy } from './mcp/tools/tool-observability-proxy.js';
 
 /**
  * Options for MCP tool registration.
@@ -540,12 +541,13 @@ export function registerMcpTools(options: RegisterMcpToolsOptions): void {
     gatewayConfig,
   } = options;
 
-  // Wrap server with gateway proxy (Issue #896) then annotations proxy (Issue #993)
+  // Wrap server with gateway proxy (Issue #896) → annotations proxy (Issue #993) → observability (Issue #1186)
   const gatewayServer =
     gatewayConfig !== undefined ? createGatewayServerProxy(server, gatewayConfig) : server;
   const annotatedServer = createAnnotationsProxy(gatewayServer);
+  const observableServer = createToolObservabilityProxy(annotatedServer, getPipelineEventBus());
 
-  const toolInfra = registerTools(annotatedServer, { logger });
+  const toolInfra = registerTools(observableServer, { logger });
 
   const rateLimitConfig = securityConfig?.rateLimit;
   const perToolConfig = rateLimitConfig?.perTool;
@@ -558,7 +560,7 @@ export function registerMcpTools(options: RegisterMcpToolsOptions): void {
 
   initV2PipelineSubsystems(logger);
 
-  const gatewayOptions = { ...options, server: annotatedServer };
+  const gatewayOptions = { ...options, server: observableServer };
   const ctx = createToolContext(gatewayOptions, toolInfra, rateLimiterFactory);
   registerToolCategories(ctx);
 

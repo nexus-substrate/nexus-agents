@@ -389,14 +389,15 @@ describe('cancellation', () => {
 
     const task = createTestTask();
 
-    // Execute multiple times with different signals
+    // Execute multiple times with different signals — should not throw or leak
+    let executions = 0;
     for (let i = 0; i < 3; i++) {
       const controller = new AbortController();
       await orchestrator.execute({ task, signal: controller.signal });
+      executions++;
     }
 
-    // Should not throw or leak - this test passes if no errors occur
-    expect(true).toBe(true);
+    expect(executions).toBe(3);
   });
 });
 

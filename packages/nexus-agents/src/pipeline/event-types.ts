@@ -31,6 +31,8 @@ export const PIPELINE_EVENT_TYPES = [
   'routing.decision',
   'learning.threshold_updated',
   'learning.trend_detected',
+  'tool.invoked',
+  'tool.completed',
 ] as const;
 
 export type PipelineEventType = (typeof PIPELINE_EVENT_TYPES)[number];
@@ -181,6 +183,22 @@ interface LearningTrendDetectedEvent extends BaseEvent {
   readonly confidence: number;
 }
 
+/** MCP tool lifecycle events (Issue #1186). */
+export interface ToolInvokedEvent extends BaseEvent {
+  readonly type: 'tool.invoked';
+  readonly toolName: string;
+  readonly invocationId: string;
+}
+
+export interface ToolCompletedEvent extends BaseEvent {
+  readonly type: 'tool.completed';
+  readonly toolName: string;
+  readonly invocationId: string;
+  readonly durationMs: number;
+  readonly success: boolean;
+  readonly errorMessage?: string;
+}
+
 // ============================================================================
 // Union Type
 // ============================================================================
@@ -203,7 +221,9 @@ export type PipelineEvent =
   | ModelCalledEvent
   | RoutingDecisionEvent
   | LearningThresholdUpdatedEvent
-  | LearningTrendDetectedEvent;
+  | LearningTrendDetectedEvent
+  | ToolInvokedEvent
+  | ToolCompletedEvent;
 
 // ============================================================================
 // Event Bus Interface

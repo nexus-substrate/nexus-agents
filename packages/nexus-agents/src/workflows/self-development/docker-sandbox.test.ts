@@ -51,8 +51,8 @@ describe('docker-sandbox', () => {
           expect(result.error.message).toContain('Docker is not available');
         }
       } else {
-        // Skip this test when Docker IS available
-        expect(true).toBe(true);
+        // Docker IS available — no failure expected
+        expect(dockerAvailable).toBe(true);
       }
     });
 
