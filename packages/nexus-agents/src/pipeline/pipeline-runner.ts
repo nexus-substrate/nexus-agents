@@ -9,7 +9,9 @@
 import { executeGraph } from '../orchestration/graph/graph-executor.js';
 
 import { compilePlan } from './plan-compiler.js';
+import type { PlanCompileOptions } from './plan-compiler.js';
 import { TraceWriter } from './trace-writer.js';
+import { getPipelinePluginRegistry } from './core-plugins.js';
 
 import type {
   CompiledGraph,
@@ -84,8 +86,11 @@ type ExecuteResult =
  */
 export class PipelineRunner {
   /** Compiles a PlanContract into a CompiledPipeline. */
-  compile(plan: PlanContract): CompileResult {
-    const graphResult = compilePlan(plan);
+  compile(plan: PlanContract, options?: PlanCompileOptions): CompileResult {
+    const compileOpts: PlanCompileOptions = {
+      pluginRegistry: options?.pluginRegistry ?? getPipelinePluginRegistry(),
+    };
+    const graphResult = compilePlan(plan, compileOpts);
     if (!graphResult.ok) {
       return { ok: false, error: graphResult.error };
     }

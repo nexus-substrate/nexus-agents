@@ -5,7 +5,11 @@
  */
 import { describe, it, expect } from 'vitest';
 
-import { ArtifactStore } from './artifact-store.js';
+import {
+  ArtifactStore,
+  getPipelineArtifactStore,
+  resetPipelineArtifactStore,
+} from './artifact-store.js';
 import type { Artifact, IArtifactStore } from './artifact-store.js';
 
 // ============================================================================
@@ -138,6 +142,22 @@ describe('ArtifactStore', () => {
       expect(typeof store.get).toBe('function');
       expect(typeof store.query).toBe('function');
       expect(typeof store.provenance).toBe('function');
+    });
+  });
+
+  describe('getPipelineArtifactStore (#1179)', () => {
+    it('returns the same instance on repeated calls', () => {
+      resetPipelineArtifactStore();
+      const a = getPipelineArtifactStore();
+      const b = getPipelineArtifactStore();
+      expect(a).toBe(b);
+    });
+
+    it('returns a new instance after reset', () => {
+      const a = getPipelineArtifactStore();
+      resetPipelineArtifactStore();
+      const b = getPipelineArtifactStore();
+      expect(a).not.toBe(b);
     });
   });
 });

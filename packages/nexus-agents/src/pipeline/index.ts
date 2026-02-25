@@ -34,7 +34,7 @@ export {
   type TaskToolResponse,
 } from './v1-adapters.js';
 
-export { compilePlan } from './plan-compiler.js';
+export { compilePlan, type PlanCompileOptions } from './plan-compiler.js';
 
 export {
   PipelineRunner,
@@ -83,6 +83,8 @@ export {
 
 export {
   ArtifactStore,
+  getPipelineArtifactStore,
+  resetPipelineArtifactStore,
   type Artifact,
   type ArtifactFilter,
   type ProvenanceEntry,
@@ -117,6 +119,8 @@ export {
   CLI_EXECUTOR_PLUGIN,
   registerCorePlugins,
   createCorePluginRegistry,
+  getPipelinePluginRegistry,
+  resetPipelinePluginRegistry,
 } from './core-plugins.js';
 export type { CorePluginRegistrationResult } from './core-plugins.js';
 

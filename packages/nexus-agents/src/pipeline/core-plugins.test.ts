@@ -12,6 +12,8 @@ import {
   CLI_EXECUTOR_PLUGIN,
   registerCorePlugins,
   createCorePluginRegistry,
+  getPipelinePluginRegistry,
+  resetPipelinePluginRegistry,
 } from './core-plugins.js';
 import { PluginRegistry } from './plugin-registry.js';
 
@@ -118,6 +120,33 @@ describe('createCorePluginRegistry', () => {
     createCorePluginRegistry();
     const elapsed = Date.now() - start;
     expect(elapsed).toBeLessThan(50);
+  });
+});
+
+// ============================================================================
+// Singleton Tests (#1179)
+// ============================================================================
+
+describe('getPipelinePluginRegistry', () => {
+  it('returns the same instance on repeated calls', () => {
+    resetPipelinePluginRegistry();
+    const a = getPipelinePluginRegistry();
+    const b = getPipelinePluginRegistry();
+    expect(a).toBe(b);
+  });
+
+  it('returns a frozen registry with 3 core plugins', () => {
+    resetPipelinePluginRegistry();
+    const registry = getPipelinePluginRegistry();
+    expect(registry.frozen).toBe(true);
+    expect(registry.listEnabled()).toHaveLength(3);
+  });
+
+  it('returns a new instance after reset', () => {
+    const a = getPipelinePluginRegistry();
+    resetPipelinePluginRegistry();
+    const b = getPipelinePluginRegistry();
+    expect(a).not.toBe(b);
   });
 });
 

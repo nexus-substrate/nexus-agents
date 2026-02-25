@@ -143,6 +143,27 @@ export class ArtifactStore implements IArtifactStore {
 // Filter Matching
 // ============================================================================
 
+// ============================================================================
+// Global Singleton (#1179)
+// ============================================================================
+
+let globalArtifactStore: IArtifactStore | undefined;
+
+/** Returns the global ArtifactStore (created lazily on first call). */
+export function getPipelineArtifactStore(): IArtifactStore {
+  globalArtifactStore ??= new ArtifactStore();
+  return globalArtifactStore;
+}
+
+/** Resets the global ArtifactStore (for testing). */
+export function resetPipelineArtifactStore(): void {
+  globalArtifactStore = undefined;
+}
+
+// ============================================================================
+// Filter Matching
+// ============================================================================
+
 function matchesArtifactFilter(artifact: Artifact, filter: ArtifactFilter): boolean {
   if (filter.type !== undefined && artifact.type !== filter.type) {
     return false;

@@ -211,7 +211,7 @@ function buildPlan(task: TaskContract): PlanContract {
       {
         id: 'route-model',
         type: 'route',
-        pluginId: 'delegate-router',
+        pluginId: 'nexus:model-router',
         inputArtifacts: [],
         outputArtifacts: ['routing-decision'],
         dependencies: [],

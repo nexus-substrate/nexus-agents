@@ -130,3 +130,20 @@ export function createCorePluginRegistry(): PluginRegistry {
   registerCorePlugins(registry);
   return registry;
 }
+
+// ============================================================================
+// Global Singleton (#1179)
+// ============================================================================
+
+let globalPluginRegistry: PluginRegistry | undefined;
+
+/** Returns the global PluginRegistry (created lazily on first call). */
+export function getPipelinePluginRegistry(): PluginRegistry {
+  globalPluginRegistry ??= createCorePluginRegistry();
+  return globalPluginRegistry;
+}
+
+/** Resets the global PluginRegistry (for testing). */
+export function resetPipelinePluginRegistry(): void {
+  globalPluginRegistry = undefined;
+}

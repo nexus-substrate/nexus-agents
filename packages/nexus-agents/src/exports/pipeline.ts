@@ -30,6 +30,7 @@ export {
   type TaskToolResponse,
   // Plan compiler
   compilePlan,
+  type PlanCompileOptions,
   // Pipeline runner
   PipelineRunner,
   type CompiledPipeline,
@@ -62,6 +63,8 @@ export {
   type EventBusOptions,
   // Artifact store
   ArtifactStore,
+  getPipelineArtifactStore,
+  resetPipelineArtifactStore,
   type Artifact,
   type ArtifactFilter,
   type ProvenanceEntry,
@@ -88,6 +91,8 @@ export {
   CORE_PLUGINS,
   registerCorePlugins,
   createCorePluginRegistry,
+  getPipelinePluginRegistry,
+  resetPipelinePluginRegistry,
   type CorePluginRegistrationResult,
   // EventBus bridge (Issue #922, Phase C)
   createEventBusBridge,

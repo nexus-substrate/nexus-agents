@@ -6,6 +6,7 @@
 import { describe, it, expect } from 'vitest';
 
 import { compilePlan } from './plan-compiler.js';
+import { createCorePluginRegistry } from './core-plugins.js';
 import type { PlanContract, StageSpec } from './task-contract.js';
 
 // ============================================================================
@@ -146,5 +147,26 @@ describe('compilePlan', () => {
     const plan = makePlan({ stages: [] });
     const result = compilePlan(plan);
     expect(result.ok).toBe(false);
+  });
+
+  it('resolves plugins from registry when provided (#1179)', () => {
+    const registry = createCorePluginRegistry();
+    const plan = makePlan({
+      stages: [makeStage({ id: 'route', type: 'route', pluginId: 'nexus:model-router' })],
+    });
+    const result = compilePlan(plan, { pluginRegistry: registry });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.nodes.has('route')).toBe(true);
+    }
+  });
+
+  it('falls back to placeholder when plugin not found (#1179)', () => {
+    const registry = createCorePluginRegistry();
+    const plan = makePlan({
+      stages: [makeStage({ id: 'custom', pluginId: 'unknown:plugin' })],
+    });
+    const result = compilePlan(plan, { pluginRegistry: registry });
+    expect(result.ok).toBe(true);
   });
 });

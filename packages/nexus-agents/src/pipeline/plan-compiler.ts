@@ -13,11 +13,19 @@ import { START, END } from '../orchestration/graph/graph-types.js';
 import { formatCompileError } from '../orchestration/graph/graph-types.js';
 import type { CompiledGraph, GraphState } from '../orchestration/graph/graph-types.js';
 import type { PlanContract, StageSpec, PolicyGateSpec } from './task-contract.js';
+import type { IPluginRegistry } from './plugin-types.js';
 
 /** Result of plan compilation. */
 type CompileResult =
   | { readonly ok: true; readonly value: CompiledGraph }
   | { readonly ok: false; readonly error: string };
+
+/** Options for plan compilation. */
+export interface PlanCompileOptions {
+  /** Plugin registry for resolving stage handlers. When provided, stages with
+   *  a registered pluginId will use the plugin's execute() method. */
+  readonly pluginRegistry?: IPluginRegistry;
+}
 
 // ============================================================================
 // Public API
@@ -26,13 +34,13 @@ type CompileResult =
 /**
  * Compiles a PlanContract into a CompiledGraph.
  *
- * - Each stage becomes a node with a placeholder handler
+ * - Each stage becomes a node with a handler (plugin-backed or placeholder)
  * - Dependencies become fixed edges
  * - Policy gates become gate nodes between stages
  * - Stages with no dependencies get edges from START
  * - Stages with no dependents get edges to END
  */
-export function compilePlan(plan: PlanContract): CompileResult {
+export function compilePlan(plan: PlanContract, options?: PlanCompileOptions): CompileResult {
   if (plan.stages.length === 0) {
     return { ok: false, error: 'Plan must have at least one stage' };
   }
@@ -52,7 +60,7 @@ export function compilePlan(plan: PlanContract): CompileResult {
 
   const builder = new GraphBuilder();
   addPipelineState(builder);
-  addStageNodes(builder, plan.stages);
+  addStageNodes(builder, plan.stages, options?.pluginRegistry);
   addGateNodes(builder, plan.policyGates);
   addEdges(builder, plan.stages, plan.policyGates);
 
@@ -77,12 +85,28 @@ function addPipelineState(builder: GraphBuilder): void {
 }
 
 /**
- * Creates a placeholder handler for a pipeline stage.
- * The real handler will be injected by the PipelineRunner.
+ * Creates a handler for a pipeline stage.
+ * Resolves from PluginRegistry when available; falls back to placeholder.
  */
 function createStageHandler(
-  stage: StageSpec
+  stage: StageSpec,
+  registry?: IPluginRegistry
 ): (state: Readonly<GraphState>) => Promise<Partial<GraphState>> {
+  const plugin = registry?.resolve(stage.pluginId);
+  if (plugin !== undefined) {
+    return async (_state: Readonly<GraphState>) => {
+      const ctx = { signal: AbortSignal.timeout(30_000), task: {} as never, config: stage.config };
+      const result = await plugin.execute(stage, ctx);
+      return {
+        currentStage: stage.id,
+        stageResults: [{ stageId: stage.id, status: result.success ? 'completed' : 'failed' }],
+        ...(result.outputArtifacts.length > 0
+          ? { artifacts: result.outputArtifacts.map((a) => a.id) }
+          : {}),
+      };
+    };
+  }
+  // Placeholder when no plugin registered for this stage's pluginId
   return (_state: Readonly<GraphState>) =>
     Promise.resolve({
       currentStage: stage.id,
@@ -102,9 +126,13 @@ function createGateHandler(
 }
 
 /** Adds stage nodes to the graph builder. */
-function addStageNodes(builder: GraphBuilder, stages: readonly StageSpec[]): void {
+function addStageNodes(
+  builder: GraphBuilder,
+  stages: readonly StageSpec[],
+  registry?: IPluginRegistry
+): void {
   for (const stage of stages) {
-    builder.addNode(stage.id, createStageHandler(stage));
+    builder.addNode(stage.id, createStageHandler(stage, registry));
   }
 }
 
