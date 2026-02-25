@@ -49,6 +49,7 @@ export function createToolObservabilityProxy(server: McpServer, eventBus: IEvent
       if (prop === 'registerTool') {
         return (name: string, config: ToolConfig, cb: ToolCallback): unknown => {
           const wrappedCb = wrapWithObservability(name, cb, eventBus);
+          // SDK generic boundary: registerTool uses overloaded signatures that can't be matched from Proxy
           return target.registerTool(name, config as never, wrappedCb as never);
         };
       }

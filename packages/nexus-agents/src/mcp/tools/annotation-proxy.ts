@@ -44,6 +44,7 @@ export function createAnnotationsProxy(server: McpServer): McpServer {
               ? { ...config, annotations }
               : config;
 
+          // SDK generic boundary: registerTool uses overloaded signatures that can't be matched from Proxy
           return target.registerTool(name, enrichedConfig as never, cb as never);
         };
       }
