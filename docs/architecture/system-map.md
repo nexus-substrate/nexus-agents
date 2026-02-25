@@ -11,7 +11,7 @@
 │    MCP Server      │    CLI Commands    │        REST API (planned)          │
 │  (cli-server.ts)   │    (cli.ts)        │       (api-gateway.ts)             │
 │                    │                    │                                    │
-│  8 MCP Tools:      │  30+ Commands:     │  Future:                           │
+│  24 MCP Tools:     │  30+ Commands:     │  Future:                           │
 │  • orchestrate     │  • doctor          │  • /orchestrate                    │
 │  • create_expert   │  • setup           │  • /experts                        │
 │  • execute_expert  │  • orchestrate     │  • /workflows                      │
@@ -33,7 +33,7 @@
 │  │ Master          │    │ • Factory       │    │ • Parser        │          │
 │  │ Orchestrator    │    │ • Registry      │    │ • Planner       │          │
 │  │                 │    │ • Selector      │    │ • Executor      │          │
-│  │ Decomposes      │    │ • 5 Built-in    │    │ • LATTS         │          │
+│  │ Decomposes      │    │ • 10 Built-in   │    │ • LATTS         │          │
 │  │ tasks, assigns  │    │   Experts       │    │ • AFlow         │          │
 │  │ experts,        │    │                 │    │ • Self-Evolving │          │
 │  │ synthesizes     │    │                 │    │                 │          │
@@ -92,14 +92,14 @@
 │                           EXECUTION LAYER                                    │
 ├──────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
-│  ┌───────────────┐  ┌───────────────┐  ┌───────────────┐  ┌──────────────┐ │
-│  │    Claude     │  │    Gemini     │  │     Codex     │  │    Ollama    │ │
-│  │   Adapter     │  │   Adapter     │  │    Adapter    │  │   Adapter    │ │
-│  │               │  │               │  │               │  │              │ │
-│  │ claude-cli    │  │ gemini-cli    │  │ openai-codex  │  │ ollama serve │ │
-│  │ Streaming     │  │ Multimodal    │  │ Code-focused  │  │ Local deploy │ │
-│  │ Cache control │  │ 1M context    │  │ Fast          │  │              │ │
-│  └───────────────┘  └───────────────┘  └───────────────┘  └──────────────┘ │
+│  ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌────────────┐           │
+│  │   Claude   │  │   Gemini   │  │    Codex   │  │  OpenCode  │           │
+│  │  Adapter   │  │  Adapter   │  │   Adapter  │  │  Adapter   │           │
+│  │            │  │            │  │            │  │            │           │
+│  │ claude-cli │  │ gemini-cli │  │ openai-    │  │ opencode   │           │
+│  │ Streaming  │  │ Multimodal │  │ codex      │  │ Multi-     │           │
+│  │ Cache ctrl │  │ 1M context │  │ Code focus │  │ provider   │           │
+│  └────────────┘  └────────────┘  └────────────┘  └────────────┘           │
 │                                                                              │
 │  ┌─────────────────────────────────────────────────────────────────┐        │
 │  │                      Base Adapter                                │        │
@@ -203,7 +203,7 @@ Entry points for all system interactions:
 Agent coordination and task decomposition:
 
 - **Orchestrator**: Master orchestrator, decomposes tasks, assigns experts
-- **Expert System**: 5 built-in experts with factory/registry pattern
+- **Expert System**: 10 built-in experts with factory/registry pattern
 - **Workflow Engine**: YAML-based workflow execution with parallelism
 - **Consensus Engine**: Multi-agent voting and agreement protocols
 - **SICA**: Self-Improving Coding Agent integration
@@ -222,7 +222,7 @@ Model adapters and response handling:
 - **Claude Adapter**: Streaming, cache control, vision
 - **Gemini Adapter**: Multimodal, 1M context
 - **Codex Adapter**: Code-focused, fast execution
-- **Ollama Adapter**: Local model deployment
+- **OpenCode Adapter**: Multi-provider model access
 
 ### Learning Layer
 
@@ -313,5 +313,5 @@ User Request
 
 ---
 
-_Last updated: 2026-01-29_
+_Last updated: 2026-02-25_
 _Source: System Mandate - Loop A: Discovery + Wiring Graph Generation_

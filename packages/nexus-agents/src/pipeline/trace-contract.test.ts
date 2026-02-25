@@ -8,7 +8,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, mkdir as fsMkdir, chmod } from 'node:fs/promises';
+import { existsSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -326,5 +327,100 @@ describe('TraceWriter', () => {
     });
 
     await writer.flush();
+  });
+
+  it('throws on write failure (not silently swallowed)', async () => {
+    const bus = new EventBus();
+    const runId = 'test-run-fail';
+    const runDir = join(tempDir, runId);
+    // Create dir then make it read-only so writeFile fails
+    await fsMkdir(runDir, { recursive: true });
+    await chmod(runDir, 0o444);
+
+    const writer = new TraceWriter(bus, {
+      runsDir: tempDir,
+      runId,
+    });
+
+    bus.emit({
+      type: 'task.created',
+      taskId: 'task-1',
+      timestamp: Date.now(),
+    });
+
+    await expect(writer.flush()).rejects.toThrow();
+
+    // Restore for cleanup
+    await chmod(runDir, 0o755);
+    writer.stop();
+  });
+
+  it('does not leave temp files on flush failure', async () => {
+    const bus = new EventBus();
+    const runId = 'test-run-cleanup';
+    const runDir = join(tempDir, runId);
+    // Create dir then make read-only to force write failure
+    await fsMkdir(runDir, { recursive: true });
+    await chmod(runDir, 0o444);
+
+    const writer = new TraceWriter(bus, {
+      runsDir: tempDir,
+      runId,
+    });
+
+    bus.emit({
+      type: 'task.created',
+      taskId: 'task-1',
+      timestamp: Date.now(),
+    });
+
+    try {
+      await writer.flush();
+    } catch {
+      // Expected to throw
+    }
+
+    // Restore permissions to read dir contents
+    await chmod(runDir, 0o755);
+
+    // Verify no temp files left behind
+    if (existsSync(runDir)) {
+      const files = readdirSync(runDir);
+      const tmpFiles = files.filter((f) => f.includes('.tmp.'));
+      expect(tmpFiles).toHaveLength(0);
+    }
+
+    writer.stop();
+  });
+
+  it('preserves buffer on flush failure (allows retry)', async () => {
+    const bus = new EventBus();
+    const runId = 'test-run-retry';
+    const runDir = join(tempDir, runId);
+    await fsMkdir(runDir, { recursive: true });
+    await chmod(runDir, 0o444);
+
+    const writer = new TraceWriter(bus, {
+      runsDir: tempDir,
+      runId,
+    });
+
+    bus.emit({
+      type: 'task.created',
+      taskId: 'task-1',
+      timestamp: Date.now(),
+    });
+
+    // First flush fails
+    await expect(writer.flush()).rejects.toThrow();
+
+    // Buffer should still have events (not cleared on failure)
+    const writerRecord = writer as unknown as Record<string, unknown>;
+    const buffer = writerRecord['buffer'] as unknown[];
+    expect(buffer.length).toBeGreaterThan(0);
+
+    // Restore and cleanup
+    await chmod(runDir, 0o755);
+    writer.stop();
   });
 });

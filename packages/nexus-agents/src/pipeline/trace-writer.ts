@@ -7,7 +7,7 @@
  * @module pipeline/trace-writer
  */
 
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile, rename, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { createLogger } from '../core/index.js';
@@ -53,29 +53,41 @@ export class TraceWriter {
     });
   }
 
-  /** Flush buffered events to disk. */
+  /** Flush buffered events to disk. Throws on write failure. */
   async flush(): Promise<void> {
     if (this.buffer.length === 0) return;
 
+    await mkdir(this.runDir, { recursive: true });
+
+    const lines = this.buffer.map((e) => JSON.stringify(e)).join('\n');
+
+    // Atomic write: trace.jsonl via tmp+rename
+    const tracePath = join(this.runDir, 'trace.jsonl');
+    const traceTmp = `${tracePath}.tmp.${String(process.pid)}`;
     try {
-      await mkdir(this.runDir, { recursive: true });
-
-      const lines = this.buffer.map((e) => JSON.stringify(e)).join('\n');
-
-      const tracePath = join(this.runDir, 'trace.jsonl');
-      await writeFile(tracePath, lines + '\n', 'utf-8');
-
-      const indexContent = this.buildIndex();
-      const indexPath = join(this.runDir, 'index.md');
-      await writeFile(indexPath, indexContent, 'utf-8');
-
-      logger.info('Trace flushed', {
-        runId: this.options.runId,
-        events: this.buffer.length,
-      });
+      await writeFile(traceTmp, lines + '\n', 'utf-8');
+      await rename(traceTmp, tracePath);
     } catch (err) {
-      logger.error('Trace flush failed', err instanceof Error ? err : new Error(String(err)));
+      await unlink(traceTmp).catch(() => undefined);
+      throw err;
     }
+
+    // Atomic write: index.md via tmp+rename
+    const indexContent = this.buildIndex();
+    const indexPath = join(this.runDir, 'index.md');
+    const indexTmp = `${indexPath}.tmp.${String(process.pid)}`;
+    try {
+      await writeFile(indexTmp, indexContent, 'utf-8');
+      await rename(indexTmp, indexPath);
+    } catch (err) {
+      await unlink(indexTmp).catch(() => undefined);
+      throw err;
+    }
+
+    logger.info('Trace flushed', {
+      runId: this.options.runId,
+      events: this.buffer.length,
+    });
   }
 
   /** Stop subscribing to events. */
