@@ -93,7 +93,10 @@ export class HybridMemoryBackend implements IMemoryBackend {
     if (this.initialized) return ok(undefined);
 
     try {
-      const betterSqlite3Module = await import('better-sqlite3').catch(() => null);
+      const betterSqlite3Module = await import('better-sqlite3').catch((cause: unknown) => {
+        this.logger.debug('better-sqlite3 import failed', { error: String(cause) });
+        return null;
+      });
       if (betterSqlite3Module === null) {
         return err(
           new MemoryError(

@@ -136,7 +136,10 @@ export class AgenticMemoryBackend implements IAgenticMemory {
     if (!graphInit.ok) return graphInit;
 
     try {
-      const mod = await import('better-sqlite3').catch(() => null);
+      const mod = await import('better-sqlite3').catch((cause: unknown) => {
+        this.log.debug('better-sqlite3 import failed', { error: String(cause) });
+        return null;
+      });
       if (mod === null) return err(new MemoryError('better-sqlite3 not installed'));
       const Database = mod.default;
       this.db = new (Database as new (p: string) => ISQLiteDatabase)(this.config.dbPath);

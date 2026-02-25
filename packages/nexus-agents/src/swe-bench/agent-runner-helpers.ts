@@ -39,16 +39,22 @@ export interface IterationState {
 // Git Operations
 // ============================================================================
 
-type ExecFn = (cmd: string, opts?: { cwd?: string }) => Promise<{ stdout: string }>;
+/** Git subprocess timeout (120s for large repos). */
+const GIT_TIMEOUT_MS = 120_000;
+
+type ExecFn = (
+  cmd: string,
+  opts?: { cwd?: string; timeout?: number }
+) => Promise<{ stdout: string }>;
 
 async function tryExistingClone(repoDir: string, commit: string, exec: ExecFn): Promise<boolean> {
   const fs = await import('node:fs/promises');
   const path = await import('node:path');
   try {
     await fs.access(path.join(repoDir, '.git'));
-    await exec(`git fetch origin`, { cwd: repoDir });
-    await exec(`git checkout ${commit}`, { cwd: repoDir });
-    await exec(`git clean -fd`, { cwd: repoDir });
+    await exec(`git fetch origin`, { cwd: repoDir, timeout: GIT_TIMEOUT_MS });
+    await exec(`git checkout ${commit}`, { cwd: repoDir, timeout: GIT_TIMEOUT_MS });
+    await exec(`git clean -fd`, { cwd: repoDir, timeout: GIT_TIMEOUT_MS });
     return true;
   } catch {
     return false;
@@ -76,8 +82,10 @@ export async function cloneRepository(
     const cloned = await tryExistingClone(repoDir, commit, exec);
     if (cloned) return { ok: true, value: repoDir };
 
-    await exec(`git clone https://github.com/${repo}.git ${repoDir}`);
-    await exec(`git checkout ${commit}`, { cwd: repoDir });
+    await exec(`git clone https://github.com/${repo}.git ${repoDir}`, {
+      timeout: GIT_TIMEOUT_MS,
+    });
+    await exec(`git checkout ${commit}`, { cwd: repoDir, timeout: GIT_TIMEOUT_MS });
     return { ok: true, value: repoDir };
   } catch (err) {
     return { ok: false, error: new AgentRunnerError(`Failed to clone: ${repo}`, err) };

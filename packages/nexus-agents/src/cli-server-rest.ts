@@ -46,10 +46,16 @@ const DEFAULT_REST_CONFIG: RestApiCliConfig = {
   swagger: true,
 };
 
+const configLogger = createLogger({ component: 'RestApiConfig' });
+
 /** Parses and validates a port number from string. Returns default port on invalid input. */
 function parseValidPort(value: string): number {
   const port = parseInt(value, 10);
   if (isNaN(port) || port < 1 || port > 65535) {
+    configLogger.warn('Invalid NEXUS_REST_PORT value, using default', {
+      value,
+      default: DEFAULT_REST_CONFIG.port,
+    });
     return DEFAULT_REST_CONFIG.port;
   }
   return port;
