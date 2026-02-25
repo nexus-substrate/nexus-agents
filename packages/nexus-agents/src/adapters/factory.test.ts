@@ -13,7 +13,7 @@ import type {
   ConfigError as CoreConfigError,
 } from '../core/index.js';
 import { ok, ModelCapability, ConfigError } from '../core/index.js';
-import { AdapterFactory, AdapterConfigSchema, defaultFactory } from './factory.js';
+import { AdapterFactory, AdapterConfigSchema } from './factory.js';
 import type { AdapterConfig } from './factory.js';
 
 /**
@@ -406,31 +406,6 @@ describe('AdapterFactory', () => {
     });
   });
 });
-
-/* eslint-disable @typescript-eslint/no-deprecated -- Testing deprecated functionality */
-describe('defaultFactory', () => {
-  beforeEach(() => {
-    defaultFactory.clear();
-  });
-
-  it('should be an instance of AdapterFactory', () => {
-    expect(defaultFactory).toBeInstanceOf(AdapterFactory);
-  });
-
-  it('should be usable as a global factory', () => {
-    defaultFactory.register('test', (config) => new MockAdapter(config));
-
-    expect(defaultFactory.hasProvider('test')).toBe(true);
-
-    const result = defaultFactory.create({
-      providerId: 'test',
-      modelId: 'test-model',
-    });
-
-    expect(result.ok).toBe(true);
-  });
-});
-/* eslint-enable @typescript-eslint/no-deprecated */
 
 describe('MockAdapter integration', () => {
   let factory: AdapterFactory;

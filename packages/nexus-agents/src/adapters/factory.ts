@@ -295,12 +295,3 @@ export class AdapterFactory {
     return sanitized;
   }
 }
-
-/**
- * Default global adapter factory instance.
- * Use this for convenience when a single factory suffices.
- *
- * @deprecated Use `new AdapterFactory()` directly instead. Global mutable state
- * causes testing difficulties and hidden coupling. Will be removed in v3.0.0.
- */
-export const defaultFactory = new AdapterFactory();

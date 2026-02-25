@@ -12,7 +12,6 @@ import {
   generateUUID,
   generateShortUUIDv4,
   generateStepId,
-  uuidv4,
 } from './id-utils.js';
 import { setTimeProvider, resetTimeProvider, FixedTimeProvider } from '../core/time-provider.js';
 import {
@@ -216,19 +215,6 @@ describe('id-utils', () => {
         ids.add(generateStepId());
       }
       expect(ids.size).toBe(100);
-    });
-  });
-
-  describe('uuidv4 (deprecated alias)', () => {
-    it('is same function as generateUUID', () => {
-      // eslint-disable-next-line @typescript-eslint/no-deprecated
-      expect(uuidv4).toBe(generateUUID);
-    });
-
-    it('generates valid UUID v4', () => {
-      // eslint-disable-next-line @typescript-eslint/no-deprecated
-      const uuid = uuidv4();
-      expect(uuid).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
     });
   });
 });

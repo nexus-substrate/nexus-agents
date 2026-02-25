@@ -132,9 +132,3 @@ export function generateShortUUIDv4(prefix?: string): string {
 export function generateStepId(prefix = 'step'): string {
   return generateShortUUIDv4(prefix);
 }
-
-/**
- * Alias for generateUUID - compatibility with `uuid` package's v4.
- * @deprecated Use generateUUID() instead for new code.
- */
-export const uuidv4 = generateUUID;
