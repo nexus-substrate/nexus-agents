@@ -38,6 +38,7 @@ export { compilePlan } from './plan-compiler.js';
 
 export {
   PipelineRunner,
+  DEFAULT_RUNS_DIR,
   type CompiledPipeline,
   type PipelineResult,
   type PipelineExecuteOptions,

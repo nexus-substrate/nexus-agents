@@ -96,7 +96,13 @@ export async function routeViaCompositeRouter(
 /**
  * Records the outcome of a routing decision to close the feedback loop.
  * Without this, pending decisions accumulate and degrade LinUCB learning.
- * (Source: Issue #1160 — delegate-to-model outcome recording gap)
+ *
+ * Since delegate_to_model is a recommendation (not execution), we cannot
+ * observe true success/failure. We derive quality from the TOPSIS score
+ * and mark success only when the score exceeds a confidence threshold.
+ * This prevents always-positive rewards from collapsing LinUCB to uniform policy.
+ *
+ * (Source: Issue #1160, refined in #1168)
  */
 export function recordRoutingOutcome(
   result: CompositeRoutingResult,
@@ -105,14 +111,22 @@ export function recordRoutingOutcome(
 ): void {
   if (result.routingId === undefined || result.feedbackIntegration === undefined) return;
   try {
+    const topsisScore = result.decision.topsisScore ?? 0;
+    // Only mark as success when TOPSIS confidence is above threshold.
+    // Low TOPSIS scores indicate weak differentiation — negative signal.
+    const TOPSIS_CONFIDENCE_THRESHOLD = 0.6;
     result.feedbackIntegration.recordOutcome({
       routingDecisionId: result.routingId,
-      success: true,
-      qualityScore: result.decision.topsisScore ?? 0.75,
+      success: topsisScore >= TOPSIS_CONFIDENCE_THRESHOLD,
+      qualityScore: topsisScore,
       durationMs,
       tokenUsage: 0, // delegate-to-model is a recommendation, not execution
     });
-    logger.debug('Recorded routing outcome', { routingId: result.routingId });
+    logger.debug('Recorded routing outcome', {
+      routingId: result.routingId,
+      topsisScore,
+      success: topsisScore >= TOPSIS_CONFIDENCE_THRESHOLD,
+    });
   } catch (error: unknown) {
     logger.warn('Failed to record routing outcome', { error: String(error) });
   }

@@ -66,6 +66,8 @@ export interface AgentVoteResult {
    * - 'error': Error during execution (Issue #523)
    */
   readonly source: 'llm' | 'simulation' | 'error';
+  /** CLI that executed this vote (for adaptive routing feedback). */
+  readonly cli?: string | undefined;
   /** Error message if vote fell back to simulation or encountered an error */
   readonly error?: string;
 }

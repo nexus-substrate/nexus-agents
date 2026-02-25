@@ -53,6 +53,7 @@ export { ClaudeCliAdapter } from './adapters/claude-adapter.js';
 export { GeminiCliAdapter } from './adapters/gemini-adapter.js';
 export { CodexCliAdapter } from './adapters/codex-adapter.js';
 export { CodexMcpAdapter } from './adapters/codex-mcp-adapter.js';
+export { OpenCodeCliAdapter } from './adapters/opencode-adapter.js';
 
 // Parsers
 export { ClaudeResponseParser } from './parsers/claude-parser.js';

@@ -11,6 +11,7 @@ import {
   cliNameToModel,
   mapCompositeDecisionToOutput,
   routeViaCompositeRouter,
+  recordRoutingOutcome,
 } from './delegate-to-model-router.js';
 
 // ============================================================================
@@ -310,5 +311,93 @@ describe('routeViaCompositeRouter', () => {
     expect(result).not.toBeNull();
     expect(result!.routingId).toBeUndefined();
     expect(logger.debug).not.toHaveBeenCalled();
+  });
+});
+
+// ============================================================================
+// recordRoutingOutcome (#1168)
+// ============================================================================
+
+describe('recordRoutingOutcome', () => {
+  it('marks success=true when TOPSIS score >= 0.6', () => {
+    const feedback = {
+      recordRoutingDecision: vi.fn(),
+      recordOutcome: vi.fn(),
+    } as unknown as IFeedbackIntegration;
+    const logger = makeLogger();
+
+    recordRoutingOutcome(
+      {
+        decision: makeDecision({ topsisScore: 0.85 }),
+        routingId: 'r-1',
+        feedbackIntegration: feedback,
+      },
+      100,
+      logger
+    );
+
+    expect(feedback.recordOutcome).toHaveBeenCalledWith(
+      expect.objectContaining({ success: true, qualityScore: 0.85 })
+    );
+  });
+
+  it('marks success=false when TOPSIS score < 0.6', () => {
+    const feedback = {
+      recordRoutingDecision: vi.fn(),
+      recordOutcome: vi.fn(),
+    } as unknown as IFeedbackIntegration;
+    const logger = makeLogger();
+
+    recordRoutingOutcome(
+      {
+        decision: makeDecision({ topsisScore: 0.4 }),
+        routingId: 'r-2',
+        feedbackIntegration: feedback,
+      },
+      100,
+      logger
+    );
+
+    expect(feedback.recordOutcome).toHaveBeenCalledWith(
+      expect.objectContaining({ success: false, qualityScore: 0.4 })
+    );
+  });
+
+  it('skips recording when routingId is missing', () => {
+    const feedback = {
+      recordRoutingDecision: vi.fn(),
+      recordOutcome: vi.fn(),
+    } as unknown as IFeedbackIntegration;
+    const logger = makeLogger();
+
+    recordRoutingOutcome(
+      { decision: makeDecision(), routingId: undefined, feedbackIntegration: feedback },
+      100,
+      logger
+    );
+
+    expect(feedback.recordOutcome).not.toHaveBeenCalled();
+  });
+
+  it('defaults qualityScore to 0 when topsisScore is undefined', () => {
+    const feedback = {
+      recordRoutingDecision: vi.fn(),
+      recordOutcome: vi.fn(),
+    } as unknown as IFeedbackIntegration;
+    const logger = makeLogger();
+
+    recordRoutingOutcome(
+      {
+        decision: makeDecision({ topsisScore: undefined }),
+        routingId: 'r-3',
+        feedbackIntegration: feedback,
+      },
+      100,
+      logger
+    );
+
+    expect(feedback.recordOutcome).toHaveBeenCalledWith(
+      expect.objectContaining({ success: false, qualityScore: 0 })
+    );
   });
 });

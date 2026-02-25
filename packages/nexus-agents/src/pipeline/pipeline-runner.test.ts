@@ -3,9 +3,13 @@
  *
  * Tests the compile → execute flow for V2 pipelines.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach } from 'vitest';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import { PipelineRunner } from './pipeline-runner.js';
+import { EventBus } from './event-bus.js';
 import type { PlanContract, StageSpec, TaskContract } from './task-contract.js';
 
 // ============================================================================
@@ -178,5 +182,68 @@ describe('PipelineRunner', () => {
       // Should stop after maxSteps
       expect(execResult.value.stepsExecuted).toBeLessThanOrEqual(2);
     }
+  });
+});
+
+// ============================================================================
+// TraceWriter Integration (#1167)
+// ============================================================================
+
+describe('PipelineRunner trace integration', () => {
+  let tempDir: string;
+
+  beforeEach(async () => {
+    tempDir = await mkdtemp(join(tmpdir(), 'nexus-pipeline-trace-'));
+  });
+
+  afterEach(async () => {
+    await rm(tempDir, { recursive: true, force: true });
+  });
+
+  it('writes trace.jsonl when eventBus is provided', async () => {
+    const runner = new PipelineRunner();
+    const bus = new EventBus();
+    const task = makeTask();
+    const plan = makePlan();
+    const compileResult = runner.compile(plan);
+    expect(compileResult.ok).toBe(true);
+    if (!compileResult.ok) return;
+
+    const execResult = await runner.execute(compileResult.value, task, {
+      eventBus: bus,
+      runsDir: tempDir,
+    });
+
+    expect(execResult.ok).toBe(true);
+
+    // PipelineRunner emits pipeline.started + pipeline.completed on the bus,
+    // TraceWriter captures them and writes to trace.jsonl on flush
+    const tracePath = join(tempDir, task.id, 'trace.jsonl');
+    const content = await readFile(tracePath, 'utf-8');
+    const lines = content.trim().split('\n');
+    expect(lines.length).toBeGreaterThanOrEqual(2); // started + completed
+
+    const firstLine = lines[0];
+    expect(firstLine).toBeDefined();
+    const parsed = JSON.parse(firstLine ?? '') as Record<string, unknown>;
+    expect(parsed['runId']).toBe(task.id);
+    expect(parsed['eventType']).toBe('pipeline.started');
+  });
+
+  it('does not write trace when eventBus is not provided', async () => {
+    const runner = new PipelineRunner();
+    const task = makeTask();
+    const plan = makePlan();
+    const compileResult = runner.compile(plan);
+    expect(compileResult.ok).toBe(true);
+    if (!compileResult.ok) return;
+
+    const execResult = await runner.execute(compileResult.value, task);
+    expect(execResult.ok).toBe(true);
+
+    // No trace directory should exist
+    const { existsSync } = await import('node:fs');
+    const tracePath = join(tempDir, task.id, 'trace.jsonl');
+    expect(existsSync(tracePath)).toBe(false);
   });
 });

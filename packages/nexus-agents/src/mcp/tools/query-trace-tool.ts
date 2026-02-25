@@ -13,6 +13,7 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ILogger } from '../../core/index.js';
 import { createLogger, formatZodError } from '../../core/index.js';
+import { DEFAULT_RUNS_DIR } from '../../pipeline/pipeline-runner.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
@@ -55,8 +56,6 @@ export interface QueryTraceDeps {
 // ============================================================================
 // Trace Query Logic
 // ============================================================================
-
-const DEFAULT_RUNS_DIR = './runs';
 
 /** Read trace events from disk for a given run_id. */
 export async function queryTraceFromDisk(

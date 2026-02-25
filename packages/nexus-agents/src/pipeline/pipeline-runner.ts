@@ -9,12 +9,14 @@
 import { executeGraph } from '../orchestration/graph/graph-executor.js';
 
 import { compilePlan } from './plan-compiler.js';
+import { TraceWriter } from './trace-writer.js';
 
 import type {
   CompiledGraph,
   GraphExecutionResult,
   GraphExecuteOptions,
 } from '../orchestration/graph/graph-types.js';
+import type { IEventBus } from './event-types.js';
 import type { PlanContract, TaskContract } from './task-contract.js';
 
 // ============================================================================
@@ -45,6 +47,9 @@ export interface StepOutcome {
   readonly error?: string | undefined;
 }
 
+/** Default directory for trace output (shared with query-trace-tool). */
+export const DEFAULT_RUNS_DIR = './runs';
+
 /** Pipeline execution options. */
 export interface PipelineExecuteOptions {
   readonly signal?: AbortSignal;
@@ -53,6 +58,10 @@ export interface PipelineExecuteOptions {
   readonly onStageComplete?: (stageId: string) => void;
   /** When true, continue executing independent steps after a failure. */
   readonly continueOnFailure?: boolean;
+  /** EventBus for trace persistence. When provided, creates a TraceWriter. */
+  readonly eventBus?: IEventBus;
+  /** Override base directory for trace output (default: ./runs). */
+  readonly runsDir?: string;
 }
 
 /** Compile result type. */
@@ -88,7 +97,7 @@ export class PipelineRunner {
   /** Executes a compiled pipeline. */
   async execute(
     pipeline: CompiledPipeline,
-    _task: TaskContract,
+    task: TaskContract,
     options?: PipelineExecuteOptions
   ): Promise<ExecuteResult> {
     const startTime = Date.now();
@@ -97,15 +106,25 @@ export class PipelineRunner {
       return okResult(failedResult(startTime, 'Pipeline aborted before execution'));
     }
 
-    const graphOpts = buildGraphOptions(pipeline, options);
-    const graphResult = await executeGraph(pipeline.graph, {}, graphOpts);
+    const trace = createTraceContext(task, options);
+    emitPipelineStarted(trace, task);
 
-    if (!graphResult.ok) {
-      return okResult(failedResult(startTime, graphResult.error.message));
+    try {
+      const graphOpts = buildGraphOptions(pipeline, options);
+      const graphResult = await executeGraph(pipeline.graph, {}, graphOpts);
+
+      if (!graphResult.ok) {
+        emitPipelineCompleted(trace, task.id, false, Date.now() - startTime);
+        return okResult(failedResult(startTime, graphResult.error.message));
+      }
+
+      const continueMode = options?.continueOnFailure === true;
+      const result = toResult(graphResult.value, startTime, continueMode);
+      emitPipelineCompleted(trace, task.id, result.success, result.durationMs);
+      return okResult(result);
+    } finally {
+      await flushTrace(trace);
     }
-
-    const continueMode = options?.continueOnFailure === true;
-    return okResult(toResult(graphResult.value, startTime, continueMode));
   }
 
   /**
@@ -217,4 +236,57 @@ function mapNodeStatus(
   status: 'success' | 'failed' | 'skipped'
 ): 'succeeded' | 'failed' | 'skipped' {
   return status === 'success' ? 'succeeded' : status;
+}
+
+// ============================================================================
+// Trace Helpers (#1167)
+// ============================================================================
+
+interface TraceContext {
+  readonly bus: IEventBus | undefined;
+  readonly writer: TraceWriter | undefined;
+}
+
+function createTraceContext(task: TaskContract, options?: PipelineExecuteOptions): TraceContext {
+  const bus = options?.eventBus;
+  const writer =
+    bus !== undefined
+      ? new TraceWriter(bus, {
+          runsDir: options?.runsDir ?? DEFAULT_RUNS_DIR,
+          runId: task.id,
+        })
+      : undefined;
+  return { bus, writer };
+}
+
+function emitPipelineStarted(ctx: TraceContext, task: TaskContract): void {
+  if (ctx.bus === undefined) return;
+  ctx.bus.emit({
+    type: 'pipeline.started',
+    taskId: task.id,
+    executionId: task.id,
+    timestamp: Date.now(),
+  });
+}
+
+function emitPipelineCompleted(
+  ctx: TraceContext,
+  executionId: string,
+  success: boolean,
+  durationMs: number
+): void {
+  if (ctx.bus === undefined) return;
+  ctx.bus.emit({
+    type: 'pipeline.completed',
+    executionId,
+    success,
+    durationMs,
+    timestamp: Date.now(),
+  });
+}
+
+async function flushTrace(ctx: TraceContext): Promise<void> {
+  if (ctx.writer === undefined) return;
+  await ctx.writer.flush().catch(() => undefined);
+  ctx.writer.stop();
 }

@@ -32,6 +32,7 @@ export {
   GeminiCliAdapter,
   CodexCliAdapter,
   CodexMcpAdapter,
+  OpenCodeCliAdapter,
   // Parsers
   ClaudeResponseParser,
   type ClaudeCliResponse,
