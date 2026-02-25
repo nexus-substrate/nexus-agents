@@ -52,10 +52,10 @@ export const ExecuteExpertInputSchema = z.object({
   timeoutMs: z
     .number()
     .int()
-    .min(10_000)
+    .min(30_000)
     .max(900_000)
     .optional()
-    .describe('Optional timeout in ms (10s-900s). Overrides auto-detected timeout.'),
+    .describe('Optional timeout in ms (30s-900s). Overrides auto-detected timeout.'),
 });
 
 /**
@@ -106,8 +106,20 @@ export interface ExecuteExpertResponse {
 /**
  * Builds a task object from the tool input.
  */
+/** Minimum effective timeout for expert tasks — LLM inference takes 20-90s minimum. (#1163) */
+const EXPERT_TIMEOUT_FLOOR_MS = 120_000;
+
 function buildTask(input: ExecuteExpertInput): Task {
-  const timeoutMs = input.timeoutMs ?? getExpertTaskTimeout(input.task);
+  const autoTimeout = getExpertTaskTimeout(input.task);
+  let timeoutMs = input.timeoutMs ?? autoTimeout;
+  if (input.timeoutMs !== undefined && input.timeoutMs < EXPERT_TIMEOUT_FLOOR_MS) {
+    createLogger({ tool: 'execute_expert' }).warn('User timeoutMs below floor, raising', {
+      requested: input.timeoutMs,
+      floor: EXPERT_TIMEOUT_FLOOR_MS,
+      autoDetected: autoTimeout,
+    });
+    timeoutMs = EXPERT_TIMEOUT_FLOOR_MS;
+  }
   return {
     id: `exec-${String(getTimeProvider().now())}-${getRandomProvider().random().toString(36).slice(2, 9)}`,
     description: input.task,
@@ -294,9 +306,12 @@ function handleExpertFailure(
   });
   const durationSec = Math.round(durationMs / 1000);
   const model = expert.modelId ?? 'default';
+  const timeoutHint = errorMsg.includes('timed out')
+    ? ' Hint: omit timeoutMs to use auto-detected timeout (300-600s).'
+    : '';
   return {
     ok: false,
-    error: `Expert execution failed after ${String(durationSec)}s (role=${expert.role}, model=${model}): ${errorMsg}`,
+    error: `Expert execution failed after ${String(durationSec)}s (role=${expert.role}, model=${model}): ${errorMsg}${timeoutHint}`,
   };
 }
 
@@ -485,10 +500,10 @@ export function registerExecuteExpertTool(server: McpServer, deps: ExecuteExpert
     timeoutMs: z
       .number()
       .int()
-      .min(10_000)
+      .min(30_000)
       .max(900_000)
       .optional()
-      .describe('Optional timeout in ms (10s-900s). Overrides auto-detected timeout.'),
+      .describe('Optional timeout in ms (30s-900s). Overrides auto-detected timeout.'),
   };
 
   const description =
