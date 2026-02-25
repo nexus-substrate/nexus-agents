@@ -13,6 +13,7 @@ import type {
   AgentPerformance,
 } from './types.js';
 import { VOTING_THRESHOLDS } from './types.js';
+import { HigherOrderVotingStrategy } from './higher-order-voting.js';
 
 /**
  * Interface for voting strategy implementations.
@@ -282,6 +283,7 @@ export class VotingStrategyFactory {
       ['supermajority', new SupermajorityStrategy()],
       ['unanimous', new UnanimousStrategy()],
       ['proof_of_learning', new ProofOfLearningStrategy()],
+      ['opinion_wise', new HigherOrderVotingStrategy()],
     ]);
   }
 

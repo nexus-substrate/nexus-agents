@@ -31,11 +31,7 @@ import {
   ResourceStrategyStage,
   DistilledRuleStage,
 } from './routing/stages/index.js';
-import {
-  createRoutingContext,
-  getRemainingCandidates,
-  type CliName as StageCliName,
-} from './routing/router-stage.js';
+import { createRoutingContext, getRemainingCandidates } from './routing/router-stage.js';
 import {
   cliTaskToTask,
   taskProfileToBanditContext,
@@ -545,9 +541,11 @@ function selectWithMemoryInfluence(
   memoryResult: RoutingMemoryStageResult,
   deps: StageDependencies
 ): CliName {
-  // If routing memory has a high-confidence recommendation, use it
+  // If routing memory has a high-confidence recommendation, use it.
+  // Threshold must exceed the default memoryConfidence (0.8) to prevent
+  // routing memory from always overriding LinUCB learning. (#1171)
   if (memoryResult.recommendation !== undefined && memoryResult.memoryConfidence !== undefined) {
-    const confidenceThreshold = 0.7;
+    const confidenceThreshold = 0.85;
     if (memoryResult.memoryConfidence >= confidenceThreshold) {
       deps.logger.debug('Using routing memory recommendation', {
         memoryChoice: memoryResult.recommendation,

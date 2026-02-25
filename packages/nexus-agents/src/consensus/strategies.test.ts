@@ -298,13 +298,14 @@ describe('calculateVoteWeight', () => {
 // ============================================================================
 
 describe('VotingStrategyFactory', () => {
-  it('creates with all default strategies', () => {
+  it('creates with all default strategies including opinion_wise', () => {
     const factory = createStrategyFactory();
     const algorithms = factory.getAvailableAlgorithms();
     expect(algorithms).toContain('simple_majority');
     expect(algorithms).toContain('supermajority');
     expect(algorithms).toContain('unanimous');
     expect(algorithms).toContain('proof_of_learning');
+    expect(algorithms).toContain('opinion_wise');
   });
 
   it('returns correct strategy instances', () => {
@@ -313,6 +314,7 @@ describe('VotingStrategyFactory', () => {
     expect(factory.getStrategy('supermajority').algorithm).toBe('supermajority');
     expect(factory.getStrategy('unanimous').algorithm).toBe('unanimous');
     expect(factory.getStrategy('proof_of_learning').algorithm).toBe('proof_of_learning');
+    expect(factory.getStrategy('opinion_wise').algorithm).toBe('opinion_wise');
   });
 
   it('throws for unknown algorithm', () => {

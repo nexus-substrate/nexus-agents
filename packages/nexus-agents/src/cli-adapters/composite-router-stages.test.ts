@@ -671,11 +671,11 @@ describe('runPipeline', () => {
     }
   });
 
-  it('applies memory recommendation when confidence is high', () => {
+  it('does not override LinUCB when memory confidence is at default 0.8', () => {
     const stages: string[] = [];
     const profile = analyzeTaskProfile(mockTask, []);
     const cliNames: CliName[] = ['claude', 'gemini'];
-    // Memory recommends 'gemini' with high confidence
+    // Memory recommends 'gemini' but default confidence (0.8) is below threshold (0.85)
     const mockMemory = {
       getRecommendation: vi.fn().mockReturnValue('gemini'),
     };
@@ -686,10 +686,11 @@ describe('runPipeline', () => {
     const result = runPipeline(mockTask, profile, stages, cliNames, deps);
     expect(result.ok).toBe(true);
     if (result.ok) {
-      // Memory confidence is 0.8 >= 0.7 threshold, so memory recommendation wins
-      expect(result.value.selectedCli).toBe('gemini');
+      // Memory confidence 0.8 < 0.85 threshold, so LinUCB selection is used
       expect(result.value.memoryRecommendation).toBe('gemini');
       expect(result.value.memoryConfidence).toBe(0.8);
+      // LinUCB selects first candidate (claude) by default
+      expect(result.value.selectedCli).toBe('claude');
     }
   });
 

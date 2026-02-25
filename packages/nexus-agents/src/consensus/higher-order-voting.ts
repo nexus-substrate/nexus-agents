@@ -248,6 +248,8 @@ export function createOWVoting(options?: OWVotingOptions): IHigherOrderVoting {
  * Wraps OWVoting to provide IVotingStrategy interface.
  */
 export class HigherOrderVotingStrategy extends OWVoting implements IVotingStrategy {
+  override readonly algorithm: ConsensusAlgorithm = 'opinion_wise';
+
   constructor(options: OWVotingOptions = {}) {
     super(options);
   }

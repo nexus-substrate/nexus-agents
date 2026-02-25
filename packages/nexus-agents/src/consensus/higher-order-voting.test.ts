@@ -802,7 +802,7 @@ describe('HigherOrderVotingStrategy', () => {
   it('should implement IVotingStrategy interface', () => {
     const strategy = new HigherOrderVotingStrategy();
 
-    expect(strategy.algorithm).toBe('simple_majority');
+    expect(strategy.algorithm).toBe('opinion_wise');
     expect(typeof strategy.calculateOutcome).toBe('function');
   });
 
