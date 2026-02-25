@@ -7,8 +7,6 @@ export {
   // Adapter factory
   AdapterFactory,
   AdapterConfigSchema,
-  // eslint-disable-next-line @typescript-eslint/no-deprecated -- Re-exporting deprecated item for consumers
-  defaultFactory,
   type AdapterConfig,
   type AdapterCreator,
   type RegisterOptions as AdapterRegisterOptions,

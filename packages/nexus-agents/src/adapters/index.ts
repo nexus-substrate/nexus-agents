@@ -8,8 +8,6 @@
 export {
   AdapterFactory,
   AdapterConfigSchema,
-  // eslint-disable-next-line @typescript-eslint/no-deprecated -- Re-exporting deprecated item for consumers
-  defaultFactory,
   type AdapterConfig,
   type AdapterCreator,
   type RegisterOptions,
@@ -117,17 +115,8 @@ export {
   type GeminiAdapterConfig,
 } from './gemini-adapter.js';
 
-// Task complexity estimation (arXiv:2406.18510)
-export {
-  TaskComplexityEstimator,
-  createComplexityEstimator,
-  type ComplexityLevel,
-  type ComplexityEstimate,
-  type ComplexityFactors,
-} from './complexity-estimator.js';
-
-// Quality-constrained routing removed — use CompositeRouter with TopsisRouter stage
-// QualityRouter class removed in v3.0 cleanup
+// Task complexity estimation: use SharedTaskAnalyzer from core (ADR-0004)
+// QualityRouter: use CompositeRouter with TopsisRouter stage
 
 // Auto-selecting adapter factory
 export {
