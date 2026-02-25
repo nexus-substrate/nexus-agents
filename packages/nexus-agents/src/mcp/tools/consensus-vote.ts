@@ -148,13 +148,18 @@ async function processVotesThroughEngine(
   };
   const proposalResult = await engine.propose(engineProposal);
   if (!proposalResult.ok)
-    throw new Error(`Failed to create proposal: ${proposalResult.error.message}`);
+    throw new Error(`Failed to create proposal: ${proposalResult.error.message}`, {
+      cause: proposalResult.error,
+    });
 
   const proposalId = proposalResult.value;
   for (const { role, vote } of validVotes) await engine.vote(proposalId, role, vote);
 
   const resultRes = await engine.close(proposalId);
-  if (!resultRes.ok) throw new Error(`Failed to close proposal: ${resultRes.error.message}`);
+  if (!resultRes.ok)
+    throw new Error(`Failed to close proposal: ${resultRes.error.message}`, {
+      cause: resultRes.error,
+    });
   return resultRes.value;
 }
 

@@ -7,6 +7,7 @@
  */
 
 import type { ILogger, ICompositeRouter, CompositeRoutingDecision } from '../../core/index.js';
+import { getErrorMessage } from '../../core/index.js';
 import type { IFeedbackIntegration } from '../../learning/feedback-integration.js';
 // Import directly from types to avoid circular dependency with delegate-to-model.ts
 import type { CapabilityProfile, DelegateOutput } from './delegate-to-model-types.js';
@@ -128,6 +129,6 @@ export function recordRoutingOutcome(
       success: topsisScore >= TOPSIS_CONFIDENCE_THRESHOLD,
     });
   } catch (error: unknown) {
-    logger.warn('Failed to record routing outcome', { error: String(error) });
+    logger.warn('Failed to record routing outcome', { error: getErrorMessage(error) });
   }
 }

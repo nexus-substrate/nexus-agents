@@ -7,7 +7,7 @@
  * @module mcp/tools/query-trace-tool
  */
 
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -67,6 +67,31 @@ export interface QueryTraceDeps {
 // Trace Query Logic
 // ============================================================================
 
+/** Maximum trace file size to read (100 MB). */
+const MAX_TRACE_FILE_BYTES = 100 * 1024 * 1024;
+
+/** Parse JSONL content into records, skipping malformed lines. */
+function parseJsonlLines(content: string): Record<string, unknown>[] {
+  return content
+    .trim()
+    .split('\n')
+    .filter(Boolean)
+    .flatMap((line) => {
+      try {
+        return [JSON.parse(line) as Record<string, unknown>];
+      } catch {
+        return []; // Skip malformed JSONL lines
+      }
+    });
+}
+
+const EMPTY_RESPONSE: Omit<QueryTraceResponse, 'runId'> = {
+  events: [],
+  totalEvents: 0,
+  truncated: false,
+  source: 'not_found',
+};
+
 /** Read trace events from disk for a given run_id. */
 export async function queryTraceFromDisk(
   input: QueryTraceInput,
@@ -79,50 +104,32 @@ export async function queryTraceFromDisk(
   const resolvedDir = resolve(dir);
   const resolvedTrace = resolve(tracePath);
   if (!resolvedTrace.startsWith(resolvedDir)) {
-    return {
-      runId: input.runId,
-      events: [],
-      totalEvents: 0,
-      truncated: false,
-      source: 'not_found',
-    };
+    return { runId: input.runId, ...EMPTY_RESPONSE };
   }
 
   try {
-    const content = await readFile(tracePath, 'utf-8');
-    const lines = content.trim().split('\n').filter(Boolean);
-    const limit = input.limit ?? 100;
+    const fileStat = await stat(tracePath);
+    if (fileStat.size > MAX_TRACE_FILE_BYTES) {
+      return { runId: input.runId, ...EMPTY_RESPONSE, truncated: true };
+    }
 
-    let parsed = lines.flatMap((line) => {
-      try {
-        return [JSON.parse(line) as Record<string, unknown>];
-      } catch {
-        return []; // Skip malformed JSONL lines
-      }
-    });
+    const content = await readFile(tracePath, 'utf-8');
+    let parsed = parseJsonlLines(content);
+    const limit = input.limit ?? 100;
 
     if (input.eventType !== undefined) {
       parsed = parsed.filter((e) => e['eventType'] === input.eventType);
     }
 
-    const truncated = parsed.length > limit;
-    const events = parsed.slice(0, limit);
-
     return {
       runId: input.runId,
-      events,
+      events: parsed.slice(0, limit),
       totalEvents: parsed.length,
-      truncated,
+      truncated: parsed.length > limit,
       source: 'disk',
     };
   } catch {
-    return {
-      runId: input.runId,
-      events: [],
-      totalEvents: 0,
-      truncated: false,
-      source: 'not_found',
-    };
+    return { runId: input.runId, ...EMPTY_RESPONSE };
   }
 }
 
