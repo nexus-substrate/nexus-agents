@@ -1,0 +1,21 @@
+# CODEOWNERS — Enforce review requirements on security-critical paths
+# (Source: Issue #1184, 3-0 consensus vote)
+#
+# GitHub uses this file to auto-assign reviewers when PRs touch these paths.
+# Requires branch protection "Require review from Code Owners" to enforce.
+
+# Security modules — sanitizer, trust, policy-gate, corroboration
+/packages/nexus-agents/src/security/ @williamzujkowski
+
+# Pipeline core — TaskContract, PipelineRunner, PolicyEngine, EventBus
+/packages/nexus-agents/src/pipeline/ @williamzujkowski
+
+# CI/CD workflows — supply chain protection
+/.github/workflows/ @williamzujkowski
+
+# MCP server and tool registration
+/packages/nexus-agents/src/mcp/ @williamzujkowski
+
+# Project governance
+/CLAUDE.md @williamzujkowski
+/CODEOWNERS @williamzujkowski
