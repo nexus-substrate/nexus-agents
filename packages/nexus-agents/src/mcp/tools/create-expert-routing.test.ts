@@ -71,14 +71,16 @@ describe('resolveAdapterForModelPreference', () => {
   it('returns resilient adapter for known model', () => {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-explicit-any
     const result = resolveAdapterForModelPreference('claude-opus', undefined, mockLogger as any);
-    // Should create a ResilientAdapter (not undefined)
     expect(result).toBeDefined();
+    expect(result).toHaveProperty('complete');
+    expect(result).toHaveProperty('stream');
   });
 
   it('matches by cliAlias', () => {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-explicit-any
     const result = resolveAdapterForModelPreference('opus', undefined, mockLogger as any);
     expect(result).toBeDefined();
+    expect(result).toHaveProperty('complete');
   });
 });
 

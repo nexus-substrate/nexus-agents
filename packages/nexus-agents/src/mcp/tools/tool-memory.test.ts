@@ -480,7 +480,7 @@ describe('ToolMemoryManager belief integration', () => {
       confidence: 0.9,
     });
     // Give async belief creation a tick to complete
-    await new Promise((r) => setTimeout(r, 10));
+    await new Promise((r) => setTimeout(r, 50));
     const beliefs = await manager.getRelevantBeliefs('memory-backends');
     expect(beliefs).toBeDefined();
     expect(beliefs).toContain('memory-backends');
@@ -492,7 +492,7 @@ describe('ToolMemoryManager belief integration', () => {
       context: 'test-context',
       confidence: 0.5,
     });
-    await new Promise((r) => setTimeout(r, 10));
+    await new Promise((r) => setTimeout(r, 50));
     const beliefs = await manager.getRelevantBeliefs('test-context');
     expect(beliefs).toBeUndefined();
   });
