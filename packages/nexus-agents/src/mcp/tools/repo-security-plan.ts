@@ -408,7 +408,8 @@ export function buildPlanFromAnalysis(
   };
 
   const recs: ScannerRecommendation[] = [];
-  const langMap = analysis.language !== null ? resolved.languageMap[analysis.language] : undefined;
+  const normalizedLang = analysis.language !== null ? normalizeLangName(analysis.language) : null;
+  const langMap = normalizedLang !== null ? resolved.languageMap[normalizedLang] : undefined;
   if (langMap) collectLanguageRecs(langMap, recs, ctx);
   collectInfraRecs(analysis, recs, ctx);
 

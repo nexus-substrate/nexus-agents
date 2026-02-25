@@ -297,6 +297,28 @@ describe('SessionMemory', () => {
       expect(results[0]?.pattern).toContain('Result type');
     });
 
+    it('should match multi-word queries using keyword AND logic (#1182)', () => {
+      const memory1 = createTestMemory();
+      memory1.startSession('keyword-test');
+      memory1.recordLearning({
+        pattern: 'Pipeline subsystems fully wired',
+        context: 'PluginRegistry singleton wiring complete',
+        confidence: 0.9,
+      });
+      memory1.recordLearning({
+        pattern: 'Something unrelated',
+        context: 'Other context',
+        confidence: 0.8,
+      });
+      memory1.endSession('keyword test done');
+
+      const memory2 = createTestMemory();
+      // "pipeline wiring" should match learning with both "pipeline" and "wiring"
+      const results = memory2.searchLearnings('pipeline wiring');
+      expect(results.length).toBe(1);
+      expect(results[0]?.pattern).toContain('Pipeline');
+    });
+
     it('should search current session learnings before endSession (#1126)', () => {
       const memory = createTestMemory();
       memory.startSession('live-search');

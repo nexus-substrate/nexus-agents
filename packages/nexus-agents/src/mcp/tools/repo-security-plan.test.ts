@@ -51,6 +51,16 @@ describe('buildPlanFromAnalysis', () => {
     expect(names).toContain('gitleaks');
   });
 
+  it('normalizes lowercase language names from repo_analyze (#1182)', () => {
+    const plan = buildPlanFromAnalysis(makeAnalysis({ language: 'typescript' as never }), {
+      repo: 'test/repo',
+    });
+
+    expect(plan.recommendations.length).toBeGreaterThan(0);
+    const names = plan.recommendations.map((r) => r.name);
+    expect(names).toContain('semgrep');
+  });
+
   it('returns recommendations for Python project', () => {
     const plan = buildPlanFromAnalysis(
       makeAnalysis({ language: 'Python', packageManager: 'pip' }),

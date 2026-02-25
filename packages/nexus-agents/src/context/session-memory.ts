@@ -251,17 +251,20 @@ export class SessionMemory {
       .slice(0, this.maxLearningsInContext);
   }
 
-  /** Search for learnings matching a query (includes current session). */
+  /** Search for learnings matching a query (includes current session).
+   *  Uses keyword-based matching: all query words must appear in the text. */
   searchLearnings(query: string): readonly SessionLearning[] {
-    const episodes = this.loadEpisodes();
-    const queryLower = query.toLowerCase();
+    const keywords = query
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((k) => k.length > 1);
     const matches: SessionLearning[] = [];
 
     // Search persisted episodes
+    const episodes = this.loadEpisodes();
     for (const episode of episodes) {
       for (const learning of episode.learnings) {
-        const text = `${learning.pattern} ${learning.context}`.toLowerCase();
-        if (text.includes(queryLower)) {
+        if (matchesKeywords(learning, keywords)) {
           matches.push(learning);
         }
       }
@@ -270,8 +273,7 @@ export class SessionMemory {
     // Include current (unpersisted) session learnings (#1126)
     if (this.currentSession !== null) {
       for (const learning of this.currentSession.learnings) {
-        const text = `${learning.pattern} ${learning.context}`.toLowerCase();
-        if (text.includes(queryLower)) {
+        if (matchesKeywords(learning, keywords)) {
           matches.push(learning);
         }
       }
@@ -368,6 +370,13 @@ export class SessionMemory {
       });
     }
   }
+}
+
+/** Check if a learning matches all keywords (AND logic). */
+function matchesKeywords(learning: SessionLearning, keywords: readonly string[]): boolean {
+  if (keywords.length === 0) return false;
+  const text = `${learning.pattern} ${learning.context}`.toLowerCase();
+  return keywords.every((k) => text.includes(k));
 }
 
 /** Create a SessionMemory instance with default configuration. */
