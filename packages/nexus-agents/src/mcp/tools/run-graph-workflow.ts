@@ -341,7 +341,7 @@ function recordGraphWorkflowResult(result: RunGraphWorkflowResponse): void {
         pattern: `graph_workflow → ${result.workflow}`,
         context: `nodes=${String(result.nodesExecuted)} duration=${String(result.durationMs)}ms`,
         confidence: 0.8,
-        source: 'run-graph-workflow',
+        source: 'manual',
       });
     } else {
       memory.recordError({
@@ -363,7 +363,7 @@ function recordGraphWorkflowResult(result: RunGraphWorkflowResponse): void {
       success: succeeded,
       durationMs: result.durationMs,
       timestamp: new Date().toISOString(),
-      source: 'run-graph-workflow',
+      source: 'manual',
     });
   } catch {
     // Best-effort

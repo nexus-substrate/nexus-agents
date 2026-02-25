@@ -17,6 +17,7 @@ import type { SecurityConfig } from '../../config/schemas.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import { IssueTriage } from '../../dogfooding/issue-triage.js';
+import type { IssueTriageResult } from '../../dogfooding/issue-triage-types.js';
 import { getToolMemory } from './tool-memory.js';
 import { getOutcomeStore } from '../../orchestration/outcomes/index.js';
 import { DEFAULT_CLI } from '../../config/model-capabilities-types.js';
@@ -76,26 +77,7 @@ type IssueTriageToolResponse = {
 };
 
 /** Builds the structured triage response from raw triage result. */
-function buildTriageResponse(value: {
-  issueNumber: number;
-  repository: string;
-  category: string;
-  categoryConfidence: number;
-  trustAssessment: {
-    trustTier: string;
-    userRole: string;
-    reputationScore?: number;
-    isSuspicious: boolean;
-    suspiciousSignals: readonly string[];
-  };
-  proposedActions: ReadonlyArray<{
-    type: string;
-    description: string;
-    policyApproved: boolean;
-    corroborated: boolean;
-  }>;
-  totalDurationMs: number;
-}): IssueTriageResponse {
+function buildTriageResponse(value: IssueTriageResult): IssueTriageResponse {
   return {
     issueNumber: value.issueNumber,
     repository: value.repository,
@@ -220,7 +202,7 @@ function recordTriageSuccess(category: string, confidence: number, durationMs: n
       pattern: `triage → ${category}`,
       context: `confidence=${String(confidence)} duration=${String(durationMs)}ms`,
       confidence: 0.8,
-      source: 'issue-triage',
+      source: 'manual',
     });
   } catch (error: unknown) {
     triageLogger.warn('Failed to record triage success', { error: String(error) });
@@ -247,7 +229,7 @@ function recordTriageOutcome(success: boolean, durationMs: number, errorMsg?: st
       success,
       durationMs,
       timestamp: new Date().toISOString(),
-      source: 'issue-triage',
+      source: 'manual',
     });
   } catch {
     // Best-effort

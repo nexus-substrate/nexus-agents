@@ -28,7 +28,7 @@ export function recordExpertCreated(role: string, expertId: string): void {
       pattern: `Expert created: ${role}`,
       context: `expertId=${expertId}`,
       confidence: 0.9,
-      source: 'create-expert',
+      source: 'manual',
     });
   } catch (error: unknown) {
     logger.warn('Failed to record expert creation', { error: getErrorMessage(error) });
@@ -61,7 +61,7 @@ export function recordExpertOutcome(role: string, success: boolean, durationMs: 
       success,
       durationMs,
       timestamp: new Date().toISOString(),
-      source: 'create-expert',
+      source: 'manual',
     });
   } catch {
     // Best-effort — don't fail the tool

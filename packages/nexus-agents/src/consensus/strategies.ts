@@ -278,7 +278,7 @@ export class VotingStrategyFactory {
   private readonly strategies: Map<ConsensusAlgorithm, IVotingStrategy>;
 
   constructor() {
-    this.strategies = new Map([
+    this.strategies = new Map<ConsensusAlgorithm, IVotingStrategy>([
       ['simple_majority', new SimpleMajorityStrategy()],
       ['supermajority', new SupermajorityStrategy()],
       ['unanimous', new UnanimousStrategy()],

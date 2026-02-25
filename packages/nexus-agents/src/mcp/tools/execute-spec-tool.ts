@@ -182,7 +182,7 @@ function recordSpecSuccess(satisfaction: number, durationMs: number): void {
       pattern: `spec_execution → satisfaction=${String(satisfaction)}`,
       context: `duration=${String(durationMs)}ms`,
       confidence: 0.8,
-      source: 'execute-spec',
+      source: 'manual',
     });
   } catch (error: unknown) {
     specLogger.warn('Failed to record spec success', { error: String(error) });
@@ -209,7 +209,7 @@ function recordSpecOutcome(success: boolean, durationMs: number, stage?: string)
       success,
       durationMs,
       timestamp: new Date().toISOString(),
-      source: 'execute-spec',
+      source: 'manual',
     });
   } catch {
     // Best-effort
