@@ -103,7 +103,9 @@ export class EventBus implements IEventBus {
   }
 
   private notifySubscribers(event: PipelineEvent): void {
-    for (const sub of this.subs) {
+    // Snapshot to prevent issues from subscribe/unsubscribe during iteration
+    const snapshot = [...this.subs];
+    for (const sub of snapshot) {
       if (!matchesFilter(event, sub.filter)) continue;
       try {
         sub.handler(event);

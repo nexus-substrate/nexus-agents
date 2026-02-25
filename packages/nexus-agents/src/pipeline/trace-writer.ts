@@ -20,12 +20,17 @@ const logger = createLogger({ component: 'TraceWriter' });
 // Configuration
 // ============================================================================
 
+/** Maximum buffer entries before FIFO eviction. */
+const MAX_BUFFER_SIZE = 50_000;
+
 /** Options for TraceWriter behavior. */
 export interface TraceWriterOptions {
   /** Base directory for run output (default: ./runs). */
   readonly runsDir: string;
   /** Run identifier (typically TaskContract.id). */
   readonly runId: string;
+  /** Maximum buffer entries before eviction (default: 50,000). */
+  readonly maxBufferSize?: number;
 }
 
 // ============================================================================
@@ -39,6 +44,7 @@ export class TraceWriter {
   private readonly buffer: ExecutionTraceEntry[] = [];
   private readonly unsubscribe: Unsubscribe;
   private readonly runDir: string;
+  private readonly maxBuffer: number;
   private stopped = false;
 
   constructor(
@@ -46,8 +52,12 @@ export class TraceWriter {
     private readonly options: TraceWriterOptions
   ) {
     this.runDir = join(options.runsDir, options.runId);
+    this.maxBuffer = options.maxBufferSize ?? MAX_BUFFER_SIZE;
     this.unsubscribe = bus.subscribe({}, (event) => {
       if (!this.stopped) {
+        if (this.buffer.length >= this.maxBuffer) {
+          this.buffer.shift();
+        }
         this.buffer.push(this.eventToTrace(event));
       }
     });

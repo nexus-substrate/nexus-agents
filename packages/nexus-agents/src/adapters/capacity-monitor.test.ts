@@ -775,4 +775,22 @@ describe('Edge cases', () => {
     const capacity = monitor.getCapacity('anthropic');
     expect(capacity?.remainingTokens).toBe(50000);
   });
+
+  it('should evict oldest provider when exceeding max providers (#1205)', () => {
+    const monitor = new CapacityMonitor();
+
+    // Add 51 providers (max is 50) via updateCapacity
+    for (let i = 0; i < 51; i++) {
+      monitor.updateCapacity(`provider-${String(i)}`, { remainingTokens: i });
+    }
+
+    const tracked = monitor.getTrackedProviders();
+    expect(tracked.length).toBeLessThanOrEqual(50);
+
+    // Oldest provider (provider-0) should have been evicted
+    expect(monitor.getCapacity('provider-0')).toBeNull();
+
+    // Newest provider should still be present
+    expect(monitor.getCapacity('provider-50')).not.toBeNull();
+  });
 });

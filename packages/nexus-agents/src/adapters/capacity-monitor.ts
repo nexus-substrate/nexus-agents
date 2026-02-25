@@ -55,6 +55,9 @@ export type {
  * }
  * ```
  */
+/** Maximum tracked providers to prevent unbounded Map growth. */
+const MAX_PROVIDERS = 50;
+
 export class CapacityMonitor implements ICapacityMonitor {
   private readonly providers: Map<string, ProviderCapacityState>;
   private readonly callbacks: Set<LowCapacityCallback>;
@@ -147,6 +150,15 @@ export class CapacityMonitor implements ICapacityMonitor {
     const existing = this.providers.get(provider);
     if (existing) {
       return existing;
+    }
+
+    // Guard against unbounded growth from arbitrary provider names
+    if (this.providers.size >= MAX_PROVIDERS) {
+      // Evict the oldest entry (first key in insertion order)
+      const oldestKey = this.providers.keys().next();
+      if (oldestKey.done !== true) {
+        this.providers.delete(oldestKey.value);
+      }
     }
 
     return {

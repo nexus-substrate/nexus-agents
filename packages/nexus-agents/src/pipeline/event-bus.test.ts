@@ -183,4 +183,34 @@ describe('EventBus', () => {
       }
     });
   });
+
+  describe('subscriber snapshot safety (#1206)', () => {
+    it('should handle unsubscribe during emission without skipping handlers', () => {
+      const bus = new EventBus();
+      const calls: string[] = [];
+      const holder: { unsub?: () => void } = {};
+
+      bus.subscribe({}, () => {
+        calls.push('A');
+        // Unsubscribe B during A's handler
+        holder.unsub?.();
+      });
+      holder.unsub = bus.subscribe({}, () => {
+        calls.push('B');
+      });
+      bus.subscribe({}, () => {
+        calls.push('C');
+      });
+
+      const event: PipelineEvent = {
+        type: 'pipeline.started',
+        timestamp: Date.now(),
+        executionId: 'test-snap',
+      };
+      bus.emit(event);
+
+      // All 3 handlers should fire because snapshot was taken before iteration
+      expect(calls).toEqual(['A', 'B', 'C']);
+    });
+  });
 });
