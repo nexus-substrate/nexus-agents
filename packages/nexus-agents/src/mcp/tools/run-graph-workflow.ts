@@ -24,6 +24,9 @@ import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
 import type { IMcpNotifier } from '../mcp-notifier.js';
 import { createMcpNotifier } from '../mcp-notifier.js';
+import { getToolMemory } from './tool-memory.js';
+import { getOutcomeStore } from '../../orchestration/outcomes/index.js';
+import { DEFAULT_CLI } from '../../config/model-capabilities-types.js';
 
 // ============================================================================
 // Types & Schema
@@ -226,6 +229,10 @@ function createGraphWorkflowHandler(
       nodeCount: result.nodesExecuted,
       durationMs: result.durationMs,
     });
+
+    // Record to memory and outcome store (Issue #1174)
+    recordGraphWorkflowResult(result);
+
     return {
       content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
       ...(succeeded ? {} : { isError: true }),
@@ -311,4 +318,54 @@ function createErrorResponse(opts: ErrorResponseOpts): RunGraphWorkflowResponse 
     checkpointCount: opts.checkpointCount ?? 0,
     error: opts.error,
   };
+}
+
+// ============================================================================
+// Recording Helpers (Issue #1174)
+// ============================================================================
+
+const graphLogger = createLogger({ tool: 'run-graph-workflow' });
+
+/** Records graph workflow result to memory and outcome store. Best-effort. */
+function recordGraphWorkflowResult(result: RunGraphWorkflowResponse): void {
+  const succeeded = result.status === 'completed';
+  try {
+    const memory = getToolMemory();
+    if (succeeded) {
+      memory.recordTask({
+        approach: `Graph workflow: ${result.workflow} (${String(result.nodesExecuted)} nodes)`,
+        challenges: [],
+        durationMs: result.durationMs,
+      });
+      memory.recordLearning({
+        pattern: `graph_workflow → ${result.workflow}`,
+        context: `nodes=${String(result.nodesExecuted)} duration=${String(result.durationMs)}ms`,
+        confidence: 0.8,
+        source: 'run-graph-workflow',
+      });
+    } else {
+      memory.recordError({
+        error: `Graph workflow ${result.workflow} failed: ${result.error ?? 'unknown'}`,
+        solution: 'Check workflow inputs and node handlers',
+        filePattern: 'mcp/tools/run-graph-workflow',
+      });
+    }
+  } catch (error: unknown) {
+    graphLogger.warn('Failed to record graph result', { error: String(error) });
+  }
+  try {
+    const store = getOutcomeStore();
+    store.append({
+      id: `graph-${String(Date.now())}-${Math.random().toString(36).slice(2, 8)}`,
+      cli: DEFAULT_CLI,
+      category: 'code_generation',
+      model: 'graph-workflow',
+      success: succeeded,
+      durationMs: result.durationMs,
+      timestamp: new Date().toISOString(),
+      source: 'run-graph-workflow',
+    });
+  } catch {
+    // Best-effort
+  }
 }

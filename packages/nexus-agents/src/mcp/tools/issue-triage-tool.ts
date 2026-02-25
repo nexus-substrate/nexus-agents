@@ -17,6 +17,9 @@ import type { SecurityConfig } from '../../config/schemas.js';
 import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import { IssueTriage } from '../../dogfooding/issue-triage.js';
+import { getToolMemory } from './tool-memory.js';
+import { getOutcomeStore } from '../../orchestration/outcomes/index.js';
+import { DEFAULT_CLI } from '../../config/model-capabilities-types.js';
 
 // ============================================================================
 // Types
@@ -72,6 +75,49 @@ type IssueTriageToolResponse = {
   isError?: boolean;
 };
 
+/** Builds the structured triage response from raw triage result. */
+function buildTriageResponse(value: {
+  issueNumber: number;
+  repository: string;
+  category: string;
+  categoryConfidence: number;
+  trustAssessment: {
+    trustTier: string;
+    userRole: string;
+    reputationScore?: number;
+    isSuspicious: boolean;
+    suspiciousSignals: readonly string[];
+  };
+  proposedActions: ReadonlyArray<{
+    type: string;
+    description: string;
+    policyApproved: boolean;
+    corroborated: boolean;
+  }>;
+  totalDurationMs: number;
+}): IssueTriageResponse {
+  return {
+    issueNumber: value.issueNumber,
+    repository: value.repository,
+    category: value.category,
+    categoryConfidence: value.categoryConfidence,
+    trustAssessment: {
+      trustTier: value.trustAssessment.trustTier,
+      userRole: value.trustAssessment.userRole,
+      reputationScore: value.trustAssessment.reputationScore,
+      isSuspicious: value.trustAssessment.isSuspicious,
+      suspiciousSignals: value.trustAssessment.suspiciousSignals,
+    },
+    proposedActions: value.proposedActions.map((a) => ({
+      type: a.type,
+      description: a.description,
+      policyApproved: a.policyApproved,
+      corroborated: a.corroborated,
+    })),
+    durationMs: value.totalDurationMs,
+  };
+}
+
 function createIssueTriageHandler(_deps: IssueTriageDeps) {
   return async (args: unknown, ctx: HandlerContext): Promise<IssueTriageToolResponse> => {
     const validationResult = IssueTriageInputSchema.safeParse(args);
@@ -87,36 +133,22 @@ function createIssueTriageHandler(_deps: IssueTriageDeps) {
     const input = validationResult.data;
     ctx.logger.info('Starting issue triage', { issueUrl: input.issueUrl, dryRun: input.dryRun });
 
+    const startMs = Date.now();
     const triage = new IssueTriage({ dryRun: input.dryRun });
     const result = await triage.triageIssue(input.issueUrl);
+    const durationMs = Date.now() - startMs;
 
     if (!result.ok) {
+      recordTriageOutcome(false, durationMs, result.error.message);
       return {
         isError: true,
         content: [{ type: 'text', text: `Triage failed: ${result.error.message}` }],
       };
     }
 
-    const response: IssueTriageResponse = {
-      issueNumber: result.value.issueNumber,
-      repository: result.value.repository,
-      category: result.value.category,
-      categoryConfidence: result.value.categoryConfidence,
-      trustAssessment: {
-        trustTier: result.value.trustAssessment.trustTier,
-        userRole: result.value.trustAssessment.userRole,
-        reputationScore: result.value.trustAssessment.reputationScore,
-        isSuspicious: result.value.trustAssessment.isSuspicious,
-        suspiciousSignals: result.value.trustAssessment.suspiciousSignals,
-      },
-      proposedActions: result.value.proposedActions.map((a) => ({
-        type: a.type,
-        description: a.description,
-        policyApproved: a.policyApproved,
-        corroborated: a.corroborated,
-      })),
-      durationMs: result.value.totalDurationMs,
-    };
+    recordTriageSuccess(result.value.category, result.value.categoryConfidence, durationMs);
+    recordTriageOutcome(true, durationMs);
+    const response = buildTriageResponse(result.value);
 
     return {
       content: [{ type: 'text', text: JSON.stringify(response, null, 2) }],
@@ -167,4 +199,57 @@ export function registerIssueTriageTool(server: McpServer, deps: IssueTriageDeps
     toSdkCallback(wrappedHandler)
   );
   logger.info('Registered issue_triage tool with secure handler and timeout protection');
+}
+
+// ============================================================================
+// Recording Helpers (Issue #1174)
+// ============================================================================
+
+const triageLogger = createLogger({ tool: 'issue-triage' });
+
+/** Records a successful issue triage to session memory. Best-effort. */
+function recordTriageSuccess(category: string, confidence: number, durationMs: number): void {
+  try {
+    const memory = getToolMemory();
+    memory.recordTask({
+      approach: `Issue triage: ${category} (confidence: ${String(confidence)})`,
+      challenges: [],
+      durationMs,
+    });
+    memory.recordLearning({
+      pattern: `triage → ${category}`,
+      context: `confidence=${String(confidence)} duration=${String(durationMs)}ms`,
+      confidence: 0.8,
+      source: 'issue-triage',
+    });
+  } catch (error: unknown) {
+    triageLogger.warn('Failed to record triage success', { error: String(error) });
+  }
+}
+
+/** Records triage outcome for adaptive routing. Best-effort. */
+function recordTriageOutcome(success: boolean, durationMs: number, errorMsg?: string): void {
+  try {
+    if (!success && errorMsg !== undefined) {
+      const memory = getToolMemory();
+      memory.recordError({
+        error: `Issue triage failed: ${errorMsg.slice(0, 150)}`,
+        solution: 'Check GitHub token and issue URL',
+        filePattern: 'mcp/tools/issue-triage-tool',
+      });
+    }
+    const store = getOutcomeStore();
+    store.append({
+      id: `triage-${String(Date.now())}-${Math.random().toString(36).slice(2, 8)}`,
+      cli: DEFAULT_CLI,
+      category: 'planning',
+      model: 'issue-triage',
+      success,
+      durationMs,
+      timestamp: new Date().toISOString(),
+      source: 'issue-triage',
+    });
+  } catch {
+    // Best-effort
+  }
 }

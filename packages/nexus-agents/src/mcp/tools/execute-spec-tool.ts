@@ -20,6 +20,9 @@ import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middlewar
 import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
+import { getToolMemory } from './tool-memory.js';
+import { getOutcomeStore } from '../../orchestration/outcomes/index.js';
+import { DEFAULT_CLI } from '../../config/model-capabilities-types.js';
 
 // ============================================================================
 // Types & Schema
@@ -70,8 +73,12 @@ function createDryRunResponse(input: ExecuteSpecInput, logger: ILogger): ToolRes
 }
 
 async function createFullResponse(input: ExecuteSpecInput, logger: ILogger): Promise<ToolResponse> {
+  const startMs = Date.now();
   const result = await executeSpec(input.spec);
+  const durationMs = Date.now() - startMs;
+
   if (!result.ok) {
+    recordSpecOutcome(false, durationMs, result.error.stage);
     return {
       isError: true,
       content: [
@@ -81,10 +88,14 @@ async function createFullResponse(input: ExecuteSpecInput, logger: ILogger): Pro
   }
 
   const analysis = analyzeFailures(result.value);
+  const satisfaction = result.value.validation.satisfaction;
   logger.info('Spec execution completed', {
-    satisfaction: result.value.validation.satisfaction,
+    satisfaction,
     passed: analysis.ok ? analysis.value.passed : false,
   });
+
+  recordSpecSuccess(satisfaction, durationMs);
+  recordSpecOutcome(true, durationMs);
 
   const output = {
     mode: 'execute',
@@ -150,4 +161,57 @@ export function registerExecuteSpecTool(server: McpServer, deps: ExecuteSpecDeps
     toSdkCallback(wrapped)
   );
   logger.info('Registered execute_spec tool');
+}
+
+// ============================================================================
+// Recording Helpers (Issue #1174)
+// ============================================================================
+
+const specLogger = createLogger({ tool: 'execute-spec' });
+
+/** Records a successful spec execution to session memory. Best-effort. */
+function recordSpecSuccess(satisfaction: number, durationMs: number): void {
+  try {
+    const memory = getToolMemory();
+    memory.recordTask({
+      approach: `Spec execution (satisfaction: ${String(satisfaction)})`,
+      challenges: [],
+      durationMs,
+    });
+    memory.recordLearning({
+      pattern: `spec_execution → satisfaction=${String(satisfaction)}`,
+      context: `duration=${String(durationMs)}ms`,
+      confidence: 0.8,
+      source: 'execute-spec',
+    });
+  } catch (error: unknown) {
+    specLogger.warn('Failed to record spec success', { error: String(error) });
+  }
+}
+
+/** Records spec execution outcome for adaptive routing. Best-effort. */
+function recordSpecOutcome(success: boolean, durationMs: number, stage?: string): void {
+  try {
+    if (!success && stage !== undefined) {
+      const memory = getToolMemory();
+      memory.recordError({
+        error: `Spec execution failed at stage: ${stage}`,
+        solution: 'Check spec format and requirements',
+        filePattern: 'mcp/tools/execute-spec-tool',
+      });
+    }
+    const store = getOutcomeStore();
+    store.append({
+      id: `spec-${String(Date.now())}-${Math.random().toString(36).slice(2, 8)}`,
+      cli: DEFAULT_CLI,
+      category: 'code_generation',
+      model: 'spec-executor',
+      success,
+      durationMs,
+      timestamp: new Date().toISOString(),
+      source: 'execute-spec',
+    });
+  } catch {
+    // Best-effort
+  }
 }
