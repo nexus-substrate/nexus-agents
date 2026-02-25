@@ -252,8 +252,8 @@ export abstract class BaseCliAdapter implements ICliAdapter {
       const version = this.parseVersion(stdout.trim());
       this.cachedVersion = version;
       return version;
-    } catch {
-      throw new Error(`Failed to get ${this.name} version`);
+    } catch (cause: unknown) {
+      throw new Error(`Failed to get ${this.name} version`, { cause });
     }
   }
 

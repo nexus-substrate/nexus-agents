@@ -294,12 +294,12 @@ export class ReflectiveRetriever {
     );
 
     if (!result.ok) {
-      throw new Error(result.error);
+      throw new Error(`Reflection timed out: ${result.error}`);
     }
 
     const response = result.value;
     if (!response.ok) {
-      throw new Error(response.error.message);
+      throw new Error(`Model error in reflection: ${response.error.message}`);
     }
 
     const text = this.extractText(response.value.content);

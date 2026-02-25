@@ -159,7 +159,7 @@ Do NOT directly instantiate stage routers. Use `CompositeRouter.route(task)`.
 
 **Adapter access:** All adapter creation goes through `UnifiedAdapterRegistry` (singleton via `getGlobalRegistry()`). Task category → CLI routing is pre-computed from the task specialization matrix. Do NOT call `createAutoAdapter()` or `createResilientAdapter()` directly in new code.
 
-**Billing mode** (`NEXUS_BILLING_MODE`): When set to `plan` (default), cost is zeroed in model scoring — strongest models win. When `api`, cost-aware routing is preserved. Supported models: claude-opus, claude-sonnet, claude-haiku, gemini-pro, gemini-flash, codex-5.3, codex-5.2, codex-5.1-mini.
+**Billing mode** (`NEXUS_BILLING_MODE`): When set to `plan` (default), cost is zeroed in model scoring — strongest models win. When `api`, cost-aware routing is preserved. Supported models: claude-opus, claude-sonnet, claude-haiku, gemini-3-pro, gemini-pro, gemini-3-flash, gemini-flash, codex-5.3, codex-5.2, codex-5.1-mini, opencode-default.
 
 **Model registry** (`config/model-capabilities.ts`): Single source of truth for all model metadata — pricing, quality scores, context windows, max output tokens, CLI aliases, and defaults per CLI. All consumers derive from this registry via `config/model-config-helpers.ts`. Never hardcode model data elsewhere.
 

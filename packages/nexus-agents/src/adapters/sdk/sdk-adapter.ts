@@ -241,16 +241,26 @@ export class SdkAdapter extends BaseAdapter {
   }
 
   async *stream(request: CompletionRequest): AsyncIterable<StreamChunk> {
+    // Ensure initialization and SDK readiness before entering the generator body.
+    // Errors thrown before the first yield in an async generator bypass for-await-of
+    // try/catch in callers, so we validate eagerly and wrap the body in try/catch.
     await this.ensureInitialized();
     this.logRequest(request);
 
     const sdk = this.sdkFunctions;
-    if (sdk === undefined) throw new Error('SDK not initialized');
-    const options = this.buildSdkOptions(request);
-    const result = sdk.streamText(options);
+    if (sdk === undefined) {
+      throw new AdapterModelError('SDK not initialized after ensureInitialized()', {
+        code: ErrorCode.CONFIG_INVALID,
+      });
+    }
 
+    const options = this.buildSdkOptions(request);
+
+    // First yield establishes the generator — errors after this point are
+    // properly caught by callers using for-await-of with try/catch.
     yield { type: 'message_start', message: { model: this.modelId } };
 
+    const result = sdk.streamText(options);
     let index = 0;
     yield { type: 'content_block_start', index, contentBlock: { type: 'text', text: '' } };
 
