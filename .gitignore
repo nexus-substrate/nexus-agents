@@ -56,6 +56,7 @@ packages/nexus-agents/coverage.json
 # User-specific configuration
 .mcp.json
 nexus-agents.yaml
+opencode.json
 .claude/settings.local.json
 
 # Generated artifacts

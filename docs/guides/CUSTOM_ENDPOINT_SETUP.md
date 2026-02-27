@@ -181,6 +181,37 @@ Example via MCP:
 
 The `variant` flag uses a strict allowlist — non-allowlisted values are silently dropped for security.
 
+## Using nexus-agents as MCP Server Inside OpenCode
+
+nexus-agents can run as an MCP server inside OpenCode, giving OpenCode access to all 24 nexus-agents tools (orchestrate, consensus vote, memory, research, etc.).
+
+Add the `mcp` section to your `opencode.json`:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "nexus-agents": {
+      "type": "local",
+      "command": ["node", "/path/to/nexus-agents/dist/cli.js", "--mode=server"],
+      "enabled": true,
+      "environment": {
+        "NEXUS_ALLOW_MOCK_ORCHESTRATION": "true"
+      }
+    }
+  }
+}
+```
+
+Verify the connection:
+
+```bash
+opencode mcp list
+# Should show: nexus-agents connected
+```
+
+Then use nexus-agents tools from within OpenCode sessions. The model will automatically discover and call available MCP tools.
+
 ## Troubleshooting
 
 **"No model adapter configured"**: OpenCode is not on PATH or not installed. Install it and verify with `which opencode`.
