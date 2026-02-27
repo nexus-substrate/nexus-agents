@@ -192,7 +192,7 @@ describe('OpenCodeCliAdapter', () => {
       expect(args).toContain('google/gemini-2.5-flash');
     });
 
-    it('should include --cwd when workDir is provided', async () => {
+    it('should include --dir when workDir is provided', async () => {
       const ndjsonResponse = [
         JSON.stringify({ type: 'message.delta', content: 'Done!' }),
         JSON.stringify({ type: 'session.complete' }),
@@ -208,11 +208,12 @@ describe('OpenCodeCliAdapter', () => {
 
       const calls = vi.mocked(spawn).mock.calls;
       const args = calls[0]?.[1] as string[];
-      expect(args).toContain('--cwd');
+      expect(args).toContain('--dir');
+      expect(args).not.toContain('--cwd');
       expect(args).toContain('/tmp/project');
     });
 
-    it('should not include --cwd when workDir is empty', async () => {
+    it('should not include --dir when workDir is empty', async () => {
       const ndjsonResponse = [
         JSON.stringify({ type: 'message.delta', content: 'Done!' }),
         JSON.stringify({ type: 'session.complete' }),
@@ -228,7 +229,81 @@ describe('OpenCodeCliAdapter', () => {
 
       const calls = vi.mocked(spawn).mock.calls;
       const args = calls[0]?.[1] as string[];
-      expect(args).not.toContain('--cwd');
+      expect(args).not.toContain('--dir');
+    });
+
+    it('should include --variant when allowlisted value is provided', async () => {
+      const ndjsonResponse = [
+        JSON.stringify({ type: 'message.delta', content: 'Done!' }),
+        JSON.stringify({ type: 'session.complete' }),
+      ].join('\n');
+      const mockProcess = createMockProcess(ndjsonResponse);
+      vi.mocked(spawn).mockReturnValue(mockProcess);
+
+      const task: CliTask = {
+        content: 'Test task',
+        options: { variant: 'high' },
+      };
+      await adapter.execute(task);
+
+      const calls = vi.mocked(spawn).mock.calls;
+      const args = calls[0]?.[1] as string[];
+      expect(args).toContain('--variant');
+      expect(args).toContain('high');
+    });
+
+    it('should reject non-allowlisted variant values', async () => {
+      const ndjsonResponse = [
+        JSON.stringify({ type: 'message.delta', content: 'Done!' }),
+        JSON.stringify({ type: 'session.complete' }),
+      ].join('\n');
+      const mockProcess = createMockProcess(ndjsonResponse);
+      vi.mocked(spawn).mockReturnValue(mockProcess);
+
+      const task: CliTask = {
+        content: 'Test task',
+        options: { variant: 'malicious; rm -rf /' },
+      };
+      await adapter.execute(task);
+
+      const calls = vi.mocked(spawn).mock.calls;
+      const args = calls[0]?.[1] as string[];
+      expect(args).not.toContain('--variant');
+    });
+
+    it('should include --thinking when set to true', async () => {
+      const ndjsonResponse = [
+        JSON.stringify({ type: 'message.delta', content: 'Done!' }),
+        JSON.stringify({ type: 'session.complete' }),
+      ].join('\n');
+      const mockProcess = createMockProcess(ndjsonResponse);
+      vi.mocked(spawn).mockReturnValue(mockProcess);
+
+      const task: CliTask = {
+        content: 'Test task',
+        options: { thinking: true },
+      };
+      await adapter.execute(task);
+
+      const calls = vi.mocked(spawn).mock.calls;
+      const args = calls[0]?.[1] as string[];
+      expect(args).toContain('--thinking');
+    });
+
+    it('should not include --thinking when not specified', async () => {
+      const ndjsonResponse = [
+        JSON.stringify({ type: 'message.delta', content: 'Done!' }),
+        JSON.stringify({ type: 'session.complete' }),
+      ].join('\n');
+      const mockProcess = createMockProcess(ndjsonResponse);
+      vi.mocked(spawn).mockReturnValue(mockProcess);
+
+      const task: CliTask = { content: 'Test task' };
+      await adapter.execute(task);
+
+      const calls = vi.mocked(spawn).mock.calls;
+      const args = calls[0]?.[1] as string[];
+      expect(args).not.toContain('--thinking');
     });
   });
 
@@ -354,6 +429,17 @@ describe('OpenCodeCliAdapter', () => {
       const version = await adapter.getVersion();
 
       expect(version).toBe('1.2.10');
+    });
+
+    it('should use "opencode version" subcommand (not --version)', async () => {
+      mockExecAsync.mockResolvedValue({ stdout: 'opencode version 1.2.10' });
+
+      await adapter.getVersion();
+
+      expect(mockExecAsync).toHaveBeenCalledWith(
+        'opencode version',
+        expect.objectContaining({ timeout: expect.any(Number) })
+      );
     });
 
     it('should cache version after first call', async () => {

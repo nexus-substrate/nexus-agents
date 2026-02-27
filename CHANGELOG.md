@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.23.0] - 2026-02-27
+
+### Fixed
+
+- **OpenCode `--dir` flag** — adapter used `--cwd` (non-existent flag); now correctly uses `--dir` for working directory (#1239)
+- **OpenCode `getVersion()` override** — base class used `opencode --version` (invalid); now uses `opencode version` subcommand (#1239)
+- **Custom endpoint setup guide** — corrected `opencode.json` config format to match official docs (`npm` instead of `driver`, `options.baseURL` instead of top-level, `{env:VAR}` syntax, `limit.context/output`) (#1239)
+
+### Added
+
+- **`--variant` flag passthrough** — supports `high`, `max`, `minimal` reasoning effort levels via strict allowlist (non-allowlisted values silently dropped for security) (#1239)
+- **`--thinking` flag passthrough** — enables model thinking block output when `options.thinking: true` (#1239)
+- **7 new OpenCode adapter tests** — `--dir` flag, `--variant` allowlist, injection rejection, `--thinking` flag, `getVersion()` subcommand verification (28 total) (#1239)
+- **Advanced options section in setup guide** — documents variant, thinking, and workDir task options (#1239)
+- **Model discovery documentation** — `/v1/models` endpoint and `opencode models` commands in setup guide (#1239)
+
 ## [2.22.0] - 2026-02-27
 
 ### Added

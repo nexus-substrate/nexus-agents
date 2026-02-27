@@ -30,18 +30,23 @@ Create or edit `opencode.json` in your project root:
 
 ```json
 {
+  "$schema": "https://opencode.ai/config.json",
   "provider": {
     "custom": {
+      "npm": "@ai-sdk/openai-compatible",
       "name": "Custom Gateway",
-      "driver": "@ai-sdk/openai-compatible",
-      "baseURL": "https://your-gateway.example.com/v1",
-      "apiKey": "${CUSTOM_API_KEY}",
+      "options": {
+        "baseURL": "https://your-gateway.example.com/v1",
+        "apiKey": "{env:CUSTOM_API_KEY}"
+      },
       "models": {
         "claude-opus-4-5": {
-          "name": "Claude Opus 4.5"
+          "name": "Claude Opus 4.5",
+          "limit": { "context": 200000, "output": 65536 }
         },
         "claude-sonnet-4-5": {
-          "name": "Claude Sonnet 4.5"
+          "name": "Claude Sonnet 4.5",
+          "limit": { "context": 200000, "output": 65536 }
         }
       }
     }
@@ -55,13 +60,33 @@ Set the API key as an environment variable:
 export CUSTOM_API_KEY="your-api-key"
 ```
 
+Config files are merged across three locations (project overrides global):
+
+1. **Global:** `~/.config/opencode/opencode.json`
+2. **Project:** `opencode.json` in project root
+3. **Environment:** `OPENCODE_CONFIG` path
+
 ## Step 2: Verify OpenCode Can Reach the Gateway
+
+Test model connectivity:
 
 ```bash
 opencode run --model custom/claude-sonnet-4-5 "Hello, respond with OK"
 ```
 
 You should receive a response from the model via the gateway.
+
+To verify which models the gateway exposes (standard OpenAI-compatible endpoint):
+
+```bash
+curl -H "Authorization: Bearer $CUSTOM_API_KEY" https://your-gateway.example.com/v1/models
+```
+
+Or list models via OpenCode:
+
+```bash
+opencode models custom --verbose
+```
 
 ## Step 3: Model Registry
 
@@ -104,17 +129,57 @@ Or via MCP:
 
 ## Customizing Model Names
 
-If your gateway uses different model identifiers, update `cliModelName` in `config/model-capabilities.ts`:
+If your gateway uses different model identifiers, two changes are needed:
+
+**1. OpenCode config** (`opencode.json`) — model keys must match the gateway's model IDs:
+
+```json
+{
+  "provider": {
+    "custom": {
+      "models": {
+        "your-model-id": { "name": "Your Model" }
+      }
+    }
+  }
+}
+```
+
+**2. nexus-agents registry** (`config/model-capabilities.ts`) — `cliModelName` must match `<provider>/<model-key>`:
 
 ```typescript
 {
   id: 'opencode-custom-opus',
   // ...
-  cliModelName: 'your-provider/your-model-id',
+  cliModelName: 'custom/your-model-id',
 }
 ```
 
 The `cliModelName` is passed directly to `opencode run --model <cliModelName>`.
+
+## Advanced Options
+
+nexus-agents passes optional flags to OpenCode when specified in task options:
+
+| Option     | Values                   | Description                    |
+| ---------- | ------------------------ | ------------------------------ |
+| `variant`  | `high`, `max`, `minimal` | Reasoning effort level         |
+| `thinking` | `true`                   | Show model thinking blocks     |
+| `workDir`  | path string              | Working directory for the task |
+
+Example via MCP:
+
+```json
+{
+  "tool": "delegate_to_model",
+  "arguments": {
+    "task": "Review this code for security issues",
+    "model_hint": "opencode-custom-opus"
+  }
+}
+```
+
+The `variant` flag uses a strict allowlist — non-allowlisted values are silently dropped for security.
 
 ## Troubleshooting
 

@@ -7,6 +7,8 @@
  * (Source: Issue #1124, opencode.ai/docs/cli/)
  */
 
+import { exec } from 'node:child_process';
+import { promisify } from 'node:util';
 import type {
   ICliResponseParser,
   CliTask,
@@ -21,6 +23,12 @@ import {
   getCliModelName,
   buildModelInfo,
 } from '../../config/model-config-helpers.js';
+import { CLI_SUBPROCESS_TIMEOUTS } from '../../config/timeouts.js';
+
+const execAsync = promisify(exec);
+
+/** Strict allowlist for OpenCode --variant flag values. */
+const ALLOWED_VARIANTS = ['high', 'max', 'minimal'];
 
 /**
  * OpenCode CLI adapter using subprocess transport.
@@ -55,6 +63,26 @@ export class OpenCodeCliAdapter extends SubprocessCliAdapter {
   }
 
   /**
+   * Gets CLI version. Overrides base to use `opencode version` (subcommand, not flag).
+   */
+  override async getVersion(): Promise<string> {
+    if (this.cachedVersion !== undefined && this.cachedVersion !== '') {
+      return this.cachedVersion;
+    }
+
+    try {
+      const { stdout } = await execAsync('opencode version', {
+        timeout: CLI_SUBPROCESS_TIMEOUTS.spawnMs,
+      });
+      const version = this.parseVersion(stdout.trim());
+      this.cachedVersion = version;
+      return version;
+    } catch (cause: unknown) {
+      throw new Error('Failed to get opencode version', { cause });
+    }
+  }
+
+  /**
    * Gets CLI command and arguments for execution.
    * Uses `opencode run` with JSON format for stable parsing.
    */
@@ -68,7 +96,18 @@ export class OpenCodeCliAdapter extends SubprocessCliAdapter {
     // Add working directory if specified
     const workDir = task.options?.['workDir'];
     if (typeof workDir === 'string' && workDir.length > 0) {
-      args.push('--cwd', workDir);
+      args.push('--dir', workDir);
+    }
+
+    // Add reasoning variant if specified (strict allowlist)
+    const variant = task.options?.['variant'];
+    if (typeof variant === 'string' && ALLOWED_VARIANTS.includes(variant)) {
+      args.push('--variant', variant);
+    }
+
+    // Add thinking flag if specified (boolean only)
+    if (task.options?.['thinking'] === true) {
+      args.push('--thinking');
     }
 
     // Pass prompt as positional argument
