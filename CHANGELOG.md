@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.22.0] - 2026-02-27
+
+### Added
+
+- **Custom OpenAI-compatible endpoint support** — 2 new model profiles (`opencode-custom-opus`, `opencode-custom-sonnet`) for routing through custom API gateways via OpenCode transport (#1238)
+- **`custom-openai` provider type** — new provider in model capabilities registry for custom OpenAI-compatible gateways (#1238)
+- **OpenCode fallback chain expanded** — custom models prioritized: `opencode-custom-opus → opencode-custom-sonnet → opencode-default` (#1238)
+- **Custom Endpoint Setup guide** — `docs/guides/CUSTOM_ENDPOINT_SETUP.md` with OpenCode configuration, routing, and troubleshooting (#1238)
+- **New tests** — model registry (13 models, custom-openai provider), fallback chain (opencode custom models), CLI resolution (3 opencode models) (#1238)
+
+### Changed
+
+- **Model count** — 11 → 13 models in registry (added 2 custom endpoint profiles)
+- **Provider count** — 3 → 4 providers (added `custom-openai`)
+- **Registry import** — `custom-openai` provider maps to OpenCode CLI with 200K context window default
+
 ## [2.21.0] - 2026-02-27
 
 ### Added

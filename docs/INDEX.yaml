@@ -122,10 +122,11 @@ topics:
       - 'artifact'
 
   adapters:
-    summary: 'Model adapter system — UnifiedAdapterRegistry, ResilientAdapter, Claude/Gemini/Codex adapters'
+    summary: 'Model adapter system — UnifiedAdapterRegistry, ResilientAdapter, Claude/Gemini/Codex/OpenCode adapters'
     tier2_file: 'docs/architecture/README.md'
     tier3_files:
       - 'docs/architecture/ROUTING_SYSTEM.md'
+      - 'docs/guides/CUSTOM_ENDPOINT_SETUP.md'
     keywords:
       - 'adapter'
       - 'registry'
@@ -133,6 +134,8 @@ topics:
       - 'claude'
       - 'gemini'
       - 'codex'
+      - 'opencode'
+      - 'custom-openai'
       - 'model'
       - 'unified'
 

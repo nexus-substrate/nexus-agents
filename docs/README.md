@@ -142,6 +142,7 @@ Detailed technical documentation:
 | ----------------------------------------------------------------- | ----------------------------------------------- |
 | [MCP_INTEGRATION.md](./guides/MCP_INTEGRATION.md)                 | MCP server configuration                        |
 | [WORKFLOW_TEMPLATES.md](./guides/WORKFLOW_TEMPLATES.md)           | Creating YAML workflows                         |
+| [CUSTOM_ENDPOINT_SETUP.md](./guides/CUSTOM_ENDPOINT_SETUP.md)     | Custom OpenAI-compatible gateway via OpenCode   |
 | [DEBUGGING_OBSERVABILITY.md](./guides/DEBUGGING_OBSERVABILITY.md) | Debug logging, tracing                          |
 | [Claude Code Observability](./guides/claude-code-observability/)  | Hooks, status line, MCP logging for Claude Code |
 

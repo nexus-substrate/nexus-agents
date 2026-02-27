@@ -27,8 +27,8 @@ import {
 // ---------------------------------------------------------------------------
 
 describe('DEFAULT_MODEL_CAPABILITIES', () => {
-  it('should contain exactly 11 models', () => {
-    expect(DEFAULT_MODEL_CAPABILITIES.models).toHaveLength(11);
+  it('should contain exactly 13 models', () => {
+    expect(DEFAULT_MODEL_CAPABILITIES.models).toHaveLength(13);
   });
 
   it('should have version 2', () => {
@@ -50,7 +50,7 @@ describe('DEFAULT_MODEL_CAPABILITIES', () => {
 
   it('all providers should be represented', () => {
     const providers = new Set(DEFAULT_MODEL_CAPABILITIES.models.map((m) => m.provider));
-    expect(providers).toEqual(new Set(['anthropic', 'google', 'openai']));
+    expect(providers).toEqual(new Set(['anthropic', 'google', 'openai', 'custom-openai']));
   });
 
   it('all quality scores should be in range 1-10', () => {
@@ -120,7 +120,7 @@ describe('getModelCapabilities', () => {
 describe('findModelsByOutputModality', () => {
   it('returns models supporting text output', () => {
     const results = findModelsByOutputModality('text');
-    expect(results).toHaveLength(11);
+    expect(results).toHaveLength(13);
   });
 
   it('returns subset for image_png (only gemini models)', () => {
@@ -141,7 +141,7 @@ describe('findModelsByOutputModality', () => {
 describe('findModelsByInputModality', () => {
   it('all models support text input', () => {
     const results = findModelsByInputModality('text');
-    expect(results).toHaveLength(11);
+    expect(results).toHaveLength(13);
   });
 
   it('only gemini supports video input', () => {
@@ -162,15 +162,14 @@ describe('findModelsByInputModality', () => {
 describe('findModelsByToolCapability', () => {
   it('all models support function_calling', () => {
     const results = findModelsByToolCapability('function_calling');
-    expect(results).toHaveLength(11);
+    expect(results).toHaveLength(13);
   });
 
-  it('only claude models support mcp', () => {
+  it('claude and custom-openai models support mcp', () => {
     const results = findModelsByToolCapability('mcp');
-    expect(results).toHaveLength(4);
-    for (const model of results) {
-      expect(model.provider).toBe('anthropic');
-    }
+    expect(results).toHaveLength(6);
+    const providers = new Set(results.map((m) => m.provider));
+    expect(providers).toEqual(new Set(['anthropic', 'custom-openai']));
   });
 });
 
@@ -181,7 +180,7 @@ describe('findModelsByToolCapability', () => {
 describe('findModelsByFeature', () => {
   it('multiple models support streaming', () => {
     const results = findModelsByFeature('streaming');
-    expect(results).toHaveLength(11);
+    expect(results).toHaveLength(13);
   });
 
   it('gemini pro models support deep_research', () => {
@@ -206,6 +205,14 @@ describe('findModelsByProvider', () => {
     expect(ids).toContain('claude-sonnet');
     expect(ids).toContain('claude-haiku');
     expect(ids).toContain('opencode-default');
+  });
+
+  it('returns 2 custom-openai models', () => {
+    const results = findModelsByProvider('custom-openai');
+    expect(results).toHaveLength(2);
+    const ids = results.map((m) => m.id);
+    expect(ids).toContain('opencode-custom-opus');
+    expect(ids).toContain('opencode-custom-sonnet');
   });
 
   it('returns 4 google models', () => {

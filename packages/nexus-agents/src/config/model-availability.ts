@@ -137,7 +137,7 @@ const FALLBACK_CHAINS: Readonly<Record<CliNameLiteral, readonly ModelId[]>> = {
   claude: ['claude-opus', 'claude-sonnet', 'claude-haiku'],
   gemini: ['gemini-3-pro', 'gemini-pro', 'gemini-3-flash', 'gemini-flash'],
   codex: ['codex-5.3', 'codex-5.2', 'codex-5.1-mini'],
-  opencode: ['opencode-default'],
+  opencode: ['opencode-custom-opus', 'opencode-custom-sonnet', 'opencode-default'],
 };
 
 /**

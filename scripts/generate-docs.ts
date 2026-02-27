@@ -231,6 +231,7 @@ const FRONTMATTER_REQUIRED_FILES = [
   'docs/guides/DEBUGGING_OBSERVABILITY.md',
   'docs/guides/MCP_INTEGRATION.md',
   'docs/guides/WORKFLOW_TEMPLATES.md',
+  'docs/guides/CUSTOM_ENDPOINT_SETUP.md',
   'docs/research/RESEARCH_INDEX.md',
 ];
 

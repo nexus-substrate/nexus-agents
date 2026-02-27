@@ -25,6 +25,7 @@ const PROVIDER_CLI_MAP: Record<Provider, CliNameLiteral> = {
   anthropic: 'claude',
   google: 'gemini',
   openai: 'codex',
+  'custom-openai': 'opencode',
 };
 
 /** Default context windows when we can't determine from API. */
@@ -32,6 +33,7 @@ const DEFAULT_CONTEXT_WINDOWS: Record<Provider, number> = {
   anthropic: 200_000,
   google: 1_000_000,
   openai: 128_000,
+  'custom-openai': 200_000,
 };
 
 // ============================================================================
@@ -122,6 +124,7 @@ function formatDisplayName(provider: Provider, modelId: string): string {
     anthropic: 'Claude',
     google: 'Gemini',
     openai: 'Codex',
+    'custom-openai': 'Custom',
   };
   const base = providerNames[provider];
   const cleaned = modelId

@@ -68,7 +68,7 @@ export type SpecialFeature = (typeof SPECIAL_FEATURES)[number];
 // Provider, CLI Name & Model ID enums
 // ---------------------------------------------------------------------------
 
-export const PROVIDERS = ['anthropic', 'google', 'openai'] as const;
+export const PROVIDERS = ['anthropic', 'google', 'openai', 'custom-openai'] as const;
 export type Provider = (typeof PROVIDERS)[number];
 
 /** CLI tool names supported by the routing system. */
@@ -96,6 +96,8 @@ export const MODEL_IDS = [
   'codex-5.2',
   'codex-5.1-mini',
   'opencode-default',
+  'opencode-custom-opus',
+  'opencode-custom-sonnet',
 ] as const;
 
 export type ModelId = (typeof MODEL_IDS)[number];

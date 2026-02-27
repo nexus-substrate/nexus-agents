@@ -181,6 +181,14 @@ describe('getFallbackChain', () => {
     const chain = getFallbackChain('codex');
     expect(chain).toContain('codex-5.3');
   });
+
+  it('returns opencode chain with custom models first', () => {
+    const chain = getFallbackChain('opencode');
+    expect(chain).toContain('opencode-custom-opus');
+    expect(chain).toContain('opencode-custom-sonnet');
+    expect(chain).toContain('opencode-default');
+    expect(chain[0]).toBe('opencode-custom-opus');
+  });
 });
 
 describe('getCliForModelId', () => {
@@ -196,6 +204,12 @@ describe('getCliForModelId', () => {
 
   it('resolves codex models', () => {
     expect(getCliForModelId('codex-5.3')).toBe('codex');
+  });
+
+  it('resolves opencode custom models', () => {
+    expect(getCliForModelId('opencode-default')).toBe('opencode');
+    expect(getCliForModelId('opencode-custom-opus')).toBe('opencode');
+    expect(getCliForModelId('opencode-custom-sonnet')).toBe('opencode');
   });
 });
 
