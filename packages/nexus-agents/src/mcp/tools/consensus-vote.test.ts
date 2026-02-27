@@ -740,7 +740,10 @@ describe('buildResponse error counting (Issue #815)', () => {
 describe('CONSENSUS_VOTE_OUTPUT_SCHEMA validation (Issue #1246)', () => {
   const outputValidator = z.object(CONSENSUS_VOTE_OUTPUT_SCHEMA);
 
-  function makeVotingResult(votes: readonly AgentVoteResult[]): ExtendedVotingResult {
+  function makeVotingResult(
+    votes: readonly AgentVoteResult[],
+    overrides?: { simulateVotes?: boolean }
+  ): ExtendedVotingResult {
     return {
       proposal: 'Test proposal',
       threshold: 'simple_majority',
@@ -758,7 +761,7 @@ describe('CONSENSUS_VOTE_OUTPUT_SCHEMA validation (Issue #1246)', () => {
       },
       votes,
       totalTimeMs: 200,
-      simulateVotes: false,
+      simulateVotes: overrides?.simulateVotes ?? false,
       strategy: 'simple_majority',
     };
   }
@@ -783,8 +786,7 @@ describe('CONSENSUS_VOTE_OUTPUT_SCHEMA validation (Issue #1246)', () => {
         source: 'simulation',
       },
     ];
-    const result = makeVotingResult(votes);
-    result.simulateVotes = true;
+    const result = makeVotingResult(votes, { simulateVotes: true });
     const input = { proposal: 'Test', simulateVotes: true, quickMode: false };
     const response = buildResponse(input, result);
 

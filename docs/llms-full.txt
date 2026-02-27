@@ -38,7 +38,7 @@ nexus-agents is a multi-agent orchestration system that coordinates AI models to
 | docs/TROUBLESHOOTING.md | Common issues, error resolution, and FAQ | ~400 |
 | docs/research/RESEARCH_INDEX.md | Research tracking, papers, and technique implementations | ~400 |
 | docs/architecture/README.md | V2 Pipeline architecture — TaskContract, PipelineRunner, EventBus, PolicyEngine, PluginRegistry, ArtifactStore | ~400 |
-| docs/architecture/README.md | Model adapter system — UnifiedAdapterRegistry, ResilientAdapter, Claude/Gemini/Codex adapters | ~400 |
+| docs/architecture/README.md | Model adapter system — UnifiedAdapterRegistry, ResilientAdapter, Claude/Gemini/Codex/OpenCode adapters | ~400 |
 | docs/architecture/README.md | Task orchestration — AOrchestra, graph workflows, scenario validator | ~400 |
 | docs/architecture/SECURITY.md | Security pipeline — sanitizer, trust classifier, policy gate, corroboration, reputation model | ~400 |
 | docs/guides/MCP_INTEGRATION.md | 24 MCP tools — orchestrate, experts, workflows, consensus, research, memory, tracing | ~400 |
@@ -72,6 +72,7 @@ nexus-agents is a multi-agent orchestration system that coordinates AI models to
 | docs/research/registry/techniques.yaml | Technique implementation status | ~400 |
 | docs/research/registry/sources.yaml | External research sources | ~400 |
 | docs/architecture/PIPELINE_ARCHITECTURE.md | V2 pipeline: TaskContract, EventBus, PolicyEngine | ~400 |
+| docs/guides/CUSTOM_ENDPOINT_SETUP.md | adapters detail | ~400 |
 | docs/reference/capabilities.md | Auto-generated CLI/MCP/workflow index | ~400 |
 
 ## Architecture Deep Dive

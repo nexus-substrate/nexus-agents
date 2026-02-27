@@ -38,7 +38,7 @@ nexus-agents --help           # See all commands
 - docs/TROUBLESHOOTING.md - Common issues, error resolution, and FAQ
 - docs/research/RESEARCH_INDEX.md - Research tracking, papers, and technique implementations
 - docs/architecture/README.md - V2 Pipeline architecture — TaskContract, PipelineRunner, EventBus, PolicyEngine, PluginRegistry, ArtifactStore
-- docs/architecture/README.md - Model adapter system — UnifiedAdapterRegistry, ResilientAdapter, Claude/Gemini/Codex adapters
+- docs/architecture/README.md - Model adapter system — UnifiedAdapterRegistry, ResilientAdapter, Claude/Gemini/Codex/OpenCode adapters
 - docs/architecture/README.md - Task orchestration — AOrchestra, graph workflows, scenario validator
 - docs/architecture/SECURITY.md - Security pipeline — sanitizer, trust classifier, policy gate, corroboration, reputation model
 - docs/guides/MCP_INTEGRATION.md - 24 MCP tools — orchestrate, experts, workflows, consensus, research, memory, tracing
