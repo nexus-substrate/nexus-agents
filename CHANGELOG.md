@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.21.0] - 2026-02-27
+
+### Added
+
+- **`queryBySource()` method** on ToolMemoryManager — source-specific queries now get the full limit budget instead of being crowded out by other backends (#1237)
+- **Belief auto-deduplication** — `retain()` now auto-supersedes existing non-superseded beliefs with matching `(subject, predicate)` pair, preventing duplicate accumulation (#1237)
+- **25 new tests** — queryAll init guard (2), queryBySource dispatch (8), belief dedup (5), trust classification (10) (#1237)
+
+### Fixed
+
+- **queryAll initPromise race** — `queryAll()` now awaits `initPromise` before querying SQLite-backed backends, preventing silent empty results when backends haven't initialized (#1237)
+- **Source filter crowding** — `memory_query` with specific source now dispatches directly to the requested backend instead of post-filtering queryAll results (#1237)
+- **Belief duplicate accumulation** — `retain()` blindly appended new beliefs with no dedup check; now supersedes existing entries with matching `(subject, predicate)` (#1237)
+- **issue_triage `new_account` false positive** — `estimateAccountAge()` used issue creation date instead of account date; now uses safe default (365 days) when real account age unavailable (#1237)
+- **issue_triage `injection_patterns_detected` false positive** — benign flags like `instruction_pattern` no longer trigger the signal; only hostile flags (system_prompt_manipulation, fake_conversation, authority_claim, hidden_content) trigger it (#1237)
+- **issue_triage Tier 1 contradiction** — Owner/maintainer users (trustTier=1) can no longer be simultaneously flagged as suspicious (#1237)
+
 ## [2.20.0] - 2026-02-27
 
 ### Added

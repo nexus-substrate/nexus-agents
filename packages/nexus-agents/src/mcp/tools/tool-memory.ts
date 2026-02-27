@@ -707,6 +707,11 @@ export class ToolMemoryManager {
    * with source attribution and relevance scoring.
    */
   async queryAll(query: string, limit = 10): Promise<readonly UnifiedMemoryResult[]> {
+    // Wait for SQLite backends to finish initializing before querying (#794 pattern)
+    if (this.initPromise !== null) {
+      await this.initPromise;
+      this.initPromise = null;
+    }
     const keywords = query
       .toLowerCase()
       .split(/\s+/)
@@ -720,6 +725,49 @@ export class ToolMemoryManager {
       ...(await this.queryTypedMemory(query, keywords, Math.ceil(perSource / 2))),
       ...(await this.queryAdaptiveMemory(query, keywords, perSource)),
     ];
+    return results.sort((a, b) => b.relevance - a.relevance).slice(0, limit);
+  }
+
+  /**
+   * Query a specific memory backend directly, bypassing cross-backend limit dilution.
+   * When source is 'all', delegates to queryAll(). Otherwise dispatches to the
+   * single-backend method so the full limit is applied to that backend only.
+   */
+  async queryBySource(
+    source: 'session' | 'belief' | 'agentic' | 'typed' | 'adaptive' | 'all',
+    query: string,
+    limit = 10
+  ): Promise<readonly UnifiedMemoryResult[]> {
+    if (source === 'all') {
+      return this.queryAll(query, limit);
+    }
+    // Wait for SQLite backends to finish initializing
+    if (this.initPromise !== null) {
+      await this.initPromise;
+      this.initPromise = null;
+    }
+    const keywords = query
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((k) => k.length > 2);
+    let results: UnifiedMemoryResult[];
+    switch (source) {
+      case 'session':
+        results = this.querySessionMemory(query, keywords, limit);
+        break;
+      case 'belief':
+        results = await this.queryBeliefMemory(query, keywords, limit);
+        break;
+      case 'agentic':
+        results = await this.queryAgenticMemory(query, keywords, limit);
+        break;
+      case 'typed':
+        results = await this.queryTypedMemory(query, keywords, limit);
+        break;
+      case 'adaptive':
+        results = await this.queryAdaptiveMemory(query, keywords, limit);
+        break;
+    }
     return results.sort((a, b) => b.relevance - a.relevance).slice(0, limit);
   }
 

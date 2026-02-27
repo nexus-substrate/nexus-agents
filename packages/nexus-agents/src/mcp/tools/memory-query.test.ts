@@ -16,8 +16,9 @@ import {
 
 // Mock getToolMemory at module level
 const mockQueryAll = vi.fn();
+const mockQueryBySource = vi.fn();
 vi.mock('./tool-memory.js', () => ({
-  getToolMemory: () => ({ queryAll: mockQueryAll }),
+  getToolMemory: () => ({ queryAll: mockQueryAll, queryBySource: mockQueryBySource }),
 }));
 
 // ============================================================================
@@ -101,6 +102,7 @@ describe('memory-query', () => {
 
     beforeEach(() => {
       mockQueryAll.mockReset();
+      mockQueryBySource.mockReset();
 
       // Register tool with a mock server to capture the handler
       const mockServer = {
@@ -139,7 +141,7 @@ describe('memory-query', () => {
           timestamp: new Date(),
         },
       ];
-      mockQueryAll.mockResolvedValue(mockResults);
+      mockQueryBySource.mockResolvedValue(mockResults);
 
       const result = await registeredHandler({ query: 'test search' }, {});
 
@@ -150,7 +152,7 @@ describe('memory-query', () => {
       expect(parsed.source).toBe('all');
     });
 
-    it('filters results by source', async () => {
+    it('dispatches to specific backend when source is set', async () => {
       const mockResults = [
         {
           source: 'session',
@@ -159,15 +161,8 @@ describe('memory-query', () => {
           relevance: 0.8,
           timestamp: new Date(),
         },
-        {
-          source: 'belief',
-          type: 'belief',
-          content: 'belief data',
-          relevance: 0.6,
-          timestamp: new Date(),
-        },
       ];
-      mockQueryAll.mockResolvedValue(mockResults);
+      mockQueryBySource.mockResolvedValue(mockResults);
 
       const result = await registeredHandler({ query: 'test', source: 'session' }, {});
 
@@ -175,6 +170,12 @@ describe('memory-query', () => {
       const parsed = JSON.parse(result.content[0]!.text);
       expect(parsed.count).toBe(1);
       expect(parsed.source).toBe('session');
+      // Verify queryBySource was called with 'session' source, not 'all'
+      expect(mockQueryBySource).toHaveBeenCalledWith(
+        'session',
+        expect.any(String),
+        expect.any(Number)
+      );
     });
 
     it('returns validation error for invalid input', async () => {
@@ -184,8 +185,8 @@ describe('memory-query', () => {
       expect(result.content[0]!.text).toContain('Validation error');
     });
 
-    it('returns error when queryAll throws', async () => {
-      mockQueryAll.mockRejectedValue(new Error('Backend unavailable'));
+    it('returns error when queryBySource throws', async () => {
+      mockQueryBySource.mockRejectedValue(new Error('Backend unavailable'));
 
       const result = await registeredHandler({ query: 'test' }, {});
 
@@ -194,7 +195,7 @@ describe('memory-query', () => {
     });
 
     it('returns empty results when no matches', async () => {
-      mockQueryAll.mockResolvedValue([]);
+      mockQueryBySource.mockResolvedValue([]);
 
       const result = await registeredHandler({ query: 'nonexistent' }, {});
 

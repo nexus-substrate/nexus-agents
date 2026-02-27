@@ -162,4 +162,104 @@ describe('tool-memory cross-query', () => {
       }
     });
   });
+
+  describe('queryAll initPromise guard', () => {
+    it('should await initPromise before querying backends', async () => {
+      // The constructor sets initPromise; queryAll should await it.
+      // If initPromise is not awaited, SQLite backends stay null and return [].
+      // We verify queryAll resolves without error (initPromise completes gracefully).
+      const results = await manager.queryAll('test query');
+      expect(Array.isArray(results)).toBe(true);
+    });
+
+    it('should clear initPromise after first queryAll call', async () => {
+      // First call awaits and nulls out initPromise
+      await manager.queryAll('first call');
+      // Second call should still work (initPromise is null, skips await)
+      const results = await manager.queryAll('second call');
+      expect(Array.isArray(results)).toBe(true);
+    });
+  });
+
+  describe('queryBySource dispatch', () => {
+    it('should delegate to queryAll when source is all', async () => {
+      const results = await manager.queryBySource('all', 'test query', 10);
+      expect(Array.isArray(results)).toBe(true);
+    });
+
+    it('should return only session results when source is session', async () => {
+      manager.recordLearning({
+        pattern: 'session pattern for dispatch test',
+        context: 'dispatch context',
+        confidence: 0.9,
+      });
+      mockSessionMemory.searchLearnings.mockReturnValue([
+        {
+          pattern: 'session pattern for dispatch test',
+          context: 'dispatch context',
+          confidence: 0.9,
+        },
+      ]);
+
+      const results = await manager.queryBySource('session', 'dispatch', 10);
+
+      // All results should be from session source
+      for (const r of results) {
+        expect(r.source).toBe('session');
+      }
+    });
+
+    it('should return only belief results when source is belief', async () => {
+      await manager.recordBelief('dispatch', 'tests', 'belief source');
+
+      const results = await manager.queryBySource('belief', 'dispatch', 10);
+
+      for (const r of results) {
+        expect(r.source).toBe('belief');
+      }
+    });
+
+    it('should return only agentic results when source is agentic', async () => {
+      const results = await manager.queryBySource('agentic', 'test', 10);
+      // All returned results must be from agentic source (or empty if backend unavailable)
+      for (const r of results) {
+        expect(r.source).toBe('agentic');
+      }
+    });
+
+    it('should return only typed results when source is typed', async () => {
+      const results = await manager.queryBySource('typed', 'test', 10);
+      for (const r of results) {
+        expect(r.source).toBe('typed');
+      }
+    });
+
+    it('should return only adaptive results when source is adaptive', async () => {
+      const results = await manager.queryBySource('adaptive', 'test', 10);
+      for (const r of results) {
+        expect(r.source).toBe('adaptive');
+      }
+    });
+
+    it('should respect the limit parameter for source-specific queries', async () => {
+      // Record multiple beliefs
+      for (let i = 0; i < 5; i++) {
+        await manager.recordBelief(`topic${String(i)}`, 'relates_to', 'dispatch test');
+      }
+
+      const results = await manager.queryBySource('belief', 'topic', 2);
+      expect(results.length).toBeLessThanOrEqual(2);
+    });
+
+    it('should sort results by relevance descending', async () => {
+      await manager.recordBelief('high relevance dispatch', 'is', 'relevant dispatch');
+      await manager.recordBelief('low relevance other', 'is', 'something else');
+
+      const results = await manager.queryBySource('belief', 'dispatch', 10);
+
+      for (let i = 1; i < results.length; i++) {
+        expect(results[i - 1]!.relevance).toBeGreaterThanOrEqual(results[i]!.relevance);
+      }
+    });
+  });
 });

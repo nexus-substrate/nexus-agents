@@ -195,6 +195,146 @@ describe('HindsightBeliefMemory', () => {
         expect(result.value[1]?.subject).toBe('entity-2');
       }
     });
+
+    it('should auto-supersede when retaining same (subject, predicate)', async () => {
+      const { memory } = createTestMemory();
+
+      const first = await memory.retain({
+        subject: 'MCP Authentication',
+        predicate: 'status',
+        object: 'enabled',
+        confidence: BeliefConfidenceEnum.MEDIUM,
+        sourceType: BeliefSourceTypeEnum.OBSERVATION,
+      });
+      expect(first.ok).toBe(true);
+
+      const second = await memory.retain({
+        subject: 'MCP Authentication',
+        predicate: 'status',
+        object: 'disabled',
+        confidence: BeliefConfidenceEnum.HIGH,
+        sourceType: BeliefSourceTypeEnum.OBSERVATION,
+      });
+      expect(second.ok).toBe(true);
+
+      // Only 1 active belief should exist for this subject+predicate
+      const result = await memory.query({
+        subject: 'MCP Authentication',
+        predicate: 'status',
+        includeSuperseded: false,
+      });
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value).toHaveLength(1);
+        expect(result.value[0]?.object).toBe('disabled');
+      }
+    });
+
+    it('should mark old belief as superseded on duplicate retain', async () => {
+      const { memory } = createTestMemory();
+
+      const firstResult = await memory.retain({
+        subject: 'config',
+        predicate: 'theme',
+        object: 'light',
+        confidence: BeliefConfidenceEnum.MEDIUM,
+        sourceType: BeliefSourceTypeEnum.USER_INPUT,
+      });
+      expect(firstResult.ok).toBe(true);
+      if (!firstResult.ok) return;
+
+      await memory.retain({
+        subject: 'config',
+        predicate: 'theme',
+        object: 'dark',
+        confidence: BeliefConfidenceEnum.HIGH,
+        sourceType: BeliefSourceTypeEnum.USER_INPUT,
+      });
+
+      // The original belief should be marked as superseded
+      const oldBelief = await memory.recall(firstResult.value.beliefId);
+      expect(oldBelief.ok).toBe(true);
+      if (oldBelief.ok && oldBelief.value !== null) {
+        expect(oldBelief.value.superseded).toBe(true);
+        expect(oldBelief.value.supersededBy).toBeDefined();
+      }
+    });
+
+    it('should increment version when auto-superseding via retain', async () => {
+      const { memory } = createTestMemory();
+
+      await memory.retain({
+        subject: 'server',
+        predicate: 'port',
+        object: '8080',
+        confidence: BeliefConfidenceEnum.MEDIUM,
+        sourceType: BeliefSourceTypeEnum.OBSERVATION,
+      });
+
+      const secondResult = await memory.retain({
+        subject: 'server',
+        predicate: 'port',
+        object: '3000',
+        confidence: BeliefConfidenceEnum.HIGH,
+        sourceType: BeliefSourceTypeEnum.OBSERVATION,
+      });
+
+      expect(secondResult.ok).toBe(true);
+      if (secondResult.ok) {
+        expect(secondResult.value.version).toBe(2);
+      }
+    });
+
+    it('should return only latest via recallBySubject after dedup retain', async () => {
+      const { memory } = createTestMemory();
+
+      // Retain 5 times with the same subject+predicate (simulating the bug scenario)
+      for (let i = 0; i < 5; i++) {
+        await memory.retain({
+          subject: 'MCP Authentication',
+          predicate: 'requires-token',
+          object: `value-${String(i)}`,
+          confidence: BeliefConfidenceEnum.MEDIUM,
+          sourceType: BeliefSourceTypeEnum.OBSERVATION,
+        });
+      }
+
+      // recallBySubject excludes superseded by default
+      const result = await memory.recallBySubject('MCP Authentication');
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value).toHaveLength(1);
+        expect(result.value[0]?.object).toBe('value-4');
+        expect(result.value[0]?.version).toBe(5);
+      }
+    });
+
+    it('should not dedup beliefs with different predicates', async () => {
+      const { memory } = createTestMemory();
+
+      await memory.retain({
+        subject: 'user',
+        predicate: 'name',
+        object: 'Alice',
+        confidence: BeliefConfidenceEnum.HIGH,
+        sourceType: BeliefSourceTypeEnum.USER_INPUT,
+      });
+
+      await memory.retain({
+        subject: 'user',
+        predicate: 'email',
+        object: 'alice@example.com',
+        confidence: BeliefConfidenceEnum.HIGH,
+        sourceType: BeliefSourceTypeEnum.USER_INPUT,
+      });
+
+      // Both should be active — different predicates
+      const result = await memory.recallBySubject('user');
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value).toHaveLength(2);
+      }
+    });
   });
 
   describe('recall', () => {
@@ -271,10 +411,20 @@ describe('HindsightBeliefMemory', () => {
 
     it('should filter by minimum confidence', async () => {
       const { memory } = createTestMemory();
-      await createTestBelief(memory, { confidence: BeliefConfidenceEnum.HIGH });
-      await createTestBelief(memory, { confidence: BeliefConfidenceEnum.MEDIUM });
-      await createTestBelief(memory, { confidence: BeliefConfidenceEnum.LOW });
-      await createTestBelief(memory, { confidence: BeliefConfidenceEnum.SPECULATIVE });
+      // Use distinct predicates to avoid dedup auto-supersede
+      await createTestBelief(memory, {
+        predicate: 'p-high',
+        confidence: BeliefConfidenceEnum.HIGH,
+      });
+      await createTestBelief(memory, {
+        predicate: 'p-med',
+        confidence: BeliefConfidenceEnum.MEDIUM,
+      });
+      await createTestBelief(memory, { predicate: 'p-low', confidence: BeliefConfidenceEnum.LOW });
+      await createTestBelief(memory, {
+        predicate: 'p-spec',
+        confidence: BeliefConfidenceEnum.SPECULATIVE,
+      });
 
       const result = await memory.query({ minConfidence: BeliefConfidenceEnum.MEDIUM });
 
@@ -339,8 +489,12 @@ describe('HindsightBeliefMemory', () => {
 
     it('should respect limit', async () => {
       const { memory } = createTestMemory();
+      // Use distinct predicates to avoid dedup auto-supersede
       for (let i = 0; i < 10; i++) {
-        await createTestBelief(memory, { subject: 'limited-subject' });
+        await createTestBelief(memory, {
+          subject: 'limited-subject',
+          predicate: `pred-${String(i)}`,
+        });
       }
 
       const result = await memory.query({ subject: 'limited-subject', limit: 3 });
@@ -353,16 +507,20 @@ describe('HindsightBeliefMemory', () => {
 
     it('should order by confidence', async () => {
       const { memory } = createTestMemory();
+      // Use distinct predicates to avoid dedup auto-supersede
       await createTestBelief(memory, {
         subject: 'ordered',
+        predicate: 'p-low',
         confidence: BeliefConfidenceEnum.LOW,
       });
       await createTestBelief(memory, {
         subject: 'ordered',
+        predicate: 'p-high',
         confidence: BeliefConfidenceEnum.HIGH,
       });
       await createTestBelief(memory, {
         subject: 'ordered',
+        predicate: 'p-med',
         confidence: BeliefConfidenceEnum.MEDIUM,
       });
 
@@ -737,9 +895,17 @@ describe('HindsightBeliefMemory', () => {
     it('should compute accurate stats', async () => {
       const { memory } = createTestMemory();
 
-      await createTestBelief(memory, { confidence: BeliefConfidenceEnum.HIGH });
-      await createTestBelief(memory, { confidence: BeliefConfidenceEnum.MEDIUM });
+      // Use distinct predicates to avoid dedup auto-supersede
+      await createTestBelief(memory, {
+        predicate: 'p-high',
+        confidence: BeliefConfidenceEnum.HIGH,
+      });
+      await createTestBelief(memory, {
+        predicate: 'p-med',
+        confidence: BeliefConfidenceEnum.MEDIUM,
+      });
       const toSupersede = await createTestBelief(memory, {
+        predicate: 'p-low',
         confidence: BeliefConfidenceEnum.LOW,
       });
       await memory.supersede(

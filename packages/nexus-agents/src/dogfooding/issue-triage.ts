@@ -268,13 +268,17 @@ export class IssueTriage {
     const { issue, actions, trustResult, reputation, safeContent, startTime } = opts;
     const [category, confidence] = categorizeIssue(safeContent.title, safeContent.body);
 
+    // Tier 1 actors (owner/maintainer) cannot be suspicious — reconcile
+    // the trust-classifier result with the reputation-model result.
+    const isTier1 = trustResult.trustTier === '1';
+
     const trustAssessment: TrustAssessment = {
       trustTier: trustResult.trustTier,
       userRole: trustResult.userRole,
       isAllowlisted: trustResult.isAllowlisted,
       reputationScore: reputation?.reputationScore,
-      suspiciousSignals: reputation?.suspiciousSignals ?? [],
-      isSuspicious: reputation?.isSuspicious ?? false,
+      suspiciousSignals: isTier1 ? [] : (reputation?.suspiciousSignals ?? []),
+      isSuspicious: isTier1 ? false : (reputation?.isSuspicious ?? false),
     };
 
     return {
@@ -346,12 +350,20 @@ export class IssueTriage {
 // Private Helpers
 // ============================================================================
 
-/** Estimates account age from the issue creation date. */
-function estimateAccountAge(createdAt: string): number {
-  const created = new Date(createdAt);
-  const now = new Date();
-  const diffMs = now.getTime() - created.getTime();
-  return Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+/**
+ * Returns a safe default account age when the actual user creation date
+ * is unavailable. The triage pipeline only has issue.createdAt (the date
+ * the issue was filed), NOT the user's account creation date. Using the
+ * issue date would make recently filed issues appear to come from new
+ * accounts, incorrectly triggering the new_account signal.
+ *
+ * Default: 365 days — assumes an established account unless the GitHub
+ * user profile is fetched to provide the real value.
+ */
+const DEFAULT_ACCOUNT_AGE_DAYS = 365;
+
+function estimateAccountAge(_createdAt: string): number {
+  return DEFAULT_ACCOUNT_AGE_DAYS;
 }
 
 /** Counts how many comments the author has made on the issue. */

@@ -155,7 +155,17 @@ function detectSuspiciousSignals(metadata: GitHubUserMetadata): SuspiciousSignal
     signals.push('no_prior_contributions');
   }
 
-  if (metadata.injectionFlags.length > 0) {
+  // Only count hostile-tier injection flags — benign flags like
+  // instruction_pattern (triggered by "please remove") should not
+  // trigger the injection_patterns_detected signal.
+  const hostileInjectionFlags: readonly InjectionFlag[] = [
+    'system_prompt_manipulation',
+    'fake_conversation',
+    'authority_claim',
+    'hidden_content',
+  ];
+  const hasHostileFlags = metadata.injectionFlags.some((f) => hostileInjectionFlags.includes(f));
+  if (hasHostileFlags) {
     signals.push('injection_patterns_detected');
   }
 

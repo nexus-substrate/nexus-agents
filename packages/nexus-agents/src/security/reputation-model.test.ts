@@ -69,8 +69,47 @@ describe('assessReputation', () => {
     expect(result.suspiciousSignals).toContain('rapid_comments');
   });
 
-  it('injection detected → injection_patterns_detected', () => {
+  it('hostile injection flag → injection_patterns_detected', () => {
+    const result = assessReputation(
+      makeMetadata({ injectionFlags: ['system_prompt_manipulation'] })
+    );
+    expect(result.suspiciousSignals).toContain('injection_patterns_detected');
+  });
+
+  it('benign instruction_pattern flag does NOT trigger injection_patterns_detected', () => {
     const result = assessReputation(makeMetadata({ injectionFlags: ['instruction_pattern'] }));
+    expect(result.suspiciousSignals).not.toContain('injection_patterns_detected');
+  });
+
+  it('benign urgency_manipulation flag does NOT trigger injection_patterns_detected', () => {
+    const result = assessReputation(makeMetadata({ injectionFlags: ['urgency_manipulation'] }));
+    expect(result.suspiciousSignals).not.toContain('injection_patterns_detected');
+  });
+
+  it('benign base64_encoded flag does NOT trigger injection_patterns_detected', () => {
+    const result = assessReputation(makeMetadata({ injectionFlags: ['base64_encoded'] }));
+    expect(result.suspiciousSignals).not.toContain('injection_patterns_detected');
+  });
+
+  it('benign external_link_instruction flag does NOT trigger injection_patterns_detected', () => {
+    const result = assessReputation(
+      makeMetadata({ injectionFlags: ['external_link_instruction'] })
+    );
+    expect(result.suspiciousSignals).not.toContain('injection_patterns_detected');
+  });
+
+  it('hostile fake_conversation flag triggers injection_patterns_detected', () => {
+    const result = assessReputation(makeMetadata({ injectionFlags: ['fake_conversation'] }));
+    expect(result.suspiciousSignals).toContain('injection_patterns_detected');
+  });
+
+  it('hostile authority_claim flag triggers injection_patterns_detected', () => {
+    const result = assessReputation(makeMetadata({ injectionFlags: ['authority_claim'] }));
+    expect(result.suspiciousSignals).toContain('injection_patterns_detected');
+  });
+
+  it('hostile hidden_content flag triggers injection_patterns_detected', () => {
+    const result = assessReputation(makeMetadata({ injectionFlags: ['hidden_content'] }));
     expect(result.suspiciousSignals).toContain('injection_patterns_detected');
   });
 
@@ -155,15 +194,26 @@ describe('assessReputation', () => {
     expect(result.userRole).toBe('unknown');
   });
 
-  it('zero-day account with injection → Tier 4, low score', () => {
+  it('zero-day account with hostile injection → Tier 4, low score', () => {
+    const result = assessReputation(
+      makeMetadata({
+        accountAgeDays: 0,
+        injectionFlags: ['system_prompt_manipulation'],
+      })
+    );
+    expect(result.effectiveTrustTier).toBe('4');
+    expect(result.reputationScore).toBeLessThan(50);
+  });
+
+  it('zero-day account with benign injection flag → NOT Tier 4', () => {
     const result = assessReputation(
       makeMetadata({
         accountAgeDays: 0,
         injectionFlags: ['instruction_pattern'],
       })
     );
-    expect(result.effectiveTrustTier).toBe('4');
-    expect(result.reputationScore).toBeLessThan(50);
+    // instruction_pattern is benign — should not force Tier 4
+    expect(result.effectiveTrustTier).not.toBe('4');
   });
 
   it('high-rep user with rapid comments → moderate downgrade', () => {

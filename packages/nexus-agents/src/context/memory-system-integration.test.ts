@@ -561,12 +561,18 @@ describe('HindsightBeliefMemory Advanced Integration', () => {
     it('should compute accurate statistics across all operations', async () => {
       const { memory } = createTestBeliefMemory();
 
-      // Create beliefs with varying confidence
-      await createTestBelief(memory, { confidence: BeliefConfidenceEnum.HIGH });
-      await createTestBelief(memory, { confidence: BeliefConfidenceEnum.HIGH });
-      await createTestBelief(memory, { confidence: BeliefConfidenceEnum.MEDIUM });
-      await createTestBelief(memory, { confidence: BeliefConfidenceEnum.LOW });
-      await createTestBelief(memory, { confidence: BeliefConfidenceEnum.SPECULATIVE });
+      // Create beliefs with varying confidence (distinct predicates to avoid dedup)
+      await createTestBelief(memory, { predicate: 'p-h1', confidence: BeliefConfidenceEnum.HIGH });
+      await createTestBelief(memory, { predicate: 'p-h2', confidence: BeliefConfidenceEnum.HIGH });
+      await createTestBelief(memory, {
+        predicate: 'p-med',
+        confidence: BeliefConfidenceEnum.MEDIUM,
+      });
+      await createTestBelief(memory, { predicate: 'p-low', confidence: BeliefConfidenceEnum.LOW });
+      await createTestBelief(memory, {
+        predicate: 'p-spec',
+        confidence: BeliefConfidenceEnum.SPECULATIVE,
+      });
 
       // Create some counterfactuals
       await memory.createCounterfactual('Hypothesis 1', 'ctx-1');

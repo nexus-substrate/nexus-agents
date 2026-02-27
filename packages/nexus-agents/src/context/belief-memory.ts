@@ -122,11 +122,12 @@ export class HindsightBeliefMemory implements IHindsightBeliefMemory {
   retain(
     belief: Omit<Belief, 'beliefId' | 'version' | 'createdAt' | 'updatedAt' | 'superseded'>
   ): Promise<Result<Belief, MemoryError>> {
-    return this.retainInternal(belief);
+    return this.retainInternal(belief, false);
   }
 
   private retainInternal(
-    belief: Omit<Belief, 'beliefId' | 'version' | 'createdAt' | 'updatedAt' | 'superseded'>
+    belief: Omit<Belief, 'beliefId' | 'version' | 'createdAt' | 'updatedAt' | 'superseded'>,
+    skipDedup: boolean
   ): Promise<Result<Belief, MemoryError>> {
     try {
       const validation = BeliefSchema.omit({
@@ -143,29 +144,28 @@ export class HindsightBeliefMemory implements IHindsightBeliefMemory {
           )
         );
       }
+
+      const existingBelief = skipDedup
+        ? undefined
+        : this.findActiveBySubjectPredicate(belief.subject, belief.predicate);
+
+      const version = existingBelief !== undefined ? existingBelief.version + 1 : 1;
       const now = new Date(getTimeProvider().now());
       const newBelief: Belief = {
         ...belief,
         beliefId: generateId('belief'),
-        version: 1,
+        version,
         createdAt: now,
         updatedAt: now,
         superseded: false,
       };
       this.beliefs.set(newBelief.beliefId, newBelief);
       this.indexBelief(newBelief);
-      this.recordUpdate({
-        beliefId: newBelief.beliefId,
-        updateType: BeliefUpdateTypeEnum.RETAIN,
-        previousState: {},
-        newState: Object.fromEntries(Object.entries(newBelief)),
-        reason: 'Initial belief creation',
-      });
+      if (existingBelief !== undefined) {
+        this.markSuperseded(existingBelief, newBelief.beliefId, now);
+      }
+      this.recordRetainUpdate(newBelief, existingBelief !== undefined);
       this.evictIfOverCapacity();
-      this.logger.debug('Belief retained', {
-        beliefId: newBelief.beliefId,
-        subject: newBelief.subject,
-      });
       return Promise.resolve(ok(newBelief));
     } catch (error) {
       const causeError = error instanceof Error ? error : new Error(String(error));
@@ -183,7 +183,7 @@ export class HindsightBeliefMemory implements IHindsightBeliefMemory {
   ): Promise<Result<readonly Belief[], MemoryError>> {
     const results: Belief[] = [];
     for (const belief of beliefs) {
-      const result = await this.retainInternal(belief);
+      const result = await this.retainInternal(belief, false);
       if (!result.ok) return result;
       results.push(result.value);
     }
@@ -242,7 +242,7 @@ export class HindsightBeliefMemory implements IHindsightBeliefMemory {
       const existing = this.beliefs.get(beliefId);
       if (existing === undefined)
         return err(new MemoryError('Belief not found', { context: { beliefId } }));
-      const retainResult = await this.retainInternal(newBelief);
+      const retainResult = await this.retainInternal(newBelief, true);
       if (!retainResult.ok) return retainResult;
       const now = new Date(getTimeProvider().now());
       const superseded: Belief = {
@@ -389,6 +389,53 @@ export class HindsightBeliefMemory implements IHindsightBeliefMemory {
   // =========================================================================
   // Private Helpers
   // =========================================================================
+
+  /** Find a non-superseded belief matching the given (subject, predicate). */
+  private findActiveBySubjectPredicate(subject: string, predicate: string): Belief | undefined {
+    const subjectIds = this.subjectIndex.get(subject);
+    if (subjectIds === undefined) return undefined;
+    for (const id of subjectIds) {
+      const belief = this.beliefs.get(id);
+      if (belief?.predicate === predicate && !belief.superseded) {
+        return belief;
+      }
+    }
+    return undefined;
+  }
+
+  /** Mark an existing belief as superseded by a newer one. */
+  private markSuperseded(existing: Belief, newBeliefId: string, now: Date): void {
+    const superseded: Belief = {
+      ...existing,
+      superseded: true,
+      supersededBy: newBeliefId,
+      updatedAt: now,
+    };
+    this.beliefs.set(existing.beliefId, superseded);
+    this.recordUpdate({
+      beliefId: existing.beliefId,
+      updateType: BeliefUpdateTypeEnum.SUPERSEDE,
+      previousState: { superseded: false },
+      newState: { superseded: true, supersededBy: newBeliefId },
+      reason: 'Auto-superseded by retain with same subject+predicate',
+    });
+  }
+
+  /** Record the RETAIN update event for a newly created belief. */
+  private recordRetainUpdate(newBelief: Belief, wasSuperseding: boolean): void {
+    this.recordUpdate({
+      beliefId: newBelief.beliefId,
+      updateType: BeliefUpdateTypeEnum.RETAIN,
+      previousState: {},
+      newState: Object.fromEntries(Object.entries(newBelief)),
+      reason: wasSuperseding ? 'Belief creation (superseding existing)' : 'Initial belief creation',
+    });
+    this.logger.debug('Belief retained', {
+      beliefId: newBelief.beliefId,
+      subject: newBelief.subject,
+      supersededExisting: wasSuperseding,
+    });
+  }
 
   /** Evicts oldest superseded beliefs when total beliefs exceed maxTotalBeliefs. */
   private evictIfOverCapacity(): void {

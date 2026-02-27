@@ -143,13 +143,8 @@ async function executeMemoryQuery(
   const effectiveQuery =
     reflection?.reflected === true ? reflection.keywords.join(' ') : input.query;
 
-  // Query all memory backends
-  let results = await toolMemory.queryAll(effectiveQuery, input.limit);
-
-  // Filter by source if specified
-  if (input.source !== 'all') {
-    results = results.filter((r) => r.source === input.source);
-  }
+  // Query memory backends — dispatch to specific backend when source filter is set
+  const results = await toolMemory.queryBySource(input.source, effectiveQuery, input.limit);
 
   logger.debug('Memory query executed', {
     query: input.query,
