@@ -1,6 +1,6 @@
 {
   "name": "nexus-agents",
-  "version": "2.23.0",
+  "version": "2.24.0",
   "description": "Multi-agent orchestration MCP server with model diversity and workflow automation",
   "license": "MIT",
   "type": "module",

@@ -1,0 +1,101 @@
+name: OpenCode E2E
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/nexus-agents/src/cli-adapters/**'
+      - 'packages/nexus-agents/src/config/model-capabilities*'
+      - '.github/workflows/opencode-e2e.yml'
+  schedule:
+    # Weekly on Sundays at 06:00 UTC
+    - cron: '0 6 * * 0'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  opencode-e2e:
+    name: OpenCode E2E (macOS)
+    runs-on: macos-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Install OpenCode CLI (pinned version)
+        run: npm install -g opencode-ai@1.2.15
+
+      - name: Verify OpenCode installation
+        run: |
+          echo "=== OpenCode Version ==="
+          opencode --version
+          echo ""
+          echo "=== OpenCode Help ==="
+          opencode run --help
+          echo ""
+          echo "=== Available Models ==="
+          opencode models || echo "Models listing requires config (expected in CI)"
+
+      - name: Run OpenCode adapter unit tests
+        working-directory: packages/nexus-agents
+        run: pnpm vitest run src/cli-adapters/adapters/opencode-adapter.test.ts
+
+      - name: Run OpenCode E2E tests
+        working-directory: packages/nexus-agents
+        env:
+          OPENCODE_E2E: 'true'
+        run: pnpm vitest run --config vitest.config.opencode-e2e.ts
+
+      - name: Custom provider config validation
+        run: |
+          echo "=== Testing custom provider config parsing ==="
+          TMPDIR=$(mktemp -d)
+          cat > "$TMPDIR/opencode.json" <<'CONF'
+          {
+            "$schema": "https://opencode.ai/config.json",
+            "provider": {
+              "custom": {
+                "npm": "@ai-sdk/openai-compatible",
+                "name": "CI Test Gateway",
+                "options": {
+                  "baseURL": "http://localhost:9999/v1",
+                  "apiKey": "{env:CI_TEST_KEY}"
+                },
+                "models": {
+                  "claude-opus-4-5": {
+                    "name": "Claude Opus 4.5",
+                    "limit": { "context": 200000, "output": 65536 }
+                  },
+                  "claude-sonnet-4-5": {
+                    "name": "Claude Sonnet 4.5",
+                    "limit": { "context": 200000, "output": 65536 }
+                  }
+                }
+              }
+            }
+          }
+          CONF
+          echo "Config written to $TMPDIR/opencode.json"
+          echo "Config contents:"
+          cat "$TMPDIR/opencode.json"
+          echo ""
+          echo "Validating JSON structure..."
+          node -e "const c = JSON.parse(require('fs').readFileSync('$TMPDIR/opencode.json','utf8')); console.log('Provider:', Object.keys(c.provider)); console.log('Models:', Object.keys(c.provider.custom.models)); console.log('BaseURL:', c.provider.custom.options.baseURL);"
+          echo "=== Config validation passed ==="
+          rm -rf "$TMPDIR"

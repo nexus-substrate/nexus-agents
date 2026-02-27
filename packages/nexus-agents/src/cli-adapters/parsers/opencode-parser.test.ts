@@ -305,6 +305,130 @@ describe('OpenCodeResponseParser', () => {
     });
   });
 
+  describe('real opencode v1.2.x format', () => {
+    it('should parse step_start/text/step_finish stream', () => {
+      const raw = createNdjson(
+        {
+          type: 'step_start',
+          sessionID: 'ses_abc123',
+          part: { type: 'step-start', sessionID: 'ses_abc123' },
+        },
+        {
+          type: 'text',
+          sessionID: 'ses_abc123',
+          part: { type: 'text', text: 'Hello from OpenCode!', time: { start: 1, end: 2 } },
+        },
+        {
+          type: 'step_finish',
+          sessionID: 'ses_abc123',
+          part: {
+            type: 'step-finish',
+            reason: 'stop',
+            cost: 0,
+            tokens: { total: 18080, input: 78, output: 23, reasoning: 0 },
+          },
+        }
+      );
+
+      const result = parser.parse(raw);
+
+      expect(result).not.toBeNull();
+      expect(result?.content).toBe('Hello from OpenCode!');
+      expect(result?.sessionId).toBe('ses_abc123');
+      expect(result?.usage?.inputTokens).toBe(78);
+      expect(result?.usage?.outputTokens).toBe(23);
+      expect(result?.usage?.totalTokens).toBe(101);
+    });
+
+    it('should extract text from part.text in text events', () => {
+      const raw = createNdjson(
+        {
+          type: 'text',
+          sessionID: 'ses_1',
+          part: { type: 'text', text: 'Part 1 ' },
+        },
+        {
+          type: 'text',
+          sessionID: 'ses_1',
+          part: { type: 'text', text: 'Part 2' },
+        }
+      );
+
+      const result = parser.parse(raw);
+      expect(result?.content).toBe('Part 1 Part 2');
+    });
+
+    it('should extract sessionID from top-level field', () => {
+      const raw = createNdjson({
+        type: 'step_start',
+        sessionID: 'ses_real_session',
+        part: { type: 'step-start' },
+      });
+
+      const sessionId = parser.extractSessionId(raw);
+      expect(sessionId).toBe('ses_real_session');
+    });
+
+    it('should extract usage from step_finish part.tokens', () => {
+      const raw = createNdjson(
+        {
+          type: 'text',
+          sessionID: 'ses_1',
+          part: { type: 'text', text: 'Result' },
+        },
+        {
+          type: 'step_finish',
+          sessionID: 'ses_1',
+          part: {
+            type: 'step-finish',
+            tokens: { total: 500, input: 100, output: 50, reasoning: 0 },
+          },
+        }
+      );
+
+      const usage = parser.extractUsage(raw);
+      expect(usage?.inputTokens).toBe(100);
+      expect(usage?.outputTokens).toBe(50);
+      expect(usage?.totalTokens).toBe(150);
+    });
+
+    it('should handle step_finish without tokens gracefully', () => {
+      const raw = createNdjson(
+        {
+          type: 'text',
+          sessionID: 'ses_1',
+          part: { type: 'text', text: 'OK' },
+        },
+        {
+          type: 'step_finish',
+          sessionID: 'ses_1',
+          part: { type: 'step-finish', reason: 'stop' },
+        }
+      );
+
+      const result = parser.parse(raw);
+      expect(result?.content).toBe('OK');
+      expect(result?.usage).toBeUndefined();
+    });
+
+    it('should parse real opencode output verbatim', () => {
+      // Exact output from opencode v1.2.15
+      const raw = [
+        '{"type":"step_start","timestamp":1772226973450,"sessionID":"ses_35f0a92f","part":{"id":"prt_1","sessionID":"ses_35f0a92f","messageID":"msg_1","type":"step-start","snapshot":"e4cf1ced"}}',
+        '{"type":"text","timestamp":1772226974029,"sessionID":"ses_35f0a92f","part":{"id":"prt_2","sessionID":"ses_35f0a92f","messageID":"msg_1","type":"text","text":"OK","time":{"start":1772226974028,"end":1772226974028}}}',
+        '{"type":"step_finish","timestamp":1772226974101,"sessionID":"ses_35f0a92f","part":{"id":"prt_3","sessionID":"ses_35f0a92f","messageID":"msg_1","type":"step-finish","reason":"stop","snapshot":"e4cf1ced","cost":0,"tokens":{"total":18080,"input":78,"output":23,"reasoning":0,"cache":{"read":17979,"write":0}}}}',
+      ].join('\n');
+
+      const result = parser.parse(raw);
+
+      expect(result).not.toBeNull();
+      expect(result?.content).toBe('OK');
+      expect(result?.sessionId).toBe('ses_35f0a92f');
+      expect(result?.usage?.inputTokens).toBe(78);
+      expect(result?.usage?.outputTokens).toBe(23);
+    });
+  });
+
   describe('edge cases', () => {
     it('should handle unicode content', () => {
       const raw = createNdjson({

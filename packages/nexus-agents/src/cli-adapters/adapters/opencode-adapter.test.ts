@@ -404,12 +404,12 @@ describe('OpenCodeCliAdapter', () => {
 
   describe('healthCheck()', () => {
     it('should return healthy status when CLI is available', async () => {
-      mockExecAsync.mockResolvedValue({ stdout: 'opencode version 1.2.10' });
+      mockExecAsync.mockResolvedValue({ stdout: '1.2.15' });
 
       const status = await adapter.healthCheck();
 
       expect(status.healthy).toBe(true);
-      expect(status.version).toBe('1.2.10');
+      expect(status.version).toBe('1.2.15');
     });
 
     it('should return unhealthy status when CLI is not found', async () => {
@@ -424,26 +424,26 @@ describe('OpenCodeCliAdapter', () => {
 
   describe('getVersion()', () => {
     it('should extract version from CLI output', async () => {
-      mockExecAsync.mockResolvedValue({ stdout: 'opencode version 1.2.10' });
+      mockExecAsync.mockResolvedValue({ stdout: '1.2.15' });
 
       const version = await adapter.getVersion();
 
-      expect(version).toBe('1.2.10');
+      expect(version).toBe('1.2.15');
     });
 
-    it('should use "opencode version" subcommand (not --version)', async () => {
-      mockExecAsync.mockResolvedValue({ stdout: 'opencode version 1.2.10' });
+    it('should use --version flag (base class behavior)', async () => {
+      mockExecAsync.mockResolvedValue({ stdout: '1.2.15' });
 
       await adapter.getVersion();
 
       expect(mockExecAsync).toHaveBeenCalledWith(
-        'opencode version',
+        'opencode --version',
         expect.objectContaining({ timeout: expect.any(Number) })
       );
     });
 
     it('should cache version after first call', async () => {
-      mockExecAsync.mockResolvedValue({ stdout: 'opencode version 1.2.10' });
+      mockExecAsync.mockResolvedValue({ stdout: '1.2.15' });
 
       await adapter.getVersion();
       await adapter.getVersion();

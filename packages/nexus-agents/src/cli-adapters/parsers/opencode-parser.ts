@@ -4,7 +4,12 @@
  * Defensive parser for OpenCode CLI JSON output.
  * Handles `opencode run --format json` NDJSON event stream.
  *
- * (Source: Issue #1124, opencode.ai/docs/cli/)
+ * Real opencode v1.2.x NDJSON format (verified via E2E testing):
+ *   {"type":"step_start","sessionID":"ses_...","part":{"type":"step-start",...}}
+ *   {"type":"text","sessionID":"ses_...","part":{"type":"text","text":"Hello!",...}}
+ *   {"type":"step_finish","sessionID":"ses_...","part":{"type":"step-finish","tokens":{...},...}}
+ *
+ * (Source: Issue #1124, #1244, opencode.ai/docs/cli/)
  */
 
 import type { ICliResponseParser, TokenUsage } from '../types.js';
@@ -12,9 +17,14 @@ import { asRecord, extractNumberField } from '../../utils/type-coercion.js';
 
 /**
  * OpenCode CLI NDJSON event types.
- * OpenCode emits events as newline-delimited JSON.
+ * Includes both real v1.2.x types and legacy assumed types for compatibility.
  */
 export type OpenCodeEventType =
+  // Real opencode v1.2.x event types
+  | 'step_start'
+  | 'text'
+  | 'step_finish'
+  // Legacy assumed types (maintained for backward compatibility)
   | 'session.start'
   | 'message.start'
   | 'message.delta'
@@ -33,6 +43,8 @@ export interface OpenCodeCliResponse {
 /**
  * Parser for OpenCode CLI JSON output.
  * Handles NDJSON event stream from `opencode run --format json`.
+ *
+ * Supports both real opencode v1.2.x format and legacy assumed format.
  */
 export class OpenCodeResponseParser implements ICliResponseParser<OpenCodeCliResponse> {
   readonly name = 'opencode-parser';
@@ -94,6 +106,13 @@ export class OpenCodeResponseParser implements ICliResponseParser<OpenCodeCliRes
         const record = asRecord(event);
         if (record === null) continue;
 
+        // Real format: step_finish with nested part.tokens
+        if (record.type === 'step_finish') {
+          const usage = this.extractUsageFromPart(record);
+          if (usage !== null) return usage;
+        }
+
+        // Legacy format: session.complete or message.complete with usage field
         if (record.type === 'session.complete' || record.type === 'message.complete') {
           const usage = this.extractUsageFromRecord(record);
           if (usage !== null) return usage;
@@ -114,25 +133,35 @@ export class OpenCodeResponseParser implements ICliResponseParser<OpenCodeCliRes
 
     for (const line of lines) {
       if (line.trim() === '') continue;
-      try {
-        const event: unknown = JSON.parse(line);
-        const record = asRecord(event);
-        if (record === null) continue;
-
-        if (record.type === 'session.start' || record.type === 'session.complete') {
-          const sid = record.session_id ?? record.sessionId;
-          if (typeof sid === 'string') return sid;
-        }
-      } catch {
-        continue;
-      }
+      const sid = this.extractSessionIdFromLine(line);
+      if (sid !== null) return sid;
     }
 
     return null;
   }
 
+  /** Extracts session ID from a single NDJSON line. */
+  private extractSessionIdFromLine(line: string): string | null {
+    try {
+      const record = asRecord(JSON.parse(line) as unknown);
+      if (record === null) return null;
+
+      // Real format: sessionID at top level (step_start, text, step_finish)
+      if (typeof record.sessionID === 'string') return record.sessionID;
+
+      // Legacy format: session_id/sessionId in session events
+      const sid = record.session_id ?? record.sessionId;
+      if (typeof sid === 'string') return sid;
+
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
   /**
    * Processes a single NDJSON line.
+   * Handles both real v1.2.x format and legacy assumed format.
    */
   private processLine(
     line: string,
@@ -145,18 +174,32 @@ export class OpenCodeResponseParser implements ICliResponseParser<OpenCodeCliRes
       if (record === null) return;
 
       switch (record.type) {
+        // --- Real opencode v1.2.x event types ---
+        case 'step_start':
+          this.handleRealSessionId(record, setSessionId);
+          break;
+        case 'text':
+          this.handleRealSessionId(record, setSessionId);
+          this.pushRealTextContent(record, contentParts);
+          break;
+        case 'step_finish':
+          this.handleRealSessionId(record, setSessionId);
+          this.emitRealUsage(record, setUsage);
+          break;
+
+        // --- Legacy assumed event types ---
         case 'session.start':
-          this.handleSessionStart(record, setSessionId);
+          this.handleLegacySessionStart(record, setSessionId);
           break;
         case 'message.delta':
-          this.pushTextContent(record, contentParts);
+          this.pushLegacyTextContent(record, contentParts);
           break;
         case 'message.complete':
-          this.pushTextContent(record, contentParts);
-          this.emitUsage(record, setUsage);
+          this.pushLegacyTextContent(record, contentParts);
+          this.emitLegacyUsage(record, setUsage);
           break;
         case 'session.complete':
-          this.emitUsage(record, setUsage);
+          this.emitLegacyUsage(record, setUsage);
           break;
       }
     } catch {
@@ -164,8 +207,57 @@ export class OpenCodeResponseParser implements ICliResponseParser<OpenCodeCliRes
     }
   }
 
-  /** Extracts session ID from a session event record. */
-  private handleSessionStart(
+  // --- Real v1.2.x format handlers ---
+
+  /** Extracts sessionID from top-level field (real format). */
+  private handleRealSessionId(
+    record: Record<string, unknown>,
+    setSessionId: (id: string) => void
+  ): void {
+    if (typeof record.sessionID === 'string') setSessionId(record.sessionID);
+  }
+
+  /** Extracts text from nested part.text field (real format). */
+  private pushRealTextContent(record: Record<string, unknown>, parts: string[]): void {
+    const part = asRecord(record.part);
+    if (part === null) return;
+
+    if (typeof part.text === 'string') parts.push(part.text);
+  }
+
+  /** Extracts usage from nested part.tokens field (real format). */
+  private emitRealUsage(
+    record: Record<string, unknown>,
+    setUsage: (usage: TokenUsage) => void
+  ): void {
+    const usage = this.extractUsageFromPart(record);
+    if (usage !== null) setUsage(usage);
+  }
+
+  /** Extracts usage from part.tokens (real opencode v1.2.x format). */
+  private extractUsageFromPart(record: Record<string, unknown>): TokenUsage | null {
+    const part = asRecord(record.part);
+    if (part === null) return null;
+
+    const tokens = asRecord(part.tokens);
+    if (tokens === null) return null;
+
+    const inputTokens = extractNumberField(tokens, 'input');
+    const outputTokens = extractNumberField(tokens, 'output');
+
+    if (inputTokens === null || outputTokens === null) return null;
+
+    return {
+      inputTokens,
+      outputTokens,
+      totalTokens: inputTokens + outputTokens,
+    };
+  }
+
+  // --- Legacy format handlers ---
+
+  /** Extracts session ID from a session event record (legacy format). */
+  private handleLegacySessionStart(
     record: Record<string, unknown>,
     setSessionId: (id: string) => void
   ): void {
@@ -173,14 +265,17 @@ export class OpenCodeResponseParser implements ICliResponseParser<OpenCodeCliRes
     if (typeof sid === 'string') setSessionId(sid);
   }
 
-  /** Pushes text content from a message event into the accumulator. */
-  private pushTextContent(record: Record<string, unknown>, parts: string[]): void {
+  /** Pushes text content from a message event (legacy format). */
+  private pushLegacyTextContent(record: Record<string, unknown>, parts: string[]): void {
     const text = record.content ?? record.delta ?? record.text;
     if (typeof text === 'string') parts.push(text);
   }
 
-  /** Emits usage from a record if present. */
-  private emitUsage(record: Record<string, unknown>, setUsage: (usage: TokenUsage) => void): void {
+  /** Emits usage from a record (legacy format). */
+  private emitLegacyUsage(
+    record: Record<string, unknown>,
+    setUsage: (usage: TokenUsage) => void
+  ): void {
     const usage = this.extractUsageFromRecord(record);
     if (usage !== null) setUsage(usage);
   }
@@ -212,7 +307,7 @@ export class OpenCodeResponseParser implements ICliResponseParser<OpenCodeCliRes
   }
 
   /**
-   * Extracts usage from a record with usage/token fields.
+   * Extracts usage from a record with usage/token fields (legacy format).
    */
   private extractUsageFromRecord(record: Record<string, unknown>): TokenUsage | null {
     const usage = asRecord(record.usage);

@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.24.0] - 2026-02-27
+
+### Fixed
+
+- **OpenCode NDJSON parser** — parser was written against assumed event types (`session.start`, `message.delta`, `session.complete`) but real opencode v1.2.x uses `step_start`, `text`, `step_finish` with nested `part.text` and `part.tokens` fields. All OpenCode executions previously returned PARSE_ERROR (#1244)
+- **OpenCode `getVersion()` revert** — v2.23.0 incorrectly overrode to use `opencode version` subcommand; opencode v1.2.x uses `--version` flag (base class behavior was correct all along) (#1241)
+
+### Added
+
+- **macOS CI workflow** — `.github/workflows/opencode-e2e.yml` with `macos-latest` runner for real OpenCode CLI testing: version check, model listing, NDJSON parsing, adapter execution, custom provider config validation (#1242)
+- **OpenCode E2E test suite** — `opencode-adapter.e2e.test.ts` with 8 tests against real CLI, gated behind `OPENCODE_E2E=true` env var (#1243)
+- **Real v1.2.x format parser tests** — 7 new tests covering `step_start`/`text`/`step_finish` events, nested `part.text`, `part.tokens`, and verbatim real output parsing (#1244)
+- **Vitest E2E config** — `vitest.config.opencode-e2e.ts` for isolated E2E test execution with extended timeouts
+
 ## [2.23.0] - 2026-02-27
 
 ### Fixed
