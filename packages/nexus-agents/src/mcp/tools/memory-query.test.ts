@@ -75,7 +75,7 @@ describe('memory-query', () => {
     });
 
     it('should validate all source types', () => {
-      const sources = ['session', 'belief', 'agentic', 'typed', 'all'] as const;
+      const sources = ['session', 'belief', 'agentic', 'typed', 'adaptive', 'all'] as const;
       for (const source of sources) {
         const result = MemoryQueryInputSchema.safeParse({ query: 'test', source });
         expect(result.success).toBe(true);

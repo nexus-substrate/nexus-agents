@@ -63,7 +63,7 @@ export type { SessionLearning, CompletedTask, ResolvedError, Belief };
  */
 export interface UnifiedMemoryResult {
   /** Source memory system */
-  source: 'session' | 'belief' | 'agentic' | 'typed';
+  source: 'session' | 'belief' | 'agentic' | 'typed' | 'adaptive';
   /** Type of memory entry */
   type: string;
   /** Content summary (may be truncated) */
@@ -666,12 +666,14 @@ export class ToolMemoryManager {
       .toLowerCase()
       .split(/\s+/)
       .filter((k) => k.length > 2);
-    const perSource = Math.ceil(limit / 4);
+    const sourceCount = 4 + (this.adaptive !== null ? 1 : 0);
+    const perSource = Math.ceil(limit / sourceCount);
     const results = [
       ...this.querySessionMemory(query, keywords, perSource),
       ...(await this.queryBeliefMemory(query, keywords, perSource)),
       ...(await this.queryAgenticMemory(query, keywords, perSource)),
       ...(await this.queryTypedMemory(query, keywords, Math.ceil(perSource / 2))),
+      ...(await this.queryAdaptiveMemory(query, keywords, perSource)),
     ];
     return results.sort((a, b) => b.relevance - a.relevance).slice(0, limit);
   }
@@ -698,7 +700,7 @@ export class ToolMemoryManager {
     return results;
   }
 
-  /** Query BeliefMemory for beliefs. */
+  /** Query BeliefMemory for beliefs. Falls back to keyword search when exact subject match misses (#1225). */
   private async queryBeliefMemory(
     query: string,
     keywords: readonly string[],
@@ -706,21 +708,34 @@ export class ToolMemoryManager {
   ): Promise<UnifiedMemoryResult[]> {
     const results: UnifiedMemoryResult[] = [];
     try {
+      // Try exact subject match first (fast path via subjectIndex)
       const beliefResult = await this.beliefs.recallBySubject(query, limit);
-      if (beliefResult.ok) {
-        for (const b of beliefResult.value.filter((x) => !x.superseded)) {
-          results.push({
-            source: 'belief',
-            type: 'belief',
-            content: `${b.subject} ${b.predicate} ${b.object}`,
-            relevance: this.scoreRelevance(
-              b.subject + ' ' + b.predicate + ' ' + b.object,
-              keywords
-            ),
-            timestamp: b.createdAt,
-            metadata: { confidence: b.confidence },
+      let beliefs: readonly Belief[] = [];
+      if (beliefResult.ok && beliefResult.value.length > 0) {
+        beliefs = beliefResult.value;
+      } else if (keywords.length > 0) {
+        // Fallback: keyword scan across all beliefs (capped at 1000 candidates) (#1225)
+        const KEYWORD_SCAN_LIMIT = 1000;
+        const allResult = await this.beliefs.query({
+          includeSuperseded: false,
+          limit: KEYWORD_SCAN_LIMIT,
+        });
+        if (allResult.ok) {
+          beliefs = allResult.value.filter((b) => {
+            const text = (b.subject + ' ' + b.predicate + ' ' + b.object).toLowerCase();
+            return keywords.some((k) => text.includes(k));
           });
         }
+      }
+      for (const b of beliefs.filter((x) => !x.superseded)) {
+        results.push({
+          source: 'belief',
+          type: 'belief',
+          content: `${b.subject} ${b.predicate} ${b.object}`,
+          relevance: this.scoreRelevance(b.subject + ' ' + b.predicate + ' ' + b.object, keywords),
+          timestamp: b.createdAt,
+          metadata: { confidence: b.confidence },
+        });
       }
     } catch {
       // Best-effort: belief query failure is non-critical
@@ -788,11 +803,56 @@ export class ToolMemoryManager {
     return results;
   }
 
-  /** Calculate relevance score based on keyword matches. */
+  /** Query AdaptiveMemory for priority-scored entries (#1226). */
+  private async queryAdaptiveMemory(
+    query: string,
+    keywords: readonly string[],
+    limit: number
+  ): Promise<UnifiedMemoryResult[]> {
+    if (this.adaptive === null) return [];
+    const results: UnifiedMemoryResult[] = [];
+    try {
+      const searchResult = await this.adaptive.search(query, limit);
+      if (searchResult.ok) {
+        for (const e of searchResult.value) {
+          results.push({
+            source: 'adaptive',
+            type: 'adaptive',
+            content: `${e.key}: ${JSON.stringify(e.value).slice(0, 100)}`,
+            relevance: this.scoreRelevance(
+              e.key + ' ' + JSON.stringify(e.value).slice(0, 200),
+              keywords
+            ),
+            timestamp: e.createdAt,
+            metadata: { importance: e.metadata.importance },
+          });
+        }
+      }
+    } catch {
+      // Best-effort: adaptive query failure is non-critical
+    }
+    return results;
+  }
+
+  /**
+   * Calculate relevance score based on keyword matches (#1227).
+   * Uses graduated scoring: base ratio + partial match bonus + exact phrase bonus.
+   */
   private scoreRelevance(text: string, keywords: readonly string[]): number {
     if (keywords.length === 0) return 0.5;
     const lower = text.toLowerCase();
-    return keywords.filter((k) => lower.includes(k)).length / keywords.length;
+    const matched = keywords.filter((k) => lower.includes(k));
+    const matchRatio = matched.length / keywords.length;
+    // Bonus for multi-occurrence of matched keywords (term frequency)
+    let tfBonus = 0;
+    for (const k of matched) {
+      const count = lower.split(k).length - 1;
+      if (count > 1) tfBonus += 0.05 * Math.min(count - 1, 3);
+    }
+    // Bonus for exact phrase match (all keywords in order)
+    const phrase = keywords.join(' ');
+    const phraseBonus = lower.includes(phrase) ? 0.15 : 0;
+    return Math.min(1, matchRatio * 0.8 + tfBonus + phraseBonus);
   }
 
   // ==========================================================================

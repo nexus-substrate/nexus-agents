@@ -52,21 +52,18 @@ describe('memory-stats', () => {
       expect(result.success).toBe(true);
       if (result.success) {
         expect(result.data.includeDecay).toBe(true);
-        expect(result.data.includePromotion).toBe(true);
       }
     });
 
     it('should validate full input', () => {
       const input: MemoryStatsInput = {
         includeDecay: false,
-        includePromotion: false,
       };
       const result = MemoryStatsInputSchema.safeParse(input);
 
       expect(result.success).toBe(true);
       if (result.success) {
         expect(result.data.includeDecay).toBe(false);
-        expect(result.data.includePromotion).toBe(false);
       }
     });
 
@@ -76,17 +73,11 @@ describe('memory-stats', () => {
       expect(result.success).toBe(true);
       if (result.success) {
         expect(result.data.includeDecay).toBe(false);
-        expect(result.data.includePromotion).toBe(true);
       }
     });
 
     it('should reject non-boolean includeDecay', () => {
       const result = MemoryStatsInputSchema.safeParse({ includeDecay: 'yes' });
-      expect(result.success).toBe(false);
-    });
-
-    it('should reject non-boolean includePromotion', () => {
-      const result = MemoryStatsInputSchema.safeParse({ includePromotion: 1 });
       expect(result.success).toBe(false);
     });
   });

@@ -1,6 +1,12 @@
+---
+title: 'Consensus Protocols Architecture'
+description: Multi-agent voting algorithms, catfish contrarian role, and structured rejection workflow
+tier: 2
+keywords: [consensus, voting, multi-agent, catfish, rejection, protocols, architecture]
+---
+
 # Consensus Protocols Architecture
 
-**Tier 3** | Deep technical documentation for multi-agent decision making
 **Hub:** [README.md](./README.md) | **Full Architecture:** [ARCHITECTURE.md](../../ARCHITECTURE.md)
 
 ---

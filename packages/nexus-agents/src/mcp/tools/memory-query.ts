@@ -46,7 +46,7 @@ export const MemoryQueryInputSchema = z.object({
     .default(10)
     .describe('Maximum results to return (default: 10, max: 50)'),
   source: z
-    .enum(['session', 'belief', 'agentic', 'typed', 'all'])
+    .enum(['session', 'belief', 'agentic', 'typed', 'adaptive', 'all'])
     .optional()
     .default('all')
     .describe('Filter by memory source (default: all)'),
@@ -222,7 +222,7 @@ export function registerMemoryQueryTool(server: McpServer, deps: MemoryQueryDeps
       .optional()
       .describe('Maximum results to return (default: 10, max: 50)'),
     source: z
-      .enum(['session', 'belief', 'agentic', 'typed', 'all'])
+      .enum(['session', 'belief', 'agentic', 'typed', 'adaptive', 'all'])
       .optional()
       .describe('Filter by memory source (default: all)'),
   };

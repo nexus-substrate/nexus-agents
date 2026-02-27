@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.18.0] - 2026-02-27
+
+### Added
+
+- **Belief keyword search fallback** — queryAll() now falls back to keyword scan when exact subject match returns 0 results, making 2,257+ beliefs searchable (#1225)
+- **Adaptive memory in queryAll()** — AdaptiveMemoryBackend wired into unified cross-memory search as 5th source (#1226)
+- **`adaptive` source filter** — memory_query tool now accepts `source: 'adaptive'` to filter results (#1226)
+- **YAML frontmatter** on 6 additional docs (docs/README.md, ENTRYPOINTS.md, INSTALLATION.md, CONFIGURATION.md, CONSENSUS_PROTOCOLS.md, MEMORY_SYSTEM.md) — 17 total validated (#1229)
+- **7 new cross-memory query tests** — belief fallback, adaptive wiring, graduated scoring, phrase match bonus (#1225-#1227)
+
+### Fixed
+
+- **Binary relevance scoring** — Replaced binary 0/1 scoring with graduated relevance using term frequency bonus and exact phrase match bonus (#1227)
+- **Dead `includePromotion` parameter** — Removed unused parameter from memory_stats tool schema and registration (#1228)
+- **CLAUDE.md tier mismatch** — Changed from tier 2 to tier 1 (project instructions are tier 1) (#1229)
+
+### Changed
+
+- **FRONTMATTER_REQUIRED_FILES** expanded from 11 to 17 entries — added docs/README.md, ENTRYPOINTS.md, CONSENSUS_PROTOCOLS.md, MEMORY_SYSTEM.md, INSTALLATION.md, CONFIGURATION.md (#1229)
+- **UnifiedMemoryResult.source** union type expanded to include `'adaptive'` (#1226)
+
 ## [2.17.0] - 2026-02-26
 
 ### Added

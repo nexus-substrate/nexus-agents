@@ -1,7 +1,7 @@
 ---
 title: Project Instructions
 description: Claude Code instructions, protocols, agent behavior, governance rules, and canonical paths
-tier: 2
+tier: 1
 keywords: [claude, instructions, protocols, guidelines, conventions, governance]
 related_files: [CODING_STANDARDS.md, docs/ENTRYPOINTS.md]
 ---

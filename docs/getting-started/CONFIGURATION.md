@@ -1,3 +1,10 @@
+---
+title: 'Configuration Guide'
+description: Configure nexus-agents with YAML files, environment variables, and programmatic options
+tier: 2
+keywords: [configuration, yaml, environment, settings, options, getting-started]
+---
+
 # Configuration
 
 Configure nexus-agents with YAML files, environment variables, and programmatic options.

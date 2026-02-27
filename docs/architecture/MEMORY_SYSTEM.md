@@ -1,6 +1,12 @@
+---
+title: 'Memory System Architecture'
+description: Seven-backend memory system with session, belief, agentic, adaptive, typed, MobiMem, and decay management
+tier: 2
+keywords: [memory, belief, agentic, adaptive, typed, mobimem, decay, architecture]
+---
+
 # Memory System Architecture
 
-**Tier 3** | Deep technical documentation for memory management
 **Hub:** [README.md](./README.md) | **Full Architecture:** [ARCHITECTURE.md](../../ARCHITECTURE.md)
 
 ---

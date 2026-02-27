@@ -32,11 +32,6 @@ export const MemoryStatsInputSchema = z.object({
     .optional()
     .default(true)
     .describe('Include decay statistics (default: true)'),
-  includePromotion: z
-    .boolean()
-    .optional()
-    .default(true)
-    .describe('Include promotion pipeline stats (default: true)'),
 });
 
 /**
@@ -224,10 +219,6 @@ export function registerMemoryStatsTool(server: McpServer, deps: MemoryStatsDeps
   const logger = deps.logger ?? createLogger({ tool: 'memory_stats' });
   const toolSchema = {
     includeDecay: z.boolean().optional().describe('Include decay statistics (default: true)'),
-    includePromotion: z
-      .boolean()
-      .optional()
-      .describe('Include promotion pipeline stats (default: true)'),
   };
 
   const description =

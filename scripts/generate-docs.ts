@@ -208,15 +208,21 @@ function stripGenerationDate(content: string): string {
 const FRONTMATTER_REQUIRED_FILES = [
   'CLAUDE.md',
   'QUICK_START.md',
+  'docs/README.md',
+  'docs/ENTRYPOINTS.md',
   'docs/TROUBLESHOOTING.md',
+  'docs/ALIGNMENT_ROADMAP.md',
   'docs/skills-index.md',
   'docs/architecture/README.md',
-  'docs/development/README.md',
   'docs/architecture/SECURITY.md',
-  'docs/guides/MCP_INTEGRATION.md',
-  'docs/ALIGNMENT_ROADMAP.md',
+  'docs/architecture/CONSENSUS_PROTOCOLS.md',
+  'docs/architecture/MEMORY_SYSTEM.md',
+  'docs/development/README.md',
   'docs/development/CLI_UX_QUALITY_GATE.md',
   'docs/development/SHELL_TESTING_ANTI_PATTERNS.md',
+  'docs/getting-started/INSTALLATION.md',
+  'docs/getting-started/CONFIGURATION.md',
+  'docs/guides/MCP_INTEGRATION.md',
 ];
 
 const REQUIRED_FRONTMATTER_FIELDS = ['title', 'description', 'tier', 'keywords'];

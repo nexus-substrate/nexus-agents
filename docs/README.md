@@ -1,3 +1,10 @@
+---
+title: 'Nexus Agents Documentation Index'
+description: Canonical documentation index — single source of truth for all nexus-agents documentation
+tier: 1
+keywords: [documentation, index, reference, navigation, docs]
+---
+
 # Nexus Agents Documentation
 
 **Canonical Documentation Index** | Last Updated: 2026-02-10 (UI/UX design skill added, 14 skills total)

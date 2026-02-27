@@ -1,3 +1,10 @@
+---
+title: 'Nexus-Agents Entrypoints'
+description: Complete reference for all CLI commands, MCP tools, REST API endpoints, and workflow templates
+tier: 1
+keywords: [entrypoints, cli, mcp, rest, api, tools, commands, reference]
+---
+
 # Nexus-Agents Entrypoints
 
 **Last Updated:** 2026-02-08 (ET)
