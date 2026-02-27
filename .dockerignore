@@ -1,0 +1,13 @@
+# Docker build context exclusions
+node_modules
+.git
+.claude
+coverage
+runs
+packages/nexus-agents/runs
+packages/nexus-agents/docs/api
+packages/nexus-tui/node_modules
+*.log
+.env
+.env.*
+opencode.json

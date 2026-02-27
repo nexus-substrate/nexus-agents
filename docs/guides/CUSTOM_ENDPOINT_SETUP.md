@@ -212,6 +212,51 @@ opencode mcp list
 
 Then use nexus-agents tools from within OpenCode sessions. The model will automatically discover and call available MCP tools.
 
+## Docker Container Testing
+
+Run OpenCode + nexus-agents MCP in an isolated Docker container for reproducible testing.
+
+### Quick Start
+
+```bash
+# Build the image
+docker build -f Dockerfile.opencode -t nexus-opencode .
+
+# Run smoke test (no API key needed)
+docker compose -f docker-compose.opencode.yml run --rm smoke-test
+
+# Interactive session with Anthropic
+docker run -it --rm -e ANTHROPIC_API_KEY nexus-opencode
+
+# Run with custom OpenAI-compatible endpoint
+docker run -it --rm \
+  -e CUSTOM_API_BASE_URL=https://your-gateway.example.com/v1 \
+  -e CUSTOM_API_KEY=your-key \
+  nexus-opencode run --format json -m custom/claude-opus "your prompt"
+
+# Test MCP integration with free model (no API key)
+docker run --rm nexus-opencode run --format json -m opencode/big-pickle \
+  "Use the list_experts MCP tool"
+```
+
+### What the Container Includes
+
+- **Node.js 22** + built nexus-agents with all dependencies
+- **OpenCode v1.2.15** (pinned for reproducibility)
+- **MCP config** (`opencode.json`): nexus-agents connected via stdio local transport
+- **Provider config**: Anthropic + custom OpenAI-compatible endpoint preconfigured
+- Runs as non-root `nexus` user
+
+### Docker Desktop Sandbox (Alternative)
+
+For stronger isolation via microVM, Docker Desktop users can use Docker Sandboxes:
+
+```bash
+docker sandbox run opencode .
+```
+
+This provides credential proxying and filesystem isolation. See [Docker Sandbox docs](https://docs.docker.com/ai/sandboxes/agents/opencode/) for details. Note: requires Docker Desktop with sandbox support enabled.
+
 ## Troubleshooting
 
 **"No model adapter configured"**: OpenCode is not on PATH or not installed. Install it and verify with `which opencode`.

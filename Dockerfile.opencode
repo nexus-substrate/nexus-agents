@@ -1,0 +1,128 @@
+# Dockerfile.opencode — OpenCode + nexus-agents MCP server
+# Usage:
+#   docker build -f Dockerfile.opencode -t nexus-opencode .
+#   docker run -it --rm -e ANTHROPIC_API_KEY nexus-opencode
+#
+# For Docker Sandbox (Docker Desktop):
+#   docker sandbox run opencode .
+
+# Stage 1: Build nexus-agents
+FROM node:22-slim AS builder
+
+RUN corepack enable && corepack prepare pnpm@9 --activate
+
+WORKDIR /app
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
+COPY packages/nexus-agents/package.json packages/nexus-agents/
+COPY packages/nexus-tui/package.json packages/nexus-tui/
+
+RUN pnpm install --frozen-lockfile
+
+COPY packages/ packages/
+COPY tsconfig.json ./
+
+RUN pnpm build
+
+# Stage 2: Runtime — npm install for flat node_modules (no pnpm symlinks)
+FROM node:22-slim AS runtime-deps
+
+WORKDIR /opt/nexus-agents
+COPY --from=builder /app/packages/nexus-agents/package.json ./
+# Use npm for a flat, self-contained node_modules (no symlinks)
+# Include all deps since some devDeps (ts-morph) are bundled as externals
+RUN npm install --ignore-scripts 2>/dev/null; exit 0
+# Rebuild native modules (e.g., better-sqlite3) after npm install
+RUN npm rebuild 2>/dev/null; exit 0
+
+# Stage 3: Final image
+FROM node:22-slim
+
+# Install opencode-ai globally
+RUN npm install -g opencode-ai@1.2.15
+
+# Create non-root user
+RUN useradd -m -s /bin/bash nexus
+USER nexus
+WORKDIR /home/nexus
+
+# Copy self-contained nexus-agents: dist + flat node_modules
+COPY --from=builder --chown=nexus:nexus /app/packages/nexus-agents/dist /home/nexus/nexus-agents/dist
+COPY --from=builder --chown=nexus:nexus /app/packages/nexus-agents/package.json /home/nexus/nexus-agents/
+COPY --from=runtime-deps --chown=nexus:nexus /opt/nexus-agents/node_modules /home/nexus/nexus-agents/node_modules
+
+# Create opencode.json with MCP config + Anthropic provider
+# To use custom OpenAI-compatible endpoints, set CUSTOM_API_BASE_URL and CUSTOM_API_KEY
+RUN cat > /home/nexus/opencode.json <<'OCEOF'
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "anthropic": {
+      "npm": "@ai-sdk/anthropic",
+      "options": {
+        "apiKey": "{env:ANTHROPIC_API_KEY}"
+      },
+      "models": {
+        "claude-sonnet-4-5": {
+          "name": "Claude Sonnet 4.5",
+          "limit": {
+            "context": 200000,
+            "output": 16384
+          }
+        }
+      }
+    },
+    "custom": {
+      "npm": "@ai-sdk/openai-compatible",
+      "options": {
+        "baseURL": "{env:CUSTOM_API_BASE_URL}",
+        "apiKey": "{env:CUSTOM_API_KEY}"
+      },
+      "models": {
+        "claude-opus": {
+          "name": "Claude Opus (Custom Endpoint)",
+          "limit": {
+            "context": 200000,
+            "output": 16384
+          }
+        },
+        "claude-sonnet": {
+          "name": "Claude Sonnet (Custom Endpoint)",
+          "limit": {
+            "context": 200000,
+            "output": 16384
+          }
+        }
+      }
+    }
+  },
+  "mcp": {
+    "nexus-agents": {
+      "type": "local",
+      "command": [
+        "node",
+        "/home/nexus/nexus-agents/dist/cli.js",
+        "--mode=server"
+      ],
+      "enabled": true,
+      "environment": {
+        "NEXUS_ALLOW_MOCK_ORCHESTRATION": "true"
+      }
+    }
+  }
+}
+OCEOF
+
+# Create a workspace directory for OpenCode
+RUN mkdir -p /home/nexus/workspace
+WORKDIR /home/nexus/workspace
+
+# Initialize a minimal project so OpenCode has context
+RUN echo '# Docker Sandbox Workspace' > README.md
+
+# Health check: verify nexus-agents MCP server starts
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
+  CMD node /home/nexus/nexus-agents/dist/cli.js --help || exit 1
+
+# Default: interactive OpenCode session
+ENTRYPOINT ["opencode"]
+CMD []
