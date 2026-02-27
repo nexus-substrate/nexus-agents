@@ -2,7 +2,8 @@
  * nexus-agents/mcp - Memory Write Tool
  *
  * MCP tool for manual memory injection across backends.
- * Supports session (learnings), belief (triples), and agentic (knowledge) writes.
+ * Supports session (learnings), belief (triples), agentic (knowledge),
+ * adaptive (priority-scored), and typed (MIRIX-style) writes.
  *
  * @module mcp/tools/memory-write
  * (Source: Issue #1090 - Add memory_write MCP tool)
@@ -30,8 +31,11 @@ export const MemoryWriteInputSchema = z.object({
   key: z.string().min(1).max(200).describe('Memory identifier or subject'),
   content: z.string().min(1).max(5000).describe('Memory content to store'),
   backend: z
-    .enum(['session', 'belief', 'agentic'])
-    .describe('Target memory backend: session (learnings), belief (triples), agentic (knowledge)'),
+    .enum(['session', 'belief', 'agentic', 'adaptive', 'typed'])
+    .describe(
+      'Target memory backend: session (learnings), belief (triples), agentic (knowledge), ' +
+        'adaptive (priority-scored), typed (MIRIX-style semantic)'
+    ),
   confidence: z
     .enum(['high', 'medium', 'low'])
     .optional()
@@ -133,6 +137,50 @@ async function writeToAgentic(
 }
 
 /**
+ * Writes to the adaptive backend with priority scoring.
+ */
+async function writeToAdaptive(
+  key: string,
+  content: string,
+  confidence: 'high' | 'medium' | 'low'
+): Promise<MemoryWriteResponse> {
+  const toolMemory = getToolMemory();
+  if (!toolMemory.isAdaptiveMemoryAvailable()) {
+    return {
+      success: false,
+      backend: 'adaptive',
+      key,
+      error: 'Adaptive memory backend unavailable (requires SQLite)',
+    };
+  }
+  const importance = confidence === 'high' ? 0.9 : confidence === 'medium' ? 0.7 : 0.5;
+  await toolMemory.storeAdaptive(key, content, importance);
+  return { success: true, backend: 'adaptive', key };
+}
+
+/**
+ * Writes to the typed backend as a semantic memory entry.
+ */
+async function writeToTyped(
+  key: string,
+  content: string,
+  confidence: 'high' | 'medium' | 'low'
+): Promise<MemoryWriteResponse> {
+  const toolMemory = getToolMemory();
+  if (!toolMemory.isTypedMemoryAvailable()) {
+    return {
+      success: false,
+      backend: 'typed',
+      key,
+      error: 'Typed memory backend unavailable (requires SQLite)',
+    };
+  }
+  const importance = confidence === 'high' ? 'high' : confidence === 'medium' ? 'medium' : 'low';
+  await toolMemory.storeTyped(key, content, importance);
+  return { success: true, backend: 'typed', key };
+}
+
+/**
  * Executes the memory write operation.
  */
 async function executeMemoryWrite(
@@ -152,6 +200,10 @@ async function executeMemoryWrite(
       return writeToBelief(input.key, input.content, input.confidence);
     case 'agentic':
       return writeToAgentic(input.key, input.content, input.confidence, input.metadata);
+    case 'adaptive':
+      return writeToAdaptive(input.key, input.content, input.confidence);
+    case 'typed':
+      return writeToTyped(input.key, input.content, input.confidence);
   }
 }
 
@@ -203,9 +255,10 @@ export function registerMemoryWriteTool(server: McpServer, deps: MemoryWriteDeps
     key: z.string().min(1).max(200).describe('Memory identifier or subject'),
     content: z.string().min(1).max(5000).describe('Memory content to store'),
     backend: z
-      .enum(['session', 'belief', 'agentic'])
+      .enum(['session', 'belief', 'agentic', 'adaptive', 'typed'])
       .describe(
-        'Target memory backend: session (learnings), belief (triples), agentic (knowledge)'
+        'Target memory backend: session (learnings), belief (triples), agentic (knowledge), ' +
+          'adaptive (priority-scored), typed (MIRIX-style semantic)'
       ),
     confidence: z
       .enum(['high', 'medium', 'low'])
@@ -217,7 +270,8 @@ export function registerMemoryWriteTool(server: McpServer, deps: MemoryWriteDeps
   const description =
     'Write a memory entry to a specific backend. ' +
     'Supports session (learnings), belief (subject-predicate-object triples), ' +
-    'and agentic (knowledge with attributes) backends.';
+    'agentic (knowledge with attributes), adaptive (priority-scored), ' +
+    'and typed (MIRIX-style semantic) backends.';
 
   const secureHandler = createSecureHandler(memoryWriteHandler, {
     toolName: 'memory_write',

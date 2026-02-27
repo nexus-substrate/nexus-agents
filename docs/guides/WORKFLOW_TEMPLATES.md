@@ -1,3 +1,17 @@
+---
+title: 'Workflow Templates'
+description: 'Create and customize YAML workflow templates for multi-agent task execution'
+tier: 2
+keywords:
+  - workflows
+  - templates
+  - yaml
+  - automation
+related_files:
+  - src/orchestration/workflow-router.ts
+  - src/orchestration/graph/graph-builder.ts
+---
+
 # Workflow Templates
 
 Create and customize YAML workflow templates for automated multi-agent task execution.

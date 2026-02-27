@@ -222,7 +222,10 @@ async function resolveDiverseAdapters(
   let availableClis: CliName[];
   try {
     availableClis = await getAvailableClis();
-  } catch {
+  } catch (e: unknown) {
+    logger.warn('Failed to resolve available CLIs; falling back to single adapter', {
+      error: String(e),
+    });
     availableClis = [];
   }
 

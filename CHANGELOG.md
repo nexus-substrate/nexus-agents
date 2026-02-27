@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.20.0] - 2026-02-27
+
+### Added
+
+- **Adaptive + typed memory write paths** — `memory_write` tool now supports `backend: 'adaptive'` and `backend: 'typed'`, making these queryable backends also writable (#1236)
+- **YAML frontmatter on 9 additional docs** — UNTRUSTED_INPUT_HARDENING.md, CONTEXT_LOAD_BALANCING.md, ROUTING_SYSTEM.md, MCP_PROTOCOL.md, CONTRIBUTION_GUIDE.md, AGENT_DEVELOPMENT.md, WORKFLOW_TEMPLATES.md, DEBUGGING_OBSERVABILITY.md, RESEARCH_INDEX.md — 26 total validated (#1235)
+- **8 new memory_write tests** — schema validation, write logic, unavailable backend handling for adaptive and typed backends (#1236)
+
+### Fixed
+
+- **4 critical silent catch blocks** — Added `logger.warn(...)` to bare catch blocks in `voter-agents.ts`, `consensus-plan.ts`, `triangulated-review.ts`, `sprint-helpers.ts` (#1234)
+
+### Changed
+
+- **FRONTMATTER_REQUIRED_FILES** expanded from 17 to 26 entries (#1235)
+- **memory_write tool description** updated to list all 5 supported backends (#1236)
+
 ## [2.19.0] - 2026-02-27
 
 ### Fixed

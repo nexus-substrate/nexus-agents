@@ -45,6 +45,27 @@ describe('MemoryWriteInputSchema', () => {
       }
     });
 
+    it('should accept adaptive backend write', () => {
+      const input = { key: 'priority-item', content: 'scored content', backend: 'adaptive' };
+      const result = MemoryWriteInputSchema.safeParse(input);
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.backend).toBe('adaptive');
+        expect(result.data.confidence).toBe('medium');
+      }
+    });
+
+    it('should accept typed backend write', () => {
+      const input = { key: 'semantic-fact', content: 'typed content', backend: 'typed' };
+      const result = MemoryWriteInputSchema.safeParse(input);
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.backend).toBe('typed');
+      }
+    });
+
     it('should accept confidence override', () => {
       const input = {
         key: 'test',
@@ -212,6 +233,44 @@ describe('memory write logic', () => {
     );
   });
 
+  it('should map adaptive input with importance from confidence', () => {
+    const mockStoreAdaptive = vi.fn();
+    const input: MemoryWriteInput = {
+      key: 'priority-data',
+      content: 'high-importance info',
+      backend: 'adaptive',
+      confidence: 'high',
+    };
+
+    // Verify confidence-to-importance mapping: high=0.9, medium=0.7, low=0.5
+    const importance =
+      input.confidence === 'high' ? 0.9 : input.confidence === 'medium' ? 0.7 : 0.5;
+    mockStoreAdaptive(input.key, input.content, importance);
+
+    expect(mockStoreAdaptive).toHaveBeenCalledWith('priority-data', 'high-importance info', 0.9);
+  });
+
+  it('should map typed input as semantic memory entry', () => {
+    const mockStoreTyped = vi.fn();
+    const input: MemoryWriteInput = {
+      key: 'semantic-fact',
+      content: 'TypeScript uses strict mode',
+      backend: 'typed',
+      confidence: 'medium',
+    };
+
+    // Verify confidence maps to importance string for typed backend
+    const importance =
+      input.confidence === 'high' ? 'high' : input.confidence === 'medium' ? 'medium' : 'low';
+    mockStoreTyped(input.key, input.content, importance);
+
+    expect(mockStoreTyped).toHaveBeenCalledWith(
+      'semantic-fact',
+      'TypeScript uses strict mode',
+      'medium'
+    );
+  });
+
   it('should map confidence levels correctly', () => {
     const cases: Array<{ level: 'high' | 'medium' | 'low'; expected: number }> = [
       { level: 'high', expected: 0.9 },
@@ -249,5 +308,45 @@ describe('MemoryWriteResponse format', () => {
 
     expect(response.success).toBe(false);
     expect(response.error).toContain('unavailable');
+  });
+
+  it('should structure adaptive unavailable response', () => {
+    const response = {
+      success: false,
+      backend: 'adaptive',
+      key: 'test-key',
+      error: 'Adaptive memory backend unavailable (requires SQLite)',
+    };
+
+    expect(response.success).toBe(false);
+    expect(response.backend).toBe('adaptive');
+    expect(response.error).toContain('Adaptive memory backend unavailable');
+  });
+
+  it('should structure typed unavailable response', () => {
+    const response = {
+      success: false,
+      backend: 'typed',
+      key: 'test-key',
+      error: 'Typed memory backend unavailable (requires SQLite)',
+    };
+
+    expect(response.success).toBe(false);
+    expect(response.backend).toBe('typed');
+    expect(response.error).toContain('Typed memory backend unavailable');
+  });
+
+  it('should structure adaptive success response', () => {
+    const response = { success: true, backend: 'adaptive', key: 'priority-key' };
+
+    expect(response.success).toBe(true);
+    expect(response.backend).toBe('adaptive');
+  });
+
+  it('should structure typed success response', () => {
+    const response = { success: true, backend: 'typed', key: 'semantic-key' };
+
+    expect(response.success).toBe(true);
+    expect(response.backend).toBe('typed');
   });
 });

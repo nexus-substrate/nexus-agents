@@ -1,3 +1,17 @@
+---
+title: 'Routing System Architecture'
+description: 'Multi-stage pipeline for intelligent model selection and task routing'
+tier: 2
+keywords:
+  - routing
+  - model-selection
+  - composite-router
+  - linucb
+related_files:
+  - src/cli-adapters/composite-router.ts
+  - src/cli-adapters/factory.ts
+---
+
 # Routing System Architecture
 
 **Tier 3** | Deep technical documentation for model routing

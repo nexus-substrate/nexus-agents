@@ -15,6 +15,9 @@ import type {
   GitHubIssueRaw,
 } from './sprint-types.js';
 import { colors, symbols, writeLine } from './ansi-output.js';
+import { createLogger } from '../core/index.js';
+
+const logger = createLogger({ component: 'sprint-helpers' });
 
 // Re-export for backward compatibility
 export { colors, symbols, writeLine };
@@ -36,7 +39,10 @@ export function fetchOpenIssues(): readonly GitHubIssueRaw[] {
       return [];
     }
     return JSON.parse(output) as GitHubIssueRaw[];
-  } catch {
+  } catch (e: unknown) {
+    logger.warn('Failed to fetch or parse GitHub issues; returning empty list', {
+      error: String(e),
+    });
     return [];
   }
 }

@@ -203,6 +203,8 @@ function createPlanTimeout(ms: number, cli: CliName): Promise<never> {
   });
 }
 
+const moduleLogger = createLogger({ component: 'consensus-plan' });
+
 /** Parses CLI output into a structured plan. */
 function parsePlan(text: string): CliPlan | null {
   try {
@@ -219,7 +221,8 @@ function parsePlan(text: string): CliPlan | null {
       alternatives: parseStrings(obj.alternatives),
       summary: typeof obj.summary === 'string' ? obj.summary : '',
     };
-  } catch {
+  } catch (e: unknown) {
+    moduleLogger.warn('Failed to parse CLI plan output as JSON; discarding', { error: String(e) });
     return null;
   }
 }

@@ -1,3 +1,17 @@
+---
+title: 'Context Load Balancing Strategy'
+description: 'Strategy for distributing work across Claude, Codex, and Gemini CLIs'
+tier: 2
+keywords:
+  - routing
+  - context-management
+  - multi-cli
+  - load-balancing
+related_files:
+  - src/cli-adapters/composite-router.ts
+  - src/core/task-analysis/shared-task-analyzer.ts
+---
+
 # Context Load Balancing Strategy
 
 **Tier 3** | Deep technical documentation for multi-CLI context distribution

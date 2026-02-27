@@ -1,3 +1,17 @@
+---
+title: 'Debugging with Observability'
+description: 'Debug multi-agent workflows using EventBus, correlation IDs, and SwarmObserver'
+tier: 2
+keywords:
+  - debugging
+  - observability
+  - eventbus
+  - tracing
+related_files:
+  - src/pipeline/event-bus.ts
+  - src/mcp/tools/index.ts
+---
+
 # Debugging with Observability
 
 **Version:** 1.0.0

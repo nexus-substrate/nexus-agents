@@ -1,3 +1,18 @@
+---
+title: 'Untrusted Input Hardening Architecture'
+description: 'Defense-in-depth architecture for prompt injection and hostile input protection'
+tier: 2
+keywords:
+  - security
+  - prompt-injection
+  - trust-tiers
+  - input-sanitization
+related_files:
+  - src/security/index.ts
+  - src/security/sanitizer.ts
+  - src/security/trust-classifier.ts
+---
+
 # Untrusted Input Hardening Architecture
 
 **Status:** Canonical

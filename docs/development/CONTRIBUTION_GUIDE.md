@@ -1,3 +1,17 @@
+---
+title: 'Contribution Guide'
+description: 'Detailed contribution workflows, standards, and development setup'
+tier: 2
+keywords:
+  - contributing
+  - development
+  - git-workflow
+  - testing
+related_files:
+  - CONTRIBUTING.md
+  - CLAUDE.md
+---
+
 # Contribution Guide
 
 **Tier 3** | Detailed contribution workflow and standards

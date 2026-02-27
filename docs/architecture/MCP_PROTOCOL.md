@@ -1,3 +1,17 @@
+---
+title: 'MCP Protocol Architecture'
+description: 'MCP 2025-11-25 server implementation for Claude Desktop integration'
+tier: 2
+keywords:
+  - mcp
+  - protocol
+  - tool-definitions
+  - server
+related_files:
+  - src/mcp/tools/index.ts
+  - src/mcp/server.ts
+---
+
 # MCP Protocol Architecture
 
 **Tier 3** | Deep technical documentation for MCP server development

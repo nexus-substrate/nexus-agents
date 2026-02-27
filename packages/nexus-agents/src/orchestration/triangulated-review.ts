@@ -223,6 +223,8 @@ function createTimeout(ms: number, cli: CliName): Promise<never> {
   });
 }
 
+const moduleLogger = createLogger({ component: 'triangulated-review' });
+
 /** Parses CLI output into structured findings. */
 function parseFindings(text: string, cli: CliName): ReviewFinding[] {
   try {
@@ -247,7 +249,11 @@ function parseFindings(text: string, cli: CliName): ReviewFinding[] {
         expertId: cli,
         confidence: 0.7 + getCliBonus(cli),
       }));
-  } catch {
+  } catch (e: unknown) {
+    moduleLogger.warn('Failed to parse CLI review findings as JSON; discarding', {
+      cli,
+      error: String(e),
+    });
     return [];
   }
 }

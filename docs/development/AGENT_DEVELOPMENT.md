@@ -1,3 +1,17 @@
+---
+title: 'Agent Development Guide'
+description: 'Walkthrough for creating and extending custom agents in nexus-agents'
+tier: 2
+keywords:
+  - agents
+  - development
+  - iagent
+  - custom-agents
+related_files:
+  - src/agents/index.ts
+  - src/core/types/index.ts
+---
+
 # Agent Development Guide
 
 **Tier 3** | Walkthrough for creating and extending agents

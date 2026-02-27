@@ -29,7 +29,7 @@ import { BeliefConfidence, BeliefSourceType } from '../../context/belief-core-ty
 import type { Belief } from '../../context/belief-core-types.js';
 import { AgenticMemoryBackend } from '../../context/agentic-memory.js';
 import { AdaptiveMemoryBackend } from '../../context/adaptive-memory.js';
-import type { MemoryMetadata } from '../../context/memory-backend-types.js';
+import type { MemoryMetadata, MemoryImportance } from '../../context/memory-backend-types.js';
 import { saveBeliefSnapshot, loadBeliefSnapshot } from '../../context/belief-memory-persistence.js';
 import { HybridMemoryBackend } from '../../context/memory-backend.js';
 import { createTypedMemory } from '../../context/typed-memory.js';
@@ -511,6 +511,45 @@ export class ToolMemoryManager {
       }
     } catch (error: unknown) {
       this.log.debug('Knowledge recording failed', {
+        key,
+        error: getErrorMessage(error),
+      });
+    }
+  }
+
+  /** Store a value in AdaptiveMemory with importance scoring. Best-effort. */
+  async storeAdaptive(key: string, value: unknown, importance: number): Promise<void> {
+    if (this.adaptive === null) return;
+    try {
+      const level = importance >= 0.8 ? 'high' : importance >= 0.6 ? 'medium' : 'low';
+      const result = await this.adaptive.store(key, value, {
+        importance: level,
+        tags: ['memory_write_tool'],
+      });
+      if (!result.ok) {
+        this.log.debug('Failed to store adaptive memory', { key, error: result.error.message });
+      }
+    } catch (error: unknown) {
+      this.log.debug('Adaptive memory store failed', {
+        key,
+        error: getErrorMessage(error),
+      });
+    }
+  }
+
+  /** Store a value in TypedMemory (via HybridMemoryBackend). Best-effort. */
+  async storeTyped(key: string, value: unknown, importance: MemoryImportance): Promise<void> {
+    if (this.typedBackend === null) return;
+    try {
+      const result = await this.typedBackend.store(`semantic ${key}`, value, {
+        importance,
+        tags: ['memory_write_tool', 'semantic'],
+      });
+      if (!result.ok) {
+        this.log.debug('Failed to store typed memory', { key, error: result.error.message });
+      }
+    } catch (error: unknown) {
+      this.log.debug('Typed memory store failed', {
         key,
         error: getErrorMessage(error),
       });
