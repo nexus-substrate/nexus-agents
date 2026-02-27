@@ -351,6 +351,19 @@ const CONSENSUS_VOTE_OUTPUT_SCHEMA = {
       decision: z.enum(['approve', 'reject', 'abstain']),
       confidence: z.number(),
       reasoning: z.string(),
+      rejectionCategories: z
+        .array(
+          z.enum([
+            'YAGNI',
+            'DRY_VIOLATION',
+            'OVER_ENGINEERING',
+            'SCOPE_CREEP',
+            'SECURITY_RISK',
+            'MISALIGNED',
+            'INSUFFICIENT_EVIDENCE',
+          ])
+        )
+        .optional(),
     })
   ),
   durationMs: z.number(),

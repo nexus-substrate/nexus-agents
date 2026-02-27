@@ -86,13 +86,15 @@ Detailed technical documentation:
 
 #### Development
 
-| Document                                                         | Description                  | Status    |
-| ---------------------------------------------------------------- | ---------------------------- | --------- |
-| [AGENT_DEVELOPMENT.md](./development/AGENT_DEVELOPMENT.md)       | Building new agents          | Canonical |
-| [TOOL_DEVELOPMENT.md](./development/TOOL_DEVELOPMENT.md)         | Adding MCP tools             | Canonical |
-| [MEMORY_DEVELOPMENT.md](./development/MEMORY_DEVELOPMENT.md)     | Memory system extensions     | Canonical |
-| [CLI_DELEGATION_GUIDE.md](./development/CLI_DELEGATION_GUIDE.md) | CLI adapter patterns         | Canonical |
-| [CONTRIBUTION_GUIDE.md](./development/CONTRIBUTION_GUIDE.md)     | PR workflow, git conventions | Canonical |
+| Document                                                                       | Description                     | Status    |
+| ------------------------------------------------------------------------------ | ------------------------------- | --------- |
+| [AGENT_DEVELOPMENT.md](./development/AGENT_DEVELOPMENT.md)                     | Building new agents             | Canonical |
+| [TOOL_DEVELOPMENT.md](./development/TOOL_DEVELOPMENT.md)                       | Adding MCP tools                | Canonical |
+| [MEMORY_DEVELOPMENT.md](./development/MEMORY_DEVELOPMENT.md)                   | Memory system extensions        | Canonical |
+| [CLI_DELEGATION_GUIDE.md](./development/CLI_DELEGATION_GUIDE.md)               | CLI adapter patterns            | Canonical |
+| [CONTRIBUTION_GUIDE.md](./development/CONTRIBUTION_GUIDE.md)                   | PR workflow, git conventions    | Canonical |
+| [SHELL_TESTING_ANTI_PATTERNS.md](./development/SHELL_TESTING_ANTI_PATTERNS.md) | Shell testing pitfalls to avoid | Canonical |
+| [CLI_UX_QUALITY_GATE.md](./development/CLI_UX_QUALITY_GATE.md)                 | CLI UX pre-release checklist    | Canonical |
 
 #### Research
 
@@ -124,6 +126,8 @@ Detailed technical documentation:
 | [0012](./adr/0012-registry-api-unification.md)           | Registry API Unification           | Accepted   |
 | [0013](./adr/0013-memory-helpers-consolidation.md)       | Memory Helpers Consolidation       | Accepted   |
 | [0014](./adr/0014-orchestrator-interface-unification.md) | Orchestrator Interface Unification | Accepted   |
+| [0015](./adr/0015-multi-repo-orchestration.md)           | Multi-Repo Orchestration           | Proposed   |
+| [0016](./adr/0016-multi-round-consensus-voting.md)       | Multi-Round Consensus Voting       | Accepted   |
 
 #### Guides
 

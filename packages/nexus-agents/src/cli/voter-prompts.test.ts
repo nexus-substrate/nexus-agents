@@ -191,6 +191,51 @@ describe('voter-prompts', () => {
         expect(prompt).toContain('evaluation criteria');
       }
     });
+
+    // Issue #1212: Workflow-test evaluation criteria
+    describe('workflow-test criteria (Issue #1212)', () => {
+      it('should include testability in all prompts', () => {
+        for (const role of allRoles) {
+          expect(VOTER_SYSTEM_PROMPTS[role]).toContain('Testability');
+        }
+      });
+
+      it('should include workflow integration in all prompts', () => {
+        for (const role of allRoles) {
+          expect(VOTER_SYSTEM_PROMPTS[role]).toContain('Workflow integration');
+        }
+      });
+
+      it('should include incremental verifiability in all prompts', () => {
+        for (const role of allRoles) {
+          expect(VOTER_SYSTEM_PROMPTS[role]).toContain('Incremental verifiability');
+        }
+      });
+
+      it('should include workflow-test assessment section in all prompts', () => {
+        for (const role of allRoles) {
+          expect(VOTER_SYSTEM_PROMPTS[role]).toContain('Workflow-test assessment');
+        }
+      });
+    });
+
+    // Issue #1213: Rejection category instructions
+    describe('rejection category instructions (Issue #1213)', () => {
+      it('should mention rejection categories in all prompts', () => {
+        for (const role of allRoles) {
+          expect(VOTER_SYSTEM_PROMPTS[role]).toContain('YAGNI');
+          expect(VOTER_SYSTEM_PROMPTS[role]).toContain('OVER_ENGINEERING');
+        }
+      });
+
+      it('should instruct voters to classify rejections', () => {
+        for (const role of allRoles) {
+          const prompt = VOTER_SYSTEM_PROMPTS[role];
+          expect(prompt).toContain('rejecting');
+          expect(prompt).toContain('categories');
+        }
+      });
+    });
   });
 
   describe('SIMULATED_VOTE_REASONING', () => {

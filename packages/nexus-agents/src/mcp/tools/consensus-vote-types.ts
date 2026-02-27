@@ -84,6 +84,8 @@ export interface AgentVoteSummary {
   error: boolean;
   /** Model used for this agent's vote (Issue #817). */
   modelUsed?: string;
+  /** Structured rejection categories for reject→refine→re-vote loops (Issue #1213). */
+  rejectionCategories?: readonly string[];
 }
 
 export type VoteDecisionStatus = 'approved' | 'rejected' | 'pending' | 'timeout';
@@ -133,6 +135,9 @@ export function toAgentVoteSummary(result: AgentVoteResult): AgentVoteSummary {
     reasoning: result.vote.reasoning,
     simulated: result.source === 'simulation',
     error: result.source === 'error',
+    ...(result.vote.rejectionCategories !== undefined
+      ? { rejectionCategories: result.vote.rejectionCategories }
+      : {}),
   };
 }
 

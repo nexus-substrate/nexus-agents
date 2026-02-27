@@ -44,6 +44,26 @@ export const ProposalStatusSchema = z.enum([
 export type ProposalStatus = z.infer<typeof ProposalStatusSchema>;
 
 /**
+ * Structured rejection feedback categories (Issue #1213).
+ * Enables reject→refine→re-vote feedback loops by classifying rejection reasons.
+ */
+export const RejectionCategorySchema = z.enum([
+  'YAGNI',
+  'DRY_VIOLATION',
+  'OVER_ENGINEERING',
+  'SCOPE_CREEP',
+  'SECURITY_RISK',
+  'MISALIGNED',
+  'INSUFFICIENT_EVIDENCE',
+]);
+export type RejectionCategory = z.infer<typeof RejectionCategorySchema>;
+
+/**
+ * All valid rejection category values, for runtime reference.
+ */
+export const REJECTION_CATEGORIES = RejectionCategorySchema.options;
+
+/**
  * A vote cast by an agent.
  */
 export const VoteSchema = z.object({
@@ -51,6 +71,11 @@ export const VoteSchema = z.object({
   reasoning: z.string().min(1).describe('Explanation for the vote'),
   confidence: z.number().min(0).max(1).describe('Confidence level 0-1'),
   conditions: z.array(z.string()).optional().describe('Conditions for approval'),
+  /** Structured rejection categories for reject→refine→re-vote loops (Issue #1213). */
+  rejectionCategories: z
+    .array(RejectionCategorySchema)
+    .optional()
+    .describe('Rejection reason categories when decision is reject'),
   timestamp: z.string().datetime().optional(),
 });
 export type Vote = z.infer<typeof VoteSchema>;

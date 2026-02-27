@@ -37,6 +37,10 @@ export {
   // Proposal caching (Issue #589)
   type ProposalCacheConfig,
   ProposalCacheConfigSchema,
+  // Rejection categories (Issue #1213)
+  RejectionCategorySchema,
+  type RejectionCategory,
+  REJECTION_CATEGORIES,
 } from './types-core.js';
 
 // Multi-round voting protocol types (Issue #100)

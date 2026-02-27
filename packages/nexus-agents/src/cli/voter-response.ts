@@ -73,6 +73,21 @@ export const VoteResponseSchema = z.object({
   reasoning: z.string().min(10).max(4000).describe('Explanation for your vote (10-4000 chars)'),
   confidence: z.number().min(0).max(1).describe('Confidence level 0-1'),
   conditions: z.array(z.string()).optional().describe('Optional conditions for approval'),
+  /** Structured rejection categories for reject→refine→re-vote loops (Issue #1213). */
+  rejectionCategories: z
+    .array(
+      z.enum([
+        'YAGNI',
+        'DRY_VIOLATION',
+        'OVER_ENGINEERING',
+        'SCOPE_CREEP',
+        'SECURITY_RISK',
+        'MISALIGNED',
+        'INSUFFICIENT_EVIDENCE',
+      ])
+    )
+    .optional()
+    .describe('Rejection reason categories when decision is reject'),
 });
 
 export type VoteResponse = z.infer<typeof VoteResponseSchema>;
@@ -83,6 +98,8 @@ export type VoteResponse = z.infer<typeof VoteResponseSchema>;
 
 /**
  * Constructs the user prompt for vote evaluation.
+ * Includes workflow-test evaluation criteria (Issue #1212) and
+ * rejection category instructions (Issue #1213).
  */
 export function buildVotePrompt(proposal: string): string {
   return `Evaluate the following proposal and provide your vote.
@@ -90,18 +107,32 @@ export function buildVotePrompt(proposal: string): string {
 PROPOSAL:
 ${proposal}
 
+In addition to your role-specific criteria, assess these workflow-test dimensions:
+- Testability: Can the proposed changes be verified with automated tests?
+- Workflow integration: Does this fit into existing CI/make/test workflows?
+- Incremental verifiability: Can progress be measured at each step?
+
 Respond with a JSON object containing:
 - decision: "approve", "reject", or "abstain"
-- reasoning: Explanation for your vote (10-4000 characters)
+- reasoning: Explanation for your vote (10-4000 characters). Include your workflow-test assessment.
 - confidence: Number between 0 and 1
 - conditions: Optional array of conditions for approval
+- rejectionCategories: Required when rejecting. Array of categories from: YAGNI, DRY_VIOLATION, OVER_ENGINEERING, SCOPE_CREEP, SECURITY_RISK, MISALIGNED, INSUFFICIENT_EVIDENCE
 
-Example response:
+Example approve response:
 {
   "decision": "approve",
-  "reasoning": "The proposal aligns with architectural patterns and provides clear value.",
+  "reasoning": "The proposal aligns with architectural patterns. Testability: high — unit tests can verify each component. Workflow integration: fits existing CI pipeline.",
   "confidence": 0.85,
   "conditions": ["Add unit tests before merge"]
+}
+
+Example reject response:
+{
+  "decision": "reject",
+  "reasoning": "This adds speculative abstractions for hypothetical future needs. Testability: unclear — no concrete test plan provided.",
+  "confidence": 0.80,
+  "rejectionCategories": ["YAGNI", "OVER_ENGINEERING"]
 }`;
 }
 
@@ -192,7 +223,12 @@ export function parseVoteResponse(
         decision: validated.data.decision,
         reasoning: validated.data.reasoning,
         confidence: validated.data.confidence,
-        conditions: validated.data.conditions,
+        ...(validated.data.conditions !== undefined
+          ? { conditions: validated.data.conditions }
+          : {}),
+        ...(validated.data.rejectionCategories !== undefined
+          ? { rejectionCategories: validated.data.rejectionCategories }
+          : {}),
         source: 'parsed', // Real vote from LLM
       };
     }

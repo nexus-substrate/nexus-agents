@@ -220,10 +220,11 @@ describe('buildVotePrompt', () => {
     expect(prompt).toContain('conditions');
   });
 
-  it('should include example response', () => {
+  it('should include example responses', () => {
     const prompt = buildVotePrompt('test');
 
-    expect(prompt).toContain('Example response:');
+    expect(prompt).toContain('Example approve response');
+    expect(prompt).toContain('Example reject response');
     expect(prompt).toContain('{');
     expect(prompt).toContain('}');
   });
@@ -657,5 +658,142 @@ describe('parseVoteResponse', () => {
         expect(result.source).toBe('parsed');
       });
     });
+  });
+
+  // Issue #1213: Structured rejection feedback categories
+  describe('rejectionCategories parsing', () => {
+    it('should parse vote with rejection categories', () => {
+      const output = JSON.stringify({
+        decision: 'reject',
+        reasoning: 'This adds speculative abstractions not needed yet',
+        confidence: 0.8,
+        rejectionCategories: ['YAGNI', 'OVER_ENGINEERING'],
+      });
+
+      const result = parseVoteResponse(output, role);
+
+      expect(result.decision).toBe('reject');
+      expect(result.rejectionCategories).toEqual(['YAGNI', 'OVER_ENGINEERING']);
+      expect(result.source).toBe('parsed');
+    });
+
+    it('should parse vote with single rejection category', () => {
+      const output = JSON.stringify({
+        decision: 'reject',
+        reasoning: 'This duplicates existing functionality',
+        confidence: 0.75,
+        rejectionCategories: ['DRY_VIOLATION'],
+      });
+
+      const result = parseVoteResponse(output, role);
+
+      expect(result.rejectionCategories).toEqual(['DRY_VIOLATION']);
+    });
+
+    it('should accept all valid rejection categories', () => {
+      const allCategories = [
+        'YAGNI',
+        'DRY_VIOLATION',
+        'OVER_ENGINEERING',
+        'SCOPE_CREEP',
+        'SECURITY_RISK',
+        'MISALIGNED',
+        'INSUFFICIENT_EVIDENCE',
+      ];
+
+      const output = JSON.stringify({
+        decision: 'reject',
+        reasoning: 'Multiple concerns found in this proposal',
+        confidence: 0.9,
+        rejectionCategories: allCategories,
+      });
+
+      const result = parseVoteResponse(output, role);
+
+      expect(result.rejectionCategories).toEqual(allCategories);
+    });
+
+    it('should reject invalid rejection category values', () => {
+      const output = JSON.stringify({
+        decision: 'reject',
+        reasoning: 'Invalid category test',
+        confidence: 0.7,
+        rejectionCategories: ['INVALID_CATEGORY'],
+      });
+
+      expect(() => parseVoteResponse(output, role)).toThrow(SyntheticVoteError);
+    });
+
+    it('should accept approve vote without rejection categories', () => {
+      const output = JSON.stringify({
+        decision: 'approve',
+        reasoning: 'This looks good to me',
+        confidence: 0.85,
+      });
+
+      const result = parseVoteResponse(output, role);
+
+      expect(result.rejectionCategories).toBeUndefined();
+    });
+
+    it('should accept reject vote without rejection categories (optional field)', () => {
+      const output = JSON.stringify({
+        decision: 'reject',
+        reasoning: 'Needs more work for various reasons',
+        confidence: 0.6,
+      });
+
+      const result = parseVoteResponse(output, role);
+
+      expect(result.decision).toBe('reject');
+      expect(result.rejectionCategories).toBeUndefined();
+    });
+  });
+});
+
+// ============================================================================
+// Issue #1212: Workflow-test evaluation criteria in vote prompt
+// ============================================================================
+
+describe('buildVotePrompt workflow-test criteria', () => {
+  it('should include testability dimension', () => {
+    const prompt = buildVotePrompt('test proposal');
+
+    expect(prompt).toContain('Testability');
+    expect(prompt).toContain('automated tests');
+  });
+
+  it('should include workflow integration dimension', () => {
+    const prompt = buildVotePrompt('test proposal');
+
+    expect(prompt).toContain('Workflow integration');
+    expect(prompt).toContain('CI');
+  });
+
+  it('should include incremental verifiability dimension', () => {
+    const prompt = buildVotePrompt('test proposal');
+
+    expect(prompt).toContain('Incremental verifiability');
+    expect(prompt).toContain('measured');
+  });
+
+  it('should include rejection categories in prompt', () => {
+    const prompt = buildVotePrompt('test proposal');
+
+    expect(prompt).toContain('rejectionCategories');
+    expect(prompt).toContain('YAGNI');
+    expect(prompt).toContain('DRY_VIOLATION');
+    expect(prompt).toContain('OVER_ENGINEERING');
+    expect(prompt).toContain('SCOPE_CREEP');
+    expect(prompt).toContain('SECURITY_RISK');
+    expect(prompt).toContain('MISALIGNED');
+    expect(prompt).toContain('INSUFFICIENT_EVIDENCE');
+  });
+
+  it('should include both approve and reject examples', () => {
+    const prompt = buildVotePrompt('test proposal');
+
+    expect(prompt).toContain('Example approve response');
+    expect(prompt).toContain('Example reject response');
   });
 });

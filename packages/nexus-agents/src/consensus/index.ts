@@ -24,6 +24,8 @@ export type {
   ConsensusEngineConfig,
   ProposalState,
   ConsensusMetrics,
+  // Rejection categories (Issue #1213)
+  RejectionCategory,
 } from './types.js';
 
 export {
@@ -38,6 +40,9 @@ export {
   ConsensusMetricsSchema,
   DEFAULT_CONSENSUS_CONFIG,
   VOTING_THRESHOLDS,
+  // Rejection categories (Issue #1213)
+  RejectionCategorySchema,
+  REJECTION_CATEGORIES,
 } from './types.js';
 
 // Voting strategies

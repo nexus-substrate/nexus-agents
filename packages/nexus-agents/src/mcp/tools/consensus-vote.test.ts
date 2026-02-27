@@ -590,6 +590,37 @@ describe('toAgentVoteSummary (Issue #815)', () => {
     expect(summary.simulated).toBe(false);
     expect(summary.decision).toBe('abstain');
   });
+
+  // Issue #1213: Rejection categories in vote summary
+  it('should forward rejectionCategories from vote to summary', () => {
+    const result: AgentVoteResult = {
+      role: 'catfish',
+      vote: {
+        decision: 'reject',
+        reasoning: 'This is speculative and duplicates existing work',
+        confidence: 0.85,
+        rejectionCategories: ['YAGNI', 'DRY_VIOLATION'],
+      },
+      processingTimeMs: 150,
+      source: 'llm',
+    };
+    const summary = toAgentVoteSummary(result);
+
+    expect(summary.rejectionCategories).toEqual(['YAGNI', 'DRY_VIOLATION']);
+    expect(summary.decision).toBe('reject');
+  });
+
+  it('should omit rejectionCategories when not present', () => {
+    const result: AgentVoteResult = {
+      role: 'architect',
+      vote: { decision: 'approve', reasoning: 'Solid design', confidence: 0.9 },
+      processingTimeMs: 100,
+      source: 'llm',
+    };
+    const summary = toAgentVoteSummary(result);
+
+    expect(summary.rejectionCategories).toBeUndefined();
+  });
 });
 
 describe('buildResponse error counting (Issue #815)', () => {
