@@ -8,10 +8,12 @@ import type { ILogger } from '../../core/index.js';
 import { RateLimiter } from '../middleware/index.js';
 import {
   ConsensusVoteInputSchema,
+  CONSENSUS_VOTE_OUTPUT_SCHEMA,
   type ConsensusVoteDeps,
   type AgentVoteSummary,
   type ConsensusVoteResponse,
 } from './consensus-vote.js';
+import { z } from 'zod';
 import { toAgentVoteSummary, buildResponse } from './consensus-vote-types.js';
 import type { AgentVoteResult } from '../../cli/vote-types.js';
 import type { ExtendedVotingResult } from './consensus-vote-types.js';
@@ -728,5 +730,109 @@ describe('buildResponse error counting (Issue #815)', () => {
 
     expect(response.voteCounts.error).toBe(3);
     expect(response.decision).toBe('rejected');
+  });
+});
+
+// ============================================================================
+// Output Schema Validation (Issue #1246)
+// ============================================================================
+
+describe('CONSENSUS_VOTE_OUTPUT_SCHEMA validation (Issue #1246)', () => {
+  const outputValidator = z.object(CONSENSUS_VOTE_OUTPUT_SCHEMA);
+
+  function makeVotingResult(votes: readonly AgentVoteResult[]): ExtendedVotingResult {
+    return {
+      proposal: 'Test proposal',
+      threshold: 'simple_majority',
+      result: {
+        proposalId: 'test',
+        proposal: { title: 'Test', description: 'Test', algorithm: 'simple_majority' },
+        outcome: 'approved',
+        votes: new Map(),
+        voteCounts: { approve: 2, reject: 0, abstain: 0, total: 2 },
+        approvalPercentage: 100,
+        quorumReached: true,
+        startedAt: new Date().toISOString(),
+        closedAt: new Date().toISOString(),
+        durationMs: 100,
+      },
+      votes,
+      totalTimeMs: 200,
+      simulateVotes: false,
+      strategy: 'simple_majority',
+    };
+  }
+
+  it('should validate buildResponse output with simulated votes', () => {
+    const votes: AgentVoteResult[] = [
+      {
+        role: 'architect',
+        vote: { decision: 'approve', reasoning: 'ok', confidence: 0.9 },
+        processingTimeMs: 50,
+        source: 'simulation',
+      },
+      {
+        role: 'security',
+        vote: {
+          decision: 'reject',
+          reasoning: 'concerns',
+          confidence: 0.7,
+          rejectionCategories: ['YAGNI'],
+        },
+        processingTimeMs: 60,
+        source: 'simulation',
+      },
+    ];
+    const result = makeVotingResult(votes);
+    result.simulateVotes = true;
+    const input = { proposal: 'Test', simulateVotes: true, quickMode: false };
+    const response = buildResponse(input, result);
+
+    const parsed = outputValidator.safeParse(response);
+    expect(parsed.success).toBe(true);
+  });
+
+  it('should validate buildResponse output with error votes', () => {
+    const votes: AgentVoteResult[] = [
+      {
+        role: 'architect',
+        vote: { decision: 'approve', reasoning: 'ok', confidence: 0.9 },
+        processingTimeMs: 50,
+        source: 'llm',
+      },
+      {
+        role: 'security',
+        vote: { decision: 'abstain', reasoning: 'err', confidence: 0 },
+        processingTimeMs: 10,
+        source: 'error',
+      },
+    ];
+    const input = { proposal: 'Test', simulateVotes: false, quickMode: false };
+    const response = buildResponse(input, makeVotingResult(votes));
+
+    const parsed = outputValidator.safeParse(response);
+    expect(parsed.success).toBe(true);
+  });
+
+  it('should validate buildResponse output with threshold', () => {
+    const votes: AgentVoteResult[] = [
+      {
+        role: 'architect',
+        vote: { decision: 'approve', reasoning: 'ok', confidence: 0.9 },
+        processingTimeMs: 50,
+        source: 'llm',
+      },
+    ];
+    const input = {
+      proposal: 'Test',
+      simulateVotes: false,
+      quickMode: false,
+      threshold: 'supermajority' as const,
+    };
+    const response = buildResponse(input, makeVotingResult(votes));
+
+    const parsed = outputValidator.safeParse(response);
+    expect(parsed.success).toBe(true);
+    expect(response.threshold).toBe('supermajority');
   });
 });

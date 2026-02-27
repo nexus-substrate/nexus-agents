@@ -333,8 +333,8 @@ function createConsensusVoteHandler(deps: ConsensusVoteDeps) {
   };
 }
 
-/** Output schema for consensus_vote tool (Issue #1117). */
-const CONSENSUS_VOTE_OUTPUT_SCHEMA = {
+/** Output schema for consensus_vote tool (Issue #1117, #1246). */
+export const CONSENSUS_VOTE_OUTPUT_SCHEMA = {
   proposal: z.string(),
   strategy: VotingStrategySchema,
   decision: z.enum(['approved', 'rejected', 'no_quorum']),
@@ -351,6 +351,9 @@ const CONSENSUS_VOTE_OUTPUT_SCHEMA = {
       decision: z.enum(['approve', 'reject', 'abstain']),
       confidence: z.number(),
       reasoning: z.string(),
+      simulated: z.boolean(),
+      error: z.boolean(),
+      modelUsed: z.string().optional(),
       rejectionCategories: z
         .array(
           z.enum([
@@ -366,8 +369,21 @@ const CONSENSUS_VOTE_OUTPUT_SCHEMA = {
         .optional(),
     })
   ),
+  threshold: z.enum(['majority', 'supermajority', 'unanimous']).optional(),
   durationMs: z.number(),
   simulateVotes: z.boolean(),
+  higherOrderMetadata: z
+    .object({
+      posteriorApproval: z.number(),
+      posteriorRejection: z.number(),
+      effectiveVoteCount: z.number(),
+      method: z.enum(['ow', 'isp', 'simple']),
+      usedCorrelationData: z.boolean(),
+      improvementOverBaseline: z.number(),
+      downweightedAgents: z.array(z.string()),
+      reasoning: z.string(),
+    })
+    .optional(),
 };
 
 /**
