@@ -139,7 +139,8 @@ describe('list_experts tool', () => {
       const expert = parsed.experts[0];
       expect(expert.role).toBeDefined();
       expect(expert.name).toBeDefined();
-      expect(expert.description).toBe('');
+      expect(expert.description).not.toBe('');
+      expect(expert.description).toMatch(/\.$/);
       expect(expert.capabilities).toEqual([]);
     });
 

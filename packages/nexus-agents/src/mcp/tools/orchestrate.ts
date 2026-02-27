@@ -304,7 +304,12 @@ function recordOrchestrationError(
     });
   }
   const fc = categorizeOutcomeErrorMessage(errorMessage);
-  recordToOutcomeStore(taskDescription, false, durationMs ?? 0, fc);
+  // Skip OutcomeStore recording for adapter-unavailable errors (#1214).
+  // These are infrastructure issues (missing API keys), not task failures.
+  // Recording them as failures poisons the weather_report success rates.
+  if (fc !== 'adapter_unavailable') {
+    recordToOutcomeStore(taskDescription, false, durationMs ?? 0, fc);
+  }
 }
 
 // ============================================================================

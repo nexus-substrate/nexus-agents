@@ -327,6 +327,38 @@ describe('security-scan workflow', () => {
     const vulns = result.finalState['vulnerabilities'] as string[];
     expect(vulns.some((v) => v.includes('CWE-598'))).toBe(true);
   });
+
+  it('detects CWE-78 (command injection via string concatenation) (#1215)', async () => {
+    const code = 'exec("rm -rf " + req.params.path);';
+    const result = await runWorkflow('security-scan', { code });
+
+    const vulns = result.finalState['vulnerabilities'] as string[];
+    expect(vulns.some((v) => v.includes('CWE-78'))).toBe(true);
+  });
+
+  it('detects CWE-78 (spawn injection via string concatenation) (#1215)', async () => {
+    const code = 'spawn("cmd " + userInput);';
+    const result = await runWorkflow('security-scan', { code });
+
+    const vulns = result.finalState['vulnerabilities'] as string[];
+    expect(vulns.some((v) => v.includes('CWE-78'))).toBe(true);
+  });
+
+  it('detects CWE-22 (path traversal via path.join) (#1215)', async () => {
+    const code = 'fs.readFile(path.join(baseDir, req.params.file), cb);';
+    const result = await runWorkflow('security-scan', { code });
+
+    const vulns = result.finalState['vulnerabilities'] as string[];
+    expect(vulns.some((v) => v.includes('CWE-22'))).toBe(true);
+  });
+
+  it('detects CWE-22 (path traversal via path.resolve) (#1215)', async () => {
+    const code = 'const filePath = path.resolve(uploadDir, req.query.filename);';
+    const result = await runWorkflow('security-scan', { code });
+
+    const vulns = result.finalState['vulnerabilities'] as string[];
+    expect(vulns.some((v) => v.includes('CWE-22'))).toBe(true);
+  });
 });
 
 // ============================================================================

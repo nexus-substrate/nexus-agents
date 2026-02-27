@@ -279,9 +279,19 @@ const PATTERN_RULES: ReadonlyArray<readonly [RegExp, string, number]> = [
     'CWE-89: SQL injection via string concatenation',
     8,
   ],
-  // Command injection (#1137)
+  // Command injection (#1137, #1215)
   [/exec\(.*\$\{/, 'CWE-78: Command injection via string interpolation', 8],
   [/spawn\(.*\$\{/, 'CWE-78: Command injection via spawn interpolation', 8],
+  [
+    /exec\(.*\+\s*(?:req|request|params|query|input|args|user)/,
+    'CWE-78: Command injection via string concatenation',
+    8,
+  ],
+  [
+    /spawn\(.*\+\s*(?:req|request|params|query|input|args|user)/,
+    'CWE-78: Command injection via spawn concatenation',
+    8,
+  ],
   // XSS (#1137, #1178)
   [/dangerouslySetInnerHTML/, 'CWE-79: XSS via dangerouslySetInnerHTML', 4],
   [/document\.write\s*\(/, 'CWE-79: XSS via document.write', 7],
@@ -296,6 +306,12 @@ const PATTERN_RULES: ReadonlyArray<readonly [RegExp, string, number]> = [
   [
     /(?:readFile|writeFile|createReadStream)\(.*(?:req|params|query|input)/,
     'CWE-22: Path traversal via user input in file operations',
+    6,
+  ],
+  // Path traversal via path.join/resolve/normalize (#1215)
+  [
+    /path\.(?:join|resolve|normalize)\(.*(?:req|request|params|query|input|user)/,
+    'CWE-22: Path traversal via path.join/resolve/normalize with user input',
     6,
   ],
   // Path traversal via env var (#1156)

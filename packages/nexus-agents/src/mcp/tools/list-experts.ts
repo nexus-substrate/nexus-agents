@@ -128,7 +128,7 @@ function handleListExperts(args: ListExpertsInput): ListExpertsResponse {
       experts: experts.map((e) => ({
         role: e.role,
         name: e.name,
-        description: '',
+        description: (e.description.split('.')[0] ?? 'Expert agent') + '.',
         capabilities: [],
       })),
       count: experts.length,
