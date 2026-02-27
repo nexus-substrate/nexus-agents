@@ -32,7 +32,11 @@ interface AiSdkModel {
 interface GenerateTextResult {
   text: string;
   finishReason: string;
-  usage: { promptTokens: number; completionTokens: number; totalTokens: number };
+  usage: {
+    inputTokens: number | undefined;
+    outputTokens: number | undefined;
+    totalTokens: number | undefined;
+  };
   response: { modelId: string };
 }
 
@@ -224,9 +228,9 @@ export class SdkAdapter extends BaseAdapter {
       const response: CompletionResponse = {
         content: [{ type: 'text', text: result.text }],
         usage: {
-          inputTokens: result.usage.promptTokens,
-          outputTokens: result.usage.completionTokens,
-          totalTokens: result.usage.totalTokens,
+          inputTokens: result.usage.inputTokens ?? 0,
+          outputTokens: result.usage.outputTokens ?? 0,
+          totalTokens: result.usage.totalTokens ?? 0,
         },
         stopReason: mapFinishReason(result.finishReason),
         model: result.response.modelId,

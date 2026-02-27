@@ -120,7 +120,7 @@ export class UnifiedAdapterRegistry {
         category: match.category,
         cli: match.primaryCli,
       });
-      return this.getAdapterForCli(match.primaryCli as CliName);
+      return this.getAdapterForCli(match.primaryCli);
     }
     return this.getDefault();
   }
@@ -236,8 +236,8 @@ export class UnifiedAdapterRegistry {
       const primaryModel = resolveDefaultModel(spec.primaryCli);
       routing.set(spec.category, {
         category: spec.category,
-        primaryCli: spec.primaryCli as CliName,
-        secondaryCli: spec.secondaryCli as CliName,
+        primaryCli: spec.primaryCli,
+        secondaryCli: spec.secondaryCli,
         primaryModel,
       });
     }

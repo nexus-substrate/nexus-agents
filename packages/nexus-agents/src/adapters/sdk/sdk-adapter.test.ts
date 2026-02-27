@@ -7,7 +7,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { SdkAdapter } from './sdk-adapter.js';
 import type { CompletionRequest } from '../../core/index.js';
-
 // Mock the AI SDK modules
 vi.mock('ai', () => ({
   generateText: vi.fn(),
@@ -79,9 +78,9 @@ describe('SdkAdapter', () => {
       mockGenerate.mockResolvedValueOnce({
         text: 'Hello back!',
         finishReason: 'stop',
-        usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
-        response: { modelId: 'claude-sonnet-4-6' },
-      });
+        usage: { inputTokens: 10, outputTokens: 5 },
+        response: { id: 'resp-1', timestamp: new Date(), modelId: 'claude-sonnet-4-6' },
+      } as unknown as Awaited<ReturnType<typeof generateText>>);
 
       const adapter = new SdkAdapter({
         providerId: 'anthropic',
@@ -141,9 +140,9 @@ describe('SdkAdapter', () => {
       mockGenerate.mockResolvedValueOnce({
         text: '',
         finishReason: 'tool-calls',
-        usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
-        response: { modelId: 'claude-sonnet-4-6' },
-      });
+        usage: { inputTokens: 10, outputTokens: 5 },
+        response: { id: 'resp-1', timestamp: new Date(), modelId: 'claude-sonnet-4-6' },
+      } as unknown as Awaited<ReturnType<typeof generateText>>);
 
       const adapter = new SdkAdapter({
         providerId: 'anthropic',
@@ -164,9 +163,9 @@ describe('SdkAdapter', () => {
       mockGenerate.mockResolvedValueOnce({
         text: 'truncated...',
         finishReason: 'length',
-        usage: { promptTokens: 10, completionTokens: 100, totalTokens: 110 },
-        response: { modelId: 'claude-sonnet-4-6' },
-      });
+        usage: { inputTokens: 10, outputTokens: 100 },
+        response: { id: 'resp-1', timestamp: new Date(), modelId: 'claude-sonnet-4-6' },
+      } as unknown as Awaited<ReturnType<typeof generateText>>);
 
       const adapter = new SdkAdapter({
         providerId: 'anthropic',
@@ -187,15 +186,33 @@ describe('SdkAdapter', () => {
       const { streamText } = await import('ai');
       const mockStream = vi.mocked(streamText);
 
-      function* fakeTextStream(): Iterable<string> {
+      const textChunks = ['Hello', ' world', '!'];
+      const readable = new ReadableStream<string>({
+        start(controller) {
+          for (const chunk of textChunks) {
+            controller.enqueue(chunk);
+          }
+          controller.close();
+        },
+      });
+      function* fakeTextIterGen(): Generator<string> {
         yield 'Hello';
         yield ' world';
         yield '!';
       }
+      const iter = fakeTextIterGen();
+      const textStream = Object.assign(readable, {
+        [Symbol.asyncIterator]: () => ({
+          next: () => {
+            const r = iter.next();
+            return Promise.resolve(r);
+          },
+        }),
+      });
 
       mockStream.mockReturnValueOnce({
-        textStream: fakeTextStream(),
-      });
+        textStream,
+      } as unknown as ReturnType<typeof streamText>);
 
       const adapter = new SdkAdapter({
         providerId: 'anthropic',

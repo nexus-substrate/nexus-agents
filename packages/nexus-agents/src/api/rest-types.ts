@@ -11,6 +11,7 @@
 
 import { z } from 'zod';
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import { CliNameSchema } from '../config/model-capabilities-types.js';
 
 // ============================================================================
 // Server Configuration
@@ -167,7 +168,7 @@ export type OrchestrateResponse = z.infer<typeof OrchestrateResponseSchema>;
  */
 export const DelegateRequestSchema = z.object({
   task: z.string().min(1).describe('Task to delegate'),
-  preferredModel: z.enum(['claude', 'gemini', 'codex', 'opencode']).optional(),
+  preferredModel: CliNameSchema.optional(),
   constraints: z
     .object({
       maxTokens: z.number().positive().optional(),

@@ -9,6 +9,11 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import type { ILogger } from '../../core/logger.js';
 import {
+  CLI_NAMES,
+  DEFAULT_CLI,
+  DEFAULT_ROUTING_CONFIDENCE,
+} from '../../config/model-capabilities-types.js';
+import {
   DelegateRequestSchema,
   type DelegateRequest,
   type DelegateResponse,
@@ -23,10 +28,10 @@ function buildDelegateResponse(
   selectedModel: string,
   preferredModel: string | undefined
 ): DelegateResponse {
-  const alternatives = ['claude', 'gemini', 'codex', 'opencode'].filter((m) => m !== selectedModel);
+  const alternatives = CLI_NAMES.filter((m) => m !== selectedModel);
   return {
     selectedModel,
-    confidence: 0.85,
+    confidence: DEFAULT_ROUTING_CONFIDENCE,
     reason:
       preferredModel !== undefined
         ? `User preferred model: ${preferredModel}`
@@ -46,7 +51,7 @@ const DELEGATE_SCHEMA = {
       task: { type: 'string', minLength: 1, description: 'Task to delegate' },
       preferredModel: {
         type: 'string',
-        enum: ['claude', 'gemini', 'codex', 'opencode'],
+        enum: [...CLI_NAMES],
         description: 'Preferred model (optional)',
       },
       constraints: {
@@ -116,7 +121,7 @@ async function handleDelegateRequest(
 
   try {
     // Simulated routing - in full implementation, would use CompositeRouter
-    const selectedModel = preferredModel ?? 'claude';
+    const selectedModel = preferredModel ?? DEFAULT_CLI;
     const response = buildDelegateResponse(selectedModel, preferredModel);
 
     logger.info('Delegate complete', { requestId, selectedModel });

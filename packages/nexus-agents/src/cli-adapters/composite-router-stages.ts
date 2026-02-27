@@ -121,7 +121,7 @@ export function runConfidenceCascadeStageSync(
     return { scores: new Map(), complexity: 'moderate', shouldEscalate: false };
   }
 
-  const ctx = createRoutingContext(task.content, candidates as StageCliName[]);
+  const ctx = createRoutingContext(task.content, candidates);
   // The stage.route() returns Promise but we need sync - use the underlying logic directly
   // For now, call route() and handle as best-effort (stages are optional)
   void deps.confidenceCascadeStage.route(ctx).then((result) => {
@@ -156,7 +156,7 @@ export function runCapabilityMatchStageSync(
     return { scores: new Map(), taskType: 'general', bestCli: undefined };
   }
 
-  const ctx = createRoutingContext(task.content, candidates as StageCliName[]);
+  const ctx = createRoutingContext(task.content, candidates);
   // Call route() async and handle result when available
   void deps.capabilityMatchStage.route(ctx).then((result) => {
     if (result.ok) {
@@ -189,7 +189,7 @@ export function runQualityConstraintStageSync(
     return { eligible: candidates, filtered: new Map(), usedFallback: false };
   }
 
-  const ctx = createRoutingContext('', candidates as StageCliName[]);
+  const ctx = createRoutingContext('', candidates);
   // Call route() async - quality constraints are important so log result
   void deps.qualityConstraintStage.route(ctx).then((result) => {
     if (result.ok) {
@@ -224,7 +224,7 @@ export function runResourceStrategyStageSync(
     return { tier: 'balanced', resourceLevel: undefined };
   }
 
-  const ctx = createRoutingContext(task.content, candidates as StageCliName[]);
+  const ctx = createRoutingContext(task.content, candidates);
   void deps.resourceStrategyStage.route(ctx).then((result) => {
     if (result.ok) {
       deps.logger.debug('Resource strategy completed async', {
@@ -253,7 +253,7 @@ export function runDistilledRuleStageSync(
     return { rulesApplied: 0 };
   }
 
-  const ctx = createRoutingContext(task.content, candidates as StageCliName[]);
+  const ctx = createRoutingContext(task.content, candidates);
   void deps.distilledRuleStage.route(ctx).then((result) => {
     if (result.ok) {
       deps.logger.debug('Distilled rule stage completed async', {

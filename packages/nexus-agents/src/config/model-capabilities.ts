@@ -48,7 +48,9 @@ export {
   PROVIDERS,
   MODEL_IDS,
   CLI_NAMES,
+  CliNameSchema,
   DEFAULT_CLI,
+  DEFAULT_ROUTING_CONFIDENCE,
 } from './model-capabilities-types.js';
 
 // ---------------------------------------------------------------------------

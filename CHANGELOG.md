@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.19.0] - 2026-02-27
+
+### Fixed
+
+- **CI type errors from AI SDK v6** — Updated 13 files for renamed `promptTokens`→`inputTokens`, `completionTokens`→`outputTokens`, and new `id`/`timestamp` requirements on `LanguageModelResponseMetadata` (#1231)
+- **5 unnecessary type assertion lint errors** — Removed `as CliName` casts in `unified-registry.ts` and `topsis-stage.ts` where types already matched (#1231)
+- **Stale canonical index entry** — Removed `docs-site-plan.md` from docs/README.md (#1231)
+- **memory_stats description** — Changed "8 backends" to "7 backends", removed stale "promotion metrics" reference (#1233)
+- **memory_query description** — Added "adaptive" to listed backends (#1233)
+- **11 silent catch blocks** — Added `this.log.debug(...)` with descriptive messages to all bare catch blocks in `tool-memory.ts` (#1233)
+
+### Changed
+
+- **Config centralization** — Added canonical `CliNameSchema` and `DEFAULT_ROUTING_CONFIDENCE` constants to `model-capabilities-types.ts`; replaced 3 inlined `CLI_NAMES` arrays, 5 duplicated `z.enum` schemas, and 2 magic numbers across 11 files (#1232)
+- **Governance version** updated to 2026-02-27
+
 ## [2.18.0] - 2026-02-27
 
 ### Added

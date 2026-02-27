@@ -19,7 +19,6 @@ import type {
   StageResult,
   StageError,
   RoutingOutcome,
-  CliName,
 } from '../router-stage.js';
 import { addTrace, updateScore, getRemainingCandidates } from '../router-stage.js';
 
@@ -126,9 +125,9 @@ export class TopsisRouterStage implements IRouterStage {
     let updatedCtx = ctx;
     for (const score of result.scores) {
       // Only update scores for remaining candidates
-      if (remaining.includes(score.cliName as CliName)) {
+      if (remaining.includes(score.cliName)) {
         // Closeness score is 0-1, scale to useful range
-        updatedCtx = updateScore(updatedCtx, score.cliName as CliName, score.closenessScore * 10);
+        updatedCtx = updateScore(updatedCtx, score.cliName, score.closenessScore * 10);
       }
     }
 

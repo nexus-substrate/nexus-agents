@@ -12,7 +12,11 @@ import { createLogger, getErrorMessage } from '../../core/index.js';
 import type { AgentVoteResult } from '../../cli/vote-types.js';
 import { getToolMemory } from './tool-memory.js';
 import { getOutcomeStore } from '../../orchestration/outcomes/index.js';
-import { DEFAULT_CLI } from '../../config/model-capabilities-types.js';
+import {
+  DEFAULT_CLI,
+  CLI_NAMES,
+  type CliNameLiteral,
+} from '../../config/model-capabilities-types.js';
 
 const logger = createLogger({ tool: 'consensus-vote' });
 
@@ -69,9 +73,13 @@ export function recordVoteOutcomes(votes: readonly AgentVoteResult[]): void {
     const now = new Date().toISOString();
     for (const vote of votes) {
       if (vote.source === 'simulation') continue;
+      const cliName: CliNameLiteral =
+        vote.cli !== undefined && (CLI_NAMES as readonly string[]).includes(vote.cli)
+          ? (vote.cli as CliNameLiteral)
+          : DEFAULT_CLI;
       store.append({
         id: `vote-${String(Date.now())}-${Math.random().toString(36).slice(2, 8)}`,
-        cli: vote.cli ?? DEFAULT_CLI,
+        cli: cliName,
         category: 'planning',
         model: 'consensus',
         success: vote.source === 'llm',

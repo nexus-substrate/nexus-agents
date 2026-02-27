@@ -223,7 +223,7 @@ export function registerMemoryStatsTool(server: McpServer, deps: MemoryStatsDeps
 
   const description =
     'Get memory system statistics dashboard. Shows backend availability, ' +
-    'entry counts, decay stats, and promotion metrics across all 8 memory backends.';
+    'entry counts, and decay stats across all 7 memory backends.';
 
   // Wrap handler with secure handler for rate limiting
   const secureHandler = createSecureHandler(memoryStatsHandler, {

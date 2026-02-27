@@ -10,7 +10,7 @@
  */
 
 import { z } from 'zod';
-import { CLI_NAMES } from './model-capabilities-types.js';
+import { CliNameSchema } from './model-capabilities-types.js';
 
 /**
  * Budget constraints schema for cost/token/latency limits.
@@ -92,10 +92,7 @@ export const DifficultyThresholdsSchema = z.object({
 
 export type DifficultyThresholds = z.infer<typeof DifficultyThresholdsSchema>;
 
-/**
- * Valid CLI names for routing. Derived from canonical CLI_NAMES.
- */
-export const CliNameSchema = z.enum(CLI_NAMES);
+// CliNameSchema imported from model-capabilities-types.ts (canonical source)
 
 /**
  * Valid difficulty levels.

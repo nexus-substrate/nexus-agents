@@ -12,8 +12,8 @@
  */
 
 import { z } from 'zod';
+import { CliNameSchema, type CliNameLiteral } from '../../config/model-capabilities-types.js';
 import type { Result } from '../../core/result.js';
-import type { CliNameLiteral } from '../../config/model-capabilities-types.js';
 
 // ============================================================================
 // Types
@@ -220,7 +220,8 @@ export interface PipelineStats {
 // Zod Schemas
 // ============================================================================
 
-export const CliNameSchema = z.enum(['claude', 'gemini', 'codex', 'opencode']);
+// CliNameSchema imported from config/model-capabilities-types.ts (canonical source)
+export { CliNameSchema } from '../../config/model-capabilities-types.js';
 
 export const StageConfigSchema = z.object({
   enabled: z.boolean().default(true),

@@ -413,8 +413,11 @@ describe('Orchestration Logic', () => {
     mockOrchestrator = createCustomMockOrchestrator(
       createSuccessResult('test-task')
     ) as MockOrchestrator & { execute: Mock };
+    const orchestratorInstance = mockOrchestrator as unknown as NonNullable<
+      OrchestrateDeps['orchestrator']
+    >;
     deps = {
-      orchestrator: mockOrchestrator as unknown as OrchestrateDeps['orchestrator'],
+      orchestrator: orchestratorInstance,
       logger: mockLogger,
       rateLimiter: createTestRateLimiter(),
     };

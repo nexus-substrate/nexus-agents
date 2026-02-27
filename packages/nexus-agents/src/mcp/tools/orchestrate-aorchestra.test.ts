@@ -13,7 +13,9 @@ function createMockLogger(): ILogger {
     warn: vi.fn(),
     error: vi.fn(),
     debug: vi.fn(),
-  };
+    child: vi.fn().mockReturnThis(),
+    setLevel: vi.fn(),
+  } as unknown as ILogger;
 }
 
 describe('computeAgentPlan', () => {

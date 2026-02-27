@@ -14,6 +14,7 @@ import { createLogger } from '../core/logger.js';
 import { getTimeProvider } from '../core/index.js';
 import type { ILogger } from '../core/logger.js';
 import type { CliName } from '../cli-adapters/types.js';
+import { CLI_NAMES } from '../config/model-capabilities-types.js';
 import {
   MobiMem,
   type ExperienceEntry,
@@ -207,7 +208,7 @@ export class RoutingMemory implements IRoutingMemory {
     const preferenceKey = `model_preference:${taskType}`;
     const preferences: ModelPreference[] = [];
 
-    for (const model of ['claude', 'gemini', 'codex', 'opencode'] as const) {
+    for (const model of CLI_NAMES) {
       const entityId = `routing:${model}`;
       const entry = this.mobimem.profile.getPreference(entityId, preferenceKey);
 
@@ -293,7 +294,7 @@ export class RoutingMemory implements IRoutingMemory {
   getCachedAction(action: string): CachedActionResult | undefined {
     // Look up using the same input structure used for caching
     // Note: We try with undefined model first, then specific models
-    for (const model of ['claude', 'gemini', 'codex', 'opencode'] as const) {
+    for (const model of CLI_NAMES) {
       const input = { actionSignature: action, model };
       const entry = this.mobimem.action.get(input);
 

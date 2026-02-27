@@ -154,12 +154,11 @@ Detailed technical documentation:
 
 #### Operational Docs
 
-| Document                                           | Description                    | Status     |
-| -------------------------------------------------- | ------------------------------ | ---------- |
-| [docops-spec.md](./ops/docops-spec.md)             | Canonical DocOps pipeline spec | Canonical  |
-| [docops-manifest.json](./ops/docops-manifest.json) | DocOps enforcement manifest    | Canonical  |
-| [docs-inventory.md](./ops/docs-inventory.md)       | Documentation inventory        | Canonical  |
-| [docs-site-plan.md](./ops/docs-site-plan.md)       | Site migration plan            | Historical |
+| Document                                           | Description                    | Status    |
+| -------------------------------------------------- | ------------------------------ | --------- |
+| [docops-spec.md](./ops/docops-spec.md)             | Canonical DocOps pipeline spec | Canonical |
+| [docops-manifest.json](./ops/docops-manifest.json) | DocOps enforcement manifest    | Canonical |
+| [docs-inventory.md](./ops/docs-inventory.md)       | Documentation inventory        | Canonical |
 
 #### Interfaces
 

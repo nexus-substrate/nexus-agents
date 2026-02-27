@@ -413,7 +413,8 @@ export class ToolMemoryManager {
       return active
         .map((b) => `- [${b.confidence}] ${b.subject} ${b.predicate} ${b.object}`)
         .join('\n');
-    } catch {
+    } catch (e: unknown) {
+      this.log.debug('Belief recall failed', { error: String(e) });
       return undefined;
     }
   }
@@ -523,7 +524,8 @@ export class ToolMemoryManager {
       const result = await this.agentic.searchAgentic(query, limit);
       if (!result.ok || result.value.length === 0) return undefined;
       return result.value.map((e) => `- [${e.attributes.keywords.join(',')}] ${e.key}`).join('\n');
-    } catch {
+    } catch (e: unknown) {
+      this.log.debug('Agentic knowledge query failed', { error: String(e) });
       return undefined;
     }
   }
@@ -554,7 +556,8 @@ export class ToolMemoryManager {
         return undefined;
       }
       return result.value;
-    } catch {
+    } catch (e: unknown) {
+      this.log.debug('TypedMemory queryByType failed', { type, error: String(e) });
       return undefined;
     }
   }
@@ -576,7 +579,8 @@ export class ToolMemoryManager {
         return undefined;
       }
       return result.value;
-    } catch {
+    } catch (e: unknown) {
+      this.log.debug('TypedMemory filterByRelevance failed', { role, error: String(e) });
       return undefined;
     }
   }
@@ -591,7 +595,8 @@ export class ToolMemoryManager {
       const result = await this.typed.getStats();
       if (!result.ok) return undefined;
       return result.value;
-    } catch {
+    } catch (e: unknown) {
+      this.log.debug('TypedMemory getStats failed', { error: String(e) });
       return undefined;
     }
   }
@@ -606,7 +611,8 @@ export class ToolMemoryManager {
       const result = await this.typed.pruneExpired();
       if (!result.ok) return undefined;
       return result.value;
-    } catch {
+    } catch (e: unknown) {
+      this.log.debug('TypedMemory pruneExpired failed', { error: String(e) });
       return undefined;
     }
   }
@@ -737,8 +743,8 @@ export class ToolMemoryManager {
           metadata: { confidence: b.confidence },
         });
       }
-    } catch {
-      // Best-effort: belief query failure is non-critical
+    } catch (e: unknown) {
+      this.log.debug('Belief memory query failed', { error: String(e) });
     }
     return results;
   }
@@ -765,8 +771,8 @@ export class ToolMemoryManager {
           });
         }
       }
-    } catch {
-      // Best-effort: agentic query failure is non-critical
+    } catch (e: unknown) {
+      this.log.debug('Agentic memory query failed', { error: String(e) });
     }
     return results;
   }
@@ -797,8 +803,8 @@ export class ToolMemoryManager {
           }
         }
       }
-    } catch {
-      // Best-effort: typed query failure is non-critical
+    } catch (e: unknown) {
+      this.log.debug('Typed memory query failed', { error: String(e) });
     }
     return results;
   }
@@ -828,8 +834,8 @@ export class ToolMemoryManager {
           });
         }
       }
-    } catch {
-      // Best-effort: adaptive query failure is non-critical
+    } catch (e: unknown) {
+      this.log.debug('Adaptive memory query failed', { error: String(e) });
     }
     return results;
   }
@@ -985,8 +991,8 @@ export class ToolMemoryManager {
         sourceType: BeliefSourceType.OBSERVATION,
         sourceRef: `session-learning`,
       });
-    } catch {
-      // Best-effort: belief creation from learning is non-critical
+    } catch (e: unknown) {
+      this.log.debug('Belief creation from learning failed', { error: String(e) });
     }
   }
 

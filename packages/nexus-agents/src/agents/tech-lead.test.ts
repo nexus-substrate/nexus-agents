@@ -1077,7 +1077,7 @@ describe('Orchestrator', () => {
     it('should create Orchestrator with custom options', () => {
       const orchestrator = createOrchestrator({
         id: 'custom-tech-lead',
-        techLeadOptions: {
+        orchestratorOptions: {
           maxSubtasks: 5,
         },
       });

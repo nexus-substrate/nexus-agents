@@ -228,7 +228,7 @@ export function registerMemoryQueryTool(server: McpServer, deps: MemoryQueryDeps
   };
 
   const description =
-    'Query across all memory backends (session, belief, agentic, typed) with unified results. ' +
+    'Query across all memory backends (session, belief, agentic, adaptive, typed) with unified results. ' +
     'Returns memories matching the query with source attribution and relevance scores.';
 
   // Wrap handler with secure handler for rate limiting

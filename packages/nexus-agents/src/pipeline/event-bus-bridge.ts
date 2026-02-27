@@ -11,8 +11,7 @@
 import { getErrorMessage, createLogger } from '../core/index.js';
 import { getGlobalEventBus, createEvent, type DomainEvent } from '../agents/collaboration/index.js';
 
-import type { EventBus } from './event-bus.js';
-import type { PipelineEvent, Unsubscribe } from './event-types.js';
+import type { IEventBus, PipelineEvent, Unsubscribe } from './event-types.js';
 
 const logger = createLogger({ component: 'EventBusBridge' });
 
@@ -23,7 +22,7 @@ const logger = createLogger({ component: 'EventBusBridge' });
 /** Options for the EventBus bridge. */
 export interface EventBusBridgeOptions {
   /** V2 pipeline EventBus to subscribe to. */
-  readonly source: EventBus;
+  readonly source: IEventBus;
   /** Optional topic prefix for forwarded events. Defaults to 'pipeline'. */
   readonly topicPrefix?: string;
 }

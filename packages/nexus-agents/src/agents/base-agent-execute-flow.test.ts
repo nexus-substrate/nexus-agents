@@ -184,7 +184,11 @@ describe('runTaskWithTimeout', () => {
     const task = makeTask();
     const executeTask = vi.fn().mockResolvedValue({
       ok: true,
-      value: { output: 'done', metadata: { tokensUsed: 10 } },
+      value: {
+        taskId: 'task-1',
+        output: 'done',
+        metadata: { tokensUsed: 10, durationMs: 0, toolsUsed: [], model: '' },
+      },
     } satisfies Result<TaskResult, AgentError>);
 
     const promise = runTaskWithTimeout(task, 'agent-1', executeTask);

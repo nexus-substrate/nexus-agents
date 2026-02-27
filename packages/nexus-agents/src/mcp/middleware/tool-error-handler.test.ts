@@ -22,19 +22,19 @@ describe('toolErrorResponse', () => {
     const result = toolErrorResponse('Add paper failed', new Error('Network timeout'));
     expect(result.isError).toBe(true);
     expect(result.content).toHaveLength(1);
-    expect(result.content[0].text).toBe('Add paper failed: Network timeout');
+    expect(result.content[0]!.text).toBe('Add paper failed: Network timeout');
   });
 
   it('handles non-Error thrown values', () => {
     const result = toolErrorResponse('Query failed', 'string error');
     expect(result.isError).toBe(true);
-    expect(result.content[0].text).toBe('Query failed: string error');
+    expect(result.content[0]!.text).toBe('Query failed: string error');
   });
 
   it('handles undefined error', () => {
     const result = toolErrorResponse('Op failed', undefined);
     expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain('Op failed:');
+    expect(result.content[0]!.text).toContain('Op failed:');
   });
 
   it('logs error when logger is provided', () => {
@@ -64,7 +64,7 @@ describe('withToolError', () => {
       })
     );
     expect(result.isError).toBeUndefined();
-    expect(result.content[0].text).toBe('{"ok":true}');
+    expect(result.content[0]!.text).toBe('{"ok":true}');
   });
 
   it('catches thrown Error and returns standardized response', async () => {
@@ -73,7 +73,7 @@ describe('withToolError', () => {
       Promise.reject(new Error('Backend unavailable'))
     );
     expect(result.isError).toBe(true);
-    expect(result.content[0].text).toBe('Memory write failed: Backend unavailable');
+    expect(result.content[0]!.text).toBe('Memory write failed: Backend unavailable');
     expect(logger.error).toHaveBeenCalled();
   });
 
@@ -83,7 +83,7 @@ describe('withToolError', () => {
       Promise.reject(new Error('raw string error'))
     );
     expect(result.isError).toBe(true);
-    expect(result.content[0].text).toBe('Op failed: raw string error');
+    expect(result.content[0]!.text).toBe('Op failed: raw string error');
   });
 
   it('preserves isError from handler result', async () => {
@@ -95,7 +95,7 @@ describe('withToolError', () => {
       })
     );
     expect(result.isError).toBe(true);
-    expect(result.content[0].text).toBe('Validation error');
+    expect(result.content[0]!.text).toBe('Validation error');
     expect(logger.error).not.toHaveBeenCalled();
   });
 });

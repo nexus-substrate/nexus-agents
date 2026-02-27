@@ -9,14 +9,14 @@
  */
 
 import { z } from 'zod';
+import { CliNameSchema } from '../../config/model-capabilities-types.js';
 import { TaskCategorySchema } from '../../config/task-specialization-types.js';
 
 // ============================================================================
 // Schemas
 // ============================================================================
 
-/** Valid CLI names for outcome tracking. */
-const CliNameSchema = z.enum(['claude', 'gemini', 'codex', 'opencode']);
+// CliNameSchema imported from config/model-capabilities-types.ts (canonical source)
 
 /** Source of the task outcome. */
 const OutcomeSourceSchema = z.enum(['delegate', 'consensus', 'manual']);

@@ -205,6 +205,7 @@ describe('EventBus', () => {
       const event: PipelineEvent = {
         type: 'pipeline.started',
         timestamp: Date.now(),
+        taskId: 'task-snap',
         executionId: 'test-snap',
       };
       bus.emit(event);

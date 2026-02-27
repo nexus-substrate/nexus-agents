@@ -75,8 +75,14 @@ export type Provider = (typeof PROVIDERS)[number];
 export const CLI_NAMES = ['claude', 'gemini', 'codex', 'opencode'] as const;
 export type CliNameLiteral = (typeof CLI_NAMES)[number];
 
+/** Zod schema for CLI name validation. Canonical schema — import this instead of inlining z.enum. */
+export const CliNameSchema = z.enum(CLI_NAMES);
+
 /** Default CLI used as fallback when task category detection yields no match. */
 export const DEFAULT_CLI: CliNameLiteral = 'claude';
+
+/** Default confidence score for routing when no task analysis is performed. */
+export const DEFAULT_ROUTING_CONFIDENCE = 0.85;
 
 export const MODEL_IDS = [
   'claude-opus',

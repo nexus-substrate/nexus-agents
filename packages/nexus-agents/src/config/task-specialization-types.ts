@@ -9,6 +9,7 @@
  */
 
 import { z } from 'zod';
+import { CliNameSchema } from './model-capabilities-types.js';
 import type { CliNameLiteral } from './model-capabilities-types.js';
 
 /**
@@ -37,9 +38,9 @@ export const TaskSpecializationSchema = z.object({
   /** Task category identifier */
   category: TaskCategorySchema,
   /** Primary CLI recommendation */
-  primaryCli: z.enum(['claude', 'gemini', 'codex', 'opencode']),
+  primaryCli: CliNameSchema,
   /** Secondary CLI fallback */
-  secondaryCli: z.enum(['claude', 'gemini', 'codex', 'opencode']),
+  secondaryCli: CliNameSchema,
   /** Why this CLI is preferred for this task type */
   reasoning: z.string(),
   /** Keywords that trigger this category detection */

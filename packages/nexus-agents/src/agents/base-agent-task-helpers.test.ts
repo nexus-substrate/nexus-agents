@@ -172,8 +172,7 @@ describe('executeWithTimeout', () => {
     vi.useRealTimers();
   });
 
-  // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-  const makeTask = (id = 'task-1') => ({ id, description: 'test', priority: 'medium' }) as Task;
+  const makeTask = (id = 'task-1'): Task => ({ id, description: 'test', context: {} });
 
   it('resolves with task result on success', async () => {
     const result = await executeWithTimeout({
@@ -182,7 +181,11 @@ describe('executeWithTimeout', () => {
       executeTask: () =>
         Promise.resolve({
           ok: true as const,
-          value: { output: 'done', metadata: { tokensUsed: 10 } },
+          value: {
+            taskId: 'task-1',
+            output: 'done',
+            metadata: { tokensUsed: 10, durationMs: 0, toolsUsed: [], model: '' },
+          },
         }),
       transformError: (e, tid) => new AgentError(String(e), { context: { taskId: tid } }),
     });
@@ -212,7 +215,14 @@ describe('executeWithTimeout', () => {
       task: makeTask(),
       maxDurationMs: 5000,
       executeTask: () =>
-        Promise.resolve({ ok: true as const, value: { output: '', metadata: { tokensUsed: 0 } } }),
+        Promise.resolve({
+          ok: true as const,
+          value: {
+            taskId: 'task-1',
+            output: '',
+            metadata: { tokensUsed: 0, durationMs: 0, toolsUsed: [], model: '' },
+          },
+        }),
       transformError: (e, tid) => new AgentError(String(e), { context: { taskId: tid } }),
       signal: controller.signal,
     });
@@ -251,7 +261,11 @@ describe('executeWithTimeout', () => {
       executeTask: () =>
         Promise.resolve({
           ok: true as const,
-          value: { output: 'fast', metadata: { tokensUsed: 5 } },
+          value: {
+            taskId: 'task-1',
+            output: 'fast',
+            metadata: { tokensUsed: 5, durationMs: 0, toolsUsed: [], model: '' },
+          },
         }),
       transformError: (e, tid) => new AgentError(String(e), { context: { taskId: tid } }),
       signal: controller.signal,

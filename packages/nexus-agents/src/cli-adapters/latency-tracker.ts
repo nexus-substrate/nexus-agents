@@ -9,6 +9,7 @@
  */
 
 import type { CliName } from './types-core.js';
+import { CLI_NAMES } from '../config/model-capabilities-types.js';
 import { clamp01 } from '../utils/math-utils.js';
 import {
   LatencyTrackerConfigSchema,
@@ -297,7 +298,7 @@ export class LatencyTracker implements ILatencyTracker {
 
     let totalSamples = 0;
 
-    for (const cli of ['claude', 'gemini', 'codex', 'opencode'] as const) {
+    for (const cli of CLI_NAMES) {
       const stats = this.getStats(cli);
       perCli[cli] = stats;
       totalSamples += stats.count;

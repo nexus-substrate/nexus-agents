@@ -34,6 +34,7 @@ function makeEvent(type: string, i: number): PipelineEvent {
   return {
     type: 'pipeline.started',
     timestamp: Date.now() + i,
+    taskId: `task-${type}-${String(i)}`,
     executionId: `exec-${type}-${String(i)}`,
   };
 }
