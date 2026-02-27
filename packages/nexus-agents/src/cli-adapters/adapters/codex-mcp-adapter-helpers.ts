@@ -8,17 +8,19 @@
  */
 
 import type { ExecutionOptions, CliError, CliName } from '../types.js';
+import { CODEX_MCP_TIMEOUTS } from '../../config/timeouts.js';
 
 // Re-export legacy defaults from the subprocess helpers (DRY)
 export { CODEX_LEGACY_DEFAULTS } from './codex-adapter-helpers.js';
 
 /**
  * Default execution options for Codex MCP.
+ * Timeout and retry values derived from config/timeouts.ts (#1220).
  */
 export const DEFAULT_CODEX_MCP_OPTIONS: Required<ExecutionOptions> = {
-  timeoutMs: 120_000, // 2 minutes
+  timeoutMs: CODEX_MCP_TIMEOUTS.defaultMs,
   allowRetry: true,
-  maxRetries: 2,
+  maxRetries: CODEX_MCP_TIMEOUTS.maxRetries,
   trackUsage: true,
   onProgress: undefined,
 };

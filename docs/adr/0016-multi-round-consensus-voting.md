@@ -1,3 +1,10 @@
+---
+title: 'ADR 0016: Multi-Round Consensus Voting'
+description: Multi-round reject-refine-revote pattern produces better outcomes than single-pass voting
+tier: 3
+keywords: [consensus, voting, multi-round, rejection, refinement, adr]
+---
+
 # ADR 0016: Multi-Round Consensus Voting
 
 **Status:** Accepted

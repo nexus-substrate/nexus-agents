@@ -12,7 +12,7 @@
 import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import semver from 'semver';
-import { CLI_SUBPROCESS_TIMEOUTS } from '../config/timeouts.js';
+import { CLI_SUBPROCESS_TIMEOUTS, BACKOFF_CONFIG } from '../config/timeouts.js';
 
 import type { Result } from '../core/index.js';
 import { err, getTimeProvider } from '../core/index.js';
@@ -192,7 +192,7 @@ export abstract class BaseCliAdapter implements ICliAdapter {
         nextAttempt: attempt + 1,
       });
 
-      await this.delay(Math.pow(2, attempt) * 1000);
+      await this.delay(Math.pow(BACKOFF_CONFIG.exponentBase, attempt) * BACKOFF_CONFIG.baseDelayMs);
     }
 
     return err(lastError ?? this.createError('UNKNOWN', 'Unknown error'));

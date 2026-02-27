@@ -46,6 +46,25 @@ import type {
   StoredReward,
 } from './outcome-storage-types.js';
 
+/**
+ * Step quality scoring thresholds.
+ * Centralized constants for computeStepQualityScore (#1220).
+ */
+const STEP_QUALITY_SCORING = {
+  /** Base score for successful steps. */
+  successBase: 0.8,
+  /** Bonus for output > 100 chars. */
+  outputSmallBonus: 0.1,
+  /** Additional bonus for output > 500 chars. */
+  outputLargeBonus: 0.1,
+  /** Maximum quality score. */
+  maxScore: 1.0,
+  /** Score for skipped steps. */
+  skippedScore: 0.5,
+  /** Score for failed steps. */
+  failedScore: 0.2,
+} as const;
+
 // Re-export types for backward compatibility
 export type {
   RecordOutcomeParams,
@@ -439,25 +458,23 @@ export class FeedbackIntegration implements IFeedbackIntegration {
 
   private computeStepQualityScore(stepResult: StepResult): number {
     if (stepResult.status === 'success') {
-      // Base score for success
-      let score = 0.8;
+      let score = STEP_QUALITY_SCORING.successBase;
 
       // Boost if output is substantive
       if (stepResult.output !== null && stepResult.output !== undefined) {
         const outputLen = JSON.stringify(stepResult.output).length;
-        if (outputLen > 100) score += 0.1;
-        if (outputLen > 500) score += 0.1;
+        if (outputLen > 100) score += STEP_QUALITY_SCORING.outputSmallBonus;
+        if (outputLen > 500) score += STEP_QUALITY_SCORING.outputLargeBonus;
       }
 
-      return Math.min(score, 1.0);
+      return Math.min(score, STEP_QUALITY_SCORING.maxScore);
     }
 
     if (stepResult.status === 'skipped') {
-      return 0.5; // Neutral score for skipped
+      return STEP_QUALITY_SCORING.skippedScore;
     }
 
-    // Failed step
-    return 0.2;
+    return STEP_QUALITY_SCORING.failedScore;
   }
 
   private routeFeedbackToCompositeRouter(routingDecisionId: string, outcome: TaskOutcome): void {

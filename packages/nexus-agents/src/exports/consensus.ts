@@ -37,6 +37,8 @@ export type {
   IVotingProtocol,
   SycophancyReport,
   SycophancyIndicator,
+  // Rejection categories (Issue #1213)
+  RejectionCategory,
   // Weighted voting types
   // TaskOutcome - already exported from learning.ts
   WeightedAgentRecord,
@@ -56,6 +58,9 @@ export {
   AgentPerformanceSchema,
   ConsensusEngineConfigSchema,
   ConsensusMetricsSchema,
+  // Rejection categories (Issue #1213)
+  RejectionCategorySchema,
+  REJECTION_CATEGORIES,
   // Config defaults
   DEFAULT_CONSENSUS_CONFIG,
   VOTING_THRESHOLDS,

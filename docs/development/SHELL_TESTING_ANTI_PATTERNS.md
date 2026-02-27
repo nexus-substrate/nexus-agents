@@ -1,3 +1,10 @@
+---
+title: Shell Testing Anti-Patterns
+description: Common shell testing pitfalls — bash -c scoping, jq alternatives, env var assignments
+tier: 2
+keywords: [shell, testing, bash, anti-patterns, ci, debugging]
+---
+
 # Shell Testing Anti-Patterns
 
 **Status:** Canonical | **Source:** Agent-sandbox retrospective (#1209)

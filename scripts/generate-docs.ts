@@ -215,6 +215,8 @@ const FRONTMATTER_REQUIRED_FILES = [
   'docs/architecture/SECURITY.md',
   'docs/guides/MCP_INTEGRATION.md',
   'docs/ALIGNMENT_ROADMAP.md',
+  'docs/development/CLI_UX_QUALITY_GATE.md',
+  'docs/development/SHELL_TESTING_ANTI_PATTERNS.md',
 ];
 
 const REQUIRED_FRONTMATTER_FIELDS = ['title', 'description', 'tier', 'keywords'];

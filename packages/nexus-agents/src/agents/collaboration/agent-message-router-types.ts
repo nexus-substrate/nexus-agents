@@ -12,6 +12,7 @@ import type { Result } from '../../core/result.js';
 import type { AgentError } from '../../core/errors.js';
 import type { IAgent, AgentMessage, AgentResponse } from '../../core/types/index.js';
 import type { IEventBus } from './event-bus-types.js';
+import { AGENT_ROUTER_TIMEOUTS } from '../../config/timeouts.js';
 
 // =============================================================================
 // Configuration Types
@@ -29,11 +30,11 @@ export interface AgentMessageRouterConfig {
   readonly emitEvents?: boolean;
 }
 
-/** Default configuration values. */
+/** Default configuration values. Derived from config/timeouts.ts (#1220). */
 export const DEFAULT_ROUTER_CONFIG: Required<AgentMessageRouterConfig> = {
-  timeoutMs: 30000,
-  maxRetries: 3,
-  retryDelayMs: 1000,
+  timeoutMs: AGENT_ROUTER_TIMEOUTS.defaultMs,
+  maxRetries: AGENT_ROUTER_TIMEOUTS.maxRetries,
+  retryDelayMs: AGENT_ROUTER_TIMEOUTS.retryDelayMs,
   emitEvents: true,
 };
 

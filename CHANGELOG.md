@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.17.0] - 2026-02-26
+
+### Added
+
+- **Consensus rejection categories** — 7 structured rejection categories (YAGNI, DRY_VIOLATION, OVER_ENGINEERING, SCOPE_CREEP, SECURITY_RISK, MISALIGNED, INSUFFICIENT_EVIDENCE) enable reject-refine-revote workflows (#1213)
+- **Workflow-test voter criteria** — All 6 consensus voter prompts now assess testability, workflow integration, and incremental verifiability (#1212)
+- **OpenCode CLI adapter** — 4th CLI adapter for multi-provider model access via OpenCode (#1124)
+- **SCM provider module** — Centralized source code management module with trait interfaces, token resolution, and env sanitization (#1136)
+- **Models.dev API client** — Pricing sync script for automatic model cost updates (#1125)
+- **MCP SDK v1.27.1** — Upgraded from 1.26.0 with progress heartbeat, AbortSignal propagation, outputSchema support (#976, #1118, #1117, #1190)
+- **CODEOWNERS** for security-critical paths (#1184)
+- **CodeQL + Semgrep SAST** scanning in CI (#1180)
+- **UnifiedAdapterRegistry** — Single adapter entry point replacing 4 duplicate adapter sources (#1151)
+- **Multi-repo orchestration** — Research and ADR-0015 for cross-repository workflows (#1076)
+- **3 development docs** — Shell testing anti-patterns, CLI UX quality gate, ADR-0016 multi-round consensus voting (#1209, #1210, #1211)
+- **Simple task fast-path** — Skip LLM orchestration for trivially simple tasks (#1132)
+- **YAML frontmatter** on 11 tier 1/2 docs with CI validation (#1157, #1218)
+
+### Fixed
+
+- **Weather report poisoning** — Adapter-unavailable errors no longer recorded as task failures (#1214)
+- **Security-scan patterns** — Added exec/spawn concatenation (CWE-78) and path.join/resolve/normalize (CWE-22) detection (#1215, #1137, #1156)
+- **list_experts names format** — Returns first-sentence descriptions instead of empty strings (#1216)
+- **Hardened input validation** — JSON.parse guards, env var parsing, collection bounds, EventBus subscription snapshots (#1187-#1208)
+- **MCP SDK vulnerability resolution** — Scoped ajv override + hono vulnerability patched (#1190)
+- **CLI type canonicalization** — 3 duplicate CliName types consolidated into canonical CliNameLiteral (#1162)
+- **Routing feedback loop** — Closed delegate-to-model feedback gap with recordRoutingOutcome (#1160)
+- **Retry consolidation** — Unified retry defaults from config/defaults.ts (#1158)
+- **Pipeline wiring** — PluginRegistry, ArtifactStore, TraceWriter, EventBus all wired to execution paths (#1167, #1168, #1173, #1179)
+- **Expert timeout floor** — execute_expert minimum timeout raised and enforced (#1163)
+- **Research discover reliability** — Fixed 3 root causes of source failure rate (#1121)
+- **Orchestrator complexity** — Fixed misclassification for architecture tasks (#1152)
+
+### Changed
+
+- **Config centralization** — Codex MCP adapter timeouts, base adapter backoff, agent router timeouts, and feedback scoring thresholds derived from config/timeouts.ts (#1220)
+- **Barrel exports** — RejectionCategory, RejectionCategorySchema, REJECTION_CATEGORIES exported from consensus barrel (#1219)
+- **Deprecated code removed** — complexity-estimator, defaultFactory singleton, TechLead aliases, dead event schemas (#1143, #1169, #1170)
+- **Codex adapters refactored** — Migrated to extend BaseCliAdapter (#1140)
+- **Model registry updated** — Claude 4.6 Sonnet, Opus, and Haiku 4.5 (#1095)
+
 ## [2.16.0] - 2026-02-17
 
 ### Added

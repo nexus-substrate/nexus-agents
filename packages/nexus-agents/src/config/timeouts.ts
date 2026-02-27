@@ -288,6 +288,41 @@ export const CLI_SUBPROCESS_TIMEOUTS = {
 } as const;
 
 /**
+ * Exponential backoff configuration for CLI adapter retries.
+ * (Source: Issue #1220 — Centralize hardcoded values)
+ */
+export const BACKOFF_CONFIG = {
+  /** Base delay multiplier in milliseconds. */
+  baseDelayMs: 1_000,
+  /** Exponent base for exponential backoff (delay = base^attempt * baseDelayMs). */
+  exponentBase: 2,
+} as const;
+
+/**
+ * Agent message router timeouts.
+ * (Source: Issue #1220 — Centralize hardcoded values)
+ */
+export const AGENT_ROUTER_TIMEOUTS = {
+  /** Default router timeout per message. */
+  defaultMs: 30_000,
+  /** Default max retries for message routing. */
+  maxRetries: 3,
+  /** Default delay between retries. */
+  retryDelayMs: 1_000,
+} as const;
+
+/**
+ * Codex MCP adapter execution defaults.
+ * (Source: Issue #1220 — Centralize hardcoded values)
+ */
+export const CODEX_MCP_TIMEOUTS = {
+  /** Default execution timeout. */
+  defaultMs: 120_000,
+  /** Default max retries. */
+  maxRetries: 2,
+} as const;
+
+/**
  * Test framework timeouts (not for production code).
  */
 export const TEST_TIMEOUTS = {
