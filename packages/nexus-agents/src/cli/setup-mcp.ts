@@ -50,11 +50,18 @@ export function isMcpServerConfigured(): boolean {
 }
 
 /**
+ * Maps scope option to Claude CLI `-s` flag value.
+ */
+function scopeToFlag(scope: 'user' | 'project'): string {
+  return scope === 'project' ? 'local' : 'user';
+}
+
+/**
  * Removes existing MCP server configuration if present.
  */
-function removeExistingMcpServer(): void {
+function removeExistingMcpServer(scope: 'user' | 'project' = 'user'): void {
   try {
-    execSync('claude mcp remove nexus-agents -s local', {
+    execSync(`claude mcp remove nexus-agents -s ${scopeToFlag(scope)}`, {
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
     });
@@ -66,19 +73,24 @@ function removeExistingMcpServer(): void {
 /**
  * Adds MCP server to Claude CLI.
  */
-function addMcpServer(useNpx: boolean): McpConfigResult {
+function addMcpServer(useNpx: boolean, scope: 'user' | 'project' = 'user'): McpConfigResult {
   const entry = useNpx ? NEXUS_AGENTS_MCP_NPX_ENTRY : NEXUS_AGENTS_MCP_ENTRY;
   const jsonConfig = JSON.stringify(entry);
+  const scopeLabel = scope === 'project' ? 'project' : 'global';
 
   try {
-    execFileSync('claude', ['mcp', 'add-json', 'nexus-agents', jsonConfig], {
-      encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
+    execFileSync(
+      'claude',
+      ['mcp', 'add-json', 'nexus-agents', jsonConfig, '-s', scopeToFlag(scope)],
+      {
+        encoding: 'utf-8',
+        stdio: ['pipe', 'pipe', 'pipe'],
+      }
+    );
     return {
       success: true,
       alreadyConfigured: false,
-      message: 'Added nexus-agents MCP server to Claude Code',
+      message: `Added nexus-agents MCP server to Claude Code (${scopeLabel})`,
     };
   } catch (error) {
     const errorMsg = getErrorMessage(error);
@@ -94,10 +106,12 @@ function addMcpServer(useNpx: boolean): McpConfigResult {
  * Configures nexus-agents MCP server using Claude CLI.
  *
  * Uses `claude mcp add-json` to register the server.
+ * @param scope - 'user' for global (~/.claude/mcp.json), 'project' for local (.mcp.json)
  */
 export function configureMcpServer(
   useNpx: boolean = false,
-  force: boolean = false
+  force: boolean = false,
+  scope: 'user' | 'project' = 'user'
 ): McpConfigResult {
   const isConfigured = isMcpServerConfigured();
 
@@ -112,10 +126,10 @@ export function configureMcpServer(
 
   // Remove existing if forcing
   if (force && isConfigured) {
-    removeExistingMcpServer();
+    removeExistingMcpServer(scope);
   }
 
-  return addMcpServer(useNpx);
+  return addMcpServer(useNpx, scope);
 }
 
 /**

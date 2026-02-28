@@ -114,11 +114,15 @@ interface ParsedValues {
   period?: string;
   export?: string;
   'no-trends': boolean;
-  // Setup command options (Issue #363, #416)
+  // Setup command options (Issue #363, #416, #1252, #1253, #1259, #1263)
   'non-interactive': boolean;
   'skip-mcp': boolean;
   'skip-rules': boolean;
   'skip-hooks': boolean;
+  'skip-config': boolean;
+  'skip-opencode': boolean;
+  'skip-gemini': boolean;
+  'skip-codex': boolean;
   scope?: string;
   // Demo command options
   mock: boolean;
@@ -223,6 +227,10 @@ function buildSetupOptions(values: ParsedValues): {
   skipMcp: boolean;
   skipRules: boolean;
   skipHooks: boolean;
+  skipConfig: boolean;
+  skipOpencode: boolean;
+  skipGemini: boolean;
+  skipCodex: boolean;
   scope?: 'user' | 'project';
 } {
   const scope = parseSetupScope(values.scope);
@@ -231,12 +239,20 @@ function buildSetupOptions(values: ParsedValues): {
     skipMcp: boolean;
     skipRules: boolean;
     skipHooks: boolean;
+    skipConfig: boolean;
+    skipOpencode: boolean;
+    skipGemini: boolean;
+    skipCodex: boolean;
     scope?: 'user' | 'project';
   } = {
     nonInteractive: values['non-interactive'],
     skipMcp: values['skip-mcp'],
     skipRules: values['skip-rules'],
     skipHooks: values['skip-hooks'],
+    skipConfig: values['skip-config'],
+    skipOpencode: values['skip-opencode'],
+    skipGemini: values['skip-gemini'],
+    skipCodex: values['skip-codex'],
   };
   if (scope !== undefined) result.scope = scope;
   return result;

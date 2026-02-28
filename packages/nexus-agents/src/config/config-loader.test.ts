@@ -157,6 +157,27 @@ describe('config-loader', () => {
         expect(result.error.code).toBe('PATH_TRAVERSAL');
       }
     });
+
+    it('falls back to global config in ~/.nexus-agents/ (#1265)', () => {
+      const home = process.env['HOME'] ?? '/home/test';
+      const globalPath = `${home}/.nexus-agents/nexus-agents.yaml`;
+      mockExistsSync.mockImplementation((p) => {
+        return String(p) === globalPath;
+      });
+      mockReadFileSync.mockReturnValue('models:\n  default: global-model');
+      mockYamlParse.mockReturnValue({
+        models: { default: 'global-model' },
+      });
+
+      const result = loadConfig({ cwd: '/tmp/no-config-here' });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.usingDefaults).toBe(false);
+        expect(result.value.configPath).toContain('.nexus-agents');
+        expect(result.value.config.models.default).toBe('global-model');
+      }
+    });
   });
 
   describe('getConfig', () => {

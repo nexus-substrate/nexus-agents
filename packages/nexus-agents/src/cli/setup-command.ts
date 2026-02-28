@@ -35,6 +35,7 @@ import type { DataDirInitResult } from './setup-data-dir.js';
 import { runConfigInitSync } from './setup-config.js';
 import { detectOpenCodeCli, configureOpenCode } from './setup-opencode.js';
 import { detectGeminiCli, configureGemini } from './setup-gemini.js';
+import { detectCodexCli, configureCodex } from './setup-codex.js';
 import { VERSION } from '../version.js';
 import { runWizard } from './setup-wizard.js';
 
@@ -251,7 +252,7 @@ function runMcpConfigStep(env: EnvironmentInfo, options: SetupOptions): McpStepR
     );
   }
 
-  const mcpResult = configureMcpServer(useNpx, options.force);
+  const mcpResult = configureMcpServer(useNpx, options.force, options.scope);
   const status = mcpResult.success
     ? mcpResult.alreadyConfigured
       ? 'skipped'
@@ -441,6 +442,62 @@ function runGeminiStep(options: SetupOptions): SetupStep {
 }
 
 /**
+ * Runs the data directory initialization step (#1249).
+ */
+function runDataDirStep(options: SetupOptions): { step: SetupStep; result: DataDirInitResult } {
+  const startTime = getTimeProvider().now();
+  const dataDirResult = initDataDirectories(options.dryRun);
+  return {
+    step: {
+      name: 'Data Directory',
+      status: dataDirResult.success
+        ? dataDirResult.created.length > 0
+          ? 'success'
+          : 'skipped'
+        : 'failed',
+      message: dataDirResult.success
+        ? dataDirResult.created.length > 0
+          ? `Created ${String(dataDirResult.created.length)} directories`
+          : 'All directories already exist'
+        : `Failed: ${dataDirResult.error ?? 'Unknown error'}`,
+      durationMs: getTimeProvider().now() - startTime,
+    },
+    result: dataDirResult,
+  };
+}
+
+/**
+ * Runs the Codex CLI MCP configuration step (#1263).
+ */
+function runCodexStep(options: SetupOptions): SetupStep {
+  const startTime = getTimeProvider().now();
+  if (options.skipCodex) {
+    return {
+      name: 'Codex MCP',
+      status: 'skipped',
+      message: 'Skipped (--skip-codex)',
+      durationMs: 0,
+    };
+  }
+  const cliInfo = detectCodexCli();
+  if (!cliInfo.installed) {
+    return {
+      name: 'Codex MCP',
+      status: 'skipped',
+      message: 'Codex CLI not installed',
+      durationMs: getTimeProvider().now() - startTime,
+    };
+  }
+  const result = configureCodex(options.force, options.dryRun);
+  return {
+    name: 'Codex MCP',
+    status: result.success ? (result.alreadyConfigured ? 'skipped' : 'success') : 'failed',
+    message: result.message,
+    durationMs: getTimeProvider().now() - startTime,
+  };
+}
+
+/**
  * Runs the config file generation step (#1252).
  */
 function runConfigStep(projectRoot: string, options: SetupOptions): SetupStep {
@@ -552,22 +609,7 @@ export function runSetup(options: Partial<SetupOptions> = {}): SetupResult {
   const { step: hooksStep, hookSnippet, hookResult } = runHooksStep(env, parsedOptions);
 
   // Step 5: Data Directory Initialization (#1249)
-  const dataDirStartTime = getTimeProvider().now();
-  const dataDirResult = initDataDirectories(parsedOptions.dryRun);
-  const dataDirStep: SetupStep = {
-    name: 'Data Directory',
-    status: dataDirResult.success
-      ? dataDirResult.created.length > 0
-        ? 'success'
-        : 'skipped'
-      : 'failed',
-    message: dataDirResult.success
-      ? dataDirResult.created.length > 0
-        ? `Created ${String(dataDirResult.created.length)} directories`
-        : 'All directories already exist'
-      : `Failed: ${dataDirResult.error ?? 'Unknown error'}`,
-    durationMs: getTimeProvider().now() - dataDirStartTime,
-  };
+  const { step: dataDirStep, result: dataDirResult } = runDataDirStep(parsedOptions);
 
   // Step 6: OpenCode MCP Configuration (#1253)
   const openCodeStep = runOpenCodeStep(parsedOptions);
@@ -575,7 +617,10 @@ export function runSetup(options: Partial<SetupOptions> = {}): SetupResult {
   // Step 7: Gemini MCP Configuration (#1259)
   const geminiStep = runGeminiStep(parsedOptions);
 
-  // Step 8: Config File Generation (#1252)
+  // Step 8: Codex MCP Configuration (#1263)
+  const codexStep = runCodexStep(parsedOptions);
+
+  // Step 9: Config File Generation (#1252)
   const configStep = runConfigStep(projectRoot, parsedOptions);
 
   return buildSetupResult({
@@ -588,6 +633,7 @@ export function runSetup(options: Partial<SetupOptions> = {}): SetupResult {
       dataDirStep,
       openCodeStep,
       geminiStep,
+      codexStep,
       configStep,
     ],
     warnings,

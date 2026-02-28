@@ -216,6 +216,56 @@ describe('configureMcpServer', () => {
     expect(result.success).toBe(false);
     expect(result.message).toContain('string error');
   });
+
+  it('should pass -s user flag by default', () => {
+    mockedExecSync.mockImplementationOnce(() => {
+      throw new Error('not found');
+    });
+    mockedExecFileSync.mockReturnValueOnce(Buffer.from('added'));
+
+    configureMcpServer(false, false);
+
+    const addCall = mockedExecFileSync.mock.calls[0]!;
+    const args = addCall[1] as string[];
+    expect(args).toContain('-s');
+    expect(args).toContain('user');
+  });
+
+  it('should pass -s local flag when scope is project', () => {
+    mockedExecSync.mockImplementationOnce(() => {
+      throw new Error('not found');
+    });
+    mockedExecFileSync.mockReturnValueOnce(Buffer.from('added'));
+
+    configureMcpServer(false, false, 'project');
+
+    const addCall = mockedExecFileSync.mock.calls[0]!;
+    const args = addCall[1] as string[];
+    expect(args).toContain('-s');
+    expect(args).toContain('local');
+  });
+
+  it('should include scope label in success message', () => {
+    mockedExecSync.mockImplementationOnce(() => {
+      throw new Error('not found');
+    });
+    mockedExecFileSync.mockReturnValueOnce(Buffer.from('added'));
+
+    const result = configureMcpServer(false, false, 'user');
+    expect(result.message).toContain('global');
+  });
+
+  it('should use matching scope for remove when force=true', () => {
+    mockedExecSync.mockReturnValueOnce('nexus-agents: configured').mockReturnValueOnce('removed');
+    mockedExecFileSync.mockReturnValueOnce(Buffer.from('added'));
+
+    configureMcpServer(false, true, 'project');
+
+    // Remove call uses execSync with -s local
+    const removeCall = mockedExecSync.mock.calls[1]!;
+    const removeCmd = removeCall[0];
+    expect(removeCmd).toContain('-s local');
+  });
 });
 
 // ============================================================================

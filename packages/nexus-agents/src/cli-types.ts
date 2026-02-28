@@ -115,11 +115,15 @@ export interface ParsedCliArgs {
     period?: number;
     export?: string;
     noTrends?: boolean;
-    // Setup command options (Issue #363, #416)
+    // Setup command options (Issue #363, #416, #1252, #1253, #1259, #1263)
     nonInteractive: boolean;
     skipMcp: boolean;
     skipRules: boolean;
     skipHooks: boolean;
+    skipConfig: boolean;
+    skipOpencode: boolean;
+    skipGemini: boolean;
+    skipCodex: boolean;
     scope?: 'user' | 'project';
     // Demo command options
     mock: boolean;
@@ -290,6 +294,22 @@ export const PARSE_ARGS_CONFIG = {
       default: false,
     },
     'skip-hooks': {
+      type: 'boolean' as const,
+      default: false,
+    },
+    'skip-config': {
+      type: 'boolean' as const,
+      default: false,
+    },
+    'skip-opencode': {
+      type: 'boolean' as const,
+      default: false,
+    },
+    'skip-gemini': {
+      type: 'boolean' as const,
+      default: false,
+    },
+    'skip-codex': {
       type: 'boolean' as const,
       default: false,
     },

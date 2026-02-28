@@ -89,3 +89,5 @@ export {
   generateVoteSummary,
   wrapInMarkdownFence,
 } from './visual-output.js';
+
+export { resolveProjectRoot } from './resolve-project-root.js';

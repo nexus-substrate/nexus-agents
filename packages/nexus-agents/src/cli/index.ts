@@ -32,6 +32,10 @@ export type {
   ConfigureOpenCodeOptions,
 } from './setup-opencode.js';
 
+// Setup Codex (#1263)
+export { detectCodexCli, configureCodex } from './setup-codex.js';
+export type { CodexCliInfo, CodexConfigResult } from './setup-codex.js';
+
 // Hello Command (Issue #423)
 export { helloCommand, gatherSystemInfo, printHelloResult } from './hello.js';
 export type { HelloResult } from './hello.js';
