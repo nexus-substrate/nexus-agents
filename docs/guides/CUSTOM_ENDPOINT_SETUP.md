@@ -247,15 +247,33 @@ docker run --rm nexus-opencode run --format json -m opencode/big-pickle \
 - **Provider config**: Anthropic + custom OpenAI-compatible endpoint preconfigured
 - Runs as non-root `nexus` user
 
-### Docker Desktop Sandbox (Alternative)
+### Docker Desktop Sandbox (with nexus-agents MCP)
 
-For stronger isolation via microVM, Docker Desktop users can use Docker Sandboxes:
+For stronger isolation via microVM, Docker Desktop users can run OpenCode with nexus-agents MCP inside a Docker Sandbox. The sandbox provides hypervisor-level isolation, credential proxying (API keys never enter the VM), and filesystem mounting.
+
+**Prerequisites:** Docker Desktop with Sandbox v0.12.0+ (`docker sandbox version`)
 
 ```bash
-docker sandbox run opencode .
+# Build the sandbox template (extends official opencode sandbox image)
+docker build -f Dockerfile.sandbox -t nexus-sandbox:latest .
+
+# Create and run sandbox with nexus-agents MCP
+docker sandbox run -t nexus-sandbox:latest opencode .
+
+# Or create first, then run separately
+docker sandbox create -t nexus-sandbox:latest opencode .
+docker sandbox run <sandbox-name>
+
+# Verify MCP inside sandbox
+docker sandbox exec <sandbox-name> opencode mcp list
+# Should show: nexus-agents connected
+
+# Test MCP tool call inside sandbox (no API key needed)
+docker sandbox exec <sandbox-name> bash -c \
+  'opencode run --format json -m opencode/big-pickle "Use the list_experts MCP tool"'
 ```
 
-This provides credential proxying and filesystem isolation. See [Docker Sandbox docs](https://docs.docker.com/ai/sandboxes/agents/opencode/) for details. Note: requires Docker Desktop with sandbox support enabled.
+The `Dockerfile.sandbox` extends `docker/sandbox-templates:opencode` with nexus-agents dist, node_modules, and MCP config baked in. All 24 nexus-agents MCP tools are accessible inside the sandbox.
 
 ## Troubleshooting
 

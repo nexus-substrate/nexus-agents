@@ -1,0 +1,72 @@
+# Dockerfile.sandbox — Docker Desktop Sandbox template with nexus-agents MCP
+# Extends the official opencode sandbox template with nexus-agents MCP server.
+#
+# Usage:
+#   docker build -f Dockerfile.sandbox -t nexus-sandbox:latest .
+#   docker sandbox run -t nexus-sandbox:latest opencode .
+#
+# Requires: Docker Desktop with Sandbox v0.12.0+
+
+# Stage 1: Build nexus-agents (reused from Dockerfile.opencode)
+FROM node:22-slim AS builder
+
+RUN corepack enable && corepack prepare pnpm@9 --activate
+
+WORKDIR /app
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
+COPY packages/nexus-agents/package.json packages/nexus-agents/
+COPY packages/nexus-tui/package.json packages/nexus-tui/
+
+RUN pnpm install --frozen-lockfile
+
+COPY packages/ packages/
+COPY tsconfig.json ./
+
+RUN pnpm build
+
+# Stage 2: Flat node_modules via npm (no pnpm symlinks)
+FROM node:22-slim AS runtime-deps
+
+WORKDIR /opt/nexus-agents
+COPY --from=builder /app/packages/nexus-agents/package.json ./
+# Include all deps since some devDeps (ts-morph) are bundled as externals
+RUN npm install --ignore-scripts 2>/dev/null; exit 0
+RUN npm rebuild 2>/dev/null; exit 0
+
+# Stage 3: Extend official opencode sandbox template
+FROM docker/sandbox-templates:opencode
+
+USER root
+
+# Copy nexus-agents dist and dependencies
+COPY --from=builder /app/packages/nexus-agents/dist /opt/nexus-agents/dist
+COPY --from=builder /app/packages/nexus-agents/package.json /opt/nexus-agents/
+COPY --from=runtime-deps /opt/nexus-agents/node_modules /opt/nexus-agents/node_modules
+
+# Create opencode config with MCP server pointing to nexus-agents
+# OpenCode reads from ~/.config/opencode/opencode.json (global config)
+RUN mkdir -p /home/agent/.config/opencode && \
+    cat > /home/agent/.config/opencode/opencode.json <<'OCEOF'
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "nexus-agents": {
+      "type": "local",
+      "command": [
+        "node",
+        "/opt/nexus-agents/dist/cli.js",
+        "--mode=server"
+      ],
+      "enabled": true,
+      "environment": {
+        "NEXUS_ALLOW_MOCK_ORCHESTRATION": "true"
+      }
+    }
+  }
+}
+OCEOF
+
+# Fix ownership for agent user
+RUN chown -R agent:agent /opt/nexus-agents /home/agent/.config
+
+USER agent
