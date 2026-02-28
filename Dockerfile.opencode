@@ -14,7 +14,7 @@ RUN corepack enable && corepack prepare pnpm@9 --activate
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
 COPY packages/nexus-agents/package.json packages/nexus-agents/
-COPY packages/nexus-tui/package.json packages/nexus-tui/
+
 
 RUN pnpm install --frozen-lockfile
 

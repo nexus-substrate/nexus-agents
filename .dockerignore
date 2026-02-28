@@ -6,7 +6,6 @@ coverage
 runs
 packages/nexus-agents/runs
 packages/nexus-agents/docs/api
-packages/nexus-tui/node_modules
 *.log
 .env
 .env.*

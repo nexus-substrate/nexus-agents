@@ -251,11 +251,6 @@
     "library": {
       "main": "src/index.ts",
       "barrel_count": 16
-    },
-    "tui": {
-      "package": "packages/nexus-tui/",
-      "binary": "nexus-tui",
-      "phase": 1
     }
   },
   "dependency_layers": [
