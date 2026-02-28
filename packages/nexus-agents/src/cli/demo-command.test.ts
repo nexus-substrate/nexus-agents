@@ -6,6 +6,12 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+// Mock CLI adapter factory to avoid real subprocess spawns (perf: saves ~7s)
+vi.mock('../cli-adapters/factory.js', () => ({
+  createAllAdapters: vi.fn(() => new Map()),
+}));
+
 import {
   demoCommand,
   runRoutingDemo,

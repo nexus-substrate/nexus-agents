@@ -2,10 +2,15 @@
  * Tests for learning persistence health check in doctor command (Issue #1017).
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+
+// Mock CLI adapter factory to avoid real subprocess spawns (perf: saves ~23s)
+vi.mock('../cli-adapters/factory.js', () => ({
+  createAllAdapters: vi.fn(() => new Map()),
+}));
 
 // We test the behavior indirectly through runDoctor since checkLearningPersistence is private.
 // For unit tests, we verify the DoctorResult shape includes learningPersistence.

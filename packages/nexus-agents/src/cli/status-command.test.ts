@@ -4,6 +4,17 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
+// Mock child_process to avoid real subprocess spawns (perf: saves ~40s)
+vi.mock('node:child_process', async (importOriginal) => {
+  const original = await importOriginal<typeof import('node:child_process')>();
+  return {
+    ...original,
+    execFileSync: vi.fn(() => {
+      throw new Error('not found');
+    }),
+  };
+});
+
 // Preload heavy modules before mocking
 await import('../version.js');
 await import('../governance/fitness-score.js');
