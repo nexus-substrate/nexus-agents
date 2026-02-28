@@ -98,9 +98,12 @@ export class SQLiteSessionStorage implements ISessionStorage {
       const betterSqlite3Module = await import('better-sqlite3').catch(() => null);
       if (betterSqlite3Module === null) {
         return err(
-          new SessionStorageError('better-sqlite3 is not installed. Run: pnpm add better-sqlite3', {
-            context: { dbPath: this.dbPath },
-          })
+          new SessionStorageError(
+            'better-sqlite3 not installed. Install: npm install better-sqlite3',
+            {
+              context: { dbPath: this.dbPath },
+            }
+          )
         );
       }
 

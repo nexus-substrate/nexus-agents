@@ -42,6 +42,9 @@ import { runWarmUp } from './cli/warm-up.js';
 import { runE2EEval, formatE2EEvalResult } from './cli/e2e-eval.js';
 import { runRoutingAB, formatABReport } from './cli/routing-ab.js';
 import { runMemoryEval, formatMemoryEvalReport } from './cli/memory-eval.js';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { homedir } from 'node:os';
 import { EXIT_CODES, type ParsedCliArgs } from './cli-types.js';
 import { startServer, type OrchestratorModeOptions } from './cli-server.js';
 import {
@@ -134,12 +137,25 @@ function buildOrchestratorOptions(args: ParsedCliArgs): OrchestratorModeOptions 
   };
 }
 
+/** Prints a first-run hint to stderr when no setup has been done (#1261). */
+function printFirstRunHint(): void {
+  const isTTY = process.stderr.isTTY;
+  if (!isTTY) return;
+  const dataDir = join(homedir(), '.nexus-agents');
+  const hasConfig = existsSync('./nexus-agents.yaml') || existsSync('./nexus-agents.yml');
+  if (existsSync(dataDir) || hasConfig) return;
+  process.stderr.write(
+    '\n\x1b[36mnexus-agents\x1b[0m: First time? Run \x1b[1mnexus-agents setup\x1b[0m to configure.\n\n'
+  );
+}
+
 /**
  * Handles the server command (default mode or interactive REPL).
  * In orchestrator mode, executes tasks directly without MCP server.
  * (Source: Issue #446 - Implement orchestrator mode)
  */
 export async function handleServerCommand(args: ParsedCliArgs): Promise<void> {
+  printFirstRunHint();
   if (args.options.interactive) {
     const exitCode = await replCommand({ verbose: args.options.verbose });
     process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);

@@ -28,6 +28,8 @@ export const SetupOptionsSchema = z.object({
   skipConfig: z.boolean().default(false),
   /** Skip OpenCode MCP configuration (#1253) */
   skipOpencode: z.boolean().default(false),
+  /** Skip Gemini CLI MCP configuration (#1259) */
+  skipGemini: z.boolean().default(false),
   /** Show what would be done without making changes */
   dryRun: z.boolean().default(false),
   /** Show detailed output */

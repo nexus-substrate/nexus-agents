@@ -19,6 +19,10 @@ export type {
 export { runConfigInitSync } from './setup-config.js';
 export type { ConfigStepResult } from './setup-config.js';
 
+// Setup Gemini (#1259)
+export { detectGeminiCli, configureGemini } from './setup-gemini.js';
+export type { GeminiCliInfo, GeminiConfigResult } from './setup-gemini.js';
+
 // Setup OpenCode (#1253, #1255 JSONC support)
 export { detectOpenCodeCli, configureOpenCode, resolveOpenCodeConfig } from './setup-opencode.js';
 export type {

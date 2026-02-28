@@ -99,10 +99,9 @@ export class HybridMemoryBackend implements IMemoryBackend {
       });
       if (betterSqlite3Module === null) {
         return err(
-          new MemoryError(
-            'better-sqlite3 is not installed. Run: pnpm add better-sqlite3 @types/better-sqlite3',
-            { context: { dbPath: this.dbPath } }
-          )
+          new MemoryError('better-sqlite3 not installed. Install: npm install better-sqlite3', {
+            context: { dbPath: this.dbPath },
+          })
         );
       }
 

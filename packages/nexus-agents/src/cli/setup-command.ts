@@ -34,6 +34,7 @@ import { initDataDirectories } from './setup-data-dir.js';
 import type { DataDirInitResult } from './setup-data-dir.js';
 import { runConfigInitSync } from './setup-config.js';
 import { detectOpenCodeCli, configureOpenCode } from './setup-opencode.js';
+import { detectGeminiCli, configureGemini } from './setup-gemini.js';
 import { VERSION } from '../version.js';
 import { runWizard } from './setup-wizard.js';
 
@@ -409,6 +410,37 @@ function runOpenCodeStep(options: SetupOptions): SetupStep {
 }
 
 /**
+ * Runs the Gemini CLI MCP configuration step (#1259).
+ */
+function runGeminiStep(options: SetupOptions): SetupStep {
+  const startTime = getTimeProvider().now();
+  if (options.skipGemini) {
+    return {
+      name: 'Gemini MCP',
+      status: 'skipped',
+      message: 'Skipped (--skip-gemini)',
+      durationMs: 0,
+    };
+  }
+  const cliInfo = detectGeminiCli();
+  if (!cliInfo.installed) {
+    return {
+      name: 'Gemini MCP',
+      status: 'skipped',
+      message: 'Gemini CLI not installed',
+      durationMs: getTimeProvider().now() - startTime,
+    };
+  }
+  const result = configureGemini(options.force, options.dryRun);
+  return {
+    name: 'Gemini MCP',
+    status: result.success ? (result.alreadyConfigured ? 'skipped' : 'success') : 'failed',
+    message: result.message,
+    durationMs: getTimeProvider().now() - startTime,
+  };
+}
+
+/**
  * Runs the config file generation step (#1252).
  */
 function runConfigStep(projectRoot: string, options: SetupOptions): SetupStep {
@@ -540,12 +572,24 @@ export function runSetup(options: Partial<SetupOptions> = {}): SetupResult {
   // Step 6: OpenCode MCP Configuration (#1253)
   const openCodeStep = runOpenCodeStep(parsedOptions);
 
-  // Step 7: Config File Generation (#1252)
+  // Step 7: Gemini MCP Configuration (#1259)
+  const geminiStep = runGeminiStep(parsedOptions);
+
+  // Step 8: Config File Generation (#1252)
   const configStep = runConfigStep(projectRoot, parsedOptions);
 
   return buildSetupResult({
     startTime,
-    steps: [detectionStep, mcpStep, rulesStep, hooksStep, dataDirStep, openCodeStep, configStep],
+    steps: [
+      detectionStep,
+      mcpStep,
+      rulesStep,
+      hooksStep,
+      dataDirStep,
+      openCodeStep,
+      geminiStep,
+      configStep,
+    ],
     warnings,
     mcpResult,
     snippet,

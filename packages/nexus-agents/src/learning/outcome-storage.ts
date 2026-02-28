@@ -84,8 +84,8 @@ export class SQLiteOutcomeStorage implements IOutcomeStorage {
       const betterSqlite3Module = await import('better-sqlite3').catch(() => null);
       if (betterSqlite3Module === null) {
         return wrapStorageError(
-          new Error('better-sqlite3 is not installed'),
-          'better-sqlite3 is not installed. Run: pnpm add better-sqlite3',
+          new Error('better-sqlite3 not installed'),
+          'better-sqlite3 not installed. Install: npm install better-sqlite3',
           { dbPath: this.dbPath }
         );
       }
