@@ -1,16 +1,18 @@
 /**
  * OpenCode MCP auto-configuration for setup command.
  *
- * Detects OpenCode CLI and generates opencode.json with nexus-agents MCP server.
+ * Detects OpenCode CLI and generates opencode.json/.jsonc with nexus-agents MCP server.
+ * Supports JSONC (JSON with Comments) via `jsonc-parser` for comment-preserving writes.
  *
  * @module cli/setup-opencode
- * (Source: Issue #1253 - OpenCode MCP auto-configuration)
+ * (Source: Issue #1253 - OpenCode MCP auto-configuration, #1255 - JSONC support)
  */
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { homedir, platform } from 'node:os';
+import { parse as jsoncParse, modify, applyEdits } from 'jsonc-parser';
 import { getErrorMessage } from '../core/index.js';
 import { createLogger } from '../core/index.js';
 
@@ -30,17 +32,11 @@ export interface OpenCodeConfigResult {
   readonly configPath: string;
 }
 
-/** OpenCode MCP server entry format. */
-interface OpenCodeMcpEntry {
-  readonly type: string;
-  readonly command: readonly string[];
-  readonly enabled: boolean;
-}
-
-/** OpenCode config format. */
-interface OpenCodeConfig {
-  readonly $schema?: string;
-  readonly mcp?: Record<string, OpenCodeMcpEntry>;
+/** Resolved config file info. */
+export interface ResolvedConfig {
+  readonly path: string;
+  readonly isJsonc: boolean;
+  readonly exists: boolean;
 }
 
 /**
@@ -83,79 +79,141 @@ function getNexusCommand(): readonly string[] {
   return ['npx', 'nexus-agents', '--mode=server'];
 }
 
-/** Checks if nexus-agents is already configured in an existing opencode.json. */
-function isAlreadyConfigured(configPath: string): boolean {
-  if (!existsSync(configPath)) return false;
+const NEXUS_MCP_ENTRY = {
+  type: 'local',
+  command: getNexusCommand(),
+  enabled: true,
+};
+
+/**
+ * Resolves the OpenCode config file in a directory.
+ * Prefers .jsonc over .json (matching OpenCode's own priority).
+ */
+export function resolveOpenCodeConfig(dir: string): ResolvedConfig {
+  const jsoncPath = join(dir, 'opencode.jsonc');
+  if (existsSync(jsoncPath)) {
+    return { path: jsoncPath, isJsonc: true, exists: true };
+  }
+  const jsonPath = join(dir, 'opencode.json');
+  if (existsSync(jsonPath)) {
+    return { path: jsonPath, isJsonc: false, exists: true };
+  }
+  return { path: jsonPath, isJsonc: false, exists: false };
+}
+
+/** Checks if nexus-agents is already configured in an existing config. */
+function isAlreadyConfigured(resolved: ResolvedConfig): boolean {
+  if (!resolved.exists) return false;
   try {
-    const config = JSON.parse(readFileSync(configPath, 'utf-8')) as OpenCodeConfig;
-    return config.mcp?.['nexus-agents'] !== undefined;
+    const raw = readFileSync(resolved.path, 'utf-8');
+    const config = jsoncParse(raw) as Record<string, unknown> | null;
+    const mcp = config?.['mcp'] as Record<string, unknown> | undefined;
+    return mcp?.['nexus-agents'] !== undefined;
   } catch {
-    logger.debug('Failed to parse existing opencode.json, will overwrite');
+    logger.debug('Failed to parse existing OpenCode config, will overwrite');
     return false;
   }
 }
 
-/** Reads existing config or returns empty object. */
-function readExistingConfig(configPath: string): Record<string, unknown> {
-  if (!existsSync(configPath)) return {};
-  try {
-    return JSON.parse(readFileSync(configPath, 'utf-8')) as Record<string, unknown>;
-  } catch {
-    return {};
-  }
+/** Writes nexus-agents MCP entry using comment-preserving edits for JSONC. */
+function writeJsoncConfig(configPath: string, raw: string): void {
+  let result = raw;
+  result = applyEdits(result, modify(result, ['mcp', 'nexus-agents'], NEXUS_MCP_ENTRY, {}));
+  result = applyEdits(result, modify(result, ['$schema'], 'https://opencode.ai/config.json', {}));
+  writeFileSync(configPath, result, 'utf-8');
+}
+
+/** Writes nexus-agents MCP entry as plain JSON for new configs. */
+function writeJsonConfig(configPath: string): void {
+  const config = {
+    $schema: 'https://opencode.ai/config.json',
+    mcp: { 'nexus-agents': NEXUS_MCP_ENTRY },
+  };
+  writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n', 'utf-8');
 }
 
 /** Writes the merged config with nexus-agents MCP entry. */
-function writeOpenCodeConfig(configDir: string, configPath: string): void {
+function writeOpenCodeConfig(configDir: string, resolved: ResolvedConfig): void {
   if (!existsSync(configDir)) mkdirSync(configDir, { recursive: true });
-  const config = readExistingConfig(configPath);
-  const mcp = (config['mcp'] ?? {}) as Record<string, unknown>;
-  mcp['nexus-agents'] = { type: 'local', command: getNexusCommand(), enabled: true };
-  config['$schema'] = 'https://opencode.ai/config.json';
-  config['mcp'] = mcp;
-  writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n', 'utf-8');
+
+  if (resolved.exists) {
+    const raw = readFileSync(resolved.path, 'utf-8');
+    writeJsoncConfig(resolved.path, raw);
+  } else {
+    writeJsonConfig(resolved.path);
+  }
+}
+
+/** Options for configureOpenCode. */
+export interface ConfigureOpenCodeOptions {
+  readonly force: boolean;
+  readonly dryRun: boolean;
+  readonly projectRoot?: string;
+}
+
+/** Validates projectRoot to prevent path traversal (CWE-22). */
+function validateProjectRoot(projectRoot: string): string {
+  const resolved = resolve(projectRoot);
+  if (!existsSync(resolved)) {
+    throw new Error(`Project root does not exist: ${resolved}`);
+  }
+  return resolved;
 }
 
 /**
  * Configures OpenCode with nexus-agents MCP server.
- *
- * @param force - Overwrite existing configuration.
- * @param dryRun - Report what would happen without writing.
+ * Supports both global (~/.config/opencode/) and project-local configs.
  */
-export function configureOpenCode(force: boolean, dryRun: boolean): OpenCodeConfigResult {
-  const configDir = getOpenCodeConfigDir();
-  const configPath = join(configDir, 'opencode.json');
+export function configureOpenCode(
+  force: boolean,
+  dryRun: boolean,
+  options?: ConfigureOpenCodeOptions
+): OpenCodeConfigResult {
+  try {
+    return configureOpenCodeInner(force, dryRun, options);
+  } catch (error: unknown) {
+    const fallbackPath = join(getOpenCodeConfigDir(), 'opencode.json');
+    return {
+      success: false,
+      alreadyConfigured: false,
+      message: `Failed to configure OpenCode: ${getErrorMessage(error)}`,
+      configPath: fallbackPath,
+    };
+  }
+}
 
-  if (isAlreadyConfigured(configPath) && !force) {
+function configureOpenCodeInner(
+  force: boolean,
+  dryRun: boolean,
+  options?: ConfigureOpenCodeOptions
+): OpenCodeConfigResult {
+  const configDir =
+    options?.projectRoot !== undefined
+      ? validateProjectRoot(options.projectRoot)
+      : getOpenCodeConfigDir();
+  const resolved = resolveOpenCodeConfig(configDir);
+
+  if (isAlreadyConfigured(resolved) && !force) {
     return {
       success: true,
       alreadyConfigured: true,
       message: 'nexus-agents already configured in OpenCode',
-      configPath,
+      configPath: resolved.path,
     };
   }
   if (dryRun) {
     return {
       success: true,
       alreadyConfigured: false,
-      message: `Would configure nexus-agents MCP in ${configPath}`,
-      configPath,
+      message: `Would configure nexus-agents MCP in ${resolved.path}`,
+      configPath: resolved.path,
     };
   }
-  try {
-    writeOpenCodeConfig(configDir, configPath);
-    return {
-      success: true,
-      alreadyConfigured: false,
-      message: 'Configured nexus-agents MCP in OpenCode',
-      configPath,
-    };
-  } catch (error: unknown) {
-    return {
-      success: false,
-      alreadyConfigured: false,
-      message: `Failed to configure OpenCode: ${getErrorMessage(error)}`,
-      configPath,
-    };
-  }
+  writeOpenCodeConfig(configDir, resolved);
+  return {
+    success: true,
+    alreadyConfigured: false,
+    message: 'Configured nexus-agents MCP in OpenCode',
+    configPath: resolved.path,
+  };
 }

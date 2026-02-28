@@ -62,9 +62,11 @@ export CUSTOM_API_KEY="your-api-key"
 
 Config files are merged across three locations (project overrides global):
 
-1. **Global:** `~/.config/opencode/opencode.json`
-2. **Project:** `opencode.json` in project root
+1. **Global:** `~/.config/opencode/opencode.json` (or `opencode.jsonc`)
+2. **Project:** `opencode.json` (or `opencode.jsonc`) in project root
 3. **Environment:** `OPENCODE_CONFIG` path
+
+> **JSONC support:** OpenCode and `nexus-agents setup` both support `.jsonc` files (JSON with comments). Comments are preserved when nexus-agents merges its MCP entry.
 
 ## Step 2: Verify OpenCode Can Reach the Gateway
 
