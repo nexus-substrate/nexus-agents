@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.25.1] - 2026-02-28
+
+### Changed
+
+- **Remove deprecated nexus-tui package** — 66 files, 4818 lines deleted. node_modules reduced from 501MB to 393MB (-108MB). Superseded by Claude Code observability since v2.7.1 (#1284)
+- **Remove unused dependencies** — `uuid` (zero imports, uses `node:crypto.randomUUID()`), `hono` (transitive only via `@modelcontextprotocol/sdk`) (#1280)
+- **@atproto/api moved to optionalDependencies** — Bluesky posting now uses dynamic import with graceful fallback when package is not installed (#1282)
+- **AI SDK peerDependency versions fixed** — `^2.0.0` → `^3.0.0` to match installed versions (#1281)
+- **Dependency deduplication** — `@types/node` transitive versions unified via `pnpm dedupe` (#1283)
+
 ## [2.25.0] - 2026-02-28
 
 ### Security
