@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.25.0] - 2026-02-28
+
+### Security
+
+- **6 dependency vulnerabilities resolved** — basic-ftp critical path traversal (GHSA-5rq4-664w-9x2c), 3x minimatch high ReDoS, rollup high path traversal. All via scoped pnpm overrides on devDependency chains (#1278)
+
+### Added
+
+- **macOS CI matrix** — build, test, and fitness audit now run on both `ubuntu-latest` and `macos-latest` with `fail-fast: false` (#1275)
+- **Docker Sandbox integration** — nexus-agents MCP server running inside OpenCode Docker containers (#1248)
+- **OpenCode JSONC config support** — comment-preserving edits via `jsonc-parser` for `.opencode.json` / `.opencode.jsonc` (#1255-#1257)
+- **Global MCP registration** — Codex CLI auto-setup, scope wiring for Gemini project/user configs, project root resolver (#1262-#1265)
+- **Post-setup validation step** — `nexus-agents setup` now runs final validation reporting MCP, data dir, and config status (#1271)
+- **Gemini project-scoped config** — `configureGemini()` supports `scope: 'project'` for `.gemini/settings.json` in project root (#1269)
+
+### Fixed
+
+- **Claude Code MCP config path** — `getMcpJsonPath` updated from `~/.claude/mcp.json` to `~/.claude.json` (global) and `.mcp.json` (project) matching current Claude Code behavior (#1268)
+- **CLI package names in doctor** — `@openai/codex-cli` → `@openai/codex`, `opencode` → `opencode-ai` (#1267)
+- **better-sqlite3 dependency** — moved from `optionalDependencies` to `dependencies` to eliminate runtime npm install (#1270)
+- **8 flaky durationMs test assertions** — `toBeGreaterThan(0)` → `toBeGreaterThanOrEqual(0)` for fast CI runners (#1277)
+- **macOS /tmp symlink** — sandbox-exec test accepts both `/tmp` and `/private/tmp` (#1277)
+- **TypeScript test mocks** — added missing skip flags to 4 test files, fixed vi.hoisted() mock pattern (#1277)
+- **First-run hint** — TTY stderr hint when no `~/.nexus-agents/` directory and no config file detected (#1259)
+- **SQLite error messages** — standardized to `npm install better-sqlite3` across 6 files (#1260)
+
+### Changed
+
+- **Documentation paths updated** — 5 docs files updated from `~/.claude/mcp.json` to `.mcp.json` / `~/.claude.json` (#1272)
+
 ## [2.24.0] - 2026-02-27
 
 ### Fixed
