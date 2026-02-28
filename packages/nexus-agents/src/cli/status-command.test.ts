@@ -182,6 +182,10 @@ function createArgs(overrides: Record<string, unknown>): {
     skipMcp: boolean;
     skipRules: boolean;
     skipHooks: boolean;
+    skipConfig: boolean;
+    skipOpencode: boolean;
+    skipGemini: boolean;
+    skipCodex: boolean;
     mock: boolean;
     deep: boolean;
   };
@@ -209,6 +213,10 @@ function createArgs(overrides: Record<string, unknown>): {
       skipMcp: false,
       skipRules: false,
       skipHooks: false,
+      skipConfig: false,
+      skipOpencode: false,
+      skipGemini: false,
+      skipCodex: false,
       mock: false,
       deep: false,
     },

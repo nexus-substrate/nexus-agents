@@ -5,14 +5,16 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { execFileSync } from 'node:child_process';
-import { detectCodexCli, configureCodex } from './setup-codex.js';
 
-vi.mock('node:child_process', () => ({
-  execFileSync: vi.fn(),
+const { mockedExecFileSync } = vi.hoisted(() => ({
+  mockedExecFileSync: vi.fn(),
 }));
 
-const mockedExecFileSync = vi.mocked(execFileSync);
+vi.mock('node:child_process', () => ({
+  execFileSync: mockedExecFileSync,
+}));
+
+import { detectCodexCli, configureCodex } from './setup-codex.js';
 
 describe('detectCodexCli', () => {
   beforeEach(() => {
@@ -30,9 +32,7 @@ describe('detectCodexCli', () => {
   });
 
   it('returns installed=true with version when available', () => {
-    mockedExecFileSync
-      .mockReturnValueOnce(Buffer.from('/usr/bin/codex'))
-      .mockReturnValueOnce('codex 5.3.1' as unknown as Buffer);
+    mockedExecFileSync.mockReturnValueOnce('/usr/bin/codex\n').mockReturnValueOnce('codex 5.3.1');
 
     const result = detectCodexCli();
     expect(result.installed).toBe(true);
@@ -40,11 +40,9 @@ describe('detectCodexCli', () => {
   });
 
   it('returns installed=true without version on version error', () => {
-    mockedExecFileSync
-      .mockReturnValueOnce(Buffer.from('/usr/bin/codex'))
-      .mockImplementationOnce(() => {
-        throw new Error('version failed');
-      });
+    mockedExecFileSync.mockReturnValueOnce('/usr/bin/codex\n').mockImplementationOnce(() => {
+      throw new Error('version failed');
+    });
 
     const result = detectCodexCli();
     expect(result.installed).toBe(true);
@@ -58,8 +56,7 @@ describe('configureCodex', () => {
   });
 
   it('returns alreadyConfigured when server exists and force=false', () => {
-    // isAlreadyConfigured: codex mcp list includes nexus-agents
-    mockedExecFileSync.mockReturnValueOnce('nexus-agents  stdio' as unknown as Buffer);
+    mockedExecFileSync.mockReturnValueOnce('nexus-agents  stdio');
 
     const result = configureCodex(false, false);
     expect(result.success).toBe(true);
@@ -67,11 +64,7 @@ describe('configureCodex', () => {
   });
 
   it('adds server when not configured', () => {
-    // isAlreadyConfigured: codex mcp list does not include nexus-agents
-    mockedExecFileSync
-      .mockReturnValueOnce('other-server  stdio' as unknown as Buffer)
-      // addMcpServer: codex mcp add
-      .mockReturnValueOnce(Buffer.from('added'));
+    mockedExecFileSync.mockReturnValueOnce('other-server  stdio').mockReturnValueOnce('added');
 
     const result = configureCodex(false, false);
     expect(result.success).toBe(true);
@@ -80,12 +73,10 @@ describe('configureCodex', () => {
   });
 
   it('handles add failure', () => {
-    // isAlreadyConfigured throws (not configured)
     mockedExecFileSync
       .mockImplementationOnce(() => {
         throw new Error('mcp list failed');
       })
-      // addMcpServer fails
       .mockImplementationOnce(() => {
         throw new Error('permission denied');
       });
@@ -96,7 +87,6 @@ describe('configureCodex', () => {
   });
 
   it('returns dry-run message without adding', () => {
-    // isAlreadyConfigured: not configured
     mockedExecFileSync.mockImplementationOnce(() => {
       throw new Error('no list');
     });
@@ -107,15 +97,11 @@ describe('configureCodex', () => {
   });
 
   it('removes and re-adds when force=true', () => {
-    // isAlreadyConfigured (first check): yes
     mockedExecFileSync
-      .mockReturnValueOnce('nexus-agents  stdio' as unknown as Buffer)
-      // isAlreadyConfigured (second check in force path): yes
-      .mockReturnValueOnce('nexus-agents  stdio' as unknown as Buffer)
-      // removeExisting: codex mcp remove
-      .mockReturnValueOnce(Buffer.from('removed'))
-      // addMcpServer: codex mcp add
-      .mockReturnValueOnce(Buffer.from('added'));
+      .mockReturnValueOnce('nexus-agents  stdio')
+      .mockReturnValueOnce('nexus-agents  stdio')
+      .mockReturnValueOnce('removed')
+      .mockReturnValueOnce('added');
 
     const result = configureCodex(true, false);
     expect(result.success).toBe(true);
@@ -123,17 +109,15 @@ describe('configureCodex', () => {
   });
 
   it('uses correct command args for codex mcp add', () => {
-    // isAlreadyConfigured: not configured
     mockedExecFileSync
       .mockImplementationOnce(() => {
         throw new Error('no list');
       })
-      // addMcpServer
-      .mockReturnValueOnce(Buffer.from('added'));
+      .mockReturnValueOnce('added');
 
     configureCodex(false, false);
 
-    const addCall = mockedExecFileSync.mock.calls[1]!;
+    const addCall = mockedExecFileSync.mock.calls[1] as unknown[];
     expect(addCall[0]).toBe('codex');
     const args = addCall[1] as string[];
     expect(args).toEqual([
