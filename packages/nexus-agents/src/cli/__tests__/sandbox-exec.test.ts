@@ -400,7 +400,8 @@ describe('Sandbox Exec - Safe Execution', () => {
 
     it('should respect cwd option', () => {
       const result = safeExecSandboxed('pwd', { cwd: '/tmp' });
-      expect(result).toBe('/tmp');
+      // On macOS, /tmp is a symlink to /private/tmp, so pwd returns the resolved path
+      expect(['/tmp', '/private/tmp']).toContain(result);
     });
   });
 
