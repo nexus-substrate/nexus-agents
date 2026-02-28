@@ -49,16 +49,17 @@ Install globally for CLI access:
 npm install -g nexus-agents
 ```
 
-Set up MCP integration and data directories:
+After install, you'll see a hint to run setup. Configure everything:
 
 ```bash
-nexus-agents setup    # Configures Claude Code MCP, hooks, data dirs
+nexus-agents setup    # Configures MCP, hooks, data dirs, OpenCode, config
 ```
 
 Verify installation:
 
 ```bash
-nexus-agents doctor   # Checks CLIs, API keys, sqlite, data dirs
+nexus-agents doctor        # Checks CLIs, API keys, sqlite, data dirs
+nexus-agents doctor --fix  # Auto-fix missing data dirs and config
 ```
 
 ### pnpm

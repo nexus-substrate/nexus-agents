@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- Cohesive doctor command module (governance: 400-600 OK if cohesive) */
 /**
  * nexus-agents doctor command
  *
@@ -520,14 +521,87 @@ export async function runDoctor(): Promise<DoctorResult> {
   };
 }
 
+/** Doctor command options. */
+export interface DoctorOptions {
+  /** Auto-fix safe issues (run setup, generate config). */
+  readonly fix?: boolean;
+}
+
 /**
  * Runs the doctor command and prints results.
  * Returns exit code (0 = healthy, 1 = issues found).
  */
-export async function doctorCommand(): Promise<number> {
+export async function doctorCommand(options: DoctorOptions = {}): Promise<number> {
   const result = await runDoctor();
   printDoctorResults(result);
+
+  if (options.fix === true) {
+    await runDoctorFix(result);
+  }
+
   return result.allHealthy ? 0 : 1;
+}
+
+/**
+ * Auto-fixes safe issues found by doctor (#1254).
+ * Only runs our own code — never execs external package managers.
+ */
+async function runDoctorFix(result: DoctorResult): Promise<void> {
+  const writeLine = (text: string): void => {
+    process.stdout.write(text + '\n');
+  };
+
+  writeLine('');
+  writeLine('\x1b[1mAuto-fix\x1b[0m');
+  writeLine('─'.repeat(40));
+
+  let fixCount = 0;
+
+  // Fix: data directories
+  if (
+    !result.dataDirectory.rootExists ||
+    result.dataDirectory.subdirectories.some((d) => !d.exists)
+  ) {
+    const { runSetup } = await import('./setup-command.js');
+    const setupResult = runSetup({
+      skipMcp: true,
+      skipRules: true,
+      skipHooks: true,
+      skipConfig: true,
+      skipOpencode: true,
+    });
+    if (setupResult.success) {
+      writeLine('✓ Created missing data directories');
+      fixCount++;
+    }
+  }
+
+  // Fix: config file
+  if (!result.configFile.found) {
+    const { runConfigInitSync } = await import('./setup-config.js');
+    const configResult = runConfigInitSync(process.cwd(), false, false);
+    if (configResult.success && configResult.created) {
+      writeLine(`✓ Generated config: ${configResult.path}`);
+      fixCount++;
+    }
+  }
+
+  // Display-only: better-sqlite3
+  if (!result.sqliteCheck.available) {
+    writeLine('');
+    writeLine('⚠ better-sqlite3 not installed (manual step required):');
+    writeLine('  npm install -g better-sqlite3');
+  }
+
+  if (fixCount > 0) {
+    writeLine('');
+    writeLine(
+      `\x1b[32m${String(fixCount)} issue(s) fixed.\x1b[0m Re-run \x1b[1mnexus-agents doctor\x1b[0m to verify.`
+    );
+  } else {
+    writeLine('No auto-fixable issues found.');
+  }
+  writeLine('');
 }
 
 // Re-export printDoctorResults for backward compatibility

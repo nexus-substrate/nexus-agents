@@ -32,6 +32,8 @@ import {
 import type { McpConfigResult, HookConfigResult } from './setup-helpers.js';
 import { initDataDirectories } from './setup-data-dir.js';
 import type { DataDirInitResult } from './setup-data-dir.js';
+import { runConfigInitSync } from './setup-config.js';
+import { detectOpenCodeCli, configureOpenCode } from './setup-opencode.js';
 import { VERSION } from '../version.js';
 import { runWizard } from './setup-wizard.js';
 
@@ -375,6 +377,59 @@ function runHooksStep(
   return makeHooksResult(status, hookResult.message, startTime, hookResult);
 }
 
+/**
+ * Runs the OpenCode MCP configuration step (#1253).
+ */
+function runOpenCodeStep(options: SetupOptions): SetupStep {
+  const startTime = getTimeProvider().now();
+  if (options.skipOpencode) {
+    return {
+      name: 'OpenCode MCP',
+      status: 'skipped',
+      message: 'Skipped (--skip-opencode)',
+      durationMs: 0,
+    };
+  }
+  const cliInfo = detectOpenCodeCli();
+  if (!cliInfo.installed) {
+    return {
+      name: 'OpenCode MCP',
+      status: 'skipped',
+      message: 'OpenCode CLI not installed',
+      durationMs: getTimeProvider().now() - startTime,
+    };
+  }
+  const result = configureOpenCode(options.force, options.dryRun);
+  return {
+    name: 'OpenCode MCP',
+    status: result.success ? (result.alreadyConfigured ? 'skipped' : 'success') : 'failed',
+    message: result.message,
+    durationMs: getTimeProvider().now() - startTime,
+  };
+}
+
+/**
+ * Runs the config file generation step (#1252).
+ */
+function runConfigStep(projectRoot: string, options: SetupOptions): SetupStep {
+  const startTime = getTimeProvider().now();
+  if (options.skipConfig) {
+    return {
+      name: 'Configuration',
+      status: 'skipped',
+      message: 'Skipped (--skip-config)',
+      durationMs: 0,
+    };
+  }
+  const result = runConfigInitSync(projectRoot, options.force, options.dryRun);
+  return {
+    name: 'Configuration',
+    status: result.success ? (result.created ? 'success' : 'skipped') : 'failed',
+    message: result.message,
+    durationMs: getTimeProvider().now() - startTime,
+  };
+}
+
 // ============================================================================
 // Main Command Helpers
 // ============================================================================
@@ -482,9 +537,15 @@ export function runSetup(options: Partial<SetupOptions> = {}): SetupResult {
     durationMs: getTimeProvider().now() - dataDirStartTime,
   };
 
+  // Step 6: OpenCode MCP Configuration (#1253)
+  const openCodeStep = runOpenCodeStep(parsedOptions);
+
+  // Step 7: Config File Generation (#1252)
+  const configStep = runConfigStep(projectRoot, parsedOptions);
+
   return buildSetupResult({
     startTime,
-    steps: [detectionStep, mcpStep, rulesStep, hooksStep, dataDirStep],
+    steps: [detectionStep, mcpStep, rulesStep, hooksStep, dataDirStep, openCodeStep, configStep],
     warnings,
     mcpResult,
     snippet,

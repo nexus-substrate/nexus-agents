@@ -8,11 +8,20 @@
 export { doctorCommand, runDoctor, printDoctorResults, DATA_SUBDIRECTORIES } from './doctor.js';
 export type {
   DoctorResult,
+  DoctorOptions,
   CliCheckResult,
   SqliteCheck,
   DataDirectoryCheck,
   DataSubdirStatus,
 } from './doctor.js';
+
+// Setup Config (#1252)
+export { runConfigInitSync } from './setup-config.js';
+export type { ConfigStepResult } from './setup-config.js';
+
+// Setup OpenCode (#1253)
+export { detectOpenCodeCli, configureOpenCode } from './setup-opencode.js';
+export type { OpenCodeCliInfo, OpenCodeConfigResult } from './setup-opencode.js';
 
 // Hello Command (Issue #423)
 export { helloCommand, gatherSystemInfo, printHelloResult } from './hello.js';

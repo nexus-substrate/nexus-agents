@@ -17,6 +17,7 @@
   },
   "files": [
     "dist",
+    "scripts/postinstall.js",
     "src/workflows/templates",
     "README.md"
   ],
@@ -57,6 +58,7 @@
     "typecheck": "tsc --noEmit",
     "docs": "typedoc",
     "docs:watch": "typedoc --watch",
+    "postinstall": "node scripts/postinstall.js || true",
     "prepublishOnly": "pnpm run build"
   },
   "dependencies": {

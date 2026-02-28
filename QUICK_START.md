@@ -85,6 +85,8 @@ Nexus Agents Setup
 ✓ Rules File
 ✓ Hooks Configuration
 ✓ Data Directory
+✓ OpenCode MCP
+✓ Configuration
 
 Setup complete! Restart Claude Code to use nexus-agents.
 ```

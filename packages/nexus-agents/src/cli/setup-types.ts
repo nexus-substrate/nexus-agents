@@ -24,6 +24,10 @@ export const SetupOptionsSchema = z.object({
   skipRules: z.boolean().default(false),
   /** Skip hooks configuration (Issue #416) */
   skipHooks: z.boolean().default(false),
+  /** Skip config file generation (#1252) */
+  skipConfig: z.boolean().default(false),
+  /** Skip OpenCode MCP configuration (#1253) */
+  skipOpencode: z.boolean().default(false),
   /** Show what would be done without making changes */
   dryRun: z.boolean().default(false),
   /** Show detailed output */

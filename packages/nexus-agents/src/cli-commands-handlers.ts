@@ -328,7 +328,7 @@ export async function handleVerifyCommand(args: ParsedCliArgs): Promise<void> {
  * Handles doctor command (extracted for dispatch table).
  */
 export async function handleDoctorCommand(args: ParsedCliArgs): Promise<void> {
-  const exitCode = await doctorCommand();
+  const exitCode = await doctorCommand({ fix: args.options.fix });
   if (args.options.deep) {
     const { runDeepDiagnostics, formatDeepDiagnostics } = await import('./cli/doctor-deep.js');
     const diag = runDeepDiagnostics();
