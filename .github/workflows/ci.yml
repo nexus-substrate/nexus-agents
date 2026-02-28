@@ -50,8 +50,12 @@ jobs:
         run: pnpm typecheck
 
   build:
-    name: Build
-    runs-on: ubuntu-latest
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@v6
 
@@ -69,8 +73,12 @@ jobs:
         run: pnpm build
 
   test:
-    name: Test
-    runs-on: ubuntu-latest
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@v6
 
@@ -89,7 +97,7 @@ jobs:
 
       - name: Upload coverage
         uses: codecov/codecov-action@v5
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && matrix.os == 'ubuntu-latest'
         with:
           files: ./packages/nexus-agents/coverage/lcov.info
           fail_ci_if_error: false
@@ -97,8 +105,12 @@ jobs:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   fitness-audit:
-    name: Fitness Audit
-    runs-on: ubuntu-latest
+    name: Fitness Audit (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
     needs: [build]
     steps:
       - uses: actions/checkout@v6
@@ -143,7 +155,7 @@ jobs:
         uses: actions/upload-artifact@v6
         if: always()
         with:
-          name: fitness-report
+          name: fitness-report-${{ matrix.os }}
           path: packages/nexus-agents/fitness-report.json
 
   index-check:
