@@ -61,8 +61,11 @@ export function detectGeminiCli(): GeminiCliInfo {
   }
 }
 
-/** Resolves the Gemini config directory path. */
-function getGeminiConfigDir(): string {
+/** Resolves the Gemini config directory path based on scope. */
+function getGeminiConfigDir(scope: 'user' | 'project', projectRoot?: string): string {
+  if (scope === 'project' && projectRoot !== undefined) {
+    return join(projectRoot, '.gemini');
+  }
   return join(homedir(), '.gemini');
 }
 
@@ -110,9 +113,19 @@ function writeGeminiConfig(configDir: string, configPath: string): void {
 
 /**
  * Configures Gemini CLI with nexus-agents MCP server.
+ *
+ * @param force - Force reconfiguration even if already configured
+ * @param dryRun - Preview changes without writing
+ * @param scope - 'user' for global (~/.gemini/), 'project' for project-local (.gemini/)
+ * @param projectRoot - Project root directory (required for project scope)
  */
-export function configureGemini(force: boolean, dryRun: boolean): GeminiConfigResult {
-  const configDir = getGeminiConfigDir();
+export function configureGemini(
+  force: boolean,
+  dryRun: boolean,
+  scope: 'user' | 'project' = 'user',
+  projectRoot?: string
+): GeminiConfigResult {
+  const configDir = getGeminiConfigDir(scope, projectRoot);
   const configPath = join(configDir, 'settings.json');
 
   if (isAlreadyConfigured(configPath) && !force) {

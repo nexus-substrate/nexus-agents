@@ -15,7 +15,6 @@ import { CLI_SUBPROCESS_TIMEOUTS } from '../config/timeouts.js';
 import type {
   ClaudeCliInfo,
   McpConfigInfo,
-  McpJsonConfig,
   ProjectInfo,
   ProjectType,
   EnvironmentInfo,
@@ -35,7 +34,7 @@ function parseClaudeVersion(output: string): string | undefined {
  */
 export function detectClaudeCli(): ClaudeCliInfo {
   const configPath = join(homedir(), '.claude');
-  const mcpJsonPath = join(configPath, 'mcp.json');
+  const mcpJsonPath = join(homedir(), '.claude.json');
 
   try {
     const result = execSync('claude --version', {
@@ -61,34 +60,48 @@ export function detectClaudeCli(): ClaudeCliInfo {
   }
 }
 
+/** Extracts MCP servers from direct mcpServers key (project-scoped .mcp.json). */
+function extractDirectServers(config: Record<string, unknown>): string[] | undefined {
+  const mcpServers = config['mcpServers'] as Record<string, unknown> | undefined;
+  if (mcpServers === undefined) return undefined;
+  return Object.keys(mcpServers);
+}
+
+/** Extracts MCP servers from projects key (~/.claude.json format). */
+function extractProjectServers(config: Record<string, unknown>): string[] | undefined {
+  const projects = config['projects'] as Record<string, Record<string, unknown>> | undefined;
+  if (projects === undefined) return undefined;
+  const allServers = new Set<string>();
+  for (const proj of Object.values(projects)) {
+    const mcpServers = proj['mcpServers'] as Record<string, unknown> | undefined;
+    if (mcpServers !== undefined) Object.keys(mcpServers).forEach((n) => allServers.add(n));
+  }
+  return [...allServers];
+}
+
+/** Builds McpConfigInfo from a server list. */
+function buildMcpInfo(path: string, servers: string[]): McpConfigInfo {
+  return { exists: true, path, hasNexusAgents: servers.includes('nexus-agents'), servers };
+}
+
 /**
  * Detects existing MCP configuration.
+ *
+ * Handles two formats:
+ * - `.mcp.json` (project-scoped): `{ mcpServers: { ... } }`
+ * - `~/.claude.json` (user-scoped): `{ projects: { [path]: { mcpServers: { ... } } } }`
  */
 export function detectMcpConfig(mcpJsonPath: string): McpConfigInfo | undefined {
-  if (!existsSync(mcpJsonPath)) {
-    return undefined;
-  }
-
+  if (!existsSync(mcpJsonPath)) return undefined;
   try {
-    const content = readFileSync(mcpJsonPath, 'utf-8');
-    const parsed: unknown = JSON.parse(content);
-    const config = parsed as McpJsonConfig;
-    const mcpServers = config.mcpServers ?? {};
-    const servers = Object.keys(mcpServers);
-
-    return {
-      exists: true,
-      path: mcpJsonPath,
-      hasNexusAgents: servers.includes('nexus-agents'),
-      servers,
-    };
+    const config = JSON.parse(readFileSync(mcpJsonPath, 'utf-8')) as Record<string, unknown>;
+    const direct = extractDirectServers(config);
+    if (direct !== undefined) return buildMcpInfo(mcpJsonPath, direct);
+    const projected = extractProjectServers(config);
+    if (projected !== undefined) return buildMcpInfo(mcpJsonPath, projected);
+    return buildMcpInfo(mcpJsonPath, []);
   } catch {
-    return {
-      exists: true,
-      path: mcpJsonPath,
-      hasNexusAgents: false,
-      servers: [],
-    };
+    return buildMcpInfo(mcpJsonPath, []);
   }
 }
 

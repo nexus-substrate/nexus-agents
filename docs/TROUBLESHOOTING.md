@@ -193,7 +193,7 @@ nexus-agents --mode=server --verbose
 
 **Solution:**
 
-1. Check `~/.claude/mcp.json`:
+1. Check your MCP config (project: `.mcp.json`, global: `~/.claude.json` under `projects` key):
 
 ```json
 {

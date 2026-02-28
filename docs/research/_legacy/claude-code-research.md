@@ -147,8 +147,7 @@ Claude Code acts as a **full MCP client** that can connect to MCP servers:
 ### Configuration Locations
 
 1. **Project (recommended):** `.mcp.json` in project root
-2. **Local:** `~/.config/claude/mcp.json`
-3. **User:** `~/.claude/mcp.json`
+2. **Global:** `~/.claude.json` (MCP config stored under `projects` key)
 
 ### Configuration Examples
 

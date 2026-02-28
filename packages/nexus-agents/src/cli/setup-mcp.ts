@@ -147,13 +147,17 @@ export function generateMcpSnippet(useNpx: boolean = false): string {
 }
 
 /**
- * Generates the full MCP JSON path based on scope (legacy, for reference).
+ * Generates the full MCP config path based on scope.
+ *
+ * Claude Code uses:
+ * - Project scope: `.mcp.json` in project root
+ * - User scope: `~/.claude.json` (stores MCP config under `projects` key)
  */
 export function getMcpJsonPath(scope: 'user' | 'project', projectRoot: string): string {
   if (scope === 'project') {
     return join(projectRoot, '.mcp.json');
   }
-  return join(homedir(), '.claude', 'mcp.json');
+  return join(homedir(), '.claude.json');
 }
 
 // ============================================================================

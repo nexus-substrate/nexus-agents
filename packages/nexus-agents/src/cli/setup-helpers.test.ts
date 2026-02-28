@@ -63,19 +63,17 @@ describe('setup-environment functions', () => {
   describe('detectMcpConfig', () => {
     it('parses mcp.json and handles missing/invalid files', () => {
       mockExistsSync.mockReturnValue(false);
-      expect(setupHelpers.detectMcpConfig('/home/user/.claude/mcp.json')).toBeUndefined();
+      expect(setupHelpers.detectMcpConfig('/home/user/.claude.json')).toBeUndefined();
 
       mockExistsSync.mockReturnValue(true);
       mockReadFileSync.mockReturnValue(mockMcpJson({ 'nexus-agents': {}, 'other-server': {} }));
-      expect(setupHelpers.detectMcpConfig('/home/user/.claude/mcp.json')).toMatchObject({
+      expect(setupHelpers.detectMcpConfig('/home/user/.claude.json')).toMatchObject({
         hasNexusAgents: true,
         servers: ['nexus-agents', 'other-server'],
       });
 
       mockReadFileSync.mockReturnValue('invalid json');
-      expect(setupHelpers.detectMcpConfig('/home/user/.claude/mcp.json')!.hasNexusAgents).toBe(
-        false
-      );
+      expect(setupHelpers.detectMcpConfig('/home/user/.claude.json')!.hasNexusAgents).toBe(false);
     });
   });
 
@@ -196,7 +194,7 @@ describe('setup-mcp functions', () => {
   describe('getMcpJsonPath', () => {
     it('returns correct path for user and project scope', () => {
       mockHomedir.mockReturnValue('/home/user');
-      expect(setupHelpers.getMcpJsonPath('user', '/project')).toBe('/home/user/.claude/mcp.json');
+      expect(setupHelpers.getMcpJsonPath('user', '/project')).toBe('/home/user/.claude.json');
       expect(setupHelpers.getMcpJsonPath('project', '/project')).toBe('/project/.mcp.json');
     });
   });

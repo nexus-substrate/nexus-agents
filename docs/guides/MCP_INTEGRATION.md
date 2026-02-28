@@ -24,9 +24,8 @@ npm install -g nexus-agents
 
 Add nexus-agents to your Claude Desktop MCP configuration:
 
-**macOS:** `~/.claude/mcp.json`
-**Windows:** `%APPDATA%\Claude\mcp.json`
-**Linux:** `~/.config/claude/mcp.json`
+**Project-scoped (recommended):** `.mcp.json` in project root
+**Global:** `~/.claude.json` (MCP config stored under `projects` key)
 
 ```json
 {

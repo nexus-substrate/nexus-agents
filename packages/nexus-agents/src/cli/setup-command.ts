@@ -432,7 +432,7 @@ function runGeminiStep(options: SetupOptions): SetupStep {
       durationMs: getTimeProvider().now() - startTime,
     };
   }
-  const result = configureGemini(options.force, options.dryRun);
+  const result = configureGemini(options.force, options.dryRun, options.scope);
   return {
     name: 'Gemini MCP',
     status: result.success ? (result.alreadyConfigured ? 'skipped' : 'success') : 'failed',
@@ -515,6 +515,42 @@ function runConfigStep(projectRoot: string, options: SetupOptions): SetupStep {
     name: 'Configuration',
     status: result.success ? (result.created ? 'success' : 'skipped') : 'failed',
     message: result.message,
+    durationMs: getTimeProvider().now() - startTime,
+  };
+}
+
+/** Checks a named step's status, returning a check or issue string. */
+function checkStepStatus(steps: readonly SetupStep[], name: string, label: string): string {
+  const step = steps.find((s) => s.name === name);
+  const ok = step?.status === 'success' || step?.status === 'skipped';
+  return ok ? `${label} OK` : `${label} failed`;
+}
+
+/**
+ * Runs post-setup validation step (#1271).
+ * Checks that critical setup outcomes are in place.
+ */
+function runValidationStep(steps: readonly SetupStep[]): SetupStep {
+  const startTime = getTimeProvider().now();
+
+  const mcpSteps = steps.filter((s) => s.name.includes('MCP'));
+  const mcpFailed = mcpSteps.filter((s) => s.status === 'failed').length;
+  const mcpCheck =
+    mcpFailed > 0
+      ? `${String(mcpFailed)} MCP config(s) failed`
+      : `${String(mcpSteps.length)} MCP configs OK`;
+
+  const results = [
+    mcpCheck,
+    checkStepStatus(steps, 'Data Directory', 'Data dirs'),
+    checkStepStatus(steps, 'Configuration', 'Config'),
+  ];
+  const hasIssues = results.some((r) => r.includes('failed'));
+
+  return {
+    name: 'Validation',
+    status: hasIssues ? 'warning' : 'success',
+    message: `${results.join(', ')}. Run \`nexus-agents doctor\` for full health check`,
     durationMs: getTimeProvider().now() - startTime,
   };
 }
@@ -620,22 +656,23 @@ export function runSetup(options: Partial<SetupOptions> = {}): SetupResult {
   // Step 8: Codex MCP Configuration (#1263)
   const codexStep = runCodexStep(parsedOptions);
 
-  // Step 9: Config File Generation (#1252)
-  const configStep = runConfigStep(projectRoot, parsedOptions);
+  const configStep = runConfigStep(projectRoot, parsedOptions); // Step 9
+  const steps = [
+    detectionStep,
+    mcpStep,
+    rulesStep,
+    hooksStep,
+    dataDirStep,
+    openCodeStep,
+    geminiStep,
+    codexStep,
+    configStep,
+  ];
+  steps.push(runValidationStep(steps)); // Step 10: Validation (#1271)
 
   return buildSetupResult({
     startTime,
-    steps: [
-      detectionStep,
-      mcpStep,
-      rulesStep,
-      hooksStep,
-      dataDirStep,
-      openCodeStep,
-      geminiStep,
-      codexStep,
-      configStep,
-    ],
+    steps,
     warnings,
     mcpResult,
     snippet,

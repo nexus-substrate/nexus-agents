@@ -100,6 +100,30 @@ describe('Gemini CLI MCP auto-configuration (#1259)', () => {
     expect(existsSync(join(testHome, '.gemini', 'settings.json'))).toBe(false);
   });
 
+  it('writes project-scoped config to .gemini/settings.json', async () => {
+    const projectRoot = join(testHome, 'my-project');
+    mkdirSync(projectRoot, { recursive: true });
+
+    const { configureGemini } = await import('./setup-gemini.js');
+    const result = configureGemini(false, false, 'project', projectRoot);
+    expect(result.success).toBe(true);
+    expect(result.alreadyConfigured).toBe(false);
+
+    const configPath = join(projectRoot, '.gemini', 'settings.json');
+    expect(existsSync(configPath)).toBe(true);
+    const config = JSON.parse(readFileSync(configPath, 'utf-8')) as Record<string, unknown>;
+    const servers = config['mcpServers'] as Record<string, unknown>;
+    expect(servers['nexus-agents']).toBeDefined();
+  });
+
+  it('defaults to user scope when scope not specified', async () => {
+    const { configureGemini } = await import('./setup-gemini.js');
+    const result = configureGemini(false, false);
+    expect(result.success).toBe(true);
+    // Should write to testHome/.gemini/ (user scope)
+    expect(result.configPath).toContain(join(testHome, '.gemini'));
+  });
+
   it('preserves existing MCP servers', async () => {
     const configDir = join(testHome, '.gemini');
     mkdirSync(configDir, { recursive: true });

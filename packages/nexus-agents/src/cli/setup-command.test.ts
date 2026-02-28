@@ -88,7 +88,7 @@ describe('Setup Command', () => {
       expect(result).toHaveProperty('configPath');
       expect(result).toHaveProperty('mcpJsonPath');
       expect(result.configPath).toContain('.claude');
-      expect(result.mcpJsonPath).toContain('mcp.json');
+      expect(result.mcpJsonPath).toContain('.claude.json');
     });
   });
 
@@ -280,8 +280,7 @@ describe('Setup Command', () => {
   describe('getMcpJsonPath()', () => {
     it('should return user-level path for user scope', () => {
       const result = getMcpJsonPath('user', testTmpDir);
-      expect(result).toContain('.claude');
-      expect(result).toContain('mcp.json');
+      expect(result).toContain('.claude.json');
     });
 
     it('should return project-level path for project scope', () => {
@@ -440,6 +439,20 @@ describe('Setup Command', () => {
         }).not.toThrow();
         expect(parsed).toBeDefined();
       }
+    });
+  });
+
+  describe('validation step (#1271)', () => {
+    it('should include validation as final step', () => {
+      const result = runSetup({ dryRun: true });
+      const lastStep = result.steps[result.steps.length - 1];
+      expect(lastStep?.name).toBe('Validation');
+    });
+
+    it('should report doctor hint in validation message', () => {
+      const result = runSetup({ dryRun: true });
+      const validationStep = result.steps.find((s) => s.name === 'Validation');
+      expect(validationStep?.message).toContain('nexus-agents doctor');
     });
   });
 

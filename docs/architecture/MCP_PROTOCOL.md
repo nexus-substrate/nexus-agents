@@ -375,7 +375,7 @@ mcp:
 
 ### Setup
 
-Add to `~/.claude/mcp.json`:
+Add to `.mcp.json` in your project root (or use `claude mcp add-json`):
 
 ```json
 {

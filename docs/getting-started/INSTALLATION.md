@@ -240,7 +240,7 @@ Restart Claude Desktop to load the configuration.
 
 ### Claude CLI
 
-Add to `~/.claude/mcp.json`:
+Add to `.mcp.json` in your project root (or run `nexus-agents setup` for automatic configuration):
 
 ```json
 {

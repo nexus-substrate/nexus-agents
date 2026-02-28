@@ -43,7 +43,7 @@ describe('setup-environment', () => {
         installed: true,
         version: '1.2.3',
         configPath: '/home/user/.claude',
-        mcpJsonPath: '/home/user/.claude/mcp.json',
+        mcpJsonPath: '/home/user/.claude.json',
       });
     });
 
@@ -58,7 +58,7 @@ describe('setup-environment', () => {
         installed: true,
         version: '2.5.10',
         configPath: '/home/user/.claude',
-        mcpJsonPath: '/home/user/.claude/mcp.json',
+        mcpJsonPath: '/home/user/.claude.json',
       });
     });
 
@@ -73,7 +73,7 @@ describe('setup-environment', () => {
         installed: true,
         version: undefined,
         configPath: '/home/user/.claude',
-        mcpJsonPath: '/home/user/.claude/mcp.json',
+        mcpJsonPath: '/home/user/.claude.json',
       });
     });
 
@@ -90,7 +90,7 @@ describe('setup-environment', () => {
         installed: false,
         version: undefined,
         configPath: '/home/user/.claude',
-        mcpJsonPath: '/home/user/.claude/mcp.json',
+        mcpJsonPath: '/home/user/.claude.json',
       });
     });
 
@@ -451,7 +451,7 @@ describe('setup-environment', () => {
       vi.mocked(childProcess.execSync).mockReturnValue('Claude CLI version 1.2.3\n');
       vi.mocked(fs.existsSync).mockImplementation((p) => {
         const existingPaths = [
-          '/home/user/.claude/mcp.json',
+          '/home/user/.claude.json',
           '/project/package.json',
           '/project/tsconfig.json',
         ];
@@ -459,10 +459,14 @@ describe('setup-environment', () => {
         return existingPaths.includes(pathStr);
       });
       vi.mocked(fs.readFileSync).mockImplementation((p) => {
-        if (p === '/home/user/.claude/mcp.json') {
+        if (p === '/home/user/.claude.json') {
           return JSON.stringify({
-            mcpServers: {
-              'nexus-agents': { command: 'npx', args: ['nexus-agents', 'mcp'] },
+            projects: {
+              '/project': {
+                mcpServers: {
+                  'nexus-agents': { command: 'npx', args: ['nexus-agents', 'mcp'] },
+                },
+              },
             },
           });
         }
@@ -489,11 +493,11 @@ describe('setup-environment', () => {
           installed: true,
           version: '1.2.3',
           configPath: '/home/user/.claude',
-          mcpJsonPath: '/home/user/.claude/mcp.json',
+          mcpJsonPath: '/home/user/.claude.json',
         },
         existingMcpConfig: {
           exists: true,
-          path: '/home/user/.claude/mcp.json',
+          path: '/home/user/.claude.json',
           hasNexusAgents: true,
           servers: ['nexus-agents'],
         },

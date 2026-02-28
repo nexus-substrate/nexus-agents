@@ -187,13 +187,13 @@ function getFixCommand(name: CliName, issue: 'install' | 'upgrade' | 'auth'): st
       auth: 'gemini auth login',
     },
     codex: {
-      install: 'npm install -g @openai/codex-cli',
-      upgrade: 'npm update -g @openai/codex-cli',
+      install: 'npm install -g @openai/codex',
+      upgrade: 'npm update -g @openai/codex',
       auth: 'codex auth login',
     },
     opencode: {
-      install: 'npm install -g opencode',
-      upgrade: 'npm update -g opencode',
+      install: 'npm install -g opencode-ai',
+      upgrade: 'npm update -g opencode-ai',
       auth: 'opencode auth login',
     },
   };

@@ -313,12 +313,12 @@ describe('getMcpJsonPath', () => {
     expect(result).toBe(join('/my/project', '.mcp.json'));
   });
 
-  it('should return user ~/.claude/mcp.json for user scope', () => {
+  it('should return user ~/.claude.json for user scope', () => {
     mockedHomedir.mockReturnValue('/mock/home');
 
     const result = getMcpJsonPath('user', '/my/project');
 
-    expect(result).toBe(join('/mock/home', '.claude', 'mcp.json'));
+    expect(result).toBe(join('/mock/home', '.claude.json'));
   });
 });
 
