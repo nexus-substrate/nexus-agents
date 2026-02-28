@@ -10,8 +10,6 @@
 
 /* eslint-disable @typescript-eslint/strict-boolean-expressions */
 
-import { AtpAgent, RichText } from '@atproto/api';
-
 /**
  * Result of a Bluesky post operation.
  */
@@ -52,6 +50,31 @@ export function getBlueskyConfig(): BlueskyConfig | undefined {
   };
 }
 
+/** Lazily loads @atproto/api (optional dependency). */
+async function loadAtproto(): Promise<
+  | {
+      AtpAgent: typeof import('@atproto/api').AtpAgent;
+      RichText: typeof import('@atproto/api').RichText;
+    }
+  | undefined
+> {
+  try {
+    const mod = await import('@atproto/api');
+    return { AtpAgent: mod.AtpAgent, RichText: mod.RichText };
+  } catch {
+    return undefined;
+  }
+}
+
+/** Maps AT Protocol errors to user-friendly messages. */
+function mapAtpError(error: unknown): string {
+  const message = error instanceof Error ? error.message : 'Unknown error';
+  if (message.includes('Invalid identifier or password'))
+    return 'Authentication failed. Check BLUESKY_HANDLE and BLUESKY_APP_PASSWORD.';
+  if (message.includes('Rate limit')) return 'Rate limited by Bluesky. Please try again later.';
+  return `Failed to post to Bluesky: ${message}`;
+}
+
 /**
  * Creates a Bluesky post.
  *
@@ -63,59 +86,28 @@ export async function createBlueskyPost(
   config: BlueskyConfig,
   text: string
 ): Promise<BlueskyPostResult> {
-  const agent = new AtpAgent({ service: config.service ?? 'https://bsky.social' });
+  const atp = await loadAtproto();
+  if (!atp)
+    return { success: false, error: 'Missing optional dependency: npm install @atproto/api' };
+
+  const agent = new atp.AtpAgent({ service: config.service ?? 'https://bsky.social' });
 
   try {
-    // Authenticate
-    await agent.login({
-      identifier: config.handle,
-      password: config.appPassword,
-    });
+    await agent.login({ identifier: config.handle, password: config.appPassword });
 
-    // Create rich text with facets (links, mentions, hashtags)
-    const richText = new RichText({ text });
+    const richText = new atp.RichText({ text });
     await richText.detectFacets(agent);
 
-    // Create post
     const response = await agent.post({
       text: richText.text,
       ...(richText.facets !== undefined && { facets: richText.facets }),
       createdAt: new Date().toISOString(),
     });
 
-    // Extract post URL from URI
-    // URI format: at://did:plc:xxx/app.bsky.feed.post/yyy
-    const uriParts = response.uri.split('/');
-    const rkey = uriParts[4] ?? '';
+    const rkey = response.uri.split('/')[4] ?? '';
     const url = `https://bsky.app/profile/${config.handle}/post/${rkey}`;
-
-    return {
-      success: true,
-      uri: response.uri,
-      cid: response.cid,
-      url,
-    };
+    return { success: true, uri: response.uri, cid: response.cid, url };
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
-
-    // Handle specific AT Protocol errors
-    if (message.includes('Invalid identifier or password')) {
-      return {
-        success: false,
-        error: 'Authentication failed. Check BLUESKY_HANDLE and BLUESKY_APP_PASSWORD.',
-      };
-    }
-
-    if (message.includes('Rate limit')) {
-      return {
-        success: false,
-        error: 'Rate limited by Bluesky. Please try again later.',
-      };
-    }
-
-    return {
-      success: false,
-      error: `Failed to post to Bluesky: ${message}`,
-    };
+    return { success: false, error: mapAtpError(error) };
   }
 }

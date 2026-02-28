@@ -72,9 +72,6 @@ importers:
       '@anthropic-ai/sdk':
         specifier: ^0.78.0
         version: 0.78.0(zod@3.25.76)
-      '@atproto/api':
-        specifier: ^0.19.0
-        version: 0.19.0
       '@fastify/cors':
         specifier: ^11.2.0
         version: 11.2.0
@@ -99,9 +96,6 @@ importers:
       fastify:
         specifier: ^5.7.4
         version: 5.7.4
-      hono:
-        specifier: '>=4.11.10'
-        version: 4.12.3
       jsonc-parser:
         specifier: ^3.3.1
         version: 3.3.1
@@ -117,15 +111,16 @@ importers:
       tiktoken:
         specifier: ^1.0.22
         version: 1.0.22
-      uuid:
-        specifier: ^13.0.0
-        version: 13.0.0
       yaml:
         specifier: ^2.8.2
         version: 2.8.2
       zod:
         specifier: ^3.24.0
         version: 3.25.76
+    optionalDependencies:
+      '@atproto/api':
+        specifier: ^0.19.0
+        version: 0.19.0
     devDependencies:
       '@ai-sdk/anthropic':
         specifier: ^3.0.49
@@ -6195,13 +6190,6 @@ packages:
         integrity: sha512-EPD5q1uXyFxJpCrLnCc1nHnq3gOa6DZBocAIiI2TaSCA7VCJ1UJDMagCzIkXNsUYfD1daK//LTEQ8xiIbrHtcw==,
       }
 
-  uuid@13.0.0:
-    resolution:
-      {
-        integrity: sha512-XQegIaBTVUjSHliKqcnFqYypAd4S+WCYt5NIeRs6w/UAry7z8Y9j5ZwRRL4kzq9U3sD6v+85er9FvkEaBpji2w==,
-      }
-    hasBin: true
-
   validator@13.15.26:
     resolution:
       {
@@ -6534,6 +6522,7 @@ snapshots:
       multiformats: 9.9.0
       tlds: 1.261.0
       zod: 3.25.76
+    optional: true
 
   '@atproto/common-web@0.4.17':
     dependencies:
@@ -6541,6 +6530,7 @@ snapshots:
       '@atproto/lex-json': 0.0.12
       '@atproto/syntax': 0.4.3
       zod: 3.25.76
+    optional: true
 
   '@atproto/lex-data@0.0.12':
     dependencies:
@@ -6548,11 +6538,13 @@ snapshots:
       tslib: 2.8.1
       uint8arrays: 3.0.0
       unicode-segmenter: 0.14.5
+    optional: true
 
   '@atproto/lex-json@0.0.12':
     dependencies:
       '@atproto/lex-data': 0.0.12
       tslib: 2.8.1
+    optional: true
 
   '@atproto/lexicon@0.6.1':
     dependencies:
@@ -6561,15 +6553,18 @@ snapshots:
       iso-datestring-validator: 2.2.2
       multiformats: 9.9.0
       zod: 3.25.76
+    optional: true
 
   '@atproto/syntax@0.4.3':
     dependencies:
       tslib: 2.8.1
+    optional: true
 
   '@atproto/xrpc@0.7.7':
     dependencies:
       '@atproto/lexicon': 0.6.1
       zod: 3.25.76
+    optional: true
 
   '@babel/helper-string-parser@7.27.1': {}
 
@@ -7427,7 +7422,7 @@ snapshots:
 
   '@types/better-sqlite3@7.6.13':
     dependencies:
-      '@types/node': 25.3.2
+      '@types/node': 22.19.13
 
   '@types/chai@5.2.3':
     dependencies:
@@ -7461,6 +7456,7 @@ snapshots:
   '@types/node@25.3.2':
     dependencies:
       undici-types: 7.18.2
+    optional: true
 
   '@types/prop-types@15.7.15': {}
 
@@ -7742,7 +7738,8 @@ snapshots:
       '@fastify/error': 4.2.0
       fastq: 1.20.1
 
-  await-lock@2.2.2: {}
+  await-lock@2.2.2:
+    optional: true
 
   balanced-match@1.0.2: {}
 
@@ -8820,7 +8817,8 @@ snapshots:
 
   isexe@2.0.0: {}
 
-  iso-datestring-validator@2.2.2: {}
+  iso-datestring-validator@2.2.2:
+    optional: true
 
   istanbul-lib-coverage@3.2.2: {}
 
@@ -9326,7 +9324,8 @@ snapshots:
 
   ms@2.1.3: {}
 
-  multiformats@9.9.0: {}
+  multiformats@9.9.0:
+    optional: true
 
   mz@2.7.0:
     dependencies:
@@ -10068,7 +10067,8 @@ snapshots:
 
   tinyspy@4.0.4: {}
 
-  tlds@1.261.0: {}
+  tlds@1.261.0:
+    optional: true
 
   to-regex-range@5.0.1:
     dependencies:
@@ -10197,14 +10197,17 @@ snapshots:
   uint8arrays@3.0.0:
     dependencies:
       multiformats: 9.9.0
+    optional: true
 
   undici-types@6.21.0: {}
 
-  undici-types@7.18.2: {}
+  undici-types@7.18.2:
+    optional: true
 
   undici@7.19.1: {}
 
-  unicode-segmenter@0.14.5: {}
+  unicode-segmenter@0.14.5:
+    optional: true
 
   universalify@0.1.2: {}
 
@@ -10215,8 +10218,6 @@ snapshots:
       punycode: 2.3.1
 
   util-deprecate@1.0.2: {}
-
-  uuid@13.0.0: {}
 
   validator@13.15.26: {}
 
