@@ -104,4 +104,25 @@ describe('Doctor learning persistence check (Issue #1017)', () => {
     expect(result.learningPersistence).toHaveProperty('rulesLastSaved');
     expect(result.learningPersistence).toHaveProperty('error');
   });
+
+  it('DoctorResult includes sqliteCheck field (#1249)', async () => {
+    const { runDoctor } = await import('./doctor.js');
+    const result = await runDoctor();
+    expect(result).toHaveProperty('sqliteCheck');
+    expect(result.sqliteCheck).toHaveProperty('available');
+    expect(result.sqliteCheck).toHaveProperty('error');
+    expect(typeof result.sqliteCheck.available).toBe('boolean');
+  });
+
+  it('DoctorResult includes dataDirectory field (#1249)', async () => {
+    const { runDoctor } = await import('./doctor.js');
+    const result = await runDoctor();
+    expect(result).toHaveProperty('dataDirectory');
+    expect(result.dataDirectory).toHaveProperty('rootExists');
+    expect(result.dataDirectory).toHaveProperty('rootPath');
+    expect(result.dataDirectory).toHaveProperty('subdirectories');
+    expect(typeof result.dataDirectory.rootExists).toBe('boolean');
+    expect(typeof result.dataDirectory.rootPath).toBe('string');
+    expect(Array.isArray(result.dataDirectory.subdirectories)).toBe(true);
+  });
 });

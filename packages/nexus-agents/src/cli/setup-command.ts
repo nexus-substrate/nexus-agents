@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- Cohesive setup command module (governance: 400-600 OK if cohesive) */
 /**
  * nexus-agents setup command
  *
@@ -29,6 +30,8 @@ import {
   generateHookSnippet,
 } from './setup-helpers.js';
 import type { McpConfigResult, HookConfigResult } from './setup-helpers.js';
+import { initDataDirectories } from './setup-data-dir.js';
+import type { DataDirInitResult } from './setup-data-dir.js';
 import { VERSION } from '../version.js';
 import { runWizard } from './setup-wizard.js';
 
@@ -405,25 +408,32 @@ interface SetupResultContext {
   hookResult: HookConfigResult | undefined;
   hookSnippet: string | undefined;
   rulesPath: string | undefined;
+  dataDirResult?: DataDirInitResult;
+}
+
+/** Checks if a config result represents a new (non-existing) success. */
+function isNewSuccess(result: McpConfigResult | HookConfigResult | undefined): boolean {
+  return result?.success === true && !result.alreadyConfigured;
 }
 
 /** Builds the final setup result from context. */
 function buildSetupResult(ctx: SetupResultContext): SetupResult {
   const errors = collectErrors(ctx.steps);
-  const mcpConfigured = ctx.mcpResult?.success === true && !ctx.mcpResult.alreadyConfigured;
-  const hooksConfigured = ctx.hookResult?.success === true && !ctx.hookResult.alreadyConfigured;
-
   return {
     success: errors.length === 0,
     steps: ctx.steps,
     warnings: ctx.warnings,
     errors,
     durationMs: getTimeProvider().now() - ctx.startTime,
-    ...(mcpConfigured && { mcpConfigured: true }),
+    ...(isNewSuccess(ctx.mcpResult) && { mcpConfigured: true }),
     ...(ctx.snippet !== undefined && { mcpSnippet: ctx.snippet }),
-    ...(hooksConfigured && { hooksConfigured: true }),
+    ...(isNewSuccess(ctx.hookResult) && { hooksConfigured: true }),
     ...(ctx.hookSnippet !== undefined && { hookSnippet: ctx.hookSnippet }),
     ...(ctx.rulesPath !== undefined && { rulesPath: ctx.rulesPath }),
+    ...(ctx.dataDirResult !== undefined && {
+      dataDirPath: ctx.dataDirResult.rootPath,
+      dataDirsCreated: ctx.dataDirResult.created.length,
+    }),
   };
 }
 
@@ -454,30 +464,39 @@ export function runSetup(options: Partial<SetupOptions> = {}): SetupResult {
   // Step 4: Hooks Configuration (Issue #416)
   const { step: hooksStep, hookSnippet, hookResult } = runHooksStep(env, parsedOptions);
 
+  // Step 5: Data Directory Initialization (#1249)
+  const dataDirStartTime = getTimeProvider().now();
+  const dataDirResult = initDataDirectories(parsedOptions.dryRun);
+  const dataDirStep: SetupStep = {
+    name: 'Data Directory',
+    status: dataDirResult.success
+      ? dataDirResult.created.length > 0
+        ? 'success'
+        : 'skipped'
+      : 'failed',
+    message: dataDirResult.success
+      ? dataDirResult.created.length > 0
+        ? `Created ${String(dataDirResult.created.length)} directories`
+        : 'All directories already exist'
+      : `Failed: ${dataDirResult.error ?? 'Unknown error'}`,
+    durationMs: getTimeProvider().now() - dataDirStartTime,
+  };
+
   return buildSetupResult({
     startTime,
-    steps: [detectionStep, mcpStep, rulesStep, hooksStep],
+    steps: [detectionStep, mcpStep, rulesStep, hooksStep, dataDirStep],
     warnings,
     mcpResult,
     snippet,
     hookResult,
     hookSnippet,
     rulesPath,
+    dataDirResult,
   });
 }
 
-/**
- * Prints the setup result.
- */
-export function printSetupResult(result: SetupResult, verbose: boolean): void {
-  writeEmptyLine();
-  writeLine(formatHeader(`Nexus Agents Setup v${VERSION}`));
-  writeLine('═'.repeat(40));
-  writeEmptyLine();
-
-  printSteps(result.steps, verbose);
-
-  // Print MCP result if there's a snippet (fallback needed) or it was configured
+/** Prints optional detail sections (MCP, hooks, rules, data dir). */
+function printDetailSections(result: SetupResult): void {
   if (result.mcpSnippet !== undefined || result.mcpConfigured === true) {
     const mcpResult: McpConfigResult =
       result.mcpConfigured === true
@@ -489,7 +508,6 @@ export function printSetupResult(result: SetupResult, verbose: boolean): void {
         : { success: false, alreadyConfigured: false, message: 'Manual configuration required' };
     printMcpResult(mcpResult, result.mcpSnippet);
   }
-  // Print hooks result if there's a snippet (fallback needed) or it was configured
   if (result.hookSnippet !== undefined || result.hooksConfigured === true) {
     const hookResult: HookConfigResult =
       result.hooksConfigured === true
@@ -502,10 +520,37 @@ export function printSetupResult(result: SetupResult, verbose: boolean): void {
     printHooksResult(hookResult, result.hookSnippet);
   }
   if (result.rulesPath !== undefined) printRulesFile(result.rulesPath);
+  if (result.dataDirPath !== undefined) printDataDirSection(result);
+}
+
+/** Prints the data directory section. */
+function printDataDirSection(result: SetupResult): void {
+  writeLine(formatHeader('Data Directory'));
+  writeLine('─'.repeat(40));
+  const count = result.dataDirsCreated ?? 0;
+  const msg =
+    count > 0
+      ? `Created ${String(count)} directories under ${result.dataDirPath ?? ''}`
+      : `All directories already exist at ${result.dataDirPath ?? ''}`;
+  writeLine(msg);
+  writeEmptyLine();
+}
+
+/**
+ * Prints the setup result.
+ */
+export function printSetupResult(result: SetupResult, verbose: boolean): void {
+  writeEmptyLine();
+  writeLine(formatHeader(`Nexus Agents Setup v${VERSION}`));
+  writeLine('═'.repeat(40));
+  writeEmptyLine();
+
+  printSteps(result.steps, verbose);
+  printDetailSections(result);
+
   if (result.warnings.length > 0) printWarnings(result.warnings);
   if (result.errors.length > 0) printErrors(result.errors);
   printNextSteps(result.mcpConfigured === true, result.mcpSnippet !== undefined);
-
   printSummary(result.success);
 }
 

@@ -16,6 +16,8 @@ import type {
   ConfigFileCheck,
   RegistryAdvisory,
   LearningPersistenceCheck,
+  SqliteCheck,
+  DataDirectoryCheck,
   DoctorResult,
 } from './doctor.js';
 import { colors, symbols, writeLine } from './ansi-output.js';
@@ -232,6 +234,63 @@ function printLearningPersistence(check: LearningPersistenceCheck): void {
 }
 
 /**
+ * Prints SQLite (better-sqlite3) availability check (#1249).
+ */
+function printSqliteCheck(check: SqliteCheck): void {
+  if (check.available) {
+    writeLine(
+      `${formatStatus(true)} SQLite (better-sqlite3): ${colors.green}Available${colors.reset}`
+    );
+  } else {
+    writeLine(
+      `${formatStatus(false, true)} SQLite (better-sqlite3): ${colors.yellow}Not available${colors.reset}`
+    );
+    writeLine(
+      `  ${colors.dim}Memory backends (agentic, adaptive, typed) require it${colors.reset}`
+    );
+    writeLine(`  ${colors.dim}Fix: npm install -g better-sqlite3${colors.reset}`);
+  }
+}
+
+/**
+ * Prints data directory health check (#1249).
+ */
+function printDataDirectory(check: DataDirectoryCheck): void {
+  if (check.rootExists) {
+    const existCount = check.subdirectories.filter((d) => d.exists).length;
+    const totalCount = check.subdirectories.length;
+    const allExist = existCount === totalCount;
+    writeLine(
+      `${formatStatus(allExist, !allExist)} Data directory: ${check.rootPath} (${String(existCount)}/${String(totalCount)} subdirs)`
+    );
+    if (!allExist) {
+      const missing = check.subdirectories.filter((d) => !d.exists);
+      for (const dir of missing) {
+        writeLine(`  ${colors.dim}Missing: ${dir.name}/${colors.reset}`);
+      }
+      writeLine(`  ${colors.dim}Fix: nexus-agents setup${colors.reset}`);
+    }
+  } else {
+    writeLine(
+      `${formatStatus(false, true)} Data directory: ${colors.yellow}Not created${colors.reset}`
+    );
+    writeLine(`  ${colors.dim}Run: nexus-agents setup${colors.reset}`);
+  }
+}
+
+/** Prints the summary line with issue count. */
+function printDoctorSummary(result: DoctorResult): void {
+  const unhealthyCount = result.clis.filter((c) => !c.installed || !c.authenticated).length;
+  const nodeIssue = result.nodeVersion.supported ? 0 : 1;
+  const totalIssues = unhealthyCount + nodeIssue + (result.mcpServerReady ? 0 : 1);
+  const summary = result.allHealthy
+    ? `${colors.green}${colors.bold}Status: Ready${colors.reset}`
+    : `${colors.yellow}${colors.bold}Summary: ${String(totalIssues)} issue(s) found${colors.reset}`;
+  writeLine(summary);
+  writeLine('');
+}
+
+/**
  * Prints the doctor results to stdout.
  */
 export function printDoctorResults(result: DoctorResult): void {
@@ -278,12 +337,11 @@ export function printDoctorResults(result: DoctorResult): void {
   printLearningPersistence(result.learningPersistence);
   writeLine('');
 
-  const unhealthyCount = result.clis.filter((c) => !c.installed || !c.authenticated).length;
-  const nodeIssue = result.nodeVersion.supported ? 0 : 1;
-  const totalIssues = unhealthyCount + nodeIssue + (result.mcpServerReady ? 0 : 1);
-  const summary = result.allHealthy
-    ? `${colors.green}${colors.bold}Status: Ready${colors.reset}`
-    : `${colors.yellow}${colors.bold}Summary: ${String(totalIssues)} issue(s) found${colors.reset}`;
-  writeLine(summary);
+  writeLine(`${colors.cyan}Checking data storage...${colors.reset}`);
   writeLine('');
+  printSqliteCheck(result.sqliteCheck);
+  printDataDirectory(result.dataDirectory);
+  writeLine('');
+
+  printDoctorSummary(result);
 }

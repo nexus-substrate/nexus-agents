@@ -89,6 +89,15 @@ function createMockDoctorResult(overrides: Partial<DoctorResult> = {}): DoctorRe
       rulesLastSaved: null,
       error: null,
     },
+    sqliteCheck: {
+      available: true,
+      error: null,
+    },
+    dataDirectory: {
+      rootExists: true,
+      rootPath: '/home/test/.nexus-agents',
+      subdirectories: [],
+    },
     allHealthy: true,
     timestamp: new Date(),
     ...overrides,

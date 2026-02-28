@@ -152,6 +152,15 @@ describe('doctor-formatting', () => {
       rulesLastSaved: null,
       error: null,
     },
+    sqliteCheck: {
+      available: true,
+      error: null,
+    },
+    dataDirectory: {
+      rootExists: true,
+      rootPath: '/home/test/.nexus-agents',
+      subdirectories: [],
+    },
     timestamp: new Date('2024-01-01T00:00:00Z'),
   });
 
@@ -166,6 +175,7 @@ describe('doctor-formatting', () => {
       expect(calls.some((call) => call.includes('Checking CLI installations'))).toBe(true);
       expect(calls.some((call) => call.includes('Checking MCP configuration'))).toBe(true);
       expect(calls.some((call) => call.includes('Checking capabilities'))).toBe(true);
+      expect(calls.some((call) => call.includes('Checking data storage'))).toBe(true);
     });
 
     it('should print healthy status when all checks pass', () => {

@@ -49,11 +49,16 @@ Install globally for CLI access:
 npm install -g nexus-agents
 ```
 
+Set up MCP integration and data directories:
+
+```bash
+nexus-agents setup    # Configures Claude Code MCP, hooks, data dirs
+```
+
 Verify installation:
 
 ```bash
-nexus-agents --version
-nexus-agents doctor
+nexus-agents doctor   # Checks CLIs, API keys, sqlite, data dirs
 ```
 
 ### pnpm
@@ -246,6 +251,33 @@ Add to `~/.claude/mcp.json`:
   }
 }
 ```
+
+## Data Storage
+
+nexus-agents stores runtime data in `~/.nexus-agents/`:
+
+| Directory         | Purpose                                                       |
+| ----------------- | ------------------------------------------------------------- |
+| `memory/`         | SQLite databases for agentic, adaptive, typed memory backends |
+| `memory/beliefs/` | Belief memory JSON snapshots                                  |
+| `learning/`       | Cross-session task outcomes and distilled rules               |
+| `sessions/`       | Session journals (JSONL) and sessions.db                      |
+| `audit/`          | JSONL audit logs                                              |
+| `voting/`         | Consensus vote correlation data                               |
+| `auth/`           | REST API auth tokens (owner-only permissions)                 |
+
+Run `nexus-agents setup` to pre-create this structure, or it will be created lazily on first use.
+
+### Optional: better-sqlite3
+
+Five memory backends (agentic, adaptive, typed, mobimem, decay) require `better-sqlite3`. It is an optional dependency that degrades gracefully if missing — basic session and belief memory still work without it.
+
+```bash
+# Install if you want full memory support
+npm install -g better-sqlite3
+```
+
+Run `nexus-agents doctor` to check if it's available under "Checking data storage".
 
 ## CI/CD Integration
 

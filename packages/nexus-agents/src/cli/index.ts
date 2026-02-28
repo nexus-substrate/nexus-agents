@@ -5,8 +5,14 @@
  * Command implementations for the nexus-agents CLI.
  */
 
-export { doctorCommand, runDoctor, printDoctorResults } from './doctor.js';
-export type { DoctorResult, CliCheckResult } from './doctor.js';
+export { doctorCommand, runDoctor, printDoctorResults, DATA_SUBDIRECTORIES } from './doctor.js';
+export type {
+  DoctorResult,
+  CliCheckResult,
+  SqliteCheck,
+  DataDirectoryCheck,
+  DataSubdirStatus,
+} from './doctor.js';
 
 // Hello Command (Issue #423)
 export { helloCommand, gatherSystemInfo, printHelloResult } from './hello.js';

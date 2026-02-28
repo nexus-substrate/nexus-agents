@@ -132,6 +132,10 @@ export interface SetupResult extends CommandResult {
   /** Fallback hook snippet for manual configuration */
   readonly hookSnippet?: string;
   readonly rulesPath?: string;
+  /** Data directory path if initialized (#1249) */
+  readonly dataDirPath?: string;
+  /** Number of data directories created (#1249) */
+  readonly dataDirsCreated?: number;
   readonly warnings: readonly string[];
   readonly errors: readonly string[];
   readonly durationMs: number;

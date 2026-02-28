@@ -10,6 +10,8 @@
  */
 
 import { existsSync, readFileSync, accessSync, constants as fsConstants } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { getTimeProvider, getErrorMessage } from '../core/index.js';
 import {
   isPersistenceEnabled,
@@ -107,6 +109,46 @@ export interface RegistryAdvisory {
 }
 
 /**
+ * SQLite (better-sqlite3) availability check (#1249).
+ */
+export interface SqliteCheck {
+  readonly available: boolean;
+  readonly error: string | null;
+}
+
+/**
+ * Data directory health check (#1249).
+ * Reports status of ~/.nexus-agents/ and its subdirectories.
+ */
+export interface DataDirectoryCheck {
+  readonly rootExists: boolean;
+  readonly rootPath: string;
+  readonly subdirectories: readonly DataSubdirStatus[];
+}
+
+/**
+ * Status of a single data subdirectory.
+ */
+export interface DataSubdirStatus {
+  readonly name: string;
+  readonly path: string;
+  readonly exists: boolean;
+}
+
+/** Standard data subdirectories under ~/.nexus-agents/. */
+export const DATA_SUBDIRECTORIES = [
+  'memory',
+  'memory/beliefs',
+  'learning',
+  'sessions',
+  'audit',
+  'voting',
+  'auth',
+  'research',
+  'checkpoints',
+] as const;
+
+/**
  * Complete doctor check results.
  */
 export interface DoctorResult {
@@ -120,6 +162,10 @@ export interface DoctorResult {
   readonly registryAdvisory: RegistryAdvisory;
   /** Learning persistence health check (#1017). */
   readonly learningPersistence: LearningPersistenceCheck;
+  /** SQLite (better-sqlite3) availability (#1249). */
+  readonly sqliteCheck: SqliteCheck;
+  /** Data directory health (#1249). */
+  readonly dataDirectory: DataDirectoryCheck;
   readonly allHealthy: boolean;
   readonly timestamp: Date;
 }
@@ -393,6 +439,41 @@ function checkLearningPersistence(): LearningPersistenceCheck {
 }
 
 /**
+ * Checks if better-sqlite3 is available (#1249).
+ * Memory backends (agentic, adaptive, typed, mobimem, decay) require it.
+ */
+async function checkSqlite(): Promise<SqliteCheck> {
+  try {
+    await import('better-sqlite3');
+    return { available: true, error: null };
+  } catch (error: unknown) {
+    const msg = getErrorMessage(error);
+    const isNotFound = msg.includes('Cannot find') || msg.includes('MODULE_NOT_FOUND');
+    return {
+      available: false,
+      error: isNotFound
+        ? 'better-sqlite3 not installed — 5 memory backends unavailable'
+        : `better-sqlite3 load error: ${msg}`,
+    };
+  }
+}
+
+/**
+ * Checks the ~/.nexus-agents/ data directory health (#1249).
+ */
+function checkDataDirectory(): DataDirectoryCheck {
+  const rootPath = join(homedir(), '.nexus-agents');
+  const rootExists = existsSync(rootPath);
+
+  const subdirectories: DataSubdirStatus[] = DATA_SUBDIRECTORIES.map((name) => {
+    const fullPath = join(rootPath, name);
+    return { name, path: fullPath, exists: existsSync(fullPath) };
+  });
+
+  return { rootExists, rootPath, subdirectories };
+}
+
+/**
  * Runs the complete doctor check.
  */
 export async function runDoctor(): Promise<DoctorResult> {
@@ -410,6 +491,8 @@ export async function runDoctor(): Promise<DoctorResult> {
   const mcpClientReady = codexCheck?.installed ?? false;
   const registryAdvisory = buildRegistryAdvisory(clis);
   const learningPersistence = checkLearningPersistence();
+  const sqliteCheck = await checkSqlite();
+  const dataDirectory = checkDataDirectory();
 
   // At least one API key configured or one CLI authenticated
   const hasAuthMethod =
@@ -430,6 +513,8 @@ export async function runDoctor(): Promise<DoctorResult> {
     mcpClientReady,
     registryAdvisory,
     learningPersistence,
+    sqliteCheck,
+    dataDirectory,
     allHealthy,
     timestamp: new Date(getTimeProvider().now()),
   };

@@ -80,9 +80,11 @@ nexus-agents setup
 Nexus Agents Setup
 ==================
 
-✓ Claude CLI detected (v2.x.x)
-✓ MCP server configured
-✓ Configuration written to ~/.claude/claude_desktop_config.json
+✓ Environment Detection
+✓ MCP Configuration
+✓ Rules File
+✓ Hooks Configuration
+✓ Data Directory
 
 Setup complete! Restart Claude Code to use nexus-agents.
 ```
