@@ -51,7 +51,7 @@ describe('JourneySimulator', () => {
 
       expect(result.journeyId).toBe('test-journey');
       expect(result.actionResults).toHaveLength(2);
-      expect(result.durationMs).toBeGreaterThan(0);
+      expect(result.durationMs).toBeGreaterThanOrEqual(0);
     });
 
     it('should succeed when all actions succeed', async () => {

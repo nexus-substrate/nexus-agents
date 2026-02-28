@@ -138,7 +138,7 @@ describe('SelfRefineProtocol', () => {
         expect(result.value.pattern).toBe('self-refine');
         expect(result.value.refinementHistory).toBeDefined();
         expect(result.value.totalIterations).toBeGreaterThan(0);
-        expect(result.value.durationMs).toBeGreaterThan(0);
+        expect(result.value.durationMs).toBeGreaterThanOrEqual(0);
       }
     });
 

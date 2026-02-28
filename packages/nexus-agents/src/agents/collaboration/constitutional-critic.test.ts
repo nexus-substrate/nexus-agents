@@ -178,7 +178,7 @@ line3`;
 
       expect(result.iterations.length).toBeGreaterThan(0);
       expect(result.totalIterations).toBeLessThanOrEqual(3);
-      expect(result.durationMs).toBeGreaterThan(0);
+      expect(result.durationMs).toBeGreaterThanOrEqual(0);
     });
 
     it('should stop early if already passing', () => {

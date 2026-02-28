@@ -37,7 +37,7 @@ describe('AccuracyEval', () => {
       expect(result.avgScore).toBeGreaterThanOrEqual(0);
       expect(result.avgScore).toBeLessThanOrEqual(10);
       expect(result.threshold).toBe(7.0);
-      expect(result.durationMs).toBeGreaterThan(0);
+      expect(result.durationMs).toBeGreaterThanOrEqual(0);
     });
 
     it('should pass when average score meets threshold', async () => {

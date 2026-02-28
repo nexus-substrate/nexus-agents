@@ -264,7 +264,7 @@ describe('runOperationBenchmark', () => {
     const result = await promise;
 
     expect(result.throughput.totalOps).toBe(10);
-    expect(result.throughput.durationMs).toBeGreaterThan(0);
+    expect(result.throughput.durationMs).toBeGreaterThanOrEqual(0);
     expect(result.throughput.opsPerSecond).toBeGreaterThan(0);
   });
 

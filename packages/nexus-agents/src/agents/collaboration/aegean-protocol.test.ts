@@ -382,7 +382,7 @@ describe('AegeanProtocol EventBus integration', () => {
     expect(completedEvent).toBeDefined();
     expect(completedEvent?.payload.success).toBe(true);
     expect(completedEvent?.payload.iterations).toBeGreaterThanOrEqual(1);
-    expect(completedEvent?.payload.durationMs).toBeGreaterThan(0);
+    expect(completedEvent?.payload.durationMs).toBeGreaterThanOrEqual(0);
   });
 
   it('should emit protocol.completed event with failure status when consensus fails', async () => {

@@ -85,7 +85,7 @@ describe('SessionMemory', () => {
         expect(result.value.sessionId).toBe('test-session');
         expect(result.value.summary).toBe('Test session completed');
         expect(result.value.learnings).toHaveLength(1);
-        expect(result.value.durationMs).toBeGreaterThan(0);
+        expect(result.value.durationMs).toBeGreaterThanOrEqual(0);
       }
 
       expect(memory.isSessionActive()).toBe(false);

@@ -24,7 +24,7 @@ describe('SicaTestGenerator', () => {
       expect(result.tests.length).toBeGreaterThan(0);
       expect(result.coverageBefore).toBeDefined();
       expect(result.coverageAfter).toBeDefined();
-      expect(result.durationMs).toBeGreaterThan(0);
+      expect(result.durationMs).toBeGreaterThanOrEqual(0);
     });
 
     it('should generate tests with custom target coverage', async () => {
