@@ -21,6 +21,7 @@ import {
   type ILogger,
 } from '../core/index.js';
 import { VERSION } from '../version.js';
+import { getTaskStore } from './task-store.js';
 
 /**
  * Server configuration options.
@@ -106,7 +107,9 @@ export function createServer(config?: ServerConfig): Result<ServerInstance, Serv
           logging: {},
           prompts: {},
           resources: {},
+          tasks: {},
         },
+        taskStore: getTaskStore(),
       }
     );
 

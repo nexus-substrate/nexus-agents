@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- Cohesive factory: adapters, validators, engine creation (governance §Refactor Threshold) */
 /**
  * nexus-agents/workflows - Workflow Engine Factory
  *
@@ -260,8 +261,8 @@ function adaptCoreStepToWorkflowStep(step: CoreWorkflowStep): WorkflowStep {
 /** Adapt Zod contextBudget (fields may be number|undefined) to core Partial<ContextBudget>. */
 function adaptContextBudget(
   source: NonNullable<WorkflowStep['contextBudget']>
-): CoreWorkflowStep['contextBudget'] {
-  const budget: CoreWorkflowStep['contextBudget'] = {};
+): NonNullable<CoreWorkflowStep['contextBudget']> {
+  const budget: NonNullable<CoreWorkflowStep['contextBudget']> = {};
   if (source.system !== undefined) budget.system = source.system;
   if (source.task !== undefined) budget.task = source.task;
   if (source.active !== undefined) budget.active = source.active;

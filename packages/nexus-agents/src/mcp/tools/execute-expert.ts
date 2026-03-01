@@ -6,11 +6,18 @@
  *
  * @module mcp/tools/execute-expert
  * (Source: Issue #437 - Add execute_expert tool)
- * (Refactored: Issue #531 - Use createSecureHandlerFactory)
+ * (Refactored: Issue #1298 - MCP Tasks async execution)
  */
 
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import type {
+  ToolTaskHandler,
+  CreateTaskRequestHandlerExtra,
+  TaskRequestHandlerExtra,
+} from '@modelcontextprotocol/sdk/experimental/tasks';
+import type { CreateTaskResult, GetTaskResult } from '@modelcontextprotocol/sdk/experimental/tasks';
 import type { ILogger, Task } from '../../core/index.js';
 import { getErrorMessage } from '../../core/index.js';
 
@@ -24,23 +31,19 @@ import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
 import type { IMcpNotifier } from '../mcp-notifier.js';
 import { createMcpNotifier, NOOP_NOTIFIER, withProgressHeartbeat } from '../mcp-notifier.js';
-import { wrapToolWithTimeout, toSdkCallback, getToolTimeout } from '../middleware/tool-wrapper.js';
-import { createSecureHandler, type HandlerContext } from '../middleware/secure-handler.js';
 import type { Expert } from '../../agents/index.js';
 import { getToolMemory } from './tool-memory.js';
-import { getAutoCatalog } from './research-auto-catalog.js';
 import {
-  getOutcomeStore,
-  categorizeOutcomeErrorMessage,
-} from '../../orchestration/outcomes/index.js';
-import type { OutcomeFailureCategory } from '../../orchestration/outcomes/index.js';
-import { detectTaskCategory } from '../../config/task-specialization.js';
-import { DEFAULT_CLI } from '../../config/model-capabilities-types.js';
+  autoCatalogScan,
+  handleExpertFailure,
+  handleExpertSuccess,
+} from './execute-expert-recording.js';
 import { getExpertTaskTimeout, HEARTBEAT_TIMEOUTS } from '../../config/timeouts.js';
 import type { ICliDetectionCache } from '../../cli-adapters/cli-detection-cache.js';
 import { requireAdapterAvailable } from '../middleware/adapter-availability.js';
 import { getExpertPool } from '../../agents/expert-pool.js';
 import { getHeartbeatMonitor } from '../../agents/heartbeat-monitor.js';
+import { clampTaskTtl, DEFAULT_TASK_TTL_MS } from '../task-store.js';
 
 /**
  * Input schema for execute_expert tool.
@@ -181,85 +184,6 @@ function buildSuccessResponse(params: SuccessResponseParams): ExecuteExpertRespo
   return response;
 }
 
-/** Records expert execution outcome to OutcomeStore (Issue #1014). Best-effort. */
-function recordExpertOutcome(opts: {
-  task: string;
-  success: boolean;
-  durationMs: number;
-  model?: string;
-  failureCategory?: OutcomeFailureCategory;
-}): void {
-  try {
-    const match = detectTaskCategory(opts.task);
-    getOutcomeStore().append({
-      id: `exp-${String(Date.now())}-${Math.random().toString(36).slice(2, 8)}`,
-      cli: match?.primaryCli ?? DEFAULT_CLI,
-      category: match?.category ?? 'exploration',
-      model: opts.model ?? 'expert',
-      success: opts.success,
-      durationMs: opts.durationMs,
-      timestamp: new Date(getTimeProvider().now()).toISOString(),
-      source: 'delegate',
-      ...(opts.failureCategory !== undefined ? { failureCategory: opts.failureCategory } : {}),
-    });
-  } catch (error: unknown) {
-    createLogger({ tool: 'execute_expert' }).debug('Best-effort outcome recording failed', {
-      error: getErrorMessage(error),
-    });
-  }
-}
-
-/**
- * Records a successful expert execution to session memory. (Issue #690)
- */
-function recordExpertSuccess(expertId: string, role: string, durationMs: number): void {
-  try {
-    const memory = getToolMemory();
-    memory.recordTask({
-      approach: `Expert execution: ${role} (${expertId})`,
-      challenges: [],
-      durationMs,
-    });
-    // Record learning about successful execution pattern
-    memory.recordLearning({
-      pattern: `Expert ${role} completed successfully`,
-      context: `id=${expertId} duration=${String(durationMs)}ms`,
-      confidence: 0.75,
-      source: 'execute-expert-success',
-    });
-    // Fire-and-forget promotion pipeline (Issue #753)
-    void memory.runPromotionPipeline().catch((error: unknown) => {
-      createLogger({ tool: 'execute_expert' }).debug('Promotion pipeline failed', { error });
-    });
-  } catch (error: unknown) {
-    // Best-effort memory recording
-    createLogger({ tool: 'execute_expert' }).debug('Best-effort success recording failed', {
-      error: getErrorMessage(error),
-      expertId,
-    });
-  }
-}
-
-/**
- * Records a failed expert execution to session memory. (Issue #690)
- */
-function recordExpertError(expertId: string, role: string, errorMessage: string): void {
-  try {
-    const memory = getToolMemory();
-    memory.recordError({
-      error: `Expert ${role} (${expertId}): ${errorMessage.slice(0, 150)}`,
-      solution: 'Pending - expert execution failed',
-      filePattern: 'mcp/tools/execute-expert',
-    });
-  } catch (error: unknown) {
-    // Best-effort memory recording
-    createLogger({ tool: 'execute_expert' }).debug('Best-effort error recording failed', {
-      error: getErrorMessage(error),
-      expertId,
-    });
-  }
-}
-
 /** Injects past error solutions into task context (best-effort). */
 function injectErrorHints(task: Task, role: string): void {
   try {
@@ -273,61 +197,6 @@ function injectErrorHints(task: Task, role: string): void {
       role,
     });
   }
-}
-
-/** Scans expert output for research references (best-effort). */
-function autoCatalogScan(output: string, expertId: string, logger?: ILogger): void {
-  try {
-    const catalog = getAutoCatalog();
-    catalog.scanAndRecord(output, 'execute_expert');
-  } catch (error: unknown) {
-    logger?.debug('Best-effort auto-catalog scan failed', {
-      error: getErrorMessage(error),
-      expertId,
-    });
-  }
-}
-
-/** Records failure outcome and returns error result with observability data (#1129). */
-function handleExpertFailure(
-  args: ExecuteExpertInput,
-  expert: { expertId: string; role: string; modelId?: string },
-  errorMsg: string,
-  durationMs: number
-): { ok: false; error: string } {
-  recordExpertError(expert.expertId, expert.role, errorMsg);
-  const fc = categorizeOutcomeErrorMessage(errorMsg);
-  recordExpertOutcome({
-    task: args.task,
-    success: false,
-    durationMs,
-    failureCategory: fc,
-    ...(expert.modelId !== undefined ? { model: expert.modelId } : {}),
-  });
-  const durationSec = Math.round(durationMs / 1000);
-  const model = expert.modelId ?? 'default';
-  const timeoutHint = errorMsg.includes('timed out')
-    ? ' Hint: omit timeoutMs to use auto-detected timeout (300-600s).'
-    : '';
-  return {
-    ok: false,
-    error: `Expert execution failed after ${String(durationSec)}s (role=${expert.role}, model=${model}): ${errorMsg}${timeoutHint}`,
-  };
-}
-
-/** Records success outcome and tracking. */
-function handleExpertSuccess(
-  args: ExecuteExpertInput,
-  expert: { expertId: string; role: string; modelId?: string },
-  durationMs: number
-): void {
-  recordExpertSuccess(expert.expertId, expert.role, durationMs);
-  recordExpertOutcome({
-    task: args.task,
-    success: true,
-    durationMs,
-    ...(expert.modelId !== undefined ? { model: expert.modelId } : {}),
-  });
 }
 
 type ExpertResult = { ok: true; value: ExecuteExpertResponse } | { ok: false; error: string };
@@ -370,11 +239,11 @@ async function runExpertTask(
 
   if (!result.ok) {
     deps.logger?.warn('Expert execution failed', { expertId, error: result.error.message });
-    return handleExpertFailure(args, info, result.error.message, durationMs);
+    return handleExpertFailure(args.task, info, result.error.message, durationMs);
   }
 
   deps.logger?.info('Expert execution completed', { expertId, durationMs });
-  handleExpertSuccess(args, info, durationMs);
+  handleExpertSuccess(args.task, info, durationMs);
   autoCatalogScan(result.value.output as string, expertId, deps.logger);
 
   return {
@@ -419,69 +288,172 @@ async function handleExecuteExpert(
   }
 }
 
-/** MCP tool response type for execute_expert */
-type ExecuteExpertToolResponse = {
-  content: Array<{ type: 'text'; text: string }>;
-  isError?: boolean;
+// ============================================================================
+// Task Handler (Issue #1298 — Layer 2 MCP Tasks async execution)
+// ============================================================================
+
+/** Input shape type for registerToolTask. */
+type ExecuteExpertToolSchema = typeof EXECUTE_EXPERT_TOOL_SCHEMA;
+
+const EXECUTE_EXPERT_TOOL_SCHEMA = {
+  expertId: z.string().min(1).describe('Expert ID from create_expert tool'),
+  task: z.string().min(1).describe('Task description for the expert to execute'),
+  context: z.record(z.unknown()).optional().describe('Additional context metadata for the task'),
+  timeoutMs: z
+    .number()
+    .int()
+    .min(30_000)
+    .max(900_000)
+    .optional()
+    .describe('Optional timeout in ms (30s-900s). Overrides auto-detected timeout.'),
 };
 
 /**
- * Creates the core handler logic for execute_expert tool.
- * Rate limiting is handled by createSecureHandler wrapper.
+ * Creates a ToolTaskHandler for execute_expert.
+ *
+ * Implements the MCP Tasks primitive (SEP-1686):
+ * - createTask: validates, starts background execution, returns task immediately
+ * - getTask: returns current task status from store
+ * - getTaskResult: returns completed/failed result from store
+ *
+ * When the client supports tasks, createTask returns immediately and the client
+ * polls for status. When the client doesn't support tasks, the SDK internally
+ * polls until completion (handleAutomaticTaskPolling).
+ *
  * @param deps - Tool dependencies
- * @returns Context-aware handler function
+ * @param logger - Logger instance
  */
-function createExecuteExpertHandler(deps: ExecuteExpertDeps) {
+function createTaskHandler(
+  deps: ExecuteExpertDeps,
+  logger: ILogger
+): ToolTaskHandler<ExecuteExpertToolSchema> {
   const notifier = deps.notifier ?? NOOP_NOTIFIER;
-  return async (args: unknown, ctx: HandlerContext): Promise<ExecuteExpertToolResponse> => {
-    // Validate input
-    const validationResult = ExecuteExpertInputSchema.safeParse(args);
-    if (!validationResult.success) {
-      return {
-        isError: true,
-        content: [
-          { type: 'text', text: `Validation error: ${formatZodError(validationResult.error)}` },
-        ],
-      };
-    }
 
-    ctx.logger.info('Executing expert task', {
-      expertId: validationResult.data.expertId,
-      taskLength: validationResult.data.task.length,
+  return {
+    createTask: (
+      args: ExecuteExpertInput,
+      extra: CreateTaskRequestHandlerExtra
+    ): Promise<CreateTaskResult> => {
+      // Validate input
+      const parsed = ExecuteExpertInputSchema.safeParse(args);
+      if (!parsed.success) {
+        return Promise.reject(new Error(`Validation error: ${formatZodError(parsed.error)}`));
+      }
+
+      const validatedArgs = parsed.data;
+      const { taskStore } = extra;
+
+      // Create task with clamped TTL
+      const ttl = clampTaskTtl(DEFAULT_TASK_TTL_MS);
+      const taskPromise = taskStore.createTask({ ttl, pollInterval: 5000 }).then((task) => {
+        logger.info('Task created for execute_expert', {
+          taskId: task.taskId,
+          expertId: validatedArgs.expertId,
+        });
+
+        // Start background execution (fire-and-forget)
+        void runBackgroundExpertTask({
+          deps,
+          args: validatedArgs,
+          taskId: task.taskId,
+          taskStore,
+          notifier,
+        });
+
+        return { task } as CreateTaskResult;
+      });
+
+      return taskPromise;
+    },
+
+    getTask: (
+      _args: ExecuteExpertInput,
+      extra: TaskRequestHandlerExtra
+    ): Promise<GetTaskResult> => {
+      return extra.taskStore.getTask(extra.taskId) as Promise<GetTaskResult>;
+    },
+
+    getTaskResult: (
+      _args: ExecuteExpertInput,
+      extra: TaskRequestHandlerExtra
+    ): Promise<CallToolResult> => {
+      return extra.taskStore.getTaskResult(extra.taskId) as Promise<CallToolResult>;
+    },
+  };
+}
+
+/** Options for background expert task execution. */
+interface BackgroundExpertTaskOpts {
+  deps: ExecuteExpertDeps;
+  args: ExecuteExpertInput;
+  taskId: string;
+  taskStore: CreateTaskRequestHandlerExtra['taskStore'];
+  notifier: IMcpNotifier;
+}
+
+/**
+ * Runs expert execution in the background, updating task store on completion.
+ * Fire-and-forget — errors are caught and stored as task failures.
+ */
+async function runBackgroundExpertTask(opts: BackgroundExpertTaskOpts): Promise<void> {
+  const { deps, args, taskId, taskStore, notifier } = opts;
+  const logger = deps.logger ?? createLogger({ tool: 'execute_expert' });
+  try {
+    notifier.info('execute_expert', {
+      event: 'expert_start',
+      taskId,
+      expertId: args.expertId,
     });
 
-    // Look up expert role for notification
-    const expert = deps.expertRegistry.get(validationResult.data.expertId);
-    const role = expert?.role ?? 'unknown';
-    notifier.info('execute_expert', { event: 'expert_start', role });
-
-    // Execute tool logic (heartbeat provides observability during long runs)
     const result = await withProgressHeartbeat('execute_expert', notifier, () =>
-      handleExecuteExpert(deps, validationResult.data)
+      handleExecuteExpert(deps, args)
     );
 
     if (!result.ok) {
-      return {
-        isError: true,
+      await taskStore.storeTaskResult(taskId, 'failed', {
         content: [{ type: 'text', text: `Failed to execute expert: ${result.error}` }],
-      };
+        isError: true,
+      });
+      return;
     }
 
     notifier.info('execute_expert', {
       event: 'expert_complete',
+      taskId,
       role: result.value.role,
       confidence: result.value.status === 'success' ? 1 : 0,
       tokenUsage: result.value.tokensUsed,
     });
 
-    return {
+    await taskStore.storeTaskResult(taskId, 'completed', {
       content: [{ type: 'text', text: JSON.stringify(result.value, null, 2) }],
-    };
-  };
+    });
+  } catch (error: unknown) {
+    const message = getErrorMessage(error);
+    logger.warn('Background expert task failed', { taskId, error: message });
+    try {
+      await taskStore.storeTaskResult(taskId, 'failed', {
+        content: [{ type: 'text', text: `Expert execution error: ${message}` }],
+        isError: true,
+      });
+    } catch (storeError: unknown) {
+      logger.warn('Failed to store task failure result', {
+        taskId,
+        error: getErrorMessage(storeError),
+      });
+    }
+  }
 }
+
+// ============================================================================
+// Registration
+// ============================================================================
 
 /**
  * Registers the execute_expert tool with the MCP server.
+ *
+ * Uses MCP Tasks primitive (SEP-1686) via registerToolTask for async execution.
+ * taskSupport: 'optional' preserves sync fallback for clients without task support.
  *
  * Uses createSecureHandler for standardized security middleware (Issue #531).
  * Includes timeout protection for CVE-2026-0621 mitigation (Issue #271).
@@ -493,41 +465,19 @@ export function registerExecuteExpertTool(server: McpServer, deps: ExecuteExpert
   const logger = deps.logger ?? createLogger({ tool: 'execute_expert' });
   const notifier = deps.notifier ?? createMcpNotifier(server);
   const depsWithNotifier = { ...deps, notifier };
-  const toolSchema = {
-    expertId: z.string().min(1).describe('Expert ID from create_expert tool'),
-    task: z.string().min(1).describe('Task description for the expert to execute'),
-    context: z.record(z.unknown()).optional().describe('Additional context metadata for the task'),
-    timeoutMs: z
-      .number()
-      .int()
-      .min(30_000)
-      .max(900_000)
-      .optional()
-      .describe('Optional timeout in ms (30s-900s). Overrides auto-detected timeout.'),
-  };
 
   const description =
     'Execute a task using a previously created expert agent. ' +
     'Returns the expert analysis including output, confidence, and token usage.';
 
-  // Wrap handler with secure handler for rate limiting and request context (Issue #531)
-  const secureHandler = createSecureHandler(createExecuteExpertHandler(depsWithNotifier), {
-    toolName: 'execute_expert',
-    rateLimiter: deps.rateLimiter,
-    logger,
-  });
-
-  // Wrap with timeout protection (Issue #271, CVE-2026-0621, Issue #661)
-  const timeoutMs = getToolTimeout('execute_expert', deps.security);
-  const wrappedHandler = wrapToolWithTimeout('execute_expert', secureHandler, {
-    timeoutMs,
-    logger,
-  });
-
-  server.registerTool(
+  server.experimental.tasks.registerToolTask(
     'execute_expert',
-    { description, inputSchema: toolSchema },
-    toSdkCallback(wrappedHandler)
+    {
+      description,
+      inputSchema: EXECUTE_EXPERT_TOOL_SCHEMA,
+      execution: { taskSupport: 'optional' },
+    },
+    createTaskHandler(depsWithNotifier, logger)
   );
-  logger.info('Registered execute_expert tool with secure handler and timeout protection');
+  logger.info('Registered execute_expert tool with MCP Tasks support (taskSupport: optional)');
 }
