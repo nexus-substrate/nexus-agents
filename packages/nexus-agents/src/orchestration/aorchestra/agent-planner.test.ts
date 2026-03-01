@@ -348,4 +348,87 @@ describe('AgentPlanner', () => {
       });
     }
   });
+
+  // ============================================================================
+  // Trigger Table Integration (Issue #1314)
+  // ============================================================================
+
+  describe('trigger table integration', () => {
+    it('adds testing expert when filePaths contain test files', () => {
+      const analysis = createAnalysis({
+        taskType: 'code_implementation',
+        complexity: 'complex',
+      });
+      const plan = planAgentTeam(analysis, 'Fix the bug', {
+        filePaths: ['src/utils/parser.test.ts'],
+      });
+
+      expect(getRoles(plan)).toContain('testing');
+    });
+
+    it('adds security expert when filePaths contain security modules', () => {
+      const analysis = createAnalysis({
+        taskType: 'code_implementation',
+        complexity: 'expert', // expert allows up to 5 experts
+      });
+      const plan = planAgentTeam(analysis, 'Refactor auth', {
+        filePaths: ['src/security/sanitizer.ts', 'src/auth/login.ts'],
+      });
+
+      expect(getRoles(plan)).toContain('security');
+    });
+
+    it('adds devops expert when filePaths contain CI configs', () => {
+      const analysis = createAnalysis({
+        taskType: 'code_implementation',
+        complexity: 'expert', // expert allows up to 5 experts
+      });
+      const plan = planAgentTeam(analysis, 'Update pipeline', {
+        filePaths: ['.github/workflows/ci.yml'],
+      });
+
+      expect(getRoles(plan)).toContain('devops');
+    });
+
+    it('does not exceed max experts when trigger adds roles', () => {
+      const analysis = createAnalysis({
+        taskType: 'architecture',
+        complexity: 'expert',
+        requiredCapabilities: {
+          tools: [],
+          experts: ['security', 'testing', 'documentation', 'devops', 'research'],
+        },
+      });
+      const plan = planAgentTeam(analysis, 'Full review', {
+        filePaths: ['Dockerfile', 'terraform/main.tf', 'src/security/auth.ts'],
+      });
+
+      expect(plan.totalExperts).toBeLessThanOrEqual(5);
+    });
+
+    it('does not add duplicate roles from triggers', () => {
+      const analysis = createAnalysis({
+        taskType: 'code_review',
+        complexity: 'complex',
+      });
+      // code_review already includes 'security' — trigger should not duplicate
+      const plan = planAgentTeam(analysis, 'Review security module', {
+        filePaths: ['src/security/policy-gate.ts'],
+      });
+
+      const securityCount = getRoles(plan).filter((r) => r === 'security').length;
+      expect(securityCount).toBe(1);
+    });
+
+    it('is backward compatible — works without filePaths', () => {
+      const analysis = createAnalysis({
+        taskType: 'code_implementation',
+        complexity: 'moderate',
+      });
+      // No options parameter — should work exactly as before
+      const plan = planAgentTeam(analysis, 'Build feature');
+
+      expect(plan.totalExperts).toBeGreaterThanOrEqual(1);
+    });
+  });
 });

@@ -9,7 +9,7 @@
  */
 
 export { planAgentTeam, MAX_WORKERS_PER_WAVE } from './agent-planner.js';
-export type { AgentPlan, AgentPlanEntry } from './agent-planner.js';
+export type { AgentPlan, AgentPlanEntry, PlanAgentTeamOptions } from './agent-planner.js';
 export { dispatchWorkers, groupByWave, WORKER_TIMEOUT_MS } from './worker-dispatcher.js';
 export type { WorkerResult, WorkerDispatchOptions } from './worker-dispatcher.js';
 export { composeWorkerPrompt } from './compose-worker-prompt.js';

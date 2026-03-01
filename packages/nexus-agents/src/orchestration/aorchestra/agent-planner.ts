@@ -15,6 +15,7 @@ import type {
   ComplexityLevel,
 } from '../../core/task-analysis/shared-task-analyzer.js';
 import type { BuiltInExpertType } from '../../agents/experts/expert-config.js';
+import { matchTriggers } from './trigger-table.js';
 
 // ============================================================================
 // Types
@@ -34,6 +35,14 @@ export interface AgentPlanEntry {
   readonly reasoning: string;
   /** Wave group for parallel execution (1-based, lower = earlier) */
   readonly wave: number;
+}
+
+/**
+ * Options for planAgentTeam.
+ */
+export interface PlanAgentTeamOptions {
+  /** File paths involved in the task — used for trigger table matching. */
+  readonly filePaths?: readonly string[];
 }
 
 /**
@@ -109,11 +118,12 @@ const SUBTASK_TEMPLATES: Record<BuiltInExpertType, string> = {
 // ============================================================================
 
 /**
- * Selects experts based on task type and required capabilities.
+ * Selects experts based on task type, required capabilities, and file triggers.
  */
 function selectExperts(
   analysis: TaskAnalysisResult,
-  taskDescription: string
+  taskDescription: string,
+  filePaths?: readonly string[]
 ): readonly AgentPlanEntry[] {
   const maxExperts = Math.min(COMPLEXITY_MAX[analysis.complexity], MAX_EXPERTS);
 
@@ -130,6 +140,18 @@ function selectExperts(
 
   // Add experts from required capabilities if budget allows
   addCapabilityExperts(analysis, taskDescription, selected, entries, maxExperts);
+
+  // Add experts from file-pattern trigger table if budget allows (Issue #1314)
+  if (filePaths !== undefined && filePaths.length > 0 && selected.size < maxExperts) {
+    const triggered = matchTriggers(filePaths);
+    for (const role of triggered) {
+      if (selected.size >= maxExperts) break;
+      if (!selected.has(role)) {
+        selected.add(role);
+        entries.push(createEntry(role, taskDescription, selected.size));
+      }
+    }
+  }
 
   return entries;
 }
@@ -259,8 +281,12 @@ function generateReasoning(analysis: TaskAnalysisResult, entryCount: number): st
  * // plan.entries: [{ role: 'code', ... }, { role: 'security', ... }]
  * ```
  */
-export function planAgentTeam(analysis: TaskAnalysisResult, taskDescription: string): AgentPlan {
-  const entries = selectExperts(analysis, taskDescription);
+export function planAgentTeam(
+  analysis: TaskAnalysisResult,
+  taskDescription: string,
+  options?: PlanAgentTeamOptions
+): AgentPlan {
+  const entries = selectExperts(analysis, taskDescription, options?.filePaths);
 
   return {
     entries,
