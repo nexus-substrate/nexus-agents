@@ -124,8 +124,10 @@ export class EventBus implements IEventBus {
 /** Check if an event matches a filter. */
 function matchesFilter(event: PipelineEvent, filter: EventFilter): boolean {
   if (!matchesType(event, filter)) return false;
-  if (!matchesField(event, 'taskId', filter.taskId)) return false;
-  if (!matchesField(event, 'executionId', filter.executionId)) return false;
+  if (filter.taskId !== undefined && !matchesTaskId(event, filter.taskId)) return false;
+  if (filter.executionId !== undefined && !matchesExecutionId(event, filter.executionId)) {
+    return false;
+  }
   if (filter.since !== undefined && event.timestamp < filter.since) return false;
   return true;
 }
@@ -139,10 +141,21 @@ function matchesType(event: PipelineEvent, filter: EventFilter): boolean {
   return (filter.type as readonly string[]).includes(event.type);
 }
 
-function matchesField(event: PipelineEvent, field: string, value: string | undefined): boolean {
-  if (value === undefined) return true;
-  const record = event as unknown as Record<string, unknown>;
-  return record[field] === value;
+/**
+ * Checks if a PipelineEvent has a taskId matching the expected value.
+ *
+ * Uses the `in` operator to narrow the discriminated union to variants
+ * that carry a taskId field, avoiding `as unknown as` casts.
+ */
+function matchesTaskId(event: PipelineEvent, taskId: string): boolean {
+  return 'taskId' in event && event.taskId === taskId;
+}
+
+/**
+ * Checks if a PipelineEvent has an executionId matching the expected value.
+ */
+function matchesExecutionId(event: PipelineEvent, executionId: string): boolean {
+  return 'executionId' in event && event.executionId === executionId;
 }
 
 // ============================================================================

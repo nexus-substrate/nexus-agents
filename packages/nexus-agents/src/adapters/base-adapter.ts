@@ -22,7 +22,6 @@ import {
   err,
   ConfigError,
   ModelError,
-  NexusError,
   ErrorCode,
   createLogger,
   getTokenEstimator,
@@ -54,11 +53,14 @@ export interface BaseAdapterConfig {
 /**
  * Extended ModelError that supports specific error codes.
  *
- * While ModelError from core uses MODEL_ERROR by default, this class
+ * While ModelError from core uses MODEL_ERROR by default, this subclass
  * allows adapters to specify more granular error codes like
  * MODEL_RATE_LIMITED, MODEL_TIMEOUT, etc.
+ *
+ * Extends ModelError so `instanceof ModelError` checks pass naturally
+ * without requiring `as unknown as ModelError` casts.
  */
-export class AdapterModelError extends NexusError {
+export class AdapterModelError extends ModelError {
   constructor(message: string, options: NexusErrorOptions) {
     super(message, options);
     this.name = 'ModelError';
@@ -267,8 +269,6 @@ export abstract class BaseAdapter implements IModelAdapter {
     const errorMessage = getErrorMessage(error);
     const errorCode = this.determineErrorCode(error);
 
-    // Create a NexusError with the specific code, then use ModelError for standard cases
-    // For specialized codes, we extend NexusError behavior
     const modelError = this.createModelError(errorMessage, errorCode, error);
 
     this.logger.error('Model adapter error', modelError, {
@@ -304,9 +304,8 @@ export abstract class BaseAdapter implements IModelAdapter {
       options.cause = originalError;
     }
 
-    // Use AdapterModelError to support specific error codes
-    // This is compatible with ModelError checks (instanceof NexusError)
-    return new AdapterModelError(fullMessage, options) as ModelError;
+    // AdapterModelError extends ModelError — no cast needed
+    return new AdapterModelError(fullMessage, options);
   }
 
   /**

@@ -139,10 +139,21 @@ export class ConfigError extends NexusError {
 
 /**
  * Model error for model adapter failures.
+ *
+ * Subclasses (e.g., AdapterModelError) can pass a specific ErrorCode
+ * to categorize failures more granularly (rate-limited, timeout, etc.).
  */
 export class ModelError extends NexusError {
-  constructor(message: string, options?: Partial<Omit<NexusErrorOptions, 'code'>>) {
-    super(message, { code: ErrorCode.MODEL_ERROR, ...options });
+  constructor(message: string, options?: Partial<NexusErrorOptions>) {
+    const code = options?.code ?? ErrorCode.MODEL_ERROR;
+    const nexusOpts: NexusErrorOptions = { code };
+    if (options?.cause !== undefined) {
+      nexusOpts.cause = options.cause;
+    }
+    if (options?.context !== undefined) {
+      nexusOpts.context = options.context;
+    }
+    super(message, nexusOpts);
     this.name = 'ModelError';
   }
 }

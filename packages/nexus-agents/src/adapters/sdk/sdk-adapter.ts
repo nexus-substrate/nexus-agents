@@ -13,11 +13,16 @@ import type {
   CompletionResponse,
   ContentBlock,
   StreamChunk,
-  ModelCapability,
   Result,
   ILogger,
 } from '../../core/index.js';
-import { ok, ModelError, createLogger, getErrorMessage } from '../../core/index.js';
+import {
+  ok,
+  ModelError,
+  ModelCapability,
+  createLogger,
+  getErrorMessage,
+} from '../../core/index.js';
 import { BaseAdapter, AdapterModelError } from '../base-adapter.js';
 import { ErrorCode } from '../../core/index.js';
 import type { SdkAdapterConfig, SdkProviderId } from './types.js';
@@ -49,6 +54,52 @@ interface StreamTextResult {
 interface AiSdkFunctions {
   generateText: (options: Record<string, unknown>) => Promise<GenerateTextResult>;
   streamText: (options: Record<string, unknown>) => StreamTextResult;
+}
+
+/** AI SDK provider factory: creates a provider instance that is callable as a model factory. */
+type ProviderFactory = (opts: Record<string, unknown>) => ProviderInstance;
+
+/** AI SDK provider instance: callable to create a model. */
+type ProviderInstance = (id: string) => AiSdkModel;
+
+/**
+ * Extracts a named provider factory from a dynamically-imported AI SDK module.
+ *
+ * AI SDK provider modules export factory functions (e.g., createAnthropic, createOpenAI)
+ * that return callable provider instances. Since these are optional peer dependencies
+ * loaded via dynamic import, we validate the shape at runtime rather than relying on
+ * compile-time types.
+ */
+function extractProviderFactory(
+  mod: Record<string, unknown>,
+  factoryName: string
+): ProviderFactory {
+  const factory = mod[factoryName];
+  if (typeof factory !== 'function') {
+    throw new Error(`AI SDK module missing expected export: ${factoryName}`);
+  }
+  return factory as ProviderFactory;
+}
+
+/**
+ * Validates a dynamically-imported AI SDK module has the expected generateText/streamText exports.
+ *
+ * The 'ai' package is an optional peer dependency loaded via dynamic import.
+ * We validate the shape at runtime to avoid unsafe casts.
+ */
+function extractAiSdkFunctions(mod: Record<string, unknown>): AiSdkFunctions {
+  const generateText = mod['generateText'];
+  const streamText = mod['streamText'];
+  if (typeof generateText !== 'function') {
+    throw new Error("AI SDK module missing expected export: 'generateText'");
+  }
+  if (typeof streamText !== 'function') {
+    throw new Error("AI SDK module missing expected export: 'streamText'");
+  }
+  return {
+    generateText: generateText as AiSdkFunctions['generateText'],
+    streamText: streamText as AiSdkFunctions['streamText'],
+  };
 }
 
 /**
@@ -113,7 +164,7 @@ export class SdkAdapter extends BaseAdapter {
     super({
       providerId: `sdk-${config.providerId}`,
       modelId: config.modelId,
-      capabilities: ['completion', 'streaming'] as unknown as readonly ModelCapability[],
+      capabilities: [ModelCapability.COMPLETION, ModelCapability.STREAMING],
       logger: logger ?? createLogger({ adapter: `sdk-${config.providerId}` }),
       ...(apiKey !== undefined ? { apiKey } : {}),
       ...(config.timeout !== undefined ? { timeout: config.timeout } : {}),
@@ -142,41 +193,40 @@ export class SdkAdapter extends BaseAdapter {
     const providerModule = await this.loadProvider(apiKey);
     this.model = providerModule.model;
 
-    const aiModule = (await import('ai')) as unknown as AiSdkFunctions;
-    this.sdkFunctions = aiModule;
+    // AI SDK is an optional peer dependency — validate shape at runtime
+    const aiModule = await import('ai');
+    this.sdkFunctions = extractAiSdkFunctions(aiModule as Record<string, unknown>);
   }
 
   /**
    * Loads the provider-specific AI SDK module.
+   *
+   * Each @ai-sdk/* package exports a factory function (e.g., createAnthropic)
+   * that returns a callable provider instance. We use extractProviderFactory()
+   * to validate the export exists at runtime, since these are optional peer deps.
    */
   private async loadProvider(apiKey: string): Promise<{ model: AiSdkModel }> {
     switch (this.sdkProviderId) {
       case 'anthropic': {
         const mod = await import('@ai-sdk/anthropic');
-        const provider = (mod as Record<string, unknown>)['createAnthropic'] as (
-          opts: Record<string, unknown>
-        ) => Record<string, unknown>;
-        const instance = provider({ apiKey });
-        const modelFn = instance as unknown as (id: string) => AiSdkModel;
-        return { model: modelFn(this.modelId) };
+        const factory = extractProviderFactory(mod as Record<string, unknown>, 'createAnthropic');
+        const provider = factory({ apiKey });
+        return { model: provider(this.modelId) };
       }
       case 'openai': {
         const mod = await import('@ai-sdk/openai');
-        const provider = (mod as Record<string, unknown>)['createOpenAI'] as (
-          opts: Record<string, unknown>
-        ) => Record<string, unknown>;
-        const instance = provider({ apiKey });
-        const modelFn = instance as unknown as (id: string) => AiSdkModel;
-        return { model: modelFn(this.modelId) };
+        const factory = extractProviderFactory(mod as Record<string, unknown>, 'createOpenAI');
+        const provider = factory({ apiKey });
+        return { model: provider(this.modelId) };
       }
       case 'google': {
         const mod = await import('@ai-sdk/google');
-        const provider = (mod as Record<string, unknown>)['createGoogleGenerativeAI'] as (
-          opts: Record<string, unknown>
-        ) => Record<string, unknown>;
-        const instance = provider({ apiKey });
-        const modelFn = instance as unknown as (id: string) => AiSdkModel;
-        return { model: modelFn(this.modelId) };
+        const factory = extractProviderFactory(
+          mod as Record<string, unknown>,
+          'createGoogleGenerativeAI'
+        );
+        const provider = factory({ apiKey });
+        return { model: provider(this.modelId) };
       }
     }
   }
@@ -293,9 +343,10 @@ export class SdkAdapter extends BaseAdapter {
     const message = getErrorMessage(error);
     const errorObj = error instanceof Error ? error : new Error(message);
     this.logger.error(`SDK adapter error (${this.sdkProviderId})`, errorObj);
+    // AdapterModelError extends ModelError — no cast needed
     const modelError = new AdapterModelError(`${this.sdkProviderId} SDK error: ${message}`, {
       code,
-    }) as unknown as ModelError;
+    });
     return { ok: false, error: modelError };
   }
 }

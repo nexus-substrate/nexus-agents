@@ -37,6 +37,15 @@ export * from './exports/adapters.js';
 // Agents - Agent framework, Orchestrator, Experts
 export * from './exports/agents.js';
 
+// Agents - Backward compatibility aliases (deprecated, will be removed in v3.0)
+export * from './exports/agents-compat.js';
+
+// Agents - Skills module exports (Voyager-style skill library)
+export * from './exports/agents-skills.js';
+
+// Agents - ICTM (Instructions, Context, Tools, Model) pattern
+export * from './exports/agents-ictm.js';
+
 // Workflows - Workflow engine with parallel execution
 export * from './exports/workflows.js';
 

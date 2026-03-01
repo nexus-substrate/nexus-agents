@@ -95,7 +95,10 @@ export class SQLiteSessionStorage implements ISessionStorage {
     if (this.initialized) return ok(undefined);
 
     try {
-      const betterSqlite3Module = await import('better-sqlite3').catch(() => null);
+      const betterSqlite3Module = await import('better-sqlite3').catch((error: unknown) => {
+        this.logger.debug('Failed to import better-sqlite3', { error: String(error) });
+        return null;
+      });
       if (betterSqlite3Module === null) {
         return err(
           new SessionStorageError(

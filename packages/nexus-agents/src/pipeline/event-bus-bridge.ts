@@ -56,13 +56,15 @@ function toV1Payload(event: PipelineEvent): Record<string, unknown> {
   return record;
 }
 
-/** Extracts correlationId from a V2 event if present. */
+/**
+ * Extracts correlationId from a V2 event if present.
+ *
+ * Uses `in` narrowing on the discriminated union to safely access
+ * executionId/taskId without `as unknown as` casts.
+ */
 function extractCorrelationId(event: PipelineEvent): string | undefined {
-  const record = event as unknown as Record<string, unknown>;
-  const execId = record['executionId'];
-  if (typeof execId === 'string') return execId;
-  const taskId = record['taskId'];
-  if (typeof taskId === 'string') return taskId;
+  if ('executionId' in event) return event.executionId;
+  if ('taskId' in event) return event.taskId;
   return undefined;
 }
 

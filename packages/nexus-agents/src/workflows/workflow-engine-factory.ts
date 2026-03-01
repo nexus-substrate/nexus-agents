@@ -233,11 +233,68 @@ function createRealStepExecutorCallback(
  * @param plannerPlan - Plan from execution-planner
  * @returns Adapted plan for workflow engine
  */
+/**
+ * Adapts a CoreWorkflowStep to the Zod-validated WorkflowStep type.
+ *
+ * Both types represent the same concept but the `agent` field uses different
+ * string unions: CoreWorkflowStep uses AgentRole (core/types/agent.ts, 15+ roles)
+ * while WorkflowStep uses AgentRoleType (workflow-types.ts Zod schema, 8 roles + 'custom').
+ * The `as` cast on agent is safe because workflow steps always use Zod-valid roles.
+ */
+function adaptCoreStepToWorkflowStep(step: CoreWorkflowStep): WorkflowStep {
+  const result: WorkflowStep = {
+    id: step.id,
+    agent: step.agent as WorkflowStep['agent'],
+    action: step.action,
+    inputs: step.inputs,
+  };
+  if (step.dependsOn !== undefined) result.dependsOn = step.dependsOn;
+  if (step.parallel !== undefined) result.parallel = step.parallel;
+  if (step.retries !== undefined) result.retries = step.retries;
+  if (step.timeout !== undefined) result.timeout = step.timeout;
+  if (step.condition !== undefined) result.condition = step.condition;
+  if (step.contextBudget !== undefined) result.contextBudget = step.contextBudget;
+  return result;
+}
+
+/** Adapt Zod contextBudget (fields may be number|undefined) to core Partial<ContextBudget>. */
+function adaptContextBudget(
+  source: NonNullable<WorkflowStep['contextBudget']>
+): CoreWorkflowStep['contextBudget'] {
+  const budget: CoreWorkflowStep['contextBudget'] = {};
+  if (source.system !== undefined) budget.system = source.system;
+  if (source.task !== undefined) budget.task = source.task;
+  if (source.active !== undefined) budget.active = source.active;
+  if (source.reserved !== undefined) budget.reserved = source.reserved;
+  return budget;
+}
+
+/**
+ * Adapts a Zod-validated WorkflowStep to CoreWorkflowStep for parallel executor.
+ *
+ * The agent field's AgentRoleType is a subset of AgentRole (plus 'custom'),
+ * so the `as` cast is safe — all Zod-validated roles are valid AgentRoles.
+ */
+function workflowStepToCoreStep(step: WorkflowStep): CoreWorkflowStep {
+  const result: CoreWorkflowStep = {
+    id: step.id,
+    agent: step.agent as CoreWorkflowStep['agent'],
+    action: step.action,
+    inputs: step.inputs,
+  };
+  if (step.dependsOn !== undefined) result.dependsOn = step.dependsOn;
+  if (step.parallel !== undefined) result.parallel = step.parallel;
+  if (step.retries !== undefined) result.retries = step.retries;
+  if (step.timeout !== undefined) result.timeout = step.timeout;
+  if (step.condition !== undefined) result.condition = step.condition;
+  if (step.contextBudget !== undefined)
+    result.contextBudget = adaptContextBudget(step.contextBudget);
+  return result;
+}
+
 function adaptExecutionPlan(plannerPlan: PlannerExecutionPlan): ExecutionPlan {
-  // The planner returns CoreWorkflowStep[], which we need to adapt to WorkflowStep[]
-  // Use type assertion since the core types are a superset of the workflow-types
   const phases: ExecutionPhase[] = plannerPlan.phases.map((phase) => ({
-    steps: phase.steps as unknown as WorkflowStep[],
+    steps: phase.steps.map(adaptCoreStepToWorkflowStep),
   }));
   return { phases };
 }
@@ -350,8 +407,9 @@ function createExecutePhase(
       signal: context.abortController.signal,
     };
 
-    // Cast steps to core type for parallel executor compatibility
-    const coreSteps = steps as unknown as CoreWorkflowStep[];
+    // WorkflowStep (Zod-validated) -> CoreWorkflowStep for parallel executor.
+    // The agent field's AgentRoleType is a subset of AgentRole, so this is safe.
+    const coreSteps: CoreWorkflowStep[] = steps.map(workflowStepToCoreStep);
 
     // Build options, only including timeoutMs if it's defined
     const parallelOptions: { maxConcurrency: number; failFast: boolean; timeoutMs?: number } = {

@@ -45,6 +45,9 @@ import {
   type ZeroRouterStageResult,
 } from './composite-router-helpers.js';
 
+/** Module-level singleton — SharedTaskAnalyzer is stateless, no need to re-instantiate per call. */
+const sharedAnalyzer = createSharedTaskAnalyzer();
+
 /** Dependencies required for pipeline stage execution. */
 export interface StageDependencies {
   config: CompositeRouterConfigWithPreference;
@@ -79,8 +82,7 @@ export interface BudgetStageResult {
 /** Analyzes task and returns profile, updating stages array. */
 export function analyzeTaskProfile(task: CliTask, stagesExecuted: string[]): TaskProfile {
   const internalTask = cliTaskToTask(task);
-  const analyzer = createSharedTaskAnalyzer();
-  const analysis = analyzer.analyze(internalTask);
+  const analysis = sharedAnalyzer.analyze(internalTask);
   stagesExecuted.push('task-analysis');
   return taskAnalysisResultToTaskProfile(analysis);
 }
