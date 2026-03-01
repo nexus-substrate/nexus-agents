@@ -37,12 +37,17 @@ export interface AgentPlanEntry {
   readonly wave: number;
 }
 
+/** Minimum expert success rate before deprioritization (Issue #1325). */
+const RELIABILITY_THRESHOLD = 0.5;
+
 /**
  * Options for planAgentTeam.
  */
 export interface PlanAgentTeamOptions {
   /** File paths involved in the task — used for trigger table matching. */
   readonly filePaths?: readonly string[];
+  /** Historical expert success rates (role → success rate 0..1). Experts below 50% are skipped. */
+  readonly expertReliability?: ReadonlyMap<string, number>;
 }
 
 /**
@@ -157,70 +162,81 @@ const SUBTASK_TEMPLATES: Record<BuiltInExpertType, string> = {
 // Planning Logic
 // ============================================================================
 
+/** Checks if an expert role is reliable enough to include based on historical data. */
+function isReliable(role: BuiltInExpertType, reliability?: ReadonlyMap<string, number>): boolean {
+  if (reliability === undefined) return true;
+  const rate = reliability.get(role);
+  if (rate === undefined) return true; // No data → assume reliable
+  return rate >= RELIABILITY_THRESHOLD;
+}
+
+/** Shared context for expert selection — avoids passing 6+ params. */
+interface ExpertSelectionContext {
+  readonly analysis: TaskAnalysisResult;
+  readonly taskDescription: string;
+  readonly maxExperts: number;
+  readonly reliability?: ReadonlyMap<string, number>;
+  readonly selected: Set<BuiltInExpertType>;
+  readonly entries: AgentPlanEntry[];
+}
+
+/** Attempts to add a single expert role if eligible and budget allows. */
+function tryAddExpert(ctx: ExpertSelectionContext, role: BuiltInExpertType): void {
+  if (ctx.selected.size >= ctx.maxExperts) return;
+  if (ctx.selected.has(role)) return;
+  if (!isReliable(role, ctx.reliability)) return;
+  ctx.selected.add(role);
+  ctx.entries.push(createEntry(role, ctx.taskDescription, ctx.selected.size));
+}
+
 /**
- * Selects experts based on task type, required capabilities, and file triggers.
+ * Selects experts based on task type, required capabilities, file triggers, and reliability.
  */
 function selectExperts(
   analysis: TaskAnalysisResult,
   taskDescription: string,
-  filePaths?: readonly string[]
+  filePaths?: readonly string[],
+  expertReliability?: ReadonlyMap<string, number>
 ): readonly AgentPlanEntry[] {
-  const maxExperts = Math.min(COMPLEXITY_MAX[analysis.complexity], MAX_EXPERTS);
+  const ctx: ExpertSelectionContext = {
+    analysis,
+    taskDescription,
+    maxExperts: Math.min(COMPLEXITY_MAX[analysis.complexity], MAX_EXPERTS),
+    reliability: expertReliability,
+    selected: new Set<BuiltInExpertType>(),
+    entries: [],
+  };
 
-  const candidates = TASK_TYPE_EXPERTS[analysis.taskType];
-  const selected = new Set<BuiltInExpertType>();
-  const entries: AgentPlanEntry[] = [];
-
-  // Add primary experts from task type mapping
-  for (const role of candidates) {
-    if (selected.size >= maxExperts) break;
-    selected.add(role);
-    entries.push(createEntry(role, taskDescription, selected.size));
+  // Add primary experts from task type mapping (skip unreliable ones)
+  for (const role of TASK_TYPE_EXPERTS[analysis.taskType]) {
+    tryAddExpert(ctx, role);
   }
 
   // Add experts from required capabilities if budget allows
-  addCapabilityExperts(analysis, taskDescription, selected, entries, maxExperts);
+  addCapabilityExperts(ctx);
 
   // Add experts from file-pattern trigger table if budget allows (Issue #1314)
-  if (filePaths !== undefined && filePaths.length > 0 && selected.size < maxExperts) {
-    const triggered = matchTriggers(filePaths);
-    for (const role of triggered) {
-      if (selected.size >= maxExperts) break;
-      if (!selected.has(role)) {
-        selected.add(role);
-        entries.push(createEntry(role, taskDescription, selected.size));
-      }
+  if (filePaths !== undefined && filePaths.length > 0) {
+    for (const role of matchTriggers(filePaths)) {
+      tryAddExpert(ctx, role);
     }
   }
 
-  return entries;
+  return ctx.entries;
 }
 
 /**
  * Adds experts based on detected required capabilities.
  */
-function addCapabilityExperts(
-  analysis: TaskAnalysisResult,
-  taskDescription: string,
-  selected: Set<BuiltInExpertType>,
-  entries: AgentPlanEntry[],
-  maxExperts: number
-): void {
-  const reqExperts = analysis.requiredCapabilities.experts;
-
-  for (const expertHint of reqExperts) {
-    if (selected.size >= maxExperts) break;
+function addCapabilityExperts(ctx: ExpertSelectionContext): void {
+  for (const expertHint of ctx.analysis.requiredCapabilities.experts) {
     const mapped = mapHintToRole(expertHint);
-    if (mapped !== undefined && !selected.has(mapped)) {
-      selected.add(mapped);
-      entries.push(createEntry(mapped, taskDescription, selected.size));
-    }
+    if (mapped !== undefined) tryAddExpert(ctx, mapped);
   }
 
-  // Security expert for complex tasks if not already included
-  if (analysis.complexity === 'expert' && !selected.has('security') && selected.size < maxExperts) {
-    selected.add('security');
-    entries.push(createEntry('security', taskDescription, selected.size));
+  // Security expert for complex tasks if not already included (and reliable)
+  if (ctx.analysis.complexity === 'expert') {
+    tryAddExpert(ctx, 'security');
   }
 }
 
@@ -382,7 +398,12 @@ export function planAgentTeam(
   taskDescription: string,
   options?: PlanAgentTeamOptions
 ): AgentPlan {
-  const rawEntries = selectExperts(analysis, taskDescription, options?.filePaths);
+  const rawEntries = selectExperts(
+    analysis,
+    taskDescription,
+    options?.filePaths,
+    options?.expertReliability
+  );
   const entries = assignDependencyAwareWaves(rawEntries);
   const hasDependencies = entries.some((e) => EXPERT_DEPENDENCIES[e.role] !== undefined);
   const suggestedWaveSize = computeOptimalWaveSize(

@@ -6,10 +6,16 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { executeWorkerDispatch, isWorkerDispatchEnabled } from './orchestrate-dispatch.js';
+import {
+  executeWorkerDispatch,
+  isWorkerDispatchEnabled,
+  recordWorkerOutcomes,
+} from './orchestrate-dispatch.js';
 import type { AgentPlan } from '../../orchestration/aorchestra/index.js';
+import type { WorkerResult } from '../../orchestration/aorchestra/index.js';
 import type { IModelAdapter } from '../../core/index.js';
 import { ok, err, createLogger, ModelError, ErrorCode } from '../../core/index.js';
+import { getOutcomeStore, resetOutcomeStore } from '../../orchestration/outcomes/index.js';
 
 // ============================================================================
 // Helpers
@@ -302,5 +308,164 @@ describe('executeWorkerDispatch', () => {
     });
 
     expect(result.conflicts).toEqual([]);
+  });
+});
+
+// ============================================================================
+// recordWorkerOutcomes (Issue #1323, Epic #1322)
+// ============================================================================
+
+describe('recordWorkerOutcomes', () => {
+  beforeEach(() => {
+    resetOutcomeStore();
+  });
+
+  afterEach(() => {
+    resetOutcomeStore();
+  });
+
+  it('records one outcome per worker result', () => {
+    const results: WorkerResult[] = [
+      {
+        role: 'code',
+        subTask: 'Implement feature',
+        output: 'done',
+        status: 'success',
+        durationMs: 100,
+      },
+      {
+        role: 'testing',
+        subTask: 'Write tests',
+        output: 'done',
+        status: 'success',
+        durationMs: 200,
+      },
+    ];
+
+    recordWorkerOutcomes(results, 'Implement auth feature');
+
+    const store = getOutcomeStore();
+    const entries = store.query();
+    expect(entries).toHaveLength(2);
+  });
+
+  it('records success=true for successful workers', () => {
+    const results: WorkerResult[] = [
+      {
+        role: 'code',
+        subTask: 'Implement feature',
+        output: 'done',
+        status: 'success',
+        durationMs: 150,
+      },
+    ];
+
+    recordWorkerOutcomes(results, 'Implement auth');
+
+    const entries = getOutcomeStore().query();
+    expect(entries[0]?.success).toBe(true);
+    expect(entries[0]?.durationMs).toBe(150);
+  });
+
+  it('records success=false for errored workers', () => {
+    const results: WorkerResult[] = [
+      {
+        role: 'security',
+        subTask: 'Security review',
+        output: '',
+        status: 'error',
+        durationMs: 500,
+        error: 'Model rate limited',
+        errorType: 'model_error',
+      },
+    ];
+
+    recordWorkerOutcomes(results, 'Review security');
+
+    const entries = getOutcomeStore().query();
+    expect(entries[0]?.success).toBe(false);
+    expect(entries[0]?.failureCategory).toBeDefined();
+  });
+
+  it('maps worker errorType to outcome failureCategory', () => {
+    const results: WorkerResult[] = [
+      {
+        role: 'code',
+        subTask: 'Task',
+        output: '',
+        status: 'error',
+        durationMs: 30000,
+        error: 'Worker timed out',
+        errorType: 'timeout',
+      },
+    ];
+
+    recordWorkerOutcomes(results, 'Task');
+
+    const entries = getOutcomeStore().query();
+    expect(entries[0]?.failureCategory).toBe('timeout');
+  });
+
+  it('uses model=worker-{role} for outcome entries', () => {
+    const results: WorkerResult[] = [
+      {
+        role: 'architecture',
+        subTask: 'Design',
+        output: 'done',
+        status: 'success',
+        durationMs: 100,
+      },
+    ];
+
+    recordWorkerOutcomes(results, 'Design system');
+
+    const entries = getOutcomeStore().query();
+    expect(entries[0]?.model).toBe('worker-architecture');
+  });
+
+  it('uses source=delegate for all worker outcomes', () => {
+    const results: WorkerResult[] = [
+      { role: 'code', subTask: 'Code', output: 'done', status: 'success', durationMs: 100 },
+    ];
+
+    recordWorkerOutcomes(results, 'Code task');
+
+    const entries = getOutcomeStore().query();
+    expect(entries[0]?.source).toBe('delegate');
+  });
+
+  it('is best-effort — never throws on store errors', () => {
+    const results: WorkerResult[] = [
+      { role: 'code', subTask: 'Code', output: 'done', status: 'success', durationMs: 100 },
+    ];
+
+    // Even if the store is somehow broken, this should not throw
+    expect(() => {
+      recordWorkerOutcomes(results, 'Task');
+    }).not.toThrow();
+  });
+
+  it('records mixed success and error results', () => {
+    const results: WorkerResult[] = [
+      { role: 'code', subTask: 'Code', output: 'done', status: 'success', durationMs: 100 },
+      {
+        role: 'testing',
+        subTask: 'Test',
+        output: '',
+        status: 'error',
+        durationMs: 200,
+        error: 'Failed',
+      },
+      { role: 'security', subTask: 'Audit', output: 'ok', status: 'success', durationMs: 300 },
+    ];
+
+    recordWorkerOutcomes(results, 'Full review');
+
+    const entries = getOutcomeStore().query();
+    expect(entries).toHaveLength(3);
+    const successes = entries.filter((e) => e.success);
+    const failures = entries.filter((e) => !e.success);
+    expect(successes).toHaveLength(2);
+    expect(failures).toHaveLength(1);
   });
 });

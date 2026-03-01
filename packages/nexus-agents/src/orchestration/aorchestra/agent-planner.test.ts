@@ -571,4 +571,65 @@ describe('AgentPlanner', () => {
       }
     });
   });
+
+  describe('expert reliability feedback (Issue #1325)', () => {
+    it('excludes experts with success rate below threshold', () => {
+      // code_implementation/complex normally picks: code, testing, architecture
+      // If testing has <50% success rate, it should be replaced
+      const analysis = createAnalysis({ taskType: 'code_implementation', complexity: 'complex' });
+      const plan = planAgentTeam(analysis, 'Test task', {
+        expertReliability: new Map([['testing', 0.3]]),
+      });
+
+      const roles = plan.entries.map((e) => e.role);
+      expect(roles).not.toContain('testing');
+    });
+
+    it('keeps experts with success rate at or above threshold', () => {
+      const analysis = createAnalysis({ taskType: 'code_implementation', complexity: 'complex' });
+      const plan = planAgentTeam(analysis, 'Test task', {
+        expertReliability: new Map([['testing', 0.7]]),
+      });
+
+      const roles = plan.entries.map((e) => e.role);
+      expect(roles).toContain('testing');
+    });
+
+    it('replaces unreliable expert with next candidate from pool', () => {
+      // code_review/complex → code, security, testing
+      // If security has low reliability, it should be skipped and still get 3 experts
+      const analysis = createAnalysis({ taskType: 'code_review', complexity: 'expert' });
+      const plan = planAgentTeam(analysis, 'Review auth', {
+        expertReliability: new Map([['security', 0.2]]),
+      });
+
+      const roles = plan.entries.map((e) => e.role);
+      expect(roles).not.toContain('security');
+      // Should still have multiple experts for expert-level complexity
+      expect(plan.entries.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it('ignores reliability map when not provided', () => {
+      // Default behavior unchanged
+      const analysis = createAnalysis({ taskType: 'code_implementation', complexity: 'complex' });
+      const plan = planAgentTeam(analysis, 'Test task');
+
+      const roles = plan.entries.map((e) => e.role);
+      expect(roles).toContain('code');
+      expect(roles).toContain('testing');
+      expect(roles).toContain('architecture');
+    });
+
+    it('does not exclude experts with no reliability data', () => {
+      // Only testing has reliability data; code and architecture have none → kept
+      const analysis = createAnalysis({ taskType: 'code_implementation', complexity: 'complex' });
+      const plan = planAgentTeam(analysis, 'Test task', {
+        expertReliability: new Map([['testing', 0.8]]),
+      });
+
+      const roles = plan.entries.map((e) => e.role);
+      expect(roles).toContain('code');
+      expect(roles).toContain('architecture');
+    });
+  });
 });

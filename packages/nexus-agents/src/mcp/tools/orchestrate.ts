@@ -39,7 +39,11 @@ import { createWorkflowRouter, type IWorkflowRouter } from '../../orchestration/
 import { getToolMemory } from './tool-memory.js';
 import { getAutoCatalog } from './research-auto-catalog.js';
 import { computeAgentPlan } from './orchestrate-aorchestra.js';
-import { executeWorkerDispatch, isWorkerDispatchEnabled } from './orchestrate-dispatch.js';
+import {
+  executeWorkerDispatch,
+  isWorkerDispatchEnabled,
+  recordWorkerOutcomes,
+} from './orchestrate-dispatch.js';
 import {
   getOutcomeStore,
   categorizeOutcomeErrorMessage,
@@ -639,6 +643,10 @@ function createOrchestrateHandler(deps: OrchestrateDeps) {
       ctx.logger,
       notifier
     );
+
+    // Record per-worker outcomes for closed-loop learning (Issue #1323)
+    if (workerDispatchResult !== undefined)
+      recordWorkerOutcomes(workerDispatchResult.results, validated.data.task);
 
     const result = await withProgressHeartbeat('orchestrate', notifier, () =>
       executeOrchestration(validated.data, deps)

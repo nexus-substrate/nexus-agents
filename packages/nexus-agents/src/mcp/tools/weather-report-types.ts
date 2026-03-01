@@ -131,6 +131,15 @@ export interface FailureBreakdownEntry {
   readonly percentage: number;
 }
 
+/** Per-expert-role performance stats from worker dispatch outcomes (Issue #1324). */
+export interface ExpertPerformanceEntry {
+  readonly role: string;
+  readonly totalTasks: number;
+  readonly successRate: number;
+  readonly avgDurationMs: number;
+  readonly dominantErrorPattern?: string;
+}
+
 /** Agent health summary from heartbeat monitor (Issue #1032). */
 export interface AgentHealthSummary {
   readonly activeSessions: number;
@@ -171,6 +180,8 @@ export interface WeatherReportResponse {
   readonly failureBreakdown?: readonly FailureBreakdownEntry[];
   /** Agent health from heartbeat monitor (Issue #1032). */
   readonly agentHealth?: AgentHealthSummary;
+  /** Per-expert-role performance from worker dispatch outcomes (Issue #1324). */
+  readonly expertPerformance?: readonly ExpertPerformanceEntry[];
   readonly explorationRate: number;
   readonly coldStartThreshold: number;
   readonly collectedAt: string;

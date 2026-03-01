@@ -26,6 +26,7 @@ import type {
   RecommendedMapping,
   ToolPerformanceEntry,
   FailureBreakdownEntry,
+  ExpertPerformanceEntry,
 } from './weather-report-types.js';
 import type { RateLimitReport } from './weather-report-types.js';
 import { createDefaultWeatherConfig } from './weather-report-types.js';
@@ -62,6 +63,7 @@ export function generateWeatherReport(
   const toolPerformance = buildToolPerformance();
   const failureBreakdown = buildFailureBreakdown(input);
   const agentHealth = buildAgentHealth();
+  const expertPerformance = buildExpertPerformance();
   const base = {
     overall: {
       totalTasks: summary.totalTasks,
@@ -75,6 +77,7 @@ export function generateWeatherReport(
     ...(toolPerformance.length > 0 ? { toolPerformance } : {}),
     ...(failureBreakdown.length > 0 ? { failureBreakdown } : {}),
     ...(agentHealth !== undefined ? { agentHealth } : {}),
+    ...(expertPerformance.length > 0 ? { expertPerformance } : {}),
     explorationRate: cfg.explorationRate,
     coldStartThreshold: cfg.coldStartThreshold,
     collectedAt: new Date().toISOString(),
@@ -311,6 +314,63 @@ function buildRecommendedMappings(): readonly RecommendedMapping[] {
   }
 
   return mappings;
+}
+
+/** Worker model prefix used by recordWorkerOutcomes (Issue #1323). */
+const WORKER_MODEL_PREFIX = 'worker-';
+
+/** Finds the most common failure category among failed outcomes. */
+function findDominantError(
+  failed: ReadonlyArray<{ failureCategory?: string }>
+): string | undefined {
+  if (failed.length === 0) return undefined;
+  const counts = new Map<string, number>();
+  for (const f of failed) {
+    const cat = f.failureCategory ?? 'unknown';
+    counts.set(cat, (counts.get(cat) ?? 0) + 1);
+  }
+  let maxCount = 0;
+  let dominant: string | undefined;
+  for (const [cat, count] of counts) {
+    if (count > maxCount) {
+      maxCount = count;
+      dominant = cat;
+    }
+  }
+  return dominant;
+}
+
+/** Builds per-expert-role performance from worker dispatch outcomes (Issue #1324). */
+function buildExpertPerformance(): readonly ExpertPerformanceEntry[] {
+  const store = getOutcomeStore();
+  const allOutcomes = store.query();
+  const workerOutcomes = allOutcomes.filter((o) => o.model.startsWith(WORKER_MODEL_PREFIX));
+  if (workerOutcomes.length === 0) return [];
+
+  const byRole = new Map<string, typeof workerOutcomes>();
+  for (const o of workerOutcomes) {
+    const role = o.model.slice(WORKER_MODEL_PREFIX.length);
+    const existing = byRole.get(role) ?? [];
+    existing.push(o);
+    byRole.set(role, existing);
+  }
+
+  const entries: ExpertPerformanceEntry[] = [];
+  for (const [role, outcomes] of byRole) {
+    const successes = outcomes.filter((o) => o.success).length;
+    const totalDuration = outcomes.reduce((s, o) => s + o.durationMs, 0);
+    const dominantErrorPattern = findDominantError(outcomes.filter((o) => !o.success));
+
+    entries.push({
+      role,
+      totalTasks: outcomes.length,
+      successRate: successes / outcomes.length,
+      avgDurationMs: Math.round(totalDuration / outcomes.length),
+      ...(dominantErrorPattern !== undefined ? { dominantErrorPattern } : {}),
+    });
+  }
+
+  return entries.sort((a, b) => b.totalTasks - a.totalTasks);
 }
 
 /** Builds failure breakdown from failed outcomes (Issue #1025). */

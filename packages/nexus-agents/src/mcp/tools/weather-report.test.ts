@@ -230,6 +230,93 @@ describe('getAdaptiveBonus', () => {
   });
 });
 
+describe('expert performance in weather report (Issue #1324)', () => {
+  it('includes expertPerformance when worker outcomes exist', () => {
+    // Seed worker-role outcomes (as produced by recordWorkerOutcomes)
+    getOutcomeStore().append(makeOutcome({ model: 'worker-code', success: true, durationMs: 100 }));
+    getOutcomeStore().append(makeOutcome({ model: 'worker-code', success: true, durationMs: 200 }));
+    getOutcomeStore().append(
+      makeOutcome({
+        model: 'worker-security',
+        success: false,
+        durationMs: 300,
+        failureCategory: 'timeout',
+      })
+    );
+
+    const report = generateWeatherReport({});
+    expect(report.expertPerformance).toBeDefined();
+    expect(report.expertPerformance?.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('computes per-expert success rate and avg duration', () => {
+    getOutcomeStore().append(
+      makeOutcome({ model: 'worker-testing', success: true, durationMs: 100 })
+    );
+    getOutcomeStore().append(
+      makeOutcome({ model: 'worker-testing', success: true, durationMs: 300 })
+    );
+    getOutcomeStore().append(
+      makeOutcome({ model: 'worker-testing', success: false, durationMs: 200 })
+    );
+
+    const report = generateWeatherReport({});
+    const testing = report.expertPerformance?.find((e) => e.role === 'testing');
+    expect(testing).toBeDefined();
+    expect(testing?.totalTasks).toBe(3);
+    expect(testing?.successRate).toBeCloseTo(2 / 3, 2);
+    expect(testing?.avgDurationMs).toBe(200);
+  });
+
+  it('omits expertPerformance when no worker outcomes', () => {
+    seedOutcomes(5, { model: 'orchestrator' }); // Non-worker outcomes
+    const report = generateWeatherReport({});
+    expect(report.expertPerformance).toBeUndefined();
+  });
+
+  it('extracts role name from worker-{role} model name', () => {
+    getOutcomeStore().append(
+      makeOutcome({ model: 'worker-architecture', success: true, durationMs: 500 })
+    );
+
+    const report = generateWeatherReport({});
+    const arch = report.expertPerformance?.find((e) => e.role === 'architecture');
+    expect(arch).toBeDefined();
+    expect(arch?.role).toBe('architecture');
+  });
+
+  it('includes dominant error pattern for failed experts', () => {
+    getOutcomeStore().append(
+      makeOutcome({
+        model: 'worker-security',
+        success: false,
+        failureCategory: 'timeout',
+        durationMs: 100,
+      })
+    );
+    getOutcomeStore().append(
+      makeOutcome({
+        model: 'worker-security',
+        success: false,
+        failureCategory: 'timeout',
+        durationMs: 200,
+      })
+    );
+    getOutcomeStore().append(
+      makeOutcome({
+        model: 'worker-security',
+        success: false,
+        failureCategory: 'rate_limit',
+        durationMs: 300,
+      })
+    );
+
+    const report = generateWeatherReport({});
+    const sec = report.expertPerformance?.find((e) => e.role === 'security');
+    expect(sec?.dominantErrorPattern).toBe('timeout');
+  });
+});
+
 describe('shouldExplore', () => {
   it('returns boolean', () => {
     const result = shouldExplore();

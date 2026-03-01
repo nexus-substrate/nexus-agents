@@ -11,7 +11,7 @@
 
 import type { ILogger } from '../../core/index.js';
 import type { IModelAdapter } from '../../core/index.js';
-import { createLogger } from '../../core/index.js';
+import { createLogger, getErrorMessage } from '../../core/index.js';
 import { resolveV2Config } from '../../pipeline/v2-config.js';
 import type { AgentPlan, AgentPlanEntry } from '../../orchestration/aorchestra/index.js';
 import {
@@ -24,6 +24,13 @@ import { composeWorkerPrompt } from '../../orchestration/aorchestra/compose-work
 import { synthesizeResults } from '../../orchestration/aorchestra/result-synthesizer.js';
 import { getTimeProvider } from '../../core/index.js';
 import type { ContentBlock } from '../../core/types/model.js';
+import { DEFAULT_CLI } from '../../config/model-capabilities-types.js';
+import { detectTaskCategory } from '../../config/task-specialization.js';
+import {
+  getOutcomeStore,
+  categorizeOutcomeErrorMessage,
+} from '../../orchestration/outcomes/index.js';
+import type { OutcomeFailureCategory } from '../../orchestration/outcomes/index.js';
 
 // ============================================================================
 // Constants
@@ -207,6 +214,56 @@ export async function executeWorkerDispatch(
   }
 
   return baseResult;
+}
+
+// ============================================================================
+// Outcome Recording (Issue #1323, Epic #1322)
+// ============================================================================
+
+/** Maps WorkerErrorType to OutcomeFailureCategory. */
+function mapErrorType(errorType: string | undefined, errorMsg: string): OutcomeFailureCategory {
+  if (errorType === 'timeout') return 'timeout';
+  if (errorType === 'model_error') return categorizeOutcomeErrorMessage(errorMsg);
+  if (errorType === 'logic_error') return 'execution';
+  return categorizeOutcomeErrorMessage(errorMsg);
+}
+
+/**
+ * Records per-worker outcomes to OutcomeStore for closed-loop learning.
+ * Best-effort: never throws. Each worker result becomes one OutcomeStore entry.
+ */
+export function recordWorkerOutcomes(
+  results: readonly WorkerResult[],
+  taskDescription: string
+): void {
+  try {
+    const store = getOutcomeStore();
+    const match = detectTaskCategory(taskDescription);
+    const category = match?.category ?? 'exploration';
+    const cli = match?.primaryCli ?? DEFAULT_CLI;
+    const ts = new Date(getTimeProvider().now()).toISOString();
+
+    for (const r of results) {
+      const success = r.status === 'success';
+      const failureCategory = !success ? mapErrorType(r.errorType, r.error ?? '') : undefined;
+
+      store.append({
+        id: `worker-${r.role}-${String(Date.now())}-${Math.random().toString(36).slice(2, 6)}`,
+        cli,
+        category,
+        model: `worker-${r.role}`,
+        success,
+        durationMs: r.durationMs,
+        timestamp: ts,
+        source: 'delegate',
+        ...(failureCategory !== undefined ? { failureCategory } : {}),
+      });
+    }
+  } catch (error: unknown) {
+    logger.debug('Best-effort worker outcome recording failed', {
+      error: getErrorMessage(error),
+    });
+  }
 }
 
 function buildDispatchResult(
