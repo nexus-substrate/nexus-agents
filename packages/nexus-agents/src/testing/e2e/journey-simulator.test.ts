@@ -12,12 +12,13 @@ import {
 import type { UserJourney, JourneyAction } from './types.js';
 
 /** Fast executor that skips real setTimeout delays (perf: saves ~3s).
- *  Preserves 'fail' semantics and 'wait' with duration for timeout tests. */
+ *  Preserves 'fail' semantics and 'wait' with duration for timeout tests.
+ *  Uses 1ms delay to ensure timeToFirstSuccessMs > 0 on fast machines. */
 const fastExecutor: IActionExecutor = {
-  execute: async (action: JourneyAction, index: number) => {
+  execute: async (action: JourneyAction) => {
     if (action.command.includes('fail')) {
       return {
-        index,
+        index: 0,
         succeeded: false,
         durationMs: 0,
         error: `Simulated failure for command: ${action.command}`,
@@ -27,8 +28,11 @@ const fastExecutor: IActionExecutor = {
     if (action.type === 'wait') {
       const duration = typeof action.args?.duration === 'number' ? action.args.duration : 50;
       await new Promise((r) => setTimeout(r, Math.min(duration, 50)));
+    } else {
+      // 1ms delay ensures timeToFirstSuccessMs > 0 on fast machines
+      await new Promise((r) => setTimeout(r, 1));
     }
-    return { index, succeeded: true, durationMs: 1 };
+    return { index: 0, succeeded: true, durationMs: 1 };
   },
 };
 
