@@ -31,5 +31,14 @@ export {
   MAX_PRIOR_CONTEXT_CHARS,
   MAX_CHARS_PER_WORKER,
 } from './cross-wave-context.js';
-export { synthesizeResults, buildSynthesisPrompt } from './result-synthesizer.js';
-export type { SynthesizeResultsInput, SynthesisResult } from './result-synthesizer.js';
+export {
+  synthesizeResults,
+  buildSynthesisPrompt,
+  MAX_SYNTHESIS_INPUT_CHARS,
+  SYNTHESIS_MAX_TOKENS,
+} from './result-synthesizer.js';
+export type {
+  SynthesizeResultsInput,
+  SynthesisResult,
+  SynthesisPromptInput,
+} from './result-synthesizer.js';

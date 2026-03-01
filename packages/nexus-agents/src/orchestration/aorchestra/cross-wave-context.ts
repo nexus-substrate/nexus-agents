@@ -102,9 +102,21 @@ function splitCodeBlocks(input: string): TextSegment[] {
     match = codeBlockRegex.exec(input);
   }
 
-  // Add remaining prose after last code block
+  // Add remaining text after last code block.
+  // Check for unterminated fence — treat everything from the opening ``` as code.
   if (lastIndex < input.length) {
-    segments.push({ text: input.slice(lastIndex), isCode: false });
+    const remainder = input.slice(lastIndex);
+    const unterminatedFenceIdx = remainder.indexOf('```');
+    if (unterminatedFenceIdx >= 0) {
+      // Prose before the unterminated fence
+      if (unterminatedFenceIdx > 0) {
+        segments.push({ text: remainder.slice(0, unterminatedFenceIdx), isCode: false });
+      }
+      // Everything from ``` onward is code (unterminated)
+      segments.push({ text: remainder.slice(unterminatedFenceIdx), isCode: true });
+    } else {
+      segments.push({ text: remainder, isCode: false });
+    }
   }
 
   return segments;

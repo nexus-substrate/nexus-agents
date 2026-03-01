@@ -20,6 +20,16 @@ import { createLogger } from '../../core/index.js';
 const logger = createLogger({ component: 'result-synthesizer' });
 
 // ============================================================================
+// Constants
+// ============================================================================
+
+/** Maximum total characters for all worker outputs fed into synthesis. */
+export const MAX_SYNTHESIS_INPUT_CHARS = 20_000;
+
+/** Maximum tokens for synthesis LLM response. */
+export const SYNTHESIS_MAX_TOKENS = 4000;
+
+// ============================================================================
 // Types
 // ============================================================================
 
@@ -72,14 +82,33 @@ export function buildSynthesisPrompt(input: SynthesisPromptInput): string {
     '',
   ];
 
+  // Budget per worker: divide total evenly, with minimum floor
+  const perWorkerBudget = Math.max(
+    500,
+    Math.floor(MAX_SYNTHESIS_INPUT_CHARS / successResults.length)
+  );
+
   for (const result of successResults) {
     const sanitized = sanitizeWorkerOutput(result.output);
+    const truncated =
+      sanitized.length > perWorkerBudget
+        ? sanitized.slice(0, perWorkerBudget) + ' [truncated]'
+        : sanitized;
     parts.push(`<worker-output role="${result.role}">`);
-    parts.push(sanitized);
+    parts.push(truncated);
     parts.push('</worker-output>');
     parts.push('');
   }
 
+  appendConflictsAndInstructions(parts, conflicts);
+  return parts.join('\n');
+}
+
+/** Append conflict warnings and synthesis instructions to prompt parts. */
+function appendConflictsAndInstructions(
+  parts: string[],
+  conflicts: readonly WorkerConflict[]
+): void {
   if (conflicts.length > 0) {
     parts.push('## Detected Conflicts');
     parts.push('');
@@ -106,8 +135,6 @@ export function buildSynthesisPrompt(input: SynthesisPromptInput): string {
     '4. If workers produced code changes, present them in a unified view with clear attribution.'
   );
   parts.push('5. Keep the response focused and actionable.');
-
-  return parts.join('\n');
 }
 
 // ============================================================================
@@ -135,9 +162,19 @@ function buildFallbackResponse(
     parts.push('');
   }
 
+  const perWorkerBudget = Math.max(
+    500,
+    Math.floor(MAX_SYNTHESIS_INPUT_CHARS / successResults.length)
+  );
+
   for (const result of successResults) {
+    const sanitized = sanitizeWorkerOutput(result.output);
+    const truncated =
+      sanitized.length > perWorkerBudget
+        ? sanitized.slice(0, perWorkerBudget) + ' [truncated]'
+        : sanitized;
     parts.push(`### ${result.role}`);
-    parts.push(sanitizeWorkerOutput(result.output));
+    parts.push(truncated);
     parts.push('');
   }
 
@@ -170,7 +207,7 @@ export async function synthesizeResults(input: SynthesizeResultsInput): Promise<
   try {
     const response = await modelAdapter.complete({
       messages: [{ role: 'user', content: prompt }],
-      maxTokens: 4000,
+      maxTokens: SYNTHESIS_MAX_TOKENS,
     });
 
     if (!response.ok) {

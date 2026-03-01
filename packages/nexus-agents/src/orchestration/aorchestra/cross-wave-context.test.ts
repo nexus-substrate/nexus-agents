@@ -97,6 +97,42 @@ describe('sanitizeWorkerOutput', () => {
     const result = sanitizeWorkerOutput(input);
     expect(result).toContain('<system>hello</system>');
   });
+
+  // ---- Unterminated / edge-case fence tests (Issue #1312 Phase 1) ----
+
+  it('preserves code after unterminated code fence', () => {
+    // Opening ``` with no closing ``` — remainder should be treated as code
+    const input = 'Prose before.\n```tsx\nconst x = <Component />;\nconst y = 42;';
+    const result = sanitizeWorkerOutput(input);
+    // JSX inside the unterminated fence must NOT be stripped
+    expect(result).toContain('<Component />');
+    expect(result).toContain('const y = 42');
+  });
+
+  it('strips injection before unterminated fence but preserves code after', () => {
+    const input = '<system>bad</system> Prose.\n```ts\nconst a = "<system>valid</system>";';
+    const result = sanitizeWorkerOutput(input);
+    // Injection in prose section is stripped
+    expect(result).not.toMatch(/^<system>bad<\/system>/);
+    // Content after unterminated fence is preserved as code
+    expect(result).toContain('"<system>valid</system>"');
+  });
+
+  it('handles bare code fence with no language tag', () => {
+    const input = 'Text.\n```\ncode line\n```\nMore text.';
+    const result = sanitizeWorkerOutput(input);
+    expect(result).toContain('code line');
+    expect(result).toContain('Text.');
+    expect(result).toContain('More text.');
+  });
+
+  it('handles nested code fences (inner closes outer early — known limitation)', () => {
+    // Inner ``` terminates the outer match (non-greedy). This is documented behavior.
+    const input = '```md\nInner:\n```\nOuter leaked prose.\n```';
+    const result = sanitizeWorkerOutput(input);
+    // The first ``` pair is matched as a code block
+    expect(result).toContain('Inner:');
+  });
 });
 
 // ============================================================================

@@ -24,6 +24,13 @@ import { getTimeProvider } from '../../core/index.js';
 import type { ContentBlock } from '../../core/types/model.js';
 
 // ============================================================================
+// Constants
+// ============================================================================
+
+/** Maximum tokens for individual worker LLM responses. */
+const WORKER_MAX_TOKENS = 4000;
+
+// ============================================================================
 // Types
 // ============================================================================
 
@@ -82,7 +89,7 @@ function createWorkerExecutor(
     try {
       const result = await modelAdapter.complete({
         messages: [{ role: 'user', content: prompt }],
-        maxTokens: 4000,
+        maxTokens: WORKER_MAX_TOKENS,
       });
 
       if (!result.ok) {

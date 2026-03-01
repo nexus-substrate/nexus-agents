@@ -9,7 +9,11 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { synthesizeResults, buildSynthesisPrompt } from './result-synthesizer.js';
+import {
+  synthesizeResults,
+  buildSynthesisPrompt,
+  MAX_SYNTHESIS_INPUT_CHARS,
+} from './result-synthesizer.js';
 import type { WorkerResult } from './worker-dispatcher.js';
 import type { WorkerConflict } from './conflict-detector.js';
 import type { IModelAdapter } from '../../core/index.js';
@@ -122,6 +126,17 @@ describe('buildSynthesisPrompt', () => {
     expect(prompt).toContain('code');
     // Error result role should not have an output section
     expect(prompt).not.toContain('timeout');
+  });
+
+  it('truncates individual worker outputs exceeding budget', () => {
+    const longOutput = 'y'.repeat(MAX_SYNTHESIS_INPUT_CHARS + 1000);
+    const prompt = buildSynthesisPrompt({
+      results: [makeResult('code', longOutput)],
+      conflicts: [],
+      taskDescription: 'Task',
+    });
+    expect(prompt.length).toBeLessThan(MAX_SYNTHESIS_INPUT_CHARS + 2000);
+    expect(prompt).toContain('[truncated]');
   });
 
   it('uses XML-delimited sections for worker outputs', () => {
@@ -247,6 +262,35 @@ describe('synthesizeResults', () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.value).toBe('');
+    }
+  });
+
+  it('truncates synthesis prompt when worker outputs exceed MAX_SYNTHESIS_INPUT_CHARS', () => {
+    const longOutput = 'x'.repeat(MAX_SYNTHESIS_INPUT_CHARS + 5000);
+    // Verify via buildSynthesisPrompt directly — cleaner than inspecting mock calls
+    const prompt = buildSynthesisPrompt({
+      results: [makeResult('code', longOutput)],
+      conflicts: [],
+      taskDescription: 'Task',
+    });
+    expect(prompt.length).toBeLessThan(MAX_SYNTHESIS_INPUT_CHARS + 2000);
+    expect(prompt).toContain('[truncated]');
+  });
+
+  it('truncates individual worker in fallback when output is very long', async () => {
+    const longOutput = 'x'.repeat(MAX_SYNTHESIS_INPUT_CHARS + 5000);
+    const adapter = makeFailingAdapter('timeout');
+    const result = await synthesizeResults({
+      results: [makeResult('code', longOutput)],
+      conflicts: [],
+      taskDescription: 'Task',
+      modelAdapter: adapter,
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.length).toBeLessThan(MAX_SYNTHESIS_INPUT_CHARS + 2000);
+      expect(result.value).toContain('[truncated]');
     }
   });
 
