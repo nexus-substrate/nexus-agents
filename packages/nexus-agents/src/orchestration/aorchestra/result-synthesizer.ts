@@ -79,6 +79,9 @@ export function buildSynthesisPrompt(input: SynthesisPromptInput): string {
   const { results, conflicts, taskDescription } = input;
   const successResults = results.filter((r) => r.status === 'success' && r.output !== '');
 
+  // Guard: no successful outputs → nothing to synthesize (Issue #1327)
+  if (successResults.length === 0) return '';
+
   const parts: string[] = [
     'You are a synthesis agent. Your job is to merge the outputs from multiple specialist workers into a single coherent response.',
     '',

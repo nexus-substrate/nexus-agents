@@ -13,6 +13,7 @@ import type { AgentPlanEntry } from './agent-planner.js';
 import { MAX_WORKERS_PER_WAVE } from './agent-planner.js';
 import { createLogger } from '../../core/index.js';
 import { resolveWorkerTimeout, WORKER_TIMEOUTS } from '../../config/timeouts.js';
+import { isRateLimitError } from '../../cli/voter-execution.js';
 
 const logger = createLogger({ component: 'worker-dispatcher' });
 
@@ -21,6 +22,9 @@ const logger = createLogger({ component: 'worker-dispatcher' });
  * Supports NEXUS_WORKER_TIMEOUT_MS env override.
  */
 export const WORKER_TIMEOUT_MS = WORKER_TIMEOUTS.defaultMs;
+
+/** Delay before next wave when rate-limit errors are detected (Issue #1328). */
+export const RATE_LIMIT_WAVE_DELAY_MS = 5_000;
 
 // ============================================================================
 // Types
@@ -170,11 +174,25 @@ export async function dispatchWorkers(
     const waveResults = await executeWithConcurrencyLimit(tasks, maxConcurrency);
     allResults.push(...waveResults);
 
+    const errorCount = waveResults.filter((r) => r.status === 'error').length;
     logger.info('Wave complete', {
       wave: waveIdx + 1,
       successes: waveResults.filter((r) => r.status === 'success').length,
-      errors: waveResults.filter((r) => r.status === 'error').length,
+      errors: errorCount,
     });
+
+    // Rate-limit back-pressure: delay before next wave if rate-limited (Issue #1328)
+    if (errorCount > 0 && waveIdx < waves.length - 1) {
+      const hasRateLimit = waveResults.some(
+        (r) => r.status === 'error' && r.error !== undefined && isRateLimitError(r.error)
+      );
+      if (hasRateLimit) {
+        logger.warn('Rate-limit detected — delaying next wave', {
+          delayMs: RATE_LIMIT_WAVE_DELAY_MS,
+        });
+        await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT_WAVE_DELAY_MS));
+      }
+    }
   }
 
   return allResults;

@@ -148,6 +148,32 @@ describe('buildSynthesisPrompt', () => {
     expect(prompt).toContain('<worker-output');
     expect(prompt).toContain('</worker-output>');
   });
+
+  it('returns empty string when all results are failures (Issue #1327)', () => {
+    const errorResult: WorkerResult = {
+      role: 'code',
+      subTask: 'Implement',
+      output: '',
+      status: 'error',
+      durationMs: 0,
+      error: 'timeout',
+    };
+    const prompt = buildSynthesisPrompt({
+      results: [errorResult],
+      conflicts: [],
+      taskDescription: 'Task',
+    });
+    expect(prompt).toBe('');
+  });
+
+  it('returns empty string when results array is empty (Issue #1327)', () => {
+    const prompt = buildSynthesisPrompt({
+      results: [],
+      conflicts: [],
+      taskDescription: 'Task',
+    });
+    expect(prompt).toBe('');
+  });
 });
 
 // ============================================================================

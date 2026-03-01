@@ -10,6 +10,7 @@ import {
   dispatchWorkers,
   groupByWave,
   WORKER_TIMEOUT_MS,
+  RATE_LIMIT_WAVE_DELAY_MS,
   type WorkerDispatchOptions,
   type WorkerResult,
 } from './worker-dispatcher.js';
@@ -317,5 +318,48 @@ describe('dispatchWorkers', () => {
     expect(result?.durationMs).toBeGreaterThanOrEqual(0);
     // For a 30ms delay, it should be at least a few ms (not exactly 0)
     expect(result?.durationMs).toBeGreaterThan(0);
+  });
+
+  // ---- Rate-limit back-pressure (Issue #1328) ----
+
+  it('delays between waves when rate-limit errors are detected', async () => {
+    vi.useFakeTimers();
+    let callCount = 0;
+    const rateLimitThenSucceed: WorkerDispatchOptions['executeWorker'] = vi
+      .fn()
+      .mockImplementation((entry: AgentPlanEntry): Promise<WorkerResult> => {
+        callCount++;
+        if (entry.wave === 1) {
+          return Promise.reject(new Error('Rate limited: too many requests'));
+        }
+        return Promise.resolve({
+          role: entry.role,
+          subTask: entry.subTask,
+          output: 'done',
+          status: 'success' as const,
+          durationMs: 50,
+        });
+      });
+
+    const entries = [makeEntry('code', 1, 1), makeEntry('testing', 2, 2)];
+
+    const dispatchPromise = dispatchWorkers(entries, {
+      executeWorker: rateLimitThenSucceed,
+    });
+
+    // Advance past the rate-limit delay
+    await vi.advanceTimersByTimeAsync(RATE_LIMIT_WAVE_DELAY_MS + 100);
+    const results = await dispatchPromise;
+
+    expect(results).toHaveLength(2);
+    expect(results[0]?.status).toBe('error');
+    expect(results[1]?.status).toBe('success');
+    expect(callCount).toBe(2);
+
+    vi.useRealTimers();
+  });
+
+  it('exports RATE_LIMIT_WAVE_DELAY_MS constant', () => {
+    expect(RATE_LIMIT_WAVE_DELAY_MS).toBe(5_000);
   });
 });
