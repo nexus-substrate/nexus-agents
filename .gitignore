@@ -63,3 +63,6 @@ opencode.json
 repomix-output.xml
 report.html
 predictions.jsonl
+
+# Runtime outputs (execution traces, delegation logs)
+runs/

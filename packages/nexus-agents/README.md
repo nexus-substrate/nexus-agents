@@ -4,7 +4,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D22.0.0-brightgreen)](https://nodejs.org)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.8+-blue)](https://www.typescriptlang.org)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.9+-blue)](https://www.typescriptlang.org)
 [![MCP Protocol](https://img.shields.io/badge/MCP-2025--11--25-purple)](https://modelcontextprotocol.io)
 [![npm version](https://img.shields.io/npm/v/nexus-agents)](https://www.npmjs.com/package/nexus-agents)
 
@@ -12,14 +12,17 @@
 
 ## Overview
 
-Nexus Agents is an MCP (Model Context Protocol) server that coordinates multiple AI experts to handle software development tasks. It provides a unified interface for different AI models and enables multi-agent collaboration through a Tech Lead and specialized experts.
+Nexus Agents is an MCP (Model Context Protocol) server that coordinates multiple AI experts to handle software development tasks. It provides a unified interface for different AI models and enables multi-agent collaboration through an Orchestrator and 10 specialized experts.
 
 ### Key Capabilities
 
-- **Multi-Agent Orchestration** - Tech Lead coordinates specialized experts for complex tasks
-- **Model Diversity** - Support for Claude, OpenAI, Gemini, and Ollama
-- **Workflow Automation** - YAML-based templates for repeatable processes
-- **Security-First Design** - Defense in depth with secrets vault and input validation
+- **Multi-Agent Orchestration** - Orchestrator coordinates 10 specialized experts for complex tasks
+- **Model Diversity** - Support for Claude, Gemini, Codex, and OpenCode (with custom OpenAI-compatible endpoints)
+- **Workflow Automation** - 11 YAML-based templates for repeatable processes
+- **Consensus Voting** - Multi-agent voting with higher-order Bayesian aggregation
+- **Memory System** - 5 typed backends (session, belief, agentic, adaptive, typed)
+- **24 MCP Tools** - Full integration with Claude Code, Claude Desktop, and other MCP clients
+- **Security-First Design** - Defense in depth with input validation and untrusted input hardening
 
 ---
 
@@ -50,29 +53,23 @@ npx nexus-agents
 ### Programmatic Usage
 
 ```typescript
-import {
-  createServer,
-  startStdioServer,
-  TechLead,
-  createClaudeAdapter,
-  ExpertFactory,
-} from 'nexus-agents';
+import { startStdioServer, ExpertFactory, createClaudeAdapter } from 'nexus-agents';
 
-// Start MCP server
+// Start MCP server (recommended — used by Claude Code, Claude Desktop, etc.)
 const result = await startStdioServer({
   name: 'my-server',
   version: '1.0.0',
 });
 
-// Or use programmatically
+// Or use programmatically with model adapters
 const adapter = createClaudeAdapter({
   model: 'claude-sonnet-4-20250514',
 });
-const techLead = new TechLead({ adapter });
 
 // Create experts dynamically
 const factory = new ExpertFactory(adapter);
 const codeExpert = factory.create({ type: 'code' });
+const securityExpert = factory.create({ type: 'security' });
 ```
 
 ### Claude Desktop Integration
@@ -99,34 +96,35 @@ Add to your Claude Desktop configuration (`~/Library/Application Support/Claude/
 
 ### Multi-Agent Orchestration
 
-The Tech Lead agent analyzes incoming tasks and delegates to specialized experts:
+The Orchestrator agent analyzes incoming tasks and delegates to specialized experts:
 
-| Expert                   | Specialization                                         |
-| ------------------------ | ------------------------------------------------------ |
-| **Code Expert**          | Implementation, debugging, optimization, refactoring   |
-| **Architecture Expert**  | System design, patterns, trade-offs, scalability       |
-| **Security Expert**      | Vulnerability analysis, secure coding, threat modeling |
-| **Documentation Expert** | Technical writing, API docs, code comments             |
-| **Testing Expert**       | Test strategies, coverage analysis, test generation    |
+| Expert                    | Specialization                                         |
+| ------------------------- | ------------------------------------------------------ |
+| **Code Expert**           | Implementation, debugging, optimization, refactoring   |
+| **Architecture Expert**   | System design, patterns, trade-offs, scalability       |
+| **Security Expert**       | Vulnerability analysis, secure coding, threat modeling |
+| **Documentation Expert**  | Technical writing, API docs, code comments             |
+| **Testing Expert**        | Test strategies, coverage analysis, test generation    |
+| **DevOps Expert**         | CI/CD, deployment, containerization                    |
+| **Research Expert**       | Literature review, state-of-the-art analysis           |
+| **PM Expert**             | Product management, requirements, priorities           |
+| **UX Expert**             | User experience, usability, accessibility              |
+| **Infrastructure Expert** | Server management, bare metal, networking              |
 
-Experts can collaborate on complex tasks. The Tech Lead combines their outputs into a single response.
+Experts can collaborate on complex tasks. The Orchestrator combines their outputs into a single response.
 
 ### Model Adapters
 
 Use different AI models through unified interfaces:
 
-| Provider   | Models                  | Best For                   |
-| ---------- | ----------------------- | -------------------------- |
-| **Claude** | Haiku, Sonnet, Opus     | General coding, analysis   |
-| **OpenAI** | GPT-4o, GPT-4o-mini, o1 | Reasoning, code generation |
-| **Gemini** | Pro, Ultra              | Long context, multimodal   |
-| **Ollama** | Llama, CodeLlama, etc.  | Local inference, privacy   |
+| Provider     | CLI      | Best For                           |
+| ------------ | -------- | ---------------------------------- |
+| **Claude**   | claude   | Complex reasoning, analysis        |
+| **Gemini**   | gemini   | Long context, multimodal           |
+| **Codex**    | codex    | Code generation, reasoning         |
+| **OpenCode** | opencode | Custom OpenAI-compatible endpoints |
 
-Model selection uses semantic classification with tier escalation:
-
-```
-Fast (quick queries) -> Balanced (most tasks) -> Powerful (complex reasoning)
-```
+Model selection uses composite routing: Budget → Zero-cost → Preference → TOPSIS → LinUCB bandit.
 
 ### Workflow Engine
 
@@ -156,13 +154,23 @@ steps:
 
 ### MCP Tools
 
-The server exposes these MCP tools for integration:
+The server exposes 24 MCP tools for integration. Key tools include:
 
-| Tool            | Description                                  |
-| --------------- | -------------------------------------------- |
-| `orchestrate`   | Analyze task and coordinate expert execution |
-| `create_expert` | Dynamically create a specialized expert      |
-| `run_workflow`  | Execute a predefined workflow template       |
+| Tool                 | Description                                    |
+| -------------------- | ---------------------------------------------- |
+| `orchestrate`        | Analyze task and coordinate expert execution   |
+| `create_expert`      | Create a specialized expert agent              |
+| `execute_expert`     | Execute a task using a created expert          |
+| `run_workflow`       | Execute a workflow template                    |
+| `delegate_to_model`  | Route task to optimal model                    |
+| `consensus_vote`     | Multi-model consensus voting on proposals      |
+| `research_discover`  | Discover papers/repos from external sources    |
+| `memory_query`       | Query across all memory backends               |
+| `issue_triage`       | Triage GitHub issues with trust classification |
+| `repo_analyze`       | Analyze GitHub repository structure            |
+| `repo_security_plan` | Generate security scanning pipeline for a repo |
+
+See the root [README](../../README.md) for the complete list of all 24 tools.
 
 ---
 
@@ -174,14 +182,18 @@ nexus-agents/
 │   └── nexus-agents/         # Main package
 │       ├── src/
 │       │   ├── core/         # Shared types, Result<T,E>, errors, logger
-│       │   ├── config/       # Configuration loading and validation
+│       │   ├── config/       # Configuration, model registry, timeouts
 │       │   ├── adapters/     # Model adapters (Claude, OpenAI, Gemini, Ollama)
-│       │   ├── agents/       # Agent framework (TechLead, Experts)
-│       │   ├── workflows/    # Workflow engine and templates
-│       │   ├── mcp/          # MCP server and tool definitions
-│       │   ├── cli-adapters/ # External CLI integration (Claude/Gemini/Codex CLIs)
-│       │   ├── context/      # Token counting, work balancing, memory
-│       │   ├── consensus/    # Multi-agent voting and decisions
+│       │   ├── agents/       # Agent framework (Orchestrator, Experts)
+│       │   ├── workflows/    # Workflow engine and 11 YAML templates
+│       │   ├── mcp/          # MCP server and 24 tool definitions
+│       │   ├── cli-adapters/ # External CLI integration (Claude/Gemini/Codex/OpenCode)
+│       │   ├── context/      # Token counting, work balancing
+│       │   ├── consensus/    # Multi-agent voting with higher-order aggregation
+│       │   ├── memory/       # 5 typed memory backends (session, belief, agentic, adaptive, typed)
+│       │   ├── security/     # Input sanitization, trust classification, policy gate
+│       │   ├── orchestration/# Graph workflows, AOrchestra, worker dispatch
+│       │   ├── pipeline/     # Task contracts, plugin registry, event bus
 │       │   ├── index.ts      # Main exports
 │       │   └── cli.ts        # CLI entry point
 │       └── package.json
@@ -191,18 +203,18 @@ nexus-agents/
 └── pnpm-workspace.yaml
 ```
 
-See [ARCHITECTURE.md](../../ARCHITECTURE.md) for detailed module descriptions.
+See [docs/architecture/README.md](../../docs/architecture/README.md) for detailed module descriptions.
 
 ### Dependency Flow
 
 ```
-MCP Server (external boundary)
+MCP Server (external boundary, 24 tools)
     ↓
-Workflow Engine (orchestrates execution)
+Orchestration Layer (workflows, graph execution, worker dispatch)
     ↓
-Agents Layer (TechLead, Experts)
+Agents Layer (Orchestrator, 10 Expert types)
     ↓
-Adapters Layer (Claude, OpenAI, Gemini, Ollama)
+Adapters Layer (Claude, Gemini, Codex, OpenCode CLIs)
     ↓
 Core Layer (Types, Result<T,E>, Errors, Logger)
 ```
@@ -278,15 +290,13 @@ const adapter = factory.create({ provider: 'anthropic', model: 'claude-sonnet-4-
 ### Agents
 
 ```typescript
-import { TechLead, ExpertFactory, Expert } from 'nexus-agents';
+import { ExpertFactory } from 'nexus-agents';
 
-// Create TechLead for orchestration
-const techLead = new TechLead({ adapter });
-
-// Create experts
+// Create experts for specific domains
 const factory = new ExpertFactory(adapter);
 const codeExpert = factory.create({ type: 'code' });
 const securityExpert = factory.create({ type: 'security' });
+const infraExpert = factory.create({ type: 'infrastructure' });
 ```
 
 ### MCP Server
@@ -314,7 +324,7 @@ if (result.ok) {
 
 - Node.js 22.x LTS
 - pnpm 9.x
-- TypeScript 5.8+
+- TypeScript 5.9+
 
 ### Setup
 
@@ -394,10 +404,6 @@ chore(scope): maintenance tasks
 MIT - See [LICENSE](../../LICENSE) for details.
 
 ---
-
-## Acknowledgments
-
-This project is a clean-room rewrite inspired by [claude-team-mcp](https://github.com/original/claude-team-mcp), with attribution preserved per MIT license.
 
 ---
 
