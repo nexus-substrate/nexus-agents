@@ -2400,3 +2400,22 @@ papers:
     techniques_extracted: []
     related_issues: []
     implementation_status: not-started
+  arxiv-2602.20478:
+    title: 'Codified Context: Infrastructure for AI Agents in a Complex Codebase'
+    authors: []
+    source: arxiv
+    arxiv_id: '2602.20478'
+    url: https://arxiv.org/abs/2602.20478
+    publication_date: 2026-02
+    venue: null
+    topics:
+      - multi-agent-worker-dispatch
+    tags: []
+    reviewed_date: 2026-03-01
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started

@@ -29,3 +29,20 @@ export const TESTING_KNOWLEDGE_MODULES: readonly KnowledgeModule[] = [
   E2E_TESTING_PATTERNS,
   PERFORMANCE_TESTING_PATTERNS,
 ];
+
+/**
+ * Build a formatted knowledge prompt for testing expert prompt injection.
+ *
+ * @returns Formatted string with testing domain knowledge
+ */
+export function getTestingKnowledgePrompt(): string {
+  const sections = TESTING_KNOWLEDGE_MODULES.flatMap((module) => module.sections)
+    .sort((a, b) => b.priority - a.priority)
+    .slice(0, 8);
+
+  const formatted = sections
+    .map((section) => `### ${section.title}\n${section.content}`)
+    .join('\n\n');
+
+  return `## Testing Domain Knowledge\n\n${formatted}`;
+}

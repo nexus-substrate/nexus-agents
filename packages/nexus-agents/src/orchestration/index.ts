@@ -239,8 +239,18 @@ export type {
 } from './consensus-plan-types.js';
 
 // AOrchestra — Dynamic Sub-Agent Creation (Issue #699)
-export { planAgentTeam } from './aorchestra/index.js';
-export type { AgentPlan, AgentPlanEntry } from './aorchestra/index.js';
+export {
+  planAgentTeam,
+  MAX_WORKERS_PER_WAVE,
+  dispatchWorkers,
+  groupByWave,
+} from './aorchestra/index.js';
+export type {
+  AgentPlan,
+  AgentPlanEntry,
+  WorkerResult,
+  WorkerDispatchOptions,
+} from './aorchestra/index.js';
 
 // Checkpointing (Issue #833)
 export {

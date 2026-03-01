@@ -18,3 +18,20 @@ export { DIATAXIS_MODULE } from './diataxis.js';
  * Includes the Diataxis framework for documentation structure and patterns.
  */
 export const DOCUMENTATION_KNOWLEDGE_MODULES: readonly KnowledgeModule[] = [DIATAXIS_MODULE];
+
+/**
+ * Build a formatted knowledge prompt for documentation expert prompt injection.
+ *
+ * @returns Formatted string with documentation domain knowledge
+ */
+export function getDocumentationKnowledgePrompt(): string {
+  const sections = DOCUMENTATION_KNOWLEDGE_MODULES.flatMap((module) => module.sections)
+    .sort((a, b) => b.priority - a.priority)
+    .slice(0, 8);
+
+  const formatted = sections
+    .map((section) => `### ${section.title}\n${section.content}`)
+    .join('\n\n');
+
+  return `## Documentation Domain Knowledge\n\n${formatted}`;
+}

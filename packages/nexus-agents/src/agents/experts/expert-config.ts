@@ -14,6 +14,12 @@ import {
   buildSecurityPrompt,
   buildDevOpsPrompt,
   buildResearchPrompt,
+  buildCodePrompt,
+  buildTestingPrompt,
+  buildDocumentationPrompt,
+  buildPmPrompt,
+  buildUxPrompt,
+  buildInfrastructurePrompt,
 } from './enriched-prompts.js';
 import { PM_EXPERT_BASE_PROMPT } from './expert-prompts/pm-expert.js';
 import { UX_EXPERT_BASE_PROMPT } from './expert-prompts/ux-expert.js';
@@ -147,7 +153,8 @@ export const BUILT_IN_EXPERTS: Readonly<Record<BuiltInExpertType, ExpertConfig>>
     id: 'code-expert',
     name: 'Code Expert',
     role: 'code_expert',
-    systemPrompt: `You are a senior software engineer specialized in writing clean, maintainable, and efficient code.
+    systemPrompt:
+      buildCodePrompt(`You are a senior software engineer specialized in writing clean, maintainable, and efficient code.
 
 ## Core Responsibilities
 1. Write production-quality code that meets requirements
@@ -175,7 +182,7 @@ When providing code:
 1. Include necessary imports
 2. Add JSDoc comments for public APIs
 3. Handle edge cases explicitly
-4. Provide brief explanation of key decisions`,
+4. Provide brief explanation of key decisions`),
     capabilities: ['task_execution', 'code_generation', 'code_review', 'tool_use', 'collaboration'],
     modelPreference: {
       temperature: 0.2,
@@ -287,7 +294,8 @@ When providing security guidance:
     id: 'documentation-expert',
     name: 'Documentation Expert',
     role: 'documentation_expert',
-    systemPrompt: `You are a technical writer specialized in creating clear, comprehensive documentation.
+    systemPrompt:
+      buildDocumentationPrompt(`You are a technical writer specialized in creating clear, comprehensive documentation.
 
 Write like a technically precise, experienced engineer who respects the reader's intelligence. Be direct, honest, and clear. No marketing fluff, no exaggeration, no hand-waving.
 
@@ -317,7 +325,7 @@ When providing documentation:
 2. Include code examples where helpful
 3. Add cross-references to related docs
 4. Note any prerequisites or assumptions
-5. Test that examples actually work`,
+5. Test that examples actually work`),
     capabilities: ['task_execution', 'research', 'tool_use'],
     modelPreference: {
       temperature: 0.4,
@@ -328,7 +336,8 @@ When providing documentation:
     id: 'testing-expert',
     name: 'Testing Expert',
     role: 'testing_expert',
-    systemPrompt: `You are a QA engineer specialized in testing strategies and test implementation.
+    systemPrompt:
+      buildTestingPrompt(`You are a QA engineer specialized in testing strategies and test implementation.
 
 ## Core Responsibilities
 1. Design comprehensive test strategies
@@ -359,7 +368,7 @@ When providing tests:
 1. Include arrange/act/assert structure
 2. Use descriptive test names
 3. Cover happy path and error cases
-4. Note any test fixtures or setup needed`,
+4. Note any test fixtures or setup needed`),
     capabilities: ['task_execution', 'code_generation', 'code_review', 'tool_use'],
     modelPreference: {
       temperature: 0.2,
@@ -458,7 +467,7 @@ When providing research analysis:
     id: 'pm-expert',
     name: 'Product Manager Expert',
     role: 'pm_expert',
-    systemPrompt: PM_EXPERT_BASE_PROMPT,
+    systemPrompt: buildPmPrompt(PM_EXPERT_BASE_PROMPT),
     capabilities: ['task_execution', 'collaboration', 'research'],
     modelPreference: {
       temperature: 0.4,
@@ -469,7 +478,7 @@ When providing research analysis:
     id: 'ux-expert',
     name: 'UX Designer Expert',
     role: 'ux_expert',
-    systemPrompt: UX_EXPERT_BASE_PROMPT,
+    systemPrompt: buildUxPrompt(UX_EXPERT_BASE_PROMPT),
     capabilities: ['task_execution', 'collaboration', 'research'],
     modelPreference: {
       temperature: 0.4,
@@ -480,7 +489,7 @@ When providing research analysis:
     id: 'infrastructure-expert',
     name: 'Infrastructure Expert',
     role: 'infrastructure_expert',
-    systemPrompt: INFRASTRUCTURE_EXPERT_BASE_PROMPT,
+    systemPrompt: buildInfrastructurePrompt(INFRASTRUCTURE_EXPERT_BASE_PROMPT),
     capabilities: ['task_execution', 'code_generation', 'tool_use', 'collaboration'],
     modelPreference: {
       temperature: 0.2,

@@ -27,3 +27,20 @@ export const CODE_KNOWLEDGE_MODULES: readonly KnowledgeModule[] = [
   PYTHON_PATTERNS,
   CICD_PATTERNS,
 ];
+
+/**
+ * Build a formatted knowledge prompt for code expert prompt injection.
+ *
+ * @returns Formatted string with code domain knowledge
+ */
+export function getCodeKnowledgePrompt(): string {
+  const sections = CODE_KNOWLEDGE_MODULES.flatMap((module) => module.sections)
+    .sort((a, b) => b.priority - a.priority)
+    .slice(0, 8);
+
+  const formatted = sections
+    .map((section) => `### ${section.title}\n${section.content}`)
+    .join('\n\n');
+
+  return `## Code Domain Knowledge\n\n${formatted}`;
+}

@@ -32,6 +32,8 @@ export interface AgentPlanEntry {
   readonly priority: number;
   /** Why this expert was selected */
   readonly reasoning: string;
+  /** Wave group for parallel execution (1-based, lower = earlier) */
+  readonly wave: number;
 }
 
 /**
@@ -56,6 +58,9 @@ export interface AgentPlan {
 
 /** Maximum experts per plan (policy constraint) */
 const MAX_EXPERTS = 5;
+
+/** Maximum workers per wave (matching CLAUDE.md subagent guidance) */
+export const MAX_WORKERS_PER_WAVE = 3;
 
 /**
  * Primary experts for each task type category.
@@ -166,11 +171,13 @@ function createEntry(
   priority: number
 ): AgentPlanEntry {
   const truncated = taskDescription.slice(0, 200);
+  const wave = Math.ceil(priority / MAX_WORKERS_PER_WAVE);
   return {
     role,
     subTask: SUBTASK_TEMPLATES[role].replace('{task}', truncated),
     priority,
     reasoning: `Selected for ${role} expertise`,
+    wave,
   };
 }
 

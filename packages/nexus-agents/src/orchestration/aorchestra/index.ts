@@ -8,5 +8,7 @@
  * @module orchestration/aorchestra
  */
 
-export { planAgentTeam } from './agent-planner.js';
+export { planAgentTeam, MAX_WORKERS_PER_WAVE } from './agent-planner.js';
 export type { AgentPlan, AgentPlanEntry } from './agent-planner.js';
+export { dispatchWorkers, groupByWave } from './worker-dispatcher.js';
+export type { WorkerResult, WorkerDispatchOptions } from './worker-dispatcher.js';
