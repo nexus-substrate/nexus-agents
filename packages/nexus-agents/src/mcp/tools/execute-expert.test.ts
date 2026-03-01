@@ -177,6 +177,45 @@ describe('ExecuteExpertInputSchema', () => {
       expect(result.success).toBe(true);
     });
   });
+
+  describe('timeoutMs validation (Issue #1330)', () => {
+    it('should accept timeout at floor (120s)', () => {
+      const input = { expertId: 'test-id', task: 'Review code', timeoutMs: 120_000 };
+      const result = ExecuteExpertInputSchema.safeParse(input);
+
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.data.timeoutMs).toBe(120_000);
+    });
+
+    it('should reject timeout below floor (30s)', () => {
+      const input = { expertId: 'test-id', task: 'Review code', timeoutMs: 30_000 };
+      const result = ExecuteExpertInputSchema.safeParse(input);
+
+      expect(result.success).toBe(false);
+    });
+
+    it('should accept timeout at max (900s)', () => {
+      const input = { expertId: 'test-id', task: 'Review code', timeoutMs: 900_000 };
+      const result = ExecuteExpertInputSchema.safeParse(input);
+
+      expect(result.success).toBe(true);
+    });
+
+    it('should reject timeout above max', () => {
+      const input = { expertId: 'test-id', task: 'Review code', timeoutMs: 900_001 };
+      const result = ExecuteExpertInputSchema.safeParse(input);
+
+      expect(result.success).toBe(false);
+    });
+
+    it('should allow missing timeout (optional)', () => {
+      const input = { expertId: 'test-id', task: 'Review code' };
+      const result = ExecuteExpertInputSchema.safeParse(input);
+
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.data.timeoutMs).toBeUndefined();
+    });
+  });
 });
 
 describe('Expert registry lookup', () => {

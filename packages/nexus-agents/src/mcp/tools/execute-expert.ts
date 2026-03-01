@@ -45,6 +45,9 @@ import { getExpertPool } from '../../agents/expert-pool.js';
 import { getHeartbeatMonitor } from '../../agents/heartbeat-monitor.js';
 import { clampTaskTtl, DEFAULT_TASK_TTL_MS } from '../task-store.js';
 
+/** Minimum effective timeout for expert tasks — LLM inference takes 20-90s minimum. (#1163, #1330) */
+export const EXPERT_TIMEOUT_FLOOR_MS = 120_000;
+
 /**
  * Input schema for execute_expert tool.
  */
@@ -55,10 +58,10 @@ export const ExecuteExpertInputSchema = z.object({
   timeoutMs: z
     .number()
     .int()
-    .min(30_000)
+    .min(EXPERT_TIMEOUT_FLOOR_MS)
     .max(900_000)
     .optional()
-    .describe('Optional timeout in ms (30s-900s). Overrides auto-detected timeout.'),
+    .describe('Optional timeout in ms (120s-900s). Overrides auto-detected timeout.'),
 });
 
 /**
@@ -108,21 +111,11 @@ export interface ExecuteExpertResponse {
 
 /**
  * Builds a task object from the tool input.
+ * Zod schema enforces timeoutMs >= EXPERT_TIMEOUT_FLOOR_MS, so no runtime floor needed (#1330).
  */
-/** Minimum effective timeout for expert tasks — LLM inference takes 20-90s minimum. (#1163) */
-const EXPERT_TIMEOUT_FLOOR_MS = 120_000;
-
 function buildTask(input: ExecuteExpertInput): Task {
   const autoTimeout = getExpertTaskTimeout(input.task);
-  let timeoutMs = input.timeoutMs ?? autoTimeout;
-  if (input.timeoutMs !== undefined && input.timeoutMs < EXPERT_TIMEOUT_FLOOR_MS) {
-    createLogger({ tool: 'execute_expert' }).warn('User timeoutMs below floor, raising', {
-      requested: input.timeoutMs,
-      floor: EXPERT_TIMEOUT_FLOOR_MS,
-      autoDetected: autoTimeout,
-    });
-    timeoutMs = EXPERT_TIMEOUT_FLOOR_MS;
-  }
+  const timeoutMs = input.timeoutMs ?? autoTimeout;
   return {
     id: `exec-${String(getTimeProvider().now())}-${getRandomProvider().random().toString(36).slice(2, 9)}`,
     description: input.task,
@@ -302,10 +295,10 @@ const EXECUTE_EXPERT_TOOL_SCHEMA = {
   timeoutMs: z
     .number()
     .int()
-    .min(30_000)
+    .min(EXPERT_TIMEOUT_FLOOR_MS)
     .max(900_000)
     .optional()
-    .describe('Optional timeout in ms (30s-900s). Overrides auto-detected timeout.'),
+    .describe('Optional timeout in ms (120s-900s). Overrides auto-detected timeout.'),
 };
 
 /**
