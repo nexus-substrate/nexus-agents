@@ -49,6 +49,7 @@ vi.mock('../../pipeline/v2-config.js', () => ({
     delegateEnabled: false,
     orchestrateEnabled: false,
     aorchestraEnabled: false,
+    dispatchEnabled: false,
   })),
 }));
 

@@ -27,6 +27,8 @@ export interface V2Config {
   readonly policyMode: 'off' | 'warn' | 'block';
   /** Whether AOrchestra dynamic agent planning is enabled (Issue #935). */
   readonly aorchestraEnabled: boolean;
+  /** Whether AOrchestra worker dispatch is enabled (Issue #1321). */
+  readonly dispatchEnabled: boolean;
 }
 
 // ============================================================================
@@ -78,6 +80,7 @@ export function resolveV2Config(): V2Config {
     delegateEnabled: resolveFlag('NEXUS_V2_DELEGATE', umbrellaDelegate),
     orchestrateEnabled: resolveFlag('NEXUS_V2_ORCHESTRATE', umbrellaOrchestrate),
     policyMode: resolvePolicyMode(mode),
-    aorchestraEnabled: resolveFlag('NEXUS_AORCHESTRA', false),
+    aorchestraEnabled: resolveFlag('NEXUS_AORCHESTRA', true),
+    dispatchEnabled: resolveFlag('NEXUS_AORCHESTRA_DISPATCH', true),
   };
 }

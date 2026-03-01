@@ -301,14 +301,14 @@ describe('Worker Dispatch E2E Pipeline', () => {
   });
 
   describe('isWorkerDispatchEnabled', () => {
-    it('returns false when env var is not set', () => {
+    it('returns true when env var is not set (default enabled #1321)', () => {
       delete process.env['NEXUS_AORCHESTRA_DISPATCH'];
-      expect(isWorkerDispatchEnabled()).toBe(false);
+      expect(isWorkerDispatchEnabled()).toBe(true);
     });
 
-    it('returns true when env var is "true"', () => {
-      process.env['NEXUS_AORCHESTRA_DISPATCH'] = 'true';
-      expect(isWorkerDispatchEnabled()).toBe(true);
+    it('returns false when env var is "false"', () => {
+      process.env['NEXUS_AORCHESTRA_DISPATCH'] = 'false';
+      expect(isWorkerDispatchEnabled()).toBe(false);
       delete process.env['NEXUS_AORCHESTRA_DISPATCH'];
     });
   });

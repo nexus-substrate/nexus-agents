@@ -12,6 +12,7 @@
 import type { ILogger } from '../../core/index.js';
 import type { IModelAdapter } from '../../core/index.js';
 import { createLogger } from '../../core/index.js';
+import { resolveV2Config } from '../../pipeline/v2-config.js';
 import type { AgentPlan, AgentPlanEntry } from '../../orchestration/aorchestra/index.js';
 import {
   dispatchWorkers,
@@ -33,9 +34,23 @@ const logger = createLogger({ component: 'orchestrate-dispatch' });
 /** Maximum tokens for individual worker LLM responses. */
 const WORKER_MAX_TOKENS = 4000;
 
+/** Resolves max worker calls from env or option (#1321). */
+function resolveMaxWorkerCalls(option?: number): number {
+  if (option !== undefined) return option;
+  const env = process.env['NEXUS_WORKER_MAX_CALLS'];
+  if (env !== undefined) {
+    const parsed = Number(env);
+    if (!Number.isNaN(parsed) && parsed > 0) return parsed;
+  }
+  return DEFAULT_MAX_WORKER_CALLS;
+}
+
 // ============================================================================
 // Types
 // ============================================================================
+
+/** Default maximum model calls per orchestrate invocation (#1321). */
+export const DEFAULT_MAX_WORKER_CALLS = 6;
 
 /** Options for executing worker dispatch. */
 export interface WorkerDispatchExecutionOptions {
@@ -46,6 +61,8 @@ export interface WorkerDispatchExecutionOptions {
   readonly maxConcurrency?: number;
   /** Opt-in: run synthesis LLM call to merge worker outputs (Issue #1309) */
   readonly synthesize?: boolean;
+  /** Max model calls per invocation (default: 6, env: NEXUS_WORKER_MAX_CALLS) (#1321) */
+  readonly maxWorkerCalls?: number;
 }
 
 /** Result from worker dispatch execution. */
@@ -58,17 +75,20 @@ export interface WorkerDispatchResult {
   readonly conflicts: readonly WorkerConflict[];
   /** Unified response from synthesis (only present when synthesize=true) */
   readonly synthesis?: string;
+  /** Total model calls made during this dispatch (#1321). */
+  readonly totalModelCalls: number;
 }
 
 // ============================================================================
 // Feature Flag
 // ============================================================================
 
-/** Checks if worker dispatch is enabled via feature flag. */
+/** Checks if worker dispatch is enabled via unified V2Config (#1321). */
 export function isWorkerDispatchEnabled(): boolean {
-  const enabled = process.env['NEXUS_AORCHESTRA_DISPATCH'] === 'true';
+  const config = resolveV2Config();
+  const enabled = config.dispatchEnabled;
   if (!enabled) {
-    logger.debug('Worker dispatch disabled (NEXUS_AORCHESTRA_DISPATCH !== "true")');
+    logger.debug('Worker dispatch disabled (dispatchEnabled=false in V2Config)');
   }
   return enabled;
 }
@@ -143,23 +163,38 @@ export async function executeWorkerDispatch(
   options: WorkerDispatchExecutionOptions
 ): Promise<WorkerDispatchResult> {
   const { agentPlan, taskDescription, modelAdapter, logger, maxConcurrency, synthesize } = options;
+  const maxCalls = resolveMaxWorkerCalls(options.maxWorkerCalls);
   const startMs = getTimeProvider().now();
 
+  // Enforce call budget: limit entries to maxCalls (#1321)
+  const entries = agentPlan.entries.slice(0, maxCalls);
+  if (entries.length < agentPlan.entries.length) {
+    logger.warn('Worker call budget exceeded — limiting dispatch', {
+      planned: agentPlan.entries.length,
+      budgeted: maxCalls,
+      dispatching: entries.length,
+    });
+  }
+
   logger.info('Starting worker dispatch', {
-    totalExperts: agentPlan.totalExperts,
+    totalExperts: entries.length,
     taskType: agentPlan.taskType,
     complexity: agentPlan.complexity,
+    maxCalls,
   });
 
-  const results = await dispatchWorkers(agentPlan.entries, {
+  const results = await dispatchWorkers(entries, {
     ...(maxConcurrency !== undefined ? { maxConcurrency } : {}),
     executeWorker: createWorkerExecutor(taskDescription, modelAdapter, logger),
   });
 
-  const baseResult = buildDispatchResult(results, startMs, logger);
+  let totalModelCalls = results.filter(
+    (r) => r.status === 'success' || r.error !== undefined
+  ).length;
+  const baseResult = buildDispatchResult(results, startMs, logger, totalModelCalls);
 
-  // Opt-in synthesis (Issue #1309)
-  if (synthesize === true && baseResult.successCount > 0) {
+  // Opt-in synthesis: only if within call budget (#1321)
+  if (synthesize === true && baseResult.successCount > 0 && totalModelCalls < maxCalls) {
     logger.info('Running result synthesis', { workerCount: baseResult.successCount });
     const synthResult = await synthesizeResults({
       results,
@@ -167,7 +202,8 @@ export async function executeWorkerDispatch(
       taskDescription,
       modelAdapter,
     });
-    return { ...baseResult, synthesis: synthResult.value };
+    totalModelCalls++;
+    return { ...baseResult, synthesis: synthResult.value, totalModelCalls };
   }
 
   return baseResult;
@@ -176,7 +212,8 @@ export async function executeWorkerDispatch(
 function buildDispatchResult(
   results: WorkerResult[],
   startMs: number,
-  logger: ILogger
+  logger: ILogger,
+  totalModelCalls: number
 ): WorkerDispatchResult {
   const successCount = results.filter((r) => r.status === 'success').length;
   const errorCount = results.filter((r) => r.status === 'error').length;
@@ -198,5 +235,13 @@ function buildDispatchResult(
     durationMs,
   });
 
-  return { results, totalWorkers: results.length, successCount, errorCount, durationMs, conflicts };
+  return {
+    results,
+    totalWorkers: results.length,
+    successCount,
+    errorCount,
+    durationMs,
+    conflicts,
+    totalModelCalls,
+  };
 }
