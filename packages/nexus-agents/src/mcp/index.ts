@@ -73,6 +73,23 @@ export {
   type EventBusBridgeResult,
 } from './eventbus-bridge.js';
 
+// Prompts (Issue #1287)
+export {
+  registerPrompts,
+  PROMPT_DEFINITIONS,
+  type PromptDefinition,
+  type PromptMessage,
+  type PromptRegistrationResult,
+} from './prompts/index.js';
+
+// Resources (Issue #1288)
+export {
+  registerResources,
+  registerModelsResource,
+  registerResearchResource,
+  registerExpertsResource,
+} from './resources/index.js';
+
 // Tools
 export {
   // Tool registration

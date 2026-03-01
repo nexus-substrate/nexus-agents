@@ -406,9 +406,12 @@ describe('CLI Command Priority', () => {
     expect(result.command).toBe('help');
   });
 
-  it('should prioritize help flag over positional command', () => {
+  it('should return command with help flag for per-command help', () => {
+    // Per-command help: `nexus-agents config --help` returns 'config' with help=true
+    // The main() function intercepts this to show per-command help
     const result = parseCliArgs(['config', '--help']);
-    expect(result.command).toBe('help');
+    expect(result.command).toBe('config');
+    expect(result.options.help).toBe(true);
   });
 
   it('should prioritize version flag over positional command', () => {

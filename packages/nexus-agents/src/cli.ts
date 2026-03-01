@@ -20,6 +20,7 @@ import {
   type ParsedCliArgs,
 } from './cli-types.js';
 import { dispatchCommand } from './cli-commands.js';
+import { formatCommandHelp } from './cli-command-help.js';
 import { CLI_NAMES, type CliNameLiteral } from './config/model-capabilities-types.js';
 
 // Re-export types and constants for external use
@@ -30,18 +31,22 @@ export type { ServerMode } from './cli/mode-detector.js';
 
 /**
  * Determines the command from parsed options and positionals.
+ * When --help is combined with a valid command (e.g., `orchestrate --help`),
+ * returns the command so per-command help can be shown.
  */
 function determineCommand(
   options: { help: boolean; version: boolean },
   positionals: string[]
 ): CliCommand {
+  const firstArg = positionals[0];
+  const hasValidCommand = firstArg !== undefined && isValidCommand(firstArg);
+
+  // Per-command help: `nexus-agents orchestrate --help` returns 'orchestrate'
+  if (options.help && hasValidCommand) return firstArg;
   if (options.help) return 'help';
   if (options.version) return 'version';
 
-  const firstArg = positionals[0];
-  if (firstArg !== undefined && isValidCommand(firstArg)) {
-    return firstArg;
-  }
+  if (hasValidCommand) return firstArg;
 
   return 'server';
 }
@@ -335,6 +340,17 @@ async function main(): Promise<void> {
     console.error(`Error: ${message}`);
     console.error('Run "nexus-agents --help" for usage information.');
     process.exit(EXIT_CODES.INVALID_ARGS);
+  }
+
+  // Per-command help: show targeted help when --help is used with a command
+  if (parsedArgs.options.help && parsedArgs.command !== 'help') {
+    const helpText = formatCommandHelp(parsedArgs.command);
+    if (helpText !== undefined) {
+      process.stdout.write(helpText + '\n');
+      process.exit(EXIT_CODES.SUCCESS);
+    }
+    // Fall through to general help if no per-command help exists
+    parsedArgs = { ...parsedArgs, command: 'help' };
   }
 
   await dispatchCommand(parsedArgs);

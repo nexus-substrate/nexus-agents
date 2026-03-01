@@ -187,4 +187,15 @@ export {
   type RegistryRelationship,
   type LanguageMatrixEntry,
   type ScannerRegistryManifest,
+  // Prompts (Issue #1287)
+  registerPrompts,
+  PROMPT_DEFINITIONS,
+  type PromptDefinition,
+  type PromptMessage,
+  type PromptRegistrationResult,
+  // Resources (Issue #1288)
+  registerResources,
+  registerModelsResource,
+  registerResearchResource,
+  registerExpertsResource,
 } from '../mcp/index.js';

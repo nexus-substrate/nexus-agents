@@ -9,6 +9,8 @@
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { registerPrompts } from './mcp/prompts/index.js';
+import { registerResources } from './mcp/resources/index.js';
 import {
   registerTools,
   registerDelegateToModelTool,
@@ -563,6 +565,10 @@ export function registerMcpTools(options: RegisterMcpToolsOptions): void {
   const gatewayOptions = { ...options, server: observableServer };
   const ctx = createToolContext(gatewayOptions, toolInfra, rateLimiterFactory);
   registerToolCategories(ctx);
+
+  // Register MCP prompts and resources (Issue #1287, #1288)
+  registerPrompts(observableServer, logger);
+  registerResources(observableServer, logger);
 
   logToolRegistration(logger, ctx.toolAllowlist, {
     rateLimiterFactory,

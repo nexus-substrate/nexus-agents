@@ -220,6 +220,15 @@ vi.mock('./mcp/tools/tool-observability-proxy.js', () => ({
   createToolObservabilityProxy: (server: unknown) => server,
 }));
 
+// Mock prompts and resources registration (tested separately in their own test files)
+vi.mock('./mcp/prompts/index.js', () => ({
+  registerPrompts: vi.fn(),
+}));
+
+vi.mock('./mcp/resources/index.js', () => ({
+  registerResources: vi.fn(),
+}));
+
 // ============================================================================
 // Mock helpers
 // ============================================================================
