@@ -137,7 +137,7 @@ function buildFallbackResponse(
 
   for (const result of successResults) {
     parts.push(`### ${result.role}`);
-    parts.push(result.output);
+    parts.push(sanitizeWorkerOutput(result.output));
     parts.push('');
   }
 
