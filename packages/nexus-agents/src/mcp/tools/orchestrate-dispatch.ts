@@ -19,6 +19,7 @@ import {
   type WorkerConflict,
 } from '../../orchestration/aorchestra/index.js';
 import { composeWorkerPrompt } from '../../orchestration/aorchestra/compose-worker-prompt.js';
+import { synthesizeResults } from '../../orchestration/aorchestra/result-synthesizer.js';
 import { getTimeProvider } from '../../core/index.js';
 import type { ContentBlock } from '../../core/types/model.js';
 
@@ -33,6 +34,8 @@ export interface WorkerDispatchExecutionOptions {
   readonly modelAdapter: IModelAdapter;
   readonly logger: ILogger;
   readonly maxConcurrency?: number;
+  /** Opt-in: run synthesis LLM call to merge worker outputs (Issue #1309) */
+  readonly synthesize?: boolean;
 }
 
 /** Result from worker dispatch execution. */
@@ -43,6 +46,8 @@ export interface WorkerDispatchResult {
   readonly errorCount: number;
   readonly durationMs: number;
   readonly conflicts: readonly WorkerConflict[];
+  /** Unified response from synthesis (only present when synthesize=true) */
+  readonly synthesis?: string;
 }
 
 // ============================================================================
@@ -62,10 +67,17 @@ function createWorkerExecutor(
   taskDescription: string,
   modelAdapter: IModelAdapter,
   logger: ILogger
-): (entry: AgentPlanEntry) => Promise<WorkerResult> {
-  return async (entry: AgentPlanEntry): Promise<WorkerResult> => {
+): (entry: AgentPlanEntry, priorWaveResults?: readonly WorkerResult[]) => Promise<WorkerResult> {
+  return async (
+    entry: AgentPlanEntry,
+    priorWaveResults?: readonly WorkerResult[]
+  ): Promise<WorkerResult> => {
     const workerStartMs = getTimeProvider().now();
-    const prompt = composeWorkerPrompt({ entry, taskDescription });
+    const prompt = composeWorkerPrompt({
+      entry,
+      taskDescription,
+      ...(priorWaveResults !== undefined ? { priorWaveResults } : {}),
+    });
 
     try {
       const result = await modelAdapter.complete({
@@ -116,7 +128,7 @@ function makeErrorResult(entry: AgentPlanEntry, startMs: number, message: string
 export async function executeWorkerDispatch(
   options: WorkerDispatchExecutionOptions
 ): Promise<WorkerDispatchResult> {
-  const { agentPlan, taskDescription, modelAdapter, logger, maxConcurrency } = options;
+  const { agentPlan, taskDescription, modelAdapter, logger, maxConcurrency, synthesize } = options;
   const startMs = getTimeProvider().now();
 
   logger.info('Starting worker dispatch', {
@@ -130,7 +142,21 @@ export async function executeWorkerDispatch(
     executeWorker: createWorkerExecutor(taskDescription, modelAdapter, logger),
   });
 
-  return buildDispatchResult(results, startMs, logger);
+  const baseResult = buildDispatchResult(results, startMs, logger);
+
+  // Opt-in synthesis (Issue #1309)
+  if (synthesize === true && baseResult.successCount > 0) {
+    logger.info('Running result synthesis', { workerCount: baseResult.successCount });
+    const synthResult = await synthesizeResults({
+      results,
+      conflicts: [...baseResult.conflicts],
+      taskDescription,
+      modelAdapter,
+    });
+    return { ...baseResult, synthesis: synthResult.value };
+  }
+
+  return baseResult;
 }
 
 function buildDispatchResult(

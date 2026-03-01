@@ -25,3 +25,11 @@ export {
   DEFAULT_TTL_MS,
 } from './context-freshness.js';
 export type { ContextEntry } from './context-freshness.js';
+export {
+  sanitizeWorkerOutput,
+  buildPriorWaveContextBlock,
+  MAX_PRIOR_CONTEXT_CHARS,
+  MAX_CHARS_PER_WORKER,
+} from './cross-wave-context.js';
+export { synthesizeResults, buildSynthesisPrompt } from './result-synthesizer.js';
+export type { SynthesizeResultsInput, SynthesisResult } from './result-synthesizer.js';

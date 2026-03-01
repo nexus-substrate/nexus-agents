@@ -35,8 +35,14 @@ export interface WorkerResult {
  * Options for dispatching workers.
  */
 export interface WorkerDispatchOptions {
-  /** Function that executes a single worker and returns its result */
-  readonly executeWorker: (entry: AgentPlanEntry) => Promise<WorkerResult>;
+  /**
+   * Function that executes a single worker and returns its result.
+   * Receives optional prior wave results for cross-wave context (Issue #1308).
+   */
+  readonly executeWorker: (
+    entry: AgentPlanEntry,
+    priorWaveResults?: readonly WorkerResult[]
+  ) => Promise<WorkerResult>;
   /** Maximum concurrent workers per wave (default: MAX_WORKERS_PER_WAVE = 3) */
   readonly maxConcurrency?: number;
 }
@@ -132,8 +138,13 @@ export async function dispatchWorkers(
       roles: wave.map((e) => e.role),
     });
 
+    // Pass accumulated prior-wave results to workers (Issue #1308)
+    const priorResults: readonly WorkerResult[] | undefined =
+      allResults.length > 0 ? [...allResults] : undefined;
+
     const tasks = wave.map(
-      (entry) => (): Promise<WorkerResult> => executeSafe(entry, options.executeWorker)
+      (entry) => (): Promise<WorkerResult> =>
+        executeSafe(entry, options.executeWorker, priorResults)
     );
 
     const waveResults = await executeWithConcurrencyLimit(tasks, maxConcurrency);
@@ -154,10 +165,14 @@ export async function dispatchWorkers(
  */
 async function executeSafe(
   entry: AgentPlanEntry,
-  executeWorker: (entry: AgentPlanEntry) => Promise<WorkerResult>
+  executeWorker: (
+    entry: AgentPlanEntry,
+    priorWaveResults?: readonly WorkerResult[]
+  ) => Promise<WorkerResult>,
+  priorWaveResults?: readonly WorkerResult[]
 ): Promise<WorkerResult> {
   try {
-    return await executeWorker(entry);
+    return await executeWorker(entry, priorWaveResults);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     logger.warn('Worker threw exception', { role: entry.role, error: message });

@@ -573,7 +573,13 @@ async function tryWorkerDispatch(
   }
   try {
     return await withProgressHeartbeat('worker-dispatch', notifier, () =>
-      executeWorkerDispatch({ agentPlan, taskDescription: task, modelAdapter: adapter, logger })
+      executeWorkerDispatch({
+        agentPlan,
+        taskDescription: task,
+        modelAdapter: adapter,
+        logger,
+        synthesize: true,
+      })
     );
   } catch (dispatchError: unknown) {
     logger.warn('Worker dispatch failed, continuing with standard orchestration', {
@@ -581,6 +587,24 @@ async function tryWorkerDispatch(
     });
     return undefined;
   }
+}
+
+/** Assemble final orchestrate tool output (Issue #1310). */
+function assembleOrchestrateOutput(
+  orchestrationResult: Record<string, unknown>,
+  agentPlan: ReturnType<typeof computeAgentPlan>,
+  workerDispatchResult: Awaited<ReturnType<typeof executeWorkerDispatch>> | undefined
+): { content: Array<{ type: 'text'; text: string }> } {
+  const hasSynthesis =
+    workerDispatchResult?.synthesis !== undefined && workerDispatchResult.synthesis !== '';
+
+  const output = {
+    ...orchestrationResult,
+    ...(agentPlan !== undefined ? { agentPlan } : {}),
+    ...(workerDispatchResult !== undefined ? { workerDispatch: workerDispatchResult } : {}),
+    ...(hasSynthesis ? { synthesizedResponse: workerDispatchResult.synthesis } : {}),
+  };
+  return { content: [{ type: 'text' as const, text: JSON.stringify(output, null, 2) }] };
 }
 
 function createOrchestrateHandler(deps: OrchestrateDeps) {
@@ -632,12 +656,7 @@ function createOrchestrateHandler(deps: OrchestrateDeps) {
       durationMs: getTimeProvider().now() - startMs,
     });
 
-    const output = {
-      ...result.value,
-      ...(agentPlan !== undefined ? { agentPlan } : {}),
-      ...(workerDispatchResult !== undefined ? { workerDispatch: workerDispatchResult } : {}),
-    };
-    return { content: [{ type: 'text' as const, text: JSON.stringify(output, null, 2) }] };
+    return assembleOrchestrateOutput(result.value, agentPlan, workerDispatchResult);
   };
 }
 

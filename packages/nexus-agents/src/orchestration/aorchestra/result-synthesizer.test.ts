@@ -1,0 +1,252 @@
+/**
+ * Tests for result synthesizer — merges worker outputs into unified response.
+ *
+ * TDD Red phase: defines behavior for synthesizeResults() and
+ * buildSynthesisPrompt().
+ *
+ * @module orchestration/aorchestra/result-synthesizer.test
+ * (Source: Issue #1309, Epic #1307)
+ */
+
+import { describe, it, expect, vi } from 'vitest';
+import { synthesizeResults, buildSynthesisPrompt } from './result-synthesizer.js';
+import type { WorkerResult } from './worker-dispatcher.js';
+import type { WorkerConflict } from './conflict-detector.js';
+import type { IModelAdapter } from '../../core/index.js';
+import type { ContentBlock } from '../../core/types/model.js';
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+function makeResult(role: string, output: string): WorkerResult {
+  return { role, subTask: `Task for ${role}`, output, status: 'success', durationMs: 100 };
+}
+
+function makeConflict(filePath: string, workers: string[]): WorkerConflict {
+  return { filePath, workers };
+}
+
+function makeMockAdapter(response: string): IModelAdapter {
+  return {
+    complete: vi.fn().mockImplementation(
+      (): Promise<{ ok: true; value: { content: ContentBlock[] } }> =>
+        Promise.resolve({
+          ok: true as const,
+          value: { content: [{ type: 'text' as const, text: response }] },
+        })
+    ),
+  } as unknown as IModelAdapter;
+}
+
+function makeFailingAdapter(errorMsg: string): IModelAdapter {
+  return {
+    complete: vi.fn().mockImplementation(
+      (): Promise<{ ok: false; error: { message: string } }> =>
+        Promise.resolve({
+          ok: false as const,
+          error: { message: errorMsg },
+        })
+    ),
+  } as unknown as IModelAdapter;
+}
+
+// ============================================================================
+// buildSynthesisPrompt
+// ============================================================================
+
+describe('buildSynthesisPrompt', () => {
+  it('includes task description', () => {
+    const prompt = buildSynthesisPrompt({
+      results: [makeResult('code', 'Implementation done.')],
+      conflicts: [],
+      taskDescription: 'Build a rate limiter',
+    });
+    expect(prompt).toContain('Build a rate limiter');
+  });
+
+  it('includes worker outputs with role attribution', () => {
+    const prompt = buildSynthesisPrompt({
+      results: [
+        makeResult('code', 'Added rate limiter module.'),
+        makeResult('testing', 'Added 15 unit tests.'),
+      ],
+      conflicts: [],
+      taskDescription: 'Build a rate limiter',
+    });
+    expect(prompt).toContain('code');
+    expect(prompt).toContain('rate limiter module');
+    expect(prompt).toContain('testing');
+    expect(prompt).toContain('unit tests');
+  });
+
+  it('includes conflict information when present', () => {
+    const prompt = buildSynthesisPrompt({
+      results: [
+        makeResult('code', 'Modified src/shared.ts.'),
+        makeResult('security', 'Hardened src/shared.ts.'),
+      ],
+      conflicts: [makeConflict('src/shared.ts', ['code', 'security'])],
+      taskDescription: 'Modify shared module',
+    });
+    expect(prompt).toContain('src/shared.ts');
+    expect(prompt).toContain('conflict');
+  });
+
+  it('instructs to surface conflicts, not resolve them', () => {
+    const prompt = buildSynthesisPrompt({
+      results: [makeResult('code', 'Result.')],
+      conflicts: [makeConflict('file.ts', ['code', 'security'])],
+      taskDescription: 'Task',
+    });
+    // The prompt should instruct the synthesis to surface conflicts, not auto-resolve
+    expect(prompt.toLowerCase()).toContain('surface');
+    // Should explicitly tell NOT to auto-resolve
+    expect(prompt.toLowerCase()).toContain('do not automatically resolve');
+  });
+
+  it('skips error results in prompt', () => {
+    const errorResult: WorkerResult = {
+      role: 'security',
+      subTask: 'Review',
+      output: '',
+      status: 'error',
+      durationMs: 0,
+      error: 'timeout',
+    };
+    const prompt = buildSynthesisPrompt({
+      results: [makeResult('code', 'Done.'), errorResult],
+      conflicts: [],
+      taskDescription: 'Task',
+    });
+    expect(prompt).toContain('code');
+    // Error result role should not have an output section
+    expect(prompt).not.toContain('timeout');
+  });
+
+  it('uses XML-delimited sections for worker outputs', () => {
+    const prompt = buildSynthesisPrompt({
+      results: [makeResult('code', 'Implementation.')],
+      conflicts: [],
+      taskDescription: 'Task',
+    });
+    expect(prompt).toContain('<worker-output');
+    expect(prompt).toContain('</worker-output>');
+  });
+});
+
+// ============================================================================
+// synthesizeResults
+// ============================================================================
+
+describe('synthesizeResults', () => {
+  it('returns synthesis from model adapter', async () => {
+    const adapter = makeMockAdapter(
+      'The rate limiter was implemented with tests and security hardening.'
+    );
+    const result = await synthesizeResults({
+      results: [makeResult('code', 'Added rate limiter.'), makeResult('testing', 'Added tests.')],
+      conflicts: [],
+      taskDescription: 'Build a rate limiter',
+      modelAdapter: adapter,
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value).toContain('rate limiter');
+    }
+  });
+
+  it('falls back to concatenated output on adapter failure', async () => {
+    const adapter = makeFailingAdapter('Service unavailable');
+    const result = await synthesizeResults({
+      results: [
+        makeResult('code', 'Rate limiter module created.'),
+        makeResult('testing', 'Tests written.'),
+      ],
+      conflicts: [],
+      taskDescription: 'Build a rate limiter',
+      modelAdapter: adapter,
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      // Fallback should contain concatenated worker outputs
+      expect(result.value).toContain('code');
+      expect(result.value).toContain('Rate limiter module created');
+      expect(result.value).toContain('testing');
+      expect(result.value).toContain('Tests written');
+    }
+  });
+
+  it('includes conflict warnings in fallback output', async () => {
+    const adapter = makeFailingAdapter('timeout');
+    const result = await synthesizeResults({
+      results: [
+        makeResult('code', 'Modified shared.ts.'),
+        makeResult('security', 'Hardened shared.ts.'),
+      ],
+      conflicts: [makeConflict('shared.ts', ['code', 'security'])],
+      taskDescription: 'Modify shared',
+      modelAdapter: adapter,
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value).toContain('shared.ts');
+      expect(result.value.toLowerCase()).toContain('conflict');
+    }
+  });
+
+  it('falls back when adapter throws', async () => {
+    const adapter = {
+      complete: vi.fn().mockRejectedValue(new Error('Network error')),
+    } as unknown as IModelAdapter;
+
+    const result = await synthesizeResults({
+      results: [makeResult('code', 'Output.')],
+      conflicts: [],
+      taskDescription: 'Task',
+      modelAdapter: adapter,
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value).toContain('code');
+      expect(result.value).toContain('Output.');
+    }
+  });
+
+  it('handles empty results', async () => {
+    const adapter = makeMockAdapter('Nothing to synthesize.');
+    const result = await synthesizeResults({
+      results: [],
+      conflicts: [],
+      taskDescription: 'Task',
+      modelAdapter: adapter,
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value).toBe('');
+    }
+  });
+
+  it('handles all-error results', async () => {
+    const adapter = makeMockAdapter('Synthesis.');
+    const errorResults: WorkerResult[] = [
+      { role: 'code', subTask: 't', output: '', status: 'error', durationMs: 0, error: 'fail' },
+    ];
+    const result = await synthesizeResults({
+      results: errorResults,
+      conflicts: [],
+      taskDescription: 'Task',
+      modelAdapter: adapter,
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value).toBe('');
+    }
+  });
+});

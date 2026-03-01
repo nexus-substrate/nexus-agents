@@ -12,6 +12,7 @@
  */
 
 import type { AgentPlanEntry } from './agent-planner.js';
+import type { WorkerResult } from './worker-dispatcher.js';
 import { BUILT_IN_EXPERTS } from '../../agents/experts/expert-config.js';
 import {
   PromptComposer,
@@ -19,6 +20,7 @@ import {
   buildOutputConstraintsBlock,
   sanitizeTaskContext,
 } from '../../agents/experts/expert-prompts/prompt-composer.js';
+import { buildPriorWaveContextBlock } from './cross-wave-context.js';
 
 // ============================================================================
 // Types
@@ -38,6 +40,8 @@ export interface ComposeWorkerPromptInput {
   readonly maxOutputChars?: number;
   /** Optional output format hint */
   readonly outputFormat?: string;
+  /** Optional results from prior waves for cross-wave context (Issue #1308) */
+  readonly priorWaveResults?: readonly WorkerResult[];
 }
 
 // ============================================================================
@@ -60,18 +64,29 @@ const composer = new PromptComposer();
  * @returns Fully composed prompt string
  */
 export function composeWorkerPrompt(input: ComposeWorkerPromptInput): string {
-  const { entry, taskDescription, relevantFiles, maxOutputChars, outputFormat } = input;
+  const { entry, taskDescription, relevantFiles, maxOutputChars, outputFormat, priorWaveResults } =
+    input;
 
   const basePrompt = BUILT_IN_EXPERTS[entry.role].systemPrompt;
 
   const sanitizedDesc = sanitizeTaskContext(taskDescription);
   const sanitizedSubTask = sanitizeTaskContext(entry.subTask);
 
-  const taskContext = buildTaskContextBlock({
+  // Build task context with optional prior wave results (Issue #1308)
+  const priorWaveBlock =
+    priorWaveResults !== undefined && priorWaveResults.length > 0
+      ? buildPriorWaveContextBlock(priorWaveResults)
+      : '';
+
+  const taskContextLines = buildTaskContextBlock({
     taskDescription: `${sanitizedDesc}\n\nSub-task: ${sanitizedSubTask}`,
     taskType: entry.role,
     ...(relevantFiles !== undefined ? { relevantFiles: [...relevantFiles] } : {}),
   });
+
+  // Combine task context with prior wave context if available
+  const taskContext =
+    priorWaveBlock !== '' ? `${taskContextLines}\n\n${priorWaveBlock}` : taskContextLines;
 
   const outputConstraints = buildOutputConstraintsBlock({
     ...(maxOutputChars !== undefined ? { maxOutputChars } : {}),

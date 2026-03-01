@@ -17,8 +17,8 @@ import { createLogger } from '../../core/index.js';
 
 const logger = createLogger({ component: 'test-dispatch-e2e' });
 
-function makeEntry(role: string, subTask: string, wave: number): AgentPlanEntry {
-  return { role, subTask, priority: wave, wave };
+function makeEntry(role: AgentPlanEntry['role'], subTask: string, wave: number): AgentPlanEntry {
+  return { role, subTask, priority: wave, reasoning: `Selected for ${role}`, wave };
 }
 
 function makePlan(entries: AgentPlanEntry[]): AgentPlan {
@@ -26,7 +26,8 @@ function makePlan(entries: AgentPlanEntry[]): AgentPlan {
     entries,
     totalExperts: entries.length,
     taskType: 'code_implementation',
-    complexity: 'medium',
+    complexity: 'moderate',
+    reasoning: 'Test plan',
   };
 }
 
@@ -170,31 +171,29 @@ describe('Worker Dispatch E2E Pipeline', () => {
     // Use unique subtask marker to identify the failing worker
     const FAIL_MARKER = 'UNIQUE_FAIL_MARKER_XYZ';
     const adapter = {
-      complete: vi
-        .fn()
-        .mockImplementation(
-          (opts: {
-            messages: Array<{ content: string }>;
-          }): Promise<{
-            ok: boolean;
-            value?: { content: ContentBlock[] };
-            error?: { message: string };
-          }> => {
-            const prompt = opts.messages[0]?.content ?? '';
-            if (prompt.includes(FAIL_MARKER)) {
-              return Promise.resolve({
-                ok: false,
-                error: { message: 'Model rate limited' },
-              });
-            }
+      complete: vi.fn().mockImplementation(
+        (opts: {
+          messages: Array<{ content: string }>;
+        }): Promise<{
+          ok: boolean;
+          value?: { content: ContentBlock[] };
+          error?: { message: string };
+        }> => {
+          const prompt = opts.messages[0]?.content ?? '';
+          if (prompt.includes(FAIL_MARKER)) {
             return Promise.resolve({
-              ok: true,
-              value: {
-                content: [{ type: 'text' as const, text: 'Success result' }],
-              },
+              ok: false,
+              error: { message: 'Model rate limited' },
             });
           }
-        ),
+          return Promise.resolve({
+            ok: true,
+            value: {
+              content: [{ type: 'text' as const, text: 'Success result' }],
+            },
+          });
+        }
+      ),
     } as unknown as IModelAdapter;
 
     const plan = makePlan([
@@ -310,6 +309,177 @@ describe('Worker Dispatch E2E Pipeline', () => {
       process.env['NEXUS_AORCHESTRA_DISPATCH'] = 'true';
       expect(isWorkerDispatchEnabled()).toBe(true);
       delete process.env['NEXUS_AORCHESTRA_DISPATCH'];
+    });
+  });
+
+  describe('synthesis integration', () => {
+    it('returns synthesis when synthesize=true', async () => {
+      let callCount = 0;
+      const adapter = {
+        complete: vi
+          .fn()
+          .mockImplementation((): Promise<{ ok: true; value: { content: ContentBlock[] } }> => {
+            callCount++;
+            // First calls are worker executions, last call is synthesis
+            const text =
+              callCount <= 2
+                ? `Worker ${String(callCount)} output`
+                : 'Synthesized: Both workers completed successfully.';
+            return Promise.resolve({
+              ok: true as const,
+              value: { content: [{ type: 'text' as const, text }] },
+            });
+          }),
+      } as unknown as IModelAdapter;
+
+      const plan = makePlan([
+        makeEntry('code', 'Implement feature', 1),
+        makeEntry('testing', 'Write tests', 1),
+      ]);
+
+      const result = await executeWorkerDispatch({
+        agentPlan: plan,
+        taskDescription: 'Build a feature with tests',
+        modelAdapter: adapter,
+        logger,
+        synthesize: true,
+      });
+
+      expect(result.totalWorkers).toBe(2);
+      expect(result.successCount).toBe(2);
+      expect(result.synthesis).toBeDefined();
+      expect(result.synthesis).toContain('Synthesized');
+      // 2 worker calls + 1 synthesis call = 3 total
+      expect(callCount).toBe(3);
+    });
+
+    it('omits synthesis when synthesize=false', async () => {
+      const adapter = createMockAdapter(new Map([['code', 'Output from code expert.']]));
+
+      const plan = makePlan([makeEntry('code', 'Implement feature', 1)]);
+
+      const result = await executeWorkerDispatch({
+        agentPlan: plan,
+        taskDescription: 'Build a feature',
+        modelAdapter: adapter,
+        logger,
+        synthesize: false,
+      });
+
+      expect(result.totalWorkers).toBe(1);
+      expect(result.synthesis).toBeUndefined();
+    });
+
+    it('omits synthesis when synthesize is not set (default)', async () => {
+      const adapter = createMockAdapter(new Map([['code', 'Output.']]));
+
+      const plan = makePlan([makeEntry('code', 'Task', 1)]);
+
+      const result = await executeWorkerDispatch({
+        agentPlan: plan,
+        taskDescription: 'Task',
+        modelAdapter: adapter,
+        logger,
+      });
+
+      expect(result.synthesis).toBeUndefined();
+    });
+
+    it('falls back gracefully when synthesis LLM call fails', async () => {
+      let callCount = 0;
+      const adapter = {
+        complete: vi
+          .fn()
+          .mockImplementation(
+            (): Promise<{
+              ok: boolean;
+              value?: { content: ContentBlock[] };
+              error?: { message: string };
+            }> => {
+              callCount++;
+              if (callCount <= 2) {
+                return Promise.resolve({
+                  ok: true,
+                  value: {
+                    content: [
+                      { type: 'text' as const, text: `Worker ${String(callCount)} result` },
+                    ],
+                  },
+                });
+              }
+              // Synthesis call fails
+              return Promise.resolve({
+                ok: false,
+                error: { message: 'Rate limited' },
+              });
+            }
+          ),
+      } as unknown as IModelAdapter;
+
+      const plan = makePlan([makeEntry('code', 'Implement', 1), makeEntry('testing', 'Test', 1)]);
+
+      const result = await executeWorkerDispatch({
+        agentPlan: plan,
+        taskDescription: 'Task',
+        modelAdapter: adapter,
+        logger,
+        synthesize: true,
+      });
+
+      // Should still succeed with fallback synthesis
+      expect(result.successCount).toBe(2);
+      expect(result.synthesis).toBeDefined();
+      // Fallback contains concatenated worker outputs
+      expect(result.synthesis).toContain('code');
+      expect(result.synthesis).toContain('testing');
+    });
+  });
+
+  describe('cross-wave context passing', () => {
+    it('wave 2 workers receive wave 1 context in prompts', async () => {
+      const capturedPrompts: string[] = [];
+      let callIndex = 0;
+      const roleSequence = ['architecture', 'code'];
+
+      const adapter = {
+        complete: vi
+          .fn()
+          .mockImplementation(
+            (opts: {
+              messages: Array<{ content: string }>;
+            }): Promise<{ ok: true; value: { content: ContentBlock[] } }> => {
+              capturedPrompts.push(opts.messages[0]?.content ?? '');
+              const role = roleSequence[callIndex] ?? 'unknown';
+              callIndex++;
+              return Promise.resolve({
+                ok: true as const,
+                value: {
+                  content: [
+                    { type: 'text' as const, text: `Result from ${role}: designed the system` },
+                  ],
+                },
+              });
+            }
+          ),
+      } as unknown as IModelAdapter;
+
+      const plan = makePlan([
+        makeEntry('architecture', 'Design the system', 1),
+        makeEntry('code', 'Implement based on design', 2),
+      ]);
+
+      await executeWorkerDispatch({
+        agentPlan: plan,
+        taskDescription: 'Design and implement a feature',
+        modelAdapter: adapter,
+        logger,
+      });
+
+      // Wave 2 (code) prompt should contain prior wave context from architecture
+      expect(capturedPrompts).toHaveLength(2);
+      const codePrompt = capturedPrompts[1];
+      expect(codePrompt).toContain('Prior Wave Context');
+      expect(codePrompt).toContain('architecture');
     });
   });
 });
