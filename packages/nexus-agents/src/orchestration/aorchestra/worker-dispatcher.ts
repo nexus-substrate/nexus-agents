@@ -12,8 +12,15 @@
 import type { AgentPlanEntry } from './agent-planner.js';
 import { MAX_WORKERS_PER_WAVE } from './agent-planner.js';
 import { createLogger } from '../../core/index.js';
+import { resolveWorkerTimeout, WORKER_TIMEOUTS } from '../../config/timeouts.js';
 
 const logger = createLogger({ component: 'worker-dispatcher' });
+
+/**
+ * Default per-worker timeout. Delegates to centralized config/timeouts.ts.
+ * Supports NEXUS_WORKER_TIMEOUT_MS env override.
+ */
+export const WORKER_TIMEOUT_MS = WORKER_TIMEOUTS.defaultMs;
 
 // ============================================================================
 // Types
@@ -45,6 +52,8 @@ export interface WorkerDispatchOptions {
   ) => Promise<WorkerResult>;
   /** Maximum concurrent workers per wave (default: MAX_WORKERS_PER_WAVE = 3) */
   readonly maxConcurrency?: number;
+  /** Per-worker timeout in milliseconds (default: WORKER_TIMEOUT_MS = 60s) */
+  readonly workerTimeoutMs?: number;
 }
 
 // ============================================================================
@@ -142,9 +151,10 @@ export async function dispatchWorkers(
     const priorResults: readonly WorkerResult[] | undefined =
       allResults.length > 0 ? [...allResults] : undefined;
 
+    const timeoutMs = options.workerTimeoutMs ?? resolveWorkerTimeout();
     const tasks = wave.map(
       (entry) => (): Promise<WorkerResult> =>
-        executeSafe(entry, options.executeWorker, priorResults)
+        executeSafe(entry, options.executeWorker, priorResults, timeoutMs)
     );
 
     const waveResults = await executeWithConcurrencyLimit(tasks, maxConcurrency);
@@ -161,7 +171,7 @@ export async function dispatchWorkers(
 }
 
 /**
- * Execute a single worker, catching any thrown errors.
+ * Execute a single worker with timeout and duration tracking.
  */
 async function executeSafe(
   entry: AgentPlanEntry,
@@ -169,19 +179,27 @@ async function executeSafe(
     entry: AgentPlanEntry,
     priorWaveResults?: readonly WorkerResult[]
   ) => Promise<WorkerResult>,
-  priorWaveResults?: readonly WorkerResult[]
+  priorWaveResults: readonly WorkerResult[] | undefined,
+  timeoutMs: number
 ): Promise<WorkerResult> {
+  const startMs = Date.now();
   try {
-    return await executeWorker(entry, priorWaveResults);
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => {
+        reject(new Error(`Worker timeout after ${String(timeoutMs)}ms`));
+      }, timeoutMs);
+    });
+    return await Promise.race([executeWorker(entry, priorWaveResults), timeoutPromise]);
   } catch (error: unknown) {
+    const durationMs = Date.now() - startMs;
     const message = error instanceof Error ? error.message : String(error);
-    logger.warn('Worker threw exception', { role: entry.role, error: message });
+    logger.warn('Worker failed', { role: entry.role, error: message, durationMs });
     return {
       role: entry.role,
       subTask: entry.subTask,
       output: '',
       status: 'error',
-      durationMs: 0,
+      durationMs,
       error: message,
     };
   }

@@ -11,6 +11,7 @@
 
 import type { ILogger } from '../../core/index.js';
 import type { IModelAdapter } from '../../core/index.js';
+import { createLogger } from '../../core/index.js';
 import type { AgentPlan, AgentPlanEntry } from '../../orchestration/aorchestra/index.js';
 import {
   dispatchWorkers,
@@ -26,6 +27,8 @@ import type { ContentBlock } from '../../core/types/model.js';
 // ============================================================================
 // Constants
 // ============================================================================
+
+const logger = createLogger({ component: 'orchestrate-dispatch' });
 
 /** Maximum tokens for individual worker LLM responses. */
 const WORKER_MAX_TOKENS = 4000;
@@ -63,7 +66,11 @@ export interface WorkerDispatchResult {
 
 /** Checks if worker dispatch is enabled via feature flag. */
 export function isWorkerDispatchEnabled(): boolean {
-  return process.env['NEXUS_AORCHESTRA_DISPATCH'] === 'true';
+  const enabled = process.env['NEXUS_AORCHESTRA_DISPATCH'] === 'true';
+  if (!enabled) {
+    logger.debug('Worker dispatch disabled (NEXUS_AORCHESTRA_DISPATCH !== "true")');
+  }
+  return enabled;
 }
 
 // ============================================================================

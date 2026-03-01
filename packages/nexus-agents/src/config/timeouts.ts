@@ -146,6 +146,19 @@ export const API_TIMEOUTS = {
 } as const;
 
 /**
+ * Worker dispatch timeouts (AOrchestra multi-worker execution).
+ * (Source: Issue #1313 — Worker dispatch resilience)
+ */
+export const WORKER_TIMEOUTS = {
+  /** Default per-worker execution timeout. */
+  defaultMs: 60_000,
+  /** Minimum allowed worker timeout. */
+  minMs: 5_000,
+  /** Maximum allowed worker timeout. */
+  maxMs: 300_000,
+} as const;
+
+/**
  * Internal system timeouts (health checks, circuit breakers, etc.).
  */
 export const INTERNAL_TIMEOUTS = {
@@ -396,6 +409,7 @@ export const TIMEOUT_ENV_VARS = {
   workflow: 'NEXUS_WORKFLOW_TIMEOUT_MS',
   graph: 'NEXUS_GRAPH_TIMEOUT_MS',
   expert: 'NEXUS_EXPERT_TIMEOUT_MS',
+  worker: 'NEXUS_WORKER_TIMEOUT_MS',
 } as const;
 
 /**
@@ -410,6 +424,22 @@ export function resolveVoteTimeout(): number {
     VOTE_TIMEOUTS.defaultMs,
     VOTE_TIMEOUTS.minMs,
     VOTE_TIMEOUTS.maxMs
+  );
+}
+
+/**
+ * Resolves worker dispatch timeout with environment variable override.
+ * Clamps to [WORKER_TIMEOUTS.minMs, WORKER_TIMEOUTS.maxMs].
+ *
+ * @returns Resolved worker timeout in milliseconds
+ * (Source: Issue #1313 — Worker dispatch resilience)
+ */
+export function resolveWorkerTimeout(): number {
+  return resolveEnvTimeout(
+    TIMEOUT_ENV_VARS.worker,
+    WORKER_TIMEOUTS.defaultMs,
+    WORKER_TIMEOUTS.minMs,
+    WORKER_TIMEOUTS.maxMs
   );
 }
 

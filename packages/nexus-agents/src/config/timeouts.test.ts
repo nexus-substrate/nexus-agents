@@ -22,8 +22,10 @@ import {
   REFLECTIVE_TIMEOUTS,
   STEP_EXECUTOR_TIMEOUTS,
   CACHE_TIMEOUTS,
+  WORKER_TIMEOUTS,
   TIMEOUT_ENV_VARS,
   getCliTimeoutProfile,
+  resolveWorkerTimeout,
   getCliTimeout,
   getExpertTaskTimeout,
   resolveVoteTimeout,
@@ -371,6 +373,39 @@ describe('Centralized Timeout Configuration', () => {
       expect(TIMEOUT_ENV_VARS.workflow).toBe('NEXUS_WORKFLOW_TIMEOUT_MS');
       expect(TIMEOUT_ENV_VARS.graph).toBe('NEXUS_GRAPH_TIMEOUT_MS');
       expect(TIMEOUT_ENV_VARS.expert).toBe('NEXUS_EXPERT_TIMEOUT_MS');
+      expect(TIMEOUT_ENV_VARS.worker).toBe('NEXUS_WORKER_TIMEOUT_MS');
+    });
+  });
+
+  describe('WORKER_TIMEOUTS', () => {
+    it('has correct default values', () => {
+      expect(WORKER_TIMEOUTS.defaultMs).toBe(60_000);
+      expect(WORKER_TIMEOUTS.minMs).toBe(5_000);
+      expect(WORKER_TIMEOUTS.maxMs).toBe(300_000);
+    });
+  });
+
+  describe('resolveWorkerTimeout', () => {
+    it('returns default when env var is not set', () => {
+      expect(resolveWorkerTimeout()).toBe(WORKER_TIMEOUTS.defaultMs);
+    });
+
+    it('respects NEXUS_WORKER_TIMEOUT_MS override', () => {
+      process.env['NEXUS_WORKER_TIMEOUT_MS'] = '120000';
+      try {
+        expect(resolveWorkerTimeout()).toBe(120_000);
+      } finally {
+        delete process.env.NEXUS_WORKER_TIMEOUT_MS;
+      }
+    });
+
+    it('clamps to min/max bounds', () => {
+      process.env['NEXUS_WORKER_TIMEOUT_MS'] = '1';
+      try {
+        expect(resolveWorkerTimeout()).toBe(WORKER_TIMEOUTS.minMs);
+      } finally {
+        delete process.env.NEXUS_WORKER_TIMEOUT_MS;
+      }
     });
   });
 });

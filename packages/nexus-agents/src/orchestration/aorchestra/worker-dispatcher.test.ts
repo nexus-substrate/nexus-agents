@@ -9,6 +9,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   dispatchWorkers,
   groupByWave,
+  WORKER_TIMEOUT_MS,
   type WorkerDispatchOptions,
   type WorkerResult,
 } from './worker-dispatcher.js';
@@ -205,5 +206,61 @@ describe('dispatchWorkers', () => {
     const result = results.at(0);
     expect(result?.status).toBe('error');
     expect(result?.error).toContain('unexpected crash');
+  });
+
+  // ---- Phase 1: Timeout guards (Issue #1313) ----
+
+  it('times out workers that exceed WORKER_TIMEOUT_MS', async () => {
+    expect(WORKER_TIMEOUT_MS).toBeGreaterThan(0);
+
+    // Use a very short timeout override for testing
+    const slowExecute: WorkerDispatchOptions['executeWorker'] = vi.fn().mockImplementation(
+      (entry: AgentPlanEntry): Promise<WorkerResult> =>
+        new Promise((resolve) => {
+          setTimeout(() => {
+            resolve({
+              role: entry.role,
+              subTask: entry.subTask,
+              output: 'late result',
+              status: 'success' as const,
+              durationMs: 200,
+            });
+          }, 200);
+        })
+    );
+
+    const entries = [makeEntry('code', 1, 1)];
+    const results = await dispatchWorkers(entries, {
+      executeWorker: slowExecute,
+      workerTimeoutMs: 50, // Much shorter than the 200ms worker
+    });
+
+    expect(results).toHaveLength(1);
+    const result = results.at(0);
+    expect(result?.status).toBe('error');
+    expect(result?.error).toContain('timeout');
+  });
+
+  // ---- Phase 2: Error duration tracking (Issue #1313) ----
+
+  it('captures actual duration in error results from thrown errors', async () => {
+    const slowThrow: WorkerDispatchOptions['executeWorker'] = vi.fn().mockImplementation(
+      (): Promise<WorkerResult> =>
+        new Promise((_, reject) => {
+          setTimeout(() => {
+            reject(new Error('delayed crash'));
+          }, 30);
+        })
+    );
+
+    const entries = [makeEntry('code', 1, 1)];
+    const results = await dispatchWorkers(entries, { executeWorker: slowThrow });
+    expect(results).toHaveLength(1);
+    const result = results.at(0);
+    expect(result?.status).toBe('error');
+    // durationMs should reflect actual elapsed time, not hardcoded 0
+    expect(result?.durationMs).toBeGreaterThanOrEqual(0);
+    // For a 30ms delay, it should be at least a few ms (not exactly 0)
+    expect(result?.durationMs).toBeGreaterThan(0);
   });
 });
