@@ -22,6 +22,21 @@ import type {
 } from './types.js';
 import { BaseCliAdapter } from './base-adapter.js';
 
+/** Rate-limit indicator patterns in CLI stdout (case-insensitive). */
+const RATE_LIMIT_PATTERNS = [
+  'rate limit',
+  '429',
+  'too many requests',
+  'quota exceeded',
+  'usage limit',
+];
+
+/** Checks if raw stdout contains rate-limit indicators (#1320). */
+function isRateLimitOutput(stdout: string): boolean {
+  const lower = stdout.toLowerCase();
+  return RATE_LIMIT_PATTERNS.some((pattern) => lower.includes(pattern));
+}
+
 /**
  * Command configuration returned by getCommand.
  */
@@ -155,7 +170,13 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
 
     const text = this.parser.extractResponse(stdout);
     if (text === null) {
-      return err(this.createError('PARSE_ERROR', 'Failed to parse response'));
+      // Check for rate-limit indicators in raw stdout (#1320)
+      if (isRateLimitOutput(stdout)) {
+        const snippet = stdout.slice(0, 200).trim();
+        return err(this.createError('RATE_LIMITED', snippet));
+      }
+      const snippet = stdout.slice(0, 200).trim();
+      return err(this.createError('PARSE_ERROR', `Failed to parse response: ${snippet}`));
     }
 
     const usage = this.parser.extractUsage(stdout);
