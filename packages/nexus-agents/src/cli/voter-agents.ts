@@ -46,10 +46,12 @@ export {
   MAX_VOTE_TIMEOUT_MS,
   MIN_VOTE_TIMEOUT_MS,
   DEFAULT_MAX_RETRIES,
+  RATE_LIMIT_RETRY_DELAY_MS,
   createErrorVoteResult,
   createSimulationVoteResult,
   createSimulatedVotes,
   simulateVote,
+  isRateLimitError,
   withTimeout,
   delay,
   extractTextFromResponse,
@@ -66,6 +68,7 @@ import {
   createSimulationVoteResult,
   createSimulatedVotes,
   executeWithRetries,
+  delay,
 } from './voter-execution.js';
 import { resolveVoteTimeout, VOTE_TIMEOUTS } from '../config/timeouts.js';
 
@@ -76,6 +79,9 @@ import { resolveVoteTimeout, VOTE_TIMEOUTS } from '../config/timeouts.js';
 /**
  * Options for executing voter agents.
  */
+/** Default inter-agent delay to prevent rate limiting (ms). */
+export const DEFAULT_INTER_AGENT_DELAY_MS = 1000;
+
 export interface VoterAgentOptions {
   /** Logger instance */
   readonly logger?: ILogger;
@@ -87,6 +93,8 @@ export interface VoterAgentOptions {
   readonly maxRetries?: number;
   /** Whether to allow simulation fallback (default: false per Issue #280) */
   readonly allowSimulation?: boolean;
+  /** Delay between launching each agent vote to prevent rate limiting (default: 1000ms). Set to 0 to disable. */
+  readonly interAgentDelayMs?: number;
 }
 
 // Re-export AgentVoteResult for convenience
@@ -257,6 +265,33 @@ async function resolveDiverseAdapters(
   return adapters;
 }
 
+/** Options for staggered vote launching. */
+interface StaggeredVoteInput {
+  readonly roles: readonly VoterRole[];
+  readonly proposal: string;
+  readonly roleAdapters: Map<VoterRole, IModelAdapter>;
+  readonly fallbackAdapter: IModelAdapter;
+  readonly logger: ILogger;
+  readonly voteOptions: { timeoutMs: number; maxRetries: number; allowSimulation: boolean };
+  readonly interDelay: number;
+}
+
+/** Launches votes with staggered delays to prevent rate limiting (Issue #1319). */
+async function launchStaggeredVotes(
+  input: StaggeredVoteInput
+): Promise<readonly AgentVoteResult[]> {
+  const { roles, proposal, roleAdapters, fallbackAdapter, logger, voteOptions, interDelay } = input;
+  const votePromises: Promise<AgentVoteResult>[] = [];
+  for (const [i, role] of roles.entries()) {
+    if (i > 0 && interDelay > 0) {
+      await delay(interDelay);
+    }
+    const adapter = roleAdapters.get(role) ?? fallbackAdapter;
+    votePromises.push(executeAgentVote(role, proposal, adapter, logger, voteOptions));
+  }
+  return Promise.all(votePromises);
+}
+
 /**
  * Collects votes from multiple voter agents.
  *
@@ -299,12 +334,17 @@ export async function collectRealVotes(
       ? assignUniformAdapter(roles, adapterResult.adapter)
       : await resolveDiverseAdapters(roles, logger, adapterResult.adapter);
   const voteOptions = { timeoutMs, maxRetries, allowSimulation: allowSimulation ?? false };
-  const votePromises = roles.map((role) => {
-    const adapter = roleAdapters.get(role) ?? adapterResult.adapter;
-    return executeAgentVote(role, proposal, adapter, logger, voteOptions);
-  });
+  const interDelay = options.interAgentDelayMs ?? DEFAULT_INTER_AGENT_DELAY_MS;
 
-  return Promise.all(votePromises);
+  return launchStaggeredVotes({
+    roles,
+    proposal,
+    roleAdapters,
+    fallbackAdapter: adapterResult.adapter,
+    logger,
+    voteOptions,
+    interDelay,
+  });
 }
 
 /**

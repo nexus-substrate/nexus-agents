@@ -23,6 +23,8 @@ import {
   executeWithRetries,
   validateTimeout,
   resolveVoteTimeout,
+  isRateLimitError,
+  RATE_LIMIT_RETRY_DELAY_MS,
 } from './voter-execution.js';
 import type { VoterRole } from './vote-types.js';
 import type { IModelAdapter, CompletionResponse, ILogger, Result } from '../core/index.js';
@@ -350,6 +352,30 @@ describe('voter-execution', () => {
     });
   });
 
+  describe('isRateLimitError', () => {
+    it('should detect "rate limit" in error message', () => {
+      expect(isRateLimitError('Rate limited: too many requests')).toBe(true);
+    });
+
+    it('should detect "429" status code', () => {
+      expect(isRateLimitError('HTTP 429 Too Many Requests')).toBe(true);
+    });
+
+    it('should detect "too many requests"', () => {
+      expect(isRateLimitError('Error: too many requests, please retry later')).toBe(true);
+    });
+
+    it('should detect "quota exceeded"', () => {
+      expect(isRateLimitError('API quota exceeded for this model')).toBe(true);
+    });
+
+    it('should not match unrelated errors', () => {
+      expect(isRateLimitError('Model unavailable')).toBe(false);
+      expect(isRateLimitError('Timeout after 5000ms')).toBe(false);
+      expect(isRateLimitError('Vote parsing failed')).toBe(false);
+    });
+  });
+
   describe('executeSingleVoteAttempt', () => {
     const mockAdapter = {
       complete: vi.fn(),
@@ -533,6 +559,65 @@ describe('voter-execution', () => {
       }
       // Initial attempt + 1 retry = 2 calls
       expect(mockAdapter.complete).toHaveBeenCalledTimes(2);
+    });
+
+    it('should use longer delay for rate-limit errors', async () => {
+      const rateLimitResponse: MockCompletionResult = {
+        ok: false,
+        error: new ModelError('Rate limited: too many requests'),
+      };
+      const successResponse: MockCompletionResult = {
+        ok: true,
+        value: {
+          content: [{ type: 'text', text: VALID_VOTE_JSON }],
+          usage: { inputTokens: 50, outputTokens: 25, totalTokens: 75 },
+          stopReason: 'end_turn',
+          model: 'test-model',
+        },
+      };
+
+      vi.mocked(mockAdapter.complete)
+        .mockResolvedValueOnce(rateLimitResponse)
+        .mockResolvedValueOnce(successResponse);
+
+      const result = await executeWithRetries({
+        role: 'devex',
+        proposal: 'Proposal',
+        adapter: mockAdapter,
+        logger: mockLogger,
+        timeoutMs: 5000,
+        maxRetries: 2,
+      });
+
+      expect(result.ok).toBe(true);
+      // Should have called delay with the rate-limit delay (longer than standard)
+      const delayCalls = vi.mocked(delay).mock.calls;
+      expect(delayCalls.length).toBeGreaterThan(0);
+      const retryDelay = delayCalls[0]?.[0] ?? 0;
+      expect(retryDelay).toBeGreaterThanOrEqual(RATE_LIMIT_RETRY_DELAY_MS);
+    });
+
+    it('should preserve rate-limit context in error message', async () => {
+      const rateLimitResponse: MockCompletionResult = {
+        ok: false,
+        error: new ModelError('429 Too Many Requests'),
+      };
+      vi.mocked(mockAdapter.complete).mockResolvedValue(rateLimitResponse);
+
+      const result = await executeWithRetries({
+        role: 'ai_ml',
+        proposal: 'Proposal',
+        adapter: mockAdapter,
+        logger: mockLogger,
+        timeoutMs: 5000,
+        maxRetries: 0,
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        // Should preserve the original rate-limit error, not mask it
+        expect(result.error).toContain('429');
+      }
     });
 
     it('should log retry attempts', async () => {

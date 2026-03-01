@@ -42,6 +42,24 @@ export const DEFAULT_MAX_RETRIES = VOTE_TIMEOUTS.maxRetries;
  */
 const INITIAL_RETRY_DELAY_MS = 1_000;
 
+/**
+ * Retry delay for rate-limit errors in milliseconds (Issue #1319).
+ * Longer than standard to respect API rate limits.
+ */
+export const RATE_LIMIT_RETRY_DELAY_MS = 5_000;
+
+/** Rate-limit indicator patterns (case-insensitive). */
+const RATE_LIMIT_PATTERNS = ['rate limit', '429', 'too many requests', 'quota exceeded'];
+
+/**
+ * Detects whether an error message indicates a rate-limit condition.
+ * Used to apply longer retry delays instead of masking the error (Issue #1319).
+ */
+export function isRateLimitError(message: string): boolean {
+  const lower = message.toLowerCase();
+  return RATE_LIMIT_PATTERNS.some((pattern) => lower.includes(pattern));
+}
+
 /** Validates and clamps timeout. Canonical source: `config/timeouts.ts`. */
 export const validateTimeout = _validateTimeout;
 
@@ -280,8 +298,10 @@ export async function executeWithRetries(
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     if (attempt > 0) {
-      const delayMs = INITIAL_RETRY_DELAY_MS * Math.pow(2, attempt - 1);
-      logger.debug('Retrying vote execution', { role, attempt, delayMs });
+      const isRateLimit = isRateLimitError(lastError);
+      const baseDelay = isRateLimit ? RATE_LIMIT_RETRY_DELAY_MS : INITIAL_RETRY_DELAY_MS;
+      const delayMs = baseDelay * Math.pow(2, attempt - 1);
+      logger.debug('Retrying vote execution', { role, attempt, delayMs, isRateLimit });
       await delay(delayMs);
     }
 
@@ -291,11 +311,13 @@ export async function executeWithRetries(
     }
 
     lastError = result.error;
+    const rateLimited = isRateLimitError(lastError);
     logger.warn('Vote attempt failed', {
       role,
       attempt: attempt + 1,
       maxRetries: maxRetries + 1,
       error: lastError,
+      ...(rateLimited ? { rateLimited: true } : {}),
     });
   }
 

@@ -549,6 +549,64 @@ That's my vote.`;
     });
   });
 
+  describe('staggered vote launches', () => {
+    it('launches votes with inter-agent delay', async () => {
+      const callTimestamps: number[] = [];
+      const adapter = {
+        complete: vi.fn().mockImplementation(() => {
+          callTimestamps.push(Date.now());
+          return Promise.resolve({
+            ok: true,
+            value: {
+              content: [
+                {
+                  type: 'text' as const,
+                  text: '{"decision":"approve","confidence":0.9,"reasoning":"Test vote."}',
+                },
+              ],
+            },
+          });
+        }),
+      } as unknown as IModelAdapter;
+
+      await collectRealVotes({
+        roles: ['architect', 'security', 'devex'] as VoterRole[],
+        proposal: 'Test stagger',
+        adapter,
+        interAgentDelayMs: 100,
+      });
+
+      // All 3 votes should complete
+      expect(adapter.complete).toHaveBeenCalledTimes(3);
+    });
+
+    it('supports interAgentDelayMs option in CollectRealVotesOptions', async () => {
+      const adapter = {
+        complete: vi.fn().mockResolvedValue({
+          ok: true,
+          value: {
+            content: [
+              {
+                type: 'text' as const,
+                text: '{"decision":"approve","confidence":0.9,"reasoning":"OK"}',
+              },
+            ],
+          },
+        }),
+      } as unknown as IModelAdapter;
+
+      // Should not throw — interAgentDelayMs is a valid option
+      const results = await collectRealVotes({
+        roles: ['architect'] as VoterRole[],
+        proposal: 'Test',
+        adapter,
+        interAgentDelayMs: 0,
+      });
+
+      expect(results).toHaveLength(1);
+    });
+  });
+
   describe('NoAdapterError', () => {
     it('should have correct name', () => {
       const error = new NoAdapterError('Test message');
