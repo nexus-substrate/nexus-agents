@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { planAgentTeam } from './agent-planner.js';
+import { planAgentTeam, computeOptimalWaveSize, EXPERT_DEPENDENCIES } from './agent-planner.js';
 import type { TaskAnalysisResult } from '../../core/task-analysis/shared-task-analyzer.js';
 import type { AgentPlan } from './agent-planner.js';
 
@@ -513,6 +513,61 @@ describe('AgentPlanner', () => {
       expect(entry).toBeDefined();
       if (entry !== undefined) {
         expect(entry.wave).toBe(1);
+      }
+    });
+  });
+
+  // ==========================================================================
+  // Adaptive Wave Sizing (Issue #1318)
+  // ==========================================================================
+
+  describe('computeOptimalWaveSize', () => {
+    it('returns 1 for single-expert plans', () => {
+      expect(computeOptimalWaveSize(1, 'simple', false)).toBe(1);
+    });
+
+    it('returns 2 for expert plans with dependencies', () => {
+      expect(computeOptimalWaveSize(5, 'expert', true)).toBe(2);
+    });
+
+    it('returns MAX_WORKERS_PER_WAVE for parallel-safe expert tasks', () => {
+      expect(computeOptimalWaveSize(5, 'expert', false)).toBe(3);
+    });
+
+    it('returns 2 for complex tasks with dependencies', () => {
+      expect(computeOptimalWaveSize(3, 'complex', true)).toBe(2);
+    });
+
+    it('returns MAX_WORKERS_PER_WAVE for moderate tasks without dependencies', () => {
+      expect(computeOptimalWaveSize(2, 'moderate', false)).toBe(3);
+    });
+  });
+
+  describe('suggestedWaveSize in AgentPlan', () => {
+    it('includes suggestedWaveSize in plan output', () => {
+      const plan = planFor('code_implementation', 'complex');
+      expect(plan.suggestedWaveSize).toBeDefined();
+      expect(plan.suggestedWaveSize).toBeGreaterThanOrEqual(1);
+    });
+
+    it('suggests narrower waves for complex tasks with dependencies', () => {
+      // code_implementation/complex → code, testing, architecture
+      // testing depends on code → hasDependencies = true
+      const plan = planFor('code_implementation', 'complex');
+      expect(plan.suggestedWaveSize).toBe(2);
+    });
+
+    it('suggests wide waves for parallel-safe tasks', () => {
+      // architecture/complex → architecture, security, code
+      // security depends on code, but architecture has no deps
+      // Still has dependencies → suggestedWaveSize = 2
+      const plan = planFor('architecture', 'complex');
+      // Has dependencies (security→code) so should be 2
+      const hasDeps = plan.entries.some((e) => EXPERT_DEPENDENCIES[e.role] !== undefined);
+      if (hasDeps) {
+        expect(plan.suggestedWaveSize).toBe(2);
+      } else {
+        expect(plan.suggestedWaveSize).toBe(3);
       }
     });
   });

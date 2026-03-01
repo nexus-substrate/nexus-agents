@@ -28,6 +28,7 @@ function makePlan(entries: AgentPlanEntry[]): AgentPlan {
     taskType: 'code_implementation',
     complexity: 'moderate',
     reasoning: 'Test plan',
+    suggestedWaveSize: 3,
   };
 }
 
@@ -388,32 +389,28 @@ describe('Worker Dispatch E2E Pipeline', () => {
     it('falls back gracefully when synthesis LLM call fails', async () => {
       let callCount = 0;
       const adapter = {
-        complete: vi
-          .fn()
-          .mockImplementation(
-            (): Promise<{
-              ok: boolean;
-              value?: { content: ContentBlock[] };
-              error?: { message: string };
-            }> => {
-              callCount++;
-              if (callCount <= 2) {
-                return Promise.resolve({
-                  ok: true,
-                  value: {
-                    content: [
-                      { type: 'text' as const, text: `Worker ${String(callCount)} result` },
-                    ],
-                  },
-                });
-              }
-              // Synthesis call fails
+        complete: vi.fn().mockImplementation(
+          (): Promise<{
+            ok: boolean;
+            value?: { content: ContentBlock[] };
+            error?: { message: string };
+          }> => {
+            callCount++;
+            if (callCount <= 2) {
               return Promise.resolve({
-                ok: false,
-                error: { message: 'Rate limited' },
+                ok: true,
+                value: {
+                  content: [{ type: 'text' as const, text: `Worker ${String(callCount)} result` }],
+                },
               });
             }
-          ),
+            // Synthesis call fails
+            return Promise.resolve({
+              ok: false,
+              error: { message: 'Rate limited' },
+            });
+          }
+        ),
       } as unknown as IModelAdapter;
 
       const plan = makePlan([makeEntry('code', 'Implement', 1), makeEntry('testing', 'Test', 1)]);

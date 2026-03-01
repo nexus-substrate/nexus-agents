@@ -33,6 +33,7 @@ function makePlan(entryCount: number): AgentPlan {
     taskType: 'code_implementation',
     complexity: 'moderate',
     reasoning: 'Test plan',
+    suggestedWaveSize: 3,
   };
 }
 

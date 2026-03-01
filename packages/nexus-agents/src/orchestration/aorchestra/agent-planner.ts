@@ -59,6 +59,8 @@ export interface AgentPlan {
   readonly complexity: ComplexityLevel;
   /** Overall planning reasoning */
   readonly reasoning: string;
+  /** Suggested workers per wave — adaptive based on complexity and dependencies. */
+  readonly suggestedWaveSize: number;
 }
 
 // ============================================================================
@@ -110,6 +112,29 @@ export const EXPERT_DEPENDENCIES: Readonly<
   security: ['code'],
   documentation: ['code', 'architecture'],
 };
+
+/**
+ * Compute the optimal wave size based on task shape.
+ *
+ * - 1 expert: 1 worker/wave (no parallelism needed)
+ * - Tasks with expert dependencies: 2 workers/wave (maximizes cross-wave context)
+ * - Parallel-safe tasks (no dependencies): MAX_WORKERS_PER_WAVE
+ *
+ * @param expertCount - Number of experts in the plan
+ * @param complexity - Task complexity level
+ * @param hasDependencies - Whether any expert has declared dependencies
+ * @returns Optimal workers per wave (1..MAX_WORKERS_PER_WAVE)
+ */
+export function computeOptimalWaveSize(
+  expertCount: number,
+  complexity: ComplexityLevel,
+  hasDependencies: boolean
+): number {
+  if (expertCount <= 1) return 1;
+  if (complexity === 'simple') return 1;
+  if (hasDependencies) return 2;
+  return MAX_WORKERS_PER_WAVE;
+}
 
 /**
  * Sub-task templates per expert role.
@@ -359,6 +384,12 @@ export function planAgentTeam(
 ): AgentPlan {
   const rawEntries = selectExperts(analysis, taskDescription, options?.filePaths);
   const entries = assignDependencyAwareWaves(rawEntries);
+  const hasDependencies = entries.some((e) => EXPERT_DEPENDENCIES[e.role] !== undefined);
+  const suggestedWaveSize = computeOptimalWaveSize(
+    entries.length,
+    analysis.complexity,
+    hasDependencies
+  );
 
   return {
     entries,
@@ -366,5 +397,6 @@ export function planAgentTeam(
     taskType: analysis.taskType,
     complexity: analysis.complexity,
     reasoning: generateReasoning(analysis, entries.length),
+    suggestedWaveSize,
   };
 }
