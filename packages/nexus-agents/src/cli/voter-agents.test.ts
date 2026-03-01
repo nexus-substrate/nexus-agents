@@ -4,6 +4,16 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
+
+// Mock delay to skip retry backoff waits (perf: saves ~2s from retry tests)
+vi.mock('../utils/async-utils.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../utils/async-utils.js')>();
+  return {
+    ...actual,
+    delay: vi.fn(() => Promise.resolve()),
+  };
+});
+
 import {
   VOTER_SYSTEM_PROMPTS,
   VoteResponseSchema,
@@ -445,7 +455,7 @@ That's my vote.`;
 
     it('should timeout and return error when adapter is slow', async () => {
       const adapter = createMockAdapter({
-        delay: 200, // 200ms delay
+        delay: 10, // 10ms delay (perf: reduced from 200ms)
         response: {
           ok: true,
           value: {
@@ -462,7 +472,7 @@ That's my vote.`;
       });
 
       const result = await executeAgentVote('architect', 'Test proposal', adapter, logger, {
-        timeoutMs: 50, // 50ms timeout (less than 200ms delay)
+        timeoutMs: 2, // 2ms timeout (less than 10ms delay)
         maxRetries: 0,
         allowSimulation: false,
       });

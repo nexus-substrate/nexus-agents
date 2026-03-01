@@ -29,6 +29,46 @@ vi.mock('../../context/session-memory.js', () => ({
   SessionMemory: vi.fn(() => mockSessionMemory),
 }));
 
+// Mock SQLite backends to skip expensive better-sqlite3 init (perf: saves ~2s)
+vi.mock('../../context/agentic-memory.js', () => ({
+  AgenticMemoryBackend: vi.fn(() => ({
+    initialize: vi.fn().mockResolvedValue({ ok: false, error: { message: 'mocked' } }),
+  })),
+}));
+vi.mock('../../context/adaptive-memory.js', () => ({
+  AdaptiveMemoryBackend: vi.fn(() => ({
+    initialize: vi.fn().mockResolvedValue({ ok: false, error: { message: 'mocked' } }),
+  })),
+}));
+vi.mock('../../context/typed-memory.js', () => ({
+  HybridMemoryBackend: vi.fn(() => ({
+    initialize: vi.fn().mockResolvedValue({ ok: false, error: { message: 'mocked' } }),
+  })),
+  createTypedMemory: vi.fn(),
+}));
+// Mock HybridMemoryBackend from memory-backend.js (different from typed-memory.js export)
+vi.mock('../../context/memory-backend.js', () => ({
+  HybridMemoryBackend: vi.fn(() => ({
+    initialize: vi.fn().mockResolvedValue({ ok: false, error: { message: 'mocked' } }),
+  })),
+}));
+// Mock MobiMem to skip SQLite init (perf: saves ~1s)
+vi.mock('../../context/mobimem.js', () => ({
+  MobiMem: vi.fn(() => ({
+    initialize: vi.fn().mockResolvedValue(undefined),
+    query: vi.fn().mockReturnValue([]),
+    record: vi.fn(),
+    getStats: vi.fn().mockReturnValue({ totalEntries: 0, backends: [] }),
+  })),
+}));
+// Mock MemoryDecayManager to skip SQLite init (perf: saves ~500ms)
+vi.mock('./memory-decay.js', () => ({
+  MemoryDecayManager: vi.fn(() => ({
+    runDecay: vi.fn().mockReturnValue({ decayed: 0, removed: 0 }),
+    getStats: vi.fn().mockReturnValue({ totalEntries: 0, decayedEntries: 0 }),
+  })),
+}));
+
 import { ToolMemoryManager } from './tool-memory.js';
 
 function createMockLogger(): ILogger {

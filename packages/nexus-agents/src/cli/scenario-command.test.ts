@@ -6,6 +6,9 @@
 
 import { describe, it, expect } from 'vitest';
 import { resolve, join } from 'node:path';
+import { readdir, readFile } from 'node:fs/promises';
+import * as yaml from 'yaml';
+import { createScenarioRunner } from '../testing/e2e/scenario-runner.js';
 
 // ============================================================================
 // Fixture Discovery Tests
@@ -15,7 +18,6 @@ const FIXTURES_DIR = resolve(import.meta.dirname ?? '.', '../testing/e2e/fixture
 
 describe('scenario fixtures', () => {
   it('fixture directory exists and has scenario files', async () => {
-    const { readdir } = await import('node:fs/promises');
     const files = await readdir(FIXTURES_DIR);
     const scenarios = files.filter((f: string) => f.endsWith('.scenario.yaml'));
 
@@ -23,10 +25,6 @@ describe('scenario fixtures', () => {
   });
 
   it('each fixture has required fields', async () => {
-    const { readFile } = await import('node:fs/promises');
-    const { readdir } = await import('node:fs/promises');
-    const yaml = await import('yaml');
-
     const files = await readdir(FIXTURES_DIR);
     const scenarios = files.filter((f: string) => f.endsWith('.scenario.yaml'));
 
@@ -43,7 +41,6 @@ describe('scenario fixtures', () => {
   });
 
   it('loads e2e-orchestration-sanity fixture', async () => {
-    const { createScenarioRunner } = await import('../testing/e2e/scenario-runner.js');
     const runner = createScenarioRunner();
     const fixture = await runner.loadFixture(
       join(FIXTURES_DIR, 'e2e-orchestration-sanity.scenario.yaml')
@@ -54,7 +51,6 @@ describe('scenario fixtures', () => {
   });
 
   it('loads branch-coverage-drill fixture', async () => {
-    const { createScenarioRunner } = await import('../testing/e2e/scenario-runner.js');
     const runner = createScenarioRunner();
     const fixture = await runner.loadFixture(
       join(FIXTURES_DIR, 'branch-coverage-drill.scenario.yaml')
@@ -65,7 +61,6 @@ describe('scenario fixtures', () => {
   });
 
   it('loads filesystem-rehydration fixture', async () => {
-    const { createScenarioRunner } = await import('../testing/e2e/scenario-runner.js');
     const runner = createScenarioRunner();
     const fixture = await runner.loadFixture(
       join(FIXTURES_DIR, 'filesystem-rehydration.scenario.yaml')
@@ -76,7 +71,6 @@ describe('scenario fixtures', () => {
   });
 
   it('loads mcp-front-end-flow fixture', async () => {
-    const { createScenarioRunner } = await import('../testing/e2e/scenario-runner.js');
     const runner = createScenarioRunner();
     const fixture = await runner.loadFixture(
       join(FIXTURES_DIR, 'mcp-front-end-flow.scenario.yaml')
@@ -93,7 +87,6 @@ describe('scenario fixtures', () => {
 
 describe('scenario runner with fixtures', () => {
   it('runs e2e-orchestration-sanity in stub mode', async () => {
-    const { createScenarioRunner } = await import('../testing/e2e/scenario-runner.js');
     const runner = createScenarioRunner();
     const fixture = await runner.loadFixture(
       join(FIXTURES_DIR, 'e2e-orchestration-sanity.scenario.yaml')
@@ -106,7 +99,6 @@ describe('scenario runner with fixtures', () => {
   });
 
   it('runs the 4 new scenarios in batch', async () => {
-    const { createScenarioRunner } = await import('../testing/e2e/scenario-runner.js');
     const runner = createScenarioRunner();
 
     const newScenarios = [
@@ -126,7 +118,6 @@ describe('scenario runner with fixtures', () => {
   });
 
   it('supports dry-run mode', async () => {
-    const { createScenarioRunner } = await import('../testing/e2e/scenario-runner.js');
     const runner = createScenarioRunner();
     const fixture = await runner.loadFixture(
       join(FIXTURES_DIR, 'mcp-front-end-flow.scenario.yaml')

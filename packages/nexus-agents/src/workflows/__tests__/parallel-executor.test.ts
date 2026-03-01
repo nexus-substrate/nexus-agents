@@ -83,7 +83,7 @@ describe('TaskQueue', () => {
       const createTask = (id: number) => async () => {
         running.push(id);
         maxRunning.push(running.length);
-        await new Promise((resolve) => setTimeout(resolve, 50));
+        await new Promise((resolve) => setTimeout(resolve, 5));
         running.pop();
         return id;
       };
@@ -122,7 +122,7 @@ describe('TaskQueue', () => {
 
       // Start a long-running task (we don't use the result directly in this test)
       void queue.add(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 100));
+        await new Promise((resolve) => setTimeout(resolve, 30));
         executed.push(1);
         return 1;
       });
@@ -132,8 +132,8 @@ describe('TaskQueue', () => {
         return Promise.resolve(2);
       });
 
-      // Cancel while first task is running
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      // Cancel while first task is still running (first task takes 30ms)
+      await new Promise((resolve) => setTimeout(resolve, 5));
       queue.cancel();
 
       await expect(pendingTask).rejects.toThrow('Queue cancelled');
@@ -412,7 +412,7 @@ describe('ParallelExecutor', () => {
       const executor: StepExecutor = async (step) => {
         currentConcurrent++;
         maxConcurrent = Math.max(maxConcurrent, currentConcurrent);
-        await new Promise((resolve) => setTimeout(resolve, 20));
+        await new Promise((resolve) => setTimeout(resolve, 2));
         currentConcurrent--;
         return successResult(step.id);
       };
@@ -455,7 +455,7 @@ describe('ParallelExecutor', () => {
           await new Promise((resolve) => setTimeout(resolve, 10));
           return failedResult(step.id, 'Step B failed');
         }
-        await new Promise((resolve) => setTimeout(resolve, 100));
+        await new Promise((resolve) => setTimeout(resolve, 10));
         return successResult(step.id);
       };
 
@@ -500,13 +500,13 @@ describe('ParallelExecutor', () => {
       vi.useRealTimers();
 
       const executor: StepExecutor = async (step) => {
-        await new Promise((resolve) => setTimeout(resolve, 500));
+        await new Promise((resolve) => setTimeout(resolve, 50));
         return successResult(step.id);
       };
 
       const steps = [createStep('a')];
       const result = await executeParallel(steps, createContext(), executor, {
-        timeoutMs: 50,
+        timeoutMs: 5,
       });
 
       expect(result.ok).toBe(false);
@@ -519,11 +519,11 @@ describe('ParallelExecutor', () => {
       vi.useRealTimers();
 
       const executor: StepExecutor = async (step) => {
-        await new Promise((resolve) => setTimeout(resolve, 500));
+        await new Promise((resolve) => setTimeout(resolve, 50));
         return successResult(step.id);
       };
 
-      const steps = [createStep('a', { timeout: 50 })];
+      const steps = [createStep('a', { timeout: 5 })];
       const result = await executeParallel(steps, createContext(), executor, {
         failFast: false,
       });
@@ -545,7 +545,7 @@ describe('ParallelExecutor', () => {
         context.signal?.addEventListener('abort', () => {
           wasAborted = true;
         });
-        await new Promise((resolve) => setTimeout(resolve, 100));
+        await new Promise((resolve) => setTimeout(resolve, 10));
         return successResult(step.id);
       };
 

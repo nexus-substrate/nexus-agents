@@ -12,11 +12,11 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 
 import { createServer, connectTransport } from './server.js';
 import {
-  registerTools,
   registerOrchestrateTool,
   registerCreateExpertTool,
   registerExecuteExpertTool,
 } from './tools/index.js';
+import { createDefaultRateLimiter } from './middleware/rate-limiter.js';
 import type { Expert } from '../agents/index.js';
 
 // ============================================================================
@@ -34,8 +34,9 @@ async function setupServer(): Promise<TestContext> {
   if (!serverResult.ok) throw new Error(serverResult.error.message);
   const { server, logger } = serverResult.value;
 
-  const infra = registerTools(server, { logger });
-  const baseDeps = { logger: infra.logger, rateLimiter: infra.rateLimiter };
+  // Only register the 3 tools under test — avoids importing all 24 tools (perf: saves ~4s)
+  const rateLimiter = createDefaultRateLimiter('mcp-expert-test', logger);
+  const baseDeps = { logger, rateLimiter };
 
   // Shared expert registry
   const expertRegistry = new Map<string, Expert>();

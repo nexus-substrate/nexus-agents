@@ -11,11 +11,32 @@ import {
 } from './journey-simulator.js';
 import type { UserJourney, JourneyAction } from './types.js';
 
+/** Fast executor that skips real setTimeout delays (perf: saves ~3s).
+ *  Preserves 'fail' semantics and 'wait' with duration for timeout tests. */
+const fastExecutor: IActionExecutor = {
+  execute: async (action: JourneyAction, index: number) => {
+    if (action.command.includes('fail')) {
+      return {
+        index,
+        succeeded: false,
+        durationMs: 0,
+        error: `Simulated failure for command: ${action.command}`,
+      };
+    }
+    // For 'wait' actions, use a minimal delay to allow timeout races to work
+    if (action.type === 'wait') {
+      const duration = typeof action.args?.duration === 'number' ? action.args.duration : 50;
+      await new Promise((r) => setTimeout(r, Math.min(duration, 50)));
+    }
+    return { index, succeeded: true, durationMs: 1 };
+  },
+};
+
 describe('JourneySimulator', () => {
   let simulator: JourneySimulator;
 
   beforeEach(() => {
-    simulator = new JourneySimulator();
+    simulator = new JourneySimulator(fastExecutor);
   });
 
   describe('constructor', () => {
@@ -101,8 +122,8 @@ describe('JourneySimulator', () => {
       const trackingExecutor: IActionExecutor = {
         async execute() {
           times.push(Date.now());
-          await new Promise((r) => setTimeout(r, 50));
-          return { index: 0, succeeded: true, durationMs: 50 };
+          await new Promise((r) => setTimeout(r, 5));
+          return { index: 0, succeeded: true, durationMs: 5 };
         },
       };
       const trackingSimulator = new JourneySimulator(trackingExecutor);
@@ -110,8 +131,8 @@ describe('JourneySimulator', () => {
       await trackingSimulator.simulate(basicJourney);
 
       expect(times).toHaveLength(2);
-      // Allow 5ms tolerance for timer variance (setTimeout is not exact)
-      expect(times[1]! - times[0]!).toBeGreaterThanOrEqual(45);
+      // Allow 2ms tolerance for timer variance (setTimeout is not exact)
+      expect(times[1]! - times[0]!).toBeGreaterThanOrEqual(3);
     });
 
     it('should stop on first failure', async () => {
@@ -283,21 +304,21 @@ describe('DefaultActionExecutor', () => {
       const result = await executor.execute(action);
 
       expect(result.succeeded).toBe(true);
-      expect(result.durationMs).toBeGreaterThanOrEqual(100); // workflow_run has longer delay
+      expect(result.durationMs).toBeGreaterThanOrEqual(10); // workflow_run has longer delay
     });
 
     it('should execute wait action', async () => {
       const action: JourneyAction = {
         type: 'wait',
         command: 'wait',
-        args: { duration: 100 },
+        args: { duration: 10 },
       };
 
       const result = await executor.execute(action);
 
       expect(result.succeeded).toBe(true);
       // Allow 5ms tolerance for timer imprecision
-      expect(result.durationMs).toBeGreaterThanOrEqual(95);
+      expect(result.durationMs).toBeGreaterThanOrEqual(5);
     });
 
     it('should fail when command contains "fail"', async () => {

@@ -32,7 +32,7 @@ function createMockAdapter(
   }
 ): ICliAdapter {
   const response = options?.response ?? `Mock response from ${name}`;
-  const latencyMs = options?.latencyMs ?? 10;
+  const latencyMs = options?.latencyMs ?? 0; // Default 0 for fast tests (perf)
 
   return {
     name,
@@ -320,7 +320,7 @@ describe('TestRunner', () => {
       taskRegistry.registerAll(tasks);
 
       // Use slow adapter to verify parallelism
-      const slowAdapter = createMockAdapter('claude', { latencyMs: 50 });
+      const slowAdapter = createMockAdapter('claude', { latencyMs: 5 });
       adapters.set('claude', slowAdapter);
 
       const runner = createTestRunner({
@@ -787,7 +787,7 @@ describe('TestRunner', () => {
       taskRegistry.registerAll(tasks);
 
       // Use slow adapter
-      const slowAdapter = createMockAdapter('claude', { latencyMs: 100 });
+      const slowAdapter = createMockAdapter('claude', { latencyMs: 10 });
       adapters.set('claude', slowAdapter);
 
       const runner = createTestRunner({
@@ -802,7 +802,7 @@ describe('TestRunner', () => {
       const runPromise = runner.runAll();
       setTimeout(() => {
         runner.abort();
-      }, 50);
+      }, 5);
 
       const result = await runPromise;
 

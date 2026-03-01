@@ -63,9 +63,9 @@ export class DefaultActionExecutor implements IActionExecutor {
   private async simulateAction(action: JourneyAction): Promise<void> {
     const waitDuration = this.getWaitDuration(action);
     const delays: Record<JourneyAction['type'], number> = {
-      cli_command: 100,
-      mcp_tool: 150,
-      workflow_run: 500,
+      cli_command: 10,
+      mcp_tool: 15,
+      workflow_run: 50,
       wait: waitDuration,
     };
 

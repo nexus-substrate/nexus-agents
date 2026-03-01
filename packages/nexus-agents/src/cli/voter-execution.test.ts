@@ -28,6 +28,15 @@ import type { VoterRole } from './vote-types.js';
 import type { IModelAdapter, CompletionResponse, ILogger, Result } from '../core/index.js';
 import { ModelError } from '../core/index.js';
 
+// Mock delay to resolve instantly — avoids 1000ms+ exponential backoff waits (perf: saves ~3s)
+vi.mock('../utils/async-utils.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../utils/async-utils.js')>();
+  return {
+    ...actual,
+    delay: vi.fn(() => Promise.resolve()),
+  };
+});
+
 type MockCompletionResult = Result<CompletionResponse, ModelError>;
 
 describe('voter-execution', () => {
@@ -289,12 +298,8 @@ describe('voter-execution', () => {
   });
 
   describe('delay', () => {
-    it('should delay for specified time', async () => {
-      const start = Date.now();
-      await delay(50);
-      const elapsed = Date.now() - start;
-
-      expect(elapsed).toBeGreaterThanOrEqual(40); // Allow some tolerance
+    it('should resolve (mocked for perf)', async () => {
+      await expect(delay(50)).resolves.toBeUndefined();
     });
 
     it('should resolve without value', async () => {

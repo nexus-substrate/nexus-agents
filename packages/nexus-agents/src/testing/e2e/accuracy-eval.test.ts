@@ -63,13 +63,13 @@ describe('AccuracyEval', () => {
     it('should run multiple evaluation rounds', async () => {
       const config: AccuracyEvalConfig = {
         ...basicConfig,
-        numRuns: 5,
+        numRuns: 2, // perf: reduced from 5 — still validates multi-run behavior
       };
 
       const result = await evaluator.evaluate(config);
 
-      expect(result.scores).toHaveLength(5);
-      expect(result.feedback).toHaveLength(5);
+      expect(result.scores).toHaveLength(2);
+      expect(result.feedback).toHaveLength(2);
     });
 
     it('should collect feedback for each run', async () => {

@@ -7,7 +7,26 @@
  * @module workflows/self-development/docker-sandbox.test
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+
+// Mock child_process to avoid real Docker subprocess spawns (perf: saves ~1.2s)
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:child_process')>();
+  return {
+    ...actual,
+    execFile: vi.fn(
+      (
+        _cmd: string,
+        _args: string[],
+        _opts: unknown,
+        cb: (err: Error | null, stdout: string, stderr: string) => void
+      ) => {
+        cb(new Error('not found'), '', '');
+      }
+    ),
+  };
+});
+
 import { isDockerAvailable, executeSandboxed, SandboxError } from './docker-sandbox.js';
 
 describe('docker-sandbox', () => {

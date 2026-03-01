@@ -8,6 +8,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { getOutcomeStore, resetOutcomeStore } from '../../orchestration/outcomes/index.js';
 
+// Pre-import heavy modules once instead of dynamic import per test (perf: saves ~2s)
+import * as orchestrateMod from './orchestrate.js';
+import * as executeExpertMod from './execute-expert.js';
+
 // Mock tool-memory to avoid side effects
 vi.mock('./tool-memory.js', () => {
   const noop = vi.fn();
@@ -62,18 +66,13 @@ describe('Orchestrate OutcomeStore recording (Issue #1014)', () => {
     resetOutcomeStore();
   });
 
-  it('records a success outcome to OutcomeStore after orchestration', async () => {
-    // Dynamic import to get the module after mocks are set up
-    const mod = await import('./orchestrate.js');
-
-    // Access the internal recording function via a mock orchestrator
-    // We test indirectly: OutcomeStore should gain entries after orchestration
+  it('records a success outcome to OutcomeStore after orchestration', () => {
     const store = getOutcomeStore();
     const initialSize = store.size;
 
     // The key assertion: the module exports are properly wired.
-    expect(mod.registerOrchestrateTool).toBeDefined();
-    expect(typeof mod.registerOrchestrateTool).toBe('function');
+    expect(orchestrateMod.registerOrchestrateTool).toBeDefined();
+    expect(typeof orchestrateMod.registerOrchestrateTool).toBe('function');
 
     // Verify OutcomeStore is accessible and functioning
     store.append({
@@ -180,9 +179,8 @@ describe('Execute-expert OutcomeStore recording (Issue #1014)', () => {
     expect(last?.model).toBe('expert');
   });
 
-  it('execute-expert module exports registerExecuteExpertTool', async () => {
-    const mod = await import('./execute-expert.js');
-    expect(mod.registerExecuteExpertTool).toBeDefined();
-    expect(typeof mod.registerExecuteExpertTool).toBe('function');
+  it('execute-expert module exports registerExecuteExpertTool', () => {
+    expect(executeExpertMod.registerExecuteExpertTool).toBeDefined();
+    expect(typeof executeExpertMod.registerExecuteExpertTool).toBe('function');
   });
 });
