@@ -175,7 +175,7 @@ interface ExpertSelectionContext {
   readonly analysis: TaskAnalysisResult;
   readonly taskDescription: string;
   readonly maxExperts: number;
-  readonly reliability?: ReadonlyMap<string, number>;
+  readonly reliability: ReadonlyMap<string, number> | undefined;
   readonly selected: Set<BuiltInExpertType>;
   readonly entries: AgentPlanEntry[];
 }

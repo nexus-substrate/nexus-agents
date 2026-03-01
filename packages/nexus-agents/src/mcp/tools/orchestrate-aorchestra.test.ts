@@ -59,6 +59,36 @@ describe('computeAgentPlan', () => {
     const plan = computeAgentPlan('x', logger);
     expect(plan === undefined || plan.totalExperts >= 0).toBe(true);
   });
+
+  it('logs excluded experts when reliability data shows low performers (Issue #1326)', () => {
+    resetOutcomeStore();
+    const store = getOutcomeStore();
+    const ts = new Date().toISOString();
+    // Seed 4 security outcomes — 1 success, 3 failures = 25% (below 50% threshold)
+    for (let i = 0; i < 4; i++) {
+      store.append({
+        id: `w-sec-${String(i)}`,
+        cli: 'claude',
+        category: 'security_review',
+        model: 'worker-security',
+        success: i === 0,
+        durationMs: 100,
+        timestamp: ts,
+        source: 'delegate',
+      });
+    }
+    const logger = createMockLogger();
+    const complexTask =
+      'Design a distributed architecture with security hardening. ' +
+      'First, optimize the concurrent processing layer for performance.';
+    computeAgentPlan(complexTask, logger);
+    expect(logger.warn).toHaveBeenCalledWith(
+      'Experts excluded by reliability filter',
+      expect.objectContaining({
+        excludedExperts: expect.arrayContaining([expect.objectContaining({ role: 'security' })]),
+      })
+    );
+  });
 });
 
 describe('computeExpertReliability', () => {

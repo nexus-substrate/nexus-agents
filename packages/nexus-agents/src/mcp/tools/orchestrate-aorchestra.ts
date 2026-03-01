@@ -77,6 +77,16 @@ export function computeAgentPlan(task: string, logger: ILogger): AgentPlan | und
 
     const expertReliability = computeExpertReliability();
     const plan = planAgentTeam(analysis, task, { expertReliability });
+
+    // Log which experts were excluded by reliability filtering (Issue #1326)
+    const excludedExperts: Array<{ role: string; rate: number }> = [];
+    for (const [role, rate] of expertReliability) {
+      if (rate < 0.5) excludedExperts.push({ role, rate: Math.round(rate * 100) / 100 });
+    }
+    if (excludedExperts.length > 0) {
+      logger.warn('Experts excluded by reliability filter', { excludedExperts });
+    }
+
     logger.info('AOrchestra plan', {
       experts: plan.totalExperts,
       taskType: plan.taskType,

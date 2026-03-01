@@ -321,7 +321,7 @@ const WORKER_MODEL_PREFIX = 'worker-';
 
 /** Finds the most common failure category among failed outcomes. */
 function findDominantError(
-  failed: ReadonlyArray<{ failureCategory?: string }>
+  failed: ReadonlyArray<{ failureCategory?: string | undefined }>
 ): string | undefined {
   if (failed.length === 0) return undefined;
   const counts = new Map<string, number>();

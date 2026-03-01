@@ -8,6 +8,8 @@
  * (Source: Issue #1305, Epic #1299, arXiv:2602.20478)
  */
 
+import { getTimeProvider } from '../../core/index.js';
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -41,7 +43,7 @@ export const DEFAULT_TTL_MS = 5 * 60 * 1000;
  * @returns true if the entry is fresh, false if stale
  */
 export function isContextFresh(entry: ContextEntry, ttlMs: number = DEFAULT_TTL_MS): boolean {
-  return Date.now() - entry.lastVerifiedMs < ttlMs;
+  return getTimeProvider().now() - entry.lastVerifiedMs < ttlMs;
 }
 
 /**
@@ -55,7 +57,7 @@ export function isContextFresh(entry: ContextEntry, ttlMs: number = DEFAULT_TTL_
 export function markContextVerified(entry: ContextEntry): ContextEntry {
   return {
     key: entry.key,
-    lastVerifiedMs: Date.now(),
+    lastVerifiedMs: getTimeProvider().now(),
   };
 }
 
@@ -66,5 +68,5 @@ export function markContextVerified(entry: ContextEntry): ContextEntry {
  * @returns Age in milliseconds since last verification
  */
 export function getContextAge(entry: ContextEntry): number {
-  return Date.now() - entry.lastVerifiedMs;
+  return getTimeProvider().now() - entry.lastVerifiedMs;
 }

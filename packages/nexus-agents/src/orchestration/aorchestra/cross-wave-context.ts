@@ -10,6 +10,9 @@
  */
 
 import type { WorkerResult } from './worker-dispatcher.js';
+import { createLogger } from '../../core/index.js';
+
+const logger = createLogger({ component: 'cross-wave-context' });
 
 // ============================================================================
 // Constants
@@ -139,7 +142,14 @@ function splitCodeBlocks(input: string): TextSegment[] {
 export function buildPriorWaveContextBlock(results: readonly WorkerResult[]): string {
   const successResults = results.filter((r) => r.status === 'success' && r.output !== '');
 
-  if (successResults.length === 0) return '';
+  if (successResults.length === 0) {
+    // Log when ALL prior wave results failed — downstream workers get no context (Issue #1326)
+    if (results.length > 0) {
+      const failedRoles = results.map((r) => r.role);
+      logger.warn('All prior wave workers failed — no context for next wave', { failedRoles });
+    }
+    return '';
+  }
 
   const header =
     '## Prior Wave Context\n\nThe following results were produced by prior wave workers. Use this context to inform your work.\n';
