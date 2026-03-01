@@ -39,6 +39,7 @@ import { createWorkflowRouter, type IWorkflowRouter } from '../../orchestration/
 import { getToolMemory } from './tool-memory.js';
 import { getAutoCatalog } from './research-auto-catalog.js';
 import { computeAgentPlan } from './orchestrate-aorchestra.js';
+import { executeWorkerDispatch, isWorkerDispatchEnabled } from './orchestrate-dispatch.js';
 import {
   getOutcomeStore,
   categorizeOutcomeErrorMessage,
@@ -558,6 +559,30 @@ function instrumentV2Orchestrate(input: { task: string }, logger: ILogger): void
   });
 }
 
+/** Try worker dispatch if conditions are met (Issue #1303). Best-effort, returns undefined on failure. */
+async function tryWorkerDispatch(
+  agentPlan: ReturnType<typeof computeAgentPlan>,
+  task: string,
+  deps: OrchestrateDeps,
+  logger: import('../../core/index.js').ILogger,
+  notifier: import('../mcp-notifier.js').IMcpNotifier
+): Promise<Awaited<ReturnType<typeof executeWorkerDispatch>> | undefined> {
+  const adapter = deps.modelAdapter;
+  if (agentPlan === undefined || !isWorkerDispatchEnabled() || adapter === undefined) {
+    return undefined;
+  }
+  try {
+    return await withProgressHeartbeat('worker-dispatch', notifier, () =>
+      executeWorkerDispatch({ agentPlan, taskDescription: task, modelAdapter: adapter, logger })
+    );
+  } catch (dispatchError: unknown) {
+    logger.warn('Worker dispatch failed, continuing with standard orchestration', {
+      error: dispatchError instanceof Error ? dispatchError.message : String(dispatchError),
+    });
+    return undefined;
+  }
+}
+
 function createOrchestrateHandler(deps: OrchestrateDeps) {
   const notifier = deps.notifier ?? NOOP_NOTIFIER;
   return async (args: unknown, ctx: HandlerContext) => {
@@ -580,10 +605,16 @@ function createOrchestrateHandler(deps: OrchestrateDeps) {
     const v2Config = resolveV2Config();
     if (v2Config.orchestrateEnabled) instrumentV2Orchestrate(validated.data, ctx.logger);
 
-    // AOrchestra: compute agent plan when enabled (Issue #935)
     const agentPlan = v2Config.aorchestraEnabled
       ? computeAgentPlan(validated.data.task, ctx.logger)
       : undefined;
+    const workerDispatchResult = await tryWorkerDispatch(
+      agentPlan,
+      validated.data.task,
+      deps,
+      ctx.logger,
+      notifier
+    );
 
     const result = await withProgressHeartbeat('orchestrate', notifier, () =>
       executeOrchestration(validated.data, deps)
@@ -601,8 +632,11 @@ function createOrchestrateHandler(deps: OrchestrateDeps) {
       durationMs: getTimeProvider().now() - startMs,
     });
 
-    // Merge agent plan into output when available
-    const output = agentPlan !== undefined ? { ...result.value, agentPlan } : result.value;
+    const output = {
+      ...result.value,
+      ...(agentPlan !== undefined ? { agentPlan } : {}),
+      ...(workerDispatchResult !== undefined ? { workerDispatch: workerDispatchResult } : {}),
+    };
     return { content: [{ type: 'text' as const, text: JSON.stringify(output, null, 2) }] };
   };
 }

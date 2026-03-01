@@ -244,12 +244,24 @@ export {
   MAX_WORKERS_PER_WAVE,
   dispatchWorkers,
   groupByWave,
+  composeWorkerPrompt,
+  detectConflicts,
+  matchTriggers,
+  DEFAULT_TRIGGER_TABLE,
+  isContextFresh,
+  markContextVerified,
+  getContextAge,
+  DEFAULT_TTL_MS,
 } from './aorchestra/index.js';
 export type {
   AgentPlan,
   AgentPlanEntry,
   WorkerResult,
   WorkerDispatchOptions,
+  ComposeWorkerPromptInput,
+  WorkerConflict,
+  TriggerRule,
+  ContextEntry,
 } from './aorchestra/index.js';
 
 // Checkpointing (Issue #833)

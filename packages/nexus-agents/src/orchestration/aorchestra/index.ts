@@ -12,3 +12,16 @@ export { planAgentTeam, MAX_WORKERS_PER_WAVE } from './agent-planner.js';
 export type { AgentPlan, AgentPlanEntry } from './agent-planner.js';
 export { dispatchWorkers, groupByWave } from './worker-dispatcher.js';
 export type { WorkerResult, WorkerDispatchOptions } from './worker-dispatcher.js';
+export { composeWorkerPrompt } from './compose-worker-prompt.js';
+export type { ComposeWorkerPromptInput } from './compose-worker-prompt.js';
+export { detectConflicts } from './conflict-detector.js';
+export type { WorkerConflict } from './conflict-detector.js';
+export { matchTriggers, DEFAULT_TRIGGER_TABLE } from './trigger-table.js';
+export type { TriggerRule } from './trigger-table.js';
+export {
+  isContextFresh,
+  markContextVerified,
+  getContextAge,
+  DEFAULT_TTL_MS,
+} from './context-freshness.js';
+export type { ContextEntry } from './context-freshness.js';
