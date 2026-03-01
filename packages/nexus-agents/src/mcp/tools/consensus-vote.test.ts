@@ -12,6 +12,7 @@ import {
   type ConsensusVoteDeps,
   type AgentVoteSummary,
   type ConsensusVoteResponse,
+  type VoteDecisionStatus,
 } from './consensus-vote.js';
 import { z } from 'zod';
 import { toAgentVoteSummary, buildResponse } from './consensus-vote-types.js';
@@ -491,23 +492,58 @@ describe('Voter roles', () => {
 
 describe('Decision status mapping', () => {
   it('should recognize approved status', () => {
-    const statuses = ['approved', 'rejected', 'pending', 'timeout'] as const;
+    const statuses: VoteDecisionStatus[] = [
+      'approved',
+      'rejected',
+      'pending',
+      'timeout',
+      'no_quorum',
+    ];
     expect(statuses).toContain('approved');
   });
 
   it('should recognize rejected status', () => {
-    const statuses = ['approved', 'rejected', 'pending', 'timeout'] as const;
+    const statuses: VoteDecisionStatus[] = [
+      'approved',
+      'rejected',
+      'pending',
+      'timeout',
+      'no_quorum',
+    ];
     expect(statuses).toContain('rejected');
   });
 
   it('should recognize pending status', () => {
-    const statuses = ['approved', 'rejected', 'pending', 'timeout'] as const;
+    const statuses: VoteDecisionStatus[] = [
+      'approved',
+      'rejected',
+      'pending',
+      'timeout',
+      'no_quorum',
+    ];
     expect(statuses).toContain('pending');
   });
 
   it('should recognize timeout status', () => {
-    const statuses = ['approved', 'rejected', 'pending', 'timeout'] as const;
+    const statuses: VoteDecisionStatus[] = [
+      'approved',
+      'rejected',
+      'pending',
+      'timeout',
+      'no_quorum',
+    ];
     expect(statuses).toContain('timeout');
+  });
+
+  it('should recognize no_quorum status (Issue #1329)', () => {
+    const statuses: VoteDecisionStatus[] = [
+      'approved',
+      'rejected',
+      'pending',
+      'timeout',
+      'no_quorum',
+    ];
+    expect(statuses).toContain('no_quorum');
   });
 });
 
@@ -723,13 +759,74 @@ describe('buildResponse error counting (Issue #815)', () => {
     ];
     const result = makeVotingResult(votes);
     result.result.outcome = 'rejected';
+    result.result.quorumReached = false;
     result.result.voteCounts = { approve: 0, reject: 0, abstain: 0, total: 0 };
     result.result.approvalPercentage = 0;
     const input = { proposal: 'Test', simulateVotes: false, quickMode: false };
     const response = buildResponse(input, result);
 
     expect(response.voteCounts.error).toBe(3);
+    expect(response.decision).toBe('no_quorum');
+  });
+
+  it('should return no_quorum when quorum not reached and all votes are errors (Issue #1329)', () => {
+    const votes: AgentVoteResult[] = [
+      {
+        role: 'architect',
+        vote: { decision: 'abstain', reasoning: 'Model adapter failed', confidence: 0 },
+        processingTimeMs: 5,
+        source: 'error',
+      },
+      {
+        role: 'security',
+        vote: { decision: 'abstain', reasoning: 'Timeout', confidence: 0 },
+        processingTimeMs: 5,
+        source: 'error',
+      },
+    ];
+    const result = makeVotingResult(votes);
+    result.result.outcome = 'rejected';
+    result.result.quorumReached = false;
+    result.result.voteCounts = { approve: 0, reject: 0, abstain: 0, total: 0 };
+    result.result.approvalPercentage = 0;
+    const input = { proposal: 'Test', simulateVotes: false, quickMode: false };
+    const response = buildResponse(input, result);
+
+    expect(response.decision).toBe('no_quorum');
+    expect(response.voteCounts.error).toBe(2);
+  });
+
+  it('should return rejected (not no_quorum) when quorum reached but vote fails', () => {
+    const votes: AgentVoteResult[] = [
+      {
+        role: 'architect',
+        vote: { decision: 'reject', reasoning: 'Bad idea', confidence: 0.9 },
+        processingTimeMs: 100,
+        source: 'llm',
+      },
+      {
+        role: 'security',
+        vote: { decision: 'reject', reasoning: 'Insecure', confidence: 0.8 },
+        processingTimeMs: 100,
+        source: 'llm',
+      },
+      {
+        role: 'pm',
+        vote: { decision: 'abstain', reasoning: 'err', confidence: 0 },
+        processingTimeMs: 5,
+        source: 'error',
+      },
+    ];
+    const result = makeVotingResult(votes);
+    result.result.outcome = 'rejected';
+    result.result.quorumReached = true;
+    result.result.voteCounts = { approve: 0, reject: 2, abstain: 0, total: 2 };
+    result.result.approvalPercentage = 0;
+    const input = { proposal: 'Test', simulateVotes: false, quickMode: false };
+    const response = buildResponse(input, result);
+
     expect(response.decision).toBe('rejected');
+    expect(response.voteCounts.error).toBe(1);
   });
 });
 

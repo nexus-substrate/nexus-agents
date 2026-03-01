@@ -88,7 +88,7 @@ export interface AgentVoteSummary {
   rejectionCategories?: readonly string[];
 }
 
-export type VoteDecisionStatus = 'approved' | 'rejected' | 'pending' | 'timeout';
+export type VoteDecisionStatus = 'approved' | 'rejected' | 'pending' | 'timeout' | 'no_quorum';
 
 /** Higher-Order Voting metadata (Issue #514). */
 export interface HigherOrderMetadata {
@@ -165,10 +165,16 @@ export function buildResponse(
 
   const errorCount = result.votes.filter((v) => v.source === 'error').length;
 
+  const allErrors = errorCount === result.votes.length && errorCount > 0;
+  const decision: VoteDecisionStatus =
+    !result.result.quorumReached && allErrors
+      ? 'no_quorum'
+      : mapOutcomeToDecision(result.result.outcome);
+
   const response: ConsensusVoteResponse = {
     proposal: proposalTruncated,
     strategy: result.strategy,
-    decision: mapOutcomeToDecision(result.result.outcome),
+    decision,
     approvalPercentage: result.result.approvalPercentage,
     voteCounts: {
       approve: result.result.voteCounts.approve,
