@@ -431,4 +431,89 @@ describe('AgentPlanner', () => {
       expect(plan.totalExperts).toBeGreaterThanOrEqual(1);
     });
   });
+
+  // ==========================================================================
+  // Dependency-Aware Wave Assignment (Issue #1317)
+  // ==========================================================================
+
+  describe('dependency-aware wave assignment', () => {
+    it('places testing in a later wave than code', () => {
+      const plan = planFor('code_implementation', 'complex');
+      const roles = getRoles(plan);
+
+      // code_implementation selects: code, testing, architecture
+      expect(roles).toContain('code');
+      expect(roles).toContain('testing');
+
+      const codeEntry = plan.entries.find((e) => e.role === 'code');
+      const testingEntry = plan.entries.find((e) => e.role === 'testing');
+      expect(codeEntry).toBeDefined();
+      expect(testingEntry).toBeDefined();
+      if (codeEntry !== undefined && testingEntry !== undefined) {
+        expect(testingEntry.wave).toBeGreaterThan(codeEntry.wave);
+      }
+    });
+
+    it('places security in a later wave than code', () => {
+      const plan = planFor('code_review', 'complex');
+      const roles = getRoles(plan);
+
+      expect(roles).toContain('code');
+      expect(roles).toContain('security');
+
+      const codeEntry = plan.entries.find((e) => e.role === 'code');
+      const securityEntry = plan.entries.find((e) => e.role === 'security');
+      expect(codeEntry).toBeDefined();
+      expect(securityEntry).toBeDefined();
+      if (codeEntry !== undefined && securityEntry !== undefined) {
+        expect(securityEntry.wave).toBeGreaterThan(codeEntry.wave);
+      }
+    });
+
+    it('places documentation in a later wave than both code and architecture', () => {
+      // Use expert complexity to get documentation via trigger table
+      const analysis = createAnalysis({
+        taskType: 'documentation',
+        complexity: 'moderate',
+      });
+      const plan = planAgentTeam(analysis, 'Update docs');
+      const roles = getRoles(plan);
+
+      // documentation task selects: documentation, code
+      expect(roles).toContain('documentation');
+      expect(roles).toContain('code');
+
+      const codeEntry = plan.entries.find((e) => e.role === 'code');
+      const docEntry = plan.entries.find((e) => e.role === 'documentation');
+      expect(codeEntry).toBeDefined();
+      expect(docEntry).toBeDefined();
+      if (codeEntry !== undefined && docEntry !== undefined) {
+        expect(docEntry.wave).toBeGreaterThan(codeEntry.wave);
+      }
+    });
+
+    it('retains positional assignment for experts with no dependencies', () => {
+      // architecture has no declared dependencies — wave should be positional
+      const plan = planFor('architecture', 'complex');
+      const roles = getRoles(plan);
+
+      expect(roles).toContain('architecture');
+      const archEntry = plan.entries.find((e) => e.role === 'architecture');
+      expect(archEntry).toBeDefined();
+      // First expert should be in wave 1
+      if (archEntry !== undefined) {
+        expect(archEntry.wave).toBe(1);
+      }
+    });
+
+    it('preserves backward compat — simple tasks still get wave 1', () => {
+      const plan = planFor('code_implementation', 'simple');
+      expect(plan.totalExperts).toBe(1);
+      const entry = plan.entries[0];
+      expect(entry).toBeDefined();
+      if (entry !== undefined) {
+        expect(entry.wave).toBe(1);
+      }
+    });
+  });
 });

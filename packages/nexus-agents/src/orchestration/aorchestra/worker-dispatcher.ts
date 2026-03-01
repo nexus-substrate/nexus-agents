@@ -27,6 +27,14 @@ export const WORKER_TIMEOUT_MS = WORKER_TIMEOUTS.defaultMs;
 // ============================================================================
 
 /**
+ * Discriminated error type for worker failures.
+ * - `timeout`: Worker exceeded the configured timeout (Promise.race)
+ * - `model_error`: Model adapter returned an error
+ * - `logic_error`: Unexpected exception in worker logic
+ */
+export type WorkerErrorType = 'timeout' | 'model_error' | 'logic_error';
+
+/**
  * Result from a single worker execution.
  */
 export interface WorkerResult {
@@ -36,6 +44,8 @@ export interface WorkerResult {
   readonly status: 'success' | 'error';
   readonly durationMs: number;
   readonly error?: string;
+  /** Discriminated error type — set only when status is 'error'. */
+  readonly errorType?: WorkerErrorType;
 }
 
 /**
@@ -171,6 +181,20 @@ export async function dispatchWorkers(
 }
 
 /**
+ * Classify an error into a discriminated error type.
+ *
+ * - `timeout`: Error message contains "timeout" (from Promise.race timeout)
+ * - `model_error`: Error message contains "model" (adapter/model failures)
+ * - `logic_error`: Everything else (unexpected exceptions)
+ */
+function classifyError(message: string, _durationMs: number, _timeoutMs: number): WorkerErrorType {
+  const lower = message.toLowerCase();
+  if (lower.includes('timeout')) return 'timeout';
+  if (lower.includes('model')) return 'model_error';
+  return 'logic_error';
+}
+
+/**
  * Execute a single worker with timeout and duration tracking.
  */
 async function executeSafe(
@@ -193,7 +217,8 @@ async function executeSafe(
   } catch (error: unknown) {
     const durationMs = Date.now() - startMs;
     const message = error instanceof Error ? error.message : String(error);
-    logger.warn('Worker failed', { role: entry.role, error: message, durationMs });
+    const errorType = classifyError(message, durationMs, timeoutMs);
+    logger.warn('Worker failed', { role: entry.role, error: message, errorType, durationMs });
     return {
       role: entry.role,
       subTask: entry.subTask,
@@ -201,6 +226,7 @@ async function executeSafe(
       status: 'error',
       durationMs,
       error: message,
+      errorType,
     };
   }
 }

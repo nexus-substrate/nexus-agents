@@ -97,6 +97,21 @@ const COMPLEXITY_MAX: Record<ComplexityLevel, number> = {
 };
 
 /**
+ * Expert dependency map — experts that should run AFTER their dependencies.
+ * Used for dependency-aware wave assignment (Issue #1317).
+ *
+ * Key: expert role that has dependencies
+ * Value: roles that must complete BEFORE this expert runs
+ */
+export const EXPERT_DEPENDENCIES: Readonly<
+  Partial<Record<BuiltInExpertType, readonly BuiltInExpertType[]>>
+> = {
+  testing: ['code'],
+  security: ['code'],
+  documentation: ['code', 'architecture'],
+};
+
+/**
  * Sub-task templates per expert role.
  * {task} is replaced with the original task description.
  */
@@ -185,7 +200,7 @@ function addCapabilityExperts(
 }
 
 /**
- * Creates a plan entry for a given expert role.
+ * Creates a plan entry for a given expert role (wave assigned later).
  */
 function createEntry(
   role: BuiltInExpertType,
@@ -201,6 +216,62 @@ function createEntry(
     reasoning: `Selected for ${role} expertise`,
     wave,
   };
+}
+
+/**
+ * Compute the maximum wave among an expert's dependencies.
+ * Returns 0 if no dependencies are present in the plan.
+ */
+function getMaxDependencyWave(
+  role: BuiltInExpertType,
+  roleToWave: ReadonlyMap<BuiltInExpertType, number>
+): number {
+  const deps = EXPERT_DEPENDENCIES[role];
+  if (deps === undefined || deps.length === 0) return 0;
+
+  let maxWave = 0;
+  for (const dep of deps) {
+    const depWave = roleToWave.get(dep);
+    if (depWave !== undefined && depWave > maxWave) {
+      maxWave = depWave;
+    }
+  }
+  return maxWave;
+}
+
+/**
+ * Reassign waves based on expert dependencies.
+ *
+ * For each expert with declared dependencies, ensure its wave is strictly
+ * greater than the maximum wave of its dependencies. Experts with no
+ * dependencies keep their positional wave assignment.
+ */
+function assignDependencyAwareWaves(entries: readonly AgentPlanEntry[]): AgentPlanEntry[] {
+  if (entries.length <= 1) return [...entries];
+
+  const roleToWave = new Map<BuiltInExpertType, number>();
+  for (const entry of entries) {
+    roleToWave.set(entry.role, entry.wave);
+  }
+
+  // Iterate until stable — max iterations = number of entries (DAG depth)
+  let changed = true;
+  for (let i = 0; i < entries.length && changed; i++) {
+    changed = false;
+    for (const entry of entries) {
+      const maxDepWave = getMaxDependencyWave(entry.role, roleToWave);
+      const currentWave = roleToWave.get(entry.role);
+      if (currentWave !== undefined && maxDepWave > 0 && currentWave <= maxDepWave) {
+        roleToWave.set(entry.role, maxDepWave + 1);
+        changed = true;
+      }
+    }
+  }
+
+  return entries.map((entry) => ({
+    ...entry,
+    wave: roleToWave.get(entry.role) ?? entry.wave,
+  }));
 }
 
 /**
@@ -286,7 +357,8 @@ export function planAgentTeam(
   taskDescription: string,
   options?: PlanAgentTeamOptions
 ): AgentPlan {
-  const entries = selectExperts(analysis, taskDescription, options?.filePaths);
+  const rawEntries = selectExperts(analysis, taskDescription, options?.filePaths);
+  const entries = assignDependencyAwareWaves(rawEntries);
 
   return {
     entries,

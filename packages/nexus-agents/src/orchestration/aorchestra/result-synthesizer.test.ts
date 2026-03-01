@@ -294,6 +294,71 @@ describe('synthesizeResults', () => {
     }
   });
 
+  // ---- synthesisSource discriminator (Issue #1316) ----
+
+  it('returns synthesisSource "llm" when adapter succeeds', async () => {
+    const adapter = makeMockAdapter('Merged result from workers.');
+    const result = await synthesizeResults({
+      results: [makeResult('code', 'Implementation done.')],
+      conflicts: [],
+      taskDescription: 'Task',
+      modelAdapter: adapter,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.synthesisSource).toBe('llm');
+  });
+
+  it('returns synthesisSource "fallback" when adapter fails', async () => {
+    const adapter = makeFailingAdapter('Service unavailable');
+    const result = await synthesizeResults({
+      results: [makeResult('code', 'Implementation done.')],
+      conflicts: [],
+      taskDescription: 'Task',
+      modelAdapter: adapter,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.synthesisSource).toBe('fallback');
+  });
+
+  it('returns synthesisSource "fallback" when adapter throws', async () => {
+    const adapter = {
+      complete: vi.fn().mockRejectedValue(new Error('Network error')),
+    } as unknown as IModelAdapter;
+
+    const result = await synthesizeResults({
+      results: [makeResult('code', 'Output.')],
+      conflicts: [],
+      taskDescription: 'Task',
+      modelAdapter: adapter,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.synthesisSource).toBe('fallback');
+  });
+
+  it('returns excludedWorkerCount in result', async () => {
+    const adapter = makeMockAdapter('Merged.');
+    const errorResult: WorkerResult = {
+      role: 'security',
+      subTask: 'Review',
+      output: '',
+      status: 'error',
+      durationMs: 0,
+      error: 'timeout',
+    };
+    const result = await synthesizeResults({
+      results: [makeResult('code', 'Done.'), errorResult],
+      conflicts: [],
+      taskDescription: 'Task',
+      modelAdapter: adapter,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.excludedWorkerCount).toBe(1);
+  });
+
   it('sanitizes worker outputs in fallback path', async () => {
     const adapter = makeFailingAdapter('timeout');
     const result = await synthesizeResults({

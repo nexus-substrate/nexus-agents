@@ -241,6 +241,61 @@ describe('dispatchWorkers', () => {
     expect(result?.error).toContain('timeout');
   });
 
+  // ---- Phase 1: errorType taxonomy (Issue #1316) ----
+
+  it('sets errorType to timeout when worker exceeds timeout', async () => {
+    const slowExecute: WorkerDispatchOptions['executeWorker'] = vi.fn().mockImplementation(
+      (entry: AgentPlanEntry): Promise<WorkerResult> =>
+        new Promise((resolve) => {
+          setTimeout(() => {
+            resolve({
+              role: entry.role,
+              subTask: entry.subTask,
+              output: 'late',
+              status: 'success' as const,
+              durationMs: 200,
+            });
+          }, 200);
+        })
+    );
+
+    const entries = [makeEntry('code', 1, 1)];
+    const results = await dispatchWorkers(entries, {
+      executeWorker: slowExecute,
+      workerTimeoutMs: 50,
+    });
+
+    const result = results.at(0);
+    expect(result?.status).toBe('error');
+    expect(result?.errorType).toBe('timeout');
+  });
+
+  it('sets errorType to logic_error when worker throws unexpected error', async () => {
+    const throwingExecute: WorkerDispatchOptions['executeWorker'] = vi
+      .fn()
+      .mockRejectedValue(new Error('null reference'));
+
+    const entries = [makeEntry('code', 1, 1)];
+    const results = await dispatchWorkers(entries, { executeWorker: throwingExecute });
+
+    const result = results.at(0);
+    expect(result?.status).toBe('error');
+    expect(result?.errorType).toBe('logic_error');
+  });
+
+  it('sets errorType to model_error when worker returns error result with model prefix', async () => {
+    const modelErrorExecute: WorkerDispatchOptions['executeWorker'] = vi
+      .fn()
+      .mockRejectedValue(new Error('Model returned error: rate limited'));
+
+    const entries = [makeEntry('code', 1, 1)];
+    const results = await dispatchWorkers(entries, { executeWorker: modelErrorExecute });
+
+    const result = results.at(0);
+    expect(result?.status).toBe('error');
+    expect(result?.errorType).toBe('model_error');
+  });
+
   // ---- Phase 2: Error duration tracking (Issue #1313) ----
 
   it('captures actual duration in error results from thrown errors', async () => {

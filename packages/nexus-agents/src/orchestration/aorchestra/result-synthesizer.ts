@@ -48,10 +48,17 @@ export interface SynthesizeResultsInput {
   readonly modelAdapter: IModelAdapter;
 }
 
+/** Source of synthesis output. */
+export type SynthesisSource = 'llm' | 'fallback';
+
 /** Result type for synthesis — always ok, falls back on failure. */
 export interface SynthesisResult {
   readonly ok: true;
   readonly value: string;
+  /** How the synthesis was produced — 'llm' or 'fallback'. */
+  readonly synthesisSource?: SynthesisSource;
+  /** Number of workers excluded (error/empty) from synthesis. */
+  readonly excludedWorkerCount?: number;
 }
 
 // ============================================================================
@@ -197,9 +204,10 @@ function buildFallbackResponse(
 export async function synthesizeResults(input: SynthesizeResultsInput): Promise<SynthesisResult> {
   const { results, conflicts, taskDescription, modelAdapter } = input;
   const successResults = results.filter((r) => r.status === 'success' && r.output !== '');
+  const excludedWorkerCount = results.length - successResults.length;
 
   if (successResults.length === 0) {
-    return { ok: true, value: '' };
+    return { ok: true, value: '', excludedWorkerCount };
   }
 
   const prompt = buildSynthesisPrompt({ results, conflicts, taskDescription });
@@ -214,7 +222,12 @@ export async function synthesizeResults(input: SynthesizeResultsInput): Promise<
       logger.warn('Synthesis LLM call failed, using fallback', {
         error: response.error.message,
       });
-      return { ok: true, value: buildFallbackResponse(results, conflicts) };
+      return {
+        ok: true,
+        value: buildFallbackResponse(results, conflicts),
+        synthesisSource: 'fallback',
+        excludedWorkerCount,
+      };
     }
 
     const text = response.value.content
@@ -222,10 +235,15 @@ export async function synthesizeResults(input: SynthesizeResultsInput): Promise<
       .map((b) => b.text)
       .join('\n');
 
-    return { ok: true, value: text };
+    return { ok: true, value: text, synthesisSource: 'llm', excludedWorkerCount };
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     logger.warn('Synthesis threw exception, using fallback', { error: message });
-    return { ok: true, value: buildFallbackResponse(results, conflicts) };
+    return {
+      ok: true,
+      value: buildFallbackResponse(results, conflicts),
+      synthesisSource: 'fallback',
+      excludedWorkerCount,
+    };
   }
 }
