@@ -111,6 +111,7 @@ export const BaseAgentOptionsSchema = z.object({
     'research_expert',
     'pm_expert',
     'ux_expert',
+    'infrastructure_expert',
     'thinker',
     'worker',
     'verifier',
