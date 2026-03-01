@@ -126,13 +126,18 @@ export function runConfidenceCascadeStageSync(
   const ctx = createRoutingContext(task.content, candidates);
   // The stage.route() returns Promise but we need sync - use the underlying logic directly
   // For now, call route() and handle as best-effort (stages are optional)
-  void deps.confidenceCascadeStage.route(ctx).then((result) => {
-    if (result.ok) {
-      deps.logger.debug('Confidence cascade completed async', {
-        signals: result.value.context.signals.filter((s) => s.startsWith('confidence:')),
-      });
-    }
-  });
+  void deps.confidenceCascadeStage
+    .route(ctx)
+    .then((result) => {
+      if (result.ok) {
+        deps.logger.debug('Confidence cascade completed async', {
+          signals: result.value.context.signals.filter((s) => s.startsWith('confidence:')),
+        });
+      }
+    })
+    .catch((error: unknown) => {
+      deps.logger.debug('Confidence cascade stage failed', { error: String(error) });
+    });
 
   stagesExecuted.push('confidence-cascade');
 
@@ -160,13 +165,18 @@ export function runCapabilityMatchStageSync(
 
   const ctx = createRoutingContext(task.content, candidates);
   // Call route() async and handle result when available
-  void deps.capabilityMatchStage.route(ctx).then((result) => {
-    if (result.ok) {
-      deps.logger.debug('Capability match completed async', {
-        signals: result.value.context.signals.filter((s) => s.startsWith('capability:')),
-      });
-    }
-  });
+  void deps.capabilityMatchStage
+    .route(ctx)
+    .then((result) => {
+      if (result.ok) {
+        deps.logger.debug('Capability match completed async', {
+          signals: result.value.context.signals.filter((s) => s.startsWith('capability:')),
+        });
+      }
+    })
+    .catch((error: unknown) => {
+      deps.logger.debug('Capability match stage failed', { error: String(error) });
+    });
 
   stagesExecuted.push('capability-match');
 

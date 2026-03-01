@@ -229,9 +229,12 @@ export class OWVoting implements IHigherOrderVoting, IVotingStrategy {
 
     const voteCounts: VoteCounts = { approve, reject, abstain, total: votes.size };
 
+    const rawPercentage = result.posteriorApproval * 100;
+    const approvalPercentage = Number.isFinite(rawPercentage) ? rawPercentage : 0;
+
     return {
       approved: result.decision === 'approve',
-      approvalPercentage: result.posteriorApproval * 100,
+      approvalPercentage,
       voteCounts,
       reason: result.reasoning,
     };
