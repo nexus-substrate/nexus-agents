@@ -123,7 +123,7 @@ describe('computeStats', () => {
     expect(stats.totalPapers).toBe(2);
     expect(stats.totalTechniques).toBe(1);
     expect(stats.totalSources).toBe(2);
-    expect(stats.totalTopics).toBe(7);
+    expect(stats.totalTopics).toBe(8);
   });
 
   it('counts techniques by status', () => {
@@ -161,9 +161,9 @@ describe('computeStats', () => {
     expect(stats.techniquesByPriority.none).toBe(1);
   });
 
-  it('computes topic stats for all 7 topics', () => {
+  it('computes topic stats for all 8 topics', () => {
     const stats = computeStats([], [], []);
-    expect(stats.topicStats).toHaveLength(7);
+    expect(stats.topicStats).toHaveLength(8);
     const topics = stats.topicStats.map((t) => t.topic);
     expect(topics).toContain('consensus');
     expect(topics).toContain('routing');
@@ -172,6 +172,7 @@ describe('computeStats', () => {
     expect(topics).toContain('cli-tools');
     expect(topics).toContain('orchestration');
     expect(topics).toContain('security');
+    expect(topics).toContain('multi-agent-worker-dispatch');
   });
 
   it('counts papers and techniques per topic', () => {

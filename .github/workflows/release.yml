@@ -12,7 +12,9 @@ on:
         default: false
         type: boolean
 
-concurrency: ${{ github.workflow }}-${{ github.ref }}
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false # Never cancel a release mid-flight
 
 jobs:
   # Automated release via changesets (runs on push to main)
@@ -26,15 +28,15 @@ jobs:
       id-token: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           fetch-depth: 0
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6
         with:
           node-version: 22
           cache: 'pnpm'
@@ -48,7 +50,7 @@ jobs:
 
       - name: Create Release Pull Request or Publish
         id: changesets
-        uses: changesets/action@v1
+        uses: changesets/action@6a0a831ff30acef54f2c6aa1cbbc1096b066edaf # v1.7.0
         with:
           version: pnpm changeset:version
           publish: pnpm release
@@ -61,20 +63,30 @@ jobs:
 
       - name: Create GitHub Release
         if: steps.changesets.outputs.published == 'true'
-        uses: actions/github-script@v8
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        env:
+          PUBLISHED_PACKAGES: ${{ steps.changesets.outputs.publishedPackages }}
         with:
           script: |
-            const packages = JSON.parse('${{ steps.changesets.outputs.publishedPackages }}');
+            const packages = JSON.parse(process.env.PUBLISHED_PACKAGES);
             for (const pkg of packages) {
               const tag = `${pkg.name}@${pkg.version}`;
-              await github.rest.repos.createRelease({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                tag_name: tag,
-                name: tag,
-                generate_release_notes: true,
-              });
-              console.log(`Created release: ${tag}`);
+              try {
+                await github.rest.repos.createRelease({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  tag_name: tag,
+                  name: tag,
+                  generate_release_notes: true,
+                });
+                console.log(`Created release: ${tag}`);
+              } catch (err) {
+                if (err.status === 422) {
+                  console.log(`Release ${tag} already exists — skipping`);
+                } else {
+                  throw err;
+                }
+              }
             }
 
   # Manual publish (runs on workflow_dispatch)
@@ -87,13 +99,13 @@ jobs:
       id-token: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6
         with:
           node-version: '22'
           cache: 'pnpm'

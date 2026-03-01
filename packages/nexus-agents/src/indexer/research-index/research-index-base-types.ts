@@ -32,6 +32,7 @@ export const ResearchTopicSchema = z.enum([
   'cli-tools',
   'orchestration',
   'security',
+  'multi-agent-worker-dispatch',
 ]);
 export type ResearchTopic = z.infer<typeof ResearchTopicSchema>;
 
