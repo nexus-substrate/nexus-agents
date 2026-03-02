@@ -303,7 +303,7 @@ export class OutcomeFeedbackCollector implements IOutcomeFeedback {
     for (const callback of this.callbacks) {
       try {
         callback(decision, outcome, reward);
-      } catch (err) {
+      } catch (err: unknown) {
         const error = err instanceof Error ? err : new Error(String(err));
         logger.error('Callback error', error);
       }

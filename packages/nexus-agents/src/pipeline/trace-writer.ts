@@ -77,7 +77,7 @@ export class TraceWriter {
     try {
       await writeFile(traceTmp, lines + '\n', 'utf-8');
       await rename(traceTmp, tracePath);
-    } catch (err) {
+    } catch (err: unknown) {
       await unlink(traceTmp).catch((unlinkErr: unknown) => {
         const msg = unlinkErr instanceof Error ? unlinkErr.message : String(unlinkErr);
         logger.warn('Failed to clean up trace temp file', { path: traceTmp, error: msg });
@@ -92,7 +92,7 @@ export class TraceWriter {
     try {
       await writeFile(indexTmp, indexContent, 'utf-8');
       await rename(indexTmp, indexPath);
-    } catch (err) {
+    } catch (err: unknown) {
       await unlink(indexTmp).catch((unlinkErr: unknown) => {
         const msg = unlinkErr instanceof Error ? unlinkErr.message : String(unlinkErr);
         logger.warn('Failed to clean up index temp file', { path: indexTmp, error: msg });

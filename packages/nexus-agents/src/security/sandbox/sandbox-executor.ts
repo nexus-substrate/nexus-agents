@@ -116,7 +116,7 @@ export class PolicySandboxExecutor implements ISandboxExecutor {
     try {
       const result = await this.executeWithLimits(command, args, options.cwd, execEnv, limits);
       return this.createSuccessResult(command, args, result, evaluation, startTime);
-    } catch (error) {
+    } catch (error: unknown) {
       return this.createErrorResult(command, args, error, evaluation, startTime);
     }
   }

@@ -292,7 +292,7 @@ describe('SecurityConfigSchema', () => {
     expect(result.audit).toEqual({
       enabled: true,
       minSeverity: 'info',
-      enableHashChain: false,
+      enableHashChain: true,
       maxFileSizeBytes: 10485760,
       maxFiles: 10,
     });

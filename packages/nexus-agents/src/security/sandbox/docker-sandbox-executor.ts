@@ -100,7 +100,7 @@ export class DockerSandboxExecutor implements ISandboxExecutor {
     try {
       const result = await this.executeDocker(dockerArgs, limits.maxWallTimeMs);
       return this.buildSuccessResult(result, evaluation, startTime);
-    } catch (error) {
+    } catch (error: unknown) {
       return this.buildErrorResult(error, evaluation, startTime, limits.maxWallTimeMs);
     }
   }

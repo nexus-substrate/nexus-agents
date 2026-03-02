@@ -13,6 +13,9 @@ import { promisify } from 'node:util';
 import type { ResourceUsage, PolicyEvaluation } from './sandbox-types.js';
 import { truncateWithInfo } from '../../utils/text-utils.js';
 import { CLI_SUBPROCESS_TIMEOUTS } from '../../config/timeouts.js';
+import { createLogger } from '../../core/logger.js';
+
+const logger = createLogger({ component: 'docker-sandbox-helpers' });
 
 const execFileAsync = promisify(execFile);
 
@@ -37,7 +40,9 @@ export async function isDockerAvailable(): Promise<boolean> {
     await execFileAsync('docker', ['version'], { timeout: CLI_SUBPROCESS_TIMEOUTS.dockerCheckMs });
     dockerAvailableCache = true;
     return true;
-  } catch {
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.debug('Docker not available', { error: msg });
     dockerAvailableCache = false;
     return false;
   }

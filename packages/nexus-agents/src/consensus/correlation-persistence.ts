@@ -200,8 +200,12 @@ export function saveCorrelationData(
     // Clean up temp file on failure
     try {
       fs.unlinkSync(tempPath);
-    } catch {
-      // Temp file may not exist, ignore
+    } catch (cleanupErr: unknown) {
+      const msg = cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr);
+      logger.debug('Failed to clean up temp file during correlation save', {
+        path: tempPath,
+        error: msg,
+      });
     }
 
     const error = cause instanceof Error ? cause : new Error(String(cause));

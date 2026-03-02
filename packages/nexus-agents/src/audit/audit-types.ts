@@ -179,7 +179,7 @@ export const AuditLogConfigSchema = z.object({
   maxFiles: z.number().positive().optional().default(10),
 
   // Features
-  enableHashChain: z.boolean().optional().default(false),
+  enableHashChain: z.boolean().optional().default(true),
   enableCompression: z.boolean().optional().default(false),
   flushIntervalMs: z.number().positive().optional().default(1000),
 

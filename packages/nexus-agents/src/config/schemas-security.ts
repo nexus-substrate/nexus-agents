@@ -136,8 +136,8 @@ export const SecurityConfigSchema = z.object({
       logDir: z.string().optional(),
       /** Minimum severity to log (default: 'info') */
       minSeverity: z.enum(['info', 'warning', 'critical']).default('info'),
-      /** Enable tamper-evident hash chain (default: false) */
-      enableHashChain: z.boolean().default(false),
+      /** Enable tamper-evident hash chain (default: true) */
+      enableHashChain: z.boolean().default(true),
       /** Maximum log file size in bytes (default: 10MB) */
       maxFileSizeBytes: z
         .number()

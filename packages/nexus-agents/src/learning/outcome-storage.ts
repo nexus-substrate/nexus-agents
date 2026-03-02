@@ -117,7 +117,7 @@ export class SQLiteOutcomeStorage implements IOutcomeStorage {
       this.initialized = true;
       this.logger.info('SQLiteOutcomeStorage initialized', { dbPath: this.dbPath });
       return ok(undefined);
-    } catch (error) {
+    } catch (error: unknown) {
       this.logger.error('Failed to initialize SQLiteOutcomeStorage', toError(error));
       return wrapStorageError(error, 'Failed to initialize outcome storage', {
         dbPath: this.dbPath,
@@ -168,7 +168,7 @@ export class SQLiteOutcomeStorage implements IOutcomeStorage {
         model: decision.selectedModel,
       });
       return Promise.resolve(ok(undefined));
-    } catch (error) {
+    } catch (error: unknown) {
       this.logger.error('Failed to store routing decision', toError(error));
       return Promise.resolve(
         wrapStorageError(error, 'Failed to store routing decision', { decisionId: decision.id })
@@ -195,7 +195,7 @@ export class SQLiteOutcomeStorage implements IOutcomeStorage {
         success: outcome.success,
       });
       return Promise.resolve(ok(undefined));
-    } catch (error) {
+    } catch (error: unknown) {
       this.logger.error('Failed to store task outcome', toError(error));
       return Promise.resolve(
         wrapStorageError(error, 'Failed to store task outcome', {
@@ -224,7 +224,7 @@ export class SQLiteOutcomeStorage implements IOutcomeStorage {
         reward: reward.reward,
       });
       return Promise.resolve(ok(undefined));
-    } catch (error) {
+    } catch (error: unknown) {
       this.logger.error('Failed to store computed reward', toError(error));
       return Promise.resolve(
         wrapStorageError(error, 'Failed to store computed reward', {
@@ -241,7 +241,8 @@ export class SQLiteOutcomeStorage implements IOutcomeStorage {
         .prepare<RoutingDecisionRow>(`SELECT * FROM routing_decisions WHERE id = ?`)
         .get(id);
       return Promise.resolve(ok(row === undefined ? null : rowToDecision(row)));
-    } catch (error) {
+    } catch (error: unknown) {
+      this.logger.warn('Failed to get routing decision', { error: String(error) });
       return Promise.resolve(wrapStorageError(error, 'Failed to get routing decision'));
     }
   }
@@ -253,7 +254,8 @@ export class SQLiteOutcomeStorage implements IOutcomeStorage {
         .prepare<TaskOutcomeRow>(`SELECT * FROM task_outcomes WHERE routing_decision_id = ?`)
         .get(decisionId);
       return Promise.resolve(ok(row === undefined ? null : rowToOutcome(row)));
-    } catch (error) {
+    } catch (error: unknown) {
+      this.logger.warn('Failed to get task outcome', { error: String(error) });
       return Promise.resolve(wrapStorageError(error, 'Failed to get task outcome'));
     }
   }
@@ -263,7 +265,8 @@ export class SQLiteOutcomeStorage implements IOutcomeStorage {
       this.ensureInitialized();
       const rows = this.getDatabase().prepare<ModelStatsRow>(MODEL_STATS_SQL).all();
       return Promise.resolve(ok(rows.map(rowToStats)));
-    } catch (error) {
+    } catch (error: unknown) {
+      this.logger.warn('Failed to get model stats', { error: String(error) });
       return Promise.resolve(wrapStorageError(error, 'Failed to get model stats'));
     }
   }
@@ -277,7 +280,8 @@ export class SQLiteOutcomeStorage implements IOutcomeStorage {
       const sql = `SELECT * FROM routing_decisions WHERE selected_model = ? ORDER BY timestamp DESC LIMIT ?`;
       const rows = this.getDatabase().prepare<RoutingDecisionRow>(sql).all(model, limit);
       return Promise.resolve(ok(rows.map(rowToDecision)));
-    } catch (error) {
+    } catch (error: unknown) {
+      this.logger.warn('Failed to get recent decisions', { error: String(error) });
       return Promise.resolve(wrapStorageError(error, 'Failed to get recent decisions'));
     }
   }
@@ -290,7 +294,8 @@ export class SQLiteOutcomeStorage implements IOutcomeStorage {
       const sql = `SELECT * FROM routing_decisions WHERE request_id = ? ORDER BY timestamp DESC`;
       const rows = this.getDatabase().prepare<RoutingDecisionRow>(sql).all(requestId);
       return Promise.resolve(ok(rows.map(rowToDecision)));
-    } catch (error) {
+    } catch (error: unknown) {
+      this.logger.warn('Failed to get decisions by request ID', { error: String(error) });
       return Promise.resolve(wrapStorageError(error, 'Failed to get decisions by request ID'));
     }
   }
@@ -312,7 +317,8 @@ export class SQLiteOutcomeStorage implements IOutcomeStorage {
       const total = r1.changes + r2.changes + r3.changes;
       this.logger.info('Pruned old records', { total, cutoff: olderThan.toISOString() });
       return Promise.resolve(ok(total));
-    } catch (error) {
+    } catch (error: unknown) {
+      this.logger.warn('Failed to prune records', { error: String(error) });
       return Promise.resolve(wrapStorageError(error, 'Failed to prune records'));
     }
   }
@@ -332,7 +338,8 @@ export class SQLiteOutcomeStorage implements IOutcomeStorage {
           rewards: getCount('computed_rewards'),
         })
       );
-    } catch (error) {
+    } catch (error: unknown) {
+      this.logger.warn('Failed to get counts', { error: String(error) });
       return Promise.resolve(wrapStorageError(error, 'Failed to get counts'));
     }
   }

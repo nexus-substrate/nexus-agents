@@ -160,8 +160,12 @@ export class PersistentStrategyDistiller extends StrategyDistiller {
       // Clean up temp file on failure
       try {
         if (existsSync(tmpPath)) unlinkSync(tmpPath);
-      } catch {
-        // Best-effort cleanup
+      } catch (cleanupErr: unknown) {
+        const msg = cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr);
+        this.persistLogger.debug('Failed to clean up temp file during persist', {
+          path: tmpPath,
+          error: msg,
+        });
       }
     }
   }
