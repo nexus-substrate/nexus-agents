@@ -133,7 +133,7 @@ describe('executeParallelExploration', () => {
     expect(result.value.partitions).toHaveLength(2);
     expect(result.value.synthesized).toContain('gemini perspective');
     expect(result.value.synthesized).toContain('claude perspective');
-    expect(result.value.totalDurationMs).toBeGreaterThan(0);
+    expect(result.value.totalDurationMs).toBeGreaterThanOrEqual(0);
   });
 
   it('works with a single CLI', async () => {

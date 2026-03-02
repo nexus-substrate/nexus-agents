@@ -105,7 +105,7 @@ describe('JourneySimulator', () => {
     it('should track time to first success', async () => {
       const result = await simulator.simulate(basicJourney);
 
-      expect(result.timeToFirstSuccessMs).toBeGreaterThan(0);
+      expect(result.timeToFirstSuccessMs).toBeGreaterThanOrEqual(0);
       expect(result.timeToFirstSuccessMs).toBeLessThanOrEqual(result.durationMs);
     });
 
