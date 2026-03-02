@@ -391,12 +391,14 @@ export function runZeroRouterStage(
   return result;
 }
 
-/** Runs TOPSIS ranking stage. Uses plan billing criteria when billingMode is 'plan'. */
+/** Runs TOPSIS ranking stage. Uses plan billing criteria when billingMode is 'plan'.
+ * When stageScores are provided, adjusts quality profiles before evaluation. (#1354) */
 export function runTopsisStage(
   taskProfile: TaskProfile,
   candidates: CliName[],
   stagesExecuted: string[],
-  deps: StageDependencies
+  deps: StageDependencies,
+  stageScores?: ReadonlyMap<CliName, number>
 ): { ranking: CliName[]; score: number | undefined } {
   if (!deps.config.enableTopsisRanking || deps.topsisRouter === undefined) {
     return { ranking: candidates, score: undefined };
@@ -405,7 +407,8 @@ export function runTopsisStage(
     taskProfile,
     candidates,
     deps.topsisRouter,
-    deps.config.billingMode
+    deps.config.billingMode,
+    stageScores
   );
   stagesExecuted.push('topsis-ranking');
   return { ranking: result.ranking, score: result.topScore };
@@ -572,6 +575,43 @@ function mergeScoreMaps(
   return merged;
 }
 
+/** Runs scoring stages (priorities 10-55) and returns intermediate results. */
+async function runScoringStages(
+  task: CliTask,
+  candidates: CliName[],
+  stagesExecuted: string[],
+  deps: StageDependencies
+): Promise<{
+  cascadeResult: ConfidenceCascadeStageResult;
+  memoryResult: RoutingMemoryStageResult;
+  capResult: CapabilityMatchStageResult;
+  zeroResult: ZeroRouterStageResult;
+  distilledResult: DistilledRuleStageResult;
+  prefResult: PreferenceStageResult;
+  resourceResult: ResourceStrategyStageResult;
+  candidates: CliName[];
+}> {
+  const cascadeResult = await runConfidenceCascadeStage(task, candidates, stagesExecuted, deps);
+  const memoryResult = runRoutingMemoryStage(task, candidates, stagesExecuted, deps);
+  const capResult = await runCapabilityMatchStage(task, candidates, stagesExecuted, deps);
+  const zeroResult = runZeroRouterStage(task, candidates, stagesExecuted, deps);
+  let filtered = zeroResult.filteredCandidates;
+  const distilledResult = await runDistilledRuleStage(task, filtered, stagesExecuted, deps);
+  const prefResult = runPreferenceStage(task, filtered, stagesExecuted, deps);
+  filtered = prefResult.preferredCandidates;
+  const resourceResult = await runResourceStrategyStage(task, filtered, stagesExecuted, deps);
+  return {
+    cascadeResult,
+    memoryResult,
+    capResult,
+    zeroResult,
+    distilledResult,
+    prefResult,
+    resourceResult,
+    candidates: filtered,
+  };
+}
+
 /** Executes full pipeline and returns result. (Made async in Issue #1350) */
 export async function runPipeline(
   task: CliTask,
@@ -585,37 +625,32 @@ export async function runPipeline(
     return err(new CompositeRoutingError('No CLI adapters available', 'initialization'));
   }
 
-  // Priority 10: Confidence Cascade (Issue #755) - establishes complexity baseline
-  const cascadeResult = await runConfidenceCascadeStage(task, candidates, stagesExecuted, deps);
-
   // Priority 20: Budget filtering
   const budgetResult = runBudgetStage(task, candidates, stagesExecuted, deps);
   if (!budgetResult.ok) return budgetResult;
   candidates = budgetResult.value.candidates;
   const withinBudget = budgetResult.value.withinBudget;
 
-  // Priority 25: Routing Memory (Issue #489) - check for learned recommendations
-  const memoryResult = runRoutingMemoryStage(task, candidates, stagesExecuted, deps);
+  // Priorities 10-55: Scoring and filtering stages
+  const scoring = await runScoringStages(task, candidates, stagesExecuted, deps);
+  candidates = scoring.candidates;
 
-  // Priority 35: Capability Match (Issue #755) - task-type scoring
-  const capResult = await runCapabilityMatchStage(task, candidates, stagesExecuted, deps);
+  // Aggregate stage scores before TOPSIS for quality adjustment (#1354)
+  const stageScores = mergeScoreMaps(
+    scoring.cascadeResult.scores,
+    scoring.capResult.scores,
+    scoring.distilledResult.scores,
+    scoring.resourceResult.scores
+  );
 
-  // Priority 40: ZeroRouter difficulty estimation
-  const zeroResult = runZeroRouterStage(task, candidates, stagesExecuted, deps);
-  candidates = zeroResult.filteredCandidates;
-
-  // Priority 45: Distilled rule scoring (Issue #999)
-  const distilledResult = await runDistilledRuleStage(task, candidates, stagesExecuted, deps);
-
-  // Priority 50: Preference routing
-  const prefResult = runPreferenceStage(task, candidates, stagesExecuted, deps);
-  candidates = prefResult.preferredCandidates;
-
-  // Priority 55: Resource strategy oscillation (Issue #998)
-  const resourceResult = await runResourceStrategyStage(task, candidates, stagesExecuted, deps);
-
-  // Priority 60: TOPSIS ranking
-  const topsisResult = runTopsisStage(taskProfile, candidates, stagesExecuted, deps);
+  // Priority 60: TOPSIS ranking (with stage score quality adjustment)
+  const topsisResult = runTopsisStage(
+    taskProfile,
+    candidates,
+    stagesExecuted,
+    deps,
+    stageScores.size > 0 ? stageScores : undefined
+  );
 
   // Priority 70: LinUCB selection
   const linucbResult = runLinUCBStage(taskProfile, topsisResult.ranking, stagesExecuted, deps);
@@ -623,28 +658,24 @@ export async function runPipeline(
     return err(new CompositeRoutingError('No candidates available', 'selection'));
   }
 
-  // Priority 75: Quality Constraint (Issue #755) - quality gate
+  // Priority 75-80: Quality constraint + latency scoring
   const qualityResult = await runQualityConstraintStage(candidates, stagesExecuted, deps);
-
-  // Priority 80: Latency scoring stage (Issue #361)
   const latencyResult = runLatencyStage(qualityResult.eligible, stagesExecuted, deps);
 
   // Final selection with memory influence (Issue #489)
-  const selectedCli = selectWithMemoryInfluence(linucbResult.selectedCli, memoryResult, deps);
+  const selectedCli = selectWithMemoryInfluence(
+    linucbResult.selectedCli,
+    scoring.memoryResult,
+    deps
+  );
 
   return ok(
     buildPipelineResult({
-      cascadeResult,
-      capResult,
-      distilledResult,
-      resourceResult,
+      ...scoring,
       qualityResult,
-      zeroResult,
-      prefResult,
       topsisResult,
       linucbResult: { ucbScore: linucbResult.ucbScore },
       latencyResult,
-      memoryResult,
       withinBudget,
       selectedCli,
     })

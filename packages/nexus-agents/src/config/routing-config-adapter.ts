@@ -31,25 +31,12 @@ import { isPersistenceEnabled } from './learning-persistence.js';
 /** Non-nullable routing config for internal use. */
 type DefinedRoutingConfig = NonNullable<RoutingConfig>;
 
-/** Default routing config with proper typing. */
+/** Default routing config with proper typing.
+ * Note: `stages` is intentionally omitted so that persistence-aware flags
+ * (routingMemory, strategyDistillation, preferenceRouting) resolve dynamically
+ * via `resolveStageFlags()` instead of being hardcoded to false. (#1353)
+ */
 const ADAPTER_DEFAULTS: DefinedRoutingConfig = {
-  stages: {
-    budgetFilter: true,
-    zeroRouter: true,
-    preferenceRouting: false,
-    topsisRanking: true,
-    linucbSelection: true,
-    latencyTracking: true,
-    routingMemory: false,
-    // Issue #755: New replacement stages (disabled by default for backward compatibility)
-    confidenceCascade: false,
-    capabilityMatch: false,
-    qualityConstraint: false,
-    // Issue #998: Resource strategy (enabled by default)
-    resourceStrategy: true,
-    // Issue #999: Strategy distillation (opt-in)
-    strategyDistillation: false,
-  },
   latencyScoreWeight: 0.2,
 };
 
@@ -177,11 +164,12 @@ type StageFlagsResult = Pick<CompositeRouterConfig, StageFlagKey>;
 /**
  * Stage flags that default to `true` when learning persistence is enabled.
  * These features consume data already recorded by OutcomeStore and add
- * no new data collection surface. (#1347)
+ * no new data collection surface. (#1347, #1353)
  */
 const PERSISTENCE_AWARE_FLAGS: ReadonlySet<StageFlagKey> = new Set([
   'enableRoutingMemory',
   'enableStrategyDistillation',
+  'enablePreferenceRouting',
 ]);
 
 /**

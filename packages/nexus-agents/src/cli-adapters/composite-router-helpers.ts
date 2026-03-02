@@ -176,15 +176,61 @@ function selectTopsisRouter(router: TopsisRouter, billingMode: BillingMode): Top
   return new TopsisRouter({ criteria: PLAN_BILLING_TOPSIS_CRITERIA });
 }
 
+/** Max quality boost from stage scores: +15%. */
+const STAGE_SCORE_MAX_BOOST = 0.15;
+
+/** Max quality penalty from stage scores: -10%. */
+const STAGE_SCORE_MAX_PENALTY = 0.1;
+
+/**
+ * Adjusts TOPSIS model profiles based on aggregated stage scores.
+ * CLIs with above-average stage affinity get quality boosted (up to +15%),
+ * below-average get quality reduced (down to -10%). (#1354)
+ */
+export function adjustProfileWithStageScores(
+  profiles: readonly TopsisModelProfile[],
+  stageScores: ReadonlyMap<CliName, number>
+): TopsisModelProfile[] {
+  if (stageScores.size === 0) return [...profiles];
+
+  // Calculate the mean score across all CLIs that have scores
+  const scoreValues = [...stageScores.values()];
+  const mean = scoreValues.reduce((a, b) => a + b, 0) / scoreValues.length;
+  // Range for normalization: max deviation from mean
+  const maxDev = Math.max(
+    ...scoreValues.map((v) => Math.abs(v - mean)),
+    0.001 // prevent division by zero
+  );
+
+  return profiles.map((p) => {
+    const score = stageScores.get(p.cliName);
+    if (score === undefined) return p;
+
+    const deviation = score - mean;
+    // Normalize to [-1, 1] range
+    const normalized = deviation / maxDev;
+    // Map to boost/penalty: positive → boost, negative → penalty
+    const multiplier =
+      normalized >= 0
+        ? 1 + normalized * STAGE_SCORE_MAX_BOOST
+        : 1 + normalized * STAGE_SCORE_MAX_PENALTY;
+    const adjustedQuality = Math.min(p.qualityScore * multiplier, 10);
+
+    return { ...p, qualityScore: adjustedQuality };
+  });
+}
+
 /**
  * Applies TOPSIS ranking to candidate CLIs.
  * In plan billing mode, uses PLAN_BILLING_TOPSIS_CRITERIA (cost weight = 0).
+ * When stageScores are provided, adjusts quality profiles before evaluation. (#1354)
  */
 export function applyTopsisRanking(
   taskProfile: TaskProfile,
   candidates: CliName[],
   topsisRouter: TopsisRouter | undefined,
-  billingMode: BillingMode = 'api'
+  billingMode: BillingMode = 'api',
+  stageScores?: ReadonlyMap<CliName, number>
 ): TopsisRankingResult {
   if (topsisRouter === undefined) {
     return { ranking: candidates, topScore: 1.0 };
@@ -192,7 +238,10 @@ export function applyTopsisRanking(
 
   const router = selectTopsisRouter(topsisRouter, billingMode);
   const profiles = DEFAULT_MODEL_PROFILES.filter((p) => candidates.includes(p.cliName));
-  const adjustedProfiles = profiles.map((p) => adjustProfileForTask(p, taskProfile));
+  let adjustedProfiles = profiles.map((p) => adjustProfileForTask(p, taskProfile));
+  if (stageScores !== undefined && stageScores.size > 0) {
+    adjustedProfiles = adjustProfileWithStageScores(adjustedProfiles, stageScores);
+  }
   const result: TopsisResult = router.selectModel({ profiles: adjustedProfiles });
 
   const scoreMap = new Map(result.scores.map((s) => [s.cliName, s.closenessScore]));

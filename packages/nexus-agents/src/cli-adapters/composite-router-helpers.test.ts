@@ -1,8 +1,8 @@
 /**
  * Tests for composite-router-helpers.
  *
- * Covers: adjustProfileForTask, taskProfileToBanditContext, calculateConfidence,
- * buildReason, filterByPreferenceTier, cliTaskToTask, applyBudgetFilter,
+ * Covers: adjustProfileForTask, adjustProfileWithStageScores, taskProfileToBanditContext,
+ * calculateConfidence, buildReason, filterByPreferenceTier, cliTaskToTask, applyBudgetFilter,
  * applyTopsisRanking, defaultPreferenceStageResult, defaultZeroRouterStageResult,
  * filterByDifficultyTier, applyZeroRouterFilter, buildDifficultyOutcome,
  * buildDecisionFields, buildPreferenceStats.
@@ -16,6 +16,7 @@ import type { TopsisModelProfile } from './topsis-types.js';
 import type { ModelTier } from './zero-router-types.js';
 import {
   adjustProfileForTask,
+  adjustProfileWithStageScores,
   taskProfileToBanditContext,
   calculateConfidence,
   buildReason,
@@ -558,5 +559,92 @@ describe('buildPreferenceStats', () => {
     };
     const result = buildPreferenceStats(true, mockRouter);
     expect(result?.hasSufficientData).toBe(false);
+  });
+});
+
+// ============================================================================
+// adjustProfileWithStageScores (#1354)
+// ============================================================================
+
+describe('adjustProfileWithStageScores', () => {
+  const claude = makeModelProfile({ cliName: 'claude' as CliName, qualityScore: 9.0 });
+  const gemini = makeModelProfile({ cliName: 'gemini' as CliName, qualityScore: 8.0 });
+  const codex = makeModelProfile({ cliName: 'codex' as CliName, qualityScore: 7.0 });
+  const profiles = [claude, gemini, codex];
+
+  it('returns unchanged profiles when stageScores is empty', () => {
+    const result = adjustProfileWithStageScores(profiles, new Map());
+    expect(result).toHaveLength(3);
+    expect(result[0]?.qualityScore).toBe(9.0);
+    expect(result[1]?.qualityScore).toBe(8.0);
+    expect(result[2]?.qualityScore).toBe(7.0);
+  });
+
+  it('boosts quality for CLI with above-average stage score', () => {
+    const scores = new Map<CliName, number>([
+      ['claude' as CliName, 3.0],
+      ['gemini' as CliName, 1.0],
+      ['codex' as CliName, 1.0],
+    ]);
+    const result = adjustProfileWithStageScores(profiles, scores);
+    // Claude has highest score → boosted
+    expect(result[0]?.qualityScore).toBeGreaterThan(9.0);
+    // Gemini and codex have below-average → reduced
+    expect(result[1]?.qualityScore).toBeLessThan(8.0);
+    expect(result[2]?.qualityScore).toBeLessThan(7.0);
+  });
+
+  it('caps quality boost at +15%', () => {
+    const scores = new Map<CliName, number>([
+      ['claude' as CliName, 100.0],
+      ['gemini' as CliName, 0.0],
+    ]);
+    const result = adjustProfileWithStageScores([claude, gemini], scores);
+    // Max boost: 9.0 * 1.15 = 10.35, capped at 10
+    expect(result[0]?.qualityScore).toBeLessThanOrEqual(10);
+    expect(result[0]?.qualityScore).toBeGreaterThan(9.0);
+  });
+
+  it('limits quality penalty to -10%', () => {
+    const scores = new Map<CliName, number>([
+      ['claude' as CliName, 0.0],
+      ['gemini' as CliName, 100.0],
+    ]);
+    const result = adjustProfileWithStageScores([claude, gemini], scores);
+    // Min penalty: 9.0 * 0.90 = 8.1
+    expect(result[0]?.qualityScore).toBeGreaterThanOrEqual(9.0 * 0.9 - 0.01);
+    expect(result[0]?.qualityScore).toBeLessThan(9.0);
+  });
+
+  it('does not modify CLIs without stage scores', () => {
+    const scores = new Map<CliName, number>([['claude' as CliName, 5.0]]);
+    const result = adjustProfileWithStageScores(profiles, scores);
+    // gemini and codex have no score → unchanged
+    expect(result[1]?.qualityScore).toBe(8.0);
+    expect(result[2]?.qualityScore).toBe(7.0);
+  });
+
+  it('handles equal scores (no deviation) gracefully', () => {
+    const scores = new Map<CliName, number>([
+      ['claude' as CliName, 5.0],
+      ['gemini' as CliName, 5.0],
+    ]);
+    const result = adjustProfileWithStageScores([claude, gemini], scores);
+    // Equal scores → deviation is 0 → multiplier is 1.0 → no change
+    expect(result[0]?.qualityScore).toBeCloseTo(9.0, 5);
+    expect(result[1]?.qualityScore).toBeCloseTo(8.0, 5);
+  });
+
+  it('never exceeds quality cap of 10', () => {
+    const highQuality = makeModelProfile({
+      cliName: 'claude' as CliName,
+      qualityScore: 9.8,
+    });
+    const scores = new Map<CliName, number>([
+      ['claude' as CliName, 10.0],
+      ['gemini' as CliName, 1.0],
+    ]);
+    const result = adjustProfileWithStageScores([highQuality, gemini], scores);
+    expect(result[0]?.qualityScore).toBeLessThanOrEqual(10);
   });
 });

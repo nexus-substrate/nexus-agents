@@ -6,11 +6,16 @@
  * (Source: Issue #475 - Add routing configuration section to nexus-agents.yaml)
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { adaptRoutingConfig, getTopsisConfigFromYaml } from './routing-config-adapter.js';
 import { DEFAULT_COMPOSITE_CONFIG } from '../cli-adapters/composite-router-types.js';
 import { DEFAULT_TOPSIS_CONFIG } from '../cli-adapters/topsis-types.js';
 import type { RoutingConfig } from './schemas-routing.js';
+import { isPersistenceEnabled } from './learning-persistence.js';
+
+vi.mock('./learning-persistence.js', () => ({
+  isPersistenceEnabled: vi.fn(() => false),
+}));
 
 describe('routing-config-adapter', () => {
   describe('adaptRoutingConfig', () => {
@@ -194,6 +199,54 @@ describe('routing-config-adapter', () => {
       expect(result.zeroRouterConfig).toEqual({});
       expect(result.latencyTrackerConfig).toEqual({});
       expect(result.routingMemoryConfig).toEqual({});
+    });
+
+    it('enables persistence-aware flags when persistence is on (#1353)', () => {
+      vi.mocked(isPersistenceEnabled).mockReturnValue(true);
+
+      const result = adaptRoutingConfig(undefined);
+
+      expect(result.enablePreferenceRouting).toBe(true);
+      expect(result.enableRoutingMemory).toBe(true);
+      expect(result.enableStrategyDistillation).toBe(true);
+    });
+
+    it('keeps persistence-aware flags off when persistence is off', () => {
+      vi.mocked(isPersistenceEnabled).mockReturnValue(false);
+
+      const result = adaptRoutingConfig(undefined);
+
+      expect(result.enablePreferenceRouting).toBe(false);
+      expect(result.enableRoutingMemory).toBe(false);
+      expect(result.enableStrategyDistillation).toBe(false);
+    });
+
+    it('respects explicit preferenceRouting: false even with persistence on', () => {
+      vi.mocked(isPersistenceEnabled).mockReturnValue(true);
+
+      // Simulate parsed YAML where user explicitly sets preferenceRouting: false
+      // but doesn't specify other stages (they get schema defaults)
+      const yamlConfig: RoutingConfig = {
+        stages: {
+          budgetFilter: true,
+          zeroRouter: true,
+          preferenceRouting: false,
+          topsisRanking: true,
+          linucbSelection: true,
+          latencyTracking: true,
+          routingMemory: false,
+          confidenceCascade: false,
+          capabilityMatch: false,
+          qualityConstraint: false,
+          resourceStrategy: true,
+          strategyDistillation: false,
+        },
+        latencyScoreWeight: 0.2,
+      };
+
+      const result = adaptRoutingConfig(yamlConfig);
+
+      expect(result.enablePreferenceRouting).toBe(false);
     });
   });
 
