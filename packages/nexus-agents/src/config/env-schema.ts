@@ -97,6 +97,8 @@ const NexusEnvSchema = z.object({
   NEXUS_V2_ORCHESTRATE: boolStr.optional(),
   NEXUS_V2_POLICY_MODE: z.enum(['off', 'warn', 'block']).optional(),
   NEXUS_AORCHESTRA: boolStr.optional(),
+  NEXUS_AORCHESTRA_DISPATCH: boolStr.optional(),
+  NEXUS_WORKER_MAX_CALLS: positiveIntStr.optional(),
 
   // --- Server ---
   NEXUS_AUTH_ENABLED: boolStr.optional(),

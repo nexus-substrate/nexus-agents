@@ -41,6 +41,34 @@ import {
   computeHealthScore,
 } from './validation-dashboard-calc.js';
 
+// ============================================================================
+// Named Constants (previously magic numbers)
+// ============================================================================
+
+/** Minimum recorded outcomes before learning health can be assessed. */
+const MIN_OUTCOMES_FOR_HEALTH = 100;
+
+/** Maximum acceptable average regret for learning to be considered progressing. */
+const MAX_ACCEPTABLE_REGRET = 0.3;
+
+/** Minimum optimal selection rate for learning to be considered progressing. */
+const MIN_OPTIMAL_RATE = 0.7;
+
+/** Maximum exploration rate history entries retained (FIFO eviction). */
+const MAX_EXPLORATION_HISTORY = 1000;
+
+/** Maximum feature weight history entries per feature (FIFO eviction). */
+const MAX_FEATURE_WEIGHT_HISTORY = 100;
+
+/** Maximum outcome entries retained to prevent unbounded memory growth. */
+const MAX_OUTCOMES = 10_000;
+
+/** Minimum sample size for underperformer detection. */
+const MIN_UNDERPERFORMER_SAMPLES = 30;
+
+/** Underperformer threshold: models below 50% of best are flagged. */
+const UNDERPERFORMER_RATIO = 0.5;
+
 /**
  * Validation Dashboard implementation.
  */
@@ -49,16 +77,19 @@ export class ValidationDashboard {
   private explorationHistory: Array<{ timestamp: number; rate: number }> = [];
   private featureWeights: Record<string, number[]> = {};
 
-  /** Record an outcome for dashboard aggregation. */
+  /** Record an outcome for dashboard aggregation. Evicts oldest when cap reached. */
   recordOutcome(outcome: DashboardOutcome): void {
     this.outcomes.push(outcome);
+    if (this.outcomes.length > MAX_OUTCOMES) {
+      this.outcomes = this.outcomes.slice(-MAX_OUTCOMES);
+    }
   }
 
   /** Record exploration rate snapshot. */
   recordExplorationRate(rate: number): void {
     this.explorationHistory.push({ timestamp: getTimeProvider().now(), rate });
-    if (this.explorationHistory.length > 1000) {
-      this.explorationHistory = this.explorationHistory.slice(-1000);
+    if (this.explorationHistory.length > MAX_EXPLORATION_HISTORY) {
+      this.explorationHistory = this.explorationHistory.slice(-MAX_EXPLORATION_HISTORY);
     }
   }
 
@@ -70,8 +101,8 @@ export class ValidationDashboard {
         this.featureWeights[feature] = [weight];
       } else {
         existing.push(weight);
-        if (existing.length > 100) {
-          this.featureWeights[feature] = existing.slice(-100);
+        if (existing.length > MAX_FEATURE_WEIGHT_HISTORY) {
+          this.featureWeights[feature] = existing.slice(-MAX_FEATURE_WEIGHT_HISTORY);
         }
       }
     }
@@ -186,13 +217,15 @@ export class ValidationDashboard {
   ): DashboardHealthIndicators {
     const warnings: string[] = [];
 
-    const hasMinimumData = outcomes.length >= 100;
+    const hasMinimumData = outcomes.length >= MIN_OUTCOMES_FOR_HEALTH;
     const isLearning = this.checkLearningProgress(learningProgress, outcomes.length, warnings);
     const healthyExploration = this.checkExplorationHealth(learningProgress, warnings);
     const noUnderperformers = this.checkUnderperformers(modelPerformance, warnings);
 
     if (!hasMinimumData) {
-      warnings.push(`Insufficient data: ${String(outcomes.length)}/100 minimum outcomes`);
+      warnings.push(
+        `Insufficient data: ${String(outcomes.length)}/${String(MIN_OUTCOMES_FOR_HEALTH)} minimum outcomes`
+      );
     }
 
     const healthScore = computeHealthScore(
@@ -217,8 +250,9 @@ export class ValidationDashboard {
     outcomeCount: number,
     warnings: string[]
   ): boolean {
-    const isLearning = progress.avgRegret < 0.3 || progress.optimalRate > 0.7;
-    if (!isLearning && outcomeCount >= 100) {
+    const isLearning =
+      progress.avgRegret < MAX_ACCEPTABLE_REGRET || progress.optimalRate > MIN_OPTIMAL_RATE;
+    if (!isLearning && outcomeCount >= MIN_OUTCOMES_FOR_HEALTH) {
       warnings.push('Learning not progressing: regret remains high');
     }
     return isLearning;
@@ -239,7 +273,9 @@ export class ValidationDashboard {
   ): boolean {
     const bestSuccessRate = Math.max(...modelPerformance.map((mp) => mp.successRate), 0);
     const underperformers = modelPerformance.filter(
-      (mp) => mp.successRate < bestSuccessRate * 0.5 && mp.n >= 30
+      (mp) =>
+        mp.successRate < bestSuccessRate * UNDERPERFORMER_RATIO &&
+        mp.n >= MIN_UNDERPERFORMER_SAMPLES
     );
     const noUnderperformers = underperformers.length === 0;
     if (!noUnderperformers) {
