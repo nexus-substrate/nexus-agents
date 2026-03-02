@@ -11,6 +11,8 @@ Bug fixes, test performance, and documentation accuracy improvements.
 - **Error context**: Improved error messages in 5 silent catch blocks (stdin-lifecycle, step-executor, sdk-adapter, orchestrate-aorchestra, github-provider) (#1336)
 - **Research registry**: Added multi-agent-worker-dispatch topic to generator helpers (#1335)
 - **CI security**: Pinned all GitHub Actions to commit SHAs (CWE-829)
+- **Input validation**: Added `.max()` bounds to 6 unbounded string inputs in MCP tool Zod schemas (CWE-20) (#1341)
+- **Silent catches**: Fixed 2 additional silent catch blocks in outcome-store-persistence and recording modules (#1341)
 
 ### Performance
 
