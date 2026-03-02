@@ -3,7 +3,7 @@
  * (Source: Issue #690 - Wire memory system into MCP tool execution pipeline)
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from 'vitest';
 import type { ILogger } from '../../core/index.js';
 
 /**
@@ -34,16 +34,19 @@ vi.mock('../../context/session-memory.js', () => ({
 vi.mock('../../context/agentic-memory.js', () => ({
   AgenticMemoryBackend: vi.fn(() => ({
     initialize: vi.fn().mockResolvedValue({ ok: false, error: { message: 'mocked' } }),
+    close: vi.fn(),
   })),
 }));
 vi.mock('../../context/adaptive-memory.js', () => ({
   AdaptiveMemoryBackend: vi.fn(() => ({
     initialize: vi.fn().mockResolvedValue({ ok: false, error: { message: 'mocked' } }),
+    close: vi.fn(),
   })),
 }));
 vi.mock('../../context/typed-memory.js', () => ({
   HybridMemoryBackend: vi.fn(() => ({
     initialize: vi.fn().mockResolvedValue({ ok: false, error: { message: 'mocked' } }),
+    close: vi.fn(),
   })),
   createTypedMemory: vi.fn(),
 }));
@@ -51,6 +54,7 @@ vi.mock('../../context/typed-memory.js', () => ({
 vi.mock('../../context/memory-backend.js', () => ({
   HybridMemoryBackend: vi.fn(() => ({
     initialize: vi.fn().mockResolvedValue({ ok: false, error: { message: 'mocked' } }),
+    close: vi.fn(),
   })),
 }));
 // Mock MobiMem to skip SQLite init (perf: saves ~1s)
@@ -60,6 +64,7 @@ vi.mock('../../context/mobimem.js', () => ({
     query: vi.fn().mockReturnValue([]),
     record: vi.fn(),
     getStats: vi.fn().mockReturnValue({ totalEntries: 0, backends: [] }),
+    close: vi.fn(),
   })),
 }));
 // Mock MemoryDecayManager to skip SQLite init (perf: saves ~500ms)
@@ -67,11 +72,24 @@ vi.mock('./memory-decay.js', () => ({
   MemoryDecayManager: vi.fn(() => ({
     runDecay: vi.fn().mockReturnValue({ decayed: 0, removed: 0 }),
     getStats: vi.fn().mockReturnValue({ totalEntries: 0, decayedEntries: 0 }),
+    shutdown: vi.fn(),
   })),
 }));
 
 import { ToolMemoryManager, getToolMemory, shutdownToolMemory } from './tool-memory.js';
 import { SessionMemory } from '../../context/session-memory.js';
+
+// Shared setup: every test gets clean mocks + shutdown singleton.
+// Eliminates 6 duplicate beforeEach/afterEach blocks.
+beforeEach(() => {
+  vi.clearAllMocks();
+  resetMockDefaults();
+  shutdownToolMemory();
+});
+
+afterAll(() => {
+  shutdownToolMemory();
+});
 
 /** Reset all mock return values after vi.clearAllMocks() clears them. */
 function resetMockDefaults(): void {
@@ -100,16 +118,6 @@ function createMockLogger(): ILogger {
 }
 
 describe('ToolMemoryManager', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    resetMockDefaults();
-    shutdownToolMemory();
-  });
-
-  afterEach(() => {
-    shutdownToolMemory();
-  });
-
   describe('constructor', () => {
     it('should create a SessionMemory and start a session', () => {
       const logger = createMockLogger();
@@ -258,16 +266,6 @@ describe('ToolMemoryManager', () => {
 });
 
 describe('getToolMemory singleton', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    resetMockDefaults();
-    shutdownToolMemory();
-  });
-
-  afterEach(() => {
-    shutdownToolMemory();
-  });
-
   it('should return the same instance on multiple calls', () => {
     const a = getToolMemory();
     const b = getToolMemory();
@@ -283,16 +281,6 @@ describe('getToolMemory singleton', () => {
 });
 
 describe('getRelevantLearnings', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    resetMockDefaults();
-    shutdownToolMemory();
-  });
-
-  afterEach(() => {
-    shutdownToolMemory();
-  });
-
   it('should return undefined when no past learnings exist', () => {
     const manager = new ToolMemoryManager(createMockLogger());
     expect(manager.getRelevantLearnings('some task')).toBeUndefined();
@@ -348,16 +336,6 @@ describe('getRelevantLearnings', () => {
 });
 
 describe('getRelevantErrorHints', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    resetMockDefaults();
-    shutdownToolMemory();
-  });
-
-  afterEach(() => {
-    shutdownToolMemory();
-  });
-
   it('should return undefined when no error solutions exist', () => {
     const manager = new ToolMemoryManager(createMockLogger());
     expect(manager.getRelevantErrorHints('code_expert')).toBeUndefined();
@@ -405,12 +383,6 @@ describe('getRelevantErrorHints', () => {
 });
 
 describe('shutdownToolMemory', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    resetMockDefaults();
-    shutdownToolMemory();
-  });
-
   it('should call endSession on the singleton', () => {
     getToolMemory();
     vi.clearAllMocks();
@@ -433,16 +405,6 @@ describe('shutdownToolMemory', () => {
 // ============================================================================
 
 describe('ToolMemoryManager Phase 2 advanced memory', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    resetMockDefaults();
-    shutdownToolMemory();
-  });
-
-  afterEach(() => {
-    shutdownToolMemory();
-  });
-
   it('should report advanced memory as unavailable when SQLite is not installed', () => {
     const manager = new ToolMemoryManager(createMockLogger());
     // SQLite is not installed in test environment, so advanced memory is unavailable
@@ -484,14 +446,12 @@ describe('ToolMemoryManager belief integration', () => {
   let manager: ToolMemoryManager;
 
   beforeEach(() => {
-    vi.clearAllMocks();
-    resetMockDefaults();
-    shutdownToolMemory();
+    vi.useFakeTimers();
     manager = new ToolMemoryManager();
   });
 
   afterEach(() => {
-    shutdownToolMemory();
+    vi.useRealTimers();
   });
 
   it('should record a belief without errors', async () => {
@@ -519,8 +479,8 @@ describe('ToolMemoryManager belief integration', () => {
       context: 'memory-backends',
       confidence: 0.9,
     });
-    // Give async belief creation a tick to complete
-    await new Promise((r) => setTimeout(r, 1));
+    // Flush async belief creation microtask
+    await vi.advanceTimersByTimeAsync(1);
     const beliefs = await manager.getRelevantBeliefs('memory-backends');
     expect(beliefs).toBeDefined();
     expect(beliefs).toContain('memory-backends');
@@ -532,7 +492,7 @@ describe('ToolMemoryManager belief integration', () => {
       context: 'test-context',
       confidence: 0.5,
     });
-    await new Promise((r) => setTimeout(r, 1));
+    await vi.advanceTimersByTimeAsync(1);
     const beliefs = await manager.getRelevantBeliefs('test-context');
     expect(beliefs).toBeUndefined();
   });
