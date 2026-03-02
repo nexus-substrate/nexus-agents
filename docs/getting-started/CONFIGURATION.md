@@ -220,9 +220,11 @@ All configuration can be overridden with environment variables:
 
 | Variable                 | Description                        | Default |
 | ------------------------ | ---------------------------------- | ------- |
-| `NEXUS_PERSIST_LEARNING` | Cross-session learning persistence | `false` |
+| `NEXUS_PERSIST_LEARNING` | Cross-session learning persistence | `true`  |
 
-When enabled, outcomes and distilled routing rules persist to `~/.nexus-agents/learning/`:
+Outcomes and distilled routing rules persist to `~/.nexus-agents/learning/` by default. When persistence is enabled, `routingMemory` and `strategyDistillation` also auto-enable (no separate config needed). Opt out with `NEXUS_PERSIST_LEARNING=false`.
+
+Files stored:
 
 - `outcomes.jsonl` — Append-only JSONL of task outcomes
 - `rules.json` — Atomic JSON snapshot of distilled routing rules
