@@ -41,9 +41,18 @@ const DIR_MODE = 0o700;
 // Helpers
 // ============================================================================
 
-/** Check whether learning persistence is enabled via feature flag. */
+/**
+ * Check whether learning persistence is enabled via feature flag.
+ *
+ * Defaults to true — cross-session LinUCB routing data persists to
+ * `~/.nexus-agents/learning/` unless explicitly disabled.
+ * Only routing metadata is stored (model, success, duration, category).
+ * No user prompts, API keys, or model outputs are persisted.
+ *
+ * Set NEXUS_PERSIST_LEARNING=false to disable.
+ */
 export function isPersistenceEnabled(): boolean {
-  return process.env['NEXUS_PERSIST_LEARNING'] === 'true';
+  return process.env['NEXUS_PERSIST_LEARNING'] !== 'false';
 }
 
 /** Ensure the learning data directory exists. */

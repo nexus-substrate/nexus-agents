@@ -314,8 +314,9 @@ describe('PersistentOutcomeStore', () => {
       delete process.env['NEXUS_PERSIST_LEARNING'];
     });
 
-    it('getOutcomeStore returns plain store when flag is off', () => {
-      delete process.env['NEXUS_PERSIST_LEARNING'];
+    it('getOutcomeStore returns plain store when flag is explicitly false', () => {
+      process.env['NEXUS_PERSIST_LEARNING'] = 'false';
+      resetOutcomeStore();
       const store = getOutcomeStore();
       expect(store).not.toBeInstanceOf(PersistentOutcomeStore);
     });

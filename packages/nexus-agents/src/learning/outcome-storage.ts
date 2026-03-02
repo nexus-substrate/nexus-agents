@@ -44,6 +44,25 @@ import {
   wrapStorageError,
 } from './outcome-storage-helpers.js';
 
+/** Maximum length for persisted error messages. Truncates to prevent data leakage. */
+const MAX_ERROR_MESSAGE_LENGTH = 200;
+
+/** Sensitive patterns to redact from error messages before persisting. */
+const SENSITIVE_PATTERNS =
+  /(?:sk-[a-zA-Z0-9]{20,}|(?:api[_-]?key|token|secret|password|auth)[=:]\s*\S+)/gi;
+
+/**
+ * Sanitizes error messages before persisting to SQLite.
+ * Truncates to MAX_ERROR_MESSAGE_LENGTH and redacts potential secrets.
+ */
+function sanitizeErrorMessage(msg: string | undefined): string | undefined {
+  if (msg === undefined) return undefined;
+  const redacted = msg.replace(SENSITIVE_PATTERNS, '[REDACTED]');
+  return redacted.length > MAX_ERROR_MESSAGE_LENGTH
+    ? redacted.slice(0, MAX_ERROR_MESSAGE_LENGTH) + '...'
+    : redacted;
+}
+
 /**
  * SQLite-based outcome storage implementation.
  */
@@ -169,7 +188,7 @@ export class SQLiteOutcomeStorage implements IOutcomeStorage {
         outcome.qualityScore,
         outcome.durationMs,
         outcome.tokenUsage,
-        outcome.errorMessage ?? null
+        sanitizeErrorMessage(outcome.errorMessage) ?? null
       );
       this.logger.debug('Stored task outcome', {
         decisionId: outcome.routingDecisionId,

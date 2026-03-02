@@ -30,8 +30,8 @@ describe('Doctor learning persistence check (Issue #1017)', () => {
     }
   });
 
-  it('reports disabled when NEXUS_PERSIST_LEARNING is off', async () => {
-    delete process.env['NEXUS_PERSIST_LEARNING'];
+  it('reports disabled when NEXUS_PERSIST_LEARNING is explicitly false', async () => {
+    process.env['NEXUS_PERSIST_LEARNING'] = 'false';
     // Dynamic import to get fresh module state
     const { runDoctor } = await import('./doctor.js');
     const result = await runDoctor();
