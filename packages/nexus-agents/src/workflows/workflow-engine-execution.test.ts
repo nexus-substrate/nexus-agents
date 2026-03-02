@@ -22,6 +22,7 @@ import {
   createContextManagerForWorkflow,
   createBudgetCircuitBreakerForWorkflow,
   initializeExecution,
+  applyInputDefaults,
   enforceStepBudgets,
   recordPhaseUsage,
 } from './workflow-engine-execution.js';
@@ -377,6 +378,76 @@ describe('initializeExecution', () => {
     const workflow = createMockWorkflow();
     const result = initializeExecution({ workflow, inputs: {}, config, logger });
     expect(result.context.budgetEvents).toEqual([]);
+  });
+
+  it('applies input defaults from workflow definition', () => {
+    const config = createResolvedConfig();
+    const workflow = createMockWorkflow({
+      inputs: [
+        { name: 'focus', type: 'string', default: 'general' },
+        { name: 'strictness', type: 'string', default: 'normal' },
+      ],
+    });
+    const result = initializeExecution({
+      workflow,
+      inputs: { focus: 'security' },
+      config,
+      logger,
+    });
+    // User-provided value preserved, missing value filled from default
+    expect(result.context.inputs['focus']).toBe('security');
+    expect(result.context.inputs['strictness']).toBe('normal');
+  });
+});
+
+// ============================================================================
+// applyInputDefaults
+// ============================================================================
+
+describe('applyInputDefaults', () => {
+  it('returns inputs unchanged when no defaults defined', () => {
+    const workflow = createMockWorkflow({ inputs: [] });
+    const result = applyInputDefaults(workflow, { key: 'value' });
+    expect(result).toEqual({ key: 'value' });
+  });
+
+  it('fills missing inputs with defaults', () => {
+    const workflow = createMockWorkflow({
+      inputs: [
+        { name: 'focus', type: 'string', default: 'general' },
+        { name: 'strictness', type: 'string', default: 'normal' },
+      ],
+    });
+    const result = applyInputDefaults(workflow, {});
+    expect(result).toEqual({ focus: 'general', strictness: 'normal' });
+  });
+
+  it('preserves user-provided values over defaults', () => {
+    const workflow = createMockWorkflow({
+      inputs: [{ name: 'focus', type: 'string', default: 'general' }],
+    });
+    const result = applyInputDefaults(workflow, { focus: 'security' });
+    expect(result).toEqual({ focus: 'security' });
+  });
+
+  it('skips inputs without defaults', () => {
+    const workflow = createMockWorkflow({
+      inputs: [
+        { name: 'files', type: 'array', required: true },
+        { name: 'focus', type: 'string', default: 'general' },
+      ],
+    });
+    const result = applyInputDefaults(workflow, { files: ['a.ts'] });
+    expect(result).toEqual({ files: ['a.ts'], focus: 'general' });
+  });
+
+  it('does not mutate original inputs', () => {
+    const workflow = createMockWorkflow({
+      inputs: [{ name: 'extra', type: 'string', default: 'yes' }],
+    });
+    const original = { key: 'value' };
+    applyInputDefaults(workflow, original);
+    expect(original).toEqual({ key: 'value' });
   });
 });
 

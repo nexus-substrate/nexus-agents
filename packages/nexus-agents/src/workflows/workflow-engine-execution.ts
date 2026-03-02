@@ -94,12 +94,32 @@ export function cleanupOldExecutions(executions: Map<string, ActiveExecution>): 
 }
 
 /**
+ * Merges user-provided inputs with defaults from the workflow definition.
+ * User-provided values take precedence over defaults.
+ */
+export function applyInputDefaults(
+  workflow: WorkflowDefinition,
+  inputs: Record<string, unknown>
+): Record<string, unknown> {
+  const merged = { ...inputs };
+  for (const def of workflow.inputs) {
+    if (!(def.name in merged) && def.default !== undefined) {
+      merged[def.name] = def.default;
+    }
+  }
+  return merged;
+}
+
+/**
  * Initialize execution context and tracking.
  */
 export function initializeExecution(params: InitExecutionParams): InitExecutionResult {
   const { workflow, inputs, config, logger } = params;
   const executionId = generateUUID();
   const startTime = getTimeProvider().now();
+
+  // Apply input defaults from workflow definition before execution
+  const resolvedInputs = applyInputDefaults(workflow, inputs);
 
   // Create context manager if configured
   const contextManager = createContextManagerForWorkflow(config, workflow, logger);
@@ -112,7 +132,7 @@ export function initializeExecution(params: InitExecutionParams): InitExecutionR
   const context: ExecutionContext = {
     workflowId: workflow.name,
     executionId,
-    inputs,
+    inputs: resolvedInputs,
     stepResults: new Map(),
     variables: new Map(),
     abortController: new AbortController(),
