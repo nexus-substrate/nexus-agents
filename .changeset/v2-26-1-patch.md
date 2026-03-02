@@ -19,6 +19,14 @@ Bug fixes, test performance, and documentation accuracy improvements.
   - rest-server: 2968ms to 700ms (76% reduction via shared Fastify instances)
   - tool-memory: Deduplicated 6 beforeEach/afterEach blocks, fixed mock methods
 
+### Test Coverage
+
+- **106 new unit tests** for previously untested modules (#1340)
+  - repo-analyze.ts: 80 tests (normalizeRepoId, detectPackageManager, detectCiProvider, detectSecurityTooling, detectFramework, getLanguageRecommendations, identifyGaps, analyzeRepo)
+  - scanner-registry-fetcher.ts: 9 tests (extractScannerEntries, extractLanguageMatrix, clearRegistryCache, getRegistryManifest)
+  - recording modules: 17 tests (consensus-vote, create-expert, execute-expert recording)
+- Fixed 2 additional silent catch blocks in recording modules
+
 ### Documentation
 
 - Fixed 5 documentation accuracy issues in README.md and ENTRYPOINTS.md
