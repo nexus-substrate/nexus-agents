@@ -88,7 +88,7 @@ export function recordVoteOutcomes(votes: readonly AgentVoteResult[]): void {
         source: 'consensus',
       });
     }
-  } catch {
-    // Best-effort — don't fail the vote
+  } catch (error: unknown) {
+    logger.debug('Best-effort vote outcome recording failed', { error: getErrorMessage(error) });
   }
 }

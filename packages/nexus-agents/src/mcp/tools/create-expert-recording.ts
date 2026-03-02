@@ -63,7 +63,7 @@ export function recordExpertOutcome(role: string, success: boolean, durationMs: 
       timestamp: new Date().toISOString(),
       source: 'manual',
     });
-  } catch {
-    // Best-effort — don't fail the tool
+  } catch (error: unknown) {
+    logger.debug('Best-effort expert outcome recording failed', { error: getErrorMessage(error) });
   }
 }
