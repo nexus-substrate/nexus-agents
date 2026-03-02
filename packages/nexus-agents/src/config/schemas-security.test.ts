@@ -290,7 +290,7 @@ describe('SecurityConfigSchema', () => {
       audit: {},
     });
     expect(result.audit).toEqual({
-      enabled: false,
+      enabled: true,
       minSeverity: 'info',
       enableHashChain: false,
       maxFileSizeBytes: 10485760,

@@ -26,6 +26,7 @@ import type {
   LatencyTrackerConfig as YamlLatencyTrackerConfig,
   RoutingMemoryConfig as YamlRoutingMemoryConfig,
 } from './schemas-routing.js';
+import { isPersistenceEnabled } from './learning-persistence.js';
 
 /** Non-nullable routing config for internal use. */
 type DefinedRoutingConfig = NonNullable<RoutingConfig>;
@@ -174,12 +175,31 @@ type StageFlagKey = (typeof STAGE_FLAG_KEYS)[number];
 type StageFlagsResult = Pick<CompositeRouterConfig, StageFlagKey>;
 
 /**
+ * Stage flags that default to `true` when learning persistence is enabled.
+ * These features consume data already recorded by OutcomeStore and add
+ * no new data collection surface. (#1347)
+ */
+const PERSISTENCE_AWARE_FLAGS: ReadonlySet<StageFlagKey> = new Set([
+  'enableRoutingMemory',
+  'enableStrategyDistillation',
+]);
+
+/**
  * Resolves stage flags with defaults using a data-driven approach.
+ * routingMemory and strategyDistillation default to true when persistence is on.
  */
 function resolveStageFlags(stagesConfig: Partial<CompositeRouterConfig>): StageFlagsResult {
+  const persistenceOn = isPersistenceEnabled();
   const result = {} as StageFlagsResult;
   for (const key of STAGE_FLAG_KEYS) {
-    result[key] = stagesConfig[key] ?? DEFAULT_COMPOSITE_CONFIG[key];
+    const explicit = stagesConfig[key];
+    if (explicit !== undefined) {
+      result[key] = explicit;
+    } else if (PERSISTENCE_AWARE_FLAGS.has(key) && persistenceOn) {
+      result[key] = true;
+    } else {
+      result[key] = DEFAULT_COMPOSITE_CONFIG[key];
+    }
   }
   return result;
 }

@@ -130,8 +130,8 @@ export const SecurityConfigSchema = z.object({
   /** Audit logging configuration (Issue #740 Phase 2) */
   audit: z
     .object({
-      /** Enable audit logging (default: false) */
-      enabled: z.boolean().default(false),
+      /** Enable audit logging (default: true) */
+      enabled: z.boolean().default(true),
       /** Log directory (default: ~/.nexus-agents/audit) */
       logDir: z.string().optional(),
       /** Minimum severity to log (default: 'info') */
