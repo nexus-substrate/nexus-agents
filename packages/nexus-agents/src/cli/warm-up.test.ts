@@ -5,11 +5,16 @@
  * (Source: Issue #1023 — Bootstrap LinUCB with synthetic outcomes)
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { generateSyntheticPriors, runWarmUp, SYNTHETIC_MARKER } from './warm-up.js';
 import { resetOutcomeStore, getOutcomeStore } from '../orchestration/outcomes/outcome-store.js';
 import { TASK_CATEGORIES } from '../config/task-specialization-types.js';
 import { CLI_NAMES } from '../config/model-capabilities-types.js';
+
+// Disable persistence so getOutcomeStore() returns a fresh in-memory store
+vi.mock('../config/learning-persistence.js', () => ({
+  isPersistenceEnabled: vi.fn(() => false),
+}));
 
 describe('warm-up', () => {
   beforeEach(() => {

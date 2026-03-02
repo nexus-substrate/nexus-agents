@@ -10,6 +10,11 @@ import { executeParallelExploration } from './parallel-exploration.js';
 import { isParallelEligible, createDefaultConfig } from './parallel-exploration-types.js';
 import { resetOutcomeStore, getOutcomeStore } from './outcomes/index.js';
 
+// Disable persistence so getOutcomeStore() returns a fresh in-memory store
+vi.mock('../config/learning-persistence.js', () => ({
+  isPersistenceEnabled: vi.fn(() => false),
+}));
+
 // ============================================================================
 // Mock Adapter Factory
 // ============================================================================

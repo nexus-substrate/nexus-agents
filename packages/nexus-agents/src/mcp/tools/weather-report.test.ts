@@ -3,12 +3,17 @@
  * (Source: Issue #865)
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { resetOutcomeStore, getOutcomeStore } from '../../orchestration/outcomes/index.js';
 import type { TaskOutcome } from '../../orchestration/outcomes/outcome-types.js';
 import { generateWeatherReport, getAdaptiveBonus, shouldExplore } from './weather-report.js';
 import { createDefaultWeatherConfig } from './weather-report-types.js';
 import { CLI_NAMES } from '../../config/model-capabilities-types.js';
+
+// Disable persistence so getOutcomeStore() returns a fresh in-memory store
+vi.mock('../../config/learning-persistence.js', () => ({
+  isPersistenceEnabled: vi.fn(() => false),
+}));
 
 // ============================================================================
 // Helpers

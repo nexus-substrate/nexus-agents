@@ -5,9 +5,14 @@
  * (Source: Issue #1030 — E2E scenario runner to validate learning loop)
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { runE2EEval, formatE2EEvalResult, E2E_EVAL_MARKER } from './e2e-eval.js';
 import { resetOutcomeStore, getOutcomeStore } from '../orchestration/outcomes/outcome-store.js';
+
+// Disable persistence so getOutcomeStore() returns a fresh in-memory store
+vi.mock('../config/learning-persistence.js', () => ({
+  isPersistenceEnabled: vi.fn(() => false),
+}));
 
 describe('e2e-eval', () => {
   beforeEach(() => {

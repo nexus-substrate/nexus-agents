@@ -8,6 +8,11 @@ import { computeAgentPlan, computeExpertReliability } from './orchestrate-aorche
 import type { ILogger } from '../../core/index.js';
 import { getOutcomeStore, resetOutcomeStore } from '../../orchestration/outcomes/index.js';
 
+// Disable persistence so getOutcomeStore() returns a fresh in-memory store
+vi.mock('../../config/learning-persistence.js', () => ({
+  isPersistenceEnabled: vi.fn(() => false),
+}));
+
 function createMockLogger(): ILogger {
   return {
     info: vi.fn(),

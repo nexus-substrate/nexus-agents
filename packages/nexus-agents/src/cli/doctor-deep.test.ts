@@ -5,10 +5,15 @@
  * (Source: Issue #1031 — Enhanced doctor --deep diagnostics)
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { runDeepDiagnostics, formatDeepDiagnostics } from './doctor-deep.js';
 import { resetOutcomeStore, getOutcomeStore } from '../orchestration/outcomes/outcome-store.js';
 import { TASK_CATEGORIES } from '../config/task-specialization-types.js';
+
+// Disable persistence so getOutcomeStore() returns a fresh in-memory store
+vi.mock('../config/learning-persistence.js', () => ({
+  isPersistenceEnabled: vi.fn(() => false),
+}));
 
 describe('doctor-deep', () => {
   beforeEach(() => {
