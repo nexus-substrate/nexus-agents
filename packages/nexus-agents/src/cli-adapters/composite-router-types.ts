@@ -246,6 +246,18 @@ export interface PipelineResult {
   memoryRecommendation: CliName | undefined;
   /** Routing memory confidence (Issue #489) */
   memoryConfidence: number | undefined;
+  /** Aggregated scores from async routing stages (Issue #1350) */
+  stageScores?: ReadonlyMap<CliName, number> | undefined;
+  /** Complexity estimate from confidence cascade stage (Issue #1350) */
+  cascadeComplexity?: 'simple' | 'moderate' | 'complex' | undefined;
+  /** Task type detected by capability match stage (Issue #1350) */
+  capabilityTaskType?: string | undefined;
+  /** CLIs filtered out by quality constraint stage with reasons (Issue #1350) */
+  qualityFiltered?: ReadonlyMap<CliName, string> | undefined;
+  /** Resource tier from resource strategy stage (Issue #1350) */
+  resourceTier?: string | undefined;
+  /** Number of distilled rules applied (Issue #1350) */
+  distilledRulesApplied?: number | undefined;
 }
 
 /**

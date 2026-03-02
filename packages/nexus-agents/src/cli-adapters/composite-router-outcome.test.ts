@@ -20,6 +20,10 @@ import {
 } from './composite-router-outcome.js';
 import { getOutcomeStore, resetOutcomeStore } from '../orchestration/outcomes/index.js';
 
+vi.mock('../config/learning-persistence.js', () => ({
+  isPersistenceEnabled: vi.fn(() => false),
+}));
+
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 function createMockLogger() {
   return {

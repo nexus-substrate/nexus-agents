@@ -13,11 +13,11 @@ import { CompositeRoutingError } from './composite-router-types.js';
 import {
   analyzeTaskProfile,
   runBudgetStage,
-  runConfidenceCascadeStageSync,
-  runCapabilityMatchStageSync,
-  runQualityConstraintStageSync,
-  runResourceStrategyStageSync,
-  runDistilledRuleStageSync,
+  runConfidenceCascadeStage,
+  runCapabilityMatchStage,
+  runQualityConstraintStage,
+  runResourceStrategyStage,
+  runDistilledRuleStage,
   runZeroRouterStage,
   runTopsisStage,
   runLinUCBStage,
@@ -168,103 +168,142 @@ describe('runBudgetStage', () => {
 });
 
 // ============================================================================
-// runConfidenceCascadeStageSync
+// runConfidenceCascadeStage
 // ============================================================================
 
-describe('runConfidenceCascadeStageSync', () => {
+describe('runConfidenceCascadeStage', () => {
   const candidates: CliName[] = ['claude', 'gemini'];
 
-  it('returns defaults when disabled', () => {
+  it('returns defaults when disabled', async () => {
     const stages: string[] = [];
     const deps = makeDeps();
-    const result = runConfidenceCascadeStageSync(mockTask, candidates, stages, deps);
+    const result = await runConfidenceCascadeStage(mockTask, candidates, stages, deps);
     expect(result.scores.size).toBe(0);
     expect(result.complexity).toBe('moderate');
     expect(result.shouldEscalate).toBe(false);
     expect(stages).not.toContain('confidence-cascade');
   });
 
-  it('returns defaults when stage instance is undefined', () => {
+  it('returns defaults when stage instance is undefined', async () => {
     const stages: string[] = [];
     const deps = makeDeps({
       config: { ...makeDeps().config, enableConfidenceCascade: true },
       confidenceCascadeStage: undefined,
     });
-    const result = runConfidenceCascadeStageSync(mockTask, candidates, stages, deps);
+    const result = await runConfidenceCascadeStage(mockTask, candidates, stages, deps);
     expect(result.scores.size).toBe(0);
     expect(stages).not.toContain('confidence-cascade');
   });
 
-  it('tracks stage when enabled and instance present', () => {
+  it('tracks stage and extracts scores when enabled', async () => {
     const stages: string[] = [];
     const mockStage = {
-      route: vi.fn().mockResolvedValue(ok({ context: { signals: [] } })),
+      route: vi.fn().mockResolvedValue(
+        ok({
+          context: {
+            signals: ['confidence:complexity-simple', 'confidence:best-claude'],
+            scores: new Map([
+              ['claude', 0.9],
+              ['gemini', 0.7],
+            ]),
+          },
+        })
+      ),
     };
     const deps = makeDeps({
       config: { ...makeDeps().config, enableConfidenceCascade: true },
       confidenceCascadeStage: mockStage as unknown as StageDependencies['confidenceCascadeStage'],
     });
-    const result = runConfidenceCascadeStageSync(mockTask, candidates, stages, deps);
+    const result = await runConfidenceCascadeStage(mockTask, candidates, stages, deps);
     expect(stages).toContain('confidence-cascade');
-    // Returns defaults since async result not yet available
+    expect(result.complexity).toBe('simple');
+    expect(result.scores.get('claude')).toBe(0.9);
+    expect(result.scores.get('gemini')).toBe(0.7);
+  });
+
+  it('returns defaults on stage error', async () => {
+    const stages: string[] = [];
+    const mockStage = {
+      route: vi.fn().mockResolvedValue({ ok: false, error: new Error('cascade fail') } as unknown),
+    };
+    const deps = makeDeps({
+      config: { ...makeDeps().config, enableConfidenceCascade: true },
+      confidenceCascadeStage: mockStage as unknown as StageDependencies['confidenceCascadeStage'],
+    });
+    const result = await runConfidenceCascadeStage(mockTask, candidates, stages, deps);
+    expect(stages).toContain('confidence-cascade');
+    expect(result.scores.size).toBe(0);
     expect(result.complexity).toBe('moderate');
   });
 });
 
 // ============================================================================
-// runCapabilityMatchStageSync
+// runCapabilityMatchStage
 // ============================================================================
 
-describe('runCapabilityMatchStageSync', () => {
+describe('runCapabilityMatchStage', () => {
   const candidates: CliName[] = ['claude', 'gemini'];
 
-  it('returns defaults when disabled', () => {
+  it('returns defaults when disabled', async () => {
     const stages: string[] = [];
-    const result = runCapabilityMatchStageSync(mockTask, candidates, stages, makeDeps());
+    const result = await runCapabilityMatchStage(mockTask, candidates, stages, makeDeps());
     expect(result.scores.size).toBe(0);
     expect(result.taskType).toBe('general');
     expect(result.bestCli).toBeUndefined();
     expect(stages).not.toContain('capability-match');
   });
 
-  it('tracks stage when enabled and instance present', () => {
+  it('tracks stage and extracts scores when enabled', async () => {
     const stages: string[] = [];
     const mockStage = {
-      route: vi.fn().mockResolvedValue(ok({ context: { signals: [] } })),
+      route: vi.fn().mockResolvedValue(
+        ok({
+          context: {
+            signals: ['capability:task-coding', 'capability:best-claude'],
+            scores: new Map([
+              ['claude', 0.85],
+              ['gemini', 0.6],
+            ]),
+          },
+        })
+      ),
     };
     const deps = makeDeps({
       config: { ...makeDeps().config, enableCapabilityMatch: true },
       capabilityMatchStage: mockStage as unknown as StageDependencies['capabilityMatchStage'],
     });
-    runCapabilityMatchStageSync(mockTask, candidates, stages, deps);
+    const result = await runCapabilityMatchStage(mockTask, candidates, stages, deps);
     expect(stages).toContain('capability-match');
+    expect(result.taskType).toBe('coding');
+    expect(result.bestCli).toBe('claude');
+    expect(result.scores.get('claude')).toBe(0.85);
   });
 });
 
 // ============================================================================
-// runQualityConstraintStageSync
+// runQualityConstraintStage
 // ============================================================================
 
-describe('runQualityConstraintStageSync', () => {
+describe('runQualityConstraintStage', () => {
   const candidates: CliName[] = ['claude', 'gemini', 'codex'];
 
-  it('returns all candidates as eligible when disabled', () => {
+  it('returns all candidates as eligible when disabled', async () => {
     const stages: string[] = [];
-    const result = runQualityConstraintStageSync(candidates, stages, makeDeps());
+    const result = await runQualityConstraintStage(candidates, stages, makeDeps());
     expect(result.eligible).toEqual(candidates);
     expect(result.filtered.size).toBe(0);
     expect(result.usedFallback).toBe(false);
     expect(stages).not.toContain('quality-constraint');
   });
 
-  it('tracks stage when enabled and instance present', () => {
+  it('filters candidates and tracks stage when enabled', async () => {
     const stages: string[] = [];
     const mockStage = {
       route: vi.fn().mockResolvedValue(
         ok({
           context: {
             signals: [],
-            filtered: new Map(),
+            filtered: new Map([['codex', 'quality-below-threshold']]),
             availableClis: ['claude', 'gemini', 'codex'],
           },
         })
@@ -274,89 +313,139 @@ describe('runQualityConstraintStageSync', () => {
       config: { ...makeDeps().config, enableQualityConstraint: true },
       qualityConstraintStage: mockStage as unknown as StageDependencies['qualityConstraintStage'],
     });
-    runQualityConstraintStageSync(candidates, stages, deps);
+    const result = await runQualityConstraintStage(candidates, stages, deps);
     expect(stages).toContain('quality-constraint');
+    expect(result.eligible).toEqual(['claude', 'gemini']);
+    expect(result.filtered.get('codex')).toBe('quality-below-threshold');
+  });
+
+  it('falls back to all candidates when all filtered', async () => {
+    const stages: string[] = [];
+    const mockStage = {
+      route: vi.fn().mockResolvedValue(
+        ok({
+          context: {
+            signals: ['quality:used-fallback'],
+            filtered: new Map([
+              ['claude', 'quality-below-threshold'],
+              ['gemini', 'quality-below-threshold'],
+              ['codex', 'quality-below-threshold'],
+            ]),
+            availableClis: ['claude', 'gemini', 'codex'],
+          },
+        })
+      ),
+    };
+    const deps = makeDeps({
+      config: { ...makeDeps().config, enableQualityConstraint: true },
+      qualityConstraintStage: mockStage as unknown as StageDependencies['qualityConstraintStage'],
+    });
+    const result = await runQualityConstraintStage(candidates, stages, deps);
+    expect(result.eligible).toEqual(candidates);
+    expect(result.usedFallback).toBe(true);
   });
 });
 
 // ============================================================================
-// runResourceStrategyStageSync
+// runResourceStrategyStage
 // ============================================================================
 
-describe('runResourceStrategyStageSync', () => {
+describe('runResourceStrategyStage', () => {
   const candidates: CliName[] = ['claude', 'gemini', 'codex'];
 
-  it('returns defaults when disabled', () => {
+  it('returns defaults when disabled', async () => {
     const stages: string[] = [];
-    const result = runResourceStrategyStageSync(mockTask, candidates, stages, makeDeps());
+    const result = await runResourceStrategyStage(mockTask, candidates, stages, makeDeps());
     expect(result.tier).toBe('balanced');
     expect(result.resourceLevel).toBeUndefined();
     expect(stages).not.toContain('resource-strategy');
   });
 
-  it('returns defaults when stage instance is undefined', () => {
+  it('returns defaults when stage instance is undefined', async () => {
     const stages: string[] = [];
     const deps = makeDeps({
       config: { ...makeDeps().config, enableResourceStrategy: true },
       resourceStrategyStage: undefined,
     });
-    const result = runResourceStrategyStageSync(mockTask, candidates, stages, deps);
+    const result = await runResourceStrategyStage(mockTask, candidates, stages, deps);
     expect(result.tier).toBe('balanced');
     expect(stages).not.toContain('resource-strategy');
   });
 
-  it('tracks stage when enabled and instance present', () => {
+  it('extracts tier and scores when enabled', async () => {
     const stages: string[] = [];
     const mockStage = {
-      route: vi.fn().mockResolvedValue(ok({ context: { signals: [] } })),
+      route: vi.fn().mockResolvedValue(
+        ok({
+          context: {
+            signals: ['resource-strategy:tier=performance'],
+            scores: new Map([
+              ['claude', 0.8],
+              ['gemini', 0.6],
+            ]),
+          },
+        })
+      ),
     };
     const deps = makeDeps({
       config: { ...makeDeps().config, enableResourceStrategy: true },
       resourceStrategyStage: mockStage as unknown as StageDependencies['resourceStrategyStage'],
     });
-    const result = runResourceStrategyStageSync(mockTask, candidates, stages, deps);
+    const result = await runResourceStrategyStage(mockTask, candidates, stages, deps);
     expect(stages).toContain('resource-strategy');
-    expect(result.tier).toBe('balanced');
+    expect(result.tier).toBe('performance');
+    expect(result.scores.get('claude')).toBe(0.8);
   });
 });
 
 // ============================================================================
-// runDistilledRuleStageSync
+// runDistilledRuleStage
 // ============================================================================
 
-describe('runDistilledRuleStageSync', () => {
+describe('runDistilledRuleStage', () => {
   const candidates: CliName[] = ['claude', 'gemini', 'codex'];
 
-  it('returns defaults when disabled', () => {
+  it('returns defaults when disabled', async () => {
     const stages: string[] = [];
-    const result = runDistilledRuleStageSync(mockTask, candidates, stages, makeDeps());
+    const result = await runDistilledRuleStage(mockTask, candidates, stages, makeDeps());
     expect(result.rulesApplied).toBe(0);
     expect(stages).not.toContain('distilled-rule');
   });
 
-  it('returns defaults when stage instance is undefined', () => {
+  it('returns defaults when stage instance is undefined', async () => {
     const stages: string[] = [];
     const deps = makeDeps({
       config: { ...makeDeps().config, enableStrategyDistillation: true },
       distilledRuleStage: undefined,
     });
-    const result = runDistilledRuleStageSync(mockTask, candidates, stages, deps);
+    const result = await runDistilledRuleStage(mockTask, candidates, stages, deps);
     expect(result.rulesApplied).toBe(0);
     expect(stages).not.toContain('distilled-rule');
   });
 
-  it('tracks stage when enabled and instance present', () => {
+  it('extracts rules applied and scores when enabled', async () => {
     const stages: string[] = [];
     const mockStage = {
-      route: vi.fn().mockResolvedValue(ok({ context: { signals: [] } })),
+      route: vi.fn().mockResolvedValue(
+        ok({
+          context: {
+            signals: [
+              'distilled-rule:applied=coding-preference',
+              'distilled-rule:applied=latency-bias',
+            ],
+            scores: new Map([['claude', 0.75]]),
+          },
+        })
+      ),
     };
     const deps = makeDeps({
       config: { ...makeDeps().config, enableStrategyDistillation: true },
       distilledRuleStage: mockStage as unknown as StageDependencies['distilledRuleStage'],
     });
-    const result = runDistilledRuleStageSync(mockTask, candidates, stages, deps);
+    const result = await runDistilledRuleStage(mockTask, candidates, stages, deps);
     expect(stages).toContain('distilled-rule');
-    expect(result.rulesApplied).toBe(0);
+    expect(result.rulesApplied).toBe(2);
+    expect(result.scores.get('claude')).toBe(0.75);
   });
 });
 
@@ -629,21 +718,21 @@ describe('runRoutingMemoryStage', () => {
 // ============================================================================
 
 describe('runPipeline', () => {
-  it('returns error when no CLI adapters available', () => {
+  it('returns error when no CLI adapters available', async () => {
     const stages: string[] = [];
     const profile = analyzeTaskProfile(mockTask, []);
-    const result = runPipeline(mockTask, profile, stages, [], makeDeps());
+    const result = await runPipeline(mockTask, profile, stages, [], makeDeps());
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error.message).toContain('No CLI adapters');
     }
   });
 
-  it('runs minimal pipeline with all stages disabled', () => {
+  it('runs minimal pipeline with all stages disabled', async () => {
     const stages: string[] = [];
     const profile = analyzeTaskProfile(mockTask, []);
     const cliNames: CliName[] = ['claude', 'gemini'];
-    const result = runPipeline(mockTask, profile, stages, cliNames, makeDeps());
+    const result = await runPipeline(mockTask, profile, stages, cliNames, makeDeps());
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.value.selectedCli).toBe('claude'); // first candidate
@@ -651,7 +740,7 @@ describe('runPipeline', () => {
     }
   });
 
-  it('returns error when LinUCB returns no selection from empty ranking', () => {
+  it('returns error when LinUCB returns no selection from empty ranking', async () => {
     const stages: string[] = [];
     const profile = analyzeTaskProfile(mockTask, []);
     const cliNames: CliName[] = ['claude'];
@@ -663,7 +752,7 @@ describe('runPipeline', () => {
       config: { ...makeDeps().config, enableLinUCBSelection: true },
       linucbBandit: mockBandit as unknown as StageDependencies['linucbBandit'],
     });
-    const result = runPipeline(mockTask, profile, stages, cliNames, deps);
+    const result = await runPipeline(mockTask, profile, stages, cliNames, deps);
     // LinUCB returned undefined -> "No candidates available" error
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -671,7 +760,7 @@ describe('runPipeline', () => {
     }
   });
 
-  it('does not override LinUCB when memory confidence is at default 0.8', () => {
+  it('does not override LinUCB when memory confidence is at default 0.8', async () => {
     const stages: string[] = [];
     const profile = analyzeTaskProfile(mockTask, []);
     const cliNames: CliName[] = ['claude', 'gemini'];
@@ -683,7 +772,7 @@ describe('runPipeline', () => {
       config: { ...makeDeps().config, enableRoutingMemory: true },
       routingMemory: mockMemory as unknown as StageDependencies['routingMemory'],
     });
-    const result = runPipeline(mockTask, profile, stages, cliNames, deps);
+    const result = await runPipeline(mockTask, profile, stages, cliNames, deps);
     expect(result.ok).toBe(true);
     if (result.ok) {
       // Memory confidence 0.8 < 0.85 threshold, so LinUCB selection is used
@@ -694,12 +783,12 @@ describe('runPipeline', () => {
     }
   });
 
-  it('uses linucb selection when memory has no recommendation', () => {
+  it('uses linucb selection when memory has no recommendation', async () => {
     const stages: string[] = [];
     const profile = analyzeTaskProfile(mockTask, []);
     const cliNames: CliName[] = ['claude', 'gemini'];
     const deps = makeDeps(); // no routing memory
-    const result = runPipeline(mockTask, profile, stages, cliNames, deps);
+    const result = await runPipeline(mockTask, profile, stages, cliNames, deps);
     expect(result.ok).toBe(true);
     if (result.ok) {
       // Without memory, falls back to linucb (disabled), which returns first candidate
@@ -707,7 +796,7 @@ describe('runPipeline', () => {
     }
   });
 
-  it('propagates budget filter error', () => {
+  it('propagates budget filter error', async () => {
     const stages: string[] = [];
     const profile = analyzeTaskProfile(mockTask, []);
     const cliNames: CliName[] = ['claude', 'gemini'];
@@ -718,10 +807,61 @@ describe('runPipeline', () => {
       config: { ...makeDeps().config, enableBudgetFilter: true },
       budgetRouter: mockBudgetRouter as unknown as StageDependencies['budgetRouter'],
     });
-    const result = runPipeline(mockTask, profile, stages, cliNames, deps);
+    const result = await runPipeline(mockTask, profile, stages, cliNames, deps);
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error.stage).toBe('budget-filter');
+    }
+  });
+
+  it('populates stageScores when async stages produce scores', async () => {
+    const stages: string[] = [];
+    const profile = analyzeTaskProfile(mockTask, []);
+    const cliNames: CliName[] = ['claude', 'gemini'];
+    const mockCascade = {
+      route: vi.fn().mockResolvedValue(
+        ok({
+          context: {
+            signals: ['confidence:complexity-simple'],
+            scores: new Map([
+              ['claude', 0.5],
+              ['gemini', 0.3],
+            ]),
+          },
+        })
+      ),
+    };
+    const mockResource = {
+      route: vi.fn().mockResolvedValue(
+        ok({
+          context: {
+            signals: ['resource-strategy:tier=economy'],
+            scores: new Map([
+              ['claude', 0.2],
+              ['gemini', 0.4],
+            ]),
+          },
+        })
+      ),
+    };
+    const deps = makeDeps({
+      config: {
+        ...makeDeps().config,
+        enableConfidenceCascade: true,
+        enableResourceStrategy: true,
+      },
+      confidenceCascadeStage: mockCascade as unknown as StageDependencies['confidenceCascadeStage'],
+      resourceStrategyStage: mockResource as unknown as StageDependencies['resourceStrategyStage'],
+    });
+    const result = await runPipeline(mockTask, profile, stages, cliNames, deps);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.stageScores).toBeDefined();
+      // claude: 0.5 + 0.2 = 0.7, gemini: 0.3 + 0.4 = 0.7
+      expect(result.value.stageScores?.get('claude')).toBe(0.7);
+      expect(result.value.stageScores?.get('gemini')).toBe(0.7);
+      expect(result.value.cascadeComplexity).toBe('simple');
+      expect(result.value.resourceTier).toBe('economy');
     }
   });
 });

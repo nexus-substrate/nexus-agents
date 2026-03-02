@@ -345,7 +345,7 @@ export class CompositeRouter implements ICompositeRouter {
   }
 
   async route(task: CliTask): Promise<Result<CompositeRoutingDecision, CompositeRoutingError>> {
-    return Promise.resolve().then(() => this.executeRouting(task, getTimeProvider().now()));
+    return this.executeRouting(task, getTimeProvider().now());
   }
 
   /**
@@ -463,15 +463,21 @@ export class CompositeRouter implements ICompositeRouter {
     return 'general';
   }
 
-  private executeRouting(
+  private async executeRouting(
     task: CliTask,
     startTime: number
-  ): Result<CompositeRoutingDecision, CompositeRoutingError> {
+  ): Promise<Result<CompositeRoutingDecision, CompositeRoutingError>> {
     const stagesExecuted: string[] = [];
     try {
       const taskProfile = analyzeTaskProfile(task, stagesExecuted);
       const deps = this.getStageDependencies();
-      const pipelineResult = runPipeline(task, taskProfile, stagesExecuted, this.cliNames, deps);
+      const pipelineResult = await runPipeline(
+        task,
+        taskProfile,
+        stagesExecuted,
+        this.cliNames,
+        deps
+      );
       if (!pipelineResult.ok) {
         if (pipelineResult.error.stage === 'budget-filter') this.budgetRejections++;
         return pipelineResult;
@@ -485,7 +491,7 @@ export class CompositeRouter implements ICompositeRouter {
         stagesExecuted,
         startTime,
       });
-    } catch (error) {
+    } catch (error: unknown) {
       return this.handleRoutingError(error, stagesExecuted);
     }
   }

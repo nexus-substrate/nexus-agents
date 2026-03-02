@@ -105,6 +105,57 @@ export function runBudgetStage(
   return ok({ candidates: result.eligible, withinBudget: result.withinBudget });
 }
 
+/** Default complexity when no signal is available. */
+const DEFAULT_COMPLEXITY: ConfidenceCascadeStageResult['complexity'] = 'moderate';
+
+/** Extract complexity level from confidence cascade signals. */
+function extractComplexityFromSignals(
+  signals: readonly string[]
+): 'simple' | 'moderate' | 'complex' {
+  for (const s of signals) {
+    if (s === 'confidence:complexity-simple') return 'simple';
+    if (s === 'confidence:complexity-complex') return 'complex';
+    if (s === 'confidence:complexity-moderate') return 'moderate';
+  }
+  return DEFAULT_COMPLEXITY;
+}
+
+/** Extract task type from capability match signals. */
+function extractTaskTypeFromSignals(signals: readonly string[]): string {
+  for (const s of signals) {
+    if (s.startsWith('capability:task-')) return s.slice('capability:task-'.length);
+  }
+  return 'general';
+}
+
+/** Extract best CLI from signals with a given prefix. */
+function extractBestCliFromSignals(
+  signals: readonly string[],
+  prefix: string
+): CliName | undefined {
+  for (const s of signals) {
+    if (s.startsWith(prefix)) return s.slice(prefix.length) as CliName;
+  }
+  return undefined;
+}
+
+/** Extract resource tier from signals. */
+function extractTierFromSignals(signals: readonly string[]): string {
+  for (const s of signals) {
+    if (s.startsWith('resource-strategy:tier=')) return s.slice('resource-strategy:tier='.length);
+  }
+  return 'balanced';
+}
+
+/** Count applied rules from distilled-rule signals. */
+function countAppliedRulesFromSignals(signals: readonly string[]): number {
+  let count = 0;
+  for (const s of signals) {
+    if (s.startsWith('distilled-rule:applied=')) count++;
+  }
+  return count;
+}
+
 /** Confidence cascade stage result. (Issue #755) */
 export interface ConfidenceCascadeStageResult {
   scores: Map<CliName, number>;
@@ -112,37 +163,44 @@ export interface ConfidenceCascadeStageResult {
   shouldEscalate: boolean;
 }
 
-/** Runs confidence cascade stage synchronously. (Issue #755) */
-export function runConfidenceCascadeStageSync(
+/** Default confidence cascade result. */
+const DEFAULT_CASCADE_RESULT: ConfidenceCascadeStageResult = {
+  scores: new Map(),
+  complexity: DEFAULT_COMPLEXITY,
+  shouldEscalate: false,
+};
+
+/** Runs confidence cascade stage. (Issue #755, #1350) */
+export async function runConfidenceCascadeStage(
   task: CliTask,
   candidates: CliName[],
   stagesExecuted: string[],
   deps: StageDependencies
-): ConfidenceCascadeStageResult {
+): Promise<ConfidenceCascadeStageResult> {
   if (!deps.config.enableConfidenceCascade || deps.confidenceCascadeStage === undefined) {
-    return { scores: new Map(), complexity: 'moderate', shouldEscalate: false };
+    return DEFAULT_CASCADE_RESULT;
   }
 
   const ctx = createRoutingContext(task.content, candidates);
-  // The stage.route() returns Promise but we need sync - use the underlying logic directly
-  // For now, call route() and handle as best-effort (stages are optional)
-  void deps.confidenceCascadeStage
-    .route(ctx)
-    .then((result) => {
-      if (result.ok) {
-        deps.logger.debug('Confidence cascade completed async', {
-          signals: result.value.context.signals.filter((s) => s.startsWith('confidence:')),
-        });
-      }
-    })
-    .catch((error: unknown) => {
-      deps.logger.debug('Confidence cascade stage failed', { error: String(error) });
-    });
-
+  const result = await deps.confidenceCascadeStage.route(ctx);
   stagesExecuted.push('confidence-cascade');
 
-  // Return default while async completes (stages contribute to scoring, not filtering)
-  return { scores: new Map(), complexity: 'moderate', shouldEscalate: false };
+  if (!result.ok) {
+    deps.logger.debug('Confidence cascade stage failed', { error: result.error.message });
+    return DEFAULT_CASCADE_RESULT;
+  }
+
+  const { signals, scores } = result.value.context;
+  const complexity = extractComplexityFromSignals(signals);
+  const shouldEscalate = signals.includes('confidence:should-escalate');
+
+  deps.logger.debug('Confidence cascade completed', {
+    complexity,
+    shouldEscalate,
+    scoreCount: scores.size,
+  });
+
+  return { scores: new Map(scores), complexity, shouldEscalate };
 }
 
 /** Capability match stage result. (Issue #755) */
@@ -152,36 +210,44 @@ export interface CapabilityMatchStageResult {
   bestCli: CliName | undefined;
 }
 
-/** Runs capability match stage synchronously. (Issue #755) */
-export function runCapabilityMatchStageSync(
+/** Default capability match result. */
+const DEFAULT_CAPABILITY_RESULT: CapabilityMatchStageResult = {
+  scores: new Map(),
+  taskType: 'general',
+  bestCli: undefined,
+};
+
+/** Runs capability match stage. (Issue #755, #1350) */
+export async function runCapabilityMatchStage(
   task: CliTask,
   candidates: CliName[],
   stagesExecuted: string[],
   deps: StageDependencies
-): CapabilityMatchStageResult {
+): Promise<CapabilityMatchStageResult> {
   if (!deps.config.enableCapabilityMatch || deps.capabilityMatchStage === undefined) {
-    return { scores: new Map(), taskType: 'general', bestCli: undefined };
+    return DEFAULT_CAPABILITY_RESULT;
   }
 
   const ctx = createRoutingContext(task.content, candidates);
-  // Call route() async and handle result when available
-  void deps.capabilityMatchStage
-    .route(ctx)
-    .then((result) => {
-      if (result.ok) {
-        deps.logger.debug('Capability match completed async', {
-          signals: result.value.context.signals.filter((s) => s.startsWith('capability:')),
-        });
-      }
-    })
-    .catch((error: unknown) => {
-      deps.logger.debug('Capability match stage failed', { error: String(error) });
-    });
-
+  const result = await deps.capabilityMatchStage.route(ctx);
   stagesExecuted.push('capability-match');
 
-  // Return default while async completes
-  return { scores: new Map(), taskType: 'general', bestCli: undefined };
+  if (!result.ok) {
+    deps.logger.debug('Capability match stage failed', { error: result.error.message });
+    return DEFAULT_CAPABILITY_RESULT;
+  }
+
+  const { signals, scores } = result.value.context;
+  const taskType = extractTaskTypeFromSignals(signals);
+  const bestCli = extractBestCliFromSignals(signals, 'capability:best-');
+
+  deps.logger.debug('Capability match completed', {
+    taskType,
+    bestCli,
+    scoreCount: scores.size,
+  });
+
+  return { scores: new Map(scores), taskType, bestCli };
 }
 
 /** Quality constraint stage result. (Issue #755) */
@@ -191,91 +257,114 @@ export interface QualityConstraintStageResult {
   usedFallback: boolean;
 }
 
-/** Runs quality constraint stage synchronously. (Issue #755) */
-export function runQualityConstraintStageSync(
+/** Runs quality constraint stage. (Issue #755, #1350) */
+export async function runQualityConstraintStage(
   candidates: CliName[],
   stagesExecuted: string[],
   deps: StageDependencies
-): QualityConstraintStageResult {
+): Promise<QualityConstraintStageResult> {
   if (!deps.config.enableQualityConstraint || deps.qualityConstraintStage === undefined) {
     return { eligible: candidates, filtered: new Map(), usedFallback: false };
   }
 
   const ctx = createRoutingContext('', candidates);
-  // Call route() async - quality constraints are important so log result
-  void deps.qualityConstraintStage.route(ctx).then((result) => {
-    if (result.ok) {
-      const remaining = getRemainingCandidates(result.value.context);
-      deps.logger.debug('Quality constraint completed async', {
-        eligible: remaining.length,
-        filtered: result.value.context.filtered.size,
-      });
-    }
-  });
-
+  const result = await deps.qualityConstraintStage.route(ctx);
   stagesExecuted.push('quality-constraint');
 
-  // Return all candidates as eligible for sync path (async path logs actual filtering)
-  return { eligible: candidates, filtered: new Map(), usedFallback: false };
+  if (!result.ok) {
+    deps.logger.debug('Quality constraint stage failed', { error: result.error.message });
+    return { eligible: candidates, filtered: new Map(), usedFallback: false };
+  }
+
+  const remaining = getRemainingCandidates(result.value.context);
+  const filtered = new Map(result.value.context.filtered);
+  const usedFallback = result.value.context.signals.includes('quality:used-fallback');
+
+  deps.logger.debug('Quality constraint completed', {
+    eligible: remaining.length,
+    filtered: filtered.size,
+    usedFallback,
+  });
+
+  // If all candidates filtered, fall back to original set
+  const eligible = remaining.length > 0 ? remaining : candidates;
+  return { eligible, filtered, usedFallback: remaining.length === 0 || usedFallback };
 }
 
 /** Resource strategy stage result. (Issue #998) */
 export interface ResourceStrategyStageResult {
+  scores: Map<CliName, number>;
   tier: string;
   resourceLevel: number | undefined;
 }
 
-/** Runs resource strategy stage synchronously. (Issue #998) */
-export function runResourceStrategyStageSync(
+/** Default resource strategy result. */
+const DEFAULT_RESOURCE_RESULT: ResourceStrategyStageResult = {
+  scores: new Map(),
+  tier: 'balanced',
+  resourceLevel: undefined,
+};
+
+/** Runs resource strategy stage. (Issue #998, #1350) */
+export async function runResourceStrategyStage(
   task: CliTask,
   candidates: CliName[],
   stagesExecuted: string[],
   deps: StageDependencies
-): ResourceStrategyStageResult {
+): Promise<ResourceStrategyStageResult> {
   if (!deps.config.enableResourceStrategy || deps.resourceStrategyStage === undefined) {
-    return { tier: 'balanced', resourceLevel: undefined };
+    return DEFAULT_RESOURCE_RESULT;
   }
 
   const ctx = createRoutingContext(task.content, candidates);
-  void deps.resourceStrategyStage.route(ctx).then((result) => {
-    if (result.ok) {
-      deps.logger.debug('Resource strategy completed async', {
-        signals: result.value.context.signals.filter((s) => s.startsWith('resource-strategy:')),
-      });
-    }
-  });
-
+  const result = await deps.resourceStrategyStage.route(ctx);
   stagesExecuted.push('resource-strategy');
-  return { tier: 'balanced', resourceLevel: undefined };
+
+  if (!result.ok) {
+    deps.logger.debug('Resource strategy stage failed', { error: result.error.message });
+    return DEFAULT_RESOURCE_RESULT;
+  }
+
+  const { signals, scores } = result.value.context;
+  const tier = extractTierFromSignals(signals);
+
+  deps.logger.debug('Resource strategy completed', { tier, scoreCount: scores.size });
+
+  return { scores: new Map(scores), tier, resourceLevel: undefined };
 }
 
 /** Distilled rule stage result. (Issue #999) */
 export interface DistilledRuleStageResult {
+  scores: Map<CliName, number>;
   rulesApplied: number;
 }
 
-/** Runs distilled rule stage synchronously. (Issue #999) */
-export function runDistilledRuleStageSync(
+/** Runs distilled rule stage. (Issue #999, #1350) */
+export async function runDistilledRuleStage(
   task: CliTask,
   candidates: CliName[],
   stagesExecuted: string[],
   deps: StageDependencies
-): DistilledRuleStageResult {
+): Promise<DistilledRuleStageResult> {
   if (!deps.config.enableStrategyDistillation || deps.distilledRuleStage === undefined) {
-    return { rulesApplied: 0 };
+    return { scores: new Map(), rulesApplied: 0 };
   }
 
   const ctx = createRoutingContext(task.content, candidates);
-  void deps.distilledRuleStage.route(ctx).then((result) => {
-    if (result.ok) {
-      deps.logger.debug('Distilled rule stage completed async', {
-        signals: result.value.context.signals.filter((s) => s.startsWith('distilled-rule:')),
-      });
-    }
-  });
-
+  const result = await deps.distilledRuleStage.route(ctx);
   stagesExecuted.push('distilled-rule');
-  return { rulesApplied: 0 };
+
+  if (!result.ok) {
+    deps.logger.debug('Distilled rule stage failed', { error: result.error.message });
+    return { scores: new Map(), rulesApplied: 0 };
+  }
+
+  const { signals, scores } = result.value.context;
+  const rulesApplied = countAppliedRulesFromSignals(signals);
+
+  deps.logger.debug('Distilled rule stage completed', { rulesApplied, scoreCount: scores.size });
+
+  return { scores: new Map(scores), rulesApplied };
 }
 
 /** Runs ZeroRouter difficulty estimation stage. */
@@ -470,21 +559,34 @@ function inferTaskTypeFromContent(content: string): string {
   return 'general';
 }
 
-/** Executes full pipeline and returns result. */
-export function runPipeline(
+/** Merge multiple score maps into a single aggregated map. */
+function mergeScoreMaps(
+  ...maps: ReadonlyArray<ReadonlyMap<CliName, number>>
+): Map<CliName, number> {
+  const merged = new Map<CliName, number>();
+  for (const m of maps) {
+    for (const [cli, score] of m) {
+      merged.set(cli, (merged.get(cli) ?? 0) + score);
+    }
+  }
+  return merged;
+}
+
+/** Executes full pipeline and returns result. (Made async in Issue #1350) */
+export async function runPipeline(
   task: CliTask,
   taskProfile: TaskProfile,
   stagesExecuted: string[],
   cliNames: CliName[],
   deps: StageDependencies
-): Result<PipelineResult, CompositeRoutingError> {
+): Promise<Result<PipelineResult, CompositeRoutingError>> {
   let candidates: CliName[] = [...cliNames];
   if (candidates.length === 0) {
     return err(new CompositeRoutingError('No CLI adapters available', 'initialization'));
   }
 
   // Priority 10: Confidence Cascade (Issue #755) - establishes complexity baseline
-  runConfidenceCascadeStageSync(task, candidates, stagesExecuted, deps);
+  const cascadeResult = await runConfidenceCascadeStage(task, candidates, stagesExecuted, deps);
 
   // Priority 20: Budget filtering
   const budgetResult = runBudgetStage(task, candidates, stagesExecuted, deps);
@@ -496,21 +598,21 @@ export function runPipeline(
   const memoryResult = runRoutingMemoryStage(task, candidates, stagesExecuted, deps);
 
   // Priority 35: Capability Match (Issue #755) - task-type scoring
-  runCapabilityMatchStageSync(task, candidates, stagesExecuted, deps);
+  const capResult = await runCapabilityMatchStage(task, candidates, stagesExecuted, deps);
 
   // Priority 40: ZeroRouter difficulty estimation
   const zeroResult = runZeroRouterStage(task, candidates, stagesExecuted, deps);
   candidates = zeroResult.filteredCandidates;
 
   // Priority 45: Distilled rule scoring (Issue #999)
-  runDistilledRuleStageSync(task, candidates, stagesExecuted, deps);
+  const distilledResult = await runDistilledRuleStage(task, candidates, stagesExecuted, deps);
 
   // Priority 50: Preference routing
   const prefResult = runPreferenceStage(task, candidates, stagesExecuted, deps);
   candidates = prefResult.preferredCandidates;
 
   // Priority 55: Resource strategy oscillation (Issue #998)
-  runResourceStrategyStageSync(task, candidates, stagesExecuted, deps);
+  const resourceResult = await runResourceStrategyStage(task, candidates, stagesExecuted, deps);
 
   // Priority 60: TOPSIS ranking
   const topsisResult = runTopsisStage(taskProfile, candidates, stagesExecuted, deps);
@@ -521,8 +623,8 @@ export function runPipeline(
     return err(new CompositeRoutingError('No candidates available', 'selection'));
   }
 
-  // Priority 75: Quality Constraint (Issue #755) - quality gate (sync version)
-  const qualityResult = runQualityConstraintStageSync(candidates, stagesExecuted, deps);
+  // Priority 75: Quality Constraint (Issue #755) - quality gate
+  const qualityResult = await runQualityConstraintStage(candidates, stagesExecuted, deps);
 
   // Priority 80: Latency scoring stage (Issue #361)
   const latencyResult = runLatencyStage(qualityResult.eligible, stagesExecuted, deps);
@@ -530,21 +632,76 @@ export function runPipeline(
   // Final selection with memory influence (Issue #489)
   const selectedCli = selectWithMemoryInfluence(linucbResult.selectedCli, memoryResult, deps);
 
-  return ok({
-    candidates: qualityResult.eligible,
-    withinBudget,
-    difficultyEstimate: zeroResult.difficultyEstimate,
-    difficultyTier: zeroResult.difficultyTier,
-    preferenceScore: prefResult.preferenceScore,
-    preferenceTier: prefResult.preferenceTier,
-    topsisRanking: topsisResult.ranking,
-    topsisScore: topsisResult.score,
-    selectedCli,
-    ucbScore: linucbResult.ucbScore,
-    latencyScore: latencyResult.latencyScore,
-    memoryRecommendation: memoryResult.recommendation,
-    memoryConfidence: memoryResult.memoryConfidence,
-  });
+  return ok(
+    buildPipelineResult({
+      cascadeResult,
+      capResult,
+      distilledResult,
+      resourceResult,
+      qualityResult,
+      zeroResult,
+      prefResult,
+      topsisResult,
+      linucbResult: { ucbScore: linucbResult.ucbScore },
+      latencyResult,
+      memoryResult,
+      withinBudget,
+      selectedCli,
+    })
+  );
+}
+
+/** Intermediate params for pipeline result construction. */
+interface PipelineResultParams {
+  cascadeResult: ConfidenceCascadeStageResult;
+  capResult: CapabilityMatchStageResult;
+  distilledResult: DistilledRuleStageResult;
+  resourceResult: ResourceStrategyStageResult;
+  qualityResult: QualityConstraintStageResult;
+  zeroResult: ZeroRouterStageResult;
+  prefResult: PreferenceStageResult;
+  topsisResult: { ranking: CliName[]; score: number | undefined };
+  linucbResult: { ucbScore: number | undefined };
+  latencyResult: LatencyStageResult;
+  memoryResult: RoutingMemoryStageResult;
+  withinBudget: boolean | undefined;
+  selectedCli: CliName;
+}
+
+/** Assemble PipelineResult from stage outputs, including async stage scores. */
+function buildPipelineResult(p: PipelineResultParams): PipelineResult {
+  const stageScores = mergeScoreMaps(
+    p.cascadeResult.scores,
+    p.capResult.scores,
+    p.distilledResult.scores,
+    p.resourceResult.scores
+  );
+
+  return {
+    candidates: p.qualityResult.eligible,
+    withinBudget: p.withinBudget,
+    difficultyEstimate: p.zeroResult.difficultyEstimate,
+    difficultyTier: p.zeroResult.difficultyTier,
+    preferenceScore: p.prefResult.preferenceScore,
+    preferenceTier: p.prefResult.preferenceTier,
+    topsisRanking: p.topsisResult.ranking,
+    topsisScore: p.topsisResult.score,
+    selectedCli: p.selectedCli,
+    ucbScore: p.linucbResult.ucbScore,
+    latencyScore: p.latencyResult.latencyScore,
+    memoryRecommendation: p.memoryResult.recommendation,
+    memoryConfidence: p.memoryResult.memoryConfidence,
+    ...(stageScores.size > 0 ? { stageScores } : {}),
+    ...(p.cascadeResult.complexity !== DEFAULT_COMPLEXITY
+      ? { cascadeComplexity: p.cascadeResult.complexity }
+      : {}),
+    ...(p.capResult.taskType !== 'general' ? { capabilityTaskType: p.capResult.taskType } : {}),
+    ...(p.qualityResult.filtered.size > 0 ? { qualityFiltered: p.qualityResult.filtered } : {}),
+    ...(p.resourceResult.tier !== 'balanced' ? { resourceTier: p.resourceResult.tier } : {}),
+    ...(p.distilledResult.rulesApplied > 0
+      ? { distilledRulesApplied: p.distilledResult.rulesApplied }
+      : {}),
+  };
 }
 
 /** Select CLI with optional memory influence. (Issue #489) */
