@@ -283,6 +283,7 @@ export class FeedbackIntegration implements IFeedbackIntegration {
       tokenUsage,
       retryCount = 0,
       traceId,
+      errorMessage,
     } = params;
     const outcomeClass = this.determineOutcomeClass(success, qualityScore);
     const completionRatio = success ? 1.0 : qualityScore / this.config.successQualityThreshold;
@@ -302,6 +303,7 @@ export class FeedbackIntegration implements IFeedbackIntegration {
         retryCount,
         coherenceScore: qualityScore,
       },
+      ...(errorMessage !== undefined ? { errorMessage } : {}),
     };
 
     this.collector.recordOutcome(outcome);
@@ -336,6 +338,7 @@ export class FeedbackIntegration implements IFeedbackIntegration {
       qualityScore: outcome.qualityScore,
       durationMs: outcome.durationMs,
       tokenUsage: outcome.tokenUsage,
+      ...(outcome.errorMessage !== undefined ? { errorMessage: outcome.errorMessage } : {}),
     };
     this.outcomeStorage.storeOutcome(storedOutcome).catch((error: unknown) => {
       this.logger.warn('Failed to persist task outcome to SQLite', { routingDecisionId, error });

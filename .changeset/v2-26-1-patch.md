@@ -13,6 +13,14 @@ Bug fixes, test performance, and documentation accuracy improvements.
 - **CI security**: Pinned all GitHub Actions to commit SHAs (CWE-829)
 - **Input validation**: Added `.max()` bounds to 6 unbounded string inputs in MCP tool Zod schemas (CWE-20) (#1341)
 - **Silent catches**: Fixed 12 silent catch blocks across outcome-store-persistence, recording modules (#1341), CLI parsers, MCP tools, and swe-bench (#1343)
+- **Unbounded collection**: Added MAX_OUTCOMES=10000 FIFO eviction to `ValidationDashboard.outcomes` (#1344)
+- **Env schema gaps**: Added `NEXUS_AORCHESTRA_DISPATCH` and `NEXUS_WORKER_MAX_CALLS` to env-schema.ts (#1344)
+- **Error message sanitization**: Added `sanitizeErrorMessage()` at SQLite INSERT point — truncates to 200 chars, redacts API key/token patterns (#1345)
+- **Error message wiring**: `RecordOutcomeParams.errorMessage` now flows through to SQLite persistence (#1346)
+
+### Features
+
+- **Learning persistence default**: `NEXUS_PERSIST_LEARNING` now defaults to true — LinUCB routing data persists across sessions. Only routing metadata stored (no user prompts/keys/outputs). Opt out with `NEXUS_PERSIST_LEARNING=false` (#1345)
 
 ### Performance
 

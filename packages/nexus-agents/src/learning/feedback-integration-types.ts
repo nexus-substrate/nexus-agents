@@ -39,6 +39,8 @@ export interface RecordOutcomeParams {
   readonly retryCount?: number | undefined;
   /** Trace ID for correlation */
   readonly traceId?: TraceId | undefined;
+  /** Error message for failed outcomes (sanitized before persistence) */
+  readonly errorMessage?: string | undefined;
 }
 
 // ============================================================================
