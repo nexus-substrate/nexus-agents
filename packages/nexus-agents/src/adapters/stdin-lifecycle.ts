@@ -8,6 +8,10 @@
  * (Source: Issue #810 - Zombie MCP server processes)
  */
 
+import { createLogger } from '../core/index.js';
+
+const logger = createLogger({ component: 'StdinLifecycleMonitor' });
+
 type StdinCallback = () => void | Promise<void>;
 
 /**
@@ -42,8 +46,8 @@ export class StdinLifecycleMonitor {
     for (const cb of this.callbacks) {
       try {
         await cb();
-      } catch {
-        // Don't let one callback failure block others
+      } catch (error) {
+        logger.warn('Stdin shutdown callback failed', { error: String(error) });
       }
     }
   }

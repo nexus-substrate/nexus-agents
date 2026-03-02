@@ -271,7 +271,12 @@ export class SdkAdapter extends BaseAdapter {
       this.logRequest(request);
 
       const sdk = this.sdkFunctions;
-      if (sdk === undefined) throw new Error('SDK not initialized');
+      if (sdk === undefined) {
+        throw new Error(
+          `SDK not initialized for model '${this.sdkConfig.modelId}' (provider: ${this.sdkProviderId}). ` +
+            'Ensure ensureInitialized() completes before calling complete().'
+        );
+      }
       const options = this.buildSdkOptions(request);
       const result = await sdk.generateText(options);
 

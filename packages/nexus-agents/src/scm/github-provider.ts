@@ -12,7 +12,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { Result } from '../core/index.js';
-import { ok, err, createLogger } from '../core/index.js';
+import { ok, err, createLogger, getErrorMessage } from '../core/index.js';
 import type {
   IScmProvider,
   ScmIssue,
@@ -161,8 +161,13 @@ export class GitHubProvider implements IScmProvider {
 
     try {
       return ok(mapIssue(JSON.parse(result.value) as GhIssueJson));
-    } catch {
-      return err(new ScmError('Failed to parse issue JSON', 'github'));
+    } catch (error) {
+      return err(
+        new ScmError(
+          `Failed to parse issue JSON: ${getErrorMessage(error)} — preview: ${result.value.slice(0, 120)}`,
+          'github'
+        )
+      );
     }
   }
 
@@ -185,8 +190,13 @@ export class GitHubProvider implements IScmProvider {
     try {
       const issues = JSON.parse(result.value) as GhIssueJson[];
       return ok(issues.map(mapIssue));
-    } catch {
-      return err(new ScmError('Failed to parse issues JSON', 'github'));
+    } catch (error) {
+      return err(
+        new ScmError(
+          `Failed to parse issues JSON: ${getErrorMessage(error)} — preview: ${result.value.slice(0, 120)}`,
+          'github'
+        )
+      );
     }
   }
 
@@ -231,8 +241,13 @@ export class GitHubProvider implements IScmProvider {
         head: raw.headRefName,
         url: raw.url,
       });
-    } catch {
-      return err(new ScmError('Failed to parse PR JSON', 'github'));
+    } catch (error) {
+      return err(
+        new ScmError(
+          `Failed to parse PR JSON: ${getErrorMessage(error)} — preview: ${result.value.slice(0, 120)}`,
+          'github'
+        )
+      );
     }
   }
 
@@ -260,8 +275,13 @@ export class GitHubProvider implements IScmProvider {
 
     try {
       return ok(mapPRStatus(JSON.parse(result.value) as GhPrStatusJson));
-    } catch {
-      return err(new ScmError('Failed to parse PR status JSON', 'github'));
+    } catch (error) {
+      return err(
+        new ScmError(
+          `Failed to parse PR status JSON: ${getErrorMessage(error)} — preview: ${result.value.slice(0, 120)}`,
+          'github'
+        )
+      );
     }
   }
 
@@ -284,8 +304,13 @@ export class GitHubProvider implements IScmProvider {
     try {
       const comments = JSON.parse(result.value) as GhCommentJson[];
       return ok(comments.map(mapComment));
-    } catch {
-      return err(new ScmError('Failed to parse comments JSON', 'github'));
+    } catch (error) {
+      return err(
+        new ScmError(
+          `Failed to parse comments JSON: ${getErrorMessage(error)} — preview: ${result.value.slice(0, 120)}`,
+          'github'
+        )
+      );
     }
   }
 }

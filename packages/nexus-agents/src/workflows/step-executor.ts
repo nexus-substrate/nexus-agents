@@ -342,8 +342,8 @@ export class StepExecutor {
     if (typeof expert.cleanup === 'function') {
       try {
         await expert.cleanup();
-      } catch {
-        // Ignore cleanup errors
+      } catch (error) {
+        this.deps.logger?.debug('Expert cleanup failed', { error: String(error) });
       }
     }
   }

@@ -7,7 +7,7 @@
  * @module mcp/tools/orchestrate-aorchestra
  */
 
-import type { ILogger } from '../../core/index.js';
+import { type ILogger, getErrorMessage } from '../../core/index.js';
 import { planAgentTeam, type AgentPlan } from '../../orchestration/aorchestra/index.js';
 import { SharedTaskAnalyzer } from '../../core/task-analysis/shared-task-analyzer.js';
 import { getOutcomeStore } from '../../orchestration/outcomes/index.js';
@@ -96,7 +96,7 @@ export function computeAgentPlan(task: string, logger: ILogger): AgentPlan | und
     return plan;
   } catch (planError) {
     logger.warn('AOrchestra planning failed', {
-      error: planError instanceof Error ? planError.message : 'unknown',
+      error: getErrorMessage(planError),
     });
     return undefined;
   }
