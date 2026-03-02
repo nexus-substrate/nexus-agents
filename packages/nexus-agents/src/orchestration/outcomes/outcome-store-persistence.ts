@@ -89,7 +89,11 @@ export class PersistentOutcomeStore extends OutcomeStore {
           } else {
             skipped++;
           }
-        } catch {
+        } catch (parseErr: unknown) {
+          this.logger.debug('Skipping malformed outcome line during hydration', {
+            error: parseErr instanceof Error ? parseErr.message : String(parseErr),
+            linePreview: line.slice(0, 80),
+          });
           skipped++;
         }
       }

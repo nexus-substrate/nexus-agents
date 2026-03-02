@@ -55,13 +55,14 @@ export const MODEL_CAPABILITIES: Record<string, CapabilityProfile> = buildCapabi
  * Input schema for the delegate_to_model tool.
  */
 export const DelegateInputSchema = z.object({
-  task: z.string().min(1).describe('Task to execute or analyze'),
+  task: z.string().min(1).max(50000).describe('Task to execute or analyze'),
   preferred_capability: z
     .enum(['reasoning', 'context', 'speed', 'code'])
     .optional()
     .describe('Preferred capability for routing: reasoning, context, speed, or code'),
   model_hint: z
     .string()
+    .max(100)
     .optional()
     .describe('Explicit model preference (e.g., claude-opus, gemini-pro)'),
   estimate_tokens: z
@@ -256,12 +257,12 @@ export const EXPLORATION_KEYWORDS = [
  * Tool input schema definition.
  */
 export const TOOL_SCHEMA = {
-  task: z.string().min(1).describe('Task to execute or analyze'),
+  task: z.string().min(1).max(50000).describe('Task to execute or analyze'),
   preferred_capability: z
     .enum(['reasoning', 'context', 'speed', 'code'])
     .optional()
     .describe('Preferred capability for routing'),
-  model_hint: z.string().optional().describe('Explicit model preference'),
+  model_hint: z.string().max(100).optional().describe('Explicit model preference'),
   estimate_tokens: z.boolean().optional().describe('Return token estimate only'),
   billing_mode: z.enum(['plan', 'api']).optional().describe('Billing mode for cost handling'),
 };

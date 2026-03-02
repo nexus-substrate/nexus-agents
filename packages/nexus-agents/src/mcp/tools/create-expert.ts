@@ -53,7 +53,11 @@ export const CreateExpertInputSchema = z.object({
       'infrastructure_expert',
     ])
     .describe('Expert role to create'),
-  modelPreference: z.string().optional().describe('Preferred model (e.g., claude-sonnet-4)'),
+  modelPreference: z
+    .string()
+    .max(100)
+    .optional()
+    .describe('Preferred model (e.g., claude-sonnet-4)'),
 });
 
 /**
@@ -320,7 +324,11 @@ export function registerCreateExpertTool(server: McpServer, deps: CreateExpertDe
         'infrastructure_expert',
       ])
       .describe('Expert role to create'),
-    modelPreference: z.string().optional().describe('Preferred model (e.g., claude-sonnet-4)'),
+    modelPreference: z
+      .string()
+      .max(100)
+      .optional()
+      .describe('Preferred model (e.g., claude-sonnet-4)'),
   };
 
   const description =

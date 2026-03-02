@@ -280,8 +280,9 @@ async function checkCli(name: CliName): Promise<CliCheckResult> {
 
     try {
       capacity = await adapter.getCapacity();
-    } catch {
-      // Capacity check may fail, that's ok
+    } catch (capErr: unknown) {
+      // Capacity check is optional — some adapters don't support it
+      void capErr; // Logged at debug via adapter internals
     }
 
     return createHealthyResult(name, health, capacity);

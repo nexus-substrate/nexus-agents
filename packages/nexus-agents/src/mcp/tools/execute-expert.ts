@@ -53,7 +53,7 @@ export const EXPERT_TIMEOUT_FLOOR_MS = 120_000;
  */
 export const ExecuteExpertInputSchema = z.object({
   expertId: z.string().min(1).describe('Expert ID from create_expert tool'),
-  task: z.string().min(1).describe('Task description for the expert to execute'),
+  task: z.string().min(1).max(50000).describe('Task description for the expert to execute'),
   context: z.record(z.unknown()).optional().describe('Additional context metadata for the task'),
   timeoutMs: z
     .number()
@@ -290,7 +290,7 @@ type ExecuteExpertToolSchema = typeof EXECUTE_EXPERT_TOOL_SCHEMA;
 
 const EXECUTE_EXPERT_TOOL_SCHEMA = {
   expertId: z.string().min(1).describe('Expert ID from create_expert tool'),
-  task: z.string().min(1).describe('Task description for the expert to execute'),
+  task: z.string().min(1).max(50000).describe('Task description for the expert to execute'),
   context: z.record(z.unknown()).optional().describe('Additional context metadata for the task'),
   timeoutMs: z
     .number()
