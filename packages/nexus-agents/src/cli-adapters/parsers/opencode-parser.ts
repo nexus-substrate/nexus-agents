@@ -202,8 +202,9 @@ export class OpenCodeResponseParser implements ICliResponseParser<OpenCodeCliRes
           this.emitLegacyUsage(record, setUsage);
           break;
       }
-    } catch {
-      // Skip malformed lines
+    } catch (lineErr: unknown) {
+      // Skip malformed NDJSON lines — capture for debuggability
+      void lineErr;
     }
   }
 

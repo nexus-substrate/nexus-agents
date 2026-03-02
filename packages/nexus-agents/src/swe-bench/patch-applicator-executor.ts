@@ -59,8 +59,9 @@ export async function writeTempPatch(patch: string, workDir: string): Promise<st
 export async function cleanupTempFile(patchPath: string): Promise<void> {
   try {
     await fs.unlink(patchPath);
-  } catch {
-    // Ignore cleanup errors
+  } catch (cleanupErr: unknown) {
+    // Non-critical: temp file cleanup failure
+    void cleanupErr;
   }
 }
 

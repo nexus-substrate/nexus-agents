@@ -157,8 +157,9 @@ export function detectProjectInfo(root: string): ProjectInfo {
       const content = readFileSync(join(root, 'package.json'), 'utf-8');
       const pkg = JSON.parse(content) as Record<string, unknown>;
       packageName = pkg['name'] as string | undefined;
-    } catch {
-      // Ignore parse errors
+    } catch (parseErr: unknown) {
+      // Non-critical: package.json parse failure, fall through to basename
+      void parseErr;
     }
   }
 

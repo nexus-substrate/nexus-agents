@@ -365,7 +365,9 @@ function recordGraphWorkflowResult(result: RunGraphWorkflowResponse): void {
       timestamp: new Date().toISOString(),
       source: 'manual',
     });
-  } catch {
-    // Best-effort
+  } catch (storeErr: unknown) {
+    graphLogger.debug('Failed to record outcome to store', {
+      error: storeErr instanceof Error ? storeErr.message : String(storeErr),
+    });
   }
 }

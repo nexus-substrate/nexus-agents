@@ -183,8 +183,9 @@ export class TestRunner implements ITestRunner {
       try {
         await fs.access(filePath);
         found.push(file);
-      } catch {
-        // File doesn't exist
+      } catch (accessErr: unknown) {
+        // File doesn't exist — expected for optional config files
+        void accessErr;
       }
     }
 

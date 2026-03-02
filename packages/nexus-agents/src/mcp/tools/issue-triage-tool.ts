@@ -231,7 +231,9 @@ function recordTriageOutcome(success: boolean, durationMs: number, errorMsg?: st
       timestamp: new Date().toISOString(),
       source: 'manual',
     });
-  } catch {
-    // Best-effort
+  } catch (storeErr: unknown) {
+    triageLogger.debug('Failed to record triage outcome to store', {
+      error: storeErr instanceof Error ? storeErr.message : String(storeErr),
+    });
   }
 }

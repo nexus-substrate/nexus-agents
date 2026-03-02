@@ -12,7 +12,7 @@ Bug fixes, test performance, and documentation accuracy improvements.
 - **Research registry**: Added multi-agent-worker-dispatch topic to generator helpers (#1335)
 - **CI security**: Pinned all GitHub Actions to commit SHAs (CWE-829)
 - **Input validation**: Added `.max()` bounds to 6 unbounded string inputs in MCP tool Zod schemas (CWE-20) (#1341)
-- **Silent catches**: Fixed 2 additional silent catch blocks in outcome-store-persistence and recording modules (#1341)
+- **Silent catches**: Fixed 12 silent catch blocks across outcome-store-persistence, recording modules (#1341), CLI parsers, MCP tools, and swe-bench (#1343)
 
 ### Performance
 

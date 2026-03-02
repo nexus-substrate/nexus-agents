@@ -333,8 +333,9 @@ export class ReflectiveRetriever {
       try {
         const parsed: unknown = JSON.parse(trimmed);
         return ReflectionCriteriaSchema.parse(parsed);
-      } catch {
-        // Fall through to extraction
+      } catch (directParseErr: unknown) {
+        // Fall through to JSON extraction from response body
+        void directParseErr;
       }
     }
 

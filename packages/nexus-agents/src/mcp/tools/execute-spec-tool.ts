@@ -211,7 +211,9 @@ function recordSpecOutcome(success: boolean, durationMs: number, stage?: string)
       timestamp: new Date().toISOString(),
       source: 'manual',
     });
-  } catch {
-    // Best-effort
+  } catch (storeErr: unknown) {
+    specLogger.debug('Failed to record spec outcome to store', {
+      error: storeErr instanceof Error ? storeErr.message : String(storeErr),
+    });
   }
 }

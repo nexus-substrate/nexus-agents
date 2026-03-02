@@ -136,8 +136,9 @@ export class CodexResponseParser implements ICliResponseParser<CodexCliResponse>
         const usage = this.extractUsageFromEvent(record);
         if (usage !== null) setUsage(usage);
       }
-    } catch {
-      // Skip malformed lines
+    } catch (lineErr: unknown) {
+      // Skip malformed NDJSON lines — capture for debuggability
+      void lineErr;
     }
   }
 

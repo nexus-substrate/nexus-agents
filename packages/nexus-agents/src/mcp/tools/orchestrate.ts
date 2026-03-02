@@ -107,8 +107,11 @@ async function createTaskFromInput(input: OrchestrateInput, taskId: string): Pro
     if (beliefs !== undefined) {
       context.metadata = { ...context.metadata, _beliefs: beliefs };
     }
-  } catch {
-    // Memory retrieval is best-effort
+  } catch (memErr: unknown) {
+    // Memory retrieval is best-effort — log for diagnostics
+    createLogger({ tool: 'orchestrate' }).debug('Memory retrieval failed', {
+      error: memErr instanceof Error ? memErr.message : String(memErr),
+    });
   }
 
   return {
