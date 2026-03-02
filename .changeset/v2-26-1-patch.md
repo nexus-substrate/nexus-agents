@@ -39,6 +39,7 @@ Bug fixes, test performance, and documentation accuracy improvements.
   - scanner-registry-fetcher.ts: 9 tests (extractScannerEntries, extractLanguageMatrix, clearRegistryCache, getRegistryManifest)
   - recording modules: 17 tests (consensus-vote, create-expert, execute-expert recording)
   - consensus engine branches: 11 tests (closed-proposal voting, agent performance, proof_of_learning, LRU eviction, ISP-over-OW, fallback paths) (#1342)
+  - MCP resources: 10 tests (research-resource, experts-resource, models-resource payload building, error handling, JSON structure) (#1349)
 - Fixed 2 additional silent catch blocks in recording modules
 
 ### Documentation
