@@ -67,7 +67,8 @@ export function registerRepoSecurityPlanTool(server: McpServer, deps: RepoSecuri
   const toolSchema = {
     repo: z.string().min(1).describe('GitHub repository in "owner/name" format or full URL'),
     categories: z
-      .array(z.string())
+      .array(z.string().max(50))
+      .max(10)
       .optional()
       .describe('Filter to specific categories (e.g., ["sast", "sca", "secrets"])'),
     maxScanners: z

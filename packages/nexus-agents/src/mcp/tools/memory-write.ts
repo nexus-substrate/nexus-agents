@@ -41,7 +41,10 @@ export const MemoryWriteInputSchema = z.object({
     .optional()
     .default('medium')
     .describe('Confidence level (default: medium)'),
-  metadata: z.record(z.string()).optional().describe('Optional key-value metadata tags'),
+  metadata: z
+    .record(z.string().max(100), z.string().max(500))
+    .optional()
+    .describe('Optional key-value metadata tags'),
 });
 
 /**
@@ -264,7 +267,10 @@ export function registerMemoryWriteTool(server: McpServer, deps: MemoryWriteDeps
       .enum(['high', 'medium', 'low'])
       .optional()
       .describe('Confidence level (default: medium)'),
-    metadata: z.record(z.string()).optional().describe('Optional key-value metadata tags'),
+    metadata: z
+      .record(z.string().max(100), z.string().max(500))
+      .optional()
+      .describe('Optional key-value metadata tags'),
   };
 
   const description =

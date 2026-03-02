@@ -347,13 +347,13 @@ export const CONSENSUS_VOTE_OUTPUT_SCHEMA = {
   }),
   votes: z.array(
     z.object({
-      role: z.string(),
+      role: z.string().max(100),
       decision: z.enum(['approve', 'reject', 'abstain']),
       confidence: z.number(),
-      reasoning: z.string(),
+      reasoning: z.string().max(4000),
       simulated: z.boolean(),
       error: z.boolean(),
-      modelUsed: z.string().optional(),
+      modelUsed: z.string().max(100).optional(),
       rejectionCategories: z
         .array(
           z.enum([
@@ -380,8 +380,8 @@ export const CONSENSUS_VOTE_OUTPUT_SCHEMA = {
       method: z.enum(['ow', 'isp', 'simple']),
       usedCorrelationData: z.boolean(),
       improvementOverBaseline: z.number(),
-      downweightedAgents: z.array(z.string()),
-      reasoning: z.string(),
+      downweightedAgents: z.array(z.string().max(100)).max(10),
+      reasoning: z.string().max(2000),
     })
     .optional(),
 };

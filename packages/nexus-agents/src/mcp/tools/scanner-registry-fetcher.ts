@@ -83,7 +83,7 @@ const ManifestSchema = z.object({
   version: z.string().min(1),
   generatedAt: z.string().min(1),
   scanners: z.array(ScannerSchema),
-  languageMatrix: z.record(z.string(), LanguageMatrixEntrySchema),
+  languageMatrix: z.record(z.string().max(50), LanguageMatrixEntrySchema),
 });
 
 // ============================================================================

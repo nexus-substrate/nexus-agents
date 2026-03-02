@@ -82,8 +82,8 @@ export type DelegateInput = z.infer<typeof DelegateInputSchema>;
  * Output schema for the delegate_to_model tool response.
  */
 export const DelegateOutputSchema = z.object({
-  recommended_model: z.string().describe('The model recommended for this task'),
-  reasoning: z.string().describe('Why this model was selected'),
+  recommended_model: z.string().max(100).describe('The model recommended for this task'),
+  reasoning: z.string().max(2000).describe('Why this model was selected'),
   capabilities: z.object({
     reasoning: z.number(),
     contextWindow: z.number(),
@@ -95,17 +95,21 @@ export const DelegateOutputSchema = z.object({
   alternatives: z
     .array(
       z.object({
-        model: z.string(),
+        model: z.string().max(100),
         score: z.number(),
-        tradeoff: z.string(),
+        tradeoff: z.string().max(500),
       })
     )
+    .max(10)
     .describe('Alternative model options with tradeoffs'),
   governance: z
     .object({
-      domain: z.string().describe('Governance domain (e.g., security, architecture)'),
-      votingThreshold: z.string().describe('Required voting threshold (e.g., supermajority)'),
-      promotionReason: z.string().describe('Why governance was promoted'),
+      domain: z.string().max(100).describe('Governance domain (e.g., security, architecture)'),
+      votingThreshold: z
+        .string()
+        .max(50)
+        .describe('Required voting threshold (e.g., supermajority)'),
+      promotionReason: z.string().max(500).describe('Why governance was promoted'),
     })
     .optional()
     .describe('Present when task triggers governance promotion'),

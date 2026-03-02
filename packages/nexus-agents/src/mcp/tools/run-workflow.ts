@@ -215,7 +215,7 @@ async function handleRunWorkflow(
 /** Input schema for registerTool */
 const toolInputSchema = {
   template: z.string().min(1).describe('Workflow template name (e.g., code-review) or file path'),
-  inputs: z.record(z.unknown()).describe('Workflow inputs as key-value pairs'),
+  inputs: z.record(z.string().max(100), z.unknown()).describe('Workflow inputs as key-value pairs'),
   dryRun: z.boolean().optional().default(false).describe('Validate workflow without executing'),
 };
 

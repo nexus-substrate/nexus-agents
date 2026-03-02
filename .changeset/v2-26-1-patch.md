@@ -12,6 +12,7 @@ Bug fixes, test performance, and documentation accuracy improvements.
 - **Research registry**: Added multi-agent-worker-dispatch topic to generator helpers (#1335)
 - **CI security**: Pinned all GitHub Actions to commit SHAs (CWE-829)
 - **Input validation**: Added `.max()` bounds to 6 unbounded string inputs in MCP tool Zod schemas (CWE-20) (#1341)
+- **Input validation**: Added `.max()` bounds to 6 remaining unbounded inputs — repo-security-plan categories, memory-write metadata, run-workflow inputs, delegate-to-model/consensus-vote output strings, scanner-registry language matrix (CWE-20) (#1348)
 - **Silent catches**: Fixed 12 silent catch blocks across outcome-store-persistence, recording modules (#1341), CLI parsers, MCP tools, and swe-bench (#1343)
 - **Unbounded collection**: Added MAX_OUTCOMES=10000 FIFO eviction to `ValidationDashboard.outcomes` (#1344)
 - **Env schema gaps**: Added `NEXUS_AORCHESTRA_DISPATCH` and `NEXUS_WORKER_MAX_CALLS` to env-schema.ts (#1344)
