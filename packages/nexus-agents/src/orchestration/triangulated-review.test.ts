@@ -10,6 +10,11 @@ import { executeTriangulatedReview } from './triangulated-review.js';
 import { createDefaultReviewConfig } from './triangulated-review-types.js';
 import { resetOutcomeStore, getOutcomeStore } from './outcomes/index.js';
 
+// Force in-memory outcome store (avoid hydrating from disk in tests)
+vi.mock('../config/learning-persistence.js', () => ({
+  isPersistenceEnabled: vi.fn(() => false),
+}));
+
 // ============================================================================
 // Mock Adapter Factory
 // ============================================================================

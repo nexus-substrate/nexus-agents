@@ -802,7 +802,10 @@ describe('CompositeRouter ZeroRouter integration (Issue #347)', () => {
 
     beforeEach(() => {
       adapters = createTestAdapters();
-      router = new CompositeRouter(adapters);
+      router = new CompositeRouter(adapters, {
+        enableRoutingMemory: false,
+        enableStrategyDistillation: false,
+      });
     });
 
     it('should route, execute, and return result on success', async () => {
@@ -830,11 +833,18 @@ describe('CompositeRouter ZeroRouter integration (Issue #347)', () => {
     });
 
     it('should auto-record feedback with reward 0 on failed execution', async () => {
-      const failingAdapter = adapters.get('claude')!;
-      vi.mocked(failingAdapter.execute).mockResolvedValueOnce({
-        ok: false,
-        error: { code: 'EXECUTION_ERROR', message: 'Failed', cli: 'claude', retryable: false },
-      });
+      // Mock ALL adapters to fail — router may select any adapter
+      for (const adapter of adapters.values()) {
+        vi.mocked(adapter.execute).mockResolvedValueOnce({
+          ok: false,
+          error: {
+            code: 'EXECUTION_ERROR',
+            message: 'Failed',
+            cli: adapter.name,
+            retryable: false,
+          },
+        });
+      }
 
       const recordOutcomeSpy = vi.spyOn(router, 'recordOutcome');
       const recordDifficultySpy = vi.spyOn(router, 'recordDifficultyOutcome');

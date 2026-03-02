@@ -93,9 +93,15 @@ describe('Input Validation - Zod Schemas', () => {
       expect(result.success).toBe(false);
     });
 
-    it('should handle very long task strings', () => {
+    it('should reject task strings exceeding max length (CWE-20)', () => {
       const longTask = 'a'.repeat(100000);
       const result = DelegateInputSchema.safeParse({ task: longTask });
+      expect(result.success).toBe(false);
+    });
+
+    it('should accept task strings within max length', () => {
+      const validTask = 'a'.repeat(50000);
+      const result = DelegateInputSchema.safeParse({ task: validTask });
       expect(result.success).toBe(true);
     });
   });
