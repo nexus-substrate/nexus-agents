@@ -7,7 +7,7 @@ keywords: [documentation, index, reference, navigation, docs]
 
 # Nexus Agents Documentation
 
-**Canonical Documentation Index** | Last Updated: 2026-02-10 (UI/UX design skill added, 14 skills total)
+**Canonical Documentation Index** | Last Updated: 2026-03-01 (infrastructure skill added, 15 skills total)
 
 This is the **single source of truth** for all nexus-agents documentation. All documentation must be indexed here to be considered valid.
 

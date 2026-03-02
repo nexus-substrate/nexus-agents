@@ -7,7 +7,7 @@ keywords: [entrypoints, cli, mcp, rest, api, tools, commands, reference]
 
 # Nexus-Agents Entrypoints
 
-**Last Updated:** 2026-02-08 (ET)
+**Last Updated:** 2026-03-01 (ET)
 **Canonical Source:** This document is the single source of truth for all entrypoints.
 **Issue:** #210 (Epic #209)
 
@@ -126,7 +126,7 @@ Options available for all commands:
 | `-p`, `--proposal`  | string  | required   | Proposal text to vote on                            |
 | `-t`, `--threshold` | enum    | `majority` | Threshold: `majority`, `supermajority`, `unanimous` |
 | `--timeout`         | number  | `90`       | Timeout per vote in seconds                         |
-| `--quick`           | boolean | `false`    | Use 3 agents instead of 5                           |
+| `--quick`           | boolean | `false`    | Use 3 agents instead of 6                           |
 | `--dry-run`         | boolean | `false`    | Simulate votes without agent execution              |
 
 #### review
@@ -324,7 +324,11 @@ nexus-agents hooks stop --check-tasks
 | `run_graph_workflow`      | Execute predefined graph workflow with checkpointing     | None (local) | Shared bucket |
 | `weather_report`          | Multi-CLI performance weather report                     | None (local) | Shared bucket |
 | `execute_spec`            | Execute AI software factory spec pipeline                | None (local) | Shared bucket |
+| `memory_write`            | Write a memory entry to a specific backend               | None (local) | Shared bucket |
 | `registry_import`         | Generate draft model registry entry                      | None (local) | Shared bucket |
+| `query_trace`             | Query execution traces by run ID                         | None (local) | Shared bucket |
+| `repo_analyze`            | Analyze GitHub repository structure                      | None (local) | Shared bucket |
+| `repo_security_plan`      | Generate security scanning pipeline for a repository     | None (local) | Shared bucket |
 
 **Rate limiting:** All tools share a single token bucket rate limiter (capacity: 100 tokens, refill: 10 tokens/sec). Each tool call consumes one token.
 
@@ -368,7 +372,8 @@ nexus-agents hooks stop --check-tasks
           "devops_expert",
           "research_expert",
           "pm_expert",
-          "ux_expert"
+          "ux_expert",
+          "infrastructure_expert"
         ]
       },
       "modelPreference": { "type": "string", "description": "Preferred model tier" }
