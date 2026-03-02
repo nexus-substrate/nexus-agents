@@ -264,7 +264,7 @@ function registerWorkflowTools(ctx: ToolRegistrationContext): void {
   const workflowEngine = createRealWorkflowEngine(
     ctx.modelAdapter !== undefined
       ? { ...engineConfig, modelAdapter: ctx.modelAdapter }
-      : engineConfig
+      : { ...engineConfig, useMockExecutor: true }
   );
   registerRunWorkflowTool(ctx.server, {
     workflowEngine,
