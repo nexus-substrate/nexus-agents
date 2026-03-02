@@ -612,6 +612,18 @@ async function runScoringStages(
   };
 }
 
+/** Aggregates scores from scoring stages for TOPSIS quality adjustment. (#1354) */
+function aggregateStageScores(
+  scoring: Awaited<ReturnType<typeof runScoringStages>>
+): Map<CliName, number> {
+  return mergeScoreMaps(
+    scoring.cascadeResult.scores,
+    scoring.capResult.scores,
+    scoring.distilledResult.scores,
+    scoring.resourceResult.scores
+  );
+}
+
 /** Executes full pipeline and returns result. (Made async in Issue #1350) */
 export async function runPipeline(
   task: CliTask,
@@ -625,25 +637,15 @@ export async function runPipeline(
     return err(new CompositeRoutingError('No CLI adapters available', 'initialization'));
   }
 
-  // Priority 20: Budget filtering
   const budgetResult = runBudgetStage(task, candidates, stagesExecuted, deps);
   if (!budgetResult.ok) return budgetResult;
   candidates = budgetResult.value.candidates;
   const withinBudget = budgetResult.value.withinBudget;
 
-  // Priorities 10-55: Scoring and filtering stages
   const scoring = await runScoringStages(task, candidates, stagesExecuted, deps);
   candidates = scoring.candidates;
+  const stageScores = aggregateStageScores(scoring);
 
-  // Aggregate stage scores before TOPSIS for quality adjustment (#1354)
-  const stageScores = mergeScoreMaps(
-    scoring.cascadeResult.scores,
-    scoring.capResult.scores,
-    scoring.distilledResult.scores,
-    scoring.resourceResult.scores
-  );
-
-  // Priority 60: TOPSIS ranking (with stage score quality adjustment)
   const topsisResult = runTopsisStage(
     taskProfile,
     candidates,
@@ -652,17 +654,13 @@ export async function runPipeline(
     stageScores.size > 0 ? stageScores : undefined
   );
 
-  // Priority 70: LinUCB selection
   const linucbResult = runLinUCBStage(taskProfile, topsisResult.ranking, stagesExecuted, deps);
   if (linucbResult.selectedCli === undefined) {
     return err(new CompositeRoutingError('No candidates available', 'selection'));
   }
 
-  // Priority 75-80: Quality constraint + latency scoring
   const qualityResult = await runQualityConstraintStage(candidates, stagesExecuted, deps);
   const latencyResult = runLatencyStage(qualityResult.eligible, stagesExecuted, deps);
-
-  // Final selection with memory influence (Issue #489)
   const selectedCli = selectWithMemoryInfluence(
     linucbResult.selectedCli,
     scoring.memoryResult,
