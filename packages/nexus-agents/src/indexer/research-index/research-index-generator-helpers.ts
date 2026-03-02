@@ -76,6 +76,7 @@ export function generateTopicsTable(index: ResearchIndex): string {
     'cli-tools': 'External CLI integration',
     orchestration: 'Multi-agent coordination',
     security: 'Agent safety and security evaluation',
+    'multi-agent-worker-dispatch': 'Worker dispatch and wave execution',
   };
 
   const rows = topicStats.map((stat) => {
