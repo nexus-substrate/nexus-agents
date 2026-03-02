@@ -59,15 +59,15 @@ nexus-agents orchestrate "Explain the architecture of this codebase"
 
 ## What It Does
 
-| Feature                        | Description                                                                                              |
-| ------------------------------ | -------------------------------------------------------------------------------------------------------- |
+| Feature                        | Description                                                                                                                                  |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Multi-Expert Orchestration** | Orchestrator coordinates 10 expert types: Code, Security, Architecture, Testing, Documentation, DevOps, Research, PM, UX, and Infrastructure |
-| **Model Routing**              | Routes tasks to the best model based on capability (reasoning, speed, context size, budget)              |
-| **Consensus Voting**           | Multi-agent voting on proposals with higher-order Bayesian aggregation                                   |
-| **Workflow Automation**        | 11 built-in YAML templates for code review, security audit, and more                                     |
-| **Research Registry**          | Track and discover academic papers and implementation techniques                                         |
-| **Memory System**              | 5 typed memory backends (session, belief, agentic, adaptive, typed)                                      |
-| **MCP Integration**            | 24 tools available for Claude Desktop, Claude Code, and other MCP clients                                |
+| **Model Routing**              | Routes tasks to the best model based on capability (reasoning, speed, context size, budget)                                                  |
+| **Consensus Voting**           | Multi-agent voting on proposals with higher-order Bayesian aggregation                                                                       |
+| **Workflow Automation**        | 11 built-in YAML templates for code review, security audit, and more                                                                         |
+| **Research Registry**          | Track and discover academic papers and implementation techniques                                                                             |
+| **Memory System**              | 5 typed memory backends (session, belief, agentic, adaptive, typed)                                                                          |
+| **MCP Integration**            | 24 tools available for Claude Desktop, Claude Code, and other MCP clients                                                                    |
 
 ---
 
@@ -92,12 +92,12 @@ nexus-agents orchestrate "Explain the architecture of this codebase"
 
 Nexus-agents routes tasks through 4 CLI adapters, each connecting to major AI providers:
 
-| CLI      | Provider               | Best For                                |
-| -------- | ---------------------- | --------------------------------------- |
-| claude   | Anthropic (Claude)     | Complex reasoning, analysis             |
-| gemini   | Google (Gemini)        | Long context, multimodal                |
-| codex    | OpenAI (Codex)         | Code generation, reasoning              |
-| opencode | Custom OpenAI-compat   | Custom endpoints, local models          |
+| CLI      | Provider             | Best For                       |
+| -------- | -------------------- | ------------------------------ |
+| claude   | Anthropic (Claude)   | Complex reasoning, analysis    |
+| gemini   | Google (Gemini)      | Long context, multimodal       |
+| codex    | OpenAI (Codex)       | Code generation, reasoning     |
+| opencode | Custom OpenAI-compat | Custom endpoints, local models |
 
 ---
 

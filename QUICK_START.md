@@ -86,7 +86,10 @@ Nexus Agents Setup
 ✓ Hooks Configuration
 ✓ Data Directory
 ✓ OpenCode MCP
+✓ Gemini MCP
+✓ Codex MCP
 ✓ Configuration
+✓ Validation
 
 Setup complete! Restart Claude Code to use nexus-agents.
 ```
@@ -109,6 +112,7 @@ The standalone CLI uses external CLI tools for orchestration. Install at least o
 npm install -g @anthropic-ai/claude-code   # Claude CLI (recommended)
 # Or: npm install -g @google/gemini-cli    # Gemini CLI
 # Or: npm install -g @openai/codex         # Codex CLI
+# Or: npm install -g opencode-ai           # OpenCode CLI (custom endpoints)
 ```
 
 Authenticate:
@@ -184,4 +188,4 @@ For more help, see [docs/TROUBLESHOOTING.md](./docs/TROUBLESHOOTING.md).
 
 ---
 
-_Last updated: 2026-02-01 (ET)_
+_Last updated: 2026-03-01 (ET)_
