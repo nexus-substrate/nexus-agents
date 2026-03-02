@@ -74,7 +74,9 @@ export interface PricingDiff {
  */
 export async function fetchModelsDevCatalog(): Promise<Result<ModelsDevEntry[], Error>> {
   try {
-    const response = await fetch(MODELS_DEV_API_URL);
+    const response = await fetch(MODELS_DEV_API_URL, {
+      signal: AbortSignal.timeout(10_000),
+    });
     if (!response.ok) {
       return err(new Error(`models.dev API returned ${String(response.status)}`));
     }
