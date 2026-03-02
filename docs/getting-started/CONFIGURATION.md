@@ -222,7 +222,7 @@ All configuration can be overridden with environment variables:
 | ------------------------ | ---------------------------------- | ------- |
 | `NEXUS_PERSIST_LEARNING` | Cross-session learning persistence | `true`  |
 
-Outcomes and distilled routing rules persist to `~/.nexus-agents/learning/` by default. When persistence is enabled, `routingMemory` and `strategyDistillation` also auto-enable (no separate config needed). Opt out with `NEXUS_PERSIST_LEARNING=false`.
+Outcomes and distilled routing rules persist to `~/.nexus-agents/learning/` by default. When persistence is enabled, `routingMemory`, `strategyDistillation`, and `preferenceRouting` also auto-enable (no separate config needed). Opt out with `NEXUS_PERSIST_LEARNING=false`.
 
 Files stored:
 
