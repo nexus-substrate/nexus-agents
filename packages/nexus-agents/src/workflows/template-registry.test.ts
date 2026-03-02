@@ -2,7 +2,7 @@
  * nexus-agents/workflows - Template Registry Tests
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, beforeAll, afterEach } from 'vitest';
 import { join } from 'node:path';
 import { mkdir, writeFile, rm } from 'node:fs/promises';
 import type { WorkflowDefinition } from '../core/index.js';
@@ -11,14 +11,14 @@ import { getBuiltInTemplatesPath } from './template-loader.js';
 import { BUILT_IN_TEMPLATES } from './template-types.js';
 
 describe('TemplateRegistry', () => {
-  let registry: TemplateRegistry;
-
-  beforeEach(() => {
-    resetRegistry();
-    registry = createIsolatedRegistry();
-  });
-
   describe('initialization', () => {
+    let registry: TemplateRegistry;
+
+    beforeEach(() => {
+      resetRegistry();
+      registry = createIsolatedRegistry();
+    });
+
     it('should load built-in templates on initialize', async () => {
       await registry.initialize();
 
@@ -47,38 +47,155 @@ describe('TemplateRegistry', () => {
     });
   });
 
-  describe('getById', () => {
-    beforeEach(async () => {
+  // Read-only describe blocks share one pre-initialized registry (1 disk read instead of ~16)
+  describe('read-only operations', () => {
+    let registry: TemplateRegistry;
+
+    beforeAll(async () => {
+      resetRegistry();
+      registry = createIsolatedRegistry();
       await registry.initialize();
     });
 
-    it('should return workflow definition for valid ID', () => {
-      const definition = registry.getById('code-review');
+    describe('getById', () => {
+      it('should return workflow definition for valid ID', () => {
+        const definition = registry.getById('code-review');
 
-      expect(definition).toBeDefined();
-      expect(definition?.name).toBe('code-review');
-      expect(definition?.version).toBe('1.0.0');
-      expect(definition?.steps.length).toBeGreaterThan(0);
+        expect(definition).toBeDefined();
+        expect(definition?.name).toBe('code-review');
+        expect(definition?.version).toBe('1.0.0');
+        expect(definition?.steps.length).toBeGreaterThan(0);
+      });
+
+      it('should return undefined for invalid ID', () => {
+        const definition = registry.getById('non-existent-template');
+
+        expect(definition).toBeUndefined();
+      });
+
+      it('should return complete workflow structure', () => {
+        const definition = registry.getById('code-review');
+
+        expect(definition?.inputs).toBeDefined();
+        expect(definition?.steps).toBeDefined();
+        expect(Array.isArray(definition?.inputs)).toBe(true);
+        expect(Array.isArray(definition?.steps)).toBe(true);
+      });
     });
 
-    it('should return undefined for invalid ID', () => {
-      const definition = registry.getById('non-existent-template');
+    describe('search', () => {
+      it('should find templates by name', () => {
+        const results = registry.search('code');
 
-      expect(definition).toBeUndefined();
+        expect(results.length).toBeGreaterThan(0);
+        expect(results.some((r) => r.name === 'code-review')).toBe(true);
+      });
+
+      it('should find templates by keyword', () => {
+        const results = registry.search('security');
+
+        expect(results.length).toBeGreaterThan(0);
+        expect(results.some((r) => r.name === 'code-review')).toBe(true);
+      });
+
+      it('should return empty array for no matches', () => {
+        const results = registry.search('xyznonexistent');
+
+        expect(results).toEqual([]);
+      });
+
+      it('should be case insensitive', () => {
+        const lowerResults = registry.search('review');
+        const upperResults = registry.search('REVIEW');
+
+        expect(lowerResults.length).toBe(upperResults.length);
+      });
     });
 
-    it('should return complete workflow structure', () => {
-      const definition = registry.getById('code-review');
+    describe('getByCategory', () => {
+      it('should filter by development category', () => {
+        const results = registry.getByCategory('development');
 
-      expect(definition?.inputs).toBeDefined();
-      expect(definition?.steps).toBeDefined();
-      expect(Array.isArray(definition?.inputs)).toBe(true);
-      expect(Array.isArray(definition?.steps)).toBe(true);
+        expect(results.length).toBeGreaterThan(0);
+        expect(results.every((r) => r.category === 'development')).toBe(true);
+      });
+
+      it('should filter by review category', () => {
+        const results = registry.getByCategory('review');
+
+        expect(results.length).toBeGreaterThan(0);
+        expect(results.some((r) => r.name === 'code-review')).toBe(true);
+      });
+
+      it('should return templates in testing category', () => {
+        const results = registry.getByCategory('testing');
+
+        // test-generation is in the testing category
+        expect(results.length).toBe(1);
+        expect(results.some((r) => r.name === 'test-generation')).toBe(true);
+      });
+    });
+
+    describe('getStats (read-only)', () => {
+      it('should return correct statistics', () => {
+        const stats = registry.getStats();
+
+        expect(stats.builtIn).toBe(BUILT_IN_TEMPLATES.length);
+        expect(stats.custom).toBe(0);
+        expect(stats.total).toBe(stats.builtIn + stats.custom);
+      });
+    });
+
+    describe('built-in template content', () => {
+      it('code-review should have correct structure', () => {
+        const def = registry.getById('code-review');
+
+        expect(def?.inputs.some((i) => i.name === 'files')).toBe(true);
+        expect(def?.inputs.some((i) => i.name === 'focus')).toBe(true);
+        expect(def?.steps.some((s) => s.id === 'analyze')).toBe(true);
+        expect(def?.steps.some((s) => s.id === 'security')).toBe(true);
+        expect(def?.steps.some((s) => s.id === 'synthesize')).toBe(true);
+      });
+
+      it('feature-implementation should have five steps', () => {
+        const def = registry.getById('feature-implementation');
+        expect(def?.steps.length).toBe(5);
+      });
+
+      it('feature-implementation should have correct step order', () => {
+        const def = registry.getById('feature-implementation');
+        const stepIds = def?.steps.map((s) => s.id);
+
+        expect(stepIds).toEqual(['plan', 'implement', 'test', 'document', 'review']);
+      });
+
+      it('bug-fix should have diagnosis and verification', () => {
+        const def = registry.getById('bug-fix');
+
+        expect(def?.steps.some((s) => s.id === 'diagnose')).toBe(true);
+        expect(def?.steps.some((s) => s.id === 'fix')).toBe(true);
+        expect(def?.steps.some((s) => s.id === 'test')).toBe(true);
+        expect(def?.steps.some((s) => s.id === 'verify')).toBe(true);
+      });
+
+      it('documentation-update should have three main steps', () => {
+        const def = registry.getById('documentation-update');
+
+        expect(def?.steps.length).toBe(3);
+        expect(def?.steps[0]?.id).toBe('analyze');
+        expect(def?.steps[1]?.id).toBe('update');
+        expect(def?.steps[2]?.id).toBe('review');
+      });
     });
   });
 
+  // Mutating describe blocks get fresh registries per test
   describe('register', () => {
+    let registry: TemplateRegistry;
+
     beforeEach(async () => {
+      resetRegistry();
+      registry = createIsolatedRegistry();
       await registry.initialize();
     });
 
@@ -166,7 +283,11 @@ describe('TemplateRegistry', () => {
   });
 
   describe('unregister', () => {
+    let registry: TemplateRegistry;
+
     beforeEach(async () => {
+      resetRegistry();
+      registry = createIsolatedRegistry();
       await registry.initialize();
     });
 
@@ -198,78 +319,13 @@ describe('TemplateRegistry', () => {
     });
   });
 
-  describe('search', () => {
+  describe('getStats (mutating)', () => {
+    let registry: TemplateRegistry;
+
     beforeEach(async () => {
+      resetRegistry();
+      registry = createIsolatedRegistry();
       await registry.initialize();
-    });
-
-    it('should find templates by name', () => {
-      const results = registry.search('code');
-
-      expect(results.length).toBeGreaterThan(0);
-      expect(results.some((r) => r.name === 'code-review')).toBe(true);
-    });
-
-    it('should find templates by keyword', () => {
-      const results = registry.search('security');
-
-      expect(results.length).toBeGreaterThan(0);
-      expect(results.some((r) => r.name === 'code-review')).toBe(true);
-    });
-
-    it('should return empty array for no matches', () => {
-      const results = registry.search('xyznonexistent');
-
-      expect(results).toEqual([]);
-    });
-
-    it('should be case insensitive', () => {
-      const lowerResults = registry.search('review');
-      const upperResults = registry.search('REVIEW');
-
-      expect(lowerResults.length).toBe(upperResults.length);
-    });
-  });
-
-  describe('getByCategory', () => {
-    beforeEach(async () => {
-      await registry.initialize();
-    });
-
-    it('should filter by development category', () => {
-      const results = registry.getByCategory('development');
-
-      expect(results.length).toBeGreaterThan(0);
-      expect(results.every((r) => r.category === 'development')).toBe(true);
-    });
-
-    it('should filter by review category', () => {
-      const results = registry.getByCategory('review');
-
-      expect(results.length).toBeGreaterThan(0);
-      expect(results.some((r) => r.name === 'code-review')).toBe(true);
-    });
-
-    it('should return templates in testing category', () => {
-      const results = registry.getByCategory('testing');
-
-      // test-generation is in the testing category
-      expect(results.length).toBe(1);
-      expect(results.some((r) => r.name === 'test-generation')).toBe(true);
-    });
-  });
-
-  describe('getStats', () => {
-    beforeEach(async () => {
-      await registry.initialize();
-    });
-
-    it('should return correct statistics', () => {
-      const stats = registry.getStats();
-
-      expect(stats.builtIn).toBe(BUILT_IN_TEMPLATES.length);
-      expect(stats.custom).toBe(0);
-      expect(stats.total).toBe(stats.builtIn + stats.custom);
     });
 
     it('should update stats when registering custom templates', () => {
@@ -286,7 +342,11 @@ describe('TemplateRegistry', () => {
   });
 
   describe('clearCustom', () => {
+    let registry: TemplateRegistry;
+
     beforeEach(async () => {
+      resetRegistry();
+      registry = createIsolatedRegistry();
       await registry.initialize();
     });
 
@@ -323,9 +383,12 @@ describe('TemplateRegistry', () => {
   });
 
   describe('loadFromDirectory', () => {
+    let registry: TemplateRegistry;
     const testDir = join(process.cwd(), 'test-templates-temp');
 
     beforeEach(async () => {
+      resetRegistry();
+      registry = createIsolatedRegistry();
       await registry.initialize();
       await mkdir(testDir, { recursive: true });
     });
@@ -379,52 +442,6 @@ steps: not-an-array
       const count = await registry.loadFromDirectory(testDir);
 
       expect(count).toBe(0);
-    });
-  });
-
-  describe('built-in template content', () => {
-    beforeEach(async () => {
-      await registry.initialize();
-    });
-
-    it('code-review should have correct structure', () => {
-      const def = registry.getById('code-review');
-
-      expect(def?.inputs.some((i) => i.name === 'files')).toBe(true);
-      expect(def?.inputs.some((i) => i.name === 'focus')).toBe(true);
-      expect(def?.steps.some((s) => s.id === 'analyze')).toBe(true);
-      expect(def?.steps.some((s) => s.id === 'security')).toBe(true);
-      expect(def?.steps.some((s) => s.id === 'synthesize')).toBe(true);
-    });
-
-    it('feature-implementation should have five steps', () => {
-      const def = registry.getById('feature-implementation');
-      expect(def?.steps.length).toBe(5);
-    });
-
-    it('feature-implementation should have correct step order', () => {
-      const def = registry.getById('feature-implementation');
-      const stepIds = def?.steps.map((s) => s.id);
-
-      expect(stepIds).toEqual(['plan', 'implement', 'test', 'document', 'review']);
-    });
-
-    it('bug-fix should have diagnosis and verification', () => {
-      const def = registry.getById('bug-fix');
-
-      expect(def?.steps.some((s) => s.id === 'diagnose')).toBe(true);
-      expect(def?.steps.some((s) => s.id === 'fix')).toBe(true);
-      expect(def?.steps.some((s) => s.id === 'test')).toBe(true);
-      expect(def?.steps.some((s) => s.id === 'verify')).toBe(true);
-    });
-
-    it('documentation-update should have three main steps', () => {
-      const def = registry.getById('documentation-update');
-
-      expect(def?.steps.length).toBe(3);
-      expect(def?.steps[0]?.id).toBe('analyze');
-      expect(def?.steps[1]?.id).toBe('update');
-      expect(def?.steps[2]?.id).toBe('review');
     });
   });
 });
