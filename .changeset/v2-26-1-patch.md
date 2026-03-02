@@ -23,10 +23,11 @@ Bug fixes, test performance, and documentation accuracy improvements.
 
 ### Test Coverage
 
-- **106 new unit tests** for previously untested modules (#1340)
+- **117 new unit tests** for previously untested modules (#1340, #1342)
   - repo-analyze.ts: 80 tests (normalizeRepoId, detectPackageManager, detectCiProvider, detectSecurityTooling, detectFramework, getLanguageRecommendations, identifyGaps, analyzeRepo)
   - scanner-registry-fetcher.ts: 9 tests (extractScannerEntries, extractLanguageMatrix, clearRegistryCache, getRegistryManifest)
   - recording modules: 17 tests (consensus-vote, create-expert, execute-expert recording)
+  - consensus engine branches: 11 tests (closed-proposal voting, agent performance, proof_of_learning, LRU eviction, ISP-over-OW, fallback paths) (#1342)
 - Fixed 2 additional silent catch blocks in recording modules
 
 ### Documentation
