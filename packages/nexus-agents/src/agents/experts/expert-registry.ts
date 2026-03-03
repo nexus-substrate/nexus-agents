@@ -51,8 +51,6 @@ export interface QueryOptions {
 export interface RegistryStats extends IRegistryStats {
   /** Total number of registered experts (IRegistryStats alias) */
   total: number;
-  /** @deprecated Use total instead */
-  totalExperts: number;
   /** Count by role */
   byRole: Record<string, number>;
   /** Count by capability */
@@ -263,26 +261,6 @@ export class ExpertRegistry implements IRegistry<Expert, RegistryError> {
     return Array.from(this.experts.values()).filter(predicate);
   }
 
-  /**
-   * List all registered experts.
-   *
-   * @returns Array of all registered experts
-   * @deprecated Use getAll() instead (IRegistry interface)
-   */
-  list(): Expert[] {
-    return this.getAll();
-  }
-
-  /**
-   * List all registered expert IDs.
-   *
-   * @returns Array of all registered expert IDs
-   * @deprecated Use getAllIds() instead (IRegistry interface)
-   */
-  listIds(): string[] {
-    return this.getAllIds();
-  }
-
   // =========================================================================
   // IRegistry Interface Methods (ADR-0012)
   // =========================================================================
@@ -369,7 +347,6 @@ export class ExpertRegistry implements IRegistry<Expert, RegistryError> {
 
     return {
       total: this.experts.size,
-      totalExperts: this.experts.size, // deprecated alias
       byRole,
       byCapability,
     };

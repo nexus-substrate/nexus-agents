@@ -163,7 +163,7 @@ describe('demo-command', () => {
 
       expect(result).toContain('code_expert');
       expect(result).toContain('security_expert');
-      expect(result).toContain('tech_lead');
+      expect(result).toContain('orchestrator');
     });
 
     it('should show not found message for invalid workflow', () => {

@@ -144,18 +144,6 @@ export async function fetchArxivMetadataResult(
   }
 }
 
-/**
- * Fetch paper metadata from arXiv API.
- *
- * @deprecated Use fetchArxivMetadataResult for proper error handling
- * @param arxivId - The arXiv paper ID (e.g., "2401.12345")
- * @returns Metadata or null on any error
- */
-export async function fetchArxivMetadata(arxivId: string): Promise<ArxivMetadata | null> {
-  const result = await fetchArxivMetadataResult(arxivId);
-  return result.ok ? result.value : null;
-}
-
 // =============================================================================
 // REGISTRY OPERATIONS
 // =============================================================================

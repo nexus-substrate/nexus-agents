@@ -7,7 +7,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   fetchArxivMetadataResult,
-  fetchArxivMetadata,
   paperExists,
   addResearchPaper,
 } from './research-helpers-arxiv.js';
@@ -218,45 +217,6 @@ describe('research-helpers-arxiv', () => {
       );
     });
   });
-
-  /* eslint-disable @typescript-eslint/no-deprecated */
-  describe('fetchArxivMetadata (deprecated)', () => {
-    it('should return metadata on success', async () => {
-      const validXml = `<?xml version="1.0" encoding="UTF-8"?>
-<feed><entry><title>Test Title</title><published>2024-01-01T00:00:00Z</published></entry></feed>`;
-
-      vi.mocked(global.fetch).mockResolvedValue({
-        ok: true,
-        text: () => Promise.resolve(validXml),
-      } as Response);
-
-      const metadata = await fetchArxivMetadata('2401.12345');
-
-      expect(metadata).not.toBeNull();
-      expect(metadata?.title).toBe('Test Title');
-    });
-
-    it('should return null on any error', async () => {
-      vi.mocked(global.fetch).mockRejectedValue(new Error('Network error'));
-
-      const metadata = await fetchArxivMetadata('2401.12345');
-
-      expect(metadata).toBeNull();
-    });
-
-    it('should return null for HTTP errors', async () => {
-      vi.mocked(global.fetch).mockResolvedValue({
-        ok: false,
-        status: 500,
-        statusText: 'Internal Server Error',
-      } as Response);
-
-      const metadata = await fetchArxivMetadata('2401.12345');
-
-      expect(metadata).toBeNull();
-    });
-  });
-  /* eslint-enable @typescript-eslint/no-deprecated */
 
   describe('paperExists', () => {
     it('should return true when paper exists in registry', async () => {
