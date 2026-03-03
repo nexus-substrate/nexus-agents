@@ -389,14 +389,10 @@ That's my vote.`;
     });
 
     it('should retry on failure and succeed', async () => {
-      let attempts = 0;
       const adapter = createMockAdapter({});
-      (adapter.complete as ReturnType<typeof vi.fn>).mockImplementation(() => {
-        attempts++;
-        if (attempts < 2) {
-          return Promise.resolve({ ok: false, error: new Error('Temporary failure') });
-        }
-        return Promise.resolve({
+      (adapter.complete as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce({ ok: false, error: new Error('Temporary failure') })
+        .mockResolvedValueOnce({
           ok: true,
           value: {
             content: JSON.stringify({
@@ -409,7 +405,6 @@ That's my vote.`;
             model: 'test',
           },
         });
-      });
 
       const result = await executeAgentVote('architect', 'Test proposal', adapter, logger, {
         timeoutMs: 5000,
@@ -418,7 +413,7 @@ That's my vote.`;
 
       expect(result.source).toBe('llm');
       expect(result.vote.decision).toBe('approve');
-      expect(attempts).toBe(2);
+      expect(adapter.complete).toHaveBeenCalledTimes(2);
     });
 
     it('should return abstain vote when all retries exhausted (no simulation)', async () => {
