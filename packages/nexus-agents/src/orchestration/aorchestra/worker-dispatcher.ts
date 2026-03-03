@@ -12,7 +12,7 @@
 import type { AgentPlanEntry } from './agent-planner.js';
 import { MAX_WORKERS_PER_WAVE } from './agent-planner.js';
 import { createLogger } from '../../core/index.js';
-import { resolveWorkerTimeout, WORKER_TIMEOUTS } from '../../config/timeouts.js';
+import { getExpertTaskTimeout, WORKER_TIMEOUTS } from '../../config/timeouts.js';
 import { isRateLimitError } from '../../cli/voter-execution.js';
 
 const logger = createLogger({ component: 'worker-dispatcher' });
@@ -165,11 +165,11 @@ export async function dispatchWorkers(
     const priorResults: readonly WorkerResult[] | undefined =
       allResults.length > 0 ? [...allResults] : undefined;
 
-    const timeoutMs = options.workerTimeoutMs ?? resolveWorkerTimeout();
-    const tasks = wave.map(
-      (entry) => (): Promise<WorkerResult> =>
-        executeSafe(entry, options.executeWorker, priorResults, timeoutMs)
-    );
+    const tasks = wave.map((entry) => (): Promise<WorkerResult> => {
+      // Use expert-aware timeout: security/architecture/research get 600s, not 60s
+      const timeoutMs = options.workerTimeoutMs ?? getExpertTaskTimeout(entry.subTask);
+      return executeSafe(entry, options.executeWorker, priorResults, timeoutMs);
+    });
 
     const waveResults = await executeWithConcurrencyLimit(tasks, maxConcurrency);
     allResults.push(...waveResults);

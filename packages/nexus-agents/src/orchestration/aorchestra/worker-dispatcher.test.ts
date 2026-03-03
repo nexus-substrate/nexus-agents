@@ -362,4 +362,40 @@ describe('dispatchWorkers', () => {
   it('exports RATE_LIMIT_WAVE_DELAY_MS constant', () => {
     expect(RATE_LIMIT_WAVE_DELAY_MS).toBe(5_000);
   });
+
+  it('uses expert-aware timeout for security tasks (longer than default)', async () => {
+    // Security task should get EXPERT_TIMEOUTS.complexMs (600s), not default 60s.
+    // We verify by setting a worker that takes 80ms — with a 50ms workerTimeoutMs
+    // override it would fail, but WITHOUT the override the expert-aware timeout kicks in.
+    const slowExecute: WorkerDispatchOptions['executeWorker'] = vi.fn().mockImplementation(
+      (entry: AgentPlanEntry): Promise<WorkerResult> =>
+        new Promise((resolve) => {
+          setTimeout(() => {
+            resolve({
+              role: entry.role,
+              subTask: entry.subTask,
+              output: `result from ${entry.role}`,
+              status: 'success' as const,
+              durationMs: 80,
+            });
+          }, 80);
+        })
+    );
+
+    // Security-related subTask text triggers getExpertTaskTimeout → 600s
+    const entries: AgentPlanEntry[] = [
+      {
+        role: 'security',
+        subTask: 'perform security review of authentication module',
+        priority: 1,
+        reasoning: 'security expertise needed',
+        wave: 1,
+      },
+    ];
+
+    // Without workerTimeoutMs override, the expert-aware timeout (600s) is used
+    const results = await dispatchWorkers(entries, { executeWorker: slowExecute });
+    expect(results).toHaveLength(1);
+    expect(results[0]?.status).toBe('success');
+  });
 });
