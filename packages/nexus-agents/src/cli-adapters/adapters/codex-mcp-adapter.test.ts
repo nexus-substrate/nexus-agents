@@ -50,15 +50,21 @@ describe('CodexMcpAdapter', () => {
     vi.clearAllMocks();
 
     // Set up default MCP Client mock (Issue #582)
-    Client.mockImplementation(() => ({
-      connect: vi.fn().mockResolvedValue(undefined),
-      callTool: vi.fn(),
-    }));
+
+    Client.mockImplementation(function () {
+      return {
+        connect: vi.fn().mockResolvedValue(undefined),
+        callTool: vi.fn(),
+      };
+    });
 
     // Set up default transport mock
-    mocks.mockTransport.mockImplementation(() => ({
-      close: vi.fn().mockResolvedValue(undefined),
-    }));
+
+    mocks.mockTransport.mockImplementation(function () {
+      return {
+        close: vi.fn().mockResolvedValue(undefined),
+      };
+    });
 
     // Set up default exec mock for version check (via BaseCliAdapter)
     mocks.mockExecAsync.mockResolvedValue({ stdout: 'codex version 0.77.0' });
@@ -150,7 +156,10 @@ describe('CodexMcpAdapter', () => {
           isError: false,
         }),
       };
-      vi.mocked(Client).mockImplementationOnce(() => mockClient as never);
+
+      vi.mocked(Client).mockImplementationOnce(function () {
+        return mockClient as never;
+      });
 
       const newAdapter = new CodexMcpAdapter();
       const result = await newAdapter.execute({ content: 'Say hello' });
@@ -170,7 +179,10 @@ describe('CodexMcpAdapter', () => {
           isError: true,
         }),
       };
-      vi.mocked(Client).mockImplementationOnce(() => mockClient as never);
+
+      vi.mocked(Client).mockImplementationOnce(function () {
+        return mockClient as never;
+      });
 
       const newAdapter = new CodexMcpAdapter();
       const result = await newAdapter.execute({ content: 'This will fail' });
@@ -190,7 +202,10 @@ describe('CodexMcpAdapter', () => {
           isError: false,
         }),
       };
-      vi.mocked(Client).mockImplementationOnce(() => mockClient as never);
+
+      vi.mocked(Client).mockImplementationOnce(function () {
+        return mockClient as never;
+      });
 
       const newAdapter = new CodexMcpAdapter();
       const result = await newAdapter.execute({ content: 'Empty response' });
@@ -208,7 +223,10 @@ describe('CodexMcpAdapter', () => {
           content: [{ type: 'text', text: 'Response' }],
         }),
       };
-      vi.mocked(Client).mockImplementationOnce(() => mockClient as never);
+
+      vi.mocked(Client).mockImplementationOnce(function () {
+        return mockClient as never;
+      });
 
       const newAdapter = new CodexMcpAdapter();
       await newAdapter.execute({
@@ -236,7 +254,10 @@ describe('CodexMcpAdapter', () => {
           content: [{ type: 'text', text: 'Response' }],
         }),
       };
-      vi.mocked(Client).mockImplementationOnce(() => mockClient as never);
+
+      vi.mocked(Client).mockImplementationOnce(function () {
+        return mockClient as never;
+      });
 
       const newAdapter = new CodexMcpAdapter();
       await newAdapter.execute({

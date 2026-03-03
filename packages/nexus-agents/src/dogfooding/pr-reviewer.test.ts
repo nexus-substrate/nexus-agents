@@ -28,9 +28,11 @@ const mockRecordInteraction = vi.fn();
 const mockGenerateTraceId = vi.fn(() => 'test-trace-id-12345');
 
 vi.mock('../observability/swarm-observer.js', () => {
-  const MockSwarmObserver = vi.fn().mockImplementation(() => ({
-    recordInteraction: mockRecordInteraction,
-  }));
+  const MockSwarmObserver = vi.fn().mockImplementation(function () {
+    return {
+      recordInteraction: mockRecordInteraction,
+    };
+  });
 
   // Add static method
   (MockSwarmObserver as unknown as { generateTraceId: () => string }).generateTraceId =

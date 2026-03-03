@@ -84,9 +84,11 @@ describe('Orchestrate Routes', () => {
       execute: mocks.mockExecute,
     });
 
-    mocks.mockOrchestratorFactory.mockImplementation(() => ({
-      create: mocks.mockCreate,
-    }));
+    mocks.mockOrchestratorFactory.mockImplementation(function () {
+      return {
+        create: mocks.mockCreate,
+      };
+    });
 
     mockLogger = createMockLogger();
     fastify = Fastify();

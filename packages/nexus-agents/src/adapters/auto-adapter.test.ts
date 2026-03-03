@@ -40,12 +40,14 @@ vi.mock('./claude-adapter.js', () => ({
 
 // Mock SDK adapter
 vi.mock('./sdk/index.js', () => ({
-  SdkAdapter: vi.fn().mockImplementation((config: Record<string, unknown>) => ({
-    execute: vi.fn(),
-    name: `sdk-${String(config['providerId'])}`,
-    providerId: `sdk-${String(config['providerId'])}`,
-    modelId: config['modelId'],
-  })),
+  SdkAdapter: vi.fn().mockImplementation(function (config: Record<string, unknown>) {
+    return {
+      execute: vi.fn(),
+      name: `sdk-${String(config['providerId'])}`,
+      providerId: `sdk-${String(config['providerId'])}`,
+      modelId: config['modelId'],
+    };
+  }),
 }));
 
 // Mock CLI detection cache

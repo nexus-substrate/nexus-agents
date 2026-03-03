@@ -167,13 +167,15 @@ vi.mock('./mcp/tools/orchestrate.js', () => ({
 }));
 
 vi.mock('./agents/index.js', () => ({
-  Orchestrator: vi.fn().mockImplementation(() => ({
-    execute: vi
-      .fn()
-      .mockImplementation(() =>
-        Promise.resolve({ ok: true, value: { taskId: 'real', output: {}, metadata: {} } })
-      ),
-  })),
+  Orchestrator: vi.fn().mockImplementation(function () {
+    return {
+      execute: vi
+        .fn()
+        .mockImplementation(() =>
+          Promise.resolve({ ok: true, value: { taskId: 'real', output: {}, metadata: {} } })
+        ),
+    };
+  }),
   createOrchestrator: vi.fn().mockReturnValue({
     execute: vi
       .fn()

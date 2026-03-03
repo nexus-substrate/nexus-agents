@@ -46,7 +46,10 @@ describe('cli-server-auth', () => {
       hasToken: vi.fn(),
       generateToken: vi.fn(),
     };
-    (AuthHandler as unknown as ReturnType<typeof vi.fn>).mockReturnValue(mockHandler);
+
+    (AuthHandler as unknown as ReturnType<typeof vi.fn>).mockImplementation(function () {
+      return mockHandler;
+    });
   });
 
   afterEach(() => {
