@@ -212,6 +212,8 @@ jobs:
 
       - name: Phase 5 - Code Quality
         id: quality
+        env:
+          NODE_OPTIONS: '--max-old-space-size=8192'
         run: |
           echo "## Phase 5: Code Quality" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
