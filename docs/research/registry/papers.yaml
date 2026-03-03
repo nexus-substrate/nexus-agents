@@ -2623,3 +2623,261 @@ papers:
     techniques_extracted: []
     related_issues: []
     implementation_status: not-started
+  arxiv-2601.10955:
+    title: 'Beyond Max Tokens: Stealthy Resource Amplification via Tool Calling Chains in LLM Agents'
+    authors: []
+    source: arxiv
+    arxiv_id: '2601.10955'
+    url: https://arxiv.org/abs/2601.10955
+    publication_date: 2026-01
+    venue: null
+    topics:
+      - agent security
+    tags:
+      - llm
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2512.17052:
+    title: Dynamic Tool Dependency Retrieval for Efficient Function Calling
+    authors: []
+    source: arxiv
+    arxiv_id: '2512.17052'
+    url: https://arxiv.org/abs/2512.17052
+    publication_date: 2025-12
+    venue: null
+    topics:
+      - tool routing optimization
+    tags: []
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2602.23193:
+    title: 'ESAA: Event Sourcing for Autonomous Agents in LLM-Based Software Engineering'
+    authors: []
+    source: arxiv
+    arxiv_id: '2602.23193'
+    url: https://arxiv.org/abs/2602.23193
+    publication_date: 2026-02
+    venue: null
+    topics:
+      - agent architecture
+    tags:
+      - llm
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2602.18764:
+    title: The Convergence of Schema-Guided Dialogue Systems and the Model Context Protocol
+    authors: []
+    source: arxiv
+    arxiv_id: '2602.18764'
+    url: https://arxiv.org/abs/2602.18764
+    publication_date: 2026-02
+    venue: null
+    topics:
+      - MCP protocol
+    tags: []
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2601.12359:
+    title: 'Zero-Shot Embedding Drift Detection: A Lightweight Defense Against Prompt Injections in LLMs'
+    authors: []
+    source: arxiv
+    arxiv_id: '2601.12359'
+    url: https://arxiv.org/abs/2601.12359
+    publication_date: 2026-01
+    venue: null
+    topics:
+      - prompt injection defense
+    tags:
+      - llm
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2602.20708:
+    title: 'ICON: Indirect Prompt Injection Defense for Agents based on Inference-Time Correction'
+    authors: []
+    source: arxiv
+    arxiv_id: '2602.20708'
+    url: https://arxiv.org/abs/2602.20708
+    publication_date: 2026-02
+    venue: null
+    topics:
+      - prompt injection defense
+    tags: []
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2602.15945:
+    title: 'From Tool Orchestration to Code Execution: A Study of MCP Design Choices'
+    authors: []
+    source: arxiv
+    arxiv_id: '2602.15945'
+    url: https://arxiv.org/abs/2602.15945
+    publication_date: 2026-02
+    venue: null
+    topics:
+      - MCP protocol
+    tags: []
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2602.03712:
+    title: 'SWE-Refactor: A Repository-Level Benchmark for Real-World LLM-Based Code Refactoring'
+    authors: []
+    source: arxiv
+    arxiv_id: '2602.03712'
+    url: https://arxiv.org/abs/2602.03712
+    publication_date: 2026-02
+    venue: null
+    topics:
+      - code generation evaluation
+    tags:
+      - benchmark
+      - llm
+      - reinforcement-learning
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2602.13377:
+    title: A Survey of Code Review Benchmarks and Evaluation Practices in Pre-LLM and LLM Era
+    authors: []
+    source: arxiv
+    arxiv_id: '2602.13377'
+    url: https://arxiv.org/abs/2602.13377
+    publication_date: 2026-02
+    venue: null
+    topics:
+      - code review benchmarks
+    tags:
+      - survey
+      - benchmark
+      - llm
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2603.00601:
+    title: 'Theory of Code Space: Do Code Agents Understand Software Architecture?'
+    authors: []
+    source: arxiv
+    arxiv_id: '2603.00601'
+    url: https://arxiv.org/abs/2603.00601
+    publication_date: 2026-03
+    venue: null
+    topics:
+      - agent architecture
+    tags: []
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2602.22450:
+    title: 'Silent Egress: When Implicit Prompt Injection Makes LLM Agents Leak Without a Trace'
+    authors: []
+    source: arxiv
+    arxiv_id: '2602.22450'
+    url: https://arxiv.org/abs/2602.22450
+    publication_date: 2026-02
+    venue: null
+    topics:
+      - agent security
+    tags:
+      - llm
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2602.12709:
+    title: 'ReFilter: Improving Robustness of Retrieval-Augmented Generation via Gated Filter'
+    authors: []
+    source: arxiv
+    arxiv_id: '2602.12709'
+    url: https://arxiv.org/abs/2602.12709
+    publication_date: 2026-02
+    venue: null
+    topics:
+      - retrieval augmented generation
+    tags: []
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2602.20720:
+    title: 'AdapTools: Adaptive Tool-based Indirect Prompt Injection Attacks on Agentic LLMs'
+    authors: []
+    source: arxiv
+    arxiv_id: '2602.20720'
+    url: https://arxiv.org/abs/2602.20720
+    publication_date: 2026-02
+    venue: null
+    topics:
+      - MCP security
+    tags:
+      - llm
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
