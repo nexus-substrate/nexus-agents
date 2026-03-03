@@ -2459,3 +2459,84 @@ papers:
     techniques_extracted: []
     related_issues: []
     implementation_status: not-started
+  arxiv-2509.11067:
+    title: 'Agentic Lybic: Multi-Agent Execution System with Tiered Reasoning and Orchestration'
+    authors: []
+    source: arxiv
+    arxiv_id: '2509.11067'
+    url: https://arxiv.org/abs/2509.11067
+    publication_date: 2025-09
+    venue: null
+    topics:
+      - multi-agent-orchestration
+    tags:
+      - multi-agent
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2510.06727:
+    title: Scaling LLM Multi-turn RL with End-to-end Summarization-based Context Management
+    authors: []
+    source: arxiv
+    arxiv_id: '2510.06727'
+    url: https://arxiv.org/abs/2510.06727
+    publication_date: 2025-10
+    venue: null
+    topics:
+      - context-management
+    tags:
+      - llm
+      - reinforcement-learning
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2510.07429:
+    title: 'Learning to Route LLMs from Bandit Feedback: One Policy, Many Trade-offs'
+    authors: []
+    source: arxiv
+    arxiv_id: '2510.07429'
+    url: https://arxiv.org/abs/2510.07429
+    publication_date: 2025-10
+    venue: null
+    topics:
+      - model-routing
+    tags:
+      - llm
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2510.00841:
+    title: LLM Routing with Dueling Feedback
+    authors: []
+    source: arxiv
+    arxiv_id: '2510.00841'
+    url: https://arxiv.org/abs/2510.00841
+    publication_date: 2025-10
+    venue: null
+    topics:
+      - model-routing
+    tags:
+      - llm
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
