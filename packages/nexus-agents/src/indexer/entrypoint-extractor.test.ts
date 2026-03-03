@@ -4,8 +4,19 @@
  * @module indexer/entrypoint-extractor.test
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { sanitizeValue, extractEntrypoints } from './entrypoint-extractor.js';
+
+/** Timeout for tests that use ts-morph AST parsing (CPU-intensive under contention). */
+const AST_PARSE_TIMEOUT = 15_000;
+
+beforeEach(() => {
+  vi.restoreAllMocks();
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 // ============================================================================
 // Sanitization Tests
@@ -88,7 +99,7 @@ describe('sanitizeValue', () => {
 // ============================================================================
 
 describe('extractEntrypoints', () => {
-  it('should return a valid result structure', () => {
+  it('should return a valid result structure', { timeout: AST_PARSE_TIMEOUT }, () => {
     const result = extractEntrypoints({
       packageRoot: 'packages/nexus-agents',
     });
@@ -100,7 +111,7 @@ describe('extractEntrypoints', () => {
     expect(Array.isArray(result.warnings)).toBe(true);
   });
 
-  it('should extract CLI commands when successful', () => {
+  it('should extract CLI commands when successful', { timeout: AST_PARSE_TIMEOUT }, () => {
     const result = extractEntrypoints({
       packageRoot: 'packages/nexus-agents',
     });
@@ -113,7 +124,7 @@ describe('extractEntrypoints', () => {
     }
   });
 
-  it('should extract MCP tools when successful', () => {
+  it('should extract MCP tools when successful', { timeout: AST_PARSE_TIMEOUT }, () => {
     const result = extractEntrypoints({
       packageRoot: 'packages/nexus-agents',
     });
@@ -124,7 +135,7 @@ describe('extractEntrypoints', () => {
     }
   });
 
-  it('should extract REST endpoints when successful', () => {
+  it('should extract REST endpoints when successful', { timeout: AST_PARSE_TIMEOUT }, () => {
     const result = extractEntrypoints({
       packageRoot: 'packages/nexus-agents',
     });
@@ -135,7 +146,7 @@ describe('extractEntrypoints', () => {
     }
   });
 
-  it('should include schema version', () => {
+  it('should include schema version', { timeout: AST_PARSE_TIMEOUT }, () => {
     const result = extractEntrypoints({
       packageRoot: 'packages/nexus-agents',
     });
@@ -145,7 +156,7 @@ describe('extractEntrypoints', () => {
     }
   });
 
-  it('should include generation timestamp', () => {
+  it('should include generation timestamp', { timeout: AST_PARSE_TIMEOUT }, () => {
     const result = extractEntrypoints({
       packageRoot: 'packages/nexus-agents',
     });
@@ -162,7 +173,7 @@ describe('extractEntrypoints', () => {
 // ============================================================================
 
 describe('extractCliCommands', () => {
-  it('should extract known commands', () => {
+  it('should extract known commands', { timeout: AST_PARSE_TIMEOUT }, () => {
     const result = extractEntrypoints({
       packageRoot: 'packages/nexus-agents',
     });
@@ -176,7 +187,7 @@ describe('extractCliCommands', () => {
     }
   });
 
-  it('should include source file information', () => {
+  it('should include source file information', { timeout: AST_PARSE_TIMEOUT }, () => {
     const result = extractEntrypoints({
       packageRoot: 'packages/nexus-agents',
     });
@@ -189,7 +200,7 @@ describe('extractCliCommands', () => {
     }
   });
 
-  it('should extract command descriptions', () => {
+  it('should extract command descriptions', { timeout: AST_PARSE_TIMEOUT }, () => {
     const result = extractEntrypoints({
       packageRoot: 'packages/nexus-agents',
     });
@@ -203,7 +214,7 @@ describe('extractCliCommands', () => {
     }
   });
 
-  it('should extract subcommands for composite commands', () => {
+  it('should extract subcommands for composite commands', { timeout: AST_PARSE_TIMEOUT }, () => {
     const result = extractEntrypoints({
       packageRoot: 'packages/nexus-agents',
     });
@@ -223,7 +234,7 @@ describe('extractCliCommands', () => {
 // ============================================================================
 
 describe('extractMcpTools', () => {
-  it('should extract known tools', () => {
+  it('should extract known tools', { timeout: AST_PARSE_TIMEOUT }, () => {
     const result = extractEntrypoints({
       packageRoot: 'packages/nexus-agents',
     });
@@ -236,7 +247,7 @@ describe('extractMcpTools', () => {
     }
   });
 
-  it('should include parameter information', () => {
+  it('should include parameter information', { timeout: AST_PARSE_TIMEOUT }, () => {
     const result = extractEntrypoints({
       packageRoot: 'packages/nexus-agents',
     });
@@ -256,7 +267,7 @@ describe('extractMcpTools', () => {
     }
   });
 
-  it('should include tool descriptions', () => {
+  it('should include tool descriptions', { timeout: AST_PARSE_TIMEOUT }, () => {
     const result = extractEntrypoints({
       packageRoot: 'packages/nexus-agents',
     });
@@ -275,7 +286,7 @@ describe('extractMcpTools', () => {
 // ============================================================================
 
 describe('extractRestEndpoints', () => {
-  it('should extract health endpoint', () => {
+  it('should extract health endpoint', { timeout: AST_PARSE_TIMEOUT }, () => {
     const result = extractEntrypoints({
       packageRoot: 'packages/nexus-agents',
     });
@@ -289,7 +300,7 @@ describe('extractRestEndpoints', () => {
     }
   });
 
-  it('should include HTTP methods', () => {
+  it('should include HTTP methods', { timeout: AST_PARSE_TIMEOUT }, () => {
     const result = extractEntrypoints({
       packageRoot: 'packages/nexus-agents',
     });
@@ -303,7 +314,7 @@ describe('extractRestEndpoints', () => {
     }
   });
 
-  it('should include source file information', () => {
+  it('should include source file information', { timeout: AST_PARSE_TIMEOUT }, () => {
     const result = extractEntrypoints({
       packageRoot: 'packages/nexus-agents',
     });
@@ -316,7 +327,7 @@ describe('extractRestEndpoints', () => {
     }
   });
 
-  it('should extract endpoint descriptions', () => {
+  it('should extract endpoint descriptions', { timeout: AST_PARSE_TIMEOUT }, () => {
     const result = extractEntrypoints({
       packageRoot: 'packages/nexus-agents',
     });
@@ -351,7 +362,7 @@ describe('error handling', () => {
 // ============================================================================
 
 describe('integration', () => {
-  it('should produce consistent output structure', () => {
+  it('should produce consistent output structure', { timeout: AST_PARSE_TIMEOUT }, () => {
     const result = extractEntrypoints({
       packageRoot: 'packages/nexus-agents',
     });
@@ -365,7 +376,7 @@ describe('integration', () => {
     }
   });
 
-  it('should sanitize values by default', () => {
+  it('should sanitize values by default', { timeout: AST_PARSE_TIMEOUT }, () => {
     const result = extractEntrypoints({
       packageRoot: 'packages/nexus-agents',
       sanitize: true,

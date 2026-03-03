@@ -6,7 +6,7 @@
  *
  * @module mcp/mcp-expert-tools.test
  */
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 
@@ -86,6 +86,13 @@ async function setupServer(): Promise<TestContext> {
   };
 }
 
+/**
+ * Timeout for MCP task-based tests. The execute_expert tool uses MCP Tasks
+ * with a 5s poll interval, so tests need at least 10s to complete one cycle.
+ * Use 15s to allow headroom for CI contention.
+ */
+const MCP_TASK_TIMEOUT = 15_000;
+
 // ============================================================================
 // Tests
 // ============================================================================
@@ -95,6 +102,10 @@ describe('MCP Expert & Orchestration Tools', () => {
 
   beforeAll(async () => {
     ctx = await setupServer();
+  });
+
+  beforeEach(() => {
+    vi.restoreAllMocks();
   });
 
   afterAll(async () => {
@@ -117,24 +128,28 @@ describe('MCP Expert & Orchestration Tools', () => {
   // orchestrate — graceful degradation
   // --------------------------------------------------------------------------
 
-  it('orchestrate returns response without orchestrator', async () => {
-    const result = await ctx.client.callTool({
-      name: 'orchestrate',
-      arguments: { task: 'Analyze this codebase' },
-    });
-    // Without orchestrator, returns a response (may be error or fallback)
-    const content = result.content as Array<{ type: string; text: string }>;
-    expect(content.length).toBeGreaterThan(0);
-    const first = content[0];
-    expect(first).toBeDefined();
-    expect(first?.text.length).toBeGreaterThan(0);
-  });
+  it(
+    'orchestrate returns response without orchestrator',
+    { timeout: MCP_TASK_TIMEOUT },
+    async () => {
+      const result = await ctx.client.callTool({
+        name: 'orchestrate',
+        arguments: { task: 'Analyze this codebase' },
+      });
+      // Without orchestrator, returns a response (may be error or fallback)
+      const content = result.content as Array<{ type: string; text: string }>;
+      expect(content.length).toBeGreaterThan(0);
+      const first = content[0];
+      expect(first).toBeDefined();
+      expect(first?.text.length).toBeGreaterThan(0);
+    }
+  );
 
   // --------------------------------------------------------------------------
   // create_expert
   // --------------------------------------------------------------------------
 
-  it('create_expert creates a code expert', async () => {
+  it('create_expert creates a code expert', { timeout: MCP_TASK_TIMEOUT }, async () => {
     const result = await ctx.client.callTool({
       name: 'create_expert',
       arguments: { role: 'code_expert' },
@@ -150,7 +165,7 @@ describe('MCP Expert & Orchestration Tools', () => {
   // execute_expert — without valid expert
   // --------------------------------------------------------------------------
 
-  it('execute_expert returns error for unknown expert', async () => {
+  it('execute_expert returns error for unknown expert', { timeout: MCP_TASK_TIMEOUT }, async () => {
     const result = await ctx.client.callTool({
       name: 'execute_expert',
       arguments: {

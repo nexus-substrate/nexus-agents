@@ -7,7 +7,7 @@
  * @module scripts/inject-governance.test
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { execSync } from 'node:child_process';
 import { readFileSync, writeFileSync, mkdirSync, rmSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -15,6 +15,20 @@ import { join } from 'node:path';
 const ROOT = join(import.meta.dirname, '..');
 const SCRIPT = join(ROOT, 'scripts/inject-governance.ts');
 const CLAUDE_MD = join(ROOT, 'CLAUDE.md');
+
+/** Timeout for tests that run the governance script as a subprocess (~4-5s per invocation). */
+const SUBPROCESS_TIMEOUT = 15_000;
+
+/** Timeout for the idempotency test that runs the script twice (~9-10s total). */
+const IDEMPOTENCY_TIMEOUT = 25_000;
+
+beforeEach(() => {
+  vi.restoreAllMocks();
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 /** Run the governance script with given args, return stdout. */
 function runScript(args: string): string {
@@ -30,7 +44,7 @@ function runScript(args: string): string {
 // ============================================================================
 
 describe('inject-governance check', () => {
-  it('passes on current CLAUDE.md', () => {
+  it('passes on current CLAUDE.md', { timeout: SUBPROCESS_TIMEOUT }, () => {
     const output = runScript('check');
     expect(output).toContain('Governance check passed');
     expect(output).toContain('MCP Tools:');
@@ -39,7 +53,7 @@ describe('inject-governance check', () => {
     expect(output).toContain('Skills:');
   });
 
-  it('reports correct tool count', () => {
+  it('reports correct tool count', { timeout: SUBPROCESS_TIMEOUT }, () => {
     const output = runScript('check');
     // Extract the tool count from output like "MCP Tools: 15"
     const match = /MCP Tools:\s*(\d+)/.exec(output);
@@ -48,7 +62,7 @@ describe('inject-governance check', () => {
     expect(toolCount).toBeGreaterThanOrEqual(15);
   });
 
-  it('reports correct expert count', () => {
+  it('reports correct expert count', { timeout: SUBPROCESS_TIMEOUT }, () => {
     const output = runScript('check');
     const match = /Expert Types:\s*(\d+)/.exec(output);
     expect(match).not.toBeNull();
@@ -56,7 +70,7 @@ describe('inject-governance check', () => {
     expect(count).toBeGreaterThanOrEqual(7);
   });
 
-  it('reports correct workflow count', () => {
+  it('reports correct workflow count', { timeout: SUBPROCESS_TIMEOUT }, () => {
     const output = runScript('check');
     const match = /Workflow Templates:\s*(\d+)/.exec(output);
     expect(match).not.toBeNull();
@@ -64,7 +78,7 @@ describe('inject-governance check', () => {
     expect(count).toBeGreaterThanOrEqual(9);
   });
 
-  it('reports correct skill count', () => {
+  it('reports correct skill count', { timeout: SUBPROCESS_TIMEOUT }, () => {
     const output = runScript('check');
     const match = /Skills:\s*(\d+)/.exec(output);
     expect(match).not.toBeNull();
@@ -89,7 +103,7 @@ describe('inject-governance inject', () => {
     writeFileSync(CLAUDE_MD, originalContent);
   });
 
-  it('is idempotent (running twice produces same result)', () => {
+  it('is idempotent (running twice produces same result)', { timeout: IDEMPOTENCY_TIMEOUT }, () => {
     runScript('inject');
     const firstRun = readFileSync(CLAUDE_MD, 'utf-8');
 
@@ -99,7 +113,7 @@ describe('inject-governance inject', () => {
     expect(firstRun).toBe(secondRun);
   });
 
-  it('preserves governance markers', () => {
+  it('preserves governance markers', { timeout: SUBPROCESS_TIMEOUT }, () => {
     runScript('inject');
     const content = readFileSync(CLAUDE_MD, 'utf-8');
     expect(content).toContain('<!-- GOVERNANCE:TOOL_INDEX:START -->');
@@ -108,7 +122,7 @@ describe('inject-governance inject', () => {
     expect(content).toContain('<!-- GOVERNANCE:VERSION:END -->');
   });
 
-  it('generates tool index table', () => {
+  it('generates tool index table', { timeout: SUBPROCESS_TIMEOUT }, () => {
     runScript('inject');
     const content = readFileSync(CLAUDE_MD, 'utf-8');
     expect(content).toContain('## MCP Tools Reference');
@@ -119,7 +133,7 @@ describe('inject-governance inject', () => {
     expect(content).toContain('`memory_stats`');
   });
 
-  it('updates tool count in auto-generated footer', () => {
+  it('updates tool count in auto-generated footer', { timeout: SUBPROCESS_TIMEOUT }, () => {
     runScript('inject');
     const content = readFileSync(CLAUDE_MD, 'utf-8');
     const match = /Auto-generated from source\.\s*(\d+)\s*tools registered/.exec(content);
@@ -128,7 +142,7 @@ describe('inject-governance inject', () => {
     expect(count).toBeGreaterThanOrEqual(15);
   });
 
-  it('updates governance version timestamp', () => {
+  it('updates governance version timestamp', { timeout: SUBPROCESS_TIMEOUT }, () => {
     runScript('inject');
     const content = readFileSync(CLAUDE_MD, 'utf-8');
     // Should contain a date in YYYY-MM-DD format
@@ -136,7 +150,7 @@ describe('inject-governance inject', () => {
     expect(match).not.toBeNull();
   });
 
-  it('outputs summary with counts', () => {
+  it('outputs summary with counts', { timeout: SUBPROCESS_TIMEOUT }, () => {
     const output = runScript('inject');
     expect(output).toContain('Governance injected');
     expect(output).toContain('MCP Tools:');
@@ -159,19 +173,23 @@ describe('section injection behavior', () => {
     writeFileSync(CLAUDE_MD, originalContent);
   });
 
-  it('replaces content between markers without affecting surrounding text', () => {
-    const beforeMarker = originalContent.split('<!-- GOVERNANCE:TOOL_INDEX:START -->')[0];
-    const afterMarker = originalContent.split('<!-- GOVERNANCE:TOOL_INDEX:END -->')[1];
+  it(
+    'replaces content between markers without affecting surrounding text',
+    { timeout: SUBPROCESS_TIMEOUT },
+    () => {
+      const beforeMarker = originalContent.split('<!-- GOVERNANCE:TOOL_INDEX:START -->')[0];
+      const afterMarker = originalContent.split('<!-- GOVERNANCE:TOOL_INDEX:END -->')[1];
 
-    runScript('inject');
-    const updated = readFileSync(CLAUDE_MD, 'utf-8');
+      runScript('inject');
+      const updated = readFileSync(CLAUDE_MD, 'utf-8');
 
-    // Content before and after the governed section should be unchanged
-    expect(updated.split('<!-- GOVERNANCE:TOOL_INDEX:START -->')[0]).toBe(beforeMarker);
-    expect(updated.split('<!-- GOVERNANCE:TOOL_INDEX:END -->')[1]).toBe(afterMarker);
-  });
+      // Content before and after the governed section should be unchanged
+      expect(updated.split('<!-- GOVERNANCE:TOOL_INDEX:START -->')[0]).toBe(beforeMarker);
+      expect(updated.split('<!-- GOVERNANCE:TOOL_INDEX:END -->')[1]).toBe(afterMarker);
+    }
+  );
 
-  it('handles tool index with all registered tools', () => {
+  it('handles tool index with all registered tools', { timeout: SUBPROCESS_TIMEOUT }, () => {
     runScript('inject');
     const content = readFileSync(CLAUDE_MD, 'utf-8');
 
@@ -225,7 +243,7 @@ describe('inject-governance with fixture', () => {
     }
   });
 
-  it('check command fails when tool count is wrong', () => {
+  it('check command fails when tool count is wrong', { timeout: SUBPROCESS_TIMEOUT }, () => {
     // Create a CLAUDE.md with wrong tool count in the tool index
     const wrongContent = [
       '# Test',

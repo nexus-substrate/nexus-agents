@@ -8,7 +8,7 @@
  * (Source: Issue #992 — Tool response honesty contract)
  */
 
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 
@@ -86,6 +86,13 @@ async function setupServer(): Promise<TestContext> {
   };
 }
 
+/**
+ * Timeout for MCP task-based tests. The execute_expert tool uses MCP Tasks
+ * with a 5s poll interval, so tests need at least 10s to complete one cycle.
+ * Use 15s to allow headroom for CI contention.
+ */
+const MCP_TASK_TIMEOUT = 15_000;
+
 // ============================================================================
 // Honesty Contract Tests
 // ============================================================================
@@ -97,6 +104,11 @@ describe('Tool Response Honesty Contract (§5.4)', () => {
     ctx = await setupServer();
   });
 
+  beforeEach(() => {
+    // Reset vi.fn() mocks between tests — vitest 4 restoreAllMocks only resets vi.spyOn()
+    vi.restoreAllMocks();
+  });
+
   afterAll(async () => {
     await ctx.cleanup();
   });
@@ -106,33 +118,41 @@ describe('Tool Response Honesty Contract (§5.4)', () => {
   // --------------------------------------------------------------------------
 
   describe('Rule 1: Failed actions must return isError=true', () => {
-    it('execute_expert returns isError when expert execution fails', async () => {
-      const failingExpert = createFailingExpert('code_expert');
-      ctx.expertRegistry.set('failing-expert', failingExpert);
+    it(
+      'execute_expert returns isError when expert execution fails',
+      { timeout: MCP_TASK_TIMEOUT },
+      async () => {
+        const failingExpert = createFailingExpert('code_expert');
+        ctx.expertRegistry.set('failing-expert', failingExpert);
 
-      const result = await ctx.client.callTool({
-        name: 'execute_expert',
-        arguments: {
-          expertId: 'failing-expert',
-          task: 'Review this code',
-        },
-      });
+        const result = await ctx.client.callTool({
+          name: 'execute_expert',
+          arguments: {
+            expertId: 'failing-expert',
+            task: 'Review this code',
+          },
+        });
 
-      // Honesty contract: failed execution MUST set isError=true
-      expect(result.isError).toBe(true);
-      const text = (result.content as Array<{ text: string }>)[0]?.text ?? '';
-      expect(text).toContain('failed');
-    });
+        // Honesty contract: failed execution MUST set isError=true
+        expect(result.isError).toBe(true);
+        const text = (result.content as Array<{ text: string }>)[0]?.text ?? '';
+        expect(text).toContain('failed');
+      }
+    );
 
-    it('run_graph_workflow returns isError for invalid workflow', async () => {
-      const result = await ctx.client.callTool({
-        name: 'run_graph_workflow',
-        arguments: { workflow: 'nonexistent-workflow-xyz' },
-      });
+    it(
+      'run_graph_workflow returns isError for invalid workflow',
+      { timeout: MCP_TASK_TIMEOUT },
+      async () => {
+        const result = await ctx.client.callTool({
+          name: 'run_graph_workflow',
+          arguments: { workflow: 'nonexistent-workflow-xyz' },
+        });
 
-      // Honesty contract: unknown workflow MUST set isError=true
-      expect(result.isError).toBe(true);
-    });
+        // Honesty contract: unknown workflow MUST set isError=true
+        expect(result.isError).toBe(true);
+      }
+    );
   });
 
   // --------------------------------------------------------------------------
@@ -140,23 +160,27 @@ describe('Tool Response Honesty Contract (§5.4)', () => {
   // --------------------------------------------------------------------------
 
   describe('Rule 3: Domain errors propagate to MCP response', () => {
-    it('execute_expert does not wrap domain errors in ok:true', async () => {
-      const failingExpert = createFailingExpert('security_expert');
-      ctx.expertRegistry.set('wrapped-error-test', failingExpert);
+    it(
+      'execute_expert does not wrap domain errors in ok:true',
+      { timeout: MCP_TASK_TIMEOUT },
+      async () => {
+        const failingExpert = createFailingExpert('security_expert');
+        ctx.expertRegistry.set('wrapped-error-test', failingExpert);
 
-      const result = await ctx.client.callTool({
-        name: 'execute_expert',
-        arguments: {
-          expertId: 'wrapped-error-test',
-          task: 'Audit this module',
-        },
-      });
+        const result = await ctx.client.callTool({
+          name: 'execute_expert',
+          arguments: {
+            expertId: 'wrapped-error-test',
+            task: 'Audit this module',
+          },
+        });
 
-      // The error message should be surfaced, not hidden in a success JSON
-      expect(result.isError).toBe(true);
-      const text = (result.content as Array<{ text: string }>)[0]?.text ?? '';
-      // Should contain the original error, not a generic wrapper
-      expect(text.toLowerCase()).toContain('model returned empty response');
-    });
+        // The error message should be surfaced, not hidden in a success JSON
+        expect(result.isError).toBe(true);
+        const text = (result.content as Array<{ text: string }>)[0]?.text ?? '';
+        // Should contain the original error, not a generic wrapper
+        expect(text.toLowerCase()).toContain('model returned empty response');
+      }
+    );
   });
 });
