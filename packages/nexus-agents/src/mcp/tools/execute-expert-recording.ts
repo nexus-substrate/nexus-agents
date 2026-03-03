@@ -72,7 +72,7 @@ export function recordExpertSuccess(expertId: string, role: string, durationMs: 
       source: 'execute-expert-success',
     });
     void memory.runPromotionPipeline().catch((error: unknown) => {
-      createLogger({ tool: 'execute_expert' }).debug('Promotion pipeline failed', { error });
+      createLogger({ tool: 'execute_expert' }).warn('Promotion pipeline failed', { error });
     });
   } catch (error: unknown) {
     createLogger({ tool: 'execute_expert' }).debug('Best-effort success recording failed', {

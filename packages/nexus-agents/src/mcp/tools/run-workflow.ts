@@ -142,7 +142,7 @@ function recordWorkflowSuccess(template: string, stepsCompleted: number, duratio
       source: 'run-workflow',
     });
     void memory.runPromotionPipeline().catch((error: unknown) => {
-      createLogger({ tool: 'run-workflow' }).debug('Promotion pipeline failed', { error });
+      createLogger({ tool: 'run-workflow' }).warn('Promotion pipeline failed', { error });
     });
   } catch (error: unknown) {
     createLogger({ tool: 'run-workflow' }).warn('Failed to record workflow success', {

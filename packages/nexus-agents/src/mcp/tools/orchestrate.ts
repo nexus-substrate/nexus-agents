@@ -213,7 +213,7 @@ function triggerPromotionPipeline(toolName: string): void {
       }
     })
     .catch((error: unknown) => {
-      createLogger({ tool: toolName }).debug('Promotion pipeline failed', { error });
+      createLogger({ tool: toolName }).warn('Promotion pipeline failed', { error });
     });
 }
 

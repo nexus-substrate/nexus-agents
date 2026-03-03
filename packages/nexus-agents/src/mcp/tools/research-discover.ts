@@ -474,7 +474,7 @@ function recordDiscoverySuccess(topic: string, newItems: number, sources: string
       source: 'research-discover',
     });
     void memory.runPromotionPipeline().catch((error: unknown) => {
-      createLogger({ tool: 'research-discover' }).debug('Promotion pipeline failed', { error });
+      createLogger({ tool: 'research-discover' }).warn('Promotion pipeline failed', { error });
     });
   } catch (error: unknown) {
     createLogger({ tool: 'research-discover' }).warn('Failed to record successful discovery', {

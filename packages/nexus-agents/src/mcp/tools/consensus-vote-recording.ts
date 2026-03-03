@@ -41,7 +41,7 @@ export function recordVoteSuccess(
       source: 'consensus-vote',
     });
     void memory.runPromotionPipeline().catch((error: unknown) => {
-      logger.debug('Promotion pipeline failed', { error });
+      logger.warn('Promotion pipeline failed', { error });
     });
   } catch (error: unknown) {
     logger.warn('Failed to record vote success', { error: getErrorMessage(error) });

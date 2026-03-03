@@ -104,7 +104,7 @@ function recordToMemory(task: string, model: string, usedRouter: boolean): void 
       source: 'delegate-to-model',
     });
     void memory.runPromotionPipeline().catch((error: unknown) => {
-      createLogger({ tool: 'delegate-to-model' }).debug('Promotion pipeline failed', { error });
+      createLogger({ tool: 'delegate-to-model' }).warn('Promotion pipeline failed', { error });
     });
   } catch (error: unknown) {
     createLogger({ tool: 'delegate-to-model' }).warn('Failed to record delegation to memory', {
