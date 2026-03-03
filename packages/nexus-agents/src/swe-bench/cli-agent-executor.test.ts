@@ -13,10 +13,12 @@ import type { AgentContext } from './agent-runner.js';
 
 // Mock the ClaudeCliAdapter
 vi.mock('../cli-adapters/adapters/claude-adapter.js', () => ({
-  ClaudeCliAdapter: vi.fn().mockImplementation(() => ({
-    healthCheck: vi.fn(),
-    execute: vi.fn(),
-  })),
+  ClaudeCliAdapter: vi.fn().mockImplementation(function () {
+    return {
+      healthCheck: vi.fn(),
+      execute: vi.fn(),
+    };
+  }),
 }));
 
 import {
@@ -100,7 +102,10 @@ describe('cli-agent-executor', () => {
             },
           }),
         };
-        MockClaudeCliAdapter.mockImplementation(() => mockAdapter as never);
+
+        MockClaudeCliAdapter.mockImplementation(function () {
+          return mockAdapter as never;
+        });
 
         const executor = new CliAgentExecutor();
         const result = await executor.execute(
@@ -129,7 +134,10 @@ describe('cli-agent-executor', () => {
           healthCheck: vi.fn().mockResolvedValue({ healthy: true }),
           execute: mockExecute,
         };
-        MockClaudeCliAdapter.mockImplementation(() => mockAdapter as never);
+
+        MockClaudeCliAdapter.mockImplementation(function () {
+          return mockAdapter as never;
+        });
 
         const executor = new CliAgentExecutor({ modelId: 'sonnet', timeoutMs: 300000 });
         await executor.execute('system prompt', 'user prompt', testContext);
@@ -153,7 +161,10 @@ describe('cli-agent-executor', () => {
             error: { message: 'CLI execution failed' },
           }),
         };
-        MockClaudeCliAdapter.mockImplementation(() => mockAdapter as never);
+
+        MockClaudeCliAdapter.mockImplementation(function () {
+          return mockAdapter as never;
+        });
 
         const executor = new CliAgentExecutor();
         const result = await executor.execute('system', 'user', testContext);
@@ -169,7 +180,10 @@ describe('cli-agent-executor', () => {
           healthCheck: vi.fn().mockResolvedValue({ healthy: true }),
           execute: vi.fn().mockRejectedValue(new Error('Network timeout')),
         };
-        MockClaudeCliAdapter.mockImplementation(() => mockAdapter as never);
+
+        MockClaudeCliAdapter.mockImplementation(function () {
+          return mockAdapter as never;
+        });
 
         const executor = new CliAgentExecutor();
         const result = await executor.execute('system', 'user', testContext);
@@ -192,7 +206,10 @@ describe('cli-agent-executor', () => {
             },
           }),
         };
-        MockClaudeCliAdapter.mockImplementation(() => mockAdapter as never);
+
+        MockClaudeCliAdapter.mockImplementation(function () {
+          return mockAdapter as never;
+        });
 
         const executor = new CliAgentExecutor();
         const result = await executor.execute('system', 'user prompt', testContext);
@@ -217,7 +234,10 @@ describe('cli-agent-executor', () => {
             },
           }),
         };
-        MockClaudeCliAdapter.mockImplementation(() => mockAdapter as never);
+
+        MockClaudeCliAdapter.mockImplementation(function () {
+          return mockAdapter as never;
+        });
 
         const executor = new CliAgentExecutor({
           onMessage: (msg) => messages.push(msg),
@@ -247,7 +267,10 @@ describe('cli-agent-executor', () => {
         healthCheck: vi.fn().mockResolvedValue({ healthy: true }),
         execute: vi.fn(),
       };
-      MockClaudeCliAdapter.mockImplementation(() => mockAdapter as never);
+
+      MockClaudeCliAdapter.mockImplementation(function () {
+        return mockAdapter as never;
+      });
 
       const available = await isCliAvailable();
 
@@ -259,7 +282,10 @@ describe('cli-agent-executor', () => {
         healthCheck: vi.fn().mockResolvedValue({ healthy: false }),
         execute: vi.fn(),
       };
-      MockClaudeCliAdapter.mockImplementation(() => mockAdapter as never);
+
+      MockClaudeCliAdapter.mockImplementation(function () {
+        return mockAdapter as never;
+      });
 
       const available = await isCliAvailable();
 
@@ -271,7 +297,10 @@ describe('cli-agent-executor', () => {
         healthCheck: vi.fn().mockRejectedValue(new Error('CLI not found')),
         execute: vi.fn(),
       };
-      MockClaudeCliAdapter.mockImplementation(() => mockAdapter as never);
+
+      MockClaudeCliAdapter.mockImplementation(function () {
+        return mockAdapter as never;
+      });
 
       const available = await isCliAvailable();
 
@@ -289,7 +318,10 @@ describe('cli-agent-executor', () => {
         healthCheck: vi.fn().mockResolvedValue({ healthy: true }),
         execute: vi.fn(),
       };
-      MockClaudeCliAdapter.mockImplementation(() => mockAdapter as never);
+
+      MockClaudeCliAdapter.mockImplementation(function () {
+        return mockAdapter as never;
+      });
 
       const result = await createCliExecutor();
 
@@ -304,7 +336,10 @@ describe('cli-agent-executor', () => {
         healthCheck: vi.fn().mockResolvedValue({ healthy: false }),
         execute: vi.fn(),
       };
-      MockClaudeCliAdapter.mockImplementation(() => mockAdapter as never);
+
+      MockClaudeCliAdapter.mockImplementation(function () {
+        return mockAdapter as never;
+      });
 
       const result = await createCliExecutor();
 
@@ -319,7 +354,10 @@ describe('cli-agent-executor', () => {
         healthCheck: vi.fn().mockResolvedValue({ healthy: true }),
         execute: vi.fn(),
       };
-      MockClaudeCliAdapter.mockImplementation(() => mockAdapter as never);
+
+      MockClaudeCliAdapter.mockImplementation(function () {
+        return mockAdapter as never;
+      });
 
       const config: CliAgentExecutorConfig = {
         modelId: 'opus',

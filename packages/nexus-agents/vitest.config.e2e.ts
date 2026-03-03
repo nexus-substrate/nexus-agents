@@ -20,11 +20,6 @@ export default defineConfig({
 
     // Process isolation for E2E tests
     pool: 'forks',
-    poolOptions: {
-      forks: {
-        singleFork: false,
-      },
-    },
 
     // Fail fast after 5 failures
     bail: 5,

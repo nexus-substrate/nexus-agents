@@ -14,7 +14,9 @@ describe('expert-list', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     stdoutWriteMock = vi.fn();
-    vi.spyOn(process.stdout, 'write').mockImplementation(stdoutWriteMock);
+    vi.spyOn(process.stdout, 'write').mockImplementation(
+      stdoutWriteMock as unknown as typeof process.stdout.write
+    );
     vi.spyOn(process, 'exit').mockImplementation(() => {
       throw new Error('process.exit called');
     });

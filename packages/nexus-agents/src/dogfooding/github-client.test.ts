@@ -40,7 +40,7 @@ describe('GitHubClient', () => {
   beforeEach(() => {
     originalFetch = global.fetch;
     mockFetch = vi.fn();
-    global.fetch = mockFetch;
+    global.fetch = mockFetch as unknown as typeof fetch;
   });
 
   afterEach(() => {
@@ -684,7 +684,7 @@ describe('GitHubClient issue methods', () => {
   beforeEach(() => {
     originalFetch = global.fetch;
     mockFetch = vi.fn();
-    global.fetch = mockFetch;
+    global.fetch = mockFetch as unknown as typeof fetch;
   });
 
   afterEach(() => {

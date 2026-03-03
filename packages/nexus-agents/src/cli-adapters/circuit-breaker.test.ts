@@ -918,7 +918,14 @@ describe('integrateCapacityMonitorWithCircuitBreaker', () => {
   });
 
   it('should log warning for unknown providers', () => {
-    integrateCapacityMonitorWithCircuitBreaker(mockMonitor, registry, undefined, mockLogger);
+    integrateCapacityMonitorWithCircuitBreaker(
+      mockMonitor,
+      registry,
+      undefined,
+      mockLogger as unknown as {
+        warn: (message: string, context?: Record<string, unknown>) => void;
+      }
+    );
 
     const callback = mockMonitor.callbacks[0];
     expect(callback).toBeDefined();
@@ -937,7 +944,9 @@ describe('integrateCapacityMonitorWithCircuitBreaker', () => {
       mockMonitor,
       registry,
       { criticalTokenThreshold: 1000 },
-      mockLogger
+      mockLogger as unknown as {
+        warn: (message: string, context?: Record<string, unknown>) => void;
+      }
     );
 
     registry.getBreaker('claude');

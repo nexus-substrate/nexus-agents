@@ -16,19 +16,23 @@ import { createBlueskyPost, getBlueskyConfig, type BlueskyConfig } from './blues
 vi.mock('@atproto/api', () => {
   const mockDetectFacets = vi.fn(() => Promise.resolve());
 
-  const MockRichText = vi.fn((options: { text: string }) => ({
-    text: options.text,
-    facets: undefined,
-    detectFacets: mockDetectFacets,
-  }));
+  const MockRichText = vi.fn(function (options: { text: string }) {
+    return {
+      text: options.text,
+      facets: undefined,
+      detectFacets: mockDetectFacets,
+    };
+  });
 
   const mockPost = vi.fn();
   const mockLogin = vi.fn();
 
-  const MockAtpAgent = vi.fn(() => ({
-    login: mockLogin,
-    post: mockPost,
-  }));
+  const MockAtpAgent = vi.fn(function () {
+    return {
+      login: mockLogin,
+      post: mockPost,
+    };
+  });
 
   return {
     AtpAgent: MockAtpAgent,
@@ -187,11 +191,13 @@ describe('bluesky-client', () => {
 
       // Mock RichText to return facets
 
-      vi.mocked(mockAtpModule.RichText).mockImplementation((options: { text: string }) => ({
-        text: options.text,
-        facets: mockFacets,
-        detectFacets: mockAtpModule.__mockDetectFacets,
-      }));
+      vi.mocked(mockAtpModule.RichText).mockImplementation(function (options: { text: string }) {
+        return {
+          text: options.text,
+          facets: mockFacets,
+          detectFacets: mockAtpModule.__mockDetectFacets,
+        };
+      });
 
       await createBlueskyPost(mockConfig, 'Test');
 

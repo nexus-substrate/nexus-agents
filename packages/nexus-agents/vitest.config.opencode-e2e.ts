@@ -16,13 +16,10 @@ export default defineConfig({
     testTimeout: 60000,
     hookTimeout: 30000,
 
-    // Process isolation
+    // Process isolation — single worker for sequential CLI tests
     pool: 'forks',
-    poolOptions: {
-      forks: {
-        singleFork: true,
-      },
-    },
+    maxWorkers: 1,
+    isolate: false,
 
     // Fail fast
     bail: 3,

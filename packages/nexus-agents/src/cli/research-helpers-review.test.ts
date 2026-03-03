@@ -90,7 +90,9 @@ const mockRankedItem = { item: mockDiscoveredItem, score: mockQualityScore };
 
 describe('executeReview', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    // Vitest 4: resetAllMocks to clear implementations that leak between tests
+    // (restoreMocks no longer resets vi.fn() implementations in v4)
+    vi.resetAllMocks();
   });
 
   it('should execute discovery and return basic review result', async () => {

@@ -60,6 +60,8 @@ jobs:
 
       - name: Measure current coverage
         id: coverage
+        env:
+          NODE_OPTIONS: '--max-old-space-size=8192'
         run: |
           echo "📊 Measuring current test coverage..."
           pnpm test:coverage --reporter=json > coverage-report.json 2>&1 || true

@@ -23,13 +23,15 @@ vi.mock('../../../core/logger.js', () => ({
 
 // Mock session storage
 vi.mock('../../session-storage.js', () => ({
-  SQLiteSessionStorage: vi.fn().mockImplementation(() => ({
-    initialize: vi.fn().mockResolvedValue({ ok: true }),
-    listSessions: vi.fn().mockResolvedValue({ ok: true, value: [] }),
-    addTask: vi.fn().mockResolvedValue({ ok: true, value: { id: 'tsk_123' } }),
-    updateTask: vi.fn().mockResolvedValue({ ok: true }),
-    close: vi.fn(),
-  })),
+  SQLiteSessionStorage: vi.fn().mockImplementation(function () {
+    return {
+      initialize: vi.fn().mockResolvedValue({ ok: true }),
+      listSessions: vi.fn().mockResolvedValue({ ok: true, value: [] }),
+      addTask: vi.fn().mockResolvedValue({ ok: true, value: { id: 'tsk_123' } }),
+      updateTask: vi.fn().mockResolvedValue({ ok: true }),
+      close: vi.fn(),
+    };
+  }),
 }));
 
 describe('post-tool handler', () => {

@@ -43,7 +43,9 @@ const createMockRouterInstance = () => ({
 let mockRouterInstance = createMockRouterInstance();
 
 vi.mock('../../preference-router.js', () => ({
-  PreferenceRouter: vi.fn(() => mockRouterInstance),
+  PreferenceRouter: vi.fn(function () {
+    return mockRouterInstance;
+  }),
 }));
 
 // ============================================================================

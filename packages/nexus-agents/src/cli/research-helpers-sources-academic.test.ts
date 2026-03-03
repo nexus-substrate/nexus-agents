@@ -19,6 +19,7 @@ const jsonHeaders = {
 };
 
 beforeEach(() => {
+  mockFetch.mockReset();
   vi.stubGlobal('fetch', mockFetch);
 });
 

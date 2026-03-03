@@ -10,6 +10,9 @@ import type { ChildProcess } from 'node:child_process';
 // Type for execFile callback signature
 type ExecFileCallback = (error: Error | null, result: { stdout: string; stderr: string }) => void;
 
+// Type for the implementation function accepted by mockImplementation on vi.mocked(execFile)
+type ExecFileImpl = typeof childProcess.execFile;
+
 // Mock child_process
 vi.mock('node:child_process', () => ({
   execFile: vi.fn(),
@@ -21,7 +24,7 @@ vi.mock('node:child_process', () => ({
 function createMockExecFile(
   response: { stdout: string; stderr: string } | null,
   error: Error | null = null
-): ReturnType<typeof vi.fn> {
+): ExecFileImpl {
   return vi
     .fn()
     .mockImplementation(
@@ -34,7 +37,7 @@ function createMockExecFile(
         cb(error, response ?? { stdout: '', stderr: '' });
         return {} as ChildProcess;
       }
-    );
+    ) as unknown as ExecFileImpl;
 }
 
 describe('GitHubError', () => {

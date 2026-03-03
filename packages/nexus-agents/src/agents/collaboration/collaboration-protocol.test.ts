@@ -170,13 +170,12 @@ describe('SequentialProtocol', () => {
   it('should be cancellable', async () => {
     // Create a slow agent for expert-1 that takes time
     const slowAgent = createMockAgent('expert-1');
-    (slowAgent.execute as ReturnType<typeof vi.fn>).mockImplementation(
-      () =>
-        new Promise((resolve) =>
-          setTimeout(() => {
-            resolve(ok(createTestResult('expert-1')));
-          }, 100)
-        )
+    (slowAgent.execute as ReturnType<typeof vi.fn>).mockReturnValue(
+      new Promise((resolve) =>
+        setTimeout(() => {
+          resolve(ok(createTestResult('expert-1')));
+        }, 100)
+      )
     );
     agents.set('expert-1', slowAgent);
 

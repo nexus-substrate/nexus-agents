@@ -19,9 +19,12 @@ vi.mock('../core/logger.js', () => ({
 }));
 
 describe('session-storage', () => {
+  // Vitest 4: Mock<Procedure | Constructable> is not directly callable.
+  // Intersect with callable signature so prepare() works at call sites.
+  type CallableMock = ReturnType<typeof vi.fn> & ((...args: unknown[]) => unknown);
   const createMockDb = (): {
     exec: ReturnType<typeof vi.fn>;
-    prepare: ReturnType<typeof vi.fn>;
+    prepare: CallableMock;
     close: ReturnType<typeof vi.fn>;
   } => {
     const mockStatement = {
@@ -31,7 +34,7 @@ describe('session-storage', () => {
     };
     return {
       exec: vi.fn(),
-      prepare: vi.fn().mockReturnValue(mockStatement),
+      prepare: vi.fn().mockReturnValue(mockStatement) as unknown as CallableMock,
       close: vi.fn(),
     };
   };
@@ -137,7 +140,7 @@ describe('session-storage', () => {
     it('should return session when found', async () => {
       const mockDb = createMockDb();
       const mockStatement = mockDb.prepare();
-      (mockStatement.get as ReturnType<typeof vi.fn>).mockReturnValue({
+      (mockStatement.get as { mockReturnValue: (value: unknown) => void }).mockReturnValue({
         id: 'ses_test',
         created_at: '2026-01-14T10:00:00Z',
         updated_at: '2026-01-14T10:00:00Z',
@@ -159,7 +162,9 @@ describe('session-storage', () => {
     it('should return null when session not found', async () => {
       const mockDb = createMockDb();
       const mockStatement = mockDb.prepare();
-      (mockStatement.get as ReturnType<typeof vi.fn>).mockReturnValue(undefined);
+      (mockStatement.get as { mockReturnValue: (value: unknown) => void }).mockReturnValue(
+        undefined
+      );
 
       const storage = new SQLiteSessionStorage(createValidConfig());
       storage.initializeWithDatabase(mockDb as unknown as ISQLiteDatabase);
@@ -230,7 +235,9 @@ describe('session-storage', () => {
     it('should return null when session not found', async () => {
       const mockDb = createMockDb();
       const mockStatement = mockDb.prepare();
-      (mockStatement.get as ReturnType<typeof vi.fn>).mockReturnValue(undefined);
+      (mockStatement.get as { mockReturnValue: (value: unknown) => void }).mockReturnValue(
+        undefined
+      );
 
       const storage = new SQLiteSessionStorage(createValidConfig());
       storage.initializeWithDatabase(mockDb as unknown as ISQLiteDatabase);
@@ -400,7 +407,9 @@ describe('session-storage', () => {
     it('should return false when session not found', async () => {
       const mockDb = createMockDb();
       const mockStatement = mockDb.prepare();
-      (mockStatement.run as ReturnType<typeof vi.fn>).mockReturnValue({ changes: 0 });
+      (mockStatement.run as { mockReturnValue: (value: unknown) => void }).mockReturnValue({
+        changes: 0,
+      });
 
       const storage = new SQLiteSessionStorage(createValidConfig());
       storage.initializeWithDatabase(mockDb as unknown as ISQLiteDatabase);
@@ -418,7 +427,9 @@ describe('session-storage', () => {
     it('should prune old sessions', async () => {
       const mockDb = createMockDb();
       const mockStatement = mockDb.prepare();
-      (mockStatement.run as ReturnType<typeof vi.fn>).mockReturnValue({ changes: 5 });
+      (mockStatement.run as { mockReturnValue: (value: unknown) => void }).mockReturnValue({
+        changes: 5,
+      });
 
       const storage = new SQLiteSessionStorage(createValidConfig());
       storage.initializeWithDatabase(mockDb as unknown as ISQLiteDatabase);

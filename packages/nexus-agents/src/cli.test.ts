@@ -231,7 +231,9 @@ describe('CLI Argument Parsing', () => {
 
     beforeEach(() => {
       stdoutWriteMock = vi.fn().mockReturnValue(true);
-      vi.spyOn(process.stdout, 'write').mockImplementation(stdoutWriteMock);
+      vi.spyOn(process.stdout, 'write').mockImplementation(
+        stdoutWriteMock as unknown as typeof process.stdout.write
+      );
     });
 
     afterEach(() => {
@@ -266,7 +268,9 @@ describe('CLI Argument Parsing', () => {
 
     beforeEach(() => {
       stdoutWriteMock = vi.fn().mockReturnValue(true);
-      vi.spyOn(process.stdout, 'write').mockImplementation(stdoutWriteMock);
+      vi.spyOn(process.stdout, 'write').mockImplementation(
+        stdoutWriteMock as unknown as typeof process.stdout.write
+      );
     });
 
     afterEach(() => {

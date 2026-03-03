@@ -26,7 +26,9 @@ const mockSessionMemory = {
 };
 
 vi.mock('../../context/session-memory.js', () => ({
-  SessionMemory: vi.fn(() => mockSessionMemory),
+  SessionMemory: vi.fn(function () {
+    return mockSessionMemory;
+  }),
 }));
 
 // Mock SQLite backends to skip expensive better-sqlite3 init (perf: saves ~2s)

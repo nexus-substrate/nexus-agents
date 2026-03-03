@@ -5,7 +5,16 @@
  * (Source: Issue #64, PROJECT_PLAN.md Section 5.2)
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vitest';
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeEach,
+  afterEach,
+  beforeAll,
+  type MockInstance,
+} from 'vitest';
 
 // We test the module by importing its exported functions
 // The actual startRepl function requires stdin/stdout which we mock
@@ -28,7 +37,7 @@ beforeAll(async () => {
 
 describe('REPL Module', () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let stdoutWriteMock: ReturnType<typeof vi.spyOn<any, any>>;
+  let stdoutWriteMock: MockInstance<(...args: any[]) => any>;
 
   beforeEach(() => {
     stdoutWriteMock = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);

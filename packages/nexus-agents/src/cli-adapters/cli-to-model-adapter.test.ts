@@ -185,9 +185,10 @@ describe('CliToModelAdapter.complete', () => {
 
   it('defaults usage to zeros when CLI response has no usage', async () => {
     const cli = makeMockCliAdapter();
-    (cli.execute as ReturnType<typeof vi.fn>).mockImplementation(() =>
-      Promise.resolve({ ok: true, value: { text: 'response' } })
-    );
+    (cli.execute as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      value: { text: 'response' },
+    });
     const adapter = new CliToModelAdapter(cli);
 
     const result = await adapter.complete({
@@ -210,9 +211,10 @@ describe('CliToModelAdapter.complete', () => {
       retryable: false,
     };
     const cli = makeMockCliAdapter();
-    (cli.execute as ReturnType<typeof vi.fn>).mockImplementation(() =>
-      Promise.resolve({ ok: false, error: cliError })
-    );
+    (cli.execute as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: false,
+      error: cliError,
+    });
     const adapter = new CliToModelAdapter(cli);
 
     const result = await adapter.complete({
@@ -235,9 +237,10 @@ describe('CliToModelAdapter.complete', () => {
       cause,
     };
     const cli = makeMockCliAdapter();
-    (cli.execute as ReturnType<typeof vi.fn>).mockImplementation(() =>
-      Promise.resolve({ ok: false, error: cliError })
-    );
+    (cli.execute as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: false,
+      error: cliError,
+    });
     const adapter = new CliToModelAdapter(cli);
 
     const result = await adapter.complete({
@@ -278,12 +281,10 @@ describe('CliToModelAdapter.stream', () => {
 
   it('throws on CLI execution error', async () => {
     const cli = makeMockCliAdapter();
-    (cli.execute as ReturnType<typeof vi.fn>).mockImplementation(() =>
-      Promise.resolve({
-        ok: false,
-        error: { code: 'CLI_EXECUTION_ERROR', message: 'Boom', cli: 'claude', retryable: false },
-      })
-    );
+    (cli.execute as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: false,
+      error: { code: 'CLI_EXECUTION_ERROR', message: 'Boom', cli: 'claude', retryable: false },
+    });
     const adapter = new CliToModelAdapter(cli);
 
     await expect(async () => {

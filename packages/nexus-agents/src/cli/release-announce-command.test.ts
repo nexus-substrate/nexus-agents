@@ -3,7 +3,7 @@
  * (Source: Issue #641 - Release announcement bot)
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, type MockInstance } from 'vitest';
 import type { ReleaseAnnounceResult, ChannelAnnouncementResult } from './release-announce-types.js';
 
 // ============================================================================
@@ -323,7 +323,7 @@ describe('runReleaseAnnounce', () => {
       verbose: true,
     });
 
-    const output = logSpy.mock.calls.map((c) => String(c[0])).join('\n');
+    const output = logSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
     expect(output).toContain('Release Announcement Generator');
     expect(output).toContain('3.0.0');
     logSpy.mockRestore();
@@ -347,7 +347,7 @@ describe('runReleaseAnnounce', () => {
 // ============================================================================
 
 describe('printReleaseAnnounceResult', () => {
-  let logSpy: ReturnType<(typeof vi)['spyOn']>;
+  let logSpy: MockInstance;
 
   beforeEach(() => {
     logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -356,7 +356,7 @@ describe('printReleaseAnnounceResult', () => {
   it('should print version and duration', () => {
     printReleaseAnnounceResult(makeSuccessResult());
 
-    const output = logSpy.mock.calls.map((c) => String(c[0])).join('\n');
+    const output = logSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
     expect(output).toContain('3.0.0');
     expect(output).toContain('42ms');
     logSpy.mockRestore();
@@ -369,7 +369,7 @@ describe('printReleaseAnnounceResult', () => {
       })
     );
 
-    const output = logSpy.mock.calls.map((c) => String(c[0])).join('\n');
+    const output = logSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
     expect(output).toContain('https://example.com/post');
     logSpy.mockRestore();
   });
@@ -382,7 +382,7 @@ describe('printReleaseAnnounceResult', () => {
       })
     );
 
-    const output = logSpy.mock.calls.map((c) => String(c[0])).join('\n');
+    const output = logSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
     expect(output).toContain('Connection failed');
     logSpy.mockRestore();
   });
@@ -395,7 +395,7 @@ describe('printReleaseAnnounceResult', () => {
       true
     );
 
-    const output = logSpy.mock.calls.map((c) => String(c[0])).join('\n');
+    const output = logSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
     expect(output).toContain('Content preview');
     logSpy.mockRestore();
   });
@@ -403,7 +403,7 @@ describe('printReleaseAnnounceResult', () => {
   it('should print all-success message when all channels pass', () => {
     printReleaseAnnounceResult(makeSuccessResult());
 
-    const output = logSpy.mock.calls.map((c) => String(c[0])).join('\n');
+    const output = logSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
     expect(output).toContain('All announcements generated');
     logSpy.mockRestore();
   });
@@ -415,7 +415,7 @@ describe('printReleaseAnnounceResult', () => {
       })
     );
 
-    const output = logSpy.mock.calls.map((c) => String(c[0])).join('\n');
+    const output = logSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
     expect(output).toContain('Some announcements failed');
     logSpy.mockRestore();
   });

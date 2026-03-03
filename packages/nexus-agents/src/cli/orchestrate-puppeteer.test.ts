@@ -94,6 +94,13 @@ describe('orchestrate-puppeteer', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // Vitest 4: restoreMocks no longer resets vi.fn() implementations/queues.
+    // Explicitly reset mocks to prevent leaks between tests.
+    mockTimeProvider.now.mockReset();
+    mockTimeProvider.nowIso.mockReset();
+    (fs.existsSync as Mock).mockReset();
+    (fs.readFileSync as Mock).mockReset();
+    (fs.writeFileSync as Mock).mockReset();
     mockLogger = createMockLogger();
     mockTimeProvider.now.mockReturnValue(1000);
     mockTimeProvider.nowIso.mockReturnValue('2024-01-01T00:00:00.000Z');
@@ -370,9 +377,14 @@ describe('orchestrate-puppeteer', () => {
         execute: vi.fn(() => Promise.resolve(createMockPuppeteerResult(true, 'result', 2, 2))),
       };
 
-      (CliAdapterAgent as unknown as Mock).mockReturnValue({ id: 'agent-1' });
+      (CliAdapterAgent as unknown as Mock).mockImplementation(function () {
+        return { id: 'agent-1' };
+      });
       (createLearnablePolicy as Mock).mockReturnValue(mockPolicy);
-      (PuppeteerOrchestrator as unknown as Mock).mockReturnValue(mockOrchestrator);
+
+      (PuppeteerOrchestrator as unknown as Mock).mockImplementation(function () {
+        return mockOrchestrator;
+      });
       (fs.writeFileSync as Mock).mockImplementation(() => undefined);
       mockTimeProvider.now
         .mockReturnValueOnce(1000)
@@ -410,9 +422,14 @@ describe('orchestrate-puppeteer', () => {
         execute: vi.fn(() => Promise.resolve(createMockPuppeteerResult(false, '', 0, 0))),
       };
 
-      (CliAdapterAgent as unknown as Mock).mockReturnValue({ id: 'agent-1' });
+      (CliAdapterAgent as unknown as Mock).mockImplementation(function () {
+        return { id: 'agent-1' };
+      });
       (createRuleBasedPolicy as Mock).mockReturnValue({} as unknown as IPolicyEngine);
-      (PuppeteerOrchestrator as unknown as Mock).mockReturnValue(mockOrchestrator);
+
+      (PuppeteerOrchestrator as unknown as Mock).mockImplementation(function () {
+        return mockOrchestrator;
+      });
 
       let callCount = 0;
       mockTimeProvider.now.mockImplementation(() => {
@@ -438,9 +455,14 @@ describe('orchestrate-puppeteer', () => {
         execute: vi.fn(() => Promise.resolve(createMockPuppeteerResult(true, 'result', 1, 1))),
       };
 
-      (CliAdapterAgent as unknown as Mock).mockReturnValue({ id: 'agent-1' });
+      (CliAdapterAgent as unknown as Mock).mockImplementation(function () {
+        return { id: 'agent-1' };
+      });
       (createRuleBasedPolicy as Mock).mockReturnValue({} as unknown as IPolicyEngine);
-      (PuppeteerOrchestrator as unknown as Mock).mockReturnValue(mockOrchestrator);
+
+      (PuppeteerOrchestrator as unknown as Mock).mockImplementation(function () {
+        return mockOrchestrator;
+      });
       (fs.writeFileSync as Mock).mockClear();
       mockTimeProvider.now.mockReturnValue(1000);
 
@@ -460,9 +482,14 @@ describe('orchestrate-puppeteer', () => {
         execute: vi.fn(() => Promise.resolve(createMockPuppeteerResult(true, 'result', 1, 1))),
       };
 
-      (CliAdapterAgent as unknown as Mock).mockReturnValue({ id: 'agent-1' });
+      (CliAdapterAgent as unknown as Mock).mockImplementation(function () {
+        return { id: 'agent-1' };
+      });
       (createRuleBasedPolicy as Mock).mockReturnValue({} as unknown as IPolicyEngine);
-      (PuppeteerOrchestrator as unknown as Mock).mockReturnValue(mockOrchestrator);
+
+      (PuppeteerOrchestrator as unknown as Mock).mockImplementation(function () {
+        return mockOrchestrator;
+      });
       mockTimeProvider.now.mockReturnValue(1234567890);
 
       await executeWithPuppeteer('test task', adapters, { task: 'test' }, mockLogger);

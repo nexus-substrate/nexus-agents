@@ -6,7 +6,7 @@
  * (Source: Issue #257 - SWE-Bench Evaluation)
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from 'vitest';
 import type { SWEBenchInstance, SWEBenchConfig } from './types.js';
 import { DEFAULT_SWE_BENCH_CONFIG } from './types.js';
 
@@ -71,23 +71,23 @@ import {
 } from './benchmark-runner.js';
 
 describe('benchmark-runner', () => {
-  let consoleLogSpy: ReturnType<typeof vi.spyOn>;
+  let consoleLogSpy: MockInstance;
 
   beforeEach(() => {
     vi.clearAllMocks();
     consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     // Set up default PredictionWriter mock (Issue #582)
-    MockPredictionWriter.mockImplementation(
-      () =>
-        ({
-          open: vi.fn().mockResolvedValue({ ok: true, value: undefined }),
-          write: vi.fn().mockResolvedValue({ ok: true, value: undefined }),
-          writeResult: vi.fn().mockResolvedValue({ ok: true, value: true }),
-          close: vi.fn().mockResolvedValue({ ok: true, value: undefined }),
-          getPredictionCount: vi.fn().mockReturnValue(0),
-          getOutputPath: vi.fn().mockReturnValue('predictions.jsonl'),
-        }) as never
-    );
+
+    MockPredictionWriter.mockImplementation(function () {
+      return {
+        open: vi.fn().mockResolvedValue({ ok: true, value: undefined }),
+        write: vi.fn().mockResolvedValue({ ok: true, value: undefined }),
+        writeResult: vi.fn().mockResolvedValue({ ok: true, value: true }),
+        close: vi.fn().mockResolvedValue({ ok: true, value: undefined }),
+        getPredictionCount: vi.fn().mockReturnValue(0),
+        getOutputPath: vi.fn().mockReturnValue('predictions.jsonl'),
+      } as never;
+    });
   });
 
   afterEach(() => {
@@ -281,16 +281,15 @@ describe('benchmark-runner', () => {
       const executor = createMockExecutor();
       const instances = [createMockInstance('test-1')];
 
-      MockPredictionWriter.mockImplementation(
-        () =>
-          ({
-            open: vi.fn().mockResolvedValue({
-              ok: false,
-              error: new Error('Cannot write to file'),
-            }),
-            close: vi.fn().mockResolvedValue({ ok: true, value: undefined }),
-          }) as never
-      );
+      MockPredictionWriter.mockImplementation(function () {
+        return {
+          open: vi.fn().mockResolvedValue({
+            ok: false,
+            error: new Error('Cannot write to file'),
+          }),
+          close: vi.fn().mockResolvedValue({ ok: true, value: undefined }),
+        } as never;
+      });
 
       const options: BenchmarkRunOptions = {
         instances,
@@ -331,14 +330,14 @@ describe('benchmark-runner', () => {
       });
 
       // Reset mock for PredictionWriter to default
-      MockPredictionWriter.mockImplementation(
-        () =>
-          ({
-            open: vi.fn().mockResolvedValue({ ok: true, value: undefined }),
-            writeResult: vi.fn().mockResolvedValue({ ok: true, value: true }),
-            close: vi.fn().mockResolvedValue({ ok: true, value: undefined }),
-          }) as never
-      );
+
+      MockPredictionWriter.mockImplementation(function () {
+        return {
+          open: vi.fn().mockResolvedValue({ ok: true, value: undefined }),
+          writeResult: vi.fn().mockResolvedValue({ ok: true, value: true }),
+          close: vi.fn().mockResolvedValue({ ok: true, value: undefined }),
+        } as never;
+      });
 
       const options: BenchmarkRunOptions = {
         instances,
@@ -371,14 +370,13 @@ describe('benchmark-runner', () => {
         },
       });
 
-      MockPredictionWriter.mockImplementation(
-        () =>
-          ({
-            open: vi.fn().mockResolvedValue({ ok: true, value: undefined }),
-            writeResult: vi.fn().mockResolvedValue({ ok: true, value: true }),
-            close: vi.fn().mockResolvedValue({ ok: true, value: undefined }),
-          }) as never
-      );
+      MockPredictionWriter.mockImplementation(function () {
+        return {
+          open: vi.fn().mockResolvedValue({ ok: true, value: undefined }),
+          writeResult: vi.fn().mockResolvedValue({ ok: true, value: true }),
+          close: vi.fn().mockResolvedValue({ ok: true, value: undefined }),
+        } as never;
+      });
 
       const options: BenchmarkRunOptions = {
         instances,
@@ -416,14 +414,13 @@ describe('benchmark-runner', () => {
         },
       });
 
-      MockPredictionWriter.mockImplementation(
-        () =>
-          ({
-            open: vi.fn().mockResolvedValue({ ok: true, value: undefined }),
-            writeResult: vi.fn().mockResolvedValue({ ok: true, value: true }),
-            close: vi.fn().mockResolvedValue({ ok: true, value: undefined }),
-          }) as never
-      );
+      MockPredictionWriter.mockImplementation(function () {
+        return {
+          open: vi.fn().mockResolvedValue({ ok: true, value: undefined }),
+          writeResult: vi.fn().mockResolvedValue({ ok: true, value: true }),
+          close: vi.fn().mockResolvedValue({ ok: true, value: undefined }),
+        } as never;
+      });
 
       const options: BenchmarkRunOptions = {
         instances,
@@ -457,14 +454,13 @@ describe('benchmark-runner', () => {
         },
       });
 
-      MockPredictionWriter.mockImplementation(
-        () =>
-          ({
-            open: vi.fn().mockResolvedValue({ ok: true, value: undefined }),
-            writeResult: vi.fn().mockResolvedValue({ ok: true, value: true }),
-            close: vi.fn().mockResolvedValue({ ok: true, value: undefined }),
-          }) as never
-      );
+      MockPredictionWriter.mockImplementation(function () {
+        return {
+          open: vi.fn().mockResolvedValue({ ok: true, value: undefined }),
+          writeResult: vi.fn().mockResolvedValue({ ok: true, value: true }),
+          close: vi.fn().mockResolvedValue({ ok: true, value: undefined }),
+        } as never;
+      });
 
       const options: BenchmarkRunOptions = {
         instances,

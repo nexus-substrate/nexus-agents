@@ -4,7 +4,7 @@
  * (Source: Issue #249 - CLI test coverage)
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from 'vitest';
 import { orchestrateCommand, type OrchestrateOptions } from './orchestrate-command.js';
 
 // Mock the cli-adapters module
@@ -26,8 +26,8 @@ const mockCreateAllAdapters = vi.mocked(createAllAdapters);
 const mockCreateCompositeRouter = vi.mocked(createCompositeRouter);
 
 describe('orchestrate-command', () => {
-  let consoleLogSpy: ReturnType<typeof vi.spyOn>;
-  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+  let consoleLogSpy: MockInstance;
+  let consoleErrorSpy: MockInstance;
 
   beforeEach(() => {
     vi.clearAllMocks();

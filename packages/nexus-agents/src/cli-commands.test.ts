@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach, type MockInstance } from 'vitest';
 import { dispatchCommand, printHelp, printVersion } from './cli-commands.js';
 import type { ParsedCliArgs } from './cli-types.js';
 
@@ -78,15 +78,13 @@ function createArgs(command: string, overrides: Record<string, unknown> = {}): P
 }
 
 describe('cli-commands', () => {
-  let writeSpy: ReturnType<typeof vi.spyOn>;
+  let writeSpy: MockInstance;
   // Vitest 3.x intercepts process.exit before spies fire.
   // Assertions use substring/regex matching on vitest's error message.
   vi.spyOn(process, 'exit');
 
   beforeEach(() => {
-    writeSpy = vi.spyOn(process.stdout, 'write').mockReturnValue(true) as unknown as ReturnType<
-      typeof vi.spyOn
-    >;
+    writeSpy = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
   });
 
   afterEach(() => {
@@ -98,7 +96,7 @@ describe('cli-commands', () => {
     it('should write help text to stdout', () => {
       printHelp();
       expect(writeSpy).toHaveBeenCalled();
-      const output = writeSpy.mock.calls.map((c) => String(c[0])).join('');
+      const output = writeSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
       expect(output).toContain('nexus-agents');
     });
   });
@@ -107,7 +105,7 @@ describe('cli-commands', () => {
     it('should write version to stdout', () => {
       printVersion();
       expect(writeSpy).toHaveBeenCalled();
-      const output = writeSpy.mock.calls.map((c) => String(c[0])).join('');
+      const output = writeSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
       expect(output).toContain('nexus-agents v');
     });
   });
