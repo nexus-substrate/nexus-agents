@@ -34,6 +34,21 @@ vi.mock('../core/index.js', () => ({
   getErrorMessage: vi.fn((e: unknown) => (e instanceof Error ? e.message : String(e))),
 }));
 
+// Mock link validator (prevents real fs traversal in vitest 4)
+vi.mock('./index-command-link-validator.js', () => ({
+  validateLinks: vi.fn().mockResolvedValue({
+    files: [],
+    summary: { totalFiles: 0, totalLinks: 0, brokenLinks: 0, validLinks: 0, skippedLinks: 0 },
+    brokenLinks: [],
+  }),
+  formatLinkValidationTable: vi.fn().mockReturnValue('Link validation table'),
+  formatLinkValidationJson: vi.fn().mockReturnValue('{}'),
+  validateInternalLink: vi.fn(),
+  validateExternalLink: vi.fn(),
+  validateAnchorLink: vi.fn(),
+  validateLink: vi.fn(),
+}));
+
 // Mock indexer module
 vi.mock('../indexer/index.js', () => ({
   extractProject: vi.fn(),
