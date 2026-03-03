@@ -2881,3 +2881,25 @@ papers:
     techniques_extracted: []
     related_issues: []
     implementation_status: not-started
+  arxiv-2601.15652:
+    title:
+      Predictive Coding and Information Bottleneck for Hallucination Detection in Large Language
+      Models
+    authors: []
+    source: arxiv
+    arxiv_id: '2601.15652'
+    url: https://arxiv.org/abs/2601.15652
+    publication_date: 2026-01
+    venue: null
+    topics:
+      - LLM evaluation
+    tags:
+      - llm
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
