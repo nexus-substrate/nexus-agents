@@ -472,23 +472,6 @@ export class Orchestrator extends BaseAgent {
 }
 
 /**
- * @deprecated Use {@link createOrchestrator} instead. Will be removed in v3.0.
- *
- * @example
- * ```typescript
- * const orchestrator = createOrchestrator({
- *   orchestratorOptions: { maxSubtasks: 5 },
- * });
- * const result = await orchestrator.execute(task);
- * ```
- */
-export function createTechLead(
-  options?: Partial<BaseAgentOptions> & { techLeadOptions?: OrchestratorOptions }
-): Orchestrator {
-  return new Orchestrator(options);
-}
-
-/**
  * Creates a new Orchestrator agent with the given options.
  * This is the preferred factory function for creating coordination agents.
  *

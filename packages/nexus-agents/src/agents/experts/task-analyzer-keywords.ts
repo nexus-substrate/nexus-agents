@@ -5,18 +5,6 @@
  */
 
 import type { TaskDomain } from './task-analyzer-types.js';
-// Shared utilities per ADR-0013
-import { STOPWORDS } from '../../utils/text-utils.js';
-
-// ============================================================================
-// Stop Words
-// ============================================================================
-
-/**
- * Common stop words to filter out during keyword extraction.
- * @deprecated Use import from '../../utils/text-utils.js' directly. Will be removed in v3.0.
- */
-export const STOP_WORDS = STOPWORDS;
 
 // ============================================================================
 // Domain Keywords

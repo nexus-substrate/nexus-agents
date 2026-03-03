@@ -2582,3 +2582,23 @@ papers:
     techniques_extracted: []
     related_issues: []
     implementation_status: not-started
+  arxiv-2603.01548:
+    title: Graph-Based Self-Healing Tool Routing for Cost-Efficient LLM Agents
+    authors: []
+    source: arxiv
+    arxiv_id: '2603.01548'
+    url: https://arxiv.org/abs/2603.01548
+    publication_date: 2026-03
+    venue: null
+    topics:
+      - graph-orchestration
+    tags:
+      - llm
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
