@@ -57,12 +57,6 @@ function c(code: keyof typeof RAW_ANSI, useColors: boolean): string {
   return colors[code];
 }
 
-/**
- * ANSI color codes for terminal output.
- * @deprecated Import 'colors' from '../cli/ansi-output.js' directly
- */
-export const COLORS = colors;
-
 // =============================================================================
 // Formatting Functions
 // =============================================================================

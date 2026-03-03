@@ -2439,3 +2439,23 @@ papers:
     techniques_extracted: []
     related_issues: []
     implementation_status: not-started
+  arxiv-2602.23681:
+    title: 'ODAR: Principled Adaptive Routing for LLM Reasoning via Active Inference'
+    authors: []
+    source: arxiv
+    arxiv_id: '2602.23681'
+    url: https://arxiv.org/abs/2602.23681
+    publication_date: 2026-02
+    venue: null
+    topics:
+      - model-routing
+    tags:
+      - llm
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started

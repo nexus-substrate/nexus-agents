@@ -113,11 +113,6 @@ export class OrchestratorAdapter implements IOrchestrator {
     this.logger = logger ?? createLogger({ component: 'OrchestratorAdapter' });
   }
 
-  /** @deprecated Use setOrchestrator() instead */
-  setTechLead(tl: { execute: (task: Task) => Promise<Result<unknown, unknown>> }): void {
-    this.agent = tl;
-  }
-
   setOrchestrator(agent: { execute: (task: Task) => Promise<Result<unknown, unknown>> }): void {
     this.agent = agent;
   }
