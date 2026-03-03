@@ -40,6 +40,7 @@ export async function validateSecurity(options: ValidatorOptions): Promise<Exper
     execSync('npm audit --audit-level=high 2>/dev/null', {
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
+      timeout: CLI_SUBPROCESS_TIMEOUTS.ghCommandMs,
     });
   } catch {
     findings.push({
@@ -66,7 +67,11 @@ export async function validateSecurity(options: ValidatorOptions): Promise<Exper
   try {
     const result = execSync(
       'git diff HEAD~10..HEAD -- "*.ts" "*.js" | grep -iE "(api[_-]?key|secret|password|token)" | head -5',
-      { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }
+      {
+        encoding: 'utf-8',
+        stdio: ['pipe', 'pipe', 'pipe'],
+        timeout: CLI_SUBPROCESS_TIMEOUTS.ghCommandMs,
+      }
     );
     if (result.trim()) {
       findings.push({
@@ -105,6 +110,7 @@ export async function validateArchitecture(
     const result = execSync('npx nexus-agents fitness-audit --format=json 2>/dev/null', {
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
+      timeout: CLI_SUBPROCESS_TIMEOUTS.releaseValidateMs,
     });
     const audit = JSON.parse(result) as Record<string, unknown>;
     const fitnessScore = typeof audit['score'] === 'number' ? audit['score'] : 0;

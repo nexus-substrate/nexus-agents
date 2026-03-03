@@ -18,6 +18,7 @@ import {
   COMMIT_TYPE_TO_CATEGORY,
   CATEGORY_ORDER,
 } from './release-notes-types.js';
+import { CLI_SUBPROCESS_TIMEOUTS } from '../config/timeouts.js';
 
 /**
  * Gets the latest git tag.
@@ -29,6 +30,7 @@ export function getLatestTag(): string | undefined {
     const result = execSync('git describe --tags --abbrev=0', {
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
+      timeout: CLI_SUBPROCESS_TIMEOUTS.ghCommandMs,
     }).trim();
     return result || undefined;
   } catch {
@@ -48,6 +50,7 @@ export function getCommitsBetween(from: string, to = 'HEAD'): string[] {
     const result = execSync(`git log ${from}..${to} --oneline --format="%h %s"`, {
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
+      timeout: CLI_SUBPROCESS_TIMEOUTS.ghCommandMs,
     }).trim();
     return result ? result.split('\n').filter(Boolean) : [];
   } catch {
