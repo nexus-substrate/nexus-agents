@@ -246,8 +246,8 @@ export function generateMarkdownFormat(
   lines.push('');
 
   // Add highlights section
-  const featCount = categories.find((c) => c.name === 'Added')?.commits.length || 0;
-  const fixCount = categories.find((c) => c.name === 'Fixed')?.commits.length || 0;
+  const featCount = categories.find((c) => c.name === 'Added')?.commits.length ?? 0;
+  const fixCount = categories.find((c) => c.name === 'Fixed')?.commits.length ?? 0;
   const totalCount = categories.reduce((sum, c) => sum + c.commits.length, 0);
 
   lines.push('## Highlights');

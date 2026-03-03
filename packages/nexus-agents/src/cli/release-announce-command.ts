@@ -96,9 +96,9 @@ function generateBlogPost(options: ReleaseAnnounceOptions): string {
   });
   const categories = groupCommitsByCategory(parsedCommits);
 
-  const featCount = categories.find((c) => c.name === 'Added')?.commits.length || 0;
-  const fixCount = categories.find((c) => c.name === 'Fixed')?.commits.length || 0;
-  const refactorCount = categories.find((c) => c.name === 'Changed')?.commits.length || 0;
+  const featCount = categories.find((c) => c.name === 'Added')?.commits.length ?? 0;
+  const fixCount = categories.find((c) => c.name === 'Fixed')?.commits.length ?? 0;
+  const refactorCount = categories.find((c) => c.name === 'Changed')?.commits.length ?? 0;
 
   const frontmatter: BlogPostMetadata = {
     title: `nexus-agents v${options.version} Released: Multi-Agent Orchestration Improvements`,

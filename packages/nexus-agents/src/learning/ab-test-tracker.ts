@@ -310,7 +310,7 @@ export class AbTestTracker implements IAbTestTracker {
         ? (treatment.successRate - control.successRate) / control.successRate
         : 0;
     const recommendedSampleSize = calculateMinSampleSize(
-      control.successRate || 0.5,
+      control.successRate,
       experiment.minimumDetectableEffect
     );
     const hasMinimumSampleSize =
