@@ -22,17 +22,10 @@ export default defineConfig({
     // Use forks pool for process isolation (prevents memory leaks)
     // Each test file runs in its own Node.js process
     pool: 'forks',
-    poolOptions: {
-      forks: {
-        // Isolate each test file completely
-        isolate: true,
-        // Single fork mode helps with memory but slower
-        singleFork: false,
-        // Limit concurrent forks to manage memory
-        maxForks: 4,
-        minForks: 1,
-      },
-    },
+    // Isolate each test file completely
+    isolate: true,
+    // Limit concurrent workers to manage memory
+    maxWorkers: 4,
 
     // Timeouts
     testTimeout: 30000, // 30 seconds per test
@@ -41,7 +34,7 @@ export default defineConfig({
     // Fail fast after repeated failures
     bail: 10,
 
-    // Reporter ('basic' deprecated in Vitest v3, use 'default')
+    // Reporter
     reporters: ['default'],
 
     // Environment
