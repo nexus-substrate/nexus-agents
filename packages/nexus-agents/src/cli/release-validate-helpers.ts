@@ -10,10 +10,9 @@
 
 /* eslint-disable @typescript-eslint/restrict-template-expressions */
 /* eslint-disable @typescript-eslint/strict-boolean-expressions */
-/* eslint-disable @typescript-eslint/prefer-nullish-coalescing */
+
 /* eslint-disable @typescript-eslint/require-await */
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable max-lines-per-function */
 
@@ -128,13 +127,14 @@ export async function validateArchitecture(
     }
 
     // Add individual dimension findings
-    if (audit.findings) {
-      for (const finding of audit.findings) {
+    const auditFindings = audit['findings'];
+    if (Array.isArray(auditFindings)) {
+      for (const finding of auditFindings as Array<Record<string, unknown>>) {
         findings.push({
           severity: 'info',
           category: 'architecture',
-          title: finding.message || 'Fitness finding',
-          description: finding.suggestion || '',
+          title: typeof finding['message'] === 'string' ? finding['message'] : 'Fitness finding',
+          description: typeof finding['suggestion'] === 'string' ? finding['suggestion'] : '',
         });
       }
     }
