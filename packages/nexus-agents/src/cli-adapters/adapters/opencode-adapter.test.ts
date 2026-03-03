@@ -167,7 +167,7 @@ describe('OpenCodeCliAdapter', () => {
       expect(args).toContain(EXPECTED_DEFAULT_ID);
       // Prompt should NOT be in args — it's passed via stdin
       expect(args).not.toContain('Say hello');
-      expect(mockProcess.stdin.write).toHaveBeenCalledWith('Say hello');
+      expect(mockProcess.stdin?.write).toHaveBeenCalledWith('Say hello');
     });
 
     it('should use task model over default when provided', async () => {

@@ -13,7 +13,7 @@ import {
   bayesianAggregate,
   combineSubsetResults,
   countSubsetVotes,
-  determineDecision,
+  determineHigherOrderDecision,
   aggregateSimple,
   calculateImprovement,
   buildReasoning,
@@ -199,25 +199,25 @@ describe('combineSubsetResults', () => {
 });
 
 // ============================================================================
-// determineDecision
+// determineHigherOrderDecision
 // ============================================================================
 
-describe('determineDecision', () => {
+describe('determineHigherOrderDecision', () => {
   it('returns approve when approval > rejection by margin', () => {
-    expect(determineDecision(0.8, 0.2)).toBe('approve');
+    expect(determineHigherOrderDecision(0.8, 0.2)).toBe('approve');
   });
 
   it('returns reject when rejection > approval by margin', () => {
-    expect(determineDecision(0.2, 0.8)).toBe('reject');
+    expect(determineHigherOrderDecision(0.2, 0.8)).toBe('reject');
   });
 
   it('returns no_consensus when diff < 0.1', () => {
-    expect(determineDecision(0.51, 0.49)).toBe('no_consensus');
+    expect(determineHigherOrderDecision(0.51, 0.49)).toBe('no_consensus');
   });
 
   it('returns approve at exact threshold boundary (diff = 0.1)', () => {
     // diff = |0.55 - 0.45| = 0.1, which is NOT < 0.1, so a decision is made
-    expect(determineDecision(0.55, 0.45)).toBe('approve');
+    expect(determineHigherOrderDecision(0.55, 0.45)).toBe('approve');
   });
 });
 

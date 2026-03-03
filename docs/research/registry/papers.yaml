@@ -2419,3 +2419,23 @@ papers:
     techniques_extracted: []
     related_issues: []
     implementation_status: not-started
+  arxiv-2511.20663:
+    title: 'MTTR-A: Measuring Cognitive Recovery Latency in Multi-Agent Systems'
+    authors: []
+    source: arxiv
+    arxiv_id: '2511.20663'
+    url: https://arxiv.org/abs/2511.20663
+    publication_date: 2025-11
+    venue: null
+    topics:
+      - multi-agent reliability
+    tags:
+      - multi-agent
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started

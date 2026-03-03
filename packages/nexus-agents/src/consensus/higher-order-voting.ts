@@ -31,7 +31,7 @@ import {
   bayesianAggregate,
   aggregateSubsets,
   combineSubsetResults,
-  determineDecision,
+  determineHigherOrderDecision,
   aggregateSimple,
   calculateImprovement,
   buildReasoning,
@@ -88,7 +88,7 @@ export class OWVoting implements IHigherOrderVoting, IVotingStrategy {
     const { posteriorApproval, posteriorRejection, effectiveVoteCount, downweightedAgents } =
       bayesianAggregate(votes, effectiveWeights);
 
-    const decision = determineDecision(posteriorApproval, posteriorRejection);
+    const decision = determineHigherOrderDecision(posteriorApproval, posteriorRejection);
     const baselineResult = this.aggregateSimpleInternal(votes);
     const improvementOverBaseline = calculateImprovement(
       posteriorApproval,
@@ -138,7 +138,7 @@ export class OWVoting implements IHigherOrderVoting, IVotingStrategy {
     const { subsetResults, downweightedAgents } = aggregateSubsets(votes, independentSubsets);
     const { posteriorApproval, posteriorRejection } = combineSubsetResults(subsetResults);
     const effectiveVoteCount = independentSubsets.length;
-    const decision = determineDecision(posteriorApproval, posteriorRejection);
+    const decision = determineHigherOrderDecision(posteriorApproval, posteriorRejection);
 
     const baselineResult = this.aggregateSimpleInternal(votes);
     const improvementOverBaseline = calculateImprovement(

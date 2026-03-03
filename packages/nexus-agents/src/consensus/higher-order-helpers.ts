@@ -228,7 +228,7 @@ export function countSubsetVotes(votes: ReadonlyMap<string, Vote>): {
 /**
  * Determine decision based on posterior probabilities.
  */
-export function determineDecision(
+export function determineHigherOrderDecision(
   posteriorApproval: number,
   posteriorRejection: number
 ): 'approve' | 'reject' | 'no_consensus' {
@@ -271,7 +271,7 @@ export function aggregateSimple(
 
   const posteriorApproval = total > 0 ? approve / total : 0.5;
   const posteriorRejection = total > 0 ? reject / total : 0.5;
-  const decision = determineDecision(posteriorApproval, posteriorRejection);
+  const decision = determineHigherOrderDecision(posteriorApproval, posteriorRejection);
 
   return {
     decision,
