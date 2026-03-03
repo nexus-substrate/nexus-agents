@@ -326,6 +326,15 @@ function createErrorResponse(opts: ErrorResponseOpts): RunGraphWorkflowResponse 
 
 const graphLogger = createLogger({ tool: 'run-graph-workflow' });
 
+/** Maps workflow name to task category for accurate weather report tracking. */
+function workflowToCategory(
+  workflow: string
+): 'code_review' | 'security_review' | 'code_generation' {
+  if (workflow.includes('security') || workflow.includes('audit')) return 'security_review';
+  if (workflow.includes('review')) return 'code_review';
+  return 'code_generation';
+}
+
 /** Records graph workflow result to memory and outcome store. Best-effort. */
 function recordGraphWorkflowResult(result: RunGraphWorkflowResponse): void {
   const succeeded = result.status === 'completed';
@@ -351,14 +360,14 @@ function recordGraphWorkflowResult(result: RunGraphWorkflowResponse): void {
       });
     }
   } catch (error: unknown) {
-    graphLogger.warn('Failed to record graph result', { error: String(error) });
+    graphLogger.debug('Failed to record graph result', { error: String(error) });
   }
   try {
     const store = getOutcomeStore();
     store.append({
       id: `graph-${String(Date.now())}-${Math.random().toString(36).slice(2, 8)}`,
       cli: DEFAULT_CLI,
-      category: 'code_generation',
+      category: workflowToCategory(result.workflow),
       model: 'graph-workflow',
       success: succeeded,
       durationMs: result.durationMs,

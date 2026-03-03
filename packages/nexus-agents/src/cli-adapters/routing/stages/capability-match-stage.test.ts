@@ -131,6 +131,45 @@ describe('CapabilityMatchStage', () => {
       }
     });
 
+    it('applies specialization bonus for research + gemini', async () => {
+      const ctx = createContext('research and investigate the state of the art literature');
+      const result = await stage.route(ctx);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        const scores = result.value.context.scores;
+        // Gemini should get research specialization bonus
+        const geminiScore = scores.get('gemini') ?? 0;
+        expect(geminiScore).toBeGreaterThan(0);
+      }
+    });
+
+    it('applies specialization bonus for exploration + gemini', async () => {
+      const ctx = createContext('explore and navigate the codebase to find relevant files');
+      const result = await stage.route(ctx);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        const scores = result.value.context.scores;
+        // Gemini should get exploration specialization bonus
+        const geminiScore = scores.get('gemini') ?? 0;
+        expect(geminiScore).toBeGreaterThan(0);
+      }
+    });
+
+    it('applies specialization bonus for security + claude', async () => {
+      const ctx = createContext('audit security vulnerabilities and perform threat modeling');
+      const result = await stage.route(ctx);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        const scores = result.value.context.scores;
+        // Claude should get security specialization bonus
+        const claudeScore = scores.get('claude') ?? 0;
+        expect(claudeScore).toBeGreaterThan(0);
+      }
+    });
+
     it('adds trace to context', async () => {
       const ctx = createContext('test task');
       const result = await stage.route(ctx);

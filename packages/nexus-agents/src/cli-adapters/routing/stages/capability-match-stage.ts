@@ -20,6 +20,7 @@ import type {
   CliName,
 } from '../router-stage.js';
 import { addTrace, updateScore, getRemainingCandidates } from '../router-stage.js';
+import { detectTaskCategory } from '../../../config/task-specialization.js';
 
 // ============================================================================
 // Configuration
@@ -134,7 +135,7 @@ export class CapabilityMatchStage implements IRouterStage {
     const scores: Array<{ cli: CliName; score: number; dominant: string }> = [];
 
     for (const cli of remaining) {
-      const { score, dominant } = this.calculateCapabilityMatch(cli, weights, taskType);
+      const { score, dominant } = this.calculateCapabilityMatch(cli, weights, taskType, ctx.task);
       scores.push({ cli, score, dominant });
       updatedCtx = updateScore(updatedCtx, cli, score * this.config.capabilityWeight);
     }
@@ -218,7 +219,8 @@ export class CapabilityMatchStage implements IRouterStage {
   private calculateCapabilityMatch(
     cli: CliName,
     weights: CapabilityWeights,
-    taskType: TaskType
+    taskType: TaskType,
+    taskContent: string
   ): { score: number; dominant: string } {
     const caps = CLI_CAPABILITIES[cli];
 
@@ -237,12 +239,8 @@ export class CapabilityMatchStage implements IRouterStage {
       normalized.speed * weights.speed +
       normalized.costEfficiency * weights.costEfficiency;
 
-    // Add specialization bonus
-    if (taskType === 'reasoning' && cli === 'claude') {
-      score += this.config.specializationBonus;
-    } else if (taskType === 'code' && cli === 'codex') {
-      score += this.config.specializationBonus;
-    }
+    // Add specialization bonus from task specialization matrix
+    score += this.getSpecializationBonus(cli, taskContent);
 
     // Find dominant capability
     const capEntries = Object.entries(normalized);
@@ -250,6 +248,19 @@ export class CapabilityMatchStage implements IRouterStage {
     const dominant = sorted[0]?.[0] ?? 'balanced';
 
     return { score: Math.min(1, score), dominant };
+  }
+
+  /**
+   * Gets specialization bonus for a CLI based on the task specialization matrix.
+   * Uses detectTaskCategory() from the canonical matrix for full 10-category coverage.
+   */
+  private getSpecializationBonus(cli: CliName, taskContent: string): number {
+    const match = detectTaskCategory(taskContent);
+    if (match === null) return 0;
+
+    if (cli === match.primaryCli) return this.config.specializationBonus;
+    if (cli === match.secondaryCli) return this.config.specializationBonus * 0.5;
+    return 0;
   }
 
   /**
