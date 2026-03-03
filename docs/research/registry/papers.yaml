@@ -3368,3 +3368,83 @@ papers:
     techniques_extracted: []
     related_issues: []
     implementation_status: not-started
+  arxiv-2511.21990:
+    title: A Safety and Security Framework for Real-World Agentic Systems
+    authors: []
+    source: arxiv
+    arxiv_id: '2511.21990'
+    url: https://arxiv.org/abs/2511.21990
+    publication_date: 2025-11
+    venue: null
+    topics:
+      - agentic-safety
+    tags:
+      - reinforcement-learning
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2511.12236:
+    title: 'Consistency Is the Key: Detecting Hallucinations in LLM Generated Text By Checking
+      Inconsistencies About Key Facts'
+    authors: []
+    source: arxiv
+    arxiv_id: '2511.12236'
+    url: https://arxiv.org/abs/2511.12236
+    publication_date: 2025-11
+    venue: null
+    topics:
+      - hallucination-detection
+    tags:
+      - llm
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2510.04905:
+    title: 'Retrieval-Augmented Code Generation: A Survey with Focus on Repository-Level Approaches'
+    authors: []
+    source: arxiv
+    arxiv_id: '2510.04905'
+    url: https://arxiv.org/abs/2510.04905
+    publication_date: 2025-10
+    venue: null
+    topics:
+      - code-generation
+    tags:
+      - survey
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2601.00376:
+    title: 'In Line with Context: Repository-Level Code Generation via Context Inlining'
+    authors: []
+    source: arxiv
+    arxiv_id: '2601.00376'
+    url: https://arxiv.org/abs/2601.00376
+    publication_date: 2026-01
+    venue: null
+    topics:
+      - code-generation
+    tags: []
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
