@@ -387,8 +387,7 @@ export function createPersistedProposal(
 ): PersistedProposal {
   const persistedVotes: PersistedVote[] = [];
 
-  const voteEntries = Array.from(votes.entries());
-  for (const [agentId, vote] of voteEntries) {
+  for (const [agentId, vote] of votes) {
     persistedVotes.push({
       agentId,
       decision: vote.decision,

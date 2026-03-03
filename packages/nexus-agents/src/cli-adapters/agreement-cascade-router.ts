@@ -258,7 +258,7 @@ export class AgreementCascadeRouter implements IAgreementCascadeRouter {
     }
 
     if (responses.size === 1) {
-      const [model, response] = Array.from(responses.entries())[0] as [CliName, CliResponse];
+      const [model, response] = [...responses][0] as [CliName, CliResponse];
       return {
         score: 1,
         hasAgreement: true,
