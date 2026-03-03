@@ -73,7 +73,7 @@ export function calculateClusterSimilarity(
  * Uses simplified token overlap as similarity metric.
  */
 export function clusterResponses(responses: ReadonlyMap<CliName, CliResponse>): ResponseCluster[] {
-  const entries = Array.from(responses.entries());
+  const entries = [...responses];
   const clusters: ResponseCluster[] = [];
   const assigned = new Set<CliName>();
 
@@ -117,7 +117,7 @@ export function selectBestResponse(
     if (stage === undefined) continue;
 
     // Find the response with best characteristics
-    const candidates = Array.from(stage.responses.entries());
+    const candidates = [...stage.responses];
     if (candidates.length > 0) {
       // Sort by response length (longer responses often more complete)
       candidates.sort((a, b) => b[1].text.length - a[1].text.length);

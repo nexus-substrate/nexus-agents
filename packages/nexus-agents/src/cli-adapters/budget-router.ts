@@ -324,7 +324,7 @@ export class BudgetRouter implements IBudgetRouter {
     estimatedTokens: number
   ): ICliAdapter | null {
     // Sort adapters by cost efficiency (higher = cheaper)
-    const sortedAdapters = Array.from(this.adapters.entries()).sort((a, b) => {
+    const sortedAdapters = [...this.adapters].sort((a, b) => {
       const capA = DEFAULT_CAPABILITIES[a[0]];
       const capB = DEFAULT_CAPABILITIES[b[0]];
       return capB.cost - capA.cost; // Prefer cheaper models

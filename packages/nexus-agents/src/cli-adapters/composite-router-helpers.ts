@@ -449,7 +449,7 @@ export async function fetchCapacityData(
   adapters: Map<CliName, ICliAdapter>
 ): Promise<Map<CliName, CapacityStatus>> {
   const result = new Map<CliName, CapacityStatus>();
-  const entries = Array.from(adapters.entries());
+  const entries = [...adapters];
   const settled = await Promise.allSettled(entries.map(([, a]) => a.getCapacity()));
   for (const [idx, entry] of entries.entries()) {
     const outcome = settled[idx];

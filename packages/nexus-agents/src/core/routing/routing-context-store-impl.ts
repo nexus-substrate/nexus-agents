@@ -380,14 +380,16 @@ export class RoutingContextStore implements IRoutingContextStore {
 
   toJSON(): string {
     return JSON.stringify({
-      preferences: Array.from(this.preferences.entries()),
-      performanceByTaskType: Array.from(this.performanceByTaskType.entries()).map(
-        ([taskType, map]) => [taskType, Array.from(map.entries())]
-      ),
-      experienceByWorkflow: Array.from(this.experienceByWorkflow.entries()).map(
-        ([workflow, map]) => [workflow, Array.from(map.entries())]
-      ),
-      actionCache: Array.from(this.actionCache.entries()),
+      preferences: [...this.preferences],
+      performanceByTaskType: [...this.performanceByTaskType].map(([taskType, map]) => [
+        taskType,
+        [...map],
+      ]),
+      experienceByWorkflow: [...this.experienceByWorkflow].map(([workflow, map]) => [
+        workflow,
+        [...map],
+      ]),
+      actionCache: [...this.actionCache],
       cacheHits: this.cacheHits,
       cacheMisses: this.cacheMisses,
       routingDecisions: this.routingDecisions,
@@ -422,7 +424,7 @@ export class RoutingContextStore implements IRoutingContextStore {
 
   private evictOldestPreferences(): void {
     const toRemove = Math.ceil(this.preferences.size * 0.1);
-    const sorted = Array.from(this.preferences.entries()).sort(
+    const sorted = [...this.preferences].sort(
       (a, b) => a[1].recordedAt.getTime() - b[1].recordedAt.getTime()
     );
     for (let i = 0; i < toRemove && i < sorted.length; i++) {
