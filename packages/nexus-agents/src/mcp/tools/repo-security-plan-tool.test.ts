@@ -11,7 +11,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { RepoSecurityPlan } from './repo-security-plan-types.js';
 
 // Mock the security plan generator
-const mockGenerateSecurityPlan = vi.fn<[unknown], Promise<RepoSecurityPlan>>();
+const mockGenerateSecurityPlan = vi.fn<(input: unknown) => Promise<RepoSecurityPlan>>();
 
 vi.mock('./repo-security-plan.js', () => ({
   generateSecurityPlan: (...args: unknown[]) => mockGenerateSecurityPlan(args[0]),
