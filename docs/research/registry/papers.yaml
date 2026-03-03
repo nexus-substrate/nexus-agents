@@ -3325,3 +3325,46 @@ papers:
     techniques_extracted: []
     related_issues: []
     implementation_status: not-started
+  arxiv-2601.06108:
+    title:
+      'From RLHF to Direct Alignment: A Theoretical Unification of Preference Learning for Large
+      Language Models'
+    authors: []
+    source: arxiv
+    arxiv_id: '2601.06108'
+    url: https://arxiv.org/abs/2601.06108
+    publication_date: 2026-01
+    venue: null
+    topics:
+      - preference-optimization
+    tags:
+      - llm
+      - reinforcement-learning
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2512.14100:
+    title: A First-Order Logic-Based Alternative to Reward Models in RLHF
+    authors: []
+    source: arxiv
+    arxiv_id: '2512.14100'
+    url: https://arxiv.org/abs/2512.14100
+    publication_date: 2025-12
+    venue: null
+    topics:
+      - preference-optimization
+    tags:
+      - reinforcement-learning
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started

@@ -201,3 +201,23 @@ export {
   createHigherOrderVotingStrategy,
   type OWVotingOptions,
 } from './higher-order-voting.js';
+
+// Higher-order voting helpers (Issue #1366 - utilities for HOV logic)
+export type {
+  BayesianAggregateResult,
+  SubsetAggregationResult,
+  CombinedSubsetResult,
+} from './higher-order-helpers.js';
+
+export {
+  hasSufficientCorrelationData,
+  computeEffectiveWeights,
+  bayesianAggregate,
+  aggregateSubsets,
+  combineSubsetResults,
+  countSubsetVotes,
+  determineHigherOrderDecision,
+  aggregateSimple,
+  calculateImprovement,
+  buildReasoning,
+} from './higher-order-helpers.js';
