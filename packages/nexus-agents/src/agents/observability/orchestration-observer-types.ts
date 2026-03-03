@@ -281,7 +281,7 @@ export type SwarmObserverEvent = OrchestrationObserverEvent;
 export type SwarmObserverListener = OrchestrationObserverListener;
 /** @deprecated Use OrchestrationObserverConfig instead */
 export type SwarmObserverConfig = OrchestrationObserverConfig;
-/** @deprecated Use OrchestrationObserverConfigSchema instead */
+// Backward compat alias — will be removed in v3.0
 export const SwarmObserverConfigSchema = OrchestrationObserverConfigSchema;
 /** @deprecated Use IOrchestrationObserver instead */
 export type ISwarmObserver = IOrchestrationObserver;

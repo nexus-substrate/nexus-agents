@@ -19,6 +19,15 @@ import type {
   TopsisResult,
 } from './topsis-types.js';
 import { DEFAULT_TOPSIS_CONFIG, DEFAULT_MODEL_PROFILES } from './topsis-types.js';
+/** Tolerance for weight sum validation (weights must sum to 1.0 ± this). */
+const WEIGHT_SUM_TOLERANCE = 0.01;
+
+/** Default expected input tokens when not specified. */
+const DEFAULT_INPUT_TOKENS = 1000;
+
+/** Default expected output tokens when not specified. */
+const DEFAULT_OUTPUT_TOKENS = 500;
+
 import {
   estimateCost,
   calculateSumOfSquares,
@@ -68,7 +77,7 @@ export class TopsisRouter {
    */
   private validateWeights(): void {
     const sum = this.config.criteria.reduce((acc, c) => acc + c.weight, 0);
-    if (Math.abs(sum - 1.0) > 0.01) {
+    if (Math.abs(sum - 1.0) > WEIGHT_SUM_TOLERANCE) {
       throw new Error(`Criteria weights must sum to 1.0, got ${sum.toFixed(3)}`);
     }
   }
@@ -78,8 +87,8 @@ export class TopsisRouter {
    */
   selectModel(opts: SelectModelOptions = {}): TopsisResult {
     const profiles = opts.profiles ?? DEFAULT_MODEL_PROFILES;
-    const inputTokens = opts.expectedInputTokens ?? 1000;
-    const outputTokens = opts.expectedOutputTokens ?? 500;
+    const inputTokens = opts.expectedInputTokens ?? DEFAULT_INPUT_TOKENS;
+    const outputTokens = opts.expectedOutputTokens ?? DEFAULT_OUTPUT_TOKENS;
 
     // Step 1: Build decision matrix
     const matrix = this.buildDecisionMatrix(profiles, inputTokens, outputTokens);

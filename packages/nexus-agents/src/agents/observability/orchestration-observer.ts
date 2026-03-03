@@ -447,8 +447,6 @@ export function createOrchestrationObserver(
   return new OrchestrationObserver(eventBus, options);
 }
 
-// Backward compatibility aliases (deprecated, will be removed in v3.0)
-/** @deprecated Use OrchestrationObserver instead */
+// Backward compat aliases — will be removed in v3.0
 export const SwarmObserver = OrchestrationObserver;
-/** @deprecated Use createOrchestrationObserver instead */
 export const createSwarmObserver = createOrchestrationObserver;

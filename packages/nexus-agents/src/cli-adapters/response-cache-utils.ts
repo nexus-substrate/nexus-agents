@@ -8,7 +8,19 @@
  */
 
 import { createHash } from 'node:crypto';
+import { createLogger } from '../core/index.js';
 import type { CacheKeyOptions } from './response-cache-types.js';
+
+const logger = createLogger({ component: 'ResponseCacheUtils' });
+
+/** Bytes per UTF-16 character for size estimation. */
+const BYTES_PER_CHAR = 2;
+
+/** Fixed overhead bytes added to serialized size estimate. */
+const SERIALIZATION_OVERHEAD = 64;
+
+/** Fallback size in bytes when value cannot be serialized. */
+const FALLBACK_SIZE_BYTES = 1024;
 
 /**
  * Estimates the size of a value in bytes.
@@ -17,11 +29,10 @@ import type { CacheKeyOptions } from './response-cache-types.js';
 export function estimateSize(value: unknown): number {
   try {
     const json = JSON.stringify(value);
-    // Rough estimate: 2 bytes per character (UTF-16) + overhead
-    return json.length * 2 + 64;
-  } catch {
-    // Fallback for circular references or non-serializable
-    return 1024;
+    return json.length * BYTES_PER_CHAR + SERIALIZATION_OVERHEAD;
+  } catch (error: unknown) {
+    logger.debug('Size estimation failed, using fallback', { error: String(error) });
+    return FALLBACK_SIZE_BYTES;
   }
 }
 
