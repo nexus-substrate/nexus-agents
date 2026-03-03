@@ -19,7 +19,7 @@ function makeOutcome(overrides?: Partial<TaskOutcome>): TaskOutcome {
     id: 'out-1',
     cli: 'claude',
     category: 'code_generation',
-    model: 'claude-sonnet-4-5-20250929',
+    model: 'claude-sonnet-4-6',
     success: true,
     durationMs: 1200,
     timestamp: '2026-02-07T10:00:00Z',

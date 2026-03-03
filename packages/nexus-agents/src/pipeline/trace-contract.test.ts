@@ -34,7 +34,7 @@ describe('ExecutionTraceEntry schema', () => {
     executionId: 'exec-1',
     nodeId: 'analyze',
     agentId: 'code_expert',
-    modelId: 'claude-sonnet-4-5-20250929',
+    modelId: 'claude-sonnet-4-6',
     role: 'code_expert',
     durationMs: 1200,
     errorTaxonomy: undefined,
@@ -116,7 +116,7 @@ describe('ModelCalledEvent attribution', () => {
       type: 'model.called',
       executionId: 'exec-1',
       cli: 'claude',
-      model: 'claude-sonnet-4-5-20250929',
+      model: 'claude-sonnet-4-6',
       tokensIn: 100,
       tokensOut: 200,
       durationMs: 500,
@@ -148,7 +148,7 @@ describe('RoutingDecisionEvent attribution', () => {
     const event: PipelineEvent = {
       type: 'routing.decision',
       taskId: 'task-1',
-      selectedModel: 'claude-sonnet-4-5-20250929',
+      selectedModel: 'claude-sonnet-4-6',
       reasoning: 'Highest TOPSIS score (0.92) for code generation',
       decisionPath: ['budget:pass', 'topsis:0.92'],
       timestamp: Date.now(),
@@ -216,7 +216,7 @@ describe('TraceWriter', () => {
       type: 'model.called',
       executionId: 'exec-1',
       cli: 'claude',
-      model: 'claude-sonnet-4-5-20250929',
+      model: 'claude-sonnet-4-6',
       tokensIn: 100,
       tokensOut: 200,
       durationMs: 500,
@@ -238,7 +238,7 @@ describe('TraceWriter', () => {
     const entry = parsed as Record<string, unknown>;
     expect(entry['runId']).toBe('test-run-1');
     expect(entry['agentId']).toBe('code_expert');
-    expect(entry['modelId']).toBe('claude-sonnet-4-5-20250929');
+    expect(entry['modelId']).toBe('claude-sonnet-4-6');
 
     writer.stop();
   });
@@ -292,7 +292,7 @@ describe('TraceWriter', () => {
       type: 'model.called',
       executionId: 'exec-1',
       cli: 'claude',
-      model: 'claude-sonnet-4-5-20250929',
+      model: 'claude-sonnet-4-6',
       tokensIn: 50,
       tokensOut: 100,
       durationMs: 300,

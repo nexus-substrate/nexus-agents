@@ -16,7 +16,7 @@ function makeOutcome(overrides?: Partial<TaskOutcome>): TaskOutcome {
     id: `out-${String(Date.now())}`,
     cli: 'claude',
     category: 'code_generation',
-    model: 'claude-sonnet-4-5-20250929',
+    model: 'claude-sonnet-4-6',
     success: true,
     durationMs: 1200,
     timestamp: '2026-02-13T10:00:00Z',

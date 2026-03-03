@@ -148,7 +148,7 @@ describe('Execute-expert OutcomeStore recording (Issue #1014)', () => {
       id: `exp-${String(Date.now())}`,
       cli: 'claude',
       category: 'code_review',
-      model: 'claude-sonnet-4-5-20250929',
+      model: 'claude-sonnet-4-6',
       success: true,
       durationMs: 1500,
       timestamp: new Date().toISOString(),
@@ -157,7 +157,7 @@ describe('Execute-expert OutcomeStore recording (Issue #1014)', () => {
 
     const entries = store.query();
     const last = entries[entries.length - 1];
-    expect(last?.model).toBe('claude-sonnet-4-5-20250929');
+    expect(last?.model).toBe('claude-sonnet-4-6');
   });
 
   it('OutcomeStore accepts expert failure outcomes', () => {

@@ -2540,3 +2540,45 @@ papers:
     techniques_extracted: []
     related_issues: []
     implementation_status: not-started
+  arxiv-2602.09341:
+    title: Auditing Multi-Agent LLM Reasoning Trees Outperforms Majority Vote and LLM-as-Judge
+    authors: []
+    source: arxiv
+    arxiv_id: '2602.09341'
+    url: https://arxiv.org/abs/2602.09341
+    publication_date: 2026-02
+    venue: null
+    topics:
+      - consensus-voting
+    tags:
+      - multi-agent
+      - llm
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2512.21352:
+    title: Multi-Agent LLM Committees for Autonomous Software Beta Testing
+    authors: []
+    source: arxiv
+    arxiv_id: '2512.21352'
+    url: https://arxiv.org/abs/2512.21352
+    publication_date: 2025-12
+    venue: null
+    topics:
+      - multi-agent-orchestration
+    tags:
+      - multi-agent
+      - llm
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started

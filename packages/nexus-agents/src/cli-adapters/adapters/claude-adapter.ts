@@ -26,7 +26,7 @@ import {
 
 /**
  * Maps internal model names to Claude CLI aliases.
- * CLI accepts: 'sonnet', 'opus', 'haiku' or full names like 'claude-sonnet-4-5-20250929'
+ * CLI accepts: 'sonnet', 'opus', 'haiku' or full names like 'claude-sonnet-4-6'
  * Built from canonical registry + legacy names for backward compatibility.
  */
 const MODEL_TO_CLI_ALIAS: Record<string, string> = buildClaudeAliasMap();
@@ -42,7 +42,8 @@ function buildClaudeAliasMap(): Record<string, string> {
   }
   // Legacy versioned names → short CLI aliases
   map['claude-sonnet-4'] = 'sonnet';
-  map['claude-sonnet-4-5-20250929'] = 'sonnet';
+  map['claude-sonnet-4-6'] = 'sonnet';
+  map['claude-sonnet-4-5-20250929'] = 'sonnet'; // Legacy compat
   map['claude-opus-4'] = 'opus';
   map['claude-opus-4-6'] = 'opus';
   map['claude-opus-4-5-20251101'] = 'opus';

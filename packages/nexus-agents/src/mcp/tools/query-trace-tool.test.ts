@@ -95,13 +95,13 @@ describe('queryTraceFromDisk', () => {
         runId: 'run-1',
         eventType: 'model.called',
         agentId: 'code_expert',
-        modelId: 'claude-sonnet-4-5-20250929',
+        modelId: 'claude-sonnet-4-6',
       }),
       JSON.stringify({
         timestamp: 2000,
         runId: 'run-1',
         eventType: 'routing.decision',
-        modelId: 'claude-sonnet-4-5-20250929',
+        modelId: 'claude-sonnet-4-6',
         reasoning: 'Highest score',
       }),
     ].join('\n');

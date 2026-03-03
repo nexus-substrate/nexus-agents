@@ -58,8 +58,8 @@ describe('trace-pricing', () => {
     });
 
     it('matches model by prefix (versioned model name)', () => {
-      // 'claude-sonnet-4-5-20250929' is the cliModelName for claude-sonnet
-      // A versioned suffix like 'claude-sonnet-4-5-20250929-extra' should still match
+      // 'claude-sonnet-4-6' is the cliModelName for claude-sonnet
+      // A versioned suffix like 'claude-sonnet-4-6-extra' should still match
       const cliModelName = DEFAULT_MODEL_CAPABILITIES.models.find(
         (m) => m.id === 'claude-sonnet'
       )?.cliModelName;

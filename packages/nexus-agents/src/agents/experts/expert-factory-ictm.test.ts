@@ -113,12 +113,12 @@ describe('createFromICTM', () => {
         maxTokens: 4096,
         reasoning: 'standard',
         provider: 'anthropic',
-        modelId: 'claude-sonnet-4-5-20250929',
+        modelId: 'claude-sonnet-4-6',
       },
     });
     const result = createFromICTM(ictm, 'sub-1');
     if (!result.ok) return;
     expect(result.value.expertConfig.modelPreference?.provider).toBe('anthropic');
-    expect(result.value.expertConfig.modelPreference?.modelId).toBe('claude-sonnet-4-5-20250929');
+    expect(result.value.expertConfig.modelPreference?.modelId).toBe('claude-sonnet-4-6');
   });
 });

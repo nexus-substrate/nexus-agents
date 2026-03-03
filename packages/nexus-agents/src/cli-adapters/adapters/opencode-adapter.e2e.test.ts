@@ -172,13 +172,13 @@ describe.skipIf(!OPENCODE_E2E)('OpenCode E2E', () => {
   describe('custom provider config validation', () => {
     it('should handle custom model format in getCommand', () => {
       const customAdapter = new OpenCodeCliAdapter({
-        model: 'custom/claude-opus-4-5',
+        model: 'custom/claude-opus-4-6',
       });
 
       const info = customAdapter.getModelInfo();
 
       // Custom model returns fallback info
-      expect(info.id).toBe('custom/claude-opus-4-5');
+      expect(info.id).toBe('custom/claude-opus-4-6');
       expect(info.contextWindow).toBe(200_000);
     });
   });

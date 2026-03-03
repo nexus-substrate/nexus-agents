@@ -67,7 +67,7 @@ export {
  */
 export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
   version: 2,
-  updatedAt: '2026-02-21',
+  updatedAt: '2026-03-03',
   models: [
     // ----- Anthropic Claude -----
     {
@@ -102,7 +102,7 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
       maxOutputTokens: 64_000,
       cliName: 'claude',
       cliAlias: 'sonnet',
-      cliModelName: 'claude-sonnet-4-5-20250929',
+      cliModelName: 'claude-sonnet-4-6',
     },
     {
       id: 'claude-haiku',
@@ -176,7 +176,7 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
       notes: 'Largest context (1M tokens); complex reasoning; native multimodal output',
       pricing: { inputPer1M: 1.25, outputPer1M: 10.0 },
       qualityScores: { reasoning: 9, codeGeneration: 8, speed: 8, cost: 7 },
-      maxOutputTokens: 8_192,
+      maxOutputTokens: 65_536,
       cliName: 'gemini',
       cliModelName: 'gemini-2.5-pro',
     },
@@ -218,7 +218,7 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
       notes: 'Ultra-fast Gemini 2.5; 1M context; agents and streaming optimized',
       pricing: { inputPer1M: 0.15, outputPer1M: 0.6 },
       qualityScores: { reasoning: 7, codeGeneration: 7, speed: 10, cost: 9 },
-      maxOutputTokens: 8_192,
+      maxOutputTokens: 65_536,
       cliName: 'gemini',
       cliModelName: 'gemini-2.5-flash',
     },
@@ -311,7 +311,7 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
       qualityScores: { reasoning: 9, codeGeneration: 9, speed: 7, cost: 6 },
       maxOutputTokens: 64_000,
       cliName: 'opencode',
-      cliModelName: 'anthropic/claude-sonnet-4-5',
+      cliModelName: 'anthropic/claude-sonnet-4-6',
     },
     // ----- OpenCode + Custom OpenAI-compatible endpoint -----
     {
@@ -329,7 +329,7 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
       maxOutputTokens: 64_000,
       cliName: 'opencode',
       cliAlias: 'custom-opus',
-      cliModelName: 'custom/claude-opus-4-5',
+      cliModelName: 'custom/claude-opus-4-6',
     },
     {
       id: 'opencode-custom-sonnet',
@@ -346,7 +346,7 @@ export const DEFAULT_MODEL_CAPABILITIES: ModelCapabilitiesMatrix = {
       maxOutputTokens: 64_000,
       cliName: 'opencode',
       cliAlias: 'custom-sonnet',
-      cliModelName: 'custom/claude-sonnet-4-5',
+      cliModelName: 'custom/claude-sonnet-4-6',
     },
   ],
 };

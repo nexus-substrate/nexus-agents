@@ -69,7 +69,7 @@ describe('convertToPerMillion', () => {
 describe('MODEL_ID_MAP', () => {
   it('has entries for all core models', () => {
     expect(MODEL_ID_MAP).toHaveProperty('claude-opus-4-6');
-    expect(MODEL_ID_MAP).toHaveProperty('claude-sonnet-4-5-20250929');
+    expect(MODEL_ID_MAP).toHaveProperty('claude-sonnet-4-6');
     expect(MODEL_ID_MAP).toHaveProperty('claude-haiku-4-5-20251001');
     expect(MODEL_ID_MAP).toHaveProperty('gemini-2.5-pro');
     expect(MODEL_ID_MAP).toHaveProperty('gemini-2.5-flash');
