@@ -106,6 +106,12 @@ const TOOL_DESCRIPTIONS: Record<string, string> = {
     'Generate a draft model registry entry for a new AI model. Returns a template with conservative defaults for human review.',
   query_trace:
     'Query execution trace JSONL files from disk for a given run ID. Supports filtering by event type and pagination.',
+  memory_write:
+    'Write a memory entry to a specific backend. Supports session, belief, agentic, adaptive, and typed backends.',
+  repo_analyze:
+    'Analyze a GitHub repository structure. Returns language, framework, package manager, CI provider, security tooling, and gap identification.',
+  repo_security_plan:
+    'Generate a security scanning pipeline recommendation for a GitHub repository based on detected tech stack.',
 };
 
 /**
