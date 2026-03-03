@@ -107,8 +107,8 @@ export async function validateArchitecture(
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
     });
-    const audit = JSON.parse(result);
-    const fitnessScore = audit.score || 0;
+    const audit = JSON.parse(result) as Record<string, unknown>;
+    const fitnessScore = typeof audit['score'] === 'number' ? audit['score'] : 0;
 
     if (fitnessScore < 90) {
       findings.push({
