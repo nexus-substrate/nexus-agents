@@ -70,9 +70,10 @@ export const SECURITY_BEST_PRACTICES = {
  * @returns Formatted string with security domain knowledge
  */
 export function getSecurityKnowledgePrompt(): string {
+  // Include top 20 sections (was 8 — too aggressive truncation dropped 83% of knowledge)
   const sections = SECURITY_KNOWLEDGE_MODULES.flatMap((module) => module.sections)
     .sort((a, b) => b.priority - a.priority)
-    .slice(0, 8);
+    .slice(0, 20);
 
   const formatted = sections
     .map((section) => `### ${section.title}\n${section.content}`)

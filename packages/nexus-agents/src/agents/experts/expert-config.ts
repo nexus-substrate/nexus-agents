@@ -286,7 +286,9 @@ When providing security guidance:
 5. Reference relevant standards (OWASP, NIST, CWE)`),
     capabilities: ['task_execution', 'code_review', 'research'],
     modelPreference: {
-      temperature: 0.1,
+      // Raised from 0.1 to 0.2 to allow nuanced analysis of ambiguous patterns
+      // 0.1 was too rigid — caused parsing failures on contextual security questions
+      temperature: 0.2,
     },
   },
 
