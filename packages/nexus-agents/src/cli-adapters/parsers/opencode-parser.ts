@@ -339,8 +339,8 @@ export class OpenCodeResponseParser implements ICliResponseParser<OpenCodeCliRes
 
       return {
         content,
-        ...(typeof sid === 'string' && { sessionId: sid }),
-        ...(usage !== null && { usage }),
+        ...(typeof sid === 'string' ? { sessionId: sid } : {}),
+        ...(usage !== null ? { usage } : {}),
       };
     } catch {
       return null;

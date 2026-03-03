@@ -186,9 +186,9 @@ export function extractCallerInfo(metadata?: Record<string, unknown>): CallerInf
     // Extract all available fields from metadata
     const extracted: CallerInfo = {
       ...caller,
-      ...(typeof metadata['clientId'] === 'string' && { clientId: metadata['clientId'] }),
-      ...(typeof metadata['userAgent'] === 'string' && { userAgent: metadata['userAgent'] }),
-      ...(typeof metadata['sessionId'] === 'string' && { sessionId: metadata['sessionId'] }),
+      ...(typeof metadata['clientId'] === 'string' ? { clientId: metadata['clientId'] } : {}),
+      ...(typeof metadata['userAgent'] === 'string' ? { userAgent: metadata['userAgent'] } : {}),
+      ...(typeof metadata['sessionId'] === 'string' ? { sessionId: metadata['sessionId'] } : {}),
     };
 
     // If any metadata was extracted, return it directly
