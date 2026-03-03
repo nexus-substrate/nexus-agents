@@ -24,7 +24,7 @@ import {
   createTaskTypeClassifier,
   type TaskType,
   type ClassificationResult,
-} from './task-type-classifier.js';
+} from '../../core/task-analysis/index.js';
 
 /**
  * Configuration for adaptive protocol selection.

@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { TaskTypeClassifier, createTaskTypeClassifier } from './task-type-classifier.js';
+import { TaskTypeClassifier, createTaskTypeClassifier } from '../../core/task-analysis/index.js';
 import type { Task } from '../../core/index.js';
 
 /** Creates a test task with given description. */

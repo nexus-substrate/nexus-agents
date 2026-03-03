@@ -150,7 +150,7 @@ export {
   type ClassificationResult,
   type ClassificationSignal,
   type TaskTypeClassifierConfig,
-} from './task-type-classifier.js';
+} from '../../core/task-analysis/index.js';
 
 export {
   AdaptiveProtocolSelector,
