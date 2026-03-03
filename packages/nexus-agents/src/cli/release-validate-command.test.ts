@@ -3,7 +3,7 @@
  * (Source: Issue #697 - Add test coverage for untested CLI commands)
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, type MockInstance } from 'vitest';
 import type { ReleaseValidateResult } from './release-validate-types.js';
 
 vi.mock('./release-validate-helpers.js', () => ({
@@ -189,7 +189,7 @@ describe('runReleaseValidate', () => {
 });
 
 describe('printReleaseValidateResult', () => {
-  let consoleSpy: ReturnType<typeof vi.spyOn>;
+  let consoleSpy: MockInstance;
 
   beforeEach(() => {
     consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -209,7 +209,7 @@ describe('printReleaseValidateResult', () => {
 
     printReleaseValidateResult(result);
 
-    const output = consoleSpy.mock.calls.map((c) => String(c[0])).join('\n');
+    const output = consoleSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
     expect(output).toContain('Release Validation Report');
     expect(output).toContain('PASS');
     expect(output).toContain('0 errors');
@@ -243,7 +243,7 @@ describe('printReleaseValidateResult', () => {
 
     printReleaseValidateResult(result);
 
-    const output = consoleSpy.mock.calls.map((c) => String(c[0])).join('\n');
+    const output = consoleSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
     expect(output).toContain('FAIL');
     expect(output).toContain('1 errors');
     expect(output).toContain('Critical issue');

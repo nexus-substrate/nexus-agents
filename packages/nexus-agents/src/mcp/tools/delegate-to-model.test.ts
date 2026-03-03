@@ -11,6 +11,8 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import { RateLimiter } from '../middleware/index.js';
+import type { ICompositeRouter } from '../../core/index.js';
+import type { IFeedbackIntegration } from '../../learning/feedback-integration.js';
 import {
   registerDelegateToModelTool,
   DelegateInputSchema,
@@ -525,7 +527,7 @@ describe('delegate_to_model Tool', () => {
 
       registerDelegateToModelTool(server, {
         logger: mockLogger,
-        router: mockRouter,
+        router: mockRouter as unknown as ICompositeRouter,
         rateLimiter: createTestRateLimiter(),
       });
 
@@ -560,7 +562,7 @@ describe('delegate_to_model Tool', () => {
 
       registerDelegateToModelTool(server, {
         logger: mockLogger,
-        router: mockRouter,
+        router: mockRouter as unknown as ICompositeRouter,
         rateLimiter: createTestRateLimiter(),
       });
 
@@ -597,8 +599,8 @@ describe('delegate_to_model Tool', () => {
 
       registerDelegateToModelTool(server, {
         logger: mockLogger,
-        router: mockRouter,
-        feedbackIntegration: mockFeedback,
+        router: mockRouter as unknown as ICompositeRouter,
+        feedbackIntegration: mockFeedback as unknown as IFeedbackIntegration,
         rateLimiter: createTestRateLimiter(),
       });
 
@@ -627,7 +629,7 @@ describe('delegate_to_model Tool', () => {
 
       registerDelegateToModelTool(server, {
         logger: mockLogger,
-        router: mockRouter,
+        router: mockRouter as unknown as ICompositeRouter,
         rateLimiter: createTestRateLimiter(),
         // No feedbackIntegration
       });

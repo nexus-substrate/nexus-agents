@@ -28,8 +28,12 @@ describe('demo-command', () => {
     vi.clearAllMocks();
     stdoutWriteMock = vi.fn();
     stderrWriteMock = vi.fn();
-    vi.spyOn(process.stdout, 'write').mockImplementation(stdoutWriteMock);
-    vi.spyOn(process.stderr, 'write').mockImplementation(stderrWriteMock);
+    vi.spyOn(process.stdout, 'write').mockImplementation(
+      stdoutWriteMock as unknown as typeof process.stdout.write
+    );
+    vi.spyOn(process.stderr, 'write').mockImplementation(
+      stderrWriteMock as unknown as typeof process.stderr.write
+    );
     vi.spyOn(process, 'exit').mockImplementation(() => {
       throw new Error('process.exit called');
     });

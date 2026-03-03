@@ -7,7 +7,7 @@
  * (Source: Issue #257 - SWE-Bench Evaluation)
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from 'vitest';
 import type { SWEBenchInstance } from './types.js';
 
 // Mock the swe-bench module
@@ -55,8 +55,8 @@ const mockCreateExecutor = vi.mocked(createExecutor);
 const mockRunBenchmarkInstances = vi.mocked(runBenchmarkInstances);
 
 describe('swe-bench-command', () => {
-  let consoleLogSpy: ReturnType<typeof vi.spyOn>;
-  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+  let consoleLogSpy: MockInstance;
+  let consoleErrorSpy: MockInstance;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -588,8 +588,8 @@ describe('swe-bench-command', () => {
 // =============================================================================
 
 describe('swe-bench dataset integration', () => {
-  let consoleLogSpy: ReturnType<typeof vi.spyOn>;
-  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+  let consoleLogSpy: MockInstance;
+  let consoleErrorSpy: MockInstance;
 
   beforeEach(() => {
     vi.clearAllMocks();

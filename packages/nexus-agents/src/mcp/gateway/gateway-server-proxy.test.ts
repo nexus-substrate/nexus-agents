@@ -73,7 +73,7 @@ describe('createGatewayServerProxy', () => {
     const config: GatewayConfig = { enabled: true, logger };
     const proxy = createGatewayServerProxy(mockServer, config);
     const proxyShape = proxy as unknown as MockServerShape;
-    const result: unknown = proxyShape.otherMethod();
+    const result: unknown = (proxyShape.otherMethod as unknown as () => unknown)();
     expect(result).toBe('other-result');
     expect(mockServer.otherMethod).toHaveBeenCalled();
   });

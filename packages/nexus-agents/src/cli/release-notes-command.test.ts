@@ -3,7 +3,7 @@
  * (Source: Issue #697 - Add test coverage for untested CLI commands)
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, type MockInstance } from 'vitest';
 import type { CategorizedCommit, ReleaseNotesCategory } from './release-notes-types.js';
 
 const mockCommit: CategorizedCommit = {
@@ -176,7 +176,7 @@ describe('runReleaseNotes', () => {
 });
 
 describe('printReleaseNotesResult', () => {
-  let consoleSpy: ReturnType<(typeof vi)['spyOn']>;
+  let consoleSpy: MockInstance;
 
   beforeEach(() => {
     consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -195,7 +195,7 @@ describe('printReleaseNotesResult', () => {
       durationMs: 100,
     });
 
-    const output = consoleSpy.mock.calls.map((c) => String(c[0])).join('\n');
+    const output = consoleSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
     expect(output).toContain('Release notes content');
     consoleSpy.mockRestore();
   });
@@ -216,7 +216,7 @@ describe('printReleaseNotesResult', () => {
       true
     );
 
-    const output = consoleSpy.mock.calls.map((c) => String(c[0])).join('\n');
+    const output = consoleSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
     expect(output).toContain('Release Notes Generation');
     expect(output).toContain('2.6.0');
     expect(output).toContain('v2.5.0');
@@ -239,7 +239,7 @@ describe('printReleaseNotesResult', () => {
       false
     );
 
-    const output = consoleSpy.mock.calls.map((c) => String(c[0])).join('\n');
+    const output = consoleSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
     expect(output).not.toContain('Release Notes Generation');
     consoleSpy.mockRestore();
   });

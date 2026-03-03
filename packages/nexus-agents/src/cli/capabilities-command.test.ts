@@ -3,12 +3,12 @@
  * (Source: Issue #697 - Add test coverage for untested CLI commands)
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from 'vitest';
 import type { ParsedCliArgs } from '../cli-types.js';
 
 describe('handleCapabilitiesCommand', () => {
-  let stdoutSpy: ReturnType<(typeof vi)['spyOn']>;
-  let exitSpy: ReturnType<(typeof vi)['spyOn']>;
+  let stdoutSpy: MockInstance;
+  let exitSpy: MockInstance;
 
   function makeArgs(positionals: string[], options: Record<string, string> = {}): ParsedCliArgs {
     return {
@@ -18,9 +18,7 @@ describe('handleCapabilitiesCommand', () => {
   }
 
   beforeEach(() => {
-    // @ts-expect-error -- vi.spyOn overload return type mismatch (vitest typing limitation)
     stdoutSpy = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
-    // @ts-expect-error -- vi.spyOn overload return type mismatch (vitest typing limitation)
     exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
       throw new Error('process.exit called');
     });
@@ -38,7 +36,7 @@ describe('handleCapabilitiesCommand', () => {
       handleCapabilitiesCommand(makeArgs(['capabilities']));
     }).toThrow('process.exit called');
     expect(exitSpy).toHaveBeenCalledWith(0);
-    const output = stdoutSpy.mock.calls.map((c) => String(c[0])).join('');
+    const output = stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
     expect(output).toContain('capabilities');
     expect(output).toContain('SUBCOMMANDS');
   });
@@ -57,7 +55,7 @@ describe('handleCapabilitiesCommand', () => {
 
     handleCapabilitiesCommand(makeArgs(['capabilities', 'list']));
 
-    const output = stdoutSpy.mock.calls.map((c) => String(c[0])).join('');
+    const output = stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
     expect(output).toContain('Model Capabilities Matrix');
     expect(output).toContain('Provider');
   });
@@ -67,7 +65,7 @@ describe('handleCapabilitiesCommand', () => {
 
     handleCapabilitiesCommand(makeArgs(['capabilities', 'list'], { format: 'json' }));
 
-    const output = stdoutSpy.mock.calls.map((c) => String(c[0])).join('');
+    const output = stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
     const parsed = JSON.parse(output) as { models: unknown[] };
     expect(parsed.models).toBeDefined();
     expect(Array.isArray(parsed.models)).toBe(true);
@@ -78,7 +76,7 @@ describe('handleCapabilitiesCommand', () => {
 
     handleCapabilitiesCommand(makeArgs(['capabilities', 'list'], { format: 'markdown' }));
 
-    const output = stdoutSpy.mock.calls.map((c) => String(c[0])).join('');
+    const output = stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
     expect(output).toContain('# Model Capabilities Matrix');
     expect(output).toContain('|');
   });
@@ -106,7 +104,7 @@ describe('handleCapabilitiesCommand', () => {
 
     handleCapabilitiesCommand(makeArgs(['capabilities', 'find', 'mcp']));
 
-    const output = stdoutSpy.mock.calls.map((c) => String(c[0])).join('');
+    const output = stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
     expect(output).toContain('Models supporting');
     expect(output).toContain('mcp');
   });
@@ -116,7 +114,7 @@ describe('handleCapabilitiesCommand', () => {
 
     handleCapabilitiesCommand(makeArgs(['capabilities', 'find', 'nonexistent_capability']));
 
-    const output = stdoutSpy.mock.calls.map((c) => String(c[0])).join('');
+    const output = stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
     expect(output).toContain('No models found');
   });
 });

@@ -15,7 +15,9 @@ describe('workflow-run', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     stdoutWriteMock = vi.fn();
-    vi.spyOn(process.stdout, 'write').mockImplementation(stdoutWriteMock);
+    vi.spyOn(process.stdout, 'write').mockImplementation(
+      stdoutWriteMock as unknown as typeof process.stdout.write
+    );
   });
 
   afterEach(() => {

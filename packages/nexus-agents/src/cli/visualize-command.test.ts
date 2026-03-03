@@ -5,7 +5,7 @@
  * output formatting, file writing, and edge cases.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from 'vitest';
 import type { ParsedCliArgs } from '../cli-types.js';
 
 // ============================================================================
@@ -80,17 +80,14 @@ function makeArgs(positionals: string[], options: Record<string, string | undefi
 // ============================================================================
 
 describe('handleVisualizeCommand', () => {
-  let stdoutSpy: ReturnType<(typeof vi)['spyOn']>;
-  let stderrSpy: ReturnType<(typeof vi)['spyOn']>;
-  let exitSpy: ReturnType<(typeof vi)['spyOn']>;
+  let stdoutSpy: MockInstance;
+  let stderrSpy: MockInstance;
+  let exitSpy: MockInstance;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    // @ts-expect-error -- vi.spyOn overload return type mismatch (vitest typing limitation)
     stdoutSpy = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
-    // @ts-expect-error -- vi.spyOn overload return type mismatch (vitest typing limitation)
     stderrSpy = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
-    // @ts-expect-error -- vi.spyOn overload return type mismatch (vitest typing limitation)
     exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
       throw new Error('process.exit called');
     });
@@ -115,7 +112,7 @@ describe('handleVisualizeCommand', () => {
       }).toThrow('process.exit called');
 
       expect(exitSpy).toHaveBeenCalledWith(0);
-      const output = stdoutSpy.mock.calls.map((c) => String(c[0])).join('');
+      const output = stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
       expect(output).toContain('SUBCOMMANDS');
     });
 
@@ -136,7 +133,7 @@ describe('handleVisualizeCommand', () => {
         handleVisualizeCommand(makeArgs(['visualize']));
       }).toThrow('process.exit called');
 
-      const output = stdoutSpy.mock.calls.map((c) => String(c[0])).join('');
+      const output = stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
       expect(output).toContain('architecture');
       expect(output).toContain('swarm');
       expect(output).toContain('orchestration');
@@ -151,7 +148,7 @@ describe('handleVisualizeCommand', () => {
         handleVisualizeCommand(makeArgs(['visualize']));
       }).toThrow('process.exit called');
 
-      const output = stdoutSpy.mock.calls.map((c) => String(c[0])).join('');
+      const output = stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
       expect(output).toContain('--format');
       expect(output).toContain('--output');
     });
@@ -169,7 +166,7 @@ describe('handleVisualizeCommand', () => {
       handleVisualizeCommand(makeArgs(['visualize', 'architecture']));
 
       expect(generateArchitectureDiagram).toHaveBeenCalled();
-      const output = stdoutSpy.mock.calls.map((c) => String(c[0])).join('');
+      const output = stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
       expect(output).toContain('graph TB');
     });
 
@@ -198,7 +195,7 @@ describe('handleVisualizeCommand', () => {
       handleVisualizeCommand(makeArgs(['visualize', 'swarm']));
 
       expect(generateSwarmVisualization).toHaveBeenCalled();
-      const output = stdoutSpy.mock.calls.map((c) => String(c[0])).join('');
+      const output = stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
       expect(output).toContain('graph LR');
     });
 
@@ -226,7 +223,7 @@ describe('handleVisualizeCommand', () => {
       handleVisualizeCommand(makeArgs(['visualize', 'orchestration']));
 
       expect(generateOrchestrationSequence).toHaveBeenCalled();
-      const output = stdoutSpy.mock.calls.map((c) => String(c[0])).join('');
+      const output = stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
       expect(output).toContain('sequenceDiagram');
     });
 
@@ -237,7 +234,7 @@ describe('handleVisualizeCommand', () => {
       handleVisualizeCommand(makeArgs(['visualize', 'orchestration'], { format: 'ascii' }));
 
       expect(generateAsciiDashboard).toHaveBeenCalled();
-      const output = stdoutSpy.mock.calls.map((c) => String(c[0])).join('');
+      const output = stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
       expect(output).toContain('DASH');
     });
 
@@ -266,7 +263,7 @@ describe('handleVisualizeCommand', () => {
       handleVisualizeCommand(makeArgs(['visualize', 'flow']));
 
       expect(generateFlowDiagram).toHaveBeenCalled();
-      const output = stdoutSpy.mock.calls.map((c) => String(c[0])).join('');
+      const output = stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
       expect(output).toContain('graph TD');
     });
 
@@ -303,7 +300,7 @@ describe('handleVisualizeCommand', () => {
 
       handleVisualizeCommand(makeArgs(['visualize', 'summary']));
 
-      const output = stdoutSpy.mock.calls.map((c) => String(c[0])).join('');
+      const output = stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
       expect(output).toContain('SUMMARY');
     });
   });
@@ -328,7 +325,7 @@ describe('handleVisualizeCommand', () => {
       // writeOutput uses dynamic import('node:fs'), which is async.
       // Wait for the microtask to resolve.
       await vi.waitFor(() => {
-        const calls = stdoutSpy.mock.calls.map((c) => String(c[0])).join('');
+        const calls = stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
         expect(calls).toContain('/tmp/test-out.md');
       });
 
@@ -341,7 +338,7 @@ describe('handleVisualizeCommand', () => {
       handleVisualizeCommand(makeArgs(['visualize', 'flow']));
 
       expect(stdoutSpy).toHaveBeenCalled();
-      const output = stdoutSpy.mock.calls.map((c) => String(c[0])).join('');
+      const output = stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
       expect(output).toContain('graph TD');
     });
   });
