@@ -72,8 +72,6 @@ export {
   determineRelationship,
   findOverlaps,
   formatOverlapResult,
-  // eslint-disable-next-line @typescript-eslint/no-deprecated -- Re-exporting for backward compatibility
-  fetchArxivMetadata,
   fetchArxivMetadataResult,
   paperExists,
   addResearchPaper,

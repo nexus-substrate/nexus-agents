@@ -207,7 +207,7 @@ const CODE_REVIEW_WORKFLOW: MockWorkflow = {
   steps: [
     { id: 'analyze', agent: 'code_expert', description: 'Analyze code structure and quality' },
     { id: 'security', agent: 'security_expert', description: 'Security-focused code review' },
-    { id: 'synthesize', agent: 'tech_lead', description: 'Synthesize findings into report' },
+    { id: 'synthesize', agent: 'orchestrator', description: 'Synthesize findings into report' },
   ],
 };
 
@@ -287,7 +287,7 @@ const REFACTORING_WORKFLOW: MockWorkflow = {
   steps: [
     { id: 'analyze', agent: 'code_expert', description: 'Analyze code smells' },
     { id: 'architecture', agent: 'architecture_expert', description: 'Review structure' },
-    { id: 'plan', agent: 'tech_lead', description: 'Create refactoring plan' },
+    { id: 'plan', agent: 'orchestrator', description: 'Create refactoring plan' },
     { id: 'recommend', agent: 'code_expert', description: 'Generate recommendations' },
   ],
 };

@@ -26,7 +26,6 @@ import {
   getResearchStatus,
   findOverlaps,
   paperExists,
-  fetchArxivMetadata,
   researchCommand,
 } from './research-command.js';
 import type { TechniqueEntry, ResearchStatusResult } from './research-types.js';
@@ -504,51 +503,6 @@ describe('paperExists', () => {
   it('should return false for non-existent paper', async () => {
     const result = await paperExists('9999.99999');
     expect(result).toBe(false);
-  });
-});
-
-describe('fetchArxivMetadata', () => {
-  beforeEach(() => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: true,
-        text: () =>
-          Promise.resolve(`
-          <entry>
-            <title>Test Paper Title</title>
-            <summary>Test abstract</summary>
-            <published>2025-01-01T00:00:00Z</published>
-          </entry>
-        `),
-      })
-    );
-  });
-
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
-  it('should fetch and parse arXiv metadata', async () => {
-    // eslint-disable-next-line @typescript-eslint/no-deprecated -- Testing deprecated function for backward compatibility
-    const result = await fetchArxivMetadata('1234.56789');
-
-    expect(result).not.toBeNull();
-    expect(result?.title).toBe('Test Paper Title');
-    expect(result?.summary).toBe('Test abstract');
-  });
-
-  it('should return null on fetch error', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: false,
-      })
-    );
-
-    // eslint-disable-next-line @typescript-eslint/no-deprecated -- Testing deprecated function for backward compatibility
-    const result = await fetchArxivMetadata('1234.56789');
-    expect(result).toBeNull();
   });
 });
 

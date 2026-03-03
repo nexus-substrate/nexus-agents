@@ -46,8 +46,6 @@ export {
 } from './research-helpers-overlap.js';
 
 // arXiv helpers
-// eslint-disable-next-line @typescript-eslint/no-deprecated -- Re-exporting for backward compatibility
-export { fetchArxivMetadata } from './research-helpers-arxiv.js';
 export {
   fetchArxivMetadataResult,
   paperExists,
