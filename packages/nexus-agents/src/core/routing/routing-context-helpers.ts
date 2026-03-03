@@ -151,6 +151,32 @@ function createModelMetric(
 }
 
 // ============================================================================
+// Scoring Weights
+// ============================================================================
+
+/** Similarity weights for query feature comparison. */
+const SIMILARITY_WEIGHTS = {
+  token: 0.2,
+  complexity: 0.3,
+  booleanFeatures: 0.3,
+  domain: 0.2,
+} as const;
+
+/** Strength weights for model performance scoring. */
+const STRENGTH_WEIGHTS = {
+  quality: 0.4,
+  successRate: 0.3,
+  latency: 0.2,
+  tokens: 0.1,
+} as const;
+
+/** Maximum latency (ms) for normalized latency scoring. */
+const MAX_LATENCY_MS = 10000;
+
+/** Maximum tokens for normalized token scoring. */
+const MAX_TOKENS = 8000;
+
+// ============================================================================
 // Calculation Helpers
 // ============================================================================
 
@@ -172,13 +198,23 @@ export function calculateSimilarity(a: QueryFeatures, b: QueryFeatures): number 
   const boolSim = boolMatches / 4;
   const domainSim = a.domain === b.domain ? 1 : 0;
 
-  return tokenSim * 0.2 + complexitySim * 0.3 + boolSim * 0.3 + domainSim * 0.2;
+  return (
+    tokenSim * SIMILARITY_WEIGHTS.token +
+    complexitySim * SIMILARITY_WEIGHTS.complexity +
+    boolSim * SIMILARITY_WEIGHTS.booleanFeatures +
+    domainSim * SIMILARITY_WEIGHTS.domain
+  );
 }
 
 export function calculateStrength(perf: ModelPerformance): number {
-  const latencyScore = Math.max(0, 1 - perf.avgLatencyMs / 10000);
-  const tokenScore = Math.max(0, 1 - perf.avgTokens / 8000);
-  return perf.avgQuality * 0.4 + perf.successRate * 0.3 + latencyScore * 0.2 + tokenScore * 0.1;
+  const latencyScore = Math.max(0, 1 - perf.avgLatencyMs / MAX_LATENCY_MS);
+  const tokenScore = Math.max(0, 1 - perf.avgTokens / MAX_TOKENS);
+  return (
+    perf.avgQuality * STRENGTH_WEIGHTS.quality +
+    perf.successRate * STRENGTH_WEIGHTS.successRate +
+    latencyScore * STRENGTH_WEIGHTS.latency +
+    tokenScore * STRENGTH_WEIGHTS.tokens
+  );
 }
 
 // ============================================================================

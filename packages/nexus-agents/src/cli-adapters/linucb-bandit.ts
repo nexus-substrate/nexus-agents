@@ -25,6 +25,12 @@ import {
   shermanMorrisonUpdate,
 } from './linucb-math.js';
 
+/** Reward value assigned on successful task completion. */
+const SUCCESS_REWARD = 0.7;
+
+/** Reward value assigned on task failure. */
+const FAILURE_REWARD = 0.1;
+
 /**
  * Arm state for LinUCB.
  */
@@ -279,7 +285,7 @@ export class LinUCBBandit {
     for (const outcome of outcomes) {
       const armIndex = this.armNames.indexOf(outcome.cli);
       if (armIndex < 0) continue;
-      const reward = outcome.success ? 0.7 : 0.1;
+      const reward = outcome.success ? SUCCESS_REWARD : FAILURE_REWARD;
       this.update(armIndex, neutralContext, reward);
       replayed++;
     }

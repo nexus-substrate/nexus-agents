@@ -102,6 +102,12 @@ export {
   type IRoutingMetricsCollector,
 } from './composite-router-types.js';
 
+/** Quality score assigned to failed routing decisions for memory recording. */
+const FAILURE_QUALITY_SCORE = 0.3;
+
+/** Default token count estimate when task.maxTokens is not specified. */
+const DEFAULT_TOKEN_ESTIMATE = 1000;
+
 /** Composite router interface for dependency injection. */
 export interface ICompositeRouter {
   route(task: CliTask): Promise<Result<CompositeRoutingDecision, CompositeRoutingError>>;
@@ -408,10 +414,10 @@ export class CompositeRouter implements ICompositeRouter {
     if (this.routingMemory !== undefined) {
       const taskType = this.inferTaskType(task);
       const performance: ModelPerformance = {
-        avgQuality: success ? decision.confidence : 0.3,
+        avgQuality: success ? decision.confidence : FAILURE_QUALITY_SCORE,
         successRate: success ? 1.0 : 0.0,
         avgLatencyMs: durationMs,
-        avgTokens: task.maxTokens ?? 1000,
+        avgTokens: task.maxTokens ?? DEFAULT_TOKEN_ESTIMATE,
         observations: 1,
       };
       this.routingMemory.storePreference(decision.cliName, taskType, performance);
@@ -425,7 +431,7 @@ export class CompositeRouter implements ICompositeRouter {
           cliName: decision.cliName,
           success,
           reward,
-          qualityScore: success ? decision.confidence : 0.3,
+          qualityScore: success ? decision.confidence : FAILURE_QUALITY_SCORE,
           latencyMs: durationMs,
         },
         { metricsCollector: this.metricsCollector, logger: this.logger }

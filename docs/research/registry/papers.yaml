@@ -2903,3 +2903,169 @@ papers:
     techniques_extracted: []
     related_issues: []
     implementation_status: not-started
+  arxiv-2602.01011:
+    title: Multi-Agent Teams Hold Experts Back
+    authors: []
+    source: arxiv
+    arxiv_id: '2602.01011'
+    url: https://arxiv.org/abs/2602.01011
+    publication_date: 2026-02
+    venue: null
+    topics:
+      - multi-agent orchestration
+    tags:
+      - multi-agent
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2602.09902:
+    title: Routing, Cascades, and User Choice for LLMs
+    authors: []
+    source: arxiv
+    arxiv_id: '2602.09902'
+    url: https://arxiv.org/abs/2602.09902
+    publication_date: 2026-02
+    venue: null
+    topics:
+      - model routing
+    tags:
+      - llm
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2601.14735:
+    title: Optimizing FaaS Platforms for MCP-enabled Agentic Workflows
+    authors: []
+    source: arxiv
+    arxiv_id: '2601.14735'
+    url: https://arxiv.org/abs/2601.14735
+    publication_date: 2026-01
+    venue: null
+    topics:
+      - MCP protocol
+    tags: []
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2602.06038:
+    title: 'CommCP: Efficient Multi-Agent Coordination via LLM-Based Communication with Conformal
+      Prediction'
+    authors: []
+    source: arxiv
+    arxiv_id: '2602.06038'
+    url: https://arxiv.org/abs/2602.06038
+    publication_date: 2026-02
+    venue: null
+    topics:
+      - multi-agent orchestration
+    tags:
+      - multi-agent
+      - llm
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2602.01797:
+    title:
+      'ORCH: many analyses, one merge-a deterministic multi-agent orchestrator for discrete-choice
+      reasoning with EMA-guided routing'
+    authors: []
+    source: arxiv
+    arxiv_id: '2602.01797'
+    url: https://arxiv.org/abs/2602.01797
+    publication_date: 2026-02
+    venue: null
+    topics:
+      - model routing
+    tags:
+      - multi-agent
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2602.08009:
+    title: 'Towards Adaptive, Scalable, and Robust Coordination of LLM Agents: A Dynamic Ad-Hoc
+      Networking Perspective'
+    authors: []
+    source: arxiv
+    arxiv_id: '2602.08009'
+    url: https://arxiv.org/abs/2602.08009
+    publication_date: 2026-02
+    venue: null
+    topics:
+      - multi-agent orchestration
+    tags:
+      - llm
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2512.24565:
+    title: 'MCPAgentBench: A Real-world Task Benchmark for Evaluating LLM Agent MCP Tool Use'
+    authors: []
+    source: arxiv
+    arxiv_id: '2512.24565'
+    url: https://arxiv.org/abs/2512.24565
+    publication_date: 2025-12
+    venue: null
+    topics:
+      - MCP protocol
+    tags:
+      - benchmark
+      - llm
+      - reinforcement-learning
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2506.01056:
+    title: 'MCP-Zero: Active Tool Discovery for Autonomous LLM Agents'
+    authors: []
+    source: arxiv
+    arxiv_id: '2506.01056'
+    url: https://arxiv.org/abs/2506.01056
+    publication_date: 2025-06
+    venue: null
+    topics:
+      - tool use
+    tags:
+      - llm
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started

@@ -232,7 +232,8 @@ async function getActualModules(srcPath: string): Promise<string[]> {
     return entries
       .filter((e) => e.isDirectory() && !e.name.startsWith('.') && !e.name.startsWith('__'))
       .map((e) => e.name);
-  } catch {
+  } catch (error: unknown) {
+    logger.debug('Failed to read source modules', { srcPath, error: getErrorMessage(error) });
     return [];
   }
 }
