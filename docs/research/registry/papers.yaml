@@ -3109,3 +3109,219 @@ papers:
     techniques_extracted: []
     related_issues: []
     implementation_status: not-started
+  arxiv-2602.18914:
+    title: 'From Docs to Descriptions: Smell-Aware Evaluation of MCP Server Descriptions'
+    authors: []
+    source: arxiv
+    arxiv_id: '2602.18914'
+    url: https://arxiv.org/abs/2602.18914
+    publication_date: 2026-02
+    venue: null
+    topics:
+      - model-context-protocol
+    tags:
+      - benchmark
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2602.19514:
+    title: 'Security Risks of AI Agents Hiring Humans: An Empirical Marketplace Study'
+    authors: []
+    source: arxiv
+    arxiv_id: '2602.19514'
+    url: https://arxiv.org/abs/2602.19514
+    publication_date: 2026-02
+    venue: null
+    topics:
+      - agentic-safety
+    tags: []
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2602.20493:
+    title: 'AWCP: A Workspace Delegation Protocol for Deep-Engagement Collaboration across Remote Agents'
+    authors: []
+    source: arxiv
+    arxiv_id: '2602.20493'
+    url: https://arxiv.org/abs/2602.20493
+    publication_date: 2026-02
+    venue: null
+    topics:
+      - multi-agent-coordination
+    tags: []
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2601.06037:
+    title: 'TeleMem: Building Long-Term and Multimodal Memory for Agentic AI'
+    authors: []
+    source: arxiv
+    arxiv_id: '2601.06037'
+    url: https://arxiv.org/abs/2601.06037
+    publication_date: 2026-01
+    venue: null
+    topics:
+      - agentic-memory
+    tags: []
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2512.16041:
+    title: Are We on the Right Way to Assessing LLM-as-a-Judge?
+    authors: []
+    source: arxiv
+    arxiv_id: '2512.16041'
+    url: https://arxiv.org/abs/2512.16041
+    publication_date: 2025-12
+    venue: null
+    topics:
+      - evaluation-methods
+    tags:
+      - llm
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2510.13501:
+    title: 'Confidence as a Reward: Transforming LLMs into Reward Models'
+    authors: []
+    source: arxiv
+    arxiv_id: '2510.13501'
+    url: https://arxiv.org/abs/2510.13501
+    publication_date: 2025-10
+    venue: null
+    topics:
+      - reward-modeling
+    tags:
+      - llm
+      - reinforcement-learning
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2602.23047:
+    title: 'CL4SE: A Context Learning Benchmark For Software Engineering Tasks'
+    authors: []
+    source: arxiv
+    arxiv_id: '2602.23047'
+    url: https://arxiv.org/abs/2602.23047
+    publication_date: 2026-02
+    venue: null
+    topics:
+      - software-engineering
+    tags:
+      - benchmark
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2601.07353:
+    title: 'TALON: Confidence-Aware Speculative Decoding with Adaptive Token Trees'
+    authors: []
+    source: arxiv
+    arxiv_id: '2601.07353'
+    url: https://arxiv.org/abs/2601.07353
+    publication_date: 2026-01
+    venue: null
+    topics:
+      - inference-optimization
+    tags: []
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2602.02061:
+    title: Learning to Route and Schedule LLMs from User Retrials via Contextual Queueing Bandits
+    authors: []
+    source: arxiv
+    arxiv_id: '2602.02061'
+    url: https://arxiv.org/abs/2602.02061
+    publication_date: 2026-02
+    venue: null
+    topics:
+      - model-routing
+    tags:
+      - llm
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2510.24021:
+    title: 'SelecTKD: Selective Token-Weighted Knowledge Distillation for LLMs'
+    authors: []
+    source: arxiv
+    arxiv_id: '2510.24021'
+    url: https://arxiv.org/abs/2510.24021
+    publication_date: 2025-10
+    venue: null
+    topics:
+      - knowledge-distillation
+    tags:
+      - llm
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2601.11940:
+    title: 'Thinking Traps in Long Chain-of-Thought: A Measurable Study and Trap-Aware Adaptive Restart'
+    authors: []
+    source: arxiv
+    arxiv_id: '2601.11940'
+    url: https://arxiv.org/abs/2601.11940
+    publication_date: 2026-01
+    venue: null
+    topics:
+      - reasoning-optimization
+    tags: []
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started

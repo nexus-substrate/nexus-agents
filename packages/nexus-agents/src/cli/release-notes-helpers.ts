@@ -127,7 +127,7 @@ export function groupCommitsByCategory(commits: CategorizedCommit[]): ReleaseNot
 
   for (const commit of commits) {
     const category = mapTypeToCategory(commit.type);
-    const existing = categoryMap.get(category) || [];
+    const existing = categoryMap.get(category) ?? [];
     existing.push(commit);
     categoryMap.set(category, existing);
   }

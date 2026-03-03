@@ -10,7 +10,6 @@
 import type { MemoryRow, ISQLiteDatabase } from './memory-backend-types.js';
 import type {
   MemoryAttributes,
-  EntityReference,
   ExtractionConfig,
   AgenticMemoryEntry,
 } from './agentic-memory-types.js';
@@ -26,24 +25,36 @@ const logger = createLogger({ component: 'AgenticMemoryDbHelpers' });
 // ============================================================================
 
 /**
+ * Safely extract MemoryAttributes from a raw amem record using type guards.
+ * Returns null if the record shape is invalid.
+ */
+function safeExtractAttributes(amem: Record<string, unknown>): MemoryAttributes | null {
+  if (!Array.isArray(amem.keywords) || amem.attributesUpdatedAt === undefined) return null;
+
+  const updatedAt = amem.attributesUpdatedAt;
+  if (typeof updatedAt !== 'number' && typeof updatedAt !== 'string') return null;
+
+  return {
+    keywords: amem.keywords.filter((k): k is string => typeof k === 'string'),
+    semanticTags: Array.isArray(amem.semanticTags)
+      ? amem.semanticTags.filter((t): t is string => typeof t === 'string')
+      : [],
+    contextDescription: typeof amem.contextDescription === 'string' ? amem.contextDescription : '',
+    entities: Array.isArray(amem.entities) ? (amem.entities as MemoryAttributes['entities']) : [],
+    attributesUpdatedAt: new Date(updatedAt),
+  };
+}
+
+/**
  * Parse A-MEM attributes from memory metadata JSON.
  */
 export function parseAmemAttributes(metadata: unknown): MemoryAttributes | null {
   if (typeof metadata !== 'object' || metadata === null) return null;
 
   const meta = metadata as Record<string, unknown>;
-  if (meta.amem === undefined) return null;
+  if (meta.amem === undefined || typeof meta.amem !== 'object' || meta.amem === null) return null;
 
-  const amem = meta.amem as Record<string, unknown>;
-  if (amem.keywords === undefined || amem.attributesUpdatedAt === undefined) return null;
-
-  return {
-    keywords: amem.keywords as string[],
-    semanticTags: amem.semanticTags as string[],
-    contextDescription: amem.contextDescription as string,
-    entities: amem.entities as EntityReference[],
-    attributesUpdatedAt: new Date(amem.attributesUpdatedAt as number),
-  };
+  return safeExtractAttributes(meta.amem as Record<string, unknown>);
 }
 
 /**
@@ -128,15 +139,9 @@ export function getAttributesFromRow(
     });
   }
 
-  if (meta.amem !== undefined) {
-    const amem = meta.amem as Record<string, unknown>;
-    return {
-      keywords: amem.keywords as string[],
-      semanticTags: amem.semanticTags as string[],
-      contextDescription: amem.contextDescription as string,
-      entities: amem.entities as MemoryAttributes['entities'],
-      attributesUpdatedAt: new Date(amem.attributesUpdatedAt as number),
-    };
+  if (meta.amem !== undefined && typeof meta.amem === 'object' && meta.amem !== null) {
+    const parsed = safeExtractAttributes(meta.amem as Record<string, unknown>);
+    if (parsed !== null) return parsed;
   }
 
   let parsedValue: unknown = row.value;
