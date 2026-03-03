@@ -38,7 +38,7 @@ export class TaskQueue<T> {
    */
   constructor(concurrency = 5) {
     if (concurrency < 1) {
-      throw new Error('Concurrency must be at least 1');
+      throw new Error(`Concurrency must be at least 1, got ${String(concurrency)}`);
     }
     this.concurrency = concurrency;
     this.abortController = new AbortController();

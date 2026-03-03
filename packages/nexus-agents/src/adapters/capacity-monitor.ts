@@ -102,7 +102,7 @@ export class CapacityMonitor implements ICapacityMonitor {
 
   public setLowCapacityThreshold(threshold: number): void {
     if (threshold < 0 || threshold > 100) {
-      throw new Error('Threshold must be between 0 and 100');
+      throw new Error(`Threshold must be between 0 and 100, got ${String(threshold)}`);
     }
     this.config.lowCapacityThreshold = threshold;
   }

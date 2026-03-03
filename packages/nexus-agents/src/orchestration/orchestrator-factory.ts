@@ -37,6 +37,9 @@ import {
 } from '../workflows/workflow-engine-factory.js';
 import { OrchestratorAdapter, PuppeteerAdapter } from './orchestrator-adapters.js';
 
+/** Max execution map entries before eviction of completed/cancelled entries. */
+const MAX_EXECUTION_MAP_SIZE = 200;
+
 // ============================================================================
 // Workflow Orchestrator Adapter
 // ============================================================================
@@ -161,12 +164,12 @@ export class WorkflowOrchestratorAdapter implements IOrchestrator {
 
   /** Evicts completed/cancelled entries from executions map to prevent unbounded growth. */
   private evictCompletedExecutions(): void {
-    if (this.executions.size <= 200) return;
+    if (this.executions.size <= MAX_EXECUTION_MAP_SIZE) return;
     for (const [id, status] of this.executions) {
       if (status.state === 'completed' || status.state === 'cancelled') {
         this.executions.delete(id);
       }
-      if (this.executions.size <= 200) return;
+      if (this.executions.size <= MAX_EXECUTION_MAP_SIZE) return;
     }
   }
 
