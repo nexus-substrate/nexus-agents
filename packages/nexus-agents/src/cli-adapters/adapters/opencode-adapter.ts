@@ -85,10 +85,9 @@ export class OpenCodeCliAdapter extends SubprocessCliAdapter {
       args.push('--thinking');
     }
 
-    // Pass prompt as positional argument
-    args.push(task.content);
-
-    return { command: 'opencode', args };
+    // Pass prompt via stdin to avoid argument escaping issues
+    // (matches Claude adapter pattern — critical for multi-line/special-char prompts)
+    return { command: 'opencode', args, stdin: task.content };
   }
 }
 

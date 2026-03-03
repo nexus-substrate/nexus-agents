@@ -427,6 +427,37 @@ describe('OpenCodeResponseParser', () => {
       expect(result?.usage?.inputTokens).toBe(78);
       expect(result?.usage?.outputTokens).toBe(23);
     });
+
+    it('should handle tool_use-only responses without text events', () => {
+      const raw = createNdjson(
+        {
+          type: 'step_start',
+          sessionID: 'ses_tool',
+          part: { type: 'step-start' },
+        },
+        {
+          type: 'tool_use',
+          sessionID: 'ses_tool',
+          part: { type: 'tool-use', name: 'read_file', input: { path: '/tmp/x' } },
+        },
+        {
+          type: 'step_finish',
+          sessionID: 'ses_tool',
+          part: {
+            type: 'step-finish',
+            reason: 'stop',
+            tokens: { total: 200, input: 50, output: 30, reasoning: 0 },
+          },
+        }
+      );
+
+      const result = parser.parse(raw);
+      expect(result).not.toBeNull();
+      expect(result?.content).toBe('[Tool-only response — no text output]');
+      expect(result?.sessionId).toBe('ses_tool');
+      expect(result?.usage?.inputTokens).toBe(50);
+      expect(result?.usage?.outputTokens).toBe(30);
+    });
   });
 
   describe('edge cases', () => {

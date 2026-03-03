@@ -158,18 +158,16 @@ describe('OpenCodeCliAdapter', () => {
       const task: CliTask = { content: 'Say hello' };
       await adapter.execute(task);
 
-      expect(spawn).toHaveBeenCalledWith(
-        'opencode',
-        expect.arrayContaining([
-          'run',
-          '--format',
-          'json',
-          '--model',
-          EXPECTED_DEFAULT_ID,
-          'Say hello',
-        ]),
-        expect.any(Object)
-      );
+      const calls = vi.mocked(spawn).mock.calls;
+      const args = calls[0]?.[1] as string[];
+      expect(args).toContain('run');
+      expect(args).toContain('--format');
+      expect(args).toContain('json');
+      expect(args).toContain('--model');
+      expect(args).toContain(EXPECTED_DEFAULT_ID);
+      // Prompt should NOT be in args — it's passed via stdin
+      expect(args).not.toContain('Say hello');
+      expect(mockProcess.stdin.write).toHaveBeenCalledWith('Say hello');
     });
 
     it('should use task model over default when provided', async () => {

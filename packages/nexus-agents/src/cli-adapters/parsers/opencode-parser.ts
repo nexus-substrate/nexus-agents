@@ -23,6 +23,7 @@ export type OpenCodeEventType =
   // Real opencode v1.2.x event types
   | 'step_start'
   | 'text'
+  | 'tool_use'
   | 'step_finish'
   // Legacy assumed types (maintained for backward compatibility)
   | 'session.start'
@@ -58,18 +59,29 @@ export class OpenCodeResponseParser implements ICliResponseParser<OpenCodeCliRes
     let sessionId: string | undefined;
     const contentParts: string[] = [];
     let usage: TokenUsage | undefined;
+    let hasStepEvents = false;
 
     for (const line of lines) {
       if (line.trim() === '') continue;
-      this.processLine(
+      const hadEvent = this.processLine(
         line,
         contentParts,
         (id) => (sessionId = id),
         (u) => (usage = u)
       );
+      if (hadEvent) hasStepEvents = true;
     }
 
     if (contentParts.length === 0) {
+      // Tool-only responses have step_start/step_finish but no text events.
+      // Return empty content rather than null to avoid PARSE_ERROR.
+      if (hasStepEvents) {
+        return {
+          content: '[Tool-only response — no text output]',
+          ...(sessionId !== undefined && { sessionId }),
+          ...(usage !== undefined && { usage }),
+        };
+      }
       // Fallback: try parsing as plain JSON (non-streaming mode)
       return this.parsePlainJson(raw);
     }
@@ -162,49 +174,77 @@ export class OpenCodeResponseParser implements ICliResponseParser<OpenCodeCliRes
   /**
    * Processes a single NDJSON line.
    * Handles both real v1.2.x format and legacy assumed format.
+   * Returns true if a real v1.2.x step event was processed (step_start/text/tool_use/step_finish).
+   * Legacy events return false since they don't indicate tool-only responses.
    */
   private processLine(
     line: string,
     contentParts: string[],
     setSessionId: (id: string) => void,
     setUsage: (usage: TokenUsage) => void
-  ): void {
+  ): boolean {
     try {
       const record = asRecord(JSON.parse(line) as unknown);
-      if (record === null) return;
+      if (record === null) return false;
 
-      switch (record.type) {
-        // --- Real opencode v1.2.x event types ---
-        case 'step_start':
-          this.handleRealSessionId(record, setSessionId);
-          break;
-        case 'text':
-          this.handleRealSessionId(record, setSessionId);
-          this.pushRealTextContent(record, contentParts);
-          break;
-        case 'step_finish':
-          this.handleRealSessionId(record, setSessionId);
-          this.emitRealUsage(record, setUsage);
-          break;
+      const isReal = this.processRealEvent(record, contentParts, setSessionId, setUsage);
+      if (isReal) return true;
 
-        // --- Legacy assumed event types ---
-        case 'session.start':
-          this.handleLegacySessionStart(record, setSessionId);
-          break;
-        case 'message.delta':
-          this.pushLegacyTextContent(record, contentParts);
-          break;
-        case 'message.complete':
-          this.pushLegacyTextContent(record, contentParts);
-          this.emitLegacyUsage(record, setUsage);
-          break;
-        case 'session.complete':
-          this.emitLegacyUsage(record, setUsage);
-          break;
-      }
+      this.processLegacyEvent(record, contentParts, setSessionId, setUsage);
+      return false;
     } catch (lineErr: unknown) {
       // Skip malformed NDJSON lines — capture for debuggability
       void lineErr;
+      return false;
+    }
+  }
+
+  /** Processes real opencode v1.2.x event types. Returns true if handled. */
+  private processRealEvent(
+    record: Record<string, unknown>,
+    contentParts: string[],
+    setSessionId: (id: string) => void,
+    setUsage: (usage: TokenUsage) => void
+  ): boolean {
+    switch (record.type) {
+      case 'step_start':
+      case 'tool_use':
+        this.handleRealSessionId(record, setSessionId);
+        return true;
+      case 'text':
+        this.handleRealSessionId(record, setSessionId);
+        this.pushRealTextContent(record, contentParts);
+        return true;
+      case 'step_finish':
+        this.handleRealSessionId(record, setSessionId);
+        this.emitRealUsage(record, setUsage);
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  /** Processes legacy assumed event types. */
+  private processLegacyEvent(
+    record: Record<string, unknown>,
+    contentParts: string[],
+    setSessionId: (id: string) => void,
+    setUsage: (usage: TokenUsage) => void
+  ): void {
+    switch (record.type) {
+      case 'session.start':
+        this.handleLegacySessionStart(record, setSessionId);
+        break;
+      case 'message.delta':
+        this.pushLegacyTextContent(record, contentParts);
+        break;
+      case 'message.complete':
+        this.pushLegacyTextContent(record, contentParts);
+        this.emitLegacyUsage(record, setUsage);
+        break;
+      case 'session.complete':
+        this.emitLegacyUsage(record, setUsage);
+        break;
     }
   }
 
