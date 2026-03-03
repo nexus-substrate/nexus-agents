@@ -115,7 +115,19 @@ import { CompositeRouter } from '../index.js';
 // ============================================================================
 // Consensus
 // ============================================================================
-import { ConsensusEngine } from '../index.js';
+import {
+  ConsensusEngine,
+  OWVoting,
+  HigherOrderVotingStrategy,
+  createHigherOrderVotingStrategy,
+  CorrelationTracker,
+  createCorrelationTracker,
+  WeightedVoting,
+  createWeightedVoting,
+  VotingProtocol,
+  createVotingProtocol,
+  VotingStrategyFactory,
+} from '../index.js';
 
 // ============================================================================
 // Model Availability — probes & fallback chains (Issue #869)
@@ -334,6 +346,28 @@ describe('Export contracts — routing', () => {
 describe('Export contracts — consensus', () => {
   it('exports ConsensusEngine', () => {
     expect(typeof ConsensusEngine).toBe('function');
+  });
+
+  it('exports higher-order voting classes', () => {
+    expect(typeof OWVoting).toBe('function');
+    expect(typeof HigherOrderVotingStrategy).toBe('function');
+    expect(typeof createHigherOrderVotingStrategy).toBe('function');
+  });
+
+  it('exports CorrelationTracker', () => {
+    expect(typeof CorrelationTracker).toBe('function');
+    expect(typeof createCorrelationTracker).toBe('function');
+  });
+
+  it('exports WeightedVoting', () => {
+    expect(typeof WeightedVoting).toBe('function');
+    expect(typeof createWeightedVoting).toBe('function');
+  });
+
+  it('exports VotingProtocol and VotingStrategyFactory', () => {
+    expect(typeof VotingProtocol).toBe('function');
+    expect(typeof createVotingProtocol).toBe('function');
+    expect(typeof VotingStrategyFactory).toBe('function');
   });
 });
 
