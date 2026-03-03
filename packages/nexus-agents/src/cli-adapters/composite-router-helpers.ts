@@ -459,23 +459,3 @@ export async function fetchCapacityData(
   }
   return result;
 }
-
-/**
- * Orders candidates by capacity: non-exhausted first, preserves order within groups.
- */
-export function orderByCapacity(
-  candidates: CliName[],
-  capacityData: Map<CliName, CapacityStatus>
-): CliName[] {
-  const available: CliName[] = [];
-  const exhausted: CliName[] = [];
-  for (const cli of candidates) {
-    const status = capacityData.get(cli);
-    if (status?.exhausted === true) {
-      exhausted.push(cli);
-    } else {
-      available.push(cli);
-    }
-  }
-  return [...available, ...exhausted];
-}

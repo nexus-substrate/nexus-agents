@@ -2602,3 +2602,24 @@ papers:
     techniques_extracted: []
     related_issues: []
     implementation_status: not-started
+  arxiv-2602.20229:
+    title: 'HieraMAS: Optimizing Intra-Node LLM Mixtures and Inter-Node Topology for Multi-Agent Systems'
+    authors: []
+    source: arxiv
+    arxiv_id: '2602.20229'
+    url: https://arxiv.org/abs/2602.20229
+    publication_date: 2026-02
+    venue: null
+    topics:
+      - multi-model routing optimization
+    tags:
+      - multi-agent
+      - llm
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started

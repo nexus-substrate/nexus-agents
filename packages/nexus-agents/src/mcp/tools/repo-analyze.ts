@@ -345,14 +345,24 @@ async function fetchRepoData(
     '--jq',
     '{name: .name, full_name: .full_name, description: .description, language: .language, default_branch: .default_branch, stargazers_count: .stargazers_count, license: .license}',
   ]);
-  const metadata = JSON.parse(metaJson.trim()) as GhRepoMetadata;
+  let metadata: GhRepoMetadata;
+  try {
+    metadata = JSON.parse(metaJson.trim()) as GhRepoMetadata;
+  } catch {
+    throw new Error(`Failed to parse repo metadata for ${repoId}: ${metaJson.slice(0, 200)}`);
+  }
   const { stdout: contentsJson } = await exec('gh', [
     'api',
     `repos/${repoId}/contents`,
     '--jq',
     '[.[].name]',
   ]);
-  const entries = JSON.parse(contentsJson.trim()) as string[];
+  let entries: string[];
+  try {
+    entries = JSON.parse(contentsJson.trim()) as string[];
+  } catch {
+    throw new Error(`Failed to parse repo contents for ${repoId}: ${contentsJson.slice(0, 200)}`);
+  }
   return { metadata, entries };
 }
 

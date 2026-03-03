@@ -131,10 +131,20 @@ function handleStats(): ResearchQueryResponse {
     };
   }
   const statsJson = generateStatsJson(result.value);
+  let data: unknown;
+  try {
+    data = JSON.parse(statsJson) as unknown;
+  } catch {
+    return {
+      action: 'stats',
+      success: false,
+      data: { error: 'Failed to generate stats JSON' },
+    };
+  }
   return {
     action: 'stats',
     success: true,
-    data: JSON.parse(statsJson) as unknown,
+    data,
   };
 }
 
