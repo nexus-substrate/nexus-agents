@@ -4047,3 +4047,82 @@ papers:
     techniques_extracted: []
     related_issues: []
     implementation_status: not-started
+  arxiv-2307.03025:
+    title: 'Style Over Substance: Evaluation Biases for Large Language Models'
+    authors: []
+    source: arxiv
+    arxiv_id: '2307.03025'
+    url: https://arxiv.org/abs/2307.03025
+    publication_date: 2023-07
+    venue: null
+    topics: []
+    tags:
+      - benchmark
+      - llm
+    reviewed_date: 2026-03-04
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2305.05176:
+    title: 'FrugalGPT: How to Use Large Language Models While Reducing Cost and Improving Performance'
+    authors: []
+    source: arxiv
+    arxiv_id: '2305.05176'
+    url: https://arxiv.org/abs/2305.05176
+    publication_date: 2023-05
+    venue: null
+    topics:
+      - routing
+    tags:
+      - llm
+    reviewed_date: 2026-03-04
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2303.17760:
+    title: 'CAMEL: Communicative Agents for "Mind" Exploration of Large Language Model Society'
+    authors: []
+    source: arxiv
+    arxiv_id: '2303.17760'
+    url: https://arxiv.org/abs/2303.17760
+    publication_date: 2023-03
+    venue: null
+    topics:
+      - orchestration
+    tags:
+      - llm
+    reviewed_date: 2026-03-04
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2310.11511:
+    title: 'Self-RAG: Learning to Retrieve, Generate, and Critique through Self-Reflection'
+    authors: []
+    source: arxiv
+    arxiv_id: '2310.11511'
+    url: https://arxiv.org/abs/2310.11511
+    publication_date: 2023-10
+    venue: null
+    topics:
+      - memory
+    tags: []
+    reviewed_date: 2026-03-04
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
