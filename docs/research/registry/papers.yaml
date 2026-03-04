@@ -3927,3 +3927,44 @@ papers:
     techniques_extracted: []
     related_issues: []
     implementation_status: not-started
+  arxiv-2603.02654:
+    title: Generalized Per-Agent Advantage Estimation for Multi-Agent Policy Optimization
+    authors: []
+    source: arxiv
+    arxiv_id: '2603.02654'
+    url: https://arxiv.org/abs/2603.02654
+    publication_date: 2026-03
+    venue: null
+    topics:
+      - multi-agent coordination
+    tags:
+      - multi-agent
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2602.22724:
+    title: 'AgentSentry: Mitigating Indirect Prompt Injection in LLM Agents via Temporal Causal
+      Diagnostics and Context Purification'
+    authors: []
+    source: arxiv
+    arxiv_id: '2602.22724'
+    url: https://arxiv.org/abs/2602.22724
+    publication_date: 2026-02
+    venue: null
+    topics:
+      - prompt injection defense
+    tags:
+      - llm
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
