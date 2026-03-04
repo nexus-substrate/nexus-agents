@@ -12,6 +12,7 @@ import { getErrorMessage, createLogger } from '../core/index.js';
 import type { PipelineEvent, Unsubscribe, IEventBus } from './event-types.js';
 import type { OutcomeStore } from '../orchestration/outcomes/outcome-store.js';
 import type { TaskOutcome } from '../orchestration/outcomes/outcome-types.js';
+import { categorizeOutcomeErrorMessage } from '../orchestration/outcomes/outcome-types.js';
 import { CLI_NAMES, DEFAULT_CLI } from '../config/model-capabilities-types.js';
 import type { CliNameLiteral } from '../config/model-capabilities-types.js';
 
@@ -83,6 +84,7 @@ function recordStageFailed(
     durationMs: 0,
     timestamp: new Date(event.timestamp).toISOString(),
     source: 'delegate',
+    failureCategory: categorizeOutcomeErrorMessage(event.error),
   };
   store.append(outcome);
 }

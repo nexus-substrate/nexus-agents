@@ -10,7 +10,10 @@
 
 import { createLogger, getErrorMessage } from '../../core/index.js';
 import { getToolMemory } from './tool-memory.js';
-import { getOutcomeStore } from '../../orchestration/outcomes/index.js';
+import {
+  getOutcomeStore,
+  categorizeOutcomeErrorMessage,
+} from '../../orchestration/outcomes/index.js';
 import { DEFAULT_CLI } from '../../config/model-capabilities-types.js';
 
 const logger = createLogger({ tool: 'create-expert' });
@@ -62,6 +65,9 @@ export function recordExpertOutcome(role: string, success: boolean, durationMs: 
       durationMs,
       timestamp: new Date().toISOString(),
       source: 'manual',
+      ...(!success
+        ? { failureCategory: categorizeOutcomeErrorMessage('expert creation failed') }
+        : {}),
     });
   } catch (error: unknown) {
     logger.debug('Best-effort expert outcome recording failed', { error: getErrorMessage(error) });

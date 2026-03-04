@@ -15,7 +15,7 @@ import { getErrorMessage, ok, err, createLogger, getTimeProvider } from '../core
 import type { ICliAdapter, CliName, CliResponse, CliError } from '../cli-adapters/types.js';
 import type { ReviewFinding } from '../dogfooding/pr-review-types.js';
 import { SEVERITY_ORDER } from '../dogfooding/pr-review-types.js';
-import { getOutcomeStore } from './outcomes/index.js';
+import { getOutcomeStore, categorizeOutcomeErrorMessage } from './outcomes/index.js';
 import type {
   CliReviewPartition,
   DeduplicatedFinding,
@@ -428,6 +428,9 @@ function recordReviewOutcomes(partitions: readonly CliReviewPartition[]): void {
         durationMs: p.durationMs,
         timestamp: new Date(getTimeProvider().now()).toISOString(),
         source: 'delegate',
+        ...(!p.success && p.error !== undefined
+          ? { failureCategory: categorizeOutcomeErrorMessage(p.error) }
+          : {}),
       });
     }
   } catch (error: unknown) {

@@ -19,7 +19,10 @@ import { createSecureHandler, type HandlerContext } from '../middleware/secure-h
 import { IssueTriage } from '../../dogfooding/issue-triage.js';
 import type { IssueTriageResult } from '../../dogfooding/issue-triage-types.js';
 import { getToolMemory } from './tool-memory.js';
-import { getOutcomeStore } from '../../orchestration/outcomes/index.js';
+import {
+  getOutcomeStore,
+  categorizeOutcomeErrorMessage,
+} from '../../orchestration/outcomes/index.js';
 import { DEFAULT_CLI } from '../../config/model-capabilities-types.js';
 
 // ============================================================================
@@ -230,6 +233,9 @@ function recordTriageOutcome(success: boolean, durationMs: number, errorMsg?: st
       durationMs,
       timestamp: new Date().toISOString(),
       source: 'manual',
+      ...(!success && errorMsg !== undefined
+        ? { failureCategory: categorizeOutcomeErrorMessage(errorMsg) }
+        : {}),
     });
   } catch (storeErr: unknown) {
     triageLogger.debug('Failed to record triage outcome to store', {

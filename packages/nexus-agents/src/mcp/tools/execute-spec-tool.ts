@@ -21,7 +21,10 @@ import { createSecureHandler, type HandlerContext } from '../middleware/secure-h
 import type { RateLimiter } from '../middleware/rate-limiter.js';
 import type { SecurityConfig } from '../../config/schemas.js';
 import { getToolMemory } from './tool-memory.js';
-import { getOutcomeStore } from '../../orchestration/outcomes/index.js';
+import {
+  getOutcomeStore,
+  categorizeOutcomeErrorMessage,
+} from '../../orchestration/outcomes/index.js';
 import { DEFAULT_CLI } from '../../config/model-capabilities-types.js';
 
 // ============================================================================
@@ -210,6 +213,9 @@ function recordSpecOutcome(success: boolean, durationMs: number, stage?: string)
       durationMs,
       timestamp: new Date().toISOString(),
       source: 'manual',
+      ...(!success && stage !== undefined
+        ? { failureCategory: categorizeOutcomeErrorMessage(`Spec failed at stage: ${stage}`) }
+        : {}),
     });
   } catch (storeErr: unknown) {
     specLogger.debug('Failed to record spec outcome to store', {

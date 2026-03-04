@@ -25,7 +25,10 @@ import type { SecurityConfig } from '../../config/schemas.js';
 import type { IMcpNotifier } from '../mcp-notifier.js';
 import { createMcpNotifier } from '../mcp-notifier.js';
 import { getToolMemory } from './tool-memory.js';
-import { getOutcomeStore } from '../../orchestration/outcomes/index.js';
+import {
+  getOutcomeStore,
+  categorizeOutcomeErrorMessage,
+} from '../../orchestration/outcomes/index.js';
 import { DEFAULT_CLI } from '../../config/model-capabilities-types.js';
 
 // ============================================================================
@@ -373,6 +376,9 @@ function recordGraphWorkflowResult(result: RunGraphWorkflowResponse): void {
       durationMs: result.durationMs,
       timestamp: new Date().toISOString(),
       source: 'manual',
+      ...(!succeeded && result.error !== undefined
+        ? { failureCategory: categorizeOutcomeErrorMessage(result.error) }
+        : {}),
     });
   } catch (storeErr: unknown) {
     graphLogger.debug('Failed to record outcome to store', {

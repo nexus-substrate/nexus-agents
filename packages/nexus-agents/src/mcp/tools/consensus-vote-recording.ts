@@ -11,7 +11,10 @@
 import { createLogger, getErrorMessage } from '../../core/index.js';
 import type { AgentVoteResult } from '../../cli/vote-types.js';
 import { getToolMemory } from './tool-memory.js';
-import { getOutcomeStore } from '../../orchestration/outcomes/index.js';
+import {
+  getOutcomeStore,
+  categorizeOutcomeErrorMessage,
+} from '../../orchestration/outcomes/index.js';
 import {
   DEFAULT_CLI,
   CLI_NAMES,
@@ -77,15 +80,19 @@ export function recordVoteOutcomes(votes: readonly AgentVoteResult[]): void {
         vote.cli !== undefined && (CLI_NAMES as readonly string[]).includes(vote.cli)
           ? (vote.cli as CliNameLiteral)
           : DEFAULT_CLI;
+      const voteSuccess = vote.source === 'llm';
       store.append({
         id: `vote-${String(Date.now())}-${Math.random().toString(36).slice(2, 8)}`,
         cli: cliName,
         category: 'planning',
         model: 'consensus',
-        success: vote.source === 'llm',
+        success: voteSuccess,
         durationMs: vote.processingTimeMs,
         timestamp: now,
         source: 'consensus',
+        ...(!voteSuccess && vote.error !== undefined
+          ? { failureCategory: categorizeOutcomeErrorMessage(vote.error) }
+          : {}),
       });
     }
   } catch (error: unknown) {

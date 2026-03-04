@@ -14,7 +14,7 @@ import type { Result, ILogger } from '../core/index.js';
 import { getErrorMessage, ok, err, createLogger, getTimeProvider } from '../core/index.js';
 
 import type { ICliAdapter, CliName, CliResponse, CliError } from '../cli-adapters/types.js';
-import { getOutcomeStore } from './outcomes/index.js';
+import { getOutcomeStore, categorizeOutcomeErrorMessage } from './outcomes/index.js';
 import type {
   CliPlan,
   CliPlanPartition,
@@ -453,6 +453,9 @@ function recordPlanOutcomes(partitions: readonly CliPlanPartition[]): void {
         durationMs: p.durationMs,
         timestamp: new Date(getTimeProvider().now()).toISOString(),
         source: 'delegate',
+        ...(!p.success && p.error !== undefined
+          ? { failureCategory: categorizeOutcomeErrorMessage(p.error) }
+          : {}),
       });
     }
   } catch (error: unknown) {

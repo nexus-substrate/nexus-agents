@@ -23,7 +23,7 @@ import type {
 } from '../cli-adapters/types.js';
 import type { TaskCategory } from '../config/task-specialization-types.js';
 import { detectTaskCategory } from '../config/task-specialization.js';
-import { getOutcomeStore } from './outcomes/index.js';
+import { getOutcomeStore, categorizeOutcomeErrorMessage } from './outcomes/index.js';
 import type {
   PartitionResult,
   ExplorationResult,
@@ -271,7 +271,9 @@ function recordOutcomes(partitions: readonly PartitionResult[], category: TaskCa
         durationMs: p.durationMs,
         timestamp: new Date(getTimeProvider().now()).toISOString(),
         source: 'delegate',
-        ...(p.success ? {} : {}),
+        ...(!p.success && p.error !== undefined
+          ? { failureCategory: categorizeOutcomeErrorMessage(p.error) }
+          : {}),
       });
     }
   } catch (error: unknown) {
