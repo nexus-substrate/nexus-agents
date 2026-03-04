@@ -44,6 +44,7 @@ import {
   isWorkerDispatchEnabled,
   recordWorkerOutcomes,
 } from './orchestrate-dispatch.js';
+import { generateReflection } from './orchestrate-reflection.js';
 import {
   getOutcomeStore,
   categorizeOutcomeErrorMessage,
@@ -615,6 +616,19 @@ function assembleOrchestrateOutput(
   return { content: [{ type: 'text' as const, text: JSON.stringify(output, null, 2) }] };
 }
 
+/** Record worker outcomes + fire-and-forget reflection (Issue #1323, #1392). */
+function recordAndReflect(
+  dispatchResult: Awaited<ReturnType<typeof executeWorkerDispatch>> | undefined,
+  task: string,
+  deps: OrchestrateDeps
+): void {
+  if (dispatchResult === undefined) return;
+  recordWorkerOutcomes(dispatchResult.results, task);
+  if (deps.modelAdapter !== undefined) {
+    void generateReflection(task, dispatchResult.results, deps.modelAdapter);
+  }
+}
+
 function createOrchestrateHandler(deps: OrchestrateDeps) {
   const notifier = deps.notifier ?? NOOP_NOTIFIER;
   return async (args: unknown, ctx: HandlerContext) => {
@@ -648,9 +662,7 @@ function createOrchestrateHandler(deps: OrchestrateDeps) {
       notifier
     );
 
-    // Record per-worker outcomes for closed-loop learning (Issue #1323)
-    if (workerDispatchResult !== undefined)
-      recordWorkerOutcomes(workerDispatchResult.results, validated.data.task);
+    recordAndReflect(workerDispatchResult, validated.data.task, deps);
 
     const result = await withProgressHeartbeat('orchestrate', notifier, () =>
       executeOrchestration(validated.data, deps)

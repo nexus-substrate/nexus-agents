@@ -186,14 +186,7 @@ export const TECHNIQUE_IMPLEMENTATION_MAP: ReadonlyMap<string, TechniqueMapping>
       hint: 'Outcome store tracks actions but not full action replay',
     },
   ],
-  [
-    'reflection-memory',
-    {
-      status: 'partial',
-      path: 'memory/session/',
-      hint: 'Session learnings captured but no explicit reflection loop',
-    },
-  ],
+  ['reflection-memory', { status: 'implemented', path: 'mcp/tools/orchestrate-reflection.ts' }],
   [
     'history-encoding',
     {
@@ -286,14 +279,7 @@ export const TECHNIQUE_IMPLEMENTATION_MAP: ReadonlyMap<string, TechniqueMapping>
       hint: 'LinUCB bandit is RL-based but not full RL orchestrator',
     },
   ],
-  [
-    'reflexion-verbal-rl',
-    {
-      status: 'partial',
-      path: 'orchestration/aorchestra/',
-      hint: 'Worker outcomes recorded but no verbal reflection loop',
-    },
-  ],
+  ['reflexion-verbal-rl', { status: 'implemented', path: 'mcp/tools/orchestrate-reflection.ts' }],
 ]);
 
 // =============================================================================
@@ -330,7 +316,7 @@ export const FEATURE_GATE_INVENTORY: readonly FeatureGate[] = [
     envVar: 'NEXUS_REFLECTIVE_MEMORY',
     defaultValue: 'disabled',
     description: 'Reflective memory retrieval',
-    techniques: ['reflection-memory', 'adaptive-memory'],
+    techniques: ['reflection-memory', 'adaptive-memory', 'reflexion-verbal-rl'],
   },
   {
     envVar: 'NEXUS_BILLING_MODE',
