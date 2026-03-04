@@ -260,8 +260,10 @@ function printDataDirectory(check: DataDirectoryCheck): void {
     const existCount = check.subdirectories.filter((d) => d.exists).length;
     const totalCount = check.subdirectories.length;
     const allExist = existCount === totalCount;
+    const allWritable = check.subdirectories.every((d) => !d.exists || d.writable);
+    const healthy = allExist && allWritable;
     writeLine(
-      `${formatStatus(allExist, !allExist)} Data directory: ${check.rootPath} (${String(existCount)}/${String(totalCount)} subdirs)`
+      `${formatStatus(healthy, !healthy)} Data directory: ${check.rootPath} (${String(existCount)}/${String(totalCount)} subdirs)`
     );
     if (!allExist) {
       const missing = check.subdirectories.filter((d) => !d.exists);
@@ -269,6 +271,12 @@ function printDataDirectory(check: DataDirectoryCheck): void {
         writeLine(`  ${colors.dim}Missing: ${dir.name}/${colors.reset}`);
       }
       writeLine(`  ${colors.dim}Fix: nexus-agents setup${colors.reset}`);
+    }
+    if (!allWritable) {
+      const readonly_ = check.subdirectories.filter((d) => d.exists && !d.writable);
+      for (const dir of readonly_) {
+        writeLine(`  ${colors.yellow}Not writable: ${dir.name}/${colors.reset}`);
+      }
     }
   } else {
     writeLine(

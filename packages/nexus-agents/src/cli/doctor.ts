@@ -134,6 +134,7 @@ export interface DataSubdirStatus {
   readonly name: string;
   readonly path: string;
   readonly exists: boolean;
+  readonly writable: boolean;
 }
 
 /** Standard data subdirectories under ~/.nexus-agents/. */
@@ -469,10 +470,21 @@ function checkDataDirectory(): DataDirectoryCheck {
 
   const subdirectories: DataSubdirStatus[] = DATA_SUBDIRECTORIES.map((name) => {
     const fullPath = join(rootPath, name);
-    return { name, path: fullPath, exists: existsSync(fullPath) };
+    const exists = existsSync(fullPath);
+    return { name, path: fullPath, exists, writable: exists && isWritable(fullPath) };
   });
 
   return { rootExists, rootPath, subdirectories };
+}
+
+/** Checks if a directory is writable by the current user. */
+function isWritable(dirPath: string): boolean {
+  try {
+    accessSync(dirPath, fsConstants.W_OK);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -558,10 +570,10 @@ async function runDoctorFix(result: DoctorResult): Promise<void> {
 
   let fixCount = 0;
 
-  // Fix: data directories
+  // Fix: data directories (missing or not writable)
   if (
     !result.dataDirectory.rootExists ||
-    result.dataDirectory.subdirectories.some((d) => !d.exists)
+    result.dataDirectory.subdirectories.some((d) => !d.exists || !d.writable)
   ) {
     const { runSetup } = await import('./setup-command.js');
     const setupResult = runSetup({

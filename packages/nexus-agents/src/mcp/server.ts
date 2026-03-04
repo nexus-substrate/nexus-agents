@@ -22,6 +22,7 @@ import {
 } from '../core/index.js';
 import { VERSION } from '../version.js';
 import { getTaskStore } from './task-store.js';
+import { initDataDirectories } from '../cli/setup-data-dir.js';
 
 /**
  * Server configuration options.
@@ -92,6 +93,9 @@ export function createServer(config?: ServerConfig): Result<ServerInstance, Serv
   const logger = config?.logger ?? createLogger({ component: 'mcp-server' });
 
   try {
+    // Ensure data directories exist on first MCP server startup (#1398)
+    initDataDirectories();
+
     logger.info('Creating MCP server', {
       name: serverName,
       version: serverVersion,

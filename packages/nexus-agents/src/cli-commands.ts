@@ -127,6 +127,8 @@ import { handleStatusCommand } from './cli/status-command.js';
 import { handleMemoryBenchmarkCommand } from './cli/memory-benchmark-command.js';
 // Epic #952: Scenario Command
 import { handleScenarioCommand } from './cli/scenario-command.js';
+// Issue #1398: Lazy data directory initialization
+import { initDataDirectories } from './cli/setup-data-dir.js';
 
 /**
  * Prints help text to stdout.
@@ -242,6 +244,9 @@ async function handleAsyncCommand(args: ParsedCliArgs): Promise<void> {
  * @param args - Parsed CLI arguments
  */
 export async function dispatchCommand(args: ParsedCliArgs): Promise<void> {
+  // Ensure data directories exist before any command runs (#1398)
+  initDataDirectories();
+
   if (!handleSyncCommand(args)) {
     await handleAsyncCommand(args);
   }
