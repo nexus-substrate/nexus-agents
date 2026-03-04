@@ -12,7 +12,7 @@
 export const CLAUDE_MODELS = {
   OPUS_4: 'claude-opus-4-20250514',
   SONNET_4: 'claude-sonnet-4-20250514',
-  HAIKU_3: 'claude-3-haiku-20240307',
+  HAIKU_4: 'claude-haiku-4-5-20251001',
 } as const;
 
 /**
@@ -21,7 +21,9 @@ export const CLAUDE_MODELS = {
 export const CLAUDE_MODEL_ALIASES: Record<string, string> = {
   'claude-opus-4': CLAUDE_MODELS.OPUS_4,
   'claude-sonnet-4': CLAUDE_MODELS.SONNET_4,
-  'claude-haiku-3': CLAUDE_MODELS.HAIKU_3,
+  'claude-haiku-4': CLAUDE_MODELS.HAIKU_4,
+  // Legacy alias
+  'claude-haiku-3': CLAUDE_MODELS.HAIKU_4,
 } as const;
 
 /**

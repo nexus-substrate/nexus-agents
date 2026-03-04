@@ -743,7 +743,7 @@ describe('CLAUDE_MODELS', () => {
   it('should have correct model identifiers', () => {
     expect(CLAUDE_MODELS.OPUS_4).toBe('claude-opus-4-20250514');
     expect(CLAUDE_MODELS.SONNET_4).toBe('claude-sonnet-4-20250514');
-    expect(CLAUDE_MODELS.HAIKU_3).toBe('claude-3-haiku-20240307');
+    expect(CLAUDE_MODELS.HAIKU_4).toBe('claude-haiku-4-5-20251001');
   });
 });
 
@@ -751,6 +751,7 @@ describe('CLAUDE_MODEL_ALIASES', () => {
   it('should map aliases to full model IDs', () => {
     expect(CLAUDE_MODEL_ALIASES['claude-opus-4']).toBe(CLAUDE_MODELS.OPUS_4);
     expect(CLAUDE_MODEL_ALIASES['claude-sonnet-4']).toBe(CLAUDE_MODELS.SONNET_4);
-    expect(CLAUDE_MODEL_ALIASES['claude-haiku-3']).toBe(CLAUDE_MODELS.HAIKU_3);
+    expect(CLAUDE_MODEL_ALIASES['claude-haiku-4']).toBe(CLAUDE_MODELS.HAIKU_4);
+    expect(CLAUDE_MODEL_ALIASES['claude-haiku-3']).toBe(CLAUDE_MODELS.HAIKU_4); // Legacy alias
   });
 });

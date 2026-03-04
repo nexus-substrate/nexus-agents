@@ -63,7 +63,7 @@ const result = await startStdioServer({
 
 // Or use programmatically with model adapters
 const adapter = createClaudeAdapter({
-  model: 'claude-sonnet-4-20250514',
+  model: 'claude-sonnet-4-6',
 });
 
 // Create experts dynamically
@@ -277,14 +277,14 @@ import {
 } from 'nexus-agents';
 
 // Create individual adapters
-const claude = createClaudeAdapter({ model: 'claude-sonnet-4-20250514' });
+const claude = createClaudeAdapter({ model: 'claude-sonnet-4-6' });
 const openai = createOpenAIAdapter({ model: 'gpt-4o' });
 const gemini = createGeminiAdapter({ model: 'gemini-1.5-pro' });
 const ollama = createOllamaAdapter({ model: 'llama3:8b' });
 
 // Or use the factory
 const factory = new AdapterFactory();
-const adapter = factory.create({ provider: 'anthropic', model: 'claude-sonnet-4-20250514' });
+const adapter = factory.create({ provider: 'anthropic', model: 'claude-sonnet-4-6' });
 ```
 
 ### Agents
