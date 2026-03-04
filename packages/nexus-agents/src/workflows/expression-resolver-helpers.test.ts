@@ -137,6 +137,15 @@ describe('resolveSteps', () => {
     expect(result.error).toContain('not complete successfully');
   });
 
+  it('resolves skipped step output as null', () => {
+    const stepResults = new Map<string, StepResult>();
+    stepResults.set('step1', makeStepResult({ status: 'skipped' as 'success', output: null }));
+    const ctx = makeContext({ stepResults });
+    const result = resolveSteps(['step1', 'output'], ctx);
+    expect(result.success).toBe(true);
+    expect(result.value).toBeNull();
+  });
+
   it('fails for invalid output key', () => {
     const stepResults = new Map<string, StepResult>();
     stepResults.set('step1', makeStepResult());

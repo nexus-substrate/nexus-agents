@@ -92,15 +92,22 @@ function validateStepResult(
     return { success: false, error: `Step '${stepId}' has not completed` };
   }
 
-  if (stepResult.status !== 'success') {
-    return { success: false, error: `Step '${stepId}' did not complete successfully` };
-  }
-
   if (outputKey !== 'output') {
     return {
       success: false,
       error: `Invalid step property '${outputKey}', only 'output' is supported`,
     };
+  }
+
+  // Skipped steps resolve to null — downstream steps receive null input
+  // instead of failing. This enables conditional step chains (e.g., a
+  // test step skipped by condition with a verify step depending on it).
+  if (stepResult.status === 'skipped') {
+    return { success: true, value: null };
+  }
+
+  if (stepResult.status !== 'success') {
+    return { success: false, error: `Step '${stepId}' did not complete successfully` };
   }
 
   return null;
@@ -122,8 +129,8 @@ export function resolveSteps(path: string[], context: WorkflowExecutionContext):
   const rest = path.slice(2);
 
   const stepResult = context.stepResults.get(stepId);
-  const resultError = validateStepResult(stepId, outputKey, stepResult);
-  if (resultError !== null) return resultError;
+  const earlyReturn = validateStepResult(stepId, outputKey, stepResult);
+  if (earlyReturn !== null) return earlyReturn;
 
   if (rest.length === 0) {
     return { success: true, value: stepResult?.output };
