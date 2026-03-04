@@ -3904,3 +3904,26 @@ papers:
     techniques_extracted: []
     related_issues: []
     implementation_status: not-started
+  arxiv-2602.23896:
+    title:
+      'TSC: Topology-Conditioned Stackelberg Coordination for Multi-Agent Reinforcement Learning in
+      Interactive Driving'
+    authors: []
+    source: arxiv
+    arxiv_id: '2602.23896'
+    url: https://arxiv.org/abs/2602.23896
+    publication_date: 2026-02
+    venue: null
+    topics:
+      - multi-agent coordination
+    tags:
+      - multi-agent
+      - reinforcement-learning
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
