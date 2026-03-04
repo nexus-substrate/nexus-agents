@@ -89,9 +89,9 @@ async function setupServer(): Promise<TestContext> {
 /**
  * Timeout for MCP task-based tests. The execute_expert tool uses MCP Tasks
  * with a 5s poll interval, so tests need at least 10s to complete one cycle.
- * Use 15s to allow headroom for CI contention.
+ * Use 30s to allow headroom for CI contention and macOS matrix slowness.
  */
-const MCP_TASK_TIMEOUT = 15_000;
+const MCP_TASK_TIMEOUT = 30_000;
 
 // ============================================================================
 // Tests

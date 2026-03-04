@@ -4,7 +4,14 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { join } from 'node:path';
 import { parseOptions, evaluateCommand } from './self-eval.js';
+
+/** Absolute path to the package root (resolves CWD ambiguity in Vitest). */
+const PACKAGE_ROOT = join(import.meta.dirname, '..', '..');
+
+/** Absolute target path for self-eval tests. */
+const SELF_EVAL_TARGET = join(PACKAGE_ROOT, 'src', 'self-eval');
 
 // Mock the logger to prevent output contamination
 vi.mock('../core/index.js', async (importOriginal) => {
@@ -123,7 +130,7 @@ describe('evaluateCommand', () => {
     { timeout: INTEGRATION_TIMEOUT },
     async () => {
       // Target the self-eval directory which has clean code
-      const exitCode = await evaluateCommand(['--target', 'src/self-eval/', '--timeout', '10000']);
+      const exitCode = await evaluateCommand(['--target', SELF_EVAL_TARGET, '--timeout', '10000']);
 
       expect(exitCode).toBe(0);
       expect(mockStdout.join('')).toContain('Self-Evaluation Report');
@@ -133,7 +140,7 @@ describe('evaluateCommand', () => {
   it('should output JSON when --json flag is set', { timeout: INTEGRATION_TIMEOUT }, async () => {
     const exitCode = await evaluateCommand([
       '--target',
-      'src/self-eval/',
+      SELF_EVAL_TARGET,
       '--json',
       '--timeout',
       '10000',
@@ -151,7 +158,7 @@ describe('evaluateCommand', () => {
     'should include recommendation notice in output',
     { timeout: INTEGRATION_TIMEOUT },
     async () => {
-      await evaluateCommand(['--target', 'src/self-eval/', '--timeout', '10000']);
+      await evaluateCommand(['--target', SELF_EVAL_TARGET, '--timeout', '10000']);
 
       const output = mockStdout.join('');
       expect(output).toContain('RECOMMENDATIONS');
@@ -163,7 +170,7 @@ describe('evaluateCommand', () => {
     'should include recommendation notice in JSON output',
     { timeout: INTEGRATION_TIMEOUT },
     async () => {
-      await evaluateCommand(['--target', 'src/self-eval/', '--json', '--timeout', '10000']);
+      await evaluateCommand(['--target', SELF_EVAL_TARGET, '--json', '--timeout', '10000']);
 
       const output = mockStdout.join('');
       const parsed = JSON.parse(output) as { notice: string };
@@ -182,7 +189,7 @@ describe('evaluateCommand', () => {
     'should show verbose output when --verbose is set',
     { timeout: INTEGRATION_TIMEOUT },
     async () => {
-      await evaluateCommand(['--target', 'src/self-eval/', '--verbose', '--timeout', '10000']);
+      await evaluateCommand(['--target', SELF_EVAL_TARGET, '--verbose', '--timeout', '10000']);
 
       const output = mockStdout.join('');
       expect(output).toContain('Verbose');
@@ -191,7 +198,7 @@ describe('evaluateCommand', () => {
   );
 
   it('should show summary statistics', { timeout: INTEGRATION_TIMEOUT }, async () => {
-    await evaluateCommand(['--target', 'src/self-eval/', '--timeout', '10000']);
+    await evaluateCommand(['--target', SELF_EVAL_TARGET, '--timeout', '10000']);
 
     const output = mockStdout.join('');
     expect(output).toContain('Summary');
@@ -214,7 +221,7 @@ describe('evaluateCommand', () => {
 
 describe('output formatting', () => {
   it('should show component count in summary', { timeout: INTEGRATION_TIMEOUT }, async () => {
-    await evaluateCommand(['--target', 'src/self-eval/', '--timeout', '10000']);
+    await evaluateCommand(['--target', SELF_EVAL_TARGET, '--timeout', '10000']);
 
     const output = mockStdout.join('');
     // Account for ANSI color codes in output
@@ -223,7 +230,7 @@ describe('output formatting', () => {
   });
 
   it('should show duration in summary', { timeout: INTEGRATION_TIMEOUT }, async () => {
-    await evaluateCommand(['--target', 'src/self-eval/', '--timeout', '10000']);
+    await evaluateCommand(['--target', SELF_EVAL_TARGET, '--timeout', '10000']);
 
     const output = mockStdout.join('');
     // Account for ANSI color codes in output
@@ -232,7 +239,7 @@ describe('output formatting', () => {
   });
 
   it('should show total lines in summary', { timeout: INTEGRATION_TIMEOUT }, async () => {
-    await evaluateCommand(['--target', 'src/self-eval/', '--timeout', '10000']);
+    await evaluateCommand(['--target', SELF_EVAL_TARGET, '--timeout', '10000']);
 
     const output = mockStdout.join('');
     // Account for ANSI color codes in output
@@ -240,7 +247,7 @@ describe('output formatting', () => {
   });
 
   it('JSON output should be valid and parseable', { timeout: INTEGRATION_TIMEOUT }, async () => {
-    await evaluateCommand(['--target', 'src/self-eval/', '--json', '--timeout', '10000']);
+    await evaluateCommand(['--target', SELF_EVAL_TARGET, '--json', '--timeout', '10000']);
 
     const output = mockStdout.join('');
     let didParse = true;
@@ -266,7 +273,7 @@ describe('output formatting', () => {
     'JSON output should include isRecommendation flag',
     { timeout: INTEGRATION_TIMEOUT },
     async () => {
-      await evaluateCommand(['--target', 'src/self-eval/', '--json', '--timeout', '10000']);
+      await evaluateCommand(['--target', SELF_EVAL_TARGET, '--json', '--timeout', '10000']);
 
       const output = mockStdout.join('');
       const parsed = JSON.parse(output) as { results: Array<{ isRecommendation: boolean }> };
@@ -284,7 +291,7 @@ describe('output formatting', () => {
 
 describe('end-to-end evaluation', () => {
   it('should evaluate component-scanner.ts', { timeout: INTEGRATION_TIMEOUT }, async () => {
-    await evaluateCommand(['--target', 'src/self-eval/', '--json', '--timeout', '15000']);
+    await evaluateCommand(['--target', SELF_EVAL_TARGET, '--json', '--timeout', '15000']);
 
     const output = mockStdout.join('');
     const parsed = JSON.parse(output) as { results: Array<{ component: string }> };
@@ -297,7 +304,7 @@ describe('end-to-end evaluation', () => {
     'should provide votes from all three evaluators',
     { timeout: INTEGRATION_TIMEOUT },
     async () => {
-      await evaluateCommand(['--target', 'src/self-eval/', '--json', '--timeout', '15000']);
+      await evaluateCommand(['--target', SELF_EVAL_TARGET, '--json', '--timeout', '15000']);
 
       const output = mockStdout.join('');
       const parsed = JSON.parse(output) as { results: Array<{ votes: Array<{ agent: string }> }> };
@@ -312,7 +319,7 @@ describe('end-to-end evaluation', () => {
   );
 
   it('should calculate confidence correctly', { timeout: INTEGRATION_TIMEOUT }, async () => {
-    await evaluateCommand(['--target', 'src/self-eval/', '--json', '--timeout', '15000']);
+    await evaluateCommand(['--target', SELF_EVAL_TARGET, '--json', '--timeout', '15000']);
 
     const output = mockStdout.join('');
     const parsed = JSON.parse(output) as { results: Array<{ confidence: number }> };

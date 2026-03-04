@@ -157,9 +157,28 @@ function extractToolsFromFile(
 }
 
 /**
+ * Resolves a property's initializer value, handling both PropertyAssignment
+ * and ShorthandPropertyAssignment (e.g., `{ description }` → variable lookup).
+ */
+function resolvePropertyValue(
+  prop: Node,
+  sourceFile: ReturnType<Project['getSourceFile']>
+): Node | undefined {
+  const propAssign = prop.asKind(SyntaxKind.PropertyAssignment);
+  if (propAssign !== undefined) return propAssign.getInitializer();
+
+  const shorthand = prop.asKind(SyntaxKind.ShorthandPropertyAssignment);
+  if (shorthand !== undefined && sourceFile !== undefined) {
+    const varDecl = sourceFile.getVariableDeclaration(shorthand.getName());
+    return varDecl?.getInitializer();
+  }
+  return undefined;
+}
+
+/**
  * Extracts tool metadata (description and schema) from arguments.
  */
-// eslint-disable-next-line complexity -- AST traversal requires nested conditions
+
 function extractToolMeta(
   callText: string,
   args: Node[],
@@ -176,14 +195,12 @@ function extractToolMeta(
       if (configObj !== undefined) {
         const descProp = configObj.getProperty('description');
         if (descProp !== undefined) {
-          const propAssign = descProp.asKind(SyntaxKind.PropertyAssignment);
-          const init = propAssign?.getInitializer();
+          const init = resolvePropertyValue(descProp, _sourceFile);
           description = init?.getText().replace(/^['"]|['"]$/g, '') ?? '';
         }
         const schemaProp = configObj.getProperty('inputSchema');
         if (schemaProp !== undefined) {
-          const propAssign = schemaProp.asKind(SyntaxKind.PropertyAssignment);
-          schemaArg = propAssign?.getInitializer();
+          schemaArg = resolvePropertyValue(schemaProp, _sourceFile);
         }
       }
     }

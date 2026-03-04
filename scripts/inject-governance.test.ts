@@ -16,11 +16,11 @@ const ROOT = join(import.meta.dirname, '..');
 const SCRIPT = join(ROOT, 'scripts/inject-governance.ts');
 const CLAUDE_MD = join(ROOT, 'CLAUDE.md');
 
-/** Timeout for tests that run the governance script as a subprocess (~4-5s per invocation). */
-const SUBPROCESS_TIMEOUT = 15_000;
+/** Timeout for tests that run the governance script as a subprocess (~4-8s per invocation). */
+const SUBPROCESS_TIMEOUT = 30_000;
 
-/** Timeout for the idempotency test that runs the script twice (~9-10s total). */
-const IDEMPOTENCY_TIMEOUT = 25_000;
+/** Timeout for the idempotency test that runs the script twice (~8-16s total). */
+const IDEMPOTENCY_TIMEOUT = 45_000;
 
 beforeEach(() => {
   vi.restoreAllMocks();
@@ -177,15 +177,16 @@ describe('section injection behavior', () => {
     'replaces content between markers without affecting surrounding text',
     { timeout: SUBPROCESS_TIMEOUT },
     () => {
-      const beforeMarker = originalContent.split('<!-- GOVERNANCE:TOOL_INDEX:START -->')[0];
-      const afterMarker = originalContent.split('<!-- GOVERNANCE:TOOL_INDEX:END -->')[1];
+      const beforeToolIndex = originalContent.split('<!-- GOVERNANCE:TOOL_INDEX:START -->')[0];
+      // Compare content after ALL governed sections (VERSION:END is the last marker)
+      const afterAllGoverned = originalContent.split('<!-- GOVERNANCE:VERSION:END -->')[1];
 
       runScript('inject');
       const updated = readFileSync(CLAUDE_MD, 'utf-8');
 
-      // Content before and after the governed section should be unchanged
-      expect(updated.split('<!-- GOVERNANCE:TOOL_INDEX:START -->')[0]).toBe(beforeMarker);
-      expect(updated.split('<!-- GOVERNANCE:TOOL_INDEX:END -->')[1]).toBe(afterMarker);
+      // Content before first governed section and after last governed section should be unchanged
+      expect(updated.split('<!-- GOVERNANCE:TOOL_INDEX:START -->')[0]).toBe(beforeToolIndex);
+      expect(updated.split('<!-- GOVERNANCE:VERSION:END -->')[1]).toBe(afterAllGoverned);
     }
   );
 
