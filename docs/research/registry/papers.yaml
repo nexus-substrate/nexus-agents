@@ -3760,3 +3760,64 @@ papers:
     techniques_extracted: []
     related_issues: []
     implementation_status: not-started
+  arxiv-2512.13598:
+    title: Textual Gradients are a Flawed Metaphor for Automatic Prompt Optimization
+    authors: []
+    source: arxiv
+    arxiv_id: '2512.13598'
+    url: https://arxiv.org/abs/2512.13598
+    publication_date: 2025-12
+    venue: null
+    topics:
+      - prompt-optimization
+    tags: []
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2603.00539:
+    title: Are LLMs Reliable Code Reviewers? Systematic Overcorrection in Requirement Conformance
+      Judgement
+    authors: []
+    source: arxiv
+    arxiv_id: '2603.00539'
+    url: https://arxiv.org/abs/2603.00539
+    publication_date: 2026-03
+    venue: null
+    topics:
+      - code-generation
+    tags:
+      - survey
+      - llm
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2601.18241:
+    title: 'TAM-Eval: Evaluating LLMs for Automated Unit Test Maintenance'
+    authors: []
+    source: arxiv
+    arxiv_id: '2601.18241'
+    url: https://arxiv.org/abs/2601.18241
+    publication_date: 2026-01
+    venue: null
+    topics:
+      - code-generation
+    tags:
+      - llm
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
