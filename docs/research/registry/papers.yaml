@@ -3863,3 +3863,24 @@ papers:
     techniques_extracted: []
     related_issues: []
     implementation_status: not-started
+  arxiv-2510.15994:
+    title: 'MCP Security Bench (MSB): Benchmarking Attacks Against Model Context Protocol in LLM Agents'
+    authors: []
+    source: arxiv
+    arxiv_id: '2510.15994'
+    url: https://arxiv.org/abs/2510.15994
+    publication_date: 2025-10
+    venue: null
+    topics:
+      - MCP Security
+    tags:
+      - benchmark
+      - llm
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
