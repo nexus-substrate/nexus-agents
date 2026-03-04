@@ -86,8 +86,10 @@ export async function loadSourcesRegistry(
     const content = await fs.readFile(pathResult.value, 'utf-8');
     const parsed = parseYaml(content) as SourcesRegistry;
     return { ok: true, value: parsed };
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+  } catch (error: unknown) {
+    const code =
+      error instanceof Error && 'code' in error ? (error as { code?: string }).code : undefined;
+    if (code === 'ENOENT') {
       // Return empty registry if file doesn't exist
       return {
         ok: true,

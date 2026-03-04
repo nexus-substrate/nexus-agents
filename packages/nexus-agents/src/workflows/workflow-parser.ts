@@ -48,6 +48,41 @@ function validatePath(userPath: string, allowedRoot: string): Result<string, Sec
   return ok(resolved);
 }
 
+/** Extract the .code property from an error with NodeJS.ErrnoException shape. */
+function getErrorCode(e: unknown): string | undefined {
+  if (e instanceof Error && 'code' in e) {
+    const rec = e as { code?: string };
+    return typeof rec.code === 'string' ? rec.code : undefined;
+  }
+  return undefined;
+}
+
+/** Convert an unknown caught value to a user-facing error message. */
+function getErrMsg(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
+/** Build a ParseError from a JSON parse failure. */
+function buildJsonParseError(e: unknown, content: string): ParseError {
+  const message = getErrMsg(e);
+  const posMatch = message.match(/position (\d+)/);
+  const matchGroup = posMatch?.[1];
+  const position = matchGroup !== undefined ? parseInt(matchGroup, 10) : undefined;
+  const lineInfo = position !== undefined ? findLineColumn(content, position) : undefined;
+  const errorOptions: { line?: number; column?: number } = {};
+  if (lineInfo?.line !== undefined) errorOptions.line = lineInfo.line;
+  if (lineInfo?.column !== undefined) errorOptions.column = lineInfo.column;
+  return new ParseError(`JSON parse error: ${message}`, errorOptions);
+}
+
+/** Build a ParseError from a file read failure. */
+function buildFileReadError(e: unknown, filePath: string): ParseError {
+  const code = getErrorCode(e);
+  if (code === 'ENOENT') return new ParseError(`File not found: ${filePath}`);
+  if (code === 'EACCES') return new ParseError(`Permission denied: ${filePath}`);
+  return new ParseError(`Failed to read file: ${getErrMsg(e)}`);
+}
+
 /**
  * Parses a YAML string into a WorkflowDefinition.
  * @param content - YAML string content
@@ -61,17 +96,21 @@ export function parseWorkflowYaml(content: string): Result<WorkflowDefinition, P
       strict: true,
       uniqueKeys: true,
     });
-  } catch (e) {
-    const yamlError = e as yaml.YAMLParseError;
-    const linePos = yamlError.linePos?.[0];
-    const errorOptions: { line?: number; column?: number } = {};
-    if (linePos?.line !== undefined) {
-      errorOptions.line = linePos.line;
+  } catch (e: unknown) {
+    if (e instanceof Error && 'linePos' in e) {
+      const yamlError = e as { linePos?: Array<{ line?: number; col?: number }> } & Error;
+      const linePos = yamlError.linePos?.[0];
+      const errorOptions: { line?: number; column?: number } = {};
+      if (linePos?.line !== undefined) {
+        errorOptions.line = linePos.line;
+      }
+      if (linePos?.col !== undefined) {
+        errorOptions.column = linePos.col;
+      }
+      return err(new ParseError(`YAML parse error: ${yamlError.message}`, errorOptions));
     }
-    if (linePos?.col !== undefined) {
-      errorOptions.column = linePos.col;
-    }
-    return err(new ParseError(`YAML parse error: ${yamlError.message}`, errorOptions));
+    const message = e instanceof Error ? e.message : String(e);
+    return err(new ParseError(`YAML parse error: ${message}`));
   }
 
   // Validate against schema
@@ -88,23 +127,8 @@ export function parseWorkflowJson(content: string): Result<WorkflowDefinition, P
   let parsed: unknown;
   try {
     parsed = JSON.parse(content) as unknown;
-  } catch (e) {
-    const jsonError = e as SyntaxError;
-    // Extract line/column from JSON parse error message if possible
-    const posMatch = jsonError.message.match(/position (\d+)/);
-    const matchGroup = posMatch?.[1];
-    const position = matchGroup !== undefined ? parseInt(matchGroup, 10) : undefined;
-    const lineInfo = position !== undefined ? findLineColumn(content, position) : undefined;
-
-    const errorOptions: { line?: number; column?: number } = {};
-    if (lineInfo?.line !== undefined) {
-      errorOptions.line = lineInfo.line;
-    }
-    if (lineInfo?.column !== undefined) {
-      errorOptions.column = lineInfo.column;
-    }
-
-    return err(new ParseError(`JSON parse error: ${jsonError.message}`, errorOptions));
+  } catch (e: unknown) {
+    return err(buildJsonParseError(e, content));
   }
 
   // Validate against schema
@@ -230,15 +254,8 @@ export async function loadWorkflowFile(
       );
     }
     content = await fs.readFile(validatedPath, 'utf-8');
-  } catch (e) {
-    const fsError = e as NodeJS.ErrnoException;
-    if (fsError.code === 'ENOENT') {
-      return err(new ParseError(`File not found: ${validatedPath}`));
-    }
-    if (fsError.code === 'EACCES') {
-      return err(new ParseError(`Permission denied: ${validatedPath}`));
-    }
-    return err(new ParseError(`Failed to read file: ${fsError.message}`));
+  } catch (e: unknown) {
+    return err(buildFileReadError(e, validatedPath));
   }
 
   // Parse based on extension
