@@ -356,7 +356,7 @@ export class ReflectiveRetriever {
 // ============================================================================
 
 /**
- * Check if reflective memory retrieval is enabled.
+ * Check if reflective memory retrieval is fully enabled.
  */
 export function isReflectiveMemoryEnabled(): boolean {
   return process.env.NEXUS_REFLECTIVE_MEMORY === 'true';
@@ -364,7 +364,12 @@ export function isReflectiveMemoryEnabled(): boolean {
 
 /**
  * Check if shadow mode is enabled (run reflection but return original results).
+ * Shadow mode is the default when the env var is not set or explicitly set to 'shadow'.
  */
 export function isReflectiveShadowMode(): boolean {
-  return process.env.NEXUS_REFLECTIVE_MEMORY === 'shadow';
+  const value = process.env.NEXUS_REFLECTIVE_MEMORY;
+  if (value === 'false') return false;
+  if (value === 'true') return false;
+  // Default to shadow mode (undefined, 'shadow', or any other value)
+  return true;
 }

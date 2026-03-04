@@ -349,21 +349,27 @@ describe('feature flags', () => {
     }
   });
 
-  it('should be disabled by default', () => {
+  it('should default to shadow mode when env var is not set', () => {
     delete process.env.NEXUS_REFLECTIVE_MEMORY;
     expect(isReflectiveMemoryEnabled()).toBe(false);
-    expect(isReflectiveShadowMode()).toBe(false);
+    expect(isReflectiveShadowMode()).toBe(true);
   });
 
-  it('should be enabled when set to true', () => {
+  it('should be fully enabled when set to true', () => {
     process.env.NEXUS_REFLECTIVE_MEMORY = 'true';
     expect(isReflectiveMemoryEnabled()).toBe(true);
     expect(isReflectiveShadowMode()).toBe(false);
   });
 
-  it('should detect shadow mode', () => {
+  it('should detect explicit shadow mode', () => {
     process.env.NEXUS_REFLECTIVE_MEMORY = 'shadow';
     expect(isReflectiveMemoryEnabled()).toBe(false);
     expect(isReflectiveShadowMode()).toBe(true);
+  });
+
+  it('should be fully disabled when set to false', () => {
+    process.env.NEXUS_REFLECTIVE_MEMORY = 'false';
+    expect(isReflectiveMemoryEnabled()).toBe(false);
+    expect(isReflectiveShadowMode()).toBe(false);
   });
 });

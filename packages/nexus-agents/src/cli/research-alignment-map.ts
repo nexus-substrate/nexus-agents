@@ -314,8 +314,8 @@ export const FEATURE_GATE_INVENTORY: readonly FeatureGate[] = [
   },
   {
     envVar: 'NEXUS_REFLECTIVE_MEMORY',
-    defaultValue: 'disabled',
-    description: 'Reflective memory retrieval',
+    defaultValue: 'shadow',
+    description: 'Reflective memory retrieval (shadow=default, true=full, false=off)',
     techniques: ['reflection-memory', 'adaptive-memory', 'reflexion-verbal-rl'],
   },
   {
