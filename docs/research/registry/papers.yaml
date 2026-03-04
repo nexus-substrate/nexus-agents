@@ -3677,3 +3677,86 @@ papers:
     techniques_extracted: []
     related_issues: []
     implementation_status: not-started
+  arxiv-2511.09873:
+    title: 'HierRouter: Coordinated Routing of Specialized Large Language Models via Reinforcement
+      Learning'
+    authors: []
+    source: arxiv
+    arxiv_id: '2511.09873'
+    url: https://arxiv.org/abs/2511.09873
+    publication_date: 2025-11
+    venue: null
+    topics:
+      - llm-routing
+    tags:
+      - llm
+      - reinforcement-learning
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2506.09033:
+    title: 'Router-R1: Teaching LLMs Multi-Round Routing and Aggregation via Reinforcement Learning'
+    authors: []
+    source: arxiv
+    arxiv_id: '2506.09033'
+    url: https://arxiv.org/abs/2506.09033
+    publication_date: 2025-06
+    venue: null
+    topics:
+      - llm-routing
+    tags:
+      - llm
+      - reinforcement-learning
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2602.15055:
+    title:
+      'Beyond Context Sharing: A Unified Agent Communication Protocol (ACP) for Secure, Federated,
+      and Autonomous Agent-to-Agent (A2A) Orchestration'
+    authors: []
+    source: arxiv
+    arxiv_id: '2602.15055'
+    url: https://arxiv.org/abs/2602.15055
+    publication_date: 2026-02
+    venue: null
+    topics:
+      - agent-communication
+    tags: []
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2603.00123:
+    title: 'CT-Flow: Orchestrating CT Interpretation Workflow with Model Context Protocol Servers'
+    authors: []
+    source: arxiv
+    arxiv_id: '2603.00123'
+    url: https://arxiv.org/abs/2603.00123
+    publication_date: 2026-03
+    venue: null
+    topics:
+      - mcp-applications
+    tags: []
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
