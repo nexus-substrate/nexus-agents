@@ -76,14 +76,19 @@ const STACK_ALIASES: Record<string, string> = {
   mysql: 'sql',
 };
 
+/** Safely convert an unknown value to string without `as` cast. */
+function toStr(val: unknown): string {
+  if (typeof val === 'string') return val;
+  if (typeof val === 'number' || typeof val === 'boolean') return String(val);
+  return '';
+}
+
 /** Normalize a raw stack string to a known stack or 'generic'. */
 function normalizeStack(raw: unknown): string {
   if (raw === undefined || raw === null) {
     return 'generic';
   }
-  const stack = String(raw as string | number | boolean)
-    .trim()
-    .toLowerCase();
+  const stack = toStr(raw).trim().toLowerCase();
   if (VALID_STACKS.includes(stack)) return stack;
   const aliased = STACK_ALIASES[stack];
   if (aliased !== undefined) return aliased;
@@ -192,7 +197,7 @@ export function semgrepGenerateConfigHandler(
   const rawRulesets = state['rulesets'];
   let rulesets = 'p/default';
   if (rawRulesets !== undefined && rawRulesets !== null) {
-    rulesets = String(rawRulesets as string | number | boolean);
+    rulesets = toStr(rawRulesets);
   }
 
   const ciConfig =
@@ -244,13 +249,13 @@ export function semgrepValidateHandler(state: Readonly<GraphState>): Promise<Par
   const rawCi = state['ciConfig'];
   let ciConfig = '';
   if (rawCi !== undefined && rawCi !== null) {
-    ciConfig = String(rawCi as string | number | boolean);
+    ciConfig = toStr(rawCi);
   }
 
   const rawScanner = state['scannerConfig'];
   let scannerConfig = '';
   if (rawScanner !== undefined && rawScanner !== null) {
-    scannerConfig = String(rawScanner as string | number | boolean);
+    scannerConfig = toStr(rawScanner);
   }
   const errors = validateCiConfig(ciConfig);
   if (!ciConfig.includes('semgrep')) errors.push('Missing semgrep job');
@@ -293,14 +298,14 @@ export function zapConfigureTargetHandler(
   const rawUrl = state['targetUrl'];
   let urlStr = '';
   if (rawUrl !== undefined && rawUrl !== null) {
-    urlStr = String(rawUrl as string | number | boolean);
+    urlStr = toStr(rawUrl);
   }
   const targetUrl = urlStr.trim().length > 0 ? urlStr.trim() : DEFAULT_TARGET_URL;
 
   const rawThreshold = state['failThreshold'];
   let thresholdStr = 'high';
   if (rawThreshold !== undefined && rawThreshold !== null) {
-    thresholdStr = String(rawThreshold as string | number | boolean);
+    thresholdStr = toStr(rawThreshold);
   }
   const threshold = thresholdStr.toLowerCase();
   const validThresholds = ['low', 'medium', 'high'];
@@ -316,13 +321,13 @@ export function zapGenerateConfigHandler(
   const rawUrl = state['resolvedUrl'];
   let url = DEFAULT_TARGET_URL;
   if (rawUrl !== undefined && rawUrl !== null) {
-    url = String(rawUrl as string | number | boolean);
+    url = toStr(rawUrl);
   }
 
   const rawThreshold = state['resolvedThreshold'];
   let threshold = 'high';
   if (rawThreshold !== undefined && rawThreshold !== null) {
-    threshold = String(rawThreshold as string | number | boolean);
+    threshold = toStr(rawThreshold);
   }
   const failAction = threshold === 'low' ? 'true' : 'warn';
 
@@ -387,13 +392,13 @@ export function zapValidateHandler(state: Readonly<GraphState>): Promise<Partial
   const rawCi = state['ciConfig'];
   let ciConfig = '';
   if (rawCi !== undefined && rawCi !== null) {
-    ciConfig = String(rawCi as string | number | boolean);
+    ciConfig = toStr(rawCi);
   }
 
   const rawScanner = state['scannerConfig'];
   let scannerConfig = '';
   if (rawScanner !== undefined && rawScanner !== null) {
-    scannerConfig = String(rawScanner as string | number | boolean);
+    scannerConfig = toStr(rawScanner);
   }
   const errors = validateCiConfig(ciConfig);
   if (!ciConfig.includes('zap')) errors.push('Missing ZAP job');
@@ -440,7 +445,7 @@ export function trivyDetectStackHandler(state: Readonly<GraphState>): Promise<Pa
   const rawScanType = state['scanType'];
   let scanTypeStr = 'fs';
   if (rawScanType !== undefined && rawScanType !== null) {
-    scanTypeStr = String(rawScanType as string | number | boolean);
+    scanTypeStr = toStr(rawScanType);
   }
   const rawType = scanTypeStr.toLowerCase();
   const scanType = rawType in TRIVY_SCAN_TYPES ? rawType : 'fs';
@@ -454,7 +459,7 @@ export function trivyGenerateConfigHandler(
   const rawScanType = state['resolvedScanType'];
   let scanType = 'fs';
   if (rawScanType !== undefined && rawScanType !== null) {
-    scanType = String(rawScanType as string | number | boolean);
+    scanType = toStr(rawScanType);
   }
   const scanTypeYaml = TRIVY_SCAN_TYPES[scanType] ?? "'fs'";
 
@@ -505,13 +510,13 @@ export function trivyValidateHandler(state: Readonly<GraphState>): Promise<Parti
   const rawCi = state['ciConfig'];
   let ciConfig = '';
   if (rawCi !== undefined && rawCi !== null) {
-    ciConfig = String(rawCi as string | number | boolean);
+    ciConfig = toStr(rawCi);
   }
 
   const rawScanner = state['scannerConfig'];
   let scannerConfig = '';
   if (rawScanner !== undefined && rawScanner !== null) {
-    scannerConfig = String(rawScanner as string | number | boolean);
+    scannerConfig = toStr(rawScanner);
   }
   const errors = validateCiConfig(ciConfig);
   if (!ciConfig.includes('trivy')) errors.push('Missing trivy job');
