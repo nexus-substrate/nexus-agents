@@ -12,6 +12,7 @@ import { loadPapersRegistry } from './research-helpers-io.js';
 import type { PapersRegistry } from './research-types.js';
 import type { Result } from '../core/result.js';
 import { getErrorMessage } from '../core/index.js';
+import { TECHNIQUE_IMPLEMENTATION_MAP } from './research-alignment-map.js';
 
 // =============================================================================
 // TYPES
@@ -37,6 +38,14 @@ export interface PaperCluster {
   readonly paperCount: number;
 }
 
+/** A technique aligned to an existing implementation. */
+export interface TechniqueAlignment {
+  readonly technique: string;
+  readonly status: 'implemented' | 'partial' | 'not-started';
+  readonly canonicalPath?: string | undefined;
+  readonly improvementHint?: string | undefined;
+}
+
 /** Synthesis output for a single topic cluster. */
 export interface ClusterSynthesis {
   readonly topic: string;
@@ -47,6 +56,16 @@ export interface ClusterSynthesis {
   readonly techniques: readonly string[];
   readonly implementationOpportunities: readonly string[];
   readonly gaps: readonly string[];
+  readonly alignedTechniques: readonly TechniqueAlignment[];
+}
+
+/** Summary of alignment between research and implementation. */
+export interface AlignmentSummary {
+  readonly implemented: number;
+  readonly partial: number;
+  readonly notStarted: number;
+  readonly total: number;
+  readonly topOpportunities: readonly string[];
 }
 
 /** Full synthesis result across all clusters. */
@@ -55,6 +74,7 @@ export interface SynthesisResult {
   readonly totalPapers: number;
   readonly topicCount: number;
   readonly crossCuttingThemes: readonly string[];
+  readonly alignmentSummary: AlignmentSummary;
 }
 
 /** Error for synthesis operations. */
@@ -112,6 +132,7 @@ export async function synthesizeResearch(
 
   const syntheses = filtered.map(synthesizeCluster);
   const crossCutting = findCrossCuttingThemes(filtered);
+  const alignmentSummary = buildAlignmentSummary(syntheses);
 
   return {
     ok: true,
@@ -120,6 +141,7 @@ export async function synthesizeResearch(
       totalPapers: papers.length,
       topicCount: filtered.length,
       crossCuttingThemes: crossCutting,
+      alignmentSummary,
     },
   };
 }
@@ -217,6 +239,10 @@ function synthesizeCluster(cluster: PaperCluster): ClusterSynthesis {
     );
   }
 
+  // Alignment analysis: map techniques to existing implementations
+  const allTechNames = [...allTechniques.keys()];
+  const alignedTechniques = analyzeClusterAlignment(allTechNames);
+
   return {
     topic: cluster.topic,
     paperCount: cluster.paperCount,
@@ -226,6 +252,7 @@ function synthesizeCluster(cluster: PaperCluster): ClusterSynthesis {
     techniques,
     implementationOpportunities: uniqueOpportunities,
     gaps,
+    alignedTechniques,
   };
 }
 
@@ -250,6 +277,56 @@ function findCrossCuttingThemes(clusters: readonly PaperCluster[]): string[] {
     .filter(([, topics]) => topics.size >= CROSS_CUTTING_TAG_THRESHOLD)
     .sort((a, b) => b[1].size - a[1].size)
     .map(([tag, topics]) => `${tag} (spans: ${[...topics].join(', ')})`);
+}
+
+// =============================================================================
+// ALIGNMENT ANALYSIS
+// =============================================================================
+
+/** Analyze technique alignment for a cluster. */
+function analyzeClusterAlignment(techniques: readonly string[]): TechniqueAlignment[] {
+  const alignments: TechniqueAlignment[] = [];
+
+  for (const tech of techniques) {
+    // Strip count annotation like "technique (2 papers)"
+    const baseTech = tech.replace(/\s*\(\d+\s*papers?\)$/, '');
+    const mapping = TECHNIQUE_IMPLEMENTATION_MAP.get(baseTech);
+
+    if (mapping !== undefined) {
+      alignments.push({
+        technique: baseTech,
+        status: mapping.status,
+        canonicalPath: mapping.path,
+        ...(mapping.hint !== undefined ? { improvementHint: mapping.hint } : {}),
+      });
+    } else {
+      alignments.push({ technique: baseTech, status: 'not-started' });
+    }
+  }
+
+  return alignments;
+}
+
+/** Build alignment summary across all clusters. */
+function buildAlignmentSummary(clusters: readonly ClusterSynthesis[]): AlignmentSummary {
+  const allAlignments = clusters.flatMap((c) => c.alignedTechniques);
+  const implemented = allAlignments.filter((a) => a.status === 'implemented').length;
+  const partial = allAlignments.filter((a) => a.status === 'partial').length;
+  const notStarted = allAlignments.filter((a) => a.status === 'not-started').length;
+
+  // Top opportunities: partial implementations with hints (most improvable)
+  const opportunities = allAlignments
+    .filter((a) => a.status === 'partial' && a.improvementHint !== undefined)
+    .map((a) => `${a.technique}: ${a.improvementHint ?? ''}`)
+    .slice(0, 10);
+
+  return {
+    implemented,
+    partial,
+    notStarted,
+    total: allAlignments.length,
+    topOpportunities: opportunities,
+  };
 }
 
 // =============================================================================

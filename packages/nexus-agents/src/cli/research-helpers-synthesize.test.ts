@@ -247,6 +247,69 @@ describe('synthesizeResearch', () => {
     expect(retrievalFindings.length).toBe(1);
   });
 
+  it('identifies aligned techniques with implementation status', async () => {
+    mockLoadPapersRegistry.mockResolvedValue({
+      ok: true,
+      value: makeRegistry({
+        p1: makePaper('1', 'Paper 1', ['routing'], ['llm'], {
+          techniques_extracted: ['linucb-routing', 'knn-routing', 'novel-technique'],
+        }),
+      }),
+    });
+
+    const result = await synthesizeResearch('routing');
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const cluster = result.value.clusters[0];
+    if (cluster === undefined) return;
+
+    // linucb-routing is fully implemented
+    const linucb = cluster.alignedTechniques.find((a) => a.technique === 'linucb-routing');
+    expect(linucb).toBeDefined();
+    if (linucb === undefined) return;
+    expect(linucb.status).toBe('implemented');
+    expect(linucb.canonicalPath).toContain('linucb');
+
+    // knn-routing is partial
+    const knn = cluster.alignedTechniques.find((a) => a.technique === 'knn-routing');
+    expect(knn).toBeDefined();
+    if (knn === undefined) return;
+    expect(knn.status).toBe('partial');
+    expect(knn.improvementHint).toBeDefined();
+
+    // novel-technique is not-started
+    const novel = cluster.alignedTechniques.find((a) => a.technique === 'novel-technique');
+    expect(novel).toBeDefined();
+    if (novel === undefined) return;
+    expect(novel.status).toBe('not-started');
+  });
+
+  it('builds alignment summary across clusters', async () => {
+    mockLoadPapersRegistry.mockResolvedValue({
+      ok: true,
+      value: makeRegistry({
+        p1: makePaper('1', 'Paper 1', ['routing'], ['llm'], {
+          techniques_extracted: ['linucb-routing', 'topsis-routing'],
+        }),
+        p2: makePaper('2', 'Paper 2', ['consensus'], ['llm'], {
+          techniques_extracted: ['consensus-protocol', 'knn-routing', 'new-thing'],
+        }),
+      }),
+    });
+
+    const result = await synthesizeResearch();
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const summary = result.value.alignmentSummary;
+    expect(summary.total).toBeGreaterThan(0);
+    expect(summary.implemented).toBeGreaterThanOrEqual(2); // linucb + topsis + consensus
+    expect(summary.partial).toBeGreaterThanOrEqual(1); // knn
+    expect(summary.notStarted).toBeGreaterThanOrEqual(1); // new-thing
+    expect(summary.topOpportunities.length).toBeGreaterThanOrEqual(0);
+  });
+
   it('sorts clusters by paper count descending', async () => {
     mockLoadPapersRegistry.mockResolvedValue({
       ok: true,

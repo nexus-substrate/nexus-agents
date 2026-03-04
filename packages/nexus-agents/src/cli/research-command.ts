@@ -45,6 +45,7 @@ import {
   executePrioritize,
 } from './research-helpers-review.js';
 import { synthesizeResearch } from './research-helpers-synthesize.js';
+import type { SynthesisResult } from './research-helpers-synthesize.js';
 import {
   researchIndexCommand,
   parseResearchIndexArgs,
@@ -331,55 +332,64 @@ async function handleSynthesizeCommand(
 }
 
 /** Format synthesis result for CLI display. */
-function formatSynthesisResult(synthesis: {
-  readonly clusters: ReadonlyArray<{
-    readonly topic: string;
-    readonly paperCount: number;
-    readonly papers: readonly string[];
-    readonly commonThemes: readonly string[];
-    readonly keyInsights: readonly string[];
-    readonly techniques: readonly string[];
-    readonly implementationOpportunities: readonly string[];
-    readonly gaps: readonly string[];
-  }>;
-  readonly totalPapers: number;
-  readonly topicCount: number;
-  readonly crossCuttingThemes: readonly string[];
-}): string {
+function formatSynthesisResult(synthesis: SynthesisResult): string {
   const lines: string[] = [
     `Research Synthesis: ${String(synthesis.totalPapers)} papers across ${String(synthesis.topicCount)} topics`,
     '',
   ];
-
   for (const cluster of synthesis.clusters) {
-    lines.push(`## ${cluster.topic} (${String(cluster.paperCount)} papers)`);
-    lines.push(`Papers: ${cluster.papers.join(', ')}`);
-    if (cluster.commonThemes.length > 0) {
-      lines.push(`Themes: ${cluster.commonThemes.join(', ')}`);
-    }
-    if (cluster.keyInsights.length > 0) {
-      lines.push('Key insights:');
-      for (const insight of cluster.keyInsights.slice(0, 5)) {
-        lines.push(`  - ${insight}`);
-      }
-    }
-    if (cluster.implementationOpportunities.length > 0) {
-      lines.push(`Opportunities: ${cluster.implementationOpportunities.join(', ')}`);
-    }
-    if (cluster.gaps.length > 0) {
-      lines.push(`Gaps: ${cluster.gaps.join('; ')}`);
-    }
-    lines.push('');
+    formatCluster(cluster, lines);
   }
-
   if (synthesis.crossCuttingThemes.length > 0) {
     lines.push('## Cross-Cutting Themes');
     for (const theme of synthesis.crossCuttingThemes) {
       lines.push(`  - ${theme}`);
     }
+    lines.push('');
   }
-
+  formatAlignmentSummary(synthesis.alignmentSummary, lines);
   return lines.join('\n');
+}
+
+/** Format a single cluster section. */
+function formatCluster(cluster: SynthesisResult['clusters'][number], lines: string[]): void {
+  lines.push(`## ${cluster.topic} (${String(cluster.paperCount)} papers)`);
+  lines.push(`Papers: ${cluster.papers.join(', ')}`);
+  if (cluster.commonThemes.length > 0) lines.push(`Themes: ${cluster.commonThemes.join(', ')}`);
+  if (cluster.keyInsights.length > 0) {
+    lines.push('Key insights:');
+    for (const insight of cluster.keyInsights.slice(0, 5)) lines.push(`  - ${insight}`);
+  }
+  if (cluster.implementationOpportunities.length > 0) {
+    lines.push(`Opportunities: ${cluster.implementationOpportunities.join(', ')}`);
+  }
+  if (cluster.gaps.length > 0) lines.push(`Gaps: ${cluster.gaps.join('; ')}`);
+  const partial = cluster.alignedTechniques.filter((a) => a.status === 'partial');
+  if (partial.length > 0) {
+    lines.push('Improvement opportunities:');
+    for (const a of partial.slice(0, 3)) {
+      const hint = a.improvementHint !== undefined ? ` — ${a.improvementHint}` : '';
+      lines.push(`  - ${a.technique} (${a.canonicalPath ?? 'unknown'})${hint}`);
+    }
+  }
+  lines.push('');
+}
+
+/** Format alignment summary section. */
+function formatAlignmentSummary(
+  summary: SynthesisResult['alignmentSummary'],
+  lines: string[]
+): void {
+  if (summary.total === 0) return;
+  lines.push('## Alignment Summary');
+  lines.push(
+    `Implemented: ${String(summary.implemented)} | Partial: ${String(summary.partial)} | ` +
+      `Not started: ${String(summary.notStarted)} | Total: ${String(summary.total)}`
+  );
+  if (summary.topOpportunities.length > 0) {
+    lines.push('Top improvement opportunities:');
+    for (const opp of summary.topOpportunities.slice(0, 5)) lines.push(`  - ${opp}`);
+  }
 }
 
 // =============================================================================
