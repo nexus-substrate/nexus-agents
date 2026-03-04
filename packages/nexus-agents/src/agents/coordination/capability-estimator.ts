@@ -171,7 +171,7 @@ function findBaseCapability(modelId: string): BaseCapability {
     }
   }
 
-  // Family matching (e.g., "claude-3-opus-20240229" -> "claude-3-opus")
+  // Family matching (e.g., "claude-opus-4-20250514" -> "claude-opus")
   for (const [key, value] of capabilityRegistry) {
     if (modelId.includes(key) || key.includes(modelId)) {
       return value;
