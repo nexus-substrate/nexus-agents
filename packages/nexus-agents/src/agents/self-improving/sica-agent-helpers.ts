@@ -33,7 +33,7 @@ import type {
  * @returns Quality score between 0 and 1
  */
 export function estimateQuality(result: TaskResult): number {
-  const output = result.output as string;
+  const output = result.output;
   if (typeof output !== 'string') return 0.5;
 
   let score = 0.5;
@@ -92,12 +92,12 @@ export function applyChanges(
   let result = { ...config };
 
   for (const change of changes) {
-    if (change.field === 'systemPrompt') {
-      result = { ...result, systemPrompt: change.newValue as string };
-    } else if (change.field === 'temperature') {
-      result = { ...result, temperature: change.newValue as number };
-    } else if (change.field === 'maxTokens') {
-      result = { ...result, maxTokens: change.newValue as number };
+    if (change.field === 'systemPrompt' && typeof change.newValue === 'string') {
+      result = { ...result, systemPrompt: change.newValue };
+    } else if (change.field === 'temperature' && typeof change.newValue === 'number') {
+      result = { ...result, temperature: change.newValue };
+    } else if (change.field === 'maxTokens' && typeof change.newValue === 'number') {
+      result = { ...result, maxTokens: change.newValue };
     }
   }
 

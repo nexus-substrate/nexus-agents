@@ -128,8 +128,12 @@ export function createVoteTask(proposal: Proposal, agentId: string): Task {
 
 /** Selects leader for a round using round-robin. */
 export function selectLeader(experts: readonly string[], round: number): string {
-  const expertList = experts as string[];
-  return expertList[round % expertList.length] as string;
+  const index = round % experts.length;
+  const leader = experts[index];
+  if (leader === undefined) {
+    return experts[0] ?? '';
+  }
+  return leader;
 }
 
 // =============================================================================

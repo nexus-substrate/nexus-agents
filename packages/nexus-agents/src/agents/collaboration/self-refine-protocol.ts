@@ -137,7 +137,11 @@ export class SelfRefineProtocol {
       return err(initialResult.error);
     }
 
-    const loopResult = await this.runRefinementLoop(ctx, initialResult.value.output as string);
+    const initialOutput =
+      typeof initialResult.value.output === 'string'
+        ? initialResult.value.output
+        : JSON.stringify(initialResult.value.output ?? '');
+    const loopResult = await this.runRefinementLoop(ctx, initialOutput);
     return this.finalizeExecution(ctx, loopResult);
   }
 
@@ -225,7 +229,10 @@ export class SelfRefineProtocol {
       this.log.warn('Failed to generate feedback', { iteration: index + 1 });
       return null;
     }
-    const feedback = feedbackResult.value.output as string;
+    const feedback =
+      typeof feedbackResult.value.output === 'string'
+        ? feedbackResult.value.output
+        : JSON.stringify(feedbackResult.value.output ?? '');
 
     const similarity = this.calculateSimilarity(currentOutput, previousOutput);
     const iteration: RefinementIteration = {
@@ -247,7 +254,11 @@ export class SelfRefineProtocol {
       return null;
     }
 
-    return { iteration, refinedOutput: refineResult.value.output as string, converged: false };
+    const refinedOutput =
+      typeof refineResult.value.output === 'string'
+        ? refineResult.value.output
+        : JSON.stringify(refineResult.value.output ?? '');
+    return { iteration, refinedOutput, converged: false };
   }
 
   /** Finalize execution and build result. */
