@@ -40,20 +40,20 @@ The main configuration file is `nexus-agents.yaml`:
 # Model configuration — use latest models from each provider
 models:
   # Default model for general tasks
-  default: claude-sonnet-4-20250514
+  default: claude-sonnet-4-6
 
   # Model tiers for routing
   tiers:
     fast:
-      - claude-haiku-3
+      - claude-haiku-4-5
       - gpt-4o-mini
       - gemini-3-flash
     balanced:
-      - claude-sonnet-4-20250514
+      - claude-sonnet-4-6
       - gpt-4o
       - gemini-3-pro
     powerful:
-      - claude-opus-4
+      - claude-opus-4-6
       - o1-pro
       - gemini-3-pro
 
@@ -213,7 +213,7 @@ All configuration can be overridden with environment variables:
 | -------------------- | ------------------- | -------- |
 | `NEXUS_SANDBOX_MODE` | Sandbox mode        | `policy` |
 | `NEXUS_RATE_LIMIT`   | Requests per minute | `60`     |
-| `NEXUS_AUTH_ENABLED` | Enable MCP auth     | `false`  |
+| `NEXUS_AUTH_ENABLED` | Enable MCP auth     | `true`   |
 | `NEXUS_AUTH_METHOD`  | Auth method         | `token`  |
 
 ### Learning Variables
@@ -245,7 +245,7 @@ The default model is used when no specific model is requested:
 
 ```yaml
 models:
-  default: claude-sonnet-4-20250514
+  default: claude-sonnet-4-6
 ```
 
 ### Model Tiers
@@ -256,13 +256,13 @@ Models are organized into tiers for automatic routing:
 models:
   tiers:
     fast:
-      - claude-haiku-3 # Quick, simple tasks
+      - claude-haiku-4-5 # Quick, simple tasks
       - gpt-4o-mini
     balanced:
-      - claude-sonnet-4-20250514 # Most tasks
+      - claude-sonnet-4-6 # Most tasks
       - gpt-4o
     powerful:
-      - claude-opus-4 # Complex reasoning
+      - claude-opus-4-6 # Complex reasoning
       - o1-pro
 ```
 
@@ -275,7 +275,7 @@ Override settings for specific models:
 ```yaml
 models:
   settings:
-    claude-opus-4:
+    claude-opus-4-6:
       temperature: 0.7
       maxTokens: 8192
     gpt-4o:
@@ -562,7 +562,7 @@ const result = await startStdioServer({
   version: '1.0.0',
   config: {
     models: {
-      default: 'claude-sonnet-4-20250514',
+      default: 'claude-sonnet-4-6',
     },
     routing: {
       enableLinUCBSelection: true,
@@ -601,7 +601,7 @@ Minimize API costs:
 
 ```yaml
 models:
-  default: claude-haiku-3
+  default: claude-haiku-4-5
 
 routing:
   budget:
@@ -618,7 +618,7 @@ Maximize output quality:
 
 ```yaml
 models:
-  default: claude-opus-4
+  default: claude-opus-4-6
 
 routing:
   budget:
@@ -635,7 +635,7 @@ Fast, secure, cost-aware:
 
 ```yaml
 models:
-  default: claude-sonnet-4-20250514
+  default: claude-sonnet-4-6
 
 security:
   sandbox:

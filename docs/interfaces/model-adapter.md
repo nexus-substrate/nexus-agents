@@ -87,12 +87,12 @@ const ModelCapability = {
 
 ## Implementations
 
-| Adapter       | Provider  | Models                                         |
-| ------------- | --------- | ---------------------------------------------- |
-| ClaudeAdapter | Anthropic | claude-opus-4, claude-sonnet-4, claude-haiku-3 |
-| OpenAIAdapter | OpenAI    | gpt-4o, gpt-4o-mini, o1-pro                    |
-| GeminiAdapter | Google    | gemini-3-pro, gemini-3-flash, gemini-2.5-flash |
-| OllamaAdapter | Ollama    | llama3, mistral, codellama                     |
+| Adapter       | Provider  | Models                                               |
+| ------------- | --------- | ---------------------------------------------------- |
+| ClaudeAdapter | Anthropic | claude-opus-4-6, claude-sonnet-4-6, claude-haiku-4-5 |
+| OpenAIAdapter | OpenAI    | gpt-4o, gpt-4o-mini, o1-pro                          |
+| GeminiAdapter | Google    | gemini-3-pro, gemini-3-flash, gemini-2.5-flash       |
+| OllamaAdapter | Ollama    | llama3, mistral, codellama                           |
 
 ## Usage Example
 

@@ -1193,7 +1193,7 @@ await startStdioServer({
 ```typescript
 import { createClaudeAdapter, createOrchestrator } from 'nexus-agents';
 
-const adapter = createClaudeAdapter({ model: 'claude-sonnet-4-20250514' });
+const adapter = createClaudeAdapter({ model: 'claude-sonnet-4-6' });
 const orchestrator = createOrchestrator({ adapter });
 const result = await orchestrator.execute({
   description: 'Analyze this codebase for security issues',

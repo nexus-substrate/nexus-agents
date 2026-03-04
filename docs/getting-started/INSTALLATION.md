@@ -269,14 +269,9 @@ nexus-agents stores runtime data in `~/.nexus-agents/`:
 
 Run `nexus-agents setup` to pre-create this structure, or it will be created lazily on first use.
 
-### Optional: better-sqlite3
+### better-sqlite3
 
-Five memory backends (agentic, adaptive, typed, mobimem, decay) require `better-sqlite3`. It is an optional dependency that degrades gracefully if missing — basic session and belief memory still work without it.
-
-```bash
-# Install if you want full memory support
-npm install -g better-sqlite3
-```
+Five memory backends (agentic, adaptive, typed, mobimem, decay) use `better-sqlite3` for persistent storage. It is included as a regular dependency and installed automatically with `pnpm install`. If it fails to compile (requires native build tools), basic session and belief memory still work without it.
 
 Run `nexus-agents doctor` to check if it's available under "Checking data storage".
 
