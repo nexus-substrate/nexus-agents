@@ -57,8 +57,6 @@ describe('session-commands', () => {
   let stdoutWriteSpy: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let consoleErrorSpy: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let processExitSpy: any;
 
   const createMockStorage = (
     overrides: Record<string, unknown> = {}
@@ -83,16 +81,13 @@ describe('session-commands', () => {
     vi.clearAllMocks();
     stdoutWriteSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    processExitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
     mockExistsSync.mockReturnValue(true);
-    // Set up default mock storage (Issue #582 - process.exit mock doesn't stop execution)
     mockCreateSessionStorage.mockReturnValue(createMockStorage() as never);
   });
 
   afterEach(() => {
     stdoutWriteSpy.mockRestore();
     consoleErrorSpy.mockRestore();
-    processExitSpy.mockRestore();
   });
 
   describe('getDefaultDbPath', () => {
@@ -450,10 +445,7 @@ describe('session-commands', () => {
     });
 
     it('should handle show subcommand without session ID', async () => {
-      await sessionCommand('show', []);
-
-      expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('Session ID required'));
-      expect(processExitSpy).toHaveBeenCalledWith(1);
+      await expect(sessionCommand('show', [])).rejects.toThrow('Session ID required');
     });
 
     it('should handle export subcommand', async () => {
@@ -500,11 +492,7 @@ describe('session-commands', () => {
     });
 
     it('should handle prune without days argument', async () => {
-      await sessionCommand('prune', []);
-
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Days argument required')
-      );
+      await expect(sessionCommand('prune', [])).rejects.toThrow('Days argument required');
     });
 
     it('should handle JSON format flag', async () => {

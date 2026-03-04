@@ -512,10 +512,10 @@ export async function handleSessionCommand(args: ParsedCliArgs): Promise<void> {
     process.exit(EXIT_CODES.INVALID_ARGS);
   }
 
-  // Pass remaining args after subcommand to sessionCommand
+  // Pass remaining args after subcommand to sessionCommand.
+  // Errors thrown by sessionCommand propagate to the top-level CLI error handler.
   const remainingArgs = args.positionals.slice(2);
   await sessionCommand(subcommand, remainingArgs);
-  // sessionCommand handles its own exit
 }
 
 /**

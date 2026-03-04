@@ -295,8 +295,7 @@ async function handleList(args: string[], log: ILogger): Promise<void> {
   const format: 'table' | 'json' = args.includes('--json') ? 'json' : 'table';
   const result = await sessionList({ limit, format, logger: log });
   if (!result.ok) {
-    console.error('Error: ' + result.error.message);
-    process.exit(1);
+    throw new Error(result.error.message);
   }
   printSessionList(result.value, format);
 }
@@ -304,14 +303,12 @@ async function handleList(args: string[], log: ILogger): Promise<void> {
 async function handleShow(args: string[], log: ILogger): Promise<void> {
   const sessionId = args[0];
   if (sessionId === undefined) {
-    console.error('Error: Session ID required');
-    process.exit(1);
+    throw new Error('Session ID required');
   }
   const format: 'text' | 'json' = args.includes('--json') ? 'json' : 'text';
   const result = await sessionShow({ sessionId, format, logger: log });
   if (!result.ok) {
-    console.error('Error: ' + result.error.message);
-    process.exit(1);
+    throw new Error(result.error.message);
   }
   printSessionShow(result.value, format);
 }
@@ -319,16 +316,14 @@ async function handleShow(args: string[], log: ILogger): Promise<void> {
 async function handleExport(args: string[], log: ILogger): Promise<void> {
   const sessionId = args[0];
   if (sessionId === undefined) {
-    console.error('Error: Session ID required');
-    process.exit(1);
+    throw new Error('Session ID required');
   }
   const outputIdx = args.indexOf('--output');
   const outputPath = outputIdx >= 0 ? args[outputIdx + 1] : undefined;
   const format: 'json' | 'markdown' = args.includes('--markdown') ? 'markdown' : 'json';
   const result = await sessionExport({ sessionId, output: outputPath, format, logger: log });
   if (!result.ok) {
-    console.error('Error: ' + result.error.message);
-    process.exit(1);
+    throw new Error(result.error.message);
   }
   if (outputPath === undefined) output(result.value);
   else output('Exported to ' + outputPath);
@@ -337,13 +332,11 @@ async function handleExport(args: string[], log: ILogger): Promise<void> {
 async function handleDelete(args: string[], log: ILogger): Promise<void> {
   const sessionId = args[0];
   if (sessionId === undefined) {
-    console.error('Error: Session ID required');
-    process.exit(1);
+    throw new Error('Session ID required');
   }
   const result = await sessionDelete({ sessionId, logger: log });
   if (!result.ok) {
-    console.error('Error: ' + result.error.message);
-    process.exit(1);
+    throw new Error(result.error.message);
   }
   output(result.value ? 'Session deleted.' : 'Session not found.');
 }
@@ -351,15 +344,13 @@ async function handleDelete(args: string[], log: ILogger): Promise<void> {
 async function handlePrune(args: string[], log: ILogger): Promise<void> {
   const daysArg = args[0];
   if (daysArg === undefined) {
-    console.error('Error: Days argument required');
-    process.exit(1);
+    throw new Error('Days argument required');
   }
   const days = parseInt(daysArg, 10);
   const dryRun = args.includes('--dry-run');
   const result = await sessionPrune({ days, dryRun, logger: log });
   if (!result.ok) {
-    console.error('Error: ' + result.error.message);
-    process.exit(1);
+    throw new Error(result.error.message);
   }
   const count = String(result.value);
   output(dryRun ? 'Would delete ' + count + ' sessions.' : 'Deleted ' + count + ' sessions.');
