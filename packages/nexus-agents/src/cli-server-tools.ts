@@ -26,6 +26,7 @@ import {
   registerResearchDiscoverTool,
   registerResearchAnalyzeTool,
   registerResearchCatalogReviewTool,
+  registerResearchSynthesizeTool,
   registerMemoryQueryTool,
   registerMemoryStatsTool,
   registerMemoryWriteTool,
@@ -303,6 +304,10 @@ function registerResearchTools(ctx: ToolRegistrationContext): void {
   registerResearchCatalogReviewTool(ctx.server, {
     ...researchDeps,
     rateLimiter: ctx.rateLimiterFactory.getForTool('research_catalog_review'),
+  });
+  registerResearchSynthesizeTool(ctx.server, {
+    ...researchDeps,
+    rateLimiter: ctx.rateLimiterFactory.getForTool('research_synthesize'),
   });
 }
 

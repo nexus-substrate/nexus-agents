@@ -1,9 +1,10 @@
 name: research-review
-version: '1.0.0'
+version: '1.1.0'
 description: |
   Automated research review workflow that discovers new papers and repositories,
-  analyzes their relevance, votes on prioritization via consensus, and catalogs
-  approved entries in the research registry. Creates GitHub issues for tracking.
+  analyzes their relevance, votes on prioritization via consensus, catalogs
+  approved entries in the research registry, and synthesizes findings into
+  topic clusters with themes, insights, and implementation opportunities.
 
 inputs:
   - name: topic
@@ -79,6 +80,20 @@ steps:
       autoApprove: ${{ inputs.autoApprove }}
     dependsOn:
       - vote
+    timeout: 60000
+
+  - id: synthesize
+    agent: research_expert
+    action: synthesize_findings
+    description: |
+      Synthesize the full research registry by grouping papers into
+      topic clusters. Generate structured summaries with common themes,
+      key insights, techniques, implementation opportunities, and gaps.
+      Identify cross-cutting themes spanning multiple topic areas.
+    inputs:
+      topic: ${{ inputs.topic }}
+    dependsOn:
+      - catalog
     timeout: 60000
 
 timeout: 600000

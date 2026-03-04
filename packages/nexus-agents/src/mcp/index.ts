@@ -199,6 +199,12 @@ export {
   type ResearchCatalogReviewInput,
   type ResearchCatalogReviewDeps,
   type ResearchCatalogReviewResponse,
+  // Research synthesis (Issue #1386)
+  registerResearchSynthesizeTool,
+  ResearchSynthesizeInputSchema,
+  type ResearchSynthesizeInput,
+  type ResearchSynthesizeDeps,
+  type ResearchSynthesizeResponse,
   ResearchAutoCatalog,
   getAutoCatalog,
   type CatalogedReference,

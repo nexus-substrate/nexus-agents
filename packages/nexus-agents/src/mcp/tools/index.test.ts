@@ -25,6 +25,7 @@ import {
   registerResearchDiscoverTool,
   registerResearchAnalyzeTool,
   registerResearchCatalogReviewTool,
+  registerResearchSynthesizeTool,
   registerMemoryQueryTool,
   registerMemoryStatsTool,
   registerMemoryWriteTool,
@@ -50,6 +51,7 @@ import {
   ResearchDiscoverInputSchema,
   ResearchAnalyzeInputSchema,
   ResearchCatalogReviewInputSchema,
+  ResearchSynthesizeInputSchema,
   MemoryQueryInputSchema,
   MemoryStatsInputSchema,
   MemoryWriteInputSchema,
@@ -63,7 +65,7 @@ import {
   RepoSecurityPlanInputSchema,
 } from './index.js';
 
-const EXPECTED_TOOL_COUNT = 24;
+const EXPECTED_TOOL_COUNT = 25;
 
 const EXPECTED_TOOL_NAMES = [
   'orchestrate',
@@ -79,6 +81,7 @@ const EXPECTED_TOOL_NAMES = [
   'research_discover',
   'research_analyze',
   'research_catalog_review',
+  'research_synthesize',
   'memory_query',
   'memory_stats',
   'memory_write',
@@ -135,6 +138,7 @@ describe('MCP tools index', () => {
       ['registerResearchDiscoverTool', registerResearchDiscoverTool],
       ['registerResearchAnalyzeTool', registerResearchAnalyzeTool],
       ['registerResearchCatalogReviewTool', registerResearchCatalogReviewTool],
+      ['registerResearchSynthesizeTool', registerResearchSynthesizeTool],
       ['registerMemoryQueryTool', registerMemoryQueryTool],
       ['registerMemoryStatsTool', registerMemoryStatsTool],
       ['registerMemoryWriteTool', registerMemoryWriteTool],
@@ -172,6 +176,7 @@ describe('MCP tools index', () => {
       ['ResearchDiscoverInputSchema', ResearchDiscoverInputSchema],
       ['ResearchAnalyzeInputSchema', ResearchAnalyzeInputSchema],
       ['ResearchCatalogReviewInputSchema', ResearchCatalogReviewInputSchema],
+      ['ResearchSynthesizeInputSchema', ResearchSynthesizeInputSchema],
       ['MemoryQueryInputSchema', MemoryQueryInputSchema],
       ['MemoryStatsInputSchema', MemoryStatsInputSchema],
       ['MemoryWriteInputSchema', MemoryWriteInputSchema],

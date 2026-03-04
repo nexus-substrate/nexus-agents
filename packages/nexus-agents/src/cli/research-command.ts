@@ -44,6 +44,7 @@ import {
   formatReviewResults,
   executePrioritize,
 } from './research-helpers-review.js';
+import { synthesizeResearch } from './research-helpers-synthesize.js';
 import {
   researchIndexCommand,
   parseResearchIndexArgs,
@@ -313,6 +314,75 @@ async function handlePrioritizeCommand(
 }
 
 // =============================================================================
+// SYNTHESIZE HANDLER (Issue #1386)
+// =============================================================================
+
+/** Handle synthesize subcommand: group papers by topic and generate synthesis. */
+async function handleSynthesizeCommand(
+  args: string[],
+  options: Record<string, unknown>
+): Promise<string> {
+  const topic = args[0] ?? optString(options, 'topic');
+  const result = await synthesizeResearch(topic);
+  if (!result.ok) {
+    return `Error: ${result.error.message}`;
+  }
+  return formatSynthesisResult(result.value);
+}
+
+/** Format synthesis result for CLI display. */
+function formatSynthesisResult(synthesis: {
+  readonly clusters: ReadonlyArray<{
+    readonly topic: string;
+    readonly paperCount: number;
+    readonly papers: readonly string[];
+    readonly commonThemes: readonly string[];
+    readonly keyInsights: readonly string[];
+    readonly techniques: readonly string[];
+    readonly implementationOpportunities: readonly string[];
+    readonly gaps: readonly string[];
+  }>;
+  readonly totalPapers: number;
+  readonly topicCount: number;
+  readonly crossCuttingThemes: readonly string[];
+}): string {
+  const lines: string[] = [
+    `Research Synthesis: ${String(synthesis.totalPapers)} papers across ${String(synthesis.topicCount)} topics`,
+    '',
+  ];
+
+  for (const cluster of synthesis.clusters) {
+    lines.push(`## ${cluster.topic} (${String(cluster.paperCount)} papers)`);
+    lines.push(`Papers: ${cluster.papers.join(', ')}`);
+    if (cluster.commonThemes.length > 0) {
+      lines.push(`Themes: ${cluster.commonThemes.join(', ')}`);
+    }
+    if (cluster.keyInsights.length > 0) {
+      lines.push('Key insights:');
+      for (const insight of cluster.keyInsights.slice(0, 5)) {
+        lines.push(`  - ${insight}`);
+      }
+    }
+    if (cluster.implementationOpportunities.length > 0) {
+      lines.push(`Opportunities: ${cluster.implementationOpportunities.join(', ')}`);
+    }
+    if (cluster.gaps.length > 0) {
+      lines.push(`Gaps: ${cluster.gaps.join('; ')}`);
+    }
+    lines.push('');
+  }
+
+  if (synthesis.crossCuttingThemes.length > 0) {
+    lines.push('## Cross-Cutting Themes');
+    for (const theme of synthesis.crossCuttingThemes) {
+      lines.push(`  - ${theme}`);
+    }
+  }
+
+  return lines.join('\n');
+}
+
+// =============================================================================
 // MAIN COMMAND HANDLER
 // =============================================================================
 
@@ -327,7 +397,8 @@ export type ResearchSubcommand =
   | 'index'
   | 'discover'
   | 'review'
-  | 'prioritize';
+  | 'prioritize'
+  | 'synthesize';
 
 /** All valid subcommand names. */
 const VALID_SUBCOMMANDS = [
@@ -341,6 +412,7 @@ const VALID_SUBCOMMANDS = [
   'discover',
   'review',
   'prioritize',
+  'synthesize',
 ] as const;
 
 /** Validates that a subcommand is valid. */
@@ -371,6 +443,7 @@ const SUBCOMMAND_HANDLERS: Record<ResearchSubcommand, SubcommandHandler> = {
   discover: handleDiscoverCommand,
   review: handleReviewCommand,
   prioritize: handlePrioritizeCommand,
+  synthesize: handleSynthesizeCommand,
 };
 
 /**

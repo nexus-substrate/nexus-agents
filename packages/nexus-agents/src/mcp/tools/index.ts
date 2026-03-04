@@ -158,6 +158,15 @@ export {
   type ResearchCatalogReviewResponse,
 } from './research-catalog-review.js';
 
+// Research synthesis (Issue #1386)
+export {
+  registerResearchSynthesizeTool,
+  ResearchSynthesizeInputSchema,
+  type ResearchSynthesizeInput,
+  type ResearchSynthesizeDeps,
+  type ResearchSynthesizeResponse,
+} from './research-synthesize.js';
+
 export {
   ResearchAutoCatalog,
   getAutoCatalog,
@@ -403,6 +412,7 @@ export function registerTools(
       'research_discover',
       'research_analyze',
       'research_catalog_review',
+      'research_synthesize',
       'memory_query',
       'memory_stats',
       'memory_write',

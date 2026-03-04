@@ -261,6 +261,16 @@ export type {
   ArxivMetadata,
 } from './research-types.js';
 
+// Research Synthesis (Issue #1386)
+export { synthesizeResearch } from './research-helpers-synthesize.js';
+export type {
+  SynthesisPaper,
+  PaperCluster,
+  ClusterSynthesis,
+  SynthesisResult,
+  SynthesisError,
+} from './research-helpers-synthesize.js';
+
 // Codebase Index (Issue #240)
 export { indexCommand, formatIndexResult } from './index-command.js';
 export type { IndexSubcommand, IndexCommandOptions, IndexCommandResult } from './index-command.js';

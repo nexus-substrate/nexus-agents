@@ -24,6 +24,7 @@ import {
   registerResearchDiscoverTool,
   registerResearchAnalyzeTool,
   registerResearchCatalogReviewTool,
+  registerResearchSynthesizeTool,
   registerMemoryQueryTool,
   registerMemoryStatsTool,
   registerMemoryWriteTool,
@@ -51,6 +52,7 @@ const TOOL_NAMES = [
   'research_discover',
   'research_analyze',
   'research_catalog_review',
+  'research_synthesize',
   'memory_query',
   'memory_stats',
   'memory_write',
@@ -76,6 +78,7 @@ async function setupServer(): Promise<TestContext> {
   registerResearchDiscoverTool(server, deps);
   registerResearchAnalyzeTool(server, deps);
   registerResearchCatalogReviewTool(server, deps);
+  registerResearchSynthesizeTool(server, deps);
   registerMemoryQueryTool(server, deps);
   registerMemoryStatsTool(server, deps);
   registerMemoryWriteTool(server, deps);

@@ -486,6 +486,7 @@ Governance rules (voting thresholds, refactor gates, fitness audit, documentatio
 | `research_discover`       | Discover new research papers and repositories from external sources. Searches arXiv, GitHub, and other sources.                               |
 | `research_analyze`        | Analyze the research registry for gaps, trends, priorities, stale entries, or coverage.                                                       |
 | `research_catalog_review` | Review auto-cataloged research references found during tool execution.                                                                        |
+| `research_synthesize`     | Synthesize the research registry by grouping papers into topic clusters with themes, insights, and implementation opportunities.              |
 | `memory_query`            | Query across all memory backends with unified results and relevance scoring.                                                                  |
 | `memory_stats`            | Get memory system statistics dashboard showing backend availability and metrics.                                                              |
 | `memory_write`            | Write a memory entry to a specific backend. Supports session, belief, agentic, adaptive, and typed backends.                                  |
@@ -498,7 +499,7 @@ Governance rules (voting thresholds, refactor gates, fitness audit, documentatio
 | `repo_analyze`            | Analyze a GitHub repository structure. Returns language, framework, package manager, CI provider, security tooling, and gap identification.   |
 | `repo_security_plan`      | Generate a security scanning pipeline recommendation for a GitHub repository based on detected tech stack.                                    |
 
-_Auto-generated from source. 24 tools registered._
+_Auto-generated from source. 25 tools registered._
 
 <!-- GOVERNANCE:TOOL_INDEX:END -->
 
