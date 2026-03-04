@@ -4126,3 +4126,23 @@ papers:
     techniques_extracted: []
     related_issues: []
     implementation_status: not-started
+  arxiv-2602.22261:
+    title: Sustainable LLM Inference using Context-Aware Model Switching
+    authors: []
+    source: arxiv
+    arxiv_id: '2602.22261'
+    url: https://arxiv.org/abs/2602.22261
+    publication_date: 2026-02
+    venue: null
+    topics:
+      - routing
+    tags:
+      - llm
+    reviewed_date: 2026-03-04
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
