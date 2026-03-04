@@ -3968,3 +3968,82 @@ papers:
     techniques_extracted: []
     related_issues: []
     implementation_status: not-started
+  arxiv-2603.02551:
+    title: Fuzzing Microservices in Face of Intrinsic Uncertainties
+    authors: []
+    source: arxiv
+    arxiv_id: '2603.02551'
+    url: https://arxiv.org/abs/2603.02551
+    publication_date: 2026-03
+    venue: null
+    topics:
+      - multi-agent-systems
+    tags: []
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2603.01193:
+    title: Operator Learning Using Weak Supervision from Walk-on-Spheres
+    authors: []
+    source: arxiv
+    arxiv_id: '2603.01193'
+    url: https://arxiv.org/abs/2603.01193
+    publication_date: 2026-03
+    venue: null
+    topics:
+      - multi-agent-systems
+    tags: []
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2603.02701:
+    title: 'Graph-GRPO: Stabilizing Multi-Agent Topology Learning via Group Relative Policy Optimization'
+    authors: []
+    source: arxiv
+    arxiv_id: '2603.02701'
+    url: https://arxiv.org/abs/2603.02701
+    publication_date: 2026-03
+    venue: null
+    topics:
+      - multi-agent-systems
+    tags:
+      - multi-agent
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2603.00724:
+    title: 'RLAR: An Agentic Reward System for Multi-task Reinforcement Learning on Large Language Models'
+    authors: []
+    source: arxiv
+    arxiv_id: '2603.00724'
+    url: https://arxiv.org/abs/2603.00724
+    publication_date: 2026-03
+    venue: null
+    topics:
+      - llm-routing
+    tags:
+      - llm
+      - reinforcement-learning
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
