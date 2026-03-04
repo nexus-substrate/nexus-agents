@@ -34,6 +34,11 @@ import {
   discoverOpenAlex,
 } from '../../cli/research-helpers-sources-academic.js';
 import { getToolMemory } from './tool-memory.js';
+import {
+  getOutcomeStore,
+  categorizeOutcomeErrorMessage,
+} from '../../orchestration/outcomes/index.js';
+import { DEFAULT_CLI } from '../../config/model-capabilities-types.js';
 
 // =============================================================================
 // CONSTANTS
@@ -484,6 +489,41 @@ function recordDiscoverySuccess(topic: string, newItems: number, sources: string
   }
 }
 
+/** Records discovery outcome (success or failure) to the outcome store. Best-effort. */
+function recordDiscoveryOutcome(success: boolean, durationMs: number, errorMsg?: string): void {
+  try {
+    if (!success && errorMsg !== undefined) {
+      const memory = getToolMemory();
+      memory.recordError({
+        error: `Research discovery failed: ${errorMsg.slice(0, 150)}`,
+        solution: 'Check network access and source availability',
+        filePattern: 'mcp/tools/research-discover',
+      });
+    }
+    const store = getOutcomeStore();
+    store.append({
+      id: `research-discover-${String(Date.now())}-${Math.random().toString(36).slice(2, 8)}`,
+      cli: DEFAULT_CLI,
+      category: 'research',
+      model: 'research-discover',
+      success,
+      durationMs,
+      timestamp: new Date().toISOString(),
+      source: 'manual',
+      ...(!success && errorMsg !== undefined
+        ? { failureCategory: categorizeOutcomeErrorMessage(errorMsg) }
+        : {}),
+    });
+  } catch (storeErr: unknown) {
+    createLogger({ tool: 'research-discover' }).debug(
+      'Failed to record discovery outcome to store',
+      {
+        error: storeErr instanceof Error ? storeErr.message : String(storeErr),
+      }
+    );
+  }
+}
+
 // =============================================================================
 // MCP TOOL
 // =============================================================================
@@ -515,13 +555,22 @@ function createResearchDiscoverHandler(deps: ResearchDiscoverDeps) {
     });
 
     const logger = deps.logger ?? createLogger({ tool: 'research_discover' });
-    return withToolError('Discovery failed', logger, async () => {
+    const startMs = Date.now();
+    const response = await withToolError('Discovery failed', logger, async () => {
       const result = await executeDiscovery(validationResult.data, logger);
       recordDiscoverySuccess(result.topic, result.newItems, result.sourcesQueried);
       return {
         content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
       };
     });
+    const durationMs = Date.now() - startMs;
+    if (response.isError === true) {
+      const errorText = response.content[0]?.text ?? 'unknown error';
+      recordDiscoveryOutcome(false, durationMs, errorText);
+    } else {
+      recordDiscoveryOutcome(true, durationMs);
+    }
+    return response;
   };
 }
 
