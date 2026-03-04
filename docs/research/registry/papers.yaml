@@ -3529,3 +3529,151 @@ papers:
     techniques_extracted: []
     related_issues: []
     implementation_status: not-started
+  arxiv-2602.19843:
+    title: 'MAS-FIRE: Fault Injection and Reliability Evaluation for LLM-Based Multi-Agent Systems'
+    authors: []
+    source: arxiv
+    arxiv_id: '2602.19843'
+    url: https://arxiv.org/abs/2602.19843
+    publication_date: 2026-02
+    venue: null
+    topics:
+      - multi-agent reliability
+    tags:
+      - benchmark
+      - multi-agent
+      - llm
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2412.01778:
+    title: 'HackSynth: LLM Agent and Evaluation Framework for Autonomous Penetration Testing'
+    authors: []
+    source: arxiv
+    arxiv_id: '2412.01778'
+    url: https://arxiv.org/abs/2412.01778
+    publication_date: 2024-12
+    venue: null
+    topics:
+      - autonomous agent evaluation benchmarks
+    tags:
+      - benchmark
+      - llm
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2512.19432:
+    title: 'MobileWorld: Benchmarking Autonomous Mobile Agents in Agent-User Interactive and
+      MCP-Augmented Environments'
+    authors: []
+    source: arxiv
+    arxiv_id: '2512.19432'
+    url: https://arxiv.org/abs/2512.19432
+    publication_date: 2025-12
+    venue: null
+    topics:
+      - autonomous agent evaluation benchmarks
+    tags:
+      - benchmark
+      - reinforcement-learning
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2309.13007:
+    title: 'ReConcile: Round-Table Conference Improves Reasoning via Consensus among Diverse LLMs'
+    authors: []
+    source: arxiv
+    arxiv_id: '2309.13007'
+    url: https://arxiv.org/abs/2309.13007
+    publication_date: 2023-09
+    venue: null
+    topics:
+      - LLM consensus and multi-agent voting mechanisms
+    tags:
+      - llm
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2503.05641:
+    title: 'Symbolic Mixture-of-Experts: Adaptive Skill-based Routing for Heterogeneous Reasoning'
+    authors: []
+    source: arxiv
+    arxiv_id: '2503.05641'
+    url: https://arxiv.org/abs/2503.05641
+    publication_date: 2025-03
+    venue: null
+    topics:
+      - adaptive model routing and selection optimization
+    tags: []
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2510.07038:
+    title: 'Tool-Augmented Policy Optimization: Synergizing Reasoning and Adaptive Tool Use with
+      Reinforcement Learning'
+    authors: []
+    source: arxiv
+    arxiv_id: '2510.07038'
+    url: https://arxiv.org/abs/2510.07038
+    publication_date: 2025-10
+    venue: null
+    topics:
+      - tool-augmented reasoning and function calling
+    tags:
+      - reinforcement-learning
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2509.26553:
+    title:
+      'Towards Reliable Benchmarking: A Contamination Free, Controllable Evaluation Framework for
+      Multi-step LLM Function Calling'
+    authors: []
+    source: arxiv
+    arxiv_id: '2509.26553'
+    url: https://arxiv.org/abs/2509.26553
+    publication_date: 2025-09
+    venue: null
+    topics:
+      - tool-augmented reasoning and function calling
+    tags:
+      - benchmark
+      - llm
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
