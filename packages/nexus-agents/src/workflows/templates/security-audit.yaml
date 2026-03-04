@@ -105,7 +105,7 @@ steps:
 
   # Step 5: Generate security report
   - id: report
-    agent: tech_lead
+    agent: orchestrator
     action: generate_security_report
     description: |
       Generates comprehensive security report:

@@ -65,7 +65,7 @@ steps:
 
   # Step 3: Synthesize reviews into final report
   - id: synthesize
-    agent: tech_lead
+    agent: orchestrator
     action: synthesize_reviews
     description: |
       Combines analysis results into actionable recommendations:

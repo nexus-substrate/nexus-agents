@@ -54,7 +54,7 @@ steps:
     timeout: 180000
 
   - id: vote
-    agent: tech_lead
+    agent: orchestrator
     action: consensus_vote
     description: |
       Run consensus voting on which discoveries to prioritize.

@@ -105,7 +105,7 @@ steps:
 
   # Step 5: Synthesize all findings into standards compliance report
   - id: report
-    agent: tech_lead
+    agent: orchestrator
     action: synthesize_standards_report
     description: |
       Combines all standards check results into a unified report:
