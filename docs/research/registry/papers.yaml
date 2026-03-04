@@ -3448,3 +3448,84 @@ papers:
     techniques_extracted: []
     related_issues: []
     implementation_status: not-started
+  arxiv-2601.04252:
+    title: 'Sphinx: Benchmarking and Modeling for LLM-Driven Pull Request Review'
+    authors: []
+    source: arxiv
+    arxiv_id: '2601.04252'
+    url: https://arxiv.org/abs/2601.04252
+    publication_date: 2026-01
+    venue: null
+    topics:
+      - code-review
+    tags:
+      - survey
+      - benchmark
+      - llm
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2601.11974:
+    title: 'Learn Like Humans: Use Meta-cognitive Reflection for Efficient Self-Improvement'
+    authors: []
+    source: arxiv
+    arxiv_id: '2601.11974'
+    url: https://arxiv.org/abs/2601.11974
+    publication_date: 2026-01
+    venue: null
+    topics:
+      - self-improvement
+    tags: []
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2601.18734:
+    title: 'Self-Distilled Reasoner: On-Policy Self-Distillation for Large Language Models'
+    authors: []
+    source: arxiv
+    arxiv_id: '2601.18734'
+    url: https://arxiv.org/abs/2601.18734
+    publication_date: 2026-01
+    venue: null
+    topics:
+      - knowledge-distillation
+    tags:
+      - llm
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
+  arxiv-2601.19494:
+    title: 'AACR-Bench: Evaluating Automatic Code Review with Holistic Repository-Level Context'
+    authors: []
+    source: arxiv
+    arxiv_id: '2601.19494'
+    url: https://arxiv.org/abs/2601.19494
+    publication_date: 2026-01
+    venue: null
+    topics:
+      - code-review
+    tags:
+      - survey
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
