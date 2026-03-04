@@ -12,19 +12,23 @@
  */
 
 import type { Result, IAgent, ILogger } from '../../core/index.js';
-import { AgentError, createLogger } from '../../core/index.js';
+import { AgentError, createLogger, createSharedTaskAnalyzer } from '../../core/index.js';
+import type { ISharedTaskAnalyzer, ReasoningKnowledgeType } from '../../core/index.js';
 import type {
   CollaborationConfig,
   CollaborationResult,
   CollaborationPattern,
 } from './collaboration-types.js';
 import { ProtocolFactory, type ProtocolOptions } from './collaboration-protocol.js';
-import {
-  TaskTypeClassifier,
-  createTaskTypeClassifier,
-  type TaskType,
-  type ClassificationResult,
-} from '../../core/task-analysis/index.js';
+
+/** Task type alias for protocol mapping keys. */
+type TaskType = ReasoningKnowledgeType;
+
+/** Classification result from SharedTaskAnalyzer. */
+interface ClassificationResult {
+  readonly type: TaskType;
+  readonly confidence: number;
+}
 
 /**
  * Configuration for adaptive protocol selection.
@@ -79,7 +83,7 @@ export interface SelectionResult {
  */
 export class AdaptiveProtocolSelector {
   private readonly factory: ProtocolFactory;
-  private readonly classifier: TaskTypeClassifier;
+  private readonly analyzer: ISharedTaskAnalyzer;
   private readonly config: Required<
     Omit<AdaptiveProtocolConfig, 'logger' | 'protocolOptions' | 'classifierConfig'>
   >;
@@ -87,7 +91,7 @@ export class AdaptiveProtocolSelector {
 
   constructor(config?: AdaptiveProtocolConfig) {
     this.factory = new ProtocolFactory(config?.protocolOptions);
-    this.classifier = createTaskTypeClassifier(config?.classifierConfig);
+    this.analyzer = createSharedTaskAnalyzer();
     this.config = {
       protocolMapping: config?.protocolMapping ?? DEFAULT_PROTOCOL_MAPPING,
       logDecisions: config?.logDecisions ?? true,
@@ -106,8 +110,12 @@ export class AdaptiveProtocolSelector {
     // Note: 'auto' is not currently in CollaborationPattern, so this is for future extension
     const explicitPattern = config.pattern;
 
-    // Classify the task
-    const classification = this.classifier.classify(config.task);
+    // Classify the task using SharedTaskAnalyzer (canonical path per ADR-0004)
+    const reasoningResult = this.analyzer.getReasoningType(config.task);
+    const classification: ClassificationResult = {
+      type: reasoningResult.type,
+      confidence: reasoningResult.confidence,
+    };
 
     // Look up the protocol for this task type
     const mapping = this.config.protocolMapping;
@@ -124,7 +132,6 @@ export class AdaptiveProtocolSelector {
         selectedPattern,
         explicitPattern,
         wasOverridden,
-        topSignals: classification.signals.slice(0, 3).map((s) => s.name),
       });
     }
 
@@ -180,16 +187,12 @@ export class AdaptiveProtocolSelector {
     reasoning: string;
   } {
     const selection = this.selectProtocol(config);
-    const { type, confidence, signals } = selection.classification;
+    const { type, confidence } = selection.classification;
 
-    const topSignals = signals
-      .slice(0, 3)
-      .map((s) => s.name)
-      .join(', ');
     const reasoning =
       type === 'unknown'
         ? 'Task type could not be determined with sufficient confidence. Using default protocol.'
-        : `Task classified as "${type}" type (confidence: ${(confidence * 100).toFixed(0)}%) based on signals: ${topSignals}. ${
+        : `Task classified as "${type}" type (confidence: ${(confidence * 100).toFixed(0)}%). ${
             type === 'reasoning'
               ? 'Voting/parallel protocols work better for reasoning tasks (+13.2%).'
               : 'Consensus protocols work better for knowledge tasks (+2.8%).'

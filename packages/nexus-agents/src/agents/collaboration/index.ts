@@ -142,7 +142,8 @@ export {
   type AegeanProtocolOptions,
 } from './aegean-protocol.js';
 
-// Task-Aware Protocol Selection (Source: Issue #125, arxiv:2502.19130)
+// DEPRECATED: Use SharedTaskAnalyzer from core instead (Issue #1367, ADR-0004).
+// These re-exports will be removed in the next major version.
 export {
   TaskTypeClassifier,
   createTaskTypeClassifier,

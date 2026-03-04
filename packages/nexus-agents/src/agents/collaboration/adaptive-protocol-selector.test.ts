@@ -125,14 +125,15 @@ describe('AdaptiveProtocolSelector', () => {
       expect(result.classification.type).toBe('reasoning');
     });
 
-    it('should include classification signals', () => {
+    it('should include classification type and confidence', () => {
       const selector = new AdaptiveProtocolSelector();
       const task = createTestTask('Debug this function and explain why it fails');
       const config = createTestConfig(task, 'parallel');
 
       const result = selector.selectProtocol(config);
 
-      expect(result.classification.signals.length).toBeGreaterThan(0);
+      expect(result.classification.type).toBeDefined();
+      expect(result.classification.confidence).toBeGreaterThanOrEqual(0);
     });
   });
 

@@ -24,6 +24,7 @@ import {
   EXPERT_DEFAULT_CAPABILITIES,
 } from './expert-types.js';
 import { SECURITY_EXPERT_SYSTEM_PROMPT } from './expert-prompts.js';
+import { getSecurityKnowledgePrompt } from './knowledge/security/index.js';
 import {
   detectHeuristicVulnerabilities,
   calculateSecurityScore,
@@ -227,7 +228,9 @@ function buildBaseOptions(
     capabilities: [...baseCapabilities, ...additionalCaps] as AgentCapability[],
     temperature,
     maxTokens: options.maxTokens ?? 8192,
-    systemPrompt: expertOpts.systemPromptOverride ?? SECURITY_EXPERT_SYSTEM_PROMPT,
+    systemPrompt:
+      expertOpts.systemPromptOverride ??
+      `${SECURITY_EXPERT_SYSTEM_PROMPT}\n\n${getSecurityKnowledgePrompt()}`,
   };
 
   if (options.adapter !== undefined) baseOptions.adapter = options.adapter;
