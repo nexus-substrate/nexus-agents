@@ -152,8 +152,8 @@ export {
   createGraphAuditBridge,
 } from '../security/audit-trail.js';
 export type {
-  AuditEvent,
-  AuditQuery,
+  AuditEvent as SecurityAuditEvent,
+  AuditQuery as SecurityAuditQuery,
   TrustClassificationEvent,
   PolicyGateEvent,
   CorroborationEvent,
