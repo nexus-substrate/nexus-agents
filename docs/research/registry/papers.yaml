@@ -3842,3 +3842,24 @@ papers:
     techniques_extracted: []
     related_issues: []
     implementation_status: not-started
+  arxiv-2511.00074:
+    title:
+      'ScaleCall -- Agentic Tool Calling at Scale for Fintech: Challenges, Methods, and Deployment
+      Insights'
+    authors: []
+    source: arxiv
+    arxiv_id: '2511.00074'
+    url: https://arxiv.org/abs/2511.00074
+    publication_date: 2025-11
+    venue: null
+    topics:
+      - orchestration
+    tags: []
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
