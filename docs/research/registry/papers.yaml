@@ -3884,3 +3884,23 @@ papers:
     techniques_extracted: []
     related_issues: []
     implementation_status: not-started
+  arxiv-2603.02630:
+    title: 'MASPOB: Bandit-Based Prompt Optimization for Multi-Agent Systems with Graph Neural Networks'
+    authors: []
+    source: arxiv
+    arxiv_id: '2603.02630'
+    url: https://arxiv.org/abs/2603.02630
+    publication_date: 2026-03
+    venue: null
+    topics:
+      - Multi-Agent Orchestration
+    tags:
+      - multi-agent
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started
