@@ -17,6 +17,9 @@ import { cliTaskToTask, buildDifficultyOutcome } from './composite-router-helper
 import { getOutcomeStore } from '../orchestration/outcomes/index.js';
 import { clamp01 } from '../utils/math-utils.js';
 
+/** Module-level singleton — SharedTaskAnalyzer is stateless. */
+const sharedAnalyzer = createSharedTaskAnalyzer();
+
 /** Last routed task info for difficulty outcome recording. */
 export interface LastRoutedTaskInfo {
   task: CliTask;
@@ -48,8 +51,7 @@ export function recordBanditOutcome(
     return;
   }
   const internalTask = cliTaskToTask(task);
-  const analyzer = createSharedTaskAnalyzer();
-  const analysis = analyzer.analyze(internalTask);
+  const analysis = sharedAnalyzer.analyze(internalTask);
   const context = taskAnalysisResultToBanditContext(analysis);
   deps.linucbBandit.update(armIndex, context, reward);
   deps.logger.debug('Recorded outcome', { cliName, reward });

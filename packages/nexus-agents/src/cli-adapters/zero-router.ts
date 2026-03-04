@@ -64,6 +64,9 @@ export {
   type DifficultyThresholds,
 } from './zero-router-types.js';
 
+/** Module-level singleton — SharedTaskAnalyzer is stateless. */
+const sharedAnalyzer = createSharedTaskAnalyzer();
+
 /**
  * Interface for ZeroRouter for dependency injection.
  */
@@ -289,8 +292,7 @@ export class ZeroRouter implements IZeroRouter {
         metadata: {},
       },
     };
-    const analyzer = createSharedTaskAnalyzer();
-    const analysis = analyzer.analyze(internalTask);
+    const analysis = sharedAnalyzer.analyze(internalTask);
     return taskAnalysisResultToTaskProfile(analysis);
   }
 

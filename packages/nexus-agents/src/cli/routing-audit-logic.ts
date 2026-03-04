@@ -33,6 +33,9 @@ import type {
 
 const logger = createLogger({ component: 'routing-audit' });
 
+/** Module-level singleton — SharedTaskAnalyzer is stateless. */
+const sharedAnalyzer = createSharedTaskAnalyzer();
+
 // =============================================================================
 // Constants
 // =============================================================================
@@ -52,8 +55,7 @@ export function analyzeTaskString(taskStr: string): TaskProfile {
     description: taskStr,
     context: {},
   };
-  const analyzer = createSharedTaskAnalyzer();
-  const analysis = analyzer.analyze(task);
+  const analysis = sharedAnalyzer.analyze(task);
   return taskAnalysisResultToTaskProfile(analysis);
 }
 
@@ -82,8 +84,7 @@ export function analyzeToBanditContext(taskStr: string): BanditContext {
     description: taskStr,
     context: {},
   };
-  const analyzer = createSharedTaskAnalyzer();
-  const analysis = analyzer.analyze(task);
+  const analysis = sharedAnalyzer.analyze(task);
   return taskAnalysisResultToBanditContext(analysis);
 }
 

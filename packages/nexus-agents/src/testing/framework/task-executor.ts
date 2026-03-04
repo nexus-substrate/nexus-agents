@@ -25,6 +25,9 @@ import type {
 import type { RubricScorer } from './rubric-scorer.js';
 import type { RoutingScorer } from './routing-scorer.js';
 
+/** Module-level singleton — SharedTaskAnalyzer is stateless. */
+const sharedAnalyzer = createSharedTaskAnalyzer();
+
 /**
  * Creates an agent task from an evaluation task.
  */
@@ -65,8 +68,7 @@ export function createRoutingDecisionDetails(
   decision: RoutingDecision,
   task: Task
 ): RoutingDecisionDetails {
-  const analyzer = createSharedTaskAnalyzer();
-  const analysis = analyzer.analyze(task);
+  const analysis = sharedAnalyzer.analyze(task);
   const taskProfile = taskAnalysisResultToTaskProfile(analysis);
 
   return {
