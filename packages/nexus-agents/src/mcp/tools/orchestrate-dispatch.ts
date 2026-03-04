@@ -21,7 +21,10 @@ import {
   type WorkerConflict,
 } from '../../orchestration/aorchestra/index.js';
 import { composeWorkerPrompt } from '../../orchestration/aorchestra/compose-worker-prompt.js';
-import { synthesizeResults } from '../../orchestration/aorchestra/result-synthesizer.js';
+import {
+  synthesizeResults,
+  type SynthesisSource,
+} from '../../orchestration/aorchestra/result-synthesizer.js';
 import { getTimeProvider } from '../../core/index.js';
 import type { ContentBlock } from '../../core/types/model.js';
 import { DEFAULT_CLI } from '../../config/model-capabilities-types.js';
@@ -70,6 +73,8 @@ export interface WorkerDispatchExecutionOptions {
   readonly synthesize?: boolean;
   /** Max model calls per invocation (default: 6, env: NEXUS_WORKER_MAX_CALLS) (#1321) */
   readonly maxWorkerCalls?: number;
+  /** Opt-in: re-dispatch failed workers if quality is low and budget allows (Issue #1389) */
+  readonly refine?: boolean;
 }
 
 /** Result from worker dispatch execution. */
@@ -84,6 +89,8 @@ export interface WorkerDispatchResult {
   readonly synthesis?: string;
   /** Total model calls made during this dispatch (#1321). */
   readonly totalModelCalls: number;
+  /** True when a refinement pass was applied (Issue #1389). */
+  readonly refined?: boolean;
 }
 
 // ============================================================================
@@ -162,6 +169,81 @@ function makeErrorResult(entry: AgentPlanEntry, startMs: number, message: string
 }
 
 // ============================================================================
+// Internal: Synthesis + Refinement Helpers
+// ============================================================================
+
+/** Intermediate state passed between dispatch phases. */
+interface DispatchPhaseState {
+  results: WorkerResult[];
+  totalModelCalls: number;
+  synthesisValue?: string;
+  synthSource?: SynthesisSource;
+}
+
+/** Run opt-in synthesis if within call budget (#1321). */
+async function runSynthesisPhase(
+  state: DispatchPhaseState,
+  options: WorkerDispatchExecutionOptions,
+  maxCalls: number
+): Promise<void> {
+  if (options.synthesize !== true || state.totalModelCalls >= maxCalls) return;
+  const successResults = state.results.filter((r) => r.status === 'success');
+  if (successResults.length === 0) return;
+
+  options.logger.info('Running result synthesis', { workerCount: successResults.length });
+  const synthResult = await synthesizeResults({
+    results: state.results,
+    conflicts: [...detectConflicts(state.results)],
+    taskDescription: options.taskDescription,
+    modelAdapter: options.modelAdapter,
+  });
+  state.totalModelCalls++;
+  state.synthesisValue = synthResult.value;
+  state.synthSource = synthResult.synthesisSource;
+}
+
+/** Run opt-in refinement pass if quality is low and budget allows (#1389). */
+async function runRefinementPhase(
+  state: DispatchPhaseState,
+  entries: readonly AgentPlanEntry[],
+  options: WorkerDispatchExecutionOptions,
+  maxCalls: number
+): Promise<boolean> {
+  if (options.refine !== true || state.totalModelCalls >= maxCalls) return false;
+
+  const signals: RefinementSignals = {
+    errorCount: state.results.filter((r) => r.status === 'error').length,
+    successCount: state.results.filter((r) => r.status === 'success').length,
+    conflictCount: detectConflicts(state.results).length,
+    ...(state.synthSource !== undefined ? { synthesisSource: state.synthSource } : {}),
+  };
+  if (!shouldRefine(signals)) return false;
+
+  const remaining = maxCalls - state.totalModelCalls;
+  const failedEntries = entries
+    .filter((e) => state.results.some((r) => r.role === e.role && r.status === 'error'))
+    .slice(0, remaining);
+  if (failedEntries.length === 0) return false;
+
+  options.logger.info('Refinement pass', {
+    roles: failedEntries.map((e) => e.role),
+    remaining,
+  });
+  const executor = createWorkerExecutor(
+    options.taskDescription,
+    options.modelAdapter,
+    options.logger
+  );
+  const refinedResults = await dispatchWorkers(failedEntries, {
+    ...(options.maxConcurrency !== undefined ? { maxConcurrency: options.maxConcurrency } : {}),
+    executeWorker: executor,
+  });
+  state.totalModelCalls += refinedResults.length;
+  state.results = mergeRefinedResults(state.results, refinedResults);
+  return true;
+}
+
+// ============================================================================
 // Public API
 // ============================================================================
 
@@ -169,7 +251,7 @@ function makeErrorResult(entry: AgentPlanEntry, startMs: number, message: string
 export async function executeWorkerDispatch(
   options: WorkerDispatchExecutionOptions
 ): Promise<WorkerDispatchResult> {
-  const { agentPlan, taskDescription, modelAdapter, logger, maxConcurrency, synthesize } = options;
+  const { agentPlan, taskDescription, modelAdapter, logger, maxConcurrency } = options;
   const maxCalls = resolveMaxWorkerCalls(options.maxWorkerCalls);
   const startMs = getTimeProvider().now();
 
@@ -195,25 +277,20 @@ export async function executeWorkerDispatch(
     executeWorker: createWorkerExecutor(taskDescription, modelAdapter, logger),
   });
 
-  let totalModelCalls = results.filter(
-    (r) => r.status === 'success' || r.error !== undefined
-  ).length;
-  const baseResult = buildDispatchResult(results, startMs, logger, totalModelCalls);
+  const state: DispatchPhaseState = {
+    results: [...results],
+    totalModelCalls: results.filter((r) => r.status === 'success' || r.error !== undefined).length,
+  };
 
-  // Opt-in synthesis: only if within call budget (#1321)
-  if (synthesize === true && baseResult.successCount > 0 && totalModelCalls < maxCalls) {
-    logger.info('Running result synthesis', { workerCount: baseResult.successCount });
-    const synthResult = await synthesizeResults({
-      results,
-      conflicts: [...baseResult.conflicts],
-      taskDescription,
-      modelAdapter,
-    });
-    totalModelCalls++;
-    return { ...baseResult, synthesis: synthResult.value, totalModelCalls };
-  }
+  await runSynthesisPhase(state, options, maxCalls);
+  const refined = await runRefinementPhase(state, entries, options, maxCalls);
 
-  return baseResult;
+  const base = buildDispatchResult(state.results, startMs, logger, state.totalModelCalls);
+  return {
+    ...base,
+    ...(refined ? { refined: true } : {}),
+    ...(state.synthesisValue !== undefined ? { synthesis: state.synthesisValue } : {}),
+  };
 }
 
 // ============================================================================
@@ -301,4 +378,36 @@ function buildDispatchResult(
     conflicts,
     totalModelCalls,
   };
+}
+
+// ============================================================================
+// Refinement (Issue #1389)
+// ============================================================================
+
+/** Quality signals for refinement decision. */
+export interface RefinementSignals {
+  readonly errorCount: number;
+  readonly successCount: number;
+  readonly conflictCount: number;
+  readonly synthesisSource?: SynthesisSource;
+}
+
+/** Returns true when result quality warrants a refinement pass. */
+export function shouldRefine(signals: RefinementSignals): boolean {
+  if (signals.successCount === 0) return true;
+  if (signals.errorCount > 0) return true;
+  if (signals.synthesisSource === 'fallback') return true;
+  return false;
+}
+
+function mergeRefinedResults(
+  original: readonly WorkerResult[],
+  refined: readonly WorkerResult[]
+): WorkerResult[] {
+  const refinedByRole = new Map(refined.map((r) => [r.role, r]));
+  return original.map((orig) => {
+    if (orig.status !== 'error') return orig;
+    const replacement = refinedByRole.get(orig.role);
+    return replacement?.status === 'success' ? replacement : orig;
+  });
 }
