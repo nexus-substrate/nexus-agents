@@ -47,6 +47,21 @@ import {
 import { assessReputation, ReputationCache, SuspiciousSignalSchema } from '../index.js';
 
 // ============================================================================
+// Audit trail (Issue #832)
+// ============================================================================
+import {
+  AuditTrail,
+  createAuditTrail,
+  emitTrustEvent,
+  emitPolicyEvent,
+  emitCorroborationEvent,
+  emitReputationEvent,
+  emitSanitizationEvent,
+  emitGraphExecutionEvent,
+  createGraphAuditBridge,
+} from '../index.js';
+
+// ============================================================================
 // Hostile input firewall (Issue #826)
 // ============================================================================
 import { HostileInputFirewall, generateATL, parseATL, createGitHubAdapter } from '../index.js';
@@ -108,6 +123,27 @@ describe('Security export contracts', () => {
       expect(typeof assessReputation).toBe('function');
       expect(ReputationCache).toBeDefined();
       expect(SuspiciousSignalSchema).toBeDefined();
+    });
+  });
+
+  describe('audit trail (Issue #832)', () => {
+    it('exports AuditTrail class and factory', () => {
+      expect(AuditTrail).toBeDefined();
+      expect(typeof AuditTrail).toBe('function');
+      expect(typeof createAuditTrail).toBe('function');
+    });
+
+    it('exports emit functions', () => {
+      expect(typeof emitTrustEvent).toBe('function');
+      expect(typeof emitPolicyEvent).toBe('function');
+      expect(typeof emitCorroborationEvent).toBe('function');
+      expect(typeof emitReputationEvent).toBe('function');
+      expect(typeof emitSanitizationEvent).toBe('function');
+      expect(typeof emitGraphExecutionEvent).toBe('function');
+    });
+
+    it('exports graph audit bridge factory', () => {
+      expect(typeof createGraphAuditBridge).toBe('function');
     });
   });
 

@@ -139,6 +139,29 @@ export type {
   SuspiciousSignal,
 } from '../security/reputation-model.js';
 
+// Security audit trail (Issue #832)
+export {
+  AuditTrail,
+  createAuditTrail,
+  emitTrustEvent,
+  emitPolicyEvent,
+  emitCorroborationEvent,
+  emitReputationEvent,
+  emitSanitizationEvent,
+  emitGraphExecutionEvent,
+  createGraphAuditBridge,
+} from '../security/audit-trail.js';
+export type {
+  AuditEvent,
+  AuditQuery,
+  TrustClassificationEvent,
+  PolicyGateEvent,
+  CorroborationEvent,
+  ReputationEvent,
+  SanitizationEvent,
+  GraphExecutionAuditEvent,
+} from '../security/audit-trail.js';
+
 // Hostile input firewall (Issue #826)
 export { HostileInputFirewall } from '../security/firewall/firewall-pipeline.js';
 export type { FirewallResult } from '../security/firewall/firewall-pipeline.js';
