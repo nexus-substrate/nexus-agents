@@ -308,7 +308,7 @@ export class RestApiServer implements IRestApiServer {
       return;
     }
 
-    const apiKey = request.headers[this.config.apiKeyHeader.toLowerCase()] as string | undefined;
+    const apiKey = this.getHeaderString(request, this.config.apiKeyHeader);
 
     if (apiKey === undefined) {
       const error: ApiError = {
@@ -338,8 +338,16 @@ export class RestApiServer implements IRestApiServer {
     };
   }
 
+  /** Extract a single string value from request headers (handles string[] case). */
+  private getHeaderString(request: FastifyRequest, name: string): string | undefined {
+    const value = request.headers[name.toLowerCase()];
+    if (typeof value === 'string') return value;
+    if (Array.isArray(value)) return value[0];
+    return undefined;
+  }
+
   private getRateLimitKey(request: FastifyRequest): string {
-    const apiKey = request.headers[this.config.apiKeyHeader.toLowerCase()] as string | undefined;
+    const apiKey = this.getHeaderString(request, this.config.apiKeyHeader);
     if (apiKey !== undefined && this.apiKeys.has(apiKey)) {
       return 'key:' + apiKey.slice(0, 8);
     }
@@ -347,7 +355,7 @@ export class RestApiServer implements IRestApiServer {
   }
 
   private getClientId(request: FastifyRequest): string {
-    const apiKey = request.headers[this.config.apiKeyHeader.toLowerCase()] as string | undefined;
+    const apiKey = this.getHeaderString(request, this.config.apiKeyHeader);
     if (apiKey !== undefined) {
       return 'api-key:' + apiKey.slice(0, 8);
     }

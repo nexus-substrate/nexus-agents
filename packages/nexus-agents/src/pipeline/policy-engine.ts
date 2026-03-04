@@ -115,7 +115,8 @@ const trustTierRule: PolicyRule = {
   priority: 100,
   evaluate(context): PolicyDecision {
     const state = context.pipelineState;
-    const tier = state['trustTier'] as number | undefined;
+    const tierVal = state['trustTier'];
+    const tier = typeof tierVal === 'number' ? tierVal : undefined;
     if (tier !== undefined && tier >= 3 && context.stageType === 'execute') {
       return {
         allow: false,
@@ -133,9 +134,9 @@ const securityReviewRule: PolicyRule = {
   priority: 90,
   evaluate(context): PolicyDecision {
     const state = context.pipelineState;
-    const needsReview = state['securityReviewRequired'] as boolean | undefined;
-    const hasReview = state['securityReviewComplete'] as boolean | undefined;
-    if (needsReview === true && hasReview !== true && context.stageType === 'execute') {
+    const needsReview = state['securityReviewRequired'] === true;
+    const hasReview = state['securityReviewComplete'] === true;
+    if (needsReview && !hasReview && context.stageType === 'execute') {
       return {
         allow: false,
         reason: 'Security review required before implementation',
@@ -151,7 +152,8 @@ const boundedIterationRule: PolicyRule = {
   priority: 80,
   evaluate(context): PolicyDecision {
     const state = context.pipelineState;
-    const attempts = state['stageAttempts'] as number | undefined;
+    const attemptsVal = state['stageAttempts'];
+    const attempts = typeof attemptsVal === 'number' ? attemptsVal : undefined;
     if (attempts !== undefined && attempts >= DEFAULT_MAX_ATTEMPTS) {
       return {
         allow: false,
@@ -168,8 +170,10 @@ const costBudgetRule: PolicyRule = {
   priority: 70,
   evaluate(context): PolicyDecision {
     const state = context.pipelineState;
-    const spent = state['costAccumulator'] as number | undefined;
-    const budget = state['costBudget'] as number | undefined;
+    const spentVal = state['costAccumulator'];
+    const spent = typeof spentVal === 'number' ? spentVal : undefined;
+    const budgetVal = state['costBudget'];
+    const budget = typeof budgetVal === 'number' ? budgetVal : undefined;
     if (spent !== undefined && budget !== undefined) {
       if (spent > budget * COST_WARNING_THRESHOLD) {
         return {
@@ -189,9 +193,9 @@ const highRiskApprovalRule: PolicyRule = {
   priority: 60,
   evaluate(context): PolicyDecision {
     const state = context.pipelineState;
-    const isHighRisk = state['highRisk'] as boolean | undefined;
-    const approved = state['userApproved'] as boolean | undefined;
-    if (isHighRisk === true && approved !== true) {
+    const isHighRisk = state['highRisk'] === true;
+    const approved = state['userApproved'] === true;
+    if (isHighRisk && !approved) {
       return {
         allow: false,
         reason: 'High-risk action requires user approval',
