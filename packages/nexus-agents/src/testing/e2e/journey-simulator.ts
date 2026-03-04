@@ -101,7 +101,9 @@ const UserJourneySchema = {
       name: obj.name,
       description: typeof description === 'string' ? description : '',
       actions: parseActions(obj.actions),
-      successCriteria: Array.isArray(successCriteria) ? (successCriteria as string[]) : [],
+      successCriteria: Array.isArray(successCriteria)
+        ? successCriteria.filter((s): s is string => typeof s === 'string')
+        : [],
       maxTimeToFirstSuccessMs: typeof maxTime === 'number' ? maxTime : 60000,
     };
   },
@@ -109,28 +111,34 @@ const UserJourneySchema = {
 
 function parseActions(raw: unknown): JourneyAction[] {
   if (!Array.isArray(raw)) return [];
-  return raw.map((item) => {
-    const obj = item as Record<string, unknown>;
-    const base: { type: JourneyAction['type']; command: string } = {
-      type: obj.type as JourneyAction['type'],
-      command: obj.command as string,
-    };
-    const optional: {
-      args?: Record<string, unknown>;
-      expectedOutcome?: string;
-      timeoutMs?: number;
-    } = {};
-    if (obj.args !== undefined) {
-      optional.args = obj.args as Record<string, unknown>;
-    }
-    if (obj.expectedOutcome !== undefined) {
-      optional.expectedOutcome = obj.expectedOutcome as string;
-    }
-    if (obj.timeoutMs !== undefined) {
-      optional.timeoutMs = obj.timeoutMs as number;
-    }
-    return { ...base, ...optional } as JourneyAction;
-  });
+  const validTypes = new Set<string>(['cli_command', 'mcp_tool', 'workflow_run', 'wait']);
+  return raw
+    .filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null)
+    .map((obj) => {
+      const rawType =
+        typeof obj.type === 'string' && validTypes.has(obj.type)
+          ? (obj.type as JourneyAction['type'])
+          : 'cli_command';
+      const base: { type: JourneyAction['type']; command: string } = {
+        type: rawType,
+        command: typeof obj.command === 'string' ? obj.command : '',
+      };
+      const optional: {
+        args?: Record<string, unknown>;
+        expectedOutcome?: string;
+        timeoutMs?: number;
+      } = {};
+      if (typeof obj.args === 'object' && obj.args !== null) {
+        optional.args = obj.args as Record<string, unknown>;
+      }
+      if (typeof obj.expectedOutcome === 'string') {
+        optional.expectedOutcome = obj.expectedOutcome;
+      }
+      if (typeof obj.timeoutMs === 'number') {
+        optional.timeoutMs = obj.timeoutMs;
+      }
+      return { ...base, ...optional } as JourneyAction;
+    });
 }
 
 /**

@@ -17,6 +17,61 @@ import type { IssueMetadata, IssueComment } from './issue-triage-types.js';
 
 const logger = createLogger({ component: 'GitHubClient' });
 
+// ============================================================================
+// Safe extraction helpers for untyped API responses
+// ============================================================================
+
+/** Safely extract a string from an unknown value. */
+function str(val: unknown, fallback = ''): string {
+  return typeof val === 'string' ? val : fallback;
+}
+
+/** Safely extract a number from an unknown value. */
+function num(val: unknown, fallback = 0): number {
+  return typeof val === 'number' ? val : fallback;
+}
+
+/** Safely extract a boolean from an unknown value. */
+function bool(val: unknown, fallback = false): boolean {
+  return typeof val === 'boolean' ? val : fallback;
+}
+
+/** Safely extract .login from a nested user-like object. */
+function login(val: unknown): string {
+  if (typeof val === 'object' && val !== null && 'login' in val) {
+    const rec = val as Record<string, unknown>;
+    return str(rec.login);
+  }
+  return '';
+}
+
+/** Safely extract .ref from a branch-like object. */
+function ref(val: unknown): string {
+  if (typeof val === 'object' && val !== null && 'ref' in val) {
+    const rec = val as Record<string, unknown>;
+    return str(rec.ref);
+  }
+  return '';
+}
+
+/** Safely extract .sha from a branch-like object. */
+function sha(val: unknown): string {
+  if (typeof val === 'object' && val !== null && 'sha' in val) {
+    const rec = val as Record<string, unknown>;
+    return str(rec.sha);
+  }
+  return '';
+}
+
+/** Safely extract label names from an array of label objects. */
+function labelNames(val: unknown): string[] {
+  if (!Array.isArray(val)) return [];
+  return val
+    .filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null)
+    .map((item) => str(item.name))
+    .filter((name) => name.length > 0);
+}
+
 /**
  * GitHub API error.
  */
@@ -88,24 +143,22 @@ export class GitHubClient {
     const files = filesResult.value;
 
     const metadata: PRMetadata = {
-      number: pr.number as number,
-      title: pr.title as string,
-      body: (pr.body as string | null) ?? '',
-      author: (pr.user as { login: string }).login,
-      authorAssociation: (pr.author_association as string | undefined) ?? 'NONE',
-      base: (pr.base as { ref: string }).ref,
-      head: (pr.head as { ref: string; sha: string }).ref,
-      headSha: (pr.head as { sha: string }).sha,
+      number: num(pr.number),
+      title: str(pr.title),
+      body: str(pr.body),
+      author: login(pr.user),
+      authorAssociation: str(pr.author_association, 'NONE'),
+      base: ref(pr.base),
+      head: ref(pr.head),
+      headSha: sha(pr.head),
       owner,
       repo,
-      url: pr.html_url as string,
-      draft: pr.draft as boolean,
-      labels: Array.isArray(pr.labels)
-        ? (pr.labels as Array<{ name: string }>).map((l) => l.name)
-        : [],
+      url: str(pr.html_url),
+      draft: bool(pr.draft),
+      labels: labelNames(pr.labels),
       files,
-      additions: pr.additions as number,
-      deletions: pr.deletions as number,
+      additions: num(pr.additions),
+      deletions: num(pr.deletions),
     };
 
     logger.info('Fetched PR metadata', {
@@ -182,19 +235,17 @@ export class GitHubClient {
 
     const issue = result.value;
     const metadata: IssueMetadata = {
-      number: issue.number as number,
-      title: issue.title as string,
-      body: (issue.body as string | null) ?? '',
-      author: (issue.user as { login: string }).login,
-      authorAssociation: (issue.author_association as string | undefined) ?? 'NONE',
+      number: num(issue.number),
+      title: str(issue.title),
+      body: str(issue.body),
+      author: login(issue.user),
+      authorAssociation: str(issue.author_association, 'NONE'),
       owner,
       repo,
-      url: issue.html_url as string,
-      state: issue.state as string,
-      labels: Array.isArray(issue.labels)
-        ? (issue.labels as Array<{ name: string }>).map((l) => l.name)
-        : [],
-      createdAt: issue.created_at as string,
+      url: str(issue.html_url),
+      state: str(issue.state),
+      labels: labelNames(issue.labels),
+      createdAt: str(issue.created_at),
     };
 
     logger.info('Fetched issue metadata', { issueNumber, state: metadata.state });
@@ -217,11 +268,11 @@ export class GitHubClient {
     if (!result.ok) return result;
 
     const comments: IssueComment[] = result.value.map((c) => ({
-      id: c.id as number,
-      body: (c.body as string | null) ?? '',
-      author: (c.user as { login: string }).login,
-      authorAssociation: (c.author_association as string | undefined) ?? 'NONE',
-      createdAt: c.created_at as string,
+      id: num(c.id),
+      body: str(c.body),
+      author: login(c.user),
+      authorAssociation: str(c.author_association, 'NONE'),
+      createdAt: str(c.created_at),
     }));
 
     logger.info('Fetched issue comments', { issueNumber, count: comments.length });
@@ -280,12 +331,12 @@ export class GitHubClient {
     if (!result.ok) return result;
 
     const files: PRFileChange[] = result.value.map((f) => ({
-      filename: f.filename as string,
-      status: mapFileStatus(f.status as string),
-      additions: f.additions as number,
-      deletions: f.deletions as number,
-      patch: f.patch as string | undefined,
-      previousFilename: f.previous_filename as string | undefined,
+      filename: str(f.filename),
+      status: mapFileStatus(str(f.status)),
+      additions: num(f.additions),
+      deletions: num(f.deletions),
+      ...(typeof f.patch === 'string' ? { patch: f.patch } : {}),
+      ...(typeof f.previous_filename === 'string' ? { previousFilename: f.previous_filename } : {}),
     }));
 
     return ok(files);
