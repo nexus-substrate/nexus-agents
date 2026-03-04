@@ -112,7 +112,7 @@ export const DEFAULTS = {
     /** MCP operation default timeout in milliseconds (generic, not per-tool). */
     mcpMs: _API.defaultMs,
     /** MCP operation maximum timeout in milliseconds. */
-    mcpMaxMs: _MCP.maxMs as number,
+    mcpMaxMs: _MCP.maxMs,
     /** Health check timeout in milliseconds. */
     healthCheckMs: _INT.healthCheckMs,
     /** Global test run timeout in milliseconds (10 minutes). */

@@ -168,11 +168,12 @@ describe('graph-types contract', () => {
       expect(field.defaultValue).toBe('');
     });
 
-    it('NodeResult has nodeId, output, and optional error', () => {
+    it('NodeResult has nodeId, stateUpdates, durationMs, and status', () => {
       const result: NodeResult = {
         nodeId: 'test',
-        output: { key: 'value' },
+        stateUpdates: { key: 'value' },
         durationMs: 10,
+        status: 'success',
       };
       expect(result.nodeId).toBe('test');
     });
@@ -255,7 +256,9 @@ describe('graph-types contract', () => {
         stepNumber: 2,
         state: { count: 42, name: 'test' },
         pendingNodeIds: ['node-a'],
-        completedResults: [{ nodeId: 'node-b', output: {}, durationMs: 5 }],
+        completedResults: [
+          { nodeId: 'node-b', stateUpdates: {}, durationMs: 5, status: 'success' as const },
+        ],
         createdAt: '2026-01-01T00:00:00.000Z',
       };
 

@@ -78,8 +78,8 @@ export function extractTextFromContent(
   }
 
   const textContents = content
-    .filter((c) => c.type === 'text' && c.text !== undefined)
-    .map((c) => c.text as string);
+    .filter((c): c is { type: string; text: string } => c.type === 'text' && c.text !== undefined)
+    .map((c) => c.text);
 
   return textContents.length > 0 ? textContents.join('\n') : null;
 }

@@ -237,7 +237,9 @@ async function runExpertTask(
 
   deps.logger?.info('Expert execution completed', { expertId, durationMs });
   handleExpertSuccess(args.task, info, durationMs);
-  autoCatalogScan(result.value.output as string, expertId, deps.logger);
+  if (typeof result.value.output === 'string') {
+    autoCatalogScan(result.value.output, expertId, deps.logger);
+  }
 
   return {
     ok: true,

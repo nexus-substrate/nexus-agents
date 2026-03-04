@@ -86,7 +86,12 @@ function getOptionalString(value: unknown): string | undefined {
 /**
  * Checks if raw instance has required fields.
  */
-function hasRequiredFields(raw: RawSWEBenchInstance): boolean {
+function hasRequiredFields(raw: RawSWEBenchInstance): raw is RawSWEBenchInstance & {
+  instance_id: string;
+  repo: string;
+  base_commit: string;
+  problem_statement: string;
+} {
   return (
     isNonEmptyString(raw.instance_id) &&
     isNonEmptyString(raw.repo) &&
@@ -124,10 +129,10 @@ function validateInstance(raw: RawSWEBenchInstance): SWEBenchInstance | null {
 
   // Build base instance with required fields
   const base = {
-    instance_id: raw.instance_id as string,
-    repo: raw.repo as string,
-    base_commit: raw.base_commit as string,
-    problem_statement: raw.problem_statement as string,
+    instance_id: raw.instance_id,
+    repo: raw.repo,
+    base_commit: raw.base_commit,
+    problem_statement: raw.problem_statement,
     created_at: getOptionalString(raw.created_at) ?? getTimeProvider().nowIso(),
   };
 

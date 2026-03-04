@@ -359,7 +359,8 @@ async function fetchRepoData(
   ]);
   let entries: string[];
   try {
-    entries = JSON.parse(contentsJson.trim()) as string[];
+    const parsed: unknown = JSON.parse(contentsJson.trim());
+    entries = Array.isArray(parsed) ? parsed.filter((e): e is string => typeof e === 'string') : [];
   } catch {
     throw new Error(`Failed to parse repo contents for ${repoId}: ${contentsJson.slice(0, 200)}`);
   }
