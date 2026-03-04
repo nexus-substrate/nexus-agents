@@ -83,3 +83,65 @@ export {
   // Summary
   getSafetyTaxonomySummary,
 } from '../security/safety-bench/index.js';
+
+// Untrusted input hardening — Phase 1 (Epic #818)
+export { sanitizeInput } from '../security/input-sanitizer.js';
+export {
+  classifyTrust,
+  mapAuthorAssociation,
+  canInfluenceDecisions,
+  requiresCorroboration,
+  getRequiredTrustTier,
+} from '../security/trust-classifier.js';
+export type { ClassifyInput, ClassifyResult } from '../security/trust-classifier.js';
+export {
+  AgentActionSchema,
+  SourceCitationSchema,
+  validateAgentAction,
+  isReadOnlyAction,
+  isMutatingAction,
+  requiresCitation,
+} from '../security/action-schema.js';
+export type {
+  AgentAction,
+  AgentActionType,
+  SourceCitation,
+  ActionValidationResult,
+} from '../security/action-schema.js';
+export * from '../security/trust-types.js';
+
+// Untrusted input hardening — Phase 2 (Epic #818)
+export { evaluatePolicy as evaluateSecurityPolicy, canProceed } from '../security/policy-gate.js';
+export type {
+  PolicyDecision as SecurityPolicyDecision,
+  ActionContext,
+  Violation,
+} from '../security/policy-gate.js';
+export { ViolationSchema } from '../security/policy-gate.js';
+export {
+  validateCorroboration,
+  getCorroborationRules,
+} from '../security/corroboration-validator.js';
+export type {
+  CorroborationResult,
+  CorroborationRule,
+} from '../security/corroboration-validator.js';
+
+// Untrusted input hardening — Phase 3 (Epic #818)
+export {
+  assessReputation,
+  ReputationCache,
+  SuspiciousSignalSchema,
+} from '../security/reputation-model.js';
+export type {
+  ReputationAssessment,
+  GitHubUserMetadata,
+  SuspiciousSignal,
+} from '../security/reputation-model.js';
+
+// Hostile input firewall (Issue #826)
+export { HostileInputFirewall } from '../security/firewall/firewall-pipeline.js';
+export type { FirewallResult } from '../security/firewall/firewall-pipeline.js';
+export { generateATL, parseATL } from '../security/firewall/agent-trust-labels.js';
+export { createGitHubAdapter } from '../security/firewall/github-adapter.js';
+export type { GitHubInput } from '../security/firewall/github-adapter.js';
