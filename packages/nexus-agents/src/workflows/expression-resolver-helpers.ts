@@ -117,8 +117,8 @@ export function resolveSteps(path: string[], context: WorkflowExecutionContext):
   const pathError = validateStepPath(path);
   if (pathError !== null) return pathError;
 
-  const stepId = path[0] as string;
-  const outputKey = path[1] as string;
+  const stepId = path[0] ?? '';
+  const outputKey = path[1] ?? '';
   const rest = path.slice(2);
 
   const stepResult = context.stepResults.get(stepId);

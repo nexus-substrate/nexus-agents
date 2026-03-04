@@ -33,8 +33,10 @@ function buildExpertsPayload(): Record<string, unknown> {
     const capabilities = getCapabilitiesForRole(role);
     // Extract the expert type key from the role (e.g., 'code_expert' -> 'code')
     const typeKey = role.replace('_expert', '');
-    const expertEntries = BUILT_IN_EXPERTS as Record<string, { name: string; id: string }>;
-    const config = expertEntries[typeKey] as { name: string; id: string } | undefined;
+    const config =
+      typeKey in BUILT_IN_EXPERTS
+        ? BUILT_IN_EXPERTS[typeKey as keyof typeof BUILT_IN_EXPERTS]
+        : undefined;
 
     return {
       role,

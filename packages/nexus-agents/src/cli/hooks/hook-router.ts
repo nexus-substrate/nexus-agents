@@ -50,8 +50,9 @@ export async function readStdin(): Promise<string> {
     process.stdin.setEncoding('utf8');
 
     process.stdin.on('readable', () => {
-      let chunk: string | null;
-      while ((chunk = process.stdin.read() as string | null) !== null) {
+      let chunk: unknown;
+      while ((chunk = process.stdin.read()) !== null) {
+        if (typeof chunk !== 'string') continue;
         data += chunk;
       }
     });

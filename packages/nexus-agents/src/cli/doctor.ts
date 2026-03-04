@@ -351,8 +351,8 @@ function buildRegistryAdvisory(cliResults: CliCheckResult[]): RegistryAdvisory {
   const models: ModelAdvisory[] = DEFAULT_MODEL_CAPABILITIES.models
     .filter((m) => m.cliName !== undefined)
     .map((m) => {
-      const cliName = m.cliName as string;
-      const available = installedClis.has(cliName as CliName);
+      const cliName = m.cliName ?? '';
+      const available = cliName.length > 0 && installedClis.has(cliName as CliName);
       const reason = available ? `${cliName} CLI is installed` : `${cliName} CLI is not installed`;
       return { modelId: m.id, displayName: m.displayName, cliName, available, reason };
     });

@@ -92,6 +92,27 @@ export type {
 } from './research-helpers.js';
 
 // =============================================================================
+// CLI Option Helpers
+// =============================================================================
+
+/** Extracts a string option from CLI options record. */
+function optString(options: Record<string, unknown>, key: string): string | undefined {
+  const val = options[key];
+  return typeof val === 'string' ? val : undefined;
+}
+
+/** Extracts a number option from CLI options record. */
+function optNumber(options: Record<string, unknown>, key: string): number | undefined {
+  const val = options[key];
+  return typeof val === 'number' ? val : undefined;
+}
+
+/** Extracts a boolean option from CLI options record. */
+function optBoolean(options: Record<string, unknown>, key: string): boolean {
+  return options[key] === true;
+}
+
+// =============================================================================
 // SUBCOMMAND HANDLERS
 // =============================================================================
 
@@ -102,8 +123,10 @@ async function handleStatusCommand(
   args: string[],
   options: Record<string, unknown>
 ): Promise<string> {
-  const status = (options['status'] as ResearchStatusOptions['status'] | undefined) ?? 'all';
-  const format = (options['format'] as ResearchStatusOptions['format'] | undefined) ?? 'table';
+  const status =
+    (optString(options, 'status') as ResearchStatusOptions['status'] | undefined) ?? 'all';
+  const format =
+    (optString(options, 'format') as ResearchStatusOptions['format'] | undefined) ?? 'table';
   const statusOptions: ResearchStatusOptions = {
     techniqueId: args[0],
     status,
@@ -124,10 +147,11 @@ async function handleOverlapCommand(
   if (techniqueId === undefined || techniqueId === '') {
     return 'Error: technique-id is required for overlap command';
   }
-  const format = (options['format'] as ResearchOverlapOptions['format'] | undefined) ?? 'table';
+  const format =
+    (optString(options, 'format') as ResearchOverlapOptions['format'] | undefined) ?? 'table';
   const overlapOptions: ResearchOverlapOptions = {
     techniqueId,
-    threshold: (options['threshold'] as number | undefined) ?? 0.3,
+    threshold: optNumber(options, 'threshold') ?? 0.3,
     format,
   };
   const result = await findOverlaps(overlapOptions);
@@ -144,9 +168,9 @@ async function handleAddCommand(args: string[], options: Record<string, unknown>
   }
   const addOptions: ResearchAddOptions = {
     arxivId,
-    topic: options['topic'] as string | undefined,
-    priority: options['priority'] as ResearchAddOptions['priority'],
-    dryRun: (options['dryRun'] as boolean | undefined) ?? false,
+    topic: optString(options, 'topic'),
+    priority: optString(options, 'priority') as ResearchAddOptions['priority'],
+    dryRun: optBoolean(options, 'dryRun'),
   };
   const result = await addResearchPaper(addOptions);
   return result.message;
@@ -245,12 +269,12 @@ async function handleDiscoverCommand(
   args: string[],
   options: Record<string, unknown>
 ): Promise<string> {
-  const topic = args[0] ?? (options['topic'] as string | undefined);
+  const topic = args[0] ?? optString(options, 'topic');
   if (topic === undefined || topic === '') {
     return 'Error: --topic is required for discover command';
   }
-  const source = (options['source'] as DiscoverSource | undefined) ?? 'all';
-  const maxResults = (options['maxResults'] as number | undefined) ?? 10;
+  const source = (optString(options, 'source') as DiscoverSource | undefined) ?? 'all';
+  const maxResults = optNumber(options, 'maxResults') ?? 10;
   const { results, errors } = await queryDiscoverSources(topic, source, maxResults);
   return formatDiscoverResults(topic, results, errors, maxResults);
 }
@@ -264,13 +288,13 @@ async function handleReviewCommand(
   args: string[],
   options: Record<string, unknown>
 ): Promise<string> {
-  const topic = args[0] ?? (options['topic'] as string | undefined);
+  const topic = args[0] ?? optString(options, 'topic');
   if (topic === undefined || topic === '') {
     return 'Error: --topic is required for review command';
   }
-  const maxResults = (options['maxResults'] as number | undefined) ?? 10;
-  const createIssues = (options['createIssues'] as boolean | undefined) ?? false;
-  const vote = (options['vote'] as boolean | undefined) ?? false;
+  const maxResults = optNumber(options, 'maxResults') ?? 10;
+  const createIssues = optBoolean(options, 'createIssues');
+  const vote = optBoolean(options, 'vote');
 
   const result = await executeReview({ topic, maxResults, createIssues, vote }, (t, max) =>
     queryDiscoverSources(t, 'all', max)
@@ -283,8 +307,8 @@ async function handlePrioritizeCommand(
   args: string[],
   options: Record<string, unknown>
 ): Promise<string> {
-  const topic = args[0] ?? (options['topic'] as string | undefined);
-  const vote = (options['vote'] as boolean | undefined) ?? false;
+  const topic = args[0] ?? optString(options, 'topic');
+  const vote = optBoolean(options, 'vote');
   return executePrioritize({ topic, vote });
 }
 
