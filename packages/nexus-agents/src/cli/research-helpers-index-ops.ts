@@ -39,7 +39,8 @@ export async function handleStatsCommand(options: Record<string, unknown>): Prom
   }
 
   const index = result.value;
-  const format = options['format'] as string | undefined;
+  const formatVal = options['format'];
+  const format = typeof formatVal === 'string' ? formatVal : undefined;
 
   // Ensure async compliance (future: may add async registry operations)
   await Promise.resolve();
@@ -55,7 +56,8 @@ export async function handleStatsCommand(options: Record<string, unknown>): Prom
  * Handle refresh subcommand - regenerate RESEARCH_INDEX.md.
  */
 export async function handleRefreshCommand(options: Record<string, unknown>): Promise<string> {
-  const outputPath = (options['output'] as string | undefined) ?? getIndexPath();
+  const outputVal = options['output'];
+  const outputPath = (typeof outputVal === 'string' ? outputVal : undefined) ?? getIndexPath();
   const registryPath = getRegistryPath();
   const result = parseRegistry({ registryPath });
 

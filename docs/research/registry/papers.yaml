@@ -3821,3 +3821,24 @@ papers:
     techniques_extracted: []
     related_issues: []
     implementation_status: not-started
+  arxiv-2510.04851:
+    title: 'LEGOMem: Modular Procedural Memory for Multi-agent LLM Systems for Workflow Automation'
+    authors: []
+    source: arxiv
+    arxiv_id: '2510.04851'
+    url: https://arxiv.org/abs/2510.04851
+    publication_date: 2025-10
+    venue: null
+    topics:
+      - memory
+    tags:
+      - multi-agent
+      - llm
+    reviewed_date: 2026-03-03
+    reviewed_in: ''
+    summary: ''
+    key_findings: []
+    relevance: medium
+    techniques_extracted: []
+    related_issues: []
+    implementation_status: not-started

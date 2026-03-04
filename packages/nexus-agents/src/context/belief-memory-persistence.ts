@@ -83,24 +83,37 @@ function serializeBelief(b: Belief): SerializedBelief {
   };
 }
 
+/** Safely extract a string from an unknown value. */
+function str(val: unknown, fallback = ''): string {
+  return typeof val === 'string' ? val : fallback;
+}
+
 /** Convert a SerializedBelief back to Belief (ISO string → Date). */
 function deserializeBelief(s: { [k: string]: unknown }): Belief {
   return {
-    beliefId: s.beliefId as string,
-    subject: s.subject as string,
-    predicate: s.predicate as string,
-    object: s.object as string,
-    confidence: s.confidence as Belief['confidence'],
-    sourceType: s.sourceType as Belief['sourceType'],
+    beliefId: str(s.beliefId),
+    subject: str(s.subject),
+    predicate: str(s.predicate),
+    object: str(s.object),
+    confidence: str(s.confidence, 'medium') as Belief['confidence'],
+    sourceType: str(s.sourceType, 'inference') as Belief['sourceType'],
     version: typeof s.version === 'number' ? s.version : 0,
     superseded: s.superseded === true,
-    createdAt: new Date(s.createdAt as string),
-    updatedAt: new Date(s.updatedAt as string),
-    ...optProp('sourceRef', s.sourceRef as string | undefined),
-    ...optProp('derivedFrom', s.derivedFrom as readonly string[] | undefined),
-    ...optProp('supersededBy', s.supersededBy as string | undefined),
-    ...optProp('domain', s.domain as string | undefined),
-    ...optProp('metadata', s.metadata as Record<string, unknown> | undefined),
+    createdAt: new Date(str(s.createdAt)),
+    updatedAt: new Date(str(s.updatedAt)),
+    ...optProp('sourceRef', typeof s.sourceRef === 'string' ? s.sourceRef : undefined),
+    ...optProp(
+      'derivedFrom',
+      Array.isArray(s.derivedFrom) ? (s.derivedFrom as readonly string[]) : undefined
+    ),
+    ...optProp('supersededBy', typeof s.supersededBy === 'string' ? s.supersededBy : undefined),
+    ...optProp('domain', typeof s.domain === 'string' ? s.domain : undefined),
+    ...optProp(
+      'metadata',
+      typeof s.metadata === 'object' && s.metadata !== null
+        ? (s.metadata as Record<string, unknown>)
+        : undefined
+    ),
   };
 }
 
