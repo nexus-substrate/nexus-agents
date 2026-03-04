@@ -150,18 +150,28 @@ export async function synthesizeResearch(
 // EXTRACTION
 // =============================================================================
 
+/**
+ * Safely convert a field that types say is `readonly string[]` but may be
+ * null/undefined at runtime (YAML parsing of empty array fields).
+ */
+function safeArray(value: readonly string[]): string[] {
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- YAML parsing can yield null despite type
+  if (value === null || value === undefined) return [];
+  return Array.from(value);
+}
+
 /** Extract papers from the registry structure. */
 function extractPapers(registry: PapersRegistry): SynthesisPaper[] {
   return Object.entries(registry.papers).map(([id, p]) => ({
     id,
     title: p.title,
-    topics: [...p.topics],
-    tags: [...p.tags],
+    topics: safeArray(p.topics),
+    tags: safeArray(p.tags),
     summary: p.summary.trim(),
-    keyFindings: [...p.key_findings],
+    keyFindings: safeArray(p.key_findings),
     relevance: p.relevance,
     implementationStatus: p.implementation_status,
-    techniquesExtracted: [...p.techniques_extracted],
+    techniquesExtracted: safeArray(p.techniques_extracted),
   }));
 }
 
