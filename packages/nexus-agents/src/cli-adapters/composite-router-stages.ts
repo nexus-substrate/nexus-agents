@@ -44,6 +44,8 @@ import {
   type PreferenceStageResult,
   type ZeroRouterStageResult,
 } from './composite-router-helpers.js';
+import { getWeatherBonusScores } from './weather-bonus-stage.js';
+import { detectTaskCategory } from '../config/task-specialization.js';
 
 /** Module-level singleton — SharedTaskAnalyzer is stateless, no need to re-instantiate per call. */
 const sharedAnalyzer = createSharedTaskAnalyzer();
@@ -612,16 +614,30 @@ async function runScoringStages(
   };
 }
 
-/** Aggregates scores from scoring stages for TOPSIS quality adjustment. (#1354) */
+/** Aggregates scores from scoring stages + weather bonuses for TOPSIS. (#1354, #1389) */
 function aggregateStageScores(
-  scoring: Awaited<ReturnType<typeof runScoringStages>>
+  scoring: Awaited<ReturnType<typeof runScoringStages>>,
+  taskContent: string
 ): Map<CliName, number> {
+  const weatherScores = getWeatherBonusForTask(taskContent);
   return mergeScoreMaps(
     scoring.cascadeResult.scores,
     scoring.capResult.scores,
     scoring.distilledResult.scores,
-    scoring.resourceResult.scores
+    scoring.resourceResult.scores,
+    weatherScores
   );
+}
+
+/** Best-effort weather bonus lookup for a task. */
+function getWeatherBonusForTask(taskContent: string): Map<CliName, number> {
+  try {
+    const match = detectTaskCategory(taskContent);
+    if (match === null) return new Map();
+    return getWeatherBonusScores(match.category);
+  } catch {
+    return new Map();
+  }
 }
 
 /** Executes full pipeline and returns result. (Made async in Issue #1350) */
@@ -644,7 +660,7 @@ export async function runPipeline(
 
   const scoring = await runScoringStages(task, candidates, stagesExecuted, deps);
   candidates = scoring.candidates;
-  const stageScores = aggregateStageScores(scoring);
+  const stageScores = aggregateStageScores(scoring, task.content);
 
   const topsisResult = runTopsisStage(
     taskProfile,
