@@ -23,7 +23,7 @@ import type {
   LinUCBArmDetail,
   BanditStats,
 } from './routing-audit-types.js';
-import type { TaskProfile } from '../cli-adapters/task-analyzer.js';
+import type { TaskProfile } from '../core/index.js';
 import type { TopsisResult, TopsisScore } from '../cli-adapters/topsis-types.js';
 
 describe('routing-audit-format', () => {

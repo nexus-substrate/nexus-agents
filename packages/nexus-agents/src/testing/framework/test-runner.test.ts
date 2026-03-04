@@ -9,7 +9,7 @@ import type { CliName, ICliAdapter } from '../../cli-adapters/types.js';
 import { DEFAULT_CAPABILITIES } from '../../cli-adapters/types.js';
 import type { ITaskRouter, RoutingDecision } from '../../cli-adapters/router-types.js';
 import type { Task } from '../../core/types/agent.js';
-import type { TaskProfile } from '../../cli-adapters/task-analyzer.js';
+import type { TaskProfile } from '../../core/index.js';
 import { createTestRunner, TestRunError } from './test-runner.js';
 import { TaskRegistry, createTaskRegistry, SAMPLE_TASKS } from './task-registry.js';
 import { RubricScorer, createRubricScorer, DEFAULT_RUBRICS } from './rubric-scorer.js';
