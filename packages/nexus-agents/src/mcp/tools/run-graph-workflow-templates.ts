@@ -31,6 +31,12 @@ import {
 
 type GraphFactory = () => CompiledGraph | undefined;
 
+/** Safely extract a string array from graph state. */
+function stateStrings(state: Readonly<GraphState>, key: string): string[] {
+  const val = state[key];
+  return Array.isArray(val) ? (val as string[]) : [];
+}
+
 export interface GraphWorkflowInfo {
   readonly name: string;
   readonly description: string;
@@ -121,7 +127,7 @@ function createPipelineGraph(): CompiledGraph | undefined {
       Promise.resolve({ steps: [`validated: ${String(state['input'])}`] })
     )
     .addNode('process', (state) => {
-      const steps = state['steps'] as string[];
+      const steps = stateStrings(state, 'steps');
       return Promise.resolve({
         steps: [`processed ${String(steps.length)} inputs`],
         output: `done: ${String(state['input'])}`,
@@ -204,7 +210,7 @@ function quickReviewHandler(state: Readonly<GraphState>): Promise<Partial<GraphS
 }
 
 function summarizeReviewHandler(state: Readonly<GraphState>): Promise<Partial<GraphState>> {
-  const findings = state['findings'] as string[];
+  const findings = stateStrings(state, 'findings');
   const complexity = Number(state['complexity']);
   const level = complexity >= COMPLEXITY_THRESHOLD ? 'deep' : 'quick';
   const summary = `Code review (${level}): ${String(findings.length)} findings. ${findings.join('; ')}`;
@@ -358,7 +364,7 @@ function severityRouter(state: Readonly<GraphState>): string {
 }
 
 function criticalReportHandler(state: Readonly<GraphState>): Promise<Partial<GraphState>> {
-  const vulns = state['vulnerabilities'] as string[];
+  const vulns = stateStrings(state, 'vulnerabilities');
   const severity = Number(state['severity']);
   const findings = vulns.length > 0 ? vulns.join('; ') : 'No vulnerabilities detected';
   const report =
@@ -368,7 +374,7 @@ function criticalReportHandler(state: Readonly<GraphState>): Promise<Partial<Gra
 }
 
 function standardReportHandler(state: Readonly<GraphState>): Promise<Partial<GraphState>> {
-  const vulns = state['vulnerabilities'] as string[];
+  const vulns = stateStrings(state, 'vulnerabilities');
   const severity = Number(state['severity']);
   const findings = vulns.length > 0 ? vulns.join('; ') : 'No vulnerabilities detected';
   const report =
