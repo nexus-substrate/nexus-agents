@@ -586,6 +586,7 @@ async function tryWorkerDispatch(
         modelAdapter: adapter,
         logger,
         synthesize: true,
+        refine: true,
       })
     );
   } catch (dispatchError: unknown) {
