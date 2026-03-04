@@ -12,7 +12,7 @@ import { loadPapersRegistry } from './research-helpers-io.js';
 import type { PapersRegistry } from './research-types.js';
 import type { Result } from '../core/result.js';
 import { getErrorMessage } from '../core/index.js';
-import { TECHNIQUE_IMPLEMENTATION_MAP } from './research-alignment-map.js';
+import { TECHNIQUE_IMPLEMENTATION_MAP, FEATURE_GATE_INVENTORY } from './research-alignment-map.js';
 
 // =============================================================================
 // TYPES
@@ -68,6 +68,14 @@ export interface AlignmentSummary {
   readonly topOpportunities: readonly string[];
 }
 
+/** Summary of a single feature gate for synthesis output. */
+export interface FeatureGateStatus {
+  readonly envVar: string;
+  readonly defaultValue: string;
+  readonly description: string;
+  readonly linkedTechniqueCount: number;
+}
+
 /** Full synthesis result across all clusters. */
 export interface SynthesisResult {
   readonly clusters: readonly ClusterSynthesis[];
@@ -75,6 +83,7 @@ export interface SynthesisResult {
   readonly topicCount: number;
   readonly crossCuttingThemes: readonly string[];
   readonly alignmentSummary: AlignmentSummary;
+  readonly featureGates: readonly FeatureGateStatus[];
 }
 
 /** Error for synthesis operations. */
@@ -133,6 +142,7 @@ export async function synthesizeResearch(
   const syntheses = filtered.map(synthesizeCluster);
   const crossCutting = findCrossCuttingThemes(filtered);
   const alignmentSummary = buildAlignmentSummary(syntheses);
+  const featureGates = buildFeatureGateSummary();
 
   return {
     ok: true,
@@ -142,6 +152,7 @@ export async function synthesizeResearch(
       topicCount: filtered.length,
       crossCuttingThemes: crossCutting,
       alignmentSummary,
+      featureGates,
     },
   };
 }
@@ -337,6 +348,16 @@ function buildAlignmentSummary(clusters: readonly ClusterSynthesis[]): Alignment
     total: allAlignments.length,
     topOpportunities: opportunities,
   };
+}
+
+/** Build feature gate summary from the inventory. */
+function buildFeatureGateSummary(): FeatureGateStatus[] {
+  return FEATURE_GATE_INVENTORY.map((g) => ({
+    envVar: g.envVar,
+    defaultValue: g.defaultValue,
+    description: g.description,
+    linkedTechniqueCount: g.techniques?.length ?? 0,
+  }));
 }
 
 // =============================================================================

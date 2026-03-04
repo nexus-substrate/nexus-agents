@@ -348,6 +348,7 @@ function formatSynthesisResult(synthesis: SynthesisResult): string {
     lines.push('');
   }
   formatAlignmentSummary(synthesis.alignmentSummary, lines);
+  formatFeatureGates(synthesis.featureGates, lines);
   return lines.join('\n');
 }
 
@@ -373,6 +374,27 @@ function formatCluster(cluster: SynthesisResult['clusters'][number], lines: stri
     }
   }
   lines.push('');
+}
+
+/** Format feature gate section. */
+function formatFeatureGates(gates: SynthesisResult['featureGates'], lines: string[]): void {
+  if (gates.length === 0) return;
+  const linked = gates.filter((g) => g.linkedTechniqueCount > 0);
+  const unlinked = gates.filter((g) => g.linkedTechniqueCount === 0);
+  lines.push('');
+  lines.push(
+    `## Feature Gates (${String(gates.length)} total, ${String(linked.length)} research-linked)`
+  );
+  for (const g of linked) {
+    lines.push(
+      `  ${g.envVar}=${g.defaultValue} — ${g.description} [${String(g.linkedTechniqueCount)} techniques]`
+    );
+  }
+  if (unlinked.length > 0) {
+    lines.push(
+      `  + ${String(unlinked.length)} infrastructure gates (auth, logging, rate limiting, etc.)`
+    );
+  }
 }
 
 /** Format alignment summary section. */

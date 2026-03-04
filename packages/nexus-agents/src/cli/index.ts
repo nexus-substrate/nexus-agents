@@ -271,9 +271,10 @@ export type {
   SynthesisError,
   TechniqueAlignment,
   AlignmentSummary,
+  FeatureGateStatus,
 } from './research-helpers-synthesize.js';
-export { TECHNIQUE_IMPLEMENTATION_MAP } from './research-alignment-map.js';
-export type { TechniqueMapping } from './research-alignment-map.js';
+export { TECHNIQUE_IMPLEMENTATION_MAP, FEATURE_GATE_INVENTORY } from './research-alignment-map.js';
+export type { TechniqueMapping, FeatureGate } from './research-alignment-map.js';
 
 // Codebase Index (Issue #240)
 export { indexCommand, formatIndexResult } from './index-command.js';

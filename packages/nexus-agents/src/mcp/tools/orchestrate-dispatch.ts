@@ -199,7 +199,9 @@ async function runSynthesisPhase(
   });
   state.totalModelCalls++;
   state.synthesisValue = synthResult.value;
-  state.synthSource = synthResult.synthesisSource;
+  if (synthResult.synthesisSource !== undefined) {
+    state.synthSource = synthResult.synthesisSource;
+  }
 }
 
 /** Run opt-in refinement pass if quality is low and budget allows (#1389). */

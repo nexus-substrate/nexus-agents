@@ -20,6 +20,18 @@ export interface TechniqueMapping {
   readonly hint?: string | undefined;
 }
 
+/** A feature gate that controls an implementation. */
+export interface FeatureGate {
+  /** Environment variable or config key. */
+  readonly envVar: string;
+  /** Default value when not explicitly set. */
+  readonly defaultValue: string;
+  /** Brief description of what the gate controls. */
+  readonly description: string;
+  /** Related technique names from the alignment map (if any). */
+  readonly techniques?: readonly string[];
+}
+
 // =============================================================================
 // MAP
 // =============================================================================
@@ -255,17 +267,15 @@ export const TECHNIQUE_IMPLEMENTATION_MAP: ReadonlyMap<string, TechniqueMapping>
   [
     'self-refine-loop',
     {
-      status: 'partial',
-      path: 'orchestration/aorchestra/',
-      hint: 'Result synthesis but no iterative self-refinement',
+      status: 'implemented',
+      path: 'mcp/tools/orchestrate-dispatch.ts',
     },
   ],
   [
     'recursive-improvement',
     {
-      status: 'partial',
-      path: 'orchestration/aorchestra/',
-      hint: 'Single-pass dispatch, no recursive improvement',
+      status: 'implemented',
+      path: 'mcp/tools/orchestrate-dispatch.ts',
     },
   ],
   [
@@ -285,3 +295,87 @@ export const TECHNIQUE_IMPLEMENTATION_MAP: ReadonlyMap<string, TechniqueMapping>
     },
   ],
 ]);
+
+// =============================================================================
+// FEATURE GATE INVENTORY
+// =============================================================================
+
+/** Inventory of feature gates linked to research-aligned techniques. */
+export const FEATURE_GATE_INVENTORY: readonly FeatureGate[] = [
+  {
+    envVar: 'NEXUS_V2_MODE',
+    defaultValue: 'full',
+    description: 'V2 pipeline mode (off/partial/full)',
+    techniques: ['two-stage-routing', 'cascade-routing'],
+  },
+  {
+    envVar: 'NEXUS_AORCHESTRA',
+    defaultValue: 'true',
+    description: 'AOrchestra dynamic agent planning',
+    techniques: ['dynamic-agent-selection', 'model-based-coordination'],
+  },
+  {
+    envVar: 'NEXUS_AORCHESTRA_DISPATCH',
+    defaultValue: 'true',
+    description: 'AOrchestra worker dispatch',
+    techniques: ['rule-based-coordination', 'self-refine-loop'],
+  },
+  {
+    envVar: 'NEXUS_PERSIST_LEARNING',
+    defaultValue: 'true',
+    description: 'Cross-session routing persistence',
+    techniques: ['linucb-routing', 'preference-trained-routing', 'experience-memory'],
+  },
+  {
+    envVar: 'NEXUS_REFLECTIVE_MEMORY',
+    defaultValue: 'disabled',
+    description: 'Reflective memory retrieval',
+    techniques: ['reflection-memory', 'adaptive-memory'],
+  },
+  {
+    envVar: 'NEXUS_BILLING_MODE',
+    defaultValue: 'plan',
+    description: 'Cost mode (plan=strongest, api=cost-aware)',
+    techniques: ['pilot-budget-routing', 'topsis-routing'],
+  },
+  {
+    envVar: 'NEXUS_WORKER_MAX_CALLS',
+    defaultValue: '6',
+    description: 'Max model calls per orchestrate',
+    techniques: ['self-refine-loop', 'recursive-improvement'],
+  },
+  { envVar: 'NEXUS_AUTH_ENABLED', defaultValue: 'true', description: 'Server authentication' },
+  { envVar: 'NEXUS_REST_ENABLED', defaultValue: 'false', description: 'REST API server' },
+  { envVar: 'NEXUS_EVENTBUS_ENABLED', defaultValue: 'true', description: 'EventBus A2A bridge' },
+  {
+    envVar: 'NEXUS_RATE_LIMIT_ENABLED',
+    defaultValue: 'true',
+    description: 'Token-bucket rate limiter',
+  },
+  {
+    envVar: 'NEXUS_CIRCUIT_BREAKER_THRESHOLD',
+    defaultValue: '5',
+    description: 'Circuit breaker failure threshold',
+  },
+  {
+    envVar: 'NEXUS_V2_POLICY_MODE',
+    defaultValue: 'block',
+    description: 'Policy enforcement (off/warn/block)',
+  },
+  { envVar: 'NEXUS_LOG_LEVEL', defaultValue: 'info', description: 'Logging verbosity' },
+  {
+    envVar: 'NEXUS_DISABLE_SESSIONS',
+    defaultValue: 'false',
+    description: 'Disable session tracking',
+  },
+  {
+    envVar: 'NEXUS_DISABLE_METRICS',
+    defaultValue: 'false',
+    description: 'Disable metrics tracking',
+  },
+  {
+    envVar: 'NEXUS_ALLOW_MOCK_ORCHESTRATION',
+    defaultValue: 'false',
+    description: 'Allow mock orchestration (test/CI)',
+  },
+];
