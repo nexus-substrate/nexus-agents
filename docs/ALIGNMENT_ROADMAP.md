@@ -24,7 +24,7 @@ related_files: [CHANGELOG.md, architecture/README.md]
 | 2026-01-13 | 7.28/10 | Observability + docs automation             |
 | 2026-01-16 | 8.06/10 | v2.2.0 release, security complete           |
 | 2026-01-23 | 7.78/10 | Skills loader, deeper review                |
-| 2026-03-04 | **TBD** | v2.26.1, feedback loops, research synthesis |
+| 2026-03-04 | 8.0/10  | v2.26.1, feedback loops, research synthesis |
 
 **Trend:** Baseline 6.4 -> peak 8.06. Score fluctuations reflect increasingly rigorous review standards rather than capability regression.
 
