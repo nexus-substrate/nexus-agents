@@ -56,7 +56,7 @@ These capabilities form the foundation — confirmed by multiple consensus agent
 | ---------------------------- | ----------------------------------------------------------------------------------------------- |
 | Version                      | v2.26.1                                                                                         |
 | Fitness score                | 98/100                                                                                          |
-| Test suite                   | 24,276 tests, 917 files                                                                         |
+| Test suite                   | 24,335 tests, 921 files                                                                         |
 | Coverage                     | 89.66% statements, 93.26% functions                                                             |
 | MCP tools                    | 25 registered                                                                                   |
 | Research techniques (mapped) | 31 implemented, 15 partial (46 mapped techniques from 174+ papers)                              |
@@ -114,6 +114,8 @@ The SWE-bench module now has parallel execution (#1407), cross-run memory enrich
 - Cross-run memory enrichment (SessionMemory records outcomes, enriches future prompts)
 - Git clone optimization (partial clones, skip-fetch for existing repos)
 - CLI agent executor with Claude CLI OAuth authentication
+- Instance priority sorting by estimated difficulty (repo complexity + problem length + memory data)
+- CLI executor timeout optimized from 10min to 5min (median solve time is 2-4min)
 
 **Required:** Execute SWE-bench Lite (300 instances), publish results, compare against leaderboard.
 
@@ -134,9 +136,9 @@ The SWE-bench module now has parallel execution (#1407), cross-run memory enrich
 
 **Impact:** 5/10 — Adapter fixes deployed, monitoring success rate
 
-OpenCode has 63 observed tasks at 27% success. Fixes deployed (#1402): model alias resolution from canonical registry, plaintext fallback for non-JSON output, stderr diagnostic context in PARSE_ERROR.
+OpenCode has 63 observed tasks at 27% success. Fixes deployed (#1402): model alias resolution from canonical registry, plaintext fallback for non-JSON output, stderr diagnostic context in PARSE_ERROR, expanded error pattern detection (failed to connect, invalid api key, rate limit, quota exceeded, service unavailable).
 
-**Required:** Monitor post-fix success rate. If still below 50%, investigate exit code handling and session management.
+**Required:** Monitor post-fix success rate. If still below 50%, investigate exit code handling, session management, and retry logic for transient errors.
 
 ### Gap 4: Security Review Accuracy (P2) — MITIGATED
 
@@ -205,6 +207,7 @@ Based on gap analysis, weather report data, and research alignment map (31 imple
 - [x] Failure classification: message-based patterns prioritized (#1401)
 - [x] Security expert prompt improved with example output (#1401)
 - [x] OpenCode model alias resolution from canonical registry (#1402)
+- [x] Expanded stderr error pattern detection for provider errors (#1402)
 - [ ] Monitor OpenCode post-fix success rate (27% -> target 60%)
 - [ ] Monitor security_review post-fix success rate (30% -> target 50%)
 - [ ] Monitor exploration post-fix success rate (57% -> target 70%)
@@ -222,7 +225,13 @@ The research alignment map tracks 46 techniques: 31 implemented, 15 partial. Rec
 | Orchestration  | 4           | 6       | High     |
 | Learning (4)   | 4           | 0       | —        |
 
-**Next promotion candidates:** knn-routing (needs KNN distance algorithm), capability-instruction-tuning (needs LLM feedback loop)
+**Next promotion candidates:** knn-routing (needs KNN distance algorithm), incremental-quorum (needs dynamic voter expansion), cross-attention-routing (needs attention matrix)
+
+**Assessment of 15 partial techniques:**
+
+- **3 close to promotion** (1-2 day effort each): knn-routing, incremental-quorum, cross-attention-routing
+- **6 substantial effort** (3-5 days each): capability-instruction-tuning, mem0-memory, graph-based-memory, aflow-mcts, temporal-scheduling, scaling-prediction
+- **6 require novel algorithms** (5+ days): aegean-consensus, cp-wbft-consensus, history-encoding, model-coordination-theory, trinity-agents, self-evolution
 
 ---
 
@@ -264,7 +273,7 @@ From the initial 5-agent consensus assessment (2026-01-09):
 >
 > **PM (6/10):** "The gap is not technical capability - it is market proof. The swarm must demonstrate it is best, not just claim best-in-class architecture."
 
-**Key insight that still applies:** Technique coverage (67% implemented of 46 mapped) is strong but means nothing without user validation. The path from 8 to 10 is evidence, not architecture.
+**Key insight that still applies:** Technique coverage (67% implemented of 46 mapped) is strong but means nothing without user validation. The path from 8 to 10 is evidence, not architecture. The 15 partial techniques represent genuine algorithmic gaps (BFT consensus, MCTS search, learned encoding) — not missing wiring.
 
 ---
 
