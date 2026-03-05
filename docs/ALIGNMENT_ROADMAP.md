@@ -130,6 +130,8 @@ The SWE-bench module now has parallel execution (#1407), cross-run memory enrich
 - JSONL tracing infrastructure with `query_trace` MCP tool
 - #1403 closed — all success criteria met
 
+**New (2026-03-05):** Wave dispatch events (`wave.started`, `wave.completed`) emitted to pipeline EventBus and captured by TraceWriter (5986290e). Queryable via `query_trace` tool.
+
 **Remaining (stretch):** Trace visualization UI for multi-wave dispatches, cross-session learning dashboard.
 
 ### Gap 3: OpenCode CLI Reliability (P2) — IN PROGRESS
@@ -198,7 +200,8 @@ Based on gap analysis, weather report data, and research alignment map (32 imple
 - [x] All 5 swarm health metrics computed in weather report (#1403 CLOSED)
 - [x] `nexus-agents health` CLI with per-CLI performance breakdown
 - [x] JSONL tracing infrastructure + `query_trace` MCP tool
-- [ ] Trace visualization for multi-wave dispatches (stretch)
+- [x] Wave dispatch events (`wave.started`/`wave.completed`) in pipeline EventBus
+- [ ] Trace visualization UI for multi-wave dispatches (stretch)
 - [ ] Cross-session learning dashboard (stretch)
 
 ### 6.3: Reliability Hardening — IN PROGRESS
