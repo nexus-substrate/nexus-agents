@@ -37,7 +37,7 @@ These capabilities form the foundation — confirmed by multiple consensus agent
 
 | Strength                     | Evidence                                                       |
 | ---------------------------- | -------------------------------------------------------------- |
-| Research-backed protocols    | 31/46 mapped techniques implemented, 15 partial                |
+| Research-backed protocols    | 32/46 mapped techniques implemented, 14 partial                |
 | Multi-criteria model routing | TOPSIS + LinUCB bandit + preference + cascade + tolerance band |
 | Memory system diversity      | 8 backends + reflective MemR3 enhancement                      |
 | Closed-loop learning         | Weather report, feedback integration, self-refinement          |
@@ -59,7 +59,7 @@ These capabilities form the foundation — confirmed by multiple consensus agent
 | Test suite                   | 24,335 tests, 921 files                                                                         |
 | Coverage                     | 89.66% statements, 93.26% functions                                                             |
 | MCP tools                    | 25 registered                                                                                   |
-| Research techniques (mapped) | 31 implemented, 15 partial (46 mapped techniques from 174+ papers)                              |
+| Research techniques (mapped) | 32 implemented, 14 partial (46 mapped techniques from 174+ papers)                              |
 | Routing tasks observed       | 3,716 across 4 CLIs                                                                             |
 | Overall success rate         | 73.9%                                                                                           |
 | Expert types                 | 10 (code, architecture, security, testing, docs, devops, research, product, ux, infrastructure) |
@@ -184,7 +184,7 @@ Failure breakdown (historical): unknown 60.4%, execution 25.9%, timeout 12.9%, r
 
 **Tracking:** #1401 (epic), #1394 (research alignment), #1402 (OpenCode reliability)
 
-Based on gap analysis, weather report data, and research alignment map (31 implemented, 15 partial of 46 mapped techniques):
+Based on gap analysis, weather report data, and research alignment map (32 implemented, 14 partial of 46 mapped techniques):
 
 ### 6.1: Evidence-Based Validation (Target: 9.0/10) — NOT STARTED
 
@@ -215,21 +215,21 @@ Based on gap analysis, weather report data, and research alignment map (31 imple
 
 ### 6.4: Research-Driven Improvements — IN PROGRESS
 
-The research alignment map tracks 46 techniques: 31 implemented, 15 partial. Recent promotions: moe-routing, rl-orchestrator, profile-memory, sater-routing, tolerance-routing, strmac-state-routing, action-memory, agreement-based-cascading.
+The research alignment map tracks 46 techniques: 32 implemented, 14 partial. Recent promotions: moe-routing, rl-orchestrator, profile-memory, sater-routing, tolerance-routing, strmac-state-routing, action-memory, agreement-based-cascading, cross-attention-routing.
 
 | Technique Area | Implemented | Partial | Priority |
 | -------------- | ----------- | ------- | -------- |
-| Routing (14)   | 11          | 3       | High     |
+| Routing (14)   | 12          | 2       | High     |
 | Consensus (8)  | 5           | 3       | Medium   |
 | Memory (10)    | 7           | 3       | Medium   |
 | Orchestration  | 4           | 6       | High     |
 | Learning (4)   | 4           | 0       | —        |
 
-**Next promotion candidates:** knn-routing (needs KNN distance algorithm), incremental-quorum (needs dynamic voter expansion), cross-attention-routing (needs attention matrix)
+**Next promotion candidates:** knn-routing (needs KNN distance algorithm), incremental-quorum (deferred per #1408 vote — simpler "escalate on ambiguity" first)
 
 **Assessment of 15 partial techniques:**
 
-- **3 close to promotion** (1-2 day effort each): knn-routing, incremental-quorum, cross-attention-routing
+- **2 close to promotion** (1-2 day effort each): knn-routing, incremental-quorum (voted to defer — see #1408)
 - **6 substantial effort** (3-5 days each): capability-instruction-tuning, mem0-memory, graph-based-memory, aflow-mcts, temporal-scheduling, scaling-prediction
 - **6 require novel algorithms** (5+ days): aegean-consensus, cp-wbft-consensus, history-encoding, model-coordination-theory, trinity-agents, self-evolution
 
@@ -273,7 +273,7 @@ From the initial 5-agent consensus assessment (2026-01-09):
 >
 > **PM (6/10):** "The gap is not technical capability - it is market proof. The swarm must demonstrate it is best, not just claim best-in-class architecture."
 
-**Key insight that still applies:** Technique coverage (67% implemented of 46 mapped) is strong but means nothing without user validation. The path from 8 to 10 is evidence, not architecture. The 15 partial techniques represent genuine algorithmic gaps (BFT consensus, MCTS search, learned encoding) — not missing wiring.
+**Key insight that still applies:** Technique coverage (70% implemented of 46 mapped) is strong but means nothing without user validation. The path from 8 to 10 is evidence, not architecture. The 14 partial techniques represent genuine algorithmic gaps (BFT consensus, MCTS search, learned encoding) — not missing wiring.
 
 ---
 
