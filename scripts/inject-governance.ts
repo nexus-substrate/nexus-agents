@@ -93,6 +93,8 @@ const TOOL_DESCRIPTIONS: Record<string, string> = {
   research_analyze:
     'Analyze the research registry for gaps, trends, priorities, stale entries, or coverage.',
   research_catalog_review: 'Review auto-cataloged research references found during tool execution.',
+  research_synthesize:
+    'Synthesize the research registry by grouping papers into topic clusters with themes, insights, and implementation opportunities.',
   memory_query: 'Query across all memory backends with unified results and relevance scoring.',
   memory_stats: 'Get memory system statistics dashboard showing backend availability and metrics.',
   weather_report:
