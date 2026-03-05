@@ -4,7 +4,7 @@
  * @module agents/orchestration/experience-buffer-sampling.test
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import {
   flattenStepsWithEpisodeIds,
   computePriorities,
@@ -17,6 +17,11 @@ import {
 import type { Episode } from './experience-buffer-types.js';
 import type { PolicyTrajectoryStep } from './policy-types.js';
 import type { PuppeteerState } from './puppeteer-state-types.js';
+import {
+  setRandomProvider,
+  resetRandomProvider,
+  SeededRandomProvider,
+} from '../../core/random-provider.js';
 
 // ============================================================================
 // Helpers
@@ -220,27 +225,31 @@ describe('computeImportanceWeights', () => {
 // ============================================================================
 
 describe('weightedRandomIndex', () => {
-  beforeEach(() => {
-    vi.restoreAllMocks();
+  afterEach(() => {
+    resetRandomProvider();
   });
 
   it('returns last index when random is near 1', () => {
-    vi.spyOn(Math, 'random').mockReturnValue(0.999);
+    const mock = new SeededRandomProvider(0);
+    mock.random = () => 0.999;
+    setRandomProvider(mock);
     const idx = weightedRandomIndex([0.25, 0.25, 0.25, 0.25]);
     expect(idx).toBe(3);
   });
 
   it('returns first index when random is 0', () => {
-    vi.spyOn(Math, 'random').mockReturnValue(0);
-    // r=0 < cumulative=0.5 is false (not strictly <), but with 0 it depends
-    // Actually: cumulative starts at 0, r=0, 0 < 0 is false, so it continues
-    // After adding 0.5: 0 < 0.5 is true, returns index 0
+    const mock = new SeededRandomProvider(0);
+    mock.random = () => 0;
+    setRandomProvider(mock);
+    // r=0 < cumulative=0.5 → 0 < 0 false, 0 < 0.5 true → index 0
     const idx = weightedRandomIndex([0.5, 0.5]);
     expect(idx).toBe(0);
   });
 
   it('returns correct index for mid-range random', () => {
-    vi.spyOn(Math, 'random').mockReturnValue(0.6);
+    const mock = new SeededRandomProvider(0);
+    mock.random = () => 0.6;
+    setRandomProvider(mock);
     // Cumulative: [0.3, 0.6, 0.9, 1.0]
     // r=0.6, 0.6 < 0.3 false, 0.6 < 0.6 false, 0.6 < 0.9 true → index 2
     const idx = weightedRandomIndex([0.3, 0.3, 0.3, 0.1]);
