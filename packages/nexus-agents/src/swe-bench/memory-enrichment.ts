@@ -108,3 +108,27 @@ export function recordOutcome(
     completed: result.completed,
   });
 }
+
+/** Regex to extract instance IDs from learning patterns. */
+const INSTANCE_ID_RE = /Instance ([\w/._-]+__[\w._-]+-\d+)/;
+
+/**
+ * Extract past success rates from memory learnings.
+ * Returns a Map of instance_id -> success rate (1.0 = solved, 0.0 = failed).
+ * Used by instance-sorter to prioritize easier instances.
+ */
+export function extractPastSuccessRates(
+  learnings: readonly SessionLearning[]
+): Map<string, number> {
+  const rates = new Map<string, number>();
+
+  for (const learning of learnings) {
+    const match = INSTANCE_ID_RE.exec(learning.pattern);
+    if (match?.[1] !== undefined) {
+      // Learnings with "solved" come from recordOutcome on success
+      rates.set(match[1], learning.pattern.includes('solved') ? 1.0 : 0.0);
+    }
+  }
+
+  return rates;
+}

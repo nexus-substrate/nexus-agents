@@ -18,7 +18,13 @@ import { PredictionWriter } from './prediction-writer.js';
 import { createNexusExecutorFromEnv } from './nexus-agent-executor.js';
 import { createCliExecutor } from './cli-agent-executor.js';
 import { runBenchmarkParallel } from './parallel-runner.js';
-import { createBenchmarkMemory, buildEnrichedPrompt, recordOutcome } from './memory-enrichment.js';
+import {
+  createBenchmarkMemory,
+  buildEnrichedPrompt,
+  recordOutcome,
+  extractPastSuccessRates,
+} from './memory-enrichment.js';
+import { sortByPriority } from './instance-sorter.js';
 import type { SessionMemory } from '../context/session-memory.js';
 import type { SessionLearning } from '../context/session-memory-types.js';
 
@@ -222,6 +228,23 @@ function failResult(message: string, total: number, outputPath: string): Benchma
   return { success: false, message, total, completed: 0, failed: 0, tokensUsed: 0, outputPath };
 }
 
+/** Sort instances by difficulty, leveraging memory data when available. */
+function sortInstances(
+  instances: readonly SWEBenchInstance[],
+  memCtx: MemoryContext | null
+): SWEBenchInstance[] {
+  const pastSuccessRates = memCtx !== null ? extractPastSuccessRates(memCtx.learnings) : undefined;
+  const sorted = sortByPriority(instances, {
+    ...(pastSuccessRates !== undefined && pastSuccessRates.size > 0 ? { pastSuccessRates } : {}),
+  });
+  const memNote =
+    pastSuccessRates !== undefined && pastSuccessRates.size > 0
+      ? ` (${String(pastSuccessRates.size)} with memory data)`
+      : '';
+  console.log(`Sorted ${String(sorted.length)} instances by estimated difficulty${memNote}`);
+  return sorted;
+}
+
 /**
  * Run all instances and write predictions.
  */
@@ -243,13 +266,15 @@ export async function runBenchmarkInstances(
   }
 
   const memCtx = initMemory(config);
+  const sorted = sortInstances(instances, memCtx);
+
   let stats: { completed: number; failed: number; tokensUsed: number };
 
   if (config.concurrency > 1) {
     await writer.close();
     stats = await runBenchmarkParallel({
       executor,
-      instances,
+      instances: sorted,
       config,
       outputPath,
       append,
@@ -258,7 +283,7 @@ export async function runBenchmarkInstances(
       memCtx,
     });
   } else {
-    stats = await runSequential({ ...options, executor, writer, memCtx });
+    stats = await runSequential({ ...options, instances: sorted, executor, writer, memCtx });
   }
 
   if (memCtx !== null) {

@@ -96,12 +96,17 @@ export type {
 // Parallel runner
 export { runBenchmarkParallel, LockedWriter } from './parallel-runner.js';
 
+// Instance priority sorting
+export { sortByPriority, estimateDifficulty, REPO_COMPLEXITY } from './instance-sorter.js';
+export type { SortOptions } from './instance-sorter.js';
+
 // Memory enrichment
 export {
   createBenchmarkMemory,
   buildEnrichedPrompt,
   recordOutcome,
   extractRepoName,
+  extractPastSuccessRates,
 } from './memory-enrichment.js';
 
 // Evaluation harness types
