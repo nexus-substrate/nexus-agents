@@ -23,6 +23,11 @@ import {
 } from './mutation-operators.js';
 import type { EvolutionConfig } from './sew-types.js';
 import { DEFAULT_EVOLUTION_CONFIG } from './sew-types.js';
+import {
+  setRandomProvider,
+  resetRandomProvider,
+  SeededRandomProvider,
+} from '../../core/random-provider.js';
 
 /**
  * Helper to create a workflow step.
@@ -432,8 +437,12 @@ describe('Mutation Operators', () => {
       }
     });
 
-    it('should return min when Math.random returns 0', () => {
-      vi.spyOn(Math, 'random').mockReturnValue(0);
+    it('should return min when random returns 0', () => {
+      // SeededRandomProvider(0) produces a small first value near 0
+      // Use a mock provider that returns exactly 0
+      const mockProvider = new SeededRandomProvider(0);
+      mockProvider.random = () => 0;
+      setRandomProvider(mockProvider);
 
       const config: EvolutionConfig = {
         ...DEFAULT_EVOLUTION_CONFIG,
@@ -442,11 +451,13 @@ describe('Mutation Operators', () => {
 
       expect(randomTimeoutFactor(config)).toBe(0.5);
 
-      vi.restoreAllMocks();
+      resetRandomProvider();
     });
 
-    it('should approach max when Math.random approaches 1', () => {
-      vi.spyOn(Math, 'random').mockReturnValue(0.9999);
+    it('should approach max when random approaches 1', () => {
+      const mockProvider = new SeededRandomProvider(0);
+      mockProvider.random = () => 0.9999;
+      setRandomProvider(mockProvider);
 
       const config: EvolutionConfig = {
         ...DEFAULT_EVOLUTION_CONFIG,
@@ -455,7 +466,7 @@ describe('Mutation Operators', () => {
 
       expect(randomTimeoutFactor(config)).toBeCloseTo(2.0, 2);
 
-      vi.restoreAllMocks();
+      resetRandomProvider();
     });
   });
 
