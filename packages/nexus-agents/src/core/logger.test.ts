@@ -57,7 +57,7 @@ describe('sanitize', () => {
   });
 
   it('redacts Google AI API keys', () => {
-    const text = 'key: AIzaSyA1B2C3D4E5F6G7H8I9J0K1L2M3N4O5P6Q';
+    const text = 'key: AIzaSyTEST-FAKE-KEY-NOT-REAL-0000000000';
     expect(sanitize(text)).toContain('[REDACTED]');
     expect(sanitize(text)).not.toContain('AIzaSy');
   });
