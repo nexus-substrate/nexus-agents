@@ -155,6 +155,7 @@ const STAGE_FLAG_KEYS = [
   'enableQualityConstraint',
   'enableResourceStrategy',
   'enableStrategyDistillation',
+  'enableKnnRouting',
   'enableCapacityBalancing',
 ] as const;
 

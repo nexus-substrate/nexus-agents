@@ -177,6 +177,22 @@ const EXECUTION_PATTERNS = [
   'service unavailable',
   'truncated',
   'incomplete',
+  // Broad catch-all patterns — checked LAST after all specific categories (#1401)
+  'error:',
+  'error occurred',
+  'failed',
+  'failure',
+  'exception',
+  'not found',
+  'not supported',
+  'not implemented',
+  'not available',
+  'invalid',
+  'unable to',
+  'could not',
+  'unexpected',
+  'missing',
+  'unsupported',
 ];
 
 function matchesAny(text: string, patterns: string[]): boolean {

@@ -61,6 +61,7 @@ function makeDeps(overrides: Partial<StageDependencies> = {}): StageDependencies
       enableStrategyDistillation: false,
       enableLatencyTracking: false,
       enableRoutingMemory: false,
+      enableKnnRouting: false,
       enableCapacityBalancing: true,
       billingMode: 'api',
       latencyScoreWeight: 0.2,
@@ -82,6 +83,7 @@ function makeDeps(overrides: Partial<StageDependencies> = {}): StageDependencies
     qualityConstraintStage: undefined,
     resourceStrategyStage: undefined,
     distilledRuleStage: undefined,
+    knnRoutingStage: undefined,
     ...overrides,
   };
 }

@@ -30,6 +30,7 @@ import {
   QualityConstraintStage,
   ResourceStrategyStage,
   DistilledRuleStage,
+  KnnRoutingStage,
 } from './routing/stages/index.js';
 import { createRoutingContext, getRemainingCandidates } from './routing/router-stage.js';
 import {
@@ -72,6 +73,8 @@ export interface StageDependencies {
   resourceStrategyStage: ResourceStrategyStage | undefined;
   /** Distilled rule stage instance (Issue #999) */
   distilledRuleStage: DistilledRuleStage | undefined;
+  /** KNN routing stage instance (arXiv:2507.05370) */
+  knnRoutingStage: KnnRoutingStage | undefined;
 }
 
 /** Result from budget stage including rejection tracking. */
@@ -369,6 +372,40 @@ export async function runDistilledRuleStage(
   return { scores: new Map(scores), rulesApplied };
 }
 
+/** KNN routing stage result. (arXiv:2507.05370) */
+export interface KnnRoutingStageResult {
+  scores: Map<CliName, number>;
+  hasExperience: boolean;
+}
+
+/** Runs KNN experience-based routing stage. (arXiv:2507.05370) */
+export async function runKnnRoutingStage(
+  task: CliTask,
+  candidates: CliName[],
+  stagesExecuted: string[],
+  deps: StageDependencies
+): Promise<KnnRoutingStageResult> {
+  if (!deps.config.enableKnnRouting || deps.knnRoutingStage === undefined) {
+    return { scores: new Map(), hasExperience: false };
+  }
+
+  const ctx = createRoutingContext(task.content, candidates);
+  const result = await deps.knnRoutingStage.route(ctx);
+  stagesExecuted.push('knn-routing');
+
+  if (!result.ok) {
+    deps.logger.debug('KNN routing stage failed', { error: result.error.message });
+    return { scores: new Map(), hasExperience: false };
+  }
+
+  const { signals, scores } = result.value.context;
+  const hasExperience = signals.includes('knn:experience-matched');
+
+  deps.logger.debug('KNN routing completed', { hasExperience, scoreCount: scores.size });
+
+  return { scores: new Map(scores), hasExperience };
+}
+
 /** Runs ZeroRouter difficulty estimation stage. */
 export function runZeroRouterStage(
   task: CliTask,
@@ -587,6 +624,7 @@ async function runScoringStages(
   cascadeResult: ConfidenceCascadeStageResult;
   memoryResult: RoutingMemoryStageResult;
   capResult: CapabilityMatchStageResult;
+  knnResult: KnnRoutingStageResult;
   zeroResult: ZeroRouterStageResult;
   distilledResult: DistilledRuleStageResult;
   prefResult: PreferenceStageResult;
@@ -596,6 +634,7 @@ async function runScoringStages(
   const cascadeResult = await runConfidenceCascadeStage(task, candidates, stagesExecuted, deps);
   const memoryResult = runRoutingMemoryStage(task, candidates, stagesExecuted, deps);
   const capResult = await runCapabilityMatchStage(task, candidates, stagesExecuted, deps);
+  const knnResult = await runKnnRoutingStage(task, candidates, stagesExecuted, deps);
   const zeroResult = runZeroRouterStage(task, candidates, stagesExecuted, deps);
   let filtered = zeroResult.filteredCandidates;
   const distilledResult = await runDistilledRuleStage(task, filtered, stagesExecuted, deps);
@@ -606,6 +645,7 @@ async function runScoringStages(
     cascadeResult,
     memoryResult,
     capResult,
+    knnResult,
     zeroResult,
     distilledResult,
     prefResult,
@@ -623,6 +663,7 @@ function aggregateStageScores(
   return mergeScoreMaps(
     scoring.cascadeResult.scores,
     scoring.capResult.scores,
+    scoring.knnResult.scores,
     scoring.distilledResult.scores,
     scoring.resourceResult.scores,
     weatherScores
@@ -700,6 +741,7 @@ export async function runPipeline(
 interface PipelineResultParams {
   cascadeResult: ConfidenceCascadeStageResult;
   capResult: CapabilityMatchStageResult;
+  knnResult: KnnRoutingStageResult;
   distilledResult: DistilledRuleStageResult;
   resourceResult: ResourceStrategyStageResult;
   qualityResult: QualityConstraintStageResult;
@@ -718,6 +760,7 @@ function buildPipelineResult(p: PipelineResultParams): PipelineResult {
   const stageScores = mergeScoreMaps(
     p.cascadeResult.scores,
     p.capResult.scores,
+    p.knnResult.scores,
     p.distilledResult.scores,
     p.resourceResult.scores
   );

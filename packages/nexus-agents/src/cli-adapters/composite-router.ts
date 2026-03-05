@@ -41,6 +41,7 @@ import {
   QualityConstraintStage,
   ResourceStrategyStage,
   DistilledRuleStage,
+  KnnRoutingStage,
   type ConfidenceCascadeConfig,
   type CapabilityMatchConfig,
   type QualityConstraintConfig,
@@ -158,6 +159,8 @@ export class CompositeRouter implements ICompositeRouter {
   private resourceStrategyStage?: ResourceStrategyStage;
   /** Distilled rule stage instance (Issue #999) */
   private distilledRuleStage?: DistilledRuleStage;
+  /** KNN routing stage instance (arXiv:2507.05370) */
+  private knnRoutingStage?: KnnRoutingStage;
   /** Strategy distiller instance (Issue #999) */
   private strategyDistiller?: StrategyDistiller;
   private readonly cliNames: CliName[];
@@ -262,6 +265,9 @@ export class CompositeRouter implements ICompositeRouter {
       this.logger.info('RoutingMemory enabled for learned routing', {
         minObservations: this.routingMemory.getStats().totalPreferences,
       });
+    }
+    if (this.config.enableKnnRouting && this.routingMemory !== undefined) {
+      this.knnRoutingStage = new KnnRoutingStage(this.routingMemory);
     }
     this.initializeOptionalStages(stageConfigs);
   }
@@ -522,6 +528,8 @@ export class CompositeRouter implements ICompositeRouter {
       resourceStrategyStage: this.resourceStrategyStage,
       // Issue #999 distilled rule stage
       distilledRuleStage: this.distilledRuleStage,
+      // arXiv:2507.05370 KNN routing
+      knnRoutingStage: this.knnRoutingStage,
     };
   }
 

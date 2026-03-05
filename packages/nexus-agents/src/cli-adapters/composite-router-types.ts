@@ -68,6 +68,8 @@ export const CompositeRouterConfigSchema = z.object({
   enableLatencyTracking: z.boolean().default(true),
   /** Enable routing memory for learned routing (default: false) (Issue #463, #461) */
   enableRoutingMemory: z.boolean().default(false),
+  /** Enable KNN experience-based routing (default: false) (arXiv:2507.05370) */
+  enableKnnRouting: z.boolean().default(false),
   /** Weight for latency score in final routing (0-1, default: 0.2) */
   latencyScoreWeight: z.number().min(0).max(1).default(0.2),
   /** Budget constraints (optional) */
@@ -137,6 +139,7 @@ export const DEFAULT_COMPOSITE_CONFIG: CompositeRouterConfig = {
   enableStrategyDistillation: false, // Issue #999 - Automatic strategy distillation (opt-in)
   enableLatencyTracking: true,
   enableRoutingMemory: false,
+  enableKnnRouting: false, // arXiv:2507.05370 - KNN experience-based routing
   enableCapacityBalancing: true, // Issue #807 - Deprioritize exhausted CLIs
   latencyScoreWeight: 0.2,
   billingMode: 'plan',

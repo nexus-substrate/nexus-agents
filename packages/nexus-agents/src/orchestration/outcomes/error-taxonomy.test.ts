@@ -232,4 +232,45 @@ describe('categorizeOutcomeErrorMessage', () => {
   it('classifies proxy errors as connection (#1401)', () => {
     expect(categorizeOutcomeErrorMessage('proxy connection refused')).toBe('connection');
   });
+
+  it('classifies generic error: prefix as execution (#1401)', () => {
+    expect(categorizeOutcomeErrorMessage('error: something went wrong')).toBe('execution');
+  });
+
+  it('classifies generic failed as execution (#1401)', () => {
+    expect(categorizeOutcomeErrorMessage('task failed during processing')).toBe('execution');
+  });
+
+  it('classifies generic failure as execution (#1401)', () => {
+    expect(categorizeOutcomeErrorMessage('unexpected failure in pipeline')).toBe('execution');
+  });
+
+  it('classifies exception as execution (#1401)', () => {
+    expect(categorizeOutcomeErrorMessage('unhandled exception in worker')).toBe('execution');
+  });
+
+  it('classifies not supported as execution (#1401)', () => {
+    expect(categorizeOutcomeErrorMessage('operation not supported')).toBe('execution');
+  });
+
+  it('classifies unable to as execution (#1401)', () => {
+    expect(categorizeOutcomeErrorMessage('unable to complete request')).toBe('execution');
+  });
+
+  it('classifies could not as execution (#1401)', () => {
+    expect(categorizeOutcomeErrorMessage('could not process input')).toBe('execution');
+  });
+
+  it('classifies missing as execution (#1401)', () => {
+    expect(categorizeOutcomeErrorMessage('missing required field')).toBe('execution');
+  });
+
+  it('preserves specific categories over broad patterns (#1401)', () => {
+    // 'model not found' should still be adapter_unavailable, not execution
+    expect(categorizeOutcomeErrorMessage('model not found: gpt-5')).toBe('adapter_unavailable');
+    // 'invalid input' should still be validation, not execution
+    expect(categorizeOutcomeErrorMessage('invalid input provided')).toBe('validation');
+    // 'unexpected token' should still be parse, not execution
+    expect(categorizeOutcomeErrorMessage('unexpected token in JSON')).toBe('parse');
+  });
 });

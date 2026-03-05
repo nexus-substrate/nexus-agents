@@ -271,12 +271,12 @@ describe('synthesizeResearch', () => {
     expect(linucb.status).toBe('implemented');
     expect(linucb.canonicalPath).toContain('linucb');
 
-    // knn-routing is partial
+    // knn-routing is implemented (promoted via KnnRoutingStage)
     const knn = cluster.alignedTechniques.find((a) => a.technique === 'knn-routing');
     expect(knn).toBeDefined();
     if (knn === undefined) return;
-    expect(knn.status).toBe('partial');
-    expect(knn.improvementHint).toBeDefined();
+    expect(knn.status).toBe('implemented');
+    expect(knn.canonicalPath).toContain('knn');
 
     // novel-technique is not-started
     const novel = cluster.alignedTechniques.find((a) => a.technique === 'novel-technique');
@@ -304,8 +304,8 @@ describe('synthesizeResearch', () => {
 
     const summary = result.value.alignmentSummary;
     expect(summary.total).toBeGreaterThan(0);
-    expect(summary.implemented).toBeGreaterThanOrEqual(2); // linucb + topsis + consensus
-    expect(summary.partial).toBeGreaterThanOrEqual(1); // knn
+    expect(summary.implemented).toBeGreaterThanOrEqual(3); // linucb + topsis + consensus + knn
+    expect(summary.partial).toBeGreaterThanOrEqual(0);
     expect(summary.notStarted).toBeGreaterThanOrEqual(1); // new-thing
     expect(summary.topOpportunities.length).toBeGreaterThanOrEqual(0);
   });

@@ -59,8 +59,8 @@ These capabilities form the foundation — confirmed by multiple consensus agent
 | Test suite                   | 24,335 tests, 921 files                                                                         |
 | Coverage                     | 89.66% statements, 93.26% functions                                                             |
 | MCP tools                    | 25 registered                                                                                   |
-| Research techniques (mapped) | 32 implemented, 14 partial (46 mapped techniques from 174+ papers)                              |
-| Routing tasks observed       | 3,716 across 4 CLIs                                                                             |
+| Research techniques (mapped) | 33 implemented, 13 partial (46 mapped techniques from 174+ papers)                              |
+| Routing tasks observed       | 3,806 across 4 CLIs                                                                             |
 | Overall success rate         | 73.9%                                                                                           |
 | Expert types                 | 10 (code, architecture, security, testing, docs, devops, research, product, ux, infrastructure) |
 
@@ -172,8 +172,9 @@ Gemini remains the exploration champion (98% success, n=143). Claude exploration
 
 Failure breakdown (historical): unknown 60.4%, execution 25.9%, timeout 12.9%, rate_limit 0.7%. Fixes deployed:
 
-- Message-based classification with 86+ keyword patterns (was 70+)
+- Message-based classification with 100+ keyword patterns (was 86+)
 - Added: SSL/TLS/proxy (→connection), ENOMEM (→crash), HTTP 5xx/bad gateway/service unavailable (→execution), max retries (→rate_limit), truncated/incomplete (→execution)
+- Added broad catch-all execution patterns: error:, failed, failure, exception, not found, invalid, unable to, could not, unexpected, missing, unsupported
 - Non-zero exit with error stderr now classified as EXECUTION_ERROR (#1402)
 
 **Required:** Monitor next weather report for reduced unknown percentage. Target: <30%.
@@ -215,21 +216,21 @@ Based on gap analysis, weather report data, and research alignment map (32 imple
 
 ### 6.4: Research-Driven Improvements — IN PROGRESS
 
-The research alignment map tracks 46 techniques: 32 implemented, 14 partial. Recent promotions: moe-routing, rl-orchestrator, profile-memory, sater-routing, tolerance-routing, strmac-state-routing, action-memory, agreement-based-cascading, cross-attention-routing.
+The research alignment map tracks 46 techniques: 33 implemented, 13 partial. Recent promotions: moe-routing, rl-orchestrator, profile-memory, sater-routing, tolerance-routing, strmac-state-routing, action-memory, agreement-based-cascading, cross-attention-routing, knn-routing.
 
 | Technique Area | Implemented | Partial | Priority |
 | -------------- | ----------- | ------- | -------- |
-| Routing (14)   | 12          | 2       | High     |
+| Routing (14)   | 13          | 1       | High     |
 | Consensus (8)  | 5           | 3       | Medium   |
 | Memory (10)    | 7           | 3       | Medium   |
 | Orchestration  | 4           | 6       | High     |
 | Learning (4)   | 4           | 0       | —        |
 
-**Next promotion candidates:** knn-routing (needs KNN distance algorithm), incremental-quorum (deferred per #1408 vote — simpler "escalate on ambiguity" first)
+**Next promotion candidates:** incremental-quorum (deferred per #1408 vote — simpler "escalate on ambiguity" first), capability-instruction-tuning
 
-**Assessment of 15 partial techniques:**
+**Assessment of 13 partial techniques:**
 
-- **2 close to promotion** (1-2 day effort each): knn-routing, incremental-quorum (voted to defer — see #1408)
+- **1 close to promotion** (1-2 day effort): incremental-quorum (voted to defer — see #1408)
 - **6 substantial effort** (3-5 days each): capability-instruction-tuning, mem0-memory, graph-based-memory, aflow-mcts, temporal-scheduling, scaling-prediction
 - **6 require novel algorithms** (5+ days): aegean-consensus, cp-wbft-consensus, history-encoding, model-coordination-theory, trinity-agents, self-evolution
 
@@ -273,7 +274,7 @@ From the initial 5-agent consensus assessment (2026-01-09):
 >
 > **PM (6/10):** "The gap is not technical capability - it is market proof. The swarm must demonstrate it is best, not just claim best-in-class architecture."
 
-**Key insight that still applies:** Technique coverage (70% implemented of 46 mapped) is strong but means nothing without user validation. The path from 8 to 10 is evidence, not architecture. The 14 partial techniques represent genuine algorithmic gaps (BFT consensus, MCTS search, learned encoding) — not missing wiring.
+**Key insight that still applies:** Technique coverage (72% implemented of 46 mapped) is strong but means nothing without user validation. The path from 8 to 10 is evidence, not architecture. The 13 partial techniques represent genuine algorithmic gaps (BFT consensus, MCTS search, learned encoding) — not missing wiring.
 
 ---
 

@@ -65,5 +65,12 @@ export {
   type DistilledRuleStageConfig,
 } from './distilled-rule-stage.js';
 
+// KNN routing stage (priority: 38)
+export {
+  KnnRoutingStage,
+  createKnnRoutingStage,
+  type KnnRoutingConfig,
+} from './knn-routing-stage.js';
+
 // Latency performance stage (priority: 80)
 export { LatencyStage, createLatencyStage, type LatencyStageConfig } from './latency-stage.js';

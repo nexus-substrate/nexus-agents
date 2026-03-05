@@ -73,9 +73,9 @@ export const TECHNIQUE_IMPLEMENTATION_MAP: ReadonlyMap<string, TechniqueMapping>
   [
     'knn-routing',
     {
-      status: 'partial',
-      path: 'context/routing-memory.ts',
-      hint: 'Memory-based routing uses similarity but not KNN',
+      status: 'implemented',
+      path: 'routing/stages/knn-routing-stage.ts',
+      hint: 'KnnRoutingStage: cosine similarity over keyword vectors, K-nearest experience patterns, weighted by success rate',
     },
   ],
   ['pilot-budget-routing', { status: 'implemented', path: 'cli-adapters/budget-router.ts' }],
