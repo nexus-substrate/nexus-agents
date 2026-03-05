@@ -37,7 +37,7 @@ These capabilities form the foundation — confirmed by multiple consensus agent
 
 | Strength                     | Evidence                                                       |
 | ---------------------------- | -------------------------------------------------------------- |
-| Research-backed protocols    | 29/101 techniques implemented, 18 partial (47 mapped to code)  |
+| Research-backed protocols    | 31/101 techniques implemented, 16 partial (47 mapped to code)  |
 | Multi-criteria model routing | TOPSIS + LinUCB bandit + preference + cascade + tolerance band |
 | Memory system diversity      | 8 backends + reflective MemR3 enhancement                      |
 | Closed-loop learning         | Weather report, feedback integration, self-refinement          |
@@ -59,7 +59,7 @@ These capabilities form the foundation — confirmed by multiple consensus agent
 | Test suite                   | 24,276 tests, 917 files                                                                         |
 | Coverage                     | 89.66% statements, 93.26% functions                                                             |
 | MCP tools                    | 25 registered                                                                                   |
-| Research techniques (mapped) | 29 implemented, 18 partial, 54 not-started (101 total)                                          |
+| Research techniques (mapped) | 31 implemented, 16 partial, 54 not-started (101 total)                                          |
 | Routing tasks observed       | 3,710 across 4 CLIs                                                                             |
 | Overall success rate         | 73.9%                                                                                           |
 | Expert types                 | 10 (code, architecture, security, testing, docs, devops, research, product, ux, infrastructure) |

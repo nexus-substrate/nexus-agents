@@ -90,9 +90,9 @@ export const TECHNIQUE_IMPLEMENTATION_MAP: ReadonlyMap<string, TechniqueMapping>
   [
     'sater-routing',
     {
-      status: 'partial',
-      path: 'cli-adapters/composite-router.ts',
-      hint: 'Safety-aware routing partially via quality constraints',
+      status: 'implemented',
+      path: 'routing/stages/quality-constraint-stage.ts',
+      hint: 'QualityConstraintStage filters models by min quality (0.7), max cost, max latency before selection',
     },
   ],
   [
@@ -173,9 +173,9 @@ export const TECHNIQUE_IMPLEMENTATION_MAP: ReadonlyMap<string, TechniqueMapping>
   [
     'profile-memory',
     {
-      status: 'partial',
-      path: 'memory/agentic/',
-      hint: 'Agentic memory stores profiles but not profile-aware retrieval',
+      status: 'implemented',
+      path: 'context/routing-memory.ts',
+      hint: 'RoutingMemory stores model preferences per task type and feeds recommendations into composite router via PERSISTENCE_AWARE_FLAGS',
     },
   ],
   [
