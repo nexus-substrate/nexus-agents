@@ -252,11 +252,11 @@ nexus-agents --verbose             # Verbose output
 ### nexus-agents.yaml
 ```yaml
 models:
-  default: claude-sonnet-4-6
+  default: claude-sonnet-4
   tiers:
-    fast: [claude-haiku-4-5, gpt-4o-mini]
-    balanced: [claude-sonnet-4-6, gpt-4o]
-    powerful: [claude-opus-4-6, o1-pro]
+    fast: [claude-haiku-3, gpt-4o-mini]
+    balanced: [claude-sonnet-4, gpt-4o]
+    powerful: [claude-opus-4, o1-pro]
 
 routing:
   enableBudgetFilter: true
@@ -317,4 +317,4 @@ packages/nexus-agents/src/
 - MCP Protocol: modelcontextprotocol.io
 - Research Index: docs/research/RESEARCH_INDEX.md
 
-<!-- Generated: 2026-03-01 from docs/INDEX.yaml -->
+<!-- Generated: 2026-03-05 from docs/INDEX.yaml -->

@@ -106,4 +106,4 @@ packages/nexus-agents/src/
 - Architecture: ARCHITECTURE.md
 - Contributing: CONTRIBUTING.md
 
-<!-- Generated: 2026-03-01 from docs/INDEX.yaml -->
+<!-- Generated: 2026-03-05 from docs/INDEX.yaml -->
