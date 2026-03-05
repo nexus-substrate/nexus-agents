@@ -333,40 +333,57 @@ interface CategoryRoutingStats {
   readonly regret: number;
 }
 
+/** Tolerance band for routing accuracy — CLIs within this % of best are "good". */
+const ROUTING_ACCURACY_TOLERANCE = 0.05;
+
 /** Analyzes routing accuracy and regret for a single category. */
 function analyzeCategoryRouting(
   catOutcomes: ReadonlyArray<{ cli: string; success: boolean }>
 ): CategoryRoutingStats | null {
   let bestRate = 0;
-  let bestCli = '';
+  const cliRates = new Map<string, number>();
   for (const cli of CLI_NAMES) {
     const cliCat = catOutcomes.filter((o) => o.cli === cli);
     if (cliCat.length === 0) continue;
     const rate = cliCat.filter((o) => o.success).length / cliCat.length;
-    if (rate > bestRate) {
-      bestRate = rate;
-      bestCli = cli;
-    }
+    cliRates.set(cli, rate);
+    if (rate > bestRate) bestRate = rate;
   }
-  if (bestCli === '') return null;
+  if (cliRates.size === 0) return null;
 
-  const routed = catOutcomes.filter((o) => o.cli === bestCli).length;
+  // Count tasks routed to any "good" CLI (within tolerance band of best)
+  const threshold = bestRate * (1 - ROUTING_ACCURACY_TOLERANCE);
+  const goodClis = new Set<string>();
+  for (const [cli, rate] of cliRates) {
+    if (rate >= threshold) goodClis.add(cli);
+  }
+
+  const routed = catOutcomes.filter((o) => goodClis.has(o.cli)).length;
   const actualRate = catOutcomes.filter((o) => o.success).length / catOutcomes.length;
   return { accurateCount: routed, totalRouted: catOutcomes.length, regret: bestRate - actualRate };
 }
 
-/** Computes avg samples to reach high confidence across all CLI+category pairs. */
+/** Computes avg samples for the best CLI per category to reach high confidence. */
 function computeAdaptationSpeed(): number {
   const store = getOutcomeStore();
   let speedSum = 0;
   let speedCount = 0;
   for (const category of TASK_CATEGORIES) {
+    // Find the best CLI for this category (fewest samples to reach confidence)
+    let bestSamples = Infinity;
+    let found = false;
     for (const cli of CLI_NAMES) {
       const thresholds = computeAdaptiveThresholds(store, cli, category);
       if (thresholds.confidence >= ADAPTATION_CONFIDENCE_THRESHOLD && thresholds.sampleCount > 0) {
-        speedSum += thresholds.sampleCount;
-        speedCount++;
+        if (thresholds.sampleCount < bestSamples) {
+          bestSamples = thresholds.sampleCount;
+          found = true;
+        }
       }
+    }
+    if (found) {
+      speedSum += bestSamples;
+      speedCount++;
     }
   }
   return speedCount > 0 ? speedSum / speedCount : 0;

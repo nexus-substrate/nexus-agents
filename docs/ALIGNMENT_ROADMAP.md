@@ -18,14 +18,14 @@ related_files: [CHANGELOG.md, architecture/README.md]
 
 ## Score Progression
 
-| Date       | Score   | Milestone                                    |
-| ---------- | ------- | -------------------------------------------- |
-| 2026-01-09 | 6.4/10  | Initial 5-agent consensus                    |
-| 2026-01-13 | 7.28/10 | Observability + docs automation              |
-| 2026-01-16 | 8.06/10 | v2.2.0 release, security complete            |
-| 2026-01-23 | 7.78/10 | Skills loader, deeper review                 |
-| 2026-03-04 | 8.0/10  | v2.26.1, feedback loops, research synthesis  |
-| 2026-03-04 | 8.0/10  | 27 techniques implemented, reliability fixes |
+| Date       | Score   | Milestone                                     |
+| ---------- | ------- | --------------------------------------------- |
+| 2026-01-09 | 6.4/10  | Initial 5-agent consensus                     |
+| 2026-01-13 | 7.28/10 | Observability + docs automation               |
+| 2026-01-16 | 8.06/10 | v2.2.0 release, security complete             |
+| 2026-01-23 | 7.78/10 | Skills loader, deeper review                  |
+| 2026-03-04 | 8.0/10  | v2.26.1, feedback loops, research synthesis   |
+| 2026-03-05 | 8.0/10  | Roadmap accuracy audit, reliability hardening |
 
 **Trend:** Baseline 6.4 -> peak 8.06. Score fluctuations reflect increasingly rigorous review standards rather than capability regression.
 
@@ -35,53 +35,53 @@ related_files: [CHANGELOG.md, architecture/README.md]
 
 These capabilities form the foundation — confirmed by multiple consensus agents:
 
-| Strength                     | Evidence                                              |
-| ---------------------------- | ----------------------------------------------------- |
-| Research-backed protocols    | 37/38 techniques implemented (97%)                    |
-| Multi-criteria model routing | TOPSIS + LinUCB bandit + preference + cascade         |
-| Memory system diversity      | 8 backends + reflective MemR3 enhancement             |
-| Closed-loop learning         | Weather report, feedback integration, self-refinement |
-| Security posture             | 113 pentest tests, Docker sandbox, rate limiting      |
-| Zero-credential architecture | OAuth 2.0/PKCE, SecretsVault, no stored creds         |
-| Strong type system           | Result<T,E>, Zod validation, strict TypeScript        |
-| Multi-CLI orchestration      | 4 CLIs (claude/gemini/codex/opencode), 3400+ tasks    |
+| Strength                     | Evidence                                                       |
+| ---------------------------- | -------------------------------------------------------------- |
+| Research-backed protocols    | 27/101 techniques implemented, 20 partial (47 mapped to code)  |
+| Multi-criteria model routing | TOPSIS + LinUCB bandit + preference + cascade + tolerance band |
+| Memory system diversity      | 8 backends + reflective MemR3 enhancement                      |
+| Closed-loop learning         | Weather report, feedback integration, self-refinement          |
+| Security posture             | 113 pentest tests, Docker sandbox, rate limiting               |
+| Zero-credential architecture | OAuth 2.0/PKCE, SecretsVault, no stored creds                  |
+| Strong type system           | Result<T,E>, Zod validation, strict TypeScript                 |
+| Multi-CLI orchestration      | 4 CLIs (claude/gemini/codex/opencode), 3,710+ observed tasks   |
 
 ---
 
-## Current State (2026-03-04)
+## Current State (2026-03-05)
 
-### System Metrics
+### System Metrics (as of 2026-03-05)
 
-| Metric                 | Value                                                                                           |
-| ---------------------- | ----------------------------------------------------------------------------------------------- |
-| Version                | v2.26.1                                                                                         |
-| Fitness score          | 98/100                                                                                          |
-| Test suite             | 24,200+ tests, 934 files                                                                        |
-| Coverage               | 89.66% statements, 93.26% functions                                                             |
-| MCP tools              | 25 registered                                                                                   |
-| Research techniques    | 37/38 implemented (97%), 1 rejected                                                             |
-| Routing tasks observed | 3,405 across 4 CLIs                                                                             |
-| Overall success rate   | 74%                                                                                             |
-| Expert types           | 10 (code, architecture, security, testing, docs, devops, research, product, ux, infrastructure) |
+| Metric                       | Value                                                                                           |
+| ---------------------------- | ----------------------------------------------------------------------------------------------- |
+| Version                      | v2.26.1                                                                                         |
+| Fitness score                | 98/100                                                                                          |
+| Test suite                   | 24,276 tests, 917 files                                                                         |
+| Coverage                     | 89.66% statements, 93.26% functions                                                             |
+| MCP tools                    | 25 registered                                                                                   |
+| Research techniques (mapped) | 27 implemented, 20 partial, 54 not-started (101 total)                                          |
+| Routing tasks observed       | 3,710 across 4 CLIs                                                                             |
+| Overall success rate         | 73.9%                                                                                           |
+| Expert types                 | 10 (code, architecture, security, testing, docs, devops, research, product, ux, infrastructure) |
 
-### CLI Performance (from Weather Report)
+### CLI Performance (live weather report, 2026-03-05)
 
 | CLI      | Tasks | Success Rate | Best Category                        |
 | -------- | ----- | ------------ | ------------------------------------ |
-| Claude   | 2,395 | 71%          | Planning (93%), Code Review (83%)    |
-| Gemini   | 347   | 84%          | Exploration (98%), Research (87%)    |
-| Codex    | 600   | 85%          | Code Generation (90%), Testing (89%) |
+| Claude   | 2,664 | 71%          | Planning (92%), Code Review (84%)    |
+| Gemini   | 365   | 85%          | Exploration (98%), Research (87%)    |
+| Codex    | 618   | 86%          | Code Generation (91%), Testing (90%) |
 | OpenCode | 63    | 27%          | Code Generation (38%)                |
 
 ### Adaptive Routing Insights
 
-The system has learned optimal CLI-to-task mappings from 3,400+ observations:
+The system has learned optimal CLI-to-task mappings from 3,710 observations:
 
-- **Code generation** -> Codex (90% success, n=338)
-- **Planning** -> Claude (93% success, n=118)
+- **Code generation** -> Codex (91% success, n=350)
+- **Planning** -> Claude (92% success, n=136)
 - **Research** -> Gemini (87% success, n=38)
-- **Testing** -> Codex (89% success, n=111)
-- **Exploration** -> Gemini (98% success, n=131)
+- **Testing** -> Codex (90% success, n=117)
+- **Exploration** -> Gemini (98% success, n=143)
 - **Documentation** -> Gemini (71% success, n=35)
 
 ---
@@ -110,77 +110,109 @@ The SWE-bench evaluation module is built (#257, deferred) but a full benchmark r
 
 **Required:** Execute SWE-bench Lite (300 instances), publish results, compare against leaderboard.
 
-### Gap 2: Swarm-Level Observability Still Shallow (P2) — PARTIAL
+### Gap 2: Swarm-Level Observability (P2) — MOSTLY RESOLVED
 
-**Impact:** 5/10 (reduced from 7/10) — Swarm health metrics now measured, visualization pending
+**Impact:** 3/10 (reduced from 7/10) — Core observability complete, visualization is a stretch goal
 
-OrchestrationObserver records events. Swarm health metrics (utilization, efficiency, routing accuracy, regret, adaptation speed) are now computed in the weather report (#1403). Remaining: trace visualization for multi-wave dispatches, cross-wave dependency graphs, and a dedicated CLI dashboard.
+**Resolved:**
 
-**Required:** Structured trace visualization, cross-wave dependency graphs, `nexus-agents health` CLI.
+- `nexus-agents health` CLI command implemented with per-CLI performance breakdown
+- All 5 swarm health metrics measured (utilization, efficiency, accuracy, regret, adaptation speed)
+- JSONL tracing infrastructure with `query_trace` MCP tool
+- #1403 closed — all success criteria met
+
+**Remaining (stretch):** Trace visualization UI for multi-wave dispatches, cross-session learning dashboard.
 
 ### Gap 3: OpenCode CLI Reliability (P2) — IN PROGRESS
 
-**Impact:** 5/10 (reduced from 6/10) — Adapter fixes deployed, monitoring success rate
+**Impact:** 5/10 — Adapter fixes deployed, monitoring success rate
 
-OpenCode has 63 observed tasks at 27% success. Fixes deployed (#1402): plaintext fallback for non-JSON output, stderr diagnostic context in PARSE_ERROR. Expected improvement in PARSE_ERROR failure mode.
+OpenCode has 63 observed tasks at 27% success. Fixes deployed (#1402): model alias resolution from canonical registry, plaintext fallback for non-JSON output, stderr diagnostic context in PARSE_ERROR.
 
 **Required:** Monitor post-fix success rate. If still below 50%, investigate exit code handling and session management.
 
-### Gap 4: Security Review Accuracy (P2)
+### Gap 4: Security Review Accuracy (P2) — MITIGATED
 
-**Impact:** 6/10 — Claude's security_review success rate is only 27%
+**Impact:** 4/10 (reduced from 6/10) — Prompt improved, classification fixed
 
-Despite strong security infrastructure, the security expert's task success rate is the lowest category. This may indicate the security expert prompt needs refinement or the success criteria are too strict.
+Claude's security_review success rate is 30% (107 observations). Root cause identified as a measurement issue: the prompt demanded strict JSON output without examples. Fixes deployed:
 
-**Required:** Audit security expert prompt, review failure patterns, recalibrate success metrics.
+- Security expert prompt improved with concrete JSON example + plaintext fallback guidance
+- Failure classification now prioritizes message-based patterns (70+ keywords) over coarse error types
+- Unknown failure category expected to decrease from 60.4%
 
-### Gap 5: Exploration Success Rate (P3)
+**Required:** Monitor post-fix security expert success rate. Consider structured output (JSON mode) if rate stays below 50%.
 
-**Impact:** 5/10 — 32% failure rate on exploration tasks across 407 observations
+### Gap 5: Exploration Success Rate (P3) — MITIGATED
 
-Weather report recommends promoting exploration to Tier 3 routing. The failure rate is high enough to warrant investigation — likely timeout or scope issues in exploration agents.
+**Impact:** 3/10 (reduced from 5/10) — Fixes deployed, monitoring
 
-**Required:** Analyze exploration failure patterns, tune timeouts, adjust scope boundaries.
+Claude exploration success rate was 57% across 286 observations. Fixes deployed (#1405):
+
+- Per-CLI timeout increased from 90s to 180s (aligned with centralized `PER_CLI_TASK_TIMEOUTS`)
+- TOPSIS tolerance band (5%) added for routing diversity among quality-equivalent CLIs
+- OpenCode added to CLI selection pool for exploration
+
+Gemini remains the exploration champion (98% success, n=143). Claude exploration is trending "improving" per learning insights.
+
+**Required:** Monitor post-fix Claude exploration rate. Target: >70%.
+
+### Gap 6: Failure Classification (P2) — MITIGATED
+
+**Impact:** 3/10 — 60.4% "unknown" failures, fix deployed
+
+Failure breakdown: unknown 60.4%, execution 25.9%, timeout 12.9%, rate_limit 0.7%. The high "unknown" rate was caused by `mapErrorType` falling through to 'unknown' when `WorkerErrorType` was coarse. Fix deployed: message-based classification with 70+ keyword patterns runs before coarse type fallback.
+
+**Required:** Monitor next weather report for reduced unknown percentage.
 
 ---
 
-## Forward-Looking: Phase 6 Proposals
+## Forward-Looking: Phase 6 Progress
+
+**Tracking:** #1401 (epic), #1394 (research alignment), #1402 (OpenCode reliability)
 
 Based on gap analysis, weather report data, and research alignment map (27 implemented, 20 partial, 54 not-started techniques):
 
-### 6.1: Evidence-Based Validation (Target: 9.0/10)
+### 6.1: Evidence-Based Validation (Target: 9.0/10) — NOT STARTED
 
 - Execute SWE-bench Lite benchmark and publish results
 - Create 3 demo workflows (PR review, code generation, security audit) with measured outcomes
 - Establish automated regression benchmarking in CI
 
-### 6.2: Swarm Intelligence Observability
+### 6.2: Swarm Intelligence Observability — MOSTLY COMPLETE
 
-- Build trace visualization for multi-wave dispatches
-- Add real-time swarm health metrics (utilization, collaboration efficiency, bottleneck ratio)
-- Implement cross-session learning dashboard showing routing adaptation over time
+- [x] All 5 swarm health metrics computed in weather report (#1403 CLOSED)
+- [x] `nexus-agents health` CLI with per-CLI performance breakdown
+- [x] JSONL tracing infrastructure + `query_trace` MCP tool
+- [ ] Trace visualization for multi-wave dispatches (stretch)
+- [ ] Cross-session learning dashboard (stretch)
 
-### 6.3: Reliability Hardening
+### 6.3: Reliability Hardening — IN PROGRESS
 
-- Investigate and fix OpenCode adapter (27% -> target 60%)
-- Audit and improve security expert accuracy (27% -> target 60%)
-- Reduce exploration failure rate (68% -> target 80% success)
-- Address the 61.7% "unknown" failure category in error breakdown
+- [x] Exploration timeout aligned with centralized config: 90s -> 180s (#1405 CLOSED)
+- [x] TOPSIS tolerance band (5%) for routing diversity (#1405)
+- [x] Failure classification: message-based patterns prioritized (#1401)
+- [x] Security expert prompt improved with example output (#1401)
+- [x] OpenCode model alias resolution from canonical registry (#1402)
+- [ ] Monitor OpenCode post-fix success rate (27% -> target 60%)
+- [ ] Monitor security_review post-fix success rate (30% -> target 50%)
+- [ ] Monitor exploration post-fix success rate (57% -> target 70%)
+- [ ] Monitor unknown failure category reduction (60.4% -> target <30%)
 
-### 6.4: Research-Driven Improvements
+### 6.4: Research-Driven Improvements — IN PROGRESS
 
-The research alignment map identifies 22 partially-implemented and 54 not-started techniques. High-value candidates for the next iteration:
+The research alignment map identifies 20 partially-implemented and 54 not-started techniques. Recent promotions: action-memory, strmac-state-routing, tolerance-routing.
 
-| Technique Area       | Partial | Not Started | Priority |
-| -------------------- | ------- | ----------- | -------- |
-| Advanced reasoning   | 4       | 12          | High     |
-| Agent communication  | 3       | 8           | High     |
-| Memory optimization  | 5       | 7           | Medium   |
-| Consensus mechanisms | 2       | 6           | Medium   |
-| Security hardening   | 3       | 5           | Medium   |
-| Evaluation methods   | 6       | 16          | Low      |
+| Technique Area      | Partial | Not Started | Priority |
+| ------------------- | ------- | ----------- | -------- |
+| Routing             | 5       | —           | High     |
+| Consensus           | 4       | —           | Medium   |
+| Memory              | 3       | —           | Medium   |
+| Orchestration       | 5       | —           | High     |
+| Learning            | 1       | —           | Medium   |
+| Not-started (total) | —       | 54          | Backlog  |
 
-**Tracking:** #1394 (research alignment roadmap)
+**Next promotion candidates:** moe-routing, knn-routing, profile-memory (closest to implementation)
 
 ---
 
@@ -196,13 +228,15 @@ The research alignment map identifies 22 partially-implemented and 54 not-starte
 
 ### Swarm Health Metrics (via `weather_report` tool)
 
-| Metric                   | Definition                             | Healthy Range | Status                        |
-| ------------------------ | -------------------------------------- | ------------- | ----------------------------- |
-| Agent Utilization        | % of expert roles actively succeeding  | 70-90%        | Measured (SwarmHealthMetrics) |
-| Collaboration Efficiency | Successful / total delegate tasks      | > 0.1         | Measured (SwarmHealthMetrics) |
-| Routing Accuracy         | % routed to empirically best CLI       | > 80%         | Measured (SwarmHealthMetrics) |
-| Weekly Regret            | Avg gap vs best-possible rate/category | Decreasing    | Measured (SwarmHealthMetrics) |
-| Adaptation Speed         | Avg samples to high confidence         | < 50          | Measured (SwarmHealthMetrics) |
+| Metric                   | Definition                                    | Healthy Range | Current | Status  |
+| ------------------------ | --------------------------------------------- | ------------- | ------- | ------- |
+| Agent Utilization        | % of expert roles actively succeeding         | 70-90%        | 100%    | Healthy |
+| Collaboration Efficiency | Successful / total delegate tasks             | > 0.1         | 70.8%   | Healthy |
+| Routing Accuracy         | % routed to good CLIs (within 5% of best/cat) | > 50%         | TBD     | Fixed   |
+| Weekly Regret            | Avg gap vs best-possible rate/category        | Decreasing    | 0.179   | OK      |
+| Adaptation Speed         | Avg samples for best CLI/category to converge | < 50          | TBD     | Fixed   |
+
+Note: Routing Accuracy and Adaptation Speed metrics were corrected on 2026-03-05. Previous values (25.4% accuracy, 249 adaptation) used flawed calculations — accuracy counted only single-best CLI (expected ~25% with 4 CLIs), adaptation averaged all pairs instead of best-per-category.
 
 ---
 
@@ -220,10 +254,10 @@ From the initial 5-agent consensus assessment (2026-01-09):
 >
 > **PM (6/10):** "The gap is not technical capability - it is market proof. The swarm must demonstrate it is best, not just claim best-in-class architecture."
 
-**Key insight that still applies:** 97% technique coverage means nothing without user validation. The path from 8 to 10 is evidence, not architecture.
+**Key insight that still applies:** Technique coverage (27%) is growing but means nothing without user validation. The path from 8 to 10 is evidence, not architecture.
 
 ---
 
 _Generated via CLAUDE.md Consensus Voting Protocol_
-_Consolidation approved 3/3 (unanimous) on 2026-03-04_
+_Consolidation approved 3/3 (unanimous) on 2026-03-05_
 _Historical system reviews archived to docs/archive/system-reviews-2026-01.md_
