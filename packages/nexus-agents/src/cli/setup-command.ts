@@ -197,6 +197,44 @@ function runDetectionStep(projectRoot: string): { env: EnvironmentInfo; step: Se
   };
 }
 
+/** Minimum Node.js major version required. */
+const REQUIRED_NODE_MAJOR = 22;
+
+/**
+ * Runs the prerequisite validation step.
+ * Checks Node.js version and warns about missing package managers.
+ */
+function runPrerequisiteStep(): { step: SetupStep; warnings: readonly string[] } {
+  const time = getTimeProvider();
+  const startTime = time.now();
+  const warnings: string[] = [];
+
+  const version = process.version;
+  const major = Number(version.slice(1).split('.')[0]);
+  const nodeOk = major >= REQUIRED_NODE_MAJOR;
+
+  if (!nodeOk) {
+    warnings.push(
+      `Node.js ${version} detected — v${String(REQUIRED_NODE_MAJOR)}.x+ required. Some features may not work.`
+    );
+  }
+
+  const status = nodeOk ? 'success' : 'warning';
+  const message = nodeOk
+    ? `Node.js ${version} (meets v${String(REQUIRED_NODE_MAJOR)}.x requirement)`
+    : `Node.js ${version} — v${String(REQUIRED_NODE_MAJOR)}.x+ required`;
+
+  return {
+    step: {
+      name: 'Prerequisite Check',
+      status,
+      message,
+      durationMs: time.now() - startTime,
+    },
+    warnings,
+  };
+}
+
 /** MCP step result type. */
 type McpStepResult = {
   step: SetupStep;
@@ -635,30 +673,35 @@ export function runSetup(options: Partial<SetupOptions> = {}): SetupResult {
   const { env, step: detectionStep } = runDetectionStep(projectRoot);
   addClaudeCliWarnings(warnings, env.claudeCli.installed);
 
-  // Step 2: MCP Configuration
+  // Step 2: Prerequisite Validation
+  const { step: prereqStep, warnings: prereqWarnings } = runPrerequisiteStep();
+  warnings.push(...prereqWarnings);
+
+  // Step 3: MCP Configuration
   const { step: mcpStep, snippet, mcpResult } = runMcpConfigStep(env, parsedOptions);
 
-  // Step 3: Rules File
+  // Step 4: Rules File
   const { step: rulesStep, rulesPath } = runRulesStep(env, parsedOptions);
 
-  // Step 4: Hooks Configuration (Issue #416)
+  // Step 5: Hooks Configuration (Issue #416)
   const { step: hooksStep, hookSnippet, hookResult } = runHooksStep(env, parsedOptions);
 
-  // Step 5: Data Directory Initialization (#1249)
+  // Step 6: Data Directory Initialization (#1249)
   const { step: dataDirStep, result: dataDirResult } = runDataDirStep(parsedOptions);
 
-  // Step 6: OpenCode MCP Configuration (#1253)
+  // Step 7: OpenCode MCP Configuration (#1253)
   const openCodeStep = runOpenCodeStep(parsedOptions);
 
-  // Step 7: Gemini MCP Configuration (#1259)
+  // Step 8: Gemini MCP Configuration (#1259)
   const geminiStep = runGeminiStep(parsedOptions);
 
-  // Step 8: Codex MCP Configuration (#1263)
+  // Step 9: Codex MCP Configuration (#1263)
   const codexStep = runCodexStep(parsedOptions);
 
-  const configStep = runConfigStep(projectRoot, parsedOptions); // Step 9
+  const configStep = runConfigStep(projectRoot, parsedOptions); // Step 10
   const steps = [
     detectionStep,
+    prereqStep,
     mcpStep,
     rulesStep,
     hooksStep,
@@ -668,7 +711,7 @@ export function runSetup(options: Partial<SetupOptions> = {}): SetupResult {
     codexStep,
     configStep,
   ];
-  steps.push(runValidationStep(steps)); // Step 10: Validation (#1271)
+  steps.push(runValidationStep(steps)); // Step 11: Validation (#1271)
 
   return buildSetupResult({
     startTime,

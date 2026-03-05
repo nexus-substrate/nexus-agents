@@ -364,4 +364,24 @@ export const FEATURE_GATE_INVENTORY: readonly FeatureGate[] = [
     defaultValue: 'false',
     description: 'Allow mock orchestration (test/CI)',
   },
+  {
+    envVar: 'NEXUS_MAX_CONCURRENT_EXPERTS',
+    defaultValue: '6',
+    description: 'Expert pool semaphore capacity',
+  },
+  {
+    envVar: 'NEXUS_VOTE_TIMEOUT_MS',
+    defaultValue: '60000',
+    description: 'Consensus vote timeout override',
+  },
+  {
+    envVar: 'NEXUS_EXPERT_TIMEOUT_MS',
+    defaultValue: '120000',
+    description: 'Expert handler timeout override',
+  },
+  {
+    envVar: 'NEXUS_WORKER_TIMEOUT_MS',
+    defaultValue: '60000',
+    description: 'Worker subprocess timeout override',
+  },
 ];

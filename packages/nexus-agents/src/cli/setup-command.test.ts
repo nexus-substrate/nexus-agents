@@ -440,6 +440,21 @@ describe('Setup Command', () => {
     });
   });
 
+  describe('prerequisite check step', () => {
+    it('should include prerequisite check in steps', () => {
+      const result = runSetup({ dryRun: true });
+      const prereqStep = result.steps.find((s) => s.name === 'Prerequisite Check');
+      expect(prereqStep).toBeDefined();
+      expect(prereqStep?.status).toBe('success');
+    });
+
+    it('should validate Node.js version', () => {
+      const result = runSetup({ dryRun: true });
+      const prereqStep = result.steps.find((s) => s.name === 'Prerequisite Check');
+      expect(prereqStep?.message).toContain('Node.js');
+    });
+  });
+
   describe('validation step (#1271)', () => {
     it('should include validation as final step', () => {
       const result = runSetup({ dryRun: true });
