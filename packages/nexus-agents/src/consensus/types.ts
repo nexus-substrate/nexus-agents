@@ -41,6 +41,10 @@ export {
   RejectionCategorySchema,
   type RejectionCategory,
   REJECTION_CATEGORIES,
+  // Incremental quorum (Issue #1408)
+  type IncrementalQuorumConfig,
+  DEFAULT_INCREMENTAL_QUORUM_CONFIG,
+  type VoterExpansionCallback,
 } from './types-core.js';
 
 // Multi-round voting protocol types (Issue #100)

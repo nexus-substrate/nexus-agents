@@ -26,6 +26,9 @@ export type {
   ConsensusMetrics,
   // Rejection categories (Issue #1213)
   RejectionCategory,
+  // Incremental quorum (Issue #1408)
+  IncrementalQuorumConfig,
+  VoterExpansionCallback,
 } from './types.js';
 
 export {
@@ -43,7 +46,12 @@ export {
   // Rejection categories (Issue #1213)
   RejectionCategorySchema,
   REJECTION_CATEGORIES,
+  // Incremental quorum (Issue #1408)
+  DEFAULT_INCREMENTAL_QUORUM_CONFIG,
 } from './types.js';
+
+// Incremental quorum (Issue #1408)
+export { isVotingAmbiguous, type AmbiguityParams } from './incremental-quorum.js';
 
 // Voting strategies
 export type { IVotingStrategy, VotingOutcome } from './strategies.js';

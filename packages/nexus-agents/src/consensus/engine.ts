@@ -21,16 +21,20 @@ import type {
   ProposalState,
   ConsensusMetrics,
   ProposalCacheConfig,
+  IncrementalQuorumConfig,
+  VoterExpansionCallback,
 } from './types.js';
 import {
   ProposalSchema,
   VoteSchema,
   DEFAULT_CONSENSUS_CONFIG,
   VOTING_THRESHOLDS,
+  DEFAULT_INCREMENTAL_QUORUM_CONFIG,
 } from './types.js';
 import { VotingStrategyFactory, calculateVoteWeight, type VotingOutcome } from './strategies.js';
 import { buildFinalResult, buildTimeoutResult, buildPendingResult } from './result-builder.js';
 import { generateProposalId } from './helpers.js';
+import { isVotingAmbiguous } from './incremental-quorum.js';
 
 /**
  * Error class for consensus-related failures.
@@ -110,15 +114,26 @@ export class ConsensusEngine implements IConsensusEngine {
   private readonly strategyFactory: VotingStrategyFactory;
   private readonly config: ConsensusEngineConfig;
   private readonly cacheConfig: ProposalCacheConfig;
+  private readonly quorumConfig: IncrementalQuorumConfig;
   private readonly logger: ILogger;
   private readonly metrics: InternalMetrics;
+  private voterExpansionCallback?: VoterExpansionCallback;
 
   constructor(config?: Partial<ConsensusEngineConfig>, logger?: ILogger) {
     this.config = { ...DEFAULT_CONSENSUS_CONFIG, ...config };
     this.cacheConfig = { ...DEFAULT_PROPOSAL_CACHE_CONFIG, ...config?.proposalCache };
+    this.quorumConfig = { ...DEFAULT_INCREMENTAL_QUORUM_CONFIG, ...config?.incrementalQuorum };
     this.logger = logger ?? createLogger({ component: 'ConsensusEngine' });
     this.strategyFactory = new VotingStrategyFactory();
     this.metrics = this.createInitialMetrics();
+  }
+
+  /**
+   * Sets the callback for incremental quorum voter expansion (Issue #1408).
+   * When ambiguous votes are detected, this callback requests additional voters.
+   */
+  setVoterExpansionCallback(callback: VoterExpansionCallback): void {
+    this.voterExpansionCallback = callback;
   }
 
   propose(proposal: Proposal): Promise<Result<ProposalId, ConsensusError>> {
@@ -162,25 +177,36 @@ export class ConsensusEngine implements IConsensusEngine {
     return Promise.resolve(ok(proposalId));
   }
 
-  vote(proposalId: ProposalId, agentId: string, vote: Vote): Promise<Result<void, ConsensusError>> {
+  async vote(
+    proposalId: ProposalId,
+    agentId: string,
+    vote: Vote
+  ): Promise<Result<void, ConsensusError>> {
     const validationErr = this.validateVote(vote);
-    if (validationErr !== undefined) return Promise.resolve(err(validationErr));
+    if (validationErr !== undefined) return err(validationErr);
 
     const stateErr = this.validateProposalState(proposalId);
-    if (stateErr !== undefined) return Promise.resolve(err(stateErr));
+    if (stateErr !== undefined) return err(stateErr);
 
     const state = this.proposals.get(proposalId);
     if (state === undefined) {
-      return Promise.resolve(err(new ConsensusError(`Proposal ${proposalId} not found`)));
+      return err(new ConsensusError(`Proposal ${proposalId} not found`));
     }
 
     this.recordVote(state, agentId, vote);
 
-    // Close if all required voters have voted OR if agreement-based cascade triggers
-    if (this.allRequiredVotersVoted(state) || this.canCascadeEarly(state)) {
-      return this.closeInternal(proposalId).then((result) =>
-        result.ok ? ok(undefined) : err(result.error)
-      );
+    // Agreement-based cascade always takes priority
+    if (this.canCascadeEarly(state)) {
+      return this.closeInternal(proposalId).then((r) => (r.ok ? ok(undefined) : err(r.error)));
+    }
+
+    // All required voters voted — check for incremental quorum expansion
+    if (this.allRequiredVotersVoted(state)) {
+      const expanded = await this.tryExpandQuorum(proposalId, state);
+      if (!expanded) {
+        return this.closeInternal(proposalId).then((r) => (r.ok ? ok(undefined) : err(r.error)));
+      }
+      // Expansion succeeded — wait for new voters
     }
 
     return Promise.resolve(ok(undefined));
@@ -461,6 +487,53 @@ export class ConsensusEngine implements IConsensusEngine {
     const required = state.proposal.requiredVoters;
     if (required === undefined || required.length === 0) return false;
     return required.every((voterId) => state.votes.has(voterId));
+  }
+
+  /**
+   * Attempts incremental quorum expansion when voting is ambiguous (Issue #1408).
+   * Returns true if expansion occurred (wait for new voters), false to close immediately.
+   */
+  private async tryExpandQuorum(proposalId: ProposalId, state: ProposalState): Promise<boolean> {
+    if (!this.quorumConfig.enabled) return false;
+    if (this.voterExpansionCallback === undefined) return false;
+
+    const rounds = state.expansionRounds ?? 0;
+    if (rounds >= this.quorumConfig.maxExpansionRounds) return false;
+
+    const required = state.proposal.requiredVoters;
+    if (required === undefined) return false;
+
+    const threshold = VOTING_THRESHOLDS[state.proposal.algorithm];
+    const ambiguous = isVotingAmbiguous(state.votes, required.length, threshold, {
+      confidenceThreshold: this.quorumConfig.confidenceThreshold,
+      ambiguityBand: this.quorumConfig.ambiguityBand,
+    });
+
+    if (!ambiguous) return false;
+
+    const newVoters = await this.voterExpansionCallback(
+      proposalId,
+      required.length,
+      this.quorumConfig.votersPerExpansion
+    );
+
+    if (newVoters.length === 0) {
+      this.logger.info('Incremental quorum: no additional voters available', { proposalId });
+      return false;
+    }
+
+    // Expand the required voters list
+    state.proposal.requiredVoters = [...required, ...newVoters];
+    state.expansionRounds = rounds + 1;
+
+    this.logger.info('Incremental quorum: expanded voter pool', {
+      proposalId,
+      round: rounds + 1,
+      newVoters: newVoters.length,
+      totalVoters: state.proposal.requiredVoters.length,
+    });
+
+    return true;
   }
 
   private updateMetrics(result: ConsensusResult): void {

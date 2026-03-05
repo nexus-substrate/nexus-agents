@@ -201,6 +201,44 @@ export interface ProposalCacheConfig {
 }
 
 /**
+ * Incremental quorum configuration (Issue #1408).
+ * When enabled, ambiguous votes trigger voter pool expansion.
+ */
+export interface IncrementalQuorumConfig {
+  /** Enable incremental quorum expansion. Default: false */
+  enabled: boolean;
+  /** Maximum expansion rounds (5→7→9). Default: 2 */
+  maxExpansionRounds: number;
+  /** Voters to add per expansion round. Default: 2 */
+  votersPerExpansion: number;
+  /** Minimum average confidence to avoid expansion. Default: 0.6 */
+  confidenceThreshold: number;
+  /** Ambiguity band: if approval rate is within this of threshold, expand. Default: 0.15 */
+  ambiguityBand: number;
+}
+
+/**
+ * Default incremental quorum configuration.
+ */
+export const DEFAULT_INCREMENTAL_QUORUM_CONFIG: IncrementalQuorumConfig = {
+  enabled: false,
+  maxExpansionRounds: 2,
+  votersPerExpansion: 2,
+  confidenceThreshold: 0.6,
+  ambiguityBand: 0.15,
+};
+
+/**
+ * Callback to request additional voters for incremental quorum.
+ * Returns the IDs of newly added voters.
+ */
+export type VoterExpansionCallback = (
+  proposalId: ProposalId,
+  currentVoterCount: number,
+  requestedCount: number
+) => Promise<readonly string[]>;
+
+/**
  * Consensus engine configuration.
  */
 export interface ConsensusEngineConfig {
@@ -212,6 +250,8 @@ export interface ConsensusEngineConfig {
   maxClosedProposals: number;
   /** Content-based proposal caching for determinism (Issue #589) */
   proposalCache?: ProposalCacheConfig;
+  /** Incremental quorum configuration (Issue #1408) */
+  incrementalQuorum?: IncrementalQuorumConfig;
 }
 
 /**
@@ -267,6 +307,8 @@ export interface ProposalState {
   voteWeights: Map<string, number>;
   startedAt: Date;
   timeoutId?: ReturnType<typeof setTimeout>;
+  /** Number of incremental quorum expansions applied (Issue #1408). */
+  expansionRounds?: number;
 }
 
 /**
