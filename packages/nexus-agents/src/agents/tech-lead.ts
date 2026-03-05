@@ -455,7 +455,7 @@ export class Orchestrator extends BaseAgent {
   ): Result<T, AgentError> {
     try {
       let jsonText = text;
-      const match = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+      const match = text.match(/```(?:json)?[ \t\n]*([\s\S]*?)```/);
       if (match?.[1] !== undefined) jsonText = match[1];
 
       const parsed = JSON.parse(jsonText) as unknown;

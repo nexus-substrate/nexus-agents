@@ -37,7 +37,7 @@ export function isPathSafe(targetPath: string, allowedPaths: readonly string[]):
  */
 export function normalizePath(p: string): string {
   // Remove trailing slashes
-  let normalized = p.replace(/\/+$/, '');
+  let normalized = p.replace(/\/{1,100}$/, '');
 
   // Handle relative paths
   if (normalized === '.') {

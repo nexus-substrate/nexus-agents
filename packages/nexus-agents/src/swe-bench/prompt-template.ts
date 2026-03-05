@@ -153,7 +153,7 @@ export function validatePatchFormat(patch: string): { valid: boolean; error?: st
   }
 
   // Check for hunk headers
-  const hasHunkHeader = /@@ -\d+,?\d* \+\d+,?\d* @@/.test(patch);
+  const hasHunkHeader = /@@ -\d+(?:,\d*)? \+\d+(?:,\d*)? @@/.test(patch);
   if (!hasHunkHeader) {
     return { valid: false, error: 'Missing hunk header (@@)' };
   }

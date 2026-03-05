@@ -110,7 +110,7 @@ export function recordOutcome(
 }
 
 /** Regex to extract instance IDs from learning patterns. */
-const INSTANCE_ID_RE = /Instance ([\w/._-]+__[\w._-]+-\d+)/;
+const INSTANCE_ID_RE = /Instance ([\w/.,-]{1,200}__[\w.,-]{1,200}-\d+)/;
 
 /**
  * Extract past success rates from memory learnings.

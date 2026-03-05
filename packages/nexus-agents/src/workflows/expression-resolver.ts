@@ -35,7 +35,7 @@ import { getErrorMessage } from '../core/index.js';
  * Regular expression to match ${{ expression }} patterns.
  * Captures the expression content between ${{ and }}.
  */
-const EXPRESSION_PATTERN = /\$\{\{\s*([^}]+)\s*\}\}/g;
+const EXPRESSION_PATTERN = /\$\{\{\s*([^}]+)\}\}/g;
 
 /**
  * Parses an expression string into its components.
@@ -113,7 +113,7 @@ export function resolveStringExpressions(
   EXPRESSION_PATTERN.lastIndex = 0;
 
   // Check if the entire value is a single expression
-  const fullMatch = value.match(/^\$\{\{\s*([^}]+)\s*\}\}$/);
+  const fullMatch = value.match(/^\$\{\{\s*([^}]+)\}\}$/);
   if (fullMatch?.[1] !== undefined) {
     return resolveSingleExpression(fullMatch[1], context, parseExpression, resolveExpression);
   }

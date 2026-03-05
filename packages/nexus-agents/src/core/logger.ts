@@ -56,18 +56,18 @@ const SECRET_PATTERNS = [
   // Bearer tokens
   /Bearer [a-zA-Z0-9-_.]+/g,
   // Generic credential patterns
-  /password["']?\s*[:=]\s*["']?[^"'\s]+/gi,
-  /api[_-]?key["']?\s*[:=]\s*["']?[^"'\s]+/gi,
-  /secret["']?\s*[:=]\s*["']?[^"'\s]+/gi,
-  /token["']?\s*[:=]\s*["']?[^"'\s]+/gi,
+  /password["']?[ \t]*[:=][ \t]*["']?[^"'\s]+/gi,
+  /api[_-]?key["']?[ \t]*[:=][ \t]*["']?[^"'\s]+/gi,
+  /secret["']?[ \t]*[:=][ \t]*["']?[^"'\s]+/gi,
+  /token["']?[ \t]*[:=][ \t]*["']?[^"'\s]+/gi,
   // AWS credentials
   /AKIA[0-9A-Z]{16}/g,
-  /aws_secret_access_key["']?\s*[:=]\s*["']?[^"'\s]+/gi,
-  /aws_session_token["']?\s*[:=]\s*["']?[^"'\s]+/gi,
+  /aws_secret_access_key["']?[ \t]*[:=][ \t]*["']?[^"'\s]+/gi,
+  /aws_session_token["']?[ \t]*[:=][ \t]*["']?[^"'\s]+/gi,
   // Azure credentials
   /AccountKey=[a-zA-Z0-9+/=]+/gi,
   /SharedAccessSignature=[a-zA-Z0-9%]+/gi,
-  /DefaultEndpointsProtocol=https?;AccountName=[^;]+;AccountKey=[^;]+/gi,
+  /DefaultEndpointsProtocol=https?;AccountName=[^;]{1,256};AccountKey=[^;]{1,256}/gi,
   // GCP credentials
   /"private_key":\s*"-----BEGIN[^"]+-----END[^"]+-----"/g,
   /"private_key_id":\s*"[a-f0-9]+"/gi,

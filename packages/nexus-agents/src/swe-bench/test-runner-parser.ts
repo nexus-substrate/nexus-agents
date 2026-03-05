@@ -141,9 +141,7 @@ export function parseJsonResults(
  */
 export function parseStdoutResults(output: string, durationMs: number): TestSuiteResult {
   // Parse pytest-style summary line: "X passed, Y failed, Z skipped"
-  const summaryMatch = output.match(
-    /(\d+)\s+passed(?:,\s*(\d+)\s+failed)?(?:,\s*(\d+)\s+skipped)?/
-  );
+  const summaryMatch = output.match(/(\d+) +passed(?:, *(\d+) +failed)?(?:, *(\d+) +skipped)?/);
 
   let passed = 0;
   let failed = 0;

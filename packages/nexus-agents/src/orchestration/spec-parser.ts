@@ -25,7 +25,7 @@ const ISSUE_REF_PATTERN = /(?:^|[^&])#(\d+)/g;
 const FILE_REF_PATTERN = /`([a-zA-Z0-9_./-]+\.[a-zA-Z]+(?::(\d+))?)`/g;
 
 /** Section heading pattern: ## Section Name or # Section Name */
-const HEADING_PATTERN = /^(#{1,3})\s+(.+)$/;
+const HEADING_PATTERN = /^(#{1,3})\s+(\S[^\n]{0,500})$/;
 
 /**
  * Parses a markdown specification into a typed ParsedSpec structure.
@@ -132,7 +132,7 @@ function extractListItems(sections: Map<string, string[]>, keys: string[]): stri
     for (const line of content) {
       const trimmed = line.trim();
       // Match: - item, * item, - [ ] item, - [x] item, 1. item
-      const listMatch = /^(?:[-*]|\d+\.)\s+(?:\[[ x]]\s+)?(.+)$/.exec(trimmed);
+      const listMatch = /^(?:[-*]|\d+\.)\s+(?:\[[ x]]\s+)?(\S[^\n]{0,500})$/.exec(trimmed);
       if (listMatch?.[1] !== undefined) {
         items.push(listMatch[1].trim());
       }
