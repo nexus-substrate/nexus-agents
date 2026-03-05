@@ -21,9 +21,39 @@ import {
   getCliModelName,
   buildModelInfo,
 } from '../../config/model-config-helpers.js';
+import { DEFAULT_MODEL_CAPABILITIES } from '../../config/model-capabilities.js';
 
 /** Strict allowlist for OpenCode --variant flag values. */
 const ALLOWED_VARIANTS = ['high', 'max', 'minimal'];
+
+/**
+ * Maps internal model names to OpenCode CLI --model values.
+ * OpenCode uses `provider/model-name` format (e.g., `anthropic/claude-sonnet-4-6`).
+ * Built from canonical registry + common alias fallbacks (#1402).
+ */
+const MODEL_TO_CLI_NAME: Record<string, string> = buildOpenCodeAliasMap();
+
+function buildOpenCodeAliasMap(): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const model of DEFAULT_MODEL_CAPABILITIES.models) {
+    if (model.cliName === 'opencode' && model.cliModelName !== undefined) {
+      // Map internal ID → CLI model name
+      map[model.id] = model.cliModelName;
+      // Map CLI alias → CLI model name
+      if (model.cliAlias !== undefined) {
+        map[model.cliAlias] = model.cliModelName;
+      }
+      // Pass through cliModelName itself
+      map[model.cliModelName] = model.cliModelName;
+    }
+  }
+  return map;
+}
+
+/** Resolves an internal model name to OpenCode CLI format. */
+function resolveOpenCodeModel(model: string): string {
+  return MODEL_TO_CLI_NAME[model] ?? model;
+}
 
 /**
  * OpenCode CLI adapter using subprocess transport.
@@ -64,9 +94,9 @@ export class OpenCodeCliAdapter extends SubprocessCliAdapter {
   protected getCommand(task: CliTask): CommandConfig {
     const args: string[] = ['run', '--format', 'json'];
 
-    // Add model selection
+    // Add model selection — resolve internal names to OpenCode CLI format (#1402)
     const internalModel = task.model ?? this.model;
-    args.push('--model', internalModel);
+    args.push('--model', resolveOpenCodeModel(internalModel));
 
     // Add working directory if specified
     const workDir = task.options?.['workDir'];

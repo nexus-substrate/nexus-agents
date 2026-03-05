@@ -190,6 +190,29 @@ describe('OpenCodeCliAdapter', () => {
       expect(args).toContain('google/gemini-2.5-flash');
     });
 
+    it('should resolve internal model names to CLI format (#1402)', async () => {
+      const ndjsonResponse = [
+        JSON.stringify({ type: 'message.delta', content: 'Done!' }),
+        JSON.stringify({ type: 'session.complete' }),
+      ].join('\n');
+      const mockProcess = createMockProcess(ndjsonResponse);
+      vi.mocked(spawn).mockReturnValue(mockProcess);
+
+      // 'opencode-default' is an internal ID, should resolve to CLI model name
+      const task: CliTask = {
+        content: 'Resolve model',
+        model: 'opencode-default',
+      };
+      await adapter.execute(task);
+
+      const calls = vi.mocked(spawn).mock.calls;
+      const args = calls[0]?.[1] as string[];
+      expect(args).toContain('--model');
+      // Should resolve to the cliModelName, not the raw internal ID
+      expect(args).toContain(EXPECTED_DEFAULT_ID);
+      expect(args).not.toContain('opencode-default');
+    });
+
     it('should include --dir when workDir is provided', async () => {
       const ndjsonResponse = [
         JSON.stringify({ type: 'message.delta', content: 'Done!' }),
@@ -345,8 +368,22 @@ describe('OpenCodeCliAdapter', () => {
       }
     });
 
-    it('should handle parse errors gracefully', async () => {
+    it('should fall back to plaintext for non-JSON output (#1402)', async () => {
       const mockProcess = createMockProcess('not valid json at all', '', 0);
+      vi.mocked(spawn).mockReturnValue(mockProcess);
+
+      const task: CliTask = { content: 'Test' };
+      const result = await adapter.execute(task);
+
+      // Plaintext fallback returns success with raw text content
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.text).toBe('not valid json at all');
+      }
+    });
+
+    it('should return PARSE_ERROR for very short output', async () => {
+      const mockProcess = createMockProcess('hi', '', 0);
       vi.mocked(spawn).mockReturnValue(mockProcess);
 
       const task: CliTask = { content: 'Test' };
