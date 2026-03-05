@@ -18,6 +18,10 @@ export const RepoAnalyzeInputSchema = z.object({
   repo: z
     .string()
     .min(1)
+    .refine(
+      (v) => !v.includes('://') || /^https?:\/\//i.test(v),
+      'Only HTTP/HTTPS URLs are allowed'
+    )
     .describe('GitHub repository in "owner/name" format (e.g., "cloudfoundry/korifi") or full URL'),
   /** Analysis depth: shallow (tree + README) or deep (full analysis). */
   depth: z

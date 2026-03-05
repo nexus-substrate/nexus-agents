@@ -33,6 +33,7 @@ export const IssueTriageInputSchema = z.object({
   issueUrl: z
     .string()
     .min(1)
+    .refine((v) => /^https?:\/\//i.test(v), 'Only HTTP/HTTPS URLs are allowed')
     .describe('GitHub issue URL (e.g., https://github.com/owner/repo/issues/123)'),
   dryRun: z
     .boolean()

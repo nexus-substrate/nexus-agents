@@ -42,6 +42,12 @@ export interface IterationState {
 /** Git subprocess timeout (120s for large repos). */
 const GIT_TIMEOUT_MS = 120_000;
 
+/** Validates a git commit hash (hex, 7-40 chars). */
+const SAFE_COMMIT_RE = /^[0-9a-f]{7,40}$/i;
+
+/** Validates a GitHub repo slug (owner/name). */
+const SAFE_REPO_RE = /^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/;
+
 type ExecFn = (
   cmd: string,
   opts?: { cwd?: string; timeout?: number }
@@ -80,6 +86,13 @@ export async function cloneRepository(
   const childProcess = await import('node:child_process');
   const { promisify } = await import('node:util');
   const exec = promisify(childProcess.exec);
+
+  if (!SAFE_REPO_RE.test(repo)) {
+    return { ok: false, error: new AgentRunnerError(`Invalid repo slug: ${repo}`) };
+  }
+  if (!SAFE_COMMIT_RE.test(commit)) {
+    return { ok: false, error: new AgentRunnerError(`Invalid commit hash: ${commit}`) };
+  }
 
   const repoDir = path.join(workDir, repo.replaceAll('/', '__'));
 
