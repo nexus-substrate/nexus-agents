@@ -68,6 +68,9 @@ export interface RandomProviderConfig {
 
 const CHARS = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
+/** Largest multiple of CHARS.length that fits in a byte (252 = 36 * 7). */
+const UNBIASED_LIMIT = CHARS.length * Math.floor(256 / CHARS.length);
+
 /**
  * System random provider using crypto.randomBytes().
  * Cryptographically secure, non-deterministic.
@@ -75,7 +78,12 @@ const CHARS = 'abcdefghijklmnopqrstuvwxyz0123456789';
 export class SystemRandomProvider implements IRandomProvider {
   random(): number {
     const buf = randomBytes(4);
-    return buf.readUInt32BE(0) / 0x100000000;
+    // Uniform: 2^32 values mapped to [0,1) via division by 2^32
+    const b0 = buf[0] ?? 0;
+    const b1 = buf[1] ?? 0;
+    const b2 = buf[2] ?? 0;
+    const b3 = buf[3] ?? 0;
+    return (b0 * 0x1000000 + b1 * 0x10000 + b2 * 0x100 + b3) / 0x100000000;
   }
 
   randomInt(min: number, max: number): number {
@@ -84,11 +92,18 @@ export class SystemRandomProvider implements IRandomProvider {
 
   randomString(length: number): string {
     if (length === 0) return '';
-    const bytes = randomBytes(length);
     let result = '';
-    for (let i = 0; i < length; i++) {
-      const idx = (bytes[i] ?? 0) % CHARS.length;
-      result += CHARS[idx] ?? '';
+    while (result.length < length) {
+      // Over-provision to reduce iterations (most bytes pass)
+      const needed = length - result.length;
+      const bytes = randomBytes(needed + 4);
+      for (let i = 0; i < bytes.length && result.length < length; i++) {
+        const b = bytes[i] ?? 0;
+        // Rejection sampling: discard bytes >= UNBIASED_LIMIT to eliminate modulo bias
+        if (b < UNBIASED_LIMIT) {
+          result += CHARS[b % CHARS.length] ?? '';
+        }
+      }
     }
     return result;
   }
