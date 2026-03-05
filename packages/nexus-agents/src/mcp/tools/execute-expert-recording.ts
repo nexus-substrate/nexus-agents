@@ -15,6 +15,7 @@ import {
   categorizeOutcomeErrorMessage,
 } from '../../orchestration/outcomes/index.js';
 import { detectTaskCategory } from '../../config/task-specialization.js';
+import type { TaskCategory } from '../../config/task-specialization-types.js';
 import { DEFAULT_CLI } from '../../config/model-capabilities-types.js';
 import { getToolMemory } from './tool-memory.js';
 import { getAutoCatalog } from './research-auto-catalog.js';
@@ -25,7 +26,7 @@ import type { ILogger } from '../../core/index.js';
 // ============================================================================
 
 /** Maps expert role names to task categories for accurate outcome attribution. */
-const ROLE_TO_CATEGORY: Readonly<Record<string, string>> = {
+const ROLE_TO_CATEGORY: Readonly<Record<string, TaskCategory>> = {
   code_expert: 'code_generation',
   architecture_expert: 'architecture',
   security_expert: 'security_review',
