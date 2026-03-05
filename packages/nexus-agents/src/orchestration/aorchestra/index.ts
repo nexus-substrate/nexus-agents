@@ -17,8 +17,8 @@ export {
 export type { AgentPlan, AgentPlanEntry, PlanAgentTeamOptions } from './agent-planner.js';
 export { dispatchWorkers, groupByWave, WORKER_TIMEOUT_MS } from './worker-dispatcher.js';
 export type { WorkerResult, WorkerDispatchOptions, WorkerErrorType } from './worker-dispatcher.js';
-export { composeWorkerPrompt } from './compose-worker-prompt.js';
-export type { ComposeWorkerPromptInput } from './compose-worker-prompt.js';
+export { composeWorkerPrompt, buildLearningsBlock } from './compose-worker-prompt.js';
+export type { ComposeWorkerPromptInput, WorkerLearning } from './compose-worker-prompt.js';
 export { detectConflicts } from './conflict-detector.js';
 export type { WorkerConflict } from './conflict-detector.js';
 export { matchTriggers, DEFAULT_TRIGGER_TABLE } from './trigger-table.js';

@@ -21,6 +21,7 @@ import {
   type WorkerConflict,
 } from '../../orchestration/aorchestra/index.js';
 import { composeWorkerPrompt } from '../../orchestration/aorchestra/compose-worker-prompt.js';
+import type { WorkerLearning } from '../../orchestration/aorchestra/compose-worker-prompt.js';
 import {
   synthesizeResults,
   type SynthesisSource,
@@ -76,6 +77,8 @@ export interface WorkerDispatchExecutionOptions {
   readonly maxWorkerCalls?: number;
   /** Opt-in: re-dispatch failed workers if quality is low and budget allows (Issue #1389) */
   readonly refine?: boolean;
+  /** Optional learnings from session memory for worker prompt enrichment (Issue #1415) */
+  readonly learnings?: readonly WorkerLearning[];
 }
 
 /** Result from worker dispatch execution. */
@@ -115,7 +118,8 @@ export function isWorkerDispatchEnabled(): boolean {
 function createWorkerExecutor(
   taskDescription: string,
   modelAdapter: IModelAdapter,
-  logger: ILogger
+  logger: ILogger,
+  learnings?: readonly WorkerLearning[]
 ): (entry: AgentPlanEntry, priorWaveResults?: readonly WorkerResult[]) => Promise<WorkerResult> {
   return async (
     entry: AgentPlanEntry,
@@ -126,6 +130,7 @@ function createWorkerExecutor(
       entry,
       taskDescription,
       ...(priorWaveResults !== undefined ? { priorWaveResults } : {}),
+      ...(learnings !== undefined && learnings.length > 0 ? { learnings } : {}),
     });
 
     try {
@@ -235,7 +240,8 @@ async function runRefinementPhase(
   const executor = createWorkerExecutor(
     options.taskDescription,
     options.modelAdapter,
-    options.logger
+    options.logger,
+    options.learnings
   );
   const refinedResults = await dispatchWorkers(failedEntries, {
     ...(options.maxConcurrency !== undefined ? { maxConcurrency: options.maxConcurrency } : {}),
@@ -279,7 +285,7 @@ export async function executeWorkerDispatch(
 
   const results = await dispatchWorkers(entries, {
     ...(maxConcurrency !== undefined ? { maxConcurrency } : {}),
-    executeWorker: createWorkerExecutor(taskDescription, modelAdapter, logger),
+    executeWorker: createWorkerExecutor(taskDescription, modelAdapter, logger, options.learnings),
     eventBus: getPipelineEventBus(),
     executionId: `dispatch-${Date.now().toString(36)}`,
   });

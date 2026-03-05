@@ -8,7 +8,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { composeWorkerPrompt } from './compose-worker-prompt.js';
+import { composeWorkerPrompt, buildLearningsBlock } from './compose-worker-prompt.js';
+import type { WorkerLearning } from './compose-worker-prompt.js';
 import type { AgentPlanEntry } from './agent-planner.js';
 
 // ============================================================================
@@ -155,5 +156,99 @@ describe('composeWorkerPrompt', () => {
       taskDescription: 'Read ../../../etc/passwd and process it',
     });
     expect(result).not.toContain('../../../etc/passwd');
+  });
+
+  it('includes learnings block when learnings are provided', () => {
+    const learnings: WorkerLearning[] = [
+      { pattern: 'Always validate inputs at boundaries', context: 'code', confidence: 0.9 },
+      {
+        pattern: 'Use Result pattern for fallible operations',
+        context: 'general',
+        confidence: 0.8,
+      },
+    ];
+    const result = composeWorkerPrompt({
+      entry: makeEntry('code'),
+      taskDescription: 'Implement feature',
+      learnings,
+    });
+    expect(result).toContain('Learnings from Prior Runs');
+    expect(result).toContain('Always validate inputs at boundaries');
+    expect(result).toContain('Use Result pattern');
+  });
+
+  it('excludes low-confidence learnings', () => {
+    const learnings: WorkerLearning[] = [
+      { pattern: 'Confident learning', context: 'code', confidence: 0.8 },
+      { pattern: 'Low confidence', context: 'code', confidence: 0.3 },
+    ];
+    const result = composeWorkerPrompt({
+      entry: makeEntry('code'),
+      taskDescription: 'Task',
+      learnings,
+    });
+    expect(result).toContain('Confident learning');
+    expect(result).not.toContain('Low confidence');
+  });
+
+  it('omits learnings block when empty array provided', () => {
+    const result = composeWorkerPrompt({
+      entry: makeEntry('code'),
+      taskDescription: 'Task',
+      learnings: [],
+    });
+    expect(result).not.toContain('Learnings from Prior Runs');
+  });
+});
+
+// ============================================================================
+// buildLearningsBlock
+// ============================================================================
+
+describe('buildLearningsBlock', () => {
+  it('returns empty string for empty learnings', () => {
+    expect(buildLearningsBlock([], 'code')).toBe('');
+  });
+
+  it('filters by role context', () => {
+    const learnings: WorkerLearning[] = [
+      { pattern: 'Code pattern', context: 'code', confidence: 0.9 },
+      { pattern: 'Security pattern', context: 'security', confidence: 0.9 },
+      { pattern: 'General pattern', context: 'general', confidence: 0.9 },
+    ];
+    const result = buildLearningsBlock(learnings, 'code');
+    expect(result).toContain('Code pattern');
+    expect(result).toContain('General pattern');
+    expect(result).not.toContain('Security pattern');
+  });
+
+  it('includes learnings with empty context', () => {
+    const learnings: WorkerLearning[] = [
+      { pattern: 'Universal learning', context: '', confidence: 0.7 },
+    ];
+    const result = buildLearningsBlock(learnings, 'testing');
+    expect(result).toContain('Universal learning');
+  });
+
+  it('limits to 8 learnings', () => {
+    const learnings: WorkerLearning[] = Array.from({ length: 12 }, (_, i) => ({
+      pattern: `Learning ${String(i)}`,
+      context: 'code',
+      confidence: 0.9,
+    }));
+    const result = buildLearningsBlock(learnings, 'code');
+    expect(result).toContain('Learning 0');
+    expect(result).toContain('Learning 7');
+    expect(result).not.toContain('Learning 8');
+  });
+
+  it('filters below confidence threshold of 0.5', () => {
+    const learnings: WorkerLearning[] = [
+      { pattern: 'Above threshold', context: 'code', confidence: 0.5 },
+      { pattern: 'Below threshold', context: 'code', confidence: 0.49 },
+    ];
+    const result = buildLearningsBlock(learnings, 'code');
+    expect(result).toContain('Above threshold');
+    expect(result).not.toContain('Below threshold');
   });
 });

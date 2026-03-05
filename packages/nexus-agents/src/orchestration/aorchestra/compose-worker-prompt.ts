@@ -27,6 +27,19 @@ import { buildPriorWaveContextBlock } from './cross-wave-context.js';
 // ============================================================================
 
 /**
+ * A learning entry for worker prompt enrichment (Issue #1415).
+ * Compatible with SessionLearning but decoupled to avoid hard dependency.
+ */
+export interface WorkerLearning {
+  /** The pattern or technique learned */
+  readonly pattern: string;
+  /** Context where this learning applies */
+  readonly context: string;
+  /** Confidence in this learning (0-1) */
+  readonly confidence: number;
+}
+
+/**
  * Input for composing a worker prompt.
  */
 export interface ComposeWorkerPromptInput {
@@ -42,6 +55,8 @@ export interface ComposeWorkerPromptInput {
   readonly outputFormat?: string;
   /** Optional results from prior waves for cross-wave context (Issue #1308) */
   readonly priorWaveResults?: readonly WorkerResult[];
+  /** Optional learnings from session memory for prompt enrichment (Issue #1415) */
+  readonly learnings?: readonly WorkerLearning[];
 }
 
 // ============================================================================
@@ -63,9 +78,39 @@ const composer = new PromptComposer();
  * @param input - Worker prompt composition input
  * @returns Fully composed prompt string
  */
+/** Maximum learnings injected per worker prompt. */
+const MAX_LEARNINGS_PER_PROMPT = 8;
+
+/** Minimum confidence threshold for including a learning. */
+const MIN_LEARNING_CONFIDENCE = 0.5;
+
+/**
+ * Build a learnings block for prompt injection (Issue #1415).
+ *
+ * Filters by role context and confidence, then formats as a bullet list.
+ */
+export function buildLearningsBlock(learnings: readonly WorkerLearning[], role: string): string {
+  const relevant = learnings
+    .filter((l) => l.confidence >= MIN_LEARNING_CONFIDENCE)
+    .filter((l) => l.context === role || l.context === '' || l.context === 'general')
+    .slice(0, MAX_LEARNINGS_PER_PROMPT);
+
+  if (relevant.length === 0) return '';
+
+  const lines = relevant.map((l) => `- ${l.pattern}`).join('\n');
+  return `## Learnings from Prior Runs\n\n${lines}`;
+}
+
 export function composeWorkerPrompt(input: ComposeWorkerPromptInput): string {
-  const { entry, taskDescription, relevantFiles, maxOutputChars, outputFormat, priorWaveResults } =
-    input;
+  const {
+    entry,
+    taskDescription,
+    relevantFiles,
+    maxOutputChars,
+    outputFormat,
+    priorWaveResults,
+    learnings,
+  } = input;
 
   const basePrompt = BUILT_IN_EXPERTS[entry.role].systemPrompt;
 
@@ -78,15 +123,21 @@ export function composeWorkerPrompt(input: ComposeWorkerPromptInput): string {
       ? buildPriorWaveContextBlock(priorWaveResults)
       : '';
 
+  // Build learnings block (Issue #1415)
+  const learningsBlock =
+    learnings !== undefined && learnings.length > 0
+      ? buildLearningsBlock(learnings, entry.role)
+      : '';
+
   const taskContextLines = buildTaskContextBlock({
     taskDescription: `${sanitizedDesc}\n\nSub-task: ${sanitizedSubTask}`,
     taskType: entry.role,
     ...(relevantFiles !== undefined ? { relevantFiles: [...relevantFiles] } : {}),
   });
 
-  // Combine task context with prior wave context if available
-  const taskContext =
-    priorWaveBlock !== '' ? `${taskContextLines}\n\n${priorWaveBlock}` : taskContextLines;
+  // Combine task context with prior wave context and learnings
+  const contextParts = [taskContextLines, priorWaveBlock, learningsBlock].filter((p) => p !== '');
+  const taskContext = contextParts.join('\n\n');
 
   const outputConstraints = buildOutputConstraintsBlock({
     ...(maxOutputChars !== undefined ? { maxOutputChars } : {}),
