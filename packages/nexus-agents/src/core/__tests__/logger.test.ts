@@ -5,13 +5,12 @@
 
 import { describe, it, expect } from 'vitest';
 import { sanitize, sanitizeDeep } from '../logger.js';
+import { FAKE_OPENAI_KEY, FAKE_BEARER_TOKEN, FAKE_AWS_KEY_ID } from '../../testing/test-secrets.js';
 
 describe('Logger sanitize', () => {
   describe('API keys', () => {
     it('should redact OpenAI API keys', () => {
-      expect(sanitize('key: sk-abc123def456ghi789jkl012mno345pqr678stu901vwx234')).toBe(
-        'key: [REDACTED]'
-      );
+      expect(sanitize(`key: ${FAKE_OPENAI_KEY}`)).toBe('key: [REDACTED]');
     });
 
     it('should redact Anthropic API keys', () => {
@@ -21,9 +20,7 @@ describe('Logger sanitize', () => {
 
   describe('Bearer tokens', () => {
     it('should redact Bearer tokens', () => {
-      expect(sanitize('Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.xyz')).toBe(
-        'Authorization: [REDACTED]'
-      );
+      expect(sanitize(`Authorization: ${FAKE_BEARER_TOKEN}`)).toBe('Authorization: [REDACTED]');
     });
   });
 
@@ -51,8 +48,8 @@ describe('Logger sanitize', () => {
 
   describe('AWS credentials', () => {
     it('should redact AWS access key IDs', () => {
-      expect(sanitize('AKIAIOSFODNN7EXAMPLE')).toBe('[REDACTED]');
-      expect(sanitize('key: AKIAIOSFODNN7EXAMPL2')).toBe('key: [REDACTED]');
+      expect(sanitize(FAKE_AWS_KEY_ID)).toBe('[REDACTED]');
+      expect(sanitize(`key: ${FAKE_AWS_KEY_ID}`)).toBe('key: [REDACTED]');
     });
 
     it('should redact AWS secret access keys', () => {
@@ -298,7 +295,7 @@ describe('Logger sanitizeDeep', () => {
       const headers = {
         'Content-Type': 'application/json',
         Authorization: 'Bearer eyJhbGc...',
-        'x-api-key': 'sk-1234567890abcdef1234567890',
+        'x-api-key': FAKE_OPENAI_KEY,
       };
       const result = sanitizeDeep(headers) as Record<string, unknown>;
       expect(result['Content-Type']).toBe('application/json');

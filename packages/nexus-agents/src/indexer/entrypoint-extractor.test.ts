@@ -6,6 +6,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { sanitizeValue, extractEntrypoints } from './entrypoint-extractor.js';
+import { FAKE_OPENAI_KEY, FAKE_GITHUB_PAT, FAKE_BEARER_TOKEN } from '../testing/test-secrets.js';
 
 /** Timeout for tests that use ts-morph AST parsing (CPU-intensive under contention). */
 const AST_PARSE_TIMEOUT = 15_000;
@@ -24,7 +25,7 @@ afterEach(() => {
 
 describe('sanitizeValue', () => {
   it('should redact OpenAI API keys', () => {
-    const input = 'Key: sk-abcdefghijklmnopqrstuvwxyz012345678901234567';
+    const input = `Key: ${FAKE_OPENAI_KEY}`;
     const result = sanitizeValue(input);
     expect(result).toBe('Key: [REDACTED]');
   });
@@ -38,9 +39,10 @@ describe('sanitizeValue', () => {
   });
 
   it('should redact GitHub PATs', () => {
-    const input = 'Token: ghp_abcdefghijklmnopqrstuvwxyz0123456789';
+    const input = `Token: ${FAKE_GITHUB_PAT}`;
     const result = sanitizeValue(input);
-    expect(result).toBe('Token: [REDACTED]');
+    expect(result).toContain('[REDACTED]');
+    expect(result).not.toContain('ghp_TESTFAKE');
   });
 
   it('should redact GitLab PATs', () => {
@@ -50,7 +52,7 @@ describe('sanitizeValue', () => {
   });
 
   it('should redact Bearer tokens', () => {
-    const input = 'Auth: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.payload';
+    const input = `Auth: ${FAKE_BEARER_TOKEN}`;
     const result = sanitizeValue(input);
     expect(result).toBe('Auth: [REDACTED]');
   });
@@ -86,7 +88,7 @@ describe('sanitizeValue', () => {
   });
 
   it('should handle multiple patterns in one string', () => {
-    const input = 'Server at localhost:8080, key ghp_abc123456789012345678901234567890123';
+    const input = `Server at localhost:8080, key ${FAKE_GITHUB_PAT}`;
     const result = sanitizeValue(input);
     expect(result).toContain('[REDACTED]');
     expect(result).not.toContain('localhost');

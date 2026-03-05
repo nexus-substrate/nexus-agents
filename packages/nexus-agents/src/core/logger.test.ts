@@ -7,6 +7,12 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { sanitize, sanitizeDeep, createLogger } from './logger.js';
 import { FixedTimeProvider, setTimeProvider, resetTimeProvider } from './time-provider.js';
+import {
+  FAKE_OPENAI_KEY,
+  FAKE_BEARER_TOKEN,
+  FAKE_GITHUB_PAT,
+  FAKE_AWS_KEY_ID,
+} from '../testing/test-secrets.js';
 
 // ============================================================================
 // Setup
@@ -27,27 +33,27 @@ beforeEach(() => {
 
 describe('sanitize', () => {
   it('redacts OpenAI API keys', () => {
-    const text = 'key: sk-abc123def456ghi789jkl012mno345';
+    const text = `key: ${FAKE_OPENAI_KEY}`;
     expect(sanitize(text)).toContain('[REDACTED]');
-    expect(sanitize(text)).not.toContain('sk-abc');
+    expect(sanitize(text)).not.toContain('sk-TESTFAKE');
   });
 
   it('redacts Bearer tokens', () => {
-    const text = 'Authorization: Bearer eyJhbGciOiJSUzI1NiJ9.test';
+    const text = `Authorization: ${FAKE_BEARER_TOKEN}`;
     expect(sanitize(text)).toContain('[REDACTED]');
-    expect(sanitize(text)).not.toContain('eyJhbGci');
+    expect(sanitize(text)).not.toContain('eyTEST');
   });
 
   it('redacts GitHub personal access tokens', () => {
-    const text = 'token: ghp_1234567890abcdefghijklmnopqrstuvwxyz';
+    const text = `token: ${FAKE_GITHUB_PAT}`;
     expect(sanitize(text)).toContain('[REDACTED]');
     expect(sanitize(text)).not.toContain('ghp_');
   });
 
   it('redacts AWS access key IDs', () => {
-    const text = 'key: AKIAIOSFODNN7EXAMPLE';
+    const text = `key: ${FAKE_AWS_KEY_ID}`;
     expect(sanitize(text)).toContain('[REDACTED]');
-    expect(sanitize(text)).not.toContain('AKIAIOSFODNN');
+    expect(sanitize(text)).not.toContain('AKIATEST');
   });
 
   it('redacts password assignments', () => {
@@ -90,11 +96,11 @@ describe('sanitizeDeep', () => {
   });
 
   it('sanitizes strings', () => {
-    expect(sanitizeDeep('sk-abc123def456ghi789jkl012mno345')).toContain('[REDACTED]');
+    expect(sanitizeDeep(FAKE_OPENAI_KEY)).toContain('[REDACTED]');
   });
 
   it('sanitizes arrays', () => {
-    const result = sanitizeDeep(['normal', 'sk-abc123def456ghi789jkl012mno345']);
+    const result = sanitizeDeep(['normal', FAKE_OPENAI_KEY]);
     expect(result).toEqual(['normal', expect.stringContaining('[REDACTED]')]);
   });
 

@@ -20,6 +20,7 @@ import {
 import { type IPolicyFirewall, type PolicyDecision } from './policy-types.js';
 import { createDefaultPolicyFirewall } from './policy.js';
 import { RateLimiter, type RateLimiterState } from './rate-limiter.js';
+import { FAKE_OPENAI_KEY } from '../../testing/test-secrets.js';
 
 // =============================================================================
 // Test Utilities
@@ -1189,9 +1190,7 @@ describe('SecureHandler', () => {
     it('should redact secrets in tool output', async () => {
       const secretHandler: ToolHandler = vi.fn(() =>
         Promise.resolve({
-          content: [
-            { type: 'text' as const, text: 'API key is sk-abc123def456ghi789jkl012mno345pqr678' },
-          ],
+          content: [{ type: 'text' as const, text: `API key is ${FAKE_OPENAI_KEY}` }],
         })
       );
 
@@ -1201,7 +1200,7 @@ describe('SecureHandler', () => {
 
       const result = await secureHandler({});
       expect(result.content[0]?.text).toContain('[REDACTED]');
-      expect(result.content[0]?.text).not.toContain('sk-abc123');
+      expect(result.content[0]?.text).not.toContain('sk-TESTFAKE');
     });
 
     it('should redact password= patterns in output', async () => {

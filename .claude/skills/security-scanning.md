@@ -36,14 +36,16 @@ Categorize by severity: critical > high > medium > low.
 
 Priority order for CodeQL alert categories:
 
-| Category                                  | Fix Pattern                                         |
-| ----------------------------------------- | --------------------------------------------------- |
-| `js/shell-command-constructed-from-input` | Use `execFile()` or validate inputs                 |
-| `js/insecure-randomness`                  | Replace `Math.random()` with `crypto.randomBytes()` |
-| `js/polynomial-redos`                     | Bound quantifiers, use character classes            |
-| `js/incomplete-sanitization`              | Single-quote shell escaping                         |
-| `js/missing-rate-limiting`                | Add rate limiter middleware                         |
-| `js/incomplete-url-scheme-check`          | Validate HTTP/HTTPS only                            |
+| Category                                     | Fix Pattern                                       |
+| -------------------------------------------- | ------------------------------------------------- |
+| `js/shell-command-constructed-from-input`    | Use `execFile()` or validate inputs               |
+| `js/insecure-randomness`                     | Replace `Math.random()` with `crypto.randomInt()` |
+| `js/biased-cryptographic-random`             | Use `crypto.randomInt()` or rejection sampling    |
+| `js/polynomial-redos`                        | Bound quantifiers, use `[ \t]*` not `\s*`         |
+| `js/incomplete-sanitization`                 | Single-quote shell escaping                       |
+| `js/incomplete-multi-character-sanitization` | Loop-based stripping for unclosed tags            |
+| `js/missing-rate-limiting`                   | Add rate limiter middleware                       |
+| `js/incomplete-url-scheme-check`             | Zod `.refine()` for HTTP/HTTPS only               |
 
 For each alert:
 
@@ -56,13 +58,26 @@ For each alert:
 
 For each secret scanning alert:
 
-1. **Assess**: Is the secret still active/valid?
-2. **Rotate**: Generate new credentials if active
-3. **Revoke**: Invalidate the exposed secret
-4. **Remediate**: Update all references to use the new secret
-5. **Dismiss**: Mark the alert as resolved with reason
+1. **Classify**: Is this a real secret or a test fixture?
+2. **If test fixture**: Replace with canonical constant from `src/testing/test-secrets.ts`, dismiss as `used_in_tests`
+3. **If real secret**:
+   a. **Assess**: Is the secret still active/valid?
+   b. **Rotate**: Generate new credentials if active
+   c. **Revoke**: Invalidate the exposed secret
+   d. **Remediate**: Update all references to use the new secret
+   e. **Dismiss**: Mark the alert as resolved with appropriate reason
 
 Never commit secrets to resolve alerts — use environment variables.
+
+### Test Secret Convention (Issue #1410)
+
+All fake secrets in test code MUST be obviously fake:
+
+- Import from `src/testing/test-secrets.ts` (canonical constants: `FAKE_OPENAI_KEY`, `FAKE_GOOGLE_KEY`, etc.)
+- Every value contains "TEST", "FAKE", "EXAMPLE", or placeholder chars (xxxx, 0000)
+- See `.claude/rules/test-secrets.md` for the full policy
+
+**Why:** GitHub secret scanning scans ALL committed blobs (including history) and has NO allowlist config. Gitleaks path exclusions don't help server-side. Values must be self-evidently fake.
 
 ## Phase 4: Report
 

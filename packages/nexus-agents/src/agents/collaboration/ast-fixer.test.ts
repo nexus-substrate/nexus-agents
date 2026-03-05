@@ -225,7 +225,7 @@ describe('AstFixer', () => {
 
   describe('no-secrets fixes', () => {
     it('replaces hardcoded secret with env var', () => {
-      const code = `const apiKey = 'sk-1234567890abcdef';`;
+      const code = `const apiKey = 'sk-TESTFAKE_not_real_0';`;
       const violation = createViolation('no-secrets', 'line 1');
 
       const result = fixer.applyFix(code, violation);

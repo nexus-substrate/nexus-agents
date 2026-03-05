@@ -53,7 +53,7 @@ describe('ConstitutionalCritic', () => {
 
     it('should detect hardcoded secrets', () => {
       const codeWithSecret = `
-        const API_KEY = "sk-abc123xyz456";
+        const API_KEY = "sk-TESTFAKE_000";
         fetch(url, { headers: { Authorization: API_KEY } });
       `;
 
