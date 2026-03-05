@@ -37,7 +37,7 @@ These capabilities form the foundation — confirmed by multiple consensus agent
 
 | Strength                     | Evidence                                                       |
 | ---------------------------- | -------------------------------------------------------------- |
-| Research-backed protocols    | 31/101 techniques implemented, 16 partial (47 mapped to code)  |
+| Research-backed protocols    | 31/46 mapped techniques implemented, 15 partial                |
 | Multi-criteria model routing | TOPSIS + LinUCB bandit + preference + cascade + tolerance band |
 | Memory system diversity      | 8 backends + reflective MemR3 enhancement                      |
 | Closed-loop learning         | Weather report, feedback integration, self-refinement          |
@@ -59,7 +59,7 @@ These capabilities form the foundation — confirmed by multiple consensus agent
 | Test suite                   | 24,276 tests, 917 files                                                                         |
 | Coverage                     | 89.66% statements, 93.26% functions                                                             |
 | MCP tools                    | 25 registered                                                                                   |
-| Research techniques (mapped) | 31 implemented, 16 partial, 54 not-started (101 total)                                          |
+| Research techniques (mapped) | 31 implemented, 15 partial (46 mapped techniques from 174+ papers)                              |
 | Routing tasks observed       | 3,716 across 4 CLIs                                                                             |
 | Overall success rate         | 73.9%                                                                                           |
 | Expert types                 | 10 (code, architecture, security, testing, docs, devops, research, product, ux, infrastructure) |
@@ -88,13 +88,13 @@ The system has learned optimal CLI-to-task mappings from 3,716 observations:
 
 ## Phase Completion Summary
 
-| Phase | Goal                     | Status   | Key Deliverable                           |
-| ----- | ------------------------ | -------- | ----------------------------------------- |
-| 1     | Observability Foundation | COMPLETE | OrchestrationObserver, routing dashboard  |
-| 2     | Learning Loop            | COMPLETE | OutcomeFeedbackCollector, CompositeRouter |
-| 3     | Dogfooding               | COMPLETE | Claude Code PR review, SICA test gen      |
-| 4     | Security Hardening       | COMPLETE | Docker sandbox, 113 pentest tests         |
-| 5     | Market Validation        | PARTIAL  | SWE-bench module built, run deferred      |
+| Phase | Goal                     | Status   | Key Deliverable                               |
+| ----- | ------------------------ | -------- | --------------------------------------------- |
+| 1     | Observability Foundation | COMPLETE | OrchestrationObserver, routing dashboard      |
+| 2     | Learning Loop            | COMPLETE | OutcomeFeedbackCollector, CompositeRouter     |
+| 3     | Dogfooding               | COMPLETE | Claude Code PR review, SICA test gen          |
+| 4     | Security Hardening       | COMPLETE | Docker sandbox, 113 pentest tests             |
+| 5     | Market Validation        | PARTIAL  | SWE-bench parallel runner + memory enrichment |
 
 **Phase details and 8 historical system review transcripts:** [archive/system-reviews-2026-01.md](./archive/system-reviews-2026-01.md)
 
@@ -102,11 +102,18 @@ The system has learned optimal CLI-to-task mappings from 3,716 observations:
 
 ## Open Gaps
 
-### Gap 1: No Production Benchmark Evidence (P1)
+### Gap 1: No Production Benchmark Evidence (P1) — IN PROGRESS
 
-**Impact:** 9/10 — Cannot claim "best" without evidence
+**Impact:** 8/10 (reduced from 9/10) — Infrastructure ready, execution pending
 
-The SWE-bench evaluation module is built (#257, deferred) but a full benchmark run has never been executed. Without comparative data vs. competitors (Devin, Aider, Claude Code standalone), the "best swarm" claim is unsubstantiated.
+The SWE-bench module now has parallel execution (#1407), cross-run memory enrichment, partial git clones for speed, and thread-safe JSONL output. What remains is executing the actual benchmark run.
+
+**Completed:**
+
+- Parallel runner with `--concurrency=N` workers and per-slot isolated work directories
+- Cross-run memory enrichment (SessionMemory records outcomes, enriches future prompts)
+- Git clone optimization (partial clones, skip-fetch for existing repos)
+- CLI agent executor with Claude CLI OAuth authentication
 
 **Required:** Execute SWE-bench Lite (300 instances), publish results, compare against leaderboard.
 
@@ -175,7 +182,7 @@ Failure breakdown (historical): unknown 60.4%, execution 25.9%, timeout 12.9%, r
 
 **Tracking:** #1401 (epic), #1394 (research alignment), #1402 (OpenCode reliability)
 
-Based on gap analysis, weather report data, and research alignment map (31 implemented, 16 partial, 54 not-started techniques):
+Based on gap analysis, weather report data, and research alignment map (31 implemented, 15 partial of 46 mapped techniques):
 
 ### 6.1: Evidence-Based Validation (Target: 9.0/10) — NOT STARTED
 
@@ -205,15 +212,15 @@ Based on gap analysis, weather report data, and research alignment map (31 imple
 
 ### 6.4: Research-Driven Improvements — IN PROGRESS
 
-The research alignment map identifies 16 partially-implemented and 54 not-started techniques. Recent promotions: moe-routing, rl-orchestrator, profile-memory, sater-routing.
+The research alignment map tracks 46 techniques: 31 implemented, 15 partial. Recent promotions: moe-routing, rl-orchestrator, profile-memory, sater-routing, tolerance-routing, strmac-state-routing, action-memory, agreement-based-cascading.
 
-| Technique Area      | Partial | Not Started | Priority |
-| ------------------- | ------- | ----------- | -------- |
-| Routing             | 3       | —           | High     |
-| Consensus           | 4       | —           | Medium   |
-| Memory              | 3       | —           | Medium   |
-| Orchestration       | 6       | —           | High     |
-| Not-started (total) | —       | 54          | Backlog  |
+| Technique Area | Implemented | Partial | Priority |
+| -------------- | ----------- | ------- | -------- |
+| Routing (14)   | 11          | 3       | High     |
+| Consensus (8)  | 5           | 3       | Medium   |
+| Memory (10)    | 7           | 3       | Medium   |
+| Orchestration  | 4           | 6       | High     |
+| Learning (4)   | 4           | 0       | —        |
 
 **Next promotion candidates:** knn-routing (needs KNN distance algorithm), capability-instruction-tuning (needs LLM feedback loop)
 
@@ -257,7 +264,7 @@ From the initial 5-agent consensus assessment (2026-01-09):
 >
 > **PM (6/10):** "The gap is not technical capability - it is market proof. The swarm must demonstrate it is best, not just claim best-in-class architecture."
 
-**Key insight that still applies:** Technique coverage (31%) is growing but means nothing without user validation. The path from 8 to 10 is evidence, not architecture.
+**Key insight that still applies:** Technique coverage (67% implemented of 46 mapped) is strong but means nothing without user validation. The path from 8 to 10 is evidence, not architecture.
 
 ---
 

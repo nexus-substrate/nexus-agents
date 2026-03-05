@@ -1,3 +1,6 @@
+/* eslint-disable max-lines */
+// 426 lines — cohesive single-concern engine. Per governance, 400-600 OK if cohesive.
+
 /**
  * nexus-agents/consensus - Consensus Engine
  *
@@ -19,7 +22,12 @@ import type {
   ConsensusMetrics,
   ProposalCacheConfig,
 } from './types.js';
-import { ProposalSchema, VoteSchema, DEFAULT_CONSENSUS_CONFIG } from './types.js';
+import {
+  ProposalSchema,
+  VoteSchema,
+  DEFAULT_CONSENSUS_CONFIG,
+  VOTING_THRESHOLDS,
+} from './types.js';
 import { VotingStrategyFactory, calculateVoteWeight, type VotingOutcome } from './strategies.js';
 import { buildFinalResult, buildTimeoutResult, buildPendingResult } from './result-builder.js';
 import { generateProposalId } from './helpers.js';
@@ -168,7 +176,8 @@ export class ConsensusEngine implements IConsensusEngine {
 
     this.recordVote(state, agentId, vote);
 
-    if (this.allRequiredVotersVoted(state)) {
+    // Close if all required voters have voted OR if agreement-based cascade triggers
+    if (this.allRequiredVotersVoted(state) || this.canCascadeEarly(state)) {
       return this.closeInternal(proposalId).then((result) =>
         result.ok ? ok(undefined) : err(result.error)
       );
@@ -393,6 +402,59 @@ export class ConsensusEngine implements IConsensusEngine {
     const strategy = this.strategyFactory.getStrategy(state.proposal.algorithm);
     const outcome: VotingOutcome = strategy.calculateOutcome(state.votes, state.voteWeights);
     return outcome;
+  }
+
+  /**
+   * Agreement-based cascading: close early when outcome is mathematically determined.
+   * If approvals already exceed the threshold even if all remaining voters reject,
+   * or rejections make approval impossible, the proposal can be decided early.
+   */
+  private canCascadeEarly(state: ProposalState): boolean {
+    const required = state.proposal.requiredVoters;
+    if (required === undefined || required.length === 0) return false;
+
+    const totalExpected = required.length;
+    const votesCast = state.votes.size;
+    const remaining = totalExpected - votesCast;
+    if (remaining <= 0) return false; // All voted — handled by allRequiredVotersVoted
+
+    const threshold = VOTING_THRESHOLDS[state.proposal.algorithm];
+
+    let approvals = 0;
+    let rejections = 0;
+    for (const vote of state.votes.values()) {
+      if (vote.decision === 'approve') approvals++;
+      else if (vote.decision === 'reject') rejections++;
+    }
+
+    // Can approve even if all remaining reject?
+    const minApprovalRate = approvals / totalExpected;
+    if (minApprovalRate > threshold) {
+      this.logger.info('Agreement cascade: early approval', {
+        proposalId: state.proposal.id,
+        approvals,
+        totalExpected,
+        threshold,
+        remaining,
+      });
+      return true;
+    }
+
+    // Can never reach threshold even if all remaining approve?
+    const maxPossibleApprovals = approvals + remaining;
+    const maxApprovalRate = maxPossibleApprovals / totalExpected;
+    if (maxApprovalRate < threshold) {
+      this.logger.info('Agreement cascade: early rejection', {
+        proposalId: state.proposal.id,
+        rejections,
+        totalExpected,
+        threshold,
+        remaining,
+      });
+      return true;
+    }
+
+    return false;
   }
 
   private allRequiredVotersVoted(state: ProposalState): boolean {

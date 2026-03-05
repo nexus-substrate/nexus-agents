@@ -127,9 +127,9 @@ export const TECHNIQUE_IMPLEMENTATION_MAP: ReadonlyMap<string, TechniqueMapping>
   [
     'agreement-based-cascading',
     {
-      status: 'partial',
+      status: 'implemented',
       path: 'consensus/engine.ts',
-      hint: 'Engine supports cascading but not agreement-based triggers',
+      hint: 'canCascadeEarly() closes proposals when outcome is mathematically determined',
     },
   ],
   [

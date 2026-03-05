@@ -11,10 +11,13 @@
 /* eslint-disable no-console */
 // Console output is intentional for CLI user feedback
 
-import type { SWEBenchConfig, SWEBenchInstance } from './types.js';
+import type { SWEBenchConfig, SWEBenchInstance, SWEBenchRunResult } from './types.js';
 import { PredictionWriter } from './prediction-writer.js';
 import type { ExecutorWithModel, IBenchmarkWriter } from './benchmark-runner.js';
 import { runSingleInstance } from './benchmark-runner.js';
+import { buildEnrichedPrompt, recordOutcome } from './memory-enrichment.js';
+import type { SessionMemory } from '../context/session-memory.js';
+import type { SessionLearning } from '../context/session-memory-types.js';
 
 /**
  * Thread-safe wrapper around PredictionWriter.
@@ -58,6 +61,12 @@ interface ParallelStats {
   tokensUsed: number;
 }
 
+/** Memory context for enriching parallel worker prompts. */
+interface ParallelMemoryContext {
+  readonly memory: SessionMemory;
+  readonly learnings: readonly SessionLearning[];
+}
+
 /** Options for a single worker loop. */
 interface WorkerOptions {
   readonly slot: number;
@@ -68,11 +77,12 @@ interface WorkerOptions {
   readonly lockedWriter: LockedWriter;
   readonly verbose: boolean;
   readonly stats: ParallelStats;
+  readonly memCtx: ParallelMemoryContext | null;
 }
 
 /** Worker loop — pulls instances from the shared queue and processes them. */
 async function workerLoop(opts: WorkerOptions): Promise<void> {
-  const { slot, queue, total, executor, config, lockedWriter, verbose, stats } = opts;
+  const { slot, queue, total, executor, config, lockedWriter, verbose, stats, memCtx } = opts;
   const slotWorkDir = `${config.work_dir}/slot-${String(slot)}`;
   const slotConfig: SWEBenchConfig = { ...config, work_dir: slotWorkDir };
 
@@ -83,16 +93,33 @@ async function workerLoop(opts: WorkerOptions): Promise<void> {
     const idx = total - queue.length;
     console.log(`[slot-${String(slot)}] [${String(idx)}/${String(total)}] ${instance.instance_id}`);
 
+    const systemPrompt =
+      memCtx !== null && memCtx.learnings.length > 0
+        ? buildEnrichedPrompt(memCtx.learnings, instance)
+        : undefined;
+
     const result = await runSingleInstance({
       instance,
       executor,
       config: slotConfig,
       writer: lockedWriter,
       verbose,
+      ...(systemPrompt !== undefined ? { systemPrompt } : {}),
     });
     stats.tokensUsed += result.tokens;
     if (result.completed) stats.completed++;
     else stats.failed++;
+
+    if (memCtx !== null) {
+      const runResult: SWEBenchRunResult = {
+        instance_id: instance.instance_id,
+        completed: result.completed,
+        duration_ms: 0,
+        tokens_used: result.tokens,
+        ...(result.completed ? {} : { error: 'failed' }),
+      };
+      recordOutcome(memCtx.memory, instance, runResult);
+    }
   }
 }
 
@@ -105,6 +132,7 @@ export interface ParallelRunOptions {
   readonly append: boolean;
   readonly verbose: boolean;
   readonly concurrency: number;
+  readonly memCtx?: ParallelMemoryContext | null;
 }
 
 /**
@@ -115,7 +143,7 @@ export interface ParallelRunOptions {
  * via LockedWriter to prevent JSONL interleaving.
  */
 export async function runBenchmarkParallel(opts: ParallelRunOptions): Promise<ParallelStats> {
-  const { executor, instances, config, outputPath, append, verbose, concurrency } = opts;
+  const { executor, instances, config, outputPath, append, verbose, concurrency, memCtx } = opts;
 
   const writer = new PredictionWriter({
     outputPath,
@@ -137,7 +165,17 @@ export async function runBenchmarkParallel(opts: ParallelRunOptions): Promise<Pa
   const workers: Promise<void>[] = [];
   for (let i = 0; i < effectiveConcurrency; i++) {
     workers.push(
-      workerLoop({ slot: i, queue, total, executor, config, lockedWriter, verbose, stats })
+      workerLoop({
+        slot: i,
+        queue,
+        total,
+        executor,
+        config,
+        lockedWriter,
+        verbose,
+        stats,
+        memCtx: memCtx ?? null,
+      })
     );
   }
 

@@ -255,6 +255,7 @@ export async function runBenchmarkInstances(
       append,
       verbose,
       concurrency: config.concurrency,
+      memCtx,
     });
   } else {
     stats = await runSequential({ ...options, executor, writer, memCtx });
