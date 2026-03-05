@@ -18,6 +18,9 @@ import { runSingleInstance } from './benchmark-runner.js';
 import { buildEnrichedPrompt, recordOutcome } from './memory-enrichment.js';
 import type { SessionMemory } from '../context/session-memory.js';
 import type { SessionLearning } from '../context/session-memory-types.js';
+import { createLogger } from '../core/logger.js';
+
+const log = createLogger({ component: 'parallel-runner' });
 
 /**
  * Thread-safe wrapper around PredictionWriter.
@@ -64,8 +67,12 @@ interface ParallelStats {
 /** Memory context for enriching parallel worker prompts. */
 interface ParallelMemoryContext {
   readonly memory: SessionMemory;
+  /** Initial learnings snapshot — use refreshLearnings() for live updates. */
   readonly learnings: readonly SessionLearning[];
 }
+
+/** Instances completed since last learning refresh. */
+const REFRESH_INTERVAL = 5;
 
 /** Options for a single worker loop. */
 interface WorkerOptions {
@@ -85,6 +92,8 @@ async function workerLoop(opts: WorkerOptions): Promise<void> {
   const { slot, queue, total, executor, config, lockedWriter, verbose, stats, memCtx } = opts;
   const slotWorkDir = `${config.work_dir}/slot-${String(slot)}`;
   const slotConfig: SWEBenchConfig = { ...config, work_dir: slotWorkDir };
+  let localLearnings = memCtx !== null ? [...memCtx.learnings] : [];
+  let sinceRefresh = 0;
 
   while (queue.length > 0) {
     const instance = queue.shift();
@@ -94,8 +103,8 @@ async function workerLoop(opts: WorkerOptions): Promise<void> {
     console.log(`[slot-${String(slot)}] [${String(idx)}/${String(total)}] ${instance.instance_id}`);
 
     const systemPrompt =
-      memCtx !== null && memCtx.learnings.length > 0
-        ? buildEnrichedPrompt(memCtx.learnings, instance)
+      memCtx !== null && localLearnings.length > 0
+        ? buildEnrichedPrompt(localLearnings, instance)
         : undefined;
 
     const result = await runSingleInstance({
@@ -111,15 +120,53 @@ async function workerLoop(opts: WorkerOptions): Promise<void> {
     else stats.failed++;
 
     if (memCtx !== null) {
-      const runResult: SWEBenchRunResult = {
-        instance_id: instance.instance_id,
-        completed: result.completed,
-        duration_ms: 0,
-        tokens_used: result.tokens,
-        ...(result.completed ? {} : { error: 'failed' }),
-      };
-      recordOutcome(memCtx.memory, instance, runResult);
+      recordWorkerOutcome(memCtx.memory, instance, result);
+      sinceRefresh++;
+      if (sinceRefresh >= REFRESH_INTERVAL) {
+        localLearnings = refreshLearnings(memCtx.memory);
+        sinceRefresh = 0;
+      }
     }
+  }
+}
+
+/** Record outcome for a completed instance. */
+function recordWorkerOutcome(
+  memory: SessionMemory,
+  instance: SWEBenchInstance,
+  result: { completed: boolean; tokens: number }
+): void {
+  const runResult: SWEBenchRunResult = {
+    instance_id: instance.instance_id,
+    completed: result.completed,
+    duration_ms: 0,
+    tokens_used: result.tokens,
+    ...(result.completed ? {} : { error: 'failed' }),
+  };
+  recordOutcome(memory, instance, runResult);
+}
+
+/**
+ * Reload learnings combining disk episodes and current (in-run) session.
+ * Disk learnings come from prior runs. Session learnings come from instances
+ * completed by all workers during this run (shared memory object).
+ */
+function refreshLearnings(memory: SessionMemory): SessionLearning[] {
+  try {
+    const disk = [...memory.loadRelevantLearnings()];
+    const session = memory.getCurrentSessionLearnings();
+    // Merge, deduplicate by pattern, sort by confidence
+    const seen = new Set(disk.map((l) => l.pattern));
+    for (const l of session) {
+      if (!seen.has(l.pattern)) {
+        disk.push(l);
+        seen.add(l.pattern);
+      }
+    }
+    return disk.sort((a, b) => b.confidence - a.confidence);
+  } catch (error: unknown) {
+    log.debug('Learning refresh failed', { error: String(error) });
+    return [];
   }
 }
 

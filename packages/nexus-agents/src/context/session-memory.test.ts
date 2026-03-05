@@ -55,6 +55,16 @@ describe('SessionMemory', () => {
       expect(memory.getCurrentSessionId()).toBe('test-session-1');
     });
 
+    it('should expose current session learnings via getCurrentSessionLearnings', () => {
+      const memory = createTestMemory();
+      expect(memory.getCurrentSessionLearnings()).toEqual([]);
+      memory.startSession('test-session');
+      memory.recordLearning({ pattern: 'test pattern', confidence: 0.9, context: 'test' });
+      const learnings = memory.getCurrentSessionLearnings();
+      expect(learnings).toHaveLength(1);
+      expect(learnings[0]?.pattern).toBe('test pattern');
+    });
+
     it('should reject starting a session when one is already active', () => {
       const memory = createTestMemory();
       memory.startSession('session-1');

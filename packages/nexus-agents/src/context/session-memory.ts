@@ -137,6 +137,11 @@ export class SessionMemory {
     return this.currentSession?.sessionId ?? null;
   }
 
+  /** Get learnings accumulated in the current (unpersisted) session. */
+  getCurrentSessionLearnings(): readonly SessionLearning[] {
+    return this.currentSession?.learnings ?? [];
+  }
+
   /** Record a learning during the current session. */
   recordLearning(learning: SessionLearning): Result<void, SessionMemoryError> {
     if (this.currentSession === null) {
