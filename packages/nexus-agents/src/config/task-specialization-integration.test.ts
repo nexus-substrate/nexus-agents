@@ -65,22 +65,22 @@ describe('calcSpecializationBonus', () => {
   it('returns full bonus for primary CLI match', () => {
     const match = detectTaskCategory('Design the system architecture');
     expect(match).not.toBeNull();
-    // architecture → claude primary
+    // architecture → claude primary, bonus=10
     const bonus = calcSpecializationBonus('claude-opus', match);
-    expect(bonus).toBe(15);
+    expect(bonus).toBe(10);
   });
 
   it('returns half bonus for secondary CLI match', () => {
     const match = detectTaskCategory('Design the system architecture');
-    // architecture → codex secondary
-    const bonus = calcSpecializationBonus('codex-5.3', match);
-    expect(bonus).toBe(7); // floor(15/2)
+    // architecture → gemini secondary, bonus=10
+    const bonus = calcSpecializationBonus('gemini-pro', match);
+    expect(bonus).toBe(5); // floor(10/2)
   });
 
   it('returns 0 for non-matching CLI', () => {
     const match = detectTaskCategory('Design the system architecture');
-    // architecture → claude primary, codex secondary, gemini neither
-    const bonus = calcSpecializationBonus('gemini-pro', match);
+    // architecture → claude primary, gemini secondary, codex neither
+    const bonus = calcSpecializationBonus('codex-5.3', match);
     expect(bonus).toBe(0);
   });
 
@@ -109,7 +109,7 @@ describe('scoreModel with specialization', () => {
       specialization: match,
     });
 
-    // Claude should get full 15pt bonus, codex gets 7pt (secondary)
+    // Claude should get full 10pt bonus, codex gets 0 (not primary/secondary)
     expect(opusScore).toBeGreaterThan(codexScore);
   });
 
