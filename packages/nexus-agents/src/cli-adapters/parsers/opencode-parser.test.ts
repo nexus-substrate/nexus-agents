@@ -474,13 +474,15 @@ describe('OpenCodeResponseParser', () => {
       expect(result).toBeNull();
     });
 
-    it('should not plaintext-fallback for NDJSON-like content', () => {
+    it('should accept malformed NDJSON as plaintext when parsers fail (#1402)', () => {
       const raw = createNdjson(
         { type: 'unknown.event', data: 'unrecognized' },
         { type: 'another.unknown', data: 'also unrecognized' }
       );
       const result = parser.parse(raw);
-      expect(result).toBeNull();
+      // NDJSON parsing failed → JSON fallback failed → accept as plaintext
+      expect(result).not.toBeNull();
+      expect(result?.content).toBe(raw.trim());
     });
 
     it('should return plaintext for multi-line non-JSON output', () => {

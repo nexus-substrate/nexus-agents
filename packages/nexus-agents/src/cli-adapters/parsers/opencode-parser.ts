@@ -55,6 +55,15 @@ export interface OpenCodeCliResponse {
   readonly usage?: TokenUsage;
 }
 
+/** Internal state from processing NDJSON lines. */
+interface NdjsonParseState {
+  readonly sessionId: string | undefined;
+  readonly contentParts: string[];
+  readonly usage: TokenUsage | undefined;
+  readonly hasStepEvents: boolean;
+  readonly hasAnyRecognizedEvent: boolean;
+}
+
 /**
  * Parser for OpenCode CLI JSON output.
  * Handles NDJSON event stream from `opencode run --format json`.
@@ -70,10 +79,22 @@ export class OpenCodeResponseParser implements ICliResponseParser<OpenCodeCliRes
    */
   parse(raw: string): OpenCodeCliResponse | null {
     const lines = raw.trim().split('\n');
+    const state = this.processAllLines(lines);
+
+    if (state.contentParts.length === 0) {
+      return this.handleEmptyContent(raw, lines.length, state);
+    }
+
+    return this.buildResponse(state.contentParts.join(''), state.sessionId, state.usage);
+  }
+
+  /** Processes all NDJSON lines and returns aggregated state. */
+  private processAllLines(lines: readonly string[]): NdjsonParseState {
     let sessionId: string | undefined;
     const contentParts: string[] = [];
     let usage: TokenUsage | undefined;
     let hasStepEvents = false;
+    let hasAnyRecognizedEvent = false;
 
     for (const line of lines) {
       if (line.trim() === '') continue;
@@ -84,28 +105,42 @@ export class OpenCodeResponseParser implements ICliResponseParser<OpenCodeCliRes
         (u) => (usage = u)
       );
       if (hadEvent) hasStepEvents = true;
+      if (hadEvent || this.isRecognizedLegacyEvent(line)) hasAnyRecognizedEvent = true;
     }
 
-    if (contentParts.length === 0) {
-      // Tool-only responses have step_start/step_finish but no text events.
-      // Return empty content rather than null to avoid PARSE_ERROR.
-      if (hasStepEvents) {
-        return {
-          content: '[Tool-only response — no text output]',
-          ...(sessionId !== undefined && { sessionId }),
-          ...(usage !== undefined && { usage }),
-        };
-      }
-      // Fallback: try parsing as plain JSON (non-streaming mode)
-      logger.debug('No NDJSON content extracted, trying JSON fallback', {
-        rawLength: raw.length,
-        lineCount: lines.length,
-        hasStepEvents,
-      });
-      return this.parsePlainJson(raw);
-    }
+    return { sessionId, contentParts, usage, hasStepEvents, hasAnyRecognizedEvent };
+  }
 
-    const content = contentParts.join('');
+  /** Handles the case where no text content was extracted from NDJSON. */
+  private handleEmptyContent(
+    raw: string,
+    lineCount: number,
+    state: NdjsonParseState
+  ): OpenCodeCliResponse | null {
+    // Tool-only responses have step_start/step_finish but no text events.
+    if (state.hasStepEvents) {
+      return this.buildResponse(
+        '[Tool-only response — no text output]',
+        state.sessionId,
+        state.usage
+      );
+    }
+    // Fallback: try parsing as plain JSON (non-streaming mode)
+    logger.debug('No NDJSON content extracted, trying JSON fallback', {
+      rawLength: raw.length,
+      lineCount,
+      hasStepEvents: state.hasStepEvents,
+      hasAnyRecognizedEvent: state.hasAnyRecognizedEvent,
+    });
+    return this.parsePlainJson(raw, state.hasAnyRecognizedEvent);
+  }
+
+  /** Builds an OpenCodeCliResponse from parsed components. */
+  private buildResponse(
+    content: string,
+    sessionId: string | undefined,
+    usage: TokenUsage | undefined
+  ): OpenCodeCliResponse {
     return {
       content,
       ...(sessionId !== undefined && { sessionId }),
@@ -345,19 +380,39 @@ export class OpenCodeResponseParser implements ICliResponseParser<OpenCodeCliRes
     if (usage !== null) setUsage(usage);
   }
 
+  /** Checks if a line contains a recognized legacy event type (without full parsing). */
+  private isRecognizedLegacyEvent(line: string): boolean {
+    try {
+      const record = asRecord(JSON.parse(line) as unknown);
+      if (record === null) return false;
+      const t = record.type;
+      return (
+        t === 'session.start' ||
+        t === 'message.start' ||
+        t === 'message.delta' ||
+        t === 'message.complete' ||
+        t === 'session.complete'
+      );
+    } catch {
+      return false;
+    }
+  }
+
   /**
    * Fallback parser for plain JSON output (non-streaming).
    * Falls back to raw plaintext if JSON parsing fails and content is substantial (#1402).
+   * When hasAnyRecognizedEvent is true, NDJSON-like plaintext is rejected (it was
+   * recognized NDJSON that simply had no content — not malformed output).
    */
-  private parsePlainJson(raw: string): OpenCodeCliResponse | null {
+  private parsePlainJson(raw: string, hasAnyRecognizedEvent: boolean): OpenCodeCliResponse | null {
     try {
       const data: unknown = JSON.parse(raw);
       const record = asRecord(data);
-      if (record === null) return this.parsePlaintext(raw);
+      if (record === null) return this.parsePlaintext(raw, hasAnyRecognizedEvent);
 
       // Try common response field names
       const content = record.content ?? record.result ?? record.text ?? record.output;
-      if (typeof content !== 'string') return this.parsePlaintext(raw);
+      if (typeof content !== 'string') return null; // Valid JSON but no recognized fields
 
       const usage = this.extractUsageFromRecord(record);
       const sid = record.session_id ?? record.sessionId;
@@ -368,25 +423,32 @@ export class OpenCodeResponseParser implements ICliResponseParser<OpenCodeCliRes
         ...(usage !== null ? { usage } : {}),
       };
     } catch {
-      return this.parsePlaintext(raw);
+      return this.parsePlaintext(raw, hasAnyRecognizedEvent);
     }
   }
 
   /**
    * Last-resort plaintext fallback for non-JSON CLI output (#1402).
-   * Returns raw text as content when it has substantial length and
-   * doesn't look like malformed NDJSON (which should fail as PARSE_ERROR).
+   * Returns raw text as content when it has substantial length.
+   * Accepts NDJSON-like content only when no recognized events were found
+   * (meaning it's truly unrecognized/malformed output, not valid NDJSON with no text).
    */
-  private parsePlaintext(raw: string): OpenCodeCliResponse | null {
+  private parsePlaintext(raw: string, hasAnyRecognizedEvent: boolean): OpenCodeCliResponse | null {
     const trimmed = raw.trim();
     if (trimmed.length < PLAINTEXT_MIN_LENGTH) {
       logger.debug('Plaintext fallback rejected: too short', { length: trimmed.length });
       return null;
     }
-    // Don't fallback if input looks like NDJSON — let it fail as PARSE_ERROR
     if (looksLikeNdjson(trimmed)) {
-      logger.debug('Plaintext fallback rejected: looks like NDJSON', { length: trimmed.length });
-      return null;
+      if (hasAnyRecognizedEvent) {
+        logger.debug('Plaintext fallback rejected: recognized NDJSON with no content', {
+          length: trimmed.length,
+        });
+        return null;
+      }
+      logger.debug('Plaintext fallback: accepting malformed NDJSON as text', {
+        length: trimmed.length,
+      });
     }
     return { content: trimmed };
   }
