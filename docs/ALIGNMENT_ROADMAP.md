@@ -9,7 +9,7 @@ related_files: [CHANGELOG.md, architecture/README.md]
 # Nexus-Agents Alignment Roadmap
 
 **Goal:** Create the best software development agent swarm possible
-**Assessment Date:** 2026-01-09 (ET) | **Last Updated:** 2026-03-04 (ET)
+**Assessment Date:** 2026-01-09 (ET) | **Last Updated:** 2026-03-05 (ET)
 **Architecture Decision:** HYBRID APPROVED (5-0 unanimous)
 **Current Version:** v2.26.1 | **Fitness Score:** 98/100
 **Historical Reviews:** [docs/archive/system-reviews-2026-01.md](./archive/system-reviews-2026-01.md)
@@ -109,21 +109,21 @@ The SWE-bench evaluation module is built (#257, deferred) but a full benchmark r
 
 **Required:** Execute SWE-bench Lite (300 instances), publish results, compare against leaderboard.
 
-### Gap 2: Swarm-Level Observability Still Shallow (P2)
+### Gap 2: Swarm-Level Observability Still Shallow (P2) — PARTIAL
 
-**Impact:** 7/10 — Can observe individual agents but not emergent swarm behavior
+**Impact:** 5/10 (reduced from 7/10) — Swarm health metrics now measured, visualization pending
 
-OrchestrationObserver records events, but there's no dashboard for visualizing agent collaboration patterns, no distributed tracing across multi-wave dispatches, and no automated bottleneck detection in production use.
+OrchestrationObserver records events. Swarm health metrics (utilization, efficiency, routing accuracy, regret, adaptation speed) are now computed in the weather report (#1403). Remaining: trace visualization for multi-wave dispatches, cross-wave dependency graphs, and a dedicated CLI dashboard.
 
-**Required:** Structured trace visualization, cross-wave dependency graphs, swarm health dashboard.
+**Required:** Structured trace visualization, cross-wave dependency graphs, `nexus-agents health` CLI.
 
-### Gap 3: OpenCode CLI Reliability (P2)
+### Gap 3: OpenCode CLI Reliability (P2) — IN PROGRESS
 
-**Impact:** 6/10 — 27% success rate drags overall system performance
+**Impact:** 5/10 (reduced from 6/10) — Adapter fixes deployed, monitoring success rate
 
-OpenCode has 63 observed tasks at 27% success — significantly below the other CLIs. This degrades the multi-model diversity promise. Root causes likely include parsing failures and configuration issues.
+OpenCode has 63 observed tasks at 27% success. Fixes deployed (#1402): plaintext fallback for non-JSON output, stderr diagnostic context in PARSE_ERROR. Expected improvement in PARSE_ERROR failure mode.
 
-**Required:** Investigate failure patterns, improve adapter resilience, or deprioritize OpenCode routing.
+**Required:** Monitor post-fix success rate. If still below 50%, investigate exit code handling and session management.
 
 ### Gap 4: Security Review Accuracy (P2)
 
@@ -193,15 +193,15 @@ The research alignment map identifies 23 partially-implemented and 54 not-starte
 | After Phase 6 | 9.0/10  | Market validated       |
 | North Star    | 10/10   | Best-in-class evidence |
 
-### Health Metrics (Defined, Measurement Needed)
+### Swarm Health Metrics (via `weather_report` tool)
 
-| Metric                   | Definition                             | Healthy Range | Current      |
-| ------------------------ | -------------------------------------- | ------------- | ------------ |
-| Agent Utilization        | % of agents actively contributing      | 70-90%        | Unmeasured   |
-| Collaboration Efficiency | Tasks completed / inter-agent messages | > 0.1         | Unmeasured   |
-| Routing Accuracy         | % of optimal model selections          | > 80%         | ~74% overall |
-| Weekly Regret            | Suboptimality vs oracle                | Decreasing    | Unmeasured   |
-| Adaptation Speed         | Tasks to learn new domain              | < 50          | Unmeasured   |
+| Metric                   | Definition                             | Healthy Range | Status                        |
+| ------------------------ | -------------------------------------- | ------------- | ----------------------------- |
+| Agent Utilization        | % of expert roles actively succeeding  | 70-90%        | Measured (SwarmHealthMetrics) |
+| Collaboration Efficiency | Successful / total delegate tasks      | > 0.1         | Measured (SwarmHealthMetrics) |
+| Routing Accuracy         | % routed to empirically best CLI       | > 80%         | Measured (SwarmHealthMetrics) |
+| Weekly Regret            | Avg gap vs best-possible rate/category | Decreasing    | Measured (SwarmHealthMetrics) |
+| Adaptation Speed         | Avg samples to high confidence         | < 50          | Measured (SwarmHealthMetrics) |
 
 ---
 
