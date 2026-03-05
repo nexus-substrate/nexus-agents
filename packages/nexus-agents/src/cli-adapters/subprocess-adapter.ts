@@ -37,6 +37,29 @@ function isRateLimitOutput(stdout: string): boolean {
   return RATE_LIMIT_PATTERNS.some((pattern) => lower.includes(pattern));
 }
 
+/** Error patterns in stderr that indicate a real failure, not debug output (#1402). */
+const STDERR_ERROR_PATTERNS = [
+  'error:',
+  'fatal:',
+  'panic:',
+  'unhandled',
+  'not found',
+  'invalid model',
+  'authentication',
+  'unauthorized',
+  'permission denied',
+  'connection refused',
+  'econnrefused',
+  'enotfound',
+  'timeout',
+];
+
+/** Checks if stderr looks like a real error (not just debug/progress output). */
+function looksLikeErrorStderr(stderr: string): boolean {
+  const lower = stderr.toLowerCase();
+  return STDERR_ERROR_PATTERNS.some((pattern) => lower.includes(pattern));
+}
+
 /**
  * Command configuration returned by getCommand.
  */
@@ -138,6 +161,13 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
     child.on('close', (code: number | null) => {
       if (code !== 0 && state.stdout === '') {
         const msg = state.stderr !== '' ? state.stderr : `Process exited with code ${String(code)}`;
+        resolveOnce(err(this.createError('EXECUTION_ERROR', msg)));
+        return;
+      }
+      // Non-zero exit with stderr errors: treat as execution error even if
+      // stdout has partial data — prevents misclassifying as PARSE_ERROR (#1402)
+      if (code !== 0 && state.stderr !== '' && looksLikeErrorStderr(state.stderr)) {
+        const msg = `Exit code ${String(code)}: ${state.stderr.slice(0, 300).trim()}`;
         resolveOnce(err(this.createError('EXECUTION_ERROR', msg)));
         return;
       }

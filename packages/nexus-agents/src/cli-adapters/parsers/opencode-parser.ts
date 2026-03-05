@@ -14,6 +14,9 @@
 
 import type { ICliResponseParser, TokenUsage } from '../types.js';
 import { asRecord, extractNumberField } from '../../utils/type-coercion.js';
+import { createLogger } from '../../core/index.js';
+
+const logger = createLogger({ component: 'opencode-parser' });
 
 /** Minimum raw text length for plaintext fallback (#1402). */
 const PLAINTEXT_MIN_LENGTH = 10;
@@ -94,6 +97,11 @@ export class OpenCodeResponseParser implements ICliResponseParser<OpenCodeCliRes
         };
       }
       // Fallback: try parsing as plain JSON (non-streaming mode)
+      logger.debug('No NDJSON content extracted, trying JSON fallback', {
+        rawLength: raw.length,
+        lineCount: lines.length,
+        hasStepEvents,
+      });
       return this.parsePlainJson(raw);
     }
 
@@ -111,6 +119,11 @@ export class OpenCodeResponseParser implements ICliResponseParser<OpenCodeCliRes
   extractResponse(raw: string): string | null {
     const parsed = this.parse(raw);
     if (parsed === null || parsed.content === '') {
+      logger.debug('extractResponse returned null', {
+        rawLength: raw.length,
+        snippet: raw.slice(0, 100),
+        parsedNull: parsed === null,
+      });
       return null;
     }
     return parsed.content;
@@ -366,9 +379,15 @@ export class OpenCodeResponseParser implements ICliResponseParser<OpenCodeCliRes
    */
   private parsePlaintext(raw: string): OpenCodeCliResponse | null {
     const trimmed = raw.trim();
-    if (trimmed.length < PLAINTEXT_MIN_LENGTH) return null;
+    if (trimmed.length < PLAINTEXT_MIN_LENGTH) {
+      logger.debug('Plaintext fallback rejected: too short', { length: trimmed.length });
+      return null;
+    }
     // Don't fallback if input looks like NDJSON — let it fail as PARSE_ERROR
-    if (looksLikeNdjson(trimmed)) return null;
+    if (looksLikeNdjson(trimmed)) {
+      logger.debug('Plaintext fallback rejected: looks like NDJSON', { length: trimmed.length });
+      return null;
+    }
     return { content: trimmed };
   }
 

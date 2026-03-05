@@ -616,6 +616,39 @@ describe('SubprocessCliAdapter', () => {
         expect(result.error.message).toContain('429');
       }
     });
+
+    it('should return EXECUTION_ERROR for non-zero exit with error stderr and partial stdout (#1402)', async () => {
+      adapter.setCommandConfig({ command: 'opencode', args: ['run'] });
+      const task: CliTask = { content: 'test' };
+      const options: Required<ExecutionOptions> = {
+        timeoutMs: 5000,
+        allowRetry: true,
+        maxRetries: 1,
+        trackUsage: true,
+        onProgress: undefined,
+      };
+
+      const { mockChild, stdout, stderr } = createMockChildProcess();
+      mockSpawn.mockReturnValue(mockChild);
+
+      const promise = adapter.executeTask(task, options);
+
+      setImmediate(() => {
+        // Partial stdout (would cause PARSE_ERROR without fix)
+        stdout.emit('data', Buffer.from('{"type":"step_start"}\n'));
+        // Error stderr indicating real failure
+        stderr.emit('data', Buffer.from('Error: invalid model "unknown-model"\n'));
+        mockChild.emit('close', 1);
+      });
+
+      const result = await promise;
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe('EXECUTION_ERROR');
+        expect(result.error.message).toContain('invalid model');
+      }
+    });
   });
 
   describe('handleSubprocessOutput()', () => {
