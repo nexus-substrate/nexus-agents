@@ -198,4 +198,38 @@ describe('categorizeOutcomeErrorMessage', () => {
   it('returns unknown for truly unrecognized messages (#1401)', () => {
     expect(categorizeOutcomeErrorMessage('xyzzy plugh nothing happens')).toBe('unknown');
   });
+
+  it('classifies getaddrinfo as connection (#1401)', () => {
+    expect(categorizeOutcomeErrorMessage('getaddrinfo ENOTFOUND api.example.com')).toBe(
+      'connection'
+    );
+  });
+
+  it('classifies SSL certificate as connection (#1401)', () => {
+    expect(categorizeOutcomeErrorMessage('certificate has expired')).toBe('connection');
+  });
+
+  it('classifies ENOMEM as crash (#1401)', () => {
+    expect(categorizeOutcomeErrorMessage('ENOMEM: not enough memory')).toBe('crash');
+  });
+
+  it('classifies max retries as rate_limit (#1401)', () => {
+    expect(categorizeOutcomeErrorMessage('max retries exceeded')).toBe('rate_limit');
+  });
+
+  it('classifies 502 bad gateway as execution (#1401)', () => {
+    expect(categorizeOutcomeErrorMessage('502 Bad Gateway')).toBe('execution');
+  });
+
+  it('classifies service unavailable as execution (#1401)', () => {
+    expect(categorizeOutcomeErrorMessage('503 Service Unavailable')).toBe('execution');
+  });
+
+  it('classifies truncated response as execution (#1401)', () => {
+    expect(categorizeOutcomeErrorMessage('response was truncated')).toBe('execution');
+  });
+
+  it('classifies proxy errors as connection (#1401)', () => {
+    expect(categorizeOutcomeErrorMessage('proxy connection refused')).toBe('connection');
+  });
 });

@@ -88,7 +88,15 @@ const AUTH_PATTERNS = [
   '401',
   '403',
 ];
-const RATE_LIMIT_PATTERNS = ['rate limit', 'too many requests', '429', 'throttl', 'quota exceeded'];
+const RATE_LIMIT_PATTERNS = [
+  'rate limit',
+  'too many requests',
+  '429',
+  'throttl',
+  'quota exceeded',
+  'max retries',
+  'retry limit',
+];
 const CONNECTION_PATTERNS = [
   'connection',
   'econnrefused',
@@ -96,6 +104,11 @@ const CONNECTION_PATTERNS = [
   'econnreset',
   'dns',
   'network',
+  'getaddrinfo',
+  'certificate',
+  'ssl',
+  'tls',
+  'proxy',
 ];
 const CRASH_PATTERNS = [
   'crash',
@@ -106,6 +119,7 @@ const CRASH_PATTERNS = [
   'spawn error',
   'out of memory',
   'oom',
+  'enomem',
   'fatal',
   'segfault',
   'heap',
@@ -154,6 +168,15 @@ const EXECUTION_PATTERNS = [
   'empty response',
   'no output',
   'no content',
+  '500',
+  '502',
+  '503',
+  '504',
+  'internal server error',
+  'bad gateway',
+  'service unavailable',
+  'truncated',
+  'incomplete',
 ];
 
 function matchesAny(text: string, patterns: string[]): boolean {
