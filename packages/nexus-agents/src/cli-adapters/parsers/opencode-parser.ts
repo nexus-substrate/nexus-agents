@@ -15,6 +15,17 @@
 import type { ICliResponseParser, TokenUsage } from '../types.js';
 import { asRecord, extractNumberField } from '../../utils/type-coercion.js';
 
+/** Minimum raw text length for plaintext fallback (#1402). */
+const PLAINTEXT_MIN_LENGTH = 10;
+
+/** Returns true if text looks like NDJSON (most non-empty lines start with '{' ). */
+function looksLikeNdjson(text: string): boolean {
+  const lines = text.split('\n').filter((l) => l.trim() !== '');
+  if (lines.length === 0) return false;
+  const jsonLineCount = lines.filter((l) => l.trimStart().startsWith('{')).length;
+  return jsonLineCount > lines.length / 2;
+}
+
 /**
  * OpenCode CLI NDJSON event types.
  * Includes both real v1.2.x types and legacy assumed types for compatibility.
@@ -323,16 +334,17 @@ export class OpenCodeResponseParser implements ICliResponseParser<OpenCodeCliRes
 
   /**
    * Fallback parser for plain JSON output (non-streaming).
+   * Falls back to raw plaintext if JSON parsing fails and content is substantial (#1402).
    */
   private parsePlainJson(raw: string): OpenCodeCliResponse | null {
     try {
       const data: unknown = JSON.parse(raw);
       const record = asRecord(data);
-      if (record === null) return null;
+      if (record === null) return this.parsePlaintext(raw);
 
       // Try common response field names
       const content = record.content ?? record.result ?? record.text ?? record.output;
-      if (typeof content !== 'string') return null;
+      if (typeof content !== 'string') return this.parsePlaintext(raw);
 
       const usage = this.extractUsageFromRecord(record);
       const sid = record.session_id ?? record.sessionId;
@@ -343,8 +355,21 @@ export class OpenCodeResponseParser implements ICliResponseParser<OpenCodeCliRes
         ...(usage !== null ? { usage } : {}),
       };
     } catch {
-      return null;
+      return this.parsePlaintext(raw);
     }
+  }
+
+  /**
+   * Last-resort plaintext fallback for non-JSON CLI output (#1402).
+   * Returns raw text as content when it has substantial length and
+   * doesn't look like malformed NDJSON (which should fail as PARSE_ERROR).
+   */
+  private parsePlaintext(raw: string): OpenCodeCliResponse | null {
+    const trimmed = raw.trim();
+    if (trimmed.length < PLAINTEXT_MIN_LENGTH) return null;
+    // Don't fallback if input looks like NDJSON — let it fail as PARSE_ERROR
+    if (looksLikeNdjson(trimmed)) return null;
+    return { content: trimmed };
   }
 
   /**

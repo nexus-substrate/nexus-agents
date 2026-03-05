@@ -176,7 +176,11 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
         return err(this.createError('RATE_LIMITED', snippet));
       }
       const snippet = stdout.slice(0, 200).trim();
-      return err(this.createError('PARSE_ERROR', `Failed to parse response: ${snippet}`));
+      // Include stderr context in diagnostics when present (#1402)
+      const stderrHint = stderr !== '' ? ` [stderr: ${stderr.slice(0, 100).trim()}]` : '';
+      return err(
+        this.createError('PARSE_ERROR', `Failed to parse response: ${snippet}${stderrHint}`)
+      );
     }
 
     const usage = this.parser.extractUsage(stdout);

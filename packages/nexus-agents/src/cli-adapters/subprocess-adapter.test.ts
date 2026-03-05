@@ -529,6 +529,51 @@ describe('SubprocessCliAdapter', () => {
       }
     });
 
+    it('should include stderr hint in PARSE_ERROR when stderr present (#1402)', async () => {
+      class FailingParserAdapter extends TestSubprocessAdapter {
+        protected override readonly parser: ICliResponseParser = {
+          name: 'failing-parser',
+          supportedVersionRange: '>=1.0.0',
+          parse: () => null,
+          extractResponse: () => null,
+          extractUsage: () => null,
+          extractSessionId: () => null,
+        };
+      }
+
+      const failingAdapter = new FailingParserAdapter();
+      failingAdapter.setCommandConfig({ command: 'echo', args: ['test'] });
+
+      const task: CliTask = { content: 'test' };
+      const options: Required<ExecutionOptions> = {
+        timeoutMs: 5000,
+        allowRetry: true,
+        maxRetries: 1,
+        trackUsage: true,
+        onProgress: undefined,
+      };
+
+      const { mockChild, stdout, stderr } = createMockChildProcess();
+      mockSpawn.mockReturnValue(mockChild);
+
+      const promise = failingAdapter.executeTask(task, options);
+
+      setImmediate(() => {
+        stdout.emit('data', Buffer.from('garbled output\n'));
+        stderr.emit('data', Buffer.from('warning: model overloaded\n'));
+        mockChild.emit('close', 0);
+      });
+
+      const result = await promise;
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe('PARSE_ERROR');
+        expect(result.error.message).toContain('garbled output');
+        expect(result.error.message).toContain('[stderr: warning: model overloaded]');
+      }
+    });
+
     it('should surface rate-limit errors from stdout (#1320)', async () => {
       class FailingParserAdapter extends TestSubprocessAdapter {
         protected override readonly parser: ICliResponseParser = {

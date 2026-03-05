@@ -460,6 +460,44 @@ describe('OpenCodeResponseParser', () => {
     });
   });
 
+  describe('plaintext fallback (#1402)', () => {
+    it('should return plaintext when output is not JSON or NDJSON', () => {
+      const raw = 'This is a plain text response from OpenCode CLI';
+      const result = parser.parse(raw);
+      expect(result).not.toBeNull();
+      expect(result?.content).toBe(raw);
+    });
+
+    it('should return null for short plaintext', () => {
+      const raw = 'short';
+      const result = parser.parse(raw);
+      expect(result).toBeNull();
+    });
+
+    it('should not plaintext-fallback for NDJSON-like content', () => {
+      const raw = createNdjson(
+        { type: 'unknown.event', data: 'unrecognized' },
+        { type: 'another.unknown', data: 'also unrecognized' }
+      );
+      const result = parser.parse(raw);
+      expect(result).toBeNull();
+    });
+
+    it('should return plaintext for multi-line non-JSON output', () => {
+      const raw = 'Error: Model not available\nPlease check your API key\nRetry later';
+      const result = parser.parse(raw);
+      expect(result).not.toBeNull();
+      expect(result?.content).toBe(raw);
+    });
+
+    it('should return plaintext for error messages from OpenCode', () => {
+      const raw = 'opencode: failed to connect to provider anthropic: invalid API key';
+      const result = parser.parse(raw);
+      expect(result).not.toBeNull();
+      expect(result?.content).toBe(raw);
+    });
+  });
+
   describe('edge cases', () => {
     it('should handle unicode content', () => {
       const raw = createNdjson({
