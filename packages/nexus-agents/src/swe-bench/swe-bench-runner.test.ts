@@ -52,6 +52,7 @@ const createTestConfig = (overrides: Partial<SWEBenchConfig> = {}): SWEBenchConf
   timeout_ms: 5000,
   max_iterations: 3,
   work_dir: '/tmp/swe-bench-test',
+  concurrency: 1,
   ...overrides,
 });
 

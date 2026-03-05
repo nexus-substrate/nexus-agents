@@ -30,6 +30,7 @@ export interface SWEBenchOptions {
   readonly output: string;
   readonly resume: boolean;
   readonly verbose: boolean;
+  readonly concurrency: number;
   readonly instances: readonly string[];
 }
 
@@ -100,6 +101,8 @@ function buildConfig(options: SWEBenchOptions): SWEBenchConfig {
     variant: options.variant,
     output_path: options.output,
     resume: options.resume,
+    concurrency: options.concurrency,
+    memory_dir: '/tmp/swe-bench-memory',
   };
   return options.limit !== undefined ? { ...base, limit: options.limit } : base;
 }
@@ -234,6 +237,7 @@ function parseArg(
     output: string;
     resume: boolean;
     verbose: boolean;
+    concurrency: number;
     instances: string[];
   }
 ): void {
@@ -243,6 +247,8 @@ function parseArg(
   else if (arg === '--resume') state.resume = true;
   else if (arg === '--verbose' || arg === '-v') state.verbose = true;
   else if (arg.startsWith('--instance=')) state.instances.push(arg.slice('--instance='.length));
+  else if (arg.startsWith('--concurrency='))
+    state.concurrency = Math.max(1, parseInt(arg.slice('--concurrency='.length), 10) || 1);
 }
 
 /** Parse command line arguments into options. */
@@ -254,6 +260,7 @@ export function parseSweBenchArgs(args: readonly string[]): SWEBenchOptions {
     output: 'predictions.jsonl',
     resume: false,
     verbose: false,
+    concurrency: 1,
     instances: [] as string[],
   };
   for (const arg of args.slice(1)) parseArg(arg, state);
@@ -263,6 +270,7 @@ export function parseSweBenchArgs(args: readonly string[]): SWEBenchOptions {
     output: state.output,
     resume: state.resume,
     verbose: state.verbose,
+    concurrency: state.concurrency,
     instances: state.instances,
   };
   return state.limit !== undefined ? { ...base, limit: state.limit } : base;
@@ -285,6 +293,7 @@ Options:
   --output=<path>                 Output predictions file (default: predictions.jsonl)
   --resume                        Skip already completed instances
   --instance=<id>                 Run specific instance (can be repeated)
+  --concurrency=<n>               Parallel workers (default: 1, sequential)
   --verbose, -v                   Enable verbose output
 `);
 }

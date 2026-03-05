@@ -189,6 +189,7 @@ describe('benchmark-runner', () => {
       ...DEFAULT_SWE_BENCH_CONFIG,
       timeout_ms: 5000,
       max_iterations: 3,
+      concurrency: 1,
     };
 
     it('should run all instances and return success', async () => {

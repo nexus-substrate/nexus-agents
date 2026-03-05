@@ -80,6 +80,7 @@ interface IterationLoopOptions {
   readonly signal: AbortSignal | undefined;
   readonly startTime: number;
   readonly onMessage: ((msg: string) => void) | undefined;
+  readonly systemPrompt: string | undefined;
 }
 
 /**
@@ -90,6 +91,8 @@ export interface RunOptions {
   readonly config: SWEBenchConfig;
   readonly onMessage?: (message: string) => void;
   readonly signal?: AbortSignal;
+  /** Override system prompt (e.g., with memory-enriched version). */
+  readonly systemPrompt?: string;
 }
 
 // ============================================================================
@@ -100,9 +103,10 @@ async function runIteration(
   executor: IAgentExecutor,
   context: AgentContext,
   previousError?: string,
-  previousPatch?: string
+  previousPatch?: string,
+  systemPromptOverride?: string
 ): Promise<Result<{ patch: string; tokensUsed: number }, AgentRunnerError>> {
-  const systemPrompt = SWE_BENCH_SYSTEM_PROMPT;
+  const systemPrompt = systemPromptOverride ?? SWE_BENCH_SYSTEM_PROMPT;
   let userPrompt = createInstancePrompt(context.instance);
 
   if (previousError !== undefined) {
@@ -128,11 +132,18 @@ async function runIteration(
 async function processSingleIteration(
   executor: IAgentExecutor,
   context: AgentContext,
-  state: IterationState
+  state: IterationState,
+  systemPromptOverride?: string
 ): Promise<{ success: boolean; patch?: string }> {
   await resetRepository(context.workDir);
 
-  const iterResult = await runIteration(executor, context, state.lastError, state.lastPatch);
+  const iterResult = await runIteration(
+    executor,
+    context,
+    state.lastError,
+    state.lastPatch,
+    systemPromptOverride
+  );
 
   if (!iterResult.ok) {
     state.lastError = iterResult.error.message;
@@ -192,7 +203,13 @@ export async function runAgentOnInstance(
     finalPatch: undefined,
   };
 
-  const loopOptions: IterationLoopOptions = { config, signal, startTime, onMessage };
+  const loopOptions: IterationLoopOptions = {
+    config,
+    signal,
+    startTime,
+    onMessage,
+    systemPrompt: options.systemPrompt,
+  };
   const result = await runIterationLoop(executor, context, state, loopOptions);
   return { ok: true, value: result };
 }
@@ -227,7 +244,7 @@ async function runIterationLoop(
     state.iterations++;
     onMessage?.(`Iteration ${state.iterations.toString()}/${config.max_iterations.toString()}`);
 
-    const iterResult = await processSingleIteration(executor, context, state);
+    const iterResult = await processSingleIteration(executor, context, state, options.systemPrompt);
     if (iterResult.success && iterResult.patch !== undefined) {
       state.finalPatch = iterResult.patch;
       onMessage?.('Patch applies successfully');

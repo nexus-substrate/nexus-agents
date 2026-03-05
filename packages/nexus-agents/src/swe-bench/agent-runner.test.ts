@@ -43,6 +43,7 @@ describe('agent-runner', () => {
     work_dir: tempDir,
     timeout_ms: 5000,
     max_iterations: 3,
+    concurrency: 1,
   });
 
   const validPatchResponse = `
@@ -173,6 +174,7 @@ This fixes the bug.
         work_dir: path.join(tempDir, 'custom-work'),
         timeout_ms: 100, // Very short to timeout quickly
         max_iterations: 1,
+        concurrency: 1,
       };
 
       const executor = createMockExecutor([validPatchResponse]);
@@ -192,6 +194,7 @@ This fixes the bug.
         work_dir: tempDir,
         timeout_ms: 100,
         max_iterations: 1,
+        concurrency: 1,
       };
 
       const executor = createMockExecutor(['no patch here', 'still no patch']);

@@ -152,6 +152,7 @@ describe('swe-bench-command', () => {
         output: 'predictions.jsonl',
         resume: false,
         verbose: false,
+        concurrency: 1,
         instances: [],
       };
 
@@ -167,6 +168,7 @@ describe('swe-bench-command', () => {
         output: 'predictions.jsonl',
         resume: false,
         verbose: false,
+        concurrency: 1,
         instances: [],
       };
 
@@ -176,6 +178,7 @@ describe('swe-bench-command', () => {
         output: 'predictions.jsonl',
         resume: false,
         verbose: false,
+        concurrency: 1,
         instances: [],
       };
 

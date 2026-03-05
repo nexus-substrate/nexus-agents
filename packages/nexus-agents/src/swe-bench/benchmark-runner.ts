@@ -11,12 +11,16 @@
 // Console output is intentional for CLI user feedback
 
 import type { Result } from '../core/result.js';
-import type { SWEBenchConfig, SWEBenchInstance } from './types.js';
+import type { SWEBenchConfig, SWEBenchInstance, SWEBenchRunResult } from './types.js';
 import { runAgentOnInstance, type RunOptions, type IAgentExecutor } from './agent-runner.js';
 import { AgentRunnerError } from './agent-runner.js';
 import { PredictionWriter } from './prediction-writer.js';
 import { createNexusExecutorFromEnv } from './nexus-agent-executor.js';
 import { createCliExecutor } from './cli-agent-executor.js';
+import { runBenchmarkParallel } from './parallel-runner.js';
+import { createBenchmarkMemory, buildEnrichedPrompt, recordOutcome } from './memory-enrichment.js';
+import type { SessionMemory } from '../context/session-memory.js';
+import type { SessionLearning } from '../context/session-memory-types.js';
 
 /**
  * Result from running benchmark.
@@ -51,10 +55,6 @@ export interface ExecutorWithModel extends IAgentExecutor {
 
 /**
  * Create executor, preferring CLI over API.
- *
- * Order of preference:
- * 1. Claude CLI (uses OAuth, no API key needed)
- * 2. API with ANTHROPIC_API_KEY environment variable
  */
 export async function createExecutor(
   verbose: boolean
@@ -65,7 +65,6 @@ export async function createExecutor(
       }
     : undefined;
 
-  // Try CLI first (preferred - uses OAuth)
   console.log('Checking CLI availability...');
   const cliResult = await createCliExecutor({ onMessage });
   if (cliResult.ok) {
@@ -73,7 +72,6 @@ export async function createExecutor(
     return cliResult;
   }
 
-  // Fall back to API
   console.log('CLI not available, checking API key...');
   const apiResult = createNexusExecutorFromEnv({ onMessage });
   if (apiResult.ok) {
@@ -81,34 +79,51 @@ export async function createExecutor(
     return apiResult;
   }
 
-  // Neither available
   return {
     ok: false,
     error: new AgentRunnerError(
       'No executor available. Either:\n' +
-        '  - Install and authenticate Claude CLI: "npm install -g @anthropic-ai/claude && claude auth"\n' +
+        '  - Install and authenticate Claude CLI\n' +
         '  - Set ANTHROPIC_API_KEY environment variable'
     ),
   };
 }
 
+/**
+ * Minimal writer interface for runSingleInstance.
+ * Both PredictionWriter and LockedWriter satisfy this.
+ */
+export interface IBenchmarkWriter {
+  writeResult(
+    result: Parameters<PredictionWriter['writeResult']>[0]
+  ): Promise<Result<boolean, import('./prediction-writer.js').PredictionWriteError>>;
+}
+
+/** Options for running a single benchmark instance. */
+export interface SingleInstanceOptions {
+  readonly instance: SWEBenchInstance;
+  readonly executor: ExecutorWithModel;
+  readonly config: SWEBenchConfig;
+  readonly writer: IBenchmarkWriter;
+  readonly verbose: boolean;
+  readonly systemPrompt?: string;
+}
+
 /** Run single instance and handle result. */
-async function runSingleInstance(
-  instance: SWEBenchInstance,
-  executor: ExecutorWithModel,
-  config: SWEBenchConfig,
-  writer: PredictionWriter,
-  verbose: boolean
+export async function runSingleInstance(
+  opts: SingleInstanceOptions
 ): Promise<{ completed: boolean; tokens: number }> {
-  const runOpts: RunOptions = verbose
-    ? {
-        executor,
-        config,
-        onMessage: (msg: string): void => {
-          console.log(`  ${msg}`);
-        },
-      }
-    : { executor, config };
+  const { instance, executor, config, writer, verbose, systemPrompt } = opts;
+  const runOpts: RunOptions = {
+    executor,
+    config,
+    ...(verbose && {
+      onMessage: (msg: string): void => {
+        console.log(`  ${msg}`);
+      },
+    }),
+    ...(systemPrompt !== undefined && { systemPrompt }),
+  };
 
   const result = await runAgentOnInstance(instance, runOpts);
 
@@ -134,6 +149,79 @@ async function runSingleInstance(
   return { completed: false, tokens };
 }
 
+/** Memory context for a benchmark session. */
+interface MemoryContext {
+  readonly memory: SessionMemory;
+  readonly learnings: readonly SessionLearning[];
+}
+
+/** Initialize memory for cross-run learning (if configured). */
+function initMemory(config: SWEBenchConfig): MemoryContext | null {
+  if (config.memory_dir === '') return null;
+
+  const memory = createBenchmarkMemory(config.memory_dir);
+  const sessionResult = memory.startSession(`swe-bench-${Date.now().toString(36)}`);
+  const learnings = sessionResult.ok ? sessionResult.value : [];
+  return { memory, learnings };
+}
+
+/** Run sequential benchmark loop with memory integration. */
+async function runSequential(
+  opts: BenchmarkRunOptions & {
+    executor: ExecutorWithModel;
+    writer: PredictionWriter;
+    memCtx: MemoryContext | null;
+  }
+): Promise<{ completed: number; failed: number; tokensUsed: number }> {
+  const { instances, config, verbose, executor, writer, memCtx } = opts;
+  let completed = 0;
+  let failed = 0;
+  let tokensUsed = 0;
+
+  for (let i = 0; i < instances.length; i++) {
+    const instance = instances[i];
+    if (instance === undefined) continue;
+
+    console.log(`\n[${String(i + 1)}/${String(instances.length)}] ${instance.instance_id}`);
+
+    const systemPrompt =
+      memCtx !== null && memCtx.learnings.length > 0
+        ? buildEnrichedPrompt(memCtx.learnings, instance)
+        : undefined;
+
+    const result = await runSingleInstance({
+      instance,
+      executor,
+      config,
+      writer,
+      verbose,
+      ...(systemPrompt !== undefined ? { systemPrompt } : {}),
+    });
+    tokensUsed += result.tokens;
+    if (result.completed) completed++;
+    else failed++;
+
+    if (memCtx !== null) {
+      const runResult: SWEBenchRunResult = {
+        instance_id: instance.instance_id,
+        completed: result.completed,
+        duration_ms: 0,
+        tokens_used: result.tokens,
+        ...(result.completed ? {} : { error: 'failed' }),
+      };
+      recordOutcome(memCtx.memory, instance, runResult);
+    }
+  }
+
+  await writer.close();
+  return { completed, failed, tokensUsed };
+}
+
+/** Build a failure result. */
+function failResult(message: string, total: number, outputPath: string): BenchmarkRunResult {
+  return { success: false, message, total, completed: 0, failed: 0, tokensUsed: 0, outputPath };
+}
+
 /**
  * Run all instances and write predictions.
  */
@@ -151,43 +239,39 @@ export async function runBenchmarkInstances(
 
   const openResult = await writer.open();
   if (!openResult.ok) {
-    return {
-      success: false,
-      message: openResult.error.message,
-      total: instances.length,
-      completed: 0,
-      failed: 0,
-      tokensUsed: 0,
+    return failResult(openResult.error.message, instances.length, outputPath);
+  }
+
+  const memCtx = initMemory(config);
+  let stats: { completed: number; failed: number; tokensUsed: number };
+
+  if (config.concurrency > 1) {
+    await writer.close();
+    stats = await runBenchmarkParallel({
+      executor,
+      instances,
+      config,
       outputPath,
-    };
+      append,
+      verbose,
+      concurrency: config.concurrency,
+    });
+  } else {
+    stats = await runSequential({ ...options, executor, writer, memCtx });
   }
 
-  let completed = 0;
-  let failed = 0;
-  let tokensUsed = 0;
-
-  for (let i = 0; i < instances.length; i++) {
-    const instance = instances[i];
-    if (instance === undefined) continue;
-
-    console.log(`\n[${String(i + 1)}/${String(instances.length)}] ${instance.instance_id}`);
-
-    const result = await runSingleInstance(instance, executor, config, writer, verbose);
-    tokensUsed += result.tokens;
-    if (result.completed) completed++;
-    else failed++;
+  if (memCtx !== null) {
+    memCtx.memory.endSession(
+      `SWE-bench run: ${String(stats.completed)}/${String(instances.length)} solved`
+    );
   }
-
-  await writer.close();
 
   console.log(`\nResults: ${outputPath}`);
   return {
     success: true,
-    message: `Completed ${String(completed)}/${String(instances.length)} instances`,
+    message: `Completed ${String(stats.completed)}/${String(instances.length)} instances`,
     total: instances.length,
-    completed,
-    failed,
-    tokensUsed,
+    ...stats,
     outputPath,
   };
 }

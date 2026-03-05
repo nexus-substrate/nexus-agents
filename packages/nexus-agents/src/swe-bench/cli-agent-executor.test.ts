@@ -44,6 +44,7 @@ describe('cli-agent-executor', () => {
     ...DEFAULT_SWE_BENCH_CONFIG,
     timeout_ms: 60000,
     max_iterations: 5,
+    concurrency: 1,
   };
 
   const testContext: AgentContext = {

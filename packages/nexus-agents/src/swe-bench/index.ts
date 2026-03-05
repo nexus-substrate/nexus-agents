@@ -84,13 +84,25 @@ export {
 export type { CliAgentExecutorConfig } from './cli-agent-executor.js';
 
 // Benchmark runner
-export { createExecutor, runBenchmarkInstances } from './benchmark-runner.js';
+export { createExecutor, runBenchmarkInstances, runSingleInstance } from './benchmark-runner.js';
 
 export type {
   BenchmarkRunResult,
   BenchmarkRunOptions,
   ExecutorWithModel,
+  IBenchmarkWriter,
 } from './benchmark-runner.js';
+
+// Parallel runner
+export { runBenchmarkParallel, LockedWriter } from './parallel-runner.js';
+
+// Memory enrichment
+export {
+  createBenchmarkMemory,
+  buildEnrichedPrompt,
+  recordOutcome,
+  extractRepoName,
+} from './memory-enrichment.js';
 
 // Evaluation harness types
 export { DEFAULT_EVALUATION_CONFIG, EvaluationHarnessError } from './evaluation-harness-types.js';

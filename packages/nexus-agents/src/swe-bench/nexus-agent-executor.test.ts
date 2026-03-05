@@ -44,6 +44,7 @@ describe('nexus-agent-executor', () => {
     ...DEFAULT_SWE_BENCH_CONFIG,
     timeout_ms: 5000,
     max_iterations: 3,
+    concurrency: 1,
   };
 
   const testContext: AgentContext = {

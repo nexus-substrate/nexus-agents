@@ -25,6 +25,7 @@ vi.mock('./index.js', () => ({
     timeout_ms: 600000,
     max_iterations: 20,
     work_dir: '/tmp/swe-bench',
+    concurrency: 1,
   },
   DatasetLoadError: class DatasetLoadError extends Error {
     override readonly cause?: unknown;

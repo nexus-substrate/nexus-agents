@@ -138,6 +138,10 @@ export interface SWEBenchConfig {
   readonly max_iterations: number;
   /** Working directory for repo clones. */
   readonly work_dir: string;
+  /** Number of concurrent workers (1 = sequential). */
+  readonly concurrency: number;
+  /** Directory for cross-run memory persistence. Empty string disables. */
+  readonly memory_dir: string;
 }
 
 /**
@@ -151,6 +155,8 @@ export const DEFAULT_SWE_BENCH_CONFIG: SWEBenchConfig = {
   timeout_ms: 600000, // 10 minutes per instance
   max_iterations: 20,
   work_dir: '/tmp/swe-bench',
+  concurrency: 1,
+  memory_dir: '/tmp/swe-bench-memory',
 };
 
 /**
