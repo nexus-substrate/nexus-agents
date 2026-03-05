@@ -52,6 +52,11 @@ const STDERR_ERROR_PATTERNS = [
   'econnrefused',
   'enotfound',
   'timeout',
+  'failed to connect',
+  'invalid api key',
+  'rate limit',
+  'quota exceeded',
+  'service unavailable',
 ];
 
 /** Checks if stderr looks like a real error (not just debug/progress output). */
