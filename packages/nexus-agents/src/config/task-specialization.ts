@@ -39,10 +39,10 @@ export const TASK_SPECIALIZATION_MATRIX: readonly TaskSpecialization[] = [
   {
     category: 'architecture',
     primaryCli: 'claude',
-    secondaryCli: 'codex',
-    reasoning: 'Claude excels at complex reasoning and architectural trade-off analysis',
+    secondaryCli: 'gemini',
+    reasoning: 'Claude excels at reasoning; Gemini secondary (67% vs codex 33%, n=24 vs 3)',
     keywords: ['architect', 'design', 'system design', 'trade-off', 'adr'],
-    bonus: 15,
+    bonus: 10,
   },
   {
     category: 'code_generation',
