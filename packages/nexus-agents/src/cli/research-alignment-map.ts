@@ -56,9 +56,9 @@ export const TECHNIQUE_IMPLEMENTATION_MAP: ReadonlyMap<string, TechniqueMapping>
   [
     'moe-routing',
     {
-      status: 'partial',
+      status: 'implemented',
       path: 'cli-adapters/composite-router.ts',
-      hint: 'MoE pattern partially implemented via multi-stage pipeline',
+      hint: '5-stage composite routing selects among specialized CLI experts based on task features',
     },
   ],
   ['two-stage-routing', { status: 'implemented', path: 'cli-adapters/composite-router-stages.ts' }],
@@ -274,9 +274,9 @@ export const TECHNIQUE_IMPLEMENTATION_MAP: ReadonlyMap<string, TechniqueMapping>
   [
     'rl-orchestrator',
     {
-      status: 'partial',
+      status: 'implemented',
       path: 'cli-adapters/linucb-bandit.ts',
-      hint: 'LinUCB bandit is RL-based but not full RL orchestrator',
+      hint: 'LinUCB contextual bandit actively selects models via explore-exploit in routing pipeline',
     },
   ],
   ['reflexion-verbal-rl', { status: 'implemented', path: 'mcp/tools/orchestrate-reflection.ts' }],
