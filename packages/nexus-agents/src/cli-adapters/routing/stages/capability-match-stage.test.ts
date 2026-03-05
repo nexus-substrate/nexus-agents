@@ -242,6 +242,52 @@ describe('CapabilityMatchStage', () => {
     });
   });
 
+  describe('cross-attention matrix', () => {
+    it('uses default attention when no custom matrix provided', () => {
+      const stats = stage.getStats();
+      const config = stats['config'] as Record<string, unknown>;
+      expect(config['attentionSource']).toBe('default');
+    });
+
+    it('accepts custom attention matrix', () => {
+      const custom = new CapabilityMatchStage({
+        attention: {
+          reasoning: { reasoning: 0.8, codeGeneration: 0.1, speed: 0.05, costEfficiency: 0.05 },
+          code: { reasoning: 0.1, codeGeneration: 0.8, speed: 0.05, costEfficiency: 0.05 },
+          creative: { reasoning: 0.4, codeGeneration: 0.1, speed: 0.2, costEfficiency: 0.3 },
+          general: { reasoning: 0.25, codeGeneration: 0.25, speed: 0.25, costEfficiency: 0.25 },
+        },
+      });
+      const stats = custom.getStats();
+      const config = stats['config'] as Record<string, unknown>;
+      expect(config['attentionSource']).toBe('custom');
+    });
+
+    it('custom attention affects routing scores', async () => {
+      // Custom matrix that heavily weights reasoning for code tasks
+      const custom = new CapabilityMatchStage({
+        attention: {
+          reasoning: { reasoning: 0.25, codeGeneration: 0.25, speed: 0.25, costEfficiency: 0.25 },
+          code: { reasoning: 0.9, codeGeneration: 0.05, speed: 0.025, costEfficiency: 0.025 },
+          creative: { reasoning: 0.25, codeGeneration: 0.25, speed: 0.25, costEfficiency: 0.25 },
+          general: { reasoning: 0.25, codeGeneration: 0.25, speed: 0.25, costEfficiency: 0.25 },
+        },
+      });
+
+      const ctx = createContext('implement a new function');
+      const result = await custom.route(ctx);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        // With reasoning=0.9 for code tasks, claude (reasoning=10) should beat codex
+        const scores = result.value.context.scores;
+        const claudeScore = scores.get('claude') ?? 0;
+        const codexScore = scores.get('codex') ?? 0;
+        expect(claudeScore).toBeGreaterThan(codexScore);
+      }
+    });
+  });
+
   describe('createCapabilityMatchStage', () => {
     it('creates stage with factory function', () => {
       const created = createCapabilityMatchStage();

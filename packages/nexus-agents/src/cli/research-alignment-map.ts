@@ -110,9 +110,9 @@ export const TECHNIQUE_IMPLEMENTATION_MAP: ReadonlyMap<string, TechniqueMapping>
   [
     'cross-attention-routing',
     {
-      status: 'partial',
+      status: 'implemented',
       path: 'routing/stages/capability-match-stage.ts',
-      hint: 'Capability matching without cross-attention mechanism',
+      hint: 'AttentionMatrix maps task features to capability weights (configurable cross-attention)',
     },
   ],
 

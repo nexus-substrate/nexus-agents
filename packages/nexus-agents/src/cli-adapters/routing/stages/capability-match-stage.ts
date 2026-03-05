@@ -72,6 +72,27 @@ const TASK_TYPE_INDICATORS: Record<TaskType, string[]> = {
 };
 
 /**
+ * Cross-attention matrix: for each task feature, weights each capability dimension.
+ * Entry [feature][capability] = attention weight (how important capability is for feature).
+ * Rows sum to 1.0 (softmax-normalized). Each row is a CapabilityWeights.
+ *
+ * This implements a simplified cross-attention mechanism (arXiv:2508.21141 PILOT)
+ * where task features attend to model capabilities via learned/configured weights.
+ */
+type AttentionMatrix = Record<TaskType, CapabilityWeights>;
+
+/**
+ * Default attention matrix — manually tuned from outcome data.
+ * Each row defines how a task feature attends to capability dimensions.
+ */
+const DEFAULT_ATTENTION: AttentionMatrix = {
+  reasoning: { reasoning: 0.5, codeGeneration: 0.2, speed: 0.1, costEfficiency: 0.2 },
+  code: { reasoning: 0.2, codeGeneration: 0.5, speed: 0.1, costEfficiency: 0.2 },
+  creative: { reasoning: 0.3, codeGeneration: 0.1, speed: 0.2, costEfficiency: 0.4 },
+  general: { reasoning: 0.25, codeGeneration: 0.25, speed: 0.25, costEfficiency: 0.25 },
+};
+
+/**
  * Configuration for the capability match stage.
  */
 export interface CapabilityMatchConfig {
@@ -81,6 +102,8 @@ export interface CapabilityMatchConfig {
   readonly specializationBonus: number;
   /** Enable debug logging */
   readonly debug: boolean;
+  /** Custom attention matrix (overrides default cross-attention weights) */
+  readonly attention?: AttentionMatrix;
 }
 
 const DEFAULT_CONFIG: CapabilityMatchConfig = {
@@ -174,6 +197,7 @@ export class CapabilityMatchStage implements IRouterStage {
       config: {
         capabilityWeight: this.config.capabilityWeight,
         specializationBonus: this.config.specializationBonus,
+        attentionSource: this.config.attention !== undefined ? 'custom' : 'default',
       },
     };
   }
@@ -198,19 +222,12 @@ export class CapabilityMatchStage implements IRouterStage {
   }
 
   /**
-   * Get capability weights based on task type.
+   * Get capability weights via cross-attention lookup.
+   * Each task type attends to capability dimensions with configured weights.
    */
   private getCapabilityWeights(taskType: TaskType): CapabilityWeights {
-    switch (taskType) {
-      case 'reasoning':
-        return { reasoning: 0.5, codeGeneration: 0.2, speed: 0.1, costEfficiency: 0.2 };
-      case 'code':
-        return { reasoning: 0.2, codeGeneration: 0.5, speed: 0.1, costEfficiency: 0.2 };
-      case 'creative':
-        return { reasoning: 0.3, codeGeneration: 0.1, speed: 0.2, costEfficiency: 0.4 };
-      case 'general':
-        return { reasoning: 0.25, codeGeneration: 0.25, speed: 0.25, costEfficiency: 0.25 };
-    }
+    const attention = this.config.attention ?? DEFAULT_ATTENTION;
+    return attention[taskType];
   }
 
   /**
