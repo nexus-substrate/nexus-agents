@@ -102,9 +102,9 @@ export const TECHNIQUE_IMPLEMENTATION_MAP: ReadonlyMap<string, TechniqueMapping>
   [
     'strmac-state-routing',
     {
-      status: 'partial',
+      status: 'implemented',
       path: 'context/routing-memory.ts',
-      hint: 'State-based routing via memory but not full MAC',
+      hint: 'RoutingMemory maintains state across calls (profile, experience, action cache) feeding LinUCB + weather bonus stages',
     },
   ],
   [
@@ -181,9 +181,9 @@ export const TECHNIQUE_IMPLEMENTATION_MAP: ReadonlyMap<string, TechniqueMapping>
   [
     'action-memory',
     {
-      status: 'partial',
+      status: 'implemented',
       path: 'orchestration/outcomes/',
-      hint: 'Outcome store tracks actions but not full action replay',
+      hint: 'OutcomeStore records actions+results+context with query-by-category/CLI/time and cross-session persistence',
     },
   ],
   ['reflection-memory', { status: 'implemented', path: 'mcp/tools/orchestrate-reflection.ts' }],

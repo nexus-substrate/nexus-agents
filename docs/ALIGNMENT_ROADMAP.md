@@ -18,13 +18,14 @@ related_files: [CHANGELOG.md, architecture/README.md]
 
 ## Score Progression
 
-| Date       | Score   | Milestone                                   |
-| ---------- | ------- | ------------------------------------------- |
-| 2026-01-09 | 6.4/10  | Initial 5-agent consensus                   |
-| 2026-01-13 | 7.28/10 | Observability + docs automation             |
-| 2026-01-16 | 8.06/10 | v2.2.0 release, security complete           |
-| 2026-01-23 | 7.78/10 | Skills loader, deeper review                |
-| 2026-03-04 | 8.0/10  | v2.26.1, feedback loops, research synthesis |
+| Date       | Score   | Milestone                                    |
+| ---------- | ------- | -------------------------------------------- |
+| 2026-01-09 | 6.4/10  | Initial 5-agent consensus                    |
+| 2026-01-13 | 7.28/10 | Observability + docs automation              |
+| 2026-01-16 | 8.06/10 | v2.2.0 release, security complete            |
+| 2026-01-23 | 7.78/10 | Skills loader, deeper review                 |
+| 2026-03-04 | 8.0/10  | v2.26.1, feedback loops, research synthesis  |
+| 2026-03-04 | 8.0/10  | 27 techniques implemented, reliability fixes |
 
 **Trend:** Baseline 6.4 -> peak 8.06. Score fluctuations reflect increasingly rigorous review standards rather than capability regression.
 
@@ -145,7 +146,7 @@ Weather report recommends promoting exploration to Tier 3 routing. The failure r
 
 ## Forward-Looking: Phase 6 Proposals
 
-Based on gap analysis, weather report data, and research alignment map (25 implemented, 22 partial, 54 not-started techniques):
+Based on gap analysis, weather report data, and research alignment map (27 implemented, 20 partial, 54 not-started techniques):
 
 ### 6.1: Evidence-Based Validation (Target: 9.0/10)
 
