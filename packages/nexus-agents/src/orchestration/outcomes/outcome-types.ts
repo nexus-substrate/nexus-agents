@@ -30,6 +30,7 @@ export const OutcomeFailureCategorySchema = z.enum([
   'crash',
   'adapter_unavailable',
   'validation',
+  'parse',
   'execution',
   'unknown',
 ]);
@@ -119,7 +120,41 @@ const ADAPTER_PATTERNS = [
   'model does not exist',
 ];
 const VALIDATION_PATTERNS = ['validation', 'invalid input', 'parse error', 'zod', 'schema'];
-const EXECUTION_PATTERNS = ['api error', 'apierror', 'sdk error', 'failed to', 'cannot'];
+const PARSE_PATTERNS = [
+  'json parse',
+  'unexpected token',
+  'unexpected end of json',
+  'syntax error',
+  'failed to parse',
+  'ndjson',
+  'malformed',
+];
+const EXECUTION_PATTERNS = [
+  'api error',
+  'apierror',
+  'sdk error',
+  'failed to',
+  'cannot',
+  'typeerror',
+  'referenceerror',
+  'assertion',
+  'expect',
+  'undefined is not',
+  'null is not',
+  'is not a function',
+  'unhandled',
+  'rejected',
+  'enoent',
+  'permission denied',
+  'eperm',
+  'eacces',
+  'command failed',
+  'non-zero exit',
+  'exit code',
+  'empty response',
+  'no output',
+  'no content',
+];
 
 function matchesAny(text: string, patterns: string[]): boolean {
   return patterns.some((p) => text.includes(p));
@@ -134,8 +169,9 @@ function classifyText(text: string): OutcomeFailureCategory {
   if (matchesAny(text, CONNECTION_PATTERNS)) return 'connection';
   if (matchesAny(text, CRASH_PATTERNS)) return 'crash';
   if (matchesAny(text, VALIDATION_PATTERNS)) return 'validation';
+  if (matchesAny(text, PARSE_PATTERNS)) return 'parse';
   if (matchesAny(text, EXECUTION_PATTERNS)) return 'execution';
-  return 'execution';
+  return 'unknown';
 }
 
 /** Classifies an error into an OutcomeFailureCategory for recording. */

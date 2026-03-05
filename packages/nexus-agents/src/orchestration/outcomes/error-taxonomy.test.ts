@@ -22,6 +22,7 @@ describe('OutcomeFailureCategorySchema', () => {
       'crash',
       'adapter_unavailable',
       'validation',
+      'parse',
       'execution',
       'unknown',
     ];
@@ -94,8 +95,8 @@ describe('categorizeOutcomeError', () => {
     expect(categorizeOutcomeError(new Error('Validation failed for input'))).toBe('validation');
   });
 
-  it('returns execution for generic Error instances', () => {
-    expect(categorizeOutcomeError(new Error('Something broke'))).toBe('execution');
+  it('returns unknown for generic Error instances', () => {
+    expect(categorizeOutcomeError(new Error('Something broke'))).toBe('unknown');
   });
 
   it('returns unknown for non-Error values', () => {
@@ -128,8 +129,8 @@ describe('categorizeOutcomeErrorMessage', () => {
     expect(categorizeOutcomeErrorMessage('Zod parse error')).toBe('validation');
   });
 
-  it('returns execution for unrecognized messages', () => {
-    expect(categorizeOutcomeErrorMessage('Something went wrong')).toBe('execution');
+  it('returns unknown for unrecognized messages', () => {
+    expect(categorizeOutcomeErrorMessage('Something went wrong')).toBe('unknown');
   });
 
   it('classifies deadline exceeded as timeout', () => {
@@ -168,5 +169,33 @@ describe('categorizeOutcomeErrorMessage', () => {
 
   it('classifies 401 as authentication', () => {
     expect(categorizeOutcomeErrorMessage('HTTP 401 Unauthorized')).toBe('authentication');
+  });
+
+  it('classifies JSON syntax errors as parse (#1401)', () => {
+    expect(categorizeOutcomeErrorMessage('Unexpected token < in JSON at position 0')).toBe('parse');
+  });
+
+  it('classifies unexpected token as parse (#1401)', () => {
+    expect(categorizeOutcomeErrorMessage('Unexpected token < in JSON')).toBe('parse');
+  });
+
+  it('classifies malformed response as parse (#1401)', () => {
+    expect(categorizeOutcomeErrorMessage('malformed NDJSON response')).toBe('parse');
+  });
+
+  it('classifies TypeError as execution (#1401)', () => {
+    expect(categorizeOutcomeErrorMessage('TypeError: Cannot read properties')).toBe('execution');
+  });
+
+  it('classifies non-zero exit as execution (#1401)', () => {
+    expect(categorizeOutcomeErrorMessage('Process non-zero exit code 1')).toBe('execution');
+  });
+
+  it('classifies empty response as execution (#1401)', () => {
+    expect(categorizeOutcomeErrorMessage('Got empty response from model')).toBe('execution');
+  });
+
+  it('returns unknown for truly unrecognized messages (#1401)', () => {
+    expect(categorizeOutcomeErrorMessage('xyzzy plugh nothing happens')).toBe('unknown');
   });
 });
