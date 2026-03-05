@@ -75,11 +75,11 @@
 
 ### 6. Observability (8/10)
 
-| Aspect         | Status   | Score | Notes                               |
-| -------------- | -------- | ----- | ----------------------------------- |
-| SwarmObserver  | Complete | 3/3   | Metrics collection active           |
-| Trace Exporter | Complete | 3/3   | Distributed tracing enabled         |
-| Audit Logging  | Complete | 2/4   | Structured logs, compliance partial |
+| Aspect                | Status   | Score | Notes                               |
+| --------------------- | -------- | ----- | ----------------------------------- |
+| OrchestrationObserver | Complete | 3/3   | Metrics collection active           |
+| Trace Exporter        | Complete | 3/3   | Distributed tracing enabled         |
+| Audit Logging         | Complete | 2/4   | Structured logs, compliance partial |
 
 **Deductions:**
 

@@ -155,7 +155,7 @@
 ├──────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
 │  ┌───────────────────┐  ┌───────────────────┐  ┌───────────────────┐        │
-│  │  SwarmObserver    │  │   TraceExporter   │  │   AuditLogger     │        │
+│  │  OrchestrationObserver    │  │   TraceExporter   │  │   AuditLogger     │        │
 │  │                   │  │                   │  │                   │        │
 │  │  Swarm metrics    │  │  Distributed      │  │  Structured       │        │
 │  │  Event tracking   │  │  tracing          │  │  compliance logs  │        │
@@ -243,7 +243,7 @@ Context management and persistence:
 
 Metrics, tracing, and audit:
 
-- **SwarmObserver**: Swarm-level metrics
+- **OrchestrationObserver**: Swarm-level metrics
 - **TraceExporter**: Distributed tracing
 - **AuditLogger**: Compliance logging
 

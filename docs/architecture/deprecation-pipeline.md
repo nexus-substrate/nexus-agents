@@ -103,22 +103,15 @@ const result = await adapter.executeWithMetadata(task);
 
 ### arXiv Metadata
 
-**Removed:** `fetchArxivMetadata()`
-**Replacement:** `fetchArxivMetadataResult()` with proper `Result<T, E>` error handling
+**Removed:** `fetchArxivMetadata()` (v2.26.1, #1358)
+**Replacement:** `discoverResearchPapers()` in `research-helpers-discover.ts`
 
 ```typescript
 // BEFORE (v2.x)
 const meta = await fetchArxivMetadata(arxivId);
-if (!meta) {
-  /* error */
-}
 
-// AFTER (v3.0)
-const result = await fetchArxivMetadataResult(arxivId);
-if (!result.ok) {
-  handleError(result.error);
-}
-const meta = result.value;
+// AFTER (v2.26.1+)
+const result = await discoverResearchPapers({ query: arxivId, source: 'arxiv' });
 ```
 
 ### Agent State Transitions
@@ -204,19 +197,19 @@ const count = stats.total;
 
 ### Functions & Methods
 
-| Item                              | Location                                | Replacement                                  | Since |
-| --------------------------------- | --------------------------------------- | -------------------------------------------- | ----- |
-| `fetchArxivMetadata()`            | `cli/research-helpers-arxiv.ts:138`     | `fetchArxivMetadataResult()`                 | v2.4  |
-| `estimateComplexity()`            | `adapters/complexity-estimator.ts`      | `SharedTaskAnalyzer.getComplexity()`         | v2.3  |
-| `createComplexityEstimator()`     | `adapters/complexity-estimator.ts:227`  | `createSharedTaskAnalyzer()`                 | v2.3  |
-| `setState()`                      | `agents/base-agent.ts:198`              | `stateMachine.transition()`                  | v2.2  |
-| `performLegacyStateTransition()`  | `agents/base-agent-state-helpers.ts:22` | `stateMachine.transition()`                  | v2.2  |
-| `createSwarmObserver`             | `orchestration-observer.ts:453`         | `createOrchestrationObserver`                | v2.3  |
-| `createMockTechLead()`            | `mcp/tools/orchestrate.ts:420`          | `createMockOrchestrator()`                   | v2.5  |
-| ~~`executeEnhanced()`~~           | ~~`gemini-adapter.ts:195`~~             | `executeWithMetadata()` (**removed v2.6.0**) | v2.4  |
-| ~~`createEnhancedGeminiAdapter`~~ | ~~`gemini-adapter.ts:394`~~             | `createGeminiAdapter` (**removed v2.6.0**)   | v2.4  |
-| `ExpertRegistry.list()`           | `experts/expert-registry.ts:270`        | `getAll()`                                   | v2.5  |
-| `ExpertRegistry.listIds()`        | `experts/expert-registry.ts:280`        | `getAllIds()`                                | v2.5  |
+| Item                              | Location                                | Replacement                                      | Since |
+| --------------------------------- | --------------------------------------- | ------------------------------------------------ | ----- |
+| ~~`fetchArxivMetadata()`~~        | ~~`cli/research-helpers-arxiv.ts`~~     | `discoverResearchPapers()` (**removed v2.26.1**) | v2.4  |
+| `estimateComplexity()`            | `adapters/complexity-estimator.ts`      | `SharedTaskAnalyzer.getComplexity()`             | v2.3  |
+| `createComplexityEstimator()`     | `adapters/complexity-estimator.ts:227`  | `createSharedTaskAnalyzer()`                     | v2.3  |
+| `setState()`                      | `agents/base-agent.ts:198`              | `stateMachine.transition()`                      | v2.2  |
+| `performLegacyStateTransition()`  | `agents/base-agent-state-helpers.ts:22` | `stateMachine.transition()`                      | v2.2  |
+| `createSwarmObserver`             | `orchestration-observer.ts:453`         | `createOrchestrationObserver`                    | v2.3  |
+| `createMockTechLead()`            | `mcp/tools/orchestrate.ts:420`          | `createMockOrchestrator()`                       | v2.5  |
+| ~~`executeEnhanced()`~~           | ~~`gemini-adapter.ts:195`~~             | `executeWithMetadata()` (**removed v2.6.0**)     | v2.4  |
+| ~~`createEnhancedGeminiAdapter`~~ | ~~`gemini-adapter.ts:394`~~             | `createGeminiAdapter` (**removed v2.6.0**)       | v2.4  |
+| `ExpertRegistry.list()`           | `experts/expert-registry.ts:270`        | `getAll()`                                       | v2.5  |
+| `ExpertRegistry.listIds()`        | `experts/expert-registry.ts:280`        | `getAllIds()`                                    | v2.5  |
 
 ### Modules (Entire File)
 

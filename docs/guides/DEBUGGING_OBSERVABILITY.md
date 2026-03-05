@@ -1,6 +1,6 @@
 ---
 title: 'Debugging with Observability'
-description: 'Debug multi-agent workflows using EventBus, correlation IDs, and SwarmObserver'
+description: 'Debug multi-agent workflows using EventBus, correlation IDs, and OrchestrationObserver (formerly SwarmObserver)'
 tier: 2
 keywords:
   - debugging
@@ -27,7 +27,7 @@ This guide covers debugging multi-agent workflows using the nexus-agents observa
 1. [Quick Reference](#quick-reference)
 2. [EventBus Debugging](#eventbus-debugging)
 3. [Correlation ID Tracking](#correlation-id-tracking)
-4. [SwarmObserver](#swarmobserver)
+4. [OrchestrationObserver](#orchestrationobserver)
 5. [Byzantine Detection](#byzantine-detection)
 6. [Routing Metrics](#routing-metrics)
 7. [Common Debugging Scenarios](#common-debugging-scenarios)
@@ -43,15 +43,15 @@ import {
   generateCorrelationId,
   createChildCorrelationId,
 } from 'nexus-agents/agents/collaboration/event-bus.js';
-import { getSwarmObserver } from 'nexus-agents/observability/swarm-observer.js';
+import { getOrchestrationObserver } from 'nexus-agents/observability/orchestration-observer.js';
 import { createRoutingMetricsCollector } from 'nexus-agents/observability/routing-metrics.js';
 ```
 
-| Component      | Purpose                  | Key Methods                                               |
-| -------------- | ------------------------ | --------------------------------------------------------- |
-| EventBus       | Agent-to-agent messaging | `emit()`, `subscribe()`, `getHistory()`                   |
-| SwarmObserver  | Interaction tracking     | `recordEvent()`, `getBottlenecks()`, `getHealthMetrics()` |
-| RoutingMetrics | Model selection analysis | `recordDecision()`, `renderDashboard()`                   |
+| Component             | Purpose                  | Key Methods                                               |
+| --------------------- | ------------------------ | --------------------------------------------------------- |
+| EventBus              | Agent-to-agent messaging | `emit()`, `subscribe()`, `getHistory()`                   |
+| OrchestrationObserver | Interaction tracking     | `recordEvent()`, `getBottlenecks()`, `getHealthMetrics()` |
+| RoutingMetrics        | Model selection analysis | `recordDecision()`, `renderDashboard()`                   |
 
 ---
 
@@ -199,20 +199,23 @@ for (const event of orderedTrace) {
 
 ---
 
-## SwarmObserver
+## OrchestrationObserver
 
-The SwarmObserver tracks agent interactions and detects swarm-level patterns.
+The OrchestrationObserver tracks agent interactions and detects orchestration-level patterns.
 
 ### Basic Setup
 
 ```typescript
-import { getSwarmObserver, SwarmObserver } from 'nexus-agents/observability/swarm-observer.js';
+import {
+  getOrchestrationObserver,
+  OrchestrationObserver,
+} from 'nexus-agents/observability/orchestration-observer.js';
 
 // Get global instance
-const observer = getSwarmObserver();
+const observer = getOrchestrationObserver();
 
 // Or create custom instance
-const customObserver = new SwarmObserver({
+const customObserver = new OrchestrationObserver({
   maxEvents: 10000,
   bottleneckThreshold: 5,
   minClusterSize: 3,
@@ -226,8 +229,8 @@ const customObserver = new SwarmObserver({
 ```typescript
 // Record agent state change
 observer.recordEvent({
-  eventId: SwarmObserver.generateSpanId(),
-  traceId: SwarmObserver.generateTraceId(),
+  eventId: OrchestrationObserver.generateSpanId(),
+  traceId: OrchestrationObserver.generateTraceId(),
   agentId: 'code-expert',
   timestamp: new Date().toISOString(),
   payload: {
@@ -238,7 +241,7 @@ observer.recordEvent({
 
 // Record message event
 observer.recordEvent({
-  eventId: SwarmObserver.generateSpanId(),
+  eventId: OrchestrationObserver.generateSpanId(),
   traceId,
   agentId: 'code-expert',
   timestamp: new Date().toISOString(),
@@ -252,7 +255,7 @@ observer.recordEvent({
 
 // Record tool usage
 observer.recordEvent({
-  eventId: SwarmObserver.generateSpanId(),
+  eventId: OrchestrationObserver.generateSpanId(),
   traceId,
   agentId: 'code-expert',
   timestamp: new Date().toISOString(),
@@ -324,7 +327,7 @@ for (const cluster of clusters) {
 ```typescript
 const health = observer.getHealthMetrics();
 
-console.log('Swarm Health:');
+console.log('Orchestration Health:');
 console.log(`  Total agents: ${health.totalAgents}`);
 console.log(`  Active agents: ${health.activeAgents}`);
 console.log(`  Error agents: ${health.errorAgents}`);

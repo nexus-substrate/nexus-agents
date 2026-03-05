@@ -3,7 +3,7 @@
 **Issue:** #337
 **Author:** Research Agent
 **Date:** 2026-01-17 (ET)
-**Status:** Design Complete
+**Status:** Design Complete (Historical — model IDs in examples predate Claude 4.x family)
 **arXiv Reference:** [2512.08296](https://arxiv.org/abs/2512.08296) - "Towards a Science of Scaling Agent Systems"
 
 ---

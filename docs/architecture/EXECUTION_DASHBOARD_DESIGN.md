@@ -4,26 +4,26 @@
 **Date:** 2026-01-09 (ET)
 **Status:** Proposal
 **Issue:** TBD
-**Related:** SwarmObserver (`packages/nexus-agents/src/observability/`)
+**Related:** OrchestrationObserver (`packages/nexus-agents/src/observability/`)
 
 ---
 
 ## 1. Overview
 
-This document specifies the architecture for a terminal-based Execution Dashboard that visualizes SwarmObserver data in real-time. The dashboard operates in a terminal/MCP context without requiring a browser, providing operators with visibility into multi-agent swarm behavior.
+This document specifies the architecture for a terminal-based Execution Dashboard that visualizes OrchestrationObserver data in real-time. The dashboard operates in a terminal/MCP context without requiring a browser, providing operators with visibility into multi-agent swarm behavior.
 
 ### 1.1 Requirements
 
-| ID  | Requirement                          | Priority |
-| --- | ------------------------------------ | -------- |
-| R1  | Subscribe to SwarmObserver events    | P1       |
-| R2  | Display health metrics in real-time  | P1       |
-| R3  | Show bottleneck alerts               | P1       |
-| R4  | Visualize agent clusters             | P2       |
-| R5  | Output JSON for MCP tool integration | P1       |
-| R6  | Output formatted text for CLI        | P2       |
-| R7  | Support historical snapshots         | P3       |
-| R8  | Minimal memory footprint (< 50MB)    | P2       |
+| ID  | Requirement                               | Priority |
+| --- | ----------------------------------------- | -------- |
+| R1  | Subscribe to OrchestrationObserver events | P1       |
+| R2  | Display health metrics in real-time       | P1       |
+| R3  | Show bottleneck alerts                    | P1       |
+| R4  | Visualize agent clusters                  | P2       |
+| R5  | Output JSON for MCP tool integration      | P1       |
+| R6  | Output formatted text for CLI             | P2       |
+| R7  | Support historical snapshots              | P3       |
+| R8  | Minimal memory footprint (< 50MB)         | P2       |
 
 ### 1.2 Non-Requirements
 
@@ -40,7 +40,7 @@ This document specifies the architecture for a terminal-based Execution Dashboar
 
 ```
 +-------------------+       +----------------------+       +------------------+
-|   SwarmObserver   | ----> | DashboardSubscriber  | ----> |  OutputRenderer  |
+|   OrchestrationObserver   | ----> | DashboardSubscriber  | ----> |  OutputRenderer  |
 | (existing)        |       | (event aggregation)  |       |  (format output) |
 +-------------------+       +----------------------+       +------------------+
         |                            |                              |
@@ -51,18 +51,18 @@ This document specifies the architecture for a terminal-based Execution Dashboar
 
 ### 2.2 Data Flow
 
-1. **Event Recording** - SwarmObserver records agent events and interactions
-2. **Subscription** - DashboardSubscriber polls or subscribes to SwarmObserver
+1. **Event Recording** - OrchestrationObserver records agent events and interactions
+2. **Subscription** - DashboardSubscriber polls or subscribes to OrchestrationObserver
 3. **Aggregation** - Metrics are aggregated into dashboard views
 4. **Rendering** - OutputRenderer formats data for the target output
 
 ### 2.3 Integration Pattern
 
-The dashboard does NOT modify the existing SwarmObserver. It reads data through the public `ISwarmObserver` interface:
+The dashboard does NOT modify the existing OrchestrationObserver. It reads data through the public `IOrchestrationObserver` interface:
 
 ```typescript
-// SwarmObserver provides these read methods:
-interface ISwarmObserver {
+// OrchestrationObserver provides these read methods:
+interface IOrchestrationObserver {
   getHealthMetrics(): SwarmHealthMetrics;
   getBottlenecks(): BottleneckInfo[];
   getEmergentClusters(): AgentCluster[];
@@ -206,7 +206,7 @@ export interface AgentActivitySummary {
  */
 export interface IDashboardSubscriber {
   /**
-   * Start polling/subscribing to SwarmObserver.
+   * Start polling/subscribing to OrchestrationObserver.
    */
   start(): void;
 
@@ -267,12 +267,12 @@ export interface IOutputRenderer {
 
 ### 5.1 DashboardSubscriber
 
-The subscriber polls the SwarmObserver at a configurable interval and aggregates data into snapshots.
+The subscriber polls the OrchestrationObserver at a configurable interval and aggregates data into snapshots.
 
 ```typescript
 // dashboard-subscriber.ts
 
-import type { ISwarmObserver, SwarmHealthMetrics } from '../swarm-observer-types.js';
+import type { IOrchestrationObserver, SwarmHealthMetrics } from '../swarm-observer-types.js';
 import type {
   IDashboardSubscriber,
   DashboardSnapshot,
@@ -295,7 +295,7 @@ export const DEFAULT_DASHBOARD_CONFIG: DashboardConfig = {
  * Dashboard subscriber implementation.
  */
 export class DashboardSubscriber implements IDashboardSubscriber {
-  private readonly observer: ISwarmObserver;
+  private readonly observer: IOrchestrationObserver;
   private readonly config: DashboardConfig;
   private readonly history: DashboardSnapshot[] = [];
   private readonly snapshotListeners: Set<(s: DashboardSnapshot) => void> = new Set();
@@ -303,7 +303,7 @@ export class DashboardSubscriber implements IDashboardSubscriber {
   private intervalId: ReturnType<typeof setInterval> | undefined;
   private previousBottlenecks: Map<string, BottleneckAlert> = new Map();
 
-  constructor(observer: ISwarmObserver, config?: Partial<DashboardConfig>) {
+  constructor(observer: IOrchestrationObserver, config?: Partial<DashboardConfig>) {
     this.observer = observer;
     this.config = { ...DEFAULT_DASHBOARD_CONFIG, ...config };
   }
@@ -368,7 +368,7 @@ export class DashboardSubscriber implements IDashboardSubscriber {
 
 ### 5.2 DashboardAggregator
 
-Computes derived metrics from raw SwarmObserver data.
+Computes derived metrics from raw OrchestrationObserver data.
 
 ```typescript
 // dashboard-aggregator.ts
@@ -805,7 +805,7 @@ The dashboard provides an MCP tool for querying swarm state.
 
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { getSwarmObserver } from '../../observability/index.js';
+import { getOrchestrationObserver } from '../../observability/index.js';
 import { DashboardSubscriber } from '../../observability/dashboard/index.js';
 import {
   JsonRenderer,
@@ -847,7 +847,7 @@ export function registerSwarmDashboardTool(server: McpServer): void {
         };
       }
 
-      const observer = getSwarmObserver();
+      const observer = getOrchestrationObserver();
       const subscriber = new DashboardSubscriber(observer);
       const snapshot = subscriber.getSnapshot();
 
@@ -892,7 +892,7 @@ function renderView(renderer: IOutputRenderer, snapshot: DashboardSnapshot, view
 ### 7.1 Programmatic Usage
 
 ```typescript
-import { getSwarmObserver } from 'nexus-agents/observability';
+import { getOrchestrationObserver } from 'nexus-agents/observability';
 import {
   DashboardSubscriber,
   JsonRenderer,
@@ -900,7 +900,7 @@ import {
 } from 'nexus-agents/observability/dashboard';
 
 // Create subscriber
-const observer = getSwarmObserver();
+const observer = getOrchestrationObserver();
 const dashboard = new DashboardSubscriber(observer, {
   pollIntervalMs: 1000,
   alertSeverity: 'high',
@@ -1020,9 +1020,9 @@ Timestamp: 2026-01-09T14:30:00.000Z
 
 ## 8. Event Subscription Enhancement
 
-To support real-time updates efficiently, the SwarmObserver should be enhanced with event callbacks (as proposed in E4 of SWARM_OBSERVER_DESIGN.md).
+To support real-time updates efficiently, the OrchestrationObserver should be enhanced with event callbacks (as proposed in E4 of SWARM_OBSERVER_DESIGN.md).
 
-### 8.1 Proposed SwarmObserver Additions
+### 8.1 Proposed OrchestrationObserver Additions
 
 ```typescript
 // In swarm-observer.ts (enhancement)
@@ -1031,7 +1031,7 @@ type SnapshotCallback = (metrics: SwarmHealthMetrics) => void;
 type BottleneckCallback = (bottleneck: BottleneckInfo) => void;
 type EventCallback = (event: AgentEvent) => void;
 
-interface ISwarmObserverWithCallbacks extends ISwarmObserver {
+interface IOrchestrationObserverWithCallbacks extends IOrchestrationObserver {
   /**
    * Subscribe to health metric updates.
    * Called after each recordEvent/recordInteraction if metrics change.
@@ -1067,13 +1067,13 @@ Until this enhancement is implemented, the DashboardSubscriber uses polling with
 
 ### 9.2 Performance Targets
 
-| Operation           | Target | Notes                    |
-| ------------------- | ------ | ------------------------ |
-| Snapshot Generation | < 10ms | Reads from SwarmObserver |
-| JSON Render         | < 5ms  | Simple stringify         |
-| Text Render         | < 10ms | String concatenation     |
-| Table Render        | < 15ms | More complex formatting  |
-| Poll Cycle          | < 20ms | Total poll overhead      |
+| Operation           | Target | Notes                            |
+| ------------------- | ------ | -------------------------------- |
+| Snapshot Generation | < 10ms | Reads from OrchestrationObserver |
+| JSON Render         | < 5ms  | Simple stringify                 |
+| Text Render         | < 10ms | String concatenation             |
+| Table Render        | < 15ms | More complex formatting          |
+| Poll Cycle          | < 20ms | Total poll overhead              |
 
 ---
 
@@ -1089,7 +1089,7 @@ Until this enhancement is implemented, the DashboardSubscriber uses polling with
 
 ### 10.2 Integration Tests
 
-- End-to-end: SwarmObserver -> Dashboard -> Rendered output
+- End-to-end: OrchestrationObserver -> Dashboard -> Rendered output
 - MCP tool invocation with various parameters
 
 ### 10.3 Property-Based Tests
@@ -1124,7 +1124,7 @@ Until this enhancement is implemented, the DashboardSubscriber uses polling with
 
 ### Phase 4: Enhancements
 
-- [ ] Add event callbacks to SwarmObserver (E4)
+- [ ] Add event callbacks to OrchestrationObserver (E4)
 - [ ] Switch DashboardSubscriber to event-driven mode
 - [ ] Add performance benchmarks
 
@@ -1134,7 +1134,7 @@ Until this enhancement is implemented, the DashboardSubscriber uses polling with
 
 ### Context
 
-The dashboard needs to visualize SwarmObserver data. Options considered:
+The dashboard needs to visualize OrchestrationObserver data. Options considered:
 
 1. **Web UI** - React/Vue dashboard served over HTTP
 2. **TUI** - Terminal UI with ncurses/blessed

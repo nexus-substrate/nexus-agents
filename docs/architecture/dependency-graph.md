@@ -310,7 +310,7 @@ flowchart LR
 
 ### observability
 
-**Purpose:** nexus-agents/observability - Dashboard Renderer Tests Tests for dashboard rendering in various formats; nexus-agents/observability - Dashboard Renderer Renders dashboard snapshots to various output formats (text, JSON, markdown); nexus-agents/observability - Dashboard Types Type definitions for the execution dashboard that visualizes SwarmObserver data in real-time
+**Purpose:** nexus-agents/observability - Dashboard Renderer Tests Tests for dashboard rendering in various formats; nexus-agents/observability - Dashboard Renderer Renders dashboard snapshots to various output formats (text, JSON, markdown); nexus-agents/observability - Dashboard Types Type definitions for the execution dashboard that visualizes OrchestrationObserver data in real-time
 
 | Metric        | Value |
 | ------------- | ----- |

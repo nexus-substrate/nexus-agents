@@ -194,7 +194,7 @@ Detailed technical documentation:
 | [ARCHITECTURE_MAP.json](./design/ARCHITECTURE_MAP.json)                         | Machine-readable component map  | Generated |
 | [scaling-coordination-predictor.md](./design/scaling-coordination-predictor.md) | Scaling design                  | Canonical |
 | [EXECUTION_DASHBOARD_DESIGN.md](./architecture/EXECUTION_DASHBOARD_DESIGN.md)   | Dashboard design                | Canonical |
-| [SWARM_OBSERVER_DESIGN.md](./architecture/SWARM_OBSERVER_DESIGN.md)             | Swarm observer design           | Canonical |
+| [SWARM_OBSERVER_DESIGN.md](./architecture/SWARM_OBSERVER_DESIGN.md)             | OrchestrationObserver design    | Canonical |
 | [SWE_BENCH_HARNESS.md](./architecture/SWE_BENCH_HARNESS.md)                     | SWE-Bench integration           | Canonical |
 
 #### V2 Rearchitecture (Pipeline OS)
@@ -229,11 +229,11 @@ Detailed technical documentation:
 | [TIERED_DOCS_PLAN.md](./proposals/TIERED_DOCS_PLAN.md)                               | Documentation tiering | Implemented |
 | [automated-documentation-system.md](./proposals/automated-documentation-system.md)   | Auto-docs proposal    | Proposed    |
 | [cli-pr-review-workflow.md](./proposals/cli-pr-review-workflow.md)                   | PR review workflow    | Proposed    |
-| [hook-integration-proposal.md](./proposals/hook-integration-proposal.md)             | Hook integration      | Proposed    |
-| [interface-contract-238.md](./proposals/interface-contract-238.md)                   | Interface contracts   | Proposed    |
+| [hook-integration-proposal.md](./proposals/hook-integration-proposal.md)             | Hook integration      | Implemented |
+| [interface-contract-238.md](./proposals/interface-contract-238.md)                   | Interface contracts   | Implemented |
 | [process-automation-improvements.md](./proposals/process-automation-improvements.md) | Process automation    | Proposed    |
 | [protocol-improvement-system.md](./proposals/protocol-improvement-system.md)         | Protocol improvements | Proposed    |
-| [self-evaluation-mvp.md](./proposals/self-evaluation-mvp.md)                         | Self-evaluation MVP   | Proposed    |
+| [self-evaluation-mvp.md](./proposals/self-evaluation-mvp.md)                         | Self-evaluation MVP   | Implemented |
 | [adapter-architecture-review.md](./proposals/adapter-architecture-review.md)         | Adapter review        | Draft       |
 
 #### Workflows

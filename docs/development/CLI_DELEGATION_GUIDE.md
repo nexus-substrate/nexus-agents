@@ -7,7 +7,7 @@
 
 ## Overview
 
-This guide covers when and how to delegate tasks to Claude, Gemini, or Codex CLIs. Based on real testing with measured performance metrics.
+This guide covers when and how to delegate tasks to Claude, Gemini, Codex, or OpenCode CLIs. Based on real testing with measured performance metrics.
 
 ---
 
@@ -24,6 +24,9 @@ Task arrives
     │
     ├─ Complex reasoning / architecture?
     │       └─ YES → Claude (highest quality)
+    │
+    ├─ Custom model / OpenAI-compatible endpoint?
+    │       └─ YES → OpenCode (gateway routing)
     │
     └─ Simple query / quick task?
             └─ Gemini (cost-effective)
@@ -111,6 +114,42 @@ claude "Design the authentication flow for this system"
 claude "Review this PR" --files "src/**/*.ts"
 ```
 
+### OpenCode CLI
+
+**Strengths:** OpenAI-compatible gateway, custom model routing, MCP integration.
+
+| Metric      | Measured Value  | Notes                             |
+| ----------- | --------------- | --------------------------------- |
+| Latency     | 5-30s           | Depends on provider/model         |
+| Max Context | Model-dependent | Uses configured provider's limits |
+| Best For    | Custom models   | OpenAI-compatible endpoints       |
+| Cost        | Varies          | Depends on configured provider    |
+
+**Invocation:**
+
+```bash
+# Version check
+opencode --version
+
+# Interactive mode (default)
+opencode
+```
+
+**Configuration:** OpenCode uses `opencode.json` for MCP server and provider configuration:
+
+```json
+{
+  "mcp": {
+    "nexus-agents": {
+      "type": "local",
+      "command": ["node", "dist/cli.js", "--mode=server"]
+    }
+  }
+}
+```
+
+OpenCode supports custom OpenAI-compatible endpoints via its provider configuration, enabling routing through any API gateway. See [CUSTOM_ENDPOINT_SETUP.md](../guides/CUSTOM_ENDPOINT_SETUP.md) for details.
+
 ---
 
 ## Task-CLI Matching Matrix
@@ -125,6 +164,7 @@ claude "Review this PR" --files "src/**/*.ts"
 | Documentation writing   | Claude      | Gemini   | Quality prose needed           |
 | Quick questions         | Gemini      | Codex    | Cost-effective                 |
 | Refactoring suggestions | Claude      | Gemini   | Context understanding needed   |
+| Custom model routing    | OpenCode    | Claude   | OpenAI-compatible endpoints    |
 
 ---
 

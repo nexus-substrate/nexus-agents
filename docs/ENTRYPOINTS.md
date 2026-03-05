@@ -1127,16 +1127,16 @@ import {
 
 ```typescript
 import {
-  // Swarm observation
-  SwarmObserver,
-  createSwarmObserver,
+  // Orchestration observation (renamed from SwarmObserver in v2.24)
+  OrchestrationObserver,
+  createOrchestrationObserver,
 
   // Audit logging
   AuditLogger,
   createAuditLogger,
 
   // Types
-  type ISwarmObserver,
+  type IOrchestrationObserver,
   type IAuditLogger,
 } from 'nexus-agents';
 ```

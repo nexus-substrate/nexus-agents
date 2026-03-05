@@ -1,6 +1,6 @@
 # Amended Proposal: Self-Evaluation Protocol MVP
 
-**Status**: Amended after initial vote rejection (2/5 approve)
+**Status**: IMPLEMENTED — Self-eval module at src/cli/self-eval.ts (amended after initial vote rejection)
 **Date**: 2026-01-07
 
 ---

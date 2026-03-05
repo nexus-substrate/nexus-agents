@@ -216,11 +216,24 @@ All configuration can be overridden with environment variables:
 | `NEXUS_AUTH_ENABLED` | Enable MCP auth     | `true`   |
 | `NEXUS_AUTH_METHOD`  | Auth method         | `token`  |
 
-### Learning Variables
+### Orchestration Variables
 
-| Variable                 | Description                        | Default |
-| ------------------------ | ---------------------------------- | ------- |
-| `NEXUS_PERSIST_LEARNING` | Cross-session learning persistence | `true`  |
+| Variable                         | Description                                | Default |
+| -------------------------------- | ------------------------------------------ | ------- |
+| `NEXUS_V2_MODE`                  | V2 pipeline mode (`off`/`partial`/`full`)  | `full`  |
+| `NEXUS_AORCHESTRA`               | AOrchestra dynamic agent planning          | `true`  |
+| `NEXUS_AORCHESTRA_DISPATCH`      | AOrchestra worker dispatch                 | `true`  |
+| `NEXUS_WORKER_MAX_CALLS`         | Max model calls per orchestrate invocation | `6`     |
+| `NEXUS_MAX_CONCURRENT_EXPERTS`   | Expert pool semaphore capacity             | `6`     |
+| `NEXUS_ALLOW_MOCK_ORCHESTRATION` | Allow mock orchestration (test/CI only)    | `false` |
+
+### Learning & Memory Variables
+
+| Variable                  | Description                                               | Default  |
+| ------------------------- | --------------------------------------------------------- | -------- |
+| `NEXUS_PERSIST_LEARNING`  | Cross-session routing persistence                         | `true`   |
+| `NEXUS_REFLECTIVE_MEMORY` | Reflective memory retrieval (`shadow`/`true`/`false`)     | `shadow` |
+| `NEXUS_BILLING_MODE`      | Cost mode (`plan`=strongest model wins, `api`=cost-aware) | `plan`   |
 
 Outcomes and distilled routing rules persist to `~/.nexus-agents/learning/` by default. When persistence is enabled, `routingMemory`, `strategyDistillation`, and `preferenceRouting` also auto-enable (no separate config needed). Opt out with `NEXUS_PERSIST_LEARNING=false`.
 
@@ -228,6 +241,26 @@ Files stored:
 
 - `outcomes.jsonl` — Append-only JSONL of task outcomes
 - `rules.json` — Atomic JSON snapshot of distilled routing rules
+
+### Timeout Variables
+
+| Variable                  | Description                    | Default  |
+| ------------------------- | ------------------------------ | -------- |
+| `NEXUS_VOTE_TIMEOUT_MS`   | Consensus vote timeout (ms)    | `60000`  |
+| `NEXUS_EXPERT_TIMEOUT_MS` | Expert handler timeout (ms)    | `120000` |
+| `NEXUS_WORKER_TIMEOUT_MS` | Worker subprocess timeout (ms) | `60000`  |
+
+### Infrastructure Variables
+
+| Variable                          | Description                               | Default |
+| --------------------------------- | ----------------------------------------- | ------- |
+| `NEXUS_REST_ENABLED`              | Enable REST API server                    | `false` |
+| `NEXUS_EVENTBUS_ENABLED`          | EventBus A2A bridge                       | `true`  |
+| `NEXUS_RATE_LIMIT_ENABLED`        | Token-bucket rate limiter                 | `true`  |
+| `NEXUS_CIRCUIT_BREAKER_THRESHOLD` | Circuit breaker failure threshold         | `5`     |
+| `NEXUS_V2_POLICY_MODE`            | Policy enforcement (`off`/`warn`/`block`) | `block` |
+| `NEXUS_DISABLE_SESSIONS`          | Disable session tracking                  | `false` |
+| `NEXUS_DISABLE_METRICS`           | Disable metrics tracking                  | `false` |
 
 ### API Variables
 

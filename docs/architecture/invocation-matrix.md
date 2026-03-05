@@ -59,12 +59,12 @@ MCP Server
 
 ## Cross-Cutting Concerns
 
-| From           | To              | Type      |
-| -------------- | --------------- | --------- |
-| MCPServer      | EventBusBridge  | uses      |
-| EventBusBridge | SwarmObserver   | publishes |
-| MCPTools       | PolicyFirewall  | validates |
-| Orchestrator   | SICAIntegration | uses      |
+| From           | To                    | Type      |
+| -------------- | --------------------- | --------- |
+| MCPServer      | EventBusBridge        | uses      |
+| EventBusBridge | OrchestrationObserver | publishes |
+| MCPTools       | PolicyFirewall        | validates |
+| Orchestrator   | SICAIntegration       | uses      |
 
 ## CLI Command Flows
 

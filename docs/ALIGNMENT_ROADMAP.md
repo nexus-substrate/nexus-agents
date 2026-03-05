@@ -177,34 +177,34 @@ The following capabilities received positive assessments from multiple agents:
 **GitHub Issues:**
 
 - #163 - Add workflow execution summary to NotificationService ✅ Complete
-- #171 - Add routing effectiveness dashboard to SwarmObserver ✅ Complete
-- #173 - Integrate SwarmObserver into MCP server startup ✅ Complete
+- #171 - Add routing effectiveness dashboard to OrchestrationObserver ✅ Complete
+- #173 - Integrate OrchestrationObserver into MCP server startup ✅ Complete
 - #170 - Add routing-audit CLI command ✅ Complete
 - #174 - Add LinUCB arm statistics to routing-audit command ✅ Complete
 
 #### Improvement 1.1: Agent Interaction Tracing ✅
 
-| Attribute        | Value                                                                          |
-| ---------------- | ------------------------------------------------------------------------------ |
-| **Description**  | Track all inter-agent messages as a directed graph                             |
-| **Deliverable**  | `SwarmObserver` class with `recordInteraction()` and `getCollaborationGraph()` |
-| **Priority**     | P1                                                                             |
-| **GitHub Issue** | #173                                                                           |
-| **Status**       | ✅ Complete - integrated into MCP server startup                               |
+| Attribute        | Value                                                                                  |
+| ---------------- | -------------------------------------------------------------------------------------- |
+| **Description**  | Track all inter-agent messages as a directed graph                                     |
+| **Deliverable**  | `OrchestrationObserver` class with `recordInteraction()` and `getCollaborationGraph()` |
+| **Priority**     | P1                                                                                     |
+| **GitHub Issue** | #173                                                                                   |
+| **Status**       | ✅ Complete - integrated into MCP server startup                                       |
 
 **Implementation:**
 
-- SwarmObserver initialized during MCP server startup (`cli-server.ts`)
+- OrchestrationObserver initialized during MCP server startup (`cli-server.ts`)
 - Records `task_started` event when server begins
 - Records `task_completed` event during graceful shutdown
 - Logs final health metrics (activeAgents, totalAgents, totalInteractions)
-- Global singleton available via `getSwarmObserver()` for all components
+- Global singleton available via `getOrchestrationObserver()` for all components
 
 **Success Metrics:**
 | Metric | Baseline | Target | Current |
 | -------- | ---------- | -------- | --------- |
 | Interactions tracked | 0 | 100% | ✅ Event recording enabled |
-| Collaboration graph available | No | Yes | ✅ SwarmObserver provides graph |
+| Collaboration graph available | No | Yes | ✅ OrchestrationObserver provides graph |
 | Bottleneck detection | Manual | Automatic | ✅ getBottlenecks() available |
 
 #### Improvement 1.2: Routing Effectiveness Dashboard ✅
@@ -569,7 +569,7 @@ The following capabilities received positive assessments from multiple agents:
 1. ✅ **Phase 1: Observability Foundation COMPLETE** (2026-01-10):
    - #163 - Add workflow execution summary to NotificationService ✅
    - #171 - Add routing effectiveness dashboard ✅
-   - #173 - Integrate SwarmObserver into MCP server startup ✅
+   - #173 - Integrate OrchestrationObserver into MCP server startup ✅
    - #170 - Add routing-audit CLI command ✅
    - #174 - Add LinUCB arm statistics to routing-audit command ✅
 
