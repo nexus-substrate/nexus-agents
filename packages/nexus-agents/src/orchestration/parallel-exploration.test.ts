@@ -108,8 +108,8 @@ describe('createDefaultConfig', () => {
   it('returns expected defaults', () => {
     const config = createDefaultConfig();
     expect(config.maxParallelClis).toBe(3);
-    expect(config.perCliTimeoutMs).toBe(60_000);
-    expect(config.maxOutputCharsPerCli).toBe(4000);
+    expect(config.perCliTimeoutMs).toBe(90_000);
+    expect(config.maxOutputCharsPerCli).toBe(8000);
   });
 });
 

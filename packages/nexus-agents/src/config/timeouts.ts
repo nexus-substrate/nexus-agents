@@ -121,8 +121,8 @@ export const PER_CLI_TASK_TIMEOUTS = {
   minMs: 1_000,
   /** Maximum per-CLI timeout. */
   maxMs: 600_000,
-  /** Parallel exploration per-CLI timeout (shorter for quick scans). */
-  explorationMs: 120_000,
+  /** Parallel exploration per-CLI timeout (raised from 120s for reliability, Issue #1403). */
+  explorationMs: 180_000,
 } as const;
 
 /**

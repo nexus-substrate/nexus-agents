@@ -41,10 +41,10 @@ export interface ExplorationResult {
 export const ParallelExplorationConfigSchema = z.object({
   /** Max CLIs to dispatch to in parallel (default: 3) */
   maxParallelClis: z.number().int().min(1).max(4).default(3),
-  /** Timeout per CLI invocation in ms (default: 60_000) */
-  perCliTimeoutMs: z.number().int().min(1000).max(300_000).default(60_000),
-  /** Maximum output chars per CLI response (default: 4000) */
-  maxOutputCharsPerCli: z.number().int().min(100).max(20_000).default(4000),
+  /** Timeout per CLI invocation in ms (default: 90_000, raised from 60s for reliability). */
+  perCliTimeoutMs: z.number().int().min(1000).max(300_000).default(90_000),
+  /** Maximum output chars per CLI response (default: 8000, raised from 4k for exploration depth). */
+  maxOutputCharsPerCli: z.number().int().min(100).max(20_000).default(8000),
 });
 
 export type ParallelExplorationConfig = z.infer<typeof ParallelExplorationConfigSchema>;

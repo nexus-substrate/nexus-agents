@@ -112,7 +112,7 @@ describe('Centralized Timeout Configuration', () => {
       expect(PER_CLI_TASK_TIMEOUTS.defaultMs).toBe(300_000);
       expect(PER_CLI_TASK_TIMEOUTS.minMs).toBe(1_000);
       expect(PER_CLI_TASK_TIMEOUTS.maxMs).toBe(600_000);
-      expect(PER_CLI_TASK_TIMEOUTS.explorationMs).toBe(120_000);
+      expect(PER_CLI_TASK_TIMEOUTS.explorationMs).toBe(180_000);
     });
   });
 
