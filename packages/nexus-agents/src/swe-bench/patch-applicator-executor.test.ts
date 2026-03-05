@@ -17,7 +17,7 @@ const { mockExecAsync, mockWriteFile, mockUnlink } = vi.hoisted(() => {
   };
 });
 
-vi.mock('node:child_process', () => ({ exec: vi.fn() }));
+vi.mock('node:child_process', () => ({ exec: vi.fn(), execFile: vi.fn() }));
 vi.mock('node:util', () => ({ promisify: () => mockExecAsync }));
 vi.mock('node:fs/promises', () => ({ writeFile: mockWriteFile, unlink: mockUnlink }));
 vi.mock('../core/index.js', () => ({
@@ -389,28 +389,29 @@ describe('executePatch', () => {
     expect(result.error).toBe('exec error');
   });
 
-  it('passes correct cwd and timeout to exec', async () => {
+  it('passes correct cwd and timeout to execFile', async () => {
     const opts = makeOptions({ workDir: '/my/repo', timeoutMs: 5000 });
     await executePatch('/tmp/p.patch', opts, false, makeLogger());
     expect(mockExecAsync).toHaveBeenCalledWith(
-      expect.any(String),
+      'patch',
+      expect.any(Array),
       expect.objectContaining({ cwd: '/my/repo', timeout: 5000, maxBuffer: MAX_OUTPUT_BUFFER })
     );
   });
 
-  it('logs the command before execution', async () => {
+  it('logs the args before execution', async () => {
     const logger = makeLogger();
     await executePatch('/tmp/p.patch', makeOptions(), false, logger);
     expect(logger.debug).toHaveBeenCalledWith(
       'Executing patch command',
-      expect.objectContaining({ command: expect.any(String) })
+      expect.objectContaining({ args: expect.any(Array) })
     );
   });
 
-  it('includes reverse flag in command when reverse is true', async () => {
+  it('includes reverse flag in args when reverse is true', async () => {
     await executePatch('/tmp/p.patch', makeOptions(), true, makeLogger());
-    const command = (mockExecAsync.mock.calls[0] as unknown as [string])[0];
-    expect(command).toContain('-R');
+    const args = (mockExecAsync.mock.calls[0] as unknown as [string, string[]])[1];
+    expect(args).toContain('-R');
   });
 
   it('sets backupCreated based on options', async () => {

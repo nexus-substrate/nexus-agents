@@ -103,7 +103,14 @@ function getLinkType(url: string): LinkType {
  * Checks if a URL should be skipped (mailto:, javascript:).
  */
 function shouldSkipUrl(url: string): boolean {
-  return url.startsWith('mailto:') || url.startsWith('javascript:');
+  const lower = url.toLowerCase();
+  return (
+    lower.startsWith('mailto:') ||
+    lower.startsWith('javascript:') ||
+    lower.startsWith('data:') ||
+    lower.startsWith('file:') ||
+    lower.startsWith('ftp:')
+  );
 }
 
 /**

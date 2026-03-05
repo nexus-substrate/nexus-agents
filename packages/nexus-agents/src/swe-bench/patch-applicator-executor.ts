@@ -8,7 +8,7 @@
  * (Source: Issue #257 - SWE-Bench Evaluation)
  */
 
-import { exec } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
@@ -16,7 +16,7 @@ import type { ILogger } from '../core/logger.js';
 import { getTimeProvider } from '../core/index.js';
 import type { PatchApplicationResult, PatchApplicationOptions } from './patch-applicator-types.js';
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 // ============================================================================
 // Constants
@@ -271,12 +271,11 @@ export async function executePatch(
   logger: ILogger
 ): Promise<PatchApplicationResult> {
   const args = buildPatchArgs(patchPath, options, reverse);
-  const command = `patch ${args.join(' ')}`;
 
-  logger.debug('Executing patch command', { command, cwd: options.workDir });
+  logger.debug('Executing patch command', { args, cwd: options.workDir });
 
   try {
-    const { stdout, stderr } = await execAsync(command, {
+    const { stdout, stderr } = await execFileAsync('patch', args, {
       cwd: options.workDir,
       timeout: options.timeoutMs,
       maxBuffer: MAX_OUTPUT_BUFFER,

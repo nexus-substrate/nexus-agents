@@ -229,9 +229,11 @@ export class TestRunner implements ITestRunner {
       command += ` --timeout=${String(testTimeoutSec)}`;
     }
 
-    // Add test patterns if specified
+    // Add test patterns if specified (validated to prevent shell injection)
     if (config.testPatterns !== undefined && config.testPatterns.length > 0) {
-      command += ` ${config.testPatterns.join(' ')}`;
+      const safePattern = /^[a-zA-Z0-9_./:*\-[\]]+$/;
+      const safe = config.testPatterns.filter((p) => safePattern.test(p));
+      if (safe.length > 0) command += ` ${safe.join(' ')}`;
     }
 
     return command;
