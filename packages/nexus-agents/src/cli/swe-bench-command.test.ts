@@ -154,6 +154,7 @@ describe('swe-bench-command', () => {
         verbose: false,
         concurrency: 1,
         instances: [],
+        mcp: false,
       };
 
       expect(options.subcommand).toBe('run');
@@ -170,6 +171,7 @@ describe('swe-bench-command', () => {
         verbose: false,
         concurrency: 1,
         instances: [],
+        mcp: false,
       };
 
       const withoutLimit: SWEBenchOptions = {
@@ -180,6 +182,7 @@ describe('swe-bench-command', () => {
         verbose: false,
         concurrency: 1,
         instances: [],
+        mcp: false,
       };
 
       expect(withLimit.limit).toBe(10);

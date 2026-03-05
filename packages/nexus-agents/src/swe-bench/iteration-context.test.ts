@@ -166,8 +166,8 @@ describe('updateContext', () => {
       );
     }
     expect(ctx.approachHistory).toHaveLength(5);
-    expect(ctx.approachHistory[0].iteration).toBe(3);
-    expect(ctx.approachHistory[4].iteration).toBe(7);
+    expect(ctx.approachHistory[0]?.iteration).toBe(3);
+    expect(ctx.approachHistory[4]?.iteration).toBe(7);
   });
 
   it('updates hypothesis with latest', () => {
@@ -248,6 +248,6 @@ describe('formatContextForPrompt', () => {
     expect(files).toEqual([]);
     const ctx = updateContext(createEmptyContext(), response, 1, true, true);
     expect(ctx.approachHistory).toHaveLength(1);
-    expect(ctx.approachHistory[0].approach).toBe('Unstructured response');
+    expect(ctx.approachHistory[0]?.approach).toBe('Unstructured response');
   });
 });

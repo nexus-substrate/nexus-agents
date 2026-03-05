@@ -165,10 +165,10 @@ async function processSingleIteration(
   const iterResult = await runIteration({
     executor,
     context,
-    previousError: state.lastError,
-    previousPatch: state.lastPatch,
-    systemPromptOverride,
-    contextSummary,
+    ...(state.lastError !== undefined ? { previousError: state.lastError } : {}),
+    ...(state.lastPatch !== undefined ? { previousPatch: state.lastPatch } : {}),
+    ...(systemPromptOverride !== undefined ? { systemPromptOverride } : {}),
+    ...(contextSummary !== undefined ? { contextSummary } : {}),
   });
 
   if (!iterResult.ok) {
@@ -274,7 +274,7 @@ async function executeOneIteration(
     executor,
     context,
     state,
-    systemPromptOverride: options.systemPrompt,
+    ...(options.systemPrompt !== undefined ? { systemPromptOverride: options.systemPrompt } : {}),
     ...buildContextSummaryArg(options.iterationContext),
   });
 
