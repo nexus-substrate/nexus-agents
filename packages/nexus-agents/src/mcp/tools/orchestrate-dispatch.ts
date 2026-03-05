@@ -29,6 +29,7 @@ import { getTimeProvider } from '../../core/index.js';
 import type { ContentBlock } from '../../core/types/model.js';
 import { DEFAULT_CLI } from '../../config/model-capabilities-types.js';
 import { detectTaskCategory } from '../../config/task-specialization.js';
+import { getPipelineEventBus } from '../../pipeline/event-bus.js';
 import {
   getOutcomeStore,
   categorizeOutcomeErrorMessage,
@@ -239,6 +240,8 @@ async function runRefinementPhase(
   const refinedResults = await dispatchWorkers(failedEntries, {
     ...(options.maxConcurrency !== undefined ? { maxConcurrency: options.maxConcurrency } : {}),
     executeWorker: executor,
+    eventBus: getPipelineEventBus(),
+    executionId: `refine-${Date.now().toString(36)}`,
   });
   state.totalModelCalls += refinedResults.length;
   state.results = mergeRefinedResults(state.results, refinedResults);
@@ -277,6 +280,8 @@ export async function executeWorkerDispatch(
   const results = await dispatchWorkers(entries, {
     ...(maxConcurrency !== undefined ? { maxConcurrency } : {}),
     executeWorker: createWorkerExecutor(taskDescription, modelAdapter, logger),
+    eventBus: getPipelineEventBus(),
+    executionId: `dispatch-${Date.now().toString(36)}`,
   });
 
   const state: DispatchPhaseState = {

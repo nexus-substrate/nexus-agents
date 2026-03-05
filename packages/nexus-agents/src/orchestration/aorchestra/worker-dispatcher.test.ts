@@ -359,6 +359,22 @@ describe('dispatchWorkers', () => {
     vi.useRealTimers();
   });
 
+  it('emits wave.started and wave.completed events to eventBus (#1401)', async () => {
+    const emitted: Array<{ type: string }> = [];
+    const mockBus = { emit: vi.fn((e: { type: string }) => emitted.push(e)) } as never;
+    const entries = [makeEntry('code', 1, 1), makeEntry('security', 2, 2)];
+    await dispatchWorkers(entries, {
+      executeWorker: mockExecute,
+      eventBus: mockBus,
+      executionId: 'test-exec',
+    });
+    const types = emitted.map((e) => e.type);
+    expect(types).toContain('wave.started');
+    expect(types).toContain('wave.completed');
+    expect(types.filter((t) => t === 'wave.started')).toHaveLength(2);
+    expect(types.filter((t) => t === 'wave.completed')).toHaveLength(2);
+  });
+
   it('exports RATE_LIMIT_WAVE_DELAY_MS constant', () => {
     expect(RATE_LIMIT_WAVE_DELAY_MS).toBe(5_000);
   });

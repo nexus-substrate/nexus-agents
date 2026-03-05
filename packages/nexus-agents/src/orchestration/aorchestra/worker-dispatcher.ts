@@ -14,6 +14,7 @@ import { MAX_WORKERS_PER_WAVE } from './agent-planner.js';
 import { createLogger } from '../../core/index.js';
 import { getExpertTaskTimeout, WORKER_TIMEOUTS } from '../../config/timeouts.js';
 import { isRateLimitError } from '../../cli/voter-execution.js';
+import type { IEventBus } from '../../pipeline/event-types.js';
 
 const logger = createLogger({ component: 'worker-dispatcher' });
 
@@ -68,6 +69,10 @@ export interface WorkerDispatchOptions {
   readonly maxConcurrency?: number;
   /** Per-worker timeout in milliseconds (default: WORKER_TIMEOUT_MS = 60s) */
   readonly workerTimeoutMs?: number;
+  /** Optional event bus for wave dispatch observability (Issue #1401). */
+  readonly eventBus?: IEventBus;
+  /** Execution ID for event correlation. */
+  readonly executionId?: string;
 }
 
 // ============================================================================
@@ -153,13 +158,27 @@ export async function dispatchWorkers(
   const waves = groupByWave(entries);
   const allResults: WorkerResult[] = [];
 
+  const bus = options.eventBus;
+  const execId = options.executionId ?? `dispatch-${Date.now().toString(36)}`;
+
   for (const [waveIdx, wave] of waves.entries()) {
+    const waveNumber = waveIdx + 1;
+    const roles = wave.map((e) => e.role);
     logger.info('Dispatching wave', {
-      wave: waveIdx + 1,
+      wave: waveNumber,
       totalWaves: waves.length,
       workers: wave.length,
-      roles: wave.map((e) => e.role),
+      roles,
     });
+
+    const waveCtx: WaveEventContext = {
+      bus,
+      executionId: execId,
+      waveNumber,
+      totalWaves: waves.length,
+    };
+    emitWaveStarted(waveCtx, wave.length, roles);
+    const waveStartMs = Date.now();
 
     // Pass accumulated prior-wave results to workers (Issue #1308)
     const priorResults: readonly WorkerResult[] | undefined =
@@ -174,12 +193,12 @@ export async function dispatchWorkers(
     const waveResults = await executeWithConcurrencyLimit(tasks, maxConcurrency);
     allResults.push(...waveResults);
 
+    const successes = waveResults.filter((r) => r.status === 'success').length;
     const errorCount = waveResults.filter((r) => r.status === 'error').length;
-    logger.info('Wave complete', {
-      wave: waveIdx + 1,
-      successes: waveResults.filter((r) => r.status === 'success').length,
-      errors: errorCount,
-    });
+    const waveDurationMs = Date.now() - waveStartMs;
+    logger.info('Wave complete', { wave: waveNumber, successes, errors: errorCount });
+
+    emitWaveCompleted(waveCtx, waveDurationMs, successes, errorCount);
 
     // Rate-limit back-pressure: delay before next wave if rate-limited (Issue #1328)
     if (errorCount > 0 && waveIdx < waves.length - 1) {
@@ -196,6 +215,53 @@ export async function dispatchWorkers(
   }
 
   return allResults;
+}
+
+// ============================================================================
+// Wave Event Emitters (Issue #1401, Phase 6.2)
+// ============================================================================
+
+interface WaveEventContext {
+  readonly bus: IEventBus | undefined;
+  readonly executionId: string;
+  readonly waveNumber: number;
+  readonly totalWaves: number;
+}
+
+function emitWaveStarted(
+  ctx: WaveEventContext,
+  workerCount: number,
+  roles: readonly string[]
+): void {
+  if (ctx.bus === undefined) return;
+  ctx.bus.emit({
+    type: 'wave.started',
+    timestamp: Date.now(),
+    executionId: ctx.executionId,
+    waveNumber: ctx.waveNumber,
+    totalWaves: ctx.totalWaves,
+    workerCount,
+    roles,
+  });
+}
+
+function emitWaveCompleted(
+  ctx: WaveEventContext,
+  durationMs: number,
+  successes: number,
+  errors: number
+): void {
+  if (ctx.bus === undefined) return;
+  ctx.bus.emit({
+    type: 'wave.completed',
+    timestamp: Date.now(),
+    executionId: ctx.executionId,
+    waveNumber: ctx.waveNumber,
+    totalWaves: ctx.totalWaves,
+    durationMs,
+    successes,
+    errors,
+  });
 }
 
 /**

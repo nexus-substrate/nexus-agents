@@ -72,6 +72,15 @@ export const ExecutionTraceEntrySchema = z.object({
 
   /** Error message if this is a failure event. */
   error: z.string().optional(),
+
+  /** Wave number (1-based) for wave dispatch events. */
+  waveNumber: z.number().optional(),
+
+  /** Total waves in the dispatch plan. */
+  totalWaves: z.number().optional(),
+
+  /** Number of workers in this wave. */
+  workerCount: z.number().optional(),
 });
 
 export type ExecutionTraceEntry = z.infer<typeof ExecutionTraceEntrySchema>;

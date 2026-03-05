@@ -33,6 +33,8 @@ export const PIPELINE_EVENT_TYPES = [
   'learning.trend_detected',
   'tool.invoked',
   'tool.completed',
+  'wave.started',
+  'wave.completed',
 ] as const;
 
 export type PipelineEventType = (typeof PIPELINE_EVENT_TYPES)[number];
@@ -199,6 +201,26 @@ export interface ToolCompletedEvent extends BaseEvent {
   readonly errorMessage?: string;
 }
 
+/** Wave dispatch events for multi-wave worker execution (Issue #1401, Phase 6.2). */
+export interface WaveStartedEvent extends BaseEvent {
+  readonly type: 'wave.started';
+  readonly executionId: string;
+  readonly waveNumber: number;
+  readonly totalWaves: number;
+  readonly workerCount: number;
+  readonly roles: readonly string[];
+}
+
+export interface WaveCompletedEvent extends BaseEvent {
+  readonly type: 'wave.completed';
+  readonly executionId: string;
+  readonly waveNumber: number;
+  readonly totalWaves: number;
+  readonly durationMs: number;
+  readonly successes: number;
+  readonly errors: number;
+}
+
 // ============================================================================
 // Union Type
 // ============================================================================
@@ -223,7 +245,9 @@ export type PipelineEvent =
   | LearningThresholdUpdatedEvent
   | LearningTrendDetectedEvent
   | ToolInvokedEvent
-  | ToolCompletedEvent;
+  | ToolCompletedEvent
+  | WaveStartedEvent
+  | WaveCompletedEvent;
 
 // ============================================================================
 // Event Bus Interface

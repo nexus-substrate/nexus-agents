@@ -131,44 +131,19 @@ export class TraceWriter {
   private extractAttribution(event: PipelineEvent): Partial<ExecutionTraceEntry> {
     switch (event.type) {
       case 'model.called':
-        return {
-          executionId: event.executionId,
-          modelId: event.model,
-          agentId: event.agentId,
-          role: event.role,
-          durationMs: event.durationMs,
-        };
+        return extractModelAttribution(event);
       case 'routing.decision':
-        return {
-          modelId: event.selectedModel,
-          reasoning: event.reasoning,
-          decisionPath: event.decisionPath !== undefined ? [...event.decisionPath] : undefined,
-        };
+        return extractRoutingAttribution(event);
       case 'stage.failed':
-        return {
-          executionId: event.executionId,
-          nodeId: event.stageId,
-          error: event.error,
-          errorTaxonomy: event.errorTaxonomy,
-        };
       case 'stage.started':
-        return {
-          executionId: event.executionId,
-          nodeId: event.stageId,
-        };
       case 'stage.completed':
-        return {
-          executionId: event.executionId,
-          nodeId: event.stageId,
-          durationMs: event.durationMs,
-        };
+        return extractStageAttribution(event);
       case 'pipeline.started':
-        return { executionId: event.executionId };
       case 'pipeline.completed':
-        return {
-          executionId: event.executionId,
-          durationMs: event.durationMs,
-        };
+        return extractPipelineAttribution(event);
+      case 'wave.started':
+      case 'wave.completed':
+        return extractWaveAttribution(event);
       default:
         return {};
     }
@@ -199,4 +174,64 @@ export class TraceWriter {
     lines.push('');
     return lines.join('\n');
   }
+}
+
+/** Extract attribution from model.called events. */
+function extractModelAttribution(
+  event: PipelineEvent & { type: 'model.called' }
+): Partial<ExecutionTraceEntry> {
+  return {
+    executionId: event.executionId,
+    modelId: event.model,
+    agentId: event.agentId,
+    role: event.role,
+    durationMs: event.durationMs,
+  };
+}
+
+/** Extract attribution from routing.decision events. */
+function extractRoutingAttribution(
+  event: PipelineEvent & { type: 'routing.decision' }
+): Partial<ExecutionTraceEntry> {
+  const path = event.decisionPath !== undefined ? [...event.decisionPath] : undefined;
+  return { modelId: event.selectedModel, reasoning: event.reasoning, decisionPath: path };
+}
+
+/** Extract attribution from pipeline lifecycle events. */
+function extractPipelineAttribution(
+  event: PipelineEvent & { type: 'pipeline.started' | 'pipeline.completed' }
+): Partial<ExecutionTraceEntry> {
+  if (event.type === 'pipeline.completed') {
+    return { executionId: event.executionId, durationMs: event.durationMs };
+  }
+  return { executionId: event.executionId };
+}
+
+/** Extract attribution from stage lifecycle events. */
+function extractStageAttribution(
+  event: PipelineEvent & { type: 'stage.failed' | 'stage.started' | 'stage.completed' }
+): Partial<ExecutionTraceEntry> {
+  const base = { executionId: event.executionId, nodeId: event.stageId };
+  if (event.type === 'stage.failed') {
+    return { ...base, error: event.error, errorTaxonomy: event.errorTaxonomy };
+  }
+  if (event.type === 'stage.completed') {
+    return { ...base, durationMs: event.durationMs };
+  }
+  return base;
+}
+
+/** Extract attribution from wave dispatch events. */
+function extractWaveAttribution(
+  event: PipelineEvent & { type: 'wave.started' | 'wave.completed' }
+): Partial<ExecutionTraceEntry> {
+  const base = {
+    executionId: event.executionId,
+    waveNumber: event.waveNumber,
+    totalWaves: event.totalWaves,
+  };
+  if (event.type === 'wave.started') {
+    return { ...base, workerCount: event.workerCount };
+  }
+  return { ...base, durationMs: event.durationMs, workerCount: event.successes + event.errors };
 }
