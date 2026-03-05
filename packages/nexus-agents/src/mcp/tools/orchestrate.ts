@@ -562,9 +562,13 @@ async function executeOrchestration(
 /** Fire-and-forget V2 pipeline instrumentation (Phase E, Issue #924). */
 function instrumentV2Orchestrate(input: { task: string }, logger: ILogger): void {
   const tc = orchestrateInputToTaskContract(input);
-  void executeOrchestratePipeline(tc).then((m) => {
-    logger.info('V2 orchestrate pipeline', { ...m });
-  });
+  void executeOrchestratePipeline(tc)
+    .then((m) => {
+      logger.info('V2 orchestrate pipeline', { ...m });
+    })
+    .catch((error: unknown) => {
+      logger.debug('V2 orchestrate pipeline failed', { error: getErrorMessage(error) });
+    });
 }
 
 /** Try worker dispatch if conditions are met (Issue #1303). Best-effort, returns undefined on failure. */

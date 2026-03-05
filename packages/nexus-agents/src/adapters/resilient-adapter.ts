@@ -289,8 +289,8 @@ export class ResilientAdapter implements IResilientAdapter {
     for (const cb of this.failoverCallbacks) {
       try {
         cb(info);
-      } catch {
-        // Ignore callback errors
+      } catch (error: unknown) {
+        this.logger.debug('Failover callback error', { error: getErrorMessage(error) });
       }
     }
 
@@ -302,8 +302,10 @@ export class ResilientAdapter implements IResilientAdapter {
         topic: 'adapter.failover',
         payload: info,
       });
-    } catch {
-      // EventBus may not be initialized
+    } catch (error: unknown) {
+      this.logger.debug('EventBus emit failed during failover', {
+        error: getErrorMessage(error),
+      });
     }
   }
 

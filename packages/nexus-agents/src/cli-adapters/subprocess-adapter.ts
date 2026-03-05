@@ -163,7 +163,13 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
       resolveOnce(this.handleSubprocessError(error));
     });
 
+    const timeoutId = setTimeout(() => {
+      child.kill('SIGTERM');
+      resolveOnce(err(this.createError('TIMEOUT', 'Execution timed out')));
+    }, timeoutMs);
+
     child.on('close', (code: number | null) => {
+      clearTimeout(timeoutId);
       if (code !== 0 && state.stdout === '') {
         const msg = state.stderr !== '' ? state.stderr : `Process exited with code ${String(code)}`;
         resolveOnce(err(this.createError('EXECUTION_ERROR', msg)));
@@ -177,15 +183,6 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
         return;
       }
       resolveOnce(this.handleSubprocessOutput(state.stdout, state.stderr, startTime));
-    });
-
-    const timeoutId = setTimeout(() => {
-      child.kill('SIGTERM');
-      resolveOnce(err(this.createError('TIMEOUT', 'Execution timed out')));
-    }, timeoutMs);
-
-    child.on('close', () => {
-      clearTimeout(timeoutId);
     });
 
     return state;
