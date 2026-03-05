@@ -35,16 +35,16 @@ related_files: [CHANGELOG.md, architecture/README.md]
 
 These capabilities form the foundation — confirmed by multiple consensus agents:
 
-| Strength                     | Evidence                                                       |
-| ---------------------------- | -------------------------------------------------------------- |
-| Research-backed protocols    | 32/46 mapped techniques implemented, 14 partial                |
-| Multi-criteria model routing | TOPSIS + LinUCB bandit + preference + cascade + tolerance band |
-| Memory system diversity      | 8 backends + reflective MemR3 enhancement                      |
-| Closed-loop learning         | Weather report, feedback integration, self-refinement          |
-| Security posture             | 113 pentest tests, Docker sandbox, rate limiting               |
-| Zero-credential architecture | OAuth 2.0/PKCE, SecretsVault, no stored creds                  |
-| Strong type system           | Result<T,E>, Zod validation, strict TypeScript                 |
-| Multi-CLI orchestration      | 4 CLIs (claude/gemini/codex/opencode), 3,716 observed tasks    |
+| Strength                     | Evidence                                                        |
+| ---------------------------- | --------------------------------------------------------------- |
+| Research-backed protocols    | 34/47 mapped techniques implemented, 13 partial                 |
+| Multi-criteria model routing | TOPSIS + LinUCB bandit + KNN + preference + cascade + tolerance |
+| Memory system diversity      | 8 backends + reflective MemR3 enhancement                       |
+| Closed-loop learning         | Weather report, feedback integration, self-refinement           |
+| Security posture             | 113 pentest tests, Docker sandbox, rate limiting                |
+| Zero-credential architecture | OAuth 2.0/PKCE, SecretsVault, no stored creds                   |
+| Strong type system           | Result<T,E>, Zod validation, strict TypeScript                  |
+| Multi-CLI orchestration      | 4 CLIs (claude/gemini/codex/opencode), 3,806 observed tasks     |
 
 ---
 
@@ -59,7 +59,7 @@ These capabilities form the foundation — confirmed by multiple consensus agent
 | Test suite                   | 24,335 tests, 921 files                                                                         |
 | Coverage                     | 89.66% statements, 93.26% functions                                                             |
 | MCP tools                    | 25 registered                                                                                   |
-| Research techniques (mapped) | 33 implemented, 13 partial (46 mapped techniques from 174+ papers)                              |
+| Research techniques (mapped) | 34 implemented, 13 partial (47 mapped techniques from 174+ papers)                              |
 | Routing tasks observed       | 3,806 across 4 CLIs                                                                             |
 | Overall success rate         | 73.9%                                                                                           |
 | Expert types                 | 10 (code, architecture, security, testing, docs, devops, research, product, ux, infrastructure) |
@@ -75,7 +75,7 @@ These capabilities form the foundation — confirmed by multiple consensus agent
 
 ### Adaptive Routing Insights
 
-The system has learned optimal CLI-to-task mappings from 3,716 observations:
+The system has learned optimal CLI-to-task mappings from 3,806 observations:
 
 - **Code generation** -> Codex (91% success, n=350)
 - **Planning** -> Claude (92% success, n=136)
@@ -216,7 +216,7 @@ Based on gap analysis, weather report data, and research alignment map (32 imple
 
 ### 6.4: Research-Driven Improvements — IN PROGRESS
 
-The research alignment map tracks 46 techniques: 33 implemented, 13 partial. Recent promotions: moe-routing, rl-orchestrator, profile-memory, sater-routing, tolerance-routing, strmac-state-routing, action-memory, agreement-based-cascading, cross-attention-routing, knn-routing.
+The research alignment map tracks 47 techniques: 34 implemented, 13 partial. Recent promotions: moe-routing, rl-orchestrator, profile-memory, sater-routing, tolerance-routing, strmac-state-routing, action-memory, agreement-based-cascading, cross-attention-routing, knn-routing.
 
 | Technique Area | Implemented | Partial | Priority |
 | -------------- | ----------- | ------- | -------- |
