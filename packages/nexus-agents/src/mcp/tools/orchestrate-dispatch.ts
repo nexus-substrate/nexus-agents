@@ -29,6 +29,7 @@ import {
 import { getTimeProvider } from '../../core/index.js';
 import type { ContentBlock } from '../../core/types/model.js';
 import { DEFAULT_CLI } from '../../config/model-capabilities-types.js';
+import { resolveAdapterForRole } from './create-expert-routing.js';
 import { detectTaskCategory } from '../../config/task-specialization.js';
 import { getPipelineEventBus } from '../../pipeline/event-bus.js';
 import {
@@ -79,6 +80,8 @@ export interface WorkerDispatchExecutionOptions {
   readonly refine?: boolean;
   /** Optional learnings from session memory for worker prompt enrichment (Issue #1415) */
   readonly learnings?: readonly WorkerLearning[];
+  /** Opt-in: route each worker to its task-optimal CLI via specialization matrix (Issue #1416) */
+  readonly perWorkerRouting?: boolean;
 }
 
 /** Result from worker dispatch execution. */
@@ -115,17 +118,31 @@ export function isWorkerDispatchEnabled(): boolean {
 // Internal: Worker Execution
 // ============================================================================
 
+/** Resolve the adapter for a worker, optionally routing by role (Issue #1416). */
+function resolveWorkerAdapter(
+  entry: AgentPlanEntry,
+  fallback: IModelAdapter,
+  perWorkerRouting: boolean,
+  log: ILogger
+): IModelAdapter {
+  if (!perWorkerRouting) return fallback;
+  const expertRole = `${entry.role}_expert`;
+  return resolveAdapterForRole(expertRole, fallback, log) ?? fallback;
+}
+
 function createWorkerExecutor(
   taskDescription: string,
   modelAdapter: IModelAdapter,
   logger: ILogger,
-  learnings?: readonly WorkerLearning[]
+  learnings?: readonly WorkerLearning[],
+  perWorkerRouting?: boolean
 ): (entry: AgentPlanEntry, priorWaveResults?: readonly WorkerResult[]) => Promise<WorkerResult> {
   return async (
     entry: AgentPlanEntry,
     priorWaveResults?: readonly WorkerResult[]
   ): Promise<WorkerResult> => {
     const workerStartMs = getTimeProvider().now();
+    const adapter = resolveWorkerAdapter(entry, modelAdapter, perWorkerRouting === true, logger);
     const prompt = composeWorkerPrompt({
       entry,
       taskDescription,
@@ -134,7 +151,7 @@ function createWorkerExecutor(
     });
 
     try {
-      const result = await modelAdapter.complete({
+      const result = await adapter.complete({
         messages: [{ role: 'user', content: prompt }],
         maxTokens: WORKER_MAX_TOKENS,
       });
@@ -241,7 +258,8 @@ async function runRefinementPhase(
     options.taskDescription,
     options.modelAdapter,
     options.logger,
-    options.learnings
+    options.learnings,
+    options.perWorkerRouting
   );
   const refinedResults = await dispatchWorkers(failedEntries, {
     ...(options.maxConcurrency !== undefined ? { maxConcurrency: options.maxConcurrency } : {}),
@@ -285,7 +303,13 @@ export async function executeWorkerDispatch(
 
   const results = await dispatchWorkers(entries, {
     ...(maxConcurrency !== undefined ? { maxConcurrency } : {}),
-    executeWorker: createWorkerExecutor(taskDescription, modelAdapter, logger, options.learnings),
+    executeWorker: createWorkerExecutor(
+      taskDescription,
+      modelAdapter,
+      logger,
+      options.learnings,
+      options.perWorkerRouting
+    ),
     eventBus: getPipelineEventBus(),
     executionId: `dispatch-${Date.now().toString(36)}`,
   });

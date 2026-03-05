@@ -592,6 +592,7 @@ async function tryWorkerDispatch(
         logger,
         synthesize: true,
         refine: true,
+        perWorkerRouting: true,
       })
     );
   } catch (dispatchError: unknown) {
