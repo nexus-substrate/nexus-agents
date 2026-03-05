@@ -7,7 +7,7 @@ keywords: [system-review, archive, historical, consensus]
 
 # Historical System Reviews (January 2026)
 
-These system review transcripts were archived from `docs/ALIGNMENT_ROADMAP.md` on 2026-03-04 during a roadmap consolidation (approved 3/3 unanimous). They document the evolution of the project's alignment score from 6.4/10 to 8.06/10 across 8 consensus reviews.
+This file is an archive of all system review sections originally recorded in the [Alignment Roadmap](../ALIGNMENT_ROADMAP.md). These reviews were conducted between 2026-01-13 and 2026-01-23 using the CLAUDE.md Consensus Voting Protocol with a 5-Agent Swarm. They are preserved here verbatim for historical reference.
 
 ---
 

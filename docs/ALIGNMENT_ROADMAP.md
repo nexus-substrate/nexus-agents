@@ -210,13 +210,13 @@ The research alignment map identifies 23 partially-implemented and 54 not-starte
 From the initial 5-agent consensus assessment (2026-01-09):
 
 > **Architect (7/10):** "The architecture is sound for a multi-agent system. The gap is from 'multi-agent system' to 'swarm with emergent collective intelligence.' That's the difference between 7 and 10."
-
+>
 > **AI/ML (7/10):** "The swarm has excellent static decision-making infrastructure but cannot yet learn and improve from its own experience."
-
+>
 > **DevEx (6/10):** "The technology is impressive. The experience needs work."
-
+>
 > **Security (6/10):** "The security posture is thoughtful but incomplete. The most critical immediate action is sandboxing agent execution."
-
+>
 > **PM (6/10):** "The gap is not technical capability - it is market proof. The swarm must demonstrate it is best, not just claim best-in-class architecture."
 
 **Key insight that still applies:** 97% technique coverage means nothing without user validation. The path from 8 to 10 is evidence, not architecture.

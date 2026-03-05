@@ -77,43 +77,77 @@ export type OutcomeFailureCategory = z.infer<typeof OutcomeFailureCategorySchema
 // Error Classification (Issue #1025)
 // ============================================================================
 
-const TIMEOUT_PATTERNS = ['timeout', 'timed out'];
-const AUTH_PATTERNS = ['auth', 'unauthorized', 'forbidden', 'oauth'];
-const RATE_LIMIT_PATTERNS = ['rate limit', 'too many requests', '429'];
-const CONNECTION_PATTERNS = ['connection', 'econnrefused', 'enotfound'];
-const CRASH_PATTERNS = ['crash', 'exited', 'killed', 'sigterm', 'sigkill'];
-const ADAPTER_PATTERNS = ['no model adapter', 'adapter unavailable', 'no adapter'];
-const VALIDATION_PATTERNS = ['validation', 'invalid input', 'parse error', 'zod'];
+const TIMEOUT_PATTERNS = ['timeout', 'timed out', 'deadline exceeded', 'socket hang up', 'aborted'];
+const AUTH_PATTERNS = [
+  'auth',
+  'unauthorized',
+  'forbidden',
+  'oauth',
+  'permission denied',
+  '401',
+  '403',
+];
+const RATE_LIMIT_PATTERNS = ['rate limit', 'too many requests', '429', 'throttl', 'quota exceeded'];
+const CONNECTION_PATTERNS = [
+  'connection',
+  'econnrefused',
+  'enotfound',
+  'econnreset',
+  'dns',
+  'network',
+];
+const CRASH_PATTERNS = [
+  'crash',
+  'exited',
+  'killed',
+  'sigterm',
+  'sigkill',
+  'spawn error',
+  'out of memory',
+  'oom',
+  'fatal',
+  'segfault',
+  'heap',
+];
+const ADAPTER_PATTERNS = [
+  'no model adapter',
+  'adapter unavailable',
+  'no adapter',
+  'model not found',
+  'no model',
+  'unknown model',
+  'model does not exist',
+];
+const VALIDATION_PATTERNS = ['validation', 'invalid input', 'parse error', 'zod', 'schema'];
+const EXECUTION_PATTERNS = ['api error', 'apierror', 'sdk error', 'failed to', 'cannot'];
 
 function matchesAny(text: string, patterns: string[]): boolean {
   return patterns.some((p) => text.includes(p));
+}
+
+/** Classifies a lowercase text string against all known failure patterns. */
+function classifyText(text: string): OutcomeFailureCategory {
+  if (matchesAny(text, TIMEOUT_PATTERNS)) return 'timeout';
+  if (matchesAny(text, AUTH_PATTERNS)) return 'authentication';
+  if (matchesAny(text, RATE_LIMIT_PATTERNS)) return 'rate_limit';
+  if (matchesAny(text, ADAPTER_PATTERNS)) return 'adapter_unavailable';
+  if (matchesAny(text, CONNECTION_PATTERNS)) return 'connection';
+  if (matchesAny(text, CRASH_PATTERNS)) return 'crash';
+  if (matchesAny(text, VALIDATION_PATTERNS)) return 'validation';
+  if (matchesAny(text, EXECUTION_PATTERNS)) return 'execution';
+  return 'execution';
 }
 
 /** Classifies an error into an OutcomeFailureCategory for recording. */
 export function categorizeOutcomeError(error: unknown): OutcomeFailureCategory {
   if (!(error instanceof Error)) return 'unknown';
   const text = `${error.message.toLowerCase()} ${error.name.toLowerCase()}`;
-  if (matchesAny(text, TIMEOUT_PATTERNS)) return 'timeout';
-  if (matchesAny(text, AUTH_PATTERNS)) return 'authentication';
-  if (matchesAny(text, RATE_LIMIT_PATTERNS)) return 'rate_limit';
-  if (matchesAny(text, ADAPTER_PATTERNS)) return 'adapter_unavailable';
-  if (matchesAny(text, CONNECTION_PATTERNS)) return 'connection';
-  if (matchesAny(text, CRASH_PATTERNS)) return 'crash';
-  if (matchesAny(text, VALIDATION_PATTERNS)) return 'validation';
-  return 'execution';
+  return classifyText(text);
 }
 
 /** Classifies an error message string into an OutcomeFailureCategory. */
 export function categorizeOutcomeErrorMessage(msg: string): OutcomeFailureCategory {
-  const text = msg.toLowerCase();
-  if (matchesAny(text, TIMEOUT_PATTERNS)) return 'timeout';
-  if (matchesAny(text, AUTH_PATTERNS)) return 'authentication';
-  if (matchesAny(text, RATE_LIMIT_PATTERNS)) return 'rate_limit';
-  if (matchesAny(text, ADAPTER_PATTERNS)) return 'adapter_unavailable';
-  if (matchesAny(text, CONNECTION_PATTERNS)) return 'connection';
-  if (matchesAny(text, CRASH_PATTERNS)) return 'crash';
-  if (matchesAny(text, VALIDATION_PATTERNS)) return 'validation';
-  return 'execution';
+  return classifyText(msg.toLowerCase());
 }
 
 /** Aggregated stats for a group of outcomes. */

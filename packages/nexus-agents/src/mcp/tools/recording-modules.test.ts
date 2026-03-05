@@ -307,6 +307,38 @@ describe('execute-expert-recording', () => {
     expect(result.error).toContain('default'); // no modelId → 'default'
   });
 
+  it('recordExpertOutcome uses role-based category mapping', async () => {
+    const { recordExpertOutcome } = await import('./execute-expert-recording.js');
+    const store = getOutcomeStore();
+
+    recordExpertOutcome({
+      task: 'generic task description',
+      role: 'security_expert',
+      success: true,
+      durationMs: 1000,
+    });
+
+    const entries = store.query();
+    const last = entries[entries.length - 1];
+    expect(last?.category).toBe('security_review');
+  });
+
+  it('recordExpertOutcome falls back to keyword detection without role', async () => {
+    const { recordExpertOutcome } = await import('./execute-expert-recording.js');
+    const store = getOutcomeStore();
+
+    recordExpertOutcome({
+      task: 'generic task without clear keywords',
+      success: true,
+      durationMs: 1000,
+    });
+
+    const entries = store.query();
+    const last = entries[entries.length - 1];
+    // Without role, falls back to detectTaskCategory or 'exploration'
+    expect(last?.category).toBeDefined();
+  });
+
   it('handleExpertSuccess records both memory and outcome', async () => {
     const { handleExpertSuccess } = await import('./execute-expert-recording.js');
     const store = getOutcomeStore();
@@ -326,6 +358,7 @@ describe('execute-expert-recording', () => {
     const entries = store.query();
     const last = entries[entries.length - 1];
     expect(last?.success).toBe(true);
+    expect(last?.category).toBe('testing');
   });
 
   it('autoCatalogScan does not throw on error', async () => {

@@ -24,20 +24,36 @@ import type { ILogger } from '../../core/index.js';
 // Outcome Recording (Issue #1014)
 // ============================================================================
 
+/** Maps expert role names to task categories for accurate outcome attribution. */
+const ROLE_TO_CATEGORY: Readonly<Record<string, string>> = {
+  code_expert: 'code_generation',
+  architecture_expert: 'architecture',
+  security_expert: 'security_review',
+  documentation_expert: 'documentation',
+  testing_expert: 'testing',
+  devops_expert: 'devops',
+  research_expert: 'research',
+  pm_expert: 'planning',
+  ux_expert: 'planning',
+  infrastructure_expert: 'devops',
+};
+
 /** Records expert execution outcome to OutcomeStore. Best-effort. */
 export function recordExpertOutcome(opts: {
   task: string;
+  role?: string;
   success: boolean;
   durationMs: number;
   model?: string;
   failureCategory?: OutcomeFailureCategory;
 }): void {
   try {
+    const roleCategory = opts.role !== undefined ? ROLE_TO_CATEGORY[opts.role] : undefined;
     const match = detectTaskCategory(opts.task);
     getOutcomeStore().append({
       id: `exp-${String(Date.now())}-${Math.random().toString(36).slice(2, 8)}`,
       cli: match?.primaryCli ?? DEFAULT_CLI,
-      category: match?.category ?? 'exploration',
+      category: roleCategory ?? match?.category ?? 'exploration',
       model: opts.model ?? 'expert',
       success: opts.success,
       durationMs: opts.durationMs,
@@ -127,6 +143,7 @@ export function handleExpertFailure(
   const fc = categorizeOutcomeErrorMessage(errorMsg);
   recordExpertOutcome({
     task,
+    role: expert.role,
     success: false,
     durationMs,
     failureCategory: fc,
@@ -152,6 +169,7 @@ export function handleExpertSuccess(
   recordExpertSuccess(expert.expertId, expert.role, durationMs);
   recordExpertOutcome({
     task,
+    role: expert.role,
     success: true,
     durationMs,
     ...(expert.modelId !== undefined ? { model: expert.modelId } : {}),

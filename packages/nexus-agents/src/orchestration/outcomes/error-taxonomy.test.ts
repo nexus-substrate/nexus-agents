@@ -131,4 +131,42 @@ describe('categorizeOutcomeErrorMessage', () => {
   it('returns execution for unrecognized messages', () => {
     expect(categorizeOutcomeErrorMessage('Something went wrong')).toBe('execution');
   });
+
+  it('classifies deadline exceeded as timeout', () => {
+    expect(categorizeOutcomeErrorMessage('deadline exceeded')).toBe('timeout');
+  });
+
+  it('classifies socket hang up as timeout', () => {
+    expect(categorizeOutcomeErrorMessage('socket hang up')).toBe('timeout');
+  });
+
+  it('classifies quota exceeded as rate_limit', () => {
+    expect(categorizeOutcomeErrorMessage('quota exceeded for project')).toBe('rate_limit');
+  });
+
+  it('classifies model not found as adapter_unavailable', () => {
+    expect(categorizeOutcomeErrorMessage('Model not found: claude-opus')).toBe(
+      'adapter_unavailable'
+    );
+  });
+
+  it('classifies ECONNRESET as connection', () => {
+    expect(categorizeOutcomeErrorMessage('read ECONNRESET')).toBe('connection');
+  });
+
+  it('classifies out of memory as crash', () => {
+    expect(categorizeOutcomeErrorMessage('JavaScript heap out of memory')).toBe('crash');
+  });
+
+  it('classifies spawn error as crash', () => {
+    expect(categorizeOutcomeErrorMessage('spawn error: ENOENT')).toBe('crash');
+  });
+
+  it('classifies api error as execution', () => {
+    expect(categorizeOutcomeErrorMessage('APIError: Internal server error')).toBe('execution');
+  });
+
+  it('classifies 401 as authentication', () => {
+    expect(categorizeOutcomeErrorMessage('HTTP 401 Unauthorized')).toBe('authentication');
+  });
 });

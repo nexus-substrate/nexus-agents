@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "generated": "2026-03-03T20:20:01.248Z",
+  "generated": "2026-03-05T03:40:03.265Z",
   "generator": "scripts/generate-repo-index.ts",
   "packageVersion": "2.26.1",
   "cli": {
@@ -327,6 +327,10 @@
       {
         "name": "research_query",
         "file": "src/mcp/tools/research-query.ts"
+      },
+      {
+        "name": "research_synthesize",
+        "file": "src/mcp/tools/research-synthesize.ts"
       },
       {
         "name": "run_graph_workflow",
