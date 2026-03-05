@@ -103,8 +103,13 @@ export abstract class SubprocessCliAdapter extends BaseCliAdapter {
     const startTime = getTimeProvider().now();
 
     return new Promise((resolve) => {
+      // Strip CLAUDECODE env var to allow nested CLI sessions (SWE-bench, etc.)
+      const childEnv = { ...process.env };
+      delete childEnv['CLAUDECODE'];
+
       const child = spawn(cmdConfig.command, cmdConfig.args, {
         stdio: ['pipe', 'pipe', 'pipe'],
+        env: childEnv,
       });
 
       const onProgress = options.onProgress;

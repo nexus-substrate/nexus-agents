@@ -187,6 +187,7 @@ describe('SubprocessCliAdapter', () => {
       }
       expect(mockSpawn).toHaveBeenCalledWith('echo', ['hello'], {
         stdio: ['pipe', 'pipe', 'pipe'],
+        env: expect.objectContaining({}),
       });
     });
 
