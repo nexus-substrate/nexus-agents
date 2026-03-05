@@ -133,15 +133,15 @@ OpenCode has 63 observed tasks at 27% success. Fixes deployed (#1402): model ali
 
 ### Gap 4: Security Review Accuracy (P2) — MITIGATED
 
-**Impact:** 4/10 (reduced from 6/10) — Prompt improved, classification fixed
+**Impact:** 4/10 (reduced from 6/10) — Routing realigned, prompt improved
 
-Claude's security_review success rate is 30% (107 observations). Root cause identified as a measurement issue: the prompt demanded strict JSON output without examples. Fixes deployed:
+Claude's security_review success rate is 30% (107 observations). Multiple fixes deployed:
 
 - Security expert prompt improved with concrete JSON example + plaintext fallback guidance
-- Failure classification now prioritizes message-based patterns (70+ keywords) over coarse error types
-- Unknown failure category expected to decrease from 60.4%
+- Routing realigned: primaryCli changed from claude (30%) to codex (60%), bonus 15→7
+- Failure classification now prioritizes message-based patterns (86+ keywords) over coarse error types
 
-**Required:** Monitor post-fix security expert success rate. Consider structured output (JSON mode) if rate stays below 50%.
+**Required:** Monitor post-fix security expert success rate. If codex data grows and confirms >50%, solidify as primary.
 
 ### Gap 5: Exploration Success Rate (P3) — MITIGATED
 
@@ -159,11 +159,15 @@ Gemini remains the exploration champion (98% success, n=143). Claude exploration
 
 ### Gap 6: Failure Classification (P2) — MITIGATED
 
-**Impact:** 3/10 — 60.4% "unknown" failures, fix deployed
+**Impact:** 3/10 — 60.4% "unknown" failures (historical), expanded patterns deployed
 
-Failure breakdown: unknown 60.4%, execution 25.9%, timeout 12.9%, rate_limit 0.7%. The high "unknown" rate was caused by `mapErrorType` falling through to 'unknown' when `WorkerErrorType` was coarse. Fix deployed: message-based classification with 70+ keyword patterns runs before coarse type fallback.
+Failure breakdown (historical): unknown 60.4%, execution 25.9%, timeout 12.9%, rate_limit 0.7%. Fixes deployed:
 
-**Required:** Monitor next weather report for reduced unknown percentage.
+- Message-based classification with 86+ keyword patterns (was 70+)
+- Added: SSL/TLS/proxy (→connection), ENOMEM (→crash), HTTP 5xx/bad gateway/service unavailable (→execution), max retries (→rate_limit), truncated/incomplete (→execution)
+- Non-zero exit with error stderr now classified as EXECUTION_ERROR (#1402)
+
+**Required:** Monitor next weather report for reduced unknown percentage. Target: <30%.
 
 ---
 
