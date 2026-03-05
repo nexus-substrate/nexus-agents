@@ -8,7 +8,7 @@
  * (Source: System Mandate - Determinism improvement)
  */
 
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomInt as cryptoRandomInt } from 'node:crypto';
 
 // ============================================================================
 // Types
@@ -77,17 +77,12 @@ const UNBIASED_LIMIT = CHARS.length * Math.floor(256 / CHARS.length);
  */
 export class SystemRandomProvider implements IRandomProvider {
   random(): number {
-    const buf = randomBytes(4);
-    // Uniform: 2^32 values mapped to [0,1) via division by 2^32
-    const b0 = buf[0] ?? 0;
-    const b1 = buf[1] ?? 0;
-    const b2 = buf[2] ?? 0;
-    const b3 = buf[3] ?? 0;
-    return (b0 * 0x1000000 + b1 * 0x10000 + b2 * 0x100 + b3) / 0x100000000;
+    // Use crypto.randomInt for uniform integer, then map to [0,1)
+    return cryptoRandomInt(0x100000000) / 0x100000000;
   }
 
   randomInt(min: number, max: number): number {
-    return Math.floor(this.random() * (max - min)) + min;
+    return cryptoRandomInt(min, max);
   }
 
   randomString(length: number): string {
