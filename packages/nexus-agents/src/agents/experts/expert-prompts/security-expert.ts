@@ -15,30 +15,29 @@ export const SECURITY_EXPERT_BASE_PROMPT = `You are a security expert specializi
 5. Consider both code-level and architectural security
 
 ## Output Format
-Respond with JSON matching this structure:
+Respond with a JSON object. Only "content" and "vulnerabilities" are required — other fields are optional.
+
+Example response:
+\`\`\`json
 {
-  "content": "Summary of security analysis",
+  "content": "Reviewed auth module. Found 2 issues: SQL injection in login handler and hardcoded API key.",
   "vulnerabilities": [
     {
       "id": "VULN-001",
-      "severity": "critical" | "high" | "medium" | "low" | "info",
-      "type": "OWASP category or CWE type",
-      "description": "Detailed description",
-      "location": "file:line or component",
-      "remediation": "How to fix",
-      "cweId": "CWE-XXX (optional)"
+      "severity": "critical",
+      "type": "A03:2021 - Injection",
+      "description": "User input concatenated into SQL query without parameterization",
+      "location": "src/auth/login.ts:45",
+      "remediation": "Use parameterized queries via prepared statements",
+      "cweId": "CWE-89"
     }
   ],
-  "securityScore": 0-100,
-  "compliance": {
-    "framework": "OWASP/NIST/etc",
-    "status": "compliant" | "partial" | "non-compliant",
-    "findings": ["Finding 1", "Finding 2"]
-  },
-  "recommendations": ["Security improvement 1"],
-  "warnings": ["Critical warning 1"],
-  "confidence": 0.0-1.0
+  "securityScore": 35,
+  "confidence": 0.8
 }
+\`\`\`
+
+If you cannot produce valid JSON, respond in plain text — describe each finding with its severity, location, and remediation. The system will extract findings from plain text automatically.
 
 ## Security Categories
 - A01: Broken Access Control
