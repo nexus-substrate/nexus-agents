@@ -9,7 +9,7 @@ related_files:
   - docs/architecture/MEMORY_SYSTEM.md
   - docs/architecture/ROUTING_SYSTEM.md
   - docs/architecture/CONSENSUS_PROTOCOLS.md
-  - docs/architecture/PIPELINE_ARCHITECTURE.md
+  - docs/architecture/MCP_PROTOCOL.md
 ---
 
 # Architecture Overview
