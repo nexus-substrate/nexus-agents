@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "generated": "2026-03-05T03:40:03.265Z",
+  "generated": "2026-03-05T04:45:25.124Z",
   "generator": "scripts/generate-repo-index.ts",
   "packageVersion": "2.26.1",
   "cli": {
@@ -58,6 +58,12 @@
         "name": "fitness-audit",
         "type": "sync",
         "handler": "handleFitnessAuditCommand",
+        "file": "src/cli-commands-handlers.ts"
+      },
+      {
+        "name": "health",
+        "type": "sync",
+        "handler": "handleHealthCommand",
         "file": "src/cli-commands-handlers.ts"
       },
       {
