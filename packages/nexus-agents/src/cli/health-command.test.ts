@@ -94,10 +94,20 @@ describe('health-command', () => {
       expect(result.swarmHealth?.routingAccuracy).toBe(0.74);
       expect(result.swarmHealth?.adaptationSpeed).toBe(25);
     });
+
+    it('includes per-CLI health summaries', () => {
+      const result = collectHealth();
+
+      expect(result.cliHealth).toHaveLength(2);
+      expect(result.cliHealth[0]?.cli).toBe('claude');
+      expect(result.cliHealth[0]?.successRate).toBe(0.71);
+      expect(result.cliHealth[1]?.cli).toBe('gemini');
+      expect(result.cliHealth[1]?.totalTasks).toBe(800);
+    });
   });
 
   describe('handleHealthCommand', () => {
-    it('renders table output by default', () => {
+    it('renders table output by default with per-CLI stats', () => {
       const writeSpy = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
       const args = { command: 'health', options: {} } as unknown as ParsedCliArgs;
 
@@ -106,6 +116,9 @@ describe('health-command', () => {
       const output = writeSpy.mock.calls.map((c) => String(c[0])).join('');
       expect(output).toContain('Swarm Health Dashboard');
       expect(output).toContain('74.0%');
+      expect(output).toContain('Per-CLI Performance');
+      expect(output).toContain('claude');
+      expect(output).toContain('gemini');
       writeSpy.mockRestore();
     });
 

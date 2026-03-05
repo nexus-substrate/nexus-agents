@@ -15,11 +15,20 @@ import type {
   WeatherReportResponse,
   SwarmHealthMetrics,
   FailureBreakdownEntry,
+  CliWeather,
 } from '../mcp/tools/weather-report-types.js';
 
 // ============================================================================
 // Types
 // ============================================================================
+
+/** Per-CLI summary for JSON output. */
+export interface CliHealthSummary {
+  readonly cli: string;
+  readonly successRate: number;
+  readonly totalTasks: number;
+  readonly avgDurationMs: number;
+}
 
 export interface HealthResult {
   readonly swarmHealth: SwarmHealthMetrics | undefined;
@@ -27,6 +36,7 @@ export interface HealthResult {
   readonly totalTasks: number;
   readonly failureBreakdown: readonly FailureBreakdownEntry[];
   readonly cliCount: number;
+  readonly cliHealth: readonly CliHealthSummary[];
   readonly timestamp: string;
 }
 
@@ -44,7 +54,17 @@ export function collectHealth(): HealthResult {
     totalTasks: report.overall.totalTasks,
     failureBreakdown: report.failureBreakdown ?? [],
     cliCount: report.cliWeather.length,
+    cliHealth: report.cliWeather.map(toCliSummary),
     timestamp: new Date().toISOString(),
+  };
+}
+
+function toCliSummary(cw: CliWeather): CliHealthSummary {
+  return {
+    cli: cw.cli,
+    successRate: cw.successRate,
+    totalTasks: cw.totalTasks,
+    avgDurationMs: cw.avgDurationMs,
   };
 }
 
@@ -77,6 +97,24 @@ function renderSwarmMetrics(w: (s: string) => boolean, health: SwarmHealthMetric
   w(`  Adaptation Speed:        ${String(health.adaptationSpeed)} tasks\n`);
   w(`  Observed Categories:     ${String(health.observedCategories)}\n`);
   w(`  Observed Roles:          ${String(health.observedRoles)}\n`);
+  w('\n');
+}
+
+function renderCliHealth(w: (s: string) => boolean, entries: readonly CliHealthSummary[]): void {
+  const c = colors;
+  w(`  ${c.bold}Per-CLI Performance${c.reset}\n`);
+  for (const entry of entries) {
+    const rateColor =
+      entry.successRate >= 0.8 ? c.green : entry.successRate >= 0.6 ? c.yellow : c.red;
+    const pct = `${(entry.successRate * 100).toFixed(0)}%`;
+    const dur =
+      entry.avgDurationMs >= 1000
+        ? `${(entry.avgDurationMs / 1000).toFixed(1)}s`
+        : `${String(Math.round(entry.avgDurationMs))}ms`;
+    w(
+      `  ${entry.cli.padEnd(12)} ${rateColor}${pct.padStart(4)}${c.reset}  ${String(entry.totalTasks).padStart(5)} tasks  ${c.dim}avg ${dur}${c.reset}\n`
+    );
+  }
   w('\n');
 }
 
@@ -120,6 +158,11 @@ function renderTable(health: HealthResult): void {
   w(`  Success Rate:  ${rateColor}${pctStr}${c.reset}  ${rateSym}\n`);
   w(`  Total Tasks:   ${c.cyan}${String(health.totalTasks)}${c.reset}\n`);
   w(`  Active CLIs:   ${c.cyan}${String(health.cliCount)}${c.reset}\n\n`);
+
+  // Per-CLI performance
+  if (health.cliHealth.length > 0) {
+    renderCliHealth(w, health.cliHealth);
+  }
 
   // Swarm metrics
   if (health.swarmHealth !== undefined) {
