@@ -32,7 +32,7 @@ export interface CliAgentExecutorConfig {
  */
 const CLI_EXECUTOR_DEFAULTS = {
   modelId: 'sonnet',
-  timeoutMs: 600_000, // 10 minutes - SWE-bench tasks involve file exploration
+  timeoutMs: 300_000, // 5 minutes - median SWE-bench solve time is 2-4min
 } as const;
 
 /**
