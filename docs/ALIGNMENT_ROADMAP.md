@@ -44,7 +44,7 @@ These capabilities form the foundation — confirmed by multiple consensus agent
 | Security posture             | 113 pentest tests, Docker sandbox, rate limiting               |
 | Zero-credential architecture | OAuth 2.0/PKCE, SecretsVault, no stored creds                  |
 | Strong type system           | Result<T,E>, Zod validation, strict TypeScript                 |
-| Multi-CLI orchestration      | 4 CLIs (claude/gemini/codex/opencode), 3,710+ observed tasks   |
+| Multi-CLI orchestration      | 4 CLIs (claude/gemini/codex/opencode), 3,716 observed tasks    |
 
 ---
 
@@ -60,7 +60,7 @@ These capabilities form the foundation — confirmed by multiple consensus agent
 | Coverage                     | 89.66% statements, 93.26% functions                                                             |
 | MCP tools                    | 25 registered                                                                                   |
 | Research techniques (mapped) | 31 implemented, 16 partial, 54 not-started (101 total)                                          |
-| Routing tasks observed       | 3,710 across 4 CLIs                                                                             |
+| Routing tasks observed       | 3,716 across 4 CLIs                                                                             |
 | Overall success rate         | 73.9%                                                                                           |
 | Expert types                 | 10 (code, architecture, security, testing, docs, devops, research, product, ux, infrastructure) |
 
@@ -75,7 +75,7 @@ These capabilities form the foundation — confirmed by multiple consensus agent
 
 ### Adaptive Routing Insights
 
-The system has learned optimal CLI-to-task mappings from 3,710 observations:
+The system has learned optimal CLI-to-task mappings from 3,716 observations:
 
 - **Code generation** -> Codex (91% success, n=350)
 - **Planning** -> Claude (92% success, n=136)
@@ -171,7 +171,7 @@ Failure breakdown: unknown 60.4%, execution 25.9%, timeout 12.9%, rate_limit 0.7
 
 **Tracking:** #1401 (epic), #1394 (research alignment), #1402 (OpenCode reliability)
 
-Based on gap analysis, weather report data, and research alignment map (29 implemented, 18 partial, 54 not-started techniques):
+Based on gap analysis, weather report data, and research alignment map (31 implemented, 16 partial, 54 not-started techniques):
 
 ### 6.1: Evidence-Based Validation (Target: 9.0/10) — NOT STARTED
 
@@ -201,18 +201,17 @@ Based on gap analysis, weather report data, and research alignment map (29 imple
 
 ### 6.4: Research-Driven Improvements — IN PROGRESS
 
-The research alignment map identifies 20 partially-implemented and 54 not-started techniques. Recent promotions: action-memory, strmac-state-routing, tolerance-routing.
+The research alignment map identifies 16 partially-implemented and 54 not-started techniques. Recent promotions: moe-routing, rl-orchestrator, profile-memory, sater-routing.
 
 | Technique Area      | Partial | Not Started | Priority |
 | ------------------- | ------- | ----------- | -------- |
-| Routing             | 5       | —           | High     |
+| Routing             | 3       | —           | High     |
 | Consensus           | 4       | —           | Medium   |
 | Memory              | 3       | —           | Medium   |
-| Orchestration       | 5       | —           | High     |
-| Learning            | 1       | —           | Medium   |
+| Orchestration       | 6       | —           | High     |
 | Not-started (total) | —       | 54          | Backlog  |
 
-**Next promotion candidates:** moe-routing, knn-routing, profile-memory (closest to implementation)
+**Next promotion candidates:** knn-routing (needs KNN distance algorithm), capability-instruction-tuning (needs LLM feedback loop)
 
 ---
 
@@ -254,7 +253,7 @@ From the initial 5-agent consensus assessment (2026-01-09):
 >
 > **PM (6/10):** "The gap is not technical capability - it is market proof. The swarm must demonstrate it is best, not just claim best-in-class architecture."
 
-**Key insight that still applies:** Technique coverage (27%) is growing but means nothing without user validation. The path from 8 to 10 is evidence, not architecture.
+**Key insight that still applies:** Technique coverage (31%) is growing but means nothing without user validation. The path from 8 to 10 is evidence, not architecture.
 
 ---
 

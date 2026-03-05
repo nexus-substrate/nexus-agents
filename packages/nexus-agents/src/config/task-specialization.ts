@@ -70,11 +70,12 @@ export const TASK_SPECIALIZATION_MATRIX: readonly TaskSpecialization[] = [
   },
   {
     category: 'security_review',
-    primaryCli: 'claude',
-    secondaryCli: 'codex',
-    reasoning: 'Claude excels at nuanced security analysis and threat modeling',
+    primaryCli: 'codex',
+    secondaryCli: 'claude',
+    reasoning:
+      'Codex 60% (n=5), Gemini 50% (n=14), Claude 30% (n=107); reduced bonus to let adaptive routing learn',
     keywords: ['security', 'vulnerability', 'threat model', 'cve', 'audit security'],
-    bonus: 15,
+    bonus: 7,
   },
   {
     category: 'planning',
