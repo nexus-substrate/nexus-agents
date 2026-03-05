@@ -71,6 +71,8 @@ export { handleMemoryBenchmarkCommand } from './cli/memory-benchmark-command.js'
 export { handleStatusCommand } from './cli/status-command.js';
 // Epic #952: Scenario Command
 export { handleScenarioCommand } from './cli/scenario-command.js';
+// Issue #1403: Health Command
+export { handleHealthCommand } from './cli/health-command.js';
 
 // Import handlers for dispatch
 import {
@@ -127,6 +129,8 @@ import { handleStatusCommand } from './cli/status-command.js';
 import { handleMemoryBenchmarkCommand } from './cli/memory-benchmark-command.js';
 // Epic #952: Scenario Command
 import { handleScenarioCommand } from './cli/scenario-command.js';
+// Issue #1403: Health Command
+import { handleHealthCommand } from './cli/health-command.js';
 // Issue #1398: Lazy data directory initialization
 import { initDataDirectories } from './cli/setup-data-dir.js';
 
@@ -171,6 +175,8 @@ const SYNC_COMMAND_HANDLERS: Record<string, ((args: ParsedCliArgs) => void) | un
   'e2e-eval': handleE2EEvalCommand,
   'routing-ab': handleRoutingABCommand,
   'memory-eval': handleMemoryEvalCommand,
+  // Issue #1403: Health Command
+  health: handleHealthCommand,
 };
 
 /**

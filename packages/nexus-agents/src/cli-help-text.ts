@@ -51,6 +51,7 @@ COMMANDS:
   visualize       Generate Mermaid diagrams and ASCII dashboards (architecture, swarm, flow)
   capabilities    Show model capabilities matrix (modalities, tools, features)
   status          At-a-glance project health dashboard (fitness, adapters, version)
+  health          Swarm health metrics dashboard (utilization, routing accuracy, failures)
   auth            Manage MCP authentication tokens (init, show, rotate)
 
 OPTIONS:
@@ -371,6 +372,8 @@ EXAMPLES:
   nexus-agents capabilities list --format=json       Output capabilities as JSON
   nexus-agents status                                 Show project health dashboard
   nexus-agents status --format=json                   Output status as JSON
+  nexus-agents health                                 Show swarm health metrics
+  nexus-agents health --format=json                   Output health metrics as JSON
   nexus-agents auth init                              Generate initial auth token
   nexus-agents auth show                              Check token status
   nexus-agents auth rotate                            Rotate to new token
