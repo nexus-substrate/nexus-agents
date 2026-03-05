@@ -33,6 +33,11 @@ Available tools:
 - Search for code patterns and definitions
 - Execute bash commands (for exploration, NOT for testing)
 
+If nexus-agents MCP tools are available, you can also:
+- memory_query: Search past solutions and learnings for similar issues
+- research_query: Look up relevant research papers and techniques
+- weather_report: Check model performance statistics
+
 When you have a solution, respond with your patch in this format:
 
 \`\`\`diff

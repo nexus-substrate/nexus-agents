@@ -26,6 +26,8 @@ vi.mock('./index.js', () => ({
     max_iterations: 20,
     work_dir: '/tmp/swe-bench',
     concurrency: 1,
+    memory_dir: '/tmp/swe-bench-memory',
+    mcp_enabled: false,
   },
   DatasetLoadError: class DatasetLoadError extends Error {
     override readonly cause?: unknown;

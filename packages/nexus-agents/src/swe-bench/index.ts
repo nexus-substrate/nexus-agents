@@ -326,3 +326,13 @@ export {
   generateReport,
   exportReport,
 } from './report-generator.js';
+
+// Trace logger
+export { TraceLogger } from './trace-logger.js';
+
+export type { TraceEventType, TraceEvent, RunStatus, TraceLoggerOptions } from './trace-logger.js';
+
+// MCP config
+export { generateMcpConfig, getDefaultAllowedTools } from './mcp-config.js';
+
+export type { McpConfigOptions, GeneratedMcpConfig } from './mcp-config.js';

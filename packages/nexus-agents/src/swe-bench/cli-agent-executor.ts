@@ -24,6 +24,8 @@ export interface CliAgentExecutorConfig {
   readonly timeoutMs?: number | undefined;
   /** Callback for message logging. */
   readonly onMessage?: ((message: string) => void) | undefined;
+  /** Path to MCP config file for child CLI sessions. */
+  readonly mcpConfigPath?: string | undefined;
 }
 
 /**
@@ -46,12 +48,23 @@ export class CliAgentExecutor implements IAgentExecutor {
   private readonly modelId: string;
   private readonly timeoutMs: number;
   private readonly messageCallback: ((message: string) => void) | null;
+  private readonly mcpConfigPath: string | null;
 
   constructor(config?: CliAgentExecutorConfig) {
     this.modelId = config?.modelId ?? CLI_EXECUTOR_DEFAULTS.modelId;
     this.timeoutMs = config?.timeoutMs ?? CLI_EXECUTOR_DEFAULTS.timeoutMs;
     this.adapter = new ClaudeCliAdapter({ model: this.modelId });
     this.messageCallback = config?.onMessage ?? null;
+    this.mcpConfigPath = config?.mcpConfigPath ?? null;
+  }
+
+  /** Build task options including optional MCP config. */
+  private buildTaskOptions(workDir: string): Record<string, unknown> {
+    const options: Record<string, unknown> = { workDir };
+    if (this.mcpConfigPath !== null) {
+      options['mcpConfigPath'] = this.mcpConfigPath;
+    }
+    return options;
   }
 
   /**
@@ -73,7 +86,7 @@ export class CliAgentExecutor implements IAgentExecutor {
           content: userPrompt,
           systemPrompt,
           model: this.modelId,
-          options: { workDir: context.workDir },
+          options: this.buildTaskOptions(context.workDir),
         },
         { timeoutMs: this.timeoutMs }
       );
@@ -89,23 +102,12 @@ export class CliAgentExecutor implements IAgentExecutor {
       const tokensUsed =
         result.value.usage?.totalTokens ?? this.estimateTokens(userPrompt, response);
       const durationMs = result.value.durationMs ?? getTimeProvider().now() - startTime;
-
       this.messageCallback?.(`Completed in ${String(durationMs)}ms, ~${String(tokensUsed)} tokens`);
 
-      return {
-        ok: true,
-        value: {
-          response,
-          tokensUsed,
-          durationMs,
-        },
-      };
+      return { ok: true, value: { response, tokensUsed, durationMs } };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      return {
-        ok: false,
-        error: new AgentRunnerError(`CLI execution failed: ${message}`, err),
-      };
+      return { ok: false, error: new AgentRunnerError(`CLI execution failed: ${message}`, err) };
     }
   }
 

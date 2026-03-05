@@ -17,6 +17,7 @@ import { AgentRunnerError } from './agent-runner.js';
 import { PredictionWriter } from './prediction-writer.js';
 import { createNexusExecutorFromEnv } from './nexus-agent-executor.js';
 import { createCliExecutor } from './cli-agent-executor.js';
+import { generateMcpConfig, type GeneratedMcpConfig } from './mcp-config.js';
 import { runBenchmarkParallel } from './parallel-runner.js';
 import {
   createBenchmarkMemory,
@@ -59,23 +60,53 @@ export interface ExecutorWithModel extends IAgentExecutor {
   getModelId(): string;
 }
 
+/** Options for creating an executor. */
+export interface CreateExecutorOptions {
+  readonly verbose: boolean;
+  readonly mcpEnabled?: boolean;
+}
+
 /**
  * Create executor, preferring CLI over API.
+ * When mcpEnabled, generates MCP config for child CLI sessions.
  */
 export async function createExecutor(
-  verbose: boolean
-): Promise<Result<ExecutorWithModel, AgentRunnerError>> {
+  verboseOrOptions: boolean | CreateExecutorOptions
+): Promise<Result<ExecutorWithModel & { mcpCleanup?: () => Promise<void> }, AgentRunnerError>> {
+  const opts =
+    typeof verboseOrOptions === 'boolean' ? { verbose: verboseOrOptions } : verboseOrOptions;
+  const { verbose, mcpEnabled } = opts;
+
   const onMessage = verbose
     ? (msg: string): void => {
         console.log(`  [agent] ${msg}`);
       }
     : undefined;
 
+  let mcpConfig: GeneratedMcpConfig | null = null;
+  if (mcpEnabled === true) {
+    console.log('Generating MCP config for child sessions...');
+    mcpConfig = await generateMcpConfig();
+    console.log(`MCP config: ${mcpConfig.configPath}`);
+  }
+
   console.log('Checking CLI availability...');
-  const cliResult = await createCliExecutor({ onMessage });
+  const cliResult = await createCliExecutor({
+    onMessage,
+    ...(mcpConfig !== null ? { mcpConfigPath: mcpConfig.configPath } : {}),
+  });
   if (cliResult.ok) {
     console.log('Using Claude CLI (OAuth authentication)');
+    const executor = cliResult.value;
+    if (mcpConfig !== null) {
+      return { ok: true, value: Object.assign(executor, { mcpCleanup: mcpConfig.cleanup }) };
+    }
     return cliResult;
+  }
+
+  // Clean up MCP config if CLI isn't available (API executor doesn't use it)
+  if (mcpConfig !== null) {
+    await mcpConfig.cleanup();
   }
 
   console.log('CLI not available, checking API key...');

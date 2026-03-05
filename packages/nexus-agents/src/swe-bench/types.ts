@@ -142,6 +142,8 @@ export interface SWEBenchConfig {
   readonly concurrency: number;
   /** Directory for cross-run memory persistence. Empty string disables. */
   readonly memory_dir: string;
+  /** Enable MCP tools in child CLI sessions (memory, research). Default: false. */
+  readonly mcp_enabled: boolean;
 }
 
 /**
@@ -157,6 +159,7 @@ export const DEFAULT_SWE_BENCH_CONFIG: SWEBenchConfig = {
   work_dir: '/tmp/swe-bench',
   concurrency: 1,
   memory_dir: '/tmp/swe-bench-memory',
+  mcp_enabled: false,
 };
 
 /**

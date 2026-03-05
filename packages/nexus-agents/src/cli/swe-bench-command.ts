@@ -32,6 +32,8 @@ export interface SWEBenchOptions {
   readonly verbose: boolean;
   readonly concurrency: number;
   readonly instances: readonly string[];
+  /** Enable MCP tools (memory, research) in child CLI sessions. */
+  readonly mcp: boolean;
 }
 
 /** SWE-bench run result. */
@@ -147,7 +149,10 @@ async function runBenchmark(options: SWEBenchOptions): Promise<SWEBenchCommandRe
   console.log(`\nSWE-bench Run: ${options.variant}`);
   console.log('='.repeat(40));
 
-  const executorResult = await createExecutor(options.verbose);
+  const executorResult = await createExecutor({
+    verbose: options.verbose,
+    mcpEnabled: options.mcp,
+  });
   if (!executorResult.ok) {
     console.error(`\nError: ${executorResult.error.message}`);
     return { success: false, message: executorResult.error.message };
@@ -228,24 +233,36 @@ function parseVariant(arg: string): SWEBenchVariant {
   return 'lite';
 }
 
+/** Mutable state for arg parsing. */
+interface ParseState {
+  variant: SWEBenchVariant;
+  limit: number | undefined;
+  output: string;
+  resume: boolean;
+  verbose: boolean;
+  concurrency: number;
+  instances: string[];
+  mcp: boolean;
+}
+
+/** Boolean flags that don't require value parsing. */
+const BOOLEAN_FLAGS: Record<string, keyof ParseState> = {
+  '--resume': 'resume',
+  '--verbose': 'verbose',
+  '-v': 'verbose',
+  '--mcp': 'mcp',
+};
+
 /** Parse a single argument and update state. */
-function parseArg(
-  arg: string,
-  state: {
-    variant: SWEBenchVariant;
-    limit: number | undefined;
-    output: string;
-    resume: boolean;
-    verbose: boolean;
-    concurrency: number;
-    instances: string[];
+function parseArg(arg: string, state: ParseState): void {
+  const boolKey = BOOLEAN_FLAGS[arg];
+  if (boolKey !== undefined) {
+    (state[boolKey] as boolean) = true;
+    return;
   }
-): void {
   if (arg.startsWith('--variant=')) state.variant = parseVariant(arg);
   else if (arg.startsWith('--limit=')) state.limit = parseInt(arg.slice('--limit='.length), 10);
   else if (arg.startsWith('--output=')) state.output = arg.slice('--output='.length);
-  else if (arg === '--resume') state.resume = true;
-  else if (arg === '--verbose' || arg === '-v') state.verbose = true;
   else if (arg.startsWith('--instance=')) state.instances.push(arg.slice('--instance='.length));
   else if (arg.startsWith('--concurrency='))
     state.concurrency = Math.max(1, parseInt(arg.slice('--concurrency='.length), 10) || 1);
@@ -262,6 +279,7 @@ export function parseSweBenchArgs(args: readonly string[]): SWEBenchOptions {
     verbose: false,
     concurrency: 1,
     instances: [] as string[],
+    mcp: false,
   };
   for (const arg of args.slice(1)) parseArg(arg, state);
   const base = {
@@ -272,6 +290,7 @@ export function parseSweBenchArgs(args: readonly string[]): SWEBenchOptions {
     verbose: state.verbose,
     concurrency: state.concurrency,
     instances: state.instances,
+    mcp: state.mcp,
   };
   return state.limit !== undefined ? { ...base, limit: state.limit } : base;
 }
@@ -294,6 +313,7 @@ Options:
   --resume                        Skip already completed instances
   --instance=<id>                 Run specific instance (can be repeated)
   --concurrency=<n>               Parallel workers (default: 1, sequential)
+  --mcp                           Enable MCP tools (memory, research) in child sessions
   --verbose, -v                   Enable verbose output
 `);
 }

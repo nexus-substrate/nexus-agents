@@ -122,6 +122,18 @@ export class ClaudeCliAdapter extends SubprocessCliAdapter {
     };
   }
 
+  /** Appends optional string-type task options to CLI args. */
+  private appendTaskOptions(args: string[], task: CliTask): void {
+    const workDir = task.options?.['workDir'];
+    if (typeof workDir === 'string' && workDir.length > 0) {
+      args.push('--add-dir', workDir);
+    }
+    const mcpConfigPath = task.options?.['mcpConfigPath'];
+    if (typeof mcpConfigPath === 'string' && mcpConfigPath.length > 0) {
+      args.push('--mcp-config', mcpConfigPath);
+    }
+  }
+
   /**
    * Gets CLI command and arguments for execution.
    * Uses stdin for the prompt to avoid argument escaping issues,
@@ -145,11 +157,7 @@ export class ClaudeCliAdapter extends SubprocessCliAdapter {
       args.push('--resume', task.sessionId);
     }
 
-    // Add working directory for file access (e.g., SWE-bench)
-    const workDir = task.options?.['workDir'];
-    if (typeof workDir === 'string' && workDir.length > 0) {
-      args.push('--add-dir', workDir);
-    }
+    this.appendTaskOptions(args, task);
 
     // Note: maxTokens is intentionally not passed to Claude CLI.
     // The Claude CLI does not support --max-tokens. Use --max-budget-usd instead.
