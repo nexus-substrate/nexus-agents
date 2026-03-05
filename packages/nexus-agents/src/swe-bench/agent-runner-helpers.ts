@@ -136,6 +136,25 @@ export async function applyPatch(
 }
 
 /**
+ * Captures uncommitted changes in the working directory as a git diff.
+ * Used to extract patches when the agent modifies files via tools
+ * instead of outputting a diff block in text (Issue #1411).
+ */
+export async function captureWorkingDirDiff(repoDir: string): Promise<string | null> {
+  const childProcess = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  const exec = promisify(childProcess.exec);
+
+  try {
+    const { stdout } = await exec('git diff', { cwd: repoDir, maxBuffer: 1024 * 1024 });
+    const trimmed = stdout.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Resets repository to clean state.
  */
 export async function resetRepository(repoDir: string): Promise<Result<void, AgentRunnerError>> {

@@ -33,7 +33,7 @@ describe('prompt-template', () => {
   describe('SWE_BENCH_SYSTEM_PROMPT', () => {
     it('contains key instructions', () => {
       expect(SWE_BENCH_SYSTEM_PROMPT).toContain('expert software engineer');
-      expect(SWE_BENCH_SYSTEM_PROMPT).toContain('git patch');
+      expect(SWE_BENCH_SYSTEM_PROMPT).toContain('git diff');
       expect(SWE_BENCH_SYSTEM_PROMPT).toContain('minimal');
       expect(SWE_BENCH_SYSTEM_PROMPT).toContain('```diff');
     });

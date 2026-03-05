@@ -24,6 +24,7 @@ import {
   cloneRepository,
   applyPatch,
   resetRepository,
+  captureWorkingDirDiff,
   buildFailedResult,
   buildSuccessResult,
   type IterationState,
@@ -35,6 +36,7 @@ export {
   cloneRepository,
   applyPatch,
   resetRepository,
+  captureWorkingDirDiff,
   buildFailedResult,
   buildSuccessResult,
   type IterationState,
@@ -171,6 +173,12 @@ async function processSingleIteration(
     ...(contextSummary !== undefined ? { contextSummary } : {}),
   });
 
+  // Fallback: if no patch in response text, capture git diff from working dir.
+  // The agent may have modified files via tools without outputting a diff block (#1411).
+  if (!iterResult.ok && iterResult.error.message === 'No patch found in response') {
+    return tryWorkingDirDiff(context, state, iterResult.error.message);
+  }
+
   if (!iterResult.ok) {
     state.lastError = iterResult.error.message;
     state.lastPatch = undefined;
@@ -188,6 +196,31 @@ async function processSingleIteration(
   }
 
   return { success: true, patch: iterResult.value.patch, response: agentResponse };
+}
+
+/** Fallback: capture working dir changes when agent modified files via tools (#1411). */
+async function tryWorkingDirDiff(
+  context: AgentContext,
+  state: IterationState,
+  originalError: string
+): Promise<{ success: boolean; patch?: string; response?: string }> {
+  const workDirDiff = await captureWorkingDirDiff(context.workDir);
+  if (workDirDiff === null) {
+    state.lastError = originalError;
+    state.lastPatch = undefined;
+    return { success: false };
+  }
+
+  const validation = validatePatchFormat(workDirDiff);
+  if (!validation.valid) {
+    state.lastError = `Working dir diff invalid: ${validation.error ?? ''}`;
+    state.lastPatch = undefined;
+    return { success: false };
+  }
+
+  // Working dir changes are already applied — just record the patch
+  state.lastPatch = workDirDiff;
+  return { success: true, patch: workDirDiff };
 }
 
 // ============================================================================
