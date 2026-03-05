@@ -17,6 +17,8 @@ import {
   extractPatch,
   validatePatchFormat,
 } from './prompt-template.js';
+import { createEmptyContext, updateContext, formatContextForPrompt } from './iteration-context.js';
+import type { IterationContext } from './types.js';
 import {
   AgentRunnerError,
   cloneRepository,
@@ -81,6 +83,7 @@ interface IterationLoopOptions {
   readonly startTime: number;
   readonly onMessage: ((msg: string) => void) | undefined;
   readonly systemPrompt: string | undefined;
+  iterationContext: IterationContext;
 }
 
 /**
@@ -99,18 +102,31 @@ export interface RunOptions {
 // Agent Iteration
 // ============================================================================
 
+interface RunIterationOptions {
+  readonly executor: IAgentExecutor;
+  readonly context: AgentContext;
+  readonly previousError?: string;
+  readonly previousPatch?: string;
+  readonly systemPromptOverride?: string;
+  readonly contextSummary?: string;
+}
+
+interface IterationResult {
+  readonly patch: string;
+  readonly tokensUsed: number;
+  readonly response: string;
+}
+
 async function runIteration(
-  executor: IAgentExecutor,
-  context: AgentContext,
-  previousError?: string,
-  previousPatch?: string,
-  systemPromptOverride?: string
-): Promise<Result<{ patch: string; tokensUsed: number }, AgentRunnerError>> {
+  opts: RunIterationOptions
+): Promise<Result<IterationResult, AgentRunnerError>> {
+  const { executor, context, previousError, previousPatch, systemPromptOverride, contextSummary } =
+    opts;
   const systemPrompt = systemPromptOverride ?? SWE_BENCH_SYSTEM_PROMPT;
   let userPrompt = createInstancePrompt(context.instance);
 
   if (previousError !== undefined) {
-    userPrompt += '\n\n' + createRetryPrompt(previousError, previousPatch);
+    userPrompt += '\n\n' + createRetryPrompt(previousError, previousPatch, contextSummary);
   }
 
   const result = await executor.execute(systemPrompt, userPrompt, context);
@@ -126,24 +142,34 @@ async function runIteration(
     return { ok: false, error: new AgentRunnerError(`Invalid patch: ${validation.error ?? ''}`) };
   }
 
-  return { ok: true, value: { patch, tokensUsed: result.value.tokensUsed } };
+  return {
+    ok: true,
+    value: { patch, tokensUsed: result.value.tokensUsed, response: result.value.response },
+  };
+}
+
+interface ProcessIterationOptions {
+  readonly executor: IAgentExecutor;
+  readonly context: AgentContext;
+  readonly state: IterationState;
+  readonly systemPromptOverride?: string;
+  readonly contextSummary?: string;
 }
 
 async function processSingleIteration(
-  executor: IAgentExecutor,
-  context: AgentContext,
-  state: IterationState,
-  systemPromptOverride?: string
-): Promise<{ success: boolean; patch?: string }> {
+  opts: ProcessIterationOptions
+): Promise<{ success: boolean; patch?: string; response?: string }> {
+  const { executor, context, state, systemPromptOverride, contextSummary } = opts;
   await resetRepository(context.workDir);
 
-  const iterResult = await runIteration(
+  const iterResult = await runIteration({
     executor,
     context,
-    state.lastError,
-    state.lastPatch,
-    systemPromptOverride
-  );
+    previousError: state.lastError,
+    previousPatch: state.lastPatch,
+    systemPromptOverride,
+    contextSummary,
+  });
 
   if (!iterResult.ok) {
     state.lastError = iterResult.error.message;
@@ -153,14 +179,15 @@ async function processSingleIteration(
 
   state.totalTokens += iterResult.value.tokensUsed;
   state.lastPatch = iterResult.value.patch;
+  const agentResponse = iterResult.value.response;
 
   const applyResult = await applyPatch(context.workDir, iterResult.value.patch);
   if (!applyResult.ok) {
     state.lastError = applyResult.error.message;
-    return { success: false };
+    return { success: false, response: agentResponse };
   }
 
-  return { success: true, patch: iterResult.value.patch };
+  return { success: true, patch: iterResult.value.patch, response: agentResponse };
 }
 
 // ============================================================================
@@ -209,6 +236,7 @@ export async function runAgentOnInstance(
     startTime,
     onMessage,
     systemPrompt: options.systemPrompt,
+    iterationContext: createEmptyContext(),
   };
   const result = await runIterationLoop(executor, context, state, loopOptions);
   return { ok: true, value: result };
@@ -229,6 +257,43 @@ function checkEarlyExit(
   return null;
 }
 
+function buildContextSummaryArg(
+  ctx: IterationContext
+): { contextSummary: string } | Record<string, never> {
+  const summary = formatContextForPrompt(ctx);
+  return summary.length > 0 ? { contextSummary: summary } : {};
+}
+
+async function executeOneIteration(
+  executor: IAgentExecutor,
+  context: AgentContext,
+  state: IterationState,
+  options: IterationLoopOptions
+): Promise<boolean> {
+  const iterResult = await processSingleIteration({
+    executor,
+    context,
+    state,
+    systemPromptOverride: options.systemPrompt,
+    ...buildContextSummaryArg(options.iterationContext),
+  });
+
+  const hadPatch = iterResult.patch !== undefined;
+  options.iterationContext = updateContext(
+    options.iterationContext,
+    iterResult.response ?? '',
+    state.iterations,
+    hadPatch,
+    iterResult.success
+  );
+
+  if (iterResult.success && iterResult.patch !== undefined) {
+    state.finalPatch = iterResult.patch;
+    return true;
+  }
+  return false;
+}
+
 async function runIterationLoop(
   executor: IAgentExecutor,
   context: AgentContext,
@@ -244,9 +309,8 @@ async function runIterationLoop(
     state.iterations++;
     onMessage?.(`Iteration ${state.iterations.toString()}/${config.max_iterations.toString()}`);
 
-    const iterResult = await processSingleIteration(executor, context, state, options.systemPrompt);
-    if (iterResult.success && iterResult.patch !== undefined) {
-      state.finalPatch = iterResult.patch;
+    const done = await executeOneIteration(executor, context, state, options);
+    if (done) {
       onMessage?.('Patch applies successfully');
       break;
     }

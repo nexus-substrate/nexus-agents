@@ -250,3 +250,37 @@ export const SWE_BENCH_DATASETS: Record<SWEBenchVariant, SWEBenchDatasetInfo> = 
     hf_dataset_id: 'princeton-nlp/SWE-bench',
   },
 };
+
+// ============================================================================
+// Cross-Iteration Context Types (Issue #1417)
+// ============================================================================
+
+/** Relevance of a file to the current issue. */
+export type FileRelevance = 'high' | 'medium' | 'low';
+
+/** A file explored during an iteration. */
+export interface ExploredFile {
+  readonly path: string;
+  readonly relevance: FileRelevance;
+}
+
+/** Outcome of an approach attempt. */
+export type ApproachOutcome = 'patch_invalid' | 'patch_rejected' | 'no_patch' | 'success';
+
+/** Record of an attempted approach. */
+export interface ApproachRecord {
+  readonly iteration: number;
+  readonly approach: string;
+  readonly outcome: ApproachOutcome;
+  readonly errorSummary?: string;
+}
+
+/** Cross-iteration context accumulated during agent execution. */
+export interface IterationContext {
+  /** Files explored and their relevance. */
+  readonly filesExplored: readonly ExploredFile[];
+  /** Current root cause hypothesis. */
+  readonly rootCauseHypothesis: string | null;
+  /** History of approaches attempted. */
+  readonly approachHistory: readonly ApproachRecord[];
+}

@@ -18,6 +18,11 @@ export type {
   SWEBenchConfig,
   SWEBenchCheckpoint,
   SWEBenchDatasetInfo,
+  FileRelevance,
+  ExploredFile,
+  ApproachOutcome,
+  ApproachRecord,
+  IterationContext,
 } from './types.js';
 
 export { DEFAULT_SWE_BENCH_CONFIG, SWE_BENCH_DATASETS } from './types.js';
@@ -336,3 +341,13 @@ export type { TraceEventType, TraceEvent, RunStatus, TraceLoggerOptions } from '
 export { generateMcpConfig, getDefaultAllowedTools } from './mcp-config.js';
 
 export type { McpConfigOptions, GeneratedMcpConfig } from './mcp-config.js';
+
+// Iteration context
+export {
+  createEmptyContext,
+  extractFilesFromResponse,
+  extractHypothesis,
+  extractApproach,
+  updateContext,
+  formatContextForPrompt,
+} from './iteration-context.js';

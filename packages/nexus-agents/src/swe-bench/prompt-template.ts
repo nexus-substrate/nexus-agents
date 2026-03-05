@@ -80,8 +80,18 @@ export function createInstancePrompt(instance: SWEBenchInstance): string {
 /**
  * Creates a retry prompt when the initial attempt failed.
  */
-export function createRetryPrompt(error: string, previousPatch?: string): string {
-  const parts: string[] = ['## Previous Attempt Failed', '', `Error: ${error}`];
+export function createRetryPrompt(
+  error: string,
+  previousPatch?: string,
+  contextSummary?: string
+): string {
+  const parts: string[] = [];
+
+  if (contextSummary !== undefined && contextSummary.length > 0) {
+    parts.push('## Context from Previous Iterations', '', contextSummary, '');
+  }
+
+  parts.push('## Previous Attempt Failed', '', `Error: ${error}`);
 
   if (previousPatch !== undefined) {
     parts.push('', '## Previous Patch', '', '```diff', previousPatch, '```');
