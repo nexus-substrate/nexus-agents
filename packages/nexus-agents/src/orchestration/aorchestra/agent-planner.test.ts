@@ -632,4 +632,42 @@ describe('AgentPlanner', () => {
       expect(roles).toContain('architecture');
     });
   });
+
+  // ==========================================================================
+  // Research Hints (Issue #1389 Gap 2)
+  // ==========================================================================
+
+  describe('researchHints', () => {
+    it('adds experts from research hint keywords', () => {
+      const analysis = createAnalysis({ taskType: 'general', complexity: 'expert' });
+      const plan = planAgentTeam(analysis, 'Improve system', {
+        researchHints: ['security hardening', 'testing coverage'],
+      });
+
+      const roles = plan.entries.map((e) => e.role);
+      expect(roles).toContain('security');
+      expect(roles).toContain('testing');
+    });
+
+    it('does not exceed max experts from hints', () => {
+      const analysis = createAnalysis({ taskType: 'general', complexity: 'simple' });
+      const plan = planAgentTeam(analysis, 'Quick task', {
+        researchHints: ['security', 'testing', 'devops', 'research'],
+      });
+
+      // simple complexity → max 1 expert
+      expect(plan.entries).toHaveLength(1);
+    });
+
+    it('skips unmapped research hints', () => {
+      const analysis = createAnalysis({ taskType: 'general', complexity: 'moderate' });
+      const plan = planAgentTeam(analysis, 'Task', {
+        researchHints: ['unknown-technique', 'unmapped-concept'],
+      });
+
+      // Should still have default experts from task type, no extras
+      const roles = plan.entries.map((e) => e.role);
+      expect(roles).toContain('code');
+    });
+  });
 });

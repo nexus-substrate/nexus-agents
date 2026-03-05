@@ -204,5 +204,16 @@ describe('memory-query', () => {
       expect(parsed.count).toBe(0);
       expect(parsed.results).toEqual([]);
     });
+
+    it('omits expandedQuery when no reflection occurs (Issue #1397)', async () => {
+      mockQueryBySource.mockResolvedValue([]);
+
+      const result = await registeredHandler({ query: 'simple query' }, {});
+
+      expect(result.isError).toBeUndefined();
+      const parsed = JSON.parse(result.content[0]!.text) as Record<string, unknown>;
+      expect(parsed['query']).toBe('simple query');
+      expect(parsed['expandedQuery']).toBeUndefined();
+    });
   });
 });

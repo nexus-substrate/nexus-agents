@@ -75,6 +75,8 @@ export interface MemoryQueryDeps {
 export interface MemoryQueryResponse {
   /** Query that was executed */
   query: string;
+  /** LLM-expanded query when reflective memory rewrites it (Issue #1397 Gap 1). */
+  expandedQuery?: string;
   /** Results from memory search */
   results: readonly UnifiedMemoryResult[];
   /** Total results returned */
@@ -122,6 +124,22 @@ function getReflectiveRetriever(logger: ILogger): ReflectiveRetriever | undefine
   });
 }
 
+/** Resolve effective query via optional reflective enhancement. */
+async function resolveReflection(
+  query: string,
+  logger: ILogger
+): Promise<{ effectiveQuery: string; expandedQuery?: string; reflection?: ReflectionResult }> {
+  const retriever = getReflectiveRetriever(logger);
+  if (retriever === undefined) return { effectiveQuery: query };
+
+  const reflection = await retriever.enhance(query);
+  const reflected = reflection.reflected;
+  const effectiveQuery = reflected ? reflection.keywords.join(' ') : query;
+  const expandedQuery = reflected && effectiveQuery !== query ? effectiveQuery : undefined;
+
+  return { effectiveQuery, expandedQuery, reflection };
+}
+
 /**
  * Handles the memory_query tool execution.
  * Optionally uses MemR3 reflective enhancement when enabled.
@@ -131,19 +149,11 @@ async function executeMemoryQuery(
   logger: ILogger
 ): Promise<MemoryQueryResponse> {
   const toolMemory = getToolMemory();
+  const { effectiveQuery, expandedQuery, reflection } = await resolveReflection(
+    input.query,
+    logger
+  );
 
-  // MemR3: Optionally enhance query with reflective reasoning
-  let reflection: ReflectionResult | undefined;
-  const retriever = getReflectiveRetriever(logger);
-  if (retriever !== undefined) {
-    reflection = await retriever.enhance(input.query);
-  }
-
-  // Use enhanced query if reflection succeeded, otherwise original
-  const effectiveQuery =
-    reflection?.reflected === true ? reflection.keywords.join(' ') : input.query;
-
-  // Query memory backends — dispatch to specific backend when source filter is set
   const results = await toolMemory.queryBySource(input.source, effectiveQuery, input.limit);
 
   logger.debug('Memory query executed', {
@@ -157,6 +167,7 @@ async function executeMemoryQuery(
 
   return {
     query: input.query,
+    ...(expandedQuery !== undefined ? { expandedQuery } : {}),
     results,
     count: results.length,
     source: input.source,

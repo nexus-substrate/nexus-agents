@@ -51,6 +51,8 @@ export interface PlanAgentTeamOptions {
   readonly filePaths?: readonly string[];
   /** Historical expert success rates (role → success rate 0..1). Experts below 50% are skipped. */
   readonly expertReliability?: ReadonlyMap<string, number>;
+  /** Research technique hints from synthesis (Issue #1389 Gap 2). Maps technique keywords to experts. */
+  readonly researchHints?: readonly string[];
 }
 
 /**
@@ -199,7 +201,8 @@ function selectExperts(
   analysis: TaskAnalysisResult,
   taskDescription: string,
   filePaths?: readonly string[],
-  expertReliability?: ReadonlyMap<string, number>
+  expertReliability?: ReadonlyMap<string, number>,
+  researchHints?: readonly string[]
 ): readonly AgentPlanEntry[] {
   const ctx: ExpertSelectionContext = {
     analysis,
@@ -222,6 +225,14 @@ function selectExperts(
   if (filePaths !== undefined && filePaths.length > 0) {
     for (const role of matchTriggers(filePaths)) {
       tryAddExpert(ctx, role);
+    }
+  }
+
+  // Add experts from research synthesis hints if budget allows (Issue #1389 Gap 2)
+  if (researchHints !== undefined) {
+    for (const hint of researchHints) {
+      const mapped = mapHintToRole(hint);
+      if (mapped !== undefined) tryAddExpert(ctx, mapped);
     }
   }
 
@@ -405,7 +416,8 @@ export function planAgentTeam(
     analysis,
     taskDescription,
     options?.filePaths,
-    options?.expertReliability
+    options?.expertReliability,
+    options?.researchHints
   );
   const entries = assignDependencyAwareWaves(rawEntries);
   const hasDependencies = entries.some((e) => EXPERT_DEPENDENCIES[e.role] !== undefined);

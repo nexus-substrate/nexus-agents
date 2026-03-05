@@ -23,6 +23,9 @@ const logger = createLogger({ component: 'orchestrate-reflection' });
 /** Maximum tokens for reflection prompt response. */
 const REFLECTION_MAX_TOKENS = 1000;
 
+/** Minimum confidence to persist a learning (Issue #1397 Gap 3). */
+export const REFLECTION_WRITE_CONFIDENCE_THRESHOLD = 0.6;
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -175,6 +178,19 @@ function writeLearningsToSession(
 ): number {
   if (learnings.length === 0) return 0;
 
+  // Gap 3: Filter out low-confidence learnings before persisting
+  const eligible = learnings.filter((l) => l.confidence >= REFLECTION_WRITE_CONFIDENCE_THRESHOLD);
+
+  if (eligible.length < learnings.length) {
+    logger.debug('Skipped low-confidence learnings', {
+      total: learnings.length,
+      eligible: eligible.length,
+      threshold: REFLECTION_WRITE_CONFIDENCE_THRESHOLD,
+    });
+  }
+
+  if (eligible.length === 0) return 0;
+
   try {
     const memoryDir = path.join(os.homedir(), '.nexus-agents', 'memory', 'sessions');
     const memory = createSessionMemory(memoryDir);
@@ -183,17 +199,33 @@ function writeLearningsToSession(
     if (!startResult.ok) return 0;
 
     let written = 0;
-    for (const learning of learnings) {
+    for (const learning of eligible) {
       const result = memory.recordLearning({
         pattern: learning.pattern,
         context: learning.context,
         confidence: learning.confidence,
         source: `reflection:${taskDescription.slice(0, 50)}`,
       });
-      if (result.ok) written++;
+      if (result.ok) {
+        written++;
+        // Gap 2: Audit logging for each learning persisted
+        logger.info('Reflection learning persisted', {
+          sessionId,
+          pattern: learning.pattern.slice(0, 80),
+          confidence: learning.confidence,
+        });
+      }
     }
 
     memory.endSession(`Reflection: ${taskDescription.slice(0, 100)}`);
+
+    // Gap 2: Summary audit log
+    logger.info('Reflection session complete', {
+      sessionId,
+      written,
+      skipped: learnings.length - eligible.length,
+    });
+
     return written;
   } catch {
     return 0;

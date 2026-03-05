@@ -11,6 +11,7 @@ import {
   buildReflectionPrompt,
   parseLearnings,
   generateReflection,
+  REFLECTION_WRITE_CONFIDENCE_THRESHOLD,
 } from './orchestrate-reflection.js';
 import type { WorkerResult } from '../../orchestration/aorchestra/index.js';
 import type { IModelAdapter } from '../../core/index.js';
@@ -246,5 +247,31 @@ describe('generateReflection', () => {
     const result = await generateReflection('Task', [makeWorkerResult({})], adapter);
     expect(result?.learnings).toEqual([]);
     expect(result?.written).toBe(0);
+  });
+
+  it('filters out low-confidence learnings (Gap 3)', async () => {
+    const { isReflectiveMemoryEnabled } = await import('./reflective-retriever.js');
+    vi.mocked(isReflectiveMemoryEnabled).mockReturnValue(true);
+
+    const llmResponse = JSON.stringify([
+      { pattern: 'High confidence', context: 'Should persist', confidence: 0.9 },
+      { pattern: 'Low confidence', context: 'Should skip', confidence: 0.3 },
+    ]);
+    const adapter = makeMockAdapter(llmResponse);
+    const result = await generateReflection('Task', [makeWorkerResult({})], adapter);
+
+    expect(result).toBeDefined();
+    expect(result?.learnings).toHaveLength(2); // All extracted
+    expect(result?.written).toBe(1); // Only high-confidence persisted
+  });
+});
+
+// ============================================================================
+// REFLECTION_WRITE_CONFIDENCE_THRESHOLD
+// ============================================================================
+
+describe('REFLECTION_WRITE_CONFIDENCE_THRESHOLD', () => {
+  it('is exported and set to 0.6', () => {
+    expect(REFLECTION_WRITE_CONFIDENCE_THRESHOLD).toBe(0.6);
   });
 });
