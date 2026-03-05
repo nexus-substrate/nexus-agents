@@ -109,6 +109,12 @@ interface SelectedCli {
 /** Planning-preferred order: claude (reasoning), codex (impl), gemini (context). */
 const PLAN_CLI_ORDER: readonly CliName[] = ['claude', 'codex', 'gemini'];
 
+/** Word overlap ratio above which two steps are considered similar. */
+const STEP_OVERLAP_THRESHOLD = 0.5;
+
+/** Step count ratio above which plans are flagged as divergent in granularity. */
+const STEP_COUNT_DIVERGENCE_MULTIPLIER = 1.5;
+
 function selectPlanClis(
   adapters: ReadonlyMap<CliName, ICliAdapter>,
   maxCount: number
@@ -332,7 +338,7 @@ function stepsOverlap(a: string, b: string): boolean {
     if (wordsB.has(word)) overlap++;
   }
 
-  return overlap / smaller > 0.5;
+  return overlap / smaller > STEP_OVERLAP_THRESHOLD;
 }
 
 /** Finds divergence points between plans. */
@@ -348,7 +354,7 @@ function findDivergences(plans: readonly CliPlanPartition[]): Divergence[] {
   const minSteps = Math.min(...counts);
   const maxSteps = Math.max(...counts);
 
-  if (maxSteps > minSteps * 1.5 && minSteps > 0) {
+  if (maxSteps > minSteps * STEP_COUNT_DIVERGENCE_MULTIPLIER && minSteps > 0) {
     const positions = new Map<CliName, string>();
     for (const s of stepCounts) {
       positions.set(s.cli, `${String(s.count)} steps`);

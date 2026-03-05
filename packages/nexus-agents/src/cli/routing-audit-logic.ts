@@ -42,6 +42,9 @@ const sharedAnalyzer = createSharedTaskAnalyzer();
 
 const CLI_NAMES: readonly CliName[] = ['claude', 'gemini', 'codex', 'opencode'];
 
+/** Normalization ceiling for context length (tokens). */
+const CONTEXT_NORMALIZATION_TOKENS = 100_000;
+
 // =============================================================================
 // Helper Functions
 // =============================================================================
@@ -66,7 +69,7 @@ export function taskProfileToBanditContextFromProfile(profile: TaskProfile): Ban
   // For backward compatibility, convert profile back to context using original formula
   return {
     taskComplexity: profile.reasoningComplexity / 10,
-    contextLengthNormalized: Math.min(profile.contextRequired / 100000, 1),
+    contextLengthNormalized: Math.min(profile.contextRequired / CONTEXT_NORMALIZATION_TOKENS, 1),
     isCodeTask: profile.codeGeneration ? 1 : 0,
     isReasoningTask: profile.taskType === 'architecture' || profile.reasoningComplexity > 5 ? 1 : 0,
     budgetUtilization: 0.5,

@@ -29,6 +29,9 @@ export const MAX_SYNTHESIS_INPUT_CHARS = 20_000;
 /** Maximum tokens for synthesis LLM response. */
 export const SYNTHESIS_MAX_TOKENS = 4000;
 
+/** Minimum per-worker character budget when dividing synthesis input. */
+const MIN_PER_WORKER_BUDGET_CHARS = 500;
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -94,7 +97,7 @@ export function buildSynthesisPrompt(input: SynthesisPromptInput): string {
 
   // Budget per worker: divide total evenly, with minimum floor
   const perWorkerBudget = Math.max(
-    500,
+    MIN_PER_WORKER_BUDGET_CHARS,
     Math.floor(MAX_SYNTHESIS_INPUT_CHARS / successResults.length)
   );
 
@@ -173,7 +176,7 @@ function buildFallbackResponse(
   }
 
   const perWorkerBudget = Math.max(
-    500,
+    MIN_PER_WORKER_BUDGET_CHARS,
     Math.floor(MAX_SYNTHESIS_INPUT_CHARS / successResults.length)
   );
 

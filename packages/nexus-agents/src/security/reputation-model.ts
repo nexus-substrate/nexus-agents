@@ -62,6 +62,9 @@ export interface ReputationAssessment {
 // ============================================================================
 
 /** Thresholds for suspicious behavior detection. */
+/** Approximate days per year, used to normalize account age to a 0–10 scale. */
+const DAYS_PER_YEAR_APPROX = 36.5;
+
 const SUSPICIOUS_THRESHOLDS = {
   /** Account younger than this (days) is flagged. */
   newAccountDays: 30,
@@ -207,7 +210,7 @@ function calculateReputationScore(
   score += roleBonus[userRole];
 
   // Account age bonus (max +10)
-  score += Math.min(metadata.accountAgeDays / 36.5, 10);
+  score += Math.min(metadata.accountAgeDays / DAYS_PER_YEAR_APPROX, 10);
 
   // Contribution bonus (max +10)
   score += Math.min(metadata.priorContributions, 10);

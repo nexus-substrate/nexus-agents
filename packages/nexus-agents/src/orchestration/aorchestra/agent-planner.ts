@@ -40,6 +40,9 @@ export interface AgentPlanEntry {
 /** Minimum expert success rate before deprioritization (Issue #1325). */
 const RELIABILITY_THRESHOLD = 0.5;
 
+/** Ambiguity score above which a task may need clarification. */
+const AMBIGUITY_THRESHOLD = 0.5;
+
 /**
  * Options for planAgentTeam.
  */
@@ -364,7 +367,7 @@ function generateReasoning(analysis: TaskAnalysisResult, entryCount: number): st
     `Experts selected: ${String(entryCount)}/${String(COMPLEXITY_MAX[analysis.complexity])} max`,
   ];
 
-  if (analysis.ambiguityScore > 0.5) {
+  if (analysis.ambiguityScore > AMBIGUITY_THRESHOLD) {
     parts.push(`High ambiguity (${analysis.ambiguityScore.toFixed(2)}) — may need clarification`);
   }
 
