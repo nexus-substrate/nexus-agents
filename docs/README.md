@@ -75,21 +75,21 @@ Detailed technical documentation:
 
 #### Architecture
 
-| Document                                                                    | Description                    | Status    |
-| --------------------------------------------------------------------------- | ------------------------------ | --------- |
-| [AGENT_SYSTEM.md](./architecture/AGENT_SYSTEM.md)                           | Agent framework design         | Canonical |
-| [MEMORY_SYSTEM.md](./architecture/MEMORY_SYSTEM.md)                         | 7-type memory architecture     | Canonical |
-| [ROUTING_SYSTEM.md](./architecture/ROUTING_SYSTEM.md)                       | Model routing pipeline         | Canonical |
-| [CONSENSUS_PROTOCOLS.md](./architecture/CONSENSUS_PROTOCOLS.md)             | 5 consensus algorithms         | Canonical |
-| [CONTEXT_LOAD_BALANCING.md](./architecture/CONTEXT_LOAD_BALANCING.md)       | Claude/Gemini/Codex routing    | Canonical |
-| [SECURITY.md](./architecture/SECURITY.md)                                   | Security model, sandboxing     | Canonical |
-| [MCP_PROTOCOL.md](./architecture/MCP_PROTOCOL.md)                           | MCP integration details        | Canonical |
-| [TECHLEAD_WORKFLOW_ENGINE.md](./architecture/TECHLEAD_WORKFLOW_ENGINE.md)   | Orchestrator vs WorkflowEngine | Canonical |
-| [ICTM_PATTERN.md](./architecture/ICTM_PATTERN.md)                           | Dynamic sub-agent creation     | Canonical |
-| [UNTRUSTED_INPUT_HARDENING.md](./architecture/UNTRUSTED_INPUT_HARDENING.md) | Input trust & sanitization     | Canonical |
-| [SOFTWARE_FACTORY_REPORT.md](./architecture/SOFTWARE_FACTORY_REPORT.md)     | Factory hardening review       | Canonical |
-| [MULTI_REPO_ORCHESTRATION.md](./architecture/MULTI_REPO_ORCHESTRATION.md)   | Cross-repo task coordination   | Canonical |
-| [dependency-graph.md](./architecture/dependency-graph.md)                   | Module dependency diagram      | Generated |
+| Document                                                                          | Description                    | Status    |
+| --------------------------------------------------------------------------------- | ------------------------------ | --------- |
+| [AGENT_SYSTEM.md](./architecture/AGENT_SYSTEM.md)                                 | Agent framework design         | Canonical |
+| [MEMORY_SYSTEM.md](./architecture/MEMORY_SYSTEM.md)                               | 7-type memory architecture     | Canonical |
+| [ROUTING_SYSTEM.md](./architecture/ROUTING_SYSTEM.md)                             | Model routing pipeline         | Canonical |
+| [CONSENSUS_PROTOCOLS.md](./architecture/CONSENSUS_PROTOCOLS.md)                   | 5 consensus algorithms         | Canonical |
+| [CONTEXT_LOAD_BALANCING.md](./architecture/CONTEXT_LOAD_BALANCING.md)             | Claude/Gemini/Codex routing    | Canonical |
+| [SECURITY.md](./architecture/SECURITY.md)                                         | Security model, sandboxing     | Canonical |
+| [MCP_PROTOCOL.md](./architecture/MCP_PROTOCOL.md)                                 | MCP integration details        | Canonical |
+| [ORCHESTRATOR_WORKFLOW_ENGINE.md](./architecture/ORCHESTRATOR_WORKFLOW_ENGINE.md) | Orchestrator vs WorkflowEngine | Canonical |
+| [ICTM_PATTERN.md](./architecture/ICTM_PATTERN.md)                                 | Dynamic sub-agent creation     | Canonical |
+| [UNTRUSTED_INPUT_HARDENING.md](./architecture/UNTRUSTED_INPUT_HARDENING.md)       | Input trust & sanitization     | Canonical |
+| [SOFTWARE_FACTORY_REPORT.md](./architecture/SOFTWARE_FACTORY_REPORT.md)           | Factory hardening review       | Canonical |
+| [MULTI_REPO_ORCHESTRATION.md](./architecture/MULTI_REPO_ORCHESTRATION.md)         | Cross-repo task coordination   | Canonical |
+| [dependency-graph.md](./architecture/dependency-graph.md)                         | Module dependency diagram      | Generated |
 
 #### Development
 
@@ -232,9 +232,9 @@ Detailed technical documentation:
 | [hook-integration-proposal.md](./proposals/hook-integration-proposal.md)             | Hook integration      | Implemented |
 | [interface-contract-238.md](./proposals/interface-contract-238.md)                   | Interface contracts   | Implemented |
 | [process-automation-improvements.md](./proposals/process-automation-improvements.md) | Process automation    | Proposed    |
-| [protocol-improvement-system.md](./proposals/protocol-improvement-system.md)         | Protocol improvements | Proposed    |
+| [protocol-improvement-system.md](./proposals/protocol-improvement-system.md)         | Protocol improvements | Implemented |
 | [self-evaluation-mvp.md](./proposals/self-evaluation-mvp.md)                         | Self-evaluation MVP   | Implemented |
-| [adapter-architecture-review.md](./proposals/adapter-architecture-review.md)         | Adapter review        | Draft       |
+| [adapter-architecture-review.md](./proposals/adapter-architecture-review.md)         | Adapter review        | Implemented |
 
 #### Workflows
 

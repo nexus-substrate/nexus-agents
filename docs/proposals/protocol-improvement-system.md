@@ -1,7 +1,7 @@
 # Protocol Improvement System Proposal
 
 **Date:** 2026-01-11 (ET)
-**Status:** Draft - Pending Consensus Vote
+**Status:** IMPLEMENTED — Superseded by CLAUDE.md governance (Self-Check Quality Gate, Discovered Issues Protocol, system-review skill, DocOps pipeline). Voted 3/3 APPROVE to close on 2026-03-04.
 **Author:** Claude Code Swarm
 
 ---

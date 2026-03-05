@@ -3,7 +3,7 @@
 **Version:** 2.1.0
 **Last Updated:** 2026-02-05 (ET)
 **Status:** Canonical
-**Location:** `docs/architecture/TECHLEAD_WORKFLOW_ENGINE.md`
+**Location:** `docs/architecture/ORCHESTRATOR_WORKFLOW_ENGINE.md`
 
 > For the full system architecture, see [ARCHITECTURE.md](../../ARCHITECTURE.md) at the repository root.
 > This document focuses on the separation between dynamic planning (Orchestrator, formerly TechLead) and static execution (WorkflowEngine).
