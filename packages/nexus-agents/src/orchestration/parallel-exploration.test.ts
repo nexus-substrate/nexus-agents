@@ -108,7 +108,8 @@ describe('createDefaultConfig', () => {
   it('returns expected defaults', () => {
     const config = createDefaultConfig();
     expect(config.maxParallelClis).toBe(3);
-    expect(config.perCliTimeoutMs).toBe(90_000);
+    // perCliTimeoutMs uses PER_CLI_TASK_TIMEOUTS.explorationMs (180s)
+    expect(config.perCliTimeoutMs).toBe(180_000);
     expect(config.maxOutputCharsPerCli).toBe(8000);
   });
 });

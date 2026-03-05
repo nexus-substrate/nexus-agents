@@ -145,7 +145,7 @@ Weather report recommends promoting exploration to Tier 3 routing. The failure r
 
 ## Forward-Looking: Phase 6 Proposals
 
-Based on gap analysis, weather report data, and research alignment map (24 implemented, 23 partial, 54 not-started techniques):
+Based on gap analysis, weather report data, and research alignment map (25 implemented, 22 partial, 54 not-started techniques):
 
 ### 6.1: Evidence-Based Validation (Target: 9.0/10)
 
@@ -168,7 +168,7 @@ Based on gap analysis, weather report data, and research alignment map (24 imple
 
 ### 6.4: Research-Driven Improvements
 
-The research alignment map identifies 23 partially-implemented and 54 not-started techniques. High-value candidates for the next iteration:
+The research alignment map identifies 22 partially-implemented and 54 not-started techniques. High-value candidates for the next iteration:
 
 | Technique Area       | Partial | Not Started | Priority |
 | -------------------- | ------- | ----------- | -------- |

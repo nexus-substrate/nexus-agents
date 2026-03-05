@@ -505,7 +505,7 @@ _Auto-generated from source. 25 tools registered._
 
 <!-- GOVERNANCE:VERSION:START -->
 
-_Governance Version: 2026-03-04_
+_Governance Version: 2026-03-05_
 
 <!-- GOVERNANCE:VERSION:END -->
 

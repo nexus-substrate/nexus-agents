@@ -124,8 +124,8 @@ function selectClis(
   maxCount: number
 ): readonly SelectedCli[] {
   const selected: SelectedCli[] = [];
-  // Preferred order: gemini (research), claude (architecture), codex (code)
-  const preferredOrder: readonly CliName[] = ['gemini', 'claude', 'codex'];
+  // Preferred order: gemini (research), claude (architecture), codex (code), opencode (cross-provider)
+  const preferredOrder: readonly CliName[] = ['gemini', 'claude', 'codex', 'opencode'];
 
   for (const cli of preferredOrder) {
     if (selected.length >= maxCount) break;

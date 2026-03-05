@@ -361,6 +361,35 @@ describe('applyTopsisRanking', () => {
     expect(result.ranking[0]).toBe('gemini');
     expect(result.topScore).toBe(0.9);
   });
+
+  it('computes tolerance band size for close scores', () => {
+    const mockRouter = {
+      selectModel: vi.fn(() => ({
+        scores: [
+          { cliName: 'gemini', closenessScore: 0.9 },
+          { cliName: 'codex', closenessScore: 0.88 },
+          { cliName: 'claude', closenessScore: 0.6 },
+        ],
+      })),
+    };
+    const result = applyTopsisRanking(makeTaskProfile(), candidates, mockRouter as never);
+    // gemini (0.90) and codex (0.88) are within 5% tolerance band; claude (0.60) is not
+    expect(result.toleranceBandSize).toBe(2);
+  });
+
+  it('tolerance band includes all when scores are equal', () => {
+    const mockRouter = {
+      selectModel: vi.fn(() => ({
+        scores: [
+          { cliName: 'gemini', closenessScore: 0.8 },
+          { cliName: 'codex', closenessScore: 0.8 },
+          { cliName: 'claude', closenessScore: 0.8 },
+        ],
+      })),
+    };
+    const result = applyTopsisRanking(makeTaskProfile(), candidates, mockRouter as never);
+    expect(result.toleranceBandSize).toBe(3);
+  });
 });
 
 // ============================================================================

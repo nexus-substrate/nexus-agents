@@ -168,7 +168,18 @@ export function applyBudgetFilter(
 export interface TopsisRankingResult {
   ranking: CliName[];
   topScore: number;
+  /** Number of candidates within the tolerance band of the top score. */
+  toleranceBandSize?: number;
 }
+
+/**
+ * Tolerance band percentage for TOPSIS scoring.
+ * Candidates within this % of the top score are considered quality-equivalent.
+ * Among equivalent candidates, the original ranking is preserved (TOPSIS tiebreak).
+ * This prevents over-concentration on a single CLI and improves diversity.
+ * (Source: Issue #1401 — tolerance-routing technique)
+ */
+export const TOPSIS_TOLERANCE_BAND_PERCENT = 0.05;
 
 /** Returns a TopsisRouter with plan billing criteria when in plan mode, or the original router. */
 function selectTopsisRouter(router: TopsisRouter, billingMode: BillingMode): TopsisRouter {
@@ -246,7 +257,13 @@ export function applyTopsisRanking(
 
   const scoreMap = new Map(result.scores.map((s) => [s.cliName, s.closenessScore]));
   const ranking = [...candidates].sort((a, b) => (scoreMap.get(b) ?? 0) - (scoreMap.get(a) ?? 0));
-  return { ranking, topScore: scoreMap.get(ranking[0] ?? 'claude') ?? 1.0 };
+  const topScore = scoreMap.get(ranking[0] ?? 'claude') ?? 1.0;
+
+  // Tolerance band: count how many candidates are within TOLERANCE_BAND_PERCENT of top
+  const threshold = topScore * (1 - TOPSIS_TOLERANCE_BAND_PERCENT);
+  const toleranceBandSize = ranking.filter((c) => (scoreMap.get(c) ?? 0) >= threshold).length;
+
+  return { ranking, topScore, toleranceBandSize };
 }
 
 /**

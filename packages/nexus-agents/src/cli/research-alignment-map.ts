@@ -82,9 +82,9 @@ export const TECHNIQUE_IMPLEMENTATION_MAP: ReadonlyMap<string, TechniqueMapping>
   [
     'tolerance-routing',
     {
-      status: 'partial',
-      path: 'routing/stages/quality-constraint-stage.ts',
-      hint: 'Quality constraints set thresholds but not tolerance bands',
+      status: 'implemented',
+      path: 'cli-adapters/composite-router-helpers.ts',
+      hint: 'TOPSIS_TOLERANCE_BAND_PERCENT (5%) identifies quality-equivalent candidates after TOPSIS ranking',
     },
   ],
   [
