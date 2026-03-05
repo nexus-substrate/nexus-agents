@@ -185,13 +185,11 @@ export function generateProposal(
  */
 export function createSprintIssue(proposal: SprintProposal): number | null {
   try {
-    const escapedBody = proposal.body
-      .replace(/"/g, '\\"')
-      .replace(/`/g, '\\`')
-      .replace(/\$/g, '\\$');
+    const escapedTitle = proposal.title.replace(/'/g, "'\\''");
+    const escapedBody = proposal.body.replace(/'/g, "'\\''");
 
     const output = safeExecSandboxed(
-      `gh issue create --title "${proposal.title}" --body "${escapedBody}" --label "epic"`,
+      `gh issue create --title '${escapedTitle}' --body '${escapedBody}' --label 'epic'`,
       { context: 'gh' }
     );
 

@@ -63,11 +63,12 @@ export function createGitHubIssue(
   labels: readonly string[]
 ): number | null {
   try {
-    const labelArgs = labels.map((l) => `--label "${l}"`).join(' ');
-    const escapedBody = body.replace(/"/g, '\\"').replace(/`/g, '\\`').replace(/\$/g, '\\$');
+    const labelArgs = labels.map((l) => `--label '${l.replace(/'/g, "'\\''")}'`).join(' ');
+    const escapedTitle = title.replace(/'/g, "'\\''");
+    const escapedBody = body.replace(/'/g, "'\\''");
 
     const output = safeExecSandboxed(
-      `gh issue create --title "${title}" --body "${escapedBody}" ${labelArgs}`,
+      `gh issue create --title '${escapedTitle}' --body '${escapedBody}' ${labelArgs}`,
       { context: 'gh' }
     );
 

@@ -152,8 +152,8 @@ function stripHtmlComments(content: string): {
   stripped: StrippedElement[];
 } {
   const stripped: StrippedElement[] = [];
-  const cleaned = content.replace(HTML_COMMENT_PATTERN, (match, offset: number) => {
-    // Only strip if comment contains instruction-like content
+  // First pass: strip matched HTML comments with instruction-like content
+  let cleaned = content.replace(HTML_COMMENT_PATTERN, (match, offset: number) => {
     const hasInstruction = /\b(ignore|execute|close|merge|delete|apply)\b/i.test(match);
     if (!hasInstruction) return match;
 
@@ -165,6 +165,24 @@ function stripHtmlComments(content: string): {
     });
     return '';
   });
+  // Second pass: strip unclosed <!-- tags (incomplete comment injection)
+  let searchFrom = 0;
+  while (searchFrom < cleaned.length) {
+    const openIdx = cleaned.indexOf('<!--', searchFrom);
+    if (openIdx === -1) break;
+    const closeIdx = cleaned.indexOf('-->', openIdx + 4);
+    if (closeIdx === -1) {
+      stripped.push({
+        tag: '<!--',
+        reason: 'Unclosed HTML comment (potential injection vector)',
+        startIndex: openIdx,
+        length: cleaned.length - openIdx,
+      });
+      cleaned = cleaned.slice(0, openIdx);
+      break;
+    }
+    searchFrom = closeIdx + 3;
+  }
   return { cleaned, stripped };
 }
 

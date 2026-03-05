@@ -113,7 +113,7 @@ function validateGitHubIssue(issueNumber: number): boolean {
  * Escapes special characters for shell command.
  */
 function escapeForShell(text: string): string {
-  return text.replace(/"/g, '\\"').replace(/`/g, '\\`').replace(/\$/g, '\\$');
+  return text.replace(/'/g, "'\\''");
 }
 
 /**
@@ -168,7 +168,7 @@ function recordVoteToGitHub(issueNumber: number, result: VotingResult): void {
   const escapedComment = escapeForShell(comment);
 
   const output = safeExecSandboxed(
-    `gh issue comment ${String(issueNumber)} --body "${escapedComment}"`,
+    `gh issue comment ${String(issueNumber)} --body '${escapedComment}'`,
     { context: 'gh' }
   );
 

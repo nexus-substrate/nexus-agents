@@ -146,9 +146,9 @@ export function createIssueBody(r: SystemReviewResult): string {
 /** Create a GitHub issue with review results. Returns the issue URL or null. */
 export function createIssue(result: SystemReviewResult): string | null {
   const date = getTimeProvider().nowDateString();
-  const body = createIssueBody(result).replace(/"/g, '\\"');
+  const body = createIssueBody(result).replace(/'/g, "'\\''");
   const out = safeExecSandboxed(
-    `gh issue create --title "System Review: ${date}" --body "${body}" --label system-review`,
+    `gh issue create --title 'System Review: ${date}' --body '${body}' --label 'system-review'`,
     { context: 'gh' }
   );
   if (out !== null) {

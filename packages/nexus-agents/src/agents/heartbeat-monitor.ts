@@ -9,6 +9,8 @@
  * (Source: Issue #1032 — Agent heartbeat health monitor)
  */
 
+import { randomBytes } from 'node:crypto';
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -107,7 +109,7 @@ export class HeartbeatMonitor {
 
   /** Start tracking a new expert session. Returns session ID. */
   startSession(expertId: string): string {
-    const sessionId = `hb-${expertId}-${String(Date.now())}`;
+    const sessionId = `hb-${expertId}-${randomBytes(6).toString('hex')}`;
     const now = Date.now();
     this.sessions.set(sessionId, {
       expertId,

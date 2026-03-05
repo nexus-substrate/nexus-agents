@@ -8,6 +8,8 @@
  * (Source: System Mandate - Determinism improvement)
  */
 
+import { randomBytes } from 'node:crypto';
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -67,12 +69,13 @@ export interface RandomProviderConfig {
 const CHARS = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
 /**
- * System random provider using Math.random().
- * Non-deterministic.
+ * System random provider using crypto.randomBytes().
+ * Cryptographically secure, non-deterministic.
  */
 export class SystemRandomProvider implements IRandomProvider {
   random(): number {
-    return Math.random();
+    const buf = randomBytes(4);
+    return buf.readUInt32BE(0) / 0x100000000;
   }
 
   randomInt(min: number, max: number): number {
@@ -80,12 +83,12 @@ export class SystemRandomProvider implements IRandomProvider {
   }
 
   randomString(length: number): string {
+    if (length === 0) return '';
+    const bytes = randomBytes(length);
     let result = '';
     for (let i = 0; i < length; i++) {
-      const char = CHARS[this.randomInt(0, CHARS.length)];
-      if (char !== undefined) {
-        result += char;
-      }
+      const idx = (bytes[i] ?? 0) % CHARS.length;
+      result += CHARS[idx] ?? '';
     }
     return result;
   }
