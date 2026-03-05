@@ -299,12 +299,18 @@ export async function executeWorkerDispatch(
 // Outcome Recording (Issue #1323, Epic #1322)
 // ============================================================================
 
-/** Maps WorkerErrorType to OutcomeFailureCategory. */
+/** Maps WorkerErrorType + error message to OutcomeFailureCategory. */
 function mapErrorType(errorType: string | undefined, errorMsg: string): OutcomeFailureCategory {
+  // Always try comprehensive message-based classification first (#1401 Phase 6.3)
+  if (errorMsg !== '') {
+    const fromMessage = categorizeOutcomeErrorMessage(errorMsg);
+    if (fromMessage !== 'unknown') return fromMessage;
+  }
+  // Fall back to coarse WorkerErrorType when message classification fails
   if (errorType === 'timeout') return 'timeout';
-  if (errorType === 'model_error') return categorizeOutcomeErrorMessage(errorMsg);
   if (errorType === 'logic_error') return 'execution';
-  return categorizeOutcomeErrorMessage(errorMsg);
+  if (errorType === 'model_error') return 'execution';
+  return 'unknown';
 }
 
 /**

@@ -412,6 +412,44 @@ describe('recordWorkerOutcomes', () => {
     expect(entries[0]?.failureCategory).toBe('timeout');
   });
 
+  it('classifies model_error with rate-limit message as rate_limit', () => {
+    const results: WorkerResult[] = [
+      {
+        role: 'code',
+        subTask: 'Task',
+        output: '',
+        status: 'error',
+        durationMs: 500,
+        error: 'Error: 429 Too Many Requests',
+        errorType: 'model_error',
+      },
+    ];
+
+    recordWorkerOutcomes(results, 'Task');
+
+    const entries = getOutcomeStore().query();
+    expect(entries[0]?.failureCategory).toBe('rate_limit');
+  });
+
+  it('classifies logic_error with auth message as authentication', () => {
+    const results: WorkerResult[] = [
+      {
+        role: 'security',
+        subTask: 'Audit',
+        output: '',
+        status: 'error',
+        durationMs: 200,
+        error: 'API key invalid or unauthorized',
+        errorType: 'logic_error',
+      },
+    ];
+
+    recordWorkerOutcomes(results, 'Task');
+
+    const entries = getOutcomeStore().query();
+    expect(entries[0]?.failureCategory).toBe('authentication');
+  });
+
   it('uses model=worker-{role} for outcome entries', () => {
     const results: WorkerResult[] = [
       {
