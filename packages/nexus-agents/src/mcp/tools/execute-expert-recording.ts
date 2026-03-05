@@ -39,28 +39,39 @@ const ROLE_TO_CATEGORY: Readonly<Record<string, TaskCategory>> = {
   infrastructure_expert: 'devops',
 };
 
+/** Options for recording an expert execution outcome. */
+export interface ExpertOutcomeOpts {
+  readonly task: string;
+  readonly role?: string;
+  readonly success: boolean;
+  readonly durationMs: number;
+  readonly model?: string;
+  readonly failureCategory?: OutcomeFailureCategory;
+  readonly errorMessage?: string;
+}
+
+/** Resolves category from role or task content. */
+function resolveExpertCategory(opts: ExpertOutcomeOpts): TaskCategory {
+  const roleCategory = opts.role !== undefined ? ROLE_TO_CATEGORY[opts.role] : undefined;
+  if (roleCategory !== undefined) return roleCategory;
+  return detectTaskCategory(opts.task)?.category ?? 'exploration';
+}
+
 /** Records expert execution outcome to OutcomeStore. Best-effort. */
-export function recordExpertOutcome(opts: {
-  task: string;
-  role?: string;
-  success: boolean;
-  durationMs: number;
-  model?: string;
-  failureCategory?: OutcomeFailureCategory;
-}): void {
+export function recordExpertOutcome(opts: ExpertOutcomeOpts): void {
   try {
-    const roleCategory = opts.role !== undefined ? ROLE_TO_CATEGORY[opts.role] : undefined;
     const match = detectTaskCategory(opts.task);
     getOutcomeStore().append({
       id: `exp-${String(Date.now())}-${Math.random().toString(36).slice(2, 8)}`,
       cli: match?.primaryCli ?? DEFAULT_CLI,
-      category: roleCategory ?? match?.category ?? 'exploration',
+      category: resolveExpertCategory(opts),
       model: opts.model ?? 'expert',
       success: opts.success,
       durationMs: opts.durationMs,
       timestamp: new Date(getTimeProvider().now()).toISOString(),
       source: 'delegate',
-      ...(opts.failureCategory !== undefined ? { failureCategory: opts.failureCategory } : {}),
+      failureCategory: opts.failureCategory,
+      errorMessage: opts.errorMessage?.slice(0, 500),
     });
   } catch (error: unknown) {
     createLogger({ tool: 'execute_expert' }).debug('Best-effort outcome recording failed', {
@@ -148,6 +159,7 @@ export function handleExpertFailure(
     success: false,
     durationMs,
     failureCategory: fc,
+    errorMessage: errorMsg,
     ...(expert.modelId !== undefined ? { model: expert.modelId } : {}),
   });
   const durationSec = Math.round(durationMs / 1000);

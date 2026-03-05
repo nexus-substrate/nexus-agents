@@ -85,6 +85,7 @@ function recordStageFailed(
     timestamp: new Date(event.timestamp).toISOString(),
     source: 'delegate',
     failureCategory: categorizeOutcomeErrorMessage(event.error),
+    errorMessage: event.error.slice(0, 500),
   };
   store.append(outcome);
 }

@@ -46,6 +46,7 @@ export const TaskOutcomeSchema = z.object({
   timestamp: z.string().min(1),
   qualitySignals: z.array(z.string()).optional(),
   failureCategory: OutcomeFailureCategorySchema.optional(),
+  errorMessage: z.string().max(500).optional(),
   source: OutcomeSourceSchema,
 });
 

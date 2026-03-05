@@ -460,7 +460,10 @@ function recordPlanOutcomes(partitions: readonly CliPlanPartition[]): void {
         timestamp: new Date(getTimeProvider().now()).toISOString(),
         source: 'delegate',
         ...(!p.success && p.error !== undefined
-          ? { failureCategory: categorizeOutcomeErrorMessage(p.error) }
+          ? {
+              failureCategory: categorizeOutcomeErrorMessage(p.error),
+              errorMessage: p.error.slice(0, 500),
+            }
           : {}),
       });
     }

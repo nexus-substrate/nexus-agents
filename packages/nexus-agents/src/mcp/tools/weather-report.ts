@@ -11,7 +11,10 @@
  */
 
 import type { PerformanceSummary, GroupStats } from '../../orchestration/outcomes/outcome-types.js';
-import { getOutcomeStore } from '../../orchestration/outcomes/index.js';
+import {
+  getOutcomeStore,
+  categorizeOutcomeErrorMessage,
+} from '../../orchestration/outcomes/index.js';
 import type { TaskCategory } from '../../config/task-specialization-types.js';
 import { TASK_CATEGORIES } from '../../config/task-specialization-types.js';
 import { getSpecialization } from '../../config/task-specialization.js';
@@ -503,7 +506,11 @@ function buildFailureBreakdown(input: WeatherReportOptions): readonly FailureBre
 
   const counts = new Map<string, number>();
   for (const o of failed) {
-    const cat = o.failureCategory ?? 'unknown';
+    let cat = o.failureCategory ?? 'unknown';
+    // Retroactive reclassification: re-classify unknown failures using stored error message
+    if (cat === 'unknown' && typeof o.errorMessage === 'string' && o.errorMessage.length > 0) {
+      cat = categorizeOutcomeErrorMessage(o.errorMessage);
+    }
     counts.set(cat, (counts.get(cat) ?? 0) + 1);
   }
 
