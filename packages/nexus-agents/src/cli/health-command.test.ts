@@ -17,16 +17,34 @@ import type { ParsedCliArgs } from '../cli-types.js';
 
 const mockGenerate = vi.mocked(generateWeatherReport);
 
-function makeDefaultReport(): ReturnType<typeof generateWeatherReport> {
+const SWARM_HEALTH = {
+  agentUtilization: 0.72,
+  collaborationEfficiency: 0.45,
+  routingAccuracy: 0.74,
+  weeklyRegret: 0.08,
+  adaptationSpeed: 25,
+  observedCategories: 6,
+  observedRoles: 4,
+} as const;
+
+function makeBaseReport(): Omit<ReturnType<typeof generateWeatherReport>, 'swarmHealth'> {
   return {
-    overall: {
-      totalTasks: 3405,
-      successRate: 0.74,
-      avgDurationMs: 4000,
-    },
+    overall: { totalTasks: 3405, successRate: 0.74, avgDurationMs: 4000 },
     cliWeather: [
-      { cli: 'claude', successRate: 0.71, totalTasks: 1200, avgDurationMs: 5000 },
-      { cli: 'gemini', successRate: 0.84, totalTasks: 800, avgDurationMs: 3000 },
+      {
+        cli: 'claude',
+        successRate: 0.71,
+        totalTasks: 1200,
+        avgDurationMs: 5000,
+        byCategory: new Map(),
+      },
+      {
+        cli: 'gemini',
+        successRate: 0.84,
+        totalTasks: 800,
+        avgDurationMs: 3000,
+        byCategory: new Map(),
+      },
     ],
     failureBreakdown: [
       { category: 'timeout', count: 50, percentage: 15.2 },
@@ -34,19 +52,14 @@ function makeDefaultReport(): ReturnType<typeof generateWeatherReport> {
     ],
     tierRecommendations: [],
     adaptiveBonuses: [],
-    swarmHealth: {
-      agentUtilization: 0.72,
-      collaborationEfficiency: 0.45,
-      routingAccuracy: 0.74,
-      weeklyRegret: 0.08,
-      adaptationSpeed: 25,
-      observedCategories: 6,
-      observedRoles: 4,
-    },
     explorationRate: 0.1,
     coldStartThreshold: 3,
     collectedAt: new Date().toISOString(),
   };
+}
+
+function makeDefaultReport(): ReturnType<typeof generateWeatherReport> {
+  return { ...makeBaseReport(), swarmHealth: SWARM_HEALTH };
 }
 
 describe('health-command', () => {
@@ -67,8 +80,7 @@ describe('health-command', () => {
     });
 
     it('handles missing swarm health', () => {
-      const report = makeDefaultReport();
-      mockGenerate.mockReturnValue({ ...report, swarmHealth: undefined });
+      mockGenerate.mockReturnValue(makeBaseReport());
 
       const result = collectHealth();
 
@@ -114,8 +126,7 @@ describe('health-command', () => {
     });
 
     it('shows no-data message when swarm health unavailable', () => {
-      const report = makeDefaultReport();
-      mockGenerate.mockReturnValue({ ...report, swarmHealth: undefined });
+      mockGenerate.mockReturnValue(makeBaseReport());
       const writeSpy = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
       const args = { command: 'health', options: {} } as unknown as ParsedCliArgs;
 
