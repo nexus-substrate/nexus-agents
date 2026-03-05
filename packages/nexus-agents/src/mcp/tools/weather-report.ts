@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 /**
  * nexus-agents/mcp - Weather Report
  *
@@ -27,6 +28,7 @@ import type {
   ToolPerformanceEntry,
   FailureBreakdownEntry,
   ExpertPerformanceEntry,
+  SwarmHealthMetrics,
 } from './weather-report-types.js';
 import type { RateLimitReport } from './weather-report-types.js';
 import { createDefaultWeatherConfig } from './weather-report-types.js';
@@ -64,6 +66,7 @@ export function generateWeatherReport(
   const failureBreakdown = buildFailureBreakdown(input);
   const agentHealth = buildAgentHealth();
   const expertPerformance = buildExpertPerformance();
+  const swarmHealth = buildSwarmHealth(expertPerformance);
   const base = {
     overall: {
       totalTasks: summary.totalTasks,
@@ -78,6 +81,7 @@ export function generateWeatherReport(
     ...(failureBreakdown.length > 0 ? { failureBreakdown } : {}),
     ...(agentHealth !== undefined ? { agentHealth } : {}),
     ...(expertPerformance.length > 0 ? { expertPerformance } : {}),
+    ...(swarmHealth !== undefined ? { swarmHealth } : {}),
     explorationRate: cfg.explorationRate,
     coldStartThreshold: cfg.coldStartThreshold,
     collectedAt: new Date().toISOString(),
@@ -314,6 +318,106 @@ function buildRecommendedMappings(): readonly RecommendedMapping[] {
   }
 
   return mappings;
+}
+
+/** Minimum observations per category to count toward routing accuracy. */
+const ROUTING_MIN_SAMPLES = 3;
+
+/** Confidence threshold for adaptation speed measurement. */
+const ADAPTATION_CONFIDENCE_THRESHOLD = 0.7;
+
+/** Per-category routing analysis result. */
+interface CategoryRoutingStats {
+  readonly accurateCount: number;
+  readonly totalRouted: number;
+  readonly regret: number;
+}
+
+/** Analyzes routing accuracy and regret for a single category. */
+function analyzeCategoryRouting(
+  catOutcomes: ReadonlyArray<{ cli: string; success: boolean }>
+): CategoryRoutingStats | null {
+  let bestRate = 0;
+  let bestCli = '';
+  for (const cli of CLI_NAMES) {
+    const cliCat = catOutcomes.filter((o) => o.cli === cli);
+    if (cliCat.length === 0) continue;
+    const rate = cliCat.filter((o) => o.success).length / cliCat.length;
+    if (rate > bestRate) {
+      bestRate = rate;
+      bestCli = cli;
+    }
+  }
+  if (bestCli === '') return null;
+
+  const routed = catOutcomes.filter((o) => o.cli === bestCli).length;
+  const actualRate = catOutcomes.filter((o) => o.success).length / catOutcomes.length;
+  return { accurateCount: routed, totalRouted: catOutcomes.length, regret: bestRate - actualRate };
+}
+
+/** Computes avg samples to reach high confidence across all CLI+category pairs. */
+function computeAdaptationSpeed(): number {
+  const store = getOutcomeStore();
+  let speedSum = 0;
+  let speedCount = 0;
+  for (const category of TASK_CATEGORIES) {
+    for (const cli of CLI_NAMES) {
+      const thresholds = computeAdaptiveThresholds(store, cli, category);
+      if (thresholds.confidence >= ADAPTATION_CONFIDENCE_THRESHOLD && thresholds.sampleCount > 0) {
+        speedSum += thresholds.sampleCount;
+        speedCount++;
+      }
+    }
+  }
+  return speedCount > 0 ? speedSum / speedCount : 0;
+}
+
+/** Builds swarm health metrics from outcome + expert data (Issue #1403). */
+function buildSwarmHealth(
+  expertPerf: readonly ExpertPerformanceEntry[]
+): SwarmHealthMetrics | undefined {
+  const allOutcomes = getOutcomeStore().query();
+  if (allOutcomes.length === 0) return undefined;
+
+  const activeRoles = expertPerf.filter((e) => e.successRate > 0).length;
+  const agentUtilization = expertPerf.length > 0 ? activeRoles / expertPerf.length : 0;
+
+  const delegateOutcomes = allOutcomes.filter((o) => o.source === 'delegate');
+  const delegateSuccesses = delegateOutcomes.filter((o) => o.success).length;
+  const collaborationEfficiency =
+    delegateOutcomes.length > 0 ? delegateSuccesses / delegateOutcomes.length : 0;
+
+  let accurateCount = 0;
+  let totalRouted = 0;
+  let regretSum = 0;
+  let observedCategories = 0;
+
+  for (const category of TASK_CATEGORIES) {
+    const catOutcomes = allOutcomes.filter((o) => o.category === category);
+    if (catOutcomes.length < ROUTING_MIN_SAMPLES) continue;
+    observedCategories++;
+    const stats = analyzeCategoryRouting(catOutcomes);
+    if (stats === null) continue;
+    accurateCount += stats.accurateCount;
+    totalRouted += stats.totalRouted;
+    regretSum += stats.regret;
+  }
+
+  const regretCategories = totalRouted > 0 ? observedCategories : 0;
+  return {
+    agentUtilization: round3(agentUtilization),
+    collaborationEfficiency: round3(collaborationEfficiency),
+    routingAccuracy: round3(totalRouted > 0 ? accurateCount / totalRouted : 0),
+    weeklyRegret: round3(regretCategories > 0 ? regretSum / regretCategories : 0),
+    adaptationSpeed: Math.round(computeAdaptationSpeed()),
+    observedCategories,
+    observedRoles: expertPerf.length,
+  };
+}
+
+/** Round to 3 decimal places. */
+function round3(n: number): number {
+  return Math.round(n * 1000) / 1000;
 }
 
 /** Worker model prefix used by recordWorkerOutcomes (Issue #1323). */

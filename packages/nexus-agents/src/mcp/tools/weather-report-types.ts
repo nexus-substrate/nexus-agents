@@ -157,6 +157,24 @@ export interface AgentSessionEntry {
   readonly heartbeatCount: number;
 }
 
+/** Swarm health metrics dashboard (Issue #1403, Phase 6.2). */
+export interface SwarmHealthMetrics {
+  /** % of dispatched expert roles that produced at least one success. Target: 70-90%. */
+  readonly agentUtilization: number;
+  /** Successful tasks / total worker dispatches. Target: > 0.1. */
+  readonly collaborationEfficiency: number;
+  /** % of tasks routed to the empirically best CLI for their category. Target: > 80%. */
+  readonly routingAccuracy: number;
+  /** Avg gap between actual success rate and best-possible rate per category. Target: decreasing. */
+  readonly weeklyRegret: number;
+  /** Avg samples to reach 'high' confidence per category. Target: < 50. */
+  readonly adaptationSpeed: number;
+  /** Number of observed categories with sufficient data. */
+  readonly observedCategories: number;
+  /** Number of expert roles observed. */
+  readonly observedRoles: number;
+}
+
 /** Full weather report response. */
 export interface WeatherReportResponse {
   readonly overall: {
@@ -182,6 +200,8 @@ export interface WeatherReportResponse {
   readonly agentHealth?: AgentHealthSummary;
   /** Per-expert-role performance from worker dispatch outcomes (Issue #1324). */
   readonly expertPerformance?: readonly ExpertPerformanceEntry[];
+  /** Swarm health metrics dashboard (Issue #1403). */
+  readonly swarmHealth?: SwarmHealthMetrics;
   readonly explorationRate: number;
   readonly coldStartThreshold: number;
   readonly collectedAt: string;

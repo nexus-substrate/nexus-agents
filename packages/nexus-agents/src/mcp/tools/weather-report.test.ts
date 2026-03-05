@@ -341,3 +341,82 @@ describe('shouldExplore', () => {
     expect(shouldExplore({ explorationRate: 1 })).toBe(true);
   });
 });
+
+// ============================================================================
+// Swarm Health Metrics (Issue #1403)
+// ============================================================================
+
+describe('swarmHealth in weather report', () => {
+  it('is absent when no outcomes exist', () => {
+    const report = generateWeatherReport({});
+    expect(report.swarmHealth).toBeUndefined();
+  });
+
+  it('computes agent utilization from expert roles', () => {
+    // 2 active expert roles, 1 failed
+    seedOutcomes(3, { model: 'worker-code_expert', success: true, source: 'delegate' });
+    seedOutcomes(2, { model: 'worker-security_expert', success: true, source: 'delegate' });
+    seedOutcomes(2, { model: 'worker-testing_expert', success: false, source: 'delegate' });
+
+    const report = generateWeatherReport({});
+    expect(report.swarmHealth).toBeDefined();
+    // 2 of 3 roles have successRate > 0
+    expect(report.swarmHealth?.agentUtilization).toBeCloseTo(2 / 3, 2);
+  });
+
+  it('computes collaboration efficiency from delegate outcomes', () => {
+    seedOutcomes(6, { source: 'delegate', success: true });
+    seedOutcomes(4, { source: 'delegate', success: false });
+    // Non-delegate outcomes should not affect collaboration efficiency
+    seedOutcomes(5, { source: 'direct' as 'delegate', success: true });
+
+    const report = generateWeatherReport({});
+    expect(report.swarmHealth).toBeDefined();
+    // 6 successes / 10 delegate = 0.6 (non-delegate 5 are excluded by source filter)
+    // Actually total is 15 outcomes, 11 delegate, but we seeded with source overrides
+    // The delegate filter: 6 success + 4 fail = 10 delegate outcomes → 6/10 = 0.6
+    // But wait, the 5 with 'direct' aren't 'delegate', so collaboration = 6/10 = 0.6
+    expect(report.swarmHealth?.collaborationEfficiency).toBeCloseTo(0.6, 2);
+  });
+
+  it('computes routing accuracy against best CLI per category', () => {
+    // Claude is best for code_generation (100% success)
+    seedOutcomes(5, { cli: 'claude', category: 'code_generation', success: true });
+    // Gemini routed to code_generation too (0% success — suboptimal routing)
+    seedOutcomes(5, { cli: 'gemini', category: 'code_generation', success: false });
+
+    const report = generateWeatherReport({});
+    expect(report.swarmHealth).toBeDefined();
+    // Best CLI for code_generation = claude (100%). 5/10 tasks went to claude.
+    expect(report.swarmHealth?.routingAccuracy).toBeCloseTo(0.5, 2);
+  });
+
+  it('computes weekly regret as gap from optimal', () => {
+    // Best possible: 100% for code_generation via claude
+    seedOutcomes(5, { cli: 'claude', category: 'code_generation', success: true });
+    // Actual includes gemini failures → overall rate = 50%, best = 100% → regret = 0.5
+    seedOutcomes(5, { cli: 'gemini', category: 'code_generation', success: false });
+
+    const report = generateWeatherReport({});
+    expect(report.swarmHealth).toBeDefined();
+    expect(report.swarmHealth?.weeklyRegret).toBeCloseTo(0.5, 2);
+  });
+
+  it('includes observedCategories and observedRoles', () => {
+    seedOutcomes(5, {
+      model: 'worker-code_expert',
+      category: 'code_generation',
+      source: 'delegate',
+    });
+    seedOutcomes(5, {
+      model: 'worker-security_expert',
+      category: 'security_review',
+      source: 'delegate',
+    });
+
+    const report = generateWeatherReport({});
+    expect(report.swarmHealth).toBeDefined();
+    expect(report.swarmHealth?.observedCategories).toBeGreaterThanOrEqual(2);
+    expect(report.swarmHealth?.observedRoles).toBe(2);
+  });
+});
