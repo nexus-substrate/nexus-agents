@@ -433,6 +433,7 @@ Detailed workflow steps are in `.claude/skills/`:
 | Requirements gathering | `requirements-gathering`    | "gather requirements", "user stories"               |
 | UI/UX design           | `ui-ux-design`              | "design system", "UI design", "landing page design" |
 | Infrastructure mgmt    | `infrastructure-management` | "infrastructure", "bare metal", "idrac", "server"   |
+| Security scanning      | `security-scanning`         | "security scan", "codeql", "secret scanning"        |
 
 ---
 
