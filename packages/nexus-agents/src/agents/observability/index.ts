@@ -63,7 +63,5 @@ export {
   calculateTokenCost,
 } from './orchestration-observer-helpers.js';
 
-// Backward compatibility aliases (deprecated, will be removed in v3.0)
-/* eslint-disable @typescript-eslint/no-deprecated */
+// Backward compatibility: SwarmObserver was renamed to OrchestrationObserver in v2.x
 export { SwarmObserver, createSwarmObserver } from './orchestration-observer.js';
-/* eslint-enable @typescript-eslint/no-deprecated */

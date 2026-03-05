@@ -162,59 +162,83 @@ export async function dispatchWorkers(
   const execId = options.executionId ?? `dispatch-${Date.now().toString(36)}`;
 
   for (const [waveIdx, wave] of waves.entries()) {
-    const waveNumber = waveIdx + 1;
-    const roles = wave.map((e) => e.role);
-    logger.info('Dispatching wave', {
-      wave: waveNumber,
-      totalWaves: waves.length,
-      workers: wave.length,
-      roles,
-    });
-
-    const waveCtx: WaveEventContext = {
+    const waveResults = await processWave(wave, waveIdx, waves.length, {
       bus,
       executionId: execId,
-      waveNumber,
-      totalWaves: waves.length,
-    };
-    emitWaveStarted(waveCtx, wave.length, roles);
-    const waveStartMs = Date.now();
-
-    // Pass accumulated prior-wave results to workers (Issue #1308)
-    const priorResults: readonly WorkerResult[] | undefined =
-      allResults.length > 0 ? [...allResults] : undefined;
-
-    const tasks = wave.map((entry) => (): Promise<WorkerResult> => {
-      // Use expert-aware timeout: security/architecture/research get 600s, not 60s
-      const timeoutMs = options.workerTimeoutMs ?? getExpertTaskTimeout(entry.subTask);
-      return executeSafe(entry, options.executeWorker, priorResults, timeoutMs);
+      maxConcurrency,
+      options,
+      priorResults: allResults.length > 0 ? [...allResults] : undefined,
     });
-
-    const waveResults = await executeWithConcurrencyLimit(tasks, maxConcurrency);
     allResults.push(...waveResults);
 
-    const successes = waveResults.filter((r) => r.status === 'success').length;
-    const errorCount = waveResults.filter((r) => r.status === 'error').length;
-    const waveDurationMs = Date.now() - waveStartMs;
-    logger.info('Wave complete', { wave: waveNumber, successes, errors: errorCount });
-
-    emitWaveCompleted(waveCtx, waveDurationMs, successes, errorCount);
-
-    // Rate-limit back-pressure: delay before next wave if rate-limited (Issue #1328)
-    if (errorCount > 0 && waveIdx < waves.length - 1) {
-      const hasRateLimit = waveResults.some(
-        (r) => r.status === 'error' && r.error !== undefined && isRateLimitError(r.error)
-      );
-      if (hasRateLimit) {
-        logger.warn('Rate-limit detected — delaying next wave', {
-          delayMs: RATE_LIMIT_WAVE_DELAY_MS,
-        });
-        await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT_WAVE_DELAY_MS));
-      }
-    }
+    await maybeDelayForRateLimit(waveResults, waveIdx, waves.length);
   }
 
   return allResults;
+}
+
+// ============================================================================
+// Wave Processing Helpers
+// ============================================================================
+
+/** Options for processing a single wave. */
+interface ProcessWaveOptions {
+  readonly bus: IEventBus | undefined;
+  readonly executionId: string;
+  readonly maxConcurrency: number;
+  readonly options: WorkerDispatchOptions;
+  readonly priorResults: readonly WorkerResult[] | undefined;
+}
+
+/** Process a single wave: emit events, execute tasks, return results. */
+async function processWave(
+  wave: readonly AgentPlanEntry[],
+  waveIdx: number,
+  totalWaves: number,
+  opts: ProcessWaveOptions
+): Promise<WorkerResult[]> {
+  const waveNumber = waveIdx + 1;
+  const roles = wave.map((e) => e.role);
+  logger.info('Dispatching wave', { wave: waveNumber, totalWaves, workers: wave.length, roles });
+
+  const waveCtx: WaveEventContext = {
+    bus: opts.bus,
+    executionId: opts.executionId,
+    waveNumber,
+    totalWaves,
+  };
+  emitWaveStarted(waveCtx, wave.length, roles);
+  const waveStartMs = Date.now();
+
+  const tasks = wave.map((entry) => (): Promise<WorkerResult> => {
+    const timeoutMs = opts.options.workerTimeoutMs ?? getExpertTaskTimeout(entry.subTask);
+    return executeSafe(entry, opts.options.executeWorker, opts.priorResults, timeoutMs);
+  });
+
+  const waveResults = await executeWithConcurrencyLimit(tasks, opts.maxConcurrency);
+  const successes = waveResults.filter((r) => r.status === 'success').length;
+  const errorCount = waveResults.filter((r) => r.status === 'error').length;
+  logger.info('Wave complete', { wave: waveNumber, successes, errors: errorCount });
+  emitWaveCompleted(waveCtx, Date.now() - waveStartMs, successes, errorCount);
+  return waveResults;
+}
+
+/** Delay before next wave if rate-limit errors detected (Issue #1328). */
+async function maybeDelayForRateLimit(
+  results: readonly WorkerResult[],
+  waveIdx: number,
+  totalWaves: number
+): Promise<void> {
+  const hasErrors = results.some((r) => r.status === 'error');
+  if (!hasErrors || waveIdx >= totalWaves - 1) return;
+
+  const hasRateLimit = results.some(
+    (r) => r.status === 'error' && r.error !== undefined && isRateLimitError(r.error)
+  );
+  if (hasRateLimit) {
+    logger.warn('Rate-limit detected — delaying next wave', { delayMs: RATE_LIMIT_WAVE_DELAY_MS });
+    await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT_WAVE_DELAY_MS));
+  }
 }
 
 // ============================================================================
