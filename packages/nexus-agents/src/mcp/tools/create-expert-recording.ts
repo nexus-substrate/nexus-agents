@@ -15,6 +15,8 @@ import {
   categorizeOutcomeErrorMessage,
 } from '../../orchestration/outcomes/index.js';
 import { DEFAULT_CLI } from '../../config/model-capabilities-types.js';
+import type { TaskCategory } from '../../config/task-specialization-types.js';
+import { ROLE_TO_TASK_CATEGORY } from './create-expert-routing.js';
 
 const logger = createLogger({ tool: 'create-expert' });
 
@@ -52,6 +54,11 @@ export function recordExpertError(role: string, errorMessage: string): void {
   }
 }
 
+/** Resolves expert role to task category for accurate outcome attribution. */
+function resolveCategory(role: string): TaskCategory {
+  return ROLE_TO_TASK_CATEGORY[role] ?? 'code_generation';
+}
+
 /** Records expert creation outcome for adaptive routing. */
 export function recordExpertOutcome(role: string, success: boolean, durationMs: number): void {
   try {
@@ -59,7 +66,7 @@ export function recordExpertOutcome(role: string, success: boolean, durationMs: 
     store.append({
       id: `expert-${String(Date.now())}-${Math.random().toString(36).slice(2, 8)}`,
       cli: DEFAULT_CLI,
-      category: 'code_generation',
+      category: resolveCategory(role),
       model: 'expert',
       success,
       durationMs,

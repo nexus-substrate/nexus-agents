@@ -196,6 +196,17 @@ describe('create-expert-recording', () => {
     const last = entries[entries.length - 1];
     expect(last?.success).toBe(true);
     expect(last?.durationMs).toBe(500);
+    expect(last?.category).toBe('testing');
+  });
+
+  it('recordExpertOutcome maps role to correct category (#1402)', async () => {
+    const { recordExpertOutcome } = await import('./create-expert-recording.js');
+    const store = getOutcomeStore();
+
+    recordExpertOutcome('security_expert', true, 100);
+    const entries = store.query();
+    const last = entries[entries.length - 1];
+    expect(last?.category).toBe('security_review');
   });
 
   it('recordExpertOutcome records failures', async () => {
