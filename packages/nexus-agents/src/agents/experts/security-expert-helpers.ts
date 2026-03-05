@@ -64,6 +64,63 @@ export const VULNERABILITY_PATTERNS: VulnerabilityPattern[] = [
     remediation: 'Implement principle of least privilege and verify all access controls',
     cweId: 'CWE-284',
   },
+  // Additional OWASP Top 10 patterns (#1404)
+  {
+    pattern: /ssrf|server.?side.?request|fetch.*url.*user/i,
+    severity: 'critical',
+    type: 'A10:2021 - SSRF',
+    description: 'Potential server-side request forgery detected',
+    remediation: 'Validate and restrict outbound request targets; use allowlists',
+    cweId: 'CWE-918',
+  },
+  {
+    pattern: /xml.*parse|xpath|xslt|entity/i,
+    severity: 'high',
+    type: 'A05:2021 - Security Misconfiguration',
+    description: 'XML processing code may be vulnerable to XXE attacks',
+    remediation: 'Disable external entity processing in XML parsers',
+    cweId: 'CWE-611',
+  },
+  {
+    pattern: /deserializ|unpickle|unserializ|readObject/i,
+    severity: 'critical',
+    type: 'A08:2021 - Integrity Failures',
+    description: 'Insecure deserialization detected',
+    remediation: 'Validate serialized data; use safe alternatives like JSON',
+    cweId: 'CWE-502',
+  },
+  {
+    pattern: /jwt|jsonwebtoken|bearer.*token/i,
+    severity: 'high',
+    type: 'A02:2021 - Cryptographic Failures',
+    description: 'JWT handling requires algorithm verification',
+    remediation: 'Verify JWT algorithm; reject none/HS256 when RS256 expected',
+    cweId: 'CWE-347',
+  },
+  {
+    pattern: /path.*join|readFile.*req|fs.*user/i,
+    severity: 'high',
+    type: 'A01:2021 - Broken Access Control',
+    description: 'Path traversal risk in file operations with user input',
+    remediation: 'Resolve and validate paths against root directory',
+    cweId: 'CWE-22',
+  },
+  {
+    pattern: /crypto.*md5|sha1|des\b|rc4/i,
+    severity: 'medium',
+    type: 'A02:2021 - Cryptographic Failures',
+    description: 'Weak or deprecated cryptographic algorithm detected',
+    remediation: 'Use SHA-256+ for hashing; AES-256-GCM for encryption',
+    cweId: 'CWE-327',
+  },
+  {
+    pattern: /cors.*\*|access-control-allow-origin.*\*/i,
+    severity: 'medium',
+    type: 'A05:2021 - Security Misconfiguration',
+    description: 'Overly permissive CORS configuration detected',
+    remediation: 'Restrict Access-Control-Allow-Origin to specific trusted domains',
+    cweId: 'CWE-942',
+  },
 ];
 
 // ============================================================================
@@ -218,7 +275,15 @@ export function parseSecurityResult(
     if (parsed.warnings !== undefined) result.warnings = parsed.warnings;
     return result;
   } catch {
-    return { content: text, vulnerabilities: [], securityScore: 50, confidence: 0.3 };
+    // JSON parse failed — fall back to heuristic detection on model output (#1404)
+    const heuristicVulns = detectHeuristicVulnerabilities(text);
+    const score = calculateScore(heuristicVulns);
+    return {
+      content: text,
+      vulnerabilities: heuristicVulns,
+      securityScore: score,
+      confidence: heuristicVulns.length > 0 ? 0.5 : 0.3,
+    };
   }
 }
 

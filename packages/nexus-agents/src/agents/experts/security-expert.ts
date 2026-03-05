@@ -122,7 +122,7 @@ Analyze for security vulnerabilities and provide findings in the specified JSON 
       securityScore,
       recommendations: generateHeuristicRecommendations(vulnerabilities),
       warnings: generateSecurityWarnings(vulnerabilities),
-      confidence: 0.4,
+      confidence: vulnerabilities.length > 0 ? 0.6 : 0.4,
     };
 
     return ok({

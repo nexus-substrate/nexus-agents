@@ -243,11 +243,12 @@ describe('parseSecurityResult', () => {
     expect(result.vulnerabilities).toEqual([]);
   });
 
-  it('falls back for invalid JSON', () => {
+  it('falls back to heuristic detection for invalid JSON (#1404)', () => {
     const result = parseSecurityResult('not valid json', mockScorer, mockValidator);
     expect(result.content).toBe('not valid json');
+    // Heuristic fallback: no vulnerability patterns matched in plain text
     expect(result.vulnerabilities).toEqual([]);
-    expect(result.securityScore).toBe(50);
+    expect(result.securityScore).toBe(100); // calculateSecurityScore([]) = 100
     expect(result.confidence).toBe(0.3);
   });
 

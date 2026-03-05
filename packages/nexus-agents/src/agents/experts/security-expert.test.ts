@@ -157,7 +157,8 @@ describe('SecurityExpert', () => {
         expect(result.value.metadata.model).toBe('heuristic');
 
         const output = result.value.output as SecurityAnalysisResult;
-        expect(output.confidence).toBeLessThan(0.5);
+        // Heuristic confidence is 0.6 when patterns match, 0.4 otherwise (#1404)
+        expect(output.confidence).toBeLessThanOrEqual(0.7);
       }
     });
 
@@ -399,8 +400,9 @@ describe('SecurityExpert', () => {
       if (result.ok) {
         const output = result.value.output as SecurityAnalysisResult;
         expect(output.content).toBe('No vulnerabilities found in the reviewed code.');
+        // Heuristic fallback: no patterns matched → empty vulns, score 100 (#1404)
         expect(output.vulnerabilities).toEqual([]);
-        expect(output.securityScore).toBe(50);
+        expect(output.securityScore).toBe(100);
       }
     });
   });
