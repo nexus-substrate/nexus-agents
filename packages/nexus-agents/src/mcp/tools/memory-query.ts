@@ -135,9 +135,13 @@ async function resolveReflection(
   const reflection = await retriever.enhance(query);
   const reflected = reflection.reflected;
   const effectiveQuery = reflected ? reflection.keywords.join(' ') : query;
-  const expandedQuery = reflected && effectiveQuery !== query ? effectiveQuery : undefined;
+  const expanded = reflected && effectiveQuery !== query ? effectiveQuery : undefined;
 
-  return { effectiveQuery, expandedQuery, reflection };
+  return {
+    effectiveQuery,
+    ...(expanded !== undefined ? { expandedQuery: expanded } : {}),
+    reflection,
+  };
 }
 
 /**
