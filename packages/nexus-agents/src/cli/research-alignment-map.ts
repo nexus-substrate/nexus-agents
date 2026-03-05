@@ -135,9 +135,9 @@ export const TECHNIQUE_IMPLEMENTATION_MAP: ReadonlyMap<string, TechniqueMapping>
   [
     'incremental-quorum',
     {
-      status: 'partial',
-      path: 'consensus/engine.ts',
-      hint: 'Fixed quorum thresholds, not incremental',
+      status: 'implemented',
+      path: 'consensus/incremental-quorum.ts',
+      hint: 'Ambiguity detection + voter expansion via VoterExpansionCallback (#1408)',
     },
   ],
   [
