@@ -132,6 +132,10 @@ export class ClaudeCliAdapter extends SubprocessCliAdapter {
     if (typeof mcpConfigPath === 'string' && mcpConfigPath.length > 0) {
       args.push('--mcp-config', mcpConfigPath);
     }
+    // Allow full tool access in non-interactive mode (needed for SWE-bench)
+    if (task.options?.['skipPermissions'] === true) {
+      args.push('--dangerously-skip-permissions');
+    }
   }
 
   /**

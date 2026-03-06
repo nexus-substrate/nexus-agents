@@ -60,7 +60,7 @@ export class CliAgentExecutor implements IAgentExecutor {
 
   /** Build task options including optional MCP config. */
   private buildTaskOptions(workDir: string): Record<string, unknown> {
-    const options: Record<string, unknown> = { workDir };
+    const options: Record<string, unknown> = { workDir, skipPermissions: true };
     if (this.mcpConfigPath !== null) {
       options['mcpConfigPath'] = this.mcpConfigPath;
     }

@@ -148,7 +148,7 @@ describe('cli-agent-executor', () => {
             content: 'user prompt',
             systemPrompt: 'system prompt',
             model: 'sonnet',
-            options: { workDir: testContext.workDir },
+            options: { workDir: testContext.workDir, skipPermissions: true },
           },
           { timeoutMs: 300000 }
         );
