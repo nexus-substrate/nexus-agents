@@ -6,7 +6,11 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { OpenCodeCliAdapter, createOpenCodeAdapter } from './opencode-adapter.js';
+import {
+  OpenCodeCliAdapter,
+  createOpenCodeAdapter,
+  resetOpenCodeModelCache,
+} from './opencode-adapter.js';
 import type { CliTask } from '../types.js';
 import { getDefaultModelForCli, getCliModelName } from '../../config/model-config-helpers.js';
 
@@ -16,10 +20,15 @@ const EXPECTED_DEFAULT_ID = getCliModelName(getDefaultModelForCli('opencode'));
 // Hoist the mock function so it's available during vi.mock()
 const mockExecAsync = vi.hoisted(() => vi.fn());
 
+type ExecFileCallback = (error: Error | null, stdout: string, stderr: string) => void;
+
 // Mock child_process for subprocess execution
 vi.mock('node:child_process', () => ({
   spawn: vi.fn(),
   exec: vi.fn(),
+  execFile: vi.fn((_cmd: string, _args: string[], _opts: unknown, cb: ExecFileCallback) => {
+    cb(null, `${getCliModelName(getDefaultModelForCli('opencode'))}\n`, '');
+  }),
 }));
 
 // Mock util.promisify to return our controlled async mock
@@ -27,7 +36,7 @@ vi.mock('node:util', () => ({
   promisify: vi.fn((_fn: unknown) => mockExecAsync),
 }));
 
-import { spawn } from 'node:child_process';
+import { spawn, execFile } from 'node:child_process';
 
 type EventCallback = (...args: unknown[]) => void;
 
@@ -87,6 +96,14 @@ describe('OpenCodeCliAdapter', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    resetOpenCodeModelCache();
+    // Default execFile mock returns the expected default model as available
+    vi.mocked(execFile).mockImplementation(
+      (_cmd: string, _args: unknown, _opts: unknown, cb: unknown) => {
+        (cb as ExecFileCallback)(null, `${EXPECTED_DEFAULT_ID}\n`, '');
+        return undefined as unknown as ReturnType<typeof execFile>;
+      }
+    );
     adapter = new OpenCodeCliAdapter();
   });
 
@@ -170,7 +187,7 @@ describe('OpenCodeCliAdapter', () => {
       expect(mockProcess.stdin?.write).toHaveBeenCalledWith('Say hello');
     });
 
-    it('should use task model over default when provided', async () => {
+    it('should omit --model when task model is not in available models (#1402)', async () => {
       const ndjsonResponse = [
         JSON.stringify({ type: 'message.delta', content: 'Done!' }),
         JSON.stringify({ type: 'session.complete' }),
@@ -186,6 +203,37 @@ describe('OpenCodeCliAdapter', () => {
 
       const calls = vi.mocked(spawn).mock.calls;
       const args = calls[0]?.[1] as string[];
+      // Model not in probed list → omitted
+      expect(args).not.toContain('--model');
+    });
+
+    it('should pass --model when task model IS in available models', async () => {
+      // Mock execFile to return the specific model as available
+      vi.mocked(execFile).mockImplementation(
+        (_cmd: string, _args: unknown, _opts: unknown, cb: unknown) => {
+          (cb as ExecFileCallback)(null, 'opencode/big-pickle\ngoogle/gemini-2.5-flash\n', '');
+          return undefined as unknown as ReturnType<typeof execFile>;
+        }
+      );
+      resetOpenCodeModelCache();
+      const freshAdapter = new OpenCodeCliAdapter();
+      await freshAdapter.initialize();
+
+      const ndjsonResponse = [
+        JSON.stringify({ type: 'message.delta', content: 'Done!' }),
+        JSON.stringify({ type: 'session.complete' }),
+      ].join('\n');
+      const mockProcess = createMockProcess(ndjsonResponse);
+      vi.mocked(spawn).mockReturnValue(mockProcess);
+
+      const task: CliTask = {
+        content: 'Quick task',
+        model: 'google/gemini-2.5-flash',
+      };
+      await freshAdapter.execute(task);
+
+      const calls = vi.mocked(spawn).mock.calls;
+      const args = calls[0]?.[1] as string[];
       expect(args).toContain('--model');
       expect(args).toContain('google/gemini-2.5-flash');
     });
@@ -198,7 +246,8 @@ describe('OpenCodeCliAdapter', () => {
       const mockProcess = createMockProcess(ndjsonResponse);
       vi.mocked(spawn).mockReturnValue(mockProcess);
 
-      // 'opencode-default' is an internal ID, should resolve to CLI model name
+      // 'opencode-default' is an internal ID, resolves to the default cliModelName
+      // which is in the probed available models
       const task: CliTask = {
         content: 'Resolve model',
         model: 'opencode-default',

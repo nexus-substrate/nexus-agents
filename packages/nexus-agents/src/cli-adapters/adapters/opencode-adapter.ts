@@ -7,6 +7,8 @@
  * (Source: Issue #1124, opencode.ai/docs/cli/)
  */
 
+import { execFile } from 'node:child_process';
+
 import type {
   ICliResponseParser,
   CliTask,
@@ -22,6 +24,9 @@ import {
   buildModelInfo,
 } from '../../config/model-config-helpers.js';
 import { DEFAULT_MODEL_CAPABILITIES } from '../../config/model-capabilities.js';
+import { createLogger } from '../../core/index.js';
+
+const logger = createLogger({ component: 'opencode-adapter' });
 
 /** Strict allowlist for OpenCode --variant flag values. */
 const ALLOWED_VARIANTS = ['high', 'max', 'minimal'];
@@ -55,15 +60,55 @@ function resolveOpenCodeModel(model: string): string {
   return MODEL_TO_CLI_NAME[model] ?? model;
 }
 
+/** Timeout for `opencode models` probe (ms). */
+const PROBE_TIMEOUT_MS = 10_000;
+
+/**
+ * Probes available models by running `opencode models`.
+ * Returns a Set of model IDs (e.g., "opencode/big-pickle").
+ * Caches result in a module-level variable for the process lifetime.
+ */
+let cachedModels: Set<string> | undefined;
+function probeAvailableModels(): Promise<Set<string>> {
+  if (cachedModels !== undefined) return Promise.resolve(cachedModels);
+
+  return new Promise((resolve) => {
+    execFile('opencode', ['models'], { timeout: PROBE_TIMEOUT_MS }, (error, stdout) => {
+      if (error !== null || stdout.trim() === '') {
+        logger.debug('Failed to probe OpenCode models, will omit --model flag', {
+          error: error?.message,
+        });
+        cachedModels = new Set();
+        resolve(cachedModels);
+        return;
+      }
+      const models = new Set(
+        stdout
+          .trim()
+          .split('\n')
+          .map((l) => l.trim())
+          .filter((l) => l.length > 0)
+      );
+      logger.debug('Probed OpenCode models', { count: models.size });
+      cachedModels = models;
+      resolve(cachedModels);
+    });
+  });
+}
+
 /**
  * OpenCode CLI adapter using subprocess transport.
  * Executes: opencode run --format json "<task>"
+ *
+ * Probes available models on first use and omits --model flag
+ * when the requested model isn't available (#1402).
  */
 export class OpenCodeCliAdapter extends SubprocessCliAdapter {
   readonly name: CliName = 'opencode';
   protected readonly parser: ICliResponseParser = new OpenCodeResponseParser();
 
   private readonly model: string;
+  private availableModels: Set<string> | undefined;
 
   constructor(options?: BaseAdapterOptions) {
     super(options?.logger);
@@ -88,35 +133,58 @@ export class OpenCodeCliAdapter extends SubprocessCliAdapter {
   }
 
   /**
-   * Gets CLI command and arguments for execution.
-   * Uses `opencode run` with JSON format for stable parsing.
+   * Initializes the adapter — probes available models.
    */
-  protected getCommand(task: CliTask): CommandConfig {
-    const args: string[] = ['run', '--format', 'json'];
+  override async initialize(): Promise<void> {
+    this.availableModels = await probeAvailableModels();
+    await super.initialize();
+  }
 
-    // Add model selection — resolve internal names to OpenCode CLI format (#1402)
+  /** Returns true if the model is available in the OpenCode installation. */
+  private isModelAvailable(cliModel: string): boolean {
+    if (this.availableModels === undefined || this.availableModels.size === 0) return false;
+    return this.availableModels.has(cliModel);
+  }
+
+  /** Appends --model if the resolved model is available (#1402). */
+  private appendModelArg(args: string[], task: CliTask): void {
     const internalModel = task.model ?? this.model;
-    args.push('--model', resolveOpenCodeModel(internalModel));
+    const cliModel = resolveOpenCodeModel(internalModel);
 
-    // Add working directory if specified
+    if (this.isModelAvailable(cliModel)) {
+      args.push('--model', cliModel);
+    } else {
+      logger.debug('Model not available, using OpenCode default', {
+        requested: cliModel,
+        available: this.availableModels?.size ?? 0,
+      });
+    }
+  }
+
+  /** Appends optional task flags (workDir, variant, thinking). */
+  private appendTaskFlags(args: string[], task: CliTask): void {
     const workDir = task.options?.['workDir'];
     if (typeof workDir === 'string' && workDir.length > 0) {
       args.push('--dir', workDir);
     }
-
-    // Add reasoning variant if specified (strict allowlist)
     const variant = task.options?.['variant'];
     if (typeof variant === 'string' && ALLOWED_VARIANTS.includes(variant)) {
       args.push('--variant', variant);
     }
-
-    // Add thinking flag if specified (boolean only)
     if (task.options?.['thinking'] === true) {
       args.push('--thinking');
     }
+  }
 
-    // Pass prompt via stdin to avoid argument escaping issues
-    // (matches Claude adapter pattern — critical for multi-line/special-char prompts)
+  /**
+   * Gets CLI command and arguments for execution.
+   * Uses `opencode run` with JSON format for stable parsing.
+   * Omits --model when the requested model isn't available (#1402).
+   */
+  protected getCommand(task: CliTask): CommandConfig {
+    const args: string[] = ['run', '--format', 'json'];
+    this.appendModelArg(args, task);
+    this.appendTaskFlags(args, task);
     return { command: 'opencode', args, stdin: task.content };
   }
 }
@@ -126,4 +194,9 @@ export class OpenCodeCliAdapter extends SubprocessCliAdapter {
  */
 export function createOpenCodeAdapter(options?: BaseAdapterOptions): OpenCodeCliAdapter {
   return new OpenCodeCliAdapter(options);
+}
+
+/** Resets model probe cache (for testing). */
+export function resetOpenCodeModelCache(): void {
+  cachedModels = undefined;
 }

@@ -529,5 +529,33 @@ describe('OpenCodeResponseParser', () => {
       const result = parser.parse(raw);
       expect(result?.content).toBe('Text field in complete');
     });
+
+    it('should extract error event message (#1402)', () => {
+      const raw = createNdjson(
+        { type: 'step_start', sessionID: 'ses_123' },
+        {
+          type: 'error',
+          sessionID: 'ses_123',
+          error: { name: 'UnknownError', data: { message: 'Model not found: anthropic/claude.' } },
+        }
+      );
+
+      const result = parser.parse(raw);
+      expect(result).not.toBeNull();
+      expect(result?.content).toContain('Model not found');
+      expect(result?.sessionId).toBe('ses_123');
+    });
+
+    it('should handle error event with name-only fallback', () => {
+      const raw = createNdjson({
+        type: 'error',
+        sessionID: 'ses_456',
+        error: { name: 'ProviderModelNotFoundError' },
+      });
+
+      const result = parser.parse(raw);
+      expect(result).not.toBeNull();
+      expect(result?.content).toContain('ProviderModelNotFoundError');
+    });
   });
 });

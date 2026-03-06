@@ -39,6 +39,7 @@ export type OpenCodeEventType =
   | 'text'
   | 'tool_use'
   | 'step_finish'
+  | 'error'
   // Legacy assumed types (maintained for backward compatibility)
   | 'session.start'
   | 'message.start'
@@ -278,9 +279,30 @@ export class OpenCodeResponseParser implements ICliResponseParser<OpenCodeCliRes
         this.handleRealSessionId(record, setSessionId);
         this.emitRealUsage(record, setUsage);
         return true;
+      case 'error':
+        this.handleRealSessionId(record, setSessionId);
+        this.pushErrorContent(record, contentParts);
+        return true;
       default:
         return false;
     }
+  }
+
+  /** Extracts error message from error event (#1402). */
+  private pushErrorContent(record: Record<string, unknown>, parts: string[]): void {
+    const errorObj = asRecord(record.error);
+    if (errorObj === null) return;
+
+    const data = asRecord(errorObj.data);
+    const message =
+      data !== null && typeof data.message === 'string'
+        ? data.message
+        : typeof errorObj.name === 'string'
+          ? errorObj.name
+          : 'Unknown error';
+
+    logger.warn('OpenCode returned error event', { message });
+    parts.push(`[OpenCode error: ${message}]`);
   }
 
   /** Processes legacy assumed event types. */
