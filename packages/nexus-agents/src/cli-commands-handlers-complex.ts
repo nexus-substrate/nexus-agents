@@ -165,6 +165,11 @@ function buildSweBenchSubArgs(args: ParsedCliArgs): string[] {
     ['limit', 'limit'],
     ['output', 'output'],
     ['concurrency', 'concurrency'],
+    ['predictions', 'predictions'],
+    ['cacheLevel', 'cache-level'],
+    ['maxWorkers', 'max-workers'],
+    ['runId', 'run-id'],
+    ['outputDir', 'output-dir'],
   ];
   for (const [key, flag] of valueFlags) {
     const val = opts[key as keyof typeof opts];

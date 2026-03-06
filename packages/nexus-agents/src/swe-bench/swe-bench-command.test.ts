@@ -17,6 +17,7 @@ vi.mock('./index.js', () => ({
   getCompletedInstanceIds: vi.fn(),
   createExecutor: vi.fn(),
   runBenchmarkInstances: vi.fn(),
+  createHarnessExecutor: vi.fn(),
   DEFAULT_SWE_BENCH_CONFIG: {
     variant: 'lite',
     model: 'auto',
@@ -48,6 +49,7 @@ import {
   getCompletedInstanceIds,
   createExecutor,
   runBenchmarkInstances,
+  createHarnessExecutor,
   DatasetLoadError,
 } from './index.js';
 
@@ -56,6 +58,7 @@ const mockGetDatasetInfo = vi.mocked(getDatasetInfo);
 const mockGetCompletedInstanceIds = vi.mocked(getCompletedInstanceIds);
 const mockCreateExecutor = vi.mocked(createExecutor);
 const mockRunBenchmarkInstances = vi.mocked(runBenchmarkInstances);
+const mockCreateHarnessExecutor = vi.mocked(createHarnessExecutor);
 
 describe('swe-bench-command', () => {
   let consoleLogSpy: MockInstance;
@@ -119,6 +122,17 @@ describe('swe-bench-command', () => {
       expect(output).toContain('--resume');
       expect(output).toContain('--instance');
       expect(output).toContain('--verbose');
+    });
+
+    it('printSweBenchHelp should display evaluate options', () => {
+      printSweBenchHelp();
+
+      const output = consoleLogSpy.mock.calls[0]?.[0] as string;
+      expect(output).toContain('--predictions');
+      expect(output).toContain('--cache-level');
+      expect(output).toContain('--max-workers');
+      expect(output).toContain('--run-id');
+      expect(output).toContain('--output-dir');
     });
   });
 
@@ -498,6 +512,105 @@ describe('swe-bench-command', () => {
       });
 
       const exitCode = await sweBenchCommand(['evaluate']);
+
+      expect(exitCode).toBe(1);
+    });
+
+    it('should return 1 when environment is not ready', async () => {
+      mockGetCompletedInstanceIds.mockResolvedValue({
+        ok: true,
+        value: new Set(['instance-1']),
+      });
+      mockCreateHarnessExecutor.mockReturnValue({
+        validate: vi.fn().mockResolvedValue({
+          ready: false,
+          pythonAvailable: true,
+          swebenchInstalled: false,
+          dockerAvailable: true,
+          errors: ['swebench package is not installed'],
+        }),
+        execute: vi.fn(),
+        cancel: vi.fn(),
+        getVersion: vi.fn(),
+        executeInstance: vi.fn(),
+      } as never);
+
+      const exitCode = await sweBenchCommand(['evaluate']);
+
+      expect(exitCode).toBe(1);
+    });
+
+    it('should execute harness and return 0 on success', async () => {
+      mockGetCompletedInstanceIds.mockResolvedValue({
+        ok: true,
+        value: new Set(['instance-1', 'instance-2']),
+      });
+      mockCreateHarnessExecutor.mockReturnValue({
+        validate: vi.fn().mockResolvedValue({
+          ready: true,
+          pythonAvailable: true,
+          swebenchInstalled: true,
+          dockerAvailable: true,
+          errors: [],
+          pythonVersion: '3.11.0',
+          dockerVersion: '24.0.0',
+        }),
+        execute: vi.fn().mockResolvedValue({
+          success: true,
+          runId: 'test-run',
+          datasetName: 'lite',
+          modelNameOrPath: 'nexus-agents',
+          startedAt: '2024-01-01T00:00:00Z',
+          completedAt: '2024-01-01T01:00:00Z',
+          totalInstances: 2,
+          resolvedInstances: 1,
+          resolutionRate: 0.5,
+          instanceResults: [
+            {
+              instanceId: 'inst-1',
+              resolved: true,
+              status: 'resolved',
+              testResults: [],
+              testsPassed: 1,
+              testsFailed: 0,
+              testsTotal: 1,
+              patchApplied: true,
+              durationMs: 100,
+              modelNameOrPath: 'nexus',
+            },
+            {
+              instanceId: 'inst-2',
+              resolved: false,
+              status: 'unresolved',
+              testResults: [],
+              testsPassed: 0,
+              testsFailed: 1,
+              testsTotal: 1,
+              patchApplied: true,
+              durationMs: 200,
+              modelNameOrPath: 'nexus',
+            },
+          ],
+        }),
+        cancel: vi.fn(),
+        getVersion: vi.fn(),
+        executeInstance: vi.fn(),
+      } as never);
+
+      const exitCode = await sweBenchCommand(['evaluate']);
+
+      expect(exitCode).toBe(0);
+      expect(consoleLogSpy).toHaveBeenCalledWith('Resolved: 1/2');
+      expect(consoleLogSpy).toHaveBeenCalledWith('Resolution rate: 50.0%');
+    });
+
+    it('should return 1 for invalid run-id', async () => {
+      mockGetCompletedInstanceIds.mockResolvedValue({
+        ok: true,
+        value: new Set(['instance-1']),
+      });
+
+      const exitCode = await sweBenchCommand(['evaluate', '--run-id=../../bad']);
 
       expect(exitCode).toBe(1);
     });

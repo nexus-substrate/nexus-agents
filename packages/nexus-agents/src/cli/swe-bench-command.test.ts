@@ -142,6 +142,53 @@ describe('swe-bench-command', () => {
       expect(options.subcommand).toBe('evaluate');
       expect(options.output).toBe('./my-predictions.jsonl');
     });
+
+    it('should parse evaluate-specific flags', () => {
+      const options = parseSweBenchArgs([
+        'evaluate',
+        '--predictions=./preds.jsonl',
+        '--cache-level=instance',
+        '--max-workers=8',
+        '--run-id=my-run-1',
+        '--output-dir=./my-logs',
+      ]);
+
+      expect(options.subcommand).toBe('evaluate');
+      expect(options.predictions).toBe('./preds.jsonl');
+      expect(options.cacheLevel).toBe('instance');
+      expect(options.maxWorkers).toBe(8);
+      expect(options.runId).toBe('my-run-1');
+      expect(options.outputDir).toBe('./my-logs');
+    });
+
+    it('should default cache-level to env for invalid value', () => {
+      const options = parseSweBenchArgs(['evaluate', '--cache-level=invalid']);
+
+      expect(options.cacheLevel).toBe('env');
+    });
+
+    it('should cap max-workers', () => {
+      const options = parseSweBenchArgs(['evaluate', '--max-workers=999']);
+
+      expect(options.maxWorkers).toBeLessThanOrEqual(24);
+      expect(options.maxWorkers).toBeGreaterThan(0);
+    });
+
+    it('should default max-workers to 4 for invalid value', () => {
+      const options = parseSweBenchArgs(['evaluate', '--max-workers=abc']);
+
+      expect(options.maxWorkers).toBe(4);
+    });
+
+    it('should have default evaluate options', () => {
+      const options = parseSweBenchArgs(['evaluate']);
+
+      expect(options.cacheLevel).toBe('env');
+      expect(options.maxWorkers).toBe(4);
+      expect(options.outputDir).toBe('./logs/run_evaluation');
+      expect(options.predictions).toBeUndefined();
+      expect(options.runId).toBeUndefined();
+    });
   });
 
   describe('SWEBenchOptions type', () => {
@@ -155,6 +202,9 @@ describe('swe-bench-command', () => {
         concurrency: 1,
         instances: [],
         mcp: false,
+        cacheLevel: 'env',
+        maxWorkers: 4,
+        outputDir: './logs/run_evaluation',
       };
 
       expect(options.subcommand).toBe('run');
@@ -172,6 +222,9 @@ describe('swe-bench-command', () => {
         concurrency: 1,
         instances: [],
         mcp: false,
+        cacheLevel: 'env',
+        maxWorkers: 4,
+        outputDir: './logs/run_evaluation',
       };
 
       const withoutLimit: SWEBenchOptions = {
@@ -183,6 +236,9 @@ describe('swe-bench-command', () => {
         concurrency: 1,
         instances: [],
         mcp: false,
+        cacheLevel: 'env',
+        maxWorkers: 4,
+        outputDir: './logs/run_evaluation',
       };
 
       expect(withLimit.limit).toBe(10);

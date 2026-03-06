@@ -114,6 +114,12 @@ export interface ParsedCliArgs {
     resume: boolean;
     concurrency?: number;
     mcp?: boolean;
+    // SWE-bench evaluate options
+    predictions?: string;
+    cacheLevel?: string;
+    maxWorkers?: string;
+    runId?: string;
+    outputDir?: string;
     // Learning-metrics command options
     period?: number;
     export?: string;
@@ -278,6 +284,25 @@ export const PARSE_ARGS_CONFIG = {
     mcp: {
       type: 'boolean' as const,
       default: false,
+    },
+    // SWE-bench evaluate options
+    predictions: {
+      type: 'string' as const,
+    },
+    'cache-level': {
+      type: 'string' as const,
+      default: 'env',
+    },
+    'max-workers': {
+      type: 'string' as const,
+      default: '4',
+    },
+    'run-id': {
+      type: 'string' as const,
+    },
+    'output-dir': {
+      type: 'string' as const,
+      default: './logs/run_evaluation',
     },
     // Learning-metrics command options
     period: {

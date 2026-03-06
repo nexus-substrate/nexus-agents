@@ -10,17 +10,25 @@
 /* eslint-disable no-console */
 // Console output is intentional for CLI user feedback
 
+import * as os from 'node:os';
+import * as path from 'node:path';
 import {
   loadDataset,
   getDatasetInfo,
   getCompletedInstanceIds,
   createExecutor,
   runBenchmarkInstances,
+  createHarnessExecutor,
   DEFAULT_SWE_BENCH_CONFIG,
   type SWEBenchVariant,
   type SWEBenchInstance,
   type SWEBenchConfig,
+  type HarnessExecutionConfig,
+  type HarnessExecutionProgress,
 } from '../swe-bench/index.js';
+
+/** Valid cache level values for Docker harness. */
+type CacheLevel = 'none' | 'base' | 'env' | 'instance';
 
 /** SWE-bench command options. */
 export interface SWEBenchOptions {
@@ -34,6 +42,16 @@ export interface SWEBenchOptions {
   readonly instances: readonly string[];
   /** Enable MCP tools (memory, research) in child CLI sessions. */
   readonly mcp: boolean;
+  /** Path to predictions file for evaluate (defaults to output). */
+  readonly predictions?: string;
+  /** Docker cache level for evaluate. */
+  readonly cacheLevel: CacheLevel;
+  /** Max parallel Docker workers for evaluate. */
+  readonly maxWorkers: number;
+  /** Custom run ID for evaluate. */
+  readonly runId?: string;
+  /** Output directory for harness logs. */
+  readonly outputDir: string;
 }
 
 /** SWE-bench run result. */
@@ -179,15 +197,75 @@ async function runBenchmark(options: SWEBenchOptions): Promise<SWEBenchCommandRe
   return { success: result.success, message: result.message, details: { ...result } };
 }
 
-/** Check if a command is available. */
-async function commandExists(cmd: string): Promise<boolean> {
-  const { exec } = await import('node:child_process');
-  const { promisify } = await import('node:util');
-  try {
-    await promisify(exec)(`which ${cmd}`);
-    return true;
-  } catch {
-    return false;
+/** Validate run ID format (alphanumeric, hyphens, underscores only). */
+function isValidRunId(runId: string): boolean {
+  return /^[a-zA-Z0-9_-]{1,64}$/.test(runId);
+}
+
+/** Validate output directory path (no traversal). */
+function isValidOutputDir(dir: string): boolean {
+  const resolved = path.resolve(dir);
+  return !resolved.includes('..') && resolved === path.normalize(resolved);
+}
+
+/** Format progress for display. */
+function formatProgress(progress: HarnessExecutionProgress): string {
+  const pct =
+    progress.totalCount > 0 ? Math.round((progress.completedCount / progress.totalCount) * 100) : 0;
+  const base = `[${String(progress.completedCount)}/${String(progress.totalCount)}] ${String(pct)}%`;
+  if (progress.currentInstanceId !== undefined) {
+    return `${base} - ${progress.currentInstanceId}`;
+  }
+  return base;
+}
+
+/** Build harness execution config from CLI options. */
+function buildHarnessConfig(options: SWEBenchOptions): HarnessExecutionConfig {
+  const predictionsPath = options.predictions ?? options.output;
+  const runId = options.runId ?? `eval-${String(Date.now())}`;
+  return {
+    predictionsPath: path.resolve(predictionsPath),
+    datasetName: options.variant,
+    maxWorkers: options.maxWorkers,
+    runId,
+    timeoutSeconds: 1800,
+    outputDir: path.resolve(options.outputDir),
+    useDocker: true,
+    cacheLevel: options.cacheLevel,
+  };
+}
+
+/** Validate evaluate input options. Returns error message or null if valid. */
+function validateEvaluateInputs(options: SWEBenchOptions): string | null {
+  if (options.runId !== undefined && !isValidRunId(options.runId)) {
+    return 'Invalid run-id: alphanumeric, hyphens, underscores only';
+  }
+  if (!isValidOutputDir(options.outputDir)) {
+    return 'Invalid output-dir: path traversal detected';
+  }
+  return null;
+}
+
+/** Display harness execution results. */
+function displayEvaluateResults(
+  result: {
+    resolvedInstances: number;
+    totalInstances: number;
+    resolutionRate: number;
+    logPath?: string;
+    instanceResults: readonly { instanceId: string; resolved: boolean }[];
+  },
+  verbose: boolean
+): void {
+  console.log('\n');
+  console.log(`Resolved: ${String(result.resolvedInstances)}/${String(result.totalInstances)}`);
+  console.log(`Resolution rate: ${(result.resolutionRate * 100).toFixed(1)}%`);
+  if (result.logPath !== undefined) console.log(`Logs: ${result.logPath}`);
+  if (verbose && result.instanceResults.length > 0) {
+    console.log('\nPer-instance results:');
+    for (const inst of result.instanceResults) {
+      console.log(`  [${inst.resolved ? 'PASS' : 'FAIL'}] ${inst.instanceId}`);
+    }
   }
 }
 
@@ -195,7 +273,9 @@ async function commandExists(cmd: string): Promise<boolean> {
 async function runEvaluate(options: SWEBenchOptions): Promise<SWEBenchCommandResult> {
   console.log(`\nSWE-bench Evaluate`);
   console.log('='.repeat(40));
-  const idsResult = await getCompletedInstanceIds(options.output);
+
+  const predictionsPath = options.predictions ?? options.output;
+  const idsResult = await getCompletedInstanceIds(predictionsPath);
   if (!idsResult.ok) {
     console.log('No predictions file. Run "nexus-agents swe-bench run" first.');
     return { success: false, message: 'No predictions file' };
@@ -203,19 +283,42 @@ async function runEvaluate(options: SWEBenchOptions): Promise<SWEBenchCommandRes
   const count = idsResult.value.size;
   if (count === 0) return { success: false, message: 'No predictions' };
 
-  console.log('\nChecking dependencies...');
-  const hasPython = await commandExists('python3');
-  const hasDocker = await commandExists('docker');
-  if (!hasPython) return { success: false, message: 'python3 not found' };
-  if (!hasDocker) return { success: false, message: 'docker not found' };
-  console.log('  [OK] python3, docker');
+  const inputError = validateEvaluateInputs(options);
+  if (inputError !== null) return { success: false, message: inputError };
 
-  console.log('\nManual evaluation:');
-  console.log(`  python -m swebench.harness.run_evaluation \\`);
-  console.log(`    --predictions_path ${options.output} \\`);
-  console.log(`    --swe_bench_tasks princeton-nlp/SWE-bench_Lite`);
+  console.log(`Predictions: ${String(count)} instances`);
+  console.log(`Cache level: ${options.cacheLevel}`);
+  console.log(`Max workers: ${String(options.maxWorkers)}`);
 
-  return { success: true, message: `${String(count)} predictions ready` };
+  const executor = createHarnessExecutor();
+  const validation = await executor.validate();
+  if (!validation.ready) {
+    console.error('\nEnvironment not ready:');
+    for (const err of validation.errors) console.error(`  - ${err}`);
+    return { success: false, message: validation.errors.join('; ') };
+  }
+  console.log(
+    `\nEnvironment OK (Python ${validation.pythonVersion ?? '?'}, Docker ${validation.dockerVersion ?? '?'})`
+  );
+
+  const config = buildHarnessConfig(options);
+  console.log(`\nRunning evaluation (run_id: ${config.runId})...`);
+  const result = await executor.execute(config, (progress) => {
+    if (progress.state === 'running') process.stdout.write(`\r  ${formatProgress(progress)}`);
+  });
+
+  displayEvaluateResults(result, options.verbose);
+  const rateStr = (result.resolutionRate * 100).toFixed(1);
+  return {
+    success: true,
+    message: `${String(result.resolvedInstances)}/${String(result.totalInstances)} resolved (${rateStr}%)`,
+    details: {
+      resolved: result.resolvedInstances,
+      total: result.totalInstances,
+      resolutionRate: result.resolutionRate,
+      runId: result.runId,
+    },
+  };
 }
 
 /** Parse subcommand argument. */
@@ -233,6 +336,12 @@ function parseVariant(arg: string): SWEBenchVariant {
   return 'lite';
 }
 
+/** Maximum parallel workers cap: 75% of CPU count, max 24. */
+const MAX_WORKERS_CAP = Math.min(Math.floor(os.cpus().length * 0.75), 24);
+
+/** Valid cache levels. */
+const VALID_CACHE_LEVELS = new Set<CacheLevel>(['none', 'base', 'env', 'instance']);
+
 /** Mutable state for arg parsing. */
 interface ParseState {
   variant: SWEBenchVariant;
@@ -243,6 +352,11 @@ interface ParseState {
   concurrency: number;
   instances: string[];
   mcp: boolean;
+  predictions: string | undefined;
+  cacheLevel: CacheLevel;
+  maxWorkers: number;
+  runId: string | undefined;
+  outputDir: string;
 }
 
 /** Boolean flags that don't require value parsing. */
@@ -253,6 +367,31 @@ const BOOLEAN_FLAGS: Record<string, keyof ParseState> = {
   '--mcp': 'mcp',
 };
 
+/** Parse cache level with validation. */
+function parseCacheLevel(value: string): CacheLevel {
+  const level = value as CacheLevel;
+  return VALID_CACHE_LEVELS.has(level) ? level : 'env';
+}
+
+/** Parse max workers with cap enforcement. */
+function parseMaxWorkers(value: string): number {
+  const parsed = parseInt(value, 10);
+  if (Number.isNaN(parsed) || parsed < 1) return 4;
+  return Math.min(parsed, MAX_WORKERS_CAP);
+}
+
+/** String flags: prefix → [stateKey, transform] */
+const STRING_FLAGS: [string, keyof ParseState, (v: string) => unknown][] = [
+  ['--output=', 'output', (v) => v],
+  ['--predictions=', 'predictions', (v) => v],
+  ['--run-id=', 'runId', (v) => v],
+  ['--output-dir=', 'outputDir', (v) => v],
+  ['--limit=', 'limit', (v) => parseInt(v, 10)],
+  ['--concurrency=', 'concurrency', (v) => Math.max(1, parseInt(v, 10) || 1)],
+  ['--cache-level=', 'cacheLevel', parseCacheLevel],
+  ['--max-workers=', 'maxWorkers', parseMaxWorkers],
+];
+
 /** Parse a single argument and update state. */
 function parseArg(arg: string, state: ParseState): void {
   const boolKey = BOOLEAN_FLAGS[arg];
@@ -260,29 +399,42 @@ function parseArg(arg: string, state: ParseState): void {
     (state[boolKey] as boolean) = true;
     return;
   }
-  if (arg.startsWith('--variant=')) state.variant = parseVariant(arg);
-  else if (arg.startsWith('--limit=')) state.limit = parseInt(arg.slice('--limit='.length), 10);
-  else if (arg.startsWith('--output=')) state.output = arg.slice('--output='.length);
-  else if (arg.startsWith('--instance=')) state.instances.push(arg.slice('--instance='.length));
-  else if (arg.startsWith('--concurrency='))
-    state.concurrency = Math.max(1, parseInt(arg.slice('--concurrency='.length), 10) || 1);
+  if (arg.startsWith('--variant=')) {
+    state.variant = parseVariant(arg);
+    return;
+  }
+  if (arg.startsWith('--instance=')) {
+    state.instances.push(arg.slice('--instance='.length));
+    return;
+  }
+  for (const [prefix, key, transform] of STRING_FLAGS) {
+    if (arg.startsWith(prefix)) {
+      (state[key] as unknown) = transform(arg.slice(prefix.length));
+      return;
+    }
+  }
 }
 
 /** Parse command line arguments into options. */
 export function parseSweBenchArgs(args: readonly string[]): SWEBenchOptions {
   const subcommand = parseSubcommand(args[0]);
-  const state = {
-    variant: 'lite' as SWEBenchVariant,
-    limit: undefined as number | undefined,
+  const state: ParseState = {
+    variant: 'lite',
+    limit: undefined,
     output: 'predictions.jsonl',
     resume: false,
     verbose: false,
     concurrency: 1,
-    instances: [] as string[],
+    instances: [],
     mcp: false,
+    predictions: undefined,
+    cacheLevel: 'env',
+    maxWorkers: 4,
+    runId: undefined,
+    outputDir: './logs/run_evaluation',
   };
   for (const arg of args.slice(1)) parseArg(arg, state);
-  const base = {
+  const base: SWEBenchOptions = {
     subcommand,
     variant: state.variant,
     output: state.output,
@@ -291,8 +443,14 @@ export function parseSweBenchArgs(args: readonly string[]): SWEBenchOptions {
     concurrency: state.concurrency,
     instances: state.instances,
     mcp: state.mcp,
+    cacheLevel: state.cacheLevel,
+    maxWorkers: state.maxWorkers,
+    outputDir: state.outputDir,
+    ...(state.limit !== undefined ? { limit: state.limit } : {}),
+    ...(state.predictions !== undefined ? { predictions: state.predictions } : {}),
+    ...(state.runId !== undefined ? { runId: state.runId } : {}),
   };
-  return state.limit !== undefined ? { ...base, limit: state.limit } : base;
+  return base;
 }
 
 /** Print help for SWE-bench command. */
@@ -315,6 +473,13 @@ Options:
   --concurrency=<n>               Parallel workers (default: 1, sequential)
   --mcp                           Enable MCP tools (memory, research) in child sessions
   --verbose, -v                   Enable verbose output
+
+Evaluate options:
+  --predictions=<path>            Predictions file (default: --output value)
+  --cache-level=<level>           Docker cache: none|base|env|instance (default: env)
+  --max-workers=<n>               Parallel Docker workers (default: 4, max: ${String(MAX_WORKERS_CAP)})
+  --run-id=<id>                   Custom run identifier
+  --output-dir=<path>             Harness log directory (default: ./logs/run_evaluation)
 `);
 }
 

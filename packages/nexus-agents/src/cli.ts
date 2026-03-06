@@ -117,6 +117,11 @@ interface ParsedValues {
   resume: boolean;
   concurrency?: string;
   mcp: boolean;
+  predictions?: string;
+  'cache-level'?: string;
+  'max-workers'?: string;
+  'run-id'?: string;
+  'output-dir'?: string;
   // Learning-metrics options
   period?: string;
   export?: string;
@@ -186,33 +191,31 @@ function parseSweBenchVariant(value: string | undefined): 'lite' | 'verified' | 
   return undefined;
 }
 
+/** String value mappings from ParsedValues to swe-bench options: [sourceKey, targetKey] */
+const SWE_BENCH_STRING_MAPPINGS: [keyof ParsedValues, string][] = [
+  ['predictions', 'predictions'],
+  ['cache-level', 'cacheLevel'],
+  ['max-workers', 'maxWorkers'],
+  ['run-id', 'runId'],
+  ['output-dir', 'outputDir'],
+];
+
 /** Builds swe-bench-specific options. */
-function buildSweBenchOptions(values: ParsedValues): {
-  variant?: 'lite' | 'verified' | 'full';
-  limit?: number;
-  instance?: string[];
-  resume: boolean;
-  concurrency?: number;
-  mcp?: boolean;
-} {
+function buildSweBenchOptions(values: ParsedValues): Record<string, unknown> & { resume: boolean } {
   const variant = parseSweBenchVariant(values.variant);
   const limit = parseNumericOption(values.limit);
   const concurrency = parseNumericOption(values.concurrency);
-  const base: {
-    resume: boolean;
-    variant?: 'lite' | 'verified' | 'full';
-    limit?: number;
-    concurrency?: number;
-    mcp?: boolean;
-  } = {
-    resume: values.resume,
-  };
+  const base: Record<string, unknown> & { resume: boolean } = { resume: values.resume };
   if (variant !== undefined) base.variant = variant;
   if (limit !== undefined) base.limit = limit;
   if (concurrency !== undefined) base.concurrency = concurrency;
   if (values.mcp) base.mcp = true;
+  for (const [src, tgt] of SWE_BENCH_STRING_MAPPINGS) {
+    const val = values[src];
+    if (val !== undefined) base[tgt] = val;
+  }
   if (values.instance !== undefined && values.instance.length > 0) {
-    return { ...base, instance: values.instance };
+    base.instance = values.instance;
   }
   return base;
 }
