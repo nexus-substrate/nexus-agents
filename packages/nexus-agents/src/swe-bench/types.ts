@@ -155,7 +155,7 @@ export const DEFAULT_SWE_BENCH_CONFIG: SWEBenchConfig = {
   output_path: './swe-bench-predictions.jsonl',
   resume: false,
   timeout_ms: 600000, // 10 minutes per instance
-  max_iterations: 20,
+  max_iterations: 5,
   work_dir: '/tmp/swe-bench',
   concurrency: 1,
   memory_dir: '/tmp/swe-bench-memory',

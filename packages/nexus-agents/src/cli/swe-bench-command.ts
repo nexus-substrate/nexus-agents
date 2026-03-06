@@ -7,8 +7,9 @@
  * (Source: Issue #257 - SWE-Bench Evaluation)
  */
 
-/* eslint-disable no-console */
+/* eslint-disable no-console, max-lines */
 // Console output is intentional for CLI user feedback
+// max-lines: Cohesive CLI command handler (evaluate+run+status+info) — 400-600 OK per governance
 
 import * as os from 'node:os';
 import * as path from 'node:path';

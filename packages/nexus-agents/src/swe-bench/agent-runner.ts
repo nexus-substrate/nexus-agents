@@ -339,6 +339,24 @@ async function executeOneIteration(
   return false;
 }
 
+/** Returns true if the patch was already seen; adds it to the set if new. */
+function isDuplicatePatch(patch: string | undefined, seenPatches: Set<string>): boolean {
+  if (patch === undefined) return false;
+  if (seenPatches.has(patch)) return true;
+  seenPatches.add(patch);
+  return false;
+}
+
+function buildDuplicateResult(
+  instanceId: string,
+  startTime: number,
+  state: IterationState,
+  onMessage: ((msg: string) => void) | undefined
+): SWEBenchRunResult {
+  onMessage?.('Duplicate patch detected, terminating early');
+  return buildFailedResult(instanceId, 'Duplicate patch — agent is stuck', startTime, state);
+}
+
 async function runIterationLoop(
   executor: IAgentExecutor,
   context: AgentContext,
@@ -346,6 +364,7 @@ async function runIterationLoop(
   options: IterationLoopOptions
 ): Promise<SWEBenchRunResult> {
   const { config, startTime, onMessage } = options;
+  const seenPatches = new Set<string>();
 
   while (state.iterations < config.max_iterations) {
     const earlyExit = checkEarlyExit(context.instance.instance_id, options, state);
@@ -356,8 +375,16 @@ async function runIterationLoop(
 
     const done = await executeOneIteration(executor, context, state, options);
     if (done) {
+      if (isDuplicatePatch(state.finalPatch, seenPatches)) {
+        state.finalPatch = undefined;
+        return buildDuplicateResult(context.instance.instance_id, startTime, state, onMessage);
+      }
       onMessage?.('Patch applies successfully');
       break;
+    }
+
+    if (isDuplicatePatch(state.lastPatch, seenPatches)) {
+      return buildDuplicateResult(context.instance.instance_id, startTime, state, onMessage);
     }
   }
 

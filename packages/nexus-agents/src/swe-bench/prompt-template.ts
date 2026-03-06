@@ -14,23 +14,21 @@ import type { SWEBenchInstance } from './types.js';
  */
 export const SWE_BENCH_SYSTEM_PROMPT = `You are an expert software engineer solving GitHub issues.
 
-Your task is to analyze the problem, find the root cause, and fix it by editing the source files directly.
+Your task is to find the root cause and fix it with a minimal patch. Change as few lines as possible. Do not refactor surrounding code.
 
 Guidelines:
 1. Read the problem statement carefully.
-2. Explore the codebase — find relevant files, read them, understand the structure.
-3. Identify the root cause of the issue.
-4. Edit the source files directly to implement a minimal fix.
-5. Do NOT edit test files — tests are run separately for evaluation.
-6. Maintain backward compatibility unless the issue specifically requires breaking changes.
+2. Read the FAIL_TO_PASS test names to understand expected behavior, but do NOT edit test files.
+3. Start with files mentioned in the error/traceback, then search for the function/class name.
+4. Identify the root cause of the issue.
+5. Edit only the source files needed for a minimal fix. Maintain backward compatibility.
+6. Run \`git diff\` to verify your changes are correct BEFORE outputting the patch.
 
-IMPORTANT: After making your fix, you MUST output the complete patch in your response using this exact format:
+IMPORTANT: After making your fix, output the patch using this exact format:
 
 \`\`\`diff
-[run "git diff" to get your changes and paste the output here]
-\`\`\`
-
-If you used tools to edit files, run \`git diff\` in the repository to capture your changes, then include the output in a diff code block.`;
+[paste your "git diff" output here]
+\`\`\``;
 
 /**
  * Creates a user prompt for a specific SWE-bench instance.
@@ -87,11 +85,13 @@ export function createRetryPrompt(
 
   parts.push(
     '',
-    'Please analyze the error and try a different approach.',
+    'Do NOT retry the same approach. If your previous patch modified function X, try a different fix strategy.',
     'Common issues:',
     '- Patch does not apply cleanly (check file paths and context)',
     '- Tests still fail (ensure the fix addresses the root cause)',
-    '- Syntax errors in the patch'
+    '- Syntax errors in the patch',
+    '',
+    'Try a completely different approach to solve the underlying problem.'
   );
 
   return parts.join('\n');

@@ -148,7 +148,7 @@ describe('swe-bench-command', () => {
         'evaluate',
         '--predictions=./preds.jsonl',
         '--cache-level=instance',
-        '--max-workers=8',
+        '--max-workers=2',
         '--run-id=my-run-1',
         '--output-dir=./my-logs',
       ]);
@@ -156,7 +156,7 @@ describe('swe-bench-command', () => {
       expect(options.subcommand).toBe('evaluate');
       expect(options.predictions).toBe('./preds.jsonl');
       expect(options.cacheLevel).toBe('instance');
-      expect(options.maxWorkers).toBe(8);
+      expect(options.maxWorkers).toBe(2);
       expect(options.runId).toBe('my-run-1');
       expect(options.outputDir).toBe('./my-logs');
     });
