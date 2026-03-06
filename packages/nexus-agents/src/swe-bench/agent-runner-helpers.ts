@@ -39,8 +39,8 @@ export interface IterationState {
 // Git Operations
 // ============================================================================
 
-/** Git subprocess timeout (120s for large repos). */
-const GIT_TIMEOUT_MS = 120_000;
+/** Git subprocess timeout (300s for large repos like django, matplotlib). */
+const GIT_TIMEOUT_MS = 300_000;
 
 /** Validates a git commit hash (hex, 7-40 chars). */
 const SAFE_COMMIT_RE = /^[0-9a-f]{7,40}$/i;
