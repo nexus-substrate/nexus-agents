@@ -115,6 +115,8 @@ interface ParsedValues {
   limit?: string;
   instance?: string[];
   resume: boolean;
+  concurrency?: string;
+  mcp: boolean;
   // Learning-metrics options
   period?: string;
   export?: string;
@@ -190,14 +192,25 @@ function buildSweBenchOptions(values: ParsedValues): {
   limit?: number;
   instance?: string[];
   resume: boolean;
+  concurrency?: number;
+  mcp?: boolean;
 } {
   const variant = parseSweBenchVariant(values.variant);
   const limit = parseNumericOption(values.limit);
-  const base: { resume: boolean; variant?: 'lite' | 'verified' | 'full'; limit?: number } = {
+  const concurrency = parseNumericOption(values.concurrency);
+  const base: {
+    resume: boolean;
+    variant?: 'lite' | 'verified' | 'full';
+    limit?: number;
+    concurrency?: number;
+    mcp?: boolean;
+  } = {
     resume: values.resume,
   };
   if (variant !== undefined) base.variant = variant;
   if (limit !== undefined) base.limit = limit;
+  if (concurrency !== undefined) base.concurrency = concurrency;
+  if (values.mcp) base.mcp = true;
   if (values.instance !== undefined && values.instance.length > 0) {
     return { ...base, instance: values.instance };
   }

@@ -155,36 +155,29 @@ export async function handleOrchestrateCommand(args: ParsedCliArgs): Promise<voi
  * Handles the swe-bench command for benchmark evaluation.
  * (Source: Issue #257 - SWE-Bench Evaluation)
  */
+/** Maps parsed CLI options to swe-bench sub-args. */
+function buildSweBenchSubArgs(args: ParsedCliArgs): string[] {
+  const opts = args.options;
+  const subArgs: string[] = [args.positionals[1] ?? 'run'];
+  // Value flags: [optionKey, argName]
+  const valueFlags: [string, string][] = [
+    ['variant', 'variant'],
+    ['limit', 'limit'],
+    ['output', 'output'],
+    ['concurrency', 'concurrency'],
+  ];
+  for (const [key, flag] of valueFlags) {
+    const val = opts[key as keyof typeof opts];
+    if (val !== undefined) subArgs.push(`--${flag}=${String(val)}`);
+  }
+  if (opts.resume) subArgs.push('--resume');
+  if (opts.verbose) subArgs.push('--verbose');
+  if (opts.mcp === true) subArgs.push('--mcp');
+  for (const inst of opts.instance ?? []) subArgs.push(`--instance=${inst}`);
+  return subArgs;
+}
+
 export async function handleSweBenchCommand(args: ParsedCliArgs): Promise<void> {
-  // Build args array from parsed options for sweBenchCommand
-  const subArgs: string[] = [];
-
-  // Add subcommand (run, status, info, evaluate)
-  const subcommand = args.positionals[1] ?? 'run';
-  subArgs.push(subcommand);
-
-  // Add parsed options
-  if (args.options.variant !== undefined) {
-    subArgs.push(`--variant=${args.options.variant}`);
-  }
-  if (args.options.limit !== undefined) {
-    subArgs.push(`--limit=${String(args.options.limit)}`);
-  }
-  if (args.options.output !== undefined) {
-    subArgs.push(`--output=${args.options.output}`);
-  }
-  if (args.options.resume) {
-    subArgs.push('--resume');
-  }
-  if (args.options.verbose) {
-    subArgs.push('--verbose');
-  }
-  if (args.options.instance !== undefined) {
-    for (const inst of args.options.instance) {
-      subArgs.push(`--instance=${inst}`);
-    }
-  }
-
-  const exitCode = await sweBenchCommand(subArgs);
+  const exitCode = await sweBenchCommand(buildSweBenchSubArgs(args));
   process.exit(exitCode === 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.SERVER_START_FAILED);
 }

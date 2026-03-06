@@ -112,6 +112,8 @@ export interface ParsedCliArgs {
     limit?: number;
     instance?: string[];
     resume: boolean;
+    concurrency?: number;
+    mcp?: boolean;
     // Learning-metrics command options
     period?: number;
     export?: string;
@@ -266,6 +268,14 @@ export const PARSE_ARGS_CONFIG = {
       multiple: true,
     },
     resume: {
+      type: 'boolean' as const,
+      default: false,
+    },
+    concurrency: {
+      type: 'string' as const,
+      default: '1',
+    },
+    mcp: {
       type: 'boolean' as const,
       default: false,
     },
