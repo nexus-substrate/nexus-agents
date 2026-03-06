@@ -58,15 +58,20 @@ async function tryExistingClone(repoDir: string, commit: string, exec: ExecFn): 
   const path = await import('node:path');
   try {
     await fs.access(path.join(repoDir, '.git'));
-    // Try checkout first — commit may already be in the local history
+    await exec(`git checkout -- .`, { cwd: repoDir, timeout: GIT_TIMEOUT_MS });
+    await exec(`git clean -fd`, { cwd: repoDir, timeout: GIT_TIMEOUT_MS });
+    // Try checkout — commit may already be in local history
     try {
       await exec(`git checkout ${commit}`, { cwd: repoDir, timeout: GIT_TIMEOUT_MS });
     } catch {
-      // Commit not local — fetch just that commit, then checkout
-      await exec(`git fetch --depth 1 origin ${commit}`, { cwd: repoDir, timeout: GIT_TIMEOUT_MS });
+      // Commit not local — fetch all history so any commit is available
+      try {
+        await exec(`git fetch --unshallow origin`, { cwd: repoDir, timeout: GIT_TIMEOUT_MS });
+      } catch {
+        await exec(`git fetch origin`, { cwd: repoDir, timeout: GIT_TIMEOUT_MS });
+      }
       await exec(`git checkout ${commit}`, { cwd: repoDir, timeout: GIT_TIMEOUT_MS });
     }
-    await exec(`git clean -fd`, { cwd: repoDir, timeout: GIT_TIMEOUT_MS });
     return true;
   } catch {
     return false;
